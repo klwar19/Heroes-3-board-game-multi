@@ -1175,12 +1175,11 @@ describe("BattlefieldBoard Polish army Stack badge", () => {
     expect(document.querySelectorAll(".stackTokenBadge")).toHaveLength(0);
   });
 
-  it("shows the Polish bank coin layer count instead of a random-stat token", () => {
+  it("shows the standard Stack Token badge on a Stacked bank defender (Polish size uses normal tokens)", () => {
     const state = createInitialGameState("bank-stack-badge");
     const unit = state.combat!.units.unit_p2_skeletons;
     unit.bankUnit = true;
-    unit.bankStacks = 3;
-    delete unit.stackToken;
+    unit.stackToken = "attack";
     render(
       <CardZoomProvider>
         <BattlefieldBoard
@@ -1193,8 +1192,10 @@ describe("BattlefieldBoard Polish army Stack badge", () => {
         />
       </CardZoomProvider>
     );
-    expect(document.querySelector(".bankStackBadge.size-4")?.textContent).toContain("3 Stacks");
-    expect(document.querySelectorAll(".stackTokenBadge")).toHaveLength(0);
+    expect(document.querySelector(".stackTokenBadge")).not.toBeNull();
+    // No bespoke Polish layer badge — the size just controls how many defenders
+    // carry a normal Stack Token.
+    expect(document.querySelector(".bankStackBadge")).toBeNull();
   });
 });
 

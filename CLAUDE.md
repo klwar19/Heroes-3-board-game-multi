@@ -1326,8 +1326,9 @@ is NOT done:
   fires first, Creature Bank `stackToken` abilities remain isolated, Pack→Few
   drops the layers, survivors sync back after combat, and keep-troops PvP keeps
   the pre-combat investment. The town row, army panel, and combat card share the
-  generated `public/assets/ui/polish-unit-stacks-coin.webp` count badge. Covered
-  by `polish-unit-stacks.test.ts`, `town-recruit-shortcut.test.tsx`, and
+  generated `public/assets/ui/polish-unit-stacks-coin.webp` count badge, coloured
+  by the stack COUNT (1 brown / 2 silver / 3 gold — `armyStackBadge.count-N`).
+  Covered by `polish-unit-stacks.test.ts`, `town-recruit-shortcut.test.tsx`, and
   `board.test.tsx`. Computer policy buys Stack layers only from surplus after
   completing its core army; the purchase is optional and opens no mandatory AI
   window.
@@ -1354,32 +1355,27 @@ is NOT done:
   The seat's FIRST Ⅱ–Ⅲ (Far) opening rolls ONE die per candidate (a single die
   only reaches Ⅰ–Ⅲ); every later Far opening and every Near bank rolls two.
   Only the chosen token is removed by id after rotation; the unchosen peek
-  stays exactly where it was. This mode
-  REPLACES normal random-stat bank Stack Tokens: every bank card receives the
-  deterministic 0/1/2/3 full-Health layers for sizes I/II/III/IV, keeps the
-  same bank-card features, and has flat +1 Attack while any layer remains.
-  The bank card stays RANKLESS in play, but its layer capacity follows the
-  Unit Stack coin rule of the unit NAMED on it, punching one above the army
-  caps to at most 3 (bronze 3 / silver 3 / gold 2, azure counted as gold → 2 —
-  `polishBankGuardLayerCap`), and each BANK's rollable size clamps to what its
-  best guard can carry (`polishBankMaxSize`): the all-gold/azure Dragon
-  Utopia / Pyramid / Naga Bank top out at size Ⅲ (clamped at the reveal roll,
-  before the player chooses), every other bank reaches Ⅳ. Win rewards follow
-  `polishBankRewardScale` (`buildPolishCreatureBankReward`), by clamped size
-  not layer count: Ⅰ pays the printed base only; Ⅱ–Ⅳ all pay the classic full
-  4-stack extras (X=4); Ⅲ/Ⅳ additionally add 1/2 extra copies of the printed
-  base GOLD only (never valuables/materials — a no-gold-base bank like the
-  Cyclops Stockpile or Pyramid gains nothing beyond Ⅱ). The two unit banks
-  (Dragon Fly Hive / Griffin Conservatory) grant the Few at size Ⅰ, or the
-  Pack carrying 1/2/3 working Unit Stack layers + the Empower pick at Ⅱ/Ⅲ/Ⅳ —
-  those layers function even with `polish-unit-stacks` off
-  (`armyUnitStacksActive`: either Polish rule activates the army-stack combat
-  machinery; PURCHASING stays gated on `polish-unit-stacks`). The UI
-  uses no coin / bronze 1 / silver 2 / gold 3 and shows the remaining coin on
-  every defender. Covered by
-  `polish-bank-sizes.test.ts` (incl. the cap/clamp/reward-scale cases, each
-  mutation-checked), bank combat/ability controls, and the bank DOM
-  cases in `creature-bank-board.test.tsx` / `board.test.tsx`.
+  stays exactly where it was. The house rule ONLY sets the number of Stacked
+  defenders — otherwise the bank is a NORMAL Creature Bank. The **size is the
+  GUARANTEED count of Stacked defenders**: size N places a standard random-stat
+  Stack Token (+1 Attack/Defense/Health or +2 Initiative, absorbing one lethal
+  blow — rulebook p.67) on exactly N of the bank's four guards, where the normal
+  rule instead rolls the count off Scenario Difficulty and lands each candidate
+  only ~77% of the time. There is NO size clamp (every bank can roll Ⅳ = all
+  four Stacked) and NO bespoke coin-layer system. **Win rewards are the NORMAL
+  bank reward** (`bank.buildReward(X)` with X = the Stacked count = size): the
+  same per-bank payout the rulebook scales by X — size Ⅳ simply means all four
+  defenders were Stacked. The two unit banks (Dragon Fly Hive / Griffin
+  Conservatory) grant the Few normally and a plain Pack (X ≥ 2) + the Empower
+  pick, exactly like an ordinary bank win — no army-stack layers are granted, so
+  `armyUnitStacksActive` is `polish-unit-stacks` ONLY (Polish Bank Sizes no
+  longer activates the army-stack machinery). The size marker's coin is coloured
+  by size (Ⅰ black / Ⅱ brown / Ⅲ silver / Ⅳ gold, the v1.2 sheet colours) and
+  shows the size number; each Stacked defender shows the normal stat Stack Token
+  badge. Covered by `polish-bank-sizes.test.ts` (guaranteed-count with a rule-off
+  ~77% CONTROL, no-clamp, normal-token absorb, and normal-reward routing, each
+  mutation-checked), the bank combat/ability controls, and the bank DOM cases in
+  `creature-bank-board.test.tsx` / `board.test.tsx`.
 - The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct
   from Few/Pack/Neutral), and resource/morale/search rewards scaled by the
   number of Stacked defenders (X). The two sea banks (Shipwreck, Derelict Ship)

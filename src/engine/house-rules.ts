@@ -245,13 +245,10 @@ export function houseRuleEnabled(state: Pick<GameState, "ruleset" | "adventure">
  * combat unit) FUNCTION in this game: +1 Attack while any layer remains, and
  * each layer absorbing one full health bar before the card dies.
  *
- * Layers exist under EITHER Polish rule — `polish-unit-stacks` sells them at
- * the Citadel, and `polish-bank-sizes` grants them with a unit bank's Pack
- * reward (Dragon Fly Hive / Griffin Conservatory, size Ⅱ+) — so both rules
- * must activate the combat machinery or a bank-granted layer would be a
- * decorative badge. PURCHASING stays gated on `polish-unit-stacks` alone
- * (legal-actions offer + populationAction validation).
+ * These are the `polish-unit-stacks` layers, bought at the Citadel. Polish Bank
+ * Sizes uses the standard Creature Bank Stack Tokens (not army layers), so it
+ * does not activate this machinery.
  */
 export function armyUnitStacksActive(state: Pick<GameState, "ruleset" | "adventure">): boolean {
-  return houseRuleEnabled(state, "polish-unit-stacks") || houseRuleEnabled(state, "polish-bank-sizes");
+  return houseRuleEnabled(state, "polish-unit-stacks");
 }

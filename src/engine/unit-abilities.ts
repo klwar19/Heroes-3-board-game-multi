@@ -41,11 +41,12 @@ export function getUnitAbilityDefinitions(unit: CombatUnitState): UnitAbilityDef
   if (unit.abilitiesSuppressed) {
     return [];
   }
-  // Standard bank cards are Stacked while their random-stat token remains.
-  // Polish sized banks use 1/2/3 deterministic coin layers on every defender.
-  // Paid armyStacks stay excluded: bank-only abilities must never leak onto a
-  // player's army card even if another effect copied an ability id onto it.
-  const isStacked = Boolean(unit.stackToken) || (unit.bankUnit === true && (unit.bankStacks ?? 0) > 0);
+  // A Creature Bank card is Stacked while its random-stat token remains (Polish
+  // Bank Sizes places a guaranteed number of these tokens; the standard rule
+  // rolls the count off difficulty). Paid armyStacks stay excluded: bank-only
+  // abilities must never leak onto a player's army card even if another effect
+  // copied an ability id onto it.
+  const isStacked = Boolean(unit.stackToken);
   return unit.abilities
     .map((abilityId) => unitAbilities[abilityId])
     .filter(Boolean)

@@ -15,8 +15,6 @@ export type PolishStackSide = "pack" | "neutral";
 /**
  * Number of persistent Stack layers a human-controlled army card may carry.
  * Always the army table — bronze 3 / silver 2 / gold 1 (azure counted as gold → 1).
- * Creature Bank combat guards use `polishBankGuardLayerCap` separately; once a
- * unit is in a player's army (Pack or Neutral) the human caps apply.
  */
 export function polishUnitStackCap(unitDefId: string, _side: PolishStackSide = "pack"): number {
   const tier = coreUnitDefinitions[unitDefId]?.tier;
@@ -91,17 +89,4 @@ export function polishUnitStackCapLabel(unitDefId: string): string {
   }
   const tierName = tier === "azure" ? "azure (gold cap)" : tier;
   return `${tierName} · max ${cap}`;
-}
-
-/**
- * Polish Bank Sizes only: bank guards in combat punch one above army caps
- * (bronze 3 / silver 3 / gold 2). Human army cards never use this table.
- */
-export function polishBankGuardLayerCap(unitDefId: string | undefined): number {
-  const tier = unitDefId ? coreUnitDefinitions[unitDefId]?.tier : undefined;
-  if (!tier) {
-    return 0;
-  }
-  const armyCap = tier === "azure" ? POLISH_UNIT_STACK_RULES.gold?.cap : POLISH_UNIT_STACK_RULES[tier]?.cap;
-  return armyCap === undefined ? 0 : Math.min(3, armyCap + 1);
 }

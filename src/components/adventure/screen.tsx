@@ -1089,15 +1089,9 @@ export function HexMapBoard({
                     key={`${tile.id}-preview-size-${index}`}
                     transform={`translate(${x + (index === 0 ? -HEX_SIZE * 0.46 : HEX_SIZE * 0.46)} ${y - HEX_SIZE * 0.62})`}
                   >
-                    {candidate.size > 1 ? (
-                      <>
-                        <circle className="coinOuter" r="10" />
-                        <circle className="coinInner" r="7.2" />
-                        <text textAnchor="middle" y="2.4">{candidate.size - 1}</text>
-                      </>
-                    ) : (
-                      <text className="noToken" textAnchor="middle" y="2.4">I</text>
-                    )}
+                    <circle className="coinOuter" r="10" />
+                    <circle className="coinInner" r="7.2" />
+                    <text textAnchor="middle" y="2.4">{candidate.size}</text>
                   </g>
                 ) : null
               )}
@@ -1419,15 +1413,9 @@ export function HexMapBoard({
             key={`${spaceId}-bank-size`}
             transform={`translate(${x + HEX_SIZE * 0.52} ${y - HEX_SIZE * 0.56})`}
           >
-            {field.bankSize > 1 ? (
-              <>
-                <circle className="coinOuter" r="11" />
-                <circle className="coinInner" r="7.9" />
-                <text textAnchor="middle" y="2.5">{field.bankSize - 1}</text>
-              </>
-            ) : (
-              <text className="noToken" textAnchor="middle" y="2.5">I</text>
-            )}
+            <circle className="coinOuter" r="11" />
+            <circle className="coinInner" r="7.9" />
+            <text textAnchor="middle" y="2.5">{field.bankSize}</text>
           </g>
         );
       }
@@ -3080,7 +3068,7 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                 </strong>
                 {(unit.stacks ?? 0) > 0 ? (
                   <span
-                    className={`armyStackBadge tier-${def?.tier ?? "bronze"} active`}
+                    className={`armyStackBadge count-${Math.min(3, unit.stacks ?? 0)} active`}
                     title={`${unit.stacks} Unit Stack${unit.stacks === 1 ? "" : "s"} · +1 Attack · max ${polishArmyUnitStackCap(unit) || unit.stacks}`}
                   >
                     <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />

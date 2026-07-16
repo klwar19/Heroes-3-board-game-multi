@@ -532,9 +532,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "CREATURE_BANK_COMBAT_STARTED":
       return `${playerName(state, event.playerId)} raids the ${
         CREATURE_BANKS[event.bankId as keyof typeof CREATURE_BANKS]?.name ?? "Creature Bank"
-      } (${event.stackLayers !== undefined
-        ? `up to ${event.stackLayers} Stack layer${event.stackLayers === 1 ? "" : "s"} per defender, capped by each card's unit tier; reward X=${event.stackedCount}`
-        : `${event.stackedCount} Stacked defender${event.stackedCount === 1 ? "" : "s"}`}).`;
+      } (${event.stackedCount} Stacked defender${event.stackedCount === 1 ? "" : "s"}).`;
     case "ABILITY_EMPOWERED":
       return `${playerName(state, event.playerId)} empowers ${cardName(
         event.cardId
@@ -549,10 +547,6 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       } (${formatCost(event.cost)}).`;
     case "ARMY_STACK_LOST":
       return `${event.unitName} loses a Unit Stack and survives the blow${
-        event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
-      } — ${event.remainingStacks} Stack${event.remainingStacks === 1 ? "" : "s"} left.`;
-    case "BANK_STACK_LOST":
-      return `${event.unitName} loses a bank Stack layer and survives the blow${
         event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
       } — ${event.remainingStacks} Stack${event.remainingStacks === 1 ? "" : "s"} left.`;
     case "GAME_OPTIONS_CHANGED":

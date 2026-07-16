@@ -8,7 +8,6 @@ import {
   markUnitRemovedIfNeeded,
   NEUTRAL_PLAYER_ID,
   polishArmyUnitCanBuyStack,
-  polishBankGuardLayerCap,
   polishUnitStackCap,
   polishUnitStackCost,
   unitSideRuleOverrides
@@ -156,9 +155,8 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     expect(polishUnitStackCap("neutral.griffins", "neutral")).toBe(3);
     expect(polishArmyUnitCanBuyStack(neutralGriffin)).toBe(true);
 
-    // Gold Neutral (Nagas): human cap is 1 — bank combat may use 2, army never does.
+    // Gold Neutral (Nagas): human cap is 1.
     expect(polishUnitStackCap("neutral.nagas", "neutral")).toBe(1);
-    expect(polishBankGuardLayerCap("neutral.nagas")).toBe(2);
     expect(polishUnitStackCost("neutral.nagas", "neutral")).toEqual({ gold: 16 + 3 });
 
     // CONTROL: Pack gold unit still uses army cap 1.
@@ -206,13 +204,14 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     expect(combatUnit.attack).toBe(baseAtk + 1);
   });
 
-  it("layers granted by polish-bank-sizes FUNCTION with polish-unit-stacks OFF; purchasing stays off", () => {
-    // A unit bank's size-Ⅲ win grants a Pack with 2 layers even when only
-    // polish-bank-sizes is enabled — those layers must be real (+1 Attack, one
-    // full extra health bar each), never a decorative badge, and buying MORE
-    // at the Citadel must still require polish-unit-stacks itself.
+  it("polish-bank-sizes alone does NOT activate army Unit Stacks (they are a polish-unit-stacks feature)", () => {
+    // Army Unit Stack layers belong to polish-unit-stacks. Polish Bank Sizes now
+    // uses the standard Creature Bank Stack Tokens and grants the classic reward
+    // (a plain Pack), so with ONLY polish-bank-sizes on a Pack card that happens
+    // to carry `stacks` gets NO +1 Attack and NO layer peel, and the Citadel
+    // offers no Stack purchase.
     let state = createAdventureGameState({
-      seed: "polish-granted-stacks-active",
+      seed: "polish-bank-only-no-army-stacks",
       difficulty: "normal",
       rollFirstPlayer: false,
       events: false,
@@ -226,13 +225,13 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     state.players.p1.townTokens.population = true;
     state.players.p1.resources = { gold: 500, buildingMaterials: 100, valuables: 100 };
     addCitadel(state);
-    const granted = {
-      id: "granted_flies",
+    const carded = {
+      id: "carded_flies",
       unitDefId: "fortress.dragon_flies",
       side: "pack" as const,
       stacks: 2
     };
-    state.players.p1.army = [{ ...granted }];
+    state.players.p1.army = [{ ...carded }];
 
     // PURCHASE control: no Citadel Stack offer without polish-unit-stacks.
     expect(
@@ -241,57 +240,55 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
       )
     ).toBe(false);
 
-    // COMBAT: the granted layers are live — +1 Attack over a stack-less twin,
-    // and a lethal hit peels one full layer instead of killing the card.
-    const unit = makeCombatUnitFromArmy(
-      { ...granted },
-      "p1",
-      "combat_granted",
-      0,
-      "legacy",
-      unitSideRuleOverrides(state)
-    )!;
+    // COMBAT: the layers are INERT — no armyStacks, no +1 Attack, and a lethal
+    // hit downgrades the Pack to Few instead of peeling a layer.
     const twin = makeCombatUnitFromArmy(
-      { ...granted, id: "granted_twin", stacks: 0 },
+      { ...carded, id: "carded_twin", stacks: 0 },
       "p1",
       "combat_twin",
       0,
       "legacy",
       unitSideRuleOverrides(state)
     )!;
-    expect(unit.armyStacks).toBe(2);
-    expect(unit.attack).toBe(twin.attack + 1);
-    unit.damage = unit.maxHealth;
-    markUnitRemovedIfNeeded(state, unit);
-    expect(unit.armyStacks).toBe(1);
-    expect(unit.damage).toBe(0);
+    const inert = makeCombatUnitFromArmy(
+      { ...carded },
+      "p1",
+      "combat_inert",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state)
+    )!;
+    expect(inert.armyStacks ?? 0).toBe(0);
+    expect(inert.attack).toBe(twin.attack);
+    inert.damage = inert.maxHealth;
+    markUnitRemovedIfNeeded(state, inert);
+    expect(inert.variant).toBe("few");
 
-    // CONTROL: with BOTH Polish rules off the same card's layers are inert.
-    const off = createAdventureGameState({
-      seed: "polish-granted-stacks-off",
+    // CONTROL: with polish-unit-stacks ON the SAME card's layers are live —
+    // +1 Attack over the stack-less twin, and a lethal hit peels one layer.
+    const on = createAdventureGameState({
+      seed: "polish-unit-stacks-live",
       difficulty: "normal",
       rollFirstPlayer: false,
       events: false,
       ruleset: "legacy",
       creatureBanks: true,
-      houseRules: { "polish-unit-stacks": false, "polish-bank-sizes": false }
+      houseRules: { "polish-unit-stacks": true, "polish-bank-sizes": false }
     });
-    const inert = makeCombatUnitFromArmy(
-      { ...granted },
+    const live = makeCombatUnitFromArmy(
+      { ...carded },
       "p1",
-      "combat_inert",
+      "combat_live",
       0,
       "legacy",
-      unitSideRuleOverrides(off)
+      unitSideRuleOverrides(on)
     )!;
-    expect(inert.armyStacks ?? 0).toBe(0);
-    expect(inert.attack).toBe(twin.attack);
-    inert.damage = inert.maxHealth;
-    markUnitRemovedIfNeeded(off, inert);
-    // No layer peel: the Pack takes the normal core-rules downgrade to Few
-    // (the active case above instead stays a Pack and spends a layer).
-    expect(inert.variant).toBe("few");
-    expect(inert.armyStacks ?? 0).toBe(0);
+    expect(live.armyStacks).toBe(2);
+    expect(live.attack).toBe(twin.attack + 1);
+    live.damage = live.maxHealth;
+    markUnitRemovedIfNeeded(on, live);
+    expect(live.armyStacks).toBe(1);
+    expect(live.damage).toBe(0);
   });
 });
 

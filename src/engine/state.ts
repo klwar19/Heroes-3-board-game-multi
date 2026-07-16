@@ -4907,8 +4907,6 @@ export type GameEvent =
       bankId: string;
       unitDefIds: string[];
       stackedCount: number;
-      /** Polish size coin: identical full-health layers carried by every guard. */
-      stackLayers?: number;
     }
   | {
       /**
@@ -4947,16 +4945,6 @@ export type GameEvent =
       /** A Polish Stack layer absorbed lethal damage in combat. */
       id: string;
       type: "ARMY_STACK_LOST";
-      unitId: UnitId;
-      playerId: PlayerId;
-      unitName: string;
-      remainingStacks: number;
-      excessDamage: number;
-    }
-  | {
-      /** A Polish bank-size Stack layer absorbed lethal damage. */
-      id: string;
-      type: "BANK_STACK_LOST";
       unitId: UnitId;
       playerId: PlayerId;
       unitName: string;
@@ -6511,13 +6499,6 @@ export type CombatUnitState = {
    */
   armyStacks?: number;
   /**
-   * Polish Creature Bank size: every one of the bank's four defenders carries
-   * the same 0/1/2/3 full-health Stack layers (sizes I/II/III/IV). These are
-   * deterministic coin layers, not the standard Creature Bank `stackToken`
-   * that gives one random statistic bonus to selected defenders.
-   */
-  bankStacks?: number;
-  /**
    * Fixed creature-bank guard (Dragon Utopia's dragons, the Cyclops
    * Stockpile's 2 golden Cyclopes): minted for this fight only, so it must
    * not be returned to a Neutral tier deck when the combat finishes.
@@ -6952,9 +6933,10 @@ export type MapState = {
 };
 
 /**
- * Polish bank-size marker (Ⅰ–Ⅳ). Physical layers per guard are size−1
- * (capped by unit tier). Rewards: Ⅰ base only, Ⅱ full 4-stack extras,
- * Ⅲ/Ⅳ add 1/2 base gold layers (see polishBankRewardScale).
+ * Polish bank-size marker (Ⅰ–Ⅳ). The size IS the number of Stacked defenders:
+ * size N means N of the bank's guards each carry a standard random-stat Stack
+ * Token. The win reward is the normal Creature Bank reward scaled by X = that
+ * Stacked count.
  */
 export type BankSize = 1 | 2 | 3 | 4;
 

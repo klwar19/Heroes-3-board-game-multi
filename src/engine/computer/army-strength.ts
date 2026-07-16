@@ -101,9 +101,13 @@ export function bankUnitStrength(unitDefId: string): number {
 }
 
 /**
- * Estimated defender strength for a known bank token. Expected stack tokens
- * (difficulty rolls) inflate health/attack conservatively so Easy is easier
- * than Impossible — the real stack count is random at combat start.
+ * Estimated defender strength for a known bank token. Stack Tokens inflate the
+ * base conservatively so Easy is easier than Impossible. A numeric Polish size
+ * is the GUARANTEED number of Stacked defenders (size N → N tokens); a
+ * difficulty is the random ~77%-per-roll count. Either way a Stack Token is a
+ * mild bulk/soak bonus, not a full extra unit — calibrated so a full starting
+ * army (~45) clears Imp Cache on Normal but refuses Dragon Utopia and refuses
+ * when gutted to one card.
  */
 export function creatureBankStrength(
   bankId: string,
@@ -111,26 +115,14 @@ export function creatureBankStrength(
 ): number {
   const bank = CREATURE_BANKS[bankId as CreatureBankId];
   if (!bank) return Number.POSITIVE_INFINITY;
-  if (typeof difficultyOrSize === "number") {
-    const layers = Math.max(0, difficultyOrSize - 1);
-    return bank.units.reduce((sum, unitDefId) => {
-      const side = CREATURE_BANK_UNIT_SIDES[unitDefId];
-      if (!side) return sum;
-      // Numeric Polish sizes are deterministic: each of all four cards repeats
-      // its complete Health bar once per layer, plus one flat Attack while any
-      // layer remains. This mirrors the combat stat valuation above.
-      return sum + bankUnitStrength(unitDefId) + layers * side.health * 2 + (layers > 0 ? 3 : 0);
-    }, 0);
-  }
   const base = bank.units.reduce(
     (sum, unitDefId) => sum + bankUnitStrength(unitDefId),
     0,
   );
-  const rolls = STACK_TOKENS_BY_DIFFICULTY[difficultyOrSize] ?? 2;
-  // Stack tokens add a mild bulk/soak bonus, not a full extra unit each.
-  // Calibrated so a full starting army (~45) clears Imp Cache on Normal but
-  // refuses Dragon Utopia and refuses when gutted to one card.
-  const expectedStacks = rolls * 0.77;
+  const expectedStacks =
+    typeof difficultyOrSize === "number"
+      ? difficultyOrSize
+      : (STACK_TOKENS_BY_DIFFICULTY[difficultyOrSize] ?? 2) * 0.77;
   return Math.round(base * (1 + expectedStacks * 0.1));
 }
 

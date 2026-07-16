@@ -105,7 +105,7 @@ describe("Creature Bank hex art — per-bank field tile on the board", () => {
     expect(token.style.pointerEvents).toBe("none");
   });
 
-  it("shows the permanent bronze/silver/gold-style size marker on a placed bank", () => {
+  it("shows the black/brown/silver/gold size marker on a placed bank (size = the Stacked count)", () => {
     const { state, tile } = boardWithTile();
     const [bankSpace] = getTileFootprintSpaceIds(tile);
     const field = adv(state).fields[bankSpace]!;
@@ -116,7 +116,8 @@ describe("Creature Bank hex art — per-bank field tile on the board", () => {
     const container = renderBoard(state);
     const badge = container.querySelector(`.bankSizeSvgBadge.placed.size-4`);
     expect(badge).toBeTruthy();
-    expect(badge?.textContent).toContain("3");
+    // The coin shows the size itself (4 = all four defenders Stacked).
+    expect(badge?.textContent).toContain("4");
     expect(badge?.querySelectorAll("circle")).toHaveLength(2);
   });
 

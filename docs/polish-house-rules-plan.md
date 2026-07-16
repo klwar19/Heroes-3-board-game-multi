@@ -24,7 +24,7 @@ tournament scene, grouped under one new **"Polish house rules"** category:
 | Toggle (HouseRuleId) | One-line contract |
 | --- | --- |
 | `polish-spell-book` | Spells never enter your hand/deck. They live in a per-player **Spell Book** with a used/refreshed state, refreshed each round, and are cast by playing generic **"Cast a Spell"** cards from the M&M deck. The Mage Guild is buffed (Search (3), buy Cast-a-Spell, Rolling Spells, level V/VII grants). One merged Spell deck. |
-| `polish-bank-sizes` | Reveal two banks, roll a size for each (**1 Attack die** per candidate on the seat's FIRST Ⅱ–Ⅲ opening, **2 dice** later and on every Near bank), choose one, then rotate. Size gives every one of the four guards 0/1/2/3 full-health Stack layers; win rewards follow `polishBankRewardScale` (Ⅰ base only, Ⅱ full 4-stack extras, Ⅲ/Ⅳ add 1/2 base-GOLD layers); it replaces normal random-stat bank tokens. |
+| `polish-bank-sizes` | Reveal two banks, roll a size for each (**1 Attack die** per candidate on the seat's FIRST Ⅱ–Ⅲ opening, **2 dice** later and on every Near bank), choose one, then rotate. **The size is the GUARANTEED number of Stacked defenders** (size N = N of the four guards each carry a standard random-stat Stack Token) — otherwise a completely normal Creature Bank: the standard token absorb, and the normal win reward scaled by X = the Stacked count = size. **REVISED 2026-07-16:** the earlier bespoke coin-layer + `polishBankRewardScale` reward was reverted to this (see §5). |
 | `polish-unit-stacks` | A **Group** (Pack) army card — or a **recruited Neutral** — can buy **Stacks** for that side's gold cost + tier (1/2/3). While at least one Stack remains the card fights at **+1 Attack** with its printed ability; each Stack is a full extra health bar and lethal excess carries over. Caps: bronze 3 / silver 2 / gold 1 (azure as gold). |
 
 Non-negotiable framing rules (repo conventions):
@@ -321,38 +321,29 @@ stays reachable (user refinement, 2026-07-16; the opening tally is
 `farTilesOpenedByPlayer`, which ticks in `finalizeFarTileFlip` before the
 rotation's reserve runs, so "first" reads as 1 there).
 
-Polish bank size completely **replaces** the normal random-stat Stack Token
-system for that combat; only the four printed Creature Bank unit cards are
-reused. Every one of all four defenders receives the deterministic coin:
-size Ⅰ = no coin / 0 layers, size Ⅱ = bronze 1, size Ⅲ = silver 2, size Ⅳ =
-gold 3. Each layer is a full extra copy of that bank card's Health and features;
-while at least one remains it has +1 Attack, and lethal excess carries through
-as layers downgrade.
+**REVERTED to the normal Creature Bank system (2026-07-16).** An earlier
+iteration replaced the normal Stack Tokens with a bespoke coin-layer system
+(0/1/2/3 full-health layers per guard) and a bespoke `polishBankRewardScale`.
+That was reverted per the rule author: the house rule now ONLY sets **the number
+of Stacked defenders**, and everything else is a completely normal Creature Bank.
 
-**Tier caps + size clamp + reward premium (user refinement, 2026-07-16).** A
-bank card stays rankless IN PLAY, but its layer capacity follows the Unit
-Stack coin rule of the unit NAMED on it, punching one layer above the army
-caps with an absolute maximum of 3 (`polishBankGuardLayerCap`: bronze 3 /
-silver 3 / gold 2; azure is counted as gold → 2). A bank's rollable SIZE
-clamps to what its best guard can carry (`polishBankMaxSize` = 1 + max guard
-cap): the all-gold/azure Dragon Utopia, Pyramid and Naga Bank top out at
-size Ⅲ — clamped at the reveal roll, before the player chooses — while any
-bank with a bronze or silver guard reaches the full Ⅳ (the Crypt counts as
-size Ⅳ through its bronze Skeletons even though its silver Vampires cap
-lower).
+The **size is the GUARANTEED number of Stacked defenders**: size N places a
+standard random-stat Stack Token (+1 Attack/Defense/Health or +2 Initiative,
+absorbing one lethal blow — rulebook p.67) on exactly **N of the bank's four
+guards**. The only difference from a normal bank is the count: the normal rule
+rolls the count off Scenario Difficulty (easy 1 / normal 2 / hard 3 /
+impossible 4) and lands each candidate only ~77% of the time, whereas the size
+places all N guaranteed. There is **no size clamp** (every bank can roll Ⅳ = all
+four guards Stacked) and no coin-layer system.
 
-**Win rewards (user refinement, 2026-07-16 — `polishBankRewardScale` /
-`buildPolishCreatureBankReward`).** The payout follows the clamped size, not
-the physical layers: size Ⅰ pays the printed BASE only (X=0 extras); sizes
-Ⅱ–Ⅳ all pay the classic **full 4-stack extras (X=4)**; sizes Ⅲ/Ⅳ additionally
-add **1/2 extra copies of the printed base GOLD only** (never valuables or
-materials — banks with no gold in their base, e.g. Cyclops Stockpile and the
-Pyramid, gain nothing beyond size Ⅱ). The two unit banks (Dragon Fly Hive /
-Griffin Conservatory) grant the Few at size Ⅰ, or the Pack carrying 1/2/3
-Unit Stack layers plus the Empower pick at sizes Ⅱ/Ⅲ/Ⅳ — those granted layers
-FUNCTION even when `polish-unit-stacks` is off (`armyUnitStacksActive`: either
-Polish rule activates the army-stack combat machinery; purchasing stays gated
-on `polish-unit-stacks` alone).
+**Win rewards are the NORMAL bank reward.** The payout is `bank.buildReward(X)`
+with **X = the Stacked count = size** — the same per-bank reward the rulebook
+scales by X. Size Ⅳ simply means all four defenders were Stacked. The two unit
+banks (Dragon Fly Hive / Griffin Conservatory) grant the Few normally and a
+plain Pack (X ≥ 2) plus the Empower pick, exactly like any ordinary bank win —
+**no army-stack layers are granted**, so `armyUnitStacksActive` is
+`polish-unit-stacks` ONLY (Polish Bank Sizes no longer activates the army-stack
+machinery).
 
 ### 5.2 Wiring
 
@@ -371,31 +362,34 @@ on `polish-unit-stacks` alone).
   selected bank automatically on the final Blocked Field. It consumes the
   chosen token **by id**, leaves the unchosen peek in place, and persists
   `field.bankSize`. If a gate consumed the Blocked Field, no token was lost.
-- `buildCreatureBankCombatUnits` branches before normal token placement: every
-  one of the four units receives `bankStacks = field.bankSize - 1`, never a
-  `stackToken`; `stackedCount = field.bankSize` is the reward X multiplier.
-- `markUnitRemovedIfNeeded` peels `bankStacks` with full-Health carryover;
-  `applyUnitCurrentSide` supplies the flat +1 Attack while layers remain, and
-  bank `requiresStacked` abilities key off `bankStacks > 0`.
+- `buildCreatureBankCombatUnits` uses the NORMAL token-placement branch: under
+  the rule (a stored `field.bankSize`) `tokenRolls = bankSize` and every
+  candidate is placed **guaranteed** (the `!polishSized` guard skips the ~77%
+  roll), so exactly `size` guards get a standard random-stat `stackToken`;
+  `stackedCount = size` is the reward X multiplier. `bankStacks` and the coin
+  layer branch were removed.
+- `markUnitRemovedIfNeeded` uses the normal `stackToken` absorb (one lethal blow
+  → discard token → carryover); `applyUnitCurrentSide` bakes the token's stat
+  bonus, and bank `requiresStacked` abilities key off `stackToken`.
 - AFK: mandatory options are [A, B], so the resolving driver safely chooses A.
-- AI: `choice-policy.ts` `scorePositionOption` place-creature-bank branch
-  (`choice-policy.ts:496-500`) learns the 3-option shape: score each candidate
-  with `creatureBankStrength`/`canBeatCreatureBank`
-  (`army-strength.ts:99-135`) fed the rolled size instead of global
-  difficulty; prefer the beatable one with the larger size/reward, otherwise
-  the easier of the two mandatory candidates. `map-navigation`'s
-  known-bank gate reads `field.bankSize` the same way.
+- AI: `choice-policy.ts` place-creature-bank branch scores each candidate with
+  `creatureBankStrength`/`canBeatCreatureBank` fed the rolled size (a numeric
+  size = the guaranteed Stacked count) instead of the global difficulty; prefer
+  the beatable one with the larger size/reward, otherwise the easier of the two
+  mandatory candidates. `map-navigation`'s known-bank gate reads `field.bankSize`
+  the same way.
 
 ### 5.3 UI + tests
 
 The pre-rotation prompt shows both bank arts/names and their rolled sizes. Once
-chosen, rotation preview shows only that bank. Markers match the sheet: size I
-has no coin, II is bronze 1, III silver 2, IV gold 3; the combat header states
-the per-card layer count and reward X, and every guard card shows its remaining
-coin count. Tests cover two-dice mapping for both candidates, mandatory
-pre-rotation choice, pile conservation, deterministic 0/1/2/3 layers on all
-four units, +1 Attack, same abilities, multi-layer carryover, X=size rewards,
-rule-off preservation of standard random-stat tokens, AI choice, and DOM coins.
+chosen, rotation preview shows only that bank. The size marker's coin is
+**coloured by size** (Ⅰ black / Ⅱ brown / Ⅲ silver / Ⅳ gold — the v1.2 sheet
+colours) and shows the size number; each Stacked guard shows the normal stat
+Stack Token badge. Tests (`polish-bank-sizes.test.ts`) cover one/two-dice
+mapping for both candidates, the mandatory pre-rotation choice, pile
+conservation, the **guaranteed** `size`-token placement (with a rule-off ~77%
+difficulty-count CONTROL), no size clamp, the normal token absorb, the normal
+X=size reward routing, AI choice, and the DOM coins.
 
 ## 6. Feature: Unit Stacks (`polish-unit-stacks`)
 
@@ -534,9 +528,11 @@ control (no offers, no absorb).
    nesting + stated intent) — or unconditional?
 4. **Rolling Spells**: removed spell → shared Spell-deck discard (chosen) or
    removed from game? Any Book spell (chosen) or refreshed only?
-5. **Bank stacks — RESOLVED by the rule author:** deterministic literal counts
-   on every one of all four bank units: Ⅰ=0 / Ⅱ=1 / Ⅲ=2 / Ⅳ=3 layers. The
-   normal 77% random-stat Stack Token system is replaced.
+5. **Bank stacks — RESOLVED, then REVISED (2026-07-16):** the size is the
+   GUARANTEED number of Stacked defenders (size N → N of the four guards each
+   carry a standard random-stat Stack Token); the rest is a normal Creature Bank
+   with the normal X-scaled reward. (The earlier "0/1/2/3 coin-layer + bespoke
+   reward" reading was reverted — see §5.)
 6. **Unchosen bank token**: stays where it lies (chosen — pure peek) or is
    shuffled/bottomed back?
 7. **Bank dice — RESOLVED by the rule author:** always 2 Attack dice for each
