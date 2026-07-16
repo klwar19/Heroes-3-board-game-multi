@@ -1773,6 +1773,23 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
     ];
   }
 
+  /**
+   * Grab the FIRST rendered draggable token (always the source in these maps),
+   * drag its centre from board hex `from` to board hex `to` and release —
+   * identity SVG polyfills make client coords == board coords.
+   */
+  function dragTokenCentre(container: HTMLElement, from: HexCoord, to: HexCoord, pointerId = 20): void {
+    const token = container.querySelector(".designerMapToken.draggable");
+    if (!token) {
+      throw new Error("no draggable token to drag");
+    }
+    const grabAt = hexToPixel(from, HEX);
+    const dropAt = hexToPixel(to, HEX);
+    fireEvent.pointerDown(token, { button: 0, pointerId, clientX: grabAt.x, clientY: grabAt.y });
+    fireEvent.pointerMove(window, { pointerId, clientX: dropAt.x, clientY: dropAt.y });
+    fireEvent.pointerUp(window, { pointerId });
+  }
+
   it("clicking a face-up tile token opens the compact TOKEN panel, not the giant tile panel", () => {
     const { container } = render(
       <MapDesigner scenarioId="skirmish" customMap={faceUpTokenMap()} onChange={() => {}} hexSize={HEX} />
@@ -1958,12 +1975,15 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
     }
   });
 
-  it("a FACE-DOWN badge token: click opens the panel, pointer-move does NOT start a drag, Remove works", () => {
+  it("dragging a FACE-DOWN badge onto ANOTHER face-down tile is ONE atomic onChange → { kind } (no slot)", () => {
     const restore = installIdentitySvgPolyfills();
     try {
+      // Source: a face-down FAR tile with a pending Monolith. Target: a face-down
+      // NEAR tile (a land group → accepts Monolith), no token.
       let latest: CustomMapTilePlan[] = [
         { row: town.row, col: town.col, group: "starting", faceDown: false },
-        { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } }
+        { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } },
+        { row: spots[3].row, col: spots[3].col, group: "near", faceDown: true }
       ];
       const onChange = vi.fn((next: CustomMapTilePlan[]) => {
         latest = next;
@@ -1972,30 +1992,261 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
         <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
       );
 
-      const token = container.querySelector(".designerMapToken")!;
-      expect(token.classList.contains("draggable"), "face-down badge is not draggable").toBe(false);
+      const token = container.querySelector(".designerMapToken.draggable");
+      expect(token, "the face-down badge is now a DRAGGABLE token").toBeTruthy();
+      const callsBefore = onChange.mock.calls.length;
+      dragTokenCentre(container, spots[0], spots[3], 11);
 
-      // A press + move must NOT start a drag (no candidate slots, no `.dragging`).
-      fireEvent.pointerDown(token, { button: 0, pointerId: 3, clientX: 40, clientY: 40 });
-      fireEvent.pointerMove(window, { pointerId: 3, clientX: 160, clientY: 160 });
-      expect(container.querySelector(".designerMapToken.dragging"), "no drag from a face-down badge").toBeNull();
-      expect(container.querySelectorAll(".designerObjectSlot").length, "no candidate slots").toBe(0);
-      fireEvent.pointerUp(window, { pointerId: 3 });
-      expect(onChange, "no move committed").not.toHaveBeenCalled();
-
-      // Click opens the panel with the discoverer hint (the hex is picked at reveal).
-      fireEvent.click(token);
-      const panel = container.querySelector(".designerTokenPopover") as HTMLElement;
-      expect(panel, "token panel opens for a face-down badge").toBeTruthy();
-      expect(within(panel).getByText(/discover/i), "discoverer hint shown").toBeTruthy();
-      expect(within(panel).queryByLabelText("Token field"), "no slot select for a face-down badge").toBeNull();
-
-      // Remove still clears the token.
-      fireEvent.click(within(panel).getByRole("button", { name: /Remove the Monolith token/i }));
-      expect(latest[1].token, "face-down token removed").toBeUndefined();
+      expect(onChange.mock.calls.length - callsBefore, "exactly one atomic emission").toBe(1);
+      expect(latest[1].token, "source face-down tile lost its token").toBeUndefined();
+      // Pending shape only — NO slot key (toStrictEqual rejects a stray slot: undefined).
+      expect(latest[2].token, "target gained a pending token with no slot").toStrictEqual({ kind: "monolith" });
     } finally {
       restore();
     }
+  });
+
+  it("a FACE-DOWN target that already carries a token is refused — no move (control)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const onChange = vi.fn();
+      // Both face-down tiles carry a Monolith → the target is never a candidate.
+      const { container } = render(
+        <MapDesigner
+          scenarioId="skirmish"
+          customMap={[
+            { row: town.row, col: town.col, group: "starting", faceDown: false },
+            { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } },
+            { row: spots[3].row, col: spots[3].col, group: "near", faceDown: true, token: { kind: "monolith" } }
+          ]}
+          onChange={onChange}
+          hexSize={HEX}
+        />
+      );
+
+      dragTokenCentre(container, spots[0], spots[3], 12);
+      expect(onChange, "occupied face-down target refused").not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it("dragging a FACE-DOWN badge onto a FACE-UP tile's legal slot lands as { kind, slot }", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const monoSlots = legalTokenSlotsForTileDef(allTileDefinitions["F1"], "monolith");
+      const toSlot = monoSlots[0];
+      // Source face-down badge → target face-up F1 (no token).
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } },
+        { row: spots[3].row, col: spots[3].col, group: "far", faceDown: false, tileDefId: "F1" }
+      ];
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+      );
+
+      const dropHex = tileFootprint(spots[3], 0)[toSlot];
+      dragTokenCentre(container, spots[0], dropHex, 13);
+
+      expect(latest[1].token, "source face-down tile cleared").toBeUndefined();
+      expect(latest[2].token, "landed on the face-up slot WITH a slot key").toStrictEqual({
+        kind: "monolith",
+        slot: toSlot
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("dragging a FACE-UP token onto a face-down tile moves it and DROPS the slot key", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      // Source face-up F1 (Monolith on slot 0) → target face-down NEAR (land), no token.
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        {
+          row: spots[0].row,
+          col: spots[0].col,
+          group: "far",
+          faceDown: false,
+          tileDefId: "F1",
+          token: { kind: "monolith", slot: 0 }
+        },
+        { row: spots[3].row, col: spots[3].col, group: "near", faceDown: true }
+      ];
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+      );
+
+      dragTokenCentre(container, spots[0], spots[3], 14);
+
+      expect(latest[1].token, "source face-up tile cleared").toBeUndefined();
+      // Face-down target = pending shape, the slot key is DROPPED.
+      expect(latest[2].token, "slot key dropped on a face-down target").toStrictEqual({ kind: "monolith" });
+    } finally {
+      restore();
+    }
+  });
+
+  it("kind/group gate: a WHIRLPOOL offers no LAND face-down target, but DOES a sea one", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      // Refused: a LAND (Monolith-group) face-down tile is incompatible with a whirlpool.
+      const refuse = vi.fn();
+      const refused = render(
+        <MapDesigner
+          scenarioId="skirmish"
+          hexSize={HEX}
+          onChange={refuse}
+          customMap={[
+            { row: town.row, col: town.col, group: "starting", faceDown: false },
+            {
+              row: spots[0].row,
+              col: spots[0].col,
+              group: "sea",
+              faceDown: true,
+              seaBand: "iv-v",
+              token: { kind: "whirlpool" }
+            },
+            { row: spots[3].row, col: spots[3].col, group: "far", faceDown: true }
+          ]}
+        />
+      );
+      dragTokenCentre(refused.container, spots[0], spots[3], 15);
+      expect(refuse, "whirlpool refuses a LAND face-down target").not.toHaveBeenCalled();
+      cleanup();
+
+      // Control: a SEA face-down tile IS a whirlpool target.
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        {
+          row: spots[0].row,
+          col: spots[0].col,
+          group: "sea",
+          faceDown: true,
+          seaBand: "iv-v",
+          token: { kind: "whirlpool" }
+        },
+        { row: spots[3].row, col: spots[3].col, group: "sea", faceDown: true, seaBand: "iv-v" }
+      ];
+      const accept = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const ok = render(<MapDesigner scenarioId="skirmish" hexSize={HEX} onChange={accept} customMap={latest} />);
+      dragTokenCentre(ok.container, spots[0], spots[3], 16);
+      expect(latest[1].token, "whirlpool left the source").toBeUndefined();
+      expect(latest[2].token, "whirlpool landed on the sea face-down tile").toStrictEqual({ kind: "whirlpool" });
+    } finally {
+      restore();
+    }
+  });
+
+  it("kind/group gate: a MONOLITH offers no SEA face-down target, but DOES a land one", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      // Refused: a SEA (Whirlpool-group) face-down tile is incompatible with a monolith.
+      const refuse = vi.fn();
+      const refused = render(
+        <MapDesigner
+          scenarioId="skirmish"
+          hexSize={HEX}
+          onChange={refuse}
+          customMap={[
+            { row: town.row, col: town.col, group: "starting", faceDown: false },
+            { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } },
+            { row: spots[3].row, col: spots[3].col, group: "sea", faceDown: true, seaBand: "iv-v" }
+          ]}
+        />
+      );
+      dragTokenCentre(refused.container, spots[0], spots[3], 17);
+      expect(refuse, "monolith refuses a SEA face-down target").not.toHaveBeenCalled();
+      cleanup();
+
+      // Control: a LAND face-down tile IS a monolith target.
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } },
+        { row: spots[3].row, col: spots[3].col, group: "near", faceDown: true }
+      ];
+      const accept = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const ok = render(<MapDesigner scenarioId="skirmish" hexSize={HEX} onChange={accept} customMap={latest} />);
+      dragTokenCentre(ok.container, spots[0], spots[3], 18);
+      expect(latest[1].token, "monolith left the source").toBeUndefined();
+      expect(latest[2].token, "monolith landed on the land face-down tile").toStrictEqual({ kind: "monolith" });
+    } finally {
+      restore();
+    }
+  });
+
+  it("a live drag highlights the whole footprint of every face-down candidate tile, cleared on release", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const { container } = render(
+        <MapDesigner
+          scenarioId="skirmish"
+          hexSize={HEX}
+          onChange={() => {}}
+          customMap={[
+            { row: town.row, col: town.col, group: "starting", faceDown: false },
+            { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } },
+            { row: spots[3].row, col: spots[3].col, group: "near", faceDown: true }
+          ]}
+        />
+      );
+      const token = container.querySelector(".designerMapToken.draggable")!;
+      const grabAt = hexToPixel(spots[0], HEX);
+      const dropAt = hexToPixel(spots[3], HEX);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 19, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 19, clientX: dropAt.x, clientY: dropAt.y });
+      // The one compatible face-down target glows across its WHOLE 7-hex footprint.
+      expect(
+        container.querySelectorAll(".designerObjectSlot.faceDownTile").length,
+        "face-down candidate footprint highlighted"
+      ).toBe(7);
+      fireEvent.pointerUp(window, { pointerId: 19 });
+      expect(
+        container.querySelectorAll(".designerObjectSlot.faceDownTile").length,
+        "highlight cleared on release"
+      ).toBe(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a plain click (no drag) on a FACE-DOWN badge still opens the compact token panel; Remove works", () => {
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    const { container } = render(
+      <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+    );
+
+    const token = container.querySelector(".designerMapToken.draggable");
+    expect(token, "face-down badge is draggable AND clickable").toBeTruthy();
+
+    // A plain click (no pointer movement) opens the panel with the discoverer hint.
+    fireEvent.click(token!);
+    const panel = container.querySelector(".designerTokenPopover") as HTMLElement;
+    expect(panel, "token panel opens for a face-down badge").toBeTruthy();
+    expect(within(panel).getByText(/discover/i), "discoverer hint shown").toBeTruthy();
+    expect(within(panel).queryByLabelText("Token field"), "no slot select for a face-down badge").toBeNull();
+
+    // Remove still clears the token.
+    fireEvent.click(within(panel).getByRole("button", { name: /Remove the Monolith token/i }));
+    expect(latest[1].token, "face-down token removed").toBeUndefined();
   });
 });
 

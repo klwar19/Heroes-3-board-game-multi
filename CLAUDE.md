@@ -1449,6 +1449,17 @@ What runs (each with a failing-if-removed test):
   discovery. Lone-token maps show the "needs at least 2 to work" warning; a
   lone token in play is inert with the same note. Tokens survive save/load
   (`sanitizeTile`) and are validated again at setup (illegal slots dropped).
+  A placed token (monolith OR whirlpool) is DRAGGABLE from ANY tile to ANY
+  compatible tile in all four orientation combinations — face-up↔face-up,
+  face-up→face-down, face-down→face-up, face-down→face-down — with a plain click
+  still opening the token panel. A face-up target lands `{ kind, slot }` on the
+  hovered legal slot; a face-down target (its whole footprint one drop zone,
+  gated by `faceDownTokenKinds` — sea⇒whirlpool, other land groups⇒monolith,
+  starting seats accept none) lands the pending `{ kind }` (no slot, placed at
+  reveal). A cross-tile move is ONE atomic `onChange` and never changes the token
+  COUNT, so the whirlpool supply cap is unaffected; a tile already carrying a
+  token stays off-limits. Wired in `commitTokenMove` / `tokenSlotCandidates`,
+  pinned in `map-designer.test.tsx` ("tile-carried token direct manipulation").
 - Discovery: revealing a pending-token tile lets the DISCOVERING player place
   it on "a Field of your choosing" (`place-map-token` choice, glowing
   candidates; single candidate auto-places, zero drops the token). It waits
