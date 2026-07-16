@@ -143,6 +143,25 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  it("exposes the OPTIONAL Undo-moves (testing) toggle, default OFF, wired to undoMoves", () => {
+    const onAction = openOptions();
+    const undoRow = screen.getByText("Undo moves (testing)").closest(".optionRow");
+    expect(undoRow).toBeTruthy();
+    // Default OFF: the Off button is pressed, On is not.
+    expect(
+      within(undoRow as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(
+      within(undoRow as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")
+    ).toBe("false");
+    fireEvent.click(within(undoRow as HTMLElement).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { undoMoves: true }
+    });
+  });
+
   it("Legacy preset turns house rules off without locking them (notice + free toggle)", () => {
     const onAction = openOptions();
     fireEvent.click(screen.getByRole("button", { name: /Legacy/i }));

@@ -3742,6 +3742,19 @@ export type GameAction =
     }
   | {
       /**
+       * OPTIONAL Undo mode (debug/testing only — `GameSetupOptions.undoMoves`,
+       * default OFF). Roll the room back to the state BEFORE the most recent
+       * human action. This action never reaches the engine reducer: it is
+       * intercepted in the SERVER action transaction (the built-in store's
+       * `submitRoomAction` and the PartyKit edge), which pops a server-side,
+       * broadcast-free per-room snapshot stack and restores it. With the option
+       * OFF (or no history) the server rejects it. See src/server/undo-history.ts.
+       */
+      type: "UNDO_MOVE";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Open an AFK kick-or-wait vote against `targetPlayerId`. Legal only in a
        * multiplayer adventure when the target has been idle for AFK_IDLE_MS
        * (per the server-stamped clock), no other vote is open, and any earlier
@@ -4446,6 +4459,20 @@ export type GameEvent =
       playerId: PlayerId;
       /** The player whose hero is fighting the Neutral units. */
       combatPlayerId: PlayerId;
+      message: string;
+    }
+  | {
+      /**
+       * OPTIONAL Undo mode: the room was rolled back to a prior state by
+       * `playerId`. Public feed line ("<name> undid N action(s)") so a rewind is
+       * never silent. Emitted onto the RESTORED state's event log by the server
+       * action transaction, not by a reducer handler (Undo bypasses the reducer).
+       */
+      id: string;
+      type: "MOVES_UNDONE";
+      playerId: PlayerId;
+      /** How many action steps were rolled back by this undo (currently always 1). */
+      count: number;
       message: string;
     }
   | {
@@ -8711,6 +8738,16 @@ export type AdventureState = {
    */
   pvpNeutralControlMustAttack?: boolean;
   /**
+   * OPTIONAL Undo mode (debug/testing, default OFF). Frozen from
+   * GameSetupOptions.undoMoves at setup so the SERVER action transaction can
+   * read it to decide whether to keep a bounded, broadcast-free per-room undo
+   * stack. Absent/false = no history is kept and UNDO_MOVE is rejected. This
+   * flag is the ONLY thing about undo that lives in GameState; the history
+   * itself never enters state (never broadcast, never in a player view). See
+   * src/server/undo-history.ts.
+   */
+  undoMoves?: boolean;
+  /**
    * Individual BINH house-rule toggles, resolved to concrete booleans at setup
    * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older
    * snapshots and the combat sandbox, where the mode default is derived instead.
@@ -8901,6 +8938,17 @@ export type GameSetupOptions = {
    * stops when the period runs out. Play then continues turn-after-turn.
    */
   parallelTurns?: number;
+  /**
+   * OPTIONAL "Undo moves" mode (default OFF/absent). A DEBUG / manual-testing
+   * aid: with it ON, a player may roll the whole game back to the state before
+   * a recent action, making bug-hunting far easier. It is NOT a normal-play
+   * feature. Undo is handled entirely SERVER-SIDE (a bounded, broadcast-free
+   * per-room snapshot stack — see src/server/undo-history.ts): the flag is
+   * frozen onto `adventure.undoMoves` at setup so both backends can read it, and
+   * an `UNDO_MOVE` action pops+restores one snapshot. With it OFF nothing is
+   * recorded and `UNDO_MOVE` is rejected — zero behaviour change.
+   */
+  undoMoves?: boolean;
   /**
    * Whether players may open their own Ⅱ–Ⅲ Far tiles (default ON). When ON each
    * player drafts a personal Far-tile supply they can place onto the map. Off

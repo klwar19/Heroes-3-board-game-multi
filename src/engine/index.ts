@@ -164,6 +164,7 @@ export {
   spellPowerBreakpoints,
   spellPowerValueOfCard
 } from "./effects";
+export { appendEvent } from "./events";
 export { getPlayerView, OBSERVER_VIEWER_SEAT, PASSWORD_REDACTED, redactStateForSeat } from "./player-view";
 export { createSeededRandom } from "./random";
 export {

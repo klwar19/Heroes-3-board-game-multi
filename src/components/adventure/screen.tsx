@@ -2487,6 +2487,22 @@ export function AdventureHud({
         </div>
       ) : null}
       <div className="advHudButtons">
+        {/* OPTIONAL Undo mode (debug/testing): the button shows only when the
+            lobby turned the option on (frozen onto adventure.undoMoves). The
+            server-side undo history depth is never in state (guardrail: no
+            broadcast bloat / hidden-info leak), so the button is offered whenever
+            the mode is on; if there is nothing to undo the server replies with a
+            harmless "nothing to undo" rejection. */}
+        {state.adventure?.undoMoves ? (
+          <button
+            className="commandButton undoMove"
+            onClick={() => onAction({ type: "UNDO_MOVE", playerId: viewerPlayerId })}
+            title="Testing aid: roll the game back to before your most recent action. Every undo is announced in the feed."
+            type="button"
+          >
+            ↩ Undo
+          </button>
+        ) : null}
         {endTurn ? (
           <button className="commandButton" onClick={() => onAction(endTurn.action)} type="button">
             End turn
@@ -5897,6 +5913,7 @@ function GameOptionsPanel({
       {(() => {
         const eventsOn = options.events ?? false;
         const moraleCardsOn = options.moraleCards ?? false;
+        const undoMovesOn = options.undoMoves ?? false;
         return (
           <>
             <div className="optionRow">
@@ -5945,6 +5962,30 @@ function GameOptionsPanel({
                 {moraleCardsOn
                   ? "Morale draws cards instead of changing the morale token: positive morale clears one Negative card first, then draws Positive cards (max 2 held)."
                   : "Normal morale tokens: positive morale can be spent for draw/redraw/reroll, and doubled negative morale discards your hand at turn end."}
+              </small>
+            </div>
+            <div className="optionRow">
+              <small title="Testing/debug aid (OFF by default): lets a player roll the game back to before a recent action, so bugs are easier to reproduce and hunt">
+                Undo moves (testing)
+              </small>
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={undoMovesOn === on}
+                    className={undoMovesOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() => send({ undoMoves: on })}
+                    title={on ? "Undo moves on (testing aid)" : "Undo moves off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {undoMovesOn
+                  ? "Debug/testing only: an Undo button on the map rolls the whole game back to the state before a recent action (up to the last 10). Not for competitive play — every rewind is announced in the feed."
+                  : "Off by default. Turn it On only for manual testing / bug-hunting; it exposes a map Undo button that rewinds recent actions."}
               </small>
             </div>
           </>
@@ -7869,6 +7910,9 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   PARALLEL_TURNS_STARTED: { icon: "🔀", cue: "options" },
   PARALLEL_TURN_ENDED: { icon: "🔀", cue: "options" },
   PARALLEL_TURNS_STOPPED: { icon: "⚠️", cue: "warning" },
+  // OPTIONAL Undo mode (debug/testing): a rewind is never silent — it always
+  // shows a feed line + warning cue so the whole table sees the roll-back.
+  MOVES_UNDONE: { icon: "↩", cue: "warning" },
   // WOG Commanders: level-ups (grade-ups), death and revival announce
   // themselves in the feed alongside the dock tile's blink.
   COMMANDER_GRADED_UP: { icon: "👑", cue: "level-up" },
