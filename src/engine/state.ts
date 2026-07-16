@@ -7267,7 +7267,25 @@ export type AdventureReward =
     };
 
 export type VisitStep =
-  | { type: "CHOOSE_ONE"; prompt: string; options: { label: string; steps: VisitStep[] }[] }
+  | {
+      type: "CHOOSE_ONE";
+      prompt: string;
+      options: { label: string; steps: VisitStep[] }[];
+      /**
+       * Set ONLY on the Monolith / Whirlpool / colored-Gate "choose where to
+       * travel" destination picker (`resolveTokenTeleport` / `resolveGateTeleport`)
+       * — never on any other CHOOSE_ONE. It exists because a Logistics/Nomads
+       * end-of-turn move ALSO offers `TELEPORT_HERO` options, so the client
+       * cannot tell a teleport picker apart from an ordinary move without this
+       * flag. Given it, the board surfaces each destination as a glowing,
+       * clickable EXIT hex — themed by `kind`/`pair` — instead of a bare numbered
+       * option list, and the tray shows the token art per option. The CHOOSE_ONE
+       * stays fully authoritative: a map click just dispatches the SAME
+       * `RESOLVE_VISIT_STEP` the tray button would. It reaches only the traveller
+       * (getVisiblePendingVisit masks every other seat's visit steps to []).
+       */
+      teleport?: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4 };
+    }
   | { type: "PAY_TO"; prompt: string; costOptions: ResourceCost[]; steps: VisitStep[] }
   | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }
   | { type: "GAIN_EXPERIENCE"; amount: number }

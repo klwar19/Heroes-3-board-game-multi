@@ -232,6 +232,17 @@ describe("Colored Gate pair routing", () => {
       throw new Error("no gate destination choice");
     }
     expect(step.options).toHaveLength(2);
+    // The picker is tagged for the board — kind "gate" AND the travelling color
+    // pair (1 = red) — so each destination becomes a colored clickable exit hex;
+    // dropping the tag fails here (mutation control).
+    expect(step.teleport).toEqual({ kind: "gate", pair: 1 });
+    const optionHexes = step.options.map((option) =>
+      option.steps[0]?.type === "TELEPORT_HERO" ? option.steps[0].spaceId : null
+    );
+    expect(optionHexes).toContain(exitB);
+    expect(optionHexes).toContain(exitC);
+    // Masking CONTROL: a non-traveller seat sees no visit steps (no tag leaks).
+    expect(getPlayerView(state, "p2").adventure?.pendingVisit?.steps ?? []).toEqual([]);
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 1 });
     expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
     expect(exitB).not.toBe(exitC);
