@@ -506,6 +506,54 @@ ordered-mode or unowned-target CONTROL.
   solo tables and legacy snapshots are untouched — every parallel predicate
   no-ops when the mode is off.
 
+## Undo moves (OPTIONAL debug/testing mode, default OFF) — what runs vs. limits
+
+Lobby option `GameSetupOptions.undoMoves` (Game options → Mode & Rules, default
+OFF). Purpose: manual testing / bug-hunting — with it ON a player may roll the
+whole game back to the state before a recent action. NOT a normal-play feature.
+Engine flag frozen onto `adventure.undoMoves` at setup; the history + restore
+live entirely SERVER-SIDE in `src/server/undo-history.ts`, wired into BOTH
+backends (`submitRoomAction` in `game-room-store.ts`; the PartyKit edge's
+WS `onMessage` + HTTP POST action paths in `party/index.ts`). Behaviour pinned in
+`src/server/undo-history.test.ts` (module + built-in store, with CONTROLs),
+`src/server/undo-history-edge.test.ts` (the PartyKit `onMessage` path, real
+harness), `src/components/adventure/undo-button.test.tsx` (map HUD button renders
+ONLY under the option) and `src/components/adventure/game-options-tabs.test.tsx`
+(the lobby toggle). Each guardrail has a failing-if-removed CONTROL.
+
+Leading with what does NOT run / deliberate limits:
+- **Default OFF = ZERO behaviour change.** With the option off/absent (every
+  legacy snapshot) no snapshot is ever recorded and an `UNDO_MOVE` action is
+  rejected ("Undo mode is off for this game."). Pinned with CONTROLs on both
+  backends.
+- **The undo history NEVER enters GameState** — it is a bounded per-room stack of
+  full pre-action serialized snapshots kept in the `undo-history` module's
+  in-memory Map alone. It is never broadcast, never serialized into a room
+  snapshot, and never reaches a player view (no hidden-info leak, no snapshot
+  bloat). Only the public `MOVES_UNDONE` feed line (player + count, no secrets)
+  rides in `eventLog`, so every rewind is visibly announced (feed + warning cue),
+  never silent.
+- **Bounded to the last `UNDO_HISTORY_LIMIT` (10) actions**, oldest dropped.
+- **WHO may undo**: any current member of the room (open/legacy table → anyone;
+  hosted table → a member matched by verified `userId` first, else per-tab
+  `clientId`). Justification: the whole table opted into the debug toggle and the
+  feed line keeps it visible; a non-member is rejected ("Only a member of this
+  room can undo.").
+- **WHAT is one undo step**: one human action applied through the server action
+  transaction. Restore is a WHOLE-state swap, so undoing across an open combat /
+  pending choice / reward queue rolls them all back atomically (no replay). In
+  single-player, AI pump steps that ran between two human actions roll back
+  together with the preceding human action (they are not their own undo points);
+  after a restore the paced pump is re-derived (`cancelComputerPump` +
+  `ensureComputerPump`) so it re-arms iff the restored state still owes a move —
+  an undo around a computer turn cannot leave the pump frozen.
+- **Seeded RNG**: a redone action reproduces the same server entropy per action,
+  so a redo re-rolls the same dice — expected, not a bug.
+- The history is cleared on room close / reset / ranked force-close (both
+  backends). On the PartyKit edge it also does not survive Durable Object
+  hibernation/eviction (it is in-memory) — a documented limit acceptable for a
+  debug aid.
+
 ## Single player vs computer opponents (EXPERIMENTAL) — what runs vs. limits
 
 Menu → Single player → `/single-player` mints a PRIVATE room (128-bit `sp-` id,
