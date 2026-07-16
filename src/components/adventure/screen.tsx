@@ -2422,12 +2422,20 @@ export function AdventureHud({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
+  opponentInfo
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  /**
+   * Optional opponent-info cell folded into the HUD ribbon (the seated map
+   * view passes `<OpponentInfoDock variant="hud" …/>` here). Injected as a prop
+   * so the HUD stays free of opponent-panel imports; renders nothing when there
+   * are no opponents. Sits just before the End turn / Give up buttons.
+   */
+  opponentInfo?: ReactNode;
 }) {
   const { zoomContent } = useCardZoom();
   const [confirmGiveUp, setConfirmGiveUp] = useState(false);
@@ -2637,6 +2645,7 @@ export function AdventureHud({
           <strong>{state.players[winner]?.name} wins!</strong>
         </div>
       ) : null}
+      {opponentInfo}
       <div className="advHudButtons">
         {endTurn ? (
           <button className="commandButton" onClick={() => onAction(endTurn.action)} type="button">
