@@ -332,6 +332,12 @@ function UnitStackPurchaseControls({
   resources: PlayerState["resources"];
   onAction: (action: GameAction) => void;
 }) {
+  // A Stack purchase is spent gold, so it is never committed on a single click:
+  // the Buy button ARMS a confirm step (naming the unit + cost), and only the
+  // explicit Confirm dispatches. Cancel (or the button becoming illegal) backs
+  // out with nothing spent. The AI path never renders this — it dispatches the
+  // POPULATION_ACTION directly.
+  const [armed, setArmed] = useState(false);
   const stackCap = polishArmyUnitStackCap(owned);
   const stackCost = polishArmyUnitStackCost(owned);
   if (!stackCost || stackCap <= 0) {
@@ -372,28 +378,54 @@ function UnitStackPurchaseControls({
           +1 Attack while stacked · each Stack is one full health bar
         </small>
       </div>
-      <button
-        aria-label={
-          stackAtCap
-            ? `${unitName} at max ${stackCap} Stacks`
-            : `Buy Stack for ${unitName} for ${goldCost} gold`
-        }
-        className={`recruitQuick stackQuick ${stackAtCap ? "atCap" : ""} ${!stackLegal && !stackAtCap ? "blocked" : ""}`}
-        disabled={!stackLegal}
-        onClick={() => stackLegal && onAction(stackLegal.action)}
-        title={
-          stackAtCap
-            ? `Maximum ${stackCap} Stack${stackCap === 1 ? "" : "s"} (${capLabel || tier})`
-            : !canReinforce
-              ? "Build the Citadel to buy Unit Stacks"
-              : !affordable
-                ? `Need ${goldCost} gold for this Unit Stack`
-                : `Add one full-health Stack layer · ${goldCost} gold`
-        }
-        type="button"
-      >
-        {stackAtCap ? `Max ${stackCap}` : `Add Stack · ${goldCost}g`}
-      </button>
+      {armed && stackLegal && !stackAtCap ? (
+        <div
+          aria-label={`Confirm Stack purchase for ${unitName}`}
+          className="stackPurchaseConfirm"
+          role="group"
+        >
+          <small className="stackConfirmPrompt">
+            Buy a Stack for <strong>{unitName}</strong> for{" "}
+            <strong className="stackConfirmCost">{goldCost} gold</strong>?
+          </small>
+          <button
+            className="recruitQuick stackQuick stackConfirm"
+            onClick={() => {
+              onAction(stackLegal.action);
+              setArmed(false);
+            }}
+            type="button"
+          >
+            Confirm
+          </button>
+          <button className="recruitQuick ghost stackConfirmCancel" onClick={() => setArmed(false)} type="button">
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          aria-label={
+            stackAtCap
+              ? `${unitName} at max ${stackCap} Stacks`
+              : `Buy Stack for ${unitName} for ${goldCost} gold`
+          }
+          className={`recruitQuick stackQuick ${stackAtCap ? "atCap" : ""} ${!stackLegal && !stackAtCap ? "blocked" : ""}`}
+          disabled={!stackLegal}
+          onClick={() => stackLegal && setArmed(true)}
+          title={
+            stackAtCap
+              ? `Maximum ${stackCap} Stack${stackCap === 1 ? "" : "s"} (${capLabel || tier})`
+              : !canReinforce
+                ? "Build the Citadel to buy Unit Stacks"
+                : !affordable
+                  ? `Need ${goldCost} gold for this Unit Stack`
+                  : `Add one full-health Stack layer · ${goldCost} gold`
+          }
+          type="button"
+        >
+          {stackAtCap ? `Max ${stackCap}` : `Add Stack · ${goldCost}g`}
+        </button>
+      )}
     </div>
   );
 }

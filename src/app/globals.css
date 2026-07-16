@@ -19439,6 +19439,36 @@ img.cardBack {
   opacity: 0.55;
 }
 
+.stackPurchaseConfirm {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.stackConfirmPrompt {
+  flex: 1 1 140px;
+  min-width: 0;
+  color: #ffe7a1;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.stackConfirmCost {
+  white-space: nowrap;
+  color: #ffd873;
+}
+
+.stackConfirm {
+  flex: 0 0 auto;
+}
+
+.stackConfirmCancel {
+  flex: 0 0 auto;
+}
+
 .houseRuleGroup.polish {
   margin-top: 3px;
   padding: 9px;
