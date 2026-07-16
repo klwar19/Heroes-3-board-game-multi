@@ -154,12 +154,21 @@ describe("Polish Unit Stacks — combat layers", () => {
     expect(unit.maxHealth).toBe(4);
     expect(unit.armyStacks).toBe(2);
 
-    unit.damage = 9;
+    // Chip ONE layer first: the recompute after a layer loss must KEEP the +1
+    // while a Stack remains (this pins the applyUnitCurrentSide branch — the
+    // construction-time bonus above cannot stand in for it).
+    unit.damage = 5;
+    markUnitRemovedIfNeeded(state, unit);
+    expect(unit.armyStacks).toBe(1);
+    expect(unit.damage).toBe(1);
+    expect(unit.attack, "the bonus persists while a Stack remains").toBe(4);
+
+    unit.damage = 7;
     markUnitRemovedIfNeeded(state, unit);
 
     expect(unit.variant).toBe("pack");
     expect(unit.armyStacks).toBe(0);
-    expect(unit.damage).toBe(1);
+    expect(unit.damage).toBe(3);
     expect(unit.attack, "the bonus drops with the final Stack").toBe(3);
     expect(state.eventLog.filter((event) => event.type === "ARMY_STACK_LOST")).toHaveLength(2);
     expect(state.eventLog.some((event) => event.type === "UNIT_REMOVED")).toBe(false);
