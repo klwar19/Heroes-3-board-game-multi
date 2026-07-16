@@ -4446,8 +4446,9 @@ function finishResolvedAttack(
   // Medusa Stores Medusas (while Stacked): the target is Paralyzed by their own
   // attack. (Creature Bank Crypt/Shipwreck Wraiths' enemy discard is now a
   // post-attack FOLLOW-UP — openWraithDiscardChoice — so the attacked player can
-  // CHOOSE which card to discard, parking combat on that choice; it runs only in
-  // the non-retaliation follow-up chain, matching the old isRetaliation guard.)
+  // CHOOSE which card to discard, parking combat on that choice; it runs both in
+  // the non-retaliation follow-up chain AND on the Wraith's Retaliation Attack —
+  // see the isRetaliation branch below.)
   applyOnAttackParalysis(state, details.attacker, details.defender, details.isRetaliation);
   applyDendroidBindFx(state, details.attacker, details.defender, details.isRetaliation);
   // Shield of the Dwarven Lords ignored the die "and any additional effects it
@@ -4540,6 +4541,20 @@ function finishResolvedAttack(
         state.phase = "combat";
         state.priorityPlayerId = null;
       }
+      return;
+    }
+
+    // Creature Bank Crypt/Shipwreck Wraiths "Soul Siphon" on a RETALIATION
+    // Attack: the Wraith (details.attacker) struck back at the unit that hit it
+    // (details.defender), so that unit's controller must discard a card of their
+    // choice. Park combat on the pick; when it resolves, the wraith-choose-discard
+    // branch calls resumeAttackSequence, which faithfully reproduces the
+    // continuation just below (afterRetaliationAbilityAttack, else conclude the
+    // original attacker) because the ORIGINAL attack's attackSequence is still
+    // intact here (attackerId === details.defender.id, retaliationPending already
+    // spent). Skipped for a preemptive retaliation (handled above) since the
+    // wraith is never a Bounty Hunter and that path resumes a parked blow.
+    if (openWraithDiscardChoice(state, details.attacker, details.defender)) {
       return;
     }
 
@@ -4795,9 +4810,11 @@ function applyOnAttackPoisonCubes(
 /**
  * Creature Bank Crypt / Shipwreck Wraiths "Soul Siphon": "Whenever this unit
  * attacks, the enemy must discard 1 card from hand (if possible)." Fires as a
- * post-attack follow-up after the Wraiths' own attack (the follow-up chain is
- * reached only for a non-retaliation attack, so this never fires on a
- * Retaliation Attack). The attacked player CHOOSES which card leaves their
+ * post-attack follow-up after the Wraiths' own attack AND on the Wraiths'
+ * Retaliation Attack (the isRetaliation branch of finishResolvedAttack calls
+ * this too, parking on the pick and resuming via resumeAttackSequence). The
+ * attacker/defender are always the Wraith and its victim, so the same helper
+ * serves both entry points. The attacked player CHOOSES which card leaves their
  * hand: with a non-empty hand this parks combat on a COMBAT_HAND_DISCARD choice
  * they own. The neutral seat (no hand) and an empty hand are no-ops. Returns
  * true only when a choice was opened.

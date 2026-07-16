@@ -450,6 +450,100 @@ describe("Crypt / Shipwreck Wraiths: enemy discard on attack", () => {
 });
 
 // ===========================================================================
+// Crypt / Shipwreck Wraiths — the Soul Siphon fires on a RETALIATION Attack
+// too: "Whenever this unit attacks" covers its counter-blow, so the unit that
+// provoked the retaliation discards a card of THEIR choice. The park happens
+// mid-sequence (inside the retaliation's finishResolvedAttack) and must resume
+// EXACTLY where it paused — the original attacker's activation concludes and
+// combat continues.
+// ===========================================================================
+
+describe("Crypt / Shipwreck Wraiths: enemy discard on RETALIATION", () => {
+  /**
+   * p1's Griffins (no ability, attack 1) attack p2's Skeletons minted as a Wraith
+   * (Soul Siphon, attack 1). Both are fat-Health (30) so neither blow is lethal:
+   * the Wraith survives to RETALIATE, and its Retaliation Attack triggers the
+   * Soul Siphon against p1 — the unit that provoked the counter — so p1 holds the
+   * discard choice.
+   */
+  function wraithRetaliation(p1Hand: string[]): GameState {
+    const state = createInitialGameState("bank-wraith-retaliation");
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.abilities = [];
+    attacker.attack = 1;
+    attacker.position = 1;
+    attacker.maxHealth = 30;
+    attacker.damage = 0;
+    const wraith = state.combat!.units.unit_p2_skeletons;
+    wraith.abilities = ["bank-wraith-attack-discard"];
+    wraith.attack = 1;
+    wraith.position = 2; // adjacent to 1
+    wraith.maxHealth = 30;
+    wraith.damage = 0;
+    state.players.p1.hand = [...p1Hand];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    script(state, [0, 0, 0, 0, 0, 0, 0, 0]);
+    return settle(
+      applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_griffins",
+        defenderId: "unit_p2_skeletons"
+      })
+    );
+  }
+
+  it("fires the Soul Siphon for the ATTACKING player when the Wraith RETALIATES", () => {
+    let state = wraithRetaliation(["stat.power", "stat.attack", "spell.magic_arrow"]);
+    // The Wraith actually retaliated (this whole path is the retaliation).
+    expect(state.eventLog.some((event) => event.type === "RETALIATION_ATTACKED")).toBe(true);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("COMBAT_HAND_DISCARD");
+    if (choice?.type !== "COMBAT_HAND_DISCARD") {
+      return;
+    }
+    expect(choice.kind).toBe("wraith-choose-discard");
+    // The discard belongs to p1 — the unit that ATTACKED the Wraith — not p2.
+    expect(choice.playerId).toBe("p1");
+    expect(new Set(choice.powerCardIds)).toEqual(new Set(["stat.power", "stat.attack", "spell.magic_arrow"]));
+
+    state = applyOk(state, {
+      type: "RESOLVE_COMBAT_DISCARD",
+      playerId: "p1",
+      choiceId: choice.id,
+      cardId: "stat.attack"
+    });
+
+    // The chosen card — and only it — lands in p1's discard.
+    expect(state.players.p1.discard).toContain("stat.attack");
+    expect(state.players.p1.hand).toEqual(["stat.power", "spell.magic_arrow"]);
+    expect(abilityEventIds(state)).toContain("bank-wraith-attack-discard");
+
+    // The mid-sequence park resumed correctly: the choice is gone, combat
+    // continues, the original attacker still acted, and the Wraith's counter is
+    // spent (retaliatedThisRound). Nothing was stranded.
+    expect(state.pendingChoice).toBeNull();
+    expect(state.phase).toBe("combat");
+    expect(state.combat!.units.unit_p1_griffins.attackedThisActivation).toBe(true);
+    expect(state.combat!.units.unit_p2_skeletons.retaliatedThisRound).toBe(true);
+  });
+
+  it("CONTROL: a RETALIATION with an empty hand no-ops — no choice, combat continues", () => {
+    const state = wraithRetaliation([]);
+    // The retaliation still fired…
+    expect(state.eventLog.some((event) => event.type === "RETALIATION_ATTACKED")).toBe(true);
+    // …but with no hand to raid, nothing parked and nothing was discarded.
+    expect(state.pendingChoice).toBeNull();
+    expect(state.phase).not.toBe("choice");
+    expect(state.players.p1.discard).toHaveLength(0);
+    expect(state.combat!.units.unit_p2_skeletons.retaliatedThisRound).toBe(true);
+  });
+});
+
+// ===========================================================================
 // Crypt Skeletons — Rebirth: once per combat, a killing blow leaves it at 1 HP.
 // Rebirth resolves before either a Stack Token or a Pack side is lost.
 // ===========================================================================

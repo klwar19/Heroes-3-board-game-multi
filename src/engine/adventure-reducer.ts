@@ -10963,11 +10963,25 @@ export function openDiscardPickChoice(
     }
   }
 
+  // Honest prompt: a Polish "polish-used" entry REFRESHES a used Book Spell, it
+  // does not take a card off the discard pile. When EVERY option is such a
+  // refresh, say so (the discard-pile wording confused players — nothing is being
+  // taken from the discard); when the pick mixes discard cards and Book refreshes,
+  // name both.
+  const usedCount = entries.filter((entry) => entry.source === "polish-used").length;
+  const remainingSuffix = pick.count > 1 ? ` (${pick.count} left)` : "";
+  const prompt =
+    usedCount === entries.length
+      ? `Refresh a Spell in your Spell Book${remainingSuffix}`
+      : usedCount > 0
+      ? `Take a card from your discard pile, or refresh a Spell in your Spell Book${remainingSuffix}`
+      : `Take a card from your discard pile${remainingSuffix}`;
+
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `Take a card from your discard pile${pick.count > 1 ? ` (${pick.count} left)` : ""}`,
+    prompt,
     options: entries.map((entry) =>
       entry.source === "polish-used"
         ? { label: `Refresh ${cardLibrary[entry.cardId]?.name ?? entry.cardId} in the Spell Book` }
