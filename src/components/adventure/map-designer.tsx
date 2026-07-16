@@ -53,7 +53,11 @@ import {
   type SecretTileFeature,
   type VictoryMode
 } from "@/engine";
-import { nearestGateHexPair, type GateHexPair } from "@/components/adventure/gate-drag";
+import {
+  nearestGateDragCandidate,
+  type GateDragCandidate,
+  type GateHexPair
+} from "@/components/adventure/gate-drag";
 import { titleCase } from "@/components/table/utils";
 import {
   MAP_SCALE_MAX,
@@ -589,19 +593,23 @@ export function MapDesigner({
   /** Landmark chip filter for the clickable tile picker (All / Mine / …). */
   const [tilePickFilter, setTilePickFilter] = useState("all");
   /**
-   * A live drag of a DESIGNED gate token along its two tiles' shared boundary:
-   * pointermove snaps the token pair to the nearest legal boundary position
-   * (pure math in gate-drag.ts) as a preview; pointerup commits the pin through
-   * the same update path as the ↻ cycle button; pointercancel/Escape discards
-   * (the plan is never touched mid-drag, so cancel restores the previous pin by
-   * construction). `moved` gates commit AND the click-suppression, so a plain
-   * click on the token still opens the cavern popover.
+   * A live drag of a gate token (automatic OR designed) across its cavern's
+   * shared boundaries: pointermove snaps the token pair to the nearest legal
+   * position among EVERY eligible touching Surface tile's `candidates` (pure math
+   * in gate-drag.ts) as a preview; pointerup commits the pin through the same
+   * `pinGateLink` path as the ↻ cycle button — RE-TARGETING the link to the
+   * dropped surface when it differs from `surfaceCenter` (the surface the drag
+   * started on); pointercancel/Escape discards (the plan is never touched
+   * mid-drag, so cancel restores the previous pin by construction). `moved` gates
+   * both the commit AND the click-suppression, so a plain click on the token still
+   * opens the cavern popover. `hover` carries its own `surfaceCenter`, which is
+   * how a drop knows which tile to connect the cavern to.
    */
   const [gateDrag, setGateDrag] = useState<{
     cavernCenter: HexCoord;
     surfaceCenter: HexCoord;
-    pairs: GateHexPair[];
-    hover: GateHexPair | null;
+    candidates: GateDragCandidate[];
+    hover: GateDragCandidate | null;
     startX: number;
     startY: number;
     moved: boolean;
@@ -1337,15 +1345,27 @@ export function MapDesigner({
 
   /**
    * Pin a designed gate link (cavern ↔ Surface) to an exact boundary pair — the
-   * ONE commit path shared by the ↻ cycle button and BOTH gate-token drags, so
+   * ONE commit path shared by the ↻ cycle button and every gate-token drag, so
    * they always write the same plan shape. When the cavern already links this
    * Surface, the pin is updated in place; when it does NOT (the gate was the
    * AUTOMATIC touch pairing, which carries no `gateLinks` entry), one is ADDED —
    * so dragging an automatic gate CONVERTS it into a designer-pinned link at the
    * dropped spot, exactly the "take control by touching it" the designer wants.
+   *
+   * `fromSurface` names the Surface the DRAG started on. When a cross-surface drag
+   * re-targets the gate to a DIFFERENT Surface (`surface !== fromSurface`), the
+   * dragged gate's old designed entry is dropped in the SAME atomic update, so the
+   * cavern ends with exactly one link to the new Surface — an automatic gate that
+   * had no entry simply carries nothing to drop. Omitted for a same-surface pin
+   * (the ↻ cycle and in-place slides), which stays byte-identical to before.
    */
   const pinGateLink = useCallback(
-    (cavernCenter: HexCoord, surface: { row: number; col: number }, pair: GateHexPair) => {
+    (
+      cavernCenter: HexCoord,
+      surface: { row: number; col: number },
+      pair: GateHexPair,
+      fromSurface?: { row: number; col: number }
+    ) => {
       const index = customMap.findIndex(
         (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
       );
@@ -1355,20 +1375,74 @@ export function MapDesigner({
       }
       const gateHex = hexSpaceId(pair.gateHex);
       const entranceHex = hexSpaceId(pair.entranceHex);
-      const existing = plan.gateLinks ?? [];
-      const hasLink = existing.some(
-        (candidate) => candidate.surface.row === surface.row && candidate.surface.col === surface.col
-      );
+      const sameSurface = (a: { row: number; col: number }, b: { row: number; col: number }): boolean =>
+        a.row === b.row && a.col === b.col;
+      // Re-target: dropping the dragged surface's stale entry keeps a cross-surface
+      // move to ONE link on the new surface (a same-surface pin keeps every entry).
+      const base =
+        fromSurface && !sameSurface(fromSurface, surface)
+          ? (plan.gateLinks ?? []).filter((candidate) => !sameSurface(candidate.surface, fromSurface))
+          : plan.gateLinks ?? [];
+      const hasLink = base.some((candidate) => sameSurface(candidate.surface, surface));
       const nextLinks: CustomMapGateLink[] = hasLink
-        ? existing.map((candidate) =>
-            candidate.surface.row === surface.row && candidate.surface.col === surface.col
-              ? { surface: candidate.surface, gateHex, entranceHex }
-              : candidate
+        ? base.map((candidate) =>
+            sameSurface(candidate.surface, surface) ? { surface: candidate.surface, gateHex, entranceHex } : candidate
           )
-        : [...existing, { surface: { row: surface.row, col: surface.col }, gateHex, entranceHex }];
+        : [...base, { surface: { row: surface.row, col: surface.col }, gateHex, entranceHex }];
       updateTile(index, { gateLinks: nextLinks });
     },
     [customMap, updateTile]
+  );
+
+  /**
+   * Every boundary position a gate drag on this cavern may snap to, across ALL
+   * eligible touching Surface tiles — the model that makes a drag able to pick the
+   * connected tile by direct manipulation. `draggedSurface` is the Surface the
+   * gate currently sits on (kept eligible so it can stay). Excluded: a Surface
+   * already claimed by ANOTHER designed link of this cavern (each Surface links
+   * once), and any pair whose gate/entrance hex collides with another designed
+   * link's PINNED hex (two gates on one cavern can't share a hex).
+   */
+  const gateDragCandidatesFor = useCallback(
+    (cavernCenter: HexCoord, draggedSurface: { row: number; col: number }): GateDragCandidate[] => {
+      const sameSurface = (a: { row: number; col: number }, b: { row: number; col: number }): boolean =>
+        a.row === b.row && a.col === b.col;
+      const cavernPlan = customMap.find(
+        (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
+      );
+      const otherLinks = (cavernPlan?.gateLinks ?? []).filter((link) => !sameSurface(link.surface, draggedSurface));
+      const claimedByOthers = new Set(otherLinks.map((link) => `${link.surface.row}:${link.surface.col}`));
+      const pinnedHexes = new Set<string>();
+      for (const link of otherLinks) {
+        if (link.gateHex) {
+          pinnedHexes.add(link.gateHex);
+        }
+        if (link.entranceHex) {
+          pinnedHexes.add(link.entranceHex);
+        }
+      }
+      const candidates: GateDragCandidate[] = [];
+      for (const tile of gatePlacements) {
+        if (tile.group === "subterranean") {
+          continue;
+        }
+        const surfaceCenter = { row: tile.row, col: tile.col };
+        if (!tileFootprintsTouch(cavernCenter, surfaceCenter)) {
+          continue;
+        }
+        if (claimedByOthers.has(`${surfaceCenter.row}:${surfaceCenter.col}`)) {
+          continue;
+        }
+        for (const pair of legalGateHexPairs(surfaceCenter, cavernCenter)) {
+          if (pinnedHexes.has(hexSpaceId(pair.gateHex)) || pinnedHexes.has(hexSpaceId(pair.entranceHex))) {
+            continue;
+          }
+          candidates.push({ ...pair, surfaceCenter });
+        }
+      }
+      return candidates;
+    },
+    [customMap, gatePlacements]
   );
 
   // Drag lifecycle: a palette press or a promoted tile press registers window
@@ -1415,7 +1489,7 @@ export function MapDesigner({
     }
     const onMove = (event: PointerEvent) => {
       const local = clientToLocal(event.clientX, event.clientY);
-      const snapped = local ? nearestGateHexPair(local, gateDrag.pairs, hexSize) : null;
+      const snapped = local ? nearestGateDragCandidate(local, gateDrag.candidates, hexSize) : null;
       setGateDrag((current) =>
         current
           ? {
@@ -1433,7 +1507,9 @@ export function MapDesigner({
     };
     const onUp = () => {
       if (gateDrag.moved && gateDrag.hover) {
-        pinGateLink(gateDrag.cavernCenter, gateDrag.surfaceCenter, gateDrag.hover);
+        // Commit at the snapped pair AND its surface — a drop on a different
+        // Surface tile re-targets the gate there (pinGateLink drops the old entry).
+        pinGateLink(gateDrag.cavernCenter, gateDrag.hover.surfaceCenter, gateDrag.hover, gateDrag.surfaceCenter);
         // The browser still fires a click after the release — swallow it so a
         // finished slide does not also pop the cavern's options.
         gateClickSuppressRef.current = true;
@@ -1933,14 +2009,16 @@ export function MapDesigner({
     // Keep mid-drag moves flowing even when the pointer leaves the token; jsdom
     // has no pointer-capture implementation, hence the optional call.
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
-    const pairs = legalGateHexPairs(gate.surfaceCenter, gate.cavernCenter);
-    if (pairs.length === 0) {
+    // Offer boundary pairs on EVERY eligible touching Surface tile, not just the
+    // one this gate sits on — so the drag can carry the gate to a different tile.
+    const candidates = gateDragCandidatesFor(gate.cavernCenter, gate.surfaceCenter);
+    if (candidates.length === 0) {
       return;
     }
     setGateDrag({
       cavernCenter: gate.cavernCenter,
       surfaceCenter: gate.surfaceCenter,
-      pairs,
+      candidates,
       hover: null,
       startX: event.clientX,
       startY: event.clientY,
@@ -2220,6 +2298,66 @@ export function MapDesigner({
     }
   }
 
+  // Live-drag affordance: while a gate is being dragged, ghost EVERY position it
+  // could snap to — both halves of every candidate pair across every eligible
+  // Surface tile — so the designer SEES which tiles the gate can connect to, not
+  // just the one it started on. The snapped pair is highlighted; the ghosts (and
+  // the tag naming their surface) vanish the instant the drag ends. Pushed before
+  // the real tokens so the dragged token reads on top of its own ghost.
+  if (gateDrag && gateDrag.moved) {
+    const hover = gateDrag.hover;
+    gateDrag.candidates.forEach((candidate, candIndex) => {
+      const isHover = Boolean(
+        hover &&
+          hexSpaceId(hover.gateHex) === hexSpaceId(candidate.gateHex) &&
+          hexSpaceId(hover.entranceHex) === hexSpaceId(candidate.entranceHex) &&
+          hover.surfaceCenter.row === candidate.surfaceCenter.row &&
+          hover.surfaceCenter.col === candidate.surfaceCenter.col
+      );
+      const ghostClass = `designerGateGhost${isHover ? " hover" : ""}`;
+      const surfaceTag = `${candidate.surfaceCenter.row}:${candidate.surfaceCenter.col}`;
+      const gateTag = hexSpaceId(candidate.gateHex);
+      const entranceTag = hexSpaceId(candidate.entranceHex);
+      const ghostGate = hexToPixel(candidate.gateHex, size);
+      const ghostEntrance = hexToPixel(candidate.entranceHex, size);
+      const ghostRadius = Math.max(3, size * 0.32);
+      gateLayer.push(
+        <line
+          className={`designerGateGhostLink${isHover ? " hover" : ""}`}
+          key={`gate-ghost-line-${candIndex}`}
+          x1={ghostGate.x}
+          x2={ghostEntrance.x}
+          y1={ghostGate.y}
+          y2={ghostEntrance.y}
+        />
+      );
+      gateLayer.push(
+        <circle
+          className={ghostClass}
+          cx={ghostGate.x}
+          cy={ghostGate.y}
+          data-ghost-entrance={entranceTag}
+          data-ghost-gate={gateTag}
+          data-ghost-surface={surfaceTag}
+          key={`gate-ghost-gate-${candIndex}`}
+          r={ghostRadius}
+        />
+      );
+      gateLayer.push(
+        <circle
+          className={ghostClass}
+          cx={ghostEntrance.x}
+          cy={ghostEntrance.y}
+          data-ghost-entrance={entranceTag}
+          data-ghost-gate={gateTag}
+          data-ghost-surface={surfaceTag}
+          key={`gate-ghost-entrance-${candIndex}`}
+          r={ghostRadius}
+        />
+      );
+    });
+  }
+
   // Subterranean Gate tokens: one half on the Surface tile (the gate) and one on
   // the cavern (the entrance), exactly where the engine will carve them, joined
   // by a link line — so the designer can SEE the only Surface↔Underground
@@ -2245,10 +2383,11 @@ export function MapDesigner({
     const tokenHeight = 2 * size;
     // EVERY gate token — the AUTOMATIC touch pairing as well as a designer-pinned
     // one — is draggable along the shared edge and clickable for options. A
-    // designer-chosen gate is still drawn distinct (a brighter link + a pin
-    // glyph); an automatic one gets no pin but the same direct manipulation, and
-    // dragging it CONVERTS it into a pinned link at the dropped spot (pinGateLink).
-    const designedClass = `${gate.designed ? " designed" : ""}${draggingThis ? " dragging" : ""}`;
+    // designer-chosen gate is drawn distinct (the `designed` class: a brighter
+    // solid link + a pin glyph); an automatic one wears the `automatic` class (a
+    // dashed, dimmer link + no pin) so a default pairing is recognizably a
+    // default, and dragging it CONVERTS it into a pinned link at the dropped spot.
+    const designedClass = `${gate.designed ? " designed" : " automatic"}${draggingThis ? " dragging" : ""}`;
     const gateTitle = gate.designed
       ? "Designer Subterranean Gate — drag it along the shared edge, or click to edit its links."
       : "Automatic Subterranean Gate — heroes descend here from the Surface tile. Drag it along the shared edge to pin its exact spot, or click for gate options.";

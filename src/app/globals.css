@@ -12483,6 +12483,15 @@ img.cardBack {
   filter: drop-shadow(0 0 4px rgba(143, 230, 255, 0.7));
 }
 
+/* An AUTOMATIC (unpinned default) pairing stays dashed and dim — visibly a
+   default the designer has not committed, distinct from the solid designed link
+   above. Dragging it pins a designed link (which flips to `.designed`). */
+.designerGateLink.automatic {
+  stroke: #ffd766;
+  stroke-dasharray: 3 3;
+  opacity: 0.8;
+}
+
 /* EVERY gate token — the automatic touch pairing AND a designer-pinned one — is
    grabbable: pointer-events on, a grab cursor, and a subtle hover lift so it
    reads as draggable (the automatic one has no glow to distinguish it otherwise). */
@@ -12521,6 +12530,39 @@ img.cardBack {
   stroke: rgba(6, 30, 44, 0.9);
   stroke-width: 1.4px;
   pointer-events: none;
+}
+
+/* Live-drag ghosts: faint markers at EVERY position a gate could snap to across
+   every eligible Surface tile, so the designer sees which tiles the gate can
+   connect to while dragging. The snapped pair (`.hover`) lights up. Ghosts never
+   take the pointer — they are pure affordance under the dragged token. */
+.designerGateGhost {
+  fill: rgba(255, 235, 150, 0.16);
+  stroke: rgba(255, 235, 150, 0.55);
+  stroke-width: 1.4px;
+  stroke-dasharray: 2 2;
+  pointer-events: none;
+}
+
+.designerGateGhost.hover {
+  fill: rgba(143, 230, 255, 0.4);
+  stroke: #8fe6ff;
+  stroke-width: 2px;
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 5px rgba(143, 230, 255, 0.85));
+}
+
+.designerGateGhostLink {
+  stroke: rgba(255, 235, 150, 0.4);
+  stroke-width: 1.4px;
+  stroke-dasharray: 2 3;
+  pointer-events: none;
+}
+
+.designerGateGhostLink.hover {
+  stroke: #8fe6ff;
+  stroke-width: 2.2px;
+  stroke-dasharray: none;
 }
 
 /* Cavern gate-link controls in the per-tile popover. */

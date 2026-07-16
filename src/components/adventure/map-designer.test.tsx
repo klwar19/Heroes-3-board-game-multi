@@ -3,7 +3,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { MapDesigner, planBackArt, planBackLabel } from "./map-designer";
-import { nearestGateHexPair, type GateHexPair } from "./gate-drag";
+import { nearestGateDragCandidate, nearestGateHexPair, type GateDragCandidate, type GateHexPair } from "./gate-drag";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   canonicalTileEdgeCode,
@@ -15,6 +15,7 @@ import {
   legalTokenSlotsForTileDef,
   planSubterraneanGates,
   tileFootprint,
+  tileFootprintsTouch,
   tileLatticeNeighbors,
   type CustomMapObject,
   type CustomMapTilePlan,
@@ -1120,6 +1121,299 @@ describe("MapDesigner — AUTOMATIC gate token interactivity", () => {
     } finally {
       restore();
     }
+  });
+});
+
+describe("MapDesigner — cross-surface gate drag (pick the connected tile)", () => {
+  // The core fix: a cavern touching SEVERAL Surface tiles auto-pairs its gate to
+  // one, but a drag can carry the gate onto a DIFFERENT touching tile — the user
+  // picks the connected tile by direct manipulation, not just slides it along the
+  // one surface. Uses two ADJACENT touching Surface tiles (they share a cavern
+  // entrance hex, so the collision case below is real).
+  const HEX = 24;
+  const cavern = { row: 10, col: 10 };
+  const neighbors = tileLatticeNeighbors(cavern);
+  const surfaceA = neighbors[0]; // { row: 11, col: 12 }
+  const surfaceB = neighbors[2]; // { row: 8, col: 12 } — adjacent to surfaceA
+
+  const sameCoord = (a: { row: number; col: number }, b: { row: number; col: number }): boolean =>
+    a.row === b.row && a.col === b.col;
+  const midpointOf = (pair: GateHexPair) => {
+    const gate = hexToPixel(pair.gateHex, HEX);
+    const entrance = hexToPixel(pair.entranceHex, HEX);
+    return { x: (gate.x + entrance.x) / 2, y: (gate.y + entrance.y) / 2 };
+  };
+
+  // The single automatic gate this two-surface layout carves, and the surface it
+  // lands on (so a test can drop on the OTHER, free surface).
+  const autoGate = planSubterraneanGates(
+    [
+      { row: surfaceA.row, col: surfaceA.col, group: "starting" },
+      { row: surfaceB.row, col: surfaceB.col, group: "far" },
+      { row: cavern.row, col: cavern.col, group: "subterranean" }
+    ],
+    []
+  );
+  const autoSurface = { row: autoGate[0].surfaceCenter.row, col: autoGate[0].surfaceCenter.col };
+  const freeSurface = sameCoord(autoSurface, surfaceA) ? surfaceB : surfaceA;
+
+  const CAVERN_INDEX = 2;
+  const twoSurfaceMap = (cavernExtra: Partial<CustomMapTilePlan> = {}): CustomMapTilePlan[] => [
+    { row: surfaceA.row, col: surfaceA.col, group: "starting", faceDown: false },
+    { row: surfaceB.row, col: surfaceB.col, group: "far", faceDown: true },
+    { row: cavern.row, col: cavern.col, group: "subterranean", faceDown: true, subBand: "iv-v", ...cavernExtra }
+  ];
+
+  /** The gate-token <image> drawn at a given hex (matches its x/y attributes). */
+  const gateTokenAt = (container: HTMLElement, hex: HexCoord): Element | undefined => {
+    const px = hexToPixel(hex, HEX);
+    const tokenWidth = Math.sqrt(3) * HEX;
+    return [...container.querySelectorAll(".designerGateToken")].find(
+      (img) =>
+        Math.abs(parseFloat(img.getAttribute("x") ?? "NaN") - (px.x - tokenWidth / 2)) < 0.5 &&
+        Math.abs(parseFloat(img.getAttribute("y") ?? "NaN") - (px.y - HEX)) < 0.5
+    );
+  };
+
+  it("preconditions: one cavern, two touching surfaces, exactly one auto gate on one of them", () => {
+    expect(tileFootprintsTouch(surfaceA, cavern)).toBe(true);
+    expect(tileFootprintsTouch(surfaceB, cavern)).toBe(true);
+    expect(autoGate.length).toBe(1);
+    expect(sameCoord(autoSurface, surfaceA) || sameCoord(autoSurface, surfaceB)).toBe(true);
+    expect(sameCoord(freeSurface, autoSurface)).toBe(false);
+  });
+
+  it("dragging the AUTO gate onto the OTHER surface RE-TARGETS the link there (S1 pairing gone)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const target = legalGateHexPairs(freeSurface, cavern)[0];
+      // Sanity: over the FULL cross-surface candidate set, the freeSurface target's
+      // own midpoint snaps to exactly it and keeps its surface (pinned in gate-drag.test.ts).
+      const allCandidates: GateDragCandidate[] = [
+        ...legalGateHexPairs(surfaceA, cavern).map((pair) => ({ ...pair, surfaceCenter: surfaceA })),
+        ...legalGateHexPairs(surfaceB, cavern).map((pair) => ({ ...pair, surfaceCenter: surfaceB }))
+      ];
+      expect(sameCoord(nearestGateDragCandidate(midpointOf(target), allCandidates, HEX)!.surfaceCenter, freeSurface)).toBe(true);
+
+      let latest = twoSurfaceMap();
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(<MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />);
+      const token = container.querySelector(".designerGateToken");
+      expect(token!.classList.contains("designed"), "starts as an automatic gate").toBe(false);
+      const grabAt = midpointOf({ gateHex: autoGate[0].gateHex, entranceHex: autoGate[0].entranceHex });
+      const dropAt = midpointOf(target);
+      fireEvent.pointerDown(token!, { button: 0, pointerId: 3, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 3, clientX: dropAt.x, clientY: dropAt.y });
+      fireEvent.pointerUp(window, { pointerId: 3 });
+
+      // The link now points at the FREE surface — the automatic pairing is gone.
+      expect(latest[CAVERN_INDEX].gateLinks).toEqual([
+        {
+          surface: { row: freeSurface.row, col: freeSurface.col },
+          gateHex: hexSpaceId(target.gateHex),
+          entranceHex: hexSpaceId(target.entranceHex)
+        }
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("CONTROL: dropping the auto gate on a pair of its OWN surface pins that surface (today's behavior)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const autoPairs = legalGateHexPairs(autoSurface, cavern);
+      const start = { gateHex: autoGate[0].gateHex, entranceHex: autoGate[0].entranceHex };
+      const target = autoPairs.find(
+        (pair) =>
+          hexSpaceId(pair.gateHex) !== hexSpaceId(start.gateHex) ||
+          hexSpaceId(pair.entranceHex) !== hexSpaceId(start.entranceHex)
+      )!;
+      let latest = twoSurfaceMap();
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(<MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />);
+      const token = container.querySelector(".designerGateToken")!;
+      fireEvent.pointerDown(token, { button: 0, pointerId: 3, clientX: midpointOf(start).x, clientY: midpointOf(start).y });
+      fireEvent.pointerMove(window, { pointerId: 3, clientX: midpointOf(target).x, clientY: midpointOf(target).y });
+      fireEvent.pointerUp(window, { pointerId: 3 });
+      expect(latest[CAVERN_INDEX].gateLinks).toEqual([
+        {
+          surface: { row: autoSurface.row, col: autoSurface.col },
+          gateHex: hexSpaceId(target.gateHex),
+          entranceHex: hexSpaceId(target.entranceHex)
+        }
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("dragging a DESIGNED gate to another surface REPLACES the link (not appended alongside)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const designedGate = planSubterraneanGates(
+        [
+          { row: surfaceA.row, col: surfaceA.col, group: "starting" },
+          { row: surfaceB.row, col: surfaceB.col, group: "far" },
+          { row: cavern.row, col: cavern.col, group: "subterranean" }
+        ],
+        [{ surfaceCenter: surfaceA, cavernCenter: cavern }]
+      )[0];
+      const target = legalGateHexPairs(surfaceB, cavern)[0];
+
+      let latest = twoSurfaceMap({ gateLinks: [{ surface: { row: surfaceA.row, col: surfaceA.col } }] });
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(<MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />);
+      const token = container.querySelector(".designerGateToken.designed");
+      expect(token, "the designed surfaceA gate token").toBeTruthy();
+      fireEvent.pointerDown(token!, {
+        button: 0,
+        pointerId: 4,
+        clientX: midpointOf({ gateHex: designedGate.gateHex, entranceHex: designedGate.entranceHex }).x,
+        clientY: midpointOf({ gateHex: designedGate.gateHex, entranceHex: designedGate.entranceHex }).y
+      });
+      fireEvent.pointerMove(window, { pointerId: 4, clientX: midpointOf(target).x, clientY: midpointOf(target).y });
+      fireEvent.pointerUp(window, { pointerId: 4 });
+
+      // Exactly ONE link, now to surfaceB — the surfaceA entry is replaced, not kept.
+      expect(latest[CAVERN_INDEX].gateLinks).toEqual([
+        {
+          surface: { row: surfaceB.row, col: surfaceB.col },
+          gateHex: hexSpaceId(target.gateHex),
+          entranceHex: hexSpaceId(target.entranceHex)
+        }
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("with designed links to BOTH surfaces, dragging one offers NO pairs on the other and never collides with its pinned hexes", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const pairsA = legalGateHexPairs(surfaceA, cavern);
+      const pairsB = legalGateHexPairs(surfaceB, cavern);
+      const entA = new Set(pairsA.map((pair) => hexSpaceId(pair.entranceHex)));
+      // surfaceB pinned to the pair sharing a cavern entrance with surfaceA — so a
+      // surfaceA pair reusing that entrance is a REAL collision the filter must drop.
+      const pinnedB = pairsB.find((pair) => entA.has(hexSpaceId(pair.entranceHex)))!;
+      expect(pinnedB, "a surfaceB pair sharing a cavern entrance with surfaceA exists").toBeTruthy();
+      const sharedEntrance = hexSpaceId(pinnedB.entranceHex);
+      expect(pairsA.some((pair) => hexSpaceId(pair.entranceHex) === sharedEntrance), "the colliding surfaceA pair exists").toBe(true);
+      const pinnedA = pairsA.find((pair) => hexSpaceId(pair.entranceHex) !== sharedEntrance)!;
+
+      let latest = twoSurfaceMap({
+        gateLinks: [
+          { surface: { row: surfaceA.row, col: surfaceA.col }, gateHex: hexSpaceId(pinnedA.gateHex), entranceHex: hexSpaceId(pinnedA.entranceHex) },
+          { surface: { row: surfaceB.row, col: surfaceB.col }, gateHex: hexSpaceId(pinnedB.gateHex), entranceHex: hexSpaceId(pinnedB.entranceHex) }
+        ]
+      });
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(<MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />);
+
+      // Grab the surfaceA gate specifically (there are two designed gates now) and
+      // aim at surfaceB's pinned gate — it must NOT re-target onto the claimed tile.
+      const token = gateTokenAt(container, pinnedA.gateHex);
+      expect(token, "the surfaceA gate token").toBeTruthy();
+      fireEvent.pointerDown(token!, { button: 0, pointerId: 5, clientX: midpointOf(pinnedA).x, clientY: midpointOf(pinnedA).y });
+      fireEvent.pointerMove(window, { pointerId: 5, clientX: midpointOf(pinnedB).x, clientY: midpointOf(pinnedB).y });
+
+      const ghosts = [...container.querySelectorAll(".designerGateGhost")];
+      const ghostSurfaces = new Set(ghosts.map((ghost) => ghost.getAttribute("data-ghost-surface")));
+      expect(ghostSurfaces.has(`${surfaceA.row}:${surfaceA.col}`), "surfaceA is offered").toBe(true);
+      expect(ghostSurfaces.has(`${surfaceB.row}:${surfaceB.col}`), "surfaceB is claimed by the other link — NOT offered").toBe(false);
+      // No offered pair reuses surfaceB's pinned hexes (two gates can't share a hex).
+      expect(new Set(ghosts.map((ghost) => ghost.getAttribute("data-ghost-entrance"))).has(sharedEntrance)).toBe(false);
+      expect(new Set(ghosts.map((ghost) => ghost.getAttribute("data-ghost-gate"))).has(hexSpaceId(pinnedB.gateHex))).toBe(false);
+
+      fireEvent.pointerUp(window, { pointerId: 5 });
+      // Both links survive; surfaceB's pin is untouched; the two never share a hex.
+      const links = latest[CAVERN_INDEX].gateLinks!;
+      expect(links.length).toBe(2);
+      const bLink = links.find((link) => sameCoord(link.surface, surfaceB))!;
+      expect(bLink).toEqual({
+        surface: { row: surfaceB.row, col: surfaceB.col },
+        gateHex: hexSpaceId(pinnedB.gateHex),
+        entranceHex: hexSpaceId(pinnedB.entranceHex)
+      });
+      const aLink = links.find((link) => sameCoord(link.surface, surfaceA))!;
+      expect(aLink.gateHex).not.toBe(bLink.gateHex);
+      expect(aLink.entranceHex).not.toBe(bLink.entranceHex);
+    } finally {
+      restore();
+    }
+  });
+
+  it("renders ghost candidate markers for BOTH surfaces during a live drag, gone on pointerup", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      let latest = twoSurfaceMap();
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(<MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />);
+      expect(container.querySelectorAll(".designerGateGhost").length, "no ghosts before a drag").toBe(0);
+
+      const token = container.querySelector(".designerGateToken")!;
+      const grabAt = midpointOf({ gateHex: autoGate[0].gateHex, entranceHex: autoGate[0].entranceHex });
+      const dropAt = midpointOf(legalGateHexPairs(freeSurface, cavern)[0]);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 6, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 6, clientX: dropAt.x, clientY: dropAt.y });
+
+      const ghosts = [...container.querySelectorAll(".designerGateGhost")];
+      const surfaces = new Set(ghosts.map((ghost) => ghost.getAttribute("data-ghost-surface")));
+      expect(surfaces.has(`${surfaceA.row}:${surfaceA.col}`), "surfaceA ghosted").toBe(true);
+      expect(surfaces.has(`${surfaceB.row}:${surfaceB.col}`), "surfaceB ghosted too").toBe(true);
+      // Two circles per candidate across both surfaces.
+      const totalPairs = legalGateHexPairs(surfaceA, cavern).length + legalGateHexPairs(surfaceB, cavern).length;
+      expect(ghosts.length).toBe(2 * totalPairs);
+      expect(container.querySelector(".designerGateGhost.hover"), "the snapped pair is highlighted").toBeTruthy();
+
+      fireEvent.pointerUp(window, { pointerId: 6 });
+      expect(container.querySelectorAll(".designerGateGhost").length, "ghosts vanish on release").toBe(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("Escape mid-drag clears the ghost candidate markers", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const { container } = render(<MapDesigner scenarioId="skirmish" customMap={twoSurfaceMap()} onChange={() => {}} hexSize={HEX} />);
+      const token = container.querySelector(".designerGateToken")!;
+      const grabAt = midpointOf({ gateHex: autoGate[0].gateHex, entranceHex: autoGate[0].entranceHex });
+      const dropAt = midpointOf(legalGateHexPairs(freeSurface, cavern)[0]);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 6, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 6, clientX: dropAt.x, clientY: dropAt.y });
+      expect(container.querySelectorAll(".designerGateGhost").length).toBeGreaterThan(0);
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(container.querySelectorAll(".designerGateGhost").length, "Escape clears the ghosts").toBe(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("the AUTOMATIC gate wears the `automatic` class (a visible default), replaced by `designed` once pinned", () => {
+    const auto = renderDesigner(twoSurfaceMap());
+    expect(auto.querySelector(".designerGateToken.automatic"), "auto gate token marked automatic").toBeTruthy();
+    expect(auto.querySelector(".designerGateLink.automatic"), "auto gate link marked automatic").toBeTruthy();
+    expect(auto.querySelector(".designerGateToken.designed"), "not designed while automatic").toBeNull();
+    expect(auto.querySelector(".designerGatePin"), "no pin while automatic").toBeNull();
+
+    cleanup();
+    // Link the auto surface → the same gate now reads designed, no longer automatic.
+    const pinned = renderDesigner(twoSurfaceMap({ gateLinks: [{ surface: { row: autoSurface.row, col: autoSurface.col } }] }));
+    expect(pinned.querySelector(".designerGateToken.designed"), "pinned gate token marked designed").toBeTruthy();
+    expect(pinned.querySelector(".designerGateToken.automatic"), "no longer automatic once designed").toBeNull();
+    expect(pinned.querySelector(".designerGatePin"), "pin present once designed").toBeTruthy();
   });
 });
 
