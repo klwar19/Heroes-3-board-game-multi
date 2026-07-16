@@ -163,6 +163,55 @@ Implemented continuation (July 2026, memory / formation / soak):
   snapshot resume, memory survives reconnect. Invariants: no stall, non-negative
   resources, finite counters.
 
+Implemented continuation (July 2026, home-tile drain + premium-economy rush):
+
+Score-layer heuristics only (they re-order already-legal actions; the engine
+rules are untouched, so nothing here can produce an illegal move). Each claim is
+mutation-checked — removing the wiring fails the named test.
+
+- **Home-tile drain (all three items, every game)** (`map-navigation.ts`): while
+  the main hero still stands on its OWN starting tile Ⅰ and any sweepable payoff
+  remains on it, `primaryMapObjective` RESTRICTS the objective pool to those
+  remaining home payoffs — conquest-victory scoring, Far discovery and the sticky
+  commit can no longer yank the hero off tile Ⅰ mid-sweep. The round cap on the
+  sweep is gone (`HOME_TILE_SWEEP_MAX_ROUND` removed); the drain runs whenever the
+  hero is still home. Home difficulty-1/2 guards also stay engageable through the
+  sweep (they no longer trip the establish-core / bronze-rush neutral refusals).
+  Pinned in `map-navigation.test.ts` ("home tile drains all three items even
+  under conquest bronze-rush pressure", "still drains … past the old round-3
+  window").
+- **Premium-economy rush** — settlement / gold mine / valuables mine
+  (`army-strength.ts` `isPremiumEconomyField` / `premiumEconomyEngageCap` /
+  `armyCoversPremiumEconomyGuard`; `map-navigation.ts` `canBeatGuardedField` +
+  `objectiveStrategicValue` + `premiumEconomyResourceBonus`). These are the Far
+  economy the expansion is FOR, so the neutral-only opening refusals are waived
+  for them and the AI hits difficulty-3 of them ASAP, not afraid of unit losses.
+  Engagement is difficulty-calibrated off the real `NEUTRAL_ARMY_TABLE` field-3
+  parties: three bronze **Packs** alone take lv3 on easy/normal/hard (mixed-silver
+  parties), Impossible (pure 3-silver wall) needs the Packs + one silver body.
+  A coverable premium fight outranks random side neutrals and can drive a
+  multi-turn (3-step) sticky march before round 6; resource need steers gold vs.
+  valuables. Pinned in `map-navigation.test.ts` ("still hits a lv3 settlement /
+  gold / valuables mine during bronze rush …", "hard/normal/easy: 3 bronze Packs
+  alone take lv3 …", "when valuables are short, prioritizes a valuables mine …",
+  "marches 3 turns toward a lv3 gold mine / settlement before round 6 …") and
+  `army-strength.test.ts` ("premium economy + soft silver unlock").
+- **Soft silver engagement unlock** (`army-strength.ts` `armyEngagementTier`):
+  three bronze Packs + even a single silver body unlocks the silver guard cap
+  (the classic path still needs two silver bodies). A lone silver with no Pack
+  core stays on the level gate (CONTROL). Pinned in the same tests.
+- **Sell TRUE-surplus valuables for gold before the Gold dwelling**
+  (`map-policy.ts` `tradeUtility`): the last dwelling-needed valuable is still
+  protected, but a real surplus (target + 2, e.g. from a valuables mine) is sold
+  so income converts into build/recruit cash instead of rotting. Pinned in
+  `market-policy.test.ts` ("sells TRUE surplus valuables for gold …", with an
+  at-target CONTROL).
+- **Polish bank-size A/B reads** picked up test coverage for the already-shipped
+  `choice-policy.ts` sized-bank chooser (`army-strength.test.ts`,
+  `visit-event-policy.test.ts`): the AI evaluates army strength vs each rolled
+  size's deterministic layer bulk and takes the best beatable candidate, leaving
+  the field blocked when neither is beatable.
+
 Still deferred intentionally:
 
 - hiding multiplayer-only invite/share affordances on the SP room table page;
