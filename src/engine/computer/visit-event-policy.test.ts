@@ -7,6 +7,7 @@ import type {
   PlayerVisibleState,
   VisitStep,
 } from "../state";
+import { createAdventureGameState } from "../adventure-setup";
 import { chooseComputerAction } from "./policy";
 import { scoreMapAction } from "./map-policy";
 import type { ComputerObservation } from "./types";
@@ -280,6 +281,82 @@ describe("choice policy — map discovery / garrison", () => {
     const decision = chooseComputerAction(observe(state, legal));
     expect((decision!.action as { optionIndex: number }).optionIndex).toBe(0);
     expect(decision?.policy).toContain("place-creature-bank");
+  });
+
+  it("Polish bank sizes: picks the largest beatable A/B candidate; leaves when neither is", () => {
+    // Polish house rule: reveal peeks two rolled sizes; the AI evaluates army
+    // strength vs each deterministic layer bulk and takes the best win it can.
+    const fullArmy = createAdventureGameState({
+      seed: "polish-bank-pick",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: false,
+    }).players.p2.army;
+
+    const choice: PendingChoice = {
+      id: "bank-ab",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "Which bank?",
+      options: [
+        { label: "A: Imp Cache size I" },
+        { label: "B: Imp Cache size IV" },
+        { label: "Leave it blocked" },
+      ],
+      context: "place-creature-bank",
+      returnPhase: "map",
+      creatureBank: {
+        fieldId: "h:0:0",
+        tier: "far",
+        candidates: [
+          { bankId: "imp_cache", size: 1 },
+          { bankId: "imp_cache", size: 4 },
+        ],
+      },
+    };
+
+    const strong = {
+      seed: "polish-bank-strong",
+      round: 2,
+      eventCounter: 0,
+      combat: null,
+      pendingChoice: choice,
+      players: {
+        p2: {
+          id: "p2",
+          hand: [],
+          resources: { gold: 20, buildingMaterials: 2, valuables: 0 },
+          army: fullArmy,
+        },
+      },
+    } as unknown as GameState;
+    const legal: LegalAction[] = [0, 1, 2].map((optionIndex) => ({
+      label: `opt-${optionIndex}`,
+      action: {
+        type: "CHOOSE_OPTION" as const,
+        playerId: "p2",
+        choiceId: "bank-ab",
+        optionIndex,
+      },
+    }));
+    const strongPick = chooseComputerAction(observe(strong, legal));
+    // Full starting army clears size Ⅰ but not size Ⅳ — pick the beatable one.
+    expect((strongPick!.action as { optionIndex: number }).optionIndex).toBe(0);
+
+    // CONTROL: gutted army cannot beat either → leave blocked.
+    const weak = {
+      ...strong,
+      players: {
+        p2: {
+          id: "p2",
+          hand: [],
+          resources: { gold: 20, buildingMaterials: 2, valuables: 0 },
+          army: fullArmy.slice(0, 1),
+        },
+      },
+    } as unknown as GameState;
+    const weakPick = chooseComputerAction(observe(weak, legal));
+    expect((weakPick!.action as { optionIndex: number }).optionIndex).toBe(2);
   });
 
   it("garrison: lets the holding fall when broke, defends when funded", () => {
