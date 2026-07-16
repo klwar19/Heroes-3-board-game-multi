@@ -533,7 +533,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} raids the ${
         CREATURE_BANKS[event.bankId as keyof typeof CREATURE_BANKS]?.name ?? "Creature Bank"
       } (${event.stackLayers !== undefined
-        ? `${event.stackLayers} Stack layer${event.stackLayers === 1 ? "" : "s"} on each of 4 defenders; reward X=${event.stackedCount}`
+        ? `up to ${event.stackLayers} Stack layer${event.stackLayers === 1 ? "" : "s"} per defender, capped by each card's unit tier; reward X=${event.stackedCount}`
         : `${event.stackedCount} Stacked defender${event.stackedCount === 1 ? "" : "s"}`}).`;
     case "ABILITY_EMPOWERED":
       return `${playerName(state, event.playerId)} empowers ${cardName(
