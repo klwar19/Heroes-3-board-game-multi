@@ -660,17 +660,18 @@ export function MapDesigner({
   // edits the TOKEN, not the tile underneath it.
   const [selectedTokenIndex, setSelectedTokenIndex] = useState<number | null>(null);
   const [tokenPopoverAt, setTokenPopoverAt] = useState<{ x: number; y: number } | null>(null);
-  // A live drag of a FACE-UP tile's token to another legal slot (its own tile or
-  // another face-up tile that carries no token yet). Face-down badge tokens are
-  // never draggable (the discoverer picks the hex at reveal). Same lifecycle as
-  // the gate/object token drags.
+  // A live drag of a tile-carried token (monolith or whirlpool) to a new home.
+  // ANY token drags — face-up OR face-down — to ANY compatible tile: a face-up
+  // tile's legal slot (`slot` a number) or a face-down tile's whole footprint
+  // (`slot` undefined → placed by the discoverer at reveal, the same pending
+  // shape the add-picker writes). Same lifecycle as the gate/object token drags.
   const [tokenDrag, setTokenDrag] = useState<{
     index: number;
     kind: MapTokenKind;
     startX: number;
     startY: number;
     moved: boolean;
-    hover: { planIndex: number; slot: number } | null;
+    hover: { planIndex: number; slot?: number } | null;
   } | null>(null);
   const tokenClickSuppressRef = useRef(false);
   // Border paint mode: armed from the Objects palette, it turns every placed
@@ -1206,44 +1207,66 @@ export function MapDesigner({
     [tileSlotCandidates, standaloneCandidates]
   );
   /**
-   * Legal drop slots for the tile-token drag: every legal slot (for the dragged
-   * token's kind) on every FACE-UP tile, EXCLUDING tiles that already carry a
-   * token (one token per tile) but INCLUDING every legal slot of the dragged
-   * token's OWN tile. Whirlpool slots are sea-only by the legality rule, and a
-   * move never changes the token count, so the Whirlpool supply cap is safe.
+   * Legal drop hexes for the tile-token drag, one entry per board hex the drag
+   * may land on. A tile that already carries a token is off-limits (one token
+   * per tile) EXCEPT the dragged token's own FACE-UP tile (repositioning within
+   * its slots). Two target shapes, matching the two ways a token is stored:
+   *  - FACE-UP tile with a def: each legal printed slot for the dragged kind →
+   *    `{ planIndex, slot }` (the token overwrites that exact field).
+   *  - FACE-DOWN tile whose group accepts the kind (the ADD rule,
+   *    `faceDownTokenKinds`): its WHOLE 7-hex footprint is ONE target →
+   *    `{ planIndex, slot: undefined }` (pending; the discoverer picks the field
+   *    at reveal). The dragged token's OWN face-down tile is never a target —
+   *    dropping on itself is a no-op.
+   * A move never changes the token COUNT (one leaves the source, one lands), so
+   * the Whirlpool supply cap is unaffected in every orientation combination.
    */
   const tokenSlotCandidates = useMemo(() => {
     if (!tokenDrag) {
-      return [] as { planIndex: number; slot: number; hex: HexCoord }[];
+      return [] as { planIndex: number; slot?: number; hex: HexCoord }[];
     }
     const { kind, index: sourceIndex } = tokenDrag;
-    const out: { planIndex: number; slot: number; hex: HexCoord }[] = [];
+    const out: { planIndex: number; slot?: number; hex: HexCoord }[] = [];
     customMap.forEach((plan, planIndex) => {
-      if (plan.faceDown || !plan.tileDefId) {
+      const isSource = planIndex === sourceIndex;
+      // One token per tile: a tile carrying a token is off-limits (both
+      // orientations) except the dragged token's own tile.
+      if (plan.token && !isSource) {
         return;
       }
-      // One token per tile: a tile that already carries a token is off-limits,
-      // except the dragged token's own tile (moving within its own slots).
-      if (plan.token && planIndex !== sourceIndex) {
+      if (!plan.faceDown) {
+        // Face-up: needs a concrete tile; each legal slot for the kind is a hex.
+        if (!plan.tileDefId) {
+          return;
+        }
+        const def = allTileDefinitions[plan.tileDefId];
+        if (!def) {
+          return;
+        }
+        for (const slot of legalTokenSlotsForTileDef(def, kind)) {
+          out.push({
+            planIndex,
+            slot,
+            hex: tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)[slot]
+          });
+        }
         return;
       }
-      const def = allTileDefinitions[plan.tileDefId];
-      if (!def) {
+      // Face-down: the whole footprint is one pending target, gated on the group
+      // accepting this kind (the ADD rule). The source's own face-down tile is
+      // never a target (dropping on itself is a no-op).
+      if (isSource || !faceDownTokenKinds(plan.group).includes(kind)) {
         return;
       }
-      for (const slot of legalTokenSlotsForTileDef(def, kind)) {
-        out.push({
-          planIndex,
-          slot,
-          hex: tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)[slot]
-        });
+      for (const hex of tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)) {
+        out.push({ planIndex, slot: undefined, hex });
       }
     });
     return out;
   }, [tokenDrag, customMap]);
   /** The tile+slot a token drag would land on if released over `hex` (else null). */
   const tokenSlotAtHex = useCallback(
-    (hex: HexCoord): { planIndex: number; slot: number } | null => {
+    (hex: HexCoord): { planIndex: number; slot?: number } | null => {
       const id = hexSpaceId(hex);
       const match = tokenSlotCandidates.find((candidate) => hexSpaceId(candidate.hex) === id);
       return match ? { planIndex: match.planIndex, slot: match.slot } : null;
@@ -1310,20 +1333,25 @@ export function MapDesigner({
     [objects, onObjectsChange]
   );
   /**
-   * Move a tile-carried token to a target tile+slot. A same-tile move is one
-   * `updateTile`; a cross-tile move is ONE atomic array update (clear the source
-   * plan's token, set the target's) — never two `onChange` calls, whose second
-   * would clobber the first since the parent holds the array.
+   * Move a tile-carried token to a target tile. A FACE-UP target writes
+   * `{ kind, slot }` (the token overwrites that field); a FACE-DOWN target
+   * (`slot` undefined) writes `{ kind }` with NO slot key — the exact pending
+   * shape the add-picker writes, placed by the discoverer at reveal. A same-tile
+   * move is one `updateTile`; a cross-tile move is ONE atomic array update (clear
+   * the source plan's token, set the target's) — never two `onChange` calls,
+   * whose second would clobber the first since the parent holds the array.
    */
   const commitTokenMove = useCallback(
-    (sourceIndex: number, target: { planIndex: number; slot: number }) => {
+    (sourceIndex: number, target: { planIndex: number; slot?: number }) => {
       const source = customMap[sourceIndex];
       if (!source?.token) {
         return;
       }
       const kind = source.token.kind;
+      const nextToken: CustomMapTilePlan["token"] =
+        target.slot === undefined ? { kind } : { kind, slot: target.slot };
       if (target.planIndex === sourceIndex) {
-        updateTile(sourceIndex, { token: { kind, slot: target.slot } });
+        updateTile(sourceIndex, { token: nextToken });
         return;
       }
       onChange(
@@ -1334,7 +1362,7 @@ export function MapDesigner({
             return next;
           }
           if (planIndex === target.planIndex) {
-            return { ...plan, token: { kind, slot: target.slot } };
+            return { ...plan, token: nextToken };
           }
           return plan;
         })
@@ -1962,25 +1990,22 @@ export function MapDesigner({
 
   /**
    * Press a tile-carried token. Always takes the press (stopPropagation) so the
-   * board never pans and the tile panel never opens underneath it. A FACE-UP
-   * token starts a drag; a FACE-DOWN badge is click-only (the discoverer picks
-   * its hex at reveal), so it merely blocks the fall-through and lets the click
-   * open the token panel.
+   * board never pans and the tile panel never opens underneath it, and arms a
+   * drag — EVERY token drags now, face-up OR face-down. A release in place never
+   * crosses the move-promote threshold, so it stays a plain click that opens the
+   * token panel; a face-down token that never moves keeps its "placed at reveal"
+   * pending shape untouched.
    */
-  const beginTokenPress =
-    (index: number, kind: MapTokenKind, draggable: boolean) => (event: React.PointerEvent) => {
-      if (event.button !== 0) {
-        return;
-      }
-      event.stopPropagation();
-      if (!draggable) {
-        return;
-      }
-      (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
-      setArmedObject(null);
-      setBorderPaint(false);
-      setTokenDrag({ index, kind, startX: event.clientX, startY: event.clientY, moved: false, hover: null });
-    };
+  const beginTokenPress = (index: number, kind: MapTokenKind) => (event: React.PointerEvent) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.stopPropagation();
+    (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+    setArmedObject(null);
+    setBorderPaint(false);
+    setTokenDrag({ index, kind, startX: event.clientX, startY: event.clientY, moved: false, hover: null });
+  };
 
   /** Open the compact token panel for a tile-carried token (drag suppresses the click). */
   const onMapTokenClick = (index: number) => (event: React.MouseEvent) => {
@@ -2470,14 +2495,15 @@ export function MapDesigner({
     }
     const center = { row: plan.row, col: plan.col };
     const fixedSlot = !plan.faceDown && plan.tileDefId && token.slot !== undefined;
-    // A face-up token sits on an exact slot and CAN be dragged to another legal
-    // slot; a face-down badge cannot (its hex is picked when the tile is found).
-    const draggable = Boolean(!plan.faceDown && plan.tileDefId);
     const draggingThis = Boolean(tokenDrag && tokenDrag.index === index && tokenDrag.moved);
-    // While dragging, draw the token following the hovered target slot's hex.
+    // While dragging, draw the token following the hovered target: a face-up slot
+    // sits on that slot's hex; a face-down tile (slot undefined) snaps to the
+    // tile centre (the discoverer picks the exact hex later).
     const hoverPlan = draggingThis && tokenDrag!.hover ? customMap[tokenDrag!.hover.planIndex] : null;
     const cell = hoverPlan
-      ? tileFootprint({ row: hoverPlan.row, col: hoverPlan.col }, hoverPlan.rotation ?? 0)[tokenDrag!.hover!.slot]
+      ? tokenDrag!.hover!.slot === undefined
+        ? { row: hoverPlan.row, col: hoverPlan.col }
+        : tileFootprint({ row: hoverPlan.row, col: hoverPlan.col }, hoverPlan.rotation ?? 0)[tokenDrag!.hover!.slot]
       : fixedSlot
         ? tileFootprint(center, plan.rotation ?? 0)[token.slot as number]
         : center;
@@ -2486,12 +2512,12 @@ export function MapDesigner({
     const tokenHeight = 2 * size * (fixedSlot ? 1 : 0.9);
     gateLayer.push(
       <image
-        className={`designerMapToken${draggable ? " draggable" : ""}${draggingThis ? " dragging" : ""}`}
+        className={`designerMapToken draggable${draggingThis ? " dragging" : ""}`}
         height={tokenHeight}
         href={assetUrl(mapTokenImage(token.kind, whirlpoolNumberByIndex.get(index)))}
         key={`map-token-${index}`}
         onClick={onMapTokenClick(index)}
-        onPointerDown={beginTokenPress(index, token.kind, draggable)}
+        onPointerDown={beginTokenPress(index, token.kind)}
         opacity={plan.faceDown ? 0.9 : 1}
         preserveAspectRatio="xMidYMid meet"
         width={tokenWidth}
@@ -2500,8 +2526,8 @@ export function MapDesigner({
       >
         <title>
           {plan.faceDown
-            ? `${mapTokenLabel(token.kind)} token — placed on a field of the discoverer's choosing when this tile is revealed. Click for options (the hex is picked at discovery, so it can't be dragged).`
-            : `${mapTokenLabel(token.kind)} token — overwrites this field. Drag to another legal slot, or click for options.`}
+            ? `${mapTokenLabel(token.kind)} token — placed on a field of the discoverer's choosing when this tile is revealed. Drag to another compatible tile, or click for options.`
+            : `${mapTokenLabel(token.kind)} token — overwrites this field. Drag to another tile or legal slot, or click for options.`}
         </title>
       </image>
     );
@@ -2634,19 +2660,25 @@ export function MapDesigner({
       }
     }
   }
-  // Token-drag candidate slots (every legal slot on a face-up tile, one-token cap).
+  // Token-drag candidate hexes: a face-up tile glows per legal slot; a face-down
+  // tile glows across its WHOLE footprint (one pending target). One-token cap.
   if (tokenDrag?.moved) {
     const hoverKey = tokenDrag.hover ? `${tokenDrag.hover.planIndex}:${tokenDrag.hover.slot}` : null;
     for (const candidate of tokenSlotCandidates) {
       const { x, y } = hexToPixel(candidate.hex, size);
+      const isFaceDown = candidate.slot === undefined;
       const isHover = `${candidate.planIndex}:${candidate.slot}` === hoverKey;
       objectLayer.push(
         <polygon
-          className={`designerObjectSlot tileSlot${isHover ? " hover" : ""}`}
-          key={`token-slot-${candidate.planIndex}-${candidate.slot}`}
+          className={`designerObjectSlot ${isFaceDown ? "faceDownTile" : "tileSlot"}${isHover ? " hover" : ""}`}
+          key={`token-slot-${hexSpaceId(candidate.hex)}`}
           points={hexCorners(x, y, size - 1.6)}
         >
-          <title>Move the {mapTokenLabel(tokenDrag.kind)} token to this slot</title>
+          <title>
+            {isFaceDown
+              ? `Move the ${mapTokenLabel(tokenDrag.kind)} token to this tile (placed at reveal)`
+              : `Move the ${mapTokenLabel(tokenDrag.kind)} token to this slot`}
+          </title>
         </polygon>
       );
     }
@@ -3691,9 +3723,10 @@ export function MapDesigner({
         until discovery), or <strong>Face-up</strong> (visible from the start), then click a tile card. Filter chips
         (Mine, Obelisk, …) narrow the grid. <strong>Underground</strong> tiles need a Subterranean Gate (auto when
         touching Surface). Add <strong>Monolith</strong> / <strong>Whirlpool</strong> tokens from the same panel — at
-        least 2 of a kind to work; once placed, <strong>drag a token to move it</strong> (to another slot or face-up
-        tile) or <strong>click it</strong> for its slot / remove options (a face-down badge is click-only — its hex is
-        picked at discovery). A centre tile can force its <strong>Ⅶ objective field</strong> (Town / Grail /
+        least 2 of a kind to work; once placed, <strong>drag a token to move it</strong> to any compatible tile —
+        face-up or face-down, in any combination (a face-down tile is one whole-footprint drop zone; its exact hex is
+        picked at discovery) — or <strong>click it</strong> for its slot / remove options. A centre tile can force its{" "}
+        <strong>Ⅶ objective field</strong> (Town / Grail /
         Utopia, shown as a badge). Drag a cavern to touch a Surface tile and its <strong>Subterranean Gate</strong>{" "}
         appears — then <strong>drag any gate token</strong> along the shared edge to pin its exact spot (or click it for
         link options, and use <strong>↻</strong> to slide it). Arm <strong>🖌 Yellow border</strong> in the Objects

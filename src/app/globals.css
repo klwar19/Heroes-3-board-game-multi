@@ -12789,6 +12789,19 @@ img.cardBack {
 .designerObjectSlot.standalone.hover {
   fill: rgba(120, 200, 255, 0.56);
 }
+/* A face-down tile is ONE whole-footprint drop target for a token drag (the
+   discoverer picks the exact field at reveal) — a distinct dashed violet glow so
+   it reads as a whole-tile target, not a single printed slot. */
+.designerObjectSlot.faceDownTile {
+  fill: rgba(180, 150, 255, 0.22);
+  stroke: #c3a7ff;
+  stroke-dasharray: 4 3;
+}
+.designerObjectSlot.faceDownTile.hover {
+  fill: rgba(180, 150, 255, 0.5);
+  stroke-width: 2.4px;
+  filter: drop-shadow(0 0 5px rgba(190, 160, 255, 0.85));
+}
 /* Placed object tokens are grabbable (drag to move, click for options). */
 .designerObjectToken {
   cursor: grab;
@@ -12810,8 +12823,9 @@ img.cardBack {
   stroke-width: 4px;
   filter: drop-shadow(0 0 4px currentColor);
 }
-/* Tile-carried Monolith/Whirlpool tokens: face-up ones drag (grab), face-down
-   badges are click-only (pointer). Both lift on hover so they read interactive. */
+/* Tile-carried Monolith/Whirlpool tokens: every one drags (grab) — face-up to a
+   legal slot, face-down to another compatible tile — and a plain click opens
+   options. They lift on hover so they read interactive. */
 .designerMapToken {
   cursor: pointer;
 }
