@@ -30,7 +30,8 @@ export function unitSideStrength(unit: ArmyUnitState): number {
   if (!side) {
     return 0;
   }
-  const stackLayers = unit.side === "pack" ? Math.max(0, unit.stacks ?? 0) : 0;
+  const stackLayers =
+    unit.side === "pack" || unit.side === "neutral" ? Math.max(0, unit.stacks ?? 0) : 0;
   // A Polish Stack does not create another activation/body: it adds one full
   // Pack health bar per layer, and the whole card has one flat +1 Attack while
   // any layer remains. Mirror that real combat durability instead of treating

@@ -101,7 +101,7 @@ setup-time freezing, legacy-snapshot defaults and a lobby UI for free:
   (`house-rules.ts:200`).
 - Lobby UI: `HouseRulesSection` (`src/components/adventure/screen.tsx:5052-5098`)
   is registry-driven; add a rendered category header so the three rules appear
-  as a visually distinct **"Polish house rules (tournament variants)"** block
+  as a visually distinct **"Polish house rules"** block
   on the *rules* tab. No per-feature bespoke lobby UI.
 - `polish-spell-book` is available at every seat count. Human and computer
   seats consume the same legal `CAST_SPELL` / `PLAY_CARD` actions; the Phase-6

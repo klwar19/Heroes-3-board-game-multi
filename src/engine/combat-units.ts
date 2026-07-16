@@ -96,13 +96,14 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   }
 
   // Polish Unit Stacks (Rebirth already spent or absent): every paid Stack is
-  // one full extra Pack-health layer. Remove layers before the printed Pack can
-  // flip to Few, carrying ALL excess damage so one large hit may consume several
-  // layers. Recomputing the side after each loss drops the flat +1 Attack when
-  // the final Stack is gone.
+  // one full extra health layer (Pack or recruited Neutral). Remove layers
+  // before the printed Pack can flip to Few, carrying ALL excess damage so one
+  // large hit may consume several layers. Recomputing the side after each loss
+  // drops the flat +1 Attack when the final Stack is gone. Neutrals have no
+  // Pack→Few flip — once stacks and the body die, the card is removed as usual.
   while (
     houseRuleEnabled(state, "polish-unit-stacks") &&
-    unit.variant === "pack" &&
+    (unit.variant === "pack" || unit.variant === "neutral") &&
     (unit.armyStacks ?? 0) > 0 &&
     unit.damage >= unit.maxHealth
   ) {

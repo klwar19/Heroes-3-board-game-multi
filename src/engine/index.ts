@@ -249,7 +249,11 @@ export {
 export {
   POLISH_UNIT_STACK_RULES,
   polishArmyUnitCanBuyStack,
+  polishArmyUnitStackCap,
+  polishArmyUnitStackCost,
+  polishBankGuardLayerCap,
   polishUnitStackCap,
+  polishUnitStackCapLabel,
   polishUnitStackCost
 } from "./polish-unit-stacks";
 export {
@@ -438,6 +442,8 @@ export {
   levelOfExperience,
   mapTokenLabel,
   polishBankMaxSize,
+  polishBankRewardScale,
+  polishBankRewardX,
   polishBankSizeForAttackRolls,
   tokenMayCoverFieldDef,
   planSubterraneanGates,

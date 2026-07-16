@@ -599,7 +599,7 @@ function makeSharedDecks(
 
   if (splitDecks) {
     return {
-      // Polish tournaments deliberately use one combined Spell deck even when
+      // Polish house rules deliberately use one combined Spell deck even when
       // split Artifact decks remain enabled.
       spells: make("spells", polishSpellBook ? spellDeckLegacy : spellDeckBinhBasic),
       ...(polishSpellBook ? {} : { "spells-expert": make("spells-expert", spellDeckBinhExpert) }),

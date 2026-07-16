@@ -7,6 +7,8 @@ import {
   makeCombatUnitFromArmy,
   markUnitRemovedIfNeeded,
   NEUTRAL_PLAYER_ID,
+  polishArmyUnitCanBuyStack,
+  polishBankGuardLayerCap,
   polishUnitStackCap,
   polishUnitStackCost,
   unitSideRuleOverrides
@@ -101,7 +103,7 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     expect(result.state.players.p1.army[0].stacks).toBe(2);
   });
 
-  it("requires the rule, Citadel, and Pack side; neutral/Few cards never receive an offer", () => {
+  it("requires the rule and Citadel; Few cards never receive an offer (Neutrals may)", () => {
     const off = makeState(false, "polish-stacks-off");
     addCitadel(off);
     off.players.p1.army = [{ ...griffin }];
@@ -136,6 +138,72 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
         (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases[0]?.kind === "stack"
       )
     ).toBe(false);
+  });
+
+  it("lets recruited Neutrals buy Stacks using neutral gold + army caps (bronze 3 / silver 2 / gold 1)", () => {
+    // CONTROL: Pack griffin cost/cap unchanged (gold 6 + bronze 1 = 7; cap 3).
+    expect(polishUnitStackCost("castle.griffins", "pack")).toEqual({ gold: 7 });
+    expect(polishUnitStackCap("castle.griffins", "pack")).toBe(3);
+
+    // Bronze neutral: cost = 7 gold + 1; human army cap is always bronze 3
+    // (bank combat punch-up does NOT apply once the unit is player-owned).
+    const neutralGriffin = {
+      id: "army_neutral_griffins",
+      unitDefId: "neutral.griffins",
+      side: "neutral" as const
+    };
+    expect(polishUnitStackCost("neutral.griffins", "neutral")).toEqual({ gold: 8 });
+    expect(polishUnitStackCap("neutral.griffins", "neutral")).toBe(3);
+    expect(polishArmyUnitCanBuyStack(neutralGriffin)).toBe(true);
+
+    // Gold Neutral (Nagas): human cap is 1 — bank combat may use 2, army never does.
+    expect(polishUnitStackCap("neutral.nagas", "neutral")).toBe(1);
+    expect(polishBankGuardLayerCap("neutral.nagas")).toBe(2);
+    expect(polishUnitStackCost("neutral.nagas", "neutral")).toEqual({ gold: 16 + 3 });
+
+    // CONTROL: Pack gold unit still uses army cap 1.
+    expect(polishUnitStackCap("castle.archangels", "pack")).toBe(1);
+
+    let state = makeState(true, "polish-stacks-neutral-buy");
+    addCitadel(state);
+    state.players.p1.army = [{ ...neutralGriffin }];
+    const beforeGold = state.players.p1.resources.gold;
+
+    const offered = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "POPULATION_ACTION" &&
+        legal.action.purchases[0]?.kind === "stack" &&
+        legal.action.purchases[0].armyUnitId === neutralGriffin.id
+    );
+    expect(offered?.label).toContain("Add Stack to Griffins");
+
+    state = applyOk(state, {
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "stack", unitDefId: "neutral.griffins", armyUnitId: neutralGriffin.id }]
+    });
+    expect(state.players.p1.army[0].stacks).toBe(1);
+    expect(state.players.p1.resources.gold).toBe(beforeGold - 8);
+
+    // Combat: neutral stacks grant +1 Attack and peel full health layers.
+    const combatUnit = makeCombatUnitFromArmy(
+      { ...neutralGriffin, stacks: 2 },
+      "p1",
+      "combat_n_griffins",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state)
+    )!;
+    const baseAtk = combatUnit.attack - 1;
+    expect(combatUnit.variant).toBe("neutral");
+    expect(combatUnit.armyStacks).toBe(2);
+    expect(combatUnit.attack).toBe(baseAtk + 1);
+
+    combatUnit.damage = combatUnit.maxHealth;
+    markUnitRemovedIfNeeded(state, combatUnit);
+    expect(combatUnit.armyStacks).toBe(1);
+    expect(combatUnit.damage).toBe(0);
+    expect(combatUnit.attack).toBe(baseAtk + 1);
   });
 });
 

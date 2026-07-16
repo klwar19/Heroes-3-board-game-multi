@@ -89,10 +89,13 @@ export type LocationInteraction =
        * Add a unit card to the visiting player's army for free (Creature Bank
        * "gain a unit" rewards). `side` is "pack" for a Stacked gain, "few"
        * otherwise — a Pack is the game's "Stacked" (bigger) version of the card.
+       * Optional `stacks` (Polish bank sizes / unit stacks): persistent Pack
+       * layers granted with the card (size Ⅱ/Ⅲ/Ⅳ → 1/2/3).
        */
       type: "GAIN_UNIT";
       unitDefId: string;
       side: "few" | "pack";
+      stacks?: number;
     }
   | { type: "ROLL_RESOURCE_DICE"; count: number }
   | { type: "ROLL_TREASURE_DICE"; count: number }
