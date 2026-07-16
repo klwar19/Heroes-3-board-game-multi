@@ -100,7 +100,13 @@ export type HouseRuleId =
   | "polish-bank-sizes"
   // Polish tournament variant: Pack army cards may buy persistent Stack layers
   // at a Citadel. A Stack grants +1 Attack and absorbs one full Pack health bar.
-  | "polish-unit-stacks";
+  | "polish-unit-stacks"
+  // Pit Lords' Summon Demons: while ON, a Pit Lords may summon a new Few even
+  // when Demons are already on the field (multiple Demon units). Off (official):
+  // only ONE Demons unit may stand on the field (Few or Pack) — summon is
+  // blocked while any living Demons of the controller are already present;
+  // reinforce Few→Pack stays legal.
+  | "multi-demon-summon";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {

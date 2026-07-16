@@ -504,7 +504,10 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "ground",
     few: { attack: 4, defense: 1, health: 6, initiative: 6, cost: { gold: 8 }, abilities: [], cardImage: "/assets/units-inferno-silver-pit_lords-few.webp" },
-    pack: { attack: 5, defense: 1, health: 6, initiative: 7, cost: { gold: 15 }, abilities: ["summon-demons"], abilityText: "[unit_other] If one of your units has been removed from the board during this Combat, Summon or Reinforce Demons.", cardImage: "/assets/units-inferno-silver-pit_lords-pack.webp" },
+    // engine: SUMMON_OR_REINFORCE_DEMONS once per combat. Official = only 1
+    // Demons unit on the field (Few or Pack); house rule multi-demon-summon
+    // (BINH default) allows summoning additional stacks.
+    pack: { attack: 5, defense: 1, health: 6, initiative: 7, cost: { gold: 15 }, abilities: ["summon-demons"], abilityText: "[unit_other] If one of your units has been removed from the board during this Combat, Summon or Reinforce Demons. Official: 1 Demons unit on the field (Few or Pack). House rule multi-demon-summon: may summon more.", cardImage: "/assets/units-inferno-silver-pit_lords-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/pit_lords/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Inferno Expansion)",
