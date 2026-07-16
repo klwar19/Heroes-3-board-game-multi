@@ -1297,7 +1297,18 @@ export function BattlefieldBoard({
               </div>
               <TokenChips unit={unit} />
               {tokenMark}
-              {isActive ? <span className="activeRing" aria-hidden="true" /> : null}
+              {isActive ? (
+                <>
+                  <span className="activeRing" aria-hidden="true" />
+                  <span
+                    className="activeTurnArrow"
+                    aria-hidden="true"
+                    title={`${unit.cardName} is acting now`}
+                  >
+                    <ChevronDown aria-hidden="true" size={22} strokeWidth={3} />
+                  </span>
+                </>
+              ) : null}
               {isBerserked ? (
                 <span
                   className="berserkBadge"

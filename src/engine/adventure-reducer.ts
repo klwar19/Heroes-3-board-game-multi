@@ -129,6 +129,7 @@ import {
 } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
+import { applyUnitCurrentSide } from "./unit-transforms";
 import {
   COMMANDER_MASTERY_MIN_HERO_LEVEL,
   COMMANDER_STAT_KEYS,
@@ -566,6 +567,20 @@ export function resolveSkeletonReinforceChoice(state: GameState, playerId: Playe
 
   if (armyUnitId) {
     reinforceArmyUnit(state, playerId, armyUnitId, false, false, false, true);
+    // Mid-combat reinforce also upgrades the unit ON the board. Without this,
+    // finalizeAdventureCombat's army-sync rewrites `armyUnit.side` from the
+    // combat unit's still-Few `variant` and the free Pack flips back to Few.
+    const combatUnit = state.combat
+      ? Object.values(state.combat.units).find(
+          (candidate) => candidate.controllerId === playerId && candidate.armyUnitId === armyUnitId
+        )
+      : undefined;
+    // Alive = not yet lethal; avoid importing isUnitAlive (legal-actions ↔ this
+    // module cycle).
+    if (combatUnit && combatUnit.variant === "few" && combatUnit.damage < combatUnit.maxHealth) {
+      combatUnit.variant = "pack";
+      applyUnitCurrentSide(combatUnit, getRuleset(state), unitSideRuleOverrides(state));
+    }
   }
 }
 

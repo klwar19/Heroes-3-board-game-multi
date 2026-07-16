@@ -184,6 +184,14 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     category: "polish",
     default: false,
     legacyDefault: false
+  },
+  {
+    id: "multi-demon-summon",
+    label: "Pit Lords: multiple Demons",
+    description:
+      "On (house rule): Pit Lords may summon a new Few of Demons even when Demons are already on the field (multiple Demon units, still once per Pit Lords per combat). Off (official): only ONE Demons unit may stand on the field — either a Few or a Pack. With Demons already present you may only Reinforce a Few up to a Pack, never summon a second stack.",
+    category: "combat",
+    default: true
   }
 ];
 

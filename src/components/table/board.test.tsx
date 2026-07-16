@@ -607,6 +607,17 @@ describe("Retaliation status — board badge + inspect line", () => {
     );
   }
 
+  it("marks the active unit with a turn arrow so every seat sees whose activation it is", () => {
+    const state = createInitialGameState("active-turn-arrow");
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    renderBoard(state);
+    // Exactly one active cell and one turn arrow — not a ghost on every unit.
+    expect(document.querySelectorAll(".battleCell.active")).toHaveLength(1);
+    expect(document.querySelectorAll(".activeTurnArrow")).toHaveLength(1);
+    const activeCell = document.querySelector(".battleCell.active");
+    expect(activeCell?.querySelector(".activeTurnArrow"), "arrow sits on the active unit card").toBeTruthy();
+  });
+
   it("shows no 'no counter' badge on a fresh board (every unit's retaliation is ready)", () => {
     const state = createInitialGameState("retaliation-ready");
     renderBoard(state);

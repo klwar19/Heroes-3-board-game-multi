@@ -1245,6 +1245,62 @@ button.battleCell {
   box-shadow:
     inset 0 0 0 1px rgb(255 240 189 / 50%),
     0 0 20px rgb(248 207 110 / 42%);
+  z-index: 2;
+}
+
+/* Active unit: gold ring + bouncing arrow so every seat sees whose activation it is. */
+.boardCard .activeRing {
+  position: absolute;
+  inset: -4px;
+  border-radius: 8px;
+  border: 2px solid rgb(255 220 120 / 95%);
+  box-shadow:
+    0 0 0 2px rgb(120 80 10 / 55%),
+    0 0 18px rgb(255 210 90 / 70%);
+  pointer-events: none;
+  animation: activeRingPulse 1.4s ease-in-out infinite;
+}
+
+.boardCard .activeTurnArrow {
+  position: absolute;
+  top: -26px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: #ffe39b;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 75%));
+  pointer-events: none;
+  animation: activeTurnArrowBob 0.85s ease-in-out infinite;
+  z-index: 3;
+}
+
+@keyframes activeRingPulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 2px rgb(120 80 10 / 55%),
+      0 0 14px rgb(255 210 90 / 55%);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow:
+      0 0 0 3px rgb(160 110 20 / 70%),
+      0 0 22px rgb(255 220 110 / 85%);
+  }
+}
+
+@keyframes activeTurnArrowBob {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(5px);
+  }
 }
 
 .battleCell.moveTarget::after {
