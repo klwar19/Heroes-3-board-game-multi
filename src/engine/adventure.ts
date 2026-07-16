@@ -62,7 +62,11 @@ import {
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
 import {
+  canonicalTileEdgeCode,
+  hexDirectionBetween,
   hexDistance,
+  hexEquals,
+  hexNeighbor,
   hexNeighbors,
   hexSpaceId,
   parseHexSpaceId,
@@ -923,6 +927,16 @@ export function canCrossEdge(
     return true;
   }
 
+  // Designer per-edge yellow borders (`borderEdges`): a single sealed hex edge
+  // blocks the crossing in BOTH directions — a same-tile INNER line or a
+  // cross-tile OUTER line alike. Checked here — after the linked-gate / layer /
+  // blocked / Pathfinding rules, before the same-tile internal-line and cross-tile
+  // arc rules — so it takes EXACTLY the whole-arc precedence: a linked Gate still
+  // beats it and Expert Pathfinding still bypasses it, while Fly does not.
+  if (isDesignedEdgeSealedBetween(adventure, from, fromField, to, toField)) {
+    return false;
+  }
+
   if (fromField.tileInstanceId === toField.tileInstanceId) {
     // Printed yellow lines inside a tile block ground movement between the
     // two fields (none on core tiles; expansion tiles may declare them).
@@ -991,6 +1005,105 @@ export function normalizeDesignedBorders(value: unknown): number[] {
 }
 
 /**
+ * A designer per-EDGE border list (`borderEdges`) holds at most this many
+ * distinct physical edges: a 7-hex flower has 30 (18 outer + 12 inner).
+ */
+export const MAX_DESIGNED_BORDER_EDGES = 30;
+
+/**
+ * Normalises a designer per-edge border list ({@link MapTileState.borderEdges} /
+ * {@link CustomMapTilePlan.borderEdges}) to the canonical shape the engine
+ * assumes: every entry an integer 0–41 folded to its {@link canonicalTileEdgeCode}
+ * (so the two codes of an inner edge collapse to one), deduped, ascending, capped
+ * at {@link MAX_DESIGNED_BORDER_EDGES}. Garbage — non-integers, out-of-range — is
+ * dropped. Shared by the persistence sanitiser and the setup validator so a
+ * stored map and a freshly-designed one seal identically (the per-edge twin of
+ * {@link normalizeDesignedBorders}).
+ */
+export function normalizeDesignedBorderEdges(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set<number>();
+  for (const raw of value) {
+    if (Number.isInteger(raw) && (raw as number) >= 0 && (raw as number) <= 41) {
+      const code = raw as number;
+      seen.add(canonicalTileEdgeCode(Math.floor(code / 6), code % 6));
+    }
+  }
+  return [...seen].sort((a, b) => a - b).slice(0, MAX_DESIGNED_BORDER_EDGES);
+}
+
+/**
+ * The rotation-0 footprint index a placed field occupies: slot 0 is the centre
+ * (index 0); a ring slot `s` sits at `slotDirection(s, rotation) + 1` (the
+ * absolute direction it faces, plus one for the centre). This is the frame the
+ * `borderEdges` codes live in, so the lookup stays rotation-proof.
+ */
+function fieldFootprintIndex(slot: number, rotation: number): number {
+  if (slot === 0) {
+    return 0;
+  }
+  const direction = slotDirection(slot, rotation);
+  return direction === null ? 0 : direction + 1;
+}
+
+/**
+ * Whether a PLACED tile seals one hex edge of the field in `slot` toward absolute
+ * direction `absDir` with a DESIGNER per-edge yellow border (`tile.borderEdges`).
+ * Allocation-light (a table lookup plus a ≤30-entry `includes`) so it is safe on
+ * the movement BFS hot path.
+ */
+function tileEdgeDesignedSealed(tile: MapTileState, slot: number, absDir: number): boolean {
+  const edges = tile.borderEdges;
+  if (!edges || edges.length === 0) {
+    return false;
+  }
+  return edges.includes(canonicalTileEdgeCode(fieldFootprintIndex(slot, tile.rotation), absDir));
+}
+
+/**
+ * Whether a DESIGNER per-edge yellow border seals the crossing between two
+ * adjacent placed fields: sealed if the FROM tile lists the edge `(fromSlot,
+ * dir)` OR the TO tile lists the mirror edge `(toSlot, dir+3)`. Covers a
+ * same-tile INNER line and a cross-tile OUTER line uniformly — unlike the
+ * whole-arc `extraBorders`, which only seals outer arcs. The coord parse is paid
+ * only when a border list is actually present on either side, so an ordinary map
+ * (no designed edges) skips it entirely.
+ */
+export function isDesignedEdgeSealedBetween(
+  adventure: AdventureState,
+  from: MapSpaceId,
+  fromField: MapFieldState,
+  to: MapSpaceId,
+  toField: MapFieldState
+): boolean {
+  const fromTile = adventure.tiles[fromField.tileInstanceId];
+  const toTile = adventure.tiles[toField.tileInstanceId];
+  const fromHas = Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
+  const toHas = Boolean(toTile?.borderEdges && toTile.borderEdges.length > 0);
+  if (!fromHas && !toHas) {
+    return false;
+  }
+  const fromCoord = parseHexSpaceId(from);
+  const toCoord = parseHexSpaceId(to);
+  if (!fromCoord || !toCoord) {
+    return false;
+  }
+  const direction = hexDirectionBetween(fromCoord, toCoord);
+  if (direction === null) {
+    return false;
+  }
+  if (fromHas && fromTile && tileEdgeDesignedSealed(fromTile, fromField.slot, direction)) {
+    return true;
+  }
+  if (toHas && toTile && tileEdgeDesignedSealed(toTile, toField.slot, (direction + 3) % 6)) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Whether ring `slot` of a PLACED tile is sealed by a DESIGNER-placed yellow
  * border (`tile.extraBorders`, absolute board directions 0–5) rather than by
  * the printed art. Unlike {@link isTileSlotOuterSealed} (a def-level, tile-frame
@@ -1036,6 +1149,68 @@ export function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldStat
  */
 export function heroFieldSealedForDiscovery(adventure: AdventureState, field: MapFieldState): boolean {
   return field.location !== "creature_bank" && isOuterEdgeSealed(adventure, field);
+}
+
+/**
+ * Whether a hero on `heroField` (at `heroSpaceId`) may DISCOVER the adjacent
+ * face-down `tile` across an OPEN border. Two rules combine:
+ *  - the WHOLE-ARC rule ({@link heroFieldSealedForDiscovery}: a printed arc or a
+ *    designed `extraBorders` arc seals the hero's outward edges — but a
+ *    border-free Creature Bank the hero stands on is open), AND
+ *  - the per-EDGE designed borders (`borderEdges`): at least ONE shared hex edge
+ *    from the hero's field into the tile's footprint must be un-sealed on either
+ *    side. A designed EDGE seals even from a bank field (explicit designer intent
+ *    — the whole-arc bank exception above does NOT extend to a line the designer
+ *    drew deliberately on that edge), unlike the whole-arc rule.
+ *
+ * Adjacency is the caller's job (`isTileAdjacentToSpace`); this only answers the
+ * border question. Shared by the discovery OFFER (`canHeroDiscoverAdjacentTile`)
+ * and HANDLER (`revealTileForHero`) so the two can never drift.
+ */
+export function heroCanDiscoverTileAcrossBorders(
+  adventure: AdventureState,
+  heroSpaceId: MapSpaceId,
+  heroField: MapFieldState,
+  tile: MapTileState
+): boolean {
+  if (heroFieldSealedForDiscovery(adventure, heroField)) {
+    return false;
+  }
+  const heroTile = adventure.tiles[heroField.tileInstanceId];
+  const tileEdges = tile.borderEdges;
+  const heroHasEdges = Boolean(heroTile?.borderEdges && heroTile.borderEdges.length > 0);
+  const tileHasEdges = Boolean(tileEdges && tileEdges.length > 0);
+  if (!heroHasEdges && !tileHasEdges) {
+    // No per-edge borders anywhere: the whole-arc rule (already passed) decides,
+    // exactly as before per-edge borders existed.
+    return true;
+  }
+  const heroCoord = parseHexSpaceId(heroSpaceId);
+  if (!heroCoord) {
+    return false;
+  }
+  const footprint0 = tileFootprint({ row: tile.centerRow, col: tile.centerCol }, 0);
+  let sharedEdge = false;
+  for (let direction = 0; direction < 6; direction += 1) {
+    const neighbor = hexNeighbor(heroCoord, direction);
+    const footprintIndex = footprint0.findIndex((cell) => hexEquals(cell, neighbor));
+    if (footprintIndex < 0) {
+      continue; // not an edge into this tile
+    }
+    sharedEdge = true;
+    const heroSideSealed =
+      heroHasEdges && heroTile ? tileEdgeDesignedSealed(heroTile, heroField.slot, direction) : false;
+    const tileSideSealed =
+      tileHasEdges &&
+      Boolean(tileEdges) &&
+      tileEdges!.includes(canonicalTileEdgeCode(footprintIndex, (direction + 3) % 6));
+    if (!heroSideSealed && !tileSideSealed) {
+      return true; // an OPEN doorway into the tile
+    }
+  }
+  // Every shared edge is sealed → no ordinary discovery. (With no shared edge at
+  // all — never, once the caller has checked adjacency — don't over-block.)
+  return !sharedEdge;
 }
 
 export function getAdjacentSpaceIds(spaceId: MapSpaceId): MapSpaceId[] {
@@ -1349,6 +1524,9 @@ export function canHeroReachPlacedTile(
   const slotByCell = new Map<MapSpaceId, number>();
   footprint.forEach((cell, slot) => slotByCell.set(hexSpaceId(cell), slot));
 
+  const heroTile = adventure.tiles[heroField.tileInstanceId];
+  const heroCoord = parseHexSpaceId(hero.spaceId);
+
   // Some hex neighbouring the hero's own field must be a field of the new tile
   // that (a) is not a blocked location and (b) does not present its own sealed
   // yellow arc back toward the hero. That is the single open doorway the hero
@@ -1364,6 +1542,16 @@ export function canHeroReachPlacedTile(
     }
     if (isTileSlotOuterSealed(tileDefId, slot)) {
       continue;
+    }
+    // A designer per-edge yellow border on the HERO's own field toward this
+    // doorway also walls it off (the new tile carries no borderEdges yet, so only
+    // the hero-side edge is checked here).
+    if (heroTile && heroCoord) {
+      const neighborCoord = parseHexSpaceId(neighborId);
+      const direction = neighborCoord ? hexDirectionBetween(heroCoord, neighborCoord) : null;
+      if (direction !== null && tileEdgeDesignedSealed(heroTile, heroField.slot, direction)) {
+        continue;
+      }
     }
     return true;
   }
@@ -1401,8 +1589,24 @@ export function canHeroReachPlacementCenter(
   if (isOuterEdgeSealed(adventure, heroField)) {
     return false;
   }
+  const heroTile = adventure.tiles[heroField.tileInstanceId];
+  const heroCoord = parseHexSpaceId(hero.spaceId);
   const footprintCells = new Set<MapSpaceId>(tileFootprint(center, 0).map(hexSpaceId));
-  return getAdjacentSpaceIds(hero.spaceId).some((neighborId) => footprintCells.has(neighborId));
+  return getAdjacentSpaceIds(hero.spaceId).some((neighborId) => {
+    if (!footprintCells.has(neighborId)) {
+      return false;
+    }
+    // A designer per-edge yellow border on the hero's own field toward this
+    // doorway walls the opening off, just like a sealed arc does above.
+    if (heroTile && heroCoord) {
+      const neighborCoord = parseHexSpaceId(neighborId);
+      const direction = neighborCoord ? hexDirectionBetween(heroCoord, neighborCoord) : null;
+      if (direction !== null && tileEdgeDesignedSealed(heroTile, heroField.slot, direction)) {
+        return false;
+      }
+    }
+    return true;
+  });
 }
 
 /**

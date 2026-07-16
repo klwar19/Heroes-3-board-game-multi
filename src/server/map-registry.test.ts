@@ -344,6 +344,34 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[3]).not.toHaveProperty("extraBorders");
   });
 
+  it("preserves designer per-edge borders round-trip; canonicalizes, dedupes, drops garbage, caps at 30", () => {
+    // sanitizeTile rebuilds each plan from an allow-list, so `borderEdges` must be
+    // carried explicitly (via normalizeDesignedBorderEdges) or a saved map silently
+    // loses its designer edge-walls on reload. Legal on ANY tile group.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          // 9 (fp1,dir3) and 0 (fp0,dir0) are the SAME centre↔ring[0] edge → both
+          // canonicalize to 0; garbage (42, -1, "x", 3.5) is dropped.
+          { row: 5, col: 5, group: "starting", faceDown: false, borderEdges: [9, 0, 42, -1, "x", 3.5, 13] },
+          // All 42 codes → exactly the 30 distinct physical edges.
+          { row: 9, col: 9, group: "far", faceDown: true, borderEdges: Array.from({ length: 42 }, (_, i) => i) },
+          // Not an array → no borderEdges on the plan at all.
+          { row: 12, col: 12, group: "near", faceDown: true, borderEdges: "nope" },
+          // All-garbage list → property absent entirely.
+          { row: 15, col: 15, group: "sea", faceDown: true, borderEdges: [99, -2, 3.3] }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0].borderEdges).toEqual([0, 13]);
+    expect(record!.tiles[1].borderEdges!.length).toBe(30);
+    expect(record!.tiles[1].borderEdges!.length).toBeLessThanOrEqual(30);
+    expect(record!.tiles[2]).not.toHaveProperty("borderEdges");
+    expect(record!.tiles[3]).not.toHaveProperty("borderEdges");
+  });
+
   it("falls back to the default scenario when the id is unknown", () => {
     const record = sanitizeSharedMap({ id: "m", scenarioId: "ghost", tiles: [] }, 1);
     expect(record!.scenarioId).toBe("skirmish");

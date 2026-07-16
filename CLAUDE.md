@@ -1739,11 +1739,23 @@ What runs (each pinned by a test that fails if the wiring is removed):
   problem. Pointer-drag + ↻ cycle. `designed-gate-links.test.ts`,
   `subterranean-gate-planning.test.ts` (preview == engine, incl.
   `unreachableUndergroundCenters`).
-- **2. Yellow borders** (`CustomMapTilePlan.extraBorders`, absolute dirs 0-5):
-  seals an outer edge for movement / discovery / new-tile placement / AI —
-  everything but Expert Pathfinding — like a printed arc; stored ABSOLUTE so it
-  survives rotation + a face-down random draw, and a LINKED gate crossing beats a
-  border on the same arc. `designed-borders.test.ts`.
+- **2. Yellow borders — PER EDGE** (`CustomMapTilePlan.borderEdges`, canonical
+  edge codes `footprintIndex*6 + absoluteDirection` in the rotation-0 board
+  frame; 30 distinct edges per 7-hex flower, inner edges included): drawn freely
+  edge-by-edge on the board (armed 🖌 tool — click an edge to seal, click again
+  to remove, drag to paint/erase a stroke; the panel shows a count + Clear).
+  Each single edge seals movement / discovery / new-tile placement / AI —
+  everything but Expert Pathfinding — via the `canCrossEdge` +
+  `heroCanDiscoverTileAcrossBorders` + placement-reach chokepoints; stored
+  ABSOLUTE so it survives rotation + a face-down random draw, and a LINKED gate
+  crossing beats it. Rendered bold everywhere (dark casing under a gold core,
+  `.tileBorderCasing`/`.tileBorderLine`). The legacy whole-arc `extraBorders`
+  (absolute dirs 0-5, 3-edge outer arcs) stays fully engine-enforced for old
+  saves; the designer now writes ONLY `borderEdges`, folding legacy arcs in on a
+  plan's first border edit. LIMIT: edges exist only on tile footprints (no
+  borders on standalone object hexes). `designed-borders.test.ts` (arc + edge
+  suites), `map-navigation.test.ts` (AI), `map-registry.test.ts` (round-trip),
+  `map-designer.test.tsx` (draw/erase/stroke/conversion UI).
 - **3. Fixed starting-tile orientation** (`lockRotation` + `rotation`): a locked
   seat's home tile is placed at the designed rotation and owes NO opening
   rotation; the opening chain skips it in seat order (no stall), the reducer

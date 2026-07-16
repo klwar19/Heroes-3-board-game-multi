@@ -42,6 +42,7 @@ import {
   materializeTileFields,
   NEUTRAL_DECK_IDS,
   normalizeDesignedBorders,
+  normalizeDesignedBorderEdges,
   recomputeSubterraneanGates,
   seaTileBand,
   subterraneanTileBand,
@@ -983,6 +984,24 @@ export function validateCustomMapPlan(
     }
   }
 
+  // Designer per-edge yellow borders: normalise every accepted plan's
+  // `borderEdges` to canonical edge codes (garbage dropped, deduped, capped at
+  // 30). Legal on ANY group, same as the whole-arc `extraBorders` above.
+  for (let index = 0; index < accepted.length; index += 1) {
+    const plan = accepted[index];
+    if (plan.borderEdges === undefined) {
+      continue;
+    }
+    const edges = normalizeDesignedBorderEdges(plan.borderEdges);
+    if (edges.length > 0) {
+      accepted[index] = { ...plan, borderEdges: edges };
+    } else {
+      const next = { ...plan };
+      delete next.borderEdges;
+      accepted[index] = next;
+    }
+  }
+
   // `lockRotation` FIXES a starting tile's orientation (no opening rotation). It
   // is meaningful only on a starting plan — strip it on every other group, like
   // gateLinks are cavern-only. (The rotation value 0-5 is already validated
@@ -1265,6 +1284,13 @@ function applyDesignedBorders(tile: MapTileState, plan: CustomMapTilePlan): void
   const borders = normalizeDesignedBorders(plan.extraBorders);
   if (borders.length > 0) {
     tile.extraBorders = borders;
+  }
+  // Per-edge borders (the designer's forward path) ride the same placement
+  // moment, so the seal holds from the instant the tile is placed — face-down and
+  // after any later rotation.
+  const edges = normalizeDesignedBorderEdges(plan.borderEdges);
+  if (edges.length > 0) {
+    tile.borderEdges = edges;
   }
 }
 

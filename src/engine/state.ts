@@ -6887,6 +6887,19 @@ export type MapTileState = {
    */
   extraBorders?: number[];
   /**
+   * Designer-placed per-EDGE yellow borders carried onto this PLACED tile
+   * instance — canonical edge codes (`footprintIndex*6 + absoluteDirection`, see
+   * `canonicalTileEdgeCode`), each sealing exactly ONE hex edge of the tile's
+   * footprint. Unlike `extraBorders` (which seals a whole 3-edge outer arc) an
+   * entry here is a single line the designer drew edge-by-edge, and may be an
+   * INNER edge between two of the tile's own fields as well as an outer one. The
+   * code frame is rotation-0 / board-absolute, so the seal does not move when a
+   * face-down slot draws its tile or the player rotates it. Set from
+   * {@link CustomMapTilePlan.borderEdges} when the tile is placed and present
+   * even while face-down. Public info, like a printed yellow line.
+   */
+  borderEdges?: number[];
+  /**
    * Center-tile Ⅶ-field designation carried onto this PLACED instance (from
    * {@link CustomMapTilePlan.viiField}) — FORCE this tile's difficulty-7 objective
    * field to the Grail dig site ("grail"), the Dragon Utopia ("dragon_utopia") or
@@ -9142,6 +9155,21 @@ export type CustomMapTilePlan = {
    * {@link validateCustomMapPlan} and the persistence sanitiser.
    */
   extraBorders?: number[];
+  /**
+   * Designer-placed per-EDGE yellow border lines — canonical edge codes
+   * (`footprintIndex*6 + absoluteDirection`, 0-41 folded by `canonicalTileEdgeCode`
+   * to one of 30 distinct physical edges). Each seals a SINGLE hex edge of the
+   * tile's footprint — an outer edge OR an inner one between two of the tile's own
+   * fields — drawn freely edge-by-edge in the designer, mechanically identical to
+   * a printed line at that edge but INDEPENDENT of the tile art. The frame is
+   * board-absolute (rotation-0 footprint), so the seal does NOT move when a
+   * face-down slot draws its tile or the tile is rotated. This is the per-edge
+   * successor to the whole-arc `extraBorders`; the designer writes only this going
+   * forward, folding any legacy `extraBorders` into it on first edit. Legal on ANY
+   * tile group. Normalised (dedupe, cap {@link MAX_DESIGNED_BORDER_EDGES} = 30) at
+   * {@link validateCustomMapPlan} and the persistence sanitiser.
+   */
+  borderEdges?: number[];
   /**
    * Center (Ⅵ–Ⅶ) slots ONLY: FORCE this slot's difficulty-7 objective field to a
    * specific location, whatever center tile lands here (exact pin OR random draw,

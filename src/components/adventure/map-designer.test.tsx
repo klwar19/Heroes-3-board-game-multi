@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { MapDesigner, planBackArt, planBackLabel } from "./map-designer";
 import { nearestGateHexPair, type GateHexPair } from "./gate-drag";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
+  canonicalTileEdgeCode,
+  hexNeighbor,
   hexNeighbors,
   hexSpaceId,
   hexToPixel,
@@ -14,7 +17,8 @@ import {
   tileFootprint,
   tileLatticeNeighbors,
   type CustomMapObject,
-  type CustomMapTilePlan
+  type CustomMapTilePlan,
+  type HexCoord
 } from "@/engine";
 
 afterEach(cleanup);
@@ -27,6 +31,40 @@ function renderDesigner(
     <MapDesigner scenarioId="skirmish" customMap={customMap} onChange={onChange} />
   );
   return container;
+}
+
+/**
+ * Renders the designer with REAL React state, so an onChange re-renders the
+ * board (as production does). Needed for multi-step border strokes / re-toggles
+ * that must see the previous edit before applying the next. `get()` reads the
+ * live plan array.
+ */
+function renderStatefulDesigner(initial: CustomMapTilePlan[]): {
+  container: HTMLElement;
+  get: () => CustomMapTilePlan[];
+} {
+  const box: { current: CustomMapTilePlan[] } = { current: initial };
+  function Harness() {
+    const [plans, setPlans] = useState(initial);
+    box.current = plans;
+    return (
+      <MapDesigner
+        scenarioId="skirmish"
+        customMap={plans}
+        onChange={(next) => {
+          box.current = next;
+          setPlans(next);
+        }}
+      />
+    );
+  }
+  const { container } = render(<Harness />);
+  return { container, get: () => box.current };
+}
+
+/** Rotation-0 footprint index of a board hex within a tile centred at `center`. */
+function footprintIndexOf(center: HexCoord, coord: HexCoord): number {
+  return tileFootprint(center, 0).findIndex((cell) => cell.row === coord.row && cell.col === coord.col);
 }
 
 /** Open the per-tile popover by releasing a click on a designed plan hex. */
@@ -607,40 +645,29 @@ describe("MapDesigner — designer-chosen gate links", () => {
     expect(latest[1].gateLinks).toEqual([{ surface: { row: town.row, col: town.col } }]);
   });
 
-  it("adds a yellow border on a direction chip (onChange carries extraBorders), draws it, then removes it", () => {
+  it("the tile panel reports the border-edge count and Clear wipes both border fields", () => {
     const town = { row: 10, col: 10 };
     const far = tileLatticeNeighbors(town)[1];
+    // A plan carrying a legacy whole-arc AND a per-edge border: the panel counts
+    // the union (arc expands to 3 edges) and Clear must wipe BOTH fields.
     let latest: CustomMapTilePlan[] = [
       { row: town.row, col: town.col, group: "starting", faceDown: false },
-      { row: far.row, col: far.col, group: "far", faceDown: true }
+      { row: far.row, col: far.col, group: "far", faceDown: true, extraBorders: [1], borderEdges: [0] }
     ];
     const onChange = vi.fn((next: CustomMapTilePlan[]) => {
       latest = next;
     });
-    let container = renderDesigner(latest, onChange);
-    // No border drawn yet.
-    expect(container.querySelector(".designerBorderLine")).toBeNull();
-
+    const container = renderDesigner(latest, onChange);
     const popover = openTilePopover(container, 1);
-    const chip = popover.querySelector('.popoverBorderChip[data-direction="1"]'); // E edge
-    expect(chip, "yellow-border direction chip present").toBeTruthy();
-    fireEvent.click(chip!);
+    const summary = popover.querySelector(".popoverBorderSummary");
+    expect(summary, "border summary present").toBeTruthy();
+    // Arc [1] → 3 edges, plus the per-edge [0] (distinct) → 4 border edges.
+    expect(summary!.textContent).toContain("4 border edges");
+
+    fireEvent.click(within(popover).getByRole("button", { name: "Clear" }));
     expect(onChange).toHaveBeenCalled();
-    // The far plan now carries the absolute direction 1 (E).
-    expect(latest[1].extraBorders).toEqual([1]);
-
-    // Re-render with the updated plan: the preview now draws the designed border
-    // (a full three-edge arc) and the chip reads pressed.
-    cleanup();
-    container = renderDesigner(latest, onChange);
-    expect(container.querySelectorAll(".designerBorderLine").length).toBe(3);
-
-    // Toggling the same chip off round-trips back to no extraBorders.
-    const popover2 = openTilePopover(container, 1);
-    const chipOn = popover2.querySelector('.popoverBorderChip[data-direction="1"]');
-    expect(chipOn!.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(chipOn!);
-    expect(latest[1].extraBorders).toBeUndefined();
+    expect(latest[1].extraBorders, "legacy arc wiped").toBeUndefined();
+    expect(latest[1].borderEdges, "per-edge borders wiped").toBeUndefined();
   });
 
   it("un-links on a second toggle (round-trips back to no gateLinks)", () => {
@@ -1801,32 +1828,25 @@ describe("MapDesigner — docked inspector panel", () => {
     expect(container.querySelectorAll(".designerPopover").length, "still exactly one panel").toBe(1);
   });
 
-  it("exposes the yellow-border rose with clickable chips for a tile FAR from the board origin", () => {
-    // The clipping bug hid the border rose (and everything below the tile grid)
-    // for any tile in the lower/right half of the board. jsdom can't compute the
-    // clip, so this pins the WIRING — the rose + its chips work for a far-away
-    // tile exactly like a near-origin one — while the docked-panel CSS fixes the
-    // visible half in the browser.
+  it("exposes the yellow-border panel summary for a tile FAR from the board origin", () => {
+    // The clipping bug hid the border controls (and everything below the tile
+    // grid) for any tile in the lower/right half of the board. jsdom can't
+    // compute the clip, so this pins the WIRING — the border panel works for a
+    // far-away tile exactly like a near-origin one — while the docked-panel CSS
+    // fixes the visible half in the browser.
     const farAway = { row: town.row + 22, col: town.col + 16 };
-    let latest: CustomMapTilePlan[] = [
+    const container = renderDesigner([
       { row: town.row, col: town.col, group: "starting", faceDown: false },
-      { row: farAway.row, col: farAway.col, group: "far", faceDown: true }
-    ];
-    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
-      latest = next;
-    });
-    const container = renderDesigner(latest, onChange);
+      { row: farAway.row, col: farAway.col, group: "far", faceDown: true, borderEdges: [7] }
+    ]);
     const popover = openTilePopover(container, 1);
-    const rose = within(popover).getByRole("group", { name: "Tile edge yellow borders" });
-    expect(rose, "border rose present for a far-away tile").toBeTruthy();
-    const chip = popover.querySelector('.popoverBorderChip[data-direction="3"]'); // SW edge
-    expect(chip, "SW border chip present").toBeTruthy();
-    fireEvent.click(chip!);
-    expect(latest[1].extraBorders, "far-away tile's SW border toggled").toEqual([3]);
+    const summary = within(popover).getByLabelText("Tile yellow border edges");
+    expect(summary, "border summary present for a far-away tile").toBeTruthy();
+    expect(summary.textContent).toContain("1 border edge");
   });
 });
 
-describe("MapDesigner — on-board yellow border painting", () => {
+describe("MapDesigner — on-board per-edge yellow border painting", () => {
   const town = { row: 10, col: 10 };
   const far = tileLatticeNeighbors(town)[1];
   const near = tileLatticeNeighbors(town)[0];
@@ -1840,86 +1860,203 @@ describe("MapDesigner — on-board yellow border painting", () => {
     return btn as HTMLElement;
   }
 
-  it("arming shows six paint zones per placed tile; disarmed (default) renders none", () => {
-    const container = renderDesigner([
-      { row: town.row, col: town.col, group: "starting", faceDown: false },
-      { row: far.row, col: far.col, group: "far", faceDown: true }
-    ]);
-    // CONTROL: with the tool disarmed (default) not a single zone is drawn.
-    expect(container.querySelectorAll(".designerBorderPaintZone").length).toBe(0);
+  /** A live edge zone by owner plan + canonical code (re-queried each stroke step). */
+  function zoneByCode(container: HTMLElement, code: number, planIndex = 0): HTMLElement {
+    const zone = container.querySelector(
+      `.designerBorderEdgeZone[data-edge-code='${code}'][data-border-index='${planIndex}']`
+    );
+    if (!zone) {
+      throw new Error(`no edge zone for code ${code} on plan ${planIndex}`);
+    }
+    return zone as HTMLElement;
+  }
+
+  it("arming shows exactly 30 per-edge zones for a lone tile; disarmed (default) renders none", () => {
+    const container = renderDesigner([{ row: town.row, col: town.col, group: "starting", faceDown: false }]);
+    // CONTROL: disarmed (default) → no zones.
+    expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBe(0);
 
     fireEvent.click(paintButton(container));
     expect(paintButton(container).getAttribute("aria-pressed")).toBe("true");
-    // Two placed plans × six absolute directions = twelve zones.
-    expect(container.querySelectorAll(".designerBorderPaintZone").length).toBe(12);
-    for (const index of [0, 1]) {
-      for (let direction = 0; direction < 6; direction += 1) {
-        expect(
-          container.querySelector(
-            `.designerBorderPaintZone[data-border-index="${index}"][data-direction="${direction}"]`
-          ),
-          `zone for plan ${index} direction ${direction}`
-        ).toBeTruthy();
-      }
+    // A 7-hex flower has 30 physical edges (18 outer + 12 inner) — one zone each.
+    expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBe(30);
+  });
+
+  it("pointerdown on a zone writes exactly ONE canonical code; a second toggles it off", () => {
+    const { container, get } = renderStatefulDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false }
+    ]);
+    fireEvent.click(paintButton(container));
+    const first = container.querySelector(".designerBorderEdgeZone[data-border-index='0']") as HTMLElement;
+    const code = Number(first.getAttribute("data-edge-code"));
+
+    // A click (pointerdown+up) seals exactly that one canonical edge code.
+    fireEvent.pointerDown(first, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(first, { pointerId: 1 });
+    expect(get()[0].borderEdges).toEqual([code]);
+
+    // The zone now reads active; clicking it again erases it (back to none).
+    const again = zoneByCode(container, code);
+    expect(again.classList.contains("active"), "sealed edge marked active").toBe(true);
+    fireEvent.pointerDown(again, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(again, { pointerId: 1 });
+    expect(get()[0].borderEdges).toBeUndefined();
+  });
+
+  it("a drag stroke (down, enter, enter) paints several edges; release ends it", () => {
+    const { container, get } = renderStatefulDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false }
+    ]);
+    fireEvent.click(paintButton(container));
+    const codes = [...container.querySelectorAll(".designerBorderEdgeZone[data-border-index='0']")]
+      .slice(0, 3)
+      .map((zone) => Number(zone.getAttribute("data-edge-code")));
+    const expected = [...codes].sort((a, b) => a - b);
+
+    // Press the first, drag across two more (pointerenter continues the stroke).
+    fireEvent.pointerDown(zoneByCode(container, codes[0]), { button: 0, pointerId: 1 });
+    fireEvent.pointerEnter(zoneByCode(container, codes[1]), { pointerId: 1 });
+    fireEvent.pointerEnter(zoneByCode(container, codes[2]), { pointerId: 1 });
+    expect(get()[0].borderEdges).toEqual(expected);
+
+    // Release ends the stroke: a later pointerenter over a fresh edge paints nothing.
+    fireEvent.pointerUp(zoneByCode(container, codes[2]), { pointerId: 1 });
+    const untouched = [...container.querySelectorAll(".designerBorderEdgeZone[data-border-index='0']")]
+      .map((zone) => Number(zone.getAttribute("data-edge-code")))
+      .find((code) => !codes.includes(code))!;
+    fireEvent.pointerEnter(zoneByCode(container, untouched), { pointerId: 1 });
+    expect(get()[0].borderEdges, "no paint after the stroke released").toEqual(expected);
+  });
+
+  it("a stroke that STARTS on an active edge erases the active edges it passes", () => {
+    const { container, get } = renderStatefulDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false }
+    ]);
+    fireEvent.click(paintButton(container));
+    const [codeA, codeB] = [...container.querySelectorAll(".designerBorderEdgeZone[data-border-index='0']")]
+      .slice(0, 2)
+      .map((zone) => Number(zone.getAttribute("data-edge-code")));
+
+    // Seal two edges first (two separate clicks).
+    for (const code of [codeA, codeB]) {
+      const zone = zoneByCode(container, code);
+      fireEvent.pointerDown(zone, { button: 0, pointerId: 1 });
+      fireEvent.pointerUp(zone, { pointerId: 1 });
     }
+    expect(get()[0].borderEdges).toEqual([codeA, codeB].sort((a, b) => a - b));
+
+    // Start a stroke ON an active edge (→ ERASE mode) and drag onto the other → both gone.
+    fireEvent.pointerDown(zoneByCode(container, codeA), { button: 0, pointerId: 1 });
+    fireEvent.pointerEnter(zoneByCode(container, codeB), { pointerId: 1 });
+    fireEvent.pointerUp(zoneByCode(container, codeB), { pointerId: 1 });
+    expect(get()[0].borderEdges).toBeUndefined();
   });
 
-  it("clicking a zone adds exactly that absolute direction; clicking it again removes it", () => {
-    let latest: CustomMapTilePlan[] = [
-      { row: town.row, col: town.col, group: "starting", faceDown: false },
-      { row: far.row, col: far.col, group: "far", faceDown: true }
-    ];
-    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
-      latest = next;
-    });
-    let container = renderDesigner(latest, onChange);
+  it("a plan with legacy extraBorders converts to borderEdges on the first edit (arc folded in)", () => {
+    // Legacy arc [1] = the E ring hex (footprint index 2); its three outer edges
+    // are absolute directions 0,1,2 → codes 12,13,14.
+    const arcCodes = [0, 1, 2].map((edgeDir) => canonicalTileEdgeCode(2, edgeDir));
+    const { container, get } = renderStatefulDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false, extraBorders: [1] }
+    ]);
     fireEvent.click(paintButton(container));
+    // Before any edit the legacy arc shows as its 3 ACTIVE expanded edges.
+    for (const code of arcCodes) {
+      expect(zoneByCode(container, code).classList.contains("active"), `arc edge ${code} active`).toBe(true);
+    }
 
-    // Paint the far tile's E edge (absolute direction 1).
-    fireEvent.click(
-      container.querySelector('.designerBorderPaintZone[data-border-index="1"][data-direction="1"]')!
-    );
-    expect(onChange).toHaveBeenCalled();
-    expect(latest[1].extraBorders).toEqual([1]);
-
-    // Re-render with the updated plan (paint mode is local, so re-arm), then
-    // toggle the same edge off — round-trips back to no extraBorders.
-    cleanup();
-    container = renderDesigner(latest, onChange);
-    fireEvent.click(paintButton(container));
-    const painted = container.querySelector(
-      '.designerBorderPaintZone[data-border-index="1"][data-direction="1"]'
-    )!;
-    expect(painted.classList.contains("active"), "painted edge marked active").toBe(true);
-    fireEvent.click(painted);
-    expect(latest[1].extraBorders).toBeUndefined();
+    // Draw a NEW inner edge (code 0 = centre↔ring[0]): the plan converts.
+    fireEvent.pointerDown(zoneByCode(container, 0), { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(zoneByCode(container, 0), { pointerId: 1 });
+    const plan = get()[0];
+    expect(plan.extraBorders, "legacy arc cleared on first edit").toBeUndefined();
+    // borderEdges now carries the 3 expanded arc codes PLUS the new edge.
+    expect(plan.borderEdges).toEqual([...new Set([...arcCodes, 0])].sort((a, b) => a - b));
   });
 
-  it("paints on a STARTING tile and a FACE-DOWN tile alike (parity with the edge rose)", () => {
-    let latest: CustomMapTilePlan[] = [
+  it("two adjacent plans share ONE zone for their shared edge; erase works whichever side stores it", () => {
+    // Locate the physical shared edge between the town and its near neighbour.
+    const townFootprint = tileFootprint(town, 0);
+    const nearHexes = new Set(tileFootprint(near, 0).map(hexSpaceId));
+    let townHex: HexCoord | undefined;
+    let dir = -1;
+    for (const hex of townFootprint) {
+      for (let d = 0; d < 6; d += 1) {
+        if (nearHexes.has(hexSpaceId(hexNeighbor(hex, d)))) {
+          townHex = hex;
+          dir = d;
+          break;
+        }
+      }
+      if (townHex) break;
+    }
+    if (!townHex) throw new Error("no shared edge between the two adjacent flowers");
+    const townCode = canonicalTileEdgeCode(footprintIndexOf(town, townHex), dir);
+    const nearHex = hexNeighbor(townHex, dir);
+    const nearCode = canonicalTileEdgeCode(footprintIndexOf(near, nearHex), (dir + 3) % 6);
+
+    // ONE zone represents this physical edge, owned by plan 0 (encountered first).
+    const first = renderStatefulDesigner([
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       { row: near.row, col: near.col, group: "near", faceDown: true }
-    ];
-    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
-      latest = next;
-    });
-    const container = renderDesigner(latest, onChange);
-    fireEvent.click(paintButton(container));
+    ]);
+    fireEvent.click(paintButton(first.container));
+    expect(
+      first.container.querySelectorAll(`.designerBorderEdgeZone[data-edge-code='${townCode}'][data-border-index='0']`)
+        .length,
+      "exactly one deduped zone for the shared edge"
+    ).toBe(1);
+    // Drawing on it stores the code on the OWNER plan (0), leaving plan 1 untouched.
+    fireEvent.pointerDown(zoneByCode(first.container, townCode), { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(zoneByCode(first.container, townCode), { pointerId: 1 });
+    expect(first.get()[0].borderEdges).toEqual([townCode]);
+    expect(first.get()[1].borderEdges).toBeUndefined();
+    cleanup();
 
-    // Starting tile (index 0): seal its NW edge (direction 5).
-    fireEvent.click(
-      container.querySelector('.designerBorderPaintZone[data-border-index="0"][data-direction="5"]')!
-    );
-    expect(latest[0].group).toBe("starting");
-    expect(latest[0].extraBorders, "starting tile border painted").toEqual([5]);
+    // Erase-from-the-other-side: seed the SAME edge on the NEAR plan (plan 1).
+    const other = renderStatefulDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: near.row, col: near.col, group: "near", faceDown: true, borderEdges: [nearCode] }
+    ]);
+    fireEvent.click(paintButton(other.container));
+    const shared = zoneByCode(other.container, townCode);
+    // The zone is ACTIVE even though the code lives on the NON-owner plan.
+    expect(shared.classList.contains("active"), "shared zone active from the other side").toBe(true);
+    // Erasing clears it from whichever plan holds it (plan 1 here).
+    fireEvent.pointerDown(shared, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(zoneByCode(other.container, townCode), { pointerId: 1 });
+    expect(other.get()[1].borderEdges).toBeUndefined();
+    expect(other.get()[0].borderEdges).toBeUndefined();
+  });
 
-    // Face-down near tile (index 1): seal its SE edge (direction 2). Each click
-    // rebuilds from the original prop, so assert plan 1 right after its click.
-    fireEvent.click(
-      container.querySelector('.designerBorderPaintZone[data-border-index="1"][data-direction="2"]')!
-    );
-    expect(latest[1].faceDown).toBe(true);
-    expect(latest[1].extraBorders, "face-down tile border painted").toEqual([2]);
+  it("paints on a STARTING tile and a FACE-DOWN tile alike", () => {
+    const startFixture = renderStatefulDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false }
+    ]);
+    fireEvent.click(paintButton(startFixture.container));
+    const startZone = startFixture.container.querySelector(
+      ".designerBorderEdgeZone[data-border-index='0']"
+    ) as HTMLElement;
+    const startCode = Number(startZone.getAttribute("data-edge-code"));
+    fireEvent.pointerDown(startZone, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(startZone, { pointerId: 1 });
+    expect(startFixture.get()[0].group).toBe("starting");
+    expect(startFixture.get()[0].borderEdges, "starting tile edge painted").toEqual([startCode]);
+    cleanup();
+
+    const downFixture = renderStatefulDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: near.row, col: near.col, group: "near", faceDown: true }
+    ]);
+    fireEvent.click(paintButton(downFixture.container));
+    const downZone = downFixture.container.querySelector(
+      ".designerBorderEdgeZone[data-border-index='1']"
+    ) as HTMLElement;
+    const downCode = Number(downZone.getAttribute("data-edge-code"));
+    fireEvent.pointerDown(downZone, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(downZone, { pointerId: 1 });
+    expect(downFixture.get()[1].faceDown).toBe(true);
+    expect(downFixture.get()[1].borderEdges, "face-down tile edge painted").toEqual([downCode]);
   });
 
   it("a paint-zone press does not pan the board or open the tile panel (stopPropagation), and still paints", () => {
@@ -1931,35 +2068,24 @@ describe("MapDesigner — on-board yellow border painting", () => {
     const prevCapture = proto.setPointerCapture;
     proto.setPointerCapture = function () {};
     try {
-      let latest: CustomMapTilePlan[] = [
-        { row: town.row, col: town.col, group: "starting", faceDown: false },
-        { row: far.row, col: far.col, group: "far", faceDown: true }
-      ];
-      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
-        latest = next;
-      });
-      const container = renderDesigner(latest, onChange);
+      const { container, get } = renderStatefulDesigner([
+        { row: town.row, col: town.col, group: "starting", faceDown: false }
+      ]);
       fireEvent.click(paintButton(container));
       const cameraGroup = container.querySelector(".designerSvg > g")!;
       const transformBefore = cameraGroup.getAttribute("transform");
-      const zone = container.querySelector(
-        '.designerBorderPaintZone[data-border-index="1"][data-direction="0"]'
-      )!;
-      // Press on the zone, then move the pointer far enough to pan a BACKGROUND
-      // press. `stopPropagation` on the zone's pointerdown keeps that press off
-      // the board, so the SVG pan handler never arms — the camera transform is
-      // unchanged. Without it, the press reaches the SVG and the move starts a
-      // pan, moving the transform; this assertion then fails.
+      const zone = container.querySelector(".designerBorderEdgeZone[data-border-index='0']") as HTMLElement;
+      const code = Number(zone.getAttribute("data-edge-code"));
+      // Press the zone, then move the pointer far enough to pan a BACKGROUND press.
+      // `stopPropagation` on the zone's pointerdown keeps that press off the board,
+      // so the SVG pan handler never arms — the camera transform is unchanged.
       fireEvent.pointerDown(zone, { button: 0, pointerId: 1, clientX: 40, clientY: 40 });
       fireEvent.pointerMove(zone, { pointerId: 1, clientX: 120, clientY: 120 });
-      expect(cameraGroup.getAttribute("transform"), "board did not pan from the paint press").toBe(
-        transformBefore
-      );
+      expect(cameraGroup.getAttribute("transform"), "board did not pan from the paint press").toBe(transformBefore);
       fireEvent.pointerUp(zone, { pointerId: 1 });
-      // And a plain click paints the edge without opening the per-tile panel.
-      fireEvent.click(zone);
+      // The press painted the edge, and no per-tile panel opened.
       expect(container.querySelector(".designerPopover"), "no tile panel opened").toBeNull();
-      expect(latest[1].extraBorders, "the edge was still painted").toEqual([0]);
+      expect(get()[0].borderEdges, "the edge was painted by the press").toEqual([code]);
     } finally {
       if (hadCapture) {
         proto.setPointerCapture = prevCapture;
@@ -1979,43 +2105,37 @@ describe("MapDesigner — on-board yellow border painting", () => {
     ) as HTMLElement;
     const paint = paintButton(container);
 
-    // Arm the Monolith → its candidate cells glow, no paint zones yet.
+    // Arm the Monolith → its candidate cells glow, no edge zones yet.
     fireEvent.click(monolith);
     expect(monolith.getAttribute("aria-pressed")).toBe("true");
     expect(container.querySelectorAll(".designerObjectSlot").length).toBeGreaterThan(0);
-    expect(container.querySelectorAll(".designerBorderPaintZone").length).toBe(0);
+    expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBe(0);
 
-    // Arm border paint → the Monolith disarms (no candidate cells), zones appear.
+    // Arm border paint → the Monolith disarms (no candidate cells), edge zones appear.
     fireEvent.click(paint);
     expect(paint.getAttribute("aria-pressed")).toBe("true");
     expect(monolith.getAttribute("aria-pressed"), "monolith disarmed").toBe("false");
     expect(container.querySelectorAll(".designerObjectSlot").length, "no object candidates").toBe(0);
-    expect(container.querySelectorAll(".designerBorderPaintZone").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBeGreaterThan(0);
 
     // Arm the Monolith again → border paint disarms, zones vanish.
     fireEvent.click(monolith);
     expect(monolith.getAttribute("aria-pressed")).toBe("true");
     expect(paint.getAttribute("aria-pressed"), "border paint disarmed").toBe("false");
-    expect(container.querySelectorAll(".designerBorderPaintZone").length).toBe(0);
+    expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBe(0);
   });
 
-  it("a zone whose edge already has a border carries the active class", () => {
+  it("a zone whose edge already carries a per-edge border reads active; a bare edge does not", () => {
+    // Seed the plan with one canonical inner-edge code (0 = centre↔ring[0]).
     const container = renderDesigner([
-      { row: town.row, col: town.col, group: "starting", faceDown: false },
-      { row: far.row, col: far.col, group: "far", faceDown: true, extraBorders: [2] }
+      { row: town.row, col: town.col, group: "starting", faceDown: false, borderEdges: [0] }
     ]);
     fireEvent.click(paintButton(container));
-    expect(
-      container
-        .querySelector('.designerBorderPaintZone[data-border-index="1"][data-direction="2"]')!
-        .classList.contains("active"),
-      "SE zone active for extraBorders [2]"
-    ).toBe(true);
+    expect(zoneByCode(container, 0).classList.contains("active"), "seeded edge active").toBe(true);
     // CONTROL: a different edge on the same tile is not active.
-    expect(
-      container
-        .querySelector('.designerBorderPaintZone[data-border-index="1"][data-direction="0"]')!
-        .classList.contains("active")
-    ).toBe(false);
+    const otherCode = [...container.querySelectorAll(".designerBorderEdgeZone[data-border-index='0']")]
+      .map((zone) => Number(zone.getAttribute("data-edge-code")))
+      .find((code) => code !== 0)!;
+    expect(zoneByCode(container, otherCode).classList.contains("active")).toBe(false);
   });
 });

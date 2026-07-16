@@ -2,6 +2,7 @@ import {
   isSecretTileFeature,
   isViiFieldDesignation,
   normalizeDesignedBorders,
+  normalizeDesignedBorderEdges,
   parseHexSpaceId,
   sanitizeCustomMapPreset,
   scenarioDefinitions,
@@ -151,6 +152,9 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   // Designer yellow borders (any group): keep unique absolute directions 0–5,
   // drop garbage, cap at 6. The engine helper is the single normalisation rule.
   const extraBorders = normalizeDesignedBorders(candidate.extraBorders);
+  // Designer per-edge yellow borders (any group): canonical edge codes, garbage
+  // dropped, deduped, capped at 30 — the per-edge twin of the whole-arc rule.
+  const borderEdges = normalizeDesignedBorderEdges(candidate.borderEdges);
 
   return {
     row: candidate.row as number,
@@ -174,7 +178,8 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
     ...(token ? { token } : {}),
     ...(gateLinks.length > 0 ? { gateLinks } : {}),
-    ...(extraBorders.length > 0 ? { extraBorders } : {})
+    ...(extraBorders.length > 0 ? { extraBorders } : {}),
+    ...(borderEdges.length > 0 ? { borderEdges } : {})
   };
 }
 

@@ -235,6 +235,20 @@ function hexEdgeForDirection(cx: number, cy: number, size: number, direction: nu
   return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
 }
 
+/**
+ * Push one bold yellow border line onto `target`: a dark casing UNDER the gold
+ * core (both same coords, casing first so it renders beneath). Used for every
+ * printed / designed border line so they read boldly on the map art.
+ */
+function pushBorderLines(
+  target: ReactNode[],
+  keyBase: string,
+  coords: { x1: number; y1: number; x2: number; y2: number }
+): void {
+  target.push(<line className="tileBorderCasing" key={`${keyBase}-casing`} {...coords} />);
+  target.push(<line className="tileBorderLine" key={`${keyBase}-core`} {...coords} />);
+}
+
 function playerColor(state: GameState, playerId: PlayerId | null): string {
   if (!playerId) {
     return "#999";
@@ -874,14 +888,30 @@ export function HexMapBoard({
         const ringPixel = hexToPixel(ringCell, HEX_SIZE);
         for (const edge of [absolute - 1, absolute, absolute + 1]) {
           const direction = ((edge % 6) + 6) % 6;
-          overlays.push(
-            <line
-              className="tileBorderLine"
-              key={`${tile.id}-back-border-${absolute}-${direction}`}
-              {...hexEdgeForDirection(ringPixel.x, ringPixel.y, HEX_SIZE - 1.2, direction)}
-            />
+          pushBorderLines(
+            overlays,
+            `${tile.id}-back-border-${absolute}-${direction}`,
+            hexEdgeForDirection(ringPixel.x, ringPixel.y, HEX_SIZE - 1.2, direction)
           );
         }
+      }
+      // Per-edge designer borders on the back: each code is one hex edge in the
+      // rotation-0 absolute frame — hex = footprint[footprintIndex], line on the
+      // coded absolute direction. Public info, shown on the tile back like arcs.
+      for (const code of tile.borderEdges ?? []) {
+        if (!Number.isInteger(code) || code < 0 || code > 41) {
+          continue;
+        }
+        const cell = footprint[Math.floor(code / 6)];
+        if (!cell) {
+          continue;
+        }
+        const pixel = hexToPixel(cell, HEX_SIZE);
+        pushBorderLines(
+          overlays,
+          `${tile.id}-back-edge-${code}`,
+          hexEdgeForDirection(pixel.x, pixel.y, HEX_SIZE - 1.2, code % 6)
+        );
       }
       continue;
     }
@@ -906,7 +936,11 @@ export function HexMapBoard({
       // Designer yellow borders are absolute: pass the SAME `rotation` the draw
       // below re-applies so they stay put on the board as the preview spins.
       const borderSegments = tileDef
-        ? getTileBorderSegments(tileDef, previewBankSlots, showBankBorders, { extraBorders: tile.extraBorders, rotation })
+        ? getTileBorderSegments(tileDef, previewBankSlots, showBankBorders, {
+            extraBorders: tile.extraBorders,
+            borderEdges: tile.borderEdges,
+            rotation
+          })
         : [];
       const footprint = tileFootprint(center, rotation);
       for (const [slot, coord] of footprint.entries()) {
@@ -965,16 +999,17 @@ export function HexMapBoard({
             );
           }
         }
-        // Printed yellow border lines (full arcs + blocked-field rings)
-        // move with the rotation preview.
+        // Printed + designed yellow border lines (arcs, blocked-field rings and
+        // per-edge lines) move with the rotation preview.
         for (const segment of borderSegments) {
           if (segment.slot !== slot) {
             continue;
           }
           const direction = (segment.edge + rotation) % 6;
-          const edge = hexEdgeForDirection(x, y, HEX_SIZE - 1.2, direction);
-          overlays.push(
-            <line className="tileBorderLine" key={`${tile.id}-rot-border-${slot}-${segment.edge}`} {...edge} />
+          pushBorderLines(
+            overlays,
+            `${tile.id}-rot-border-${slot}-${segment.edge}`,
+            hexEdgeForDirection(x, y, HEX_SIZE - 1.2, direction)
           );
         }
       }
@@ -1010,6 +1045,7 @@ export function HexMapBoard({
     const borderSegments = tileDef
       ? getTileBorderSegments(tileDef, bankSlots, showBankBorders, {
           extraBorders: tile.extraBorders,
+          borderEdges: tile.borderEdges,
           rotation: tile.rotation
         })
       : [];
@@ -1291,15 +1327,19 @@ export function HexMapBoard({
           </text>
         );
       }
-      // Printed yellow border lines: outer arcs, blocked-field rings and any
-      // internal borders, exactly as scanned.
+      // Yellow border lines: printed outer arcs, blocked-field rings, internal
+      // borders, plus designer whole-arc + per-edge lines — all through the one
+      // segment list, drawn bold (dark casing under a gold core).
       for (const segment of borderSegments) {
         if (segment.slot !== slot) {
           continue;
         }
         const direction = (segment.edge + tile.rotation) % 6;
-        const edge = hexEdgeForDirection(x, y, HEX_SIZE - 1.2, direction);
-        overlays.push(<line className="tileBorderLine" key={`${spaceId}-border-${segment.edge}`} {...edge} />);
+        pushBorderLines(
+          overlays,
+          `${spaceId}-border-${segment.edge}`,
+          hexEdgeForDirection(x, y, HEX_SIZE - 1.2, direction)
+        );
       }
 
       // Hero pawns: separate top layer keyed by hero id so moves glide.

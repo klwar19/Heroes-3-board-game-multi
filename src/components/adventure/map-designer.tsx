@@ -15,13 +15,16 @@ import {
 } from "@/data/assets/homm-assets";
 import type { TileDefinition } from "@/data/map/types";
 import {
+  canonicalTileEdgeCode,
   gatePairColor,
+  hexNeighbor,
   hexNeighbors,
   hexSpaceId,
   hexToPixel,
   legalGateHexPairs,
   legalTokenSlotsForTileDef,
   mapTokenLabel,
+  normalizeDesignedBorderEdges,
   parseHexSpaceId,
   pixelToHex,
   planSubterraneanGates,
@@ -402,9 +405,6 @@ function hexCorners(cx: number, cy: number, size: number): string {
   return points.join(" ");
 }
 
-/** Board-direction labels (0-5) for the designer's yellow-border rose. */
-const BORDER_DIRECTION_LABELS = ["NE", "E", "SE", "SW", "W", "NW"] as const;
-
 /**
  * The two endpoints of a hex's edge facing `direction` (0-5), matching the
  * {@link hexCorners} / {@link flowerOutline} corner convention, so a drawn
@@ -423,6 +423,80 @@ function hexEdgePoints(
   const a = corner((direction + 5) % 6);
   const b = corner(direction % 6);
   return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+}
+
+/**
+ * A plan's per-edge yellow borders in the forward form: its own `borderEdges`
+ * (canonical edge codes) UNIONed with any legacy whole-arc `extraBorders`,
+ * expanded to their three outer-edge codes. The designer READS borders through
+ * this so a map still carrying legacy arcs shows every wall, and WRITES only
+ * `borderEdges` — folding the arcs in — on the first edit.
+ */
+function planEffectiveBorderEdges(plan: CustomMapTilePlan): number[] {
+  const edges: number[] = plan.borderEdges ? [...plan.borderEdges] : [];
+  for (const direction of plan.extraBorders ?? []) {
+    if (!Number.isInteger(direction) || direction < 0 || direction > 5) {
+      continue;
+    }
+    const footprintIndex = direction + 1; // the ring hex facing this absolute direction
+    for (const edgeDir of [(direction + 5) % 6, direction, (direction + 1) % 6]) {
+      edges.push(canonicalTileEdgeCode(footprintIndex, edgeDir));
+    }
+  }
+  return normalizeDesignedBorderEdges(edges);
+}
+
+/**
+ * Writes a plan's per-edge borders and drops any legacy `extraBorders` (the
+ * caller folds the arcs into `edges` via {@link planEffectiveBorderEdges} first).
+ */
+function writePlanBorderEdges(plan: CustomMapTilePlan, edges: number[]): CustomMapTilePlan {
+  const next: CustomMapTilePlan = { ...plan };
+  delete next.extraBorders;
+  if (edges.length > 0) {
+    next.borderEdges = edges;
+  } else {
+    delete next.borderEdges;
+  }
+  return next;
+}
+
+/** A stable key for a physical board edge — the unordered pair of hexes it splits. */
+function boardEdgeKey(a: HexCoord, b: HexCoord): string {
+  const aFirst = a.row < b.row || (a.row === b.row && a.col <= b.col);
+  const first = aFirst ? a : b;
+  const second = aFirst ? b : a;
+  return `${first.row}:${first.col}|${second.row}:${second.col}`;
+}
+
+/**
+ * One tile's stake in a physical board edge: which plan, and the canonical edge
+ * code in THAT plan's footprint frame. A cross-tile edge collects one incidence
+ * per side (different plans, different codes); an inner edge, one.
+ */
+type BorderEdgeIncidence = { planIndex: number; code: number };
+
+/**
+ * A single clickable border-paint edge: its geometry (a footprint hex + the
+ * absolute direction of the edge) and every plan that borders it. The FIRST
+ * incidence (plans-array order) owns the WRITE; `active`/ERASE consider all.
+ */
+type BorderEdgeZone = { hex: HexCoord; direction: number; incidences: BorderEdgeIncidence[] };
+
+/** A thin quad centred on a hex edge — the pointerdown/enter hit target for painting. */
+function edgeStripPoints(cx: number, cy: number, size: number, direction: number, thickness: number): string {
+  const { x1, y1, x2, y2 } = hexEdgePoints(cx, cy, size, direction);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.hypot(dx, dy) || 1;
+  const ox = (-dy / length) * (thickness / 2);
+  const oy = (dx / length) * (thickness / 2);
+  return [
+    `${x1 + ox},${y1 + oy}`,
+    `${x2 + ox},${y2 + oy}`,
+    `${x2 - ox},${y2 - oy}`,
+    `${x1 - ox},${y1 - oy}`
+  ].join(" ");
 }
 
 /** The outline of a 7-hex flower as one SVG path (outer edges only). */
@@ -870,6 +944,9 @@ export function MapDesigner({
           if (changes.extraBorders === undefined && "extraBorders" in changes) {
             delete next.extraBorders;
           }
+          if (changes.borderEdges === undefined && "borderEdges" in changes) {
+            delete next.borderEdges;
+          }
           if (changes.lockRotation === undefined && "lockRotation" in changes) {
             delete next.lockRotation;
           }
@@ -892,26 +969,76 @@ export function MapDesigner({
   );
 
   /**
-   * The ONE write path for a designer yellow border on any plan at an ABSOLUTE
-   * board direction (0-5): add/remove + sort, dropping the field when empty.
-   * Both the tile-panel edge rose and the on-board paint zones call this, so
-   * both always write the identical plan shape (a stable callback so the paint
-   * zones' hook chain stays memoizable).
+   * The ONE write path for the per-edge yellow borders: seal ("draw") or unseal
+   * ("erase") one physical board edge. Draw adds the edge's canonical code to the
+   * OWNER plan (the first bordering plan); erase drops it from EVERY plan that
+   * holds it (a cross-tile edge may be stored on either side). Both fold any
+   * legacy whole-arc `extraBorders` into `borderEdges` (via
+   * `planEffectiveBorderEdges`) so the designer writes only the forward form.
    */
-  const toggleBorderAt = useCallback(
-    (index: number, direction: number) => {
-      const plan = customMap[index];
-      if (!plan) {
-        return;
-      }
-      const current = plan.extraBorders ?? [];
-      const next = current.includes(direction)
-        ? current.filter((entry) => entry !== direction)
-        : [...current, direction].sort((a, b) => a - b);
-      updateTile(index, { extraBorders: next.length > 0 ? next : undefined });
+  const paintEdgeZone = useCallback(
+    (zone: BorderEdgeZone, mode: "draw" | "erase") => {
+      const owner = zone.incidences[0];
+      onChange(
+        customMap.map((plan, planIndex) => {
+          if (mode === "draw") {
+            if (planIndex !== owner.planIndex) {
+              return plan;
+            }
+            // Already sealed with no legacy arc left to fold in → no-op.
+            if ((plan.borderEdges?.includes(owner.code) ?? false) && !plan.extraBorders) {
+              return plan;
+            }
+            const edges = normalizeDesignedBorderEdges([...planEffectiveBorderEdges(plan), owner.code]);
+            return writePlanBorderEdges(plan, edges);
+          }
+          const codes = zone.incidences
+            .filter((incidence) => incidence.planIndex === planIndex)
+            .map((incidence) => incidence.code);
+          if (codes.length === 0) {
+            return plan;
+          }
+          const effective = planEffectiveBorderEdges(plan);
+          if (!effective.some((code) => codes.includes(code))) {
+            return plan; // this plan doesn't hold the edge — left untouched
+          }
+          const edges = normalizeDesignedBorderEdges(effective.filter((code) => !codes.includes(code)));
+          return writePlanBorderEdges(plan, edges);
+        })
+      );
     },
-    [customMap, updateTile]
+    [customMap, onChange]
   );
+
+  /**
+   * The live border-paint stroke's mode (or null when no stroke is in progress).
+   * A pointerdown decides draw-vs-erase from the pressed edge; pointerenter over
+   * other edges applies the SAME mode until pointerup/cancel/Escape ends it — so
+   * one click toggles a single edge and a drag paints a whole line of them.
+   */
+  const borderStrokeRef = useRef<"draw" | "erase" | null>(null);
+  useEffect(() => {
+    if (!borderPaint) {
+      borderStrokeRef.current = null;
+      return;
+    }
+    const endStroke = () => {
+      borderStrokeRef.current = null;
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        borderStrokeRef.current = null;
+      }
+    };
+    window.addEventListener("pointerup", endStroke);
+    window.addEventListener("pointercancel", endStroke);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerup", endStroke);
+      window.removeEventListener("pointercancel", endStroke);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [borderPaint]);
 
   /**
    * Arm / disarm the on-board border paint tool. Only one interaction mode runs
@@ -1664,20 +1791,8 @@ export function MapDesigner({
   const isGateLinked = (surface: { row: number; col: number }): boolean =>
     Boolean(selected?.gateLinks?.some((link) => link.surface.row === surface.row && link.surface.col === surface.col));
 
-  /**
-   * Toggle a designer-placed yellow border on the SELECTED tile at an ABSOLUTE
-   * board direction (0-5). The border seals that outer arc in game — identical
-   * to a printed one — regardless of any face-down draw or later rotation.
-   * Legal on every tile group, so no group gate here. Delegates to the shared
-   * `toggleBorderAt` write path so the panel rose and the on-board paint zones
-   * always produce the identical plan shape.
-   */
-  const toggleBorder = (direction: number) => {
-    if (selectedIndex === null || !selected) {
-      return;
-    }
-    toggleBorderAt(selectedIndex, direction);
-  };
+  /** Number of distinct per-edge yellow borders on the selected plan (legacy arcs folded in). */
+  const selectedBorderEdgeCount = selected ? planEffectiveBorderEdges(selected).length : 0;
 
   /** Toggle a designer gate link between the selected cavern and a touching Surface tile. */
   const toggleGateLink = (surface: { row: number; col: number }) => {
@@ -1999,27 +2114,25 @@ export function MapDesigner({
       />
     );
 
-    // Designer-placed yellow borders — drawn at their ABSOLUTE board direction
-    // (independent of rotation), so the designer sees exactly the impassable
-    // edge players will get. `tileFootprint(center, 0)[d+1]` is the ring hex
-    // facing absolute direction d; each border seals its three outward edges.
-    if (plan.extraBorders && plan.extraBorders.length > 0) {
+    // Designer-placed per-edge yellow borders — drawn edge-by-edge in the
+    // ABSOLUTE board frame (independent of rotation), so the designer sees
+    // exactly the impassable lines players will get. Each code is one hex edge:
+    // `tileFootprint(center, 0)[footprintIndex]` is the hex, `code % 6` the
+    // absolute direction. Legacy whole-arc `extraBorders` are folded in via
+    // `planEffectiveBorderEdges` so nothing disappears before conversion. Drawn
+    // bold (dark casing under a gold core), matching the in-game look.
+    const effectiveEdges = planEffectiveBorderEdges(plan);
+    if (effectiveEdges.length > 0) {
       const flower = tileFootprint(center, 0);
-      for (const absolute of plan.extraBorders) {
-        if (!Number.isInteger(absolute) || absolute < 0 || absolute > 5) {
+      for (const code of effectiveEdges) {
+        const cell = flower[Math.floor(code / 6)];
+        if (!cell) {
           continue;
         }
-        const { x, y } = hexToPixel(flower[absolute + 1], size);
-        for (const edge of [absolute - 1, absolute, absolute + 1]) {
-          const direction = ((edge % 6) + 6) % 6;
-          borderLayer.push(
-            <line
-              className="designerBorderLine"
-              key={`plan-border-${index}-${absolute}-${direction}`}
-              {...hexEdgePoints(x, y, size - 0.8, direction)}
-            />
-          );
-        }
+        const { x, y } = hexToPixel(cell, size);
+        const coords = hexEdgePoints(x, y, size - 0.8, code % 6);
+        borderLayer.push(<line className="designerBorderCasing" key={`plan-border-casing-${index}-${code}`} {...coords} />);
+        borderLayer.push(<line className="designerBorderLine" key={`plan-border-${index}-${code}`} {...coords} />);
       }
     }
 
@@ -2458,45 +2571,69 @@ export function MapDesigner({
     );
   }
 
-  // --- Designer yellow-border paint zones -------------------------------------
+  // --- Designer yellow-border paint zones (per physical edge) -----------------
   // While the paint tool is armed (and no tile is being dragged), every placed
-  // plan shows six clickable ring hexes — one per ABSOLUTE board direction 0-5.
-  // Clicking one seals/unseals that tile's yellow border on that edge through
-  // the SAME `toggleBorderAt` path as the panel rose. `tileFootprint(center,0)
-  // [d+1]` is exactly the ring hex whose three outward edges the border draws
-  // (see the border DRAWING loop above), so the click target sits on the sealed
-  // edge. Drawn on top of the objects so the zones stay clickable while armed.
+  // plan's footprint contributes one THIN clickable strip per hex edge — 30 for a
+  // lone flower (18 outer + 12 inner). Edges shared by two adjacent plans dedupe
+  // to ONE zone via `boardEdgeKey`; the first plan to reach an edge OWNS the
+  // write, but the zone's active state and erase consider every bordering plan.
+  // A pointerdown seals/unseals that one edge and starts a stroke; pointerenter
+  // over other edges continues it. Drawn on top of the objects so they stay
+  // clickable while armed.
   const borderPaintLayer: React.ReactNode[] = [];
   if (borderPaint && !drag) {
-    for (const [index, plan] of customMap.entries()) {
+    const effectiveByPlan = customMap.map((plan) => planEffectiveBorderEdges(plan));
+    const zones = new Map<string, BorderEdgeZone>();
+    for (const [planIndex, plan] of customMap.entries()) {
       const flower = tileFootprint({ row: plan.row, col: plan.col }, 0);
-      const tileName =
-        plan.group === "starting" ? `Town seat ${seatNumberOf(index)}` : `${planGroupLabel(plan)} tile`;
-      // `.entries()` gives a fresh per-iteration direction const (no mutated
-      // loop counter captured in the JSX closures — the React Compiler forbids
-      // that). Direction d's ring hex is flower[d+1], per the border DRAW loop.
-      for (const [direction, label] of BORDER_DIRECTION_LABELS.entries()) {
-        const { x, y } = hexToPixel(flower[direction + 1], size);
-        const on = Boolean(plan.extraBorders?.includes(direction));
-        borderPaintLayer.push(
-          <polygon
-            className={`designerBorderPaintZone${on ? " active" : ""}`}
-            data-border-index={index}
-            data-direction={direction}
-            key={`border-paint-${index}-${direction}`}
-            // Take the press so the tile press/drag and board pan never start.
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => toggleBorderAt(index, direction)}
-            points={hexCorners(x, y, size - 1.6)}
-          >
-            <title>
-              {on
-                ? `Remove the ${label} edge's yellow border — ${tileName}`
-                : `Seal the ${label} edge (yellow border) — ${tileName}`}
-            </title>
-          </polygon>
-        );
+      for (const [footprintIndex, cell] of flower.entries()) {
+        for (let direction = 0; direction < 6; direction += 1) {
+          const neighbor = hexNeighbor(cell, direction);
+          const key = boardEdgeKey(cell, neighbor);
+          const code = canonicalTileEdgeCode(footprintIndex, direction);
+          let zone = zones.get(key);
+          if (!zone) {
+            zone = { hex: cell, direction, incidences: [] };
+            zones.set(key, zone);
+          }
+          // An inner edge is met twice from one plan (both its hexes) at the same
+          // canonical code — record each (plan, code) pair once.
+          if (!zone.incidences.some((inc) => inc.planIndex === planIndex && inc.code === code)) {
+            zone.incidences.push({ planIndex, code });
+          }
+        }
       }
+    }
+    const thickness = size * 0.36;
+    for (const [key, zone] of zones) {
+      const owner = zone.incidences[0];
+      const active = zone.incidences.some((inc) => effectiveByPlan[inc.planIndex]?.includes(inc.code));
+      const { x, y } = hexToPixel(zone.hex, size);
+      borderPaintLayer.push(
+        <polygon
+          aria-label={`border edge ${hexSpaceId(zone.hex)} d:${zone.direction}`}
+          className={`designerBorderEdgeZone${active ? " active" : ""}`}
+          data-border-index={owner.planIndex}
+          data-edge-code={owner.code}
+          key={`border-edge-${key}`}
+          // Take the press so the tile press/drag and board pan never start; do
+          // NOT capture the pointer (that would swallow pointerenter on siblings).
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            const mode: "draw" | "erase" = active ? "erase" : "draw";
+            borderStrokeRef.current = mode;
+            paintEdgeZone(zone, mode);
+          }}
+          onPointerEnter={() => {
+            if (borderStrokeRef.current) {
+              paintEdgeZone(zone, borderStrokeRef.current);
+            }
+          }}
+          points={edgeStripPoints(x, y, size - 0.8, zone.direction, thickness)}
+        >
+          <title>{active ? "Remove this yellow border edge" : "Seal this edge (yellow border)"}</title>
+        </polygon>
+      );
     }
   }
 
@@ -2530,7 +2667,7 @@ export function MapDesigner({
       <div className="designerObjectPalette" aria-label="Objects palette">
         <small className="palettePrompt">
           {borderPaint
-            ? "Painting yellow borders — click a tile's edge hex to seal or unseal that edge"
+            ? "Painting yellow borders — click an edge to seal it, click again to remove, or drag to paint a line of edges"
             : armedObject
               ? `Placing a ${armedLabel} — click a glowing cell (tile hex or off-tile), or the button again to stop`
               : "Click an object, then click a board cell to place it"}
@@ -2580,7 +2717,7 @@ export function MapDesigner({
             aria-pressed={borderPaint}
             className={`designerObjectButton borderPaint${borderPaint ? " armed" : ""}`}
             onClick={toggleBorderPaint}
-            title="Yellow border — click a tile's edge hex on the board to seal (or unseal) that impassable edge, exactly like the tile panel's edge chips"
+            title="Yellow border — draw impassable lines edge by edge on the board: click an edge to seal it, click again to remove, drag to paint several"
             type="button"
           >
             🖌 Yellow border
@@ -3226,34 +3363,31 @@ export function MapDesigner({
               </>
             )}
 
-            {/* Designer yellow borders — deliberate impassable edges. Legal on
-                any tile group, so this shows for starting towns and supply tiles
-                alike. Each chip toggles an ABSOLUTE board direction (0-5). */}
+            {/* Designer yellow borders — deliberate impassable edges, drawn
+                edge-by-edge on the board with the 🖌 tool (legal on any group).
+                The panel just reports the count and offers a one-click Clear. */}
             <div className="popoverBorders">
               <div className="popoverSectionLabel">Yellow borders (impassable edges)</div>
               <small className="popoverHint">
-                Seal an outer edge of this tile — heroes can&apos;t cross, discover or place across it (only Expert
-                Pathfinding does), exactly like a printed yellow line. Borders are drawn on the board, so they stay put
-                when the tile is rotated or a face-down slot draws its tile.
+                Arm the <strong>🖌 Yellow border</strong> tool and draw on the board, edge by edge — click an edge to seal
+                it, click again to remove, or drag to paint several. Sealed edges block crossing, discovery and placement
+                (only Expert Pathfinding passes) and stay put when the tile is rotated or a face-down slot draws its tile.
               </small>
-              <div className="popoverBorderRose" role="group" aria-label="Tile edge yellow borders">
-                {BORDER_DIRECTION_LABELS.map((label, direction) => {
-                  const on = Boolean(selected.extraBorders?.includes(direction));
-                  return (
-                    <button
-                      aria-label={`${on ? "Remove" : "Add"} yellow border on the ${label} edge`}
-                      aria-pressed={on}
-                      className={`popoverBorderChip${on ? " active" : ""}`}
-                      data-direction={direction}
-                      key={direction}
-                      onClick={() => toggleBorder(direction)}
-                      title={`${label} edge`}
-                      type="button"
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
+              <div className="popoverBorderSummary" aria-label="Tile yellow border edges">
+                <span>
+                  {selectedBorderEdgeCount === 0
+                    ? "No border edges yet"
+                    : `${selectedBorderEdgeCount} border edge${selectedBorderEdgeCount === 1 ? "" : "s"}`}
+                </span>
+                {selectedBorderEdgeCount > 0 ? (
+                  <button
+                    className="popoverBorderClear"
+                    onClick={() => updateTile(selectedIndex as number, { borderEdges: undefined, extraBorders: undefined })}
+                    type="button"
+                  >
+                    Clear
+                  </button>
+                ) : null}
               </div>
             </div>
 

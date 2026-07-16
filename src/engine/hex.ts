@@ -117,6 +117,69 @@ export function slotDirection(slot: number, rotation: number): number | null {
   return (slot - 1 + rotation) % 6;
 }
 
+/**
+ * The ring direction `d` (0-5) for which `hexNeighbor(a, d)` equals `b`, or null
+ * when `b` is not one of `a`'s six neighbours — the inverse of {@link hexNeighbor}
+ * over a single step, used to name the exact edge two adjacent hexes share.
+ */
+export function hexDirectionBetween(a: HexCoord, b: HexCoord): number | null {
+  for (let direction = 0; direction < 6; direction += 1) {
+    const neighbor = hexNeighbor(a, direction);
+    if (neighbor.row === b.row && neighbor.col === b.col) {
+      return direction;
+    }
+  }
+  return null;
+}
+
+/**
+ * The reference 7-hex flower footprint (centre at the origin). The flower's
+ * INTERNAL adjacency graph — which footprint hex neighbours which, in which
+ * direction — is identical at every board position (verified parity-invariant),
+ * so this one reference is enough to canonicalise a designer edge code without
+ * knowing the real tile centre.
+ */
+const REFERENCE_FOOTPRINT: readonly HexCoord[] = tileFootprint({ row: 0, col: 0 }, 0);
+
+/**
+ * Precomputed canonical form of every possible tile-edge code (0-41). See
+ * {@link canonicalTileEdgeCode}. Building it once keeps that lookup an O(1) array
+ * read — safe on the movement BFS hot path.
+ */
+const CANONICAL_TILE_EDGE_CODE: readonly number[] = (() => {
+  const table: number[] = [];
+  for (let footprintIndex = 0; footprintIndex < TILE_SLOT_COUNT; footprintIndex += 1) {
+    for (let direction = 0; direction < 6; direction += 1) {
+      const neighbor = hexNeighbor(REFERENCE_FOOTPRINT[footprintIndex], direction);
+      const mirrorIndex = REFERENCE_FOOTPRINT.findIndex((cell) => hexEquals(cell, neighbor));
+      const code = footprintIndex * 6 + direction;
+      table[code] = mirrorIndex < 0 ? code : Math.min(code, mirrorIndex * 6 + ((direction + 3) % 6));
+    }
+  }
+  return table;
+})();
+
+/**
+ * Canonical code for ONE hex edge of a tile's footprint, in the rotation-0
+ * BOARD-ABSOLUTE frame the map designer's per-edge yellow borders
+ * (`CustomMapTilePlan.borderEdges`) use:
+ * `code = footprintIndex*6 + absoluteDirection`, footprintIndex 0-6 = index into
+ * `tileFootprint(center, 0)` (0 is the centre), absoluteDirection 0-5.
+ *
+ * An INNER edge (between two footprint hexes) has two equivalent codes — `(i, d)`
+ * and `(j, (d+3)%6)` where `tileFootprint(center,0)[j] = hexNeighbor(footprint[i],
+ * d)` — and folds onto the SMALLER so one physical edge is stored once; an OUTER
+ * edge (facing off the tile) keeps its single code. The 42 codes map to 30
+ * distinct canonical values (18 outer + 12 inner). Because the flower's internal
+ * adjacency is placement-invariant, the code is rotation- and centre-independent,
+ * the same guarantee the whole-arc frame relies on.
+ */
+export function canonicalTileEdgeCode(footprintIndex: number, absoluteDirection: number): number {
+  const fpi = ((footprintIndex % TILE_SLOT_COUNT) + TILE_SLOT_COUNT) % TILE_SLOT_COUNT;
+  const dir = ((absoluteDirection % 6) + 6) % 6;
+  return CANONICAL_TILE_EDGE_CODE[fpi * 6 + dir];
+}
+
 /** Two tiles may not overlap: flower footprints stay apart at distance >= 3. */
 export function tileCentersOverlap(left: HexCoord, right: HexCoord): boolean {
   return hexDistance(left, right) < 3;
