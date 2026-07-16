@@ -8016,12 +8016,14 @@ export function buildCreatureBankDraws(bankId: CreatureBankId): NeutralDraw[] {
 }
 
 /**
- * Converts the Polish tournament Attack-die roll into bank size I-IV.
- * One die can only reach I-III; two dice can reach the full range.
+ * Converts the Polish tournament Attack-die roll into bank size I-IV, per the
+ * v1.2 sheet table (rule author's clarification): −1 → Ⅰ, 0 → Ⅱ, +1 → Ⅲ, and
+ * the two EXTREME sums −2 or +2 → Ⅳ (gold). One die can only reach I-III; two
+ * dice distribute Ⅰ 2/9, Ⅱ 3/9, Ⅲ 2/9, Ⅳ 2/9 (sums −2 and +2 both pay Ⅳ).
  */
 export function polishBankSizeForAttackRolls(rolls: readonly number[]): BankSize {
   const sum = rolls.reduce((total, roll) => total + roll, 0);
-  if (sum <= -1) return 1;
+  if (sum === -1) return 1;
   if (sum === 0) return 2;
   if (sum === 1) return 3;
   return 4;

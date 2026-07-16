@@ -87,8 +87,10 @@ function bankChoice(state: GameState): Extract<PendingChoice, { type: "OPTION_CH
 }
 
 describe("Polish bank size roll", () => {
-  it("maps every possible one/two-die sum to size I-IV", () => {
-    expect(polishBankSizeForAttackRolls([-1, -1])).toBe(1);
+  it("maps every possible one/two-die sum to size I-IV (v1.2 sheet: −2 OR +2 → Ⅳ)", () => {
+    // The sheet's gold row reads "−2 or +2": BOTH extreme sums pay the largest
+    // bank, so the two-die distribution is Ⅰ 2/9, Ⅱ 3/9, Ⅲ 2/9, Ⅳ 2/9.
+    expect(polishBankSizeForAttackRolls([-1, -1])).toBe(4);
     expect(polishBankSizeForAttackRolls([-1, 0])).toBe(1);
     expect(polishBankSizeForAttackRolls([0, 0])).toBe(2);
     expect(polishBankSizeForAttackRolls([0, 1])).toBe(3);

@@ -544,15 +544,18 @@ describe("Skeletons necro-reinforce", () => {
     expect(combatUnit.variant).toBe("few");
     // Minimal open combat so resolveSkeletonReinforceChoice can find the board unit.
     state.combat = {
+      id: "combat_skeleton_persist",
       units: { [combatUnit.id]: combatUnit },
       attackerPlayerId: "p1",
       defenderPlayerId: "neutrals",
       activeUnitId: combatUnit.id,
       round: 1,
       setup: null,
+      awaitingContinue: false,
+      outcome: null,
       dice: { attack: null, defense: null },
-      context: { kind: "neutral", fieldId: "f", heroId: "hero_p1" }
-    } as GameState["combat"];
+      context: { kind: "neutral", fieldId: "f", heroId: "hero_p1", difficulty: 1, hasAzure: false }
+    } as unknown as GameState["combat"];
     state.phase = "combat";
 
     openSkeletonReinforceChoice(state, "p1");
