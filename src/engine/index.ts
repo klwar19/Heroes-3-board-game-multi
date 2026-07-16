@@ -437,6 +437,7 @@ export {
   legalTokenSlotsForTileDef,
   levelOfExperience,
   mapTokenLabel,
+  polishBankMaxSize,
   polishBankSizeForAttackRolls,
   tokenMayCoverFieldDef,
   planSubterraneanGates,

@@ -1319,16 +1319,26 @@ is NOT done:
   UI tests.
 - With `polish-bank-sizes` ON, a bank-eligible reveal peeks the top TWO tokens
   (or one when the pile has one), rolls each candidate's size with seeded Attack
-  dice, requires the player to choose A or B, and only then offers tile rotation.
+  dice (the sheet table: −1→Ⅰ, 0→Ⅱ, +1→Ⅲ, −2 OR +2→Ⅳ), requires the player to
+  choose A or B, and only then offers tile rotation.
   Every candidate always rolls two dice, including the first Far opening. Only
   the chosen token is removed by id after rotation; the unchosen peek stays
   exactly where it was. This mode
-  REPLACES normal random-stat bank Stack Tokens: all four bank cards receive the
-  same deterministic 0/1/2/3 full-Health layers for sizes I/II/III/IV, keep the
-  same bank-card features, and have flat +1 Attack while any layer remains.
-  Rewards use X=bank size (1/2/3/4). The UI uses no coin / bronze 1 / silver 2 /
-  gold 3 and shows the remaining coin on every defender. Covered by
-  `polish-bank-sizes.test.ts`, bank combat/ability controls, and the bank DOM
+  REPLACES normal random-stat bank Stack Tokens: every bank card receives the
+  deterministic 0/1/2/3 full-Health layers for sizes I/II/III/IV, keeps the
+  same bank-card features, and has flat +1 Attack while any layer remains.
+  The bank card stays RANKLESS in play, but its layer capacity follows the
+  Unit Stack coin rule of the unit NAMED on it, punching one above the army
+  caps to at most 3 (bronze 3 / silver 3 / gold 2, azure counted as gold → 2 —
+  `polishBankGuardLayerCap`), and each BANK's rollable size clamps to what its
+  best guard can carry (`polishBankMaxSize`): the all-gold/azure Dragon
+  Utopia / Pyramid / Naga Bank top out at size Ⅲ (clamped at the reveal roll,
+  before the player chooses), every other bank reaches Ⅳ. Rewards use
+  X=clamped size with a big-bank premium: sizes Ⅰ/Ⅱ/Ⅲ/Ⅳ pay X=1/2/4/5. The UI
+  uses no coin / bronze 1 / silver 2 / gold 3 and shows the remaining coin on
+  every defender. Covered by
+  `polish-bank-sizes.test.ts` (incl. the cap/clamp/premium cases, each
+  mutation-checked), bank combat/ability controls, and the bank DOM
   cases in `creature-bank-board.test.tsx` / `board.test.tsx`.
 - The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct
   from Few/Pack/Neutral), and resource/morale/search rewards scaled by the

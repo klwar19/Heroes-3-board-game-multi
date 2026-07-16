@@ -4,9 +4,11 @@ import {
   applyAction,
   createAdventureGameState,
   getLegalActions,
+  polishBankMaxSize,
   polishBankSizeForAttackRolls,
   type BankSize,
   type GameAction,
+  type GameEvent,
   type GameState,
   type LegalAction,
   type PendingChoice,
@@ -181,7 +183,7 @@ describe("Polish Creature Bank offer", () => {
 });
 
 describe("Polish bank size combat and AI", () => {
-  it("replaces random Stack Tokens with 0/1/2/3 layers on every one of the four guards", () => {
+  it("replaces random Stack Tokens with 0/1/2/3 layers, capped per guard by its unit's tier", () => {
     const state = createAdventureGameState({
       seed: "bank-size-deterministic-layers",
       difficulty: "normal",
@@ -192,14 +194,89 @@ describe("Polish bank size combat and AI", () => {
     for (const size of [1, 2, 3, 4] as const) {
       const { units, stackedCount } = buildCreatureBankCombatUnits(state, "crypt", size);
       expect(units).toHaveLength(4);
-      expect(units.every((unit) => unit.bankStacks === size - 1)).toBe(true);
+      // The bank card is rankless in play, but layers follow the Unit Stack
+      // coin caps of the unit NAMED on it, punching one above the army caps
+      // with an absolute maximum of 3 (bronze 3 / silver 3 / gold+azure 2):
+      // the Crypt's bronze Skeletons/Zombies/Wraiths and silver Vampires all
+      // carry the full size-Ⅳ 3 layers.
+      const expectedLayers = () => Math.min(size - 1, 3);
+      expect(units.map((unit) => unit.bankStacks)).toEqual(
+        units.map(() => expectedLayers())
+      );
       expect(units.every((unit) => unit.stackToken === undefined)).toBe(true);
       expect(units.every((unit) => {
         const base = CREATURE_BANK_UNIT_SIDES[unit.unitDefId!];
         return unit.attack === base.attack + (size > 1 ? 1 : 0);
       })).toBe(true);
-      // Rewards keep the old X scale, now deterministically equal to bank size.
-      expect(stackedCount).toBe(size);
+      // Reward X follows the size, and the two big sizes pay a premium:
+      // sizes Ⅰ/Ⅱ/Ⅲ/Ⅳ pay X = 1/2/4/5 (Ⅲ and Ⅳ each add one base reward).
+      expect(stackedCount).toBe(size + (size >= 3 ? 1 : 0));
+    }
+  });
+
+  it("caps gold and azure guards at 2 layers without changing their rankless in-play status", () => {
+    const state = createAdventureGameState({
+      seed: "bank-size-tier-caps",
+      rollFirstPlayer: false,
+      houseRules: { "polish-bank-sizes": true },
+    });
+
+    // Dragon Utopia: Black Dragons (gold) + Gold/Faerie/Crystal Dragons
+    // (azure — counted as gold for Stacks). Bank guards punch one above the
+    // army caps, so its best guard carries 2 layers and the whole BANK tops
+    // out at size Ⅲ: a stored size Ⅳ clamps to Ⅲ (2 layers each, reward
+    // X=4 with the big-bank premium). The guards keep the bank card's
+    // rankless in-play identity (bankUnit, no stackToken; targeting/tier
+    // gates are pinned in creature-bank-combat.test.ts, unchanged by the cap).
+    const utopia = buildCreatureBankCombatUnits(state, "dragon_utopia", 4);
+    expect(utopia.units.map((unit) => unit.bankStacks)).toEqual([2, 2, 2, 2]);
+    expect(utopia.units.every((unit) => unit.bankUnit === true)).toBe(true);
+    expect(utopia.units.every((unit) => unit.stackToken === undefined)).toBe(true);
+    expect(utopia.stackedCount).toBe(4);
+
+    // The Pyramid's Gold/Diamond Golems are gold-tier: size Ⅲ is its max and
+    // pays the boosted X=4 with 2 layers on every card.
+    const pyramid = buildCreatureBankCombatUnits(state, "pyramid", 3);
+    expect(pyramid.units.map((unit) => unit.bankStacks)).toEqual([2, 2, 2, 2]);
+    expect(pyramid.stackedCount).toBe(4);
+
+    // Size Ⅰ still means zero layers everywhere — the cap never ADDS a layer.
+    const small = buildCreatureBankCombatUnits(state, "dragon_utopia", 1);
+    expect(small.units.every((unit) => unit.bankStacks === 0)).toBe(true);
+  });
+
+  it("clamps each bank's possible size to its best guard's bank-layer cap", () => {
+    // 1 + max bank-guard layer cap among the four guards (guards punch one
+    // above the army caps): all-gold/azure → Ⅲ, any silver or bronze guard →
+    // the full Ⅳ.
+    expect(polishBankMaxSize("dragon_utopia")).toBe(3);
+    expect(polishBankMaxSize("pyramid")).toBe(3);
+    expect(polishBankMaxSize("naga_bank")).toBe(3);
+    expect(polishBankMaxSize("medusa_stores")).toBe(4);
+    expect(polishBankMaxSize("derelict_ship")).toBe(4);
+    expect(polishBankMaxSize("crypt")).toBe(4);
+    expect(polishBankMaxSize("imp_cache")).toBe(4);
+  });
+
+  it("clamps the rolled size at the reveal offer, before the player chooses", () => {
+    // Force both candidates to be all-gold/azure banks and scan every stored
+    // candidate against its own roll: the stored size must equal
+    // min(rolled size, bank max), so a Ⅳ roll on a Dragon Utopia shows Ⅲ.
+    const state = placeFarTileAwaitingRotation({
+      openings: 0,
+      pile: ["dragon_utopia", "pyramid", "naga_bank"],
+    });
+    const rollEvents = state.eventLog.filter(
+      (event): event is Extract<GameEvent, { type: "ADVENTURE_DICE_ROLLED" }> =>
+        event.type === "ADVENTURE_DICE_ROLLED" && Boolean(event.results[0]?.startsWith("Bank "))
+    );
+    const tile = Object.values(state.adventure!.tiles).find((candidate) => candidate.reservedBankOptions?.length);
+    expect(tile?.reservedBankOptions?.length).toBeGreaterThan(0);
+    expect(rollEvents.length).toBe(tile!.reservedBankOptions!.length);
+    for (const [index, option] of tile!.reservedBankOptions!.entries()) {
+      const rolled = polishBankSizeForAttackRolls(rollEvents[index]!.attackRolls ?? []);
+      expect(option.size).toBe(Math.min(rolled, polishBankMaxSize(option.bankId as CreatureBankId)));
+      expect(option.size).toBeLessThanOrEqual(3);
     }
   });
 

@@ -34,3 +34,21 @@ export function polishArmyUnitCanBuyStack(unit: ArmyUnitState): boolean {
   const cap = polishUnitStackCap(unit.unitDefId);
   return unit.side === "pack" && cap > 0 && (unit.stacks ?? 0) < cap;
 }
+
+/**
+ * Polish Bank Sizes: a bank guard stays RANKLESS in play (gradeless targeting
+ * and every tier-gate exemption untouched), but its physical layer capacity
+ * follows the Unit Stack coin rule of the unit NAMED on its card, punching
+ * ONE layer above the army caps — but never above the absolute maximum of 3
+ * (there is no fourth coin): bronze 3 / silver 3 / gold 2. Azure sits above
+ * gold and is counted AS gold → 2. An unknown unit id caps at 0 (no layers),
+ * never a fallback tier.
+ */
+export function polishBankGuardLayerCap(unitDefId: string | undefined): number {
+  const tier = unitDefId ? coreUnitDefinitions[unitDefId]?.tier : undefined;
+  if (!tier) {
+    return 0;
+  }
+  const armyCap = tier === "azure" ? POLISH_UNIT_STACK_RULES.gold?.cap : POLISH_UNIT_STACK_RULES[tier]?.cap;
+  return armyCap === undefined ? 0 : Math.min(3, armyCap + 1);
+}

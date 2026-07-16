@@ -66,6 +66,7 @@ import {
   gainOwnedCard,
   polishSpellBookEnabled
 } from "./polish-spell-book";
+import { polishBankGuardLayerCap } from "./polish-unit-stacks";
 import {
   hexDistance,
   hexNeighbors,
@@ -8030,6 +8031,24 @@ export function polishBankSizeForAttackRolls(rolls: readonly number[]): BankSize
 }
 
 /**
+ * Polish Bank Sizes: the LARGEST size a given bank can be. A bank's size never
+ * exceeds what its best guard can physically carry (1 + the highest bank-guard
+ * layer cap among its four cards, where guards punch one above the army caps
+ * to at most 3: bronze 3 / silver 3 / gold+azure 2): an all-gold/azure Dragon
+ * Utopia or Pyramid tops out at size Ⅲ, while any bank with a silver or
+ * bronze guard reaches the full Ⅳ. A rolled size above this is clamped BEFORE
+ * the player chooses.
+ */
+export function polishBankMaxSize(bankId: CreatureBankId): BankSize {
+  const bank = CREATURE_BANKS[bankId];
+  const maxCap = (bank?.units ?? []).reduce(
+    (best, unitDefId) => Math.max(best, polishBankGuardLayerCap(unitDefId)),
+    0
+  );
+  return Math.max(1, Math.min(4, 1 + maxCap)) as BankSize;
+}
+
+/**
  * Builds the Creature Bank defenders for a combat. Standard banks place their
  * random statistic Stack Tokens using Scenario Difficulty (rulebook p.66-67).
  *
@@ -8037,9 +8056,14 @@ export function polishBankSizeForAttackRolls(rolls: readonly number[]): BankSize
  * EVERY one of the four bank cards and its colour is a deterministic layer
  * count (size I = 0, bronze II = 1, silver III = 2, gold IV = 3). Every layer
  * is a full extra health bar; this path never mints the standard random-stat
- * `stackToken`. The printed bank reward uses the rolled size directly as its
- * old-system X multiplier: size I/II/III/IV pays as X=1/2/3/4, independently
- * of the physical 0/1/2/3 layers carried by each defender.
+ * `stackToken`. Each guard's layers are additionally CAPPED by the Unit Stack
+ * coin rule of the unit named on its (rankless-in-play) card, punching one
+ * above the army caps with an absolute maximum of 3 — bronze 3 / silver 3 /
+ * gold+azure 2 (`polishBankGuardLayerCap`) — and the whole bank's SIZE clamps
+ * to what its best guard can carry (`polishBankMaxSize`): an all-gold/azure
+ * Dragon Utopia tops out at size Ⅲ. The bank reward uses the (clamped) size
+ * as its old-system X multiplier with a big-bank premium: sizes Ⅰ/Ⅱ/Ⅲ/Ⅳ pay
+ * X = 1/2/4/5, independently of the physical layers on each defender.
  */
 export function buildCreatureBankCombatUnits(
   state: GameState,
@@ -8055,16 +8079,25 @@ export function buildCreatureBankCombatUnits(
   });
 
   if (houseRuleEnabled(state, "polish-bank-sizes") && bankSize !== undefined) {
-    const stackLayers = Math.max(0, bankSize - 1);
+    // The roll-time clamp already keeps a stored size within the bank's max;
+    // re-clamp defensively so a hand-edited or legacy field cannot pay a size
+    // its guards could never physically carry.
+    const effectiveSize = Math.min(bankSize, polishBankMaxSize(bankId)) as BankSize;
+    const stackLayers = Math.max(0, effectiveSize - 1);
     for (const unit of units) {
-      unit.bankStacks = stackLayers;
+      // The bank card is rankless in play, but its layer capacity follows the
+      // Unit Stack coin rule of the unit NAMED on it, punching one above the
+      // army caps to at most 3: bronze 3 / silver 3 / gold (and azure) 2.
+      unit.bankStacks = Math.min(stackLayers, polishBankGuardLayerCap(unit.unitDefId));
       // Re-derive Attack (+1 while at least one layer remains) and preserve the
       // bank card's own abilities/stat line.
       applyUnitCurrentSide(unit, ruleset, sideOverrides);
     }
     return {
       units,
-      stackedCount: bankSize
+      // Reward X follows the (clamped) size, and big banks pay a premium:
+      // sizes Ⅲ and Ⅳ each add one extra base reward — X = 1/2/4/5.
+      stackedCount: effectiveSize + (effectiveSize >= 3 ? 1 : 0)
     };
   }
 

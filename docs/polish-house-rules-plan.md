@@ -320,12 +320,25 @@ supersedes the earlier one-die annotation in the reference-sheet draft.
 
 Polish bank size completely **replaces** the normal random-stat Stack Token
 system for that combat; only the four printed Creature Bank unit cards are
-reused. Every one of all four defenders receives the same deterministic coin:
+reused. Every one of all four defenders receives the deterministic coin:
 size Ⅰ = no coin / 0 layers, size Ⅱ = bronze 1, size Ⅲ = silver 2, size Ⅳ =
 gold 3. Each layer is a full extra copy of that bank card's Health and features;
 while at least one remains it has +1 Attack, and lethal excess carries through
-as layers downgrade. Rewards use the old X scale directly from size: size
-Ⅰ/Ⅱ/Ⅲ/Ⅳ pays as **X=1/2/3/4**, independently of the 0/1/2/3 physical layers.
+as layers downgrade.
+
+**Tier caps + size clamp + reward premium (user refinement, 2026-07-16).** A
+bank card stays rankless IN PLAY, but its layer capacity follows the Unit
+Stack coin rule of the unit NAMED on it, punching one layer above the army
+caps with an absolute maximum of 3 (`polishBankGuardLayerCap`: bronze 3 /
+silver 3 / gold 2; azure is counted as gold → 2). A bank's rollable SIZE
+clamps to what its best guard can carry (`polishBankMaxSize` = 1 + max guard
+cap): the all-gold/azure Dragon Utopia, Pyramid and Naga Bank top out at
+size Ⅲ — clamped at the reveal roll, before the player chooses — while any
+bank with a bronze or silver guard reaches the full Ⅳ (the Crypt counts as
+size Ⅳ through its bronze Skeletons even though its silver Vampires cap
+lower). Rewards use the clamped size with a big-bank premium: sizes Ⅰ/Ⅱ/Ⅲ/Ⅳ
+pay as **X=1/2/4/5** (Ⅲ and Ⅳ each add one base reward), independently of the
+physical layers.
 
 ### 5.2 Wiring
 

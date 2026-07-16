@@ -47,6 +47,7 @@ import {
   grantCreatureBankReward,
   isCreatureBankId,
   placeCreatureBank,
+  polishBankMaxSize,
   polishBankSizeForAttackRolls,
   eliminatePlayer,
   finalizeStartOfTurnHand,
@@ -1630,14 +1631,20 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState, player
       { length: diceCount },
       () => ATTACK_DIE_FACES[random.nextInt(0, ATTACK_DIE_FACES.length - 1)] ?? 0
     );
-    const size = polishBankSizeForAttackRolls(rolls);
+    const rolledSize = polishBankSizeForAttackRolls(rolls);
+    // A bank never exceeds what its best guard can physically carry (e.g. the
+    // all-gold/azure Dragon Utopia tops out at size Ⅲ). Clamp BEFORE the
+    // player chooses so the A/B offer shows the true size.
+    const size = Math.min(rolledSize, polishBankMaxSize(candidateId)) as BankSize;
     const optionLetter = String.fromCharCode(65 + index);
     appendEvent(state, {
       type: "ADVENTURE_DICE_ROLLED",
       playerId,
       dice: "attack",
       results: [
-        `Bank ${optionLetter}: ${rolls.map(attackRollLabel).join(" + ")} → size ${BANK_SIZE_ROMAN[size]}`
+        `Bank ${optionLetter}: ${rolls.map(attackRollLabel).join(" + ")} → size ${BANK_SIZE_ROMAN[rolledSize]}${
+          size !== rolledSize ? ` (capped at ${BANK_SIZE_ROMAN[size]} — this bank's guards carry no more)` : ""
+        }`
       ],
       attackRolls: rolls
     });
