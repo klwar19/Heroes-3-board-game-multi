@@ -11864,12 +11864,18 @@ function applyReactionPlayCore(
       recallPlayedCards: mode === "expert" && Boolean(effect.expertRecallPlayedCards),
       toSpellBook: Boolean(stackItem.action.fromSpellBook) && !polishBookCast,
       ...(isPolishMysticism ? { polishRefreshSpell: true } : {}),
-      ...(
-        polishBookCast && (!isPolishMysticism || (mode === "expert" && Boolean(effect.expertRecallPlayedCards)))
-          ? { polishRecallEnabler: true }
-          : {}
-      )
+      // Polish Spell Book (reference sheet): BOTH Knowledge and Mysticism return
+      // the Cast a Spell enabler to hand ("Cast a Spell returns → Hand"). Knowledge
+      // leaves the Spell used; Mysticism additionally refreshes it (polishRefreshSpell).
+      ...(polishBookCast ? { polishRecallEnabler: true } : {})
     };
+
+    // Polish Spell Book (reference sheet): Expert Mysticism adds "+Spell power" to
+    // the very cast it answers — modelled as +1 Power on the pending cast, folded
+    // into the spell's damage/effect exactly like a played Power source.
+    if (isPolishMysticism && mode === "expert") {
+      stackItem.modifiers.spellPowerBonus += 1;
+    }
 
     // Empowered Knowledge raises the limit on the basic play; the regular
     // card only on the expert play.
@@ -11922,6 +11928,12 @@ function applyReactionPlayCore(
     if (polishBookInstant) {
       if (isPolishMysticism) {
         deferred.push({ cardId: entry.cardId, playerId, toSpellBook: true, fromPolishUsed: true });
+        // Polish Mysticism ALSO returns the Cast a Spell enabler to hand (basic and
+        // expert alike), matching the cast-window path — the reference sheet's
+        // "Cast a Spell returns → Hand. Refresh casted Spell".
+        if (entry.castEnablerCardId) {
+          deferred.push({ cardId: entry.castEnablerCardId, playerId, toSpellBook: false });
+        }
       } else if (entry.castEnablerCardId) {
         deferred.push({ cardId: entry.castEnablerCardId, playerId, toSpellBook: false });
       }
@@ -11954,9 +11966,9 @@ function applyReactionPlayCore(
           deferred.push({ cardId: playedCardId, playerId, toSpellBook: bookPlayed.includes(playedCardId) });
         }
       }
-      if (polishBookInstant && entry.castEnablerCardId) {
-        deferred.push({ cardId: entry.castEnablerCardId, playerId, toSpellBook: false });
-      }
+      // (The Cast a Spell enabler is already queued for return in the Polish
+      // block above — for both Knowledge and Mysticism — so it is not re-pushed
+      // here, which would return it twice.)
     }
   }
 
