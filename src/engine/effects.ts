@@ -1,4 +1,11 @@
-import type { CardDefinition, CardOptionDefinition, CardPlayMode, EffectDefinition, SpellSchool } from "./state";
+import type {
+  CardDefinition,
+  CardOptionDefinition,
+  CardPlayMode,
+  EffectDefinition,
+  EffectDurationDefinition,
+  SpellSchool
+} from "./state";
 
 export const implementedCardEffectTypes = [
   "DEAL_DAMAGE",
@@ -477,6 +484,222 @@ export function spellCastPowerBounds(card: CardDefinition | undefined): {
   maxUseful: number | null;
 } {
   return { minUseful: spellMinUsefulPower(card), maxUseful: spellMaxUsefulPower(card) };
+}
+
+// ---------------------------------------------------------------------------
+// Structured spell displays (Spell Book): the per-Power ladder + timing badge.
+// These read the SAME `*ByPower` tables the engine resolves from (never the
+// hand-written `tags` prose), so a display can never drift from the effect.
+// ---------------------------------------------------------------------------
+
+/** One rendered rung of a spell's Power ladder: the tier and its data-derived summary. */
+export interface SpellLadderRow {
+  power: number;
+  text: string;
+}
+
+/** Sorted rows of a `Record<number, T>` power table, each formatted to a summary string. */
+function ladderFromTable<T>(
+  table: Record<number, T> | undefined,
+  format: (value: T) => string
+): SpellLadderRow[] {
+  if (!table) {
+    return [];
+  }
+  return Object.entries(table)
+    .map(([power, value]) => ({ power: Number(power), value }))
+    .filter((entry) => Number.isFinite(entry.power))
+    .sort((left, right) => left.power - right.power)
+    .map((entry) => ({ power: entry.power, text: format(entry.value) }));
+}
+
+const signed = (value: number): string => (value >= 0 ? `+${value}` : `${value}`);
+
+/** Plain-words duration for a power-scaled duration rung (Mirth, Force Field). */
+function durationLadderText(duration: EffectDurationDefinition): string {
+  switch (duration.type) {
+    case "current-activation":
+      return "this activation";
+    case "next-activation":
+      return "next activation";
+    case "current-combat-round":
+      return "this combat round";
+    case "next-combat-round":
+      return "next combat round";
+    case "combat-rounds":
+      return `${duration.rounds} combat round${duration.rounds === 1 ? "" : "s"}`;
+    case "current-turn":
+      return "this turn";
+    case "current-game-round":
+      return "this game round";
+    case "combat":
+      return "this combat";
+    case "permanent":
+      return "permanent";
+    case "instant":
+      return "instant";
+    default:
+      return (duration as { type: string }).type;
+  }
+}
+
+/**
+ * The Power-ladder rows a single (resolved, non-"OR") effect encodes, read
+ * straight from its `*ByPower` table. Returns [] for a flat effect (no table)
+ * or an effect kind that carries no power ladder — so a caller never invents
+ * rows for a flat spell.
+ */
+function effectLadderRows(effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>): SpellLadderRow[] {
+  switch (effect.type) {
+    case "DEAL_DAMAGE":
+      return ladderFromTable(effect.amountByPower, (amount) => `${amount} ${effect.damageKind} damage`);
+    case "HEAL_DAMAGE":
+      return ladderFromTable(effect.amountByPower, (amount) => `heal ${amount}`);
+    case "HEAL_DAMAGE_AND_REMOVE_EFFECTS":
+      return ladderFromTable(effect.amountByPower, (amount) => `heal ${amount} + remove effects`);
+    case "ADD_COMBAT_STAT":
+      return ladderFromTable(effect.amountByPower, (amount) => `${signed(amount)} ${effect.stat}`);
+    case "CREATE_INITIATIVE_BUFF":
+      return ladderFromTable(effect.amountByPower, (amount) => `${signed(amount)} initiative`);
+    case "CREATE_ATTACK_BUFF":
+      return ladderFromTable(effect.amountByPower, (amount) => `${signed(amount)} attack`);
+    case "CREATE_DEFENSE_BUFF": {
+      const vs =
+        effect.vsAttackerType === "ranged"
+          ? " vs ranged"
+          : effect.vsAttackerType === "ground-or-flying"
+            ? " vs melee"
+            : "";
+      return ladderFromTable(effect.amountByPower, (amount) => `${signed(amount)} defense${vs}`);
+    }
+    case "CREATE_FIRE_SHIELD":
+      return ladderFromTable(effect.amountByPower, (amount) => `${amount} damage to a melee attacker`);
+    case "IGNORE_ATTACK_DIE":
+      return ladderFromTable(effect.attackBonusByPower, (bonus) =>
+        bonus > 0 ? `ignore the Attack die, +${bonus} attack` : "ignore the Attack die"
+      );
+    case "AREA_DAMAGE_ADJACENT":
+      return ladderFromTable(effect.amountByPower, (amount) => `${amount} spell damage (target + 1 adjacent)`);
+    case "AREA_DAMAGE_PICK_ADJACENT":
+      return ladderFromTable(effect.amountByPower, (amount) => `${amount} spell damage`);
+    case "CHAIN_LIGHTNING":
+      return ladderFromTable(effect.damagesByPower, (damages) => `${damages.join("/")} damage`);
+    case "INFERNO":
+    case "SLAYER_ATTACK":
+      return ladderFromTable(effect.rollsByPower, (rolls) => `roll ${rolls} Attack ${rolls === 1 ? "die" : "dice"}`);
+    case "CREATE_SPELL_IMMUNITY":
+      return ladderFromTable(effect.gradeByPower, (grade) => `immune up to ${grade}`);
+    case "IGNORE_DEFENSE":
+      return ladderFromTable(effect.gradeByPower, (grade) => `pierce up to ${grade}`);
+    case "CLEAR_RETALIATION":
+    case "PLACE_PARALYSIS":
+    case "FORGETFULNESS":
+    case "BERSERK":
+    case "TELEPORT_UNIT":
+    case "CLONE_UNIT":
+    case "DISPEL_EFFECTS":
+    case "DISRUPTING_RAY":
+    case "SACRIFICE_TRANSFER":
+      return ladderFromTable(effect.gradeByPower, (grade) => `up to ${grade}`);
+    case "CREATE_ATTACK_DIE_REROLL":
+      return effect.durationByPower
+        ? ladderFromTable(effect.durationByPower, (duration) => `reroll — ${durationLadderText(duration)}`)
+        : ladderFromTable(effect.rerollsByPower, (rerolls) => `${rerolls} reroll${rerolls === 1 ? "" : "s"}`);
+    case "PLACE_FORCE_FIELD":
+      return ladderFromTable(effect.durationByPower, (duration) => durationLadderText(duration));
+    case "PLACE_FIRE_WALL":
+      return ladderFromTable(effect.damageByPower, (amount) => `${amount} damage`);
+    case "REMOVE_OBSTACLE":
+      return ladderFromTable(effect.countByPower, (count) => `remove ${count} obstacle${count === 1 ? "" : "s"}`);
+    case "PLACE_HIDDEN_TOKENS":
+      return ladderFromTable(effect.countByPower, (count) => `${count} tokens`);
+    case "VISIONS_SCRY":
+      return ladderFromTable(effect.cardsByPower, (count) => `scry ${count} card${count === 1 ? "" : "s"}`);
+    default:
+      return [];
+  }
+}
+
+/**
+ * The full Power ladder of a spell — one row per Power tier its effect actually
+ * scales across (Magic Arrow → Power 0/1/2 = 1/2/3 spell damage). Reads the
+ * effect's own `*ByPower` tables, so it is the structured twin of the printed
+ * `tags` prose and can never disagree with what the engine resolves.
+ *
+ * An "OR" (CHOOSE_ONE) spell merges the ladders of every laddered option per
+ * tier (Prayer → "+1 attack / +1 defense / +1 initiative"). A flat spell (no
+ * `*ByPower` anywhere) returns [] — the caller renders no ladder section.
+ */
+export function spellPowerLadder(card: CardDefinition | undefined): SpellLadderRow[] {
+  if (!card) {
+    return [];
+  }
+  if (card.effect.type === "CHOOSE_ONE") {
+    const textsByPower = new Map<number, string[]>();
+    for (const option of card.effect.options) {
+      for (const row of effectLadderRows(option.effect)) {
+        const texts = textsByPower.get(row.power) ?? [];
+        if (!texts.includes(row.text)) {
+          texts.push(row.text);
+        }
+        textsByPower.set(row.power, texts);
+      }
+    }
+    return [...textsByPower.keys()]
+      .sort((left, right) => left - right)
+      .map((power) => ({ power, text: (textsByPower.get(power) ?? []).join(" / ") }));
+  }
+  return effectLadderRows(card.effect);
+}
+
+/**
+ * The printed timing keyword a spell reads as — the badge the Spell Book shows
+ * instead of burying it in prose. Derived from the `timing` field, with the
+ * refinement that a combat-cast spell which creates a lasting (non-instant)
+ * ongoing effect is an "ongoing" spell (Haste, Anti-Magic, Fire Shield), exactly
+ * as the printed cards prefix it. Precedence: map → instant → ongoing → combat.
+ */
+export type SpellTimingKind = "instant" | "ongoing" | "combat" | "map";
+
+const LASTING_DURATION_TYPES: ReadonlySet<EffectDurationDefinition["type"]> = new Set([
+  "current-combat-round",
+  "next-combat-round",
+  "combat-rounds",
+  "current-turn",
+  "current-game-round",
+  "current-activation",
+  "next-activation",
+  "combat",
+  "permanent"
+]);
+
+function durationIsLasting(duration: EffectDurationDefinition | undefined): boolean {
+  return Boolean(duration && LASTING_DURATION_TYPES.has(duration.type));
+}
+
+function effectCreatesLastingEffect(effect: EffectDefinition): boolean {
+  if (effect.type === "CHOOSE_ONE") {
+    return effect.options.some(
+      (option) => "duration" in option.effect && durationIsLasting(option.effect.duration)
+    );
+  }
+  return "duration" in effect && durationIsLasting(effect.duration);
+}
+
+export function spellTimingKind(card: CardDefinition | undefined): SpellTimingKind {
+  if (!card) {
+    return "combat";
+  }
+  if (card.timing === "map") {
+    return "map";
+  }
+  if (card.timing === "instant" || card.timing === "reaction") {
+    return "instant";
+  }
+  if (effectCreatesLastingEffect(card.effect)) {
+    return "ongoing";
+  }
+  return "combat";
 }
 
 /**

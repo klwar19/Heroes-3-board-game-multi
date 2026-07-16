@@ -162,8 +162,11 @@ export {
   spellMaxUsefulPower,
   spellMinUsefulPower,
   spellPowerBreakpoints,
-  spellPowerValueOfCard
+  spellPowerLadder,
+  spellPowerValueOfCard,
+  spellTimingKind
 } from "./effects";
+export type { SpellLadderRow, SpellTimingKind } from "./effects";
 export { getPlayerView, OBSERVER_VIEWER_SEAT, PASSWORD_REDACTED, redactStateForSeat } from "./player-view";
 export { createSeededRandom } from "./random";
 export {
