@@ -2958,12 +2958,13 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                 )}
                 <span className={`tierDot ${def?.tier}`} />
                 <strong>
-                  {unit.side === "few" ? "Few" : "Pack"} {def?.name ?? unit.unitDefId}
+                  {unit.side === "few" ? "Few" : unit.side === "neutral" ? "Neutral" : "Pack"}{" "}
+                  {def?.name ?? unit.unitDefId}
                 </strong>
                 {(unit.stacks ?? 0) > 0 ? (
                   <span
                     className={`armyStackBadge tier-${def?.tier ?? "bronze"} active`}
-                    title={`${unit.stacks} Unit Stack${unit.stacks === 1 ? "" : "s"} · +1 Attack`}
+                    title={`${unit.stacks} Unit Stack${unit.stacks === 1 ? "" : "s"} · +1 Attack · max ${def?.tier === "gold" || def?.tier === "azure" ? 1 : def?.tier === "silver" ? 2 : 3}`}
                   >
                     <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
                     ×{unit.stacks}
@@ -5352,7 +5353,7 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   units: "Unit buffs",
   abilities: "Abilities & heroes",
   combat: "Combat & map rules",
-  polish: "Polish house rules · tournament variants"
+  polish: "Polish house rules"
 };
 
 /**
@@ -5375,7 +5376,7 @@ function HouseRulesSection({
       <div className="houseRuleHead">
         <strong>House rules</strong>
         <small>
-          BINH starts with its core tweaks on. Polish tournament variants stay opt-in, and Legacy clears every rule.
+          BINH starts with its core tweaks on. Polish house rules stay opt-in, and Legacy clears every rule.
         </small>
       </div>
       {categories.map((category) => {
@@ -5391,7 +5392,7 @@ function HouseRulesSection({
                   alt=""
                   aria-hidden="true"
                   className="polishRuleCrest"
-                  src={assetUrl("/assets/ui/polish-bank-sizes-crest.webp")}
+                  src={assetUrl("/assets/ui/polish-house-rules-flag.webp")}
                 />
               ) : null}
               {HOUSE_RULE_CATEGORY_LABELS[category]}

@@ -15,8 +15,10 @@ import { unitAbilities, type UnitMapAbilityEffect } from "@/data/units/abilities
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { hasInternalBorder } from "@/data/map/borders";
 import {
+  buildPolishCreatureBankReward,
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
+  polishBankRewardScale,
   STACK_TOKEN_PLACEMENT_PERCENT,
   STACK_TOKEN_STATS,
   STACK_TOKENS_BY_DIFFICULTY,
@@ -1959,7 +1961,14 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
     case "GAIN_MORALE":
       return [{ type: "GAIN_MORALE", amount: interaction.amount }];
     case "GAIN_UNIT":
-      return [{ type: "RECRUIT_FREE", unitDefId: interaction.unitDefId, side: interaction.side }];
+      return [
+        {
+          type: "RECRUIT_FREE",
+          unitDefId: interaction.unitDefId,
+          side: interaction.side,
+          ...(interaction.stacks && interaction.stacks > 0 ? { stacks: interaction.stacks } : {})
+        }
+      ];
     case "ROLL_RESOURCE_DICE":
       // Melodia's Fortune VI: +1 to the dice rolled & resolved at this location.
       return [{ type: "ROLL_RESOURCE_DICE", count: interaction.count + extraLocationDice }];
@@ -3994,10 +4003,14 @@ export function processPendingVisit(state: GameState): void {
       }
       case "RECRUIT_FREE": {
         // Add a unit to the army for free: a Few (Garden of Life) or a Pack
-        // (a Creature Bank "gain a Stacked unit" reward).
+        // (a Creature Bank "gain a Stacked unit" reward). Optional stacks are
+        // Polish bank-size Pack layers (Dragon Fly Hive / Griffin Conservatory).
         const recruitPlayer = state.players[visit.playerId];
         if (recruitPlayer) {
-          addArmyUnit(recruitPlayer, step.unitDefId, step.side ?? "few");
+          const added = addArmyUnit(recruitPlayer, step.unitDefId, step.side ?? "few");
+          if (step.stacks && step.stacks > 0 && (step.side ?? "few") === "pack") {
+            added.stacks = Math.max(0, Math.trunc(step.stacks));
+          }
           appendEvent(state, {
             type: "UNIT_RECRUITED",
             playerId: visit.playerId,
@@ -8017,7 +8030,7 @@ export function buildCreatureBankDraws(bankId: CreatureBankId): NeutralDraw[] {
 }
 
 /**
- * Converts the Polish tournament Attack-die roll into bank size I-IV, per the
+ * Converts the Polish house-rule Attack-die roll into bank size I-IV, per the
  * v1.2 sheet table (rule author's clarification): −1 → Ⅰ, 0 → Ⅱ, +1 → Ⅲ, and
  * the two EXTREME sums −2 or +2 → Ⅳ (gold). One die can only reach I-III; two
  * dice distribute Ⅰ 2/9, Ⅱ 3/9, Ⅲ 2/9, Ⅳ 2/9 (sums −2 and +2 both pay Ⅳ).
@@ -8048,6 +8061,17 @@ export function polishBankMaxSize(bankId: CreatureBankId): BankSize {
   return Math.max(1, Math.min(4, 1 + maxCap)) as BankSize;
 }
 
+/** Re-export — single source of truth lives in `creature-banks.ts`. */
+export { polishBankRewardScale } from "@/data/map/creature-banks";
+
+/**
+ * Compact "X" for feed/UI: size Ⅰ → 0, size Ⅱ+ → 4 (full stack extras).
+ * Size Ⅲ/Ⅳ gold base layers are separate (`polishBankRewardScale.extraBaseGoldLayers`).
+ */
+export function polishBankRewardX(size: BankSize): number {
+  return polishBankRewardScale(size).stackedX;
+}
+
 /**
  * Builds the Creature Bank defenders for a combat. Standard banks place their
  * random statistic Stack Tokens using Scenario Difficulty (rulebook p.66-67).
@@ -8061,9 +8085,9 @@ export function polishBankMaxSize(bankId: CreatureBankId): BankSize {
  * above the army caps with an absolute maximum of 3 — bronze 3 / silver 3 /
  * gold+azure 2 (`polishBankGuardLayerCap`) — and the whole bank's SIZE clamps
  * to what its best guard can carry (`polishBankMaxSize`): an all-gold/azure
- * Dragon Utopia tops out at size Ⅲ. The bank reward uses the (clamped) size
- * as its old-system X multiplier with a big-bank premium: sizes Ⅰ/Ⅱ/Ⅲ/Ⅳ pay
- * X = 1/2/4/5, independently of the physical layers on each defender.
+ * Dragon Utopia tops out at size Ⅲ. Win rewards use polishBankRewardScale
+ * (not layer count): size Ⅱ pays full 4-stack extras; Ⅲ/Ⅳ add gold-only base
+ * layers — see grantCreatureBankReward / buildPolishCreatureBankReward.
  */
 export function buildCreatureBankCombatUnits(
   state: GameState,
@@ -8095,9 +8119,10 @@ export function buildCreatureBankCombatUnits(
     }
     return {
       units,
-      // Reward X follows the (clamped) size, and big banks pay a premium:
-      // sizes Ⅲ and Ⅳ each add one extra base reward — X = 1/2/4/5.
-      stackedCount: effectiveSize + (effectiveSize >= 3 ? 1 : 0)
+      // stackedCount for polish = the "full stack" X used by classic extras
+      // (0 at size Ⅰ, 4 from size Ⅱ+). Size Ⅲ/Ⅳ gold base layers are applied
+      // separately in buildPolishCreatureBankReward.
+      stackedCount: polishBankRewardScale(effectiveSize).stackedX
     };
   }
 
@@ -8211,7 +8236,16 @@ export function grantCreatureBankReward(
   // "If you win, resolve the Field's effect and mark it with a Black Cube."
   field.blackCube = true;
 
-  const reward = bank.buildReward(stackedCount);
+  // Polish bank sizes: payout follows size (full 4-stack at Ⅱ, gold-only base
+  // layers at Ⅲ/Ⅳ), not the combat layer count / classic stackedCount.
+  const polishSize =
+    houseRuleEnabled(state, "polish-bank-sizes") && field.bankSize !== undefined
+      ? (Math.min(field.bankSize, polishBankMaxSize(bankId)) as BankSize)
+      : undefined;
+  const reward =
+    polishSize !== undefined
+      ? buildPolishCreatureBankReward(bankId, polishSize)
+      : bank.buildReward(stackedCount);
   const steps = interactionToSteps(reward, locationDiceBonusFor(state, playerId));
   if (steps.length === 0) {
     return;
@@ -8367,8 +8401,11 @@ export function makeCombatUnitFromArmy(
   // folded into the unit's printed Attack every combat (start to end).
   const permanentAttackBonus = armyUnit.permanentAttackBonus ?? 0;
   const permanentHealthBonus = armyUnit.permanentHealthBonus ?? 0;
+  // Pack Groups and recruited Neutrals may carry paid Stack layers.
   const armyStacks =
-    overrides?.polishUnitStacks && armyUnit.side === "pack" ? Math.max(0, Math.trunc(armyUnit.stacks ?? 0)) : 0;
+    overrides?.polishUnitStacks && (armyUnit.side === "pack" || armyUnit.side === "neutral")
+      ? Math.max(0, Math.trunc(armyUnit.stacks ?? 0))
+      : 0;
 
   const unit: CombatUnitState = {
     id: unitId,

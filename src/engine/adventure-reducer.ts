@@ -212,7 +212,11 @@ import {
   wisdomSearchCount
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
-import { polishArmyUnitCanBuyStack, polishUnitStackCost } from "./polish-unit-stacks";
+import {
+  polishArmyUnitCanBuyStack,
+  polishArmyUnitStackCost,
+  polishUnitStackCost
+} from "./polish-unit-stacks";
 import {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
@@ -1619,9 +1623,11 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState, player
   }
 
   const bankIds = [pile[pile.length - 1], pile[pile.length - 2]].filter(isCreatureBankId);
-  // The Polish reveal procedure always rolls two Attack dice for EACH of the
-  // two candidates before the hero chooses one, including the first Far tile.
-  const diceCount = 2;
+  // First Far (Ⅱ–Ⅲ) bank for this seat: ONE Attack die per candidate (size
+  // Ⅰ–Ⅲ only — a single die cannot sum to ±2). Later Far openings and every
+  // Near bank still roll TWO dice each so gold size Ⅳ stays reachable.
+  const farOpenings = adventure.farTilesOpenedByPlayer?.[playerId] ?? 0;
+  const diceCount = tier === "far" && farOpenings === 0 ? 1 : 2;
   const random = createSeededRandom(
     `${state.seed}#adventure#bank-size-${tile.id}#${eventSeedNumber(state)}`
   );
@@ -6857,7 +6863,14 @@ export function finalizeAdventureCombat(state: GameState): void {
       // Few side defeated: the unit card leaves the unit deck. A recruited
       // Neutral card returns to its tier's discard pile.
       discardDefeatedArmyUnit(state, player, armyUnit);
-    } else if (armyUnit.side !== "neutral") {
+    } else if (armyUnit.side === "neutral") {
+      // Surviving Neutral: keep paid Stack layers (and drop them if all spent).
+      if ((unit.armyStacks ?? 0) > 0) {
+        armyUnit.stacks = unit.armyStacks;
+      } else {
+        delete armyUnit.stacks;
+      }
+    } else {
       armyUnit.side = unit.variant === "pack" ? "pack" : "few";
       if (unit.variant === "pack" && (unit.armyStacks ?? 0) > 0) {
         armyUnit.stacks = unit.armyStacks;
@@ -7776,7 +7789,9 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
   // Validate before mutating: simulate against a copy of the army.
   const armyCopy = player.army.map((unit) => ({ ...unit }));
   for (const purchase of action.purchases) {
-    if (!faction?.units.includes(purchase.unitDefId)) {
+    // Stacks may target recruited Neutrals (not on the faction roster).
+    // Recruits/reinforces stay faction-only.
+    if (purchase.kind !== "stack" && !faction?.units.includes(purchase.unitDefId)) {
       throw new Error("Players may only recruit their own faction's units.");
     }
 
@@ -7850,9 +7865,10 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       }
       const target = armyCopy.find((unit) => unit.id === purchase.armyUnitId);
       if (!target || target.unitDefId !== purchase.unitDefId || !polishArmyUnitCanBuyStack(target)) {
-        throw new Error("Choose an eligible Pack unit below its Stack cap.");
+        throw new Error("Choose an eligible Pack or Neutral unit below its Stack cap.");
       }
-      const finalCost = polishUnitStackCost(purchase.unitDefId);
+      // Cost follows the card's actual side (Pack gold or Neutral gold + tier).
+      const finalCost = polishArmyUnitStackCost(target) ?? polishUnitStackCost(purchase.unitDefId);
       if (!finalCost) {
         throw new Error("That unit cannot buy Stacks.");
       }

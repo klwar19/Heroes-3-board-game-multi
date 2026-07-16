@@ -162,7 +162,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "polish-spell-book",
     label: "Polish Spell Book",
     description:
-      "Polish tournament variant: Spells live in a refreshed/used Spell Book and are cast with generic Cast-a-Spell cards. Uses one merged Spell deck and the strengthened Mage Guild. Mutually exclusive with the standard stash-style Spell Book.",
+      "Polish house rule: Spells live in a refreshed/used Spell Book and are cast with generic Cast-a-Spell cards. Uses one merged Spell deck and the strengthened Mage Guild. Mutually exclusive with the standard stash-style Spell Book.",
     category: "polish",
     default: false,
     legacyDefault: false
@@ -171,7 +171,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "polish-bank-sizes",
     label: "Rolled Creature Bank sizes",
     description:
-      "Polish tournament variant: reveal up to two Banks, roll 2 Attack dice for each, choose one, then rotate. Size I-IV gives all four guards 0-3 full-health layers and reward X1-X4, replacing normal Bank Stack Tokens. Requires Creature Banks.",
+      "Polish house rule: reveal up to two Banks, roll size for each (1 Attack die on the first Ⅱ–Ⅲ opening, 2 dice later), choose one, then rotate. Size I–IV sets guard layers and rewards; replaces normal Bank Stack Tokens. Requires Creature Banks.",
     category: "polish",
     default: false,
     legacyDefault: false
@@ -180,7 +180,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "polish-unit-stacks",
     label: "Purchasable Unit Stacks",
     description:
-      "Polish tournament variant: at a Citadel, Pack units may buy tier-capped Stack layers. Stacked Groups gain +1 Attack and each layer absorbs one full Pack health bar.",
+      "Polish house rule: at a Citadel, Pack Groups and recruited Neutrals may buy Stack layers (bronze max 3 / silver 2 / gold 1). Cost = that side’s gold + tier. Stacked units gain +1 Attack; each layer absorbs one full health bar.",
     category: "polish",
     default: false,
     legacyDefault: false

@@ -90,16 +90,18 @@ export type HouseRuleId =
   // grant no die reward. Independent of Holy Grail dig unlock (which always
   // counts visits while victoryMode is "grail").
   | "obelisk-rewards"
-  // Polish tournament Spell Book: owned Spells live in a refreshed/used Book
+  // Polish house-rule Spell Book: owned Spells live in a refreshed/used Book
   // and require generic Cast-a-Spell cards. Mutually exclusive with the
   // existing stash-style `adventure.spellBook` rule.
   | "polish-spell-book"
-  // Polish tournament variant: a bank-eligible tile reveals two face-up bank
+  // Polish house rule: a bank-eligible tile reveals two face-up bank
   // candidates with independently rolled sizes I-IV before rotation. Size gives
-  // all four bank units 0/1/2/3 layers and sets reward X=1/2/3/4.
+  // all four bank units 0/1/2/3 layers; rewards: Ⅰ base only, Ⅱ full 4-stack
+  // extras, Ⅲ/Ⅳ = Ⅱ + 1/2 base GOLD layers (not valuables).
   | "polish-bank-sizes"
-  // Polish tournament variant: Pack army cards may buy persistent Stack layers
-  // at a Citadel. A Stack grants +1 Attack and absorbs one full Pack health bar.
+  // Polish house rule: Pack Groups and recruited Neutrals may buy Stack layers
+  // at a Citadel (bank-guard Neutrals use the higher bank max). +1 Attack while
+  // stacked; each layer absorbs one full health bar.
   | "polish-unit-stacks"
   // Pit Lords' Summon Demons: while ON, a Pit Lords may summon a new Few even
   // when Demons are already on the field (multiple Demon units). Off (official):
@@ -6949,7 +6951,11 @@ export type MapState = {
   spaces: Record<MapSpaceId, { id: MapSpaceId; adjacent: MapSpaceId[] }>;
 };
 
-/** Polish bank-size marker: reward X=I-IV; physical layers per guard are size-1. */
+/**
+ * Polish bank-size marker (Ⅰ–Ⅳ). Physical layers per guard are size−1
+ * (capped by unit tier). Rewards: Ⅰ base only, Ⅱ full 4-stack extras,
+ * Ⅲ/Ⅳ add 1/2 base gold layers (see polishBankRewardScale).
+ */
 export type BankSize = 1 | 2 | 3 | 4;
 
 /** One face-up Creature Bank candidate reserved while its tile is rotated. */
@@ -7393,11 +7399,14 @@ export type VisitStep =
       /**
        * Add a unit of `unitDefId` to the army for free. `side` defaults to "few"
        * (Garden of Life, Conflux); a Creature Bank "gain a Stacked unit" reward
-       * passes "pack" for the bigger version.
+       * passes "pack" for the bigger version. Optional `stacks` grants Polish
+       * Unit Stack layers on a Pack (Dragon Fly Hive / Griffin Conservatory
+       * under polish-bank-sizes).
        */
       type: "RECRUIT_FREE";
       unitDefId: string;
       side?: "few" | "pack";
+      stacks?: number;
     }
   | {
       /**

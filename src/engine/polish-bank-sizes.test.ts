@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { CREATURE_BANKS, CREATURE_BANK_UNIT_SIDES, type CreatureBankId } from "@/data/map/creature-banks";
+import {
+  buildPolishCreatureBankReward,
+  CREATURE_BANKS,
+  CREATURE_BANK_UNIT_SIDES,
+  type CreatureBankId,
+} from "@/data/map/creature-banks";
 import {
   applyAction,
   createAdventureGameState,
   getLegalActions,
   polishBankMaxSize,
+  polishBankRewardScale,
   polishBankSizeForAttackRolls,
   type BankSize,
   type GameAction,
@@ -103,23 +109,34 @@ describe("Polish bank size roll", () => {
     expect(polishBankSizeForAttackRolls([1])).toBe(3);
   });
 
-  it("rolls two Attack dice for each of both banks, including the first Far opening", () => {
+  it("first Far (Ⅱ–Ⅲ) opening rolls ONE Attack die per candidate; later openings roll two", () => {
     const first = placeFarTileAwaitingRotation({ openings: 0 });
     const firstRolls = first.eventLog.filter(
       (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.results[0]?.startsWith("Bank "),
     );
     expect(firstRolls).toHaveLength(2);
-    expect(firstRolls.every((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.attackRolls?.length === 2)).toBe(true);
+    // One die each — size Ⅳ is unreachable on the first Far bank.
+    expect(
+      firstRolls.every(
+        (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.attackRolls?.length === 1,
+      ),
+    ).toBe(true);
     const firstTile = first.adventure!.tiles[first.adventure!.pendingTileChoice!.tileInstanceId];
     expect(firstTile.reservedBankOptions).toHaveLength(2);
-    expect(firstTile.reservedBankOptions?.every((candidate) => candidate.size >= 1 && candidate.size <= 4)).toBe(true);
+    expect(
+      firstTile.reservedBankOptions?.every((candidate) => candidate.size >= 1 && candidate.size <= 3),
+    ).toBe(true);
 
     const second = placeFarTileAwaitingRotation({ openings: 1 });
     const secondRolls = second.eventLog.filter(
       (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.results[0]?.startsWith("Bank "),
     );
     expect(secondRolls).toHaveLength(2);
-    expect(secondRolls.every((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.attackRolls?.length === 2)).toBe(true);
+    expect(
+      secondRolls.every(
+        (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.attackRolls?.length === 2,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -208,9 +225,9 @@ describe("Polish bank size combat and AI", () => {
         const base = CREATURE_BANK_UNIT_SIDES[unit.unitDefId!];
         return unit.attack === base.attack + (size > 1 ? 1 : 0);
       })).toBe(true);
-      // Reward X follows the size, and the two big sizes pay a premium:
-      // sizes Ⅰ/Ⅱ/Ⅲ/Ⅳ pay X = 1/2/4/5 (Ⅲ and Ⅳ each add one base reward).
-      expect(stackedCount).toBe(size + (size >= 3 ? 1 : 0));
+      // Combat stackedCount = classic full-stack X for feed (0 at Ⅰ, 4 at Ⅱ+).
+      // Size Ⅲ/Ⅳ gold base layers are applied in buildPolishCreatureBankReward.
+      expect(stackedCount).toBe(size === 1 ? 0 : 4);
     }
   });
 
@@ -225,7 +242,7 @@ describe("Polish bank size combat and AI", () => {
     // (azure — counted as gold for Stacks). Bank guards punch one above the
     // army caps, so its best guard carries 2 layers and the whole BANK tops
     // out at size Ⅲ: a stored size Ⅳ clamps to Ⅲ (2 layers each, reward
-    // X=4 with the big-bank premium). The guards keep the bank card's
+    // full-stack X=4). The guards keep the bank card's
     // rankless in-play identity (bankUnit, no stackToken; targeting/tier
     // gates are pinned in creature-bank-combat.test.ts, unchanged by the cap).
     const utopia = buildCreatureBankCombatUnits(state, "dragon_utopia", 4);
@@ -235,7 +252,7 @@ describe("Polish bank size combat and AI", () => {
     expect(utopia.stackedCount).toBe(4);
 
     // The Pyramid's Gold/Diamond Golems are gold-tier: size Ⅲ is its max and
-    // pays the boosted X=4 with 2 layers on every card.
+    // pays full-stack X=4 with 2 layers on every card.
     const pyramid = buildCreatureBankCombatUnits(state, "pyramid", 3);
     expect(pyramid.units.map((unit) => unit.bankStacks)).toEqual([2, 2, 2, 2]);
     expect(pyramid.stackedCount).toBe(4);
@@ -362,5 +379,275 @@ describe("Polish bank size combat and AI", () => {
     ]);
     expect((easier?.action as Extract<GameAction, { type: "CHOOSE_OPTION" }>).optionIndex).toBe(0);
     expect(CREATURE_BANKS.dragon_utopia).toBeTruthy();
+  });
+});
+
+describe("Polish bank size rewards (all banks × all sizes)", () => {
+  /**
+   * Size Ⅰ = base only (stackedX 0). Size Ⅱ = full 4-stack extras.
+   * Size Ⅲ/Ⅳ = size Ⅱ + 1/2 base GOLD layers (never valuables).
+   * Unit banks: Few / Pack+1/2/3 stacks; empower only from size Ⅱ.
+   */
+  it("maps size → scale and pays every bank correctly at every legal size", () => {
+    expect(polishBankRewardScale(1)).toEqual({
+      stackedX: 0,
+      extraBaseGoldLayers: 0,
+      unitStacks: 0,
+      empower: false,
+    });
+    expect(polishBankRewardScale(2)).toEqual({
+      stackedX: 4,
+      extraBaseGoldLayers: 0,
+      unitStacks: 1,
+      empower: true,
+    });
+    expect(polishBankRewardScale(3)).toEqual({
+      stackedX: 4,
+      extraBaseGoldLayers: 1,
+      unitStacks: 2,
+      empower: true,
+    });
+    expect(polishBankRewardScale(4)).toEqual({
+      stackedX: 4,
+      extraBaseGoldLayers: 2,
+      unitStacks: 3,
+      empower: true,
+    });
+
+    const bankIds = Object.keys(CREATURE_BANKS) as CreatureBankId[];
+    expect(bankIds).toHaveLength(12);
+
+    for (const bankId of bankIds) {
+      const maxSize = polishBankMaxSize(bankId);
+      for (const size of [1, 2, 3, 4] as const) {
+        const effective = Math.min(size, maxSize) as BankSize;
+        const scale = polishBankRewardScale(effective);
+        const reward = buildPolishCreatureBankReward(bankId, effective);
+        const { stackedX: x, extraBaseGoldLayers: layers } = scale;
+
+        switch (bankId) {
+          case "imp_cache":
+            expect(reward).toEqual({ type: "GAIN_RESOURCES", gold: 3 * (1 + layers) + x });
+            break;
+          case "crypt":
+            expect(reward).toEqual({ type: "GAIN_RESOURCES", gold: 6 * (1 + layers) + 2 * x });
+            break;
+          case "dwarven_treasury":
+            expect(reward).toEqual({ type: "GAIN_RESOURCES", gold: 7 * (1 + layers) + 3 * x });
+            break;
+          case "naga_bank":
+            // Extra base layers add gold only — valuables stay at base + X.
+            expect(reward).toEqual({
+              type: "GAIN_RESOURCES",
+              gold: 6 * (1 + layers) + 6 * x,
+              valuables: 2 + x,
+            });
+            break;
+          case "cyclops_stockpile":
+            // No gold in base → size Ⅲ/Ⅳ match size Ⅱ.
+            expect(reward).toEqual({
+              type: "GAIN_RESOURCES",
+              buildingMaterials: 8 + 2 * x,
+              valuables: 2 + x,
+            });
+            break;
+          case "medusa_stores": {
+            // Size Ⅰ collapses to a lone GAIN_RESOURCES (no stack choices).
+            if (x === 0) {
+              expect(reward).toEqual({
+                type: "GAIN_RESOURCES",
+                gold: 6 * (1 + layers),
+                valuables: 1,
+              });
+            } else {
+              expect(reward.type).toBe("SEQUENCE");
+              if (reward.type !== "SEQUENCE") break;
+              expect(reward.interactions[0]).toEqual({
+                type: "GAIN_RESOURCES",
+                gold: 6 * (1 + layers),
+                valuables: 1,
+              });
+              expect(reward.interactions.slice(1)).toHaveLength(x);
+            }
+            break;
+          }
+          case "shipwreck":
+            expect(reward).toEqual(
+              x > 0
+                ? {
+                    type: "SEQUENCE",
+                    interactions: [
+                      { type: "GAIN_MORALE", amount: 1 },
+                      { type: "GAIN_RESOURCES", gold: 5 * (1 + layers) + 2 * x },
+                      { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: x },
+                    ],
+                  }
+                : {
+                    type: "SEQUENCE",
+                    interactions: [
+                      { type: "GAIN_MORALE", amount: 1 },
+                      { type: "GAIN_RESOURCES", gold: 5 },
+                    ],
+                  },
+            );
+            break;
+          case "derelict_ship":
+            expect(reward).toEqual(
+              x > 0
+                ? {
+                    type: "SEQUENCE",
+                    interactions: [
+                      { type: "GAIN_MORALE", amount: 1 },
+                      { type: "GAIN_RESOURCES", gold: 7 * (1 + layers) + 2 * x },
+                      { type: "SEARCH_SHARED_DECK", deckId: "spells", count: x },
+                    ],
+                  }
+                : {
+                    type: "SEQUENCE",
+                    interactions: [
+                      { type: "GAIN_MORALE", amount: 1 },
+                      { type: "GAIN_RESOURCES", gold: 7 },
+                    ],
+                  },
+            );
+            break;
+          case "pyramid":
+            // No gold base — size Ⅲ/Ⅳ match size Ⅱ.
+            expect(reward).toEqual(
+              x > 0
+                ? {
+                    type: "SEQUENCE",
+                    interactions: [
+                      { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 },
+                      { type: "REMOVE_THEN_SEARCH_REPEAT", times: x, searchCount: 5 },
+                    ],
+                  }
+                : { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 },
+            );
+            break;
+          case "dragon_utopia": {
+            expect(reward.type).toBe("SEQUENCE");
+            if (reward.type !== "SEQUENCE") break;
+            expect(reward.interactions[0]).toEqual({
+              type: "GAIN_RESOURCES",
+              gold: 40 * (1 + layers),
+            });
+            expect(reward.interactions[1]).toEqual({
+              type: "SEARCH_SHARED_DECK",
+              deckId: "artifacts",
+              count: 3,
+            });
+            expect(reward.interactions.slice(2)).toHaveLength(x);
+            break;
+          }
+          case "dragon_fly_hive":
+          case "griffin_conservatory": {
+            const unitDefId =
+              bankId === "dragon_fly_hive" ? "fortress.dragon_flies" : "castle.griffins";
+            if (size === 1 || effective === 1) {
+              expect(reward).toEqual({ type: "GAIN_UNIT", unitDefId, side: "few" });
+            } else {
+              expect(reward.type).toBe("SEQUENCE");
+              if (reward.type !== "SEQUENCE") break;
+              expect(reward.interactions[0]).toEqual({
+                type: "GAIN_UNIT",
+                unitDefId,
+                side: "pack",
+                stacks: scale.unitStacks,
+              });
+              expect(reward.interactions[1]).toEqual({ type: "EMPOWER_ABILITY" });
+            }
+            break;
+          }
+          default: {
+            const _exhaustive: never = bankId;
+            throw new Error(`unhandled bank ${_exhaustive}`);
+          }
+        }
+      }
+    }
+  });
+
+  it("pins the explicit gold/materials ladder for sizes Ⅰ–Ⅳ", () => {
+    // size Ⅱ = full 4-stack; Ⅲ/Ⅳ add base gold only (not valuables).
+    const rows: Array<{
+      bankId: CreatureBankId;
+      size: BankSize;
+      gold?: number;
+      valuables?: number;
+      buildingMaterials?: number;
+    }> = [
+      // Imp Cache: 3*(1+L) + X
+      { bankId: "imp_cache", size: 1, gold: 3 },
+      { bankId: "imp_cache", size: 2, gold: 7 },
+      { bankId: "imp_cache", size: 3, gold: 10 },
+      { bankId: "imp_cache", size: 4, gold: 13 },
+      // Crypt: 6*(1+L) + 2X
+      { bankId: "crypt", size: 1, gold: 6 },
+      { bankId: "crypt", size: 2, gold: 14 },
+      { bankId: "crypt", size: 3, gold: 20 },
+      { bankId: "crypt", size: 4, gold: 26 },
+      // Dwarven Treasury: 7*(1+L) + 3X
+      { bankId: "dwarven_treasury", size: 1, gold: 7 },
+      { bankId: "dwarven_treasury", size: 2, gold: 19 },
+      { bankId: "dwarven_treasury", size: 3, gold: 26 },
+      { bankId: "dwarven_treasury", size: 4, gold: 33 },
+      // Naga: gold 6*(1+L)+6X; valuables 2+X only (no size Ⅲ/Ⅳ valuables bump)
+      { bankId: "naga_bank", size: 1, gold: 6, valuables: 2 },
+      { bankId: "naga_bank", size: 2, gold: 30, valuables: 6 },
+      { bankId: "naga_bank", size: 3, gold: 36, valuables: 6 },
+      // Cyclops: no gold base → Ⅲ = Ⅱ
+      { bankId: "cyclops_stockpile", size: 1, buildingMaterials: 8, valuables: 2 },
+      { bankId: "cyclops_stockpile", size: 2, buildingMaterials: 16, valuables: 6 },
+      { bankId: "cyclops_stockpile", size: 3, buildingMaterials: 16, valuables: 6 },
+      { bankId: "cyclops_stockpile", size: 4, buildingMaterials: 16, valuables: 6 },
+      // Shipwreck gold: 5*(1+L) + 2X
+      { bankId: "shipwreck", size: 1, gold: 5 },
+      { bankId: "shipwreck", size: 2, gold: 13 },
+      { bankId: "shipwreck", size: 3, gold: 18 },
+      { bankId: "shipwreck", size: 4, gold: 23 },
+      // Derelict Ship gold: 7*(1+L) + 2X
+      { bankId: "derelict_ship", size: 1, gold: 7 },
+      { bankId: "derelict_ship", size: 2, gold: 15 },
+      { bankId: "derelict_ship", size: 3, gold: 22 },
+      { bankId: "derelict_ship", size: 4, gold: 29 },
+    ];
+
+    for (const row of rows) {
+      const reward = buildPolishCreatureBankReward(row.bankId, row.size);
+      if (reward.type === "GAIN_RESOURCES") {
+        expect(reward.gold ?? 0, `${row.bankId} size ${row.size} gold`).toBe(row.gold ?? 0);
+        expect(reward.valuables ?? 0, `${row.bankId} size ${row.size} valuables`).toBe(row.valuables ?? 0);
+        expect(reward.buildingMaterials ?? 0, `${row.bankId} size ${row.size} materials`).toBe(
+          row.buildingMaterials ?? 0,
+        );
+      } else if (reward.type === "SEQUENCE") {
+        const res = reward.interactions.find((step) => step.type === "GAIN_RESOURCES");
+        expect(res?.type).toBe("GAIN_RESOURCES");
+        if (res?.type !== "GAIN_RESOURCES") continue;
+        expect(res.gold ?? 0, `${row.bankId} size ${row.size} gold`).toBe(row.gold ?? 0);
+      } else {
+        throw new Error(`unexpected reward shape for ${row.bankId}`);
+      }
+    }
+  });
+
+  it("CONTROL: size Ⅲ/Ⅳ never add valuables beyond the size Ⅱ full-stack package", () => {
+    // Naga / Medusa / Cyclops: valuables (or choice count) stay flat from Ⅱ→Ⅳ.
+    expect(buildPolishCreatureBankReward("naga_bank", 2)).toMatchObject({ valuables: 6 });
+    expect(buildPolishCreatureBankReward("naga_bank", 3)).toMatchObject({ valuables: 6 });
+    expect(buildPolishCreatureBankReward("naga_bank", 2)).toMatchObject({ gold: 30 });
+    expect(buildPolishCreatureBankReward("naga_bank", 3)).toMatchObject({ gold: 36 });
+
+    const medusa2 = buildPolishCreatureBankReward("medusa_stores", 2);
+    const medusa3 = buildPolishCreatureBankReward("medusa_stores", 3);
+    expect(medusa2.type).toBe("SEQUENCE");
+    expect(medusa3.type).toBe("SEQUENCE");
+    if (medusa2.type === "SEQUENCE" && medusa3.type === "SEQUENCE") {
+      expect(medusa2.interactions.slice(1)).toHaveLength(4);
+      expect(medusa3.interactions.slice(1)).toHaveLength(4);
+      expect(medusa2.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 6, valuables: 1 });
+      expect(medusa3.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 12, valuables: 1 });
+    }
   });
 });

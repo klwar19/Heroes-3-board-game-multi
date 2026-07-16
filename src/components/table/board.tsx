@@ -32,6 +32,7 @@ import {
   pickCombatBoardArtId,
   placementCellsFor,
   neutralFormationCellsFor,
+  polishBankRewardScale,
   playerSpellCastsIgnoreLimit,
   unitHasUnlimitedRetaliationEffect,
   unitIsBerserk,
@@ -1621,6 +1622,15 @@ export function InitiativeRail({ state }: { state: GameState }) {
       ? state.adventure?.fields[state.combat.context.fieldId]
       : undefined;
   const bankSize = bankField?.location === "creature_bank" ? bankField.bankSize : undefined;
+  // Size Ⅰ = base only; Ⅱ = full 4-stack extras; Ⅲ/Ⅳ = Ⅱ + 1/2 base gold layers.
+  const rewardScale = bankSize !== undefined ? polishBankRewardScale(bankSize) : undefined;
+  const rewardLabel = rewardScale
+    ? rewardScale.stackedX === 0
+      ? "base only"
+      : rewardScale.extraBaseGoldLayers > 0
+        ? `X=4 +${rewardScale.extraBaseGoldLayers} base gold`
+        : "X=4 (full stacks)"
+    : undefined;
 
   return (
     <div className="initiativeRail" aria-label="Initiative order">
@@ -1628,13 +1638,13 @@ export function InitiativeRail({ state }: { state: GameState }) {
         <Swords aria-hidden="true" size={14} />
         {inSetup ? "Order" : "Order"}
       </span>
-      {bankSize ? (
+      {bankSize && rewardLabel ? (
         <span
           className={`bankSizeCombatChip size-${bankSize}`}
-          title={`Polish Creature Bank size ${["", "I", "II", "III", "IV"][bankSize]}: ${Math.max(0, bankSize - 1)} Stack layers on each of all four defenders; reward scale X=${bankSize}`}
+          title={`Polish Creature Bank size ${["", "I", "II", "III", "IV"][bankSize]}: ${Math.max(0, bankSize - 1)} Stack layers on each of all four defenders; reward ${rewardLabel}`}
         >
           {bankSize > 1 ? <span className="bankSizeCoin" aria-hidden="true">{bankSize - 1}</span> : null}
-          Bank size {["", "I", "II", "III", "IV"][bankSize]} · {bankSize > 1 ? `${bankSize - 1} each` : "no Stacks"} · reward X={bankSize}
+          Bank size {["", "I", "II", "III", "IV"][bankSize]} · {bankSize > 1 ? `${bankSize - 1} each` : "no Stacks"} · {rewardLabel}
         </span>
       ) : null}
       {units.length === 0 && inSetup ? <small className="initHint">Deploy units — they sort by initiative here.</small> : null}

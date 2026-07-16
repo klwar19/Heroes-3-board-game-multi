@@ -52,7 +52,7 @@ export const spellCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: {
-      product: "Polish tournament house rules v1.2",
+      product: "Polish house rules v1.2",
       credit: "User-supplied Cast a Spell card art; Archon Studio / Ubisoft component frame."
     }
   },

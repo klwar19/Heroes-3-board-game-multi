@@ -52,7 +52,10 @@ describe("Game options — tabbed layout", () => {
     expect(screen.getByRole("button", { name: /Split Spell\/Artifact decks by tier/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Estates nerf/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Gelu IV Sharpshooter buff/ })).toBeTruthy();
-    expect(screen.getByText(/Polish house rules · tournament variants/i)).toBeTruthy();
+    expect(screen.getAllByText(/Polish house rules/i).length).toBeGreaterThan(0);
+    expect(document.querySelector(".polishRuleCrest")?.getAttribute("src")).toContain(
+      "polish-house-rules-flag.webp",
+    );
     const bankSizes = screen.getByRole("button", { name: /Rolled Creature Bank sizes/ });
     expect(bankSizes.getAttribute("aria-pressed")).toBe("false");
     expect((bankSizes as HTMLButtonElement).disabled).toBe(false);

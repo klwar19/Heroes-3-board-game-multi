@@ -110,12 +110,31 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     const { onAction } = renderRecruit(state);
 
     expect(document.querySelector(".armyStackBadge")?.textContent).toContain("×1");
-    expect(screen.getByText(/Stack .*7.*1\/3/i)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Buy Stack for Griffins" }));
+    expect(document.querySelector(".stackPurchasePanel")).toBeTruthy();
+    expect(screen.getByText(/1\/3/)).toBeTruthy();
+    expect(screen.getByText(/bronze · max 3/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Buy Stack for Griffins/i }));
     expect(onAction).toHaveBeenCalledWith({
       type: "POPULATION_ACTION",
       playerId: "p1",
       purchases: [{ kind: "stack", unitDefId: "castle.griffins", armyUnitId: "army_stack_1" }]
+    });
+  });
+
+  it("lists recruited Neutrals with clear Stack UI at army caps (not bank max)", () => {
+    const state = recruitReadyState();
+    state.adventure!.houseRules!["polish-unit-stacks"] = true;
+    state.players.p1.army = [{ id: "army_n1", unitDefId: "neutral.nagas", side: "neutral", stacks: 0 }];
+    const { onAction } = renderRecruit(state);
+
+    expect(screen.getByText(/Recruited Neutrals/i)).toBeTruthy();
+    expect(screen.getByText(/gold · max 1/i)).toBeTruthy();
+    expect(document.querySelector(".neutralBadge")?.textContent).toMatch(/Neutral/i);
+    fireEvent.click(screen.getByRole("button", { name: /Buy Stack for Nagas/i }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "stack", unitDefId: "neutral.nagas", armyUnitId: "army_n1" }]
     });
   });
 

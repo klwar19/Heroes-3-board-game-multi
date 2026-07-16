@@ -2,47 +2,100 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 
 import type { ArmyUnitState, ResourceCost, UnitGrade } from "./state";
 
-/** Printed Polish-tournament cap and gold surcharge for each faction tier. */
+/** Printed Polish house-rule cap and gold surcharge for each faction tier. */
 export const POLISH_UNIT_STACK_RULES: Partial<Record<UnitGrade, { cap: number; goldSurcharge: number }>> = {
   bronze: { cap: 3, goldSurcharge: 1 },
   silver: { cap: 2, goldSurcharge: 2 },
   gold: { cap: 1, goldSurcharge: 3 }
 };
 
-/** Number of persistent Stack layers a Pack card of this tier may carry. */
-export function polishUnitStackCap(unitDefId: string): number {
+/** Sides that can carry paid Unit Stacks (Pack Groups and recruited Neutrals). */
+export type PolishStackSide = "pack" | "neutral";
+
+/**
+ * Number of persistent Stack layers a human-controlled army card may carry.
+ * Always the army table — bronze 3 / silver 2 / gold 1 (azure counted as gold → 1).
+ * Creature Bank combat guards use `polishBankGuardLayerCap` separately; once a
+ * unit is in a player's army (Pack or Neutral) the human caps apply.
+ */
+export function polishUnitStackCap(unitDefId: string, _side: PolishStackSide = "pack"): number {
   const tier = coreUnitDefinitions[unitDefId]?.tier;
-  return tier ? (POLISH_UNIT_STACK_RULES[tier]?.cap ?? 0) : 0;
+  if (!tier) {
+    return 0;
+  }
+  if (tier === "azure") {
+    return POLISH_UNIT_STACK_RULES.gold?.cap ?? 0;
+  }
+  return POLISH_UNIT_STACK_RULES[tier]?.cap ?? 0;
 }
 
 /**
- * Cost of one Stack: the Pack's printed GOLD cost + the tier number in gold.
- * Other printed resources and recruit/reinforce discounts do not apply.
+ * Cost of one Stack in gold only:
+ * - Pack: Pack printed gold + tier surcharge
+ * - Neutral: Neutral printed gold + same surcharge
+ * Other resources, recruit discounts, and substitutions never apply.
  */
-export function polishUnitStackCost(unitDefId: string): ResourceCost | null {
+export function polishUnitStackCost(
+  unitDefId: string,
+  side: PolishStackSide = "pack"
+): ResourceCost | null {
   const unit = coreUnitDefinitions[unitDefId];
-  const rule = unit ? POLISH_UNIT_STACK_RULES[unit.tier] : undefined;
-  if (!unit?.pack || !rule) {
+  if (!unit) {
     return null;
   }
-
-  return { gold: (unit.pack.cost.gold ?? 0) + rule.goldSurcharge };
+  const tier = unit.tier === "azure" ? "gold" : unit.tier;
+  const rule = POLISH_UNIT_STACK_RULES[tier];
+  if (!rule) {
+    return null;
+  }
+  const printed = side === "pack" ? unit.pack : unit.neutral;
+  if (!printed) {
+    return null;
+  }
+  // Neutrals and packs always pay gold + surcharge (0 printed gold still pays the tier fee).
+  return { gold: (printed.cost.gold ?? 0) + rule.goldSurcharge };
 }
 
 /** Pure eligibility check used by legal actions, the reducer, and town UI. */
 export function polishArmyUnitCanBuyStack(unit: ArmyUnitState): boolean {
-  const cap = polishUnitStackCap(unit.unitDefId);
-  return unit.side === "pack" && cap > 0 && (unit.stacks ?? 0) < cap;
+  if (unit.side !== "pack" && unit.side !== "neutral") {
+    return false;
+  }
+  const side: PolishStackSide = unit.side;
+  const cap = polishUnitStackCap(unit.unitDefId, side);
+  return cap > 0 && (unit.stacks ?? 0) < cap;
+}
+
+/** Cost for the army card's actual side (Pack or Neutral). */
+export function polishArmyUnitStackCost(unit: ArmyUnitState): ResourceCost | null {
+  if (unit.side !== "pack" && unit.side !== "neutral") {
+    return null;
+  }
+  return polishUnitStackCost(unit.unitDefId, unit.side);
+}
+
+/** Cap for the army card's actual side (always army bronze/silver/gold table). */
+export function polishArmyUnitStackCap(unit: ArmyUnitState): number {
+  if (unit.side !== "pack" && unit.side !== "neutral") {
+    return 0;
+  }
+  return polishUnitStackCap(unit.unitDefId, unit.side);
+}
+
+/** Plain-words tier cap for UI (e.g. "bronze · max 3"). */
+export function polishUnitStackCapLabel(unitDefId: string): string {
+  const tier = coreUnitDefinitions[unitDefId]?.tier;
+  const cap = polishUnitStackCap(unitDefId);
+  if (!tier || cap <= 0) {
+    return "";
+  }
+  const tierName = tier === "azure" ? "azure (gold cap)" : tier;
+  return `${tierName} · max ${cap}`;
 }
 
 /**
- * Polish Bank Sizes: a bank guard stays RANKLESS in play (gradeless targeting
- * and every tier-gate exemption untouched), but its physical layer capacity
- * follows the Unit Stack coin rule of the unit NAMED on its card, punching
- * ONE layer above the army caps — but never above the absolute maximum of 3
- * (there is no fourth coin): bronze 3 / silver 3 / gold 2. Azure sits above
- * gold and is counted AS gold → 2. An unknown unit id caps at 0 (no layers),
- * never a fallback tier.
+ * Polish Bank Sizes only: bank guards in combat punch one above army caps
+ * (bronze 3 / silver 3 / gold 2). Human army cards never use this table.
  */
 export function polishBankGuardLayerCap(unitDefId: string | undefined): number {
   const tier = unitDefId ? coreUnitDefinitions[unitDefId]?.tier : undefined;
