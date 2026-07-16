@@ -22,11 +22,10 @@ import {
   type CustomMapTilePlan,
   type GameAction,
   type GameState,
-  type MapFieldState,
   type MapSpaceId,
   type MapTileState
 } from "./index";
-import { carveColoredGateField, instantiateTile } from "./adventure";
+import { carveColoredGateField, eliminatePlayer, instantiateTile } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
 import { canBeatGuardedField } from "./computer/map-navigation";
 import { hexNeighbor, hexNeighbors, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint, type HexCoord } from "./hex";
@@ -336,6 +335,195 @@ describe("Colored Gate pair routing", () => {
     expect(state.heroes.hero_p1.spaceId).toBe(monolith);
     expect(state.heroes.hero_p1.spaceId).not.toBe(redExit);
     expect(lastNote(state)).toContain("Monolith");
+  });
+});
+
+// ===========================================================================
+// Colored Gate travel into a FACE-DOWN (pending) gate tile — parity with the
+// Monolith network: a same-color gate token still riding a face-down tile is a
+// full destination (flip free, rotate, place the token, arrive on it), NOT just
+// a placeable that must first be carved by an unrelated discovery.
+// ===========================================================================
+
+describe("Colored Gate travel into a face-down (pending) gate tile", () => {
+  it("the pick lists BOTH a carved partner AND a face-down pending gate — choosing the pending one flips it free, places the token, and the hero arrives on the carved gate", () => {
+    let state = makeGame("gate-facedown-pick");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    state = b;
+    const entry = carveGate(state, tileA, 1, 1); // red origin
+    const carvedRed = carveGate(state, tileB, 1, 1); // carved red partner
+    // A THIRD red gate still rides a face-down NEAR tile as a pending token.
+    const hidden = instantiateTile(adv(state), "N1", { row: 36, col: 24 }, 0, true);
+    adv(state).tiles[hidden.id].pendingToken = { kind: "gate", pair: 1 };
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+
+    // The pick lists BOTH the carved partner AND the face-down pending gate — the
+    // same CHOOSE_ONE visit-step the Monolith network uses. Remove the pending
+    // enumeration and only the carved partner remains → a size-1 automatic travel,
+    // no picker → this length assertion fails.
+    const step = adv(state).pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type !== "CHOOSE_ONE") {
+      throw new Error("no gate destination pick");
+    }
+    expect(step.options).toHaveLength(2);
+    // Exactly ONE option is the face-down pending gate; the other is the carved
+    // partner (a plain teleport).
+    expect(step.options.filter((option) => option.label.includes("face-down"))).toHaveLength(1);
+    const pendingIndex = step.options.findIndex((option) => option.label.includes("face-down"));
+
+    // Choose the FACE-DOWN pending gate.
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: pendingIndex });
+
+    // The face-down tile flipped for free, rotation handed to the traveller, the
+    // in-flight gate travel parked awaiting the placement (carrying the pair).
+    expect(adv(state).tiles[hidden.id].faceDown).toBe(false);
+    expect(adv(state).pendingTokenTeleport?.destTileInstanceId).toBe(hidden.id);
+    expect(adv(state).pendingTokenTeleport?.kind).toBe("gate");
+    expect(adv(state).pendingTokenTeleport?.pair).toBe(1);
+    state = revealTile(state, hidden.id);
+
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-map-token" || !choice.mapToken) {
+      throw new Error("no gate token placement choice");
+    }
+    // The placement choice carries the gate kind AND its colored pair.
+    expect(choice.mapToken.kind).toBe("gate");
+    expect(choice.mapToken.pair).toBe(1);
+    const pickedHex = choice.mapToken.candidates[0];
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+
+    // The travel completed: the pending token carved a RED gate, the hero stands
+    // on it, and the flight cleared.
+    expect(adv(state).fields[pickedHex]?.location).toBe("gate");
+    expect(adv(state).fields[pickedHex]?.gatePair).toBe(1);
+    expect(state.heroes.hero_p1.spaceId).toBe(pickedHex);
+    expect(adv(state).pendingTokenTeleport ?? null).toBeNull();
+    // CONTROL: the hero did NOT just hop to the carved partner — the pending gate
+    // was a real, chosen destination.
+    expect(state.heroes.hero_p1.spaceId).not.toBe(carvedRed);
+  });
+
+  it("a lone carved gate plus a same-color pending token is a size-2 network — automatic travel (no picker) arms the reveal flow and completes on the placed gate", () => {
+    let state = makeGame("gate-facedown-lone-pair");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    state = a;
+    const entry = carveGate(state, tileA, 1, 2); // lone blue carved gate
+    // Its ONLY partner still rides a face-down NEAR tile — the exact scenario
+    // Task 4 left broken (the carved gate saw no carved partner → led nowhere).
+    const hidden = instantiateTile(adv(state), "N1", { row: 30, col: 18 }, 0, true);
+    adv(state).tiles[hidden.id].pendingToken = { kind: "gate", pair: 2 };
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+
+    // Exactly ONE destination (the pending tile) → automatic, no picker (the
+    // MONOLITH convention: a lone pending member reveals straight through). The
+    // immediate flip PROVES no picker was interposed.
+    expect(adv(state).tiles[hidden.id].faceDown).toBe(false);
+    expect(adv(state).pendingTileChoice?.tileInstanceId).toBe(hidden.id);
+    expect(adv(state).pendingTokenTeleport?.destTileInstanceId).toBe(hidden.id);
+    expect(adv(state).pendingTokenTeleport?.pair).toBe(2);
+    // (Mutation control: remove the pending enumeration and this carved gate is a
+    // lone gate → "leads nowhere", the tile never flips → the assertions above fail.)
+    state = revealTile(state, hidden.id);
+
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-map-token" || !choice.mapToken) {
+      throw new Error("no gate token placement choice");
+    }
+    const pickedHex = choice.mapToken.candidates[0];
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+
+    expect(adv(state).fields[pickedHex]?.location).toBe("gate");
+    expect(adv(state).fields[pickedHex]?.gatePair).toBe(2); // still blue
+    expect(state.heroes.hero_p1.spaceId).toBe(pickedHex);
+    expect(adv(state).pendingTokenTeleport ?? null).toBeNull();
+  });
+
+  it("isolation: a red gate never offers a pending BLUE gate or a pending Monolith — travel is automatic to the carved red partner, the foreign tiles stay face-down", () => {
+    let state = makeGame("gate-facedown-isolation");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    state = b;
+    const entry = carveGate(state, tileA, 1, 1); // red origin
+    const redPartner = carveGate(state, tileB, 1, 1); // the ONLY red destination
+    // A face-down BLUE gate token and a face-down MONOLITH token — neither may
+    // ever join the RED network.
+    const blueHidden = instantiateTile(adv(state), "N1", { row: 36, col: 24 }, 0, true);
+    adv(state).tiles[blueHidden.id].pendingToken = { kind: "gate", pair: 2 };
+    const monoHidden = instantiateTile(adv(state), "N2", { row: 42, col: 30 }, 0, true);
+    adv(state).tiles[monoHidden.id].pendingToken = { kind: "monolith" };
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+
+    // ONE red destination only (the carved partner) → automatic travel there, no
+    // picker. If the blue-gate or monolith pending tile leaked into the red set a
+    // 2+ pick would open and the hero would stay on the entry hex.
+    expect(state.heroes.hero_p1.spaceId).toBe(redPartner);
+    expect(state.pendingChoice).toBeNull();
+    expect(adv(state).pendingVisit).toBeNull();
+    // The foreign pending tiles were untouched (never revealed).
+    expect(adv(state).tiles[blueHidden.id].faceDown).toBe(true);
+    expect(adv(state).tiles[monoHidden.id].faceDown).toBe(true);
+    expect(adv(state).pendingTokenTeleport ?? null).toBeNull();
+  });
+
+  it("isolation: the Monolith network never offers a pending gate — a size-2 Monolith network travels automatically to its carved partner, the gate tile stays face-down", () => {
+    let state = makeGame("mono-facedown-isolation");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    state = b;
+    // Two carved Monoliths (set the location directly, as the routing CONTROLs do).
+    const monoEntry = getTileFootprintSpaceIds(tileA)[1];
+    adv(state).fields[monoEntry]!.location = "monolith";
+    const monoExit = getTileFootprintSpaceIds(tileB)[1];
+    adv(state).fields[monoExit]!.location = "monolith";
+    // A face-down GATE token must NOT join the Monolith network.
+    const gateHidden = instantiateTile(adv(state), "N1", { row: 36, col: 24 }, 0, true);
+    adv(state).tiles[gateHidden.id].pendingToken = { kind: "gate", pair: 1 };
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, monoEntry);
+
+    // Straight to the OTHER Monolith (a size-2 network), never the pending gate.
+    expect(state.heroes.hero_p1.spaceId).toBe(monoExit);
+    expect(state.pendingChoice).toBeNull();
+    expect(adv(state).tiles[gateHidden.id].faceDown).toBe(true);
+  });
+
+  it("eliminating the traveller mid-flow auto-places the pending gate token (carved with its pair) and cancels the travel", () => {
+    let state = makeGame("gate-facedown-elimination");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    state = a;
+    const entry = carveGate(state, tileA, 1, 3); // green
+    const hidden = instantiateTile(adv(state), "N1", { row: 30, col: 18 }, 0, true);
+    adv(state).tiles[hidden.id].pendingToken = { kind: "gate", pair: 3 };
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+    // The travel armed and revealed; the placement choice is now open for p1.
+    expect(adv(state).pendingTokenTeleport?.destTileInstanceId).toBe(hidden.id);
+    state = revealTile(state, hidden.id);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-map-token" || !choice.mapToken) {
+      throw new Error("no gate token placement choice");
+    }
+    const autoHex = choice.mapToken.candidates[0];
+
+    // p1 concedes WHILE owing the placement.
+    eliminatePlayer(state, "p1", "conceded the game", true);
+
+    // The token was auto-placed (carved GREEN gate with its pair) so it is not
+    // stranded on the revealed tile; the dead seat's travel was cancelled.
+    expect(adv(state).fields[autoHex]?.location).toBe("gate");
+    expect(adv(state).fields[autoHex]?.gatePair).toBe(3);
+    expect(adv(state).tiles[hidden.id].pendingToken).toBeUndefined();
+    expect(adv(state).pendingTokenTeleport ?? null).toBeNull();
   });
 });
 

@@ -7545,15 +7545,19 @@ export type VisitStep =
     }
   | {
       /**
-       * Monolith/Whirlpool travel into a face-down tile: flip the destination
-       * tile for free and hand its rotation to the traveller. The teleport
-       * completes (and a Whirlpool's unit loss lands) once the traveller has
-       * also placed the destination token — tracked in
-       * `AdventureState.pendingTokenTeleport`.
+       * Monolith/Whirlpool/colored-Gate travel into a face-down tile: flip the
+       * destination tile for free and hand its rotation to the traveller. The
+       * teleport completes (and a Whirlpool's unit loss lands) once the traveller
+       * has also placed the destination token — tracked in
+       * `AdventureState.pendingTokenTeleport`. A colored Gate carries its `pair`
+       * so the placement carves the same-color partner gate (never a Monolith,
+       * never a different color).
        */
       type: "TOKEN_TELEPORT_REVEAL";
-      token: "monolith" | "whirlpool";
+      token: "monolith" | "whirlpool" | "gate";
       tileInstanceId: string;
+      /** Colored-Gate travel only: the pair (1-4) the placement carves. */
+      pair?: 1 | 2 | 3 | 4;
     }
   | {
       /**
@@ -8458,17 +8462,20 @@ export type AdventureState = {
    */
   gatePlans?: SubterraneanGatePlan[];
   /**
-   * A Monolith/Whirlpool travel whose destination tile was still face-down:
-   * the traveller flipped it for free and now owes its rotation and the
-   * destination token's placement. Once the token is carved on the revealed
+   * A Monolith/Whirlpool/colored-Gate travel whose destination tile was still
+   * face-down: the traveller flipped it for free and now owes its rotation and
+   * the destination token's placement. Once the token is carved on the revealed
    * tile the teleport completes (the hero moves there; a Whirlpool travel then
-   * takes its unit toll). Cleared when the teleport completes, fizzles (no
-   * legal field for the token), or the traveller is eliminated.
+   * takes its unit toll — a Gate takes none). Cleared when the teleport
+   * completes, fizzles (no legal field for the token), or the traveller is
+   * eliminated.
    */
   pendingTokenTeleport?: {
     playerId: PlayerId;
     heroId: HeroId;
-    kind: "monolith" | "whirlpool";
+    kind: "monolith" | "whirlpool" | "gate";
+    /** Colored-Gate travel only: the pair (1-4) the placement carves. */
+    pair?: 1 | 2 | 3 | 4;
     /** The token the hero is travelling FROM (it stays put). */
     fromSpaceId: MapSpaceId;
     /** The face-down tile that hides the destination token. */

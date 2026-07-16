@@ -6065,21 +6065,101 @@ function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTo
 }
 
 /**
+ * Every colored Gate of `pair` in play: carved gate FIELDS plus gate tokens
+ * still riding face-down tiles. Both count toward "at least 2 same-color gates
+ * must exist to travel" — a lone carved gate whose same-color partner still
+ * hides on a face-down tile DOES lead somewhere (travelling there is what
+ * discovers the tile). The Monolith network's {@link countMapTokens} mirror,
+ * partitioned by `gatePair`.
+ */
+function countColoredGates(state: GameState, pair: 1 | 2 | 3 | 4): number {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return 0;
+  }
+  const placed = Object.values(adventure.fields).filter(
+    (field) => field.location === "gate" && field.gatePair === pair
+  ).length;
+  const pending = Object.values(adventure.tiles).filter(
+    (tile) => tile.faceDown && tile.pendingToken?.kind === "gate" && tile.pendingToken.pair === pair
+  ).length;
+  return placed + pending;
+}
+
+/**
+ * Where a colored-Gate travel of `pair` from `fromSpaceId` may go: every OTHER
+ * same-color gate — carved FIELDS (skipping any a hero occupies: the p.83 "skip
+ * the movement" reading) PLUS face-down TILES still carrying a same-color gate
+ * token (travelling there reveals the tile and the traveller places the token,
+ * carving its partner gate). The Monolith network's {@link mapTokenDestinations}
+ * mirror, partitioned by `gatePair` — never a different color, never a Monolith.
+ */
+function coloredGateDestinations(state: GameState, pair: 1 | 2 | 3 | 4, fromSpaceId: MapSpaceId): MapTokenDestination[] {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return [];
+  }
+  const color = gatePairColor(pair);
+  const destinations: MapTokenDestination[] = [];
+  for (const field of Object.values(adventure.fields)) {
+    if (
+      field.location !== "gate" ||
+      field.gatePair !== pair ||
+      field.spaceId === fromSpaceId ||
+      heroAtSpace(state, field.spaceId)
+    ) {
+      continue;
+    }
+    const tile = adventure.tiles[field.tileInstanceId];
+    const where = tile ? ` on the ${tile.backLabel ?? tile.group ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol})` : "";
+    destinations.push({ type: "field", spaceId: field.spaceId, label: `${color} Gate${where}` });
+  }
+  for (const tile of Object.values(adventure.tiles)) {
+    if (!tile.faceDown || tile.pendingToken?.kind !== "gate" || tile.pendingToken.pair !== pair) {
+      continue;
+    }
+    destinations.push({
+      type: "pending-tile",
+      tileInstanceId: tile.id,
+      label: `${color} Gate — a face-down ${tile.backLabel ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol}) (reveal it and place the token)`
+    });
+  }
+  return destinations;
+}
+
+/** The visit steps that carry the hero to one colored-Gate destination. */
+function coloredGateTravelSteps(visit: PendingVisit, pair: 1 | 2 | 3 | 4, destination: MapTokenDestination): VisitStep[] {
+  if (destination.type === "pending-tile") {
+    // A same-color gate destination still face-down: reveal it, place the token
+    // (carving the SAME-color partner via the `pair`), and arrive on it — the
+    // shared TOKEN_TELEPORT_REVEAL flow the Monolith uses. Gates take NO unit
+    // toll (only a Whirlpool travel does), so there is no WHIRLPOOL_PENALTY tail.
+    return [{ type: "TOKEN_TELEPORT_REVEAL", token: "gate", pair, tileInstanceId: destination.tileInstanceId }];
+  }
+  // TELEPORT_HERO without `visit`: arriving on the destination gate must NOT
+  // re-run its own GATE_TELEPORT (no ping-pong); Revisit (1 MP) travels again.
+  return [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId }];
+}
+
+/**
  * Colored Gate travel (map-designer objects, rulebook p.83). Entering (or
  * Revisiting) a gate moves the hero to another gate of the SAME colored pair —
  * its OWN per-color network, never the Monolith network (and Monoliths/Obelisks
  * never join a gate pair). It mirrors the Monolith network semantics in
  * {@link resolveTokenTeleport}, partitioned by `gatePair`:
- * - fewer than 2 same-color gates on the map → nothing (noted, needs ≥2);
+ * - fewer than 2 same-color gates on the map (carved OR still riding a face-down
+ *   tile) → nothing (noted, needs ≥2);
  * - all other same-color gates occupied by a hero → fizzles (noted, the p.83
  *   "skip the movement" reading);
  * - exactly one free same-color destination → straight there;
  * - two or more free → the TRAVELLER PICKS via the same CHOOSE_ONE visit-step
  *   the Monolith picker uses (so the board UI renders it unchanged).
- * Arrival does NOT re-trigger (a bare TELEPORT_HERO step), so there is no
- * ping-pong; the hero may Revisit (1 MP) to travel again. Only carved gate
- * FIELDS are destinations — a face-down gate token is placeable but not a
- * destination until a discovery carves it.
+ * A carved gate FIELD is a bare TELEPORT_HERO; a same-color gate token still
+ * riding a FACE-DOWN tile is a full destination too — travelling there flips the
+ * tile for free, the traveller rotates it and places the token (carving the
+ * partner gate), then arrives on it (the shared `pendingTokenTeleport` flow,
+ * exactly like a Monolith). Arrival does NOT re-trigger, so there is no
+ * ping-pong; the hero may Revisit (1 MP) to travel again.
  */
 function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
   const adventure = state.adventure;
@@ -6089,13 +6169,10 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
   }
   const pair = field.gatePair;
   const color = gatePairColor(pair);
-  // Every OTHER carved gate of the SAME colored pair. Strict location === "gate"
-  // AND same-pair — the per-color isolation is deliberate (a red gate never
-  // offers a blue gate or a Monolith, and vice versa).
-  const members = Object.values(adventure.fields).filter(
-    (candidate) => candidate.location === "gate" && candidate.gatePair === pair && candidate.spaceId !== field.spaceId
-  );
-  if (members.length === 0) {
+  // At least 2 same-color gates must be in play — carved OR still riding a
+  // face-down tile (travelling to a pending one is what discovers it), exactly
+  // like the Monolith network's countMapTokens gate.
+  if (countColoredGates(state, pair) < 2) {
     eventNote(
       state,
       `The ${color} Gate leads nowhere — at least 2 ${color} Gates must be on the map for it to work.`,
@@ -6103,32 +6180,27 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
     );
     return;
   }
-  const free = members
-    .filter((partner) => !heroAtSpace(state, partner.spaceId))
-    .sort((a, b) => (a.spaceId < b.spaceId ? -1 : 1));
-  if (free.length === 0) {
+  // Every OTHER free same-color destination (carved field or pending face-down
+  // tile). Per-color isolation is deliberate: a red gate never offers a blue
+  // gate or a Monolith, and no pending Monolith/whirlpool tile ever appears here.
+  const destinations = coloredGateDestinations(state, pair, visit.fieldId);
+  if (destinations.length === 0) {
     eventNote(state, `The ${color} Gate fizzles — every other ${color} Gate is occupied by a hero.`, visit.playerId);
     return;
   }
-  if (free.length === 1) {
-    visit.steps.unshift({ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: free[0].spaceId });
+  if (destinations.length === 1) {
+    visit.steps.unshift(...coloredGateTravelSteps(visit, pair, destinations[0]));
     return;
   }
-  // Two or more free same-color gates → the traveller picks the destination (the
-  // same visit-step CHOOSE_ONE the Monolith network picker opens).
+  // Two or more free same-color destinations → the traveller picks (the same
+  // visit-step CHOOSE_ONE the Monolith network picker opens).
   visit.steps.unshift({
     type: "CHOOSE_ONE",
     prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} Gate — choose where to travel`,
-    options: free.map((partner) => {
-      const tile = adventure.tiles[partner.tileInstanceId];
-      const where = tile
-        ? ` on the ${tile.backLabel ?? tile.group ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol})`
-        : "";
-      return {
-        label: `${color} Gate${where}`,
-        steps: [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: partner.spaceId }]
-      };
-    })
+    options: destinations.map((destination) => ({
+      label: destination.label,
+      steps: coloredGateTravelSteps(visit, pair, destination)
+    }))
   });
 }
 
@@ -6179,7 +6251,15 @@ function resolveTokenTeleportReveal(
 ): void {
   const adventure = state.adventure;
   const tile = adventure?.tiles[step.tileInstanceId];
-  if (!adventure || !tile || !tile.faceDown || tile.pendingToken?.kind !== step.token) {
+  if (
+    !adventure ||
+    !tile ||
+    !tile.faceDown ||
+    tile.pendingToken?.kind !== step.token ||
+    // A colored Gate destination must also match the travelling pair — the
+    // per-color isolation held all the way through the reveal.
+    (step.token === "gate" && tile.pendingToken.pair !== step.pair)
+  ) {
     // The destination vanished between offer and resolution (cannot happen in
     // sequential play; a defensive no-op keeps the visit clean).
     return;
@@ -6189,6 +6269,7 @@ function resolveTokenTeleportReveal(
     playerId: visit.playerId,
     heroId: visit.heroId,
     kind: step.token,
+    ...(step.pair !== undefined ? { pair: step.pair } : {}),
     fromSpaceId: visit.fieldId,
     destTileInstanceId: tile.id
   };
@@ -6317,7 +6398,7 @@ export function dropPendingMapToken(state: GameState, tile: MapTileState, player
     adventure.pendingTokenTeleport = null;
     eventNote(
       state,
-      `${eventPlayerName(state, teleport.playerId)}'s ${mapTokenLabel(teleport.kind)} travel fizzles — the hero stays put.`,
+      `${eventPlayerName(state, teleport.playerId)}'s ${placementTokenLabel(teleport)} travel fizzles — the hero stays put.`,
       teleport.playerId
     );
   }
