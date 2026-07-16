@@ -19069,6 +19069,95 @@ img.cardBack {
   color: #6a4f24;
 }
 
+/* Timing badge — a symbol + word (Instant / Ongoing / Combat / Map) so the
+   spell's timing reads at a glance instead of being buried in prose. */
+.spellBookChip.timing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.spellBookChip.timing svg {
+  width: 11px;
+  height: 11px;
+}
+
+.spellBookChip.timing.instant {
+  border-color: #b8860b;
+  background: rgba(212, 175, 55, 0.2);
+  color: #7a5410;
+}
+
+.spellBookChip.timing.ongoing {
+  border-color: rgba(78, 108, 150, 0.75);
+  background: rgba(86, 122, 168, 0.18);
+  color: #33506f;
+}
+
+.spellBookChip.timing.combat {
+  border-color: rgba(152, 64, 42, 0.75);
+  background: rgba(152, 64, 42, 0.16);
+  color: #7c3320;
+}
+
+.spellBookChip.timing.map {
+  border-color: rgba(72, 120, 54, 0.75);
+  background: rgba(84, 132, 60, 0.18);
+  color: #345f2b;
+}
+
+/* Power ladder — one rung per Power tier the spell scales across, read from
+   the effect data (never the prose), so it can never disagree with the engine. */
+.spellBookLadder {
+  margin: 0 0 16px;
+  padding: 9px 11px 10px;
+  border: 1px solid rgba(150, 105, 45, 0.4);
+  border-radius: 8px;
+  background: rgba(120, 82, 34, 0.07);
+}
+
+.spellBookLadderTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7a5a28;
+  margin-bottom: 7px;
+}
+
+.spellBookLadderRows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.spellBookLadderRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #33260f;
+}
+
+.spellBookLadderPower {
+  flex: 0 0 auto;
+  min-width: 58px;
+  font-weight: 700;
+  font-variant: small-caps;
+  letter-spacing: 0.02em;
+  color: #6a3d16;
+}
+
+.spellBookLadderText {
+  flex: 1 1 auto;
+}
+
 .spellBookEmptyPage {
   display: grid;
   place-items: center;

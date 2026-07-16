@@ -11,14 +11,36 @@
 // spells turns a real paper leaf (3D flip + page foley).
 // ---------------------------------------------------------------------------
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type ComponentType, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, Sparkles, X } from "lucide-react";
+import { BookOpen, Hourglass, Map as MapIcon, Sparkles, Swords, X, Zap } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { playSpellBookPageTurn } from "@/lib/sound";
 import { cardLibrary } from "@/data/cards/library";
-import { describeCardEffect, type LegalAction } from "@/engine";
+import {
+  describeCardEffect,
+  spellPowerLadder,
+  spellTimingKind,
+  type LegalAction,
+  type SpellTimingKind
+} from "@/engine";
 import { actionKey, titleCase } from "@/components/table/utils";
+
+/**
+ * Timing badge art per kind, keyed to the `spellTimingKind` derivation (data,
+ * not prose). Reuses existing lucide iconography already used elsewhere in the
+ * table (Zap = instant, Hourglass = ongoing, Swords = combat) — no new asset
+ * files. The chip's accent colour comes from `.spellBookChip.timing.<kind>` CSS.
+ */
+const TIMING_BADGES: Record<
+  SpellTimingKind,
+  { label: string; Icon: ComponentType<{ size?: number; "aria-hidden"?: boolean }> }
+> = {
+  instant: { label: "Instant", Icon: Zap },
+  ongoing: { label: "Ongoing", Icon: Hourglass },
+  combat: { label: "Combat", Icon: Swords },
+  map: { label: "Map", Icon: MapIcon }
+};
 
 /**
  * Per-spell book illustration override. EMPTY today: drop a book-style plate
@@ -116,6 +138,10 @@ export function SpellBookModal({
   const casts = activeId ? castsByCard.get(activeId) ?? [] : [];
   const schools = card?.spellSchools ?? [];
   const accent = SPELL_SCHOOL_COLORS[schools[0] ?? ""] ?? "var(--gold)";
+  // Data-derived timing badge + full Power ladder (read from the effect's own
+  // `*ByPower` tables, never the prose `tags`), so the plate can never drift.
+  const timing = card ? spellTimingKind(card) : null;
+  const ladder = card ? spellPowerLadder(card) : [];
 
   const turnTo = (itemIndex: number) => {
     if (itemIndex === index) {
@@ -217,6 +243,15 @@ export function SpellBookModal({
               </div>
               <h3 className="spellBookSpellTitle">{card.name}</h3>
               <div className="spellBookChips">
+                {timing ? (
+                  <span className={`spellBookChip timing ${timing}`}>
+                    {(() => {
+                      const { Icon } = TIMING_BADGES[timing];
+                      return <Icon aria-hidden size={11} />;
+                    })()}
+                    {TIMING_BADGES[timing].label}
+                  </span>
+                ) : null}
                 <span className={`spellBookChip level ${card.spellLevel ?? "basic"}`}>
                   {card.spellLevel === "expert" ? "Expert" : "Basic"} spell
                 </span>
@@ -237,6 +272,21 @@ export function SpellBookModal({
                 ) : null}
               </div>
               <p className="spellBookDefinition">{spellRulesText(activeId)}</p>
+              {ladder.length > 0 ? (
+                <div className="spellBookLadder">
+                  <span className="spellBookLadderTitle">
+                    <Sparkles aria-hidden size={12} /> Power ladder
+                  </span>
+                  <ul className="spellBookLadderRows">
+                    {ladder.map((row) => (
+                      <li className="spellBookLadderRow" key={row.power}>
+                        <span className="spellBookLadderPower">Power {row.power}</span>
+                        <span className="spellBookLadderText">{row.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               <div className="spellBookActions">
                 {casts.map((legal) => (
                   <button className="commandButton primary" key={actionKey(legal.action)} onClick={() => onCast(legal)} type="button">
