@@ -69,6 +69,33 @@ import {
   type PinchStart
 } from "@/components/adventure/map-pinch";
 
+/** True when two grid coordinates name the same tile centre / board hex. */
+function sameGridCoord(a: { row: number; col: number }, b: { row: number; col: number }): boolean {
+  return a.row === b.row && a.col === b.col;
+}
+
+/**
+ * The index of the gate-link entry a drag or ↻ cycle is repositioning. A cavern
+ * may link the SAME Surface tile several times, so a link is addressed by its
+ * surface AND its current pinned pair: when a surface holds several links the
+ * exact one is the entry whose pinned hexes match `ref`; when it holds a single
+ * link the surface alone identifies it (its pins may be unset). Returns -1 when no
+ * entry matches — an AUTOMATIC gate owns no entry, so a drag then APPENDS one.
+ */
+function findGateLinkIndex(
+  links: readonly CustomMapGateLink[],
+  ref: { surface: { row: number; col: number }; gateHex?: string; entranceHex?: string }
+): number {
+  const onSurface = links
+    .map((link, index) => (sameGridCoord(link.surface, ref.surface) ? index : -1))
+    .filter((index) => index >= 0);
+  if (onSurface.length <= 1) {
+    return onSurface[0] ?? -1;
+  }
+  const exact = onSurface.find((index) => links[index].gateHex === ref.gateHex && links[index].entranceHex === ref.entranceHex);
+  return exact ?? onSurface[0];
+}
+
 /** Board-game glyph / medallion for designer toolbar and mode cards. */
 function DesignerGlyph({
   src,
@@ -704,7 +731,10 @@ export function MapDesigner({
    */
   const [gateDrag, setGateDrag] = useState<{
     cavernCenter: HexCoord;
-    surfaceCenter: HexCoord;
+    /** Index of the cavern gate-link entry being moved, or -1 for an automatic gate (append). */
+    sourceIndex: number;
+    /** The grabbed gate's committed pair + surface — identifies WHICH gate follows the pointer. */
+    origin: GateDragCandidate;
     candidates: GateDragCandidate[];
     hover: GateDragCandidate | null;
     startX: number;
@@ -1539,28 +1569,18 @@ export function MapDesigner({
   );
 
   /**
-   * Pin a designed gate link (cavern ↔ Surface) to an exact boundary pair — the
-   * ONE commit path shared by the ↻ cycle button and every gate-token drag, so
-   * they always write the same plan shape. When the cavern already links this
-   * Surface, the pin is updated in place; when it does NOT (the gate was the
-   * AUTOMATIC touch pairing, which carries no `gateLinks` entry), one is ADDED —
-   * so dragging an automatic gate CONVERTS it into a designer-pinned link at the
-   * dropped spot, exactly the "take control by touching it" the designer wants.
-   *
-   * `fromSurface` names the Surface the DRAG started on. When a cross-surface drag
-   * re-targets the gate to a DIFFERENT Surface (`surface !== fromSurface`), the
-   * dragged gate's old designed entry is dropped in the SAME atomic update, so the
-   * cavern ends with exactly one link to the new Surface — an automatic gate that
-   * had no entry simply carries nothing to drop. Omitted for a same-surface pin
-   * (the ↻ cycle and in-place slides), which stays byte-identical to before.
+   * Reposition ONE designer gate link (cavern ↔ Surface) to an exact boundary
+   * pair — the ONE commit path shared by the ↻ cycle button, the "+ Gate" add and
+   * every gate-token drag, so they all write the same plan shape. `sourceIndex`
+   * names the gate-link entry to move: a valid index REPLACES that entry in place
+   * (so a drag moves only the gate the user grabbed, and a cross-surface drag
+   * simply rewrites its surface — never spawning a duplicate); `-1` APPENDS a new
+   * entry, which is how dragging an AUTOMATIC gate (no entry yet) or the "+ Gate"
+   * button adds a fresh designer-pinned gate. Replacing in place keeps the array
+   * order stable so the per-link rows don't jump around.
    */
-  const pinGateLink = useCallback(
-    (
-      cavernCenter: HexCoord,
-      surface: { row: number; col: number },
-      pair: GateHexPair,
-      fromSurface?: { row: number; col: number }
-    ) => {
+  const pinGateLinkAt = useCallback(
+    (cavernCenter: HexCoord, sourceIndex: number, surface: { row: number; col: number }, pair: GateHexPair) => {
       const index = customMap.findIndex(
         (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
       );
@@ -1568,22 +1588,16 @@ export function MapDesigner({
       if (!plan) {
         return;
       }
-      const gateHex = hexSpaceId(pair.gateHex);
-      const entranceHex = hexSpaceId(pair.entranceHex);
-      const sameSurface = (a: { row: number; col: number }, b: { row: number; col: number }): boolean =>
-        a.row === b.row && a.col === b.col;
-      // Re-target: dropping the dragged surface's stale entry keeps a cross-surface
-      // move to ONE link on the new surface (a same-surface pin keeps every entry).
-      const base =
-        fromSurface && !sameSurface(fromSurface, surface)
-          ? (plan.gateLinks ?? []).filter((candidate) => !sameSurface(candidate.surface, fromSurface))
-          : plan.gateLinks ?? [];
-      const hasLink = base.some((candidate) => sameSurface(candidate.surface, surface));
-      const nextLinks: CustomMapGateLink[] = hasLink
-        ? base.map((candidate) =>
-            sameSurface(candidate.surface, surface) ? { surface: candidate.surface, gateHex, entranceHex } : candidate
-          )
-        : [...base, { surface: { row: surface.row, col: surface.col }, gateHex, entranceHex }];
+      const entry: CustomMapGateLink = {
+        surface: { row: surface.row, col: surface.col },
+        gateHex: hexSpaceId(pair.gateHex),
+        entranceHex: hexSpaceId(pair.entranceHex)
+      };
+      const links = plan.gateLinks ?? [];
+      const nextLinks =
+        sourceIndex >= 0 && sourceIndex < links.length
+          ? links.map((link, i) => (i === sourceIndex ? entry : link))
+          : [...links, entry];
       updateTile(index, { gateLinks: nextLinks });
     },
     [customMap, updateTile]
@@ -1592,30 +1606,31 @@ export function MapDesigner({
   /**
    * Every boundary position a gate drag on this cavern may snap to, across ALL
    * eligible touching Surface tiles — the model that makes a drag able to pick the
-   * connected tile by direct manipulation. `draggedSurface` is the Surface the
-   * gate currently sits on (kept eligible so it can stay). Excluded: a Surface
-   * already claimed by ANOTHER designed link of this cavern (each Surface links
-   * once), and any pair whose gate/entrance hex collides with another designed
-   * link's PINNED hex (two gates on one cavern can't share a hex).
+   * connected tile (or a second gate on an already-linked one) by direct
+   * manipulation. `sourceIndex` is the entry being dragged (or -1 for an automatic
+   * gate). EVERY touching Surface tile is offered — a second gate on an
+   * already-linked surface is legal now — but any pair whose gate/entrance hex
+   * collides with ANOTHER of this cavern's designed pins is dropped (two gates on
+   * one cavern can never share a board hex).
    */
   const gateDragCandidatesFor = useCallback(
-    (cavernCenter: HexCoord, draggedSurface: { row: number; col: number }): GateDragCandidate[] => {
-      const sameSurface = (a: { row: number; col: number }, b: { row: number; col: number }): boolean =>
-        a.row === b.row && a.col === b.col;
+    (cavernCenter: HexCoord, sourceIndex: number): GateDragCandidate[] => {
       const cavernPlan = customMap.find(
         (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
       );
-      const otherLinks = (cavernPlan?.gateLinks ?? []).filter((link) => !sameSurface(link.surface, draggedSurface));
-      const claimedByOthers = new Set(otherLinks.map((link) => `${link.surface.row}:${link.surface.col}`));
+      const links = cavernPlan?.gateLinks ?? [];
       const pinnedHexes = new Set<string>();
-      for (const link of otherLinks) {
+      links.forEach((link, index) => {
+        if (index === sourceIndex) {
+          return; // the dragged gate's own hexes are free — it is moving off them
+        }
         if (link.gateHex) {
           pinnedHexes.add(link.gateHex);
         }
         if (link.entranceHex) {
           pinnedHexes.add(link.entranceHex);
         }
-      }
+      });
       const candidates: GateDragCandidate[] = [];
       for (const tile of gatePlacements) {
         if (tile.group === "subterranean") {
@@ -1623,9 +1638,6 @@ export function MapDesigner({
         }
         const surfaceCenter = { row: tile.row, col: tile.col };
         if (!tileFootprintsTouch(cavernCenter, surfaceCenter)) {
-          continue;
-        }
-        if (claimedByOthers.has(`${surfaceCenter.row}:${surfaceCenter.col}`)) {
           continue;
         }
         for (const pair of legalGateHexPairs(surfaceCenter, cavernCenter)) {
@@ -1702,9 +1714,11 @@ export function MapDesigner({
     };
     const onUp = () => {
       if (gateDrag.moved && gateDrag.hover) {
-        // Commit at the snapped pair AND its surface — a drop on a different
-        // Surface tile re-targets the gate there (pinGateLink drops the old entry).
-        pinGateLink(gateDrag.cavernCenter, gateDrag.hover.surfaceCenter, gateDrag.hover, gateDrag.surfaceCenter);
+        // Commit at the snapped pair AND its surface. `sourceIndex` moves ONLY the
+        // grabbed gate: a designed gate is repositioned in place (its surface
+        // rewritten on a cross-surface drop), an automatic gate (index -1) is
+        // appended as a fresh designer link.
+        pinGateLinkAt(gateDrag.cavernCenter, gateDrag.sourceIndex, gateDrag.hover.surfaceCenter, gateDrag.hover);
         // The browser still fires a click after the release — swallow it so a
         // finished slide does not also pop the cavern's options.
         gateClickSuppressRef.current = true;
@@ -1727,7 +1741,7 @@ export function MapDesigner({
       window.removeEventListener("pointercancel", onCancel);
       window.removeEventListener("keydown", onKey);
     };
-  }, [gateDrag, clientToLocal, hexSize, pinGateLink]);
+  }, [gateDrag, clientToLocal, hexSize, pinGateLinkAt]);
 
   // Placed-object drag lifecycle: pointermove maps the pointer into board space,
   // finds the candidate placement under it (tile-slot or standalone) as a live
@@ -2063,10 +2077,23 @@ export function MapDesigner({
   const isGateLinked = (surface: { row: number; col: number }): boolean =>
     Boolean(selected?.gateLinks?.some((link) => link.surface.row === surface.row && link.surface.col === surface.col));
 
+  // Hexes the selected cavern's RENDERED gates already occupy (across every
+  // surface): a new "+ Gate" pins the first boundary pair free of these, and two
+  // gates never share a board hex.
+  const selectedCavernUsedHexes = new Set<string>();
+  if (selected && selected.group === "subterranean") {
+    for (const gate of plannedGates) {
+      if (sameGridCoord(gate.cavernCenter, { row: selected.row, col: selected.col })) {
+        selectedCavernUsedHexes.add(hexSpaceId(gate.gateHex));
+        selectedCavernUsedHexes.add(hexSpaceId(gate.entranceHex));
+      }
+    }
+  }
+
   /** Number of distinct per-edge yellow borders on the selected plan (legacy arcs folded in). */
   const selectedBorderEdgeCount = selected ? planEffectiveBorderEdges(selected).length : 0;
 
-  /** Toggle a designer gate link between the selected cavern and a touching Surface tile. */
+  /** Add the FIRST designer gate link between the selected cavern and a touching Surface tile. */
   const toggleGateLink = (surface: { row: number; col: number }) => {
     if (selectedIndex === null || !selected || selected.group !== "subterranean") {
       return;
@@ -2078,26 +2105,85 @@ export function MapDesigner({
     updateTile(selectedIndex, { gateLinks: nextLinks.length > 0 ? nextLinks : undefined });
   };
 
+  /** Remove ONE designer gate link by its index in the cavern's list. */
+  const unlinkGateAt = (linkIndex: number) => {
+    if (selectedIndex === null || !selected || selected.group !== "subterranean" || !selected.gateLinks) {
+      return;
+    }
+    const nextLinks = selected.gateLinks.filter((_, index) => index !== linkIndex);
+    updateTile(selectedIndex, { gateLinks: nextLinks.length > 0 ? nextLinks : undefined });
+  };
+
+  /** The first legal boundary pair for `surface` free of the cavern's used hexes, or null. */
+  const firstFreePairForSurface = (surface: { row: number; col: number }): GateHexPair | null => {
+    if (!selected || selected.group !== "subterranean") {
+      return null;
+    }
+    const cavernCenter = { row: selected.row, col: selected.col };
+    for (const pair of legalGateHexPairs(surface, cavernCenter)) {
+      if (!selectedCavernUsedHexes.has(hexSpaceId(pair.gateHex)) && !selectedCavernUsedHexes.has(hexSpaceId(pair.entranceHex))) {
+        return pair;
+      }
+    }
+    return null;
+  };
+
   /**
-   * Slide a designed gate to the next legal boundary hex pair (the non-drag
-   * affordance): pins the link to the pair after its current one — pinned pair,
-   * else the automatic nearest default — so each click walks the gate along the
-   * shared edge.
+   * Add ANOTHER designer gate to an already-linked Surface tile, PINNED at the
+   * first boundary pair free of the cavern's existing gates — so several gates can
+   * bridge the SAME shared edge. A no-op (and the button is disabled) when the edge
+   * has no free pair left.
    */
-  const cycleGateLinkPosition = (surface: { row: number; col: number }) => {
+  const addGateToSurface = (surface: { row: number; col: number }) => {
     if (selectedIndex === null || !selected || selected.group !== "subterranean") {
       return;
     }
+    const pair = firstFreePairForSurface(surface);
+    if (!pair) {
+      return;
+    }
+    pinGateLinkAt({ row: selected.row, col: selected.col }, -1, surface, pair);
+  };
+
+  /**
+   * Slide ONE designer gate (by its link index) to the next legal boundary hex
+   * pair (the non-drag affordance): pins the link to the pair after its current
+   * one — pinned pair, else the automatic nearest default — skipping any pair whose
+   * hex a sibling gate already holds, so each click walks THIS gate along the
+   * shared edge without colliding.
+   */
+  const cycleGateLinkAt = (linkIndex: number) => {
+    if (selectedIndex === null || !selected || selected.group !== "subterranean" || !selected.gateLinks) {
+      return;
+    }
+    const link = selected.gateLinks[linkIndex];
+    if (!link) {
+      return;
+    }
+    const surface = link.surface;
     const cavernCenter = { row: selected.row, col: selected.col };
-    const pairs = legalGateHexPairs(surface, cavernCenter);
+    // Two gates can't share a hex, so the slide only visits pairs free of the
+    // OTHER links' pinned hexes.
+    const blocked = new Set<string>();
+    selected.gateLinks.forEach((other, index) => {
+      if (index === linkIndex) {
+        return;
+      }
+      if (other.gateHex) {
+        blocked.add(other.gateHex);
+      }
+      if (other.entranceHex) {
+        blocked.add(other.entranceHex);
+      }
+    });
+    const pairs = legalGateHexPairs(surface, cavernCenter).filter(
+      (pair) => !blocked.has(hexSpaceId(pair.gateHex)) && !blocked.has(hexSpaceId(pair.entranceHex))
+    );
     if (pairs.length === 0) {
       return;
     }
-    const link = selected.gateLinks?.find(
-      (candidate) => candidate.surface.row === surface.row && candidate.surface.col === surface.col
-    );
     const pinnedIndex =
-      link?.gateHex && link?.entranceHex
+      link.gateHex && link.entranceHex
         ? pairs.findIndex((pair) => hexSpaceId(pair.gateHex) === link.gateHex && hexSpaceId(pair.entranceHex) === link.entranceHex)
         : -1;
     // Unpinned: start from the nearest default the preview shows, so the first
@@ -2123,7 +2209,7 @@ export function MapDesigner({
         : 0;
     }
     const nextPair = pairs[(currentIndex + 1) % pairs.length];
-    pinGateLink(cavernCenter, surface, nextPair);
+    pinGateLinkAt(cavernCenter, linkIndex, surface, nextPair);
   };
 
   /** Select the cavern that owns a designed gate and open its options popover. */
@@ -2203,15 +2289,30 @@ export function MapDesigner({
     // Keep mid-drag moves flowing even when the pointer leaves the token; jsdom
     // has no pointer-capture implementation, hence the optional call.
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+    // Which cavern gate-link entry this token IS: a designed gate is addressed by
+    // its surface + committed pair (so ONE of several same-surface gates moves); an
+    // automatic gate owns no entry (index -1 → a drop APPENDS a fresh link).
+    const cavernPlan = customMap.find(
+      (plan) => plan.group === "subterranean" && plan.row === gate.cavernCenter.row && plan.col === gate.cavernCenter.col
+    );
+    const sourceIndex = gate.designed
+      ? findGateLinkIndex(cavernPlan?.gateLinks ?? [], {
+          surface: gate.surfaceCenter,
+          gateHex: hexSpaceId(gate.gateHex),
+          entranceHex: hexSpaceId(gate.entranceHex)
+        })
+      : -1;
     // Offer boundary pairs on EVERY eligible touching Surface tile, not just the
-    // one this gate sits on — so the drag can carry the gate to a different tile.
-    const candidates = gateDragCandidatesFor(gate.cavernCenter, gate.surfaceCenter);
+    // one this gate sits on — so the drag can carry the gate to a different tile
+    // (or add a second gate to an already-linked one).
+    const candidates = gateDragCandidatesFor(gate.cavernCenter, sourceIndex);
     if (candidates.length === 0) {
       return;
     }
     setGateDrag({
       cavernCenter: gate.cavernCenter,
-      surfaceCenter: gate.surfaceCenter,
+      sourceIndex,
+      origin: { gateHex: gate.gateHex, entranceHex: gate.entranceHex, surfaceCenter: gate.surfaceCenter },
       candidates,
       hover: null,
       startX: event.clientX,
@@ -2564,10 +2665,10 @@ export function MapDesigner({
     const draggingThis = Boolean(
       gateDrag?.moved &&
         gateDrag.hover &&
-        gateDrag.cavernCenter.row === gate.cavernCenter.row &&
-        gateDrag.cavernCenter.col === gate.cavernCenter.col &&
-        gateDrag.surfaceCenter.row === gate.surfaceCenter.row &&
-        gateDrag.surfaceCenter.col === gate.surfaceCenter.col
+        sameGridCoord(gateDrag.cavernCenter, gate.cavernCenter) &&
+        sameGridCoord(gateDrag.origin.surfaceCenter, gate.surfaceCenter) &&
+        hexSpaceId(gateDrag.origin.gateHex) === hexSpaceId(gate.gateHex) &&
+        hexSpaceId(gateDrag.origin.entranceHex) === hexSpaceId(gate.entranceHex)
     );
     const drawGateHex = draggingThis ? gateDrag!.hover!.gateHex : gate.gateHex;
     const drawEntranceHex = draggingThis ? gateDrag!.hover!.entranceHex : gate.entranceHex;
@@ -3704,38 +3805,69 @@ export function MapDesigner({
                     ) : (
                       <>
                         <small className="popoverHint">
-                          Connect this cavern to any touching Surface tile — link several to give the cavern several gates.
-                          Drag a gate token along the shared edge (or use ↻ Move) to place it exactly.
+                          Connect this cavern to any touching Surface tile — link several tiles, or the same tile more than
+                          once with <strong>+ Gate</strong>, to give the cavern several gates. Drag a gate token along the
+                          shared edge (or use ↻ Move) to place each one exactly.
                         </small>
                         <div className="popoverGateLinkList">
                           {selectedCavernSurfaces.map((surface) => {
-                            const linked = isGateLinked(surface);
+                            const surfaceLabel = `${TILE_GROUP_LABELS[surface.group]} @ ${surface.row},${surface.col}`;
+                            const linkIndexes = (selected.gateLinks ?? [])
+                              .map((link, index) => (sameGridCoord(link.surface, surface) ? index : -1))
+                              .filter((index) => index >= 0);
+                            if (linkIndexes.length === 0) {
+                              return (
+                                <div className="popoverGateLinkRow" key={`${surface.row}:${surface.col}`}>
+                                  <button
+                                    aria-pressed={false}
+                                    className="popoverGateLinkToggle"
+                                    onClick={() => toggleGateLink(surface)}
+                                    title="Connect a Subterranean Gate to this Surface tile"
+                                    type="button"
+                                  >
+                                    Link · {surfaceLabel}
+                                  </button>
+                                </div>
+                              );
+                            }
+                            const canAddMore = firstFreePairForSurface(surface) !== null;
                             return (
-                              <div className="popoverGateLinkRow" key={`${surface.row}:${surface.col}`}>
+                              <div className="popoverGateLinkSurface" key={`${surface.row}:${surface.col}`}>
+                                {linkIndexes.map((linkIndex, ordinal) => (
+                                  <div className="popoverGateLinkRow" key={linkIndex}>
+                                    <button
+                                      aria-pressed
+                                      className="popoverGateLinkToggle linked"
+                                      onClick={() => unlinkGateAt(linkIndex)}
+                                      title="Remove this designer gate link"
+                                      type="button"
+                                    >
+                                      🔗 Linked · {surfaceLabel}
+                                      {linkIndexes.length > 1 ? ` (gate ${ordinal + 1})` : ""}
+                                    </button>
+                                    <button
+                                      className="popoverGateLinkCycle"
+                                      onClick={() => cycleGateLinkAt(linkIndex)}
+                                      title="Slide this gate to the next legal position along the shared edge"
+                                      type="button"
+                                    >
+                                      ↻ Move
+                                    </button>
+                                  </div>
+                                ))}
                                 <button
-                                  aria-pressed={linked}
-                                  className={`popoverGateLinkToggle${linked ? " linked" : ""}`}
-                                  onClick={() => toggleGateLink(surface)}
+                                  className="popoverGateLinkAdd"
+                                  disabled={!canAddMore}
+                                  onClick={() => addGateToSurface(surface)}
                                   title={
-                                    linked
-                                      ? "Remove this designer gate link"
-                                      : "Connect a Subterranean Gate to this Surface tile"
+                                    canAddMore
+                                      ? "Add another Subterranean Gate to this Surface tile"
+                                      : "No free boundary position left along this shared edge"
                                   }
                                   type="button"
                                 >
-                                  {linked ? "🔗 Linked" : "Link"} · {TILE_GROUP_LABELS[surface.group]} @ {surface.row},
-                                  {surface.col}
+                                  + Gate
                                 </button>
-                                {linked ? (
-                                  <button
-                                    className="popoverGateLinkCycle"
-                                    onClick={() => cycleGateLinkPosition(surface)}
-                                    title="Slide the gate to the next legal position along the shared edge"
-                                    type="button"
-                                  >
-                                    ↻ Move
-                                  </button>
-                                ) : null}
                               </div>
                             );
                           })}

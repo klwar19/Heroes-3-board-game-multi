@@ -111,6 +111,52 @@ function cavernNextToFar(): HexCoord {
   throw new Error("no suitable cavern next to FAR");
 }
 
+type HexPair = { gateHex: HexCoord; entranceHex: HexCoord };
+
+/** Two boundary pairs sharing NO hex (so both can carve their own gate), or null. */
+function twoDisjointPairs(pairs: HexPair[]): [HexPair, HexPair] | null {
+  for (let i = 0; i < pairs.length; i += 1) {
+    for (let j = i + 1; j < pairs.length; j += 1) {
+      const hexes = new Set([
+        hexSpaceId(pairs[i].gateHex),
+        hexSpaceId(pairs[i].entranceHex),
+        hexSpaceId(pairs[j].gateHex),
+        hexSpaceId(pairs[j].entranceHex)
+      ]);
+      if (hexes.size === 4) {
+        return [pairs[i], pairs[j]];
+      }
+    }
+  }
+  return null;
+}
+
+/** A cavern touching FAR (clear of the town) whose shared edge has ≥2 DISJOINT pairs. */
+function cavernNextToFarWithDisjointPairs(): { cavern: HexCoord; pairs: [HexPair, HexPair] } {
+  const scan: HexCoord[] = [];
+  for (let dRow = -4; dRow <= 4; dRow += 1) {
+    for (let dCol = -4; dCol <= 4; dCol += 1) {
+      const cand = { row: FAR.row + dRow, col: FAR.col + dCol };
+      if (tileFootprintsTouch(FAR, cand) && !tileCentersAdjacent(FAR, cand)) {
+        scan.push(cand);
+      }
+    }
+  }
+  for (const cand of [...tileLatticeNeighbors(FAR), ...scan]) {
+    if (cand.row === TOWN.row && cand.col === TOWN.col) {
+      continue;
+    }
+    if (tileCentersOverlap(cand, TOWN) || tileCentersOverlap(cand, FAR) || tileFootprintsTouch(cand, TOWN)) {
+      continue;
+    }
+    const disjoint = twoDisjointPairs(legalGateHexPairs(FAR, cand));
+    if (disjoint) {
+      return { cavern: cand, pairs: disjoint };
+    }
+  }
+  throw new Error("no cavern next to FAR with two disjoint boundary pairs");
+}
+
 describe("designed gate links — pinned hexes carve where the designer chose", () => {
   it("carves BOTH halves at the DESIGNED hexes (not the auto nearest) and a hero can cross", () => {
     const cavern = cavernNextToFar();
@@ -324,6 +370,141 @@ describe("designed gate links — one cavern to TWO Surface tiles", () => {
   });
 });
 
+describe("designed gate links — one cavern to FIVE Surface tiles (over the old cap of 4)", () => {
+  it("carves ALL FIVE gates (fails if the 4-link cap returns)", () => {
+    // A cavern far from the fixed town, linking five of its six interlocking
+    // neighbours — all touch it, none overlap each other or the town. The retired
+    // cap of 4 would have trimmed the 5th link; here every one must carve.
+    const cavernCenter = { row: 40, col: 24 };
+    expect(tileFootprintsTouch(cavernCenter, TOWN)).toBe(false);
+    const neighbors = tileLatticeNeighbors(cavernCenter).filter(
+      (neighbor) => !tileCentersOverlap(neighbor, TOWN) && !tileFootprintsTouch(neighbor, TOWN)
+    );
+    expect(neighbors.length, "≥5 touching surfaces clear of the town").toBeGreaterThanOrEqual(5);
+    const surfaces = neighbors.slice(0, 5);
+    for (const surface of surfaces) {
+      expect(tileFootprintsTouch(cavernCenter, surface)).toBe(true);
+    }
+
+    const surfaceTiles: CustomMapTilePlan[] = surfaces.map((surface, index) => ({
+      row: surface.row,
+      col: surface.col,
+      group: "far",
+      faceDown: false,
+      tileDefId: `F${index + 1}`
+    }));
+    const state = twoPlayerGame([
+      ...surfaceTiles,
+      {
+        row: cavernCenter.row,
+        col: cavernCenter.col,
+        group: "subterranean",
+        faceDown: false,
+        tileDefId: "U1",
+        gateLinks: surfaces.map((surface) => ({ surface: { row: surface.row, col: surface.col } }))
+      }
+    ]);
+
+    const cavernId = tileIdAt(state, cavernCenter);
+    const cavernGates = gatesOnTile(state, cavernCenter);
+    expect(cavernGates, "all five designed links carve — the 5th is NOT trimmed").toHaveLength(5);
+    expect(new Set(cavernGates.map((field) => field.spaceId)).size, "five distinct entrance hexes").toBe(5);
+    // Each surface carries its own gate, linked to a distinct cavern entrance.
+    for (const surface of surfaces) {
+      const surfaceId = tileIdAt(state, surface);
+      const surfaceGate = gatesOnTile(state, surface)[0];
+      const entrance = cavernGates.find((field) => field.gateToTileId === surfaceId);
+      expect(surfaceGate, `surface ${surface.row},${surface.col} carved a gate`).toBeDefined();
+      expect(entrance, `cavern entrance toward ${surface.row},${surface.col}`).toBeDefined();
+      expect(surfaceGate.gateToTileId).toBe(cavernId);
+      expect(gateFieldsLinked(surfaceGate, entrance)).toBe(true);
+      expect(canCrossEdge(state, surfaceGate.spaceId, entrance!.spaceId)).toBe(true);
+    }
+  });
+});
+
+describe("designed gate links — the SAME Surface tile linked twice (several gates on one edge)", () => {
+  it("carves BOTH gates at distinct pinned pairs; CONTROL: two UNPINNED same-surface links merge to ONE", () => {
+    const { cavern, pairs } = cavernNextToFarWithDisjointPairs();
+    const [first, second] = pairs;
+    const base: CustomMapTilePlan[] = [
+      { row: TOWN.row, col: TOWN.col, group: "starting", faceDown: false },
+      { row: FAR.row, col: FAR.col, group: "far", faceDown: false, tileDefId: "F1" }
+    ];
+    const cavernPlan = { row: cavern.row, col: cavern.col, group: "subterranean" as const, faceDown: false, tileDefId: "U1" };
+
+    // Designed: TWO pinned links to the SAME surface → two gate fields on the edge.
+    const twoGateState = twoPlayerGame([
+      ...base,
+      {
+        ...cavernPlan,
+        gateLinks: [
+          { surface: { row: FAR.row, col: FAR.col }, gateHex: hexSpaceId(first.gateHex), entranceHex: hexSpaceId(first.entranceHex) },
+          { surface: { row: FAR.row, col: FAR.col }, gateHex: hexSpaceId(second.gateHex), entranceHex: hexSpaceId(second.entranceHex) }
+        ]
+      }
+    ]);
+    const surfaceId = tileIdAt(twoGateState, FAR);
+    const cavernId = tileIdAt(twoGateState, cavern);
+    const surfaceGates = gatesOnTile(twoGateState, FAR);
+    const cavernGates = gatesOnTile(twoGateState, cavern);
+    expect(surfaceGates, "two gate halves on the shared surface edge").toHaveLength(2);
+    expect(cavernGates, "two entrance halves on the cavern").toHaveLength(2);
+    // Both carve at exactly the designer's pinned hexes.
+    expect(new Set(surfaceGates.map((field) => field.spaceId))).toEqual(
+      new Set([hexSpaceId(first.gateHex), hexSpaceId(second.gateHex)])
+    );
+    // Each surface gate links to its own cavern entrance and is crossable.
+    for (const gate of surfaceGates) {
+      expect(gate.gateToTileId).toBe(cavernId);
+      const entrance = cavernGates.find((field) => field.spaceId === gate.gateLinkSpaceId);
+      expect(entrance, "each gate is linked to a distinct cavern entrance").toBeDefined();
+      expect(entrance!.gateToTileId).toBe(surfaceId);
+      expect(canCrossEdge(twoGateState, gate.spaceId, entrance!.spaceId)).toBe(true);
+    }
+
+    // CONTROL: two UNPINNED links to the same surface are true duplicates → ONE gate.
+    const mergedState = twoPlayerGame([
+      ...base,
+      {
+        ...cavernPlan,
+        gateLinks: [{ surface: { row: FAR.row, col: FAR.col } }, { surface: { row: FAR.row, col: FAR.col } }]
+      }
+    ]);
+    expect(gatesOnTile(mergedState, cavern), "two unpinned same-surface links merge to one gate").toHaveLength(1);
+  });
+
+  it("drops the sibling whose pinned pair COLLIDES, keeps the first, and reports it", () => {
+    const scenario = getScenario("skirmish");
+    const cavern = cavernNextToFar();
+    const first = legalGateHexPairs(FAR, cavern)[0];
+    const gateHex = hexSpaceId(first.gateHex);
+    const entranceHex = hexSpaceId(first.entranceHex);
+    const { accepted, problems } = validateCustomMapPlan(
+      [
+        { row: FAR.row, col: FAR.col, group: "far", faceDown: false, tileDefId: "F1" },
+        {
+          row: cavern.row,
+          col: cavern.col,
+          group: "subterranean",
+          faceDown: false,
+          tileDefId: "U1",
+          gateLinks: [
+            { surface: { row: FAR.row, col: FAR.col }, gateHex, entranceHex }, // accepted
+            { surface: { row: FAR.row, col: FAR.col }, gateHex, entranceHex } // same pin → collides → dropped
+          ]
+        }
+      ],
+      scenario
+    );
+    const cav = accepted.find((plan) => plan.group === "subterranean");
+    expect(cav?.gateLinks, "the sibling still carves; the colliding one is dropped").toHaveLength(1);
+    expect(cav!.gateLinks![0].gateHex).toBe(gateHex);
+    expect(problems.some((message) => /collides with another gate/i.test(message))).toBe(true);
+    expect(problems.some((message) => message.includes(gateHex)), "the problem names the colliding hex").toBe(true);
+  });
+});
+
 describe("designed gate links — validation", () => {
   it("drops a link to a non-touching / absent Surface tile with a problem, keeping the rest", () => {
     const scenario = getScenario("skirmish");
@@ -468,5 +649,53 @@ describe("designed gate links — reveal opens NO pick-on-reveal choice", () => 
     expect(entrance).toBeDefined();
     expect(gateFieldsLinked(gate, entrance)).toBe(true);
     expect(hexDistance(parseHexSpaceId(gate!.spaceId)!, parseHexSpaceId(entrance!.spaceId)!)).toBe(1);
+  });
+
+  it("TWO same-surface pinned designed gates BOTH carve silently on reveal — neither opens a choice", () => {
+    const state = makeChoiceGame();
+    const surfaceCenter = { row: 24, col: 12 };
+    const cavernCenter = tileLatticeNeighbors(surfaceCenter)[0];
+    const surface = instantiateTile(adv(state), "F1", surfaceCenter, 0, true); // face-down
+    const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, false); // face-up
+    setAllEmpty(state, cavern);
+
+    const disjoint = twoDisjointPairs(legalGateHexPairs(surfaceCenter, cavernCenter));
+    expect(disjoint, "the shared edge has two disjoint boundary pairs").toBeTruthy();
+    const [first, second] = disjoint!;
+    adv(state).gatePlans = [
+      {
+        surfaceTileId: surface.id,
+        undergroundTileId: cavern.id,
+        gateHex: hexSpaceId(first.gateHex),
+        entranceHex: hexSpaceId(first.entranceHex),
+        designed: true
+      },
+      {
+        surfaceTileId: surface.id,
+        undergroundTileId: cavern.id,
+        gateHex: hexSpaceId(second.gateHex),
+        entranceHex: hexSpaceId(second.entranceHex),
+        designed: true
+      }
+    ];
+
+    const revealed = revealTile(state, surface.id);
+    // Both pinned — neither opens the pick-on-reveal choice.
+    expect(gatePlacementChoice(revealed), "a fully-pinned pair of designed gates opens NO choice").toBe(false);
+    // Both gates carved on the surface, at exactly the two designed hexes.
+    const surfaceGates = getTileFootprintSpaceIds(surface)
+      .map((id) => adv(revealed).fields[id])
+      .filter((field): field is MapFieldState => field?.location === "subterranean_gate");
+    expect(surfaceGates, "both same-surface designed gates carved").toHaveLength(2);
+    expect(new Set(surfaceGates.map((field) => field.spaceId))).toEqual(
+      new Set([hexSpaceId(first.gateHex), hexSpaceId(second.gateHex)])
+    );
+    // Each is a real linked crossing to the cavern.
+    for (const gate of surfaceGates) {
+      expect(gate.gateToTileId).toBe(cavern.id);
+      const entrance = adv(revealed).fields[gate.gateLinkSpaceId ?? ""];
+      expect(entrance?.location).toBe("subterranean_gate");
+      expect(canCrossEdge(revealed, gate.spaceId, entrance!.spaceId)).toBe(true);
+    }
   });
 });

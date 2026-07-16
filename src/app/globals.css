@@ -12614,6 +12614,33 @@ img.cardBack {
   cursor: pointer;
 }
 
+/* One Surface tile holding several designer gates: its per-gate rows stack with a
+   faint rail, and the "+ Gate" button appends another gate along the shared edge. */
+.popoverGateLinkSurface {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 6px;
+  border-left: 2px solid rgba(143, 230, 255, 0.25);
+}
+
+.popoverGateLinkAdd {
+  align-self: flex-start;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px dashed rgba(143, 230, 255, 0.5);
+  background: rgba(20, 40, 54, 0.35);
+  color: #cfe9f5;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.popoverGateLinkAdd:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Designer yellow-border controls (the per-tile edge rose in the popover). */
 .popoverBorders {
   margin-top: 8px;

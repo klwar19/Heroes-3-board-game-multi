@@ -1789,13 +1789,28 @@ Leading with what does NOT run / deliberate limits:
   notice (`start-tile-rotation.test.ts` cases 1/3/5).
 
 What runs (each pinned by a test that fails if the wiring is removed):
-- **1. Designed gate links** (`CustomMapTilePlan.gateLinks`): pin a cavern↔Surface
-  pairing (1 cavern → up to 4 Surfaces) at chosen hexes; the engine carves BOTH
-  halves at the DESIGNED hexes (not the auto-nearest), a pinned link opens NO
-  pick-on-reveal choice, and a link to a non-touching Surface is dropped with a
-  problem. Pointer-drag + ↻ cycle. `designed-gate-links.test.ts`,
-  `subterranean-gate-planning.test.ts` (preview == engine, incl.
-  `unreachableUndergroundCenters`).
+- **1. Designed gate links** (`CustomMapTilePlan.gateLinks`): pin cavern↔Surface
+  gates at chosen hexes with NO practical limit — one cavern may link ANY number
+  of touching Surface tiles, AND the SAME Surface tile several times at distinct
+  boundary pairs (several gates along one shared edge); the only bound is the
+  sanitiser cap `MAX_DESIGNED_GATE_LINKS` = 24 (effectively unlimited). The engine
+  carves BOTH halves at the DESIGNED hexes (not the auto-nearest — a designer plan
+  bypasses one-gate-per-tile via a per-plan half lookup keyed off its pinned hex,
+  so same-pair siblings each get their own gate); a pinned link opens NO
+  pick-on-reveal choice (for every one of the multiple gates). Validation
+  (`validateCustomMapPlan`, mirrored in the pure `planSubterraneanGates` preview):
+  a link to a non-touching/absent Surface is dropped with a problem; a PINNED pair
+  colliding with an already-accepted link's hex (this cavern's OR another's — two
+  gate halves can never share a board hex) is dropped with a problem naming it; an
+  UNPINNED duplicate to a surface already linked unpinned is merged away.
+  Designer UX: per-LINK popover rows (each with ↻ Move + Unlink) plus a "+ Gate"
+  button that pins a second gate to an already-linked surface at the first free
+  pair (disabled when the edge is full); a gate-token drag offers EVERY touching
+  surface (incl. already-linked ones), minus pairs colliding with sibling pins,
+  and moves only the grabbed entry. `designed-gate-links.test.ts`,
+  `subterranean-gate-planning.test.ts` (preview == engine, incl. the five-surface
+  and double-gate cases and `unreachableUndergroundCenters`),
+  `map-designer.test.tsx`, `map-registry.test.ts`.
 - **2. Yellow borders — PER EDGE** (`CustomMapTilePlan.borderEdges`, canonical
   edge codes `footprintIndex*6 + absoluteDirection` in the rotation-0 board
   frame; 30 distinct edges per 7-hex flower, inner edges included): drawn freely

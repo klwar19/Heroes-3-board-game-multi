@@ -6526,6 +6526,41 @@ function findGateHalf(adventure: AdventureState, tile: MapTileState, towardTileI
 }
 
 /**
+ * The gate half a DESIGNER plan owns on `tile` toward `towardTileId`. Unlike
+ * {@link findGateHalf} (which finds ANY half toward a partner — fine for the
+ * one-gate-per-tile auto/player pairings) this disambiguates when SEVERAL designer
+ * gates bridge the SAME two tiles: it prefers the half sitting on the plan's own
+ * pinned hex, and otherwise returns the first half toward the partner NOT already
+ * `claimed` by an earlier plan in this recompute. That keeps each designer gate
+ * bound to its own half — reused idempotently on re-runs, never grabbing a
+ * sibling's or double-carving.
+ */
+function findDesignedGateHalf(
+  adventure: AdventureState,
+  tile: MapTileState,
+  towardTileId: string,
+  pinnedHex: MapSpaceId | undefined,
+  claimed: ReadonlySet<MapSpaceId>
+): MapFieldState | null {
+  if (pinnedHex) {
+    const pinned = adventure.fields[pinnedHex];
+    if (pinned && pinned.location === "subterranean_gate" && pinned.gateToTileId === towardTileId && !claimed.has(pinnedHex)) {
+      return pinned;
+    }
+  }
+  for (const spaceId of tileRingSpaceIds(tile)) {
+    if (claimed.has(spaceId)) {
+      continue;
+    }
+    const field = adventure.fields[spaceId];
+    if (field && field.location === "subterranean_gate" && field.gateToTileId === towardTileId) {
+      return field;
+    }
+  }
+  return null;
+}
+
+/**
  * Whether `tile` already carries a Subterranean Gate half pointing at some tile
  * OTHER than `allowedToTileId`. ONE GATE PER TILE (BINH house rule): a single
  * map tile hosts at most one Subterranean Gate Token half, so a tile that
@@ -6565,10 +6600,20 @@ function ensureSubterraneanGate(
   adventure: AdventureState,
   surface: MapTileState,
   subterranean: MapTileState,
-  plan?: SubterraneanGatePlan
+  plan?: SubterraneanGatePlan,
+  claimed?: Set<MapSpaceId>
 ): void {
-  let surfaceHalf = findGateHalf(adventure, surface, subterranean.id);
-  let undergroundHalf = findGateHalf(adventure, subterranean, surface.id);
+  // A DESIGNER plan may be one of SEVERAL bridging this same tile pair, so its
+  // half is identified by the plan's own pinned hex (via `claimed`), not by the
+  // partner alone. Every other caller (auto pass, player pick-on-reveal) keeps
+  // one gate per tile, so the partner-keyed lookup is unambiguous for them.
+  const claimedHexes: ReadonlySet<MapSpaceId> = claimed ?? EMPTY_MAP_SPACE_SET;
+  let surfaceHalf = plan?.designed
+    ? findDesignedGateHalf(adventure, surface, subterranean.id, plan.gateHex, claimedHexes)
+    : findGateHalf(adventure, surface, subterranean.id);
+  let undergroundHalf = plan?.designed
+    ? findDesignedGateHalf(adventure, subterranean, surface.id, plan.entranceHex, claimedHexes)
+    : findGateHalf(adventure, subterranean, surface.id);
   const surfaceUp = tileMaterialized(adventure, surface);
   const undergroundUp = tileMaterialized(adventure, subterranean);
 
@@ -6624,7 +6669,21 @@ function ensureSubterraneanGate(
       undergroundHalf.gateLinkSpaceId = surfaceHalf.spaceId;
     }
   }
+
+  // Reserve THIS designer plan's halves so a sibling plan bridging the same tile
+  // pair carves its OWN gate on a different hex instead of reusing/overwriting.
+  if (claimed) {
+    if (surfaceHalf) {
+      claimed.add(surfaceHalf.spaceId);
+    }
+    if (undergroundHalf) {
+      claimed.add(undergroundHalf.spaceId);
+    }
+  }
 }
+
+/** A shared empty set for the non-designer gate carve (no per-plan hex reservation). */
+const EMPTY_MAP_SPACE_SET: ReadonlySet<MapSpaceId> = new Set<MapSpaceId>();
 
 /**
  * Places/links every Subterranean Gate Token implied by the current layout: one
@@ -6658,12 +6717,15 @@ export function recomputeSubterraneanGates(adventure: AdventureState): void {
 
   // 1) Carve the committed (planned) pairs first, at their chosen hexes, so a
   //    committed pairing always wins the one-gate-per-tile race — and a designed
-  //    link's extra halves are carved before the auto pass touches anything.
+  //    link's extra halves are carved before the auto pass touches anything. A
+  //    SHARED `claimed` set lets SEVERAL designer gates bridging the SAME tile pair
+  //    each take their own hex (a sibling never reuses an earlier plan's half).
+  const claimed = new Set<MapSpaceId>();
   for (const plan of plans) {
     const surface = adventure.tiles[plan.surfaceTileId];
     const subterranean = adventure.tiles[plan.undergroundTileId];
     if (surface && subterranean) {
-      ensureSubterraneanGate(adventure, surface, subterranean, plan);
+      ensureSubterraneanGate(adventure, surface, subterranean, plan, claimed);
     }
   }
 
@@ -7021,13 +7083,33 @@ export function planSubterraneanGates(
   const gates: PlannedSubterraneanGate[] = [];
 
   // 1) Designer links first — in order, at their pinned (or nearest) hexes, so a
-  //    cavern linked to several Surface tiles hosts one half per link, bypassing
-  //    one-gate-per-tile. Same order/assignment as `recomputeSubterraneanGates`.
+  //    cavern linked to several Surface tiles (and the SAME surface several times
+  //    at distinct pairs) hosts one half per link, bypassing one-gate-per-tile.
+  //    Same order/assignment as `recomputeSubterraneanGates`, and it MIRRORS
+  //    validateCustomMapPlan so the designer preview matches the carved map: an
+  //    UNPINNED duplicate to a surface already linked unpinned is merged away, and
+  //    a PINNED pair reusing an already-claimed hex is dropped (two gates can never
+  //    share a board hex).
+  const acceptedUnpinned = new Set<string>();
+  const claimedPinnedHexes = new Set<string>();
   for (const link of designedLinks) {
     const surface = findAt(surfaces, link.surfaceCenter);
     const cavern = findAt(caverns, link.cavernCenter);
     if (!surface || !cavern || !tileFootprintsTouch(surface, cavern)) {
       continue;
+    }
+    const gateId = link.gateHex ? hexSpaceId(link.gateHex) : undefined;
+    const entranceId = link.entranceHex ? hexSpaceId(link.entranceHex) : undefined;
+    if (gateId || entranceId) {
+      if ((gateId && claimedPinnedHexes.has(gateId)) || (entranceId && claimedPinnedHexes.has(entranceId))) {
+        continue; // (a) pinned collision → dropped, like the validator
+      }
+    } else {
+      const dupKey = `${key(surface)}>${key(cavern)}`;
+      if (acceptedUnpinned.has(dupKey)) {
+        continue; // (b) unpinned duplicate to the same pairing → merged away
+      }
+      acceptedUnpinned.add(dupKey);
     }
     committed.add(key(surface));
     committed.add(key(cavern));
@@ -7041,6 +7123,12 @@ export function planSubterraneanGates(
     }
     usedHexes.add(hexSpaceId(hexes.gateHex));
     usedHexes.add(hexSpaceId(hexes.entranceHex));
+    if (gateId) {
+      claimedPinnedHexes.add(gateId);
+    }
+    if (entranceId) {
+      claimedPinnedHexes.add(entranceId);
+    }
     gates.push({
       surfaceCenter: { row: surface.row, col: surface.col },
       cavernCenter: { row: cavern.row, col: cavern.col },

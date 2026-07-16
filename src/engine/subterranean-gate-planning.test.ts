@@ -198,6 +198,26 @@ function previewHexes(placements: TilePlacementLike[], links: DesignedGateLinkLi
   );
 }
 
+type HexPair = { gateHex: HexCoord; entranceHex: HexCoord };
+
+/** Two boundary pairs sharing NO hex (so both carve their own gate), or null. */
+function twoDisjointPairs(pairs: HexPair[]): [HexPair, HexPair] | null {
+  for (let i = 0; i < pairs.length; i += 1) {
+    for (let j = i + 1; j < pairs.length; j += 1) {
+      const hexes = new Set([
+        hexSpaceId(pairs[i].gateHex),
+        hexSpaceId(pairs[i].entranceHex),
+        hexSpaceId(pairs[j].gateHex),
+        hexSpaceId(pairs[j].entranceHex)
+      ]);
+      if (hexes.size === 4) {
+        return [pairs[i], pairs[j]];
+      }
+    }
+  }
+  return null;
+}
+
 /** A cavern next to `far`, clear of the town, with ≥2 legal boundary pairs. */
 function cavernNextTo(far: HexCoord): HexCoord {
   const town = { row: 24, col: 12 };
@@ -297,6 +317,71 @@ describe("planSubterraneanGates matches the engine with DESIGNER gate links", ()
     ]);
     // Two full gates → four distinct sacrificed hexes.
     expect(engine.size).toBe(4);
+    expect(preview).toEqual(engine);
+  });
+
+  it("one cavern linked to FIVE Surface tiles: all five gates — preview == engine (10 hexes)", () => {
+    // A cavern far from the helper's fixed town, linking five of its interlocking
+    // neighbours (over the old cap of 4). Preview must match the carve exactly.
+    const cavern = { row: 40, col: 24 };
+    const town = { row: 24, col: 12 };
+    const neighbors = tileLatticeNeighbors(cavern).filter(
+      (neighbor) => !tileCentersOverlap(neighbor, town) && !tileFootprintsTouch(neighbor, town)
+    );
+    expect(neighbors.length).toBeGreaterThanOrEqual(5);
+    const surfaces = neighbors.slice(0, 5);
+
+    const links: DesignedGateLinkLike[] = surfaces.map((surface) => ({ surfaceCenter: surface, cavernCenter: cavern }));
+    const placements: TilePlacementLike[] = [
+      ...surfaces.map((surface) => ({ row: surface.row, col: surface.col, group: "far" as const })),
+      { row: cavern.row, col: cavern.col, group: "subterranean" as const }
+    ];
+    const preview = previewHexes(placements, links);
+
+    const engine = engineGateHexesLinked([
+      ...surfaces.map((surface, index) => ({ center: surface, group: "far" as const, tileDefId: `F${index + 1}` })),
+      {
+        center: cavern,
+        group: "subterranean" as const,
+        tileDefId: "U1",
+        gateLinks: surfaces.map((surface) => ({ surface: { row: surface.row, col: surface.col } }))
+      }
+    ]);
+    expect(engine.size).toBe(10); // five gates × two sacrificed hexes each
+    expect(preview).toEqual(engine);
+  });
+
+  it("the SAME surface linked TWICE at distinct pairs: two gates — preview == engine (4 hexes)", () => {
+    const far = tileLatticeNeighbors({ row: 24, col: 12 })[0];
+    const cavern = cavernNextTo(far);
+    const disjoint = twoDisjointPairs(legalGateHexPairs(far, cavern));
+    expect(disjoint, "the shared edge has two disjoint boundary pairs").toBeTruthy();
+    const [first, second] = disjoint!;
+
+    const links: DesignedGateLinkLike[] = [
+      { surfaceCenter: far, cavernCenter: cavern, gateHex: first.gateHex, entranceHex: first.entranceHex },
+      { surfaceCenter: far, cavernCenter: cavern, gateHex: second.gateHex, entranceHex: second.entranceHex }
+    ];
+    const placements: TilePlacementLike[] = [
+      { row: 24, col: 12, group: "starting" },
+      { row: far.row, col: far.col, group: "far" },
+      { row: cavern.row, col: cavern.col, group: "subterranean" }
+    ];
+    const preview = previewHexes(placements, links);
+
+    const engine = engineGateHexesLinked([
+      { center: far, group: "far", tileDefId: "F1" },
+      {
+        center: cavern,
+        group: "subterranean",
+        tileDefId: "U1",
+        gateLinks: [
+          { surface: { row: far.row, col: far.col }, gateHex: hexSpaceId(first.gateHex), entranceHex: hexSpaceId(first.entranceHex) },
+          { surface: { row: far.row, col: far.col }, gateHex: hexSpaceId(second.gateHex), entranceHex: hexSpaceId(second.entranceHex) }
+        ]
+      }
+    ]);
+    expect(engine.size).toBe(4); // two gates × two sacrificed hexes each
     expect(preview).toEqual(engine);
   });
 });
