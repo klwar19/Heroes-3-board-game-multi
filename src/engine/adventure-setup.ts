@@ -928,9 +928,18 @@ export function validateCustomMapPlan(
 
   // Designer Subterranean Gate links (cavern → Surface): each must name a Surface
   // tile that is actually placed AND physically touches the cavern, else it is
-  // dropped with a human-readable reason. Duplicate links to the same Surface tile
-  // merge; a cavern keeps at most MAX_DESIGNED_GATE_LINKS distinct partners. The
-  // pinned hexes are left as-is — they are preferences the carve validates later.
+  // dropped with a human-readable reason. A cavern may link the SAME Surface tile
+  // MORE THAN ONCE (several gates along the shared edge) as long as each pinned
+  // pair is distinct:
+  //   (a) a link whose PINNED gate/entrance hex collides with an already-accepted
+  //       link's pinned hex — this cavern's OR any other cavern's, since two gate
+  //       halves can never occupy the same board hex — is dropped with a problem;
+  //   (b) an UNPINNED link to a surface already linked UNPINNED is a true duplicate
+  //       (both would carve the same nearest hex) and is merged away;
+  //   (c) otherwise (distinct pinned pairs, or the first unpinned link to a surface)
+  //       every link is accepted and carves its OWN gate.
+  // A cavern keeps at most MAX_DESIGNED_GATE_LINKS links. The pinned hexes are left
+  // as-is — they are preferences the carve validates again on the drawn tiles.
   const surfaceCenterKeys = new Set<string>(
     startingPlans.length > 0
       ? accepted.filter((plan) => plan.group === "starting").map((plan) => `${plan.row}:${plan.col}`)
@@ -941,13 +950,18 @@ export function validateCustomMapPlan(
       surfaceCenterKeys.add(`${plan.row}:${plan.col}`);
     }
   }
+  // Pinned hexes claimed by every accepted link across ALL caverns: two gate
+  // halves can never share a board hex, so a colliding pin is dropped (rule a).
+  const claimedPinnedHexes = new Set<MapSpaceId>();
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
     if (plan.group !== "subterranean" || !plan.gateLinks || plan.gateLinks.length === 0) {
       continue;
     }
     const cavernCenter = { row: plan.row, col: plan.col };
-    const seenSurfaces = new Set<string>();
+    // Surfaces this cavern already links UNPINNED — a second unpinned link there is
+    // a true duplicate (rule b). Distinct pinned pairs to the same surface are kept.
+    const unpinnedSurfaces = new Set<string>();
     const keptLinks: CustomMapGateLink[] = [];
     for (const link of plan.gateLinks) {
       const surfaceCenter = { row: link.surface.row, col: link.surface.col };
@@ -964,14 +978,32 @@ export function validateCustomMapPlan(
         );
         continue;
       }
-      if (seenSurfaces.has(surfaceKey)) {
-        continue; // one link per Surface partner
-      }
       if (keptLinks.length >= MAX_DESIGNED_GATE_LINKS) {
         problems.push(`Cavern at ${plan.row},${plan.col}: too many gate links (max ${MAX_DESIGNED_GATE_LINKS}).`);
         continue;
       }
-      seenSurfaces.add(surfaceKey);
+      const pinnedHexes = [link.gateHex, link.entranceHex].filter((hex): hex is MapSpaceId => Boolean(hex));
+      if (pinnedHexes.length > 0) {
+        // (a) A pinned pair reusing a hex already claimed by an accepted link
+        //     (this cavern's or another's) would double-carve a board hex — drop it.
+        const collision = pinnedHexes.find((hex) => claimedPinnedHexes.has(hex));
+        if (collision) {
+          problems.push(
+            `Cavern at ${plan.row},${plan.col}: gate link to ${link.surface.row},${link.surface.col} — its gate hex ${collision} collides with another gate.`
+          );
+          continue;
+        }
+        for (const hex of pinnedHexes) {
+          claimedPinnedHexes.add(hex);
+        }
+      } else if (unpinnedSurfaces.has(surfaceKey)) {
+        // (b) A second UNPINNED link to a surface already linked unpinned would carve
+        //     the same nearest hex — merge it away.
+        continue;
+      } else {
+        unpinnedSurfaces.add(surfaceKey);
+      }
+      // (c) Distinct pinned pair, or the first unpinned link to this surface.
       keptLinks.push(link);
     }
     if (keptLinks.length === plan.gateLinks.length) {
@@ -1054,8 +1086,15 @@ export function validateCustomMapPlan(
   return { accepted, problems };
 }
 
-/** A designer cavern hosts at most this many Subterranean Gate links (distinct partners). */
-export const MAX_DESIGNED_GATE_LINKS = 4;
+/**
+ * A designer cavern hosts at most this many Subterranean Gate links. This is a
+ * sanitiser bound (a real cavern touches at most six Surface tiles and offers a
+ * handful of boundary pairs each), NOT a design limit — a cavern may link EVERY
+ * touching Surface tile, and the SAME Surface tile several times at distinct
+ * boundary pairs; 24 is effectively unlimited for any real layout. The
+ * persistence sanitiser (`map-registry.ts`) mirrors this exact bound.
+ */
+export const MAX_DESIGNED_GATE_LINKS = 24;
 
 /** Reserved `tileInstanceId` marker prefix for a designer STANDALONE object hex (no backing tile). */
 const STANDALONE_OBJECT_TILE_PREFIX = "standalone-object:";
