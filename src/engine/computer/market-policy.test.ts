@@ -74,15 +74,22 @@ const endTurn: LegalAction = {
 
 describe("resource deficits and trade utility", () => {
   it("wants gold when broke with convertible stock", () => {
-    const state = stateWithResources(2, 5, 1);
+    // TRUE materials surplus (well above the dwelling target + the pre-Gold
+    // cushion) may fund gold; the dwelling inputs themselves stay protected.
+    const state = stateWithResources(2, 8, 1);
     const deficit = resourceDeficits(state, "p2");
     expect(deficit.gold).toBeGreaterThan(0);
-    // Materials may fund gold; the last dwelling-needed valuable stays protected
-    // until Gold is built (or a true surplus arrives from mines).
     expect(hasUsefulMarketTrade(state, "p2")).toBe(true);
     // rateIndex 4 = 1 materials → 1 gold; rateIndex 2 = 1 valuables → 3 gold.
     expect(tradeUtility(state, "p2", 4)).toBeGreaterThan(0);
     expect(tradeUtility(state, "p2", 2)).toBeLessThan(0);
+
+    // DWELLING-INPUT FLOOR CONTROL: with materials at/near the next dwelling's
+    // own need, the 1:1 sale is refused until the Gold dwelling stands — the
+    // market spread makes sell-then-rebuy a net tempo loss (measured: seven
+    // materials dumped at 1:1 the round before the Silver dwelling).
+    const tight = stateWithResources(2, 5, 1);
+    expect(tradeUtility(tight, "p2", 4)).toBeLessThan(0);
 
     state.towns = {
       t2: {
@@ -106,6 +113,29 @@ describe("resource deficits and trade utility", () => {
     expect(tradeUtility(tight, "p2", 2)).toBeLessThan(0);
   });
 
+  it("never scores both directions of the v↔m conversion pair positive (churn guard)", () => {
+    // Measured pre-fix: "1 valuables → 2 materials" (rate 3) and "3 materials
+    // → 1 valuables" (rate 5) alternated around the target boundary, burning a
+    // material per cycle in the round before the Silver dwelling was built. An
+    // AI that can score both directions positive at ONE state will churn.
+    const stocks: Array<[number, number, number]> = [
+      [2, 1, 4],
+      [2, 10, 1],
+      [2, 6, 3],
+      [14, 4, 2],
+      [8, 8, 4],
+    ];
+    for (const [gold, mats, vals] of stocks) {
+      const state = stateWithResources(gold, mats, vals);
+      const vToM = tradeUtility(state, "p2", 3);
+      const mToV = tradeUtility(state, "p2", 5);
+      expect(
+        Math.min(vToM, mToV),
+        `both conversion directions positive at g${gold} m${mats} v${vals}`,
+      ).toBeLessThanOrEqual(0);
+    }
+  });
+
   it("CONTROL: balanced coffers do not invent useful trades", () => {
     // Enough gold, a few mats, one valuable — no strong deficit.
     const state = stateWithResources(20, 4, 1);
@@ -119,7 +149,7 @@ describe("resource deficits and trade utility", () => {
 
 describe("scoreMapAction — market open / trade / done", () => {
   it("opens the market when a useful trade exists (above END_TURN)", () => {
-    const state = stateWithResources(2, 5, 0);
+    const state = stateWithResources(2, 8, 0);
     // Not inside a visit — OPEN_MARKET is a map action while parked on market.
     if (state.adventure) {
       state.adventure.pendingVisit = null;
@@ -153,8 +183,8 @@ describe("scoreMapAction — market open / trade / done", () => {
   });
 
   it("ranks a useful trade above Done, and a wasteful trade below Done", () => {
-    // Broke with spare materials: selling one for gold is useful.
-    const state = stateWithResources(1, 3, 0);
+    // Broke with a TRUE materials surplus: selling one for gold is useful.
+    const state = stateWithResources(1, 7, 0);
     const useful = scoreMapAction(observe(state), {
       type: "TRADE_RESOURCES",
       playerId: "p2",
@@ -207,7 +237,7 @@ describe("scoreMapAction — market open / trade / done", () => {
   });
 
   it("chooseComputerAction takes a useful gold trade over Done", () => {
-    const state = stateWithResources(1, 3, 0);
+    const state = stateWithResources(1, 7, 0);
     const trade: LegalAction = {
       action: {
         type: "TRADE_RESOURCES",

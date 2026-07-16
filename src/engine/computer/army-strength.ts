@@ -4,7 +4,9 @@ import {
   STACK_TOKENS_BY_DIFFICULTY,
   type CreatureBankId,
 } from "@/data/map/creature-banks";
+import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { assessDwellingRush } from "./development";
 import type { UnitTier } from "@/data/factions/types";
 import { getUnitSide, NEUTRAL_ARMY_TABLE, neutralArmyDifficulty } from "../adventure";
 import type {
@@ -389,6 +391,57 @@ export function armyCoversPremiumEconomyGuard(
 ): boolean {
   if (fieldDifficulty <= 0) return false;
   return fieldDifficulty <= premiumEconomyEngageCap(state, playerId);
+}
+
+/**
+ * STAGING: a known premium field (settlement / gold / valuables, difficulty
+ * 1-3) the Pack core cannot cover YET — on Impossible the cap needs the first
+ * silver body, which is one Population purchase away once the Silver dwelling
+ * stands. Marching there NOW and waiting adjacent converts "silver arrives →
+ * fight next round" instead of "silver arrives → 3-round march → fight R8+"
+ * (measured: the hero drifted from dist 2 to dist 5 exactly while the silver
+ * chain completed). The march planner must never ENTER the field until
+ * `canBeatGuardedField` flips — staging is positioning only.
+ */
+export function premiumEconomyWorthStaging(
+  state: GameState,
+  playerId: PlayerId,
+  field: MapFieldState,
+): boolean {
+  if (!isPremiumEconomyField(field)) return false;
+  const difficulty = field.difficulty ?? 0;
+  if (difficulty <= 0 || difficulty > 3) return false;
+  if (field.flagOwnerId) return false;
+  if (armyCoversPremiumEconomyGuard(state, playerId, difficulty)) return false;
+  // The Pack core must already stand — staging with a half-built army would
+  // pull the hero off the home-tile drain and the opening development.
+  const counts = armyTierCounts(state, playerId);
+  if (
+    armyBronzePackCount(state, playerId) < BRONZE_PACK_CORE_FOR_SILVER ||
+    counts.silver + counts.gold + counts.azure > 0
+  ) {
+    return false;
+  }
+  // The whole remaining silver chain (dwelling gold+materials, then the body)
+  // is position-independent — builds and Population purchases fire from
+  // anywhere — with ONE exception: a feasible dwelling-rush TRADE needs the
+  // hero standing at a market. Staging while that trade is pending deadlocks
+  // (measured: the parked hero never walked back, silver slid to R10/never);
+  // staging in every other case is pure tempo (measured: capture R9 → R6 when
+  // the hero waits adjacent instead of collecting westward and marching back).
+  const dwelling = coreFactionDefinitions[
+    state.players[playerId]?.factionId ?? ""
+  ]?.buildings.find((buildingId) => {
+    const effect = coreBuildingDefinitions[buildingId]?.effect;
+    return effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver";
+  });
+  if (!dwelling) return false;
+  const silverUnlocked = Object.values(state.towns ?? {}).some(
+    (town) =>
+      town.controllerId === playerId && town.buildings.includes(dwelling),
+  );
+  if (silverUnlocked) return true;
+  return !assessDwellingRush(state, playerId)?.feasible;
 }
 
 /**

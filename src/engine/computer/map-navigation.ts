@@ -30,6 +30,7 @@ import {
   armyTierCoversGuardField,
   canBeatCreatureBank,
   isPremiumEconomyField,
+  premiumEconomyWorthStaging,
   shouldAssaultEnemyHolding,
   shouldEngageEnemy,
 } from "./army-strength";
@@ -110,6 +111,13 @@ export type MapObjectiveKind =
 export type MapObjective = {
   spaceId: MapSpaceId;
   kind: MapObjectiveKind;
+  /**
+   * Explore doorway that can FLIP a still face-down Far (Ⅱ–Ⅲ) tile. While the
+   * seat has no Far economy yet, these doorways are the settlement lottery the
+   * scenario guarantees (farTiles.guaranteeSettlement) — the march values them
+   * well above generic exploration so the premium rush can find its target.
+   */
+  opensFarTile?: boolean;
 };
 
 /** Broad objective importance retained for callers and deterministic tooling. */
@@ -357,6 +365,14 @@ export function canBeatGuardedField(
     fieldDifficulty > 0 &&
     neutralBattleLevel(state, hero) > fieldDifficulty;
   if (hero.kind === "secondary" && guaranteedQuickWin) return true;
+  // A strict level advantage resolves as Quick Combat BEFORE a battle opens:
+  // free XP, loot and the field visit at zero army risk. The core-preservation
+  // and rush gates below exist to stop the army BLEEDING into side fights —
+  // a fight that never happens cannot bleed, so the main hero always accepts.
+  // Measured pre-fix: those gates skipped every free difficulty-1/2 cleanup
+  // from the moment the Pack core stood until Far economy opened, flatlining
+  // hero levels at 2-3 for the whole mid-game.
+  if (hero.kind === "main" && guaranteedQuickWin) return true;
   const rebuildingCoreCannotRiskNeutral =
     hero.kind === "main" &&
     !field.flagOwnerId &&
@@ -515,7 +531,21 @@ function objectiveKind(
   }
 
   if (isFieldGuarded(field)) {
-    return canBeatGuardedField(state, hero, field) ? "guard" : null;
+    if (canBeatGuardedField(state, hero, field)) {
+      return "guard";
+    }
+    // Premium STAGING (Impossible): a lv1-3 settlement / gold / valuables the
+    // three-Pack core cannot cover until its first silver body arrives is
+    // still the march target — walk there and WAIT adjacent (moveScore blocks
+    // the actual entry while the guard is unbeatable), so the fight fires the
+    // round the silver is bought instead of after a fresh multi-round march.
+    if (
+      hero.kind === "main" &&
+      premiumEconomyWorthStaging(state, playerId, field)
+    ) {
+      return "guard";
+    }
+    return null;
   }
   if (category === "town" && !ownedByUs) {
     return "town";
@@ -583,12 +613,16 @@ function collectExploreObjectives(
     // the hero field's sealed yellow arc. A sealed ring slot is never useful.
     const probe: HeroState = { ...hero, spaceId: field.spaceId };
     let useful = false;
+    let opensFarTile = false;
     for (const tile of faceDown) {
       // Engine gate: geometric adjacency + NOT heroFieldSealedForDiscovery
       // (yellow outer border blocks ordinary discovery; Creature Bank exception).
       if (canHeroDiscoverAdjacentTile(state, probe, tile)) {
         useful = true;
-        break;
+        if (tile.group === "far") {
+          opensFarTile = true;
+          break;
+        }
       }
     }
     // A field where the hero could DROP a Ⅱ–Ⅲ tile is an expand objective even
@@ -598,7 +632,11 @@ function collectExploreObjectives(
       useful = true;
     }
     if (useful) {
-      found.set(field.spaceId, { spaceId: field.spaceId, kind: "explore" });
+      found.set(field.spaceId, {
+        spaceId: field.spaceId,
+        kind: "explore",
+        ...(opensFarTile ? { opensFarTile: true } : {}),
+      });
     }
   }
   return [...found.values()];
@@ -910,6 +948,21 @@ function objectiveStrategicValue(
         value = Math.max(value, playerHasPlaceableFarTile(state, hero.controllerId) ? 560 : 520);
       }
       if (bronzeRush && fightAvailable) value = Math.min(value, 480);
+      // FAR-TILE HUNT: a doorway that can FLIP a face-down Ⅱ–Ⅲ tile while the
+      // seat still has no Far economy is the guaranteed-settlement lottery —
+      // the premium rush cannot fire until one is revealed. Rank it above every
+      // trinket visit / leftover flag (600-640) but below a FREE settlement
+      // flag (658) and any live beatable fight (710+), so the hero flips its
+      // own Far tiles the round after placing them instead of wandering.
+      // Measured pre-fix: F19/F14 placed R3/R5 were STILL face-down at R8 and
+      // premium capture slipped to R7-R11/never.
+      if (
+        hero.kind === "main" &&
+        objective.opensFarTile &&
+        !hasOpenedFarEconomy(state, hero.controllerId)
+      ) {
+        value = Math.max(value, 655);
+      }
       break;
   }
   if (SWEEPABLE_KINDS.has(objective.kind)) {
