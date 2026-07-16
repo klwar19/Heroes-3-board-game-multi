@@ -499,11 +499,14 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       "trailblazer",
       "obelisk"
     ]);
-    // &F2: Prospector centre; Factory Grave (not Cove grave); E cabin is Trading
-    // Post (not treasure — the old treasure_symbol made visits roll for experience).
+    // &F2: Prospector centre; NE lookout-tower is a Redwood Observatory (its
+    // tower-on-a-tall-tree + "?" art matches F24's observatory — there is NO
+    // treasure chest on ff2.webp, so the old treasure_symbol wrongly made visits
+    // roll the treasure die instead of revealing an adjacent tile); Factory Grave
+    // (not Cove grave); E cabin is Trading Post (also once wrongly treasure_symbol).
     expect(t["&F2"].fields.map((f) => f.location)).toEqual([
       "prospector",
-      "treasure_symbol",
+      "redwood_observatory",
       "trading_post",
       "blocked_field",
       "factory_grave",
@@ -511,6 +514,11 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       "mine"
     ]);
     expect(t["&F2"].fields.some((f) => f.location === "grave")).toBe(false);
+    // The NE field is the Redwood Observatory, never a treasure field: ff2.webp
+    // shows a lookout hut on a tall tree, not a chest. Guards the exact regression
+    // reported (observatory wrongly giving treasure).
+    expect(t["&F2"].fields.some((f) => f.location === "redwood_observatory")).toBe(true);
+    expect(t["&F2"].fields.some((f) => f.location === "treasure_symbol")).toBe(false);
     // &F3: Watering Hole well (not Magic Spring).
     expect(t["&F3"].fields.some((f) => f.location === "watering_hole")).toBe(true);
     expect(t["&F3"].fields.some((f) => f.location === "magic_spring")).toBe(false);
