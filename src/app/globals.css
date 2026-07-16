@@ -7227,12 +7227,15 @@ button.hbSlot:disabled { cursor: default; }
   opacity: 0.62;
 }
 
+/* On the combat card sit the coin at the TOP-RIGHT corner: the bottom-centre
+   would overlap the bottom-right HP readout (.boardCardHud), and top-left /
+   top-centre are taken by the token chips / retaliation and Berserk/Clone
+   badges. Top-right is the one clear corner, keeping the HP always visible. */
 .armyStackBadge.combat {
   position: absolute;
-  bottom: 6px;
-  left: 50%;
+  top: 6px;
+  right: 6px;
   z-index: 6;
-  transform: translateX(-50%);
 }
 
 /* Berserk: a red chip flagging that this unit is forced to attack the nearest
