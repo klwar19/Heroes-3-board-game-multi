@@ -13018,6 +13018,47 @@ img.cardBack {
   flex-wrap: wrap;
   gap: 6px;
 }
+.designerPlacementLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  width: fit-content;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 233, 168, 0.28);
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(40, 26, 12, 0.82), rgba(18, 20, 28, 0.78));
+  color: #eadfca;
+  font-size: 11px;
+}
+.designerPlacementLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.designerPlacementLegendGlyph {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 5px;
+  object-fit: cover;
+  box-shadow: 0 0 6px rgba(255, 216, 92, 0.35);
+}
+.designerPlacementLegend i {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ffe9a8;
+  background: rgba(255, 233, 168, 0.28);
+  clip-path: polygon(25% 7%, 75% 7%, 100% 50%, 75% 93%, 25% 93%, 0 50%);
+}
+.designerPlacementLegend .standalone i {
+  border-color: #8fd0ff;
+  background: rgba(120, 200, 255, 0.25);
+}
+.designerPlacementLegend strong {
+  color: #fff0a8;
+  font-weight: 700;
+}
 .designerObjectButton {
   display: inline-flex;
   align-items: center;
@@ -13091,6 +13132,39 @@ img.cardBack {
   stroke-width: 2.4px;
   filter: drop-shadow(0 0 5px rgba(190, 160, 255, 0.85));
 }
+/* Exact release target: candidates answer "where can it go?"; this reticle
+   answers "which one will this release take?" and stays visible under the
+   dragged token art. */
+.designerTokenDropReticle polygon {
+  fill: rgba(255, 224, 112, 0.18);
+  stroke: #fff0a8;
+  stroke-width: 2.8px;
+  stroke-dasharray: 7 2;
+  filter: drop-shadow(0 0 7px rgba(255, 225, 112, 0.95));
+}
+.designerTokenDropReticle circle {
+  fill: #fff4bd;
+  stroke: #5b3309;
+  stroke-width: 1.4px;
+}
+.designerTokenDropReticle text {
+  fill: #fff0a8;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  paint-order: stroke;
+  stroke: rgba(21, 10, 2, 0.95);
+  stroke-width: 2.4px;
+}
+.designerTokenDropReticle.standalone polygon {
+  fill: rgba(120, 200, 255, 0.2);
+  stroke: #a8dcff;
+  filter: drop-shadow(0 0 7px rgba(120, 200, 255, 0.9));
+}
+.designerTokenDropReticle.standalone text {
+  fill: #bfe6ff;
+}
 /* Placed object tokens are grabbable (drag to move, click for options). */
 .designerObjectToken {
   cursor: grab;
@@ -13127,6 +13201,16 @@ img.cardBack {
 .designerMapToken.dragging {
   cursor: grabbing;
   filter: drop-shadow(0 0 7px rgba(255, 235, 150, 0.95));
+}
+
+/* A designer-pinned token on a still-hidden in-game tile. The thin hex ring
+   makes the reserved physical field readable without exposing the tile art. */
+.tileBackPendingTokenSlot {
+  fill: rgba(255, 228, 140, 0.12);
+  stroke: rgba(255, 236, 174, 0.95);
+  stroke-width: 2px;
+  stroke-dasharray: 5 2;
+  filter: drop-shadow(0 0 5px rgba(255, 219, 110, 0.75));
 }
 /* The compact token panel is narrower than the tile panel (few controls). */
 .designerTokenPopover {

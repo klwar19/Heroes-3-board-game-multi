@@ -3,12 +3,13 @@ import {
   applyAction,
   createAdventureGameState,
   getTileFootprintSpaceIds,
+  legalTokenSlotsForTileDef,
   type GameAction,
   type GameState,
   type MapSpaceId,
   type MapTileState
 } from "./index";
-import { ALL_TILE_CONTENT } from "@/data/map/tiles";
+import { ALL_TILE_CONTENT, allTileDefinitions } from "@/data/map/tiles";
 import { carveMapTokenField, instantiateTile, placeMapToken } from "./adventure";
 import type { AdventureState } from "./state";
 
@@ -326,6 +327,39 @@ describe("Whirlpool travel", () => {
 // --- Placement on discovery (face-down tiles) --------------------------------
 
 describe("token placement on discovery", () => {
+  it("automatically uses the designer's exact physical hex when it is legal after reveal", () => {
+    let state = makeGame("token-place-reserved-hex");
+    const tile = instantiateTile(adv(state), "N1", { row: 24, col: 12 }, 0, true);
+    const preferredSlot = legalTokenSlotsForTileDef(allTileDefinitions.N1, "monolith")[0];
+    const preferredSpaceId = getTileFootprintSpaceIds(tile)[preferredSlot];
+    adv(state).tiles[tile.id].pendingToken = { kind: "monolith", preferredSpaceId };
+
+    state = revealTile(state, tile.id);
+
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "place-map-token").toBe(false);
+    expect(adv(state).fields[preferredSpaceId]?.location).toBe("monolith");
+    expect(adv(state).tiles[tile.id].pendingToken).toBeUndefined();
+  });
+
+  it("falls back to the legal-field choice when random content blocks the reserved hex", () => {
+    let state = makeGame("token-place-reserved-fallback");
+    const tile = instantiateTile(adv(state), "N1", { row: 24, col: 12 }, 0, true);
+    const legalSlots = new Set(legalTokenSlotsForTileDef(allTileDefinitions.N1, "monolith"));
+    const blockedSlot = [0, 1, 2, 3, 4, 5, 6].find((slot) => !legalSlots.has(slot));
+    expect(blockedSlot, "N1 has an incompatible field for the fallback control").toBeTypeOf("number");
+    const preferredSpaceId = getTileFootprintSpaceIds(tile)[blockedSlot as number];
+    adv(state).tiles[tile.id].pendingToken = { kind: "monolith", preferredSpaceId };
+
+    state = revealTile(state, tile.id);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context === "place-map-token").toBe(true);
+    if (choice?.type !== "OPTION_CHOICE") {
+      throw new Error("no fallback token choice");
+    }
+    expect(choice.prompt).toMatch(/reserved hex cannot host/i);
+  });
+
   it("discovering a tile that carries a token lets the discoverer choose its field (terrain/blocked/guard/town excluded)", () => {
     let state = makeGame("token-place-walk");
     // N1: witch hut (guarded), windmill, sanctuary, mine (guarded), trading
@@ -387,14 +421,16 @@ describe("token placement on discovery", () => {
     expect(placed?.terrain).toBe("water");
   });
 
-  it("travelling to a token on a face-down tile reveals it; the traveller rotates, places the token and arrives on it", () => {
+  it("travelling to a reserved token on a face-down tile reveals it and arrives on the exact designed hex", () => {
     let state = makeGame("token-travel-reveal");
     const [afterA, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
     state = afterA;
     const entry = carveToken(state, tileA, 1, "monolith");
     // The destination Monolith still rides a face-down NEAR tile.
     const hidden = instantiateTile(adv(state), "N1", { row: 30, col: 18 }, 0, true);
-    adv(state).tiles[hidden.id].pendingToken = { kind: "monolith" };
+    const preferredSlot = legalTokenSlotsForTileDef(allTileDefinitions.N1, "monolith")[0];
+    const preferredHex = getTileFootprintSpaceIds(hidden)[preferredSlot];
+    adv(state).tiles[hidden.id].pendingToken = { kind: "monolith", preferredSpaceId: preferredHex };
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
@@ -407,16 +443,10 @@ describe("token placement on discovery", () => {
     state = revealTile(state, hidden.id);
 
     // Rotation locked → the traveller places the destination token.
-    const choice = state.pendingChoice;
-    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-map-token" || !choice.mapToken) {
-      throw new Error("no token placement choice");
-    }
-    const pickedHex = choice.mapToken.candidates[0];
-    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
-
-    // The travel completed: token carved, hero standing on it, flight cleared.
-    expect(adv(state).fields[pickedHex]?.location).toBe("monolith");
-    expect(state.heroes.hero_p1.spaceId).toBe(pickedHex);
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "place-map-token").toBe(false);
+    // The travel completed automatically on the exact reserved hex.
+    expect(adv(state).fields[preferredHex]?.location).toBe("monolith");
+    expect(state.heroes.hero_p1.spaceId).toBe(preferredHex);
     expect(adv(state).pendingTokenTeleport ?? null).toBeNull();
   });
 
@@ -555,8 +585,8 @@ describe("designed map tokens at setup", () => {
       customMap: [
         // Face-up F1 with a Monolith on its empty centre field (slot 0).
         { row: 24, col: 12, group: "far", faceDown: false, tileDefId: "F1", rotation: 0, token: { kind: "monolith", slot: 0 } },
-        // Face-down near tile carrying a Monolith, placed on discovery.
-        { row: 30, col: 18, group: "near", faceDown: true, token: { kind: "monolith" } }
+        // Face-down near tile with its Monolith reserved on physical slot 2.
+        { row: 30, col: 18, group: "near", faceDown: true, token: { kind: "monolith", slot: 2 } }
       ]
     });
 
@@ -565,7 +595,10 @@ describe("designed map tokens at setup", () => {
     expect(state.adventure!.fields[centerHex]?.location).toBe("monolith");
 
     const faceDown = Object.values(state.adventure!.tiles).find((tile) => tile.faceDown && tile.group === "near")!;
-    expect(faceDown.pendingToken).toEqual({ kind: "monolith" });
+    expect(faceDown.pendingToken).toEqual({
+      kind: "monolith",
+      preferredSpaceId: getTileFootprintSpaceIds(faceDown)[2]
+    });
   });
 
   it("carves a face-up GATE token at its slot (ONE hex is the gate, the tile's other six untouched)", () => {

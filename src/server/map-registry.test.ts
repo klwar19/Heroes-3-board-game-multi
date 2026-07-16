@@ -254,7 +254,7 @@ describe("sanitizeSharedMap", () => {
         id: "m",
         tiles: [
           { row: 1, col: 1, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: 0 } },
-          { row: 2, col: 2, group: "sea", faceDown: true, token: { kind: "whirlpool" } },
+          { row: 2, col: 2, group: "sea", faceDown: true, token: { kind: "whirlpool", slot: 4 } },
           { row: 3, col: 3, group: "far", faceDown: true, token: { kind: "wormhole" } }, // unknown kind → token dropped
           { row: 4, col: 4, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: 9 } }, // bad slot → slot dropped
           // A colored Gate token round-trips with its pair (face-up slot + face-down).
@@ -267,7 +267,7 @@ describe("sanitizeSharedMap", () => {
       1
     );
     expect(record!.tiles[0].token).toEqual({ kind: "monolith", slot: 0 });
-    expect(record!.tiles[1].token).toEqual({ kind: "whirlpool" });
+    expect(record!.tiles[1].token).toEqual({ kind: "whirlpool", slot: 4 });
     expect(record!.tiles[2].token).toBeUndefined();
     expect(record!.tiles[3].token).toEqual({ kind: "monolith" });
     // A malformed band is stripped, not stored.

@@ -97,3 +97,38 @@ describe("Colored Gate field — board art (monolith tinted with its pair color)
     expect([...mark!.querySelectorAll("text")].map((node) => node.textContent)).toContain("1");
   });
 });
+
+describe("Designed token on a hidden tile", () => {
+  it("renders on the exact reserved physical hex instead of the tile centre", () => {
+    const state = createAdventureGameState({
+      seed: "hidden-token-slot-ui",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      creatureBanks: false
+    });
+    const tile = instantiateTile(adv(state), "N1", { row: 24, col: 12 }, 0, true);
+    const reserved = getTileFootprintSpaceIds(tile)[2];
+    adv(state).tiles[tile.id].pendingToken = {
+      kind: "gate",
+      pair: 3,
+      preferredSpaceId: reserved
+    };
+
+    const { container } = render(
+      <HexMapBoard
+        legalActions={getLegalActions(state, "p1")}
+        moveCue={null}
+        onAction={() => {}}
+        placement={null}
+        state={state}
+        view={getPlayerView(state, "p1")}
+        viewerPlayerId="p1"
+      />
+    );
+
+    const slot = container.querySelector(".tileBackPendingTokenSlot");
+    expect(slot, "reserved-hex ring rendered").toBeTruthy();
+    expect(slot?.getAttribute("data-space-id")).toBe(reserved);
+    expect(container.querySelector(".tileBackPendingToken"), "token art rendered on the ring").toBeTruthy();
+  });
+});

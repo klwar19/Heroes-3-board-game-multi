@@ -1726,7 +1726,7 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(typeof f1?.token?.slot).toBe("number");
   });
 
-  it("arms a Gate and places a pending TILE TOKEN on a FACE-DOWN tile (footprint target, no slot)", () => {
+  it("arms a Gate and reserves the clicked FACE-DOWN tile hex", () => {
     let tiles: CustomMapTilePlan[] = faceDownMap.map((plan) => ({ ...plan }));
     const onChange = vi.fn((next: CustomMapTilePlan[]) => {
       tiles = next;
@@ -1735,14 +1735,14 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     const container = renderWithObjects(faceDownMap, [], onObjectsChange, onChange);
 
     fireEvent.click(container.querySelector('.designerObjectButton[data-gate-pair="2"]')!);
-    // The whole face-down footprint lights as ONE pending target.
+    // Every face-down footprint hex is an exact physical target.
     const footprintCell = container.querySelector(".designerObjectSlot.faceDownTile");
     expect(footprintCell, "a face-down footprint target is offered").toBeTruthy();
     fireEvent.click(footprintCell!);
 
     expect(onObjectsChange).not.toHaveBeenCalled();
     const far = tiles.find((plan) => plan.faceDown);
-    expect(far?.token).toEqual({ kind: "gate", pair: 2 }); // pending: pair kept, NO slot
+    expect(far?.token).toEqual({ kind: "gate", pair: 2, slot: 0 });
   });
 
   it("arms a Gate and places a STANDALONE object on an off-tile hex", () => {
@@ -2170,6 +2170,77 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
     }
   });
 
+  it("drags freely between exact hexes on the SAME face-down tile and marks the release cell", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const sourceSlot = 0;
+      const targetSlot = 2;
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        {
+          row: spots[0].row,
+          col: spots[0].col,
+          group: "far",
+          faceDown: true,
+          token: { kind: "monolith", slot: sourceSlot }
+        }
+      ];
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+      );
+      const footprint = tileFootprint(spots[0], 0);
+      const grabAt = hexToPixel(footprint[sourceSlot], HEX);
+      const dropAt = hexToPixel(footprint[targetSlot], HEX);
+      const token = container.querySelector(".designerMapToken.draggable")!;
+
+      fireEvent.pointerDown(token, { button: 0, pointerId: 61, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 61, clientX: dropAt.x, clientY: dropAt.y });
+
+      const reticle = container.querySelector(".designerTokenDropReticle");
+      expect(reticle, "one exact release reticle is shown").toBeTruthy();
+      expect(reticle?.getAttribute("data-space-id")).toBe(hexSpaceId(footprint[targetSlot]));
+
+      fireEvent.pointerUp(window, { pointerId: 61 });
+      expect(latest[1].token).toStrictEqual({ kind: "monolith", slot: targetSlot });
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps a face-down token on the same board hex when the hidden tile preview rotates", () => {
+    const centre = spots[0];
+    const originalSlot = 2;
+    const originalHex = tileFootprint(centre, 0)[originalSlot];
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: centre.row,
+        col: centre.col,
+        group: "far",
+        faceDown: true,
+        rotation: 0,
+        token: { kind: "monolith", slot: originalSlot }
+      }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    const { container } = render(
+      <MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />
+    );
+
+    openTilePopover(container, 1);
+    const panel = container.querySelector(".designerPopover")!;
+    fireEvent.click(panel.querySelector('[title="Rotate 60° clockwise"]')!);
+
+    const rotated = latest[1];
+    expect(rotated.rotation).toBe(1);
+    expect(tileFootprint(centre, rotated.rotation ?? 0)[rotated.token!.slot!]).toEqual(originalHex);
+  });
+
   it("dragging a token to ANOTHER face-up tile is ONE atomic onChange (source clears, target gains)", () => {
     const restore = installIdentitySvgPolyfills();
     try {
@@ -2279,7 +2350,7 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       expect(onChange.mock.calls.length - callsBefore, "exactly one atomic emission").toBe(1);
       expect(latest[1].token, "source face-down tile lost its token").toBeUndefined();
       // Pending shape only — NO slot key (toStrictEqual rejects a stray slot: undefined).
-      expect(latest[2].token, "target gained a pending token with no slot").toStrictEqual({ kind: "monolith" });
+      expect(latest[2].token, "target gained the exact centre slot").toStrictEqual({ kind: "monolith", slot: 0 });
     } finally {
       restore();
     }
@@ -2341,7 +2412,7 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
     }
   });
 
-  it("dragging a FACE-UP token onto a face-down tile moves it and DROPS the slot key", () => {
+  it("dragging a FACE-UP token onto a face-down tile preserves the exact dropped slot", () => {
     const restore = installIdentitySvgPolyfills();
     try {
       // Source face-up F1 (Monolith on slot 0) → target face-down NEAR (land), no token.
@@ -2367,8 +2438,10 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       dragTokenCentre(container, spots[0], spots[3], 14);
 
       expect(latest[1].token, "source face-up tile cleared").toBeUndefined();
-      // Face-down target = pending shape, the slot key is DROPPED.
-      expect(latest[2].token, "slot key dropped on a face-down target").toStrictEqual({ kind: "monolith" });
+      expect(latest[2].token, "centre slot reserved on the face-down target").toStrictEqual({
+        kind: "monolith",
+        slot: 0
+      });
     } finally {
       restore();
     }
@@ -2421,7 +2494,10 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       const ok = render(<MapDesigner scenarioId="skirmish" hexSize={HEX} onChange={accept} customMap={latest} />);
       dragTokenCentre(ok.container, spots[0], spots[3], 16);
       expect(latest[1].token, "whirlpool left the source").toBeUndefined();
-      expect(latest[2].token, "whirlpool landed on the sea face-down tile").toStrictEqual({ kind: "whirlpool" });
+      expect(latest[2].token, "whirlpool landed on the sea face-down tile").toStrictEqual({
+        kind: "whirlpool",
+        slot: 0
+      });
     } finally {
       restore();
     }
@@ -2460,7 +2536,10 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       const ok = render(<MapDesigner scenarioId="skirmish" hexSize={HEX} onChange={accept} customMap={latest} />);
       dragTokenCentre(ok.container, spots[0], spots[3], 18);
       expect(latest[1].token, "monolith left the source").toBeUndefined();
-      expect(latest[2].token, "monolith landed on the land face-down tile").toStrictEqual({ kind: "monolith" });
+      expect(latest[2].token, "monolith landed on the land face-down tile").toStrictEqual({
+        kind: "monolith",
+        slot: 0
+      });
     } finally {
       restore();
     }
@@ -2486,11 +2565,11 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       const dropAt = hexToPixel(spots[3], HEX);
       fireEvent.pointerDown(token, { button: 0, pointerId: 19, clientX: grabAt.x, clientY: grabAt.y });
       fireEvent.pointerMove(window, { pointerId: 19, clientX: dropAt.x, clientY: dropAt.y });
-      // The one compatible face-down target glows across its WHOLE 7-hex footprint.
+      // Source and destination both expose all seven exact physical slots.
       expect(
         container.querySelectorAll(".designerObjectSlot.faceDownTile").length,
         "face-down candidate footprint highlighted"
-      ).toBe(7);
+      ).toBe(14);
       fireEvent.pointerUp(window, { pointerId: 19 });
       expect(
         container.querySelectorAll(".designerObjectSlot.faceDownTile").length,
@@ -2516,12 +2595,12 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
     const token = container.querySelector(".designerMapToken.draggable");
     expect(token, "face-down badge is draggable AND clickable").toBeTruthy();
 
-    // A plain click (no pointer movement) opens the panel with the discoverer hint.
+    // A plain click (no pointer movement) opens the exact-hex editor.
     fireEvent.click(token!);
     const panel = container.querySelector(".designerTokenPopover") as HTMLElement;
     expect(panel, "token panel opens for a face-down badge").toBeTruthy();
-    expect(within(panel).getByText(/discover/i), "discoverer hint shown").toBeTruthy();
-    expect(within(panel).queryByLabelText("Token field"), "no slot select for a face-down badge").toBeNull();
+    expect(within(panel).getByText(/exact map hex/i), "reserved-hex hint shown").toBeTruthy();
+    expect(within(panel).getByLabelText("Token hex"), "face-down exact-slot selector").toBeTruthy();
 
     // Remove still clears the token.
     fireEvent.click(within(panel).getByRole("button", { name: /Remove the Monolith token/i }));

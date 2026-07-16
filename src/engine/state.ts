@@ -6983,13 +6983,20 @@ export type MapTileState = {
   /**
    * A Monolith/Whirlpool/colored-Gate Location Token the map designer attached
    * to this still-face-down tile. When the tile is discovered, the discovering
-   * player places the token on a legal field of their choosing (rulebook p.35:
-   * "place the Token on … a Field of your choosing"); the entry is cleared once
-   * the token is carved. Public info — the physical Scenario Map Layout shows
-   * token positions up front. `number` is a Whirlpool's pre-assigned die face;
-   * `pair` (gate only, 1-4) is the colored pair the carved Gate joins.
+   * player places the token on a legal field. `preferredSpaceId` is the exact
+   * physical board hex pinned by the map designer: it is used automatically
+   * when legal after the tile is revealed/rotated, with the ordinary legal-field
+   * choice as a fallback when random printed content makes that hex incompatible.
+   * Public info — the physical Scenario Map Layout shows token positions up
+   * front. `number` is a Whirlpool's pre-assigned die face; `pair` (gate only,
+   * 1-4) is the colored pair the carved Gate joins.
    */
-  pendingToken?: { kind: "monolith" | "whirlpool" | "gate"; number?: -1 | 0 | 1; pair?: 1 | 2 | 3 | 4 };
+  pendingToken?: {
+    kind: "monolith" | "whirlpool" | "gate";
+    number?: -1 | 0 | 1;
+    pair?: 1 | 2 | 3 | 4;
+    preferredSpaceId?: MapSpaceId;
+  };
   /**
    * Naval Battles optional rule: the Creature Bank token drawn for this tile's
    * Blocked Field the moment the tile is revealed — BEFORE its rotation is
@@ -9272,10 +9279,13 @@ export type CustomMapTilePlan = {
    * A Monolith (land), Whirlpool (sea) or colored-Gate (land) Location Token on
    * this tile — at most one per tile. On a face-up tile `slot` names the
    * tile-definition field (0-6, unrotated) the token overwrites at setup. On a
-   * face-down tile `slot` is ignored: the token rides the tile and the
-   * discovering player places it on a legal field of their choosing when the
-   * tile is revealed (p.35). Monoliths / same-color Gates / Whirlpools each need
-   * at least 2 members on the map to lead anywhere; a Gate REQUIRES its colored
+   * face-down tile `slot` pins one of the seven physical flower hexes as the
+   * preferred reveal placement. Setup resolves it to an absolute board hex so
+   * the player's later tile rotation cannot move the designer's marker; if the
+   * random revealed field cannot legally host that token, the standard legal-
+   * field choice is used as a fallback. Legacy face-down tokens without `slot`
+   * keep the original choose-on-reveal behavior. Monoliths / same-color Gates /
+   * Whirlpools each need at least 2 members on the map to lead anywhere; a Gate REQUIRES its colored
    * `pair` (1-4, and monolith/whirlpool never carry one); Whirlpool numbers
    * (-1/0/+1) are assigned in plan order at setup. This is the CANONICAL on-tile
    * teleporter form — the designer writes tokens for on-tile teleporters and
