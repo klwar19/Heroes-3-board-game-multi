@@ -116,7 +116,8 @@ describe("Creature Bank hex art — per-bank field tile on the board", () => {
     const container = renderBoard(state);
     const badge = container.querySelector(`.bankSizeSvgBadge.placed.size-4`);
     expect(badge).toBeTruthy();
-    expect(badge?.textContent).toContain("Ⅳ");
+    expect(badge?.textContent).toContain("3");
+    expect(badge?.querySelectorAll("circle")).toHaveLength(2);
   });
 
   it("previews both rolled candidates with distinct size badges before rotation", () => {

@@ -150,6 +150,8 @@ export function progressFingerprint(state: GameState, playerId: PlayerId): strin
           player.hand,
           player.deck.length,
           player.discard.length,
+          player.spellBook,
+          player.spellBookUsed ?? [],
           player.army,
           player.eliminated,
         ]

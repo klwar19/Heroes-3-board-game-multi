@@ -1302,6 +1302,15 @@ export function BattlefieldBoard({
                   {STACK_TOKEN_LABELS[unit.stackToken]}
                 </span>
               ) : null}
+              {(unit?.bankStacks ?? 0) > 0 ? (
+                <span
+                  className={`bankStackBadge size-${Math.min(4, (unit?.bankStacks ?? 0) + 1)}`}
+                  title={`${unit!.bankStacks} Polish bank Stack${unit!.bankStacks === 1 ? "" : "s"}: +1 Attack; each Stack is one full extra health bar on this bank unit.`}
+                >
+                  <span className="bankStackCoin" aria-hidden="true">{unit!.bankStacks}</span>
+                  {unit!.bankStacks} Stack{unit!.bankStacks === 1 ? "" : "s"}
+                </span>
+              ) : null}
               {(unit?.armyStacks ?? 0) > 0 ? (
                 <span
                   className={`armyStackBadge combat tier-${unit?.grade ?? "bronze"} active`}
@@ -1593,10 +1602,10 @@ export function InitiativeRail({ state }: { state: GameState }) {
       {bankSize ? (
         <span
           className={`bankSizeCombatChip size-${bankSize}`}
-          title={`Polish Creature Bank size ${["", "I", "II", "III", "IV"][bankSize]}: ${bankSize} Stack-token rolls`}
+          title={`Polish Creature Bank size ${["", "I", "II", "III", "IV"][bankSize]}: ${Math.max(0, bankSize - 1)} Stack layers on each of all four defenders; reward scale X=${bankSize}`}
         >
-          <span aria-hidden="true">★</span>
-          Bank size {["", "I", "II", "III", "IV"][bankSize]}
+          {bankSize > 1 ? <span className="bankSizeCoin" aria-hidden="true">{bankSize - 1}</span> : null}
+          Bank size {["", "I", "II", "III", "IV"][bankSize]} · {bankSize > 1 ? `${bankSize - 1} each` : "no Stacks"} · reward X={bankSize}
         </span>
       ) : null}
       {units.length === 0 && inSetup ? <small className="initHint">Deploy units — they sort by initiative here.</small> : null}

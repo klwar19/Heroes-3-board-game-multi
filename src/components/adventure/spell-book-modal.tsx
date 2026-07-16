@@ -56,6 +56,8 @@ function spellRulesText(cardId: string | undefined): string {
 
 export function SpellBookModal({
   cardIds,
+  usedCardIds = [],
+  polishMode = false,
   castsByCard,
   onCast,
   onClose,
@@ -65,6 +67,10 @@ export function SpellBookModal({
 }: {
   /** The stored Spell ids, in Book order. */
   cardIds: string[];
+  /** Polish Book cards already cast this round (shown, but not castable). */
+  usedCardIds?: string[];
+  /** Use the Polish refreshed/used wording and lifecycle. */
+  polishMode?: boolean;
   /** Cast actions available right now for each stored Spell id (from the Book).
       Read-only so a `Map<string, PlayLegal[]>` widens in cleanly. */
   castsByCard: ReadonlyMap<string, readonly LegalAction[]>;
@@ -102,8 +108,9 @@ export function SpellBookModal({
 
   // Clamp to the current page count so a spell cast away from the Book never
   // leaves the plate pointing past the end.
-  const index = Math.min(selected, Math.max(0, cardIds.length - 1));
-  const activeId = cardIds[index];
+  const allCardIds = [...new Set([...cardIds, ...usedCardIds])];
+  const index = Math.min(selected, Math.max(0, allCardIds.length - 1));
+  const activeId = allCardIds[index];
   const card = activeId ? cardLibrary[activeId] : undefined;
   const art = activeId ? spellBookArtFor(activeId) : undefined;
   const casts = activeId ? castsByCard.get(activeId) ?? [] : [];
@@ -137,22 +144,26 @@ export function SpellBookModal({
             <strong>Spell Book</strong>
           </div>
           <p className="spellBookBlurb">
-            {subtitle ??
+            {polishMode
+              ? "Play Cast a Spell from your hand, then choose one refreshed Spell. It becomes used until the next round; Book Spells cannot pay Power."
+              : subtitle ??
               "Spells set aside for later. Cast one on your turn or in combat (the normal Spell limit still applies), or stash more from your hand with a card's 📖 button."}
           </p>
-          {cardIds.length === 0 ? (
+          {allCardIds.length === 0 ? (
             <p className="spellBookEmpty">
               The pages are blank. Stash a hand Spell with its 📖 button to inscribe it here.
             </p>
           ) : (
             <ul className="spellBookIndex">
-              {cardIds.map((id, itemIndex) => {
+              {allCardIds.map((id, itemIndex) => {
                 const entry = cardLibrary[id];
                 const school = entry?.spellSchools?.[0];
+                const readyCount = cardIds.filter((candidate) => candidate === id).length;
+                const usedCount = usedCardIds.filter((candidate) => candidate === id).length;
                 return (
                   <li key={`${id}-${itemIndex}`}>
                     <button
-                      className={`spellBookIndexItem ${itemIndex === index ? "active" : ""}`}
+                      className={`spellBookIndexItem ${itemIndex === index ? "active" : ""} ${readyCount === 0 ? "used" : ""}`}
                       onClick={() => turnTo(itemIndex)}
                       type="button"
                     >
@@ -161,7 +172,10 @@ export function SpellBookModal({
                         style={{ "--spell-accent": SPELL_SCHOOL_COLORS[school ?? ""] ?? "var(--gold)" } as CSSProperties}
                       />
                       <span className="spellBookIndexName">{entry?.name ?? id}</span>
-                      <span className="spellBookIndexLevel">{entry?.spellLevel === "expert" ? "Expert" : "Basic"}</span>
+                      <span className="spellBookIndexLevel">
+                        {readyCount > 0 ? `Ready${readyCount > 1 ? ` ×${readyCount}` : ""}` : "Used"}
+                        {usedCount > 0 && readyCount > 0 ? ` · Used ×${usedCount}` : ""}
+                      </span>
                     </button>
                   </li>
                 );
@@ -216,6 +230,11 @@ export function SpellBookModal({
                   </span>
                 ))}
                 {typeof card.power === "number" ? <span className="spellBookChip power">Power {card.power}</span> : null}
+                {activeId && usedCardIds.includes(activeId) ? (
+                  <span className={`spellBookChip ${cardIds.includes(activeId) ? "ready" : "used"}`}>
+                    {cardIds.includes(activeId) ? "Refreshed copy available" : "Used until next round"}
+                  </span>
+                ) : null}
               </div>
               <p className="spellBookDefinition">{spellRulesText(activeId)}</p>
               <div className="spellBookActions">

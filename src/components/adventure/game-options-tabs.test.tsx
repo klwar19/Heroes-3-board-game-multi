@@ -47,6 +47,7 @@ describe("Game options — tabbed layout", () => {
     const bankSizes = screen.getByRole("button", { name: /Rolled Creature Bank sizes/ });
     expect(bankSizes.getAttribute("aria-pressed")).toBe("false");
     expect((bankSizes as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: /Polish Spell Book/ })).toBeTruthy();
   });
 
   it("toggling WOG on the Mod line dispatches SET_GAME_OPTIONS with wog.enabled", () => {
@@ -80,6 +81,16 @@ describe("Game options — tabbed layout", () => {
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
       options: { houseRules: { "polish-bank-sizes": true } }
+    });
+  });
+
+  it("selecting Polish Spell Book switches the standard Spell Book off", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("button", { name: /Polish Spell Book/ }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "polish-spell-book": true }, spellBook: false }
     });
   });
 

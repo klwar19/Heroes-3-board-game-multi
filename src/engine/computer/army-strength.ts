@@ -30,8 +30,13 @@ export function unitSideStrength(unit: ArmyUnitState): number {
   if (!side) {
     return 0;
   }
-  const attack = side.attack + (unit.permanentAttackBonus ?? 0);
-  const health = side.health + (unit.permanentHealthBonus ?? 0);
+  const stackLayers = unit.side === "pack" ? Math.max(0, unit.stacks ?? 0) : 0;
+  // A Polish Stack does not create another activation/body: it adds one full
+  // Pack health bar per layer, and the whole card has one flat +1 Attack while
+  // any layer remains. Mirror that real combat durability instead of treating
+  // a Stack as either zero value or a duplicate attacking unit.
+  const attack = side.attack + (unit.permanentAttackBonus ?? 0) + (stackLayers > 0 ? 1 : 0);
+  const health = (side.health + (unit.permanentHealthBonus ?? 0)) * (1 + stackLayers);
   return attack * 3 + health * 2 + side.defense + Math.round(side.initiative / 2);
 }
 
@@ -103,14 +108,22 @@ export function creatureBankStrength(
 ): number {
   const bank = CREATURE_BANKS[bankId as CreatureBankId];
   if (!bank) return Number.POSITIVE_INFINITY;
+  if (typeof difficultyOrSize === "number") {
+    const layers = Math.max(0, difficultyOrSize - 1);
+    return bank.units.reduce((sum, unitDefId) => {
+      const side = CREATURE_BANK_UNIT_SIDES[unitDefId];
+      if (!side) return sum;
+      // Numeric Polish sizes are deterministic: each of all four cards repeats
+      // its complete Health bar once per layer, plus one flat Attack while any
+      // layer remains. This mirrors the combat stat valuation above.
+      return sum + bankUnitStrength(unitDefId) + layers * side.health * 2 + (layers > 0 ? 3 : 0);
+    }, 0);
+  }
   const base = bank.units.reduce(
     (sum, unitDefId) => sum + bankUnitStrength(unitDefId),
     0,
   );
-  const rolls =
-    typeof difficultyOrSize === "number"
-      ? difficultyOrSize
-      : STACK_TOKENS_BY_DIFFICULTY[difficultyOrSize] ?? 2;
+  const rolls = STACK_TOKENS_BY_DIFFICULTY[difficultyOrSize] ?? 2;
   // Stack tokens add a mild bulk/soak bonus, not a full extra unit each.
   // Calibrated so a full starting army (~45) clears Imp Cache on Normal but
   // refuses Dragon Utopia and refuses when gutted to one card.

@@ -28,6 +28,7 @@ import type {
 import { cardKeepValue } from "./card-policy";
 import { cardTier } from "./card-values";
 import { playerArmyStrength } from "./army-strength";
+import { polishUnitStackCost } from "../polish-unit-stacks";
 import {
   armyDevelopmentProfile,
   armyReadyForContestedFight,
@@ -365,17 +366,30 @@ function populationScore(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "POPULATION_ACTION" }>,
 ): number {
-  // Polish Unit Stack purchases are optional and never block play. Phase 6 owns
-  // their surplus-economy valuation; until then keep them below END_TURN so the
-  // generic recruit scorer cannot misread a Stack as a fresh Few body.
-  if (action.purchases.some((purchase) => purchase.kind === "stack")) {
-    return 275;
-  }
   const state = observation.state as unknown as GameState;
   const memory = memoryOf(observation);
   const player = state.players[observation.playerId];
   const development = armyDevelopmentProfile(state, observation.playerId);
   const gold = player?.resources.gold ?? 0;
+
+  // Polish Unit Stacks are durability investments, not fresh bodies. Buy one
+  // only after the three-tier army core is complete and after preserving the
+  // development treasury target. Among affordable surplus purchases, prefer a
+  // first layer (+1 Attack as well as a full Pack health bar), then the layer
+  // with the best health-to-gold return. A tight treasury stays below END_TURN.
+  const stackPurchase = action.purchases.find((purchase) => purchase.kind === "stack");
+  if (stackPurchase?.kind === "stack") {
+    const target = player?.army.find((unit) => unit.id === stackPurchase.armyUnitId);
+    const side = getUnitSide(stackPurchase.unitDefId, "pack");
+    const cost = polishUnitStackCost(stackPurchase.unitDefId)?.gold ?? Number.POSITIVE_INFINITY;
+    const treasury = developmentResourceTargets(state, observation.playerId);
+    const protectsPlan = Number.isFinite(cost) && gold - cost >= Math.max(GOLD_RESERVE, treasury.gold);
+    if (!target || !side || development.phase !== "improve-army" || !protectsPlan) {
+      return 245;
+    }
+    const firstLayerBonus = (target.stacks ?? 0) === 0 ? 28 : 0;
+    return Math.max(340, Math.min(720, 570 + side.health * 8 + firstLayerBonus - cost * 2));
+  }
   let score = 860;
   let totalGain = 0;
   let totalCostWeight = 0;
@@ -1769,7 +1783,31 @@ export function scoreMapAction(
       const target = developmentResourceTargets(state, observation.playerId);
       const flushGold =
         playerGold(state, observation.playerId) >= target.gold + 4;
-      if (phase === "improve-army" && (holdsWisdom || flushGold)) {
+      const funded = phase === "improve-army" && (holdsWisdom || flushGold);
+
+      // Rolling Spells trades a weak owned Spell for two new looks. Keep strong
+      // S/A/B spells and only roll C/D cards once the army fund is protected.
+      if (action.rollSpell) {
+        const tier = cardTier(action.rollSpell.cardId);
+        return funded && (tier === "C" || tier === "D")
+          ? { score: 640, policy: "town.roll-weak-polish-spell" }
+          : { score: 215, policy: "town.keep-useful-polish-spell" };
+      }
+
+      // Buy another reusable Cast card only when the Book has outgrown the
+      // player's total enabler supply. Otherwise a new Spell is the better buy.
+      if (action.takeCastCard) {
+        const player = state.players[observation.playerId];
+        const castSupply = [...(player?.hand ?? []), ...(player?.deck ?? []), ...(player?.discard ?? [])].filter(
+          (cardId) => cardId === "spell.cast_a_spell",
+        ).length;
+        const ownedSpells = (player?.spellBook?.length ?? 0) + (player?.spellBookUsed?.length ?? 0);
+        return funded && castSupply < Math.max(1, ownedSpells)
+          ? { score: 630, policy: "town.buy-polish-cast-enabler" }
+          : { score: 225, policy: "town.cast-supply-sufficient" };
+      }
+
+      if (funded) {
         return { score: 620, policy: "town.buy-spells-after-army-core" };
       }
       return { score: 250, policy: "town.skip-spell-buy-fund-army" };

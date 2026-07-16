@@ -296,7 +296,13 @@ function playerHeldCardIds(state: GameState, playerId: PlayerId): Set<CardId> {
     return new Set();
   }
 
-  const held = new Set<CardId>([...player.hand, ...player.deck, ...player.discard, ...(player.spellBook ?? [])]);
+  const held = new Set<CardId>([
+    ...player.hand,
+    ...player.deck,
+    ...player.discard,
+    ...(player.spellBook ?? []),
+    ...(player.spellBookUsed ?? [])
+  ]);
   for (const ongoing of player.ongoingCards ?? []) {
     held.add(ongoing.cardId);
   }

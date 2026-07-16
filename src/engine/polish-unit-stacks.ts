@@ -16,27 +16,17 @@ export function polishUnitStackCap(unitDefId: string): number {
 }
 
 /**
- * Cost of one Stack: Few cost + Pack cost + the tier number in gold.
- * Recruit/reinforce discounts deliberately do not enter this calculation.
+ * Cost of one Stack: the Pack's printed GOLD cost + the tier number in gold.
+ * Other printed resources and recruit/reinforce discounts do not apply.
  */
 export function polishUnitStackCost(unitDefId: string): ResourceCost | null {
   const unit = coreUnitDefinitions[unitDefId];
   const rule = unit ? POLISH_UNIT_STACK_RULES[unit.tier] : undefined;
-  if (!unit?.few || !unit.pack || !rule) {
+  if (!unit?.pack || !rule) {
     return null;
   }
 
-  const cost: ResourceCost = {};
-  for (const printed of [unit.few.cost, unit.pack.cost]) {
-    for (const resource of ["gold", "buildingMaterials", "valuables"] as const) {
-      const amount = printed[resource] ?? 0;
-      if (amount > 0) {
-        cost[resource] = (cost[resource] ?? 0) + amount;
-      }
-    }
-  }
-  cost.gold = (cost.gold ?? 0) + rule.goldSurcharge;
-  return cost;
+  return { gold: (unit.pack.cost.gold ?? 0) + rule.goldSurcharge };
 }
 
 /** Pure eligibility check used by legal actions, the reducer, and town UI. */

@@ -159,10 +159,19 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true
   },
   {
+    id: "polish-spell-book",
+    label: "Polish Spell Book",
+    description:
+      "Polish tournament variant: Spells live in a refreshed/used Spell Book and are cast with generic Cast-a-Spell cards. Uses one merged Spell deck and the strengthened Mage Guild. Mutually exclusive with the standard stash-style Spell Book.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
     id: "polish-bank-sizes",
     label: "Rolled Creature Bank sizes",
     description:
-      "Polish tournament variant: reveal up to two Creature Banks, roll each size I-IV, then place one. The chosen size sets its Stack-token rolls. Requires Creature Banks.",
+      "Polish tournament variant: reveal up to two Banks, roll 2 Attack dice for each, choose one, then rotate. Size I-IV gives all four guards 0-3 full-health layers and reward X1-X4, replacing normal Bank Stack Tokens. Requires Creature Banks.",
     category: "polish",
     default: false,
     legacyDefault: false

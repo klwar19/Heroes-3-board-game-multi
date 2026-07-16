@@ -32,6 +32,24 @@ describe("playerArmyStrength", () => {
     state.players.p2.army = [];
     expect(playerArmyStrength(state, "p2")).toBe(0);
   });
+
+  it("values Polish Stack layers as full Pack health bars plus one flat Attack", () => {
+    const state = game();
+    const unit = state.players.p2.army[0];
+    unit.side = "pack";
+    unit.stacks = 0;
+    const base = playerArmyStrength(state, "p2");
+    unit.stacks = 2;
+    const stacked = playerArmyStrength(state, "p2");
+    const side = state.players.p2.army[0];
+    // Sanity/control: layers materially raise engagement strength, but do not
+    // duplicate the entire unit's attack/defense/initiative package.
+    expect(stacked).toBeGreaterThan(base);
+    unit.stacks = 1;
+    const one = playerArmyStrength(state, "p2");
+    expect(stacked - one).toBeLessThan(one - base);
+    expect(side.side).toBe("pack");
+  });
 });
 
 describe("shouldEngageEnemy", () => {

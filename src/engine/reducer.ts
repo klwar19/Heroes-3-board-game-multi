@@ -203,6 +203,12 @@ import {
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
 import {
+  CAST_A_SPELL_CARD_ID,
+  gainOwnedCard,
+  isCastASpellCard,
+  polishSpellBookEnabled
+} from "./polish-spell-book";
+import {
   consumeHeldMoraleCard,
   moraleCardsRuleEnabled,
   playerHoldsMoraleCard,
@@ -839,6 +845,74 @@ function moveSpellFromSpellBookToDiscard(
     player.discard.push(cardId);
   }
   return null;
+}
+
+/**
+ * Polish Spell Book: validate and pay the complete two-card cast atomically.
+ * The generic Cast-a-Spell card cycles hand -> discard, while the selected
+ * refreshed Spell moves Book -> used. The Spell never enters the player's
+ * discard pile, which is what prevents it from being cast again before a real
+ * Book refresh.
+ */
+function consumePolishSpellBookCast(
+  state: GameState,
+  playerId: PlayerId,
+  spellCardId: CardId,
+  castEnablerCardId?: CardId
+): RulesError | null {
+  const player = state.players[playerId];
+  if (!player || castEnablerCardId !== CAST_A_SPELL_CARD_ID) {
+    return {
+      code: "CARD_NOT_IN_HAND",
+      message: "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
+      path: `players.${playerId}.hand`
+    };
+  }
+
+  const enablerIndex = player.hand.indexOf(CAST_A_SPELL_CARD_ID);
+  const spellIndex = player.spellBook.indexOf(spellCardId);
+  if (enablerIndex === -1) {
+    return {
+      code: "CARD_NOT_IN_HAND",
+      message: "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
+      path: `players.${playerId}.hand`
+    };
+  }
+  if (spellIndex === -1) {
+    return {
+      code: "CARD_NOT_IN_SPELL_BOOK",
+      message: "That Spell is not refreshed in the Polish Spell Book.",
+      path: `players.${playerId}.spellBook`
+    };
+  }
+
+  player.hand.splice(enablerIndex, 1);
+  player.discard.push(CAST_A_SPELL_CARD_ID);
+  player.spellBook.splice(spellIndex, 1);
+  (player.spellBookUsed ??= []).push(spellCardId);
+
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: CAST_A_SPELL_CARD_ID,
+    timing: "instant",
+    mode: "basic",
+    optionLabel: `Cast ${cardLibrary[spellCardId]?.name ?? spellCardId} from the Spell Book`
+  });
+  return null;
+}
+
+/** Keep the original stash-style Book lifecycle outside the Polish mode. */
+function consumeSpellBookCast(
+  state: GameState,
+  playerId: PlayerId,
+  spellCardId: CardId,
+  castEnablerCardId?: CardId,
+  destination: "discard" | "removed" = "discard"
+): RulesError | null {
+  return polishSpellBookEnabled(state)
+    ? consumePolishSpellBookCast(state, playerId, spellCardId, castEnablerCardId)
+    : moveSpellFromSpellBookToDiscard(state, playerId, spellCardId, destination);
 }
 
 /**
@@ -6218,6 +6292,7 @@ function resolveCombatHandDiscard(
           ...(toll.fromScroll ? { fromScroll: toll.fromScroll } : {}),
           ...(toll.fromSpellDeck ? { fromSpellDeck: toll.fromSpellDeck } : {}),
           ...(toll.fromSpellBook ? { fromSpellBook: true } : {}),
+          ...(toll.castEnablerCardId ? { castEnablerCardId: toll.castEnablerCardId } : {}),
           ...(toll.tarnumReturn ? { tarnumReturn: toll.tarnumReturn } : {})
         },
         cards
@@ -6990,7 +7065,12 @@ function refundInsufficientCloneCast(
 
   // Return the Clone card itself (a scroll cast removed the spell from the game,
   // so there is no card to return — only the Power, handled above).
-  if (player && !stackItem.modifiers.scrollLocked) {
+  if (player && polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
+    refreshPolishUsedSpell(state, playerId, stackItem.action.cardId);
+    if (stackItem.action.castEnablerCardId) {
+      returnSpellFromDiscardToHand(state, playerId, stackItem.action.castEnablerCardId);
+    }
+  } else if (player && !stackItem.modifiers.scrollLocked) {
     const discardIndex = player.discard.lastIndexOf(stackItem.action.cardId);
     if (discardIndex !== -1) {
       player.discard.splice(discardIndex, 1);
@@ -8851,6 +8931,20 @@ function finalizeSpellCardDestination(
   const playerId = stackItem.action.playerId;
   const cardId = stackItem.action.cardId;
   const recall = stackItem.modifiers.recallSpell;
+  if (polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
+    if (recall?.polishRefreshSpell) {
+      refreshPolishUsedSpell(state, playerId, cardId);
+    }
+    if (recall?.polishRecallEnabler && stackItem.action.castEnablerCardId) {
+      returnSpellFromDiscardToHand(state, playerId, stackItem.action.castEnablerCardId);
+    }
+    if (recall?.recallPlayedCards) {
+      for (const playedCardId of stackItem.modifiers.playedCardIds) {
+        returnSpellFromDiscardToHand(state, playerId, playedCardId);
+      }
+    }
+    return;
+  }
   // A recalled Spell cast from the Spell Book returns to the Book, not the hand.
   const recallZone = recall?.toSpellBook ? "spellBook" : "hand";
 
@@ -9752,6 +9846,24 @@ function returnSpellFromDiscardToHand(
   return true;
 }
 
+/** Refresh one used Polish Book Spell without exposing it to the hand/discard. */
+function refreshPolishUsedSpell(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
+  const player = state.players[playerId];
+  const usedIndex = player?.spellBookUsed?.lastIndexOf(cardId) ?? -1;
+  if (!player || usedIndex === -1) {
+    return false;
+  }
+  player.spellBookUsed!.splice(usedIndex, 1);
+  player.spellBook.push(cardId);
+  appendEvent(state, {
+    type: "SPELL_RETURNED_TO_HAND",
+    playerId,
+    cardId,
+    reason: "Polish Spell Book refresh"
+  });
+  return true;
+}
+
 /**
  * Astrologers — Crazy Wizard: until the next Astrologers round, the first
  * spell card each player plays returns to their hand instead of staying in
@@ -9800,7 +9912,11 @@ function processDeferredSpellRecalls(state: GameState, stackItem: ResolutionStac
   }
   stackItem.modifiers.deferredSpellRecalls = [];
   for (const entry of deferred) {
-    returnSpellFromDiscardToHand(state, entry.playerId, entry.cardId, entry.toSpellBook);
+    if (entry.fromPolishUsed) {
+      refreshPolishUsedSpell(state, entry.playerId, entry.cardId);
+    } else {
+      returnSpellFromDiscardToHand(state, entry.playerId, entry.cardId, entry.toSpellBook);
+    }
   }
 }
 
@@ -9875,6 +9991,16 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   if (!card || card.kind !== "spell") {
     throw new Error(`Card ${action.cardId} is not a spell.`);
   }
+  if (action.fromSpellBook && polishSpellBookEnabled(state)) {
+    const caster = state.players[action.playerId];
+    if (
+      action.castEnablerCardId !== CAST_A_SPELL_CARD_ID ||
+      !caster?.hand.includes(CAST_A_SPELL_CARD_ID) ||
+      !caster.spellBook.includes(action.cardId)
+    ) {
+      throw new Error("Casting from the Polish Spell Book needs a Cast a Spell card and a refreshed Book Spell.");
+    }
+  }
 
   // Tarnum (Conflux) VI: a free over-limit cast is only legal for a card the
   // hero actually Searched and flagged this combat (guards against a forged
@@ -9909,7 +10035,9 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
       !caster.hand.includes(enablerId) ||
       authorisedSpellId === undefined ||
       authorisedSpellId !== action.cardId ||
-      !caster.discard.includes(action.cardId)
+      !(polishSpellBookEnabled(state)
+        ? caster.spellBook.includes(action.cardId)
+        : caster.discard.includes(action.cardId))
     ) {
       throw new Error("That Spell cannot be cast from your discard pile.");
     }
@@ -9933,10 +10061,17 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     const payable = caster
       ? payablePowerCardIds(caster.hand, cards, action.cardId, Boolean(action.fromScroll || action.fromSpellBook))
       : [];
-    if (payable.length === 0) {
+    // Reserve one physical Cast-a-Spell card for the Polish Book cast. The
+    // same card id can pay the toll only if another copy remains in hand.
+    const payableWithoutReservedEnabler = payable.filter(
+      (cardId) =>
+        cardId !== action.castEnablerCardId ||
+        (caster?.hand.filter((heldId) => heldId === action.castEnablerCardId).length ?? 0) >= 2
+    );
+    if (payableWithoutReservedEnabler.length === 0) {
       throw new Error("An enemy Pegasi blocks this Spell: you must discard a card with Power to cast, and have none to pay.");
     }
-    openPegasiTollChoice(state, action, payable, cards);
+    openPegasiTollChoice(state, action, payableWithoutReservedEnabler, cards);
     return;
   }
 
@@ -9985,6 +10120,7 @@ function openPegasiTollChoice(
       ...(action.fromScroll ? { fromScroll: action.fromScroll } : {}),
       ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {}),
       ...(action.fromSpellBook ? { fromSpellBook: true } : {}),
+      ...(action.castEnablerCardId ? { castEnablerCardId: action.castEnablerCardId } : {}),
       ...(action.tarnumReturn ? { tarnumReturn: action.tarnumReturn } : {})
     }
   };
@@ -10011,6 +10147,28 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   if (!card || card.kind !== "spell") {
     throw new Error(`Card ${action.cardId} is not a spell.`);
   }
+  if (
+    polishSpellBookEnabled(state) &&
+    !action.fromSpellBook &&
+    !action.fromScroll &&
+    !action.fromSpellDeck &&
+    !action.tarnumReturn
+  ) {
+    throw new Error("Owned Spells must be cast from the Polish Spell Book with Cast a Spell.");
+  }
+  if (action.fromSpellBook && polishSpellBookEnabled(state)) {
+    const caster = state.players[action.playerId];
+    if (
+      action.castEnablerCardId !== CAST_A_SPELL_CARD_ID ||
+      !caster?.hand.includes(CAST_A_SPELL_CARD_ID) ||
+      !caster.spellBook.includes(action.cardId)
+    ) {
+      throw new Error("Casting from the Polish Spell Book needs a Cast a Spell card and a refreshed Book Spell.");
+    }
+  }
+  if (isCastASpellCard(action.cardId)) {
+    throw new Error("Cast a Spell enables a refreshed Spell Book card; it is not itself cast as a Spell.");
+  }
 
   // A Spell Scroll cast pulls the spell from the scroll (it is not in hand) and
   // removes it from the game; a normal cast moves the card hand → discard.
@@ -10035,13 +10193,27 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     if (removeError) {
       throw new Error(removeError.message);
     }
+    if (action.fromOwnDiscard && polishSpellBookEnabled(state)) {
+      const caster = state.players[action.playerId];
+      const bookIndex = caster?.spellBook.indexOf(action.cardId) ?? -1;
+      if (!caster || bookIndex === -1) {
+        throw new Error("Ciele needs a refreshed Magic Arrow in the Polish Spell Book.");
+      }
+      caster.spellBook.splice(bookIndex, 1);
+      (caster.spellBookUsed ??= []).push(action.cardId);
+    }
   } else if (action.fromSpellBook) {
     // Spell Book (house rule): the Spell is cast from the Book — a non-hand zone,
     // like a Scroll — so it cycles Book → discard pile and is NOT subject to the
     // Familiars' hand tax ("each enemy Spell cast from hand"). It otherwise casts
     // at the caster's full Power and counts toward the spell limit exactly like a
     // hand cast (noteSpellCast below).
-    const moveError = moveSpellFromSpellBookToDiscard(state, action.playerId, action.cardId);
+    const moveError = consumeSpellBookCast(
+      state,
+      action.playerId,
+      action.cardId,
+      action.castEnablerCardId
+    );
     if (moveError) {
       throw new Error(moveError.message);
     }
@@ -10377,6 +10549,33 @@ function payOptionCardCost(
     throw new Error("Unknown player.");
   }
 
+  // Polish Crown of Dragontooth (option B): remove one owned Spell directly
+  // from the refreshed OR used side of the Book, then its normal Search (2)
+  // resolves through the shared-search pipeline and inscribes the replacement
+  // into the refreshed Book. This does not consume the legacy Book Power budget.
+  if (
+    polishSpellBookEnabled(state) &&
+    playedCard.id === "artifact.crown_of_dragontooth" &&
+    cost.costCardFilter === "spell" &&
+    cost.removeCostCards
+  ) {
+    const cardId = paying[0];
+    if (!cardId || cards[cardId]?.kind !== "spell" || isCastASpellCard(cardId)) {
+      throw new Error(`${cardName} must remove an owned Spell from the Polish Spell Book.`);
+    }
+    const refreshedIndex = player.spellBook.indexOf(cardId);
+    const usedIndex = (player.spellBookUsed ?? []).indexOf(cardId);
+    if (refreshedIndex !== -1) {
+      player.spellBook.splice(refreshedIndex, 1);
+    } else if (usedIndex !== -1) {
+      player.spellBookUsed!.splice(usedIndex, 1);
+    } else {
+      throw new Error(`${cardName} must remove an owned Spell from the Polish Spell Book.`);
+    }
+    player.removed.push(cardId);
+    return paying.length;
+  }
+
   const handCounts = new Map<string, number>();
   for (const cardId of player.hand) {
     handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
@@ -10531,6 +10730,8 @@ function applyReactionPlayCore(
     fromScroll?: string;
     /** Spell Book (house rule): the reaction Spell comes from the Book, not hand. */
     fromSpellBook?: boolean;
+    /** Polish Book: the generic hand card consumed to enable this Spell. */
+    castEnablerCardId?: CardId;
     /** Bowstring of the Unicorn's Mane: the friendly ranged unit to activate. */
     target?: TargetRef;
     /** Tarnum (Conflux) VI: free over-limit reaction; returns to the shared Spell deck. */
@@ -10560,6 +10761,9 @@ function applyReactionPlayCore(
       throw new Error("There is nothing to empower.");
     }
     if (play.fromSpellBook) {
+      if (polishSpellBookEnabled(state)) {
+        throw new Error("Polish Spell Book cards cannot be spent for Power; use Cast a Spell's printed +1 Power instead.");
+      }
       // Spell Book (house rule): only ONE Book Spell may be spent for Power per
       // turn (a crown-style budget). Backstop the per-turn lock here so a forced
       // play the legal-action filter never offered still fails, then mark it spent
@@ -10607,6 +10811,18 @@ function applyReactionPlayCore(
   const effect = getEffectiveCardEffect(card, play.optionIndex);
   if (!effect) {
     throw new Error(`${card.name} needs a chosen option.`);
+  }
+  if (isCastASpellCard(play.cardId)) {
+    throw new Error("Cast a Spell enables a refreshed Spell Book card; only its printed +1 Power alternative is played directly.");
+  }
+  if (
+    polishSpellBookEnabled(state) &&
+    card.kind === "spell" &&
+    !play.fromSpellBook &&
+    !play.fromScroll &&
+    !play.tarnumReturn
+  ) {
+    throw new Error("Owned Spells must be cast from the Polish Spell Book with Cast a Spell.");
   }
 
   const option = getChosenOption(card, play.optionIndex);
@@ -10704,10 +10920,11 @@ function applyReactionPlayCore(
   } else if (play.fromSpellBook) {
     // Spell Book (house rule): a Book Spell played as an instant cycles Book →
     // discard pile (or → removed for a removeSelf option, mirroring the hand path).
-    const moveError = moveSpellFromSpellBookToDiscard(
+    const moveError = consumeSpellBookCast(
       state,
       playerId,
       play.cardId,
+      play.castEnablerCardId,
       option?.cost?.removeSelf ? "removed" : "discard"
     );
     if (moveError) {
@@ -10819,7 +11036,8 @@ function applyReactionPlayCore(
       cardId: play.cardId,
       playerId,
       // A Book instant recalls back into the Book, not the hand.
-      ...(play.fromSpellBook ? { fromSpellBook: true } : {})
+      ...(play.fromSpellBook ? { fromSpellBook: true } : {}),
+      ...(play.castEnablerCardId ? { castEnablerCardId: play.castEnablerCardId } : {})
     });
     if (play.fromSpellBook) {
       (stackItem.modifiers.bookPlayedCardIds ??= []).push(play.cardId);
@@ -10862,7 +11080,15 @@ function applyReactionPlayCore(
     // A Knowledge/Mysticism recall declared before the cancel still takes the
     // card back ("instead of discarding it" — no effect ever hit the table).
     // A Book cast returns to the Book, not the hand.
-    if (stackItem.modifiers.recallSpell?.toHand) {
+    if (polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
+      const recall = stackItem.modifiers.recallSpell;
+      if (recall?.polishRefreshSpell) {
+        refreshPolishUsedSpell(state, stackItem.action.playerId, stackItem.action.cardId);
+      }
+      if (recall?.polishRecallEnabler && stackItem.action.castEnablerCardId) {
+        returnSpellFromDiscardToHand(state, stackItem.action.playerId, stackItem.action.castEnablerCardId);
+      }
+    } else if (stackItem.modifiers.recallSpell?.toHand) {
       returnSpellFromDiscardToHand(
         state,
         stackItem.action.playerId,
@@ -11603,6 +11829,11 @@ function applyReactionPlayCore(
 
   if (effect.type === "RECALL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
     const caster = state.players[playerId];
+    const polishBookCast = polishSpellBookEnabled(state) && Boolean(stackItem.action.fromSpellBook);
+    const isPolishMysticism =
+      polishBookCast &&
+      !effect.basicSpellLimitBonus &&
+      !effect.expertSpellLimitBonus;
 
     // The recall is deferred to the spell's resolution: an instant spell
     // comes straight back, an ongoing spell (Summon/Clone-style) only after
@@ -11611,7 +11842,13 @@ function applyReactionPlayCore(
     stackItem.modifiers.recallSpell = {
       toHand: true,
       recallPlayedCards: mode === "expert" && Boolean(effect.expertRecallPlayedCards),
-      toSpellBook: Boolean(stackItem.action.fromSpellBook)
+      toSpellBook: Boolean(stackItem.action.fromSpellBook) && !polishBookCast,
+      ...(isPolishMysticism ? { polishRefreshSpell: true } : {}),
+      ...(
+        polishBookCast && (!isPolishMysticism || (mode === "expert" && Boolean(effect.expertRecallPlayedCards)))
+          ? { polishRecallEnabler: true }
+          : {}
+      )
     };
 
     // Empowered Knowledge raises the limit on the basic play; the regular
@@ -11657,7 +11894,20 @@ function applyReactionPlayCore(
 
     stackItem.modifiers.playedCardIds.push(play.cardId);
     const deferred = (stackItem.modifiers.deferredSpellRecalls ??= []);
-    deferred.push({ cardId: entry.cardId, playerId, toSpellBook: Boolean(entry.fromSpellBook) });
+    const polishBookInstant = polishSpellBookEnabled(state) && Boolean(entry.fromSpellBook);
+    const isPolishMysticism =
+      polishBookInstant &&
+      !effect.basicSpellLimitBonus &&
+      !effect.expertSpellLimitBonus;
+    if (polishBookInstant) {
+      if (isPolishMysticism) {
+        deferred.push({ cardId: entry.cardId, playerId, toSpellBook: true, fromPolishUsed: true });
+      } else if (entry.castEnablerCardId) {
+        deferred.push({ cardId: entry.castEnablerCardId, playerId, toSpellBook: false });
+      }
+    } else {
+      deferred.push({ cardId: entry.cardId, playerId, toSpellBook: Boolean(entry.fromSpellBook) });
+    }
 
     // Mysticism expert: the OTHER cards this player played into the attack come
     // back too. Snapshot them now (so cards played after the recall are not
@@ -11683,6 +11933,9 @@ function applyReactionPlayCore(
           remainingDiscard.splice(idx, 1);
           deferred.push({ cardId: playedCardId, playerId, toSpellBook: bookPlayed.includes(playedCardId) });
         }
+      }
+      if (polishBookInstant && entry.castEnablerCardId) {
+        deferred.push({ cardId: entry.castEnablerCardId, playerId, toSpellBook: false });
       }
     }
   }
@@ -12555,6 +12808,22 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (!card) {
     throw new Error(`Unknown card ${action.cardId}.`);
   }
+  if (isCastASpellCard(action.cardId)) {
+    throw new Error("Cast a Spell enables a refreshed Spell Book card; its only direct play is the printed +1 Power reaction.");
+  }
+  if (polishSpellBookEnabled(state) && card.kind === "spell" && !action.fromSpellBook) {
+    throw new Error("Owned Spells must be played from the Polish Spell Book with Cast a Spell.");
+  }
+  if (action.fromSpellBook && polishSpellBookEnabled(state)) {
+    const player = state.players[action.playerId];
+    if (
+      action.castEnablerCardId !== CAST_A_SPELL_CARD_ID ||
+      !player?.hand.includes(CAST_A_SPELL_CARD_ID) ||
+      !player.spellBook.includes(action.cardId)
+    ) {
+      throw new Error("Playing from the Polish Spell Book needs a Cast a Spell card and a refreshed Book Spell.");
+    }
+  }
 
   // BINH house rule: while the after-combat Necromancy window is open, the ONLY
   // legal card play is that Necromancy itself — the field reward is withheld
@@ -12739,10 +13008,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     : action.fromSpellBook
       ? // Spell Book (house rule): a Map Spell played from the Book cycles Book →
         // discard pile (or → removed for a removeSelf option), never touching hand.
-        moveSpellFromSpellBookToDiscard(
+        consumeSpellBookCast(
           state,
           action.playerId,
           action.cardId,
+          action.castEnablerCardId,
           option?.cost?.removeSelf ? "removed" : "discard"
         )
       : moveCardFromHandToDiscard(
@@ -14139,14 +14409,23 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     });
     const knowledge = knowledgeCardId ? cards[knowledgeCardId] : undefined;
     const recallEffect = knowledge?.effect.type === "RECALL_SPELL" ? knowledge.effect : null;
+    const polishBookCast = polishSpellBookEnabled(state) && Boolean(action.fromSpellBook);
     const spellIsRecallable =
-      Boolean(player?.discard.includes(action.cardId)) ||
+      (polishBookCast
+        ? Boolean(action.castEnablerCardId && player?.discard.includes(action.castEnablerCardId))
+        : Boolean(player?.discard.includes(action.cardId))) ||
       Boolean(player?.ongoingCards?.some((entry) => entry.cardId === action.cardId));
     if (player && knowledgeCardId && recallEffect && spellIsRecallable) {
-      const returnLabel = action.fromSpellBook
+      const returnLabel = polishBookCast
+        ? "return Cast a Spell to your hand (the Book spell stays used)"
+        : action.fromSpellBook
         ? `return ${card.name} to your Spell Book`
         : `return ${card.name} to your hand`;
-      const bookFlag = action.fromSpellBook ? { fromSpellBook: true as const } : {};
+      const bookFlag = polishBookCast
+        ? { castEnablerCardId: action.castEnablerCardId }
+        : action.fromSpellBook
+          ? { fromSpellBook: true as const }
+          : {};
       const options: { label: string; steps: VisitStep[] }[] = [];
 
       // Empowered Knowledge: single free recall that always includes the limit bonus.
@@ -15028,7 +15307,10 @@ function runGenieDeckDraw(
   }
 
   const dug = discardFromDeckTop(state, unit.controllerId, ability.count);
-  const spells = dug.filter((cardId) => cardLibrary[cardId]?.kind === "spell");
+  const polishBook = polishSpellBookEnabled(state);
+  const spells = polishBook
+    ? [...(player.spellBookUsed ?? [])]
+    : dug.filter((cardId) => cardLibrary[cardId]?.kind === "spell" && !isCastASpellCard(cardId));
 
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
@@ -15036,6 +15318,32 @@ function runGenieDeckDraw(
     abilityId: ability.abilityId,
     message: `${unit.cardName} discards ${dug.length} card${dug.length === 1 ? "" : "s"} from the deck for ${ability.abilityName}.`
   });
+
+  if (polishBook) {
+    // The M&M deck contains Cast-a-Spell cards, not owned Spells. Wish keeps
+    // its printed deck discard, then refreshes one actually used Book Spell.
+    player.discard.push(...dug);
+    if (spells.length === 0) {
+      return false;
+    }
+    if (spells.length === 1) {
+      refreshPolishUsedSpell(state, unit.controllerId, spells[0]);
+      return false;
+    }
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId: unit.controllerId,
+      prompt: `${ability.abilityName}: refresh one used Spell in your Spell Book.`,
+      options: spells.map((cardId) => ({ label: `Refresh ${cardLibrary[cardId]?.name ?? cardId}` })),
+      context: "genie-take-spell",
+      genieTakeSpell: { spellCardIds: spells, unitId: unit.id, mode, abilityId: ability.abilityId },
+      returnPhase: "combat"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = unit.controllerId;
+    return true;
+  }
 
   // No choice to make: take the single Spell (if any) to hand, the rest to
   // discard. A neutral seat with no deck simply dug nothing.
@@ -15154,13 +15462,19 @@ function resolveGenieTakeSpell(
     throw new Error("Pick one of the dug Spells.");
   }
 
-  player.hand.push(chosen);
-  player.discard.push(...pick.spellCardIds.filter((_, index) => index !== action.optionIndex));
+  if (polishSpellBookEnabled(state)) {
+    refreshPolishUsedSpell(state, action.playerId, chosen);
+  } else {
+    player.hand.push(chosen);
+    player.discard.push(...pick.spellCardIds.filter((_, index) => index !== action.optionIndex));
+  }
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: pick.unitId,
     abilityId: pick.abilityId,
-    message: `${player.name} takes ${cardLibrary[chosen]?.name ?? chosen} to hand.`
+    message: polishSpellBookEnabled(state)
+      ? `${player.name} refreshes ${cardLibrary[chosen]?.name ?? chosen} in the Spell Book.`
+      : `${player.name} takes ${cardLibrary[chosen]?.name ?? chosen} to hand.`
   });
 
   state.pendingChoice = null;
@@ -17312,6 +17626,8 @@ function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId, deck
     deck.drawPile.unshift(...skipped);
   }
   if (taken) {
+    // Tarnum VI's searched spell is a temporary over-limit cast that returns
+    // to the shared deck; it never becomes an owned Polish Book Spell.
     player.hand.push(taken);
     recordDeckDrawnAbility(player, deckId, taken);
   }
@@ -17434,7 +17750,7 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     throw new Error("That revealed card cannot be removed.");
   }
   if (!removePicked) {
-    player.hand.push(keptCardId);
+    gainOwnedCard(state, action.playerId, keptCardId);
     recordDeckDrawnAbility(player, choice.deckId, keptCardId);
   }
   // Removing leaves the card out of both hand and the shared deck entirely: it

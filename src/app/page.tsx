@@ -21,6 +21,7 @@ import {
   computerDecisionOwner,
   isParallelActor,
   isResetVoteApproved,
+  polishSpellBookEnabled,
   resetVoteRequired,
   rulesetCardNote,
   spellBookPowerAvailable,
@@ -332,7 +333,10 @@ function AdventureHandZoom({ cardId }: { cardId: string }) {
 function CostPlayBar({
   pending,
   hand,
+  bookCards = [],
+  bookCardId,
   onPick,
+  onBookPick,
   onConfirm,
   onCancel
 }: {
@@ -346,14 +350,19 @@ function CostPlayBar({
     armSelection?: unknown;
   };
   hand: string[];
+  /** Polish Crown of Dragontooth may remove one refreshed or used Book Spell. */
+  bookCards?: string[];
+  bookCardId?: string;
   onPick: (index: number, hand: string[]) => void;
+  onBookPick?: (cardId: string) => void;
   onConfirm: (hand: string[]) => void;
   onCancel: () => void;
 }) {
   const playedIndex = hand.indexOf(pending.action.cardId);
   const arming = Boolean(pending.armSelection);
+  const pickedCount = pending.picks.length + (bookCardId ? 1 : 0);
   const ready =
-    pending.exact !== undefined ? pending.picks.length === pending.exact : pending.picks.length <= (pending.upTo ?? 0);
+    pending.exact !== undefined ? pickedCount === pending.exact : pickedCount <= (pending.upTo ?? 0);
   return (
     <div className="targetBanner costPicker" aria-label="Pay the card cost">
       <Crosshair aria-hidden="true" size={15} />
@@ -365,7 +374,7 @@ function CostPlayBar({
           : pending.filter === "power-source"
             ? " (Power statistics or Spells)"
             : ""}{" "}
-        — {pending.picks.length} picked
+        — {pickedCount} picked
       </span>
       {hand.map((cardId, index) => {
         if (index === playedIndex) {
@@ -385,6 +394,17 @@ function CostPlayBar({
           </button>
         );
       })}
+      {[...new Set(bookCards)].map((cardId) => (
+        <button
+          className={bookCardId === cardId ? "selected" : ""}
+          key={`book-cost-${cardId}`}
+          onClick={() => onBookPick?.(cardId)}
+          title="Remove this owned Spell from the Polish Spell Book"
+          type="button"
+        >
+          📖 {cardName(cardId)}
+        </button>
+      ))}
       <button disabled={!ready} onClick={() => onConfirm(hand)} type="button">
         {arming ? "Discard, then aim" : "Pay & play"}
       </button>
@@ -4919,12 +4939,16 @@ export default function Home() {
   if (showMapScreen) {
     const viewer = isSeated ? state.players[viewerPlayerId] : null;
     const handCards = isSeated ? (playerView.players[viewerPlayerId]?.hand ?? []) : [];
-    // Spell Book (house rule): the seated player's stored Spells (owner-private).
+    // Spell Book (house rules): refreshed Spells stay owner-private; Polish
+    // used Spells are face-up and remain visible on their greyed pages.
     const spellBookCards = isSeated ? (playerView.players[viewerPlayerId]?.spellBook ?? []) : [];
+    const spellBookUsedCards = isSeated ? (playerView.players[viewerPlayerId]?.spellBookUsed ?? []) : [];
+    const polishBook = polishSpellBookEnabled(state);
     // The panel is shown from the very start of the game (even empty) whenever
     // the house rule is on, so a player always knows the Book exists and can open
     // it to see whether it holds any Spells.
-    const spellBookOn = isSeated && (state.adventure?.spellBook ?? true);
+    const legacySpellBookOn = isSeated && (state.adventure?.spellBook ?? true);
+    const spellBookOn = legacySpellBookOn || (isSeated && polishBook);
     const handLimit = viewer ? effectiveHandLimit(state, viewerPlayerId) : 0;
     // Over the hand limit at the start of the turn (only via card effects):
     // the player MUST discard down to the limit before acting. Parallel turns:
@@ -5409,6 +5433,8 @@ export default function Home() {
           {isSeated && spellBookOn && spellBookOpen ? (
             <SpellBookModal
               cardIds={spellBookCards}
+              usedCardIds={polishBook ? spellBookUsedCards : []}
+              polishMode={polishBook}
               castsByCard={bookPlayActionsByCard}
               onCast={(legal) => {
                 // Book casts come from bookPlayActionsByCard, so every one is a
@@ -5431,7 +5457,7 @@ export default function Home() {
                     viewerPlayerId={viewerPlayerId}
                   />
                   {spellBookOn ? (
-                    <div className={`spellBookPanel ${spellBookCards.length === 0 ? "empty" : ""}`}>
+                    <div className={`spellBookPanel ${spellBookCards.length + spellBookUsedCards.length === 0 ? "empty" : ""}`}>
                       <button
                         aria-expanded={spellBookOpen}
                         aria-haspopup="dialog"
@@ -5444,15 +5470,21 @@ export default function Home() {
                           }
                         }}
                         title={
-                          spellBookCards.length === 0
-                            ? "Your Spell Book is empty — stash a hand Spell with its 📖 button to store it here"
-                            : "Open your Spell Book — stored Spells you can cast (normal Spell limit applies)"
+                          polishBook
+                            ? `${spellBookCards.length} refreshed, ${spellBookUsedCards.length} used — Cast a Spell is required`
+                            : spellBookCards.length === 0
+                              ? "Your Spell Book is empty — stash a hand Spell with its 📖 button to store it here"
+                              : "Open your Spell Book — stored Spells you can cast (normal Spell limit applies)"
                         }
                         type="button"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element -- small pixelated game icon, not a content image */}
                         <img alt="" aria-hidden="true" className="spellBookIcon" src={assetUrl("/assets/ui/spell-book-button.png")} />
-                        <span className="spellBookCount">{spellBookCards.length}</span>
+                        <span className="spellBookCount">
+                          {polishBook
+                            ? `${spellBookCards.length}/${spellBookCards.length + spellBookUsedCards.length}`
+                            : spellBookCards.length}
+                        </span>
                         <small>Spell Book</small>
                       </button>
                     </div>
@@ -5656,14 +5688,15 @@ export default function Home() {
                   ) : null}
                   {/* Spell Book (house rule): one stashed Book Spell may pay map
                       Power costs (View Air / Fly tiers, …) — once per turn. */}
-                  {spellBookOn &&
-                  viewer &&
-                  spellBookPowerAvailable(viewer) &&
+                  {((legacySpellBookOn && viewer && spellBookPowerAvailable(viewer)) ||
+                    (polishBook &&
+                      pendingCostPlay.action.cardId === "artifact.crown_of_dragontooth" &&
+                      pendingCostPlay.filter === "spell")) &&
                   (pendingCostPlay.powerCost !== undefined ||
                     pendingCostPlay.exact !== undefined ||
                     pendingCostPlay.upTo !== undefined) ? (
                     <div className="costPickerModes" aria-label="Spell Book Power payments">
-                      {[...new Set(spellBookCards)]
+                      {[...new Set(polishBook ? [...spellBookCards, ...spellBookUsedCards] : spellBookCards)]
                         .filter((id) => id !== pendingCostPlay.action.cardId)
                         .filter((id) => {
                           if (!pendingCostPlay.filter) {
@@ -5696,7 +5729,11 @@ export default function Home() {
                                     : current
                                 );
                               }}
-                              title="Spend a Spell Book Spell for Power (once per turn)"
+                              title={
+                                polishBook
+                                  ? "Remove this owned Spell for Crown of Dragontooth"
+                                  : "Spend a Spell Book Spell for Power (once per turn)"
+                              }
                               type="button"
                             >
                               📖 {cardName(bookId)}
@@ -6243,8 +6280,26 @@ export default function Home() {
 
       {pendingCostPlay ? (
         <CostPlayBar
+          bookCardId={pendingCostPlay.bookCardId}
+          bookCards={
+            polishSpellBookEnabled(state) &&
+            pendingCostPlay.action.cardId === "artifact.crown_of_dragontooth" &&
+            pendingCostPlay.filter === "spell"
+              ? [
+                  ...(state.players[isSeated ? viewerPlayerId : seatIds[0]]?.spellBook ?? []),
+                  ...(state.players[isSeated ? viewerPlayerId : seatIds[0]]?.spellBookUsed ?? [])
+                ]
+              : []
+          }
           hand={state.players[isSeated ? viewerPlayerId : seatIds[0]]?.hand ?? []}
           onCancel={() => setPendingCostPlay(null)}
+          onBookPick={(cardId) =>
+            setPendingCostPlay((current) =>
+              current
+                ? { ...current, bookCardId: current.bookCardId === cardId ? undefined : cardId }
+                : current
+            )
+          }
           onConfirm={confirmPendingCostPlay}
           onPick={toggleCostPick}
           pending={pendingCostPlay}

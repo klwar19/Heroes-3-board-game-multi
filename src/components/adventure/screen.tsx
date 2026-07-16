@@ -934,8 +934,15 @@ export function HexMapBoard({
                     key={`${tile.id}-preview-size-${index}`}
                     transform={`translate(${x + (index === 0 ? -HEX_SIZE * 0.46 : HEX_SIZE * 0.46)} ${y - HEX_SIZE * 0.62})`}
                   >
-                    <path d="M0 -10 L2.9 -3.2 L10 -3.1 L4.5 1.4 L6.2 8.5 L0 4.7 L-6.2 8.5 L-4.5 1.4 L-10 -3.1 L-2.9 -3.2 Z" />
-                    <text textAnchor="middle" y="2.4">{ROMAN[candidate.size]}</text>
+                    {candidate.size > 1 ? (
+                      <>
+                        <circle className="coinOuter" r="10" />
+                        <circle className="coinInner" r="7.2" />
+                        <text textAnchor="middle" y="2.4">{candidate.size - 1}</text>
+                      </>
+                    ) : (
+                      <text className="noToken" textAnchor="middle" y="2.4">I</text>
+                    )}
                   </g>
                 ) : null
               )}
@@ -1241,8 +1248,15 @@ export function HexMapBoard({
             key={`${spaceId}-bank-size`}
             transform={`translate(${x + HEX_SIZE * 0.52} ${y - HEX_SIZE * 0.56})`}
           >
-            <path d="M0 -11 L3.2 -3.5 L11 -3.4 L4.9 1.6 L6.8 9.3 L0 5.1 L-6.8 9.3 L-4.9 1.6 L-11 -3.4 L-3.2 -3.5 Z" />
-            <text textAnchor="middle" y="2.5">{ROMAN[field.bankSize]}</text>
+            {field.bankSize > 1 ? (
+              <>
+                <circle className="coinOuter" r="11" />
+                <circle className="coinInner" r="7.9" />
+                <text textAnchor="middle" y="2.5">{field.bankSize - 1}</text>
+              </>
+            ) : (
+              <text className="noToken" textAnchor="middle" y="2.5">I</text>
+            )}
           </g>
         );
       }
@@ -5270,7 +5284,13 @@ function GameOptionsPanel({
   // Effective house-rule booleans (explicit toggle, else the chosen mode's
   // default). Flipping one sends just that id; the reducer merges it.
   const houseRules = resolveHouseRules(options);
-  const setHouseRule = (id: HouseRuleId, value: boolean) => send({ houseRules: { [id]: value } });
+  const setHouseRule = (id: HouseRuleId, value: boolean) => {
+    if (id === "polish-spell-book" && value) {
+      send({ houseRules: { [id]: true }, spellBook: false });
+      return;
+    }
+    send({ houseRules: { [id]: value } });
+  };
   const tournamentRules = resolveTournamentRules(options);
   const tournamentAllOn = tournamentRulesAllOn(options);
 
@@ -5570,7 +5590,8 @@ function GameOptionsPanel({
       />
 
       {(() => {
-        const spellBookOn = options.spellBook ?? options.ruleset === "binh";
+        const polishSpellBookOn = houseRules["polish-spell-book"];
+        const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
         return (
           <div className="optionRow">
             <small title="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from">
@@ -5582,7 +5603,12 @@ function GameOptionsPanel({
                   aria-pressed={spellBookOn === on}
                   className={spellBookOn === on ? "selected" : ""}
                   key={String(on)}
-                  onClick={() => send({ spellBook: on })}
+                  onClick={() =>
+                    send({
+                      spellBook: on,
+                      ...(on ? { houseRules: { "polish-spell-book": false } } : {})
+                    })
+                  }
                   title={on ? "Spell Book on (house rule)" : "Spell Book off"}
                   type="button"
                 >
@@ -5591,7 +5617,9 @@ function GameOptionsPanel({
               ))}
             </div>
             <small className="optionHint">
-              {spellBookOn
+              {polishSpellBookOn
+                ? "Off because Polish Spell Book is selected; the two lifecycles cannot be combined."
+                : spellBookOn
                 ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
                 : "No Spell Book — Spells live only in hand, deck and discard."}
             </small>

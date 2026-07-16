@@ -48,10 +48,12 @@ function addCitadel(state: GameState): void {
 const griffin = { id: "stack_griffins", unitDefId: "castle.griffins", side: "pack" as const };
 
 describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
-  it("uses Few + Pack + tier-gold cost and the printed 3/2/1 caps", () => {
-    expect(polishUnitStackCost("castle.griffins")).toEqual({ gold: 11 });
-    expect(polishUnitStackCost("castle.crusaders")).toEqual({ gold: 18 });
-    expect(polishUnitStackCost("castle.archangels")).toEqual({ gold: 53, valuables: 3 });
+  it("uses Pack gold + tier-gold cost and the printed bronze/silver/gold 3/2/1 caps", () => {
+    expect(polishUnitStackCost("rampart.centaurs"), "Centaur: 3 Pack gold + tier 1").toEqual({ gold: 4 });
+    expect(polishUnitStackCost("castle.griffins")).toEqual({ gold: 7 });
+    expect(polishUnitStackCost("castle.crusaders")).toEqual({ gold: 12 });
+    expect(polishUnitStackCost("rampart.gold_dragons"), "Gold Dragon: 30 Pack gold + tier 3").toEqual({ gold: 33 });
+    expect(polishUnitStackCost("castle.archangels"), "non-gold Pack resources are not charged").toEqual({ gold: 33 });
     expect(polishUnitStackCap("castle.griffins")).toBe(3);
     expect(polishUnitStackCap("castle.crusaders")).toBe(2);
     expect(polishUnitStackCap("castle.archangels")).toBe(1);
@@ -78,7 +80,7 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     });
 
     expect(state.players.p1.army[0].stacks).toBe(2);
-    expect(state.players.p1.resources.gold).toBe(beforeGold - 22);
+    expect(state.players.p1.resources.gold).toBe(beforeGold - 14);
     expect(state.players.p1.townTokens.population, "the normal multi-purchase window stays open").toBe(true);
     expect(state.eventLog.filter((event) => event.type === "ARMY_STACK_PURCHASED")).toHaveLength(2);
   });
@@ -161,6 +163,32 @@ describe("Polish Unit Stacks — combat layers", () => {
     expect(unit.attack, "the bonus drops with the final Stack").toBe(3);
     expect(state.eventLog.filter((event) => event.type === "ARMY_STACK_LOST")).toHaveLength(2);
     expect(state.eventLog.some((event) => event.type === "UNIT_REMOVED")).toBe(false);
+  });
+
+  it("keeps the Pack ability on every Stack layer and only switches to Few after the Pack itself falls", () => {
+    const state = makeState(true, "polish-stacks-pack-ability");
+    const unit = makeCombatUnitFromArmy(
+      { id: "stack_crusaders", unitDefId: "castle.crusaders", side: "pack", stacks: 1 },
+      "p1",
+      "combat_crusaders",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state)
+    )!;
+
+    expect(unit.variant).toBe("pack");
+    expect(unit.abilities).toContain("attack-die-reroll");
+
+    unit.damage = unit.maxHealth;
+    markUnitRemovedIfNeeded(state, unit);
+    expect(unit.armyStacks).toBe(0);
+    expect(unit.variant, "losing the paid Stack reveals the original Pack layer").toBe("pack");
+    expect(unit.abilities, "the exposed Pack keeps the printed Pack ability").toContain("attack-die-reroll");
+
+    unit.damage = unit.maxHealth;
+    markUnitRemovedIfNeeded(state, unit);
+    expect(unit.variant, "only lethal damage to the original Pack flips the card").toBe("few");
+    expect(unit.abilities).not.toContain("attack-die-reroll");
   });
 
   it("lets Rebirth fire before spending a Stack", () => {
