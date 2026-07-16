@@ -24,8 +24,8 @@ tournament scene, grouped under one new **"Polish house rules"** category:
 | Toggle (HouseRuleId) | One-line contract |
 | --- | --- |
 | `polish-spell-book` | Spells never enter your hand/deck. They live in a per-player **Spell Book** with a used/refreshed state, refreshed each round, and are cast by playing generic **"Cast a Spell"** cards from the M&M deck. The Mage Guild is buffed (Search (3), buy Cast-a-Spell, Rolling Spells, level V/VII grants). One merged Spell deck. |
-| `polish-bank-sizes` | Reveal two banks, roll **2 Attack dice for each**, choose one, then rotate. Size gives every one of the four guards 0/1/2/3 full-health Stack layers and sets reward X=1/2/3/4; it replaces normal random-stat bank tokens. |
-| `polish-unit-stacks` | A **Group** (Pack) army card can buy **Stacks** for Pack gold cost + tier (1/2/3). While at least one Stack remains the card fights at **+1 Attack** with the Pack ability; each Stack is a full extra Pack health bar and lethal excess carries over. Caps: bronze 3 / silver 2 / gold 1. |
+| `polish-bank-sizes` | Reveal two banks, roll a size for each (**1 Attack die** per candidate on the seat's FIRST Ⅱ–Ⅲ opening, **2 dice** later and on every Near bank), choose one, then rotate. Size gives every one of the four guards 0/1/2/3 full-health Stack layers; win rewards follow `polishBankRewardScale` (Ⅰ base only, Ⅱ full 4-stack extras, Ⅲ/Ⅳ add 1/2 base-GOLD layers); it replaces normal random-stat bank tokens. |
+| `polish-unit-stacks` | A **Group** (Pack) army card — or a **recruited Neutral** — can buy **Stacks** for that side's gold cost + tier (1/2/3). While at least one Stack remains the card fights at **+1 Attack** with its printed ability; each Stack is a full extra health bar and lethal excess carries over. Caps: bronze 3 / silver 2 / gold 1 (azure as gold). |
 
 Non-negotiable framing rules (repo conventions):
 
@@ -313,10 +313,13 @@ On a bank-eligible reveal (existing gates unchanged), peek the **top TWO**
 tokens of the matching pile and roll a size for each with seeded Attack dice.
 The sequence is load-bearing: **reveal → draw two banks → roll both sizes →
 choose one bank → rotate the tile**. There is no Polish decline option. With
-only one token left, reserve it automatically and continue to rotation. Each
-candidate always rolls **2 Attack dice**, including a player's first Far
-opening. This follows the rule author's latest explicit clarification and
-supersedes the earlier one-die annotation in the reference-sheet draft.
+only one token left, reserve it automatically and continue to rotation. The
+seat's **FIRST Ⅱ–Ⅲ (Far) opening rolls ONE Attack die** per candidate — a
+single die only reaches sizes Ⅰ–Ⅲ, easing the very first bank — while every
+later Far opening and every Near bank rolls **2 Attack dice** so gold size Ⅳ
+stays reachable (user refinement, 2026-07-16; the opening tally is
+`farTilesOpenedByPlayer`, which ticks in `finalizeFarTileFlip` before the
+rotation's reserve runs, so "first" reads as 1 there).
 
 Polish bank size completely **replaces** the normal random-stat Stack Token
 system for that combat; only the four printed Creature Bank unit cards are
@@ -336,9 +339,20 @@ cap): the all-gold/azure Dragon Utopia, Pyramid and Naga Bank top out at
 size Ⅲ — clamped at the reveal roll, before the player chooses — while any
 bank with a bronze or silver guard reaches the full Ⅳ (the Crypt counts as
 size Ⅳ through its bronze Skeletons even though its silver Vampires cap
-lower). Rewards use the clamped size with a big-bank premium: sizes Ⅰ/Ⅱ/Ⅲ/Ⅳ
-pay as **X=1/2/4/5** (Ⅲ and Ⅳ each add one base reward), independently of the
-physical layers.
+lower).
+
+**Win rewards (user refinement, 2026-07-16 — `polishBankRewardScale` /
+`buildPolishCreatureBankReward`).** The payout follows the clamped size, not
+the physical layers: size Ⅰ pays the printed BASE only (X=0 extras); sizes
+Ⅱ–Ⅳ all pay the classic **full 4-stack extras (X=4)**; sizes Ⅲ/Ⅳ additionally
+add **1/2 extra copies of the printed base GOLD only** (never valuables or
+materials — banks with no gold in their base, e.g. Cyclops Stockpile and the
+Pyramid, gain nothing beyond size Ⅱ). The two unit banks (Dragon Fly Hive /
+Griffin Conservatory) grant the Few at size Ⅰ, or the Pack carrying 1/2/3
+Unit Stack layers plus the Empower pick at sizes Ⅱ/Ⅲ/Ⅳ — those granted layers
+FUNCTION even when `polish-unit-stacks` is off (`armyUnitStacksActive`: either
+Polish rule activates the army-stack combat machinery; purchasing stays gated
+on `polish-unit-stacks` alone).
 
 ### 5.2 Wiring
 

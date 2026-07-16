@@ -1285,14 +1285,19 @@ is NOT done:
   multi-round all-rules computer soak and Polish economy policy are covered.
   Rolled bank sizes specifically are inert when the base
   `creatureBanks` option is off; the lobby greys that toggle out in that case.
-- With `polish-unit-stacks` ON, a faction Pack card at its own Citadel may buy
-  persistent Stack layers with the Population flow. One Stack costs the Pack
-  side's printed gold cost plus its tier number (bronze +1 / silver +2 / gold
-  +3); the Pack's other resource icons, normal recruit/reinforce discounts, and
-  the Freelancer's Guild substitution do not apply. Caps are bronze 3 / silver
-  2 / gold 1. Every layer keeps the Pack stats and ability. While at least one
-  layer remains the Group has exactly +1 Attack; lethal damage removes one full
-  Pack health layer and carries every excess point through additional layers. Rebirth
+- With `polish-unit-stacks` ON, a faction Pack card — or a recruited NEUTRAL
+  card — at its own Citadel may buy persistent Stack layers with the Population
+  flow. One Stack costs that side's printed gold cost plus its tier number
+  (bronze +1 / silver +2 / gold +3; azure counted as gold); the side's other
+  resource icons, normal recruit/reinforce discounts, and the Freelancer's
+  Guild substitution do not apply. Caps are bronze 3 / silver 2 / gold 1
+  (azure as gold → 1) — always the ARMY table, even for a unit whose bank-guard
+  twin punches higher. Every layer keeps that side's stats and ability. While
+  at least one layer remains the card has exactly +1 Attack; lethal damage
+  removes one full health layer and carries every excess point through
+  additional layers (a Neutral has no Pack→Few flip: once its layers and body
+  are spent the card is removed as usual, and a survivor syncs its remaining
+  layers back to the army card). Rebirth
   fires first, Creature Bank `stackToken` abilities remain isolated, Pack→Few
   drops the layers, survivors sync back after combat, and keep-troops PvP keeps
   the pre-combat investment. The town row, army panel, and combat card share the
@@ -1321,9 +1326,10 @@ is NOT done:
   (or one when the pile has one), rolls each candidate's size with seeded Attack
   dice (the sheet table: −1→Ⅰ, 0→Ⅱ, +1→Ⅲ, −2 OR +2→Ⅳ), requires the player to
   choose A or B, and only then offers tile rotation.
-  Every candidate always rolls two dice, including the first Far opening. Only
-  the chosen token is removed by id after rotation; the unchosen peek stays
-  exactly where it was. This mode
+  The seat's FIRST Ⅱ–Ⅲ (Far) opening rolls ONE die per candidate (a single die
+  only reaches Ⅰ–Ⅲ); every later Far opening and every Near bank rolls two.
+  Only the chosen token is removed by id after rotation; the unchosen peek
+  stays exactly where it was. This mode
   REPLACES normal random-stat bank Stack Tokens: every bank card receives the
   deterministic 0/1/2/3 full-Health layers for sizes I/II/III/IV, keeps the
   same bank-card features, and has flat +1 Attack while any layer remains.
@@ -1333,11 +1339,20 @@ is NOT done:
   `polishBankGuardLayerCap`), and each BANK's rollable size clamps to what its
   best guard can carry (`polishBankMaxSize`): the all-gold/azure Dragon
   Utopia / Pyramid / Naga Bank top out at size Ⅲ (clamped at the reveal roll,
-  before the player chooses), every other bank reaches Ⅳ. Rewards use
-  X=clamped size with a big-bank premium: sizes Ⅰ/Ⅱ/Ⅲ/Ⅳ pay X=1/2/4/5. The UI
+  before the player chooses), every other bank reaches Ⅳ. Win rewards follow
+  `polishBankRewardScale` (`buildPolishCreatureBankReward`), by clamped size
+  not layer count: Ⅰ pays the printed base only; Ⅱ–Ⅳ all pay the classic full
+  4-stack extras (X=4); Ⅲ/Ⅳ additionally add 1/2 extra copies of the printed
+  base GOLD only (never valuables/materials — a no-gold-base bank like the
+  Cyclops Stockpile or Pyramid gains nothing beyond Ⅱ). The two unit banks
+  (Dragon Fly Hive / Griffin Conservatory) grant the Few at size Ⅰ, or the
+  Pack carrying 1/2/3 working Unit Stack layers + the Empower pick at Ⅱ/Ⅲ/Ⅳ —
+  those layers function even with `polish-unit-stacks` off
+  (`armyUnitStacksActive`: either Polish rule activates the army-stack combat
+  machinery; PURCHASING stays gated on `polish-unit-stacks`). The UI
   uses no coin / bronze 1 / silver 2 / gold 3 and shows the remaining coin on
   every defender. Covered by
-  `polish-bank-sizes.test.ts` (incl. the cap/clamp/premium cases, each
+  `polish-bank-sizes.test.ts` (incl. the cap/clamp/reward-scale cases, each
   mutation-checked), bank combat/ability controls, and the bank DOM
   cases in `creature-bank-board.test.tsx` / `board.test.tsx`.
 - The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct

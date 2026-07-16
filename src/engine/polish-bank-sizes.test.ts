@@ -9,9 +9,11 @@ import {
   applyAction,
   createAdventureGameState,
   getLegalActions,
+  makeCombatUnitFromArmy,
   polishBankMaxSize,
   polishBankRewardScale,
   polishBankSizeForAttackRolls,
+  unitSideRuleOverrides,
   type BankSize,
   type GameAction,
   type GameEvent,
@@ -20,7 +22,7 @@ import {
   type PendingChoice,
   type PlayerVisibleState,
 } from "./index";
-import { buildCreatureBankCombatUnits } from "./adventure";
+import { buildCreatureBankCombatUnits, grantCreatureBankReward, placeCreatureBank } from "./adventure";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { chooseComputerAction } from "./computer/policy";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
@@ -649,5 +651,85 @@ describe("Polish bank size rewards (all banks × all sizes)", () => {
       expect(medusa2.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 6, valuables: 1 });
       expect(medusa3.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 12, valuables: 1 });
     }
+  });
+});
+
+describe("Polish bank size rewards — CONSUMER (the granted steps actually land)", () => {
+  function bankRewardState(size: BankSize | undefined, seed: string): GameState {
+    const state = createAdventureGameState({
+      seed,
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      creatureBanks: true,
+      houseRules: { "polish-bank-sizes": size !== undefined, "polish-unit-stacks": false },
+    });
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    state.adventure!.fields["bank-field"] = {
+      spaceId: "bank-field",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "blocked_field",
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null,
+    };
+    state.heroes.hero_p1.spaceId = "bank-field";
+    placeCreatureBank(state, "bank-field", "dragon_fly_hive", size);
+    return state;
+  }
+
+  it("a size-Ⅲ Dragon Fly Hive win adds the Pack with 2 WORKING layers (polish-unit-stacks off)", () => {
+    const state = bankRewardState(3, "polish-bank-reward-consumer");
+    const armyBefore = new Set(state.players.p1.army.map((unit) => unit.id));
+
+    grantCreatureBankReward(state, "hero_p1", "bank-field", 0);
+
+    // RECRUIT_FREE consumed the reward's `stacks`: the army card carries them.
+    const gained = state.players.p1.army.filter((unit) => !armyBefore.has(unit.id));
+    expect(gained).toHaveLength(1);
+    expect(gained[0]).toMatchObject({ unitDefId: "fortress.dragon_flies", side: "pack", stacks: 2 });
+    expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
+
+    // The layers FUNCTION in combat even though polish-unit-stacks is off:
+    // armyUnitStacksActive turns the machinery on for either Polish rule.
+    const unit = makeCombatUnitFromArmy(
+      gained[0],
+      "p1",
+      "combat_reward",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state),
+    )!;
+    const twin = makeCombatUnitFromArmy(
+      { ...gained[0], id: "reward_twin", stacks: 0 },
+      "p1",
+      "combat_reward_twin",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state),
+    )!;
+    expect(unit.armyStacks).toBe(2);
+    expect(unit.attack).toBe(twin.attack + 1);
+    unit.damage = unit.maxHealth;
+    markUnitRemovedIfNeeded(state, unit);
+    expect(unit.armyStacks).toBe(1);
+    expect(unit.damage).toBe(0);
+  });
+
+  it("CONTROL: with the rule off the same win pays the classic X-scaled reward (a stack-less card)", () => {
+    const state = bankRewardState(undefined, "polish-bank-reward-classic");
+    const armyBefore = new Set(state.players.p1.army.map((unit) => unit.id));
+
+    grantCreatureBankReward(state, "hero_p1", "bank-field", 0);
+
+    const gained = state.players.p1.army.filter((unit) => !armyBefore.has(unit.id));
+    expect(gained).toHaveLength(1);
+    expect(gained[0].unitDefId).toBe("fortress.dragon_flies");
+    expect(gained[0].side).toBe("few");
+    expect(gained[0].stacks).toBeUndefined();
   });
 });

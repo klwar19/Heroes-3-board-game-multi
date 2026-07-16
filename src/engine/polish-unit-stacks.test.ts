@@ -205,6 +205,94 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     expect(combatUnit.damage).toBe(0);
     expect(combatUnit.attack).toBe(baseAtk + 1);
   });
+
+  it("layers granted by polish-bank-sizes FUNCTION with polish-unit-stacks OFF; purchasing stays off", () => {
+    // A unit bank's size-Ⅲ win grants a Pack with 2 layers even when only
+    // polish-bank-sizes is enabled — those layers must be real (+1 Attack, one
+    // full extra health bar each), never a decorative badge, and buying MORE
+    // at the Citadel must still require polish-unit-stacks itself.
+    let state = createAdventureGameState({
+      seed: "polish-granted-stacks-active",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: false,
+      ruleset: "legacy",
+      creatureBanks: true,
+      houseRules: { "polish-unit-stacks": false, "polish-bank-sizes": true }
+    });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.players.p1.townTokens.population = true;
+    state.players.p1.resources = { gold: 500, buildingMaterials: 100, valuables: 100 };
+    addCitadel(state);
+    const granted = {
+      id: "granted_flies",
+      unitDefId: "fortress.dragon_flies",
+      side: "pack" as const,
+      stacks: 2
+    };
+    state.players.p1.army = [{ ...granted }];
+
+    // PURCHASE control: no Citadel Stack offer without polish-unit-stacks.
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases[0]?.kind === "stack"
+      )
+    ).toBe(false);
+
+    // COMBAT: the granted layers are live — +1 Attack over a stack-less twin,
+    // and a lethal hit peels one full layer instead of killing the card.
+    const unit = makeCombatUnitFromArmy(
+      { ...granted },
+      "p1",
+      "combat_granted",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state)
+    )!;
+    const twin = makeCombatUnitFromArmy(
+      { ...granted, id: "granted_twin", stacks: 0 },
+      "p1",
+      "combat_twin",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state)
+    )!;
+    expect(unit.armyStacks).toBe(2);
+    expect(unit.attack).toBe(twin.attack + 1);
+    unit.damage = unit.maxHealth;
+    markUnitRemovedIfNeeded(state, unit);
+    expect(unit.armyStacks).toBe(1);
+    expect(unit.damage).toBe(0);
+
+    // CONTROL: with BOTH Polish rules off the same card's layers are inert.
+    const off = createAdventureGameState({
+      seed: "polish-granted-stacks-off",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: false,
+      ruleset: "legacy",
+      creatureBanks: true,
+      houseRules: { "polish-unit-stacks": false, "polish-bank-sizes": false }
+    });
+    const inert = makeCombatUnitFromArmy(
+      { ...granted },
+      "p1",
+      "combat_inert",
+      0,
+      "legacy",
+      unitSideRuleOverrides(off)
+    )!;
+    expect(inert.armyStacks ?? 0).toBe(0);
+    expect(inert.attack).toBe(twin.attack);
+    inert.damage = inert.maxHealth;
+    markUnitRemovedIfNeeded(off, inert);
+    // No layer peel: the Pack takes the normal core-rules downgrade to Few
+    // (the active case above instead stays a Pack and spends a layer).
+    expect(inert.variant).toBe("few");
+    expect(inert.armyStacks ?? 0).toBe(0);
+  });
 });
 
 describe("Polish Unit Stacks — combat layers", () => {
