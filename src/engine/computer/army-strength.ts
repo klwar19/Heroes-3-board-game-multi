@@ -199,9 +199,20 @@ export const MAX_TOP_TIER_GUARDS = 3;
  * at least this many ALIVE units of the qualifying tier for that tier to unlock
  * its guard cap. Map army cards carry no fractional health (a unit is alive iff
  * it is still in the deck), so a COUNT is the honest floor — one lone silver Few
- * never justifies a level-3 fight; two do.
+ * alone never justifies a level-3 fight; two do.
+ *
+ * Exception (`MIN_SILVER_WITH_BRONZE_CORE` + `BRONZE_PACK_CORE_FOR_SILVER`): a
+ * three-Pack bronze core PLUS even a single silver body IS enough for the silver
+ * cap (difficulty 3 @ Impossible) — the opening force the AI must hit premium
+ * Far economy with, not afraid of trading units.
  */
 export const MIN_TIER_UNITS_FOR_ENGAGE = 2;
+
+/** One silver body is enough once the three-Pack bronze core is fielded. */
+export const MIN_SILVER_WITH_BRONZE_CORE = 1;
+
+/** Pack-side bronze count that unlocks the single-silver soft engagement. */
+export const BRONZE_PACK_CORE_FOR_SILVER = 3;
 
 /** How many army cards of each tier the player currently fields (alive = in deck). */
 function armyTierCounts(
@@ -223,23 +234,66 @@ function armyTierCounts(
   return counts;
 }
 
+/** Pack-side bronze bodies — the reliable early core the soft silver unlock needs. */
+function armyBronzePackCount(state: GameState, playerId: PlayerId): number {
+  let packs = 0;
+  for (const unit of state.players[playerId]?.army ?? []) {
+    if (
+      unit.side === "pack" &&
+      coreUnitDefinitions[unit.unitDefId]?.tier === "bronze"
+    ) {
+      packs += 1;
+    }
+  }
+  return packs;
+}
+
 /**
  * The highest unit tier the army fields in real numbers — the top tier for which
- * it holds at least MIN_TIER_UNITS_FOR_ENGAGE alive cards. Null when no tier
- * clears the guard rail (nothing to anchor an extended engagement on).
+ * it holds at least MIN_TIER_UNITS_FOR_ENGAGE alive cards. Soft unlock: three
+ * bronze Packs + a single silver body still unlocks the silver guard cap (user:
+ * "3 pack bronze + even just 1 silver → MUST HIT lv3") — checked BEFORE the
+ * bronze-only floor so a pack core does not mask the silver reach. Null when
+ * no tier clears either rail.
  */
 export function armyEngagementTier(
   state: GameState,
   playerId: PlayerId,
 ): UnitTier | null {
   const counts = armyTierCounts(state, playerId);
-  for (let rank = ALL_TIERS.length - 1; rank >= 0; rank -= 1) {
+  // Premium tiers first (azure → gold → silver) with the hard MIN_TIER floor.
+  for (let rank = ALL_TIERS.length - 1; rank >= 1; rank -= 1) {
     const tier = ALL_TIERS[rank];
     if (counts[tier] >= MIN_TIER_UNITS_FOR_ENGAGE) {
       return tier;
     }
   }
+  // Soft silver unlock — gold/azure still need two bodies (MIN_TIER). A lone
+  // silver Few with no Pack core stays on the level gate (CONTROL). Must beat
+  // the bronze floor below or three Packs would always report "bronze".
+  if (
+    counts.silver >= MIN_SILVER_WITH_BRONZE_CORE &&
+    armyBronzePackCount(state, playerId) >= BRONZE_PACK_CORE_FOR_SILVER
+  ) {
+    return "silver";
+  }
+  if (counts.bronze >= MIN_TIER_UNITS_FOR_ENGAGE) {
+    return "bronze";
+  }
   return null;
+}
+
+/**
+ * Settlement or gold/valuables mine — the premium Far economy the AI must hit
+ * aggressively (lv3 ASAP once the force is ready for the scenario difficulty).
+ * Not afraid of unit losses on these targets.
+ */
+export function isPremiumEconomyField(field: MapFieldState): boolean {
+  if (field.location === "settlement") return true;
+  return (
+    field.location === "mine" &&
+    (field.resource === "gold" || field.resource === "valuables")
+  );
 }
 
 /**
@@ -277,6 +331,67 @@ export function armyTierGuardCap(
 }
 
 /**
+ * PREMIUM-ECONOMY rush cap (settlement / gold / valuables only).
+ *
+ * The strict `armyTierGuardCap` stops bronze armies at the first field that
+ * introduces a silver guard — so hard/normal/easy field-3 parties (which all
+ * mix in silver) would wait for a silver recruit. Premium economy is worth
+ * unit losses, so three bronze Packs alone unlock difficulty 3 on easy /
+ * normal / hard the moment the Pack core is ready. Impossible still needs at
+ * least one silver body (3 pure silver guards). Silver/gold tier extensions
+ * still raise the cap above 3 when the army qualifies.
+ *
+ * Grounded in NEUTRAL_ARMY_TABLE field-3 parties:
+ *   easy    {bronze 1, silver 1}  — 3 Packs overpower
+ *   normal  {bronze 2, silver 1}  — 3 Packs overpower with losses
+ *   hard    {bronze 1, silver 2}  — user: 3 Packs can tackle
+ *   impossible {silver 3}         — needs a silver body + 3 Packs
+ */
+export function premiumEconomyEngageCap(
+  state: GameState,
+  playerId: PlayerId,
+): number {
+  const scenario = neutralArmyDifficulty(state);
+  const bronzePacks = armyBronzePackCount(state, playerId);
+  const counts = armyTierCounts(state, playerId);
+  let cap = 0;
+
+  // Full silver/gold/azure tier extension still applies on premium targets.
+  const tier = armyEngagementTier(state, playerId);
+  if (tier && TIER_RANK[tier] >= TIER_RANK.silver) {
+    cap = Math.max(cap, armyTierGuardCap(scenario, tier));
+  }
+
+  // Three bronze Packs → lv3 ASAP on every difficulty that does not field a
+  // pure multi-silver wall (Impossible needs the soft-silver unlock above).
+  if (bronzePacks >= BRONZE_PACK_CORE_FOR_SILVER) {
+    if (scenario === "impossible") {
+      if (counts.silver + counts.gold + counts.azure >= 1) {
+        cap = Math.max(cap, 3);
+      }
+    } else {
+      // easy / normal / hard — Pack core alone is enough for lv3 premium.
+      cap = Math.max(cap, 3);
+    }
+  }
+
+  return cap;
+}
+
+/**
+ * Whether the army is ready to walk into this premium-economy guard (losses OK).
+ * Used only for settlement / gold / valuables — never for junk neutrals.
+ */
+export function armyCoversPremiumEconomyGuard(
+  state: GameState,
+  playerId: PlayerId,
+  fieldDifficulty: number,
+): boolean {
+  if (fieldDifficulty <= 0) return false;
+  return fieldDifficulty <= premiumEconomyEngageCap(state, playerId);
+}
+
+/**
  * Whether the player's ARMY composition (not just hero level) justifies fighting
  * a guard field of `fieldDifficulty`. Deliberately EXTENDS engagement and never
  * refuses one: it is OR-ed with the level-based Quick-Combat gate in
@@ -285,8 +400,12 @@ export function armyTierGuardCap(
  * Only a SILVER-or-higher engagement tier extends the reach: a bronze-only army
  * is exactly the baseline the level gate already models, so its behaviour is left
  * unchanged (the reference's job is to let a silver/gold-bearing army punch above
- * its hero level, not to re-tune the opening bronze play). The full derived table
- * — including the bronze caps — is still pinned in the tests.
+ * its hero level, not to re-tune the opening bronze play). Three bronze Packs +
+ * one silver soft-unlocks the silver cap (lv3). The full derived table —
+ * including the bronze caps — is still pinned in the tests.
+ *
+ * Premium economy uses `armyCoversPremiumEconomyGuard` instead (difficulty-
+ * aware Pack-core rush).
  */
 export function armyTierCoversGuardField(
   state: GameState,

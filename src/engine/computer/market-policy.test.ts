@@ -77,8 +77,8 @@ describe("resource deficits and trade utility", () => {
     const state = stateWithResources(2, 5, 1);
     const deficit = resourceDeficits(state, "p2");
     expect(deficit.gold).toBeGreaterThan(0);
-    // Materials may fund gold, but valuables are protected until the Gold
-    // dwelling has actually been established.
+    // Materials may fund gold; the last dwelling-needed valuable stays protected
+    // until Gold is built (or a true surplus arrives from mines).
     expect(hasUsefulMarketTrade(state, "p2")).toBe(true);
     // rateIndex 4 = 1 materials → 1 gold; rateIndex 2 = 1 valuables → 3 gold.
     expect(tradeUtility(state, "p2", 4)).toBeGreaterThan(0);
@@ -92,6 +92,18 @@ describe("resource deficits and trade utility", () => {
       },
     } as GameState["towns"];
     expect(tradeUtility(state, "p2", 2)).toBeGreaterThan(0);
+  });
+
+  it("sells TRUE surplus valuables for gold even before the Gold dwelling", () => {
+    // A valuables mine can stack extras above the dwelling reserve — convert
+    // them into gold instead of sitting on a fat coffer while broke.
+    const state = stateWithResources(2, 2, 4);
+    // rateIndex 2 = 1 valuables → 3 gold. Target usually keeps 1 valuable for
+    // the next dwelling; surplus ≥ 2 may be sold.
+    expect(tradeUtility(state, "p2", 2)).toBeGreaterThan(0);
+    // CONTROL: only one valuable (at/below target) still refuses the sale.
+    const tight = stateWithResources(2, 2, 1);
+    expect(tradeUtility(tight, "p2", 2)).toBeLessThan(0);
   });
 
   it("CONTROL: balanced coffers do not invent useful trades", () => {

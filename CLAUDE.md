@@ -635,6 +635,31 @@ Leading with what does NOT run (deliberate limits):
   0-damage poke that invites a lethal retaliation (real strikes still always
   win; chaff keeps trading — `combat-policy.test.ts`). Every claim above is
   mutation-checked: removing the wiring fails the named test.
+- **Home-tile drain + premium-economy rush** (map heuristics, engine untouched;
+  each claim mutation-checked). Home tile: while the main hero still stands on
+  its OWN tile Ⅰ and any sweepable payoff remains there, `primaryMapObjective`
+  RESTRICTS the pool to those remaining home payoffs, so all three opening items
+  (free symbol + guarded treasure + guarded income mine) are drained EVERY game
+  before conquest / Far / sticky commits can pull the hero off — the old
+  round-3 sweep cap is gone and home difficulty-1/2 guards stay engageable
+  through the drain (`map-navigation.test.ts`). Premium economy — settlement /
+  gold mine / valuables mine — waives the neutral-only opening refusals (it is
+  the Far economy the expansion is FOR): the AI hits difficulty-3 of them ASAP,
+  not afraid of unit losses, calibrated off the real `NEUTRAL_ARMY_TABLE`
+  field-3 parties — three bronze **Packs** alone take lv3 on easy/normal/hard,
+  Impossible (pure 3-silver wall) needs Packs + one silver body
+  (`armyCoversPremiumEconomyGuard` / `premiumEconomyEngageCap`); a coverable
+  premium fight outranks side neutrals and drives a multi-turn march before
+  round 6, with resource need steering gold vs. valuables. A soft engagement
+  unlock lets three bronze Packs + even one silver body reach the silver guard
+  cap (the classic path still needs two silver bodies). Economy: true-surplus
+  valuables (target + 2, e.g. a valuables mine) now sell for gold before the
+  Gold dwelling instead of rotting, the last dwelling-needed valuable still
+  protected (`map-policy.ts` `tradeUtility`, `market-policy.test.ts`). Pinned
+  across `map-navigation.test.ts`, `army-strength.test.ts`,
+  `market-policy.test.ts`, `visit-event-policy.test.ts` (the last also covering
+  the already-shipped Polish sized-bank A/B chooser — the AI takes the best
+  beatable rolled size, else leaves the field blocked).
 - **Guaranteed first-battle wins (smoothing house rule)**: a computer seat's
   first TWO eligible neutral-guard battles are guaranteed flawless one-round
   wins — at the combat-start chokepoint (`finalizeCombatStart` →

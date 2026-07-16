@@ -155,15 +155,19 @@ export function tradeUtility(
 ): number {
   const rate = TRADE_RATES[rateIndex];
   if (!rate) return -99;
-  // Valuables are the Gold-dwelling bottleneck. Never liquidate them into gold
-  // before that dwelling is built, even when the generic deficit model calls
-  // one of them surplus.
+  // Valuables are the Gold-dwelling bottleneck. Keep the dwelling's last needed
+  // valuable until Gold is built — but once the seat holds TRUE surplus
+  // (target + 2 or more, e.g. from a valuables mine), sell extras for gold so
+  // income converts into build/recruit cash instead of rotting in the coffer.
   if (
     (rate.sell.valuables ?? 0) > 0 &&
     (rate.buy.gold ?? 0) > 0 &&
     !armyDevelopmentProfile(state, playerId).goldUnlocked
   ) {
-    return -99;
+    const target = developmentResourceTargets(state, playerId);
+    const vals = state.players[playerId]?.resources.valuables ?? 0;
+    const surplus = vals - (target.valuables ?? 0);
+    if (surplus < 2) return -99;
   }
   const res = playerResources(state, playerId);
   // Must be able to pay (legal-actions already gates, but score still ranks).

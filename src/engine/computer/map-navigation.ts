@@ -26,8 +26,10 @@ import type {
   PlayerId,
 } from "../state";
 import {
+  armyCoversPremiumEconomyGuard,
   armyTierCoversGuardField,
   canBeatCreatureBank,
+  isPremiumEconomyField,
   shouldAssaultEnemyHolding,
   shouldEngageEnemy,
 } from "./army-strength";
@@ -267,6 +269,39 @@ function victoryObjectiveKind(
 }
 
 /**
+ * How much extra a premium mine is worth given the seat's treasury needs.
+ * Lacking valuables (Gold dwelling bottleneck) steers the march to valuables
+ * mines first; surplus valuables deprioritizes more of them so gold mines and
+ * settlements win; gold shortfall without a valuables hole prefers gold mines.
+ * Settlement is always a solid economy prize (flat income + reinforce).
+ */
+export function premiumEconomyResourceBonus(
+  state: GameState,
+  playerId: PlayerId,
+  field: MapFieldState,
+): number {
+  if (field.location === "settlement") return 28;
+  if (field.location !== "mine") return 0;
+  const res = state.players[playerId]?.resources;
+  const target = developmentResourceTargets(state, playerId);
+  const gold = res?.gold ?? 0;
+  const vals = res?.valuables ?? 0;
+  const needVals = (target.valuables ?? 0) - vals;
+  const needGold = Math.max(0, (target.gold ?? 0) - gold);
+  if (field.resource === "valuables") {
+    if (needVals > 0) return 55; // hunt valuables first when the dwelling needs them
+    if (vals >= (target.valuables ?? 0) + 2) return 8; // surplus — still income, low priority
+    return 30;
+  }
+  if (field.resource === "gold") {
+    if (needVals > 0) return 18; // valuables hole outranks more gold income
+    if (needGold > 0) return 48;
+    return 32;
+  }
+  return 0;
+}
+
+/**
  * Whether the computer hero should be willing to walk into this guarded field's
  * fight. Grounded in the engine's own Quick Combat rule (see
  * `startNeutralEncounter`): a hero whose neutral-battle level is STRICTLY above
@@ -281,9 +316,11 @@ function victoryObjectiveKind(
  * army-COMPOSITION reference (`armyTierCoversGuardField`) — a silver-bearing army
  * takes difficulty-3 guards, a gold-bearing one difficulty-5, at Impossible (and
  * proportionally more at easier scenario difficulties, where the same field draws
- * a weaker party). Developed armies still receive that additive allowance. The
- * opening safety gates below may deliberately defer an equal-risk neutral while
- * the core is rebuilding or being preserved for the conquest timing window.
+ * a weaker party). Premium economy uses a difficulty-aware Pack-core rush
+ * (`armyCoversPremiumEconomyGuard`) so hard/normal/easy lv3 settlements and
+ * gold/valuables mines are hit with three bronze Packs alone. The opening safety
+ * gates below may deliberately defer an equal-risk neutral while the core is
+ * rebuilding or being preserved for the conquest timing window.
  */
 export function canBeatGuardedField(
   state: GameState,
@@ -292,10 +329,27 @@ export function canBeatGuardedField(
 ): boolean {
   // Once the three-Pack conquest fallback is live, the main army must convert
   // that timing window into pressure on the opponent, not bleed units into a
-  // side neutral on the way. Enemy-held/victory fields are deliberately not
+  // side neutral on the way — EXCEPT premium Far economy (settlement / gold /
+  // valuables mine). Those ARE the economy the rush is for, and with three
+  // bronze Packs + a silver the AI must hit lv3 of them before round 5–6, not
+  // afraid of unit losses. Enemy-held/victory fields are deliberately not
   // covered by this neutral-only gate.
   const rushProfile = armyDevelopmentProfile(state, hero.controllerId);
   const fieldDifficulty = field.difficulty ?? 0;
+  const premiumEconomy = isPremiumEconomyField(field);
+  // Home-tile difficulty-1/2 guards (the income mine + treasure) stay engageable
+  // while the hero is still on tile Ⅰ — drain all three opening items before
+  // any establish-core / bronze-rush refusal can abandon them.
+  const homeTileId = homeTileInstanceId(state, hero.controllerId);
+  const heroOnHome =
+    Boolean(homeTileId) &&
+    hero.spaceId != null &&
+    state.adventure?.fields[hero.spaceId]?.tileInstanceId === homeTileId;
+  const homeOpeningGuard =
+    heroOnHome &&
+    field.tileInstanceId === homeTileId &&
+    fieldDifficulty > 0 &&
+    fieldDifficulty <= HOME_TILE_SWEEP_MAX_DIFFICULTY;
   // A strict level advantage resolves before a battle opens. Secondary heroes
   // should collect these free cleanups even without a Silver unit.
   const guaranteedQuickWin =
@@ -306,10 +360,14 @@ export function canBeatGuardedField(
   const rebuildingCoreCannotRiskNeutral =
     hero.kind === "main" &&
     !field.flagOwnerId &&
+    !premiumEconomy &&
+    !homeOpeningGuard &&
     (state.round ?? 0) >= 2 &&
     rushProfile.phase === "establish-core" &&
     neutralBattleLevel(state, hero) <= fieldDifficulty;
   if (rebuildingCoreCannotRiskNeutral) return false;
+  // Bronze-only Pack core skips non-premium difficulty-2+ neutrals, but
+  // premium economy is difficulty-calibrated (hard: 3 Packs alone take lv3).
   const bronzeCoreCannotMatchGuard =
     hero.kind === "main" &&
     !field.flagOwnerId &&
@@ -317,7 +375,11 @@ export function canBeatGuardedField(
     neutralBattleLevel(state, hero) <= fieldDifficulty &&
     rushProfile.bronzePacks >= 3 &&
     rushProfile.silverUnits === 0 &&
-    rushProfile.goldUnits === 0;
+    rushProfile.goldUnits === 0 &&
+    !(
+      premiumEconomy &&
+      armyCoversPremiumEconomyGuard(state, hero.controllerId, fieldDifficulty)
+    );
   if (bronzeCoreCannotMatchGuard) return false;
   const preservingNextRoundRush =
     (state.round ?? 0) >= 2 &&
@@ -327,6 +389,8 @@ export function canBeatGuardedField(
   if (
     hero.kind === "main" &&
     !field.flagOwnerId &&
+    !premiumEconomy &&
+    !homeOpeningGuard &&
     adventureVictoryMode(state) === "conquest" &&
     (shouldLaunchBronzeRush(state, hero.controllerId) ||
       preservingNextRoundRush)
@@ -360,6 +424,14 @@ export function canBeatGuardedField(
     return false;
   }
   if (neutralBattleLevel(state, hero) >= difficulty) {
+    return true;
+  }
+  // Premium settlement / gold / valuables: scenario-difficulty Pack-core rush
+  // (hard: 3 bronze Packs alone; impossible: Packs + 1 silver). Losses OK.
+  if (
+    premiumEconomy &&
+    armyCoversPremiumEconomyGuard(state, hero.controllerId, difficulty)
+  ) {
     return true;
   }
   return armyTierCoversGuardField(state, hero.controllerId, difficulty);
@@ -662,28 +734,26 @@ const SWEEPABLE_KINDS: ReadonlySet<MapObjectiveKind> = new Set([
 ]);
 
 /**
- * OPENING HOME-TILE SWEEP (a strong human's tempo). While the hero still stands
- * on its OWN starting tile (tile Ⅰ) in the first rounds, every remaining local
- * payoff — the free resource symbol, the guarded (difficulty 1) treasure, and
- * the guarded (difficulty 1) income MINE — should be drained before the hero
- * marches off the tile. Measurement of the stock policy showed the fresh hero
- * grabbing only the unguarded symbol and abandoning the mine + treasure: the
- * army-readiness gate (`armyReadyForContestedFight`) dropped a level-coverable
- * home guard to 410, which any nearby off-tile prize outranked.
+ * HOME-TILE SWEEP (a strong human's tempo). While the hero still stands on its
+ * OWN starting tile (tile Ⅰ), every remaining local payoff — the free resource
+ * symbol, the guarded (difficulty 1) treasure, and the guarded (difficulty 1)
+ * income MINE — MUST be drained before the hero marches off ("get all 3 items
+ * in tile 1 all the time, then move to II–Ⅲ properly"). Measurement of the
+ * stock policy showed the fresh hero grabbing only the unguarded symbol and
+ * abandoning the mine + treasure; conquest bronze-rush victory values also used
+ * to outrank home payoffs and yank the hero away mid-sweep.
  *
- * Two levers fix that, both scoped to the home tile + the opening rounds so the
- * general "collect a safe hex before FAIR fights" discipline is untouched
- * elsewhere:
+ * Levers (scoped to the home tile while the hero is still on it):
  *  1. the not-ready guard penalty is LIFTED for a level-coverable difficulty-1/2
- *     guard on the home tile (a deliberate opening play, not a fair fight to
- *     postpone — the Quick-Combat reference already proved it takeable), and
- *  2. a decisive sweep bonus keeps every home payoff above anything off the tile
- *     until the tile is drained.
- * Both switch off once the hero leaves the tile or the opening window closes.
+ *     guard on the home tile (opening play, not a fair fight to postpone),
+ *  2. a decisive sweep bonus keeps every home payoff above off-tile prizes, and
+ *  3. `primaryMapObjective` RESTRICTS the pool to remaining home payoffs while
+ *     any exist — conquest / Far / sticky commits cannot interrupt the drain.
+ * Both (1) and (2) switch off the moment the hero leaves the tile; (3) ends
+ * once the home tile has nothing left to sweep.
  */
-const HOME_TILE_SWEEP_MAX_ROUND = 3;
 const HOME_TILE_SWEEP_MAX_DIFFICULTY = 2;
-const HOME_TILE_SWEEP_BONUS = 220;
+const HOME_TILE_SWEEP_BONUS = 320;
 
 /** The tile instance carrying this player's own faction town, if any. */
 export function homeTileInstanceId(
@@ -702,18 +772,18 @@ export function homeTileInstanceId(
 }
 
 /**
- * Whether this objective qualifies for the opening home-tile sweep: a sweepable
- * payoff on the hero's OWN starting tile, while the hero still stands on that
- * tile, in the first rounds. Pure public-state reads (town flag, tile ids,
- * round) — never touches the guaranteed-win house rule.
+ * Whether this objective qualifies for the home-tile sweep: a sweepable payoff
+ * on the hero's OWN starting tile, while the hero still stands on that tile.
+ * No round cap — drain all three home items whenever the hero is still there.
+ * Pure public-state reads (town flag, tile ids) — never touches the
+ * guaranteed-win house rule.
  */
-function isHomeTileSweepObjective(
+export function isHomeTileSweepObjective(
   state: GameState,
   hero: HeroState,
   objective: MapObjective,
-  field: MapFieldState | undefined,
+  field: MapFieldState | undefined = state.adventure?.fields[objective.spaceId],
 ): boolean {
-  if ((state.round ?? 0) > HOME_TILE_SWEEP_MAX_ROUND) return false;
   if (!SWEEPABLE_KINDS.has(objective.kind)) return false;
   const homeTile = homeTileInstanceId(state, hero.controllerId);
   if (!homeTile) return false;
@@ -770,6 +840,24 @@ function objectiveStrategicValue(
         difficulty > 0 &&
         difficulty <= HOME_TILE_SWEEP_MAX_DIFFICULTY;
       value = guaranteedQuickWin ? 800 : ready || homeGuardTakeable ? 710 : 410;
+      // Premium Far economy (settlement / gold / valuables): hit ASAP once the
+      // army can cover it for this scenario difficulty. Worth multi-turn
+      // marches and unit losses — before round 6 a 3-turn prep path must
+      // outrank random side neutrals. Resource need steers gold vs valuables.
+      if (field && isPremiumEconomyField(field) && difficulty > 0 && difficulty <= 3) {
+        const canCover =
+          guaranteedQuickWin ||
+          neutralBattleLevel(state, hero) >= difficulty ||
+          armyCoversPremiumEconomyGuard(state, hero.controllerId, difficulty) ||
+          armyTierCoversGuardField(state, hero.controllerId, difficulty);
+        if (canCover) {
+          value = Math.max(value, ready ? 920 : 860);
+          if ((state.round ?? 0) < 6) value += 90;
+          // First premium economy this seat still lacks → extra ASAP push.
+          if (!hasOpenedFarEconomy(state, hero.controllerId)) value += 40;
+          value += premiumEconomyResourceBonus(state, hero.controllerId, field);
+        }
+      }
       // Secondary heroes receive no combat Experience. Keep a useful premium-
       // army cleanup possible, but rank that real fight below a free pickup.
       if (hero.kind === "secondary" && !guaranteedQuickWin) value -= 140;
@@ -783,7 +871,16 @@ function objectiveStrategicValue(
       // reinforce it flags for free) — value it distinctly above a generic
       // flaggable (bare mine / sawmill) so a discovered one becomes the march
       // target over a leftover mine. Stays just under a full town (660).
-      value = field?.location === "settlement" ? 658 : 625;
+      // Gold/valuables mines (already flagged free / unguarded) also beat
+      // generic materials mines once the home tile is drained.
+      if (field?.location === "settlement") value = 658;
+      else if (
+        field?.location === "mine" &&
+        (field.resource === "gold" || field.resource === "valuables")
+      ) {
+        value =
+          640 + premiumEconomyResourceBonus(state, hero.controllerId, field);
+      } else value = 625;
       break;
     case "visitable":
       value = 600 + (VISITABLE_LOCATION_VALUE[field?.location ?? ""] ?? 0);
@@ -799,9 +896,20 @@ function objectiveStrategicValue(
       // all (nothing beatable — e.g. right after a lost battle), opening new
       // land is the productive move: the boost lets a doorway outrank even a
       // moderately-distant leftover so the hero keeps expanding, not parking.
+      // After the home tile is drained and Far economy is still missing, push
+      // II–III discovery harder (the bronze-rush cap used to park the hero).
       value = playerHasPlaceableFarTile(state, hero.controllerId) ? 530 : 500;
       if (!fightAvailable) value += 60;
-      if (bronzeRush) value = Math.min(value, 390);
+      if (
+        bronzeRush ||
+        ((state.round ?? 0) >= 2 &&
+          (state.round ?? 0) < 6 &&
+          !hasOpenedFarEconomy(state, hero.controllerId))
+      ) {
+        // Still expand — just do not outrank a live premium-economy fight.
+        value = Math.max(value, playerHasPlaceableFarTile(state, hero.controllerId) ? 560 : 520);
+      }
+      if (bronzeRush && fightAvailable) value = Math.min(value, 480);
       break;
   }
   if (SWEEPABLE_KINDS.has(objective.kind)) {
@@ -827,29 +935,57 @@ export function primaryMapObjective(
   if (objectives.length === 0) {
     return null;
   }
+  // Home tile first: while ANY sweepable payoff remains on tile Ⅰ and the hero
+  // still stands there, ignore off-tile conquest / Far / sticky commits so all
+  // three home items are collected every game before expanding to II–III.
+  const homeRemaining = objectives.filter((objective) =>
+    isHomeTileSweepObjective(state, hero, objective),
+  );
+  const pool = homeRemaining.length > 0 ? homeRemaining : objectives;
+
   // "Can we fight anything at all?" — when no beatable guard / enemy hero is
   // listed, explore objectives get a boost so the hero opens new land instead
   // of idling (see objectiveStrategicValue).
-  const fightAvailable = objectives.some(
+  const fightAvailable = pool.some(
     (objective) => objective.kind === "guard" || objective.kind === "enemy-hero",
   );
 
-  if (stickySpaceId) {
-    const sticky = objectives.find((objective) => objective.spaceId === stickySpaceId);
+  // Sticky only applies once the home tile is drained — a sticky Far/victory
+  // target must not yank the hero off tile Ⅰ mid-sweep.
+  if (stickySpaceId && homeRemaining.length === 0) {
+    const sticky = pool.find((objective) => objective.spaceId === stickySpaceId);
     if (sticky) {
       // Change plans only for a materially better reachable objective; small
       // value fluctuations keep the existing march stable across turns.
+      // Premium economy fights break sticky early (unit-loss trades are fine;
+      // missing the pre-round-6 window is not).
+      const stickyField = state.adventure?.fields[sticky.spaceId];
       const stickyDistance = distanceFromHeroTo(state, hero, sticky.spaceId);
       const stickyValue = stickyDistance === undefined
         ? Number.NEGATIVE_INFINITY
         : objectiveStrategicValue(state, hero, sticky, stickyDistance, fightAvailable);
-      const higher = objectives.find((objective) => {
+      const higher = pool.find((objective) => {
         const distance = distanceFromHeroTo(state, hero, objective.spaceId);
-        return (
-          distance !== undefined &&
-          objectiveStrategicValue(state, hero, objective, distance, fightAvailable) >
-            stickyValue + 90
+        if (distance === undefined) return false;
+        const value = objectiveStrategicValue(
+          state,
+          hero,
+          objective,
+          distance,
+          fightAvailable,
         );
+        const objectiveField = state.adventure?.fields[objective.spaceId];
+        const premiumBreak =
+          objectiveField &&
+          isPremiumEconomyField(objectiveField) &&
+          objective.kind === "guard" &&
+          (state.round ?? 0) < 6 &&
+          !(
+            stickyField &&
+            isPremiumEconomyField(stickyField) &&
+            sticky.kind === "guard"
+          );
+        return value > stickyValue + (premiumBreak ? 40 : 90);
       });
       // Unreachable sticky (e.g. explore doorway sealed behind a yellow border
       // the hero cannot cross without Pathfinding, or a fight we can no longer
@@ -866,7 +1002,7 @@ export function primaryMapObjective(
   let best: MapObjective | null = null;
   let bestValue = Number.NEGATIVE_INFINITY;
   let bestDistance = Number.POSITIVE_INFINITY;
-  for (const objective of objectives) {
+  for (const objective of pool) {
     const distance = distanceFromHeroTo(state, hero, objective.spaceId);
     if (distance === undefined) {
       continue;

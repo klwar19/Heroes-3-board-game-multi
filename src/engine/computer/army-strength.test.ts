@@ -1,15 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { createAdventureGameState } from "../adventure-setup";
 import type { GameState, MapFieldState } from "../state";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import {
+  armyCoversPremiumEconomyGuard,
+  armyEngagementTier,
+  armyTierCoversGuardField,
   BANK_ENGAGE_RATIO,
   canBeatCreatureBank,
   creatureBankStrength,
   ENEMY_ENGAGE_RATIO,
+  isPremiumEconomyField,
   playerArmyStrength,
+  premiumEconomyEngageCap,
   shouldAssaultEnemyHolding,
   shouldEngageEnemy,
 } from "./army-strength";
+import type { GameDifficulty } from "../state";
 
 /**
  * The army-strength read behind the computer's "should I attack this hero /
@@ -128,5 +135,116 @@ describe("shouldAssaultEnemyHolding", () => {
     // CONTROL: outmatched → refuse.
     state.players.p2.army = state.players.p2.army.slice(0, 1);
     expect(shouldAssaultEnemyHolding(state, "p2", field)).toBe(false);
+  });
+});
+
+describe("premium economy + soft silver unlock", () => {
+  function tierId(tier: "bronze" | "silver"): string {
+    const id = Object.keys(coreUnitDefinitions).find(
+      (key) => coreUnitDefinitions[key]?.tier === tier,
+    );
+    if (!id) throw new Error(`no ${tier} unit`);
+    return id;
+  }
+
+  it("labels settlement / gold / valuables as premium economy", () => {
+    expect(
+      isPremiumEconomyField({ location: "settlement" } as MapFieldState),
+    ).toBe(true);
+    expect(
+      isPremiumEconomyField({
+        location: "mine",
+        resource: "gold",
+      } as MapFieldState),
+    ).toBe(true);
+    expect(
+      isPremiumEconomyField({
+        location: "mine",
+        resource: "valuables",
+      } as MapFieldState),
+    ).toBe(true);
+    // CONTROL: materials mine is not premium.
+    expect(
+      isPremiumEconomyField({
+        location: "mine",
+        resource: "buildingMaterials",
+      } as MapFieldState),
+    ).toBe(false);
+  });
+
+  it("3 bronze Packs + 1 silver unlocks the silver guard cap (lv3)", () => {
+    const state = game();
+    state.adventure!.difficulty = "impossible";
+    state.players.p2.army = [
+      { id: "bp-0", unitDefId: tierId("bronze"), side: "pack" },
+      { id: "bp-1", unitDefId: tierId("bronze"), side: "pack" },
+      { id: "bp-2", unitDefId: tierId("bronze"), side: "pack" },
+      { id: "sv-0", unitDefId: tierId("silver"), side: "few" },
+    ];
+    expect(armyEngagementTier(state, "p2")).toBe("silver");
+    expect(armyTierCoversGuardField(state, "p2", 3)).toBe(true);
+    // CONTROL: lv4 still past the silver Impossible cap.
+    expect(armyTierCoversGuardField(state, "p2", 4)).toBe(false);
+  });
+
+  it("premium economy cap is difficulty-aware: 3 Packs alone on hard, need silver on Impossible", () => {
+    const state = game();
+    state.players.p2.army = [
+      { id: "bp-0", unitDefId: tierId("bronze"), side: "pack" },
+      { id: "bp-1", unitDefId: tierId("bronze"), side: "pack" },
+      { id: "bp-2", unitDefId: tierId("bronze"), side: "pack" },
+    ];
+
+    for (const difficulty of ["easy", "normal", "hard"] as GameDifficulty[]) {
+      state.adventure!.difficulty = difficulty;
+      expect(
+        premiumEconomyEngageCap(state, "p2"),
+        `${difficulty}: 3 Packs → lv3 premium`,
+      ).toBeGreaterThanOrEqual(3);
+      expect(armyCoversPremiumEconomyGuard(state, "p2", 3)).toBe(true);
+      // Strict tier extension still refuses pure-bronze on hard (silver in party).
+      expect(armyTierCoversGuardField(state, "p2", 3)).toBe(false);
+    }
+
+    // Impossible field-3 is 3 silver — Pack core alone is not enough.
+    state.adventure!.difficulty = "impossible";
+    expect(premiumEconomyEngageCap(state, "p2")).toBe(0);
+    expect(armyCoversPremiumEconomyGuard(state, "p2", 3)).toBe(false);
+
+    state.players.p2.army.push({
+      id: "sv-0",
+      unitDefId: tierId("silver"),
+      side: "few",
+    });
+    expect(premiumEconomyEngageCap(state, "p2")).toBeGreaterThanOrEqual(3);
+    expect(armyCoversPremiumEconomyGuard(state, "p2", 3)).toBe(true);
+  });
+
+  it("values a Polish bank size by deterministic layers (larger = stronger)", () => {
+    const size1 = creatureBankStrength("imp_cache", 1);
+    const size3 = creatureBankStrength("imp_cache", 3);
+    const size4 = creatureBankStrength("imp_cache", 4);
+    expect(size3).toBeGreaterThan(size1);
+    expect(size4).toBeGreaterThan(size3);
+    // Scenario-difficulty expected-stacks path still differs from size layers.
+    expect(creatureBankStrength("imp_cache", "normal")).toBeGreaterThan(0);
+  });
+
+  it("engages a sized bank only when the army covers its layer bulk", () => {
+    const state = game();
+    // Size Ⅰ Imp Cache (no extra layers) is in reach of a full starting army;
+    // size Ⅳ's stacked health bars are not — the AI must read bankSize.
+    const sizeI = {
+      spaceId: "bank:1",
+      location: "creature_bank",
+      bankId: "imp_cache",
+      bankSize: 1,
+    } as MapFieldState;
+    const sizeIV = { ...sizeI, bankSize: 4 } as MapFieldState;
+    expect(canBeatCreatureBank(state, "p2", sizeI)).toBe(true);
+    expect(canBeatCreatureBank(state, "p2", sizeIV)).toBe(false);
+    // CONTROL: gut the army below even size Ⅰ.
+    state.players.p2.army = state.players.p2.army.slice(0, 1);
+    expect(canBeatCreatureBank(state, "p2", sizeI)).toBe(false);
   });
 });
