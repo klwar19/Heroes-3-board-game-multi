@@ -1,12 +1,26 @@
 import type * as Party from "partykit/server";
-import { MapRegistry, sanitizeSharedMap, type SharedMapRecord } from "@/server/map-registry";
+import {
+  actorMayModifyMap,
+  MapRegistry,
+  sanitizeSharedMap,
+  stampSavedMapOwnership,
+  type MapActor,
+  type SharedMapRecord
+} from "@/server/map-registry";
 
 /**
  * The shared map-library Durable Object — the edge backend's answer to the
  * built-in `/api/maps` store. It is one fixed singleton object addressed at
  * `/parties/maps/catalog`, holding every designed map so any player on any
- * browser can browse, open, edit, play, or delete them (maps are fully shared —
- * there is no per-map owner gate).
+ * browser can browse, open, and COPY them.
+ *
+ * A map created by a signed-in player is OWNED: only its owner or an admin may
+ * edit (overwrite) or delete it ({@link actorMayModifyMap}). Because this edge is
+ * cross-origin it never receives the session cookie, so the acting user is read
+ * from the request BODY (`actorUserId` / `actorRole`) — a CASUAL gate, matching
+ * the app's existing edge-identity posture (see src/lib/identity.ts "Phase 2"):
+ * it stops the normal UI from editing/deleting someone else's map, but is not
+ * cryptographically enforced here. Unowned/legacy maps stay fully shared.
  *
  * It mirrors `party/lobby.ts`: the pure storage/sanitize/sort rules live in the
  * shared, unit-tested {@link MapRegistry}; this class is just its HTTP + storage
@@ -14,6 +28,15 @@ import { MapRegistry, sanitizeSharedMap, type SharedMapRecord } from "@/server/m
  */
 
 const STORAGE_KEY = "maps";
+
+/** The acting user for a mutation, read from the request body (edge casual gate). */
+function actorFromBody(body: unknown): MapActor {
+  const raw = (body && typeof body === "object" ? body : {}) as { actorUserId?: unknown; actorRole?: unknown };
+  return {
+    userId: typeof raw.actorUserId === "string" ? raw.actorUserId : null,
+    role: raw.actorRole === "admin" ? "admin" : raw.actorRole === "player" ? "player" : null
+  };
+}
 
 export default class MapsServer implements Party.Server {
   /** The library persists across hibernation; reloaded in onStart. */
@@ -57,11 +80,13 @@ export default class MapsServer implements Party.Server {
       if (!record) {
         return jsonWithCors({ ok: false, error: "A map needs a tiles array." }, 400);
       }
-      // Editing keeps the original creation stamp rather than re-minting it.
       const existing = this.registry.get(record.id);
-      if (existing) {
-        record.createdAt = existing.createdAt;
+      if (!actorMayModifyMap(existing, actorFromBody(body))) {
+        return jsonWithCors({ ok: false, error: "Only the map's owner or an admin can edit this map." }, 403);
       }
+      // Preserve the original owner + creation stamp on an edit; stamp the actor
+      // as owner on a fresh create.
+      stampSavedMapOwnership(record, existing, actorFromBody(body));
       this.registry.upsert(record);
       await this.persist();
       return jsonWithCors({ ok: true, map: record, maps: this.registry.list() });
@@ -70,6 +95,13 @@ export default class MapsServer implements Party.Server {
     if (request.method === "DELETE") {
       const body = (await request.json().catch(() => null)) as { id?: string } | null;
       const id = body?.id ?? new URL(request.url).searchParams.get("id") ?? "";
+      const existing = id ? this.registry.get(id) : undefined;
+      if (existing && !actorMayModifyMap(existing, actorFromBody(body))) {
+        return jsonWithCors(
+          { ok: false, error: "Only the map's owner or an admin can delete this map.", maps: this.registry.list() },
+          403
+        );
+      }
       if (id && this.registry.remove(id)) {
         await this.persist();
       }

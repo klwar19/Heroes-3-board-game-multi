@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { MAX_DESIGNED_GATE_LINKS } from "@/engine";
 import {
+  actorMayModifyMap,
   clampMapPlayers,
   MAX_STORED_MAPS,
   MapRegistry,
   sanitizeSharedMap,
+  stampSavedMapOwnership,
+  type MapActor,
   type SharedMapRecord
 } from "./map-registry";
 
@@ -17,6 +20,7 @@ function makeMap(overrides: Partial<SharedMapRecord> & { id: string }): SharedMa
     tiles: [{ row: 9, col: 4, group: "near", faceDown: true }],
     createdByClientId: null,
     createdByName: null,
+    createdByUserId: null,
     createdAt: 1,
     updatedAt: 1,
     ...overrides
@@ -168,6 +172,39 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[1].viiField, "stripped off a near plan").toBeUndefined();
     expect(record!.tiles[2].viiField, "unknown value dropped").toBeUndefined();
     expect(record!.tiles[3].viiField, "absent when unset").toBeUndefined();
+  });
+
+  it("round-trips a Ⅶ reward + VP on a designated center, clamps amounts, and drops an orphan bonus", () => {
+    // The designer bonus (viiFieldReward / viiFieldVp) is meaningful ONLY with a
+    // Ⅶ designation: it survives WITH one (clamped), and is dropped without one or
+    // on a non-center group — otherwise a saved map would smuggle an orphan reward.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          // Kept + clamped (gold 999 → 50 cap; VP 99 → 10 cap; junk resource dropped).
+          {
+            row: 1,
+            col: 1,
+            group: "center",
+            faceDown: true,
+            viiField: "grail",
+            viiFieldReward: { gold: 999, valuables: 2, unicorns: 5 },
+            viiFieldVp: 99
+          },
+          // A bonus WITHOUT a designation on a center slot → orphan, dropped.
+          { row: 2, col: 2, group: "center", faceDown: true, viiFieldReward: { gold: 5 }, viiFieldVp: 3 },
+          // A bonus on a non-center slot → dropped with the (already-illegal) designation.
+          { row: 3, col: 3, group: "near", faceDown: true, viiField: "grail", viiFieldReward: { gold: 5 } }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0]).toMatchObject({ viiField: "grail", viiFieldReward: { gold: 50, valuables: 2 }, viiFieldVp: 10 });
+    expect(record!.tiles[0].viiFieldReward).not.toHaveProperty("unicorns");
+    expect(record!.tiles[1].viiFieldReward, "orphan reward dropped").toBeUndefined();
+    expect(record!.tiles[1].viiFieldVp, "orphan VP dropped").toBeUndefined();
+    expect(record!.tiles[2].viiFieldReward, "non-center bonus dropped").toBeUndefined();
   });
 
   it("round-trips a preset objectives block through save/load", () => {
@@ -467,5 +504,61 @@ describe("MapRegistry", () => {
     const seed = [makeMap({ id: "a" }), makeMap({ id: "b" })];
     const registry = new MapRegistry(seed);
     expect(registry.list().map((m) => m.id).sort()).toEqual(["a", "b"]);
+  });
+});
+
+describe("map ownership gate", () => {
+  const owner: MapActor = { userId: "u_owner", role: "player" };
+  const stranger: MapActor = { userId: "u_stranger", role: "player" };
+  const admin: MapActor = { userId: "u_admin", role: "admin" };
+  const guest: MapActor = { userId: null, role: null };
+
+  describe("actorMayModifyMap", () => {
+    it("lets anyone modify an UNOWNED map (legacy / guest / accounts-off save)", () => {
+      const unowned = makeMap({ id: "u", createdByUserId: null });
+      expect(actorMayModifyMap(unowned, owner)).toBe(true);
+      expect(actorMayModifyMap(unowned, stranger)).toBe(true);
+      expect(actorMayModifyMap(unowned, guest)).toBe(true);
+    });
+
+    it("lets only the OWNER or an ADMIN modify an owned map, never a stranger or guest", () => {
+      const owned = makeMap({ id: "o", createdByUserId: "u_owner" });
+      expect(actorMayModifyMap(owned, owner)).toBe(true);
+      expect(actorMayModifyMap(owned, admin)).toBe(true);
+      // The control that proves this is a real gate, not a blanket allow:
+      expect(actorMayModifyMap(owned, stranger)).toBe(false);
+      expect(actorMayModifyMap(owned, guest)).toBe(false);
+    });
+
+    it("treats a brand-new id (no existing record) as always allowed", () => {
+      expect(actorMayModifyMap(undefined, guest)).toBe(true);
+    });
+  });
+
+  describe("stampSavedMapOwnership", () => {
+    it("stamps the actor as owner on a fresh CREATE", () => {
+      const record = makeMap({ id: "new", createdByUserId: null });
+      stampSavedMapOwnership(record, undefined, owner);
+      expect(record.createdByUserId).toBe("u_owner");
+    });
+
+    it("PRESERVES the original owner + createdAt on an EDIT (an overwrite never transfers ownership)", () => {
+      const existing = makeMap({ id: "e", createdByUserId: "u_owner", createdAt: 42 });
+      // An admin editing must not steal ownership, and a re-mint must not change createdAt.
+      const incoming = makeMap({ id: "e", createdByUserId: "u_admin", createdAt: 999 });
+      stampSavedMapOwnership(incoming, existing, admin);
+      expect(incoming.createdByUserId).toBe("u_owner");
+      expect(incoming.createdAt).toBe(42);
+    });
+  });
+
+  it("sanitizeSharedMap preserves a createdByUserId through save/load, else null", () => {
+    const owned = sanitizeSharedMap(
+      { id: "m", tiles: [], createdByUserId: "u_owner" },
+      1
+    );
+    expect(owned!.createdByUserId).toBe("u_owner");
+    const legacy = sanitizeSharedMap({ id: "m", tiles: [] }, 1);
+    expect(legacy!.createdByUserId).toBeNull();
   });
 });

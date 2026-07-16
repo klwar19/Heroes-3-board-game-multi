@@ -44,6 +44,8 @@ import {
   unreachableUndergroundCenters,
   validateCustomMapObjects,
   victoryDesignConflicts,
+  MAX_VII_FIELD_REWARD_AMOUNT,
+  MAX_VII_FIELD_VP,
   type CustomMapGateLink,
   type CustomMapObject,
   type CustomMapObjectKind,
@@ -54,6 +56,7 @@ import {
   type TokenPlacementKind,
   type PlannedSubterraneanGate,
   type SecretTileFeature,
+  type ViiFieldReward,
   type VictoryMode
 } from "@/engine";
 import {
@@ -272,6 +275,32 @@ const VII_FIELD_OPTIONS: { id: CustomMapTilePlan["viiField"]; label: string; hin
   { id: "dragon_utopia", label: "Dragon Utopia", hint: "Force the Dragon Utopia on this slot's Ⅶ field." },
   { id: "town", label: "Town", hint: "Force a neutral conquerable Random Town on this slot's Ⅶ field." }
 ];
+
+/** The three adventure resources a Ⅶ-field reward may grant, in picker order. */
+const VII_REWARD_FIELDS: { key: keyof ViiFieldReward; label: string }[] = [
+  { key: "gold", label: "Gold" },
+  { key: "buildingMaterials", label: "Materials" },
+  { key: "valuables", label: "Valuables" }
+];
+
+/**
+ * Fold one resource amount into a Ⅶ-field reward, returning the next reward (or
+ * `undefined` when it empties). Pure so the popover input handlers stay a
+ * one-liner and the "clears when zeroed" rule lives in one place.
+ */
+function nextViiReward(
+  current: ViiFieldReward | undefined,
+  key: keyof ViiFieldReward,
+  amount: number
+): ViiFieldReward | undefined {
+  const next: ViiFieldReward = { ...(current ?? {}) };
+  if (amount > 0) {
+    next[key] = amount;
+  } else {
+    delete next[key];
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
 
 /**
  * Which token kinds a FACE-DOWN plan of this group may carry: sea tiles hide
@@ -1109,6 +1138,12 @@ export function MapDesigner({
           }
           if (changes.viiField === undefined && "viiField" in changes) {
             delete next.viiField;
+          }
+          if (changes.viiFieldReward === undefined && "viiFieldReward" in changes) {
+            delete next.viiFieldReward;
+          }
+          if (changes.viiFieldVp === undefined && "viiFieldVp" in changes) {
+            delete next.viiFieldVp;
           }
           return next;
         })
@@ -3231,6 +3266,7 @@ export function MapDesigner({
           </div>
         ) : null}
         <div className="designerObjectPaletteRow">
+          <span className="designerObjectGroupLabel">Teleporters</span>
           {GATE_PAIRS.map((pair) => {
             const placed = gatePairPlaced[pair] ?? 0;
             const armed = armedObject?.kind === "gate" && armedObject.pair === pair;
@@ -3271,6 +3307,7 @@ export function MapDesigner({
           >
             🌀 Whirlpool
           </button>
+          <span className="designerObjectGroupLabel">Border tool</span>
           <button
             aria-pressed={borderPaint}
             className={`designerObjectButton borderPaint${borderPaint ? " armed" : ""}`}
@@ -3762,7 +3799,7 @@ export function MapDesigner({
                 {/* Center (Ⅵ–Ⅶ) tiles: force this slot's difficulty-7 objective
                     field, whatever tile lands here. */}
                 {selected.group === "center" ? (
-                  <div className="popoverViiField">
+                  <div className="popoverViiField popoverSection">
                     <div className="popoverSectionLabel">Ⅶ objective field</div>
                     <small className="popoverHint">
                       Force this centre slot&apos;s big (difficulty 7) field to a specific objective — whatever tile
@@ -3777,7 +3814,14 @@ export function MapDesigner({
                             className={`popoverFilterChip${active ? " active" : ""}`}
                             key={String(option.id)}
                             onClick={() =>
-                              updateTile(selectedIndex as number, { viiField: option.id })
+                              // Picking "Default" also clears any bonus — a reward/VP
+                              // with no objective is meaningless (and would be stripped).
+                              updateTile(
+                                selectedIndex as number,
+                                option.id === undefined
+                                  ? { viiField: undefined, viiFieldReward: undefined, viiFieldVp: undefined }
+                                  : { viiField: option.id }
+                              )
                             }
                             title={option.hint}
                             type="button"
@@ -3787,6 +3831,58 @@ export function MapDesigner({
                         );
                       })}
                     </div>
+
+                    {/* Designer bonus for THIS objective — only meaningful once a
+                        specific objective is forced (hidden on Default). */}
+                    {selected.viiField ? (
+                      <div className="popoverViiBonus">
+                        <div className="popoverSubLabel">Capture reward &amp; Victory Points (optional)</div>
+                        <small className="popoverHint">
+                          A one-time bonus for the player who first clears this objective, on top of its printed
+                          reward. Victory Points count only when Victory-Points scoring is on for the game.
+                        </small>
+                        <div className="popoverViiRewardRow" role="group" aria-label="Ⅶ capture reward">
+                          {VII_REWARD_FIELDS.map((field) => (
+                            <label className="popoverViiField_num" key={field.key}>
+                              <span>{field.label}</span>
+                              <input
+                                aria-label={`Ⅶ reward ${field.label}`}
+                                max={MAX_VII_FIELD_REWARD_AMOUNT}
+                                min={0}
+                                onChange={(event) => {
+                                  const amount = Math.max(
+                                    0,
+                                    Math.min(MAX_VII_FIELD_REWARD_AMOUNT, Math.floor(Number(event.target.value) || 0))
+                                  );
+                                  updateTile(selectedIndex as number, {
+                                    viiFieldReward: nextViiReward(selected.viiFieldReward, field.key, amount)
+                                  });
+                                }}
+                                type="number"
+                                value={selected.viiFieldReward?.[field.key] ?? ""}
+                              />
+                            </label>
+                          ))}
+                          <label className="popoverViiField_num popoverViiVp">
+                            <span>Victory Pts</span>
+                            <input
+                              aria-label="Ⅶ victory points"
+                              max={MAX_VII_FIELD_VP}
+                              min={0}
+                              onChange={(event) => {
+                                const vp = Math.max(
+                                  0,
+                                  Math.min(MAX_VII_FIELD_VP, Math.floor(Number(event.target.value) || 0))
+                                );
+                                updateTile(selectedIndex as number, { viiFieldVp: vp > 0 ? vp : undefined });
+                              }}
+                              type="number"
+                              value={selected.viiFieldVp ?? ""}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 

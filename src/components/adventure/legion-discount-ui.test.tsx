@@ -116,4 +116,25 @@ describe("PromptTray — the Legion 'pick a unit' window renders the real option
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls[0][0]).toMatchObject({ type: "RESOLVE_VISIT_STEP" });
   });
+
+  it("shows the TARGET UNIT's portrait on each option tile, not the Legion artifact image", () => {
+    const state = playLegsAndGetPromptState();
+    render(<PromptTray legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+
+    // The Marksmen recruit tile shows the Marksmen UNIT art…
+    const marksmen = screen.getByRole("button", { name: /Recruit Marksmen/i });
+    const marksmenImg = marksmen.querySelector("img");
+    expect(marksmenImg).toBeTruthy();
+    expect(marksmenImg?.getAttribute("src")).toMatch(/marksmen/);
+    // …NOT the Head of Legion artifact card. The step's cardId is the ARTIFACT,
+    // so the pre-fix code short-circuited every option to the same Legion image;
+    // "legion" appears only in that buggy artifact path (no unit slug carries it).
+    expect(marksmenImg?.getAttribute("src")).not.toMatch(/legion/);
+
+    // The Champions reinforce tile shows the Champions UNIT art, again not the artifact.
+    const champion = screen.getByRole("button", { name: /Reinforce Champions/i });
+    const championImg = champion.querySelector("img");
+    expect(championImg?.getAttribute("src")).toMatch(/champions/);
+    expect(championImg?.getAttribute("src")).not.toMatch(/legion/);
+  });
 });

@@ -130,6 +130,40 @@ describe("maps Durable Object (party/maps.ts)", () => {
     expect(await listVia(server)).toHaveLength(0);
   });
 
+  it("gates an OWNED map: only its owner or an admin may edit / delete it (edge casual gate)", async () => {
+    const { room } = makeFakeRoom();
+    const server = new MapsServer(room);
+    await server.onStart();
+
+    // The owner creates it — on the edge the actor rides the request body.
+    const create = await server.onRequest(
+      mapsRequest("POST", { body: mapBody({ actorUserId: "u_owner", actorRole: "player" }) })
+    );
+    const created = (await create.json()) as { ok: boolean; map: SharedMapRecord };
+    expect(created.map.createdByUserId).toBe("u_owner");
+
+    // A stranger's overwrite is refused (403); the stored map is untouched.
+    const strangerEdit = await server.onRequest(
+      mapsRequest("POST", { body: mapBody({ name: "Hijacked", actorUserId: "u_stranger", actorRole: "player" }) })
+    );
+    expect(strangerEdit.status).toBe(403);
+    expect((await listVia(server))[0].name).toBe("Frontier");
+
+    // A stranger's delete is refused (403); the map remains.
+    const strangerDelete = await server.onRequest(
+      mapsRequest("DELETE", { body: { id: "m1", actorUserId: "u_stranger", actorRole: "player" } })
+    );
+    expect(strangerDelete.status).toBe(403);
+    expect(await listVia(server)).toHaveLength(1);
+
+    // Control: an admin MAY delete it (proving the gate is ownership, not a block).
+    const adminDelete = await server.onRequest(
+      mapsRequest("DELETE", { body: { id: "m1", actorUserId: "u_admin", actorRole: "admin" } })
+    );
+    expect(adminDelete.status).toBe(200);
+    expect(await listVia(server)).toHaveLength(0);
+  });
+
   it("survives hibernation: a new instance reloads the library from storage", async () => {
     const { room, store } = makeFakeRoom();
     const first = new MapsServer(room);

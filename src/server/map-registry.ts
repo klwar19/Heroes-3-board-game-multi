@@ -5,6 +5,8 @@ import {
   normalizeDesignedBorderEdges,
   parseHexSpaceId,
   sanitizeCustomMapPreset,
+  sanitizeViiFieldReward,
+  sanitizeViiFieldVp,
   scenarioDefinitions,
   MAX_DESIGNED_GATE_LINKS,
   type CustomMapGateLink,
@@ -68,9 +70,73 @@ export type SharedMapRecord = {
   createdByClientId: string | null;
   /** Display name of whoever last saved it (attribution only). */
   createdByName: string | null;
+  /**
+   * Account userId of the map's OWNER — the gate for editing/deleting (see
+   * {@link actorMayModifyMap}). Stamped from the authenticated actor when the map
+   * is first created and preserved untouched across every later edit, so an
+   * overwrite can never transfer ownership. `null` means UNOWNED: a legacy save
+   * (from before ownership existed), a guest save, or any save made with accounts
+   * off — such maps stay fully shared (anyone may edit/delete), exactly as before.
+   */
+  createdByUserId: string | null;
   createdAt: number;
   updatedAt: number;
 };
+
+/**
+ * The actor attempting a map mutation: their account userId + role, or nulls
+ * when signed out / a guest / accounts off. On the built-in `/api/maps` route
+ * this is derived from the authenticated session COOKIE (authoritative); on the
+ * cross-origin PartyKit edge it is read from the request body (a casual gate —
+ * the edge has no access to the account backend, matching the app's existing
+ * "Phase 2" edge-identity posture noted in src/lib/identity.ts).
+ */
+export type MapActor = { userId: string | null; role: "player" | "admin" | null };
+
+/** A signed-out / guest actor — never an owner, never an admin. */
+export const ANONYMOUS_MAP_ACTOR: MapActor = { userId: null, role: null };
+
+/**
+ * Whether `actor` may EDIT (overwrite) or DELETE `existing`. The ownership gate:
+ *  - a brand-new id (no existing record) → always allowed (nothing to protect);
+ *  - an UNOWNED map (`createdByUserId` null — legacy / guest / accounts-off save)
+ *    → stays fully shared, so anyone may modify it (this is what keeps every
+ *    pre-ownership map and every accountless deployment behaving exactly as
+ *    before);
+ *  - an OWNED map → only its owner (matching userId) or an admin.
+ * Copying (save-as-new mints a fresh id) is always allowed — it never touches the
+ * original record, so it is not gated here.
+ */
+export function actorMayModifyMap(existing: SharedMapRecord | undefined, actor: MapActor): boolean {
+  if (!existing || !existing.createdByUserId) {
+    return true;
+  }
+  if (actor.role === "admin") {
+    return true;
+  }
+  return actor.userId !== null && actor.userId === existing.createdByUserId;
+}
+
+/**
+ * Resolve the owner + creation stamp of a map being saved, mutating and
+ * returning `record`. On an EDIT (an existing record with the same id) the
+ * original owner AND createdAt are preserved — an overwrite never transfers
+ * ownership or re-mints the creation time. On a fresh CREATE the acting user
+ * becomes the owner (`null` for a guest / accounts off → an unowned, shared map).
+ */
+export function stampSavedMapOwnership(
+  record: SharedMapRecord,
+  existing: SharedMapRecord | undefined,
+  actor: MapActor
+): SharedMapRecord {
+  if (existing) {
+    record.createdAt = existing.createdAt;
+    record.createdByUserId = existing.createdByUserId;
+  } else {
+    record.createdByUserId = actor.userId;
+  }
+  return record;
+}
 
 /** Every tile role the designer can place — all of these must round-trip. */
 const VALID_TILE_GROUPS = new Set<CustomMapTilePlan["group"]>([
@@ -148,6 +214,15 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   // Designer per-edge yellow borders (any group): canonical edge codes, garbage
   // dropped, deduped, capped at 30 — the per-edge twin of the whole-arc rule.
   const borderEdges = normalizeDesignedBorderEdges(candidate.borderEdges);
+  // A center Ⅶ-field designation, plus its OPTIONAL designer bonus. The reward /
+  // VP are meaningful ONLY alongside a designation (a bonus with no objective is
+  // dropped), and amounts are clamped by the shared sanitisers.
+  const viiField =
+    candidate.group === "center" && isViiFieldDesignation(candidate.viiField)
+      ? candidate.viiField
+      : undefined;
+  const viiFieldReward = viiField ? sanitizeViiFieldReward(candidate.viiFieldReward) : undefined;
+  const viiFieldVp = viiField ? sanitizeViiFieldVp(candidate.viiFieldVp) : undefined;
 
   return {
     row: candidate.row as number,
@@ -163,10 +238,11 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(candidate.group === "starting" && candidate.lockRotation === true ? { lockRotation: true } : {}),
     // `viiField` forces a center slot's Ⅶ objective field (Grail / Dragon Utopia
     // / town). Meaningful only on a center plan — kept there, dropped elsewhere;
-    // only a known designation survives so garbage can't set it.
-    ...(candidate.group === "center" && isViiFieldDesignation(candidate.viiField)
-      ? { viiField: candidate.viiField }
-      : {}),
+    // only a known designation survives so garbage can't set it. Its optional
+    // designer bonus (reward / VP) rides alongside it, dropped without it.
+    ...(viiField ? { viiField } : {}),
+    ...(viiFieldReward ? { viiFieldReward } : {}),
+    ...(viiFieldVp !== undefined ? { viiFieldVp } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
     ...(token ? { token } : {}),
@@ -258,6 +334,8 @@ export function sanitizeSharedMap(input: unknown, now: number = Date.now()): Sha
     createdByClientId:
       typeof candidate.createdByClientId === "string" ? candidate.createdByClientId.slice(0, 64) : null,
     createdByName: typeof candidate.createdByName === "string" ? candidate.createdByName.slice(0, 40) : null,
+    createdByUserId:
+      typeof candidate.createdByUserId === "string" ? candidate.createdByUserId.slice(0, 64) : null,
     createdAt:
       typeof candidate.createdAt === "number" && Number.isFinite(candidate.createdAt) && candidate.createdAt > 0
         ? candidate.createdAt

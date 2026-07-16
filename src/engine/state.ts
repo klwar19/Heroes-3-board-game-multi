@@ -7053,6 +7053,14 @@ export type MapTileState = {
    */
   viiField?: "town" | "dragon_utopia" | "grail";
   /**
+   * Designer bonus for this tile's Ⅶ objective, carried from
+   * {@link CustomMapTilePlan.viiFieldReward} / `viiFieldVp` onto the placed
+   * instance and folded onto the difficulty-7 field when it materializes. SECRET
+   * like `viiField`: player views MASK both while the tile is face-down.
+   */
+  viiFieldReward?: ViiFieldReward;
+  viiFieldVp?: number;
+  /**
    * Polish Bank Sizes: up to two face-up candidates, including their seeded
    * Attack-die size rolls. `reservedBankId` remains option A for compatibility
    * with old rotation-preview readers and pre-feature snapshots.
@@ -7112,6 +7120,17 @@ export type MapFieldState = {
    * waiting to be dug (1 movement point) before it can be carried home.
    */
   grailDiggable?: boolean;
+  /**
+   * Designer Ⅶ-objective bonus resolved onto this field when its center tile
+   * materialized (from {@link MapTileState.viiFieldReward} / `viiFieldVp`). Granted
+   * ONCE, the first time the objective is cleared / captured — `viiBonusClaimed`
+   * latches so a re-capture never re-pays it. Present only on a designer-designated
+   * difficulty-7 objective field; public once the tile is revealed (a visible
+   * objective, like a mine's resource).
+   */
+  viiReward?: ViiFieldReward;
+  viiVp?: number;
+  viiBonusClaimed?: boolean;
   /**
    * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
    * sacrificed hex's `location` becomes "subterranean_gate" and these point at
@@ -9165,6 +9184,13 @@ export type VpLedgerEntry = {
   surrenders?: number;
   /** Whether this player has defeated a Dragon Utopia (the defeat-dragon-utopia objective). */
   utopiaDefeated?: boolean;
+  /**
+   * Total Victory Points this player earned by capturing designer-designated Ⅶ
+   * objective centers (`CustomMapTilePlan.viiFieldVp`). Summed at the capture
+   * seam, so a mid-game VP toggle can't rewrite it; scored by
+   * `computeVictoryPoints`.
+   */
+  viiCenterVp?: number;
 };
 
 /** A designer-placed one-hex map object's kind. Open for future kinds. */
@@ -9390,7 +9416,28 @@ export type CustomMapTilePlan = {
    * player views until reveal (see the {@link MapTileState.viiField} it seeds).
    */
   viiField?: "town" | "dragon_utopia" | "grail";
+  /**
+   * Center (Ⅶ) slots WITH a {@link viiField} designation ONLY: an OPTIONAL bonus
+   * the capturing player gets from THIS Ⅶ objective, ON TOP of the printed clear
+   * reward. Both are stripped whenever `viiField` is absent (a bonus with no
+   * objective is meaningless) at {@link validateCustomMapPlan} and the persistence
+   * sanitiser, and masked with `viiField` while the slot is face-down.
+   *   - `viiFieldReward`: a one-time Resource grant (gold / building materials /
+   *     valuables) applied the first time the objective is cleared / captured.
+   *   - `viiFieldVp`: Victory Points awarded to that capturer (omit / 0 = none).
+   *     Scored only when Victory-Points mode is on, but recorded on capture
+   *     regardless so a mid-game preset toggle can't rewrite the score.
+   */
+  viiFieldReward?: ViiFieldReward;
+  viiFieldVp?: number;
 };
+
+/**
+ * A designer-set one-time Resource reward on a Ⅶ objective field
+ * ({@link CustomMapTilePlan.viiFieldReward}) — the board game's three adventure
+ * resources, each optional. Amounts are clamped by the sanitiser.
+ */
+export type ViiFieldReward = { gold?: number; buildingMaterials?: number; valuables?: number };
 
 /**
  * One designer-committed Subterranean Gate link on a cavern tile: which Surface

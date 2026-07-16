@@ -3311,6 +3311,32 @@ function rewardArtFromVisitSteps(
     if (!step || typeof step !== "object") {
       continue;
     }
+    // Legion recruit-discount: the step carries the ARTIFACT as `cardId`, but the
+    // option is choosing WHICH UNIT the discount applies to — the tile must show
+    // that unit's portrait, not the artifact card. This MUST precede the generic
+    // `step.cardId` branch below, which would otherwise short-circuit to the
+    // artifact image and make every Legion option look identical.
+    if (step.type === "BANK_RECRUIT_DISCOUNT") {
+      const target = step.target as
+        | { kind?: "recruit"; unitDefId?: unknown }
+        | { kind?: "reinforce"; armyUnitId?: unknown }
+        | undefined;
+      if (target?.kind === "recruit" && typeof target.unitDefId === "string" && target.unitDefId) {
+        return rewardArtForId(target.unitDefId);
+      }
+      if (target?.kind === "reinforce" && typeof target.armyUnitId === "string" && target.armyUnitId) {
+        const armyUnit = state.players[playerId]?.army.find((unit) => unit.id === target.armyUnitId);
+        if (armyUnit) {
+          const def = coreUnitDefinitions[armyUnit.unitDefId];
+          const side = def?.[armyUnit.side];
+          return {
+            image: side?.cardImage ?? def?.few?.cardImage ?? def?.pack?.cardImage ?? def?.neutral?.cardImage,
+            name: def?.name ?? armyUnit.unitDefId,
+            caption: def?.name ?? armyUnit.unitDefId
+          };
+        }
+      }
+    }
     if (typeof step.cardId === "string" && step.cardId) {
       return rewardArtForId(step.cardId);
     }
