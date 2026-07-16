@@ -14,6 +14,7 @@ import {
   legalGateHexPairs,
   legalTokenSlotsForTileDef,
   planSubterraneanGates,
+  tileCentersOverlap,
   tileFootprint,
   tileFootprintsTouch,
   tileLatticeNeighbors,
@@ -1294,7 +1295,7 @@ describe("MapDesigner — cross-surface gate drag (pick the connected tile)", ()
     }
   });
 
-  it("with designed links to BOTH surfaces, dragging one offers NO pairs on the other and never collides with its pinned hexes", () => {
+  it("with designed links to BOTH surfaces, dragging one now OFFERS the other surface — minus the pairs that collide with its pinned hexes", () => {
     const restore = installIdentitySvgPolyfills();
     try {
       const pairsA = legalGateHexPairs(surfaceA, cavern);
@@ -1319,8 +1320,7 @@ describe("MapDesigner — cross-surface gate drag (pick the connected tile)", ()
       });
       const { container } = render(<MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />);
 
-      // Grab the surfaceA gate specifically (there are two designed gates now) and
-      // aim at surfaceB's pinned gate — it must NOT re-target onto the claimed tile.
+      // Grab the surfaceA gate specifically (there are two designed gates now).
       const token = gateTokenAt(container, pinnedA.gateHex);
       expect(token, "the surfaceA gate token").toBeTruthy();
       fireEvent.pointerDown(token!, { button: 0, pointerId: 5, clientX: midpointOf(pinnedA).x, clientY: midpointOf(pinnedA).y });
@@ -1328,25 +1328,30 @@ describe("MapDesigner — cross-surface gate drag (pick the connected tile)", ()
 
       const ghosts = [...container.querySelectorAll(".designerGateGhost")];
       const ghostSurfaces = new Set(ghosts.map((ghost) => ghost.getAttribute("data-ghost-surface")));
+      // NEW RULE: the ALREADY-LINKED other surface is offered too (a second gate
+      // there is legal now) — the claimed-surface exclusion is gone.
       expect(ghostSurfaces.has(`${surfaceA.row}:${surfaceA.col}`), "surfaceA is offered").toBe(true);
-      expect(ghostSurfaces.has(`${surfaceB.row}:${surfaceB.col}`), "surfaceB is claimed by the other link — NOT offered").toBe(false);
-      // No offered pair reuses surfaceB's pinned hexes (two gates can't share a hex).
+      expect(ghostSurfaces.has(`${surfaceB.row}:${surfaceB.col}`), "surfaceB is now offered too").toBe(true);
+      // KEPT: no offered pair reuses surfaceB's OWN pinned hexes (two gates can't
+      // share a board hex), so the surfaceA gate can never land on surfaceB's spot.
       expect(new Set(ghosts.map((ghost) => ghost.getAttribute("data-ghost-entrance"))).has(sharedEntrance)).toBe(false);
       expect(new Set(ghosts.map((ghost) => ghost.getAttribute("data-ghost-gate"))).has(hexSpaceId(pinnedB.gateHex))).toBe(false);
 
       fireEvent.pointerUp(window, { pointerId: 5 });
-      // Both links survive; surfaceB's pin is untouched; the two never share a hex.
+      // The pointer sat on surfaceB's excluded pin, so the snap went to some OTHER
+      // offered pair; whatever it is, the surfaceA entry MOVED (index 0 rewritten),
+      // surfaceB's pin is untouched, and the two gates still never share a hex.
       const links = latest[CAVERN_INDEX].gateLinks!;
       expect(links.length).toBe(2);
-      const bLink = links.find((link) => sameCoord(link.surface, surfaceB))!;
-      expect(bLink).toEqual({
+      const bLink = links[1];
+      expect(bLink, "surfaceB's pinned link is untouched").toEqual({
         surface: { row: surfaceB.row, col: surfaceB.col },
         gateHex: hexSpaceId(pinnedB.gateHex),
         entranceHex: hexSpaceId(pinnedB.entranceHex)
       });
-      const aLink = links.find((link) => sameCoord(link.surface, surfaceA))!;
-      expect(aLink.gateHex).not.toBe(bLink.gateHex);
-      expect(aLink.entranceHex).not.toBe(bLink.entranceHex);
+      const movedLink = links[0];
+      expect(movedLink.gateHex).not.toBe(bLink.gateHex);
+      expect(movedLink.entranceHex).not.toBe(bLink.entranceHex);
     } finally {
       restore();
     }
@@ -1414,6 +1419,205 @@ describe("MapDesigner — cross-surface gate drag (pick the connected tile)", ()
     expect(pinned.querySelector(".designerGateToken.designed"), "pinned gate token marked designed").toBeTruthy();
     expect(pinned.querySelector(".designerGateToken.automatic"), "no longer automatic once designed").toBeNull();
     expect(pinned.querySelector(".designerGatePin"), "pin present once designed").toBeTruthy();
+  });
+});
+
+describe("MapDesigner — several gates on ONE Surface tile (+ Gate, per-gate move/unlink)", () => {
+  const HEX = 24;
+  const town = { row: 10, col: 10 };
+  const cavern = tileLatticeNeighbors(town)[0];
+  const CAVERN_INDEX = 1;
+
+  // Two DISJOINT boundary pairs on the shared edge (no shared hex) — so two gates
+  // can bridge the SAME town↔cavern edge at once.
+  const townPairs = legalGateHexPairs(town, cavern);
+  const first = townPairs[0];
+  const second = townPairs.find(
+    (pair) =>
+      new Set([
+        hexSpaceId(first.gateHex),
+        hexSpaceId(first.entranceHex),
+        hexSpaceId(pair.gateHex),
+        hexSpaceId(pair.entranceHex)
+      ]).size === 4
+  )!;
+
+  const midpointOf = (pair: GateHexPair) => {
+    const gate = hexToPixel(pair.gateHex, HEX);
+    const entrance = hexToPixel(pair.entranceHex, HEX);
+    return { x: (gate.x + entrance.x) / 2, y: (gate.y + entrance.y) / 2 };
+  };
+  const gateTokenAt = (container: HTMLElement, hex: HexCoord): Element | undefined => {
+    const px = hexToPixel(hex, HEX);
+    const tokenWidth = Math.sqrt(3) * HEX;
+    return [...container.querySelectorAll(".designerGateToken")].find(
+      (img) =>
+        Math.abs(parseFloat(img.getAttribute("x") ?? "NaN") - (px.x - tokenWidth / 2)) < 0.5 &&
+        Math.abs(parseFloat(img.getAttribute("y") ?? "NaN") - (px.y - HEX)) < 0.5
+    );
+  };
+  const twoGateMap = (): CustomMapTilePlan[] => [
+    { row: town.row, col: town.col, group: "starting", faceDown: false },
+    {
+      row: cavern.row,
+      col: cavern.col,
+      group: "subterranean",
+      faceDown: true,
+      subBand: "iv-v",
+      gateLinks: [
+        { surface: { row: town.row, col: town.col }, gateHex: hexSpaceId(first.gateHex), entranceHex: hexSpaceId(first.entranceHex) },
+        { surface: { row: town.row, col: town.col }, gateHex: hexSpaceId(second.gateHex), entranceHex: hexSpaceId(second.entranceHex) }
+      ]
+    }
+  ];
+  const oneLinkMap = (): CustomMapTilePlan[] => [
+    { row: town.row, col: town.col, group: "starting", faceDown: false },
+    {
+      row: cavern.row,
+      col: cavern.col,
+      group: "subterranean",
+      faceDown: true,
+      subBand: "iv-v",
+      gateLinks: [{ surface: { row: town.row, col: town.col } }]
+    }
+  ];
+
+  it("precondition: the shared edge has two DISJOINT boundary pairs", () => {
+    expect(second, "two disjoint pairs on the town↔cavern edge").toBeTruthy();
+  });
+
+  it("'+ Gate' appends a SECOND pinned gate to an already-linked surface (distinct pair)", () => {
+    const { container, get } = renderStatefulDesigner(oneLinkMap());
+    const popover = openTilePopover(container, CAVERN_INDEX);
+    const add = popover.querySelector(".popoverGateLinkAdd") as HTMLButtonElement | null;
+    expect(add, "'+ Gate' button shown for a linked surface").toBeTruthy();
+    expect(add!.disabled, "enabled while a free pair remains").toBe(false);
+
+    // The first (unpinned) link renders at this auto-nearest pair.
+    const [defaultGate] = planSubterraneanGates(
+      [
+        { row: town.row, col: town.col, group: "starting" },
+        { row: cavern.row, col: cavern.col, group: "subterranean" }
+      ],
+      []
+    );
+    fireEvent.click(add!);
+    const links = get()[CAVERN_INDEX].gateLinks!;
+    expect(links.length, "a second gate appended").toBe(2);
+    expect(links.every((link) => link.surface.row === town.row && link.surface.col === town.col), "both to the town").toBe(true);
+    expect(links[1].gateHex, "the appended gate is PINNED").toBeTruthy();
+    expect(links[1].entranceHex).toBeTruthy();
+    // Distinct pair — the appended pin dodged the first gate's rendered hexes.
+    for (const hex of [hexSpaceId(defaultGate.gateHex), hexSpaceId(defaultGate.entranceHex)]) {
+      expect(links[1].gateHex).not.toBe(hex);
+      expect(links[1].entranceHex).not.toBe(hex);
+    }
+  });
+
+  it("'+ Gate' disables once no free boundary pair remains on the edge", () => {
+    const { container, get } = renderStatefulDesigner(oneLinkMap());
+    openTilePopover(container, CAVERN_INDEX);
+    let add = container.querySelector(".popoverGateLinkAdd") as HTMLButtonElement | null;
+    let guard = 0;
+    while (add && !add.disabled && guard < townPairs.length + 3) {
+      fireEvent.click(add);
+      add = container.querySelector(".popoverGateLinkAdd") as HTMLButtonElement | null;
+      guard += 1;
+    }
+    expect(add, "the + Gate button is still present").toBeTruthy();
+    expect(add!.disabled, "it disables when the edge has no free pair left").toBe(true);
+    expect(get()[CAVERN_INDEX].gateLinks!.length, "never more gates than the edge can host").toBeLessThanOrEqual(townPairs.length);
+  });
+
+  // A SECOND Surface tile the cavern also touches, clear of the town — the tight
+  // interlocking town↔cavern edge has no third free spot once both its disjoint
+  // pairs are taken, so gate #0 is dragged onto this other surface to prove that
+  // ONE entry moves while its sibling stays put.
+  const surfaceB = tileLatticeNeighbors(cavern).find(
+    (neighbor) =>
+      !(neighbor.row === town.row && neighbor.col === town.col) &&
+      !tileCentersOverlap(neighbor, town) &&
+      !tileFootprintsTouch(neighbor, town) &&
+      tileFootprintsTouch(neighbor, cavern)
+  )!;
+  const CAVERN_INDEX_B = 2; // town = 0, surfaceB = 1, cavern = 2
+  const twoGateOnTownPlusB = (): CustomMapTilePlan[] => [
+    { row: town.row, col: town.col, group: "starting", faceDown: false },
+    { row: surfaceB.row, col: surfaceB.col, group: "far", faceDown: true },
+    {
+      row: cavern.row,
+      col: cavern.col,
+      group: "subterranean",
+      faceDown: true,
+      subBand: "iv-v",
+      gateLinks: [
+        { surface: { row: town.row, col: town.col }, gateHex: hexSpaceId(first.gateHex), entranceHex: hexSpaceId(first.entranceHex) },
+        { surface: { row: town.row, col: town.col }, gateHex: hexSpaceId(second.gateHex), entranceHex: hexSpaceId(second.entranceHex) }
+      ]
+    }
+  ];
+
+  it("with two gates on one surface, dragging ONE moves ONLY that entry (the other's pin untouched)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      expect(surfaceB, "a second touching surface clear of the town").toBeTruthy();
+      let latest = twoGateOnTownPlusB();
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(<MapDesigner scenarioId="skirmish" customMap={latest} onChange={onChange} hexSize={HEX} />);
+
+      // The candidate set the component offers when dragging gate #0 (index 0):
+      // EVERY touching surface's pairs, minus gate #1's (second's) hexes.
+      const blocked = new Set([hexSpaceId(second.gateHex), hexSpaceId(second.entranceHex)]);
+      const candidates: GateDragCandidate[] = [
+        ...legalGateHexPairs(town, cavern).map((pair) => ({ ...pair, surfaceCenter: town })),
+        ...legalGateHexPairs(surfaceB, cavern).map((pair) => ({ ...pair, surfaceCenter: surfaceB }))
+      ].filter((candidate) => !blocked.has(hexSpaceId(candidate.gateHex)) && !blocked.has(hexSpaceId(candidate.entranceHex)));
+      // Target: a pair on the OTHER surface, free of gate #1's hexes.
+      const target = candidates.find((candidate) => candidate.surfaceCenter.row === surfaceB.row && candidate.surfaceCenter.col === surfaceB.col)!;
+      expect(target, "a free target pair on the other surface exists").toBeTruthy();
+      const snapped = nearestGateDragCandidate(midpointOf(target), candidates, HEX)!;
+      expect(hexSpaceId(snapped.gateHex), "target midpoint snaps to itself").toBe(hexSpaceId(target.gateHex));
+
+      const token = gateTokenAt(container, first.gateHex);
+      expect(token, "the first gate's token").toBeTruthy();
+      fireEvent.pointerDown(token!, { button: 0, pointerId: 7, clientX: midpointOf(first).x, clientY: midpointOf(first).y });
+      fireEvent.pointerMove(window, { pointerId: 7, clientX: midpointOf(target).x, clientY: midpointOf(target).y });
+      fireEvent.pointerUp(window, { pointerId: 7 });
+
+      const links = latest[CAVERN_INDEX_B].gateLinks!;
+      expect(links.length, "still exactly two gates").toBe(2);
+      // Gate #0 moved to the other surface; gate #1 (second, on the town) is byte-identical.
+      expect(links[0]).toEqual({
+        surface: { row: surfaceB.row, col: surfaceB.col },
+        gateHex: hexSpaceId(target.gateHex),
+        entranceHex: hexSpaceId(target.entranceHex)
+      });
+      expect(links[1]).toEqual({
+        surface: { row: town.row, col: town.col },
+        gateHex: hexSpaceId(second.gateHex),
+        entranceHex: hexSpaceId(second.entranceHex)
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("unlinking ONE per-gate row removes ONLY that entry (the other survives)", () => {
+    const { container, get } = renderStatefulDesigner(twoGateMap());
+    const popover = openTilePopover(container, CAVERN_INDEX);
+    const linkedToggles = popover.querySelectorAll(".popoverGateLinkToggle.linked");
+    expect(linkedToggles.length, "two per-gate rows for the one surface").toBe(2);
+    // Remove the FIRST gate's row.
+    fireEvent.click(linkedToggles[0]);
+    const links = get()[CAVERN_INDEX].gateLinks!;
+    expect(links.length, "one gate removed, one remains").toBe(1);
+    expect(links[0], "the SECOND gate survives untouched").toEqual({
+      surface: { row: town.row, col: town.col },
+      gateHex: hexSpaceId(second.gateHex),
+      entranceHex: hexSpaceId(second.entranceHex)
+    });
   });
 });
 

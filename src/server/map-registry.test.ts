@@ -319,8 +319,26 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[1]).not.toHaveProperty("gateLinks");
   });
 
+  it("round-trips MORE than the old cap of 4 designer gate links (one cavern → many gates)", () => {
+    // Six distinct valid links (over the retired 4-partner cap) must ALL survive:
+    // a cavern may link every touching Surface tile and the same tile repeatedly.
+    const sixLinks = Array.from({ length: 6 }, (_, index) => ({
+      surface: { row: 4, col: index },
+      gateHex: `h:5:${index}`,
+      entranceHex: `h:6:${index}`
+    }));
+    const record = sanitizeSharedMap(
+      { id: "m", tiles: [{ row: 5, col: 5, group: "subterranean", faceDown: true, gateLinks: sixLinks }] },
+      1
+    );
+    expect(record!.tiles[0].gateLinks).toHaveLength(6);
+    expect(MAX_DESIGNED_GATE_LINKS).toBeGreaterThanOrEqual(6);
+  });
+
   it("caps designer gate links so untrusted input can't balloon", () => {
-    const oversized = Array.from({ length: 12 }, (_, index) => ({ surface: { row: index, col: index } }));
+    const oversized = Array.from({ length: MAX_DESIGNED_GATE_LINKS + 16 }, (_, index) => ({
+      surface: { row: index, col: index }
+    }));
     const record = sanitizeSharedMap(
       { id: "m", tiles: [{ row: 5, col: 5, group: "subterranean", faceDown: true, gateLinks: oversized }] },
       1

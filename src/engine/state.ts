@@ -9141,14 +9141,19 @@ export type CustomMapTilePlan = {
    * Each entry connects THIS cavern to one touching SURFACE tile (named by its
    * plan centre row/col) and optionally pins the exact hex each half sacrifices
    * (absolute board {@link MapSpaceId}, "h:row:col"). Unlike the automatic
-   * one-gate-per-tile pairing, a cavern may carry SEVERAL links — it then hosts
-   * one gate half per linked Surface tile. Where no link is designed the engine's
-   * automatic touch pairing applies unchanged (the compatibility default).
+   * one-gate-per-tile pairing, a cavern may carry as MANY links as it likes: one
+   * to every touching Surface tile, AND the SAME Surface tile several times at
+   * distinct boundary pairs (several gates along one shared edge). Where no link
+   * is designed the engine's automatic touch pairing applies unchanged (the
+   * compatibility default).
    *
    * Pinned hexes are PREFERENCES, honoured at carve time only when legal on the
    * actually-drawn tiles (else the nearest hex wins). Non-touching / dangling
-   * links are dropped at {@link validateCustomMapPlan}; sanitisation caps the
-   * count and drops malformed entries.
+   * links are dropped at {@link validateCustomMapPlan}; a PINNED pair that
+   * collides with another accepted link's hex is dropped there too, and an
+   * UNPINNED duplicate to a surface already linked unpinned is merged away.
+   * Sanitisation caps the count ({@link MAX_DESIGNED_GATE_LINKS}) and drops
+   * malformed entries.
    */
   gateLinks?: CustomMapGateLink[];
   /**
