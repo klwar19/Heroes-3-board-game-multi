@@ -164,6 +164,59 @@ describe("Gold Dragon line breath fells the Wall/Gate behind the target", () => 
 });
 
 // ---------------------------------------------------------------------------
+// Phoenix Pack line breath — the same SECOND_ATTACK_BEHIND_TARGET kind
+// ---------------------------------------------------------------------------
+
+describe("Phoenix Pack line breath fells the wall behind (same kind as the Dragon)", () => {
+  /**
+   * The Conflux Phoenix PACK side prints "Attack 2 spaces in a line" as
+   * `dragon-line-attack-2` (units.ts) — the hook is keyed off the ability KIND,
+   * so the Phoenix inherits the wall demolition. Pinned with the Pack's real,
+   * full ability loadout (breath + fire immunity + rebirth) to prove the
+   * siblings don't interfere. Geometry mirrors the Dragon case: attacker at 17,
+   * target at 13, the Wall at 9 directly behind.
+   */
+  function phoenixState(seed: string, siegeOverrides: Partial<SiegeState> = {}): GameState {
+    const state = siegeState(seed, siegeOverrides);
+    const phoenix = state.combat!.units.unit_p1_marksmen;
+    setUnit(phoenix, {
+      name: "Phoenixes",
+      cardName: "Pack of Phoenixes",
+      type: "flying",
+      attack: 7,
+      abilities: ["dragon-line-attack-2", "phoenix-fire-immunity", "phoenix-rebirth"],
+      position: 17
+    });
+    setUnit(state.combat!.units.unit_p2_skeletons, { type: "ground", defense: 1, maxHealth: 9, damage: 0, position: 13 });
+    setUnit(state.combat!.units.unit_p2_vampires, { position: 4 });
+    setActive(state, phoenix.id);
+    return state;
+  }
+
+  it("the Phoenix Pack's second attack destroys the enemy wall behind its target", () => {
+    let state = phoenixState("phx-wall-behind");
+    state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_marksmen", defenderId: "unit_p2_skeletons" });
+    state = settle(state);
+
+    expect(wallStanding(state, 9)).toBe(false);
+    expect(state.combat!.siege!.walls.sort((a, b) => a - b)).toEqual([8, 10]);
+    expect(
+      events(state, "FORTIFICATION_DESTROYED").some(
+        (e) => e.kind === "wall" && e.position === 9 && e.byUnitId === "unit_p1_marksmen"
+      )
+    ).toBe(true);
+  });
+
+  it("CONTROL: a DEFENDER's own Phoenix breath never fells its own wall", () => {
+    let state = phoenixState("phx-own-wall", { townPlayerId: "p1" });
+    state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_marksmen", defenderId: "unit_p2_skeletons" });
+    state = settle(state);
+    expect(wallStanding(state, 9)).toBe(true);
+    expect(events(state, "FORTIFICATION_DESTROYED")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Lich Death Cloud (SECOND_ATTACK_ADJACENT_TO_TARGET) — automatic rider
 // ---------------------------------------------------------------------------
 
