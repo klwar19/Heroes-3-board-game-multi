@@ -119,19 +119,11 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   ) {
     return null;
   }
-  // Monolith/Whirlpool token: keep a well-formed kind; the designed slot (a
-  // face-up tile's fixed field, 0-6) only when it is a plausible slot index.
-  const token =
-    candidate.token && (candidate.token.kind === "monolith" || candidate.token.kind === "whirlpool")
-      ? {
-          kind: candidate.token.kind,
-          ...(Number.isInteger(candidate.token.slot) &&
-          (candidate.token.slot as number) >= 0 &&
-          (candidate.token.slot as number) <= 6
-            ? { slot: candidate.token.slot as number }
-            : {})
-        }
-      : undefined;
+  // Monolith/Whirlpool/colored-Gate tile token: keep a well-formed kind; a Gate
+  // REQUIRES a colored pair 1-4 (dropped without one), and a Monolith/Whirlpool
+  // never carries one (a stray pair is stripped). The designed slot (a face-up
+  // tile's fixed field, 0-6) is kept only when it is a plausible slot index.
+  const token = sanitizeTileToken(candidate.token);
   // Secret landmark filter (face-down only). Exact tileDefId pin still wins
   // at setup if both are present; sanitize keeps both so old maps round-trip.
   // The engine's isSecretTileFeature guard is the single feature-id allow-list.
@@ -181,6 +173,34 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(extraBorders.length > 0 ? { extraBorders } : {}),
     ...(borderEdges.length > 0 ? { borderEdges } : {})
   };
+}
+
+/**
+ * Keeps a well-formed tile token (Monolith / Whirlpool / colored Gate), or
+ * undefined. A Gate REQUIRES a colored pair 1-4 (dropped without one); a
+ * Monolith/Whirlpool never carries one (a stray pair is stripped). A face-up
+ * tile's designed slot (0-6) survives only when it is a plausible slot index.
+ */
+function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { kind?: unknown; pair?: unknown; slot?: unknown };
+  if (raw.kind !== "monolith" && raw.kind !== "whirlpool" && raw.kind !== "gate") {
+    return undefined;
+  }
+  const slot =
+    Number.isInteger(raw.slot) && (raw.slot as number) >= 0 && (raw.slot as number) <= 6
+      ? { slot: raw.slot as number }
+      : {};
+  if (raw.kind === "gate") {
+    if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
+      return undefined;
+    }
+    return { kind: "gate", pair: raw.pair, ...slot };
+  }
+  // Monolith / Whirlpool: never carry a pair.
+  return { kind: raw.kind, ...slot };
 }
 
 /** Keeps a well-formed designer gate link, or null. Pinned hexes must be valid absolute ids. */

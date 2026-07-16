@@ -1409,13 +1409,47 @@ and `creature-bank-combat.test.ts` "Pyramid: a Stacked win …" end-to-end).
 Location Tokens per rulebook p.35/83, placeable ONLY through the map designer
 (`CustomMapTilePlan.token`; no standard scenario ships them). Data in
 `src/data/map/locations.ts` (`monolith`, `whirlpool`, category "revisitable"),
-engine in `src/engine/adventure.ts` (`resolveTokenTeleport` and the map-token
-section) + `adventure-reducer.ts` (`offerPendingTokenPlacement`,
+engine in `src/engine/adventure.ts` (`resolveTokenTeleport`, `resolveGateTeleport`
+and the map-token section) + `adventure-reducer.ts` (`offerPendingTokenPlacement`,
 `place-map-token`), setup in `adventure-setup.ts` (`applyCustomMapTokens`).
-Behaviour pinned in `src/engine/map-tokens.test.ts` (observable outcomes — hero
-position, army size, field state — each mutation-checked with CONTROLs), the
-designer UI in `map-designer.test.tsx`, save round-trip in
+Behaviour pinned in `src/engine/map-tokens.test.ts` + `map-objects.test.ts`
+(observable outcomes — hero position, army size, field state — each
+mutation-checked with CONTROLs), the designer UI in `map-designer.test.tsx`, the
+board art in `gate-object-board.test.tsx`, save round-trip in
 `map-registry.test.ts`.
+
+**CANONICAL forms (one per location — kills the "2 hex 2 effects" class of bug):**
+an ON-tile teleporter is a TILE TOKEN (`CustomMapTilePlan.token`, kind
+`"monolith" | "whirlpool" | "gate"`); an OFF-tile one is a STANDALONE
+`CustomMapObject`. The designer never WRITES a tile-slot object any more — an
+armed/dragged teleporter dropped ON a tile writes/moves a `plan.token`, dropped
+OFF every tile writes/keeps a standalone object, and dragging one from tile↔off-
+tile CONVERTS between the two canonical forms in one batched
+`onChange`+`onObjectsChange` (guard dropped with a hint when object→token; pair
+always preserved). Legacy saved presets carrying a tile-slot object STILL carve
+exactly as before (`applyCustomMapObjects`).
+
+**Colored Gates are Monoliths WITH a color** — one per-color teleport NETWORK
+each (1 red, 2 blue, 3 green, 4 yellow), NEVER connecting across colors or to
+Monoliths (and Monoliths/Obelisks never join a gate pair). A gate TILE TOKEN
+REQUIRES its `pair`; monolith/whirlpool tokens must NOT carry one (sanitisers
+drop/strip violations — `sanitizeTileToken` in `map-registry.ts`). Gate tokens
+use the Monolith LAND legality everywhere (`tokenMayCoverFieldDef` / the
+`faceDownTokenKinds` land groups now include `"gate"`), carve via
+`carveColoredGateField` (its own gate field), and travel like the Monolith
+network partitioned by `gatePair`: `resolveGateTeleport` offers every OTHER
+carved same-color gate minus occupied ones — 1 free → automatic, 2+ free → the
+traveller PICKS via the same CHOOSE_ONE visit-step the Monolith picker uses, 0
+members → inert note, all occupied → fizzle; arrival never re-triggers. A guarded
+gate fights first and only a WIN resolves the network travel. On the board a
+gate FIELD (tile-carved or standalone) and a designer gate TOKEN/palette both
+draw the MONOLITH art tinted by a colored ring + pair badge (`gateHexMark` /
+`designerTokenImage`). LIMIT: a tile hosts at most ONE token (monolith AND gate
+cannot share a tile); a gate TOKEN carries NO guard (only a standalone gate
+OBJECT can); face-down gate tokens are placeable but only become travel
+DESTINATIONS once a discovery carves them; the per-color cap is
+`MAX_GATES_PER_PAIR` (8), counted across BOTH sources (plan gate tokens + gate
+objects) for the lone-gate / over-cap warnings (`validateCustomMapObjects`).
 
 Leading with what does NOT run / deliberate readings:
 - **Only the Two-Way Monolith is modeled.** The printed One-Way
@@ -1458,8 +1492,12 @@ What runs (each with a failing-if-removed test):
   starting seats accept none) lands the pending `{ kind }` (no slot, placed at
   reveal). A cross-tile move is ONE atomic `onChange` and never changes the token
   COUNT, so the whirlpool supply cap is unaffected; a tile already carrying a
-  token stays off-limits. Wired in `commitTokenMove` / `tokenSlotCandidates`,
-  pinned in `map-designer.test.tsx` ("tile-carried token direct manipulation").
+  token stays off-limits. A monolith/gate token dragged OFF every tile CONVERTS
+  to a standalone object; a standalone/legacy object dragged ONTO a tile converts
+  to a `plan.token`. Wired in `commitTokenMove` / `commitTokenDrop` /
+  `commitObjectDrop` / `computeTileTokenTargets` (the shared tile-target
+  computation), pinned in `map-designer.test.tsx` ("tile-carried token direct
+  manipulation" + "canonical teleporter conversions").
 - Discovery: revealing a pending-token tile lets the DISCOVERING player place
   it on "a Field of your choosing" (`place-map-token` choice, glowing
   candidates; single candidate auto-places, zero drops the token). It waits
@@ -1704,11 +1742,19 @@ the map is picked). Preset-editor + tile-popover UI in `map-designer.tsx` /
 glyphs via `REWARD_GLYPH_ICONS` (`homm-assets.ts`) through `assetUrl()`.
 
 Leading with what does NOT run / deliberate limits:
-- **Standalone (off-tile) Whirlpool tokens are REFUSED** — a Whirlpool must sit
-  on a tile slot; only Monoliths and colored Gates may be standalone. A
-  standalone hex touching BOTH layers is also rejected (`map-objects.test.ts`).
-- **Colored Gates carve only on a FACE-UP tile slot OR as a standalone hex** — a
-  face-down / forbidden-slot tile Gate is dropped with a problem (`map-objects.test.ts`).
+- **Standalone (off-tile) Whirlpool teleporters are REFUSED** — a Whirlpool must
+  sit on a tile (its token); only Monoliths and colored Gates may be standalone
+  objects. A standalone hex touching BOTH layers is also rejected
+  (`map-objects.test.ts`).
+- **CANONICAL forms (see the "Monolith & Whirlpool Tokens" section):** an ON-tile
+  teleporter is a `CustomMapTilePlan.token` (kind monolith/whirlpool/gate); an
+  OFF-tile one is a standalone `CustomMapObject`. The designer never writes NEW
+  tile-slot objects — dropping a teleporter on a tile writes/moves a token,
+  dropping it off every tile writes a standalone object, and dragging one across
+  that boundary converts between the two forms. A LEGACY tile-slot object in a
+  saved preset still carves exactly as before (`applyCustomMapObjects`), and a
+  face-down / forbidden-slot tile-slot object is dropped with a problem
+  (`map-objects.test.ts`).
 - **The map AI never routes THROUGH a teleport** (Monolith / Gate / monolith-role
   Obelisk): it treats a teleport/guarded object hex as an ordinary field — it can
   walk onto and fight a guarded Gate, but never plans a path across the link
@@ -1777,12 +1823,16 @@ What runs (each pinned by a test that fails if the wiring is removed):
   the hero, Revisit 1 MP, lone = inert), `bonus` (a fixed reward —
   morale/search/resources/movement/dice, never farmable on re-entry), or
   `victory-only` (no reward, still a dig marker). `obelisk-roles.test.ts`.
-- **5. One-hex objects** (`CustomMapPreset.objects`): tile-slot replacement OR
-  standalone off-tile hexes (layer inferred from the touched tile); 4 colored
-  Gate PAIRS (exact-pair teleport, a separate network from Monoliths), optional
-  guards 1-7 on any object running the real neutral-battle flow (a
+- **5. One-hex objects** (`CustomMapPreset.objects`, the CANONICAL OFF-tile form):
+  standalone off-tile hexes (layer inferred from the touched tile) — Monoliths and
+  4 colored Gate NETWORKS (each color its own teleport network, separate from
+  Monoliths; up to `MAX_GATES_PER_PAIR` = 8 of a color across plan tokens +
+  objects), with optional guards 1-7 running the real neutral-battle flow (a
   level>difficulty Quick-Combat win teleports + clears; a loss/retreat leaves the
-  guard). `map-objects.test.ts`.
+  guard). An ON-tile teleporter is instead a `CustomMapTilePlan.token` (see the
+  "Monolith & Whirlpool Tokens" section) — the designer no longer writes new
+  tile-slot objects, but a LEGACY tile-slot object in a saved preset still carves.
+  `map-objects.test.ts`.
 - **6. Ⅶ-field designation** (a centre plan's `viiField` town/dragon_utopia/grail):
   forces the difficulty-7 objective field whatever tile lands there (face-up at
   setup, face-down on reveal, masked in other views until then); a victory-vs-

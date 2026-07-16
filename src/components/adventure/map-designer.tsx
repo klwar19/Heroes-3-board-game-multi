@@ -8,6 +8,7 @@ import { locationDefinitions } from "@/data/map/locations";
 import {
   DESIGNER_UI_ICONS,
   mapTokenImage,
+  monolithTokenImage,
   REWARD_GLYPH_ICONS,
   TILE_BACK_IMAGES,
   tileBackImage,
@@ -24,6 +25,7 @@ import {
   legalGateHexPairs,
   legalTokenSlotsForTileDef,
   mapTokenLabel,
+  placementTokenLabel,
   normalizeDesignedBorderEdges,
   parseHexSpaceId,
   pixelToHex,
@@ -49,6 +51,7 @@ import {
   type DesignedGateLinkLike,
   type HexCoord,
   type MapTokenKind,
+  type TokenPlacementKind,
   type PlannedSubterraneanGate,
   type SecretTileFeature,
   type VictoryMode
@@ -247,14 +250,106 @@ const VII_FIELD_OPTIONS: { id: CustomMapTilePlan["viiField"]; label: string; hin
  * Which token kinds a FACE-DOWN plan of this group may carry (the discovering
  * player places the token on a field of their choosing when the tile is
  * revealed): sea tiles hide Whirlpools, every other non-starting group hides
- * Monoliths (land). Face-up tiles instead offer whichever kinds have a legal
- * printed field on the chosen tile.
+ * LAND teleporters — Monoliths AND colored Gates (a Gate is a Monolith with a
+ * color, so it joins the Monolith groups). Face-up tiles instead offer whichever
+ * kinds have a legal printed field on the chosen tile.
  */
-function faceDownTokenKinds(group: DesignGroup): MapTokenKind[] {
+function faceDownTokenKinds(group: DesignGroup): TokenPlacementKind[] {
   if (group === "starting") {
     return [];
   }
-  return group === "sea" ? ["whirlpool"] : ["monolith"];
+  return group === "sea" ? ["whirlpool"] : ["monolith", "gate"];
+}
+
+/** A colored Gate reuses the Monolith LAND legality for every slot/candidate check. */
+function tokenLegalityKind(kind: TokenPlacementKind): MapTokenKind {
+  return kind === "gate" ? "monolith" : kind;
+}
+
+/**
+ * Designer token art: a colored Gate renders as the MONOLITH image (tinted by a
+ * color ring at the render site); Monolith/Whirlpool use their own scans.
+ */
+function designerTokenImage(kind: TokenPlacementKind, number?: -1 | 0 | 1): string {
+  return kind === "gate" ? monolithTokenImage() : mapTokenImage(kind, number);
+}
+
+/**
+ * The pending (face-down) shape of a tile token — drops the face-up `slot` but
+ * PRESERVES a colored Gate's `pair`. Used wherever a tile flips face-down and
+ * its token must ride the tile to be placed by the discoverer.
+ */
+function faceDownTokenOf(token: CustomMapTilePlan["token"]): CustomMapTilePlan["token"] {
+  if (!token) {
+    return undefined;
+  }
+  return token.kind === "gate" ? { kind: "gate", pair: token.pair } : { kind: token.kind };
+}
+
+/** Build a `plan.token` for a kind/pair, with an optional face-up slot. */
+function tileTokenValue(
+  kind: TokenPlacementKind,
+  pair: 1 | 2 | 3 | 4 | undefined,
+  slot: number | undefined
+): NonNullable<CustomMapTilePlan["token"]> {
+  const slotPart = slot !== undefined ? { slot } : {};
+  return kind === "gate" ? { kind: "gate", pair, ...slotPart } : { kind, ...slotPart };
+}
+
+/** A resolved drop target for a teleporter placement: an ON-tile token, or an OFF-tile standalone hex. */
+type TokenDropTarget =
+  | { target: "tile"; planIndex: number; slot?: number }
+  | { target: "standalone"; row: number; col: number };
+
+/**
+ * The tiles a token of `kind` may land on — the CANONICAL on-tile targets shared
+ * by armed placement, the placed-object drag (convert → token) and the tile-token
+ * drag (move). One token per tile (a tile already carrying a token is off-limits,
+ * except the drag's own source). Two target shapes:
+ *  - FACE-UP tile with a def → each legal printed slot for the kind (`slot` set);
+ *  - FACE-DOWN tile whose group accepts the kind (`faceDownTokenKinds`) → its
+ *    WHOLE footprint is ONE target (`slot` undefined; the discoverer picks later).
+ * A Gate reuses the Monolith land legality (`tokenLegalityKind`).
+ */
+function computeTileTokenTargets(
+  customMap: CustomMapTilePlan[],
+  kind: TokenPlacementKind,
+  sourceIndex: number | null
+): { planIndex: number; slot?: number; hex: HexCoord; row: number; col: number }[] {
+  const legalityKind = tokenLegalityKind(kind);
+  const out: { planIndex: number; slot?: number; hex: HexCoord; row: number; col: number }[] = [];
+  customMap.forEach((plan, planIndex) => {
+    const isSource = planIndex === sourceIndex;
+    if (plan.token && !isSource) {
+      return; // one token per tile
+    }
+    if (!plan.faceDown) {
+      if (!plan.tileDefId) {
+        return;
+      }
+      const def = allTileDefinitions[plan.tileDefId];
+      if (!def) {
+        return;
+      }
+      for (const slot of legalTokenSlotsForTileDef(def, legalityKind)) {
+        out.push({
+          planIndex,
+          slot,
+          hex: tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)[slot],
+          row: plan.row,
+          col: plan.col
+        });
+      }
+      return;
+    }
+    if (isSource || !faceDownTokenKinds(plan.group).includes(kind)) {
+      return;
+    }
+    for (const hex of tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)) {
+      out.push({ planIndex, slot: undefined, hex, row: plan.row, col: plan.col });
+    }
+  });
+  return out;
 }
 
 /** Ring direction names for slots 1-6, before rotation. */
@@ -389,11 +484,13 @@ function retargetTokenForDef(
   if (!def) {
     return undefined;
   }
-  const legal = legalTokenSlotsForTileDef(def, token.kind);
+  const legal = legalTokenSlotsForTileDef(def, tokenLegalityKind(token.kind));
   if (legal.length === 0) {
     return undefined;
   }
-  return { kind: token.kind, slot: token.slot !== undefined && legal.includes(token.slot) ? token.slot : legal[0] };
+  const slot = token.slot !== undefined && legal.includes(token.slot) ? token.slot : legal[0];
+  // A colored Gate keeps its `pair`; Monolith/Whirlpool carry none.
+  return token.kind === "gate" ? { kind: "gate", pair: token.pair, slot } : { kind: token.kind, slot };
 }
 
 /** Designer hex circumradius — the same pointy-top geometry the map uses. */
@@ -650,7 +747,11 @@ export function MapDesigner({
     startX: number;
     startY: number;
     moved: boolean;
-    hover: CustomMapObject["placement"] | null;
+    // A placed object drops onto an ON-tile token target (converts to a
+    // `plan.token`) OR an OFF-tile standalone hex (stays an object). Object→tile
+    // NEVER writes a tile-slot object any more — the canonical on-tile form is a
+    // token.
+    hover: TokenDropTarget | null;
   } | null>(null);
   // Set when an object drag actually moved, so the trailing click never also
   // opens the object panel.
@@ -667,11 +768,14 @@ export function MapDesigner({
   // shape the add-picker writes). Same lifecycle as the gate/object token drags.
   const [tokenDrag, setTokenDrag] = useState<{
     index: number;
-    kind: MapTokenKind;
+    kind: TokenPlacementKind;
+    pair?: 1 | 2 | 3 | 4;
     startX: number;
     startY: number;
     moved: boolean;
-    hover: { planIndex: number; slot?: number } | null;
+    // A tile-carried token drops onto another tile (move) OR an OFF-tile
+    // standalone hex (converts to a standalone object — monolith/gate only).
+    hover: TokenDropTarget | null;
   } | null>(null);
   const tokenClickSuppressRef = useRef(false);
   // Border paint mode: armed from the Objects palette, it turns every placed
@@ -1082,12 +1186,15 @@ export function MapDesigner({
   // Which kind's candidate cells light up: the armed palette kind, or (while a
   // placed object is being dragged) the dragged object's kind. The two are
   // mutually exclusive — starting a drag disarms the palette — so a plain
-  // precedence is unambiguous.
+  // precedence is unambiguous. `placementKind`/`placementPair` drive the armed +
+  // object-drag candidates; `activeKind` also folds in the tile-token drag so the
+  // shared OFF-tile standalone candidates light up for all three flows.
   const placementKind: CustomMapObjectKind | null = armedObject
     ? armedObject.kind
     : objectDrag
       ? objectDrag.kind
       : null;
+  const activeKind: TokenPlacementKind | null = placementKind ?? (tokenDrag ? tokenDrag.kind : null);
   // While dragging a placed object, its OWN hex must not count as occupied so its
   // current neighbourhood stays a legal drop target.
   const draggedObjectIndex = objectDrag ? objectDrag.index : null;
@@ -1119,6 +1226,8 @@ export function MapDesigner({
     victoryMode === "grail" || victoryMode === "dragon-hunt" || victoryMode === "dragon-conqueror";
   const showVictoryAllClear =
     victoryModeNeedsDesign && victoryConflicts.length === 0 && customMap.length > 0;
+  // Gate members placed per color — counted across BOTH sources (gate objects +
+  // plan gate tokens) so the palette badge matches the in-game per-color network.
   const gatePairPlaced = useMemo(() => {
     const counts: Record<number, number> = {};
     for (const object of objects) {
@@ -1126,8 +1235,13 @@ export function MapDesigner({
         counts[object.pair] = (counts[object.pair] ?? 0) + 1;
       }
     }
+    for (const plan of customMap) {
+      if (plan.token?.kind === "gate" && plan.token.pair !== undefined) {
+        counts[plan.token.pair] = (counts[plan.token.pair] ?? 0) + 1;
+      }
+    }
     return counts;
-  }, [objects]);
+  }, [objects, customMap]);
   /** Every tile footprint hex (rotation-invariant) — for standalone candidates. */
   const occupiedTileHexes = useMemo(() => {
     const set = new Set<string>();
@@ -1138,34 +1252,28 @@ export function MapDesigner({
     }
     return set;
   }, [customMap]);
-  /** Legal FACE-UP tile-slot cells for the active kind (a Gate uses land legality). */
-  const tileSlotCandidates = useMemo(() => {
+  /**
+   * ON-tile token targets for ARMED placement / a placed-OBJECT drag — both write
+   * the canonical `plan.token`. Face-up legal slots + face-down whole footprints
+   * (`computeTileTokenTargets`, source = null since neither is a plan token). A
+   * face-up slot is dropped when another object already sits on that hex.
+   */
+  const tileTokenTargets = useMemo(() => {
     if (!placementKind) {
-      return [] as { hex: HexCoord; row: number; col: number; slot: number }[];
+      return [] as ReturnType<typeof computeTileTokenTargets>;
     }
-    const legalKind: MapTokenKind = placementKind === "gate" ? "monolith" : placementKind;
-    const out: { hex: HexCoord; row: number; col: number; slot: number }[] = [];
-    for (const plan of customMap) {
-      if (plan.faceDown || !plan.tileDefId) {
-        continue;
-      }
-      const def = allTileDefinitions[plan.tileDefId];
-      if (!def) {
-        continue;
-      }
-      for (const slot of legalTokenSlotsForTileDef(def, legalKind)) {
-        const hex = tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)[slot];
-        if (objectHexSet.has(hexSpaceId(hex))) {
-          continue;
-        }
-        out.push({ hex, row: plan.row, col: plan.col, slot });
-      }
-    }
-    return out;
+    return computeTileTokenTargets(customMap, placementKind, null).filter(
+      (candidate) => candidate.slot === undefined || !objectHexSet.has(hexSpaceId(candidate.hex))
+    );
   }, [placementKind, customMap, objectHexSet]);
-  /** Empty OFF-tile hexes adjacent to a tile — standalone candidates (land only). */
+  /**
+   * Empty OFF-tile hexes adjacent to a tile — standalone candidates (land
+   * teleporters only, no standalone Whirlpool). Shared by ARMED placement, the
+   * OBJECT drag (standalone→standalone move) and the TOKEN drag (token→standalone
+   * convert), keyed off `activeKind` so all three flows light the same cells.
+   */
   const standaloneCandidates = useMemo<HexCoord[]>(() => {
-    if (!placementKind || placementKind === "whirlpool") {
+    if (!activeKind || activeKind === "whirlpool") {
       return [];
     }
     const out: HexCoord[] = [];
@@ -1185,93 +1293,73 @@ export function MapDesigner({
       }
     }
     return out;
-  }, [placementKind, occupiedTileHexes, objectHexSet]);
+  }, [activeKind, occupiedTileHexes, objectHexSet]);
+  /** The board hex a resolved drop target sits on (tile-slot honours rotation). */
+  const dropTargetToHex = useCallback(
+    (target: TokenDropTarget): HexCoord => {
+      if (target.target === "standalone") {
+        return { row: target.row, col: target.col };
+      }
+      const plan = customMap[target.planIndex];
+      if (!plan) {
+        return { row: 0, col: 0 };
+      }
+      const footprint = tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0);
+      return target.slot === undefined ? { row: plan.row, col: plan.col } : footprint[target.slot] ?? footprint[0];
+    },
+    [customMap]
+  );
   /**
-   * The placement an object drag would land on if released over `hex`: a legal
-   * face-up tile slot, else a standalone candidate, else null (release = no-op).
-   * Stable so the object-drag lifecycle effect keeps a fixed dependency.
+   * The drop target a placed-OBJECT drag would land on over `hex`: an on-tile
+   * token target (release → convert to a `plan.token`), else an off-tile
+   * standalone candidate (stays an object), else null (release = no-op).
    */
-  const objectPlacementAtHex = useCallback(
-    (hex: HexCoord): CustomMapObject["placement"] | null => {
+  const objectDropTargetAtHex = useCallback(
+    (hex: HexCoord): TokenDropTarget | null => {
       const id = hexSpaceId(hex);
-      const tileSlot = tileSlotCandidates.find((candidate) => hexSpaceId(candidate.hex) === id);
-      if (tileSlot) {
-        return { type: "tile-slot", row: tileSlot.row, col: tileSlot.col, slot: tileSlot.slot };
+      const tile = tileTokenTargets.find((candidate) => hexSpaceId(candidate.hex) === id);
+      if (tile) {
+        return { target: "tile", planIndex: tile.planIndex, slot: tile.slot };
       }
       const standalone = standaloneCandidates.find((candidate) => hexSpaceId(candidate) === id);
       if (standalone) {
-        return { type: "standalone", row: standalone.row, col: standalone.col };
+        return { target: "standalone", row: standalone.row, col: standalone.col };
       }
       return null;
     },
-    [tileSlotCandidates, standaloneCandidates]
+    [tileTokenTargets, standaloneCandidates]
   );
   /**
-   * Legal drop hexes for the tile-token drag, one entry per board hex the drag
-   * may land on. A tile that already carries a token is off-limits (one token
-   * per tile) EXCEPT the dragged token's own FACE-UP tile (repositioning within
-   * its slots). Two target shapes, matching the two ways a token is stored:
-   *  - FACE-UP tile with a def: each legal printed slot for the dragged kind →
-   *    `{ planIndex, slot }` (the token overwrites that exact field).
-   *  - FACE-DOWN tile whose group accepts the kind (the ADD rule,
-   *    `faceDownTokenKinds`): its WHOLE 7-hex footprint is ONE target →
-   *    `{ planIndex, slot: undefined }` (pending; the discoverer picks the field
-   *    at reveal). The dragged token's OWN face-down tile is never a target —
-   *    dropping on itself is a no-op.
-   * A move never changes the token COUNT (one leaves the source, one lands), so
-   * the Whirlpool supply cap is unaffected in every orientation combination.
+   * ON-tile token targets for a TILE-TOKEN drag (move within/between tiles).
+   * Same computation as the armed targets but with the dragged token's own tile
+   * as the source (so it may reposition within its own slots / footprint). One
+   * token per tile otherwise.
    */
-  const tokenSlotCandidates = useMemo(() => {
+  const tokenTileTargets = useMemo(() => {
     if (!tokenDrag) {
-      return [] as { planIndex: number; slot?: number; hex: HexCoord }[];
+      return [] as ReturnType<typeof computeTileTokenTargets>;
     }
-    const { kind, index: sourceIndex } = tokenDrag;
-    const out: { planIndex: number; slot?: number; hex: HexCoord }[] = [];
-    customMap.forEach((plan, planIndex) => {
-      const isSource = planIndex === sourceIndex;
-      // One token per tile: a tile carrying a token is off-limits (both
-      // orientations) except the dragged token's own tile.
-      if (plan.token && !isSource) {
-        return;
-      }
-      if (!plan.faceDown) {
-        // Face-up: needs a concrete tile; each legal slot for the kind is a hex.
-        if (!plan.tileDefId) {
-          return;
-        }
-        const def = allTileDefinitions[plan.tileDefId];
-        if (!def) {
-          return;
-        }
-        for (const slot of legalTokenSlotsForTileDef(def, kind)) {
-          out.push({
-            planIndex,
-            slot,
-            hex: tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)[slot]
-          });
-        }
-        return;
-      }
-      // Face-down: the whole footprint is one pending target, gated on the group
-      // accepting this kind (the ADD rule). The source's own face-down tile is
-      // never a target (dropping on itself is a no-op).
-      if (isSource || !faceDownTokenKinds(plan.group).includes(kind)) {
-        return;
-      }
-      for (const hex of tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)) {
-        out.push({ planIndex, slot: undefined, hex });
-      }
-    });
-    return out;
+    return computeTileTokenTargets(customMap, tokenDrag.kind, tokenDrag.index);
   }, [tokenDrag, customMap]);
-  /** The tile+slot a token drag would land on if released over `hex` (else null). */
-  const tokenSlotAtHex = useCallback(
-    (hex: HexCoord): { planIndex: number; slot?: number } | null => {
+  /**
+   * The drop target a TILE-TOKEN drag would land on over `hex`: another tile
+   * (release → move the token) else an off-tile standalone hex (release →
+   * convert the token to a standalone object; land kinds only), else null.
+   */
+  const tokenDropTargetAtHex = useCallback(
+    (hex: HexCoord): TokenDropTarget | null => {
       const id = hexSpaceId(hex);
-      const match = tokenSlotCandidates.find((candidate) => hexSpaceId(candidate.hex) === id);
-      return match ? { planIndex: match.planIndex, slot: match.slot } : null;
+      const tile = tokenTileTargets.find((candidate) => hexSpaceId(candidate.hex) === id);
+      if (tile) {
+        return { target: "tile", planIndex: tile.planIndex, slot: tile.slot };
+      }
+      const standalone = standaloneCandidates.find((candidate) => hexSpaceId(candidate) === id);
+      if (standalone) {
+        return { target: "standalone", row: standalone.row, col: standalone.col };
+      }
+      return null;
     },
-    [tokenSlotCandidates]
+    [tokenTileTargets, standaloneCandidates]
   );
 
   const armObject = useCallback((kind: CustomMapObjectKind, pair?: 1 | 2 | 3 | 4) => {
@@ -1281,18 +1369,27 @@ export function MapDesigner({
     setBorderPaint(false);
     setArmedObject((current) => (current && current.kind === kind && current.pair === pair ? null : { kind, pair }));
   }, []);
-  const placeArmedObject = useCallback(
-    (placement: CustomMapObject["placement"]) => {
+  // Armed placement writers (canonical forms). A TILE target writes `plan.token`
+  // (on-tile teleporter); a STANDALONE target appends an object (off-tile,
+  // monolith/gate only — Whirlpools never stand alone).
+  const placeArmedTileToken = useCallback(
+    (target: { planIndex: number; slot?: number }) => {
       if (!armedObject) {
         return;
       }
-      if (placement.type === "standalone" && armedObject.kind === "whirlpool") {
-        return; // a standalone Whirlpool is out of scope (sea-slots only)
+      updateTile(target.planIndex, { token: tileTokenValue(armedObject.kind, armedObject.pair, target.slot) });
+    },
+    [armedObject, updateTile]
+  );
+  const placeArmedStandalone = useCallback(
+    (row: number, col: number) => {
+      if (!armedObject || armedObject.kind === "whirlpool") {
+        return;
       }
       const object: CustomMapObject = {
         kind: armedObject.kind,
         ...(armedObject.kind === "gate" && armedObject.pair ? { pair: armedObject.pair } : {}),
-        placement
+        placement: { type: "standalone", row, col }
       };
       onObjectsChange?.([...objects, object]);
     },
@@ -1325,7 +1422,7 @@ export function MapDesigner({
     },
     [objects, onObjectsChange]
   );
-  /** Move a placed object to a new placement, preserving kind / pair / guard. */
+  /** Move a placed object to a new standalone placement, preserving kind / pair / guard. */
   const moveObject = useCallback(
     (index: number, placement: CustomMapObject["placement"]) => {
       onObjectsChange?.(objects.map((object, i) => (i === index ? { ...object, placement } : object)));
@@ -1334,12 +1431,13 @@ export function MapDesigner({
   );
   /**
    * Move a tile-carried token to a target tile. A FACE-UP target writes
-   * `{ kind, slot }` (the token overwrites that field); a FACE-DOWN target
-   * (`slot` undefined) writes `{ kind }` with NO slot key — the exact pending
-   * shape the add-picker writes, placed by the discoverer at reveal. A same-tile
-   * move is one `updateTile`; a cross-tile move is ONE atomic array update (clear
-   * the source plan's token, set the target's) — never two `onChange` calls,
-   * whose second would clobber the first since the parent holds the array.
+   * `{ kind, (pair,) slot }` (the token overwrites that field); a FACE-DOWN
+   * target (`slot` undefined) writes `{ kind (, pair) }` with NO slot key — the
+   * exact pending shape the add-picker writes, placed by the discoverer at
+   * reveal. A colored Gate keeps its `pair`. A same-tile move is one
+   * `updateTile`; a cross-tile move is ONE atomic array update (clear the source
+   * plan's token, set the target's) — never two `onChange` calls, whose second
+   * would clobber the first since the parent holds the array.
    */
   const commitTokenMove = useCallback(
     (sourceIndex: number, target: { planIndex: number; slot?: number }) => {
@@ -1347,9 +1445,7 @@ export function MapDesigner({
       if (!source?.token) {
         return;
       }
-      const kind = source.token.kind;
-      const nextToken: CustomMapTilePlan["token"] =
-        target.slot === undefined ? { kind } : { kind, slot: target.slot };
+      const nextToken = tileTokenValue(source.token.kind, source.token.pair, target.slot);
       if (target.planIndex === sourceIndex) {
         updateTile(sourceIndex, { token: nextToken });
         return;
@@ -1369,6 +1465,77 @@ export function MapDesigner({
       );
     },
     [customMap, onChange, updateTile]
+  );
+  /**
+   * Convert a placed OBJECT → a tile TOKEN (an object→tile drop). Removes the
+   * object AND writes the canonical `plan.token`. The two callbacks target
+   * DIFFERENT arrays (objects vs tiles), so the parent's batched setState applies
+   * both without clobbering. The object's GUARD is DROPPED — a token carries no
+   * guard (a visible hint accompanies the drop); the `pair` is preserved.
+   */
+  const convertObjectToTileToken = useCallback(
+    (objectIndex: number, target: { planIndex: number; slot?: number }) => {
+      const object = objects[objectIndex];
+      if (!object) {
+        return;
+      }
+      onObjectsChange?.(objects.filter((_, i) => i !== objectIndex));
+      updateTile(target.planIndex, { token: tileTokenValue(object.kind, object.pair, target.slot) });
+    },
+    [objects, onObjectsChange, updateTile]
+  );
+  /** Dispatch a placed-object drop: convert onto a tile, or move to a standalone hex. */
+  const commitObjectDrop = useCallback(
+    (index: number, target: TokenDropTarget) => {
+      if (target.target === "tile") {
+        convertObjectToTileToken(index, { planIndex: target.planIndex, slot: target.slot });
+      } else {
+        moveObject(index, { type: "standalone", row: target.row, col: target.col });
+      }
+    },
+    [convertObjectToTileToken, moveObject]
+  );
+  /**
+   * Convert a tile TOKEN → a standalone OBJECT (a token→standalone drop). Deletes
+   * the `plan.token` AND appends a standalone object — batched like the reverse.
+   * Monolith/Gate only (a Whirlpool never stands alone). The `pair` is preserved.
+   */
+  const convertTokenToStandalone = useCallback(
+    (sourceIndex: number, row: number, col: number) => {
+      const source = customMap[sourceIndex];
+      if (!source?.token || source.token.kind === "whirlpool") {
+        return;
+      }
+      const { kind, pair } = source.token;
+      onChange(
+        customMap.map((plan, planIndex) => {
+          if (planIndex !== sourceIndex) {
+            return plan;
+          }
+          const next = { ...plan };
+          delete next.token;
+          return next;
+        })
+      );
+      const object: CustomMapObject = {
+        kind,
+        ...(kind === "gate" && pair ? { pair } : {}),
+        placement: { type: "standalone", row, col }
+      };
+      onObjectsChange?.([...objects, object]);
+    },
+    [customMap, objects, onChange, onObjectsChange]
+  );
+  /** Dispatch a tile-token drop: move onto a tile, or convert to a standalone object. */
+  const commitTokenDrop = useCallback(
+    (sourceIndex: number, target: TokenDropTarget) => {
+      if (target.target === "tile") {
+        commitTokenMove(sourceIndex, { planIndex: target.planIndex, slot: target.slot });
+      } else {
+        convertTokenToStandalone(sourceIndex, target.row, target.col);
+      }
+    },
+    [commitTokenMove, convertTokenToStandalone]
   );
 
   /**
@@ -1574,7 +1741,7 @@ export function MapDesigner({
     const onMove = (event: PointerEvent) => {
       const local = clientToLocal(event.clientX, event.clientY);
       const hex = local ? pixelToHex(local.x, local.y, hexSize) : null;
-      const placement = hex ? objectPlacementAtHex(hex) : null;
+      const target = hex ? objectDropTargetAtHex(hex) : null;
       setObjectDrag((current) =>
         current
           ? {
@@ -1582,14 +1749,14 @@ export function MapDesigner({
               moved:
                 current.moved ||
                 Math.abs(event.clientX - current.startX) + Math.abs(event.clientY - current.startY) > 6,
-              hover: placement
+              hover: target
             }
           : current
       );
     };
     const onUp = () => {
       if (objectDrag.moved && objectDrag.hover) {
-        moveObject(objectDrag.index, objectDrag.hover);
+        commitObjectDrop(objectDrag.index, objectDrag.hover);
         objectClickSuppressRef.current = true;
       }
       setObjectDrag(null);
@@ -1610,7 +1777,7 @@ export function MapDesigner({
       window.removeEventListener("pointercancel", onCancel);
       window.removeEventListener("keydown", onKey);
     };
-  }, [objectDrag, clientToLocal, hexSize, objectPlacementAtHex, moveObject]);
+  }, [objectDrag, clientToLocal, hexSize, objectDropTargetAtHex, commitObjectDrop]);
 
   // Tile-token drag lifecycle: same shape as the object drag — preview the
   // target tile+slot under the pointer, promote past 6px, commit on release
@@ -1622,7 +1789,7 @@ export function MapDesigner({
     const onMove = (event: PointerEvent) => {
       const local = clientToLocal(event.clientX, event.clientY);
       const hex = local ? pixelToHex(local.x, local.y, hexSize) : null;
-      const target = hex ? tokenSlotAtHex(hex) : null;
+      const target = hex ? tokenDropTargetAtHex(hex) : null;
       setTokenDrag((current) =>
         current
           ? {
@@ -1637,7 +1804,7 @@ export function MapDesigner({
     };
     const onUp = () => {
       if (tokenDrag.moved && tokenDrag.hover) {
-        commitTokenMove(tokenDrag.index, tokenDrag.hover);
+        commitTokenDrop(tokenDrag.index, tokenDrag.hover);
         tokenClickSuppressRef.current = true;
       }
       setTokenDrag(null);
@@ -1658,7 +1825,7 @@ export function MapDesigner({
       window.removeEventListener("pointercancel", onCancel);
       window.removeEventListener("keydown", onKey);
     };
-  }, [tokenDrag, clientToLocal, hexSize, tokenSlotAtHex, commitTokenMove]);
+  }, [tokenDrag, clientToLocal, hexSize, tokenDropTargetAtHex, commitTokenDrop]);
 
   if (!scenario) {
     return null;
@@ -1759,7 +1926,7 @@ export function MapDesigner({
       pickableTiles[0]?.id;
     const faceDownToken =
       selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
-        ? { kind: selected.token.kind }
+        ? faceDownTokenOf(selected.token)
         : undefined;
 
     if (mode === "random") {
@@ -1812,7 +1979,7 @@ export function MapDesigner({
       secretFeature: feature,
       token:
         selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
-          ? { kind: selected.token.kind }
+          ? faceDownTokenOf(selected.token)
           : undefined
     });
   };
@@ -1835,20 +2002,21 @@ export function MapDesigner({
       secretFeature: undefined,
       token: nextFaceDown
         ? selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
-          ? { kind: selected.token.kind }
+          ? faceDownTokenOf(selected.token)
           : undefined
         : retargetTokenForDef(selected.token, tileDefId)
     });
   };
-  // Token kinds this tile may carry: a face-down tile hides its group's kind
-  // (sea → Whirlpool, land groups → Monolith); a revealed tile offers whichever
-  // kinds still have a legal printed field on it (an island hex on a sea tile
-  // can host a Monolith, the water hexes a Whirlpool).
+  // Token kinds the tile-panel ADD picker offers — Monolith/Whirlpool only
+  // (colored Gates are placed from the Objects palette). A face-down tile hides
+  // its group's kind (sea → Whirlpool, land groups → Monolith); a revealed tile
+  // offers whichever kinds still have a legal printed field on it (an island hex
+  // on a sea tile can host a Monolith, the water hexes a Whirlpool).
   const selectedTokenKinds: MapTokenKind[] =
     !selected || selected.group === "starting"
       ? []
       : selected.faceDown
-        ? faceDownTokenKinds(selected.group)
+        ? faceDownTokenKinds(selected.group).filter((kind): kind is MapTokenKind => kind !== "gate")
         : selectedTileDef
           ? (["monolith", "whirlpool"] as MapTokenKind[]).filter(
               (kind) => legalTokenSlotsForTileDef(selectedTileDef, kind).length > 0
@@ -1996,16 +2164,17 @@ export function MapDesigner({
    * token panel; a face-down token that never moves keeps its "placed at reveal"
    * pending shape untouched.
    */
-  const beginTokenPress = (index: number, kind: MapTokenKind) => (event: React.PointerEvent) => {
-    if (event.button !== 0) {
-      return;
-    }
-    event.stopPropagation();
-    (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
-    setArmedObject(null);
-    setBorderPaint(false);
-    setTokenDrag({ index, kind, startX: event.clientX, startY: event.clientY, moved: false, hover: null });
-  };
+  const beginTokenPress =
+    (index: number, kind: TokenPlacementKind, pair?: 1 | 2 | 3 | 4) => (event: React.PointerEvent) => {
+      if (event.button !== 0) {
+        return;
+      }
+      event.stopPropagation();
+      (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+      setArmedObject(null);
+      setBorderPaint(false);
+      setTokenDrag({ index, kind, pair, startX: event.clientX, startY: event.clientY, moved: false, hover: null });
+    };
 
   /** Open the compact token panel for a tile-carried token (drag suppresses the click). */
   const onMapTokenClick = (index: number) => (event: React.MouseEvent) => {
@@ -2484,10 +2653,11 @@ export function MapDesigner({
     }
   }
 
-  // Monolith/Whirlpool tokens: a face-up tile shows the token on the exact hex
-  // it overwrites; a face-down tile shows it as a centred badge (the discovering
-  // player will pick the hex in play). Whirlpool art carries the plan-order
-  // number (+1/0/-1) the engine will assign at setup.
+  // Monolith/Whirlpool/colored-Gate tile tokens: a face-up tile shows the token
+  // on the exact hex it overwrites; a face-down tile shows it as a centred badge
+  // (the discovering player will pick the hex in play). Whirlpool art carries the
+  // plan-order number (+1/0/-1) the engine will assign at setup; a colored Gate
+  // renders as the MONOLITH art tinted by a color ring + pair badge.
   for (const [index, plan] of customMap.entries()) {
     const token = plan.token;
     if (!token) {
@@ -2496,40 +2666,60 @@ export function MapDesigner({
     const center = { row: plan.row, col: plan.col };
     const fixedSlot = !plan.faceDown && plan.tileDefId && token.slot !== undefined;
     const draggingThis = Boolean(tokenDrag && tokenDrag.index === index && tokenDrag.moved);
-    // While dragging, draw the token following the hovered target: a face-up slot
-    // sits on that slot's hex; a face-down tile (slot undefined) snaps to the
-    // tile centre (the discoverer picks the exact hex later).
-    const hoverPlan = draggingThis && tokenDrag!.hover ? customMap[tokenDrag!.hover.planIndex] : null;
-    const cell = hoverPlan
-      ? tokenDrag!.hover!.slot === undefined
-        ? { row: hoverPlan.row, col: hoverPlan.col }
-        : tileFootprint({ row: hoverPlan.row, col: hoverPlan.col }, hoverPlan.rotation ?? 0)[tokenDrag!.hover!.slot]
-      : fixedSlot
-        ? tileFootprint(center, plan.rotation ?? 0)[token.slot as number]
-        : center;
+    // While dragging, draw the token following the hovered target — a tile slot,
+    // a face-down tile centre, or an off-tile standalone hex (`dropTargetToHex`).
+    const cell =
+      draggingThis && tokenDrag!.hover
+        ? dropTargetToHex(tokenDrag!.hover)
+        : fixedSlot
+          ? tileFootprint(center, plan.rotation ?? 0)[token.slot as number]
+          : center;
     const pixel = hexToPixel(cell ?? center, size);
+    const isGate = token.kind === "gate";
+    const gateColor = isGate ? GATE_PAIR_CSS[token.pair ?? 1] : null;
     const tokenWidth = hexWidth * (fixedSlot ? 1 : 0.9);
     const tokenHeight = 2 * size * (fixedSlot ? 1 : 0.9);
+    const tokenTitle = plan.faceDown
+      ? `${placementTokenLabel(token)} token — placed on a field of the discoverer's choosing when this tile is revealed. Drag to another compatible tile (or an off-tile hex to make it standalone), or click for options.`
+      : `${placementTokenLabel(token)} token — overwrites this field. Drag to another tile or legal slot (or an off-tile hex to make it standalone), or click for options.`;
     gateLayer.push(
-      <image
-        className={`designerMapToken draggable${draggingThis ? " dragging" : ""}`}
-        height={tokenHeight}
-        href={assetUrl(mapTokenImage(token.kind, whirlpoolNumberByIndex.get(index)))}
+      <g
+        className={`designerMapToken draggable${draggingThis ? " dragging" : ""}${isGate ? " gate" : ""}`}
         key={`map-token-${index}`}
         onClick={onMapTokenClick(index)}
-        onPointerDown={beginTokenPress(index, token.kind)}
+        onPointerDown={beginTokenPress(index, token.kind, token.pair)}
         opacity={plan.faceDown ? 0.9 : 1}
-        preserveAspectRatio="xMidYMid meet"
-        width={tokenWidth}
-        x={pixel.x - tokenWidth / 2}
-        y={pixel.y - tokenHeight / 2}
       >
-        <title>
-          {plan.faceDown
-            ? `${mapTokenLabel(token.kind)} token — placed on a field of the discoverer's choosing when this tile is revealed. Drag to another compatible tile, or click for options.`
-            : `${mapTokenLabel(token.kind)} token — overwrites this field. Drag to another tile or legal slot, or click for options.`}
-        </title>
-      </image>
+        {gateColor ? <circle cx={pixel.x} cy={pixel.y} fill={gateColor} opacity={0.32} r={size * 0.5} /> : null}
+        <image
+          className="designerMapTokenArt"
+          height={tokenHeight}
+          href={assetUrl(designerTokenImage(token.kind, whirlpoolNumberByIndex.get(index)))}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ pointerEvents: "none" }}
+          width={tokenWidth}
+          x={pixel.x - tokenWidth / 2}
+          y={pixel.y - tokenHeight / 2}
+        />
+        {gateColor ? (
+          <>
+            <circle cx={pixel.x} cy={pixel.y} fill="none" r={size * 0.5} stroke={gateColor} strokeWidth={2.5} style={{ pointerEvents: "none" }} />
+            <text
+              className="designerMapTokenPair"
+              fill={gateColor}
+              fontSize={size * 0.42}
+              fontWeight={700}
+              style={{ pointerEvents: "none" }}
+              textAnchor="middle"
+              x={pixel.x}
+              y={pixel.y + size * 0.62}
+            >
+              {token.pair}
+            </text>
+          </>
+        ) : null}
+        <title>{tokenTitle}</title>
+      </g>
     );
   }
 
@@ -2611,33 +2801,37 @@ export function MapDesigner({
       : mapTokenLabel(draggedObject.kind as MapTokenKind)
     : "";
   // Candidate cells glow while an object is armed (click to place) OR while a
-  // placed object is being dragged (release to move — no per-cell click).
+  // placed object is being dragged (release to move / convert — no per-cell
+  // click). A TILE candidate now writes the canonical `plan.token` (on-tile
+  // teleporter); a STANDALONE candidate writes/keeps an off-tile object.
   const showObjectCandidates = Boolean(armedObject) || Boolean(objectDrag?.moved);
-  const objectHoverId = objectDrag?.hover ? hexSpaceId(placementToHex(objectDrag.hover)) : null;
+  const objectHoverId = objectDrag?.hover ? hexSpaceId(dropTargetToHex(objectDrag.hover)) : null;
   if (showObjectCandidates) {
     const candidateLabel = armedObject ? armedLabel : draggedLabel;
-    for (const candidate of tileSlotCandidates) {
+    for (const candidate of tileTokenTargets) {
       const { x, y } = hexToPixel(candidate.hex, size);
       const isHover = hexSpaceId(candidate.hex) === objectHoverId;
+      const isFaceDown = candidate.slot === undefined;
       objectLayer.push(
         <polygon
-          className={`designerObjectSlot tileSlot${isHover ? " hover" : ""}`}
-          key={`obj-slot-${candidate.row}-${candidate.col}-${candidate.slot}`}
+          className={`designerObjectSlot ${isFaceDown ? "faceDownTile" : "tileSlot"}${isHover ? " hover" : ""}`}
+          key={`obj-slot-${hexSpaceId(candidate.hex)}`}
           onClick={
             armedObject
-              ? () =>
-                  placeArmedObject({ type: "tile-slot", row: candidate.row, col: candidate.col, slot: candidate.slot })
+              ? () => placeArmedTileToken({ planIndex: candidate.planIndex, slot: candidate.slot })
               : undefined
           }
           points={hexCorners(x, y, size - 1.6)}
         >
           <title>
-            {armedObject ? `Place the ${candidateLabel} on this tile hex` : `Move the ${candidateLabel} here`}
+            {armedObject
+              ? `Place the ${candidateLabel} token on this tile hex`
+              : `Move the ${candidateLabel} onto this tile (becomes a token)`}
           </title>
         </polygon>
       );
     }
-    if (placementKind !== "whirlpool") {
+    if (activeKind !== "whirlpool") {
       for (const candidate of standaloneCandidates) {
         const { x, y } = hexToPixel(candidate, size);
         const isHover = hexSpaceId(candidate) === objectHoverId;
@@ -2647,7 +2841,7 @@ export function MapDesigner({
             key={`obj-standalone-${candidate.row}-${candidate.col}`}
             onClick={
               armedObject
-                ? () => placeArmedObject({ type: "standalone", row: candidate.row, col: candidate.col })
+                ? () => placeArmedStandalone(candidate.row, candidate.col)
                 : undefined
             }
             points={hexCorners(x, y, size - 1.6)}
@@ -2661,13 +2855,15 @@ export function MapDesigner({
     }
   }
   // Token-drag candidate hexes: a face-up tile glows per legal slot; a face-down
-  // tile glows across its WHOLE footprint (one pending target). One-token cap.
+  // tile glows across its WHOLE footprint (one pending target); an OFF-tile hex
+  // glows as a standalone conversion (land tokens only). One-token cap.
   if (tokenDrag?.moved) {
-    const hoverKey = tokenDrag.hover ? `${tokenDrag.hover.planIndex}:${tokenDrag.hover.slot}` : null;
-    for (const candidate of tokenSlotCandidates) {
+    const tokenHoverId = tokenDrag.hover ? hexSpaceId(dropTargetToHex(tokenDrag.hover)) : null;
+    const tokenDragLabel = placementTokenLabel({ kind: tokenDrag.kind, pair: tokenDrag.pair });
+    for (const candidate of tokenTileTargets) {
       const { x, y } = hexToPixel(candidate.hex, size);
       const isFaceDown = candidate.slot === undefined;
-      const isHover = `${candidate.planIndex}:${candidate.slot}` === hoverKey;
+      const isHover = hexSpaceId(candidate.hex) === tokenHoverId;
       objectLayer.push(
         <polygon
           className={`designerObjectSlot ${isFaceDown ? "faceDownTile" : "tileSlot"}${isHover ? " hover" : ""}`}
@@ -2676,18 +2872,33 @@ export function MapDesigner({
         >
           <title>
             {isFaceDown
-              ? `Move the ${mapTokenLabel(tokenDrag.kind)} token to this tile (placed at reveal)`
-              : `Move the ${mapTokenLabel(tokenDrag.kind)} token to this slot`}
+              ? `Move the ${tokenDragLabel} token to this tile (placed at reveal)`
+              : `Move the ${tokenDragLabel} token to this slot`}
           </title>
         </polygon>
       );
     }
+    if (tokenDrag.kind !== "whirlpool") {
+      for (const candidate of standaloneCandidates) {
+        const { x, y } = hexToPixel(candidate, size);
+        const isHover = hexSpaceId(candidate) === tokenHoverId;
+        objectLayer.push(
+          <polygon
+            className={`designerObjectSlot standalone${isHover ? " hover" : ""}`}
+            key={`token-standalone-${candidate.row}-${candidate.col}`}
+            points={hexCorners(x, y, size - 1.6)}
+          >
+            <title>{`Move the ${tokenDragLabel} off every tile — it becomes a standalone object here`}</title>
+          </polygon>
+        );
+      }
+    }
   }
   for (const [index, object] of objects.entries()) {
     const draggingThis = Boolean(objectDrag && objectDrag.index === index && objectDrag.moved);
-    // Follow the hovered candidate while dragging; otherwise sit at the placement.
+    // Follow the hovered drop target while dragging; otherwise sit at the placement.
     const coord =
-      draggingThis && objectDrag!.hover ? placementToHex(objectDrag!.hover) : placementToHex(object.placement);
+      draggingThis && objectDrag!.hover ? dropTargetToHex(objectDrag!.hover) : placementToHex(object.placement);
     if (!coord) {
       continue;
     }
@@ -2717,22 +2928,24 @@ export function MapDesigner({
         }}
         onPointerDown={beginObjectDrag(index, object.kind)}
       >
-        <circle className="designerObjectRing" cx={x} cy={y} r={size * 0.62} stroke={color} />
+        {/* A colored Gate reads as a colored Monolith: colored disc + monolith
+            art + colored ring + pair badge. Monolith/Whirlpool: art + gold ring. */}
+        {isGate ? <circle cx={x} cy={y} fill={color} opacity={0.32} r={size * 0.5} style={{ pointerEvents: "none" }} /> : null}
+        <image
+          height={size}
+          href={assetUrl(designerTokenImage(object.kind, object.kind === "whirlpool" ? 0 : undefined))}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ pointerEvents: "none" }}
+          width={size}
+          x={x - size * 0.5}
+          y={y - size * 0.5}
+        />
+        <circle className="designerObjectRing" cx={x} cy={y} fill="none" r={size * 0.62} stroke={color} />
         {isGate ? (
-          <text className="designerObjectPair" fill={color} textAnchor="middle" x={x} y={y + size * 0.28}>
+          <text className="designerObjectPair" fill={color} textAnchor="middle" x={x} y={y + size * 0.66}>
             {object.pair}
           </text>
-        ) : (
-          <image
-            height={size}
-            href={assetUrl(mapTokenImage(object.kind as MapTokenKind, object.kind === "whirlpool" ? 0 : undefined))}
-            preserveAspectRatio="xMidYMid meet"
-            style={{ pointerEvents: "none" }}
-            width={size}
-            x={x - size * 0.5}
-            y={y - size * 0.5}
-          />
-        )}
+        ) : null}
         {object.guard ? (
           <text className="designerObjectGuard" textAnchor="middle" x={x} y={y - size * 0.6}>
             {ROMAN_NUMERALS[object.guard]}
@@ -2856,13 +3069,13 @@ export function MapDesigner({
                 key={`gate-${pair}`}
                 onClick={() => armObject("gate", pair)}
                 style={{ borderColor: GATE_PAIR_CSS[pair] }}
-                title={`${gatePairColor(pair)} Gate pair — two-way teleport (${placed}/2 placed)`}
+                title={`${gatePairColor(pair)} Gate — per-color teleport network (needs at least 2; ${placed} placed)`}
                 type="button"
               >
                 <span className="designerObjectSwatch" style={{ background: GATE_PAIR_CSS[pair] }}>
                   {pair}
                 </span>
-                <span className="designerObjectCount">{placed}/2</span>
+                <span className="designerObjectCount">{placed} placed</span>
               </button>
             );
           })}
@@ -3403,11 +3616,11 @@ export function MapDesigner({
                   </div>
                 ) : null}
 
-                {/* Monolith/Whirlpool Location Token on this tile. */}
+                {/* Monolith/Whirlpool/colored-Gate Location Token on this tile. */}
                 {selectedToken ? (
                   <>
                     <small className="popoverHint">
-                      {mapTokenLabel(selectedToken.kind)} token on this tile
+                      {placementTokenLabel(selectedToken)} token on this tile
                       {selected.faceDown
                         ? " — whoever discovers the tile places it on a field of their choosing."
                         : " — it overwrites the chosen field."}
@@ -3418,12 +3631,12 @@ export function MapDesigner({
                         className="popoverSelect"
                         onChange={(event) =>
                           updateTile(selectedIndex as number, {
-                            token: { kind: selectedToken.kind, slot: Number(event.target.value) }
+                            token: tileTokenValue(selectedToken.kind, selectedToken.pair, Number(event.target.value))
                           })
                         }
                         value={selectedToken.slot ?? ""}
                       >
-                        {legalTokenSlotsForTileDef(selectedTileDef, selectedToken.kind).map((slot) => (
+                        {legalTokenSlotsForTileDef(selectedTileDef, tokenLegalityKind(selectedToken.kind)).map((slot) => (
                           <option key={slot} value={slot}>
                             {tokenSlotLabel(selected.tileDefId, slot, selected.rotation ?? 0)}
                           </option>
@@ -3436,7 +3649,7 @@ export function MapDesigner({
                         title="Remove the token from this tile"
                         type="button"
                       >
-                        <Trash2 size={13} /> Remove the {mapTokenLabel(selectedToken.kind)} token
+                        <Trash2 size={13} /> Remove the {placementTokenLabel(selectedToken)} token
                       </button>
                     </div>
                   </>
@@ -3616,7 +3829,7 @@ export function MapDesigner({
         {tokenPanelToken && tokenPopoverAt ? (
           <div className="designerPopover designerTokenPopover">
             <header>
-              <strong>{mapTokenLabel(tokenPanelToken.kind)} token</strong>
+              <strong>{placementTokenLabel(tokenPanelToken)} token</strong>
               <button
                 aria-label="Close token options"
                 className="popoverClose"
@@ -3639,12 +3852,12 @@ export function MapDesigner({
                   className="popoverSelect"
                   onChange={(event) =>
                     updateTile(selectedTokenIndex as number, {
-                      token: { kind: tokenPanelToken.kind, slot: Number(event.target.value) }
+                      token: tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, Number(event.target.value))
                     })
                   }
                   value={tokenPanelToken.slot ?? ""}
                 >
-                  {legalTokenSlotsForTileDef(tokenPanelDef, tokenPanelToken.kind).map((slot) => (
+                  {legalTokenSlotsForTileDef(tokenPanelDef, tokenLegalityKind(tokenPanelToken.kind)).map((slot) => (
                     <option key={slot} value={slot}>
                       {tokenSlotLabel(tokenPanelPlan.tileDefId, slot, tokenPanelPlan.rotation ?? 0)}
                     </option>
@@ -3668,7 +3881,7 @@ export function MapDesigner({
               }}
               type="button"
             >
-              <Trash2 size={13} /> Remove the {mapTokenLabel(tokenPanelToken.kind)} token
+              <Trash2 size={13} /> Remove the {placementTokenLabel(tokenPanelToken)} token
             </button>
           </div>
         ) : null}

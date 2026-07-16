@@ -150,8 +150,14 @@ export const MAX_TIMED_EVENTS = 32;
 /** How many designer-placed one-hex objects a map may carry (sanitisation cap). */
 export const MAX_CUSTOM_MAP_OBJECTS = 16;
 
-/** How many gates a single colored pair may carry (a two-way pair — extras dropped). */
-export const MAX_GATES_PER_PAIR = 2;
+/**
+ * How many gates a single colored pair (network) may carry — extras dropped by
+ * the sanitiser. A colored gate is now a per-color teleport NETWORK (like the
+ * Monolith network), not a strict two-gate pair, so up to 8 of one color may sit
+ * on the map. Counted across BOTH sources (plan gate tokens + gate objects) by
+ * {@link validateCustomMapObjects}.
+ */
+export const MAX_GATES_PER_PAIR = 8;
 
 const CUSTOM_MAP_OBJECT_KINDS = new Set<CustomMapObjectKind>(["monolith", "whirlpool", "gate"]);
 
@@ -507,8 +513,10 @@ function sanitizeCustomMapObjects(input: unknown): CustomMapObject[] {
     if (!object) {
       continue;
     }
-    // At most two gates per colored pair (a two-way pair) — the 3rd+ is dropped
-    // deterministically, keeping the first two in list order.
+    // At most MAX_GATES_PER_PAIR gates per colored network — extras are dropped
+    // deterministically, keeping the first ones in list order. (This per-array
+    // cap sees only objects; the cross-source count — objects + plan gate tokens
+    // — lives in validateCustomMapObjects, which WARNS rather than truncates.)
     if (object.kind === "gate" && object.pair !== undefined) {
       const count = gatesPerPair.get(object.pair) ?? 0;
       if (count >= MAX_GATES_PER_PAIR) {

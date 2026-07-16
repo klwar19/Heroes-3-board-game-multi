@@ -100,7 +100,7 @@ import {
   ASTROLOGERS_DECK_ID,
   NEUTRAL_DECK_IDS,
   dropPendingMapToken,
-  mapTokenLabel,
+  placementTokenLabel,
   placeMapToken,
   placeNeutralUnits,
   playerDwellingTiers,
@@ -1948,7 +1948,7 @@ function offerPendingTokenPlacement(state: GameState, tile: MapTileState, player
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `${mapTokenLabel(pendingToken.kind)} token — choose which glowing field of the revealed tile it overwrites.`,
+    prompt: `${placementTokenLabel(pendingToken)} token — choose which glowing field of the revealed tile it overwrites.`,
     options: candidates.map((spaceId) => {
       const field = adventure.fields[spaceId];
       const edge = field ? ringEdgeDirection(tile, spaceId) : "";
@@ -1960,6 +1960,7 @@ function offerPendingTokenPlacement(state: GameState, tile: MapTileState, player
       tileInstanceId: tile.id,
       kind: pendingToken.kind,
       ...(pendingToken.number !== undefined ? { number: pendingToken.number } : {}),
+      ...(pendingToken.pair !== undefined ? { pair: pendingToken.pair } : {}),
       candidates
     },
     returnPhase: state.phase

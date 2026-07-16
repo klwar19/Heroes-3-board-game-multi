@@ -5725,9 +5725,30 @@ function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
 
 export type MapTokenKind = "monolith" | "whirlpool";
 
+/**
+ * A token kind placeable on a tile field: the two teleport-network tokens
+ * (Monolith / Whirlpool) plus a colored Gate. A Gate is a LAND structure, so it
+ * reuses the Monolith legality everywhere a placement is validated; it differs
+ * only in what it carves (a colored `pair` field, its own per-color network).
+ */
+export type TokenPlacementKind = MapTokenKind | "gate";
+
 /** Display name of a token kind for prompts, notes and warnings. */
 export function mapTokenLabel(kind: MapTokenKind): string {
   return kind === "monolith" ? "Monolith" : "Whirlpool";
+}
+
+/**
+ * Display label for a placeable teleport token — "Monolith" / "Whirlpool" or a
+ * colored "<color> Gate" (e.g. "red Gate"). Shared by the pending-token
+ * placement prompt and the carve/drop event notes so a gate token reads
+ * consistently wherever a monolith/whirlpool one would.
+ */
+export function placementTokenLabel(token: { kind: TokenPlacementKind; pair?: 1 | 2 | 3 | 4 }): string {
+  if (token.kind === "gate") {
+    return `${gatePairColor(token.pair ?? 1)} Gate`;
+  }
+  return mapTokenLabel(token.kind);
 }
 
 /** Whether a field's location IS a Monolith/Whirlpool Location Token. */
@@ -5791,11 +5812,13 @@ const TOKEN_FORBIDDEN_LOCATIONS = new Set([
 
 /**
  * Whether a tile-DEFINITION field may host a `kind` token: legal location and
- * matching printed terrain (Monoliths on land, Whirlpools on sea). Pure — used
- * by the map designer to filter slot pickers and by setup to validate a
- * designed face-up placement. Guards (printed difficulty) refuse the token.
+ * matching printed terrain (Monoliths/Gates on land, Whirlpools on sea). Pure —
+ * used by the map designer to filter slot pickers and by setup to validate a
+ * designed face-up placement. Guards (printed difficulty) refuse the token. A
+ * Gate is land, so `(kind === "whirlpool")` is false for it and the check
+ * demands a non-water hex — the Monolith legality, shared verbatim.
  */
-export function tokenMayCoverFieldDef(def: TileDefinition, slot: number, kind: MapTokenKind): boolean {
+export function tokenMayCoverFieldDef(def: TileDefinition, slot: number, kind: TokenPlacementKind): boolean {
   const fieldDef = def.fields[slot];
   if (!fieldDef) {
     return false;
@@ -5812,7 +5835,7 @@ export function tokenMayCoverFieldDef(def: TileDefinition, slot: number, kind: M
 }
 
 /** The tile-definition slots (0-6) that may host a `kind` token (designer picker). */
-export function legalTokenSlotsForTileDef(def: TileDefinition, kind: MapTokenKind): number[] {
+export function legalTokenSlotsForTileDef(def: TileDefinition, kind: TokenPlacementKind): number[] {
   return def.fields.map((_, slot) => slot).filter((slot) => tokenMayCoverFieldDef(def, slot, kind));
 }
 
@@ -5820,9 +5843,10 @@ export function legalTokenSlotsForTileDef(def: TileDefinition, kind: MapTokenKin
  * Whether a MATERIALIZED field may host a `kind` token right now: the same
  * location/terrain rules as {@link tokenMayCoverFieldDef} plus the live map
  * state — no still-guarded field, and no field a hero is standing on (the
- * token overwrites the hex; it cannot be pulled out from under a hero).
+ * token overwrites the hex; it cannot be pulled out from under a hero). A Gate
+ * reuses the Monolith land legality (see {@link tokenMayCoverFieldDef}).
  */
-function tokenMayCoverField(state: GameState, field: MapFieldState | undefined, kind: MapTokenKind): boolean {
+function tokenMayCoverField(state: GameState, field: MapFieldState | undefined, kind: TokenPlacementKind): boolean {
   if (!field) {
     return false;
   }
@@ -5841,7 +5865,7 @@ function tokenMayCoverField(state: GameState, field: MapFieldState | undefined, 
 }
 
 /** The legal hexes of `tile` a just-discovered `kind` token may be placed on. */
-export function tokenPlacementCandidates(state: GameState, tile: MapTileState, kind: MapTokenKind): MapSpaceId[] {
+export function tokenPlacementCandidates(state: GameState, tile: MapTileState, kind: TokenPlacementKind): MapSpaceId[] {
   const adventure = state.adventure;
   if (!adventure) {
     return [];
@@ -6042,15 +6066,20 @@ function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTo
 
 /**
  * Colored Gate travel (map-designer objects, rulebook p.83). Entering (or
- * Revisiting) a gate moves the hero to THE OTHER gate of the SAME colored pair —
- * always that exact partner, never a choice and never the Monolith network:
- * - the pair has only this gate on the map → nothing (noted, needs both);
- * - the partner is occupied by a hero → fizzles (noted, mirroring the Monolith
+ * Revisiting) a gate moves the hero to another gate of the SAME colored pair —
+ * its OWN per-color network, never the Monolith network (and Monoliths/Obelisks
+ * never join a gate pair). It mirrors the Monolith network semantics in
+ * {@link resolveTokenTeleport}, partitioned by `gatePair`:
+ * - fewer than 2 same-color gates on the map → nothing (noted, needs ≥2);
+ * - all other same-color gates occupied by a hero → fizzles (noted, the p.83
  *   "skip the movement" reading);
- * - otherwise → straight to the partner. Arrival does NOT re-trigger (a bare
- *   TELEPORT_HERO step), so there is no ping-pong; the hero may Revisit (1 MP) to
- *   travel back. Gates are placed only on face-up tile slots or standalone hexes,
- *   so a partner is always already materialized — no face-down reveal path here.
+ * - exactly one free same-color destination → straight there;
+ * - two or more free → the TRAVELLER PICKS via the same CHOOSE_ONE visit-step
+ *   the Monolith picker uses (so the board UI renders it unchanged).
+ * Arrival does NOT re-trigger (a bare TELEPORT_HERO step), so there is no
+ * ping-pong; the hero may Revisit (1 MP) to travel again. Only carved gate
+ * FIELDS are destinations — a face-down gate token is placeable but not a
+ * destination until a discovery carves it.
  */
 function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
   const adventure = state.adventure;
@@ -6060,30 +6089,47 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
   }
   const pair = field.gatePair;
   const color = gatePairColor(pair);
-  // Every OTHER gate of the SAME colored pair. Gates never join the Monolith
-  // network (and Monoliths/Obelisks never join a gate pair), so this is a strict
-  // location === "gate" AND same-pair match — the separation is deliberate.
-  const partners = Object.values(adventure.fields).filter(
+  // Every OTHER carved gate of the SAME colored pair. Strict location === "gate"
+  // AND same-pair — the per-color isolation is deliberate (a red gate never
+  // offers a blue gate or a Monolith, and vice versa).
+  const members = Object.values(adventure.fields).filter(
     (candidate) => candidate.location === "gate" && candidate.gatePair === pair && candidate.spaceId !== field.spaceId
   );
-  if (partners.length === 0) {
+  if (members.length === 0) {
     eventNote(
       state,
-      `The ${color} Gate leads nowhere — both ${color} Gates must be on the map for it to work.`,
+      `The ${color} Gate leads nowhere — at least 2 ${color} Gates must be on the map for it to work.`,
       visit.playerId
     );
     return;
   }
-  const free = partners.filter((partner) => !heroAtSpace(state, partner.spaceId));
+  const free = members
+    .filter((partner) => !heroAtSpace(state, partner.spaceId))
+    .sort((a, b) => (a.spaceId < b.spaceId ? -1 : 1));
   if (free.length === 0) {
-    eventNote(state, `The ${color} Gate fizzles — its partner is occupied by a hero.`, visit.playerId);
+    eventNote(state, `The ${color} Gate fizzles — every other ${color} Gate is occupied by a hero.`, visit.playerId);
     return;
   }
-  // A designed pair holds exactly two gates, so there is exactly one partner; a
-  // hand-edited save with extra gates of one colour travels to the first free one
-  // (deterministic by hex id).
-  const destination = [...free].sort((a, b) => (a.spaceId < b.spaceId ? -1 : 1))[0];
-  visit.steps.unshift({ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId });
+  if (free.length === 1) {
+    visit.steps.unshift({ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: free[0].spaceId });
+    return;
+  }
+  // Two or more free same-color gates → the traveller picks the destination (the
+  // same visit-step CHOOSE_ONE the Monolith network picker opens).
+  visit.steps.unshift({
+    type: "CHOOSE_ONE",
+    prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} Gate — choose where to travel`,
+    options: free.map((partner) => {
+      const tile = adventure.tiles[partner.tileInstanceId];
+      const where = tile
+        ? ` on the ${tile.backLabel ?? tile.group ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol})`
+        : "";
+      return {
+        label: `${color} Gate${where}`,
+        steps: [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: partner.spaceId }]
+      };
+    })
+  });
 }
 
 /** Carves a colored Gate object (a tile-slot placement) onto a materialized field. */
@@ -6226,11 +6272,17 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
     return;
   }
   const sacrificed = field.location;
-  carveMapTokenField(adventure, spaceId, pendingToken.kind, pendingToken.number);
+  // A colored Gate token carves its own per-color gate field; Monolith/Whirlpool
+  // carve the network token field. Both clear the sacrificed location's trappings.
+  if (pendingToken.kind === "gate" && pendingToken.pair !== undefined) {
+    carveColoredGateField(adventure, spaceId, pendingToken.pair);
+  } else if (pendingToken.kind === "monolith" || pendingToken.kind === "whirlpool") {
+    carveMapTokenField(adventure, spaceId, pendingToken.kind, pendingToken.number);
+  }
   delete tile.pendingToken;
   eventNote(
     state,
-    `${eventPlayerName(state, playerId)} places the ${mapTokenLabel(pendingToken.kind)} token${
+    `${eventPlayerName(state, playerId)} places the ${placementTokenLabel(pendingToken)} token${
       sacrificed !== "empty_field" ? ` over the ${locationDefinitionName(sacrificed)}` : ""
     }.`,
     playerId
@@ -6257,7 +6309,7 @@ export function dropPendingMapToken(state: GameState, tile: MapTileState, player
   delete tile.pendingToken;
   eventNote(
     state,
-    `The ${mapTokenLabel(pendingToken.kind)} token could not be placed — the revealed tile has no legal field for it — and is removed from the game.`,
+    `The ${placementTokenLabel(pendingToken)} token could not be placed — the revealed tile has no legal field for it — and is removed from the game.`,
     playerId
   );
   const teleport = adventure.pendingTokenTeleport;

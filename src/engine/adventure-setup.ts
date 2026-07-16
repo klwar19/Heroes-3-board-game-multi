@@ -58,6 +58,7 @@ import {
 import {
   applyCustomMapPresetToOptions,
   customMapPresetIsActive,
+  MAX_GATES_PER_PAIR,
   revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
   tileMatchesSecretFeature,
@@ -240,11 +241,14 @@ export function isSecretTileFeature(value: unknown): value is SecretTileFeature 
 import { HOUSE_RULE_BY_ID, resolveHouseRules } from "./house-rules";
 
 /**
- * Applies the map designer's Monolith/Whirlpool tokens to the tiles just laid
- * out. A face-up plan carves its designed slot right away (an illegal slot in a
- * hand-edited save is simply dropped — the designer only offers legal ones); a
- * face-down plan parks the token on the tile (`pendingToken`), to be placed by
- * the discovering player when the tile is revealed. Runs BEFORE
+ * Applies the map designer's Monolith/Whirlpool/colored-Gate tile tokens to the
+ * tiles just laid out. A face-up plan carves its designed slot right away (an
+ * illegal slot in a hand-edited save is simply dropped — the designer only
+ * offers legal ones); a face-down plan parks the token on the tile
+ * (`pendingToken`, carrying a Gate's colored `pair`), to be placed by the
+ * discovering player when the tile is revealed. A colored Gate token carves via
+ * {@link carveColoredGateField} (its own per-color network) and reuses the
+ * Monolith land legality for its slot check. Runs BEFORE
  * `recomputeSubterraneanGates`, whose carve refuses token fields ("Tokens
  * cannot be placed on other Location Tokens" — and vice versa).
  *
@@ -262,27 +266,43 @@ function applyCustomMapTokens(
 
   for (const { plan, tile } of planned) {
     const token = plan.token;
-    if (!token || (token.kind !== "monolith" && token.kind !== "whirlpool")) {
+    if (!token) {
       continue;
     }
+    // A colored Gate REQUIRES its pair; a Monolith/Whirlpool must NOT carry one
+    // (setup mirrors the sanitiser). Anything malformed is dropped silently.
+    const isGate = token.kind === "gate";
+    if (isGate ? token.pair === undefined : token.kind !== "monolith" && token.kind !== "whirlpool") {
+      continue;
+    }
+    // A Gate reuses the Monolith land legality for its slot check.
+    const legalityKind: "monolith" | "whirlpool" = token.kind === "whirlpool" ? "whirlpool" : "monolith";
 
     if (tile.faceDown) {
       const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
-      tile.pendingToken = { kind: token.kind, ...(number !== undefined ? { number } : {}) };
+      tile.pendingToken = {
+        kind: token.kind,
+        ...(number !== undefined ? { number } : {}),
+        ...(isGate && token.pair !== undefined ? { pair: token.pair } : {})
+      };
       continue;
     }
 
     const def = allTileDefinitions[tile.tileDefId];
     const slot = token.slot;
-    if (!def || slot === undefined || !tokenMayCoverFieldDef(def, slot, token.kind)) {
+    if (!def || slot === undefined || !tokenMayCoverFieldDef(def, slot, legalityKind)) {
       continue;
     }
     const spaceId = getTileFootprintSpaceIds(tile)[slot];
     if (!spaceId || adventure.fields[spaceId]?.tileInstanceId !== tile.id) {
       continue;
     }
-    const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
-    carveMapTokenField(adventure, spaceId, token.kind, number);
+    if (isGate && token.pair !== undefined) {
+      carveColoredGateField(adventure, spaceId, token.pair);
+    } else if (token.kind === "monolith" || token.kind === "whirlpool") {
+      const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
+      carveMapTokenField(adventure, spaceId, token.kind, number);
+    }
   }
 }
 
@@ -1058,7 +1078,11 @@ const STANDALONE_OBJECT_TILE_PREFIX = "standalone-object:";
  *    any tile footprint, must not collide with another object's hex, and must not
  *    touch BOTH layers (an implicit Surface↔Underground bridge — rejected).
  *    Touching no tile is a WARNING (unreachable), not a problem.
- *  - a colored gate pair with exactly ONE gate placed is a WARNING (incomplete).
+ *  - a colored gate network with only ONE member placed is a WARNING (a lone
+ *    gate leads nowhere); more than {@link MAX_GATES_PER_PAIR} of one color is a
+ *    WARNING (over the cap). Both COUNT ACROSS SOURCES — every plan's gate
+ *    `token` (the canonical on-tile form) plus every gate object — so a lone gate
+ *    OBJECT whose partner is a tile TOKEN of the same color does not warn.
  */
 export function validateCustomMapObjects(
   plans: CustomMapTilePlan[],
@@ -1096,7 +1120,15 @@ export function validateCustomMapObjects(
   }
 
   const objectHexes = new Set<string>();
+  // Gate members counted ACROSS SOURCES: every plan's gate `token` (the
+  // canonical on-tile form) seeds the count so a gate OBJECT partnered with a
+  // gate TOKEN of the same color is a complete network, not a lone warning.
   const gatesPerPair = new Map<number, number>();
+  for (const plan of plans) {
+    if (plan.token?.kind === "gate" && plan.token.pair !== undefined) {
+      gatesPerPair.set(plan.token.pair, (gatesPerPair.get(plan.token.pair) ?? 0) + 1);
+    }
+  }
 
   objects.forEach((object, index) => {
     const label = `Object ${index + 1}`;
@@ -1172,9 +1204,14 @@ export function validateCustomMapObjects(
   });
 
   for (const [pair, count] of gatesPerPair) {
+    const color = gatePairColor(pair as 1 | 2 | 3 | 4);
     if (count === 1) {
       warnings.push(
-        `The ${gatePairColor(pair as 1 | 2 | 3 | 4)} Gate pair has only one gate placed — a pair needs both to teleport.`
+        `The ${color} Gate pair has only one gate placed — at least two ${color} Gates are needed to teleport.`
+      );
+    } else if (count > MAX_GATES_PER_PAIR) {
+      warnings.push(
+        `The ${color} Gate network has ${count} gates — at most ${MAX_GATES_PER_PAIR} of one color are supported; the extras are dropped.`
       );
     }
   }

@@ -6856,14 +6856,15 @@ export type MapTileState = {
    */
   awaitingRotation?: boolean;
   /**
-   * A Monolith/Whirlpool Location Token the map designer attached to this
-   * still-face-down tile. When the tile is discovered, the discovering player
-   * places the token on a legal field of their choosing (rulebook p.35: "place
-   * the Token on … a Field of your choosing"); the entry is cleared once the
-   * token is carved. Public info — the physical Scenario Map Layout shows
-   * token positions up front. `number` is a Whirlpool's pre-assigned die face.
+   * A Monolith/Whirlpool/colored-Gate Location Token the map designer attached
+   * to this still-face-down tile. When the tile is discovered, the discovering
+   * player places the token on a legal field of their choosing (rulebook p.35:
+   * "place the Token on … a Field of your choosing"); the entry is cleared once
+   * the token is carved. Public info — the physical Scenario Map Layout shows
+   * token positions up front. `number` is a Whirlpool's pre-assigned die face;
+   * `pair` (gate only, 1-4) is the colored pair the carved Gate joins.
    */
-  pendingToken?: { kind: "monolith" | "whirlpool"; number?: -1 | 0 | 1 };
+  pendingToken?: { kind: "monolith" | "whirlpool" | "gate"; number?: -1 | 0 | 1; pair?: 1 | 2 | 3 | 4 };
   /**
    * Naval Battles optional rule: the Creature Bank token drawn for this tile's
    * Blocked Field the moment the tile is revealed — BEFORE its rotation is
@@ -8988,13 +8989,17 @@ export type CustomMapObjectKind = "monolith" | "whirlpool" | "gate";
 /**
  * Where a {@link CustomMapObject} sits on the board:
  * - "tile-slot": REPLACES hex `slot` (0-6, unrotated) of the FACE-UP pinned tile
- *   plan centred at (`row`,`col`) — like the legacy per-tile `token`, so the
- *   slot's legality is known at design time. A face-down tile cannot host one.
+ *   plan centred at (`row`,`col`), so the slot's legality is known at design
+ *   time. A face-down tile cannot host one. LEGACY form: the designer no longer
+ *   WRITES tile-slot objects (an on-tile teleporter is now a
+ *   {@link CustomMapTilePlan.token} — one canonical form per location), but old
+ *   saved presets carrying one still carve exactly as before.
  * - "standalone": a NEW hex materialized OFF every tile at the absolute hex
- *   (`row`,`col`). LAND objects only (Monolith, Gate — no standalone Whirlpool).
- *   Must not fall inside a tile footprint, must not collide with another object,
- *   and should touch ≥1 tile footprint to be reachable (a detached one is a
- *   designer warning; in game it is simply unreachable, never an error).
+ *   (`row`,`col`) — the CANONICAL off-tile teleporter form. LAND objects only
+ *   (Monolith, Gate — no standalone Whirlpool). Must not fall inside a tile
+ *   footprint, must not collide with another object, and should touch ≥1 tile
+ *   footprint to be reachable (a detached one is a designer warning; in game it
+ *   is simply unreachable, never an error).
  */
 export type CustomMapObjectPlacement =
   | { type: "tile-slot"; row: number; col: number; slot: number }
@@ -9117,15 +9122,20 @@ export type CustomMapTilePlan = {
    */
   subBand?: "iv-v" | "vi-vii";
   /**
-   * A Monolith (land) or Whirlpool (sea) Location Token on this tile — at most
-   * one per tile. On a face-up tile `slot` names the tile-definition field
-   * (0-6, unrotated) the token overwrites at setup. On a face-down tile `slot`
-   * is ignored: the token rides the tile and the discovering player places it
-   * on a legal field of their choosing when the tile is revealed (p.35).
-   * Monoliths and Whirlpools each need at least 2 tokens on the map to lead
-   * anywhere; Whirlpool numbers (-1/0/+1) are assigned in plan order at setup.
+   * A Monolith (land), Whirlpool (sea) or colored-Gate (land) Location Token on
+   * this tile — at most one per tile. On a face-up tile `slot` names the
+   * tile-definition field (0-6, unrotated) the token overwrites at setup. On a
+   * face-down tile `slot` is ignored: the token rides the tile and the
+   * discovering player places it on a legal field of their choosing when the
+   * tile is revealed (p.35). Monoliths / same-color Gates / Whirlpools each need
+   * at least 2 members on the map to lead anywhere; a Gate REQUIRES its colored
+   * `pair` (1-4, and monolith/whirlpool never carry one); Whirlpool numbers
+   * (-1/0/+1) are assigned in plan order at setup. This is the CANONICAL on-tile
+   * teleporter form — the designer writes tokens for on-tile teleporters and
+   * standalone {@link CustomMapObject}s for off-tile ones (a legacy tile-slot
+   * object still carves, but the designer never writes new ones).
    */
-  token?: { kind: "monolith" | "whirlpool"; slot?: number };
+  token?: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4; slot?: number };
   /**
    * Designer-chosen Subterranean Gate links — subterranean (cavern) tiles only.
    * Each entry connects THIS cavern to one touching SURFACE tile (named by its
@@ -9935,16 +9945,18 @@ export type PendingChoice =
       };
       /**
        * place-map-token: the discovering player picks which field of the
-       * just-revealed tile the Monolith/Whirlpool Location Token overwrites
+       * just-revealed tile the Monolith/Whirlpool/Gate Location Token overwrites
        * ("place the Token on … a Field of your choosing", p.35). Each option in
        * `options` is index-aligned with `candidates` (the legal hexes — matching
        * terrain, no Blocked Field/Town/guard/other token). `number` is a
-       * Whirlpool's pre-assigned die face, carved onto the chosen field.
+       * Whirlpool's pre-assigned die face, `pair` a colored Gate's pair (1-4),
+       * carved onto the chosen field.
        */
       mapToken?: {
         tileInstanceId: string;
-        kind: "monolith" | "whirlpool";
+        kind: "monolith" | "whirlpool" | "gate";
         number?: -1 | 0 | 1;
+        pair?: 1 | 2 | 3 | 4;
         candidates: MapSpaceId[];
       };
       returnPhase: GamePhase;
