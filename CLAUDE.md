@@ -1590,23 +1590,33 @@ What runs (each with a failing-if-removed test):
   A placed token (monolith OR whirlpool) is DRAGGABLE from ANY tile to ANY
   compatible tile in all four orientation combinations — face-up↔face-up,
   face-up→face-down, face-down→face-up, face-down→face-down — with a plain click
-  still opening the token panel. A face-up target lands `{ kind, slot }` on the
-  hovered legal slot; a face-down target (its whole footprint one drop zone,
-  gated by `faceDownTokenKinds` — sea⇒whirlpool, other land groups⇒monolith,
-  starting seats accept none) lands the pending `{ kind }` (no slot, placed at
-  reveal). A cross-tile move is ONE atomic `onChange` and never changes the token
-  COUNT, so the whirlpool supply cap is unaffected; a tile already carrying a
-  token stays off-limits. A monolith/gate token dragged OFF every tile CONVERTS
-  to a standalone object; a standalone/legacy object dragged ONTO a tile converts
-  to a `plan.token`. Wired in `commitTokenMove` / `commitTokenDrop` /
-  `commitObjectDrop` / `computeTileTokenTargets` (the shared tile-target
-  computation), pinned in `map-designer.test.tsx` ("tile-carried token direct
-  manipulation" + "canonical teleporter conversions").
-- Discovery: revealing a pending-token tile lets the DISCOVERING player place
-  it on "a Field of your choosing" (`place-map-token` choice, glowing
-  candidates; single candidate auto-places, zero drops the token). It waits
-  behind the Subterranean-Gate and Creature-Bank prompts on the same reveal;
-  gates and tokens never cover each other.
+  still opening the token panel. EVERY tile target lands `{ kind, (pair,) slot }`
+  on an exact hex: a face-up target's hovered legal printed slot, or one of a
+  face-down tile's seven PHYSICAL flower hexes (gated by `faceDownTokenKinds` —
+  sea⇒whirlpool, other land groups⇒monolith, starting seats accept none). A
+  face-down `slot` pins the physical board hex: setup resolves it to an absolute
+  `pendingToken.preferredSpaceId` (`applyCustomMapTokens`), rotating the hidden
+  tile in the designer counter-rotates the slot so the pinned hex never moves,
+  and the board back renders the token on that exact hex. While dragging, a
+  bright PLACE reticle marks the one hex the release will take, with a
+  gold/blue legend. A cross-tile move is ONE atomic `onChange` and never changes
+  the token COUNT, so the whirlpool supply cap is unaffected; a tile already
+  carrying a token stays off-limits. A monolith/gate token dragged OFF every
+  tile CONVERTS to a standalone object; a standalone/legacy object dragged ONTO
+  a tile converts to a `plan.token`. Wired in `commitTokenMove` /
+  `commitTokenDrop` / `commitObjectDrop` / `computeTileTokenTargets` (the shared
+  tile-target computation), pinned in `map-designer.test.tsx` ("tile-carried
+  token direct manipulation" + "canonical teleporter conversions") and in a real
+  browser by `tests/e2e/map-designer-token-drag.spec.ts` (the pointer-grab hex
+  under the token art is invisible to jsdom).
+- Discovery: revealing a pending-token tile places the token on the designer's
+  reserved hex AUTOMATICALLY when it is legal after the reveal rotation
+  (`preferredSpaceId` in `offerPendingTokenPlacement`); when random printed
+  content makes that hex illegal — or for a LEGACY pending token with no
+  reservation — the DISCOVERING player places it on "a Field of your choosing"
+  (`place-map-token` choice, glowing candidates; single candidate auto-places,
+  zero drops the token). It waits behind the Subterranean-Gate and Creature-Bank
+  prompts on the same reveal; gates and tokens never cover each other.
 - Travel: entering (or Revisiting, 1 MP) a token teleports to another token of
   the kind. Arrival does NOT re-trigger (no ping-pong). Whirlpool numbers are
   the die faces +1/0/-1 (assigned in plan order); with exactly 3 whirlpools the
@@ -1614,7 +1624,8 @@ What runs (each with a failing-if-removed test):
   Each whirlpool travel then costs the unit toll.
 - Travel into a face-down tile (Monoliths, Whirlpools AND colored Gates alike):
   the tile flips for FREE, the traveller rotates it (a Ⅱ–Ⅲ tile runs the standard
-  keep/reroll flip), places the destination token, and arrives on it
+  keep/reroll flip), places the destination token (automatic on a legal reserved
+  hex, otherwise their pick), and arrives on it
   (`pendingTokenTeleport`; whirlpool toll after arrival — a Gate takes NONE). A
   colored-Gate `TOKEN_TELEPORT_REVEAL` carries its `pair`, so the placement
   carves the SAME-color partner gate (per-color isolation holds through the
