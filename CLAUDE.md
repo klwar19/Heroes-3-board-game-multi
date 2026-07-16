@@ -1437,19 +1437,21 @@ drop/strip violations — `sanitizeTileToken` in `map-registry.ts`). Gate tokens
 use the Monolith LAND legality everywhere (`tokenMayCoverFieldDef` / the
 `faceDownTokenKinds` land groups now include `"gate"`), carve via
 `carveColoredGateField` (its own gate field), and travel like the Monolith
-network partitioned by `gatePair`: `resolveGateTeleport` offers every OTHER
-carved same-color gate minus occupied ones — 1 free → automatic, 2+ free → the
-traveller PICKS via the same CHOOSE_ONE visit-step the Monolith picker uses, 0
-members → inert note, all occupied → fizzle; arrival never re-triggers. A guarded
-gate fights first and only a WIN resolves the network travel. On the board a
-gate FIELD (tile-carved or standalone) and a designer gate TOKEN/palette both
-draw the MONOLITH art tinted by a colored ring + pair badge (`gateHexMark` /
-`designerTokenImage`). LIMIT: a tile hosts at most ONE token (monolith AND gate
-cannot share a tile); a gate TOKEN carries NO guard (only a standalone gate
-OBJECT can); face-down gate tokens are placeable but only become travel
-DESTINATIONS once a discovery carves them; the per-color cap is
-`MAX_GATES_PER_PAIR` (8), counted across BOTH sources (plan gate tokens + gate
-objects) for the lone-gate / over-cap warnings (`validateCustomMapObjects`).
+network partitioned by `gatePair` — FULL parity, face-down tiles included:
+`resolveGateTeleport` offers every OTHER same-color gate — carved FIELDS (minus
+hero-occupied ones) AND same-color gate tokens still riding FACE-DOWN tiles
+(`coloredGateDestinations` / `countColoredGates`, the Monolith
+`mapTokenDestinations` / `countMapTokens` mirror). 1 free → automatic, 2+ free →
+the traveller PICKS via the same CHOOSE_ONE visit-step the Monolith picker uses,
+<2 same-color gates → inert note, all occupied → fizzle; arrival never
+re-triggers. A guarded gate fights first and only a WIN resolves the network
+travel. On the board a gate FIELD (tile-carved or standalone) and a designer gate
+TOKEN/palette both draw the MONOLITH art tinted by a colored ring + pair badge
+(`gateHexMark` / `designerTokenImage`). LIMIT: a tile hosts at most ONE token
+(monolith AND gate cannot share a tile); a gate TOKEN carries NO guard (only a
+standalone gate OBJECT can); the per-color cap is `MAX_GATES_PER_PAIR` (8),
+counted across BOTH sources (plan gate tokens + gate objects) for the lone-gate /
+over-cap warnings (`validateCustomMapObjects`).
 
 Leading with what does NOT run / deliberate readings:
 - **Only the Two-Way Monolith is modeled.** The printed One-Way
@@ -1508,11 +1510,19 @@ What runs (each with a failing-if-removed test):
   the die faces +1/0/-1 (assigned in plan order); with exactly 3 whirlpools the
   Attack die decides, rerolling the origin's number, per the printed rule.
   Each whirlpool travel then costs the unit toll.
-- Travel into a face-down tile: the tile flips for FREE, the traveller rotates
-  it (a Ⅱ–Ⅲ tile runs the standard keep/reroll flip), places the destination
-  token, and arrives on it (`pendingTokenTeleport`; whirlpool toll after
-  arrival). Elimination mid-flow auto-places the token and cancels only the
-  dead seat's travel.
+- Travel into a face-down tile (Monoliths, Whirlpools AND colored Gates alike):
+  the tile flips for FREE, the traveller rotates it (a Ⅱ–Ⅲ tile runs the standard
+  keep/reroll flip), places the destination token, and arrives on it
+  (`pendingTokenTeleport`; whirlpool toll after arrival — a Gate takes NONE). A
+  colored-Gate `TOKEN_TELEPORT_REVEAL` carries its `pair`, so the placement
+  carves the SAME-color partner gate (per-color isolation holds through the
+  reveal — a red network never reveals a blue/monolith pending tile, and the
+  Monolith network never reveals a pending gate). Elimination mid-flow
+  auto-places the token (gate carved with its pair) and cancels only the dead
+  seat's travel. The gate face-down flow is pinned in `map-objects.test.ts`
+  ("Colored Gate travel into a face-down (pending) gate tile" — the both-listed
+  pick, the size-2 lone-carved+pending network, per-color/monolith isolation
+  CONTROLs, and the mid-flow elimination auto-place).
 
 ## First-round rules, Cove City Hall & bank/opponent UI (BINH house rules) — what runs
 
