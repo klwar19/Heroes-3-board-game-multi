@@ -415,6 +415,42 @@ describe("AdventureHud redesign", () => {
     // The town + hero live in the dock above the map now, not the status bar.
     expect(container.querySelector(".townDockTile")).toBeNull();
   });
+
+  it("shows the viewer's crowns (expert uses) as remaining / round total beside move & morale", () => {
+    const state = freshState();
+    const player = state.players.p1;
+    player.limits.expertUses = 3;
+    player.combatStats.expertUseBonusThisRound = 1;
+    player.combatStats.expertUsesSpentThisRound = 1;
+    const { container } = render(
+      <CardZoomProvider>
+        <AdventureHud legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+    // The crowns chip lives in the same cell as movement & morale.
+    const crownChip = container.querySelector(".moveMoraleCell .crownChip") as HTMLElement;
+    expect(crownChip).toBeTruthy();
+    // remaining = 3 (level) + 1 (bonus) − 1 (spent) = 3; total = 3 + 1 = 4.
+    expect(crownChip.querySelector("b")?.textContent?.replace(/\s+/g, " ").trim()).toBe("3 / 4");
+    expect(crownChip.textContent).toMatch(/crowns/i);
+    expect(crownChip.getAttribute("title")).toMatch(/expert uses/i);
+  });
+
+  it("CONTROL: spending one more crown drops the remaining number (total unchanged)", () => {
+    const state = freshState();
+    const player = state.players.p1;
+    player.limits.expertUses = 3;
+    player.combatStats.expertUseBonusThisRound = 1;
+    player.combatStats.expertUsesSpentThisRound = 2; // one more crown spent than above
+    const { container } = render(
+      <CardZoomProvider>
+        <AdventureHud legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+    const crownChip = container.querySelector(".moveMoraleCell .crownChip") as HTMLElement;
+    // remaining = 3 + 1 − 2 = 2, denominator still 4 — the chip reads the spent count.
+    expect(crownChip.querySelector("b")?.textContent?.replace(/\s+/g, " ").trim()).toBe("2 / 4");
+  });
 });
 
 describe("TownHeroDock (above the map)", () => {

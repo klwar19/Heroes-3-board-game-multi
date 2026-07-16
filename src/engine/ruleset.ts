@@ -662,6 +662,16 @@ export function expertUsesAvailable(player: PlayerState): number {
 }
 
 /**
+ * Total Expert uses (crowns) this round BEFORE any are spent — the level-derived
+ * budget plus one-shot bonuses. This is the denominator the HUD shows the
+ * {@link expertUsesAvailable} remainder against (remaining / total); as crowns
+ * are spent the remainder drops while the total holds.
+ */
+export function expertUsesTotalThisRound(player: PlayerState): number {
+  return player.limits.expertUses + (player.combatStats.expertUseBonusThisRound ?? 0);
+}
+
+/**
  * Spell Book house rule on? Stored per adventure (`adventure.spellBook`, default
  * ON). The combat sandbox has no adventure state, so the Book is available there
  * too — sandbox tests seed `player.spellBook` directly. A `false` adventure flag

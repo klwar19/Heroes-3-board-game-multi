@@ -39,6 +39,8 @@ import {
   deckDisplayName,
   describeCardEffect,
   describeCustomMapPresetEntries,
+  expertUsesAvailable,
+  expertUsesTotalThisRound,
   DRAFT_FORMAT_LABELS,
   getDraftPhase,
   getActiveAstrologersCard,
@@ -2300,6 +2302,10 @@ export function AdventureHud({
   const hero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "main"
   );
+  // Crowns (expert uses): remaining / round total, read straight from the engine
+  // helpers so the HUD can never diverge from what canPlayExpertMode enforces.
+  const crownsRemaining = player ? expertUsesAvailable(player) : 0;
+  const crownsThisRound = player ? expertUsesTotalThisRound(player) : 0;
   // Person-first: in a real (roomed) game the active player is the human ("Binh"),
   // with their hero · town on the sub-line; on a solo/open table the seat label
   // already reads "Hero of Town", so no redundant pick line is shown.
@@ -2414,7 +2420,7 @@ export function AdventureHud({
         </div>
       ) : null}
       {hero ? (
-        <div className="advHudCell moveMoraleCell" aria-label="Movement and morale">
+        <div className="advHudCell moveMoraleCell" aria-label="Movement, morale and crowns">
           <span
             className="statChip"
             title={`${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}
@@ -2445,6 +2451,18 @@ export function AdventureHud({
             </b>
             <small>{(player?.morale ?? 0) <= -2 ? "fix or dump" : "morale"}</small>
           </span>
+          {player ? (
+            <span
+              className="statChip crownChip"
+              title={`Crowns (expert uses) left this round: ${crownsRemaining} of ${crownsThisRound}`}
+            >
+              <Crown aria-hidden="true" className="crownChipIcon" size={14} />
+              <b>
+                {crownsRemaining} / {crownsThisRound}
+              </b>
+              <small>crowns</small>
+            </span>
+          ) : null}
         </div>
       ) : null}
       <div className="advHudCell">

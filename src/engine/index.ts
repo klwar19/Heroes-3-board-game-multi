@@ -220,6 +220,7 @@ export {
   eligibleSpellDecks,
   estatesGold,
   expertUsesAvailable,
+  expertUsesTotalThisRound,
   getRuleset,
   rulesetCardNote,
   specialtyTransformHealth,
