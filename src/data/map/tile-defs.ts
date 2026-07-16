@@ -384,10 +384,13 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     group: "far",
     content: "rampart_expansion",
     terrain: "grass",
+    // E (slot 2): face waterfall with bird+horse icons = Fountain of Youth
+    // (Ⅱ guard). The fan wiki labels it Magic Spring; the printed tile art
+    // and effect icons are FoY — same class of wiki/tile mismatch as &N2.
     fields: [
       { location: "windmill", resource: "valuables", amount: 1 },
       { location: "trading_post" },
-      { location: "magic_spring", difficulty: 2 },
+      { location: "fountain_of_youth", difficulty: 2 },
       { location: "learning_stone" },
       { location: "empty_field" },
       { location: "blocked_field" },
@@ -396,7 +399,8 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
     outerImpassable: [false, false, false, false, true, false],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit: "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). Verify against physical tiles before final release.",
+      credit:
+        "Field list from the fan wiki; tile geometry from the fan scenario editor; art from the community HD tile remake (rescaled). F10 E field corrected to Fountain of Youth from printed bird+horse icons (wiki still says Magic Spring). Verify against physical tiles before final release.",
       url: "https://en.homm3bg.wiki/tiles/f10/"
     },
     assets: {

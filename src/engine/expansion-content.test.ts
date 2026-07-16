@@ -418,6 +418,16 @@ describe("Fountain of Youth / Magic Spring effects", () => {
     expect(next.players.p1.discard).not.toContain("fy_top");
     expect(next.adventure?.pendingVisit).toBeNull();
   });
+
+  it("F10 E field is Fountain of Youth (printed bird+horse), not Magic Spring", () => {
+    // Physical f10.webp: slot 2 (E) is the face waterfall with bird+horse icons
+    // and Ⅱ — Fountain of Youth. Fan wiki still lists Magic Spring; data must
+    // follow the printed icons (same correction class as Factory &N2).
+    const f10 = coreTileDefinitions.F10;
+    expect(f10.fields[2].location).toBe("fountain_of_youth");
+    expect(f10.fields[2].difficulty).toBe(2);
+    expect(f10.fields.some((f) => f.location === "magic_spring")).toBe(false);
+  });
 });
 
 describe("rulebook conformance fixes", () => {
