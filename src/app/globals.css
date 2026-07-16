@@ -2825,6 +2825,14 @@ button.battleCell {
   display: grid;
   gap: 12px;
   width: min(720px, 94vw);
+  /* Cap the height to the viewport and scroll the body so a tall picker (a
+     Search(4)/(5) wraps 2–3 card rows) fits a short window instead of
+     overflowing past both edges with no way to reach the last option. `dvh`
+     only binds when the viewport is actually short, so a normal desktop window
+     — where the modal is far smaller than 92dvh — is byte-for-byte unchanged.
+     Shared with RerollModal + LearningOfferModal (`.searchModal …`). */
+  max-height: 92dvh;
+  overflow-y: auto;
   padding: 16px;
   border: 2px solid var(--gold);
   border-radius: 12px;
@@ -25121,6 +25129,24 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   max-height: 92dvh;
 }
 
+/* The Search / Reroll / Learning card sits in the centered `.modalBackdrop`,
+   whose bottom is painted over by the fixed tab bar (z-index 90, rendered after
+   the modal). A plain 92dvh card would center with only ~4dvh of clearance, so
+   its last row (a Search(4)/(5) wraps several) hid behind the bar. Anchor the
+   card just above the bar instead — the same `72px + safe-area` every other
+   bottom floater clears it by — and cap its height so the top stays on-screen;
+   its body then scrolls (overflow-y from `.searchModal`) so every option is
+   reachable clear of the bar. `:has(> .searchModal)` scopes this to exactly the
+   three search-family cards and no other `.modalBackdrop` (town, hero, VP…). */
+.phoneMode .modalBackdrop:has(> .searchModal) {
+  align-items: end;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+.phoneMode .searchModal {
+  max-height: calc(100dvh - 88px - env(safe-area-inset-bottom, 0px));
+}
+
 /* The setup lobby mounts its own helper-coach prompt INSIDE .setupLobby, whose
    `z-index: 1` stacking context traps the prompt's fullscreen backdrop below
    the chat dock (z-index 200) — on a phone the dock then swallows the
@@ -25172,6 +25198,7 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 .phoneMode .initiativeRail,
 .phoneMode .promptTray,
 .phoneMode .reactionTray,
+.phoneMode .searchModal,
 .phoneMode .townWindow,
 .phoneMode .marketPanel,
 .phoneMode.adventureRoot[data-phone-tab="decks"] .advDecksBottom,
