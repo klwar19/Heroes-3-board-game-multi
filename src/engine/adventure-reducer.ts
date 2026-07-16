@@ -86,7 +86,7 @@ import {
   hasRecruitResources,
   hasResources,
   heroAtSpace,
-  heroFieldSealedForDiscovery,
+  heroCanDiscoverTileAcrossBorders,
   instantiateTile,
   isFieldGuarded,
   isOuterEdgeSealed,
@@ -1494,12 +1494,14 @@ export function revealTileForHero(
   }
 
   // Ordinary discovery needs an OPEN border: the hero's field edge toward the
-  // tile must not be a printed yellow line. A Creature Bank draws NO border, so
-  // a hero standing on one faces open edges and CAN discover across them (see
-  // heroFieldSealedForDiscovery). The Redwood Observatory and the Speculum
+  // tile must not be a printed yellow line, a designed whole arc, or a designed
+  // per-edge border on any shared edge into the tile. A Creature Bank draws no
+  // whole arc, so a hero standing on one faces open edges and CAN discover across
+  // them — but a per-edge line the designer drew still seals (see
+  // heroCanDiscoverTileAcrossBorders). The Redwood Observatory and the Speculum
   // artifact are the only ways to reveal across a still-sealed border.
   const heroField = adventure.fields[hero.spaceId];
-  if (!heroField || heroFieldSealedForDiscovery(adventure, heroField)) {
+  if (!heroField || !heroCanDiscoverTileAcrossBorders(adventure, hero.spaceId, heroField, tile)) {
     throw new Error(
       "A yellow border line seals this edge — move to an open border, or use a Redwood Observatory / Speculum to discover across it."
     );
@@ -2008,10 +2010,11 @@ export function canHeroDiscoverAdjacentTile(state: GameState, hero: HeroState, t
     return false;
   }
   // …and the field's outer edge toward the tile must be an OPEN border. A
-  // yellow-sealed arc blocks ordinary discovery (use a Redwood Observatory or
-  // Speculum to reveal across it instead) — but a border-free Creature Bank the
-  // hero stands on is open, so discovery from on top of it is allowed.
-  return !heroFieldSealedForDiscovery(adventure, field);
+  // yellow-sealed arc — or a designed per-edge line on every shared edge — blocks
+  // ordinary discovery (use a Redwood Observatory or Speculum to reveal across it
+  // instead); a border-free Creature Bank the hero stands on is open for the
+  // whole-arc rule, though a per-edge line still seals.
+  return heroCanDiscoverTileAcrossBorders(adventure, hero.spaceId, field, tile);
 }
 
 // ---------------------------------------------------------------------------

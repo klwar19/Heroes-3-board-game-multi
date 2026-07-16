@@ -13,7 +13,16 @@ import {
   isOuterEdgeSealed,
   playerHasPlaceableFarTile,
 } from "../adventure";
-import { hexNeighbor, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint, tileLatticeNeighbors } from "../hex";
+import {
+  canonicalTileEdgeCode,
+  hexDirectionBetween,
+  hexNeighbor,
+  hexSpaceId,
+  parseHexSpaceId,
+  slotDirection,
+  tileFootprint,
+  tileLatticeNeighbors
+} from "../hex";
 import { getLegalActions } from "../legal-actions";
 import type {
   GameAction,
@@ -2283,5 +2292,24 @@ describe("computer pathing respects designer-placed yellow borders", () => {
     ]);
     expect(field.get(blocked.to.spaceId)).toBe(0);
     expect(field.get(blocked.from.spaceId)).not.toBe(1);
+  });
+
+  it("the distance field does not route the march across a single per-EDGE border", () => {
+    // The per-edge system (the designer's forward path) also flows through
+    // canCrossEdge, so the AND pathing inherits it with no separate logic.
+    // CONTROL: with the edge open the objective is one step from the hero.
+    const control = twoTileField();
+    expect(distanceFromHeroTo(control.state, control.hero, control.to.spaceId)).toBe(1);
+
+    // Seal EXACTLY the from→to hex edge with a per-edge border (one canonical
+    // code) — the direct step is gone.
+    const blocked = twoTileField();
+    const dir = hexDirectionBetween(
+      parseHexSpaceId(blocked.from.spaceId)!,
+      parseHexSpaceId(blocked.to.spaceId)!,
+    )!;
+    const footprintIndex = slotDirection(blocked.from.slot, blocked.a.rotation)! + 1;
+    blocked.a.borderEdges = [canonicalTileEdgeCode(footprintIndex, dir)];
+    expect(distanceFromHeroTo(blocked.state, blocked.hero, blocked.to.spaceId)).not.toBe(1);
   });
 });

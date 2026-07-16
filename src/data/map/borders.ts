@@ -37,7 +37,7 @@ export function getTileBorderSegments(
   def: TileDefinition,
   bankSlots: ReadonlySet<number> = NO_BANK_SLOTS,
   showBankBorders = false,
-  options: { extraBorders?: readonly number[]; rotation?: number } = {}
+  options: { extraBorders?: readonly number[]; borderEdges?: readonly number[]; rotation?: number } = {}
 ): TileBorderSegment[] {
   const segments = new Map<string, TileBorderSegment>();
   const add = (slot: number, edge: number) => {
@@ -126,6 +126,25 @@ export function getTileBorderSegments(
     add(slot, local - 1);
     add(slot, local);
     add(slot, local + 1);
+  }
+
+  // Designer-placed PER-EDGE yellow borders: each entry codes ONE hex edge as
+  // `footprintIndex*6 + absoluteDirection` in the rotation-0 board frame. Emit it
+  // in the tile's LOCAL frame (like the arcs above) so the consumer that re-adds
+  // `rotation` at draw time lands the line back on the coded ABSOLUTE edge —
+  // meaning a designed edge stays put while the tile rotates. The centre is
+  // footprintIndex 0 → slot 0; a ring footprintIndex f → local slot
+  // ((f-1-rotation) mod 6)+1. Deduped against the arcs above (a legacy arc and an
+  // edge code can name the same line) by the shared `add` map.
+  for (const code of options.borderEdges ?? []) {
+    if (!Number.isInteger(code) || code < 0 || code > 41) {
+      continue;
+    }
+    const footprintIndex = Math.floor(code / 6);
+    const absolute = code % 6;
+    const slot = footprintIndex === 0 ? 0 : (((footprintIndex - 1 - rotation) % 6) + 6) % 6 + 1;
+    const edge = (((absolute - rotation) % 6) + 6) % 6;
+    add(slot, edge);
   }
 
   return [...segments.values()];
