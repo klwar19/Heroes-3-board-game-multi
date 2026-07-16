@@ -2087,12 +2087,12 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
 }
 
 /**
- * Offers the discovering player the placement of a Monolith/Whirlpool token the
- * map designer attached to this (just-revealed) tile: one option per legal hex
- * (matching terrain, no Blocked Field/Town/guard/other token — rulebook p.35's
- * "a Field of your choosing"). A single legal hex places automatically, zero
- * legal hexes drop the token (and fizzle any travel aimed at it). No-op while
- * the tile still rides face-down or carries no token.
+ * Places or offers a Monolith/Whirlpool/Gate token attached to this just-revealed
+ * tile. A designer-pinned physical hex places automatically when it is legal;
+ * when random printed content makes that hex incompatible, the original legal-
+ * field choice remains the safe fallback. A single legal hex also places
+ * automatically, while zero legal hexes drop the token (and fizzle any travel
+ * aimed at it). No-op while the tile is face-down or still awaiting rotation.
  */
 function offerPendingTokenPlacement(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
@@ -2106,6 +2106,10 @@ function offerPendingTokenPlacement(state: GameState, tile: MapTileState, player
     dropPendingMapToken(state, tile, playerId);
     return;
   }
+  if (pendingToken.preferredSpaceId && candidates.includes(pendingToken.preferredSpaceId)) {
+    placeMapToken(state, tile, pendingToken.preferredSpaceId, playerId);
+    return;
+  }
   if (candidates.length === 1) {
     // Mirrors the gate's single-candidate auto-carve: no zero-information prompt.
     placeMapToken(state, tile, candidates[0], playerId);
@@ -2116,7 +2120,9 @@ function offerPendingTokenPlacement(state: GameState, tile: MapTileState, player
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `${placementTokenLabel(pendingToken)} token — choose which glowing field of the revealed tile it overwrites.`,
+    prompt: pendingToken.preferredSpaceId
+      ? `${placementTokenLabel(pendingToken)} token — its reserved hex cannot host it after reveal. Choose a glowing legal fallback field.`
+      : `${placementTokenLabel(pendingToken)} token — choose which glowing field of the revealed tile it overwrites.`,
     options: candidates.map((spaceId) => {
       const field = adventure.fields[spaceId];
       const edge = field ? ringEdgeDirection(tile, spaceId) : "";

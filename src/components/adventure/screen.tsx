@@ -817,12 +817,15 @@ export function HexMapBoard({
         />
       );
       // A designed Monolith/Whirlpool/colored-Gate token riding this face-down
-      // tile is public info (the physical Scenario Map Layout prints token
-      // positions), so show it on the back: whoever discovers the tile places
-      // the token on a field of their choosing, and travelling to it reveals the
-      // tile. A colored Gate renders as the Monolith art tinted with its pair.
+      // tile is public info. A modern designed token carries its exact physical
+      // preferred hex, so render it there instead of collapsing every marker to
+      // the tile centre. Legacy pending tokens without a preference stay centred.
       if (tile.pendingToken) {
         const pendingToken = tile.pendingToken;
+        const tokenBackCoord = pendingToken.preferredSpaceId
+          ? parseHexSpaceId(pendingToken.preferredSpaceId) ?? center
+          : center;
+        const tokenBackPixel = hexToPixel(tokenBackCoord, HEX_SIZE);
         const isGateToken = pendingToken.kind === "gate";
         const gateColor = isGateToken ? GATE_PAIR_COLORS[pendingToken.pair ?? 1] ?? "#c9a24b" : null;
         const tokenBackImage =
@@ -833,8 +836,15 @@ export function HexMapBoard({
         const tokenBackHeight = 2 * HEX_SIZE * 0.9;
         artLayer.push(
           <g key={`back-token-${tile.id}`} style={{ pointerEvents: "none" }}>
+            {pendingToken.preferredSpaceId ? (
+              <polygon
+                className="tileBackPendingTokenSlot"
+                data-space-id={pendingToken.preferredSpaceId}
+                points={hexCorners(tokenBackPixel.x, tokenBackPixel.y, HEX_SIZE - 2.2)}
+              />
+            ) : null}
             {gateColor ? (
-              <circle cx={centerPixel.x} cy={centerPixel.y} fill={gateColor} opacity={0.3} r={HEX_SIZE * 0.55} />
+              <circle cx={tokenBackPixel.x} cy={tokenBackPixel.y} fill={gateColor} opacity={0.3} r={HEX_SIZE * 0.55} />
             ) : null}
             <image
               className="tileBackPendingToken"
@@ -843,19 +853,19 @@ export function HexMapBoard({
               opacity={0.9}
               preserveAspectRatio="xMidYMid meet"
               width={tokenBackWidth}
-              x={centerPixel.x - tokenBackWidth / 2}
-              y={centerPixel.y - tokenBackHeight / 2}
+              x={tokenBackPixel.x - tokenBackWidth / 2}
+              y={tokenBackPixel.y - tokenBackHeight / 2}
             />
             {gateColor ? (
               <>
-                <circle cx={centerPixel.x} cy={centerPixel.y} fill="none" r={HEX_SIZE * 0.55} stroke={gateColor} strokeWidth={2.5} />
+                <circle cx={tokenBackPixel.x} cy={tokenBackPixel.y} fill="none" r={HEX_SIZE * 0.55} stroke={gateColor} strokeWidth={2.5} />
                 <text
                   fill={gateColor}
                   fontSize={HEX_SIZE * 0.5}
                   fontWeight={700}
                   textAnchor="middle"
-                  x={centerPixel.x}
-                  y={centerPixel.y + HEX_SIZE * 0.66}
+                  x={tokenBackPixel.x}
+                  y={tokenBackPixel.y + HEX_SIZE * 0.66}
                 >
                   {pendingToken.pair}
                 </text>
@@ -911,7 +921,7 @@ export function HexMapBoard({
                           : tile.pendingToken.kind === "monolith"
                             ? "Monolith"
                             : "Whirlpool"
-                      } token: whoever discovers the tile places it on a field of their choosing`
+                      } token${tile.pendingToken.preferredSpaceId ? " reserved on the marked hex" : ": placed on reveal"}`
                     : ""
                 }`}
               </title>

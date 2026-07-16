@@ -261,6 +261,8 @@ export const DESIGNER_UI_ICONS = {
   zoomReset: "/assets/icons/ui-zoom-reset.webp",
   wheelLock: "/assets/icons/ui-wheel-lock.webp",
   wheelUnlock: "/assets/icons/ui-wheel-unlock.webp",
+  /** Generated exact-hex placement emblem used by the live token legend. */
+  tokenPlace: "/assets/icons/ui-token-place.webp",
   /** Random tile-pool mode — treasure dice glyph. */
   modeRandom: "/assets/glyphs/2_treasure_die.svg",
   /** Secret landmark mode — permanent/hidden glyph. */

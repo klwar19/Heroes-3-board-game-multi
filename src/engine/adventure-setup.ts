@@ -244,9 +244,9 @@ import { HOUSE_RULE_BY_ID, resolveHouseRules } from "./house-rules";
  * Applies the map designer's Monolith/Whirlpool/colored-Gate tile tokens to the
  * tiles just laid out. A face-up plan carves its designed slot right away (an
  * illegal slot in a hand-edited save is simply dropped — the designer only
- * offers legal ones); a face-down plan parks the token on the tile
- * (`pendingToken`, carrying a Gate's colored `pair`), to be placed by the
- * discovering player when the tile is revealed. A colored Gate token carves via
+ * offers legal ones); a face-down plan parks the token on the tile. When its
+ * plan carries `slot`, that slot is resolved NOW to an absolute preferred hex,
+ * before the discovering player can rotate the revealed tile. A colored Gate token carves via
  * {@link carveColoredGateField} (its own per-color network) and reuses the
  * Monolith land legality for its slot check. Runs BEFORE
  * `recomputeSubterraneanGates`, whose carve refuses token fields ("Tokens
@@ -280,10 +280,13 @@ function applyCustomMapTokens(
 
     if (tile.faceDown) {
       const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
+      const preferredSpaceId =
+        token.slot !== undefined ? getTileFootprintSpaceIds(tile)[token.slot] : undefined;
       tile.pendingToken = {
         kind: token.kind,
         ...(number !== undefined ? { number } : {}),
-        ...(isGate && token.pair !== undefined ? { pair: token.pair } : {})
+        ...(isGate && token.pair !== undefined ? { pair: token.pair } : {}),
+        ...(preferredSpaceId ? { preferredSpaceId } : {})
       };
       continue;
     }

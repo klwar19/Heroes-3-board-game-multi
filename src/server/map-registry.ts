@@ -122,7 +122,8 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   // Monolith/Whirlpool/colored-Gate tile token: keep a well-formed kind; a Gate
   // REQUIRES a colored pair 1-4 (dropped without one), and a Monolith/Whirlpool
   // never carries one (a stray pair is stripped). The designed slot (a face-up
-  // tile's fixed field, 0-6) is kept only when it is a plausible slot index.
+  // printed field or face-down physical preferred hex, 0-6) is kept only when
+  // it is a plausible slot index.
   const token = sanitizeTileToken(candidate.token);
   // Secret landmark filter (face-down only). Exact tileDefId pin still wins
   // at setup if both are present; sanitize keeps both so old maps round-trip.
@@ -178,8 +179,9 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
 /**
  * Keeps a well-formed tile token (Monolith / Whirlpool / colored Gate), or
  * undefined. A Gate REQUIRES a colored pair 1-4 (dropped without one); a
- * Monolith/Whirlpool never carries one (a stray pair is stripped). A face-up
- * tile's designed slot (0-6) survives only when it is a plausible slot index.
+ * Monolith/Whirlpool never carries one (a stray pair is stripped). A tile's
+ * designed slot (0-6, including a face-down preferred hex) survives only when
+ * it is a plausible slot index.
  */
 function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefined {
   if (!input || typeof input !== "object") {
