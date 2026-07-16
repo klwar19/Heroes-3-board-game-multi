@@ -719,19 +719,28 @@ export function getHeroMovementCapabilities(state: GameState, hero: HeroState): 
       } else if (modifier.type === "HERO_WATER_WALK") {
         waterWalk = true;
       } else if (modifier.type === "HERO_PATHFINDING") {
-        // Pathfinding always grants the "regular" set: pass over blocked fields,
-        // through Neutral/enemy fields, and across yellow borders. The expert
-        // side adds water-walking (no coastline halt) and Surface↔Subterranean
-        // crossing — a strict superset, so it composes with the basic flags.
-        moveThrough = true;
+        // Passing THROUGH Neutral-Unit / enemy-Hero fields (Combat only if the
+        // hero ENDS there) is the PRINTED BASIC power — granted by both sides in
+        // both modes.
         passEncounters = true;
-        crossSealedBorders = true;
-        // House rule ("pathfinding-expert"): the Expert side additionally crosses
-        // the coastline and steps Surface↔Subterranean. Off: expert Pathfinding
-        // grants nothing beyond the basic set (and its option is not offered).
-        if (modifier.expert && houseRuleEnabled(state, "pathfinding-expert")) {
-          waterWalk = true;
-          crossLayers = true;
+        if (houseRuleEnabled(state, "pathfinding-expert")) {
+          // BINH house rule ON: the basic side bundles BOTH printed halves
+          // (pass-through AND crossing yellow borders / blocked fields); the
+          // expert side then adds the coastline (no halt) + Surface↔Subterranean
+          // crossing — a strict superset.
+          moveThrough = true;
+          crossSealedBorders = true;
+          if (modifier.expert) {
+            waterWalk = true;
+            crossLayers = true;
+          }
+        } else if (modifier.expert) {
+          // Printed card (rule OFF / legacy): crossing yellow borders & blocked
+          // fields (never ending on one) is the EXPERT power. The basic side
+          // grants only the pass-through above, and NEITHER side crosses the
+          // coastline or steps Surface↔Subterranean.
+          moveThrough = true;
+          crossSealedBorders = true;
         }
       }
     }
