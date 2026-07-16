@@ -89,7 +89,26 @@ export type HouseRuleId =
   // +1 Treasure+Resource dice). Off: Obelisks are still multi-flaggable but
   // grant no die reward. Independent of Holy Grail dig unlock (which always
   // counts visits while victoryMode is "grail").
-  | "obelisk-rewards";
+  | "obelisk-rewards"
+  // Polish house-rule Spell Book: owned Spells live in a refreshed/used Book
+  // and require generic Cast-a-Spell cards. Mutually exclusive with the
+  // existing stash-style `adventure.spellBook` rule.
+  | "polish-spell-book"
+  // Polish house rule: a bank-eligible tile reveals two face-up bank
+  // candidates with independently rolled sizes I-IV before rotation. Size gives
+  // all four bank units 0/1/2/3 layers; rewards: Ⅰ base only, Ⅱ full 4-stack
+  // extras, Ⅲ/Ⅳ = Ⅱ + 1/2 base GOLD layers (not valuables).
+  | "polish-bank-sizes"
+  // Polish house rule: Pack Groups and recruited Neutrals may buy Stack layers
+  // at a Citadel (bank-guard Neutrals use the higher bank max). +1 Attack while
+  // stacked; each layer absorbs one full health bar.
+  | "polish-unit-stacks"
+  // Pit Lords' Summon Demons: while ON, a Pit Lords may summon a new Few even
+  // when Demons are already on the field (multiple Demon units). Off (official):
+  // only ONE Demons unit may stand on the field (Few or Pack) — summon is
+  // blocked while any living Demons of the controller are already present;
+  // reinforce Few→Pack stays legal.
+  | "multi-demon-summon";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
@@ -1959,6 +1978,10 @@ export type EffectDefinition =
       expertRecallPlayedCards?: boolean;
     }
   | {
+      /** Generic Polish Cast-a-Spell enabler; actual Spell is chosen separately. */
+      type: "CAST_FROM_SPELL_BOOK";
+    }
+  | {
       /**
        * Permanent cards whose whole behavior lives in `permanentEffect`
        * (war machines): playing the card only puts it into play.
@@ -2655,6 +2678,8 @@ export type GameAction =
        * exclusive with fromScroll / fromSpellDeck (each names a distinct source).
        */
       fromSpellBook?: boolean;
+      /** Polish Book cast: the generic hand card consumed to enable this Spell. */
+      castEnablerCardId?: CardId;
       /**
        * Tarnum (Conflux) VI: this hand spell is one of the just-Searched cards
        * flagged for a free over-limit cast. It does not count toward the
@@ -2696,6 +2721,8 @@ export type GameAction =
        * hand play and moves Book → discard pile. Only ever set for Spell cards.
        */
       fromSpellBook?: boolean;
+      /** Polish Book play: the generic hand card consumed to enable this Spell. */
+      castEnablerCardId?: CardId;
     }
   | {
       type: "ATTACK_UNIT";
@@ -2843,6 +2870,8 @@ export type GameAction =
        * only: the batch path (PLAY_REACTIONS) never carries them.
        */
       fromSpellBook?: boolean;
+      /** Polish Book reaction: generic Cast-a-Spell card consumed from hand. */
+      castEnablerCardId?: CardId;
       /**
        * Spell Scroll reaction: the spell instant comes from this scroll, not
        * the hand. It resolves at power 0 (no boosts, no expert side), is removed
@@ -3206,10 +3235,10 @@ export type GameAction =
       playerId: PlayerId;
     }
   | {
-      /** Population token: recruit and/or reinforce any number of units at once. */
+      /** Population token: recruit, reinforce, or buy Pack Stack layers. */
       type: "POPULATION_ACTION";
       playerId: PlayerId;
-      purchases: { kind: "recruit" | "reinforce"; unitDefId: string; armyUnitId?: string }[];
+      purchases: { kind: "recruit" | "reinforce" | "stack"; unitDefId: string; armyUnitId?: string }[];
     }
   | {
       /**
@@ -3229,6 +3258,10 @@ export type GameAction =
       type: "SPELL_BOOK_ACTION";
       playerId: PlayerId;
       wisdom?: { cardId: CardId; mode: CardPlayMode };
+      /** Polish Guild purchase: take the generic cast card instead of a Spell. */
+      takeCastCard?: boolean;
+      /** Polish HOTA-style reroll: return one owned Book Spell, then Search (2). */
+      rollSpell?: { cardId: CardId; source: "refreshed" | "used" };
     }
   | {
       /**
@@ -4846,6 +4879,7 @@ export type GameEvent =
       type: "CREATURE_BANK_PLACED";
       fieldId: MapSpaceId;
       bankId: string;
+      bankSize?: BankSize;
     }
   | {
       /**
@@ -4873,6 +4907,8 @@ export type GameEvent =
       bankId: string;
       unitDefIds: string[];
       stackedCount: number;
+      /** Polish size coin: identical full-health layers carried by every guard. */
+      stackLayers?: number;
     }
   | {
       /**
@@ -4895,6 +4931,36 @@ export type GameEvent =
       unitId: UnitId;
       playerId: PlayerId;
       unitName: string;
+      excessDamage: number;
+    }
+  | {
+      /** A player bought one persistent Polish Stack layer for a Pack card. */
+      id: string;
+      type: "ARMY_STACK_PURCHASED";
+      playerId: PlayerId;
+      armyUnitId: string;
+      unitDefId: string;
+      stacks: number;
+      cost: ResourceCost;
+    }
+  | {
+      /** A Polish Stack layer absorbed lethal damage in combat. */
+      id: string;
+      type: "ARMY_STACK_LOST";
+      unitId: UnitId;
+      playerId: PlayerId;
+      unitName: string;
+      remainingStacks: number;
+      excessDamage: number;
+    }
+  | {
+      /** A Polish bank-size Stack layer absorbed lethal damage. */
+      id: string;
+      type: "BANK_STACK_LOST";
+      unitId: UnitId;
+      playerId: PlayerId;
+      unitName: string;
+      remainingStacks: number;
       excessDamage: number;
     }
   | {
@@ -5404,7 +5470,15 @@ export type ResolutionStackItem = {
      * when the effect they created ends. `toSpellBook` routes a Spell cast from
      * the Spell Book back into the Book (a private zone) rather than the hand.
      */
-    recallSpell?: { toHand: boolean; recallPlayedCards: boolean; toSpellBook?: boolean };
+    recallSpell?: {
+      toHand: boolean;
+      recallPlayedCards: boolean;
+      toSpellBook?: boolean;
+      /** Polish Mysticism: refresh the used Book Spell itself. */
+      polishRefreshSpell?: boolean;
+      /** Polish Knowledge / expert Mysticism: return the generic cast card. */
+      polishRecallEnabler?: boolean;
+    };
     /**
      * Spell instants played as reactions into this ATTACK window whose card now
      * sits in the caster's own discard pile (Stone Skin, Bloodlust, Curse,
@@ -5416,7 +5490,12 @@ export type ResolutionStackItem = {
      * finishes. Scroll / Tarnum-return / removeSelf plays leave no card in the
      * caster's discard, so they are never listed.
      */
-    recallableSpellReactions?: { cardId: CardId; playerId: PlayerId; fromSpellBook?: boolean }[];
+    recallableSpellReactions?: {
+      cardId: CardId;
+      playerId: PlayerId;
+      fromSpellBook?: boolean;
+      castEnablerCardId?: CardId;
+    }[];
     /**
      * Cards played from the Spell Book into THIS stack item (a Book instant, a
      * Book "+1 Power" discard). A Mysticism-expert recall that sweeps every card
@@ -5431,7 +5510,13 @@ export type ResolutionStackItem = {
      * attack finishes, so the recalled copy is never available to re-cast into
      * the same attack. Processed by processDeferredSpellRecalls.
      */
-    deferredSpellRecalls?: { cardId: CardId; playerId: PlayerId; toSpellBook: boolean }[];
+    deferredSpellRecalls?: {
+      cardId: CardId;
+      playerId: PlayerId;
+      toSpellBook: boolean;
+      /** Move Polish Book used -> refreshed instead of discard -> destination. */
+      fromPolishUsed?: boolean;
+    }[];
     /**
      * Alamar's Resurrection armed on this attack: if it would reduce the named
      * unit (of `grade` or lower) to 0 HP, the blow is cancelled.
@@ -5834,6 +5919,12 @@ export type ArmyUnitState = {
   permanentAttackBonus?: number;
   /** WOG Ghost: permanent Health gained from Soul Harvest, capped at +2. */
   permanentHealthBonus?: number;
+  /**
+   * Polish Unit Stacks: paid extra Group layers carried by a Pack card between
+   * combats. Bronze/Silver/Gold caps are 3/2/1. Absent on Few/Neutral cards and
+   * in games where the rule is off.
+   */
+  stacks?: number;
 };
 
 export type TownTokenState = {
@@ -5932,6 +6023,12 @@ export type PlayerState = {
    * (player-view hides the contents from opponents, exposing only spellBookCount).
    */
   spellBook: CardId[];
+  /**
+   * Polish Spell Book's public face-up exhausted zone. These Spells cannot be
+   * cast again until refreshed (normally at the beginning of the next round).
+   * Optional so legacy snapshots naturally treat it as empty.
+   */
+  spellBookUsed?: CardId[];
   /** Cards removed from the game entirely (the "remove" keyword). */
   removed: CardId[];
   /**
@@ -5991,6 +6088,8 @@ export type PlayerState = {
   populationPurchasedThisRound?: boolean;
   /** Round number the Mage Guild was built (token unusable that round). */
   mageGuildBuiltRound?: number;
+  /** Round of the once-per-turn Polish Spell reroll. */
+  polishSpellRollUsedRound?: number;
   /** +1 positive morale token (max 1) or a single negative token (-1). */
   morale: number;
   /**
@@ -6405,6 +6504,19 @@ export type CombatUnitState = {
   permanentAttackBonus?: number;
   /** WOG Ghost: persistent Soul Harvest Health mirrored from its army card. */
   permanentHealthBonus?: number;
+  /**
+   * Polish Unit Stacks mirrored from the backing Pack army card. Each remaining
+   * layer absorbs one full Pack health bar; deliberately separate from the
+   * Creature Bank defender's `stackToken`.
+   */
+  armyStacks?: number;
+  /**
+   * Polish Creature Bank size: every one of the bank's four defenders carries
+   * the same 0/1/2/3 full-health Stack layers (sizes I/II/III/IV). These are
+   * deterministic coin layers, not the standard Creature Bank `stackToken`
+   * that gives one random statistic bonus to selected defenders.
+   */
+  bankStacks?: number;
   /**
    * Fixed creature-bank guard (Dragon Utopia's dragons, the Cyclops
    * Stockpile's 2 golden Cyclopes): minted for this fight only, so it must
@@ -6839,6 +6951,19 @@ export type MapState = {
   spaces: Record<MapSpaceId, { id: MapSpaceId; adjacent: MapSpaceId[] }>;
 };
 
+/**
+ * Polish bank-size marker (Ⅰ–Ⅳ). Physical layers per guard are size−1
+ * (capped by unit tier). Rewards: Ⅰ base only, Ⅱ full 4-stack extras,
+ * Ⅲ/Ⅳ add 1/2 base gold layers (see polishBankRewardScale).
+ */
+export type BankSize = 1 | 2 | 3 | 4;
+
+/** One face-up Creature Bank candidate reserved while its tile is rotated. */
+export type ReservedBankOption = {
+  bankId: string;
+  size: BankSize;
+};
+
 export type MapTileState = {
   id: string;
   tileDefId: string;
@@ -6911,6 +7036,12 @@ export type MapTileState = {
    * hidden slot's objective is not leaked before discovery (see player-view.ts).
    */
   viiField?: "town" | "dragon_utopia" | "grail";
+  /**
+   * Polish Bank Sizes: up to two face-up candidates, including their seeded
+   * Attack-die size rolls. `reservedBankId` remains option A for compatibility
+   * with old rotation-preview readers and pre-feature snapshots.
+   */
+  reservedBankOptions?: ReservedBankOption[];
 };
 
 export type MapFieldState = {
@@ -6926,6 +7057,8 @@ export type MapFieldState = {
    * data-layer imports. The bank's defenders and reward are looked up from it.
    */
   bankId?: string;
+  /** Polish Bank Sizes: I-IV; replaces scenario difficulty for this bank. */
+  bankSize?: BankSize;
   resource?: ResourceKind;
   amount?: number;
   faction?: string;
@@ -7074,6 +7207,8 @@ export type AdventureReward =
        * other spell search.
        */
       strictExpertGate?: boolean;
+      /** Building a Polish Guild: this Spell pick may become Cast a Spell. */
+      allowCastCardInstead?: boolean;
     }
   | { playerId: PlayerId; kind: "city-hall-choice"; buildingId: BuildingId }
   | {
@@ -7278,11 +7413,14 @@ export type VisitStep =
       /**
        * Add a unit of `unitDefId` to the army for free. `side` defaults to "few"
        * (Garden of Life, Conflux); a Creature Bank "gain a Stacked unit" reward
-       * passes "pack" for the bigger version.
+       * passes "pack" for the bigger version. Optional `stacks` grants Polish
+       * Unit Stack layers on a Pack (Dragon Fly Hive / Griffin Conservatory
+       * under polish-bank-sizes).
        */
       type: "RECRUIT_FREE";
       unitDefId: string;
       side?: "few" | "pack";
+      stacks?: number;
     }
   | {
       /**
@@ -7434,6 +7572,8 @@ export type VisitStep =
       spellCardId: CardId;
       knowledgeCardId: CardId;
       fromSpellBook?: boolean;
+      /** Polish Book: recall this generic cast card, leaving the Spell used. */
+      castEnablerCardId?: CardId;
       /** "basic" (default) = free recall; "expert" = crown + limit bonus. */
       mode?: CardPlayMode;
     }
@@ -9626,7 +9766,8 @@ export type PendingChoice =
         | "judge-dread"
         | "far-tile-flip"
         | "combat-remove-then-search"
-        | "combat-remove-another";
+        | "combat-remove-another"
+        | "polish-spell-or-cast";
       /**
        * city-hall: the income options for the City Hall (Resource-round) choice
        * under resolution, index-aligned with `options`. Stored here in game
@@ -9833,6 +9974,8 @@ export type PendingChoice =
          * option). Absent = every pick goes to hand.
          */
         destinations?: ("hand" | "spellBook")[];
+        /** Polish recovery cards may select from the used Book zone. */
+        sources?: ("discard" | "polish-used")[];
         remaining: number;
         filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
         fromTop?: number;
@@ -9941,7 +10084,19 @@ export type PendingChoice =
        * `tier` pile. Option 0 places it, option 1 declines. `tileInstanceId` lets
        * the decline path clear the tile's reservation.
        */
-      creatureBank?: { fieldId: MapSpaceId; tier: "far" | "near"; bankId?: string; tileInstanceId?: string };
+      creatureBank?: {
+        /** Final Blocked Field; ignored while `preRotation` is true. */
+        fieldId: MapSpaceId;
+        tier: "far" | "near";
+        bankId?: string;
+        tileInstanceId?: string;
+        /** Polish sequence: choose one rolled bank now, then rotate the tile. */
+        preRotation?: boolean;
+        /** Polish mode candidates, index-aligned with the placement options. */
+        candidates?: ReservedBankOption[];
+      };
+      /** Polish Mage Guild build reward: Search a Spell or gain Cast a Spell. */
+      polishSpellOrCast?: { count: number; strictExpertGate?: boolean };
       /**
        * subterranean-gate-placement: the revealing player picks which touching
        * hex becomes the Subterranean Gate half on the just-revealed tile (and,
@@ -10097,6 +10252,7 @@ export type PendingChoice =
         fromScroll?: string;
         fromSpellDeck?: CardId;
         fromSpellBook?: boolean;
+        castEnablerCardId?: CardId;
         tarnumReturn?: "deck-top" | "discard";
       };
     }

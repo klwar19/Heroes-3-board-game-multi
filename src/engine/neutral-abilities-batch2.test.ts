@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { abilityFxPlans } from "@/data/fx";
-import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  getLegalActions,
+  makeCombatUnitFromArmy
+} from "./index";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { discountedReinforceCost, queueSkeletonReinforce, reinforceArmyUnit, reinforceGoldDiscount } from "./adventure";
 import { openSkeletonReinforceChoice, resolveSkeletonReinforceChoice } from "./adventure-reducer";
@@ -523,5 +529,50 @@ describe("Skeletons necro-reinforce", () => {
     });
     openSkeletonReinforceChoice(state, "p1");
     expect(state.pendingChoice).toBeNull();
+  });
+
+  it("mid-combat reinforce upgrades the on-board unit so combat-end army-sync keeps the Pack", () => {
+    // Bug: reinforceArmyUnit flipped only the army card to Pack; the combat unit
+    // stayed Few. finalizeAdventureCombat then did army.side ← combat.variant
+    // and the free upgrade was lost. Fix: also flip the combat unit to Pack.
+    const state = createAdventureGameState({ seed: "skeleton-persist", difficulty: "normal", rollFirstPlayer: false });
+    state.players.p1.army.push({ id: "bones_few", unitDefId: "necropolis.skeletons", side: "few" });
+    state.players.p1.factionId = "necropolis";
+
+    const armyUnit = state.players.p1.army.find((unit) => unit.id === "bones_few")!;
+    const combatUnit = makeCombatUnitFromArmy(armyUnit, "p1", "unit_p1_bones", 12)!;
+    expect(combatUnit.variant).toBe("few");
+    // Minimal open combat so resolveSkeletonReinforceChoice can find the board unit.
+    state.combat = {
+      id: "combat_skeleton_persist",
+      units: { [combatUnit.id]: combatUnit },
+      attackerPlayerId: "p1",
+      defenderPlayerId: "neutrals",
+      activeUnitId: combatUnit.id,
+      round: 1,
+      setup: null,
+      awaitingContinue: false,
+      outcome: null,
+      dice: { attack: null, defense: null },
+      context: { kind: "neutral", fieldId: "f", heroId: "hero_p1", difficulty: 1, hasAzure: false }
+    } as unknown as GameState["combat"];
+    state.phase = "combat";
+
+    openSkeletonReinforceChoice(state, "p1");
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") return;
+    const pick = choice.skeletonReinforce!.armyUnitIds.indexOf("bones_few");
+    resolveSkeletonReinforceChoice(state, "p1", pick);
+
+    // Both the army card AND the board unit must be Pack — the end-of-combat
+    // sync copies combat.variant onto army.side, so a still-Few board unit
+    // would wipe the upgrade (CONTROL: assert board unit, not only army).
+    expect(state.players.p1.army.find((unit) => unit.id === "bones_few")?.side).toBe("pack");
+    expect(state.combat!.units.unit_p1_bones.variant).toBe("pack");
+    // Mutation check: if only the army card flipped, the end-combat writeback
+    // would force Few again. Mirror that writeback against the FIXED board unit.
+    const syncedSide = state.combat!.units.unit_p1_bones.variant === "pack" ? "pack" : "few";
+    expect(syncedSide).toBe("pack");
   });
 });

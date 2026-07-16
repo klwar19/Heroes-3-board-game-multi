@@ -526,6 +526,54 @@ describe("Pit Lords' Summon Demons", () => {
     const offered = getLegalActions(state, "p2").some((legal) => legal.action.type === "SUMMON_DEMONS");
     expect(offered).toBe(false);
   });
+
+  it("house rule multi-demon-summon (BINH default): may summon even when Demons already stand", () => {
+    const state = pitLordsCombat();
+    state.combat!.unitRemovedControllerIds = ["p2"];
+    // Sandbox is ruleset binh → multi-demon-summon defaults ON.
+    const summon = getLegalActions(state, "p2").find(
+      (legal) => legal.action.type === "SUMMON_DEMONS" && legal.action.mode === "summon"
+    );
+    expect(summon, "multi-demon house rule still offers a second Few").toBeTruthy();
+  });
+
+  it("official (multi-demon-summon OFF): only 1 Demons unit on the field — summon blocked, reinforce still offered", () => {
+    const state = pitLordsCombat();
+    state.ruleset = "legacy";
+    // Explicit off so the test does not depend on mode defaults alone.
+    state.adventure = { houseRules: { "multi-demon-summon": false } } as GameState["adventure"];
+    state.combat!.unitRemovedControllerIds = ["p2"];
+
+    const actions = getLegalActions(state, "p2").filter((legal) => legal.action.type === "SUMMON_DEMONS");
+    expect(
+      actions.some((legal) => legal.action.type === "SUMMON_DEMONS" && legal.action.mode === "summon"),
+      "official rule: no second Demons stack"
+    ).toBe(false);
+    expect(
+      actions.some(
+        (legal) =>
+          legal.action.type === "SUMMON_DEMONS" &&
+          legal.action.mode === "reinforce" &&
+          legal.action.targetUnitId === "unit_p2_demons"
+      ),
+      "official rule: reinforce Few→Pack still legal"
+    ).toBe(true);
+  });
+
+  it("official (multi-demon-summon OFF): summon is offered when no Demons stand yet", () => {
+    const state = pitLordsCombat();
+    state.ruleset = "legacy";
+    state.adventure = { houseRules: { "multi-demon-summon": false } } as GameState["adventure"];
+    // Remove the pre-placed Demons so a fresh summon is the only path.
+    delete state.combat!.units.unit_p2_demons;
+    state.players.p2.army = state.players.p2.army.filter((unit) => unit.unitDefId !== "inferno.demons");
+    state.combat!.unitRemovedControllerIds = ["p2"];
+
+    const summon = getLegalActions(state, "p2").find(
+      (legal) => legal.action.type === "SUMMON_DEMONS" && legal.action.mode === "summon"
+    );
+    expect(summon, "official rule still summons when the field has no Demons").toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------

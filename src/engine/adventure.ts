@@ -15,8 +15,10 @@ import { unitAbilities, type UnitMapAbilityEffect } from "@/data/units/abilities
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { hasInternalBorder } from "@/data/map/borders";
 import {
+  buildPolishCreatureBankReward,
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
+  polishBankRewardScale,
   STACK_TOKEN_PLACEMENT_PERCENT,
   STACK_TOKEN_STATS,
   STACK_TOKENS_BY_DIFFICULTY,
@@ -62,6 +64,12 @@ import {
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
 import {
+  CAST_A_SPELL_CARD_ID,
+  gainOwnedCard,
+  polishSpellBookEnabled
+} from "./polish-spell-book";
+import { polishBankGuardLayerCap } from "./polish-unit-stacks";
+import {
   canonicalTileEdgeCode,
   hexDirectionBetween,
   hexDistance,
@@ -86,6 +94,7 @@ import type {
   AdventureState,
   ArtifactTier,
   AstrologersState,
+  BankSize,
   CardId,
   CombatUnitState,
   EventDiePoolEntry,
@@ -1945,6 +1954,15 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
       effects.push("Search (2) the Ability deck");
     }
 
+    if (
+      polishSpellBookEnabled(state) &&
+      (level === 5 || level === 7) &&
+      townHasBuildingEffect(state, playerId, "MAGE_GUILD")
+    ) {
+      player.hand.push(CAST_A_SPELL_CARD_ID);
+      effects.push("gained Cast a Spell from the Mage Guild");
+    }
+
     if (SPECIALTY_LEVELS.includes(level as 4 | 6) && player.heroDefId) {
       const heroDef = coreHeroDefinitions[player.heroDefId];
       const specialtyCardId = heroDef?.specialtyCardIds?.[level as 4 | 6];
@@ -2147,7 +2165,14 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
     case "GAIN_MORALE":
       return [{ type: "GAIN_MORALE", amount: interaction.amount }];
     case "GAIN_UNIT":
-      return [{ type: "RECRUIT_FREE", unitDefId: interaction.unitDefId, side: interaction.side }];
+      return [
+        {
+          type: "RECRUIT_FREE",
+          unitDefId: interaction.unitDefId,
+          side: interaction.side,
+          ...(interaction.stacks && interaction.stacks > 0 ? { stacks: interaction.stacks } : {})
+        }
+      ];
     case "ROLL_RESOURCE_DICE":
       // Melodia's Fortune VI: +1 to the dice rolled & resolved at this location.
       return [{ type: "ROLL_RESOURCE_DICE", count: interaction.count + extraLocationDice }];
@@ -3939,6 +3964,9 @@ export function processPendingVisit(state: GameState): void {
         const effect = knowledge?.effect.type === "RECALL_SPELL" ? knowledge.effect : null;
         const knowledgeIndex = player?.hand.indexOf(step.knowledgeCardId) ?? -1;
         const spellIndex = player?.discard.lastIndexOf(step.spellCardId) ?? -1;
+        const castEnablerIndex = step.castEnablerCardId
+          ? (player?.discard.lastIndexOf(step.castEnablerCardId) ?? -1)
+          : -1;
         const ongoing = player?.ongoingCards?.find((entry) => entry.cardId === step.spellCardId);
         const mode = step.mode ?? "basic";
         // Expert spends a crown; Empowered / basic do not. Stale prompts that
@@ -3949,7 +3977,7 @@ export function processPendingVisit(state: GameState): void {
           !effect ||
           knowledgeIndex === -1 ||
           (needsCrown && expertUsesAvailable(player) <= 0) ||
-          (spellIndex === -1 && !ongoing)
+          (step.castEnablerCardId ? castEnablerIndex === -1 : spellIndex === -1 && !ongoing)
         ) {
           break;
         }
@@ -3968,7 +3996,10 @@ export function processPendingVisit(state: GameState): void {
           player.combatStats.spellLimitBonusThisRound += limitBonus;
         }
 
-        if (ongoing) {
+        if (step.castEnablerCardId) {
+          player.discard.splice(castEnablerIndex, 1);
+          player.hand.push(step.castEnablerCardId);
+        } else if (ongoing) {
           // Fly / Water Walk and any future lasting map spell cannot be cast a
           // second time while active. Knowledge marks the held card to come
           // back as soon as its effect naturally ends — to the Spell Book when
@@ -3989,7 +4020,9 @@ export function processPendingVisit(state: GameState): void {
           cardId: step.knowledgeCardId,
           timing: knowledge.timing,
           mode,
-          optionLabel: `Recall ${cardLibrary[step.spellCardId]?.name ?? step.spellCardId}`
+          optionLabel: step.castEnablerCardId
+            ? "Recall Cast a Spell"
+            : `Recall ${cardLibrary[step.spellCardId]?.name ?? step.spellCardId}`
         });
         break;
       }
@@ -3998,6 +4031,7 @@ export function processPendingVisit(state: GameState): void {
         const armyUnit = player?.army.find((candidate) => candidate.id === step.armyUnitId);
         if (player && armyUnit && armyUnit.side === "pack") {
           armyUnit.side = "few";
+          delete armyUnit.stacks;
           appendEvent(state, {
             type: "ARMY_UNIT_FLIPPED",
             playerId: visit.playerId,
@@ -4173,10 +4207,14 @@ export function processPendingVisit(state: GameState): void {
       }
       case "RECRUIT_FREE": {
         // Add a unit to the army for free: a Few (Garden of Life) or a Pack
-        // (a Creature Bank "gain a Stacked unit" reward).
+        // (a Creature Bank "gain a Stacked unit" reward). Optional stacks are
+        // Polish bank-size Pack layers (Dragon Fly Hive / Griffin Conservatory).
         const recruitPlayer = state.players[visit.playerId];
         if (recruitPlayer) {
-          addArmyUnit(recruitPlayer, step.unitDefId, step.side ?? "few");
+          const added = addArmyUnit(recruitPlayer, step.unitDefId, step.side ?? "few");
+          if (step.stacks && step.stacks > 0 && (step.side ?? "few") === "pack") {
+            added.stacks = Math.max(0, Math.trunc(step.stacks));
+          }
           appendEvent(state, {
             type: "UNIT_RECRUITED",
             playerId: visit.playerId,
@@ -8417,18 +8455,61 @@ export function buildCreatureBankDraws(bankId: CreatureBankId): NeutralDraw[] {
 }
 
 /**
- * Builds the Creature Bank defenders for a combat and places the Stack Tokens
- * (rulebook p.66-67). The Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
- * Impossible 4) sets how many token ROLLS are made, NOT a guaranteed count:
- * each roll lands on a DIFFERENT candidate card only `STACK_TOKEN_PLACEMENT_PERCENT`%
- * of the time. A landed token modifies one random statistic (+1 attack/defense/
- * health or +2 initiative). So even Impossible can deploy anywhere from 0 to 4
- * Stacked defenders. Returns the deployed-but-not-positioned units and the
- * number of Stacked defenders (X, the reward multiplier).
+ * Converts the Polish house-rule Attack-die roll into bank size I-IV, per the
+ * v1.2 sheet table (rule author's clarification): −1 → Ⅰ, 0 → Ⅱ, +1 → Ⅲ, and
+ * the two EXTREME sums −2 or +2 → Ⅳ (gold). One die can only reach I-III; two
+ * dice distribute Ⅰ 2/9, Ⅱ 3/9, Ⅲ 2/9, Ⅳ 2/9 (sums −2 and +2 both pay Ⅳ).
+ */
+export function polishBankSizeForAttackRolls(rolls: readonly number[]): BankSize {
+  const sum = rolls.reduce((total, roll) => total + roll, 0);
+  if (sum === -1) return 1;
+  if (sum === 0) return 2;
+  if (sum === 1) return 3;
+  return 4;
+}
+
+/**
+ * Polish Bank Sizes: the LARGEST size a given bank can be. A bank's size never
+ * exceeds what its best guard can physically carry (1 + the highest bank-guard
+ * layer cap among its four cards, where guards punch one above the army caps
+ * to at most 3: bronze 3 / silver 3 / gold+azure 2): an all-gold/azure Dragon
+ * Utopia or Pyramid tops out at size Ⅲ, while any bank with a silver or
+ * bronze guard reaches the full Ⅳ. A rolled size above this is clamped BEFORE
+ * the player chooses.
+ */
+export function polishBankMaxSize(bankId: CreatureBankId): BankSize {
+  const bank = CREATURE_BANKS[bankId];
+  const maxCap = (bank?.units ?? []).reduce(
+    (best, unitDefId) => Math.max(best, polishBankGuardLayerCap(unitDefId)),
+    0
+  );
+  return Math.max(1, Math.min(4, 1 + maxCap)) as BankSize;
+}
+
+/** Re-export — single source of truth lives in `creature-banks.ts`. */
+export { polishBankRewardScale } from "@/data/map/creature-banks";
+
+/**
+ * Builds the Creature Bank defenders for a combat. Standard banks place their
+ * random statistic Stack Tokens using Scenario Difficulty (rulebook p.66-67).
+ *
+ * The Polish size variant is deliberately different: the rolled coin is put on
+ * EVERY one of the four bank cards and its colour is a deterministic layer
+ * count (size I = 0, bronze II = 1, silver III = 2, gold IV = 3). Every layer
+ * is a full extra health bar; this path never mints the standard random-stat
+ * `stackToken`. Each guard's layers are additionally CAPPED by the Unit Stack
+ * coin rule of the unit named on its (rankless-in-play) card, punching one
+ * above the army caps with an absolute maximum of 3 — bronze 3 / silver 3 /
+ * gold+azure 2 (`polishBankGuardLayerCap`) — and the whole bank's SIZE clamps
+ * to what its best guard can carry (`polishBankMaxSize`): an all-gold/azure
+ * Dragon Utopia tops out at size Ⅲ. Win rewards use polishBankRewardScale
+ * (not layer count): size Ⅱ pays full 4-stack extras; Ⅲ/Ⅳ add gold-only base
+ * layers — see grantCreatureBankReward / buildPolishCreatureBankReward.
  */
 export function buildCreatureBankCombatUnits(
   state: GameState,
-  bankId: CreatureBankId
+  bankId: CreatureBankId,
+  bankSize?: BankSize
 ): { units: CombatUnitState[]; stackedCount: number } {
   const ruleset = getRuleset(state);
   const sideOverrides = unitSideRuleOverrides(state);
@@ -8438,9 +8519,33 @@ export function buildCreatureBankCombatUnits(
     return unit ? [unit] : [];
   });
 
+  if (houseRuleEnabled(state, "polish-bank-sizes") && bankSize !== undefined) {
+    // The roll-time clamp already keeps a stored size within the bank's max;
+    // re-clamp defensively so a hand-edited or legacy field cannot pay a size
+    // its guards could never physically carry.
+    const effectiveSize = Math.min(bankSize, polishBankMaxSize(bankId)) as BankSize;
+    const stackLayers = Math.max(0, effectiveSize - 1);
+    for (const unit of units) {
+      // The bank card is rankless in play, but its layer capacity follows the
+      // Unit Stack coin rule of the unit NAMED on it, punching one above the
+      // army caps to at most 3: bronze 3 / silver 3 / gold (and azure) 2.
+      unit.bankStacks = Math.min(stackLayers, polishBankGuardLayerCap(unit.unitDefId));
+      // Re-derive Attack (+1 while at least one layer remains) and preserve the
+      // bank card's own abilities/stat line.
+      applyUnitCurrentSide(unit, ruleset, sideOverrides);
+    }
+    return {
+      units,
+      // stackedCount for polish = the "full stack" X used by classic extras
+      // (0 at size Ⅰ, 4 from size Ⅱ+). Size Ⅲ/Ⅳ gold base layers are applied
+      // separately in buildPolishCreatureBankReward.
+      stackedCount: polishBankRewardScale(effectiveSize).stackedX
+    };
+  }
+
   const difficulty = state.adventure?.difficulty ?? "normal";
   // The difficulty caps how many DISTINCT defenders are candidates for a token.
-  const tokenRolls = Math.min(STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
+  const tokenRolls = Math.min(bankSize ?? STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
 
   const random = adventureRandom(state, `creature-bank-stack-${bankId}`);
   // Partial Fisher-Yates: pick `tokenRolls` DISTINCT candidate defenders.
@@ -8476,7 +8581,8 @@ export function buildCreatureBankCombatUnits(
 export function placeCreatureBank(
   state: GameState,
   spaceId: MapSpaceId,
-  bankId: CreatureBankId
+  bankId: CreatureBankId,
+  bankSize?: BankSize
 ): MapFieldState | null {
   const adventure = state.adventure;
   const field = adventure?.fields[spaceId];
@@ -8485,6 +8591,11 @@ export function placeCreatureBank(
   }
   field.location = "creature_bank";
   field.bankId = bankId;
+  if (bankSize !== undefined) {
+    field.bankSize = bankSize;
+  } else {
+    delete field.bankSize;
+  }
   delete field.difficulty;
   delete field.resource;
   delete field.amount;
@@ -8500,7 +8611,8 @@ export function placeCreatureBank(
   appendEvent(state, {
     type: "CREATURE_BANK_PLACED",
     fieldId: spaceId,
-    bankId
+    bankId,
+    ...(bankSize !== undefined ? { bankSize } : {})
   });
   return field;
 }
@@ -8541,7 +8653,16 @@ export function grantCreatureBankReward(
   // "If you win, resolve the Field's effect and mark it with a Black Cube."
   field.blackCube = true;
 
-  const reward = bank.buildReward(stackedCount);
+  // Polish bank sizes: payout follows size (full 4-stack at Ⅱ, gold-only base
+  // layers at Ⅲ/Ⅳ), not the combat layer count / classic stackedCount.
+  const polishSize =
+    houseRuleEnabled(state, "polish-bank-sizes") && field.bankSize !== undefined
+      ? (Math.min(field.bankSize, polishBankMaxSize(bankId)) as BankSize)
+      : undefined;
+  const reward =
+    polishSize !== undefined
+      ? buildPolishCreatureBankReward(bankId, polishSize)
+      : bank.buildReward(stackedCount);
   const steps = interactionToSteps(reward, locationDiceBonusFor(state, playerId));
   if (steps.length === 0) {
     return;
@@ -8677,13 +8798,14 @@ export function makeCombatUnitFromArmy(
     transforms?: UnitTransformState[];
     permanentAttackBonus?: number;
     permanentHealthBonus?: number;
+    stacks?: number;
   },
   controllerId: PlayerId,
   unitId: UnitId,
   position: number,
   ruleset: GameRuleset = "legacy",
   /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean; polishUnitStacks?: boolean }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
   const printed = armyUnit.side === "few" ? def?.few : armyUnit.side === "pack" ? def?.pack : def?.neutral;
@@ -8696,6 +8818,11 @@ export function makeCombatUnitFromArmy(
   // folded into the unit's printed Attack every combat (start to end).
   const permanentAttackBonus = armyUnit.permanentAttackBonus ?? 0;
   const permanentHealthBonus = armyUnit.permanentHealthBonus ?? 0;
+  // Pack Groups and recruited Neutrals may carry paid Stack layers.
+  const armyStacks =
+    overrides?.polishUnitStacks && (armyUnit.side === "pack" || armyUnit.side === "neutral")
+      ? Math.max(0, Math.trunc(armyUnit.stacks ?? 0))
+      : 0;
 
   const unit: CombatUnitState = {
     id: unitId,
@@ -8705,7 +8832,7 @@ export function makeCombatUnitFromArmy(
     variant: armyUnit.side,
     grade: def.tier,
     type: side.type ?? def.type,
-    attack: side.attack + permanentAttackBonus,
+    attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0),
     defense: side.defense,
     maxHealth: side.health + permanentHealthBonus,
     damage: 0,
@@ -8720,6 +8847,7 @@ export function makeCombatUnitFromArmy(
     armyUnitId: armyUnit.id,
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
     ...(permanentHealthBonus ? { permanentHealthBonus } : {}),
+    ...(armyStacks ? { armyStacks } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `${def.name} unit card`,
@@ -8954,6 +9082,10 @@ export function healLegacyPlayerFields(state: GameState): boolean {
       player.spellBook = [];
       changed = true;
     }
+    if (player && !Array.isArray(player.spellBookUsed)) {
+      player.spellBookUsed = [];
+      changed = true;
+    }
   }
   return changed;
 }
@@ -9056,6 +9188,16 @@ export function startAdventureRound(state: GameState): void {
   }
 
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
+
+  if (houseRuleEnabled(state, "polish-spell-book")) {
+    for (const player of Object.values(state.players)) {
+      if (player.id === NEUTRAL_PLAYER_ID || !player.spellBookUsed?.length) {
+        continue;
+      }
+      player.spellBook.push(...player.spellBookUsed);
+      player.spellBookUsed = [];
+    }
+  }
 
   // Torosar's Ballista IV grant ("until the end of the round") ends here.
   for (const expired of expireEffectsForGameRoundEnd(state)) {
@@ -10451,6 +10593,7 @@ function queuePlagueFlip(state: GameState, playerId: PlayerId): void {
 
   if (packs.length === 1) {
     packs[0].side = "few";
+    delete packs[0].stacks;
     appendEvent(state, {
       type: "ARMY_UNIT_FLIPPED",
       playerId,
@@ -12801,13 +12944,17 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         spendResources(state, visit.playerId, step.cost, `bought ${cardLibrary[step.cardId]?.name ?? step.cardId}`);
       }
       if (step.toDeck) {
-        player.deck = shuffleCards(
-          [...player.deck, ...player.discard, step.cardId],
-          `${state.seed}#event-buy#${visit.playerId}#${eventSeedNumber(state)}`
-        );
-        player.discard = [];
+        if (polishSpellBookEnabled(state) && cardLibrary[step.cardId]?.kind === "spell") {
+          gainOwnedCard(state, visit.playerId, step.cardId);
+        } else {
+          player.deck = shuffleCards(
+            [...player.deck, ...player.discard, step.cardId],
+            `${state.seed}#event-buy#${visit.playerId}#${eventSeedNumber(state)}`
+          );
+          player.discard = [];
+        }
       } else {
-        player.hand.push(step.cardId);
+        gainOwnedCard(state, visit.playerId, step.cardId);
       }
       eventNote(
         state,
@@ -12902,13 +13049,17 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       }
       if (step.toDeck) {
         // Mage Laboratory: the bought card shuffles straight into the deck.
-        player.deck = shuffleCards(
-          [...player.deck, ...player.discard, step.cardId],
-          `${state.seed}#event-buy#${visit.playerId}#${eventSeedNumber(state)}`
-        );
-        player.discard = [];
+        if (polishSpellBookEnabled(state) && cardLibrary[step.cardId]?.kind === "spell") {
+          gainOwnedCard(state, visit.playerId, step.cardId);
+        } else {
+          player.deck = shuffleCards(
+            [...player.deck, ...player.discard, step.cardId],
+            `${state.seed}#event-buy#${visit.playerId}#${eventSeedNumber(state)}`
+          );
+          player.discard = [];
+        }
       } else {
-        player.hand.push(step.cardId);
+        gainOwnedCard(state, visit.playerId, step.cardId);
       }
       eventNote(
         state,
@@ -13020,7 +13171,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       }
       const random = adventureRandom(state, "event-forest-take");
       const entry = events.pool.splice(random.nextInt(0, events.pool.length - 1), 1)[0];
-      player.hand.push(entry.cardId);
+      gainOwnedCard(state, visit.playerId, entry.cardId);
       eventNote(state, `${eventPlayerName(state, visit.playerId)} takes a card from the pool.`, visit.playerId);
       break;
     }

@@ -64,6 +64,7 @@ import {
   MAX_PARALLEL_TURN_ROUNDS,
   parallelInteractionBlocker,
   parallelTurnsActive,
+  polishArmyUnitStackCap,
   readyCheckConfirmers,
   remainingParallelPlayerIds,
   observatoryRevealTargets,
@@ -992,6 +993,15 @@ export function HexMapBoard({
       // it is being rotated. Mark its Blocked Field slot so its border follows the
       // bank rule (border-free by default) and its art + name preview there.
       const reservedBankId = (tile.reservedBankId as CreatureBankId | undefined) ?? undefined;
+      const reservedBankOptions = (tile.reservedBankOptions ?? []).filter(
+        (candidate): candidate is typeof candidate & { bankId: CreatureBankId } => candidate.bankId in CREATURE_BANKS
+      );
+      const previewBankOptions =
+        reservedBankOptions.length > 0
+          ? reservedBankOptions
+          : reservedBankId
+            ? [{ bankId: reservedBankId }]
+            : [];
       const bankPreviewSlot =
         reservedBankId && tileDef ? tileDef.fields.findIndex((field) => field.location === "blocked_field") : -1;
       const previewBankSlots = bankPreviewSlot >= 0 ? new Set([bankPreviewSlot]) : undefined;
@@ -1022,6 +1032,7 @@ export function HexMapBoard({
         // they are about to carve before they lock the rotation.
         if (slot === bankPreviewSlot && reservedBankId) {
           const clipId = `bankPrevClip-${tile.id}-${slot}`;
+          const secondCandidate = previewBankOptions[1];
           overlays.push(
             <g key={`${tile.id}-rot-bank-${slot}`}>
               <clipPath id={clipId}>
@@ -1038,9 +1049,61 @@ export function HexMapBoard({
                 x={x - HEX_WIDTH / 2}
                 y={y - HEX_SIZE}
               />
-              <text className="hexBankLabel" textAnchor="middle" x={x} y={y + HEX_SIZE * 0.66}>
-                {CREATURE_BANKS[reservedBankId]?.name ?? "Creature Bank"}
-              </text>
+              {secondCandidate ? (
+                <>
+                  <clipPath id={`${clipId}-second`}>
+                    <circle cx={x + HEX_SIZE * 0.43} cy={y - HEX_SIZE * 0.38} r={HEX_SIZE * 0.34} />
+                  </clipPath>
+                  <circle
+                    className="bankPreviewSecondRing"
+                    cx={x + HEX_SIZE * 0.43}
+                    cy={y - HEX_SIZE * 0.38}
+                    r={HEX_SIZE * 0.37}
+                  />
+                  <image
+                    clipPath={`url(#${clipId}-second)`}
+                    height={HEX_SIZE * 0.72}
+                    href={assetUrl(creatureBankFieldImage(secondCandidate.bankId))}
+                    preserveAspectRatio="xMidYMid slice"
+                    style={{ pointerEvents: "none" }}
+                    width={HEX_SIZE * 0.72}
+                    x={x + HEX_SIZE * 0.07}
+                    y={y - HEX_SIZE * 0.74}
+                  />
+                </>
+              ) : null}
+              {previewBankOptions.map((candidate, index) =>
+                "size" in candidate ? (
+                  <g
+                    className={`bankSizeSvgBadge size-${candidate.size}`}
+                    key={`${tile.id}-preview-size-${index}`}
+                    transform={`translate(${x + (index === 0 ? -HEX_SIZE * 0.46 : HEX_SIZE * 0.46)} ${y - HEX_SIZE * 0.62})`}
+                  >
+                    {candidate.size > 1 ? (
+                      <>
+                        <circle className="coinOuter" r="10" />
+                        <circle className="coinInner" r="7.2" />
+                        <text textAnchor="middle" y="2.4">{candidate.size - 1}</text>
+                      </>
+                    ) : (
+                      <text className="noToken" textAnchor="middle" y="2.4">I</text>
+                    )}
+                  </g>
+                ) : null
+              )}
+              {previewBankOptions.map((candidate, index) => (
+                <text
+                  className="hexBankLabel"
+                  key={`${tile.id}-preview-label-${index}`}
+                  textAnchor="middle"
+                  x={x}
+                  y={y + HEX_SIZE * (index === 0 ? 0.55 : 0.75)}
+                >
+                  {previewBankOptions.length > 1 ? `${index === 0 ? "A" : "B"} · ` : ""}
+                  {CREATURE_BANKS[candidate.bankId]?.name ?? "Creature Bank"}
+                  {"size" in candidate ? ` · ${ROMAN[candidate.size]}` : ""}
+                </text>
+              ))}
             </g>
           );
         }
@@ -1182,7 +1245,7 @@ export function HexMapBoard({
           <title>
             {`${
               field.location === "creature_bank" && field.bankId
-                ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank)`
+                ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
                 : (location?.name ?? field.location)
             }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
@@ -1337,6 +1400,26 @@ export function HexMapBoard({
             />
           );
         }
+      }
+      if (field.location === "creature_bank" && field.bankSize) {
+        overlays.push(
+          <g
+            aria-label={`Creature Bank size ${ROMAN[field.bankSize]}`}
+            className={`bankSizeSvgBadge placed size-${field.bankSize}`}
+            key={`${spaceId}-bank-size`}
+            transform={`translate(${x + HEX_SIZE * 0.52} ${y - HEX_SIZE * 0.56})`}
+          >
+            {field.bankSize > 1 ? (
+              <>
+                <circle className="coinOuter" r="11" />
+                <circle className="coinInner" r="7.9" />
+                <text textAnchor="middle" y="2.5">{field.bankSize - 1}</text>
+              </>
+            ) : (
+              <text className="noToken" textAnchor="middle" y="2.5">I</text>
+            )}
+          </g>
+        );
       }
       if (!artShown && glyph && field.location !== "empty_field" && !tokenImage) {
         overlays.push(
@@ -2949,6 +3032,8 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
           const printed = unit.side === "few" ? def?.few : def?.pack;
           // BINH stat tweaks (Griffins, Marksmen) show live values.
           const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides) : printed;
+          const stackAttack = sideOverrides.polishUnitStacks && unit.side === "pack" && (unit.stacks ?? 0) > 0 ? 1 : 0;
+          const shownAttack = side ? side.attack + (unit.permanentAttackBonus ?? 0) + stackAttack : 0;
           const engineLines = implementedAbilityLines(side?.abilities);
           const hoverTitle = [side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
           return (
@@ -2961,7 +3046,10 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                     image: side?.cardImage,
                     subtitle: def ? `${def.tier} ${def.type}` : undefined,
                     lines: [
-                      side ? `Attack ${side.attack} · Defense ${side.defense} · HP ${side.health} · Initiative ${side.initiative}` : "",
+                      side ? `Attack ${shownAttack} · Defense ${side.defense} · HP ${side.health} · Initiative ${side.initiative}` : "",
+                      (unit.stacks ?? 0) > 0
+                        ? `${unit.stacks} Polish Unit Stack${unit.stacks === 1 ? "" : "s"}: +1 Attack and ${unit.stacks} extra Pack health layer${unit.stacks === 1 ? "" : "s"}.`
+                        : "",
                       side?.abilityText ?? "",
                       ...engineLines
                     ].filter(Boolean)
@@ -2977,11 +3065,21 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                 )}
                 <span className={`tierDot ${def?.tier}`} />
                 <strong>
-                  {unit.side === "few" ? "Few" : "Pack"} {def?.name ?? unit.unitDefId}
+                  {unit.side === "few" ? "Few" : unit.side === "neutral" ? "Neutral" : "Pack"}{" "}
+                  {def?.name ?? unit.unitDefId}
                 </strong>
+                {(unit.stacks ?? 0) > 0 ? (
+                  <span
+                    className={`armyStackBadge tier-${def?.tier ?? "bronze"} active`}
+                    title={`${unit.stacks} Unit Stack${unit.stacks === 1 ? "" : "s"} · +1 Attack · max ${polishArmyUnitStackCap(unit) || unit.stacks}`}
+                  >
+                    <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
+                    ×{unit.stacks}
+                  </span>
+                ) : null}
                 {side ? (
                   <small>
-                    A{side.attack} D{side.defense} HP{side.health} I{side.initiative}
+                    A{shownAttack} D{side.defense} HP{side.health} I{side.initiative}
                   </small>
                 ) : null}
               </button>
@@ -5361,7 +5459,8 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   decks: "Decks",
   units: "Unit buffs",
   abilities: "Abilities & heroes",
-  combat: "Combat & map rules"
+  combat: "Combat & map rules",
+  polish: "Polish house rules"
 };
 
 /**
@@ -5371,18 +5470,20 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
  */
 function HouseRulesSection({
   houseRules,
+  creatureBanksEnabled,
   setHouseRule
 }: {
   houseRules: Record<HouseRuleId, boolean>;
+  creatureBanksEnabled: boolean;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
 }) {
-  const categories = ["decks", "units", "abilities", "combat"] as const;
+  const categories = ["decks", "units", "abilities", "combat", "polish"] as const;
   return (
     <div className="houseRuleSection" aria-label="House rules">
       <div className="houseRuleHead">
         <strong>House rules</strong>
         <small>
-          BINH starts with every tweak on. Legacy / Tournament presets clear them — any rule can still be re-enabled.
+          BINH starts with its core tweaks on. Polish house rules stay opt-in, and Legacy clears every rule.
         </small>
       </div>
       {categories.map((category) => {
@@ -5391,18 +5492,30 @@ function HouseRulesSection({
           return null;
         }
         return (
-          <div className="houseRuleGroup" key={category}>
-            <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+          <div className={`houseRuleGroup ${category === "polish" ? "polish" : ""}`} key={category}>
+            <span className="houseRuleGroupLabel">
+              {category === "polish" ? (
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="polishRuleCrest"
+                  src={assetUrl("/assets/ui/polish-house-rules-flag.webp")}
+                />
+              ) : null}
+              {HOUSE_RULE_CATEGORY_LABELS[category]}
+            </span>
             <div className="houseRuleGrid">
               {rules.map((rule) => {
                 const on = houseRules[rule.id];
+                const disabled = rule.id === "polish-bank-sizes" && !creatureBanksEnabled;
                 return (
                   <button
                     aria-pressed={on}
-                    className={`houseRuleToggle ${on ? "on" : "off"}`}
+                    className={`houseRuleToggle ${on ? "on" : "off"} ${disabled ? "disabled" : ""}`}
+                    disabled={disabled}
                     key={rule.id}
                     onClick={() => setHouseRule(rule.id, !on)}
-                    title={rule.description}
+                    title={disabled ? `${rule.description} Turn Creature Banks on in Map & Setup first.` : rule.description}
                     type="button"
                   >
                     <span aria-hidden="true" className="houseRuleCheck">
@@ -5412,7 +5525,9 @@ function HouseRulesSection({
                       <strong>{rule.label}</strong>
                       <small>{rule.description}</small>
                     </span>
-                    <span className={`houseRuleState ${on ? "on" : "off"}`}>{on ? "ON" : "OFF"}</span>
+                    <span className={`houseRuleState ${on ? "on" : "off"}`}>
+                      {disabled ? "BANKS OFF" : on ? "ON" : "OFF"}
+                    </span>
                   </button>
                 );
               })}
@@ -5491,7 +5606,13 @@ function GameOptionsPanel({
   // Effective house-rule booleans (explicit toggle, else the chosen mode's
   // default). Flipping one sends just that id; the reducer merges it.
   const houseRules = resolveHouseRules(options);
-  const setHouseRule = (id: HouseRuleId, value: boolean) => send({ houseRules: { [id]: value } });
+  const setHouseRule = (id: HouseRuleId, value: boolean) => {
+    if (id === "polish-spell-book" && value) {
+      send({ houseRules: { [id]: true }, spellBook: false });
+      return;
+    }
+    send({ houseRules: { [id]: value } });
+  };
   const tournamentRules = resolveTournamentRules(options);
   const tournamentAllOn = tournamentRulesAllOn(options);
 
@@ -5832,10 +5953,15 @@ function GameOptionsPanel({
         );
       })()}
 
-      <HouseRulesSection houseRules={houseRules} setHouseRule={setHouseRule} />
+      <HouseRulesSection
+        creatureBanksEnabled={options.creatureBanks ?? true}
+        houseRules={houseRules}
+        setHouseRule={setHouseRule}
+      />
 
       {(() => {
-        const spellBookOn = options.spellBook ?? options.ruleset === "binh";
+        const polishSpellBookOn = houseRules["polish-spell-book"];
+        const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
         return (
           <div className="optionRow">
             <small title="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from">
@@ -5847,7 +5973,12 @@ function GameOptionsPanel({
                   aria-pressed={spellBookOn === on}
                   className={spellBookOn === on ? "selected" : ""}
                   key={String(on)}
-                  onClick={() => send({ spellBook: on })}
+                  onClick={() =>
+                    send({
+                      spellBook: on,
+                      ...(on ? { houseRules: { "polish-spell-book": false } } : {})
+                    })
+                  }
                   title={on ? "Spell Book on (house rule)" : "Spell Book off"}
                   type="button"
                 >
@@ -5856,7 +5987,9 @@ function GameOptionsPanel({
               ))}
             </div>
             <small className="optionHint">
-              {spellBookOn
+              {polishSpellBookOn
+                ? "Off because Polish Spell Book is selected; the two lifecycles cannot be combined."
+                : spellBookOn
                 ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
                 : "No Spell Book — Spells live only in hand, deck and discard."}
             </small>

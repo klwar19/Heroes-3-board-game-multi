@@ -1278,6 +1278,83 @@ Added in `src/data/map/creature-banks.ts` (data, tested in
 is NOT done:
 
 **Implemented and engine-enforced (a test fails if removed):**
+- **Polish house-rules rollout — current limit:** `polish-bank-sizes`,
+  `polish-unit-stacks`, and `polish-spell-book` are implemented and default OFF
+  in both BINH and Legacy. The existing stash-style Spell Book and Polish Spell
+  Book are mutually exclusive; enabling Polish forces the old toggle off. The
+  multi-round all-rules computer soak and Polish economy policy are covered.
+  Rolled bank sizes specifically are inert when the base
+  `creatureBanks` option is off; the lobby greys that toggle out in that case.
+- With `polish-unit-stacks` ON, a faction Pack card — or a recruited NEUTRAL
+  card — at its own Citadel may buy persistent Stack layers with the Population
+  flow. One Stack costs that side's printed gold cost plus its tier number
+  (bronze +1 / silver +2 / gold +3; azure counted as gold); the side's other
+  resource icons, normal recruit/reinforce discounts, and the Freelancer's
+  Guild substitution do not apply. Caps are bronze 3 / silver 2 / gold 1
+  (azure as gold → 1) — always the ARMY table, even for a unit whose bank-guard
+  twin punches higher. Every layer keeps that side's stats and ability. While
+  at least one layer remains the card has exactly +1 Attack; lethal damage
+  removes one full health layer and carries every excess point through
+  additional layers (a Neutral has no Pack→Few flip: once its layers and body
+  are spent the card is removed as usual, and a survivor syncs its remaining
+  layers back to the army card). Rebirth
+  fires first, Creature Bank `stackToken` abilities remain isolated, Pack→Few
+  drops the layers, survivors sync back after combat, and keep-troops PvP keeps
+  the pre-combat investment. The town row, army panel, and combat card share the
+  generated `public/assets/ui/polish-unit-stacks-coin.webp` count badge. Covered
+  by `polish-unit-stacks.test.ts`, `town-recruit-shortcut.test.tsx`, and
+  `board.test.tsx`. Computer policy buys Stack layers only from surplus after
+  completing its core army; the purchase is optional and opens no mandatory AI
+  window.
+- With `polish-spell-book` ON, starting Magic Arrows leave the M&M deck and
+  become refreshed Book Spells; Might heroes receive one Cast a Spell card and
+  Magic heroes two. Every owned Spell acquisition goes to the Book, while
+  temporary Tarnum casts and Scrolls retain their normal zones. Casting consumes
+  one Cast a Spell from hand and moves only the chosen Spell refreshed→used;
+  the whole used side refreshes at the beginning of each game round. Knowledge
+  returns the Cast card but not the Spell, Mysticism refreshes the cast Spell,
+  and discard-recovery artifacts refresh used Book Spells. Ciele I/IV, Genie
+  Wish and both Crown of Dragontooth options have Book-specific paths. The Mage
+  Guild searches 3, may grant/buy Cast cards, grants Cast at levels V/VII when
+  built, and offers once-per-round 3-gold Rolling Spells (return one owned Spell,
+  Search 2). The Spell deck remains merged even when Artifact decks split. The
+  existing painted Book UI/art is reused and shows refreshed/used counts; Book
+  Spells cannot be burned for Power, while Cast a Spell keeps its printed +1
+  Power alternative. Covered by `polish-spell-book.test.ts` and Book modal/hand
+  UI tests.
+- With `polish-bank-sizes` ON, a bank-eligible reveal peeks the top TWO tokens
+  (or one when the pile has one), rolls each candidate's size with seeded Attack
+  dice (the sheet table: −1→Ⅰ, 0→Ⅱ, +1→Ⅲ, −2 OR +2→Ⅳ), requires the player to
+  choose A or B, and only then offers tile rotation.
+  The seat's FIRST Ⅱ–Ⅲ (Far) opening rolls ONE die per candidate (a single die
+  only reaches Ⅰ–Ⅲ); every later Far opening and every Near bank rolls two.
+  Only the chosen token is removed by id after rotation; the unchosen peek
+  stays exactly where it was. This mode
+  REPLACES normal random-stat bank Stack Tokens: every bank card receives the
+  deterministic 0/1/2/3 full-Health layers for sizes I/II/III/IV, keeps the
+  same bank-card features, and has flat +1 Attack while any layer remains.
+  The bank card stays RANKLESS in play, but its layer capacity follows the
+  Unit Stack coin rule of the unit NAMED on it, punching one above the army
+  caps to at most 3 (bronze 3 / silver 3 / gold 2, azure counted as gold → 2 —
+  `polishBankGuardLayerCap`), and each BANK's rollable size clamps to what its
+  best guard can carry (`polishBankMaxSize`): the all-gold/azure Dragon
+  Utopia / Pyramid / Naga Bank top out at size Ⅲ (clamped at the reveal roll,
+  before the player chooses), every other bank reaches Ⅳ. Win rewards follow
+  `polishBankRewardScale` (`buildPolishCreatureBankReward`), by clamped size
+  not layer count: Ⅰ pays the printed base only; Ⅱ–Ⅳ all pay the classic full
+  4-stack extras (X=4); Ⅲ/Ⅳ additionally add 1/2 extra copies of the printed
+  base GOLD only (never valuables/materials — a no-gold-base bank like the
+  Cyclops Stockpile or Pyramid gains nothing beyond Ⅱ). The two unit banks
+  (Dragon Fly Hive / Griffin Conservatory) grant the Few at size Ⅰ, or the
+  Pack carrying 1/2/3 working Unit Stack layers + the Empower pick at Ⅱ/Ⅲ/Ⅳ —
+  those layers function even with `polish-unit-stacks` off
+  (`armyUnitStacksActive`: either Polish rule activates the army-stack combat
+  machinery; PURCHASING stays gated on `polish-unit-stacks`). The UI
+  uses no coin / bronze 1 / silver 2 / gold 3 and shows the remaining coin on
+  every defender. Covered by
+  `polish-bank-sizes.test.ts` (incl. the cap/clamp/reward-scale cases, each
+  mutation-checked), bank combat/ability controls, and the bank DOM
+  cases in `creature-bank-board.test.tsx` / `board.test.tsx`.
 - The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct
   from Few/Pack/Neutral), and resource/morale/search rewards scaled by the
   number of Stacked defenders (X). The two sea banks (Shipwreck, Derelict Ship)
@@ -1559,12 +1636,14 @@ Six additions; each engine rule fails a named test if its wiring is removed.
   stays silent) and `describe.test.ts`.
 - **A tile's Creature Bank is drawn (known) BEFORE the tile is rotated.** On
   reveal, `beginTileRotation` (`adventure-reducer.ts`) calls
-  `reserveCreatureBankForTile`, which PEEKS the top token of the matching tier
-  pile and stashes it on `tile.reservedBankId` (a peek, never a pop — the pile is
-  consumed only when the placement is accepted, so a decline or a Blocked Field
-  lost to a Subterranean Gate leaves the pile intact and nothing is stranded on an
-  elimination). The rotation-preview UI (`screen.tsx`) shows the reserved bank's
-  art + name on its Blocked Field, and the placement choice names it. Pinned in
+  `reserveCreatureBankForTile`, which normally PEEKS the top token of the
+  matching tier pile and stashes it on `tile.reservedBankId`; Polish Bank Sizes
+  instead stores both rolled peeks in `tile.reservedBankOptions`, opens the
+  mandatory A/B choice immediately, and keeps only the chosen candidate before
+  rotation becomes legal. This is still a peek, never a pop: the chosen token is
+  consumed by id only after rotation places it, so a Blocked Field lost to a
+  Subterranean Gate cannot strand a token. The rotation preview then shows the
+  chosen bank's art/name/coin on its Blocked Field. Pinned in
   `creature-bank-combat.test.ts` ("reserved (known) before the tile is rotated":
   reservedBankId set before rotation with the pile intact; the placed bank EQUALS
   the reserved one on accept; decline leaves the pile intact; both clear the

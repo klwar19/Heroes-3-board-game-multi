@@ -607,6 +607,17 @@ describe("Retaliation status — board badge + inspect line", () => {
     );
   }
 
+  it("marks the active unit with a turn arrow so every seat sees whose activation it is", () => {
+    const state = createInitialGameState("active-turn-arrow");
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    renderBoard(state);
+    // Exactly one active cell and one turn arrow — not a ghost on every unit.
+    expect(document.querySelectorAll(".battleCell.active")).toHaveLength(1);
+    expect(document.querySelectorAll(".activeTurnArrow")).toHaveLength(1);
+    const activeCell = document.querySelector(".battleCell.active");
+    expect(activeCell?.querySelector(".activeTurnArrow"), "arrow sits on the active unit card").toBeTruthy();
+  });
+
   it("shows no 'no counter' badge on a fresh board (every unit's retaliation is ready)", () => {
     const state = createInitialGameState("retaliation-ready");
     renderBoard(state);
@@ -1143,6 +1154,49 @@ describe("BattlefieldBoard — siege fortification art", () => {
     expect(document.querySelector(".arrowTower"), "the collapsed tower's card is gone").toBeNull();
   });
 })
+
+describe("BattlefieldBoard Polish army Stack badge", () => {
+  it("keeps army Stack counts visually and semantically separate from bank tokens", () => {
+    const state = createInitialGameState("army-stack-badge");
+    state.combat!.units.unit_p1_griffins.armyStacks = 2;
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(document.querySelector(".armyStackBadge.combat")?.textContent).toContain("×2");
+    expect(document.querySelectorAll(".stackTokenBadge")).toHaveLength(0);
+  });
+
+  it("shows the Polish bank coin layer count instead of a random-stat token", () => {
+    const state = createInitialGameState("bank-stack-badge");
+    const unit = state.combat!.units.unit_p2_skeletons;
+    unit.bankUnit = true;
+    unit.bankStacks = 3;
+    delete unit.stackToken;
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(document.querySelector(".bankStackBadge.size-4")?.textContent).toContain("3 Stacks");
+    expect(document.querySelectorAll(".stackTokenBadge")).toHaveLength(0);
+  });
+});
 
 describe("BattlefieldBoard - tied activation-order choice", () => {
   it("highlights every candidate and lets the player choose it on the board", () => {
