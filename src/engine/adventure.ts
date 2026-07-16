@@ -6092,6 +6092,10 @@ function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTo
   visit.steps.unshift({
     type: "CHOOSE_ONE",
     prompt: `${label} — choose where to travel`,
+    // Tag the picker so the board can offer each destination as a glowing,
+    // clickable exit hex (themed by kind) instead of a bare numbered list; the
+    // travel semantics are unchanged (the option steps are still authoritative).
+    teleport: { kind },
     options: destinations.map((destination) => ({
       label: destination.label,
       steps: mapTokenTravelSteps(visit, kind, destination)
@@ -6232,6 +6236,9 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
   visit.steps.unshift({
     type: "CHOOSE_ONE",
     prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} Gate — choose where to travel`,
+    // Same board affordance as the Monolith picker, themed by the gate's color
+    // pair (the ring tint) — see resolveTokenTeleport.
+    teleport: { kind: "gate", pair },
     options: destinations.map((destination) => ({
       label: destination.label,
       steps: coloredGateTravelSteps(visit, pair, destination)
