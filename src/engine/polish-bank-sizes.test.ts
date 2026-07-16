@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildPolishCreatureBankReward,
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
   type CreatureBankId,
@@ -9,12 +8,9 @@ import {
   applyAction,
   createAdventureGameState,
   getLegalActions,
-  makeCombatUnitFromArmy,
-  polishBankMaxSize,
-  polishBankRewardScale,
   polishBankSizeForAttackRolls,
-  unitSideRuleOverrides,
   type BankSize,
+  type CombatUnitState,
   type GameAction,
   type GameEvent,
   type GameState,
@@ -201,141 +197,142 @@ describe("Polish Creature Bank offer", () => {
   });
 });
 
+function stackTokenDelta(stat: NonNullable<CombatUnitState["stackToken"]>): number {
+  return stat === "initiative" ? 2 : 1;
+}
+
+/** A Stacked bank defender's fighting stats include its token's stat bonus. */
+function expectStackTokenBaked(unit: CombatUnitState): void {
+  const base = CREATURE_BANK_UNIT_SIDES[unit.unitDefId!]!;
+  const token = unit.stackToken;
+  if (!token) {
+    throw new Error("expected a Stacked bank defender (a stackToken)");
+  }
+  expect(unit.attack).toBe(base.attack + (token === "attack" ? stackTokenDelta("attack") : 0));
+  expect(unit.defense).toBe(base.defense + (token === "defense" ? stackTokenDelta("defense") : 0));
+  expect(unit.maxHealth).toBe(base.health + (token === "health" ? stackTokenDelta("health") : 0));
+  expect(unit.initiative).toBe(
+    base.initiative + (token === "initiative" ? stackTokenDelta("initiative") : 0),
+  );
+}
+
 describe("Polish bank size combat and AI", () => {
-  it("replaces random Stack Tokens with 0/1/2/3 layers, capped per guard by its unit's tier", () => {
+  it("makes size N the GUARANTEED number of Stacked defenders (standard random-stat tokens)", () => {
     const state = createAdventureGameState({
-      seed: "bank-size-deterministic-layers",
+      seed: "bank-size-guaranteed-tokens",
       difficulty: "normal",
       rollFirstPlayer: false,
       houseRules: { "polish-bank-sizes": true },
     });
 
-    for (const size of [1, 2, 3, 4] as const) {
-      const { units, stackedCount } = buildCreatureBankCombatUnits(state, "crypt", size);
-      expect(units).toHaveLength(4);
-      // The bank card is rankless in play, but layers follow the Unit Stack
-      // coin caps of the unit NAMED on it, punching one above the army caps
-      // with an absolute maximum of 3 (bronze 3 / silver 3 / gold+azure 2):
-      // the Crypt's bronze Skeletons/Zombies/Wraiths and silver Vampires all
-      // carry the full size-Ⅳ 3 layers.
-      const expectedLayers = () => Math.min(size - 1, 3);
-      expect(units.map((unit) => unit.bankStacks)).toEqual(
-        units.map(() => expectedLayers())
-      );
-      expect(units.every((unit) => unit.stackToken === undefined)).toBe(true);
-      expect(units.every((unit) => {
-        const base = CREATURE_BANK_UNIT_SIDES[unit.unitDefId!];
-        return unit.attack === base.attack + (size > 1 ? 1 : 0);
-      })).toBe(true);
-      // Combat stackedCount = classic full-stack X for feed (0 at Ⅰ, 4 at Ⅱ+).
-      // Size Ⅲ/Ⅳ gold base layers are applied in buildPolishCreatureBankReward.
-      expect(stackedCount).toBe(size === 1 ? 0 : 4);
+    // Every (bank, size) pair: EXACTLY `size` of the defenders carry a standard
+    // Stack Token, guaranteed — no ~77% roll, no bespoke coin layer. Across all
+    // 12 banks × 4 sizes that is ~120 placements; if the guarantee were reverted
+    // to the difficulty 77% roll at least one would drop and the exact-count
+    // assertion would fail (mutation control for the guaranteed placement).
+    for (const bankId of Object.keys(CREATURE_BANKS) as CreatureBankId[]) {
+      for (const size of [1, 2, 3, 4] as const) {
+        const { units, stackedCount } = buildCreatureBankCombatUnits(state, bankId, size);
+        const expected = Math.min(size, units.length);
+        const stacked = units.filter((unit) => Boolean(unit.stackToken));
+        expect(stacked, `${bankId} size ${size}`).toHaveLength(expected);
+        expect(stackedCount, `${bankId} size ${size} X`).toBe(expected);
+        // Bank cards stay rankless bankUnits; the army-stack layer field is never set.
+        expect(units.every((unit) => unit.bankUnit === true)).toBe(true);
+        expect(units.every((unit) => (unit.armyStacks ?? 0) === 0)).toBe(true);
+        // Each Stacked defender's stat line actually includes its token bonus.
+        for (const unit of stacked) {
+          expectStackTokenBaked(unit);
+        }
+      }
     }
   });
 
-  it("caps gold and azure guards at 2 layers without changing their rankless in-play status", () => {
+  it("lets every bank reach size Ⅳ = all four defenders Stacked (no gold/azure clamp)", () => {
     const state = createAdventureGameState({
-      seed: "bank-size-tier-caps",
+      seed: "bank-size-no-clamp",
       rollFirstPlayer: false,
       houseRules: { "polish-bank-sizes": true },
     });
-
-    // Dragon Utopia: Black Dragons (gold) + Gold/Faerie/Crystal Dragons
-    // (azure — counted as gold for Stacks). Bank guards punch one above the
-    // army caps, so its best guard carries 2 layers and the whole BANK tops
-    // out at size Ⅲ: a stored size Ⅳ clamps to Ⅲ (2 layers each, reward
-    // full-stack X=4). The guards keep the bank card's
-    // rankless in-play identity (bankUnit, no stackToken; targeting/tier
-    // gates are pinned in creature-bank-combat.test.ts, unchanged by the cap).
-    const utopia = buildCreatureBankCombatUnits(state, "dragon_utopia", 4);
-    expect(utopia.units.map((unit) => unit.bankStacks)).toEqual([2, 2, 2, 2]);
-    expect(utopia.units.every((unit) => unit.bankUnit === true)).toBe(true);
-    expect(utopia.units.every((unit) => unit.stackToken === undefined)).toBe(true);
-    expect(utopia.stackedCount).toBe(4);
-
-    // The Pyramid's Gold/Diamond Golems are gold-tier: size Ⅲ is its max and
-    // pays full-stack X=4 with 2 layers on every card.
-    const pyramid = buildCreatureBankCombatUnits(state, "pyramid", 3);
-    expect(pyramid.units.map((unit) => unit.bankStacks)).toEqual([2, 2, 2, 2]);
-    expect(pyramid.stackedCount).toBe(4);
-
-    // Size Ⅰ still means zero layers everywhere — the cap never ADDS a layer.
-    const small = buildCreatureBankCombatUnits(state, "dragon_utopia", 1);
-    expect(small.units.every((unit) => unit.bankStacks === 0)).toBe(true);
+    // The all-gold/azure Dragon Utopia and Pyramid used to CLAMP at Ⅲ. Now the
+    // size is simply how many guards are Stacked, so Ⅳ stacks all four.
+    for (const bankId of ["dragon_utopia", "pyramid", "naga_bank", "crypt"] as const) {
+      const { units, stackedCount } = buildCreatureBankCombatUnits(state, bankId, 4);
+      expect(units.filter((unit) => Boolean(unit.stackToken)), bankId).toHaveLength(4);
+      expect(stackedCount, bankId).toBe(4);
+    }
   });
 
-  it("clamps each bank's possible size to its best guard's bank-layer cap", () => {
-    // 1 + max bank-guard layer cap among the four guards (guards punch one
-    // above the army caps): all-gold/azure → Ⅲ, any silver or bronze guard →
-    // the full Ⅳ.
-    expect(polishBankMaxSize("dragon_utopia")).toBe(3);
-    expect(polishBankMaxSize("pyramid")).toBe(3);
-    expect(polishBankMaxSize("naga_bank")).toBe(3);
-    expect(polishBankMaxSize("medusa_stores")).toBe(4);
-    expect(polishBankMaxSize("derelict_ship")).toBe(4);
-    expect(polishBankMaxSize("crypt")).toBe(4);
-    expect(polishBankMaxSize("imp_cache")).toBe(4);
-  });
-
-  it("clamps the rolled size at the reveal offer, before the player chooses", () => {
-    // Force both candidates to be all-gold/azure banks and scan every stored
-    // candidate against its own roll: the stored size must equal
-    // min(rolled size, bank max), so a Ⅳ roll on a Dragon Utopia shows Ⅲ.
+  it("stores the rolled size unchanged at the reveal offer (no clamp)", () => {
+    // All-gold/azure pile with two dice (size Ⅳ reachable): each stored candidate
+    // size EQUALS its own rolled size — a Ⅳ roll on a Dragon Utopia stays Ⅳ.
     const state = placeFarTileAwaitingRotation({
-      openings: 0,
+      openings: 1,
       pile: ["dragon_utopia", "pyramid", "naga_bank"],
     });
     const rollEvents = state.eventLog.filter(
       (event): event is Extract<GameEvent, { type: "ADVENTURE_DICE_ROLLED" }> =>
-        event.type === "ADVENTURE_DICE_ROLLED" && Boolean(event.results[0]?.startsWith("Bank "))
+        event.type === "ADVENTURE_DICE_ROLLED" && Boolean(event.results[0]?.startsWith("Bank ")),
     );
     const tile = Object.values(state.adventure!.tiles).find((candidate) => candidate.reservedBankOptions?.length);
-    expect(tile?.reservedBankOptions?.length).toBeGreaterThan(0);
+    expect(tile?.reservedBankOptions?.length).toBe(2);
     expect(rollEvents.length).toBe(tile!.reservedBankOptions!.length);
     for (const [index, option] of tile!.reservedBankOptions!.entries()) {
-      const rolled = polishBankSizeForAttackRolls(rollEvents[index]!.attackRolls ?? []);
-      expect(option.size).toBe(Math.min(rolled, polishBankMaxSize(option.bankId as CreatureBankId)));
-      expect(option.size).toBeLessThanOrEqual(3);
+      expect(option.size).toBe(polishBankSizeForAttackRolls(rollEvents[index]!.attackRolls ?? []));
     }
   });
 
-  it("peels full bank-card health layers with carryover and keeps the same ability until the last layer", () => {
+  it("a Stacked bank defender absorbs one lethal blow by discarding its token, then dies", () => {
     const state = createAdventureGameState({
-      seed: "bank-size-layer-damage",
+      seed: "bank-size-token-absorb",
       rollFirstPlayer: false,
       houseRules: { "polish-bank-sizes": true },
     });
-    const unit = buildCreatureBankCombatUnits(state, "imp_cache", 4).units[0]!;
-    const base = CREATURE_BANK_UNIT_SIDES[unit.unitDefId!];
-    expect(unit.bankStacks).toBe(3);
-    expect(unit.attack).toBe(base.attack + 1);
-    expect(getUnitAbilityDefinitions(unit).map((ability) => ability.id)).toContain("bank-familiar-power-drain");
+    // Size Ⅰ Imp Cache: exactly one Familiar is Stacked. Its Stacked-only ability
+    // (power-drain) is active while the token remains; the token absorbs one
+    // lethal blow (rulebook p.67) and only the SECOND lethal hit removes it.
+    const { units } = buildCreatureBankCombatUnits(state, "imp_cache", 1);
+    const stacked = units.find((unit) => Boolean(unit.stackToken))!;
+    expect(stacked).toBeTruthy();
+    expect(getUnitAbilityDefinitions(stacked).map((ability) => ability.id)).toContain(
+      "bank-familiar-power-drain",
+    );
 
-    unit.damage = unit.maxHealth * 2 + 1;
-    markUnitRemovedIfNeeded(state, unit);
-    expect(unit.bankStacks).toBe(1);
-    expect(unit.damage).toBe(1);
-    expect(unit.attack).toBe(base.attack + 1);
-    expect(getUnitAbilityDefinitions(unit).map((ability) => ability.id)).toContain("bank-familiar-power-drain");
+    stacked.damage = stacked.maxHealth;
+    markUnitRemovedIfNeeded(state, stacked);
+    expect(stacked.stackToken).toBeNull();
+    expect(state.eventLog.filter((event) => event.type === "STACK_TOKEN_DISCARDED")).toHaveLength(1);
+    expect(getUnitAbilityDefinitions(stacked).map((ability) => ability.id)).not.toContain(
+      "bank-familiar-power-drain",
+    );
+    expect(
+      state.eventLog.some((event) => event.type === "UNIT_REMOVED" && event.unitId === stacked.id),
+    ).toBe(false);
 
-    unit.damage = unit.maxHealth;
-    markUnitRemovedIfNeeded(state, unit);
-    expect(unit.bankStacks).toBe(0);
-    expect(unit.damage).toBe(0);
-    expect(unit.attack).toBe(base.attack);
-    expect(getUnitAbilityDefinitions(unit).map((ability) => ability.id)).not.toContain("bank-familiar-power-drain");
-    expect(state.eventLog.filter((event) => event.type === "BANK_STACK_LOST")).toHaveLength(3);
+    stacked.damage = stacked.maxHealth;
+    markUnitRemovedIfNeeded(state, stacked);
+    expect(
+      state.eventLog.some((event) => event.type === "UNIT_REMOVED" && event.unitId === stacked.id),
+    ).toBe(true);
   });
 
-  it("CONTROL: rule off keeps the original random-stat token system", () => {
+  it("CONTROL: rule off rolls the count off Scenario Difficulty at ~77% (not the size)", () => {
     const state = createAdventureGameState({
       seed: "bank-size-standard-control",
       difficulty: "impossible",
       rollFirstPlayer: false,
       houseRules: { "polish-bank-sizes": false },
     });
-    const { units } = buildCreatureBankCombatUnits(state, "crypt", 4);
-    expect(units.every((unit) => unit.bankStacks === undefined)).toBe(true);
+    // Rule OFF: the count comes from the difficulty (impossible = up to 4 rolls)
+    // and each candidate lands only ~77% of the time, so across all banks at
+    // least one comes up with FEWER than 4 Stacked. If the guaranteed placement
+    // were (wrongly) applied with the rule off, every bank would show 4 and this
+    // control would fail.
+    const counts = (Object.keys(CREATURE_BANKS) as CreatureBankId[]).map(
+      (bankId) => buildCreatureBankCombatUnits(state, bankId).stackedCount,
+    );
+    expect(counts.every((count) => count >= 0 && count <= 4)).toBe(true);
+    expect(counts.some((count) => count < 4)).toBe(true);
   });
 
   it("AI prefers the larger beatable candidate and the easier one when both are dangerous", () => {
@@ -384,278 +381,12 @@ describe("Polish bank size combat and AI", () => {
   });
 });
 
-describe("Polish bank size rewards (all banks × all sizes)", () => {
-  /**
-   * Size Ⅰ = base only (stackedX 0). Size Ⅱ = full 4-stack extras.
-   * Size Ⅲ/Ⅳ = size Ⅱ + 1/2 base GOLD layers (never valuables).
-   * Unit banks: Few / Pack+1/2/3 stacks; empower only from size Ⅱ.
-   */
-  it("maps size → scale and pays every bank correctly at every legal size", () => {
-    expect(polishBankRewardScale(1)).toEqual({
-      stackedX: 0,
-      extraBaseGoldLayers: 0,
-      unitStacks: 0,
-      empower: false,
-    });
-    expect(polishBankRewardScale(2)).toEqual({
-      stackedX: 4,
-      extraBaseGoldLayers: 0,
-      unitStacks: 1,
-      empower: true,
-    });
-    expect(polishBankRewardScale(3)).toEqual({
-      stackedX: 4,
-      extraBaseGoldLayers: 1,
-      unitStacks: 2,
-      empower: true,
-    });
-    expect(polishBankRewardScale(4)).toEqual({
-      stackedX: 4,
-      extraBaseGoldLayers: 2,
-      unitStacks: 3,
-      empower: true,
-    });
-
-    const bankIds = Object.keys(CREATURE_BANKS) as CreatureBankId[];
-    expect(bankIds).toHaveLength(12);
-
-    for (const bankId of bankIds) {
-      const maxSize = polishBankMaxSize(bankId);
-      for (const size of [1, 2, 3, 4] as const) {
-        const effective = Math.min(size, maxSize) as BankSize;
-        const scale = polishBankRewardScale(effective);
-        const reward = buildPolishCreatureBankReward(bankId, effective);
-        const { stackedX: x, extraBaseGoldLayers: layers } = scale;
-
-        switch (bankId) {
-          case "imp_cache":
-            expect(reward).toEqual({ type: "GAIN_RESOURCES", gold: 3 * (1 + layers) + x });
-            break;
-          case "crypt":
-            expect(reward).toEqual({ type: "GAIN_RESOURCES", gold: 6 * (1 + layers) + 2 * x });
-            break;
-          case "dwarven_treasury":
-            expect(reward).toEqual({ type: "GAIN_RESOURCES", gold: 7 * (1 + layers) + 3 * x });
-            break;
-          case "naga_bank":
-            // Extra base layers add gold only — valuables stay at base + X.
-            expect(reward).toEqual({
-              type: "GAIN_RESOURCES",
-              gold: 6 * (1 + layers) + 6 * x,
-              valuables: 2 + x,
-            });
-            break;
-          case "cyclops_stockpile":
-            // No gold in base → size Ⅲ/Ⅳ match size Ⅱ.
-            expect(reward).toEqual({
-              type: "GAIN_RESOURCES",
-              buildingMaterials: 8 + 2 * x,
-              valuables: 2 + x,
-            });
-            break;
-          case "medusa_stores": {
-            // Size Ⅰ collapses to a lone GAIN_RESOURCES (no stack choices).
-            if (x === 0) {
-              expect(reward).toEqual({
-                type: "GAIN_RESOURCES",
-                gold: 6 * (1 + layers),
-                valuables: 1,
-              });
-            } else {
-              expect(reward.type).toBe("SEQUENCE");
-              if (reward.type !== "SEQUENCE") break;
-              expect(reward.interactions[0]).toEqual({
-                type: "GAIN_RESOURCES",
-                gold: 6 * (1 + layers),
-                valuables: 1,
-              });
-              expect(reward.interactions.slice(1)).toHaveLength(x);
-            }
-            break;
-          }
-          case "shipwreck":
-            expect(reward).toEqual(
-              x > 0
-                ? {
-                    type: "SEQUENCE",
-                    interactions: [
-                      { type: "GAIN_MORALE", amount: 1 },
-                      { type: "GAIN_RESOURCES", gold: 5 * (1 + layers) + 2 * x },
-                      { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: x },
-                    ],
-                  }
-                : {
-                    type: "SEQUENCE",
-                    interactions: [
-                      { type: "GAIN_MORALE", amount: 1 },
-                      { type: "GAIN_RESOURCES", gold: 5 },
-                    ],
-                  },
-            );
-            break;
-          case "derelict_ship":
-            expect(reward).toEqual(
-              x > 0
-                ? {
-                    type: "SEQUENCE",
-                    interactions: [
-                      { type: "GAIN_MORALE", amount: 1 },
-                      { type: "GAIN_RESOURCES", gold: 7 * (1 + layers) + 2 * x },
-                      { type: "SEARCH_SHARED_DECK", deckId: "spells", count: x },
-                    ],
-                  }
-                : {
-                    type: "SEQUENCE",
-                    interactions: [
-                      { type: "GAIN_MORALE", amount: 1 },
-                      { type: "GAIN_RESOURCES", gold: 7 },
-                    ],
-                  },
-            );
-            break;
-          case "pyramid":
-            // No gold base — size Ⅲ/Ⅳ match size Ⅱ.
-            expect(reward).toEqual(
-              x > 0
-                ? {
-                    type: "SEQUENCE",
-                    interactions: [
-                      { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 },
-                      { type: "REMOVE_THEN_SEARCH_REPEAT", times: x, searchCount: 5 },
-                    ],
-                  }
-                : { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 },
-            );
-            break;
-          case "dragon_utopia": {
-            expect(reward.type).toBe("SEQUENCE");
-            if (reward.type !== "SEQUENCE") break;
-            expect(reward.interactions[0]).toEqual({
-              type: "GAIN_RESOURCES",
-              gold: 40 * (1 + layers),
-            });
-            expect(reward.interactions[1]).toEqual({
-              type: "SEARCH_SHARED_DECK",
-              deckId: "artifacts",
-              count: 3,
-            });
-            expect(reward.interactions.slice(2)).toHaveLength(x);
-            break;
-          }
-          case "dragon_fly_hive":
-          case "griffin_conservatory": {
-            const unitDefId =
-              bankId === "dragon_fly_hive" ? "fortress.dragon_flies" : "castle.griffins";
-            if (size === 1 || effective === 1) {
-              expect(reward).toEqual({ type: "GAIN_UNIT", unitDefId, side: "few" });
-            } else {
-              expect(reward.type).toBe("SEQUENCE");
-              if (reward.type !== "SEQUENCE") break;
-              expect(reward.interactions[0]).toEqual({
-                type: "GAIN_UNIT",
-                unitDefId,
-                side: "pack",
-                stacks: scale.unitStacks,
-              });
-              expect(reward.interactions[1]).toEqual({ type: "EMPOWER_ABILITY" });
-            }
-            break;
-          }
-          default: {
-            const _exhaustive: never = bankId;
-            throw new Error(`unhandled bank ${_exhaustive}`);
-          }
-        }
-      }
-    }
-  });
-
-  it("pins the explicit gold/materials ladder for sizes Ⅰ–Ⅳ", () => {
-    // size Ⅱ = full 4-stack; Ⅲ/Ⅳ add base gold only (not valuables).
-    const rows: Array<{
-      bankId: CreatureBankId;
-      size: BankSize;
-      gold?: number;
-      valuables?: number;
-      buildingMaterials?: number;
-    }> = [
-      // Imp Cache: 3*(1+L) + X
-      { bankId: "imp_cache", size: 1, gold: 3 },
-      { bankId: "imp_cache", size: 2, gold: 7 },
-      { bankId: "imp_cache", size: 3, gold: 10 },
-      { bankId: "imp_cache", size: 4, gold: 13 },
-      // Crypt: 6*(1+L) + 2X
-      { bankId: "crypt", size: 1, gold: 6 },
-      { bankId: "crypt", size: 2, gold: 14 },
-      { bankId: "crypt", size: 3, gold: 20 },
-      { bankId: "crypt", size: 4, gold: 26 },
-      // Dwarven Treasury: 7*(1+L) + 3X
-      { bankId: "dwarven_treasury", size: 1, gold: 7 },
-      { bankId: "dwarven_treasury", size: 2, gold: 19 },
-      { bankId: "dwarven_treasury", size: 3, gold: 26 },
-      { bankId: "dwarven_treasury", size: 4, gold: 33 },
-      // Naga: gold 6*(1+L)+6X; valuables 2+X only (no size Ⅲ/Ⅳ valuables bump)
-      { bankId: "naga_bank", size: 1, gold: 6, valuables: 2 },
-      { bankId: "naga_bank", size: 2, gold: 30, valuables: 6 },
-      { bankId: "naga_bank", size: 3, gold: 36, valuables: 6 },
-      // Cyclops: no gold base → Ⅲ = Ⅱ
-      { bankId: "cyclops_stockpile", size: 1, buildingMaterials: 8, valuables: 2 },
-      { bankId: "cyclops_stockpile", size: 2, buildingMaterials: 16, valuables: 6 },
-      { bankId: "cyclops_stockpile", size: 3, buildingMaterials: 16, valuables: 6 },
-      { bankId: "cyclops_stockpile", size: 4, buildingMaterials: 16, valuables: 6 },
-      // Shipwreck gold: 5*(1+L) + 2X
-      { bankId: "shipwreck", size: 1, gold: 5 },
-      { bankId: "shipwreck", size: 2, gold: 13 },
-      { bankId: "shipwreck", size: 3, gold: 18 },
-      { bankId: "shipwreck", size: 4, gold: 23 },
-      // Derelict Ship gold: 7*(1+L) + 2X
-      { bankId: "derelict_ship", size: 1, gold: 7 },
-      { bankId: "derelict_ship", size: 2, gold: 15 },
-      { bankId: "derelict_ship", size: 3, gold: 22 },
-      { bankId: "derelict_ship", size: 4, gold: 29 },
-    ];
-
-    for (const row of rows) {
-      const reward = buildPolishCreatureBankReward(row.bankId, row.size);
-      if (reward.type === "GAIN_RESOURCES") {
-        expect(reward.gold ?? 0, `${row.bankId} size ${row.size} gold`).toBe(row.gold ?? 0);
-        expect(reward.valuables ?? 0, `${row.bankId} size ${row.size} valuables`).toBe(row.valuables ?? 0);
-        expect(reward.buildingMaterials ?? 0, `${row.bankId} size ${row.size} materials`).toBe(
-          row.buildingMaterials ?? 0,
-        );
-      } else if (reward.type === "SEQUENCE") {
-        const res = reward.interactions.find((step) => step.type === "GAIN_RESOURCES");
-        expect(res?.type).toBe("GAIN_RESOURCES");
-        if (res?.type !== "GAIN_RESOURCES") continue;
-        expect(res.gold ?? 0, `${row.bankId} size ${row.size} gold`).toBe(row.gold ?? 0);
-      } else {
-        throw new Error(`unexpected reward shape for ${row.bankId}`);
-      }
-    }
-  });
-
-  it("CONTROL: size Ⅲ/Ⅳ never add valuables beyond the size Ⅱ full-stack package", () => {
-    // Naga / Medusa / Cyclops: valuables (or choice count) stay flat from Ⅱ→Ⅳ.
-    expect(buildPolishCreatureBankReward("naga_bank", 2)).toMatchObject({ valuables: 6 });
-    expect(buildPolishCreatureBankReward("naga_bank", 3)).toMatchObject({ valuables: 6 });
-    expect(buildPolishCreatureBankReward("naga_bank", 2)).toMatchObject({ gold: 30 });
-    expect(buildPolishCreatureBankReward("naga_bank", 3)).toMatchObject({ gold: 36 });
-
-    const medusa2 = buildPolishCreatureBankReward("medusa_stores", 2);
-    const medusa3 = buildPolishCreatureBankReward("medusa_stores", 3);
-    expect(medusa2.type).toBe("SEQUENCE");
-    expect(medusa3.type).toBe("SEQUENCE");
-    if (medusa2.type === "SEQUENCE" && medusa3.type === "SEQUENCE") {
-      expect(medusa2.interactions.slice(1)).toHaveLength(4);
-      expect(medusa3.interactions.slice(1)).toHaveLength(4);
-      expect(medusa2.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 6, valuables: 1 });
-      expect(medusa3.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 12, valuables: 1 });
-    }
-  });
-});
-
-describe("Polish bank size rewards — CONSUMER (the granted steps actually land)", () => {
-  function bankRewardState(size: BankSize | undefined, seed: string): GameState {
+describe("Polish bank size rewards (back to the normal X-scaled reward)", () => {
+  function bankRewardState(
+    bankId: CreatureBankId,
+    size: BankSize | undefined,
+    seed: string,
+  ): GameState {
     const state = createAdventureGameState({
       seed,
       difficulty: "normal",
@@ -678,58 +409,66 @@ describe("Polish bank size rewards — CONSUMER (the granted steps actually land
       settlementResource: null,
     };
     state.heroes.hero_p1.spaceId = "bank-field";
-    placeCreatureBank(state, "bank-field", "dragon_fly_hive", size);
+    placeCreatureBank(state, "bank-field", bankId, size);
     return state;
   }
 
-  it("a size-Ⅲ Dragon Fly Hive win adds the Pack with 2 WORKING layers (polish-unit-stacks off)", () => {
-    const state = bankRewardState(3, "polish-bank-reward-consumer");
-    const armyBefore = new Set(state.players.p1.army.map((unit) => unit.id));
-
-    grantCreatureBankReward(state, "hero_p1", "bank-field", 0);
-
-    // RECRUIT_FREE consumed the reward's `stacks`: the army card carries them.
-    const gained = state.players.p1.army.filter((unit) => !armyBefore.has(unit.id));
-    expect(gained).toHaveLength(1);
-    expect(gained[0]).toMatchObject({ unitDefId: "fortress.dragon_flies", side: "pack", stacks: 2 });
-    expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
-
-    // The layers FUNCTION in combat even though polish-unit-stacks is off:
-    // armyUnitStacksActive turns the machinery on for either Polish rule.
-    const unit = makeCombatUnitFromArmy(
-      gained[0],
-      "p1",
-      "combat_reward",
-      0,
-      "legacy",
-      unitSideRuleOverrides(state),
-    )!;
-    const twin = makeCombatUnitFromArmy(
-      { ...gained[0], id: "reward_twin", stacks: 0 },
-      "p1",
-      "combat_reward_twin",
-      0,
-      "legacy",
-      unitSideRuleOverrides(state),
-    )!;
-    expect(unit.armyStacks).toBe(2);
-    expect(unit.attack).toBe(twin.attack + 1);
-    unit.damage = unit.maxHealth;
-    markUnitRemovedIfNeeded(state, unit);
-    expect(unit.armyStacks).toBe(1);
-    expect(unit.damage).toBe(0);
+  it("routes the win reward through the normal bank.buildReward(X), X = the Stacked count = size", () => {
+    const state = createAdventureGameState({
+      seed: "bank-size-reward-routing",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      houseRules: { "polish-bank-sizes": true },
+    });
+    // Guaranteed placement makes the combat's Stacked count equal the size, and
+    // the reward is the classic per-bank builder scaled by that X — there is no
+    // bespoke Polish reward scale any more. Imp Cache pays its printed 3 + X gold.
+    for (const size of [1, 2, 3, 4] as const) {
+      const { stackedCount } = buildCreatureBankCombatUnits(state, "imp_cache", size);
+      expect(stackedCount).toBe(size);
+      expect(CREATURE_BANKS.imp_cache.buildReward(stackedCount)).toEqual({
+        type: "GAIN_RESOURCES",
+        gold: 3 + size,
+      });
+    }
   });
 
-  it("CONTROL: with the rule off the same win pays the classic X-scaled reward (a stack-less card)", () => {
-    const state = bankRewardState(undefined, "polish-bank-reward-classic");
-    const armyBefore = new Set(state.players.p1.army.map((unit) => unit.id));
+  it("a resource-bank win actually lands the normal X-scaled gold (end to end)", () => {
+    const state = bankRewardState("imp_cache", 3, "polish-bank-reward-gold");
+    const goldBefore = state.players.p1.resources.gold ?? 0;
+    grantCreatureBankReward(state, "hero_p1", "bank-field", 3);
+    expect((state.players.p1.resources.gold ?? 0) - goldBefore).toBe(6); // 3 + X(3)
+    expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
+  });
 
-    grantCreatureBankReward(state, "hero_p1", "bank-field", 0);
+  it("a Dragon Fly Hive win grants the recruitable card — Few at size Ⅰ, a plain Pack from size Ⅱ", () => {
+    // Size Ⅲ (X = 3 ≥ 2): a PLAIN Pack (the normal reward — no army-stack layers)
+    // plus the house-rule Empower pick.
+    const packState = bankRewardState("dragon_fly_hive", 3, "polish-bank-reward-pack");
+    const packBefore = new Set(packState.players.p1.army.map((unit) => unit.id));
+    grantCreatureBankReward(packState, "hero_p1", "bank-field", 3);
+    const packGained = packState.players.p1.army.filter((unit) => !packBefore.has(unit.id));
+    expect(packGained).toHaveLength(1);
+    expect(packGained[0]).toMatchObject({ unitDefId: "fortress.dragon_flies", side: "pack" });
+    expect(packGained[0].stacks).toBeUndefined();
 
-    const gained = state.players.p1.army.filter((unit) => !armyBefore.has(unit.id));
-    expect(gained).toHaveLength(1);
-    expect(gained[0].unitDefId).toBe("fortress.dragon_flies");
-    expect(gained[0].side).toBe("few");
-    expect(gained[0].stacks).toBeUndefined();
+    // Size Ⅰ (X = 0): the Few side.
+    const fewState = bankRewardState("dragon_fly_hive", 1, "polish-bank-reward-few");
+    const fewBefore = new Set(fewState.players.p1.army.map((unit) => unit.id));
+    grantCreatureBankReward(fewState, "hero_p1", "bank-field", 0);
+    const fewGained = fewState.players.p1.army.filter((unit) => !fewBefore.has(unit.id));
+    expect(fewGained).toHaveLength(1);
+    expect(fewGained[0]).toMatchObject({ unitDefId: "fortress.dragon_flies", side: "few" });
+    expect(fewGained[0].stacks).toBeUndefined();
+  });
+
+  it("CONTROL: the SAME builder runs with the rule off — rewards are rule-independent now", () => {
+    // The reward is the normal per-bank builder regardless of the Polish rule; a
+    // rule-off win with X = 3 pays the identical +6 gold. Under Polish the ONLY
+    // difference is that X is the deterministic size rather than a difficulty roll.
+    const state = bankRewardState("imp_cache", undefined, "polish-bank-reward-control");
+    const goldBefore = state.players.p1.resources.gold ?? 0;
+    grantCreatureBankReward(state, "hero_p1", "bank-field", 3);
+    expect((state.players.p1.resources.gold ?? 0) - goldBefore).toBe(6);
   });
 });

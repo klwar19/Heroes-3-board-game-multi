@@ -117,10 +117,9 @@ export function applyUnitCurrentSide(
     return;
   }
 
-  // Creature Bank defenders fight from their own card. Standard banks may add
-  // one random-stat Stack Token; Polish sized banks instead add deterministic
-  // full-health layers to every card and a flat +1 Attack while any layer is
-  // left. The two representations are mutually exclusive at construction.
+  // Creature Bank defenders fight from their own card. A Stacked defender adds
+  // one random-stat Stack Token bonus (Polish Bank Sizes places a guaranteed
+  // number of these tokens; the standard rule rolls the count off difficulty).
   if (unit.bankUnit && unit.unitDefId) {
     const bankSide = CREATURE_BANK_UNIT_SIDES[unit.unitDefId];
     if (!bankSide) {
@@ -128,8 +127,7 @@ export function applyUnitCurrentSide(
     }
     const bonus = (stat: "attack" | "defense" | "health" | "initiative") =>
       unit.stackToken === stat ? stackTokenDelta(stat) : 0;
-    const polishStackAttack = (unit.bankStacks ?? 0) > 0 ? 1 : 0;
-    unit.attack = bankSide.attack + bonus("attack") + polishStackAttack;
+    unit.attack = bankSide.attack + bonus("attack");
     unit.defense = bankSide.defense + bonus("defense");
     unit.maxHealth = bankSide.health + bonus("health");
     unit.initiative = bankSide.initiative + bonus("initiative");

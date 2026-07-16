@@ -32,7 +32,6 @@ import {
   pickCombatBoardArtId,
   placementCellsFor,
   neutralFormationCellsFor,
-  polishBankRewardScale,
   playerSpellCastsIgnoreLimit,
   unitHasUnlimitedRetaliationEffect,
   unitIsBerserk,
@@ -1332,18 +1331,9 @@ export function BattlefieldBoard({
                   {STACK_TOKEN_LABELS[unit.stackToken]}
                 </span>
               ) : null}
-              {(unit?.bankStacks ?? 0) > 0 ? (
-                <span
-                  className={`bankStackBadge size-${Math.min(4, (unit?.bankStacks ?? 0) + 1)}`}
-                  title={`${unit!.bankStacks} Polish bank Stack${unit!.bankStacks === 1 ? "" : "s"}: +1 Attack; each Stack is one full extra health bar on this bank unit.`}
-                >
-                  <span className="bankStackCoin" aria-hidden="true">{unit!.bankStacks}</span>
-                  {unit!.bankStacks} Stack{unit!.bankStacks === 1 ? "" : "s"}
-                </span>
-              ) : null}
               {(unit?.armyStacks ?? 0) > 0 ? (
                 <span
-                  className={`armyStackBadge combat tier-${unit?.grade ?? "bronze"} active`}
+                  className={`armyStackBadge combat count-${Math.min(3, unit?.armyStacks ?? 0)} active`}
                   title={`${unit!.armyStacks} Polish Unit Stack${unit!.armyStacks === 1 ? "" : "s"}: +1 Attack; each Stack absorbs one full Pack health bar.`}
                 >
                   <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
@@ -1622,15 +1612,6 @@ export function InitiativeRail({ state }: { state: GameState }) {
       ? state.adventure?.fields[state.combat.context.fieldId]
       : undefined;
   const bankSize = bankField?.location === "creature_bank" ? bankField.bankSize : undefined;
-  // Size Ⅰ = base only; Ⅱ = full 4-stack extras; Ⅲ/Ⅳ = Ⅱ + 1/2 base gold layers.
-  const rewardScale = bankSize !== undefined ? polishBankRewardScale(bankSize) : undefined;
-  const rewardLabel = rewardScale
-    ? rewardScale.stackedX === 0
-      ? "base only"
-      : rewardScale.extraBaseGoldLayers > 0
-        ? `X=4 +${rewardScale.extraBaseGoldLayers} base gold`
-        : "X=4 (full stacks)"
-    : undefined;
 
   return (
     <div className="initiativeRail" aria-label="Initiative order">
@@ -1638,13 +1619,13 @@ export function InitiativeRail({ state }: { state: GameState }) {
         <Swords aria-hidden="true" size={14} />
         {inSetup ? "Order" : "Order"}
       </span>
-      {bankSize && rewardLabel ? (
+      {bankSize ? (
         <span
           className={`bankSizeCombatChip size-${bankSize}`}
-          title={`Polish Creature Bank size ${["", "I", "II", "III", "IV"][bankSize]}: ${Math.max(0, bankSize - 1)} Stack layers on each of all four defenders; reward ${rewardLabel}`}
+          title={`Polish Creature Bank size ${["", "I", "II", "III", "IV"][bankSize]}: ${bankSize} of the four defenders each carry a Stack Token (reward scaled by X=${bankSize}).`}
         >
-          {bankSize > 1 ? <span className="bankSizeCoin" aria-hidden="true">{bankSize - 1}</span> : null}
-          Bank size {["", "I", "II", "III", "IV"][bankSize]} · {bankSize > 1 ? `${bankSize - 1} each` : "no Stacks"} · {rewardLabel}
+          <span className="bankSizeCoin" aria-hidden="true">{bankSize}</span>
+          Bank size {["", "I", "II", "III", "IV"][bankSize]} · {bankSize} Stacked
         </span>
       ) : null}
       {units.length === 0 && inSetup ? <small className="initHint">Deploy units — they sort by initiative here.</small> : null}

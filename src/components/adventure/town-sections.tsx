@@ -354,7 +354,7 @@ function UnitStackPurchaseControls({
   return (
     <div className="stackPurchasePanel" role="group" aria-label={`Unit Stacks for ${unitName}`}>
       <span
-        className={`armyStackBadge tier-${tier} ${stackCount > 0 ? "active" : "empty"}`}
+        className={`armyStackBadge count-${Math.min(3, stackCount)} ${stackCount > 0 ? "active" : "empty"}`}
         title={`${stackCount} of ${stackCap} Unit Stacks · +1 Attack while any remain`}
       >
         <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />

@@ -15,10 +15,8 @@ import { unitAbilities, type UnitMapAbilityEffect } from "@/data/units/abilities
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { hasInternalBorder } from "@/data/map/borders";
 import {
-  buildPolishCreatureBankReward,
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
-  polishBankRewardScale,
   STACK_TOKEN_PLACEMENT_PERCENT,
   STACK_TOKEN_STATS,
   STACK_TOKENS_BY_DIFFICULTY,
@@ -68,7 +66,6 @@ import {
   gainOwnedCard,
   polishSpellBookEnabled
 } from "./polish-spell-book";
-import { polishBankGuardLayerCap } from "./polish-unit-stacks";
 import {
   canonicalTileEdgeCode,
   hexDirectionBetween,
@@ -8469,42 +8466,19 @@ export function polishBankSizeForAttackRolls(rolls: readonly number[]): BankSize
 }
 
 /**
- * Polish Bank Sizes: the LARGEST size a given bank can be. A bank's size never
- * exceeds what its best guard can physically carry (1 + the highest bank-guard
- * layer cap among its four cards, where guards punch one above the army caps
- * to at most 3: bronze 3 / silver 3 / gold+azure 2): an all-gold/azure Dragon
- * Utopia or Pyramid tops out at size Ⅲ, while any bank with a silver or
- * bronze guard reaches the full Ⅳ. A rolled size above this is clamped BEFORE
- * the player chooses.
- */
-export function polishBankMaxSize(bankId: CreatureBankId): BankSize {
-  const bank = CREATURE_BANKS[bankId];
-  const maxCap = (bank?.units ?? []).reduce(
-    (best, unitDefId) => Math.max(best, polishBankGuardLayerCap(unitDefId)),
-    0
-  );
-  return Math.max(1, Math.min(4, 1 + maxCap)) as BankSize;
-}
-
-/** Re-export — single source of truth lives in `creature-banks.ts`. */
-export { polishBankRewardScale } from "@/data/map/creature-banks";
-
-/**
- * Builds the Creature Bank defenders for a combat. Standard banks place their
- * random statistic Stack Tokens using Scenario Difficulty (rulebook p.66-67).
+ * Builds the Creature Bank defenders for a combat, placing the standard
+ * random-statistic Stack Tokens (rulebook p.66-67): a Stacked defender gains one
+ * random stat bonus (+1 Attack/Defense/Health or +2 Initiative) and absorbs one
+ * lethal blow by discarding the token.
  *
- * The Polish size variant is deliberately different: the rolled coin is put on
- * EVERY one of the four bank cards and its colour is a deterministic layer
- * count (size I = 0, bronze II = 1, silver III = 2, gold IV = 3). Every layer
- * is a full extra health bar; this path never mints the standard random-stat
- * `stackToken`. Each guard's layers are additionally CAPPED by the Unit Stack
- * coin rule of the unit named on its (rankless-in-play) card, punching one
- * above the army caps with an absolute maximum of 3 — bronze 3 / silver 3 /
- * gold+azure 2 (`polishBankGuardLayerCap`) — and the whole bank's SIZE clamps
- * to what its best guard can carry (`polishBankMaxSize`): an all-gold/azure
- * Dragon Utopia tops out at size Ⅲ. Win rewards use polishBankRewardScale
- * (not layer count): size Ⅱ pays full 4-stack extras; Ⅲ/Ⅳ add gold-only base
- * layers — see grantCreatureBankReward / buildPolishCreatureBankReward.
+ * The NUMBER of Stacked defenders is normally rolled from the Scenario
+ * Difficulty (easy 1 / normal 2 / hard 3 / impossible 4), each candidate landing
+ * a token only STACK_TOKEN_PLACEMENT_PERCENT% of the time, so the count varies
+ * run to run. The Polish Bank Sizes house rule instead makes that count
+ * DETERMINISTIC: the rolled size IS the number of Stacked defenders (size N = N
+ * of the bank's cards each carry a Stack Token, guaranteed). Everything else —
+ * the token stat, the lethal-blow absorb, the win reward scaled by X = the
+ * Stacked count — is the normal Creature Bank behaviour.
  */
 export function buildCreatureBankCombatUnits(
   state: GameState,
@@ -8519,32 +8493,12 @@ export function buildCreatureBankCombatUnits(
     return unit ? [unit] : [];
   });
 
-  if (houseRuleEnabled(state, "polish-bank-sizes") && bankSize !== undefined) {
-    // The roll-time clamp already keeps a stored size within the bank's max;
-    // re-clamp defensively so a hand-edited or legacy field cannot pay a size
-    // its guards could never physically carry.
-    const effectiveSize = Math.min(bankSize, polishBankMaxSize(bankId)) as BankSize;
-    const stackLayers = Math.max(0, effectiveSize - 1);
-    for (const unit of units) {
-      // The bank card is rankless in play, but its layer capacity follows the
-      // Unit Stack coin rule of the unit NAMED on it, punching one above the
-      // army caps to at most 3: bronze 3 / silver 3 / gold (and azure) 2.
-      unit.bankStacks = Math.min(stackLayers, polishBankGuardLayerCap(unit.unitDefId));
-      // Re-derive Attack (+1 while at least one layer remains) and preserve the
-      // bank card's own abilities/stat line.
-      applyUnitCurrentSide(unit, ruleset, sideOverrides);
-    }
-    return {
-      units,
-      // stackedCount for polish = the "full stack" X used by classic extras
-      // (0 at size Ⅰ, 4 from size Ⅱ+). Size Ⅲ/Ⅳ gold base layers are applied
-      // separately in buildPolishCreatureBankReward.
-      stackedCount: polishBankRewardScale(effectiveSize).stackedX
-    };
-  }
-
+  // Polish Bank Sizes: the rolled size (a stored `field.bankSize`) is the
+  // GUARANTEED number of Stacked defenders. Otherwise the Scenario Difficulty
+  // rolls the count and each candidate lands its token only ~77% of the time.
+  const polishSized = houseRuleEnabled(state, "polish-bank-sizes") && bankSize !== undefined;
   const difficulty = state.adventure?.difficulty ?? "normal";
-  // The difficulty caps how many DISTINCT defenders are candidates for a token.
+  // The count caps how many DISTINCT defenders are candidates for a token.
   const tokenRolls = Math.min(bankSize ?? STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
 
   const random = adventureRandom(state, `creature-bank-stack-${bankId}`);
@@ -8556,9 +8510,10 @@ export function buildCreatureBankCombatUnits(
   }
   let stackedCount = 0;
   for (let i = 0; i < tokenRolls; i += 1) {
-    // Roll per candidate: the token only lands STACK_TOKEN_PLACEMENT_PERCENT% of
-    // the time, so the Stacked count varies run to run even at a fixed difficulty.
-    if (random.nextInt(1, 100) > STACK_TOKEN_PLACEMENT_PERCENT) {
+    // Standard rule: the token lands only STACK_TOKEN_PLACEMENT_PERCENT% of the
+    // time. Polish Bank Sizes places EVERY one of `size` tokens (size = the
+    // Stacked count) — no 77% roll — so the coin is deterministic.
+    if (!polishSized && random.nextInt(1, 100) > STACK_TOKEN_PLACEMENT_PERCENT) {
       continue;
     }
     const unit = units[order[i]];
@@ -8653,16 +8608,10 @@ export function grantCreatureBankReward(
   // "If you win, resolve the Field's effect and mark it with a Black Cube."
   field.blackCube = true;
 
-  // Polish bank sizes: payout follows size (full 4-stack at Ⅱ, gold-only base
-  // layers at Ⅲ/Ⅳ), not the combat layer count / classic stackedCount.
-  const polishSize =
-    houseRuleEnabled(state, "polish-bank-sizes") && field.bankSize !== undefined
-      ? (Math.min(field.bankSize, polishBankMaxSize(bankId)) as BankSize)
-      : undefined;
-  const reward =
-    polishSize !== undefined
-      ? buildPolishCreatureBankReward(bankId, polishSize)
-      : bank.buildReward(stackedCount);
+  // The reward scales by X = the number of Stacked defenders (rulebook p.66-67).
+  // Under Polish Bank Sizes that count equals the rolled size, so the SAME normal
+  // reward builder pays out — size Ⅳ simply means all four defenders were Stacked.
+  const reward = bank.buildReward(stackedCount);
   const steps = interactionToSteps(reward, locationDiceBonusFor(state, playerId));
   if (steps.length === 0) {
     return;

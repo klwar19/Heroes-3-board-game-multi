@@ -47,7 +47,6 @@ import {
   grantCreatureBankReward,
   isCreatureBankId,
   placeCreatureBank,
-  polishBankMaxSize,
   polishBankSizeForAttackRolls,
   eliminatePlayer,
   finalizeStartOfTurnHand,
@@ -1643,20 +1642,16 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState, player
       { length: diceCount },
       () => ATTACK_DIE_FACES[random.nextInt(0, ATTACK_DIE_FACES.length - 1)] ?? 0
     );
-    const rolledSize = polishBankSizeForAttackRolls(rolls);
-    // A bank never exceeds what its best guard can physically carry (e.g. the
-    // all-gold/azure Dragon Utopia tops out at size Ⅲ). Clamp BEFORE the
-    // player chooses so the A/B offer shows the true size.
-    const size = Math.min(rolledSize, polishBankMaxSize(candidateId)) as BankSize;
+    // The size IS the number of Stacked defenders this bank will field
+    // (size N → N of its guards each carry a Stack Token).
+    const size = polishBankSizeForAttackRolls(rolls);
     const optionLetter = String.fromCharCode(65 + index);
     appendEvent(state, {
       type: "ADVENTURE_DICE_ROLLED",
       playerId,
       dice: "attack",
       results: [
-        `Bank ${optionLetter}: ${rolls.map(attackRollLabel).join(" + ")} → size ${BANK_SIZE_ROMAN[rolledSize]}${
-          size !== rolledSize ? ` (capped at ${BANK_SIZE_ROMAN[size]} — this bank's guards carry no more)` : ""
-        }`
+        `Bank ${optionLetter}: ${rolls.map(attackRollLabel).join(" + ")} → size ${BANK_SIZE_ROMAN[size]} (${size} Stacked defender${size === 1 ? "" : "s"})`
       ],
       attackRolls: rolls
     });
@@ -4933,10 +4928,7 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
     fieldId: combat.context.fieldId,
     bankId,
     unitDefIds: units.map((unit) => unit.unitDefId ?? ""),
-    stackedCount,
-    ...(houseRuleEnabled(state, "polish-bank-sizes") && bankField?.bankSize !== undefined
-      ? { stackLayers: Math.max(0, bankField.bankSize - 1) }
-      : {})
+    stackedCount
   });
 
   // Same as a normal guard reveal: under PvP Neutral Control the controller

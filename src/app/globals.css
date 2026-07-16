@@ -4298,8 +4298,7 @@ button.battleCell {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.48), inset 0 1px rgba(255, 255, 255, 0.32);
 }
 
-.bankSizeCombatChip > .bankSizeCoin,
-.bankStackCoin {
+.bankSizeCombatChip > .bankSizeCoin {
   display: inline-grid;
   place-items: center;
   width: 18px;
@@ -4312,8 +4311,11 @@ button.battleCell {
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
+/* Polish Creature Bank size = number of Stacked defenders. Coloured by size:
+   1 black, 2 brown, 3 silver, 4 gold (the v1.2 sheet's coin colours). */
 .bankSizeCombatChip.size-1 {
-  background: linear-gradient(180deg, #e5d4ad, #bda36f);
+  background: linear-gradient(180deg, #4a4a4f, #23232a);
+  color: #f2f2f5;
 }
 
 .bankSizeCombatChip.size-2 {
@@ -4329,20 +4331,22 @@ button.battleCell {
   background: linear-gradient(180deg, #f4db6a, #b9901f);
 }
 
-.bankSizeCombatChip.size-2 .bankSizeCoin,
-.bankStackBadge.size-2 .bankStackCoin {
+.bankSizeCombatChip.size-1 .bankSizeCoin {
+  background: radial-gradient(circle at 35% 30%, #6a6a70, #2b2b31 68%, #121216);
+  color: #f4f4f6;
+}
+
+.bankSizeCombatChip.size-2 .bankSizeCoin {
   background: radial-gradient(circle at 35% 30%, #e29a63, #9b4b22 68%, #5d260f);
   color: #fff3dc;
 }
 
-.bankSizeCombatChip.size-3 .bankSizeCoin,
-.bankStackBadge.size-3 .bankStackCoin {
+.bankSizeCombatChip.size-3 .bankSizeCoin {
   background: radial-gradient(circle at 35% 30%, #fff, #b9c1c8 68%, #737d86);
   color: #1a1d20;
 }
 
-.bankSizeCombatChip.size-4 .bankSizeCoin,
-.bankStackBadge.size-4 .bankStackCoin {
+.bankSizeCombatChip.size-4 .bankSizeCoin {
   background: radial-gradient(circle at 35% 30%, #fff0a0, #d4aa28 68%, #83600c);
   color: #241603;
 }
@@ -4354,8 +4358,9 @@ button.battleCell {
   pointer-events: none;
 }
 
-/* Polish house-rule bank-size markers from the v1.2 sheet: no token at size I,
-   then a numbered bronze/silver/gold coin (1/2/3) at sizes II/III/IV. */
+/* Polish house-rule bank-size markers from the v1.2 sheet. The coin shows the
+   size = number of Stacked defenders (1-4), coloured 1 black / 2 brown /
+   3 silver / 4 gold. */
 .bankSizeSvgBadge {
   pointer-events: none;
   filter: drop-shadow(0 1.5px 1px rgba(0, 0, 0, 0.92));
@@ -4374,12 +4379,16 @@ button.battleCell {
   pointer-events: none;
 }
 
-.bankSizeSvgBadge text.noToken {
-  fill: #f4e4b8;
-  font-size: 9px;
-  paint-order: stroke fill;
-  stroke: #171008;
-  stroke-width: 2px;
+.bankSizeSvgBadge.size-1 .coinOuter {
+  fill: #22222a;
+}
+
+.bankSizeSvgBadge.size-1 .coinInner {
+  fill: #52525a;
+}
+
+.bankSizeSvgBadge.size-1 text {
+  fill: #f2f2f5;
 }
 
 .bankSizeSvgBadge.size-2 .coinOuter {
@@ -6999,35 +7008,8 @@ button.hbSlot:disabled { cursor: default; }
   box-shadow: 0 0 6px rgb(247 206 102 / 45%);
 }
 
-/* Polish bank-size coin shown on each of the four bank cards. Unlike the
-   standard stat token, the number is the remaining count of full HP layers. */
-.bankStackBadge {
-  position: absolute;
-  bottom: 5px;
-  left: 50%;
-  z-index: 7;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  transform: translateX(-50%);
-  padding: 2px 7px 2px 3px;
-  border: 1px solid rgba(255, 231, 173, 0.7);
-  border-radius: 999px;
-  background: rgba(22, 13, 7, 0.94);
-  color: #fff0c5;
-  font-size: 9px;
-  font-weight: 900;
-  white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.72);
-}
-
-.bankStackBadge .bankStackCoin {
-  width: 17px;
-  height: 17px;
-}
-
-/* Polish Unit Stack coin. This badge is intentionally visually distinct from
-   the Creature Bank Stack Token above: it shows a layer count, not a stat. */
+/* Polish Unit Stack coin — the player's OWN army stacks. Coloured by COUNT:
+   1 brown (base), 2 silver, 3 gold. It shows a stack count, not a stat. */
 .armyStackBadge {
   display: inline-flex;
   align-items: center;
@@ -7053,13 +7035,13 @@ button.hbSlot:disabled { cursor: default; }
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 80%));
 }
 
-.armyStackBadge.tier-silver {
+.armyStackBadge.count-2 {
   border-color: rgb(190 205 218 / 78%);
   background: linear-gradient(180deg, rgb(75 81 87 / 96%), rgb(32 35 39 / 96%));
   color: #edf5fb;
 }
 
-.armyStackBadge.tier-gold {
+.armyStackBadge.count-3 {
   border-color: rgb(255 211 91 / 88%);
   background: linear-gradient(180deg, rgb(130 83 10 / 97%), rgb(63 36 6 / 97%));
   color: #fff1aa;
