@@ -4443,10 +4443,11 @@ function finishResolvedAttack(
   // (Bulwark "Runes" are credited above, BEFORE the blow's damage, so a strike
   // that crosses a Rune threshold buffs THIS very hit — see gainRunesForAttack
   // before applyAttackDamageFromCandidate.)
-  // Creature Bank Crypt/Shipwreck Wraiths: after their own attack, the enemy
-  // discards a card. Medusa Stores Medusas (while Stacked): the target is
-  // Paralyzed by their own attack.
-  applyOnAttackEnemyDiscard(state, details.attacker, details.isRetaliation);
+  // Medusa Stores Medusas (while Stacked): the target is Paralyzed by their own
+  // attack. (Creature Bank Crypt/Shipwreck Wraiths' enemy discard is now a
+  // post-attack FOLLOW-UP — openWraithDiscardChoice — so the attacked player can
+  // CHOOSE which card to discard, parking combat on that choice; it runs only in
+  // the non-retaliation follow-up chain, matching the old isRetaliation guard.)
   applyOnAttackParalysis(state, details.attacker, details.defender, details.isRetaliation);
   applyDendroidBindFx(state, details.attacker, details.defender, details.isRetaliation);
   // Shield of the Dwarven Lords ignored the die "and any additional effects it
@@ -4673,9 +4674,14 @@ function runPostAttackFollowUps(
     () => openMagiDiscardChoice(state, attacker, defender, cards),
     // 11 — Tower Genies' Spell dig.
     () => openGenieSpellDraw(state, attacker, false),
-    // 12 — Ghost Dragons' knock-back, last: the push is what denies the
-    // parked retaliation.
-    () => openGhostDragonKnockback(state, attacker, defender, ctx, 12)
+    // 12 — Ghost Dragons' knock-back: the push is what denies the parked
+    // retaliation.
+    () => openGhostDragonKnockback(state, attacker, defender, ctx, 12),
+    // 13 — Creature Bank Crypt/Shipwreck Wraiths "Soul Siphon": the attacked
+    // player discards a card of THEIR choice (parks combat on the choice).
+    // Appended last so the existing step indexes (serialized in reroll-resume
+    // contexts) never shift; no unit combines this with an earlier follow-up.
+    () => openWraithDiscardChoice(state, attacker, defender)
   ];
 
   for (let step = Math.max(0, fromStep); step < steps.length; step += 1) {
@@ -4787,39 +4793,87 @@ function applyOnAttackPoisonCubes(
 }
 
 /**
- * Creature Bank Crypt / Shipwreck Wraiths: "Whenever this unit attacks, the
- * enemy must discard N cards from hand (if possible)." Fires after the Wraiths'
- * own attack (never a Retaliation Attack); discards as many of the opposing
- * player's cards as `count` and the hand allow.
+ * Creature Bank Crypt / Shipwreck Wraiths "Soul Siphon": "Whenever this unit
+ * attacks, the enemy must discard 1 card from hand (if possible)." Fires as a
+ * post-attack follow-up after the Wraiths' own attack (the follow-up chain is
+ * reached only for a non-retaliation attack, so this never fires on a
+ * Retaliation Attack). The attacked player CHOOSES which card leaves their
+ * hand: with a non-empty hand this parks combat on a COMBAT_HAND_DISCARD choice
+ * they own. The neutral seat (no hand) and an empty hand are no-ops. Returns
+ * true only when a choice was opened.
  */
-function applyOnAttackEnemyDiscard(state: GameState, attacker: CombatUnitState, isRetaliation: boolean): void {
-  const combat = state.combat;
-  if (isRetaliation || !combat) {
-    return;
+function openWraithDiscardChoice(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): boolean {
+  const ability = getOnAttackEnemyDiscard(attacker);
+  if (!ability) {
+    return false;
   }
-  const discard = getOnAttackEnemyDiscard(attacker);
-  if (!discard) {
-    return;
+  // The discard belongs to the ATTACKED unit's controller — in a bank fight the
+  // human fighter, never the neutral seat (which has no hand) and, under PvP
+  // Neutral Control, never the seat driving the guard.
+  const chooserId = defender.controllerId;
+  const chooser = state.players[chooserId];
+  if (chooserId === NEUTRAL_PLAYER_ID || !chooser || chooser.hand.length === 0) {
+    return false;
   }
-  const enemyId =
-    attacker.controllerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
-
-  let discarded = 0;
-  for (let index = 0; index < discard.count; index += 1) {
-    if (!discardRandomCardFromHand(state, enemyId)) {
-      break;
-    }
-    discarded += 1;
-  }
-  if (discarded === 0) {
-    return;
-  }
-  appendEvent(state, {
-    type: "UNIT_ABILITY_TRIGGERED",
-    unitId: attacker.id,
-    abilityId: discard.abilityId,
-    message: `${attacker.cardName} forces the enemy to discard ${discarded} card${discarded === 1 ? "" : "s"}.`
+  return openWraithDiscardPrompt(state, {
+    chooserId,
+    sourceUnitId: attacker.id,
+    sourceName: attacker.name,
+    abilityId: ability.abilityId,
+    abilityName: ability.abilityName,
+    remaining: Math.min(ability.count, chooser.hand.length)
   });
+}
+
+/**
+ * Opens (or re-opens, for a count > 1 ability) the Wraith "Soul Siphon" pick:
+ * a COMBAT_HAND_DISCARD choice whose selectable set is the chooser's WHOLE hand
+ * and which offers no random option. Returns true when a choice was opened.
+ */
+function openWraithDiscardPrompt(
+  state: GameState,
+  params: {
+    chooserId: PlayerId;
+    sourceUnitId: UnitId;
+    sourceName: string;
+    abilityId: string;
+    abilityName: string;
+    remaining: number;
+  }
+): boolean {
+  const chooser = state.players[params.chooserId];
+  if (!chooser || chooser.hand.length === 0 || params.remaining <= 0) {
+    return false;
+  }
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "COMBAT_HAND_DISCARD",
+    playerId: params.chooserId,
+    kind: "wraith-choose-discard",
+    abilityId: params.abilityId,
+    abilityName: params.abilityName,
+    sourceUnitId: params.sourceUnitId,
+    prompt: `${params.sourceName}: ${params.abilityName} — choose a card to discard.`,
+    powerCardIds: [...chooser.hand],
+    remaining: params.remaining
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = params.chooserId;
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "COMBAT_HAND_DISCARD",
+    playerId: params.chooserId,
+    sourceEffectIds: [],
+    message: `${chooser.name} chooses a card to discard to ${params.sourceName}'s ${params.abilityName}.`
+  });
+  return true;
 }
 
 /**
@@ -6313,6 +6367,56 @@ function resolveCombatHandDiscard(
         cards
       );
     }
+    return;
+  }
+
+  // Creature Bank Crypt/Shipwreck Wraiths "Soul Siphon": the attacked player
+  // picks WHICH card to discard — no random option. Repeats until the ability's
+  // full count is paid (or the hand empties), then resumes the parked attack.
+  if (choice.kind === "wraith-choose-discard") {
+    if (action.cardId === "random") {
+      throw new Error("The Soul Siphon discards a card of your choice.");
+    }
+    if (!choice.powerCardIds.includes(action.cardId)) {
+      throw new Error("That card cannot be chosen for the Soul Siphon.");
+    }
+    if (!discardNamedCardFromHand(state, action.playerId, action.cardId)) {
+      throw new Error("That card is no longer in hand.");
+    }
+    appendEvent(state, {
+      type: "PENDING_CHOICE_RESOLVED",
+      choiceId: choice.id,
+      playerId: action.playerId,
+      selectedIndex: choice.powerCardIds.indexOf(action.cardId)
+    });
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: choice.sourceUnitId,
+      abilityId: choice.abilityId,
+      message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`
+    });
+    state.pendingChoice = null;
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    // A count > 1 ability still owes cards and the hand still holds some: open
+    // the next pick before resuming (count === 1 for the shipped Wraiths).
+    const remaining = (choice.remaining ?? 1) - 1;
+    if (remaining > 0 && chooser.hand.length > 0) {
+      const source = state.combat?.units[choice.sourceUnitId];
+      openWraithDiscardPrompt(state, {
+        chooserId: action.playerId,
+        sourceUnitId: choice.sourceUnitId,
+        sourceName: source?.name ?? choice.abilityName,
+        abilityId: choice.abilityId,
+        abilityName: choice.abilityName,
+        remaining
+      });
+      if (state.pendingChoice) {
+        return;
+      }
+    }
+    resumeAttackSequence(state, cards);
+    finishCombatIfNeeded(state);
     return;
   }
 

@@ -335,12 +335,13 @@ describe("Medusa Stores Medusas: paralyze on attack (while Stacked)", () => {
 // ===========================================================================
 
 describe("Crypt / Shipwreck Wraiths: enemy discard on attack", () => {
-  it("getOnAttackEnemyDiscard reports a 1-card discard (un-gated by Stack state)", () => {
-    expect(getOnAttackEnemyDiscard(unitWith(["bank-wraith-attack-discard"], null))).toMatchObject({ count: 1 });
-    expect(getOnAttackEnemyDiscard(unitWith([], null))).toBeNull();
-  });
-
-  it("forces the enemy to discard 1 card after this unit's own attack", () => {
+  /**
+   * Mints p1's Griffins as a Wraith (Soul Siphon) at position 1 attacking p2's
+   * Skeletons at the adjacent position 2 (a fat 30-Health target, so the blow is
+   * never lethal and combat stays open for the follow-up). The enemy of the
+   * attacker (p1) is p2, so the Soul Siphon discard choice belongs to p2.
+   */
+  function wraithAttack(p2Hand: string[]): GameState {
     const state = createInitialGameState("bank-wraith-discard");
     const attacker = state.combat!.units.unit_p1_griffins;
     attacker.abilities = ["bank-wraith-attack-discard"];
@@ -352,15 +353,99 @@ describe("Crypt / Shipwreck Wraiths: enemy discard on attack", () => {
     defender.maxHealth = 30;
     defender.damage = 0;
     state.players.p1.hand = [];
-    state.players.p2.hand = ["stat.power"]; // the enemy of the attacker (p1) is p2
+    state.players.p2.hand = [...p2Hand];
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";
     script(state, [0, 0, 0, 0]);
-    const next = settle(
+    return settle(
       applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
     );
-    expect(next.players.p2.hand).toEqual([]);
-    expect(abilityEventIds(next)).toContain("bank-wraith-attack-discard");
+  }
+
+  it("getOnAttackEnemyDiscard reports a 1-card discard (un-gated by Stack state)", () => {
+    expect(getOnAttackEnemyDiscard(unitWith(["bank-wraith-attack-discard"], null))).toMatchObject({ count: 1 });
+    expect(getOnAttackEnemyDiscard(unitWith([], null))).toBeNull();
+  });
+
+  it("lets the ATTACKED player CHOOSE which card leaves their hand", () => {
+    // Three cards in hand — the discard is the attacked player's decision, so
+    // the EXACT card they pick (not a random one) is what ends up discarded.
+    let state = wraithAttack(["stat.power", "stat.attack", "spell.magic_arrow"]);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("COMBAT_HAND_DISCARD");
+    if (choice?.type !== "COMBAT_HAND_DISCARD") {
+      return;
+    }
+    expect(choice.kind).toBe("wraith-choose-discard");
+    // The choice belongs to the DEFENDER (p2), not the attacking player (p1).
+    expect(choice.playerId).toBe("p2");
+    // Every card in hand is selectable — and there is NO random option offered.
+    expect(new Set(choice.powerCardIds)).toEqual(new Set(["stat.power", "stat.attack", "spell.magic_arrow"]));
+    const legal = getLegalActions(state, "p2");
+    const discardActions = legal.filter((entry) => entry.action.type === "RESOLVE_COMBAT_DISCARD");
+    expect(discardActions).toHaveLength(3); // three cards, no "random" arm
+    expect(
+      discardActions.some(
+        (entry) => entry.action.type === "RESOLVE_COMBAT_DISCARD" && entry.action.cardId === "random"
+      )
+    ).toBe(false);
+
+    state = applyOk(state, {
+      type: "RESOLVE_COMBAT_DISCARD",
+      playerId: "p2",
+      choiceId: choice.id,
+      cardId: "stat.attack"
+    });
+
+    // The chosen card — and only it — leaves the hand for the discard pile.
+    expect(state.players.p2.discard).toContain("stat.attack");
+    expect(state.players.p2.hand).toEqual(["stat.power", "spell.magic_arrow"]);
+    expect(state.pendingChoice).toBeNull();
+    expect(state.phase).toBe("combat");
+    expect(abilityEventIds(state)).toContain("bank-wraith-attack-discard");
+  });
+
+  it("rejects a 'random' resolution — the Soul Siphon is always a chosen card", () => {
+    const state = wraithAttack(["stat.power", "stat.attack"]);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "COMBAT_HAND_DISCARD") {
+      throw new Error("expected the Soul Siphon choice");
+    }
+    const wrong = applyAction(state, {
+      type: "RESOLVE_COMBAT_DISCARD",
+      playerId: "p2",
+      choiceId: choice.id,
+      cardId: "random"
+    });
+    expect(wrong.errors.length).toBeGreaterThan(0);
+    // Nothing discarded: the card only leaves on a valid chosen pick.
+    expect(wrong.state.players.p2.hand).toHaveLength(2);
+  });
+
+  it("only the attacked player may resolve the discard", () => {
+    const state = wraithAttack(["stat.power", "stat.attack"]);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "COMBAT_HAND_DISCARD") {
+      throw new Error("expected the Soul Siphon choice");
+    }
+    // p1 (the attacker) cannot answer for p2.
+    const wrong = applyAction(state, {
+      type: "RESOLVE_COMBAT_DISCARD",
+      playerId: "p1",
+      choiceId: choice.id,
+      cardId: "stat.power"
+    });
+    expect(wrong.errors.length).toBeGreaterThan(0);
+  });
+
+  it("CONTROL: an empty hand is a no-op — no choice opens, nothing discarded", () => {
+    const state = wraithAttack([]);
+    expect(state.pendingChoice).toBeNull();
+    expect(state.players.p2.hand).toHaveLength(0);
+    expect(state.players.p2.discard).toHaveLength(0);
+    // The combat never parked on a discard choice — it resolved through.
+    expect(state.phase).not.toBe("choice");
   });
 });
 
