@@ -1469,13 +1469,14 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
   function renderWithObjects(
     customMap: CustomMapTilePlan[],
     objects: CustomMapObject[],
-    onObjectsChange: (next: CustomMapObject[]) => void = () => {}
+    onObjectsChange: (next: CustomMapObject[]) => void = () => {},
+    onChange: (next: CustomMapTilePlan[]) => void = () => {}
   ): HTMLElement {
     const { container } = render(
       <MapDesigner
         scenarioId="skirmish"
         customMap={customMap}
-        onChange={() => {}}
+        onChange={onChange}
         objects={objects}
         onObjectsChange={onObjectsChange}
       />
@@ -1487,31 +1488,105 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     { row: town.row, col: town.col, group: "starting", faceDown: false },
     { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1" }
   ];
+  const faceDownMap: CustomMapTilePlan[] = [
+    { row: town.row, col: town.col, group: "starting", faceDown: false },
+    { row: far.row, col: far.col, group: "far", faceDown: true }
+  ];
 
-  it("arms a Gate pair and places a TILE-SLOT object on a face-up tile hex", () => {
+  // CANONICAL forms: an ON-tile teleporter is a plan.token; an OFF-tile one is a
+  // standalone object. The designer never writes a tile-slot object any more.
+  it("arms a Gate and places a TILE TOKEN on a face-up tile hex (canonical on-tile form)", () => {
+    let tiles: CustomMapTilePlan[] = faceUpMap.map((plan) => ({ ...plan }));
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      tiles = next;
+    });
+    const onObjectsChange = vi.fn();
+    const container = renderWithObjects(faceUpMap, [], onObjectsChange, onChange);
+
+    const redButton = container.querySelector('.designerObjectButton[data-gate-pair="1"]');
+    expect(redButton?.textContent).toMatch(/0 placed/);
+    fireEvent.click(redButton!);
+    expect(redButton!.getAttribute("aria-pressed")).toBe("true");
+
+    // A legal tile candidate glows on the face-up F1 tile; clicking it writes the
+    // plan.token — NOT a tile-slot object (onObjectsChange stays untouched).
+    const slot = container.querySelector(".designerObjectSlot.tileSlot");
+    expect(slot, "a legal tile candidate is offered").toBeTruthy();
+    fireEvent.click(slot!);
+
+    expect(onChange).toHaveBeenCalled();
+    expect(onObjectsChange).not.toHaveBeenCalled();
+    const f1 = tiles.find((plan) => plan.tileDefId === "F1");
+    expect(f1?.token?.kind).toBe("gate");
+    expect(f1?.token?.pair).toBe(1);
+    expect(typeof f1?.token?.slot).toBe("number");
+  });
+
+  it("arms a Gate and places a pending TILE TOKEN on a FACE-DOWN tile (footprint target, no slot)", () => {
+    let tiles: CustomMapTilePlan[] = faceDownMap.map((plan) => ({ ...plan }));
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      tiles = next;
+    });
+    const onObjectsChange = vi.fn();
+    const container = renderWithObjects(faceDownMap, [], onObjectsChange, onChange);
+
+    fireEvent.click(container.querySelector('.designerObjectButton[data-gate-pair="2"]')!);
+    // The whole face-down footprint lights as ONE pending target.
+    const footprintCell = container.querySelector(".designerObjectSlot.faceDownTile");
+    expect(footprintCell, "a face-down footprint target is offered").toBeTruthy();
+    fireEvent.click(footprintCell!);
+
+    expect(onObjectsChange).not.toHaveBeenCalled();
+    const far = tiles.find((plan) => plan.faceDown);
+    expect(far?.token).toEqual({ kind: "gate", pair: 2 }); // pending: pair kept, NO slot
+  });
+
+  it("arms a Gate and places a STANDALONE object on an off-tile hex", () => {
     let latest: CustomMapObject[] = [];
     const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
       latest = next;
     });
-    const container = renderWithObjects(faceUpMap, [], onObjectsChange);
+    const onChange = vi.fn();
+    const container = renderWithObjects(faceUpMap, [], onObjectsChange, onChange);
 
-    // Arm the red gate pair (badge shows 0/2).
-    const redButton = container.querySelector('.designerObjectButton[data-gate-pair="1"]');
-    expect(redButton?.textContent).toMatch(/0\/2/);
-    fireEvent.click(redButton!);
-    expect(redButton!.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(container.querySelector('.designerObjectButton[data-gate-pair="3"]')!);
+    const standalone = container.querySelector(".designerObjectSlot.standalone");
+    expect(standalone, "an off-tile standalone candidate is offered").toBeTruthy();
+    fireEvent.click(standalone!);
 
-    // A legal tile-slot candidate now glows on the face-up F1 tile; click it.
-    const slot = container.querySelector(".designerObjectSlot.tileSlot");
-    expect(slot, "a legal tile-slot candidate is offered").toBeTruthy();
-    fireEvent.click(slot!);
-
-    expect(onObjectsChange).toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled(); // off-tile → object, not a tile token
     expect(latest).toHaveLength(1);
-    expect(latest[0].kind).toBe("gate");
-    expect(latest[0].pair).toBe(1);
-    expect(latest[0].placement.type).toBe("tile-slot");
-    expect(latest[0].placement).toMatchObject({ row: far.row, col: far.col });
+    expect(latest[0]).toMatchObject({ kind: "gate", pair: 3, placement: { type: "standalone" } });
+  });
+
+  it("arms a Monolith and writes a TILE TOKEN (no pair) on a face-up tile", () => {
+    let tiles: CustomMapTilePlan[] = faceUpMap.map((plan) => ({ ...plan }));
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      tiles = next;
+    });
+    const container = renderWithObjects(faceUpMap, [], () => {}, onChange);
+
+    const monolithButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
+      /Monolith/i.test(btn.textContent ?? "")
+    );
+    fireEvent.click(monolithButton!);
+    fireEvent.click(container.querySelector(".designerObjectSlot.tileSlot")!);
+
+    const f1 = tiles.find((plan) => plan.tileDefId === "F1");
+    expect(f1?.token?.kind).toBe("monolith");
+    expect(f1?.token).not.toHaveProperty("pair");
+  });
+
+  it("a tile already carrying a token offers NO tile candidate (one token per tile — refusal)", () => {
+    const withToken: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: 0 } }
+    ];
+    const container = renderWithObjects(withToken, []);
+    fireEvent.click(container.querySelector('.designerObjectButton[data-gate-pair="1"]')!);
+    // The only tile is taken → no on-tile candidate; only off-tile standalones glow.
+    expect(container.querySelector(".designerObjectSlot.tileSlot"), "no tile candidate on a taken tile").toBeNull();
+    expect(container.querySelector(".designerObjectSlot.faceDownTile")).toBeNull();
   });
 
   it("arms a Monolith and places a STANDALONE object on an off-tile hex", () => {
@@ -2682,5 +2757,203 @@ describe("MapDesigner — on-board per-edge yellow border painting", () => {
       .map((zone) => Number(zone.getAttribute("data-edge-code")))
       .find((code) => code !== 0)!;
     expect(zoneByCode(container, otherCode).classList.contains("active")).toBe(false);
+  });
+});
+
+describe("MapDesigner — canonical teleporter conversions (token ⇄ standalone) + gate art", () => {
+  const town = { row: 10, col: 10 };
+  const far = tileLatticeNeighbors(town)[1];
+  const HEX = 24;
+  const monoSlots = legalTokenSlotsForTileDef(allTileDefinitions["F1"], "monolith");
+
+  /** An off-tile hex adjacent to the F1 far tile (a standalone candidate). */
+  function offTileHexNearFar(): HexCoord {
+    const townIds = new Set(tileFootprint(town, 0).map(hexSpaceId));
+    const farIds = new Set(tileFootprint(far, 0).map(hexSpaceId));
+    for (const cell of tileFootprint(far, 0)) {
+      for (const nb of hexNeighbors(cell)) {
+        const id = hexSpaceId(nb);
+        if (!townIds.has(id) && !farIds.has(id)) {
+          return nb;
+        }
+      }
+    }
+    throw new Error("no off-tile hex near F1");
+  }
+
+  function renderConv(
+    customMap: CustomMapTilePlan[],
+    objects: CustomMapObject[] = [],
+    onChange: (next: CustomMapTilePlan[]) => void = () => {},
+    onObjectsChange: (next: CustomMapObject[]) => void = () => {}
+  ): HTMLElement {
+    const { container } = render(
+      <MapDesigner
+        scenarioId="skirmish"
+        customMap={customMap}
+        onChange={onChange}
+        objects={objects}
+        onObjectsChange={onObjectsChange}
+        hexSize={HEX}
+      />
+    );
+    return container;
+  }
+
+  it("token → standalone: dragging a tile token off every tile deletes the token AND appends a standalone object", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const off = offTileHexNearFar();
+      const customMap: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: monoSlots[0] } }
+      ];
+      let tiles = customMap.map((plan) => ({ ...plan }));
+      let objs: CustomMapObject[] = [];
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        tiles = next;
+      });
+      const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+        objs = next;
+      });
+      const container = renderConv(customMap, [], onChange, onObjectsChange);
+
+      const token = container.querySelector(".designerMapToken.draggable")!;
+      const grabAt = hexToPixel(tileFootprint(far, 0)[monoSlots[0]], HEX);
+      const dropAt = hexToPixel(off, HEX);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 30, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 30, clientX: dropAt.x, clientY: dropAt.y });
+      fireEvent.pointerUp(window, { pointerId: 30 });
+
+      // Both commits fire in one release: the plan's token is cleared…
+      expect(onChange).toHaveBeenCalled();
+      expect(tiles.find((plan) => plan.tileDefId === "F1")?.token, "token removed from the plan").toBeUndefined();
+      // …and a standalone object is appended at the dropped hex.
+      expect(onObjectsChange).toHaveBeenCalled();
+      expect(objs).toHaveLength(1);
+      expect(objs[0]).toMatchObject({ kind: "monolith", placement: { type: "standalone", row: off.row, col: off.col } });
+    } finally {
+      restore();
+    }
+  });
+
+  it("CONTROL: a Whirlpool token has NO off-tile target (sea slots only) — the drag commits nothing", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const off = offTileHexNearFar();
+      const seaSlots = legalTokenSlotsForTileDef(allTileDefinitions["W2"], "whirlpool");
+      const customMap: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: far.row, col: far.col, group: "sea", faceDown: false, tileDefId: "W2", token: { kind: "whirlpool", slot: seaSlots[0] } }
+      ];
+      const onChange = vi.fn();
+      const onObjectsChange = vi.fn();
+      const container = renderConv(customMap, [], onChange, onObjectsChange);
+
+      const token = container.querySelector(".designerMapToken.draggable")!;
+      const grabAt = hexToPixel(tileFootprint(far, 0)[seaSlots[0]], HEX);
+      const dropAt = hexToPixel(off, HEX);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 31, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 31, clientX: dropAt.x, clientY: dropAt.y });
+      fireEvent.pointerUp(window, { pointerId: 31 });
+
+      // No standalone conversion for a Whirlpool → nothing committed either way.
+      expect(onObjectsChange).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it("object → tile: dragging a standalone object onto a face-up tile hex removes the object AND writes the tile token (pair kept)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const off = offTileHexNearFar();
+      const customMap: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1" }
+      ];
+      const objects: CustomMapObject[] = [
+        { kind: "gate", pair: 1, placement: { type: "standalone", row: off.row, col: off.col } }
+      ];
+      let tiles = customMap.map((plan) => ({ ...plan }));
+      let objs = objects.map((object) => ({ ...object }));
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        tiles = next;
+      });
+      const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+        objs = next;
+      });
+      const container = renderConv(customMap, objects, onChange, onObjectsChange);
+
+      const token = container.querySelector(".designerObjectToken")!;
+      const grabAt = hexToPixel(off, HEX);
+      const dropAt = hexToPixel(tileFootprint(far, 0)[monoSlots[0]], HEX);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 32, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 32, clientX: dropAt.x, clientY: dropAt.y });
+      fireEvent.pointerUp(window, { pointerId: 32 });
+
+      // The object is removed…
+      expect(onObjectsChange).toHaveBeenCalled();
+      expect(objs).toHaveLength(0);
+      // …and the canonical on-tile token is written, pair preserved (never a tile-slot object).
+      expect(onChange).toHaveBeenCalled();
+      expect(tiles.find((plan) => plan.tileDefId === "F1")?.token).toMatchObject({ kind: "gate", pair: 1 });
+    } finally {
+      restore();
+    }
+  });
+
+  it("CONTROL: dropping an object onto a tile that ALREADY carries a token commits nothing (one token per tile)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const off = offTileHexNearFar();
+      const customMap: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: monoSlots[0] } }
+      ];
+      const objects: CustomMapObject[] = [
+        { kind: "monolith", placement: { type: "standalone", row: off.row, col: off.col } }
+      ];
+      const onChange = vi.fn();
+      const onObjectsChange = vi.fn();
+      const container = renderConv(customMap, objects, onChange, onObjectsChange);
+
+      const token = container.querySelector(".designerObjectToken")!;
+      const grabAt = hexToPixel(off, HEX);
+      // Drop on a DIFFERENT F1 slot — the tile is taken, so it is no target.
+      const dropAt = hexToPixel(tileFootprint(far, 0)[monoSlots[1] ?? monoSlots[0]], HEX);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 33, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 33, clientX: dropAt.x, clientY: dropAt.y });
+      fireEvent.pointerUp(window, { pointerId: 33 });
+
+      // The taken tile is off-limits and a tile hex is no standalone → no commit.
+      expect(onChange).not.toHaveBeenCalled();
+      expect(onObjectsChange).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it("a Gate TILE TOKEN renders the MONOLITH art href plus its color ring + pair badge (designer)", () => {
+    const container = renderConv([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "gate", pair: 2, slot: monoSlots[0] } }
+    ]);
+    const gateToken = container.querySelector(".designerMapToken.gate")!;
+    expect(gateToken, "gate token rendered").toBeTruthy();
+    // A colored Gate is a colored Monolith: the monolith artwork is present…
+    expect(gateToken.querySelector('image[href*="tokens/monolith"]'), "monolith art href").toBeTruthy();
+    // …plus a readable pair badge naming its color.
+    expect(gateToken.querySelector(".designerMapTokenPair")?.textContent).toBe("2");
+  });
+
+  it("a Gate STANDALONE object also renders the MONOLITH art + pair badge (designer)", () => {
+    const container = renderConv(
+      [{ row: town.row, col: town.col, group: "starting", faceDown: false }],
+      [{ kind: "gate", pair: 4, placement: { type: "standalone", row: town.row - 3, col: town.col } }]
+    );
+    const gate = container.querySelector(".designerObjectToken.gate")!;
+    expect(gate.querySelector('image[href*="tokens/monolith"]'), "standalone gate uses monolith art").toBeTruthy();
+    expect(gate.querySelector(".designerObjectPair")?.textContent).toBe("4");
   });
 });

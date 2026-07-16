@@ -51,6 +51,7 @@ import {
   resolveTournamentRules,
   tournamentRulesAllOn,
   getTileBorderSegments,
+  gatePairColor,
   hasOpenAdventureTurn,
   hexDistance,
   hexSpaceId,
@@ -198,13 +199,40 @@ const GATE_PAIR_COLORS: Record<number, string> = {
   4: "#e0b93c"
 };
 
-/** SVG ring + pair number marking a colored Gate hex (tile-slot AND standalone). */
+/**
+ * A colored Gate hex mark: the MONOLITH artwork (a colored Gate is "a Monolith
+ * with a color") tinted by a colored disc + ring, with a small readable
+ * pair-number badge. Used for BOTH tile-carved and standalone gate fields.
+ */
 function gateHexMark(spaceId: string, x: number, y: number, pair: number): ReactNode {
   const color = GATE_PAIR_COLORS[pair] ?? "#c9a24b";
+  const art = HEX_SIZE * 1.12;
   return (
-    <g key={`${spaceId}-gate-mark`} style={{ pointerEvents: "none" }}>
-      <circle cx={x} cy={y} fill="rgba(12,8,4,0.55)" r={HEX_SIZE * 0.62} stroke={color} strokeWidth={3} />
-      <text fill={color} fontSize={HEX_SIZE * 0.9} fontWeight={700} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.32}>
+    <g className="hexGateMark" key={`${spaceId}-gate-mark`} style={{ pointerEvents: "none" }}>
+      {/* Colored disc backing so the pair colour reads under the monolith art. */}
+      <circle cx={x} cy={y} fill={color} opacity={0.32} r={HEX_SIZE * 0.6} />
+      {/* The monolith artwork — a colored Gate renders as a colored Monolith. */}
+      <image
+        className="hexGateMonolith"
+        height={art}
+        href={assetUrl(monolithTokenImage())}
+        preserveAspectRatio="xMidYMid meet"
+        width={art}
+        x={x - art / 2}
+        y={y - art / 2}
+      />
+      {/* Colored ring identifying the pair colour. */}
+      <circle cx={x} cy={y} fill="none" r={HEX_SIZE * 0.62} stroke={color} strokeWidth={3} />
+      {/* Small pair-number badge (top-right), colour-blind-safe. */}
+      <circle cx={x + HEX_SIZE * 0.46} cy={y - HEX_SIZE * 0.46} fill="rgba(12,8,4,0.85)" r={HEX_SIZE * 0.3} stroke={color} strokeWidth={2} />
+      <text
+        fill={color}
+        fontSize={HEX_SIZE * 0.44}
+        fontWeight={700}
+        textAnchor="middle"
+        x={x + HEX_SIZE * 0.46}
+        y={y - HEX_SIZE * 0.3}
+      >
         {pair}
       </text>
     </g>
@@ -787,24 +815,52 @@ export function HexMapBoard({
           y={centerPixel.y - backHeight / 2}
         />
       );
-      // A designed Monolith/Whirlpool token riding this face-down tile is
-      // public info (the physical Scenario Map Layout prints token positions),
-      // so show it on the back: whoever discovers the tile places the token on
-      // a field of their choosing, and travelling to it reveals the tile.
+      // A designed Monolith/Whirlpool/colored-Gate token riding this face-down
+      // tile is public info (the physical Scenario Map Layout prints token
+      // positions), so show it on the back: whoever discovers the tile places
+      // the token on a field of their choosing, and travelling to it reveals the
+      // tile. A colored Gate renders as the Monolith art tinted with its pair.
       if (tile.pendingToken) {
+        const pendingToken = tile.pendingToken;
+        const isGateToken = pendingToken.kind === "gate";
+        const gateColor = isGateToken ? GATE_PAIR_COLORS[pendingToken.pair ?? 1] ?? "#c9a24b" : null;
+        const tokenBackImage =
+          pendingToken.kind === "gate"
+            ? monolithTokenImage()
+            : mapTokenImage(pendingToken.kind, pendingToken.number);
+        const tokenBackWidth = HEX_WIDTH * 0.9;
+        const tokenBackHeight = 2 * HEX_SIZE * 0.9;
         artLayer.push(
-          <image
-            className="tileBackPendingToken"
-            height={2 * HEX_SIZE * 0.9}
-            href={assetUrl(mapTokenImage(tile.pendingToken.kind, tile.pendingToken.number))}
-            key={`back-token-${tile.id}`}
-            opacity={0.9}
-            preserveAspectRatio="xMidYMid meet"
-            style={{ pointerEvents: "none" }}
-            width={HEX_WIDTH * 0.9}
-            x={centerPixel.x - (HEX_WIDTH * 0.9) / 2}
-            y={centerPixel.y - HEX_SIZE * 0.9}
-          />
+          <g key={`back-token-${tile.id}`} style={{ pointerEvents: "none" }}>
+            {gateColor ? (
+              <circle cx={centerPixel.x} cy={centerPixel.y} fill={gateColor} opacity={0.3} r={HEX_SIZE * 0.55} />
+            ) : null}
+            <image
+              className="tileBackPendingToken"
+              height={tokenBackHeight}
+              href={assetUrl(tokenBackImage)}
+              opacity={0.9}
+              preserveAspectRatio="xMidYMid meet"
+              width={tokenBackWidth}
+              x={centerPixel.x - tokenBackWidth / 2}
+              y={centerPixel.y - tokenBackHeight / 2}
+            />
+            {gateColor ? (
+              <>
+                <circle cx={centerPixel.x} cy={centerPixel.y} fill="none" r={HEX_SIZE * 0.55} stroke={gateColor} strokeWidth={2.5} />
+                <text
+                  fill={gateColor}
+                  fontSize={HEX_SIZE * 0.5}
+                  fontWeight={700}
+                  textAnchor="middle"
+                  x={centerPixel.x}
+                  y={centerPixel.y + HEX_SIZE * 0.66}
+                >
+                  {pendingToken.pair}
+                </text>
+              </>
+            ) : null}
+          </g>
         );
       }
       // A still-hidden Subterranean tile can never be discovered from the Surface
@@ -848,7 +904,13 @@ export function HexMapBoard({
                       : `Face-down tile ${backLabelDisplay}`
                 }${
                   tile.pendingToken
-                    ? ` — carries a ${tile.pendingToken.kind === "monolith" ? "Monolith" : "Whirlpool"} token: whoever discovers the tile places it on a field of their choosing`
+                    ? ` — carries a ${
+                        tile.pendingToken.kind === "gate"
+                          ? `${gatePairColor(tile.pendingToken.pair ?? 1)} Gate`
+                          : tile.pendingToken.kind === "monolith"
+                            ? "Monolith"
+                            : "Whirlpool"
+                      } token: whoever discovers the tile places it on a field of their choosing`
                     : ""
                 }`}
               </title>
@@ -1188,7 +1250,11 @@ export function HexMapBoard({
             x={x}
             y={y + HEX_SIZE * 0.92}
           >
-            {tokenPlacementChoice.kind === "monolith" ? "⛩ monolith here" : "🌀 whirlpool here"}
+            {tokenPlacementChoice.kind === "monolith"
+              ? "⛩ monolith here"
+              : tokenPlacementChoice.kind === "gate"
+                ? "⛩ gate here"
+                : "🌀 whirlpool here"}
           </text>
         );
       }

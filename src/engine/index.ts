@@ -427,6 +427,7 @@ export {
   legalTokenSlotsForTileDef,
   levelOfExperience,
   mapTokenLabel,
+  placementTokenLabel,
   tokenMayCoverFieldDef,
   planSubterraneanGates,
   legalGateHexPairs,
@@ -447,7 +448,7 @@ export {
   subterraneanTileBand,
   tileLayer
 } from "./adventure";
-export type { DesignedGateLinkLike, HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, MapTokenKind, PlannedSubterraneanGate, RecruitPurchaseRef, TilePlacementLike } from "./adventure";
+export type { DesignedGateLinkLike, HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, MapTokenKind, PlannedSubterraneanGate, RecruitPurchaseRef, TilePlacementLike, TokenPlacementKind } from "./adventure";
 export {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,

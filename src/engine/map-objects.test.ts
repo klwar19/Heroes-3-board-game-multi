@@ -13,6 +13,7 @@ import {
   heroFieldSealedForDiscovery,
   isFieldGuarded,
   mapFieldLayer,
+  MAX_GATES_PER_PAIR,
   sanitizeCustomMapObject,
   sanitizeCustomMapPreset,
   tileLatticeNeighbors,
@@ -211,6 +212,108 @@ describe("Colored Gate pair routing", () => {
     expect(lastNote(state)).toContain("nowhere");
   });
 
+  it("with THREE same-color gates the traveller PICKS among the two free partners (2 → automatic is the CONTROL above)", () => {
+    let state = makeGame("gate-three-pick");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    const [c, tileC] = placeEmptyTile(b, "F4", { row: 36, col: 24 });
+    state = c;
+    const entry = carveGate(state, tileA, 1, 1);
+    const exitB = carveGate(state, tileB, 1, 1);
+    const exitC = carveGate(state, tileC, 1, 1);
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+
+    // A destination choice is open (a CHOOSE_ONE visit step) listing EXACTLY the
+    // two free same-color partners — the same picker the Monolith network uses.
+    const step = adv(state).pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type !== "CHOOSE_ONE") {
+      throw new Error("no gate destination choice");
+    }
+    expect(step.options).toHaveLength(2);
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 1 });
+    expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
+    expect(exitB).not.toBe(exitC);
+  });
+
+  it("an occupied same-color partner is skipped — travel goes automatically to the one free gate", () => {
+    let state = makeGame("gate-three-occupied");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    const [c, tileC] = placeEmptyTile(b, "F4", { row: 36, col: 24 });
+    state = c;
+    const entry = carveGate(state, tileA, 1, 1);
+    const exitB = carveGate(state, tileB, 1, 1);
+    const exitC = carveGate(state, tileC, 1, 1);
+    // Squat on exitB → only exitC is free → automatic travel there (occupied
+    // skipped, no pick opened). All-occupied → fizzle is the existing 2-gate CONTROL.
+    state.heroes.hero_p2.spaceId = exitB;
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+    state = moveHero(state, entry);
+    expect(state.heroes.hero_p1.spaceId).toBe(exitC);
+    expect(state.pendingChoice).toBeNull();
+    expect(adv(state).pendingVisit).toBeNull();
+  });
+
+  it("cross-group isolation: a red gate offers ONLY red gates — never blue gates or Monoliths (mutation control)", () => {
+    let state = makeGame("gate-cross-group");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    const [c, tileC] = placeEmptyTile(b, "F4", { row: 36, col: 24 });
+    state = c;
+    // red×3
+    const redEntry = carveGate(state, tileA, 1, 1);
+    const red2 = carveGate(state, tileA, 2, 1);
+    const red3 = carveGate(state, tileB, 1, 1);
+    // blue×2
+    const blue1 = carveGate(state, tileB, 2, 2);
+    const blue2 = carveGate(state, tileC, 1, 2);
+    // monolith×2 (set the location directly, as the lone-monolith CONTROL does)
+    const mono1 = getTileFootprintSpaceIds(tileA)[3];
+    adv(state).fields[mono1]!.location = "monolith";
+    const mono2 = getTileFootprintSpaceIds(tileC)[2];
+    adv(state).fields[mono2]!.location = "monolith";
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, redEntry);
+
+    const step = adv(state).pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type !== "CHOOSE_ONE") {
+      throw new Error("no gate destination choice");
+    }
+    // EXACTLY the two other free RED gates — dropping the pair filter would offer
+    // 4 gates (red+blue) or route to a Monolith, failing this length assertion.
+    expect(step.options).toHaveLength(2);
+    for (const optionIndex of [0, 1]) {
+      const branch = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex });
+      expect([red2, red3]).toContain(branch.heroes.hero_p1.spaceId);
+      expect([blue1, blue2, mono1, mono2]).not.toContain(branch.heroes.hero_p1.spaceId);
+    }
+  });
+
+  it("cross-group isolation: a Monolith never travels to a Gate (2 monoliths + a red pair)", () => {
+    let state = makeGame("mono-not-gate");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    state = b;
+    const monoEntry = getTileFootprintSpaceIds(tileA)[1];
+    adv(state).fields[monoEntry]!.location = "monolith";
+    const monoExit = getTileFootprintSpaceIds(tileB)[1];
+    adv(state).fields[monoExit]!.location = "monolith";
+    const redA = carveGate(state, tileA, 2, 1);
+    const redB = carveGate(state, tileB, 2, 1);
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, monoEntry);
+
+    // Two Monoliths → straight to the OTHER Monolith, never a red gate.
+    expect(state.heroes.hero_p1.spaceId).toBe(monoExit);
+    expect([redA, redB]).not.toContain(state.heroes.hero_p1.spaceId);
+  });
+
   it("CONTROL: Gates and Monoliths are SEPARATE networks — a Monolith never routes to a Gate", () => {
     let state = makeGame("gate-vs-monolith");
     const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
@@ -332,6 +435,34 @@ describe("guarded Gate — the battle gates the teleport", () => {
 
     expect(state.combat).toBeNull();
     expect(state.heroes.hero_p1.spaceId).toBe(exit);
+  });
+
+  it("a guarded Gate WIN resolves the NETWORK travel — the pick opens among the free same-color partners", () => {
+    let state = makeGame("gate-guard-network");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    const [c, tileC] = placeEmptyTile(b, "F4", { row: 36, col: 24 });
+    state = c;
+    const entry = carveGate(state, tileA, 1, 1, 1); // guard difficulty 1
+    const exitB = carveGate(state, tileB, 1, 1);
+    const exitC = carveGate(state, tileC, 1, 1);
+    state.heroes.hero_p1.level = 2; // level 2 > difficulty 1 → Quick Combat win
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+
+    // The guard fell (Quick Combat), THEN the gate network opened its pick.
+    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(true);
+    const step = adv(state).pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type !== "CHOOSE_ONE") {
+      throw new Error("no gate pick after the win");
+    }
+    expect(step.options).toHaveLength(2);
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
+    // The beaten guard is cleared on the entry field.
+    expect(adv(state).fields[entry]?.difficulty).toBeUndefined();
   });
 });
 
@@ -649,13 +780,14 @@ describe("object sanitization + validation + describe", () => {
     }));
     expect(sanitizeCustomMapPreset({ objects: many })?.objects).toHaveLength(16);
 
-    // Three red gates → only 2 survive (a two-way pair).
-    const threeRed = Array.from({ length: 3 }, (_, i) => ({
+    // A colored gate is a per-color NETWORK (up to MAX_GATES_PER_PAIR = 8), not a
+    // strict two-gate pair: 10 red gates → 8 survive, the 9th+ dropped in order.
+    const manyRed = Array.from({ length: 10 }, (_, i) => ({
       kind: "gate" as const,
       pair: 1 as const,
       placement: { type: "tile-slot" as const, row: i, col: 0, slot: 0 }
     }));
-    expect(sanitizeCustomMapPreset({ objects: threeRed })?.objects).toHaveLength(2);
+    expect(sanitizeCustomMapPreset({ objects: manyRed })?.objects).toHaveLength(MAX_GATES_PER_PAIR);
 
     // Garbage: unknown kind, a gate with no pair, a bad placement → all dropped.
     expect(sanitizeCustomMapObject({ kind: "bogus", placement: { type: "standalone", row: 1, col: 1 } })).toBeNull();
@@ -684,6 +816,44 @@ describe("object sanitization + validation + describe", () => {
     // The lone green gate is accepted but WARNED as an incomplete pair.
     expect(result.accepted).toHaveLength(1);
     expect(result.warnings.join(" ")).toMatch(/green Gate pair/i);
+  });
+
+  it("gate warnings count ACROSS sources (plan tokens + objects): a token completes a lone object; over-8 warns", () => {
+    // A lone gate OBJECT partnered with a plan gate TOKEN of the SAME color is a
+    // complete network — NO lone warning (the cross-source count is what saves it).
+    const pairedPlans: CustomMapTilePlan[] = [
+      { row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "gate", pair: 1, slot: 0 } }
+    ];
+    const paired = validateCustomMapObjects(pairedPlans, [
+      { kind: "gate", pair: 1, placement: { type: "standalone", row: CLUSTER.row - 4, col: CLUSTER.col } }
+    ]);
+    expect(paired.warnings.join(" ")).not.toMatch(/only one gate/i);
+
+    // The SAME lone object with NO partner anywhere → the lone warning fires.
+    const lone = validateCustomMapObjects(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [{ kind: "gate", pair: 2, placement: { type: "standalone", row: CLUSTER.row - 4, col: CLUSTER.col } }]
+    );
+    expect(lone.warnings.join(" ")).toMatch(/blue Gate pair/i);
+    expect(lone.warnings.join(" ")).toMatch(/only one gate/i);
+
+    // Over the per-color cap of 8 counted across BOTH sources (5 tokens + 5
+    // objects = 10 of one color) → an over-cap warning naming the max.
+    const overPlans: CustomMapTilePlan[] = Array.from({ length: 5 }, (_, i) => ({
+      row: 60 + i,
+      col: 60,
+      group: "far" as const,
+      faceDown: false,
+      tileDefId: "F1",
+      token: { kind: "gate" as const, pair: 3, slot: 0 }
+    }));
+    const overObjects: CustomMapObject[] = Array.from({ length: 5 }, (_, i) => ({
+      kind: "gate" as const,
+      pair: 3 as const,
+      placement: { type: "standalone" as const, row: 80 + i, col: 80 }
+    }));
+    const over = validateCustomMapObjects(overPlans, overObjects);
+    expect(over.warnings.join(" ")).toMatch(/at most 8/i);
   });
 
   it("describeMapObjects + preset entries summarise the objects", () => {

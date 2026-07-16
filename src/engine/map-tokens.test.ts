@@ -9,7 +9,7 @@ import {
   type MapTileState
 } from "./index";
 import { ALL_TILE_CONTENT } from "@/data/map/tiles";
-import { carveMapTokenField, instantiateTile } from "./adventure";
+import { carveMapTokenField, instantiateTile, placeMapToken } from "./adventure";
 import type { AdventureState } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -479,6 +479,52 @@ describe("token placement on discovery", () => {
     expect(adv(state).tiles[hidden.id].faceDown).toBe(false);
   });
 
+  it("a face-down GATE token reveals to a place-map-token choice carrying the pair; placing carves ONE gate", () => {
+    let state = makeGame("gate-token-facedown");
+    const tile = instantiateTile(adv(state), "N1", { row: 24, col: 12 }, 0, true);
+    // A colored Gate token (pair 3 = green) rides the face-down tile.
+    adv(state).tiles[tile.id].pendingToken = { kind: "gate", pair: 3 };
+
+    state = revealTile(state, tile.id);
+
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-map-token" || !choice.mapToken) {
+      throw new Error("no gate token placement choice");
+    }
+    // The choice carries the gate kind AND its colored pair through to placement.
+    expect(choice.mapToken.kind).toBe("gate");
+    expect(choice.mapToken.pair).toBe(3);
+    const pickedHex = choice.mapToken.candidates[0];
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+
+    // The gate was carved with its pair; exactly ONE gate field on the tile.
+    expect(adv(state).fields[pickedHex]?.location).toBe("gate");
+    expect(adv(state).fields[pickedHex]?.gatePair).toBe(3);
+    const footprint = getTileFootprintSpaceIds(adv(state).tiles[tile.id]);
+    expect(footprint.filter((id) => adv(state).fields[id]?.location === "gate")).toHaveLength(1);
+    expect(adv(state).tiles[tile.id].pendingToken).toBeUndefined();
+    // A plain walking discovery moves no hero.
+    expect(state.heroes.hero_p1.spaceId).not.toBe(pickedHex);
+  });
+
+  it("placeMapToken carves a gate field with its pair (the single-candidate / elimination auto-place path)", () => {
+    let state = makeGame("gate-place-direct");
+    const tile = instantiateTile(adv(state), "F1", { row: 24, col: 12 }, 0, true);
+    state = revealTile(state, tile.id);
+    setAllEmpty(state, adv(state).tiles[tile.id]);
+    const liveTile = adv(state).tiles[tile.id];
+    liveTile.pendingToken = { kind: "gate", pair: 4 };
+    const spaceId = getTileFootprintSpaceIds(liveTile)[0];
+
+    // placeMapToken is the shared carve the lone-candidate AND elimination
+    // auto-place both call — it must carve a GATE (not a monolith) with the pair.
+    placeMapToken(state, liveTile, spaceId, "p1");
+
+    expect(adv(state).fields[spaceId]?.location).toBe("gate");
+    expect(adv(state).fields[spaceId]?.gatePair).toBe(4);
+    expect(liveTile.pendingToken).toBeUndefined();
+  });
+
   it("waits behind the Creature Bank offer on the same tile", () => {
     let state = makeGame("token-after-bank", { creatureBanks: true });
     const tile = instantiateTile(adv(state), "N1", { row: 24, col: 12 }, 0, true);
@@ -520,6 +566,38 @@ describe("designed map tokens at setup", () => {
 
     const faceDown = Object.values(state.adventure!.tiles).find((tile) => tile.faceDown && tile.group === "near")!;
     expect(faceDown.pendingToken).toEqual({ kind: "monolith" });
+  });
+
+  it("carves a face-up GATE token at its slot (ONE hex is the gate, the tile's other six untouched)", () => {
+    const state = createAdventureGameState({
+      seed: "designed-gate-token-setup",
+      creatureBanks: false,
+      customMap: [
+        // Face-up F1 with a colored Gate (pair 2 = blue) on its empty centre (slot 0).
+        { row: 24, col: 12, group: "far", faceDown: false, tileDefId: "F1", rotation: 0, token: { kind: "gate", pair: 2, slot: 0 } }
+      ]
+    });
+
+    const tile = Object.values(state.adventure!.tiles).find((candidate) => candidate.tileDefId === "F1")!;
+    const footprint = getTileFootprintSpaceIds(tile);
+    expect(state.adventure!.fields[footprint[0]]?.location).toBe("gate");
+    expect(state.adventure!.fields[footprint[0]]?.gatePair).toBe(2);
+    // "One hex, one effect": exactly one gate field; the other six keep their
+    // printed content (never a duplicate gate).
+    expect(footprint.filter((id) => state.adventure!.fields[id]?.location === "gate")).toHaveLength(1);
+    for (let index = 1; index < footprint.length; index += 1) {
+      expect(state.adventure!.fields[footprint[index]]?.location).not.toBe("gate");
+    }
+  });
+
+  it("parks a face-down plan's GATE token on the tile (pending, pair kept)", () => {
+    const state = createAdventureGameState({
+      seed: "designed-gate-facedown",
+      creatureBanks: false,
+      customMap: [{ row: 30, col: 18, group: "near", faceDown: true, token: { kind: "gate", pair: 1 } }]
+    });
+    const faceDown = Object.values(state.adventure!.tiles).find((tile) => tile.faceDown && tile.group === "near")!;
+    expect(faceDown.pendingToken).toEqual({ kind: "gate", pair: 1 });
   });
 
   it("numbers designed whirlpools +1, 0, -1 in plan order (the printed die faces)", () => {
