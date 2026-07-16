@@ -4644,8 +4644,15 @@ export default function Home() {
     </div>
   ) : null;
 
+  // The same table-controls panel is rendered in the setup lobby, the Battle
+  // Test setup, and the two in-game table screens (map + combat). Only the
+  // in-game placements sit in the top-row band beside the HUD, so they carry
+  // `tableMenuInline` to trade the floating gem-framed box for the HUD's
+  // leather ribbon (scoped in globals.css); the setup screens keep the ornate
+  // box. Behaviour is identical either way.
+  const inGameTable = !inLobby && !inCombatSandboxSetup;
   const tableMenu = (
-    <div className="tableMenu" aria-label="Table controls">
+    <div className={`tableMenu${inGameTable ? " tableMenuInline" : ""}`} aria-label="Table controls">
       {roomPasswordPrompt}
       {roomHosted ? (
         // Hosted/closed room: the host controls seats, but a player may still
