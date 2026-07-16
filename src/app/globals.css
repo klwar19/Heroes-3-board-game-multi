@@ -4242,9 +4242,18 @@ button.battleCell {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.48), inset 0 1px rgba(255, 255, 255, 0.32);
 }
 
-.bankSizeCombatChip > span {
-  font-size: 15px;
-  line-height: 0.8;
+.bankSizeCombatChip > .bankSizeCoin,
+.bankStackCoin {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(32, 17, 7, 0.88);
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 .bankSizeCombatChip.size-1 {
@@ -4264,6 +4273,24 @@ button.battleCell {
   background: linear-gradient(180deg, #f4db6a, #b9901f);
 }
 
+.bankSizeCombatChip.size-2 .bankSizeCoin,
+.bankStackBadge.size-2 .bankStackCoin {
+  background: radial-gradient(circle at 35% 30%, #e29a63, #9b4b22 68%, #5d260f);
+  color: #fff3dc;
+}
+
+.bankSizeCombatChip.size-3 .bankSizeCoin,
+.bankStackBadge.size-3 .bankStackCoin {
+  background: radial-gradient(circle at 35% 30%, #fff, #b9c1c8 68%, #737d86);
+  color: #1a1d20;
+}
+
+.bankSizeCombatChip.size-4 .bankSizeCoin,
+.bankStackBadge.size-4 .bankStackCoin {
+  background: radial-gradient(circle at 35% 30%, #fff0a0, #d4aa28 68%, #83600c);
+  color: #241603;
+}
+
 .bankPreviewSecondRing {
   fill: rgba(10, 7, 4, 0.92);
   stroke: #ffe39a;
@@ -4271,14 +4298,14 @@ button.battleCell {
   pointer-events: none;
 }
 
-/* Polish tournament bank-size markers. The star silhouette and tier colours
-   follow the Homm3BG bronze/silver/golden glyph vocabulary. */
+/* Polish tournament bank-size markers from the v1.2 sheet: no token at size I,
+   then a numbered bronze/silver/gold coin (1/2/3) at sizes II/III/IV. */
 .bankSizeSvgBadge {
   pointer-events: none;
   filter: drop-shadow(0 1.5px 1px rgba(0, 0, 0, 0.92));
 }
 
-.bankSizeSvgBadge path {
+.bankSizeSvgBadge circle {
   stroke: #1b1008;
   stroke-width: 1.3px;
   paint-order: stroke fill;
@@ -4291,20 +4318,36 @@ button.battleCell {
   pointer-events: none;
 }
 
-.bankSizeSvgBadge.size-1 path {
-  fill: #d5bd89;
+.bankSizeSvgBadge text.noToken {
+  fill: #f4e4b8;
+  font-size: 9px;
+  paint-order: stroke fill;
+  stroke: #171008;
+  stroke-width: 2px;
 }
 
-.bankSizeSvgBadge.size-2 path {
-  fill: #a85b24;
+.bankSizeSvgBadge.size-2 .coinOuter {
+  fill: #91461f;
 }
 
-.bankSizeSvgBadge.size-3 path {
-  fill: #dadada;
+.bankSizeSvgBadge.size-2 .coinInner {
+  fill: #cf7a40;
 }
 
-.bankSizeSvgBadge.size-4 path {
-  fill: #e1bb3a;
+.bankSizeSvgBadge.size-3 .coinOuter {
+  fill: #8d98a3;
+}
+
+.bankSizeSvgBadge.size-3 .coinInner {
+  fill: #dde4e8;
+}
+
+.bankSizeSvgBadge.size-4 .coinOuter {
+  fill: #aa7c10;
+}
+
+.bankSizeSvgBadge.size-4 .coinInner {
+  fill: #e9c84f;
 }
 
 .bankSizeSvgBadge.placed {
@@ -6898,6 +6941,33 @@ button.hbSlot:disabled { cursor: default; }
   text-transform: uppercase;
   white-space: nowrap;
   box-shadow: 0 0 6px rgb(247 206 102 / 45%);
+}
+
+/* Polish bank-size coin shown on each of the four bank cards. Unlike the
+   standard stat token, the number is the remaining count of full HP layers. */
+.bankStackBadge {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-50%);
+  padding: 2px 7px 2px 3px;
+  border: 1px solid rgba(255, 231, 173, 0.7);
+  border-radius: 999px;
+  background: rgba(22, 13, 7, 0.94);
+  color: #fff0c5;
+  font-size: 9px;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.72);
+}
+
+.bankStackBadge .bankStackCoin {
+  width: 17px;
+  height: 17px;
 }
 
 /* Polish Unit Stack coin. This badge is intentionally visually distinct from
@@ -17731,6 +17801,17 @@ img.cardBack {
   box-shadow: 0 0 0 2px rgba(255, 245, 220, 0.7), 0 0 6px var(--spell-accent, #b08d2f);
 }
 
+.spellBookIndexItem.used {
+  background: rgba(74, 64, 55, 0.12);
+  color: #716657;
+  filter: saturate(0.35);
+}
+
+.spellBookIndexItem.used .spellBookIndexDot {
+  box-shadow: 0 0 0 2px rgba(92, 67, 45, 0.35);
+  background: #716457;
+}
+
 .spellBookIndexDot.expert {
   border-radius: 2px;
   transform: rotate(45deg);
@@ -17833,6 +17914,18 @@ img.cardBack {
 .spellBookChip.level.expert {
   border-color: #a8791f;
   background: rgba(220, 170, 60, 0.28);
+}
+
+.spellBookChip.used {
+  border-color: rgba(105, 45, 36, 0.65);
+  background: rgba(130, 48, 38, 0.16);
+  color: #71362e;
+}
+
+.spellBookChip.ready {
+  border-color: rgba(58, 105, 50, 0.65);
+  background: rgba(66, 125, 58, 0.16);
+  color: #315c2c;
 }
 
 .spellBookDefinition {
@@ -18354,11 +18447,12 @@ img.cardBack {
 }
 
 .polishRuleCrest {
-  width: 28px;
-  height: 28px;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
   object-fit: contain;
-  margin: -5px 1px -4px -2px;
-  filter: drop-shadow(0 2px 2px rgba(10, 5, 3, 0.9));
+  margin: -10px 2px -8px -4px;
+  filter: drop-shadow(0 3px 3px rgba(10, 5, 3, 0.92));
 }
 
 .houseRuleGrid {

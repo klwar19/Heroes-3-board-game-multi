@@ -59,6 +59,7 @@ describe("house-rule resolver", () => {
       expect(houseRuleDefaultFor("binh", def.id)).toBe(def.default);
       expect(houseRuleDefaultFor("legacy", def.id)).toBe(false);
     }
+    expect(binh["polish-spell-book"], "Polish variants are opt-in under BINH too").toBe(false);
     expect(binh["polish-bank-sizes"], "Polish variants are opt-in under BINH too").toBe(false);
     expect(binh["polish-unit-stacks"], "Polish variants are opt-in under BINH too").toBe(false);
   });

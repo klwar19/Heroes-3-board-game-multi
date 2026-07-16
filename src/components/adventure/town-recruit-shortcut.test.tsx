@@ -110,7 +110,7 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     const { onAction } = renderRecruit(state);
 
     expect(document.querySelector(".armyStackBadge")?.textContent).toContain("×1");
-    expect(screen.getByText(/Stack .*11.*1\/3/i)).toBeTruthy();
+    expect(screen.getByText(/Stack .*7.*1\/3/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Buy Stack for Griffins" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "POPULATION_ACTION",

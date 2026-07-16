@@ -1,11 +1,12 @@
 # Polish house rules — Spell Book, Bank Sizes, Unit Stacks (implementation plan)
 
-**STATUS: PHASES 1-3 IMPLEMENTED (2026-07-16).** The shared Polish lobby
-category, `polish-bank-sizes`, and `polish-unit-stacks` are engine-wired and
-mutation-covered. `polish-spell-book` remains PLAN ONLY and deliberately does
-not exist in the registry yet. Per CLAUDE.md #1, no later phase may be
-reported as done until the engine executes it AND a test fails when the logic
-is removed. This document remains the design + wiring map for those phases.
+**STATUS: ALL SIX PHASES IMPLEMENTED AND VALIDATED (2026-07-16).** The
+shared Polish lobby category, corrected Bank Sizes and Unit Stacks, and the
+Polish Spell Book's setup/cast/used-refresh/acquisition lifecycle are
+engine-wired and mutation-covered. Mage Guild Search (3), Cast-card choices,
+level V/VII grants, Rolling Spells, Knowledge, Mysticism and used-Spell
+recovery and the full named-card adaptation table are implemented. The Phase-6
+all-rules computer soak and economy-policy coverage are green.
 
 Source of truth for the rules: the 2-page **"H3 BG Rules v1.2" Polish
 tournament reference sheet** (provided by the user; decoded below — the sheet
@@ -23,8 +24,8 @@ tournament scene, grouped under one new **"Polish house rules"** category:
 | Toggle (HouseRuleId) | One-line contract |
 | --- | --- |
 | `polish-spell-book` | Spells never enter your hand/deck. They live in a per-player **Spell Book** with a used/refreshed state, refreshed each round, and are cast by playing generic **"Cast a Spell"** cards from the M&M deck. The Mage Guild is buffed (Search (3), buy Cast-a-Spell, Rolling Spells, level V/VII grants). One merged Spell deck. |
-| `polish-bank-sizes` | On a bank-eligible tile reveal you get **two** Creature Bank candidates, each with a dice-rolled **size Ⅰ–Ⅳ**; you pick one, then rotate the tile. Size replaces scenario difficulty for that bank's Stack tokens (and thus its reward scale). A player's first tile rolls 1 die (max size Ⅲ). |
-| `polish-unit-stacks` | A **Group** (Pack) army card can buy **Stacks** — extra unit groups (coin tokens ×1/×2/×3). While at least one Stack remains the card fights at **+1 Attack**; each Stack is a full extra health bar; lethal damage removes one Stack and the remainder carries over. Caps: bronze 3 / silver 2 / gold 1. |
+| `polish-bank-sizes` | Reveal two banks, roll **2 Attack dice for each**, choose one, then rotate. Size gives every one of the four guards 0/1/2/3 full-health Stack layers and sets reward X=1/2/3/4; it replaces normal random-stat bank tokens. |
+| `polish-unit-stacks` | A **Group** (Pack) army card can buy **Stacks** for Pack gold cost + tier (1/2/3). While at least one Stack remains the card fights at **+1 Attack** with the Pack ability; each Stack is a full extra Pack health bar and lethal excess carries over. Caps: bronze 3 / silver 2 / gold 1. |
 
 Non-negotiable framing rules (repo conventions):
 
@@ -32,10 +33,8 @@ Non-negotiable framing rules (repo conventions):
   tables that never touch the toggles behave byte-identically — every gate is
   a `houseRuleEnabled(state, "polish-…")` read that no-ops when off, and every
   feature ships with mode-off CONTROL tests.
-- `polish-spell-book` is **multiplayer-only until Phase 6** (the
-  `events`-style seat-count gate, `adventure-setup.ts:1178`): the computer
-  card policy does not know Cast-a-Spell yet. `polish-bank-sizes` and
-  `polish-unit-stacks` are AI-safe from day one (§8) and ship without the gate.
+- `polish-spell-book` uses the same legal-action surface for human and computer
+  seats; the all-rules multi-round computer soak covers this integration.
 - These are score-neutral house rules: no MMR/ranked implications beyond what
   any option already has.
 
@@ -59,8 +58,8 @@ the tournament build uses **one merged Spell deck** (option 2), not the
 basic/expert split.
 
 **BANKS** (sheet p.1, "Description of the map") — on Tiles Ⅱ–Ⅲ and Ⅳ–Ⅴ:
-"Random size of **2 Banks** and player **selects** 2→1". Bank size roll: **2×
-Attack dice** (first tile Ⅱ–Ⅲ: **1× die**), summed:
+"Random size of **2 Banks** and player **selects** 2→1". Per the rule author's
+latest clarification, each candidate always rolls **2× Attack dice**, summed:
 
 | 1–2 dice sum | Bank size | Sheet marker |
 | --- | --- | --- |
@@ -70,12 +69,11 @@ Attack dice** (first tile Ⅱ–Ⅲ: **1× die**), summed:
 | −2 or +2 | Ⅳ | gold coin (3) |
 
 The Attack die is `[-1,-1,0,0,+1,+1]` (`src/engine/battlefield.ts:12`), so
-2-dice sizes distribute Ⅰ 2/9, Ⅱ 3/9, Ⅲ 2/9, Ⅳ 2/9; 1 die can only reach Ⅲ —
-exactly the user's "first tile max 3" smoothing.
+sizes distribute Ⅰ 2/9, Ⅱ 3/9, Ⅲ 2/9, Ⅳ 2/9. There is no first-tile exception.
 
 **UNIT STACKS (variant)** — "A **Group** of units can be [stacked] — creates a
-Stack; coin token (1)/(2)/(3). Cost of each Stack = **sum [cost of the] Group +
-Tier number**. A Stack has the **same features** as the Group. **Attack of
+Stack; coin token (1)/(2)/(3). Cost of each Stack = **the Group's printed gold
+cost + Tier number**. A Stack has the **same features** as the Group. **Attack of
 Stacks is higher by 1** than the Group's. When a Stack's health reaches 0, one
 coin token is **removed/downgraded and further damage is assigned**
 [carryover]. Maximum Stacks: **Tier Ⅰ (bronze) 3 / Tier Ⅱ (silver) 2 / Tier Ⅲ
@@ -105,10 +103,9 @@ setup-time freezing, legacy-snapshot defaults and a lobby UI for free:
   is registry-driven; add a rendered category header so the three rules appear
   as a visually distinct **"Polish house rules (tournament variants)"** block
   on the *rules* tab. No per-feature bespoke lobby UI.
-- Seat-count gate for `polish-spell-book` only (until Phase 6):
-  `resolvePolishSpellBook = houseRule && playerConfigs.length >= 2`, mirroring
-  `events` (`adventure-setup.ts:1178`), with the UI labelling it
-  "(multiplayer only for now)".
+- `polish-spell-book` is available at every seat count. Human and computer
+  seats consume the same legal `CAST_SPELL` / `PLAY_CARD` actions; the Phase-6
+  full-game computer soak verifies policy quality and absence of stalls.
 - `polish-bank-sizes` additionally requires `creatureBanks` ON (it is a
   modifier of the bank offer flow); with banks off it is inert and the UI greys
   it out.
@@ -224,7 +221,8 @@ This table is the audit surface; each row gets a test:
 | Basic-X-Magic school fetch (`performSchoolFetch`) | hand | Book |
 | Scholar spell arm (`adventure.ts:3128/3238`) | hand | Book |
 | Level-up ability Search — spells taken via any generic search | hand | Book |
-| Genie Wish (`DECK_DISCARD_TAKE_SPELL`) / Eagle Eye dig | own deck→hand | **needs adaptation** (own deck holds no Spells in this mode) — see 4.5 |
+| Genie Wish (`DECK_DISCARD_TAKE_SPELL`) | own deck→hand | Discard the printed number from the M&M deck, then refresh 1 used Book Spell. |
+| Eagle Eye / School Tome dig | shared Spell deck→hand | Shared-deck find routes into the refreshed Book through `gainOwnedCard`. |
 | Spell Scrolls | scroll zone | unchanged (never hand cards) |
 | Tarnum VI over-limit search | hand (temp, returns to shared deck) | unchanged — deliberately bypasses the Book (cards never become "owned") |
 
@@ -311,27 +309,23 @@ basic/expert split control.
 
 ### 5.1 Spec
 
-On a bank-eligible reveal (existing gates unchanged: tile group →
-`creatureBankTierForGroup` `adventure.ts:7346-7348`, blocked field present,
-pile non-empty, `creatureBanks` on): peek the **top TWO** tokens of the
-matching pile, roll a size for each with **seeded Attack dice** (sum → size
-per the §2 table), present the player a three-way choice — *Place bank A
-(size X)* / *Place bank B (size Y)* / *Leave it blocked* — then the normal
-rotation. **1 die instead of 2** when this reveal is the revealing player's
-FIRST Ⅱ–Ⅲ opening (reuse `farTilesOpenedByPlayer` /
-`pendingFarTileFlip.openingIndex === 1` convention, `state.ts:8288`,
-`adventure-reducer.ts:2284` — recommended reading of "first tile", §9;
-subterranean/near reveals always roll 2). With only one token left in the
-pile, offer that single candidate (sized) as today.
+On a bank-eligible reveal (existing gates unchanged), peek the **top TWO**
+tokens of the matching pile and roll a size for each with seeded Attack dice.
+The sequence is load-bearing: **reveal → draw two banks → roll both sizes →
+choose one bank → rotate the tile**. There is no Polish decline option. With
+only one token left, reserve it automatically and continue to rotation. Each
+candidate always rolls **2 Attack dice**, including a player's first Far
+opening. This follows the rule author's latest explicit clarification and
+supersedes the earlier one-die annotation in the reference-sheet draft.
 
-Size **replaces scenario difficulty for that bank only**: size Ⅰ–Ⅳ → 1–4
-stack-token ROLLS through the existing 77 %-landing pipeline
-(`STACK_TOKEN_PLACEMENT_PERCENT`, `adventure.ts:7401`) — i.e. size N behaves
-exactly like easy/normal/hard/impossible does today. This keeps the repo's
-existing house-ruled variance and the reward scaling untouched (rewards
-already key off LANDED stacks, `grantCreatureBankReward` `adventure.ts:7489`).
-The deterministic alternative (size Ⅰ=0 … Ⅳ=3 fixed stacks, one sheet
-reading) is flagged in §9.
+Polish bank size completely **replaces** the normal random-stat Stack Token
+system for that combat; only the four printed Creature Bank unit cards are
+reused. Every one of all four defenders receives the same deterministic coin:
+size Ⅰ = no coin / 0 layers, size Ⅱ = bronze 1, size Ⅲ = silver 2, size Ⅳ =
+gold 3. Each layer is a full extra copy of that bank card's Health and features;
+while at least one remains it has +1 Attack, and lethal excess carries through
+as layers downgrade. Rewards use the old X scale directly from size: size
+Ⅰ/Ⅱ/Ⅲ/Ⅳ pays as **X=1/2/3/4**, independently of the 0/1/2/3 physical layers.
 
 ### 5.2 Wiring
 
@@ -342,58 +336,57 @@ reading) is flagged in §9.
   `reservedBankId` (kept pointing at option 0 so the rotation-preview keeps
   rendering). Emit `ADVENTURE_DICE_ROLLED` (dice:"attack") per candidate +
   a feed line, so the rolls are visible/auditable.
-- `offerCreatureBankPlacement` (`adventure-reducer.ts:1852-1902`): same
-  `pendingChoice` context `"place-creature-bank"`, now with the three options.
-  Resolution (`adventure-reducer.ts:8526-8556`): on accept, remove the CHOSEN
-  token from the pile **by id** (it may be top-1 or top-2), leave the other in
-  place (peek semantics — nothing was consumed; §9 flags the shuffle-back
-  alternative); persist **`field.bankSize`** on `placeCreatureBank`. Decline
-  leaves both. Elimination mid-choice: reservations are peeks, so the existing
-  cleanup (clear reservation, drop the choice) already cannot strand tokens.
-- Threading size: `buildCreatureBankCombatUnits` (`adventure.ts:7374-7412`)
-  `tokenRolls = field.bankSize ?? STACK_TOKENS_BY_DIFFICULTY[difficulty]`.
-- AFK: options ordered [A, B, leave] — `pickResolvingAction`
-  (`afk-drop.ts:77-83`) picks A, consistent with today's auto-place behaviour.
+- `openPolishBankChoiceBeforeRotation` opens the mandatory [A, B] choice while
+  `pendingTileChoice` still owns rotation. Resolution stores only the selected
+  `{bankId,size}` on the tile; the pile is still untouched. Rotation actions
+  become legal only after that choice closes.
+- `offerCreatureBankPlacement` runs after rotation/gate carving and places the
+  selected bank automatically on the final Blocked Field. It consumes the
+  chosen token **by id**, leaves the unchosen peek in place, and persists
+  `field.bankSize`. If a gate consumed the Blocked Field, no token was lost.
+- `buildCreatureBankCombatUnits` branches before normal token placement: every
+  one of the four units receives `bankStacks = field.bankSize - 1`, never a
+  `stackToken`; `stackedCount = field.bankSize` is the reward X multiplier.
+- `markUnitRemovedIfNeeded` peels `bankStacks` with full-Health carryover;
+  `applyUnitCurrentSide` supplies the flat +1 Attack while layers remain, and
+  bank `requiresStacked` abilities key off `bankStacks > 0`.
+- AFK: mandatory options are [A, B], so the resolving driver safely chooses A.
 - AI: `choice-policy.ts` `scorePositionOption` place-creature-bank branch
   (`choice-policy.ts:496-500`) learns the 3-option shape: score each candidate
   with `creatureBankStrength`/`canBeatCreatureBank`
   (`army-strength.ts:99-135`) fed the rolled size instead of global
-  difficulty; prefer the beatable one with the larger size (bigger reward),
-  "leave" when neither is beatable-now (parked objective). `map-navigation`'s
+  difficulty; prefer the beatable one with the larger size/reward, otherwise
+  the easier of the two mandatory candidates. `map-navigation`'s
   known-bank gate reads `field.bankSize` the same way.
 
 ### 5.3 UI + tests
 
-Rotation-preview (`screen.tsx:855-902`) shows BOTH candidates (art + name +
-size Ⅰ–Ⅳ badge) and the choice buttons; placed banks render a permanent size
-badge (the sheet's coin marker, bronze/silver/gold for Ⅱ/Ⅲ/Ⅳ) on the field
-and in the combat header. `polish-bank-sizes.test.ts`: dice→size mapping
-table (all sums, both dice counts — mutation control on the map); first-Far-
-opening rolls 1 die (second opening rolls 2 as control); two candidates
-offered, chosen id consumed by-id, unchosen stays (pile conservation
-invariant, decline control); `field.bankSize` drives token rolls (size Ⅳ vs Ⅰ
-behavioural divergence with the global-difficulty control); reward scale
-follows landed stacks; rule-off control = single-peek flow byte-identical;
-AI picks the beatable candidate (control: unbeatable pair → leave).
+The pre-rotation prompt shows both bank arts/names and their rolled sizes. Once
+chosen, rotation preview shows only that bank. Markers match the sheet: size I
+has no coin, II is bronze 1, III silver 2, IV gold 3; the combat header states
+the per-card layer count and reward X, and every guard card shows its remaining
+coin count. Tests cover two-dice mapping for both candidates, mandatory
+pre-rotation choice, pile conservation, deterministic 0/1/2/3 layers on all
+four units, +1 Attack, same abilities, multi-layer carryover, X=size rewards,
+rule-off preservation of standard random-stat tokens, AI choice, and DOM coins.
 
 ## 6. Feature: Unit Stacks (`polish-unit-stacks`)
 
 **IMPLEMENTED 2026-07-16.** Purchase, combat-layer carryover, post-combat
 persistence, rule-off controls, town/army/combat UI, and the generated coin
 badge are covered by `polish-unit-stacks.test.ts` plus focused DOM tests.
-Phase 6 still owns proactive computer-economy scoring; the purchase remains
-optional and creates no mandatory AI window.
+Computer policy buys layers only from real surplus after completing its army
+core; the purchase remains optional and creates no mandatory AI window.
 
 ### 6.1 Spec (engine reading)
 
 - Eligible: an army card on its **pack** side ("Group"), tiers bronze/silver/
   gold with caps **3/2/1** (from the unit def's grade). Few-side and
   neutral-side cards cannot stack in v1 (neutral-side eligibility — §9).
-- Cost per Stack: the Group's assembly cost — **`few.cost + pack.cost` summed
-  (printed resources) + Tier number in gold** (bronze +1 / silver +2 /
-  gold +3). "sum Group + Tier number" is ambiguous; the cheaper alternative
-  (pack cost + tier) is §9. Recruit gold discounts do NOT apply (it is not a
-  recruit).
+- Cost per Stack: **the Pack side's printed gold cost + Tier number in gold**
+  (bronze +1 / silver +2 / gold +3). Only gold is charged; printed building
+  materials/valuables, recruit discounts, and resource substitutions do NOT
+  apply. Examples: Centaurs cost 3+1 = 4 gold; Gold Dragons cost 30+3 = 33.
 - Purchase: at the player's own Town, **requires the Citadel built** (the
   building already gating the Pack economy — `castle.citadel` etc., effect
   `UNLOCK_REINFORCE`, `core.ts:181-189`; matches the user's "go citadel and
@@ -445,10 +438,10 @@ optional and creates no mandatory AI window.
   v1 (the sheet's +0.5-strength belongs to its separate army-strength
   Quick-Combat variant, which this plan does not implement — noted for the AI
   heuristic only).
-- AI: v1 competence = the runner never freezes (the purchase is optional, so
-  no new mandatory windows exist); Phase 6 adds a `map-policy` economy score
-  (buy stacks with surplus gold after the dwelling ladder, mirroring the
-  recruit treasury guard) and counts stacks in `army-strength.ts` at +0.5.
+- AI: the runner never freezes (the purchase is optional, so no new mandatory
+  windows exist); `map-policy` buys stacks with surplus gold after the dwelling
+  ladder, mirroring the recruit treasury guard, and `army-strength.ts` includes
+  the additional layers when evaluating Bank fights.
 
 ### 6.3 UI + tests
 
@@ -495,21 +488,18 @@ control (no offers, no absorb).
 
 ## 8. Single-player AI
 
-- Phase-gated: `polish-bank-sizes` needs only the §5.2 choice-scoring branch
-  (mandatory window — MUST land with the feature); `polish-unit-stacks` needs
-  nothing to be safe (optional purchase) and gets economy scoring in Phase 6;
-  `polish-spell-book` is seat-count-gated OFF single-player until Phase 6
-  teaches `card-policy` to (1) play Cast-a-Spell and pick a spell by the
-  existing damage-ladder logic, (2) value guild purchase/Rolling Spells, and
-  (3) answer the new choice contexts. Un-gate only when
-  `computer-runner.test.ts` proves a full AI game with all three rules ON
-  reaches round N without a stall.
+- `polish-bank-sizes` includes the §5.2 mandatory choice-scoring branch.
+  `polish-unit-stacks` purchases are valued only after the army core and treasury
+  reserve are secure. Polish Book casts
+  use ordinary legal `CAST_SPELL` / `PLAY_CARD` actions, so the existing spell
+  policy selects them; Guild policy buys Cast supply when the Book outgrows it
+  and rolls only weak spells. `single-player-soak.test.ts` runs three rounds
+  with two computer opponents and all three rules ON without a stall.
 
 ## 9. Open questions for the rule authors (defaults chosen so work can proceed)
 
-1. **Stack cost**: `few.cost + pack.cost + tier` (chosen) vs `pack.cost +
-   tier`? Is the tier surcharge gold-only (chosen) and are printed
-   material/valuable components paid as printed (chosen)?
+1. **Stack cost — RESOLVED by the rule author:** `pack.gold + tier`, paid only
+   in gold. Do not include the Few cost or the Pack's material/valuable icons.
 2. **Stack purchase gate**: own Town + Citadel (chosen, per "go citadel and
    stack") — or any own town / dwelling required? May neutral-side cards
    stack (chosen: no, v1)?
@@ -517,14 +507,13 @@ control (no offers, no absorb).
    nesting + stated intent) — or unconditional?
 4. **Rolling Spells**: removed spell → shared Spell-deck discard (chosen) or
    removed from game? Any Book spell (chosen) or refreshed only?
-5. **Bank stacks**: size = token ROLLS through the existing 77 % house roll
-   (chosen — size behaves exactly like difficulty does today) or the sheet's
-   literal fixed counts (Ⅰ=0/Ⅱ=1/Ⅲ=2/Ⅳ=3, deterministic)?
+5. **Bank stacks — RESOLVED by the rule author:** deterministic literal counts
+   on every one of all four bank units: Ⅰ=0 / Ⅱ=1 / Ⅲ=2 / Ⅳ=3 layers. The
+   normal 77% random-stat Stack Token system is replaced.
 6. **Unchosen bank token**: stays where it lies (chosen — pure peek) or is
    shuffled/bottomed back?
-7. **"First tile" 1-die rule**: the player's first Ⅱ–Ⅲ opening (chosen,
-   matches the sheet's "first tile: Ⅱ–Ⅲ" annotation and the existing
-   `openingIndex` counter) or literally their first reveal of any group?
+7. **Bank dice — RESOLVED by the rule author:** always 2 Attack dice for each
+   of both revealed banks; there is no first-Far one-die exception.
 8. **Book visibility**: refreshed spells private / used public (chosen, from
    "place it face up") — or fully public?
 9. **Guild-build searches**: may EACH of the two be converted to a Cast card
@@ -532,8 +521,9 @@ control (no offers, no absorb).
 10. **Cast-a-Spell supply**: unlimited (chosen) or a finite pool?
 11. **Card kind for Cast-a-Spell**: `kind:"spell"` + exclusion predicate
     (chosen) vs a new card kind.
-12. **Genie Wish / Eagle Eye adaptation**: refresh-1 (chosen) vs
-    shared-discard-take.
+12. **Genie Wish adaptation**: discard as printed, then refresh 1 used Book
+    Spell (chosen). Eagle Eye already digs the shared Spell deck and therefore
+    routes its kept card into the Book normally.
 13. **Shrine Search (3)**: deliberately NOT included ("yet in discussion") —
     if adopted later it is a one-line count change behind the same rule.
 
@@ -554,16 +544,18 @@ gate exists (registry honesty rule).
 - **Phase 3 — Unit Stacks — IMPLEMENTED 2026-07-16**: §6 complete (purchase,
   combat, sync, UI).
   Gate: `polish-unit-stacks.test.ts` suite incl. the isolation controls.
-- **Phase 4 — Spell Book core**: zone lifecycle (used/refreshed + round
+- **Phase 4 — Spell Book core — IMPLEMENTED 2026-07-16**: zone lifecycle (used/refreshed + round
   refresh), Cast-a-Spell card + casting paths, starting-deck swap, merged
-  deck, full routing table. Multiplayer-only gate active.
+  deck, and central shared-Spell acquisition routing.
   Gate: core suite + the used-spell invariant + routing rows.
-- **Phase 5 — Spell Book periphery**: Mage Guild buffs a–d, level grants,
-  the whole card-adaptation table, UI polish + art.
+- **Phase 5 — Spell Book periphery — IMPLEMENTED 2026-07-16**: Mage Guild buffs
+  a–d, level grants, Knowledge/Mysticism, all used-Spell recovery variants,
+  Ciele, Genie Wish, Crown option B and map/combat refreshed/used UI.
   Gate: adaptation rows each mutation-checked.
-- **Phase 6 — AI + un-gating**: card-policy Cast-a-Spell competence, stack
-  economy scoring, army-strength +0.5, then lift the spell-book seat gate.
-  Gate: full-AI-table soak with all three rules ON; update CLAUDE.md.
+- **Phase 6 — AI soak — IMPLEMENTED 2026-07-16**: normal spell policy consumes
+  Cast-a-Spell legal actions, Stack purchases protect the army treasury, Guild
+  policy manages Cast supply and Rolling Spells, and the automated three-round
+  table soak runs with two computers and all three Polish rules enabled.
 
 ## 11. Definition of done
 
@@ -571,6 +563,6 @@ Every §1 contract line is engine-executed with a named test that fails when
 its wiring is removed; every §4.4/§4.5 table row has its row-test; the three
 rule-OFF control suites prove untouched tables byte-identical; no
 `implementationStatus:"implemented"` claim without executing effect; CLAUDE.md
-updated caveats-first; single-player un-gating only after the Phase-6 soak.
+updated caveats-first; Phase-6 computer soak recorded before final completion.
 Anything not reached ships explicitly listed as not-implemented in CLAUDE.md —
 never as silent decoration.
