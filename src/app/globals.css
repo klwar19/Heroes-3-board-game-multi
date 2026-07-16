@@ -12005,6 +12005,45 @@ img.cardBack {
   color: #e08585;
 }
 
+/* A map owned by someone else: a lock chip stands in for the delete button. */
+.savedMapLock {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  border: 1px solid rgba(170, 130, 70, 0.22);
+  border-radius: 8px;
+  background: rgba(26, 18, 12, 0.5);
+  color: rgba(184, 159, 120, 0.7);
+}
+
+/* "This map belongs to …" note shown under the toolbar when a non-owner has an
+   owned map loaded (they can play & copy it, but not overwrite/delete it). */
+.designerOwnerNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(214, 178, 94, 0.3);
+  background: rgba(46, 38, 22, 0.55);
+  color: #e8d6b0;
+}
+
+.designerOwnerNote svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: rgba(240, 220, 184, 0.7);
+}
+
+.designerOwnerNote small {
+  line-height: 1.4;
+  font-size: 11px;
+}
+
+.designerOwnerNote strong {
+  color: #ffe6a0;
+}
+
 /* The standalone designer page works at a larger tile scale. */
 .designerRoot .designerTile {
   width: 58px;
@@ -13000,6 +13039,23 @@ img.cardBack {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* Full-width labels that split the palette row into intuitive groups
+   (Teleporters vs the Border tool) — a flex-basis:100% item forces the buttons
+   after it onto their own line beneath the heading. */
+.designerObjectGroupLabel {
+  flex-basis: 100%;
+  margin: 4px 0 -1px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(240, 220, 184, 0.58);
+}
+
+.designerObjectGroupLabel:first-child {
+  margin-top: 0;
+}
 .designerPlacementLegend {
   display: flex;
   flex-wrap: wrap;
@@ -13897,6 +13953,63 @@ img.cardBack {
 .designerPopover .popoverRemove:hover {
   border-color: #d9695e;
   background: rgba(110, 36, 30, 0.85);
+}
+
+/* A "boxed" popover sub-section: a light divider sets it apart from the block
+   above so the inspector reads as separated cards rather than one long stack. */
+.designerPopover .popoverSection {
+  padding-top: 8px;
+  margin-top: 2px;
+  border-top: 1px solid rgba(214, 178, 94, 0.16);
+}
+
+/* Ⅶ objective designer bonus — a boxed reward + Victory-Points editor. */
+.designerPopover .popoverViiBonus {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(214, 178, 94, 0.26);
+  background: rgba(28, 22, 12, 0.55);
+}
+
+.designerPopover .popoverSubLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(240, 220, 184, 0.62);
+}
+
+.designerPopover .popoverViiRewardRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  align-items: end;
+}
+
+.designerPopover .popoverViiField_num {
+  display: grid;
+  gap: 3px;
+  font-size: 10px;
+  color: rgba(240, 220, 184, 0.82);
+}
+
+.designerPopover .popoverViiField_num input {
+  width: 100%;
+  padding: 4px;
+  border-radius: 7px;
+  border: 1px solid rgba(214, 178, 94, 0.4);
+  background: rgba(20, 15, 8, 0.95);
+  color: #f0dcb8;
+  font-size: 12px;
+  text-align: center;
+}
+
+.designerPopover .popoverViiVp span {
+  color: rgba(255, 226, 150, 0.95);
+  font-weight: 700;
 }
 
 .designerAddPlus {
@@ -22960,6 +23073,14 @@ body {
 .mapPresetSection {
   display: grid;
   gap: 6px;
+  padding: 10px 0 2px;
+  border-top: 1px solid rgba(154, 208, 255, 0.14);
+}
+
+/* The first section sits right under the summary — no double divider. */
+.mapPresetSection:first-of-type {
+  border-top: none;
+  padding-top: 2px;
 }
 
 .mapPresetSectionLabel {

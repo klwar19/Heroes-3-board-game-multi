@@ -46,6 +46,7 @@ import { clearResetVote } from "./reset-vote";
 import {
   computeVictoryPoints,
   recordVpUtopiaDefeat,
+  recordVpViiCenter,
   victoryPointsConfig,
   victoryPointsModeActive
 } from "./victory-points";
@@ -531,6 +532,19 @@ export function materializeTileFields(
       : def.terrain === "water";
     if (isWater) {
       field.terrain = "water";
+    }
+    // Fold the designer Ⅶ-objective bonus onto the tile's difficulty-7 field
+    // (the objective — every center tile has exactly one). Attached whether or
+    // not the location was overridden above, so a designation whose bonus rides a
+    // printed-matching field still carries it. Granted once at visit time; the
+    // `viiBonusClaimed` latch lives on the field so a re-capture never re-pays.
+    if (tile.viiField && fieldDef.difficulty === 7) {
+      if (tile.viiFieldReward) {
+        field.viiReward = tile.viiFieldReward;
+      }
+      if (tile.viiFieldVp !== undefined) {
+        field.viiVp = tile.viiFieldVp;
+      }
     }
     adventure.fields[spaceId] = field;
   }
@@ -2529,6 +2543,8 @@ function applyRandomTownFlag(state: GameState, playerId: PlayerId, field: MapFie
   if (firstCapture) {
     gainResources(state, playerId, { gold: 10 }, "captured the Random Town");
   }
+  // Designer Ⅶ-objective bonus (latched, so only the first captor is paid).
+  grantViiFieldBonus(state, playerId, field);
 }
 
 /** The active win condition; absent on old snapshots means "conquest". */
@@ -3038,6 +3054,37 @@ function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, field
 }
 
 /**
+ * Grant the designer's Ⅶ-objective bonus ({@link MapFieldState.viiReward} resources
+ * + {@link MapFieldState.viiVp} Victory Points) the FIRST time the objective is
+ * cleared / captured. The `viiBonusClaimed` latch makes it strictly one-time, so a
+ * later re-capture (a Dragon Conqueror who lost then retook the center) never
+ * re-pays it — the bonus rewards whoever clears it first. VP is recorded
+ * unconditionally (it scores only in VP mode); the resource reward flows through
+ * the normal `gainResources` plumbing. A no-op on every field WITHOUT a bonus —
+ * i.e. everything except a designer-designated Ⅶ center — so it is safe to call
+ * from each objective handler.
+ */
+function grantViiFieldBonus(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+  if (field.viiBonusClaimed) {
+    return;
+  }
+  const reward = field.viiReward;
+  const hasReward =
+    !!reward && ((reward.gold ?? 0) > 0 || (reward.buildingMaterials ?? 0) > 0 || (reward.valuables ?? 0) > 0);
+  const vp = field.viiVp ?? 0;
+  if (!hasReward && vp <= 0) {
+    return;
+  }
+  field.viiBonusClaimed = true;
+  if (hasReward) {
+    gainResources(state, playerId, reward, "the Ⅶ objective reward");
+  }
+  if (vp > 0) {
+    recordVpViiCenter(state, playerId, vp);
+  }
+}
+
+/**
  * Dragon Utopia bonus Search — the designer option (`objectives.utopiaBonusSearch`,
  * 1-3) grants the defeater an EXTRA Artifact-deck Search ON TOP of the printed
  * reward, reusing the same reward-queue plumbing every field search uses. No-op
@@ -3133,6 +3180,10 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     return;
   }
 
+  // Designer Ⅶ-objective bonus on the FIRST clear (guards just fell — this visit
+  // is reached only on a win). Latched, so the later dig revisit never re-pays.
+  grantViiFieldBonus(state, hero.controllerId, field);
+
   if (adventureVictoryMode(state) !== "grail") {
     if (!field.blackCube) {
       field.blackCube = true;
@@ -3187,6 +3238,10 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
   // the only durable trace of WHO cleared it. Runs in every mode (the objective
   // is meaningful outside Dragon Hunt, where the Utopia is a plain bank).
   recordVpUtopiaDefeat(state, hero.controllerId);
+
+  // Designer Ⅶ-objective bonus on the first clear, before any mode-specific
+  // handling (harmless in Dragon Hunt, where the win is declared right after).
+  grantViiFieldBonus(state, hero.controllerId, field);
 
   if (mode === "dragon-hunt") {
     declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia", {

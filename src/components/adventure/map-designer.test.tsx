@@ -154,6 +154,56 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     expect(popover.querySelector(".popoverViiField")).toBeNull();
   });
 
+  it("edits the capture reward + Victory Points once an objective is forced, and writes them to the plan", () => {
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true, viiField: "grail" }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1);
+
+    // A reward amount writes viiFieldReward on the plan…
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/reward Gold/i), { target: { value: "7" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ viiField: "grail", viiFieldReward: { gold: 7 } })])
+    );
+
+    // …and a Victory-Points value writes viiFieldVp.
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/victory points/i), { target: { value: "4" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ viiField: "grail", viiFieldVp: 4 })])
+    );
+  });
+
+  it("hides the reward / VP editor on Default, and picking Default clears any existing bonus", () => {
+    // With no objective forced, there is no bonus editor at all.
+    const plain = renderDesigner([
+      { row: 8, col: 2, group: "starting", faceDown: false },
+      { row: 9, col: 4, group: "center", faceDown: true }
+    ]);
+    expect(openTilePopover(plain, 1).querySelector(".popoverViiBonus"), "no bonus editor without an objective").toBeNull();
+
+    // Picking "Default" on a designated slot clears viiField AND its bonus.
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true, viiField: "grail", viiFieldReward: { gold: 5 }, viiFieldVp: 3 }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1);
+    fireEvent.click(within(popover as HTMLElement).getByRole("button", { name: "Default" }));
+    const lastPlans = onChange.mock.calls.at(-1)![0] as { group: string; viiField?: unknown; viiFieldReward?: unknown; viiFieldVp?: unknown }[];
+    const center = lastPlans.find((plan) => plan.group === "center")!;
+    expect(center.viiField).toBeUndefined();
+    expect(center.viiFieldReward).toBeUndefined();
+    expect(center.viiFieldVp).toBeUndefined();
+  });
+
   it("stamps a badge on a center slot with a Ⅶ designation", () => {
     const container = renderDesigner([
       { row: 8, col: 2, group: "starting", faceDown: false },

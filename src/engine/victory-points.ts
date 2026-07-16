@@ -131,6 +131,20 @@ export function recordVpUtopiaDefeat(state: GameState, playerId: PlayerId): void
   vpLedgerEntry(state, playerId).utopiaDefeated = true;
 }
 
+/**
+ * Record VP a player earned by capturing a designer-designated Ⅶ objective center
+ * ({@link CustomMapTilePlan.viiFieldVp}). Additive across multiple such centers;
+ * no-op for the neutral seat or a non-positive amount. Captured at the visit seam
+ * like every other ledger component, so a mid-game VP toggle can't rewrite it.
+ */
+export function recordVpViiCenter(state: GameState, playerId: PlayerId, vp: number): void {
+  if (playerId === NEUTRAL_PLAYER_ID || vp <= 0) {
+    return;
+  }
+  const entry = vpLedgerEntry(state, playerId);
+  entry.viiCenterVp = (entry.viiCenterVp ?? 0) + vp;
+}
+
 // ---------------------------------------------------------------------------
 // At-scoring-time reads (live state, never stored).
 // ---------------------------------------------------------------------------
@@ -266,6 +280,7 @@ function buildBreakdown(
   add("Main Heroes defeated", 3 * (ledger.mainHeroDefeats?.length ?? 0));
   add("Secondary Heroes defeated", ledger.secondaryHeroDefeats ?? 0);
   add("Heroes surrendered to you", ledger.surrenders ?? 0);
+  add("Ⅶ objectives captured", ledger.viiCenterVp ?? 0);
   add("Buildings in controlled Towns", Math.min(8, controlledBuildingCount(state, playerId)));
   add("Hero Experience Levels", mainHeroOf(state, playerId)?.level ?? 0);
   add("Flagged Mines / Settlements", flaggedMineSettlementCount(state, playerId));
