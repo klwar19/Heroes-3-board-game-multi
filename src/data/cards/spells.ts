@@ -32,6 +32,30 @@ export const SCANLESS_SPELLS: ReadonlySet<string> = new Set<string>([]);
 const DECK_BACK_IMAGE = "/assets/player-deck-back.webp";
 
 export const spellCards: CardLibrary = {
+  "spell.cast_a_spell": {
+    id: "spell.cast_a_spell",
+    name: "Cast a Spell",
+    // Physically a Spell/M&M card so its printed alternative "+1 Power" works
+    // through the engine's universal Spell-as-power-source path. It is excluded
+    // from every actual Spell acquisition/cast list by polish-spell-book.ts.
+    kind: "spell",
+    timing: "instant",
+    spellLevel: "basic",
+    spellSchools: [],
+    tags: ["spell", "polish", "Cast one refreshed Spell from your Spell Book. — OR — Instant: +1 Power."],
+    power: 0,
+    target: { type: "none" },
+    effect: { type: "CAST_FROM_SPELL_BOOK" },
+    assets: {
+      cardImage: "/assets/spells-cast_a_spell.webp",
+      imageAlt: "Cast a Spell card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Polish house rules v1.2",
+      credit: "User-supplied Cast a Spell card art; Archon Studio / Ubisoft component frame."
+    }
+  },
   "spell.haste": {
     id: "spell.haste",
     name: "Haste",
@@ -2003,13 +2027,17 @@ export const spellCards: CardLibrary = {
 };
 
 /**
- * Magic Arrow is a **starting-only** Spell: every hero begins with a copy
- * (Might heroes one, Magic heroes two — see `makeStartingDeck`), and it is never
- * shuffled into a shared draw deck, so it can never be drawn or searched. Listed
- * here as the single source of truth used by the engine's deck-acquisition gate
- * and by the deck-coverage test's exemption list.
+ * Spells that are never shuffled into a shared draw deck, so they can never be
+ * drawn or searched. Listed here as the single source of truth used by the
+ * engine's deck-acquisition gate and by the deck-coverage/sandbox exemptions:
+ *  - Magic Arrow is **starting-only**: every hero begins with a copy (Might
+ *    heroes one, Magic heroes two — see `makeStartingDeck`).
+ *  - Cast a Spell (Polish Spell Book) is **minted**: dealt at setup and by the
+ *    Mage Guild / level V+VII grants, never deck-drawn. Like Magic Arrow it has
+ *    no stash-Book home (`spellCanEnterSpellBook` reads this list) — the Polish
+ *    Book excludes it separately via `polishSpellCanEnterBook`.
  */
-export const STARTING_ONLY_SPELLS: string[] = ["spell.magic_arrow"];
+export const STARTING_ONLY_SPELLS: string[] = ["spell.magic_arrow", "spell.cast_a_spell"];
 
 /**
  * Every distinct Basic Spell the shared deck can hold (Magic Arrow excluded —

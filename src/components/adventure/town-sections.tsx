@@ -12,8 +12,13 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TownBuildingDefinition } from "@/data/factions/types";
 import {
   applyRecruitGoldDiscount,
+  houseRuleEnabled,
   inCombatPrep,
   legionVoucherDiscount,
+  polishArmyUnitStackCap,
+  polishArmyUnitStackCost,
+  polishUnitStackCapLabel,
+  type ArmyUnitState,
   type GameAction,
   type GameState,
   type LegalAction,
@@ -264,11 +269,13 @@ function costAffordable(
  * Degrades to a static, non-zoomable image when rendered without a
  * CardZoomProvider (isolated unit tests) — the art still shows either way.
  */
-function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" | "pack" }) {
+function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" | "pack" | "neutral" }) {
   const zoom = useOptionalCardZoom();
   const def = coreUnitDefinitions[unitDefId];
-  const unitSide = side === "pack" ? def?.pack : def?.few;
+  const unitSide =
+    side === "pack" ? def?.pack : side === "neutral" ? def?.neutral : def?.few;
   const image = unitSide?.cardImage;
+  const sideLabel = side === "pack" ? "Pack of" : side === "neutral" ? "Neutral" : "Few";
   const thumb = image ? (
     <img alt="" aria-hidden="true" className="recruitThumbImg" loading="lazy" src={assetUrl(image)} />
   ) : (
@@ -286,7 +293,7 @@ function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" |
         event.preventDefault();
         event.stopPropagation();
         zoom.zoomContent({
-          title: `${side === "pack" ? "Pack of" : "Few"} ${def.name}`,
+          title: `${sideLabel} ${def.name}`,
           image: unitSide.cardImage,
           subtitle: `${def.tier} ${def.type}`,
           lines: [
@@ -300,6 +307,94 @@ function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" |
     >
       {thumb}
     </button>
+  );
+}
+
+/**
+ * Shared Stack purchase strip for Pack Groups and recruited Neutrals.
+ * Always shows count/cap (bronze 3 · silver 2 · gold 1), gold cost, and a
+ * clear Add Stack / Max button so the army table is obvious in the town UI.
+ */
+function UnitStackPurchaseControls({
+  owned,
+  unitName,
+  tier,
+  canReinforce,
+  legalActions,
+  resources,
+  onAction
+}: {
+  owned: ArmyUnitState;
+  unitName: string;
+  tier: string;
+  canReinforce: boolean;
+  legalActions: LegalAction[];
+  resources: PlayerState["resources"];
+  onAction: (action: GameAction) => void;
+}) {
+  const stackCap = polishArmyUnitStackCap(owned);
+  const stackCost = polishArmyUnitStackCost(owned);
+  if (!stackCost || stackCap <= 0) {
+    return null;
+  }
+  const stackCount = owned.stacks ?? 0;
+  const stackAtCap = stackCount >= stackCap;
+  const affordable = costAffordable(stackCost, resources);
+  const stackLegal = legalActions.find(
+    (legal) =>
+      legal.action.type === "POPULATION_ACTION" &&
+      legal.action.purchases.length === 1 &&
+      legal.action.purchases[0]?.kind === "stack" &&
+      legal.action.purchases[0].armyUnitId === owned.id
+  );
+  const kindLabel = owned.side === "neutral" ? "Neutral" : "Pack";
+  const capLabel = polishUnitStackCapLabel(owned.unitDefId);
+  const goldCost = stackCost.gold ?? 0;
+
+  return (
+    <div className="stackPurchasePanel" role="group" aria-label={`Unit Stacks for ${unitName}`}>
+      <span
+        className={`armyStackBadge tier-${tier} ${stackCount > 0 ? "active" : "empty"}`}
+        title={`${stackCount} of ${stackCap} Unit Stacks · +1 Attack while any remain`}
+      >
+        <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
+        ×{stackCount}
+      </span>
+      <div className="stackPurchaseMeta">
+        <strong className="stackPurchaseTitle">
+          Stacks <span className="stackPurchaseKind">{kindLabel}</span>
+        </strong>
+        <small className="stackPurchaseCost">
+          {stackCount}/{stackCap}
+          {capLabel ? ` · ${capLabel}` : ""} · +{goldCost} gold each
+        </small>
+        <small className="stackPurchaseHint">
+          +1 Attack while stacked · each Stack is one full health bar
+        </small>
+      </div>
+      <button
+        aria-label={
+          stackAtCap
+            ? `${unitName} at max ${stackCap} Stacks`
+            : `Buy Stack for ${unitName} for ${goldCost} gold`
+        }
+        className={`recruitQuick stackQuick ${stackAtCap ? "atCap" : ""} ${!stackLegal && !stackAtCap ? "blocked" : ""}`}
+        disabled={!stackLegal}
+        onClick={() => stackLegal && onAction(stackLegal.action)}
+        title={
+          stackAtCap
+            ? `Maximum ${stackCap} Stack${stackCap === 1 ? "" : "s"} (${capLabel || tier})`
+            : !canReinforce
+              ? "Build the Citadel to buy Unit Stacks"
+              : !affordable
+                ? `Need ${goldCost} gold for this Unit Stack`
+                : `Add one full-health Stack layer · ${goldCost} gold`
+        }
+        type="button"
+      >
+        {stackAtCap ? `Max ${stackCap}` : `Add Stack · ${goldCost}g`}
+      </button>
+    </div>
   );
 }
 
@@ -355,6 +450,7 @@ export function TownRecruitSection({
   const canReinforce = town.buildings.some(
     (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE"
   );
+  const polishStacksEnabled = houseRuleEnabled(state, "polish-unit-stacks");
 
   const basketCost: Record<string, number> = {};
   const addCost = (cost: Record<string, number | undefined>) => {
@@ -419,21 +515,48 @@ export function TownRecruitSection({
       <small className="recruitLegend">
         Buy a unit&apos;s <b>Few</b> side, or <ChevronsUp aria-hidden="true" size={11} /> <b>reinforce</b> a Few you
         already own up to its stronger <b>Pack</b> side{canReinforce ? "." : " — needs the Citadel."}
+        {polishStacksEnabled ? (
+          <>
+            {" "}
+            With Unit Stacks: at the Citadel, <b>Packs</b> and recruited <b>Neutrals</b> may buy layers (bronze max 3 /
+            silver 2 / gold 1) for that side&apos;s gold + tier.
+          </>
+        ) : null}
       </small>
       {faction.units.map((unitDefId) => {
         const unit = coreUnitDefinitions[unitDefId];
-        if (!unit?.few || !unlockedTiers.has(unit.tier)) {
+        const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId);
+        // Stack purchases require only the owned Pack + Citadel, not that tier's
+        // dwelling. Keep such a Pack visible even when its dwelling is absent.
+        if (!unit?.few || (!unlockedTiers.has(unit.tier) && !(polishStacksEnabled && owned?.side === "pack"))) {
           return null;
         }
-        const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId);
-        // Pack (or recruited neutral): the card is complete, nothing to buy.
+        // Pack (or other non-Few): the card is complete for recruit; Stacks may still apply.
         if (owned && owned.side !== "few") {
+          const canStack =
+            polishStacksEnabled && (owned.side === "pack" || owned.side === "neutral") && polishArmyUnitStackCap(owned) > 0;
+          const viewSide = owned.side === "neutral" ? "neutral" : "pack";
           return (
-            <div className="recruitRow done" key={unitDefId}>
-              <RecruitUnitView side="pack" unitDefId={unitDefId} />
+            <div className={`recruitRow done ${canStack ? "unitStackRow" : ""}`} key={unitDefId}>
+              <RecruitUnitView side={viewSide} unitDefId={unitDefId} />
               <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
-              <span className="recruitName">{unit.name}</span>
-              <small className="recruitState">pack — fully mustered</small>
+              <span className="recruitName">
+                {unit.name}
+                {owned.side === "neutral" ? <span className="neutralBadge">Neutral</span> : null}
+              </span>
+              {canStack ? (
+                <UnitStackPurchaseControls
+                  canReinforce={canReinforce}
+                  legalActions={legalActions}
+                  onAction={onAction}
+                  owned={owned}
+                  resources={player.resources}
+                  tier={unit.tier}
+                  unitName={unit.name}
+                />
+              ) : (
+                <small className="recruitState">pack — fully mustered</small>
+              )}
             </div>
           );
         }
@@ -553,6 +676,49 @@ export function TownRecruitSection({
           </label>
         );
       })}
+      {/* Recruited Neutrals sit outside the faction roster — dedicated Stack rows. */}
+      {polishStacksEnabled && canReinforce
+        ? (() => {
+            const neutrals = player.army.filter(
+              (owned) => owned.side === "neutral" && polishArmyUnitStackCap(owned) > 0
+            );
+            if (neutrals.length === 0) {
+              return null;
+            }
+            return (
+              <div className="neutralStackSection" aria-label="Recruited Neutrals — Unit Stacks">
+                <span className="neutralStackSectionLabel">
+                  Recruited Neutrals · Stacks (bronze 3 / silver 2 / gold 1)
+                </span>
+                {neutrals.map((owned) => {
+                  const unit = coreUnitDefinitions[owned.unitDefId];
+                  if (!unit) {
+                    return null;
+                  }
+                  return (
+                    <div className="recruitRow done unitStackRow neutralStackRow" key={`neutral-stack-${owned.id}`}>
+                      <RecruitUnitView side="neutral" unitDefId={owned.unitDefId} />
+                      <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
+                      <span className="recruitName">
+                        {unit.name}
+                        <span className="neutralBadge">Neutral</span>
+                      </span>
+                      <UnitStackPurchaseControls
+                        canReinforce={canReinforce}
+                        legalActions={legalActions}
+                        onAction={onAction}
+                        owned={owned}
+                        resources={player.resources}
+                        tier={unit.tier}
+                        unitName={unit.name}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()
+        : null}
       {basketSize > 0 ? (
         <div className="basketFooter">
           <small>

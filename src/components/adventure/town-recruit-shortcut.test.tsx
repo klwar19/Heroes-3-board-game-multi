@@ -101,6 +101,43 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     });
   });
 
+  it("shows the Polish Stack count/cost and dispatches the exact Stack purchase", () => {
+    const state = recruitReadyState();
+    state.adventure!.houseRules!["polish-unit-stacks"] = true;
+    state.players.p1.army = [{ id: "army_stack_1", unitDefId: "castle.griffins", side: "pack", stacks: 1 }];
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+    town.buildings = town.buildings.filter((buildingId) => buildingId !== "castle.dwelling_bronze");
+    const { onAction } = renderRecruit(state);
+
+    expect(document.querySelector(".armyStackBadge")?.textContent).toContain("×1");
+    expect(document.querySelector(".stackPurchasePanel")).toBeTruthy();
+    expect(screen.getByText(/1\/3/)).toBeTruthy();
+    expect(screen.getByText(/bronze · max 3/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Buy Stack for Griffins/i }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "stack", unitDefId: "castle.griffins", armyUnitId: "army_stack_1" }]
+    });
+  });
+
+  it("lists recruited Neutrals with clear Stack UI at army caps (not bank max)", () => {
+    const state = recruitReadyState();
+    state.adventure!.houseRules!["polish-unit-stacks"] = true;
+    state.players.p1.army = [{ id: "army_n1", unitDefId: "neutral.nagas", side: "neutral", stacks: 0 }];
+    const { onAction } = renderRecruit(state);
+
+    expect(screen.getByText(/Recruited Neutrals/i)).toBeTruthy();
+    expect(screen.getByText(/gold · max 1/i)).toBeTruthy();
+    expect(document.querySelector(".neutralBadge")?.textContent).toMatch(/Neutral/i);
+    fireEvent.click(screen.getByRole("button", { name: /Buy Stack for Nagas/i }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "stack", unitDefId: "neutral.nagas", armyUnitId: "army_n1" }]
+    });
+  });
+
   it("clicking the thumbnail opens the enlarged unit view instead of buying", () => {
     const { onAction } = renderRecruit(recruitReadyState());
     const thumb = document.querySelector(".recruitThumb") as HTMLElement;

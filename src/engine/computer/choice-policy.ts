@@ -2,6 +2,11 @@ import { cardLibrary } from "@/data/cards/library";
 import type { GameAction, GameState, PendingChoice } from "../state";
 import { cardKeepValue } from "./card-policy";
 import {
+  BANK_ENGAGE_RATIO,
+  creatureBankStrength,
+  playerArmyStrength,
+} from "./army-strength";
+import {
   collectMapObjectives,
   objectiveDistanceField,
   primaryMapObjective,
@@ -494,8 +499,31 @@ function scorePositionOption(
   }
 
   if (context === "place-creature-bank") {
-    // Option 0 place the known bank; option 1 leave blocked. Placing creates
-    // a fightable (and rewardable) objective — always prefer place.
+    const candidates = choice.creatureBank?.candidates ?? [];
+    if (candidates.length > 0) {
+      const armyStrength = playerArmyStrength(
+        observation.state as unknown as GameState,
+        observation.playerId,
+      );
+      const beatable = candidates.map((candidate) =>
+        armyStrength >=
+        creatureBankStrength(candidate.bankId, candidate.size) *
+          BANK_ENGAGE_RATIO,
+      );
+      const candidate = candidates[optionIndex];
+      if (candidate) {
+        // Among banks the army can beat, take the larger size for its larger
+        // expected reward. Unbeatable candidates stay below the leave option.
+        return beatable[optionIndex]
+          ? CHOICE_BASE + 40 + candidate.size
+          : CHOICE_BASE + 5;
+      }
+      if (optionIndex === candidates.length) {
+        return beatable.some(Boolean) ? CHOICE_BASE + 10 : CHOICE_BASE + 48;
+      }
+    }
+    // Rule-off / legacy payload: option 0 places the known bank, option 1
+    // leaves it blocked. Preserve the original always-place policy.
     return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 

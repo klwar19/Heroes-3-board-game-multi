@@ -22,7 +22,7 @@ import type { GameRuleset, GameState, GameSetupOptions, HouseRuleId } from "./st
  */
 export type { HouseRuleId };
 
-export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat";
+export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat" | "polish";
 
 export type HouseRuleDef = {
   id: HouseRuleId;
@@ -157,6 +157,41 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "House rule: the first visitor to an Obelisk locks an Attack-die face (−1: +1 morale, 0: Search (2) Artifact, +1: Treasure + Resource dice); later visitors get the same reward without re-rolling. Off: Obelisks stay multi-flaggable but grant no die reward. Holy Grail still counts visits toward dig unlock either way.",
     category: "combat",
     default: true
+  },
+  {
+    id: "polish-spell-book",
+    label: "Polish Spell Book",
+    description:
+      "Polish house rule: Spells live in a refreshed/used Spell Book and are cast with generic Cast-a-Spell cards. Uses one merged Spell deck and the strengthened Mage Guild. Mutually exclusive with the standard stash-style Spell Book.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "polish-bank-sizes",
+    label: "Rolled Creature Bank sizes",
+    description:
+      "Polish house rule: reveal up to two Banks, roll size for each (1 Attack die on the first Ⅱ–Ⅲ opening, 2 dice later), choose one, then rotate. Size I–IV sets guard layers and rewards; replaces normal Bank Stack Tokens. Requires Creature Banks.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "polish-unit-stacks",
+    label: "Purchasable Unit Stacks",
+    description:
+      "Polish house rule: at a Citadel, Pack Groups and recruited Neutrals may buy Stack layers (bronze max 3 / silver 2 / gold 1). Cost = that side’s gold + tier. Stacked units gain +1 Attack; each layer absorbs one full health bar.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "multi-demon-summon",
+    label: "Pit Lords: multiple Demons",
+    description:
+      "On (house rule): Pit Lords may summon a new Few of Demons even when Demons are already on the field (multiple Demon units, still once per Pit Lords per combat). Off (official): only ONE Demons unit may stand on the field — either a Few or a Pack. With Demons already present you may only Reinforce a Few up to a Pack, never summon a second stack.",
+    category: "combat",
+    default: true
   }
 ];
 
@@ -203,4 +238,20 @@ export function houseRuleEnabled(state: Pick<GameState, "ruleset" | "adventure">
     return frozen[id]!;
   }
   return houseRuleDefaultFor(state.ruleset ?? "legacy", id);
+}
+
+/**
+ * Whether ARMY Unit Stack layers (`ArmyUnitState.stacks` / `armyStacks` on a
+ * combat unit) FUNCTION in this game: +1 Attack while any layer remains, and
+ * each layer absorbing one full health bar before the card dies.
+ *
+ * Layers exist under EITHER Polish rule — `polish-unit-stacks` sells them at
+ * the Citadel, and `polish-bank-sizes` grants them with a unit bank's Pack
+ * reward (Dragon Fly Hive / Griffin Conservatory, size Ⅱ+) — so both rules
+ * must activate the combat machinery or a bank-granted layer would be a
+ * decorative badge. PURCHASING stays gated on `polish-unit-stacks` alone
+ * (legal-actions offer + populationAction validation).
+ */
+export function armyUnitStacksActive(state: Pick<GameState, "ruleset" | "adventure">): boolean {
+  return houseRuleEnabled(state, "polish-unit-stacks") || houseRuleEnabled(state, "polish-bank-sizes");
 }
