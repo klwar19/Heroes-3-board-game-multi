@@ -1782,9 +1782,31 @@ tokens (never strands the reveal chain). Pinned in
 Leading with what does NOT run / deliberate limits:
 - **Pool override kinds stamped on face-down tiles are readable in raw
   snapshots** (like designer tokens; no player-view masking in V1).
-- **Anime gameplay modules beyond Field Overrides are NOT implemented** —
-  `AnimeModOptions` flags (towns, neutrals, cultivation, …) exist as types
-  and lobby state only; `docs/anime-mod-plan.md` is the design contract.
+- **Anime gameplay modules beyond Field Overrides are MOSTLY types/lobby only.**
+  Exception now shipped: `anime.xianxiaArtifacts` (Pháp Bảo — 5 ORIGINAL
+  Artifact cards, `src/data/anime/artifacts.ts`). Default OFF ⇒ byte-identical
+  Artifact decks; ON ⇒ they join the shared Artifact deck(s) (split minor/major/
+  relic AND legacy single), riding the same tier/uniqueness gates as core
+  artifacts, and always resolve in the card library. What runs (each printed as
+  exactly its wired behaviour — no display-only clauses; each mutation-checked in
+  `src/engine/anime-artifacts.test.ts`): Túi Càn Khôn = +1 building-materials
+  income permanent (remove for +1 materials/+1 valuables); Tụ Linh Bàn = +2 gold
+  income CONDITIONAL on the main hero standing in a Town of yours (the NEW
+  `resourceRoundGain.requiresHeroInTown` flag, gated at the one income chokepoint
+  in `startAdventureRound` via `mainHeroInOwnTown`; unconditional cards
+  unaffected — CONTROL-pinned); Phong Hỏa Luân = +2/+3 `GAIN_HERO_MOVEMENT` map
+  card (also auto-offered as a neutral-combat continue-window movement top-up);
+  Tru Tiên Kiếm = attacker +2/+3 attack reaction; Bát Quái Kính = defender +1/+2
+  defense reaction. NOT shipped: Đông Hoàng Chung (army-wide Armored) and Truyền
+  Âm Ngọc Giản (remote allied-hero trade) are designed-not-shipped (await new
+  arms), and the fancier halves (cleave-exhaust, spell-cancel, bronze-init aura)
+  are deferred — see `docs/anime-mod-plan.md` §5.10 V1 STATUS. Art: all 5 ship
+  WITHOUT a card face yet (route to the deck back, declared in
+  `ANIME_ARTIFACT_ART_PLACEHOLDERS`; drop a `.webp` + remove the slug to promote).
+  No lobby UI toggles the anime modules yet — they are set via the setup
+  `anime` options payload. Every OTHER `AnimeModOptions` flag (towns, neutrals,
+  cultivation, …) is still types + lobby state only; `docs/anime-mod-plan.md` is
+  the design contract.
 - **No standalone (off-tile) override objects** — on-tile pins only.
 - **`linh_tuyen` is +1 movement only** (cleanse not wired, documented at the
   definition); no override kind may claim `starting` tiles (setup skips

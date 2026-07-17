@@ -1876,6 +1876,22 @@ export function getMainHero(state: GameState, playerId: PlayerId): HeroState | n
   );
 }
 
+/**
+ * Whether `playerId`'s MAIN Hero currently stands on one of their OWN Towns'
+ * map fields. Used by the conditional income permanent (anime Tụ Linh Bàn,
+ * `resourceRoundGain.requiresHeroInTown`) — a hero with no position, or standing
+ * anywhere but a friendly Town, earns no town-stationed income.
+ */
+export function mainHeroInOwnTown(state: GameState, playerId: PlayerId): boolean {
+  const hero = getMainHero(state, playerId);
+  if (!hero?.spaceId) {
+    return false;
+  }
+  return Object.values(state.towns).some(
+    (town) => town.controllerId === playerId && town.fieldId === hero.spaceId
+  );
+}
+
 /** The single Secondary Hero a player may field, if they have gained one. */
 export function getSecondaryHero(state: GameState, playerId: PlayerId): HeroState | null {
   return (
@@ -9600,7 +9616,10 @@ export function startAdventureRound(state: GameState): void {
     for (const permanentId of incomePermanentIds) {
       const permanentEffect = cardLibrary[permanentId]?.permanentEffect;
       const incomeGain = permanentEffect?.resourceRoundGain;
-      if (incomeGain) {
+      // Conditional income (anime Tụ Linh Bàn): town-stationed permanents pay
+      // only while the main Hero stands in one of this player's Towns. The core
+      // income cards leave `requiresHeroInTown` unset and always pay.
+      if (incomeGain && (!incomeGain.requiresHeroInTown || mainHeroInOwnTown(state, playerId))) {
         gainResources(state, playerId, { [incomeGain.resource]: incomeGain.amount }, cardLibrary[permanentId]?.name ?? "income artifact");
       }
       // Pandora's Gift: Income — while the ∞ permanent is in play, its

@@ -739,6 +739,45 @@ to existing artifact slots.
 | **Tụ Linh Bàn** (*Spirit Gathering Board*) | Misc | Resource Phase: if the hero is in a **Town**, that player gains +2 gold (town-stationed income rider). |
 | **Truyền Âm Ngọc Giản** (*Sound Transmission Jade*) | Misc | Once per round, Adventure Phase: trade resources and/or Artifact cards with **any allied hero** regardless of distance (NEW `REMOTE_ALLY_TRADE` arm; multiplayer only has meaning with ≥2 human/AI seats on the same team — on free-for-all tables the "allied" set is empty and the card is inert with a note). |
 
+#### 5.10 — V1 STATUS (P0c shipped)
+
+**SHIPPED (5 cards, engine-wired + mutation-checked, `src/data/anime/artifacts.ts`,
+tests `src/engine/anime-artifacts.test.ts` + `src/data/anime/anime-artifacts.test.ts`).**
+These are ORIGINAL cards, so the printed text is exactly what runs — no
+display-only clauses. They deck-join only when `anime.xianxiaArtifacts` is on
+(default OFF ⇒ byte-identical decks) and always resolve in the card library:
+
+- **Túi Càn Khôn** (Cosmic Bag, minor, income permanent): "At the beginning of
+  each Resources round, gain 1 building materials. — OR — Remove this card, then
+  gain 1 building materials and 1 valuables." (Inexhaustible-Cart family;
+  `resourceRoundGain`.)
+- **Tụ Linh Bàn** (Spirit Gathering Board, minor, income permanent): "At the
+  beginning of each Resources round, if your main Hero is in one of your Towns,
+  gain 2 gold. — OR — Remove this card, then gain 3 gold." Conditional income
+  runs off the NEW `resourceRoundGain.requiresHeroInTown` flag, gated at the
+  single income chokepoint (`startAdventureRound` → `mainHeroInOwnTown`).
+- **Phong Hỏa Luân** (Wind & Fire Wheels, major, instant): "Your Hero gains +2
+  movement. — OR — Remove this card, then your Hero gains +3 movement."
+  (`GAIN_HERO_MOVEMENT`; because it is a movement effect it is ALSO auto-offered
+  in a neutral combat's continue-or-retreat window as a movement top-up — pinned.)
+  The plan's "In combat, allied Bronze units +1 Initiative" aura is a DEFERRED
+  fancy half (not printed, not run).
+- **Tru Tiên Kiếm** (Heaven-Slaying Sword, relic, instant combat reaction):
+  "Discard 1 card to gain +3 attack. — OR — +2 attack." (Sword-of-Judgement
+  family, `ADD_COMBAT_STAT` on your unit's declared attack.) The plan's
+  once-per-combat Gold-unit cleave/exhaust half is DEFERRED (not printed).
+- **Bát Quái Kính** (Bagua Mirror, major, instant combat reaction): "Discard 1
+  card to gain +2 defense. — OR — +1 defense." (Sentinel's-Shield family, one
+  tier softer.) The plan's enemy-spell CANCEL half is DEFERRED — it needs the
+  interrupt/cancel arm, which does not exist cleanly yet (not printed, not run).
+
+**DESIGNED, NOT SHIPPED (waiting on their arms):**
+- **Đông Hoàng Chung** (Eastern Bell) — army-wide Armored (−1 physical damage):
+  needs a physical-only damage-reduction arm (Iron-Golem family parameterised or
+  a new `ARMORED_KEYWORD`).
+- **Truyền Âm Ngọc Giản** (Sound Transmission Jade) — remote allied-hero trade:
+  needs the NEW `REMOTE_ALLY_TRADE` arm (and only meaningful with team seats).
+
 ### 5.11 Tâm Ma (*Heart Demon*) status token (`anime.heartDemon`)
 
 A unique **negative combat token** (sibling of Paralysis / Weakness /
@@ -1779,7 +1818,7 @@ user can reorder tracks without re-planning (§22 Q2).
 | --- | --- | --- |
 | **P0** | Spine: `AnimeModOptions`, crest + package quick-selects, `.animeMode` scaffold + both term dictionaries, art scaffolding (style bible, prompt sheets, shared compositor), CLAUDE.md section stub | §3.8(a) master CONTROL; quick-select = exact module groups; crest e2e |
 | **P0b** | **Field Override spine** (§3.10 / §9b): types, catalog, `carveFieldOverride`, setup pin + pending reveal (random/manual/manual-or-refuse), lobby placement mode, designer **Mod panel** (palette + face-down pin), Ninefold V1 locations (§5.8 table) with effect-level tests | module-off CONTROL; designer pin round-trip; each location visit outcome + guard fight for Bí Cảnh; AI answers placement window; bank/token coexistence |
-| **P0c** | **Pháp Bảo** artifacts that REUSE existing arms (Cosmic Bag, Spirit Gathering Board, Wind & Fire Wheels movement half, Heaven-Slaying Attack stat) | deck-join on/off; income riders with CONTROLs |
+| **P0c** — SHIPPED | **Pháp Bảo** artifacts that REUSE existing arms (Cosmic Bag, Spirit Gathering Board, Wind & Fire Wheels movement, Heaven-Slaying Attack stat, Bagua Mirror defense) — 5 cards, `src/data/anime/artifacts.ts`; the Eastern Bell (army Armored) + Sound Transmission Jade (remote trade) remain DESIGNED-not-shipped (see §5.10 V1 STATUS). Deferred fancy halves (cleave-exhaust, spell-cancel, bronze aura) not printed. | deck-join on/off + income riders with CONTROLs — done (`anime-artifacts.test.ts`) |
 | **P0d** | **Tâm Ma** token arm + one producer stub; **Heavenly Tribulation** spell; remaining artifact combat arms + Đoạt Xá | token roll outcomes; spell area + survivor buff; possession fizzle CONTROL |
 | **P1** | **Fuyuki City** complete (units/buildings/heroes incl. **Bin**/commander **Ruler (Jeanne)**/tile/board/art) + Summoning Circle + its SHARED/NEW arms | content test; commander bijection updated with a `wog.commanders`-on seat; SP soak with a Fuyuki AI seat |
 | **P2** | **Isekai neutrals** + 4 isekai banks + Devour/`MORALE_LOCK` + isekai map locations | bank rows vs `polish-bank-sizes` on/off; Fear↔morale-deck interplay tests; §3.8 gates begin |

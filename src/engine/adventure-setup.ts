@@ -7,6 +7,12 @@ import {
   artifactDeckBinhRelic,
   artifactDeckLegacy
 } from "@/data/cards/artifacts";
+import {
+  animeXianxiaArtifactCardIds,
+  animeXianxiaArtifactMajorIds,
+  animeXianxiaArtifactMinorIds,
+  animeXianxiaArtifactRelicIds
+} from "@/data/anime/artifacts";
 import { pandoraDeckCardIds } from "@/data/cards/pandora";
 import { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 import { spellDeckBinhBasic, spellDeckBinhExpert, spellDeckLegacy } from "@/data/cards/spells";
@@ -125,7 +131,7 @@ import type {
   WogModOptions
 } from "./state";
 import { DEFAULT_WOG_OPTIONS, MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
-import { resolveAnimeOptions } from "./anime";
+import { animeModuleEnabled, resolveAnimeOptions } from "./anime";
 import { planFieldOverrides, planTokens } from "./tile-hex-placements";
 import {
   applyCustomMapFieldOverrides,
@@ -648,10 +654,18 @@ function makeSharedDecks(
   seed: string,
   splitDecks: boolean,
   tournament: { banDiplomacy: boolean; banHourglass: boolean },
-  polishSpellBook = false
+  polishSpellBook = false,
+  xianxiaArtifacts = false
 ): Record<string, DeckState> {
   const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
     ban ? cardIds.filter((id) => id !== removeId) : cardIds;
+
+  // Anime Pháp Bảo artifacts (§5.10) join the shared Artifact deck(s) ONLY when
+  // the module is on; default OFF ⇒ these arrays are empty and the decks are
+  // byte-identical to a core table. They ride the SAME per-tier decks as core
+  // artifacts, so every downstream tier/uniqueness gate applies unchanged.
+  const withAnime = (base: string[], animeIds: readonly string[]): string[] =>
+    xianxiaArtifacts ? [...base, ...animeIds] : base;
 
   const make = (id: string, cardIds: string[]): DeckState => {
     // First-round rule (as printed): each shared deck flips its top card face-up
@@ -680,10 +694,10 @@ function makeSharedDecks(
       ),
       "artifacts-minor": make(
         "artifacts-minor",
-        without(artifactDeckBinhMinor, TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
+        without(withAnime(artifactDeckBinhMinor, animeXianxiaArtifactMinorIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
       ),
-      "artifacts-major": make("artifacts-major", artifactDeckBinhMajor),
-      "artifacts-relic": make("artifacts-relic", artifactDeckBinhRelic)
+      "artifacts-major": make("artifacts-major", withAnime(artifactDeckBinhMajor, animeXianxiaArtifactMajorIds)),
+      "artifacts-relic": make("artifacts-relic", withAnime(artifactDeckBinhRelic, animeXianxiaArtifactRelicIds))
     };
   }
 
@@ -695,7 +709,7 @@ function makeSharedDecks(
     ),
     artifacts: make(
       "artifacts",
-      without(artifactDeckLegacy, TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
+      without(withAnime(artifactDeckLegacy, animeXianxiaArtifactCardIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
     )
   };
 }
@@ -1979,7 +1993,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     heroes: {},
     combat: null,
     decks: {
-      ...makeSharedDecks(seed, houseRules["split-decks"], tournamentRules, polishSpellBookOn),
+      ...makeSharedDecks(
+        seed,
+        houseRules["split-decks"],
+        tournamentRules,
+        polishSpellBookOn,
+        animeModuleEnabled({ anime }, "xianxiaArtifacts")
+      ),
       ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
       ...(moraleCardsOn ? makeMoraleDecks(seed) : {}),
