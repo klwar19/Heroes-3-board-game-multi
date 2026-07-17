@@ -4324,6 +4324,12 @@ export type GameEvent =
       mode: CardPlayMode;
       effectAmount?: number;
       optionLabel?: string;
+      /**
+       * Combat Spell reaction: the unit the effect lands on (Curse → defender,
+       * Bloodlust → attacker, Sorrow → skipped unit). Presentation anchors the
+       * spell sprite there instead of centre stage.
+       */
+      targetUnitId?: UnitId;
     }
   | {
       id: string;

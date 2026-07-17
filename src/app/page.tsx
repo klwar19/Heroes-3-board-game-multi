@@ -2628,31 +2628,62 @@ export default function Home() {
               const playedPlan = isPowerBoost ? undefined : spellFxPlans[event.cardId];
               if (playedPlan) {
                 const at = start + FLIGHT_MS;
+                // Attack-window / Sorrow reactions carry the unit they land on
+                // (Curse on the defender, Bloodlust on the attacker). Anchor the
+                // H3 sprite/tint there; map spells and untargeted plays stay
+                // centre-stage over the card flight.
+                const anchor =
+                  event.targetUnitId && inCombat ? `unit:${event.targetUnitId}` : "center";
                 const affectKey = playedPlan.affect?.[0]?.key;
                 if (affectKey) {
                   cues.push({
                     kind: "sprite",
                     id: `${event.id}-played-fx`,
                     fxKey: affectKey,
-                    at: "center",
+                    at: anchor,
                     sound: playedPlan.sound,
                     delayMs: at
                   });
                 } else if (playedPlan.tint) {
-                  // Bloodlust-style specialty: no sprite and no board unit to tint
-                  // on a card play, so flash its red battle-rage wash at centre
-                  // stage with the cast roar.
-                  cues.push({
-                    kind: "glow",
-                    id: `${event.id}-played-tint`,
-                    at: "center",
-                    tint: playedPlan.tint,
-                    sound: playedPlan.sound,
-                    delayMs: at
-                  });
+                  // Bloodlust: no sprite in H3 — red battle-rage wash on the
+                  // buffed unit when known, else centre stage over the card.
+                  if (event.targetUnitId && inCombat) {
+                    const tint = playedPlan.tint;
+                    const soundKey = playedPlan.sound;
+                    const unitId = event.targetUnitId;
+                    window.setTimeout(() => {
+                      if (soundKey) {
+                        playLibrarySound(soundKey);
+                      }
+                      setTintedUnits((current) => new Map(current).set(unitId, tint));
+                      window.setTimeout(() => {
+                        setTintedUnits((current) => {
+                          const next = new Map(current);
+                          next.delete(unitId);
+                          return next;
+                        });
+                      }, 1600);
+                    }, at);
+                  } else {
+                    cues.push({
+                      kind: "glow",
+                      id: `${event.id}-played-tint`,
+                      at: "center",
+                      tint: playedPlan.tint,
+                      sound: playedPlan.sound,
+                      delayMs: at
+                    });
+                  }
                 } else if (playedPlan.sound) {
                   const soundKey = playedPlan.sound;
                   window.setTimeout(() => playLibrarySound(soundKey), at);
+                }
+                if (inCombat && event.targetUnitId) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(
+                    combatPresentationEnd,
+                    at + spellPresentationMs(playedPlan) + 400
+                  );
                 }
               }
               break;
