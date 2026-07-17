@@ -610,14 +610,30 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
     }
     object.pair = raw.pair;
   }
-  // A deliberate neutral guard difficulty 1-7 (optional; clamped).
-  if (raw.guard !== undefined) {
-    const guard = clampInt(raw.guard, 1, 7, 0);
-    if (guard > 0) {
-      object.guard = guard;
-    }
+  // A designer guard (optional): the LEGACY plain number is a level 1-7; the
+  // spec form adds "certain army" guards. Both normalise to a clean spec.
+  const guard = sanitizeObjectGuard(raw.guard);
+  if (guard) {
+    object.guard = guard;
   }
   return object;
+}
+
+/**
+ * Normalise a {@link CustomMapObject.guard} — a LEGACY plain level number or a
+ * full {@link CustomGuardSpec} — to a clean spec (or `undefined`).
+ */
+export function sanitizeObjectGuard(input: unknown): CustomGuardSpec | undefined {
+  if (typeof input === "number") {
+    const level = clampInt(input, 1, 7, 0);
+    return level > 0 ? { level } : undefined;
+  }
+  return sanitizeCustomGuardSpec(input);
+}
+
+/** The guard spec of a {@link CustomMapObject}, whichever shape it was stored in. */
+export function objectGuardSpec(object: Pick<CustomMapObject, "guard">): CustomGuardSpec | undefined {
+  return sanitizeObjectGuard(object.guard);
 }
 
 function sanitizeCustomMapObjects(input: unknown): CustomMapObject[] {

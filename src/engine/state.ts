@@ -7077,6 +7077,8 @@ export type MapTileState = {
     number?: -1 | 0 | 1;
     pair?: 1 | 2 | 3 | 4;
     preferredSpaceId?: MapSpaceId;
+    /** Designer guard placed with the token (level or exact army). */
+    guard?: CustomGuardSpec;
   };
   /**
    * GLOBAL Field Override queue for a still-face-down / just-revealed tile.
@@ -7106,6 +7108,8 @@ export type MapTileState = {
     number?: -1 | 0 | 1;
     pair?: 1 | 2 | 3 | 4;
     preferredSpaceId?: MapSpaceId;
+    /** Designer guard placed with the token (level or exact army). */
+    guard?: CustomGuardSpec;
   }>;
   /**
    * Naval Battles optional rule: the Creature Bank token drawn for this tile's
@@ -7330,6 +7334,14 @@ export type SubterraneanGatePlan = {
    * designer committed. Absent = a player pick-on-reveal plan (or none).
    */
   designed?: boolean;
+  /**
+   * Designer guards on the two halves (from {@link CustomMapGateLink.gateGuard}
+   * / `entranceGuard`), stamped onto the carved gate fields: you fight to STEP
+   * onto a guarded half from its own layer; crossing OUT through the linked
+   * half instead auto-wins (guard swept aside, no experience).
+   */
+  gateGuard?: CustomGuardSpec;
+  entranceGuard?: CustomGuardSpec;
 };
 
 /**
@@ -7915,6 +7927,13 @@ export type VisitStep =
       spaceId: MapSpaceId;
       /** Whether arriving resolves the field like a normal visit. */
       visit?: boolean;
+      /**
+       * Teleport-NETWORK travel only (Monolith / colored Gate steps): a designed
+       * guard still standing on the destination is swept aside on arrival — an
+       * automatic win, no fight, no experience. Never set by Town Portal /
+       * Logistics placements.
+       */
+      sweepGuard?: boolean;
       /** Town Portal Power 2/4: movement granted to the hero on arrival. */
       movementBonus?: number;
     }
@@ -9421,15 +9440,17 @@ export type CustomMapObjectPlacement =
  * One designer-placed one-hex map object.
  * - `pair` (gates only): which colored pair (1 = red, 2 = blue, 3 = green, 4 =
  *   yellow) the gate belongs to; entering teleports to the OTHER gate of the pair.
- * - `guard` (any object): a deliberate neutral guard difficulty (1-7) on the
- *   object's hex — stepping on opens the standard neutral battle at that
- *   difficulty, and only a WIN resolves the object's teleport.
+ * - `guard` (any object): a designer guard on the object's hex — a plain number
+ *   is the LEGACY level shape (1-7, folded to `{ level }` at sanitize); the
+ *   {@link CustomGuardSpec} form adds "certain army" guards. Stepping on opens
+ *   the standard neutral battle, and only a WIN resolves the object's teleport;
+ *   arriving THROUGH a teleport network onto a still-guarded hex auto-wins.
  */
 export type CustomMapObject = {
   kind: CustomMapObjectKind;
   pair?: 1 | 2 | 3 | 4;
   placement: CustomMapObjectPlacement;
-  guard?: number;
+  guard?: number | CustomGuardSpec;
 };
 
 /** The Obelisk-role config block of a {@link CustomMapPreset}. */
@@ -9542,9 +9563,9 @@ export type CustomMapTilePlan = {
    * face-down tile it pins a preferred physical flower hex. Monoliths /
    * same-color Gates / Whirlpools still need ≥2 members map-wide to travel.
    */
-  tokens?: Array<{ kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4; slot?: number }>;
+  tokens?: CustomMapTileToken[];
   /** @deprecated Prefer {@link tokens}. Kept for old saves; sanitize folds it in. */
-  token?: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4; slot?: number };
+  token?: CustomMapTileToken;
   /**
    * GLOBAL Field Override pins on this tile. Multiple allowed when each uses a
    * **distinct** hex slot (no stacking with each other OR with {@link tokens}
@@ -9658,6 +9679,24 @@ export type CustomGuardSpec = {
 export const MAX_CUSTOM_GUARD_UNITS = 6;
 
 /**
+ * One on-tile Location Token (Monolith / Whirlpool / colored Gate) on a
+ * {@link CustomMapTilePlan}. On a face-up tile `slot` is the printed field
+ * overwritten at setup; on a face-down tile it pins a preferred physical
+ * flower hex. `pair` (1-4) is required for a gate, absent otherwise.
+ * `guard` puts a designer guard on the carved token hex — stepping on fights
+ * it (a normal guard fight: Quick Combat / experience follow the level; an
+ * exact army is never skipped), and only a WIN resolves the teleport.
+ * Arriving THROUGH the network onto a still-guarded token instead auto-wins
+ * (the guard is swept aside, no experience).
+ */
+export type CustomMapTileToken = {
+  kind: "monolith" | "whirlpool" | "gate";
+  pair?: 1 | 2 | 3 | 4;
+  slot?: number;
+  guard?: CustomGuardSpec;
+};
+
+/**
  * A designer-set one-time reward on a customized center hex
  * ({@link CustomCenterHexPlan.reward}), granted to the player who FIRST clears
  * the objective. Resources are granted inline; Treasure dice and deck Searches
@@ -9713,6 +9752,15 @@ export type CustomMapGateLink = {
   gateHex?: MapSpaceId;
   /** Pinned cavern-half ("path up") hex — absolute id. Omit for the nearest adjacent. */
   entranceHex?: MapSpaceId;
+  /**
+   * Designer guard on the SURFACE half ("gate down"): stepping onto the gate
+   * hex fights it first; crossing INTO it from the linked cavern half instead
+   * auto-wins (the guard is swept aside, no experience) — you fight to get in,
+   * never to get out.
+   */
+  gateGuard?: CustomGuardSpec;
+  /** Designer guard on the CAVERN half ("path up") — same rules as {@link gateGuard}. */
+  entranceGuard?: CustomGuardSpec;
 };
 
 /**

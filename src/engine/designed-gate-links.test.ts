@@ -699,3 +699,118 @@ describe("designed gate links — reveal opens NO pick-on-reveal choice", () => 
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Designer guards on the two gate halves: fight to step ON from your own layer,
+// auto-win when crossing OUT through the linked half.
+// ---------------------------------------------------------------------------
+
+describe("designed gate links — guarded halves", () => {
+  function guardedGateGame(): {
+    state: GameState;
+    gate: MapFieldState;
+    entrance: MapFieldState;
+  } {
+    const cavern = cavernNextToFar();
+    const customMap: CustomMapTilePlan[] = [
+      { row: TOWN.row, col: TOWN.col, group: "starting", faceDown: false },
+      { row: FAR.row, col: FAR.col, group: "far", faceDown: false, tileDefId: "F1" },
+      {
+        row: cavern.row,
+        col: cavern.col,
+        group: "subterranean",
+        faceDown: false,
+        tileDefId: "U1",
+        gateLinks: [
+          {
+            surface: { row: FAR.row, col: FAR.col },
+            gateGuard: { level: 4 },
+            entranceGuard: { units: ["neutral.troglodytes"] }
+          }
+        ]
+      }
+    ];
+    const state = twoPlayerGame(customMap);
+    const surfaceId = tileIdAt(state, FAR);
+    const cavernId = tileIdAt(state, cavern);
+    const gate = gateHalfTo(state, cavernId)!;
+    const entrance = gateHalfTo(state, surfaceId)!;
+    expect(gate, "surface gate carved").toBeDefined();
+    expect(entrance, "cavern entrance carved").toBeDefined();
+    return { state, gate, entrance };
+  }
+
+  it("carve stamps BOTH designed guards (level on the gate, exact army on the entrance)", () => {
+    const { gate, entrance } = guardedGateGame();
+    expect(gate.difficulty).toBe(4);
+    expect(entrance.customGuardUnits).toEqual(["neutral.troglodytes"]);
+    expect(entrance.difficulty).toBe(1); // one bronze body → Ⅰ
+  });
+
+  it("crossing OUT through the linked half AUTO-WINS the far guard; stepping on from the own layer FIGHTS (control)", () => {
+    const { state, gate, entrance } = guardedGateGame();
+    // Clear the hand gates so MOVE_HERO is legal.
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    state.activePlayerId = "p1";
+
+    // The hero stands on the CAVERN entrance half (its own guard beaten — the
+    // designer guard is on the field, so simulate the earlier win by clearing it).
+    const hero = state.heroes.hero_p1;
+    delete entrance.difficulty;
+    delete entrance.customGuardUnits;
+    hero.spaceId = entrance.spaceId;
+    hero.movementPoints = 4;
+    hero.movementHaltedThisTurn = false;
+
+    const crossed = applyAction(state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: gate.spaceId
+    });
+    expect(crossed.errors, crossed.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+
+    // The crossing swept the surface guard aside: hero arrived, no battle, no XP.
+    expect(crossed.state.heroes.hero_p1.spaceId).toBe(gate.spaceId);
+    expect(crossed.state.combat).toBeNull();
+    expect(crossed.state.adventure!.fields[gate.spaceId]?.difficulty).toBeUndefined();
+    expect(
+      crossed.state.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /swept aside/i.test((event as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+
+    // CONTROL: approaching the SAME guarded surface half from a plain surface
+    // hex fights it — find an adjacent same-layer field and walk on.
+    const { state: fresh, gate: freshGate } = guardedGateGame();
+    for (const player of Object.values(fresh.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    fresh.activePlayerId = "p1";
+    const freshHero = fresh.heroes.hero_p1;
+    const neighbor = getTileFootprintSpaceIds(
+      Object.values(adv(fresh).tiles).find((tile) => tile.id === freshGate.tileInstanceId)!
+    ).find((spaceId) => {
+      const field = adv(fresh).fields[spaceId];
+      return (
+        field &&
+        spaceId !== freshGate.spaceId &&
+        field.location === "empty_field" &&
+        !field.difficulty &&
+        canCrossEdge(fresh, spaceId, freshGate.spaceId)
+      );
+    });
+    expect(neighbor, "an open approach hex next to the gate").toBeTruthy();
+    freshHero.spaceId = neighbor!;
+    freshHero.movementPoints = 4;
+    freshHero.movementHaltedThisTurn = false;
+    const walked = applyAction(fresh, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: freshGate.spaceId });
+    expect(walked.errors, walked.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+    expect(walked.state.combat?.context.kind).toBe("neutral");
+    expect(walked.state.adventure!.fields[freshGate.spaceId]?.difficulty).toBe(4);
+  });
+});

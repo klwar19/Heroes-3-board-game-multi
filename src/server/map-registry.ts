@@ -7,6 +7,7 @@ import {
   parseHexSpaceId,
   sanitizeCenterHexPlan,
   sanitizeCustomMapPreset,
+  sanitizeObjectGuard,
   scenarioDefinitions,
   MAX_DESIGNED_GATE_LINKS,
   type CustomMapGateLink,
@@ -289,7 +290,7 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as { kind?: unknown; pair?: unknown; slot?: unknown };
+  const raw = input as { kind?: unknown; pair?: unknown; slot?: unknown; guard?: unknown };
   if (raw.kind !== "monolith" && raw.kind !== "whirlpool" && raw.kind !== "gate") {
     return undefined;
   }
@@ -297,14 +298,17 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
     Number.isInteger(raw.slot) && (raw.slot as number) >= 0 && (raw.slot as number) <= 6
       ? { slot: raw.slot as number }
       : {};
+  // A designer guard on the token hex (level 1-7 or exact army; clamped).
+  const guardSpec = sanitizeObjectGuard(raw.guard);
+  const guard = guardSpec ? { guard: guardSpec } : {};
   if (raw.kind === "gate") {
     if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
       return undefined;
     }
-    return { kind: "gate", pair: raw.pair, ...slot };
+    return { kind: "gate", pair: raw.pair, ...slot, ...guard };
   }
   // Monolith / Whirlpool: never carry a pair.
-  return { kind: raw.kind, ...slot };
+  return { kind: raw.kind, ...slot, ...guard };
 }
 
 /**
@@ -380,16 +384,26 @@ function sanitizeGateLink(link: unknown): CustomMapGateLink | null {
   if (!link || typeof link !== "object") {
     return null;
   }
-  const candidate = link as { surface?: { row?: unknown; col?: unknown }; gateHex?: unknown; entranceHex?: unknown };
+  const candidate = link as {
+    surface?: { row?: unknown; col?: unknown };
+    gateHex?: unknown;
+    entranceHex?: unknown;
+    gateGuard?: unknown;
+    entranceGuard?: unknown;
+  };
   const surface = candidate.surface;
   if (!surface || !Number.isInteger(surface.row) || !Number.isInteger(surface.col)) {
     return null;
   }
   const validHex = (value: unknown): value is string => typeof value === "string" && parseHexSpaceId(value) !== null;
+  const gateGuard = sanitizeObjectGuard(candidate.gateGuard);
+  const entranceGuard = sanitizeObjectGuard(candidate.entranceGuard);
   return {
     surface: { row: surface.row as number, col: surface.col as number },
     ...(validHex(candidate.gateHex) ? { gateHex: candidate.gateHex } : {}),
-    ...(validHex(candidate.entranceHex) ? { entranceHex: candidate.entranceHex } : {})
+    ...(validHex(candidate.entranceHex) ? { entranceHex: candidate.entranceHex } : {}),
+    ...(gateGuard ? { gateGuard } : {}),
+    ...(entranceGuard ? { entranceGuard } : {})
   };
 }
 
