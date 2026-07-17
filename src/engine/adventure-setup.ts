@@ -59,12 +59,15 @@ import {
   tokenMayCoverFieldDef,
   victoryModeCountsHeroDefeats
 } from "./adventure";
+import { describeCustomWinCondition } from "./victory-points";
 import {
   applyCustomMapPresetToOptions,
   customMapPresetIsActive,
   MAX_GATES_PER_PAIR,
+  mergeCustomWinConditions,
   revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
+  sanitizeCustomWinConditions,
   tileMatchesSecretFeature,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
@@ -101,6 +104,7 @@ import type {
   CustomMapTilePlan,
   CustomMapGateLink,
   CustomStartingUnit,
+  CustomWinCondition,
   MapFieldState,
   MapSpaceId,
   DeckState,
@@ -459,6 +463,11 @@ export type AdventureSetupOptions = {
    * `roundLimit` when the preset sets none. 0/absent = no round limit.
    */
   victoryPointsRoundLimit?: number;
+  /**
+   * OPTIONAL host-added custom win conditions for this game (merged preset-first
+   * with the map's own list at build via `applyLobbyCustomWinConditions`).
+   */
+  customWinConditions?: CustomWinCondition[];
   /**
    * Pick-on-reveal Subterranean Gate placement (default on): when a revealed tile
    * could host its Gate half in more than one spot, ask the revealing player which
@@ -1863,6 +1872,27 @@ function applyLobbyVictoryPoints(
   return next;
 }
 
+/**
+ * Fold the lobby-added custom win conditions into the (already-sanitized)
+ * effective map preset. No lobby list → the preset is returned UNCHANGED
+ * (byte-identical; a legacy build is untouched). Otherwise the map's own
+ * conditions come FIRST, the lobby's are appended, exact-duplicates are deduped
+ * and the union is capped ({@link mergeCustomWinConditions}) — the lobby can only
+ * ADD, never remove a map-authored condition. The lobby list is re-sanitised here
+ * (it may arrive raw from a direct `createAdventureGameState` call).
+ */
+function applyLobbyCustomWinConditions(
+  preset: CustomMapPreset | null,
+  setupOptions: GameSetupOptions
+): CustomMapPreset | null {
+  const lobbyConditions = sanitizeCustomWinConditions(setupOptions.customWinConditions);
+  if (lobbyConditions.length === 0) {
+    return preset;
+  }
+  const merged = mergeCustomWinConditions(preset?.customWinConditions, lobbyConditions);
+  return { ...(preset ?? {}), customWinConditions: merged };
+}
+
 export function createAdventureGameState(options: AdventureSetupOptions = {}): GameState {
   // A missing seed must NOT collapse to a constant — that is what made every
   // fresh game open on the same map and Creature Bank order. Mint fresh entropy.
@@ -1891,6 +1921,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.victoryPoints !== undefined ? { victoryPoints: options.victoryPoints } : {}),
     ...(options.victoryPointsRoundLimit !== undefined
       ? { victoryPointsRoundLimit: options.victoryPointsRoundLimit }
+      : {}),
+    ...(options.customWinConditions !== undefined
+      ? { customWinConditions: options.customWinConditions }
       : {}),
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.undoMoves !== undefined ? { undoMoves: options.undoMoves } : {}),
@@ -2029,8 +2062,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // round-limit scored end in `startAdventureRound`, the standings dock + the
   // game-over overlay) with no further wiring. A designed preset that ALREADY
   // enables VP stays authoritative (see `applyLobbyVictoryPoints`).
-  const mapPreset = applyLobbyVictoryPoints(
-    sanitizeCustomMapPreset(setupOptions.customMapPreset ?? null) ?? null,
+  // Lobby custom win conditions merge onto the effective preset AFTER the VP fold
+  // (both edit `adventure.mapPreset`; the win-condition check reads it there).
+  const mapPreset = applyLobbyCustomWinConditions(
+    applyLobbyVictoryPoints(
+      sanitizeCustomMapPreset(setupOptions.customMapPreset ?? null) ?? null,
+      setupOptions
+    ),
     setupOptions
   );
 
@@ -3276,6 +3314,20 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     } else {
       delete lobby.options.victoryPointsRoundLimit;
       changes.push("Victory points round limit cleared");
+    }
+  }
+
+  if (next.customWinConditions !== undefined) {
+    // Sanitise the incoming list (untrusted): bad kinds dropped, params clamped,
+    // capped. These are the host-ADDED conditions; the map's own list is merged
+    // in preset-first at build (applyLobbyCustomWinConditions).
+    const conditions = sanitizeCustomWinConditions(next.customWinConditions);
+    if (conditions.length > 0) {
+      lobby.options.customWinConditions = conditions;
+      changes.push(`Custom win conditions: ${conditions.map(describeCustomWinCondition).join(", ")}`);
+    } else {
+      delete lobby.options.customWinConditions;
+      changes.push("Custom win conditions cleared");
     }
   }
 
@@ -4526,6 +4578,7 @@ function buildAdventureFromLobby(state: GameState): void {
     events: lobby.options.events,
     victoryPoints: lobby.options.victoryPoints,
     victoryPointsRoundLimit: lobby.options.victoryPointsRoundLimit,
+    customWinConditions: lobby.options.customWinConditions,
     spellBook: lobby.options.spellBook,
     moraleCards: lobby.options.moraleCards,
     tournamentMode: lobby.options.tournamentMode,

@@ -9819,6 +9819,88 @@ span.recruitThumb {
   cursor: pointer;
 }
 
+/* Custom win condition rows (lobby "rules" tab): a compact stacked list of the
+   map-set (read-only, tagged) and host-added conditions plus the Add button. */
+.customWinConditions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.customWinConditionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.customWinConditionRow.mapSet {
+  color: #cdb98d;
+  font-size: 11.5px;
+}
+
+.customWinConditionText {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.customWinConditionTag {
+  padding: 1px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 6px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  color: #c4a878;
+}
+
+.customWinConditionRow select,
+.customWinConditionRow input[type="number"] {
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 11.5px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8d3a8;
+}
+
+.customWinConditionRow input[type="number"] {
+  width: 78px;
+}
+
+.customWinConditionRemove {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8b0a0;
+  cursor: pointer;
+}
+
+.customWinConditionAdd {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  border-radius: 8px;
+  border: 1px dashed rgba(140, 110, 65, 0.6);
+  background: rgba(20, 14, 9, 0.6);
+  color: #e8d3a8;
+  cursor: pointer;
+}
+
+.customWinConditionAdd:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Wake of Gods is a BINH-only submodule. The crest is the on/off switch; its
    compact options window stays inside setup instead of becoming another tab. */
 .wogOptionRow {

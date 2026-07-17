@@ -5,13 +5,16 @@ import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { REWARD_GLYPH_ICONS } from "@/data/assets/homm-assets";
 import {
+  CUSTOM_WIN_CONDITION_OPTIONS,
   DEFAULT_VICTORY_CONDITION_VP,
+  defaultCustomWinCondition,
   defaultObeliskBonusForKind,
   defaultTimedEffect,
   defaultTimedEvent,
   defaultVictoryPointObjective,
   describeCustomMapPresetEntries,
   describeTimedMapEffect,
+  MAX_CUSTOM_WIN_CONDITIONS,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
   MAP_PRESET_BUILDING_OPTIONS,
@@ -29,6 +32,7 @@ import {
   type CustomMapTimedEffect,
   type CustomMapTimedEvent,
   type CustomStartingUnit,
+  type CustomWinCondition,
   type TimedEffectKind,
   type UnitLevel,
   type VictoryMode,
@@ -96,6 +100,10 @@ export function MapPresetEditor({
       // An empty objectives block means "nothing forced" — drop the key so the
       // preset collapses to undefined when it was the only condition.
       delete next.objectives;
+    }
+    if ("customWinConditions" in partial && partial.customWinConditions === undefined) {
+      // Removing the last condition drops the key so the preset can collapse.
+      delete next.customWinConditions;
     }
     if ("victoryPoints" in partial && partial.victoryPoints === undefined) {
       // Toggling Victory Points off removes the block entirely.
@@ -206,6 +214,23 @@ export function MapPresetEditor({
   };
   const removeVpObjective = (index: number) => {
     writeVictoryPoints({ objectives: vpObjectives.filter((_, i) => i !== index) });
+  };
+
+  const winConditions = value.customWinConditions ?? [];
+  const writeWinConditions = (next: CustomWinCondition[]) => {
+    patch({ customWinConditions: next.length > 0 ? next : undefined });
+  };
+  const addWinCondition = () => {
+    if (winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS) {
+      return;
+    }
+    writeWinConditions([...winConditions, defaultCustomWinCondition("control-towns")]);
+  };
+  const updateWinCondition = (index: number, condition: CustomWinCondition) => {
+    writeWinConditions(winConditions.map((entry, i) => (i === index ? condition : entry)));
+  };
+  const removeWinCondition = (index: number) => {
+    writeWinConditions(winConditions.filter((_, i) => i !== index));
   };
 
   const setTimed = (next: CustomMapTimedEvent[]) => {
@@ -1039,6 +1064,81 @@ export function MapPresetEditor({
         )}
       </section>
 
+      <section className="mapPresetSection mapPresetVpSection" aria-label="Custom win conditions">
+        <div className="mapPresetSectionLabel">🏁 Custom win conditions</div>
+        <small className="mapPresetHint">
+          Extra early-end triggers on top of the victory mode: the FIRST player to satisfy ANY of these wins
+          immediately. Keep the thresholds above what a player already has at setup, or the game ends on the first
+          action.
+        </small>
+        <div className="mapPresetVpObjectives" role="group" aria-label="Custom win condition list">
+          <div className="mapPresetTimedSectionHeading">
+            <div className="mapPresetSectionLabel">Conditions</div>
+            <span className={`mapPresetTimedCount${winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS ? " full" : ""}`}>
+              {winConditions.length}/{MAX_CUSTOM_WIN_CONDITIONS}
+            </span>
+          </div>
+          {winConditions.map((condition, index) => {
+            const option = CUSTOM_WIN_CONDITION_OPTIONS.find((entry) => entry.id === condition.kind);
+            const paramValue =
+              condition.kind === "hero-level"
+                ? condition.level
+                : condition.kind === "gold"
+                  ? condition.amount
+                  : "count" in condition
+                    ? condition.count
+                    : null;
+            return (
+              <div className="mapPresetVpObjectiveRow" key={index}>
+                <RewardGlyph src={winConditionGlyph(condition.kind)} title={`Condition ${index + 1}`} />
+                <select
+                  aria-label={`Condition ${index + 1} kind`}
+                  className="mapPresetSelect"
+                  onChange={(e) =>
+                    updateWinCondition(index, defaultCustomWinCondition(e.target.value as CustomWinCondition["kind"]))
+                  }
+                  value={condition.kind}
+                >
+                  {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+                {option?.param && paramValue !== null ? (
+                  <ResourceField
+                    label={option.param.label}
+                    max={option.param.max}
+                    min={option.param.min}
+                    value={paramValue}
+                    onChange={(n) => {
+                      const clamped = Math.max(option.param!.min, Math.min(option.param!.max, n ?? option.param!.min));
+                      updateWinCondition(index, { ...condition, [option.param!.field]: clamped } as CustomWinCondition);
+                    }}
+                  />
+                ) : null}
+                <button
+                  aria-label={`Remove condition ${index + 1}`}
+                  className="mapPresetTimedRemove"
+                  onClick={() => removeWinCondition(index)}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={13} />
+                </button>
+              </div>
+            );
+          })}
+          <button
+            className="mapPresetTimedAdd"
+            disabled={winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS}
+            onClick={addWinCondition}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={13} /> Add win condition
+          </button>
+        </div>
+      </section>
+
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Designer note (shown when map is picked)</div>
         <textarea
@@ -1448,6 +1548,25 @@ function vpObjectiveGlyph(kind: VictoryPointObjective["kind"]): string {
       return REWARD_GLYPH_ICONS.gold;
     case "hero-level":
       return REWARD_GLYPH_ICONS.experience;
+    case "defeat-dragon-utopia":
+      return REWARD_GLYPH_ICONS.attack;
+  }
+}
+
+/** The reward glyph for a custom-win-condition kind. */
+function winConditionGlyph(kind: CustomWinCondition["kind"]): string {
+  switch (kind) {
+    case "control-towns":
+      return REWARD_GLYPH_ICONS.materials;
+    case "flag-mines":
+      return REWARD_GLYPH_ICONS.gold;
+    case "hero-level":
+      return REWARD_GLYPH_ICONS.experience;
+    case "gold":
+      return REWARD_GLYPH_ICONS.gold;
+    case "artifacts":
+      return REWARD_GLYPH_ICONS.treasure;
+    case "defeat-heroes":
     case "defeat-dragon-utopia":
       return REWARD_GLYPH_ICONS.attack;
   }

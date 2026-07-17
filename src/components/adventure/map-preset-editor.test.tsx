@@ -370,6 +370,65 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(screen.getByText("Round limit (hard end)")).toBeTruthy();
   });
 
+  it("Custom win conditions: add / retype kind + param / remove; the cap disables Add", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+
+    // Add a condition → the default control-towns condition.
+    fireEvent.click(screen.getByRole("button", { name: "Add win condition" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "control-towns", count: 3 }] })
+    );
+
+    // Retype the kind → the new kind's default params.
+    rerender(
+      <MapPresetEditor preset={{ customWinConditions: [{ kind: "control-towns", count: 3 }] }} onChange={onChange} />
+    );
+    fireEvent.change(screen.getByLabelText("Condition 1 kind"), { target: { value: "gold" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "gold", amount: 100 }] })
+    );
+
+    // Edit the param (scoped to the win-condition group to avoid the resource "Gold" fields).
+    rerender(<MapPresetEditor preset={{ customWinConditions: [{ kind: "gold", amount: 100 }] }} onChange={onChange} />);
+    const group = screen.getByRole("group", { name: "Custom win condition list" });
+    fireEvent.change(within(group).getByRole("spinbutton"), { target: { value: "250" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "gold", amount: 250 }] })
+    );
+
+    // Remove the only condition → the whole preset collapses to undefined.
+    rerender(<MapPresetEditor preset={{ customWinConditions: [{ kind: "gold", amount: 250 }] }} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove condition 1" }));
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+
+    // At the cap of 4, Add is disabled.
+    rerender(
+      <MapPresetEditor
+        preset={{
+          customWinConditions: [
+            { kind: "control-towns", count: 3 },
+            { kind: "flag-mines", count: 4 },
+            { kind: "hero-level", level: 5 },
+            { kind: "gold", amount: 100 }
+          ]
+        }}
+        onChange={onChange}
+      />
+    );
+    expect((screen.getByRole("button", { name: "Add win condition" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("Custom win conditions: a 🏁 summary line renders per condition", () => {
+    render(
+      <MapPresetEditor
+        preset={{ customWinConditions: [{ kind: "control-towns", count: 3 }] }}
+        onChange={() => {}}
+      />
+    );
+    expect(screen.getByText("Custom win: control 3 Towns")).toBeTruthy();
+  });
+
   it("Map settings: a difficulty chip writes the preset difficulty; re-clicking it clears back to undefined", () => {
     const onChange = vi.fn();
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
