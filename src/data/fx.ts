@@ -173,9 +173,13 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   // the H3 cast roar; the damage number is held behind it (it had been resolving
   // silently). Anchored on the target unit by the SPELL_CAST_RESOLVED path.
   "spell.implosion": { affect: [{ key: "implosion" }], sound: "spells/implosion" },
-  // Disrupting Ray: the ray shimmers over the enemy whose ability it shuts off,
-  // matching the debuff idiom (Anti-Magic / Forgetfulness). Cast on a unit.
-  "spell.disrupting_ray": { affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
+  // Disrupting Ray: the H3 projectile flies caster→target, then the ray sheet
+  // shimmers over the unit whose Defense it strips (same two-def pair as PC).
+  "spell.disrupting_ray": {
+    projectile: "disrupting-ray-projectile",
+    affect: [{ key: "disrupting-ray" }],
+    sound: "spells/disrupting-ray"
+  },
   // Frenzy: an Instant on your own attack (no board target of its own), so its
   // glyph flares at centre stage over the played card with the cast cue — the
   // same CARD_PLAYED path as Weakness / Slayer.
