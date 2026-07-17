@@ -60,6 +60,8 @@ import {
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   RETREAT_GOLD_COST,
   SURRENDER_GOLD_COST,
+  currentSurrenderGoldCost,
+  tournamentMoraleSearchAgainEnabled,
   getSecondaryHero,
   humanPlayerIds,
   requiredHeroDefeats,
@@ -234,6 +236,12 @@ import {
   gainOwnedCard,
   polishSpellBookEnabled
 } from "./polish-spell-book";
+import {
+  clearPolishArtifactAccess,
+  isArtifactSharedDeckId,
+  maybeApplyPolishRandomArtifactRoll,
+  polishArtifactDeckAllowed
+} from "./polish-random-artifacts";
 import {
   HEX_DIRECTIONS,
   hexDistance,
@@ -5024,6 +5032,111 @@ export function resolveSatyrSwap(state: GameState, playerId: PlayerId, optionInd
 }
 
 /**
+ * Polish Rule 111: once per game, when fighting difficulty I on the attacker's
+ * own starting tile, offer to replace one bronze guard with the next random
+ * bronze from the Neutral deck. Returns true when the choice opens.
+ */
+function maybeOpenRule111Choice(state: GameState, draws: NeutralDraw[]): boolean {
+  if (!houseRuleEnabled(state, "polish-rule-111")) {
+    return false;
+  }
+  const combat = state.combat;
+  const adventure = state.adventure;
+  if (!combat || !adventure || combat.context.kind !== "neutral") {
+    return false;
+  }
+  if (combat.context.difficulty !== 1 || combat.context.bankId) {
+    return false;
+  }
+  const playerId = combat.attackerPlayerId;
+  if ((adventure.rule111UsedBy ?? []).includes(playerId)) {
+    return false;
+  }
+  const field = adventure.fields[combat.context.fieldId];
+  if (!field) {
+    return false;
+  }
+  // Field must sit on THIS player's home (Ⅰ) tile.
+  const homeTile = Object.values(adventure.tiles).find((tile) => {
+    if (tile.group !== "starting") {
+      return false;
+    }
+    const center = adventure.fields[hexSpaceId({ row: tile.centerRow, col: tile.centerCol })];
+    return center?.flagOwnerId === playerId && tile.id === field.tileInstanceId;
+  });
+  if (!homeTile) {
+    return false;
+  }
+  const bronzeIndexes = draws
+    .map((draw, index) => ({ draw, index }))
+    .filter(({ draw }) => draw.tier === "bronze" && !draw.bankGuard);
+  if (bronzeIndexes.length === 0) {
+    return false;
+  }
+
+  combat.pendingNeutralDraws = draws;
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt:
+      "Rule 111: replace one bronze guard with the next random bronze unit? (once per game)",
+    options: [
+      { label: "Keep the drawn army (skip Rule 111)" },
+      ...bronzeIndexes.map(({ draw }) => ({
+        label: `Replace ${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId}`
+      }))
+    ],
+    context: "rule-111",
+    returnPhase: "combat-setup"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  return true;
+}
+
+/** Resolves Polish Rule 111: option 0 keeps; option N>0 swaps that bronze. */
+export function resolveRule111(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const combat = state.combat;
+  const draws = combat?.pendingNeutralDraws;
+  const choice = state.pendingChoice;
+  // Caller clears pendingChoice before calling; read the stash from combat draws.
+  if (!combat || !draws) {
+    throw new Error("There is no drawn neutral army for Rule 111.");
+  }
+
+  if (optionIndex > 0) {
+    // Recover bronze indexes from the draws themselves (order-stable).
+    const bronzeIndexes = draws
+      .map((draw, index) => ({ draw, index }))
+      .filter(({ draw }) => draw.tier === "bronze" && !draw.bankGuard)
+      .map(({ index }) => index);
+    const drawIndex = bronzeIndexes[optionIndex - 1];
+    if (drawIndex !== undefined) {
+      const before = draws[drawIndex]!.unitDefId;
+      swapNeutralDraw(state, playerId, draws, drawIndex);
+      const after = draws[drawIndex]!.unitDefId;
+      // Choosing to replace consumes the once-per-game token even if the deck
+      // re-dealt the same unit id (or ran dry and left the original in place).
+      const adventure = state.adventure;
+      if (adventure) {
+        adventure.rule111UsedBy = [...(adventure.rule111UsedBy ?? []), playerId];
+      }
+      if (before !== after) {
+        appendEvent(state, {
+          type: "MAP_PRESET_TRIGGERED",
+          message: `Rule 111: ${coreUnitDefinitions[before]?.name ?? before} replaced with ${coreUnitDefinitions[after]?.name ?? after}.`
+        });
+      }
+    }
+  }
+
+  // After Rule 111 the army reveals (Visions already had its window).
+  revealNeutralArmy(state, draws);
+}
+
+/**
  * Judge Dread (Astrologers): offer the attacker a keep / redraw-the-whole-army
  * choice at guard reveal. Modelled on the Satyr swap, but all-or-nothing.
  */
@@ -5886,6 +5999,11 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     if (maybeOpenVisionsGuardSwap(state, draws)) {
       return;
     }
+    // Polish Rule 111: once per game on a home-tile difficulty-I fight, the
+    // attacker may replace one bronze guard with the next random bronze.
+    if (maybeOpenRule111Choice(state, draws)) {
+      return;
+    }
 
     revealNeutralArmy(state, draws);
     return;
@@ -6642,9 +6760,14 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   // Retreat is allowed any time before the fighting begins: a participant's
   // pre-battle prep window, while deploying (combat.setup, round 1), and the
   // post-deployment pause (pvpEscapeWindowOpen). After the first unit acts it is
-  // closed.
+  // closed. Polish mid-fight surrender is the sole exception (see below).
   const duringPlacement = Boolean(combat.setup) && combat.round === 1;
-  if (!inPrep && !duringPlacement && !pvpEscapeWindowOpen(combat)) {
+  const polishMidFightSurrender =
+    reason === "surrender" &&
+    houseRuleEnabled(state, "polish-reduced-surrender") &&
+    !inPrep &&
+    !combat.setup;
+  if (!inPrep && !duringPlacement && !pvpEscapeWindowOpen(combat) && !polishMidFightSurrender) {
     throw new Error("Retreat is only possible before any unit acts.");
   }
   // A Secondary Hero surrenders differently (house rule): instead of paying the
@@ -6654,9 +6777,10 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   const escapingHero = state.heroes[heroId];
   const secondarySurrender = reason === "surrender" && escapingHero?.kind === "secondary";
   if (reason === "surrender") {
-    // Surrender is a before-battle (prep) decision only — never once deployment
-    // has begun.
-    if (!inPrep) {
+    // Default: surrender is a before-battle (prep) decision only. With the
+    // Polish reduced-surrender house rule it is also available mid-fight so the
+    // per-round cost reduction can matter.
+    if (!inPrep && !polishMidFightSurrender) {
       throw new Error("Surrender is only possible before the battle, during your prep.");
     }
     // Shackles of War (house rule) locks the enemy out of Surrender only.
@@ -6670,8 +6794,9 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
     // The main-hero surrender is a paid escape: you must hold the full toll to
     // choose it (no debt). A poorer hero must Retreat or fight on. The Secondary
     // Hero pays with the hero itself, not gold, so it is exempt.
-    if (!secondarySurrender && (state.players[playerId]?.resources.gold ?? 0) < SURRENDER_GOLD_COST) {
-      throw new Error(`Surrender costs ${SURRENDER_GOLD_COST} gold — Retreat or fight on instead.`);
+    const toll = currentSurrenderGoldCost(state);
+    if (!secondarySurrender && (state.players[playerId]?.resources.gold ?? 0) < toll) {
+      throw new Error(`Surrender costs ${toll} gold — Retreat or fight on instead.`);
     }
   }
   const winnerPlayerId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
@@ -7156,10 +7281,12 @@ export function finalizeAdventureCombat(state: GameState): void {
 
   if (loserHero) {
     if (surrendered) {
-      // The 10-gold toll was required to choose Surrender (no debt) and now
-      // transfers to the opponent. The hero falls back home with its full army.
-      spendResources(state, loserId, { gold: SURRENDER_GOLD_COST }, "surrendered the combat");
-      gainResources(state, winnerId, { gold: SURRENDER_GOLD_COST }, "accepted the enemy's surrender");
+      // The gold toll was required to choose Surrender (no debt) and now
+      // transfers to the opponent. With polish-reduced-surrender the amount may
+      // already have dropped below 10. The hero falls back home with its full army.
+      const toll = currentSurrenderGoldCost(state);
+      spendResources(state, loserId, { gold: toll }, "surrendered the combat");
+      gainResources(state, winnerId, { gold: toll }, "accepted the enemy's surrender");
       // Only the ATTACKER (the turn-owner) can be prompted mid-turn; a defender
       // who surrenders auto-homes to avoid a cross-turn stall.
       moveDefeatedHeroHome(state, loserHero, loserHero === attackerHero);
@@ -8182,7 +8309,9 @@ export function blacksmithAction(state: GameState, action: Extract<GameAction, {
       playerId: action.playerId,
       kind: "shared-deck-search",
       deckId: "artifacts",
-      count: 2
+      count: 2,
+      // Polish Random Artifacts: merchant / building path uses hero level.
+      polishArtifactBand: "level"
     });
     return;
   }
@@ -8490,6 +8619,11 @@ export function spendMorale(state: GameState, action: Extract<GameAction, { type
   }
 
   if (moraleCardsRuleEnabled(state)) {
+    if (action.benefit === "repeat-search") {
+      throw new Error(
+        "With Morale Cards, use the Positive Morale Repeat Search card after keeping a card."
+      );
+    }
     // Positive Morale "+1 Attack, +1 Defense, or +1 Combat Power during the
     // next Combat": played while the holder is fighting; the chosen stat buffs
     // every own unit for the rest of this Combat. The third printed option —
@@ -8606,6 +8740,48 @@ export function spendMorale(state: GameState, action: Extract<GameAction, { type
     player.morale -= 1;
     appendEvent(state, { type: "MORALE_CHANGED", playerId: action.playerId, amount: -1, total: player.morale });
   };
+
+  // Tournament Book p.54: during an open Search, discard all revealed cards and
+  // perform the same Search (X) again. Token mode only — morale-cards use the
+  // separate post-keep repeat_search card offer.
+  if (action.benefit === "repeat-search") {
+    if (moraleCardsRuleEnabled(state)) {
+      throw new Error("With Morale Cards, use the Positive Morale Repeat Search card after keeping a card.");
+    }
+    if (!tournamentMoraleSearchAgainEnabled(state)) {
+      throw new Error("Spending Morale to Search again is a Tournament rule.");
+    }
+    const choice = state.pendingChoice;
+    if (
+      !choice ||
+      choice.type !== "DECK_SEARCH" ||
+      choice.playerId !== action.playerId ||
+      choice.revealedCardIds.length === 0
+    ) {
+      throw new Error("Spend Morale to Search again only while looking at revealed Search cards.");
+    }
+    const deck = state.decks[choice.deckId];
+    if (!deck) {
+      throw new Error("That deck is no longer available.");
+    }
+    const count = choice.baseCount ?? choice.revealedCardIds.length;
+    const deckId = choice.deckId;
+    const returnPhase = choice.returnPhase;
+
+    // Discard every revealed card (they were lifted off the draw pile).
+    deck.discardPile.push(...choice.revealedCardIds);
+    state.pendingChoice = null;
+    state.phase = returnPhase;
+    state.priorityPlayerId = null;
+    // Polish Random Artifacts: this Search is cancelled; the re-run rolls fresh.
+    if (String(deckId).startsWith("artifacts")) {
+      clearPolishArtifactAccess(state);
+    }
+
+    consumeToken();
+    openSharedDeckSearch(state, action.playerId, deckId, count);
+    return;
+  }
 
   if (action.benefit === "redraw") {
     const discards = action.discardCardIds ?? [];
@@ -9142,6 +9318,12 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   if (choice.context === "judge-dread") {
     state.pendingChoice = null;
     resolveJudgeDread(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "rule-111") {
+    state.pendingChoice = null;
+    resolveRule111(state, action.playerId, action.optionIndex);
     return;
   }
 
@@ -10458,10 +10640,11 @@ export function beginSharedDeckSearchNow(
   deckId: string,
   count: number,
   allowRemove = false,
-  options?: { strictExpertGate?: boolean }
+  options?: { strictExpertGate?: boolean; artifactBand?: "tile" | "level" }
 ): boolean {
   const candidates = resolveSearchDeckCandidates(state, playerId, deckId, {
-    strictExpertGate: options?.strictExpertGate
+    strictExpertGate: options?.strictExpertGate,
+    artifactBand: options?.artifactBand
   }).filter((candidateId) => {
     const deck = state.decks[candidateId];
     return deck && deck.drawPile.length + deck.discardPile.length > 0;
@@ -10497,12 +10680,16 @@ export function beginSharedDeckSearchNow(
 /**
  * Expands a deck-family id ("spells", "artifacts") into the decks this player
  * may search right now. Explicit split-deck ids pass through unchanged.
+ *
+ * With polish-random-artifacts ON (and split decks), rolls an Attack die and
+ * freezes the resulting tier access on adventure.polishArtifactAccess for the
+ * duration of this acquisition.
  */
 export function resolveSearchDeckCandidates(
   state: GameState,
   playerId: PlayerId,
   deckId: string,
-  options?: { strictExpertGate?: boolean }
+  options?: { strictExpertGate?: boolean; artifactBand?: "tile" | "level" }
 ): string[] {
   const hero = getMainHero(state, playerId);
 
@@ -10511,6 +10698,7 @@ export function resolveSearchDeckCandidates(
   }
 
   if (deckId === "artifacts") {
+    maybeApplyPolishRandomArtifactRoll(state, playerId, hero, options?.artifactBand ?? "tile");
     const artifactSource = Boolean(
       getTownOfPlayer(state, playerId)?.buildings.some(
         (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "ARTIFACT_SMITH"
@@ -10521,6 +10709,15 @@ export function resolveSearchDeckCandidates(
 
   return [deckId];
 }
+
+// Polish Random Artifacts helpers: re-exported from polish-random-artifacts.ts
+// so existing imports of adventure-reducer keep working.
+export {
+  clearPolishArtifactAccess,
+  isArtifactSharedDeckId,
+  maybeApplyPolishRandomArtifactRoll,
+  polishArtifactDeckAllowed
+} from "./polish-random-artifacts";
 
 /**
  * Opens a "Search X" on a shared deck. When that deck's discard pile is not
@@ -10542,6 +10739,21 @@ export function openSharedDeckSearch(
   const deck = state.decks[deckId];
   if (!deck) {
     return;
+  }
+
+  // Polish Random Artifacts chokepoint: every Artifact Search rolls here if no
+  // access override is already live (family pick rolls in resolveSearchDeckCandidates
+  // first; pendant/morale repeats land here after clearPolishArtifactAccess).
+  if (isArtifactSharedDeckId(deckId)) {
+    const hero = getMainHero(state, playerId);
+    maybeApplyPolishRandomArtifactRoll(state, playerId, hero, "tile");
+    // If the roll forbids this specific split deck, refuse to open it (the
+    // family re-pick path already filtered candidates; a pendant re-run on a
+    // now-illegal tier fizzles cleanly).
+    if (!polishArtifactDeckAllowed(state, deckId)) {
+      clearPolishArtifactAccess(state);
+      return;
+    }
   }
 
   // Spells (Astrologers): while face up, any Search of the Spell deck looks at
@@ -11250,7 +11462,8 @@ export function pumpAdventureQueues(state: GameState): void {
       // through to resolveSearchDeckCandidates.
       if (
         beginSharedDeckSearchNow(state, reward.playerId, reward.deckId, reward.count, Boolean(reward.allowRemove), {
-          strictExpertGate: reward.strictExpertGate
+          strictExpertGate: reward.strictExpertGate,
+          artifactBand: reward.polishArtifactBand
         })
       ) {
         return;

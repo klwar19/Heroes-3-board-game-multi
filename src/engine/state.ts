@@ -40,6 +40,13 @@ export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
  */
 export type GameRuleset = "legacy" | "binh";
 
+/** Which Artifact tier decks a hero may search right now (BINH split decks). */
+export type ArtifactDeckAccess = {
+  minor: boolean;
+  major: boolean;
+  relic: boolean;
+};
+
 /**
  * Individual BINH house-rule toggle ids. Each gates one real engine tweak; the
  * registry, defaults and resolver live in house-rules.ts (which imports this
@@ -103,6 +110,30 @@ export type HouseRuleId =
   // at a Citadel (bank-guard Neutrals use the higher bank max). +1 Attack while
   // stacked; each layer absorbs one full health bar.
   | "polish-unit-stacks"
+  // Polish house rule: replace the difficulty-scaled starting bonus with a
+  // fixed reduced choice — draw 2 Minor Artifacts and keep 1, OR take one of
+  // 3 gold / 2 building materials / 1 valuables.
+  | "polish-reduced-starting-bonus"
+  // Polish house rule ("Rule 111"): once per game, when fighting a difficulty-I
+  // combat on your own starting tile, replace one bronze guard with the next
+  // random bronze unit from the Neutral deck.
+  | "polish-rule-111"
+  // Polish house rule: surrender costs 10 gold, reduced by 3 after each combat
+  // round (min 1). Available mid-fight (not prep-only). Attacker still gets 1 VP.
+  | "polish-reduced-surrender"
+  // Polish house rule (requires split Artifact decks): when gaining an Artifact,
+  // roll an Attack die to optionally upgrade/restrict the tier class allowed
+  // (field uses tile band; merchant/card effects use hero level). Also upgrades
+  // polish-pandora-search by +1 card on a "+1" face.
+  | "polish-random-artifacts"
+  // Polish house rule: Pandora's Box field draws become Search(N) choose 1 —
+  // N=2 on IV–V tiles, N=3 on VI–VII. With polish-random-artifacts, a "+1" die
+  // raises N by 1 (Search 3 / Search 4).
+  | "polish-pandora-search"
+  // Polish house rule: units may Wait once per combat round at the start of
+  // their activation; waited units re-activate after everyone else, highest
+  // Wait-token number first (reverse order).
+  | "polish-wait"
   // Pit Lords' Summon Demons: while ON, a Pit Lords may summon a new Few even
   // when Demons are already on the field (multiple Demon units). Off (official):
   // only ONE Demons unit may stand on the field (Few or Pack) — summon is
@@ -2857,6 +2888,16 @@ export type GameAction =
     }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_ACTIVATION"; playerId: PlayerId; unitId: UnitId }
+  | {
+      /**
+       * Polish Wait house rule: the active unit takes a Wait token (lowest free
+       * number) and ends its main-phase activation; it re-activates after every
+       * non-waiting unit has acted, highest token first.
+       */
+      type: "WAIT_UNIT";
+      playerId: PlayerId;
+      unitId: UnitId;
+    }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
   | { type: "BUILD_STRUCTURE"; playerId: PlayerId; townId: TownId; buildingId: BuildingId }
   | { type: "COMPLETE_SIMULTANEOUS_TURN"; playerId: PlayerId }
@@ -3419,14 +3460,17 @@ export type GameAction =
       type: "SPEND_MORALE";
       playerId: PlayerId;
       /**
-       * Token mode spends the +1 token for "draw" / "redraw". With the Morale
-       * Cards rule on, each benefit maps to a held Positive Morale card:
-       * "redraw" (discard any number, draw as many), "combat-bonus" (+1 Attack
-       * or +1 Defense for the rest of this Combat — `bonus` picks which) and
-       * "remove-token" (remove one negative combat token from an own unit —
-       * `unitId` + `tokenKind` name it).
+       * Token mode spends the +1 token for "draw" / "redraw" / "repeat-search"
+       * (Tournament Book p.54: while a Search is open, discard all revealed
+       * cards and Search (X) again). With the Morale Cards rule on, each benefit
+       * maps to a held Positive Morale card: "redraw" (discard any number, draw
+       * as many), "combat-bonus" (+1 Attack or +1 Defense for the rest of this
+       * Combat — `bonus` picks which) and "remove-token" (remove one negative
+       * combat token from an own unit — `unitId` + `tokenKind` name it). The
+       * card equivalent of repeat-search is the post-Search
+       * morale.positive.repeat_search offer, not SPEND_MORALE.
        */
-      benefit: "draw" | "redraw" | "combat-bonus" | "remove-token";
+      benefit: "draw" | "redraw" | "combat-bonus" | "remove-token" | "repeat-search";
       discardCardIds?: CardId[];
       bonus?: "attack" | "defense";
       unitId?: UnitId;
@@ -4712,7 +4756,7 @@ export type GameEvent =
       id: string;
       type: "MORALE_SPENT";
       playerId: PlayerId;
-      benefit: "draw" | "redraw" | "reroll";
+      benefit: "draw" | "redraw" | "reroll" | "repeat-search";
     }
   | {
       id: string;
@@ -6441,6 +6485,17 @@ export type CombatUnitState = {
   position: number;
   activatedThisRound: boolean;
   movedThisActivation: boolean;
+  /**
+   * Polish Wait house rule: 1-based Wait-token number assigned when this unit
+   * chose Wait this combat round. Cleared when the Waited re-activation finishes
+   * or at round reset. Absent when the rule is off / the unit did not Wait.
+   */
+  waitToken?: number;
+  /**
+   * Polish Wait: true while this unit is in (or awaiting) its post-main-phase
+   * Waited re-activation. Cleared when that re-activation ends.
+   */
+  waitPending?: boolean;
   attackedThisActivation?: boolean;
   /** Attacks resolved during this activation (double-attack abilities stop at 2). */
   attacksThisActivation?: number;
@@ -6890,6 +6945,12 @@ export type CombatState = {
      */
     volleyShots?: number | null;
   } | null;
+  /**
+   * Polish Wait house rule: true while the combat is in the Waited re-activation
+   * phase (after every unit has either acted or taken a Wait token). Cleared at
+   * round end. Absent / false when the rule is off or still in the main phase.
+   */
+  waitPhase?: boolean;
   outcome: {
     winnerPlayerId: PlayerId;
     defeatedPlayerId: PlayerId;
@@ -7336,6 +7397,11 @@ export type AdventureReward =
       count: number;
       allowRemove?: boolean;
       /**
+       * Polish Random Artifacts: which band table to use for the die roll.
+       * `"tile"` = field finds (default); `"level"` = merchant / card effects.
+       */
+      polishArtifactBand?: "tile" | "level";
+      /**
        * Mage Guild spell purchase: enforce the strict Expert gate (Basic-only
        * until the hero is level 4 or a IV–V tile is revealed) — the
        * Wisdom/Eagle-Eye/Basic-Magic key-card bypass does NOT open the Expert
@@ -7475,6 +7541,39 @@ export type VisitStep =
        * go to the discard pile. Not a Search — no post-search reshuffle.
        */
       type: "REVEAL_UNTIL_MINOR_ARTIFACT";
+    }
+  | {
+      /**
+       * Polish reduced starting bonus: draw `drawCount` Minor Artifacts from the
+       * Minor (or combined) Artifact draw pile — never the discard top — then
+       * keep `keepCount` and return the rest under the draw pile.
+       */
+      type: "DRAW_CHOOSE_MINOR_ARTIFACTS";
+      drawCount: number;
+      keepCount: number;
+    }
+  | {
+      /**
+       * Resolution arm of DRAW_CHOOSE_MINOR_ARTIFACTS — put the kept cards in
+       * hand and return the rest under the named draw pile.
+       */
+      type: "RESOLVE_DRAW_CHOOSE_MINOR";
+      deckId: DeckId;
+      keepIndexes: number[];
+      drawn: CardId[];
+    }
+  | {
+      /**
+       * Polish Pandora Search: keep the chosen drawn Pandora card(s) and return
+       * the rest under the Pandora deck.
+       */
+      type: "RESOLVE_PANDORA_SEARCH";
+      keepIndexes: number[];
+      drawn: CardId[];
+    }
+  | {
+      /** Clears polish-random-artifacts access after a declined Black Market. */
+      type: "CLEAR_POLISH_ARTIFACT_ACCESS";
     }
   | {
       /**
@@ -8934,6 +9033,25 @@ export type AdventureState = {
    */
   houseRules?: Partial<Record<HouseRuleId, boolean>>;
   /**
+   * Polish Rule 111: player ids that have already used their once-per-game
+   * bronze-guard swap on a home-tile difficulty-I fight. Absent when the rule
+   * is off or nobody has used it yet.
+   */
+  rule111UsedBy?: PlayerId[];
+  /**
+   * Polish Random Artifacts: access override computed from the latest Attack-die
+   * roll for an in-flight Artifact acquisition. Consumed by eligibleArtifactDecks
+   * while set; cleared when the search/choice closes. Absent when the rule is
+   * off or no roll is pending.
+   */
+  polishArtifactAccess?: ArtifactDeckAccess | null;
+  /**
+   * Polish Random Artifacts: the Attack-die face of the latest roll (−1 / 0 / +1).
+   * Used by polish-pandora-search for the Search(X+1) upgrade. Cleared with
+   * polishArtifactAccess.
+   */
+  polishRandomArtifactDie?: number | null;
+  /**
    * Holy Grail: the single Grail Token's progress. Only one token exists in
    * the game even when several Grail fields are on the map. Digging requires
    * the digger to have visited {@link GRAIL_OBELISKS_REQUIRED} distinct Obelisks
@@ -10033,6 +10151,7 @@ export type PendingChoice =
         | "place-field-override"
         | "subterranean-gate-placement"
         | "judge-dread"
+        | "rule-111"
         | "far-tile-flip"
         | "combat-remove-then-search"
         | "combat-remove-another"

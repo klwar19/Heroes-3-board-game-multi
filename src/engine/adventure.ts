@@ -75,6 +75,19 @@ import {
   polishSpellBookEnabled
 } from "./polish-spell-book";
 import {
+  polishPandoraSearchCount,
+  polishReducedStartingBonusDescription,
+  polishReducedStartingBonusVisitSteps,
+  polishSurrenderGoldCost
+} from "./polish-house-rules";
+import {
+  clearPolishArtifactAccess,
+  maybeApplyPolishRandomArtifactRoll,
+  polishArtifactBandForField,
+  polishArtifactDeckAllowed,
+  polishArtifactTierAllowed
+} from "./polish-random-artifacts";
+import {
   canonicalTileEdgeCode,
   hexDirectionBetween,
   hexDistance,
@@ -2624,6 +2637,40 @@ export const SURRENDER_GOLD_COST = 10;
 export const RETREAT_GOLD_COST = 5;
 
 /**
+ * Tournament Book p.54 "Additional Morale token action": while a Search is open,
+ * spend the positive Morale token to discard all revealed cards and Search (X)
+ * again. Active when any tournament setup flag was frozen onto adventure state
+ * (master Tournament mode or any granular tournament rule).
+ */
+export function tournamentMoraleSearchAgainEnabled(
+  state: Pick<GameState, "adventure">
+): boolean {
+  const a = state.adventure;
+  if (!a) {
+    return false;
+  }
+  return Boolean(
+    a.tournamentMode ||
+      a.tournamentBanDiplomacy ||
+      a.tournamentBanHourglass ||
+      a.tournamentSecondPlayerMorale
+  );
+}
+
+/**
+ * Gold toll to surrender right now. With `polish-reduced-surrender` ON the cost
+ * starts at 10 and drops by 3 after each completed combat round (min 1). With
+ * the rule OFF (or no combat) it is always the flat 10.
+ */
+export function currentSurrenderGoldCost(state: GameState): number {
+  if (!houseRuleEnabled(state, "polish-reduced-surrender")) {
+    return SURRENDER_GOLD_COST;
+  }
+  const round = state.combat?.round ?? 1;
+  return polishSurrenderGoldCost(round);
+}
+
+/**
  * Whether the "defeat every enemy hero" path can win this game. Shared by the
  * Grail Hunt and Dragon Hunt modes — both let a player win by military
  * dominance even if they never reach the objective creature bank.
@@ -4414,6 +4461,38 @@ export function processPendingVisit(state: GameState): void {
       case "REVEAL_UNTIL_MINOR_ARTIFACT":
         revealUntilMinorArtifact(state, visit.playerId);
         break;
+      case "DRAW_CHOOSE_MINOR_ARTIFACTS":
+        openDrawChooseMinorArtifacts(state, visit, step.drawCount, step.keepCount);
+        break;
+      case "RESOLVE_DRAW_CHOOSE_MINOR": {
+        const player = state.players[visit.playerId];
+        const deck = state.decks[step.deckId];
+        if (player) {
+          const keepSet = new Set(step.keepIndexes);
+          const returned: CardId[] = [];
+          for (let i = 0; i < step.drawn.length; i += 1) {
+            const cardId = step.drawn[i]!;
+            if (keepSet.has(i)) {
+              player.hand.push(cardId);
+            } else {
+              returned.push(cardId);
+            }
+          }
+          if (deck && returned.length > 0) {
+            // Under the draw pile (index 0 = bottom).
+            deck.drawPile = [...returned, ...deck.drawPile];
+          }
+          appendEvent(state, {
+            type: "DECK_SEARCH_RESOLVED",
+            playerId: visit.playerId,
+            deckId: step.deckId,
+            choiceId: `polish_minor_keep_${nextEventNumber(state)}`,
+            pick: "revealed",
+            discardedCardIds: returned
+          });
+        }
+        break;
+      }
       case "RESHUFFLE_ARTIFACT_DECKS":
         reshuffleArtifactDecksAfterStartingBonus(state);
         break;
@@ -4612,6 +4691,12 @@ export function processPendingVisit(state: GameState): void {
         state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== step.effectId);
         break;
       case "DRAW_PANDORA_CARD": {
+        // Polish Pandora Search: Search(N) choose 1 (N=2 on IV–V, N=3 on VI–VII;
+        // with polish-random-artifacts a "+1" die raises N by 1). Off: draw 1.
+        if (houseRuleEnabled(state, "polish-pandora-search")) {
+          openPolishPandoraSearch(state, visit);
+          break;
+        }
         const player = state.players[visit.playerId];
         const drawn = adventure.pandoraDeck?.pop();
         if (player && drawn) {
@@ -4622,6 +4707,33 @@ export function processPendingVisit(state: GameState): void {
             cardId: drawn
           });
         }
+        break;
+      }
+      case "RESOLVE_PANDORA_SEARCH": {
+        const player = state.players[visit.playerId];
+        if (player) {
+          const keepSet = new Set(step.keepIndexes);
+          const returned: CardId[] = [];
+          for (let i = 0; i < step.drawn.length; i += 1) {
+            const cardId = step.drawn[i]!;
+            if (keepSet.has(i)) {
+              player.hand.push(cardId);
+              appendEvent(state, {
+                type: "PANDORA_CARD_DRAWN",
+                playerId: visit.playerId,
+                cardId
+              });
+            } else {
+              returned.push(cardId);
+            }
+          }
+          // Unchosen cards go under the Pandora deck (bottom).
+          if (returned.length > 0 && adventure.pandoraDeck) {
+            adventure.pandoraDeck = [...returned, ...adventure.pandoraDeck];
+          }
+        }
+        // Die was for the Search size only; clear any residual random-artifact latch.
+        clearPolishArtifactAccess(state);
         break;
       }
       case "NECROMANCY_FETCH":
@@ -4698,11 +4810,15 @@ export function processPendingVisit(state: GameState): void {
         // The Factory "shovel": draw the top Artifact card the visitor can take
         // (across the split minor/major/relic decks in BINH mode, else the single
         // "artifacts" deck), then let them keep it or discard it.
-        const deckIds = state.decks["artifacts"]
+        // Polish Random Artifacts: roll first and only dig from allowed tiers.
+        const digHero = state.heroes[visit.heroId] ?? getMainHero(state, visit.playerId);
+        maybeApplyPolishRandomArtifactRoll(state, visit.playerId, digHero, "tile");
+        const deckIds = (state.decks["artifacts"]
           ? ["artifacts"]
-          : ["artifacts-minor", "artifacts-major", "artifacts-relic"];
+          : ["artifacts-minor", "artifacts-major", "artifacts-relic"]
+        ).filter((deckId) => polishArtifactDeckAllowed(state, deckId));
         let dug: string | null = null;
-        let dugDeckId = deckIds[0];
+        let dugDeckId = deckIds[0] ?? "artifacts";
         for (const deckId of deckIds) {
           dug = drawTopOfSharedDeck(state, deckId, visit.playerId);
           if (dug) {
@@ -4711,6 +4827,7 @@ export function processPendingVisit(state: GameState): void {
           }
         }
         if (!dug) {
+          clearPolishArtifactAccess(state);
           break;
         }
         const name = cardLibrary[dug]?.name ?? dug;
@@ -4730,11 +4847,13 @@ export function processPendingVisit(state: GameState): void {
           player.hand.push(step.cardId);
           appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: true });
         }
+        clearPolishArtifactAccess(state);
         break;
       }
       case "DIG_ARTIFACT_DISCARD": {
         state.decks[step.deckId]?.discardPile.push(step.cardId);
         appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: false });
+        clearPolishArtifactAccess(state);
         break;
       }
       case "GRANT_MOVE_THROUGH": {
@@ -5650,16 +5769,24 @@ export function processPendingVisit(state: GameState): void {
         if (!player) {
           break;
         }
+        // Polish Random Artifacts: roll once for this browse (field/tile band).
+        const marketHero = state.heroes[visit.heroId] ?? getMainHero(state, visit.playerId);
+        maybeApplyPolishRandomArtifactRoll(state, visit.playerId, marketHero, "tile");
         const options = blackMarketOffers(state)
-          .filter((offer) => hasResources(player, { gold: offer.price }))
+          .filter(
+            (offer) =>
+              hasResources(player, { gold: offer.price }) &&
+              polishArtifactTierAllowed(state, cardLibrary[offer.cardId]?.artifactTier)
+          )
           .map((offer) => ({
             label: `Buy ${cardLibrary[offer.cardId]?.name ?? offer.cardId} (${offer.price} gold)`,
             steps: [{ type: "BLACK_MARKET_BUY", cardId: offer.cardId, deckId: offer.deckId, price: offer.price } as VisitStep]
           }));
         if (options.length === 0) {
+          clearPolishArtifactAccess(state);
           break;
         }
-        options.push({ label: "Leave", steps: [] });
+        options.push({ label: "Leave", steps: [{ type: "CLEAR_POLISH_ARTIFACT_ACCESS" } as VisitStep] });
         visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Black Market: buy an artifact", options });
         break;
       }
@@ -5668,13 +5795,18 @@ export function processPendingVisit(state: GameState): void {
         const deck = state.decks[step.deckId];
         const index = deck?.discardPile.lastIndexOf(step.cardId) ?? -1;
         if (!player || !deck || index === -1 || !hasResources(player, { gold: step.price })) {
+          clearPolishArtifactAccess(state);
           break;
         }
         spendResources(state, visit.playerId, { gold: step.price }, "Black Market");
         deck.discardPile.splice(index, 1);
         player.hand.push(step.cardId);
+        clearPolishArtifactAccess(state);
         break;
       }
+      case "CLEAR_POLISH_ARTIFACT_ACCESS":
+        clearPolishArtifactAccess(state);
+        break;
       case "ELEMENTAL_CONFLUX": {
         const candidates = elementalConfluxCandidates(state, visit.playerId);
         if (candidates.length === 0) {
@@ -8491,7 +8623,13 @@ const ARTIFACT_DECK_IDS = ["artifacts", "artifacts-minor", "artifacts-major", "a
  * choice prompts). Campaign scenarios replace these with unique bonuses —
  * this digital build has no campaign scenarios, so every table uses these.
  */
-export function startingBonusDescription(difficulty: GameDifficulty): string {
+export function startingBonusDescription(
+  difficulty: GameDifficulty,
+  options?: { polishReduced?: boolean }
+): string {
+  if (options?.polishReduced && difficulty !== "impossible") {
+    return polishReducedStartingBonusDescription(difficulty);
+  }
   switch (difficulty) {
     case "easy":
       return "Roll 2 Resource Dice and receive Resources from both — OR — Search (2) the Artifact Deck, twice.";
@@ -8508,8 +8646,17 @@ export function startingBonusDescription(difficulty: GameDifficulty): string {
  * Visit steps for the printed starting bonus at `difficulty`. Null on Impossible
  * (no bonus). Artifacts go to hand (via Search / reveal), never into the
  * Starting Deck. After any Artifact Search the Artifact decks reshuffle.
+ *
+ * With the Polish reduced-starting-bonus house rule, Easy/Normal/Hard all use
+ * the same fixed reduced choice (see polish-house-rules.ts).
  */
-export function startingBonusVisitSteps(difficulty: GameDifficulty): VisitStep[] | null {
+export function startingBonusVisitSteps(
+  difficulty: GameDifficulty,
+  options?: { polishReduced?: boolean }
+): VisitStep[] | null {
+  if (options?.polishReduced && difficulty !== "impossible") {
+    return polishReducedStartingBonusVisitSteps();
+  }
   switch (difficulty) {
     case "easy":
       return [
@@ -8592,6 +8739,168 @@ export function reshuffleArtifactDecksAfterStartingBonus(state: GameState): void
       deck.discardPile.push(top);
     }
   }
+}
+
+/**
+ * Polish Pandora Search: draw Search(N) Pandora cards, keep 1, return the rest
+ * under the deck. N = 2 on IV–V / 3 on VI–VII; with polish-random-artifacts a
+ * "+1" die raises N by 1.
+ */
+export function openPolishPandoraSearch(state: GameState, visit: PendingVisit): void {
+  const adventure = state.adventure;
+  const player = state.players[visit.playerId];
+  if (!adventure || !player) {
+    return;
+  }
+
+  const band = polishArtifactBandForField(state, visit.fieldId);
+  let dieFace: number | null = null;
+  if (houseRuleEnabled(state, "polish-random-artifacts")) {
+    // Roll for the Search(X+1) upgrade only — do not leave a tier access latch
+    // that would poison a later Artifact Search on the same turn. We store the
+    // face, then clear access after reading it.
+    const hero = state.heroes[visit.heroId] ?? getMainHero(state, visit.playerId);
+    dieFace = maybeApplyPolishRandomArtifactRoll(state, visit.playerId, hero, "tile");
+    // Keep only the die face for the count; drop the access override immediately
+    // so it does not gate a following Artifact Search this turn.
+    const face = adventure.polishRandomArtifactDie ?? dieFace;
+    clearPolishArtifactAccess(state);
+    dieFace = face;
+  }
+
+  const count = polishPandoraSearchCount(band, dieFace);
+  const drawn: CardId[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const cardId = adventure.pandoraDeck?.pop();
+    if (cardId) {
+      drawn.push(cardId);
+    }
+  }
+  if (drawn.length === 0) {
+    return;
+  }
+  if (drawn.length === 1) {
+    player.hand.push(drawn[0]!);
+    appendEvent(state, {
+      type: "PANDORA_CARD_DRAWN",
+      playerId: visit.playerId,
+      cardId: drawn[0]!
+    });
+    return;
+  }
+
+  visit.steps.unshift({
+    type: "CHOOSE_ONE",
+    prompt: `Pandora Search (${drawn.length}): choose 1 card to keep`,
+    options: drawn.map((cardId, index) => ({
+      label: `Keep ${cardLibrary[cardId]?.name ?? cardId}`,
+      steps: [
+        {
+          type: "RESOLVE_PANDORA_SEARCH" as const,
+          keepIndexes: [index],
+          drawn
+        }
+      ]
+    }))
+  });
+}
+
+/**
+ * Polish reduced starting bonus: draw `drawCount` Minor Artifacts from the
+ * Minor draw pile (or combined Artifact deck, filtering to minors) — never the
+ * discard top — then open a visit CHOOSE_ONE so the player keeps `keepCount`
+ * and the rest go under the draw pile (not discarded).
+ */
+export function openDrawChooseMinorArtifacts(
+  state: GameState,
+  visit: PendingVisit,
+  drawCount: number,
+  keepCount: number
+): void {
+  const player = state.players[visit.playerId];
+  if (!player) {
+    return;
+  }
+
+  const deckId = state.decks["artifacts-minor"] ? "artifacts-minor" : "artifacts";
+  const deck = state.decks[deckId];
+  if (!deck) {
+    return;
+  }
+
+  const drawn: CardId[] = [];
+  // Prefer drawing straight off the Minor pile. On a combined deck, skip
+  // non-minors back under the pile so we never offer a Major/Relic here.
+  const skipped: CardId[] = [];
+  while (drawn.length < drawCount && deck.drawPile.length > 0) {
+    const cardId = deck.drawPile.pop() as CardId;
+    const card = cardLibrary[cardId];
+    const isMinor = card?.kind === "artifact" && (card.artifactTier ?? "minor") === "minor";
+    if (isMinor && canAcquireSharedDeckCard(state, visit.playerId, deckId, cardId)) {
+      drawn.push(cardId);
+    } else {
+      skipped.push(cardId);
+    }
+  }
+  // Put non-minors back under the draw pile (index 0 = bottom).
+  if (skipped.length > 0) {
+    deck.drawPile = [...skipped, ...deck.drawPile];
+  }
+
+  if (drawn.length === 0) {
+    return;
+  }
+
+  if (drawn.length <= keepCount) {
+    for (const cardId of drawn) {
+      player.hand.push(cardId);
+    }
+    appendEvent(state, {
+      type: "DECK_SEARCH_RESOLVED",
+      playerId: visit.playerId,
+      deckId,
+      choiceId: `polish_minor_draw_${nextEventNumber(state)}`,
+      pick: "revealed",
+      discardedCardIds: []
+    });
+    return;
+  }
+
+  // Offer every single-card keep combination (keepCount is 1 in the printed
+  // reduced bonus; generalise for a future keep-2 if needed).
+  const options =
+    keepCount === 1
+      ? drawn.map((cardId, index) => ({
+          label: `Keep ${cardLibrary[cardId]?.name ?? cardId}`,
+          steps: [
+            {
+              type: "RESOLVE_DRAW_CHOOSE_MINOR" as const,
+              deckId,
+              keepIndexes: [index],
+              drawn
+            }
+          ]
+        }))
+      : [
+          {
+            label: `Keep the first ${keepCount}`,
+            steps: [
+              {
+                type: "RESOLVE_DRAW_CHOOSE_MINOR" as const,
+                deckId,
+                keepIndexes: drawn.slice(0, keepCount).map((_, i) => i),
+                drawn
+              }
+            ]
+          }
+        ];
+
+  // Unshift so the pick resolves before the rest of the visit queue.
+  visit.steps.unshift({
+    type: "CHOOSE_ONE",
+    prompt: `Choose ${keepCount} of ${drawn.length} Minor Artifacts to keep`,
+    options
+  });
 }
 
 /**
@@ -12670,13 +12979,23 @@ function drawEventFamilyCard(
   // single Artifact deck instead redraws past Relic cards below (the `accept`
   // filter).
   const relicLocked = family === "artifacts" && eventRelicsLocked(state);
+  // Polish Random Artifacts: when drawing Artifacts for a player, roll once
+  // with the hero-level band (merchant / card-effect reading) and drop forbidden
+  // tier piles from the weighted pick.
+  if (family === "artifacts" && playerId) {
+    maybeApplyPolishRandomArtifactRoll(state, playerId, getMainHero(state, playerId), "level");
+  }
   const piles = eventFamilyDrawableDeckIds(state, family)
+    .filter((deckId) => (family === "artifacts" ? polishArtifactDeckAllowed(state, deckId) : true))
     .map((deckId) => {
       const deck = state.decks[deckId];
       return { deckId, size: (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0) };
     })
     .filter((pile) => pile.size > 0);
   if (piles.length === 0) {
+    if (family === "artifacts" && playerId) {
+      clearPolishArtifactAccess(state);
+    }
     return null;
   }
 
@@ -12697,11 +13016,24 @@ function drawEventFamilyCard(
       state,
       pile.deckId,
       playerId,
-      relicLocked ? (candidate) => cardLibrary[candidate]?.artifactTier !== "relic" : undefined
+      (candidate) => {
+        if (relicLocked && cardLibrary[candidate]?.artifactTier === "relic") {
+          return false;
+        }
+        if (family === "artifacts" && !polishArtifactTierAllowed(state, cardLibrary[candidate]?.artifactTier)) {
+          return false;
+        }
+        return true;
+      }
     );
     if (cardId) {
+      // Leave access set until the caller finishes the acquisition; shops that
+      // draw multiple cards re-use the same roll via the early-return guard.
       return { cardId, deckId: pile.deckId };
     }
+  }
+  if (family === "artifacts" && playerId) {
+    clearPolishArtifactAccess(state);
   }
   return null;
 }
@@ -13402,6 +13734,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
     }
     case "EVENT_TAKE_CARD": {
       if (!player || (step.cost && !hasResources(player, step.cost))) {
+        clearPolishArtifactAccess(state);
         break;
       }
       if (step.cost) {
@@ -13425,6 +13758,10 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         `${eventPlayerName(state, visit.playerId)} takes ${cardLibrary[step.cardId]?.name ?? step.cardId}.`,
         visit.playerId
       );
+      // Polish Random Artifacts: one roll per Messenger/market acquisition.
+      if (cardLibrary[step.cardId]?.kind === "artifact") {
+        clearPolishArtifactAccess(state);
+      }
       break;
     }
     case "EVENT_RETURN_CARDS": {
@@ -13451,6 +13788,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
             deck.drawPile.unshift(entry.cardId);
             break;
         }
+      }
+      if (step.cards.some((entry) => cardLibrary[entry.cardId]?.kind === "artifact")) {
+        clearPolishArtifactAccess(state);
       }
       break;
     }
@@ -13954,6 +14294,8 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       if (!player || !events || events.pool.length === 0) {
         break;
       }
+      // Polish Random Artifacts: merchant path uses hero-level band.
+      maybeApplyPolishRandomArtifactRoll(state, visit.playerId, getMainHero(state, visit.playerId), "level");
       const options: { label: string; steps: VisitStep[] }[] = [];
       const seen = new Set<CardId>();
       for (const entry of events.pool) {
@@ -13962,6 +14304,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         }
         seen.add(entry.cardId);
         const tier = cardLibrary[entry.cardId]?.artifactTier ?? "minor";
+        if (!polishArtifactTierAllowed(state, tier)) {
+          continue;
+        }
         const price = EVENT_ARTIFACT_PRICES[tier];
         if (
           canAcquireSharedDeckCard(state, visit.playerId, entry.deckId, entry.cardId) &&
@@ -13981,6 +14326,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       // and buying it ends this player's shopping.
       if (!step.boughtFromPool) {
         for (const deckId of eventFamilyDeckIds(state, "artifacts")) {
+          if (!polishArtifactDeckAllowed(state, deckId)) {
+            continue;
+          }
           const pile = state.decks[deckId]?.discardPile ?? [];
           const top = pile.length > 0 ? pile[pile.length - 1] : null;
           if (!top) {
@@ -13989,6 +14337,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
           const tier = cardLibrary[top]?.artifactTier ?? "minor";
           // The early-game Relic lock covers the discard-top offer too.
           if (tier === "relic" && eventRelicsLocked(state)) {
+            continue;
+          }
+          if (!polishArtifactTierAllowed(state, tier)) {
             continue;
           }
           const price = EVENT_ARTIFACT_PRICES[tier];
@@ -14001,9 +14352,13 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         }
       }
       if (options.length === 0) {
+        clearPolishArtifactAccess(state);
         break;
       }
-      options.push({ label: "Pass the cards on", steps: [] });
+      options.push({
+        label: "Pass the cards on",
+        steps: [{ type: "CLEAR_POLISH_ARTIFACT_ACCESS" } as VisitStep]
+      });
       visit.steps.unshift({
         type: "CHOOSE_ONE",
         prompt: "Artifact Merchant: buy any number (minor 3 / major 5 / relic 7 gold)",
