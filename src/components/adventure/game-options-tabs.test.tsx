@@ -52,7 +52,7 @@ describe("Game options — tabbed layout", () => {
     expect(screen.getByRole("button", { name: /Split Spell\/Artifact decks by tier/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Estates nerf/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Gelu IV Sharpshooter buff/ })).toBeTruthy();
-    expect(screen.getAllByText(/Polish house rules/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Polish house rule type 1/i).length).toBeGreaterThan(0);
     expect(document.querySelector(".polishRuleCrest")?.getAttribute("src")).toContain(
       "polish-house-rules-flag.webp",
     );
