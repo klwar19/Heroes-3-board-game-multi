@@ -1755,10 +1755,13 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
 
     expect(onChange).toHaveBeenCalled();
     expect(onObjectsChange).not.toHaveBeenCalled();
+    // Canonical multi-token form: the write lands in plan.tokens (legacy
+    // singular cleared) — the engine folds both via planTokens.
     const f1 = tiles.find((plan) => plan.tileDefId === "F1");
-    expect(f1?.token?.kind).toBe("gate");
-    expect(f1?.token?.pair).toBe(1);
-    expect(typeof f1?.token?.slot).toBe("number");
+    expect(f1?.token).toBeUndefined();
+    expect(f1?.tokens?.[0]?.kind).toBe("gate");
+    expect(f1?.tokens?.[0]?.pair).toBe(1);
+    expect(typeof f1?.tokens?.[0]?.slot).toBe("number");
   });
 
   it("arms a Gate and reserves the clicked FACE-DOWN tile hex", () => {
@@ -1777,7 +1780,8 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
 
     expect(onObjectsChange).not.toHaveBeenCalled();
     const far = tiles.find((plan) => plan.faceDown);
-    expect(far?.token).toEqual({ kind: "gate", pair: 2, slot: 0 });
+    expect(far?.token).toBeUndefined();
+    expect(far?.tokens).toEqual([{ kind: "gate", pair: 2, slot: 0 }]);
   });
 
   it("arms a Gate and places a STANDALONE object on an off-tile hex", () => {
@@ -1812,20 +1816,33 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     fireEvent.click(container.querySelector(".designerObjectSlot.tileSlot")!);
 
     const f1 = tiles.find((plan) => plan.tileDefId === "F1");
-    expect(f1?.token?.kind).toBe("monolith");
-    expect(f1?.token).not.toHaveProperty("pair");
+    expect(f1?.tokens?.[0]?.kind).toBe("monolith");
+    expect(f1?.tokens?.[0]).not.toHaveProperty("pair");
   });
 
-  it("a tile already carrying a token offers NO tile candidate (one token per tile — refusal)", () => {
-    const withToken: CustomMapTilePlan[] = [
+  it("a tile already carrying a token offers only its FREE hexes (multi-token: same slot never stacks)", () => {
+    // Multi hex placements: a second token may join the tile on a DIFFERENT
+    // slot; the occupied slot itself is never offered.
+    let tiles: CustomMapTilePlan[] = [
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: 0 } }
     ];
-    const container = renderWithObjects(withToken, []);
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      tiles = next;
+    });
+    const container = renderWithObjects(tiles, [], vi.fn(), onChange);
     fireEvent.click(container.querySelector('.designerObjectButton[data-gate-pair="1"]')!);
-    // The only tile is taken → no on-tile candidate; only off-tile standalones glow.
-    expect(container.querySelector(".designerObjectSlot.tileSlot"), "no tile candidate on a taken tile").toBeNull();
-    expect(container.querySelector(".designerObjectSlot.faceDownTile")).toBeNull();
+    const slots = [...container.querySelectorAll(".designerObjectSlot.tileSlot")];
+    expect(slots.length, "free legal hexes are still offered").toBeGreaterThan(0);
+    fireEvent.click(slots[0]);
+    const f1 = tiles.find((plan) => plan.tileDefId === "F1");
+    const tokenList = f1?.tokens ?? [];
+    // The legacy monolith folded in + the new gate, on DISTINCT slots.
+    expect(tokenList).toHaveLength(2);
+    expect(tokenList.some((t) => t.kind === "monolith" && t.slot === 0)).toBe(true);
+    const gate = tokenList.find((t) => t.kind === "gate");
+    expect(gate?.pair).toBe(1);
+    expect(gate?.slot).not.toBe(0);
   });
 
   it("arms a Monolith and places a STANDALONE object on an off-tile hex", () => {
@@ -2137,11 +2154,13 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
     const monoSlots = legalTokenSlotsForTileDef(allTileDefinitions["F1"], "monolith");
     expect(monoSlots.length, "F1 has >1 monolith slot").toBeGreaterThan(1);
     fireEvent.change(select, { target: { value: String(monoSlots[1]) } });
-    expect(latest[1].token).toEqual({ kind: "monolith", slot: monoSlots[1] });
+    expect(latest[1].tokens).toEqual([{ kind: "monolith", slot: monoSlots[1] }]);
+    expect(latest[1].token, "canonical array form — legacy singular cleared").toBeUndefined();
 
     // Remove clears the token AND closes the panel.
     fireEvent.click(within(panel).getByRole("button", { name: /Remove the Monolith token/i }));
     expect(latest[1].token, "token removed").toBeUndefined();
+    expect(latest[1].tokens, "token list removed").toBeUndefined();
     expect(container.querySelector(".designerTokenPopover"), "panel closed after remove").toBeNull();
   });
 
@@ -2199,7 +2218,7 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       fireEvent.pointerMove(window, { pointerId: 6, clientX: dropAt.x, clientY: dropAt.y });
       fireEvent.pointerUp(window, { pointerId: 6 });
 
-      expect(latest[1].token).toEqual({ kind: "monolith", slot: toSlot });
+      expect(latest[1].tokens).toEqual([{ kind: "monolith", slot: toSlot }]);
     } finally {
       restore();
     }
@@ -2239,7 +2258,7 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       expect(reticle?.getAttribute("data-space-id")).toBe(hexSpaceId(footprint[targetSlot]));
 
       fireEvent.pointerUp(window, { pointerId: 61 });
-      expect(latest[1].token).toStrictEqual({ kind: "monolith", slot: targetSlot });
+      expect(latest[1].tokens).toStrictEqual([{ kind: "monolith", slot: targetSlot }]);
     } finally {
       restore();
     }
@@ -2273,7 +2292,7 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
 
     const rotated = latest[1];
     expect(rotated.rotation).toBe(1);
-    expect(tileFootprint(centre, rotated.rotation ?? 0)[rotated.token!.slot!]).toEqual(originalHex);
+    expect(tileFootprint(centre, rotated.rotation ?? 0)[rotated.tokens![0].slot!]).toEqual(originalHex);
   });
 
   it("dragging a token to ANOTHER face-up tile is ONE atomic onChange (source clears, target gains)", () => {
@@ -2309,7 +2328,8 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
 
       expect(onChange.mock.calls.length - callsBefore, "exactly one atomic emission").toBe(1);
       expect(latest[1].token, "source tile lost its token").toBeUndefined();
-      expect(latest[2].token, "target tile gained it").toEqual({ kind: "monolith", slot: 0 });
+      expect(latest[1].tokens, "source list cleared").toBeUndefined();
+      expect(latest[2].tokens, "target tile gained it").toEqual([{ kind: "monolith", slot: 0 }]);
     } finally {
       restore();
     }
@@ -2384,33 +2404,54 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
 
       expect(onChange.mock.calls.length - callsBefore, "exactly one atomic emission").toBe(1);
       expect(latest[1].token, "source face-down tile lost its token").toBeUndefined();
+      expect(latest[1].tokens, "source list cleared").toBeUndefined();
       // Pending shape only — NO slot key (toStrictEqual rejects a stray slot: undefined).
-      expect(latest[2].token, "target gained the exact centre slot").toStrictEqual({ kind: "monolith", slot: 0 });
+      expect(latest[2].tokens, "target gained the exact centre slot").toStrictEqual([{ kind: "monolith", slot: 0 }]);
     } finally {
       restore();
     }
   });
 
-  it("a FACE-DOWN target that already carries a token is refused — no move (control)", () => {
+  it("a FACE-DOWN target's OCCUPIED hex refuses the drop; a second token may join on a free hex", () => {
     const restore = installIdentitySvgPolyfills();
     try {
+      // Multi-token tiles: the target's pinned CENTRE hex (slot 0) is occupied,
+      // so dropping exactly there is refused — never stacked on one hex.
       const onChange = vi.fn();
-      // Both face-down tiles carry a Monolith → the target is never a candidate.
       const { container } = render(
         <MapDesigner
           scenarioId="skirmish"
           customMap={[
             { row: town.row, col: town.col, group: "starting", faceDown: false },
-            { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith" } },
-            { row: spots[3].row, col: spots[3].col, group: "near", faceDown: true, token: { kind: "monolith" } }
+            { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith", slot: 0 } },
+            { row: spots[3].row, col: spots[3].col, group: "near", faceDown: true, token: { kind: "monolith", slot: 0 } }
           ]}
           onChange={onChange}
           hexSize={HEX}
         />
       );
-
       dragTokenCentre(container, spots[0], spots[3], 12);
-      expect(onChange, "occupied face-down target refused").not.toHaveBeenCalled();
+      expect(onChange, "occupied face-down hex refused").not.toHaveBeenCalled();
+      cleanup();
+
+      // Control (the multi-token feature): a FREE hex of the same occupied tile
+      // accepts the drop — the tile then carries BOTH tokens on distinct slots.
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true, token: { kind: "monolith", slot: 0 } },
+        { row: spots[3].row, col: spots[3].col, group: "near", faceDown: true, token: { kind: "monolith", slot: 0 } }
+      ];
+      const accept = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const ok = render(<MapDesigner scenarioId="skirmish" hexSize={HEX} onChange={accept} customMap={latest} />);
+      const freeHex = tileFootprint(spots[3], 0)[2];
+      dragTokenCentre(ok.container, spots[0], freeHex, 13);
+      expect(latest[1].tokens ?? latest[1].token, "source cleared").toBeUndefined();
+      expect(latest[2].tokens).toStrictEqual([
+        { kind: "monolith", slot: 0 },
+        { kind: "monolith", slot: 2 }
+      ]);
     } finally {
       restore();
     }
@@ -2438,10 +2479,9 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       dragTokenCentre(container, spots[0], dropHex, 13);
 
       expect(latest[1].token, "source face-down tile cleared").toBeUndefined();
-      expect(latest[2].token, "landed on the face-up slot WITH a slot key").toStrictEqual({
-        kind: "monolith",
-        slot: toSlot
-      });
+      expect(latest[2].tokens, "landed on the face-up slot WITH a slot key").toStrictEqual([
+        { kind: "monolith", slot: toSlot }
+      ]);
     } finally {
       restore();
     }
@@ -2473,10 +2513,9 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       dragTokenCentre(container, spots[0], spots[3], 14);
 
       expect(latest[1].token, "source face-up tile cleared").toBeUndefined();
-      expect(latest[2].token, "centre slot reserved on the face-down target").toStrictEqual({
-        kind: "monolith",
-        slot: 0
-      });
+      expect(latest[2].tokens, "centre slot reserved on the face-down target").toStrictEqual([
+        { kind: "monolith", slot: 0 }
+      ]);
     } finally {
       restore();
     }
@@ -2529,10 +2568,9 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       const ok = render(<MapDesigner scenarioId="skirmish" hexSize={HEX} onChange={accept} customMap={latest} />);
       dragTokenCentre(ok.container, spots[0], spots[3], 16);
       expect(latest[1].token, "whirlpool left the source").toBeUndefined();
-      expect(latest[2].token, "whirlpool landed on the sea face-down tile").toStrictEqual({
-        kind: "whirlpool",
-        slot: 0
-      });
+      expect(latest[2].tokens, "whirlpool landed on the sea face-down tile").toStrictEqual([
+        { kind: "whirlpool", slot: 0 }
+      ]);
     } finally {
       restore();
     }
@@ -2571,10 +2609,9 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
       const ok = render(<MapDesigner scenarioId="skirmish" hexSize={HEX} onChange={accept} customMap={latest} />);
       dragTokenCentre(ok.container, spots[0], spots[3], 18);
       expect(latest[1].token, "monolith left the source").toBeUndefined();
-      expect(latest[2].token, "monolith landed on the land face-down tile").toStrictEqual({
-        kind: "monolith",
-        slot: 0
-      });
+      expect(latest[2].tokens, "monolith landed on the land face-down tile").toStrictEqual([
+        { kind: "monolith", slot: 0 }
+      ]);
     } finally {
       restore();
     }
@@ -3215,38 +3252,63 @@ describe("MapDesigner — canonical teleporter conversions (token ⇄ standalone
       expect(objs).toHaveLength(0);
       // …and the canonical on-tile token is written, pair preserved (never a tile-slot object).
       expect(onChange).toHaveBeenCalled();
-      expect(tiles.find((plan) => plan.tileDefId === "F1")?.token).toMatchObject({ kind: "gate", pair: 1 });
+      expect(tiles.find((plan) => plan.tileDefId === "F1")?.tokens?.[0]).toMatchObject({ kind: "gate", pair: 1 });
     } finally {
       restore();
     }
   });
 
-  it("CONTROL: dropping an object onto a tile that ALREADY carries a token commits nothing (one token per tile)", () => {
+  it("CONTROL: an object dropped on a tile's OCCUPIED hex is refused; a FREE slot appends a second token", () => {
     const restore = installIdentitySvgPolyfills();
     try {
       const off = offTileHexNearFar();
-      const customMap: CustomMapTilePlan[] = [
+      // Multi-token tiles: the occupied HEX refuses (never stacked)…
+      const refuseChange = vi.fn();
+      const refuseObjects = vi.fn();
+      const refused = renderConv(
+        [
+          { row: town.row, col: town.col, group: "starting", faceDown: false },
+          { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: monoSlots[0] } }
+        ],
+        [{ kind: "monolith", placement: { type: "standalone", row: off.row, col: off.col } }],
+        refuseChange,
+        refuseObjects
+      );
+      const refusedToken = refused.querySelector(".designerObjectToken")!;
+      const grabAt = hexToPixel(off, HEX);
+      const occupiedAt = hexToPixel(tileFootprint(far, 0)[monoSlots[0]], HEX);
+      fireEvent.pointerDown(refusedToken, { button: 0, pointerId: 33, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 33, clientX: occupiedAt.x, clientY: occupiedAt.y });
+      fireEvent.pointerUp(window, { pointerId: 33 });
+      expect(refuseChange).not.toHaveBeenCalled();
+      expect(refuseObjects).not.toHaveBeenCalled();
+      cleanup();
+
+      // …while a FREE legal slot converts the object into a SECOND tile token.
+      let tiles: CustomMapTilePlan[] = [
         { row: town.row, col: town.col, group: "starting", faceDown: false },
         { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "monolith", slot: monoSlots[0] } }
       ];
-      const objects: CustomMapObject[] = [
+      let objs: CustomMapObject[] = [
         { kind: "monolith", placement: { type: "standalone", row: off.row, col: off.col } }
       ];
-      const onChange = vi.fn();
-      const onObjectsChange = vi.fn();
-      const container = renderConv(customMap, objects, onChange, onObjectsChange);
-
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        tiles = next;
+      });
+      const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+        objs = next;
+      });
+      const container = renderConv(tiles, objs, onChange, onObjectsChange);
       const token = container.querySelector(".designerObjectToken")!;
-      const grabAt = hexToPixel(off, HEX);
-      // Drop on a DIFFERENT F1 slot — the tile is taken, so it is no target.
-      const dropAt = hexToPixel(tileFootprint(far, 0)[monoSlots[1] ?? monoSlots[0]], HEX);
-      fireEvent.pointerDown(token, { button: 0, pointerId: 33, clientX: grabAt.x, clientY: grabAt.y });
-      fireEvent.pointerMove(window, { pointerId: 33, clientX: dropAt.x, clientY: dropAt.y });
-      fireEvent.pointerUp(window, { pointerId: 33 });
-
-      // The taken tile is off-limits and a tile hex is no standalone → no commit.
-      expect(onChange).not.toHaveBeenCalled();
-      expect(onObjectsChange).not.toHaveBeenCalled();
+      const freeAt = hexToPixel(tileFootprint(far, 0)[monoSlots[1] ?? monoSlots[0]], HEX);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 34, clientX: grabAt.x, clientY: grabAt.y });
+      fireEvent.pointerMove(window, { pointerId: 34, clientX: freeAt.x, clientY: freeAt.y });
+      fireEvent.pointerUp(window, { pointerId: 34 });
+      expect(objs, "the standalone object converted").toHaveLength(0);
+      expect(tiles[1].tokens).toStrictEqual([
+        { kind: "monolith", slot: monoSlots[0] },
+        { kind: "monolith", slot: monoSlots[1] ?? monoSlots[0] }
+      ]);
     } finally {
       restore();
     }

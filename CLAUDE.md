@@ -1633,6 +1633,43 @@ What runs (each with a failing-if-removed test):
   pick, the size-2 lone-carved+pending network, per-color/monolith isolation
   CONTROLs, and the mid-flow elimination auto-place).
 
+## Field Overrides & multi-pin tiles (global system; Anime mod content) — what runs vs. limits
+
+`GameSetupOptions.fieldOverrides` (default OFF; auto-ON when a designed map
+carries `plan.fieldOverride(s)` pins). Mechanism is CORE (`src/data/map/
+field-overrides.ts` registry + `src/engine/field-overrides.ts` +
+`tile-hex-placements.ts`); the Anime mod only registers content kinds
+(`src/data/anime/field-overrides.ts` — 5 Ninefold objects whose locations are
+always in `locationDefinitions`, visits ride the normal interaction pipeline;
+`tran_phap_truyen_tong` joins the real Monolith network). On tile reveal the
+override places FIRST (before Subterranean Gates → Creature Banks → teleport
+tokens), pool draws obey `fieldOverridePlacement` (random / manual /
+manual-or-refuse; designer pins never refuse), and every Far/Near/Center
+face-down tile gets ≥1 pool draw while content is available. A tile may carry
+MULTIPLE overrides + tokens (`plan.tokens` / `plan.fieldOverrides`, canonical
+arrays; legacy singulars fold in) on DISTINCT slots — the engine drains the
+whole `pendingTokens` / `pendingFieldOverrides` queues on reveal. A carved
+override hex is Location-Token-protected (no token/gate/second override may
+overwrite it — `isFieldOverrideLocation` at every legality gate), and
+elimination mid-placement-choice drops the queue and auto-places waiting
+tokens (never strands the reveal chain). Pinned in
+`src/engine/field-overrides.test.ts`, `tile-hex-placements.test.ts`,
+`map-tokens.test.ts` ("multi-token tiles"), `map-registry.test.ts`,
+`map-designer.test.tsx` (each behaviour mutation-checked).
+
+Leading with what does NOT run / deliberate limits:
+- **Pool override kinds stamped on face-down tiles are readable in raw
+  snapshots** (like designer tokens; no player-view masking in V1).
+- **Anime gameplay modules beyond Field Overrides are NOT implemented** —
+  `AnimeModOptions` flags (towns, neutrals, cultivation, …) exist as types
+  and lobby state only; `docs/anime-mod-plan.md` is the design contract.
+- **No standalone (off-tile) override objects** — on-tile pins only.
+- **`linh_tuyen` is +1 movement only** (cleanse not wired, documented at the
+  definition); no override kind may claim `starting` tiles (setup skips
+  starting plans — enforced by a registry test).
+- The lobby "Field Overrides" row lives under Game options; enabling an
+  anime-package pin map auto-flips BINH + the Anime crest at map pick/setup.
+
 ## First-round rules, Cove City Hall & bank/opponent UI (BINH house rules) — what runs
 
 Six additions; each engine rule fails a named test if its wiring is removed.

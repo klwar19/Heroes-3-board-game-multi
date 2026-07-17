@@ -22,6 +22,8 @@ import {
   STACK_TOKENS_BY_DIFFICULTY,
   type CreatureBankId
 } from "@/data/map/creature-banks";
+import { isFieldOverrideLocation } from "@/data/map/field-overrides";
+import { tilePendingTokens } from "./tile-hex-placements";
 import { locationDefinitions, marketGoldValueOf, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import type { LocationInteraction, TileDefinition } from "@/data/map/types";
@@ -2976,6 +2978,34 @@ export function eliminatePlayer(
       const autoSpaceId = choice.mapToken.candidates[0];
       if (tokenTile && autoSpaceId) {
         placeMapToken(state, tokenTile, autoSpaceId, playerId);
+        // Multi-token tiles: drain the rest of the queue the same way (no new
+        // prompt can be offered to a dead seat).
+        autoResolvePendingMapTokens(state, tokenTile, playerId);
+      }
+    }
+    // A dropped Field Override placement is the same trap PLUS it was holding
+    // the whole reveal chain (gate → bank → token) shut. Drop the tile's
+    // override queue (pool draws refuse; nobody is left to pick a hex), then
+    // resume the chain non-interactively: gates carve at their default hex and
+    // a designed token auto-places — the bank offer is simply skipped (the
+    // Blocked Field stays blocked and the bank token pile is untouched).
+    if (
+      choice.type === "OPTION_CHOICE" &&
+      choice.context === "place-field-override" &&
+      choice.fieldOverride &&
+      state.adventure
+    ) {
+      const overrideTile = state.adventure.tiles[choice.fieldOverride.tileInstanceId];
+      if (overrideTile) {
+        delete overrideTile.pendingFieldOverrides;
+        delete overrideTile.pendingFieldOverride;
+        eventNote(
+          state,
+          `The Field Override on the revealed tile was dropped — the placing seat was eliminated.`,
+          playerId
+        );
+        recomputeSubterraneanGates(state.adventure);
+        autoResolvePendingMapTokens(state, overrideTile, playerId);
       }
     }
   }
@@ -5872,7 +5902,11 @@ export function tokenMayCoverFieldDef(def: TileDefinition, slot: number, kind: T
   if (!location || location.category === "blocked" || location.category === "town") {
     return false;
   }
-  if (TOKEN_FORBIDDEN_LOCATIONS.has(fieldDef.location) || fieldDef.difficulty) {
+  if (
+    TOKEN_FORBIDDEN_LOCATIONS.has(fieldDef.location) ||
+    isFieldOverrideLocation(fieldDef.location) ||
+    fieldDef.difficulty
+  ) {
     return false;
   }
   const isWater = fieldDef.terrain ? fieldDef.terrain === "water" : def.terrain === "water";
@@ -5899,7 +5933,15 @@ function tokenMayCoverField(state: GameState, field: MapFieldState | undefined, 
   if (!location || location.category === "blocked" || location.category === "town") {
     return false;
   }
-  if (TOKEN_FORBIDDEN_LOCATIONS.has(field.location) || isFieldGuarded(field) || field.difficulty) {
+  // Carved Field Override hexes are Location-Token-like: never overwritten —
+  // the override placed FIRST in the reveal chain precisely so tokens pick a
+  // different hex.
+  if (
+    TOKEN_FORBIDDEN_LOCATIONS.has(field.location) ||
+    isFieldOverrideLocation(field.location) ||
+    isFieldGuarded(field) ||
+    field.difficulty
+  ) {
     return false;
   }
   if (heroAtSpace(state, field.spaceId)) {
@@ -5935,9 +5977,13 @@ function countMapTokens(state: GameState, kind: MapTokenKind): number {
   // Carved token fields PLUS Obelisk fields under the monolith role (network
   // members) — {@link fieldIsTokenNetworkMember}.
   const placed = Object.values(adventure.fields).filter((field) => fieldIsTokenNetworkMember(state, field, kind)).length;
-  const pending = Object.values(adventure.tiles).filter(
-    (tile) => tile.faceDown && tile.pendingToken?.kind === kind
-  ).length;
+  // Multi-token tiles: EVERY queued token still riding a face-down tile counts
+  // (tilePendingTokens folds the legacy singular in).
+  const pending = Object.values(adventure.tiles).reduce(
+    (sum, tile) =>
+      sum + (tile.faceDown ? tilePendingTokens(tile).filter((token) => token.kind === kind).length : 0),
+    0
+  );
   return placed + pending;
 }
 
@@ -5977,10 +6023,17 @@ function mapTokenDestinations(state: GameState, kind: MapTokenKind, fromSpaceId:
     });
   }
   for (const tile of Object.values(adventure.tiles)) {
-    if (!tile.faceDown || tile.pendingToken?.kind !== kind) {
+    if (!tile.faceDown) {
       continue;
     }
-    const number = tile.pendingToken.number;
+    // Multi-token tiles: one destination per tile is enough (revealing it
+    // places every queued token), but the tile only qualifies when SOME queued
+    // token matches the travelling kind.
+    const pending = tilePendingTokens(tile).find((token) => token.kind === kind);
+    if (!pending) {
+      continue;
+    }
+    const number = pending.number;
     destinations.push({
       type: "pending-tile",
       tileInstanceId: tile.id,
@@ -6125,9 +6178,14 @@ function countColoredGates(state: GameState, pair: 1 | 2 | 3 | 4): number {
   const placed = Object.values(adventure.fields).filter(
     (field) => field.location === "gate" && field.gatePair === pair
   ).length;
-  const pending = Object.values(adventure.tiles).filter(
-    (tile) => tile.faceDown && tile.pendingToken?.kind === "gate" && tile.pendingToken.pair === pair
-  ).length;
+  const pending = Object.values(adventure.tiles).reduce(
+    (sum, tile) =>
+      sum +
+      (tile.faceDown
+        ? tilePendingTokens(tile).filter((token) => token.kind === "gate" && token.pair === pair).length
+        : 0),
+    0
+  );
   return placed + pending;
 }
 
@@ -6160,7 +6218,10 @@ function coloredGateDestinations(state: GameState, pair: 1 | 2 | 3 | 4, fromSpac
     destinations.push({ type: "field", spaceId: field.spaceId, label: `${color} Gate${where}` });
   }
   for (const tile of Object.values(adventure.tiles)) {
-    if (!tile.faceDown || tile.pendingToken?.kind !== "gate" || tile.pendingToken.pair !== pair) {
+    if (
+      !tile.faceDown ||
+      !tilePendingTokens(tile).some((token) => token.kind === "gate" && token.pair === pair)
+    ) {
       continue;
     }
     destinations.push({
@@ -6300,10 +6361,12 @@ function resolveTokenTeleportReveal(
     !adventure ||
     !tile ||
     !tile.faceDown ||
-    tile.pendingToken?.kind !== step.token ||
-    // A colored Gate destination must also match the travelling pair — the
-    // per-color isolation held all the way through the reveal.
-    (step.token === "gate" && tile.pendingToken.pair !== step.pair)
+    // A multi-token tile qualifies when ANY queued token matches the travelling
+    // kind — and, for a colored Gate, the travelling pair too (the per-color
+    // isolation held all the way through the reveal).
+    !tilePendingTokens(tile).some(
+      (token) => token.kind === step.token && (step.token !== "gate" || token.pair === step.pair)
+    )
   ) {
     // The destination vanished between offer and resolution (cannot happen in
     // sequential play; a defensive no-op keeps the visit clean).
@@ -6390,9 +6453,48 @@ export function carveMapTokenField(
  * was the destination of an in-flight travel — completes that travel: the hero
  * arrives on the fresh token, and a Whirlpool travel then takes its unit toll.
  */
+/**
+ * Non-interactive drain of a revealed tile's pending-token queue: each token
+ * lands on its preferred hex when legal, else the first legal candidate, else
+ * is dropped. Used when nobody can be prompted (the placing seat eliminated).
+ */
+export function autoResolvePendingMapTokens(state: GameState, tile: MapTileState, playerId: PlayerId): void {
+  if (tile.faceDown || tile.awaitingRotation) {
+    return;
+  }
+  let pending = tilePendingTokens(tile)[0];
+  while (pending) {
+    const candidates = tokenPlacementCandidates(state, tile, pending.kind);
+    if (candidates.length === 0) {
+      dropPendingMapToken(state, tile, playerId);
+    } else if (pending.preferredSpaceId && candidates.includes(pending.preferredSpaceId)) {
+      placeMapToken(state, tile, pending.preferredSpaceId, playerId);
+    } else {
+      placeMapToken(state, tile, candidates[0], playerId);
+    }
+    pending = tilePendingTokens(tile)[0];
+  }
+}
+
+/**
+ * Pops the HEAD of a tile's pending-token queue (multi-token tiles queue on
+ * `pendingTokens`; the legacy singular `pendingToken` mirrors the head so old
+ * readers/snapshots keep working). Mirrors the Field Override queue shift.
+ */
+function shiftPendingMapToken(tile: MapTileState): void {
+  const queue = tilePendingTokens(tile).slice(1);
+  if (queue.length > 0) {
+    tile.pendingTokens = queue;
+    tile.pendingToken = queue[0];
+    return;
+  }
+  delete tile.pendingTokens;
+  delete tile.pendingToken;
+}
+
 export function placeMapToken(state: GameState, tile: MapTileState, spaceId: MapSpaceId, playerId: PlayerId): void {
   const adventure = state.adventure;
-  const pendingToken = tile.pendingToken;
+  const pendingToken = tilePendingTokens(tile)[0];
   const field = adventure?.fields[spaceId];
   if (!adventure || !pendingToken || !field || field.tileInstanceId !== tile.id) {
     return;
@@ -6405,7 +6507,7 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
   } else if (pendingToken.kind === "monolith" || pendingToken.kind === "whirlpool") {
     carveMapTokenField(adventure, spaceId, pendingToken.kind, pendingToken.number);
   }
-  delete tile.pendingToken;
+  shiftPendingMapToken(tile);
   eventNote(
     state,
     `${eventPlayerName(state, playerId)} places the ${placementTokenLabel(pendingToken)} token${
@@ -6415,7 +6517,15 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
   );
 
   const teleport = adventure.pendingTokenTeleport;
-  if (teleport && teleport.destTileInstanceId === tile.id) {
+  if (
+    teleport &&
+    teleport.destTileInstanceId === tile.id &&
+    // A multi-token tile completes the travel only when the token that matches
+    // the travelling kind (and colored pair) is the one just placed — the hero
+    // must arrive on ITS network member, never on a sibling token's hex.
+    teleport.kind === pendingToken.kind &&
+    (teleport.kind !== "gate" || teleport.pair === pendingToken.pair)
+  ) {
     adventure.pendingTokenTeleport = null;
     completeMapTokenTeleport(state, teleport, spaceId);
   }
@@ -6428,18 +6538,25 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
  */
 export function dropPendingMapToken(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
-  const pendingToken = tile.pendingToken;
+  const pendingToken = tilePendingTokens(tile)[0];
   if (!adventure || !pendingToken) {
     return;
   }
-  delete tile.pendingToken;
+  shiftPendingMapToken(tile);
   eventNote(
     state,
     `The ${placementTokenLabel(pendingToken)} token could not be placed — the revealed tile has no legal field for it — and is removed from the game.`,
     playerId
   );
   const teleport = adventure.pendingTokenTeleport;
-  if (teleport && teleport.destTileInstanceId === tile.id) {
+  if (
+    teleport &&
+    teleport.destTileInstanceId === tile.id &&
+    // Only the DROPPED token's network loses its destination; a sibling queued
+    // token of another kind keeps an in-flight travel of ITS kind alive.
+    teleport.kind === pendingToken.kind &&
+    (teleport.kind !== "gate" || teleport.pair === pendingToken.pair)
+  ) {
     adventure.pendingTokenTeleport = null;
     eventNote(
       state,
@@ -6504,7 +6621,15 @@ function completeMapTokenTeleport(
  * touching hex instead).
  */
 function gateMayCoverField(field: MapFieldState | undefined): boolean {
-  return field !== undefined && field.location !== "subterranean_gate" && !isMapObjectLocation(field.location);
+  // A carved Field Override hex counts as a Location Token here too — the
+  // override placed BEFORE the gate in the reveal chain; the gate picks
+  // another touching hex instead of silently erasing the placed object.
+  return (
+    field !== undefined &&
+    field.location !== "subterranean_gate" &&
+    !isMapObjectLocation(field.location) &&
+    !isFieldOverrideLocation(field.location)
+  );
 }
 
 /** A tile is "materialized" once its rotation is locked and its 7 fields exist. */

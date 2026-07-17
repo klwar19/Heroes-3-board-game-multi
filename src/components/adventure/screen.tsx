@@ -581,7 +581,9 @@ export function HexMapBoard({
             ? choice.subterraneanGate?.candidates.map((candidate) => candidate.hex)
             : choice.context === "place-map-token"
               ? choice.mapToken?.candidates
-              : undefined;
+              : choice.context === "place-field-override"
+                ? choice.fieldOverride?.candidates
+                : undefined;
     if (!spaceIds) {
       return targets;
     }
@@ -646,6 +648,28 @@ export function HexMapBoard({
       return null;
     }
     return { kind: choice.mapToken.kind, hexes: new Set<MapSpaceId>(choice.mapToken.candidates) };
+  }, [state.pendingChoice, viewerPlayerId, readOnly]);
+
+  // During a Field Override placement (pool draw / designer pin whose reserved
+  // hex became illegal), tag every candidate hex so the placing player sees
+  // exactly which field the override would replace — the hex also glows and is
+  // clickable via pendingMapChoiceTargets above (the refuse option stays in the
+  // prompt tray). Mirrors the Monolith/Whirlpool token placement overlay.
+  const fieldOverridePlacementChoice = useMemo(() => {
+    const choice = state.pendingChoice;
+    if (
+      readOnly ||
+      choice?.type !== "OPTION_CHOICE" ||
+      choice.playerId !== viewerPlayerId ||
+      choice.context !== "place-field-override" ||
+      !choice.fieldOverride
+    ) {
+      return null;
+    }
+    return {
+      kind: choice.fieldOverride.kind,
+      hexes: new Set<MapSpaceId>(choice.fieldOverride.candidates)
+    };
   }, [state.pendingChoice, viewerPlayerId, readOnly]);
 
   // Redwood Observatory decisions are spatial too: an adjacent face-down tile
@@ -1331,6 +1355,22 @@ export function HexMapBoard({
               : tokenPlacementChoice.kind === "gate"
                 ? "⛩ gate here"
                 : "🌀 whirlpool here"}
+          </text>
+        );
+      }
+
+      // Field Override placement: label each candidate hex of the revealed tile
+      // (glows + clickable via pendingMapChoiceTargets, like the token overlay).
+      if (fieldOverridePlacementChoice?.hexes.has(spaceId)) {
+        overlays.push(
+          <text
+            className="hexGateChoiceCue"
+            key={`${spaceId}-override-choice-cue`}
+            textAnchor="middle"
+            x={x}
+            y={y + HEX_SIZE * 0.92}
+          >
+            ✨ place here
           </text>
         );
       }

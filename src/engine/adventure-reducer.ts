@@ -132,6 +132,7 @@ import {
   placeFieldOverride,
   refuseFieldOverride
 } from "./field-overrides";
+import { tilePendingTokens } from "./tile-hex-placements";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
@@ -1830,13 +1831,13 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
   // Banks, and Monolith/Whirlpool/teleport tokens — so those systems never
   // compete for the same hex and the override always carves a clean printed
   // field (user rule). Home (Ⅰ) tiles never roll a pool override.
-  if (!isStartTile) {
-    offerPendingFieldOverridePlacement(state, tile, action.playerId);
-    if (state.pendingChoice) {
-      // Manual / manual-or-refuse window open: gate/bank/token wait behind it
-      // (re-offered when the override choice resolves).
-      return;
-    }
+  // Only a choice the offer itself OPENED (its `true` return) pauses the chain
+  // — a pre-existing unrelated pendingChoice (another tile's bank prompt in
+  // parallel play) must not silently skip this tile's gate/bank/token flow.
+  if (!isStartTile && offerPendingFieldOverridePlacement(state, tile, action.playerId)) {
+    // Manual / manual-or-refuse window open: gate/bank/token wait behind it
+    // (re-offered when the override choice resolves).
+    return;
   }
 
   // Rotate first, THEN pick: with this tile's fields on the board, decide the
@@ -2109,23 +2110,30 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
  */
 function offerPendingTokenPlacement(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
-  const pendingToken = tile.pendingToken;
-  if (!adventure || !pendingToken || tile.faceDown || tile.awaitingRotation) {
+  if (!adventure || tile.faceDown || tile.awaitingRotation) {
     return;
   }
 
-  const candidates = tokenPlacementCandidates(state, tile, pendingToken.kind);
-  if (candidates.length === 0) {
-    dropPendingMapToken(state, tile, playerId);
-    return;
+  // Multi-token tiles queue on `pendingTokens`; drain auto-resolvable heads
+  // (drop / preferred hex / lone candidate) until one genuinely needs a player
+  // pick. The CHOOSE_OPTION resolution re-enters here to drain the rest.
+  let pendingToken = tilePendingTokens(tile)[0];
+  let candidates: MapSpaceId[] = [];
+  while (pendingToken) {
+    candidates = tokenPlacementCandidates(state, tile, pendingToken.kind);
+    if (candidates.length === 0) {
+      dropPendingMapToken(state, tile, playerId);
+    } else if (pendingToken.preferredSpaceId && candidates.includes(pendingToken.preferredSpaceId)) {
+      placeMapToken(state, tile, pendingToken.preferredSpaceId, playerId);
+    } else if (candidates.length === 1) {
+      // Mirrors the gate's single-candidate auto-carve: no zero-information prompt.
+      placeMapToken(state, tile, candidates[0], playerId);
+    } else {
+      break;
+    }
+    pendingToken = tilePendingTokens(tile)[0];
   }
-  if (pendingToken.preferredSpaceId && candidates.includes(pendingToken.preferredSpaceId)) {
-    placeMapToken(state, tile, pendingToken.preferredSpaceId, playerId);
-    return;
-  }
-  if (candidates.length === 1) {
-    // Mirrors the gate's single-candidate auto-carve: no zero-information prompt.
-    placeMapToken(state, tile, candidates[0], playerId);
+  if (!pendingToken) {
     return;
   }
 
@@ -9011,6 +9019,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       // of an in-flight Monolith/Whirlpool travel, the hero arrives on it (and
       // a Whirlpool travel takes its unit toll).
       placeMapToken(state, tile, spaceId, action.playerId);
+      // Multi-token tiles: drain the rest of the queue (auto-place or re-offer).
+      if (!state.pendingChoice) {
+        offerPendingTokenPlacement(state, tile, action.playerId);
+      }
     }
     return;
   }
@@ -9038,9 +9050,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       }
       placeFieldOverride(state, tile, spaceId, data.kind, action.playerId);
     }
-    // More Field Overrides on this tile (multi-pin queue)?
+    // More Field Overrides on this tile (multi-pin queue)? Drain ONLY — a new
+    // pool draw here would re-stamp the tile after every placement/refusal and
+    // trap the player in an endless placement loop.
     if (tile && !tile.faceDown && !tile.awaitingRotation) {
-      if (offerPendingFieldOverridePlacement(state, tile, action.playerId)) {
+      if (offerPendingFieldOverridePlacement(state, tile, action.playerId, { allowPoolDraw: false })) {
         return;
       }
       // Override queue drained — resume gate → bank → teleport.

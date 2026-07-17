@@ -99,6 +99,15 @@ export function isFieldOverrideKind(kind: string): boolean {
   return kind in REGISTRY;
 }
 
+/**
+ * Whether a location id is one a Field Override carves (any registered kind's
+ * locationId). Carved override hexes are protected like Location Tokens: no
+ * token, gate or second override may overwrite one.
+ */
+export function isFieldOverrideLocation(locationId: string): boolean {
+  return Object.values(REGISTRY).some((def) => def.locationId === locationId);
+}
+
 /** All registered kind ids (grows as packages register). */
 export function fieldOverrideKindIds(): ReadonlySet<string> {
   return new Set(Object.keys(REGISTRY));
