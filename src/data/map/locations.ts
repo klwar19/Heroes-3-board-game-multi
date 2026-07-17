@@ -860,6 +860,53 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     implementationStatus: "implemented",
     source: source("whirlpool")
   },
+  garrison: {
+    id: "garrison",
+    name: "Garrison",
+    // Map-designer standalone object (Polish fan-map convention): a one-hex
+    // fortification OUT of every tile, connecting 2+ tiles, always revealed.
+    // Optionally guarded (a designed guard fights BANK-style: no Quick Combat,
+    // no experience, no Round limit); the winner marks it with their flag. A
+    // FLAGGED garrison is defended like a settlement: an enemy entering lets
+    // the owner pay 3 gold to defend with units only (no hand cards) — decline
+    // or an empty purse and the flag simply changes hands. The engine routes
+    // all of that by location id (beginFieldVisit / garrisonDefenderFor), so
+    // the interaction is NONE here. "flaggable" gives the flag rendering; the
+    // single-owner steal is the id-dispatched branch, never the multi-flag one.
+    category: "flaggable",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: source("garrison")
+  },
+  keymaster_tent: {
+    id: "keymaster_tent",
+    name: "Keymaster's Tent",
+    // Map-designer standalone object: a colored tent (color = the field's
+    // `gatePair`, matching the Barrier of the same color). Optionally guarded —
+    // the guard fights BANK-style (no Quick Combat, no experience, no Round
+    // limit) and dies once; after that every visitor may flag it. MULTIPLE
+    // flags are allowed (the printed rule) — exactly the generic "flaggable"
+    // multi-flag flow (flagField + extraFlagOwnerIds). Holding a tent flag of
+    // a color lets that player ENTER Barriers of the same color.
+    category: "flaggable",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: source("keymaster_tent")
+  },
+  barrier: {
+    id: "barrier",
+    name: "Barrier",
+    // Map-designer standalone object: a colored wall (color = `gatePair`).
+    // NEVER guarded, never an interaction — a hero may not even ENTER the
+    // field unless their player holds a matching-color Keymaster's Tent flag
+    // (enforced in the movement classifier like a Blocked Field; Fly may cross
+    // over, nobody may land). With the flag it is an ordinary open field
+    // connecting the tiles it touches.
+    category: "empty",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: source("border_guard")
+  },
   subterranean_gate: {
     id: "subterranean_gate",
     name: "Subterranean Gate",

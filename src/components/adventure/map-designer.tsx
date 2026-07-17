@@ -9,6 +9,7 @@ import {
   DESIGNER_UI_ICONS,
   mapTokenImage,
   monolithTokenImage,
+  outpostObjectImage,
   REWARD_GLYPH_ICONS,
   TILE_BACK_IMAGES,
   tileBackImage,
@@ -63,6 +64,7 @@ import {
   type TokenPlacementKind,
   type PlannedSubterraneanGate,
   objectGuardSpec,
+  OUTPOST_OBJECT_KINDS,
   type SecretTileFeature,
   type VictoryMode
 } from "@/engine";
@@ -521,8 +523,12 @@ function tokenLegalityKind(kind: TokenPlacementKind): MapTokenKind {
  * Designer token art: a colored Gate renders as the MONOLITH image (tinted by a
  * color ring at the render site); Monolith/Whirlpool use their own scans.
  */
-function designerTokenImage(kind: TokenPlacementKind, number?: -1 | 0 | 1): string {
-  return kind === "gate" ? monolithTokenImage() : mapTokenImage(kind, number);
+function designerTokenImage(kind: CustomMapObjectKind, number?: -1 | 0 | 1): string {
+  const outpost = outpostObjectImage(kind);
+  if (outpost) {
+    return outpost;
+  }
+  return kind === "gate" ? monolithTokenImage() : mapTokenImage(kind as "monolith" | "whirlpool", number);
 }
 
 /**
@@ -1654,7 +1660,7 @@ export function MapDesigner({
     : objectDrag
       ? objectDrag.kind
       : null;
-  const activeKind: TokenPlacementKind | null = placementKind ?? (tokenDrag ? tokenDrag.kind : null);
+  const activeKind: CustomMapObjectKind | null = placementKind ?? (tokenDrag ? tokenDrag.kind : null);
   // While dragging a placed object, its OWN hex must not count as occupied so its
   // current neighbourhood stays a legal drop target.
   const draggedObjectIndex = objectDrag ? objectDrag.index : null;
@@ -1722,10 +1728,11 @@ export function MapDesigner({
    * face-up slot is dropped when another object already sits on that hex.
    */
   const tileTokenTargets = useMemo(() => {
-    if (!placementKind) {
+    // Outposts (Garrison / Tent / Barrier) are standalone-only — never on a tile.
+    if (!placementKind || OUTPOST_OBJECT_KINDS.has(placementKind)) {
       return [] as ReturnType<typeof computeTileTokenTargets>;
     }
-    return computeTileTokenTargets(customMap, placementKind, null).filter(
+    return computeTileTokenTargets(customMap, placementKind as TokenPlacementKind, null).filter(
       (candidate) => candidate.slot === undefined || !objectHexSet.has(hexSpaceId(candidate.hex))
     );
   }, [placementKind, customMap, objectHexSet]);
@@ -1837,7 +1844,8 @@ export function MapDesigner({
   // monolith/gate only — Whirlpools never stand alone).
   const placeArmedTileToken = useCallback(
     (target: { planIndex: number; slot?: number }) => {
-      if (!armedObject) {
+      // Outposts are standalone-only (no tile targets ever light up for them).
+      if (!armedObject || OUTPOST_OBJECT_KINDS.has(armedObject.kind)) {
         return;
       }
       const plan = customMap[target.planIndex];
@@ -1852,7 +1860,7 @@ export function MapDesigner({
       if (slot === null) {
         return; // tile hexes full
       }
-      const nextToken = tileTokenValue(armedObject.kind, armedObject.pair, slot);
+      const nextToken = tileTokenValue(armedObject.kind as TokenPlacementKind, armedObject.pair, slot);
       if (!nextToken) {
         return;
       }
@@ -1868,9 +1876,11 @@ export function MapDesigner({
       if (!armedObject || armedObject.kind === "whirlpool") {
         return;
       }
+      const needsPair =
+        armedObject.kind === "gate" || armedObject.kind === "keymaster_tent" || armedObject.kind === "barrier";
       const object: CustomMapObject = {
         kind: armedObject.kind,
-        ...(armedObject.kind === "gate" && armedObject.pair ? { pair: armedObject.pair } : {}),
+        ...(needsPair ? { pair: armedObject.pair ?? 1 } : {}),
         placement: { type: "standalone", row, col }
       };
       onObjectsChange?.([...objects, object]);
@@ -1974,7 +1984,9 @@ export function MapDesigner({
     (objectIndex: number, target: { planIndex: number; slot?: number }) => {
       const object = objects[objectIndex];
       const plan = customMap[target.planIndex];
-      if (!object || !plan) {
+      // Outposts are standalone-only — they never convert onto a tile (their
+      // drags offer no tile targets, this is the write-side backstop).
+      if (!object || !plan || OUTPOST_OBJECT_KINDS.has(object.kind)) {
         return;
       }
       // Never stack on an occupied slot; fall back to the first free hex.
@@ -1988,7 +2000,10 @@ export function MapDesigner({
       }
       onObjectsChange?.(objects.filter((_, i) => i !== objectIndex));
       updateTile(target.planIndex, {
-        tokens: [...planTokens(plan), tileTokenValue(object.kind, object.pair, slot, objectGuardSpec(object))],
+        tokens: [
+          ...planTokens(plan),
+          tileTokenValue(object.kind as TokenPlacementKind, object.pair, slot, objectGuardSpec(object))
+        ],
         token: undefined
       });
     },
@@ -3656,7 +3671,10 @@ export function MapDesigner({
     }
     const { x, y } = hexToPixel(coord, size);
     const isGate = object.kind === "gate";
-    const color = isGate && object.pair ? GATE_PAIR_CSS[object.pair] : "#c9a24b";
+    // Colored ring: gates / tents / barriers wear their pair color, the
+    // Garrison its printed light-blue frame, plain teleporters gold.
+    const isColored = isGate || object.kind === "keymaster_tent" || object.kind === "barrier";
+    const color = isColored && object.pair ? GATE_PAIR_CSS[object.pair] : object.kind === "garrison" ? "#4fc3f7" : "#c9a24b";
     // Designer yellow borders on the object hex — the field-level twin of a
     // tile's per-edge lines, drawn with the same bold casing+core.
     for (const direction of object.borderEdges ?? []) {
@@ -3688,7 +3706,9 @@ export function MapDesigner({
         onPointerDown={beginObjectDrag(index, object.kind)}
       >
         {/* A colored Gate reads as a colored Monolith: colored disc + monolith
-            art + colored ring + pair badge. Monolith/Whirlpool: art + gold ring. */}
+            art + colored ring + pair badge. Tents/Barriers wear their color the
+            same way; the Garrison a light-blue ring. Monolith/Whirlpool: art +
+            gold ring. */}
         {isGate ? <circle cx={x} cy={y} fill={color} opacity={0.32} r={size * 0.5} style={{ pointerEvents: "none" }} /> : null}
         <image
           height={size}
@@ -3700,7 +3720,7 @@ export function MapDesigner({
           y={y - size * 0.5}
         />
         <circle className="designerObjectRing" cx={x} cy={y} fill="none" r={size * 0.62} stroke={color} />
-        {isGate ? (
+        {isColored ? (
           <text className="designerObjectPair" fill={color} textAnchor="middle" x={x} y={y + size * 0.66}>
             {object.pair}
           </text>
@@ -3887,6 +3907,34 @@ export function MapDesigner({
             type="button"
           >
             🌀 Whirlpool
+          </button>
+          <span className="designerObjectGroupLabel">Outposts</span>
+          <button
+            aria-pressed={armedObject?.kind === "garrison"}
+            className={`designerObjectButton${armedObject?.kind === "garrison" ? " armed" : ""}`}
+            onClick={() => armObject("garrison")}
+            title="Garrison — a standalone hex connecting tiles. Optional guard (bank-style fight, no XP); the winner flags it, and a flagged garrison is defended army-only for 3 gold."
+            type="button"
+          >
+            🏰 Garrison
+          </button>
+          <button
+            aria-pressed={armedObject?.kind === "keymaster_tent"}
+            className={`designerObjectButton${armedObject?.kind === "keymaster_tent" ? " armed" : ""}`}
+            onClick={() => armObject("keymaster_tent", 1)}
+            title="Keymaster's Tent — a standalone colored tent. Beat its (optional) guard to flag it (several players may); a tent flag opens same-color Barriers. Set the color in the placed tent's panel."
+            type="button"
+          >
+            ⛺ Keymaster
+          </button>
+          <button
+            aria-pressed={armedObject?.kind === "barrier"}
+            className={`designerObjectButton${armedObject?.kind === "barrier" ? " armed" : ""}`}
+            onClick={() => armObject("barrier", 1)}
+            title="Barrier — a standalone colored wall. Never guarded; only players holding a matching-color Keymaster's Tent flag may enter. Set the color in the placed barrier's panel."
+            type="button"
+          >
+            ⛔ Barrier
           </button>
           <span className="designerObjectGroupLabel">Border tool</span>
           <button
@@ -4895,14 +4943,12 @@ export function MapDesigner({
           </div>
         ) : null}
 
-        {/* Placed-object panel: guard picker + delete — docked like the tile panel. */}
+        {/* Placed-object panel: color, guard picker + delete — docked like the tile panel. */}
         {selectedObject && objectPopoverAt ? (
           <div className="designerPopover designerObjectPopover">
             <header>
               <strong>
-                {selectedObject.kind === "gate"
-                  ? `${titleCase(gatePairColor(selectedObject.pair ?? 1))} Gate`
-                  : mapTokenLabel(selectedObject.kind as MapTokenKind)}
+                {titleCase(placementTokenLabel(selectedObject))}
                 {selectedObject.placement.type === "standalone" ? " · standalone" : ""}
               </strong>
               <button
@@ -4915,16 +4961,58 @@ export function MapDesigner({
                 ✕
               </button>
             </header>
-            <div className="popoverSectionLabel">Guard (monster)</div>
-            <small className="popoverHint">
-              A guard on this hex must be beaten to use it; arriving through a teleport network sweeps it aside
-              (auto-win, no experience).
-            </small>
-            <GuardSpecEditor
-              guard={objectGuardDisplay(selectedObject)}
-              noneLabel="None"
-              onChange={(guard) => setObjectGuard(selectedObjectIndex as number, guard)}
-            />
+            {selectedObject.kind === "keymaster_tent" || selectedObject.kind === "barrier" ? (
+              <>
+                <div className="popoverSectionLabel">Color</div>
+                <small className="popoverHint">
+                  {selectedObject.kind === "keymaster_tent"
+                    ? "A tent flag of this color opens same-color Barriers."
+                    : "Only players holding a same-color Keymaster's Tent flag may enter."}
+                </small>
+                <div className="popoverGuardRow" role="group" aria-label="Outpost color">
+                  {GATE_PAIRS.map((pair) => {
+                    const active = (selectedObject.pair ?? 1) === pair;
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={`popoverGuardChip popoverColorChip${active ? " active" : ""}`}
+                        key={pair}
+                        onClick={() =>
+                          onObjectsChange?.(
+                            objects.map((object, i) =>
+                              i === (selectedObjectIndex as number) ? { ...object, pair } : object
+                            )
+                          )
+                        }
+                        style={{ borderColor: GATE_PAIR_CSS[pair] }}
+                        title={`${titleCase(gatePairColor(pair))}`}
+                        type="button"
+                      >
+                        <span className="designerObjectSwatch" style={{ background: GATE_PAIR_CSS[pair] }} />
+                        {titleCase(gatePairColor(pair))}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+            {selectedObject.kind !== "barrier" ? (
+              <>
+                <div className="popoverSectionLabel">Guard (monster)</div>
+                <small className="popoverHint">
+                  {selectedObject.kind === "garrison" || selectedObject.kind === "keymaster_tent"
+                    ? "The fight is bank-style: no Quick Combat, no experience, no round limit."
+                    : "A guard on this hex must be beaten to use it; arriving through a teleport network sweeps it aside (auto-win, no experience)."}
+                </small>
+                <GuardSpecEditor
+                  guard={objectGuardDisplay(selectedObject)}
+                  noneLabel="None"
+                  onChange={(guard) => setObjectGuard(selectedObjectIndex as number, guard)}
+                />
+              </>
+            ) : (
+              <small className="popoverHint">A Barrier is never guarded — the matching tent flag is the only key.</small>
+            )}
             <button className="popoverRemove" onClick={() => removeObject(selectedObjectIndex as number)} type="button">
               <Trash2 size={13} /> Remove
             </button>

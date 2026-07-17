@@ -280,7 +280,17 @@ export const MAX_CUSTOM_MAP_OBJECTS = 16;
  */
 export const MAX_GATES_PER_PAIR = 8;
 
-const CUSTOM_MAP_OBJECT_KINDS = new Set<CustomMapObjectKind>(["monolith", "whirlpool", "gate"]);
+const CUSTOM_MAP_OBJECT_KINDS = new Set<CustomMapObjectKind>([
+  "monolith",
+  "whirlpool",
+  "gate",
+  "garrison",
+  "keymaster_tent",
+  "barrier"
+]);
+
+/** The outpost kinds — STANDALONE-only one-hex objects out of every tile. */
+export const OUTPOST_OBJECT_KINDS = new Set<CustomMapObjectKind>(["garrison", "keymaster_tent", "barrier"]);
 
 /** Designer effect kinds (order = editor dropdown order). */
 export const TIMED_EFFECT_KINDS = [
@@ -603,16 +613,18 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
     return null;
   }
   const object: CustomMapObject = { kind, placement };
-  // A gate carries a colored pair 1-4 (required); any other kind never does.
-  if (kind === "gate") {
+  // A gate / tent / barrier carries a colored pair 1-4 (required); the other
+  // kinds never do.
+  if (kind === "gate" || kind === "keymaster_tent" || kind === "barrier") {
     if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
       return null;
     }
     object.pair = raw.pair;
   }
   // A designer guard (optional): the LEGACY plain number is a level 1-7; the
-  // spec form adds "certain army" guards. Both normalise to a clean spec.
-  const guard = sanitizeObjectGuard(raw.guard);
+  // spec form adds "certain army" guards. Both normalise to a clean spec. A
+  // Barrier is NEVER guarded (printed rule) — any guard is stripped.
+  const guard = kind === "barrier" ? undefined : sanitizeObjectGuard(raw.guard);
   if (guard) {
     object.guard = guard;
   }

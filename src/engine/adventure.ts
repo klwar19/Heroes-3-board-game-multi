@@ -252,6 +252,37 @@ export function clearCustomGuard(field: MapFieldState): void {
 }
 
 /**
+ * Locations whose designed guard fights BANK-style (rulebook Creature-Bank
+ * semantics — "the fight is unlimited, as in Banks"): no Quick Combat, no
+ * experience (combat difficulty 0) and no Round limit / MP-to-extend. The
+ * designer outposts.
+ */
+export function isBankStyleGuardLocation(locationId: string): boolean {
+  return locationId === "garrison" || locationId === "keymaster_tent";
+}
+
+/**
+ * Whether `playerId` holds a Keymaster's Tent flag of `pair`'s color — the key
+ * that opens same-color Barriers. Tents allow multiple flags, so both the
+ * first owner and every later `extraFlagOwnerIds` visitor count.
+ */
+export function playerHoldsTentFlag(
+  state: GameState,
+  playerId: PlayerId,
+  pair: 1 | 2 | 3 | 4 | undefined
+): boolean {
+  if (!pair) {
+    return false;
+  }
+  return Object.values(state.adventure?.fields ?? {}).some(
+    (field) =>
+      field.location === "keymaster_tent" &&
+      field.gatePair === pair &&
+      (field.flagOwnerId === playerId || Boolean(field.extraFlagOwnerIds?.includes(playerId)))
+  );
+}
+
+/**
  * Teleport-ARRIVAL auto-win: a hero who arrives THROUGH a teleport network
  * (Monolith / colored Gate — including a reveal-travel) or crosses OUT through
  * a linked Subterranean Gate onto a hex whose designed guard still stands
@@ -1423,6 +1454,14 @@ export function classifyHeroStep(
   if (location?.category === "blocked") {
     // Flying (move-through) turns a blocked field into a hex the hero may pass
     // over but never stop on; otherwise it is impassable.
+    return movement.moveThrough ? "pass-only" : "block";
+  }
+
+  // A designer Barrier may be ENTERED only by a player holding a same-color
+  // Keymaster's Tent flag ("you are never allowed to enter the field unless
+  // you visited the keymaster's tent in its color"). To everyone else it
+  // behaves exactly like a Blocked Field — Fly may pass over, never land.
+  if (field.location === "barrier" && !playerHoldsTentFlag(state, playerId, field.gatePair)) {
     return movement.moveThrough ? "pass-only" : "block";
   }
 
@@ -3894,14 +3933,31 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   }
 
   // A DESIGNED guard on a map-object teleport field (Monolith / Whirlpool /
-  // Gate) or a Subterranean Gate half is defeated the moment this visit runs:
-  // beginFieldVisit is reached only on a WIN, a Quick-Combat win, or a
-  // Diplomacy skip — a retreat never calls it. These fields take no Black Cube
-  // / flag, so clear the leftover guard here; otherwise the beaten guard would
-  // respawn on the hero's next entry. (Retreat leaves it intact — the guard
-  // stands for next time.)
-  if ((isMapObjectLocation(location.id) || location.id === "subterranean_gate") && field.difficulty) {
+  // Gate), a Subterranean Gate half or an outpost (Garrison / Keymaster's
+  // Tent) is defeated the moment this visit runs: beginFieldVisit is reached
+  // only on a WIN, a Quick-Combat win, or a Diplomacy skip — a retreat never
+  // calls it. These fields take no Black Cube, so clear the leftover guard
+  // here; otherwise the beaten guard would respawn on the hero's next entry.
+  // (Retreat leaves it intact — the guard stands for next time.)
+  if (
+    (isMapObjectLocation(location.id) ||
+      location.id === "subterranean_gate" ||
+      isBankStyleGuardLocation(location.id)) &&
+    field.difficulty
+  ) {
     clearCustomGuard(field);
+  }
+
+  // Designer Garrison: the winner (or an unopposed visitor) marks it with
+  // THEIR flag — single-owner, stolen on entry (an enemy-FLAGGED garrison
+  // routes through the 3-gold defend prompt BEFORE this visit ever runs).
+  // Walking through your own garrison does nothing.
+  if (location.id === "garrison") {
+    field.everFlagged = true;
+    if (field.flagOwnerId !== playerId) {
+      flagField(state, playerId, field);
+    }
+    return;
   }
 
   if (location.category === "visitable") {
@@ -6121,9 +6177,21 @@ export function mapTokenLabel(kind: MapTokenKind): string {
  * placement prompt and the carve/drop event notes so a gate token reads
  * consistently wherever a monolith/whirlpool one would.
  */
-export function placementTokenLabel(token: { kind: TokenPlacementKind; pair?: 1 | 2 | 3 | 4 }): string {
+export function placementTokenLabel(token: {
+  kind: TokenPlacementKind | "garrison" | "keymaster_tent" | "barrier";
+  pair?: 1 | 2 | 3 | 4;
+}): string {
   if (token.kind === "gate") {
     return `${gatePairColor(token.pair ?? 1)} Gate`;
+  }
+  if (token.kind === "garrison") {
+    return "Garrison";
+  }
+  if (token.kind === "keymaster_tent") {
+    return `${gatePairColor(token.pair ?? 1)} Keymaster's Tent`;
+  }
+  if (token.kind === "barrier") {
+    return `${gatePairColor(token.pair ?? 1)} Barrier`;
   }
   return mapTokenLabel(token.kind);
 }

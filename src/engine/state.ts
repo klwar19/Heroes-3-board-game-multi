@@ -6690,6 +6690,14 @@ export type CombatContext =
       bankId?: string;
       /** Number of Stacked defenders placed on the bank (the reward's X). */
       bankStackCount?: number;
+      /**
+       * Designer outpost fight (Garrison / Keymaster's Tent / one-way monolith
+       * entrance): the printed "unlimited, as in Banks" reading — the combat
+       * rolls straight into the next Round with NO continue-or-retreat window
+       * and no MP to extend. Set with `difficulty: 0` (no Quick Combat, no
+       * experience), independent of the Creature-Bank house rule.
+       */
+      unlimitedRounds?: boolean;
     }
   | {
       kind: "player";
@@ -8691,6 +8699,12 @@ export type PendingGarrisonState = {
   attackerHeroId: HeroId;
   defenderPlayerId: PlayerId;
   fieldId: MapSpaceId;
+  /**
+   * Gold the defender pays to garrison: 8 for a town / settlement / captured
+   * Utopia (the printed rule), 3 for a designer Garrison object. Absent on a
+   * pre-feature snapshot = 8.
+   */
+  goldCost?: number;
 };
 
 /** Opaque marker for an unopened Ⅱ–Ⅲ supply tile (its identity is rolled at flip). */
@@ -9423,7 +9437,23 @@ export type VpLedgerEntry = {
 };
 
 /** A designer-placed one-hex map object's kind. Open for future kinds. */
-export type CustomMapObjectKind = "monolith" | "whirlpool" | "gate";
+export type CustomMapObjectKind =
+  | "monolith"
+  | "whirlpool"
+  | "gate"
+  /**
+   * Outpost objects (STANDALONE only — a separate hex out of every tile,
+   * always revealed, connecting the tiles it touches):
+   * - "garrison": optionally guarded (bank-style fight); the winner flags it,
+   *   and a flagged garrison is defended army-only for 3 gold.
+   * - "keymaster_tent": colored (`pair`); optionally guarded; multiple players
+   *   may flag it — a tent flag opens same-color Barriers.
+   * - "barrier": colored (`pair`); NEVER guarded; only players holding a
+   *   matching tent flag may enter.
+   */
+  | "garrison"
+  | "keymaster_tent"
+  | "barrier";
 
 /**
  * Where a {@link CustomMapObject} sits on the board:
