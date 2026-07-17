@@ -1485,7 +1485,20 @@ export function BattlefieldBoard({
             placeTokenAction ??
             (unit ? (attackAction ?? healAction) : planning ? undefined : moveAction);
 
-          if (interactiveAction && (!selectedCardAction || activationOrderAction || cardAction || spaceCardAction || teleportAction || placeTokenAction)) {
+          // Ability-target picks (Magog splash, Lich Death Cloud, …) must stay
+          // clickable even while a hand card is still "selected" — otherwise the
+          // board silently falls back to inspect-only and friendlies (and every
+          // other candidate) cannot be clicked for the splash.
+          if (
+            interactiveAction &&
+            (!selectedCardAction ||
+              activationOrderAction ||
+              abilityAction ||
+              cardAction ||
+              spaceCardAction ||
+              teleportAction ||
+              placeTokenAction)
+          ) {
             const label = activationOrderAction
               ? `Choose ${unit?.name} to activate first`
               : abilityAction
