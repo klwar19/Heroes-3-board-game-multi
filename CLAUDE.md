@@ -1901,6 +1901,72 @@ What runs (each pinned by a test that fails if the wiring is removed):
   (`onewayMonolithImage`); outposts theirs (`outpostObjectImage`).
   `map-designer.test.tsx`, `gate-object-board.test.tsx`.
 
+## Underground designation (per-tile layer override, map designer) — what runs vs. limits
+
+The designer may mark ANY far/near/center/sea tile plan `underground?: true` on
+BOTH `CustomMapTilePlan` and `MapTileState` (copied plan→tile at setup by
+`applyDesignedUnderground`, face-down included). The tile is then topologically a
+cavern — reachable ONLY through a Subterranean Gate, sealed from the Surface at
+every other edge — while KEEPING its band identity (group, back art/numeral,
+guard tiers, Creature-Bank pile, token legality). "A cavern topologically, but
+with printed band content."
+
+- **The ONE seam is `tileLayer` / `planIsUnderground`** (`adventure.ts`).
+  `planIsUnderground(plan)` = `group === "subterranean" || (underground === true &&
+  group !== "starting")`; `tileLayer(tile)` delegates to it. Everything downstream
+  follows AUTOMATICALLY off that one bit: `mapFieldLayer` → `canCrossEdge`'s layer
+  check (movement, the AI's `objectiveDistanceField`, Dimension Door reach),
+  `recomputeSubterraneanGates` + `planGateChoiceForReveal` (auto-pairing,
+  one-gate-per-tile, pick-on-reveal), the discovery gate (`DISCOVER_TILE` /
+  `canHeroDiscoverAdjacentTile`), and the preview twin `isCavernPlacement` →
+  `planSubterraneanGates` / `unreachableUndergroundCenters`. Never inline a
+  `group === "subterranean"` LAYER check — use the predicate.
+- **BAND-vs-LAYER audit rule (for future contributors):** every
+  `"subterranean"` comparison is either BAND semantics (back art `tileBandLabel`,
+  `planBackLabel`/`planGroupLabel`, the `subBand` palette filter,
+  `creatureBankTierForGroup`'s NEAR-pile house rule, `VALID_TILE_GROUPS`) — keep
+  the GROUP check — or LAYER semantics (gate carve/pair, cross-layer seal,
+  standalone-hex layer inference, designer gate-link eligibility, the unreachable
+  ring) — use `tileLayer`/`planIsUnderground`. A flagged Far tile still draws the
+  FAR bank pile and the "Ⅱ–Ⅲ" back; only its topology flips.
+
+Leading with the DELIBERATE v1 limits:
+- **`underground` is stripped from `starting` (seat/home tiles stay Surface — the
+  opening ceremony, seat balance and first-discovery flow assume it) and from
+  printed `subterranean` plans (redundant).** Only far/near/center/sea keep it,
+  as a literal `true` — enforced in BOTH the persistence sanitiser
+  (`sanitizeTile`, `src/server/map-registry.ts`) and the setup validator
+  (`validateCustomMapPlan`, `adventure-setup.ts`) against `UNDERGROUND_LAYER_GROUPS`.
+  Legacy maps / snapshots (field absent) behave byte-for-byte as before.
+- **Band content stays band (topology only).** Back art keeps the band back (no
+  fake cavern art), the Creature-Bank pile stays keyed by GROUP (a flagged Far
+  tile draws the FAR pile; the printed-cavern NEAR-pile house rule stays
+  cavern-only), guards/tokens stay band-legal. Whirlpool/Monolith/Teleport-Gate
+  token networks remain layer-agnostic (cross-layer links already legal),
+  untouched.
+- **Designed gate links now belong to any UNDERGROUND-layer plan** (a flagged
+  Far tile links to a touching Surface tile exactly like a cavern);
+  `validateCustomMapPlan` + `sanitizeTile` KEEP them for a flagged plan and drop
+  them from a plain (Surface) plan.
+
+Designer UX: the far/near/center/sea popover gains an "Underground layer" toggle
+(writes `plan.underground`; NOT offered on starting/subterranean); a flagged
+tile's outline strokes the Underground purple + carries `data-underground` while
+keeping its `data-band-group` band label, participates in the cavern gate-link
+rows / "+ Gate" button, and gets the red unreachable ring when isolated. In game
+(`screen.tsx`) a flagged tile's hexes carry `data-underground` (an always-on CSS
+cue, the layer is not secret) and the face-down discovery hint / gate
+ascend-descend labels/art fire via the predicate switch.
+
+Behaviour is pinned in `src/engine/underground-designation.test.ts` (layer seam,
+setup plan→tile copy, cross-layer movement seal, auto-paired + designed-link gate
+carve, discovery, each with a plain-Far CONTROL), the preview==engine parity +
+unreachable cases in `subterranean-gate-planning.test.ts`, the sanitiser
+(`map-registry.test.ts`), the validator (`custom-setup.test.ts`), the designer UI
+(`map-designer.test.tsx`), the in-game cue (`subterranean-gate-board.test.tsx`),
+and the AI distance-field seal (`computer/map-navigation.test.ts`) — every claim
+mutation-checked.
+
 ## Field Overrides & multi-pin tiles (global system; Anime mod content) — what runs vs. limits
 
 `GameSetupOptions.fieldOverrides` (default OFF; auto-ON when a designed map
@@ -2043,7 +2109,23 @@ Two additions; each engine claim fails a named test if its wiring is removed.
   Treasure/Resource dice (queued per live player), or a feed note. Eliminated
   seats and their heroes are skipped. Fired by `applyCustomMapTimedEvents` at
   round start; sanitization clamps amounts and drops unknown kinds
-  (`custom-setup.test.ts`, `map-preset.ts`). Each firing pops the ornate
+  (`custom-setup.test.ts`, `map-preset.ts`). A second cube-clear kind,
+  **`clear_tile_cubes`**, re-opens EVERY black cube on Tiles of chosen groups
+  (player-facing bands Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ / Sea / Underground, filtered by
+  `MapTileState.group`) with an optional "skip tiles containing a Settlement"
+  flag — but NEVER a Creature Bank (it keeps its defeat cube — hard rule) nor
+  the Grail / Dragon Utopia victory fields (conservative safety, mirroring the
+  token-placement exclusions); standalone designer hexes (no backing tile) are
+  skipped naturally. INTENDED consequence: a re-opened field with a printed
+  `difficulty` flips `isFieldGuarded` back to true, so it re-fights fresh guards
+  and re-earns its reward — the designer's re-open tool. Sanitizer dedupes /
+  drops invalid groups (empty → effect dropped) and keeps the flag only as a
+  real `=== true`; band labels live in `TILE_GROUP_BAND_LABELS` (adventure.ts,
+  Sea/Underground disambiguated from the shared Ⅳ–Ⅴ back numeral). Pinned in
+  `custom-setup.test.ts` (group filter, bank/victory exclusions, settlement flag
+  with its control, re-guard, no-preset twin, sanitizer) and
+  `map-preset-editor.test.tsx` (group chips + skip-settlement checkbox). Each
+  firing pops the ornate
   `MapEventOverlay` on every client (one card per batch, once per event id,
   never replayed on reconnect — `map-event-overlay.test.tsx`); the editor's
   per-event cards (round rail, kind dropdown, params, live preview, warnings)
@@ -2159,6 +2241,60 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   save paid with one Expert Power + crown; a no-crown CONTROL rejects it) and
   `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
   accepts it, with a no-crown CONTROL that hides the toggle).
+
+## Map settings defaults (designer → lobby, seed-at-pick) — what runs vs. limits
+
+Three OPTIONAL defaults a designed map may carry on `CustomMapPreset` to SEED the
+lobby when that map is picked — `difficulty?: GameDifficulty`,
+`farTileOpening?: boolean`, `farTilesPerPlayer?: number` (0–6) — each hoisting
+1:1 onto the same-named `GameSetupOptions` field. They ride the EXISTING
+preset→lobby machinery in `map-preset.ts` (extended, not rebuilt): the three keys
+were added to `PresetForcedOptionKey` / `presetForcedOptionKeys` /
+`applyCustomMapPresetToOptions` (seed) / `revertCustomMapPresetOptions` (restore
+scenario default when the map is dropped/swapped) / `customMapPresetIsActive` /
+`sanitizeCustomMapPreset`, plus the build-time apply-once `explicit` skip set in
+`adventure-setup.ts` `createAdventureGameState`. Editor UI: two new sections in
+`map-preset-editor.tsx` — a Difficulty chip row (`MAP_PRESET_DIFFICULTY_OPTIONS`,
+Easy…Impossible, re-click clears) and an "Additional Ⅱ–Ⅲ tiles" row
+(Default/On/Off + a Default/0–6 per-player count that hides when opening is Off).
+Pinned in `custom-setup.test.ts` (seed-on-pick + host-edit-wins, direct-build
+seeding with a legacy CONTROL, build apply-once, revert, sanitizer clamps/drops,
+banner lines), `map-preset-editor.test.tsx` (the two controls write onChange, a
+sibling field survives, Off hides the count), and the persistence round-trip in
+`map-registry.test.ts` (registry sanitizes the preset through
+`sanitizeCustomMapPreset`).
+
+Semantics / deliberate limits:
+- **SOFT defaults, apply-once**: the preset seeds these three onto the lobby at
+  PICK (`setGameOptions` customMap block, no skip). A host's later
+  `SET_GAME_OPTIONS` edit of difficulty/far-tiles then WINS — the lobby path
+  passes every option to the build, so they land in the build-time `explicit`
+  skip set and the preset never re-forces them. A DIRECT build that omits a field
+  lets the preset fill it (the seeding path). Difficulty is a soft default like
+  victory mode — the host may change all three after pick; VP + round limit stay
+  MAP-AUTHORITATIVE (below), unchanged.
+- **Victory mode / VP / round-limit were ALREADY on the preset + editor** (this
+  task only ADDED difficulty + far-tiles). `preset.roundLimit` ends the game ONLY
+  when Victory Points is enabled (`adventure.ts` round-wrap: `if (vpConfig &&
+  roundLimit && …)`); with VP off it stays a mere "suggested length". The editor
+  already surfaces that coupling (the round-limit section relabels "Round limit
+  (hard end)" ↔ "Suggested length (rounds)" off `vpOn`, with a matching hint), and
+  the round-limit+VP end + the banner wording are already pinned in
+  `victory-points.test.ts` (VP-on-ends / VP-off-suggestion-only / no-limit-no-end,
+  and the `describeCustomMapPresetEntries` round-limit lines) — no new coupling
+  test or editor coupling change was needed.
+- **Additional-tile TYPES are NOT configurable** — only on/off + per-player count.
+  The Ⅱ–Ⅲ supply pool composition stays the engine default (a truly-random tile is
+  rolled from `farTilePool` when a player opens one).
+- **No custom "hold a town for X rounds" win conditions** — the victory default
+  picks among the four existing modes (conquest / grail / dragon-hunt /
+  dragon-conqueror = the capture-and-hold mode); the VP `objectives`
+  (control-towns / flag-mines / hero-level / defeat-utopia) already live under
+  `victoryPoints` config and stay there.
+- **Sanitizer**: garbage difficulty dropped (kept only if one of the 4 literals);
+  `farTilesPerPlayer` clamps 99→6, −1→0, a non-number DROPPED (never a silent 0);
+  `farTileOpening` kept only as a real boolean. Legacy presets (fields absent)
+  are byte-identical after sanitize and behave exactly as before.
 
 ## Map designer upgrade (designed gates/borders/locks/obelisks/objects/Ⅶ/VP) — what runs vs. limits
 
@@ -2320,3 +2456,95 @@ Homm3BG glyphs. Monochrome symbol glyphs are lightened in CSS to read on the dar
 panels; the tick/cross keep their own colour. Icon presence is pinned in
 `map-preset-editor.test.tsx`, `victory-points-panel.test.tsx`,
 `map-designer.test.tsx`.
+
+Tier-band outline colours (designer only): each tile's flower outline
+(`GROUP_COLORS`, `.designerFlowerOutline`) is stroked by its band's MAX unit tier
+— Ⅰ bronze `#b46f33` / Ⅱ–Ⅲ silver `#c7ccd6` / Ⅳ–Ⅴ gold `#e7b73c` / Ⅵ–Ⅶ azure
+`#3f7fd6` (reusing the app's `.tierDot`/`.neutralDeck` grade hues), Sea light-blue
+`#8fd8ff`, Underground kept purple `#7a5a9e`; the palette-button borders share
+them. A compact `.designerBandLegend` (six swatches + `TILE_GROUP_BAND_LABELS`
+numerals, now re-exported from `@/engine`) sits under the tile palette. Because
+Near-gold ≈ the selection gold `#ffd766` and Sea ≈ the secret-pin blue `#9ad0ff`,
+the `.selected`/`.secret` modifiers gained a stronger halo so an override always
+reads over its band. The IN-GAME yellow movement borders
+(`getTileBorderSegments`/`.tileBorderLine`) are untouched. Pinned in
+`map-designer.test.tsx` ("tier-band outline colours + legend": per-band stroke,
+the six-swatch legend, and a selected-overrides-band CONTROL).
+
+### Custom win conditions (map-designer + lobby, additional early-end trigger)
+
+A designed map (and, per-game, the lobby host) may author CUSTOM WIN CONDITIONS
+(`CustomMapPreset.customWinConditions` / `GameSetupOptions.customWinConditions`,
+`CustomWinCondition` in `state.ts`). ENGINE RULE: the FIRST live player — iterated
+in `turnOrder` — to satisfy ANY active condition WINS IMMEDIATELY, an ADDITIONAL
+early-end trigger layered on top of the normal victory mode (it does NOT replace
+it). Engine: `checkCustomWinConditions` (`adventure.ts`, next to
+`declareAdventureWinner`), called from the reducer's post-action tail
+(`reducer.ts`, right after `runAdventureAutomations` and before
+`ensureCombatActivation` — the ONE seam every action on every backend funnels
+through). Behaviour pinned in `src/engine/custom-win-conditions.test.ts` (each
+claim mutation-checked, with no-condition / below-threshold / VP-off CONTROLs).
+
+Seven kinds (params clamped by `sanitizeCustomWinConditions`, map-preset.ts):
+`control-towns` (count 2–8 — the home town counts, so a min of 2 avoids an
+instant win), `flag-mines` (2–12, mines+settlements combined), `hero-level`
+(main hero, 2–7), `gold` (treasury, 20–500), `artifacts` (own N, 1–10),
+`defeat-heroes` (1–6, main+secondary combined), `defeat-dragon-utopia` (no param).
+
+What runs (each with a failing-if-removed test):
+- **Any-of, first-to-satisfy**: conditions are evaluated in LIST ORDER for the
+  reason string; players in `turnOrder` (deterministic tie-break, documented).
+  The `GAME_WON` reason is `completed a custom win condition: <describe>` where
+  `<describe>` = `describeCustomWinCondition` (the SINGLE source for the editor
+  preview, the 🏁 map-pick banner line, the lobby list, and this reason — it
+  lives in `victory-points.ts`, NOT map-preset.ts, so `adventure.ts` can import
+  it without the map-preset→adventure cycle).
+- **The metrics ARE the Victory-Points readers** (reuse invariant): `mainHeroOf`,
+  `townsControlledBy`, `flaggedMineSettlementCount`, `artifactCountOf` are
+  exported from `victory-points.ts` and shared verbatim; gold is `resources.gold`;
+  `defeat-heroes` = `vpLedger.mainHeroDefeats.length + secondaryHeroDefeats`
+  (main once per opponent, VP-consistent; tolerates an absent ledger on legacy
+  snapshots); `defeat-dragon-utopia` = `vpLedger.utopiaDefeated`. Never duplicate
+  a metric — same numbers as VP scoring is the invariant.
+- **Combat-deferred**: the check SKIPS while a combat is open (`state.combat`), so
+  a threshold crossed mid-battle resolves on the next map-side action
+  (`ACKNOWLEDGE_COMBAT_END` and co. flow through the same tail) — the game is
+  never ended mid-fight. Pinned with an open-combat guard test + an
+  acknowledge-lands-the-win test.
+- **VP interplay**: the winner is declared through `declareAdventureWinner(…,
+  { viaVictoryCondition: true })`, so with VP mode OFF it is an INSTANT win (HUD +
+  GAME_WON, reason verbatim) exactly like the Grail, and with VP mode ON it
+  auto-routes to `endGameByVictoryPoints` (the completer earns the completion VP,
+  the most-VP seat wins, the VP_SCORING overlay fires). Both behaviours are free.
+- **Lobby is ADD-only, UNION at build**: `applyLobbyCustomWinConditions`
+  (adventure-setup.ts, chained after `applyLobbyVictoryPoints`) merges the map's
+  own list FIRST + the lobby-added list, exact-duplicate deduped, capped at
+  `MAX_CUSTOM_WIN_CONDITIONS` (4) via the shared pure `mergeCustomWinConditions`.
+  A map-authored condition is NEVER removed by the lobby. `setGameOptions` stores
+  the sanitised host list on `lobby.options.customWinConditions` and emits
+  `GAME_OPTIONS_CHANGED`.
+- **Public by design**: conditions ride `adventure.mapPreset`, which `player-view.ts`
+  does not mask — every seat can read them (unchanged; stated, not altered).
+- **Idempotent / live-only**: the win-declared guard makes a re-check a no-op (no
+  second GAME_WON); an ELIMINATED player satisfying a condition never wins
+  (the liveness skip mirrors last-faction-standing).
+
+UI: the map editor's "🏁 Custom win conditions" section (`map-preset-editor.tsx`,
+`CUSTOM_WIN_CONDITION_OPTIONS` / `defaultCustomWinCondition`, add/retype/param/
+remove up to 4) and the lobby "Custom win condition" section (`screen.tsx` rules
+tab, directly below Victory points: map-set conditions read-only + "map"-tagged,
+host add/remove dispatching `SET_GAME_OPTIONS { customWinConditions }`, Add
+disabled at the effective cap). Pinned in `map-preset-editor.test.tsx` and
+`game-options-tabs.test.tsx`.
+
+Deliberate LIMITS (documented, not bugs):
+- **No "defeat N Dragon Utopias"**: the VP ledger flag is a BOOLEAN
+  (`utopiaDefeated`), so `defeat-dragon-utopia` carries NO count even though a
+  designed map can host several Utopias — it fires on the FIRST one defeated.
+- **Instant-win foot-gun**: a condition already met at setup ends the game on the
+  first action — the designer's responsibility. The min-clamps REDUCE but cannot
+  eliminate it (e.g. a preset `startingResources` gold can exceed the gold
+  condition's 20 minimum; control-towns' min of 2 keeps the lone home town from
+  being an instant win, but a designed second town could still trip it).
+- **Never ends mid-battle** (the combat-deferred reading above) — a crossing
+  during combat waits for the next map-side action, by design.

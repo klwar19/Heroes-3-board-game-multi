@@ -5,16 +5,20 @@ import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { REWARD_GLYPH_ICONS } from "@/data/assets/homm-assets";
 import {
+  CUSTOM_WIN_CONDITION_OPTIONS,
   DEFAULT_VICTORY_CONDITION_VP,
+  defaultCustomWinCondition,
   defaultObeliskBonusForKind,
   defaultTimedEffect,
   defaultTimedEvent,
   defaultVictoryPointObjective,
   describeCustomMapPresetEntries,
   describeTimedMapEffect,
+  MAX_CUSTOM_WIN_CONDITIONS,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
   MAP_PRESET_BUILDING_OPTIONS,
+  MAP_PRESET_DIFFICULTY_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
@@ -28,6 +32,7 @@ import {
   type CustomMapTimedEffect,
   type CustomMapTimedEvent,
   type CustomStartingUnit,
+  type CustomWinCondition,
   type TimedEffectKind,
   type UnitLevel,
   type VictoryMode,
@@ -95,6 +100,10 @@ export function MapPresetEditor({
       // An empty objectives block means "nothing forced" — drop the key so the
       // preset collapses to undefined when it was the only condition.
       delete next.objectives;
+    }
+    if ("customWinConditions" in partial && partial.customWinConditions === undefined) {
+      // Removing the last condition drops the key so the preset can collapse.
+      delete next.customWinConditions;
     }
     if ("victoryPoints" in partial && partial.victoryPoints === undefined) {
       // Toggling Victory Points off removes the block entirely.
@@ -207,6 +216,23 @@ export function MapPresetEditor({
     writeVictoryPoints({ objectives: vpObjectives.filter((_, i) => i !== index) });
   };
 
+  const winConditions = value.customWinConditions ?? [];
+  const writeWinConditions = (next: CustomWinCondition[]) => {
+    patch({ customWinConditions: next.length > 0 ? next : undefined });
+  };
+  const addWinCondition = () => {
+    if (winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS) {
+      return;
+    }
+    writeWinConditions([...winConditions, defaultCustomWinCondition("control-towns")]);
+  };
+  const updateWinCondition = (index: number, condition: CustomWinCondition) => {
+    writeWinConditions(winConditions.map((entry, i) => (i === index ? condition : entry)));
+  };
+  const removeWinCondition = (index: number) => {
+    writeWinConditions(winConditions.filter((_, i) => i !== index));
+  };
+
   const setTimed = (next: CustomMapTimedEvent[]) => {
     patch({ timedEvents: next });
   };
@@ -262,6 +288,82 @@ export function MapPresetEditor({
       ) : (
         <small className="mapPresetEmpty">No special conditions — pure tile layout.</small>
       )}
+
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">Difficulty (preset)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Difficulty">
+          {MAP_PRESET_DIFFICULTY_OPTIONS.map((opt) => (
+            <button
+              aria-pressed={value.difficulty === opt.id}
+              className={`mapPresetChip${value.difficulty === opt.id ? " active" : ""}`}
+              key={opt.id}
+              onClick={() => patch({ difficulty: value.difficulty === opt.id ? undefined : opt.id })}
+              type="button"
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <small className="mapPresetHint">
+          Neutral guard strength (Field Difficulty Level Table) + the printed starting bonus. Seeds the lobby on
+          pick; the host can still change it there (their choice wins), and switching maps restores the scenario default.
+        </small>
+      </section>
+
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">Additional Ⅱ–Ⅲ tiles (preset)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Additional Ⅱ–Ⅲ tile opening">
+          {(
+            [
+              { id: "default", label: "Default" },
+              { id: "on", label: "On" },
+              { id: "off", label: "Off" }
+            ] as const
+          ).map((opt) => {
+            const active =
+              opt.id === "default"
+                ? value.farTileOpening === undefined
+                : opt.id === "on"
+                  ? value.farTileOpening === true
+                  : value.farTileOpening === false;
+            return (
+              <button
+                aria-pressed={active}
+                className={`mapPresetChip${active ? " active" : ""}`}
+                key={opt.id}
+                onClick={() =>
+                  patch({ farTileOpening: opt.id === "default" ? undefined : opt.id === "on" })
+                }
+                type="button"
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        {value.farTileOpening !== false ? (
+          <div className="mapPresetChipRow" role="group" aria-label="Ⅱ–Ⅲ tiles per player">
+            {([undefined, 0, 1, 2, 3, 4, 5, 6] as const).map((count) => {
+              const active = value.farTilesPerPlayer === count;
+              return (
+                <button
+                  aria-pressed={active}
+                  className={`mapPresetChip${active ? " active" : ""}`}
+                  key={String(count)}
+                  onClick={() => patch({ farTilesPerPlayer: count })}
+                  type="button"
+                >
+                  {count === undefined ? "Default" : count}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        <small className="mapPresetHint">
+          Whether players may open their own Ⅱ–Ⅲ Far tiles mid-game, and how many each may add (0–6). Only the
+          count of tiles is set here — the Ⅱ–Ⅲ supply pool itself stays the engine default. Seeds the lobby on pick.
+        </small>
+      </section>
 
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Victory (preset)</div>
@@ -962,6 +1064,81 @@ export function MapPresetEditor({
         )}
       </section>
 
+      <section className="mapPresetSection mapPresetVpSection" aria-label="Custom win conditions">
+        <div className="mapPresetSectionLabel">🏁 Custom win conditions</div>
+        <small className="mapPresetHint">
+          Extra early-end triggers on top of the victory mode: the FIRST player to satisfy ANY of these wins
+          immediately. Keep the thresholds above what a player already has at setup, or the game ends on the first
+          action.
+        </small>
+        <div className="mapPresetVpObjectives" role="group" aria-label="Custom win condition list">
+          <div className="mapPresetTimedSectionHeading">
+            <div className="mapPresetSectionLabel">Conditions</div>
+            <span className={`mapPresetTimedCount${winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS ? " full" : ""}`}>
+              {winConditions.length}/{MAX_CUSTOM_WIN_CONDITIONS}
+            </span>
+          </div>
+          {winConditions.map((condition, index) => {
+            const option = CUSTOM_WIN_CONDITION_OPTIONS.find((entry) => entry.id === condition.kind);
+            const paramValue =
+              condition.kind === "hero-level"
+                ? condition.level
+                : condition.kind === "gold"
+                  ? condition.amount
+                  : "count" in condition
+                    ? condition.count
+                    : null;
+            return (
+              <div className="mapPresetVpObjectiveRow" key={index}>
+                <RewardGlyph src={winConditionGlyph(condition.kind)} title={`Condition ${index + 1}`} />
+                <select
+                  aria-label={`Condition ${index + 1} kind`}
+                  className="mapPresetSelect"
+                  onChange={(e) =>
+                    updateWinCondition(index, defaultCustomWinCondition(e.target.value as CustomWinCondition["kind"]))
+                  }
+                  value={condition.kind}
+                >
+                  {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+                {option?.param && paramValue !== null ? (
+                  <ResourceField
+                    label={option.param.label}
+                    max={option.param.max}
+                    min={option.param.min}
+                    value={paramValue}
+                    onChange={(n) => {
+                      const clamped = Math.max(option.param!.min, Math.min(option.param!.max, n ?? option.param!.min));
+                      updateWinCondition(index, { ...condition, [option.param!.field]: clamped } as CustomWinCondition);
+                    }}
+                  />
+                ) : null}
+                <button
+                  aria-label={`Remove condition ${index + 1}`}
+                  className="mapPresetTimedRemove"
+                  onClick={() => removeWinCondition(index)}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={13} />
+                </button>
+              </div>
+            );
+          })}
+          <button
+            className="mapPresetTimedAdd"
+            disabled={winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS}
+            onClick={addWinCondition}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={13} /> Add win condition
+          </button>
+        </div>
+      </section>
+
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Designer note (shown when map is picked)</div>
         <textarea
@@ -985,6 +1162,19 @@ const CUBE_LOCATION_OPTIONS: {
   { id: "windmill", label: "Windmill (+ Prospector)" },
   { id: "water_wheel", label: "Water Wheel (+ Derrick)" },
   { id: "mystical_garden", label: "Mystical Garden" }
+];
+
+/** Tile-group chips for the "clear_tile_cubes" event (player-facing bands). */
+const TILE_GROUP_OPTIONS: {
+  id: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
+  label: string;
+}[] = [
+  { id: "starting", label: "Ⅰ" },
+  { id: "far", label: "Ⅱ–Ⅲ" },
+  { id: "near", label: "Ⅳ–Ⅴ" },
+  { id: "center", label: "Ⅵ–Ⅶ" },
+  { id: "sea", label: "Sea" },
+  { id: "subterranean", label: "Underground" }
 ];
 
 function TimedEffectFields({
@@ -1081,6 +1271,53 @@ function TimedEffectFields({
           );
         })}
       </div>
+    );
+  }
+  if (effect.kind === "clear_tile_cubes") {
+    const selected = new Set(effect.groups);
+    return (
+      <>
+        <div className="mapPresetChipRow" role="group" aria-label={`Timed event ${index + 1} tile groups`}>
+          {TILE_GROUP_OPTIONS.map((opt) => {
+            const on = selected.has(opt.id);
+            return (
+              <button
+                aria-pressed={on}
+                className={`mapPresetChip${on ? " active" : ""}`}
+                key={opt.id}
+                onClick={() => {
+                  const next = new Set(selected);
+                  if (on) {
+                    // Keep at least one group so the event stays valid.
+                    if (next.size <= 1) {
+                      return;
+                    }
+                    next.delete(opt.id);
+                  } else {
+                    next.add(opt.id);
+                  }
+                  onChange({
+                    ...effect,
+                    groups: TILE_GROUP_OPTIONS.map((o) => o.id).filter((id) => next.has(id))
+                  });
+                }}
+                type="button"
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <label className="mapPresetToggle">
+          <input
+            aria-label={`Timed event ${index + 1} skip settlement tiles`}
+            checked={effect.excludeSettlementTiles ?? false}
+            onChange={(e) => onChange({ ...effect, excludeSettlementTiles: e.target.checked })}
+            type="checkbox"
+          />
+          <span>Skip tiles with a settlement</span>
+        </label>
+      </>
     );
   }
   if (effect.kind === "morale") {
@@ -1311,6 +1548,25 @@ function vpObjectiveGlyph(kind: VictoryPointObjective["kind"]): string {
       return REWARD_GLYPH_ICONS.gold;
     case "hero-level":
       return REWARD_GLYPH_ICONS.experience;
+    case "defeat-dragon-utopia":
+      return REWARD_GLYPH_ICONS.attack;
+  }
+}
+
+/** The reward glyph for a custom-win-condition kind. */
+function winConditionGlyph(kind: CustomWinCondition["kind"]): string {
+  switch (kind) {
+    case "control-towns":
+      return REWARD_GLYPH_ICONS.materials;
+    case "flag-mines":
+      return REWARD_GLYPH_ICONS.gold;
+    case "hero-level":
+      return REWARD_GLYPH_ICONS.experience;
+    case "gold":
+      return REWARD_GLYPH_ICONS.gold;
+    case "artifacts":
+      return REWARD_GLYPH_ICONS.treasure;
+    case "defeat-heroes":
     case "defeat-dragon-utopia":
       return REWARD_GLYPH_ICONS.attack;
   }

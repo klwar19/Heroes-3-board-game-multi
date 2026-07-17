@@ -15,10 +15,14 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TileDefinition } from "@/data/map/types";
-import { seaTileBand, subterraneanTileBand, VII_FIELD_LOCATION } from "./adventure";
+import { seaTileBand, subterraneanTileBand, TILE_GROUP_BAND_LABELS, VII_FIELD_LOCATION } from "./adventure";
 import { VICTORY_MODE_LABELS } from "./ruleset";
-import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS } from "./state";
-import { DEFAULT_VICTORY_CONDITION_VP, describeVictoryPointObjective } from "./victory-points";
+import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS, MAX_FAR_TILES_PER_PLAYER } from "./state";
+import {
+  DEFAULT_VICTORY_CONDITION_VP,
+  describeCustomWinCondition,
+  describeVictoryPointObjective
+} from "./victory-points";
 import type {
   CustomCenterHexPlan,
   CustomCenterHexReward,
@@ -32,7 +36,9 @@ import type {
   CustomMapPreset,
   CustomMapTilePlan,
   CustomStartingUnit,
+  CustomWinCondition,
   DragonUtopiaGuards,
+  GameDifficulty,
   GameSetupOptions,
   SecretTileFeature,
   UnitLevel,
@@ -237,6 +243,15 @@ const VICTORY_MODES = new Set<VictoryMode>([
   "dragon-conqueror"
 ]);
 
+const DIFFICULTY_VALUES = new Set<GameDifficulty>(["easy", "normal", "hard", "impossible"]);
+
+const DIFFICULTY_LABELS: Record<GameDifficulty, string> = {
+  easy: "Easy",
+  normal: "Normal",
+  hard: "Hard",
+  impossible: "Impossible"
+};
+
 const BUILDING_SUFFIXES = new Set([
   "citadel",
   "city_hall",
@@ -252,6 +267,8 @@ const BUILDING_SUFFIXES = new Set([
 
 const SEARCH_DECKS = new Set(["artifacts", "spells", "abilities"]);
 const CUBE_LOCATIONS = new Set(["windmill", "water_wheel", "mystical_garden"]);
+/** The six tile groups a clear_tile_cubes filter may target. */
+const TILE_GROUPS = new Set(["starting", "far", "near", "center", "sea", "subterranean"]);
 const OBELISK_ROLES = new Set<CustomMapObeliskConfig["role"]>(["monolith", "bonus", "victory-only"]);
 const VICTORY_POINT_OBJECTIVE_KINDS = new Set<VictoryPointObjective["kind"]>([
   "control-towns",
@@ -262,6 +279,20 @@ const VICTORY_POINT_OBJECTIVE_KINDS = new Set<VictoryPointObjective["kind"]>([
 
 /** Max designer-chosen VP objectives per map (sanitisation cap). */
 export const MAX_VICTORY_POINT_OBJECTIVES = 4;
+
+/** The custom-win-condition kinds a map / lobby may author (sanitiser allowlist). */
+const CUSTOM_WIN_CONDITION_KINDS = new Set<CustomWinCondition["kind"]>([
+  "control-towns",
+  "flag-mines",
+  "hero-level",
+  "gold",
+  "artifacts",
+  "defeat-heroes",
+  "defeat-dragon-utopia"
+]);
+
+/** Max custom win conditions on one map/game (preset + lobby MERGED — sanitisation cap). */
+export const MAX_CUSTOM_WIN_CONDITIONS = 4;
 
 export type { CustomMapObeliskBonus, CustomMapObeliskConfig };
 
@@ -300,6 +331,7 @@ export const OUTPOST_OBJECT_KINDS = new Set<CustomMapObjectKind>(["garrison", "k
 /** Designer effect kinds (order = editor dropdown order). */
 export const TIMED_EFFECT_KINDS = [
   "clear_visitable_cubes",
+  "clear_tile_cubes",
   "resources",
   "search",
   "morale",
@@ -313,6 +345,7 @@ export type TimedEffectKind = (typeof TIMED_EFFECT_KINDS)[number];
 
 export const TIMED_EFFECT_KIND_LABELS: Record<TimedEffectKind, string> = {
   clear_visitable_cubes: "Clear black cubes (revisit sites)",
+  clear_tile_cubes: "Clear black cubes (Tiles)",
   resources: "All players gain resources",
   search: "All players Search a deck",
   morale: "All players gain/lose morale",
@@ -330,6 +363,8 @@ export function defaultTimedEffect(kind: TimedEffectKind): CustomMapTimedEffect 
         kind: "clear_visitable_cubes",
         locations: ["windmill", "water_wheel", "mystical_garden"]
       };
+    case "clear_tile_cubes":
+      return { kind: "clear_tile_cubes", groups: ["far"], excludeSettlementTiles: false };
     case "resources":
       return { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 };
     case "search":
@@ -579,6 +614,87 @@ function sanitizeVictoryPoints(input: unknown): CustomMapPreset["victoryPoints"]
 }
 
 /**
+ * Sanitize ONE custom win condition (untrusted). Drops an unknown kind; clamps
+ * each kind's threshold to its legal band. The min-clamps (control-towns ≥ 2 so
+ * the home town alone can't instant-win, level ≥ 2, gold ≥ 20…) REDUCE but never
+ * eliminate the instant-win foot-gun — a condition already met at setup ends the
+ * game on the first action (the designer's responsibility). Returns null for an
+ * unusable input so the array filter removes it.
+ */
+function sanitizeCustomWinCondition(input: unknown): CustomWinCondition | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const raw = input as { kind?: unknown; count?: unknown; level?: unknown; amount?: unknown };
+  if (
+    typeof raw.kind !== "string" ||
+    !CUSTOM_WIN_CONDITION_KINDS.has(raw.kind as CustomWinCondition["kind"])
+  ) {
+    return null;
+  }
+  switch (raw.kind as CustomWinCondition["kind"]) {
+    case "control-towns":
+      return { kind: "control-towns", count: clampInt(raw.count, 2, 8, 2) };
+    case "flag-mines":
+      return { kind: "flag-mines", count: clampInt(raw.count, 2, 12, 2) };
+    case "hero-level":
+      return { kind: "hero-level", level: clampInt(raw.level, 2, 7, 2) };
+    case "gold":
+      return { kind: "gold", amount: clampInt(raw.amount, 20, 500, 20) };
+    case "artifacts":
+      return { kind: "artifacts", count: clampInt(raw.count, 1, 10, 1) };
+    case "defeat-heroes":
+      return { kind: "defeat-heroes", count: clampInt(raw.count, 1, 6, 1) };
+    case "defeat-dragon-utopia":
+      return { kind: "defeat-dragon-utopia" };
+  }
+}
+
+/**
+ * Sanitize a LIST of custom win conditions (untrusted) — the SHARED sanitiser
+ * used by both the designed-preset path and the lobby `SET_GAME_OPTIONS` block.
+ * Unknown kinds / degenerate params are dropped/clamped and the list is capped at
+ * {@link MAX_CUSTOM_WIN_CONDITIONS}. A non-array yields `[]`.
+ */
+export function sanitizeCustomWinConditions(input: unknown): CustomWinCondition[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input
+    .map(sanitizeCustomWinCondition)
+    .filter((condition): condition is CustomWinCondition => condition !== null)
+    .slice(0, MAX_CUSTOM_WIN_CONDITIONS);
+}
+
+/**
+ * The EFFECTIVE custom-win-condition list for a game: the map-authored list
+ * first, the lobby-added list appended, exact-duplicate deduped (same kind +
+ * params) and capped at {@link MAX_CUSTOM_WIN_CONDITIONS}. Map-authored
+ * conditions are never removed — the lobby can only ADD. Pure (no sanitisation);
+ * callers pass already-sanitised lists. Shared by the engine build
+ * (`applyLobbyCustomWinConditions`) and the lobby UI so they never drift.
+ */
+export function mergeCustomWinConditions(
+  presetConditions: CustomWinCondition[] | undefined,
+  lobbyConditions: CustomWinCondition[] | undefined
+): CustomWinCondition[] {
+  const merged: CustomWinCondition[] = [];
+  const seen = new Set<string>();
+  for (const condition of [...(presetConditions ?? []), ...(lobbyConditions ?? [])]) {
+    const key = JSON.stringify(condition);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(condition);
+    if (merged.length >= MAX_CUSTOM_WIN_CONDITIONS) {
+      break;
+    }
+  }
+  return merged;
+}
+
+/**
  * Sanitize ONE designer-placed map object (untrusted input). Keeps only a
  * well-formed shape: a known kind, a valid placement (tile-slot with a 0-6 slot,
  * or standalone), a colored pair 1-4 REQUIRED for a gate (and never on another
@@ -739,6 +855,23 @@ function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
     }
     return { kind: "clear_visitable_cubes", locations: [...new Set(locations)] };
   }
+  if (raw.kind === "clear_tile_cubes" && Array.isArray(raw.groups)) {
+    const groups = raw.groups.filter(
+      (group): group is "starting" | "far" | "near" | "center" | "sea" | "subterranean" =>
+        typeof group === "string" && TILE_GROUPS.has(group)
+    );
+    if (groups.length === 0) {
+      return null;
+    }
+    const effect: Extract<CustomMapTimedEffect, { kind: "clear_tile_cubes" }> = {
+      kind: "clear_tile_cubes",
+      groups: [...new Set(groups)]
+    };
+    if (raw.excludeSettlementTiles === true) {
+      effect.excludeSettlementTiles = true;
+    }
+    return effect;
+  }
   if (raw.kind === "morale" && (raw.amount === 1 || raw.amount === -1)) {
     return { kind: "morale", amount: raw.amount };
   }
@@ -769,6 +902,21 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
 
   if (typeof raw.victoryMode === "string" && VICTORY_MODES.has(raw.victoryMode as VictoryMode)) {
     preset.victoryMode = raw.victoryMode as VictoryMode;
+  }
+  // Map-settings defaults (difficulty / far-tile supply). Garbage difficulty is
+  // dropped; farTilesPerPlayer clamps to 0..MAX (a non-number is dropped, never
+  // coerced to a silent 0). farTileOpening is kept only as a real boolean.
+  if (typeof raw.difficulty === "string" && DIFFICULTY_VALUES.has(raw.difficulty as GameDifficulty)) {
+    preset.difficulty = raw.difficulty as GameDifficulty;
+  }
+  if (typeof raw.farTileOpening === "boolean") {
+    preset.farTileOpening = raw.farTileOpening;
+  }
+  if (typeof raw.farTilesPerPlayer === "number" && Number.isFinite(raw.farTilesPerPlayer)) {
+    preset.farTilesPerPlayer = Math.max(
+      0,
+      Math.min(MAX_FAR_TILES_PER_PLAYER, Math.floor(raw.farTilesPerPlayer))
+    );
   }
   const resources = sanitizeResources(raw.startingResources);
   if (resources) {
@@ -855,6 +1003,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.victoryPoints = victoryPoints;
     }
   }
+  if (raw.customWinConditions !== undefined) {
+    const conditions = sanitizeCustomWinConditions(raw.customWinConditions);
+    if (conditions.length > 0) {
+      preset.customWinConditions = conditions;
+    }
+  }
 
   return customMapPresetIsActive(preset) ? preset : undefined;
 }
@@ -866,6 +1020,9 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
   }
   return Boolean(
     preset.victoryMode ||
+      preset.difficulty ||
+      preset.farTileOpening !== undefined ||
+      preset.farTilesPerPlayer !== undefined ||
       preset.startingResources ||
       preset.startingProduction ||
       (preset.startingBuildings && preset.startingBuildings.length > 0) ||
@@ -877,7 +1034,8 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.obelisks ||
       (preset.objects && preset.objects.length > 0) ||
       Boolean(preset.objectives) ||
-      Boolean(preset.victoryPoints?.enabled)
+      Boolean(preset.victoryPoints?.enabled) ||
+      (preset.customWinConditions && preset.customWinConditions.length > 0)
   );
 }
 
@@ -1065,6 +1223,12 @@ function describeTimedEffect(effect: CustomMapTimedEffect): string {
     );
     return `clear black cubes on ${names.join(", ")}`;
   }
+  if (effect.kind === "clear_tile_cubes") {
+    const bands = effect.groups.map((group) => TILE_GROUP_BAND_LABELS[group]);
+    return `clear black cubes on ${bands.join(", ")} Tiles${
+      effect.excludeSettlementTiles ? " (skip settlements)" : ""
+    }`;
+  }
   if (effect.kind === "morale") {
     return effect.amount > 0 ? "all players gain +1 morale" : "all players lose 1 morale";
   }
@@ -1099,6 +1263,21 @@ export function describeCustomMapPresetEntries(
     entries.push({
       icon: "🏆",
       text: `Victory: ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`
+    });
+  }
+  if (preset.difficulty) {
+    entries.push({ icon: "⚙️", text: `Difficulty: ${DIFFICULTY_LABELS[preset.difficulty]}` });
+  }
+  if (preset.farTileOpening !== undefined || preset.farTilesPerPlayer !== undefined) {
+    const on = preset.farTileOpening !== false;
+    const count = preset.farTilesPerPlayer;
+    entries.push({
+      icon: "🀆",
+      text: !on
+        ? "Additional Ⅱ–Ⅲ tiles: off"
+        : count !== undefined
+          ? `Additional Ⅱ–Ⅲ tiles: ${count} per player`
+          : "Additional Ⅱ–Ⅲ tiles: on"
     });
   }
   if (preset.startingResources) {
@@ -1159,6 +1338,11 @@ export function describeCustomMapPresetEntries(
       entries.push(line);
     }
   }
+  if (preset.customWinConditions && preset.customWinConditions.length > 0) {
+    for (const condition of preset.customWinConditions) {
+      entries.push({ icon: "🏁", text: `Custom win: ${describeCustomWinCondition(condition)}` });
+    }
+  }
   if (preset.objects && preset.objects.length > 0) {
     const summary = describeMapObjects(preset.objects);
     if (summary.length > 0) {
@@ -1179,6 +1363,9 @@ export function describeCustomMapPreset(preset: CustomMapPreset | null | undefin
 /** GameSetupOptions keys a map preset may force. */
 export type PresetForcedOptionKey =
   | "victoryMode"
+  | "difficulty"
+  | "farTileOpening"
+  | "farTilesPerPlayer"
   | "startingResources"
   | "startingProduction"
   | "startingBuildings"
@@ -1194,6 +1381,15 @@ export function presetForcedOptionKeys(
   const keys: PresetForcedOptionKey[] = [];
   if (preset.victoryMode) {
     keys.push("victoryMode");
+  }
+  if (preset.difficulty) {
+    keys.push("difficulty");
+  }
+  if (preset.farTileOpening !== undefined) {
+    keys.push("farTileOpening");
+  }
+  if (preset.farTilesPerPlayer !== undefined) {
+    keys.push("farTilesPerPlayer");
   }
   if (preset.startingResources) {
     keys.push("startingResources");
@@ -1228,6 +1424,18 @@ export function applyCustomMapPresetToOptions(
   if (preset.victoryMode && !skip?.has("victoryMode")) {
     options.victoryMode = preset.victoryMode;
     changes.push(`victory ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`);
+  }
+  if (preset.difficulty && !skip?.has("difficulty")) {
+    options.difficulty = preset.difficulty;
+    changes.push(`difficulty ${DIFFICULTY_LABELS[preset.difficulty]}`);
+  }
+  if (preset.farTileOpening !== undefined && !skip?.has("farTileOpening")) {
+    options.farTileOpening = preset.farTileOpening;
+    changes.push(`Ⅱ–Ⅲ tile opening ${preset.farTileOpening ? "on" : "off"}`);
+  }
+  if (preset.farTilesPerPlayer !== undefined && !skip?.has("farTilesPerPlayer")) {
+    options.farTilesPerPlayer = preset.farTilesPerPlayer;
+    changes.push(`Ⅱ–Ⅲ tiles per player ${preset.farTilesPerPlayer}`);
   }
   if (preset.startingResources && !skip?.has("startingResources")) {
     options.startingResources = { ...preset.startingResources };
@@ -1274,6 +1482,18 @@ export function revertCustomMapPresetOptions(
       case "victoryMode":
         options.victoryMode = defaults.victoryMode;
         changes.push(`victory back to ${VICTORY_LABELS[defaults.victoryMode ?? "conquest"] ?? "Conquest"}`);
+        break;
+      case "difficulty":
+        options.difficulty = defaults.difficulty;
+        changes.push(`difficulty back to ${DIFFICULTY_LABELS[defaults.difficulty]}`);
+        break;
+      case "farTileOpening":
+        options.farTileOpening = defaults.farTileOpening;
+        changes.push("Ⅱ–Ⅲ tile opening back to the scenario default");
+        break;
+      case "farTilesPerPlayer":
+        options.farTilesPerPlayer = defaults.farTilesPerPlayer;
+        changes.push("Ⅱ–Ⅲ tiles per player back to the scenario default");
         break;
       case "startingResources":
         options.startingResources = { ...defaults.startingResources };
@@ -1498,6 +1718,11 @@ export const MAP_PRESET_VICTORY_OPTIONS: { id: VictoryMode; label: string }[] = 
   Object.keys(VICTORY_MODE_LABELS) as VictoryMode[]
 ).map((id) => ({ id, label: VICTORY_MODE_LABELS[id] }));
 
+/** Difficulty chips for the map-settings designer (Easy … Impossible). */
+export const MAP_PRESET_DIFFICULTY_OPTIONS: { id: GameDifficulty; label: string }[] = (
+  ["easy", "normal", "hard", "impossible"] as GameDifficulty[]
+).map((id) => ({ id, label: DIFFICULTY_LABELS[id] }));
+
 /**
  * Obelisk role picker for the designer. "classic" is the ABSENCE of a config
  * (the locked-die house rule) — it is NOT a stored enum value; the editor maps
@@ -1590,5 +1815,44 @@ export function defaultVictoryPointObjective(kind: VictoryPointObjective["kind"]
       return { kind: "hero-level", vp: 3, level: 5 };
     case "defeat-dragon-utopia":
       return { kind: "defeat-dragon-utopia", vp: 5 };
+  }
+}
+
+/**
+ * Custom-win-condition kinds the designer/host may add (editor + lobby dropdown
+ * order). `param` names which numeric field the row edits and its clamp band
+ * (matches {@link sanitizeCustomWinConditions}); `null` = no parameter.
+ */
+export const CUSTOM_WIN_CONDITION_OPTIONS: {
+  id: CustomWinCondition["kind"];
+  label: string;
+  param: { field: "count" | "level" | "amount"; label: string; min: number; max: number } | null;
+}[] = [
+  { id: "control-towns", label: "Control N Towns", param: { field: "count", label: "Towns", min: 2, max: 8 } },
+  { id: "flag-mines", label: "Flag N Mines / Settlements", param: { field: "count", label: "Mines", min: 2, max: 12 } },
+  { id: "hero-level", label: "Reach Hero level N", param: { field: "level", label: "Level", min: 2, max: 7 } },
+  { id: "gold", label: "Reach N gold", param: { field: "amount", label: "Gold", min: 20, max: 500 } },
+  { id: "artifacts", label: "Own N Artifacts", param: { field: "count", label: "Artifacts", min: 1, max: 10 } },
+  { id: "defeat-heroes", label: "Defeat N enemy Heroes", param: { field: "count", label: "Heroes", min: 1, max: 6 } },
+  { id: "defeat-dragon-utopia", label: "Defeat the Dragon Utopia", param: null }
+];
+
+/** Fresh default custom win condition when one is added / its kind is switched. */
+export function defaultCustomWinCondition(kind: CustomWinCondition["kind"]): CustomWinCondition {
+  switch (kind) {
+    case "control-towns":
+      return { kind: "control-towns", count: 3 };
+    case "flag-mines":
+      return { kind: "flag-mines", count: 4 };
+    case "hero-level":
+      return { kind: "hero-level", level: 5 };
+    case "gold":
+      return { kind: "gold", amount: 100 };
+    case "artifacts":
+      return { kind: "artifacts", count: 3 };
+    case "defeat-heroes":
+      return { kind: "defeat-heroes", count: 1 };
+    case "defeat-dragon-utopia":
+      return { kind: "defeat-dragon-utopia" };
   }
 }

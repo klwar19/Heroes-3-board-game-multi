@@ -125,6 +125,94 @@ function installIdentitySvgPolyfills(): () => void {
   };
 }
 
+describe("MapDesigner — tier-band outline colours + legend", () => {
+  // Outline colours mirror the creature-tier ladder (Ⅰ bronze, Ⅱ–Ⅲ silver,
+  // Ⅳ–Ⅴ gold, Ⅵ–Ⅶ azure) with a light-blue sea and the kept purple underground.
+  // jsdom leaves an inline SVG `stroke` hex un-normalised, so we assert the raw hex.
+  const BAND_STROKE: Record<string, string> = {
+    starting: "#b46f33",
+    far: "#c7ccd6",
+    near: "#e7b73c",
+    center: "#3f7fd6",
+    sea: "#8fd8ff",
+    subterranean: "#7a5a9e"
+  };
+
+  // jsdom normalises the CSS `background` shorthand hex to `rgb(...)`.
+  const hexToRgb = (hex: string): string => {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+  };
+
+  it("strokes each tile's outline in its creature-tier band colour", () => {
+    const town = { row: 10, col: 10 };
+    const spots = tileLatticeNeighbors(town);
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true },
+      { row: spots[1].row, col: spots[1].col, group: "near", faceDown: true },
+      { row: spots[2].row, col: spots[2].col, group: "center", faceDown: true },
+      { row: spots[3].row, col: spots[3].col, group: "sea", faceDown: true, seaBand: "iv-v" },
+      { row: spots[4].row, col: spots[4].col, group: "subterranean", faceDown: true, subBand: "iv-v" }
+    ]);
+    for (const [group, hex] of Object.entries(BAND_STROKE)) {
+      const outline = container.querySelector(
+        `.designerFlowerOutline[data-band-group="${group}"]`
+      ) as SVGElement | null;
+      expect(outline, `outline path for the ${group} band`).toBeTruthy();
+      expect((outline as SVGElement).style.stroke, `${group} band stroke`).toBe(hex);
+    }
+  });
+
+  it("a selected tile's outline override beats its band colour (control)", () => {
+    const town = { row: 10, col: 10 };
+    const spots = tileLatticeNeighbors(town);
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: spots[0].row, col: spots[0].col, group: "near", faceDown: true }
+    ]);
+    const before = container.querySelector(
+      '.designerFlowerOutline[data-band-group="near"]'
+    ) as SVGElement;
+    // CONTROL: unselected, it wears the Near band gold.
+    expect(before.style.stroke, "unselected Near band gold").toBe("#e7b73c");
+    // Select plan 1 (its click opens the docked options panel).
+    openTilePopover(container, 1);
+    const after = container.querySelector(
+      '.designerFlowerOutline[data-band-group="near"]'
+    ) as SVGElement;
+    expect(after.classList.contains("selected"), "selected modifier applied").toBe(true);
+    expect(after.style.stroke, "selection gold overrides the band gold").toBe("#ffd766");
+  });
+
+  it("renders a band-colour legend with the six group swatches + labels", () => {
+    const container = renderDesigner([{ row: 10, col: 10, group: "starting", faceDown: false }]);
+    const legend = container.querySelector(".designerBandLegend");
+    expect(legend, "band legend present").toBeTruthy();
+    const items = legend!.querySelectorAll(".designerBandLegendItem");
+    expect(items.length, "one entry per DesignGroup").toBe(6);
+    const seen: string[] = [];
+    for (const item of Array.from(items)) {
+      const group = item.getAttribute("data-band-group")!;
+      seen.push(group);
+      const swatch = item.querySelector(".designerBandLegendSwatch") as HTMLElement;
+      expect(swatch.style.background, `${group} swatch colour`).toBe(hexToRgb(BAND_STROKE[group]));
+    }
+    expect(seen, "legend order weakest → sea/underground").toEqual([
+      "starting",
+      "far",
+      "near",
+      "center",
+      "sea",
+      "subterranean"
+    ]);
+    // Labels read from the shared engine band-label map (TILE_GROUP_BAND_LABELS).
+    for (const label of ["Ⅰ", "Ⅱ–Ⅲ", "Ⅳ–Ⅴ", "Ⅵ–Ⅶ", "Sea", "Underground"]) {
+      expect(legend!.textContent, `legend shows ${label}`).toContain(label);
+    }
+  });
+});
+
 describe("MapDesigner — center Ⅶ-field designation", () => {
   it("the center-tile popover Ⅶ picker writes the plan's viiField", () => {
     const onChange = vi.fn();
@@ -2898,6 +2986,91 @@ describe("MapDesigner — fixed starting-tile orientation (lockRotation)", () =>
     container = renderDesigner(latest, onChange);
     const farPopover = openTilePopover(container, 1);
     expect(farPopover.querySelector(".popoverLockToggle")).toBeNull();
+  });
+});
+
+describe("MapDesigner — per-tile UNDERGROUND designation", () => {
+  const town = { row: 10, col: 10 };
+  const far = tileLatticeNeighbors(town)[0]; // touches the town (Surface) tile
+
+  it("the far-tile popover toggles plan.underground, reveals the gate-link section, and offers NO toggle on a starting tile", () => {
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    let container = renderDesigner(latest, onChange);
+
+    // The far popover offers the Underground toggle (unpressed); a plain far tile
+    // shows NO gate-link section (it is Surface).
+    const popover = openTilePopover(container, 1);
+    const toggle = popover.querySelector('[data-testid="underground-toggle"]');
+    expect(toggle, "far popover offers the underground toggle").toBeTruthy();
+    expect(toggle!.getAttribute("aria-pressed")).toBe("false");
+    expect(popover.querySelector(".popoverGateLinks"), "no gate links while Surface").toBeNull();
+
+    // Flip it ON → onChange carries underground:true, keeping the band group.
+    fireEvent.click(toggle!);
+    expect(latest[1]).toMatchObject({ group: "far", underground: true });
+
+    // Re-render flagged: the toggle reads pressed AND the cavern gate-link
+    // section now appears (the tile is on the Underground layer).
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    const popover2 = openTilePopover(container, 1);
+    expect(popover2.querySelector('[data-testid="underground-toggle"]')!.getAttribute("aria-pressed")).toBe("true");
+    expect(popover2.querySelector(".popoverGateLinks"), "gate-link section appears once flagged").toBeTruthy();
+    // …and the touching town Surface tile is offered as a link target.
+    expect(popover2.querySelector(".popoverGateLinkToggle"), "a Surface link target is listed").toBeTruthy();
+
+    // Toggling OFF round-trips back to no flag.
+    fireEvent.click(popover2.querySelector('[data-testid="underground-toggle"]')!);
+    expect(latest[1].underground).toBeUndefined();
+
+    // CONTROL: a STARTING seat tile never offers the underground toggle.
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    const startPopover = openTilePopover(container, 0);
+    expect(startPopover.querySelector('[data-testid="underground-toggle"]'), "no underground toggle on a seat tile").toBeNull();
+  });
+
+  it("a flagged tile's outline flips to the Underground layer (data-underground) while keeping its band group", () => {
+    const flagged = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true, underground: true }
+    ]);
+    const outline = flagged.querySelector('.designerFlowerOutline[data-band-group="far"]');
+    expect(outline, "the far tile keeps its band group attribute").toBeTruthy();
+    expect(outline!.getAttribute("data-underground"), "the outline is marked underground").toBe("true");
+
+    // CONTROL: the same plain far tile carries no underground marker.
+    cleanup();
+    const plain = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ]);
+    const plainOutline = plain.querySelector('.designerFlowerOutline[data-band-group="far"]');
+    expect(plainOutline!.getAttribute("data-underground"), "no marker on a Surface tile").toBeNull();
+  });
+
+  it("a flagged tile far from any Surface tile draws the unreachable red ring (CONTROL: a plain far tile does not)", () => {
+    const isolated = { row: town.row + 14, col: town.col + 9 };
+    const flagged = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: isolated.row, col: isolated.col, group: "far", faceDown: true, underground: true }
+    ]);
+    // No gate can form → the unreachable warning fires for the flagged tile too.
+    expect(flagged.querySelector(".designerFlowerOutline.cavernUnreachable"), "red ring on an unreachable flagged tile").toBeTruthy();
+
+    // CONTROL: the same tile without the flag is a plain Surface far tile — no ring.
+    cleanup();
+    const plain = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: isolated.row, col: isolated.col, group: "far", faceDown: true }
+    ]);
+    expect(plain.querySelector(".designerFlowerOutline.cavernUnreachable"), "no ring on a Surface tile").toBeNull();
   });
 });
 

@@ -7132,6 +7132,17 @@ export type MapTileState = {
   /** Tile group (public info — the printed back gives it away). */
   group?: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
   /**
+   * Per-tile UNDERGROUND layer override carried from
+   * {@link CustomMapTilePlan.underground} onto the placed instance: a
+   * far/near/center/sea tile the designer marked as being on the Underground
+   * layer. Set at setup (face-down included) so {@link tileLayer} treats it as
+   * "subterranean" from the instant it is placed, keeping its band content
+   * unchanged. Public info (not secret — the cue is always on): a designed
+   * underground tile is visibly marked, like a cavern back. Absent (every legacy
+   * snapshot / printed tile) means the tile's plain group layer.
+   */
+  underground?: boolean;
+  /**
    * Tile revealed/placed but its rotation not confirmed yet: fields are not
    * materialized until the owner locks the rotation in.
    */
@@ -9289,6 +9300,14 @@ export type GameSetupOptions = {
    */
   victoryPointsRoundLimit?: number;
   /**
+   * OPTIONAL host-added CUSTOM WIN CONDITIONS ({@link CustomWinCondition}) for
+   * THIS game. Merged (preset-first, exact-duplicate deduped, capped) with the
+   * picked map's own `customWinConditions` at build time
+   * (`applyLobbyCustomWinConditions`). The lobby can only ADD — a map-authored
+   * condition is never removed by the lobby. Absent = the map's own list only.
+   */
+  customWinConditions?: CustomWinCondition[];
+  /**
    * Spell Book house rule (default ON). Gives every player a personal Spell Book
    * zone they may stash hand Spells into to free slots, then cast or boost from.
    * Off disables the move-to-Book action and the discard→Book pickup entirely.
@@ -9441,6 +9460,22 @@ export type CustomStartingUnit = {
  */
 export type CustomMapPreset = {
   victoryMode?: VictoryMode;
+  /**
+   * Map-settings DEFAULTS the designer seeds into the lobby when this map is
+   * picked (apply-once: the host may still change each after pick — their edit
+   * wins at build). Absent = the lobby keeps its own value (byte-identical to a
+   * legacy preset). These three hoist 1:1 onto the same-named `GameSetupOptions`
+   * fields via `presetForcedOptionKeys` / `applyCustomMapPresetToOptions` /
+   * `revertCustomMapPresetOptions`.
+   *   - `difficulty`: default scenario/Neutral difficulty (Field Difficulty Level
+   *     Table column + printed starting bonus).
+   *   - `farTileOpening`: whether players may open their own Ⅱ–Ⅲ Far tiles.
+   *   - `farTilesPerPlayer`: each player's Ⅱ–Ⅲ Far-tile supply size (0–6, clamped
+   *     to {@link MAX_FAR_TILES_PER_PLAYER}); only meaningful while opening is on.
+   */
+  difficulty?: GameDifficulty;
+  farTileOpening?: boolean;
+  farTilesPerPlayer?: number;
   startingResources?: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
   startingBuildings?: string[];
@@ -9465,6 +9500,18 @@ export type CustomMapPreset = {
           kind: "clear_visitable_cubes";
           /** Windmill also clears Prospector; Water Wheel also clears Derrick (Factory). */
           locations: ("windmill" | "water_wheel" | "mystical_garden")[];
+        }
+      | {
+          kind: "clear_tile_cubes";
+          /**
+           * Re-open every black cube on Tiles of these groups (player-facing
+           * bands Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ / Sea / Underground). NEVER touches a
+           * Creature Bank (it keeps its defeat cube — hard rule) nor the Grail /
+           * Dragon Utopia victory fields (conservative safety).
+           */
+          groups: ("starting" | "far" | "near" | "center" | "sea" | "subterranean")[];
+          /** Skip EVERY field of a Tile that currently contains a Settlement. */
+          excludeSettlementTiles?: boolean;
         }
       | { kind: "morale"; amount: 1 | -1 }
       | { kind: "movement"; amount: number }
@@ -9550,7 +9597,37 @@ export type CustomMapPreset = {
     victoryConditionVp?: number;
     objectives?: VictoryPointObjective[];
   };
+  /**
+   * Designer-authored CUSTOM WIN CONDITIONS ({@link CustomWinCondition}). An
+   * ADDITIONAL early-end trigger layered on top of the normal victory mode: the
+   * FIRST live player (in turn order) to satisfy ANY listed condition wins
+   * immediately (`checkCustomWinConditions` in `adventure.ts`, run from the
+   * reducer's post-action tail). Absent = today's behaviour (byte-identical).
+   * Capped at {@link import("./map-preset").MAX_CUSTOM_WIN_CONDITIONS}; the lobby
+   * can only ADD to this list, never remove a map-authored one.
+   */
+  customWinConditions?: CustomWinCondition[];
 };
+
+/**
+ * One designer/lobby-authored CUSTOM WIN CONDITION ({@link
+ * CustomMapPreset.customWinConditions}). Every kind is engine-checkable at the
+ * reducer tail: a live-state read (control-towns / flag-mines / hero-level /
+ * gold / artifacts) or an event-sourced VP-ledger count (defeat-heroes reads
+ * `mainHeroDefeats.length + secondaryHeroDefeats`; defeat-dragon-utopia reads
+ * `utopiaDefeated`). The metrics ARE the Victory-Points readers (same numbers as
+ * VP scoring — an invariant). Params are clamped by the sanitiser
+ * (`sanitizeCustomWinConditions`, map-preset.ts). `defeat-dragon-utopia` carries
+ * NO count: the ledger flag is a boolean, so "defeat N Utopias" is unsupported.
+ */
+export type CustomWinCondition =
+  | { kind: "control-towns"; count: number }
+  | { kind: "flag-mines"; count: number }
+  | { kind: "hero-level"; level: number }
+  | { kind: "gold"; amount: number }
+  | { kind: "artifacts"; count: number }
+  | { kind: "defeat-heroes"; count: number }
+  | { kind: "defeat-dragon-utopia" };
 
 /**
  * One extra Victory-Points scenario objective ({@link CustomMapPreset.victoryPoints}).
@@ -9736,6 +9813,20 @@ export type CustomMapTilePlan = {
    *   one or `secretFeature` filters the draw; face-up always places a chosen one.
    */
   group: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
+  /**
+   * Per-tile UNDERGROUND layer override (map designer): mark a far/near/center/sea
+   * tile as topologically on the Underground layer — reachable only through a
+   * Subterranean Gate, exactly like a printed cavern — WITHOUT changing its band
+   * identity. The tile keeps its group (back art, band numeral, guard tiers,
+   * Creature-Bank pile, token legality); only its LAYER flips. Read ONLY through
+   * {@link planIsUnderground} / {@link tileLayer} (the one layer seam) — never an
+   * inline group check. Kept as literal `true` and only on far/near/center/sea:
+   * stripped on `starting` (v1: seat tiles stay Surface, the opening ceremony
+   * assumes it) and `subterranean` (redundant — already underground) at both
+   * {@link validateCustomMapPlan} and the persistence sanitiser. Absent (every
+   * legacy map) = the tile's plain group layer, byte-for-byte as before.
+   */
+  underground?: boolean;
   faceDown: boolean;
   /**
    * Exact tile to place. Required while face-up (non-starting). Optional while
