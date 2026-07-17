@@ -63,6 +63,7 @@ import {
   openMarket,
   openSharedDeckSearch,
   maybeOpenPendantRepeatOffer,
+  clearPolishArtifactAccess,
   beginSharedDeckSearchNow,
   removableHandCards,
   openFortuneBoostStep,
@@ -203,6 +204,7 @@ import {
   SPELL_DECK_EXPERT
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
+import { nextWaitTokenNumber } from "./polish-house-rules";
 import {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
@@ -7839,7 +7841,26 @@ function advanceActiveUnit(state: GameState): void {
     return;
   }
 
-  const step = getActivationStep(combat, state.activeEffects);
+  let step = getActivationStep(combat, state.activeEffects);
+
+  // Polish Wait: when the main initiative phase has no more units, open the
+  // Waited re-activation phase (highest token first) before ending the round.
+  if (!step && !combat.waitPhase && houseRuleEnabled(state, "polish-wait")) {
+    const waited = Object.values(combat.units).filter(
+      (unit) => isUnitAlive(unit) && unit.waitPending && unit.waitToken
+    );
+    if (waited.length > 0) {
+      combat.waitPhase = true;
+      for (const unit of waited) {
+        unit.activatedThisRound = false;
+        unit.movedThisActivation = false;
+        unit.attackedThisActivation = false;
+        unit.attacksThisActivation = 0;
+      }
+      step = getActivationStep(combat, state.activeEffects);
+    }
+  }
+
   if (step && step.candidates.length >= 2) {
     // A Neutral-side tie is broken by a human: the PvP Neutral Control
     // commander when the mode assigns one, else (rulebook) the attacker.
@@ -8574,12 +8595,15 @@ function maybeOpenPreActivationWindow(state: GameState, cards: CardLibrary): voi
 }
 
 function resetCombatRound(combat: CombatState): void {
+  combat.waitPhase = false;
   for (const unit of Object.values(combat.units)) {
     unit.activatedThisRound = false;
     unit.movedThisActivation = false;
     unit.attackedThisActivation = false;
     unit.attacksThisActivation = 0;
     unit.retaliatedThisRound = false;
+    unit.waitToken = undefined;
+    unit.waitPending = undefined;
     // Defense tokens persist into the next round: they are discarded at the
     // start of the unit's next activation, not at the end of the round.
     // defendedLastActivation also persists — consecutive-Defend ban spans rounds.
@@ -8594,6 +8618,52 @@ function resetCombatRound(combat: CombatState): void {
 function markActivatedThisRound(unit: CombatUnitState, defended = false): void {
   unit.activatedThisRound = true;
   unit.defendedLastActivation = defended;
+  // Finishing a Waited re-activation clears the token.
+  if (unit.waitPending) {
+    unit.waitPending = undefined;
+    unit.waitToken = undefined;
+  }
+}
+
+/**
+ * Polish Wait: the active unit takes the lowest free Wait token, ends its
+ * main-phase activation, and will re-activate after every other unit has acted.
+ */
+function waitUnit(state: GameState, action: Extract<GameAction, { type: "WAIT_UNIT" }>): void {
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  if (
+    !combat ||
+    !unit ||
+    combat.activeUnitId !== unit.id ||
+    unit.controllerId !== action.playerId ||
+    !houseRuleEnabled(state, "polish-wait")
+  ) {
+    throw new Error("That unit cannot Wait now.");
+  }
+  if (combat.waitPhase) {
+    throw new Error("A unit cannot Wait during the Waited re-activation phase.");
+  }
+  if (unit.movedThisActivation || unit.attackedThisActivation || unit.waitToken) {
+    throw new Error("Wait is only available at the beginning of the unit's activation.");
+  }
+
+  const token = nextWaitTokenNumber(Object.values(combat.units).map((u) => u.waitToken));
+  // Main-phase "done" without clearing Wait bookkeeping.
+  unit.activatedThisRound = true;
+  unit.defendedLastActivation = false;
+  unit.waitToken = token;
+  unit.waitPending = true;
+
+  appendEvent(state, {
+    type: "UNIT_ACTIVATION_ENDED",
+    playerId: action.playerId,
+    unitId: unit.id
+  });
+
+  advanceActiveUnit(state);
+  state.phase = "combat";
+  state.priorityPlayerId = null;
 }
 
 function refreshReactionWindowLegalReactions(state: GameState, cards: CardLibrary): void {
@@ -18125,6 +18195,10 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
+  // Polish Random Artifacts: the roll only covers this one acquisition.
+  if (String(choice.deckId).startsWith("artifacts")) {
+    clearPolishArtifactAccess(state);
+  }
 
   // Positive Morale "discard the cards gained from Search (X) to perform the
   // Search (X) again": right after a Search resolves into a kept card, its
@@ -18771,7 +18845,16 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 function asNeutralSeatCommand<
   T extends Extract<
     GameAction,
-    { type: "MOVE_UNIT" | "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" | "DEFEND_UNIT" | "END_ACTIVATION" | "USE_UNIT_ABILITY" }
+    {
+      type:
+        | "MOVE_UNIT"
+        | "ATTACK_UNIT"
+        | "MOVE_AND_ATTACK_UNIT"
+        | "DEFEND_UNIT"
+        | "END_ACTIVATION"
+        | "WAIT_UNIT"
+        | "USE_UNIT_ABILITY";
+    }
   >
 >(state: GameState, action: T): T {
   const combat = state.combat;
@@ -19111,6 +19194,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "END_ACTIVATION":
         endActivation(nextState, asNeutralSeatCommand(nextState, action));
+        break;
+      case "WAIT_UNIT":
+        waitUnit(nextState, asNeutralSeatCommand(nextState, action));
         break;
       case "END_COMBAT_ROUND":
         endCombatRound(nextState, action);

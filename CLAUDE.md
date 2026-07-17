@@ -1391,12 +1391,21 @@ is NOT done:
 
 **Implemented and engine-enforced (a test fails if removed):**
 - **Polish house-rules rollout — current limit:** `polish-bank-sizes`,
-  `polish-unit-stacks`, and `polish-spell-book` are implemented and default OFF
-  in both BINH and Legacy. The existing stash-style Spell Book and Polish Spell
-  Book are mutually exclusive; enabling Polish forces the old toggle off. The
-  multi-round all-rules computer soak and Polish economy policy are covered.
-  Rolled bank sizes specifically are inert when the base
+  `polish-unit-stacks`, `polish-spell-book`, plus the newer variants
+  `polish-reduced-starting-bonus`, `polish-rule-111`, `polish-reduced-surrender`,
+  `polish-random-artifacts`, `polish-pandora-search`, and `polish-wait` are
+  implemented and default OFF in both BINH and Legacy. The existing stash-style
+  Spell Book and Polish Spell Book are mutually exclusive; enabling Polish
+  forces the old toggle off. The multi-round all-rules computer soak and Polish
+  economy policy cover the first three; the newer ones are pinned in
+  `polish-house-rules-extra.test.ts` (pure helpers + setup/surrender/wait/
+  Pandora CONTROLs). Rolled bank sizes specifically are inert when the base
   `creatureBanks` option is off; the lobby greys that toggle out in that case.
+  `polish-random-artifacts` requires split Artifact decks and is greyed out when
+  `split-decks` is off; it also upgrades Polish Pandora Search by +1 card on a
+  "+1" die. Random Artifacts rolls at every Artifact acquisition chokepoint
+  (shared-deck Search, dig, black market, event merchant/messenger draws) via
+  `polish-random-artifacts.ts`.
 - With `polish-unit-stacks` ON, a faction Pack card — or a recruited NEUTRAL
   card — at its own Citadel may buy persistent Stack layers with the Population
   flow. One Stack costs that side's printed gold cost plus its tier number

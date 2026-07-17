@@ -5857,7 +5857,9 @@ function HouseRulesSection({
             <div className="houseRuleGrid">
               {rules.map((rule) => {
                 const on = houseRules[rule.id];
-                const disabled = rule.id === "polish-bank-sizes" && !creatureBanksEnabled;
+                const disabled =
+                  (rule.id === "polish-bank-sizes" && !creatureBanksEnabled) ||
+                  (rule.id === "polish-random-artifacts" && !houseRules["split-decks"]);
                 return (
                   <button
                     aria-pressed={on}
@@ -5865,7 +5867,13 @@ function HouseRulesSection({
                     disabled={disabled}
                     key={rule.id}
                     onClick={() => setHouseRule(rule.id, !on)}
-                    title={disabled ? `${rule.description} Turn Creature Banks on in Map & Setup first.` : rule.description}
+                    title={
+                      disabled
+                        ? rule.id === "polish-random-artifacts"
+                          ? `${rule.description} Turn Split Spell/Artifact decks on first.`
+                          : `${rule.description} Turn Creature Banks on in Map & Setup first.`
+                        : rule.description
+                    }
                     type="button"
                   >
                     <span aria-hidden="true" className="houseRuleCheck">
@@ -6894,7 +6902,9 @@ function GameOptionsPanel({
         </div>
         <small className="optionHint">
           <strong>Starting bonus ({options.difficulty}):</strong>{" "}
-          {startingBonusDescription(options.difficulty)}
+          {startingBonusDescription(options.difficulty, {
+            polishReduced: Boolean(options.houseRules?.["polish-reduced-starting-bonus"])
+          })}
           {" "}Guards use the Field Difficulty Level Table column for this difficulty.
         </small>
       </div>
