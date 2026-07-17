@@ -60,6 +60,22 @@ import {
   type VictoryMode
 } from "@/engine";
 import {
+  fieldOverrideImage,
+  getFieldOverrideDefinition,
+  listFieldOverrideDefinitions
+} from "@/data/map/field-overrides";
+import { fieldOverrideMayCoverFieldDef } from "@/engine/field-overrides";
+// Side-effect: register Anime package Field Override kinds.
+import "@/data/anime/field-overrides";
+import {
+  firstFreeSlot,
+  occupiedSlotsOnPlan,
+  planFieldOverrides,
+  planTokens,
+  withPlanFieldOverrides,
+  withPlanTokens
+} from "@/engine/tile-hex-placements";
+import {
   nearestGateDragCandidate,
   type GateDragCandidate,
   type GateHexPair
@@ -375,14 +391,22 @@ type TokenDropTarget =
 function computeTileTokenTargets(
   customMap: CustomMapTilePlan[],
   kind: TokenPlacementKind,
-  sourceIndex: number | null
+  sourceIndex: number | null,
+  sourceTokenIndex = 0
 ): { planIndex: number; slot?: number; hex: HexCoord; row: number; col: number }[] {
   const legalityKind = tokenLegalityKind(kind);
   const out: { planIndex: number; slot?: number; hex: HexCoord; row: number; col: number }[] = [];
   customMap.forEach((plan, planIndex) => {
     const isSource = planIndex === sourceIndex;
-    if (plan.token && !isSource) {
-      return; // one token per tile
+    // Multi-token tiles: a tile stays a target as long as it has FREE hex
+    // slots (tokens + Field Overrides both claim slots; never stacked). The
+    // drag's own source tile frees the DRAGGED token's slot.
+    const occupied = occupiedSlotsOnPlan(plan);
+    if (isSource) {
+      const draggedSlot = planTokens(plan)[sourceTokenIndex]?.slot;
+      if (typeof draggedSlot === "number") {
+        occupied.delete(draggedSlot);
+      }
     }
     if (!plan.faceDown) {
       if (!plan.tileDefId) {
@@ -393,6 +417,9 @@ function computeTileTokenTargets(
         return;
       }
       for (const slot of legalTokenSlotsForTileDef(def, legalityKind)) {
+        if (occupied.has(slot)) {
+          continue;
+        }
         out.push({
           planIndex,
           slot,
@@ -407,6 +434,9 @@ function computeTileTokenTargets(
       return;
     }
     for (const [slot, hex] of tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0).entries()) {
+      if (occupied.has(slot)) {
+        continue;
+      }
       out.push({ planIndex, slot, hex, row: plan.row, col: plan.col });
     }
   });
@@ -552,6 +582,82 @@ function retargetTokenForDef(
   const slot = token.slot !== undefined && legal.includes(token.slot) ? token.slot : legal[0];
   // A colored Gate keeps its `pair`; Monolith/Whirlpool carry none.
   return token.kind === "gate" ? { kind: "gate", pair: token.pair, slot } : { kind: token.kind, slot };
+}
+
+/**
+ * Multi-token write patch: map EVERY token pin on a plan (tokens array +
+ * legacy singular folded in) through `transform`; dropped entries (undefined)
+ * disappear. Always writes the canonical `tokens` array and clears the legacy
+ * singular so the two forms can never coexist (coexistence duplicates pins).
+ */
+function tokensPatch(
+  plan: CustomMapTilePlan,
+  transform: (token: NonNullable<CustomMapTilePlan["token"]>) => CustomMapTilePlan["token"]
+): { tokens: CustomMapTilePlan["tokens"]; token: undefined } {
+  const list = planTokens(plan)
+    .map((token) => transform(token))
+    .filter((token): token is NonNullable<CustomMapTilePlan["token"]> => Boolean(token));
+  return { tokens: list.length > 0 ? list : undefined, token: undefined };
+}
+
+/**
+ * Face-up retarget of EVERY token pin to DISTINCT legal slots on the new tile
+ * definition (Field Override pins keep their slots and block those hexes);
+ * tokens the new tile cannot host are dropped, like the singular retarget.
+ */
+function retargetTokensForDef(
+  plan: CustomMapTilePlan,
+  tileDefId: string | undefined
+): { tokens: CustomMapTilePlan["tokens"]; token: undefined } {
+  const def = tileDefId ? allTileDefinitions[tileDefId] : undefined;
+  const used = new Set<number>(
+    planFieldOverrides(plan)
+      .map((pin) => pin.slot)
+      .filter((slot): slot is number => typeof slot === "number")
+  );
+  return tokensPatch(plan, (token) => {
+    if (!def) {
+      return undefined;
+    }
+    const legal = legalTokenSlotsForTileDef(def, tokenLegalityKind(token.kind)).filter(
+      (slot) => !used.has(slot)
+    );
+    if (legal.length === 0) {
+      return undefined;
+    }
+    const slot = token.slot !== undefined && legal.includes(token.slot) ? token.slot : legal[0];
+    used.add(slot);
+    return token.kind === "gate" ? { kind: "gate", pair: token.pair, slot } : { kind: token.kind, slot };
+  });
+}
+
+/**
+ * Slots (0-6) a Field Override kind may pin on a plan. A FACE-UP tile filters
+ * by the printed definition's legality (fieldOverrideMayCoverFieldDef) so a
+ * pin the engine would drop at setup is never offered; a FACE-DOWN tile's
+ * slots are physical hex pins — all seven qualify. Occupied slots (tokens +
+ * other overrides) are excluded; `keepSlot` frees a pin's own current slot.
+ */
+function fieldOverridePinSlots(plan: CustomMapTilePlan, kind: string, keepSlot?: number): number[] {
+  const overrideDef = getFieldOverrideDefinition(kind);
+  if (!overrideDef || !overrideDef.tileGroups.includes(plan.group as never)) {
+    return [];
+  }
+  const occupied = occupiedSlotsOnPlan(plan);
+  if (typeof keepSlot === "number") {
+    occupied.delete(keepSlot);
+  }
+  const free = [0, 1, 2, 3, 4, 5, 6].filter((slot) => !occupied.has(slot));
+  if (plan.faceDown) {
+    return free;
+  }
+  const def = plan.tileDefId ? allTileDefinitions[plan.tileDefId] : undefined;
+  if (!def) {
+    return [];
+  }
+  return free.filter((slot) =>
+    fieldOverrideMayCoverFieldDef(def, slot, overrideDef, plan.group as never)
+  );
 }
 
 /** Designer hex circumradius — the same pointy-top geometry the map uses. */
@@ -824,6 +930,8 @@ export function MapDesigner({
   // (`plan.token`) — separate from the giant per-tile panel, so clicking a token
   // edits the TOKEN, not the tile underneath it.
   const [selectedTokenIndex, setSelectedTokenIndex] = useState<number | null>(null);
+  // Which of the plan's token pins (planTokens order) the token panel edits.
+  const [selectedTokenPin, setSelectedTokenPin] = useState(0);
   const [tokenPopoverAt, setTokenPopoverAt] = useState<{ x: number; y: number } | null>(null);
   // A live drag of a tile-carried token (monolith or whirlpool) to a new home.
   // ANY token drags — face-up OR face-down — to ANY compatible tile: a face-up
@@ -831,6 +939,8 @@ export function MapDesigner({
   // slots. Same lifecycle as the gate/object token drags.
   const [tokenDrag, setTokenDrag] = useState<{
     index: number;
+    /** Which of the plan's token pins (planTokens order) is being dragged. */
+    tokenIndex: number;
     kind: TokenPlacementKind;
     pair?: 1 | 2 | 3 | 4;
     startX: number;
@@ -841,6 +951,8 @@ export function MapDesigner({
     hover: TokenDropTarget | null;
   } | null>(null);
   const tokenClickSuppressRef = useRef(false);
+  // Anime Mod panel — Field Override palette (docs/anime-mod-plan.md §9b).
+  const [modPanelOpen, setModPanelOpen] = useState(false);
   // Border paint mode: armed from the Objects palette, it turns every placed
   // tile's six outer-edge ring hexes into clickable zones that seal/unseal a
   // designer yellow border directly on the board (one armed mode at a time).
@@ -922,10 +1034,13 @@ export function MapDesigner({
     let monolith = 0;
     let whirlpool = 0;
     for (const plan of customMap) {
-      if (plan.token?.kind === "monolith") {
-        monolith += 1;
-      } else if (plan.token?.kind === "whirlpool") {
-        whirlpool += 1;
+      // Multi-token tiles: count EVERY pin (legacy singular folded in).
+      for (const token of planTokens(plan)) {
+        if (token.kind === "monolith") {
+          monolith += 1;
+        } else if (token.kind === "whirlpool") {
+          whirlpool += 1;
+        }
       }
     }
     for (const object of objects) {
@@ -937,14 +1052,18 @@ export function MapDesigner({
     }
     return { monolith, whirlpool };
   }, [customMap, objects]);
+  // Whirlpool preview numbers keyed `${planIndex}:${tokenIndex}` — the same
+  // plan order (across every token of a plan) the engine assigns at setup.
   const whirlpoolNumberByIndex = useMemo(() => {
-    const numbers = new Map<number, -1 | 0 | 1>();
+    const numbers = new Map<string, -1 | 0 | 1>();
     const order: (-1 | 0 | 1)[] = [1, 0, -1];
     let next = 0;
     customMap.forEach((plan, index) => {
-      if (plan.token?.kind === "whirlpool" && next < order.length) {
-        numbers.set(index, order[next++]);
-      }
+      planTokens(plan).forEach((token, tokenIndex) => {
+        if (token.kind === "whirlpool" && next < order.length) {
+          numbers.set(`${index}:${tokenIndex}`, order[next++]);
+        }
+      });
     });
     return numbers;
   }, [customMap]);
@@ -1123,6 +1242,15 @@ export function MapDesigner({
           }
           if (changes.token === undefined && "token" in changes) {
             delete next.token;
+          }
+          if (changes.tokens === undefined && "tokens" in changes) {
+            delete next.tokens;
+          }
+          if (changes.fieldOverride === undefined && "fieldOverride" in changes) {
+            delete next.fieldOverride;
+          }
+          if (changes.fieldOverrides === undefined && "fieldOverrides" in changes) {
+            delete next.fieldOverrides;
           }
           if (changes.gateLinks === undefined && "gateLinks" in changes) {
             delete next.gateLinks;
@@ -1315,8 +1443,10 @@ export function MapDesigner({
       }
     }
     for (const plan of customMap) {
-      if (plan.token?.kind === "gate" && plan.token.pair !== undefined) {
-        counts[plan.token.pair] = (counts[plan.token.pair] ?? 0) + 1;
+      for (const token of planTokens(plan)) {
+        if (token.kind === "gate" && token.pair !== undefined) {
+          counts[token.pair] = (counts[token.pair] ?? 0) + 1;
+        }
       }
     }
     return counts;
@@ -1419,7 +1549,7 @@ export function MapDesigner({
     if (!tokenDrag) {
       return [] as ReturnType<typeof computeTileTokenTargets>;
     }
-    return computeTileTokenTargets(customMap, tokenDrag.kind, tokenDrag.index);
+    return computeTileTokenTargets(customMap, tokenDrag.kind, tokenDrag.index, tokenDrag.tokenIndex);
   }, [tokenDrag, customMap]);
   /**
    * The drop target a TILE-TOKEN drag would land on over `hex`: another tile
@@ -1457,9 +1587,28 @@ export function MapDesigner({
       if (!armedObject) {
         return;
       }
-      updateTile(target.planIndex, { token: tileTokenValue(armedObject.kind, armedObject.pair, target.slot) });
+      const plan = customMap[target.planIndex];
+      if (!plan) {
+        return;
+      }
+      const occupied = occupiedSlotsOnPlan(plan);
+      const slot =
+        target.slot !== undefined && !occupied.has(target.slot)
+          ? target.slot
+          : firstFreeSlot(occupied);
+      if (slot === null) {
+        return; // tile hexes full
+      }
+      const nextToken = tileTokenValue(armedObject.kind, armedObject.pair, slot);
+      if (!nextToken) {
+        return;
+      }
+      // Multi-place: append on a free hex; never stack on an occupied slot.
+      const existing = planTokens(plan).filter((t) => t.slot !== slot);
+      const next = withPlanTokens(plan, [...existing, nextToken]);
+      updateTile(target.planIndex, { tokens: next.tokens, token: undefined });
     },
-    [armedObject, updateTile]
+    [armedObject, customMap, updateTile]
   );
   const placeArmedStandalone = useCallback(
     (row: number, col: number) => {
@@ -1519,25 +1668,41 @@ export function MapDesigner({
    * would clobber the first since the parent holds the array.
    */
   const commitTokenMove = useCallback(
-    (sourceIndex: number, target: { planIndex: number; slot?: number }) => {
+    (sourceIndex: number, tokenIndex: number, target: { planIndex: number; slot?: number }) => {
       const source = customMap[sourceIndex];
-      if (!source?.token) {
+      const dragged = source ? planTokens(source)[tokenIndex] : undefined;
+      if (!source || !dragged) {
         return;
       }
-      const nextToken = tileTokenValue(source.token.kind, source.token.pair, target.slot);
+      const nextToken = tileTokenValue(dragged.kind, dragged.pair, target.slot);
+      // Never stack: a target slot another placement (token / Field Override)
+      // already claims refuses the drop — computeTileTokenTargets filters these
+      // out of the glow, this is the write-side backstop.
+      const targetPlan = customMap[target.planIndex];
+      if (targetPlan && typeof target.slot === "number") {
+        const occupied = occupiedSlotsOnPlan(targetPlan);
+        if (target.planIndex === sourceIndex && typeof dragged.slot === "number") {
+          occupied.delete(dragged.slot);
+        }
+        if (occupied.has(target.slot)) {
+          return;
+        }
+      }
       if (target.planIndex === sourceIndex) {
-        updateTile(sourceIndex, { token: nextToken });
+        const tokens = planTokens(source).map((token, i) => (i === tokenIndex ? nextToken : token));
+        updateTile(sourceIndex, { tokens, token: undefined });
         return;
       }
       onChange(
         customMap.map((plan, planIndex) => {
           if (planIndex === sourceIndex) {
-            const next = { ...plan };
-            delete next.token;
-            return next;
+            return withPlanTokens(
+              plan,
+              planTokens(plan).filter((_, i) => i !== tokenIndex)
+            );
           }
           if (planIndex === target.planIndex) {
-            return { ...plan, token: nextToken };
+            return withPlanTokens(plan, [...planTokens(plan), nextToken]);
           }
           return plan;
         })
@@ -1555,13 +1720,26 @@ export function MapDesigner({
   const convertObjectToTileToken = useCallback(
     (objectIndex: number, target: { planIndex: number; slot?: number }) => {
       const object = objects[objectIndex];
-      if (!object) {
+      const plan = customMap[target.planIndex];
+      if (!object || !plan) {
         return;
       }
+      // Never stack on an occupied slot; fall back to the first free hex.
+      const occupied = occupiedSlotsOnPlan(plan);
+      const slot =
+        typeof target.slot === "number" && !occupied.has(target.slot)
+          ? target.slot
+          : firstFreeSlot(occupied) ?? undefined;
+      if (slot === undefined) {
+        return; // tile hexes full — keep the standalone object
+      }
       onObjectsChange?.(objects.filter((_, i) => i !== objectIndex));
-      updateTile(target.planIndex, { token: tileTokenValue(object.kind, object.pair, target.slot) });
+      updateTile(target.planIndex, {
+        tokens: [...planTokens(plan), tileTokenValue(object.kind, object.pair, slot)],
+        token: undefined
+      });
     },
-    [objects, onObjectsChange, updateTile]
+    [customMap, objects, onObjectsChange, updateTile]
   );
   /** Dispatch a placed-object drop: convert onto a tile, or move to a standalone hex. */
   const commitObjectDrop = useCallback(
@@ -1580,20 +1758,23 @@ export function MapDesigner({
    * Monolith/Gate only (a Whirlpool never stands alone). The `pair` is preserved.
    */
   const convertTokenToStandalone = useCallback(
-    (sourceIndex: number, row: number, col: number) => {
+    (sourceIndex: number, tokenIndex: number, row: number, col: number) => {
       const source = customMap[sourceIndex];
-      if (!source?.token || source.token.kind === "whirlpool") {
+      const dragged = source ? planTokens(source)[tokenIndex] : undefined;
+      if (!source || !dragged || dragged.kind === "whirlpool") {
         return;
       }
-      const { kind, pair } = source.token;
+      const { kind, pair } = dragged;
       onChange(
         customMap.map((plan, planIndex) => {
           if (planIndex !== sourceIndex) {
             return plan;
           }
-          const next = { ...plan };
-          delete next.token;
-          return next;
+          // Remove ONLY the dragged token; sibling tokens stay on the tile.
+          return withPlanTokens(
+            plan,
+            planTokens(plan).filter((_, i) => i !== tokenIndex)
+          );
         })
       );
       const object: CustomMapObject = {
@@ -1607,11 +1788,11 @@ export function MapDesigner({
   );
   /** Dispatch a tile-token drop: move onto a tile, or convert to a standalone object. */
   const commitTokenDrop = useCallback(
-    (sourceIndex: number, target: TokenDropTarget) => {
+    (sourceIndex: number, tokenIndex: number, target: TokenDropTarget) => {
       if (target.target === "tile") {
-        commitTokenMove(sourceIndex, { planIndex: target.planIndex, slot: target.slot });
+        commitTokenMove(sourceIndex, tokenIndex, { planIndex: target.planIndex, slot: target.slot });
       } else {
-        convertTokenToStandalone(sourceIndex, target.row, target.col);
+        convertTokenToStandalone(sourceIndex, tokenIndex, target.row, target.col);
       }
     },
     [commitTokenMove, convertTokenToStandalone]
@@ -1867,7 +2048,7 @@ export function MapDesigner({
     };
     const onUp = () => {
       if (tokenDrag.moved && tokenDrag.hover) {
-        commitTokenDrop(tokenDrag.index, tokenDrag.hover);
+        commitTokenDrop(tokenDrag.index, tokenDrag.tokenIndex, tokenDrag.hover);
         tokenClickSuppressRef.current = true;
       }
       setTokenDrag(null);
@@ -1940,14 +2121,23 @@ export function MapDesigner({
     : [];
   const selectedTileDef = selected?.tileDefId ? allTileDefinitions[selected.tileDefId] : undefined;
   const selectedMode = selected && selected.group !== "starting" ? tileSlotMode(selected) : null;
-  const selectedToken = selected?.token;
+  // HEAD token of the plan (tokens array canonical, legacy singular folded in);
+  // the panel edits the head — sibling tokens keep their own slots.
+  const selectedToken = selected ? planTokens(selected)[0] : undefined;
 
   // The tile-carried token whose compact TOKEN panel is open (D2 direct edit).
   // Face-up and face-down tokens both expose their exact physical slot. For a
   // random face-down tile the printed field is unknown, so only its direction is
   // shown; setup keeps that board hex as the preferred reveal placement.
   const tokenPanelPlan = selectedTokenIndex !== null ? customMap[selectedTokenIndex] ?? null : null;
-  const tokenPanelToken = tokenPanelPlan?.token;
+  const tokenPanelToken = tokenPanelPlan
+    ? planTokens(tokenPanelPlan)[selectedTokenPin] ?? planTokens(tokenPanelPlan)[0]
+    : undefined;
+  const tokenPanelPin = tokenPanelPlan
+    ? planTokens(tokenPanelPlan)[selectedTokenPin]
+      ? selectedTokenPin
+      : 0
+    : 0;
   const tokenPanelDef =
     tokenPanelPlan && !tokenPanelPlan.faceDown && tokenPanelPlan.tileDefId
       ? allTileDefinitions[tokenPanelPlan.tileDefId]
@@ -1989,17 +2179,18 @@ export function MapDesigner({
       selected.tileDefId ??
       pickableTiles.find((tile) => !usedPinnedIds.has(tile.id))?.id ??
       pickableTiles[0]?.id;
-    const faceDownToken =
-      selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
-        ? faceDownTokenOf(selected.token)
-        : undefined;
+    // Every token pin (multi-token tiles included) converts to the face-down
+    // form; kinds the group's hidden back cannot host are dropped.
+    const faceDownTokens = tokensPatch(selected, (token) =>
+      faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
+    );
 
     if (mode === "random") {
       updateTile(selectedIndex, {
         faceDown: true,
         tileDefId: undefined,
         secretFeature: undefined,
-        token: faceDownToken
+        ...faceDownTokens
       });
       return;
     }
@@ -2017,7 +2208,7 @@ export function MapDesigner({
         // Feature secrets clear an exact pin so the pool can still vary.
         tileDefId: feature ? undefined : selected.tileDefId ?? fallbackId,
         secretFeature: feature,
-        token: faceDownToken
+        ...faceDownTokens
       });
       return;
     }
@@ -2029,7 +2220,7 @@ export function MapDesigner({
       faceDown: false,
       tileDefId: fallbackId,
       secretFeature: undefined,
-      token: retargetTokenForDef(selected.token, fallbackId)
+      ...retargetTokensForDef(selected, fallbackId)
     });
   };
 
@@ -2042,10 +2233,9 @@ export function MapDesigner({
       faceDown: true,
       tileDefId: undefined,
       secretFeature: feature,
-      token:
-        selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
-          ? faceDownTokenOf(selected.token)
-          : undefined
+      ...tokensPatch(selected, (token) =>
+        faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
+      )
     });
   };
 
@@ -2065,11 +2255,11 @@ export function MapDesigner({
       faceDown: nextFaceDown,
       tileDefId,
       secretFeature: undefined,
-      token: nextFaceDown
-        ? selected.token && faceDownTokenKinds(selected.group).includes(selected.token.kind)
-          ? faceDownTokenOf(selected.token)
-          : undefined
-        : retargetTokenForDef(selected.token, tileDefId)
+      ...(nextFaceDown
+        ? tokensPatch(selected, (token) =>
+            faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
+          )
+        : retargetTokensForDef(selected, tileDefId))
     });
   };
   // Token kinds the tile-panel ADD picker offers — Monolith/Whirlpool only
@@ -2098,19 +2288,37 @@ export function MapDesigner({
     }
     const currentRotation = selected.rotation ?? 0;
     const rotation = (((currentRotation + steps) % 6) + 6) % 6;
-    // A face-down token is pinned to a BOARD hex, not to unknown printed art.
-    // Counter-rotate its slot index so rotating the hidden tile preview never
-    // moves the reserved teleporter underneath the designer's cursor.
-    if (selected.faceDown && selected.token?.slot !== undefined) {
-      const fixedHex = tileFootprint({ row: selected.row, col: selected.col }, currentRotation)[selected.token.slot];
-      const nextSlot = tileFootprint({ row: selected.row, col: selected.col }, rotation).findIndex((hex) =>
-        fixedHex ? sameGridCoord(hex, fixedHex) : false
+    // A face-down token / Field Override pin is pinned to a BOARD hex, not to
+    // unknown printed art. Counter-rotate EVERY pinned slot index so rotating
+    // the hidden tile preview never moves a reserved hex under the cursor.
+    if (selected.faceDown) {
+      const counterRotate = (slot: number | undefined): number | undefined => {
+        if (slot === undefined) {
+          return undefined;
+        }
+        const fixedHex = tileFootprint({ row: selected.row, col: selected.col }, currentRotation)[slot];
+        const nextSlot = tileFootprint({ row: selected.row, col: selected.col }, rotation).findIndex((hex) =>
+          fixedHex ? sameGridCoord(hex, fixedHex) : false
+        );
+        return nextSlot >= 0 ? nextSlot : slot;
+      };
+      const tokens = planTokens(selected).map((token) =>
+        tileTokenValue(token.kind, token.pair, counterRotate(token.slot))
       );
-      updateTile(selectedIndex, {
-        rotation,
-        token: tileTokenValue(selected.token.kind, selected.token.pair, nextSlot >= 0 ? nextSlot : selected.token.slot)
+      const fieldOverrides = planFieldOverrides(selected).map((pin) => {
+        const slot = counterRotate(pin.slot);
+        return { kind: pin.kind, ...(slot !== undefined ? { slot } : {}) };
       });
-      return;
+      if (tokens.length > 0 || fieldOverrides.length > 0) {
+        updateTile(selectedIndex, {
+          rotation,
+          tokens: tokens.length > 0 ? tokens : undefined,
+          token: undefined,
+          fieldOverrides: fieldOverrides.length > 0 ? fieldOverrides : undefined,
+          fieldOverride: undefined
+        });
+        return;
+      }
     }
     updateTile(selectedIndex, { rotation });
   };
@@ -2318,7 +2526,8 @@ export function MapDesigner({
    * a legacy no-slot pending shape) untouched.
    */
   const beginTokenPress =
-    (index: number, kind: TokenPlacementKind, pair?: 1 | 2 | 3 | 4) => (event: React.PointerEvent) => {
+    (index: number, tokenIndex: number, kind: TokenPlacementKind, pair?: 1 | 2 | 3 | 4) =>
+    (event: React.PointerEvent) => {
       if (event.button !== 0) {
         return;
       }
@@ -2326,11 +2535,20 @@ export function MapDesigner({
       (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
       setArmedObject(null);
       setBorderPaint(false);
-      setTokenDrag({ index, kind, pair, startX: event.clientX, startY: event.clientY, moved: false, hover: null });
+      setTokenDrag({
+        index,
+        tokenIndex,
+        kind,
+        pair,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false,
+        hover: null
+      });
     };
 
   /** Open the compact token panel for a tile-carried token (drag suppresses the click). */
-  const onMapTokenClick = (index: number) => (event: React.MouseEvent) => {
+  const onMapTokenClick = (index: number, tokenIndex = 0) => (event: React.MouseEvent) => {
     event.stopPropagation();
     if (tokenClickSuppressRef.current) {
       tokenClickSuppressRef.current = false;
@@ -2339,6 +2557,7 @@ export function MapDesigner({
     const rect = wrapRef.current?.getBoundingClientRect();
     closeAllPanels();
     setSelectedTokenIndex(index);
+    setSelectedTokenPin(tokenIndex);
     setTokenPopoverAt(
       rect
         ? { x: Math.max(8, Math.min(event.clientX - rect.left, rect.width - 8)), y: event.clientY - rect.top }
@@ -2821,19 +3040,19 @@ export function MapDesigner({
     }
   }
 
-  // Monolith/Whirlpool/colored-Gate tile tokens: a face-up tile shows the token
-  // on the exact hex it overwrites; a face-down tile shows it as a centred badge
-  // (the discovering player will pick the hex in play). Whirlpool art carries the
-  // plan-order number (+1/0/-1) the engine will assign at setup; a colored Gate
-  // renders as the MONOLITH art tinted by a color ring + pair badge.
+  // Monolith/Whirlpool/colored-Gate tile tokens — multiple per tile on different
+  // slots. Face-up: exact hex; face-down: preferred physical hex. Whirlpool art
+  // carries plan-order number; colored Gate uses monolith art + color ring.
   for (const [index, plan] of customMap.entries()) {
-    const token = plan.token;
-    if (!token) {
-      continue;
-    }
+    const tokenList = planTokens(plan);
+    for (let tokenIndex = 0; tokenIndex < tokenList.length; tokenIndex++) {
+    const token = tokenList[tokenIndex];
     const center = { row: plan.row, col: plan.col };
     const fixedSlot = token.slot !== undefined;
-    const draggingThis = Boolean(tokenDrag && tokenDrag.index === index && tokenDrag.moved);
+    // The drag addresses ONE pin: plan index + token index (planTokens order).
+    const draggingThis = Boolean(
+      tokenDrag && tokenDrag.index === index && tokenDrag.tokenIndex === tokenIndex && tokenDrag.moved
+    );
     // While dragging, draw the token following the hovered target — a tile slot,
     // a face-down tile centre, or an off-tile standalone hex (`dropTargetToHex`).
     const cell =
@@ -2853,9 +3072,9 @@ export function MapDesigner({
     gateLayer.push(
       <g
         className={`designerMapToken draggable${draggingThis ? " dragging" : ""}${isGate ? " gate" : ""}`}
-        key={`map-token-${index}`}
-        onClick={onMapTokenClick(index)}
-        onPointerDown={beginTokenPress(index, token.kind, token.pair)}
+        key={`map-token-${index}-${tokenIndex}`}
+        onClick={onMapTokenClick(index, tokenIndex)}
+        onPointerDown={beginTokenPress(index, tokenIndex, token.kind, token.pair)}
         opacity={plan.faceDown ? 0.9 : 1}
       >
         {/* SVG groups have no hit box of their own. The token image is pointer-
@@ -2872,7 +3091,7 @@ export function MapDesigner({
         <image
           className="designerMapTokenArt"
           height={tokenHeight}
-          href={assetUrl(designerTokenImage(token.kind, whirlpoolNumberByIndex.get(index)))}
+          href={assetUrl(designerTokenImage(token.kind, whirlpoolNumberByIndex.get(`${index}:${tokenIndex}`)))}
           preserveAspectRatio="xMidYMid meet"
           style={{ pointerEvents: "none" }}
           width={tokenWidth}
@@ -2899,6 +3118,47 @@ export function MapDesigner({
         <title>{tokenTitle}</title>
       </g>
     );
+    } // end per-token on this plan
+  }
+
+  // Field Override pins — multi per tile on distinct slots (Mod panel).
+  for (const [index, plan] of customMap.entries()) {
+    const overrides = planFieldOverrides(plan);
+    for (let oi = 0; oi < overrides.length; oi++) {
+      const pin = overrides[oi];
+      const art = fieldOverrideImage(pin.kind) ?? fieldOverrideImage(getFieldOverrideDefinition(pin.kind)?.locationId ?? "");
+      if (!art) {
+        continue;
+      }
+      const center = { row: plan.row, col: plan.col };
+      const slot = pin.slot ?? 0;
+      const cell = tileFootprint(center, plan.rotation ?? 0)[slot] ?? center;
+      const pixel = hexToPixel(cell, size);
+      const tokenWidth = hexWidth * 0.95;
+      const tokenHeight = 2 * size * 0.95;
+      const label = getFieldOverrideDefinition(pin.kind)?.name ?? pin.kind;
+      gateLayer.push(
+        <g className="designerMapToken fieldOverride" key={`fo-${index}-${oi}`} opacity={0.95}>
+          <polygon
+            className="designerMapTokenHit"
+            fill="transparent"
+            points={hexCorners(pixel.x, pixel.y, size - 1.5)}
+            pointerEvents="none"
+          />
+          <image
+            className="designerMapTokenArt"
+            height={tokenHeight}
+            href={assetUrl(art)}
+            preserveAspectRatio="xMidYMid slice"
+            style={{ pointerEvents: "none" }}
+            width={tokenWidth}
+            x={pixel.x - tokenWidth / 2}
+            y={pixel.y - tokenHeight / 2}
+          />
+          <title>{label} Field Override — slot {slot}</title>
+        </g>
+      );
+    }
   }
 
   // A cavern with no gate at all can never be entered: ring it in red and stamp a
@@ -3317,7 +3577,176 @@ export function MapDesigner({
           >
             🖌 Yellow border
           </button>
+          <button
+            aria-controls="designer-mod-panel"
+            aria-expanded={modPanelOpen}
+            aria-pressed={modPanelOpen}
+            className={`designerObjectButton modPanel${modPanelOpen ? " armed" : ""}`}
+            data-testid="designer-mod-panel-toggle"
+            onClick={() => {
+              setModPanelOpen((open) => !open);
+              setArmedObject(null);
+              if (borderPaint) {
+                toggleBorderPaint();
+              }
+            }}
+            title="Anime Mod — Field Overrides and other mod single-hex objects (select a tile, then pin an override)"
+            type="button"
+          >
+            ⛩ Mod
+          </button>
         </div>
+        {modPanelOpen ? (
+          <div
+            className="designerModPanel"
+            data-testid="designer-mod-panel"
+            id="designer-mod-panel"
+            role="region"
+            aria-label="Anime Mod field overrides"
+          >
+            <div className="popoverSectionLabel">Mod objects → Field Overrides</div>
+            <small className="popoverHint">
+              One tile may hold <strong>multiple</strong> hex objects (tokens + overrides) as long as
+              each uses a <strong>different hex</strong> — never stacked. Monolith / Whirlpool / Gate
+              are basic teleports (Objects palette). These buttons add{" "}
+              <strong>function objects</strong> (Anime package today). Map pick auto-ticks Field
+              Overrides in Game options.
+            </small>
+            <div className="designerModPanelRow">
+              {listFieldOverrideDefinitions({
+                implementedOnly: true,
+                package: ["anime-xianxia", "anime-isekai", "shared"]
+              }).map((def) => {
+                const groupOk = selected ? def.tileGroups.includes(selected.group) : true;
+                const pinnedList = selected ? planFieldOverrides(selected) : [];
+                const pinnedCount = pinnedList.filter((p) => p.kind === def.id).length;
+                // Legality-aware: a face-up tile only offers slots the engine
+                // will accept at setup (a blind slot would be dropped there).
+                const freeSlots = selected ? fieldOverridePinSlots(selected, def.id) : [];
+                return (
+                  <button
+                    className={`designerObjectButton modOverride${pinnedCount > 0 ? " armed" : ""}`}
+                    data-testid={`mod-override-${def.id}`}
+                    disabled={!selected || !groupOk || freeSlots.length === 0}
+                    key={def.id}
+                    onClick={() => {
+                      if (selectedIndex === null || !selected) {
+                        return;
+                      }
+                      const current = planFieldOverrides(selected);
+                      // Click again with a free legal slot: add another of this
+                      // kind on the next free hex.
+                      const nextFree = fieldOverridePinSlots(selected, def.id)[0];
+                      if (nextFree === undefined) {
+                        return;
+                      }
+                      const next = withPlanFieldOverrides(selected, [
+                        ...current,
+                        { kind: def.id, slot: nextFree }
+                      ]);
+                      updateTile(selectedIndex, {
+                        fieldOverrides: next.fieldOverrides,
+                        fieldOverride: undefined
+                      });
+                    }}
+                    title={
+                      !selected
+                        ? "Select a tile first"
+                        : !groupOk
+                          ? `Not allowed on ${selected.group} tiles`
+                          : freeSlots.length === 0
+                            ? "No free legal hex on this tile for this object"
+                            : `${def.summary} — add on free hex (${pinnedCount} already on tile)`
+                    }
+                    type="button"
+                  >
+                    {def.nameVi ?? def.name}
+                    {pinnedCount > 0 ? ` ×${pinnedCount}` : ""}
+                  </button>
+                );
+              })}
+            </div>
+            {selected && planFieldOverrides(selected).length > 0 ? (
+              <div className="popoverActions" data-testid="mod-override-list">
+                <small className="popoverHint">Pinned on this tile (change slot or remove):</small>
+                {planFieldOverrides(selected).map((pin, pinIndex) => (
+                  <div className="designerModPinRow" key={`${pin.kind}-${pin.slot}-${pinIndex}`}>
+                    <span>
+                      {getFieldOverrideDefinition(pin.kind)?.nameVi ?? pin.kind}
+                      {pin.slot !== undefined ? ` · slot ${pin.slot}` : ""}
+                    </span>
+                    <select
+                      aria-label={`Hex slot for ${pin.kind}`}
+                      className="popoverSelect"
+                      onChange={(event) => {
+                        if (selectedIndex === null || !selected) {
+                          return;
+                        }
+                        const newSlot = Number(event.target.value);
+                        // Allow keeping own slot; block occupied AND (face-up)
+                        // slots the engine would refuse at setup.
+                        if (
+                          newSlot !== pin.slot &&
+                          !fieldOverridePinSlots(selected, pin.kind, pin.slot).includes(newSlot)
+                        ) {
+                          return;
+                        }
+                        const list = planFieldOverrides(selected).map((p, i) =>
+                          i === pinIndex ? { ...p, slot: newSlot } : p
+                        );
+                        const next = withPlanFieldOverrides(selected, list);
+                        updateTile(selectedIndex, {
+                          fieldOverrides: next.fieldOverrides,
+                          fieldOverride: undefined
+                        });
+                      }}
+                      value={pin.slot ?? 0}
+                    >
+                      {[0, 1, 2, 3, 4, 5, 6].map((slot) => {
+                        const legal = fieldOverridePinSlots(selected, pin.kind, pin.slot);
+                        const taken = slot !== pin.slot && !legal.includes(slot);
+                        return (
+                          <option disabled={taken} key={slot} value={slot}>
+                            Slot {slot}
+                            {taken ? " (taken)" : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <button
+                      onClick={() => {
+                        if (selectedIndex === null || !selected) {
+                          return;
+                        }
+                        const list = planFieldOverrides(selected).filter((_, i) => i !== pinIndex);
+                        const next = withPlanFieldOverrides(selected, list);
+                        updateTile(selectedIndex, {
+                          fieldOverrides: next.fieldOverrides,
+                          fieldOverride: undefined
+                        });
+                      }}
+                      title="Remove this pin"
+                      type="button"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  data-testid="mod-override-clear"
+                  onClick={() => {
+                    if (selectedIndex !== null) {
+                      updateTile(selectedIndex, { fieldOverrides: undefined, fieldOverride: undefined });
+                    }
+                  }}
+                  type="button"
+                >
+                  <Trash2 size={13} /> Clear all Field Overrides on tile
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="designerBoardWrap" ref={wrapRef}>
@@ -3901,7 +4330,11 @@ export function MapDesigner({
                         className="popoverSelect"
                         onChange={(event) =>
                           updateTile(selectedIndex as number, {
-                            token: tileTokenValue(selectedToken.kind, selectedToken.pair, Number(event.target.value))
+                            tokens: [
+                              tileTokenValue(selectedToken.kind, selectedToken.pair, Number(event.target.value)),
+                              ...planTokens(selected).slice(1)
+                            ],
+                            token: undefined
                           })
                         }
                         value={selectedToken.slot ?? ""}
@@ -3920,7 +4353,15 @@ export function MapDesigner({
                     ) : null}
                     <div className="popoverActions">
                       <button
-                        onClick={() => updateTile(selectedIndex as number, { token: undefined })}
+                        onClick={() =>
+                          updateTile(selectedIndex as number, {
+                            tokens:
+                              planTokens(selected).slice(1).length > 0
+                                ? planTokens(selected).slice(1)
+                                : undefined,
+                            token: undefined
+                          })
+                        }
                         title="Remove the token from this tile"
                         type="button"
                       >
@@ -4158,7 +4599,12 @@ export function MapDesigner({
                   className="popoverSelect"
                   onChange={(event) =>
                     updateTile(selectedTokenIndex as number, {
-                      token: tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, Number(event.target.value))
+                      tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                        i === tokenPanelPin
+                          ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, Number(event.target.value))
+                          : token
+                      ),
+                      token: undefined
                     })
                   }
                   value={tokenPanelToken.slot ?? ""}
@@ -4189,7 +4635,13 @@ export function MapDesigner({
             <button
               className="popoverRemove"
               onClick={() => {
-                updateTile(selectedTokenIndex as number, { token: undefined });
+                const rest = (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).filter(
+                  (_, i) => i !== tokenPanelPin
+                );
+                updateTile(selectedTokenIndex as number, {
+                  tokens: rest.length > 0 ? rest : undefined,
+                  token: undefined
+                });
                 closeTokenPopover();
               }}
               type="button"

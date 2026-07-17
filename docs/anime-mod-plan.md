@@ -1,11 +1,13 @@
 # Anime mod — ONE mod, two theme packages: **Ninefold Realms** (xianxia) × **Otherworld Gate** (isekai) — design + implementation plan
 
-> **STATUS: DESIGN ONLY — NOTHING IN THIS DOCUMENT IS IMPLEMENTED.** No engine
-> code, data, art or tests for this mod exist yet. Every mechanic below is a
-> *proposal*, engine-shaped against the current codebase (file references
-> verified 2026-07-16 against `main`). Per CLAUDE.md, nothing here may be
-> called "done" until it is engine-enforced AND covered by a test that fails
-> when the logic is removed.
+> **STATUS: ART FOUNDATION + FIELD-OVERRIDE SPINE IN PROGRESS — MOST GAMEPLAY
+> IS NOT IMPLEMENTED.** Editable Fuyuki City and Azure Breeze unit-card art
+> proofs exist under `scripts/anime-art/` (outside `public/assets`, not
+> playable). The **Field Override** system (§3.10 / §9b) and the first
+> Ninefold single-hex locations (§5.8) are the first engine slices. Every
+> other mechanic below is still a *proposal*, engine-shaped against the
+> codebase. Per CLAUDE.md, nothing may be called "done" until it is
+> engine-enforced AND covered by a test that fails when the logic is removed.
 >
 > **This document MERGES two formerly separate plans into one mod** (per the
 > user's direction: "make them part of a whole mod … can select either, and
@@ -115,7 +117,10 @@ both are on.
 | `anime.raidBosses` | 門 | OFF | **Raid Bosses**: persistent multi-layer world bosses — announced spawns or designer **Rift Lairs**, wounds persist between attempts, escalate if ignored, pay per layer broken (§6.5). |
 | `anime.dungeon` | 門 | OFF | **The Dungeon** (*Meikyū*): one repeatable multi-floor delve per map, per-player floor progress, floor bosses, scaling rewards (§6.7.3). Requires `creatureBanks`. |
 | `anime.gods` | 門 | OFF | **Patron Blessings**: pick a patron deity (small passive + once-per-game Miracle); the antagonist god's wave hook (§6.9). Also lights the §3.4 substrate. |
-| *(designer content — no toggle)* | both | n/a | **Quest Guards** (§9) and **Traps** (§6.7.1) are map-designer objects usable on any map once `anime.enabled`; **Rift Lair** objects additionally need `raidBosses` (dropped with a setup problem otherwise). Story timed-events ride the existing designer machinery (§11). |
+| `anime.fieldOverrides` | both | OFF | **Single-hex Field Overrides** (§3.10 / §9b): on Far/Near/Center (and optional other groups) tile reveal, a catalog object may replace one legal hex with a real location (random place / manual pick / manual-or-refuse). Designer may pin overrides on face-up tiles or face-down pending hexes. Map-setup choice for placement mode. |
+| `anime.xianxiaArtifacts` | 九 | OFF | Ninefold **Pháp Bảo** artifact cards join the Artifact deck(s) (§5.10). |
+| `anime.heartDemon` | 九 | OFF | **Tâm Ma** (*Heart Demon*) combat status token + Evil-sect / spell producers (§5.11). |
+| *(designer content — no toggle)* | both | n/a | **Quest Guards** (§9), **Field Override palette** (§9b) and **Traps** (§6.7.1) are map-designer objects usable once `anime.enabled` (field overrides also need `fieldOverrides` or a designer pin); **Rift Lair** objects additionally need `raidBosses` (dropped with a setup problem otherwise). Story timed-events ride the existing designer machinery (§11). |
 | Story mode | both | n/a | The campaign hub: **"The Jianghu Chronicle"** (Chen Fan, §12.1) and **"Bin's Otherworld Chronicle"** (Bin, §12.2), plus the stretch convergence arc (§12.3). Menu entry, single-player infrastructure. |
 
 Module dependency edges (enforced in the lobby UI like `creatureBanks` →
@@ -273,6 +278,101 @@ AND every WOG module ON** reaching round 6 with zero stalls (joins
 `single-player-soak.test.ts`); (c) the mixed-package CONTROL (one module
 from each package on — no cross-talk).
 
+### 3.10 Field Overrides — single-hex replacement (SHARED spine, headline map feature)
+
+**Product ask (locked):** a **single hex may replace any legal hex on a tile**
+with a real map object that has **actual visit mechanics** (no decorative
+stubs, no weird carve side-effects). There are **many** override kinds
+(mod content + future core); placement is:
+
+1. **Map designer pin** — face-up tile: exact slot at setup; face-down tile:
+   pending override on a preferred physical hex (same reservation pattern as
+   `plan.token` / `preferredSpaceId`), carved after reveal+rotation.
+2. **Map-setup / lobby policy** — when `anime.fieldOverrides` is ON (or a
+   future core-wide toggle), face-down Far / Near / Center tiles without a
+   designer pin may draw from a **per-group override pool** at setup
+   (stamped as `tile.pendingFieldOverride`). On reveal, placement is:
+   - `random` — engine picks a legal candidate hex (seeded);
+   - `manual` — discovering player picks a glowing legal hex (must place);
+   - `manual-or-refuse` — player may pick a hex OR decline (token drops,
+     pool entry is **not** returned — spent).
+3. **Tile-group awareness** — each override kind declares which groups may
+   host it (`far` / `near` / `center` / `sea` / `subterranean` / optionally
+   `starting`). A Far-only kind never lands on a Center tile. Sea kinds
+   demand water terrain; land kinds refuse water — REUSE
+   `tokenMayCoverFieldDef` terrain split (or a shared `fieldMayHostOverride`).
+4. **No weird behavior** — a carve **only** rewrites `field.location` (+
+   optional `difficulty` / resource wipe) through one helper
+   `carveFieldOverride` that mirrors `carveMapTokenField` (clears cubes,
+   flags, bankId, gate links, grail dig, etc.). Visit flow is the normal
+   `beginFieldVisit` → `LocationInteraction` pipeline. Guards use the
+   standard neutral battle. Teleport-style overrides either REUSE the
+   Monolith network (`location: "monolith"`) or join a named parallel
+   network with the same destination rules — never a half-wired special
+   case. AI treats override hexes as ordinary fields (pathfinding already
+   reads location category).
+5. **Coexistence (SHIPPED as multi-pin)** — a tile may host **multiple**
+   overrides **and** multiple teleport tokens as long as every placement
+   claims a **different** hex slot (never stacked); a same-slot collision is
+   a designer problem (dropped at sanitize, first wins). A **carved** override
+   hex is protected exactly like a Location Token: no token, Subterranean
+   Gate half, or second override may overwrite it
+   (`isFieldOverrideLocation` in the token/gate/override legality checks).
+   Creature Banks still only land on Blocked Fields after reveal (unchanged);
+   an override never targets a reserved bank hex after the bank is placed
+   (order: rotation → bank offer → override placement, or override first
+   only on non-blocked candidates — engine chooses **override before bank**
+   on candidates that are not blocked, so a Blocked Field stays free for
+   the bank offer).
+6. **Map designer UX** — **Mod panel** button (sibling to the existing
+   object/token tools): lists Field Override kinds filtered by active
+   package toggles / `anime.enabled`, drag-or-arm onto a tile hex (face-up
+   writes `plan.fieldOverride = { kind, slot }`; face-down writes the same
+   with physical slot reservation). Standalone off-tile overrides are
+   **out of V1** (on-tile only; Quest Guards / Rift Lairs stay the
+   standalone object path in §9 / §6.5).
+7. **Default OFF** — no pending overrides, no pool draw, designer pins on
+   a map whose table has the module off are **dropped at setup with a
+   problem note** (same honesty as Rift Lair without `raidBosses`).
+
+**Types (engine-shaped):**
+
+```ts
+// GameSetupOptions / AnimeModOptions
+fieldOverrides?: boolean;
+/** How non-designer overrides place on reveal. Default "manual-or-refuse". */
+fieldOverridePlacement?: "random" | "manual" | "manual-or-refuse";
+
+// CustomMapTilePlan
+fieldOverride?: { kind: FieldOverrideKindId; slot?: number };
+
+// MapTileState (runtime)
+pendingFieldOverride?: {
+  kind: FieldOverrideKindId;
+  preferredSpaceId?: MapSpaceId;
+  /** true = came from the random pool (placement mode applies); false = designer pin (auto if legal, else manual fallback, no refuse). */
+  fromPool?: boolean;
+};
+
+// Catalog entry (src/data/anime/field-overrides.ts + future core)
+FieldOverrideDefinition {
+  id, locationId, name, package?: "xianxia"|"isekai"|"shared",
+  tileGroups: TileGroup[],
+  terrain: "land"|"water"|"any",
+  /** Optional neutral guard difficulty stamped on carve (1–7). */
+  guard?: number,
+  /** Cover policy — default = same forbidden set as Location Tokens. */
+  coverPolicy?: "token-legal",
+  implementationStatus: "implemented"|"not-implemented"
+}
+```
+
+**Seams reused (do not reinvent):** `applyCustomMapTokens` /
+`offerPendingTokenPlacement` / `place-map-token` OPTION_CHOICE /
+`tokenMayCoverFieldDef` / `carveMapTokenField` / designer token drag /
+sanitize of `plan.token`. Field overrides are a **sibling** of teleport
+tokens, not a second teleporter system.
+
 ### 3.9 WOG mod compatibility (per the user: a hard requirement)
 
 WOG is its own crest — `WogModOptions { enabled, commanders, newObjects,
@@ -354,15 +454,15 @@ faction.
 Jade green / cloud white. Disciplined mid-tempo army: formation, retaliation,
 support. Avoid: European castle knights.
 
-| Line (tier, type) | Few | Pack | Mechanism |
+| Line (level, tier, type; proof stats A/D/H/I) | Few | Pack | Mechanism |
 | --- | --- | --- | --- |
-| **Outer Sect Disciples** (*Ngoại môn đệ tử*) — bronze, ground | — | **Sword Array**: +1 Attack while adjacent to a friendly unit | SHARED `ATTACK_BONUS_ADJACENT_ALLY` |
-| **Inner Sect Swordsmen** (*Nội môn kiếm sĩ*) — bronze, ground | Ignore combat penalties | same, higher Initiative statline | REUSE `ignore-combat-penalties` |
-| **Alchemy Acolytes** (*Luyện đan đệ tử*) — silver, ranged | [activation] heal an adjacent unit 1 | [activation] heal an adjacent unit 2 | REUSE (Enchanter heal-pick activation pattern) |
-| **Sect Protectors** (*Hộ tông hộ pháp*) — silver, ground | Defense token (roll the Defend die when attacked) | Unlimited retaliation | REUSE `SELF_DEFENSE_TOKEN` / `unlimited-retaliation` |
-| **True Inheritors** (*Chân truyền đệ tử*) — gold, ground | Charge (+1 Attack on an attack after moving) | Charge + ignores retaliation | SHARED charge unit tag (generalize `commander-charge`) / REUSE `ignores-retaliation` |
-| **Sword Immortal** (*Kiếm tiên*) — gold, flying | Sword-qi line: also attack the unit behind the target | same + ignore combat penalties | REUSE `SECOND_ATTACK_BEHIND_TARGET` (Mechanics' reach) |
-| **Mountain Guardian** (*Thủ sơn linh thú*) — gold, ground | high HP, no ability | On removal, heal every adjacent friendly unit 1 | NEW `ON_REMOVAL_HEAL_ADJACENT` (sign-flipped twin of `ON_REMOVAL_DAMAGE_ADJACENT`, `abilities.ts:1197`) |
+| **Outer Sect Disciples** (*Ngoại môn đệ tử*) — L1, bronze, **ground**; 2/1/2/5 | — | **Sword Array**: +1 Attack while adjacent to a friendly unit | SHARED `ATTACK_BONUS_ADJACENT_ALLY` |
+| **Inner Sect Swordsmen** (*Nội môn kiếm sĩ*) — L2, bronze, **ground**; 2/1/2/7 → 2/1/2/9 | Ignore combat penalties | same, higher Initiative statline | REUSE `ignore-combat-penalties` |
+| **Spirit Crane** (*Linh Cầm*) — L3, silver, melee **flying**; 3/1/3/10 → 4/2/4/11 | Flying; high Initiative | same + **Wingbeat**: after dealing melee damage, push the target 1 space directly away if that space is free | REUSE `flying` / NEW `PUSH_TARGET_AWAY_1` |
+| **Sect Protectors** (*Hộ tông hộ pháp*) — L4, silver, **ground**; 3/2/4/4 | Defense token (roll the Defend die when attacked) | Unlimited retaliation | REUSE `SELF_DEFENSE_TOKEN` / `unlimited-retaliation` |
+| **True Inheritors** (*Chân truyền đệ tử*) — L5, gold, **ground**; 5/2/6/7 | Charge (+1 Attack on an attack after moving) | Charge + ignores retaliation | SHARED charge unit tag (generalize `commander-charge`) / REUSE `ignores-retaliation` |
+| **Core Formation Master** (*Kim Đan Chân Nhân*) — L6, gold, **ranged magic**; 4/2/5/6 → 5/3/6/6 | **Magic Attack**: ranged; ignore combat penalties | same + **Talisman Aura**: when an adjacent ally is attacked and its Defense roll is 0 or −1, that ally gains +1 Defense | REUSE `ignore-combat-penalties` / NEW `ADJACENT_ALLY_DEFENSE_ON_ROLL` |
+| **Mountain Guardian** (*Thủ sơn linh thú*) — L7, gold, **ground**; 5/3/8/3 → **6**/3/8/3 | **Verdant Pulse**: at the start of your turn, heal this unit and every adjacent allied unit 1 Health | same + on removal, heal every adjacent allied unit 1 | NEW `START_TURN_HEAL_SELF_AND_ADJACENT` / `ON_REMOVAL_HEAL_ADJACENT` |
 
 Buildings: **Closed-Door Chamber** (*Bế quan thất*, City Hall —
 `RESOURCE_ROUND_CHOICE` {4 gold | 1 XP}), 3 dwellings (**Outer Courtyard /
@@ -566,12 +666,23 @@ Neophytes; gold Core-Formation Old Monster / Sword Fiend / Ancient Yaoguai /
 Illusion Spirit; azure Ancient Deity Remnant / Failed Ascendant Shade /
 Outer-Realm Venerable.
 
-**Map locations** (`locationDefinitions`, `locations.ts:21`; placed via
-xianxia tiles and/or the designer): **Qi Refinement Platform** (revisitable;
-pay 1 MP → +1 Attack token for your next combat — REUSE `PAY_TO`+buff-token
-step), **Foundation Stone** (visitable; one free reinforce — `HILL_FORT`
-family), **Merchant Guild Post** / **Gambling Den** (§5.5), **Outer-Realm
-Rift** (revisitable teleport + guarded — REUSE `TOKEN_TELEPORT` + `guard`).
+**Map locations** — classic xianxia single-hex objects (Field Override
+catalog, §3.10 / §9b). Each is a real `locationDefinitions` entry with a
+full `LocationInteraction`; placement is ONLY via Field Override (designer
+or pool), never printed on stock tiles in V1.
+
+| Location (VI) | HoMM3 twin | Engine reading (V1) | Tile groups |
+| --- | --- | --- | --- |
+| **Bí Cảnh** (*Secret Realm*) | Dragon Utopia (lite) | Visitable; optional guard difficulty **5** (2 silver + 1 gold flavor — engine stamps `difficulty: 5`). On win/visit: `SEARCH_SHARED_DECK` artifacts count 1 **twice** (`times: 2` → keep two) + `GAIN_RESOURCES` valuables 5 (*Thiên Tài Địa Bảo*). Distinct from the 6 **Secret Realm banks** above (those join bank piles); this is the single-hex field form. | far, near, center |
+| **Kiếm Trủng** (*Sword Mound*) | Warrior's Tomb | Visitable: `SEARCH_SHARED_DECK` artifacts count 1 (free keep-one) + `GAIN_MORALE` −1 (next-combat morale; regular morale token / morale-card path). Printed tomb is Search×2 + −2; this is the softer twin. | far, near |
+| **Linh Tuyền** (*Spirit Spring*) | Fountain of Youth | Visitable: `GAIN_MOVEMENT` +1 **and** clear **negative army status** for the visiting hero — engine reading: discard one held **Negative morale card** if any (morale-cards on), else remove one negative morale **token**; combat tokens do not persist on the map so no combat-token cleanse here. CONTROL: no-negative visitor still gets +1 MP. | far, near, starting |
+| **Ngộ Đạo Thạch** (*Enlightenment Stone*) | Learning Stone / Scholar hybrid | Visitable, costs the normal visit stop (MP already spent to enter): `SEARCH_SHARED_DECK` **abilities** count **2** (look 2, keep 1, rest reshuffle — existing Search pipeline). Printed Learning Stone is +1 XP; this is the enlightenment twin. | far, near |
+| **Trận Pháp Truyền Tống** (*Teleportation Array*) | Two-Way Monolith (user said Subterranean Gate; **mechanics match Monolith**) | Revisitable: carves as `location: "monolith"` so it joins the **existing Monolith teleport network** (1 free travel / revisit 1 MP, traveller picks when 3+, occupied skipped) — **zero new travel code** in V1, no weird parallel network. Skin label/art is the Array. A future separate Array-only network is stretch. | far, near, center, subterranean |
+
+Also retained from earlier sketch: **Qi Refinement Platform** (revisitable;
+pay 1 MP → +1 Attack token for next combat), **Foundation Stone** (free
+reinforce, Hill Fort family), **Merchant Guild Post** / **Gambling Den**
+(§5.5), **Outer-Realm Rift** (guarded teleport — designer pin).
 
 ### 5.9 Elixir Pills (`anime.elixirPills`)
 
@@ -591,6 +702,71 @@ registered `not-implemented` no-op if the second-activation machinery slips
 quest/commission rewards, the Guild Shop (§8.2). Timing: combat pills
 through the morale-cards SPEND/reaction seams (`addMoraleActions` twin); map
 pills on your own turn.
+
+### 5.10 Pháp Bảo — xianxia Artifact cards (`anime.xianxiaArtifacts`)
+
+Join the shared Artifact deck(s) when the module is on (same split-deck
+gates as core Artifacts). Data in `src/data/anime/artifacts.ts`, each with
+`effect` + `implementationStatus`. **Weapons / Armor / Boots / Misc** map
+to existing artifact slots.
+
+| Artifact (VI) | Slot | Engine reading |
+| --- | --- | --- |
+| **Tru Tiên Kiếm** (*Heaven-Slaying Sword*) | Weapon | Hero +1 Attack (standing artifact stat). **Once per combat:** when an allied **Gold** unit attacks, exhaust this card to grant that attack `SECOND_ATTACK_BEHIND_TARGET` / Cleave for that strike only (REUSE line-breath / Mechanics behind-target arm; exhaust = flipped face, refreshes next combat). |
+| **Bát Quái Kính** (*Bagua Mirror*) | Misc | Hero +1 Defense. **Reaction:** when an enemy Hero **casts a Spell** in combat, exhaust to **cancel** that spell (spell goes to the caster's discard with no effect — REUSE interrupt/cancel window pattern; if none exists cleanly, ships as `not-implemented` until the cancel arm lands). |
+| **Đông Hoàng Chung** (*Eastern Bell*) | Armor | All allied units gain **Armored**: −1 physical damage from unit attacks (REUSE / SHARED damage-reduction arm — Iron Golem `reduce-*-damage` family parameterized to physical-only, or a new `ARMORED_KEYWORD` if physical vs spell split is required). |
+| **Phong Hỏa Luân** (*Wind & Fire Wheels*) | Boots | Hero +1 Movement on the map (Boots of Speed family). In combat, allied **Bronze** units +1 Initiative (standing combat-stat aura). |
+| **Túi Càn Khôn** (*Cosmic Bag*) | Misc | Resource Phase: +1 building material (Endless Sack of Wood twin — income rider). |
+| **Tụ Linh Bàn** (*Spirit Gathering Board*) | Misc | Resource Phase: if the hero is in a **Town**, that player gains +2 gold (town-stationed income rider). |
+| **Truyền Âm Ngọc Giản** (*Sound Transmission Jade*) | Misc | Once per round, Adventure Phase: trade resources and/or Artifact cards with **any allied hero** regardless of distance (NEW `REMOTE_ALLY_TRADE` arm; multiplayer only has meaning with ≥2 human/AI seats on the same team — on free-for-all tables the "allied" set is empty and the card is inert with a note). |
+
+### 5.11 Tâm Ma (*Heart Demon*) status token (`anime.heartDemon`)
+
+A unique **negative combat token** (sibling of Paralysis / Weakness /
+Corrosion), placed by Evil-sect units and certain Spells when the module is
+on.
+
+**Effect (engine-enforced):** when a unit carrying **Tâm Ma** becomes the
+active unit, **before** its activation menu: roll one Attack die.
+- Face **"0" / blank** → activation proceeds normally; token is **removed**
+  after the roll.
+- Face **"+1" or "−1"** (any hit / non-blank) → the unit takes **1 direct
+  damage** (effect damage, normal removal path), its activation **ends
+  immediately** (no move/attack/ability), and the token is **removed**.
+
+Producers (data-only once the token arm exists): Blood Demon Cult units /
+selected demonic Spells. Token is public on the unit. Mode-off: no producer
+offers the place action; a snapshot that somehow carries the token is
+cleared at combat start.
+
+### 5.12 Heavenly Tribulation — Expert Destruction spell **and** cultivation gauntlet
+
+Two distinct features share the name (do not collapse them):
+
+1. **Spell card** *Heavenly Tribulation* (*Thiên Kiếp*) — Expert Destruction
+   Magic, cost **3 Power**. Effect: target a **2×2** combat area (REUSE
+   area-pick patterns from Fireball / Meteor family; if the board has no
+   2×2 primitive, implement as "primary cell + three chosen adjacent toward
+   a corner" with a fixed shape helper). **All** units (allied and enemy)
+   in the area take **2 Magic Damage**. Each of **your** units that
+   **survives** gains a permanent **+1 Attack token** for the rest of the
+   combat (breakthrough). Deck join gated on xianxia spell slice / towns.
+2. **Cultivation gauntlet** (§5.6) — map-side 3-die breakthrough when
+   reaching Nascent Soul. Unrelated card; same flavor, different system.
+
+### 5.13 Đoạt Xá (*Soul Possession*) — Evil Sect Magic Hero specialty
+
+Used by a specific **Blood Demon Cult** magic hero (data row on that
+roster). **Play when one of your Bronze units is destroyed in combat:**
+immediately replace it with an **identical-tier enemy Bronze** unit from
+the enemy's **reserve / removed / not-yet-deployed** pool if available
+(engine reading: take one Bronze card from the opponent's army deck or
+casualty area that matches a living enemy bronze line — if none, the
+specialty fizzles). You **control** the stolen unit for the **remainder of
+this combat** only (it does not join your army map-side; on combat end it
+returns / is removed per normal casualty rules). NEW arm
+`SOUL_POSSESSION_ON_BRONZE_DEATH` with a mode-off and "no bronze available"
+CONTROL.
 
 ---
 
@@ -1069,7 +1245,12 @@ CONTROL test. This section is the "whole mod" dividend:
 
 ## 9. Quest Guard (shared designer object) — single hex, place anywhere, quest → reward
 
-The headline map-maker feature, shared by both packages. Engine seams are
+**Companion headline feature:** Field Overrides (§3.10 / §9b) — on-tile
+single-hex replacements with real mechanics. Quest Guard remains the
+**standalone / quest-gated** object; Field Override is the **tile-hex
+replace** path (including random/manual on reveal).
+
+The Quest Guard map-maker feature is shared by both packages. Engine seams are
 verified and mostly exist: standalone one-hex objects already mint a real
 `MapFieldState` with an optional guard 1–7 running the full
 neutral-battle/quick-combat flow, and "win → `beginFieldVisit` → the field's
@@ -1113,6 +1294,73 @@ once-cubes for `scope:"per-player"` (settlement-cube precedent).
 Cross-cutting: pendingVisit already blocks parallel-turns bystanders;
 `eliminatePlayer` must clear an open quest prompt (barrier-recovery
 precedent); the AFK driver default-answers *Leave*.
+
+### 9b. Field Overrides — designer Mod panel + reveal placement (SHARED)
+
+Full contract in §3.10. Implementation checklist (each bullet fails a named
+test if removed):
+
+1. **Catalog** `src/data/anime/field-overrides.ts` (+ merge hook for future
+   core kinds): ids, `locationId`, tileGroups, terrain, optional guard,
+   package tag. Ninefold V1 kinds: `bi_canh`, `kiem_trung`, `linh_tuyen`,
+   `ngo_dao_thach`, `tran_phap_truyen_tong` (§5.8). Isekai kinds land with
+   their package (Capsule Lab / Urahara Shop / … as override forms of §6.8
+   locations).
+2. **Locations** always registered in `locationDefinitions` (Factory
+   precedent) so a carved field always resolves; **placement** gated on
+   `anime.fieldOverrides` or a designer pin on a map loaded with the module.
+3. **`carveFieldOverride(adventure, spaceId, kind)`** — single chokepoint;
+   wipe like `carveMapTokenField`; stamp `location` + optional `difficulty`.
+4. **Setup** `applyCustomMapFieldOverrides` — face-up pins carve immediately;
+   face-down pins → `pendingFieldOverride`; when module on, remaining
+   far/near/center face-down tiles may receive a **pool** draw (seeded,
+   at most one pending override per tile; density default = every
+   non-starting supply tile gets a roll with 100% for V1 simplicity, or a
+   designer "override density" later).
+5. **Reveal** `offerPendingFieldOverridePlacement` — after rotation settles,
+   before or after bank offer per §3.10 order; random / manual /
+   manual-or-refuse; designer pins never refuse.
+6. **Lobby** rows under Anime Mod: master `fieldOverrides` + placement mode
+   select. Greyed when `anime.enabled` is off (or auto-enables field
+   overrides when a designed map has pins — prefer explicit toggle + setup
+   drop of pins with problem when off).
+7. **Map designer Mod panel** — button opens a side panel: Field Override
+   palette (package-filtered), arm → click tile hex to set
+   `plan.fieldOverride`, clear control, face-down physical-hex pin, conflict
+   warning vs `plan.token` same slot. Round-trip sanitize in `map-preset.ts`
+   / `map-registry.ts`.
+8. **Board art** — placeholder glyph per kind until art ships; integrity
+   tests allow declared placeholders in a registry.
+9. **AI** — if `manual` / `manual-or-refuse` window is computer-owned, policy
+   picks the highest-value candidate (prefer empty / resource symbol over
+   mine) or refuses only when every candidate is a valued economy hex and
+   mode allows refuse; scored so the runner never freezes.
+10. **CONTROLs** — module off → no pool, designer pins dropped; teleport
+    token still works; bank offer still works; main CONTROL of §3.8.
+
+**Shipped status (audit pass) — what runs vs. limits.** Leading with limits:
+
+- **Pool override kinds on face-down tiles are visible in raw snapshots**
+  (stamped at setup like designer tokens; a determined player inspecting the
+  transport can read what a hidden tile will offer). Deliberate V1 trade-off —
+  masking would need player-view surgery for marginal secrecy.
+- **`linh_tuyen` no longer claims `starting` tiles** — setup skips starting
+  plans (their fields materialize only at the opening rotation), so a starting
+  pin could never apply; the designer no longer offers one.
+- **Designer multi-token editing** — every pin drags/edits individually
+  (drag state carries `tokenIndex`); mode flips (random/secret/face-up) and
+  the face-down rotation counter-compensation map **every** pin, retargeting
+  face-up tokens to distinct legal slots and dropping ones the new tile
+  cannot host (same as the old singular semantics, per pin).
+- **Engine invariants pinned by tests** (`field-overrides.test.ts`,
+  `map-tokens.test.ts`, `subterranean-gate-choice.test.ts`, each
+  mutation-checked): the reveal chain pauses ONLY on a choice the override
+  offer itself opened; resolving/refusing a manual placement never re-draws
+  another pool override (no endless window); a carved override hex refuses
+  tokens / gate halves / later overrides (empty-sibling CONTROL); a tile's
+  whole `pendingTokens` queue places on reveal (nothing leaks); eliminating
+  the placing seat mid-choice drops the override queue and auto-places the
+  waiting designed token instead of stranding the tile.
 
 ---
 
@@ -1460,6 +1708,9 @@ arms are built once, parameterized, consumers wire data only:
 | `PLACE_TOKEN_ACTION` token variants (paralysis / initiative-down) | SHARED variant (arm exists, `abilities.ts:64`) | Nine-Tailed Fox; Amagi; + free-mode PvP-neutral-control offers |
 | Charge as a unit tag (generalize `commander-charge`) | SHARED arm | True Inheritors, Dragon Horse; Sabers, Noshiro, Dire Wolves |
 | `requiresNotMoved` ability-gate param | SHARED param | Archers, High Elf Archer, Laffey (Sleepy) |
+| `PUSH_TARGET_AWAY_1` (requires a free directly-away space) | NEW arm | Spirit Crane Pack |
+| `ADJACENT_ALLY_DEFENSE_ON_ROLL` (params `faces`, `bonus`) | NEW aura arm | Core Formation Master Pack |
+| `START_TURN_HEAL_SELF_AND_ADJACENT` | NEW turn hook | Mountain Guardian Few/Pack |
 | `ON_REMOVAL_HEAL_ADJACENT` | NEW arm | Mountain Guardian |
 | `ON_REMOVAL_OWNER_RESOURCE` | NEW arm | Cult Initiates |
 | `SELF_DAMAGE_ATTACK_BOOST` | NEW arm | Blood Venerables (+ Demon Patriarch cast rider param) |
@@ -1486,6 +1737,12 @@ arms are built once, parameterized, consumers wire data only:
 | Cultivation track + Tribulation | NEW system | §5.6 |
 | Destiny substrate + titles | NEW system | §3.4, §5.7 |
 | Quest Guard object + 3 new predicates | NEW system | §9, §3.5 |
+| **Field Override system** (carve, pending, pool, placement modes, designer Mod panel) | NEW system (REUSE token placement seams) | §3.10, §9b, §5.8 |
+| Ninefold single-hex locations (Bí Cảnh, Kiếm Trủng, Linh Tuyền, Ngộ Đạo Thạch, Array) | NEW locations (mostly REUSE interactions) | §5.8 |
+| Pháp Bảo artifact set (7 cards) | NEW cards + 1–2 NEW arms (remote trade, spell cancel) | §5.10 |
+| Tâm Ma token + activation roll | NEW token arm | §5.11 |
+| Heavenly Tribulation Expert spell (2×2 + survivor +1 Attack) | NEW spell | §5.12 |
+| Đoạt Xá specialty (steal bronze on death) | NEW specialty arm | §5.13 |
 | Story overlay system + campaign shell | NEW presentation systems | §11–12 |
 | 7 commander specialty ids | NEW cases | §7 |
 
@@ -1502,12 +1759,15 @@ user can reorder tracks without re-planning (§22 Q2).
 | Phase | Ships | Gate (beyond green lint/typecheck/test) |
 | --- | --- | --- |
 | **P0** | Spine: `AnimeModOptions`, crest + package quick-selects, `.animeMode` scaffold + both term dictionaries, art scaffolding (style bible, prompt sheets, shared compositor), CLAUDE.md section stub | §3.8(a) master CONTROL; quick-select = exact module groups; crest e2e |
+| **P0b** | **Field Override spine** (§3.10 / §9b): types, catalog, `carveFieldOverride`, setup pin + pending reveal (random/manual/manual-or-refuse), lobby placement mode, designer **Mod panel** (palette + face-down pin), Ninefold V1 locations (§5.8 table) with effect-level tests | module-off CONTROL; designer pin round-trip; each location visit outcome + guard fight for Bí Cảnh; AI answers placement window; bank/token coexistence |
+| **P0c** | **Pháp Bảo** artifacts that REUSE existing arms (Cosmic Bag, Spirit Gathering Board, Wind & Fire Wheels movement half, Heaven-Slaying Attack stat) | deck-join on/off; income riders with CONTROLs |
+| **P0d** | **Tâm Ma** token arm + one producer stub; **Heavenly Tribulation** spell; remaining artifact combat arms + Đoạt Xá | token roll outcomes; spell area + survivor buff; possession fizzle CONTROL |
 | **P1** | **Fuyuki City** complete (units/buildings/heroes incl. **Bin**/commander **Ruler (Jeanne)**/tile/board/art) + Summoning Circle + its SHARED/NEW arms | content test; commander bijection updated with a `wog.commanders`-on seat; SP soak with a Fuyuki AI seat |
 | **P2** | **Isekai neutrals** + 4 isekai banks + Devour/`MORALE_LOCK` + isekai map locations | bank rows vs `polish-bank-sizes` on/off; Fear↔morale-deck interplay tests; §3.8 gates begin |
 | **P3** | **Adventurers' Guild** (board, ranks, commissions, Party Members) + the shared quest vocabulary (§3.5) | rank-perk tests each with rank-below CONTROL; claim race (parallel turns); AI claims in soak |
 | **P4** | **Calamity Waves** | barrier-order test (income→event→waves→City Hall); pillage/overrun effect tests; AFK-retreat + elimination CONTROLs; PvP-neutral-control wave test; AI wave soak |
 | **P5** | **Raid Bosses** (+ `boss_lair` object, announce/escalate) | persistence across attempts + snapshot; layer-payout ledger; escalation; PvP-neutral-control boss test |
-| **P6** | **Azure Breeze Sect** + Sword Saint + Alchemy Pavilion (+ its 2 NEW arms) | content test; ELIXIR_SHOP fallback (pills off) test |
+| **P6** | **Azure Breeze Sect** + Sword Saint + Alchemy Pavilion (+ its NEW unit/building arms) | content test; push-space occupied/free outcomes; Talisman Aura die-face controls; Verdant Pulse self/adjacent/non-adjacent outcomes; ELIXIR_SHOP fallback (pills off) test |
 | **P7** | **Elixir Pills** + **Secret Realms** (6 banks, grade rows, realm-grade skin) + **xianxia neutrals** | pills morale-seam tests; bank grades vs polish on/off; Deity-Transformation ships-or-registers rule |
 | **P8** | **Quest Guard** object + **Traps** + xianxia map locations + Guild sites (the designer wave) | designer round-trip/sanitize; every quest kind + reward effect-tested; trap view-masking per player view; AFK/elimination/parallel CONTROLs; AI plays a quest+trap map |
 | **P9** | **Hidden Leaf Village** + **Yaoguai Valley** (+ Might Guy, Fox Sage, Chunin Exam Arena, Transformation Pill Hall) | content tests; `AFTER_ATTACK_SPLASH` + damage-cap CONTROLs; `armyUnitStacksActive` third-activator tests |
