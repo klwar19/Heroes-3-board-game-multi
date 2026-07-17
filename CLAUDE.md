@@ -2531,11 +2531,13 @@ What runs (each with a failing-if-removed test):
 
 UI: the map editor's "🏁 Custom win conditions" section (`map-preset-editor.tsx`,
 `CUSTOM_WIN_CONDITION_OPTIONS` / `defaultCustomWinCondition`, add/retype/param/
-remove up to 4) and the lobby "Custom win condition" section (`screen.tsx` rules
-tab, directly below Victory points: map-set conditions read-only + "map"-tagged,
-host add/remove dispatching `SET_GAME_OPTIONS { customWinConditions }`, Add
-disabled at the effective cap). Pinned in `map-preset-editor.test.tsx` and
-`game-options-tabs.test.tsx`.
+remove up to 4) and the lobby "Custom win condition" section (`screen.tsx`
+**Match tab**, directly below the "Win condition" victory-mode selector — beside
+the game's other winning conditions, NOT on Mode & Rules: map-set conditions
+read-only + "map"-tagged, host add/remove dispatching
+`SET_GAME_OPTIONS { customWinConditions }`, Add disabled at the effective cap).
+Pinned in `map-preset-editor.test.tsx` and `game-options-tabs.test.tsx` (incl. a
+placement test: on Match after the Win condition row, absent from Mode & Rules).
 
 Deliberate LIMITS (documented, not bugs):
 - **No "defeat N Dragon Utopias"**: the VP ledger flag is a BOOLEAN

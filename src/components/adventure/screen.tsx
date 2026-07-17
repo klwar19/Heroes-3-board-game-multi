@@ -6301,112 +6301,6 @@ function GameOptionsPanel({
         );
       })()}
 
-      {(() => {
-        // Custom win conditions: the map's own list (read-only here — the lobby
-        // can only ADD, never remove a map-authored one) plus the host-added
-        // list for THIS game. The first player to satisfy any condition wins.
-        const mapConditions = options.customMapPreset?.customWinConditions ?? [];
-        const hostConditions = options.customWinConditions ?? [];
-        const effective = mergeCustomWinConditions(mapConditions, hostConditions);
-        const atCap = effective.length >= MAX_CUSTOM_WIN_CONDITIONS;
-        const sendConditions = (nextConditions: CustomWinCondition[]) =>
-          send({ customWinConditions: nextConditions });
-        const addCondition = () => {
-          if (atCap) {
-            return;
-          }
-          sendConditions([...hostConditions, defaultCustomWinCondition("control-towns")]);
-        };
-        const updateCondition = (index: number, condition: CustomWinCondition) =>
-          sendConditions(hostConditions.map((entry, i) => (i === index ? condition : entry)));
-        const removeCondition = (index: number) =>
-          sendConditions(hostConditions.filter((_, i) => i !== index));
-        return (
-          <div className="optionRow">
-            <small title="Extra early-end triggers: the first player to satisfy any listed condition wins immediately, on top of the victory mode. Map-set conditions can't be removed here — you can only add your own for this game.">
-              Custom win condition
-            </small>
-            <div className="customWinConditions" role="group" aria-label="Custom win conditions">
-              {mapConditions.map((condition, index) => (
-                <div className="customWinConditionRow mapSet" key={`map-${index}`}>
-                  <span className="customWinConditionText">🏁 {describeCustomWinCondition(condition)}</span>
-                  <span className="customWinConditionTag">map</span>
-                </div>
-              ))}
-              {hostConditions.map((condition, index) => {
-                const option = CUSTOM_WIN_CONDITION_OPTIONS.find((entry) => entry.id === condition.kind);
-                const paramValue =
-                  condition.kind === "hero-level"
-                    ? condition.level
-                    : condition.kind === "gold"
-                      ? condition.amount
-                      : "count" in condition
-                        ? condition.count
-                        : null;
-                return (
-                  <div className="customWinConditionRow" key={`host-${index}`}>
-                    <select
-                      aria-label={`Custom win condition ${index + 1} kind`}
-                      onChange={(event) =>
-                        updateCondition(
-                          index,
-                          defaultCustomWinCondition(event.target.value as CustomWinCondition["kind"])
-                        )
-                      }
-                      value={condition.kind}
-                    >
-                      {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
-                        <option key={entry.id} value={entry.id}>
-                          {entry.label}
-                        </option>
-                      ))}
-                    </select>
-                    {option?.param && paramValue !== null ? (
-                      <input
-                        aria-label={`Custom win condition ${index + 1} value`}
-                        max={option.param.max}
-                        min={option.param.min}
-                        onChange={(event) => {
-                          const raw = Number(event.target.value) || option.param!.min;
-                          const clamped = Math.max(option.param!.min, Math.min(option.param!.max, raw));
-                          updateCondition(index, {
-                            ...condition,
-                            [option.param!.field]: clamped
-                          } as CustomWinCondition);
-                        }}
-                        type="number"
-                        value={paramValue}
-                      />
-                    ) : null}
-                    <button
-                      aria-label={`Remove custom win condition ${index + 1}`}
-                      className="customWinConditionRemove"
-                      onClick={() => removeCondition(index)}
-                      type="button"
-                    >
-                      <X size={13} aria-hidden="true" />
-                    </button>
-                  </div>
-                );
-              })}
-              <button
-                className="customWinConditionAdd"
-                disabled={atCap}
-                onClick={addCondition}
-                type="button"
-              >
-                <Plus size={13} aria-hidden="true" /> Add win condition
-              </button>
-            </div>
-            <small className="optionHint">
-              {effective.length === 0
-                ? "None set. Add a condition and the first player to reach it wins immediately — an extra early-end trigger on top of the victory mode."
-                : "The first player to satisfy any condition wins immediately. Map-set conditions can't be removed here — you can only add your own for this game."}
-            </small>
-          </div>
-        );
-      })()}
-
       {modeNotice ? (
         <div className="modeNoticeBanner" role="status">
           <Info size={14} aria-hidden="true" />
@@ -6775,6 +6669,115 @@ function GameOptionsPanel({
               {guards === "four"
                 ? "Four dragons guard the Utopia — Azure, Rust, Crystal and Faerie. The featured lead is a random Azure or Rust Dragon."
                 : "The guard count follows the difficulty (Easy 1 · Normal 2 · Hard 3 · Impossible 4). The featured lead is always an Azure or Rust Dragon."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        // Custom win conditions — rendered HERE, directly beside the Win
+        // condition selector above, so the extra early-end triggers live with
+        // the rest of the victory setup. The map's own list is read-only (the
+        // lobby can only ADD, never remove a map-authored one) plus the
+        // host-added list for THIS game. The first player to satisfy any
+        // condition wins.
+        const mapConditions = options.customMapPreset?.customWinConditions ?? [];
+        const hostConditions = options.customWinConditions ?? [];
+        const effective = mergeCustomWinConditions(mapConditions, hostConditions);
+        const atCap = effective.length >= MAX_CUSTOM_WIN_CONDITIONS;
+        const sendConditions = (nextConditions: CustomWinCondition[]) =>
+          send({ customWinConditions: nextConditions });
+        const addCondition = () => {
+          if (atCap) {
+            return;
+          }
+          sendConditions([...hostConditions, defaultCustomWinCondition("control-towns")]);
+        };
+        const updateCondition = (index: number, condition: CustomWinCondition) =>
+          sendConditions(hostConditions.map((entry, i) => (i === index ? condition : entry)));
+        const removeCondition = (index: number) =>
+          sendConditions(hostConditions.filter((_, i) => i !== index));
+        return (
+          <div className="optionRow">
+            <small title="Extra early-end triggers: the first player to satisfy any listed condition wins immediately, on top of the victory mode. Map-set conditions can't be removed here — you can only add your own for this game.">
+              Custom win condition
+            </small>
+            <div className="customWinConditions" role="group" aria-label="Custom win conditions">
+              {mapConditions.map((condition, index) => (
+                <div className="customWinConditionRow mapSet" key={`map-${index}`}>
+                  <span className="customWinConditionText">🏁 {describeCustomWinCondition(condition)}</span>
+                  <span className="customWinConditionTag">map</span>
+                </div>
+              ))}
+              {hostConditions.map((condition, index) => {
+                const option = CUSTOM_WIN_CONDITION_OPTIONS.find((entry) => entry.id === condition.kind);
+                const paramValue =
+                  condition.kind === "hero-level"
+                    ? condition.level
+                    : condition.kind === "gold"
+                      ? condition.amount
+                      : "count" in condition
+                        ? condition.count
+                        : null;
+                return (
+                  <div className="customWinConditionRow" key={`host-${index}`}>
+                    <select
+                      aria-label={`Custom win condition ${index + 1} kind`}
+                      onChange={(event) =>
+                        updateCondition(
+                          index,
+                          defaultCustomWinCondition(event.target.value as CustomWinCondition["kind"])
+                        )
+                      }
+                      value={condition.kind}
+                    >
+                      {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.label}
+                        </option>
+                      ))}
+                    </select>
+                    {option?.param && paramValue !== null ? (
+                      <input
+                        aria-label={`Custom win condition ${index + 1} value`}
+                        max={option.param.max}
+                        min={option.param.min}
+                        onChange={(event) => {
+                          const raw = Number(event.target.value) || option.param!.min;
+                          const clamped = Math.max(option.param!.min, Math.min(option.param!.max, raw));
+                          updateCondition(index, {
+                            ...condition,
+                            [option.param!.field]: clamped
+                          } as CustomWinCondition);
+                        }}
+                        type="number"
+                        value={paramValue}
+                      />
+                    ) : null}
+                    <button
+                      aria-label={`Remove custom win condition ${index + 1}`}
+                      className="customWinConditionRemove"
+                      onClick={() => removeCondition(index)}
+                      type="button"
+                    >
+                      <X size={13} aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                className="customWinConditionAdd"
+                disabled={atCap}
+                onClick={addCondition}
+                type="button"
+              >
+                <Plus size={13} aria-hidden="true" /> Add win condition
+              </button>
+            </div>
+            <small className="optionHint">
+              {effective.length === 0
+                ? "None set. Add a condition and the first player to reach it wins immediately — an extra early-end trigger on top of the victory mode."
+                : "The first player to satisfy any condition wins immediately. Map-set conditions can't be removed here — you can only add your own for this game."}
             </small>
           </div>
         );
