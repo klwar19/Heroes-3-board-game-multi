@@ -340,6 +340,24 @@ export const TILE_BACK_LABELS: Record<string, string> = {
   subterranean: "Ⅳ–Ⅴ"
 };
 
+/**
+ * Player-facing band name for a tile GROUP (feed + designer). Unlike
+ * {@link TILE_BACK_LABELS}, Sea and Underground get their own names rather than
+ * the shared Ⅳ–Ⅴ back numeral (a sea/underground tile back is ambiguous with a
+ * land Near tile), so a group filter reads unambiguously.
+ */
+export const TILE_GROUP_BAND_LABELS: Record<
+  "starting" | "far" | "near" | "center" | "sea" | "subterranean",
+  string
+> = {
+  starting: "Ⅰ",
+  far: "Ⅱ–Ⅲ",
+  near: "Ⅳ–Ⅴ",
+  center: "Ⅵ–Ⅶ",
+  sea: "Sea",
+  subterranean: "Underground"
+};
+
 export function getAstrologersState(state: GameState): AstrologersState | null {
   const adventure = state.adventure;
   if (!adventure) {
@@ -10289,6 +10307,53 @@ export function applyCustomMapTimedEvents(state: GameState): void {
         message: `Map event (round ${round}): cleared black cubes on ${effect.locations.join(
           ", "
         )} (${cleared} field${cleared === 1 ? "" : "s"}).`
+      });
+      continue;
+    }
+    if (effect.kind === "clear_tile_cubes") {
+      const groups = new Set(effect.groups);
+      // Tiles hosting a Settlement are excluded whole when the flag is set —
+      // precompute their instance ids in one pass over the fields.
+      const settlementTileIds = new Set<string>();
+      if (effect.excludeSettlementTiles) {
+        for (const field of Object.values(adventure.fields)) {
+          if (field.location === "settlement") {
+            settlementTileIds.add(field.tileInstanceId);
+          }
+        }
+      }
+      let cleared = 0;
+      for (const field of Object.values(adventure.fields)) {
+        if (!field.blackCube) {
+          continue;
+        }
+        // Creature Banks keep their defeat cube forever (hard rule); the Grail
+        // and Dragon Utopia victory fields are never re-opened (conservative
+        // safety, mirroring the token-placement victory-condition exclusions).
+        if (
+          field.location === "creature_bank" ||
+          field.location === "grail" ||
+          field.location === "dragon_utopia"
+        ) {
+          continue;
+        }
+        // Standalone designer hexes (no backing tile) fall through here safely.
+        const tile = adventure.tiles[field.tileInstanceId];
+        if (!tile?.group || !groups.has(tile.group)) {
+          continue;
+        }
+        if (effect.excludeSettlementTiles && settlementTileIds.has(field.tileInstanceId)) {
+          continue;
+        }
+        field.blackCube = false;
+        cleared += 1;
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): re-opened black cubes on ${effect.groups
+          .map((group) => TILE_GROUP_BAND_LABELS[group])
+          .join(", ")} Tiles (${cleared} field${cleared === 1 ? "" : "s"}).`
       });
       continue;
     }

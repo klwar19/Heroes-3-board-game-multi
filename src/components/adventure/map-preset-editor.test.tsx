@@ -127,6 +127,50 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(last.timedEvents!.length).toBe(2);
   });
 
+  it("clear_tile_cubes event: group chips + skip-settlement checkbox write through onChange", () => {
+    const onChange = vi.fn();
+    const base: CustomMapPreset = {
+      timedEvents: [{ round: 4, effect: { kind: "clear_tile_cubes", groups: ["far"] } }]
+    };
+    render(<MapPresetEditor preset={base} onChange={onChange} />);
+
+    // The six player-facing Roman-band chips render, and the preview pins the
+    // describe string (nothing else in the suite covers describeTimedMapEffect).
+    const groups = section("Timed event 1 tile groups");
+    expect(within(groups).getByRole("button", { name: "Ⅱ–Ⅲ" })).toBeTruthy();
+    expect(within(groups).getByRole("button", { name: "Underground" })).toBeTruthy();
+    // Rendered in both the summary and the live preview (describeTimedMapEffect).
+    expect(screen.getAllByText(/clear black cubes on Ⅱ–Ⅲ Tiles/).length).toBeGreaterThan(0);
+
+    // Toggle ON the Underground (subterranean) band — canonical group order kept.
+    fireEvent.click(within(groups).getByRole("button", { name: "Underground" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [
+          expect.objectContaining({
+            effect: { kind: "clear_tile_cubes", groups: ["far", "subterranean"] }
+          })
+        ]
+      })
+    );
+
+    // Toggle the skip-settlement checkbox (operating on the controlled base).
+    onChange.mockClear();
+    fireEvent.click(screen.getByLabelText("Timed event 1 skip settlement tiles"));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [
+          expect.objectContaining({
+            effect: expect.objectContaining({
+              kind: "clear_tile_cubes",
+              excludeSettlementTiles: true
+            })
+          })
+        ]
+      })
+    );
+  });
+
   it("exposes the storage cap instead of silently adding events that will be discarded", () => {
     const timedEvents: NonNullable<CustomMapPreset["timedEvents"]> = Array.from(
       { length: MAX_TIMED_EVENTS },
