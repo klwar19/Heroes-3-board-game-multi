@@ -4969,7 +4969,10 @@ export type GameEvent =
       cost: ResourceCost;
     }
   | {
-      /** A Polish Stack layer absorbed lethal damage in combat. */
+      /**
+       * A Polish Stack layer was lost — absorbed lethal damage in combat, or
+       * (with `reason` set) absorbed a map effect (Terrible Plague weakened).
+       */
       id: string;
       type: "ARMY_STACK_LOST";
       unitId: UnitId;
@@ -4977,6 +4980,7 @@ export type GameEvent =
       unitName: string;
       remainingStacks: number;
       excessDamage: number;
+      reason?: string;
     }
   | {
       id: string;
@@ -5980,7 +5984,9 @@ export type RecruitDiscountVoucher = {
   /** The exact unit this voucher is reserved for. */
   target:
     | { kind: "recruit"; unitDefId: string }
-    | { kind: "reinforce"; armyUnitId: string };
+    | { kind: "reinforce"; armyUnitId: string }
+    /** Polish Unit Stacks: reserved for one army card's Stack purchase. */
+    | { kind: "stack"; armyUnitId: string };
 };
 
 /** The six gradeable stats of a WOG commander (see src/data/commanders.ts). */
@@ -7468,7 +7474,9 @@ export type VisitStep =
       amount: number;
       target:
         | { kind: "recruit"; unitDefId: string }
-        | { kind: "reinforce"; armyUnitId: string };
+        | { kind: "reinforce"; armyUnitId: string }
+        /** Polish Unit Stacks: reserved for one army card's Stack purchase. */
+        | { kind: "stack"; armyUnitId: string };
     }
   | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
   | { type: "SETTLEMENT_CHOICE" }
@@ -7926,6 +7934,23 @@ export type VisitStep =
       type: "REINFORCE_FLAT_GOLD";
       armyUnitId: string;
       discount: number;
+    }
+  | {
+      /**
+       * Polish Unit Stacks: add ONE Stack layer to an army card at a special
+       * price (a building/skill offer — Necro City Hall free bronze, Saplings/
+       * Necromancy half gold, Garden of Life free Sprite, Cove Pub −3 gold).
+       * `cost` is priced at OFFER time; payment goes through the recruit path,
+       * so the Freelancer's Guild substitution applies. Self-guards: no-op if
+       * the rule is off, the unit is gone/at cap, or the cost is unpayable.
+       */
+      type: "BUY_UNIT_STACK";
+      armyUnitId: string;
+      cost: ResourceCost;
+      /** Feed/spend label naming the source (e.g. "Saplings", "Necromancy"). */
+      source: string;
+      /** Necromancy: discard the played card ONLY when a Stack is really added. */
+      consumeCardId?: CardId;
     }
   | {
       /**

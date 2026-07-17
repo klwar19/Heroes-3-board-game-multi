@@ -54,6 +54,19 @@ export function polishUnitStackCost(
   return { gold: (printed.cost.gold ?? 0) + rule.goldSurcharge };
 }
 
+/**
+ * The tier a unit's Stacks are priced/gated by — always the army table, with
+ * azure counted as gold (the same convention as the cap). Null when the unit
+ * cannot carry Stacks at all.
+ */
+export function polishStackTier(unitDefId: string): "bronze" | "silver" | "gold" | null {
+  const tier = coreUnitDefinitions[unitDefId]?.tier;
+  if (!tier) {
+    return null;
+  }
+  return tier === "azure" ? "gold" : tier;
+}
+
 /** Pure eligibility check used by legal actions, the reducer, and town UI. */
 export function polishArmyUnitCanBuyStack(unit: ArmyUnitState): boolean {
   if (unit.side !== "pack" && unit.side !== "neutral") {

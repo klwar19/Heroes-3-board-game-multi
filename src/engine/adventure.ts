@@ -63,6 +63,11 @@ import {
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
 import {
+  polishArmyUnitCanBuyStack,
+  polishArmyUnitStackCost,
+  polishStackTier
+} from "./polish-unit-stacks";
+import {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
   polishSpellBookEnabled
@@ -90,6 +95,7 @@ import type {
   ActiveEffectState,
   AdventureReward,
   AdventureState,
+  ArmyUnitState,
   ArtifactTier,
   AstrologersState,
   BankSize,
@@ -4100,14 +4106,9 @@ export function processPendingVisit(state: GameState): void {
         const player = state.players[visit.playerId];
         const armyUnit = player?.army.find((candidate) => candidate.id === step.armyUnitId);
         if (player && armyUnit && armyUnit.side === "pack") {
-          armyUnit.side = "few";
-          delete armyUnit.stacks;
-          appendEvent(state, {
-            type: "ARMY_UNIT_FLIPPED",
-            playerId: visit.playerId,
-            unitDefId: armyUnit.unitDefId,
-            reason: "Terrible Plague"
-          });
+          // Polish Unit Stacks weaken the Plague: a Stacked pack sheds one
+          // layer instead of flipping (applyPlagueToPack decides).
+          applyPlagueToPack(state, visit.playerId, armyUnit);
         }
         break;
       }
@@ -4752,6 +4753,55 @@ export function processPendingVisit(state: GameState): void {
         // Cove Pub: flat gold discount on one reinforcement (no halving).
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, false, step.discount);
         break;
+      case "BUY_UNIT_STACK": {
+        // Polish Unit Stacks building/skill offers (Necro City Hall, Saplings,
+        // Necromancy, Garden of Life, Cove Pub): add ONE Stack layer at the
+        // offer's pre-priced cost. Self-guards so a stale pick (unit gone / at
+        // cap / rule off / unaffordable) is a clean no-op that keeps any
+        // consumeCardId card in hand.
+        const player = state.players[visit.playerId];
+        const unit = player?.army.find((candidate) => candidate.id === step.armyUnitId);
+        if (
+          !player ||
+          !unit ||
+          !houseRuleEnabled(state, "polish-unit-stacks") ||
+          !polishArmyUnitCanBuyStack(unit) ||
+          !hasRecruitResources(state, visit.playerId, step.cost)
+        ) {
+          break;
+        }
+        if (Object.values(step.cost).some((amount) => (amount ?? 0) > 0)) {
+          // The recruit pay path: the Freelancer's Guild may substitute
+          // materials/valuables for missing gold, exactly like a recruit.
+          spendRecruitResources(state, visit.playerId, step.cost, `${step.source} (Unit Stack)`);
+        }
+        unit.stacks = (unit.stacks ?? 0) + 1;
+        appendEvent(state, {
+          type: "ARMY_STACK_PURCHASED",
+          playerId: visit.playerId,
+          armyUnitId: unit.id,
+          unitDefId: unit.unitDefId,
+          stacks: unit.stacks,
+          cost: step.cost
+        });
+        // Necromancy: the played card is spent ONLY when a Stack was really
+        // added (mirrors the REINFORCE_HALF_GOLD consume semantics).
+        if (step.consumeCardId) {
+          const handIndex = player.hand.indexOf(step.consumeCardId);
+          if (handIndex !== -1) {
+            player.hand.splice(handIndex, 1);
+            player.discard.push(step.consumeCardId);
+            appendEvent(state, {
+              type: "CARD_PLAYED",
+              playerId: visit.playerId,
+              cardId: step.consumeCardId,
+              timing: cardLibrary[step.consumeCardId]?.timing ?? "instant",
+              mode: "basic"
+            });
+          }
+        }
+        break;
+      }
       case "LIBRARY_SWAP": {
         const player = state.players[visit.playerId];
         if (!player || step.remaining <= 0 || !hasResources(player, { gold: 3 })) {
@@ -9753,6 +9803,17 @@ function queueGardenOfLife(state: GameState, playerId: PlayerId, buildingId: str
       });
     }
   }
+  // Polish Unit Stacks: the Garden's freebie can also land as a free Stack on
+  // the owned Sprites card once it is a Pack (below its Stack cap).
+  for (const target of stackOfferTargets(state, playerId)) {
+    if (target.unit.unitDefId !== unitDefId) {
+      continue;
+    }
+    const option = stackOfferOption(state, playerId, target, 0, coreBuildingDefinitions[buildingId]?.name ?? "Garden of Life");
+    if (option) {
+      options.push(option);
+    }
+  }
   if (options.length === 0) {
     return;
   }
@@ -9803,6 +9864,22 @@ function queueHalfGoldReinforce(state: GameState, playerId: PlayerId, buildingId
       label: `Reinforce ${def.name} (${costLabel || "free"})`,
       steps: [{ type: "REINFORCE_HALF_GOLD", armyUnitId: unit.id }]
     });
+  }
+
+  // Polish Unit Stacks: the Saplings' half-gold deal also buys ONE Stack layer
+  // on a matching-tier Pack/Neutral card (half the Stack gold, rounded up —
+  // the same rounding as its reinforce).
+  for (const target of stackOfferTargets(state, playerId, tiers)) {
+    const option = stackOfferOption(
+      state,
+      playerId,
+      target,
+      Math.ceil(target.baseGold / 2),
+      coreBuildingDefinitions[buildingId]?.name ?? "Saplings"
+    );
+    if (option) {
+      options.push(option);
+    }
   }
 
   if (options.length === 0) {
@@ -9868,6 +9945,21 @@ function queueFlatGoldReinforce(
       label: `Reinforce ${def.name} (${costLabel || "free"})`,
       steps: [{ type: "REINFORCE_FLAT_GOLD", armyUnitId: unit.id, discount }]
     });
+  }
+
+  // Polish Unit Stacks: the Pub's flat gold discount also buys ONE Stack layer
+  // on a matching-tier Pack/Neutral card (Stack gold − discount, min 0).
+  for (const target of stackOfferTargets(state, playerId, tiers)) {
+    const option = stackOfferOption(
+      state,
+      playerId,
+      target,
+      Math.max(0, target.baseGold - discount),
+      coreBuildingDefinitions[buildingId]?.name ?? "Pub"
+    );
+    if (option) {
+      options.push(option);
+    }
   }
 
   if (options.length === 0) {
@@ -10614,14 +10706,7 @@ function queuePlagueFlip(state: GameState, playerId: PlayerId): void {
   }
 
   if (packs.length === 1) {
-    packs[0].side = "few";
-    delete packs[0].stacks;
-    appendEvent(state, {
-      type: "ARMY_UNIT_FLIPPED",
-      playerId,
-      unitDefId: packs[0].unitDefId,
-      reason: "Terrible Plague"
-    });
+    applyPlagueToPack(state, playerId, packs[0]);
     return;
   }
 
@@ -10633,11 +10718,48 @@ function queuePlagueFlip(state: GameState, playerId: PlayerId): void {
         type: "CHOOSE_ONE",
         prompt: "Terrible Plague: flip one of your packs to its Few side",
         options: packs.map((unit) => ({
-          label: `Flip ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId}`,
+          // Polish Unit Stacks weaken the Plague: a Stacked pack sheds ONE
+          // Stack layer instead of flipping (see applyPlagueToPack).
+          label: (unit.stacks ?? 0) > 0
+            ? `Weakened by Stacks: ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} loses 1 Stack (stays a Pack)`
+            : `Flip ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId}`,
           steps: [{ type: "FLIP_PACK_TO_FEW", armyUnitId: unit.id }]
         }))
       }
     ]
+  });
+}
+
+/**
+ * Terrible Plague landing on one Pack. Polish Unit Stacks WEAKEN the Plague: a
+ * pack carrying Stack layers sheds ONE layer and stays a Pack; only an
+ * unstacked pack flips to its Few side (which is all that can happen with the
+ * rule off — Stacks exist only under it).
+ */
+export function applyPlagueToPack(state: GameState, playerId: PlayerId, unit: ArmyUnitState): void {
+  if ((unit.stacks ?? 0) > 0) {
+    unit.stacks = (unit.stacks ?? 0) - 1;
+    if (unit.stacks === 0) {
+      delete unit.stacks;
+    }
+    appendEvent(state, {
+      type: "ARMY_STACK_LOST",
+      unitId: unit.id,
+      playerId,
+      unitName: coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId,
+      remainingStacks: unit.stacks ?? 0,
+      excessDamage: 0,
+      reason: "Terrible Plague (weakened by Stacks)"
+    });
+    return;
+  }
+  unit.side = "few";
+  delete unit.stacks;
+  appendEvent(state, {
+    type: "ARMY_UNIT_FLIPPED",
+    playerId,
+    unitDefId: unit.unitDefId,
+    reason: "Terrible Plague"
   });
 }
 
@@ -11028,7 +11150,9 @@ export function discountedReinforceCost(
  */
 export type RecruitPurchaseRef =
   | { kind: "recruit"; unitDefId: string }
-  | { kind: "reinforce"; unitDefId: string; armyUnitId: string };
+  | { kind: "reinforce"; unitDefId: string; armyUnitId: string }
+  /** Polish Unit Stacks: one Stack layer bought for an eligible army card. */
+  | { kind: "stack"; unitDefId: string; armyUnitId: string };
 
 /** Whether a banked voucher is reserved for exactly this purchase's unit. */
 function voucherMatchesPurchase(voucher: RecruitDiscountVoucher, purchase: RecruitPurchaseRef): boolean {
@@ -11037,7 +11161,7 @@ function voucherMatchesPurchase(voucher: RecruitDiscountVoucher, purchase: Recru
   }
   return voucher.target.kind === "recruit"
     ? voucher.target.unitDefId === purchase.unitDefId
-    : purchase.kind === "reinforce" && voucher.target.armyUnitId === purchase.armyUnitId;
+    : purchase.kind !== "recruit" && voucher.target.armyUnitId === purchase.armyUnitId;
 }
 
 /**
@@ -11204,6 +11328,23 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
     });
   }
 
+  // Polish Unit Stacks: a Legion piece may also be reserved for one Stack
+  // purchase — any eligible Pack/Neutral card below its cap (its Stack price
+  // always includes gold, the tier surcharge). Empty when the rule is off.
+  for (const target of stackOfferTargets(state, playerId)) {
+    const purchase: RecruitPurchaseRef = {
+      kind: "stack",
+      unitDefId: target.unit.unitDefId,
+      armyUnitId: target.unit.id
+    };
+    targets.push({
+      purchase,
+      unitName: target.name,
+      existingLegion: legionVoucherDiscount(state, playerId, purchase),
+      existingExternal: externalRecruitGoldDiscount(state, playerId, purchase)
+    });
+  }
+
   return targets;
 }
 
@@ -11213,7 +11354,12 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
  * another Legion voucher already on the unit (the larger of the two is taken).
  */
 function legionTargetLabel(target: LegionDiscountTarget, amount: number): string {
-  const verb = target.purchase.kind === "recruit" ? "Recruit" : "Reinforce";
+  const verb =
+    target.purchase.kind === "recruit"
+      ? "Recruit"
+      : target.purchase.kind === "stack"
+        ? "Add a Stack to"
+        : "Reinforce";
   if (target.existingLegion <= 0 && target.existingExternal <= 0) {
     return `${verb} ${target.unitName} — reduce cost by ${amount} gold`;
   }
@@ -11263,11 +11409,15 @@ export function queueLegionDiscountChoice(state: GameState, playerId: PlayerId, 
   });
 }
 
-/** The voucher `target` shape (recruit→unitDefId, reinforce→armyUnitId) for a purchase. */
+/** The voucher `target` shape (recruit→unitDefId, reinforce/stack→armyUnitId) for a purchase. */
 function voucherTargetOf(purchase: RecruitPurchaseRef): RecruitDiscountVoucher["target"] {
-  return purchase.kind === "recruit"
-    ? { kind: "recruit", unitDefId: purchase.unitDefId }
-    : { kind: "reinforce", armyUnitId: purchase.armyUnitId };
+  if (purchase.kind === "recruit") {
+    return { kind: "recruit", unitDefId: purchase.unitDefId };
+  }
+  if (purchase.kind === "stack") {
+    return { kind: "stack", armyUnitId: purchase.armyUnitId };
+  }
+  return { kind: "reinforce", armyUnitId: purchase.armyUnitId };
 }
 
 /** Banks a chosen Legion discount voucher (resolves the BANK_RECRUIT_DISCOUNT step). */
@@ -11403,7 +11553,74 @@ export function reinforceArmyUnit(
  * income option. Nothing is queued when the player owns no eligible bronze Few,
  * so the offer never opens an empty/no-op choice.
  */
-export function queueFreeBronzeReinforce(state: GameState, playerId: PlayerId, prompt: string): void {
+/**
+ * Polish Unit Stacks: the army cards a building/skill offer may sell ONE Stack
+ * layer to — eligible Pack / recruited-Neutral cards below their cap, filtered
+ * to the offer's tiers (azure counts as gold, the cap convention). Empty when
+ * the rule is off, so every offer builder can call this unconditionally.
+ */
+function stackOfferTargets(
+  state: GameState,
+  playerId: PlayerId,
+  tiers?: readonly string[]
+): { unit: ArmyUnitState; name: string; baseGold: number }[] {
+  if (!houseRuleEnabled(state, "polish-unit-stacks")) {
+    return [];
+  }
+  const targets: { unit: ArmyUnitState; name: string; baseGold: number }[] = [];
+  for (const unit of state.players[playerId]?.army ?? []) {
+    if (!polishArmyUnitCanBuyStack(unit)) {
+      continue;
+    }
+    const tier = polishStackTier(unit.unitDefId);
+    if (!tier || (tiers && !tiers.includes(tier))) {
+      continue;
+    }
+    targets.push({
+      unit,
+      name: coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId,
+      baseGold: polishArmyUnitStackCost(unit)?.gold ?? 0
+    });
+  }
+  return targets;
+}
+
+/**
+ * One "Add a Stack to X (N gold / free)" option for a building/skill offer.
+ * Null when the priced cost is unpayable (counting the Freelancer's Guild
+ * substitution, exactly how the BUY_UNIT_STACK step will charge it).
+ */
+function stackOfferOption(
+  state: GameState,
+  playerId: PlayerId,
+  target: { unit: ArmyUnitState; name: string },
+  gold: number,
+  source: string,
+  consumeCardId?: CardId
+): { label: string; steps: VisitStep[] } | null {
+  const cost: ResourceCost = gold > 0 ? { gold } : {};
+  if (gold > 0 && !hasRecruitResources(state, playerId, cost)) {
+    return null;
+  }
+  return {
+    label: `Add a Stack to ${target.name} (${gold > 0 ? `${gold} gold` : "free"})`,
+    steps: [{ type: "BUY_UNIT_STACK", armyUnitId: target.unit.id, cost, source, consumeCardId }]
+  };
+}
+
+export function queueFreeBronzeReinforce(
+  state: GameState,
+  playerId: PlayerId,
+  prompt: string,
+  options2?: {
+    /**
+     * Necropolis City Hall (Polish Unit Stacks): ALSO offer a free Stack on one
+     * bronze Pack/Neutral card. The neutral-Skeletons reward deliberately does
+     * NOT pass this — its printed text grants only the Few→Pack flip.
+     */
+    includeStacks?: boolean;
+  }
+): void {
   const player = state.players[playerId];
   const adventure = state.adventure;
   if (!player || !adventure) {
@@ -11424,6 +11641,14 @@ export function queueFreeBronzeReinforce(state: GameState, playerId: PlayerId, p
       steps: [{ type: "REINFORCE_FREE", armyUnitId: unit.id }]
     });
   }
+  if (options2?.includeStacks) {
+    for (const target of stackOfferTargets(state, playerId, ["bronze"])) {
+      const option = stackOfferOption(state, playerId, target, 0, "City Hall");
+      if (option) {
+        options.push(option);
+      }
+    }
+  }
   if (options.length === 0) {
     return;
   }
@@ -11439,6 +11664,15 @@ export function queueFreeBronzeReinforce(state: GameState, playerId: PlayerId, p
       }
     ]
   });
+}
+
+/**
+ * Necropolis City Hall gate helper: with Polish Unit Stacks on, the "reinforce
+ * one bronze unit for free" option is also meaningful when a bronze card can
+ * take a free Stack (even with no Few bronze left to flip).
+ */
+export function hasFreeBronzeStackTarget(state: GameState, playerId: PlayerId): boolean {
+  return stackOfferTargets(state, playerId, ["bronze"]).length > 0;
 }
 
 /**
@@ -11556,6 +11790,24 @@ export function queueNecromancyReinforce(
       label: `Reinforce ${def.name} (${costLabel})`,
       steps: [{ type: "REINFORCE_HALF_GOLD", armyUnitId: unit.id, roundDown: true, consumeCardId }]
     });
+  }
+
+  // Polish Unit Stacks: Necromancy also buys ONE Stack layer at half the Stack
+  // gold (rounded down, its printed rounding) — bronze/silver on basic, any
+  // tier on expert, the same ladder as its reinforce. The card is spent only
+  // if the Stack is really added (consumeCardId, like the reinforce options).
+  for (const target of stackOfferTargets(state, playerId, allowedTiers)) {
+    const option = stackOfferOption(
+      state,
+      playerId,
+      target,
+      Math.floor(target.baseGold / 2),
+      "Necromancy",
+      consumeCardId
+    );
+    if (option) {
+      options.push(option);
+    }
   }
 
   if (options.length === 0) {
