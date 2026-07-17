@@ -343,6 +343,7 @@ export {
   presetForcedOptionKeys,
   revertCustomMapPresetOptions,
   objectGuardSpec,
+  OUTPOST_OBJECT_KINDS,
   sanitizeCenterHexPlan,
   sanitizeCenterHexReward,
   sanitizeCustomGuardSpec,

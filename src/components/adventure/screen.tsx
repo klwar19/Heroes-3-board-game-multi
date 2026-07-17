@@ -106,6 +106,7 @@ import {
   mapTokenImage,
   monolithTokenImage,
   moraleIcon,
+  outpostObjectImage,
   RESOURCE_ICONS,
   subterraneanGateTokenImage,
   tileBackImage,
@@ -1831,6 +1832,62 @@ export function HexMapBoard({
           x={x - HEX_WIDTH / 2}
           y={y - HEX_SIZE}
         />
+      );
+    } else if (outpostObjectImage(field.location)) {
+      // Designer outposts: the printed hex scan (Garrison / Keymaster's Tent /
+      // Barrier). Tents and Barriers add a colored ring + number (their color
+      // is the key mechanism); the Garrison wears its printed light-blue frame.
+      overlays.push(
+        <image
+          className="locationToken"
+          height={2 * HEX_SIZE}
+          href={assetUrl(outpostObjectImage(field.location)!)}
+          key={`standalone-${spaceId}-outpost`}
+          preserveAspectRatio="none"
+          style={{ pointerEvents: "none" }}
+          width={HEX_WIDTH}
+          x={x - HEX_WIDTH / 2}
+          y={y - HEX_SIZE}
+        />
+      );
+      if (field.location !== "garrison" && field.gatePair) {
+        const color = GATE_PAIR_COLORS[field.gatePair];
+        overlays.push(
+          <g className="hexGateMark" key={`standalone-${spaceId}-outpost-color`} style={{ pointerEvents: "none" }}>
+            <circle cx={x} cy={y} fill="none" r={HEX_SIZE * 0.55} stroke={color} strokeWidth={2.4} />
+            <circle cx={x + HEX_SIZE * 0.52} cy={y - HEX_SIZE * 0.56} fill={color} r={7} stroke="#160f06" strokeWidth={1} />
+            <text
+              fill="#fff"
+              fontSize={9}
+              fontWeight={700}
+              textAnchor="middle"
+              x={x + HEX_SIZE * 0.52}
+              y={y - HEX_SIZE * 0.56 + 3}
+            >
+              {field.gatePair}
+            </text>
+          </g>
+        );
+      }
+    }
+    // Outposts carry flags (the winner's marker; tents allow several).
+    if (field.flagOwnerId) {
+      overlays.push(
+        <g key={`standalone-${spaceId}-flag`} transform={`translate(${x - HEX_SIZE * 0.62}, ${y - HEX_SIZE * 0.72})`}>
+          <line className="flagPole" x1={0} x2={0} y1={0} y2={16} />
+          <path d="M0 1 L11 4.5 L0 8 Z" fill={playerColor(state, field.flagOwnerId)} stroke="#1d1206" strokeWidth={0.7} />
+        </g>
+      );
+    }
+    for (const [extraIndex, extraOwnerId] of (field.extraFlagOwnerIds ?? []).entries()) {
+      overlays.push(
+        <g
+          key={`standalone-${spaceId}-extra-flag-${extraOwnerId}`}
+          transform={`translate(${x - HEX_SIZE * 0.62 + (extraIndex + 1) * 9}, ${y - HEX_SIZE * 0.6})`}
+        >
+          <line className="flagPole" x1={0} x2={0} y1={0} y2={12} />
+          <path d="M0 1 L8 3.5 L0 6 Z" fill={playerColor(state, extraOwnerId)} stroke="#1d1206" strokeWidth={0.6} />
+        </g>
       );
     }
     if (guarded && field.difficulty) {

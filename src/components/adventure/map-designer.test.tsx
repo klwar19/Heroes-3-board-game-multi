@@ -1950,6 +1950,58 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(latest[0].placement.type).toBe("standalone");
   });
 
+  it("outposts: Garrison places standalone-only (no tile targets); a Tent defaults to color 1", () => {
+    let latest: CustomMapObject[] = [];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, [], onObjectsChange);
+
+    const garrisonButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
+      /Garrison/i.test(btn.textContent ?? "")
+    );
+    fireEvent.click(garrisonButton!);
+    // Standalone candidates only — an outpost never offers a tile slot.
+    expect(container.querySelectorAll(".designerObjectSlot.tileSlot").length).toBe(0);
+    const standalone = container.querySelector(".designerObjectSlot.standalone");
+    expect(standalone, "off-tile candidates offered").toBeTruthy();
+    fireEvent.click(standalone!);
+    expect(latest[0]).toMatchObject({ kind: "garrison", placement: { type: "standalone" } });
+
+    // A placed Keymaster's Tent defaults to color 1 (red).
+    const tentContainer = renderWithObjects(faceUpMap, [], onObjectsChange);
+    const tentButton = [...tentContainer.querySelectorAll(".designerObjectButton")].find((btn) =>
+      /Keymaster/i.test(btn.textContent ?? "")
+    );
+    fireEvent.click(tentButton!);
+    fireEvent.click(tentContainer.querySelector(".designerObjectSlot.standalone")!);
+    expect(latest[0]).toMatchObject({ kind: "keymaster_tent", pair: 1 });
+  });
+
+  it("the outpost panel: a Tent's COLOR chips rewrite its pair; a Barrier offers NO guard editor", () => {
+    let latest: CustomMapObject[] = [
+      { kind: "keymaster_tent", pair: 1, placement: { type: "standalone", row: far.row + 2, col: far.col + 2 } }
+    ];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(container.querySelector(".designerObjectToken.standalone")!);
+    fireEvent.click(within(container).getByRole("button", { name: /Blue/ }));
+    expect(latest[0].pair).toBe(2);
+
+    // A Barrier's panel: color chips yes, guard editor no.
+    const barrier = renderWithObjects(
+      faceUpMap,
+      [{ kind: "barrier", pair: 3, placement: { type: "standalone", row: far.row + 2, col: far.col + 2 } }],
+      onObjectsChange
+    );
+    fireEvent.click(barrier.querySelector(".designerObjectToken.standalone")!);
+    const panel = barrier.querySelector(".designerObjectPopover") as HTMLElement;
+    expect(within(panel).queryByRole("button", { name: "Exact army" }), "no guard editor on a Barrier").toBeNull();
+    expect(panel.textContent).toMatch(/never guarded/i);
+  });
+
   it("the guard picker writes the guard onto a placed object; the pair badge shows its number", () => {
     let latest: CustomMapObject[] = [
       { kind: "gate", pair: 2, placement: { type: "tile-slot", row: far.row, col: far.col, slot: 0 } }

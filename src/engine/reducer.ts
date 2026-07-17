@@ -18672,6 +18672,9 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
           !combat.context.hasAzure &&
           !isDragonUtopiaFight &&
           !isLevelSevenField &&
+          // Designer outposts (Garrison / Keymaster's Tent / one-way entrance):
+          // "the fight is unlimited, as in Banks" — never a Round limit.
+          !combat.context.unlimitedRounds &&
           (combat.context.bankId === undefined || houseRuleEnabled(state, "bank-move-points"))
         ) {
           combat.awaitingContinue = true;

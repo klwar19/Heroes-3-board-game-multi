@@ -66,6 +66,7 @@ import {
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
   objectGuardSpec,
+  OUTPOST_OBJECT_KINDS,
   sanitizeCenterHexPlan,
   sanitizeObjectGuard,
   type CustomMapPreset,
@@ -1259,6 +1260,12 @@ export function validateCustomMapObjects(
   objects.forEach((object, index) => {
     const label = `Object ${index + 1}`;
     if (object.placement.type === "tile-slot") {
+      // Outposts (Garrison / Keymaster's Tent / Barrier) are STANDALONE-only —
+      // "a separate hex out of the map"; a tile-slot placement is dropped.
+      if (OUTPOST_OBJECT_KINDS.has(object.kind)) {
+        problems.push(`${label}: a ${object.kind.replace("_", " ")} must be a standalone hex, never on a tile.`);
+        return;
+      }
       const { row, col, slot } = object.placement;
       const plan = faceUpPlanAt.get(`${row}:${col}`);
       if (!plan || !plan.tileDefId) {
@@ -1267,7 +1274,8 @@ export function validateCustomMapObjects(
       }
       const def = allTileDefinitions[plan.tileDefId];
       // A Gate is a land structure, so it reuses the Monolith slot legality.
-      const slotKind = object.kind === "gate" ? "monolith" : object.kind;
+      // (Outposts returned above, so only token kinds remain here.)
+      const slotKind = (object.kind === "gate" ? "monolith" : object.kind) as "monolith" | "whirlpool";
       if (!def || !tokenMayCoverFieldDef(def, slot, slotKind)) {
         problems.push(`${label}: slot ${slot} of ${plan.tileDefId} cannot host a ${object.kind}.`);
         return;
@@ -1342,6 +1350,20 @@ export function validateCustomMapObjects(
     }
   }
 
+  // A Barrier with no same-color Keymaster's Tent can never be entered by
+  // anyone — almost certainly a design mistake, so warn (not a problem: a
+  // deliberate permanent wall is legal).
+  const tentPairs = new Set(
+    accepted.filter((object) => object.kind === "keymaster_tent" && object.pair !== undefined).map((o) => o.pair)
+  );
+  for (const object of accepted) {
+    if (object.kind === "barrier" && object.pair !== undefined && !tentPairs.has(object.pair)) {
+      warnings.push(
+        `A ${gatePairColor(object.pair)} Barrier has no ${gatePairColor(object.pair)} Keymaster's Tent — nobody will ever be able to enter it.`
+      );
+    }
+  }
+
   return { accepted, problems, warnings };
 }
 
@@ -1403,8 +1425,8 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       continue;
     }
 
-    // Standalone — LAND objects only (gate or monolith; a standalone whirlpool
-    // never reaches here, validation drops it).
+    // Standalone — LAND objects only (a standalone whirlpool never reaches
+    // here, validation drops it).
     if (object.kind === "whirlpool") {
       continue;
     }
@@ -1424,10 +1446,25 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       standalone: true,
       standaloneLayer: standaloneLayerFromLiveState(adventure, spaceId)
     };
-    if (object.kind === "gate" && object.pair !== undefined) {
+    // Tents and Barriers share the gate COLOR mechanism (`gatePair`) — a tent
+    // flag of a color opens same-color barriers; gates keep their networks.
+    if (
+      (object.kind === "gate" || object.kind === "keymaster_tent" || object.kind === "barrier") &&
+      object.pair !== undefined
+    ) {
       field.gatePair = object.pair;
     }
     applyCustomGuardToField(field, objectGuardSpec(object));
+    // Outpost fights run BANK-style (no Quick Combat, no experience, no Round
+    // limit) whatever the guard shape: a LEVEL guard additionally pins
+    // `customGuardLevel` so the army still draws at the designed level while
+    // the combat itself opens at difficulty 0.
+    if (object.kind === "garrison" || object.kind === "keymaster_tent") {
+      const guard = objectGuardSpec(object);
+      if (guard?.level && !guard.units) {
+        field.customGuardLevel = guard.level;
+      }
+    }
     // Designer yellow border edges ride the object onto its carved field
     // (absolute dirs, re-normalised so a hand-edited save can't smuggle junk).
     if (Array.isArray(object.borderEdges)) {

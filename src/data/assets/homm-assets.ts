@@ -424,6 +424,24 @@ export function mapTokenImage(kind: "monolith" | "whirlpool", number?: -1 | 0 | 
 }
 
 /**
+ * Designer outpost object art (Polish fan-map hex scans): the Garrison
+ * fortress, the Keymaster's Tent and the Barrier wall. One image each — a
+ * tent/barrier's COLOR (1-4) is shown by the tinted ring + number badge the
+ * colored Gates already use, and the Garrison wears its printed light-blue
+ * hex frame.
+ */
+export const OUTPOST_OBJECT_IMAGES = {
+  garrison: "/assets/board/tokens/garrison.webp",
+  keymaster_tent: "/assets/board/tokens/keymaster-tent.webp",
+  barrier: "/assets/board/tokens/barrier.webp"
+} as const;
+
+/** The outpost art for a location id, or undefined for every other location. */
+export function outpostObjectImage(locationId: string): string | undefined {
+  return OUTPOST_OBJECT_IMAGES[locationId as keyof typeof OUTPOST_OBJECT_IMAGES];
+}
+
+/**
  * Creature Bank field-tile art (Naval Battles), shown on a placed bank's hex.
  *
  * Each of the twelve banks has its OWN cropped field-tile scan (the Crypt

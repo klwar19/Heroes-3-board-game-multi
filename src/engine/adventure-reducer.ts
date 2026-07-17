@@ -69,6 +69,7 @@ import {
   autoWinArrivalGuard,
   flagField,
   gateFieldsLinked,
+  isBankStyleGuardLocation,
   capturableEnemyMinesWithin,
   freeSpellBookActive,
   abilityRollRerollActive,
@@ -927,7 +928,10 @@ function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFi
     field.location === "dragon_utopia" &&
     adventureVictoryMode(state) === "dragon-conqueror" &&
     Boolean(field.flagOwnerId);
-  if (!isTown && !isSettlement && !isCapturedUtopia) {
+  // Designer Garrison object: its flag holder defends it like a settlement,
+  // for 3 gold (the printed rule).
+  const isGarrisonObject = field.location === "garrison" && Boolean(field.flagOwnerId);
+  if (!isTown && !isSettlement && !isCapturedUtopia && !isGarrisonObject) {
     return null;
   }
 
@@ -950,6 +954,11 @@ function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFi
   return ownerId;
 }
 
+/** The gold a defender pays to garrison `field`: 3 for a designer Garrison object, 8 otherwise. */
+function garrisonDefenseCost(field: MapFieldState): number {
+  return field.location === "garrison" ? 3 : 8;
+}
+
 /** Opens the 8-gold garrison decision for the town owner; true when waiting. */
 function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field: MapFieldState): boolean {
   const adventure = requireAdventure(state);
@@ -970,8 +979,9 @@ function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field
     }`
   );
 
+  const cost = garrisonDefenseCost(field);
   const defender = state.players[defenderId];
-  if (!defender || defender.resources.gold < 8) {
+  if (!defender || defender.resources.gold < cost) {
     // The owner cannot pay the defense fee — the field falls undefended.
     return false;
   }
@@ -980,7 +990,8 @@ function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field
     attackerPlayerId: attacker.controllerId,
     attackerHeroId: attacker.id,
     defenderPlayerId: defenderId,
-    fieldId: field.spaceId
+    fieldId: field.spaceId,
+    goldCost: cost
   };
 
   state.pendingChoice = {
@@ -990,11 +1001,13 @@ function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field
     prompt: `${state.players[attacker.controllerId]?.name ?? "An enemy"} attacks your ${
       field.location === "dragon_utopia"
         ? "Dragon Utopia"
-        : locationDefinitions[field.location]?.category === "town"
-          ? "town"
-          : "settlement"
-    } — pay 8 gold to defend with your units (no cards, your hero is away)?`,
-    options: [{ label: "Pay 8 gold and defend" }, { label: "Let it fall" }],
+        : field.location === "garrison"
+          ? "garrison"
+          : locationDefinitions[field.location]?.category === "town"
+            ? "town"
+            : "settlement"
+    } — pay ${cost} gold to defend with your units (no cards, your hero is away)?`,
+    options: [{ label: `Pay ${cost} gold and defend` }, { label: "Let it fall" }],
     context: "garrison",
     returnPhase: "player-turn"
   };
@@ -1026,7 +1039,7 @@ export function resolveGarrisonChoice(state: GameState, playerId: PlayerId, opti
     return;
   }
 
-  spendResources(state, playerId, { gold: 8 }, "garrison defense");
+  spendResources(state, playerId, { gold: pending.goldCost ?? 8 }, "garrison defense");
   startPlayerCombat(state, attackerHero, null, pending.fieldId, playerId);
 }
 
@@ -3601,6 +3614,15 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
     return;
   }
 
+  // Designer outposts (Garrison / Keymaster's Tent) fight BANK-style: no Quick
+  // Combat, no experience (difficulty 0) and no Round limit ("the fight is
+  // unlimited, as in Banks"). The army still draws at the designed level /
+  // exact list via `customGuardLevel` / `customGuardUnits` in drawGuardArmy.
+  if (isBankStyleGuardLocation(field.location)) {
+    beginNeutralCombatPlacement(state, hero, field, 0, { unlimitedRounds: true });
+    return;
+  }
+
   // Designer "certain army" guard: Quick Combat and Diplomacy never bypass an
   // exact designed army — a high-level hero cannot auto-win past units it has
   // never seen. The fight is always real; the field's (tier-derived) difficulty
@@ -3651,7 +3673,8 @@ function beginNeutralCombatPlacement(
   state: GameState,
   hero: HeroState,
   field: MapFieldState,
-  difficulty: number
+  difficulty: number,
+  options?: { unlimitedRounds?: boolean }
 ): void {
   const playerId = hero.controllerId;
   restoreStartingArmyIfEmpty(state, playerId);
@@ -3667,7 +3690,8 @@ function beginNeutralCombatPlacement(
     fieldId: field.spaceId,
     difficulty,
     hasAzure: false,
-    ...(bankId ? { bankId } : {})
+    ...(bankId ? { bankId } : {}),
+    ...(options?.unlimitedRounds ? { unlimitedRounds: true } : {})
   };
   assignCombatBoardArt(state, combat);
   combat.setup = {
