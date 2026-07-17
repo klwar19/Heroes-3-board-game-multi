@@ -7154,12 +7154,15 @@ export type MapTileState = {
    */
   viiField?: "town" | "dragon_utopia" | "grail";
   /**
-   * Designer bonus for this tile's Ⅶ objective, carried from
-   * {@link CustomMapTilePlan.viiFieldReward} / `viiFieldVp` onto the placed
-   * instance and folded onto the difficulty-7 field when it materializes. SECRET
-   * like `viiField`: player views MASK both while the tile is face-down.
+   * Designer center-hex customization (guard / first-clear reward / VP) carried
+   * from {@link CustomMapTilePlan.centerHex} onto the placed instance and folded
+   * onto the difficulty-7 field when it materializes. SECRET like `viiField`:
+   * player views MASK it while the tile is face-down.
    */
+  centerHex?: CustomCenterHexPlan;
+  /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
   viiFieldReward?: ViiFieldReward;
+  /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
   viiFieldVp?: number;
   /**
    * Polish Bank Sizes: up to two face-up candidates, including their seeded
@@ -7222,16 +7225,38 @@ export type MapFieldState = {
    */
   grailDiggable?: boolean;
   /**
-   * Designer Ⅶ-objective bonus resolved onto this field when its center tile
-   * materialized (from {@link MapTileState.viiFieldReward} / `viiFieldVp`). Granted
-   * ONCE, the first time the objective is cleared / captured — `viiBonusClaimed`
-   * latches so a re-capture never re-pays it. Present only on a designer-designated
-   * difficulty-7 objective field; public once the tile is revealed (a visible
-   * objective, like a mine's resource).
+   * Designer center-hex bonus resolved onto this field when its center tile
+   * materialized (from {@link MapTileState.centerHex}). Granted ONCE, to the
+   * player who FIRST clears / captures the objective — `centerHexClaimed`
+   * latches so a re-capture never re-pays it. Public once the tile is revealed
+   * (a visible objective, like a mine's resource).
    */
+  centerHexReward?: CustomCenterHexReward;
+  centerHexVp?: number;
+  centerHexClaimed?: boolean;
+  /** @deprecated Pre-centerHex snapshots only; the grant path reads both. */
   viiReward?: ViiFieldReward;
+  /** @deprecated Pre-centerHex snapshots only; the grant path reads both. */
   viiVp?: number;
+  /** @deprecated Pre-centerHex snapshots only (same latch as centerHexClaimed). */
   viiBonusClaimed?: boolean;
+  /**
+   * Designer "certain army" guard on this field ({@link CustomGuardSpec.units}):
+   * the exact Neutral unit cards minted for the guard fight instead of the tier
+   * table draw (`drawGuardArmy` consumes it). The field still carries a normal
+   * {@link difficulty} — derived from the army's tiers — which drives the fight
+   * trigger and the experience reward; Quick Combat and Diplomacy never bypass
+   * a certain army. Cleared with the guard when the fight is won.
+   */
+  customGuardUnits?: string[];
+  /**
+   * Designer guard LEVEL on a bank-style object field (Garrison / Keymaster's
+   * Tent / one-way monolith entrance): the neutral army is drawn at this level
+   * while the FIGHT itself stays bank-style (no Quick Combat, no experience,
+   * no Round limit). Plain guarded objects (teleport tokens, center hexes) do
+   * NOT use this — their `difficulty` alone drives a normal guard fight.
+   */
+  customGuardLevel?: number;
   /**
    * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
    * sacrificed hex's `location` becomes "subterranean_gate" and these point at
@@ -9598,25 +9623,81 @@ export type CustomMapTilePlan = {
    */
   viiField?: "town" | "dragon_utopia" | "grail";
   /**
-   * Center (Ⅶ) slots WITH a {@link viiField} designation ONLY: an OPTIONAL bonus
-   * the capturing player gets from THIS Ⅶ objective, ON TOP of the printed clear
-   * reward. Both are stripped whenever `viiField` is absent (a bonus with no
-   * objective is meaningless) at {@link validateCustomMapPlan} and the persistence
-   * sanitiser, and masked with `viiField` while the slot is face-down.
-   *   - `viiFieldReward`: a one-time Resource grant (gold / building materials /
-   *     valuables) applied the first time the objective is cleared / captured.
-   *   - `viiFieldVp`: Victory Points awarded to that capturer (omit / 0 = none).
-   *     Scored only when Victory-Points mode is on, but recorded on capture
-   *     regardless so a mid-game preset toggle can't rewrite the score.
+   * Center (Ⅵ–Ⅶ) slots ONLY: customize this slot's difficulty-7 CENTER HEX —
+   * its guard (monster), a one-time first-clear reward, and Victory Points —
+   * independently of (and combinable with) the {@link viiField} objective
+   * override. Works on the PRINTED objective too: a designer may leave the
+   * objective alone and still re-guard it, attach a reward, or score it.
+   * Stripped on every non-center group at {@link validateCustomMapPlan} and the
+   * persistence sanitiser; masked in player views while the slot is face-down
+   * (like `viiField`). This replaces the earlier `viiFieldReward`/`viiFieldVp`
+   * fields (persistence folds those legacy saves in).
    */
-  viiFieldReward?: ViiFieldReward;
-  viiFieldVp?: number;
+  centerHex?: CustomCenterHexPlan;
 };
 
 /**
- * A designer-set one-time Resource reward on a Ⅶ objective field
- * ({@link CustomMapTilePlan.viiFieldReward}) — the board game's three adventure
- * resources, each optional. Amounts are clamped by the sanitiser.
+ * A designer guard on a single hex — the "monster" of a customized center hex,
+ * map object or Location Token. Exactly one arm is meaningful:
+ *   - `level` (1-7): a normal Field-Difficulty guard — the neutral army is
+ *     drawn from the tier table exactly like a printed guard of that level
+ *     (Quick Combat and experience follow the level as usual).
+ *   - `units`: a CERTAIN ARMY — the exact Neutral unit cards (unit definition
+ *     ids that carry a `neutral` side), MINTED for the fight like Creature-Bank
+ *     guards (never drawn from nor recycled to the tier decks). Quick Combat
+ *     and Diplomacy never bypass a certain army — the fight is always real; its
+ *     experience uses the field's difficulty, derived from the army's tiers.
+ * Sanitisers keep exactly one arm (`units` wins) and clamp both.
+ */
+export type CustomGuardSpec = {
+  level?: number;
+  units?: string[];
+};
+
+/** How many exact units a {@link CustomGuardSpec.units} army may field. */
+export const MAX_CUSTOM_GUARD_UNITS = 6;
+
+/**
+ * A designer-set one-time reward on a customized center hex
+ * ({@link CustomCenterHexPlan.reward}), granted to the player who FIRST clears
+ * the objective. Resources are granted inline; Treasure dice and deck Searches
+ * resolve through the normal visit-step pipeline. Amounts are clamped by the
+ * sanitiser ({@link sanitizeCenterHexPlan}).
+ */
+export type CustomCenterHexReward = {
+  gold?: number;
+  buildingMaterials?: number;
+  valuables?: number;
+  /** Roll N Treasure dice (1-3). */
+  treasureDice?: number;
+  /** Search (N) of the shared Spell deck (1-5). */
+  searchSpell?: number;
+  /** Search (N) of the shared Ability deck (1-5). */
+  searchAbility?: number;
+  /** Search (N) of the shared Artifact deck (1-5). */
+  searchArtifact?: number;
+};
+
+/**
+ * A center (Ⅵ–Ⅶ) slot's designer customization ({@link CustomMapTilePlan.centerHex}):
+ * override the Ⅶ field's guard, attach a first-clear reward, award Victory
+ * Points — each optional and independent. Carried onto the placed instance
+ * ({@link MapTileState.centerHex}, masked while face-down) and folded onto the
+ * difficulty-7 objective field when the tile materializes.
+ */
+export type CustomCenterHexPlan = {
+  /** Replace the printed difficulty-7 guard with a level or a certain army. */
+  guard?: CustomGuardSpec;
+  /** One-time bonus for whoever first clears / captures the objective. */
+  reward?: CustomCenterHexReward;
+  /** Victory Points for the first clearer (scored in VP mode; 1-10). */
+  vp?: number;
+};
+
+/**
+ * @deprecated Legacy shape of the pre-centerHex `viiFieldReward` (kept only so
+ * mid-game snapshots and saved maps from that build keep working — persistence
+ * folds it into {@link CustomCenterHexPlan.reward}).
  */
 export type ViiFieldReward = { gold?: number; buildingMaterials?: number; valuables?: number };
 

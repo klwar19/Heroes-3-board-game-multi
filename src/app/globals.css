@@ -13584,6 +13584,54 @@ img.cardBack {
   color: #ffe9b8;
 }
 
+/* Shared designer guard editor (center hex, tokens, objects): level chips +
+   the exact-army builder. Chips reuse .popoverGuardChip. */
+.popoverGuardEditor {
+  margin: 4px 0 8px;
+}
+.popoverGuardEditor .popoverModeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.popoverGuardArmyChip {
+  font-weight: 600;
+}
+.popoverGuardArmy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid rgba(201, 162, 75, 0.35);
+  border-radius: 8px;
+  background: rgba(14, 10, 6, 0.4);
+}
+.popoverGuardArmyChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.popoverGuardUnitChip {
+  padding: 3px 7px;
+  border: 1px solid rgba(201, 162, 75, 0.55);
+  border-radius: 999px;
+  background: rgba(60, 44, 16, 0.6);
+  color: #f3e7c8;
+  font-size: 11px;
+  cursor: pointer;
+}
+.popoverGuardUnitChip:hover {
+  border-color: #ff9a8a;
+  color: #ffd9cf;
+}
+.popoverGuardUnitSelect {
+  max-width: 220px;
+}
+.popoverGuardArmyNote {
+  color: #d9c9a1;
+}
+
 .designerStartLabel {
   fill: #f3e7c8;
   font-size: 16px;

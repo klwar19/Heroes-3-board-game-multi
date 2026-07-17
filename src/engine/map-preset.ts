@@ -13,12 +13,16 @@
 
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TileDefinition } from "@/data/map/types";
 import { seaTileBand, subterraneanTileBand, VII_FIELD_LOCATION } from "./adventure";
 import { VICTORY_MODE_LABELS } from "./ruleset";
-import { DEFAULT_OBELISK_BONUS } from "./state";
+import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS } from "./state";
 import { DEFAULT_VICTORY_CONDITION_VP, describeVictoryPointObjective } from "./victory-points";
 import type {
+  CustomCenterHexPlan,
+  CustomCenterHexReward,
+  CustomGuardSpec,
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
   CustomMapObject,
@@ -32,7 +36,6 @@ import type {
   GameSetupOptions,
   SecretTileFeature,
   UnitLevel,
-  ViiFieldReward,
   VictoryMode,
   VictoryPointObjective
 } from "./state";
@@ -87,44 +90,121 @@ export function isViiFieldDesignation(
   return typeof value === "string" && VII_FIELD_DESIGNATIONS.has(value as never);
 }
 
-/** Largest amount a single Ⅶ-field resource reward may grant, per resource. */
-export const MAX_VII_FIELD_REWARD_AMOUNT = 50;
-/** Largest Victory-Point award a designer may attach to a Ⅶ objective. */
-export const MAX_VII_FIELD_VP = 10;
-/** The three adventure resources a Ⅶ-field reward may carry. */
-const VII_REWARD_RESOURCES = ["gold", "buildingMaterials", "valuables"] as const;
+/** Largest amount a single center-hex resource reward may grant, per resource. */
+export const MAX_CENTER_HEX_RESOURCE = 50;
+/** Largest Victory-Point award a designer may attach to a center hex. */
+export const MAX_CENTER_HEX_VP = 10;
+/** Largest Treasure-dice count a center-hex reward may roll. */
+export const MAX_CENTER_HEX_DICE = 3;
+/** Largest Search size a center-hex reward may grant per shared deck. */
+export const MAX_CENTER_HEX_SEARCH = 5;
+/** The three adventure resources a center-hex reward may carry. */
+const CENTER_HEX_RESOURCES = ["gold", "buildingMaterials", "valuables"] as const;
+
+/** True when `unitDefId` names a unit that can guard a hex (it has a `neutral` side). */
+export function isCustomGuardUnit(unitDefId: unknown): unitDefId is string {
+  return typeof unitDefId === "string" && Boolean(coreUnitDefinitions[unitDefId]?.neutral);
+}
 
 /**
- * Clamp a designer Ⅶ-field Resource reward ({@link CustomMapTilePlan.viiFieldReward})
- * to a clean, positive-integer `{ gold?, buildingMaterials?, valuables? }`, or
- * `undefined` when nothing valid remains. Shared by the persistence sanitiser,
- * setup seeding and the designer UI so the clamp can never drift.
+ * Clamp a designer guard ({@link CustomGuardSpec}) to exactly one clean arm:
+ * a certain army of known neutral-sided units (capped, unknown ids dropped) or
+ * a level 1-7; `undefined` when nothing valid remains. `units` wins when both
+ * are present. Shared by the persistence sanitiser, setup validation and the
+ * designer UI so the clamp can never drift.
  */
-export function sanitizeViiFieldReward(input: unknown): ViiFieldReward | undefined {
+export function sanitizeCustomGuardSpec(input: unknown): CustomGuardSpec | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
   }
   const raw = input as Record<string, unknown>;
-  const reward: ViiFieldReward = {};
-  for (const key of VII_REWARD_RESOURCES) {
-    const value = raw[key];
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      reward[key] = Math.min(MAX_VII_FIELD_REWARD_AMOUNT, Math.floor(value));
+  const units = Array.isArray(raw.units)
+    ? raw.units.filter(isCustomGuardUnit).slice(0, MAX_CUSTOM_GUARD_UNITS)
+    : [];
+  if (units.length > 0) {
+    return { units };
+  }
+  const level = clampInt(raw.level, 1, 7, 0);
+  return level > 0 ? { level } : undefined;
+}
+
+/**
+ * Clamp a designer center-hex reward ({@link CustomCenterHexReward}) to clean,
+ * positive integers, or `undefined` when nothing valid remains.
+ */
+export function sanitizeCenterHexReward(input: unknown): CustomCenterHexReward | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as Record<string, unknown>;
+  const reward: CustomCenterHexReward = {};
+  for (const key of CENTER_HEX_RESOURCES) {
+    const amount = clampInt(raw[key], 1, MAX_CENTER_HEX_RESOURCE, 0);
+    if (amount > 0) {
+      reward[key] = amount;
+    }
+  }
+  const dice = clampInt(raw.treasureDice, 1, MAX_CENTER_HEX_DICE, 0);
+  if (dice > 0) {
+    reward.treasureDice = dice;
+  }
+  for (const key of ["searchSpell", "searchAbility", "searchArtifact"] as const) {
+    const size = clampInt(raw[key], 1, MAX_CENTER_HEX_SEARCH, 0);
+    if (size > 0) {
+      reward[key] = size;
     }
   }
   return Object.keys(reward).length > 0 ? reward : undefined;
 }
 
 /**
- * Clamp a designer Ⅶ-field VP award ({@link CustomMapTilePlan.viiFieldVp}) to an
- * integer 1..{@link MAX_VII_FIELD_VP}; `0` / absent / garbage → `undefined` (no award).
+ * Clamp a whole center-hex customization ({@link CustomMapTilePlan.centerHex})
+ * — guard, first-clear reward, VP — or `undefined` when every arm is empty.
  */
-export function sanitizeViiFieldVp(input: unknown): number | undefined {
-  if (typeof input !== "number" || !Number.isFinite(input)) {
+export function sanitizeCenterHexPlan(input: unknown): CustomCenterHexPlan | undefined {
+  if (!input || typeof input !== "object") {
     return undefined;
   }
-  const vp = Math.floor(input);
-  return vp > 0 ? Math.min(MAX_VII_FIELD_VP, vp) : undefined;
+  const raw = input as Record<string, unknown>;
+  const centerHex: CustomCenterHexPlan = {};
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  if (guard) {
+    centerHex.guard = guard;
+  }
+  const reward = sanitizeCenterHexReward(raw.reward);
+  if (reward) {
+    centerHex.reward = reward;
+  }
+  const vp = clampInt(raw.vp, 1, MAX_CENTER_HEX_VP, 0);
+  if (vp > 0) {
+    centerHex.vp = vp;
+  }
+  return Object.keys(centerHex).length > 0 ? centerHex : undefined;
+}
+
+/**
+ * Fold the pre-centerHex `viiFieldReward` / `viiFieldVp` plan fields (one
+ * earlier build wrote them) into the canonical {@link CustomCenterHexPlan}.
+ * An explicit `centerHex` always wins; the legacy pair only fills gaps.
+ */
+export function foldLegacyViiBonus(
+  centerHex: CustomCenterHexPlan | undefined,
+  legacyReward: unknown,
+  legacyVp: unknown
+): CustomCenterHexPlan | undefined {
+  const reward = sanitizeCenterHexReward(legacyReward);
+  const vp = clampInt(legacyVp, 1, MAX_CENTER_HEX_VP, 0);
+  if (!reward && vp <= 0) {
+    return centerHex;
+  }
+  const folded: CustomCenterHexPlan = { ...(centerHex ?? {}) };
+  if (!folded.reward && reward) {
+    folded.reward = reward;
+  }
+  if (folded.vp === undefined && vp > 0) {
+    folded.vp = vp;
+  }
+  return Object.keys(folded).length > 0 ? folded : undefined;
 }
 
 // The location a Ⅶ-field designation resolves to ("town" → the neutral Random

@@ -1,12 +1,12 @@
 import {
+  foldLegacyViiBonus,
   isSecretTileFeature,
   isViiFieldDesignation,
   normalizeDesignedBorders,
   normalizeDesignedBorderEdges,
   parseHexSpaceId,
+  sanitizeCenterHexPlan,
   sanitizeCustomMapPreset,
-  sanitizeViiFieldReward,
-  sanitizeViiFieldVp,
   scenarioDefinitions,
   MAX_DESIGNED_GATE_LINKS,
   type CustomMapGateLink,
@@ -212,15 +212,19 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   // Designer per-edge yellow borders (any group): canonical edge codes, garbage
   // dropped, deduped, capped at 30 — the per-edge twin of the whole-arc rule.
   const borderEdges = normalizeDesignedBorderEdges(candidate.borderEdges);
-  // A center Ⅶ-field designation, plus its OPTIONAL designer bonus. The reward /
-  // VP are meaningful ONLY alongside a designation (a bonus with no objective is
-  // dropped), and amounts are clamped by the shared sanitisers.
+  // A center Ⅶ-field designation, plus the OPTIONAL center-hex customization
+  // (guard / first-clear reward / VP). Both center-only; the customization no
+  // longer requires a designation. Legacy `viiFieldReward`/`viiFieldVp` saves
+  // fold into `centerHex` so the one earlier build's maps keep their bonus.
   const viiField =
     candidate.group === "center" && isViiFieldDesignation(candidate.viiField)
       ? candidate.viiField
       : undefined;
-  const viiFieldReward = viiField ? sanitizeViiFieldReward(candidate.viiFieldReward) : undefined;
-  const viiFieldVp = viiField ? sanitizeViiFieldVp(candidate.viiFieldVp) : undefined;
+  const legacy = candidate as { viiFieldReward?: unknown; viiFieldVp?: unknown };
+  const centerHex =
+    candidate.group === "center"
+      ? foldLegacyViiBonus(sanitizeCenterHexPlan(candidate.centerHex), legacy.viiFieldReward, legacy.viiFieldVp)
+      : undefined;
 
   return {
     row: candidate.row as number,
@@ -236,11 +240,10 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(candidate.group === "starting" && candidate.lockRotation === true ? { lockRotation: true } : {}),
     // `viiField` forces a center slot's Ⅶ objective field (Grail / Dragon Utopia
     // / town). Meaningful only on a center plan — kept there, dropped elsewhere;
-    // only a known designation survives so garbage can't set it. Its optional
-    // designer bonus (reward / VP) rides alongside it, dropped without it.
+    // only a known designation survives so garbage can't set it. The center-hex
+    // customization (guard / reward / VP) is independent of the designation.
     ...(viiField ? { viiField } : {}),
-    ...(viiFieldReward ? { viiFieldReward } : {}),
-    ...(viiFieldVp !== undefined ? { viiFieldVp } : {}),
+    ...(centerHex ? { centerHex } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
     ...(tokens && tokens.length > 0 ? { tokens } : {}),

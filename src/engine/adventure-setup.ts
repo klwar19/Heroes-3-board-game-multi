@@ -64,8 +64,7 @@ import {
   tileMatchesSecretFeature,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
-  sanitizeViiFieldReward,
-  sanitizeViiFieldVp,
+  sanitizeCenterHexPlan,
   type CustomMapPreset,
   type PresetForcedOptionKey
 } from "./map-preset";
@@ -1131,25 +1130,32 @@ export function validateCustomMapPlan(
   }
 
   // `viiField` FORCES a center slot's difficulty-7 objective field (Grail /
-  // Dragon Utopia / Random Town). Meaningful only on a `center` plan — strip it
-  // on every other group (like lockRotation is starting-only) AND drop an unknown
-  // value, so a garbage designation can never reach setup.
+  // Dragon Utopia / Random Town) and `centerHex` customizes that field's guard /
+  // reward / VP. Both are meaningful only on a `center` plan — strip them on
+  // every other group (like lockRotation is starting-only), drop an unknown
+  // designation, and re-clamp the customization defensively so an in-memory
+  // plan can never smuggle garbage past the persistence sanitiser.
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
-    if (plan.viiField === undefined && plan.viiFieldReward === undefined && plan.viiFieldVp === undefined) {
+    if (plan.viiField === undefined && plan.centerHex === undefined) {
       continue;
     }
-    const validVii =
-      plan.group === "center" && plan.viiField !== undefined && VII_FIELD_DESIGNATIONS.has(plan.viiField);
-    if (!validVii) {
-      // A non-center / unknown designation is stripped — and so is any bonus,
-      // which is meaningless without a Ⅶ objective to attach it to.
-      const next = { ...plan };
-      delete next.viiField;
-      delete next.viiFieldReward;
-      delete next.viiFieldVp;
-      accepted[index] = next;
+    const isCenter = plan.group === "center";
+    const validVii = isCenter && plan.viiField !== undefined && VII_FIELD_DESIGNATIONS.has(plan.viiField);
+    const centerHex = isCenter ? sanitizeCenterHexPlan(plan.centerHex) : undefined;
+    if (validVii && centerHex === plan.centerHex) {
+      continue;
     }
+    const next = { ...plan };
+    if (!validVii) {
+      delete next.viiField;
+    }
+    if (centerHex) {
+      next.centerHex = centerHex;
+    } else {
+      delete next.centerHex;
+    }
+    accepted[index] = next;
   }
 
   return { accepted, problems };
@@ -1440,32 +1446,33 @@ function applyDesignedBorders(tile: MapTileState, plan: CustomMapTilePlan): void
 }
 
 /**
- * Center-tile Ⅶ-field designation (plan → instance): store the override on the
- * placed tile so its difficulty-7 objective field materializes as the designated
- * location. Meaningful only on a `center` plan (stripped elsewhere at
- * validation). A FACE-UP center tile already materialized its fields inside
- * `instantiateTile`, so re-run the materialization now that the override is set;
- * a FACE-DOWN tile materializes on reveal and reads the override then.
+ * Center-tile Ⅶ customization (plan → instance): store the objective override
+ * (`viiField`) and/or the center-hex guard / reward / VP (`centerHex`) on the
+ * placed tile so its difficulty-7 objective field materializes with them.
+ * Each is independent — a center hex may be customized on the PRINTED
+ * objective with no designation at all. Meaningful only on a `center` plan
+ * (stripped elsewhere at validation). A FACE-UP center tile already
+ * materialized its fields inside `instantiateTile`, so re-run the
+ * materialization now that the customization is set; a FACE-DOWN tile
+ * materializes on reveal and reads it then.
  */
 function applyDesignedViiField(
   adventure: AdventureState,
   tile: MapTileState,
   plan: CustomMapTilePlan
 ): void {
-  if (plan.group !== "center" || !plan.viiField) {
+  if (plan.group !== "center" || (!plan.viiField && !plan.centerHex)) {
     return;
   }
-  tile.viiField = plan.viiField;
-  // Carry the OPTIONAL designer bonus (reward / VP) onto the placed instance,
-  // clamped defensively so an in-memory plan can't smuggle a huge value past the
-  // persistence sanitiser. materializeTileFields folds it onto the Ⅶ field.
-  const reward = sanitizeViiFieldReward(plan.viiFieldReward);
-  if (reward) {
-    tile.viiFieldReward = reward;
+  if (plan.viiField) {
+    tile.viiField = plan.viiField;
   }
-  const vp = sanitizeViiFieldVp(plan.viiFieldVp);
-  if (vp !== undefined) {
-    tile.viiFieldVp = vp;
+  // Carry the OPTIONAL center-hex customization onto the placed instance,
+  // clamped defensively so an in-memory plan can't smuggle a huge value past
+  // the persistence sanitiser. materializeTileFields folds it onto the Ⅶ field.
+  const centerHex = sanitizeCenterHexPlan(plan.centerHex);
+  if (centerHex) {
+    tile.centerHex = centerHex;
   }
   if (!tile.faceDown) {
     materializeTileFields(adventure, tile);

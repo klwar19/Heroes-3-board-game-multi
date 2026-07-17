@@ -174,37 +174,46 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[3].viiField, "absent when unset").toBeUndefined();
   });
 
-  it("round-trips a Ⅶ reward + VP on a designated center, clamps amounts, and drops an orphan bonus", () => {
-    // The designer bonus (viiFieldReward / viiFieldVp) is meaningful ONLY with a
-    // Ⅶ designation: it survives WITH one (clamped), and is dropped without one or
-    // on a non-center group — otherwise a saved map would smuggle an orphan reward.
+  it("round-trips a centerHex (guard/reward/VP), clamps it, folds LEGACY viiField* saves, and strips non-centers", () => {
     const record = sanitizeSharedMap(
       {
         id: "m",
         tiles: [
-          // Kept + clamped (gold 999 → 50 cap; VP 99 → 10 cap; junk resource dropped).
+          // Kept + clamped (gold 999 → 50 cap; VP 99 → 10 cap; junk resource +
+          // unknown guard unit dropped; a valid exact army survives).
           {
             row: 1,
             col: 1,
             group: "center",
             faceDown: true,
             viiField: "grail",
-            viiFieldReward: { gold: 999, valuables: 2, unicorns: 5 },
-            viiFieldVp: 99
+            centerHex: {
+              guard: { units: ["neutral.cyclopes", "not.a.unit"] },
+              reward: { gold: 999, valuables: 2, unicorns: 5, treasureDice: 9, searchSpell: 2 },
+              vp: 99
+            }
           },
-          // A bonus WITHOUT a designation on a center slot → orphan, dropped.
+          // LEGACY save shape (the one earlier build): viiFieldReward/viiFieldVp
+          // fold into centerHex — WITHOUT needing a designation any more.
           { row: 2, col: 2, group: "center", faceDown: true, viiFieldReward: { gold: 5 }, viiFieldVp: 3 },
-          // A bonus on a non-center slot → dropped with the (already-illegal) designation.
-          { row: 3, col: 3, group: "near", faceDown: true, viiField: "grail", viiFieldReward: { gold: 5 } }
+          // A customization on a non-center slot → dropped with the (already-
+          // illegal) designation.
+          { row: 3, col: 3, group: "near", faceDown: true, viiField: "grail", centerHex: { reward: { gold: 5 } } }
         ]
       },
       1
     );
-    expect(record!.tiles[0]).toMatchObject({ viiField: "grail", viiFieldReward: { gold: 50, valuables: 2 }, viiFieldVp: 10 });
-    expect(record!.tiles[0].viiFieldReward).not.toHaveProperty("unicorns");
-    expect(record!.tiles[1].viiFieldReward, "orphan reward dropped").toBeUndefined();
-    expect(record!.tiles[1].viiFieldVp, "orphan VP dropped").toBeUndefined();
-    expect(record!.tiles[2].viiFieldReward, "non-center bonus dropped").toBeUndefined();
+    expect(record!.tiles[0]).toMatchObject({
+      viiField: "grail",
+      centerHex: {
+        guard: { units: ["neutral.cyclopes"] },
+        reward: { gold: 50, valuables: 2, treasureDice: 3, searchSpell: 2 },
+        vp: 10
+      }
+    });
+    expect(record!.tiles[0].centerHex?.reward).not.toHaveProperty("unicorns");
+    expect(record!.tiles[1].centerHex, "legacy bonus folded in").toEqual({ reward: { gold: 5 }, vp: 3 });
+    expect(record!.tiles[2].centerHex, "non-center customization dropped").toBeUndefined();
   });
 
   it("round-trips a preset objectives block through save/load", () => {
