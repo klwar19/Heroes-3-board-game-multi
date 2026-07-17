@@ -5256,6 +5256,14 @@ export default function Home() {
                   the left (Warcraft-style sidebar), freeing the whole center for
                   the map. Their fly-out boards open to the right, over the map. */}
               <div className="leftRailDock">
+                {/* A seated player inspects any opponent's public state
+                    (resources, units, hero level, buildings) with a small
+                    click-to-open button. Kept at the TOP of the rail so it is
+                    a compact button, never a big panel, and never reaches the
+                    bottom-left chat dock. */}
+                {isSeated ? (
+                  <OpponentInfoDock seatIds={seatIds} state={state} variant="map" viewerPlayerId={viewerPlayerId} />
+                ) : null}
                 <TownHeroDock
                   armySeatId={isSeated ? viewerPlayerId : undefined}
                   heroSeatIds={isSeated ? [viewerPlayerId] : seatIds}
@@ -5265,12 +5273,6 @@ export default function Home() {
                   viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
                 />
                 <MoraleCardsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
-                {/* A seated player can inspect any opponent's public state
-                    (resources, units, hero level, buildings) from this clear
-                    left-rail panel. */}
-                {isSeated ? (
-                  <OpponentInfoDock seatIds={seatIds} state={state} variant="map" viewerPlayerId={viewerPlayerId} />
-                ) : null}
                 {/* Live "if scored now" Victory-Points standings — visible to
                     everyone when the designed map turns VP mode on. */}
                 <VictoryPointsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
