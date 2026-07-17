@@ -18,7 +18,11 @@ import type { TileDefinition } from "@/data/map/types";
 import { seaTileBand, subterraneanTileBand, TILE_GROUP_BAND_LABELS, VII_FIELD_LOCATION } from "./adventure";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS, MAX_FAR_TILES_PER_PLAYER } from "./state";
-import { DEFAULT_VICTORY_CONDITION_VP, describeVictoryPointObjective } from "./victory-points";
+import {
+  DEFAULT_VICTORY_CONDITION_VP,
+  describeCustomWinCondition,
+  describeVictoryPointObjective
+} from "./victory-points";
 import type {
   CustomCenterHexPlan,
   CustomCenterHexReward,
@@ -32,6 +36,7 @@ import type {
   CustomMapPreset,
   CustomMapTilePlan,
   CustomStartingUnit,
+  CustomWinCondition,
   DragonUtopiaGuards,
   GameDifficulty,
   GameSetupOptions,
@@ -274,6 +279,20 @@ const VICTORY_POINT_OBJECTIVE_KINDS = new Set<VictoryPointObjective["kind"]>([
 
 /** Max designer-chosen VP objectives per map (sanitisation cap). */
 export const MAX_VICTORY_POINT_OBJECTIVES = 4;
+
+/** The custom-win-condition kinds a map / lobby may author (sanitiser allowlist). */
+const CUSTOM_WIN_CONDITION_KINDS = new Set<CustomWinCondition["kind"]>([
+  "control-towns",
+  "flag-mines",
+  "hero-level",
+  "gold",
+  "artifacts",
+  "defeat-heroes",
+  "defeat-dragon-utopia"
+]);
+
+/** Max custom win conditions on one map/game (preset + lobby MERGED — sanitisation cap). */
+export const MAX_CUSTOM_WIN_CONDITIONS = 4;
 
 export type { CustomMapObeliskBonus, CustomMapObeliskConfig };
 
@@ -595,6 +614,87 @@ function sanitizeVictoryPoints(input: unknown): CustomMapPreset["victoryPoints"]
 }
 
 /**
+ * Sanitize ONE custom win condition (untrusted). Drops an unknown kind; clamps
+ * each kind's threshold to its legal band. The min-clamps (control-towns ≥ 2 so
+ * the home town alone can't instant-win, level ≥ 2, gold ≥ 20…) REDUCE but never
+ * eliminate the instant-win foot-gun — a condition already met at setup ends the
+ * game on the first action (the designer's responsibility). Returns null for an
+ * unusable input so the array filter removes it.
+ */
+function sanitizeCustomWinCondition(input: unknown): CustomWinCondition | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const raw = input as { kind?: unknown; count?: unknown; level?: unknown; amount?: unknown };
+  if (
+    typeof raw.kind !== "string" ||
+    !CUSTOM_WIN_CONDITION_KINDS.has(raw.kind as CustomWinCondition["kind"])
+  ) {
+    return null;
+  }
+  switch (raw.kind as CustomWinCondition["kind"]) {
+    case "control-towns":
+      return { kind: "control-towns", count: clampInt(raw.count, 2, 8, 2) };
+    case "flag-mines":
+      return { kind: "flag-mines", count: clampInt(raw.count, 2, 12, 2) };
+    case "hero-level":
+      return { kind: "hero-level", level: clampInt(raw.level, 2, 7, 2) };
+    case "gold":
+      return { kind: "gold", amount: clampInt(raw.amount, 20, 500, 20) };
+    case "artifacts":
+      return { kind: "artifacts", count: clampInt(raw.count, 1, 10, 1) };
+    case "defeat-heroes":
+      return { kind: "defeat-heroes", count: clampInt(raw.count, 1, 6, 1) };
+    case "defeat-dragon-utopia":
+      return { kind: "defeat-dragon-utopia" };
+  }
+}
+
+/**
+ * Sanitize a LIST of custom win conditions (untrusted) — the SHARED sanitiser
+ * used by both the designed-preset path and the lobby `SET_GAME_OPTIONS` block.
+ * Unknown kinds / degenerate params are dropped/clamped and the list is capped at
+ * {@link MAX_CUSTOM_WIN_CONDITIONS}. A non-array yields `[]`.
+ */
+export function sanitizeCustomWinConditions(input: unknown): CustomWinCondition[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input
+    .map(sanitizeCustomWinCondition)
+    .filter((condition): condition is CustomWinCondition => condition !== null)
+    .slice(0, MAX_CUSTOM_WIN_CONDITIONS);
+}
+
+/**
+ * The EFFECTIVE custom-win-condition list for a game: the map-authored list
+ * first, the lobby-added list appended, exact-duplicate deduped (same kind +
+ * params) and capped at {@link MAX_CUSTOM_WIN_CONDITIONS}. Map-authored
+ * conditions are never removed — the lobby can only ADD. Pure (no sanitisation);
+ * callers pass already-sanitised lists. Shared by the engine build
+ * (`applyLobbyCustomWinConditions`) and the lobby UI so they never drift.
+ */
+export function mergeCustomWinConditions(
+  presetConditions: CustomWinCondition[] | undefined,
+  lobbyConditions: CustomWinCondition[] | undefined
+): CustomWinCondition[] {
+  const merged: CustomWinCondition[] = [];
+  const seen = new Set<string>();
+  for (const condition of [...(presetConditions ?? []), ...(lobbyConditions ?? [])]) {
+    const key = JSON.stringify(condition);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(condition);
+    if (merged.length >= MAX_CUSTOM_WIN_CONDITIONS) {
+      break;
+    }
+  }
+  return merged;
+}
+
+/**
  * Sanitize ONE designer-placed map object (untrusted input). Keeps only a
  * well-formed shape: a known kind, a valid placement (tile-slot with a 0-6 slot,
  * or standalone), a colored pair 1-4 REQUIRED for a gate (and never on another
@@ -903,6 +1003,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.victoryPoints = victoryPoints;
     }
   }
+  if (raw.customWinConditions !== undefined) {
+    const conditions = sanitizeCustomWinConditions(raw.customWinConditions);
+    if (conditions.length > 0) {
+      preset.customWinConditions = conditions;
+    }
+  }
 
   return customMapPresetIsActive(preset) ? preset : undefined;
 }
@@ -928,7 +1034,8 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.obelisks ||
       (preset.objects && preset.objects.length > 0) ||
       Boolean(preset.objectives) ||
-      Boolean(preset.victoryPoints?.enabled)
+      Boolean(preset.victoryPoints?.enabled) ||
+      (preset.customWinConditions && preset.customWinConditions.length > 0)
   );
 }
 
@@ -1229,6 +1336,11 @@ export function describeCustomMapPresetEntries(
   if (preset.victoryPoints?.enabled) {
     for (const line of describeVictoryPointsConfig(preset.victoryPoints, preset.roundLimit)) {
       entries.push(line);
+    }
+  }
+  if (preset.customWinConditions && preset.customWinConditions.length > 0) {
+    for (const condition of preset.customWinConditions) {
+      entries.push({ icon: "🏁", text: `Custom win: ${describeCustomWinCondition(condition)}` });
     }
   }
   if (preset.objects && preset.objects.length > 0) {
@@ -1703,5 +1815,44 @@ export function defaultVictoryPointObjective(kind: VictoryPointObjective["kind"]
       return { kind: "hero-level", vp: 3, level: 5 };
     case "defeat-dragon-utopia":
       return { kind: "defeat-dragon-utopia", vp: 5 };
+  }
+}
+
+/**
+ * Custom-win-condition kinds the designer/host may add (editor + lobby dropdown
+ * order). `param` names which numeric field the row edits and its clamp band
+ * (matches {@link sanitizeCustomWinConditions}); `null` = no parameter.
+ */
+export const CUSTOM_WIN_CONDITION_OPTIONS: {
+  id: CustomWinCondition["kind"];
+  label: string;
+  param: { field: "count" | "level" | "amount"; label: string; min: number; max: number } | null;
+}[] = [
+  { id: "control-towns", label: "Control N Towns", param: { field: "count", label: "Towns", min: 2, max: 8 } },
+  { id: "flag-mines", label: "Flag N Mines / Settlements", param: { field: "count", label: "Mines", min: 2, max: 12 } },
+  { id: "hero-level", label: "Reach Hero level N", param: { field: "level", label: "Level", min: 2, max: 7 } },
+  { id: "gold", label: "Reach N gold", param: { field: "amount", label: "Gold", min: 20, max: 500 } },
+  { id: "artifacts", label: "Own N Artifacts", param: { field: "count", label: "Artifacts", min: 1, max: 10 } },
+  { id: "defeat-heroes", label: "Defeat N enemy Heroes", param: { field: "count", label: "Heroes", min: 1, max: 6 } },
+  { id: "defeat-dragon-utopia", label: "Defeat the Dragon Utopia", param: null }
+];
+
+/** Fresh default custom win condition when one is added / its kind is switched. */
+export function defaultCustomWinCondition(kind: CustomWinCondition["kind"]): CustomWinCondition {
+  switch (kind) {
+    case "control-towns":
+      return { kind: "control-towns", count: 3 };
+    case "flag-mines":
+      return { kind: "flag-mines", count: 4 };
+    case "hero-level":
+      return { kind: "hero-level", level: 5 };
+    case "gold":
+      return { kind: "gold", amount: 100 };
+    case "artifacts":
+      return { kind: "artifacts", count: 3 };
+    case "defeat-heroes":
+      return { kind: "defeat-heroes", count: 1 };
+    case "defeat-dragon-utopia":
+      return { kind: "defeat-dragon-utopia" };
   }
 }

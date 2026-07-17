@@ -46,9 +46,14 @@ import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
 import { clearResetVote } from "./reset-vote";
 import {
+  artifactCountOf,
   computeVictoryPoints,
+  describeCustomWinCondition,
+  flaggedMineSettlementCount,
+  mainHeroOf,
   recordVpUtopiaDefeat,
   recordVpViiCenter,
+  townsControlledBy,
   victoryPointsConfig,
   victoryPointsModeActive
 } from "./victory-points";
@@ -106,6 +111,7 @@ import type {
   CustomCenterHexReward,
   CustomGuardSpec,
   CustomMapObjectKind,
+  CustomWinCondition,
   EventDiePoolEntry,
   EventPoolEntry,
   EventsState,
@@ -2922,6 +2928,85 @@ export function endGameByVictoryPoints(
     result.winnerId,
     `the most Victory Points (${winnerRow?.total ?? 0})`
   );
+}
+
+/** Whether a player currently satisfies one custom win condition. The metric
+ * readers ARE the Victory-Points readers (same numbers as VP scoring — an
+ * invariant); `defeat-heroes` counts main (once per opponent) + secondary hero
+ * defeats off the VP ledger, tolerating an absent ledger on legacy snapshots. */
+function playerMeetsCustomWinCondition(
+  state: GameState,
+  playerId: PlayerId,
+  condition: CustomWinCondition
+): boolean {
+  switch (condition.kind) {
+    case "control-towns":
+      return townsControlledBy(state, playerId).length >= condition.count;
+    case "flag-mines":
+      return flaggedMineSettlementCount(state, playerId) >= condition.count;
+    case "hero-level":
+      return (mainHeroOf(state, playerId)?.level ?? 0) >= condition.level;
+    case "gold":
+      return (state.players[playerId]?.resources.gold ?? 0) >= condition.amount;
+    case "artifacts":
+      return artifactCountOf(state.players[playerId]) >= condition.count;
+    case "defeat-heroes": {
+      const ledger = state.adventure?.vpLedger?.[playerId];
+      const defeats = (ledger?.mainHeroDefeats?.length ?? 0) + (ledger?.secondaryHeroDefeats ?? 0);
+      return defeats >= condition.count;
+    }
+    case "defeat-dragon-utopia":
+      return state.adventure?.vpLedger?.[playerId]?.utopiaDefeated === true;
+  }
+}
+
+/**
+ * Custom win conditions (map-designer / lobby authored): the FIRST live player
+ * — iterated in `turnOrder` (deterministic tie-break) — to satisfy ANY active
+ * condition wins immediately, an ADDITIONAL early-end trigger on top of the
+ * normal victory mode. Run from the reducer's post-action tail on EVERY action
+ * (all backends), AFTER END_TURN's synchronous round-income cascade, so a
+ * threshold crossed by round-start income is visible.
+ *
+ * Guards, in order (each cheap so an ordinary game pays almost nothing): the
+ * adventure exists; no winner yet; the effective condition list is non-empty
+ * (the FREE early-out for every existing game / legacy snapshot); and NO combat
+ * is open — a threshold crossed mid-battle is deferred to the next map-side
+ * action (ACKNOWLEDGE_COMBAT_END and co. flow through the same tail), so the
+ * game is never ended mid-fight. Conditions are evaluated in list order for the
+ * reason string, and a completion routes through {@link declareAdventureWinner}
+ * with `viaVictoryCondition: true` — an instant win with VP mode OFF, VP scoring
+ * with it ON — so both behaviours come for free.
+ */
+export function checkCustomWinConditions(state: GameState): void {
+  const adventure = state.adventure;
+  if (!adventure || adventure.winnerPlayerId) {
+    return;
+  }
+  const conditions = adventure.mapPreset?.customWinConditions;
+  if (!conditions || conditions.length === 0) {
+    return;
+  }
+  // Never end the game mid-battle (a crossing resolves on the next map-side action).
+  if (state.combat) {
+    return;
+  }
+  for (const playerId of state.turnOrder) {
+    if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId] || state.players[playerId]?.eliminated) {
+      continue;
+    }
+    for (const condition of conditions) {
+      if (playerMeetsCustomWinCondition(state, playerId, condition)) {
+        declareAdventureWinner(
+          state,
+          playerId,
+          `completed a custom win condition: ${describeCustomWinCondition(condition)}`,
+          { viaVictoryCondition: true }
+        );
+        return;
+      }
+    }
+  }
 }
 
 /** Human seats in turn order (the neutral seat never counts). */

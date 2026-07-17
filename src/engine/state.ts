@@ -9176,6 +9176,14 @@ export type GameSetupOptions = {
    */
   victoryPointsRoundLimit?: number;
   /**
+   * OPTIONAL host-added CUSTOM WIN CONDITIONS ({@link CustomWinCondition}) for
+   * THIS game. Merged (preset-first, exact-duplicate deduped, capped) with the
+   * picked map's own `customWinConditions` at build time
+   * (`applyLobbyCustomWinConditions`). The lobby can only ADD — a map-authored
+   * condition is never removed by the lobby. Absent = the map's own list only.
+   */
+  customWinConditions?: CustomWinCondition[];
+  /**
    * Spell Book house rule (default ON). Gives every player a personal Spell Book
    * zone they may stash hand Spells into to free slots, then cast or boost from.
    * Off disables the move-to-Book action and the discard→Book pickup entirely.
@@ -9465,7 +9473,37 @@ export type CustomMapPreset = {
     victoryConditionVp?: number;
     objectives?: VictoryPointObjective[];
   };
+  /**
+   * Designer-authored CUSTOM WIN CONDITIONS ({@link CustomWinCondition}). An
+   * ADDITIONAL early-end trigger layered on top of the normal victory mode: the
+   * FIRST live player (in turn order) to satisfy ANY listed condition wins
+   * immediately (`checkCustomWinConditions` in `adventure.ts`, run from the
+   * reducer's post-action tail). Absent = today's behaviour (byte-identical).
+   * Capped at {@link import("./map-preset").MAX_CUSTOM_WIN_CONDITIONS}; the lobby
+   * can only ADD to this list, never remove a map-authored one.
+   */
+  customWinConditions?: CustomWinCondition[];
 };
+
+/**
+ * One designer/lobby-authored CUSTOM WIN CONDITION ({@link
+ * CustomMapPreset.customWinConditions}). Every kind is engine-checkable at the
+ * reducer tail: a live-state read (control-towns / flag-mines / hero-level /
+ * gold / artifacts) or an event-sourced VP-ledger count (defeat-heroes reads
+ * `mainHeroDefeats.length + secondaryHeroDefeats`; defeat-dragon-utopia reads
+ * `utopiaDefeated`). The metrics ARE the Victory-Points readers (same numbers as
+ * VP scoring — an invariant). Params are clamped by the sanitiser
+ * (`sanitizeCustomWinConditions`, map-preset.ts). `defeat-dragon-utopia` carries
+ * NO count: the ledger flag is a boolean, so "defeat N Utopias" is unsupported.
+ */
+export type CustomWinCondition =
+  | { kind: "control-towns"; count: number }
+  | { kind: "flag-mines"; count: number }
+  | { kind: "hero-level"; level: number }
+  | { kind: "gold"; amount: number }
+  | { kind: "artifacts"; count: number }
+  | { kind: "defeat-heroes"; count: number }
+  | { kind: "defeat-dragon-utopia" };
 
 /**
  * One extra Victory-Points scenario objective ({@link CustomMapPreset.victoryPoints}).

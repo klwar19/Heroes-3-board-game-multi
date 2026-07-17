@@ -2427,3 +2427,81 @@ reads over its band. The IN-GAME yellow movement borders
 (`getTileBorderSegments`/`.tileBorderLine`) are untouched. Pinned in
 `map-designer.test.tsx` ("tier-band outline colours + legend": per-band stroke,
 the six-swatch legend, and a selected-overrides-band CONTROL).
+
+### Custom win conditions (map-designer + lobby, additional early-end trigger)
+
+A designed map (and, per-game, the lobby host) may author CUSTOM WIN CONDITIONS
+(`CustomMapPreset.customWinConditions` / `GameSetupOptions.customWinConditions`,
+`CustomWinCondition` in `state.ts`). ENGINE RULE: the FIRST live player — iterated
+in `turnOrder` — to satisfy ANY active condition WINS IMMEDIATELY, an ADDITIONAL
+early-end trigger layered on top of the normal victory mode (it does NOT replace
+it). Engine: `checkCustomWinConditions` (`adventure.ts`, next to
+`declareAdventureWinner`), called from the reducer's post-action tail
+(`reducer.ts`, right after `runAdventureAutomations` and before
+`ensureCombatActivation` — the ONE seam every action on every backend funnels
+through). Behaviour pinned in `src/engine/custom-win-conditions.test.ts` (each
+claim mutation-checked, with no-condition / below-threshold / VP-off CONTROLs).
+
+Seven kinds (params clamped by `sanitizeCustomWinConditions`, map-preset.ts):
+`control-towns` (count 2–8 — the home town counts, so a min of 2 avoids an
+instant win), `flag-mines` (2–12, mines+settlements combined), `hero-level`
+(main hero, 2–7), `gold` (treasury, 20–500), `artifacts` (own N, 1–10),
+`defeat-heroes` (1–6, main+secondary combined), `defeat-dragon-utopia` (no param).
+
+What runs (each with a failing-if-removed test):
+- **Any-of, first-to-satisfy**: conditions are evaluated in LIST ORDER for the
+  reason string; players in `turnOrder` (deterministic tie-break, documented).
+  The `GAME_WON` reason is `completed a custom win condition: <describe>` where
+  `<describe>` = `describeCustomWinCondition` (the SINGLE source for the editor
+  preview, the 🏁 map-pick banner line, the lobby list, and this reason — it
+  lives in `victory-points.ts`, NOT map-preset.ts, so `adventure.ts` can import
+  it without the map-preset→adventure cycle).
+- **The metrics ARE the Victory-Points readers** (reuse invariant): `mainHeroOf`,
+  `townsControlledBy`, `flaggedMineSettlementCount`, `artifactCountOf` are
+  exported from `victory-points.ts` and shared verbatim; gold is `resources.gold`;
+  `defeat-heroes` = `vpLedger.mainHeroDefeats.length + secondaryHeroDefeats`
+  (main once per opponent, VP-consistent; tolerates an absent ledger on legacy
+  snapshots); `defeat-dragon-utopia` = `vpLedger.utopiaDefeated`. Never duplicate
+  a metric — same numbers as VP scoring is the invariant.
+- **Combat-deferred**: the check SKIPS while a combat is open (`state.combat`), so
+  a threshold crossed mid-battle resolves on the next map-side action
+  (`ACKNOWLEDGE_COMBAT_END` and co. flow through the same tail) — the game is
+  never ended mid-fight. Pinned with an open-combat guard test + an
+  acknowledge-lands-the-win test.
+- **VP interplay**: the winner is declared through `declareAdventureWinner(…,
+  { viaVictoryCondition: true })`, so with VP mode OFF it is an INSTANT win (HUD +
+  GAME_WON, reason verbatim) exactly like the Grail, and with VP mode ON it
+  auto-routes to `endGameByVictoryPoints` (the completer earns the completion VP,
+  the most-VP seat wins, the VP_SCORING overlay fires). Both behaviours are free.
+- **Lobby is ADD-only, UNION at build**: `applyLobbyCustomWinConditions`
+  (adventure-setup.ts, chained after `applyLobbyVictoryPoints`) merges the map's
+  own list FIRST + the lobby-added list, exact-duplicate deduped, capped at
+  `MAX_CUSTOM_WIN_CONDITIONS` (4) via the shared pure `mergeCustomWinConditions`.
+  A map-authored condition is NEVER removed by the lobby. `setGameOptions` stores
+  the sanitised host list on `lobby.options.customWinConditions` and emits
+  `GAME_OPTIONS_CHANGED`.
+- **Public by design**: conditions ride `adventure.mapPreset`, which `player-view.ts`
+  does not mask — every seat can read them (unchanged; stated, not altered).
+- **Idempotent / live-only**: the win-declared guard makes a re-check a no-op (no
+  second GAME_WON); an ELIMINATED player satisfying a condition never wins
+  (the liveness skip mirrors last-faction-standing).
+
+UI: the map editor's "🏁 Custom win conditions" section (`map-preset-editor.tsx`,
+`CUSTOM_WIN_CONDITION_OPTIONS` / `defaultCustomWinCondition`, add/retype/param/
+remove up to 4) and the lobby "Custom win condition" section (`screen.tsx` rules
+tab, directly below Victory points: map-set conditions read-only + "map"-tagged,
+host add/remove dispatching `SET_GAME_OPTIONS { customWinConditions }`, Add
+disabled at the effective cap). Pinned in `map-preset-editor.test.tsx` and
+`game-options-tabs.test.tsx`.
+
+Deliberate LIMITS (documented, not bugs):
+- **No "defeat N Dragon Utopias"**: the VP ledger flag is a BOOLEAN
+  (`utopiaDefeated`), so `defeat-dragon-utopia` carries NO count even though a
+  designed map can host several Utopias — it fires on the FIRST one defeated.
+- **Instant-win foot-gun**: a condition already met at setup ends the game on the
+  first action — the designer's responsibility. The min-clamps REDUCE but cannot
+  eliminate it (e.g. a preset `startingResources` gold can exceed the gold
+  condition's 20 minimum; control-towns' min of 2 keeps the lone home town from
+  being an instant win, but a designed second town could still trip it).
+- **Never ends mid-battle** (the combat-deferred reading above) — a crossing
+  during combat waits for the next map-side action, by design.
