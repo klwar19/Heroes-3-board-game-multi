@@ -5065,6 +5065,61 @@ button.hbSlot:disabled { cursor: default; }
   white-space: nowrap;
 }
 
+/* Anime Hero Grades (§3.11): grade chip + node picker */
+.hbGrade {
+  color: #f0d8b0;
+  white-space: nowrap;
+}
+
+.hbGradePicker {
+  margin: 0.6cqw 1cqw 0;
+  padding: 0.6cqw 0.8cqw;
+  border: 1px solid rgba(244, 215, 116, 0.4);
+  border-radius: 0.6cqw;
+  background: rgba(244, 215, 116, 0.08);
+  font-size: 3cqw;
+}
+
+.hbGradePicker > strong {
+  color: #f4d774;
+}
+
+.hbGradePicker ul {
+  list-style: none;
+  margin: 0.4cqw 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4cqw;
+}
+
+.hbGradePick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1cqw;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  padding: 0.4cqw 0.6cqw;
+  border: 1px solid rgba(244, 215, 116, 0.35);
+  border-radius: 0.5cqw;
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+}
+
+.hbGradePick:hover {
+  background: rgba(244, 215, 116, 0.18);
+}
+
+.hbGradePickName {
+  font-weight: 700;
+  color: #f0d8b0;
+}
+
+.hbGradePickText {
+  opacity: 0.85;
+}
+
 /* Army + town panels */
 .armyPanel,
 .townPanel {

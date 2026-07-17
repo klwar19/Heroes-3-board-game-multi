@@ -148,6 +148,12 @@ export type AnimeModOptions = {
   gods: boolean;
   xianxiaArtifacts: boolean;
   heartDemon: boolean;
+  /**
+   * Hero Grades (shared spine, §3.11): a per-hero power ranking (Merit → grade
+   * 0-3) that unlocks a small passive/skill TREE. Shared by BOTH packages and
+   * ALL heroes; independent of Cultivation. Default OFF ⇒ byte-identical.
+   */
+  heroGrades: boolean;
   /** Calamity wave cadence when monsterWaves is on. */
   waveCadence?: 3 | 4 | 5;
 };
@@ -1111,6 +1117,16 @@ export type EffectDefinition =
       waterWalkThisTurn?: boolean;
       /** Shield of Naval Glory (Sea side): also draw this many cards. */
       drawCards?: number;
+    }
+  | {
+      /**
+       * Anime Hero Grades (anime.heroGrades, §3.11): the played card grants the
+       * player `amount` Merit (grade progress). A generic payload — the Training
+       * Manual item uses it, and any future card can carry it (that IS the arm).
+       * No-op when the module is off (gainGradeProgress gates on it).
+       */
+      type: "GAIN_GRADE_PROGRESS";
+      amount: number;
     }
   | {
       /**
@@ -2870,6 +2886,48 @@ export type GameAction =
       type: "COMMANDER_SET_STANCE";
       playerId: PlayerId;
       stance: "attack" | "defense";
+    }
+  | {
+      /**
+       * Anime Hero Grades (anime.heroGrades, §3.11): TRAIN on your own map turn —
+       * spend 2 movement points to gain 1 Merit (grade progress). Once per own
+       * turn. Handler-validated (self-validating).
+       */
+      type: "HERO_TRAIN";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Anime Hero Grades: spend one unspent grade point to pick a tree node
+       * (one node per tier, tier ≤ current grade). Handler-validated
+       * (self-validating; the node is baked into the action, so no window opens).
+       */
+      type: "HERO_GRADE_PICK";
+      playerId: PlayerId;
+      nodeId: string;
+    }
+  | {
+      /**
+       * Anime Hero Grades: use a "skill" tree node's ACTIVE — Forced March on the
+       * map (+1 movement, once per round) or War Cry during your own unit's combat
+       * activation (+1 Attack this activation, once per combat). `unitId` is the
+       * acting unit for combat actives; omitted for map actives.
+       */
+      type: "USE_HERO_SKILL";
+      playerId: PlayerId;
+      nodeId: string;
+      unitId?: UnitId;
+    }
+  | {
+      /**
+       * Anime Hero Grades: use a "skill" tree node as an instant REACTION inside
+       * an open attack window — Battle Focus (+1 Attack on your attacking unit) or
+       * Iron Will (+1 Defense on your attacked unit). Once per combat.
+       */
+      type: "USE_HERO_SKILL_REACTION";
+      playerId: PlayerId;
+      nodeId: string;
+      unitId: UnitId;
     }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_ACTIVATION"; playerId: PlayerId; unitId: UnitId }
@@ -4845,6 +4903,42 @@ export type GameEvent =
       heroId: HeroId;
     }
   | {
+      /**
+       * Anime Hero Grades (§3.11): the hero crossed a Merit threshold and rose to
+       * a new grade (1/2/3), earning one grade point. One event per grade.
+       */
+      id: string;
+      type: "HERO_GRADE_ADVANCED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      /** The new grade reached (1..HERO_GRADE_MAX; typed `number` for extensibility). */
+      grade: number;
+    }
+  | {
+      /** Anime Hero Grades (§3.11): the hero TRAINED (spent 2 MP for +1 Merit). */
+      id: string;
+      type: "HERO_TRAINED";
+      playerId: PlayerId;
+      heroId: HeroId;
+    }
+  | {
+      /** Anime Hero Grades (§3.11): a grade tree node was picked (point spent). */
+      id: string;
+      type: "HERO_GRADE_NODE_PICKED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      nodeId: string;
+      message: string;
+    }
+  | {
+      /** Anime Hero Grades (§3.11): a "skill" node's active/reaction was used. */
+      id: string;
+      type: "HERO_SKILL_USED";
+      playerId: PlayerId;
+      nodeId: string;
+      message: string;
+    }
+  | {
       /** WOG commander: its command ability resolved on a target. */
       id: string;
       type: "COMMANDER_CAST_USED";
@@ -6366,6 +6460,13 @@ export type PlayerState = {
      * within any single one. Absent === not yet used.
      */
     cultivationRerollUsed?: boolean;
+    /**
+     * Anime Hero Grades (anime.heroGrades, §3.11): the ids of the "skill" tree
+     * nodes this player has already used THIS COMBAT (Battle Focus, Iron Will,
+     * War Cry are each once-per-combat). Reset to [] at combat start
+     * (makeCombatShell) — per COMBAT, not per round. Absent === none used.
+     */
+    heroSkillsUsedThisCombat?: string[];
   };
   /**
    * Mod-agnostic counter: total Creature Bank battles this player has WON.
@@ -6376,6 +6477,12 @@ export type PlayerState = {
    * Absent === 0. PUBLIC (player-view never strips it).
    */
   bankWins?: number;
+  /**
+   * Anime Hero Grades (anime.heroGrades, §3.11): the game round each
+   * once-per-round map SKILL node was last used, keyed by node id (Forced
+   * March). `=== state.round` means already used this turn. Absent === never.
+   */
+  heroSkillUsedRound?: Record<string, number>;
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
   /** Round the Magic University deck-dig was last used ("once per round"). */
@@ -8456,6 +8563,15 @@ export type VisitStep =
       toDeck?: boolean;
     }
   | {
+      /**
+       * Anime Hero Grades (§3.11): grant a specific library card straight into
+       * the visitor's hand (the Training Manual item bought at the guild shops).
+       * Cost is charged by the wrapping PAY_TO step, so this step is free.
+       */
+      type: "GAIN_HAND_CARD";
+      cardId: CardId;
+    }
+  | {
       /** Returns revealed cards to their shared decks (shuffle in / discard pile / deck top / deck bottom). */
       type: "EVENT_RETURN_CARDS";
       cards: { cardId: CardId; deckId: DeckId }[];
@@ -9947,6 +10063,39 @@ export type HeroState = {
    * Absent === never attempted.
    */
   tribulationAttemptedRound?: number;
+  /**
+   * Anime Hero Grades (anime.heroGrades, §3.11): accumulated Merit (grade
+   * progress). Crossing a threshold (3 / 7 / 12) auto-grades the hero up and
+   * awards one grade point. Optional and lazily stamped (absent === 0 Merit),
+   * so a module-off table and every legacy snapshot never carry it. Written only
+   * on a MAIN hero; every grant reads it through the player's main hero
+   * (heroGradeOf in anime-hero-grades.ts). PUBLIC (player-view never strips it).
+   */
+  gradeProgress?: number;
+  /**
+   * Anime Hero Grades: the hero's current grade — 0 up to the data-defined cap
+   * (HERO_GRADE_MAX = threshold array length; 3 as shipped). Optional/lazily
+   * stamped (absent === grade 0). Gates which tree tiers may be picked.
+   * Independent of {@link cultivationRealm} (both tracks coexist). Typed `number`
+   * so adding a tier is a pure data change.
+   */
+  grade?: number;
+  /**
+   * Anime Hero Grades: unspent grade points (one per grade-up). Spent by
+   * HERO_GRADE_PICK to pick one tree node per unlocked tier. Absent === 0.
+   */
+  gradePoints?: number;
+  /**
+   * Anime Hero Grades: the tree node ids this hero has picked (at most one per
+   * tier). Read by every passive/skill grant. Absent === none picked.
+   */
+  gradeNodes?: string[];
+  /**
+   * Anime Hero Grades: the game round in which this hero last used the
+   * HERO_TRAIN map action ("once per your turn"). `=== state.round` means
+   * already trained this turn. Absent === never trained.
+   */
+  heroTrainedRound?: number;
 };
 
 export type AttackRollCandidate = {

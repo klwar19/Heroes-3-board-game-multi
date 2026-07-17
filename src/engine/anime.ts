@@ -27,7 +27,8 @@ export const DEFAULT_ANIME_OPTIONS: AnimeModOptions = {
   dungeon: false,
   gods: false,
   xianxiaArtifacts: false,
-  heartDemon: false
+  heartDemon: false,
+  heroGrades: false
 };
 
 /** Master crest / skin gate. */

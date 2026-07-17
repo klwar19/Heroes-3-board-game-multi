@@ -38,6 +38,18 @@ import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
 import {
+  gainGradeProgress,
+  heroGradeHandLimitBonus,
+  heroGradeResourceRoundGold,
+  heroGradeResourceRoundMaterials,
+  heroGradesEnabled
+} from "./anime-hero-grades";
+import {
+  HERO_GRADE_MANUAL_SHOP_LOCATION_IDS,
+  HERO_GRADE_MERIT_HEX_LOCATION_IDS,
+  HERO_GRADE_TRAINING_MANUAL_CARD_ID
+} from "@/data/anime/hero-grades";
+import {
   applyMoraleCardGain,
   consumeHeldMoraleCard,
   moraleCardsRuleEnabled,
@@ -316,7 +328,14 @@ export function effectiveHandLimit(state: GameState, playerId: PlayerId): number
   // is a permanent-only delta helper that no live code feeds into a limit), so
   // folding here covers BOTH consumers — the draw-up in refreshHand and the
   // discard-down threshold in needsHandRefresh, which share this function.
-  const base = player.limits.hand + permanentBonus + cultivationHandLimitBonus(state, playerId);
+  // Anime Hero Grades Deep Pockets (tier 2, §3.11): +1 hand limit, folded at the
+  // same aggregation site as Cultivation Foundation so BOTH stack observably
+  // (a hero with both picks gets +2) across the draw-up and discard-down.
+  const base =
+    player.limits.hand +
+    permanentBonus +
+    cultivationHandLimitBonus(state, playerId) +
+    heroGradeHandLimitBonus(state, playerId);
 
   const active = getActiveAstrologersCard(state);
   let limit = base;
@@ -2057,6 +2076,15 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
   // level loop so a multi-level jump advances every qualifying realm, each with
   // exactly one feed event. No-op when the module is off.
   maybeAdvanceCultivationRealm(state, playerId);
+
+  // Anime Hero Grades (§3.11): +1 Merit (grade progress) per hero level-up — the
+  // baseline Merit source. Granted once for the whole XP gain (one Merit per
+  // level crossed); a threshold crossing auto-grades the hero up inside
+  // gainGradeProgress. No-op when the module is off / no level was gained.
+  const levelsGained = hero.level - previousLevel;
+  if (levelsGained > 0) {
+    gainGradeProgress(state, playerId, levelsGained, "level-up");
+  }
 
   // Learning ability: the Hero is "about to level up" (it just crossed at least
   // one level) and the player still holds a Learning card — offer to advance an
@@ -3877,6 +3905,28 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
       ? interactionToSteps(location.interaction, locationDiceBonusFor(state, playerId))
       : [];
 
+  // Anime Hero Grades (§3.11): the two "enlightenment" hexes grant +1 Merit IN
+  // ADDITION to their printed reward when the module is on. Runtime-gated so the
+  // module-OFF visit is byte-identical (the location definitions are untouched);
+  // reached only on a FRESH visit (past the black-cube guard above).
+  if (heroGradesEnabled(state) && HERO_GRADE_MERIT_HEX_LOCATION_IDS.has(location.id)) {
+    gainGradeProgress(state, playerId, 1, "hex");
+  }
+
+  // Anime Hero Grades (§3.11): the two guild shops sell the one-time Training
+  // Manual for 2 gold when the module is on. Appended (runtime-gated) as an
+  // optional PAY_TO the visitor resolves after the shop's own menu; the PAY_TO
+  // supplies the affordability gate + a Decline, and the inner GAIN_HAND_CARD
+  // grants the item straight to hand.
+  if (steps.length > 0 && heroGradesEnabled(state) && HERO_GRADE_MANUAL_SHOP_LOCATION_IDS.has(location.id)) {
+    steps.push({
+      type: "PAY_TO",
+      prompt: "Buy the Training Manual (Học Vũ Kinh)?",
+      costOptions: [{ gold: 2 }],
+      steps: [{ type: "GAIN_HAND_CARD", cardId: HERO_GRADE_TRAINING_MANUAL_CARD_ID }]
+    });
+  }
+
   if (steps.length === 0) {
     return;
   }
@@ -4891,6 +4941,21 @@ export function processPendingVisit(state: GameState): void {
         if (player) {
           player.hand.push(step.cardId);
           appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: true });
+        }
+        break;
+      }
+      case "GAIN_HAND_CARD": {
+        // Anime Hero Grades (§3.11): grant a specific library card to hand (the
+        // Training Manual bought at a guild shop). The wrapping PAY_TO already
+        // charged the cost, so this step is free.
+        const player = state.players[visit.playerId];
+        if (player) {
+          player.hand.push(step.cardId);
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} takes ${cardLibrary[step.cardId]?.name ?? step.cardId}.`,
+            visit.playerId
+          );
         }
         break;
       }
@@ -9744,6 +9809,15 @@ export function startAdventureRound(state: GameState): void {
     };
     if (income.gold || income.buildingMaterials || income.valuables) {
       gainResources(state, playerId, income, "resource round income");
+    }
+
+    // Anime Hero Grades (§3.11): Provisioner (+1 building materials) and
+    // Tactician (+2 gold) Resources-round passives — gated on the picked node,
+    // no-op when the module is off / unpicked.
+    const gradeMaterials = heroGradeResourceRoundMaterials(state, playerId);
+    const gradeGold = heroGradeResourceRoundGold(state, playerId);
+    if (gradeMaterials || gradeGold) {
+      gainResources(state, playerId, { buildingMaterials: gradeMaterials, gold: gradeGold }, "Hero Grade income");
     }
 
     // Crystal Dragons (army map ability): gain the printed resource each

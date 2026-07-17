@@ -577,6 +577,31 @@ export {
   tribulationAvailable
 } from "./anime-cultivation";
 export {
+  heroGradesEnabled,
+  heroGradeOf,
+  heroGradeProgressOf,
+  heroGradePointsOf,
+  heroGradeNodesOf,
+  heroHasGradeNode,
+  heroGradeHandLimitBonus,
+  heroGradeSpellPowerBonus,
+  gainGradeProgress,
+  gradeForMerit,
+  pickableNodesFrom,
+  heroGradeNode,
+  heroGradePickableNodes,
+  heroGradeRegisterKey,
+  heroGradeLabel,
+  heroTrainAvailable
+} from "./anime-hero-grades";
+export {
+  HERO_GRADE_MERIT_THRESHOLDS,
+  HERO_GRADE_TIER_COUNT,
+  HERO_GRADE_MAX,
+  HERO_GRADE_PICKS_PER_TIER,
+  HERO_GRADE_REGISTERS
+} from "@/data/anime/hero-grades";
+export {
   carveFieldOverride,
   getFieldOverrideDefinition,
   listFieldOverrideDefinitions,

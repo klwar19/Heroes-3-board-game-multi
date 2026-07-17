@@ -10,6 +10,7 @@ import { STARTING_ONLY_SPELLS, spellDeckBinhBasic, spellDeckBinhExpert, spellDec
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import { moraleCardPolarity } from "@/data/cards/morale";
 import { animeXianxiaArtifactCardIds } from "@/data/anime/artifacts";
+import { animeNeverDeckedCardIds } from "@/data/anime/hero-grades";
 import { coreHeroDefinitions } from "@/data/factions/core";
 
 /**
@@ -46,8 +47,11 @@ describe("deck coverage", () => {
 
   const DECK_KINDS = new Set(["artifact", "spell", "ability"]);
   const startingOnly = new Set(STARTING_ONLY_SPELLS);
-  // Optional-module cards join their decks only when the module is on.
-  const moduleGated = new Set<string>(animeXianxiaArtifactCardIds);
+  // Optional-module cards join their decks only when the module is on (Pháp Bảo),
+  // or NEVER join a deck at all: the Hero Grades Training Manual
+  // (`anime.heroGrades`) is bought at a guild shop, never drawn, so it is
+  // reachable through the shop only — see `animeNeverDeckedCardIds`.
+  const moduleGated = new Set<string>([...animeXianxiaArtifactCardIds, ...animeNeverDeckedCardIds]);
 
   it("places every implemented artifact, spell and ability in a draw deck", () => {
     const orphaned = Object.entries(cardLibrary)

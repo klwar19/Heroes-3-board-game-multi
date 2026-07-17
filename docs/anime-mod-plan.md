@@ -406,6 +406,119 @@ composition is tested:
 
 ---
 
+### 3.11 Hero Grades (shared system, `anime.heroGrades`) — SHIPPED
+
+A per-hero power ranking that fits EVERY hero (core factions and both anime
+packages) and coexists with Cultivation (§5.6) and the WOG/Polish rules as an
+independent track. **Default OFF ⇒ byte-identical.** Engine: the leaf read-layer
+`src/engine/anime-hero-grades.ts`; data `src/data/anime/hero-grades.ts`;
+behaviour pinned in `src/engine/anime-hero-grades.test.ts` (every claim
+mutation-checked with CONTROLs), the hero-board chip/picker in
+`src/components/hero-board.test.tsx`, and the combat reaction tile in
+`src/components/table/overlays.test.tsx`.
+
+**State (MAIN hero, optional/lazily-stamped, PUBLIC):** `hero.gradeProgress`
+(Merit), `hero.grade` (0..cap), `hero.gradePoints` (unspent picks),
+`hero.gradeNodes` (picked node ids), `hero.heroTrainedRound`; plus
+`combatStats.heroSkillsUsedThisCombat` and `player.heroSkillUsedRound`
+(cooldowns). Absent === 0/none, so legacy snapshots load unchanged.
+
+**Merit → grade** (`gainGradeProgress`, the ONE shared arm): thresholds live in a
+DATA array `HERO_GRADE_MERIT_THRESHOLDS = [3, 7, 12]` — grade 1 at 3 Merit, 2 at
+7, 3 at 12 (a widening 3/+4/+5 ladder: early grades from a couple of level-ups or
+hex visits, grade 3 a real investment). Crossing a threshold from ANY source
+auto-grades-up (+1 grade, +1 point, one `HERO_GRADE_ADVANCED` feed event per
+grade).
+
+**Merit sources (all funnel through the one arm):**
+1. **Level-ups** — +1 Merit per hero level-up (beside the Cultivation level-up
+   hook in `gainExperience`).
+2. **Hex riders** — `anime.dai_luyen_khi` + `anime.ngo_dao_thach` grant +1 Merit
+   IN ADDITION to their printed reward when on (runtime-gated at the visit-build
+   seam, so the module-OFF visit is byte-identical — CONTROL-pinned).
+3. **`HERO_TRAIN`** (handler-validated map action) — spend 2 MP → +1 Merit, once
+   per own turn.
+4. **Training Manual** (`anime.item.training_manual`, kind artifact/minor) — NOT
+   in any deck (declared in `animeNeverDeckedCardIds`, excluded from the
+   deck-coverage / sandbox invariants); bought for 2 gold at the Merchant Guild
+   Post AND Urahara's Shop (a module-gated appended `PAY_TO` → `GAIN_HAND_CARD`);
+   played on the map → +2 Merit, then removed from the game (`removeSelf`).
+5. **Generic payload** — the `GAIN_GRADE_PROGRESS { amount }` effect kind the
+   Manual uses is generic; any future card can carry it (that IS the arm).
+
+**The tree — 3 tiers × 3 nodes, pick 1 per tier** (`HERO_GRADE_PICK`,
+handler-validated: unspent point, tier ≤ grade, tier not full, node exists).
+Passives are always-on; **skills are used actively / as reactions, NOT via
+cards**, with cooldowns:
+- Tier 1 — Bounty Hunter's Eye (P, +1 gold after a won combat), Provisioner (P,
+  +1 building materials each Resources round), Battle Focus (S reaction, +1
+  Attack on your unit's declared attack, once/combat).
+- Tier 2 — Deep Pockets (P, +1 hand limit — stacks observably with Cultivation
+  Foundation, +2 total), Iron Will (S reaction, +1 Defense when your unit is
+  attacked, once/combat), Forced March (S map-active, +1 movement, once/round).
+- Tier 3 — Arcane Insight (P, +1 spell Power), War Cry (S combat-active during
+  your unit's activation, +1 Attack this activation, once/combat), Tactician (P,
+  +2 gold each Resources round).
+
+Skills are non-card offers: map/combat actives via legal-actions (`USE_HERO_SKILL`,
+surfaced as a combat command button / the map picker), reactions via
+`getLegalReactionsForTrigger` beside the commander defense reaction
+(`USE_HERO_SKILL_REACTION`, attribution + window advance exactly like
+`applyCommanderCastReaction`, rendered as a bespoke reaction-tray tile). Combat
+skills apply in the MAIN hero's combats only (commander-scope convention;
+garrison/secondary fights offer none). The +stat buffs reuse the commander cast
+machinery (an `ATTACK_BONUS`/`DEFENSE_BONUS` active effect — `current-combat-round`
+for reactions folding into the triggering attack, `current-activation` for War
+Cry).
+
+**Grade-name REGISTERS (one mechanic, package-specific NAMES)** — mirrors the §2
+resource-subtitle rule. Three bilingual registers indexed by grade 0..N in
+`src/data/anime/hero-grades.ts`: **core** (Recruit → Veteran → Champion →
+Legend), **xianxia** (Võ Giả → Cao Thủ → Tông Sư → Truyền Kỳ) and **isekai**
+(Rank F → C → A → S). Resolution (`heroGradeRegisterKey`): when EXACTLY ONE
+package's modules are active table-wide (module sets `XIANXIA_MODULE_FLAGS` /
+`ISEKAI_MODULE_FLAGS`; the package-neutral `enabled`/`heroGrades`/`destiny` count
+for neither) that package's register labels ALL heroes; when both or neither, fall
+back to the player's FACTION family (`FACTION_GRADE_REGISTER`, every current
+faction = core; a future anime town adds one data entry). The chip + picker use
+the resolved register; **mechanics/state never change with the label.**
+
+**Extensibility (pure data).** No literal tier number in engine logic: the grade
+cap, tier gating, picker grouping and register-length checks all derive from
+`HERO_GRADE_MERIT_THRESHOLDS.length`. The catalog is grouped by `tier` with any
+number of nodes per tier; pick-1-per-tier is `HERO_GRADE_PICKS_PER_TIER` (a future
+per-tier count is a one-line data change). The pure helpers `gradeForMerit` and
+`pickableNodesFrom` take the thresholds/catalog as parameters and are tested with
+a 4-tier fixture. **"Add a tier" recipe:** append a threshold to
+`HERO_GRADE_MERIT_THRESHOLDS`, add the tier's nodes to `HERO_GRADE_NODES`, and
+append ONE entry to every register in `HERO_GRADE_REGISTERS` (a test pins register
+length === tier count + 1).
+
+**Magnitudes-pegging (ONE power scale).** gold-after-win +1 ← Brute Soul-Reformer
+(+2) softened; Resources-round +1 materials ← Inexhaustible Cart of Ore; +2 gold
+← a major-artifact income tier; +1 hand limit ← Pandora / Cultivation Foundation;
++1 spell Power ← Pandora / Cultivation Nascent Soul; +1 Attack/Defense skill ←
+commander Precision/Shield reaction buffs; +1 movement ← Boots-of-Speed (single
+point).
+
+**AI (no stalls).** `HERO_GRADE_PICK` scores high in map-policy (spend the point
+immediately, prefer a passive at the lowest tier — no window to freeze on);
+`HERO_TRAIN` / Forced March score just above `END_TURN` (taken only when idle);
+War Cry scores in combat-policy just above a real attack (buff then strike); the
+reaction skills score above `PASS_REACTION` in card-policy (use, don't hoard).
+Optional offers auto-pass on AFK/timeout with no extra wiring.
+
+**Adaptations / deliberate limits (leading with what does NOT run):** HERO_TRAIN
+and Forced March, like the Cultivation Heavenly Tribulation before them, are
+offered as legal actions but rely on the hero-board picker / combat command dock
+for their surface (map-only actives get no bespoke button beyond the picker). The
+AI does not specifically seek the Training Manual at a shop (it declines the
+optional PAY_TO from surplus by default; buying it is a human play). Per-package
+fancy grade-label fonts/art are deferred (the register text is bilingual plain
+text).
+
+---
+
 ## 4. Mod plumbing (Phase 0)
 
 Everything in §3.1 plus: crest asset `public/assets/ui/anime-crest.webp`

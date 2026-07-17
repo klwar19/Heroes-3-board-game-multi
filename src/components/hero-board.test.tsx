@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { HeroBoard } from "./hero-board";
 import { CardZoomProvider } from "./table/zoom";
@@ -131,6 +131,63 @@ describe("HeroBoard — anime Cultivation realm chip (§5.6)", () => {
     // The default Bulwark adventure carries no anime options.
     const { container } = renderHeroBoard("eikthurn");
     expect(container.querySelector(".hbRealm")).toBeNull();
+  });
+});
+
+describe("HeroBoard — anime Hero Grades chip + picker (§3.11)", () => {
+  function gradesAdventure(anime: Record<string, unknown> = { enabled: true, heroGrades: true }): GameState {
+    return createAdventureGameState({
+      seed: "hero-board-grades",
+      rollFirstPlayer: false,
+      anime,
+      players: [
+        { id: "p1", name: "chen", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+  }
+
+  it("shows the grade chip + Merit progress using the resolved register (core for a plain table)", () => {
+    const state = gradesAdventure();
+    const hero = getMainHero(state, "p1")!;
+    hero.grade = 1;
+    hero.gradeProgress = 4;
+    const { container } = renderBoardState(state);
+    const chip = container.querySelector(".hbGrade");
+    expect(chip).toBeTruthy();
+    // Neither package active → per-faction (castle = core) register.
+    expect(chip?.textContent).toContain("Veteran");
+    expect(chip?.textContent).toContain("Merit 4");
+  });
+
+  it("uses the XIANXIA register when only a xianxia module is on (martial title)", () => {
+    const state = gradesAdventure({ enabled: true, heroGrades: true, cultivation: true });
+    getMainHero(state, "p1")!.grade = 1;
+    const { container } = renderBoardState(state);
+    expect(container.querySelector(".hbGrade")?.textContent).toContain("Expert");
+  });
+
+  it("renders a node picker with unspent points and dispatches HERO_GRADE_PICK on click", () => {
+    const state = gradesAdventure();
+    const hero = getMainHero(state, "p1")!;
+    hero.grade = 1;
+    hero.gradePoints = 1;
+    const dispatched: unknown[] = [];
+    const { container } = render(
+      <CardZoomProvider>
+        <HeroBoard state={state} playerId="p1" onAction={(action) => dispatched.push(action)} />
+      </CardZoomProvider>
+    );
+    const pick = container.querySelector(".hbGradePick");
+    expect(pick, "a pick button should render with an unspent point").toBeTruthy();
+    fireEvent.click(pick as Element);
+    expect(dispatched).toHaveLength(1);
+    expect((dispatched[0] as { type: string }).type).toBe("HERO_GRADE_PICK");
+  });
+
+  it("CONTROL — with the module OFF, no grade chip renders", () => {
+    const { container } = renderHeroBoard("eikthurn");
+    expect(container.querySelector(".hbGrade")).toBeNull();
   });
 });
 

@@ -3015,7 +3015,11 @@ export function TownHeroDock({
             >
               <X aria-hidden="true" size={16} />
             </button>
-            <HeroBoard playerId={openHeroSeat} state={state} />
+            <HeroBoard
+              playerId={openHeroSeat}
+              state={state}
+              onAction={onAction && openHeroSeat === viewerPlayerId ? onAction : undefined}
+            />
           </div>
         </>
       ) : null}

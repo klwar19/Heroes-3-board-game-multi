@@ -106,6 +106,16 @@ import {
   warMachinesForSale
 } from "./permanents";
 import { cultivationSpellPowerBonus, tribulationAvailable } from "./anime-cultivation";
+import {
+  heroGradeSpellPowerBonus,
+  heroGradePickableNodes,
+  heroGradeNodesOf,
+  heroSkillAvailableThisCombat,
+  heroSkillAvailableThisRound,
+  heroTrainAvailable,
+  playerMainHeroInCombat
+} from "./anime-hero-grades";
+import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
 import { neutralCombatControllerId, neutralControlMustAttack } from "./neutral-control";
 import {
@@ -320,6 +330,10 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
   // chokepoint — so a Power-scaling Specialty picks it up too (like Pandora),
   // and it agrees with the cast pipeline (resolvedSpellPowerForStackItem below).
   bonus += cultivationSpellPowerBonus(state, playerId);
+  // Anime Hero Grades Arcane Insight (tier 3, §3.11): +1 Power, folded at the
+  // same standing chokepoint so it stacks with Cultivation / Pandora and a
+  // Power-scaling Specialty picks it up too.
+  bonus += heroGradeSpellPowerBonus(state, playerId);
   return bonus;
 }
 
@@ -2387,6 +2401,9 @@ function isOptionEffectPlayable(
     case "RANDOM_ENEMY_DISCARD":
     case "GAIN_EXPERT_USE":
     case "CREATE_ACTIVE_EFFECT":
+    // Anime Hero Grades (§3.11): the Training Manual grants Merit — always a
+    // valid map play (a no-op when the module is off).
+    case "GAIN_GRADE_PROGRESS":
       return true;
     case "ENTER_PLAY":
       // The permanent-income side of a hybrid artifact (Eversmoking Ring of
@@ -4445,6 +4462,22 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   if (!alreadyAttacked) {
     addUnitAbilityActions(actions, state, playerId, activeUnit);
     addFortificationActions(actions, state, playerId, activeUnit);
+
+    // Anime Hero Grades (§3.11): War Cry — a combat active on your OWN unit's
+    // activation (+Attack this activation), offered before it attacks so the
+    // buff matters. Only your main hero's battles, only your real unit (never a
+    // controlled Neutral guard), once per combat.
+    if (!controlsNeutral && playerMainHeroInCombat(state, playerId)) {
+      for (const nodeId of heroGradeNodesOf(state, playerId)) {
+        const node = HERO_GRADE_NODES[nodeId];
+        if (node?.skill?.mode === "combat-active" && heroSkillAvailableThisCombat(state, playerId, nodeId)) {
+          actions.push({
+            label: `${node.name.en}: ${activeUnit.name} +${node.skill.amount} Attack this activation`,
+            action: { type: "USE_HERO_SKILL", playerId, nodeId, unitId: activeUnit.id }
+          });
+        }
+      }
+    }
   }
 
   for (const destination of getLegalMoveDestinations(combat, activeUnit, state)) {
@@ -6476,6 +6509,33 @@ export function getLegalReactionsForTrigger(
         ];
       }
     }
+
+    // Anime Hero Grades (§3.11): the reaction skills — Battle Focus (+Attack on
+    // YOUR attacking unit) and Iron Will (+Defense on YOUR attacked unit),
+    // offered to the relevant side in this open attack window. Non-card instants
+    // (no spell/limit gate), only in the main hero's battle, once per combat.
+    for (const [reactUnit, role] of [
+      [state.combat?.units[triggerEvent.attackerId], "attacker"],
+      [state.combat?.units[triggerEvent.defenderId], "defender"]
+    ] as const) {
+      const owner = reactUnit?.controllerId;
+      if (!reactUnit || !owner || owner === NEUTRAL_PLAYER_ID || !playerMainHeroInCombat(state, owner)) {
+        continue;
+      }
+      for (const nodeId of heroGradeNodesOf(state, owner)) {
+        const node = HERO_GRADE_NODES[nodeId];
+        if (node?.skill?.mode !== "reaction" || node.skill.role !== role || !heroSkillAvailableThisCombat(state, owner, nodeId)) {
+          continue;
+        }
+        result[owner] = [
+          ...(result[owner] ?? []),
+          {
+            label: `${node.name.en}: ${reactUnit.cardName} +${node.skill.amount} ${node.skill.stat === "attack" ? "Attack" : "Defense"}`,
+            action: { type: "USE_HERO_SKILL_REACTION", playerId: owner, nodeId, unitId: reactUnit.id }
+          }
+        ];
+      }
+    }
   }
 
   if (triggerEvent.type === "SPELL_CAST_STARTED") {
@@ -6686,7 +6746,10 @@ export function resolvedSpellPowerForStackItem(
     // Anime Cultivation Nascent Soul (realm 3, §5.6): +1 Power on every cast —
     // same chokepoint as the preview (standingSpellPower), so Book Spell casts
     // (polish-spell-book) and normal casts alike resolve one Power tier higher.
-    cultivationSpellPowerBonus(state, playerId);
+    cultivationSpellPowerBonus(state, playerId) +
+    // Anime Hero Grades Arcane Insight (tier 3, §3.11): +1 Power at the resolve
+    // chokepoint too, agreeing with the standingSpellPower preview above.
+    heroGradeSpellPowerBonus(state, playerId);
   const doubled = base * getSchoolPowerMultiplier(state, playerId, card);
   return Math.max(0, doubled - enemySpellPowerReductionFor(state, playerId));
 }
@@ -8895,6 +8958,38 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       label: "Brave the Heavenly Tribulation (Độ kiếp)",
       action: { type: "HEAVEN_TRIBULATION", playerId }
     });
+  }
+
+  // Anime Hero Grades (§3.11): TRAIN for Merit (spend 2 MP → +1 Merit, once per
+  // turn), spend a grade point on a tree node, and use the Forced March map
+  // active (+1 movement, once per round). All no-ops when the module is off.
+  if (heroTrainAvailable(state, playerId)) {
+    actions.push({
+      label: "Train (2 movement → +1 Merit)",
+      action: { type: "HERO_TRAIN", playerId }
+    });
+  }
+  for (const node of heroGradePickableNodes(state, playerId)) {
+    actions.push({
+      label: `Grade up: learn ${node.name.en} (${node.name.vi})`,
+      action: { type: "HERO_GRADE_PICK", playerId, nodeId: node.id }
+    });
+  }
+  for (const nodeId of heroGradeNodesOf(state, playerId)) {
+    const node = HERO_GRADE_NODES[nodeId];
+    if (
+      node?.skill?.mode === "map-active" &&
+      heroSkillAvailableThisRound(state, playerId, nodeId) &&
+      hasOpenAdventureTurn(state, playerId)
+    ) {
+      const hero = getMainHeroOf(state, playerId);
+      if (hero?.spaceId) {
+        actions.push({
+          label: `${node.name.en}: +${node.skill.amount} movement`,
+          action: { type: "USE_HERO_SKILL", playerId, nodeId }
+        });
+      }
+    }
   }
 
   for (const hero of Object.values(state.heroes)) {

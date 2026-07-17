@@ -1125,6 +1125,11 @@ export function scoreCardAction(
     case "USE_COMMANDER_CAST_REACTION":
       // Shield / Stone Skin reaction — buff defense before the hit.
       return { score: 1_130, policy: "card.commander-defense-reaction" };
+    case "USE_HERO_SKILL_REACTION":
+      // Anime Hero Grades Battle Focus / Iron Will (§3.11): a free once-per-combat
+      // +Attack (your attack) / +Defense (incoming hit). Scored above PASS_REACTION
+      // (1050) so the AI spends it rather than hoarding it — a simple "use it" policy.
+      return { score: 1_080, policy: "card.hero-skill-reaction" };
     case "USE_UNIT_MAGIC_MIRROR":
       return { score: 1_155, policy: "combat.use-innate-magic-mirror" };
     case "USE_UNIT_DIE_IGNORE": {

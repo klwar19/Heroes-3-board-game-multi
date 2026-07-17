@@ -18,6 +18,7 @@ import { CardZoomProvider } from "./zoom";
 import {
   AFK_AUTO_KICK_MS,
   AFK_IDLE_MS,
+  DEFAULT_ANIME_OPTIONS,
   applyAction,
   createAdventureGameState,
   createInitialGameState,
@@ -1753,5 +1754,65 @@ describe("ReactionTray — spell cast Power floor / ceiling", () => {
       fireEvent.click(screen.getByRole("button", { name: /resolve anyway/i }));
     });
     expect(onAction).toHaveBeenCalledWith({ type: "PASS_REACTION", playerId: "p1" });
+  });
+});
+
+describe("ReactionTray — anime Hero Grade reaction skill is reachable (§3.11)", () => {
+  /**
+   * p2's Skeletons attack p1's Griffins. p1's main hero has the Iron Will node,
+   * so the engine offers USE_HERO_SKILL_REACTION (a non-card instant, +1 Defense
+   * on the incoming hit) in the attack window. It is not a PLAY_REACTION card, so
+   * the tray renders its own bespoke tile.
+   */
+  function ironWillWindow(): GameState {
+    const state = createInitialGameState("tray-hero-grade-seed");
+    state.anime = { ...DEFAULT_ANIME_OPTIONS, enabled: true, heroGrades: true };
+    state.heroes.hero_p1.grade = 2;
+    state.heroes.hero_p1.gradeNodes = ["iron-will"];
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const target = state.combat!.units.unit_p1_griffins;
+    target.abilities = [];
+    target.position = 9;
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    attacker.abilities = [];
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    const result = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_griffins"
+    });
+    expect(result.errors).toEqual([]);
+    return result.state;
+  }
+
+  it("renders a tile that fires USE_HERO_SKILL_REACTION in the attack window", () => {
+    const state = ironWillWindow();
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    expect(getLegalActions(state, "p1").some((legal) => legal.action.type === "USE_HERO_SKILL_REACTION")).toBe(true);
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    const skillButton = screen.getByRole("button", { name: /Iron Will/i });
+    act(() => fireEvent.click(skillButton));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "USE_HERO_SKILL_REACTION",
+      playerId: "p1",
+      nodeId: "iron-will"
+    });
   });
 });

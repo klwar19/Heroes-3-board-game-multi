@@ -90,6 +90,8 @@ import {
   commanderGradeUp,
   reviveCommander,
   beginHeavenlyTribulation,
+  heroTrain,
+  heroGradePick,
   resolveCommanderFirstAid,
   commanderSetStance,
   spellBookAction,
@@ -181,6 +183,16 @@ import {
   startWarMachineRound
 } from "./permanents";
 import { cultivationCombatRerollBonus } from "./anime-cultivation";
+import {
+  gainGradeProgress,
+  heroGradeNode,
+  heroGradesEnabled,
+  heroSkillAvailableThisCombat,
+  heroSkillAvailableThisRound,
+  markHeroSkillUsedThisCombat,
+  markHeroSkillUsedThisRound,
+  playerMainHeroInCombat
+} from "./anime-hero-grades";
 import { createSeededRandom, setActiveEntropy } from "./random";
 import {
   combatHasHumanParticipant,
@@ -12593,6 +12605,164 @@ function applyCommanderCastReaction(
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
 
+/**
+ * Anime Hero Grades (§3.11): create the +Attack / +Defense buff a skill node
+ * applies to `unit` for the current attack/activation. Mirrors the commander
+ * cast buffs — an ATTACK_BONUS / DEFENSE_BONUS active effect scoped to the unit,
+ * `current-combat-round` for the reaction skills (folds into the triggering
+ * attack, like the commander defense reaction) and `current-activation` for the
+ * War Cry active (ends when the unit's activation does).
+ */
+function applyHeroSkillStatBuff(
+  state: GameState,
+  playerId: PlayerId,
+  unit: CombatUnitState,
+  stat: "attack" | "defense",
+  amount: number,
+  duration: "current-combat-round" | "current-activation",
+  label: string
+): void {
+  createActiveEffect(
+    state,
+    {
+      name: label,
+      scope: "unit",
+      duration: { type: duration },
+      polarity: "positive",
+      removable: true,
+      modifiers: [{ type: stat === "attack" ? "ATTACK_BONUS" : "DEFENSE_BONUS", amount }]
+    },
+    { type: "unit", unitId: unit.id, controllerId: playerId },
+    playerId,
+    { type: "unit", unitId: unit.id }
+  );
+}
+
+/**
+ * USE_HERO_SKILL: a skill node's ACTIVE — Forced March on the map (+movement,
+ * once per round) or War Cry during your own unit's combat activation (+Attack
+ * this activation, once per combat). Self-validating; dispatched by the node.
+ */
+function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { type: "USE_HERO_SKILL" }>): void {
+  if (!heroGradesEnabled(state)) {
+    throw new Error("Hero Grades is off for this game.");
+  }
+  const node = heroGradeNode(action.nodeId);
+  if (!node || node.kind !== "skill" || !node.skill) {
+    throw new Error("That is not a usable Hero Grade skill.");
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero || !(hero.gradeNodes ?? []).includes(node.id)) {
+    throw new Error("You have not learned that skill.");
+  }
+
+  if (node.skill.mode === "map-active") {
+    // Forced March: +N movement, once per round, on your own map turn.
+    if (state.combat) {
+      throw new Error("Forced March is used on the map, not in combat.");
+    }
+    if (!hasOpenAdventureTurn(state, action.playerId)) {
+      throw new Error("Use Forced March on your own turn.");
+    }
+    if (hero.spaceId === null) {
+      throw new Error("Your main hero must be on the map.");
+    }
+    if (!heroSkillAvailableThisRound(state, action.playerId, node.id)) {
+      throw new Error("Forced March has already been used this round.");
+    }
+    hero.movementPoints += node.skill.amount;
+    markHeroSkillUsedThisRound(state, action.playerId, node.id);
+    appendEvent(state, {
+      type: "HERO_SKILL_USED",
+      playerId: action.playerId,
+      nodeId: node.id,
+      message: `Forced March: +${node.skill.amount} movement.`
+    });
+    return;
+  }
+
+  // War Cry: combat active during your own unit's activation.
+  const combat = state.combat;
+  if (!combat || node.skill.mode !== "combat-active") {
+    throw new Error("War Cry is used during your unit's combat activation.");
+  }
+  const unit = action.unitId ? combat.units[action.unitId] : undefined;
+  if (!unit || unit.controllerId !== action.playerId) {
+    throw new Error("Pick your own unit.");
+  }
+  if (combat.activeUnitId !== unit.id) {
+    throw new Error("War Cry is used during that unit's activation.");
+  }
+  if (!playerMainHeroInCombat(state, action.playerId)) {
+    throw new Error("Hero Grade combat skills only aid your main hero's battles.");
+  }
+  if (!heroSkillAvailableThisCombat(state, action.playerId, node.id)) {
+    throw new Error("War Cry has already been used this combat.");
+  }
+  applyHeroSkillStatBuff(state, action.playerId, unit, node.skill.stat, node.skill.amount, "current-activation", `War Cry (${node.name.en})`);
+  markHeroSkillUsedThisCombat(state, action.playerId, node.id);
+  appendEvent(state, {
+    type: "HERO_SKILL_USED",
+    playerId: action.playerId,
+    nodeId: node.id,
+    message: `War Cry: ${unit.cardName} +${node.skill.amount} Attack this activation.`
+  });
+}
+
+/**
+ * USE_HERO_SKILL_REACTION: a skill node used as an instant reaction inside an
+ * open attack window — Battle Focus (+Attack on your attacking unit) or Iron
+ * Will (+Defense on your attacked unit). Once per combat; buffs the unit BEFORE
+ * the hit resolves (a current-combat-round effect folds into the triggering
+ * attack, exactly like the commander defense reaction).
+ */
+function applyHeroSkillReaction(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_HERO_SKILL_REACTION" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  if (!window || window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.priorityPlayerId !== action.playerId) {
+    throw new Error("No attack window is open for that skill.");
+  }
+  if (!heroGradesEnabled(state)) {
+    throw new Error("Hero Grades is off for this game.");
+  }
+  const node = heroGradeNode(action.nodeId);
+  if (!node || node.kind !== "skill" || node.skill?.mode !== "reaction") {
+    throw new Error("That is not a Hero Grade reaction skill.");
+  }
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  if (!combat || !unit || unit.controllerId !== action.playerId) {
+    throw new Error("Pick your own unit.");
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero || !(hero.gradeNodes ?? []).includes(node.id)) {
+    throw new Error("You have not learned that skill.");
+  }
+  if (!playerMainHeroInCombat(state, action.playerId)) {
+    throw new Error("Hero Grade combat skills only aid your main hero's battles.");
+  }
+  // Role gate: Battle Focus buffs YOUR attacking unit, Iron Will YOUR attacked one.
+  const expectedUnitId = node.skill.role === "attacker" ? window.triggerEvent.attackerId : window.triggerEvent.defenderId;
+  if (unit.id !== expectedUnitId) {
+    throw new Error("That skill cannot target this unit right now.");
+  }
+  if (!heroSkillAvailableThisCombat(state, action.playerId, node.id)) {
+    throw new Error("That skill has already been used this combat.");
+  }
+  applyHeroSkillStatBuff(state, action.playerId, unit, node.skill.stat, node.skill.amount, "current-combat-round", `${node.name.en} (Hero Grade)`);
+  markHeroSkillUsedThisCombat(state, action.playerId, node.id);
+  appendEvent(state, {
+    type: "HERO_SKILL_USED",
+    playerId: action.playerId,
+    nodeId: node.id,
+    message: `${node.name.en}: ${unit.cardName} +${node.skill.amount} ${node.skill.stat === "attack" ? "Attack" : "Defense"} this attack.`
+  });
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
 /** WOG War Zealot's always-on Magic Mirror, resolved without spending a card. */
 function applyUnitMagicMirror(
   state: GameState,
@@ -13962,6 +14132,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // discount) and is spent when its unit is bought.
   if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
     queueLegionDiscountChoice(state, action.playerId, card.id, effect.amount);
+  }
+
+  if (effect.type === "GAIN_GRADE_PROGRESS") {
+    // Anime Hero Grades (§3.11): the played card grants Merit (grade progress).
+    // The generic card payload — the Training Manual item uses it (its option is
+    // removeSelf, so the card leaves the game), and any future card can carry it.
+    // No-op when the module is off (gainGradeProgress gates on it).
+    gainGradeProgress(state, action.playerId, effect.amount, "card");
   }
 
   if (effect.type === "GAIN_HERO_MOVEMENT") {
@@ -18878,6 +19056,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REVIVE_COMMANDER",
   "COMMANDER_FIRST_AID",
   "COMMANDER_SET_STANCE",
+  "HERO_TRAIN",
+  "HERO_GRADE_PICK",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
@@ -19349,6 +19529,18 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "HEAVEN_TRIBULATION":
         beginHeavenlyTribulation(nextState, action);
+        break;
+      case "HERO_TRAIN":
+        heroTrain(nextState, action);
+        break;
+      case "HERO_GRADE_PICK":
+        heroGradePick(nextState, action);
+        break;
+      case "USE_HERO_SKILL":
+        applyHeroSkillActive(nextState, action);
+        break;
+      case "USE_HERO_SKILL_REACTION":
+        applyHeroSkillReaction(nextState, action, cards);
         break;
       case "COMMANDER_FIRST_AID":
         resolveCommanderFirstAid(nextState, action);

@@ -13,12 +13,21 @@ import {
   CULTIVATION_REALMS,
   EXPERT_USES_BY_LEVEL,
   HAND_LIMIT_BY_LEVEL,
+  HERO_GRADE_MAX,
+  HERO_GRADE_MERIT_THRESHOLDS,
   MAX_EXPERIENCE,
   SPECIALTY_LEVELS,
   cultivationEnabled,
   cultivationRealmOf,
   effectiveHandLimit,
   getMainHero,
+  heroGradeLabel,
+  heroGradeOf,
+  heroGradePickableNodes,
+  heroGradePointsOf,
+  heroGradeProgressOf,
+  heroGradesEnabled,
+  type GameAction,
   type GameState,
   type PlayerId
 } from "@/engine";
@@ -179,7 +188,16 @@ function specialtyDisplayName(cardId: string): string {
  * laurelled slots. Click the banner for the printed scan, the ability or any
  * specialty for the full card.
  */
-export function HeroBoard({ state, playerId }: { state: GameState; playerId: PlayerId }) {
+export function HeroBoard({
+  state,
+  playerId,
+  onAction
+}: {
+  state: GameState;
+  playerId: PlayerId;
+  /** When provided, the Hero-Grade node picker dispatches HERO_GRADE_PICK. */
+  onAction?: (action: GameAction) => void;
+}) {
   const { zoomCard, zoomContent } = useCardZoom();
   const player = state.players[playerId];
   const hero = getMainHero(state, playerId);
@@ -199,6 +217,15 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
   // the module on — a module-off / non-anime table shows nothing (CONTROL).
   const showRealm = cultivationEnabled(state);
   const realm = CULTIVATION_REALMS[cultivationRealmOf(state, playerId)];
+  // Anime Hero Grades (§3.11): a public grade chip + Merit progress + unspent-
+  // point indicator, and a pick-a-node picker. Renders only with the module on.
+  const showGrade = heroGradesEnabled(state);
+  const gradeValue = heroGradeOf(state, playerId);
+  const grade = heroGradeLabel(state, playerId, gradeValue);
+  const merit = heroGradeProgressOf(state, playerId);
+  const nextThreshold = gradeValue < HERO_GRADE_MAX ? HERO_GRADE_MERIT_THRESHOLDS[gradeValue] : null;
+  const gradePoints = heroGradePointsOf(state, playerId);
+  const pickableGradeNodes = heroGradePickableNodes(state, playerId);
 
   const stats = [
     { label: "Attack", value: heroDef.startingStats.attack, icon: <StatIcon stat="attack" /> },
@@ -373,10 +400,48 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
               ☯ {realm.en} · {realm.vi}
             </span>
           ) : null}
+          {showGrade ? (
+            <span
+              className="hbGrade"
+              title={`Hero Grade: ${grade.en} (${grade.vi}) · Merit ${merit}${nextThreshold ? `/${nextThreshold}` : " (max)"}`}
+            >
+              ⚔ {grade.en} · {grade.vi} · Merit {merit}
+              {nextThreshold ? `/${nextThreshold}` : ""}
+              {gradePoints > 0 ? ` · ${gradePoints} pt` : ""}
+            </span>
+          ) : null}
           <span>
             Hand {handLimit} · Crowns {player.limits.expertUses}
           </span>
         </footer>
+
+        {showGrade && gradePoints > 0 ? (
+          <div className="hbGradePicker">
+            <strong>Spend a grade point ({gradePoints}):</strong>
+            <ul>
+              {pickableGradeNodes.map((node) => (
+                <li key={node.id}>
+                  {onAction ? (
+                    <button
+                      type="button"
+                      className="hbGradePick"
+                      onClick={() => onAction({ type: "HERO_GRADE_PICK", playerId, nodeId: node.id })}
+                    >
+                      <span className="hbGradePickName">
+                        {node.kind === "passive" ? "◆" : "✦"} {node.name.en} · {node.name.vi} (Tier {node.tier})
+                      </span>
+                      <span className="hbGradePickText">{node.summary}</span>
+                    </button>
+                  ) : (
+                    <span className="hbGradePickName">
+                      {node.kind === "passive" ? "◆" : "✦"} {node.name.en} — {node.summary}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
     </div>
   );
