@@ -66,6 +66,7 @@ import {
   ReactionTray,
   RerollModal,
   SearchModal,
+  DeckSearchModeModal,
   ABILITY_DICE_READ_MS,
   DICE_PRESENT_MS,
   DICE_ROLL_MS,
@@ -6110,6 +6111,13 @@ export default function Home() {
             <PromptTray legalActions={legalActions} onAction={submitAction} onSwitchSeat={roomHosted ? undefined : (seat) => setViewerPlayerId(seat)} state={state} viewerPlayerId={viewerPlayerId} />
           ) : null}
           <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+          <DeckSearchModeModal
+            legalActions={legalActions}
+            onAction={submitAction}
+            state={state}
+            view={playerView}
+            viewerPlayerId={viewerPlayerId}
+          />
           <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           <LogDrawer state={state} />
           {isSeated && handMode === null && !forcedDiscard ? (
@@ -6446,6 +6454,13 @@ export default function Home() {
         <PromptTray legalActions={legalActions} onAction={submitAction} onSwitchSeat={roomHosted ? undefined : (seat) => setViewerPlayerId(seat)} state={state} viewerPlayerId={viewerPlayerId} />
       ) : null}
       <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <DeckSearchModeModal
+        legalActions={legalActions}
+        onAction={submitAction}
+        state={state}
+        view={playerView}
+        viewerPlayerId={viewerPlayerId}
+      />
       {/* Hold the instant window back until the attack-die animation has fully
           played out, so a post-roll reaction prompt (e.g. a lethal-save window
           in a neutral fight) never pops over the rolling dice. `combatPresenting`

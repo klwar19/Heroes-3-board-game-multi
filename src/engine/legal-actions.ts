@@ -38,6 +38,8 @@ import {
   obeliskRoleIsMonolith,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   SURRENDER_GOLD_COST,
+  currentSurrenderGoldCost,
+  tournamentMoraleSearchAgainEnabled,
   townHasBuildingEffect,
   unlockedRecruitTiers
 } from "./adventure";
@@ -929,6 +931,25 @@ export function getActivationStep(
   combat: CombatState,
   activeEffects: ActiveEffectState[] = []
 ): ActivationStep | null {
+  // Polish Wait phase: re-activate waited units from highest token number down.
+  if (combat.waitPhase) {
+    const pending = Object.values(combat.units).filter(
+      (unit) => isUnitAlive(unit) && unit.waitPending && !unit.activatedThisRound
+    );
+    if (pending.length === 0) {
+      return null;
+    }
+    const topToken = Math.max(...pending.map((unit) => unit.waitToken ?? 0));
+    const tier = pending
+      .filter((unit) => (unit.waitToken ?? 0) === topToken)
+      .sort((left, right) => left.id.localeCompare(right.id));
+    return {
+      side: tier[0]!.controllerId,
+      candidates: tier,
+      initiative: topToken
+    };
+  }
+
   const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
   return selectActivationStep(
     Object.values(combat.units),
@@ -4233,7 +4254,11 @@ function addControlledNeutralUnitActions(
   }
 
   const alreadyAttacked = Boolean(activeUnit.attackedThisActivation);
+  // Polish Wait re-activation: a Neutral that Waited MUST attack a player unit
+  // when it can (sheet: "Neutral units now has to attack players units").
+  const waitMustAttack = Boolean(combat.waitPhase && activeUnit.waitPending);
   const mustAttack =
+    waitMustAttack ||
     neutralControlMustAttack(state) ||
     (state.round % 2 === 0 && getAstrologersRoundFrenzy(activeUnit) > 0 && !alreadyAttacked);
 
@@ -4289,6 +4314,7 @@ function addControlledNeutralUnitActions(
       });
     }
     addControlledNeutralTokenActions(actions, state, playerId, activeUnit);
+    maybeAddControlledNeutralWait(actions, state, playerId, activeUnit);
     if (activeUnit.movedThisActivation) {
       actions.push(hold);
     }
@@ -4549,6 +4575,52 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
       }
     });
   }
+
+  // Polish Wait: once per combat round, at the beginning of activation (no
+  // move/attack yet), the unit may take a Wait token and re-activate later.
+  // Not offered during the Waited re-activation phase itself.
+  if (
+    houseRuleEnabled(state, "polish-wait") &&
+    !combat.waitPhase &&
+    !alreadyAttacked &&
+    !activeUnit.movedThisActivation &&
+    !activeUnit.waitToken &&
+    !isArrowTowerUnit(activeUnit)
+  ) {
+    actions.push({
+      label: `${activeUnit.name} wait`,
+      action: {
+        type: "WAIT_UNIT",
+        playerId,
+        unitId: activeUnit.id
+      }
+    });
+  }
+}
+
+/** Offer Wait on a controlled Neutral guard (same gates as player units). */
+function maybeAddControlledNeutralWait(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  activeUnit: CombatUnitState
+): void {
+  const combat = state.combat;
+  if (
+    !combat ||
+    !houseRuleEnabled(state, "polish-wait") ||
+    combat.waitPhase ||
+    activeUnit.attackedThisActivation ||
+    activeUnit.movedThisActivation ||
+    activeUnit.waitToken ||
+    isArrowTowerUnit(activeUnit)
+  ) {
+    return;
+  }
+  actions.push({
+    label: `${activeUnit.name} wait`,
+    action: { type: "WAIT_UNIT", playerId, unitId: activeUnit.id }
+  });
 }
 
 function addDeckSearchActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
@@ -4953,6 +5025,25 @@ function getLegalActionsCore(
               choiceId: choice.id,
               pick: { kind: "revealed", index, remove: true }
             }
+          });
+        }
+      }
+
+      // Tournament Book p.54: with a positive Morale token (token mode, not
+      // Morale Cards), discard all revealed cards and Search (X) again.
+      if (
+        choice.playerId === playerId &&
+        choice.revealedCardIds.length > 0 &&
+        tournamentMoraleSearchAgainEnabled(state) &&
+        !moraleCardsRuleEnabled(state)
+      ) {
+        const seer = state.players[playerId];
+        const hasToken = (seer?.morale ?? 0) >= 1 || (seer?.moraleOverflow ?? 0) > 0;
+        if (hasToken) {
+          const x = choice.baseCount ?? choice.revealedCardIds.length;
+          actions.push({
+            label: `Spend Morale token — discard all revealed, Search (${x}) again`,
+            action: { type: "SPEND_MORALE", playerId, benefit: "repeat-search" }
           });
         }
       }
@@ -8018,10 +8109,18 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   // (pvpEscapeWindowOpen) while the combat card window is open. (It is also
   // offered DURING placement — see addPvpRetreatDuringSetup.) Once a unit acts
   // Retreat closes and the in-fight concede takes over (addGiveUpCombatActions,
-  // labelled Retreat). Surrender, by contrast, is a "before battle" option only:
-  // it is offered solely in the prep window, never once deployment has begun.
+  // labelled Retreat). Surrender is prep-only by default; with polish-reduced-
+  // surrender it is also offered mid-fight (so the dropping cost can matter).
   const inPrep = inCombatPrep(state, playerId);
-  if (!inPrep && (!pvpEscapeWindowOpen(combat) || !isCombatCardWindowOpen(state))) {
+  const polishMidFight = houseRuleEnabled(state, "polish-reduced-surrender");
+  const earlyEscape = inPrep || (pvpEscapeWindowOpen(combat) && isCombatCardWindowOpen(state));
+  const midFightSurrender =
+    polishMidFight &&
+    !inPrep &&
+    !combat.setup &&
+    !combat.outcome &&
+    isCombatCardWindowOpen(state);
+  if (!earlyEscape && !midFightSurrender) {
     return;
   }
   const heroId =
@@ -8029,32 +8128,38 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   if (!heroId) {
     return;
   }
-  actions.push({
-    label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
-    action: { type: "RETREAT_FROM_COMBAT", playerId }
-  });
-  // Surrender is a before-battle decision only (the prep window), and never when
-  // defending your own Faction Town (rulebook p.46).
+  if (earlyEscape) {
+    actions.push({
+      label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
+      action: { type: "RETREAT_FROM_COMBAT", playerId }
+    });
+  }
+  // Surrender: prep (always) or mid-fight under polish-reduced-surrender. Never
+  // when defending your own Faction Town (rulebook p.46).
   const gold = state.players[playerId]?.resources.gold ?? 0;
   const escapingHero = state.heroes[heroId];
+  const surrenderWindow = inPrep || midFightSurrender;
   if (
-    inPrep &&
+    surrenderWindow &&
     !playerCannotSurrenderCombat(state, playerId) &&
     !isDefendingOwnFactionTown(state, playerId)
   ) {
     if (escapingHero?.kind === "secondary") {
       // Secondary-Hero surrender (house rule): sacrifice ONLY the 2nd hero — no
-      // gold, keep your army — instead of paying the 10-gold toll. Same
+      // gold, keep your army — instead of paying the gold toll. Same
       // SURRENDER_COMBAT action; escapePvpCombat routes it by hero kind.
       actions.push({
         label: "Surrender the Secondary Hero (lose only the 2nd hero — no gold, keep your army)",
         action: { type: "SURRENDER_COMBAT", playerId }
       });
-    } else if (gold >= SURRENDER_GOLD_COST) {
-      actions.push({
-        label: `Surrender (pay ${SURRENDER_GOLD_COST} gold, keep your whole army, return home)`,
-        action: { type: "SURRENDER_COMBAT", playerId }
-      });
+    } else {
+      const toll = currentSurrenderGoldCost(state);
+      if (gold >= toll) {
+        actions.push({
+          label: `Surrender (pay ${toll} gold, keep your whole army, return home)`,
+          action: { type: "SURRENDER_COMBAT", playerId }
+        });
+      }
     }
   }
 }

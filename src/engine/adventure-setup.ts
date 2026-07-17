@@ -668,6 +668,8 @@ export function tournamentRulesAllOn(
   return rules.banDiplomacy && rules.banHourglass && rules.secondPlayerMorale;
 }
 
+
+
 /**
  * Shared deck construction. Legacy: one mixed Spell deck, one Artifact deck.
  * BINH: the rulebook's optional "Split Artifact and Spell Decks" — Basic and
@@ -2583,7 +2585,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // first player's turn-1 flow). The feature's own tests opt in with
   // `startingBonus: true`.
   const applyStartingBonus = options.startingBonus ?? false;
-  const bonusSteps = applyStartingBonus ? startingBonusVisitSteps(difficulty) : null;
+  const polishReducedStarting = Boolean(houseRules["polish-reduced-starting-bonus"]);
+  const bonusSteps = applyStartingBonus
+    ? startingBonusVisitSteps(difficulty, { polishReduced: polishReducedStarting })
+    : null;
   if (bonusSteps) {
     for (const playerId of state.turnOrder) {
       if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId]) {
