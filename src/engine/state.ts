@@ -6943,6 +6943,18 @@ export type CombatState = {
   /** Set once the Skeletons reinforce has been offered (mid-combat or after). */
   skeletonReinforceGranted?: boolean;
   /**
+   * Single-player smoothing (house rule, computer/combat-boost.ts): the two
+   * temporary Empowered Attack/Defense statistic cards injected into the
+   * computer attacker's hand at NON-PvP combat start. `empoweredAdded` lists
+   * the ids this fight added to player.empoweredAbilities (stripped again at
+   * cleanup). The cards are removed from the game at combat end — never kept.
+   */
+  computerBoost?: {
+    playerId: PlayerId;
+    cardIds: CardId[];
+    empoweredAdded: CardId[];
+  } | null;
+  /**
    * Bulwark "Runes" (Gamefound Update #3, local house-rule gains), per Bulwark
    * player, for THIS combat only — discarded when the combat state is torn down,
    * so it resets every battle. `count` is the accumulated Rune total, earned in

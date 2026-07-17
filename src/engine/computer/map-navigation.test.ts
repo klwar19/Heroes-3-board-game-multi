@@ -2677,3 +2677,215 @@ describe("computer pathing respects designer-placed yellow borders", () => {
     expect(distanceFromHeroTo(blocked.state, blocked.hero, blocked.to.spaceId)).not.toBe(1);
   });
 });
+
+describe("computer tile rotation chases the NEEDED resource payoff", () => {
+  /**
+   * A test tile split by internal borders into two pockets — cluster A
+   * (center + slots 1-3) carrying the payoff field at slot 2, cluster B
+   * (slots 4-6) all empty. A rotation whose hero-facing slots are all in
+   * cluster A can reach the payoff; one facing only cluster B cannot. The
+   * NEED-weighting claim: the payoff rotation's edge over the empty rotation
+   * must GROW when the seat actually lacks that resource
+   * (premiumEconomyResourceBonus / the materials-short branch in
+   * tileHeroEntryScore). Removing the payoff loop or its need term makes the
+   * two deltas equal and fails these tests.
+   */
+  function rotationDeltaWith(
+    payoffField: Record<string, unknown>,
+    setResources: (state: GameState) => void,
+  ): number {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    setResources(state);
+
+    let center: { row: number; col: number } | undefined;
+    for (const field of Object.values(state.adventure!.fields)) {
+      hero.spaceId = field.spaceId;
+      center = farTilePlacementCenters(state, hero)[0];
+      if (center) break;
+    }
+    expect(center, "the starting map exposes a placeable outer notch").toBeDefined();
+
+    const testDefId = "TEST_AI_RESOURCE_ROTATION";
+    allTileDefinitions[testDefId] = {
+      id: testDefId,
+      group: "far",
+      content: "core_game",
+      terrain: "grass",
+      fields: Array.from({ length: 7 }, (_, slot) =>
+        slot === 2 ? { location: "mine", ...payoffField } : { location: "empty_field" },
+      ),
+      outerImpassable: [false, false, false, false, false, false],
+      // Wall cluster B (4-6) off from cluster A (0-3): the payoff at slot 2 is
+      // reachable only through a cluster-A entrance.
+      internalBorders: [
+        [3, 4], [6, 1], [0, 4], [0, 5], [0, 6],
+      ],
+      source: { product: "test", credit: "test" },
+    } as (typeof allTileDefinitions)[string];
+
+    try {
+      const tile = {
+        id: "ai-resource-rotation-tile",
+        tileDefId: testDefId,
+        centerRow: center!.row,
+        centerCol: center!.col,
+        rotation: 0,
+        faceDown: false,
+        group: "far" as const,
+        awaitingRotation: true,
+      };
+      state.adventure!.tiles[tile.id] = tile;
+      state.adventure!.pendingTileChoice = {
+        tileInstanceId: tile.id,
+        playerId: "p2",
+        kind: "place",
+        heroId: hero.id,
+      };
+
+      const heroNeighbors = new Set(getAdjacentSpaceIds(hero.spaceId!));
+      const adjacentSlots = (rotation: number): number[] =>
+        tileFootprint(center!, rotation)
+          .map((cell, slot) => ({ id: hexSpaceId(cell), slot }))
+          .filter((entry) => heroNeighbors.has(entry.id))
+          .map((entry) => entry.slot);
+      const rotations = [0, 1, 2, 3, 4, 5].filter((rotation) =>
+        canHeroReachPlacedTile(state, hero, testDefId, center!, rotation),
+      );
+      const payoffRotation = rotations.find((rotation) => {
+        const slots = adjacentSlots(rotation);
+        return (
+          slots.length > 0 && slots.every((slot) => slot >= 1 && slot <= 3)
+        );
+      });
+      const emptyRotation = rotations.find((rotation) => {
+        const slots = adjacentSlots(rotation);
+        return slots.length > 0 && slots.every((slot) => slot >= 4);
+      });
+      expect(payoffRotation).toBeDefined();
+      expect(emptyRotation).toBeDefined();
+
+      const scoreOf = (rotation: number) =>
+        scoreMapAction(observe(state), {
+          type: "SET_TILE_ROTATION",
+          playerId: "p2",
+          tileInstanceId: tile.id,
+          rotation,
+        })!.score;
+      return scoreOf(payoffRotation!) - scoreOf(emptyRotation!);
+    } finally {
+      delete allTileDefinitions[testDefId];
+    }
+  }
+
+  it("a valuables ('crystal') mine pulls the rotation harder while valuables are SHORT", () => {
+    const valuablesMine = { resource: "valuables", difficulty: 1 };
+    const deltaNeed = rotationDeltaWith(valuablesMine, (state) => {
+      state.players.p2.resources = { gold: 30, buildingMaterials: 5, valuables: 0 };
+    });
+    const deltaFlush = rotationDeltaWith(valuablesMine, (state) => {
+      state.players.p2.resources = { gold: 30, buildingMaterials: 5, valuables: 20 };
+    });
+    expect(deltaNeed).toBeGreaterThan(deltaFlush);
+    // The payoff rotation must dominate outright when the resource is needed.
+    expect(deltaNeed).toBeGreaterThan(40);
+  });
+
+  it("an ordinary materials mine counts too while the next dwelling still needs materials", () => {
+    const materialsMine = { resource: "buildingMaterials", difficulty: 1 };
+    const deltaNeed = rotationDeltaWith(materialsMine, (state) => {
+      state.players.p2.resources = { gold: 30, buildingMaterials: 0, valuables: 2 };
+    });
+    const deltaFlush = rotationDeltaWith(materialsMine, (state) => {
+      state.players.p2.resources = { gold: 30, buildingMaterials: 20, valuables: 2 };
+    });
+    expect(deltaNeed).toBeGreaterThan(deltaFlush);
+  });
+});
+
+describe("fallback staging — the hero never just stands still when outmatched", () => {
+  /**
+   * Surgery on the real nav-map: every payoff is exhausted (visitables
+   * black-cubed, flaggables/towns already ours, no face-down tile, no Ⅱ–Ⅲ
+   * supply) and every remaining guard is difficulty 6 — far above a level-1
+   * hero with no army. The OLD objective list came back empty, so the hero
+   * ended every turn in place. The staging fallback must list those future
+   * fights, march the hero adjacent, and still refuse the hopeless entry.
+   */
+  function exhaustedMap(): { state: GameState; hero: HeroState } {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.round = 2;
+    state.players.p2.army = [];
+    state.players.p2.resources = { gold: 5, buildingMaterials: 0, valuables: 0 };
+    for (const field of Object.values(state.adventure!.fields)) {
+      const category = locationDefinitions[field.location]?.category;
+      if (isFieldGuardedForTest(field)) {
+        field.difficulty = 6;
+        continue;
+      }
+      if (category === "visitable" || category === "revisitable") {
+        field.blackCube = true;
+      }
+      if (category === "town" && field.flagOwnerId !== "p2") {
+        // Neutralize foreign/unowned towns (a conquest victory objective
+        // would keep the pool non-empty) WITHOUT reflagging them — a second
+        // p2-flagged town would confuse homeTileInstanceId.
+        field.location = "empty_field";
+        field.flagOwnerId = null;
+        continue;
+      }
+      if (category === "flaggable" && field.flagOwnerId !== "p2") {
+        field.flagOwnerId = "p2";
+        field.everFlagged = true;
+      }
+    }
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
+    state.adventure!.playerFarTiles.p2 = [];
+    state.adventure!.farTilePool = [];
+    return { state, hero };
+  }
+
+  function isFieldGuardedForTest(field: MapFieldState): boolean {
+    return Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
+  }
+
+  it("lists the unbeatable guards as staging targets instead of an empty plan", () => {
+    const { state, hero } = exhaustedMap();
+    const objectives = collectMapObjectives(state, hero);
+    expect(objectives.length).toBeGreaterThan(0);
+    expect(objectives.every((objective) => objective.kind === "guard")).toBe(true);
+    expect(primaryMapObjective(state, hero, objectives)).not.toBeNull();
+  });
+
+  it("marches toward the staged fight but refuses the hopeless entry", () => {
+    const { state, hero } = exhaustedMap();
+    // Two steps out from the difficulty-6 home mine: the march step (via the
+    // town) must beat END_TURN (300); the entry itself stays blocked (250).
+    hero.spaceId = RESOURCE;
+    expect(moveScoreTo(state, hero, TOWN)).toBeGreaterThan(300);
+    hero.spaceId = TOWN;
+    expect(moveScoreTo(state, hero, MINE)).toBeLessThanOrEqual(250);
+  });
+
+  it("CONTROL: one beatable guard suppresses staging entirely", () => {
+    const { state, hero } = exhaustedMap();
+    const mine = state.adventure!.fields[MINE];
+    mine.difficulty = 1; // level-1 hero covers it again
+    const objectives = collectMapObjectives(state, hero);
+    expect(objectives.some((objective) => objective.spaceId === MINE)).toBe(true);
+    expect(objectives.some((objective) => objective.spaceId === TREASURE)).toBe(false);
+  });
+
+  it("CONTROL: a secondary hero never stages at fights it will not take", () => {
+    const { state } = exhaustedMap();
+    const hero = p2Hero(state);
+    const secondary: HeroState = { ...hero, id: "sec1", kind: "secondary" };
+    state.heroes[secondary.id] = secondary;
+    expect(collectMapObjectives(state, secondary)).toEqual([]);
+  });
+});

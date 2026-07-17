@@ -174,8 +174,12 @@ describe("single-player premium-economy rush benchmarks", () => {
     // Silver dwelling fuels the rush force: measured 7/8 by R6; floor 6.
     expect(atMost(reports, 6, (r) => r.silverRound), info).toBeGreaterThanOrEqual(6);
     // Gold dwelling: measured 8/8 by R13 and 4/8 by R10; floors 7 and 3.
+    // RE-MEASURED (2026-07 smarter-AI policy: mulligan cycling, Legion voucher
+    // play, staging fallback, combat boost): gold [12,11,8,-,11,11,10,9] —
+    // 6/8 by R11 (was 4/8), one dice-variance seed (measure-d) misses R14.
     expect(atMost(reports, 13, (r) => r.goldRound), info).toBeGreaterThanOrEqual(7);
     expect(atMost(reports, 10, (r) => r.goldRound), info).toBeGreaterThanOrEqual(3);
+    expect(atMost(reports, 11, (r) => r.goldRound), info).toBeGreaterThanOrEqual(4);
     // The roster must never stall at the 3 starting cards: measured army size
     // at R14 [7,7,4,5,6,8,6,6] (6/8 at 5+); floors 6-of-8 at ≥4 and 5-of-8 at ≥5.
     expect(
@@ -211,5 +215,13 @@ describe("single-player premium-economy rush benchmarks", () => {
     expect(atMost(reports, 6, (r) => r.captureRound), info).toBeGreaterThanOrEqual(6);
     // Gold dwelling on the easier ladder: measured 5/8 by R10; floor 4.
     expect(atMost(reports, 10, (r) => r.goldRound), info).toBeGreaterThanOrEqual(4);
+    // "make sure AI can build gold before round 9" (user spec, 2026-07):
+    // RE-MEASURED on the smarter-AI policy: gold [10,11,8,-,7,7,10,9] — three
+    // seeds land BEFORE round 9 (R7, R7, R8) and 7/8 by R11. Floors 2 and 5:
+    // the capability is real and pinned, while one seed of dice drift cannot
+    // flake CI. HONEST LIMIT: the map's premium-economy placement decides the
+    // ceiling — every seed before R9 would be a dishonest floor.
+    expect(atMost(reports, 8, (r) => r.goldRound), info).toBeGreaterThanOrEqual(2);
+    expect(atMost(reports, 11, (r) => r.goldRound), info).toBeGreaterThanOrEqual(5);
   }, 240_000);
 });
