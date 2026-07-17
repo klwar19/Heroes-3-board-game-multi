@@ -33,24 +33,36 @@ function twoPlayerGame(): GameState {
   return state;
 }
 
-function renderDock(state: GameState) {
+/** Render the HUD-variant dock — the seated map placement, folded into the HUD. */
+function renderHudDock(state: GameState) {
   return render(
     <CardZoomProvider>
-      <OpponentInfoDock seatIds={["p1", "p2"]} state={state} variant="map" viewerPlayerId="p1" />
+      <OpponentInfoDock seatIds={["p1", "p2"]} state={state} variant="hud" viewerPlayerId="p1" />
     </CardZoomProvider>
   );
 }
 
 describe("OpponentInfoDock", () => {
+  it("folds the opponent buttons into the adventure HUD as an aligned cell (no standalone box)", () => {
+    const { container } = renderHudDock(twoPlayerGame());
+    // New map placement: an `advHudCell` that shares the HUD ribbon's rhythm…
+    const cell = container.querySelector(".advHudCell.opponents");
+    expect(cell).toBeTruthy();
+    // …carrying the per-opponent button…
+    expect(within(cell as HTMLElement).getByRole("button", { name: /Bob/ })).toBeTruthy();
+    // …and NOT the old free-floating pill-box.
+    expect(container.querySelector(".opponentInfoDock")).toBeNull();
+  });
+
   it("shows one button per OPPONENT (not the viewer's own seat)", () => {
-    renderDock(twoPlayerGame());
+    renderHudDock(twoPlayerGame());
     // Bob is an opponent → a button; Alice is the viewer → no button.
     expect(screen.getByRole("button", { name: /Bob/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Alice/ })).toBeNull();
   });
 
   it("opens a panel with the opponent's resources, buildings, hero level and units", () => {
-    renderDock(twoPlayerGame());
+    renderHudDock(twoPlayerGame());
     fireEvent.click(screen.getByRole("button", { name: /Bob/ }));
 
     const dialog = screen.getByRole("dialog");
@@ -68,12 +80,30 @@ describe("OpponentInfoDock", () => {
     expect(panel.getAllByText(new RegExp(unitName)).length).toBeGreaterThan(0);
   });
 
-  it("renders nothing when the viewer has no opponents", () => {
+  it("renders nothing (no HUD cell, no box, no button) when the viewer has no opponents", () => {
+    // Solo / single-live-seat table: neither the HUD cell nor a floating box —
+    // the control proving the relocation leaves no empty residue anywhere.
     const { container } = render(
       <CardZoomProvider>
-        <OpponentInfoDock seatIds={["p1"]} state={twoPlayerGame()} variant="combat" viewerPlayerId="p1" />
+        <OpponentInfoDock seatIds={["p1"]} state={twoPlayerGame()} variant="hud" viewerPlayerId="p1" />
       </CardZoomProvider>
     );
+    expect(container.querySelector(".advHudCell.opponents")).toBeNull();
     expect(container.querySelector(".opponentInfoDock")).toBeNull();
+    expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("keeps the bordered dock box in COMBAT (the card-strip placement is unchanged)", () => {
+    // Combat has no HUD ribbon, so it retains the self-contained box — the
+    // control proving the HUD-cell shape is map-only.
+    const { container } = render(
+      <CardZoomProvider>
+        <OpponentInfoDock seatIds={["p1", "p2"]} state={twoPlayerGame()} variant="combat" viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+    const box = container.querySelector(".opponentInfoDock.combat");
+    expect(box).toBeTruthy();
+    expect(within(box as HTMLElement).getByRole("button", { name: /Bob/ })).toBeTruthy();
+    expect(container.querySelector(".advHudCell.opponents")).toBeNull();
   });
 });

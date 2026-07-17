@@ -111,6 +111,27 @@ describe("refreshComputerMemory / sticky / notes", () => {
     expect(getComputerMemory(state, "p2").lastMarketRound).toBe(2);
   });
 
+  it("notes a REVISIT_FIELD on the hero's field — the Stables loop breaker", () => {
+    // A Stables revisit refunds the 1 MP it costs, so without this note an
+    // idle hero revisited it FOREVER (real 256-step runner stall, seed
+    // measure-f). Recording the field arms the map-policy thrash-skip gate.
+    let state = baseState(2, 12, 4);
+    (state.heroes as Record<string, unknown>).h2 = {
+      id: "h2",
+      controllerId: "p2",
+      kind: "main",
+      spaceId: "stables-field",
+    };
+    state = noteComputerAction(state, "p2", {
+      type: "REVISIT_FIELD",
+      playerId: "p2",
+      heroId: "h2",
+    } as never);
+    expect(getComputerMemory(state, "p2").visitedThisTurn).toContain(
+      "stables-field",
+    );
+  });
+
   it("CONTROL: empty memory for unknown seats", () => {
     const state = baseState(1, 10, 4);
     const mem = getComputerMemory(state, "p9");

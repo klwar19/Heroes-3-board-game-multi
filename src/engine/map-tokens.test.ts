@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyAction,
   createAdventureGameState,
+  getPlayerView,
   getTileFootprintSpaceIds,
   legalTokenSlotsForTileDef,
   type GameAction,
@@ -187,6 +188,44 @@ describe("Monolith travel", () => {
     // Option order mirrors the destination list; the second is tile C's exit.
     expect(state.heroes.hero_p1.spaceId).toBe(exitC);
     expect(exitB).not.toBe(exitC);
+  });
+
+  it("tags the destination picker for the map (teleport kind + option exit hexes), masked from other seats", () => {
+    let state = makeGame("monolith-teleport-tag");
+    const [afterA, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [afterB, tileB] = placeEmptyTile(afterA, "F3", { row: 30, col: 18 });
+    const [afterC, tileC] = placeEmptyTile(afterB, "F4", { row: 36, col: 24 });
+    state = afterC;
+    const entry = carveToken(state, tileA, 1, "monolith");
+    const exitB = carveToken(state, tileB, 2, "monolith");
+    const exitC = carveToken(state, tileC, 3, "monolith");
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+
+    const step = adv(state).pendingVisit?.steps[0];
+    if (step?.type !== "CHOOSE_ONE") {
+      throw new Error("no destination choice");
+    }
+    // The picker is tagged so the board can offer each destination as a glowing,
+    // clickable exit hex; dropping the tag fails here (mutation control).
+    expect(step.teleport).toEqual({ kind: "monolith" });
+    // Every option's first step teleports the hero to a REAL destination hex the
+    // board can highlight — exactly the two other Monoliths, no raw ids invented.
+    const optionHexes = step.options.map((option) =>
+      option.steps[0]?.type === "TELEPORT_HERO" ? option.steps[0].spaceId : null
+    );
+    expect(optionHexes).toHaveLength(2);
+    expect(optionHexes).toContain(exitB);
+    expect(optionHexes).toContain(exitC);
+
+    // Masking CONTROL: the OTHER seat's view carries NO visit steps at all — so
+    // neither the teleport tag nor any destination hex leaks to a non-traveller.
+    const p2Step = getPlayerView(state, "p2").adventure?.pendingVisit?.steps ?? [];
+    expect(p2Step).toEqual([]);
+    // …while the traveller's own view keeps the tagged picker.
+    const p1Step = getPlayerView(state, "p1").adventure?.pendingVisit?.steps[0];
+    expect(p1Step?.type === "CHOOSE_ONE" && p1Step.teleport).toEqual({ kind: "monolith" });
   });
 
   it("a hero standing on a Monolith may Revisit (1 MP) to travel again", () => {

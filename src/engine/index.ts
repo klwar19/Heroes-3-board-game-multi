@@ -162,8 +162,11 @@ export {
   spellMaxUsefulPower,
   spellMinUsefulPower,
   spellPowerBreakpoints,
-  spellPowerValueOfCard
+  spellPowerLadder,
+  spellPowerValueOfCard,
+  spellTimingKind
 } from "./effects";
+export type { SpellLadderRow, SpellTimingKind } from "./effects";
 export { appendEvent } from "./events";
 export { getPlayerView, OBSERVER_VIEWER_SEAT, PASSWORD_REDACTED, redactStateForSeat } from "./player-view";
 export { createSeededRandom } from "./random";
@@ -221,6 +224,7 @@ export {
   eligibleSpellDecks,
   estatesGold,
   expertUsesAvailable,
+  expertUsesTotalThisRound,
   getRuleset,
   rulesetCardNote,
   specialtyTransformHealth,
@@ -688,6 +692,9 @@ export { getUnitTokens, tokenAttackBonus, tokenDefenseDelta } from "./tokens";
 export {
   ARROW_TOWER_POSITION,
   ARROW_TOWER_STATS,
+  destroyEnemyFortificationsInCells,
+  enemyFortificationsInCells,
+  fortificationTargetId,
   getDemolishAbility,
   intactFortificationPositions,
   isArrowTowerUnit,
