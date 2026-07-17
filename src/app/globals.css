@@ -7028,6 +7028,146 @@ button.hbSlot:disabled { cursor: default; }
 }
 /* === end StoryOverlay ==================================================== */
 
+/* === Story-mode hub (/story) ============================================= *
+   Campaign cards for the Story-mode hub. The package theme classes
+   (.xianxiaTheme / .isekaiTheme) are stamped on each CARD only — never on the
+   app root — so the mixed-package coexistence discipline holds and these rules
+   have zero effect anywhere but this page. */
+.storyHubToolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.storyHubBlurb {
+  flex: 1;
+  margin: 0;
+}
+.storyLangToggle {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 6px 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.storyCampaignList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+.storyCampaignCard {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 16px;
+  background: rgba(12, 14, 22, 0.55);
+}
+.storyCampaignCard.xianxiaTheme {
+  border-color: rgba(111, 214, 176, 0.45);
+  background: linear-gradient(160deg, rgba(14, 30, 26, 0.72), rgba(10, 16, 18, 0.6));
+}
+.storyCampaignCard.isekaiTheme {
+  border-color: rgba(168, 140, 240, 0.45);
+  background: linear-gradient(160deg, rgba(24, 18, 38, 0.72), rgba(12, 12, 20, 0.6));
+}
+.storyCampaignTitle {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+.xianxiaTheme .storyCampaignTitle {
+  color: #7fe3c0;
+}
+.isekaiTheme .storyCampaignTitle {
+  color: #b8a2f4;
+}
+.storyCampaignTagline {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+.storyCampaignProtagonist {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.storyChapterList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.storyChapter {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.22);
+}
+.storyChapter.status-locked {
+  opacity: 0.62;
+}
+.storyChapterHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.storyChapterNumber {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.1);
+}
+.storyChapterTitle {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+}
+.storyChapterStatus {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--muted);
+}
+.storyChapterStatus.status-completed {
+  color: #7fe3c0;
+  border-color: rgba(111, 214, 176, 0.6);
+}
+.storyChapterStatus.status-playable {
+  color: var(--gold);
+  border-color: rgba(232, 200, 120, 0.6);
+}
+.storyChapterSynopsis {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.storyChapterHint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-style: italic;
+}
+.storyBeginButton {
+  margin-top: 8px;
+  padding: 7px 14px;
+  font-weight: 700;
+}
+.storyHubNav {
+  margin-top: 16px;
+}
+/* === end Story-mode hub ================================================== */
+
 .astrologersProclaimHead {
   display: flex;
   align-items: center;

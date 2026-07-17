@@ -80,6 +80,15 @@ import {
   type MapEventCue
 } from "@/components/table/overlays";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
+import { campaignSceneToFire } from "@/lib/campaign-triggers";
+import {
+  getCampaignBinding,
+  isCampaignIntroShown,
+  isCampaignOutcomeShown,
+  markCampaignIntroShown,
+  markCampaignOutcomeShown,
+  markChapterCompleted
+} from "@/lib/campaign-progress";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
 import {
   buildMoraleCardCues,
@@ -906,6 +915,13 @@ export default function Home() {
   // STORY_SCENE_TRIGGERED event id (never replayed on reconnect). Same cue
   // semantics as the MapEventOverlay above.
   const [storyCue, setStoryCue] = useState<StoryCue | null>(null);
+  // Campaign story mode (Anime mod §12): a single-player room launched from
+  // /story carries a localStorage binding; the chapter's intro / victory /
+  // defeat scenes pop through the SAME storyCue pipeline. A room with NO binding
+  // (every normal table) is inert — campaignSceneToFire returns null.
+  const campaignBinding = useMemo(() => (roomId ? getCampaignBinding(roomId) : null), [roomId]);
+  const firedCampaignStartRef = useRef(false);
+  const firedCampaignOutcomeRef = useRef(false);
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   // Single-player: a computer opponent's whole map turn settles at once, so its
@@ -1137,6 +1153,38 @@ export default function Home() {
   useEffect(() => {
     viewerRef.current = viewerPlayerId;
   }, [viewerPlayerId]);
+
+  // Campaign story-mode triggers (Anime mod §12): fire the chapter's onStart
+  // when the adventure first becomes visible, and onVictory / onDefeat at
+  // game-over — each once per room (localStorage markers + refs guard re-fire;
+  // markChapterCompleted persists a win). The decision is the pure
+  // campaignSceneToFire; this wiring stays thin. Unbound rooms fire nothing.
+  useEffect(() => {
+    if (!state || !roomId || !campaignBinding) {
+      return;
+    }
+    const trigger = campaignSceneToFire(state, campaignBinding, viewerPlayerId, {
+      introShown: firedCampaignStartRef.current || isCampaignIntroShown(roomId),
+      outcomeShown: firedCampaignOutcomeRef.current || isCampaignOutcomeShown(roomId)
+    });
+    if (!trigger) {
+      return;
+    }
+    if (trigger.kind === "start") {
+      firedCampaignStartRef.current = true;
+      markCampaignIntroShown(roomId);
+      setStoryCue({ id: `campaign:${roomId}:start`, sceneId: trigger.sceneId });
+      return;
+    }
+    firedCampaignOutcomeRef.current = true;
+    markCampaignOutcomeShown(roomId);
+    if (trigger.kind === "victory") {
+      markChapterCompleted(trigger.complete.campaignId, trigger.complete.chapterId);
+    }
+    if (trigger.sceneId) {
+      setStoryCue({ id: `campaign:${roomId}:outcome`, sceneId: trigger.sceneId });
+    }
+  }, [state, roomId, campaignBinding, viewerPlayerId]);
 
   // Map -> battle hand-off: the combat/map toggle is local and sticky, so a
   // fight opened (or finished) while it still pointed at "map" from a previous
