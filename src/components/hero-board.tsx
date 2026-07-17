@@ -188,6 +188,9 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
   const faction = coreFactionDefinitions[heroDef.faction];
   const theme = BOARD_THEMES[heroDef.faction] ?? BOARD_THEMES.castle;
   const ability = cardLibrary[heroDef.startingAbilityCardId];
+  const gainedSpecialtyLevels = SPECIALTY_TRACK_LEVELS.filter((level) => hero.level >= level);
+  const currentSpecialtyLevel = gainedSpecialtyLevels.at(-1) ?? 1;
+  const currentSpecialtyId = heroDef.specialtyCardIds?.[currentSpecialtyLevel as 1 | 4 | 6];
   const handLimit = effectiveHandLimit(state, playerId);
 
   const stats = [
@@ -246,39 +249,16 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
                 <span className="hbPanelLabel">{ability?.name ?? "Ability"}</span>
                 <CardArt cardId={heroDef.startingAbilityCardId} kind="ability" />
               </button>
-              <div className="hbSpecialtyGroup">
+              <button
+                className="hbSpecialty"
+                onClick={() => (currentSpecialtyId ? zoomCard(currentSpecialtyId) : undefined)}
+                title="Current specialty card"
+                type="button"
+              >
                 <span className="hbPanelLabel">Specialty</span>
-                {/* Every specialty card the hero can gain (Ⅰ / Ⅳ / Ⅵ) is shown:
-                    an EARNED one (hero level ≥ its level) wears a golden frame,
-                    an unearned one is dimmed so you can still preview it. */}
-                <div className="hbSpecialtyRow" aria-label="Specialty cards">
-                  {SPECIALTY_TRACK_LEVELS.map((level) => {
-                    const specId = heroDef.specialtyCardIds?.[level as 1 | 4 | 6];
-                    const earned = hero.level >= level;
-                    return (
-                      <button
-                        aria-label={`${specId ? specialtyDisplayName(specId) : "Specialty"} — level ${ROMAN[level]}${earned ? " (earned)" : " (locked)"}`}
-                        className={`hbSpecCard ${earned ? "earned" : "locked"}`}
-                        disabled={!specId}
-                        key={level}
-                        onClick={() => (specId ? zoomCard(specId) : undefined)}
-                        title={
-                          specId
-                            ? earned
-                              ? `${specialtyDisplayName(specId)} — level ${ROMAN[level]} specialty (earned)`
-                              : `${specialtyDisplayName(specId)} — gained at level ${ROMAN[level]}`
-                            : `Level ${ROMAN[level]} specialty`
-                        }
-                        type="button"
-                      >
-                        <span className="hbSpecCardLevel">{ROMAN[level]}</span>
-                        <CardArt cardId={specId} kind="specialty" />
-                        <span className="hbSpecName">{specId ? specialtyDisplayName(specId) : "—"}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                <CardArt cardId={currentSpecialtyId} kind="specialty" />
+                <span className="hbSpecName">{currentSpecialtyId ? specialtyDisplayName(currentSpecialtyId) : "—"}</span>
+              </button>
             </div>
             {player.scrolls && player.scrolls.length > 0 ? (
               <div
@@ -324,18 +304,20 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
                 </span>
                 <div className="hbSlotCell">
                   {specialty && specialtyCardId ? (
+                    // The specialty card is visible from the very beginning:
+                    // EARNED (hero level ≥ Ⅰ/Ⅳ/Ⅵ) wears the golden frame,
+                    // unearned stays a dimmed preview — click zooms either way.
                     <button
-                      className={`hbSlot hbSlotSpecialty ${reached ? "gained" : ""}`}
-                      disabled={!reached}
+                      className={`hbSlot hbSlotSpecialty ${reached ? "gained" : "preview"}`}
                       onClick={() => zoomCard(specialtyCardId)}
                       title={
                         reached
                           ? `${specialtyDisplayName(specialtyCardId)} (level ${ROMAN[level]} specialty)`
-                          : `Specialty card gained at level ${ROMAN[level]}`
+                          : `${specialtyDisplayName(specialtyCardId)} — specialty card gained at level ${ROMAN[level]}`
                       }
                       type="button"
                     >
-                      {reached ? <CardArt cardId={specialtyCardId} kind="specialty" /> : null}
+                      <CardArt cardId={specialtyCardId} kind="specialty" />
                     </button>
                   ) : keptAbilityId ? (
                     <button

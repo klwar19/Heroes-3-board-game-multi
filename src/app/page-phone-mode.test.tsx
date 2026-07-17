@@ -378,14 +378,15 @@ describe("phone UI mode — combat surface", () => {
   });
 });
 
-describe("in-game top-row table menu — the aligned-band variant class", () => {
+describe("in-game top-row table menu — the box-free variant class", () => {
   // The table-controls panel (`.tableMenu`) is shared by the setup lobby, the
   // Battle Test setup, and the two IN-GAME table screens (map + combat). Only
   // the in-game placements sit in the top-row band beside the HUD, so only they
-  // carry `.tableMenuInline` — the hook the desktop CSS keys on to trade the
-  // floating gem-framed box for the HUD's leather ribbon. jsdom cannot compute
-  // the CSS, so this pins the class WIRING (present in-game, absent pre-game);
-  // the actual leather-band paint is a real-browser concern.
+  // carry `.tableMenuInline` — the hook the desktop CSS keys on to strip EVERY
+  // wrapping box (no gem frame, no border/background), leaving the self-styled
+  // controls bare in the top band. jsdom cannot compute the CSS, so this pins
+  // the class WIRING (present in-game, absent pre-game); the actual box-free
+  // paint is a real-browser concern.
   it("the adventure map tags the controls panel with `.tableMenuInline`", async () => {
     window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
     serveRoom(createAdventureGameState({ seed: "menu-band-map", rollFirstPlayer: false }));

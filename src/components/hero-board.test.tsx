@@ -66,26 +66,36 @@ describe("HeroBoard — new Bulwark heroes render on the table", () => {
   });
 });
 
-// jsdom cannot compute CSS, so the golden-frame LOOK is not asserted here (it is
-// CSS-only, see globals.css .hbSpecCard.earned); these pin the WIRING — which
-// class each slot carries and which card each slot renders — so a browser then
-// paints earned-gold vs locked-dim / a kept-ability thumb vs the search glyph.
-describe("HeroBoard — Feature A: the full Ⅰ/Ⅳ/Ⅵ specialty row", () => {
-  it("always shows all three specialty cards; only earned levels carry the golden-frame class (level 1)", () => {
+// jsdom cannot compute CSS, so the golden-frame LOOK is not asserted here (it
+// is CSS-only, see globals.css .hbSlotSpecialty.gained/.preview); these pin the
+// WIRING — which class each LEVEL-TRACK slot carries and that its card art is
+// drawn from the start — so a browser paints earned-gold vs dimmed-preview.
+describe("HeroBoard — the Ⅰ/Ⅳ/Ⅵ specialty cards live in the LEVEL-TRACK boxes", () => {
+  it("shows all three specialty cards in the track from level 1; only Ⅰ is earned (golden), Ⅳ/Ⅵ are dimmed previews", () => {
     const { container } = renderBoardState(bulwarkAdventure("eikthurn")); // starts at level 1
-    // All three specialty cards are present (not just the current one).
-    expect(container.querySelectorAll(".hbSpecialtyRow .hbSpecCard")).toHaveLength(3);
-    // At level 1 only the Ⅰ specialty is earned (golden frame); Ⅳ and Ⅵ are locked.
-    expect(container.querySelectorAll(".hbSpecCard.earned")).toHaveLength(1);
-    expect(container.querySelectorAll(".hbSpecCard.locked")).toHaveLength(2);
+    const slots = container.querySelectorAll(".hbTrack .hbSlotSpecialty");
+    expect(slots).toHaveLength(3);
+    // Every slot renders its card art from the very beginning (no empty box).
+    for (const slot of slots) {
+      expect(slot.querySelector(".hbArt")).toBeTruthy();
+    }
+    expect(container.querySelectorAll(".hbTrack .hbSlotSpecialty.gained")).toHaveLength(1);
+    expect(container.querySelectorAll(".hbTrack .hbSlotSpecialty.preview")).toHaveLength(2);
   });
 
-  it("CONTROL — the earned (golden) class tracks the hero level: at level 4, Ⅰ and Ⅳ are earned", () => {
+  it("CONTROL — the golden wrap tracks the hero level: at level 4, Ⅰ and Ⅳ are earned", () => {
     const state = bulwarkAdventure("eikthurn");
     getMainHero(state, "p1")!.level = 4;
     const { container } = renderBoardState(state);
-    expect(container.querySelectorAll(".hbSpecCard.earned")).toHaveLength(2);
-    expect(container.querySelectorAll(".hbSpecCard.locked")).toHaveLength(1);
+    expect(container.querySelectorAll(".hbTrack .hbSlotSpecialty.gained")).toHaveLength(2);
+    expect(container.querySelectorAll(".hbTrack .hbSlotSpecialty.preview")).toHaveLength(1);
+  });
+
+  it("the loadout area keeps ONLY the single current-specialty icon (no card row up top)", () => {
+    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
+    expect(container.querySelectorAll(".hbLoadout .hbSpecialty")).toHaveLength(1);
+    expect(container.querySelector(".hbSpecialtyRow")).toBeNull();
+    expect(container.querySelector(".hbSpecCard")).toBeNull();
   });
 });
 
