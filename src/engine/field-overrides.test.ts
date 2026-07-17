@@ -19,13 +19,19 @@ import { createAdventureGameState, createAdventureLobbyState, applyAction } from
 import {
   assignPoolFieldOverrides,
   carveFieldOverride,
+  fieldOverrideMayCoverField,
   fieldOverridesEnabled,
   offerPendingFieldOverridePlacement,
   placeFieldOverride,
   resolveFieldOverridesEnabled
 } from "./field-overrides";
 import type { CustomMapTilePlan, GameState, MapTileState } from "./state";
-import { getTileFootprintSpaceIds } from "./adventure";
+import {
+  eliminatePlayer,
+  getTileFootprintSpaceIds,
+  instantiateTile,
+  tokenPlacementCandidates
+} from "./adventure";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -241,5 +247,194 @@ describe("carve + placement", () => {
       optionIndex: 0
     });
     expect(result.state.adventure!.fields[spaceId]?.location).toBe("anime.ngo_dao_thach");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audit regressions — each test fails if its fix is reverted.
+// ---------------------------------------------------------------------------
+
+describe("placement choice terminates (no endless pool re-draws)", () => {
+  function stagedManualGame(seed: string) {
+    const state = createAdventureGameState({
+      seed,
+      ruleset: "binh",
+      creatureBanks: false,
+      fieldOverrides: true,
+      anime: animeOn(),
+      fieldOverridePlacement: "manual-or-refuse",
+      rollFirstPlayer: false,
+      rotateStartTiles: false
+    });
+    const tile = Object.values(state.adventure!.tiles).find((t) => !t.faceDown)! as MapTileState;
+    tile.group = "far";
+    tile.awaitingRotation = false;
+    tile.pendingFieldOverrides = [{ kind: "ngo_dao_thach", fromPool: true }];
+    tile.pendingFieldOverride = tile.pendingFieldOverrides[0];
+    const opened = offerPendingFieldOverridePlacement(state, tile, "p1");
+    return { state, tile, opened };
+  }
+
+  it("PLACING via CHOOSE_OPTION carves once, closes the window and never re-opens it", () => {
+    const { state, tile, opened } = stagedManualGame("fo-no-loop-place");
+    if (!opened || state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected a manual placement choice");
+    }
+    const result = applyAction(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice.id,
+      optionIndex: 0
+    });
+    expect(result.errors).toHaveLength(0);
+    const after = result.state;
+    // Pre-fix this re-stamped a fresh pool draw and trapped the player in an
+    // endless placement window: the choice must be CLOSED and the queue empty.
+    expect(after.pendingChoice).toBeNull();
+    const tileAfter = after.adventure!.tiles[tile.id];
+    expect(tileAfter.pendingFieldOverride).toBeUndefined();
+    expect(tileAfter.pendingFieldOverrides).toBeUndefined();
+    const carved = Object.values(after.adventure!.fields).filter(
+      (f) => f.location === "anime.ngo_dao_thach"
+    );
+    expect(carved).toHaveLength(1);
+  });
+
+  it("REFUSING closes the window for good — the tile stays as printed", () => {
+    const { state, tile, opened } = stagedManualGame("fo-no-loop-refuse");
+    if (!opened || state.pendingChoice?.type !== "OPTION_CHOICE" || !state.pendingChoice.fieldOverride) {
+      throw new Error("expected a manual-or-refuse choice");
+    }
+    const refuseIndex = state.pendingChoice.fieldOverride.candidates.length;
+    const result = applyAction(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice.id,
+      optionIndex: refuseIndex
+    });
+    expect(result.errors).toHaveLength(0);
+    const after = result.state;
+    expect(after.pendingChoice).toBeNull();
+    const tileAfter = after.adventure!.tiles[tile.id];
+    expect(tileAfter.pendingFieldOverride).toBeUndefined();
+    expect(tileAfter.pendingFieldOverrides).toBeUndefined();
+    expect(
+      Object.values(after.adventure!.fields).some((f) => f.location.startsWith("anime."))
+    ).toBe(false);
+  });
+});
+
+describe("a carved override hex is protected (Location-Token-like)", () => {
+  it("a second override and a Monolith token both refuse the carved hex (empty sibling CONTROL)", () => {
+    const state = createAdventureGameState({
+      seed: "fo-protect",
+      ruleset: "binh",
+      creatureBanks: false,
+      fieldOverrides: true,
+      anime: animeOn(),
+      rollFirstPlayer: false,
+      rotateStartTiles: false
+    });
+    const adventure = state.adventure!;
+    const tile = Object.values(adventure.tiles).find((t) => !t.faceDown)! as MapTileState;
+    tile.group = "far";
+    tile.awaitingRotation = false;
+    const footprint = getTileFootprintSpaceIds(tile);
+    // Two clean, guard-free land hexes on the tile.
+    const [carvedHex, controlHex] = footprint.filter((spaceId) => {
+      const field = adventure.fields[spaceId];
+      return (
+        field &&
+        field.location !== "town" &&
+        field.location !== "blocked_field" &&
+        !field.difficulty &&
+        field.terrain !== "water" &&
+        !Object.values(state.heroes).some((hero) => hero.spaceId === spaceId)
+      );
+    });
+    if (!carvedHex || !controlHex) {
+      throw new Error("expected two clean hexes on the staged tile");
+    }
+    for (const hex of [carvedHex, controlHex]) {
+      const field = adventure.fields[hex];
+      field.location = "empty_field";
+      delete field.difficulty;
+      delete field.resource;
+      delete field.amount;
+    }
+    carveFieldOverride(adventure, carvedHex, "kiem_trung");
+    const ngoDef = getFieldOverrideDefinition("ngo_dao_thach")!;
+
+    // A later override in the queue must pick a DIFFERENT hex…
+    expect(fieldOverrideMayCoverField(state, carvedHex, ngoDef)).toBe(false);
+    // …and a Monolith/Whirlpool/Gate token may not overwrite it either.
+    tile.pendingToken = { kind: "monolith" };
+    const candidates = tokenPlacementCandidates(state, tile, "monolith");
+    expect(candidates).not.toContain(carvedHex);
+    // CONTROL: the untouched empty sibling hex stays coverable by both.
+    expect(fieldOverrideMayCoverField(state, controlHex, ngoDef)).toBe(true);
+    expect(candidates).toContain(controlHex);
+  });
+});
+
+describe("elimination mid-placement never strands the reveal chain", () => {
+  it("drops the override queue and auto-places the waiting designed token", () => {
+    const state = createAdventureGameState({
+      seed: "fo-eliminate",
+      ruleset: "binh",
+      creatureBanks: false,
+      fieldOverrides: true,
+      anime: animeOn(),
+      fieldOverridePlacement: "manual-or-refuse",
+      rollFirstPlayer: false,
+      rotateStartTiles: false,
+      players: [
+        { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    const adventure = state.adventure!;
+    // A fresh face-up Far tile away from every hero, fields materialized.
+    const tile = instantiateTile(adventure, "F1", { row: 24, col: 12 }, 0, false);
+    tile.group = "far";
+    tile.awaitingRotation = false;
+    for (const spaceId of getTileFootprintSpaceIds(tile)) {
+      const field = adventure.fields[spaceId];
+      if (field) {
+        field.location = "empty_field";
+        delete field.difficulty;
+        delete field.resource;
+        delete field.amount;
+        delete field.terrain;
+      }
+    }
+    tile.pendingFieldOverrides = [{ kind: "ngo_dao_thach", fromPool: true }];
+    tile.pendingFieldOverride = tile.pendingFieldOverrides[0];
+    const monolithHex = getTileFootprintSpaceIds(tile)[2];
+    tile.pendingTokens = [{ kind: "monolith", preferredSpaceId: monolithHex }];
+    tile.pendingToken = tile.pendingTokens[0];
+
+    const opened = offerPendingFieldOverridePlacement(state, tile, "p1");
+    expect(opened, "the manual window opened and was holding the token behind it").toBe(true);
+
+    eliminatePlayer(state, "p1", "left the game", false);
+
+    // The choice is gone, the queue with it, and the designed Monolith was
+    // auto-placed instead of leaking forever on the revealed tile.
+    expect(state.pendingChoice).toBeNull();
+    const tileAfter = state.adventure!.tiles[tile.id];
+    expect(tileAfter.pendingFieldOverride).toBeUndefined();
+    expect(tileAfter.pendingFieldOverrides).toBeUndefined();
+    expect(tileAfter.pendingToken).toBeUndefined();
+    expect(tileAfter.pendingTokens).toBeUndefined();
+    expect(state.adventure!.fields[monolithHex]?.location).toBe("monolith");
+  });
+});
+
+describe("starting tiles never host an override pin", () => {
+  it("no registered kind claims the 'starting' tile group (setup skips starting plans)", () => {
+    for (const def of listFieldOverrideDefinitions()) {
+      expect(def.tileGroups, def.id).not.toContain("starting");
+    }
   });
 });

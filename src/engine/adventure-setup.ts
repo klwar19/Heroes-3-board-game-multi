@@ -123,7 +123,7 @@ import type {
   WogModOptions
 } from "./state";
 import { DEFAULT_WOG_OPTIONS, MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
-import { DEFAULT_ANIME_OPTIONS, resolveAnimeOptions } from "./anime";
+import { resolveAnimeOptions } from "./anime";
 import { planFieldOverrides, planTokens } from "./tile-hex-placements";
 import {
   applyCustomMapFieldOverrides,
@@ -133,6 +133,7 @@ import {
   resolveFieldOverridePlacement,
   resolveFieldOverridesEnabled
 } from "./field-overrides";
+import { isFieldOverrideLocation } from "@/data/map/field-overrides";
 
 /** Known designer Secret-feature ids (the allow-list for sanitize + validation). */
 export const SECRET_TILE_FEATURE_IDS: readonly SecretTileFeature[] = [
@@ -320,7 +321,7 @@ function applyCustomMapTokens(
         (existing.location === "monolith" ||
           existing.location === "whirlpool" ||
           existing.location === "gate" ||
-          existing.location.startsWith("anime."))
+          isFieldOverrideLocation(existing.location))
       ) {
         continue;
       }

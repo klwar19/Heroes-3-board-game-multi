@@ -311,9 +311,13 @@ stubs, no weird carve side-effects). There are **many** override kinds
    network with the same destination rules — never a half-wired special
    case. AI treats override hexes as ordinary fields (pathfinding already
    reads location category).
-5. **Coexistence** — at most **one** field override **and** at most **one**
-   teleport `plan.token` per tile, on **different** slots when both are
-   set; a slot collision is a designer problem (dropped at sanitize).
+5. **Coexistence (SHIPPED as multi-pin)** — a tile may host **multiple**
+   overrides **and** multiple teleport tokens as long as every placement
+   claims a **different** hex slot (never stacked); a same-slot collision is
+   a designer problem (dropped at sanitize, first wins). A **carved** override
+   hex is protected exactly like a Location Token: no token, Subterranean
+   Gate half, or second override may overwrite it
+   (`isFieldOverrideLocation` in the token/gate/override legality checks).
    Creature Banks still only land on Blocked Fields after reveal (unchanged);
    an override never targets a reserved bank hex after the bank is placed
    (order: rotation → bank offer → override placement, or override first
@@ -1333,6 +1337,30 @@ test if removed):
    mode allows refuse; scored so the runner never freezes.
 10. **CONTROLs** — module off → no pool, designer pins dropped; teleport
     token still works; bank offer still works; main CONTROL of §3.8.
+
+**Shipped status (audit pass) — what runs vs. limits.** Leading with limits:
+
+- **Pool override kinds on face-down tiles are visible in raw snapshots**
+  (stamped at setup like designer tokens; a determined player inspecting the
+  transport can read what a hidden tile will offer). Deliberate V1 trade-off —
+  masking would need player-view surgery for marginal secrecy.
+- **`linh_tuyen` no longer claims `starting` tiles** — setup skips starting
+  plans (their fields materialize only at the opening rotation), so a starting
+  pin could never apply; the designer no longer offers one.
+- **Designer multi-token editing** — every pin drags/edits individually
+  (drag state carries `tokenIndex`); mode flips (random/secret/face-up) and
+  the face-down rotation counter-compensation map **every** pin, retargeting
+  face-up tokens to distinct legal slots and dropping ones the new tile
+  cannot host (same as the old singular semantics, per pin).
+- **Engine invariants pinned by tests** (`field-overrides.test.ts`,
+  `map-tokens.test.ts`, `subterranean-gate-choice.test.ts`, each
+  mutation-checked): the reveal chain pauses ONLY on a choice the override
+  offer itself opened; resolving/refusing a manual placement never re-draws
+  another pool override (no endless window); a carved override hex refuses
+  tokens / gate halves / later overrides (empty-sibling CONTROL); a tile's
+  whole `pendingTokens` queue places on reveal (nothing leaks); eliminating
+  the placing seat mid-choice drops the override queue and auto-places the
+  waiting designed token instead of stranding the tile.
 
 ---
 

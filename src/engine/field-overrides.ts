@@ -13,15 +13,16 @@ import { locationDefinitions } from "@/data/map/locations";
 // Side-effect: register Anime package kinds into the global catalog.
 import "@/data/anime/field-overrides";
 import {
-  customMapHasAnimeFieldOverridePins,
   customMapHasFieldOverridePins,
   fieldOverridePackageAllowed,
   getFieldOverrideDefinition,
   isFieldOverrideKind,
+  isFieldOverrideLocation,
   listFieldOverrideDefinitions,
   type FieldOverrideDefinition,
   type FieldOverrideTileGroup
 } from "@/data/map/field-overrides";
+import { HEX_DIRECTIONS, hexEquals, hexNeighbor, parseHexSpaceId } from "./hex";
 import type {
   AdventureState,
   CustomMapTilePlan,
@@ -146,7 +147,11 @@ export function fieldOverrideMayCoverFieldDef(
   if (!location || location.category === "blocked" || location.category === "town") {
     return false;
   }
-  if (OVERRIDE_FORBIDDEN_LOCATIONS.has(fieldDef.location) || fieldDef.difficulty) {
+  if (
+    OVERRIDE_FORBIDDEN_LOCATIONS.has(fieldDef.location) ||
+    isFieldOverrideLocation(fieldDef.location) ||
+    fieldDef.difficulty
+  ) {
     return false;
   }
   const isWater = fieldDef.terrain ? fieldDef.terrain === "water" : def.terrain === "water";
@@ -182,7 +187,13 @@ export function fieldOverrideMayCoverField(
   if (!location || location.category === "blocked" || location.category === "town") {
     return false;
   }
-  if (OVERRIDE_FORBIDDEN_LOCATIONS.has(field.location) || field.difficulty) {
+  // A carved override hex is protected like a Location Token: a later override
+  // (multi-pin queue, pool draw) must pick a DIFFERENT hex, never stack.
+  if (
+    OVERRIDE_FORBIDDEN_LOCATIONS.has(field.location) ||
+    isFieldOverrideLocation(field.location) ||
+    field.difficulty
+  ) {
     return false;
   }
   if (field.bankId || field.location === "creature_bank") {
@@ -339,7 +350,7 @@ export function applyCustomMapFieldOverrides(
         (existing.location === "monolith" ||
           existing.location === "whirlpool" ||
           existing.location === "gate" ||
-          existing.location.startsWith("anime."))
+          isFieldOverrideLocation(existing.location))
       ) {
         problems.push(
           `Field Override "${pin.kind}" collides with another hex object on the same slot — dropped.`
@@ -455,7 +466,8 @@ export function offerPendingFieldOverridePlacement(
     !tile.pendingFieldOverride &&
     !(tile.pendingFieldOverrides?.length)
   ) {
-    ensurePoolFieldOverrideOnReveal(state, tile, () => hashSeed(state.seed, `${tile.id}#late`) / 0xffffffff);
+    // hashSeed yields [0, 2^31); normalize by 2^31 so the whole pool is reachable.
+    ensurePoolFieldOverrideOnReveal(state, tile, () => hashSeed(state.seed, `${tile.id}#late`) / 0x80000000);
   }
   // Normalize singular → array head.
   if (tile.pendingFieldOverride && !(tile.pendingFieldOverrides?.length)) {
@@ -512,7 +524,10 @@ export function offerPendingFieldOverridePlacement(
   const options = candidates.map((spaceId) => {
     const field = adventure.fields[spaceId];
     const location = field ? locationDefinitions[field.location]?.name ?? field.location : "field";
-    return { label: location };
+    // Prefix the ring edge (Centre / NE edge — …) so two candidates with the
+    // same printed location stay distinguishable (mirrors place-map-token).
+    const edge = ringEdgeLabel(tile, spaceId);
+    return { label: `${edge} — ${location}` };
   });
   if (allowRefuse) {
     options.push({ label: "Refuse — leave the tile as printed" });
@@ -587,6 +602,21 @@ export function refuseFieldOverride(state: GameState, tile: MapTileState, player
       playerId
     });
   }
+}
+
+/** "Centre" or "<compass> edge" of a hex on the tile flower, for option labels. */
+function ringEdgeLabel(tile: MapTileState, spaceId: MapSpaceId): string {
+  const coord = parseHexSpaceId(spaceId);
+  const center = { row: tile.centerRow, col: tile.centerCol };
+  if (coord && hexEquals(coord, center)) {
+    return "Centre";
+  }
+  for (let direction = 0; direction < 6; direction += 1) {
+    if (coord && hexEquals(hexNeighbor(center, direction), coord)) {
+      return `${HEX_DIRECTIONS[direction]} edge`;
+    }
+  }
+  return "Field";
 }
 
 function hashSeed(seed: string, salt: string): number {

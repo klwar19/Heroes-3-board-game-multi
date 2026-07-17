@@ -675,3 +675,58 @@ describe("designed map tokens at setup", () => {
     expect(Object.values(state.adventure!.fields).some((field) => field.location === "monolith")).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Multi-token tiles — a tile may queue SEVERAL tokens (pendingTokens); every
+// one must place on reveal, each on its own hex. The queue drain is what these
+// pin: before it existed, only the singular head placed and the rest leaked as
+// stale state (never offered again).
+// ---------------------------------------------------------------------------
+
+describe("multi-token tiles (pendingTokens queue)", () => {
+  it("a reveal places EVERY queued token on its reserved hex and clears the queue", () => {
+    const state = makeGame("multi-token-drain");
+    const tile = instantiateTile(adv(state), "F1", { row: 24, col: 12 }, 0, true);
+    const footprint = getTileFootprintSpaceIds(tile);
+    tile.pendingTokens = [
+      { kind: "monolith", preferredSpaceId: footprint[1] },
+      { kind: "gate", pair: 1, preferredSpaceId: footprint[2] }
+    ];
+    tile.pendingToken = tile.pendingTokens[0];
+
+    let revealed = revealTile(state, tile.id);
+    // A reserved hex the random printed art made illegal falls back to the
+    // normal pick-a-field choice — answer each with its first offer. The drain
+    // re-offers the NEXT queued token after every resolution.
+    for (let guard = 0; guard < 8 && revealed.pendingChoice; guard += 1) {
+      revealed = applyOk(revealed, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: revealed.pendingChoice.id,
+        optionIndex: 0
+      });
+    }
+
+    const after = adv(revealed);
+    const fields = footprint.map((spaceId) => after.fields[spaceId]?.location);
+    expect(fields.filter((location) => location === "monolith")).toHaveLength(1);
+    expect(fields.filter((location) => location === "gate")).toHaveLength(1);
+    // The queue drained — no stale entries survive (the pre-fix leak).
+    expect(after.tiles[tile.id].pendingTokens).toBeUndefined();
+    expect(after.tiles[tile.id].pendingToken).toBeUndefined();
+  });
+
+  it("CONTROL: a single-token tile still places exactly one and stays clean", () => {
+    const state = makeGame("multi-token-single");
+    const tile = instantiateTile(adv(state), "F1", { row: 24, col: 12 }, 0, true);
+    const footprint = getTileFootprintSpaceIds(tile);
+    tile.pendingTokens = [{ kind: "monolith", preferredSpaceId: footprint[1] }];
+    tile.pendingToken = tile.pendingTokens[0];
+
+    const revealed = revealTile(state, tile.id);
+    const after = adv(revealed);
+    const monoliths = footprint.filter((spaceId) => after.fields[spaceId]?.location === "monolith");
+    expect(monoliths.length).toBeLessThanOrEqual(1);
+    expect(after.tiles[tile.id].pendingTokens).toBeUndefined();
+  });
+});

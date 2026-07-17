@@ -49,7 +49,10 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     name: "Linh Tuyền (Spirit Spring)",
     nameVi: "Linh Tuyền",
     package: "anime-xianxia",
-    tileGroups: ["far", "near", "starting"],
+    // NOT "starting": a home (Ⅰ) tile's fields materialize only at the opening
+    // rotation and setup skips starting plans, so a starting pin never applies —
+    // offering it in the designer would ship a silent no-op.
+    tileGroups: ["far", "near"],
     terrain: "land",
     implementationStatus: "implemented",
     summary: "+1 Movement this round (cleanse of negative tokens: planned follow-up).",
