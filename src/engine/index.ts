@@ -614,6 +614,23 @@ export {
   resolveFieldOverridePlacement
 } from "./field-overrides";
 export {
+  applyCombatScriptCombatStart,
+  applyCombatScriptRoundStart,
+  combatScriptStatDelta,
+  combatScriptsActiveForCombat
+} from "./combat-scripts";
+export {
+  registerCombatScriptDefinitions,
+  getCombatScriptDefinition,
+  listCombatScriptDefinitions,
+  combatScriptsForLocation,
+  type CombatScriptDefinition,
+  type CombatScriptEffect,
+  type CombatScriptEvent,
+  type CombatScriptSide,
+  type CombatScriptText
+} from "@/data/map/combat-scripts";
+export {
   planTokens,
   planFieldOverrides,
   occupiedSlotsOnPlan,
@@ -655,6 +672,7 @@ export type {
   CombatSandboxSetupState,
   CombatSandboxUnitPick,
   CombatSetupState,
+  CombatScriptStatModifier,
   DeckSearchPick,
   CombatStat,
   CombatState,

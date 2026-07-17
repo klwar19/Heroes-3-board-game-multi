@@ -512,6 +512,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     }
     case "HERO_TRAINED":
       return `${playerName(state, event.playerId)}'s hero trains, gaining Merit.`;
+    case "COMBAT_SCRIPT_TRIGGERED":
+      // Forced Battle Events (Anime mod, §3.12): the announce line is a
+      // self-contained "something happens" sentence built by the engine.
+      return event.message;
     case "HERO_GRADE_NODE_PICKED":
       return event.message;
     case "HERO_SKILL_USED":
