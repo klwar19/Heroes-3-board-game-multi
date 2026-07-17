@@ -207,7 +207,7 @@ describe("Colored Gate pair routing", () => {
     state = moveHero(state, entry);
 
     expect(state.heroes.hero_p1.spaceId).toBe(entry);
-    expect(lastNote(state).toLowerCase()).toContain("yellow"); // pair 4 = yellow
+    expect(lastNote(state).toLowerCase()).toContain("violet"); // pair 4 = violet
     expect(lastNote(state)).toContain("nowhere");
   });
 

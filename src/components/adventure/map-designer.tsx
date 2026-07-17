@@ -11,6 +11,7 @@ import {
   monolithTokenImage,
   onewayMonolithImage,
   outpostObjectImage,
+  teleportGateImage,
   REWARD_GLYPH_ICONS,
   TILE_BACK_IMAGES,
   tileBackImage,
@@ -536,7 +537,10 @@ function designerTokenImage(kind: CustomMapObjectKind, number?: -1 | 0 | 1, pair
   if (kind === "oneway_entrance" || kind === "oneway_exit") {
     return onewayMonolithImage(kind === "oneway_entrance" ? "entrance" : "exit", pair ?? 1);
   }
-  return kind === "gate" ? monolithTokenImage() : mapTokenImage(kind as "monolith" | "whirlpool", number);
+  if (kind === "gate") {
+    return teleportGateImage(pair ?? 1);
+  }
+  return mapTokenImage(kind as "monolith" | "whirlpool", number);
 }
 
 /**
@@ -1018,7 +1022,7 @@ type DesignDrag =
 /** Stable empty default so the `objects` prop never re-mounts on every render. */
 const EMPTY_OBJECTS: CustomMapObject[] = [];
 
-/** The four colored Gate pairs offered in the Objects palette (1 = red … 4 = yellow). */
+/** The four Teleport-Gate pairs offered in the Objects palette (1 = red … 4 = violet). */
 const GATE_PAIRS: (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
 
 /** Guard-difficulty picks for a placed object (0 = no guard, 1-7 = Ⅰ-Ⅶ). */
@@ -1053,7 +1057,7 @@ const GATE_PAIR_CSS: Record<1 | 2 | 3 | 4, string> = {
   1: "#e0483c",
   2: "#3d7fe0",
   3: "#3caf52",
-  4: "#e0b93c"
+  4: "#b04fd6"
 };
 
 /**
@@ -2562,18 +2566,19 @@ export function MapDesigner({
         : retargetTokensForDef(selected, tileDefId))
     });
   };
-  // Token kinds the tile-panel ADD picker offers — Monolith/Whirlpool only
-  // (colored Gates are placed from the Objects palette). A face-down tile hides
-  // its group's kind (sea → Whirlpool, land groups → Monolith); a revealed tile
-  // offers whichever kinds still have a legal printed field on it (an island hex
-  // on a sea tile can host a Monolith, the water hexes a Whirlpool).
+  // Token kinds the tile-panel ADD picker offers — Whirlpool ONLY. The plain
+  // Monolith is RETIRED from every palette (all two-way teleporters are the
+  // colored Teleport Gates now; one-way monoliths and Gates are placed from the
+  // Objects palette). Legacy saved Monoliths still render and stay editable.
   const selectedTokenKinds: MapTokenKind[] =
     !selected || selected.group === "starting"
       ? []
       : selected.faceDown
-        ? faceDownTokenKinds(selected.group).filter((kind): kind is MapTokenKind => kind !== "gate")
+        ? selected.group === "sea"
+          ? (["whirlpool"] as MapTokenKind[])
+          : []
         : selectedTileDef
-          ? (["monolith", "whirlpool"] as MapTokenKind[]).filter(
+          ? (["whirlpool"] as MapTokenKind[]).filter(
               (kind) => legalTokenSlotsForTileDef(selectedTileDef, kind).length > 0
             )
           : [];
@@ -3898,14 +3903,14 @@ export function MapDesigner({
             const armed = armedObject?.kind === "gate" && armedObject.pair === pair;
             return (
               <button
-                aria-label={`${gatePairColor(pair)} gate pair`}
+                aria-label={`${gatePairColor(pair)} teleport gate`}
                 aria-pressed={armed}
                 className={`designerObjectButton gate${armed ? " armed" : ""}`}
                 data-gate-pair={pair}
                 key={`gate-${pair}`}
                 onClick={() => armObject("gate", pair)}
                 style={{ borderColor: GATE_PAIR_CSS[pair] }}
-                title={`${gatePairColor(pair)} Gate — per-color teleport network (needs at least 2; ${placed} placed)`}
+                title={`${gatePairColor(pair)} Teleport Gate (two-way monolith) — per-color teleport network (needs at least 2; ${placed} placed)`}
                 type="button"
               >
                 <span className="designerObjectSwatch" style={{ background: GATE_PAIR_CSS[pair] }}>
@@ -3915,15 +3920,6 @@ export function MapDesigner({
               </button>
             );
           })}
-          <button
-            aria-pressed={armedObject?.kind === "monolith"}
-            className={`designerObjectButton${armedObject?.kind === "monolith" ? " armed" : ""}`}
-            onClick={() => armObject("monolith")}
-            title="Monolith token — two-way teleport network (needs at least 2)"
-            type="button"
-          >
-            ⛩ Monolith
-          </button>
           <button
             aria-pressed={armedObject?.kind === "whirlpool"}
             className={`designerObjectButton${armedObject?.kind === "whirlpool" ? " armed" : ""}`}

@@ -108,6 +108,7 @@ import {
   moraleIcon,
   onewayMonolithImage,
   outpostObjectImage,
+  teleportGateImage,
   RESOURCE_ICONS,
   subterraneanGateTokenImage,
   tileBackImage,
@@ -210,7 +211,7 @@ const GATE_PAIR_COLORS: Record<number, string> = {
   1: "#e0483c",
   2: "#3d7fe0",
   3: "#3caf52",
-  4: "#e0b93c"
+  4: "#b04fd6"
 };
 
 /**
@@ -220,24 +221,22 @@ const GATE_PAIR_COLORS: Record<number, string> = {
  */
 function gateHexMark(spaceId: string, x: number, y: number, pair: number): ReactNode {
   const color = GATE_PAIR_COLORS[pair] ?? "#c9a24b";
-  const art = HEX_SIZE * 1.12;
+  const art = HEX_SIZE * 1.6;
   return (
     <g className="hexGateMark" key={`${spaceId}-gate-mark`} style={{ pointerEvents: "none" }}>
-      {/* Colored disc backing so the pair colour reads under the monolith art. */}
-      <circle cx={x} cy={y} fill={color} opacity={0.32} r={HEX_SIZE * 0.6} />
-      {/* The monolith artwork — a colored Gate renders as a colored Monolith. */}
+      {/* The Teleport Gate's own per-color portal artwork. */}
       <image
         className="hexGateMonolith"
-        height={art}
-        href={assetUrl(monolithTokenImage())}
+        height={art * 1.4}
+        href={assetUrl(teleportGateImage((pair as 1 | 2 | 3 | 4) ?? 1))}
         preserveAspectRatio="xMidYMid meet"
         width={art}
         x={x - art / 2}
-        y={y - art / 2}
+        y={y - art * 0.72}
       />
-      {/* Colored ring identifying the pair colour. */}
+      {/* Colored ring identifying the pair colour (colour-blind-safe with the badge). */}
       <circle cx={x} cy={y} fill="none" r={HEX_SIZE * 0.62} stroke={color} strokeWidth={3} />
-      {/* Small pair-number badge (top-right), colour-blind-safe. */}
+      {/* Small pair-number badge (top-right). */}
       <circle cx={x + HEX_SIZE * 0.46} cy={y - HEX_SIZE * 0.46} fill="rgba(12,8,4,0.85)" r={HEX_SIZE * 0.3} stroke={color} strokeWidth={2} />
       <text
         fill={color}

@@ -463,6 +463,23 @@ export function onewayMonolithImage(direction: "entrance" | "exit", pair: 1 | 2 
 }
 
 /**
+ * Two-way Teleport Gate art (fan portal scans) — one glowing portal per color
+ * pair (1 red / 2 blue / 3 green / 4 violet). Replaces the old tinted-monolith
+ * rendering; the colored ring + number badge stay for colour-blind safety.
+ */
+export const TELEPORT_GATE_IMAGES = {
+  1: "/assets/board/tokens/teleport-gate-red.webp",
+  2: "/assets/board/tokens/teleport-gate-blue.webp",
+  3: "/assets/board/tokens/teleport-gate-green.webp",
+  4: "/assets/board/tokens/teleport-gate-violet.webp"
+} as const;
+
+/** The Teleport-Gate portal art of a color pair. */
+export function teleportGateImage(pair: 1 | 2 | 3 | 4 = 1): string {
+  return TELEPORT_GATE_IMAGES[pair];
+}
+
+/**
  * Creature Bank field-tile art (Naval Battles), shown on a placed bank's hex.
  *
  * Each of the twelve banks has its OWN cropped field-tile scan (the Crypt

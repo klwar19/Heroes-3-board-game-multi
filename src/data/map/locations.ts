@@ -831,7 +831,7 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
   },
   gate: {
     id: "gate",
-    name: "Colored Gate",
+    name: "Teleport Gate",
     // Map-designer object (rulebook p.83, "corresponding Two-Way Monolith" read
     // as EXACT colored pairs). Entering (or Revisiting for 1 MP, like a Monolith)
     // teleports the hero to THE OTHER gate of the same colored pair — never a

@@ -6235,9 +6235,9 @@ export function isMapObjectLocation(locationId: string): boolean {
   return isMapTokenLocation(locationId) || locationId === "gate";
 }
 
-/** Colored Gate pair (1-4) → its display colour name (red/blue/green/yellow). */
+/** Teleport-Gate pair (1-4) → its display colour name (red/blue/green/violet — the printed portal art). */
 export function gatePairColor(pair: 1 | 2 | 3 | 4): string {
-  return { 1: "red", 2: "blue", 3: "green", 4: "yellow" }[pair];
+  return { 1: "red", 2: "blue", 3: "green", 4: "violet" }[pair];
 }
 
 /**
