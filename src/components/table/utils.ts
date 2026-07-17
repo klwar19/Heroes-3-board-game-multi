@@ -417,6 +417,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         : `${playerName(state, event.playerId)} ends their parallel turn — the round is complete.`;
     case "PARALLEL_TURNS_STOPPED":
       return event.message;
+    case "MOVES_UNDONE":
+      return event.message;
     case "NEUTRAL_CONTROL_ASSIGNED":
       return event.message;
     case "NEUTRAL_FORMATION_SORT_OPENED":

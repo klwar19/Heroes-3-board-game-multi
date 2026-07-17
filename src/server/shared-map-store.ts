@@ -2,7 +2,15 @@ import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeFileAtomic } from "@/server/atomic-file";
-import { MapRegistry, sanitizeSharedMap, type SharedMapRecord } from "@/server/map-registry";
+import {
+  actorMayModifyMap,
+  ANONYMOUS_MAP_ACTOR,
+  MapRegistry,
+  sanitizeSharedMap,
+  stampSavedMapOwnership,
+  type MapActor,
+  type SharedMapRecord
+} from "@/server/map-registry";
 
 /**
  * The built-in (non-PartyKit) shared-map library. It is the Node counterpart of
@@ -76,34 +84,49 @@ export function listSharedMaps(): SharedMapRecord[] {
 
 export type SaveSharedMapResult =
   | { ok: true; map: SharedMapRecord; maps: SharedMapRecord[] }
-  | { ok: false; error: string };
+  | { ok: false; error: string; forbidden?: boolean };
 
 /**
  * Inserts or overwrites a map (editing reuses its id). Untrusted input is
  * sanitized; anything that isn't a map at all (no tile array) is rejected so the
- * caller can answer 400 rather than silently storing junk.
+ * caller can answer 400 rather than silently storing junk. Overwriting an OWNED
+ * map is refused unless `actor` is its owner or an admin (an unowned/legacy map
+ * is editable by anyone — see {@link actorMayModifyMap}); a fresh create stamps
+ * the actor as owner and preserves the original owner + creation time on an edit.
  */
-export function saveSharedMap(input: unknown): SaveSharedMapResult {
+export function saveSharedMap(input: unknown, actor: MapActor = ANONYMOUS_MAP_ACTOR): SaveSharedMapResult {
   const record = sanitizeSharedMap(input);
   if (!record) {
     return { ok: false, error: "A map needs a tiles array." };
   }
   const registry = getRegistry();
-  // Editing keeps the original creation stamp rather than re-minting it.
   const existing = registry.get(record.id);
-  if (existing) {
-    record.createdAt = existing.createdAt;
+  if (!actorMayModifyMap(existing, actor)) {
+    return { ok: false, error: "Only the map's owner or an admin can edit this map.", forbidden: true };
   }
+  stampSavedMapOwnership(record, existing, actor);
   registry.upsert(record);
   persist(registry);
   return { ok: true, map: record, maps: registry.list() };
 }
 
-/** Deletes a map for everyone. Returns the remaining library. */
-export function deleteSharedMap(id: string): SharedMapRecord[] {
+export type DeleteSharedMapResult = { ok: boolean; maps: SharedMapRecord[]; error?: string };
+
+/**
+ * Deletes a map for everyone and returns the remaining library. Deleting an
+ * OWNED map is refused (`ok: false`) unless `actor` is its owner or an admin; an
+ * unowned/legacy map may be deleted by anyone, and deleting an id that is already
+ * gone is a harmless no-op success.
+ */
+export function deleteSharedMap(id: string, actor: MapActor = ANONYMOUS_MAP_ACTOR): DeleteSharedMapResult {
   const registry = getRegistry();
-  if (registry.remove(id)) {
+  const existing = registry.get(id);
+  if (existing && !actorMayModifyMap(existing, actor)) {
+    return { ok: false, maps: registry.list(), error: "Only the map's owner or an admin can delete this map." };
+  }
+  if (existing) {
+    registry.remove(id);
     persist(registry);
   }
-  return registry.list();
+  return { ok: true, maps: registry.list() };
 }

@@ -48,6 +48,17 @@ function makeGame(): GameState {
   return createAdventureGameState({ seed: "pathfinding-ability", difficulty: "normal", rollFirstPlayer: false });
 }
 
+/** A game with the `pathfinding-expert` crossing house rule OFF (printed card / legacy). */
+function makeOffGame(): GameState {
+  return createAdventureGameState({
+    seed: "pathfinding-expert-off",
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    ruleset: "binh",
+    houseRules: { "pathfinding-expert": false }
+  });
+}
+
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
   expect(result.errors, result.errors.map((error) => error.message).join("; ")).toHaveLength(0);
@@ -533,22 +544,136 @@ describe("pathfinding-expert toggle — the expert coastline/layer crossing is g
     expect(off.passEncounters).toBe(true);
   });
 
-  it("OFF: the expert Pathfinding side is not offered — only its basic side plays", () => {
-    const offGame = createAdventureGameState({
-      seed: "pathfinding-expert-off",
-      difficulty: "normal",
-      rollFirstPlayer: false,
-      ruleset: "binh",
-      houseRules: { "pathfinding-expert": false }
-    });
-    const state = withHand(offGame, ["ability.pathfinding"]);
+  it("OFF: the expert Pathfinding side IS offered when a crown is held (the bug fix)", () => {
+    const state = withHand(makeOffGame(), ["ability.pathfinding"]);
     state.players.p1.limits.expertUses = 1;
 
     // The basic side still plays…
     const basic = playPathfinding(state, "basic");
     expect(hasModifier(basic, "p1", "HERO_PATHFINDING")).toBe(true);
 
-    // …but the expert side (crown-in-hand) is rejected: its option is dropped.
+    // …and, unlike before, the expert side (crown-in-hand) is now ACCEPTED —
+    // a held crown is usable in a legacy game (previously it was rejected).
+    const expert = playPathfinding(state, "expert");
+    expect(hasModifier(expert, "p1", "HERO_PATHFINDING")).toBe(true);
+    expect(expert.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Printed card / legacy default (rule OFF): the border/blocked crossing is the
+// EXPERT power, not part of Basic — and a held crown is usable. No coastline or
+// Subterranean crossing on either side. (User bug: "I have a crown and cannot
+// use expert Pathfinding — legacy version.")
+// ---------------------------------------------------------------------------
+describe("Pathfinding — rule OFF (printed card): the split matches the scan", () => {
+  it("basic capabilities: pass-through only — NOT yellow-border / blocked-field crossing", () => {
+    let state = withHand(makeOffGame(), ["ability.pathfinding"]);
+    state = playPathfinding(state, "basic");
+    const caps = getHeroMovementCapabilities(state, heroP1(state));
+    expect(caps.passEncounters).toBe(true);
+    // The border/blocked crossing is withheld from Basic in this mode (the
+    // mutation control vs BINH basic, which DOES cross them).
+    expect(caps.moveThrough).toBe(false);
+    expect(caps.crossSealedBorders ?? false).toBe(false);
+    expect(caps.waterWalk).toBe(false);
+    expect(caps.crossLayers ?? false).toBe(false);
+  });
+
+  it("(a) basic walks THROUGH a Neutral guard but is WALLED by a blocked field", () => {
+    let state = withHand(makeOffGame(), ["ability.pathfinding"]);
+    const footprint = heroTileFootprint(state);
+    const guard = footprint[1];
+    setField(state, guard, "empty_field");
+    adv(state).fields[guard]!.difficulty = 1; // undefeated neutral guard
+    heroP1(state).movementPoints = 5;
+    state = playPathfinding(state, "basic");
+    const caps = getHeroMovementCapabilities(state, heroP1(state));
+    // Through the Neutral guard: yes (printed Basic power).
+    expect(classifyHeroStep(state, heroP1(state), guard, caps)).toBe("encounter");
+
+    // A blocked field is a hard wall for basic Pathfinding in this mode.
+    let blockedState = withHand(makeOffGame(), ["ability.pathfinding"]);
+    const bf = heroTileFootprint(blockedState);
+    setField(blockedState, bf[1], "blocked_field");
+    blockedState = playPathfinding(blockedState, "basic");
+    const bcaps = getHeroMovementCapabilities(blockedState, heroP1(blockedState));
+    expect(canCrossEdge(blockedState, bf[0], bf[1], bcaps)).toBe(false);
+  });
+
+  it("(b) expert (crown spent) crosses a blocked field but cannot END on it", () => {
+    let state = withHand(makeOffGame(), ["ability.pathfinding"]);
+    state.players.p1.limits.expertUses = 1;
+    const footprint = heroTileFootprint(state);
+    const center = footprint[0];
+    const blocked = footprint[1];
+    const beyond = footprint[2];
+    setField(state, blocked, "blocked_field");
+    setField(state, beyond, "empty_field");
+    heroP1(state).movementPoints = 5;
+
+    // A normal (no-Pathfinding) hero cannot even cross it — the mutation control.
+    expect(canCrossEdge(state, center, blocked)).toBe(false);
+
+    state = playPathfinding(state, "expert");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    const caps = getHeroMovementCapabilities(state, heroP1(state));
+    expect(caps.moveThrough).toBe(true);
+    expect(caps.crossSealedBorders).toBe(true);
+    expect(canCrossEdge(state, center, blocked, caps)).toBe(true);
+    expect(classifyHeroStep(state, heroP1(state), blocked, caps)).toBe("pass-only");
+    // Cannot stop on the blocked field…
+    expectError(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: blocked });
+    // …but may pass over it to the clear field beyond.
+    state = applyOk(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [blocked, beyond] });
+    expect(heroP1(state).spaceId).toBe(beyond);
+  });
+
+  it("(b CONTROL) expert (rule OFF) still halts at the coastline — no water-walk / layer crossing", () => {
+    let state = withHand(makeOffGame(), ["ability.pathfinding"]);
+    state.players.p1.limits.expertUses = 1;
+    const footprint = heroTileFootprint(state);
+    const land = footprint[0];
+    const sea = footprint[1];
+    makeSeaHex(state, sea);
+    state = playPathfinding(state, "expert");
+    const caps = getHeroMovementCapabilities(state, heroP1(state));
+    expect(caps.waterWalk).toBe(false);
+    expect(caps.crossLayers ?? false).toBe(false);
+    expect(seaStepHalts(state, land, sea, caps)).toBe(true);
+  });
+
+  it("(b CONTROL) expert (rule OFF) cannot breach a non-gate Surface↔Subterranean divide", () => {
+    let state = withHand(makeOffGame(), ["ability.pathfinding"]);
+    state.players.p1.limits.expertUses = 1;
+    const { surface, underground } = placePair(state);
+    setAllEmpty(state, surface);
+    setAllEmpty(state, underground);
+    recomputeSubterraneanGates(adv(state));
+    const gate = gateHalfTo(state, underground.id);
+    const entrance = gateHalfTo(state, surface.id);
+    if (!gate || !entrance) {
+      throw new Error("subterranean gate did not form");
+    }
+    const nonGate = crossPairs(surface, underground).find(
+      ([a, b]) => !(a === gate.spaceId && b === entrance.spaceId)
+    );
+    if (!nonGate) {
+      throw new Error("expected a non-gate divide edge");
+    }
+    const [surf, under] = nonGate;
+
+    state = playPathfinding(state, "expert");
+    const caps = getHeroMovementCapabilities(state, heroP1(state));
+    // The Gate itself is crossable by everyone; the non-gate divide stays sealed
+    // (expert Pathfinding grants NO layer crossing when the rule is off).
+    expect(canCrossEdge(state, gate.spaceId, entrance.spaceId, caps)).toBe(true);
+    expect(canCrossEdge(state, surf, under, caps)).toBe(false);
+  });
+
+  it("(c) with no crown the expert side is not legal", () => {
+    const state = withHand(makeOffGame(), ["ability.pathfinding"]);
+    expect(state.players.p1.limits.expertUses).toBe(0);
     expectError(state, {
       type: "PLAY_CARD",
       playerId: "p1",

@@ -55,6 +55,36 @@ describe("shared-maps client transport", () => {
     expect(remaining?.map((m) => m.id)).toEqual(["b"]);
   });
 
+  it("rides the acting account on save/delete when signed in, and omits it for a guest", async () => {
+    const saveSpy = mockFetch(() => ({ ok: true, map: { id: "m1" }, maps: [] }));
+    await saveSharedMap({
+      id: "m1",
+      name: "x",
+      scenarioId: "skirmish",
+      players: 2,
+      tiles: [],
+      actorUserId: "u1",
+      actorRole: "player"
+    });
+    expect(JSON.parse(saveSpy.mock.calls[0][1]!.body as string)).toMatchObject({
+      actorUserId: "u1",
+      actorRole: "player"
+    });
+
+    const delSpy = mockFetch(() => ({ maps: [] }));
+    await deleteSharedMap("a", { userId: "u1", role: "player" });
+    expect(JSON.parse(delSpy.mock.calls[0][1]!.body as string)).toEqual({
+      id: "a",
+      actorUserId: "u1",
+      actorRole: "player"
+    });
+
+    // A guest (no userId) sends a bare body — an unowned map deletes as before.
+    const guestSpy = mockFetch(() => ({ maps: [] }));
+    await deleteSharedMap("a", { userId: null, role: null });
+    expect(JSON.parse(guestSpy.mock.calls[0][1]!.body as string)).toEqual({ id: "a" });
+  });
+
   it("degrades gracefully when the server is unreachable", async () => {
     vi.stubGlobal(
       "fetch",

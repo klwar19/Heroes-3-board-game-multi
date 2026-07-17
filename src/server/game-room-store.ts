@@ -26,7 +26,8 @@ import {
   type GameDifficulty,
   type GameMode,
   type GameSessionMode,
-  type GameState
+  type GameState,
+  type PlayerId
 } from "@/engine";
 import {
   applyHumanComputerAdvance,
@@ -37,6 +38,13 @@ import {
 } from "@/server/computer-runner";
 import { detectFinishedMatch } from "@/server/match-report";
 import { reportFinishedMatch } from "@/server/match-report-trigger";
+import {
+  actorIsRoomParticipant,
+  applyUndoMove,
+  clearUndoHistory,
+  recordUndoSnapshot,
+  undoModeEnabled
+} from "@/server/undo-history";
 import {
   deriveLobbyRecord,
   isStaleRecord,
@@ -429,6 +437,9 @@ export function resetRoom(
   }
   roomStore.set(roomId, reset);
   persistRoom(reset);
+  // A reset wipes the running game — drop any undo history so the new game
+  // cannot roll back into the old one.
+  clearUndoHistory(roomId);
   const snapshot = withBootId(cloneSerializable(reset));
   notifyRoomListeners(roomId, snapshot);
   return { reset: true, snapshot };
@@ -504,6 +515,22 @@ export function submitRoomAction(
   actorUserId?: string
 ): { snapshot: GameRoomSnapshot; result: EngineResult; pendingMatchReport?: Promise<void> } {
   const current = getRoomRecord(roomId);
+
+  // OPTIONAL Undo mode (debug/testing): an UNDO_MOVE never reaches the engine
+  // reducer — it pops the server-side per-room snapshot stack and restores it
+  // wholesale. Any current member may undo (the whole table opted into the
+  // debug toggle); the restore is atomic (a full prior state) so open combats /
+  // choices / reward queues roll back together. With the mode off or nothing to
+  // undo, it is rejected and the room is untouched.
+  if (action.type === "UNDO_MOVE") {
+    return undoRoomAction(roomId, current, action.playerId, actorClientId, actorUserId);
+  }
+
+  // Record the PRE-action state on the undo stack when the mode is on (no-op
+  // otherwise). Done before applyAction so an undo rolls back exactly this
+  // action (and any AI settle that rides with it).
+  recordUndoSnapshot(roomId, current.state);
+
   // Fresh crypto entropy per action: every die roll, shuffle and Ⅱ–Ⅲ tile flip is
   // genuinely unpredictable and non-reproducible from the game seed (true random
   // in play). A no-op for the deterministic engine test suite, which calls
@@ -608,6 +635,63 @@ export function submitRoomAction(
     snapshot,
     result,
     ...(pendingMatchReport ? { pendingMatchReport } : {})
+  };
+}
+
+function undoRejection(current: GameRoomRecord, message: string): {
+  snapshot: GameRoomSnapshot;
+  result: EngineResult;
+} {
+  roomStore.set(current.roomId, current);
+  return {
+    snapshot: withBootId(cloneSerializable(current)),
+    result: { state: current.state, events: [], errors: [{ code: "ACTION_NOT_LEGAL", message }] }
+  };
+}
+
+/**
+ * Server handler for an UNDO_MOVE (built-in store). Validates membership + the
+ * undo mode, pops+restores the prior state, then persists/broadcasts it and
+ * re-arms the paced computer pump against the restored state (so undoing around
+ * a single-player AI turn cannot leave the pump frozen — ensureComputerPump
+ * re-arms only when the restored state still owes a computer move).
+ */
+function undoRoomAction(
+  roomId: string,
+  current: GameRoomRecord,
+  playerId: PlayerId,
+  actorClientId?: string,
+  actorUserId?: string
+): { snapshot: GameRoomSnapshot; result: EngineResult } {
+  if (!undoModeEnabled(current.state)) {
+    return undoRejection(current, "Undo mode is off for this game.");
+  }
+  if (!actorIsRoomParticipant(current.state, actorClientId, actorUserId)) {
+    return undoRejection(current, "Only a member of this room can undo.");
+  }
+  const outcome = applyUndoMove(roomId, current.state, playerId);
+  if (!outcome.undone) {
+    return undoRejection(current, outcome.reason);
+  }
+  const next: GameRoomRecord = {
+    roomId,
+    version: current.version + 1,
+    ...(current.createdAt ? { createdAt: current.createdAt } : {}),
+    ...(current.createdByName ? { createdByName: current.createdByName } : {}),
+    updatedAt: new Date().toISOString(),
+    state: outcome.state
+  };
+  roomStore.set(roomId, next);
+  persistRoom(next);
+  const snapshot = withBootId(cloneSerializable(next));
+  notifyRoomListeners(roomId, snapshot);
+  // Re-derive the paced pump for the restored state (cancel any pump armed for
+  // the now-undone future, then re-arm iff the restored state owes a move).
+  cancelComputerPump(roomId);
+  ensureComputerPump(roomId);
+  return {
+    snapshot,
+    result: { state: outcome.state, events: [], errors: [] }
   };
 }
 
@@ -1110,6 +1194,7 @@ export function forceCloseRoom(roomId: string, reason?: string): CloseRoomResult
     return { closed: true };
   }
   cancelComputerPump(roomId);
+  clearUndoHistory(roomId);
   roomStore.delete(roomId);
   deletePersistedRoom(roomId);
   notifyRoomListeners(roomId, withBootId({ ...cloneSerializable(record), closed: true }));

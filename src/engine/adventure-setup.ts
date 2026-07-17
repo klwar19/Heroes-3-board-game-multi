@@ -64,6 +64,8 @@ import {
   tileMatchesSecretFeature,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
+  sanitizeViiFieldReward,
+  sanitizeViiFieldVp,
   type CustomMapPreset,
   type PresetForcedOptionKey
 } from "./map-preset";
@@ -419,6 +421,12 @@ export type AdventureSetupOptions = {
    * with a table-wide warning — on a PvP battle or a serious PvP interaction.
    */
   parallelTurns?: number;
+  /**
+   * OPTIONAL "Undo moves" debug/testing mode (default off). When on, the server
+   * keeps a bounded per-room snapshot stack so a player may roll the game back.
+   * See GameSetupOptions.undoMoves / src/server/undo-history.ts.
+   */
+  undoMoves?: boolean;
   /** Whether players may open their own Ⅱ–Ⅲ Far tiles (default on). Off gives no Far-tile supply. */
   farTileOpening?: boolean;
   /** How many NEW Ⅱ–Ⅲ tiles each player may add to the map (default: the scenario's perPlayer, 2). */
@@ -1089,12 +1097,18 @@ export function validateCustomMapPlan(
   // value, so a garbage designation can never reach setup.
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
-    if (plan.viiField === undefined) {
+    if (plan.viiField === undefined && plan.viiFieldReward === undefined && plan.viiFieldVp === undefined) {
       continue;
     }
-    if (plan.group !== "center" || !VII_FIELD_DESIGNATIONS.has(plan.viiField)) {
+    const validVii =
+      plan.group === "center" && plan.viiField !== undefined && VII_FIELD_DESIGNATIONS.has(plan.viiField);
+    if (!validVii) {
+      // A non-center / unknown designation is stripped — and so is any bonus,
+      // which is meaningless without a Ⅶ objective to attach it to.
       const next = { ...plan };
       delete next.viiField;
+      delete next.viiFieldReward;
+      delete next.viiFieldVp;
       accepted[index] = next;
     }
   }
@@ -1403,6 +1417,17 @@ function applyDesignedViiField(
     return;
   }
   tile.viiField = plan.viiField;
+  // Carry the OPTIONAL designer bonus (reward / VP) onto the placed instance,
+  // clamped defensively so an in-memory plan can't smuggle a huge value past the
+  // persistence sanitiser. materializeTileFields folds it onto the Ⅶ field.
+  const reward = sanitizeViiFieldReward(plan.viiFieldReward);
+  if (reward) {
+    tile.viiFieldReward = reward;
+  }
+  const vp = sanitizeViiFieldVp(plan.viiFieldVp);
+  if (vp !== undefined) {
+    tile.viiFieldVp = vp;
+  }
   if (!tile.faceDown) {
     materializeTileFields(adventure, tile);
   }
@@ -1648,6 +1673,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       ? { victoryPointsRoundLimit: options.victoryPointsRoundLimit }
       : {}),
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
+    ...(options.undoMoves !== undefined ? { undoMoves: options.undoMoves } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.moraleCards !== undefined ? { moraleCards: options.moraleCards } : {}),
     ...(options.tournamentMode !== undefined ? { tournamentMode: options.tournamentMode } : {}),
@@ -1815,6 +1841,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     tournamentSecondPlayerMorale: tournamentRules.secondPlayerMorale,
     pvpNeutralControl: pvpNeutralControlOn,
     pvpNeutralControlMustAttack: pvpNeutralControlMustAttackOn,
+    // OPTIONAL Undo mode (debug/testing): frozen here so the SERVER action
+    // transaction (both backends) can read it and keep a bounded per-room undo
+    // stack. Default OFF — no history kept and UNDO_MOVE rejected. Unlike the
+    // multiplayer-only options above, undo is available in solo/single-player
+    // too (it is a testing aid, not a competitive rule).
+    ...(setupOptions.undoMoves ? { undoMoves: true } : {}),
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
@@ -2923,6 +2955,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
         ? `parallel turns for the first ${rounds} round${rounds === 1 ? "" : "s"} (multiplayer only)`
         : "parallel turns off"
     );
+  }
+
+  if (next.undoMoves !== undefined) {
+    lobby.options.undoMoves = Boolean(next.undoMoves);
+    changes.push(`Undo moves (testing) ${lobby.options.undoMoves ? "on" : "off"}`);
   }
 
   if (next.farTileOpening !== undefined) {
@@ -4149,6 +4186,7 @@ function buildAdventureFromLobby(state: GameState): void {
     pvpNeutralControlMustAttack: lobby.options.pvpNeutralControlMustAttack,
     houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
+    undoMoves: lobby.options.undoMoves,
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,
     difficulty: lobby.options.difficulty,

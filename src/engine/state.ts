@@ -3742,6 +3742,19 @@ export type GameAction =
     }
   | {
       /**
+       * OPTIONAL Undo mode (debug/testing only — `GameSetupOptions.undoMoves`,
+       * default OFF). Roll the room back to the state BEFORE the most recent
+       * human action. This action never reaches the engine reducer: it is
+       * intercepted in the SERVER action transaction (the built-in store's
+       * `submitRoomAction` and the PartyKit edge), which pops a server-side,
+       * broadcast-free per-room snapshot stack and restores it. With the option
+       * OFF (or no history) the server rejects it. See src/server/undo-history.ts.
+       */
+      type: "UNDO_MOVE";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Open an AFK kick-or-wait vote against `targetPlayerId`. Legal only in a
        * multiplayer adventure when the target has been idle for AFK_IDLE_MS
        * (per the server-stamped clock), no other vote is open, and any earlier
@@ -4446,6 +4459,20 @@ export type GameEvent =
       playerId: PlayerId;
       /** The player whose hero is fighting the Neutral units. */
       combatPlayerId: PlayerId;
+      message: string;
+    }
+  | {
+      /**
+       * OPTIONAL Undo mode: the room was rolled back to a prior state by
+       * `playerId`. Public feed line ("<name> undid N action(s)") so a rewind is
+       * never silent. Emitted onto the RESTORED state's event log by the server
+       * action transaction, not by a reducer handler (Undo bypasses the reducer).
+       */
+      id: string;
+      type: "MOVES_UNDONE";
+      playerId: PlayerId;
+      /** How many action steps were rolled back by this undo (currently always 1). */
+      count: number;
       message: string;
     }
   | {
@@ -7047,6 +7074,14 @@ export type MapTileState = {
    */
   viiField?: "town" | "dragon_utopia" | "grail";
   /**
+   * Designer bonus for this tile's Ⅶ objective, carried from
+   * {@link CustomMapTilePlan.viiFieldReward} / `viiFieldVp` onto the placed
+   * instance and folded onto the difficulty-7 field when it materializes. SECRET
+   * like `viiField`: player views MASK both while the tile is face-down.
+   */
+  viiFieldReward?: ViiFieldReward;
+  viiFieldVp?: number;
+  /**
    * Polish Bank Sizes: up to two face-up candidates, including their seeded
    * Attack-die size rolls. `reservedBankId` remains option A for compatibility
    * with old rotation-preview readers and pre-feature snapshots.
@@ -7106,6 +7141,17 @@ export type MapFieldState = {
    * waiting to be dug (1 movement point) before it can be carried home.
    */
   grailDiggable?: boolean;
+  /**
+   * Designer Ⅶ-objective bonus resolved onto this field when its center tile
+   * materialized (from {@link MapTileState.viiFieldReward} / `viiFieldVp`). Granted
+   * ONCE, the first time the objective is cleared / captured — `viiBonusClaimed`
+   * latches so a re-capture never re-pays it. Present only on a designer-designated
+   * difficulty-7 objective field; public once the tile is revealed (a visible
+   * objective, like a mine's resource).
+   */
+  viiReward?: ViiFieldReward;
+  viiVp?: number;
+  viiBonusClaimed?: boolean;
   /**
    * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
    * sacrificed hex's `location` becomes "subterranean_gate" and these point at
@@ -8758,6 +8804,16 @@ export type AdventureState = {
    */
   pvpNeutralControlMustAttack?: boolean;
   /**
+   * OPTIONAL Undo mode (debug/testing, default OFF). Frozen from
+   * GameSetupOptions.undoMoves at setup so the SERVER action transaction can
+   * read it to decide whether to keep a bounded, broadcast-free per-room undo
+   * stack. Absent/false = no history is kept and UNDO_MOVE is rejected. This
+   * flag is the ONLY thing about undo that lives in GameState; the history
+   * itself never enters state (never broadcast, never in a player view). See
+   * src/server/undo-history.ts.
+   */
+  undoMoves?: boolean;
+  /**
    * Individual BINH house-rule toggles, resolved to concrete booleans at setup
    * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older
    * snapshots and the combat sandbox, where the mode default is derived instead.
@@ -8948,6 +9004,17 @@ export type GameSetupOptions = {
    * stops when the period runs out. Play then continues turn-after-turn.
    */
   parallelTurns?: number;
+  /**
+   * OPTIONAL "Undo moves" mode (default OFF/absent). A DEBUG / manual-testing
+   * aid: with it ON, a player may roll the whole game back to the state before
+   * a recent action, making bug-hunting far easier. It is NOT a normal-play
+   * feature. Undo is handled entirely SERVER-SIDE (a bounded, broadcast-free
+   * per-room snapshot stack — see src/server/undo-history.ts): the flag is
+   * frozen onto `adventure.undoMoves` at setup so both backends can read it, and
+   * an `UNDO_MOVE` action pops+restores one snapshot. With it OFF nothing is
+   * recorded and `UNDO_MOVE` is rejected — zero behaviour change.
+   */
+  undoMoves?: boolean;
   /**
    * Whether players may open their own Ⅱ–Ⅲ Far tiles (default ON). When ON each
    * player drafts a personal Far-tile supply they can place onto the map. Off
@@ -9164,6 +9231,13 @@ export type VpLedgerEntry = {
   surrenders?: number;
   /** Whether this player has defeated a Dragon Utopia (the defeat-dragon-utopia objective). */
   utopiaDefeated?: boolean;
+  /**
+   * Total Victory Points this player earned by capturing designer-designated Ⅶ
+   * objective centers (`CustomMapTilePlan.viiFieldVp`). Summed at the capture
+   * seam, so a mid-game VP toggle can't rewrite it; scored by
+   * `computeVictoryPoints`.
+   */
+  viiCenterVp?: number;
 };
 
 /** A designer-placed one-hex map object's kind. Open for future kinds. */
@@ -9389,7 +9463,28 @@ export type CustomMapTilePlan = {
    * player views until reveal (see the {@link MapTileState.viiField} it seeds).
    */
   viiField?: "town" | "dragon_utopia" | "grail";
+  /**
+   * Center (Ⅶ) slots WITH a {@link viiField} designation ONLY: an OPTIONAL bonus
+   * the capturing player gets from THIS Ⅶ objective, ON TOP of the printed clear
+   * reward. Both are stripped whenever `viiField` is absent (a bonus with no
+   * objective is meaningless) at {@link validateCustomMapPlan} and the persistence
+   * sanitiser, and masked with `viiField` while the slot is face-down.
+   *   - `viiFieldReward`: a one-time Resource grant (gold / building materials /
+   *     valuables) applied the first time the objective is cleared / captured.
+   *   - `viiFieldVp`: Victory Points awarded to that capturer (omit / 0 = none).
+   *     Scored only when Victory-Points mode is on, but recorded on capture
+   *     regardless so a mid-game preset toggle can't rewrite the score.
+   */
+  viiFieldReward?: ViiFieldReward;
+  viiFieldVp?: number;
 };
+
+/**
+ * A designer-set one-time Resource reward on a Ⅶ objective field
+ * ({@link CustomMapTilePlan.viiFieldReward}) — the board game's three adventure
+ * resources, each optional. Amounts are clamped by the sanitiser.
+ */
+export type ViiFieldReward = { gold?: number; buildingMaterials?: number; valuables?: number };
 
 /**
  * One designer-committed Subterranean Gate link on a cavern tile: which Surface
@@ -10265,7 +10360,7 @@ export type PendingChoice =
     }
   | {
       /**
-       * A combat hand-discard prompt with two kinds:
+       * A combat hand-discard prompt with three kinds:
        *  - "magi-power-or-random": Neutral Magi "Power Drain" — after the Magi
        *    attack the defending player discards a Power-contributing card (a
        *    Power statistic or any Spell) of their choice, or lets a random card
@@ -10273,17 +10368,27 @@ export type PendingChoice =
        *  - "pegasi-toll": Neutral Pegasi "Mystic Toll" — the caster must pay a
        *    Power card of their choice BEFORE a Spell is cast. The cast is held in
        *    `tollSpell` and replayed once the toll is paid (no random option).
+       *  - "wraith-choose-discard": Creature Bank Crypt/Shipwreck Wraiths "Soul
+       *    Siphon" — after the Wraiths' attack the attacked player discards a
+       *    card of THEIR choice (any card in hand; no random option). Combat
+       *    parks until resolved; `remaining` counts cards still owed.
        */
       id: string;
       type: "COMBAT_HAND_DISCARD";
       playerId: PlayerId;
-      kind: "magi-power-or-random" | "pegasi-toll";
+      kind: "magi-power-or-random" | "pegasi-toll" | "wraith-choose-discard";
       abilityId: string;
       abilityName: string;
       sourceUnitId: UnitId;
       prompt: string;
-      /** Cards in the chooser's hand that can contribute Power. */
+      /**
+       * Cards the chooser may pick from: the hand's Power cards for
+       * "magi-power-or-random"/"pegasi-toll", the WHOLE hand for
+       * "wraith-choose-discard".
+       */
       powerCardIds: CardId[];
+      /** "wraith-choose-discard" only: cards still owed after this pick (>= 1). */
+      remaining?: number;
       /** "pegasi-toll" only: the Spell cast deferred until the toll is paid. */
       tollSpell?: {
         cardId: CardId;

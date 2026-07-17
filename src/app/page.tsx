@@ -15,6 +15,7 @@ import {
   hasOpenAdventureTurn,
   healLegacyPlayerFields,
   combatHasHumanParticipant,
+  isCastASpellCard,
   isCombatSandboxSetup,
   isComputerPlayer,
   roomDisplayName,
@@ -738,6 +739,11 @@ export default function Home() {
   const [openHandIndex, setOpenHandIndex] = useState<number | null>(null);
   /** Spell Book (house rule): whether the map Spell Book window is open. */
   const [spellBookOpen, setSpellBookOpen] = useState(false);
+  /**
+   * Polish Spell Book: which Cast a Spell hand slot has its inline "List the
+   * spells" shortcut expanded (the alternative to opening the full grimoire).
+   */
+  const [castListHandIndex, setCastListHandIndex] = useState<number | null>(null);
   /**
    * Adventure hand: an immediate (no-target, no-cost) play staged for an explicit
    * Confirm, so an accidental click is always cancellable. Nothing is sent to the
@@ -5811,9 +5817,12 @@ export default function Home() {
                   const plays = playActionsByCard.get(cardId) ?? [];
                   // Spell Book (house rule): a Spell can be stashed into the Book.
                   const stashAction = stashActionByCard.get(cardId);
+                  // Polish Spell Book: a Cast a Spell card opens a two-option menu
+                  // (Open Spell Book / List the spells), so it is always actionable.
+                  const isCastCard = polishBook && isCastASpellCard(cardId);
                   // A Spell with no map play is still actionable when it can be
                   // stashed — clicking opens the menu instead of marking a discard.
-                  const actionable = plays.length > 0 || Boolean(stashAction);
+                  const actionable = plays.length > 0 || Boolean(stashAction) || isCastCard;
                   const isPayingSource = pendingCostPlay !== null;
                   const pickedForCost = Boolean(pendingCostPlay?.picks.includes(index));
                   const eligibleForCost =
@@ -5942,6 +5951,60 @@ export default function Home() {
                               {legal.label}
                             </button>
                           ))}
+                          {isCastCard ? (
+                            // Cast a Spell (Polish): two ways to reach the same
+                            // cast — open the full grimoire, or pick from a quick
+                            // shortcut list. Either way the chosen Spell runs the
+                            // NORMAL map cast flow (target + power/Knowledge window).
+                            <div className="castASpellChoice" aria-label="Cast a Spell options">
+                              <button
+                                className="castASpellOpenBook"
+                                onClick={() => {
+                                  setSpellBookOpen(true);
+                                  setCastListHandIndex(null);
+                                  setOpenHandIndex(null);
+                                }}
+                                type="button"
+                              >
+                                📖 Open Spell Book
+                              </button>
+                              <button
+                                className="castASpellList"
+                                onClick={() =>
+                                  setCastListHandIndex((current) => (current === index ? null : index))
+                                }
+                                type="button"
+                              >
+                                {castListHandIndex === index ? "Hide the spells" : "List the spells"}
+                              </button>
+                              {castListHandIndex === index ? (
+                                <div className="castASpellSpells" role="menu" aria-label="Castable Book Spells">
+                                  {bookPlayActionsByCard.size === 0 ? (
+                                    <small className="rulesetNote">No refreshed Spell is castable right now.</small>
+                                  ) : (
+                                    [...bookPlayActionsByCard.entries()].map(([spellId, spellPlays]) =>
+                                      spellPlays.map((legal) => (
+                                        <button
+                                          key={actionKey(legal.action)}
+                                          onClick={() => {
+                                            setCastListHandIndex(null);
+                                            startPlay(legal as PlayLegal);
+                                          }}
+                                          type="button"
+                                        >
+                                          {`Cast ${cardName(spellId)}${
+                                            legal.label && legal.label !== cardName(spellId)
+                                              ? ` — ${legal.label.replace(" (Spell Book · Cast a Spell)", "").replace(" (Spell Book)", "")}`
+                                              : ""
+                                          }`}
+                                        </button>
+                                      ))
+                                    )
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
                           {canDraw ? (
                             <button
                               className="discardThenDraw"

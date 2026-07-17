@@ -32,6 +32,7 @@ import type {
   GameSetupOptions,
   SecretTileFeature,
   UnitLevel,
+  ViiFieldReward,
   VictoryMode,
   VictoryPointObjective
 } from "./state";
@@ -84,6 +85,46 @@ export function isViiFieldDesignation(
   value: unknown
 ): value is NonNullable<CustomMapTilePlan["viiField"]> {
   return typeof value === "string" && VII_FIELD_DESIGNATIONS.has(value as never);
+}
+
+/** Largest amount a single Ⅶ-field resource reward may grant, per resource. */
+export const MAX_VII_FIELD_REWARD_AMOUNT = 50;
+/** Largest Victory-Point award a designer may attach to a Ⅶ objective. */
+export const MAX_VII_FIELD_VP = 10;
+/** The three adventure resources a Ⅶ-field reward may carry. */
+const VII_REWARD_RESOURCES = ["gold", "buildingMaterials", "valuables"] as const;
+
+/**
+ * Clamp a designer Ⅶ-field Resource reward ({@link CustomMapTilePlan.viiFieldReward})
+ * to a clean, positive-integer `{ gold?, buildingMaterials?, valuables? }`, or
+ * `undefined` when nothing valid remains. Shared by the persistence sanitiser,
+ * setup seeding and the designer UI so the clamp can never drift.
+ */
+export function sanitizeViiFieldReward(input: unknown): ViiFieldReward | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as Record<string, unknown>;
+  const reward: ViiFieldReward = {};
+  for (const key of VII_REWARD_RESOURCES) {
+    const value = raw[key];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      reward[key] = Math.min(MAX_VII_FIELD_REWARD_AMOUNT, Math.floor(value));
+    }
+  }
+  return Object.keys(reward).length > 0 ? reward : undefined;
+}
+
+/**
+ * Clamp a designer Ⅶ-field VP award ({@link CustomMapTilePlan.viiFieldVp}) to an
+ * integer 1..{@link MAX_VII_FIELD_VP}; `0` / absent / garbage → `undefined` (no award).
+ */
+export function sanitizeViiFieldVp(input: unknown): number | undefined {
+  if (typeof input !== "number" || !Number.isFinite(input)) {
+    return undefined;
+  }
+  const vp = Math.floor(input);
+  return vp > 0 ? Math.min(MAX_VII_FIELD_VP, vp) : undefined;
 }
 
 // The location a Ⅶ-field designation resolves to ("town" → the neutral Random

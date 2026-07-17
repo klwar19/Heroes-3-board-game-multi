@@ -114,7 +114,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "pathfinding-expert",
     label: "Pathfinding expert crossing",
     description:
-      "Expert Pathfinding also crosses the coastline (land↔sea) with no halt and steps between the Surface and Subterranean without a Gate. Off: Pathfinding grants only its basic map movement (no expert side).",
+      "On: the BASIC Pathfinding side already crosses yellow borders & blocked fields, and its Expert side additionally crosses the coastline (land↔sea) with no halt and steps between the Surface and Subterranean without a Gate. Off (printed card): Basic only moves through Neutral & enemy Hero fields, and the Expert side (spend a crown) adds crossing yellow borders & blocked fields — no coastline or Subterranean crossing either way.",
     category: "combat",
     default: true
   },

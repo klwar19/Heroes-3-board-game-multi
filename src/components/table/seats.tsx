@@ -15,6 +15,7 @@ import {
   getRuneTrack,
   getSeatIdentity,
   isBulwarkPlayer,
+  isCastASpellCard,
   playerSpellCastsIgnoreLimit,
   polishSpellBookEnabled,
   seatPickSummary,
@@ -386,6 +387,10 @@ export function HandFan({
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [shelfOpen, setShelfOpen] = useState<"book" | "scroll" | null>(null);
+  // Polish Spell Book: a Cast a Spell card's popover can expand an inline
+  // shortcut list of the currently castable Book Spells (the "List the spells"
+  // option). Tracks which hand slot has that list open.
+  const [castListIndex, setCastListIndex] = useState<number | null>(null);
   // A staged immediate play (no board target): clicking the play arms it here
   // first, so an accidental click is ALWAYS cancellable — the card is only
   // actually played when the player presses Confirm. Nothing is sent to the
@@ -463,6 +468,18 @@ export function HandFan({
   // empty), so the player can always open it to see what it holds.
   const polishBook = polishSpellBookEnabled(state);
   const showSpellBook = spellBookRuleEnabled(state) || polishBook;
+
+  // Polish Spell Book: one shortcut entry per castable Book Spell, for the
+  // "List the spells" flow surfaced on the Cast a Spell card. A targeted Spell
+  // arms normal board targeting (pick it, then click a glowing target, exactly
+  // like a hand Spell); a no-target Spell dispatches straight away.
+  const bookCastShortcuts = [...bookCastsByCard.entries()]
+    .map(([spellId, actions]) => {
+      const board = actions.map((legal) => legal.action).find(isBoardTargetCardAction);
+      const immediate = actions.find((legal) => !isBoardTargetCardAction(legal.action));
+      return { spellId, board, immediate };
+    })
+    .filter((entry) => entry.board || entry.immediate);
 
   return (
     <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand" data-fx-anchor={`hand:${viewerPlayerId}`}>
@@ -610,6 +627,59 @@ export function HandFan({
                     >
                       Read card (large)
                     </button>
+                    {polishBook && isCastASpellCard(entry.cardId) ? (
+                      // Cast a Spell (Polish): two ways to reach the same cast —
+                      // open the full grimoire, or pick from a quick shortcut list.
+                      // Either way the chosen Spell runs the NORMAL cast flow.
+                      <div className="castASpellChoice" aria-label="Cast a Spell options">
+                        <button
+                          className="castASpellOpenBook"
+                          onClick={() => {
+                            setShelfOpen("book");
+                            setCastListIndex(null);
+                            setOpenIndex(null);
+                          }}
+                          type="button"
+                        >
+                          📖 Open Spell Book
+                        </button>
+                        <button
+                          className="castASpellList"
+                          onClick={() =>
+                            setCastListIndex((current) => (current === entry.handIndex ? null : entry.handIndex))
+                          }
+                          type="button"
+                        >
+                          {castListIndex === entry.handIndex ? "Hide the spells" : "List the spells"}
+                        </button>
+                        {castListIndex === entry.handIndex ? (
+                          <div className="castASpellSpells" role="menu" aria-label="Castable Book Spells">
+                            {bookCastShortcuts.length === 0 ? (
+                              <small className="noTiming">No refreshed Spell is castable right now.</small>
+                            ) : (
+                              bookCastShortcuts.map(({ spellId, board, immediate }) => (
+                                <button
+                                  key={spellId}
+                                  onClick={() => {
+                                    if (board) {
+                                      // Arm normal board targeting for this Spell.
+                                      onSelectCardAction(sameCardSelection(selectedCardAction, board) ? null : board);
+                                    } else if (immediate) {
+                                      onAction(immediate.action);
+                                    }
+                                    setCastListIndex(null);
+                                    setOpenIndex(null);
+                                  }}
+                                  type="button"
+                                >
+                                  {`Cast ${cardName(spellId)}`}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {entry.boardSelections.map((action) => (
                       <button
                         key={cardSelectionKey(action)}
