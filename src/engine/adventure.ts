@@ -1216,7 +1216,11 @@ export function isDesignedEdgeSealedBetween(
   const toTile = adventure.tiles[toField.tileInstanceId];
   const fromHas = Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
   const toHas = Boolean(toTile?.borderEdges && toTile.borderEdges.length > 0);
-  if (!fromHas && !toHas) {
+  // Field-level borders: a STANDALONE object hex carries its own edge list
+  // (it has no backing tile). Same seal, same both-direction rule.
+  const fromFieldHas = Boolean(fromField.borderEdges && fromField.borderEdges.length > 0);
+  const toFieldHas = Boolean(toField.borderEdges && toField.borderEdges.length > 0);
+  if (!fromHas && !toHas && !fromFieldHas && !toFieldHas) {
     return false;
   }
   const fromCoord = parseHexSpaceId(from);
@@ -1232,6 +1236,12 @@ export function isDesignedEdgeSealedBetween(
     return true;
   }
   if (toHas && toTile && tileEdgeDesignedSealed(toTile, toField.slot, (direction + 3) % 6)) {
+    return true;
+  }
+  if (fromFieldHas && fromField.borderEdges!.includes(direction)) {
+    return true;
+  }
+  if (toFieldHas && toField.borderEdges!.includes((direction + 3) % 6)) {
     return true;
   }
   return false;
@@ -1312,7 +1322,11 @@ export function heroCanDiscoverTileAcrossBorders(
   }
   const heroTile = adventure.tiles[heroField.tileInstanceId];
   const tileEdges = tile.borderEdges;
-  const heroHasEdges = Boolean(heroTile?.borderEdges && heroTile.borderEdges.length > 0);
+  // A standalone object hex carries its own field-level edge list.
+  const heroFieldEdges = heroField.borderEdges;
+  const heroHasEdges = Boolean(
+    (heroTile?.borderEdges && heroTile.borderEdges.length > 0) || (heroFieldEdges && heroFieldEdges.length > 0)
+  );
   const tileHasEdges = Boolean(tileEdges && tileEdges.length > 0);
   if (!heroHasEdges && !tileHasEdges) {
     // No per-edge borders anywhere: the whole-arc rule (already passed) decides,
@@ -1333,7 +1347,8 @@ export function heroCanDiscoverTileAcrossBorders(
     }
     sharedEdge = true;
     const heroSideSealed =
-      heroHasEdges && heroTile ? tileEdgeDesignedSealed(heroTile, heroField.slot, direction) : false;
+      (heroHasEdges && heroTile ? tileEdgeDesignedSealed(heroTile, heroField.slot, direction) : false) ||
+      Boolean(heroFieldEdges && heroFieldEdges.includes(direction));
     const tileSideSealed =
       tileHasEdges &&
       Boolean(tileEdges) &&

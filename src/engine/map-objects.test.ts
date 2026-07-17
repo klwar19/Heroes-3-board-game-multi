@@ -1274,3 +1274,59 @@ describe("designer guards on single hexes — exact armies + arrival auto-win", 
     expect(isFieldGuarded(field)).toBe(false);
   });
 });
+
+// ---- 9. Designer yellow borders on standalone object hexes -------------------
+
+describe("object-hex yellow borders", () => {
+  const standalone = outwardHex(CLUSTER, 1);
+  const hex = hexSpaceId(standalone);
+  // The ring hex of the F1 tile the object touches: R→S is absolute direction 0
+  // (outwardHex extends along slot 1's facing), so S→R is the mirror, 3.
+  const ring = hexSpaceId(tileFootprint(CLUSTER, 0)[1]);
+
+  function borderedGame(borderEdges: number[] | undefined, seed: string): GameState {
+    return objectsGame(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "monolith",
+          placement: { type: "standalone", row: standalone.row, col: standalone.col },
+          ...(borderEdges ? { borderEdges } : {})
+        }
+      ],
+      seed
+    );
+  }
+
+  it("a sealed object edge blocks the crossing BOTH ways (CONTROL: other edges / no border stay open)", () => {
+    const state = borderedGame([3], "object-border-sealed");
+    expect(adv(state).fields[hex]?.borderEdges).toEqual([3]);
+    // Sealed toward the tile: neither direction may cross that edge.
+    expect(canCrossEdge(state, ring, hex)).toBe(false);
+    expect(canCrossEdge(state, hex, ring)).toBe(false);
+
+    // CONTROL 1: a seal on a DIFFERENT edge leaves the tile crossing open.
+    const otherEdge = borderedGame([0], "object-border-other");
+    expect(canCrossEdge(otherEdge, ring, hex)).toBe(true);
+    expect(canCrossEdge(otherEdge, hex, ring)).toBe(true);
+
+    // CONTROL 2: no border at all → open (the pre-feature behaviour).
+    const open = borderedGame(undefined, "object-border-none");
+    expect(canCrossEdge(open, ring, hex)).toBe(true);
+  });
+
+  it("sanitize keeps clean object border edges and drops garbage", () => {
+    const clean = sanitizeCustomMapObject({
+      kind: "monolith",
+      placement: { type: "standalone", row: 1, col: 1 },
+      borderEdges: [3, 0, 3, 9, -1, "x"]
+    });
+    expect(clean?.borderEdges).toEqual([0, 3]);
+    const none = sanitizeCustomMapObject({
+      kind: "monolith",
+      placement: { type: "standalone", row: 1, col: 1 },
+      borderEdges: ["junk"]
+    });
+    expect(none?.borderEdges).toBeUndefined();
+  });
+});

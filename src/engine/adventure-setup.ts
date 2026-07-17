@@ -1428,6 +1428,16 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       field.gatePair = object.pair;
     }
     applyCustomGuardToField(field, objectGuardSpec(object));
+    // Designer yellow border edges ride the object onto its carved field
+    // (absolute dirs, re-normalised so a hand-edited save can't smuggle junk).
+    if (Array.isArray(object.borderEdges)) {
+      const edges = [
+        ...new Set(object.borderEdges.filter((dir) => Number.isInteger(dir) && dir >= 0 && dir <= 5))
+      ].sort((a, b) => a - b);
+      if (edges.length > 0) {
+        field.borderEdges = edges;
+      }
+    }
     adventure.fields[spaceId] = field;
   }
 }

@@ -3222,6 +3222,55 @@ describe("MapDesigner — on-board per-edge yellow border painting", () => {
       .find((code) => code !== 0)!;
     expect(zoneByCode(container, otherCode).classList.contains("active")).toBe(false);
   });
+
+  it("the brush works on a STANDALONE object hex too: zones appear, a click writes/erases object.borderEdges", () => {
+    // A detached object far from the tile → its 6 edges are all object-owned.
+    const objectHex = { row: town.row + 12, col: town.col + 12 };
+    let latest: CustomMapObject[] = [
+      { kind: "monolith", placement: { type: "standalone", row: objectHex.row, col: objectHex.col } }
+    ];
+    function Harness() {
+      const [objectsState, setObjects] = useState(latest);
+      return (
+        <MapDesigner
+          scenarioId="skirmish"
+          customMap={[{ row: town.row, col: town.col, group: "starting", faceDown: false }]}
+          onChange={() => {}}
+          objects={objectsState}
+          onObjectsChange={(next) => {
+            latest = next;
+            setObjects(next);
+          }}
+        />
+      );
+    }
+    const { container } = render(<Harness />);
+    fireEvent.click(paintButton(container));
+
+    // 30 tile zones + 6 object-hex zones (nothing shared: the object is detached).
+    expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBe(36);
+    const objectZone = container.querySelector(
+      ".designerBorderEdgeZone[data-border-index='object-0'][data-edge-code='3']"
+    ) as HTMLElement;
+    expect(objectZone, "object-owned edge zone present").toBeTruthy();
+
+    // Draw: the direction lands on the OBJECT (not any tile plan).
+    fireEvent.pointerDown(objectZone, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(objectZone, { pointerId: 1 });
+    expect(latest[0].borderEdges).toEqual([3]);
+
+    // The zone re-renders active, and the bold border line is drawn on the hex.
+    const activeZone = container.querySelector(
+      ".designerBorderEdgeZone[data-border-index='object-0'][data-edge-code='3']"
+    ) as HTMLElement;
+    expect(activeZone.classList.contains("active")).toBe(true);
+    expect(container.querySelector(".designerBorderLine"), "border line rendered").toBeTruthy();
+
+    // Erase: clicking again clears it from the object.
+    fireEvent.pointerDown(activeZone, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(activeZone, { pointerId: 1 });
+    expect(latest[0].borderEdges).toBeUndefined();
+  });
 });
 
 describe("MapDesigner — canonical teleporter conversions (token ⇄ standalone) + gate art", () => {

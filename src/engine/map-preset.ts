@@ -616,6 +616,16 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   if (guard) {
     object.guard = guard;
   }
+  // Designer yellow border edges on the object hex (absolute dirs 0-5).
+  const rawEdges = (input as { borderEdges?: unknown }).borderEdges;
+  if (Array.isArray(rawEdges)) {
+    const edges = [
+      ...new Set(rawEdges.filter((dir): dir is number => Number.isInteger(dir) && dir >= 0 && dir <= 5))
+    ].sort((a, b) => a - b);
+    if (edges.length > 0) {
+      object.borderEdges = edges;
+    }
+  }
   return object;
 }
 
