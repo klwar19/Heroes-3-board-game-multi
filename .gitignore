@@ -26,3 +26,6 @@ out/
 scripts/redeploy-vercel.mjs
 
 .vercel
+# Private/source visual references are research inputs only. Generated masters
+# live under scripts/anime-art/raw; downloaded official references never ship.
+scripts/anime-art/refs/

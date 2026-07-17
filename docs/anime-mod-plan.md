@@ -1,7 +1,9 @@
 # Anime mod — ONE mod, two theme packages: **Ninefold Realms** (xianxia) × **Otherworld Gate** (isekai) — design + implementation plan
 
-> **STATUS: DESIGN ONLY — NOTHING IN THIS DOCUMENT IS IMPLEMENTED.** No engine
-> code, data, art or tests for this mod exist yet. Every mechanic below is a
+> **STATUS: ART FOUNDATION IN PROGRESS — GAMEPLAY IS NOT IMPLEMENTED.** Editable
+> Fuyuki City and Azure Breeze unit-card art proofs now exist under
+> `scripts/anime-art/`, with focused asset-pipeline tests; they remain outside
+> `public/assets` and are not playable. Every mechanic below is still a
 > *proposal*, engine-shaped against the current codebase (file references
 > verified 2026-07-16 against `main`). Per CLAUDE.md, nothing here may be
 > called "done" until it is engine-enforced AND covered by a test that fails
@@ -354,15 +356,15 @@ faction.
 Jade green / cloud white. Disciplined mid-tempo army: formation, retaliation,
 support. Avoid: European castle knights.
 
-| Line (tier, type) | Few | Pack | Mechanism |
+| Line (level, tier, type; proof stats A/D/H/I) | Few | Pack | Mechanism |
 | --- | --- | --- | --- |
-| **Outer Sect Disciples** (*Ngoại môn đệ tử*) — bronze, ground | — | **Sword Array**: +1 Attack while adjacent to a friendly unit | SHARED `ATTACK_BONUS_ADJACENT_ALLY` |
-| **Inner Sect Swordsmen** (*Nội môn kiếm sĩ*) — bronze, ground | Ignore combat penalties | same, higher Initiative statline | REUSE `ignore-combat-penalties` |
-| **Alchemy Acolytes** (*Luyện đan đệ tử*) — silver, ranged | [activation] heal an adjacent unit 1 | [activation] heal an adjacent unit 2 | REUSE (Enchanter heal-pick activation pattern) |
-| **Sect Protectors** (*Hộ tông hộ pháp*) — silver, ground | Defense token (roll the Defend die when attacked) | Unlimited retaliation | REUSE `SELF_DEFENSE_TOKEN` / `unlimited-retaliation` |
-| **True Inheritors** (*Chân truyền đệ tử*) — gold, ground | Charge (+1 Attack on an attack after moving) | Charge + ignores retaliation | SHARED charge unit tag (generalize `commander-charge`) / REUSE `ignores-retaliation` |
-| **Sword Immortal** (*Kiếm tiên*) — gold, flying | Sword-qi line: also attack the unit behind the target | same + ignore combat penalties | REUSE `SECOND_ATTACK_BEHIND_TARGET` (Mechanics' reach) |
-| **Mountain Guardian** (*Thủ sơn linh thú*) — gold, ground | high HP, no ability | On removal, heal every adjacent friendly unit 1 | NEW `ON_REMOVAL_HEAL_ADJACENT` (sign-flipped twin of `ON_REMOVAL_DAMAGE_ADJACENT`, `abilities.ts:1197`) |
+| **Outer Sect Disciples** (*Ngoại môn đệ tử*) — L1, bronze, **ground**; 2/1/2/5 | — | **Sword Array**: +1 Attack while adjacent to a friendly unit | SHARED `ATTACK_BONUS_ADJACENT_ALLY` |
+| **Inner Sect Swordsmen** (*Nội môn kiếm sĩ*) — L2, bronze, **ground**; 2/1/2/7 → 2/1/2/9 | Ignore combat penalties | same, higher Initiative statline | REUSE `ignore-combat-penalties` |
+| **Spirit Crane** (*Linh Cầm*) — L3, silver, melee **flying**; 3/1/3/10 → 4/2/4/11 | Flying; high Initiative | same + **Wingbeat**: after dealing melee damage, push the target 1 space directly away if that space is free | REUSE `flying` / NEW `PUSH_TARGET_AWAY_1` |
+| **Sect Protectors** (*Hộ tông hộ pháp*) — L4, silver, **ground**; 3/2/4/4 | Defense token (roll the Defend die when attacked) | Unlimited retaliation | REUSE `SELF_DEFENSE_TOKEN` / `unlimited-retaliation` |
+| **True Inheritors** (*Chân truyền đệ tử*) — L5, gold, **ground**; 5/2/6/7 | Charge (+1 Attack on an attack after moving) | Charge + ignores retaliation | SHARED charge unit tag (generalize `commander-charge`) / REUSE `ignores-retaliation` |
+| **Core Formation Master** (*Kim Đan Chân Nhân*) — L6, gold, **ranged magic**; 4/2/5/6 → 5/3/6/6 | **Magic Attack**: ranged; ignore combat penalties | same + **Talisman Aura**: when an adjacent ally is attacked and its Defense roll is 0 or −1, that ally gains +1 Defense | REUSE `ignore-combat-penalties` / NEW `ADJACENT_ALLY_DEFENSE_ON_ROLL` |
+| **Mountain Guardian** (*Thủ sơn linh thú*) — L7, gold, **ground**; 5/3/8/3 → **6**/3/8/3 | **Verdant Pulse**: at the start of your turn, heal this unit and every adjacent allied unit 1 Health | same + on removal, heal every adjacent allied unit 1 | NEW `START_TURN_HEAL_SELF_AND_ADJACENT` / `ON_REMOVAL_HEAL_ADJACENT` |
 
 Buildings: **Closed-Door Chamber** (*Bế quan thất*, City Hall —
 `RESOURCE_ROUND_CHOICE` {4 gold | 1 XP}), 3 dwellings (**Outer Courtyard /
@@ -1460,6 +1462,9 @@ arms are built once, parameterized, consumers wire data only:
 | `PLACE_TOKEN_ACTION` token variants (paralysis / initiative-down) | SHARED variant (arm exists, `abilities.ts:64`) | Nine-Tailed Fox; Amagi; + free-mode PvP-neutral-control offers |
 | Charge as a unit tag (generalize `commander-charge`) | SHARED arm | True Inheritors, Dragon Horse; Sabers, Noshiro, Dire Wolves |
 | `requiresNotMoved` ability-gate param | SHARED param | Archers, High Elf Archer, Laffey (Sleepy) |
+| `PUSH_TARGET_AWAY_1` (requires a free directly-away space) | NEW arm | Spirit Crane Pack |
+| `ADJACENT_ALLY_DEFENSE_ON_ROLL` (params `faces`, `bonus`) | NEW aura arm | Core Formation Master Pack |
+| `START_TURN_HEAL_SELF_AND_ADJACENT` | NEW turn hook | Mountain Guardian Few/Pack |
 | `ON_REMOVAL_HEAL_ADJACENT` | NEW arm | Mountain Guardian |
 | `ON_REMOVAL_OWNER_RESOURCE` | NEW arm | Cult Initiates |
 | `SELF_DAMAGE_ATTACK_BOOST` | NEW arm | Blood Venerables (+ Demon Patriarch cast rider param) |
@@ -1507,7 +1512,7 @@ user can reorder tracks without re-planning (§22 Q2).
 | **P3** | **Adventurers' Guild** (board, ranks, commissions, Party Members) + the shared quest vocabulary (§3.5) | rank-perk tests each with rank-below CONTROL; claim race (parallel turns); AI claims in soak |
 | **P4** | **Calamity Waves** | barrier-order test (income→event→waves→City Hall); pillage/overrun effect tests; AFK-retreat + elimination CONTROLs; PvP-neutral-control wave test; AI wave soak |
 | **P5** | **Raid Bosses** (+ `boss_lair` object, announce/escalate) | persistence across attempts + snapshot; layer-payout ledger; escalation; PvP-neutral-control boss test |
-| **P6** | **Azure Breeze Sect** + Sword Saint + Alchemy Pavilion (+ its 2 NEW arms) | content test; ELIXIR_SHOP fallback (pills off) test |
+| **P6** | **Azure Breeze Sect** + Sword Saint + Alchemy Pavilion (+ its NEW unit/building arms) | content test; push-space occupied/free outcomes; Talisman Aura die-face controls; Verdant Pulse self/adjacent/non-adjacent outcomes; ELIXIR_SHOP fallback (pills off) test |
 | **P7** | **Elixir Pills** + **Secret Realms** (6 banks, grade rows, realm-grade skin) + **xianxia neutrals** | pills morale-seam tests; bank grades vs polish on/off; Deity-Transformation ships-or-registers rule |
 | **P8** | **Quest Guard** object + **Traps** + xianxia map locations + Guild sites (the designer wave) | designer round-trip/sanitize; every quest kind + reward effect-tested; trap view-masking per player view; AFK/elimination/parallel CONTROLs; AI plays a quest+trap map |
 | **P9** | **Hidden Leaf Village** + **Yaoguai Valley** (+ Might Guy, Fox Sage, Chunin Exam Arena, Transformation Pill Hall) | content tests; `AFTER_ATTACK_SPLASH` + damage-cap CONTROLs; `armyUnitStacksActive` third-activator tests |

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "status": "art-proof-not-playable",
+  "package": "Otherworld Gate",
+  "faction": "Fuyuki City",
+  "visualRegister": "anime-painterly board-game hybrid",
+  "sourceDecision": "Fresh generated renditions; official references used only for identity and costume accuracy; no official image ships.",
+  "authoritativeReferences": [
+    "https://www.fate-sn.com/ubw/sp/chara/",
+    "https://www.fate-sn.com/ubw/sp/intro/"
+  ],
+  "masters": [
+    { "slug": "assassins", "tier": "bronze", "file": "raw/fuyuki/units/units-fuyuki-bronze-assassins-master.png", "review": "approved" },
+    { "slug": "riders", "tier": "bronze", "file": "raw/fuyuki/units/units-fuyuki-bronze-riders-master.png", "review": "approved" },
+    { "slug": "lancers", "tier": "bronze", "file": "raw/fuyuki/units/units-fuyuki-bronze-lancers-master.png", "review": "approved" },
+    { "slug": "archers", "tier": "silver", "file": "raw/fuyuki/units/units-fuyuki-silver-archers-master.png", "review": "approved" },
+    { "slug": "casters", "tier": "silver", "file": "raw/fuyuki/units/units-fuyuki-silver-casters-master.png", "review": "approved" },
+    { "slug": "sabers", "tier": "golden", "file": "raw/fuyuki/units/units-fuyuki-golden-sabers-master.png", "review": "approved" },
+    { "slug": "berserkers", "tier": "golden", "file": "raw/fuyuki/units/units-fuyuki-golden-berserkers-master.png", "review": "approved" }
+  ],
+  "rejectedTrials": [
+    "generic masked assassins",
+    "generic mounted rider",
+    "generic lancer with spectral duplicate"
+  ],
+  "rejectionReason": "Visually polished but not sufficiently faithful to the official Servant silhouettes. They are not copied into the repository."
+}
