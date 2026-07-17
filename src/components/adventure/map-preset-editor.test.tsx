@@ -369,4 +369,36 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     // The round-limit section relabels to the hard meaning.
     expect(screen.getByText("Round limit (hard end)")).toBeTruthy();
   });
+
+  it("Map settings: a difficulty chip writes the preset difficulty; re-clicking it clears back to undefined", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    fireEvent.click(within(section("Difficulty")).getByRole("button", { name: "Hard" }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ difficulty: "hard" }));
+    // Re-clicking the active chip clears the only condition → the preset collapses.
+    rerender(<MapPresetEditor preset={{ difficulty: "hard" }} onChange={onChange} />);
+    fireEvent.click(within(section("Difficulty")).getByRole("button", { name: "Hard" }));
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("Map settings: far-tile opening + per-player chips write through onChange, a sibling field survives, and Off hides the count row", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={{ victoryMode: "grail" }} onChange={onChange} />);
+    // Turn Ⅱ–Ⅲ opening OFF — the unrelated victoryMode must survive (no clobber).
+    fireEvent.click(within(section("Additional Ⅱ–Ⅲ tile opening")).getByRole("button", { name: "Off" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ victoryMode: "grail", farTileOpening: false })
+    );
+
+    // With opening on, pick a per-player count.
+    rerender(<MapPresetEditor preset={{ farTileOpening: true }} onChange={onChange} />);
+    fireEvent.click(within(section("Ⅱ–Ⅲ tiles per player")).getByRole("button", { name: "3" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ farTileOpening: true, farTilesPerPlayer: 3 })
+    );
+
+    // CONTROL: with opening OFF the per-player row is hidden entirely.
+    rerender(<MapPresetEditor preset={{ farTileOpening: false }} onChange={onChange} />);
+    expect(screen.queryByRole("group", { name: "Ⅱ–Ⅲ tiles per player" })).toBeNull();
+  });
 });

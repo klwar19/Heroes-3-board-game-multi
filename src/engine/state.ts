@@ -9328,6 +9328,22 @@ export type CustomStartingUnit = {
  */
 export type CustomMapPreset = {
   victoryMode?: VictoryMode;
+  /**
+   * Map-settings DEFAULTS the designer seeds into the lobby when this map is
+   * picked (apply-once: the host may still change each after pick — their edit
+   * wins at build). Absent = the lobby keeps its own value (byte-identical to a
+   * legacy preset). These three hoist 1:1 onto the same-named `GameSetupOptions`
+   * fields via `presetForcedOptionKeys` / `applyCustomMapPresetToOptions` /
+   * `revertCustomMapPresetOptions`.
+   *   - `difficulty`: default scenario/Neutral difficulty (Field Difficulty Level
+   *     Table column + printed starting bonus).
+   *   - `farTileOpening`: whether players may open their own Ⅱ–Ⅲ Far tiles.
+   *   - `farTilesPerPlayer`: each player's Ⅱ–Ⅲ Far-tile supply size (0–6, clamped
+   *     to {@link MAX_FAR_TILES_PER_PLAYER}); only meaningful while opening is on.
+   */
+  difficulty?: GameDifficulty;
+  farTileOpening?: boolean;
+  farTilesPerPlayer?: number;
   startingResources?: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
   startingBuildings?: string[];
