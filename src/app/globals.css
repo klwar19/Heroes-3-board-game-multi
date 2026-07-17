@@ -13077,6 +13077,54 @@ img.cardBack {
   opacity: 0.85;
   font-size: 11px;
 }
+/* Anime Mod panel — Field Override palette (sibling of Objects tools). */
+.designerObjectButton.modPanel {
+  border-color: rgba(180, 120, 255, 0.65);
+}
+.designerModPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(180, 120, 255, 0.35);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(28, 16, 40, 0.88), rgba(14, 18, 32, 0.9));
+  color: #e8dff5;
+  max-width: 720px;
+}
+.designerModPanel .popoverSectionLabel {
+  color: #d4b8ff;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.designerModPanelRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.designerObjectButton.modOverride {
+  border-color: rgba(180, 120, 255, 0.45);
+  font-size: 11px;
+}
+.designerObjectButton.modOverride:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.designerModPinRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 4px 0;
+  border-top: 1px solid rgba(180, 120, 255, 0.15);
+  font-size: 11px;
+}
+.designerModPinRow .popoverSelect {
+  max-width: 9rem;
+}
 /* Glowing candidate cells while an object (or tile token) is armed / dragged. */
 .designerObjectSlot {
   fill: rgba(255, 233, 168, 0.28);

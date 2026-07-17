@@ -57,6 +57,21 @@ import {
   type VictoryMode
 } from "@/engine";
 import {
+  fieldOverrideImage,
+  getFieldOverrideDefinition,
+  listFieldOverrideDefinitions
+} from "@/data/map/field-overrides";
+// Side-effect: register Anime package Field Override kinds.
+import "@/data/anime/field-overrides";
+import {
+  firstFreeSlot,
+  occupiedSlotsOnPlan,
+  planFieldOverrides,
+  planTokens,
+  withPlanFieldOverrides,
+  withPlanTokens
+} from "@/engine/tile-hex-placements";
+import {
   nearestGateDragCandidate,
   type GateDragCandidate,
   type GateHexPair
@@ -812,6 +827,8 @@ export function MapDesigner({
     hover: TokenDropTarget | null;
   } | null>(null);
   const tokenClickSuppressRef = useRef(false);
+  // Anime Mod panel — Field Override palette (docs/anime-mod-plan.md §9b).
+  const [modPanelOpen, setModPanelOpen] = useState(false);
   // Border paint mode: armed from the Objects palette, it turns every placed
   // tile's six outer-edge ring hexes into clickable zones that seal/unseal a
   // designer yellow border directly on the board (one armed mode at a time).
@@ -1422,9 +1439,28 @@ export function MapDesigner({
       if (!armedObject) {
         return;
       }
-      updateTile(target.planIndex, { token: tileTokenValue(armedObject.kind, armedObject.pair, target.slot) });
+      const plan = customMap[target.planIndex];
+      if (!plan) {
+        return;
+      }
+      const occupied = occupiedSlotsOnPlan(plan);
+      const slot =
+        target.slot !== undefined && !occupied.has(target.slot)
+          ? target.slot
+          : firstFreeSlot(occupied);
+      if (slot === null) {
+        return; // tile hexes full
+      }
+      const nextToken = tileTokenValue(armedObject.kind, armedObject.pair, slot);
+      if (!nextToken) {
+        return;
+      }
+      // Multi-place: append on a free hex; never stack on an occupied slot.
+      const existing = planTokens(plan).filter((t) => t.slot !== slot);
+      const next = withPlanTokens(plan, [...existing, nextToken]);
+      updateTile(target.planIndex, { tokens: next.tokens, token: undefined });
     },
-    [armedObject, updateTile]
+    [armedObject, customMap, updateTile]
   );
   const placeArmedStandalone = useCallback(
     (row: number, col: number) => {
@@ -2786,19 +2822,19 @@ export function MapDesigner({
     }
   }
 
-  // Monolith/Whirlpool/colored-Gate tile tokens: a face-up tile shows the token
-  // on the exact hex it overwrites; a face-down tile shows it as a centred badge
-  // (the discovering player will pick the hex in play). Whirlpool art carries the
-  // plan-order number (+1/0/-1) the engine will assign at setup; a colored Gate
-  // renders as the MONOLITH art tinted by a color ring + pair badge.
+  // Monolith/Whirlpool/colored-Gate tile tokens — multiple per tile on different
+  // slots. Face-up: exact hex; face-down: preferred physical hex. Whirlpool art
+  // carries plan-order number; colored Gate uses monolith art + color ring.
   for (const [index, plan] of customMap.entries()) {
-    const token = plan.token;
-    if (!token) {
-      continue;
-    }
+    const tokenList = planTokens(plan);
+    for (let tokenIndex = 0; tokenIndex < tokenList.length; tokenIndex++) {
+    const token = tokenList[tokenIndex];
     const center = { row: plan.row, col: plan.col };
     const fixedSlot = token.slot !== undefined;
-    const draggingThis = Boolean(tokenDrag && tokenDrag.index === index && tokenDrag.moved);
+    // Drag currently tracks plan index (first token); multi-token drag is a follow-up.
+    const draggingThis = Boolean(
+      tokenDrag && tokenDrag.index === index && tokenDrag.moved && tokenIndex === 0
+    );
     // While dragging, draw the token following the hovered target — a tile slot,
     // a face-down tile centre, or an off-tile standalone hex (`dropTargetToHex`).
     const cell =
@@ -2818,7 +2854,7 @@ export function MapDesigner({
     gateLayer.push(
       <g
         className={`designerMapToken draggable${draggingThis ? " dragging" : ""}${isGate ? " gate" : ""}`}
-        key={`map-token-${index}`}
+        key={`map-token-${index}-${tokenIndex}`}
         onClick={onMapTokenClick(index)}
         onPointerDown={beginTokenPress(index, token.kind, token.pair)}
         opacity={plan.faceDown ? 0.9 : 1}
@@ -2864,6 +2900,47 @@ export function MapDesigner({
         <title>{tokenTitle}</title>
       </g>
     );
+    } // end per-token on this plan
+  }
+
+  // Field Override pins — multi per tile on distinct slots (Mod panel).
+  for (const [index, plan] of customMap.entries()) {
+    const overrides = planFieldOverrides(plan);
+    for (let oi = 0; oi < overrides.length; oi++) {
+      const pin = overrides[oi];
+      const art = fieldOverrideImage(pin.kind) ?? fieldOverrideImage(getFieldOverrideDefinition(pin.kind)?.locationId ?? "");
+      if (!art) {
+        continue;
+      }
+      const center = { row: plan.row, col: plan.col };
+      const slot = pin.slot ?? 0;
+      const cell = tileFootprint(center, plan.rotation ?? 0)[slot] ?? center;
+      const pixel = hexToPixel(cell, size);
+      const tokenWidth = hexWidth * 0.95;
+      const tokenHeight = 2 * size * 0.95;
+      const label = getFieldOverrideDefinition(pin.kind)?.name ?? pin.kind;
+      gateLayer.push(
+        <g className="designerMapToken fieldOverride" key={`fo-${index}-${oi}`} opacity={0.95}>
+          <polygon
+            className="designerMapTokenHit"
+            fill="transparent"
+            points={hexCorners(pixel.x, pixel.y, size - 1.5)}
+            pointerEvents="none"
+          />
+          <image
+            className="designerMapTokenArt"
+            height={tokenHeight}
+            href={assetUrl(art)}
+            preserveAspectRatio="xMidYMid slice"
+            style={{ pointerEvents: "none" }}
+            width={tokenWidth}
+            x={pixel.x - tokenWidth / 2}
+            y={pixel.y - tokenHeight / 2}
+          />
+          <title>{label} Field Override — slot {slot}</title>
+        </g>
+      );
+    }
   }
 
   // A cavern with no gate at all can never be entered: ring it in red and stamp a
@@ -3280,7 +3357,172 @@ export function MapDesigner({
           >
             🖌 Yellow border
           </button>
+          <button
+            aria-controls="designer-mod-panel"
+            aria-expanded={modPanelOpen}
+            aria-pressed={modPanelOpen}
+            className={`designerObjectButton modPanel${modPanelOpen ? " armed" : ""}`}
+            data-testid="designer-mod-panel-toggle"
+            onClick={() => {
+              setModPanelOpen((open) => !open);
+              setArmedObject(null);
+              if (borderPaint) {
+                toggleBorderPaint();
+              }
+            }}
+            title="Anime Mod — Field Overrides and other mod single-hex objects (select a tile, then pin an override)"
+            type="button"
+          >
+            ⛩ Mod
+          </button>
         </div>
+        {modPanelOpen ? (
+          <div
+            className="designerModPanel"
+            data-testid="designer-mod-panel"
+            id="designer-mod-panel"
+            role="region"
+            aria-label="Anime Mod field overrides"
+          >
+            <div className="popoverSectionLabel">Mod objects → Field Overrides</div>
+            <small className="popoverHint">
+              One tile may hold <strong>multiple</strong> hex objects (tokens + overrides) as long as
+              each uses a <strong>different hex</strong> — never stacked. Monolith / Whirlpool / Gate
+              are basic teleports (Objects palette). These buttons add{" "}
+              <strong>function objects</strong> (Anime package today). Map pick auto-ticks Field
+              Overrides in Game options.
+            </small>
+            <div className="designerModPanelRow">
+              {listFieldOverrideDefinitions({
+                implementedOnly: true,
+                package: ["anime-xianxia", "anime-isekai", "shared"]
+              }).map((def) => {
+                const groupOk = selected ? def.tileGroups.includes(selected.group) : true;
+                const pinnedList = selected ? planFieldOverrides(selected) : [];
+                const pinnedCount = pinnedList.filter((p) => p.kind === def.id).length;
+                const occupied = selected ? occupiedSlotsOnPlan(selected) : new Set<number>();
+                const free = firstFreeSlot(occupied);
+                return (
+                  <button
+                    className={`designerObjectButton modOverride${pinnedCount > 0 ? " armed" : ""}`}
+                    data-testid={`mod-override-${def.id}`}
+                    disabled={!selected || !groupOk || free === null}
+                    key={def.id}
+                    onClick={() => {
+                      if (selectedIndex === null || !selected) {
+                        return;
+                      }
+                      const current = planFieldOverrides(selected);
+                      // Click again with free slot: add another of this kind on a free hex.
+                      // Shift+click (or no free slot with existing): remove all of this kind.
+                      const nextFree = firstFreeSlot(occupiedSlotsOnPlan(selected));
+                      if (nextFree === null) {
+                        return;
+                      }
+                      const next = withPlanFieldOverrides(selected, [
+                        ...current,
+                        { kind: def.id, slot: nextFree }
+                      ]);
+                      updateTile(selectedIndex, {
+                        fieldOverrides: next.fieldOverrides,
+                        fieldOverride: undefined
+                      });
+                    }}
+                    title={
+                      !selected
+                        ? "Select a tile first"
+                        : !groupOk
+                          ? `Not allowed on ${selected.group} tiles`
+                          : free === null
+                            ? "All 7 hexes on this tile are already occupied"
+                            : `${def.summary} — add on free hex (${pinnedCount} already on tile)`
+                    }
+                    type="button"
+                  >
+                    {def.nameVi ?? def.name}
+                    {pinnedCount > 0 ? ` ×${pinnedCount}` : ""}
+                  </button>
+                );
+              })}
+            </div>
+            {selected && planFieldOverrides(selected).length > 0 ? (
+              <div className="popoverActions" data-testid="mod-override-list">
+                <small className="popoverHint">Pinned on this tile (change slot or remove):</small>
+                {planFieldOverrides(selected).map((pin, pinIndex) => (
+                  <div className="designerModPinRow" key={`${pin.kind}-${pin.slot}-${pinIndex}`}>
+                    <span>
+                      {getFieldOverrideDefinition(pin.kind)?.nameVi ?? pin.kind}
+                      {pin.slot !== undefined ? ` · slot ${pin.slot}` : ""}
+                    </span>
+                    <select
+                      aria-label={`Hex slot for ${pin.kind}`}
+                      className="popoverSelect"
+                      onChange={(event) => {
+                        if (selectedIndex === null || !selected) {
+                          return;
+                        }
+                        const newSlot = Number(event.target.value);
+                        const occupied = occupiedSlotsOnPlan(selected);
+                        // Allow keeping own slot; block other occupied.
+                        if (newSlot !== pin.slot && occupied.has(newSlot)) {
+                          return;
+                        }
+                        const list = planFieldOverrides(selected).map((p, i) =>
+                          i === pinIndex ? { ...p, slot: newSlot } : p
+                        );
+                        const next = withPlanFieldOverrides(selected, list);
+                        updateTile(selectedIndex, {
+                          fieldOverrides: next.fieldOverrides,
+                          fieldOverride: undefined
+                        });
+                      }}
+                      value={pin.slot ?? 0}
+                    >
+                      {[0, 1, 2, 3, 4, 5, 6].map((slot) => {
+                        const occupied = occupiedSlotsOnPlan(selected);
+                        const taken = occupied.has(slot) && slot !== pin.slot;
+                        return (
+                          <option disabled={taken} key={slot} value={slot}>
+                            Slot {slot}
+                            {taken ? " (taken)" : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <button
+                      onClick={() => {
+                        if (selectedIndex === null || !selected) {
+                          return;
+                        }
+                        const list = planFieldOverrides(selected).filter((_, i) => i !== pinIndex);
+                        const next = withPlanFieldOverrides(selected, list);
+                        updateTile(selectedIndex, {
+                          fieldOverrides: next.fieldOverrides,
+                          fieldOverride: undefined
+                        });
+                      }}
+                      title="Remove this pin"
+                      type="button"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  data-testid="mod-override-clear"
+                  onClick={() => {
+                    if (selectedIndex !== null) {
+                      updateTile(selectedIndex, { fieldOverrides: undefined, fieldOverride: undefined });
+                    }
+                  }}
+                  type="button"
+                >
+                  <Trash2 size={13} /> Clear all Field Overrides on tile
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="designerBoardWrap" ref={wrapRef}>

@@ -127,6 +127,11 @@ import {
   victoryModeCountsHeroDefeats,
   type NeutralDraw
 } from "./adventure";
+import {
+  offerPendingFieldOverridePlacement,
+  placeFieldOverride,
+  refuseFieldOverride
+} from "./field-overrides";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
@@ -1820,6 +1825,19 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
     tileDefId: tile.tileDefId,
     rotation
   });
+
+  // GLOBAL Field Overrides place FIRST — before Subterranean Gates, Creature
+  // Banks, and Monolith/Whirlpool/teleport tokens — so those systems never
+  // compete for the same hex and the override always carves a clean printed
+  // field (user rule). Home (Ⅰ) tiles never roll a pool override.
+  if (!isStartTile) {
+    offerPendingFieldOverridePlacement(state, tile, action.playerId);
+    if (state.pendingChoice) {
+      // Manual / manual-or-refuse window open: gate/bank/token wait behind it
+      // (re-offered when the override choice resolves).
+      return;
+    }
+  }
 
   // Rotate first, THEN pick: with this tile's fields on the board, decide the
   // Subterranean Gate it shares with a tile on the other layer. When the
@@ -8970,6 +8988,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.priorityPlayerId = null;
     // A Monolith/Whirlpool token riding the same tile waited behind the bank
     // prompt; its placement (by the same discovering player) opens now.
+    // Field Overrides already ran before the bank (first in the reveal chain).
     if (bankTile) {
       offerPendingTokenPlacement(state, bankTile, action.playerId);
     }
@@ -8996,6 +9015,50 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "place-field-override") {
+    const data = choice.fieldOverride;
+    const adventure = state.adventure;
+    if (!data || !adventure) {
+      throw new Error("Choose a field for the Field Override.");
+    }
+    const tile = adventure.tiles[data.tileInstanceId];
+    const refuseIndex = data.allowRefuse ? data.candidates.length : -1;
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    if (!tile) {
+      return;
+    }
+    if (data.allowRefuse && action.optionIndex === refuseIndex) {
+      refuseFieldOverride(state, tile, action.playerId);
+    } else {
+      const spaceId = data.candidates[action.optionIndex];
+      if (!spaceId) {
+        throw new Error("Choose one of the offered fields for the Field Override.");
+      }
+      placeFieldOverride(state, tile, spaceId, data.kind, action.playerId);
+    }
+    // More Field Overrides on this tile (multi-pin queue)?
+    if (tile && !tile.faceDown && !tile.awaitingRotation) {
+      if (offerPendingFieldOverridePlacement(state, tile, action.playerId)) {
+        return;
+      }
+      // Override queue drained — resume gate → bank → teleport.
+      const gateCandidates =
+        adventure.chooseGatePlacement ? planGateChoiceForReveal(adventure, tile) : [];
+      if (gateCandidates.length >= 2) {
+        openSubterraneanGatePlacementChoice(state, tile, action.playerId, gateCandidates);
+        return;
+      }
+      carveGatesWithWarning(state, action.playerId, false);
+      offerCreatureBankPlacement(state, tile, action.playerId);
+      if (!state.pendingChoice) {
+        offerPendingTokenPlacement(state, tile, action.playerId);
+      }
+    }
+    return;
+  }
+
   if (choice.context === "subterranean-gate-placement") {
     const data = choice.subterraneanGate;
     const adventure = state.adventure;
@@ -9018,6 +9081,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
     // And a Monolith/Whirlpool token on the tile waits behind BOTH the gate and
     // the bank prompts (the gate carve may have consumed a candidate hex).
+    // Field Overrides already ran before the gate (first in the reveal chain).
     if (tile && !state.pendingChoice) {
       offerPendingTokenPlacement(state, tile, action.playerId);
     }

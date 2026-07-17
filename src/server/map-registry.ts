@@ -119,12 +119,10 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   ) {
     return null;
   }
-  // Monolith/Whirlpool/colored-Gate tile token: keep a well-formed kind; a Gate
-  // REQUIRES a colored pair 1-4 (dropped without one), and a Monolith/Whirlpool
-  // never carries one (a stray pair is stripped). The designed slot (a face-up
-  // printed field or face-down physical preferred hex, 0-6) is kept only when
-  // it is a plausible slot index.
-  const token = sanitizeTileToken(candidate.token);
+  // Tokens + Field Overrides: multiple per tile OK when slots differ. Legacy
+  // singular `token` / `fieldOverride` fold into the arrays; same-slot stacks
+  // drop later entries (first wins).
+  const { tokens, fieldOverrides } = sanitizeTileHexPlacements(candidate);
   // Secret landmark filter (face-down only). Exact tileDefId pin still wins
   // at setup if both are present; sanitize keeps both so old maps round-trip.
   // The engine's isSecretTileFeature guard is the single feature-id allow-list.
@@ -169,11 +167,36 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
       : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
-    ...(token ? { token } : {}),
+    ...(tokens && tokens.length > 0 ? { tokens } : {}),
+    ...(fieldOverrides && fieldOverrides.length > 0 ? { fieldOverrides } : {}),
     ...(gateLinks.length > 0 ? { gateLinks } : {}),
     ...(extraBorders.length > 0 ? { extraBorders } : {}),
     ...(borderEdges.length > 0 ? { borderEdges } : {})
   };
+}
+
+/**
+ * Anime Field Override pin on a tile plan. Kind must be a known catalog id;
+ * slot 0-6 is optional (face-up exact / face-down preferred).
+ */
+function sanitizeTileFieldOverride(input: unknown): CustomMapTilePlan["fieldOverride"] | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { kind?: unknown; slot?: unknown };
+  if (typeof raw.kind !== "string" || raw.kind.length === 0 || raw.kind.length > 64) {
+    return undefined;
+  }
+  // Allow-list is validated softly here (unknown kinds round-trip so maps with
+  // future kinds don't strip; setup drops unknown kinds with a problem note).
+  if (!/^[a-z0-9_]+$/i.test(raw.kind)) {
+    return undefined;
+  }
+  const slot =
+    Number.isInteger(raw.slot) && (raw.slot as number) >= 0 && (raw.slot as number) <= 6
+      ? { slot: raw.slot as number }
+      : {};
+  return { kind: raw.kind, ...slot };
 }
 
 /**
@@ -203,6 +226,74 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
   }
   // Monolith / Whirlpool: never carry a pair.
   return { kind: raw.kind, ...slot };
+}
+
+/**
+ * Multi hex placements: fold singular + array, drop same-slot stacks (first wins).
+ * Cap 7 (one per flower hex).
+ */
+function sanitizeTileHexPlacements(candidate: Partial<CustomMapTilePlan>): {
+  tokens?: NonNullable<CustomMapTilePlan["tokens"]>;
+  fieldOverrides?: NonNullable<CustomMapTilePlan["fieldOverrides"]>;
+} {
+  const tokensRaw: NonNullable<CustomMapTilePlan["tokens"]> = [];
+  if (Array.isArray(candidate.tokens)) {
+    for (const entry of candidate.tokens) {
+      const t = sanitizeTileToken(entry);
+      if (t) {
+        tokensRaw.push(t);
+      }
+    }
+  }
+  const legacyToken = sanitizeTileToken(candidate.token);
+  if (legacyToken) {
+    tokensRaw.unshift(legacyToken);
+  }
+  const overridesRaw: NonNullable<CustomMapTilePlan["fieldOverrides"]> = [];
+  if (Array.isArray(candidate.fieldOverrides)) {
+    for (const entry of candidate.fieldOverrides) {
+      const o = sanitizeTileFieldOverride(entry);
+      if (o) {
+        overridesRaw.push(o);
+      }
+    }
+  }
+  const legacyOverride = sanitizeTileFieldOverride(candidate.fieldOverride);
+  if (legacyOverride) {
+    overridesRaw.unshift(legacyOverride);
+  }
+
+  const occupied = new Set<number>();
+  const tokens: NonNullable<CustomMapTilePlan["tokens"]> = [];
+  for (const t of tokensRaw) {
+    if (typeof t.slot === "number") {
+      if (occupied.has(t.slot)) {
+        continue;
+      }
+      occupied.add(t.slot);
+    }
+    tokens.push(t);
+    if (tokens.length >= 7) {
+      break;
+    }
+  }
+  const fieldOverrides: NonNullable<CustomMapTilePlan["fieldOverrides"]> = [];
+  for (const o of overridesRaw) {
+    if (typeof o.slot === "number") {
+      if (occupied.has(o.slot)) {
+        continue;
+      }
+      occupied.add(o.slot);
+    }
+    fieldOverrides.push(o);
+    if (tokens.length + fieldOverrides.length >= 7) {
+      break;
+    }
+  }
+  return {
+    ...(tokens.length > 0 ? { tokens } : {}),
+    ...(fieldOverrides.length > 0 ? { fieldOverrides } : {})
+  };
 }
 
 /** Keeps a well-formed designer gate link, or null. Pinned hexes must be valid absolute ids. */
