@@ -331,6 +331,8 @@ import {
   resolvedSpellPowerForStackItem,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
+  spellReactionAffectedUnitId,
+  spellReactionBlockedByImmunity,
   spellRedirectTargets,
   standingSpellPower,
   unitIdsThreatenedByDamageEffect
@@ -11243,6 +11245,31 @@ function applyReactionPlayCore(
     throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
   }
 
+  // Spell-school / Anti-Magic immunity backstop for attack-window and
+  // activation-skip Spell reactions (Bless, Bloodlust, Curse, Weakness, Sorrow…).
+  // The legal-action layer already withholds these offers; this rejects a forged
+  // play so an immune unit (Black Dragons Pack, Azure, Oceanids Pack, …) never
+  // takes a Spell effect from a quick reaction either — friend or foe.
+  if (card.kind === "spell") {
+    const triggerEvent = state.reactionWindow?.triggerEvent;
+    if (
+      triggerEvent &&
+      (triggerEvent.type === "UNIT_ATTACK_DECLARED" ||
+        triggerEvent.type === "UNIT_ACTIVATION_STARTED" ||
+        triggerEvent.type === "SPELL_CAST_STARTED") &&
+      spellReactionBlockedByImmunity(state, card, effect, triggerEvent)
+    ) {
+      const unitId =
+        triggerEvent.type === "UNIT_ATTACK_DECLARED"
+          ? spellReactionAffectedUnitId(effect, triggerEvent.attackerId, triggerEvent.defenderId)
+          : triggerEvent.type === "UNIT_ACTIVATION_STARTED"
+            ? triggerEvent.unitId
+            : null;
+      const unit = unitId ? state.combat?.units[unitId] : undefined;
+      throw new Error(`${unit?.cardName ?? "That unit"} is immune to ${card.name}.`);
+    }
+  }
+
   // Protection-from-X self-defends its School/level gate at resolution: a
   // fabricated reaction can never cancel a spell of the wrong School or, in
   // basic play, an Expert spell (the legal-action layer already filters offers).
@@ -11395,6 +11422,22 @@ function applyReactionPlayCore(
       ? card.effect.options[play.optionIndex]?.label
       : undefined;
 
+  // Anchor combat Spell-reaction FX on the unit the effect lands on (Curse on
+  // the defender, Bloodlust on the attacker, Sorrow on the skipped unit) so the
+  // sprite is not left floating at centre stage over the played card.
+  let cardPlayTargetUnitId: UnitId | undefined;
+  if (card.kind === "spell") {
+    if (stackItem && isAttackStackItem(stackItem)) {
+      cardPlayTargetUnitId =
+        spellReactionAffectedUnitId(effect, stackItem.action.attackerId, stackItem.action.defenderId) ?? undefined;
+    } else if (effect.type === "SKIP_ACTIVATION") {
+      const te = state.reactionWindow?.triggerEvent;
+      if (te?.type === "UNIT_ACTIVATION_STARTED") {
+        cardPlayTargetUnitId = te.unitId;
+      }
+    }
+  }
+
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId,
@@ -11402,7 +11445,8 @@ function applyReactionPlayCore(
     timing: card.timing,
     mode,
     effectAmount: effectAmount || undefined,
-    optionLabel
+    optionLabel,
+    ...(cardPlayTargetUnitId ? { targetUnitId: cardPlayTargetUnitId } : {})
   });
 
   if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
@@ -11507,18 +11551,19 @@ function applyReactionPlayCore(
   // closes and the spell resolves against the chosen unit once it is picked.
   if (effect.type === "REDIRECT_SPELL" && stackItem?.action.type === "CAST_SPELL") {
     const currentTarget = stackItem.action.target;
+    const castCard = cards[stackItem.action.cardId];
     // A space-centred blast (Inferno) has no single "current" unit to exclude —
-    // pass null so every legal unit qualifies as the new centre.
+    // pass null so every legal unit qualifies as the new centre. Spell-school
+    // immunity (Black Dragons Pack, Elementals, …) is keyed off the bounced spell.
     const candidates = spellRedirectTargets(
       state,
       currentTarget.type === "unit" ? currentTarget.unitId : null,
-      effect.grade
+      effect.grade,
+      castCard
     );
     if (candidates.length === 0) {
       throw new Error("There is no legal new target for that spell.");
     }
-
-    const castCard = cards[stackItem.action.cardId];
     const choiceId = `choice_${nextEventNumber(state)}`;
     state.pendingChoice = {
       id: choiceId,
@@ -11559,12 +11604,13 @@ function applyReactionPlayCore(
   ) {
     const found = reflectableAttackInstantForPlayer(state, stackItem, playerId, cards);
     const affected = found ? state.combat?.units[found.affectedUnitId] : undefined;
-    const candidates = found ? spellRedirectTargets(state, found.affectedUnitId, effect.grade) : [];
+    const instantCard = found ? cards[found.cardId] : undefined;
+    const candidates = found
+      ? spellRedirectTargets(state, found.affectedUnitId, effect.grade, instantCard)
+      : [];
     if (!found || !affected || candidates.length === 0) {
       throw new Error("There is no enemy Spell on this attack for Magic Mirror to reflect.");
     }
-
-    const instantCard = cards[found.cardId];
     const signedAmount = attackInstantSignedAmount(stackItem, found.cardId, cards);
     reverseCancelledInstantSpell(stackItem, found.cardId, cards);
     stackItem.modifiers.cancellableSpellInstants?.splice(found.index, 1);
@@ -12686,7 +12732,14 @@ function applyUnitMagicMirror(
     throw new Error("That unit cannot use Magic Mirror.");
   }
 
-  let candidates = spellRedirectTargets(state, unit.id, "azure");
+  let reflectedSpell: Pick<CardDefinition, "kind" | "spellSchools"> | undefined;
+  if (stackItem.action.type === "CAST_SPELL") {
+    reflectedSpell = cards[stackItem.action.cardId];
+  } else if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
+    const found = reflectableAttackInstantForPlayer(state, stackItem, action.playerId, cards);
+    reflectedSpell = found ? cards[found.cardId] : undefined;
+  }
+  let candidates = spellRedirectTargets(state, unit.id, "azure", reflectedSpell);
   if (candidates.length === 0) {
     throw new Error("There is no legal new target for Magic Mirror.");
   }
@@ -12717,7 +12770,7 @@ function applyUnitMagicMirror(
     if (!found || found.affectedUnitId !== unit.id) {
       throw new Error("There is no enemy Spell on that unit to reflect.");
     }
-    candidates = spellRedirectTargets(state, found.affectedUnitId, "azure");
+    candidates = spellRedirectTargets(state, found.affectedUnitId, "azure", cards[found.cardId]);
     const amount = attackInstantSignedAmount(stackItem, found.cardId, cards);
     reverseCancelledInstantSpell(stackItem, found.cardId, cards);
     stackItem.modifiers.cancellableSpellInstants?.splice(found.index, 1);

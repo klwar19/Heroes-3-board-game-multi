@@ -501,20 +501,107 @@ export function isUnitSpellImmune(state: GameState, unit: CombatUnitState): bool
 }
 
 /**
+ * Whether `unit` is blocked from receiving this Spell card's effects — printed
+ * school immunity (Black Dragons Pack / Azure / Oceanids Pack / …), Anti-Magic,
+ * and artifact-granted school immunity. Shared by cast targeting, attack-window
+ * reactions (Bless / Curse / Weakness / …), Sorrow, and Magic Mirror redirects
+ * so "immune to Spells" means every Spell path, not only CAST_SPELL picks.
+ * Orb of Vulnerability lifts only printed innate school immunity.
+ */
+export function unitBlockedBySpellCard(
+  state: GameState,
+  unit: CombatUnitState,
+  card: Pick<CardDefinition, "kind" | "spellSchools">
+): boolean {
+  if (card.kind !== "spell") {
+    return false;
+  }
+  if (isUnitSpellImmune(state, unit)) {
+    return true;
+  }
+  if (unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools)) {
+    return true;
+  }
+  return !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
+}
+
+/**
+ * The combat unit a Spell reaction's effect lands on during an open attack.
+ * Attack-stat / die / strike buffs hit the attacker; defense changes hit the
+ * defender. Null when the effect has no single unit recipient (Power, draws…).
+ * Used by offer gates, apply backstops, and CARD_PLAYED FX anchoring.
+ */
+export function spellReactionAffectedUnitId(
+  effect: ConcreteEffect,
+  attackerId: UnitId,
+  defenderId: UnitId
+): UnitId | null {
+  switch (effect.type) {
+    case "ADD_COMBAT_STAT":
+      return effect.stat === "attack" ? attackerId : defenderId;
+    case "IGNORE_ATTACK_DIE":
+    case "NEGATE_ATTACK":
+    case "SLAYER_ATTACK":
+    case "IGNORE_DEFENSE":
+    case "FORCE_ATTACK_ROLL":
+    case "TRIPLE_ATTACK_DIE":
+      return attackerId;
+    case "REDUCE_RETALIATION_DAMAGE":
+      return defenderId;
+    default:
+      return null;
+  }
+}
+
+/**
+ * True when this Spell card's reaction would land on a unit immune to it.
+ * Covers attack-window instants and Sorrow's activation skip.
+ */
+export function spellReactionBlockedByImmunity(
+  state: GameState,
+  card: Pick<CardDefinition, "kind" | "spellSchools">,
+  effect: ConcreteEffect,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>
+): boolean {
+  if (card.kind !== "spell" || !state.combat) {
+    return false;
+  }
+  let unitId: UnitId | null = null;
+  if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+    unitId = spellReactionAffectedUnitId(effect, triggerEvent.attackerId, triggerEvent.defenderId);
+  } else if (triggerEvent.type === "UNIT_ACTIVATION_STARTED" && effect.type === "SKIP_ACTIVATION") {
+    unitId = triggerEvent.unitId;
+  }
+  if (!unitId) {
+    return false;
+  }
+  const unit = state.combat.units[unitId];
+  return Boolean(unit && unitBlockedBySpellCard(state, unit, card));
+}
+
+/**
  * Magic Mirror: legal new targets for a pending Spell when redirecting it.
  * Any unit of the paid grade or lower (Power 0 → bronze, 1 → silver, 2 → gold),
  * friend or foe, except the unit currently targeted, and never a unit immune to
- * spells of its grade (a spell "cannot be targeted" at an immune unit).
+ * that Spell (Anti-Magic, printed school immunity, artifact school immunity).
  */
 export function spellRedirectTargets(
   state: GameState,
   currentTargetUnitId: UnitId | null,
-  maxGrade: CombatUnitState["grade"]
+  maxGrade: CombatUnitState["grade"],
+  spellCard?: Pick<CardDefinition, "kind" | "spellSchools">
 ): CombatUnitState[] {
   const combat = state.combat;
   if (!combat) {
     return [];
   }
+  // When the reflected card is unknown, treat the redirect as "any Spell" so
+  // full-school-immune units (Black/Azure Dragons, Oceanids Pack, …) still drop
+  // out; partial elemental immunities need the real card's schools at the call site.
+  const reflected: Pick<CardDefinition, "kind" | "spellSchools"> = spellCard ?? {
+    kind: "spell",
+    spellSchools: ["any", "air", "earth", "fire", "water"]
+  };
   return Object.values(combat.units).filter(
     (unit) =>
       // `currentTargetUnitId` is null for a space-targeted blast (Inferno), where
@@ -522,7 +609,7 @@ export function spellRedirectTargets(
       unit.id !== currentTargetUnitId &&
       isUnitAlive(unit) &&
       gradeRank(unit.grade) <= gradeRank(maxGrade) &&
-      !isUnitSpellImmune(state, unit)
+      !unitBlockedBySpellCard(state, unit, reflected)
   );
 }
 
@@ -1449,28 +1536,16 @@ function getTargetsForCard(
         ? [...getFriendlyTargets(state, playerId, target), ...getEnemyTargets(state, playerId, target)]
         : getEnemyTargets(state, playerId, target);
 
-  // Anti-Magic and elemental immunity: a unit cannot be targeted by a Spell it
-  // is immune to. Anti-Magic (the UNIT_SPELL_IMMUNE active effect) blocks every
-  // Spell up to its grade; an Elemental's printed immunity blocks only Magic
-  // Arrow and its own school (see unitImmuneToSpellSchools).
+  // Anti-Magic, printed school immunity, and artifact school immunity: a unit
+  // cannot be targeted by a Spell it is immune to (friend or foe — same gate).
+  // Shared with attack-window reactions via unitBlockedBySpellCard.
   if (card?.kind === "spell") {
     targets = targets.filter((candidate) => {
       if (candidate.type !== "unit") {
         return true;
       }
       const unit = state.combat?.units[candidate.unitId];
-      if (!unit) {
-        return true;
-      }
-      // Orb of Vulnerability negates a unit's printed spell-school immunity, so
-      // an otherwise-immune unit becomes a legal target. Anti-Magic (a Spell
-      // effect, not a unit ability) still bars targeting.
-      const innateImmune = !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
-      // Pendant of Negativity (option B): an artifact-granted school immunity also
-      // bars targeting; unlike printed immunity it is never lifted by Orb of
-      // Vulnerability.
-      const artifactImmune = unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools);
-      return !isUnitSpellImmune(state, unit) && !innateImmune && !artifactImmune;
+      return !unit || !unitBlockedBySpellCard(state, unit, card);
     });
   }
 
@@ -5464,6 +5539,11 @@ function getMisfortunePreWindowReactions(
       ) {
         continue;
       }
+      // Printed full Spell immunity (Black Dragons Pack, Azure, …): Misfortune
+      // lands on the attacker, so an immune attacker cannot be hexed.
+      if (unitBlockedBySpellCard(state, attacker, card)) {
+        continue;
+      }
       reactions.push(
         makeReactionAction(`${card.name}: ${option.label}${fromSpellBook ? " (Spell Book)" : ""}`, {
           type: "PLAY_REACTION",
@@ -5763,7 +5843,20 @@ function getMagicMirrorReactions(
       if (!canAffordCardCost(state, player.id, cardId, variant.cost)) {
         continue;
       }
-      if (spellRedirectTargets(state, context.excludeUnitId, variant.effect.grade).length === 0) {
+      // Prefer the pending cast/instant's schools so partial elemental immunity
+      // is judged against the actual bounced Spell, not "all schools".
+      const pendingStack = state.stack.at(-1);
+      const reflectedSpell =
+        pendingStack?.action.type === "CAST_SPELL"
+          ? cards[pendingStack.action.cardId]
+          : pendingStack &&
+              (pendingStack.action.type === "ATTACK_UNIT" || pendingStack.action.type === "MOVE_AND_ATTACK_UNIT")
+            ? (() => {
+                const found = reflectableAttackInstantForPlayer(state, pendingStack, player.id, cards);
+                return found ? cards[found.cardId] : undefined;
+              })()
+            : undefined;
+      if (spellRedirectTargets(state, context.excludeUnitId, variant.effect.grade, reflectedSpell).length === 0) {
         continue;
       }
       const variantName = variant.optionLabel
@@ -5820,7 +5913,17 @@ function getInnateMagicMirrorReactions(
     }
   }
 
-  if (!affectedUnitId || spellRedirectTargets(state, affectedUnitId, "azure").length === 0) {
+  const stackItem = state.stack.at(-1);
+  const reflectedSpell =
+    stackItem?.action.type === "CAST_SPELL"
+      ? cards[stackItem.action.cardId]
+      : stackItem && (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+        ? (() => {
+            const found = reflectableAttackInstantForPlayer(state, stackItem, playerId, cards);
+            return found ? cards[found.cardId] : undefined;
+          })()
+        : undefined;
+  if (!affectedUnitId || spellRedirectTargets(state, affectedUnitId, "azure", reflectedSpell).length === 0) {
     return [];
   }
   const unit = combat.units[affectedUnitId];
@@ -5967,6 +6070,14 @@ export function getLegalReactionsForTrigger(
           continue;
         }
 
+        // "Immune to all Spells" (and school / Anti-Magic wards) blocks attack-
+        // window and activation-skip Spell reactions on the affected unit —
+        // Bless / Bloodlust / Curse / Weakness / Shield / Sorrow / …, own or
+        // enemy. Non-Spell reactions (Offense, Armorer, artifacts) are untouched.
+        if (spellReactionBlockedByImmunity(state, card, variant.effect, triggerEvent)) {
+          continue;
+        }
+
         const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
         const isPowerPlay = variant.effect.type === "ADD_SPELL_POWER";
         const push = (action: LegalAction) => {
@@ -6079,7 +6190,8 @@ export function getLegalReactionsForTrigger(
               variant.cost ||
               variant.effect.type === "ADD_SPELL_POWER" ||
               !variantMatchesTrigger(variant, triggerEvent, player.id) ||
-              !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
+              !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic") ||
+              spellReactionBlockedByImmunity(state, card, variant.effect, triggerEvent)
             ) {
               continue;
             }
@@ -6480,7 +6592,8 @@ export function getLegalReactionsForTrigger(
             variant.effect.type === "ADD_SPELL_POWER" ||
             variant.effect.type === "REDIRECT_SPELL" ||
             !variantMatchesTrigger(variant, triggerEvent, player.id) ||
-            !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
+            !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic") ||
+            spellReactionBlockedByImmunity(state, card, variant.effect, triggerEvent)
           ) {
             continue;
           }
