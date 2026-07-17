@@ -38,6 +38,7 @@ import {
   secretFeatureLabel,
   SECRET_TILE_FEATURES,
   subterraneanTileBand,
+  TILE_GROUP_BAND_LABELS,
   tileCentersOverlap,
   tileFootprint,
   tileFootprintsTouch,
@@ -214,14 +215,32 @@ function planGroupLabel(plan: { group: DesignGroup; seaBand?: SeaBand; subBand?:
   return TILE_GROUP_LABELS[plan.group];
 }
 
+/**
+ * Tile-outline colours mirror the creature-tier ladder, so a designer instantly
+ * reads the band's MAX recruitable unit tier from the ring: Ⅰ = bronze, Ⅱ–Ⅲ =
+ * silver, Ⅳ–Ⅴ = gold, Ⅵ–Ⅶ = azure. The land hues reuse the app's canonical grade
+ * colours (`.tierDot.*` / `.neutralDeck.*` in globals.css). Sea is a light blue
+ * and Underground keeps its purple. This is the MAP-EDITOR outline only — the
+ * in-game yellow movement borders (screen.tsx / borders.ts) are untouched.
+ */
 const GROUP_COLORS: Record<DesignGroup, string> = {
-  starting: "#d9b54a",
-  far: "#4f8a4f",
-  near: "#b08d2f",
-  center: "#a14d4d",
-  sea: "#3f7fae",
-  subterranean: "#7a5a9e"
+  starting: "#b46f33", // bronze — Ⅰ tiles guard bronze units only
+  far: "#c7ccd6", // silver — Ⅱ–Ⅲ tiles top out at silver
+  near: "#e7b73c", // gold — Ⅳ–Ⅴ tiles top out at gold
+  center: "#3f7fd6", // azure — Ⅵ–Ⅶ tiles reach azure
+  sea: "#8fd8ff", // light blue — water
+  subterranean: "#7a5a9e" // purple — underground (kept, per the design brief)
 };
+
+/** Band-legend order: the six DesignGroups from weakest (Ⅰ) to Sea/Underground. */
+const BAND_LEGEND_GROUPS: readonly DesignGroup[] = [
+  "starting",
+  "far",
+  "near",
+  "center",
+  "sea",
+  "subterranean"
+];
 
 /** The draggable palette: one entry per tile type the designer can place. */
 const PALETTE: {
@@ -3092,6 +3111,7 @@ export function MapDesigner({
       <path
         className={`designerFlowerOutline ${isSelected ? "selected" : ""} ${secretPin ? "secret" : ""}`}
         d={flowerOutline(center, size)}
+        data-band-group={plan.group}
         key={`plan-outline-${index}`}
         style={{ stroke: isSelected ? "#ffd766" : secretPin ? "#9ad0ff" : GROUP_COLORS[plan.group] }}
       />
@@ -3876,6 +3896,16 @@ export function MapDesigner({
             />
             <span className="paletteLabel">{entry.label}</span>
           </button>
+        ))}
+      </div>
+
+      <div className="designerBandLegend" aria-label="Tile outline colours — max unit tier per band">
+        <span className="designerBandLegendTitle">Max tier</span>
+        {BAND_LEGEND_GROUPS.map((group) => (
+          <span className="designerBandLegendItem" data-band-group={group} key={group}>
+            <i aria-hidden="true" className="designerBandLegendSwatch" style={{ background: GROUP_COLORS[group] }} />
+            {TILE_GROUP_BAND_LABELS[group]}
+          </span>
         ))}
       </div>
 

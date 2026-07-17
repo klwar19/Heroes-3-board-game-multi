@@ -486,6 +486,7 @@ export {
   seaTileBand,
   startingBonusDescription,
   subterraneanTileBand,
+  TILE_GROUP_BAND_LABELS,
   tileLayer
 } from "./adventure";
 export type { DesignedGateLinkLike, HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, MapTokenKind, PlannedSubterraneanGate, RecruitPurchaseRef, TilePlacementLike, TokenPlacementKind } from "./adventure";
