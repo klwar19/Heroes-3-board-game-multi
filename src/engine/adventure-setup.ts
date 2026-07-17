@@ -45,6 +45,8 @@ import {
   NEUTRAL_DECK_IDS,
   normalizeDesignedBorders,
   normalizeDesignedBorderEdges,
+  planIsUnderground,
+  UNDERGROUND_LAYER_GROUPS,
   recomputeSubterraneanGates,
   seaTileBand,
   subterraneanTileBand,
@@ -1043,7 +1045,10 @@ export function validateCustomMapPlan(
       : scenario.layout.starts.map((start) => `${start.row}:${start.col}`)
   );
   for (const plan of accepted) {
-    if (plan.group !== "starting" && plan.group !== "subterranean") {
+    // A gate link's SURFACE side must be a non-underground tile: an
+    // underground-flagged far/near/center/sea plan is now on the cavern layer, so
+    // it is NOT a legal surface target (the layer predicate, never a group check).
+    if (plan.group !== "starting" && !planIsUnderground(plan)) {
       surfaceCenterKeys.add(`${plan.row}:${plan.col}`);
     }
   }
@@ -1052,7 +1057,10 @@ export function validateCustomMapPlan(
   const claimedPinnedHexes = new Set<MapSpaceId>();
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
-    if (plan.group !== "subterranean" || !plan.gateLinks || plan.gateLinks.length === 0) {
+    // Gate links belong to any UNDERGROUND-layer plan — a printed cavern OR a
+    // far/near/center/sea tile the designer flagged underground — not just
+    // `group === "subterranean"`, so a flagged tile keeps its designed links.
+    if (!planIsUnderground(plan) || !plan.gateLinks || plan.gateLinks.length === 0) {
       continue;
     }
     const cavernCenter = { row: plan.row, col: plan.col };
@@ -1164,6 +1172,24 @@ export function validateCustomMapPlan(
     }
   }
 
+  // The UNDERGROUND layer override is a supply/sea/center-only flag (kept as a
+  // literal true): strip it on `starting` (seat tiles stay Surface — the v1
+  // limit) and `subterranean` (redundant — already underground), and drop any
+  // non-true garbage. Mirrors the persistence sanitiser exactly so an in-memory
+  // designer plan and a stored one flag the same layer.
+  for (let index = 0; index < accepted.length; index += 1) {
+    const plan = accepted[index];
+    if (plan.underground === undefined) {
+      continue;
+    }
+    if (plan.underground === true && UNDERGROUND_LAYER_GROUPS.has(plan.group)) {
+      continue;
+    }
+    const next = { ...plan };
+    delete next.underground;
+    accepted[index] = next;
+  }
+
   // `viiField` FORCES a center slot's difficulty-7 objective field (Grail /
   // Dragon Utopia / Random Town) and `centerHex` customizes that field's guard /
   // reward / VP. Both are meaningful only on a `center` plan — strip them on
@@ -1247,7 +1273,10 @@ export function validateCustomMapObjects(
   const startingPlans = plans.filter((plan) => plan.group === "starting");
   const anchors: { center: HexCoord; layer: "surface" | "subterranean" }[] = plans.map((plan) => ({
     center: { row: plan.row, col: plan.col },
-    layer: plan.group === "subterranean" ? "subterranean" : "surface"
+    // A designer-flagged underground far/near/center/sea tile is on the cavern
+    // layer for the standalone-hex "may not bridge both layers" check, exactly
+    // like a printed cavern (the layer predicate, not a group check).
+    layer: planIsUnderground(plan) ? "subterranean" : "surface"
   }));
   if (startingPlans.length === 0) {
     for (const center of startingCenters) {
@@ -1566,6 +1595,22 @@ function applyDesignedBorders(tile: MapTileState, plan: CustomMapTilePlan): void
   const edges = normalizeDesignedBorderEdges(plan.borderEdges);
   if (edges.length > 0) {
     tile.borderEdges = edges;
+  }
+}
+
+/**
+ * Carry the designer's UNDERGROUND layer override (plan → instance): a
+ * far/near/center/sea tile flagged underground rides onto the placed tile so
+ * {@link tileLayer} reads it as "subterranean" from the instant it is placed —
+ * face-down included, so the Subterranean-Gate auto-pairing and the
+ * cross-layer discovery seal hold before the tile is ever revealed. Validation
+ * already stripped the flag from starting/subterranean plans; the group guard
+ * here is one more line of defence so a hand-built plan can never smuggle it
+ * onto a seat tile. Layer-only: it never touches the tile's band content.
+ */
+function applyDesignedUnderground(tile: MapTileState, plan: CustomMapTilePlan): void {
+  if (plan.underground === true && UNDERGROUND_LAYER_GROUPS.has(plan.group)) {
+    tile.underground = true;
   }
 }
 
@@ -2370,6 +2415,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           // the tile is revealed at the slot's rotation.
           const tile = instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
           applyDesignedBorders(tile, plan);
+          applyDesignedUnderground(tile, plan);
           applyDesignedViiField(adventure, tile, plan);
           if (planTokens(plan).length > 0) {
             plannedTokens.push({ plan, tile });
@@ -2381,6 +2427,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       } else if (plan.tileDefId) {
         const tile = instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);
         applyDesignedBorders(tile, plan);
+        applyDesignedUnderground(tile, plan);
         applyDesignedViiField(adventure, tile, plan);
         if (planTokens(plan).length > 0) {
           plannedTokens.push({ plan, tile });
@@ -2432,7 +2479,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
     const designedGatePlans: SubterraneanGatePlan[] = [];
     for (const plan of customMap) {
-      if (plan.group !== "subterranean" || !plan.gateLinks) {
+      // Seed gate plans from every UNDERGROUND-layer plan (printed cavern OR a
+      // flagged far/near/center/sea tile) — the layer predicate, so a flagged
+      // tile's designed links carve exactly like a cavern's.
+      if (!planIsUnderground(plan) || !plan.gateLinks) {
         continue;
       }
       const cavernId = tileIdByCenter.get(`${plan.row}:${plan.col}`);

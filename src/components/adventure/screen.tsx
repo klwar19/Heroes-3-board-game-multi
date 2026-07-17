@@ -76,6 +76,7 @@ import {
   scenarioDefinitions,
   startingBonusDescription,
   tileFootprint,
+  tileLayer,
   tierOfLevel,
   UNIT_LEVELS,
   unitAbilities,
@@ -1013,7 +1014,13 @@ export function HexMapBoard({
       // (or vice versa) — only a hero entering a Subterranean Gate opens it. When
       // it isn't otherwise discoverable, a tap explains that instead of doing
       // nothing, so players aren't left clicking a dead tile.
-      const cavernNeedsGate = tile.group === "subterranean" && !discover && !readOnly;
+      // The Underground layer (a printed cavern OR a designer-flagged
+      // far/near/center/sea tile) can't be discovered from the Surface — the
+      // shared `tileLayer` predicate, so a flagged tile shows the same "needs a
+      // Gate" hint as a cavern. `data-underground` is the always-on layer cue
+      // (present on every underground tile, absent on a plain Surface tile).
+      const undergroundTile = tileLayer(tile) === "subterranean";
+      const cavernNeedsGate = undergroundTile && !discover && !readOnly;
       for (const [slot, coord] of footprint.entries()) {
         const { x, y } = hexToPixel(coord, HEX_SIZE);
         track(x, y);
@@ -1022,6 +1029,7 @@ export function HexMapBoard({
             <polygon
               className={`hexFaceDown ${discover && !readOnly ? "discoverable" : ""} ${cavernNeedsGate ? "needsGate" : ""}`}
               data-tile-id={tile.id}
+              data-underground={undergroundTile ? "true" : undefined}
               onClick={
                 discover && !readOnly
                   ? () => {
@@ -1292,6 +1300,9 @@ export function HexMapBoard({
 
     // --- Revealed, materialized tiles --------------------------------------
     renderTileArt(tile, tile.rotation);
+    // Always-on layer cue: a printed cavern OR a designer-flagged far/near/
+    // center/sea tile reads as underground (the shared `tileLayer` predicate).
+    const undergroundTile = tileLayer(tile) === "subterranean";
     // The printed scan already shows the locations, numerals and mine icons:
     // hide the built-in markers and keep only live game state (cubes, flags,
     // settlement production, movement) on top of the art.
@@ -1347,6 +1358,7 @@ export function HexMapBoard({
             artShown ? "withArt" : ""
           ].join(" ")}
           data-space-id={spaceId}
+          data-underground={undergroundTile ? "true" : undefined}
           fill={terrain}
           key={spaceId}
           onClick={
@@ -1398,7 +1410,7 @@ export function HexMapBoard({
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${
               field.location === "subterranean_gate"
-                ? tile.group === "subterranean"
+                ? undergroundTile
                   ? " — step on to ascend to the Surface (the only crossing; reveals the Surface tile beyond for free)"
                   : " — step on to descend into the Underground (the only crossing; reveals the cavern beyond for free)"
                 : ""
@@ -1439,7 +1451,7 @@ export function HexMapBoard({
       if (field.location === "subterranean_gate" && (target || remindMove)) {
         overlays.push(
           <text className="hexGateCue" key={`${spaceId}-gate-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
-            {tile.group === "subterranean" ? "↥ ascend" : "↧ descend"}
+            {undergroundTile ? "↥ ascend" : "↧ descend"}
           </text>
         );
       }
@@ -1522,7 +1534,7 @@ export function HexMapBoard({
       const overrideArt = fieldOverrideImage(field.location);
       const tokenImage =
         field.location === "subterranean_gate"
-          ? subterraneanGateTokenImage(tile.group === "subterranean" ? "subterranean" : "surface")
+          ? subterraneanGateTokenImage(undergroundTile ? "subterranean" : "surface")
           : field.location === "creature_bank"
             ? creatureBankFieldImage(field.bankId)
             : field.location === "monolith"

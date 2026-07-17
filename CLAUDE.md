@@ -1858,6 +1858,72 @@ What runs (each pinned by a test that fails if the wiring is removed):
   (`onewayMonolithImage`); outposts theirs (`outpostObjectImage`).
   `map-designer.test.tsx`, `gate-object-board.test.tsx`.
 
+## Underground designation (per-tile layer override, map designer) — what runs vs. limits
+
+The designer may mark ANY far/near/center/sea tile plan `underground?: true` on
+BOTH `CustomMapTilePlan` and `MapTileState` (copied plan→tile at setup by
+`applyDesignedUnderground`, face-down included). The tile is then topologically a
+cavern — reachable ONLY through a Subterranean Gate, sealed from the Surface at
+every other edge — while KEEPING its band identity (group, back art/numeral,
+guard tiers, Creature-Bank pile, token legality). "A cavern topologically, but
+with printed band content."
+
+- **The ONE seam is `tileLayer` / `planIsUnderground`** (`adventure.ts`).
+  `planIsUnderground(plan)` = `group === "subterranean" || (underground === true &&
+  group !== "starting")`; `tileLayer(tile)` delegates to it. Everything downstream
+  follows AUTOMATICALLY off that one bit: `mapFieldLayer` → `canCrossEdge`'s layer
+  check (movement, the AI's `objectiveDistanceField`, Dimension Door reach),
+  `recomputeSubterraneanGates` + `planGateChoiceForReveal` (auto-pairing,
+  one-gate-per-tile, pick-on-reveal), the discovery gate (`DISCOVER_TILE` /
+  `canHeroDiscoverAdjacentTile`), and the preview twin `isCavernPlacement` →
+  `planSubterraneanGates` / `unreachableUndergroundCenters`. Never inline a
+  `group === "subterranean"` LAYER check — use the predicate.
+- **BAND-vs-LAYER audit rule (for future contributors):** every
+  `"subterranean"` comparison is either BAND semantics (back art `tileBandLabel`,
+  `planBackLabel`/`planGroupLabel`, the `subBand` palette filter,
+  `creatureBankTierForGroup`'s NEAR-pile house rule, `VALID_TILE_GROUPS`) — keep
+  the GROUP check — or LAYER semantics (gate carve/pair, cross-layer seal,
+  standalone-hex layer inference, designer gate-link eligibility, the unreachable
+  ring) — use `tileLayer`/`planIsUnderground`. A flagged Far tile still draws the
+  FAR bank pile and the "Ⅱ–Ⅲ" back; only its topology flips.
+
+Leading with the DELIBERATE v1 limits:
+- **`underground` is stripped from `starting` (seat/home tiles stay Surface — the
+  opening ceremony, seat balance and first-discovery flow assume it) and from
+  printed `subterranean` plans (redundant).** Only far/near/center/sea keep it,
+  as a literal `true` — enforced in BOTH the persistence sanitiser
+  (`sanitizeTile`, `src/server/map-registry.ts`) and the setup validator
+  (`validateCustomMapPlan`, `adventure-setup.ts`) against `UNDERGROUND_LAYER_GROUPS`.
+  Legacy maps / snapshots (field absent) behave byte-for-byte as before.
+- **Band content stays band (topology only).** Back art keeps the band back (no
+  fake cavern art), the Creature-Bank pile stays keyed by GROUP (a flagged Far
+  tile draws the FAR pile; the printed-cavern NEAR-pile house rule stays
+  cavern-only), guards/tokens stay band-legal. Whirlpool/Monolith/Teleport-Gate
+  token networks remain layer-agnostic (cross-layer links already legal),
+  untouched.
+- **Designed gate links now belong to any UNDERGROUND-layer plan** (a flagged
+  Far tile links to a touching Surface tile exactly like a cavern);
+  `validateCustomMapPlan` + `sanitizeTile` KEEP them for a flagged plan and drop
+  them from a plain (Surface) plan.
+
+Designer UX: the far/near/center/sea popover gains an "Underground layer" toggle
+(writes `plan.underground`; NOT offered on starting/subterranean); a flagged
+tile's outline strokes the Underground purple + carries `data-underground` while
+keeping its `data-band-group` band label, participates in the cavern gate-link
+rows / "+ Gate" button, and gets the red unreachable ring when isolated. In game
+(`screen.tsx`) a flagged tile's hexes carry `data-underground` (an always-on CSS
+cue, the layer is not secret) and the face-down discovery hint / gate
+ascend-descend labels/art fire via the predicate switch.
+
+Behaviour is pinned in `src/engine/underground-designation.test.ts` (layer seam,
+setup plan→tile copy, cross-layer movement seal, auto-paired + designed-link gate
+carve, discovery, each with a plain-Far CONTROL), the preview==engine parity +
+unreachable cases in `subterranean-gate-planning.test.ts`, the sanitiser
+(`map-registry.test.ts`), the validator (`custom-setup.test.ts`), the designer UI
+(`map-designer.test.tsx`), the in-game cue (`subterranean-gate-board.test.tsx`),
+and the AI distance-field seal (`computer/map-navigation.test.ts`) — every claim
+mutation-checked.
+
 ## Field Overrides & multi-pin tiles (global system; Anime mod content) — what runs vs. limits
 
 `GameSetupOptions.fieldOverrides` (default OFF; auto-ON when a designed map

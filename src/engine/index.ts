@@ -470,6 +470,8 @@ export {
   polishBankSizeForAttackRolls,
   tokenMayCoverFieldDef,
   planSubterraneanGates,
+  planIsUnderground,
+  UNDERGROUND_LAYER_GROUPS,
   legalGateHexPairs,
   planGateChoiceForReveal,
   upsertGatePlan,

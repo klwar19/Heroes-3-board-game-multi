@@ -12892,8 +12892,10 @@ img.cardBack {
   justify-content: flex-start;
 }
 
-/* Fix-orientation toggle on a starting-tile popover. */
-.popoverLockToggle {
+/* Fix-orientation toggle on a starting-tile popover; the per-tile Underground
+   layer toggle on a supply/sea/center popover shares the same look. */
+.popoverLockToggle,
+.popoverUndergroundToggle {
   display: inline-flex !important;
   align-items: center;
   gap: 6px;
@@ -12901,7 +12903,8 @@ img.cardBack {
   justify-content: flex-start;
 }
 
-.popoverLockToggle.active {
+.popoverLockToggle.active,
+.popoverUndergroundToggle.active {
   background: rgba(255, 215, 102, 0.18);
   border-color: rgba(255, 215, 102, 0.55);
   color: #ffe9a8;

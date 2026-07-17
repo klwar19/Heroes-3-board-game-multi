@@ -491,6 +491,29 @@ describe("map designer", () => {
     expect(near).toMatchObject({ group: "near", faceDown: true, rotation: 2 });
   });
 
+  it("keeps the UNDERGROUND flag on far/near/center/sea but strips it off starting/subterranean", () => {
+    const scenario = getScenario("skirmish");
+    const { accepted } = validateCustomMapPlan(
+      [
+        // A supply tile flagged underground — the layer override is meaningful,
+        // it stays (and the tile keeps its band identity).
+        { row: 9, col: 4, group: "near", faceDown: true, underground: true },
+        // A starting seat tile — Surface only (v1), the flag is stripped.
+        { row: 8, col: 2, group: "starting", faceDown: false, underground: true },
+        // A printed cavern — already underground, the flag is redundant → stripped.
+        { row: 20, col: 20, group: "subterranean", faceDown: true, underground: true }
+      ],
+      scenario
+    );
+    const near = accepted.find((plan) => plan.group === "near");
+    const start = accepted.find((plan) => plan.group === "starting");
+    const cavern = accepted.find((plan) => plan.group === "subterranean");
+    expect(near?.underground, "supply tile keeps its underground flag").toBe(true);
+    expect(near, "otherwise unchanged").toMatchObject({ group: "near", faceDown: true });
+    expect(start?.underground, "stripped off a starting seat tile").toBeUndefined();
+    expect(cavern?.underground, "stripped off a printed cavern (redundant)").toBeUndefined();
+  });
+
   it("rejects overlapping and duplicate positions", () => {
     const scenario = getScenario("skirmish");
     const overlapping = validateCustomMapPlan([{ row: 8, col: 3, group: "near", faceDown: true }], scenario);
