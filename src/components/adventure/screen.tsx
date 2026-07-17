@@ -112,7 +112,7 @@ import {
   TILE_BACK_IMAGES,
   whirlpoolTokenImage
 } from "@/data/assets/homm-assets";
-import { fieldOverrideImage } from "@/data/map/field-overrides";
+import { fieldOverrideGlyph, fieldOverrideImage } from "@/data/map/field-overrides";
 // Side-effect: register Anime package Field Override kinds into the global catalog.
 import "@/data/anime/field-overrides";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
@@ -1326,7 +1326,10 @@ export function HexMapBoard({
       const mapChoice = pendingMapChoiceTargets.get(spaceId);
       const teleportTarget = teleportChoice?.targets.get(spaceId);
       const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
-      const glyph = LOCATION_GLYPHS[field.location] ?? "";
+      // Field Override kinds without hex art yet fall back to their registered
+      // glyph so an art-less carve is a visible hex in icon mode (art wins once
+      // it ships — fieldOverrideGlyph returns undefined then).
+      const glyph = LOCATION_GLYPHS[field.location] ?? fieldOverrideGlyph(field.location) ?? "";
       const isSelected = selectedTarget?.spaceId === spaceId;
 
       cells.push(

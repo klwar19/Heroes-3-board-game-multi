@@ -154,6 +154,32 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     expect(popover.querySelector(".popoverViiField")).toBeNull();
   });
 
+  it("a pinned Field Override with NO art yet draws its fallback glyph on the map", () => {
+    // song_bac_quan (Gambling Den) ships without hex art — the designer overlay
+    // must still show a glyph marker so the pin is a visible hex, not skipped.
+    const container = renderDesigner([
+      { row: 8, col: 2, group: "starting", faceDown: false },
+      { row: 9, col: 4, group: "far", faceDown: false, tileDefId: "F1", fieldOverrides: [{ kind: "song_bac_quan", slot: 0 }] }
+    ]);
+    const glyph = container.querySelector('[data-testid="designer-fo-glyph-song_bac_quan"]');
+    expect(glyph).not.toBeNull();
+    expect(glyph?.textContent?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("CONTROL: a wave-1 kind WITH art draws its image, not the glyph fallback", () => {
+    const container = renderDesigner([
+      { row: 8, col: 2, group: "starting", faceDown: false },
+      { row: 9, col: 4, group: "far", faceDown: false, tileDefId: "F1", fieldOverrides: [{ kind: "kiem_trung", slot: 0 }] }
+    ]);
+    // No glyph marker for an art-backed kind…
+    expect(container.querySelector('[data-testid="designer-fo-glyph-kiem_trung"]')).toBeNull();
+    // …and its art image IS drawn.
+    const art = Array.from(container.querySelectorAll(".designerMapTokenArt")).some((img) =>
+      (img.getAttribute("href") ?? "").includes("kiem_trung.webp")
+    );
+    expect(art).toBe(true);
+  });
+
   it("edits the capture reward + Victory Points once an objective is forced, and writes them to the plan", () => {
     const onChange = vi.fn();
     const container = renderDesigner(

@@ -12990,6 +12990,15 @@ img.cardBack {
   pointer-events: none;
 }
 
+/* Fallback glyph for a Field Override pin whose hex art has not shipped yet. */
+.designerFieldOverrideGlyph {
+  font-size: 18px;
+  paint-order: stroke;
+  stroke: rgba(8, 10, 24, 0.75);
+  stroke-width: 2.4px;
+  pointer-events: none;
+}
+
 /* The link line between a Subterranean Gate's two halves (surface + entrance). */
 .designerGateLink {
   stroke: #ffd766;

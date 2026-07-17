@@ -80,9 +80,16 @@ describe("Visitable fields: every visit drops a black cube", () => {
     // NOT appear here — that was the bug where the costs were swapped.)
     // factory_grave is the Factory rulebook Grave (optional pay 1 valuables →
     // Search(2) Artifacts + morale), a one-time pay-to visitable that still
-    // drops its cube on visit.
+    // drops its cube on visit. anime.song_bac_quan (Gambling Den) is a visitable
+    // PAY_TO (pay 2 gold to gamble the Attack die), so it joins this set too.
     expect(payToVisitable.map((loc) => loc.id).sort()).toEqual(
-      ["factory_grave", "shrine_of_magic_incantation", "tree_of_knowledge", "university"].sort()
+      [
+        "anime.song_bac_quan",
+        "factory_grave",
+        "shrine_of_magic_incantation",
+        "tree_of_knowledge",
+        "university"
+      ].sort()
     );
   });
 

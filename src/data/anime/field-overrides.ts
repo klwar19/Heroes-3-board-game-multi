@@ -87,8 +87,116 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     implementationStatus: "implemented",
     summary: "Joins the Monolith teleport network (Array art + real Monolith travel).",
     image: art("tran_phap_truyen_tong")
+  },
+
+  // -------------------------------------------------------------------------
+  // Wave 2 — xianxia (§5.5 / §5.8 "retained from earlier sketch"). No art yet:
+  // each ships with a `glyph` fallback and is declared in
+  // FIELD_OVERRIDE_ART_PLACEHOLDERS below (drop a .webp + set `image` later).
+  // -------------------------------------------------------------------------
+  /** Merchant Guild Post (§5.5) — the Trading Post as a xianxia guild stall. */
+  thuong_hoi_tram: {
+    id: "thuong_hoi_tram",
+    locationId: "anime.thuong_hoi_tram",
+    name: "Trạm Thương Hội (Merchant Guild Post)",
+    nameVi: "Trạm Thương Hội",
+    package: "anime-xianxia",
+    tileGroups: ["far", "near"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Revisitable Trading Post — trade resources at market rates any turn.",
+    glyph: "🏪"
+  },
+  /** Brotherhood Gambling Den (§5.5) — Crypt-cousin Attack-die gamble for a fee. */
+  song_bac_quan: {
+    id: "song_bac_quan",
+    locationId: "anime.song_bac_quan",
+    name: "Sòng Bạc Quán (Gambling Den)",
+    nameVi: "Sòng Bạc Quán",
+    package: "anime-xianxia",
+    tileGroups: ["far", "near"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Pay 2 gold to gamble on the Attack die: +1 wins 5 gold, 0 returns 2, −1 costs morale.",
+    glyph: "🀄"
+  },
+  /**
+   * Qi Refinement Platform. V1 REUSE reading (plan §0 rule 4): the original
+   * sketch ("pay 1 MP → +1 Attack token for next combat") needs a NEW engine
+   * arm, so V1 offers a Meditate/Breakthrough CHOOSE_ONE built from existing
+   * vocabulary (morale vs an experience gamble). Documented at the location def.
+   */
+  dai_luyen_khi: {
+    id: "dai_luyen_khi",
+    locationId: "anime.dai_luyen_khi",
+    name: "Đài Luyện Khí (Qi Refinement Platform)",
+    nameVi: "Đài Luyện Khí",
+    package: "anime-xianxia",
+    tileGroups: ["far", "near"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Choose: meditate for +1 morale, or gamble a breakthrough on the Attack die for experience.",
+    glyph: "🧘"
+  },
+
+  // -------------------------------------------------------------------------
+  // Wave 2 — isekai (first `anime-isekai` package content; source display names
+  // per the plan's naming decision). No art yet — glyph + placeholder as above.
+  // -------------------------------------------------------------------------
+  /** Capsule Corp Lab (Dragon Ball) — the War Machine Factory. */
+  capsule_lab: {
+    id: "capsule_lab",
+    locationId: "anime.capsule_lab",
+    name: "Capsule Corp Lab",
+    package: "anime-isekai",
+    tileGroups: ["far", "near", "center"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Revisitable War Machine Factory — buy a war machine at the lower price any turn.",
+    glyph: "🚀"
+  },
+  /** Urahara's Shop (Bleach) — a paid curio counter + bargain bin. */
+  urahara_shop: {
+    id: "urahara_shop",
+    locationId: "anime.urahara_shop",
+    name: "Urahara's Shop",
+    package: "anime-isekai",
+    tileGroups: ["far", "near", "center"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Revisitable: pay 3 gold to Search (1) an Artifact, or 1 gold for a Treasure-die roll.",
+    glyph: "🏮"
+  },
+  /** Hot Spring Inn / Onsen — Fountain-of-Youth twin without the youth. */
+  onsen_ryokan: {
+    id: "onsen_ryokan",
+    locationId: "anime.onsen_ryokan",
+    name: "Hot Spring Inn (Onsen)",
+    package: "anime-isekai",
+    tileGroups: ["far", "near"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Choose: a long soak for +1 morale, or a quick dip for +1 movement this turn.",
+    glyph: "♨"
   }
 };
+
+/**
+ * Kinds that ship WITHOUT hex art (drop-art-later contract). Each MUST be a
+ * registered, implemented kind with NO `image` (a `glyph` fallback instead);
+ * `field-overrides.test.ts` fails if a placeholder gains art, names a kind that
+ * has art, or names a nonexistent kind — and if any registered kind is neither
+ * art-on-disk nor a declared placeholder. When real art lands: add the .webp,
+ * set `image: art("<id>")`, and remove the id from this set.
+ */
+export const FIELD_OVERRIDE_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
+  "thuong_hoi_tram",
+  "song_bac_quan",
+  "dai_luyen_khi",
+  "capsule_lab",
+  "urahara_shop",
+  "onsen_ryokan"
+]);
 
 // Register into the global catalog at module load.
 registerFieldOverrideDefinitions(ANIME_FIELD_OVERRIDE_DEFINITIONS);
@@ -99,6 +207,7 @@ export {
   listFieldOverrideDefinitions,
   isFieldOverrideKind,
   fieldOverrideImage,
+  fieldOverrideGlyph,
   fieldOverrideKindRequiresAnime,
   type FieldOverrideDefinition,
   type FieldOverridePackage,
