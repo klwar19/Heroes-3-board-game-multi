@@ -110,6 +110,8 @@ import {
   queueExplorersEmpower,
   queueFreeBronzeReinforce,
   queueSkeletonReinforce,
+  recordLevelUpAbilityPick,
+  clearPendingLevelUpAbilitySearch,
   reinforceArmyUnit,
   reinforceCostFor,
   resolveMagicUniversityDig,
@@ -9224,9 +9226,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       }
       gainOwnedCard(state, action.playerId, takenCardId);
       // Mirror the DECK_SEARCH resolver: an Ability card pulled from the shared
-      // deck is tracked so its printed ability can be granted.
+      // deck is tracked so its printed ability can be granted, and — when this
+      // Search was the level-up one — recorded against its level for the board.
       if (mode.deckId === "abilities") {
         (player.deckDrawnAbilityCardIds ??= []).push(takenCardId);
+        recordLevelUpAbilityPick(player, takenCardId);
       }
       appendEvent(state, {
         type: "DECK_SEARCH_RESOLVED",
@@ -10751,6 +10755,12 @@ export function revealSharedDeckSearch(
   // open a keep-one choice with nothing to keep — that would softlock; record the
   // empty Search and return to the prior phase instead.
   if (revealedCardIds.length === 0) {
+    // Nothing to keep: a level-up Ability Search that reveals no card records no
+    // pick — drop the marker so it cannot latch onto a later Search.
+    const emptySearchPlayer = state.players[playerId];
+    if (emptySearchPlayer) {
+      clearPendingLevelUpAbilitySearch(emptySearchPlayer);
+    }
     appendEvent(state, {
       type: "DECK_SEARCH_STARTED",
       playerId,
@@ -11074,6 +11084,14 @@ export function pumpAdventureQueues(state: GameState): void {
         state.priorityPlayerId = reward.playerId;
         return;
       }
+      // Level-up Ability Search (2/3/5/7): mark the seat BEFORE the Search opens
+      // so the kept Ability card is attributed to this level on the hero board.
+      // Must be set first — a Search that reveals nothing clears it synchronously
+      // inside revealSharedDeckSearch, before beginSharedDeckSearchNow returns.
+      const searchPlayer = state.players[reward.playerId];
+      if (searchPlayer && reward.abilitySearchLevel !== undefined) {
+        searchPlayer.pendingLevelUpAbilitySearch = reward.abilitySearchLevel;
+      }
       // "Spells"/"artifacts" are deck families; beginSharedDeckSearchNow does
       // the family expansion + deck-pick choice and opens the Search. The
       // strictExpertGate flag (Mage Guild expert-spell gating) is threaded
@@ -11084,6 +11102,11 @@ export function pumpAdventureQueues(state: GameState): void {
         })
       ) {
         return;
+      }
+      // The Search never opened (the deck holds nothing to search): drop the
+      // marker so it cannot attach to a later, unrelated Ability Search.
+      if (searchPlayer) {
+        clearPendingLevelUpAbilitySearch(searchPlayer);
       }
       continue;
     }

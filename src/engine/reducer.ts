@@ -21,7 +21,8 @@ import {
   openNeutralRecruitOffer,
   openPandoraSilverRefresh,
   queueLegionDiscountChoice,
-  queueNecromancyReinforce
+  queueNecromancyReinforce,
+  recordLevelUpAbilityPick
 } from "./adventure";
 import {
   applyUnitCurrentSide,
@@ -17808,6 +17809,9 @@ function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: Car
     return;
   }
   (player.deckDrawnAbilityCardIds ??= []).push(cardId);
+  // If this keep belongs to an open level-up Ability Search (2/3/5/7), log it
+  // against that level for the hero board (a no-op for every other Search).
+  recordLevelUpAbilityPick(player, cardId);
 }
 
 /**
