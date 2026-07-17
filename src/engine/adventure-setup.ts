@@ -119,9 +119,20 @@ import type {
   SubterraneanGatePlan,
   UnitLevel,
   VictoryMode,
+  AnimeModOptions,
   WogModOptions
 } from "./state";
 import { DEFAULT_WOG_OPTIONS, MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
+import { DEFAULT_ANIME_OPTIONS, resolveAnimeOptions } from "./anime";
+import { planFieldOverrides, planTokens } from "./tile-hex-placements";
+import {
+  applyCustomMapFieldOverrides,
+  assignPoolFieldOverrides,
+  customMapHasAnimeFieldOverridePins,
+  customMapHasFieldOverridePins,
+  resolveFieldOverridePlacement,
+  resolveFieldOverridesEnabled
+} from "./field-overrides";
 
 /** Known designer Secret-feature ids (the allow-list for sanitize + validation). */
 export const SECRET_TILE_FEATURE_IDS: readonly SecretTileFeature[] = [
@@ -265,46 +276,65 @@ function applyCustomMapTokens(
   let whirlpoolsApplied = 0;
 
   for (const { plan, tile } of planned) {
-    const token = plan.token;
-    if (!token) {
+    const tokens = planTokens(plan);
+    if (tokens.length === 0) {
       continue;
     }
-    // A colored Gate REQUIRES its pair; a Monolith/Whirlpool must NOT carry one
-    // (setup mirrors the sanitiser). Anything malformed is dropped silently.
-    const isGate = token.kind === "gate";
-    if (isGate ? token.pair === undefined : token.kind !== "monolith" && token.kind !== "whirlpool") {
-      continue;
-    }
-    // A Gate reuses the Monolith land legality for its slot check.
-    const legalityKind: "monolith" | "whirlpool" = token.kind === "whirlpool" ? "whirlpool" : "monolith";
+    const pendingList: NonNullable<MapTileState["pendingTokens"]> = [];
+    for (const token of tokens) {
+      // A colored Gate REQUIRES its pair; a Monolith/Whirlpool must NOT carry one
+      // (setup mirrors the sanitiser). Anything malformed is dropped silently.
+      const isGate = token.kind === "gate";
+      if (isGate ? token.pair === undefined : token.kind !== "monolith" && token.kind !== "whirlpool") {
+        continue;
+      }
+      // A Gate reuses the Monolith land legality for its slot check.
+      const legalityKind: "monolith" | "whirlpool" = token.kind === "whirlpool" ? "whirlpool" : "monolith";
 
-    if (tile.faceDown) {
-      const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
-      const preferredSpaceId =
-        token.slot !== undefined ? getTileFootprintSpaceIds(tile)[token.slot] : undefined;
-      tile.pendingToken = {
-        kind: token.kind,
-        ...(number !== undefined ? { number } : {}),
-        ...(isGate && token.pair !== undefined ? { pair: token.pair } : {}),
-        ...(preferredSpaceId ? { preferredSpaceId } : {})
-      };
-      continue;
-    }
+      if (tile.faceDown) {
+        const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
+        const preferredSpaceId =
+          token.slot !== undefined ? getTileFootprintSpaceIds(tile)[token.slot] : undefined;
+        pendingList.push({
+          kind: token.kind,
+          ...(number !== undefined ? { number } : {}),
+          ...(isGate && token.pair !== undefined ? { pair: token.pair } : {}),
+          ...(preferredSpaceId ? { preferredSpaceId } : {})
+        });
+        continue;
+      }
 
-    const def = allTileDefinitions[tile.tileDefId];
-    const slot = token.slot;
-    if (!def || slot === undefined || !tokenMayCoverFieldDef(def, slot, legalityKind)) {
-      continue;
+      const def = allTileDefinitions[tile.tileDefId];
+      const slot = token.slot;
+      if (!def || slot === undefined || !tokenMayCoverFieldDef(def, slot, legalityKind)) {
+        continue;
+      }
+      const spaceId = getTileFootprintSpaceIds(tile)[slot];
+      if (!spaceId || adventure.fields[spaceId]?.tileInstanceId !== tile.id) {
+        continue;
+      }
+      // Already carved by a previous pin on this tile — never stack.
+      const existing = adventure.fields[spaceId];
+      if (
+        existing &&
+        (existing.location === "monolith" ||
+          existing.location === "whirlpool" ||
+          existing.location === "gate" ||
+          existing.location.startsWith("anime."))
+      ) {
+        continue;
+      }
+      if (isGate && token.pair !== undefined) {
+        carveColoredGateField(adventure, spaceId, token.pair);
+      } else if (token.kind === "monolith" || token.kind === "whirlpool") {
+        const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
+        carveMapTokenField(adventure, spaceId, token.kind, number);
+      }
     }
-    const spaceId = getTileFootprintSpaceIds(tile)[slot];
-    if (!spaceId || adventure.fields[spaceId]?.tileInstanceId !== tile.id) {
-      continue;
-    }
-    if (isGate && token.pair !== undefined) {
-      carveColoredGateField(adventure, spaceId, token.pair);
-    } else if (token.kind === "monolith" || token.kind === "whirlpool") {
-      const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
-      carveMapTokenField(adventure, spaceId, token.kind, number);
+    if (pendingList.length > 0) {
+      tile.pendingTokens = pendingList;
+      // Legacy singular: first entry for old readers.
+      tile.pendingToken = pendingList[0];
     }
   }
 }
@@ -360,6 +390,8 @@ export type AdventureSetupOptions = {
   ruleset?: GameRuleset;
   /** Wake of Gods modules; honored only when the BINH ruleset is active. */
   wog?: Partial<WogModOptions>;
+  /** Anime mod modules; honored only when the BINH ruleset is active. */
+  anime?: Partial<AnimeModOptions>;
   /** Win condition: "conquest", "grail", "dragon-hunt" or "dragon-conqueror". */
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
@@ -368,6 +400,12 @@ export type AdventureSetupOptions = {
   dragonUtopiaGuards?: DragonUtopiaGuards;
   /** Naval Battles Creature Banks (default on): offer bank placement on Far/Near tile discovery. */
   creatureBanks?: boolean;
+  /**
+   * GLOBAL Field Overrides (default off; auto-on when customMap has FO pins).
+   * Placement mode for pool draws: random | manual | manual-or-refuse.
+   */
+  fieldOverrides?: boolean;
+  fieldOverridePlacement?: import("./state").FieldOverridePlacementMode;
   /** Event deck (Fortress expansion, default off; multiplayer only): draw an Event each Resource Round. */
   events?: boolean;
   /**
@@ -1632,6 +1670,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...defaultGameSetupOptions(scenario),
     ...(options.ruleset ? { ruleset: options.ruleset } : {}),
     ...(options.wog ? { wog: { ...DEFAULT_WOG_OPTIONS, ...options.wog } } : {}),
+    ...(options.anime ? { anime: resolveAnimeOptions(options.anime) } : {}),
     ...(options.victoryMode ? { victoryMode: options.victoryMode } : {}),
     ...(options.pvpTroopLoss ? { pvpTroopLoss: options.pvpTroopLoss } : {}),
     ...(options.dragonUtopiaGuards ? { dragonUtopiaGuards: options.dragonUtopiaGuards } : {}),
@@ -1642,6 +1681,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.startingUnits !== undefined ? { startingUnits: options.startingUnits } : {}),
     ...(options.startingBuildings ? { startingBuildings: options.startingBuildings } : {}),
     ...(options.creatureBanks !== undefined ? { creatureBanks: options.creatureBanks } : {}),
+    ...(options.fieldOverrides !== undefined ? { fieldOverrides: options.fieldOverrides } : {}),
+    ...(options.fieldOverridePlacement !== undefined
+      ? { fieldOverridePlacement: options.fieldOverridePlacement }
+      : {}),
     ...(options.events !== undefined ? { events: options.events } : {}),
     ...(options.victoryPoints !== undefined ? { victoryPoints: options.victoryPoints } : {}),
     ...(options.victoryPointsRoundLimit !== undefined
@@ -1733,6 +1776,20 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const wog: WogModOptions = ruleset === "binh"
     ? { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog }
     : { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog, enabled: false };
+  // Designer pins of anime-package Field Overrides auto-enable the Anime mod
+  // (content package) at map setup — the override *mechanism* is global.
+  const animePinsOnMap = customMapHasAnimeFieldOverridePins(setupOptions.customMap);
+  let anime: AnimeModOptions = ruleset === "binh"
+    ? resolveAnimeOptions(setupOptions.anime)
+    : { ...resolveAnimeOptions(setupOptions.anime), enabled: false };
+  if (animePinsOnMap && ruleset === "binh") {
+    anime = { ...anime, enabled: true };
+  } else if (animePinsOnMap && ruleset !== "binh") {
+    // Anime content requires BINH; flip so pins are not silently stripped.
+    anime = { ...resolveAnimeOptions(setupOptions.anime), enabled: true };
+  }
+  const fieldOverridesOn = resolveFieldOverridesEnabled(setupOptions);
+  const fieldOverridePlacement = resolveFieldOverridePlacement(setupOptions);
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
@@ -1809,6 +1866,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     dragonUtopiaGuards,
     spellBook: spellBookOn,
     moraleCards: moraleCardsOn,
+    fieldOverrides: fieldOverridesOn,
+    fieldOverridePlacement,
     tournamentMode: tournamentRulesAllOn(setupOptions),
     tournamentBanDiplomacy: tournamentRules.banDiplomacy,
     tournamentBanHourglass: tournamentRules.banHourglass,
@@ -1867,6 +1926,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(configuredControllers ? { controllers: configuredControllers } : {}),
     ruleset,
     wog,
+    anime,
     round: 1,
     phase: "player-turn",
     activePlayerId: playerConfigs[0].id,
@@ -2077,9 +2137,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     const grailNearFarOverflow = [...forcedObelisks, ...grailOverflow];
     let grailNearFarIndex = 0;
 
-    // Designed Monolith/Whirlpool Location Tokens, applied once every planned
-    // tile is down (whirlpool numbering spans all of them, in plan order).
+    // Designed Monolith/Whirlpool Location Tokens + Field Overrides, applied
+    // once every planned tile is down (whirlpool numbering spans all of them,
+    // in plan order).
     const plannedTokens: { plan: (typeof customMap)[number]; tile: MapTileState }[] = [];
+    const plannedFieldOverrides: { plan: (typeof customMap)[number]; tile: MapTileState }[] = [];
 
     for (const plan of customMap) {
       if (plan.group === "starting") {
@@ -2145,21 +2207,41 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           const tile = instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
           applyDesignedBorders(tile, plan);
           applyDesignedViiField(adventure, tile, plan);
-          if (plan.token) {
+          if (planTokens(plan).length > 0) {
             plannedTokens.push({ plan, tile });
+          }
+          if (planFieldOverrides(plan).length > 0) {
+            plannedFieldOverrides.push({ plan, tile });
           }
         }
       } else if (plan.tileDefId) {
         const tile = instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);
         applyDesignedBorders(tile, plan);
         applyDesignedViiField(adventure, tile, plan);
-        if (plan.token) {
+        if (planTokens(plan).length > 0) {
           plannedTokens.push({ plan, tile });
+        }
+        if (planFieldOverrides(plan).length > 0) {
+          plannedFieldOverrides.push({ plan, tile });
         }
       }
     }
 
     applyCustomMapTokens(adventure, plannedTokens);
+
+    // GLOBAL Field Overrides (designer pins + pool on remaining face-down
+    // Far/Near/Center). Anime only supplies object kinds — auto-enabled above
+    // when pins need anime content. Feature off drops pins with a note.
+    const fieldOverrideProblems = applyCustomMapFieldOverrides(adventure, plannedFieldOverrides, {
+      enabled: fieldOverridesOn
+    });
+    for (const message of fieldOverrideProblems) {
+      appendEvent(state, { type: "EVENT_NOTE", message });
+    }
+    if (fieldOverridesOn) {
+      const overrideRng = createSeededRandom(`${seed}#field-overrides`);
+      assignPoolFieldOverrides(state, () => overrideRng.next(), { enabled: true });
+    }
 
     // Designer one-hex objects (Monolith/Whirlpool tokens on face-up slots +
     // colored Gate pairs + standalone hexes). Validated against the tile plans
@@ -2268,6 +2350,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       if (tileDefId) {
         instantiateTile(adventure, tileDefId, center, 0, true);
       }
+    }
+    // Standard (non-designer) maps: still stamp pool overrides when the global
+    // feature is on so every open of a Far/Near/Center tile can replace ≥1 hex.
+    if (fieldOverridesOn) {
+      const overrideRng = createSeededRandom(`${seed}#field-overrides`);
+      assignPoolFieldOverrides(state, () => overrideRng.next(), { enabled: true });
     }
   }
 
@@ -2735,6 +2823,8 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     if (next.ruleset === "legacy") {
       lobby.options.wog = { ...DEFAULT_WOG_OPTIONS, ...lobby.options.wog, enabled: false };
       state.wog = lobby.options.wog;
+      lobby.options.anime = { ...resolveAnimeOptions(lobby.options.anime), enabled: false };
+      state.anime = lobby.options.anime;
     }
     // Soft preset: switching mode clears individual house-rule overrides so
     // every toggle reverts to the new mode's default (all ON in BINH, OFF in
@@ -2774,6 +2864,59 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     lobby.options.wog = wog;
     state.wog = wog;
     changes.push(`WOG ${wog.enabled ? "on" : "off"}`);
+  }
+
+  if (next.anime !== undefined) {
+    const anime: AnimeModOptions = resolveAnimeOptions({
+      ...lobby.options.anime,
+      ...next.anime,
+      enabled: Boolean(next.anime.enabled)
+    });
+    // Anime is a BINH-family module — enabling it under Legacy flips to BINH
+    // (WOG precedent).
+    if (anime.enabled && lobby.options.ruleset !== "binh") {
+      lobby.options.ruleset = "binh";
+      state.ruleset = "binh";
+      if (next.houseRules === undefined && next.ruleset === undefined) {
+        lobby.options.houseRules = undefined;
+      }
+      if (next.spellBook === undefined) {
+        lobby.options.spellBook = true;
+      }
+      changes.push("game mode House rules BINH (for Anime mod)");
+    }
+    lobby.options.anime = anime;
+    state.anime = anime;
+    changes.push(`Anime mod ${anime.enabled ? "on" : "off"}`);
+  }
+
+  if (next.fieldOverrides !== undefined || next.fieldOverridePlacement !== undefined) {
+    if (next.fieldOverrides !== undefined) {
+      lobby.options.fieldOverrides = Boolean(next.fieldOverrides);
+    }
+    if (next.fieldOverridePlacement !== undefined) {
+      const mode = next.fieldOverridePlacement;
+      if (mode !== "random" && mode !== "manual" && mode !== "manual-or-refuse") {
+        throw new Error("Unknown Field Override placement mode.");
+      }
+      lobby.options.fieldOverridePlacement = mode;
+    }
+    // Auto-enable when the designed map already has pins.
+    if (customMapHasFieldOverridePins(lobby.options.customMap)) {
+      lobby.options.fieldOverrides = true;
+    }
+    // Anime-package pins auto-enable the Anime mod crest (content only).
+    if (customMapHasAnimeFieldOverridePins(lobby.options.customMap)) {
+      lobby.options.anime = { ...resolveAnimeOptions(lobby.options.anime), enabled: true };
+      state.anime = lobby.options.anime;
+      if (lobby.options.ruleset !== "binh") {
+        lobby.options.ruleset = "binh";
+        state.ruleset = "binh";
+      }
+    }
+    changes.push(
+      `Field Overrides ${lobby.options.fieldOverrides ? "on" : "off"} (${lobby.options.fieldOverridePlacement ?? "manual-or-refuse"})`
+    );
   }
 
   if (next.victoryMode !== undefined) {
@@ -3096,6 +3239,27 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       changes.push(
         `designed map ${mapName ? `"${mapName}" ` : ""}(${accepted.length} tile${accepted.length === 1 ? "" : "s"})`
       );
+      // Field Override pins (NOT Monolith/Whirlpool/Gate/Subterranean Gate —
+      // those are basic teleports) auto-tick the GLOBAL Field Override feature
+      // when this map is picked. Anime-package pins also light the Anime crest
+      // so their content objects are legal in the pool.
+      if (customMapHasFieldOverridePins(accepted)) {
+        lobby.options.fieldOverrides = true;
+        if (!lobby.options.fieldOverridePlacement) {
+          lobby.options.fieldOverridePlacement = "manual-or-refuse";
+        }
+        changes.push("Field Overrides on (map has single-hex override objects)");
+      }
+      if (customMapHasAnimeFieldOverridePins(accepted)) {
+        lobby.options.anime = { ...resolveAnimeOptions(lobby.options.anime), enabled: true };
+        state.anime = lobby.options.anime;
+        if (lobby.options.ruleset !== "binh") {
+          lobby.options.ruleset = "binh";
+          state.ruleset = "binh";
+          changes.push("game mode House rules BINH (Anime override objects on map)");
+        }
+        changes.push("Anime mod on (map has Anime Field Override objects)");
+      }
       // Apply map-only conditions (resources, army, buildings, victory) when the
       // client sends a preset alongside the tile plan — restoring first anything
       // the outgoing map's preset had forced that the new one does not.

@@ -5788,7 +5788,13 @@ export function placementTokenLabel(token: { kind: TokenPlacementKind; pair?: 1 
 
 /** Whether a field's location IS a Monolith/Whirlpool Location Token. */
 export function isMapTokenLocation(locationId: string): boolean {
-  return locationId === "monolith" || locationId === "whirlpool";
+  // anime.tran_phap_truyen_tong is a Field Override that joins the Monolith
+  // network (TOKEN_TELEPORT) with its own hex art — same travel rules.
+  return (
+    locationId === "monolith" ||
+    locationId === "whirlpool" ||
+    locationId === "anime.tran_phap_truyen_tong"
+  );
 }
 
 /**
@@ -5817,6 +5823,10 @@ export function gatePairColor(pair: 1 | 2 | 3 | 4): string {
  */
 function fieldIsTokenNetworkMember(state: GameState, field: MapFieldState, kind: MapTokenKind): boolean {
   if (field.location === kind) {
+    return true;
+  }
+  // Teleportation Array Field Override joins the Monolith network.
+  if (kind === "monolith" && field.location === "anime.tran_phap_truyen_tong") {
     return true;
   }
   return kind === "monolith" && field.location === "obelisk" && obeliskRoleIsMonolith(state);

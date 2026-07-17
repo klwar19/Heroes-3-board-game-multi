@@ -110,6 +110,9 @@ import {
   TILE_BACK_IMAGES,
   whirlpoolTokenImage
 } from "@/data/assets/homm-assets";
+import { fieldOverrideImage } from "@/data/map/field-overrides";
+// Side-effect: register Anime package Field Override kinds into the global catalog.
+import "@/data/anime/field-overrides";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { CommanderCard, CommanderLevelUpOverlay } from "@/components/commander-card";
 import { commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@/data/commanders";
@@ -187,7 +190,13 @@ export const LOCATION_GLYPHS: Record<string, string> = {
   creature_bank: "🏦",
   monolith: "⛩",
   whirlpool: "🌀",
-  gate: "⛩"
+  gate: "⛩",
+  // Anime Field Override locations (global FO system content)
+  "anime.bi_canh": "🌌",
+  "anime.kiem_trung": "⚔",
+  "anime.linh_tuyen": "💧",
+  "anime.ngo_dao_thach": "🪨",
+  "anime.tran_phap_truyen_tong": "⛩"
 };
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
@@ -1348,6 +1357,7 @@ export function HexMapBoard({
       // on the field it sacrificed, shown in both art and icon modes. The two
       // halves are distinct: the skull cave-mouth GATE on a Surface tile, the
       // lighter passage ENTRANCE on a Subterranean tile.
+      const overrideArt = fieldOverrideImage(field.location);
       const tokenImage =
         field.location === "subterranean_gate"
           ? subterraneanGateTokenImage(tile.group === "subterranean" ? "subterranean" : "surface")
@@ -1357,9 +1367,10 @@ export function HexMapBoard({
               ? monolithTokenImage()
               : field.location === "whirlpool"
                 ? whirlpoolTokenImage(field.whirlpoolNumber)
-                : undefined;
+                : overrideArt;
       if (tokenImage) {
-        if (field.location === "creature_bank") {
+        // Clip landscape/field art to the hex (Creature Banks + Field Override objects).
+        if (field.location === "creature_bank" || Boolean(overrideArt)) {
           // The bank's field-tile scan is landscape; clip it to the hex and use
           // "slice" (cover) so the structure fills the cell centred and
           // undistorted — the old "none" stretched it into the tall hex box,
@@ -6279,6 +6290,74 @@ function GameOptionsPanel({
               {creatureBanksOn
                 ? "Discovering a Far/Near tile with a Blocked Field offers a Creature Bank token — a guarded lair with a scaled reward. Off removes the piles and the offer."
                 : "No Creature Banks — Blocked Fields stay bare."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        // GLOBAL single-hex Field Overrides (not Monolith/Gate/Whirlpool —
+        // those are basic teleports). Auto-ticks ON when a designed map has
+        // fieldOverride pins. Placement: Auto (random) vs Manual (player picks).
+        const fieldOverridesOn = options.fieldOverrides ?? false;
+        const placement = options.fieldOverridePlacement ?? "manual-or-refuse";
+        return (
+          <div className="optionRow" data-testid="option-field-overrides">
+            <small title="Global single-hex replacements with real visit mechanics. Content objects come from packages (Anime mod, future mods, core). Monolith/Whirlpool/Gate/Subterranean Gate are basic teleports and do NOT use this toggle.">
+              Field Overrides
+            </small>
+            <div className="optionButtons">
+              {([true, false] as const).map((on) => (
+                <button
+                  aria-pressed={fieldOverridesOn === on}
+                  className={fieldOverridesOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ fieldOverrides: on })}
+                  title={on ? "Field Overrides on" : "Field Overrides off"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            {fieldOverridesOn ? (
+              <div className="optionButtons" data-testid="option-field-override-placement">
+                {(
+                  [
+                    ["random", "Auto"],
+                    ["manual", "Manual"],
+                    ["manual-or-refuse", "Manual / refuse"]
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    aria-pressed={placement === mode}
+                    className={placement === mode ? "selected" : ""}
+                    key={mode}
+                    onClick={() => send({ fieldOverridePlacement: mode })}
+                    title={
+                      mode === "random"
+                        ? "Engine places the override on a legal hex automatically"
+                        : mode === "manual"
+                          ? "Discovering player must pick a glowing hex"
+                          : "Discovering player picks a hex or may refuse"
+                    }
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <small className="optionHint">
+              {fieldOverridesOn
+                ? `On — each Far/Near/Center tile open replaces ≥1 hex with a function object. Placement: ${
+                    placement === "random"
+                      ? "Auto"
+                      : placement === "manual"
+                        ? "Manual pick"
+                        : "Manual pick (or refuse)"
+                  }. Designer pins auto-enable this when the map is picked. Not for Monolith/Gate/Whirlpool/underground gates.`
+                : "Off — no single-hex overrides. Picking a map that already has override objects will tick this On automatically."}
             </small>
           </div>
         );

@@ -556,6 +556,28 @@ export { describePermanentEffect } from "./effects";
 export { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
 export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, NEUTRAL_PLAYER_ID } from "./state";
+export { DEFAULT_ANIME_OPTIONS, animeEnabled, animeModuleEnabled } from "./anime";
+export {
+  carveFieldOverride,
+  getFieldOverrideDefinition,
+  listFieldOverrideDefinitions,
+  fieldOverrideLabel,
+  fieldOverridesEnabled,
+  fieldOverridePlacementMode,
+  customMapHasFieldOverridePins,
+  customMapHasAnimeFieldOverridePins,
+  resolveFieldOverridesEnabled,
+  resolveFieldOverridePlacement
+} from "./field-overrides";
+export {
+  planTokens,
+  planFieldOverrides,
+  occupiedSlotsOnPlan,
+  firstFreeSlot,
+  withPlanTokens,
+  withPlanFieldOverrides,
+  dedupePlanHexPlacements
+} from "./tile-hex-placements";
 export type {
   AbilityDiceRoll,
   ActiveEffectDefinition,
