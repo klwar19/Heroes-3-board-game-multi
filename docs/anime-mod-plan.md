@@ -1593,6 +1593,68 @@ events). The mod adds ONE, package-agnostic:
 
 ## 12. Story mode — the campaign hub
 
+> **HUB + CHAPTER 1 OF BOTH CAMPAIGNS SHIPPED (2026-07-17).** The campaign shell
+> around the §11 story system is engine-free presentation + localStorage. Leading
+> with what does **NOT** run:
+> - **Only Chapter 1 of each campaign is PLAYABLE.** Chapters 2–7 exist as DATA
+>   (bilingual title + synopsis, the §12.1 / §12.2 arc) with `playable:false`, no
+>   `setup`, empty `scenes`. Completing ch-1 UNLOCKS ch-2, which renders as a
+>   clear "in development" state — never beginnable.
+> - **Protagonists are PRESENTATION only.** Chen Fan / Bin live in the story
+>   scenes; the playable seat uses a CORE faction stand-in — **Jianghu ch-1 =
+>   Rampart**, **Bin ch-1 = Tower** (anime towns are unshipped). `setup.playerFaction`
+>   names the stand-in.
+> - **`setup` is carried config, NOT applied to the live game.** The Begin flow
+>   mints a STANDARD single-player room and passes **only the opponent count** to
+>   `createSinglePlayerRoom`. `playerFaction`, `difficulty`, `fieldOverrides` and
+>   `anime` are surfaced by the tested pure helper `chapterRoomOptions` for the
+>   setup-injection slice that lands later — the player still picks their faction
+>   on the normal setup screen and the game runs with DEFAULT options. **No engine
+>   change ships here.** (Only shipped anime flags are ever set true: Jianghu ch-1
+>   = `enabled + cultivation + xianxiaArtifacts` + global `fieldOverrides`; Bin
+>   ch-1 = `enabled` + `fieldOverrides` — isekai modules do nothing yet, so none
+>   are enabled. A dead flag fails `campaigns.test.ts`.)
+> - **`mapPresetId` is unused** — campaign maps use standard map generation in V1
+>   (a designed `CustomMapPreset` per chapter is a later content pass; the type
+>   carries the optional field for it).
+> - **No routes / karma / cheat picks / quest-log.** A printed 5A/5B split is one
+>   chapter here; the split, Golden Fingers / Cheat Skills and the System
+>   quest-log are all deferred (§13, campaign-only). No convergence arc (§12.3).
+> - **All story art is placeholdered** (the §11 contract): the two new sprites
+>   (`system`, `guild-girl`) join `STORY_ART_PLACEHOLDERS`; the overlay's avatar /
+>   gradient fallbacks render them. No e2e — jsdom/unit only this slice.
+>
+> **What runs (each pinned by a test that fails if the wiring is removed):**
+> - **Campaign registry** `src/data/story/campaigns.ts` — both campaigns
+>   ("The Jianghu Chronicle" / Chen Fan, "Bin's Otherworld Chronicle" / Bin), 7
+>   chapters each, bilingual EN/VI. `chapterRoomOptions(chapter)` maps a chapter
+>   to room-creation options (seat count + resolved anime payload). Registry
+>   integrity, bilingual completeness, real-faction/sane-opponent setup, the
+>   shipped-anime-flag allowlist, and `chapterRoomOptions` in
+>   `src/data/story/campaigns.test.ts`.
+> - **Chapter-1 scenes** added to `src/data/story/scenes.ts` — intro (with a
+>   choice; the Jianghu intro chains a follow-up via `nextSceneId`), victory and
+>   defeat for both campaigns, xianxia vs. isekai register. Integrity + the
+>   art-placeholder invariant stay pinned in `scenes.test.ts`.
+> - **Progress store** `src/lib/campaign-progress.ts` — per-campaign completed
+>   chapters (`localStorage["binh-campaign:<id>"]`, the unlock chain), per-room
+>   binding + intro/outcome markers (`localStorage["binh-campaign-room:<roomId>"]`),
+>   SSR-safe (`ui-mode-preference` pattern). `campaign-progress.test.ts`.
+> - **Pure trigger** `src/lib/campaign-triggers.ts` (`campaignSceneToFire`):
+>   state + binding + shown-markers → the scene to fire (onStart once when the
+>   adventure is first visible; onVictory + completion / onDefeat at game-over;
+>   nothing for an UNBOUND room). `campaign-triggers.test.ts`.
+> - **`/story` route** `src/app/story/page.tsx` — theme-styled campaign cards
+>   (`.xianxiaTheme`/`.isekaiTheme` scoped to the CARDS, never the app root),
+>   chapter states (locked/in-development/ready/completed), the EN/VI toggle, and
+>   a Begin flow reusing `createSinglePlayerRoom` + `bindCampaignRoom`.
+>   `src/app/story/page.test.tsx`.
+> - **Menu entry** — "Story mode" → `/story` in `src/app/menu/page.tsx`
+>   (`menu/page.test.tsx`).
+> - **Table wiring** `src/app/page.tsx` — a bound campaign room pops the chapter's
+>   intro/outro through the EXISTING `storyCue`/`StoryOverlay` pipeline, once per
+>   room; game-over win → `markChapterCompleted`. Thin over the pure trigger.
+
 Shared shell (§3.3): each chapter = a private single-player room (`sp-` ids,
 `createSinglePlayerRoom`, `src/lib/realtime.ts:819`) built from a chapter
 definition (`src/data/story/campaigns.ts`): `{ id, title, mapPresetId,

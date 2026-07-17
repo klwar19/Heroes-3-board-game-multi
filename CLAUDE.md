@@ -1878,6 +1878,38 @@ Leading with what does NOT run / deliberate limits:
   ONCE per event id and never on reconnect (the exact MapEventOverlay seen-set /
   prime semantics); story events are table-wide, so eliminated-seat skipping is a
   verified no-op for them.
+- **Also shipped: the STORY-MODE campaign hub + Chapter 1 of BOTH campaigns**
+  (§12 / §3.3 — the campaign shell around the story system above). This is
+  ENGINE-FREE: client presentation + localStorage around the existing `sp-` room
+  flow and the existing game-over state — NO engine change. Leading with what does
+  NOT run: **only Chapter 1 of each campaign is PLAYABLE** (chapters 2–7 are DATA
+  — `playable:false`, no `setup`, empty `scenes` — rendering "in development" once
+  the unlock chain reaches them); **protagonists are PRESENTATION** (Chen Fan / Bin
+  live only in the scenes — the playable seat uses a CORE faction stand-in:
+  **Jianghu ch-1 = Rampart, Bin ch-1 = Tower**, anime towns are unshipped);
+  **`setup` is carried config, NOT applied to the live game** — the Begin flow
+  mints a STANDARD single-player room and passes ONLY the opponent count to
+  `createSinglePlayerRoom`; `playerFaction`/`difficulty`/`fieldOverrides`/`anime`
+  are surfaced by the tested pure helper `chapterRoomOptions` for a later
+  setup-injection slice (the player still picks a faction on the normal setup
+  screen; the game runs with DEFAULT options); **`mapPresetId` is unused**
+  (standard map generation in V1); and **no routes/karma/cheat picks/quest-log**
+  (§13 deferred, campaign-only). Only shipped anime flags may be set true on a
+  playable chapter (allowlist `{enabled, cultivation, xianxiaArtifacts}` + the
+  global `fieldOverrides` toggle) — a dead flag fails `campaigns.test.ts`. What
+  RUNS (each mutation-checked): the campaign registry
+  (`src/data/story/campaigns.ts` — both campaigns, 7 bilingual chapters each,
+  `chapterRoomOptions`; `campaigns.test.ts`), the ch-1 intro/victory/defeat scenes
+  added to `scenes.ts` (`scenes.test.ts`), the progress store
+  (`src/lib/campaign-progress.ts` — per-campaign completion + unlock chain,
+  per-room binding + intro/outcome markers, SSR-safe; `campaign-progress.test.ts`),
+  the PURE trigger `campaignSceneToFire` (`src/lib/campaign-triggers.ts` —
+  state+binding+markers → scene to fire, with an UNBOUND-room CONTROL;
+  `campaign-triggers.test.ts`), the `/story` route (theme-scoped campaign cards +
+  EN/VI toggle + Begin flow; `src/app/story/page.test.tsx`), the menu entry
+  (`menu/page.test.tsx`), and the thin table wiring in `page.tsx` (a bound room
+  pops intro/outro through the EXISTING `storyCue`/`StoryOverlay` pipeline once per
+  room; a game-over win calls `markChapterCompleted`).
 
 ## First-round rules, Cove City Hall & bank/opponent UI (BINH house rules) — what runs
 
