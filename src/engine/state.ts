@@ -7474,9 +7474,16 @@ export type VisitStep =
       optionLabel: string;
     }
   | {
-      /** Terrible Plague: flip one army card from Pack back to Few. */
+      /**
+       * Flip one army card from Pack back to Few. `source` picks the rules
+       * text: "plague" (Terrible Plague — the default for legacy queued steps)
+       * is weakened by Polish Unit Stacks (a Stacked pack sheds one layer
+       * instead of flipping, see applyPlagueToPack); "pandora" (Pandora's
+       * Silver Muster reverse) is always the plain printed flip.
+       */
       type: "FLIP_PACK_TO_FEW";
       armyUnitId: string;
+      source?: "plague" | "pandora";
     }
   | {
       /**

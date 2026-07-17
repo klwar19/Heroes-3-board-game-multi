@@ -2659,7 +2659,8 @@ export function declareAdventureWinner(
     return;
   }
   // Victory Points mode: a victory-condition COMPLETION scores the table instead
-  // of winning outright. (Last-faction-standing keeps the flag off → instant.)
+  // of winning outright (last-faction-standing carries the flag too — the
+  // internal VP re-declaration below is what omits it).
   if (options?.viaVictoryCondition && victoryPointsModeActive(state)) {
     endGameByVictoryPoints(state, { completerId: playerId, completionReason: reason });
     return;
@@ -4140,9 +4141,22 @@ export function processPendingVisit(state: GameState): void {
         const player = state.players[visit.playerId];
         const armyUnit = player?.army.find((candidate) => candidate.id === step.armyUnitId);
         if (player && armyUnit && armyUnit.side === "pack") {
-          // Polish Unit Stacks weaken the Plague: a Stacked pack sheds one
-          // layer instead of flipping (applyPlagueToPack decides).
-          applyPlagueToPack(state, visit.playerId, armyUnit);
+          if ((step.source ?? "plague") === "plague") {
+            // Polish Unit Stacks weaken the Plague: a Stacked pack sheds one
+            // layer instead of flipping (applyPlagueToPack decides).
+            applyPlagueToPack(state, visit.playerId, armyUnit);
+          } else {
+            // Pandora's Silver Muster reverse: always the plain printed flip
+            // (a Stack layer never absorbs a flip the player chose).
+            armyUnit.side = "few";
+            delete armyUnit.stacks;
+            appendEvent(state, {
+              type: "ARMY_UNIT_FLIPPED",
+              playerId: visit.playerId,
+              unitDefId: armyUnit.unitDefId,
+              reason: "Pandora's Box"
+            });
+          }
         }
         break;
       }
@@ -8246,14 +8260,14 @@ export function openPandoraSilverRefresh(state: GameState, playerId: PlayerId): 
   if (packSilvers.length > 0) {
     const reverseSteps: VisitStep[] =
       packSilvers.length === 1
-        ? [{ type: "FLIP_PACK_TO_FEW", armyUnitId: packSilvers[0].id }]
+        ? [{ type: "FLIP_PACK_TO_FEW", armyUnitId: packSilvers[0].id, source: "pandora" }]
         : [
             {
               type: "CHOOSE_ONE",
               prompt: "Reverse which Silver unit to its Handful side?",
               options: packSilvers.map((unit) => ({
                 label: unitName(unit),
-                steps: [{ type: "FLIP_PACK_TO_FEW", armyUnitId: unit.id } as VisitStep]
+                steps: [{ type: "FLIP_PACK_TO_FEW", armyUnitId: unit.id, source: "pandora" } as VisitStep]
               }))
             }
           ];
@@ -10764,7 +10778,7 @@ function queuePlagueFlip(state: GameState, playerId: PlayerId): void {
           label: (unit.stacks ?? 0) > 0
             ? `Weakened by Stacks: ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} loses 1 Stack (stays a Pack)`
             : `Flip ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId}`,
-          steps: [{ type: "FLIP_PACK_TO_FEW", armyUnitId: unit.id }]
+          steps: [{ type: "FLIP_PACK_TO_FEW", armyUnitId: unit.id, source: "plague" }]
         }))
       }
     ]
