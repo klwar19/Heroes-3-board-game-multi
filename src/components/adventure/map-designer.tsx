@@ -8,7 +8,6 @@ import { locationDefinitions } from "@/data/map/locations";
 import {
   DESIGNER_UI_ICONS,
   mapTokenImage,
-  monolithTokenImage,
   onewayMonolithImage,
   outpostObjectImage,
   teleportGateImage,
