@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="743" height="1040" viewBox="0 0 743 1040">
+  <title>Azure Breeze Sect Outer Sect Disciples PACK art proof</title>
+  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-bronze-outer-sect-disciples-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="1" data-variant="pack" data-attack="2" data-defense="1" data-health="2" data-initiative="5" data-traits="GROUND,MELEE" data-rule-capacity-lines="7"/>
+  <defs>
+    <linearGradient id="variantBand" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4a2d1d"/><stop offset=".52" stop-color="#29170f"/><stop offset="1" stop-color="#1a0d09"/></linearGradient>
+    <filter id="textShadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="2"/><feOffset dy="2"/><feComponentTransfer><feFuncA type="linear" slope=".8"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="iconShadow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.6"/><feOffset dx="1.5" dy="2"/><feComponentTransfer><feFuncA type="linear" slope=".85"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <clipPath id="paintingClip"><rect x="173" y="157" width="509" height="597"/></clipPath>
+    <style>
+      .display { font-family: "Liberation Serif", Georgia, serif; font-weight: 700; }
+      .smallcaps { font-family: "Liberation Serif", Georgia, serif; font-weight: 700; letter-spacing: 2.5px; }
+      .statNumber { fill: #fff0c8; font-family: "Liberation Serif", Georgia, serif; font-size: 40px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+      .typeLabel { fill: #e8e2b4; font-family: Arial, sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 2px; filter: url(#textShadow); }
+      .ruleText { fill: #f3e8c7; font-family: "Liberation Serif", Georgia, serif; font-size: 21px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+    </style>
+  </defs>
+
+  <g inkscape:groupmode="layer" inkscape:label="01 Generated classic board-game frame (linked master)" id="layer-background">
+    <image id="linked-frame" x="0" y="0" width="743" height="1040" preserveAspectRatio="none" href="../../../raw/azure-breeze/frame/units-azure-breeze-board-game-frame-master.png" xlink:href="../../../raw/azure-breeze/frame/units-azure-breeze-board-game-frame-master.png"/>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="02 Illustration (linked master)" id="layer-art" clip-path="url(#paintingClip)">
+    <rect x="173" y="157" width="509" height="597" fill="#1c100b"/>
+    <image id="linked-master" x="173" y="157" width="509" height="597" preserveAspectRatio="xMidYMid slice" href="../../../raw/azure-breeze/units/units-azure-breeze-bronze-outer-sect-disciples-master.png" xlink:href="../../../raw/azure-breeze/units/units-azure-breeze-bronze-outer-sect-disciples-master.png"/>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="03 Classic board-game alignment panels" id="layer-frame">
+    <rect x="171" y="155" width="513" height="601" fill="none" stroke="#c79b61" stroke-width="3"/>
+    <rect x="69" y="762" width="614" height="77" fill="url(#variantBand)" stroke="#bd9057" stroke-width="3"/>
+    <path d="M77 770h598M77 831h598" stroke="#6e9a7f" stroke-opacity=".55" stroke-width="2"/>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="04 Editable classic icons and stat values" id="layer-icons">
+    <g id="left-stat-rail"><g id="stat-attack">
+      <g id="icon-attack-crossed-jian" transform="translate(118 205)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
+      <path d="M-24-23 21 22M-16-28l-13 13 12 1M15 28l13-13-12-1"/>
+      <path d="M24-23-21 22M16-28l13 13-12 1M-15 28l-13-13 12-1"/>
+      <path d="m-10 17-7 11M10 17l7 11" stroke="#8ab39a"/>
+    </g>
+      <text x="118" y="274" class="statNumber">2</text>
+    </g><g id="stat-defense">
+      <g id="icon-defense-jade-shield" transform="translate(118 353)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
+      <path d="M0-30 27-20V1c0 22-11 37-27 45C-16 38-27 23-27 1v-21z" fill="#183d35" stroke="#dce4c5"/>
+      <path d="M0-21 17-14V1c0 13-6 24-17 31C-11 25-17 14-17 1v-15z" stroke="#86ad91"/>
+      <circle r="8"/><path d="M0-8a8 8 0 0 0 0 16M0-8a4 4 0 0 1 0 8M0 0a4 4 0 0 0 0 8" stroke-width="2.7"/>
+    </g>
+      <text x="118" y="422" class="statNumber">1</text>
+    </g><g id="stat-health">
+      <g id="icon-health-lotus-cross" transform="translate(118 501)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
+      <path d="M-11-29H11V-11H29V11H11V29H-11V11H-29V-11H-11Z" fill="#d7d7a4" stroke="#f2e7bd"/>
+      <path d="M0 18C-7 10-15 8-20 9-17 1-10-5 0-10 10-5 17 1 20 9 15 8 7 10 0 18Z" fill="#4f846d" stroke="#315f50" stroke-width="2.5"/>
+    </g>
+      <text x="118" y="570" class="statNumber">2</text>
+    </g><g id="stat-initiative">
+      <g id="icon-initiative-cloud-step" transform="translate(118 649)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
+    <circle cx="10" cy="-22" r="7" fill="#dce4c5"/>
+    <path d="M7-13-2 4l-17 7M-2 4l12 8 15-3M4-6l17 2M10 12 2 29M-18 22h25c9 0 12-8 7-12"/>
+    <path d="M-25 31H9c8 0 12-6 8-11" stroke="#8ab39a" stroke-width="3"/>
+  </g>
+      <text x="118" y="718" class="statNumber">5</text>
+    </g></g>
+    <g id="primary-type">
+      <g id="type-ground-boot" transform="translate(202 184)" fill="none" stroke="#e5e2b1" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)"><path d="M-13-19h15v19c7 7 15 10 24 10v13h-44v-11c7-3 9-9 5-17z"/><path d="M-11 6c8 4 18 6 31 5" stroke="#8ab39a"/></g>
+      <text x="232" y="190" class="typeLabel">GROUND</text>
+    </g>
+    <g id="tier-star" transform="translate(648 101)">
+      <path d="m0-27 7 18 20 1-15 12 5 20-17-11-17 11 5-20-15-12 20-1z" fill="#e5ad72" stroke="#402016" stroke-width="2.5" filter="url(#iconShadow)"/>
+      <text x="0" y="42" class="smallcaps" fill="#e5ad72" font-size="11" text-anchor="middle" filter="url(#textShadow)">LV 1</text>
+    </g>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="05 Editable original-style typography and rules" id="layer-type">
+    <text x="371" y="105" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)">Outer Sect Disciples</text>
+    <text x="371" y="135" fill="#c8d6b9" font-family="Liberation Serif, Georgia, serif" font-size="17" font-style="italic" font-weight="700" text-anchor="middle" filter="url(#textShadow)">Ngoại môn đệ tử</text>
+    <text x="376" y="814" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)"># PACK</text>
+    <g id="editable-rules"><path d="M84 911.22q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="920.22" class="ruleText">Sword Array — +1 Attack while adjacent to a friendly</text><text x="384" y="944.22" class="ruleText">unit.</text></g>
+  </g>
+</svg>

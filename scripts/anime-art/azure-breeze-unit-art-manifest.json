@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 2,
+  "status": "art-proof-not-playable",
+  "package": "Ninefold Realms",
+  "faction": "Azure Breeze Sect",
+  "layout": "ninefold-board-game-classic-v3",
+  "visualRegister": "xianxia ink-wash board-game realism",
+  "sourceDecision": "Original characters and compositions grounded in Wudang architecture, Huangshan shanshui landscapes, historic Chinese crane painting, Daoist talisman design, and stone guardian-beast vocabulary. Card geometry follows the original in-repository Heroes III board-game unit cards; only the leather/jade frame treatment and restrained icon details change.",
+  "authoritativeReferences": [
+    "https://whc.unesco.org/en/list/705/",
+    "https://whc.unesco.org/en/list/547/",
+    "https://www.metmuseum.org/art/collection/search/39993",
+    "https://www.britishmuseum.org/collection/object/A_2017-3055-6"
+  ],
+  "statNotice": "These are user-directed art-proof values, not balanced or engine-wired gameplay stats.",
+  "layoutReferences": [
+    "public/assets/units-blank-azure.webp",
+    "public/assets/units-castle-bronze-griffins-pack.webp",
+    "public/assets/units-rampart-golden-unicorns-pack.webp"
+  ],
+  "frameMaster": {
+    "file": "raw/azure-breeze/frame/units-azure-breeze-board-game-frame-master.png",
+    "review": "approved",
+    "method": "Image-generated edit from in-repository blank and finished unit-card layout references; all functional text, values and icons remain editable SVG overlays."
+  },
+  "masters": [
+    { "level": 1, "slug": "outer-sect-disciples", "tier": "bronze", "file": "raw/azure-breeze/units/units-azure-breeze-bronze-outer-sect-disciples-master.png", "review": "approved" },
+    { "level": 2, "slug": "inner-sect-swordsmen", "tier": "bronze", "file": "raw/azure-breeze/units/units-azure-breeze-bronze-inner-sect-swordsmen-master.png", "review": "approved" },
+    { "level": 3, "slug": "spirit-crane", "tier": "silver", "file": "raw/azure-breeze/units/units-azure-breeze-silver-spirit-crane-master.png", "review": "approved" },
+    { "level": 4, "slug": "sect-protectors", "tier": "silver", "file": "raw/azure-breeze/units/units-azure-breeze-silver-sect-protectors-master.png", "review": "approved" },
+    { "level": 5, "slug": "true-inheritors", "tier": "golden", "file": "raw/azure-breeze/units/units-azure-breeze-golden-true-inheritors-master.png", "review": "approved" },
+    { "level": 6, "slug": "core-formation-master", "tier": "golden", "file": "raw/azure-breeze/units/units-azure-breeze-golden-core-formation-master.png", "review": "approved" },
+    { "level": 7, "slug": "mountain-guardian", "tier": "golden", "file": "raw/azure-breeze/units/units-azure-breeze-golden-mountain-guardian-master.png", "review": "approved" }
+  ],
+  "retiredAlternates": [
+    { "slug": "alchemy-acolytes", "file": "archive/azure-breeze/units/units-azure-breeze-silver-alchemy-acolytes-v1-retired.png", "reason": "Replaced by level-3 Spirit Crane." },
+    { "slug": "sword-immortal", "file": "archive/azure-breeze/units/units-azure-breeze-golden-sword-immortal-v1-retired.png", "reason": "Replaced by level-6 Core Formation Master." },
+    { "slug": "mountain-guardian-v1", "file": "archive/azure-breeze/units/units-azure-breeze-golden-mountain-guardian-v1-retired.png", "reason": "Superseded by the spirit-beast redraw." }
+  ]
+}
