@@ -142,4 +142,65 @@ describe("consecutive Defend ban", () => {
     expect(state.combat!.units[UNIT].defenseToken).toBe(true);
     expect(state.combat!.units[UNIT].defendedLastActivation).toBe(true);
   });
+
+  it("pure hold is offered at activation start — including when consecutive Defend is banned", () => {
+    // The whole point of pure hold: after Defending, Defend is off, but the
+    // unit must still be able to sit still without attacking or moving.
+    let state = createInitialGameState("pure-hold-at-start");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state = startRoundWithActive(state, UNIT);
+
+    // Fresh activation: hold is already offered (not only after move/attack).
+    const holdAtStart = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "END_ACTIVATION" && legal.action.unitId === UNIT
+    );
+    expect(holdAtStart, "hold position at activation start").toBeTruthy();
+
+    // Defend, then next activation: Defend banned, pure hold still legal and
+    // clears the ban so Defend returns the activation after.
+    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: UNIT });
+    state = endRound(state);
+    state = startRoundWithActive(state, UNIT);
+    expect(canDefend(state, "p1", UNIT)).toBe(false);
+
+    const holdWhileBanned = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "END_ACTIVATION" && legal.action.unitId === UNIT
+    );
+    expect(holdWhileBanned, "hold still offered when Defend is consecutive-banned").toBeTruthy();
+    state = applyOk(state, holdWhileBanned!.action);
+    expect(state.combat!.units[UNIT].defendedLastActivation, "pure hold clears the ban").toBe(false);
+    expect(state.combat!.units[UNIT].activatedThisRound).toBe(true);
+
+    state = endRound(state);
+    state = startRoundWithActive(state, UNIT);
+    expect(canDefend(state, "p1", UNIT), "Defend returns after pure hold").toBe(true);
+  });
+
+  it("ground, flying, and ranged may pure-hold at activation start without attacking or defending", () => {
+    // Hold is type-agnostic — same END_ACTIVATION offer for every unit type.
+    const byType: Array<{ unitId: UnitId; type: "ground" | "flying" | "ranged" }> = [
+      { unitId: "unit_p1_crusaders", type: "ground" },
+      { unitId: "unit_p1_griffins", type: "flying" },
+      { unitId: "unit_p1_marksmen", type: "ranged" }
+    ];
+
+    for (const { unitId, type } of byType) {
+      let state = createInitialGameState(`pure-hold-${type}`);
+      state.players.p1.hand = [];
+      state.players.p2.hand = [];
+      state = startRoundWithActive(state, unitId);
+      expect(state.combat!.units[unitId].type, `${unitId} type`).toBe(type);
+
+      const hold = getLegalActions(state, "p1").find(
+        (legal) => legal.action.type === "END_ACTIVATION" && legal.action.unitId === unitId
+      );
+      expect(hold, `${type} hold at activation start`).toBeTruthy();
+
+      state = applyOk(state, hold!.action);
+      expect(state.combat!.units[unitId].activatedThisRound, `${type} ends activation`).toBe(true);
+      expect(state.combat!.units[unitId].attackedThisActivation).toBe(false);
+      expect(state.combat!.units[unitId].defendedLastActivation).toBe(false);
+    }
+  });
 });
