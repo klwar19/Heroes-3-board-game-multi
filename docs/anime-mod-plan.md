@@ -517,6 +517,100 @@ optional PAY_TO from surplus by default; buying it is a human play). Per-package
 fancy grade-label fonts/art are deferred (the register text is bilingual plain
 text).
 
+### 3.12 Forced Battle Events (scripted combats) — SHIPPED (V1)
+
+A "certain battles do certain things" system: a fight on a particular MAP FIELD
+runs SCRIPTED EVENTS — a combat-long environment effect, an obstacle formation,
+a timed damage pulse, or a flavor announcement — at combat-start and/or a chosen
+round-start. **Default OFF ⇒ byte-identical** (a non-scripted field runs nothing;
+the mechanism no-ops when the fought field carries no script). Architecture
+mirrors the Field Override split (§3.10): the **mechanism is CORE**, content is a
+**package**.
+
+- **Registry (CORE, owns no scripts):** `src/data/map/combat-scripts.ts` —
+  `CombatScriptDefinition { id, name:{en,vi}, locationId, requiresModule?, events, summary }`;
+  `CombatScriptEvent { at:"combat-start"|"round-start", round?, effects[], announce:{en,vi} }`;
+  the effect vocabulary below. `registerCombatScriptDefinitions` / `combatScriptsForLocation`.
+- **Engine hook (CORE):** `src/engine/combat-scripts.ts` — resolves the fought
+  field's location (`combat.context.fieldId` → `adventure.fields[id].location`),
+  gates by `requiresModule`, and fires events. `combatScriptStatDelta` is the
+  live read consumed by the attack/defense resolution.
+- **Content (Anime package):** `src/data/anime/combat-scripts.ts` — the V1 Bí Cảnh
+  scripts. Registered via a side-effect import from the engine hook (mirrors
+  `field-overrides`).
+- **Tests:** `src/engine/combat-scripts.test.ts` — every claim mutation-checked
+  with a CONTROL (module-off / wrong-round / non-scripted / melee / PvP / sandbox).
+
+**V1 is FULLY AUTOMATIC — the deliberate anti-AI-freeze design.** No script effect
+opens a player window, choice or prompt, so the runner has nothing new to score
+(proved: a computer seat fights a scripted Bí Cảnh to a win with no stall, and the
+parallel-turns bystander fingerprint `parallelSlotSignature` is untouched — a
+scripted combat is already the exclusive singleton interaction). Every event still
+ANNOUNCES itself with a `COMBAT_SCRIPT_TRIGGERED` event (feed line + a
+`combat-start` cue + `formatEvent` case) so players SEE "something happens".
+
+**ScriptEffect vocabulary (only kinds with a proven engine seam ship):**
+1. `environment-stat` — a combat-long stat modifier on a side (`attacker` /
+   `defender` = the Neutral guards / `both`), optionally narrowed to one
+   `unitType`, on `attack` or `defense`. Stored on `combat.combatScripts.statModifiers`
+   and read LIVE at resolution (the Crag Hack `proclamationGroundAttackBonus`
+   precedent), so it survives Pack→Few flips / specialty recomputes. Added
+   UNCLAMPED (an environmental penalty bites an elemental unit; a bonus is not a
+   "buffable attack card").
+2. `damage-pulse` — N effect-damage to every living unit of a side, through the
+   normal removal path (the Astral Spirit `applyElementalScourge` precedent;
+   `source:{type:"system"}`, `damageKind:"effect"`, a 1-HP unit dies and
+   `finishCombatIfNeeded` closes a wipe).
+3. `place-obstacles` — push the given EMPTY board cells into `combat.obstacles`
+   (movement is already obstacle-aware; the number-array is read live). Occupied
+   cells are skipped.
+4. `announce` — pure feed-line flavor (every event announces anyway).
+
+**Trigger wiring (documented positions):** combat-start events fire in
+`finalizeCombatStart` AFTER `applyCommanderCombatStart`, before the first
+war-machine round (idempotent across its Wayfarer/tactics re-entries via
+`combat.combatScripts.startApplied`); round-start events fire in
+`advanceCombatRound` after `combat.round` is incremented (idempotent per round via
+`roundsFired[]`), and once from the combat-start pass for the opening round.
+**Scope:** NEUTRAL combats only — guard FIELDS **and** Creature Banks (both are
+`context.kind:"neutral"`); PvP and the combat sandbox carry no fought-field
+location and fire nothing (CONTROL-pinned). Every effect is per-combat; nothing
+persists into the next fight.
+
+**`requiresModule` choice:** anime locations only exist when the mod is on (their
+Field Override content is master-`enabled`-gated), so the Bí Cảnh scripts gate on
+`"enabled"` to MATCH — a game without anime never has a `anime.bi_canh` field to
+fight on anyway, and the gate makes "module off ⇒ nothing" trivially true.
+
+**V1 content — Bí Cảnh (Secret Realm), the only current anime kind with a guard:**
+- **Linh Vụ (Spirit Mist)** — combat-start `environment-stat`: ALL RANGED units
+  (both sides) −1 Attack for the whole battle.
+- **Địa Mạch Trào Dâng (Earthvein Surge)** — round-start round 2 `damage-pulse`:
+  1 effect damage to every unit of the ATTACKER's (the intruding hero's) side.
+- (Two scripts on one location — the registry supports several per location, and
+  a script supports several events.)
+
+**Leading with what does NOT ship / deliberate limits:**
+- **No V1 player-facing script effect** (no windows/choices) — pick-a-cell
+  obstacle placement, "choose an environment", branching scripts are all growth.
+- **No obstacle auto-pick** — `place-obstacles` takes explicit candidate cells
+  (deterministic); a seeded auto-pick from the empty deploy zone is future work.
+- **Creature-Bank support is by MECHANISM, not content** — a bank fight is
+  `context.kind:"neutral"`, so a script keyed off a bank field's location would
+  fire; there is no anime bank-script yet (banks are their own location kind).
+- **No designer / campaign attachment surface yet** — scripts attach only by a
+  content package registering off a location id. The intended growth path is
+  data: a map-designer `scriptId` field on a placed field, and campaign
+  set-pieces registering scripts on their scenario's locations — no new engine
+  vocabulary needed for either, only content.
+
+**Growth path (data-only unless noted):** future guarded content (isekai lairs,
+raid arenas, campaign boss fields) attaches scripts by registering off their
+location id; new effect kinds extend the `CombatScriptEffect` union with the same
+"prove a reuse seam, test the observable" bar; a player-facing kind would be the
+first to add a window (and its AI scoring). The `requiresModule` field already
+generalises the gate to any `AnimeModOptions` flag.
+
 ---
 
 ## 4. Mod plumbing (Phase 0)

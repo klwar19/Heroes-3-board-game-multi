@@ -8291,6 +8291,9 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   MORALE_CARD_DISCARDED: { icon: "🎺", cue: "morale" },
   MORALE_CARD_USED: { icon: "🎺", cue: "morale" },
   QUICK_COMBAT_WON: { icon: "⚡", cue: "quick-combat" },
+  // Forced Battle Events (Anime mod, §3.12): a scripted combat event announces
+  // itself in the feed (environment mist, an obstacle formation, a round pulse).
+  COMBAT_SCRIPT_TRIGGERED: { icon: "🌀", cue: "combat-start" },
   NEUTRAL_COMBAT_STARTED: { icon: "⚔️", cue: "battle-begin" },
   NEUTRAL_ARMY_REVEALED: { icon: "👁", cue: "reveal" },
   PLAYER_COMBAT_STARTED: { icon: "⚔️", cue: "battle-begin" },

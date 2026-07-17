@@ -158,6 +158,7 @@ import {
 } from "./commanders";
 import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
+import { applyCombatScriptCombatStart } from "./combat-scripts";
 import { cardCanBoostPower } from "./effects";
 import { bakeEntropy, createSeededRandom } from "./random";
 import {
@@ -6140,6 +6141,13 @@ function finalizeCombatStart(state: GameState): void {
   // Charming, Pacifist) resolve after unit abilities and BEFORE the first
   // war-machine round, so a charmed/fled defender never soaks a Ballista shot.
   applyCommanderCombatStart(state);
+  // Forced Battle Events (Anime mod, §3.12): a fought field's combat-start
+  // script events (environment mist, an obstacle formation, an opening pulse)
+  // settle LAST — after the commander package, before the first war-machine
+  // round — so the environment is in place for round 1. NEUTRAL fights only;
+  // idempotent across finalizeCombatStart re-entries. Also fires any
+  // round-start events configured for the opening round.
+  applyCombatScriptCombatStart(state);
   startWarMachineRound(state);
 }
 

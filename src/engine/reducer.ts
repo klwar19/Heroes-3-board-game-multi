@@ -158,6 +158,7 @@ import {
   planMovePath
 } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
+import { applyCombatScriptRoundStart, combatScriptStatDelta } from "./combat-scripts";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import { isNeutralSplashVictimChoice, neutralCombatControllerId } from "./neutral-control";
 import {
@@ -3275,7 +3276,14 @@ function getAttackStackDetails(
   // subtracts the defender's printed Defense value). Both are floored together
   // so the effective Defense never drops below 0.
   const defenseBonusBeforeAbility =
-    stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense + redirectedDefenseDelta;
+    stackItem.modifiers.defenseBonus +
+    activeDefenseBonus +
+    tokenDefense +
+    redirectedDefenseDelta +
+    // Forced Battle Events (Anime mod, §3.12): a fought field's environment-stat
+    // script targeting the DEFENDER's Defense (e.g. "the Neutral side +1 Defense").
+    // Folds into the printed/buffed Defense before the reduction-ability clamp.
+    combatScriptStatDelta(combat, defender, "defense");
   const defenseReductionSource =
     !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
   const ignoreCardDefenseSource =
@@ -3387,7 +3395,12 @@ function getAttackStackDetails(
       chargeAttackBonus +
       stackedAttackBonus +
       ownAttackFlatBonus +
-      astrologersRoundAttackBonus -
+      astrologersRoundAttackBonus +
+      // Forced Battle Events (Anime mod, §3.12): a fought field's environment-stat
+      // script (e.g. Spirit Mist "ranged −1 Attack"). An environmental modifier,
+      // added UNCLAMPED like the innate bonuses — a penalty still bites an
+      // elemental unit, and a bonus is not treated as a buffable attack card.
+      combatScriptStatDelta(combat, attacker, "attack") -
       retaliationAttackPenalty -
       // Negative Morale "-1 to your next Attack … roll": latched onto this
       // attack when its die rolled (applyMoraleAttackRollPenalty), then folded
@@ -17918,6 +17931,12 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     round: state.combat.round,
     activeUnitId: null
   });
+
+  // Forced Battle Events (Anime mod, §3.12): a fought field's round-start script
+  // events fire here — after the round is incremented, before war machines and
+  // the first activation — keyed on the new `combat.round`. NEUTRAL fights only;
+  // a lethal pulse ends the fight via the trailing finishCombatIfNeeded below.
+  applyCombatScriptRoundStart(state);
 
   // Round-start war machines fire BEFORE any unit activates, so the first
   // activation is chosen only once they finish. Leave the active unit unset

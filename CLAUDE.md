@@ -1877,6 +1877,36 @@ Leading with what does NOT run / deliberate limits:
   threshold + nodes + one entry per register (§3.11 recipe). Magnitudes pegged to
   existing precedents (Brute gold, Cart/artifact income, Pandora hand/Power,
   commander reaction buffs, Boots movement).
+- **Also shipped: Forced Battle Events (scripted combats, §3.12)** — a fight on a
+  particular MAP FIELD runs SCRIPTED EVENTS (an environment stat modifier, an
+  obstacle formation, a timed damage pulse, a flavor announce) at combat-start
+  and/or a chosen round-start. Mechanism CORE (`src/data/map/combat-scripts.ts`
+  registry + `src/engine/combat-scripts.ts` hook), content a package
+  (`src/data/anime/combat-scripts.ts`). Default OFF / non-scripted field ⇒
+  byte-identical. Leading with what does NOT run / limits: **V1 is FULLY
+  AUTOMATIC — no script effect opens a player window or choice** (the deliberate
+  anti-AI-freeze design: nothing new to score, `parallelSlotSignature` untouched);
+  **NEUTRAL fights only** (guard fields AND Creature Banks — `context.kind
+  "neutral"`; PvP and the combat sandbox fire nothing, CONTROL-pinned); **no
+  obstacle auto-pick** (`place-obstacles` takes explicit empty cells); **no
+  designer/campaign attachment surface yet** (scripts attach only by a package
+  registering off a location id — the growth path is data: a designer `scriptId`
+  and campaign set-pieces); **Creature-Bank support is by mechanism, not
+  content** (no bank-script ships). What runs (each mutation-checked in
+  `src/engine/combat-scripts.test.ts`): the four effect kinds — `environment-stat`
+  (combat-long stat modifier read LIVE at attack/defense resolution, the Crag Hack
+  `proclamationGroundAttackBonus` seam; added unclamped), `damage-pulse` (effect
+  damage through the removal path, the `applyElementalScourge` seam),
+  `place-obstacles` (empty cells → `combat.obstacles`, movement already
+  obstacle-aware), `announce` (a `COMBAT_SCRIPT_TRIGGERED` feed line —
+  `formatEvent` case + `combat-start` cue — so every event announces itself).
+  Trigger: combat-start in `finalizeCombatStart` (after `applyCommanderCombatStart`,
+  idempotent via `combat.combatScripts.startApplied`); round-start in
+  `advanceCombatRound` after the round increments (idempotent via `roundsFired[]`).
+  V1 content = the two **Bí Cảnh** scripts on `anime.bi_canh` (Spirit Mist: all
+  RANGED units both sides −1 Attack combat-long; Earthvein Surge: round-2 pulse 1
+  to the attacker side), gated on `"enabled"` since the anime location only exists
+  under the mod. Effects are per-combat; nothing persists to the next fight.
 - **No standalone (off-tile) override objects** — on-tile pins only.
 - **`linh_tuyen` is +1 movement only** (cleanse not wired, documented at the
   definition); no override kind may claim `starting` tiles (setup skips

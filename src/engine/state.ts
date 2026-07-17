@@ -4939,6 +4939,23 @@ export type GameEvent =
       message: string;
     }
   | {
+      /**
+       * Forced Battle Events (Anime mod, §3.12): a scripted combat event fired
+       * (combat-start or a configured round-start). `playerId` is the fighting
+       * hero's seat; `message`/`messageVi` are the bilingual "what happens" line.
+       * Purely informational — the mechanical effect has already applied.
+       */
+      id: string;
+      type: "COMBAT_SCRIPT_TRIGGERED";
+      playerId: PlayerId;
+      scriptId: string;
+      scriptName: string;
+      at: "combat-start" | "round-start";
+      round?: number;
+      message: string;
+      messageVi?: string;
+    }
+  | {
       /** WOG commander: its command ability resolved on a target. */
       id: string;
       type: "COMMANDER_CAST_USED";
@@ -6960,6 +6977,21 @@ export type AttackSequenceState = {
   };
 };
 
+/**
+ * Forced Battle Events (Anime mod, §3.12): one combat-long environment stat
+ * modifier resolved from an `environment-stat` script effect. `side` names the
+ * fought side ("defender" = the Neutral guards in a neutral combat), `unitType`
+ * optionally narrows to one type. Read LIVE at attack/defense resolution (like
+ * `proclamationGroundAttackBonus`), so it survives Pack→Few flips and specialty
+ * recomputes. See `src/engine/combat-scripts.ts`.
+ */
+export type CombatScriptStatModifier = {
+  side: "attacker" | "defender" | "both";
+  unitType?: UnitType;
+  stat: "attack" | "defense";
+  amount: number;
+};
+
 export type CombatState = {
   id: string;
   round: number;
@@ -7206,6 +7238,19 @@ export type CombatState = {
    * blocked-space set); the others let units enter but bite them as they move.
    */
   battlefieldTokens?: BattlefieldTokenState[];
+  /**
+   * Forced Battle Events (Anime mod, §3.12): per-combat scripted-event state.
+   * `statModifiers` are the combat-long environment stat deltas read live at
+   * attack/defense resolution; `startApplied` / `roundsFired` make the
+   * combat-start and per-round firings idempotent across finalizeCombatStart /
+   * advanceCombatRound re-entry. Absent in every non-scripted (and legacy)
+   * combat — the mechanism no-ops when the fought field carries no script.
+   */
+  combatScripts?: {
+    statModifiers?: CombatScriptStatModifier[];
+    startApplied?: boolean;
+    roundsFired?: number[];
+  };
 };
 
 export type DeckState = {
