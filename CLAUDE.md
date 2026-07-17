@@ -1437,7 +1437,10 @@ is NOT done:
   reserved for (and is consumed by) one card's Stack purchase (`{kind:"stack"}`
   voucher target — a reinforce voucher never bleeds onto a Stack); and the
   Astrologers' Terrible Plague is WEAKENED by Stacks — a Stacked pack sheds one
-  layer (`ARMY_STACK_LOST` with a reason) instead of flipping to Few.
+  layer (`ARMY_STACK_LOST` with a reason) instead of flipping to Few. ONLY the
+  Plague is weakened: Pandora's Silver-Muster reverse shares the
+  `FLIP_PACK_TO_FEW` step but keeps the plain whole flip (`step.source`
+  disambiguates; pinned with a CONTROL in the same test file).
 - With `polish-spell-book` ON, starting Magic Arrows leave the M&M deck and
   become refreshed Book Spells; Might heroes receive one Cast a Spell card and
   Magic heroes two. Every owned Spell acquisition goes to the Book, while

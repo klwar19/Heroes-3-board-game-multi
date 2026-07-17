@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
-import { legionDiscountTargets, queueNecromancyReinforce, startAdventureRound } from "./adventure";
+import { legionDiscountTargets, openPandoraSilverRefresh, queueNecromancyReinforce, startAdventureRound } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import type { FactionId } from "@/data/factions/types";
 import type { GameAction, GameState } from "./state";
 
@@ -24,7 +25,8 @@ import type { GameAction, GameState } from "./state";
  *   7. Legion artifacts — a voucher can be reserved for (and spent on) a Stack
  *      purchase.
  *   8. Terrible Plague (Astrologers) — a Stacked pack is WEAKENED: it sheds one
- *      Stack layer instead of flipping to Few.
+ *      Stack layer instead of flipping to Few. CONTROL: Pandora's Silver-Muster
+ *      reverse shares the FLIP_PACK_TO_FEW step but stays a plain whole flip.
  */
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -451,6 +453,33 @@ describe("Terrible Plague: a Stacked pack sheds one layer instead of flipping", 
     expect(
       state.eventLog.some((event) => event.type === "ARMY_UNIT_FLIPPED" && event.playerId === "p2")
     ).toBe(true);
+  });
+
+  it("CONTROL: Pandora's Silver Muster reverse is a PLAIN flip — a Stack never absorbs it", () => {
+    // The shared FLIP_PACK_TO_FEW step is also created by Pandora 173's
+    // "Reverse 1 Silver unit to its Handful side". Only the PLAGUE flip is
+    // weakened by Stacks; the Pandora reverse must flip a Stacked pack whole.
+    const silverId = Object.entries(coreUnitDefinitions).find(
+      ([, def]) => def.tier === "silver" && def.pack
+    )?.[0];
+    expect(silverId, "a silver unit with a Pack side must exist").toBeTruthy();
+    const state = makeGame("plague-vs-pandora", true);
+    state.players.p1.army = [{ id: "army_silver", unitDefId: silverId!, side: "pack", stacks: 2 }];
+
+    openPandoraSilverRefresh(state, "p1");
+    const reverse = visitAction(state, "Reverse 1 Silver unit");
+    expect(reverse, "the reverse option is offered").toBeTruthy();
+    const after = applyOk(state, reverse!.action);
+
+    const unit = after.players.p1.army[0];
+    expect(unit.side, "the Stacked silver pack flips whole").toBe("few");
+    expect(unit.stacks ?? 0).toBe(0);
+    expect(
+      after.eventLog.some((event) => event.type === "ARMY_STACK_LOST"),
+      "no Stack layer absorbs a Pandora reverse"
+    ).toBe(false);
+    const flipped = after.eventLog.find((event) => event.type === "ARMY_UNIT_FLIPPED");
+    expect(flipped?.type === "ARMY_UNIT_FLIPPED" && flipped.reason).toBe("Pandora's Box");
   });
 
   it("multi-pack choice: the Stacked pick is labeled 'Weakened by Stacks' and absorbs the flip", () => {
