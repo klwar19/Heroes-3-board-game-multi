@@ -462,6 +462,35 @@ describe("sanitizeSharedMap", () => {
     expect(link.entranceGuard).toEqual({ units: ["neutral.troglodytes"] });
   });
 
+  it("round-trips ONE-WAY monolith tokens (pair required, exit guard stripped, mode/always kept)", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          {
+            row: 3,
+            col: 3,
+            group: "far",
+            faceDown: true,
+            tokens: [
+              { kind: "oneway_entrance", pair: 2, slot: 1, exitMode: "mix", guard: { level: 3 } },
+              // An exit is never guarded; alwaysPickable survives.
+              { kind: "oneway_exit", pair: 2, slot: 2, guard: { level: 5 }, alwaysPickable: true },
+              // No pair → dropped whole.
+              { kind: "oneway_entrance", slot: 3 }
+            ]
+          }
+        ]
+      },
+      1
+    );
+    const tokens = record!.tiles[0].tokens!;
+    expect(tokens).toHaveLength(2);
+    expect(tokens[0]).toMatchObject({ kind: "oneway_entrance", pair: 2, exitMode: "mix", guard: { level: 3 } });
+    expect(tokens[1]).toMatchObject({ kind: "oneway_exit", pair: 2, alwaysPickable: true });
+    expect(tokens[1].guard).toBeUndefined();
+  });
+
   it("round-trips MORE than the old cap of 4 designer gate links (one cavern → many gates)", () => {
     // Six distinct valid links (over the retired 4-partner cap) must ALL survive:
     // a cavern may link every touching Surface tile and the same tile repeatedly.

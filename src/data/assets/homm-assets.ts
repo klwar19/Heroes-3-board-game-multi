@@ -442,6 +442,27 @@ export function outpostObjectImage(locationId: string): string | undefined {
 }
 
 /**
+ * One-way monolith art (fan hex scans, 4 colors): the ENTRANCE arch glows with
+ * its portal, the EXIT arch stands empty. Color follows the gate-pair palette
+ * (1 red / 2 blue / 3 green / 4 violet).
+ */
+export const ONEWAY_MONOLITH_IMAGES = {
+  "entrance-1": "/assets/board/tokens/oneway-entrance-red.webp",
+  "entrance-2": "/assets/board/tokens/oneway-entrance-blue.webp",
+  "entrance-3": "/assets/board/tokens/oneway-entrance-green.webp",
+  "entrance-4": "/assets/board/tokens/oneway-entrance-violet.webp",
+  "exit-1": "/assets/board/tokens/oneway-exit-red.webp",
+  "exit-2": "/assets/board/tokens/oneway-exit-blue.webp",
+  "exit-3": "/assets/board/tokens/oneway-exit-green.webp",
+  "exit-4": "/assets/board/tokens/oneway-exit-violet.webp"
+} as const;
+
+/** The art for a one-way monolith half of a color pair. */
+export function onewayMonolithImage(direction: "entrance" | "exit", pair: 1 | 2 | 3 | 4 = 1): string {
+  return ONEWAY_MONOLITH_IMAGES[`${direction}-${pair}`];
+}
+
+/**
  * Creature Bank field-tile art (Naval Battles), shown on a placed bank's hex.
  *
  * Each of the twelve banks has its OWN cropped field-tile scan (the Crypt

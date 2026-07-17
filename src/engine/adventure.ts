@@ -105,6 +105,7 @@ import type {
   CombatUnitState,
   CustomCenterHexReward,
   CustomGuardSpec,
+  CustomMapObjectKind,
   EventDiePoolEntry,
   EventPoolEntry,
   EventsState,
@@ -116,6 +117,7 @@ import type {
   MapFieldState,
   MapSpaceId,
   MapTileState,
+  OnewayExitMode,
   PendingVisit,
   SubterraneanGateChoiceCandidate,
   SubterraneanGatePlan,
@@ -258,7 +260,7 @@ export function clearCustomGuard(field: MapFieldState): void {
  * designer outposts.
  */
 export function isBankStyleGuardLocation(locationId: string): boolean {
-  return locationId === "garrison" || locationId === "keymaster_tent";
+  return locationId === "garrison" || locationId === "keymaster_tent" || locationId === "oneway_entrance";
 }
 
 /**
@@ -2466,6 +2468,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
       return [{ type: "SUBTERRANEAN_GATE" }];
     case "TOKEN_TELEPORT":
       return [{ type: "TOKEN_TELEPORT", token: interaction.token }];
+    case "ONEWAY_TELEPORT":
+      return [{ type: "ONEWAY_TELEPORT" }];
     case "GATE_TELEPORT":
       return [{ type: "GATE_TELEPORT" }];
     case "DRAW_PANDORA_CARD":
@@ -4699,6 +4703,12 @@ export function processPendingVisit(state: GameState): void {
       case "TOKEN_TELEPORT":
         resolveTokenTeleport(state, visit, step.token);
         break;
+      case "ONEWAY_TELEPORT":
+        resolveOnewayTeleport(state, visit);
+        break;
+      case "ONEWAY_RANDOM_EXIT":
+        resolveOnewayRandomExit(state, visit, step.pair, step.fromSpaceId);
+        break;
       case "GATE_TELEPORT":
         resolveGateTeleport(state, visit);
         break;
@@ -6178,7 +6188,7 @@ export function mapTokenLabel(kind: MapTokenKind): string {
  * consistently wherever a monolith/whirlpool one would.
  */
 export function placementTokenLabel(token: {
-  kind: TokenPlacementKind | "garrison" | "keymaster_tent" | "barrier";
+  kind: TokenPlacementKind | CustomMapObjectKind;
   pair?: 1 | 2 | 3 | 4;
 }): string {
   if (token.kind === "gate") {
@@ -6192,6 +6202,12 @@ export function placementTokenLabel(token: {
   }
   if (token.kind === "barrier") {
     return `${gatePairColor(token.pair ?? 1)} Barrier`;
+  }
+  if (token.kind === "oneway_entrance") {
+    return `${gatePairColor(token.pair ?? 1)} one-way monolith (entrance)`;
+  }
+  if (token.kind === "oneway_exit") {
+    return `${gatePairColor(token.pair ?? 1)} one-way monolith (exit)`;
   }
   return mapTokenLabel(token.kind);
 }
@@ -6332,14 +6348,21 @@ function tokenMayCoverField(state: GameState, field: MapFieldState | undefined, 
 }
 
 /** The legal hexes of `tile` a just-discovered `kind` token may be placed on. */
-export function tokenPlacementCandidates(state: GameState, tile: MapTileState, kind: TokenPlacementKind): MapSpaceId[] {
+export function tokenPlacementCandidates(
+  state: GameState,
+  tile: MapTileState,
+  kind: TokenPlacementKind | "oneway_entrance" | "oneway_exit"
+): MapSpaceId[] {
   const adventure = state.adventure;
   if (!adventure) {
     return [];
   }
+  // One-way monoliths are land structures — they reuse the Monolith legality.
+  const legality: TokenPlacementKind =
+    kind === "oneway_entrance" || kind === "oneway_exit" ? "monolith" : kind;
   return getTileFootprintSpaceIds(tile).filter((spaceId) => {
     const field = adventure.fields[spaceId];
-    return field?.tileInstanceId === tile.id && tokenMayCoverField(state, field, kind);
+    return field?.tileInstanceId === tile.id && tokenMayCoverField(state, field, legality);
   });
 }
 
@@ -6733,6 +6756,196 @@ export function carveColoredGateField(
 }
 
 /**
+ * Every CARVED free same-color one-way EXIT a travel from `fromSpaceId` may
+ * reach: `location: "oneway_exit"` fields of `pair`, minus hero-occupied ones.
+ * Exits still riding a FACE-DOWN tile are deliberately NOT offered (reveal the
+ * tile first) — the documented one-way limit, unlike the Monolith network.
+ */
+function onewayExitFields(state: GameState, pair: 1 | 2 | 3 | 4, fromSpaceId: MapSpaceId): MapFieldState[] {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return [];
+  }
+  return Object.values(adventure.fields).filter(
+    (field) =>
+      field.location === "oneway_exit" &&
+      field.gatePair === pair &&
+      field.spaceId !== fromSpaceId &&
+      !heroAtSpace(state, field.spaceId)
+  );
+}
+
+/** The travel steps to one one-way exit (arrival sweeps any hand-edited guard). */
+function onewayTravelSteps(visit: PendingVisit, exit: MapFieldState): VisitStep[] {
+  return [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: exit.spaceId, sweepGuard: true }];
+}
+
+/** A short board label for a one-way exit destination. */
+function onewayExitLabel(state: GameState, exit: MapFieldState): string {
+  const tile = state.adventure?.tiles[exit.tileInstanceId];
+  const where = tile ? ` on the ${tile.backLabel ?? tile.group ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol})` : "";
+  return `One-way exit${where || ` at ${exit.spaceId}`}${exit.onewayAlwaysPickable ? " (always pickable)" : ""}`;
+}
+
+/** Roll (seeded) among `exits` and unshift the travel; notes the roll for the table. */
+function rollOnewayExit(state: GameState, visit: PendingVisit, exits: MapFieldState[]): void {
+  const random = adventureRandom(state, "oneway-exit");
+  const exit = exits[random.nextInt(0, exits.length - 1)];
+  eventNote(
+    state,
+    `${eventPlayerName(state, visit.playerId)} rolls for the one-way exit — the monolith hurls the hero to ${onewayExitLabel(state, exit)}.`,
+    visit.playerId
+  );
+  visit.steps.unshift(...onewayTravelSteps(visit, exit));
+}
+
+/**
+ * One-way monolith travel (map-designer objects, 4 colors). Entering (or
+ * Revisiting, 1 MP) an ENTRANCE moves the hero to a SAME-COLOR carved EXIT:
+ *  - no carved same-color exit → inert with a note;
+ *  - every exit occupied → fizzle with a note;
+ *  - exactly one free exit → straight there (whatever the mode);
+ *  - mode "random" → a seeded roll among ALL free exits;
+ *  - mode "certain" (default) → the traveller picks;
+ *  - mode "mix" → pick an ALWAYS-PICKABLE exit up front, or roll among the
+ *    random-pool (non-always) exits — the printed "choose before the roll".
+ * Entrances are never destinations (one-way), other colors never mix, and the
+ * Monolith/Gate networks stay separate.
+ */
+function resolveOnewayTeleport(state: GameState, visit: PendingVisit): void {
+  const adventure = state.adventure;
+  const field = adventure?.fields[visit.fieldId];
+  if (!adventure || !field || field.location !== "oneway_entrance" || field.gatePair === undefined) {
+    return;
+  }
+  const pair = field.gatePair;
+  const color = gatePairColor(pair);
+  const anyExit = Object.values(adventure.fields).some(
+    (candidate) => candidate.location === "oneway_exit" && candidate.gatePair === pair
+  );
+  if (!anyExit) {
+    eventNote(
+      state,
+      `The ${color} one-way monolith leads nowhere — no ${color} exit monolith is on the map (a face-down one must be revealed first).`,
+      visit.playerId
+    );
+    return;
+  }
+  const exits = onewayExitFields(state, pair, visit.fieldId);
+  if (exits.length === 0) {
+    eventNote(state, `The ${color} one-way monolith fizzles — every ${color} exit is occupied by a hero.`, visit.playerId);
+    return;
+  }
+  if (exits.length === 1) {
+    visit.steps.unshift(...onewayTravelSteps(visit, exits[0]));
+    return;
+  }
+
+  const mode: OnewayExitMode = field.onewayExitMode ?? "certain";
+  if (mode === "random") {
+    rollOnewayExit(state, visit, exits);
+    return;
+  }
+  if (mode === "certain") {
+    visit.steps.unshift({
+      type: "CHOOSE_ONE",
+      prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} one-way monolith — choose the exit`,
+      teleport: { kind: "oneway", pair },
+      options: exits.map((exit) => ({
+        label: onewayExitLabel(state, exit),
+        steps: onewayTravelSteps(visit, exit)
+      }))
+    });
+    return;
+  }
+
+  // "mix": always-pickable exits are offered up front; the rest are the random
+  // pool behind a single "roll" option. Degenerates gracefully: all-always =
+  // certain, none-always = random.
+  const always = exits.filter((exit) => exit.onewayAlwaysPickable);
+  const randomPool = exits.filter((exit) => !exit.onewayAlwaysPickable);
+  if (always.length === 0) {
+    rollOnewayExit(state, visit, exits);
+    return;
+  }
+  const options = always.map((exit) => ({
+    label: onewayExitLabel(state, exit),
+    steps: onewayTravelSteps(visit, exit)
+  }));
+  if (randomPool.length > 0) {
+    options.push({
+      label: `Roll the die — a random exit (${randomPool.length})`,
+      steps: [{ type: "ONEWAY_RANDOM_EXIT", pair, fromSpaceId: visit.fieldId }]
+    });
+  }
+  visit.steps.unshift({
+    type: "CHOOSE_ONE",
+    prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} one-way monolith — pick an exit, or roll`,
+    teleport: { kind: "oneway", pair },
+    options
+  });
+}
+
+/**
+ * The "mix" roll leaf, resolved at CHOICE time so the pick option leaks
+ * nothing: roll among the CURRENT free non-always exits (they may have shifted
+ * while the choice was open), falling back to every free exit.
+ */
+function resolveOnewayRandomExit(
+  state: GameState,
+  visit: PendingVisit,
+  pair: 1 | 2 | 3 | 4,
+  fromSpaceId: MapSpaceId
+): void {
+  const exits = onewayExitFields(state, pair, fromSpaceId);
+  const pool = exits.filter((exit) => !exit.onewayAlwaysPickable);
+  const rollable = pool.length > 0 ? pool : exits;
+  if (rollable.length === 0) {
+    eventNote(state, `The one-way travel fizzles — every exit is occupied.`, visit.playerId);
+    return;
+  }
+  rollOnewayExit(state, visit, rollable);
+}
+
+/** Carves a one-way monolith half onto a materialized field (designer content). */
+export function carveOnewayField(
+  adventure: AdventureState,
+  spaceId: MapSpaceId,
+  kind: "oneway_entrance" | "oneway_exit",
+  pair: 1 | 2 | 3 | 4,
+  extras?: { exitMode?: OnewayExitMode; alwaysPickable?: boolean }
+): MapFieldState | null {
+  const field = adventure.fields[spaceId];
+  if (!field) {
+    return null;
+  }
+  field.location = kind;
+  field.gatePair = pair;
+  if (kind === "oneway_entrance" && extras?.exitMode) {
+    field.onewayExitMode = extras.exitMode;
+  }
+  if (kind === "oneway_exit" && extras?.alwaysPickable) {
+    field.onewayAlwaysPickable = true;
+  }
+  delete field.difficulty;
+  delete field.resource;
+  delete field.amount;
+  delete field.faction;
+  field.blackCube = false;
+  field.flagOwnerId = null;
+  delete field.extraFlagOwnerIds;
+  field.everFlagged = false;
+  field.settlementResource = null;
+  delete field.grailDiggable;
+  delete field.gateToTileId;
+  delete field.gateLinkSpaceId;
+  delete field.bankId;
+  delete field.terrain;
+  delete field.whirlpoolNumber;
+  return field;
+}
+
+/**
  * Monolith/Whirlpool travel into a still-face-down tile: flip it for free and
  * hand its rotation to the traveller, exactly like the Subterranean Gate's
  * reveal-on-entry. The in-flight travel is parked on
@@ -6889,10 +7102,26 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
     return;
   }
   const sacrificed = field.location;
-  // A colored Gate token carves its own per-color gate field; Monolith/Whirlpool
-  // carve the network token field. Both clear the sacrificed location's trappings.
+  // A colored Gate token carves its own per-color gate field; a one-way token
+  // its entrance/exit; Monolith/Whirlpool carve the network token field. All
+  // clear the sacrificed location's trappings.
   if (pendingToken.kind === "gate" && pendingToken.pair !== undefined) {
     carveColoredGateField(adventure, spaceId, pendingToken.pair);
+  } else if (
+    (pendingToken.kind === "oneway_entrance" || pendingToken.kind === "oneway_exit") &&
+    pendingToken.pair !== undefined
+  ) {
+    carveOnewayField(adventure, spaceId, pendingToken.kind, pendingToken.pair, {
+      exitMode: pendingToken.exitMode,
+      alwaysPickable: pendingToken.alwaysPickable
+    });
+    // Bank-style entrance fight: the army still draws at the designed level.
+    if (pendingToken.kind === "oneway_entrance" && pendingToken.guard?.level && !pendingToken.guard.units) {
+      const carvedEntrance = adventure.fields[spaceId];
+      if (carvedEntrance) {
+        carvedEntrance.customGuardLevel = pendingToken.guard.level;
+      }
+    }
   } else if (pendingToken.kind === "monolith" || pendingToken.kind === "whirlpool") {
     carveMapTokenField(adventure, spaceId, pendingToken.kind, pendingToken.number);
   }

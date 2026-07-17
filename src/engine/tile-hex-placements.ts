@@ -17,7 +17,14 @@ export function planTokens(plan: Pick<CustomMapTilePlan, "token" | "tokens">): T
   const list: TileTokenPin[] = [];
   if (Array.isArray(plan.tokens)) {
     for (const t of plan.tokens) {
-      if (t && (t.kind === "monolith" || t.kind === "whirlpool" || t.kind === "gate")) {
+      if (
+        t &&
+        (t.kind === "monolith" ||
+          t.kind === "whirlpool" ||
+          t.kind === "gate" ||
+          t.kind === "oneway_entrance" ||
+          t.kind === "oneway_exit")
+      ) {
         list.push(t);
       }
     }

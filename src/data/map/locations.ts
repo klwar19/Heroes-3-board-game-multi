@@ -907,6 +907,31 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     implementationStatus: "implemented",
     source: source("border_guard")
   },
+  oneway_entrance: {
+    id: "oneway_entrance",
+    name: "One-Way Monolith (entrance)",
+    // Map-designer object (standalone OR tile token, 4 colors via `gatePair`):
+    // entering teleports the hero to a SAME-COLOR one-way EXIT per the
+    // entrance's `onewayExitMode` (random roll / free pick / mix). Optionally
+    // guarded — the guard fights BANK-style (no Quick Combat, no experience,
+    // no Round limit) and only a WIN travels. "revisitable" = always STOP +
+    // pay 1 MP to travel again, like the Two-Way Monolith.
+    category: "revisitable",
+    interaction: { type: "ONEWAY_TELEPORT" },
+    implementationStatus: "implemented",
+    source: source("one-way_monolith")
+  },
+  oneway_exit: {
+    id: "oneway_exit",
+    name: "One-Way Monolith (exit)",
+    // The arrival arch: an ordinary walkable field — entering it does NOTHING
+    // (no travel back; one-way). Never guarded (sanitize strips any guard).
+    // `onewayAlwaysPickable` marks it freely choosable in "mix" mode.
+    category: "empty",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: source("one-way_monolith")
+  },
   subterranean_gate: {
     id: "subterranean_gate",
     name: "Subterranean Gate",

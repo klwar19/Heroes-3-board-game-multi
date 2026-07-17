@@ -9,6 +9,7 @@ import {
   DESIGNER_UI_ICONS,
   mapTokenImage,
   monolithTokenImage,
+  onewayMonolithImage,
   outpostObjectImage,
   REWARD_GLYPH_ICONS,
   TILE_BACK_IMAGES,
@@ -55,6 +56,7 @@ import {
   type CustomCenterHexReward,
   type CustomGuardSpec,
   type CustomMapGateLink,
+  type CustomMapTileToken,
   type CustomMapObject,
   type CustomMapObjectKind,
   type CustomMapTilePlan,
@@ -507,26 +509,32 @@ function GuardSpecEditor({
  * color, so it joins the Monolith groups). Face-up tiles instead offer whichever
  * kinds have a legal printed field on the chosen tile.
  */
-function faceDownTokenKinds(group: DesignGroup): TokenPlacementKind[] {
+function faceDownTokenKinds(group: DesignGroup): PlanTokenKind[] {
   if (group === "starting") {
     return [];
   }
-  return group === "sea" ? ["whirlpool"] : ["monolith", "gate"];
+  return group === "sea" ? ["whirlpool"] : ["monolith", "gate", "oneway_entrance", "oneway_exit"];
 }
 
-/** A colored Gate reuses the Monolith LAND legality for every slot/candidate check. */
-function tokenLegalityKind(kind: TokenPlacementKind): MapTokenKind {
-  return kind === "gate" ? "monolith" : kind;
+/** Every kind a tile-plan token may be (teleporters + one-way monoliths). */
+type PlanTokenKind = NonNullable<CustomMapTileToken["kind"]>;
+
+/** Gates and one-way monoliths reuse the Monolith LAND legality for every slot/candidate check. */
+function tokenLegalityKind(kind: PlanTokenKind): MapTokenKind {
+  return kind === "whirlpool" ? "whirlpool" : "monolith";
 }
 
 /**
  * Designer token art: a colored Gate renders as the MONOLITH image (tinted by a
  * color ring at the render site); Monolith/Whirlpool use their own scans.
  */
-function designerTokenImage(kind: CustomMapObjectKind, number?: -1 | 0 | 1): string {
+function designerTokenImage(kind: CustomMapObjectKind, number?: -1 | 0 | 1, pair?: 1 | 2 | 3 | 4): string {
   const outpost = outpostObjectImage(kind);
   if (outpost) {
     return outpost;
+  }
+  if (kind === "oneway_entrance" || kind === "oneway_exit") {
+    return onewayMonolithImage(kind === "oneway_entrance" ? "entrance" : "exit", pair ?? 1);
   }
   return kind === "gate" ? monolithTokenImage() : mapTokenImage(kind as "monolith" | "whirlpool", number);
 }
@@ -547,16 +555,27 @@ function faceDownTokenOf(token: CustomMapTilePlan["token"]): CustomMapTilePlan["
     : { kind: token.kind, ...slotPart };
 }
 
-/** Build a `plan.token` for a kind/pair, with an optional face-up slot and guard. */
+/**
+ * Build a `plan.token` for a kind/pair, with an optional face-up slot, guard
+ * and the one-way extras (`carry` preserves exitMode / alwaysPickable across
+ * moves and slot changes so a drag never silently resets them).
+ */
 function tileTokenValue(
-  kind: TokenPlacementKind,
+  kind: PlanTokenKind,
   pair: 1 | 2 | 3 | 4 | undefined,
   slot: number | undefined,
-  guard?: CustomGuardSpec
+  guard?: CustomGuardSpec,
+  carry?: Pick<CustomMapTileToken, "exitMode" | "alwaysPickable">
 ): NonNullable<CustomMapTilePlan["token"]> {
   const slotPart = slot !== undefined ? { slot } : {};
   const guardPart = guard ? { guard } : {};
-  return kind === "gate" ? { kind: "gate", pair, ...slotPart, ...guardPart } : { kind, ...slotPart, ...guardPart };
+  const pairPart =
+    kind === "gate" || kind === "oneway_entrance" || kind === "oneway_exit" ? { pair } : {};
+  const carryPart = {
+    ...(kind === "oneway_entrance" && carry?.exitMode ? { exitMode: carry.exitMode } : {}),
+    ...(kind === "oneway_exit" && carry?.alwaysPickable ? { alwaysPickable: true } : {})
+  };
+  return { kind, ...pairPart, ...slotPart, ...guardPart, ...carryPart };
 }
 
 /** A resolved drop target for a teleporter placement: an ON-tile token, or an OFF-tile standalone hex. */
@@ -578,7 +597,7 @@ type TokenDropTarget =
  */
 function computeTileTokenTargets(
   customMap: CustomMapTilePlan[],
-  kind: TokenPlacementKind,
+  kind: PlanTokenKind,
   sourceIndex: number | null,
   sourceTokenIndex = 0
 ): { planIndex: number; slot?: number; hex: HexCoord; row: number; col: number }[] {
@@ -1161,7 +1180,7 @@ export function MapDesigner({
     index: number;
     /** Which of the plan's token pins (planTokens order) is being dragged. */
     tokenIndex: number;
-    kind: TokenPlacementKind;
+    kind: PlanTokenKind;
     pair?: 1 | 2 | 3 | 4;
     startX: number;
     startY: number;
@@ -1860,7 +1879,7 @@ export function MapDesigner({
       if (slot === null) {
         return; // tile hexes full
       }
-      const nextToken = tileTokenValue(armedObject.kind as TokenPlacementKind, armedObject.pair, slot);
+      const nextToken = tileTokenValue(armedObject.kind as PlanTokenKind, armedObject.pair, slot);
       if (!nextToken) {
         return;
       }
@@ -1877,7 +1896,11 @@ export function MapDesigner({
         return;
       }
       const needsPair =
-        armedObject.kind === "gate" || armedObject.kind === "keymaster_tent" || armedObject.kind === "barrier";
+        armedObject.kind === "gate" ||
+        armedObject.kind === "keymaster_tent" ||
+        armedObject.kind === "barrier" ||
+        armedObject.kind === "oneway_entrance" ||
+        armedObject.kind === "oneway_exit";
       const object: CustomMapObject = {
         kind: armedObject.kind,
         ...(needsPair ? { pair: armedObject.pair ?? 1 } : {}),
@@ -1937,7 +1960,7 @@ export function MapDesigner({
       if (!source || !dragged) {
         return;
       }
-      const nextToken = tileTokenValue(dragged.kind, dragged.pair, target.slot, dragged.guard);
+      const nextToken = tileTokenValue(dragged.kind, dragged.pair, target.slot, dragged.guard, dragged);
       // Never stack: a target slot another placement (token / Field Override)
       // already claims refuses the drop — computeTileTokenTargets filters these
       // out of the glow, this is the write-side backstop.
@@ -2002,7 +2025,7 @@ export function MapDesigner({
       updateTile(target.planIndex, {
         tokens: [
           ...planTokens(plan),
-          tileTokenValue(object.kind as TokenPlacementKind, object.pair, slot, objectGuardSpec(object))
+          tileTokenValue(object.kind as PlanTokenKind, object.pair, slot, objectGuardSpec(object), object)
         ],
         token: undefined
       });
@@ -2033,7 +2056,7 @@ export function MapDesigner({
       if (!source || !dragged || dragged.kind === "whirlpool") {
         return;
       }
-      const { kind, pair, guard } = dragged;
+      const { kind, pair, guard, exitMode, alwaysPickable } = dragged;
       onChange(
         customMap.map((plan, planIndex) => {
           if (planIndex !== sourceIndex) {
@@ -2048,9 +2071,11 @@ export function MapDesigner({
       );
       const object: CustomMapObject = {
         kind,
-        ...(kind === "gate" && pair ? { pair } : {}),
+        ...((kind === "gate" || kind === "oneway_entrance" || kind === "oneway_exit") && pair ? { pair } : {}),
         placement: { type: "standalone", row, col },
-        ...(guard ? { guard } : {})
+        ...(guard ? { guard } : {}),
+        ...(kind === "oneway_entrance" && exitMode ? { exitMode } : {}),
+        ...(kind === "oneway_exit" && alwaysPickable ? { alwaysPickable: true } : {})
       };
       onObjectsChange?.([...objects, object]);
     },
@@ -2821,7 +2846,7 @@ export function MapDesigner({
    * a legacy no-slot pending shape) untouched.
    */
   const beginTokenPress =
-    (index: number, tokenIndex: number, kind: TokenPlacementKind, pair?: 1 | 2 | 3 | 4) =>
+    (index: number, tokenIndex: number, kind: PlanTokenKind, pair?: 1 | 2 | 3 | 4) =>
     (event: React.PointerEvent) => {
       if (event.button !== 0) {
         return;
@@ -3386,7 +3411,7 @@ export function MapDesigner({
         <image
           className="designerMapTokenArt"
           height={tokenHeight}
-          href={assetUrl(designerTokenImage(token.kind, whirlpoolNumberByIndex.get(`${index}:${tokenIndex}`)))}
+          href={assetUrl(designerTokenImage(token.kind, whirlpoolNumberByIndex.get(`${index}:${tokenIndex}`), token.pair))}
           preserveAspectRatio="xMidYMid meet"
           style={{ pointerEvents: "none" }}
           width={tokenWidth}
@@ -3712,7 +3737,7 @@ export function MapDesigner({
         {isGate ? <circle cx={x} cy={y} fill={color} opacity={0.32} r={size * 0.5} style={{ pointerEvents: "none" }} /> : null}
         <image
           height={size}
-          href={assetUrl(designerTokenImage(object.kind, object.kind === "whirlpool" ? 0 : undefined))}
+          href={assetUrl(designerTokenImage(object.kind, object.kind === "whirlpool" ? 0 : undefined, object.pair))}
           preserveAspectRatio="xMidYMid meet"
           style={{ pointerEvents: "none" }}
           width={size}
@@ -3907,6 +3932,25 @@ export function MapDesigner({
             type="button"
           >
             🌀 Whirlpool
+          </button>
+          <span className="designerObjectGroupLabel">One-way monolith</span>
+          <button
+            aria-pressed={armedObject?.kind === "oneway_entrance"}
+            className={`designerObjectButton${armedObject?.kind === "oneway_entrance" ? " armed" : ""}`}
+            onClick={() => armObject("oneway_entrance", 1)}
+            title="One-way monolith ENTRANCE — on a tile or standalone. May be guarded (bank-style fight, no XP); winning teleports to a same-color exit (random / pick / mix — set in the placed panel)."
+            type="button"
+          >
+            ⤇ Entrance
+          </button>
+          <button
+            aria-pressed={armedObject?.kind === "oneway_exit"}
+            className={`designerObjectButton${armedObject?.kind === "oneway_exit" ? " armed" : ""}`}
+            onClick={() => armObject("oneway_exit", 1)}
+            title="One-way monolith EXIT — on a tile or standalone. Never guarded; heroes arrive here from same-color entrances (mark it 'always pickable' for mix mode in the placed panel)."
+            type="button"
+          >
+            ⇥ Exit
           </button>
           <span className="designerObjectGroupLabel">Outposts</span>
           <button
@@ -4961,13 +5005,18 @@ export function MapDesigner({
                 ✕
               </button>
             </header>
-            {selectedObject.kind === "keymaster_tent" || selectedObject.kind === "barrier" ? (
+            {selectedObject.kind === "keymaster_tent" ||
+            selectedObject.kind === "barrier" ||
+            selectedObject.kind === "oneway_entrance" ||
+            selectedObject.kind === "oneway_exit" ? (
               <>
                 <div className="popoverSectionLabel">Color</div>
                 <small className="popoverHint">
                   {selectedObject.kind === "keymaster_tent"
                     ? "A tent flag of this color opens same-color Barriers."
-                    : "Only players holding a same-color Keymaster's Tent flag may enter."}
+                    : selectedObject.kind === "barrier"
+                      ? "Only players holding a same-color Keymaster's Tent flag may enter."
+                      : "One-way travel connects entrances and exits of the SAME color only."}
                 </small>
                 <div className="popoverGuardRow" role="group" aria-label="Outpost color">
                   {GATE_PAIRS.map((pair) => {
@@ -4996,11 +5045,61 @@ export function MapDesigner({
                 </div>
               </>
             ) : null}
-            {selectedObject.kind !== "barrier" ? (
+            {selectedObject.kind === "oneway_entrance" ? (
+              <>
+                <div className="popoverSectionLabel">Exit pick</div>
+                <select
+                  aria-label="One-way exit mode"
+                  className="popoverSelect"
+                  onChange={(event) =>
+                    onObjectsChange?.(
+                      objects.map((object, i) =>
+                        i === (selectedObjectIndex as number)
+                          ? { ...object, exitMode: event.target.value as CustomMapObject["exitMode"] }
+                          : object
+                      )
+                    )
+                  }
+                  value={selectedObject.exitMode ?? "certain"}
+                >
+                  <option value="certain">Certain — the traveller picks the exit</option>
+                  <option value="random">Random — roll the die for the exit</option>
+                  <option value="mix">Mix — pick an “always” exit, or roll among the rest</option>
+                </select>
+              </>
+            ) : null}
+            {selectedObject.kind === "oneway_exit" ? (
+              <label className="popoverCheckRow">
+                <input
+                  checked={selectedObject.alwaysPickable === true}
+                  onChange={(event) =>
+                    onObjectsChange?.(
+                      objects.map((object, i) => {
+                        if (i !== (selectedObjectIndex as number)) {
+                          return object;
+                        }
+                        const next = { ...object };
+                        if (event.target.checked) {
+                          next.alwaysPickable = true;
+                        } else {
+                          delete next.alwaysPickable;
+                        }
+                        return next;
+                      })
+                    )
+                  }
+                  type="checkbox"
+                />
+                <span>Always pickable (“mix” entrances offer it before the roll)</span>
+              </label>
+            ) : null}
+            {selectedObject.kind !== "barrier" && selectedObject.kind !== "oneway_exit" ? (
               <>
                 <div className="popoverSectionLabel">Guard (monster)</div>
                 <small className="popoverHint">
-                  {selectedObject.kind === "garrison" || selectedObject.kind === "keymaster_tent"
+                  {selectedObject.kind === "garrison" ||
+                  selectedObject.kind === "keymaster_tent" ||
+                  selectedObject.kind === "oneway_entrance"
                     ? "The fight is bank-style: no Quick Combat, no experience, no round limit."
                     : "A guard on this hex must be beaten to use it; arriving through a teleport network sweeps it aside (auto-win, no experience)."}
                 </small>
@@ -5011,7 +5110,11 @@ export function MapDesigner({
                 />
               </>
             ) : (
-              <small className="popoverHint">A Barrier is never guarded — the matching tent flag is the only key.</small>
+              <small className="popoverHint">
+                {selectedObject.kind === "barrier"
+                  ? "A Barrier is never guarded — the matching tent flag is the only key."
+                  : "An exit monolith is never guarded — only entrances fight."}
+              </small>
             )}
             <button className="popoverRemove" onClick={() => removeObject(selectedObjectIndex as number)} type="button">
               <Trash2 size={13} /> Remove
@@ -5054,7 +5157,8 @@ export function MapDesigner({
                               tokenPanelToken.kind,
                               tokenPanelToken.pair,
                               Number(event.target.value),
-                              tokenPanelToken.guard
+                              tokenPanelToken.guard,
+                              tokenPanelToken
                             )
                           : token
                       ),
@@ -5086,25 +5190,120 @@ export function MapDesigner({
                 can&apos;t be set here (or dragged on the board).
               </small>
             )}
-            <div className="popoverSectionLabel">Guard (monster)</div>
-            <small className="popoverHint">
-              A guard on this hex must be beaten to use the teleporter; arriving through the network sweeps it
-              aside (auto-win, no experience).
-            </small>
-            <GuardSpecEditor
-              guard={tokenPanelToken.guard}
-              noneLabel="None"
-              onChange={(guard) =>
-                updateTile(selectedTokenIndex as number, {
-                  tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
-                    i === tokenPanelPin
-                      ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, tokenPanelToken.slot, guard)
-                      : token
-                  ),
-                  token: undefined
-                })
-              }
-            />
+            {tokenPanelToken.kind === "oneway_entrance" || tokenPanelToken.kind === "oneway_exit" ? (
+              <>
+                <div className="popoverSectionLabel">Color</div>
+                <div className="popoverGuardRow" role="group" aria-label="One-way color">
+                  {GATE_PAIRS.map((pair) => {
+                    const active = (tokenPanelToken.pair ?? 1) === pair;
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={`popoverGuardChip popoverColorChip${active ? " active" : ""}`}
+                        key={pair}
+                        onClick={() =>
+                          updateTile(selectedTokenIndex as number, {
+                            tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                              i === tokenPanelPin
+                                ? tileTokenValue(
+                                    tokenPanelToken.kind,
+                                    pair,
+                                    tokenPanelToken.slot,
+                                    tokenPanelToken.guard,
+                                    tokenPanelToken
+                                  )
+                                : token
+                            ),
+                            token: undefined
+                          })
+                        }
+                        style={{ borderColor: GATE_PAIR_CSS[pair] }}
+                        title={titleCase(gatePairColor(pair))}
+                        type="button"
+                      >
+                        <span className="designerObjectSwatch" style={{ background: GATE_PAIR_CSS[pair] }} />
+                        {titleCase(gatePairColor(pair))}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+            {tokenPanelToken.kind === "oneway_entrance" ? (
+              <>
+                <div className="popoverSectionLabel">Exit pick</div>
+                <select
+                  aria-label="One-way exit mode"
+                  className="popoverSelect"
+                  onChange={(event) =>
+                    updateTile(selectedTokenIndex as number, {
+                      tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                        i === tokenPanelPin
+                          ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, tokenPanelToken.slot, tokenPanelToken.guard, {
+                              ...tokenPanelToken,
+                              exitMode: event.target.value as CustomMapTileToken["exitMode"]
+                            })
+                          : token
+                      ),
+                      token: undefined
+                    })
+                  }
+                  value={tokenPanelToken.exitMode ?? "certain"}
+                >
+                  <option value="certain">Certain — the traveller picks the exit</option>
+                  <option value="random">Random — roll the die for the exit</option>
+                  <option value="mix">Mix — pick an “always” exit, or roll among the rest</option>
+                </select>
+              </>
+            ) : null}
+            {tokenPanelToken.kind === "oneway_exit" ? (
+              <label className="popoverCheckRow">
+                <input
+                  checked={tokenPanelToken.alwaysPickable === true}
+                  onChange={(event) =>
+                    updateTile(selectedTokenIndex as number, {
+                      tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                        i === tokenPanelPin
+                          ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, tokenPanelToken.slot, undefined, {
+                              ...tokenPanelToken,
+                              alwaysPickable: event.target.checked ? true : undefined
+                            })
+                          : token
+                      ),
+                      token: undefined
+                    })
+                  }
+                  type="checkbox"
+                />
+                <span>Always pickable (“mix” entrances offer it before the roll)</span>
+              </label>
+            ) : null}
+            {tokenPanelToken.kind !== "oneway_exit" ? (
+              <>
+                <div className="popoverSectionLabel">Guard (monster)</div>
+                <small className="popoverHint">
+                  {tokenPanelToken.kind === "oneway_entrance"
+                    ? "The fight is bank-style: no Quick Combat, no experience, no round limit; winning teleports."
+                    : "A guard on this hex must be beaten to use the teleporter; arriving through the network sweeps it aside (auto-win, no experience)."}
+                </small>
+                <GuardSpecEditor
+                  guard={tokenPanelToken.guard}
+                  noneLabel="None"
+                  onChange={(guard) =>
+                    updateTile(selectedTokenIndex as number, {
+                      tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                        i === tokenPanelPin
+                          ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, tokenPanelToken.slot, guard, tokenPanelToken)
+                          : token
+                      ),
+                      token: undefined
+                    })
+                  }
+                />
+              </>
+            ) : (
+              <small className="popoverHint">An exit monolith is never guarded — only entrances fight.</small>
+            )}
             <button
               className="popoverRemove"
               onClick={() => {
