@@ -60,6 +60,7 @@ import {
   type VictoryMode
 } from "@/engine";
 import {
+  fieldOverrideGlyph,
   fieldOverrideImage,
   getFieldOverrideDefinition,
   listFieldOverrideDefinitions
@@ -3127,9 +3128,10 @@ export function MapDesigner({
     for (let oi = 0; oi < overrides.length; oi++) {
       const pin = overrides[oi];
       const art = fieldOverrideImage(pin.kind) ?? fieldOverrideImage(getFieldOverrideDefinition(pin.kind)?.locationId ?? "");
-      if (!art) {
-        continue;
-      }
+      // A kind without art yet (FIELD_OVERRIDE_ART_PLACEHOLDERS) still draws a
+      // glyph marker so a pinned override is never an invisible hex on the
+      // designer map — art replaces it once it ships.
+      const glyph = art ? undefined : fieldOverrideGlyph(pin.kind);
       const center = { row: plan.row, col: plan.col };
       const slot = pin.slot ?? 0;
       const cell = tileFootprint(center, plan.rotation ?? 0)[slot] ?? center;
@@ -3145,16 +3147,29 @@ export function MapDesigner({
             points={hexCorners(pixel.x, pixel.y, size - 1.5)}
             pointerEvents="none"
           />
-          <image
-            className="designerMapTokenArt"
-            height={tokenHeight}
-            href={assetUrl(art)}
-            preserveAspectRatio="xMidYMid slice"
-            style={{ pointerEvents: "none" }}
-            width={tokenWidth}
-            x={pixel.x - tokenWidth / 2}
-            y={pixel.y - tokenHeight / 2}
-          />
+          {art ? (
+            <image
+              className="designerMapTokenArt"
+              height={tokenHeight}
+              href={assetUrl(art)}
+              preserveAspectRatio="xMidYMid slice"
+              style={{ pointerEvents: "none" }}
+              width={tokenWidth}
+              x={pixel.x - tokenWidth / 2}
+              y={pixel.y - tokenHeight / 2}
+            />
+          ) : (
+            <text
+              className="designerFieldOverrideGlyph"
+              data-testid={`designer-fo-glyph-${pin.kind}`}
+              style={{ pointerEvents: "none" }}
+              textAnchor="middle"
+              x={pixel.x}
+              y={pixel.y + size * 0.28}
+            >
+              {glyph ?? "◈"}
+            </text>
+          )}
           <title>{label} Field Override — slot {slot}</title>
         </g>
       );

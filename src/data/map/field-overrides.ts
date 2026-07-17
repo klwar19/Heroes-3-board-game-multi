@@ -44,6 +44,13 @@ export type FieldOverrideDefinition = {
    * designer render it like a Creature Bank / Monolith token.
    */
   image?: string;
+  /**
+   * Fallback emoji glyph for a kind that ships WITHOUT `image` yet (see
+   * {@link FIELD_OVERRIDE_ART_PLACEHOLDERS}). The live board (icon mode) and the
+   * map designer draw this so a carved/pinned override is never an invisible hex
+   * before its art is dropped in. Ignored once `image` is set.
+   */
+  glyph?: string;
 };
 
 /** Mutable registry — packages call {@link registerFieldOverrideDefinitions}. */
@@ -122,6 +129,24 @@ export function fieldOverrideImage(kindOrLocationId: string): string | undefined
   for (const def of Object.values(REGISTRY)) {
     if (def.locationId === kindOrLocationId && def.image) {
       return def.image;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Fallback glyph for a kind or location id that has no art yet — the render
+ * layers (board icon mode, designer overlay) draw it so an art-less override is
+ * still a visible hex. Returns undefined once real art exists (art wins).
+ */
+export function fieldOverrideGlyph(kindOrLocationId: string): string | undefined {
+  const byKind = REGISTRY[kindOrLocationId];
+  if (byKind) {
+    return byKind.image ? undefined : byKind.glyph;
+  }
+  for (const def of Object.values(REGISTRY)) {
+    if (def.locationId === kindOrLocationId) {
+      return def.image ? undefined : def.glyph;
     }
   }
   return undefined;

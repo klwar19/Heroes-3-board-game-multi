@@ -679,10 +679,29 @@ or pool), never printed on stock tiles in V1.
 | **Ngộ Đạo Thạch** (*Enlightenment Stone*) | Learning Stone / Scholar hybrid | Visitable, costs the normal visit stop (MP already spent to enter): `SEARCH_SHARED_DECK` **abilities** count **2** (look 2, keep 1, rest reshuffle — existing Search pipeline). Printed Learning Stone is +1 XP; this is the enlightenment twin. | far, near |
 | **Trận Pháp Truyền Tống** (*Teleportation Array*) | Two-Way Monolith (user said Subterranean Gate; **mechanics match Monolith**) | Revisitable: carves as `location: "monolith"` so it joins the **existing Monolith teleport network** (1 free travel / revisit 1 MP, traveller picks when 3+, occupied skipped) — **zero new travel code** in V1, no weird parallel network. Skin label/art is the Array. A future separate Array-only network is stretch. | far, near, center, subterranean |
 
-Also retained from earlier sketch: **Qi Refinement Platform** (revisitable;
-pay 1 MP → +1 Attack token for next combat), **Foundation Stone** (free
-reinforce, Hill Fort family), **Merchant Guild Post** / **Gambling Den**
-(§5.5), **Outer-Realm Rift** (guarded teleport — designer pin).
+**Wave 2 — SHIPPED** (3 more xianxia + the first 3 isekai, all PURE REUSE of
+the existing `LocationInteraction` vocabulary; no new engine arm). Effect tests:
+`src/engine/anime-locations.test.ts`. These 6 kinds ship WITHOUT hex art yet:
+each carries a `glyph` fallback and is declared in
+`FIELD_OVERRIDE_ART_PLACEHOLDERS` (`src/data/anime/field-overrides.ts`) — drop a
+`.webp` + set `image` + delete from that set to promote to full art. The
+art-or-placeholder invariant and the glyph fallback (board icon mode + designer
+overlay) are pinned in `field-overrides.test.ts`,
+`anime-field-override-board.test.tsx`, and `map-designer.test.tsx`.
+
+| Location | Package | HoMM3 twin | Engine reading (V1) | Tile groups |
+| --- | --- | --- | --- | --- |
+| **Trạm Thương Hội** (*Merchant Guild Post*, §5.5) | xianxia | Trading Post | Revisitable `TRADING_POST` — resource exchange + sell-card / war-machine (NOT `tradesOnly`). | far, near |
+| **Sòng Bạc Quán** (*Gambling Den*, §5.5) | xianxia | Crypt/Sea Chest gamble | Visitable `PAY_TO` 2 gold → `ATTACK_DIE_TABLE` (+1 → 5 gold, 0 → 2 back, −1 → −1 morale). | far, near |
+| **Đài Luyện Khí** (*Qi Refinement Platform*) | xianxia | — | Visitable `CHOOSE_ONE`: Meditate → `GAIN_MORALE` +1, or Push → `ATTACK_DIE_TABLE` experience gamble. **V1 REUSE reading** (§0 rule 4): the earlier "pay 1 MP → +1 Attack token next combat" needs a NEW engine arm and is NOT shipped. | far, near |
+| **Capsule Corp Lab** (*Dragon Ball*) | isekai | War Machine Factory | Revisitable `WAR_MACHINE_SHOP` — buy a war machine at the lower price. | far, near, center |
+| **Urahara's Shop** (*Bleach*) | isekai | curio counter | Revisitable `CHOOSE_ONE`: pay 3 gold → Search(1) Artifact, or pay 1 gold → 1 Treasure die (both `PAY_TO`). | far, near, center |
+| **Hot Spring Inn** (*Onsen*) | isekai | Fountain of Youth | Visitable `CHOOSE_ONE`: `GAIN_MORALE` +1, or `GAIN_MOVEMENT` +1 (no youth/cleanse arm). | far, near |
+
+Still on the earlier sketch, NOT yet shipped: **Foundation Stone** (free
+reinforce, Hill Fort family) and **Outer-Realm Rift** (guarded teleport —
+designer pin). The **Qi Refinement Platform**'s original "+1 Attack token" reading
+awaits a new engine arm (see the V1 reuse note above).
 
 ### 5.9 Elixir Pills (`anime.elixirPills`)
 
