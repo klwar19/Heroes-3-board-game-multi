@@ -147,6 +147,13 @@ describe("Monolith travel", () => {
     // hero stays put with no pending interaction.
     expect(adv(state).pendingVisit).toBeNull();
     expect(state.pendingChoice).toBeNull();
+    // Presentation: hop = TELPTOUT (spells/teleport); walk onto entry = horse.
+    const moves = state.eventLog.filter(
+      (event): event is Extract<(typeof state.eventLog)[number], { type: "HERO_MOVED" }> =>
+        event.type === "HERO_MOVED"
+    );
+    expect(moves.find((event) => event.to === entry)?.teleport).toBeUndefined();
+    expect(moves.find((event) => event.to === exit)?.teleport).toBe("monolith");
   });
 
   it("CONTROL: a lone Monolith does nothing — and says at least 2 are needed", () => {
@@ -293,6 +300,13 @@ describe("Whirlpool travel", () => {
 
     // The hero surfaced at the other Whirlpool…
     expect(state.heroes.hero_p1.spaceId).toBe(exit);
+    // The surfacing hop is DANGER (effects/danger); the sail onto entry is not.
+    const moves = state.eventLog.filter(
+      (event): event is Extract<(typeof state.eventLog)[number], { type: "HERO_MOVED" }> =>
+        event.type === "HERO_MOVED"
+    );
+    expect(moves.find((event) => event.to === entryHex)?.teleport).toBeUndefined();
+    expect(moves.find((event) => event.to === exit)?.teleport).toBe("whirlpool");
     // …and the unit toll is a pending pick (more than one army card).
     const step = adv(state).pendingVisit?.steps[0];
     expect(step?.type).toBe("CHOOSE_ONE");

@@ -3,9 +3,103 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
 import { ADVENTURE_FEED_CUES } from "../components/adventure/screen";
-import { MAP_CUE_SOUNDS } from "./map-sounds";
+import {
+  heroMoveSoundKey,
+  LOCATION_VISIT_SOUNDS,
+  locationVisitSoundKeys,
+  MAP_CUE_SOUNDS,
+  MAP_TELEPORT_SOUNDS,
+  TERRAIN_MOVE_SOUNDS,
+  type MapTeleportKind
+} from "./map-sounds";
 
 const library = soundManifest as Record<string, { src?: string; random?: string[] }>;
+
+function assertClipOnDisk(key: string): void {
+  const src = library[key]?.src;
+  expect(src, `${key} should be in the manifest`).toBeTruthy();
+  const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
+  expect(existsSync(file), `${src} should exist on disk`).toBe(true);
+}
+
+function visitSfx(location: string): string {
+  const entry = LOCATION_VISIT_SOUNDS[location];
+  return typeof entry === "string" ? entry : entry.sfx;
+}
+
+describe("heroMoveSoundKey (map teleports)", () => {
+  it("uses VCMI visit clips: TELPTOUT / DANGER / CAVEHEAD (not ambient loops)", () => {
+    // Source of truth: github.com/vcmi/vcmi config/objects/*.json "sounds.visit"
+    //   monolithOneWayEntrance / monolithTwoWay → ["TELPTOUT"]
+    //   whirlpool → ["DANGER"]
+    //   subterraneanGate → ["CAVEHEAD"]
+    // H3 archive names → our library (docs/h3-sound-reference.csv + convert-h3-sounds.mjs):
+    //   TELPTOUT → spells/teleport
+    //   DANGER   → effects/danger
+    //   CAVEHEAD → adventure/cave-visit
+    // NOT used for travel: TELEIN (adventure/teleport), LOOPMON*, LOOPWHIR, LOOPGATE.
+    expect(MAP_TELEPORT_SOUNDS).toEqual({
+      monolith: "spells/teleport",
+      gate: "spells/teleport",
+      whirlpool: "effects/danger",
+      subterranean: "adventure/cave-visit",
+      spell: "spells/teleport"
+    });
+    expect(heroMoveSoundKey([{ teleport: "monolith" }], "grass")).toBe("spells/teleport");
+    expect(heroMoveSoundKey([{ teleport: "gate" }], "dirt")).toBe("spells/teleport");
+    expect(heroMoveSoundKey([{ teleport: "whirlpool" }], "water")).toBe("effects/danger");
+    expect(heroMoveSoundKey([{ teleport: "subterranean" }], "subterranean")).toBe("adventure/cave-visit");
+    expect(heroMoveSoundKey([{ teleport: "spell" }], "grass")).toBe("spells/teleport");
+  });
+
+  it("CONTROL: ordinary adjacent walks still use the destination terrain horse", () => {
+    expect(heroMoveSoundKey([{}], "grass")).toBe(TERRAIN_MOVE_SOUNDS.grass);
+    expect(heroMoveSoundKey([{ teleport: false }], "lava")).toBe(TERRAIN_MOVE_SOUNDS.lava);
+    expect(heroMoveSoundKey([], "snow")).toBe(TERRAIN_MOVE_SOUNDS.snow);
+  });
+
+  it("every mapped teleport clip exists on disk", () => {
+    const kinds = Object.keys(MAP_TELEPORT_SOUNDS) as MapTeleportKind[];
+    for (const kind of kinds) {
+      assertClipOnDisk(MAP_TELEPORT_SOUNDS[kind]);
+    }
+  });
+});
+
+describe("LOCATION_VISIT_SOUNDS (sfx first, optional ambient after)", () => {
+  it("visit sfx is never an ambient/* loop (ambient is the second track)", () => {
+    for (const loc of Object.keys(LOCATION_VISIT_SOUNDS)) {
+      const sfx = visitSfx(loc);
+      expect(sfx.startsWith("ambient/"), `${loc} sfx must not be ambient ${sfx}`).toBe(false);
+    }
+  });
+
+  it("plays VCMI visit one-shot first, then keeps ambient loops (e.g. water wheel)", () => {
+    expect(visitSfx("subterranean_gate")).toBe("adventure/cave-visit");
+    expect(locationVisitSoundKeys("subterranean_gate")).toEqual([
+      "adventure/cave-visit",
+      "ambient/subterranean-gate"
+    ]);
+    expect(locationVisitSoundKeys("water_wheel")).toEqual(["units/genie-special", "ambient/mill"]);
+    expect(locationVisitSoundKeys("windmill")).toEqual(["units/genie-special", "ambient/windmill"]);
+    expect(visitSfx("tavern")).toBe("adventure/store");
+    expect(locationVisitSoundKeys("tavern")).toEqual(["adventure/store", "ambient/tavern"]);
+    expect(visitSfx("redwood_observatory")).toBe("adventure/lighthouse");
+    expect(locationVisitSoundKeys("redwood_observatory")).toEqual(["adventure/lighthouse"]);
+    expect(visitSfx("shipwreck_survivor")).toBe("adventure/treasure");
+  });
+
+  it("every location sfx/ambient clip exists on disk", () => {
+    for (const loc of Object.keys(LOCATION_VISIT_SOUNDS)) {
+      for (const key of locationVisitSoundKeys(loc)) {
+        expect(library[key], `${loc} → ${key}`).toBeTruthy();
+        if (library[key].src) {
+          assertClipOnDisk(key);
+        }
+      }
+    }
+  });
+});
 
 describe("battle-begin cue", () => {
   it("fires when a battle starts (neutral or player combat)", () => {
