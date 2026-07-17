@@ -3589,6 +3589,15 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
     return;
   }
 
+  // Designer "certain army" guard: Quick Combat and Diplomacy never bypass an
+  // exact designed army — a high-level hero cannot auto-win past units it has
+  // never seen. The fight is always real; the field's (tier-derived) difficulty
+  // still drives the experience reward as usual.
+  if (field.customGuardUnits && field.customGuardUnits.length > 0) {
+    beginNeutralCombatPlacement(state, hero, field, difficulty);
+    return;
+  }
+
   // Quick Combat: a hero whose level beats the field difficulty wins outright.
   if (level > difficulty) {
     appendEvent(state, {

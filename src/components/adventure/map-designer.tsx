@@ -44,8 +44,15 @@ import {
   unreachableUndergroundCenters,
   validateCustomMapObjects,
   victoryDesignConflicts,
-  MAX_VII_FIELD_REWARD_AMOUNT,
-  MAX_VII_FIELD_VP,
+  customGuardArmyDifficulty,
+  MAX_CENTER_HEX_DICE,
+  MAX_CENTER_HEX_RESOURCE,
+  MAX_CENTER_HEX_SEARCH,
+  MAX_CENTER_HEX_VP,
+  MAX_CUSTOM_GUARD_UNITS,
+  type CustomCenterHexPlan,
+  type CustomCenterHexReward,
+  type CustomGuardSpec,
   type CustomMapGateLink,
   type CustomMapObject,
   type CustomMapObjectKind,
@@ -56,9 +63,9 @@ import {
   type TokenPlacementKind,
   type PlannedSubterraneanGate,
   type SecretTileFeature,
-  type ViiFieldReward,
   type VictoryMode
 } from "@/engine";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   fieldOverrideImage,
   getFieldOverrideDefinition,
@@ -292,30 +299,202 @@ const VII_FIELD_OPTIONS: { id: CustomMapTilePlan["viiField"]; label: string; hin
   { id: "town", label: "Town", hint: "Force a neutral conquerable Random Town on this slot's Ⅶ field." }
 ];
 
-/** The three adventure resources a Ⅶ-field reward may grant, in picker order. */
-const VII_REWARD_FIELDS: { key: keyof ViiFieldReward; label: string }[] = [
-  { key: "gold", label: "Gold" },
-  { key: "buildingMaterials", label: "Materials" },
-  { key: "valuables", label: "Valuables" }
+/** The center-hex first-clear reward kinds, in picker order (label + clamp). */
+const CENTER_REWARD_FIELDS: { key: keyof CustomCenterHexReward; label: string; max: number }[] = [
+  { key: "gold", label: "Gold", max: MAX_CENTER_HEX_RESOURCE },
+  { key: "buildingMaterials", label: "Materials", max: MAX_CENTER_HEX_RESOURCE },
+  { key: "valuables", label: "Valuables", max: MAX_CENTER_HEX_RESOURCE },
+  { key: "treasureDice", label: "Treasure dice", max: MAX_CENTER_HEX_DICE },
+  { key: "searchSpell", label: "Spell Search", max: MAX_CENTER_HEX_SEARCH },
+  { key: "searchAbility", label: "Ability Search", max: MAX_CENTER_HEX_SEARCH },
+  { key: "searchArtifact", label: "Artifact Search", max: MAX_CENTER_HEX_SEARCH }
 ];
 
 /**
- * Fold one resource amount into a Ⅶ-field reward, returning the next reward (or
- * `undefined` when it empties). Pure so the popover input handlers stay a
- * one-liner and the "clears when zeroed" rule lives in one place.
+ * Fold one amount into a center-hex reward, returning the next reward (or
+ * `undefined` when it empties). Pure so the input handlers stay one-liners and
+ * the "clears when zeroed" rule lives in one place.
  */
-function nextViiReward(
-  current: ViiFieldReward | undefined,
-  key: keyof ViiFieldReward,
+function nextCenterReward(
+  current: CustomCenterHexReward | undefined,
+  key: keyof CustomCenterHexReward,
   amount: number
-): ViiFieldReward | undefined {
-  const next: ViiFieldReward = { ...(current ?? {}) };
+): CustomCenterHexReward | undefined {
+  const next: CustomCenterHexReward = { ...(current ?? {}) };
   if (amount > 0) {
     next[key] = amount;
   } else {
     delete next[key];
   }
   return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/**
+ * Fold a partial patch into a plan's center-hex customization, dropping empty
+ * arms so an all-cleared editor stores `undefined` (nothing serialized).
+ */
+function nextCenterHex(
+  current: CustomCenterHexPlan | undefined,
+  patch: Partial<CustomCenterHexPlan>
+): CustomCenterHexPlan | undefined {
+  const next: CustomCenterHexPlan = { ...(current ?? {}), ...patch };
+  if (!next.guard) {
+    delete next.guard;
+  }
+  if (!next.reward) {
+    delete next.reward;
+  }
+  if (!next.vp) {
+    delete next.vp;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/** Tier display order + label for the guard unit picker. */
+const GUARD_TIER_ORDER = ["bronze", "silver", "gold", "azure"] as const;
+const GUARD_TIER_LABELS: Record<(typeof GUARD_TIER_ORDER)[number], string> = {
+  bronze: "Bronze",
+  silver: "Silver",
+  gold: "Gold",
+  azure: "Azure"
+};
+
+/**
+ * Every unit a designer may field in a "certain army" guard (it has a Neutral
+ * side), grouped by tier for the picker. Computed once at module load.
+ */
+const GUARD_UNIT_OPTIONS: { tier: (typeof GUARD_TIER_ORDER)[number]; units: { id: string; label: string }[] }[] =
+  GUARD_TIER_ORDER.map((tier) => ({
+    tier,
+    units: Object.values(coreUnitDefinitions)
+      .filter((def) => def.neutral && def.tier === tier)
+      .map((def) => ({ id: def.id, label: def.name }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  })).filter((group) => group.units.length > 0);
+
+/** Short display name for a guard-army unit chip. */
+function guardUnitLabel(unitDefId: string): string {
+  return coreUnitDefinitions[unitDefId]?.name ?? unitDefId;
+}
+
+/** Roman numeral for a guard level chip / badge. */
+const GUARD_LEVELS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+/**
+ * Designer guard editor — shared by the center-hex section and (via the same
+ * component) any single-hex guard editing. Three modes: none ("Printed" /
+ * "None"), a level Ⅰ–Ⅶ, or a certain army built unit by unit.
+ */
+function GuardSpecEditor({
+  guard,
+  noneLabel,
+  onChange
+}: {
+  guard: CustomGuardSpec | undefined;
+  /** Label of the "no designed guard" chip — "Printed" where a printed guard exists, else "None". */
+  noneLabel: string;
+  onChange: (guard: CustomGuardSpec | undefined) => void;
+}) {
+  const armyMode = Boolean(guard?.units);
+  const units = guard?.units ?? [];
+  return (
+    <div className="popoverGuardEditor">
+      <div className="popoverModeRow" role="group" aria-label="Guard">
+        <button
+          aria-pressed={!guard}
+          className={`popoverGuardChip${!guard ? " active" : ""}`}
+          onClick={() => onChange(undefined)}
+          title="Keep the printed guard (no designed guard)."
+          type="button"
+        >
+          {noneLabel}
+        </button>
+        {GUARD_LEVELS.map((level) => {
+          const active = !armyMode && guard?.level === level;
+          return (
+            <button
+              aria-pressed={active}
+              className={`popoverGuardChip${active ? " active" : ""}`}
+              key={level}
+              onClick={() => onChange({ level })}
+              title={`Neutral guard of Field Difficulty ${ROMAN_NUMERALS[level]}.`}
+              type="button"
+            >
+              {ROMAN_NUMERALS[level]}
+            </button>
+          );
+        })}
+        <button
+          aria-pressed={armyMode}
+          className={`popoverGuardChip popoverGuardArmyChip${armyMode ? " active" : ""}`}
+          onClick={() => {
+            if (!armyMode) {
+              onChange({ units: [] });
+            }
+          }}
+          title="Field an exact army: pick the specific Neutral unit cards that guard this hex."
+          type="button"
+        >
+          Exact army
+        </button>
+      </div>
+      {armyMode ? (
+        <div className="popoverGuardArmy">
+          {units.length > 0 ? (
+            <div className="popoverGuardArmyChips">
+              {units.map((unitDefId, index) => (
+                <button
+                  className="popoverGuardUnitChip"
+                  key={`${unitDefId}-${index}`}
+                  onClick={() => {
+                    const next = units.filter((_, i) => i !== index);
+                    onChange(next.length > 0 ? { units: next } : { units: [] });
+                  }}
+                  title="Remove this unit from the guard army."
+                  type="button"
+                >
+                  {guardUnitLabel(unitDefId)} ✕
+                </button>
+              ))}
+            </div>
+          ) : (
+            <small className="popoverHint">No units yet — add up to {MAX_CUSTOM_GUARD_UNITS} below.</small>
+          )}
+          {units.length < MAX_CUSTOM_GUARD_UNITS ? (
+            <select
+              aria-label="Add a guard unit"
+              className="popoverSelect popoverGuardUnitSelect"
+              onChange={(event) => {
+                const unitId = event.target.value;
+                if (unitId) {
+                  onChange({ units: [...units, unitId] });
+                }
+                event.target.value = "";
+              }}
+              value=""
+            >
+              <option value="">+ Add unit…</option>
+              {GUARD_UNIT_OPTIONS.map((group) => (
+                <optgroup key={group.tier} label={GUARD_TIER_LABELS[group.tier]}>
+                  {group.units.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          ) : null}
+          {units.length > 0 ? (
+            <small className="popoverHint popoverGuardArmyNote">
+              Counts as difficulty {ROMAN_NUMERALS[customGuardArmyDifficulty(units)]} (experience); Quick Combat
+              never skips an exact army.
+            </small>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -1267,11 +1446,8 @@ export function MapDesigner({
           if (changes.viiField === undefined && "viiField" in changes) {
             delete next.viiField;
           }
-          if (changes.viiFieldReward === undefined && "viiFieldReward" in changes) {
-            delete next.viiFieldReward;
-          }
-          if (changes.viiFieldVp === undefined && "viiFieldVp" in changes) {
-            delete next.viiFieldVp;
+          if (changes.centerHex === undefined && "centerHex" in changes) {
+            delete next.centerHex;
           }
           return next;
         })
@@ -4225,14 +4401,17 @@ export function MapDesigner({
                   </button>
                 </div>
 
-                {/* Center (Ⅵ–Ⅶ) tiles: force this slot's difficulty-7 objective
-                    field, whatever tile lands here. */}
+                {/* Center (Ⅵ–Ⅶ) tiles: the big difficulty-7 CENTER HEX — its
+                    objective, guard (monster), first-clear reward and Victory
+                    Points. Always shown for a center slot; every control is
+                    optional and independent. */}
                 {selected.group === "center" ? (
-                  <div className="popoverViiField popoverSection">
-                    <div className="popoverSectionLabel">Ⅶ objective field</div>
+                  <div className="popoverViiField popoverSection popoverCenterHex">
+                    <div className="popoverSectionLabel">Center (Ⅶ) hex</div>
+                    <div className="popoverSubLabel">Objective</div>
                     <small className="popoverHint">
-                      Force this centre slot&apos;s big (difficulty 7) field to a specific objective — whatever tile
-                      lands here. Default keeps whatever the drawn / chosen tile prints.
+                      Default keeps whatever the drawn / chosen tile prints; the others force this slot&apos;s
+                      difficulty-7 field, whatever tile lands here.
                     </small>
                     <div className="popoverModeRow" role="group" aria-label="Center Ⅶ field">
                       {VII_FIELD_OPTIONS.map((option) => {
@@ -4243,13 +4422,9 @@ export function MapDesigner({
                             className={`popoverFilterChip${active ? " active" : ""}`}
                             key={String(option.id)}
                             onClick={() =>
-                              // Picking "Default" also clears any bonus — a reward/VP
-                              // with no objective is meaningless (and would be stripped).
                               updateTile(
                                 selectedIndex as number,
-                                option.id === undefined
-                                  ? { viiField: undefined, viiFieldReward: undefined, viiFieldVp: undefined }
-                                  : { viiField: option.id }
+                                option.id === undefined ? { viiField: undefined } : { viiField: option.id }
                               )
                             }
                             title={option.hint}
@@ -4261,57 +4436,69 @@ export function MapDesigner({
                       })}
                     </div>
 
-                    {/* Designer bonus for THIS objective — only meaningful once a
-                        specific objective is forced (hidden on Default). */}
-                    {selected.viiField ? (
-                      <div className="popoverViiBonus">
-                        <div className="popoverSubLabel">Capture reward &amp; Victory Points (optional)</div>
-                        <small className="popoverHint">
-                          A one-time bonus for the player who first clears this objective, on top of its printed
-                          reward. Victory Points count only when Victory-Points scoring is on for the game.
-                        </small>
-                        <div className="popoverViiRewardRow" role="group" aria-label="Ⅶ capture reward">
-                          {VII_REWARD_FIELDS.map((field) => (
-                            <label className="popoverViiField_num" key={field.key}>
-                              <span>{field.label}</span>
-                              <input
-                                aria-label={`Ⅶ reward ${field.label}`}
-                                max={MAX_VII_FIELD_REWARD_AMOUNT}
-                                min={0}
-                                onChange={(event) => {
-                                  const amount = Math.max(
-                                    0,
-                                    Math.min(MAX_VII_FIELD_REWARD_AMOUNT, Math.floor(Number(event.target.value) || 0))
-                                  );
-                                  updateTile(selectedIndex as number, {
-                                    viiFieldReward: nextViiReward(selected.viiFieldReward, field.key, amount)
-                                  });
-                                }}
-                                type="number"
-                                value={selected.viiFieldReward?.[field.key] ?? ""}
-                              />
-                            </label>
-                          ))}
-                          <label className="popoverViiField_num popoverViiVp">
-                            <span>Victory Pts</span>
-                            <input
-                              aria-label="Ⅶ victory points"
-                              max={MAX_VII_FIELD_VP}
-                              min={0}
-                              onChange={(event) => {
-                                const vp = Math.max(
-                                  0,
-                                  Math.min(MAX_VII_FIELD_VP, Math.floor(Number(event.target.value) || 0))
-                                );
-                                updateTile(selectedIndex as number, { viiFieldVp: vp > 0 ? vp : undefined });
-                              }}
-                              type="number"
-                              value={selected.viiFieldVp ?? ""}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    ) : null}
+                    <div className="popoverSubLabel">Guard (monster)</div>
+                    <small className="popoverHint">
+                      Replace the printed Ⅶ guard with a Field-Difficulty level or an exact Neutral army.
+                    </small>
+                    <GuardSpecEditor
+                      guard={selected.centerHex?.guard}
+                      noneLabel="Printed"
+                      onChange={(guard) =>
+                        updateTile(selectedIndex as number, {
+                          centerHex: nextCenterHex(selected.centerHex, { guard })
+                        })
+                      }
+                    />
+
+                    <div className="popoverSubLabel">First-clear reward &amp; Victory Points</div>
+                    <small className="popoverHint">
+                      A one-time bonus for the player who first clears this objective, on top of its printed
+                      reward. Victory Points count when Victory-Points scoring is on.
+                    </small>
+                    <div className="popoverViiRewardRow" role="group" aria-label="Center hex reward">
+                      {CENTER_REWARD_FIELDS.map((field) => (
+                        <label className="popoverViiField_num" key={field.key}>
+                          <span>{field.label}</span>
+                          <input
+                            aria-label={`Center hex ${field.label}`}
+                            max={field.max}
+                            min={0}
+                            onChange={(event) => {
+                              const amount = Math.max(
+                                0,
+                                Math.min(field.max, Math.floor(Number(event.target.value) || 0))
+                              );
+                              updateTile(selectedIndex as number, {
+                                centerHex: nextCenterHex(selected.centerHex, {
+                                  reward: nextCenterReward(selected.centerHex?.reward, field.key, amount)
+                                })
+                              });
+                            }}
+                            type="number"
+                            value={selected.centerHex?.reward?.[field.key] ?? ""}
+                          />
+                        </label>
+                      ))}
+                      <label className="popoverViiField_num popoverViiVp">
+                        <span>Victory Pts</span>
+                        <input
+                          aria-label="Ⅶ victory points"
+                          max={MAX_CENTER_HEX_VP}
+                          min={0}
+                          onChange={(event) => {
+                            const vp = Math.max(
+                              0,
+                              Math.min(MAX_CENTER_HEX_VP, Math.floor(Number(event.target.value) || 0))
+                            );
+                            updateTile(selectedIndex as number, {
+                              centerHex: nextCenterHex(selected.centerHex, { vp: vp > 0 ? vp : undefined })
+                            });
+                          }}
+                          type="number"
+                          value={selected.centerHex?.vp ?? ""}
+                        />
+                      </label>
+                    </div>
                   </div>
                 ) : null}
 

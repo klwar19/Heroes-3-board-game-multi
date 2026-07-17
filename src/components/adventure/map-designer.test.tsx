@@ -154,54 +154,88 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     expect(popover.querySelector(".popoverViiField")).toBeNull();
   });
 
-  it("edits the capture reward + Victory Points once an objective is forced, and writes them to the plan", () => {
+  it("edits the center-hex reward + Victory Points on a PLAIN center (no objective forced) and writes centerHex", () => {
     const onChange = vi.fn();
     const container = renderDesigner(
       [
         { row: 8, col: 2, group: "starting", faceDown: false },
-        { row: 9, col: 4, group: "center", faceDown: true, viiField: "grail" }
+        { row: 9, col: 4, group: "center", faceDown: true }
       ],
       onChange
     );
     const popover = openTilePopover(container, 1);
 
-    // A reward amount writes viiFieldReward on the plan…
-    fireEvent.change(within(popover as HTMLElement).getByLabelText(/reward Gold/i), { target: { value: "7" } });
+    // The editor is visible WITHOUT any objective designation (the old build
+    // hid it behind one — "click on tile VI-VII … BUT NOTHING THERE").
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex Gold/i), { target: { value: "7" } });
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.arrayContaining([expect.objectContaining({ viiField: "grail", viiFieldReward: { gold: 7 } })])
+      expect.arrayContaining([expect.objectContaining({ centerHex: { reward: { gold: 7 } } })])
     );
 
-    // …and a Victory-Points value writes viiFieldVp.
+    // A flexible reward kind (Treasure dice) rides the same reward object…
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex Treasure dice/i), {
+      target: { value: "2" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ centerHex: { reward: { treasureDice: 2 } } })])
+    );
+
+    // …and a Victory-Points value writes centerHex.vp.
     fireEvent.change(within(popover as HTMLElement).getByLabelText(/victory points/i), { target: { value: "4" } });
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.arrayContaining([expect.objectContaining({ viiField: "grail", viiFieldVp: 4 })])
+      expect.arrayContaining([expect.objectContaining({ centerHex: { vp: 4 } })])
     );
   });
 
-  it("hides the reward / VP editor on Default, and picking Default clears any existing bonus", () => {
-    // With no objective forced, there is no bonus editor at all.
-    const plain = renderDesigner([
-      { row: 8, col: 2, group: "starting", faceDown: false },
-      { row: 9, col: 4, group: "center", faceDown: true }
-    ]);
-    expect(openTilePopover(plain, 1).querySelector(".popoverViiBonus"), "no bonus editor without an objective").toBeNull();
-
-    // Picking "Default" on a designated slot clears viiField AND its bonus.
+  it("edits the center-hex guard: a level chip writes {level}, Exact army collects unit ids", () => {
     const onChange = vi.fn();
     const container = renderDesigner(
       [
         { row: 8, col: 2, group: "starting", faceDown: false },
-        { row: 9, col: 4, group: "center", faceDown: true, viiField: "grail", viiFieldReward: { gold: 5 }, viiFieldVp: 3 }
+        { row: 9, col: 4, group: "center", faceDown: true }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1);
+
+    // A level chip writes a level guard.
+    fireEvent.click(within(popover as HTMLElement).getByRole("button", { name: "Ⅲ" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { level: 3 } } })])
+    );
+
+    // Exact army mode + adding a unit writes a units guard.
+    const armed = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true, centerHex: { guard: { units: [] } } }
+      ],
+      onChange
+    );
+    const armyPopover = openTilePopover(armed, 1);
+    fireEvent.change(within(armyPopover as HTMLElement).getByLabelText(/Add a guard unit/i), {
+      target: { value: "neutral.cyclopes" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { units: ["neutral.cyclopes"] } } })])
+    );
+  });
+
+  it("picking Default clears only the objective — the center-hex customization stays", () => {
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true, viiField: "grail", centerHex: { reward: { gold: 5 }, vp: 3 } }
       ],
       onChange
     );
     const popover = openTilePopover(container, 1);
     fireEvent.click(within(popover as HTMLElement).getByRole("button", { name: "Default" }));
-    const lastPlans = onChange.mock.calls.at(-1)![0] as { group: string; viiField?: unknown; viiFieldReward?: unknown; viiFieldVp?: unknown }[];
+    const lastPlans = onChange.mock.calls.at(-1)![0] as { group: string; viiField?: unknown; centerHex?: unknown }[];
     const center = lastPlans.find((plan) => plan.group === "center")!;
     expect(center.viiField).toBeUndefined();
-    expect(center.viiFieldReward).toBeUndefined();
-    expect(center.viiFieldVp).toBeUndefined();
+    expect(center.centerHex, "customization survives an objective reset").toEqual({ reward: { gold: 5 }, vp: 3 });
   });
 
   it("stamps a badge on a center slot with a Ⅶ designation", () => {

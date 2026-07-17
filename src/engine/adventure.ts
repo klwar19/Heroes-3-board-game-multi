@@ -103,6 +103,7 @@ import type {
   BankSize,
   CardId,
   CombatUnitState,
+  CustomCenterHexReward,
   EventDiePoolEntry,
   EventPoolEntry,
   EventsState,
@@ -194,6 +195,33 @@ export const NEUTRAL_DECK_IDS = {
   gold: "neutral-gold",
   azure: "neutral-azure"
 } as const;
+
+/**
+ * The Field Difficulty a designer "certain army" guard ({@link CustomGuardSpec.units})
+ * COUNTS AS — it drives the fight trigger, the map's Roman numeral and the
+ * experience reward exactly like a printed level. Derived from the army's
+ * tiers, calibrated against the NORMAL {@link NEUTRAL_ARMY_TABLE} rows (bronze
+ * 1 / silver 2 / gold 3 points): any azure body makes it a Ⅶ fight (azure IS
+ * the level-7 tier — winning jumps the hero to level 7, like every azure
+ * guard); otherwise the point total maps onto the closest table row, capped at
+ * Ⅵ. Unknown ids count 0 (the sanitiser drops them before play).
+ */
+export function customGuardArmyDifficulty(units: string[]): number {
+  let points = 0;
+  for (const unitDefId of units) {
+    const tier = coreUnitDefinitions[unitDefId]?.tier;
+    if (tier === "azure") {
+      return 7;
+    }
+    points += tier === "gold" ? 3 : tier === "silver" ? 2 : tier === "bronze" ? 1 : 0;
+  }
+  if (points <= 1) return 1;
+  if (points <= 3) return 2;
+  if (points === 4) return 3;
+  if (points <= 7) return 4;
+  if (points <= 10) return 5;
+  return 6;
+}
 
 export const RESOURCE_DIE_FACES: { resource: ResourceKind; amount: number }[] = [
   { resource: "buildingMaterials", amount: 2 },
@@ -541,17 +569,38 @@ export function materializeTileFields(
     if (isWater) {
       field.terrain = "water";
     }
-    // Fold the designer Ⅶ-objective bonus onto the tile's difficulty-7 field
-    // (the objective — every center tile has exactly one). Attached whether or
-    // not the location was overridden above, so a designation whose bonus rides a
-    // printed-matching field still carries it. Granted once at visit time; the
-    // `viiBonusClaimed` latch lives on the field so a re-capture never re-pays.
-    if (tile.viiField && fieldDef.difficulty === 7) {
-      if (tile.viiFieldReward) {
-        field.viiReward = tile.viiFieldReward;
+    // Fold the designer center-hex customization onto the tile's difficulty-7
+    // field (the objective — every center tile has exactly one). Attached
+    // whether or not the location was overridden above, so a customization on a
+    // printed objective carries too. The reward/VP are granted once at visit
+    // time (`centerHexClaimed` latches so a re-capture never re-pays); a guard
+    // override REPLACES the printed difficulty-7 guard — a level becomes the
+    // field's Field Difficulty (Quick Combat / experience follow it as usual), a
+    // certain army is minted at fight time from `customGuardUnits` with the
+    // difficulty derived from its tiers. Legacy pre-centerHex snapshots carried
+    // the bonus as `viiFieldReward`/`viiFieldVp` (with a `viiField` gate) — fold
+    // those too so a mid-flight game keeps its designed bonus.
+    if (fieldDef.difficulty === 7) {
+      const centerHex = tile.centerHex;
+      if (centerHex?.reward) {
+        field.centerHexReward = centerHex.reward;
       }
-      if (tile.viiFieldVp !== undefined) {
-        field.viiVp = tile.viiFieldVp;
+      if (centerHex?.vp !== undefined) {
+        field.centerHexVp = centerHex.vp;
+      }
+      if (centerHex?.guard?.units && centerHex.guard.units.length > 0) {
+        field.customGuardUnits = [...centerHex.guard.units];
+        field.difficulty = customGuardArmyDifficulty(centerHex.guard.units);
+      } else if (centerHex?.guard?.level) {
+        field.difficulty = centerHex.guard.level;
+      }
+      if (tile.viiField) {
+        if (tile.viiFieldReward && !field.centerHexReward) {
+          field.centerHexReward = tile.viiFieldReward;
+        }
+        if (tile.viiFieldVp !== undefined && field.centerHexVp === undefined) {
+          field.centerHexVp = tile.viiFieldVp;
+        }
       }
     }
     adventure.fields[spaceId] = field;
@@ -2580,8 +2629,6 @@ function applyRandomTownFlag(state: GameState, playerId: PlayerId, field: MapFie
   if (firstCapture) {
     gainResources(state, playerId, { gold: 10 }, "captured the Random Town");
   }
-  // Designer Ⅶ-objective bonus (latched, so only the first captor is paid).
-  grantViiFieldBonus(state, playerId, field);
 }
 
 /** The active win condition; absent on old snapshots means "conquest". */
@@ -3134,30 +3181,56 @@ function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, field
 }
 
 /**
- * Grant the designer's Ⅶ-objective bonus ({@link MapFieldState.viiReward} resources
- * + {@link MapFieldState.viiVp} Victory Points) the FIRST time the objective is
- * cleared / captured. The `viiBonusClaimed` latch makes it strictly one-time, so a
- * later re-capture (a Dragon Conqueror who lost then retook the center) never
- * re-pays it — the bonus rewards whoever clears it first. VP is recorded
- * unconditionally (it scores only in VP mode); the resource reward flows through
- * the normal `gainResources` plumbing. A no-op on every field WITHOUT a bonus —
- * i.e. everything except a designer-designated Ⅶ center — so it is safe to call
- * from each objective handler.
+ * Grant the designer's center-hex bonus ({@link MapFieldState.centerHexReward}
+ * + {@link MapFieldState.centerHexVp} — plus the legacy pre-centerHex
+ * `viiReward`/`viiVp` a mid-flight snapshot may still carry) the FIRST time the
+ * objective is cleared / captured. Called from ONE seam — the top of
+ * `beginFieldVisit` — which is reached only once the field's guards are dealt
+ * with (a fought win, a Quick-Combat win or a Diplomacy skip; a retreat never
+ * visits), so it uniformly covers every Ⅶ objective kind: the three designations
+ * (Grail / Dragon Utopia / Random Town) AND printed centers (Cyclops Stockpile,
+ * Temple of the Sea, settlement, airship yard…). The `centerHexClaimed` latch
+ * (shared with the legacy `viiBonusClaimed`) makes it strictly one-time, so a
+ * later re-capture never re-pays it. Resources are granted inline; Treasure
+ * dice and deck Searches queue as a `visit-steps` reward so they never collide
+ * with the location's own visit interaction. VP is recorded unconditionally
+ * (it scores only in VP mode).
  */
-function grantViiFieldBonus(state: GameState, playerId: PlayerId, field: MapFieldState): void {
-  if (field.viiBonusClaimed) {
+function grantCenterHexBonus(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+  if (field.centerHexClaimed || field.viiBonusClaimed) {
     return;
   }
-  const reward = field.viiReward;
-  const hasReward =
-    !!reward && ((reward.gold ?? 0) > 0 || (reward.buildingMaterials ?? 0) > 0 || (reward.valuables ?? 0) > 0);
-  const vp = field.viiVp ?? 0;
-  if (!hasReward && vp <= 0) {
+  const reward: CustomCenterHexReward = { ...(field.viiReward ?? {}), ...(field.centerHexReward ?? {}) };
+  const vp = field.centerHexVp ?? field.viiVp ?? 0;
+  const resources: { gold?: number; buildingMaterials?: number; valuables?: number } = {};
+  for (const key of ["gold", "buildingMaterials", "valuables"] as const) {
+    if ((reward[key] ?? 0) > 0) {
+      resources[key] = reward[key];
+    }
+  }
+  const steps: VisitStep[] = [];
+  if ((reward.treasureDice ?? 0) > 0) {
+    steps.push({ type: "ROLL_TREASURE_DICE", count: reward.treasureDice as number });
+  }
+  for (const [key, deckId] of [
+    ["searchSpell", "spells"],
+    ["searchAbility", "abilities"],
+    ["searchArtifact", "artifacts"]
+  ] as const) {
+    if ((reward[key] ?? 0) > 0) {
+      steps.push({ type: "SEARCH_SHARED_DECK", deckId, count: reward[key] as number });
+    }
+  }
+  if (Object.keys(resources).length === 0 && steps.length === 0 && vp <= 0) {
     return;
   }
+  field.centerHexClaimed = true;
   field.viiBonusClaimed = true;
-  if (hasReward) {
-    gainResources(state, playerId, reward, "the Ⅶ objective reward");
+  if (Object.keys(resources).length > 0) {
+    gainResources(state, playerId, resources, "the Ⅶ objective reward");
+  }
+  if (steps.length > 0) {
+    state.adventure?.rewardQueue.push({ playerId, kind: "visit-steps", steps });
   }
   if (vp > 0) {
     recordVpViiCenter(state, playerId, vp);
@@ -3260,10 +3333,6 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     return;
   }
 
-  // Designer Ⅶ-objective bonus on the FIRST clear (guards just fell — this visit
-  // is reached only on a win). Latched, so the later dig revisit never re-pays.
-  grantViiFieldBonus(state, hero.controllerId, field);
-
   if (adventureVictoryMode(state) !== "grail") {
     if (!field.blackCube) {
       field.blackCube = true;
@@ -3318,10 +3387,6 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
   // the only durable trace of WHO cleared it. Runs in every mode (the objective
   // is meaningful outside Dragon Hunt, where the Utopia is a plain bank).
   recordVpUtopiaDefeat(state, hero.controllerId);
-
-  // Designer Ⅶ-objective bonus on the first clear, before any mode-specific
-  // handling (harmless in Dragon Hunt, where the win is declared right after).
-  grantViiFieldBonus(state, hero.controllerId, field);
 
   if (mode === "dragon-hunt") {
     declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia", {
@@ -3738,6 +3803,13 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   });
 
   adventure.lastVisitedField[heroId] = fieldId;
+
+  // Designer center-hex bonus (reward / VP): ONE seam for every Ⅶ objective
+  // kind. beginFieldVisit is reached only once the field's guards are dealt
+  // with (win / Quick Combat / Diplomacy — a retreat never visits), so this IS
+  // the "first clear"; the latch inside makes it one-time. Runs before the
+  // bespoke grail/utopia routing so every printed or designated center pays.
+  grantCenterHexBonus(state, playerId, field);
 
   // Creature banks with bespoke win/objective behavior are handled before the
   // generic visitable/flaggable routing.
@@ -8697,6 +8769,28 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
  * Every other field draws normally from the Field Difficulty Level Table.
  */
 export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
+  // Designer "certain army" guard: mint the exact Neutral cards, Creature-Bank
+  // style — never drawn from nor recycled to the tier decks. It REPLACES every
+  // printed/location draw below (a customized Ⅶ objective fights the designed
+  // army, not the printed one). Unknown / non-neutral ids are skipped
+  // defensively (the sanitiser already drops them).
+  if (field?.customGuardUnits && field.customGuardUnits.length > 0) {
+    return field.customGuardUnits
+      .filter((unitDefId) => coreUnitDefinitions[unitDefId]?.neutral)
+      .map((unitDefId) => ({
+        unitDefId,
+        tier: coreUnitDefinitions[unitDefId].tier,
+        bankGuard: true
+      }));
+  }
+
+  // Designer guard LEVEL on a bank-style object (Garrison / Keymaster's Tent /
+  // one-way monolith entrance): the army is drawn at the designed level even
+  // though the FIGHT runs bank-style (combat difficulty 0 — no experience).
+  if (field?.customGuardLevel) {
+    return drawNeutralArmy(state, field.customGuardLevel);
+  }
+
   if (field?.location === "dragon_utopia") {
     return dragonUtopiaGuardIds(state, difficulty).map((unitDefId) => ({
       unitDefId,
