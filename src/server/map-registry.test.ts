@@ -152,6 +152,58 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[3].lockRotation, "absent when unset").toBeUndefined();
   });
 
+  it("round-trips the UNDERGROUND flag on far/near/center/sea, strips it off starting/subterranean, and drops garbage", () => {
+    // The per-tile underground layer override is kept ONLY as literal true and
+    // ONLY on the flag-valid groups; it is redundant on a printed cavern and
+    // excluded on a seat tile (the v1 Surface-only rule).
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          { row: 1, col: 1, group: "far", faceDown: true, underground: true }, // kept
+          { row: 2, col: 2, group: "sea", faceDown: true, underground: true, seaBand: "iv-v" }, // kept
+          { row: 3, col: 3, group: "starting", faceDown: false, underground: true }, // seat tile → stripped
+          { row: 4, col: 4, group: "subterranean", faceDown: true, subBand: "iv-v", underground: true }, // redundant → stripped
+          { row: 5, col: 5, group: "near", faceDown: true, underground: "yes" }, // garbage → dropped
+          { row: 6, col: 6, group: "center", faceDown: true } // absent stays absent
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0], "far tile keeps its band + underground flag").toMatchObject({ group: "far", underground: true });
+    expect(record!.tiles[1]).toMatchObject({ group: "sea", underground: true });
+    expect(record!.tiles[2].underground, "stripped off a starting seat tile").toBeUndefined();
+    expect(record!.tiles[3].underground, "stripped off a printed cavern (redundant)").toBeUndefined();
+    expect(record!.tiles[4].underground, "non-boolean garbage dropped").toBeUndefined();
+    expect(record!.tiles[5].underground, "absent when unset").toBeUndefined();
+  });
+
+  it("keeps gate links on a FLAGGED far plan (CONTROL: still stripped on a plain far plan)", () => {
+    // Gate links belong to any underground-LAYER plan — a printed cavern OR a
+    // far/near/center/sea tile flagged underground. A plain (Surface) far plan
+    // still carries none.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          {
+            row: 1,
+            col: 1,
+            group: "far",
+            faceDown: true,
+            underground: true,
+            gateLinks: [{ surface: { row: 2, col: 2 } }]
+          },
+          // CONTROL: no underground flag → Surface → gate links dropped.
+          { row: 3, col: 3, group: "far", faceDown: true, gateLinks: [{ surface: { row: 2, col: 2 } }] }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0].gateLinks, "a flagged far plan keeps its gate links").toEqual([{ surface: { row: 2, col: 2 } }]);
+    expect(record!.tiles[1], "a plain far plan keeps none").not.toHaveProperty("gateLinks");
+  });
+
   it("round-trips viiField on a CENTER plan, strips it off non-center groups, and drops garbage", () => {
     // viiField FORCES a center slot's Ⅶ objective field (Grail / Dragon Utopia /
     // town) — a center-only designation. It must survive on a center plan, never

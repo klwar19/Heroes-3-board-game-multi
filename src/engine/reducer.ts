@@ -6,6 +6,7 @@ import {
   abilityRollRerollActive,
   addArmyUnit,
   changeMorale,
+  checkCustomWinConditions,
   commitPopulationOnMove,
   ensureUniqueArmyUnitIds,
   gainResources,
@@ -19733,6 +19734,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           : "The action could not complete its automatic follow-up."
     });
   }
+
+  // Custom win conditions (map-designer / lobby authored): the first live player
+  // to satisfy any active condition wins immediately. Runs here — after the
+  // END_TURN round-income cascade in runAdventureAutomations, so a round-start
+  // income crossing is seen — and free-early-outs when no condition is set (so
+  // every ordinary game / legacy snapshot is untouched). Deferred while a combat
+  // is open (see checkCustomWinConditions) so the game never ends mid-battle.
+  checkCustomWinConditions(nextState);
 
   // Combat-sandbox combats (and any post-war-machine round start) have no
   // adventure pump to hand out the activation slot, so settle it here: open the
