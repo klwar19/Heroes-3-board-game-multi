@@ -1924,6 +1924,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   if (setupOptions.customMapPreset) {
     const explicit = new Set<PresetForcedOptionKey>([
       ...(options.victoryMode !== undefined ? (["victoryMode"] as const) : []),
+      ...(options.difficulty !== undefined ? (["difficulty"] as const) : []),
+      ...(options.farTileOpening !== undefined ? (["farTileOpening"] as const) : []),
+      ...(options.farTilesPerPlayer !== undefined ? (["farTilesPerPlayer"] as const) : []),
       ...(options.startingResources !== undefined ? (["startingResources"] as const) : []),
       ...(options.startingProduction !== undefined ? (["startingProduction"] as const) : []),
       ...(options.startingBuildings !== undefined ? (["startingBuildings"] as const) : []),

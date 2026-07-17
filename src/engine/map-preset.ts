@@ -17,7 +17,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TileDefinition } from "@/data/map/types";
 import { seaTileBand, subterraneanTileBand, TILE_GROUP_BAND_LABELS, VII_FIELD_LOCATION } from "./adventure";
 import { VICTORY_MODE_LABELS } from "./ruleset";
-import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS } from "./state";
+import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS, MAX_FAR_TILES_PER_PLAYER } from "./state";
 import { DEFAULT_VICTORY_CONDITION_VP, describeVictoryPointObjective } from "./victory-points";
 import type {
   CustomCenterHexPlan,
@@ -33,6 +33,7 @@ import type {
   CustomMapTilePlan,
   CustomStartingUnit,
   DragonUtopiaGuards,
+  GameDifficulty,
   GameSetupOptions,
   SecretTileFeature,
   UnitLevel,
@@ -236,6 +237,15 @@ const VICTORY_MODES = new Set<VictoryMode>([
   "dragon-hunt",
   "dragon-conqueror"
 ]);
+
+const DIFFICULTY_VALUES = new Set<GameDifficulty>(["easy", "normal", "hard", "impossible"]);
+
+const DIFFICULTY_LABELS: Record<GameDifficulty, string> = {
+  easy: "Easy",
+  normal: "Normal",
+  hard: "Hard",
+  impossible: "Impossible"
+};
 
 const BUILDING_SUFFIXES = new Set([
   "citadel",
@@ -793,6 +803,21 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
   if (typeof raw.victoryMode === "string" && VICTORY_MODES.has(raw.victoryMode as VictoryMode)) {
     preset.victoryMode = raw.victoryMode as VictoryMode;
   }
+  // Map-settings defaults (difficulty / far-tile supply). Garbage difficulty is
+  // dropped; farTilesPerPlayer clamps to 0..MAX (a non-number is dropped, never
+  // coerced to a silent 0). farTileOpening is kept only as a real boolean.
+  if (typeof raw.difficulty === "string" && DIFFICULTY_VALUES.has(raw.difficulty as GameDifficulty)) {
+    preset.difficulty = raw.difficulty as GameDifficulty;
+  }
+  if (typeof raw.farTileOpening === "boolean") {
+    preset.farTileOpening = raw.farTileOpening;
+  }
+  if (typeof raw.farTilesPerPlayer === "number" && Number.isFinite(raw.farTilesPerPlayer)) {
+    preset.farTilesPerPlayer = Math.max(
+      0,
+      Math.min(MAX_FAR_TILES_PER_PLAYER, Math.floor(raw.farTilesPerPlayer))
+    );
+  }
   const resources = sanitizeResources(raw.startingResources);
   if (resources) {
     preset.startingResources = resources;
@@ -889,6 +914,9 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
   }
   return Boolean(
     preset.victoryMode ||
+      preset.difficulty ||
+      preset.farTileOpening !== undefined ||
+      preset.farTilesPerPlayer !== undefined ||
       preset.startingResources ||
       preset.startingProduction ||
       (preset.startingBuildings && preset.startingBuildings.length > 0) ||
@@ -1130,6 +1158,21 @@ export function describeCustomMapPresetEntries(
       text: `Victory: ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`
     });
   }
+  if (preset.difficulty) {
+    entries.push({ icon: "⚙️", text: `Difficulty: ${DIFFICULTY_LABELS[preset.difficulty]}` });
+  }
+  if (preset.farTileOpening !== undefined || preset.farTilesPerPlayer !== undefined) {
+    const on = preset.farTileOpening !== false;
+    const count = preset.farTilesPerPlayer;
+    entries.push({
+      icon: "🀆",
+      text: !on
+        ? "Additional Ⅱ–Ⅲ tiles: off"
+        : count !== undefined
+          ? `Additional Ⅱ–Ⅲ tiles: ${count} per player`
+          : "Additional Ⅱ–Ⅲ tiles: on"
+    });
+  }
   if (preset.startingResources) {
     entries.push({
       icon: "🪙",
@@ -1208,6 +1251,9 @@ export function describeCustomMapPreset(preset: CustomMapPreset | null | undefin
 /** GameSetupOptions keys a map preset may force. */
 export type PresetForcedOptionKey =
   | "victoryMode"
+  | "difficulty"
+  | "farTileOpening"
+  | "farTilesPerPlayer"
   | "startingResources"
   | "startingProduction"
   | "startingBuildings"
@@ -1223,6 +1269,15 @@ export function presetForcedOptionKeys(
   const keys: PresetForcedOptionKey[] = [];
   if (preset.victoryMode) {
     keys.push("victoryMode");
+  }
+  if (preset.difficulty) {
+    keys.push("difficulty");
+  }
+  if (preset.farTileOpening !== undefined) {
+    keys.push("farTileOpening");
+  }
+  if (preset.farTilesPerPlayer !== undefined) {
+    keys.push("farTilesPerPlayer");
   }
   if (preset.startingResources) {
     keys.push("startingResources");
@@ -1257,6 +1312,18 @@ export function applyCustomMapPresetToOptions(
   if (preset.victoryMode && !skip?.has("victoryMode")) {
     options.victoryMode = preset.victoryMode;
     changes.push(`victory ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`);
+  }
+  if (preset.difficulty && !skip?.has("difficulty")) {
+    options.difficulty = preset.difficulty;
+    changes.push(`difficulty ${DIFFICULTY_LABELS[preset.difficulty]}`);
+  }
+  if (preset.farTileOpening !== undefined && !skip?.has("farTileOpening")) {
+    options.farTileOpening = preset.farTileOpening;
+    changes.push(`Ⅱ–Ⅲ tile opening ${preset.farTileOpening ? "on" : "off"}`);
+  }
+  if (preset.farTilesPerPlayer !== undefined && !skip?.has("farTilesPerPlayer")) {
+    options.farTilesPerPlayer = preset.farTilesPerPlayer;
+    changes.push(`Ⅱ–Ⅲ tiles per player ${preset.farTilesPerPlayer}`);
   }
   if (preset.startingResources && !skip?.has("startingResources")) {
     options.startingResources = { ...preset.startingResources };
@@ -1303,6 +1370,18 @@ export function revertCustomMapPresetOptions(
       case "victoryMode":
         options.victoryMode = defaults.victoryMode;
         changes.push(`victory back to ${VICTORY_LABELS[defaults.victoryMode ?? "conquest"] ?? "Conquest"}`);
+        break;
+      case "difficulty":
+        options.difficulty = defaults.difficulty;
+        changes.push(`difficulty back to ${DIFFICULTY_LABELS[defaults.difficulty]}`);
+        break;
+      case "farTileOpening":
+        options.farTileOpening = defaults.farTileOpening;
+        changes.push("Ⅱ–Ⅲ tile opening back to the scenario default");
+        break;
+      case "farTilesPerPlayer":
+        options.farTilesPerPlayer = defaults.farTilesPerPlayer;
+        changes.push("Ⅱ–Ⅲ tiles per player back to the scenario default");
         break;
       case "startingResources":
         options.startingResources = { ...defaults.startingResources };
@@ -1526,6 +1605,11 @@ export const MAP_PRESET_BUILDING_OPTIONS: { id: string; label: string }[] = [
 export const MAP_PRESET_VICTORY_OPTIONS: { id: VictoryMode; label: string }[] = (
   Object.keys(VICTORY_MODE_LABELS) as VictoryMode[]
 ).map((id) => ({ id, label: VICTORY_MODE_LABELS[id] }));
+
+/** Difficulty chips for the map-settings designer (Easy … Impossible). */
+export const MAP_PRESET_DIFFICULTY_OPTIONS: { id: GameDifficulty; label: string }[] = (
+  ["easy", "normal", "hard", "impossible"] as GameDifficulty[]
+).map((id) => ({ id, label: DIFFICULTY_LABELS[id] }));
 
 /**
  * Obelisk role picker for the designer. "classic" is the ABSENCE of a config

@@ -15,6 +15,7 @@ import {
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
   MAP_PRESET_BUILDING_OPTIONS,
+  MAP_PRESET_DIFFICULTY_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
@@ -262,6 +263,82 @@ export function MapPresetEditor({
       ) : (
         <small className="mapPresetEmpty">No special conditions — pure tile layout.</small>
       )}
+
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">Difficulty (preset)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Difficulty">
+          {MAP_PRESET_DIFFICULTY_OPTIONS.map((opt) => (
+            <button
+              aria-pressed={value.difficulty === opt.id}
+              className={`mapPresetChip${value.difficulty === opt.id ? " active" : ""}`}
+              key={opt.id}
+              onClick={() => patch({ difficulty: value.difficulty === opt.id ? undefined : opt.id })}
+              type="button"
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <small className="mapPresetHint">
+          Neutral guard strength (Field Difficulty Level Table) + the printed starting bonus. Seeds the lobby on
+          pick; the host can still change it there (their choice wins), and switching maps restores the scenario default.
+        </small>
+      </section>
+
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">Additional Ⅱ–Ⅲ tiles (preset)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Additional Ⅱ–Ⅲ tile opening">
+          {(
+            [
+              { id: "default", label: "Default" },
+              { id: "on", label: "On" },
+              { id: "off", label: "Off" }
+            ] as const
+          ).map((opt) => {
+            const active =
+              opt.id === "default"
+                ? value.farTileOpening === undefined
+                : opt.id === "on"
+                  ? value.farTileOpening === true
+                  : value.farTileOpening === false;
+            return (
+              <button
+                aria-pressed={active}
+                className={`mapPresetChip${active ? " active" : ""}`}
+                key={opt.id}
+                onClick={() =>
+                  patch({ farTileOpening: opt.id === "default" ? undefined : opt.id === "on" })
+                }
+                type="button"
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        {value.farTileOpening !== false ? (
+          <div className="mapPresetChipRow" role="group" aria-label="Ⅱ–Ⅲ tiles per player">
+            {([undefined, 0, 1, 2, 3, 4, 5, 6] as const).map((count) => {
+              const active = value.farTilesPerPlayer === count;
+              return (
+                <button
+                  aria-pressed={active}
+                  className={`mapPresetChip${active ? " active" : ""}`}
+                  key={String(count)}
+                  onClick={() => patch({ farTilesPerPlayer: count })}
+                  type="button"
+                >
+                  {count === undefined ? "Default" : count}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        <small className="mapPresetHint">
+          Whether players may open their own Ⅱ–Ⅲ Far tiles mid-game, and how many each may add (0–6). Only the
+          count of tiles is set here — the Ⅱ–Ⅲ supply pool itself stays the engine default. Seeds the lobby on pick.
+        </small>
+      </section>
 
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Victory (preset)</div>

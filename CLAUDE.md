@@ -2199,6 +2199,60 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
   accepts it, with a no-crown CONTROL that hides the toggle).
 
+## Map settings defaults (designer → lobby, seed-at-pick) — what runs vs. limits
+
+Three OPTIONAL defaults a designed map may carry on `CustomMapPreset` to SEED the
+lobby when that map is picked — `difficulty?: GameDifficulty`,
+`farTileOpening?: boolean`, `farTilesPerPlayer?: number` (0–6) — each hoisting
+1:1 onto the same-named `GameSetupOptions` field. They ride the EXISTING
+preset→lobby machinery in `map-preset.ts` (extended, not rebuilt): the three keys
+were added to `PresetForcedOptionKey` / `presetForcedOptionKeys` /
+`applyCustomMapPresetToOptions` (seed) / `revertCustomMapPresetOptions` (restore
+scenario default when the map is dropped/swapped) / `customMapPresetIsActive` /
+`sanitizeCustomMapPreset`, plus the build-time apply-once `explicit` skip set in
+`adventure-setup.ts` `createAdventureGameState`. Editor UI: two new sections in
+`map-preset-editor.tsx` — a Difficulty chip row (`MAP_PRESET_DIFFICULTY_OPTIONS`,
+Easy…Impossible, re-click clears) and an "Additional Ⅱ–Ⅲ tiles" row
+(Default/On/Off + a Default/0–6 per-player count that hides when opening is Off).
+Pinned in `custom-setup.test.ts` (seed-on-pick + host-edit-wins, direct-build
+seeding with a legacy CONTROL, build apply-once, revert, sanitizer clamps/drops,
+banner lines), `map-preset-editor.test.tsx` (the two controls write onChange, a
+sibling field survives, Off hides the count), and the persistence round-trip in
+`map-registry.test.ts` (registry sanitizes the preset through
+`sanitizeCustomMapPreset`).
+
+Semantics / deliberate limits:
+- **SOFT defaults, apply-once**: the preset seeds these three onto the lobby at
+  PICK (`setGameOptions` customMap block, no skip). A host's later
+  `SET_GAME_OPTIONS` edit of difficulty/far-tiles then WINS — the lobby path
+  passes every option to the build, so they land in the build-time `explicit`
+  skip set and the preset never re-forces them. A DIRECT build that omits a field
+  lets the preset fill it (the seeding path). Difficulty is a soft default like
+  victory mode — the host may change all three after pick; VP + round limit stay
+  MAP-AUTHORITATIVE (below), unchanged.
+- **Victory mode / VP / round-limit were ALREADY on the preset + editor** (this
+  task only ADDED difficulty + far-tiles). `preset.roundLimit` ends the game ONLY
+  when Victory Points is enabled (`adventure.ts` round-wrap: `if (vpConfig &&
+  roundLimit && …)`); with VP off it stays a mere "suggested length". The editor
+  already surfaces that coupling (the round-limit section relabels "Round limit
+  (hard end)" ↔ "Suggested length (rounds)" off `vpOn`, with a matching hint), and
+  the round-limit+VP end + the banner wording are already pinned in
+  `victory-points.test.ts` (VP-on-ends / VP-off-suggestion-only / no-limit-no-end,
+  and the `describeCustomMapPresetEntries` round-limit lines) — no new coupling
+  test or editor coupling change was needed.
+- **Additional-tile TYPES are NOT configurable** — only on/off + per-player count.
+  The Ⅱ–Ⅲ supply pool composition stays the engine default (a truly-random tile is
+  rolled from `farTilePool` when a player opens one).
+- **No custom "hold a town for X rounds" win conditions** — the victory default
+  picks among the four existing modes (conquest / grail / dragon-hunt /
+  dragon-conqueror = the capture-and-hold mode); the VP `objectives`
+  (control-towns / flag-mines / hero-level / defeat-utopia) already live under
+  `victoryPoints` config and stay there.
+- **Sanitizer**: garbage difficulty dropped (kept only if one of the 4 literals);
+  `farTilesPerPlayer` clamps 99→6, −1→0, a non-number DROPPED (never a silent 0);
+  `farTileOpening` kept only as a real boolean. Legacy presets (fields absent)
+  are byte-identical after sanitize and behave exactly as before.
+
 ## Map designer upgrade (designed gates/borders/locks/obelisks/objects/Ⅶ/VP) — what runs vs. limits
 
 Seven map-only features on `CustomMapPreset` / `CustomMapTilePlan` (applied when

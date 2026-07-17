@@ -684,6 +684,178 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     expect(lobby().options.victoryMode).toBe(baseVictory);
   });
 
+  // ---- Map-settings defaults (difficulty / far-tile supply) hoisted 1:1 ----
+
+  it("seeds the map-settings defaults (difficulty / far tiles / victory) onto the lobby on pick, then a host edit wins", () => {
+    let state = createAdventureLobbyState({ seed: "preset-map-settings", scenarioId: "skirmish" });
+    const lobby = () => state.setupLobby!;
+    const baseDifficulty = lobby().options.difficulty; // "impossible"
+    const apply = (options: Record<string, unknown>) => {
+      const result = applyAction(state, { type: "SET_GAME_OPTIONS", playerId: "p1", options });
+      expect(result.errors, result.errors.map((e) => e.message).join("; ")).toHaveLength(0);
+      state = result.state;
+    };
+
+    // CONTROL: a legacy preset WITHOUT the new fields leaves every lobby default.
+    apply({ customMap: NEAR_SLOT, customMapName: "Legacy", customMapPreset: { victoryMode: "grail" } });
+    expect(lobby().options.difficulty).toBe(baseDifficulty);
+    expect(lobby().options.farTileOpening).toBe(true);
+    expect(lobby().options.farTilesPerPlayer).toBe(2);
+
+    // Pick a map whose preset carries all three map-settings defaults → they seed.
+    apply({
+      customMap: NEAR_SLOT,
+      customMapName: "Settings",
+      customMapPreset: {
+        difficulty: "hard",
+        farTileOpening: false,
+        farTilesPerPlayer: 0,
+        victoryMode: "grail"
+      }
+    });
+    expect(lobby().options.difficulty).toBe("hard");
+    expect(lobby().options.farTileOpening).toBe(false);
+    expect(lobby().options.farTilesPerPlayer).toBe(0);
+    expect(lobby().options.victoryMode).toBe("grail");
+
+    // APPLY-ONCE: a later bare edit sticks — the preset does not re-force it.
+    apply({ difficulty: "easy" });
+    expect(lobby().options.difficulty).toBe("easy");
+    apply({ farTileOpening: true, farTilesPerPlayer: 4 });
+    expect(lobby().options.farTileOpening).toBe(true);
+    expect(lobby().options.farTilesPerPlayer).toBe(4);
+  });
+
+  it("build seeds the preset difficulty + far-tile supply into the adventure (direct build, legacy CONTROL)", () => {
+    const built = createAdventureGameState({
+      seed: "preset-build-settings",
+      customMap: NEAR_SLOT,
+      customMapPreset: { difficulty: "hard", farTilesPerPlayer: 0 }
+    });
+    // Difficulty landed on the built GameState (adventure.difficulty is the store;
+    // its downstream consumers — guard-army strength via NEUTRAL_ARMY_TABLE, the
+    // Scenario-Difficulty starting bonus — are covered by existing difficulty tests).
+    expect(built.adventure?.difficulty).toBe("hard");
+    // farTilesPerPlayer 0 → no Ⅱ–Ⅲ supply for any player.
+    expect(built.adventure?.playerFarTiles.p1).toEqual([]);
+    expect(built.adventure?.playerFarTiles.p2).toEqual([]);
+
+    // A supply of 3 → three face-down "?" markers per player.
+    const three = createAdventureGameState({
+      seed: "preset-build-settings",
+      customMap: NEAR_SLOT,
+      customMapPreset: { farTilesPerPlayer: 3 }
+    });
+    expect(three.adventure?.playerFarTiles.p1).toHaveLength(3);
+
+    // farTileOpening false → empty supply even with a positive count.
+    const off = createAdventureGameState({
+      seed: "preset-build-settings",
+      customMap: NEAR_SLOT,
+      customMapPreset: { farTileOpening: false, farTilesPerPlayer: 5 }
+    });
+    expect(off.adventure?.playerFarTiles.p1).toEqual([]);
+
+    // CONTROL: a legacy preset (no map-settings fields) keeps the scenario
+    // defaults — Impossible difficulty and the 2-tile skirmish supply.
+    const control = createAdventureGameState({
+      seed: "preset-build-settings",
+      customMap: NEAR_SLOT,
+      customMapPreset: { victoryMode: "grail" }
+    });
+    expect(control.adventure?.difficulty).toBe("impossible");
+    expect(control.adventure?.playerFarTiles.p1).toHaveLength(2);
+  });
+
+  it("build honours an explicit difficulty over the preset (apply-once at build), else the preset fills it", () => {
+    // The lobby build path passes every option, so a host's edited difficulty wins.
+    const explicit = createAdventureGameState({
+      seed: "preset-build-applyonce",
+      difficulty: "easy",
+      customMap: NEAR_SLOT,
+      customMapPreset: { difficulty: "hard" }
+    });
+    expect(explicit.adventure?.difficulty).toBe("easy");
+    // CONTROL: with no explicit difficulty the preset decides.
+    const implicit = createAdventureGameState({
+      seed: "preset-build-applyonce",
+      customMap: NEAR_SLOT,
+      customMapPreset: { difficulty: "hard" }
+    });
+    expect(implicit.adventure?.difficulty).toBe("hard");
+  });
+
+  it("switching away from a map-settings preset restores the scenario difficulty + far-tile defaults", () => {
+    let state = createAdventureLobbyState({ seed: "preset-settings-revert", scenarioId: "skirmish" });
+    const lobby = () => state.setupLobby!;
+    const baseDifficulty = lobby().options.difficulty;
+    const baseFarOpening = lobby().options.farTileOpening;
+    const baseFarCount = lobby().options.farTilesPerPlayer;
+    const apply = (options: Record<string, unknown>) => {
+      const result = applyAction(state, { type: "SET_GAME_OPTIONS", playerId: "p1", options });
+      expect(result.errors, result.errors.map((e) => e.message).join("; ")).toHaveLength(0);
+      state = result.state;
+    };
+
+    apply({
+      customMap: NEAR_SLOT,
+      customMapName: "Settings",
+      customMapPreset: { difficulty: "easy", farTileOpening: false, farTilesPerPlayer: 0 }
+    });
+    expect(lobby().options.difficulty).toBe("easy");
+    expect(lobby().options.farTileOpening).toBe(false);
+    expect(lobby().options.farTilesPerPlayer).toBe(0);
+
+    // Switch to a preset-less map: the map-settings revert to the scenario defaults.
+    apply({ customMap: NEAR_SLOT, customMapName: "Plain", customMapPreset: null });
+    expect(lobby().options.difficulty).toBe(baseDifficulty);
+    expect(lobby().options.farTileOpening).toBe(baseFarOpening);
+    expect(lobby().options.farTilesPerPlayer).toBe(baseFarCount);
+  });
+
+  it("sanitizeCustomMapPreset validates the map-settings defaults (difficulty / far tiles); legacy untouched", async () => {
+    const { sanitizeCustomMapPreset } = await import("./map-preset");
+    // Garbage difficulty dropped; farTilesPerPlayer clamps 99→6; farTileOpening kept as a real boolean.
+    const cleaned = sanitizeCustomMapPreset({
+      difficulty: "nightmare",
+      farTileOpening: false,
+      farTilesPerPlayer: 99
+    });
+    expect(cleaned?.difficulty).toBeUndefined();
+    expect(cleaned?.farTileOpening).toBe(false);
+    expect(cleaned?.farTilesPerPlayer).toBe(6);
+
+    // A valid difficulty is kept; a negative count floors to 0; a non-number count is dropped.
+    const kept = sanitizeCustomMapPreset({ difficulty: "hard", farTilesPerPlayer: -1 });
+    expect(kept?.difficulty).toBe("hard");
+    expect(kept?.farTilesPerPlayer).toBe(0);
+    const garbageCount = sanitizeCustomMapPreset({ difficulty: "normal", farTilesPerPlayer: "lots" });
+    expect(garbageCount?.difficulty).toBe("normal");
+    expect(garbageCount?.farTilesPerPlayer).toBeUndefined();
+
+    // A non-boolean farTileOpening is dropped (only a real boolean is kept).
+    const noOpen = sanitizeCustomMapPreset({ difficulty: "easy", farTileOpening: "yes" });
+    expect(noOpen?.farTileOpening).toBeUndefined();
+
+    // LEGACY CONTROL: a preset without the new fields is byte-identical after sanitize.
+    expect(sanitizeCustomMapPreset({ victoryMode: "grail" })).toEqual({ victoryMode: "grail" });
+  });
+
+  it("describeCustomMapPresetEntries names the map-settings defaults (difficulty + additional tiles), legacy CONTROL shows neither", async () => {
+    const { describeCustomMapPresetEntries } = await import("./map-preset");
+    const hardOff = describeCustomMapPresetEntries({ difficulty: "hard", farTileOpening: false }).map((e) => e.text);
+    expect(hardOff.some((t) => t.includes("Difficulty") && t.includes("Hard"))).toBe(true);
+    expect(hardOff.some((t) => t.includes("Additional") && t.includes("off"))).toBe(true);
+
+    const perPlayer = describeCustomMapPresetEntries({ farTilesPerPlayer: 3 }).map((e) => e.text);
+    expect(perPlayer.some((t) => t.includes("Additional") && t.includes("3 per player"))).toBe(true);
+
+    // CONTROL: a legacy preset without the map-settings fields shows neither line.
+    const legacy = describeCustomMapPresetEntries({ victoryMode: "grail" }).map((e) => e.text);
+    expect(legacy.some((t) => t.includes("Difficulty"))).toBe(false);
+    expect(legacy.some((t) => t.includes("Additional"))).toBe(false);
+  });
+
   it("a round-N timed event fires when THAT round starts: cubes clear, resources land (with controls)", () => {
     const build = (withPreset: boolean) =>
       createAdventureGameState({
