@@ -10,10 +10,13 @@ import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import {
   ABILITY_SEARCH_LEVELS,
+  CULTIVATION_REALMS,
   EXPERT_USES_BY_LEVEL,
   HAND_LIMIT_BY_LEVEL,
   MAX_EXPERIENCE,
   SPECIALTY_LEVELS,
+  cultivationEnabled,
+  cultivationRealmOf,
   effectiveHandLimit,
   getMainHero,
   type GameState,
@@ -192,6 +195,10 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
   const currentSpecialtyLevel = gainedSpecialtyLevels.at(-1) ?? 1;
   const currentSpecialtyId = heroDef.specialtyCardIds?.[currentSpecialtyLevel as 1 | 4 | 6];
   const handLimit = effectiveHandLimit(state, playerId);
+  // Anime Cultivation (§5.6): a public realm chip (EN + VI). Renders only with
+  // the module on — a module-off / non-anime table shows nothing (CONTROL).
+  const showRealm = cultivationEnabled(state);
+  const realm = CULTIVATION_REALMS[cultivationRealmOf(state, playerId)];
 
   const stats = [
     { label: "Attack", value: heroDef.startingStats.attack, icon: <StatIcon stat="attack" /> },
@@ -361,6 +368,11 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
           <span>
             Level {ROMAN[hero.level]} · XP {hero.experience}/{MAX_EXPERIENCE}
           </span>
+          {showRealm ? (
+            <span className="hbRealm" title={`Cultivation Realm: ${realm.en} (${realm.vi})`}>
+              ☯ {realm.en} · {realm.vi}
+            </span>
+          ) : null}
           <span>
             Hand {handLimit} · Crowns {player.limits.expertUses}
           </span>

@@ -36,6 +36,7 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import { cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
 import {
   applyMoraleCardGain,
   consumeHeldMoraleCard,
@@ -310,7 +311,12 @@ export function effectiveHandLimit(state: GameState, playerId: PlayerId): number
     (total, cardId) => total + (cardLibrary[cardId]?.permanentEffect?.handLimitBonus ?? 0),
     0
   );
-  const base = player.limits.hand + permanentBonus;
+  // Anime Cultivation Foundation (realm 1, §5.6): +1 hand limit. This is THE
+  // effective-hand-limit aggregation site (permanents.ts:permanentHandLimitBonus
+  // is a permanent-only delta helper that no live code feeds into a limit), so
+  // folding here covers BOTH consumers — the draw-up in refreshHand and the
+  // discard-down threshold in needsHandRefresh, which share this function.
+  const base = player.limits.hand + permanentBonus + cultivationHandLimitBonus(state, playerId);
 
   const active = getActiveAstrologersCard(state);
   let limit = base;
@@ -2045,6 +2051,12 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
       effects
     });
   }
+
+  // Anime Cultivation (§5.6): auto-advance the Foundation/Core-Formation realms
+  // once their hero-level (and bank-win) thresholds are met. Run once after the
+  // level loop so a multi-level jump advances every qualifying realm, each with
+  // exactly one feed event. No-op when the module is off.
+  maybeAdvanceCultivationRealm(state, playerId);
 
   // Learning ability: the Hero is "about to level up" (it just crossed at least
   // one level) and the player still holds a Learning card — offer to advance an
@@ -3928,6 +3940,22 @@ function queueVisitFollowUpReward(state: GameState, adventure: AdventureState, r
  * Resolves queued visit steps until one needs input or the visit completes.
  * Search steps hand off to the shared pendingChoice deck-search flow.
  */
+/**
+ * Gold-equivalent printed cost of an army card's current side — the ordering
+ * key for the Heavenly Tribulation toll (cheapest first). Mirrors the
+ * EVENT_DISCARD_CHEAPEST_UNIT valuation (materials/valuables at Trading Post
+ * rates) so the two "cheapest army card" reads agree.
+ */
+function tribulationUnitGoldValue(unit: ArmyUnitState): number {
+  const def = coreUnitDefinitions[unit.unitDefId];
+  const cost = (unit.side === "neutral" ? def?.neutral?.cost : getUnitSide(unit.unitDefId, unit.side)?.cost) ?? {};
+  return (Object.entries(cost) as [ResourceKind, number][]).reduce(
+    (sum, [resource, amount]) =>
+      sum + (resource === "gold" ? amount : amount * marketGoldValueOf(resource as "buildingMaterials" | "valuables")),
+    0
+  );
+}
+
 export function processPendingVisit(state: GameState): void {
   const adventure = state.adventure;
   const visit = adventure?.pendingVisit;
@@ -4187,22 +4215,140 @@ export function processPendingVisit(state: GameState): void {
         const player = state.players[visit.playerId];
         const armyUnit = player?.army.find((candidate) => candidate.id === step.armyUnitId);
         if (player && armyUnit && armyUnit.side === "pack") {
-          if ((step.source ?? "plague") === "plague") {
+          const source = step.source ?? "plague";
+          if (source === "plague") {
             // Polish Unit Stacks weaken the Plague: a Stacked pack sheds one
             // layer instead of flipping (applyPlagueToPack decides).
             applyPlagueToPack(state, visit.playerId, armyUnit);
+          } else if (source === "tribulation" && (armyUnit.stacks ?? 0) > 0) {
+            // Polish Unit Stacks × Heavenly Tribulation (§5.6): unit Stacks ARE
+            // the unit-level cultivation, so a Stacked Pack sheds ONE layer (the
+            // Plague convention) instead of flipping — an unstacked Pack still
+            // flips below. Only ever reachable with polish-unit-stacks on (a
+            // Stack layer can exist only under that rule).
+            armyUnit.stacks = (armyUnit.stacks ?? 0) - 1;
+            if (armyUnit.stacks === 0) {
+              delete armyUnit.stacks;
+            }
+            appendEvent(state, {
+              type: "ARMY_STACK_LOST",
+              unitId: armyUnit.id,
+              playerId: visit.playerId,
+              unitName: coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId,
+              remainingStacks: armyUnit.stacks ?? 0,
+              excessDamage: 0,
+              reason: "Heavenly Tribulation (weakened by Stacks)"
+            });
           } else {
-            // Pandora's Silver Muster reverse: always the plain printed flip
-            // (a Stack layer never absorbs a flip the player chose).
+            // Pandora's Silver Muster reverse, or a Heavenly Tribulation toll on
+            // an UNSTACKED Pack: the plain printed flip (a Stack layer never
+            // absorbs a flip; only the Plague and — via Stacks — the Tribulation
+            // are weakened above).
             armyUnit.side = "few";
             delete armyUnit.stacks;
             appendEvent(state, {
               type: "ARMY_UNIT_FLIPPED",
               playerId: visit.playerId,
               unitDefId: armyUnit.unitDefId,
-              reason: "Pandora's Box"
+              reason: source === "tribulation" ? "Heavenly Tribulation" : "Pandora's Box"
             });
           }
+        }
+        break;
+      }
+      case "TRIBULATION_TOLL": {
+        // Anime Heavenly Tribulation (§5.6): pay one toll per remaining "−1"
+        // die. Each toll is the player's cheapest-first pick of one army card —
+        // a Pack flips to Few (reusing FLIP_PACK_TO_FEW, source "tribulation"),
+        // any other card is lost with the standard recycle. Auto-resolves when
+        // one candidate remains; an empty army pays nothing further. The
+        // cheapest-first order makes the forced-resolution default (option 0)
+        // and the human's first choice the least valuable card.
+        const player = state.players[visit.playerId];
+        if (!player || step.remaining <= 0 || player.army.length === 0) {
+          break;
+        }
+        const tollStepFor = (unit: (typeof player.army)[number]): VisitStep =>
+          unit.side === "pack"
+            ? { type: "FLIP_PACK_TO_FEW", armyUnitId: unit.id, source: "tribulation" }
+            : { type: "TRIBULATION_LOSE_UNIT", unitId: unit.id };
+        if (player.army.length === 1) {
+          visit.steps.unshift(tollStepFor(player.army[0]), {
+            type: "TRIBULATION_TOLL",
+            remaining: step.remaining - 1
+          });
+          break;
+        }
+        const ordered = [...player.army].sort(
+          (left, right) => tribulationUnitGoldValue(left) - tribulationUnitGoldValue(right)
+        );
+        visit.steps.unshift(
+          {
+            type: "CHOOSE_ONE",
+            prompt: "Heavenly Tribulation strikes — pay one army card (a Pack flips to Few; any other card is lost)",
+            options: ordered.map((unit) => ({
+              label:
+                unit.side === "pack"
+                  ? (unit.stacks ?? 0) > 0
+                    ? `${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} loses 1 Stack (stays a Pack)`
+                    : `Flip ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (Pack → Few)`
+                  : `Lose ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${unit.side})`,
+              steps: [tollStepFor(unit)]
+            }))
+          },
+          { type: "TRIBULATION_TOLL", remaining: step.remaining - 1 }
+        );
+        break;
+      }
+      case "TRIBULATION_LOSE_UNIT": {
+        const player = state.players[visit.playerId];
+        const unit = player?.army.find((candidate) => candidate.id === step.unitId);
+        if (player && unit) {
+          player.army = player.army.filter((candidate) => candidate.id !== step.unitId);
+          // A Neutral-side card recycles to its tier discard pile, exactly like
+          // a combat casualty (the Monolith-toll / Cursed-Swamp convention).
+          if (unit.side === "neutral") {
+            const tier = (coreUnitDefinitions[unit.unitDefId]?.tier ?? "bronze") as
+              | "bronze"
+              | "silver"
+              | "gold"
+              | "azure";
+            state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(unit.unitDefId);
+          }
+          appendEvent(state, {
+            type: "ARMY_UNIT_FLIPPED",
+            playerId: visit.playerId,
+            unitDefId: unit.unitDefId,
+            reason: "Heavenly Tribulation"
+          });
+        }
+        break;
+      }
+      case "TRIBULATION_RESOLVE": {
+        // Anime Heavenly Tribulation (§5.6): after every toll, a surviving army
+        // BREAKS THROUGH to Nascent Soul (realm 3) and draws 1 Artifact; an
+        // emptied army fails (realm stays 2, retry allowed next turn).
+        const player = state.players[visit.playerId];
+        const hero = state.heroes[visit.heroId];
+        if (player && hero && player.army.length > 0) {
+          hero.cultivationRealm = 3;
+          hero.tribulationWon = true;
+          appendEvent(state, {
+            type: "CULTIVATION_REALM_ADVANCED",
+            playerId: visit.playerId,
+            heroId: hero.id,
+            realm: 3,
+            viaTribulation: true
+          });
+          // Reward: draw 1 Artifact through the same Search(1) machinery the
+          // Creature-Bank rewards use (deckId "artifacts" resolves the split).
+          visit.steps.unshift({ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 });
+        } else {
+          appendEvent(state, {
+            type: "CULTIVATION_TRIBULATION_FAILED",
+            playerId: visit.playerId,
+            heroId: visit.heroId
+          });
         }
         break;
       }

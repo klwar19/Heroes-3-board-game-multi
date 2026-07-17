@@ -1805,8 +1805,44 @@ Leading with what does NOT run / deliberate limits:
   `ANIME_ARTIFACT_ART_PLACEHOLDERS`; drop a `.webp` + remove the slug to promote).
   No lobby UI toggles the anime modules yet — they are set via the setup
   `anime` options payload. Every OTHER `AnimeModOptions` flag (towns, neutrals,
-  cultivation, …) is still types + lobby state only; `docs/anime-mod-plan.md` is
+  destiny, …) is still types + lobby state only; `docs/anime-mod-plan.md` is
   the design contract.
+- **Also shipped: `anime.cultivation`** (per-hero Cultivation Realm track +
+  Heavenly Tribulation, §5.6; read-layer `src/engine/anime-cultivation.ts`,
+  behaviour pinned in `src/engine/anime-cultivation.test.ts` + the realm chip in
+  `src/components/hero-board.test.tsx`, every grant mutation-checked). Default
+  OFF ⇒ nothing stamped, no offers, no events (byte-identical). Realm lives on
+  the MAIN hero (`hero.cultivationRealm?`, lazily stamped, absent === realm 0;
+  `hero.tribulationWon?` / `hero.tribulationAttemptedRound?` optional). Realms 1
+  (Foundation, level ≥ 3) and 2 (Core Formation, level ≥ 5 AND a bank win)
+  advance AUTOMATICALLY on level-up / bank-win, one `CULTIVATION_REALM_ADVANCED`
+  feed event each. Grants: **+1 hand limit** (folded at the single
+  `effectiveHandLimit` site; `permanentHandLimitBonus` stays permanent-only,
+  documented); **1 free Attack-die reroll/combat** (standing `AttackRerollSource`
+  with `cultivation` flag + `combatStats.cultivationRerollUsed` cleared in
+  `makeCombatShell`, honouring every existing reroll-window rule); **+1 spell
+  Power** (realm 3, folded beside the Pandora bonus at
+  `standingSpellPower` / `resolvedSpellPowerForStackItem`). Realm 3 is reached
+  ONLY via the `HEAVEN_TRIBULATION` map action (never forced, ≤ once per own
+  turn): a seeded 3-Attack-die `pendingVisit` gauntlet — each "−1" pays a
+  cheapest-first army-card toll (Pack→Few via `FLIP_PACK_TO_FEW` source
+  `"tribulation"`, else lost with recycle), survive with ≥1 card → realm 3 +
+  Search(1) Artifact, emptied army → retry next turn. As a standard `pendingVisit`
+  it inherits parallel-turn gating, the fingerprint backstop, AFK/timeout
+  default-resolution and `eliminatePlayer` cleanup (each verified). ADAPTATIONS
+  (documented at each wiring site): no Foundation-Pill path (Elixir Pills unshipped
+  ⇒ level-3 only); Core Formation gate is "≥1 CREATURE BANK won" (Secret Realms
+  unshipped) via a new mod-agnostic `player.bankWins?` counter incremented on
+  EVERY bank-win finalize (never module-gated — a default table gains the optional
+  field after a bank win, nothing else reads it yet); toll = card loss/flip (map
+  cards have no HP). Cross-mod seams tested: Polish Unit Stacks (a Stacked-Pack
+  toll sheds a layer, `ARMY_STACK_LOST`, not a flip), the ORIGINAL stash-style AND
+  Polish Spell Books (the +1 Power lands on a Book cast via the shared chokepoint),
+  WOG Commanders (the reroll behaves as a normal attack-window source, Might dice
+  untouched), and mixed anime packages (an isekai module on changes nothing).
+  Grant magnitudes are pegged to existing precedents (Pandora hand/Power bonuses,
+  the morale reroll source) so xianxia content shares ONE power scale with core /
+  WOG / isekai.
 - **No standalone (off-tile) override objects** — on-tile pins only.
 - **`linh_tuyen` is +1 movement only** (cleanse not wired, documented at the
   definition); no override kind may claim `starting` tiles (setup skips

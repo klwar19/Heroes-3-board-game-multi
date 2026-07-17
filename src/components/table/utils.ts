@@ -4,6 +4,7 @@ import { eventCardDefinitions } from "@/data/cards/events";
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import {
   cardCanBoostPower,
+  CULTIVATION_REALMS,
   getBattlefieldLabel,
   heroMoveStartsBattle,
   isRoundStartEventBarrierActive,
@@ -489,6 +490,21 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} gains ${event.amount} experience (level ${event.level}).`;
     case "HERO_LEVEL_UP":
       return `${playerName(state, event.playerId)} reaches level ${event.level}${event.effects.length ? `: ${event.effects.join(", ")}` : ""}.`;
+    case "CULTIVATION_REALM_ADVANCED": {
+      const realm = CULTIVATION_REALMS[event.realm];
+      return `${playerName(state, event.playerId)}'s hero breaks through to ${realm.en} (${realm.vi})${
+        event.viaTribulation ? " — the Heavenly Tribulation is survived!" : ""
+      }.`;
+    }
+    case "CULTIVATION_TRIBULATION_ROLLED": {
+      const tolls = event.rolls.filter((roll) => roll === -1).length;
+      const faces = event.rolls.map((roll) => (roll >= 0 ? `+${roll}` : `${roll}`)).join(", ");
+      return `${playerName(state, event.playerId)} braves the Heavenly Tribulation — dice: ${faces} (${tolls} toll${
+        tolls === 1 ? "" : "s"
+      }).`;
+    }
+    case "CULTIVATION_TRIBULATION_FAILED":
+      return `${playerName(state, event.playerId)}'s army is scattered by the Heavenly Tribulation — no breakthrough (retry next turn).`;
     case "COMMANDER_CAST_USED":
     case "COMMANDER_POINTS_AWARDED":
     case "COMMANDER_GRADED_UP":

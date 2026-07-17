@@ -2843,6 +2843,17 @@ export type GameAction =
     }
   | {
       /**
+       * Anime Cultivation (anime.cultivation, §5.6): the main hero, at Core
+       * Formation (realm 2) with level ≥ 7 and no won Tribulation yet, braves
+       * the Heavenly Tribulation (Độ kiếp) — a seeded 3-Attack-die gauntlet on
+       * the map (no battlefield). NEVER forced; offered at most once per own
+       * turn. Handler-validated (self-validating; opens a pendingVisit).
+       */
+      type: "HEAVEN_TRIBULATION";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Hierophant commander: resolve the post-combat First Aid window —
        * restore the chosen casualty (optionIndex) or decline (null).
        */
@@ -4801,6 +4812,39 @@ export type GameEvent =
       effects: string[];
     }
   | {
+      /**
+       * Anime Cultivation (§5.6): the hero's Cultivation Realm rose one step.
+       * `realm` is the NEW realm (1 Foundation / 2 Core Formation / 3 Nascent
+       * Soul); `viaTribulation` marks the realm-3 Heavenly-Tribulation win (the
+       * automatic realm-1/2 advances leave it unset). Fires exactly once per
+       * realm reached (the advance is idempotent).
+       */
+      id: string;
+      type: "CULTIVATION_REALM_ADVANCED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      realm: 1 | 2 | 3;
+      viaTribulation?: boolean;
+    }
+  | {
+      /** Anime Cultivation (§5.6): the Heavenly Tribulation's seeded 3-die roll. */
+      id: string;
+      type: "CULTIVATION_TRIBULATION_ROLLED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      rolls: number[];
+    }
+  | {
+      /**
+       * Anime Cultivation (§5.6): the Heavenly Tribulation emptied the army —
+       * no breakthrough this attempt (realm stays 2, retry allowed next turn).
+       */
+      id: string;
+      type: "CULTIVATION_TRIBULATION_FAILED";
+      playerId: PlayerId;
+      heroId: HeroId;
+    }
+  | {
       /** WOG commander: its command ability resolved on a target. */
       id: string;
       type: "COMMANDER_CAST_USED";
@@ -6300,7 +6344,24 @@ export type PlayerState = {
      * one Spell cast exceed the per-round spell limit. NOT reset per round.
      */
     commanderManaCharges?: number;
+    /**
+     * Anime Cultivation Core Formation (realm 2, §5.6): true once this player
+     * has spent their one free Attack-die reroll THIS COMBAT. Reset to false at
+     * combat start (makeCombatShell) — per COMBAT, not per round — so the
+     * standing reroll source is offered again in the next fight but only once
+     * within any single one. Absent === not yet used.
+     */
+    cultivationRerollUsed?: boolean;
   };
+  /**
+   * Mod-agnostic counter: total Creature Bank battles this player has WON.
+   * Incremented at the bank-win finalize ALWAYS (never gated on any module), so
+   * it is plain additive/optional state — a default table gains it only after a
+   * bank win and nothing but anime.cultivation's Core Formation gate reads it
+   * today (the §3.5 quest vocabulary will read `defeat-banks ≥ N` later).
+   * Absent === 0. PUBLIC (player-view never strips it).
+   */
+  bankWins?: number;
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
   /** Round the Magic University deck-dig was last used ("once per round"). */
@@ -7546,11 +7607,40 @@ export type VisitStep =
        * text: "plague" (Terrible Plague — the default for legacy queued steps)
        * is weakened by Polish Unit Stacks (a Stacked pack sheds one layer
        * instead of flipping, see applyPlagueToPack); "pandora" (Pandora's
-       * Silver Muster reverse) is always the plain printed flip.
+       * Silver Muster reverse) and "tribulation" (anime Heavenly Tribulation
+       * toll, §5.6) are always the plain printed flip (a Stack layer never
+       * absorbs a flip the player chose to pay).
        */
       type: "FLIP_PACK_TO_FEW";
       armyUnitId: string;
-      source?: "plague" | "pandora";
+      source?: "plague" | "pandora" | "tribulation";
+    }
+  | {
+      /**
+       * Anime Heavenly Tribulation (§5.6): pay `remaining` more tolls (one per
+       * "−1" die). Each toll opens a cheapest-first CHOOSE_ONE pick of one army
+       * card — a Pack flips to Few, any other card is lost with the standard
+       * recycle. Auto-resolves the pick when one candidate remains; an empty
+       * army pays nothing further. Non-input control step (re-queues itself).
+       */
+      type: "TRIBULATION_TOLL";
+      remaining: number;
+    }
+  | {
+      /**
+       * Anime Heavenly Tribulation (§5.6): the chosen Few/Neutral army card is
+       * lost (Neutral-side recycles to its tier discard, Monolith-toll convention).
+       */
+      type: "TRIBULATION_LOSE_UNIT";
+      unitId: string;
+    }
+  | {
+      /**
+       * Anime Heavenly Tribulation (§5.6): after all tolls, resolve the outcome —
+       * a surviving army (≥1 card) BREAKS THROUGH to Nascent Soul (realm 3) and
+       * draws 1 Artifact; an emptied army fails (realm unchanged, retry next turn).
+       */
+      type: "TRIBULATION_RESOLVE";
     }
   | {
       /**
@@ -9812,6 +9902,29 @@ export type HeroState = {
    * Cleared and spent as +1 movement at the start of the owner's next turn.
    */
   wateringHoleBonusPending?: boolean;
+  /**
+   * Anime Cultivation (anime.cultivation, §5.6): the hero's Cultivation Realm —
+   * 0 Qi Refinement (Luyện khí) / 1 Foundation (Trúc cơ) / 2 Core Formation
+   * (Kim đan) / 3 Nascent Soul (Nguyên anh). Optional and lazily stamped (set
+   * only when it advances past 0), so a module-off table and every legacy
+   * snapshot never carry it — absent === realm 0. Only ever written on a MAIN
+   * hero; every grant reads it through the player's main hero (cultivationRealmOf
+   * in anime-cultivation.ts). PUBLIC (player-view never strips hero fields).
+   */
+  cultivationRealm?: 0 | 1 | 2 | 3;
+  /**
+   * Anime Cultivation: set once this hero WINS a Heavenly Tribulation (the realm
+   * 2 → 3 gauntlet). Optional/hero-scoped; gates the once-ever Nascent Soul
+   * breakthrough so a failed attempt can retry but a won one never repeats.
+   */
+  tribulationWon?: boolean;
+  /**
+   * Anime Cultivation: the game round in which this hero last ATTEMPTED a
+   * Heavenly Tribulation. Gates the offer to once per own turn (one turn per
+   * player per round, so `=== state.round` means "already tried this turn").
+   * Absent === never attempted.
+   */
+  tribulationAttemptedRound?: number;
 };
 
 export type AttackRollCandidate = {
@@ -9902,6 +10015,12 @@ export type AttackRerollSource = {
   effectId?: string;
   /** Positive morale token: spending the reroll discards the token. */
   morale?: boolean;
+  /**
+   * Anime Cultivation Core Formation (realm 2, §5.6): the one free per-combat
+   * Attack-die reroll. Using it sets combatStats.cultivationRerollUsed so the
+   * source drops out for the rest of this combat.
+   */
+  cultivation?: boolean;
   /** Positive Morale card variant: using the reroll returns this card to the bottom of its deck. */
   moraleCardId?: CardId;
   /**

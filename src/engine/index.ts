@@ -567,6 +567,16 @@ export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
 export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, NEUTRAL_PLAYER_ID } from "./state";
 export { DEFAULT_ANIME_OPTIONS, animeEnabled, animeModuleEnabled } from "./anime";
 export {
+  CULTIVATION_REALMS,
+  cultivationEnabled,
+  cultivationRealmOf,
+  cultivationHandLimitBonus,
+  cultivationSpellPowerBonus,
+  cultivationCombatRerollBonus,
+  maybeAdvanceCultivationRealm,
+  tribulationAvailable
+} from "./anime-cultivation";
+export {
   carveFieldOverride,
   getFieldOverrideDefinition,
   listFieldOverrideDefinitions,

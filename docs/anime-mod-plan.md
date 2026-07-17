@@ -614,6 +614,69 @@ each die at "−1" deals 1 damage to a chosen army unit (normal removal path);
 survive all three → breakthrough + draw 1 Artifact. Decline/failure = retry
 next turn. Realm state is public (hero board).
 
+**SHIPPED** (`src/engine/anime-cultivation.ts` read-layer + wiring across
+`adventure.ts` / `adventure-reducer.ts` / `legal-actions.ts` / `reducer.ts`;
+UI in `hero-board.tsx`; behaviour pinned in `src/engine/anime-cultivation.test.ts`
+and the realm chip in `src/components/hero-board.test.tsx`, every grant
+mutation-checked with a realm-below CONTROL). Track state lives on the MAIN hero
+(`hero.cultivationRealm?`, lazily stamped — absent === realm 0, so module-off +
+legacy snapshots never carry it; realm 3 sets `hero.tribulationWon?`, the once-
+per-turn gate is `hero.tribulationAttemptedRound?`). Realms 1–2 advance
+AUTOMATICALLY on hero level-up and on a bank-win finalize (one feed event per
+realm, `CULTIVATION_REALM_ADVANCED`). Grants: **+1 hand limit** folded at the
+single effective-hand-limit site (`effectiveHandLimit`); **1 free Attack-die
+reroll/combat** as a standing `AttackRerollSource` (`cultivation` discriminator,
+per-combat `combatStats.cultivationRerollUsed` cleared in `makeCombatShell`,
+obeying every existing reroll-window rule incl. the Spirit-of-Oppression
+lockout); **+1 spell Power** folded beside the Pandora flat bonus at the shared
+`standingSpellPower` / `resolvedSpellPowerForStackItem` chokepoints. The
+Tribulation is a `HEAVEN_TRIBULATION` handler-validated map action opening a
+`pendingVisit` (the standard exclusive-interaction singleton, so parallel-turn
+bystander gating, the fingerprint backstop, AFK/timeout default-resolution and
+`eliminatePlayer` cleanup all cover it for free — verified by tests).
+
+**Design principle (one power scale):** the grant magnitudes are deliberately
+pegged to existing perk precedents — +1 hand limit = the Pandora
+`handLimitBonus` magnitude, one free reroll/combat = the morale-token /
+artifact reroll-source scale, +1 Power = the Pandora `spellPowerBonus` scale —
+so cultivation (xianxia flavour) coexists on the SAME balance scale as the core
+board game, WOG and isekai content rather than introducing a new power tier.
+
+**ADAPTATIONS (deviate from the sketch above; each documented at the wiring
+site):**
+- **No Foundation-Pill path** — Elixir Pills are not shipped (`anime.elixirPills`
+  is types/lobby only), so realm 1 advances by hero level 3 ALONE. The "consume a
+  Foundation Pill" alternative is deferred until pills ship.
+- **Core Formation gate = "≥1 CREATURE BANK won"** (not "≥1 Secret Realm won" —
+  Secret Realm banks / the Dungeon are not shipped). A new mod-agnostic
+  `player.bankWins?` counter (optional, additive) is incremented on EVERY bank-win
+  finalize (never gated on any module — a default table gains the field after a
+  bank win, nothing else reads it yet; it also seeds the future §3.5
+  `defeat-banks ≥ N` quest vocabulary).
+- **Toll reading = card loss, not HP damage.** Map-side army cards carry no HP, so
+  each "−1" die is paid by the player's cheapest-first pick of one army card: a
+  Pack flips to Few (reusing `FLIP_PACK_TO_FEW` with `source: "tribulation"`) and
+  any other card is lost with the standard recycle — the same Plague /
+  Monolith-toll conventions. Survive with ≥1 card → breakthrough + a Search(1)
+  Artifact draw (the Creature-Bank reward machinery); an emptied army fails and
+  may retry next turn.
+
+**Cross-mod seams (each tested in `anime-cultivation.test.ts`):**
+- **Polish Unit Stacks** — a Tribulation toll on a STACKED Pack sheds ONE Stack
+  layer (`ARMY_STACK_LOST`, the Plague convention: Stacks ARE the unit-level
+  cultivation) instead of flipping; an unstacked Pack still flips (source-
+  disambiguated exactly like Plague vs Pandora Silver-Muster).
+- **Spell Book (both worlds)** — the Nascent +1 Power lands on a cast from the
+  ORIGINAL stash-style Spell Book (BINH default) exactly as on a hand cast
+  (shared resolution chokepoint), and rides the same standing chokepoint under
+  the mutually-exclusive `polish-spell-book` mode.
+- **WOG Commanders** — the Core Formation reroll behaves as a normal attack-window
+  source in a commander fight (no crash, offered exactly once; the commander's
+  own Might dice are a separate mechanism, untouched).
+- **Mixed anime packages** — cultivation reads only its own `anime.cultivation`
+  flag + hero/player state, so an isekai module being on does not change any
+  cultivation event or grant.
+
 ### 5.7 Destiny & Karma titles (`anime.destiny`)
 
 Rides the §3.4 substrate. Xianxia karma sources: +1 win vs a demonic-aligned

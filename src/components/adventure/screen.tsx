@@ -8275,6 +8275,11 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   ADVENTURE_DICE_ROLLED: { icon: "🎲", cue: "dice" },
   EXPERIENCE_GAINED: { icon: "📈", cue: "experience" },
   HERO_LEVEL_UP: { icon: "⭐", cue: "level-up" },
+  // Anime Cultivation (§5.6): a realm breakthrough rings the level-up sting; the
+  // Tribulation dice show quietly, a failure uses the defeat sting.
+  CULTIVATION_REALM_ADVANCED: { icon: "☯️", cue: "level-up" },
+  CULTIVATION_TRIBULATION_ROLLED: { icon: "🎲", cue: "dice" },
+  CULTIVATION_TRIBULATION_FAILED: { icon: "🌩️", cue: "retreat" },
   HERO_GAINED: { icon: "🧙", cue: "recruit" },
   HERO_LOST: { icon: "🏳", cue: "retreat" },
   MORALE_CHANGED: { icon: "🎺", cue: "morale" },

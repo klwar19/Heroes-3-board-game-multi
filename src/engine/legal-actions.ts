@@ -105,6 +105,7 @@ import {
   schoolScopedStandingPower,
   warMachinesForSale
 } from "./permanents";
+import { cultivationSpellPowerBonus, tribulationAvailable } from "./anime-cultivation";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
 import { neutralCombatControllerId, neutralControlMustAttack } from "./neutral-control";
 import {
@@ -314,6 +315,11 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
   }
   // Pandora's Bargain: Power — a flat +Power on every spell while in play.
   bonus += permanentSpellPowerBonus(state, playerId);
+  // Anime Cultivation Nascent Soul (realm 3, §5.6): +1 Power on the player's
+  // spell casts. Folded here beside the Pandora flat bonus — the single standing
+  // chokepoint — so a Power-scaling Specialty picks it up too (like Pandora),
+  // and it agrees with the cast pipeline (resolvedSpellPowerForStackItem below).
+  bonus += cultivationSpellPowerBonus(state, playerId);
   return bonus;
 }
 
@@ -6676,7 +6682,11 @@ export function resolvedSpellPowerForStackItem(
     (stackItem.modifiers.townCubePowerBonus ?? 0) +
     getSchoolPowerBonus(state, playerId, card) +
     astrologersSchoolPowerBonusFor(state, card) +
-    permanentSpellPowerBonus(state, playerId);
+    permanentSpellPowerBonus(state, playerId) +
+    // Anime Cultivation Nascent Soul (realm 3, §5.6): +1 Power on every cast —
+    // same chokepoint as the preview (standingSpellPower), so Book Spell casts
+    // (polish-spell-book) and normal casts alike resolve one Power tier higher.
+    cultivationSpellPowerBonus(state, playerId);
   const doubled = base * getSchoolPowerMultiplier(state, playerId, card);
   return Math.max(0, doubled - enemySpellPowerReductionFor(state, playerId));
 }
@@ -8875,6 +8885,17 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   addPermanentDiscardActions(actions, state, playerId);
   // WOG Commanders: spend an owed grade-up pick / revive a dead commander.
   addCommanderMapActions(actions, state, playerId);
+
+  // Anime Cultivation (§5.6): OFFER the Heavenly Tribulation (never forced) when
+  // the main hero is at Core Formation (realm 2), level ≥ 7, has not won it, and
+  // has not attempted it this turn. Reached only past the exclusive-window
+  // returns above, so "no other interaction open" already holds.
+  if (tribulationAvailable(state, playerId)) {
+    actions.push({
+      label: "Brave the Heavenly Tribulation (Độ kiếp)",
+      action: { type: "HEAVEN_TRIBULATION", playerId }
+    });
+  }
 
   for (const hero of Object.values(state.heroes)) {
     if (hero.controllerId !== playerId || !hero.spaceId) {
