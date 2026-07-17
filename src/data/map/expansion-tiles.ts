@@ -1057,14 +1057,18 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     content: "regular_stretch_goals",
     terrain: "rough",
     // &F2 (ff2.webp) vs Factory rulebook: centre Prospector +1 valuables (NOT
-    // resource-die); NE "?" treehouse treasure; E cabin Trading Post (same cabin
-    // art as core trading posts — was wrongly treasure_symbol, so visits rolled
-    // the treasure die / experience instead of opening the market); SE blocked
-    // scrub (&F2 anchor); SW Factory Grave II (skeleton — Factory rulebook
-    // Grave, not the Cove Grave); W empty; NW mine ↻5 gold III. Guards II-III.
+    // resource-die); NE Redwood Observatory — a lookout hut on a tall tree with a
+    // "?" marker, byte-identical in style to the F24 observatory (tower-on-tree +
+    // "?"); it was wrongly treasure_symbol, so visits rolled the treasure die /
+    // experience instead of revealing an adjacent tile. There is NO treasure
+    // chest anywhere on this tile (a treasure_symbol draws a CHEST with an "N→1"
+    // reward, cf. F24). E cabin Trading Post (same cabin art as core trading
+    // posts — also once wrongly treasure_symbol); SE blocked scrub (&F2 anchor);
+    // SW Factory Grave II (skeleton — Factory rulebook Grave, not the Cove
+    // Grave); W empty; NW mine ↻5 gold III. Guards II-III.
     fields: [
       { location: "prospector" },
-      { location: "treasure_symbol" },
+      { location: "redwood_observatory" },
       { location: "trading_post" },
       { location: "blocked_field" },
       { location: "factory_grave", difficulty: 2 },
@@ -1075,7 +1079,7 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
       credit:
-        "Factory far tile &F2 — fields matched to ff2.webp + Factory rulebook (Prospector, Factory Grave). Verify against physical tiles before final release.",
+        "Factory far tile &F2 — fields matched to ff2.webp + Factory rulebook (Prospector, Redwood Observatory lookout-tower, Trading Post cabin, Factory Grave). Verify against physical tiles before final release.",
       url: "https://raw.githubusercontent.com/qwrtln/Homm3BG-FactoryRulebook-build-artifacts/en/main_en.pdf"
     },
     assets: {

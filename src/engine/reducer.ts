@@ -21,7 +21,8 @@ import {
   openNeutralRecruitOffer,
   openPandoraSilverRefresh,
   queueLegionDiscountChoice,
-  queueNecromancyReinforce
+  queueNecromancyReinforce,
+  recordLevelUpAbilityPick
 } from "./adventure";
 import {
   applyUnitCurrentSide,
@@ -155,7 +156,7 @@ import {
 } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
-import { neutralCombatControllerId } from "./neutral-control";
+import { isNeutralSplashVictimChoice, neutralCombatControllerId } from "./neutral-control";
 import {
   activateBallistas,
   applyPermanentCombatEffectsForPlayer,
@@ -216,10 +217,14 @@ import {
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import {
+  destroyEnemyFortificationsInCells,
   destroyFortification,
+  enemyFortificationsInCells,
+  fortificationTargetId,
   getDemolishAbility,
   intactFortificationPositions,
   isArrowTowerUnit,
+  parseFortificationTargetId,
   removeArrowTower,
   siegeRangedDamageReduction
 } from "./siege";
@@ -5510,6 +5515,17 @@ function queueAttackAllFollowUps(
   const includeAllies = ability.effect.includeAllies === true;
   const baseAttack = ability.effect.baseAttack ?? attacker.attack;
 
+  // House rule ("as like attack a unit"): the attack-all sweep AUTOMATICALLY
+  // fells every ENEMY Wall/Gate adjacent to the attacker, alongside striking
+  // each adjacent unit (a commander Whirlwind Strike inherits this via the same
+  // ALL_ADJACENT_TO_SELF kind). A defender's own wall is excluded by the
+  // enemy-only filter.
+  if (destroyEnemyFortificationsInCells(state, attacker, getOrthogonalNeighbors(attacker.position)) > 0) {
+    if (finishCombatIfNeeded(state)) {
+      return true;
+    }
+  }
+
   const targets = Object.values(combat.units).filter(
     (unit) =>
       unit.id !== defender.id &&
@@ -5642,11 +5658,27 @@ function openFlatDamageFollowUps(
       const unit = combat.units[unitId];
       return unit && isUnitAlive(unit);
     });
-    if (living.length === 0) {
+
+    // House rule ("as like attack a unit"): an ENEMY Wall/Gate in the splash zone
+    // is a CHOOSABLE target of the pick-one splash. Offered only to a besieger a
+    // player picks for (humanPicks) — never the pure Neutral AI (its auto-resolve
+    // path is untouched) and never a defender's own wall (enemy-only filter).
+    const anchorPosition = followUp.zone === "self" ? attacker.position : defender.position;
+    const fortIds =
+      humanPicks && combat.siege
+        ? enemyFortificationsInCells(
+            combat.siege,
+            attacker.controllerId,
+            getOrthogonalNeighbors(anchorPosition)
+          ).map((fort) => fortificationTargetId(fort.kind, fort.position))
+        : [];
+
+    if (living.length === 0 && fortIds.length === 0) {
       continue;
     }
 
-    // AI-only: a single candidate is mandatory and needs no prompt.
+    // AI-only: a single candidate is mandatory and needs no prompt. (fortIds is
+    // always empty on the AI path, so this branch is unchanged for it.)
     if (!humanPicks && living.length === 1) {
       applyFlatAbilityDamage(state, attacker, living[0], followUp.abilityId, followUp.abilityName, followUp.amount);
       if (finishCombatIfNeeded(state)) {
@@ -5663,10 +5695,10 @@ function openFlatDamageFollowUps(
       kind: "flat-damage",
       abilityId: followUp.abilityId,
       abilityName: followUp.abilityName,
-      prompt: `${attacker.name}: ${followUp.abilityName} deals ${followUp.amount} damage — choose the unit it hits.`,
+      prompt: `${attacker.name}: ${followUp.abilityName} deals ${followUp.amount} damage — choose the ${fortIds.length > 0 ? "unit or Wall/Gate" : "unit"} it hits.`,
       sourceUnitId: attacker.id,
       anchorUnitId: defender.id,
-      candidateUnitIds: living,
+      candidateUnitIds: [...living, ...fortIds],
       amount: followUp.amount
     };
     state.phase = "choice";
@@ -5769,12 +5801,8 @@ function openDreadnoughtSplashChoice(
   });
 }
 
-/** The living unit one space beyond the target, in line away from the attacker. */
-function findUnitBehindTarget(
-  combat: CombatState,
-  attacker: CombatUnitState,
-  defender: CombatUnitState
-): CombatUnitState | null {
+/** The board cell one space beyond the target, in line away from the attacker. */
+function cellBehindTarget(attacker: CombatUnitState, defender: CombatUnitState): number | null {
   const from = getBattlefieldCoordinates(attacker.position);
   const at = getBattlefieldCoordinates(defender.position);
   const rowStep = at.row - from.row;
@@ -5789,7 +5817,19 @@ function findUnitBehindTarget(
   if (behindRow < 0 || behindRow >= BATTLEFIELD_ROWS || behindColumn < 0 || behindColumn >= BATTLEFIELD_COLUMNS) {
     return null;
   }
-  const behindPosition = behindRow * BATTLEFIELD_COLUMNS + behindColumn;
+  return behindRow * BATTLEFIELD_COLUMNS + behindColumn;
+}
+
+/** The living unit one space beyond the target, in line away from the attacker. */
+function findUnitBehindTarget(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): CombatUnitState | null {
+  const behindPosition = cellBehindTarget(attacker, defender);
+  if (behindPosition === null) {
+    return null;
+  }
   return Object.values(combat.units).find((unit) => unit.position === behindPosition && isUnitAlive(unit)) ?? null;
 }
 
@@ -5817,6 +5857,15 @@ function openGoldDragonLineAttack(
   }
   const behind = findUnitBehindTarget(combat, attacker, defender);
   if (!behind) {
+    // House rule ("as like attack a unit"): with no unit behind the target, the
+    // line breath fells an ENEMY Wall/Gate that occupies the single behind cell.
+    // Automatic (one cell — no choice); a defender's own wall is excluded by the
+    // enemy-only filter in destroyEnemyFortificationsInCells.
+    const behindCell = cellBehindTarget(attacker, defender);
+    if (behindCell !== null) {
+      destroyEnemyFortificationsInCells(state, attacker, [behindCell]);
+      finishCombatIfNeeded(state);
+    }
     return false;
   }
   declareAbilityAttack(state, attacker, behind.id, ability, cards);
@@ -5861,20 +5910,44 @@ function openHydraSecondAttack(
       isUnitAlive(unit) &&
       isAdjacent(unit.position, attacker.position)
   );
-  if (candidates.length === 0) {
-    return false;
-  }
 
   const baseAttack = ability.baseAttack ?? attacker.attack;
 
-  if (candidates.length === 1) {
-    declareAbilityAttack(
-      state,
-      attacker,
-      candidates[0].id,
-      { abilityId: ability.abilityId, abilityName: ability.abilityName, baseAttack },
-      cards
-    );
+  // House rule ("as like attack a unit"): an ENEMY Wall/Gate adjacent to the
+  // Hydra is a CHOOSABLE target of its extra attack — the player may aim it at a
+  // fortification instead of a unit. Offered only to a besieger the player
+  // controls (never the pure Neutral AI, which plays units only, so the neutral
+  // auto-resolver never faces a fort-only candidate list) and never a defender's
+  // own wall (enemy-only filter). Encoded as the Catapult's
+  // "siege-fortification:" pseudo-id, which legal-actions + board.tsx already
+  // surface as a clickable Wall/Gate.
+  const fortIds =
+    attacker.controllerId === NEUTRAL_PLAYER_ID || !combat.siege
+      ? []
+      : enemyFortificationsInCells(
+          combat.siege,
+          attacker.controllerId,
+          getOrthogonalNeighbors(attacker.position)
+        ).map((fort) => fortificationTargetId(fort.kind, fort.position));
+
+  const candidateIds = [...candidates.map((unit) => unit.id), ...fortIds];
+  if (candidateIds.length === 0) {
+    return false;
+  }
+
+  if (candidateIds.length === 1) {
+    const fort = parseFortificationTargetId(candidateIds[0]);
+    if (fort) {
+      resolveSecondAttackFortHit(state, attacker, fort, cards);
+    } else {
+      declareAbilityAttack(
+        state,
+        attacker,
+        candidateIds[0],
+        { abilityId: ability.abilityId, abilityName: ability.abilityName, baseAttack },
+        cards
+      );
+    }
     return true;
   }
 
@@ -5886,10 +5959,10 @@ function openHydraSecondAttack(
     kind: "second-attack",
     abilityId: ability.abilityId,
     abilityName: ability.abilityName,
-    prompt: `${attacker.name}: ${ability.abilityName} — choose a second adjacent enemy to attack.`,
+    prompt: `${attacker.name}: ${ability.abilityName} — choose a second adjacent enemy${fortIds.length > 0 ? " or Wall/Gate" : ""} to attack.`,
     sourceUnitId: attacker.id,
     anchorUnitId: defender.id,
-    candidateUnitIds: candidates.map((unit) => unit.id),
+    candidateUnitIds: candidateIds,
     baseAttack
   };
   state.phase = "choice";
@@ -7394,6 +7467,17 @@ function openSecondAttackFollowUp(
     return false;
   }
 
+  // House rule ("as like attack a unit"): the Death Cloud AUTOMATICALLY fells
+  // every ENEMY Wall/Gate adjacent to the original target, alongside its chosen
+  // unit attack (the cloud engulfs the whole area around the target). A
+  // defender's own wall is excluded by the enemy-only filter, so a defending
+  // Lich never demolishes its own fortifications.
+  if (destroyEnemyFortificationsInCells(state, attacker, getOrthogonalNeighbors(defender.position)) > 0) {
+    if (finishCombatIfNeeded(state)) {
+      return true;
+    }
+  }
+
   const candidates = getSecondAttackCandidates(combat, attacker, defender);
   if (candidates.length === 0) {
     return false;
@@ -7458,6 +7542,32 @@ function declareAbilityAttack(
     },
     cards
   );
+}
+
+/**
+ * House rule ("as like attack a unit"): a pick-one second attack (Hydra) aimed
+ * at an enemy fortification fells it instead of running a unit attack, then picks
+ * the parked sequence back up exactly like a completed ability-attack — no unit
+ * to roll against, so the original target's retaliation resumes right after.
+ */
+function resolveSecondAttackFortHit(
+  state: GameState,
+  attacker: CombatUnitState,
+  fort: { kind: "wall" | "gate"; position: number },
+  cards: CardLibrary
+): void {
+  destroyFortification(state, attacker, fort.kind, fort.position);
+  if (finishCombatIfNeeded(state)) {
+    return;
+  }
+  if (declareNextQueuedAbilityAttack(state, cards)) {
+    return;
+  }
+  if (!state.combat?.attackSequence) {
+    concludeAttackerActivation(state, attacker);
+    return;
+  }
+  resumeAttackSequence(state, cards);
 }
 
 function setActiveUnit(state: GameState, unitId: UnitId | null): void {
@@ -16770,6 +16880,18 @@ function chooseAbilityTarget(
   }
 
   if (choice.kind === "flat-damage") {
+    // House rule ("as like attack a unit"): a Magog/Cerberi splash aimed at an
+    // enemy Wall/Gate fells it (one hit, no HP) instead of dealing unit damage,
+    // then resumes the parked retaliation.
+    const fort = parseFortificationTargetId(action.targetUnitId);
+    if (fort) {
+      destroyFortification(state, source, fort.kind, fort.position);
+      if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      resumeAttackSequence(state, cards);
+      return;
+    }
     applyFlatAbilityDamage(
       state,
       source,
@@ -16788,6 +16910,12 @@ function chooseAbilityTarget(
   }
 
   if (choice.kind === "second-attack") {
+    // House rule: the Hydra's pick-one extra attack may fell an enemy Wall/Gate.
+    const fort = parseFortificationTargetId(action.targetUnitId);
+    if (fort) {
+      resolveSecondAttackFortHit(state, source, fort, cards);
+      return;
+    }
     declareAbilityAttack(
       state,
       source,
@@ -16807,10 +16935,16 @@ function chooseAbilityTarget(
 }
 
 /**
- * Auto-resolves ability target choices owned by the neutral seat (neutral
- * Liches, Magogs, Cerberi): player units are preferred by the AI target
- * priority; only when none qualifies does the mandatory hit fall on a
- * friendly neutral (or the Liches themselves).
+ * Auto-resolves ability target choices owned by the neutral seat: player units
+ * are preferred by the AI target priority; only when none qualifies does the
+ * mandatory hit fall on a friendly neutral (or the Liches themselves).
+ *
+ * NOTE: the Magog/Cerberi splash (`flat-damage`) and Lich/Hydra second attack
+ * (`second-attack`) VICTIM picks no longer normally reach here — the pump hands
+ * a 2+-candidate one to the FIGHTER (plain fight) or the CONTROLLER (PvP Neutral
+ * Control) first. This still runs for the neutral's OWN offense picks (Magic
+ * Mirror redirect, Faerie zap) and as the splash/second-attack fallback when no
+ * live fighter remains to steer it.
  */
 /**
  * A neutral attacker (Minotaurs, Champions) auto-resolves its own attack-die
@@ -17808,6 +17942,9 @@ function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: Car
     return;
   }
   (player.deckDrawnAbilityCardIds ??= []).push(cardId);
+  // If this keep belongs to an open level-up Ability Search (2/3/5/7), log it
+  // against that level for the hero board (a no-op for every other Search).
+  recordLevelUpAbilityPick(player, cardId);
 }
 
 /**
@@ -18412,7 +18549,34 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       break;
     }
 
-    // Neutral Liches/Magogs/Cerberi resolve their own ability targets.
+    // BINH house rule ("the player can choose who will get hit when an enemy
+    // neutral attacks"): in a PLAIN neutral fight — the AI plays the guards, no
+    // PvP Neutral Control seat — the FIGHTER picks the VICTIM of a neutral
+    // SPLASH / SPREAD second-attack (Magog/Cerberi fireball splash, Lich Death
+    // Cloud, Hydra) instead of the AI auto-resolving it. Re-stamp the
+    // neutral-owned choice to the LIVE fighter and stop for their click; the
+    // fighter may be a computer seat, which resolves it through its choice
+    // policy exactly like the AI-mode target tie (never a stall). A single
+    // candidate never opens a choice (the opener auto-applies it), so this only
+    // fires on a genuine 2+-candidate pick. The neutral's OWN offense picks
+    // (Magic Mirror redirect, Faerie zap) stay AI-resolved below — the victim of
+    // a "who gets hit" splash is the fighter's to steer, an attack redirect is
+    // not. An eliminated fighter falls through to the AI (safety net).
+    if (
+      combat &&
+      state.pendingChoice?.type === "ABILITY_TARGET_CHOICE" &&
+      state.pendingChoice.playerId === NEUTRAL_PLAYER_ID &&
+      isNeutralSplashVictimChoice(state.pendingChoice) &&
+      !state.players[combat.attackerPlayerId]?.eliminated
+    ) {
+      state.pendingChoice.playerId = combat.attackerPlayerId;
+      state.priorityPlayerId = combat.attackerPlayerId;
+      break;
+    }
+
+    // Neutral Liches/Magogs/Cerberi resolve their own ability targets (the
+    // neutral's own offense picks, plus the splash/second-attack fallback when
+    // no live fighter remains to steer it).
     if (
       state.pendingChoice?.type === "ABILITY_TARGET_CHOICE" &&
       state.pendingChoice.playerId === NEUTRAL_PLAYER_ID

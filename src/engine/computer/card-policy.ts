@@ -568,6 +568,20 @@ function scoreMapEconomy(
       goldCost * 5
     );
   }
+  if (effect.type === "NECROMANCY_REINFORCE") {
+    // The after-combat Necromancy window is now-or-never (legal-actions gates
+    // every other map action behind it), and its freeze-proof exit
+    // SKIP_NECROMANCY scores 1_120. Playing the held card must OUTRANK that
+    // exit or the AI skips its own faction engine after every single win —
+    // which is exactly what the old base+10 (~600) score did. Playing is
+    // always safe: queueNecromancyReinforce pre-filters to affordable
+    // reinforces and keeps the card when nothing is reinforced.
+    const adventure = (observation.state as unknown as GameState).adventure;
+    if (adventure?.pendingNecromancy?.playerId === observation.playerId) {
+      return 1_140;
+    }
+    return base + 10;
+  }
   if (effect.type === "DRAW_CARDS") {
     return base + 15;
   }
@@ -578,11 +592,16 @@ function scoreMapEconomy(
     return base + 30;
   }
   if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
-    const phase = armyDevelopmentProfile(
-      observation.state as unknown as GameState,
-      observation.playerId,
-    ).phase;
-    return phase === "establish-core" ? 930 + effect.amount : base + 35;
+    const state = observation.state as unknown as GameState;
+    const phase = armyDevelopmentProfile(state, observation.playerId).phase;
+    if (phase === "establish-core") return 930 + effect.amount;
+    // Legion vouchers are banked recruit gold in EVERY phase — silver/gold
+    // bodies and reinforces keep coming all game, so a voucher rotting in
+    // hand is pure waste. Non-stacking: while one voucher is still
+    // outstanding, hold the next (playing it would forfeit the first).
+    const outstanding =
+      (state.players[observation.playerId]?.recruitDiscounts?.length ?? 0) > 0;
+    return outstanding ? base + 35 : 800 + effect.amount;
   }
   return base + 10;
 }
@@ -862,7 +881,7 @@ function discardCostPenalty(
 }
 
 /** Crowns (expert uses) this seat still has this round — own-seat fields only. */
-function crownsAvailable(observation: ComputerObservation): number {
+export function crownsAvailable(observation: ComputerObservation): number {
   const player = observation.state.players[observation.playerId];
   if (!player?.limits) return 2;
   return (

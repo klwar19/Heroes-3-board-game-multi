@@ -526,6 +526,12 @@ export type FlatDamageFollowUp = {
   amount: number;
   /** Units the attacker may pick from; the hit is mandatory when non-empty. */
   candidateUnitIds: UnitId[];
+  /**
+   * The geometric anchor of the splash zone: "target" = cells adjacent to the
+   * original target (Magog), "self" = cells adjacent to the attacker (Cerberi).
+   * Consumed by the siege house rule to find enemy fortifications in the zone.
+   */
+  zone: "target" | "self";
 };
 
 /**
@@ -571,7 +577,8 @@ export function getFlatDamageFollowUps(
         abilityId: ability.id,
         abilityName: ability.name,
         amount: ability.effect.amount,
-        candidateUnitIds: candidates.map((unit) => unit.id)
+        candidateUnitIds: candidates.map((unit) => unit.id),
+        zone: "target"
       });
     }
   }
@@ -594,7 +601,8 @@ export function getFlatDamageFollowUps(
         abilityId: ability.id,
         abilityName: ability.name,
         amount: ability.effect.amount,
-        candidateUnitIds: candidates.map((unit) => unit.id)
+        candidateUnitIds: candidates.map((unit) => unit.id),
+        zone: "self"
       });
     }
   }

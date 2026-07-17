@@ -8,6 +8,7 @@ import {
   assignCombatBoardArt,
   createInitialGameState,
   eligibleCombatBoardArtIds,
+  fortificationTargetId,
   gainRunes,
   getLegalActions,
   makeActiveEffect,
@@ -1152,6 +1153,45 @@ describe("BattlefieldBoard — siege fortification art", () => {
     state.combat!.siege = { townPlayerId: "p2", walls: [], gatePosition: null, arrowTowerUnitId: null };
     renderSiege(state);
     expect(document.querySelector(".arrowTower"), "the collapsed tower's card is gone").toBeNull();
+  });
+
+  // House rule: a multi-target second attack (Hydra) / splash (Magog) that offers
+  // an enemy Wall/Gate as a CHOOSE_ABILITY_TARGET renders that fortification as a
+  // clickable target — reusing the exact affordance the Catapult already uses
+  // (the pseudo-id path), so the wall is visible AND dispatches the pick.
+  it("renders an enemy Wall offered by a second-attack choice as a clickable target", () => {
+    const state = siegeState("board-siege-splash-choice");
+    const onAction = vi.fn();
+    const wallTarget = fortificationTargetId("wall", 8);
+    const legalActions: LegalAction[] = [
+      {
+        label: "Hydra Assault: batter the Wall",
+        action: { type: "CHOOSE_ABILITY_TARGET", playerId: "p1", choiceId: "choice_1", targetUnitId: wallTarget }
+      }
+    ];
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={legalActions}
+          selectedCardAction={null}
+          onAction={onAction}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    const wallButton = document.querySelector<HTMLButtonElement>('button.fortification.attackTarget[data-fx-cell="8"]');
+    expect(wallButton, "the offered Wall renders as a clickable attack target").toBeTruthy();
+    expect(wallButton!.getAttribute("aria-label")).toContain("batter the Wall");
+    fireEvent.click(wallButton!);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: "choice_1",
+      targetUnitId: wallTarget
+    });
   });
 })
 

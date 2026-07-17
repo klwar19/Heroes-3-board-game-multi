@@ -111,6 +111,8 @@ import {
   queueExplorersEmpower,
   queueFreeBronzeReinforce,
   queueSkeletonReinforce,
+  recordLevelUpAbilityPick,
+  clearPendingLevelUpAbilitySearch,
   reinforceArmyUnit,
   reinforceCostFor,
   resolveMagicUniversityDig,
@@ -172,6 +174,10 @@ import {
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { placeCombatToken, removeToken } from "./tokens";
 import { applyComputerGuaranteedWin } from "./computer/guaranteed-wins";
+import {
+  applyComputerCombatBoost,
+  removeComputerCombatBoost,
+} from "./computer/combat-boost";
 import { neutralCombatControllerId } from "./neutral-control";
 import {
   assertParallelInteractionFree,
@@ -6082,6 +6088,11 @@ function finalizeCombatStart(state: GameState): void {
   applyPermanentCombatEffects(state);
   applyCombatStartMoraleCards(state);
   applyCombatStartUnitAbilities(state);
+  // Single-player smoothing (house rule #2): a computer attacker in a NON-PvP
+  // fight draws its two temporary Empowered Attack/Defense statistic cards —
+  // removed from the game again at combat end (finalizeAdventureCombat).
+  // Idempotent across finalizeCombatStart re-entries; see combat-boost.ts.
+  applyComputerCombatBoost(state);
   // Commander combat-start specialties (Mana Magician charges, Rune Ritual,
   // Charming, Pacifist) resolve after unit abilities and BEFORE the first
   // war-machine round, so a charmed/fled defender never soaks a Ballista shot.
@@ -6765,6 +6776,11 @@ export function finalizeAdventureCombat(state: GameState): void {
 
   const context = combat.context;
   const outcome = combat.outcome;
+
+  // Single-player smoothing cleanup: the computer's temporary Empowered
+  // Attack/Defense cards are removed from the game before ANY outcome branch
+  // (win, retreat, surrender) — they are never kept past the battle.
+  removeComputerCombatBoost(state);
 
   // Pirates (Astrologers): reward the winner one Resource die (both the neutral
   // and PvP branches below share this one hook). A no-op unless Pirates is up.
@@ -9232,9 +9248,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       }
       gainOwnedCard(state, action.playerId, takenCardId);
       // Mirror the DECK_SEARCH resolver: an Ability card pulled from the shared
-      // deck is tracked so its printed ability can be granted.
+      // deck is tracked so its printed ability can be granted, and — when this
+      // Search was the level-up one — recorded against its level for the board.
       if (mode.deckId === "abilities") {
         (player.deckDrawnAbilityCardIds ??= []).push(takenCardId);
+        recordLevelUpAbilityPick(player, takenCardId);
       }
       appendEvent(state, {
         type: "DECK_SEARCH_RESOLVED",
@@ -10762,6 +10780,12 @@ export function revealSharedDeckSearch(
   // open a keep-one choice with nothing to keep — that would softlock; record the
   // empty Search and return to the prior phase instead.
   if (revealedCardIds.length === 0) {
+    // Nothing to keep: a level-up Ability Search that reveals no card records no
+    // pick — drop the marker so it cannot latch onto a later Search.
+    const emptySearchPlayer = state.players[playerId];
+    if (emptySearchPlayer) {
+      clearPendingLevelUpAbilitySearch(emptySearchPlayer);
+    }
     appendEvent(state, {
       type: "DECK_SEARCH_STARTED",
       playerId,
@@ -11134,6 +11158,14 @@ export function pumpAdventureQueues(state: GameState): void {
         state.priorityPlayerId = reward.playerId;
         return;
       }
+      // Level-up Ability Search (2/3/5/7): mark the seat BEFORE the Search opens
+      // so the kept Ability card is attributed to this level on the hero board.
+      // Must be set first — a Search that reveals nothing clears it synchronously
+      // inside revealSharedDeckSearch, before beginSharedDeckSearchNow returns.
+      const searchPlayer = state.players[reward.playerId];
+      if (searchPlayer && reward.abilitySearchLevel !== undefined) {
+        searchPlayer.pendingLevelUpAbilitySearch = reward.abilitySearchLevel;
+      }
       // "Spells"/"artifacts" are deck families; beginSharedDeckSearchNow does
       // the family expansion + deck-pick choice and opens the Search. The
       // strictExpertGate flag (Mage Guild expert-spell gating) is threaded
@@ -11144,6 +11176,11 @@ export function pumpAdventureQueues(state: GameState): void {
         })
       ) {
         return;
+      }
+      // The Search never opened (the deck holds nothing to search): drop the
+      // marker so it cannot attach to a later, unrelated Ability Search.
+      if (searchPlayer) {
+        clearPendingLevelUpAbilitySearch(searchPlayer);
       }
       continue;
     }

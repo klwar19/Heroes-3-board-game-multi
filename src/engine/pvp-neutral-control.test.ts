@@ -442,6 +442,75 @@ describe("PvP Neutral Control — ability follow-ups go to the controlling playe
     state = driveTo(state, guardSlotOpen);
     expect(guardSlotOpen(state)).toBe(true); // …and the guard still acts, driven by p2
   });
+
+  /**
+   * Magog (ranged) at 0 free-shoots a NON-adjacent target at 5, with two flanks
+   * at 6 and 9 adjacent to that target — the fireball splash then has exactly
+   * two victims to choose between. In mode OFF the AI shoots the nearest prey
+   * (the target at distance 2).
+   */
+  function magogSplashScene(seed: string, pvpNeutralControl: boolean) {
+    const state = fightWithGuards(seed, { players: 3, pvpNeutralControl });
+    const guard = guardsOf(state)[0];
+    reshape(guard, { grade: "bronze", type: "ranged", position: 0, initiative: 1, attack: 4 });
+    guard.abilities = ["magog-fireball-splash"];
+    const [target, flankA] = playerUnitsOf(state, "p1");
+    reshape(target, { grade: "bronze", position: 5, initiative: 99 });
+    reshape(flankA, { grade: "bronze", position: 6, initiative: 98 });
+    const flankB = structuredClone(flankA);
+    flankB.id = `${flankA.id}_flankB`;
+    flankB.position = 9;
+    flankB.initiative = 97;
+    state.combat!.units[flankB.id] = flankB;
+    onlyUnits(state, [guard, target, flankA, flankB]);
+    return { state, guardId: guard.id, targetId: target.id, flankAId: flankA.id, flankBId: flankB.id };
+  }
+
+  it("re-stamps a neutral Magog's splash victim pick to the CONTROLLER (mode-off CONTROL: the FIGHTER picks)", () => {
+    // Mode ON: p2 (the controller) drives the guard's shot, and the fireball
+    // splash pick it opens is THEIRS — re-stamped off the neutral seat by the
+    // pump — not the fighter p1's.
+    let { state, guardId, targetId, flankAId, flankBId } = magogSplashScene("pnc-splash-on", true);
+    state = driveTo(state, guardSlotOpen);
+    expect(guardSlotOpen(state)).toBe(true);
+    state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: guardId, defenderId: targetId });
+    state = driveTo(state, (current) => current.pendingChoice?.type === "ABILITY_TARGET_CHOICE");
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(choice.kind).toBe("flat-damage");
+    expect(choice.playerId).toBe("p2"); // the CONTROLLER, not the fighter p1
+    expect(new Set(choice.candidateUnitIds)).toEqual(new Set([flankAId, flankBId]));
+
+    // The fighter may NOT resolve the controller's splash pick…
+    const usurped = applyAction(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: flankAId
+    });
+    expect(usurped.errors.length).toBeGreaterThan(0);
+
+    // …the controller drops it on flank A specifically, and only there.
+    state = applyOk(state, { type: "CHOOSE_ABILITY_TARGET", playerId: "p2", choiceId: choice.id, targetUnitId: flankAId });
+    expect(state.combat!.units[flankAId].damage).toBe(1);
+    expect(state.combat!.units[flankBId].damage).toBe(0);
+
+    // CONTROL — mode OFF (the AI plays the guards): the same board hands the
+    // splash pick to the FIGHTER p1 instead (the plain-fight house rule).
+    const off = magogSplashScene("pnc-splash-off", false);
+    const settled = driveTo(off.state, (current) => current.pendingChoice?.type === "ABILITY_TARGET_CHOICE");
+    const offChoice = settled.pendingChoice;
+    expect(offChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (offChoice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(offChoice.kind).toBe("flat-damage");
+    expect(offChoice.playerId).toBe("p1"); // the FIGHTER picks in a plain fight
+    expect(new Set(offChoice.candidateUnitIds)).toEqual(new Set([off.flankAId, off.flankBId]));
+  });
 });
 
 // ---------------------------------------------------------------------------

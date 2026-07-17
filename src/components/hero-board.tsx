@@ -9,6 +9,7 @@ import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import {
+  ABILITY_SEARCH_LEVELS,
   EXPERT_USES_BY_LEVEL,
   HAND_LIMIT_BY_LEVEL,
   MAX_EXPERIENCE,
@@ -287,6 +288,9 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
             const reached = hero.level >= level;
             const specialty = SPECIALTY_TRACK_LEVELS.includes(level);
             const specialtyCardId = specialty ? heroDef.specialtyCardIds?.[level as 1 | 4 | 6] : undefined;
+            // Ability-search levels (2/3/5/7): the card the player KEPT from that
+            // level-up Search, if any is recorded (public info, opponents too).
+            const keptAbilityId = ABILITY_SEARCH_LEVELS.includes(level) ? player.levelUpAbilityPicks?.[level] : undefined;
             const handGain = HAND_LIMIT_BY_LEVEL[level] !== HAND_LIMIT_BY_LEVEL[level - 1] || level === 1;
             const crowns = EXPERT_USES_BY_LEVEL[level] - (EXPERT_USES_BY_LEVEL[level - 1] ?? 0) > 0 ? EXPERT_USES_BY_LEVEL[level] : 0;
 
@@ -300,18 +304,29 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
                 </span>
                 <div className="hbSlotCell">
                   {specialty && specialtyCardId ? (
+                    // The specialty card is visible from the very beginning:
+                    // EARNED (hero level ≥ Ⅰ/Ⅳ/Ⅵ) wears the golden frame,
+                    // unearned stays a dimmed preview — click zooms either way.
                     <button
-                      className={`hbSlot hbSlotSpecialty ${reached ? "gained" : ""}`}
-                      disabled={!reached}
+                      className={`hbSlot hbSlotSpecialty ${reached ? "gained" : "preview"}`}
                       onClick={() => zoomCard(specialtyCardId)}
                       title={
                         reached
                           ? `${specialtyDisplayName(specialtyCardId)} (level ${ROMAN[level]} specialty)`
-                          : `Specialty card gained at level ${ROMAN[level]}`
+                          : `${specialtyDisplayName(specialtyCardId)} — specialty card gained at level ${ROMAN[level]}`
                       }
                       type="button"
                     >
-                      {reached ? <CardArt cardId={specialtyCardId} kind="specialty" /> : null}
+                      <CardArt cardId={specialtyCardId} kind="specialty" />
+                    </button>
+                  ) : keptAbilityId ? (
+                    <button
+                      className="hbSlot hbSlotSearch hbSlotAbilityPick"
+                      onClick={() => zoomCard(keptAbilityId)}
+                      title={`Level ${ROMAN[level]}: kept ${cardLibrary[keptAbilityId]?.name ?? keptAbilityId} from the Ability Search`}
+                      type="button"
+                    >
+                      <CardArt cardId={keptAbilityId} kind="ability" />
                     </button>
                   ) : (
                     <div className="hbSlot hbSlotSearch" title={`Level ${ROMAN[level]}: Search (2) the Ability deck`}>

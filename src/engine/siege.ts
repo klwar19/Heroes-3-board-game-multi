@@ -83,6 +83,38 @@ export function fortificationTargets(
   return targets;
 }
 
+/**
+ * House rule ("destroy the wall as if it were a unit"): the geometric zone of a
+ * multi-target second attack / splash (the cell behind the target, the cells
+ * adjacent to the target, the cells adjacent to the attacker) may cover the
+ * ENEMY's fortifications. Returns every standing Wall/Gate of the DEFENDER
+ * (`townPlayerId`) that sits on one of `cells` — and ONLY when the acting unit
+ * is on the OTHER side (a besieger), so a defender's own splash can never fell
+ * its own walls. The Arrow Tower is a real unit (position -1) and is never
+ * returned here; it is attacked through the normal unit path.
+ */
+export function enemyFortificationsInCells(
+  siege: SiegeState,
+  attackerControllerId: PlayerId,
+  cells: Iterable<number>
+): { kind: "wall" | "gate"; position: number }[] {
+  // Only the besieging side (not the wall owner) tears the fortifications down.
+  if (attackerControllerId === siege.townPlayerId) {
+    return [];
+  }
+  const cellSet = cells instanceof Set ? cells : new Set(cells);
+  const hits: { kind: "wall" | "gate"; position: number }[] = [];
+  for (const position of siege.walls) {
+    if (cellSet.has(position)) {
+      hits.push({ kind: "wall", position });
+    }
+  }
+  if (siege.gatePosition !== null && cellSet.has(siege.gatePosition)) {
+    hits.push({ kind: "gate", position: siege.gatePosition });
+  }
+  return hits;
+}
+
 /** Positions a moving unit may not enter because of fortifications. */
 export function siegeBlockedPositions(siege: SiegeState, movingUnit: CombatUnitState): number[] {
   if (movingUnit.controllerId === siege.townPlayerId) {
@@ -197,6 +229,32 @@ export function destroyFortification(
   });
 
   collapseArrowTowerIfBreached(state);
+}
+
+/**
+ * House rule ("as like attack a unit"): fell every ENEMY Wall/Gate the acting
+ * unit's multi-attack zone covers (`cells`). One hit fells a fortification —
+ * the same auto-success the Catapult uses (a Wall/Gate has no HP), so this reuses
+ * `destroyFortification` (its `FORTIFICATION_DESTROYED` event + Arrow-Tower
+ * collapse). The AUTOMATIC multi-attack kinds (Gold Dragon line breath, Lich
+ * Death Cloud, attack-all) call this; the pick-one kinds (Hydra, Magog/Cerberi
+ * splash) instead offer the fortification as a choosable target. Returns the
+ * number felled.
+ */
+export function destroyEnemyFortificationsInCells(
+  state: GameState,
+  attacker: CombatUnitState,
+  cells: Iterable<number>
+): number {
+  const siege = state.combat?.siege;
+  if (!siege) {
+    return 0;
+  }
+  const hits = enemyFortificationsInCells(siege, attacker.controllerId, cells);
+  for (const hit of hits) {
+    destroyFortification(state, attacker, hit.kind, hit.position);
+  }
+  return hits.length;
 }
 
 /** "It is instantly destroyed when all Walls and the Gate are destroyed." */

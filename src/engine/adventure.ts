@@ -1975,7 +1975,10 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
         playerId,
         kind: "shared-deck-search",
         deckId: "abilities",
-        count: 2
+        count: 2,
+        // Tag the Search with the level that granted it, so the kept Ability
+        // card is recorded (publicly) on the hero board for this level (2/3/5/7).
+        abilitySearchLevel: level
       });
       effects.push("Search (2) the Ability deck");
     }
@@ -2047,6 +2050,32 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
     // queued) so it is the first thing surfaced.
     state.adventure.rewardQueue.splice(rewardQueueStart, 0, { playerId, kind: "learning-level-up" });
   }
+}
+
+/**
+ * Record the Ability card just kept from a level-up "Search (2) the Ability
+ * deck" against the level that granted it (hero-board display). A no-op unless
+ * `pendingLevelUpAbilitySearch` is set — i.e. the currently-open shared-deck
+ * Search is a level-up one. The marker is cleared here so the FIRST kept card is
+ * the recorded pick (a later Pendant/morale re-Search of the same window does
+ * not overwrite it) and so no later, unrelated Ability Search is mis-attributed.
+ */
+export function recordLevelUpAbilityPick(player: PlayerState, cardId: CardId): void {
+  const level = player.pendingLevelUpAbilitySearch;
+  if (level === undefined) {
+    return;
+  }
+  (player.levelUpAbilityPicks ??= {})[level] = cardId;
+  player.pendingLevelUpAbilitySearch = undefined;
+}
+
+/**
+ * Drop the level-up Ability-Search marker without recording anything — used when
+ * that Search closes with no card kept (an empty reveal, or the deck could not
+ * open a Search at all), so the marker can never attach to a later Search.
+ */
+export function clearPendingLevelUpAbilitySearch(player: PlayerState): void {
+  player.pendingLevelUpAbilitySearch = undefined;
 }
 
 /**
@@ -2819,6 +2848,11 @@ export function eliminatePlayer(
 
   player.eliminated = true;
   player.eliminationCountdown = null;
+  // A level-up Ability Search the seat had in flight is abandoned with the seat;
+  // drop its transient marker so it never attaches to anything. The historical
+  // `levelUpAbilityPicks` record stays (a completed public log, like
+  // `deckDrawnAbilityCardIds`).
+  player.pendingLevelUpAbilitySearch = undefined;
 
   for (const hero of Object.values(state.heroes)) {
     if (hero.controllerId === playerId) {
@@ -6215,6 +6249,10 @@ function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTo
   visit.steps.unshift({
     type: "CHOOSE_ONE",
     prompt: `${label} — choose where to travel`,
+    // Tag the picker so the board can offer each destination as a glowing,
+    // clickable exit hex (themed by kind) instead of a bare numbered list; the
+    // travel semantics are unchanged (the option steps are still authoritative).
+    teleport: { kind },
     options: destinations.map((destination) => ({
       label: destination.label,
       steps: mapTokenTravelSteps(visit, kind, destination)
@@ -6355,6 +6393,9 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
   visit.steps.unshift({
     type: "CHOOSE_ONE",
     prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} Gate — choose where to travel`,
+    // Same board affordance as the Monolith picker, themed by the gate's color
+    // pair (the ring tint) — see resolveTokenTeleport.
+    teleport: { kind: "gate", pair },
     options: destinations.map((destination) => ({
       label: destination.label,
       steps: coloredGateTravelSteps(visit, pair, destination)

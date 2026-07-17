@@ -39,6 +39,8 @@ import {
   deckDisplayName,
   describeCardEffect,
   describeCustomMapPresetEntries,
+  expertUsesAvailable,
+  expertUsesTotalThisRound,
   DRAFT_FORMAT_LABELS,
   getDraftPhase,
   getActiveAstrologersCard,
@@ -527,7 +529,9 @@ export function HexMapBoard({
   // adjacent empty field, or stay" — surface the candidate destinations as
   // highlighted, clickable hexes on the board, not just text buttons in the
   // prompt tray. Every option whose first step teleports the hero maps its
-  // destination field to the action that selects it.
+  // destination field to the action that selects it. A Monolith/Whirlpool/Gate
+  // travel picker (`step.teleport`) uses ITS OWN affordance (teleportChoice
+  // below) — it is skipped here so the two never double-tag the same hex.
   const endTurnMoveTargets = useMemo(() => {
     const targets = new Map<MapSpaceId, GameAction>();
     if (readOnly) {
@@ -535,7 +539,7 @@ export function HexMapBoard({
     }
     const visit = rawAdventure?.pendingVisit;
     const step = visit?.steps[0];
-    if (!visit || visit.playerId !== viewerPlayerId || step?.type !== "CHOOSE_ONE") {
+    if (!visit || visit.playerId !== viewerPlayerId || step?.type !== "CHOOSE_ONE" || step.teleport) {
       return targets;
     }
     const actionByOption = new Map<number, GameAction>();
@@ -553,6 +557,65 @@ export function HexMapBoard({
     });
     return targets;
   }, [rawAdventure?.pendingVisit, viewerPlayerId, legalActions, readOnly]);
+
+  // Monolith / Whirlpool / colored-Gate travel picker (`step.teleport`): each
+  // destination becomes a glowing, clickable EXIT hex on the map — a field
+  // destination at its own hex (`TELEPORT_HERO.spaceId`), a still-face-down
+  // destination at the token's reserved back hex (or the tile centre). Clicking
+  // dispatches the SAME `RESOLVE_VISIT_STEP` the tray button would; the engine
+  // CHOOSE_ONE stays authoritative. Owned by the traveller only (others get an
+  // empty `steps` from getVisiblePendingVisit, so the memo bails).
+  const teleportChoice = useMemo(() => {
+    if (readOnly) {
+      return null;
+    }
+    const visit = rawAdventure?.pendingVisit;
+    const step = visit?.steps[0];
+    if (!visit || visit.playerId !== viewerPlayerId || step?.type !== "CHOOSE_ONE" || !step.teleport) {
+      return null;
+    }
+    const actionByOption = new Map<number, GameAction>();
+    for (const legal of legalActions) {
+      if (legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined) {
+        actionByOption.set(legal.action.optionIndex, legal.action);
+      }
+    }
+    // The exit hex each option lands on (field hex, or a face-down tile's token
+    // back hex). A hex serving more than one option is ambiguous to click, so it
+    // is left to the tray buttons (mirrors pendingMapChoiceTargets) — a stray tap
+    // must never pick the wrong exit.
+    const hexForOption = step.options.map((option) => {
+      const inner = option.steps[0] as { type?: string; spaceId?: string; tileInstanceId?: string } | undefined;
+      if (inner?.type === "TELEPORT_HERO" && typeof inner.spaceId === "string") {
+        return inner.spaceId;
+      }
+      if (inner?.type === "TOKEN_TELEPORT_REVEAL" && typeof inner.tileInstanceId === "string") {
+        const tile = rawAdventure?.tiles[inner.tileInstanceId] ?? adventure?.tiles[inner.tileInstanceId];
+        if (!tile) {
+          return null;
+        }
+        return tile.pendingToken?.preferredSpaceId ?? hexSpaceId({ row: tile.centerRow, col: tile.centerCol });
+      }
+      return null;
+    });
+    const optionsPerHex = new Map<MapSpaceId, number>();
+    hexForOption.forEach((hex) => {
+      if (hex) {
+        optionsPerHex.set(hex, (optionsPerHex.get(hex) ?? 0) + 1);
+      }
+    });
+    const targets = new Map<MapSpaceId, { action: GameAction }>();
+    hexForOption.forEach((hex, optionIndex) => {
+      if (!hex || (optionsPerHex.get(hex) ?? 0) > 1) {
+        return;
+      }
+      const action = actionByOption.get(optionIndex);
+      if (action) {
+        targets.set(hex, { action });
+      }
+    });
+    return { kind: step.teleport.kind, pair: step.teleport.pair, targets };
+  }, [rawAdventure, adventure, viewerPlayerId, legalActions, readOnly]);
 
   // Map-targeted spell choices belong on the map. Dimension Door and View
   // Earth used to expose only opaque location-code buttons; index-align their
@@ -873,6 +936,41 @@ export function HexMapBoard({
             ) : null}
           </g>
         );
+        // If this pending token is a live teleport destination for the viewer,
+        // overlay a clickable glowing EXIT hex on its back (pushed to `overlays`,
+        // which sit above the face-down discovery hexes). The tile face stays
+        // hidden — only the token art shows — and clicking dispatches the SAME
+        // RESOLVE_VISIT_STEP the tray button would.
+        const tokenBackSpaceId = pendingToken.preferredSpaceId ?? hexSpaceId(center);
+        const teleportBackTarget = teleportChoice?.targets.get(tokenBackSpaceId);
+        if (teleportBackTarget && !readOnly) {
+          overlays.push(
+            <g key={`teleport-back-${tile.id}`}>
+              <polygon
+                className="teleportTargetFaceDown"
+                data-space-id={tokenBackSpaceId}
+                fill="rgba(34, 96, 74, 0.32)"
+                onClick={() => {
+                  if (!suppressClickRef.current) {
+                    onAction(teleportBackTarget.action);
+                  }
+                }}
+                points={hexCorners(tokenBackPixel.x, tokenBackPixel.y, HEX_SIZE - 1.2)}
+                style={{ pointerEvents: "all" }}
+              >
+                <title>Click to teleport your hero here (reveals this face-down tile)</title>
+              </polygon>
+              <text
+                className="hexTeleportCue"
+                textAnchor="middle"
+                x={tokenBackPixel.x}
+                y={tokenBackPixel.y + HEX_SIZE * 0.92}
+              >
+                ⇄ exit here
+              </text>
+            </g>
+          );
+        }
       }
       // A still-hidden Subterranean tile can never be discovered from the Surface
       // (or vice versa) — only a hero entering a Subterranean Gate opens it. When
@@ -1193,6 +1291,7 @@ export function HexMapBoard({
       const remindMove = drawReminderTargets.get(spaceId);
       const endTurnMove = endTurnMoveTargets.get(spaceId);
       const mapChoice = pendingMapChoiceTargets.get(spaceId);
+      const teleportTarget = teleportChoice?.targets.get(spaceId);
       const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
       const glyph = LOCATION_GLYPHS[field.location] ?? "";
       const isSelected = selectedTarget?.spaceId === spaceId;
@@ -1204,6 +1303,7 @@ export function HexMapBoard({
             field.location === "blocked_field" ? "blocked" : "",
             target ? "moveTarget" : "",
             remindMove ? "moveTargetLocked" : "",
+            teleportTarget ? "teleportTarget" : "",
             endTurnMove ? "endTurnMoveTarget" : "",
             mapChoice ? "mapChoiceTarget" : "",
             isSelected ? "selectedTarget" : "",
@@ -1215,7 +1315,13 @@ export function HexMapBoard({
           onClick={
             readOnly
               ? undefined
-              : mapChoice
+              : teleportTarget
+                ? () => {
+                    if (!suppressClickRef.current) {
+                      onAction(teleportTarget.action);
+                    }
+                  }
+                : mapChoice
                 ? () => {
                     if (!suppressClickRef.current) {
                       onAction(mapChoice);
@@ -1268,7 +1374,9 @@ export function HexMapBoard({
                 ? `${field.whirlpoolNumber !== undefined ? ` ${field.whirlpoolNumber >= 0 ? "+" : ""}${field.whirlpoolNumber}` : ""} — step on (or Revisit for 1 MP) to travel to another Whirlpool; each travel costs 1 unit card from your army. Needs at least 2 Whirlpools; with 3, the Attack die picks where you surface`
                 : ""
             }${target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""}${
-              mapChoice
+              teleportTarget
+                ? " — click to teleport your hero here"
+                : mapChoice
                 ? " — click to choose this location"
                 : endTurnMove
                   ? " — click to move your hero here"
@@ -1277,6 +1385,16 @@ export function HexMapBoard({
           </title>
         </polygon>
       );
+
+      // Teleport travel picker: mark this destination hex as a glowing exit the
+      // traveller can click, matching the tray option they'd otherwise press.
+      if (teleportTarget) {
+        overlays.push(
+          <text className="hexTeleportCue" key={`${spaceId}-teleport-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
+            {teleportChoice?.kind === "whirlpool" ? "🌀 exit here" : "⇄ exit here"}
+          </text>
+        );
+      }
 
       // A reachable Subterranean Gate is the ONLY way across the layer divide, so
       // mark it with a "descend/ascend" cue — otherwise players don't realise the
@@ -1579,6 +1697,7 @@ export function HexMapBoard({
     const remindMove = drawReminderTargets.get(spaceId);
     const endTurnMove = endTurnMoveTargets.get(spaceId);
     const mapChoice = pendingMapChoiceTargets.get(spaceId);
+    const teleportTarget = teleportChoice?.targets.get(spaceId);
     const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
     const isSelected = selectedTarget?.spaceId === spaceId;
     cells.push(
@@ -1588,6 +1707,7 @@ export function HexMapBoard({
           "standaloneObjectHex",
           target ? "moveTarget" : "",
           remindMove ? "moveTargetLocked" : "",
+          teleportTarget ? "teleportTarget" : "",
           endTurnMove ? "endTurnMoveTarget" : "",
           mapChoice ? "mapChoiceTarget" : "",
           isSelected ? "selectedTarget" : ""
@@ -1598,7 +1718,13 @@ export function HexMapBoard({
         onClick={
           readOnly
             ? undefined
-            : mapChoice
+            : teleportTarget
+              ? () => {
+                  if (!suppressClickRef.current) {
+                    onAction(teleportTarget.action);
+                  }
+                }
+              : mapChoice
               ? () => {
                   if (!suppressClickRef.current) {
                     onAction(mapChoice);
@@ -1663,6 +1789,15 @@ export function HexMapBoard({
       overlays.push(
         <text className="hexGateCue" key={`standalone-${spaceId}-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
           ⇄ teleport
+        </text>
+      );
+    }
+    // Teleport travel picker: this standalone object is one of the destinations
+    // the traveller may click as an exit.
+    if (teleportTarget) {
+      overlays.push(
+        <text className="hexTeleportCue" key={`standalone-${spaceId}-teleport-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
+          {teleportChoice?.kind === "whirlpool" ? "🌀 exit here" : "⇄ exit here"}
         </text>
       );
     }
@@ -2287,12 +2422,20 @@ export function AdventureHud({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
+  opponentInfo
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  /**
+   * Optional opponent-info cell folded into the HUD ribbon (the seated map
+   * view passes `<OpponentInfoDock variant="hud" …/>` here). Injected as a prop
+   * so the HUD stays free of opponent-panel imports; renders nothing when there
+   * are no opponents. Sits just before the End turn / Give up buttons.
+   */
+  opponentInfo?: ReactNode;
 }) {
   const { zoomContent } = useCardZoom();
   const [confirmGiveUp, setConfirmGiveUp] = useState(false);
@@ -2300,6 +2443,10 @@ export function AdventureHud({
   const hero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "main"
   );
+  // Crowns (expert uses): remaining / round total, read straight from the engine
+  // helpers so the HUD can never diverge from what canPlayExpertMode enforces.
+  const crownsRemaining = player ? expertUsesAvailable(player) : 0;
+  const crownsThisRound = player ? expertUsesTotalThisRound(player) : 0;
   // Person-first: in a real (roomed) game the active player is the human ("Binh"),
   // with their hero · town on the sub-line; on a solo/open table the seat label
   // already reads "Hero of Town", so no redundant pick line is shown.
@@ -2414,7 +2561,7 @@ export function AdventureHud({
         </div>
       ) : null}
       {hero ? (
-        <div className="advHudCell moveMoraleCell" aria-label="Movement and morale">
+        <div className="advHudCell moveMoraleCell" aria-label="Movement, morale and crowns">
           <span
             className="statChip"
             title={`${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}
@@ -2445,6 +2592,18 @@ export function AdventureHud({
             </b>
             <small>{(player?.morale ?? 0) <= -2 ? "fix or dump" : "morale"}</small>
           </span>
+          {player ? (
+            <span
+              className="statChip crownChip"
+              title={`Crowns (expert uses) left this round: ${crownsRemaining} of ${crownsThisRound}`}
+            >
+              <Crown aria-hidden="true" className="crownChipIcon" size={14} />
+              <b>
+                {crownsRemaining} / {crownsThisRound}
+              </b>
+              <small>crowns</small>
+            </span>
+          ) : null}
         </div>
       ) : null}
       <div className="advHudCell">
@@ -2486,6 +2645,7 @@ export function AdventureHud({
           <strong>{state.players[winner]?.name} wins!</strong>
         </div>
       ) : null}
+      {opponentInfo}
       <div className="advHudButtons">
         {/* OPTIONAL Undo mode (debug/testing): the button shows only when the
             lobby turned the option on (frozen onto adventure.undoMoves). The
@@ -3408,6 +3568,52 @@ function rewardArtForId(cardId: string): VisitRewardArt {
   return { name: cardId, caption: cardId };
 }
 
+/** Per-destination art for the Monolith/Whirlpool/Gate travel picker's tray. */
+type TeleportOptionArt = {
+  image: string;
+  /** Colored-Gate ring tint (matches the map's gateHexMark). */
+  ring?: string;
+  /** Gate pair number, or a Whirlpool's printed die face (+1/0/-1). */
+  badge?: string;
+  /** The destination still rides a face-down tile (revealed only on arrival). */
+  faceDown: boolean;
+  label: string;
+};
+
+/**
+ * Tray art for ONE teleport destination option: the token's OWN art — Monolith,
+ * a numbered Whirlpool, or a colored Gate (the Monolith art tinted by its pair
+ * ring). It deliberately NEVER reads the destination tile's scan, so a still
+ * face-down destination shows only its token art plus a "face-down" hint — the
+ * traveller cannot preview a tile they have not yet revealed (which the generic
+ * rewardArtFromVisitSteps, keyed off the option's tileInstanceId, otherwise
+ * would). The Whirlpool number comes from the destination field / pending token.
+ */
+function teleportOptionArt(
+  state: GameState,
+  teleport: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4 },
+  option: { label: string; steps: { type: string; [key: string]: unknown }[] }
+): TeleportOptionArt {
+  const inner = option.steps[0] as { type?: string; spaceId?: string; tileInstanceId?: string } | undefined;
+  let faceDown = false;
+  let number: -1 | 0 | 1 | undefined;
+  if (inner?.type === "TELEPORT_HERO" && typeof inner.spaceId === "string") {
+    number = state.adventure?.fields[inner.spaceId]?.whirlpoolNumber;
+  } else if (inner?.type === "TOKEN_TELEPORT_REVEAL" && typeof inner.tileInstanceId === "string") {
+    faceDown = true;
+    number = state.adventure?.tiles[inner.tileInstanceId]?.pendingToken?.number;
+  }
+  const image = teleport.kind === "gate" ? monolithTokenImage() : mapTokenImage(teleport.kind, number);
+  const ring = teleport.kind === "gate" ? GATE_PAIR_COLORS[teleport.pair ?? 1] ?? "#c9a24b" : undefined;
+  const badge =
+    teleport.kind === "gate"
+      ? String(teleport.pair ?? 1)
+      : teleport.kind === "whirlpool" && number !== undefined
+        ? `${number >= 0 ? "+" : ""}${number}`
+        : undefined;
+  return { image, ring, badge, faceDown, label: option.label };
+}
+
 export function PromptTray({
   state,
   viewerPlayerId,
@@ -3719,6 +3925,10 @@ export function PromptTray({
   // (buy this Artifact / pick this Event / recruit this unit) — render those
   // as graphic tiles, not text-only buttons.
   let chooseOneOptions: { label: string; steps: { type: string; [key: string]: unknown }[] }[] | null = null;
+  // The Monolith/Whirlpool/Gate travel picker (`step.teleport`): the tray shows
+  // each destination as a themed token card (art + label + number/pair badge)
+  // and a "pick your exit on the map" hint, not a bare numbered option list.
+  let teleport: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4 } | null = null;
 
   if (
     choice?.type === "OPTION_CHOICE" &&
@@ -3834,6 +4044,7 @@ export function PromptTray({
     }
     if (step?.type === "CHOOSE_ONE") {
       chooseOneOptions = step.options as { label: string; steps: { type: string; [key: string]: unknown }[] }[];
+      teleport = step.teleport ?? null;
     }
     body = visitActions;
   } else if (combatGate.length > 0) {
@@ -3865,23 +4076,45 @@ export function PromptTray({
   }
 
   // Prefer graphic reward tiles when the open CHOOSE_ONE options carry a real
-  // pick (unit, artifact, spell, statistic, war machine, map tile, …).
-  const rewardOptions = chooseOneOptions
-    ? body.map((legal) => {
-        const optionIndex =
-          legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
-            ? legal.action.optionIndex
-            : undefined;
-        const option =
-          optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
-            ? chooseOneOptions[optionIndex]
-            : undefined;
-        const art = rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps);
-        return { legal, art };
-      })
-    : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
+  // pick (unit, artifact, spell, statistic, war machine, map tile, …). A teleport
+  // picker is handled by teleportOptions below (its own themed cards), and MUST
+  // be excluded here: rewardArtFromVisitSteps keys a face-down destination off
+  // its tileInstanceId and would show the hidden tile's scan (a preview leak).
+  const rewardOptions =
+    chooseOneOptions && !teleport
+      ? body.map((legal) => {
+          const optionIndex =
+            legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
+              ? legal.action.optionIndex
+              : undefined;
+          const option =
+            optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
+              ? chooseOneOptions[optionIndex]
+              : undefined;
+          const art = rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps);
+          return { legal, art };
+        })
+      : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
   const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
   const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
+
+  // Teleport destination cards: token art + a human "where" label + a Whirlpool
+  // number / Gate pair badge, keyed to each option's RESOLVE_VISIT_STEP so a
+  // click dispatches exactly what the map hex does.
+  const teleportOptions =
+    teleport && chooseOneOptions
+      ? body.map((legal) => {
+          const optionIndex =
+            legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
+              ? legal.action.optionIndex
+              : undefined;
+          const option =
+            optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
+              ? chooseOneOptions[optionIndex]
+              : undefined;
+          return { legal, art: option ? teleportOptionArt(state, teleport, option) : null };
+        })
+      : null;
 
   // Only show the Event / Astrologers card scan when the options themselves have
   // no graphic identity (pure text picks like Stables +1 movement). When the
@@ -3923,6 +4156,41 @@ export function PromptTray({
         );
       }
     }
+  }
+
+  if (teleportOptions) {
+    return (
+      <div className="promptTray withTeleportCards" role="dialog" aria-label={title}>
+        <strong>{title}</strong>
+        <span className="promptTeleportHint">Pick your exit on the glowing map hex — or choose one below.</span>
+        <div className="promptOptions teleportCards">
+          {teleportOptions.map(({ legal, art }) => (
+            <button
+              aria-label={legal.label}
+              className="teleportOptionCard"
+              key={actionKey(legal.action)}
+              onClick={() => onAction(legal.action)}
+              title={legal.label}
+              type="button"
+            >
+              <span
+                className={`teleportOptionArt${art?.faceDown ? " faceDown" : ""}`}
+                style={art?.ring ? ({ ["--teleport-ring" as string]: art.ring } as CSSProperties) : undefined}
+              >
+                {art?.image ? (
+                  <img alt="" aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                ) : (
+                  <span className="marketCardFallback">⇄</span>
+                )}
+                {art?.badge ? <span className="teleportOptionBadge">{art.badge}</span> : null}
+                {art?.faceDown ? <span className="teleportOptionFaceDownTag">face-down</span> : null}
+              </span>
+              <small>{art?.label ?? legal.label}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -4650,8 +4650,16 @@ export default function Home() {
     </div>
   ) : null;
 
+  // The same table-controls panel is rendered in the setup lobby, the Battle
+  // Test setup, and the two in-game table screens (map + combat). Only the
+  // in-game placements sit in the top-row band beside the HUD, so they carry
+  // `tableMenuInline`, which strips EVERY wrapping box (no gem frame, no
+  // border/background — scoped in globals.css) so the self-styled controls sit
+  // bare in the band; the setup screens keep the ornate box. Behaviour is
+  // identical either way.
+  const inGameTable = !inLobby && !inCombatSandboxSetup;
   const tableMenu = (
-    <div className="tableMenu" aria-label="Table controls">
+    <div className={`tableMenu${inGameTable ? " tableMenuInline" : ""}`} aria-label="Table controls">
       {roomPasswordPrompt}
       {roomHosted ? (
         // Hosted/closed room: the host controls seats, but a player may still
@@ -5203,6 +5211,11 @@ export default function Home() {
             <AdventureHud
               legalActions={legalActions}
               onAction={submitAction}
+              opponentInfo={
+                isSeated ? (
+                  <OpponentInfoDock seatIds={seatIds} state={state} variant="hud" viewerPlayerId={viewerPlayerId} />
+                ) : null
+              }
               state={state}
               viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
             />
@@ -5257,11 +5270,9 @@ export default function Home() {
                   viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
                 />
                 <MoraleCardsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
-                {/* A seated player can inspect any opponent's public state (resources,
-                    units, hero level, buildings) from here. */}
-                {isSeated ? (
-                  <OpponentInfoDock seatIds={seatIds} state={state} variant="map" viewerPlayerId={viewerPlayerId} />
-                ) : null}
+                {/* Opponent info moved OUT of this rail into the adventure HUD
+                    ribbon (AdventureHud `opponentInfo` cell), so the map no
+                    longer carries a separate floating box for it. */}
                 {/* Live "if scored now" Victory-Points standings — visible to
                     everyone when the designed map turns VP mode on. */}
                 <VictoryPointsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />

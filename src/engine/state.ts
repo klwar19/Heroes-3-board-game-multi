@@ -6302,6 +6302,27 @@ export type PlayerState = {
    */
   deckDrawnAbilityCardIds?: CardId[];
   /**
+   * PUBLIC record of which Ability card this player KEPT from each level-up
+   * "Search (2) the Ability deck" (hero levels 2/3/5/7), keyed by the hero
+   * level that granted the Search. Shown on the hero board — the player's OWN
+   * board AND, deliberately, an opponent's (a public reveal the display wants);
+   * player-view never masks it. Written the moment that level-up Search resolves
+   * into a kept card (via `recordLevelUpAbilityPick`); an empty/declined Search
+   * records nothing. Absent on legacy snapshots → the board shows the bare
+   * Search marker for that level.
+   */
+  levelUpAbilityPicks?: Record<number, CardId>;
+  /**
+   * Transient marker: the hero level whose level-up Ability Search is CURRENTLY
+   * open (2/3/5/7). Set when that Search's reward is pumped, consumed the moment
+   * a card is kept (recording `levelUpAbilityPicks`), and cleared on an empty
+   * Search. Only one shared-deck interaction is ever open at a time (a
+   * pendingChoice blocks every other action), so a kept Ability card while this
+   * is set unambiguously belongs to that level-up Search — event/bank/map
+   * Ability Searches never set it and therefore record nothing.
+   */
+  pendingLevelUpAbilitySearch?: number;
+  /**
    * Spell Scrolls held near the hero board (not in hand). Each holds up to 2
    * Spell cards usable in combat at power 0 or sellable at the market.
    */
@@ -6928,6 +6949,18 @@ export type CombatState = {
   /** Set once the Skeletons reinforce has been offered (mid-combat or after). */
   skeletonReinforceGranted?: boolean;
   /**
+   * Single-player smoothing (house rule, computer/combat-boost.ts): the two
+   * temporary Empowered Attack/Defense statistic cards injected into the
+   * computer attacker's hand at NON-PvP combat start. `empoweredAdded` lists
+   * the ids this fight added to player.empoweredAbilities (stripped again at
+   * cleanup). The cards are removed from the game at combat end — never kept.
+   */
+  computerBoost?: {
+    playerId: PlayerId;
+    cardIds: CardId[];
+    empoweredAdded: CardId[];
+  } | null;
+  /**
    * Bulwark "Runes" (Gamefound Update #3, local house-rule gains), per Bulwark
    * player, for THIS combat only — discarded when the combat state is torn down,
    * so it resets every battle. `count` is the accumulated Rune total, earned in
@@ -7250,6 +7283,14 @@ export type AdventureReward =
       strictExpertGate?: boolean;
       /** Building a Polish Guild: this Spell pick may become Cast a Spell. */
       allowCastCardInstead?: boolean;
+      /**
+       * Set ONLY for the hero level-up "Search (2) the Ability deck" reward
+       * (levels 2/3/5/7): the hero level that granted this Search. Threaded so
+       * the kept Ability card is recorded on `player.levelUpAbilityPicks[level]`
+       * for the hero-board display. Absent for every other Ability Search
+       * (events, banks, map), which record nothing.
+       */
+      abilitySearchLevel?: number;
     }
   | { playerId: PlayerId; kind: "city-hall-choice"; buildingId: BuildingId }
   | {
@@ -7319,7 +7360,25 @@ export type AdventureReward =
     };
 
 export type VisitStep =
-  | { type: "CHOOSE_ONE"; prompt: string; options: { label: string; steps: VisitStep[] }[] }
+  | {
+      type: "CHOOSE_ONE";
+      prompt: string;
+      options: { label: string; steps: VisitStep[] }[];
+      /**
+       * Set ONLY on the Monolith / Whirlpool / colored-Gate "choose where to
+       * travel" destination picker (`resolveTokenTeleport` / `resolveGateTeleport`)
+       * — never on any other CHOOSE_ONE. It exists because a Logistics/Nomads
+       * end-of-turn move ALSO offers `TELEPORT_HERO` options, so the client
+       * cannot tell a teleport picker apart from an ordinary move without this
+       * flag. Given it, the board surfaces each destination as a glowing,
+       * clickable EXIT hex — themed by `kind`/`pair` — instead of a bare numbered
+       * option list, and the tray shows the token art per option. The CHOOSE_ONE
+       * stays fully authoritative: a map click just dispatches the SAME
+       * `RESOLVE_VISIT_STEP` the tray button would. It reaches only the traveller
+       * (getVisiblePendingVisit masks every other seat's visit steps to []).
+       */
+      teleport?: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4 };
+    }
   | { type: "PAY_TO"; prompt: string; costOptions: ResourceCost[]; steps: VisitStep[] }
   | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }
   | { type: "GAIN_EXPERIENCE"; amount: number }

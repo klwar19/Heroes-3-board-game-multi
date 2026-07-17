@@ -2825,6 +2825,14 @@ button.battleCell {
   display: grid;
   gap: 12px;
   width: min(720px, 94vw);
+  /* Cap the height to the viewport and scroll the body so a tall picker (a
+     Search(4)/(5) wraps 2–3 card rows) fits a short window instead of
+     overflowing past both edges with no way to reach the last option. `dvh`
+     only binds when the viewport is actually short, so a normal desktop window
+     — where the modal is far smaller than 92dvh — is byte-for-byte unchanged.
+     Shared with RerollModal + LearningOfferModal (`.searchModal …`). */
+  max-height: 92dvh;
+  overflow-y: auto;
   padding: 16px;
   border: 2px solid var(--gold);
   border-radius: 12px;
@@ -4090,6 +4098,47 @@ button.battleCell {
   }
 }
 
+/* Monolith / Whirlpool / colored-Gate travel picker: each destination is a
+   glowing, clickable EXIT hex. A bright aqua-green — distinct from the teal
+   end-of-turn move and the violet spell destination — reads as "teleport". The
+   face-down overlay (a destination still riding a hidden tile) shares the glow
+   but keeps a translucent fill so the token art shows through. */
+.hexCell.teleportTarget,
+.teleportTargetFaceDown {
+  cursor: pointer;
+  stroke: #5effc0;
+  stroke-width: 3.4;
+  filter: brightness(1.32) drop-shadow(0 0 6px rgba(94, 255, 192, 0.9));
+  animation: teleportTargetPulse 1.1s ease-in-out infinite;
+}
+
+.hexCell.teleportTarget:hover,
+.teleportTargetFaceDown:hover {
+  stroke: #d6fff0;
+  filter: brightness(1.62) drop-shadow(0 0 10px rgba(94, 255, 192, 1));
+}
+
+@keyframes teleportTargetPulse {
+  0%,
+  100% {
+    stroke-opacity: 1;
+  }
+  50% {
+    stroke-opacity: 0.45;
+  }
+}
+
+/* "exit here" label on each teleport destination hex. */
+.hexTeleportCue {
+  fill: #b6ffe4;
+  font-size: 9px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(8, 34, 26, 0.92);
+  stroke-width: 2.6px;
+  pointer-events: none;
+}
+
 /* Redwood Observatory's open-map Far-tile slots do not have fields yet, so a
    large dashed target is drawn at the future tile centre itself. */
 .observatoryPlacementTarget {
@@ -4891,8 +4940,42 @@ button.hbSlot:disabled { cursor: default; }
   transform: translate(-32.5%, -10.5%);
 }
 
+/* Earned specialty (hero level ≥ Ⅰ/Ⅳ/Ⅵ): a bright GOLDEN wrap + glow. */
 .hbSlotSpecialty.gained {
-  border-color: rgba(190, 146, 82, 0.8);
+  border-color: var(--hb-gold);
+  box-shadow:
+    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.95),
+    0 0 1.4cqw rgba(232, 201, 106, 0.55);
+}
+
+/* Not yet earned: the card still shows from the beginning, dimmed as a preview. */
+.hbSlotSpecialty.preview {
+  border-color: #2c2f36;
+}
+
+.hbSlotSpecialty.preview .hbArt {
+  filter: grayscale(0.65) brightness(0.6);
+}
+
+/* Ability-search level (2/3/5/7) whose kept card is on record: the ability art
+   fills the slot in place of the search glyph, framed like a gained specialty. */
+.hbSlotAbilityPick {
+  border-color: rgba(151, 161, 179, 0.7);
+}
+
+.hbSlotAbilityPick .hbArt {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  aspect-ratio: auto;
+  border: none;
+  border-radius: 0;
+  filter: none;
+}
+
+.hbSlotAbilityPick .hbArt-ability img {
+  width: 200%;
+  transform: translate(-25%, -8%);
 }
 
 .hbCube {
@@ -5859,6 +5942,140 @@ button.hbSlot:disabled { cursor: default; }
   line-height: 1.25;
   text-align: center;
   color: #ecd7ab;
+}
+
+/* ---- Teleport destination picker (Monolith / Whirlpool / colored Gate) ---- */
+.promptTray.withTeleportCards {
+  max-width: min(760px, 96vw);
+  border-color: rgba(94, 255, 192, 0.5);
+}
+
+.promptTeleportHint {
+  font-size: 11.5px;
+  color: #bff3dd;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.promptTeleportHint::before {
+  content: "⇄";
+  font-weight: 800;
+  color: #5effc0;
+}
+
+.promptOptions.teleportCards {
+  gap: 10px;
+  align-items: stretch;
+  justify-content: center;
+  max-height: min(46vh, 380px);
+}
+
+/* One destination = one card: token art on top, human "where" label below,
+   with clear separation and a hover lift (mirrors .promptRewardCard so the
+   whole tray reads as one system). */
+.teleportOptionCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 128px;
+  padding: 8px 8px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(94, 255, 192, 0.42);
+  background: linear-gradient(180deg, rgba(20, 44, 37, 0.96), rgba(12, 22, 18, 0.98));
+  color: #e7f7ef;
+  cursor: pointer;
+  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.teleportOptionCard:hover {
+  border-color: rgba(94, 255, 192, 0.85);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5), 0 0 12px rgba(94, 255, 192, 0.35);
+}
+
+.teleportOptionArt {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  background: radial-gradient(circle at 50% 42%, rgba(94, 255, 192, 0.16), rgba(8, 20, 16, 0.7));
+  border: 1px solid rgba(94, 255, 192, 0.3);
+}
+
+.teleportOptionArt img {
+  width: 74px;
+  height: 74px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+}
+
+/* Colored Gate: tint the art well with the pair ring so the card matches the
+   map's gate mark (the --teleport-ring var is the pair colour). */
+.teleportOptionArt[style*="--teleport-ring"] {
+  border-color: var(--teleport-ring);
+  box-shadow: inset 0 0 0 2px var(--teleport-ring), 0 0 8px color-mix(in srgb, var(--teleport-ring) 55%, transparent);
+}
+
+/* A face-down destination: only the token art shows, never the hidden tile. */
+.teleportOptionArt.faceDown {
+  background: repeating-linear-gradient(
+      45deg,
+      rgba(94, 255, 192, 0.08) 0,
+      rgba(94, 255, 192, 0.08) 6px,
+      rgba(8, 20, 16, 0.55) 6px,
+      rgba(8, 20, 16, 0.55) 12px
+    );
+}
+
+.teleportOptionArt.faceDown img {
+  opacity: 0.92;
+}
+
+/* Whirlpool number (+1/0/-1) or Gate pair badge — the one number that carries
+   meaning, kept as a clear corner badge. */
+.teleportOptionBadge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(12, 26, 21, 0.94);
+  border: 1.5px solid var(--teleport-ring, #5effc0);
+  color: var(--teleport-ring, #b6ffe4);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.teleportOptionFaceDownTag {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(8, 20, 16, 0.86);
+  color: #bff3dd;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.teleportOptionCard small {
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-align: center;
+  color: #d9f2e7;
 }
 
 .auctionLotPreview,
@@ -7052,12 +7269,15 @@ button.hbSlot:disabled { cursor: default; }
   opacity: 0.62;
 }
 
+/* On the combat card sit the coin at the TOP-RIGHT corner: the bottom-centre
+   would overlap the bottom-right HP readout (.boardCardHud), and top-left /
+   top-centre are taken by the token chips / retaliation and Berserk/Clone
+   badges. Top-right is the one clear corner, keeping the HP always visible. */
 .armyStackBadge.combat {
   position: absolute;
-  bottom: 6px;
-  left: 50%;
+  top: 6px;
+  right: 6px;
   z-index: 6;
-  transform: translateX(-50%);
 }
 
 /* Berserk: a red chip flagging that this unit is forced to attack the nearest
@@ -9181,6 +9401,21 @@ span.recruitThumb {
 .opponentInfoBtn:hover {
   border-color: rgba(214, 178, 94, 0.9);
   color: #ffe9bd;
+}
+
+/* Opponent info folded INTO the adventure HUD ribbon: an aligned status cell
+   (label over a wrapping button row) that shares the rhythm of the Round /
+   Resources / Crowns cells beside it — no separate floating box on the map. */
+.advHudCell.opponents {
+  gap: 4px;
+  justify-content: center;
+}
+
+.opponentInfoBtnRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .opponentInfoBackdrop {
@@ -12452,11 +12687,19 @@ img.cardBack {
   position: relative;
 }
 
+/* Sits just off the board's right edge (the defender's wall side), but anchored
+   to the board's BOTTOM-right corner rather than its vertical middle. The card
+   juts fully OUTSIDE the felt (translate 100%) so it never covers battlefield
+   cells; and because the landscape 5x4 board is taller than the 320px right
+   rail's stacked content, the lower corner clears the inspect/command panels
+   instead of covering them at mid-height (the old top:50% overlapped them).
+   Phone mode (below) drops the absolute positioning entirely and flows it. */
 .arrowTower {
   position: absolute;
-  top: 50%;
+  top: auto;
+  bottom: 0;
   right: -8px;
-  transform: translate(100%, -50%);
+  transform: translate(100%, 0);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -15612,6 +15855,15 @@ img.cardBack {
   height: 15px;
   align-self: center;
   object-fit: contain;
+}
+
+/* Crowns (expert-use budget) chip: the same golden crown the "spend a crown"
+   overlays use, sized to sit beside the move/morale glyphs. */
+.statChip .crownChipIcon {
+  width: 15px;
+  height: 15px;
+  align-self: center;
+  color: #f0c85a;
 }
 
 /* Second negative morale token: hand dump is deferred until End Turn. */
@@ -18970,6 +19222,95 @@ img.cardBack {
   font-size: 11px;
   font-style: italic;
   color: #6a4f24;
+}
+
+/* Timing badge — a symbol + word (Instant / Ongoing / Combat / Map) so the
+   spell's timing reads at a glance instead of being buried in prose. */
+.spellBookChip.timing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.spellBookChip.timing svg {
+  width: 11px;
+  height: 11px;
+}
+
+.spellBookChip.timing.instant {
+  border-color: #b8860b;
+  background: rgba(212, 175, 55, 0.2);
+  color: #7a5410;
+}
+
+.spellBookChip.timing.ongoing {
+  border-color: rgba(78, 108, 150, 0.75);
+  background: rgba(86, 122, 168, 0.18);
+  color: #33506f;
+}
+
+.spellBookChip.timing.combat {
+  border-color: rgba(152, 64, 42, 0.75);
+  background: rgba(152, 64, 42, 0.16);
+  color: #7c3320;
+}
+
+.spellBookChip.timing.map {
+  border-color: rgba(72, 120, 54, 0.75);
+  background: rgba(84, 132, 60, 0.18);
+  color: #345f2b;
+}
+
+/* Power ladder — one rung per Power tier the spell scales across, read from
+   the effect data (never the prose), so it can never disagree with the engine. */
+.spellBookLadder {
+  margin: 0 0 16px;
+  padding: 9px 11px 10px;
+  border: 1px solid rgba(150, 105, 45, 0.4);
+  border-radius: 8px;
+  background: rgba(120, 82, 34, 0.07);
+}
+
+.spellBookLadderTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7a5a28;
+  margin-bottom: 7px;
+}
+
+.spellBookLadderRows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.spellBookLadderRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #33260f;
+}
+
+.spellBookLadderPower {
+  flex: 0 0 auto;
+  min-width: 58px;
+  font-weight: 700;
+  font-variant: small-caps;
+  letter-spacing: 0.02em;
+  color: #6a3d16;
+}
+
+.spellBookLadderText {
+  flex: 1 1 auto;
 }
 
 .spellBookEmptyPage {
@@ -23698,6 +24039,23 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   box-shadow: 0 10px 26px rgb(0 0 0 / 46%);
 }
 
+/* In-game top row (map + combat table screens): the controls panel carries
+   `.tableMenuInline`, which strips EVERY wrapping box — no gem frame, no
+   border, no background, no shadow. The seat chips / Room panel / buttons keep
+   their own carved plates, so the controls simply sit in the top band beside
+   the HUD with nothing wrapped around them. Desktop only (`:not(.phoneMode)`)
+   so the phone Menu tab keeps its full-screen panel skin further down. The
+   setup lobby / Battle Test placements omit `.tableMenuInline`, so their
+   ornate gem box is untouched. */
+.tableRoot:not(.phoneMode) > .tableTopRow > .tableMenu.tableMenuInline {
+  border: none;
+  border-image: none;
+  border-radius: 0;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+
 /* Seat chips → small carved gold-hairline plates (selected stays solid gold). */
 .tableRoot > .tableTopRow > .tableMenu .seatSwitch button {
   border: 1px solid var(--cmp-gold-deep);
@@ -24946,6 +25304,24 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   max-height: 92dvh;
 }
 
+/* The Search / Reroll / Learning card sits in the centered `.modalBackdrop`,
+   whose bottom is painted over by the fixed tab bar (z-index 90, rendered after
+   the modal). A plain 92dvh card would center with only ~4dvh of clearance, so
+   its last row (a Search(4)/(5) wraps several) hid behind the bar. Anchor the
+   card just above the bar instead — the same `72px + safe-area` every other
+   bottom floater clears it by — and cap its height so the top stays on-screen;
+   its body then scrolls (overflow-y from `.searchModal`) so every option is
+   reachable clear of the bar. `:has(> .searchModal)` scopes this to exactly the
+   three search-family cards and no other `.modalBackdrop` (town, hero, VP…). */
+.phoneMode .modalBackdrop:has(> .searchModal) {
+  align-items: end;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+.phoneMode .searchModal {
+  max-height: calc(100dvh - 88px - env(safe-area-inset-bottom, 0px));
+}
+
 /* The setup lobby mounts its own helper-coach prompt INSIDE .setupLobby, whose
    `z-index: 1` stacking context traps the prompt's fullscreen backdrop below
    the chat dock (z-index 200) — on a phone the dock then swallows the
@@ -24997,6 +25373,7 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 .phoneMode .initiativeRail,
 .phoneMode .promptTray,
 .phoneMode .reactionTray,
+.phoneMode .searchModal,
 .phoneMode .townWindow,
 .phoneMode .marketPanel,
 .phoneMode.adventureRoot[data-phone-tab="decks"] .advDecksBottom,
