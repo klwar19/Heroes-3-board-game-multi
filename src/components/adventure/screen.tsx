@@ -5842,7 +5842,7 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   units: "Unit buffs",
   abilities: "Abilities & heroes",
   combat: "Combat & map rules",
-  polish: "Polish house rules"
+  polish: "Polish house rule type 1"
 };
 
 /**
@@ -5865,7 +5865,7 @@ function HouseRulesSection({
       <div className="houseRuleHead">
         <strong>House rules</strong>
         <small>
-          BINH starts with its core tweaks on. Polish house rules stay opt-in, and Legacy clears every rule.
+          BINH starts with its core tweaks on. Polish house rule type 1 stays opt-in, and Legacy clears every rule.
         </small>
       </div>
       {categories.map((category) => {
