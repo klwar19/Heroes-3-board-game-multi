@@ -303,19 +303,71 @@ describe("sanitizeSharedMap", () => {
       },
       1
     );
-    expect(record!.tiles[0].token).toEqual({ kind: "monolith", slot: 0 });
-    expect(record!.tiles[1].token).toEqual({ kind: "whirlpool", slot: 4 });
-    expect(record!.tiles[2].token).toBeUndefined();
-    expect(record!.tiles[3].token).toEqual({ kind: "monolith" });
+    // Sanitize now writes the CANONICAL multi-token array (`tokens`), folding
+    // the legacy singular `token` in — the engine consumes plans via planTokens,
+    // which reads both forms, so no saved map loses its teleporters.
+    expect(record!.tiles[0].token).toBeUndefined();
+    expect(record!.tiles[0].tokens).toEqual([{ kind: "monolith", slot: 0 }]);
+    expect(record!.tiles[1].tokens).toEqual([{ kind: "whirlpool", slot: 4 }]);
+    expect(record!.tiles[2].tokens).toBeUndefined();
+    expect(record!.tiles[3].tokens).toEqual([{ kind: "monolith" }]);
     // A malformed band is stripped, not stored.
     expect(record!.tiles[3]).not.toHaveProperty("subBand");
     // Gate tokens keep their pair (and slot when face-up); a gate WITHOUT a pair
     // is dropped, and a stray pair on a Monolith is stripped.
-    expect(record!.tiles[4].token).toEqual({ kind: "gate", pair: 2, slot: 1 });
-    expect(record!.tiles[5].token).toEqual({ kind: "gate", pair: 4 });
-    expect(record!.tiles[6].token).toBeUndefined();
-    expect(record!.tiles[7].token).toEqual({ kind: "monolith", slot: 0 });
-    expect(record!.tiles[7].token).not.toHaveProperty("pair");
+    expect(record!.tiles[4].tokens).toEqual([{ kind: "gate", pair: 2, slot: 1 }]);
+    expect(record!.tiles[5].tokens).toEqual([{ kind: "gate", pair: 4 }]);
+    expect(record!.tiles[6].tokens).toBeUndefined();
+    expect(record!.tiles[7].tokens).toEqual([{ kind: "monolith", slot: 0 }]);
+    expect(record!.tiles[7].tokens?.[0]).not.toHaveProperty("pair");
+  });
+
+  it("multi hex placements round-trip: tokens + Field Overrides on distinct slots (same-slot stacks dropped)", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          {
+            row: 1,
+            col: 1,
+            group: "far",
+            faceDown: true,
+            tokens: [
+              { kind: "monolith", slot: 1 },
+              { kind: "gate", pair: 2, slot: 2 },
+              { kind: "monolith", slot: 1 } // same-slot stack → dropped (first wins)
+            ],
+            fieldOverrides: [
+              { kind: "kiem_trung", slot: 3 },
+              { kind: "linh_tuyen", slot: 2 }, // stacks on the gate's slot → dropped
+              { kind: "bi_canh", slot: 4 }
+            ]
+          },
+          // Legacy singular forms fold into the arrays.
+          {
+            row: 2,
+            col: 2,
+            group: "near",
+            faceDown: true,
+            token: { kind: "monolith", slot: 0 },
+            fieldOverride: { kind: "ngo_dao_thach", slot: 5 }
+          }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0].tokens).toEqual([
+      { kind: "monolith", slot: 1 },
+      { kind: "gate", pair: 2, slot: 2 }
+    ]);
+    expect(record!.tiles[0].fieldOverrides).toEqual([
+      { kind: "kiem_trung", slot: 3 },
+      { kind: "bi_canh", slot: 4 }
+    ]);
+    expect(record!.tiles[1].token).toBeUndefined();
+    expect(record!.tiles[1].fieldOverride).toBeUndefined();
+    expect(record!.tiles[1].tokens).toEqual([{ kind: "monolith", slot: 0 }]);
+    expect(record!.tiles[1].fieldOverrides).toEqual([{ kind: "ngo_dao_thach", slot: 5 }]);
   });
 
   it("preserves designer Subterranean Gate links (malformed / non-cavern dropped)", () => {

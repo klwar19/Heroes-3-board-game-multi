@@ -1,4 +1,5 @@
 import type { LocationDefinition } from "./types";
+import { animeLocationDefinitions } from "@/data/anime/locations";
 
 const wikiCredit =
   "Effect text from the community rulebook rewrite (All Map Locations) and the fan wiki field pages. Verify against official components before final release.";
@@ -871,7 +872,10 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     interaction: { type: "SUBTERRANEAN_GATE" },
     implementationStatus: "implemented",
     source: source("subterranean_gate")
-  }
+  },
+  // Anime mod (Ninefold Realms) single-hex locations — always registered so a
+  // Field Override carve resolves; placement is gated by anime.fieldOverrides.
+  ...animeLocationDefinitions
 };
 
 /**

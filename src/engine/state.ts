@@ -124,6 +124,39 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
   newObjects: false,
   newCreatures: true
 };
+
+/**
+ * Optional Anime mod modules (Ninefold Realms × Otherworld Gate). BINH-family,
+ * default OFF — absent on legacy snapshots. See docs/anime-mod-plan.md.
+ */
+export type AnimeModOptions = {
+  enabled: boolean;
+  /** Ninefold Realms towns. */
+  xianxiaTowns: boolean;
+  secretRealms: boolean;
+  xianxiaNeutrals: boolean;
+  elixirPills: boolean;
+  cultivation: boolean;
+  destiny: boolean;
+  /** Otherworld Gate towns / systems. */
+  isekaiTowns: boolean;
+  isekaiNeutrals: boolean;
+  guild: boolean;
+  monsterWaves: boolean;
+  raidBosses: boolean;
+  dungeon: boolean;
+  gods: boolean;
+  xianxiaArtifacts: boolean;
+  heartDemon: boolean;
+  /** Calamity wave cadence when monsterWaves is on. */
+  waveCadence?: 3 | 4 | 5;
+};
+
+/**
+ * How pool-drawn Field Overrides place when a tile is revealed.
+ * Designer pins never refuse. Global feature — not anime-mod-specific.
+ */
+export type FieldOverridePlacementMode = "random" | "manual" | "manual-or-refuse";
 /**
  * How the scenario is won:
  *  - "conquest": flag an enemy faction Town (the classic skirmish goal).
@@ -7046,6 +7079,35 @@ export type MapTileState = {
     preferredSpaceId?: MapSpaceId;
   };
   /**
+   * GLOBAL Field Override queue for a still-face-down / just-revealed tile.
+   * Multiple designer pins + at most one pool draw may wait here; each entry is
+   * placed in order (never on the same hex as another already-placed override
+   * or token). Prefer this array; singular {@link pendingFieldOverride} is
+   * legacy (normalized to a 1-element list).
+   */
+  pendingFieldOverrides?: Array<{
+    kind: string;
+    preferredSpaceId?: MapSpaceId;
+    fromPool?: boolean;
+  }>;
+  /** @deprecated Prefer {@link pendingFieldOverrides}. */
+  pendingFieldOverride?: {
+    kind: string;
+    preferredSpaceId?: MapSpaceId;
+    fromPool?: boolean;
+  };
+  /**
+   * Location-token placement queue (Monolith/Whirlpool/Gate) after reveal —
+   * multi-token tiles place one after another. Singular {@link pendingToken}
+   * remains for legacy single-token tiles (normalized into this list when set).
+   */
+  pendingTokens?: Array<{
+    kind: "monolith" | "whirlpool" | "gate";
+    number?: -1 | 0 | 1;
+    pair?: 1 | 2 | 3 | 4;
+    preferredSpaceId?: MapSpaceId;
+  }>;
+  /**
    * Naval Battles optional rule: the Creature Bank token drawn for this tile's
    * Blocked Field the moment the tile is revealed — BEFORE its rotation is
    * chosen — so the player knows which bank they are about to carve while they
@@ -8822,6 +8884,14 @@ export type AdventureState = {
    */
   moraleCards?: boolean;
   /**
+   * GLOBAL Field Override system frozen at setup. When on, pool draws stamp
+   * pending overrides on face-down Far/Near/Center tiles and place them on
+   * reveal (before gates / banks / teleports). Absent on older snapshots = off.
+   */
+  fieldOverrides?: boolean;
+  /** Pool-draw placement mode frozen at setup. See GameSetupOptions. */
+  fieldOverridePlacement?: FieldOverridePlacementMode;
+  /**
    * Tournament Mode setup rules (default OFF). When on, Diplomacy and Hourglass
    * of the Evil Hour are removed from shared decks, and the second player gains
    * 1 positive morale at game start. Prefer the granular flags below when set;
@@ -8928,6 +8998,8 @@ export type GameSetupOptions = {
   ruleset: GameRuleset;
   /** Wake of Gods modules. Enabled only in BINH mode; absent means fully off. */
   wog?: WogModOptions;
+  /** Anime mod modules. Enabled only in BINH mode; absent means fully off. */
+  anime?: AnimeModOptions;
   /** Win condition: "conquest", "grail" (Holy Grail), "dragon-hunt" or "dragon-conqueror". */
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
@@ -8944,6 +9016,20 @@ export type GameSetupOptions = {
    * token there. Off disables the offer and the token piles entirely.
    */
   creatureBanks?: boolean;
+  /**
+   * GLOBAL Field Override system (default OFF). When on, Far/Near/Center
+   * face-down tiles receive at least one pool-drawn single-hex replacement on
+   * reveal (designer pins always apply when present). Placement mode is
+   * {@link fieldOverridePlacement}. Content kinds come from registered
+   * packages (core + Anime mod objects, …) — the mechanism is not mod-specific.
+   * Auto-ON when a designed map carries any `plan.fieldOverride` pin.
+   */
+  fieldOverrides?: boolean;
+  /**
+   * How pool-drawn Field Overrides place on tile reveal. Designer pins never
+   * refuse. Default "manual-or-refuse".
+   */
+  fieldOverridePlacement?: FieldOverridePlacementMode;
   /**
    * Event deck optional rule (Fortress expansion, default OFF). Multiplayer
    * only: with 2+ players an Event card is drawn at the start of every
@@ -9423,23 +9509,27 @@ export type CustomMapTilePlan = {
    */
   subBand?: "iv-v" | "vi-vii";
   /**
-   * A Monolith (land), Whirlpool (sea) or colored-Gate (land) Location Token on
-   * this tile — at most one per tile. On a face-up tile `slot` names the
-   * tile-definition field (0-6, unrotated) the token overwrites at setup. On a
-   * face-down tile `slot` pins one of the seven physical flower hexes as the
-   * preferred reveal placement. Setup resolves it to an absolute board hex so
-   * the player's later tile rotation cannot move the designer's marker; if the
-   * random revealed field cannot legally host that token, the standard legal-
-   * field choice is used as a fallback. Legacy face-down tokens without `slot`
-   * keep the original choose-on-reveal behavior. Monoliths / same-color Gates /
-   * Whirlpools each need at least 2 members on the map to lead anywhere; a Gate REQUIRES its colored
-   * `pair` (1-4, and monolith/whirlpool never carry one); Whirlpool numbers
-   * (-1/0/+1) are assigned in plan order at setup. This is the CANONICAL on-tile
-   * teleporter form — the designer writes tokens for on-tile teleporters and
-   * standalone {@link CustomMapObject}s for off-tile ones (a legacy tile-slot
-   * object still carves, but the designer never writes new ones).
+   * On-tile Location Tokens (Monolith / Whirlpool / colored Gate). A tile may
+   * host **multiple** tokens as long as each occupies a **different** hex slot
+   * (0-6) — never stacked on the same hex. Prefer {@link tokens}; the singular
+   * {@link token} is legacy (normalized to a 1-element list at sanitize/setup).
+   * On a face-up tile `slot` is the printed field overwritten at setup; on a
+   * face-down tile it pins a preferred physical flower hex. Monoliths /
+   * same-color Gates / Whirlpools still need ≥2 members map-wide to travel.
    */
+  tokens?: Array<{ kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4; slot?: number }>;
+  /** @deprecated Prefer {@link tokens}. Kept for old saves; sanitize folds it in. */
   token?: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4; slot?: number };
+  /**
+   * GLOBAL Field Override pins on this tile. Multiple allowed when each uses a
+   * **distinct** hex slot (no stacking with each other OR with {@link tokens}
+   * on the same slot). Prefer {@link fieldOverrides}; singular
+   * {@link fieldOverride} is legacy. Auto-ticks Game options → Field Overrides
+   * when any pin is present. Distinct from basic teleports (token/gate).
+   */
+  fieldOverrides?: Array<{ kind: string; slot?: number }>;
+  /** @deprecated Prefer {@link fieldOverrides}. Kept for old saves; sanitize folds it in. */
+  fieldOverride?: { kind: string; slot?: number };
   /**
    * Designer-chosen Subterranean Gate links — subterranean (cavern) tiles only.
    * Each entry connects THIS cavern to one touching SURFACE tile (named by its
@@ -9940,6 +10030,7 @@ export type PendingChoice =
         | "pendant-repeat-search"
         | "place-creature-bank"
         | "place-map-token"
+        | "place-field-override"
         | "subterranean-gate-placement"
         | "judge-dread"
         | "far-tile-flip"
@@ -10304,6 +10395,18 @@ export type PendingChoice =
         pair?: 1 | 2 | 3 | 4;
         candidates: MapSpaceId[];
       };
+      /**
+       * place-field-override: discovering player picks which field of the
+       * just-revealed tile a Field Override carves (or refuses, when allowRefuse).
+       * Options are index-aligned with `candidates`; when allowRefuse the last
+       * option is the refuse action (not a candidate index).
+       */
+      fieldOverride?: {
+        tileInstanceId: string;
+        kind: string;
+        candidates: MapSpaceId[];
+        allowRefuse?: boolean;
+      };
       returnPhase: GamePhase;
     }
   | {
@@ -10493,6 +10596,8 @@ export type GameState = {
   ruleset?: GameRuleset;
   /** Wake of Gods module selection; absent on older snapshots and Legacy games (= off). */
   wog?: WogModOptions;
+  /** Anime mod selection; absent on older snapshots and Legacy games (= off). */
+  anime?: AnimeModOptions;
   round: number;
   phase: GamePhase;
   activePlayerId: PlayerId;
