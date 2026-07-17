@@ -4781,76 +4781,6 @@ button.hbBanner {
   max-width: 15cqw;
 }
 
-/* ---- Full specialty row (Ⅰ / Ⅳ / Ⅵ): earned = golden frame, locked = dim ---- */
-.hbSpecialtyGroup {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.8cqw;
-  min-width: 0;
-}
-
-.hbSpecialtyRow {
-  display: flex;
-  gap: 1.1cqw;
-  align-items: flex-start;
-  justify-content: center;
-}
-
-.hbSpecCard {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5cqw;
-  min-width: 0;
-  cursor: zoom-in;
-}
-
-.hbSpecCard:disabled {
-  cursor: default;
-}
-
-.hbSpecCardLevel {
-  font-family: Georgia, serif;
-  font-weight: 700;
-  font-size: 2.5cqw;
-  line-height: 1;
-  letter-spacing: 0.06em;
-  color: var(--hb-gold);
-  text-shadow: 0 0.2cqw 0.4cqw rgba(0, 0, 0, 0.85);
-}
-
-.hbSpecCard .hbArt-specialty {
-  width: 9.4cqw;
-}
-
-.hbSpecCard .hbSpecName {
-  font-size: 2.2cqw;
-  max-width: 10cqw;
-}
-
-/* Earned specialty: a bright GOLDEN frame + glow (the hero owns this card). */
-.hbSpecCard.earned .hbArt-specialty {
-  border-color: var(--hb-gold);
-  box-shadow:
-    inset 0 0 0 0.25cqw rgba(0, 0, 0, 0.8),
-    0 0 1.4cqw rgba(232, 201, 106, 0.6);
-}
-
-/* Locked specialty: dimmed + desaturated, no gold — a preview of what's coming. */
-.hbSpecCard.locked {
-  opacity: 0.55;
-}
-
-.hbSpecCard.locked .hbArt-specialty {
-  border-color: rgba(120, 122, 130, 0.5);
-  filter: grayscale(0.7) brightness(0.72);
-}
-
-.hbSpecCard.locked .hbSpecCardLevel {
-  color: #9aa0ac;
-}
-
 /* Card-art windows: a fixed crop over the scanned card recovers the art. */
 .hbArt {
   position: relative;
@@ -5010,8 +4940,21 @@ button.hbSlot:disabled { cursor: default; }
   transform: translate(-32.5%, -10.5%);
 }
 
+/* Earned specialty (hero level ≥ Ⅰ/Ⅳ/Ⅵ): a bright GOLDEN wrap + glow. */
 .hbSlotSpecialty.gained {
-  border-color: rgba(190, 146, 82, 0.8);
+  border-color: var(--hb-gold);
+  box-shadow:
+    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.95),
+    0 0 1.4cqw rgba(232, 201, 106, 0.55);
+}
+
+/* Not yet earned: the card still shows from the beginning, dimmed as a preview. */
+.hbSlotSpecialty.preview {
+  border-color: #2c2f36;
+}
+
+.hbSlotSpecialty.preview .hbArt {
+  filter: grayscale(0.65) brightness(0.6);
 }
 
 /* Ability-search level (2/3/5/7) whose kept card is on record: the ability art
@@ -24097,30 +24040,20 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 }
 
 /* In-game top row (map + combat table screens): the controls panel carries
-   `.tableMenuInline`, which DROPS the floating gem frame above and adopts the
-   adventure HUD's leather-ribbon band — same gold hairline, 10px radius, 56px
-   min-height and inset/drop shadow as `.adventureRoot > .tableTopRow > .advHud`
-   — so the panel and the HUD read as ONE aligned band (tops meet under the
-   row's `align-items: start`, both share the same min-height) instead of a box
-   riding beside the ribbon. Desktop only (`:not(.phoneMode)`) so the phone Menu
-   tab keeps its full-screen panel skin further down. The setup lobby / Battle
-   Test placements omit `.tableMenuInline`, so their ornate box is untouched. */
+   `.tableMenuInline`, which strips EVERY wrapping box — no gem frame, no
+   border, no background, no shadow. The seat chips / Room panel / buttons keep
+   their own carved plates, so the controls simply sit in the top band beside
+   the HUD with nothing wrapped around them. Desktop only (`:not(.phoneMode)`)
+   so the phone Menu tab keeps its full-screen panel skin further down. The
+   setup lobby / Battle Test placements omit `.tableMenuInline`, so their
+   ornate gem box is untouched. */
 .tableRoot:not(.phoneMode) > .tableTopRow > .tableMenu.tableMenuInline {
-  border: 1px solid var(--cmp-gold-deep);
+  border: none;
   border-image: none;
-  border-radius: 10px;
-  padding: 8px 12px;
-  min-height: 56px;
-  background:
-    radial-gradient(130% 120% at 50% -30%, rgb(217 178 90 / 13%), transparent 60%),
-    linear-gradient(180deg, rgb(32 23 12 / 94%) 0%, rgb(17 12 7 / 96%) 100%),
-    var(--cmp-leather) center / 340px repeat;
-  background-clip: border-box;
-  box-shadow:
-    inset 0 0 0 1px rgb(217 178 90 / 44%),
-    inset 0 1px 0 rgb(246 226 168 / 22%),
-    inset 0 -2px 7px rgb(0 0 0 / 42%),
-    0 8px 22px rgb(0 0 0 / 48%);
+  border-radius: 0;
+  padding: 0;
+  background: none;
+  box-shadow: none;
 }
 
 /* Seat chips → small carved gold-hairline plates (selected stays solid gold). */
