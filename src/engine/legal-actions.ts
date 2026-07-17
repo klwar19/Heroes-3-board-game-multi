@@ -7748,14 +7748,24 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
 
     // Polish Unit Stacks are an optional Population purchase at the player's
     // own Citadel. Pack Groups and recruited Neutrals qualify; cost is the
-    // printed gold of that side plus its tier surcharge (no discounts).
+    // printed gold of that side plus its tier surcharge — minus a Legion
+    // voucher reserved for this card's Stack, payable with the Freelancer's
+    // Guild substitution (both mirror the reducer's charge exactly).
     if (houseRuleEnabled(state, "polish-unit-stacks") && canReinforce) {
       for (const target of player.army) {
         if (!polishArmyUnitCanBuyStack(target)) {
           continue;
         }
-        const cost = polishArmyUnitStackCost(target);
-        if (!cost || !playerHasResources(player, cost)) {
+        const baseCost = polishArmyUnitStackCost(target);
+        const cost = baseCost
+          ? applyRecruitGoldDiscount(
+              state,
+              playerId,
+              { kind: "stack", unitDefId: target.unitDefId, armyUnitId: target.id },
+              baseCost
+            )
+          : null;
+        if (!cost || !hasRecruitResources(state, playerId, cost)) {
           continue;
         }
         const unitName = coreUnitDefinitions[target.unitDefId]?.name ?? target.unitDefId;

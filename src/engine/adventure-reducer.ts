@@ -84,6 +84,7 @@ import {
   getTownOfPlayer,
   getUnitSide,
   hasFreeBronzeReinforceTarget,
+  hasFreeBronzeStackTarget,
   hasRecruitResources,
   hasResources,
   heroAtSpace,
@@ -7874,25 +7875,32 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
         throw new Error("Choose an eligible Pack or Neutral unit below its Stack cap.");
       }
       // Cost follows the card's actual side (Pack gold or Neutral gold + tier).
-      const finalCost = polishArmyUnitStackCost(target) ?? polishUnitStackCost(purchase.unitDefId);
-      if (!finalCost) {
+      const baseCost = polishArmyUnitStackCost(target) ?? polishUnitStackCost(purchase.unitDefId);
+      if (!baseCost) {
         throw new Error("That unit cannot buy Stacks.");
       }
+      // A Legion voucher reserved for this card's Stack purchase knocks its
+      // gold off (single-use; consumed below like a recruit/reinforce voucher).
+      const ref: RecruitPurchaseRef = {
+        kind: "stack",
+        unitDefId: purchase.unitDefId,
+        armyUnitId: target.id
+      };
+      const finalCost = applyRecruitGoldDiscount(state, action.playerId, ref, baseCost);
       addCost(finalCost);
-      priced.push({ finalCost });
+      priced.push({ ref, finalCost });
       target.stacks = (target.stacks ?? 0) + 1;
     }
   }
 
-  if (buysStacks ? !hasResources(player, totalCost) : !hasRecruitResources(state, action.playerId, totalCost)) {
+  // Both purchase kinds pay through the recruit path: the Freelancer's Guild
+  // may substitute materials/valuables for missing gold — for Unit Stacks too
+  // (Polish house-rule extension; without the Guild this is a plain gold check).
+  if (!hasRecruitResources(state, action.playerId, totalCost)) {
     throw new Error(buysStacks ? "Not enough resources for those Unit Stacks." : "Not enough resources for those units.");
   }
 
-  if (buysStacks) {
-    spendResources(state, action.playerId, totalCost, "Polish Unit Stacks");
-  } else {
-    spendRecruitResources(state, action.playerId, totalCost, "population action");
-  }
+  spendRecruitResources(state, action.playerId, totalCost, buysStacks ? "Polish Unit Stacks" : "population action");
   // The token is NOT consumed by a purchase: the player may keep recruiting and
   // reinforcing this round (BINH house rule). Marking the round "purchased" arms
   // the movement lock — the next time one of this player's heroes moves, the
@@ -9622,8 +9630,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       // for free, rather than silently upgrading the first one in the army. The
       // picker is queued as a reward and resolves once this choice closes (the
       // action dispatcher pumps the reward queue, exactly as for the Trading
-      // Post / Spell-deck-search options above).
-      queueFreeBronzeReinforce(state, action.playerId, "City Hall: reinforce one bronze unit for free");
+      // Post / Spell-deck-search options above). With Polish Unit Stacks on the
+      // picker ALSO offers a free Stack on one bronze Pack/Neutral card.
+      queueFreeBronzeReinforce(state, action.playerId, "City Hall: reinforce one bronze unit for free", {
+        includeStacks: true
+      });
     }
     if (option.tradingPost) {
       // Fortress City Hall: open a Trading Post to exchange resources, exactly
@@ -11168,7 +11179,10 @@ export function pumpAdventureQueues(state: GameState): void {
       //    owns a Few bronze unit that can still be reinforced.
       const player = state.players[reward.playerId];
       const holdsArtifact = (player?.hand ?? []).some((cardId) => cardLibrary[cardId]?.kind === "artifact");
-      const canReinforceBronze = hasFreeBronzeReinforceTarget(state, reward.playerId);
+      // Polish Unit Stacks: a free bronze STACK target also makes the
+      // Necropolis "reinforce 1 bronze unit for free" option meaningful.
+      const canReinforceBronze =
+        hasFreeBronzeReinforceTarget(state, reward.playerId) || hasFreeBronzeStackTarget(state, reward.playerId);
       const options = choiceEffect.options.filter(
         (option) =>
           (!option.removeArtifactFromHand || holdsArtifact) &&

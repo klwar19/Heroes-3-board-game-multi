@@ -1380,6 +1380,25 @@ is NOT done:
   `board.test.tsx`. Computer policy buys Stack layers only from surplus after
   completing its core army; the purchase is optional and opens no mandatory AI
   window.
+- Stack COST extensions (`polish-stack-features.test.ts`, each with a rule-off
+  CONTROL). Leading with the limits: the special offers below price their Stack
+  at offer time and do NOT fold Legion vouchers (only the town Population
+  purchase does); the neutral-Skeletons free-bronze reward deliberately does NOT
+  gain a Stack arm (its printed text grants only the flip); the AI scores the
+  new options generically (no bespoke policy). What runs: Necropolis City
+  Hall's "reinforce 1 bronze free" pick also offers a FREE Stack on a bronze
+  Pack/Neutral card (and stays offered when only a Stack target exists);
+  Necromancy's after-combat play also sells ONE Stack at half gold rounded down
+  (basic bronze/silver, expert any tier; the card is spent only when the Stack
+  lands); Rampart Saplings and the Cove Pub extend their Astrologers'-round
+  deals to ONE Stack (half gold rounded up / −3 gold, same tier lists); Conflux
+  Garden of Life's freebie can be a FREE Stack on the owned Sprites Pack; ALL
+  Stack purchases now pay through the recruit path, so the Freelancer's Guild
+  substitutes materials/valuables for missing gold; a Legion piece can be
+  reserved for (and is consumed by) one card's Stack purchase (`{kind:"stack"}`
+  voucher target — a reinforce voucher never bleeds onto a Stack); and the
+  Astrologers' Terrible Plague is WEAKENED by Stacks — a Stacked pack sheds one
+  layer (`ARMY_STACK_LOST` with a reason) instead of flipping to Few.
 - With `polish-spell-book` ON, starting Magic Arrows leave the M&M deck and
   become refreshed Book Spells; Might heroes receive one Cast a Spell card and
   Magic heroes two. Every owned Spell acquisition goes to the Book, while

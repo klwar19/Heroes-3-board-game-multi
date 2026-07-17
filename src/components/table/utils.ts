@@ -548,9 +548,15 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         event.unitDefId.split(".")[1] ?? event.unitDefId
       } (${formatCost(event.cost)}).`;
     case "ARMY_STACK_LOST":
-      return `${event.unitName} loses a Unit Stack and survives the blow${
-        event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
-      } — ${event.remainingStacks} Stack${event.remainingStacks === 1 ? "" : "s"} left.`;
+      // With a `reason` this was a map effect absorbed by the Stack (Terrible
+      // Plague weakened); otherwise the combat lethal-damage absorb.
+      return event.reason
+        ? `${event.unitName} loses a Unit Stack (${event.reason}) — ${event.remainingStacks} Stack${
+            event.remainingStacks === 1 ? "" : "s"
+          } left.`
+        : `${event.unitName} loses a Unit Stack and survives the blow${
+            event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
+          } — ${event.remainingStacks} Stack${event.remainingStacks === 1 ? "" : "s"} left.`;
     case "GAME_OPTIONS_CHANGED":
       return event.message;
     case "MAP_PRESET_TRIGGERED":
