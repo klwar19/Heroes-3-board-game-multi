@@ -1886,22 +1886,30 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(latest[0]).toMatchObject({ kind: "gate", pair: 3, placement: { type: "standalone" } });
   });
 
-  it("arms a Monolith and writes a TILE TOKEN (no pair) on a face-up tile", () => {
+  it("the plain Monolith is RETIRED from the palette; a one-way ENTRANCE writes a TILE TOKEN instead", () => {
     let tiles: CustomMapTilePlan[] = faceUpMap.map((plan) => ({ ...plan }));
     const onChange = vi.fn((next: CustomMapTilePlan[]) => {
       tiles = next;
     });
     const container = renderWithObjects(faceUpMap, [], () => {}, onChange);
 
+    // The old ⛩ Monolith button is gone — every two-way teleporter is a
+    // colored Teleport Gate now (legacy saved Monoliths still work in game).
     const monolithButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
-      /Monolith/i.test(btn.textContent ?? "")
+      /^⛩ Monolith$/.test(btn.textContent ?? "")
     );
-    fireEvent.click(monolithButton!);
+    expect(monolithButton, "no plain Monolith palette button").toBeUndefined();
+
+    // A one-way entrance token placement writes the token WITH its color pair.
+    const entranceButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
+      /Entrance/i.test(btn.textContent ?? "")
+    );
+    fireEvent.click(entranceButton!);
     fireEvent.click(container.querySelector(".designerObjectSlot.tileSlot")!);
 
     const f1 = tiles.find((plan) => plan.tileDefId === "F1");
-    expect(f1?.tokens?.[0]?.kind).toBe("monolith");
-    expect(f1?.tokens?.[0]).not.toHaveProperty("pair");
+    expect(f1?.tokens?.[0]?.kind).toBe("oneway_entrance");
+    expect(f1?.tokens?.[0]?.pair).toBe(1);
   });
 
   it("a tile already carrying a token offers only its FREE hexes (multi-token: same slot never stacks)", () => {
@@ -1929,24 +1937,22 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(gate?.slot).not.toBe(0);
   });
 
-  it("arms a Monolith and places a STANDALONE object on an off-tile hex", () => {
+  it("arms a red Teleport Gate and places a STANDALONE object on an off-tile hex", () => {
     let latest: CustomMapObject[] = [];
     const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
       latest = next;
     });
     const container = renderWithObjects(faceUpMap, [], onObjectsChange);
 
-    const monolithButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
-      /Monolith/i.test(btn.textContent ?? "")
-    );
-    fireEvent.click(monolithButton!);
+    fireEvent.click(container.querySelector('.designerObjectButton[data-gate-pair="1"]')!);
 
     const standalone = container.querySelector(".designerObjectSlot.standalone");
     expect(standalone, "an off-tile standalone candidate is offered").toBeTruthy();
     fireEvent.click(standalone!);
 
     expect(latest).toHaveLength(1);
-    expect(latest[0].kind).toBe("monolith");
+    expect(latest[0].kind).toBe("gate");
+    expect(latest[0].pair).toBe(1);
     expect(latest[0].placement.type).toBe("standalone");
   });
 
@@ -2062,7 +2068,7 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(alerts.some((text) => /touches no tile|unreachable/i.test(text)), "detached warning").toBe(true);
   });
 
-  it("legacy per-tile Monolith token UI is untouched (both systems coexist)", () => {
+  it("a LEGACY saved Monolith token still renders and stays editable (retired from the palette only)", () => {
     // A legacy `token` on the tile plan still renders its art…
     const container = renderWithObjects(
       [
@@ -2072,11 +2078,10 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
       []
     );
     expect(container.querySelector('image[href*="tokens/monolith"]'), "legacy token art still renders").toBeTruthy();
-    // …while the Objects palette also offers its own Monolith button.
-    expect(
-      [...container.querySelectorAll(".designerObjectButton")].some((btn) => /Monolith/i.test(btn.textContent ?? "")),
-      "objects palette present alongside the legacy token"
-    ).toBe(true);
+    // …and clicking it still opens its token panel (edit/remove keep working) —
+    // only NEW plain Monoliths can no longer be placed.
+    fireEvent.click(container.querySelector(".designerMapToken")!);
+    expect(container.querySelector(".designerTokenPopover"), "legacy token panel opens").toBeTruthy();
   });
 });
 
@@ -3236,27 +3241,25 @@ describe("MapDesigner — on-board per-edge yellow border painting", () => {
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1" }
     ]);
-    const monolith = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
-      /Monolith/i.test(btn.textContent ?? "")
-    ) as HTMLElement;
+    const gate = container.querySelector('.designerObjectButton[data-gate-pair="1"]') as HTMLElement;
     const paint = paintButton(container);
 
-    // Arm the Monolith → its candidate cells glow, no edge zones yet.
-    fireEvent.click(monolith);
-    expect(monolith.getAttribute("aria-pressed")).toBe("true");
+    // Arm the red Teleport Gate → its candidate cells glow, no edge zones yet.
+    fireEvent.click(gate);
+    expect(gate.getAttribute("aria-pressed")).toBe("true");
     expect(container.querySelectorAll(".designerObjectSlot").length).toBeGreaterThan(0);
     expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBe(0);
 
-    // Arm border paint → the Monolith disarms (no candidate cells), edge zones appear.
+    // Arm border paint → the gate disarms (no candidate cells), edge zones appear.
     fireEvent.click(paint);
     expect(paint.getAttribute("aria-pressed")).toBe("true");
-    expect(monolith.getAttribute("aria-pressed"), "monolith disarmed").toBe("false");
+    expect(gate.getAttribute("aria-pressed"), "gate disarmed").toBe("false");
     expect(container.querySelectorAll(".designerObjectSlot").length, "no object candidates").toBe(0);
     expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBeGreaterThan(0);
 
-    // Arm the Monolith again → border paint disarms, zones vanish.
-    fireEvent.click(monolith);
-    expect(monolith.getAttribute("aria-pressed")).toBe("true");
+    // Arm the gate again → border paint disarms, zones vanish.
+    fireEvent.click(gate);
+    expect(gate.getAttribute("aria-pressed")).toBe("true");
     expect(paint.getAttribute("aria-pressed"), "border paint disarmed").toBe("false");
     expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBe(0);
   });
@@ -3524,26 +3527,27 @@ describe("MapDesigner — canonical teleporter conversions (token ⇄ standalone
     }
   });
 
-  it("a Gate TILE TOKEN renders the MONOLITH art href plus its color ring + pair badge (designer)", () => {
+  it("a Gate TILE TOKEN renders its PER-COLOR portal art plus the color ring + pair badge (designer)", () => {
     const container = renderConv([
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "gate", pair: 2, slot: monoSlots[0] } }
     ]);
     const gateToken = container.querySelector(".designerMapToken.gate")!;
     expect(gateToken, "gate token rendered").toBeTruthy();
-    // A colored Gate is a colored Monolith: the monolith artwork is present…
-    expect(gateToken.querySelector('image[href*="tokens/monolith"]'), "monolith art href").toBeTruthy();
+    // The Teleport Gate wears its own per-color portal (blue for pair 2) — the
+    // tinted-monolith rendering is retired…
+    expect(gateToken.querySelector('image[href*="tokens/teleport-gate-blue"]'), "blue portal art href").toBeTruthy();
     // …plus a readable pair badge naming its color.
     expect(gateToken.querySelector(".designerMapTokenPair")?.textContent).toBe("2");
   });
 
-  it("a Gate STANDALONE object also renders the MONOLITH art + pair badge (designer)", () => {
+  it("a Gate STANDALONE object also renders the per-color portal art + pair badge (designer)", () => {
     const container = renderConv(
       [{ row: town.row, col: town.col, group: "starting", faceDown: false }],
       [{ kind: "gate", pair: 4, placement: { type: "standalone", row: town.row - 3, col: town.col } }]
     );
     const gate = container.querySelector(".designerObjectToken.gate")!;
-    expect(gate.querySelector('image[href*="tokens/monolith"]'), "standalone gate uses monolith art").toBeTruthy();
+    expect(gate.querySelector('image[href*="tokens/teleport-gate-violet"]'), "violet portal art").toBeTruthy();
     expect(gate.querySelector(".designerObjectPair")?.textContent).toBe("4");
   });
 });

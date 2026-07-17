@@ -1636,8 +1636,8 @@ tile CONVERTS between the two canonical forms in one batched
 always preserved). Legacy saved presets carrying a tile-slot object STILL carve
 exactly as before (`applyCustomMapObjects`).
 
-**Colored Gates are Monoliths WITH a color** — one per-color teleport NETWORK
-each (1 red, 2 blue, 3 green, 4 yellow), NEVER connecting across colors or to
+**Teleport Gates (colored Gates) are Monoliths WITH a color** — one per-color
+teleport NETWORK each (1 red, 2 blue, 3 green, 4 violet), NEVER connecting across colors or to
 Monoliths (and Monoliths/Obelisks never join a gate pair). A gate TILE TOKEN
 REQUIRES its `pair`; monolith/whirlpool tokens must NOT carry one (sanitisers
 drop/strip violations — `sanitizeTileToken` in `map-registry.ts`). Gate tokens
@@ -1653,18 +1653,25 @@ the traveller PICKS via the same CHOOSE_ONE visit-step the Monolith picker uses,
 <2 same-color gates → inert note, all occupied → fizzle; arrival never
 re-triggers. A guarded gate fights first and only a WIN resolves the network
 travel. On the board a gate FIELD (tile-carved or standalone) and a designer gate
-TOKEN/palette both draw the MONOLITH art tinted by a colored ring + pair badge
-(`gateHexMark` / `designerTokenImage`). LIMIT: a tile hosts at most ONE token
-(monolith AND gate cannot share a tile); a gate TOKEN carries NO guard (only a
-standalone gate OBJECT can); the per-color cap is `MAX_GATES_PER_PAIR` (8),
-counted across BOTH sources (plan gate tokens + gate objects) for the lone-gate /
-over-cap warnings (`validateCustomMapObjects`).
+TOKEN/palette draw the gate's OWN per-color portal art (`teleportGateImage` —
+1 red / 2 blue / 3 green / 4 violet, renamed from yellow) with the colored ring
++ pair badge (`gateHexMark` / `designerTokenImage`); gates are labeled
+"Teleport Gate" in the UI. LIMIT (updated 2026-07): a tile may host multiple
+tokens on DISTINCT slots; gate TOKENS (like every single-hex placement) may now
+carry a designer guard (see the "Designer guards, outposts & one-way monoliths"
+section below); the per-color cap is `MAX_GATES_PER_PAIR` (8), counted across
+BOTH sources (plan gate tokens + gate objects) for the lone-gate / over-cap
+warnings (`validateCustomMapObjects`).
 
 Leading with what does NOT run / deliberate readings:
-- **Only the Two-Way Monolith is modeled.** The printed One-Way
-  Entrance/Exit Monolith pair is NOT a separate location — every monolith is
-  two-way. With 3+ monoliths the TRAVELLER PICKS the destination (the printed
-  "corresponding" pairing has no meaning on a designed map); with exactly 2 the
+- **The plain (colorless) Monolith is RETIRED from the designer palette**
+  (2026-07): every NEW two-way teleporter is a colored Teleport Gate; one-way
+  monoliths are their own objects (section below). LEGACY saved maps with
+  Monolith tokens/objects still carve, travel and render exactly as before
+  (the Monolith network, the "monolith" Obelisk role and the anime
+  `tran_phap_truyen_tong` override are untouched); the whirlpool-only ADD
+  picker and the retired palette button are pinned in `map-designer.test.tsx`.
+  With 3+ monoliths the TRAVELLER PICKS the destination; with exactly 2 the
   travel is automatic.
 - **"Lose 1 unit from your unit Deck" is the traveller's pick** of one army
   card (the card names no unit); a Neutral-side card recycles to its tier
@@ -1741,6 +1748,115 @@ What runs (each with a failing-if-removed test):
   ("Colored Gate travel into a face-down (pending) gate tile" — the both-listed
   pick, the size-2 lone-carved+pending network, per-color/monolith isolation
   CONTROLs, and the mid-flow elimination auto-place).
+
+## Designer guards, outposts & one-way monoliths (map-designer content, 2026-07) — what runs vs. limits
+
+Six features on `CustomMapPreset` / `CustomMapTilePlan` / `CustomMapObject`.
+Types in `state.ts` (`CustomGuardSpec`, `CustomCenterHexPlan`,
+`OnewayExitMode`), sanitizers in `map-preset.ts` + `src/server/map-registry.ts`,
+engine in `adventure.ts` / `adventure-reducer.ts` / `adventure-setup.ts`,
+designer UI in `map-designer.tsx` (shared `GuardSpecEditor`). Pinned in
+`vii-field-designation.test.ts`, `map-objects.test.ts`,
+`outpost-objects.test.ts`, `designed-gate-links.test.ts`,
+`map-registry.test.ts`, `map-designer.test.tsx`, `gate-object-board.test.tsx`
+(each behaviour mutation-checked, CONTROLs included).
+
+Leading with what does NOT run / deliberate limits:
+- **The map AI treats every new object hex as an ordinary (guarded) field** —
+  it never plans a path through a one-way link, never seeks a Tent flag to open
+  a Barrier, and scores an outpost fight like any guard fight.
+- **Outposts (Garrison / Keymaster's Tent / Barrier) are STANDALONE-only**
+  (`OUTPOST_OBJECT_KINDS`): a tile-slot/token form is rejected by the
+  sanitizer + `validateCustomMapObjects` — they live out of every tile by
+  design. One-way monoliths exist in BOTH forms (standalone object AND tile
+  token); standalone whirlpools stay refused as before.
+- **A Barrier never fights** — it is a wall, not a guard post: the sanitizer
+  strips any `guard` off a barrier (and off a one-way EXIT); entry is blocked at
+  `classifyHeroStep` unless the hero's owner holds a same-color Tent flag, and
+  with the flag the step is an ordinary walk (no visit, no reward).
+- **A garrison defense is ARMY-only** (settlement-style): the defender picks
+  units only — no hand cards, no hero — and pays 3 gold (towns keep 8;
+  `garrisonDefenseCost`). Declining hands the flag over without a fight.
+- **No XP from outpost / one-way fights** (`isBankStyleGuardLocation`):
+  garrison, Keymaster's Tent and one-way ENTRANCE guards fight BANK-style —
+  no Quick Combat, no experience (combat difficulty 0), and NO round limit
+  (`CombatContext.unlimitedRounds` — the reducer's round-limit check skips it,
+  no MP-to-extend). Guards on monolith/gate/whirlpool tokens and objects keep
+  the NORMAL neutral flow (Quick Combat, XP, round limit) at their level.
+- **An exact-army guard is never Quick-Combat or Diplomacy skipped** — the
+  designed army always deploys and fights (minted at fight time from
+  `field.customGuardUnits` in `drawGuardArmy`); its difficulty (for XP where
+  XP applies) derives from the army's tiers
+  (`customGuardArmyDifficulty`: any azure body = Ⅶ, else bronze 1 / silver 2 /
+  gold 3 points mapped onto the `NEUTRAL_ARMY_TABLE` rows, capped Ⅵ).
+- **The center-hex bonus pays ONCE, to the first clearer** — `centerHexClaimed`
+  latches; a later re-capture (Town changing hands) never re-pays. VP is
+  recorded unconditionally but SCORES only in VP mode.
+
+What runs (each pinned by a test that fails if the wiring is removed):
+- **1. Ⅵ–Ⅶ center-hex editor** (`CustomMapTilePlan.centerHex` =
+  `{ guard?, reward?, vp? }`): clicking a Ⅵ–Ⅶ center tile always shows the
+  center-hex box — it works on PRINTED objectives (Cyclops Stockpile, Temple of
+  the Sea, settlement…) exactly like on the three Ⅶ designations
+  (Town/Grail/Utopia). GUARD = level Ⅰ–Ⅶ or an exact army (up to
+  `MAX_CUSTOM_GUARD_UNITS` = 6 neutral-deck unit cards, shared
+  `GuardSpecEditor`); REWARD = gold/materials/valuables (≤50 each), Treasure
+  dice (≤3), Spell/Ability/Artifact deck Searches (≤5 each); VP ≤10.
+  `materializeTileFields` stamps it on the difficulty-7 field;
+  `grantCenterHexBonus` (ONE seam, top of `beginFieldVisit` — reached only
+  after the guards are dealt with) pays resources inline and queues dice/
+  Searches as a `visit-steps` reward. Legacy `viiFieldReward`/`viiBonus`
+  snapshots fold in (`foldLegacyViiBonus`, shared claim latch).
+  `vii-field-designation.test.ts`.
+- **2. Guards on EVERY single-hex placement** (`CustomGuardSpec`
+  `{ level?: 1-7 } | { units: [...] }`): tile TOKENS (monolith / whirlpool /
+  Teleport Gate / one-way), standalone OBJECTS, BOTH subterranean gate-link
+  halves (`CustomMapGateLink.gateGuard`/`entranceGuard`, per-half ⚔ editor in
+  the link rows) and the center hex — one shared stamp
+  (`applyCustomGuardToField`). A hero must FIGHT to enter; a WIN clears the
+  guard for good (`clearCustomGuard`), a loss/retreat leaves it.
+- **3. Teleport ARRIVAL auto-wins the exit's guard** (user rule "auto win when
+  get out"): every teleport arrival — Monolith, Teleport Gate, whirlpool,
+  one-way, AND stepping OUT through a linked subterranean gate — sweeps a
+  still-standing guard on the destination for free
+  (`TELEPORT_HERO.sweepGuard` → `autoWinArrivalGuard`: guard cleared, feed
+  note, no fight, no XP, no reward). Walking onto the same hex normally still
+  fights it.
+- **4. Yellow border edges on standalone object hexes**
+  (`CustomMapObject.borderEdges`, absolute dirs 0-5 →
+  `MapFieldState.borderEdges`): the 🖌 border tool paints object-hex edges
+  exactly like tile edges; each sealed edge blocks movement/discovery both
+  ways (`isDesignedEdgeSealedBetween` inside `canCrossEdge` +
+  `heroCanDiscoverTileAcrossBorders`), rendered with the same gold casing.
+- **5. Outposts** (standalone, always revealed, optional bank-style guard,
+  winner FLAGS it): **Garrison** — connects tiles as a walkable junction; the
+  winner flags it (single owner + light-blue ring); a flagged garrison offers
+  its owner a 3-gold ARMY-only defense when an enemy walks in
+  (`garrisonDefenderFor` → the settlement defense flow, `pending.goldCost`).
+  **Keymaster's Tent** — colored (pair 1-4); EVERY visitor who clears it flags
+  it (multi-flag `extraFlagOwnerIds` — flagging never steals the previous
+  owner's key); holding a tent flag opens same-color **Barriers**
+  (`playerHoldsTentFlag`). `outpost-objects.test.ts`.
+- **6. One-way monoliths** (4 colors, `oneway_entrance` / `oneway_exit`,
+  standalone or tile token): only the ENTRANCE may carry a guard (bank-style,
+  above); winning teleports to a same-color EXIT per the entrance's
+  `exitMode` — **random** (seeded die among free exits), **certain** (traveller
+  picks, default), **mix** (exits flagged `alwaysPickable` are offered up
+  front + one "Roll the die" option over the rest; degenerates gracefully —
+  all-always = certain, none-always = random, resolved at CHOICE time via
+  `ONEWAY_RANDOM_EXIT` so the pick leaks nothing). Occupied exits are skipped;
+  no exit on the map / all occupied = inert note. Arrival never re-triggers
+  and (rule 3) sweeps any hand-edited exit guard. Exits are one-way: standing
+  ON an exit offers no travel. `map-objects.test.ts` ("one-way monolith"
+  suites).
+- **7. Teleport Gate reskin** (was "Colored Gate"): per-color PORTAL art on
+  the board, the palette and tokens (`teleportGateImage`, 1 red / 2 blue /
+  3 green / 4 violet — pair 4 renamed from yellow, `gatePairColor`); the
+  location is labeled "Teleport Gate"; the plain (colorless) Monolith is
+  RETIRED from the designer palette (legacy maps unaffected — see the
+  Monolith section above). One-way monoliths use their own per-color art
+  (`onewayMonolithImage`); outposts theirs (`outpostObjectImage`).
+  `map-designer.test.tsx`, `gate-object-board.test.tsx`.
 
 ## Field Overrides & multi-pin tiles (global system; Anime mod content) — what runs vs. limits
 
@@ -2010,9 +2126,11 @@ glyphs via `REWARD_GLYPH_ICONS` (`homm-assets.ts`) through `assetUrl()`.
 
 Leading with what does NOT run / deliberate limits:
 - **Standalone (off-tile) Whirlpool teleporters are REFUSED** — a Whirlpool must
-  sit on a tile (its token); only Monoliths and colored Gates may be standalone
-  objects. A standalone hex touching BOTH layers is also rejected
-  (`map-objects.test.ts`).
+  sit on a tile (its token); Monoliths (legacy), Teleport Gates, one-way
+  monolith halves and the three outposts (Garrison / Keymaster's Tent /
+  Barrier — standalone-ONLY, see the "Designer guards, outposts & one-way
+  monoliths" section) may be standalone objects. A standalone hex touching BOTH
+  layers is also rejected (`map-objects.test.ts`).
 - **CANONICAL forms (see the "Monolith & Whirlpool Tokens" section):** an ON-tile
   teleporter is a `CustomMapTilePlan.token` (kind monolith/whirlpool/gate); an
   OFF-tile one is a standalone `CustomMapObject`. The designer never writes NEW
@@ -2094,10 +2212,13 @@ What runs (each pinned by a test that fails if the wiring is removed):
   `.tileBorderCasing`/`.tileBorderLine`). The legacy whole-arc `extraBorders`
   (absolute dirs 0-5, 3-edge outer arcs) stays fully engine-enforced for old
   saves; the designer now writes ONLY `borderEdges`, folding legacy arcs in on a
-  plan's first border edit. LIMIT: edges exist only on tile footprints (no
-  borders on standalone object hexes). `designed-borders.test.ts` (arc + edge
+  plan's first border edit. Standalone OBJECT hexes take border edges too
+  (2026-07, `CustomMapObject.borderEdges` → `MapFieldState.borderEdges` —
+  same tool, same seal, same rendering; see the "Designer guards, outposts &
+  one-way monoliths" section). `designed-borders.test.ts` (arc + edge
   suites), `map-navigation.test.ts` (AI), `map-registry.test.ts` (round-trip),
-  `map-designer.test.tsx` (draw/erase/stroke/conversion UI).
+  `map-designer.test.tsx` (draw/erase/stroke/conversion UI),
+  `map-objects.test.ts` (object-hex edges).
 - **3. Fixed starting-tile orientation** (`lockRotation` + `rotation`): a locked
   seat's home tile is placed at the designed rotation and owes NO opening
   rotation; the opening chain skips it in seat order (no stall), the reducer
@@ -2109,21 +2230,28 @@ What runs (each pinned by a test that fails if the wiring is removed):
   morale/search/resources/movement/dice, never farmable on re-entry), or
   `victory-only` (no reward, still a dig marker). `obelisk-roles.test.ts`.
 - **5. One-hex objects** (`CustomMapPreset.objects`, the CANONICAL OFF-tile form):
-  standalone off-tile hexes (layer inferred from the touched tile) — Monoliths and
-  4 colored Gate NETWORKS (each color its own teleport network, separate from
-  Monoliths; up to `MAX_GATES_PER_PAIR` = 8 of a color across plan tokens +
-  objects), with optional guards 1-7 running the real neutral-battle flow (a
-  level>difficulty Quick-Combat win teleports + clears; a loss/retreat leaves the
-  guard). An ON-tile teleporter is instead a `CustomMapTilePlan.token` (see the
-  "Monolith & Whirlpool Tokens" section) — the designer no longer writes new
-  tile-slot objects, but a LEGACY tile-slot object in a saved preset still carves.
-  `map-objects.test.ts`.
+  standalone off-tile hexes (layer inferred from the touched tile) — Monoliths
+  (legacy) and 4 colored Teleport-Gate NETWORKS (each color its own teleport
+  network, separate from Monoliths; up to `MAX_GATES_PER_PAIR` = 8 of a color
+  across plan tokens + objects), plus — 2026-07 — one-way monolith halves and
+  the three outposts (Garrison / Keymaster's Tent / Barrier). Optional guards
+  (level 1-7 OR an exact army) run the real neutral-battle flow on teleporters
+  (a level>difficulty Quick-Combat win teleports + clears; a loss/retreat
+  leaves the guard) and BANK-style (no XP, unlimited rounds) on outposts /
+  one-way entrances — see the "Designer guards, outposts & one-way monoliths"
+  section. An ON-tile teleporter is instead a `CustomMapTilePlan.token` (see
+  the "Monolith & Whirlpool Tokens" section) — the designer no longer writes
+  new tile-slot objects, but a LEGACY tile-slot object in a saved preset still
+  carves. `map-objects.test.ts`, `outpost-objects.test.ts`.
 - **6. Ⅶ-field designation** (a centre plan's `viiField` town/dragon_utopia/grail):
   forces the difficulty-7 objective field whatever tile lands there (face-up at
   setup, face-down on reveal, masked in other views until then); a victory-vs-
   design conflict BLOCKS the start (lobby intact) with live warnings; the knobs
   `grailObelisksRequired` / `utopiaGuards` / `utopiaBonusSearch` tune the dig /
-  Utopia. `vii-field-designation.test.ts`.
+  Utopia. The centre hex additionally takes a designer guard / reward / VP
+  bonus (`CustomMapTilePlan.centerHex`) with or without a designation — see
+  the "Designer guards, outposts & one-way monoliths" section.
+  `vii-field-designation.test.ts`.
 - **7. Victory Points** (`CustomMapPreset.victoryPoints`): a round-limit OR
   victory-completion end trigger scores the full rulebook VP table via an
   event-sourced ledger (heroes defeated, buildings, hero levels, flagged mines/
