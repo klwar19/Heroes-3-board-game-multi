@@ -5059,6 +5059,12 @@ button.hbSlot:disabled { cursor: default; }
   text-shadow: 0 0.2cqw 0.4cqw rgba(0, 0, 0, 0.8);
 }
 
+/* Anime Cultivation realm chip (§5.6) — the public Cultivation Realm on the board. */
+.hbRealm {
+  color: #d8c7f0;
+  white-space: nowrap;
+}
+
 /* Army + town panels */
 .armyPanel,
 .townPanel {

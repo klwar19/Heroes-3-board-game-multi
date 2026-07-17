@@ -1175,6 +1175,23 @@ function buyWarMachineScore(
  * steps are the printed rules. Empty / pure-decline branches score low so the
  * AI still exits, but never freezes on a multi-option Event menu.
  */
+/**
+ * Gold-equivalent printed cost of an army card the Heavenly Tribulation toll
+ * would take — the tie-breaker so the runner deterministically pays the CHEAPEST
+ * card (matches the engine's cheapest-first offer ordering and the AFK default).
+ */
+function tribulationTollCost(state: GameState, playerId: PlayerId, unitId: string): number {
+  const unit = state.players[playerId]?.army.find((candidate) => candidate.id === unitId);
+  if (!unit) {
+    return 0;
+  }
+  const cost =
+    (unit.side === "neutral"
+      ? coreUnitDefinitions[unit.unitDefId]?.neutral?.cost
+      : getUnitSide(unit.unitDefId, unit.side)?.cost) ?? {};
+  return (cost.gold ?? 0) + (cost.buildingMaterials ?? 0) * 3 + (cost.valuables ?? 0) * 7;
+}
+
 function visitStepsUtility(
   state: GameState,
   playerId: PlayerId,
@@ -1217,6 +1234,20 @@ function visitStepsUtility(
         break;
       case "EVENT_DISCARD_CHEAPEST_UNIT":
         utility -= army <= 2 ? 40 : 18;
+        break;
+      case "FLIP_PACK_TO_FEW":
+        // Cultivation Heavenly Tribulation toll (§5.6) ONLY (Plague/Pandora
+        // flips are unscored, exactly as before): flipping / shedding a Stack
+        // from a Pack is a mild loss; prefer the CHEAPEST candidate so the pick
+        // is deterministic and minimal.
+        if (step.source === "tribulation") {
+          utility -= 4 + tribulationTollCost(state, playerId, step.armyUnitId) * 0.2;
+        }
+        break;
+      case "TRIBULATION_LOSE_UNIT":
+        // Losing a whole Few/Neutral card is worse than flipping a Pack — but
+        // still take the cheapest, so the runner protects value deterministically.
+        utility -= 14 + tribulationTollCost(state, playerId, step.unitId) * 0.2;
         break;
       case "REINFORCE_FREE":
         utility += 48;
@@ -1982,6 +2013,18 @@ export function scoreMapAction(
       // Only offered when the seat owns the window and chose not to play the
       // card — close the gate so the field reward / next turn can proceed.
       return { score: 1_120, policy: "map.skip-necromancy" };
+    case "HEAVEN_TRIBULATION": {
+      // Anime Cultivation (§5.6): brave the Tribulation ONLY with an army buffer
+      // (≥ 3 cards) so the toll gamble cannot strand the seat — otherwise skip
+      // (null → foundation 0, below END_TURN, never taken). Scored just above
+      // END_TURN so a well-stocked seat attempts it when nothing more productive
+      // (moves/recruits/builds, all ≥ 590) is on the table.
+      const army = state.players[observation.playerId]?.army.length ?? 0;
+      if (army < 3) {
+        return null;
+      }
+      return { score: 360, policy: "map.heaven-tribulation" };
+    }
     default:
       return null;
   }

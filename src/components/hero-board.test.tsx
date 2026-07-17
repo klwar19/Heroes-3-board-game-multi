@@ -99,6 +99,41 @@ describe("HeroBoard — the Ⅰ/Ⅳ/Ⅵ specialty cards live in the LEVEL-TRACK 
   });
 });
 
+describe("HeroBoard — anime Cultivation realm chip (§5.6)", () => {
+  function cultivationAdventure(): GameState {
+    return createAdventureGameState({
+      seed: "hero-board-cultivation",
+      rollFirstPlayer: false,
+      anime: { enabled: true, cultivation: true },
+      players: [
+        { id: "p1", name: "chen", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+  }
+
+  it("shows the realm name (EN + VI) on the board when the module is on", () => {
+    const state = cultivationAdventure();
+    getMainHero(state, "p1")!.cultivationRealm = 2;
+    const { container } = renderBoardState(state);
+    const chip = container.querySelector(".hbRealm");
+    expect(chip).toBeTruthy();
+    expect(chip?.textContent).toContain("Core Formation");
+    expect(chip?.textContent).toContain("Kim đan");
+  });
+
+  it("reads realm 0 (Qi Refinement) when the hero has no stamped realm", () => {
+    const { container } = renderBoardState(cultivationAdventure());
+    expect(container.querySelector(".hbRealm")?.textContent).toContain("Qi Refinement");
+  });
+
+  it("CONTROL — with the module OFF, no realm chip renders", () => {
+    // The default Bulwark adventure carries no anime options.
+    const { container } = renderHeroBoard("eikthurn");
+    expect(container.querySelector(".hbRealm")).toBeNull();
+  });
+});
+
 describe("HeroBoard — Feature B: the kept level-up Ability at levels 2/3/5/7", () => {
   it("renders the kept Ability card in the level slot when a pick is recorded", () => {
     const state = bulwarkAdventure("eikthurn");

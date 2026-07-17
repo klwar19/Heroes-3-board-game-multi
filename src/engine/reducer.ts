@@ -89,6 +89,7 @@ import {
   skipNecromancy,
   commanderGradeUp,
   reviveCommander,
+  beginHeavenlyTribulation,
   resolveCommanderFirstAid,
   commanderSetStance,
   spellBookAction,
@@ -179,6 +180,7 @@ import {
   spendFirstAidExpert,
   startWarMachineRound
 } from "./permanents";
+import { cultivationCombatRerollBonus } from "./anime-cultivation";
 import { createSeededRandom, setActiveEntropy } from "./random";
 import {
   combatHasHumanParticipant,
@@ -3517,6 +3519,18 @@ function buildRerollSources(
         }))
       : [];
 
+  // Anime Cultivation Core Formation (realm 2, §5.6): one FREE Attack-die reroll
+  // per combat, a standing source on the holder's own attack rolls (declared
+  // attacks AND retaliations, like the morale token — not gated on isRetaliation).
+  // Blocked by the same attackRerollsBlocked gate above (Spirit of Oppression)
+  // and offered like any generic source; the once-per-combat flag lives on
+  // combatStats and is set when it is spent (rerollPendingChoice). Scoped to
+  // Attack-die rolls only (see the note in buildAbilityRerollSources).
+  const cultivationSources: AttackRerollSource[] =
+    player && cultivationCombatRerollBonus(state, attacker.controllerId) > 0 && !player.combatStats.cultivationRerollUsed
+      ? [{ name: "Core Formation reroll", cultivation: true, remaining: 1, used: 0 }]
+      : [];
+
   return [
     ...abilitySources,
     ...ammoCartSources,
@@ -3528,7 +3542,8 @@ function buildRerollSources(
     })),
     ...artifactSources,
     ...moraleSources,
-    ...moraleSetSources
+    ...moraleSetSources,
+    ...cultivationSources
   ].filter((source) => source.remaining > 0);
 }
 
@@ -3695,6 +3710,10 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
       }))
     : [];
 
+  // NOTE: the anime Cultivation Core Formation reroll (§5.6) is deliberately
+  // scoped to ATTACK-die rolls (buildRerollSources) and is NOT added here — like
+  // the unit reroll abilities / Ammo Cart / Luck-Fortune-Mirth pools, it stays
+  // OFF ability rolls (Death Stare & co.). A documented, tested limit.
   return [...artifactSources, ...moraleSources, ...moraleSetSources].filter((source) => source.remaining > 0);
 }
 
@@ -16139,6 +16158,16 @@ function rerollPendingChoice(
     returnHeldMoraleCardToDeckBottom(state, action.playerId, source.moraleCardId, "used");
   }
 
+  // Anime Cultivation Core Formation reroll: spent once per combat — latch the
+  // flag so the source drops out of buildRerollSources for the rest of the fight
+  // (cleared at the next combat start in makeCombatShell).
+  if (source.cultivation && source.used === 1) {
+    const player = state.players[action.playerId];
+    if (player) {
+      player.combatStats.cultivationRerollUsed = true;
+    }
+  }
+
   // Diplomat's Ring / Ambassador's Sash: playing the reroll discards the artifact.
   if (source.cardId && source.used === 1) {
     const player = state.players[action.playerId];
@@ -19317,6 +19346,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "REVIVE_COMMANDER":
         reviveCommander(nextState, action);
+        break;
+      case "HEAVEN_TRIBULATION":
+        beginHeavenlyTribulation(nextState, action);
         break;
       case "COMMANDER_FIRST_AID":
         resolveCommanderFirstAid(nextState, action);

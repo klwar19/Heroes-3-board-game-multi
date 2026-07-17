@@ -170,6 +170,7 @@ import {
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { getCombatStartDraws, getCombatStartMark } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import { maybeAdvanceCultivationRealm, tribulationAvailable } from "./anime-cultivation";
 import {
   consumeHeldMoraleCard,
   discardHeldMoraleCardByIndex,
@@ -3527,6 +3528,9 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       // Tarnum (Conflux) VI: the over-limit Search privilege never carries into a
       // fresh combat.
       player.combatStats.tarnumOverlimitCards = [];
+      // Anime Cultivation Core Formation reroll (§5.6): the one free Attack-die
+      // reroll refreshes per COMBAT (not per round) — clear the spent flag here.
+      player.combatStats.cultivationRerollUsed = false;
     }
   }
 
@@ -6981,6 +6985,20 @@ export function finalizeAdventureCombat(state: GameState): void {
 
     if (hero && playerId) {
       if (outcome.winnerPlayerId === playerId) {
+        // Mod-agnostic bank-win counter: incremented on EVERY Creature-Bank win
+        // (never gated on any module) so it is plain additive state. It gates
+        // anime Cultivation's Core Formation realm (§5.6) and the future
+        // `defeat-banks ≥ N` quest vocabulary; nothing else reads it, and a
+        // module-off table simply carries the optional field after a bank win.
+        if (context.bankId) {
+          const seat = state.players[playerId];
+          if (seat) {
+            seat.bankWins = (seat.bankWins ?? 0) + 1;
+          }
+          // A bank win may complete the Core Formation threshold (level ≥ 5 AND
+          // ≥ 1 bank win) — auto-advance the realm now (no-op when off / unmet).
+          maybeAdvanceCultivationRealm(state, playerId);
+        }
         // Creature Banks have no Field Difficulty and grant NO experience
         // (rulebook p.66). Secondary Heroes never gain experience either; the
         // gold (Freelancer's Guild) and Necromancy rewards below are
@@ -7338,6 +7356,83 @@ function discardDefeatedArmyUnit(state: GameState, player: PlayerState, armyUnit
     const tier = (def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
     state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(armyUnit.unitDefId);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Anime Cultivation — Heavenly Tribulation (§5.6, the realm 2 → 3 gauntlet).
+// ---------------------------------------------------------------------------
+
+/**
+ * HEAVEN_TRIBULATION: the main hero (Core Formation / realm 2, level ≥ 7, no
+ * prior success, at most once per own turn) braves the Heavenly Tribulation — a
+ * seeded 3-Attack-die gauntlet resolved as a pendingVisit (the standard
+ * exclusive-interaction singleton, so parallel-turn bystander gating, the
+ * fingerprint backstop, AFK/timeout default-resolution and elimination cleanup
+ * all cover it generically). Each "−1" die costs one army-card toll; surviving
+ * all three breaks through to Nascent Soul (realm 3) and draws 1 Artifact. NEVER
+ * forced — declining is simply not taking the action; a failure retries next
+ * turn. Handler-validated (self-validating; usable without a legal-actions match).
+ */
+export function beginHeavenlyTribulation(
+  state: GameState,
+  action: Extract<GameAction, { type: "HEAVEN_TRIBULATION" }>
+): void {
+  const adventure = state.adventure;
+  const player = state.players[action.playerId];
+  if (!adventure || !player) {
+    throw new Error("No adventure in progress.");
+  }
+  if (state.combat) {
+    throw new Error("The Heavenly Tribulation cannot begin during a combat.");
+  }
+  if (!hasOpenAdventureTurn(state, action.playerId)) {
+    throw new Error("Brave the Heavenly Tribulation on your own turn.");
+  }
+  // Standard exclusive-interaction singleton — never open a second window.
+  if (state.pendingChoice || state.reactionWindow || adventure.pendingVisit || adventure.pendingNecromancy) {
+    throw new Error("Resolve the current interaction before the Heavenly Tribulation.");
+  }
+  assertParallelInteractionFree(state, action.playerId);
+  if (!tribulationAvailable(state, action.playerId)) {
+    throw new Error(
+      "The Heavenly Tribulation is not available (needs Core Formation, hero level 7, no prior success, once per turn)."
+    );
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero || hero.spaceId === null) {
+    throw new Error("Your main hero must be on the map to face the Tribulation.");
+  }
+
+  // Once per own turn — stamped BEFORE the roll so even a failed attempt
+  // (emptied army) consumes the turn's single attempt.
+  hero.tribulationAttemptedRound = state.round;
+
+  // Seeded 3-Attack-die gauntlet (map die faces, no battlefield). Each "−1"
+  // face costs one army-card toll. Same seeded-random convention as the other
+  // map Attack-die rolls (ATTACK_DIE_TABLE / bank-size); the live per-action
+  // entropy salts it in real play, deterministic from the seed in tests.
+  const random = createSeededRandom(`${state.seed}#adventure#heavenly-tribulation#${eventSeedNumber(state)}`);
+  const faces = [-1, -1, 0, 0, 1, 1];
+  const rolls = Array.from({ length: 3 }, () => faces[random.nextInt(0, faces.length - 1)] ?? 0);
+  const tolls = rolls.filter((roll) => roll === -1).length;
+
+  appendEvent(state, {
+    type: "CULTIVATION_TRIBULATION_ROLLED",
+    playerId: action.playerId,
+    heroId: hero.id,
+    rolls
+  });
+
+  adventure.pendingVisit = {
+    heroId: hero.id,
+    playerId: action.playerId,
+    fieldId: hero.spaceId,
+    steps: [
+      { type: "TRIBULATION_TOLL", remaining: tolls },
+      { type: "TRIBULATION_RESOLVE" }
+    ]
+  };
+  processPendingVisit(state);
 }
 
 // ---------------------------------------------------------------------------
