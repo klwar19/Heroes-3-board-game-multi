@@ -2000,7 +2000,23 @@ Two additions; each engine claim fails a named test if its wiring is removed.
   Treasure/Resource dice (queued per live player), or a feed note. Eliminated
   seats and their heroes are skipped. Fired by `applyCustomMapTimedEvents` at
   round start; sanitization clamps amounts and drops unknown kinds
-  (`custom-setup.test.ts`, `map-preset.ts`). Each firing pops the ornate
+  (`custom-setup.test.ts`, `map-preset.ts`). A second cube-clear kind,
+  **`clear_tile_cubes`**, re-opens EVERY black cube on Tiles of chosen groups
+  (player-facing bands Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ / Sea / Underground, filtered by
+  `MapTileState.group`) with an optional "skip tiles containing a Settlement"
+  flag — but NEVER a Creature Bank (it keeps its defeat cube — hard rule) nor
+  the Grail / Dragon Utopia victory fields (conservative safety, mirroring the
+  token-placement exclusions); standalone designer hexes (no backing tile) are
+  skipped naturally. INTENDED consequence: a re-opened field with a printed
+  `difficulty` flips `isFieldGuarded` back to true, so it re-fights fresh guards
+  and re-earns its reward — the designer's re-open tool. Sanitizer dedupes /
+  drops invalid groups (empty → effect dropped) and keeps the flag only as a
+  real `=== true`; band labels live in `TILE_GROUP_BAND_LABELS` (adventure.ts,
+  Sea/Underground disambiguated from the shared Ⅳ–Ⅴ back numeral). Pinned in
+  `custom-setup.test.ts` (group filter, bank/victory exclusions, settlement flag
+  with its control, re-guard, no-preset twin, sanitizer) and
+  `map-preset-editor.test.tsx` (group chips + skip-settlement checkbox). Each
+  firing pops the ornate
   `MapEventOverlay` on every client (one card per batch, once per event id,
   never replayed on reconnect — `map-event-overlay.test.tsx`); the editor's
   per-event cards (round rail, kind dropdown, params, live preview, warnings)

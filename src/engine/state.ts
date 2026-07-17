@@ -9342,6 +9342,18 @@ export type CustomMapPreset = {
           /** Windmill also clears Prospector; Water Wheel also clears Derrick (Factory). */
           locations: ("windmill" | "water_wheel" | "mystical_garden")[];
         }
+      | {
+          kind: "clear_tile_cubes";
+          /**
+           * Re-open every black cube on Tiles of these groups (player-facing
+           * bands Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ / Sea / Underground). NEVER touches a
+           * Creature Bank (it keeps its defeat cube — hard rule) nor the Grail /
+           * Dragon Utopia victory fields (conservative safety).
+           */
+          groups: ("starting" | "far" | "near" | "center" | "sea" | "subterranean")[];
+          /** Skip EVERY field of a Tile that currently contains a Settlement. */
+          excludeSettlementTiles?: boolean;
+        }
       | { kind: "morale"; amount: 1 | -1 }
       | { kind: "movement"; amount: number }
       | { kind: "treasure_roll"; count: number }

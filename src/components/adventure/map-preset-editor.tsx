@@ -987,6 +987,19 @@ const CUBE_LOCATION_OPTIONS: {
   { id: "mystical_garden", label: "Mystical Garden" }
 ];
 
+/** Tile-group chips for the "clear_tile_cubes" event (player-facing bands). */
+const TILE_GROUP_OPTIONS: {
+  id: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
+  label: string;
+}[] = [
+  { id: "starting", label: "Ⅰ" },
+  { id: "far", label: "Ⅱ–Ⅲ" },
+  { id: "near", label: "Ⅳ–Ⅴ" },
+  { id: "center", label: "Ⅵ–Ⅶ" },
+  { id: "sea", label: "Sea" },
+  { id: "subterranean", label: "Underground" }
+];
+
 function TimedEffectFields({
   effect,
   index,
@@ -1081,6 +1094,53 @@ function TimedEffectFields({
           );
         })}
       </div>
+    );
+  }
+  if (effect.kind === "clear_tile_cubes") {
+    const selected = new Set(effect.groups);
+    return (
+      <>
+        <div className="mapPresetChipRow" role="group" aria-label={`Timed event ${index + 1} tile groups`}>
+          {TILE_GROUP_OPTIONS.map((opt) => {
+            const on = selected.has(opt.id);
+            return (
+              <button
+                aria-pressed={on}
+                className={`mapPresetChip${on ? " active" : ""}`}
+                key={opt.id}
+                onClick={() => {
+                  const next = new Set(selected);
+                  if (on) {
+                    // Keep at least one group so the event stays valid.
+                    if (next.size <= 1) {
+                      return;
+                    }
+                    next.delete(opt.id);
+                  } else {
+                    next.add(opt.id);
+                  }
+                  onChange({
+                    ...effect,
+                    groups: TILE_GROUP_OPTIONS.map((o) => o.id).filter((id) => next.has(id))
+                  });
+                }}
+                type="button"
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <label className="mapPresetToggle">
+          <input
+            aria-label={`Timed event ${index + 1} skip settlement tiles`}
+            checked={effect.excludeSettlementTiles ?? false}
+            onChange={(e) => onChange({ ...effect, excludeSettlementTiles: e.target.checked })}
+            type="checkbox"
+          />
+          <span>Skip tiles with a settlement</span>
+        </label>
+      </>
     );
   }
   if (effect.kind === "morale") {

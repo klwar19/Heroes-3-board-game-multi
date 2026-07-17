@@ -15,7 +15,7 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TileDefinition } from "@/data/map/types";
-import { seaTileBand, subterraneanTileBand, VII_FIELD_LOCATION } from "./adventure";
+import { seaTileBand, subterraneanTileBand, TILE_GROUP_BAND_LABELS, VII_FIELD_LOCATION } from "./adventure";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS } from "./state";
 import { DEFAULT_VICTORY_CONDITION_VP, describeVictoryPointObjective } from "./victory-points";
@@ -252,6 +252,8 @@ const BUILDING_SUFFIXES = new Set([
 
 const SEARCH_DECKS = new Set(["artifacts", "spells", "abilities"]);
 const CUBE_LOCATIONS = new Set(["windmill", "water_wheel", "mystical_garden"]);
+/** The six tile groups a clear_tile_cubes filter may target. */
+const TILE_GROUPS = new Set(["starting", "far", "near", "center", "sea", "subterranean"]);
 const OBELISK_ROLES = new Set<CustomMapObeliskConfig["role"]>(["monolith", "bonus", "victory-only"]);
 const VICTORY_POINT_OBJECTIVE_KINDS = new Set<VictoryPointObjective["kind"]>([
   "control-towns",
@@ -300,6 +302,7 @@ export const OUTPOST_OBJECT_KINDS = new Set<CustomMapObjectKind>(["garrison", "k
 /** Designer effect kinds (order = editor dropdown order). */
 export const TIMED_EFFECT_KINDS = [
   "clear_visitable_cubes",
+  "clear_tile_cubes",
   "resources",
   "search",
   "morale",
@@ -313,6 +316,7 @@ export type TimedEffectKind = (typeof TIMED_EFFECT_KINDS)[number];
 
 export const TIMED_EFFECT_KIND_LABELS: Record<TimedEffectKind, string> = {
   clear_visitable_cubes: "Clear black cubes (revisit sites)",
+  clear_tile_cubes: "Clear black cubes (Tiles)",
   resources: "All players gain resources",
   search: "All players Search a deck",
   morale: "All players gain/lose morale",
@@ -330,6 +334,8 @@ export function defaultTimedEffect(kind: TimedEffectKind): CustomMapTimedEffect 
         kind: "clear_visitable_cubes",
         locations: ["windmill", "water_wheel", "mystical_garden"]
       };
+    case "clear_tile_cubes":
+      return { kind: "clear_tile_cubes", groups: ["far"], excludeSettlementTiles: false };
     case "resources":
       return { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 };
     case "search":
@@ -739,6 +745,23 @@ function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
     }
     return { kind: "clear_visitable_cubes", locations: [...new Set(locations)] };
   }
+  if (raw.kind === "clear_tile_cubes" && Array.isArray(raw.groups)) {
+    const groups = raw.groups.filter(
+      (group): group is "starting" | "far" | "near" | "center" | "sea" | "subterranean" =>
+        typeof group === "string" && TILE_GROUPS.has(group)
+    );
+    if (groups.length === 0) {
+      return null;
+    }
+    const effect: Extract<CustomMapTimedEffect, { kind: "clear_tile_cubes" }> = {
+      kind: "clear_tile_cubes",
+      groups: [...new Set(groups)]
+    };
+    if (raw.excludeSettlementTiles === true) {
+      effect.excludeSettlementTiles = true;
+    }
+    return effect;
+  }
   if (raw.kind === "morale" && (raw.amount === 1 || raw.amount === -1)) {
     return { kind: "morale", amount: raw.amount };
   }
@@ -1064,6 +1087,12 @@ function describeTimedEffect(effect: CustomMapTimedEffect): string {
       (id) => locationDefinitions[id]?.name ?? id.replace(/_/g, " ")
     );
     return `clear black cubes on ${names.join(", ")}`;
+  }
+  if (effect.kind === "clear_tile_cubes") {
+    const bands = effect.groups.map((group) => TILE_GROUP_BAND_LABELS[group]);
+    return `clear black cubes on ${bands.join(", ")} Tiles${
+      effect.excludeSettlementTiles ? " (skip settlements)" : ""
+    }`;
   }
   if (effect.kind === "morale") {
     return effect.amount > 0 ? "all players gain +1 morale" : "all players lose 1 morale";

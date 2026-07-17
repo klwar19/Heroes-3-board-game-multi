@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyCustomMapTimedEvents,
+  isFieldGuarded,
   materializeTileFields,
   processPendingVisit,
   startAdventureRound
@@ -540,7 +541,8 @@ describe("map preset conditions — effects and apply-once semantics", () => {
   function injectCubeField(
     state: import("./state").GameState,
     spaceId: string,
-    location: string
+    location: string,
+    overrides: Partial<import("./state").MapFieldState> = {}
   ): import("./state").MapFieldState {
     const field: import("./state").MapFieldState = {
       spaceId,
@@ -550,10 +552,28 @@ describe("map preset conditions — effects and apply-once semantics", () => {
       blackCube: true,
       flagOwnerId: null,
       everFlagged: false,
-      settlementResource: null
+      settlementResource: null,
+      ...overrides
     };
     state.adventure!.fields[spaceId] = field;
     return field;
+  }
+
+  /** Plant a live tile of a given group so tile-group filters can resolve it. */
+  function injectTile(
+    state: import("./state").GameState,
+    id: string,
+    group: import("./state").MapTileState["group"]
+  ): void {
+    state.adventure!.tiles[id] = {
+      id,
+      tileDefId: "F1",
+      centerRow: 0,
+      centerCol: 0,
+      rotation: 0,
+      faceDown: false,
+      group
+    };
   }
 
   it("an explicit victory choice OVERRIDES the preset at build (apply-once), while unset fields still fill", () => {
@@ -722,6 +742,128 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     expect(garden.blackCube).toBe(true);
   });
 
+  it("clear_tile_cubes re-opens matching-group Tile cubes but never banks or victory fields (with controls)", () => {
+    const build = (withPreset: boolean) =>
+      createAdventureGameState({
+        seed: "preset-tile-cubes",
+        customMap: NEAR_SLOT,
+        ...(withPreset
+          ? {
+              customMapPreset: {
+                timedEvents: [
+                  {
+                    round: 3,
+                    effect: { kind: "clear_tile_cubes" as const, groups: ["far" as const] }
+                  }
+                ]
+              }
+            }
+          : {})
+      });
+
+    const state = build(true);
+    const control = build(false);
+    injectTile(state, "far-tile", "far");
+    injectTile(state, "near-tile", "near");
+    injectTile(control, "far-tile", "far");
+
+    // On the FAR (Ⅱ–Ⅲ) tile: a plain visitable cube, a Creature-Bank cube (bank
+    // rule) and a Grail victory-field cube (victory safety) — the discriminating
+    // pair/trio that a mutation would clear.
+    const farPlain = injectCubeField(state, "60,60", "windmill", { tileInstanceId: "far-tile" });
+    const farBank = injectCubeField(state, "60,61", "creature_bank", {
+      tileInstanceId: "far-tile",
+      bankId: "dragon_fly_hive" // realism only — the exclusion keys off `location`
+    });
+    const farGrail = injectCubeField(state, "60,62", "grail", { tileInstanceId: "far-tile" });
+    // NEAR (Ⅳ–Ⅴ) tile — wrong group, must stay cubed.
+    const nearPlain = injectCubeField(state, "61,61", "windmill", { tileInstanceId: "near-tile" });
+    // CONTROL twin (no preset): the same far plain cube must survive.
+    const controlPlain = injectCubeField(control, "60,60", "windmill", {
+      tileInstanceId: "far-tile"
+    });
+
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+    control.round = 3;
+    applyCustomMapTimedEvents(control);
+
+    expect(farPlain.blackCube).toBe(false); // matching group → re-opened
+    expect(farBank.blackCube).toBe(true); // bank keeps its defeat cube (hard rule)
+    expect(farGrail.blackCube).toBe(true); // victory field never re-opened
+    expect(nearPlain.blackCube).toBe(true); // wrong group → untouched
+    expect(controlPlain.blackCube).toBe(true); // no preset → nothing clears
+    expect(
+      state.eventLog.some(
+        (e) => e.type === "MAP_PRESET_TRIGGERED" && e.round === 3 && e.message.includes("Ⅱ–Ⅲ")
+      )
+    ).toBe(true);
+  });
+
+  it("clear_tile_cubes excludeSettlementTiles spares a whole settlement Tile (flag control)", () => {
+    const build = (exclude: boolean) => {
+      const s = createAdventureGameState({
+        seed: "preset-tile-cube-settlement",
+        customMap: NEAR_SLOT,
+        customMapPreset: {
+          timedEvents: [
+            {
+              round: 3,
+              effect: {
+                kind: "clear_tile_cubes" as const,
+                groups: ["far" as const],
+                excludeSettlementTiles: exclude
+              }
+            }
+          ]
+        }
+      });
+      injectTile(s, "far-a", "far");
+      injectTile(s, "far-b", "far");
+      // far-a hosts a Settlement; far-b does not.
+      injectCubeField(s, "settle", "settlement", { tileInstanceId: "far-a", blackCube: false });
+      const aCube = injectCubeField(s, "a-cube", "windmill", { tileInstanceId: "far-a" });
+      const bCube = injectCubeField(s, "b-cube", "windmill", { tileInstanceId: "far-b" });
+      s.round = 3;
+      applyCustomMapTimedEvents(s);
+      return { aCube, bCube };
+    };
+
+    const excluded = build(true);
+    expect(excluded.aCube.blackCube).toBe(true); // settlement tile spared
+    expect(excluded.bCube.blackCube).toBe(false); // non-settlement far tile cleared
+
+    // FLAG CONTROL: with the flag off, the settlement tile's cube clears too.
+    const included = build(false);
+    expect(included.aCube.blackCube).toBe(false);
+    expect(included.bCube.blackCube).toBe(false);
+  });
+
+  it("a re-opened Tile field with printed difficulty becomes guarded again (the re-open tool)", () => {
+    const state = createAdventureGameState({
+      seed: "preset-tile-cube-reguard",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [
+          { round: 3, effect: { kind: "clear_tile_cubes" as const, groups: ["far" as const] } }
+        ]
+      }
+    });
+    injectTile(state, "far-tile", "far");
+    // A defeated guarded field: printed difficulty, cube marked, never flagged.
+    const field = injectCubeField(state, "guard", "windmill", {
+      tileInstanceId: "far-tile",
+      difficulty: 3
+    });
+    expect(isFieldGuarded(field)).toBe(false); // cube down → not guarded
+
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+
+    expect(field.blackCube).toBe(false);
+    expect(isFieldGuarded(field)).toBe(true); // re-opened → guards return, re-fightable
+  });
+
   it("timed morale / movement / treasure-roll / resource-roll fire with observable outcomes (and controls)", () => {
     const build = (withPreset: boolean) =>
       createAdventureGameState({
@@ -851,6 +993,43 @@ describe("map preset conditions — effects and apply-once semantics", () => {
       { round: 5, effect: { kind: "resource_roll", count: 2 } },
       { round: 7, effect: { kind: "note", text: "Boss wave" } },
       { round: 30, effect: { kind: "movement", amount: 5 } }
+    ]);
+  });
+
+  it("sanitizeCustomMapPreset cleans a clear_tile_cubes effect (groups deduped/filtered, flag coerced)", async () => {
+    const { sanitizeCustomMapPreset } = await import("./map-preset");
+    const cleaned = sanitizeCustomMapPreset({
+      timedEvents: [
+        {
+          round: 4,
+          effect: {
+            kind: "clear_tile_cubes",
+            groups: ["far", "far", "bogus", "subterranean"], // dedupe + drop invalid
+            excludeSettlementTiles: "yes" // non-boolean coerced away
+          }
+        },
+        // No valid group survives → the whole event is dropped.
+        { round: 5, effect: { kind: "clear_tile_cubes", groups: ["nonsense"] } },
+        {
+          round: 6,
+          effect: { kind: "clear_tile_cubes", groups: ["center"], excludeSettlementTiles: true }
+        }
+      ]
+    });
+    expect(cleaned?.timedEvents).toEqual([
+      { round: 4, effect: { kind: "clear_tile_cubes", groups: ["far", "subterranean"] } },
+      {
+        round: 6,
+        effect: { kind: "clear_tile_cubes", groups: ["center"], excludeSettlementTiles: true }
+      }
+    ]);
+
+    // LEGACY CONTROL: a preset without the new kind is byte-identical after sanitize.
+    const legacy = sanitizeCustomMapPreset({
+      timedEvents: [{ round: 2, effect: { kind: "clear_visitable_cubes", locations: ["windmill"] } }]
+    });
+    expect(legacy?.timedEvents).toEqual([
+      { round: 2, effect: { kind: "clear_visitable_cubes", locations: ["windmill"] } }
     ]);
   });
 
