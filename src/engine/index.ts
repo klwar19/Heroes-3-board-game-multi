@@ -244,6 +244,25 @@ export {
 } from "./house-rules";
 export type { HouseRuleCategory, HouseRuleDef } from "./house-rules";
 export {
+  polishReducedStartingBonusVisitSteps,
+  polishSurrenderGoldCost,
+  polishArtifactAccessAfterRoll,
+  polishArtifactBandFromHeroLevel,
+  polishArtifactBandFromTileGroup,
+  polishPandoraBaseSearchCount,
+  polishPandoraSearchCount,
+  nextWaitTokenNumber
+} from "./polish-house-rules";
+export type { PolishArtifactBand } from "./polish-house-rules";
+export {
+  clearPolishArtifactAccess,
+  isArtifactSharedDeckId,
+  maybeApplyPolishRandomArtifactRoll,
+  polishArtifactDeckAllowed,
+  polishArtifactTierAllowed
+} from "./polish-random-artifacts";
+export { currentSurrenderGoldCost, tournamentMoraleSearchAgainEnabled } from "./adventure";
+export {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
   isCastASpellCard,
