@@ -253,6 +253,26 @@ describe("sanitizeSharedMap", () => {
     });
   });
 
+  it("round-trips a timed STORY scene event and drops an unknown sceneId", async () => {
+    const { STORY_SCENE_IDS } = await import("@/data/story/scenes");
+    const record = sanitizeSharedMap(
+      {
+        id: "s",
+        tiles: [{ row: 1, col: 1, group: "near", faceDown: true }],
+        preset: {
+          timedEvents: [
+            { round: 3, effect: { kind: "story", sceneId: STORY_SCENE_IDS[0] } },
+            { round: 4, effect: { kind: "story", sceneId: "story.bogus" } } // dropped
+          ]
+        }
+      },
+      1
+    );
+    expect(record!.preset!.timedEvents).toEqual([
+      { round: 3, effect: { kind: "story", sceneId: STORY_SCENE_IDS[0] } }
+    ]);
+  });
+
   it("preserves a face-down secretFeature landmark filter through sanitization", () => {
     // Feature secrets are the primary designer Secret UX — losing them on save
     // would silently demote the slot to a pure random draw.

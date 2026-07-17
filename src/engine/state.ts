@@ -5082,6 +5082,20 @@ export type GameEvent =
     }
   | {
       /**
+       * Anime mod §11 — a designer-triggered visual-novel STORY scene fired at
+       * the start of a round (map-designer "Timed events"). Table-wide and
+       * playerId-agnostic: every client pops the StoryOverlay once per event id
+       * and dismisses independently, never replayed on reconnect. Presentation
+       * only — no rules state changes.
+       */
+      id: string;
+      type: "STORY_SCENE_TRIGGERED";
+      round?: number;
+      sceneId: string;
+      message: string;
+    }
+  | {
+      /**
        * A Secret landmark filter could not be fulfilled from the remaining
        * pool, so the slot fell back to a pure random draw. Public note so
        * players know the designer guarantee was soft-failed.
@@ -9337,7 +9351,15 @@ export type CustomMapPreset = {
       | { kind: "movement"; amount: number }
       | { kind: "treasure_roll"; count: number }
       | { kind: "resource_roll"; count: number }
-      | { kind: "note"; text: string };
+      | { kind: "note"; text: string }
+      /**
+       * Anime mod §11 — pop a bilingual visual-novel STORY scene for the whole
+       * table (every client dismisses independently, never replayed on
+       * reconnect). Presentation only: firing it emits a STORY_SCENE_TRIGGERED
+       * feed line and changes no rules state. `sceneId` must resolve in
+       * `storySceneRegistry` (an unknown id is dropped at sanitize).
+       */
+      | { kind: "story"; sceneId: string };
   }>;
   roundLimit?: number;
   notes?: string;

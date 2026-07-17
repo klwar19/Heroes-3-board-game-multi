@@ -14,6 +14,7 @@
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import type { TileDefinition } from "@/data/map/types";
+import { getStoryScene, isStoryScene, STORY_SCENE_IDS } from "@/data/story/scenes";
 import { seaTileBand, subterraneanTileBand, VII_FIELD_LOCATION } from "./adventure";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import { DEFAULT_OBELISK_BONUS } from "./state";
@@ -211,7 +212,8 @@ export const TIMED_EFFECT_KINDS = [
   "movement",
   "treasure_roll",
   "resource_roll",
-  "note"
+  "note",
+  "story"
 ] as const;
 
 export type TimedEffectKind = (typeof TIMED_EFFECT_KINDS)[number];
@@ -224,7 +226,8 @@ export const TIMED_EFFECT_KIND_LABELS: Record<TimedEffectKind, string> = {
   movement: "All heroes gain movement",
   treasure_roll: "All players roll Treasure die",
   resource_roll: "All players roll Resource die",
-  note: "Announcement (feed note only)"
+  note: "Announcement (feed note only)",
+  story: "Story scene (visual novel)"
 };
 
 /** Default effect when the designer picks a kind (or adds a blank event). */
@@ -249,6 +252,8 @@ export function defaultTimedEffect(kind: TimedEffectKind): CustomMapTimedEffect 
       return { kind: "resource_roll", count: 1 };
     case "note":
       return { kind: "note", text: "Something stirs across the land…" };
+    case "story":
+      return { kind: "story", sceneId: STORY_SCENE_IDS[0] ?? "" };
   }
 }
 
@@ -618,6 +623,11 @@ function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
     const text = raw.text.trim().slice(0, 200);
     return text.length > 0 ? { kind: "note", text } : null;
   }
+  // Story scene: keep only a sceneId that resolves in the registry (an unknown
+  // id — a deleted/renamed scene — is dropped, mirroring the search-deck gate).
+  if (raw.kind === "story" && typeof raw.sceneId === "string" && isStoryScene(raw.sceneId)) {
+    return { kind: "story", sceneId: raw.sceneId };
+  }
   return null;
 }
 
@@ -942,6 +952,10 @@ function describeTimedEffect(effect: CustomMapTimedEffect): string {
     return effect.count === 1
       ? "all players roll a Resource die"
       : `all players roll ${effect.count} Resource dice`;
+  }
+  if (effect.kind === "story") {
+    const scene = getStoryScene(effect.sceneId);
+    return `play story scene "${scene?.id ?? effect.sceneId}"`;
   }
   return effect.text;
 }

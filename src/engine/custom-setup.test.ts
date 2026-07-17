@@ -11,6 +11,7 @@ import { getScenario } from "./adventure-setup";
 import { applyAction, createAdventureLobbyState } from "./index";
 import { getPlayerView } from "./player-view";
 import { allTileDefinitions } from "@/data/map/tiles";
+import { STORY_SCENE_IDS } from "@/data/story/scenes";
 
 describe("custom starting army", () => {
   it("gives each player their own faction's unit of every picked level", () => {
@@ -851,6 +852,46 @@ describe("map preset conditions — effects and apply-once semantics", () => {
       { round: 5, effect: { kind: "resource_roll", count: 2 } },
       { round: 7, effect: { kind: "note", text: "Boss wave" } },
       { round: 30, effect: { kind: "movement", amount: 5 } }
+    ]);
+  });
+
+  it("a timed STORY event fires STORY_SCENE_TRIGGERED on its round (table-wide), with a wrong-round CONTROL", () => {
+    const sceneId = STORY_SCENE_IDS[0];
+    const build = () =>
+      createAdventureGameState({
+        seed: "preset-timed-story",
+        customMap: NEAR_SLOT,
+        customMapPreset: { timedEvents: [{ round: 3, effect: { kind: "story", sceneId } }] }
+      });
+
+    // CONTROL: nothing fires on the wrong round.
+    const early = build();
+    early.round = 2;
+    applyCustomMapTimedEvents(early);
+    expect(early.eventLog.some((e) => e.type === "STORY_SCENE_TRIGGERED")).toBe(false);
+
+    // The configured round fires exactly one table-wide scene — an eliminated
+    // seat is a no-op for a story event (it touches no player/hero state).
+    const state = build();
+    state.players.p2.eliminated = true;
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+    const fired = state.eventLog.filter((e) => e.type === "STORY_SCENE_TRIGGERED");
+    expect(fired).toHaveLength(1);
+    expect(fired[0]).toMatchObject({ type: "STORY_SCENE_TRIGGERED", round: 3, sceneId });
+  });
+
+  it("sanitizeCustomMapPreset keeps a valid story scene and drops an unknown sceneId", async () => {
+    const { sanitizeCustomMapPreset } = await import("./map-preset");
+    const cleaned = sanitizeCustomMapPreset({
+      timedEvents: [
+        { round: 2, effect: { kind: "story", sceneId: STORY_SCENE_IDS[0] } },
+        { round: 4, effect: { kind: "story", sceneId: "story.does.not.exist" } }, // unknown → dropped
+        { round: 5, effect: { kind: "story" } } // no sceneId → dropped
+      ]
+    });
+    expect(cleaned?.timedEvents).toEqual([
+      { round: 2, effect: { kind: "story", sceneId: STORY_SCENE_IDS[0] } }
     ]);
   });
 

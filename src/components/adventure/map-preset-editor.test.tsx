@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MapPresetEditor } from "./map-preset-editor";
 import { MAX_TIMED_EVENTS, type CustomMapPreset } from "@/engine";
+import { STORY_SCENE_IDS } from "@/data/story/scenes";
 
 afterEach(cleanup);
 
@@ -125,6 +126,40 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     );
     const last = onChange.mock.calls.at(-1)?.[0] as CustomMapPreset;
     expect(last.timedEvents!.length).toBe(2);
+  });
+
+  it("offers a 'story' timed-event effect and stores the chosen sceneId", () => {
+    const onChange = vi.fn();
+    const base: CustomMapPreset = {
+      timedEvents: [{ round: 3, effect: { kind: "note", text: "x" } }]
+    };
+    const { rerender } = render(<MapPresetEditor preset={base} onChange={onChange} />);
+
+    // The effect-type dropdown offers "story"; picking it defaults to a real scene.
+    fireEvent.change(screen.getByLabelText("Timed event 1 effect type"), {
+      target: { value: "story" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [
+          expect.objectContaining({ effect: { kind: "story", sceneId: STORY_SCENE_IDS[0] } })
+        ]
+      })
+    );
+
+    // The per-kind param UI is a scene select over the registry; it stores the pick.
+    const withStory: CustomMapPreset = {
+      timedEvents: [{ round: 3, effect: { kind: "story", sceneId: STORY_SCENE_IDS[0] } }]
+    };
+    rerender(<MapPresetEditor preset={withStory} onChange={onChange} />);
+    const sceneSelect = screen.getByLabelText("Timed event 1 story scene");
+    const other = STORY_SCENE_IDS[1] ?? STORY_SCENE_IDS[0];
+    fireEvent.change(sceneSelect, { target: { value: other } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [expect.objectContaining({ effect: { kind: "story", sceneId: other } })]
+      })
+    );
   });
 
   it("exposes the storage cap instead of silently adding events that will be discarded", () => {

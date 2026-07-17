@@ -9910,6 +9910,19 @@ export function applyCustomMapTimedEvents(state: GameState): void {
       });
       continue;
     }
+    if (effect.kind === "story") {
+      // Table-wide presentation cue (Anime mod §11): the whole table pops the
+      // StoryOverlay, every client dismissing independently. No player loop and
+      // no state mutation, so eliminated seats are a no-op here (nothing to
+      // skip) — this arm deliberately touches neither `players` nor `livePlayers`.
+      appendEvent(state, {
+        type: "STORY_SCENE_TRIGGERED",
+        round,
+        sceneId: effect.sceneId,
+        message: `Map event (round ${round}): a story unfolds.`
+      });
+      continue;
+    }
     if (effect.kind === "resources") {
       for (const playerId of players) {
         gainResources(state, playerId, effect, `map event round ${round}`);
