@@ -172,6 +172,16 @@ import { getCombatStartDraws, getCombatStartMark } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { maybeAdvanceCultivationRealm, tribulationAvailable } from "./anime-cultivation";
 import {
+  gainGradeProgress,
+  heroGradeNode,
+  heroGradePickableNodes,
+  heroGradeWinGold,
+  heroGradesEnabled,
+  heroTrainAvailable,
+  HERO_TRAIN_MERIT,
+  HERO_TRAIN_MOVEMENT_COST
+} from "./anime-hero-grades";
+import {
   consumeHeldMoraleCard,
   discardHeldMoraleCardByIndex,
   moraleCardsRuleEnabled,
@@ -3531,6 +3541,9 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       // Anime Cultivation Core Formation reroll (§5.6): the one free Attack-die
       // reroll refreshes per COMBAT (not per round) — clear the spent flag here.
       player.combatStats.cultivationRerollUsed = false;
+      // Anime Hero Grades (§3.11): the once-per-combat SKILL nodes (Battle Focus,
+      // Iron Will, War Cry) refresh per COMBAT — clear the used set here.
+      player.combatStats.heroSkillsUsedThisCombat = [];
     }
   }
 
@@ -6971,6 +6984,13 @@ export function finalizeAdventureCombat(state: GameState): void {
     });
   }
 
+  // Anime Hero Grades Bounty Hunter's Eye (tier 1, §3.11): +1 gold after each
+  // combat the player wins. Gated on the node; no-op when the module is off /
+  // unpicked, and never for a NEUTRAL "winner".
+  if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && heroGradeWinGold(state, outcome.winnerPlayerId) > 0) {
+    gainResources(state, outcome.winnerPlayerId, { gold: heroGradeWinGold(state, outcome.winnerPlayerId) }, "Bounty Hunter's Eye");
+  }
+
   // Open the Hierophant's post-combat First Aid window (choose 1 casualty to
   // restore, or decline). Gated in legal-actions: until resolved, the owner
   // may only answer it — exactly like the Necromancy deferral it mirrors.
@@ -7433,6 +7453,84 @@ export function beginHeavenlyTribulation(
     ]
   };
   processPendingVisit(state);
+}
+
+// ---------------------------------------------------------------------------
+// Anime Hero Grades — map-side actions (train for Merit, spend a grade point).
+// ---------------------------------------------------------------------------
+
+/**
+ * HERO_TRAIN: spend HERO_TRAIN_MOVEMENT_COST (2) movement points on your own map
+ * turn to gain HERO_TRAIN_MERIT (1) Merit. Once per own turn. Self-validating;
+ * opens no window (a threshold crossing auto-grades-up inside gainGradeProgress).
+ */
+export function heroTrain(state: GameState, action: Extract<GameAction, { type: "HERO_TRAIN" }>): void {
+  const adventure = state.adventure;
+  const player = state.players[action.playerId];
+  if (!adventure || !player) {
+    throw new Error("No adventure in progress.");
+  }
+  if (state.combat) {
+    throw new Error("Train on your own map turn, not during combat.");
+  }
+  if (!hasOpenAdventureTurn(state, action.playerId)) {
+    throw new Error("Train on your own turn.");
+  }
+  assertParallelInteractionFree(state, action.playerId);
+  if (!heroTrainAvailable(state, action.playerId)) {
+    throw new Error(
+      `Training needs your main hero on the map with ${HERO_TRAIN_MOVEMENT_COST} movement, once per turn.`
+    );
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero || hero.spaceId === null) {
+    throw new Error("Your main hero must be on the map to train.");
+  }
+  hero.movementPoints -= HERO_TRAIN_MOVEMENT_COST;
+  hero.heroTrainedRound = state.round;
+  appendEvent(state, { type: "HERO_TRAINED", playerId: action.playerId, heroId: hero.id });
+  gainGradeProgress(state, action.playerId, HERO_TRAIN_MERIT, "train");
+}
+
+/**
+ * HERO_GRADE_PICK: spend one unspent grade point to pick a tree node (one node
+ * per tier, tier ≤ current grade). Self-validating (the node is baked into the
+ * action, so no window opens) — usable outside combat exactly like
+ * COMMANDER_GRADE_UP. Passives take effect immediately; skills become offerable.
+ */
+export function heroGradePick(state: GameState, action: Extract<GameAction, { type: "HERO_GRADE_PICK" }>): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if (state.combat) {
+    throw new Error("Grade nodes are picked outside of combat.");
+  }
+  if (!heroGradesEnabled(state)) {
+    throw new Error("Hero Grades is off for this game.");
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero) {
+    throw new Error("You have no main hero.");
+  }
+  const node = heroGradeNode(action.nodeId);
+  if (!node) {
+    throw new Error("Unknown grade node.");
+  }
+  if (!heroGradePickableNodes(state, action.playerId).some((candidate) => candidate.id === node.id)) {
+    throw new Error(
+      "That grade node cannot be picked now (need an unspent point, an unlocked tier, and that tier unpicked)."
+    );
+  }
+  hero.gradePoints = (hero.gradePoints ?? 0) - 1;
+  hero.gradeNodes = [...(hero.gradeNodes ?? []), node.id];
+  appendEvent(state, {
+    type: "HERO_GRADE_NODE_PICKED",
+    playerId: action.playerId,
+    heroId: hero.id,
+    nodeId: node.id,
+    message: `Grade node picked: ${node.name.en} (${node.name.vi}).`
+  });
 }
 
 // ---------------------------------------------------------------------------

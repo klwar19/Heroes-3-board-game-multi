@@ -1886,6 +1886,9 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "FINISH_NEUTRAL_PLACEMENT",
   "SUMMON_DEMONS",
   "USE_GENIE_DECK_DRAW",
+  // Anime Hero Grades (§3.11): War Cry — a combat active on the active unit,
+  // surfaced as a labelled command button (like a unit ability).
+  "USE_HERO_SKILL",
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",
   // Retreat is the single in-combat escape button. RETREAT_FROM_COMBAT is the
@@ -1921,6 +1924,8 @@ function commandLabel(legal: LegalAction): string {
     case "END_TURN":
       return "End turn";
     case "USE_UNIT_ABILITY":
+      return legal.label;
+    case "USE_HERO_SKILL":
       return legal.label;
     case "MOVE_HERO":
       return legal.label;

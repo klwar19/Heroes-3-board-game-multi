@@ -1,5 +1,6 @@
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { cardLibrary } from "@/data/cards/library";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
@@ -2025,6 +2026,29 @@ export function scoreMapAction(
       }
       return { score: 360, policy: "map.heaven-tribulation" };
     }
+    case "HERO_GRADE_PICK": {
+      // Anime Hero Grades (§3.11): spending a grade point is free and beneficial,
+      // so grade up IMMEDIATELY (like COMMANDER_GRADE_UP). No earlier scorer
+      // claims this type, so map-policy owns it. Prefer PASSIVES and the lowest
+      // unlocked tier ("first affordable tier") so the pick is deterministic.
+      const node = HERO_GRADE_NODES[action.nodeId];
+      const passiveNudge = node?.kind === "passive" ? 4 : 0;
+      const tierNudge = node ? 3 - node.tier : 0;
+      return { score: 1200 + passiveNudge + tierNudge, policy: "map.hero-grade-pick" };
+    }
+    case "HERO_TRAIN":
+      // Train for Merit only when idle: scored just above END_TURN (300) and
+      // below every real map play (moves/recruits/builds ≥ ~590), so a reachable
+      // objective always outscores it — i.e. only when the seat would otherwise
+      // end the turn with the 2 MP unspent. Legal only with ≥2 MP (heroTrainAvailable).
+      return { score: 330, policy: "map.hero-train" };
+    case "USE_HERO_SKILL":
+      // On the map this is Forced March (+1 movement, once per round). Combat
+      // War Cry is claimed earlier by combat-policy, so a USE_HERO_SKILL reaching
+      // here is the map active. Scored just above END_TURN so a stuck hero pumps
+      // +1 MP and re-evaluates (a previously out-of-reach objective may open up);
+      // once-per-round, so it can never loop.
+      return state.combat ? null : { score: 340, policy: "map.hero-forced-march" };
     default:
       return null;
   }

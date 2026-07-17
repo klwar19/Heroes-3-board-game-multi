@@ -1843,6 +1843,40 @@ Leading with what does NOT run / deliberate limits:
   Grant magnitudes are pegged to existing precedents (Pandora hand/Power bonuses,
   the morale reroll source) so xianxia content shares ONE power scale with core /
   WOG / isekai.
+- **Also shipped: `anime.heroGrades`** (Hero Grades — a per-hero Merit→grade 0-3
+  track + a 3-tier × 3-node passive/skill tree; SHARED by every hero, independent
+  of Cultivation). Default OFF ⇒ byte-identical. Read-layer
+  `src/engine/anime-hero-grades.ts`, data `src/data/anime/hero-grades.ts`,
+  behaviour pinned in `src/engine/anime-hero-grades.test.ts` (each claim
+  mutation-checked) + the hero-board chip/picker (`hero-board.test.tsx`) + the
+  combat reaction tile (`overlays.test.tsx`). Leading with what does NOT run /
+  limits: **HERO_TRAIN + Forced March are legal actions with no bespoke map
+  button** (like the Cultivation Tribulation) — the human surface is the hero
+  board's grade picker + the combat command dock; **the AI does not shop for the
+  Training Manual** (it declines the optional 2-gold PAY_TO by default — buying it
+  is a human play); **per-package fancy grade-label art/fonts are deferred** (the
+  register text is bilingual plain text); **combat skills are the MAIN hero's
+  fights only** (garrison/secondary offer none — commander-scope). What runs: five
+  Merit sources funnel through ONE arm (`gainGradeProgress`) — +1/level-up, the
+  two enlightenment-hex riders (+1 on top of the printed reward, runtime-gated so
+  module-OFF is byte-identical), HERO_TRAIN (2 MP→+1, once/turn), the Training
+  Manual item (bought 2 gold at the two guild shops, played for +2 then removed;
+  NEVER decked — `animeNeverDeckedCardIds`), and the generic `GAIN_GRADE_PROGRESS`
+  card payload. Crossing a threshold ([3,7,12], a DATA array) auto-grades-up (+1
+  point, one event/grade). The tree (pick 1 per tier): passives (Bounty Hunter's
+  Eye +1 gold/win, Provisioner +1 materials, Deep Pockets +1 hand — stacks with
+  Cultivation Foundation, Arcane Insight +1 Power, Tactician +2 gold) and
+  non-card SKILLS with cooldowns (Battle Focus/Iron Will reactions, War Cry
+  active — combat once/combat; Forced March map active once/round) reusing the
+  commander cast buff machinery. Grade NAMES wear per-family REGISTERS
+  (core/xianxia/isekai) resolved by the §2 rule (exactly-one-package → that
+  register table-wide, else per-faction family), but mechanics/state never change
+  with the label. EXTENSIBILITY: no literal tier count in engine logic (all
+  derives from the threshold array length); pure helpers `gradeForMerit` /
+  `pickableNodesFrom` are tested with a 4-tier fixture; "add a tier" = append a
+  threshold + nodes + one entry per register (§3.11 recipe). Magnitudes pegged to
+  existing precedents (Brute gold, Cart/artifact income, Pandora hand/Power,
+  commander reaction buffs, Boots movement).
 - **No standalone (off-tile) override objects** — on-tile pins only.
 - **`linh_tuyen` is +1 movement only** (cleanse not wired, documented at the
   definition); no override kind may claim `starting` tiles (setup skips

@@ -5,6 +5,7 @@ import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import {
   cardCanBoostPower,
   CULTIVATION_REALMS,
+  heroGradeLabel,
   getBattlefieldLabel,
   heroMoveStartsBattle,
   isRoundStartEventBarrierActive,
@@ -505,6 +506,16 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     }
     case "CULTIVATION_TRIBULATION_FAILED":
       return `${playerName(state, event.playerId)}'s army is scattered by the Heavenly Tribulation — no breakthrough (retry next turn).`;
+    case "HERO_GRADE_ADVANCED": {
+      const grade = heroGradeLabel(state, event.playerId, event.grade);
+      return `${playerName(state, event.playerId)}'s hero rises to ${grade.en} (${grade.vi}) — a new grade point to spend.`;
+    }
+    case "HERO_TRAINED":
+      return `${playerName(state, event.playerId)}'s hero trains, gaining Merit.`;
+    case "HERO_GRADE_NODE_PICKED":
+      return event.message;
+    case "HERO_SKILL_USED":
+      return event.message;
     case "COMMANDER_CAST_USED":
     case "COMMANDER_POINTS_AWARDED":
     case "COMMANDER_GRADED_UP":
