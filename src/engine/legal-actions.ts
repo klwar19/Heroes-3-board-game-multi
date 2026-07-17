@@ -37,7 +37,6 @@ import {
   NEUTRAL_DECK_IDS,
   obeliskRoleIsMonolith,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
-  SURRENDER_GOLD_COST,
   currentSurrenderGoldCost,
   tournamentMoraleSearchAgainEnabled,
   townHasBuildingEffect,
