@@ -120,12 +120,11 @@ function OpponentInfoModal({
 }
 
 /**
- * A per-opponent panel — one button per opponent, each opening the read-only
- * info panel. Self-contained (holds its own open-seat state), so it drops in
- * with no extra wiring. Two placements:
- * - `"map"`: a bordered dock in the adventure map's LEFT rail (a clear labelled
- *   panel with full-width stacked buttons, matching the rail's other docks).
- * - `"combat"`: a self-contained bordered pill-box in the combat card strip.
+ * A per-opponent control — one small button per opponent, each opening the
+ * read-only info modal on click. Self-contained (holds its own open-seat
+ * state), so it drops in with no extra wiring. Two placements:
+ * - `"map"`: a compact button pill at the top of the adventure map's LEFT rail.
+ * - `"combat"`: a compact button pill in the combat card strip.
  */
 export function OpponentInfoDock({
   state,
