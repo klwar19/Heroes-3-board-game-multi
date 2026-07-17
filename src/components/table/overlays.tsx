@@ -1720,11 +1720,19 @@ export function SearchModal({
   state,
   view,
   viewerPlayerId,
+  legalActions,
   onAction
 }: {
   state: GameState;
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
+  /**
+   * When provided, extra Search-window offers ride along the keep picks —
+   * today the Tournament Book p.54 Morale-token "discard all revealed, Search
+   * (X) again" (SPEND_MORALE repeat-search), which has no other surface while
+   * this modal covers the table.
+   */
+  legalActions?: LegalAction[];
   onAction: (action: GameAction) => void;
 }) {
   const { zoomCard } = useCardZoom();
@@ -1734,11 +1742,13 @@ export function SearchModal({
   const searchChoiceId = searchChoice?.id ?? null;
   // Search(3+) packs the row; default to a compact zoom so every card is visible
   // without scrolling. Search(1–2) keeps the large face-up layout. The player can
-  // always toggle (zoom out / zoom in) either way.
-  const [compact, setCompact] = useState(cardCount > 2);
-  useEffect(() => {
-    setCompact(cardCount > 2);
-  }, [searchChoiceId, cardCount]);
+  // always toggle (zoom out / zoom in) either way. Derived default + a per-choice
+  // override (no effect): a NEW search choice automatically resets to its default.
+  const [compactOverride, setCompactOverride] = useState<{ id: string | null; value: boolean } | null>(
+    null
+  );
+  const compact =
+    compactOverride && compactOverride.id === searchChoiceId ? compactOverride.value : cardCount > 2;
 
   if (!searchChoice) {
     return null;
@@ -1756,6 +1766,14 @@ export function SearchModal({
     );
   }
 
+  // Tournament Book p.54: spend the positive Morale token to discard all
+  // revealed cards and perform the same Search (X) again. Offered by
+  // legal-actions only on tournament tables (token mode) — rendered here
+  // because this modal is the only thing the searcher can interact with.
+  const repeatSearchOffer = legalActions?.find(
+    (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "repeat-search"
+  );
+
   return (
     <div className="modalBackdrop" role="dialog" aria-label={`Search the ${searchChoice.deckId} deck`}>
       <div className={`searchModal${compact ? " searchModal--compact" : ""}`}>
@@ -1767,7 +1785,7 @@ export function SearchModal({
           {searchChoice.revealedCardIds.length > 2 ? (
             <button
               className="searchZoomToggle"
-              onClick={() => setCompact((value) => !value)}
+              onClick={() => setCompactOverride({ id: searchChoiceId, value: !compact })}
               type="button"
             >
               {compact ? "Zoom in cards" : "Zoom out cards"}
@@ -1796,6 +1814,17 @@ export function SearchModal({
             </div>
           ))}
         </div>
+        {repeatSearchOffer ? (
+          <footer className="searchRepeatRow">
+            <button
+              className="searchRepeatButton"
+              onClick={() => onAction(repeatSearchOffer.action)}
+              type="button"
+            >
+              {repeatSearchOffer.label}
+            </button>
+          </footer>
+        ) : null}
       </div>
     </div>
   );

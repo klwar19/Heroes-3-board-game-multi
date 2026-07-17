@@ -6118,7 +6118,7 @@ export default function Home() {
             view={playerView}
             viewerPlayerId={viewerPlayerId}
           />
-          <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
+          <SearchModal legalActions={legalActions} onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           <LogDrawer state={state} />
           {isSeated && handMode === null && !forcedDiscard ? (
             <MoraleOverflowPrompt
@@ -6504,7 +6504,7 @@ export default function Home() {
           viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
         />
       ) : null}
-      <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
+      <SearchModal legalActions={legalActions} onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
       <RerollModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
       {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
       {drawCue && !dice.current && !firstRoll ? (

@@ -59,7 +59,6 @@ import {
   refreshEliminationClock,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   RETREAT_GOLD_COST,
-  SURRENDER_GOLD_COST,
   currentSurrenderGoldCost,
   tournamentMoraleSearchAgainEnabled,
   getSecondaryHero,
@@ -5073,6 +5072,19 @@ export function resolveSatyrSwap(state: GameState, playerId: PlayerId, optionInd
     swapNeutralDraw(state, playerId, draws, optionIndex - 1);
   }
 
+  revealNeutralArmyAfterSwapWindows(state, draws);
+}
+
+/**
+ * Shared reveal tail for every pre-battle guard-swap window (Groovy Satyr,
+ * Judge Dread, Visions): Polish Rule 111 chains as the LAST window before the
+ * army reveals, so holding a swap effect never silently costs the once-per-game
+ * home-tile bronze replacement its offer.
+ */
+function revealNeutralArmyAfterSwapWindows(state: GameState, draws: NeutralDraw[]): void {
+  if (maybeOpenRule111Choice(state, draws)) {
+    return;
+  }
   revealNeutralArmy(state, draws);
 }
 
@@ -5144,9 +5156,8 @@ function maybeOpenRule111Choice(state: GameState, draws: NeutralDraw[]): boolean
 /** Resolves Polish Rule 111: option 0 keeps; option N>0 swaps that bronze. */
 export function resolveRule111(state: GameState, playerId: PlayerId, optionIndex: number): void {
   const combat = state.combat;
-  const draws = combat?.pendingNeutralDraws;
-  const choice = state.pendingChoice;
   // Caller clears pendingChoice before calling; read the stash from combat draws.
+  const draws = combat?.pendingNeutralDraws;
   if (!combat || !draws) {
     throw new Error("There is no drawn neutral army for Rule 111.");
   }
@@ -5231,11 +5242,11 @@ export function resolveJudgeDread(state: GameState, playerId: PlayerId, optionIn
     const field = state.adventure?.fields[combat.context.fieldId];
     const fresh = drawGuardArmy(state, field, combat.context.difficulty);
     // The fresh army is logged by revealNeutralArmy (NEUTRAL_ARMY_REVEALED).
-    revealNeutralArmy(state, fresh);
+    revealNeutralArmyAfterSwapWindows(state, fresh);
     return;
   }
 
-  revealNeutralArmy(state, draws);
+  revealNeutralArmyAfterSwapWindows(state, draws);
 }
 
 /** The Visions spell id — its pre-battle cast lets the attacker swap guards. */
@@ -5304,7 +5315,7 @@ export function resolveVisionsGuardCast(state: GameState, playerId: PlayerId, op
 
   // Option 0 keeps the drawn army; Visions stays in hand.
   if (optionIndex === 0) {
-    revealNeutralArmy(state, draws);
+    revealNeutralArmyAfterSwapWindows(state, draws);
     return;
   }
 
@@ -5312,7 +5323,7 @@ export function resolveVisionsGuardCast(state: GameState, playerId: PlayerId, op
   const handIndex = player?.hand.indexOf(VISIONS_SPELL_ID) ?? -1;
   if (!player || handIndex === -1) {
     // Visions left the hand between the draw and the choice — reveal as-is.
-    revealNeutralArmy(state, draws);
+    revealNeutralArmyAfterSwapWindows(state, draws);
     return;
   }
 
@@ -5425,7 +5436,7 @@ function openVisionsGuardSwapLoop(state: GameState, playerId: PlayerId, swapsRem
   }
 
   if (swapsRemaining <= 0 || !draws.some((draw) => !draw.bankGuard)) {
-    revealNeutralArmy(state, draws);
+    revealNeutralArmyAfterSwapWindows(state, draws);
     return;
   }
 
@@ -5471,7 +5482,7 @@ export function resolveVisionsGuardSwap(state: GameState, playerId: PlayerId, op
   // Trailing "Done" option: reveal the army as it stands.
   const draw = optionIndex < draws.length ? draws[optionIndex] : undefined;
   if (!draw) {
-    revealNeutralArmy(state, draws);
+    revealNeutralArmyAfterSwapWindows(state, draws);
     return;
   }
   // A fixed bank guard cannot be swapped — re-offer without spending a swap.
@@ -6807,11 +6818,24 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   // post-deployment pause (pvpEscapeWindowOpen). After the first unit acts it is
   // closed. Polish mid-fight surrender is the sole exception (see below).
   const duringPlacement = Boolean(combat.setup) && combat.round === 1;
+  // Polish mid-fight surrender is only legal in a SETTLED combat window —
+  // mirroring the legal-actions offer (isCombatCardWindowOpen, inlined here to
+  // avoid the legal-actions → adventure-reducer import cycle). SURRENDER_COMBAT
+  // is handler-validated, so without this a client could post the action
+  // mid-attack-resolution and dodge a lethal hit AFTER seeing the dice.
+  const combatWindowSettled =
+    !combat.outcome &&
+    !combat.awaitingContinue &&
+    state.phase === "combat" &&
+    state.stack.length === 0 &&
+    !state.reactionWindow &&
+    !state.pendingChoice;
   const polishMidFightSurrender =
     reason === "surrender" &&
     houseRuleEnabled(state, "polish-reduced-surrender") &&
     !inPrep &&
-    !combat.setup;
+    !combat.setup &&
+    combatWindowSettled;
   if (!inPrep && !duringPlacement && !pvpEscapeWindowOpen(combat) && !polishMidFightSurrender) {
     throw new Error("Retreat is only possible before any unit acts.");
   }
@@ -8824,7 +8848,9 @@ export function spendMorale(state: GameState, action: Extract<GameAction, { type
     }
 
     consumeToken();
-    openSharedDeckSearch(state, action.playerId, deckId, count);
+    // Re-run the SAME Search (X): keep the Tarnum allowRemove flag so a
+    // repeated Search(1) Spell still offers the Remove pick.
+    openSharedDeckSearch(state, action.playerId, deckId, count, false, Boolean(choice.allowRemove));
     return;
   }
 
@@ -9587,6 +9613,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
+
+    // Polish Random Artifacts: the roll made when this Search opened covered
+    // only this acquisition. Taking the discard top ends it without passing
+    // through resolveDeckSearch, so clear the access latch here too — a stale
+    // latch would silently reuse this roll for the NEXT Artifact acquisition.
+    if (isArtifactSharedDeckId(mode.deckId)) {
+      clearPolishArtifactAccess(state);
+    }
 
     // Pendant of Courage: offered as a post-Search decision to perform the whole
     // Search action once more, even when this branch took the discard top or
@@ -10696,6 +10730,12 @@ export function beginSharedDeckSearchNow(
   });
 
   if (candidates.length === 0) {
+    // Polish Random Artifacts: the family roll above may have latched an access
+    // override; with nothing searchable this acquisition dies here, so the
+    // latch must not survive to poison the next one.
+    if (isArtifactSharedDeckId(deckId)) {
+      clearPolishArtifactAccess(state);
+    }
     return false;
   }
 
@@ -11120,6 +11160,11 @@ export function revealSharedDeckSearch(
     const emptySearchPlayer = state.players[playerId];
     if (emptySearchPlayer) {
       clearPendingLevelUpAbilitySearch(emptySearchPlayer);
+    }
+    // Polish Random Artifacts: this acquisition ends with no DECK_SEARCH choice
+    // (resolveDeckSearch would normally clear the roll's access latch).
+    if (isArtifactSharedDeckId(deckId)) {
+      clearPolishArtifactAccess(state);
     }
     appendEvent(state, {
       type: "DECK_SEARCH_STARTED",

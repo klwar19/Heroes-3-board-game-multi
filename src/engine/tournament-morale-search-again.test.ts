@@ -33,7 +33,13 @@ function makeTournamentGame(seed: string, extras?: { tournament?: boolean; moral
 }
 
 /** Open a Search that lands on DECK_SEARCH with revealed cards (skip Scouting / discard-top menus). */
-function openRevealedSearch(state: GameState, playerId: "p1" | "p2", deckId: string, count: number): GameState {
+function openRevealedSearch(
+  state: GameState,
+  playerId: "p1" | "p2",
+  deckId: string,
+  count: number,
+  allowRemove = false
+): GameState {
   // Empty discard so the search does not open the "take discard top?" branch.
   const deck = state.decks[deckId];
   if (deck) {
@@ -45,7 +51,7 @@ function openRevealedSearch(state: GameState, playerId: "p1" | "p2", deckId: str
   if (player) {
     player.hand = player.hand.filter((id) => !id.includes("scouting") && !id.includes("Scout"));
   }
-  openSharedDeckSearch(state, playerId, deckId, count, true);
+  openSharedDeckSearch(state, playerId, deckId, count, true, allowRemove);
   let next = state;
   // Drain any remaining mode/scouting CHOICE until DECK_SEARCH is up.
   for (let i = 0; i < 6 && next.pendingChoice?.type === "OPTION_CHOICE"; i += 1) {
@@ -126,6 +132,28 @@ describe("Tournament Morale token — Search again", () => {
       expect(choice.context === "scouting-prompt" || choice.context === "deck-search-mode").toBe(true);
     } else {
       expect(choice).toBeNull();
+    }
+  });
+
+  it("the re-run keeps the Tarnum allowRemove privilege", () => {
+    let state = makeTournamentGame("t-morale-search-remove");
+    state.players.p1.morale = 1;
+    state = openRevealedSearch(state, "p1", "abilities", 2, true);
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+    if (state.pendingChoice?.type !== "DECK_SEARCH") return;
+    expect(state.pendingChoice.allowRemove).toBe(true);
+
+    state = applyOk(state, { type: "SPEND_MORALE", playerId: "p1", benefit: "repeat-search" });
+
+    // The re-run may pass through the Search-or-take-discard menu (the
+    // discarded reveal now tops the discard pile) — commit to Searching.
+    for (let i = 0; i < 4 && state.pendingChoice?.type === "OPTION_CHOICE"; i += 1) {
+      const choice = state.pendingChoice;
+      state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+    }
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+    if (state.pendingChoice?.type === "DECK_SEARCH") {
+      expect(state.pendingChoice.allowRemove, "the repeated Search keeps the Remove privilege").toBe(true);
     }
   });
 

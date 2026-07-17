@@ -1405,7 +1405,41 @@ is NOT done:
   `split-decks` is off; it also upgrades Polish Pandora Search by +1 card on a
   "+1" die. Random Artifacts rolls at every Artifact acquisition chokepoint
   (shared-deck Search, dig, black market, event merchant/messenger draws) via
-  `polish-random-artifacts.ts`.
+  `polish-random-artifacts.ts`. Audit pass (2026-07, each fix mutation-checked
+  in `polish-house-rules-extra.test.ts`): the access LATCH from the roll can
+  never outlive its acquisition — taking the discard top, a zero-candidate /
+  empty-reveal Search, and eliminating the owner mid-Search/mid-visit all clear
+  it (a stale latch silently reused the old roll for the NEXT acquisition);
+  Rule 111 is pinned end-to-end (offer only on the OWN home tile at difficulty
+  I, swap consumes the once-per-game token, skip does not; rule-off /
+  foreign-tile / already-used CONTROLs) and now CHAINS after the Groovy Satyr /
+  Judge Dread / Visions pre-battle swap windows instead of being silently
+  skipped by them (`revealNeutralArmyAfterSwapWindows`); `polish-wait`'s Waited
+  re-activation runs a REDUCED start-of-activation package (no second
+  regeneration / poison cube / Fire Wall burn / negative-morale skip check /
+  "[activation]" ability reset — only the Paralysis skip still applies) and the
+  adventure pump enters the Waited phase even when the active unit dies without
+  acting (the corpse-drop path used to end the round over pending Wait tokens);
+  a mid-Pandora-Search elimination returns every lifted Pandora card to the
+  deck; the Wait and mid-fight Surrender buttons render in the combat command
+  dock (`board.tsx` COMMAND_ACTION_TYPES — engine offers existed with no UI
+  surface). KNOWN LIMIT: the sandbox-only "Start next combat round" button can
+  still skip pending waiters (test mode, deliberate); the reduced starting
+  bonus's Minor-Artifact draw returns skipped non-minors under the pile without
+  a reshuffle.
+- **Tournament Morale "Search again" (Tournament Book p.54)**: on a table with
+  ANY tournament flag frozen onto adventure state (master mode or a granular
+  rule) and Morale CARDS off, a player looking at their own revealed Search
+  cards may spend the positive Morale token (overflow first) to discard ALL
+  revealed cards and perform the same Search (X) again — re-run off
+  `DECK_SEARCH.baseCount`, preserving the Tarnum `allowRemove` privilege; the
+  Random-Artifacts latch clears so the re-run rolls fresh. Offered in
+  legal-actions inside the open DECK_SEARCH and rendered as a button in
+  `SearchModal` (its only surface — the modal covers the table). With Morale
+  Cards ON the printed repeat_search CARD flow is the only repeat (SPEND_MORALE
+  repeat-search throws). Pinned in `tournament-morale-search-again.test.ts`
+  (offer/spend/re-run + non-tournament and no-token CONTROLs) and the button in
+  `deck-search-mode-modal.test.tsx`.
 - With `polish-unit-stacks` ON, a faction Pack card — or a recruited NEUTRAL
   card — at its own Citadel may buy persistent Stack layers with the Population
   flow. One Stack costs that side's printed gold cost plus its tier number

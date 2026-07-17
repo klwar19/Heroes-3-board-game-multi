@@ -4,10 +4,13 @@
  */
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
-import { applyAction, createInitialGameState, getLegalActions, NEUTRAL_PLAYER_ID } from "./index";
+import { applyAction, createInitialGameState, getLegalActions, hexSpaceId, NEUTRAL_PLAYER_ID } from "./index";
 import { createAdventureGameState } from "./adventure-setup";
+import { openSharedDeckSearch, startNeutralEncounter } from "./adventure-reducer";
 import {
   currentSurrenderGoldCost,
+  eliminatePlayer,
+  getMainHero,
   processPendingVisit,
   startingBonusDescription,
   startingBonusVisitSteps,
@@ -239,6 +242,60 @@ describe("polish-reduced-surrender", () => {
     on.combat!.round = 1;
     expect(currentSurrenderGoldCost(on)).toBe(10);
   });
+
+  it("mid-fight surrender needs a SETTLED window — a forged action cannot dodge a resolving attack", () => {
+    const makePvpCombat = (seed: string): GameState => {
+      const state = createAdventureGameState({
+        seed,
+        rollFirstPlayer: false,
+        houseRules: { "polish-reduced-surrender": true }
+      });
+      const heroA = getMainHero(state, "p1")!;
+      const heroB = getMainHero(state, "p2")!;
+      state.players.p1.resources.gold = 20;
+      state.combat = {
+        id: "c-pvp-window",
+        round: 2,
+        attackerPlayerId: "p1",
+        defenderPlayerId: "p2",
+        activeUnitId: null,
+        context: {
+          kind: "player",
+          attackerHeroId: heroA.id,
+          defenderHeroId: heroB.id,
+          fieldId: Object.keys(state.adventure!.fields)[0]!
+        },
+        setup: null,
+        awaitingContinue: false,
+        outcome: null,
+        units: {}
+      } as GameState["combat"];
+      state.phase = "combat";
+      state.stack = [];
+      state.reactionWindow = null;
+      state.pendingChoice = null;
+      return state;
+    };
+
+    // SURRENDER_COMBAT is handler-validated (no getLegalActions membership
+    // check), so the handler itself must refuse an un-settled window.
+    const midResolution = makePvpCombat("surrender-forged");
+    midResolution.phase = "choice"; // an attack sub-step / choice is resolving
+    const rejected = applyAction(midResolution, { type: "SURRENDER_COMBAT", playerId: "p1" });
+    expect(rejected.errors.length).toBeGreaterThan(0);
+    expect(rejected.state.combat?.outcome ?? null).toBeNull();
+
+    // CONTROL: the same surrender in a settled combat window goes through.
+    const settled = makePvpCombat("surrender-settled");
+    const accepted = applyAction(settled, { type: "SURRENDER_COMBAT", playerId: "p1" });
+    expect(accepted.errors, accepted.errors.map((e) => e.message).join("; ")).toEqual([]);
+    expect(accepted.state.combat?.outcome).toMatchObject({
+      defeatedPlayerId: "p1",
+      reason: "surrender"
+    });
+    // The winner banks the reduced toll at combat finalization, not here — the
+    // outcome alone proves the mid-fight window accepted the surrender.
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -284,7 +341,7 @@ describe("polish-wait", () => {
     expect(state.combat!.units[p1Unit!.id]!.activatedThisRound).toBe(true);
 
     // CONTROL: without the rule, Wait is not offered.
-    let control = createInitialGameState("polish-wait-control");
+    const control = createInitialGameState("polish-wait-control");
     control.adventure = {
       ...(control.adventure ?? ({} as NonNullable<GameState["adventure"]>)),
       houseRules: { "polish-wait": false }
@@ -384,7 +441,7 @@ describe("polish-pandora-search", () => {
 
   it("with the rule ON, DRAW_PANDORA_CARD opens a multi-card choose-1 (CONTROL: off draws 1)", () => {
     // Seed a mini adventure with a pandora deck and a pending visit.
-    let state = createAdventureGameState({
+    const state = createAdventureGameState({
       seed: "polish-pandora-on",
       rollFirstPlayer: false,
       houseRules: { "polish-pandora-search": true, "split-decks": true }
@@ -417,7 +474,7 @@ describe("polish-pandora-search", () => {
     }
 
     // CONTROL: rule off draws one straight into hand, no CHOOSE_ONE.
-    let off = createAdventureGameState({
+    const off = createAdventureGameState({
       seed: "polish-pandora-off",
       rollFirstPlayer: false,
       houseRules: { "polish-pandora-search": false }
@@ -436,6 +493,325 @@ describe("polish-pandora-search", () => {
     expect(off.players.p1.hand.length).toBe(before + 1);
     expect(offAdv.pandoraDeck?.length).toBe(deckBefore - 1);
     expect(offAdv.pendingVisit).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rule 111 (home-tile bronze swap) — end to end through the real guard flow
+// ---------------------------------------------------------------------------
+
+describe("polish-rule-111", () => {
+  /**
+   * A real difficulty-I neutral fight driven through startNeutralEncounter +
+   * combat placement. The guard field sits on p1's OWN starting tile unless
+   * `homeTile: false` fakes a foreign one.
+   */
+  function homeTileGuardFight(
+    seed: string,
+    opts: { rule?: boolean; homeTile?: boolean; alreadyUsed?: boolean } = {}
+  ): GameState {
+    let state = createAdventureGameState({
+      seed,
+      difficulty: "easy",
+      rollFirstPlayer: false,
+      houseRules: { "polish-rule-111": opts.rule !== false }
+    });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    const adventure = state.adventure!;
+    const hero = getMainHero(state, "p1")!;
+    // Level == difficulty: an even fight OPENS (level > difficulty would
+    // Quick-Combat-resolve before the guard draw).
+    hero.level = 1;
+    const homeTile = Object.values(adventure.tiles).find(
+      (tile) =>
+        tile.group === "starting" &&
+        adventure.fields[hexSpaceId({ row: tile.centerRow, col: tile.centerCol })]?.flagOwnerId === "p1"
+    );
+    expect(homeTile, "p1 has a flagged starting tile").toBeTruthy();
+    if (opts.alreadyUsed) {
+      adventure.rule111UsedBy = ["p1"];
+    }
+    const fieldId = "rule111-guard";
+    adventure.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: opts.homeTile === false ? "not-p1s-tile" : homeTile!.id,
+      slot: 0,
+      location: "empty",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    hero.spaceId = fieldId;
+    startNeutralEncounter(state, hero, adventure.fields[fieldId]!);
+    expect(state.combat, "the even fight must open a real combat").toBeTruthy();
+    for (let i = 0; i < 30 && state.combat?.setup; i += 1) {
+      const actions = getLegalActions(state, "p1");
+      const next =
+        actions.find((l) => l.action.type === "PLACE_COMBAT_UNIT") ??
+        actions.find((l) => l.action.type === "FINISH_COMBAT_PLACEMENT");
+      if (!next) {
+        break;
+      }
+      state = applyOk(state, next.action);
+    }
+    return state;
+  }
+
+  it("offers the once-per-game bronze swap at guard reveal on the OWN home tile", () => {
+    let state = homeTileGuardFight("rule111-offer");
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") return;
+    expect(choice.context).toBe("rule-111");
+    expect(choice.playerId).toBe("p1");
+    // Option 0 keeps; at least one bronze replacement is offered.
+    expect(choice.options.length).toBeGreaterThanOrEqual(2);
+    expect(choice.options[1]!.label).toMatch(/Replace/i);
+
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 1 });
+    // The swap consumed the once-per-game token, drew the next bronze and revealed.
+    expect(state.adventure!.rule111UsedBy).toEqual(["p1"]);
+    expect(state.eventLog.some((event) => event.type === "NEUTRAL_DRAW_SWAPPED")).toBe(true);
+    expect(state.combat!.pendingNeutralDraws ?? null).toBeNull();
+    expect(
+      Object.values(state.combat!.units).some((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)
+    ).toBe(true);
+  });
+
+  it("skipping (option 0) reveals without consuming the once-per-game token", () => {
+    let state = homeTileGuardFight("rule111-skip");
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") return;
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+    expect(state.adventure!.rule111UsedBy ?? []).toEqual([]);
+    expect(
+      Object.values(state.combat!.units).some((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)
+    ).toBe(true);
+  });
+
+  const rule111ChoiceOf = (state: GameState) =>
+    state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "rule-111"
+      ? state.pendingChoice
+      : null;
+
+  it("CONTROL: rule off — no offer, the army reveals straight away", () => {
+    const state = homeTileGuardFight("rule111-off", { rule: false });
+    expect(rule111ChoiceOf(state)).toBeNull();
+    expect(
+      Object.values(state.combat!.units).some((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)
+    ).toBe(true);
+  });
+
+  it("CONTROL: not the player's home tile — no offer", () => {
+    const state = homeTileGuardFight("rule111-foreign", { homeTile: false });
+    expect(rule111ChoiceOf(state)).toBeNull();
+  });
+
+  it("CONTROL: already used — no second offer (once per game)", () => {
+    const state = homeTileGuardFight("rule111-used", { alreadyUsed: true });
+    expect(rule111ChoiceOf(state)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wait — no double start-of-activation package on the re-activation
+// ---------------------------------------------------------------------------
+
+describe("polish-wait re-activation start package", () => {
+  it("a Waited unit does NOT re-fire its [activation] regeneration (CONTROL: normal activation heals)", () => {
+    let state = createInitialGameState("polish-wait-regen");
+    state.adventure = {
+      ...(state.adventure ?? ({} as NonNullable<GameState["adventure"]>)),
+      houseRules: { "polish-wait": true }
+    } as GameState["adventure"];
+    state.ruleset = "binh";
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const combat = state.combat!;
+    combat.setup = null;
+    combat.outcome = null;
+    state.phase = "combat";
+    state.stack = [];
+    state.reactionWindow = null;
+    state.pendingChoice = null;
+
+    const units = Object.values(combat.units);
+    const regenUnit = units.find((u) => u.controllerId === "p1")!;
+    const opener = units.find((u) => u.controllerId === "p1" && u.id !== regenUnit.id)!;
+    for (const unit of units) {
+      unit.activatedThisRound = true;
+      unit.waitToken = undefined;
+      unit.waitPending = undefined;
+    }
+    // Give the unit a real Wraith-style regeneration and 2 damage.
+    regenUnit.abilities = [...regenUnit.abilities, "wraith-heal-1"];
+    regenUnit.damage = 2;
+    regenUnit.activatedThisRound = false;
+    opener.activatedThisRound = false;
+    combat.activeUnitId = opener.id;
+
+    // CONTROL half: ending the opener's activation hands the slot to the regen
+    // unit through the REAL setActiveUnit — the [activation] heal fires once.
+    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: opener.id });
+    expect(state.combat!.activeUnitId).toBe(regenUnit.id);
+    expect(state.combat!.units[regenUnit.id]!.damage, "normal activation regenerates 1").toBe(1);
+
+    // Now Wait: every other unit has acted, so the Waited re-activation opens
+    // immediately — and the regeneration must NOT fire a second time.
+    state = applyOk(state, { type: "WAIT_UNIT", playerId: "p1", unitId: regenUnit.id });
+    expect(state.combat!.waitPhase).toBe(true);
+    expect(state.combat!.activeUnitId).toBe(regenUnit.id);
+    expect(
+      state.combat!.units[regenUnit.id]!.damage,
+      "the Waited re-activation must not double-fire regeneration"
+    ).toBe(1);
+  });
+
+  it("the pump enters the Waited re-activation when the active unit dies without acting", () => {
+    let state = createInitialGameState("polish-wait-corpse");
+    state.adventure = {
+      ...(state.adventure ?? ({} as NonNullable<GameState["adventure"]>)),
+      houseRules: { "polish-wait": true }
+    } as GameState["adventure"];
+    state.ruleset = "binh";
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const combat = state.combat!;
+    combat.setup = null;
+    combat.outcome = null;
+    state.phase = "combat";
+    state.stack = [];
+    state.reactionWindow = null;
+    state.pendingChoice = null;
+
+    const units = Object.values(combat.units);
+    const waiter = units.find((u) => u.controllerId === "p1")!;
+    const corpse = units.find((u) => u.controllerId === "p2")!;
+    for (const unit of units) {
+      unit.activatedThisRound = true;
+      unit.waitToken = undefined;
+      unit.waitPending = undefined;
+    }
+    // p1's unit Waited earlier this round; p2's unit dies WITHOUT acting while
+    // its pre-activation pause is open (e.g. a lethal reaction cast).
+    waiter.waitToken = 1;
+    waiter.waitPending = true;
+    corpse.activatedThisRound = false;
+    corpse.damage = corpse.maxHealth;
+    combat.activeUnitId = corpse.id;
+    combat.pendingNeutralStep = {
+      kind: "pre-activation",
+      unitId: corpse.id,
+      name: corpse.name,
+      reactingPlayerId: "p1"
+    };
+    const roundBefore = combat.round;
+
+    state = applyOk(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
+
+    // The corpse is dropped and the round must NOT end over the pending Wait
+    // token: the Waited re-activation phase opens with the waiter active.
+    expect(state.combat!.round, "the combat round must not advance past the waiter").toBe(roundBefore);
+    expect(state.combat!.waitPhase).toBe(true);
+    expect(state.combat!.activeUnitId).toBe(waiter.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Random Artifacts — the access latch never outlives its acquisition
+// ---------------------------------------------------------------------------
+
+describe("polish-random-artifacts access latch", () => {
+  it("taking the discard top clears the latch (CONTROL: it was set by the Search roll)", () => {
+    const state = createAdventureGameState({
+      seed: "polish-ra-latch",
+      rollFirstPlayer: false,
+      houseRules: { "polish-random-artifacts": true, "split-decks": true }
+    });
+    state.players.p1.hand = state.players.p1.hand.filter(
+      (id) => !id.includes("scouting") && !id.includes("Scout")
+    );
+    const deck = state.decks["artifacts-minor"]!;
+    expect(deck.discardPile.length, "setup seeds one discard card").toBeGreaterThan(0);
+
+    openSharedDeckSearch(state, "p1", "artifacts-minor", 2);
+    expect(state.adventure!.polishArtifactAccess, "the Search roll latches access").toBeTruthy();
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" ? choice.context : null).toBe("deck-search-mode");
+    if (choice?.type !== "OPTION_CHOICE") return;
+
+    const after = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: 1
+    });
+    expect(
+      after.adventure!.polishArtifactAccess,
+      "taking the discard top must clear the latch — a stale roll would silently gate the NEXT acquisition"
+    ).toBeNull();
+  });
+
+  it("eliminating the owner of an open artifact DECK_SEARCH clears the latch", () => {
+    const state = createAdventureGameState({
+      seed: "polish-ra-elim-latch",
+      rollFirstPlayer: false,
+      houseRules: { "polish-random-artifacts": true, "split-decks": true }
+    });
+    state.players.p1.hand = state.players.p1.hand.filter(
+      (id) => !id.includes("scouting") && !id.includes("Scout")
+    );
+    // Empty the discard so the Search reveals straight away (no mode menu).
+    const deck = state.decks["artifacts-minor"]!;
+    deck.drawPile = [...deck.discardPile, ...deck.drawPile];
+    deck.discardPile = [];
+
+    openSharedDeckSearch(state, "p1", "artifacts-minor", 2);
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+    expect(state.adventure!.polishArtifactAccess).toBeTruthy();
+
+    eliminatePlayer(state, "p1", "test", true);
+    expect(state.adventure!.polishArtifactAccess ?? null).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Elimination mid Polish Pandora Search destroys NO shared Pandora cards
+// ---------------------------------------------------------------------------
+
+describe("polish-pandora-search elimination safety", () => {
+  it("returns the lifted Pandora cards to the deck when the picking seat is eliminated", () => {
+    const state = createAdventureGameState({
+      seed: "polish-pandora-elim",
+      rollFirstPlayer: false,
+      houseRules: { "polish-pandora-search": true }
+    });
+    const adventure = state.adventure!;
+    const hero = Object.values(state.heroes).find((h) => h.controllerId === "p1" && h.kind === "main")!;
+    const before = adventure.pandoraDeck?.length ?? 0;
+    expect(before).toBeGreaterThan(2);
+
+    adventure.pendingVisit = {
+      playerId: "p1",
+      heroId: hero.id,
+      fieldId: Object.keys(adventure.fields)[0]!,
+      steps: [{ type: "DRAW_PANDORA_CARD" }]
+    };
+    processPendingVisit(state);
+    const step = adventure.pendingVisit?.steps[0];
+    expect(step?.type, "the Search lifted cards into a keep-one choice").toBe("CHOOSE_ONE");
+    expect(adventure.pandoraDeck!.length).toBeLessThan(before);
+
+    eliminatePlayer(state, "p1", "test", true);
+    expect(
+      adventure.pandoraDeck!.length,
+      "eliminating the picking seat must return every lifted Pandora card"
+    ).toBe(before);
   });
 });
 
