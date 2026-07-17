@@ -1475,7 +1475,7 @@ describe("one-way monoliths — entrance → same-color exits, random/certain/mi
     const { state: start, tiles } = threeTileGame("oneway-guarded");
     let state = start;
     const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1, { guard: 2 });
-    const exitB = carveOneway(state, tiles[1], 1, "oneway_exit", 1);
+    carveOneway(state, tiles[1], 1, "oneway_exit", 1);
     state.heroes.hero_p1.level = 7; // far above the guard — still no Quick Combat
     putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
 
