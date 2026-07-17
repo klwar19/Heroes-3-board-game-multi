@@ -286,8 +286,13 @@ const CUSTOM_MAP_OBJECT_KINDS = new Set<CustomMapObjectKind>([
   "gate",
   "garrison",
   "keymaster_tent",
-  "barrier"
+  "barrier",
+  "oneway_entrance",
+  "oneway_exit"
 ]);
+
+/** The three one-way exit-pick modes (allow-list for sanitize + the editor). */
+export const ONEWAY_EXIT_MODES = ["random", "certain", "mix"] as const;
 
 /** The outpost kinds — STANDALONE-only one-hex objects out of every tile. */
 export const OUTPOST_OBJECT_KINDS = new Set<CustomMapObjectKind>(["garrison", "keymaster_tent", "barrier"]);
@@ -613,9 +618,15 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
     return null;
   }
   const object: CustomMapObject = { kind, placement };
-  // A gate / tent / barrier carries a colored pair 1-4 (required); the other
-  // kinds never do.
-  if (kind === "gate" || kind === "keymaster_tent" || kind === "barrier") {
+  // A gate / tent / barrier / one-way monolith carries a colored pair 1-4
+  // (required); the other kinds never do.
+  if (
+    kind === "gate" ||
+    kind === "keymaster_tent" ||
+    kind === "barrier" ||
+    kind === "oneway_entrance" ||
+    kind === "oneway_exit"
+  ) {
     if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
       return null;
     }
@@ -623,10 +634,19 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   }
   // A designer guard (optional): the LEGACY plain number is a level 1-7; the
   // spec form adds "certain army" guards. Both normalise to a clean spec. A
-  // Barrier is NEVER guarded (printed rule) — any guard is stripped.
-  const guard = kind === "barrier" ? undefined : sanitizeObjectGuard(raw.guard);
+  // Barrier and a one-way EXIT are NEVER guarded (printed rules) — stripped.
+  const guard = kind === "barrier" || kind === "oneway_exit" ? undefined : sanitizeObjectGuard(raw.guard);
   if (guard) {
     object.guard = guard;
+  }
+  // One-way extras: an ENTRANCE may pick its exit mode; an EXIT may be flagged
+  // always-pickable ("mix" mode). Anything else never carries either.
+  const rawOneway = input as { exitMode?: unknown; alwaysPickable?: unknown };
+  if (kind === "oneway_entrance" && ONEWAY_EXIT_MODES.includes(rawOneway.exitMode as never)) {
+    object.exitMode = rawOneway.exitMode as CustomMapObject["exitMode"];
+  }
+  if (kind === "oneway_exit" && rawOneway.alwaysPickable === true) {
+    object.alwaysPickable = true;
   }
   // Designer yellow border edges on the object hex (absolute dirs 0-5).
   const rawEdges = (input as { borderEdges?: unknown }).borderEdges;

@@ -290,22 +290,41 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as { kind?: unknown; pair?: unknown; slot?: unknown; guard?: unknown };
-  if (raw.kind !== "monolith" && raw.kind !== "whirlpool" && raw.kind !== "gate") {
+  const raw = input as {
+    kind?: unknown;
+    pair?: unknown;
+    slot?: unknown;
+    guard?: unknown;
+    exitMode?: unknown;
+    alwaysPickable?: unknown;
+  };
+  if (
+    raw.kind !== "monolith" &&
+    raw.kind !== "whirlpool" &&
+    raw.kind !== "gate" &&
+    raw.kind !== "oneway_entrance" &&
+    raw.kind !== "oneway_exit"
+  ) {
     return undefined;
   }
   const slot =
     Number.isInteger(raw.slot) && (raw.slot as number) >= 0 && (raw.slot as number) <= 6
       ? { slot: raw.slot as number }
       : {};
-  // A designer guard on the token hex (level 1-7 or exact army; clamped).
-  const guardSpec = sanitizeObjectGuard(raw.guard);
+  // A designer guard on the token hex (level 1-7 or exact army; clamped). A
+  // one-way EXIT is never guarded.
+  const guardSpec = raw.kind === "oneway_exit" ? undefined : sanitizeObjectGuard(raw.guard);
   const guard = guardSpec ? { guard: guardSpec } : {};
-  if (raw.kind === "gate") {
+  if (raw.kind === "gate" || raw.kind === "oneway_entrance" || raw.kind === "oneway_exit") {
     if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
       return undefined;
     }
-    return { kind: "gate", pair: raw.pair, ...slot, ...guard };
+    const exitMode =
+      raw.kind === "oneway_entrance" && (raw.exitMode === "random" || raw.exitMode === "certain" || raw.exitMode === "mix")
+        ? { exitMode: raw.exitMode as "random" | "certain" | "mix" }
+        : {};
+    const alwaysPickable = raw.kind === "oneway_exit" && raw.alwaysPickable === true ? { alwaysPickable: true } : {};
+    return { kind: raw.kind, pair: raw.pair, ...slot, ...guard, ...exitMode, ...alwaysPickable };
   }
   // Monolith / Whirlpool: never carry a pair.
   return { kind: raw.kind, ...slot, ...guard };

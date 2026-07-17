@@ -7081,12 +7081,15 @@ export type MapTileState = {
    * 1-4) is the colored pair the carved Gate joins.
    */
   pendingToken?: {
-    kind: "monolith" | "whirlpool" | "gate";
+    kind: "monolith" | "whirlpool" | "gate" | "oneway_entrance" | "oneway_exit";
     number?: -1 | 0 | 1;
     pair?: 1 | 2 | 3 | 4;
     preferredSpaceId?: MapSpaceId;
     /** Designer guard placed with the token (level or exact army). */
     guard?: CustomGuardSpec;
+    /** One-way entrance/exit extras, carried to the carved field. */
+    exitMode?: OnewayExitMode;
+    alwaysPickable?: boolean;
   };
   /**
    * GLOBAL Field Override queue for a still-face-down / just-revealed tile.
@@ -7112,12 +7115,15 @@ export type MapTileState = {
    * remains for legacy single-token tiles (normalized into this list when set).
    */
   pendingTokens?: Array<{
-    kind: "monolith" | "whirlpool" | "gate";
+    kind: "monolith" | "whirlpool" | "gate" | "oneway_entrance" | "oneway_exit";
     number?: -1 | 0 | 1;
     pair?: 1 | 2 | 3 | 4;
     preferredSpaceId?: MapSpaceId;
     /** Designer guard placed with the token (level or exact army). */
     guard?: CustomGuardSpec;
+    /** One-way entrance/exit extras, carried to the carved field. */
+    exitMode?: OnewayExitMode;
+    alwaysPickable?: boolean;
   }>;
   /**
    * Naval Battles optional rule: the Creature Bank token drawn for this tile's
@@ -7299,8 +7305,19 @@ export type MapFieldState = {
    * `location: "gate"` field belongs to. Entering a gate teleports to THE OTHER
    * gate of the SAME pair — never a choice, never another pair, and never joining
    * the generic Monolith/Whirlpool network. Set only when `location` is "gate".
+   * ALSO reused as the COLOR of a Keymaster's Tent / Barrier / one-way
+   * monolith entrance-exit (same four colors, separate mechanisms).
    */
   gatePair?: 1 | 2 | 3 | 4;
+  /**
+   * One-way monolith ENTRANCE (`location: "oneway_entrance"`): how the
+   * traveller's same-color exit is picked — "random" (a seeded roll),
+   * "certain" (free pick) or "mix" (pick an always-pickable exit BEFORE the
+   * roll, else roll among the rest). Absent = "certain".
+   */
+  onewayExitMode?: OnewayExitMode;
+  /** One-way monolith EXIT: freely choosable before the roll in "mix" mode. */
+  onewayAlwaysPickable?: boolean;
   /**
    * Designer yellow border lines on a STANDALONE object hex — ABSOLUTE
    * directions 0-5 sealing single edges of THIS field, the field-level twin of
@@ -7492,7 +7509,7 @@ export type VisitStep =
        * `RESOLVE_VISIT_STEP` the tray button would. It reaches only the traveller
        * (getVisiblePendingVisit masks every other seat's visit steps to []).
        */
-      teleport?: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4 };
+      teleport?: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 };
     }
   | { type: "PAY_TO"; prompt: string; costOptions: ResourceCost[]; steps: VisitStep[] }
   | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }
@@ -7896,6 +7913,27 @@ export type VisitStep =
        */
       type: "TOKEN_TELEPORT";
       token: "monolith" | "whirlpool";
+    }
+  | {
+      /**
+       * One-way monolith travel: entering (or Revisiting) an ENTRANCE resolves
+       * where the hero goes among the SAME-COLOR carved exits, per the
+       * entrance's `onewayExitMode` — a seeded roll ("random"), the
+       * traveller's pick ("certain"), or pick-an-always-exit-else-roll
+       * ("mix"). Exits still riding a face-down tile are NOT offered (reveal
+       * the tile first) — a deliberate limit, unlike the Monolith network.
+       */
+      type: "ONEWAY_TELEPORT";
+    }
+  | {
+      /**
+       * The "mix" roll leaf: roll among the CURRENT free same-color exits that
+       * are NOT always-pickable (resolution-time, so the pick option leaks
+       * nothing). Falls back to every free exit when none is flagged random.
+       */
+      type: "ONEWAY_RANDOM_EXIT";
+      pair: 1 | 2 | 3 | 4;
+      fromSpaceId: MapSpaceId;
     }
   | {
       /**
@@ -9453,7 +9491,21 @@ export type CustomMapObjectKind =
    */
   | "garrison"
   | "keymaster_tent"
-  | "barrier";
+  | "barrier"
+  /**
+   * One-way monoliths (4 colors via `pair`) — standalone objects OR tile
+   * tokens ("out of the map OR in map"), always revealed:
+   * - "oneway_entrance": may be guarded (bank-style fight — no Quick Combat,
+   *   no experience, no Round limit). Winning (or entering unguarded)
+   *   teleports to a same-color EXIT per the entrance's `exitMode`.
+   * - "oneway_exit": NEVER guarded; an ordinary walkable field otherwise.
+   *   `alwaysPickable` marks it freely choosable in "mix" mode.
+   */
+  | "oneway_entrance"
+  | "oneway_exit";
+
+/** How a one-way entrance picks its same-color exit. */
+export type OnewayExitMode = "random" | "certain" | "mix";
 
 /**
  * Where a {@link CustomMapObject} sits on the board:
@@ -9498,6 +9550,10 @@ export type CustomMapObject = {
    * cap 6) at sanitize.
    */
   borderEdges?: number[];
+  /** One-way ENTRANCE only: how the traveller's exit is picked (default "certain"). */
+  exitMode?: OnewayExitMode;
+  /** One-way EXIT only ("mix" mode): freely choosable BEFORE the roll. */
+  alwaysPickable?: boolean;
 };
 
 /** The Obelisk-role config block of a {@link CustomMapPreset}. */
@@ -9737,10 +9793,14 @@ export const MAX_CUSTOM_GUARD_UNITS = 6;
  * (the guard is swept aside, no experience).
  */
 export type CustomMapTileToken = {
-  kind: "monolith" | "whirlpool" | "gate";
+  kind: "monolith" | "whirlpool" | "gate" | "oneway_entrance" | "oneway_exit";
   pair?: 1 | 2 | 3 | 4;
   slot?: number;
   guard?: CustomGuardSpec;
+  /** One-way ENTRANCE token only: how the exit is picked (default "certain"). */
+  exitMode?: OnewayExitMode;
+  /** One-way EXIT token only ("mix" mode): freely choosable BEFORE the roll. */
+  alwaysPickable?: boolean;
 };
 
 /**
@@ -10566,7 +10626,7 @@ export type PendingChoice =
        */
       mapToken?: {
         tileInstanceId: string;
-        kind: "monolith" | "whirlpool" | "gate";
+        kind: "monolith" | "whirlpool" | "gate" | "oneway_entrance" | "oneway_exit";
         number?: -1 | 0 | 1;
         pair?: 1 | 2 | 3 | 4;
         candidates: MapSpaceId[];

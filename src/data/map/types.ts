@@ -206,6 +206,17 @@ export type LocationInteraction =
       type: "GATE_TELEPORT";
     }
   | {
+      /**
+       * One-way monolith ENTRANCE (map-designer objects, 4 colors): entering
+       * moves the hero to a SAME-COLOR one-way EXIT, picked per the entrance's
+       * `MapFieldState.onewayExitMode` — a seeded roll ("random"), the
+       * traveller's free pick ("certain"), or pick-an-always-exit-else-roll
+       * ("mix"). Exits are ordinary fields (never entrances back); with no
+       * carved same-color exit the field does nothing.
+       */
+      type: "ONEWAY_TELEPORT";
+    }
+  | {
       /** Pandora's Box: draw the top card of the Pandora deck into hand. */
       type: "DRAW_PANDORA_CARD";
     }

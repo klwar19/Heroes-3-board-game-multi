@@ -13631,6 +13631,20 @@ img.cardBack {
 .popoverGuardArmyNote {
   color: #d9c9a1;
 }
+.popoverColorChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.popoverCheckRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0 8px;
+  color: #f3e7c8;
+  font-size: 12px;
+  cursor: pointer;
+}
 
 .designerStartLabel {
   fill: #f3e7c8;

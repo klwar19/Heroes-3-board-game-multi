@@ -35,6 +35,7 @@ import {
   ASTROLOGERS_DECK_ID,
   carveColoredGateField,
   carveMapTokenField,
+  carveOnewayField,
   EVENTS_DECK_ID,
   gatePairColor,
   getTileFootprintSpaceIds,
@@ -288,18 +289,25 @@ function applyCustomMapTokens(
     }
     const pendingList: NonNullable<MapTileState["pendingTokens"]> = [];
     for (const token of tokens) {
-      // A colored Gate REQUIRES its pair; a Monolith/Whirlpool must NOT carry one
-      // (setup mirrors the sanitiser). Anything malformed is dropped silently.
+      // A colored Gate / one-way monolith REQUIRES its pair; a
+      // Monolith/Whirlpool must NOT carry one (setup mirrors the sanitiser).
+      // Anything malformed is dropped silently.
       const isGate = token.kind === "gate";
-      if (isGate ? token.pair === undefined : token.kind !== "monolith" && token.kind !== "whirlpool") {
+      const isOneway = token.kind === "oneway_entrance" || token.kind === "oneway_exit";
+      if (
+        isGate || isOneway
+          ? token.pair === undefined
+          : token.kind !== "monolith" && token.kind !== "whirlpool"
+      ) {
         continue;
       }
-      // A Gate reuses the Monolith land legality for its slot check.
+      // Gates and one-way monoliths reuse the Monolith land legality.
       const legalityKind: "monolith" | "whirlpool" = token.kind === "whirlpool" ? "whirlpool" : "monolith";
 
       // A designer guard rides the token wherever it lands (clamped again here
-      // so a hand-edited save can't smuggle garbage past the sanitiser).
-      const guard = sanitizeObjectGuard(token.guard);
+      // so a hand-edited save can't smuggle garbage past the sanitiser). A
+      // one-way EXIT is never guarded.
+      const guard = token.kind === "oneway_exit" ? undefined : sanitizeObjectGuard(token.guard);
 
       if (tile.faceDown) {
         const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
@@ -308,9 +316,11 @@ function applyCustomMapTokens(
         pendingList.push({
           kind: token.kind,
           ...(number !== undefined ? { number } : {}),
-          ...(isGate && token.pair !== undefined ? { pair: token.pair } : {}),
+          ...((isGate || isOneway) && token.pair !== undefined ? { pair: token.pair } : {}),
           ...(preferredSpaceId ? { preferredSpaceId } : {}),
-          ...(guard ? { guard } : {})
+          ...(guard ? { guard } : {}),
+          ...(token.kind === "oneway_entrance" && token.exitMode ? { exitMode: token.exitMode } : {}),
+          ...(token.kind === "oneway_exit" && token.alwaysPickable ? { alwaysPickable: true } : {})
         });
         continue;
       }
@@ -331,12 +341,19 @@ function applyCustomMapTokens(
         (existing.location === "monolith" ||
           existing.location === "whirlpool" ||
           existing.location === "gate" ||
+          existing.location === "oneway_entrance" ||
+          existing.location === "oneway_exit" ||
           isFieldOverrideLocation(existing.location))
       ) {
         continue;
       }
       if (isGate && token.pair !== undefined) {
         carveColoredGateField(adventure, spaceId, token.pair);
+      } else if (isOneway && token.pair !== undefined) {
+        carveOnewayField(adventure, spaceId, token.kind as "oneway_entrance" | "oneway_exit", token.pair, {
+          exitMode: token.exitMode,
+          alwaysPickable: token.alwaysPickable
+        });
       } else if (token.kind === "monolith" || token.kind === "whirlpool") {
         const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
         carveMapTokenField(adventure, spaceId, token.kind, number);
@@ -344,6 +361,11 @@ function applyCustomMapTokens(
       const carved = adventure.fields[spaceId];
       if (carved) {
         applyCustomGuardToField(carved, guard);
+        // One-way entrance fights are bank-style: keep the army level for the
+        // draw while the combat opens at difficulty 0.
+        if (token.kind === "oneway_entrance" && guard?.level && !guard.units) {
+          carved.customGuardLevel = guard.level;
+        }
       }
     }
     if (pendingList.length > 0) {
@@ -1273,9 +1295,13 @@ export function validateCustomMapObjects(
         return;
       }
       const def = allTileDefinitions[plan.tileDefId];
-      // A Gate is a land structure, so it reuses the Monolith slot legality.
-      // (Outposts returned above, so only token kinds remain here.)
-      const slotKind = (object.kind === "gate" ? "monolith" : object.kind) as "monolith" | "whirlpool";
+      // Gates and one-way monoliths are land structures, so they reuse the
+      // Monolith slot legality. (Outposts returned above.)
+      const slotKind = (
+        object.kind === "gate" || object.kind === "oneway_entrance" || object.kind === "oneway_exit"
+          ? "monolith"
+          : object.kind
+      ) as "monolith" | "whirlpool";
       if (!def || !tokenMayCoverFieldDef(def, slot, slotKind)) {
         problems.push(`${label}: slot ${slot} of ${plan.tileDefId} cannot host a ${object.kind}.`);
         return;
@@ -1364,6 +1390,38 @@ export function validateCustomMapObjects(
     }
   }
 
+  // One-way monolith networks need both halves of a color — counted ACROSS
+  // SOURCES (objects + every plan's tokens), like the gate networks above.
+  const onewayCounts = new Map<number, { entrances: number; exits: number }>();
+  const bumpOneway = (kind: string, pair: number | undefined): void => {
+    if (pair === undefined || (kind !== "oneway_entrance" && kind !== "oneway_exit")) {
+      return;
+    }
+    const entry = onewayCounts.get(pair) ?? { entrances: 0, exits: 0 };
+    if (kind === "oneway_entrance") {
+      entry.entrances += 1;
+    } else {
+      entry.exits += 1;
+    }
+    onewayCounts.set(pair, entry);
+  };
+  for (const object of accepted) {
+    bumpOneway(object.kind, object.pair);
+  }
+  for (const plan of plans) {
+    for (const token of planTokens(plan)) {
+      bumpOneway(token.kind, token.pair);
+    }
+  }
+  for (const [pair, counts] of onewayCounts) {
+    const color = gatePairColor(pair as 1 | 2 | 3 | 4);
+    if (counts.entrances > 0 && counts.exits === 0) {
+      warnings.push(`The ${color} one-way monolith has entrances but NO exit — the travel will lead nowhere.`);
+    } else if (counts.exits > 0 && counts.entrances === 0) {
+      warnings.push(`The ${color} one-way monolith has exits but NO entrance — nobody can ever arrive there.`);
+    }
+  }
+
   return { accepted, problems, warnings };
 }
 
@@ -1446,20 +1504,31 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       standalone: true,
       standaloneLayer: standaloneLayerFromLiveState(adventure, spaceId)
     };
-    // Tents and Barriers share the gate COLOR mechanism (`gatePair`) — a tent
-    // flag of a color opens same-color barriers; gates keep their networks.
+    // Tents, Barriers and one-way monoliths share the gate COLOR mechanism
+    // (`gatePair`) — a tent flag of a color opens same-color barriers, a
+    // one-way entrance targets same-color exits; gates keep their networks.
     if (
-      (object.kind === "gate" || object.kind === "keymaster_tent" || object.kind === "barrier") &&
+      (object.kind === "gate" ||
+        object.kind === "keymaster_tent" ||
+        object.kind === "barrier" ||
+        object.kind === "oneway_entrance" ||
+        object.kind === "oneway_exit") &&
       object.pair !== undefined
     ) {
       field.gatePair = object.pair;
     }
+    if (object.kind === "oneway_entrance" && object.exitMode) {
+      field.onewayExitMode = object.exitMode;
+    }
+    if (object.kind === "oneway_exit" && object.alwaysPickable) {
+      field.onewayAlwaysPickable = true;
+    }
     applyCustomGuardToField(field, objectGuardSpec(object));
-    // Outpost fights run BANK-style (no Quick Combat, no experience, no Round
-    // limit) whatever the guard shape: a LEVEL guard additionally pins
-    // `customGuardLevel` so the army still draws at the designed level while
-    // the combat itself opens at difficulty 0.
-    if (object.kind === "garrison" || object.kind === "keymaster_tent") {
+    // Outpost / one-way-entrance fights run BANK-style (no Quick Combat, no
+    // experience, no Round limit) whatever the guard shape: a LEVEL guard
+    // additionally pins `customGuardLevel` so the army still draws at the
+    // designed level while the combat itself opens at difficulty 0.
+    if (object.kind === "garrison" || object.kind === "keymaster_tent" || object.kind === "oneway_entrance") {
       const guard = objectGuardSpec(object);
       if (guard?.level && !guard.units) {
         field.customGuardLevel = guard.level;

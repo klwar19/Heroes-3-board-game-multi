@@ -25,7 +25,7 @@ import {
   type MapSpaceId,
   type MapTileState
 } from "./index";
-import { beginFieldVisit, carveColoredGateField, drawGuardArmy, eliminatePlayer, instantiateTile } from "./adventure";
+import { beginFieldVisit, carveColoredGateField, carveOnewayField, drawGuardArmy, eliminatePlayer, instantiateTile } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
 import { canBeatGuardedField } from "./computer/map-navigation";
 import { hexNeighbor, hexNeighbors, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint, type HexCoord } from "./hex";
@@ -1328,5 +1328,282 @@ describe("object-hex yellow borders", () => {
       borderEdges: ["junk"]
     });
     expect(none?.borderEdges).toBeUndefined();
+  });
+});
+
+// ---- 10. One-way monoliths (4 colors, entrance → same-color exits) -----------
+
+describe("one-way monoliths — entrance → same-color exits, random/certain/mix", () => {
+  /** Carve a one-way half onto a tile's slot (designer-content harness). */
+  function carveOneway(
+    state: GameState,
+    tile: MapTileState,
+    slot: number,
+    kind: "oneway_entrance" | "oneway_exit",
+    pair: 1 | 2 | 3 | 4,
+    extras?: { exitMode?: "random" | "certain" | "mix"; alwaysPickable?: boolean; guard?: number }
+  ): MapSpaceId {
+    const spaceId = getTileFootprintSpaceIds(tile)[slot];
+    carveOnewayField(adv(state), spaceId, kind, pair, extras);
+    if (extras?.guard) {
+      adv(state).fields[spaceId]!.difficulty = extras.guard;
+    }
+    return spaceId;
+  }
+
+  function threeTileGame(seed: string): { state: GameState; tiles: [MapTileState, MapTileState, MapTileState] } {
+    let state = makeGame(seed);
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    const [c, tileC] = placeEmptyTile(b, "F4", { row: 36, col: 24 });
+    state = c;
+    return { state, tiles: [tileA, tileB, tileC] };
+  }
+
+  it("mode CERTAIN (default): the traveller PICKS among same-color exits — never entrances, never other colors", () => {
+    const { state: start, tiles } = threeTileGame("oneway-certain");
+    let state = start;
+    const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1);
+    const exitB = carveOneway(state, tiles[1], 1, "oneway_exit", 1);
+    const exitC = carveOneway(state, tiles[2], 1, "oneway_exit", 1);
+    // Distractors: a second RED entrance (never a destination) and a BLUE exit.
+    const otherEntrance = carveOneway(state, tiles[1], 2, "oneway_entrance", 1);
+    const blueExit = carveOneway(state, tiles[2], 2, "oneway_exit", 2);
+    putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
+
+    state = moveHero(state, entry);
+
+    const step = adv(state).pendingVisit?.steps[0];
+    if (step?.type !== "CHOOSE_ONE") {
+      throw new Error("no one-way destination choice");
+    }
+    expect(step.teleport).toEqual({ kind: "oneway", pair: 1 });
+    const optionHexes = step.options.map((option) =>
+      option.steps[0]?.type === "TELEPORT_HERO" ? option.steps[0].spaceId : null
+    );
+    expect(optionHexes).toContain(exitB);
+    expect(optionHexes).toContain(exitC);
+    expect(optionHexes).not.toContain(otherEntrance);
+    expect(optionHexes).not.toContain(blueExit);
+
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
+  });
+
+  it("mode RANDOM: a seeded roll sends the hero to one of the exits with a table note (no picker)", () => {
+    const { state: start, tiles } = threeTileGame("oneway-random");
+    let state = start;
+    const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1, { exitMode: "random" });
+    const exitB = carveOneway(state, tiles[1], 1, "oneway_exit", 1);
+    const exitC = carveOneway(state, tiles[2], 1, "oneway_exit", 1);
+    putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
+
+    state = moveHero(state, entry);
+
+    expect(adv(state).pendingVisit?.steps?.[0]?.type ?? "none").not.toBe("CHOOSE_ONE");
+    expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /rolls for the one-way exit/i.test((event as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+  });
+
+  it("mode MIX: pick the ALWAYS exit up front, or take the roll option (rolls only the random pool)", () => {
+    const { state: start, tiles } = threeTileGame("oneway-mix");
+    let state = start;
+    const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1, { exitMode: "mix" });
+    const alwaysExit = carveOneway(state, tiles[1], 1, "oneway_exit", 1, { alwaysPickable: true });
+    const randomExit = carveOneway(state, tiles[2], 1, "oneway_exit", 1);
+    putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
+
+    state = moveHero(state, entry);
+    const step = adv(state).pendingVisit?.steps[0];
+    if (step?.type !== "CHOOSE_ONE") {
+      throw new Error("no mix choice");
+    }
+    // One direct always-exit option + one roll option.
+    expect(step.options).toHaveLength(2);
+    const direct = step.options[0];
+    expect(direct.steps[0]?.type === "TELEPORT_HERO" && direct.steps[0].spaceId).toBe(alwaysExit);
+    expect(step.options[1].label).toMatch(/roll/i);
+
+    // Taking the ROLL lands on the random-pool exit (the only one in the pool).
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 1 });
+    expect(state.heroes.hero_p1.spaceId).toBe(randomExit);
+  });
+
+  it("a single free exit travels automatically; NO exit is inert; all-occupied fizzles", () => {
+    const { state: start, tiles } = threeTileGame("oneway-single");
+    let state = start;
+    const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1);
+    const exitB = carveOneway(state, tiles[1], 1, "oneway_exit", 1);
+    putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
+    state = moveHero(state, entry);
+    expect(state.heroes.hero_p1.spaceId).toBe(exitB);
+
+    // NO exit anywhere: the entrance notes and the hero stays.
+    const { state: bare, tiles: bareTiles } = threeTileGame("oneway-none");
+    let none = bare;
+    const loneEntry = carveOneway(none, bareTiles[0], 1, "oneway_entrance", 1);
+    putHero(none, getTileFootprintSpaceIds(bareTiles[0])[0]);
+    none = moveHero(none, loneEntry);
+    expect(none.heroes.hero_p1.spaceId).toBe(loneEntry);
+    expect(
+      none.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /leads nowhere/i.test((event as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+
+    // All exits OCCUPIED: fizzle note, hero stays.
+    const { state: occStart, tiles: occTiles } = threeTileGame("oneway-occupied");
+    let occ = occStart;
+    const occEntry = carveOneway(occ, occTiles[0], 1, "oneway_entrance", 1);
+    const occExit = carveOneway(occ, occTiles[1], 1, "oneway_exit", 1);
+    occ.heroes.hero_p2.spaceId = occExit; // the enemy hero squats the only exit
+    putHero(occ, getTileFootprintSpaceIds(occTiles[0])[0]);
+    occ = moveHero(occ, occEntry);
+    expect(occ.heroes.hero_p1.spaceId).toBe(occEntry);
+    expect(
+      occ.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /fizzles/i.test((event as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+  });
+
+  it("a GUARDED entrance fights BANK-style and the WIN travels (CONTROL: no Quick Combat for a high-level hero)", () => {
+    const { state: start, tiles } = threeTileGame("oneway-guarded");
+    let state = start;
+    const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1, { guard: 2 });
+    const exitB = carveOneway(state, tiles[1], 1, "oneway_exit", 1);
+    state.heroes.hero_p1.level = 7; // far above the guard — still no Quick Combat
+    putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
+
+    state = moveHero(state, entry);
+    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(false);
+    expect(state.combat?.context.kind === "neutral" && state.combat.context.difficulty).toBe(0);
+    expect(state.combat?.context.kind === "neutral" && state.combat.context.unlimitedRounds).toBe(true);
+
+    // The WIN seam (beginFieldVisit runs only on a win): guard cleared, travel resolves.
+    const { state: winStart, tiles: winTiles } = threeTileGame("oneway-win");
+    const win = winStart;
+    const winEntry = carveOneway(win, winTiles[0], 1, "oneway_entrance", 1, { guard: 2 });
+    const winExit = carveOneway(win, winTiles[1], 1, "oneway_exit", 1);
+    win.heroes.hero_p1.spaceId = winEntry;
+    beginFieldVisit(win, "hero_p1", winEntry, false);
+    expect(adv(win).fields[winEntry]?.difficulty).toBeUndefined();
+    expect(win.heroes.hero_p1.spaceId).toBe(winExit);
+    expect(winExit).not.toBe(winEntry);
+  });
+
+  it("one-way OBJECTS carve at setup with mode/always/color; an exit's guard is stripped by sanitize", () => {
+    const entranceHex = outwardHex(CLUSTER, 1);
+    const exitHex = outwardHex(CLUSTER, 2);
+    const state = objectsGame(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "oneway_entrance",
+          pair: 3,
+          exitMode: "mix",
+          placement: { type: "standalone", row: entranceHex.row, col: entranceHex.col },
+          guard: { level: 4 }
+        },
+        {
+          kind: "oneway_exit",
+          pair: 3,
+          alwaysPickable: true,
+          placement: { type: "standalone", row: exitHex.row, col: exitHex.col }
+        }
+      ],
+      "oneway-objects"
+    );
+    const entrance = adv(state).fields[hexSpaceId(entranceHex)]!;
+    const exit = adv(state).fields[hexSpaceId(exitHex)]!;
+    expect(entrance.location).toBe("oneway_entrance");
+    expect(entrance.gatePair).toBe(3);
+    expect(entrance.onewayExitMode).toBe("mix");
+    expect(entrance.difficulty).toBe(4);
+    expect(entrance.customGuardLevel).toBe(4);
+    expect(exit.location).toBe("oneway_exit");
+    expect(exit.onewayAlwaysPickable).toBe(true);
+    expect(exit.difficulty, "an exit is never guarded").toBeUndefined();
+
+    // Sanitize: an exit with a guard loses it; entrance keeps mode; pair required.
+    const cleaned = sanitizeCustomMapObject({
+      kind: "oneway_exit",
+      pair: 2,
+      guard: { level: 5 },
+      alwaysPickable: true,
+      placement: { type: "standalone", row: 1, col: 1 }
+    });
+    expect(cleaned?.guard).toBeUndefined();
+    expect(cleaned?.alwaysPickable).toBe(true);
+    expect(
+      sanitizeCustomMapObject({ kind: "oneway_entrance", placement: { type: "standalone", row: 1, col: 1 } })
+    ).toBeNull();
+  });
+
+  it("one-way TILE TOKENS carve face-up and ride face-down (pending) with their extras", () => {
+    const state = objectsGame(
+      [
+        {
+          row: CLUSTER.row,
+          col: CLUSTER.col,
+          group: "far",
+          faceDown: false,
+          tileDefId: "F1",
+          tokens: [{ kind: "oneway_entrance", pair: 2, slot: 1, exitMode: "random", guard: { level: 3 } }]
+        }
+      ],
+      [],
+      "oneway-token-faceup"
+    );
+    const carved = adv(state).fields[hexSpaceId(tileFootprint(CLUSTER, 0)[1])]!;
+    expect(carved.location).toBe("oneway_entrance");
+    expect(carved.gatePair).toBe(2);
+    expect(carved.onewayExitMode).toBe("random");
+    expect(carved.difficulty).toBe(3);
+    expect(carved.customGuardLevel).toBe(3);
+
+    const faceDown = objectsGame(
+      [
+        {
+          row: CLUSTER.row,
+          col: CLUSTER.col,
+          group: "far",
+          faceDown: true,
+          tokens: [{ kind: "oneway_exit", pair: 2, slot: 1, alwaysPickable: true }]
+        }
+      ],
+      [],
+      "oneway-token-facedown"
+    );
+    const tile = Object.values(adv(faceDown).tiles).find(
+      (candidate) => candidate.centerRow === CLUSTER.row && candidate.centerCol === CLUSTER.col
+    )!;
+    expect(tile.pendingTokens?.[0]).toMatchObject({ kind: "oneway_exit", pair: 2, alwaysPickable: true });
+  });
+
+  it("validation warns on a color with entrances but no exit (and vice versa)", () => {
+    const entranceHex = outwardHex(CLUSTER, 1);
+    const { warnings } = validateCustomMapObjects(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "oneway_entrance",
+          pair: 1,
+          placement: { type: "standalone", row: entranceHex.row, col: entranceHex.col }
+        }
+      ]
+    );
+    expect(warnings.join(" ")).toMatch(/entrances but NO exit/i);
+
+    const exitHex = outwardHex(CLUSTER, 2);
+    const { warnings: exitWarnings } = validateCustomMapObjects(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [{ kind: "oneway_exit", pair: 1, placement: { type: "standalone", row: exitHex.row, col: exitHex.col } }]
+    );
+    expect(exitWarnings.join(" ")).toMatch(/exits but NO entrance/i);
   });
 });

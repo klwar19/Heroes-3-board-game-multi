@@ -106,6 +106,7 @@ import {
   mapTokenImage,
   monolithTokenImage,
   moraleIcon,
+  onewayMonolithImage,
   outpostObjectImage,
   RESOURCE_ICONS,
   subterraneanGateTokenImage,
@@ -923,12 +924,15 @@ export function HexMapBoard({
           ? parseHexSpaceId(pendingToken.preferredSpaceId) ?? center
           : center;
         const tokenBackPixel = hexToPixel(tokenBackCoord, HEX_SIZE);
-        const isGateToken = pendingToken.kind === "gate";
+        const isGateToken =
+          pendingToken.kind === "gate" ||
+          pendingToken.kind === "oneway_entrance" ||
+          pendingToken.kind === "oneway_exit";
         const gateColor = isGateToken ? GATE_PAIR_COLORS[pendingToken.pair ?? 1] ?? "#c9a24b" : null;
         const tokenBackImage =
-          pendingToken.kind === "gate"
-            ? monolithTokenImage()
-            : mapTokenImage(pendingToken.kind, pendingToken.number);
+          pendingToken.kind === "whirlpool"
+            ? mapTokenImage("whirlpool", pendingToken.number)
+            : monolithTokenImage();
         const tokenBackWidth = HEX_WIDTH * 0.9;
         const tokenBackHeight = 2 * HEX_SIZE * 0.9;
         artLayer.push(
@@ -1443,7 +1447,7 @@ export function HexMapBoard({
 
       // A reachable Monolith/Whirlpool/Gate is a doorway too: cue the teleport so
       // players realise stepping on moves them across the map.
-      if (isMapObjectLocation(field.location) && (target || remindMove)) {
+      if ((isMapObjectLocation(field.location) || field.location === "oneway_entrance") && (target || remindMove)) {
         overlays.push(
           <text className="hexGateCue" key={`${spaceId}-token-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
             ⇄ teleport
@@ -1526,7 +1530,12 @@ export function HexMapBoard({
               ? monolithTokenImage()
               : field.location === "whirlpool"
                 ? whirlpoolTokenImage(field.whirlpoolNumber)
-                : overrideArt;
+                : field.location === "oneway_entrance" || field.location === "oneway_exit"
+                  ? onewayMonolithImage(
+                      field.location === "oneway_entrance" ? "entrance" : "exit",
+                      field.gatePair ?? 1
+                    )
+                  : overrideArt;
       if (tokenImage) {
         // Clip landscape/field art to the hex (Creature Banks + Field Override objects).
         if (field.location === "creature_bank" || Boolean(overrideArt)) {
@@ -1833,6 +1842,41 @@ export function HexMapBoard({
           y={y - HEX_SIZE}
         />
       );
+    } else if (field.location === "oneway_entrance" || field.location === "oneway_exit") {
+      // One-way monolith halves: per-color art + a small pair badge.
+      overlays.push(
+        <image
+          className="locationToken"
+          height={2 * HEX_SIZE}
+          href={assetUrl(
+            onewayMonolithImage(field.location === "oneway_entrance" ? "entrance" : "exit", field.gatePair ?? 1)
+          )}
+          key={`standalone-${spaceId}-oneway`}
+          preserveAspectRatio="none"
+          style={{ pointerEvents: "none" }}
+          width={HEX_WIDTH}
+          x={x - HEX_WIDTH / 2}
+          y={y - HEX_SIZE}
+        />
+      );
+      if (field.gatePair) {
+        const color = GATE_PAIR_COLORS[field.gatePair];
+        overlays.push(
+          <g className="hexGateMark" key={`standalone-${spaceId}-oneway-badge`} style={{ pointerEvents: "none" }}>
+            <circle cx={x + HEX_SIZE * 0.52} cy={y - HEX_SIZE * 0.56} fill={color} r={7} stroke="#160f06" strokeWidth={1} />
+            <text
+              fill="#fff"
+              fontSize={9}
+              fontWeight={700}
+              textAnchor="middle"
+              x={x + HEX_SIZE * 0.52}
+              y={y - HEX_SIZE * 0.56 + 3}
+            >
+              {field.gatePair}
+            </text>
+          </g>
+        );
+      }
     } else if (outpostObjectImage(field.location)) {
       // Designer outposts: the printed hex scan (Garrison / Keymaster's Tent /
       // Barrier). Tents and Barriers add a colored ring + number (their color
@@ -1906,7 +1950,7 @@ export function HexMapBoard({
         hexEdgeForDirection(x, y, HEX_SIZE - 0.8, direction)
       );
     }
-    if (isMapObjectLocation(field.location) && (target || remindMove)) {
+    if ((isMapObjectLocation(field.location) || field.location === "oneway_entrance") && (target || remindMove)) {
       overlays.push(
         <text className="hexGateCue" key={`standalone-${spaceId}-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
           ⇄ teleport
@@ -3703,7 +3747,7 @@ type TeleportOptionArt = {
  */
 function teleportOptionArt(
   state: GameState,
-  teleport: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4 },
+  teleport: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 },
   option: { label: string; steps: { type: string; [key: string]: unknown }[] }
 ): TeleportOptionArt {
   const inner = option.steps[0] as { type?: string; spaceId?: string; tileInstanceId?: string } | undefined;
@@ -3715,14 +3759,14 @@ function teleportOptionArt(
     faceDown = true;
     number = state.adventure?.tiles[inner.tileInstanceId]?.pendingToken?.number;
   }
-  const image = teleport.kind === "gate" ? monolithTokenImage() : mapTokenImage(teleport.kind, number);
-  const ring = teleport.kind === "gate" ? GATE_PAIR_COLORS[teleport.pair ?? 1] ?? "#c9a24b" : undefined;
-  const badge =
-    teleport.kind === "gate"
-      ? String(teleport.pair ?? 1)
-      : teleport.kind === "whirlpool" && number !== undefined
-        ? `${number >= 0 ? "+" : ""}${number}`
-        : undefined;
+  const colored = teleport.kind === "gate" || teleport.kind === "oneway";
+  const image = teleport.kind === "whirlpool" ? mapTokenImage("whirlpool", number) : monolithTokenImage();
+  const ring = colored ? GATE_PAIR_COLORS[teleport.pair ?? 1] ?? "#c9a24b" : undefined;
+  const badge = colored
+    ? String(teleport.pair ?? 1)
+    : teleport.kind === "whirlpool" && number !== undefined
+      ? `${number >= 0 ? "+" : ""}${number}`
+      : undefined;
   return { image, ring, badge, faceDown, label: option.label };
 }
 
@@ -4040,7 +4084,7 @@ export function PromptTray({
   // The Monolith/Whirlpool/Gate travel picker (`step.teleport`): the tray shows
   // each destination as a themed token card (art + label + number/pair badge)
   // and a "pick your exit on the map" hint, not a bare numbered option list.
-  let teleport: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4 } | null = null;
+  let teleport: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 } | null = null;
 
   if (
     choice?.type === "OPTION_CHOICE" &&
