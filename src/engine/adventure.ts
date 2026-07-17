@@ -2603,9 +2603,10 @@ export function victoryModeCountsHeroDefeats(mode: VictoryMode): boolean {
  * heroes beaten). In Victory Points mode such a completion does NOT win
  * outright: it ends the game by SCORING (the completer earns the completion VP,
  * the most-VP seat wins) via {@link endGameByVictoryPoints}. Last-faction-standing
- * (the flag omitted) always wins instantly — a table of one live seat is
- * meaningless to score — and the internal VP re-declaration also omits the flag
- * so it never re-intercepts.
+ * also carries the flag: with VP on, defeating every opponent ends the game by
+ * scoring immediately (only live seats are scored, so the survivor wins with a
+ * full breakdown); with VP off it stays the classic instant win. The internal VP
+ * re-declaration omits the flag so it never re-intercepts.
  */
 export function declareAdventureWinner(
   state: GameState,
@@ -3015,7 +3016,15 @@ export function eliminatePlayer(
   if (state.adventure && !state.adventure.winnerPlayerId) {
     const remaining = humanPlayerIds(state).filter((id) => !state.players[id]?.eliminated);
     if (remaining.length === 1) {
-      declareAdventureWinner(state, remaining[0], "the last faction standing");
+      // Defeating every opponent COMPLETES the game. In Victory Points mode the
+      // viaVictoryCondition flag routes this through endGameByVictoryPoints, so
+      // the table is SCORED right away (the survivor earns the completion VP and,
+      // as the only live seat, wins with a full breakdown) instead of playing out
+      // the remaining rounds — there is no opponent left to play against. With VP
+      // off the flag is ignored and this stays the classic instant win.
+      declareAdventureWinner(state, remaining[0], "the last faction standing", {
+        viaVictoryCondition: true
+      });
     }
   }
 }

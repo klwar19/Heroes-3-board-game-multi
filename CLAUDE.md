@@ -1944,10 +1944,13 @@ Leading with what does NOT run / deliberate limits:
   soft-fills a tight layout from the pool rather than hard-failing), so it only
   BLOCKS a design that truly cannot host 2 dig sites (`vii-field-designation.test.ts`
   "Near/Far overflow rescues it").
-- **VP with a conquest-style victory + NO round limit effectively ends only by
-  last-faction-standing** (which wins INSTANTLY, no scoring); set a round limit
-  for a scored end (`victory-points.test.ts` "with no round limit … does NOT end"
-  + "Last-faction-standing … NO scoring").
+- **VP with a conquest-style victory + NO round limit ends only by
+  last-faction-standing** — which, with VP on, ends the game SCORED immediately
+  (the survivor completes the condition and earns the completion VP; only live
+  seats are scored, so the survivor wins with a full breakdown — no playing out
+  the remaining rounds with no opponent left). With VP off it stays the classic
+  instant unscored win (`victory-points.test.ts` "with no round limit … does NOT
+  end" + "Last-faction-standing under VP mode").
 - **No "dig the Grail" VP objective** — deliberately omitted from the four kinds
   (control N towns / flag N mines-settlements / reach hero level N / defeat a
   Dragon Utopia): the base table's "Completed the victory condition" row already
