@@ -12961,13 +12961,18 @@ img.cardBack {
   stroke-width: 1.6;
 }
 
+/* Secret-pin stroke (#9ad0ff) sits close to the Sea band's light blue, so a
+   dashed line PLUS a blue glow keeps a secret-pinned sea tile unmistakable. */
 .designerFlowerOutline.secret {
   stroke-dasharray: 5 3;
+  filter: drop-shadow(0 0 5px rgba(154, 208, 255, 0.75));
 }
 
+/* Selection gold (#ffd766) sits close to the Near band's gold, so the selected
+   ring is widened and haloed — it must read as "selected", not just "Near". */
 .designerFlowerOutline.selected {
-  stroke-width: 3.4;
-  filter: drop-shadow(0 0 6px rgba(255, 215, 102, 0.6));
+  stroke-width: 3.8;
+  filter: drop-shadow(0 0 4px rgba(255, 215, 102, 0.95)) drop-shadow(0 0 9px rgba(255, 215, 102, 0.55));
 }
 
 /* A cavern the layout leaves with no Subterranean Gate: ringed red so the
@@ -13756,6 +13761,44 @@ img.cardBack {
   color: var(--muted);
   text-align: center;
   line-height: 1.2;
+}
+
+/* Compact band-colour key: swatch + numeral for each tile group, so the
+   creature-tier meaning of every outline colour is always on screen. */
+.designerBandLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid rgba(214, 178, 94, 0.28);
+  border-radius: 8px;
+  background: rgba(20, 16, 10, 0.55);
+}
+
+.designerBandLegendTitle {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.designerBandLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #f0dcb8;
+}
+
+.designerBandLegendSwatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+  flex: none;
 }
 
 /* --- Placed tiles, drop zones and drag ghost ---------------------------- */

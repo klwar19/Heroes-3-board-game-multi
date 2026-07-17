@@ -2293,3 +2293,17 @@ Homm3BG glyphs. Monochrome symbol glyphs are lightened in CSS to read on the dar
 panels; the tick/cross keep their own colour. Icon presence is pinned in
 `map-preset-editor.test.tsx`, `victory-points-panel.test.tsx`,
 `map-designer.test.tsx`.
+
+Tier-band outline colours (designer only): each tile's flower outline
+(`GROUP_COLORS`, `.designerFlowerOutline`) is stroked by its band's MAX unit tier
+— Ⅰ bronze `#b46f33` / Ⅱ–Ⅲ silver `#c7ccd6` / Ⅳ–Ⅴ gold `#e7b73c` / Ⅵ–Ⅶ azure
+`#3f7fd6` (reusing the app's `.tierDot`/`.neutralDeck` grade hues), Sea light-blue
+`#8fd8ff`, Underground kept purple `#7a5a9e`; the palette-button borders share
+them. A compact `.designerBandLegend` (six swatches + `TILE_GROUP_BAND_LABELS`
+numerals, now re-exported from `@/engine`) sits under the tile palette. Because
+Near-gold ≈ the selection gold `#ffd766` and Sea ≈ the secret-pin blue `#9ad0ff`,
+the `.selected`/`.secret` modifiers gained a stronger halo so an override always
+reads over its band. The IN-GAME yellow movement borders
+(`getTileBorderSegments`/`.tileBorderLine`) are untouched. Pinned in
+`map-designer.test.tsx` ("tier-band outline colours + legend": per-band stroke,
+the six-swatch legend, and a selected-overrides-band CONTROL).
