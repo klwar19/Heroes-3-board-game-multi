@@ -31,6 +31,7 @@ import {
 } from "@/data/map/scenarios";
 import {
   addArmyUnit,
+  applyCustomGuardToField,
   ASTROLOGERS_DECK_ID,
   carveColoredGateField,
   carveMapTokenField,
@@ -64,7 +65,9 @@ import {
   tileMatchesSecretFeature,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
+  objectGuardSpec,
   sanitizeCenterHexPlan,
+  sanitizeObjectGuard,
   type CustomMapPreset,
   type PresetForcedOptionKey
 } from "./map-preset";
@@ -293,6 +296,10 @@ function applyCustomMapTokens(
       // A Gate reuses the Monolith land legality for its slot check.
       const legalityKind: "monolith" | "whirlpool" = token.kind === "whirlpool" ? "whirlpool" : "monolith";
 
+      // A designer guard rides the token wherever it lands (clamped again here
+      // so a hand-edited save can't smuggle garbage past the sanitiser).
+      const guard = sanitizeObjectGuard(token.guard);
+
       if (tile.faceDown) {
         const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
         const preferredSpaceId =
@@ -301,7 +308,8 @@ function applyCustomMapTokens(
           kind: token.kind,
           ...(number !== undefined ? { number } : {}),
           ...(isGate && token.pair !== undefined ? { pair: token.pair } : {}),
-          ...(preferredSpaceId ? { preferredSpaceId } : {})
+          ...(preferredSpaceId ? { preferredSpaceId } : {}),
+          ...(guard ? { guard } : {})
         });
         continue;
       }
@@ -331,6 +339,10 @@ function applyCustomMapTokens(
       } else if (token.kind === "monolith" || token.kind === "whirlpool") {
         const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
         carveMapTokenField(adventure, spaceId, token.kind, number);
+      }
+      const carved = adventure.fields[spaceId];
+      if (carved) {
+        applyCustomGuardToField(carved, guard);
       }
     }
     if (pendingList.length > 0) {
@@ -1384,11 +1396,9 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
         const number = object.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolCount] : undefined;
         carveMapTokenField(adventure, spaceId, object.kind, number);
       }
-      if (object.guard) {
-        const carved = adventure.fields[spaceId];
-        if (carved) {
-          carved.difficulty = object.guard;
-        }
+      const carved = adventure.fields[spaceId];
+      if (carved) {
+        applyCustomGuardToField(carved, objectGuardSpec(object));
       }
       continue;
     }
@@ -1417,9 +1427,7 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
     if (object.kind === "gate" && object.pair !== undefined) {
       field.gatePair = object.pair;
     }
-    if (object.guard) {
-      field.difficulty = object.guard;
-    }
+    applyCustomGuardToField(field, objectGuardSpec(object));
     adventure.fields[spaceId] = field;
   }
 }
@@ -2320,12 +2328,16 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         if (!surfaceId || surfaceId === cavernId) {
           continue;
         }
+        const gateGuard = sanitizeObjectGuard(link.gateGuard);
+        const entranceGuard = sanitizeObjectGuard(link.entranceGuard);
         designedGatePlans.push({
           surfaceTileId: surfaceId,
           undergroundTileId: cavernId,
           designed: true,
           ...(link.gateHex ? { gateHex: link.gateHex } : {}),
-          ...(link.entranceHex ? { entranceHex: link.entranceHex } : {})
+          ...(link.entranceHex ? { entranceHex: link.entranceHex } : {}),
+          ...(gateGuard ? { gateGuard } : {}),
+          ...(entranceGuard ? { entranceGuard } : {})
         });
       }
     }

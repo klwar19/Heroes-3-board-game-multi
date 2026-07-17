@@ -417,6 +417,51 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[1]).not.toHaveProperty("gateLinks");
   });
 
+  it("round-trips designer GUARDS on tile tokens and gate-link halves (clamped; garbage dropped)", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          {
+            row: 3,
+            col: 3,
+            group: "far",
+            faceDown: true,
+            tokens: [
+              // Level guard survives; over-clamp folds to 7.
+              { kind: "monolith", slot: 1, guard: { level: 99 } },
+              // Exact-army guard keeps known ids, drops unknown ones.
+              { kind: "gate", pair: 2, slot: 2, guard: { units: ["neutral.cyclopes", "not.a.unit"] } },
+              // Garbage guard vanishes, the token itself survives.
+              { kind: "whirlpool", slot: 3, guard: "junk" }
+            ]
+          },
+          {
+            row: 5,
+            col: 5,
+            group: "subterranean",
+            faceDown: true,
+            gateLinks: [
+              {
+                surface: { row: 4, col: 4 },
+                gateGuard: { level: 4 },
+                entranceGuard: { units: ["neutral.troglodytes"] }
+              }
+            ]
+          }
+        ]
+      },
+      1
+    );
+    const tokens = record!.tiles[0].tokens!;
+    expect(tokens[0].guard).toEqual({ level: 7 });
+    expect(tokens[1].guard).toEqual({ units: ["neutral.cyclopes"] });
+    expect(tokens[2].guard).toBeUndefined();
+    const link = record!.tiles[1].gateLinks![0];
+    expect(link.gateGuard).toEqual({ level: 4 });
+    expect(link.entranceGuard).toEqual({ units: ["neutral.troglodytes"] });
+  });
+
   it("round-trips MORE than the old cap of 4 designer gate links (one cavern → many gates)", () => {
     // Six distinct valid links (over the retired 4-partner cap) must ALL survive:
     // a cavern may link every touching Surface tile and the same tile repeatedly.

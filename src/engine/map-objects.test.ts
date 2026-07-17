@@ -25,7 +25,7 @@ import {
   type MapSpaceId,
   type MapTileState
 } from "./index";
-import { carveColoredGateField, eliminatePlayer, instantiateTile } from "./adventure";
+import { beginFieldVisit, carveColoredGateField, drawGuardArmy, eliminatePlayer, instantiateTile } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
 import { canBeatGuardedField } from "./computer/map-navigation";
 import { hexNeighbor, hexNeighbors, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint, type HexCoord } from "./hex";
@@ -960,15 +960,31 @@ describe("computer AI treats object hexes as ordinary guarded fields", () => {
 // ---- 8. Sanitization / validation / describe --------------------------------
 
 describe("object sanitization + validation + describe", () => {
-  it("round-trips a valid object set through sanitizeCustomMapPreset unchanged", () => {
+  it("round-trips a valid object set; a LEGACY number guard normalises to the {level} spec", () => {
     const objects: CustomMapObject[] = [
       { kind: "gate", pair: 1, placement: { type: "standalone", row: 5, col: 6 } },
+      // Legacy saved shape: a plain number level.
       { kind: "gate", pair: 1, guard: 3, placement: { type: "tile-slot", row: 7, col: 8, slot: 2 } },
       { kind: "monolith", placement: { type: "standalone", row: 9, col: 10 } }
     ];
     const preset = sanitizeCustomMapPreset({ objects });
-    expect(preset?.objects).toEqual(objects);
+    expect(preset?.objects).toEqual([
+      objects[0],
+      // The number folds to the canonical CustomGuardSpec — same level, one shape.
+      { ...objects[1], guard: { level: 3 } },
+      objects[2]
+    ]);
     expect(customMapPresetIsActive({ objects })).toBe(true);
+
+    // The spec form round-trips unchanged (units clamped to known neutral ids).
+    const specObjects: CustomMapObject[] = [
+      {
+        kind: "monolith",
+        placement: { type: "standalone", row: 2, col: 2 },
+        guard: { units: ["neutral.cyclopes"] }
+      }
+    ];
+    expect(sanitizeCustomMapPreset({ objects: specObjects })?.objects).toEqual(specObjects);
   });
 
   it("caps the object count and the gates-per-pair, and drops garbage", () => {
@@ -992,9 +1008,16 @@ describe("object sanitization + validation + describe", () => {
     expect(sanitizeCustomMapObject({ kind: "bogus", placement: { type: "standalone", row: 1, col: 1 } })).toBeNull();
     expect(sanitizeCustomMapObject({ kind: "gate", placement: { type: "standalone", row: 1, col: 1 } })).toBeNull();
     expect(sanitizeCustomMapObject({ kind: "monolith", placement: { type: "nope", row: 1, col: 1 } })).toBeNull();
-    // A guard is clamped to 1-7.
+    // A (legacy number) guard is clamped to 1-7 and normalised to the spec form.
     const clamped = sanitizeCustomMapObject({ kind: "monolith", guard: 99, placement: { type: "standalone", row: 1, col: 1 } });
-    expect(clamped?.guard).toBe(7);
+    expect(clamped?.guard).toEqual({ level: 7 });
+    // Unknown army ids are dropped; an emptied army guard vanishes entirely.
+    const emptied = sanitizeCustomMapObject({
+      kind: "monolith",
+      guard: { units: ["not.a.unit"] },
+      placement: { type: "standalone", row: 1, col: 1 }
+    });
+    expect(emptied?.guard).toBeUndefined();
   });
 
   it("reports geometry problems and an incomplete-pair warning; a standalone Whirlpool is refused", () => {
@@ -1068,5 +1091,186 @@ describe("object sanitization + validation + describe", () => {
     expect(summary).toContain("2 guarded");
     const entry = describeCustomMapPresetEntries({ objects }).find((e) => e.text.startsWith("Objects:"));
     expect(entry?.text).toContain("2 gate pairs");
+  });
+});
+
+// ---- 8. Designer guards everywhere: exact armies, token guards, arrival auto-win
+
+describe("designer guards on single hexes — exact armies + arrival auto-win", () => {
+  it("an EXACT-ARMY object guard mints the designed units and is never Quick-Combat skipped (CONTROL: level guard is)", () => {
+    const standalone = outwardHex(CLUSTER, 1);
+    const state = objectsGame(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "monolith",
+          placement: { type: "standalone", row: standalone.row, col: standalone.col },
+          guard: { units: ["neutral.cyclopes", "neutral.troglodytes"] }
+        }
+      ],
+      "exact-army-object"
+    );
+    const hex = hexSpaceId(standalone);
+    const field = adv(state).fields[hex]!;
+    // Carve stamped the exact army + the tier-derived difficulty (gold 3 + bronze 1 → Ⅲ).
+    expect(field.customGuardUnits).toEqual(["neutral.cyclopes", "neutral.troglodytes"]);
+    expect(field.difficulty).toBe(3);
+    expect(isFieldGuarded(field)).toBe(true);
+
+    // The guard army for the fight is EXACTLY the designed units, minted
+    // Creature-Bank style (never drawn from the tier decks).
+    const draws = drawGuardArmy(state, field, field.difficulty!);
+    expect(draws.map((draw) => draw.unitDefId)).toEqual(["neutral.cyclopes", "neutral.troglodytes"]);
+    expect(draws.every((draw) => draw.bankGuard)).toBe(true);
+
+    // A hero far above the derived difficulty still has to FIGHT.
+    let fight = refreshP1(state);
+    fight.heroes.hero_p1.level = 7;
+    putHero(fight, hexSpaceId(tileFootprint(CLUSTER, 0)[1]));
+    fight = moveHero(fight, hex);
+    expect(fight.combat?.context.kind).toBe("neutral");
+    expect(fight.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(false);
+
+    // CONTROL: the same derived difficulty as a plain LEVEL guard IS skipped.
+    const controlState = objectsGame(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "monolith",
+          placement: { type: "standalone", row: standalone.row, col: standalone.col },
+          guard: { level: 3 }
+        }
+      ],
+      "level-guard-object"
+    );
+    let control = refreshP1(controlState);
+    control.heroes.hero_p1.level = 7;
+    putHero(control, hexSpaceId(tileFootprint(CLUSTER, 0)[1]));
+    control = moveHero(control, hex);
+    expect(control.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(true);
+    expect(control.combat).toBeNull();
+  });
+
+  it("a teleport ARRIVAL onto a still-guarded partner AUTO-WINS: guard cleared, no battle, hero arrives (CONTROL: walking on fights)", () => {
+    let state = makeGame("arrival-auto-win");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    state = b;
+    const entry = carveGate(state, tileA, 1, 1); // unguarded entry
+    const exit = carveGate(state, tileB, 1, 1, 4); // guarded destination (level Ⅳ)
+    state.heroes.hero_p1.level = 1;
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+
+    // The travel resolved: the hero ARRIVED on the guarded partner, the guard
+    // was swept aside (auto-win) with NO battle and NO experience, and the note
+    // says so.
+    expect(state.heroes.hero_p1.spaceId).toBe(exit);
+    expect(state.combat).toBeNull();
+    expect(adv(state).fields[exit]?.difficulty).toBeUndefined();
+    expect(isFieldGuarded(adv(state).fields[exit]!)).toBe(false);
+    expect(state.heroes.hero_p1.level).toBe(1);
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /swept aside/i.test((event as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+
+    // CONTROL: WALKING onto the same guarded gate from the map opens the battle.
+    let walk = makeGame("arrival-auto-win-ctl");
+    const [wa, wTileA] = placeEmptyTile(walk, "F1", { row: 24, col: 12 });
+    walk = wa;
+    const guarded = carveGate(walk, wTileA, 1, 1, 4);
+    walk.heroes.hero_p1.level = 1;
+    putHero(walk, getTileFootprintSpaceIds(wTileA)[0]);
+    walk = moveHero(walk, guarded);
+    expect(walk.combat?.context.kind).toBe("neutral");
+    expect(isFieldGuarded(adv(walk).fields[guarded]!)).toBe(true);
+  });
+
+  it("a tile-plan TOKEN guard carves onto the token hex (face-up) and rides the pending token (face-down)", () => {
+    // Face-up plan: the token guard is stamped at setup.
+    const faceUp = objectsGame(
+      [
+        {
+          row: CLUSTER.row,
+          col: CLUSTER.col,
+          group: "far",
+          faceDown: false,
+          tileDefId: "F1",
+          tokens: [{ kind: "monolith", slot: 1, guard: { level: 5 } }]
+        }
+      ],
+      [],
+      "token-guard-faceup"
+    );
+    const tokenHex = hexSpaceId(tileFootprint(CLUSTER, 0)[1]);
+    const carved = adv(faceUp).fields[tokenHex]!;
+    expect(carved.location).toBe("monolith");
+    expect(carved.difficulty).toBe(5);
+    expect(isFieldGuarded(carved)).toBe(true);
+
+    // Face-down plan: the guard rides the pending token, and stamps when placed.
+    const faceDown = objectsGame(
+      [
+        {
+          row: CLUSTER.row,
+          col: CLUSTER.col,
+          group: "far",
+          faceDown: true,
+          tokens: [{ kind: "monolith", slot: 1, guard: { units: ["neutral.cyclopes"] } }]
+        }
+      ],
+      [],
+      "token-guard-facedown"
+    );
+    const tile = Object.values(adv(faceDown).tiles).find(
+      (candidate) => candidate.centerRow === CLUSTER.row && candidate.centerCol === CLUSTER.col
+    )!;
+    expect(tile.pendingTokens?.[0]?.guard).toEqual({ units: ["neutral.cyclopes"] });
+
+    // CONTROL: an unguarded token plan stamps no difficulty.
+    const control = objectsGame(
+      [
+        {
+          row: CLUSTER.row,
+          col: CLUSTER.col,
+          group: "far",
+          faceDown: false,
+          tileDefId: "F1",
+          tokens: [{ kind: "monolith", slot: 1 }]
+        }
+      ],
+      [],
+      "token-noguard"
+    );
+    expect(adv(control).fields[tokenHex]?.difficulty).toBeUndefined();
+  });
+
+  it("beating a guarded token clears its EXACT army too (no respawn on re-entry)", () => {
+    const standalone = outwardHex(CLUSTER, 1);
+    const state = objectsGame(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "monolith",
+          placement: { type: "standalone", row: standalone.row, col: standalone.col },
+          guard: { units: ["neutral.troglodytes"] }
+        }
+      ],
+      "guard-cleanup"
+    );
+    const hex = hexSpaceId(standalone);
+    expect(adv(state).fields[hex]?.customGuardUnits).toEqual(["neutral.troglodytes"]);
+    // Simulate the win seam directly: beginFieldVisit is reached only on a win.
+    // (refreshP1 CLONES the state, so re-read the field from the clone.)
+    const withHero = refreshP1(state);
+    withHero.heroes.hero_p1.spaceId = hex;
+    beginFieldVisit(withHero, "hero_p1", hex, false);
+    const field = adv(withHero).fields[hex]!;
+    expect(field.difficulty).toBeUndefined();
+    expect(field.customGuardUnits).toBeUndefined();
+    expect(isFieldGuarded(field)).toBe(false);
   });
 });

@@ -66,7 +66,9 @@ import {
   tryDeliverGrail,
   applyMineFlag,
   applySettlementResource,
+  autoWinArrivalGuard,
   flagField,
+  gateFieldsLinked,
   capturableEnemyMinesWithin,
   freeSpellBookActive,
   abilityRollRerollActive,
@@ -845,6 +847,16 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
 
   if (passThrough) {
     return;
+  }
+
+  // Crossing OUT through a linked Subterranean Gate: a designed guard still
+  // standing on the FAR half is swept aside (auto-win, no experience) — you
+  // fight to step onto a gate from its own layer, never to come out of it.
+  const adventure = state.adventure;
+  const fromField = adventure?.fields[from];
+  const toField = adventure?.fields[to];
+  if (fromField && toField && gateFieldsLinked(fromField, toField)) {
+    autoWinArrivalGuard(state, hero.controllerId, toField);
   }
 
   resolveHeroArrival(state, hero, to);

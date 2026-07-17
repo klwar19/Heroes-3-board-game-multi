@@ -62,6 +62,7 @@ import {
   type MapTokenKind,
   type TokenPlacementKind,
   type PlannedSubterraneanGate,
+  objectGuardSpec,
   type SecretTileFeature,
   type VictoryMode
 } from "@/engine";
@@ -399,7 +400,7 @@ function GuardSpecEditor({
   const units = guard?.units ?? [];
   return (
     <div className="popoverGuardEditor">
-      <div className="popoverModeRow" role="group" aria-label="Guard">
+      <div className="popoverGuardRow" role="group" aria-label="Guard">
         <button
           aria-pressed={!guard}
           className={`popoverGuardChip${!guard ? " active" : ""}`}
@@ -540,14 +541,16 @@ function faceDownTokenOf(token: CustomMapTilePlan["token"]): CustomMapTilePlan["
     : { kind: token.kind, ...slotPart };
 }
 
-/** Build a `plan.token` for a kind/pair, with an optional face-up slot. */
+/** Build a `plan.token` for a kind/pair, with an optional face-up slot and guard. */
 function tileTokenValue(
   kind: TokenPlacementKind,
   pair: 1 | 2 | 3 | 4 | undefined,
-  slot: number | undefined
+  slot: number | undefined,
+  guard?: CustomGuardSpec
 ): NonNullable<CustomMapTilePlan["token"]> {
   const slotPart = slot !== undefined ? { slot } : {};
-  return kind === "gate" ? { kind: "gate", pair, ...slotPart } : { kind, ...slotPart };
+  const guardPart = guard ? { guard } : {};
+  return kind === "gate" ? { kind: "gate", pair, ...slotPart, ...guardPart } : { kind, ...slotPart, ...guardPart };
 }
 
 /** A resolved drop target for a teleporter placement: an ON-tile token, or an OFF-tile standalone hex. */
@@ -984,7 +987,29 @@ const EMPTY_OBJECTS: CustomMapObject[] = [];
 const GATE_PAIRS: (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
 
 /** Guard-difficulty picks for a placed object (0 = no guard, 1-7 = Ⅰ-Ⅶ). */
-const OBJECT_GUARD_LEVELS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
+/**
+ * The guard spec an object shows in the EDITOR: the raw spec (so a just-armed
+ * empty exact army stays in army mode), with only the legacy number folded.
+ * `objectGuardSpec` (the sanitizer) would collapse the transient `{units: []}`
+ * editing state, closing the army picker the moment it opened.
+ */
+function objectGuardDisplay(object: Pick<CustomMapObject, "guard">): CustomGuardSpec | undefined {
+  return typeof object.guard === "number" ? { level: object.guard } : object.guard;
+}
+
+/**
+ * Roman-numeral badge for a designer guard (object or token): a level shows its
+ * own numeral, an exact army shows the tier-derived difficulty it counts as.
+ */
+function guardBadgeNumeral(guard: CustomGuardSpec | undefined): string | null {
+  if (!guard) {
+    return null;
+  }
+  if (guard.units && guard.units.length > 0) {
+    return ROMAN_NUMERALS[customGuardArmyDifficulty(guard.units)];
+  }
+  return guard.level ? ROMAN_NUMERALS[guard.level] : null;
+}
 
 const ROMAN_NUMERALS = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
 
@@ -1132,6 +1157,8 @@ export function MapDesigner({
   const tokenClickSuppressRef = useRef(false);
   // Anime Mod panel — Field Override palette (docs/anime-mod-plan.md §9b).
   const [modPanelOpen, setModPanelOpen] = useState(false);
+  /** Which designer gate link (by index) has its guard editors expanded. */
+  const [gateGuardEditorIndex, setGateGuardEditorIndex] = useState<number | null>(null);
   // Border paint mode: armed from the Objects palette, it turns every placed
   // tile's six outer-edge ring hexes into clickable zones that seal/unseal a
   // designer yellow border directly on the board (one armed mode at a time).
@@ -1350,6 +1377,7 @@ export function MapDesigner({
     setSelectedIndex(null);
     setPopoverAt(null);
     setTilePickFilter("all");
+    setGateGuardEditorIndex(null);
   }, []);
 
   // Close the docked object panel. A single stable callback (mirroring
@@ -1801,14 +1829,14 @@ export function MapDesigner({
     [armedObject, objects, onObjectsChange]
   );
   const setObjectGuard = useCallback(
-    (index: number, guard: number) => {
+    (index: number, guard: CustomGuardSpec | undefined) => {
       onObjectsChange?.(
         objects.map((object, i) => {
           if (i !== index) {
             return object;
           }
           const next = { ...object };
-          if (guard > 0) {
+          if (guard) {
             next.guard = guard;
           } else {
             delete next.guard;
@@ -1850,7 +1878,7 @@ export function MapDesigner({
       if (!source || !dragged) {
         return;
       }
-      const nextToken = tileTokenValue(dragged.kind, dragged.pair, target.slot);
+      const nextToken = tileTokenValue(dragged.kind, dragged.pair, target.slot, dragged.guard);
       // Never stack: a target slot another placement (token / Field Override)
       // already claims refuses the drop — computeTileTokenTargets filters these
       // out of the glow, this is the write-side backstop.
@@ -1890,8 +1918,8 @@ export function MapDesigner({
    * Convert a placed OBJECT → a tile TOKEN (an object→tile drop). Removes the
    * object AND writes the canonical `plan.token`. The two callbacks target
    * DIFFERENT arrays (objects vs tiles), so the parent's batched setState applies
-   * both without clobbering. The object's GUARD is DROPPED — a token carries no
-   * guard (a visible hint accompanies the drop); the `pair` is preserved.
+   * both without clobbering. The object's GUARD and `pair` are both preserved
+   * (tokens carry guards too).
    */
   const convertObjectToTileToken = useCallback(
     (objectIndex: number, target: { planIndex: number; slot?: number }) => {
@@ -1911,7 +1939,7 @@ export function MapDesigner({
       }
       onObjectsChange?.(objects.filter((_, i) => i !== objectIndex));
       updateTile(target.planIndex, {
-        tokens: [...planTokens(plan), tileTokenValue(object.kind, object.pair, slot)],
+        tokens: [...planTokens(plan), tileTokenValue(object.kind, object.pair, slot, objectGuardSpec(object))],
         token: undefined
       });
     },
@@ -1931,7 +1959,8 @@ export function MapDesigner({
   /**
    * Convert a tile TOKEN → a standalone OBJECT (a token→standalone drop). Deletes
    * the `plan.token` AND appends a standalone object — batched like the reverse.
-   * Monolith/Gate only (a Whirlpool never stands alone). The `pair` is preserved.
+   * Monolith/Gate only (a Whirlpool never stands alone). The `pair` AND the
+   * designer guard are both preserved.
    */
   const convertTokenToStandalone = useCallback(
     (sourceIndex: number, tokenIndex: number, row: number, col: number) => {
@@ -1940,7 +1969,7 @@ export function MapDesigner({
       if (!source || !dragged || dragged.kind === "whirlpool") {
         return;
       }
-      const { kind, pair } = dragged;
+      const { kind, pair, guard } = dragged;
       onChange(
         customMap.map((plan, planIndex) => {
           if (planIndex !== sourceIndex) {
@@ -1956,7 +1985,8 @@ export function MapDesigner({
       const object: CustomMapObject = {
         kind,
         ...(kind === "gate" && pair ? { pair } : {}),
-        placement: { type: "standalone", row, col }
+        placement: { type: "standalone", row, col },
+        ...(guard ? { guard } : {})
       };
       onObjectsChange?.([...objects, object]);
     },
@@ -1994,12 +2024,17 @@ export function MapDesigner({
       if (!plan) {
         return;
       }
+      const links = plan.gateLinks ?? [];
+      // Re-pinning a link in place keeps its designed GUARDS — dragging a gate
+      // to another boundary pair must never silently disarm it.
+      const previous = sourceIndex >= 0 && sourceIndex < links.length ? links[sourceIndex] : undefined;
       const entry: CustomMapGateLink = {
         surface: { row: surface.row, col: surface.col },
         gateHex: hexSpaceId(pair.gateHex),
-        entranceHex: hexSpaceId(pair.entranceHex)
+        entranceHex: hexSpaceId(pair.entranceHex),
+        ...(previous?.gateGuard ? { gateGuard: previous.gateGuard } : {}),
+        ...(previous?.entranceGuard ? { entranceGuard: previous.entranceGuard } : {})
       };
-      const links = plan.gateLinks ?? [];
       const nextLinks =
         sourceIndex >= 0 && sourceIndex < links.length
           ? links.map((link, i) => (i === sourceIndex ? entry : link))
@@ -2563,6 +2598,26 @@ export function MapDesigner({
     }
     const nextLinks = selected.gateLinks.filter((_, index) => index !== linkIndex);
     updateTile(selectedIndex, { gateLinks: nextLinks.length > 0 ? nextLinks : undefined });
+  };
+
+  /** Set / clear a designer guard on ONE half of a designer gate link. */
+  const setGateLinkGuard = (linkIndex: number, half: "gateGuard" | "entranceGuard", guard: CustomGuardSpec | undefined) => {
+    if (selectedIndex === null || !selected || selected.group !== "subterranean" || !selected.gateLinks) {
+      return;
+    }
+    const nextLinks = selected.gateLinks.map((link, index) => {
+      if (index !== linkIndex) {
+        return link;
+      }
+      const next = { ...link };
+      if (guard) {
+        next[half] = guard;
+      } else {
+        delete next[half];
+      }
+      return next;
+    });
+    updateTile(selectedIndex, { gateLinks: nextLinks });
   };
 
   /** The first legal boundary pair for `surface` free of the cavern's used hexes, or null. */
@@ -3291,6 +3346,17 @@ export function MapDesigner({
             </text>
           </>
         ) : null}
+        {guardBadgeNumeral(token.guard) ? (
+          <text
+            className="designerObjectGuard"
+            style={{ pointerEvents: "none" }}
+            textAnchor="middle"
+            x={pixel.x}
+            y={pixel.y - size * 0.6}
+          >
+            {guardBadgeNumeral(token.guard)}
+          </text>
+        ) : null}
         <title>{tokenTitle}</title>
       </g>
     );
@@ -3583,9 +3649,9 @@ export function MapDesigner({
             {object.pair}
           </text>
         ) : null}
-        {object.guard ? (
+        {guardBadgeNumeral(objectGuardDisplay(object)) ? (
           <text className="designerObjectGuard" textAnchor="middle" x={x} y={y - size * 0.6}>
-            {ROMAN_NUMERALS[object.guard]}
+            {guardBadgeNumeral(objectGuardDisplay(object))}
           </text>
         ) : null}
       </g>
@@ -4636,25 +4702,60 @@ export function MapDesigner({
                             return (
                               <div className="popoverGateLinkSurface" key={`${surface.row}:${surface.col}`}>
                                 {linkIndexes.map((linkIndex, ordinal) => (
-                                  <div className="popoverGateLinkRow" key={linkIndex}>
-                                    <button
-                                      aria-pressed
-                                      className="popoverGateLinkToggle linked"
-                                      onClick={() => unlinkGateAt(linkIndex)}
-                                      title="Remove this designer gate link"
-                                      type="button"
-                                    >
-                                      🔗 Linked · {surfaceLabel}
-                                      {linkIndexes.length > 1 ? ` (gate ${ordinal + 1})` : ""}
-                                    </button>
-                                    <button
-                                      className="popoverGateLinkCycle"
-                                      onClick={() => cycleGateLinkAt(linkIndex)}
-                                      title="Slide this gate to the next legal position along the shared edge"
-                                      type="button"
-                                    >
-                                      ↻ Move
-                                    </button>
+                                  <div className="popoverGateLinkRowWrap" key={linkIndex}>
+                                    <div className="popoverGateLinkRow">
+                                      <button
+                                        aria-pressed
+                                        className="popoverGateLinkToggle linked"
+                                        onClick={() => unlinkGateAt(linkIndex)}
+                                        title="Remove this designer gate link"
+                                        type="button"
+                                      >
+                                        🔗 Linked · {surfaceLabel}
+                                        {linkIndexes.length > 1 ? ` (gate ${ordinal + 1})` : ""}
+                                      </button>
+                                      <button
+                                        className="popoverGateLinkCycle"
+                                        onClick={() => cycleGateLinkAt(linkIndex)}
+                                        title="Slide this gate to the next legal position along the shared edge"
+                                        type="button"
+                                      >
+                                        ↻ Move
+                                      </button>
+                                      <button
+                                        aria-expanded={gateGuardEditorIndex === linkIndex}
+                                        className={`popoverGateLinkCycle popoverGateLinkGuards${
+                                          gateGuardEditorIndex === linkIndex ||
+                                          selected.gateLinks?.[linkIndex]?.gateGuard ||
+                                          selected.gateLinks?.[linkIndex]?.entranceGuard
+                                            ? " active"
+                                            : ""
+                                        }`}
+                                        onClick={() =>
+                                          setGateGuardEditorIndex(gateGuardEditorIndex === linkIndex ? null : linkIndex)
+                                        }
+                                        title="Guard either half of this gate — you fight to step onto a guarded half; coming out through the linked half auto-wins."
+                                        type="button"
+                                      >
+                                        ⚔ Guards
+                                      </button>
+                                    </div>
+                                    {gateGuardEditorIndex === linkIndex ? (
+                                      <div className="popoverGateLinkGuardEditors">
+                                        <div className="popoverSubLabel">Surface half (“gate down”)</div>
+                                        <GuardSpecEditor
+                                          guard={selected.gateLinks?.[linkIndex]?.gateGuard}
+                                          noneLabel="None"
+                                          onChange={(guard) => setGateLinkGuard(linkIndex, "gateGuard", guard)}
+                                        />
+                                        <div className="popoverSubLabel">Cavern half (“path up”)</div>
+                                        <GuardSpecEditor
+                                          guard={selected.gateLinks?.[linkIndex]?.entranceGuard}
+                                          noneLabel="None"
+                                          onChange={(guard) => setGateLinkGuard(linkIndex, "entranceGuard", guard)}
+                                        />
+                                      </div>
+                                    ) : null}
                                   </div>
                                 ))}
                                 <button
@@ -4735,22 +4836,16 @@ export function MapDesigner({
                 ✕
               </button>
             </header>
-            <div className="popoverSectionLabel">Neutral guard</div>
-            <div className="popoverObjectGuards">
-              {OBJECT_GUARD_LEVELS.map((level) => (
-                <button
-                  aria-pressed={(selectedObject.guard ?? 0) === level}
-                  className={`popoverGuardChip${(selectedObject.guard ?? 0) === level ? " active" : ""}`}
-                  data-guard={level}
-                  key={level}
-                  onClick={() => setObjectGuard(selectedObjectIndex as number, level)}
-                  title={level === 0 ? "No guard" : `Guard ${ROMAN_NUMERALS[level]}`}
-                  type="button"
-                >
-                  {level === 0 ? "None" : ROMAN_NUMERALS[level]}
-                </button>
-              ))}
-            </div>
+            <div className="popoverSectionLabel">Guard (monster)</div>
+            <small className="popoverHint">
+              A guard on this hex must be beaten to use it; arriving through a teleport network sweeps it aside
+              (auto-win, no experience).
+            </small>
+            <GuardSpecEditor
+              guard={objectGuardDisplay(selectedObject)}
+              noneLabel="None"
+              onChange={(guard) => setObjectGuard(selectedObjectIndex as number, guard)}
+            />
             <button className="popoverRemove" onClick={() => removeObject(selectedObjectIndex as number)} type="button">
               <Trash2 size={13} /> Remove
             </button>
@@ -4788,7 +4883,12 @@ export function MapDesigner({
                     updateTile(selectedTokenIndex as number, {
                       tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
                         i === tokenPanelPin
-                          ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, Number(event.target.value))
+                          ? tileTokenValue(
+                              tokenPanelToken.kind,
+                              tokenPanelToken.pair,
+                              Number(event.target.value),
+                              tokenPanelToken.guard
+                            )
                           : token
                       ),
                       token: undefined
@@ -4819,6 +4919,25 @@ export function MapDesigner({
                 can&apos;t be set here (or dragged on the board).
               </small>
             )}
+            <div className="popoverSectionLabel">Guard (monster)</div>
+            <small className="popoverHint">
+              A guard on this hex must be beaten to use the teleporter; arriving through the network sweeps it
+              aside (auto-win, no experience).
+            </small>
+            <GuardSpecEditor
+              guard={tokenPanelToken.guard}
+              noneLabel="None"
+              onChange={(guard) =>
+                updateTile(selectedTokenIndex as number, {
+                  tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                    i === tokenPanelPin
+                      ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, tokenPanelToken.slot, guard)
+                      : token
+                  ),
+                  token: undefined
+                })
+              }
+            />
             <button
               className="popoverRemove"
               onClick={() => {

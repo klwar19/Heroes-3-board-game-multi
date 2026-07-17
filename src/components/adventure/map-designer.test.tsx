@@ -1962,12 +1962,37 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     // The board token shows the pair number (colour-blind-safe label).
     expect(container.querySelector(".designerObjectPair")?.textContent).toBe("2");
 
-    // Click the token → its popover opens with a guard picker.
+    // Click the token → its popover opens with the shared guard editor.
     fireEvent.click(container.querySelector(".designerObjectToken")!);
-    const guardChip = container.querySelector('.popoverGuardChip[data-guard="3"]');
+    const guardChip = [...container.querySelectorAll(".popoverGuardChip")].find((chip) => chip.textContent === "Ⅲ");
     expect(guardChip, "guard Ⅲ chip present").toBeTruthy();
     fireEvent.click(guardChip!);
-    expect(latest[0].guard).toBe(3);
+    expect(latest[0].guard).toEqual({ level: 3 });
+  });
+
+  it("an EXACT-ARMY guard on a placed object collects unit ids and badges the derived difficulty", () => {
+    let latest: CustomMapObject[] = [
+      { kind: "monolith", placement: { type: "standalone", row: far.row + 2, col: far.col + 2 } }
+    ];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(container.querySelector(".designerObjectToken.standalone")!);
+    fireEvent.click(within(container).getByRole("button", { name: "Exact army" }));
+    expect(latest[0].guard).toEqual({ units: [] });
+
+    // Re-render with the armed army mode and add a unit through the picker.
+    const rerendered = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(rerendered.querySelector(".designerObjectToken.standalone")!);
+    fireEvent.change(within(rerendered).getByLabelText(/Add a guard unit/i), {
+      target: { value: "neutral.cyclopes" }
+    });
+    expect(latest[0].guard).toEqual({ units: ["neutral.cyclopes"] });
+
+    // The board badge shows the tier-derived difficulty (gold Cyclopes → Ⅱ).
+    const badged = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    expect(badged.querySelector(".designerObjectGuard")?.textContent).toBe("Ⅱ");
   });
 
   it("renders incomplete-pair and detached-hex warnings", () => {

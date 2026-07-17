@@ -1595,7 +1595,11 @@ export function HexMapBoard({
           </text>
         );
       }
-      if (!artShown && field.difficulty && guarded) {
+      // Designed guards on map-object hexes (teleport tokens / gates / gate
+      // halves) are NOT printed on the tile scan, so their numeral shows even
+      // in art mode — otherwise a designed guard would be invisible.
+      const designedGuardHex = isMapObjectLocation(field.location) || field.location === "subterranean_gate";
+      if ((!artShown || designedGuardHex) && field.difficulty && guarded) {
         overlays.push(
           <text className="hexDifficulty" key={`${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
             {ROMAN[field.difficulty]}

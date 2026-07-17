@@ -104,6 +104,7 @@ import type {
   CardId,
   CombatUnitState,
   CustomCenterHexReward,
+  CustomGuardSpec,
   EventDiePoolEntry,
   EventPoolEntry,
   EventsState,
@@ -221,6 +222,53 @@ export function customGuardArmyDifficulty(units: string[]): number {
   if (points <= 7) return 4;
   if (points <= 10) return 5;
   return 6;
+}
+
+/**
+ * Stamp a designer guard ({@link CustomGuardSpec}) onto a carved field: a
+ * LEVEL becomes the field's normal Field Difficulty (Quick Combat / experience
+ * follow it); an EXACT ARMY additionally pins `customGuardUnits` (minted at
+ * fight time; never Quick-Combat/Diplomacy skipped) with the difficulty
+ * derived from its tiers. The shared stamp for tile tokens, standalone map
+ * objects and subterranean gate halves — one code path, one behaviour.
+ */
+export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuardSpec | undefined): void {
+  if (!guard) {
+    return;
+  }
+  if (guard.units && guard.units.length > 0) {
+    field.customGuardUnits = [...guard.units];
+    field.difficulty = customGuardArmyDifficulty(guard.units);
+  } else if (guard.level) {
+    field.difficulty = guard.level;
+  }
+}
+
+/** Remove a beaten / swept designed guard from a field (all its traces). */
+export function clearCustomGuard(field: MapFieldState): void {
+  delete field.difficulty;
+  delete field.customGuardUnits;
+  delete field.customGuardLevel;
+}
+
+/**
+ * Teleport-ARRIVAL auto-win: a hero who arrives THROUGH a teleport network
+ * (Monolith / colored Gate — including a reveal-travel) or crosses OUT through
+ * a linked Subterranean Gate onto a hex whose designed guard still stands
+ * sweeps that guard aside — an automatic victory with no fight, no experience
+ * and no reward ("you fight to get IN; a monster at the EXIT is auto-won").
+ * A no-op on unguarded destinations.
+ */
+export function autoWinArrivalGuard(state: GameState, playerId: PlayerId, field: MapFieldState | undefined): void {
+  if (!field || !isFieldGuarded(field) || !field.difficulty) {
+    return;
+  }
+  clearCustomGuard(field);
+  eventNote(
+    state,
+    `The guards at the ${locationDefinitionName(field.location)} are swept aside by the arrival — automatic victory (no experience).`,
+    playerId
+  );
 }
 
 export const RESOURCE_DIE_FACES: { resource: ResourceKind; amount: number }[] = [
@@ -3830,14 +3878,15 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
-  // A DESIGNED guard on a map-object teleport field (Monolith / Whirlpool / Gate)
-  // is defeated the moment this visit runs: beginFieldVisit is reached only on a
-  // WIN, a Quick-Combat win, or a Diplomacy skip — a retreat never calls it. A
-  // revisitable teleport field takes no Black Cube / flag, so clear the leftover
-  // Field Difficulty here; otherwise the beaten guard would respawn on the hero's
-  // next entry. (Retreat leaves it intact — the guard stands for next time.)
-  if (isMapObjectLocation(location.id) && field.difficulty) {
-    delete field.difficulty;
+  // A DESIGNED guard on a map-object teleport field (Monolith / Whirlpool /
+  // Gate) or a Subterranean Gate half is defeated the moment this visit runs:
+  // beginFieldVisit is reached only on a WIN, a Quick-Combat win, or a
+  // Diplomacy skip — a retreat never calls it. These fields take no Black Cube
+  // / flag, so clear the leftover guard here; otherwise the beaten guard would
+  // respawn on the hero's next entry. (Retreat leaves it intact — the guard
+  // stands for next time.)
+  if ((isMapObjectLocation(location.id) || location.id === "subterranean_gate") && field.difficulty) {
+    clearCustomGuard(field);
   }
 
   if (location.category === "visitable") {
@@ -4646,6 +4695,11 @@ export function processPendingVisit(state: GameState): void {
             movementLeft: movedHero.movementPoints
           });
           commitPopulationOnMove(state, movedHero.controllerId);
+          // Teleport-network arrival: a designed guard still standing on the
+          // destination token/gate is swept aside (auto-win, no experience).
+          if (step.sweepGuard) {
+            autoWinArrivalGuard(state, movedHero.controllerId, adventure.fields[step.spaceId]);
+          }
           if (step.visit) {
             adventure.lastVisitedField[movedHero.id] = step.spaceId;
             beginFieldVisit(state, movedHero.id, step.spaceId, false);
@@ -6299,8 +6353,9 @@ function mapTokenTravelSteps(visit: PendingVisit, kind: MapTokenKind, destinatio
   return [
     // TELEPORT_HERO without `visit`: arriving on the destination token must
     // NOT re-run its own TOKEN_TELEPORT (an instant ping-pong loop). The hero
-    // may Revisit (1 MP) or re-enter later to travel again.
-    { type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId },
+    // may Revisit (1 MP) or re-enter later to travel again. `sweepGuard`:
+    // a designed guard still standing on the destination is auto-won.
+    { type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId, sweepGuard: true },
     ...(kind === "whirlpool" ? [{ type: "WHIRLPOOL_PENALTY" } as const] : [])
   ];
 }
@@ -6491,7 +6546,8 @@ function coloredGateTravelSteps(visit: PendingVisit, pair: 1 | 2 | 3 | 4, destin
   }
   // TELEPORT_HERO without `visit`: arriving on the destination gate must NOT
   // re-run its own GATE_TELEPORT (no ping-pong); Revisit (1 MP) travels again.
-  return [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId }];
+  // `sweepGuard`: a designed guard still standing there is auto-won on arrival.
+  return [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId, sweepGuard: true }];
 }
 
 /**
@@ -6757,6 +6813,11 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
   } else if (pendingToken.kind === "monolith" || pendingToken.kind === "whirlpool") {
     carveMapTokenField(adventure, spaceId, pendingToken.kind, pendingToken.number);
   }
+  // A designer guard rides the token onto whichever hex it lands on.
+  const carvedField = adventure.fields[spaceId];
+  if (carvedField) {
+    applyCustomGuardToField(carvedField, pendingToken.guard);
+  }
   shiftPendingMapToken(tile);
   eventNote(
     state,
@@ -6845,6 +6906,9 @@ function completeMapTokenTeleport(
     movementLeft: hero.movementPoints
   });
   commitPopulationOnMove(state, hero.controllerId);
+  // Reveal-travel arrival: the just-placed destination token may carry a
+  // designed guard — swept aside on arrival like every network exit.
+  autoWinArrivalGuard(state, hero.controllerId, adventure.fields[destSpaceId]);
   if (teleport.kind === "whirlpool") {
     const penalty: VisitStep = { type: "WHIRLPOOL_PENALTY" };
     if (adventure.pendingVisit) {
@@ -7146,6 +7210,11 @@ function ensureSubterraneanGate(
       : chooseAnchorGateHex(adventure, surface, { row: subterranean.centerRow, col: subterranean.centerCol }, subterranean, plan?.gateHex);
     if (spaceId) {
       surfaceHalf = carveGateField(adventure, spaceId, subterranean.id);
+      // Designer guard on the surface half — stamped ONLY at first carve, so a
+      // later recompute never respawns a beaten guard.
+      if (surfaceHalf) {
+        applyCustomGuardToField(surfaceHalf, plan?.gateGuard);
+      }
     }
   }
 
@@ -7158,6 +7227,10 @@ function ensureSubterraneanGate(
       : chooseAnchorGateHex(adventure, subterranean, { row: surface.centerRow, col: surface.centerCol }, surface, plan?.entranceHex);
     if (spaceId) {
       undergroundHalf = carveGateField(adventure, spaceId, surface.id);
+      // Designer guard on the cavern half — first carve only (see above).
+      if (undergroundHalf) {
+        applyCustomGuardToField(undergroundHalf, plan?.entranceGuard);
+      }
     }
   }
 

@@ -13589,7 +13589,7 @@ img.cardBack {
 .popoverGuardEditor {
   margin: 4px 0 8px;
 }
-.popoverGuardEditor .popoverModeRow {
+.popoverGuardRow {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
