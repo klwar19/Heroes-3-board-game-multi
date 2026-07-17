@@ -2193,8 +2193,9 @@ export function HexMapBoard({
       cardWidth: iAmRotating ? 272 : 230,
       cardHeight: iAmRotating ? 158 : 70,
       // The rotating tile spans a 5-hex-tall flower; clear its top edge so the
-      // card never covers the art it is acting on.
-      gap: HEX_SIZE * 2.9,
+      // card never covers the art it is acting on. Phone CSS adds an extra
+      // translate nudge on top of this gap.
+      gap: HEX_SIZE * 3.35,
       render: () =>
         iAmRotating ? (
           <div
@@ -3919,7 +3920,8 @@ export function PromptTray({
   const tileChoice = state.adventure?.pendingTileChoice;
   const waitingOn =
     choice && choice.playerId !== viewerPlayerId
-      ? choice.type === "OPTION_CHOICE" && choice.context === "learning-level-up"
+      ? choice.type === "OPTION_CHOICE" &&
+        (choice.context === "learning-level-up" || choice.context === "deck-search-mode")
         ? null
         : { ownerId: choice.playerId, doing: "is deciding…" }
       : !choice && visit && visit.playerId !== viewerPlayerId
@@ -3976,7 +3978,9 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" &&
     choice.playerId === viewerPlayerId &&
     // The Learning level-up offer has its own card-showing modal (LearningOfferModal).
-    choice.context !== "learning-level-up"
+    // The Search-or-take-discard prompt has DeckSearchModeModal (card back / discard face).
+    choice.context !== "learning-level-up" &&
+    choice.context !== "deck-search-mode"
   ) {
     title = choice.prompt;
     body = optionActions;
@@ -4097,16 +4101,18 @@ export function PromptTray({
   // Safety net against a frozen table: ANY pending choice OWNED by this viewer
   // that no surface above claimed — and that no sibling modal owns (DECK_SEARCH →
   // SearchModal, ATTACK_DIE_REROLL → RerollModal, learning-level-up →
-  // LearningOfferModal) — still renders its resolving actions here. A pending
-  // choice returns ONLY its own resolving actions from getLegalActions, so this
-  // can never leak unrelated turn actions. It exists so a new/rare choice type
-  // (the Tarnum-search class of bug) can never silently strand its owner with a
-  // blank table — the failure the closed-room report described.
+  // LearningOfferModal, deck-search-mode → DeckSearchModeModal) — still renders
+  // its resolving actions here. A pending choice returns ONLY its own resolving
+  // actions from getLegalActions, so this can never leak unrelated turn actions.
+  // It exists so a new/rare choice type (the Tarnum-search class of bug) can never
+  // silently strand its owner with a blank table — the failure the closed-room
+  // report described.
   if (!title && choice && choice.playerId === viewerPlayerId) {
     const ownedElsewhere =
       choice.type === "DECK_SEARCH" ||
       choice.type === "ATTACK_DIE_REROLL" ||
-      (choice.type === "OPTION_CHOICE" && choice.context === "learning-level-up");
+      (choice.type === "OPTION_CHOICE" &&
+        (choice.context === "learning-level-up" || choice.context === "deck-search-mode"));
     if (!ownedElsewhere && legalActions.length > 0) {
       title = choice.type === "OPTION_CHOICE" ? choice.prompt : "Choose how to resolve this";
       body = legalActions;
@@ -4122,6 +4128,12 @@ export function PromptTray({
   // picker is handled by teleportOptions below (its own themed cards), and MUST
   // be excluded here: rewardArtFromVisitSteps keys a face-down destination off
   // its tileInstanceId and would show the hidden tile's scan (a preview leak).
+  // discard-pick (take a card from your discard / refresh a used Book Spell) also
+  // shows each candidate's face — same "pick by art" vibe as a market pool.
+  const discardPickCards =
+    choice?.type === "OPTION_CHOICE" && choice.context === "discard-pick" && choice.playerId === viewerPlayerId
+      ? choice.discardPick?.cardIds ?? null
+      : null;
   const rewardOptions =
     chooseOneOptions && !teleport
       ? body.map((legal) => {
@@ -4136,7 +4148,27 @@ export function PromptTray({
           const art = rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps);
           return { legal, art };
         })
-      : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
+      : discardPickCards
+        ? body.map((legal) => {
+            const optionIndex =
+              legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                ? legal.action.optionIndex
+                : undefined;
+            const cardId =
+              optionIndex !== undefined && optionIndex < discardPickCards.length
+                ? discardPickCards[optionIndex]
+                : undefined;
+            const card = cardId ? cardLibrary[cardId] : undefined;
+            const art: VisitRewardArt | null = cardId
+              ? {
+                  name: card?.name ?? cardId,
+                  image: card?.assets?.cardImage,
+                  caption: legal.label
+                }
+              : null;
+            return { legal, art };
+          })
+        : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
   const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
   const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
 
