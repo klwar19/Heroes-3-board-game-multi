@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { REWARD_GLYPH_ICONS } from "@/data/assets/homm-assets";
+import { listStoryScenes } from "@/data/story/scenes";
 import {
   DEFAULT_VICTORY_CONDITION_VP,
   defaultObeliskBonusForKind,
@@ -1128,6 +1129,26 @@ function TimedEffectFields({
           value={effect.count}
           onChange={(count) => onChange({ ...effect, count: Math.max(1, count) })}
         />
+      </div>
+    );
+  }
+  if (effect.kind === "story") {
+    return (
+      <div className="mapPresetResourceRow">
+        <label className="mapPresetResourceField">
+          <span>Scene</span>
+          <select
+            aria-label={`Timed event ${index + 1} story scene`}
+            onChange={(e) => onChange({ kind: "story", sceneId: e.target.value })}
+            value={effect.sceneId}
+          >
+            {listStoryScenes().map((scene) => (
+              <option key={scene.id} value={scene.id}>
+                {scene.theme ? `${scene.id} (${scene.theme})` : scene.id}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
     );
   }

@@ -1507,6 +1507,55 @@ book-on/off CONTROLs in every phase that touches spells:
 
 ## 11. Visual-novel story system (shared presentation system)
 
+> **FOUNDATION SHIPPED (2026-07-17).** The presentation spine is engine/UI-wired
+> and covered by tests that fail if the wiring is removed. Leading with what does
+> **NOT** run yet:
+> - **No campaign hooks.** `on_start` / `on_victory` / `on_defeat` / `on_round:N`
+>   / `on_quest_complete` scene triggers are the NEXT step (§12) — this slice
+>   ships ONLY the map-designer timed-event trigger path.
+> - **No karma/fate/flag deltas on choices.** The destiny substrate (§3.4) is
+>   unshipped, so those fields are deliberately kept OUT of the `StoryChoice`
+>   type; a choice carries only bilingual `text` + optional `nextSceneId`. The
+>   campaign step adds what it consumes.
+> - **No music.** `music?` is not modeled (the stated ship limit); the overlay
+>   reuses the existing `adventure/new-week` open sting only (no new sound files).
+> - **No e2e.** jsdom/unit tests only this step; a browser smoke is deferred.
+> - **All art is placeholdered.** No file exists under `public/assets/story/…`
+>   yet — every referenced sprite/background is declared in
+>   `STORY_ART_PLACEHOLDERS` (`src/data/story/scenes.ts`) and the overlay falls
+>   back to a theme-tinted gradient background / an initial-letter avatar chip
+>   (never a broken `<img>`). Drop a `.webp` + remove its path from the set to
+>   promote it.
+>
+> **What runs (each pinned by a test that fails if the wiring is removed):**
+> - Data model + registry `src/data/story/scenes.ts` — `StoryScene` /
+>   `StoryLine` / `StoryChoice`, bilingual EN/VI by construction, 2 themed demo
+>   scenes (one xianxia with a 2-way choice chaining via `nextSceneId` to a tiny
+>   follow-up, one isekai) that double as sample content AND fixtures. Registry
+>   integrity + the art-or-declared-placeholder invariant pinned in
+>   `src/data/story/scenes.test.ts`.
+> - Language preference `src/lib/story-language.ts`
+>   (`localStorage["binh-story-lang"]`, default "en", SSR-safe; the
+>   `ui-mode-preference` pattern) — `src/lib/story-language.test.ts`.
+> - Component `StoryOverlay` (`src/components/table/story-overlay.tsx`):
+>   theme-tinted backdrop, two sprite slots (placeholder → avatar chip),
+>   nameplate, typewriter (click/Space: first press completes, next advances),
+>   Skip, history log, EN/VI toggle, choice buttons (a `nextSceneId` choice
+>   continues in the SAME session), `onDone` at the true end; `.xianxiaTheme`
+>   / `.isekaiTheme` stamped on the component ROOT (never the table root, §3.6).
+>   Behaviour pinned in `src/components/table/story-overlay.test.tsx` (jsdom).
+> - Trigger path — designer timed events: `CustomMapPreset.timedEvents` gains
+>   `{ kind: "story", sceneId }` (union in `state.ts`; sanitized in
+>   `map-preset.ts` — an unknown sceneId is dropped; round-trip in
+>   `map-registry.test.ts`); `applyCustomMapTimedEvents` fires a table-wide
+>   `STORY_SCENE_TRIGGERED` event; the client (`page.tsx`) pops the overlay
+>   ONCE per event id, never replayed on reconnect (the exact MapEventOverlay
+>   seen-set/prime semantics). Editor dropdown + scene-id select in
+>   `map-preset-editor.tsx`. Engine emission + sanitize pinned in
+>   `custom-setup.test.ts` (with a wrong-round CONTROL); editor UI in
+>   `map-preset-editor.test.tsx`. Story events are table-wide, so eliminated-seat
+>   skipping is a verified no-op for them.
+
 There is no narrative infrastructure today (verified — closest hooks:
 `EventDrawnOverlay`, `overlays.tsx:2571`, preset `notes`/timed `note`
 events). The mod adds ONE, package-agnostic:

@@ -1849,6 +1849,35 @@ Leading with what does NOT run / deliberate limits:
   starting plans — enforced by a registry test).
 - The lobby "Field Overrides" row lives under Game options; enabling an
   anime-package pin map auto-flips BINH + the Anime crest at map pick/setup.
+- **Also shipped (FOUNDATION only): the visual-novel STORY system** (§11 /
+  §3.2). Leading with what does NOT run: **no campaign hooks** (`on_start`/
+  `on_victory`/… are the next step, §12), **no karma/fate/flag deltas on
+  choices** (the destiny substrate is unshipped — those fields are kept OUT of
+  the `StoryChoice` type on purpose), **no music** (the overlay reuses the
+  existing `adventure/new-week` open sting only, no new sound files), **no e2e**
+  (jsdom only), and **all art is placeholdered** (nothing under
+  `public/assets/story/…` yet — every referenced sprite/background is declared
+  in `STORY_ART_PLACEHOLDERS`, `src/data/story/scenes.ts`; the overlay falls back
+  to a theme-tinted gradient / an initial-letter avatar chip, never a broken
+  `<img>`). What RUNS (each mutation-checked): the bilingual EN/VI scene data +
+  registry (`src/data/story/scenes.ts`, `scenes.test.ts` — 2 themed demo scenes,
+  registry integrity + art-or-declared-placeholder invariant); the language
+  preference (`src/lib/story-language.ts`, default "en", SSR-safe,
+  `story-language.test.ts`); the `StoryOverlay` component
+  (`src/components/table/story-overlay.tsx`, `story-overlay.test.tsx` — typewriter
+  complete-then-advance on click/Space, Skip, history log, EN/VI toggle,
+  `nextSceneId` choice chaining in-session, `onDone` at the true end, the
+  package theme class `.xianxiaTheme`/`.isekaiTheme` stamped on the component
+  ROOT per §3.6 — never the table root); and ONE trigger path — the map-designer
+  timed event `{ kind: "story", sceneId }` (`CustomMapPreset.timedEvents` union
+  in `state.ts`; sanitized in `map-preset.ts` — unknown `sceneId` dropped;
+  round-trip in `map-registry.test.ts`; `applyCustomMapTimedEvents` fires a
+  table-wide `STORY_SCENE_TRIGGERED` — engine + wrong-round CONTROL in
+  `custom-setup.test.ts`; editor dropdown + scene select in
+  `map-preset-editor.tsx`/`.test.tsx`). The client (`page.tsx`) pops the overlay
+  ONCE per event id and never on reconnect (the exact MapEventOverlay seen-set /
+  prime semantics); story events are table-wide, so eliminated-seat skipping is a
+  verified no-op for them.
 
 ## First-round rules, Cove City Hall & bank/opponent UI (BINH house rules) — what runs
 
