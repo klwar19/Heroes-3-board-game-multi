@@ -171,7 +171,9 @@ function scoreCombatDiscard(
 
 /**
  * Ability target / unit pick: hit the highest-threat living enemy; heal the
- * most wounded ally.
+ * most wounded ally. Damage-style picks (Magog splash, Lich Death Cloud, …)
+ * may legally hit friendlies — those score LOW so the AI prefers enemies, but
+ * still pick an ally when that is the only candidate (mandatory friendly fire).
  */
 function scoreAbilityTarget(
   observation: ComputerObservation,
@@ -184,7 +186,24 @@ function scoreAbilityTarget(
   const remaining = unitRemainingHealth(unit);
   if (remaining <= 0) return CHOICE_BASE - 50;
 
+  const choice = pendingChoiceOf(observation);
+  const isDamagePick =
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    (choice.kind === "flat-damage" ||
+      choice.kind === "second-attack" ||
+      choice.kind === "spell-splash" ||
+      choice.kind === "ballistics-splash" ||
+      choice.kind === "faerie-damage" ||
+      choice.kind === "area-pick" ||
+      choice.kind === "chain-lightning" ||
+      choice.kind === "dreadnought-splash");
+
   if (unit.controllerId === observation.playerId) {
+    if (isDamagePick) {
+      // Friendly fire: legal (Magog/Lich) but never preferred over an enemy.
+      // Prefer the weakest ally if forced — spare the stronger stack.
+      return CHOICE_BASE - 40 - remaining;
+    }
     // Friendly target (heal / buff): prefer more wounded, then higher threat.
     const missing = unit.maxHealth - remaining;
     return CHOICE_BASE + missing * 8 + Math.min(20, Math.round(unitThreatValue(unit) / 5));

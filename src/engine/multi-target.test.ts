@@ -302,6 +302,13 @@ describe("magog fireball splash", () => {
       return;
     }
     expect(choice.candidateUnitIds).toEqual(["unit_p1_griffins"]);
+    // Legal actions must list the ally as a clickable CHOOSE_ABILITY_TARGET.
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) =>
+          legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "unit_p1_griffins"
+      )
+    ).toBe(true);
     state = applyOk(state, {
       type: "CHOOSE_ABILITY_TARGET",
       playerId: "p1",
@@ -309,6 +316,78 @@ describe("magog fireball splash", () => {
       targetUnitId: "unit_p1_griffins"
     });
     expect(state.combat!.units.unit_p1_griffins.damage).toBe(1);
+  });
+
+  it("offers BOTH an ally and an enemy adjacent to the target — picking the ally deals 1", () => {
+    // Wiki: friend OR foe. CONTROL: if candidates drop same-controller units,
+    // only the enemy remains and the ally pick is rejected / never listed.
+    let state = magogState();
+    // Magogs @1 shoot skeletons @13 (non-adjacent → splash).
+    // Adjacent to skeletons @13: vampires @14 (enemy) and griffins @9 (own ally).
+    state.combat!.units.unit_p2_vampires.position = 14;
+    state.combat!.units.unit_p2_dread_knights.position = 19; // not adjacent to 13
+    state.combat!.units.unit_p1_griffins.position = 9;
+    scriptDice(state, [0]);
+
+    state = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_skeletons"
+    });
+    state = keepRollsAndPassWindows(state);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(choice.kind).toBe("flat-damage");
+    expect(new Set(choice.candidateUnitIds)).toEqual(
+      new Set(["unit_p2_vampires", "unit_p1_griffins"])
+    );
+
+    const legalTargets = getLegalActions(state, "p1")
+      .filter((legal) => legal.action.type === "CHOOSE_ABILITY_TARGET")
+      .map((legal) => (legal.action.type === "CHOOSE_ABILITY_TARGET" ? legal.action.targetUnitId : null));
+    expect(new Set(legalTargets)).toEqual(new Set(["unit_p2_vampires", "unit_p1_griffins"]));
+
+    // Dump the splash on the OWN griffins — must deal flat 1 (not blocked).
+    state = applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p1_griffins"
+    });
+    expect(state.combat!.units.unit_p1_griffins.damage).toBe(1);
+    expect(state.combat!.units.unit_p2_vampires.damage).toBe(0);
+
+    // CONTROL from the same open choice: the enemy pick hits the enemy instead.
+    let alt = magogState();
+    alt.combat!.units.unit_p2_vampires.position = 14;
+    alt.combat!.units.unit_p2_dread_knights.position = 19;
+    alt.combat!.units.unit_p1_griffins.position = 9;
+    scriptDice(alt, [0]);
+    alt = applyOk(alt, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_skeletons"
+    });
+    alt = keepRollsAndPassWindows(alt);
+    const altChoice = alt.pendingChoice;
+    expect(altChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (altChoice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    alt = applyOk(alt, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: altChoice.id,
+      targetUnitId: "unit_p2_vampires"
+    });
+    expect(alt.combat!.units.unit_p2_vampires.damage).toBe(1);
+    expect(alt.combat!.units.unit_p1_griffins.damage).toBe(0);
   });
 });
 
