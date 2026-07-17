@@ -33,7 +33,8 @@ type SeatCfg = { id: string; name: string; factionId: FactionId; heroDefId: stri
 // fails if the wiring is removed.
 //
 //   - Round-limit AND victory-condition END triggers (ordered + parallel).
-//   - Last-faction-standing stays an INSTANT win (documented exception).
+//   - Last-faction-standing: with VP on the game ends SCORED immediately
+//     (survivor completes the condition); with VP off it stays an instant win.
 //   - The rulebook VP table components (hero defeats, surrenders, buildings,
 //     hero level, flagged mines, artifacts) + designer objectives.
 //   - Deterministic tie-break; the pure scorer; sanitize/describe.
@@ -321,16 +322,39 @@ describe("Victory-condition completion trigger", () => {
 });
 
 // ===========================================================================
-// 4. Last-faction-standing stays an INSTANT win (documented exception).
+// 4. Last-faction-standing: with VP on the game ends by SCORING right away.
 // ===========================================================================
 
-describe("Last-faction-standing exception", () => {
-  it("with VP on, eliminating everyone else wins instantly with NO scoring", () => {
+describe("Last-faction-standing under VP mode", () => {
+  it("with VP on, defeating every opponent ends the game SCORED — no waiting out the round limit", () => {
     const state = makeGame();
     setVictoryPoints(state, VP_ON, 20);
     zeroBaseVp(state);
-    // p2 has the higher hero level — if this were scored, p2 would win. It must
-    // NOT be scored: a table of one live seat wins outright.
+    // The dead seat's stats must NOT be scored (it left the table); the survivor
+    // is the only live seat and wins with a full breakdown + completion VP.
+    getMainHero(state, "p2")!.level = 7;
+    getMainHero(state, "p1")!.level = 2;
+
+    eliminatePlayer(state, "p2", "gave up", true);
+
+    expect(state.adventure?.winnerPlayerId).toBe("p1");
+    const scoring = state.eventLog.find((event) => event.type === "VP_SCORING");
+    expect(scoring, "the table is scored the moment the last opponent falls").toBeTruthy();
+    expect(scoring?.type === "VP_SCORING" && scoring.winnerPlayerId).toBe("p1");
+    expect(scoring?.type === "VP_SCORING" && scoring.completerPlayerId).toBe("p1");
+    if (scoring?.type === "VP_SCORING") {
+      // Only the live seat is scored; the eliminated seat's 7 levels are gone.
+      expect(scoring.breakdown.map((row) => row.playerId)).toEqual(["p1"]);
+      // 2 hero levels + 3 completion VP = 5.
+      expect(scoring.breakdown[0].total).toBe(5);
+      expect(scoring.breakdown[0].rows).toContainEqual({ label: "Completed the victory condition", vp: 3 });
+    }
+    expect(state.eventLog.some((event) => event.type === "GAME_WON" && event.playerId === "p1")).toBe(true);
+  });
+
+  it("CONTROL: VP OFF → the classic instant last-standing win, no scoring", () => {
+    const state = makeGame();
+    zeroBaseVp(state);
     getMainHero(state, "p2")!.level = 7;
 
     eliminatePlayer(state, "p2", "gave up", true);
