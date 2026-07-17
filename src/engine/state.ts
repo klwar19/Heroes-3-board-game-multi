@@ -2432,8 +2432,13 @@ export type PermanentEffectDefinition = {
    * Income artifacts (Eversmoking Ring of Sulfur, Inexhaustible Cart of Ore):
    * while the card is in play, the owner gains `amount` of `resource` at the
    * start of every Resources round (the odd rounds after the first).
+   *
+   * `requiresHeroInTown` (anime Tụ Linh Bàn): the income is CONDITIONAL — it is
+   * paid only on a Resources round where the owner's MAIN Hero stands on one of
+   * that player's own Towns. Absent/false = unconditional income (the core
+   * cards). Enforced at the single income chokepoint in `startAdventureRound`.
    */
-  resourceRoundGain?: { resource: ResourceKind; amount: number };
+  resourceRoundGain?: { resource: ResourceKind; amount: number; requiresHeroInTown?: boolean };
   /**
    * Pandora's Gift: Income (card 174 — a PERMANENT, the printed ∞): entering
    * play rolls 1 Resource die and records the rolled resource on the owner
