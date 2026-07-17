@@ -971,8 +971,41 @@ export function isSeaField(state: GameState, spaceId: MapSpaceId): boolean {
  */
 export type MapLayer = "surface" | "subterranean";
 
+/**
+ * The tile groups a designer's UNDERGROUND layer override
+ * ({@link CustomMapTilePlan.underground}) is valid on: the supply/sea/center
+ * bands. Excluded are `starting` (seat tiles stay Surface — the opening ceremony
+ * assumes it, the deliberate v1 limit) and `subterranean` (already underground —
+ * the flag would be redundant). The persistence sanitiser and setup validator
+ * both strip the flag off any other group against THIS set, and the designer UI
+ * offers the toggle only for these groups.
+ */
+export const UNDERGROUND_LAYER_GROUPS: ReadonlySet<string> = new Set([
+  "far",
+  "near",
+  "center",
+  "sea"
+]);
+
+/**
+ * Whether a tile PLAN (or placed tile) sits on the Underground layer — THE
+ * plan-side layer predicate, the single definition every validator, preview and
+ * the designer share instead of an inline `group === "subterranean"` check. A
+ * printed cavern (`group: "subterranean"`) is always underground; a
+ * far/near/center/sea tile is underground when the designer set the
+ * {@link CustomMapTilePlan.underground} override. A `starting` seat tile is never
+ * underground (the flag is stripped there and ignored here defensively), so the
+ * opening ceremony and seat balance are untouched.
+ */
+export function planIsUnderground(plan: { group?: string; underground?: boolean }): boolean {
+  if (plan.group === "subterranean") {
+    return true;
+  }
+  return plan.underground === true && plan.group !== "starting";
+}
+
 export function tileLayer(tile: MapTileState | undefined): MapLayer {
-  return tile?.group === "subterranean" ? "subterranean" : "surface";
+  return tile && planIsUnderground(tile) ? "subterranean" : "surface";
 }
 
 /**
@@ -7822,7 +7855,7 @@ export function upsertGatePlan(adventure: AdventureState, candidate: Subterranea
 }
 
 /** A tile placement reduced to what gate planning needs: a centre and a layer. */
-export type TilePlacementLike = { row: number; col: number; group: string };
+export type TilePlacementLike = { row: number; col: number; group: string; underground?: boolean };
 
 /** One Subterranean Gate a layout implies: which two tiles, and the two hexes. */
 export type PlannedSubterraneanGate = {
@@ -7853,7 +7886,10 @@ export type DesignedGateLinkLike = {
   entranceHex?: HexCoord;
 };
 
-const isCavernPlacement = (tile: TilePlacementLike): boolean => tile.group === "subterranean";
+// A placement is on the Underground layer when its group IS subterranean OR the
+// designer flagged a supply/sea/center tile underground — the shared layer
+// predicate, so the pure gate preview mirrors the engine's `tileLayer` carve.
+const isCavernPlacement = (tile: TilePlacementLike): boolean => planIsUnderground(tile);
 
 /**
  * The Surface ring hex nearest `towardCenter` that physically touches

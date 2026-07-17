@@ -7065,6 +7065,17 @@ export type MapTileState = {
   /** Tile group (public info — the printed back gives it away). */
   group?: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
   /**
+   * Per-tile UNDERGROUND layer override carried from
+   * {@link CustomMapTilePlan.underground} onto the placed instance: a
+   * far/near/center/sea tile the designer marked as being on the Underground
+   * layer. Set at setup (face-down included) so {@link tileLayer} treats it as
+   * "subterranean" from the instant it is placed, keeping its band content
+   * unchanged. Public info (not secret — the cue is always on): a designed
+   * underground tile is visibly marked, like a cavern back. Absent (every legacy
+   * snapshot / printed tile) means the tile's plain group layer.
+   */
+  underground?: boolean;
+  /**
    * Tile revealed/placed but its rotation not confirmed yet: fields are not
    * materialized until the owner locks the rotation in.
    */
@@ -9624,6 +9635,20 @@ export type CustomMapTilePlan = {
    *   one or `secretFeature` filters the draw; face-up always places a chosen one.
    */
   group: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
+  /**
+   * Per-tile UNDERGROUND layer override (map designer): mark a far/near/center/sea
+   * tile as topologically on the Underground layer — reachable only through a
+   * Subterranean Gate, exactly like a printed cavern — WITHOUT changing its band
+   * identity. The tile keeps its group (back art, band numeral, guard tiers,
+   * Creature-Bank pile, token legality); only its LAYER flips. Read ONLY through
+   * {@link planIsUnderground} / {@link tileLayer} (the one layer seam) — never an
+   * inline group check. Kept as literal `true` and only on far/near/center/sea:
+   * stripped on `starting` (v1: seat tiles stay Surface, the opening ceremony
+   * assumes it) and `subterranean` (redundant — already underground) at both
+   * {@link validateCustomMapPlan} and the persistence sanitiser. Absent (every
+   * legacy map) = the tile's plain group layer, byte-for-byte as before.
+   */
+  underground?: boolean;
   faceDown: boolean;
   /**
    * Exact tile to place. Required while face-up (non-starting). Optional while

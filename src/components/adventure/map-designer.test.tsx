@@ -2989,6 +2989,91 @@ describe("MapDesigner — fixed starting-tile orientation (lockRotation)", () =>
   });
 });
 
+describe("MapDesigner — per-tile UNDERGROUND designation", () => {
+  const town = { row: 10, col: 10 };
+  const far = tileLatticeNeighbors(town)[0]; // touches the town (Surface) tile
+
+  it("the far-tile popover toggles plan.underground, reveals the gate-link section, and offers NO toggle on a starting tile", () => {
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    let container = renderDesigner(latest, onChange);
+
+    // The far popover offers the Underground toggle (unpressed); a plain far tile
+    // shows NO gate-link section (it is Surface).
+    const popover = openTilePopover(container, 1);
+    const toggle = popover.querySelector('[data-testid="underground-toggle"]');
+    expect(toggle, "far popover offers the underground toggle").toBeTruthy();
+    expect(toggle!.getAttribute("aria-pressed")).toBe("false");
+    expect(popover.querySelector(".popoverGateLinks"), "no gate links while Surface").toBeNull();
+
+    // Flip it ON → onChange carries underground:true, keeping the band group.
+    fireEvent.click(toggle!);
+    expect(latest[1]).toMatchObject({ group: "far", underground: true });
+
+    // Re-render flagged: the toggle reads pressed AND the cavern gate-link
+    // section now appears (the tile is on the Underground layer).
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    const popover2 = openTilePopover(container, 1);
+    expect(popover2.querySelector('[data-testid="underground-toggle"]')!.getAttribute("aria-pressed")).toBe("true");
+    expect(popover2.querySelector(".popoverGateLinks"), "gate-link section appears once flagged").toBeTruthy();
+    // …and the touching town Surface tile is offered as a link target.
+    expect(popover2.querySelector(".popoverGateLinkToggle"), "a Surface link target is listed").toBeTruthy();
+
+    // Toggling OFF round-trips back to no flag.
+    fireEvent.click(popover2.querySelector('[data-testid="underground-toggle"]')!);
+    expect(latest[1].underground).toBeUndefined();
+
+    // CONTROL: a STARTING seat tile never offers the underground toggle.
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    const startPopover = openTilePopover(container, 0);
+    expect(startPopover.querySelector('[data-testid="underground-toggle"]'), "no underground toggle on a seat tile").toBeNull();
+  });
+
+  it("a flagged tile's outline flips to the Underground layer (data-underground) while keeping its band group", () => {
+    const flagged = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true, underground: true }
+    ]);
+    const outline = flagged.querySelector('.designerFlowerOutline[data-band-group="far"]');
+    expect(outline, "the far tile keeps its band group attribute").toBeTruthy();
+    expect(outline!.getAttribute("data-underground"), "the outline is marked underground").toBe("true");
+
+    // CONTROL: the same plain far tile carries no underground marker.
+    cleanup();
+    const plain = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ]);
+    const plainOutline = plain.querySelector('.designerFlowerOutline[data-band-group="far"]');
+    expect(plainOutline!.getAttribute("data-underground"), "no marker on a Surface tile").toBeNull();
+  });
+
+  it("a flagged tile far from any Surface tile draws the unreachable red ring (CONTROL: a plain far tile does not)", () => {
+    const isolated = { row: town.row + 14, col: town.col + 9 };
+    const flagged = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: isolated.row, col: isolated.col, group: "far", faceDown: true, underground: true }
+    ]);
+    // No gate can form → the unreachable warning fires for the flagged tile too.
+    expect(flagged.querySelector(".designerFlowerOutline.cavernUnreachable"), "red ring on an unreachable flagged tile").toBeTruthy();
+
+    // CONTROL: the same tile without the flag is a plain Surface far tile — no ring.
+    cleanup();
+    const plain = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: isolated.row, col: isolated.col, group: "far", faceDown: true }
+    ]);
+    expect(plain.querySelector(".designerFlowerOutline.cavernUnreachable"), "no ring on a Surface tile").toBeNull();
+  });
+});
+
 describe("MapDesigner — docked inspector panel", () => {
   const town = { row: 10, col: 10 };
   const far = tileLatticeNeighbors(town)[1];

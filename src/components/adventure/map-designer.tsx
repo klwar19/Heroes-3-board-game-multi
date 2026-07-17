@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assetUrl } from "@/lib/asset-url";
-import { Lock, Trash2 } from "lucide-react";
+import { Layers, Lock, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import {
@@ -31,7 +31,9 @@ import {
   normalizeDesignedBorderEdges,
   parseHexSpaceId,
   pixelToHex,
+  planIsUnderground,
   planSubterraneanGates,
+  UNDERGROUND_LAYER_GROUPS,
   scenarioDefinitions,
   seaTileBand,
   secretFeatureFullLabel,
@@ -1282,7 +1284,10 @@ export function MapDesigner({
   const gatePlacements = useMemo(
     () => [
       ...(hasDesignerStarts ? [] : starts.map((seat) => ({ row: seat.row, col: seat.col, group: "starting" as const }))),
-      ...customMap.map((plan) => ({ row: plan.row, col: plan.col, group: plan.group }))
+      // Carry the UNDERGROUND override so the gate preview / drag / unreachable
+      // ring treat a flagged far/near/center/sea tile as a cavern (the layer
+      // predicate mirrors the engine's carve).
+      ...customMap.map((plan) => ({ row: plan.row, col: plan.col, group: plan.group, underground: plan.underground }))
     ],
     [customMap, hasDesignerStarts, starts]
   );
@@ -1337,7 +1342,8 @@ export function MapDesigner({
   const designedLinks = useMemo<DesignedGateLinkLike[]>(() => {
     const links: DesignedGateLinkLike[] = [];
     for (const plan of customMap) {
-      if (plan.group !== "subterranean" || !plan.gateLinks) {
+      // Any UNDERGROUND-layer plan (printed cavern OR flagged tile) owns gate links.
+      if (!planIsUnderground(plan) || !plan.gateLinks) {
         continue;
       }
       for (const link of plan.gateLinks) {
@@ -1527,6 +1533,9 @@ export function MapDesigner({
           }
           if (changes.lockRotation === undefined && "lockRotation" in changes) {
             delete next.lockRotation;
+          }
+          if (changes.underground === undefined && "underground" in changes) {
+            delete next.underground;
           }
           if (changes.viiField === undefined && "viiField" in changes) {
             delete next.viiField;
@@ -2129,7 +2138,7 @@ export function MapDesigner({
   const pinGateLinkAt = useCallback(
     (cavernCenter: HexCoord, sourceIndex: number, surface: { row: number; col: number }, pair: GateHexPair) => {
       const index = customMap.findIndex(
-        (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
+        (plan) => planIsUnderground(plan) && plan.row === cavernCenter.row && plan.col === cavernCenter.col
       );
       const plan = index >= 0 ? customMap[index] : null;
       if (!plan) {
@@ -2168,7 +2177,7 @@ export function MapDesigner({
   const gateDragCandidatesFor = useCallback(
     (cavernCenter: HexCoord, sourceIndex: number): GateDragCandidate[] => {
       const cavernPlan = customMap.find(
-        (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
+        (plan) => planIsUnderground(plan) && plan.row === cavernCenter.row && plan.col === cavernCenter.col
       );
       const links = cavernPlan?.gateLinks ?? [];
       const pinnedHexes = new Set<string>();
@@ -2185,7 +2194,9 @@ export function MapDesigner({
       });
       const candidates: GateDragCandidate[] = [];
       for (const tile of gatePlacements) {
-        if (tile.group === "subterranean") {
+        // Gate links land on SURFACE tiles only — skip every underground-layer
+        // tile (printed cavern OR flagged) as a surface candidate.
+        if (planIsUnderground(tile)) {
           continue;
         }
         const surfaceCenter = { row: tile.row, col: tile.col };
@@ -2659,16 +2670,31 @@ export function MapDesigner({
     updateTile(selectedIndex, { lockRotation: selected.lockRotation ? undefined : true });
   };
 
+  /**
+   * Toggle a far/near/center/sea tile's UNDERGROUND layer. On: the tile is
+   * topologically a cavern (reachable only through a Subterranean Gate) while
+   * KEEPING its band content — back art, guard tiers, bank pile, tokens. Off:
+   * plain Surface. Offered only on the flag-valid groups (mirrors the engine
+   * predicate + sanitiser), so a starting seat tile or a printed cavern never
+   * carries it.
+   */
+  const toggleUnderground = () => {
+    if (selectedIndex === null || !selected || !UNDERGROUND_LAYER_GROUPS.has(selected.group)) {
+      return;
+    }
+    updateTile(selectedIndex, { underground: selected.underground ? undefined : true });
+  };
+
   const seatNumberOf = (index: number) => startingPlanIndexes.indexOf(index) + 1;
 
   // --- Designer Subterranean Gate links ------------------------------------
   // Every Surface tile (or seat) the selected cavern physically touches, so the
   // designer can toggle a link to any of them (and connect one cavern to several).
   const selectedCavernSurfaces =
-    selected && selected.group === "subterranean"
+    selected && planIsUnderground(selected)
       ? gatePlacements.filter(
           (tile) =>
-            tile.group !== "subterranean" &&
+            !planIsUnderground(tile) &&
             tileFootprintsTouch({ row: selected.row, col: selected.col }, { row: tile.row, col: tile.col })
         )
       : [];
@@ -2679,7 +2705,7 @@ export function MapDesigner({
   // surface): a new "+ Gate" pins the first boundary pair free of these, and two
   // gates never share a board hex.
   const selectedCavernUsedHexes = new Set<string>();
-  if (selected && selected.group === "subterranean") {
+  if (selected && planIsUnderground(selected)) {
     for (const gate of plannedGates) {
       if (sameGridCoord(gate.cavernCenter, { row: selected.row, col: selected.col })) {
         selectedCavernUsedHexes.add(hexSpaceId(gate.gateHex));
@@ -2693,7 +2719,7 @@ export function MapDesigner({
 
   /** Add the FIRST designer gate link between the selected cavern and a touching Surface tile. */
   const toggleGateLink = (surface: { row: number; col: number }) => {
-    if (selectedIndex === null || !selected || selected.group !== "subterranean") {
+    if (selectedIndex === null || !selected || !planIsUnderground(selected)) {
       return;
     }
     const links = selected.gateLinks ?? [];
@@ -2705,7 +2731,7 @@ export function MapDesigner({
 
   /** Remove ONE designer gate link by its index in the cavern's list. */
   const unlinkGateAt = (linkIndex: number) => {
-    if (selectedIndex === null || !selected || selected.group !== "subterranean" || !selected.gateLinks) {
+    if (selectedIndex === null || !selected || !planIsUnderground(selected) || !selected.gateLinks) {
       return;
     }
     const nextLinks = selected.gateLinks.filter((_, index) => index !== linkIndex);
@@ -2714,7 +2740,7 @@ export function MapDesigner({
 
   /** Set / clear a designer guard on ONE half of a designer gate link. */
   const setGateLinkGuard = (linkIndex: number, half: "gateGuard" | "entranceGuard", guard: CustomGuardSpec | undefined) => {
-    if (selectedIndex === null || !selected || selected.group !== "subterranean" || !selected.gateLinks) {
+    if (selectedIndex === null || !selected || !planIsUnderground(selected) || !selected.gateLinks) {
       return;
     }
     const nextLinks = selected.gateLinks.map((link, index) => {
@@ -2734,7 +2760,7 @@ export function MapDesigner({
 
   /** The first legal boundary pair for `surface` free of the cavern's used hexes, or null. */
   const firstFreePairForSurface = (surface: { row: number; col: number }): GateHexPair | null => {
-    if (!selected || selected.group !== "subterranean") {
+    if (!selected || !planIsUnderground(selected)) {
       return null;
     }
     const cavernCenter = { row: selected.row, col: selected.col };
@@ -2753,7 +2779,7 @@ export function MapDesigner({
    * has no free pair left.
    */
   const addGateToSurface = (surface: { row: number; col: number }) => {
-    if (selectedIndex === null || !selected || selected.group !== "subterranean") {
+    if (selectedIndex === null || !selected || !planIsUnderground(selected)) {
       return;
     }
     const pair = firstFreePairForSurface(surface);
@@ -2771,7 +2797,7 @@ export function MapDesigner({
    * shared edge without colliding.
    */
   const cycleGateLinkAt = (linkIndex: number) => {
-    if (selectedIndex === null || !selected || selected.group !== "subterranean" || !selected.gateLinks) {
+    if (selectedIndex === null || !selected || !planIsUnderground(selected) || !selected.gateLinks) {
       return;
     }
     const link = selected.gateLinks[linkIndex];
@@ -2833,7 +2859,7 @@ export function MapDesigner({
   /** Select the cavern that owns a designed gate and open its options popover. */
   const selectCavernForGate = (cavernCenter: HexCoord, clientX: number, clientY: number) => {
     const index = customMap.findIndex(
-      (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
+      (plan) => planIsUnderground(plan) && plan.row === cavernCenter.row && plan.col === cavernCenter.col
     );
     if (index >= 0) {
       // Opening the docked tile panel closes any open object / token panel.
@@ -2922,7 +2948,7 @@ export function MapDesigner({
     // its surface + committed pair (so ONE of several same-surface gates moves); an
     // automatic gate owns no entry (index -1 → a drop APPENDS a fresh link).
     const cavernPlan = customMap.find(
-      (plan) => plan.group === "subterranean" && plan.row === gate.cavernCenter.row && plan.col === gate.cavernCenter.col
+      (plan) => planIsUnderground(plan) && plan.row === gate.cavernCenter.row && plan.col === gate.cavernCenter.col
     );
     const sourceIndex = gate.designed
       ? findGateLinkIndex(cavernPlan?.gateLinks ?? [], {
@@ -3112,8 +3138,20 @@ export function MapDesigner({
         className={`designerFlowerOutline ${isSelected ? "selected" : ""} ${secretPin ? "secret" : ""}`}
         d={flowerOutline(center, size)}
         data-band-group={plan.group}
+        data-underground={planIsUnderground(plan) ? "true" : undefined}
         key={`plan-outline-${index}`}
-        style={{ stroke: isSelected ? "#ffd766" : secretPin ? "#9ad0ff" : GROUP_COLORS[plan.group] }}
+        style={{
+          // Band identity stays in `data-band-group`; a flagged tile strokes the
+          // Underground purple so the LAYER override reads at a glance (selection
+          // gold / secret blue still win). The band back-label is unchanged.
+          stroke: isSelected
+            ? "#ffd766"
+            : secretPin
+              ? "#9ad0ff"
+              : planIsUnderground(plan)
+                ? GROUP_COLORS.subterranean
+                : GROUP_COLORS[plan.group]
+        }}
       />
     );
 
@@ -3520,7 +3558,9 @@ export function MapDesigner({
   // warning so the designer knows to nudge it against a Surface (or chained
   // cavern) tile until a gate appears.
   for (const plan of customMap) {
-    if (plan.group !== "subterranean" || !unreachableKeys.has(`${plan.row}:${plan.col}`)) {
+    // Any UNDERGROUND-layer tile (printed cavern OR flagged) with no way in gets
+    // the red "unreachable" ring — the same layer predicate the warning uses.
+    if (!planIsUnderground(plan) || !unreachableKeys.has(`${plan.row}:${plan.col}`)) {
       continue;
     }
     const center = { row: plan.row, col: plan.col };
@@ -4858,8 +4898,34 @@ export function MapDesigner({
                   </div>
                 ) : null}
 
-                {/* Designer Subterranean Gate links — cavern tiles only. */}
-                {selected.group === "subterranean" ? (
+                {/* Underground layer override — far/near/center/sea tiles only.
+                    Flips the tile onto the cavern layer (gate-only access) while
+                    keeping its band content; the gate-link panel below then
+                    appears just like a printed cavern's. */}
+                {UNDERGROUND_LAYER_GROUPS.has(selected.group) ? (
+                  <div className="popoverUnderground">
+                    <button
+                      aria-pressed={Boolean(selected.underground)}
+                      className={`popoverUndergroundToggle${selected.underground ? " active" : ""}`}
+                      data-testid="underground-toggle"
+                      onClick={toggleUnderground}
+                      type="button"
+                    >
+                      <Layers size={13} />
+                      Underground layer
+                    </button>
+                    <small className="popoverHint">
+                      {selected.underground
+                        ? "On the Underground layer: reachable only through a Subterranean Gate, like a cavern — but it keeps this band's back art, guards and Creature-Bank pile. Link a Surface tile below to place a gate."
+                        : "Surface tile. Turn on to move this band tile onto the Underground layer (cavern topology, same band content)."}
+                    </small>
+                  </div>
+                ) : null}
+
+                {/* Designer Subterranean Gate links — any underground-layer tile
+                    (printed cavern OR a far/near/center/sea tile flagged
+                    underground below). */}
+                {planIsUnderground(selected) ? (
                   <div className="popoverGateLinks">
                     <div className="popoverSectionLabel">Subterranean gate links</div>
                     {selectedCavernSurfaces.length === 0 ? (
