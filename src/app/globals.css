@@ -9876,6 +9876,91 @@ span.recruitThumb {
   font-size: 11px;
 }
 
+.optionRowLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #c4a878;
+  font-size: 11px;
+}
+
+.optionRowLabelText {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #e0c896;
+}
+
+.optionRowIcons {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.optionRowIcons.pair {
+  gap: 2px;
+}
+
+.optionRowIcon {
+  display: block;
+  object-fit: contain;
+  background: transparent;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.optionRowIcon.crest {
+  width: 28px;
+  height: 28px;
+}
+
+.optionRowIcon.cardBack {
+  width: 22px;
+  height: 32px;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.optionRowIcon.spellBook {
+  width: 30px;
+  height: 30px;
+}
+
+.optionalRulesCluster {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 11px;
+  border-radius: 11px;
+  border: 1px solid rgba(168, 137, 79, 0.32);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 214, 120, 0.05), transparent 42%),
+    rgba(15, 10, 6, 0.4);
+}
+
+.optionalRulesClusterHead {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(168, 137, 79, 0.22);
+}
+
+.optionalRulesClusterHead strong {
+  font-family: var(--font-heroic);
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  color: #ffd76a;
+}
+
+.optionalRulesClusterHead small {
+  font-size: 10.5px;
+  color: #a89068;
+}
+
+.optionalRulesCluster .optionRow {
+  padding-top: 2px;
+}
+
 .optionButtons {
   display: flex;
   flex-wrap: wrap;
@@ -9940,11 +10025,12 @@ span.recruitThumb {
 .wogCrestButton {
   position: relative;
   display: grid;
+  grid-template-rows: 1fr auto auto;
   place-items: center;
-  flex: 0 0 74px;
-  width: 74px;
-  height: 64px;
-  padding: 6px;
+  flex: 0 0 78px;
+  width: 78px;
+  height: 78px;
+  padding: 6px 6px 5px;
   overflow: hidden;
   border: 1px solid rgba(177, 115, 210, 0.62);
   border-radius: 50% 50% 42% 42%;
@@ -9961,11 +10047,22 @@ span.recruitThumb {
   box-shadow: inset 0 0 15px rgba(218, 136, 255, 0.2), 0 0 15px rgba(164, 76, 205, 0.25);
 }
 
+.wogCrestIcon {
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  background: transparent;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 8px rgba(210, 140, 255, 0.28));
+  margin-bottom: 1px;
+}
+
 .wogCrestButton strong {
   z-index: 1;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 17px;
+  font-size: 13px;
   letter-spacing: 0.09em;
+  line-height: 1;
   color: #ffe7a1;
   text-shadow: 0 2px 2px #000;
 }
@@ -9975,6 +10072,7 @@ span.recruitThumb {
   font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.18em;
+  line-height: 1.1;
 }
 
 .wogCrestWings {
@@ -9985,6 +10083,7 @@ span.recruitThumb {
   color: rgba(235, 189, 255, 0.2);
   font-size: 48px;
   transform: rotate(45deg);
+  pointer-events: none;
 }
 
 .wogOptionSummary {
@@ -10187,9 +10286,21 @@ span.recruitThumb {
   align-items: center;
 }
 
-.optionStepper > small {
+.optionStepper > small,
+.optionStepperLabel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   color: #c4a878;
   font-size: 10.5px;
+}
+
+.optionStepperIcon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55));
 }
 
 .optionStepper > div {
@@ -19794,21 +19905,21 @@ img.cardBack {
 /* --- Mode preset cards (Legacy / BINH / WOG / Tournament) --- */
 .modePresetGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(1, minmax(0, 1fr));
   gap: 8px;
 }
 
-@media (min-width: 720px) {
+@media (min-width: 560px) {
   .modePresetGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 .modePresetCard {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: flex-start;
-  gap: 3px;
+  gap: 10px;
   padding: 10px 11px;
   text-align: left;
   border-radius: 10px;
@@ -19830,6 +19941,27 @@ img.cardBack {
   background: linear-gradient(180deg, rgba(72, 48, 18, 0.95), rgba(36, 24, 10, 0.95));
 }
 
+.modePresetIcon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  background: transparent;
+  /* Soft lift only — no plate; transparent art blends into the card */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 6px rgba(255, 210, 120, 0.12));
+  margin-top: 1px;
+  mix-blend-mode: normal;
+  image-rendering: auto;
+}
+
+.modePresetCardText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
 .modePresetCard strong {
   font-family: var(--font-heroic);
   font-size: 14px;
@@ -19837,7 +19969,7 @@ img.cardBack {
   color: #ffe6a6;
 }
 
-.modePresetCard > span {
+.modePresetCardText > span {
   font-size: 11px;
   color: #d2b57a;
 }
@@ -19846,6 +19978,16 @@ img.cardBack {
   font-size: 10px;
   line-height: 1.35;
   color: #a89068;
+}
+
+.modePresetCard.mode-binh .modePresetIcon {
+  width: 48px;
+  height: 48px;
+}
+
+.modePresetCard.mode-tournament .modePresetIcon {
+  width: 46px;
+  height: 46px;
 }
 
 .modeNoticeBanner {
@@ -19958,6 +20100,237 @@ img.cardBack {
 .houseRuleHead small {
   font-size: 10.5px;
   color: #b39a72;
+}
+
+/* Collapsible BINH / Polish house-rule panels (default minimized). */
+.houseRuleCollapsible {
+  display: flex;
+  flex-direction: column;
+  border-radius: 11px;
+  border: 1px solid rgba(168, 137, 79, 0.38);
+  background: linear-gradient(180deg, rgba(28, 20, 12, 0.72), rgba(14, 10, 6, 0.78));
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.houseRuleCollapsible.open {
+  border-color: rgba(255, 214, 120, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 226, 160, 0.08), 0 4px 14px rgba(0, 0, 0, 0.28);
+}
+
+.houseRuleCollapsible.polish {
+  border-color: rgba(210, 62, 55, 0.38);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(232, 197, 94, 0.08), transparent 48%),
+    linear-gradient(135deg, rgba(92, 19, 18, 0.28), rgba(23, 12, 8, 0.72));
+}
+
+.houseRuleCollapsible.polish.open {
+  border-color: rgba(242, 207, 117, 0.55);
+}
+
+.houseRuleCollapsible.tournament {
+  border-color: rgba(180, 90, 70, 0.4);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 180, 90, 0.07), transparent 46%),
+    linear-gradient(180deg, rgba(48, 24, 16, 0.55), rgba(16, 10, 6, 0.72));
+}
+
+.houseRuleCollapsible.tournament.open {
+  border-color: rgba(255, 190, 110, 0.55);
+}
+
+.houseRuleCollapsibleCrest.tournament {
+  width: 40px;
+  height: 40px;
+}
+
+.houseRuleCollapsibleHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: #e8d3a8;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.houseRuleCollapsibleHead:hover {
+  background: rgba(255, 214, 120, 0.06);
+}
+
+.houseRuleCollapsible.polish .houseRuleCollapsibleHead:hover {
+  background: rgba(255, 180, 120, 0.07);
+}
+
+.houseRuleCollapsibleLead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.houseRuleCollapsibleCrest {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  background: transparent;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 5px rgba(255, 210, 120, 0.1));
+}
+
+.houseRuleCollapsibleCrest.binh {
+  width: 42px;
+  height: 42px;
+}
+
+.houseRuleCollapsibleCrest.polish {
+  width: 44px;
+  height: 44px;
+  margin: -4px -2px -4px -2px;
+}
+
+.houseRuleCollapsibleTitles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.houseRuleCollapsibleTitles strong {
+  font-family: var(--font-heroic);
+  font-size: 13.5px;
+  letter-spacing: 0.03em;
+  color: #ffe6a6;
+}
+
+.houseRuleCollapsible.polish .houseRuleCollapsibleTitles strong {
+  color: #f2cf75;
+}
+
+.houseRuleCollapsibleTitles small {
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: #a89068;
+}
+
+.houseRuleCollapsibleMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.houseRuleCollapsibleCount {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 110, 65, 0.45);
+  background: rgba(0, 0, 0, 0.28);
+  color: #a89068;
+  white-space: nowrap;
+}
+
+.houseRuleCollapsibleCount.hasOn {
+  color: #1a1105;
+  border-color: rgba(255, 214, 120, 0.65);
+  background: linear-gradient(180deg, #f6d27a, #d3a247);
+}
+
+.houseRuleCollapsibleChevron {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(220, 175, 95, 0.45);
+  background: linear-gradient(180deg, rgba(70, 48, 18, 0.55), rgba(30, 20, 8, 0.7));
+  color: #ffe6a6;
+  transition: transform 0.18s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.houseRuleCollapsible.collapsed .houseRuleCollapsibleChevron {
+  /* Pulse so collapsed state clearly invites expand */
+  animation: houseRuleExpandPulse 1.8s ease-in-out infinite;
+}
+
+.houseRuleCollapsibleChevron.open {
+  transform: rotate(180deg);
+  animation: none;
+  border-color: rgba(255, 214, 120, 0.7);
+}
+
+.houseRuleCollapsibleHint {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #c79a52;
+  min-width: 4.2em;
+  text-align: right;
+}
+
+@keyframes houseRuleExpandPulse {
+  0%,
+  100% {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 0 rgba(255, 214, 120, 0);
+  }
+  50% {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 4px rgba(255, 214, 120, 0.18);
+    border-color: rgba(255, 214, 120, 0.75);
+  }
+}
+
+.houseRuleCollapsiblePeek {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px 10px;
+  border: 0;
+  border-top: 1px dashed rgba(168, 137, 79, 0.28);
+  background: rgba(0, 0, 0, 0.14);
+  color: #b39a72;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.houseRuleCollapsiblePeek:hover {
+  color: #f0dcae;
+  background: rgba(255, 214, 120, 0.06);
+}
+
+.houseRuleCollapsiblePeekDots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.houseRuleCollapsiblePeekDots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #c79a52;
+  opacity: 0.7;
+}
+
+.houseRuleCollapsibleBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 11px 12px;
+  border-top: 1px solid rgba(168, 137, 79, 0.22);
+  animation: optionTabFade 0.16s ease;
 }
 
 .houseRuleGroup {
