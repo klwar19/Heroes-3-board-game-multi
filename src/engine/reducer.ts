@@ -1481,7 +1481,11 @@ function playCardSpellPower(
 }
 
 /** Whether a stack item is a pending attack (its Power pool is split per side). */
-function isAttackStackItem(stackItem: ResolutionStackItem | undefined): boolean {
+function isAttackStackItem(
+  stackItem: ResolutionStackItem | undefined
+): stackItem is ResolutionStackItem & {
+  action: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
+} {
   return stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT";
 }
 
