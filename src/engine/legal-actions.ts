@@ -2196,6 +2196,36 @@ function addPlayableCardActions(
     }
 
     if (card.effect.type === "CHOOSE_ONE") {
+      // House-rule twin of the Offense/Armorer/Sorcery draw-only play above:
+      // a trigger SIDE that carries a "then draw" rider (ADD_COMBAT_STAT /
+      // ADD_SPELL_POWER with drawCards — Armor of Wonder, Scales of the
+      // Greater Basilisk, Tunic of the Cyclops King) may be played on your own
+      // activation JUST for the draw. Outside its window the stat/Power
+      // fizzles and only the rider resolves (playCard's draw-rider handler;
+      // an unmoved active unit still banks Sorcery-style +Power for the next
+      // spell). Basic only — no crown is wasted on a fizzled stat. Conditional
+      // draws (Blackshard's drawIfCostCardSpell) stay window-only: their draw
+      // resolves in the reaction path alone.
+      if (ownActivationOpen) {
+        for (const [optionIndex, option] of card.effect.options.entries()) {
+          if (
+            !option.trigger ||
+            (option.effect.type !== "ADD_COMBAT_STAT" && option.effect.type !== "ADD_SPELL_POWER") ||
+            !option.effect.drawCards
+          ) {
+            continue;
+          }
+          if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+            continue;
+          }
+          actions.push({
+            label: `${card.name}: ${option.label} (draw only${
+              option.effect.type === "ADD_SPELL_POWER" && unitNotMovedYet ? ", next spell +Power" : ""
+            })`,
+            action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", optionIndex, target: { type: "none" } }
+          });
+        }
+      }
       // Options with a trigger wait for their reaction window; the rest play
       // directly when their effect makes sense in combat.
       addOptionPlays(actions, state, playerId, card, cardId, "combat", cards);
