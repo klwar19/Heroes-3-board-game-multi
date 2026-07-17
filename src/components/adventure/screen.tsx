@@ -1840,6 +1840,15 @@ export function HexMapBoard({
         </text>
       );
     }
+    // Designer yellow borders on the object hex — same bold casing+core the
+    // tile-carried per-edge borders use, so a sealed edge reads identically.
+    for (const direction of field.borderEdges ?? []) {
+      pushBorderLines(
+        overlays,
+        `standalone-${spaceId}-border-${direction}`,
+        hexEdgeForDirection(x, y, HEX_SIZE - 0.8, direction)
+      );
+    }
     if (isMapObjectLocation(field.location) && (target || remindMove)) {
       overlays.push(
         <text className="hexGateCue" key={`standalone-${spaceId}-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>

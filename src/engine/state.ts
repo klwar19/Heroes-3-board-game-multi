@@ -7294,6 +7294,14 @@ export type MapFieldState = {
    */
   gatePair?: 1 | 2 | 3 | 4;
   /**
+   * Designer yellow border lines on a STANDALONE object hex — ABSOLUTE
+   * directions 0-5 sealing single edges of THIS field, the field-level twin of
+   * {@link MapTileState.borderEdges} (an object hex has no backing tile to
+   * carry them). Consulted by the same crossing/discovery seals; public info,
+   * like a printed yellow line. Stamped from {@link CustomMapObject.borderEdges}.
+   */
+  borderEdges?: number[];
+  /**
    * A map-designer STANDALONE object hex — a one-hex field materialized OFF every
    * tile (no backing {@link MapTileState}: `tileInstanceId` is a reserved marker
    * that is never a key of `adventure.tiles`). Set only on such fields; a normal
@@ -9451,6 +9459,15 @@ export type CustomMapObject = {
   pair?: 1 | 2 | 3 | 4;
   placement: CustomMapObjectPlacement;
   guard?: number | CustomGuardSpec;
+  /**
+   * Designer yellow border lines on THIS one-hex object — ABSOLUTE directions
+   * 0-5 (NE,E,SE,SW,W,NW), each sealing that single hex edge exactly like a
+   * tile's per-edge border: movement, discovery and the AI refuse the crossing
+   * (only Expert Pathfinding passes). Stamped onto the carved field
+   * ({@link MapFieldState.borderEdges}) at setup. Normalised (ints, dedupe,
+   * cap 6) at sanitize.
+   */
+  borderEdges?: number[];
 };
 
 /** The Obelisk-role config block of a {@link CustomMapPreset}. */

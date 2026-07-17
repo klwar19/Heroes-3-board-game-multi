@@ -926,12 +926,22 @@ function boardEdgeKey(a: HexCoord, b: HexCoord): string {
  */
 type BorderEdgeIncidence = { planIndex: number; code: number };
 
+/** A standalone object hex's stake in a board edge: which object, which of ITS six edges. */
+type BorderEdgeObjectIncidence = { objectIndex: number; direction: number };
+
 /**
  * A single clickable border-paint edge: its geometry (a footprint hex + the
- * absolute direction of the edge) and every plan that borders it. The FIRST
- * incidence (plans-array order) owns the WRITE; `active`/ERASE consider all.
+ * absolute direction of the edge) and every plan / standalone object that
+ * borders it. The FIRST tile incidence (plans-array order) owns the WRITE; a
+ * zone with no tile incidence is an OBJECT-hex edge and writes to its first
+ * object. `active`/ERASE consider all sides.
  */
-type BorderEdgeZone = { hex: HexCoord; direction: number; incidences: BorderEdgeIncidence[] };
+type BorderEdgeZone = {
+  hex: HexCoord;
+  direction: number;
+  incidences: BorderEdgeIncidence[];
+  objectIncidences: BorderEdgeObjectIncidence[];
+};
 
 /** A thin quad centred on a hex edge — the pointerdown/enter hit target for painting. */
 function edgeStripPoints(cx: number, cy: number, size: number, direction: number, thickness: number): string {
@@ -1503,35 +1513,74 @@ export function MapDesigner({
   const paintEdgeZone = useCallback(
     (zone: BorderEdgeZone, mode: "draw" | "erase") => {
       const owner = zone.incidences[0];
-      onChange(
-        customMap.map((plan, planIndex) => {
-          if (mode === "draw") {
-            if (planIndex !== owner.planIndex) {
+      // DRAW on a tile-bordered edge writes the owner plan; a zone with NO tile
+      // incidence is a standalone OBJECT hex edge and writes to its object.
+      if (owner) {
+        onChange(
+          customMap.map((plan, planIndex) => {
+            if (mode === "draw") {
+              if (planIndex !== owner.planIndex) {
+                return plan;
+              }
+              // Already sealed with no legacy arc left to fold in → no-op.
+              if ((plan.borderEdges?.includes(owner.code) ?? false) && !plan.extraBorders) {
+                return plan;
+              }
+              const edges = normalizeDesignedBorderEdges([...planEffectiveBorderEdges(plan), owner.code]);
+              return writePlanBorderEdges(plan, edges);
+            }
+            const codes = zone.incidences
+              .filter((incidence) => incidence.planIndex === planIndex)
+              .map((incidence) => incidence.code);
+            if (codes.length === 0) {
               return plan;
             }
-            // Already sealed with no legacy arc left to fold in → no-op.
-            if ((plan.borderEdges?.includes(owner.code) ?? false) && !plan.extraBorders) {
-              return plan;
+            const effective = planEffectiveBorderEdges(plan);
+            if (!effective.some((code) => codes.includes(code))) {
+              return plan; // this plan doesn't hold the edge — left untouched
             }
-            const edges = normalizeDesignedBorderEdges([...planEffectiveBorderEdges(plan), owner.code]);
+            const edges = normalizeDesignedBorderEdges(effective.filter((code) => !codes.includes(code)));
             return writePlanBorderEdges(plan, edges);
-          }
-          const codes = zone.incidences
-            .filter((incidence) => incidence.planIndex === planIndex)
-            .map((incidence) => incidence.code);
-          if (codes.length === 0) {
-            return plan;
-          }
-          const effective = planEffectiveBorderEdges(plan);
-          if (!effective.some((code) => codes.includes(code))) {
-            return plan; // this plan doesn't hold the edge — left untouched
-          }
-          const edges = normalizeDesignedBorderEdges(effective.filter((code) => !codes.includes(code)));
-          return writePlanBorderEdges(plan, edges);
-        })
-      );
+          })
+        );
+      } else if (mode === "draw") {
+        const objectOwner = zone.objectIncidences[0];
+        if (objectOwner) {
+          onObjectsChange?.(
+            objects.map((object, index) => {
+              if (index !== objectOwner.objectIndex || object.borderEdges?.includes(objectOwner.direction)) {
+                return object;
+              }
+              const edges = [...(object.borderEdges ?? []), objectOwner.direction].sort((a, b) => a - b);
+              return { ...object, borderEdges: edges };
+            })
+          );
+        }
+      }
+      // ERASE always sweeps the OBJECT side too — a shared tile↔object edge may
+      // be sealed from either side, and one erase must clear the whole edge.
+      if (mode === "erase" && zone.objectIncidences.length > 0) {
+        onObjectsChange?.(
+          objects.map((object, index) => {
+            const directions = zone.objectIncidences
+              .filter((incidence) => incidence.objectIndex === index)
+              .map((incidence) => incidence.direction);
+            if (directions.length === 0 || !object.borderEdges?.some((dir) => directions.includes(dir))) {
+              return object;
+            }
+            const edges = object.borderEdges.filter((dir) => !directions.includes(dir));
+            const next = { ...object };
+            if (edges.length > 0) {
+              next.borderEdges = edges;
+            } else {
+              delete next.borderEdges;
+            }
+            return next;
+          })
+        );
+      }
     },
-    [customMap, onChange]
+    [customMap, objects, onChange, onObjectsChange]
   );
 
   /**
@@ -3608,6 +3657,13 @@ export function MapDesigner({
     const { x, y } = hexToPixel(coord, size);
     const isGate = object.kind === "gate";
     const color = isGate && object.pair ? GATE_PAIR_CSS[object.pair] : "#c9a24b";
+    // Designer yellow borders on the object hex — the field-level twin of a
+    // tile's per-edge lines, drawn with the same bold casing+core.
+    for (const direction of object.borderEdges ?? []) {
+      const coords = hexEdgePoints(x, y, size - 0.8, direction);
+      borderLayer.push(<line className="designerBorderCasing" key={`obj-border-casing-${index}-${direction}`} {...coords} />);
+      borderLayer.push(<line className="designerBorderLine" key={`obj-border-${index}-${direction}`} {...coords} />);
+    }
     objectLayer.push(
       <g
         className={`designerObjectToken${isGate ? " gate" : ""}${object.placement.type === "standalone" ? " standalone" : ""}${
@@ -3680,7 +3736,7 @@ export function MapDesigner({
           const code = canonicalTileEdgeCode(footprintIndex, direction);
           let zone = zones.get(key);
           if (!zone) {
-            zone = { hex: cell, direction, incidences: [] };
+            zone = { hex: cell, direction, incidences: [], objectIncidences: [] };
             zones.set(key, zone);
           }
           // An inner edge is met twice from one plan (both its hexes) at the same
@@ -3691,17 +3747,40 @@ export function MapDesigner({
         }
       }
     }
+    // Standalone object hexes paint too: each contributes its six edges. An edge
+    // shared with a tile joins THAT zone (the tile side owns the write; erase
+    // sweeps both); an off-tile edge gets its own object-owned zone.
+    for (const [objectIndex, object] of objects.entries()) {
+      if (object.placement.type !== "standalone") {
+        continue;
+      }
+      const cell = { row: object.placement.row, col: object.placement.col };
+      for (let direction = 0; direction < 6; direction += 1) {
+        const neighbor = hexNeighbor(cell, direction);
+        const key = boardEdgeKey(cell, neighbor);
+        let zone = zones.get(key);
+        if (!zone) {
+          zone = { hex: cell, direction, incidences: [], objectIncidences: [] };
+          zones.set(key, zone);
+        }
+        if (!zone.objectIncidences.some((inc) => inc.objectIndex === objectIndex && inc.direction === direction)) {
+          zone.objectIncidences.push({ objectIndex, direction });
+        }
+      }
+    }
     const thickness = size * 0.36;
     for (const [key, zone] of zones) {
       const owner = zone.incidences[0];
-      const active = zone.incidences.some((inc) => effectiveByPlan[inc.planIndex]?.includes(inc.code));
+      const active =
+        zone.incidences.some((inc) => effectiveByPlan[inc.planIndex]?.includes(inc.code)) ||
+        zone.objectIncidences.some((inc) => objects[inc.objectIndex]?.borderEdges?.includes(inc.direction));
       const { x, y } = hexToPixel(zone.hex, size);
       borderPaintLayer.push(
         <polygon
           aria-label={`border edge ${hexSpaceId(zone.hex)} d:${zone.direction}`}
           className={`designerBorderEdgeZone${active ? " active" : ""}`}
-          data-border-index={owner.planIndex}
-          data-edge-code={owner.code}
+          data-border-index={owner ? owner.planIndex : `object-${zone.objectIncidences[0]?.objectIndex}`}
+          data-edge-code={owner ? owner.code : zone.objectIncidences[0]?.direction}
           key={`border-edge-${key}`}
           // Take the press so the tile press/drag and board pan never start; do
           // NOT capture the pointer (that would swallow pointerenter on siblings).
