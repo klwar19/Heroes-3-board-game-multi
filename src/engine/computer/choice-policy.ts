@@ -1,6 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import type { GameAction, GameState, PendingChoice } from "../state";
-import { cardKeepValue } from "./card-policy";
+import { cardKeepValue, crownsAvailable } from "./card-policy";
 import {
   BANK_ENGAGE_RATIO,
   creatureBankStrength,
@@ -557,7 +557,26 @@ function scorePositionOption(
   }
 
   if (context === "learning-level-up") {
-    // Prefer taking a real level-up benefit over skipping.
+    // Structured payload: learningLevelUp.modes maps option index -> mode
+    // (the trailing option is Decline). Levels gate which guards the AI may
+    // engage, so the expert FULL level (+2 Experience) beats the basic half
+    // step whenever a crown is spare beyond this one; with the round's last
+    // crown, the basic half step wins (keep the crown for a combat expert).
+    const modes =
+      choice && choice.type === "OPTION_CHOICE"
+        ? choice.learningLevelUp?.modes
+        : undefined;
+    if (modes) {
+      const mode = modes[optionIndex];
+      if (!mode) return CHOICE_BASE + 5; // Decline
+      if (mode === "expert") {
+        return crownsAvailable(observation) >= 2
+          ? CHOICE_BASE + 42
+          : CHOICE_BASE + 30;
+      }
+      return CHOICE_BASE + 35;
+    }
+    // Legacy payload-less fallback: prefer a real benefit over skipping.
     if (looksLikeDecline(optionLabel(choice, optionIndex))) {
       return CHOICE_BASE + 5;
     }

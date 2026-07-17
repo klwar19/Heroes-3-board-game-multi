@@ -46,6 +46,7 @@ import {
   collectMapObjectives,
   objectiveDistanceField,
   ownTownSpaceId,
+  premiumEconomyResourceBonus,
   primaryMapObjective,
   type MapObjectiveKind,
 } from "./map-navigation";
@@ -918,6 +919,11 @@ function tileHeroEntryScore(
       (cell, slot) => [hexSpaceId(cell), slot] as const,
     ),
   );
+  // Whether the next dwelling still needs building materials — an ordinary
+  // materials mine in reach is then worth rotating toward (payoff loop below).
+  const materialsShort =
+    (state.players[observation.playerId]?.resources.buildingMaterials ?? 0) <
+    developmentResourceTargets(state, observation.playerId).buildingMaterials;
   let bestEntry = Number.NEGATIVE_INFINITY;
 
   for (const hero of heroes) {
@@ -962,22 +968,39 @@ function tileHeroEntryScore(
       if (onward <= 1) {
         entry -= 60;
       }
-      // PREMIUM REACHABILITY: never rotate the tile's own settlement / gold /
-      // valuables mine into a sealed pocket — the whole premium rush dies on a
-      // mine the hero can never path to (measured: a Far tile self-placed with
-      // its gold mine unreachable left the rush parked for the entire game).
-      // A rotation whose hero entrance can reach the premium slot dominates
-      // every equal-entrance rotation that walls it off.
+      // PAYOFF REACHABILITY: never rotate the tile's own economy into a
+      // sealed pocket. Premium fields (settlement / gold / valuables mine)
+      // keep their dominant weight — the whole premium rush dies on a mine
+      // the hero can never path to (measured: a Far tile self-placed with its
+      // gold mine unreachable left the rush parked for the entire game) —
+      // and are now NEED-weighted via premiumEconomyResourceBonus, so a
+      // valuables ("crystal") mine while the Gold dwelling still lacks
+      // valuables rotates into reach ahead of yet another gold field.
+      // Materials mines and one-shot resource/treasure pickups count too
+      // (smaller), so a rotation that lands SOME payoff in the hero's pocket
+      // beats one that faces only empty fields. Best single payoff only —
+      // never summed, so the premium ordering above cannot be swamped.
+      let payoff = 0;
       for (const reachableSlot of reachableSlots) {
         const reachableField = def?.fields[reachableSlot];
-        if (
-          reachableField &&
-          isPremiumEconomyField(reachableField as unknown as MapFieldState)
+        if (!reachableField) continue;
+        const asField = reachableField as unknown as MapFieldState;
+        if (isPremiumEconomyField(asField)) {
+          payoff = Math.max(
+            payoff,
+            90 +
+              premiumEconomyResourceBonus(state, observation.playerId, asField),
+          );
+        } else if (reachableField.location === "mine") {
+          payoff = Math.max(payoff, materialsShort ? 40 : 20);
+        } else if (
+          reachableField.location === "resource_symbol" ||
+          reachableField.location === "treasure_symbol"
         ) {
-          entry += 90;
-          break;
+          payoff = Math.max(payoff, 12);
         }
       }
+      entry += payoff;
       bestEntry = Math.max(bestEntry, entry);
     }
   }

@@ -1,3 +1,4 @@
+import { cardLibrary } from "@/data/cards/library";
 import { effectiveHandLimit } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
 import { cardKeepValue, scoreCardAction } from "./card-policy";
@@ -154,12 +155,54 @@ function tieValue(seed: string, action: LegalAction): number {
 }
 
 /**
+ * Voluntary mulligan tuning. The start-of-turn refresh draws back UP TO the
+ * hand limit after the discards, and drawCardsForPlayer reshuffles the discard
+ * pile into an empty deck — so cycling a junk card is a free exchange for a
+ * fresh draw (round 1 even returns it to the own deck's bottom). Every seat
+ * cycles true junk; a Necropolis seat that does not yet HOLD a playable
+ * Necromancy card (the printed ability or a Vidomina specialty — both are
+ * NECROMANCY_REINFORCE) digs harder for its faction engine.
+ */
+const VOLUNTARY_CYCLE_MAX = 3;
+const JUNK_CYCLE_THRESHOLD = 30;
+const NECROMANCY_HUNT_THRESHOLD = 46;
+
+function holdsPlayableNecromancy(
+  observation: ComputerObservation,
+): boolean {
+  const player = observation.state.players[observation.playerId];
+  if (!player) return false;
+  return player.hand.some((cardId) => {
+    if (cardLibrary[cardId]?.effect.type !== "NECROMANCY_REINFORCE") {
+      return false;
+    }
+    // A copy drawn from the shared Ability deck is kept but never playable
+    // (house rule mirrored from addNecromancyPlays) — keep hunting past it.
+    return !player.deckDrawnAbilityCardIds?.includes(cardId);
+  });
+}
+
+function voluntaryCycleThreshold(observation: ComputerObservation): number {
+  const player = observation.state.players[observation.playerId];
+  if (
+    player?.factionId === "necropolis" &&
+    !holdsPlayableNecromancy(observation)
+  ) {
+    return NECROMANCY_HUNT_THRESHOLD;
+  }
+  return JUNK_CYCLE_THRESHOLD;
+}
+
+/**
  * REFRESH_HAND is offered as a bare template (discardCardIds: []), but a hand
  * over the limit MUST discard down in the same action (the handler rejects an
  * insufficient list). Deterministic pick: lowest cardKeepValue first (dump
- * junk, keep artifacts/spells/saves), with stable hand-order ties.
- * effectiveHandLimit only reads public fields plus the viewer's own hand, so
- * the redacted view is a safe stand-in for the full state.
+ * junk, keep artifacts/spells/saves), with stable hand-order ties. On top of
+ * the forced overflow, the AI voluntarily cycles low-value cards (bounded by
+ * VOLUNTARY_CYCLE_MAX and by the real replacement supply deckCount+discard,
+ * so an empty library never churns the same cards). effectiveHandLimit only
+ * reads public fields plus the viewer's own hand, so the redacted view is a
+ * safe stand-in for the full state.
  */
 function withRefreshDiscards(
   observation: ComputerObservation,
@@ -174,9 +217,6 @@ function withRefreshDiscards(
     observation.playerId,
   );
   const overflow = Math.max(0, player.hand.length - limit);
-  if (overflow === 0) {
-    return action;
-  }
   const ranked = player.hand
     .map((cardId, index) => ({
       cardId,
@@ -184,9 +224,21 @@ function withRefreshDiscards(
       value: cardKeepValue(cardId, observation),
     }))
     .sort((a, b) => a.value - b.value || a.index - b.index);
+  const discards = ranked.slice(0, overflow);
+  const threshold = voluntaryCycleThreshold(observation);
+  const supply = (player.deckCount ?? 0) + player.discard.length;
+  for (const entry of ranked.slice(overflow)) {
+    const voluntary = discards.length - overflow;
+    if (voluntary >= VOLUNTARY_CYCLE_MAX || voluntary >= supply) break;
+    if (entry.value >= threshold) break;
+    discards.push(entry);
+  }
+  if (discards.length === 0) {
+    return action;
+  }
   return {
     ...action,
-    discardCardIds: ranked.slice(0, overflow).map((entry) => entry.cardId),
+    discardCardIds: discards.map((entry) => entry.cardId),
   };
 }
 

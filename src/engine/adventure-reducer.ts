@@ -173,6 +173,10 @@ import {
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { placeCombatToken, removeToken } from "./tokens";
 import { applyComputerGuaranteedWin } from "./computer/guaranteed-wins";
+import {
+  applyComputerCombatBoost,
+  removeComputerCombatBoost,
+} from "./computer/combat-boost";
 import { neutralCombatControllerId } from "./neutral-control";
 import {
   assertParallelInteractionFree,
@@ -6083,6 +6087,11 @@ function finalizeCombatStart(state: GameState): void {
   applyPermanentCombatEffects(state);
   applyCombatStartMoraleCards(state);
   applyCombatStartUnitAbilities(state);
+  // Single-player smoothing (house rule #2): a computer attacker in a NON-PvP
+  // fight draws its two temporary Empowered Attack/Defense statistic cards —
+  // removed from the game again at combat end (finalizeAdventureCombat).
+  // Idempotent across finalizeCombatStart re-entries; see combat-boost.ts.
+  applyComputerCombatBoost(state);
   // Commander combat-start specialties (Mana Magician charges, Rune Ritual,
   // Charming, Pacifist) resolve after unit abilities and BEFORE the first
   // war-machine round, so a charmed/fled defender never soaks a Ballista shot.
@@ -6766,6 +6775,11 @@ export function finalizeAdventureCombat(state: GameState): void {
 
   const context = combat.context;
   const outcome = combat.outcome;
+
+  // Single-player smoothing cleanup: the computer's temporary Empowered
+  // Attack/Defense cards are removed from the game before ANY outcome branch
+  // (win, retreat, surrender) — they are never kept past the battle.
+  removeComputerCombatBoost(state);
 
   // Pirates (Astrologers): reward the winner one Resource die (both the neutral
   // and PvP branches below share this one hook). A no-op unless Pirates is up.

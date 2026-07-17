@@ -220,6 +220,24 @@ export function noteComputerAction(
       }
       break;
     }
+    case "REVISIT_FIELD": {
+      // A revisit is once-per-turn value: record the hero's field so the
+      // thrash-skip gate (map-policy REVISIT_FIELD → 200) blocks an immediate
+      // re-revisit. Without this, a Stables refunds the very 1 MP the revisit
+      // costs, and an idle hero parked on one revisited it FOREVER (a real
+      // 256-step runner stall, seed measure-f). Runs after the action applied,
+      // so a teleport-style revisit records the DESTINATION — those move the
+      // hero away and cannot loop in place anyway.
+      const hero = state.heroes[action.heroId];
+      const space = hero?.spaceId;
+      if (space && !mem.visitedThisTurn.includes(space)) {
+        mem = {
+          ...mem,
+          visitedThisTurn: [...mem.visitedThisTurn, space].slice(-VISIT_CAP),
+        };
+      }
+      break;
+    }
     case "OPEN_MARKET":
     case "TRADE_RESOURCES":
     case "BUY_WAR_MACHINE":

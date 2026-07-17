@@ -728,6 +728,45 @@ Leading with what does NOT run (deliberate limits):
   per-seat counter persists on `GameState.computerGuaranteedWins`. Each claim
   (both wins, the limit, and every scope CONTROL) is mutation-checked in
   `src/engine/computer/guaranteed-wins.test.ts`.
+- **Temp Empowered Attack/Defense cards (smoothing house rule #2)**: at the
+  start of every NON-PvP combat a computer seat fights (guard fields AND
+  Creature Banks), it draws 1 temporary Attack + 1 temporary Defense statistic
+  card into hand, both Empowered for that fight (crown-free Expert — the ids
+  temporarily join `player.empoweredAbilities`), and BOTH are removed from the
+  game at combat end wherever they landed (hand/discard/deck) — never kept.
+  The AI plays them through the normal reaction pipeline (the e2e test proves
+  an Expert play with ZERO crowns). Never in PvP battles, sandbox fights,
+  human seats, multiplayer sessions or PvP-Neutral-Control fights; a
+  guaranteed-win fight injects nothing; a genuinely owned twin card and a
+  pre-existing Empower mark survive the cleanup. Hook `finalizeCombatStart` →
+  `applyComputerCombatBoost` (`src/engine/computer/combat-boost.ts`), cleanup
+  at the top of `finalizeAdventureCombat`; tracked on
+  `combat.computerBoost`. HONEST LIMIT: a seat eliminated mid-combat skips
+  the cleanup (the dead seat's cards no longer matter). Mutation-checked with
+  scope CONTROLs in `src/engine/computer/combat-boost.test.ts`.
+- **Smarter map/card play (2026-07 pass)** — each claim mutation-checked:
+  the start-of-turn refresh now VOLUNTARILY cycles junk (≤3 cards, only with
+  real replacement supply; a Necropolis seat without a playable Necromancy /
+  Vidomina specialty in hand digs harder — `mulligan-necromancy.test.ts`);
+  playing Necromancy in the after-combat window now OUTRANKS
+  `SKIP_NECROMANCY` (the old ~600-vs-1120 scores made the AI skip its faction
+  engine after EVERY win — a real bug, same test file); tile rotations chase
+  the NEEDED resource payoff (premium fields weighted by
+  `premiumEconomyResourceBonus`, materials mines when the next dwelling needs
+  materials — `map-navigation.test.ts` "chases the NEEDED resource payoff");
+  a main hero with NOTHING beatable on the map STAGES adjacent to the nearest
+  future fight instead of standing still turn after turn (`collectStagingObjectives`,
+  entry still blocked while unbeatable — `map-navigation.test.ts` "fallback
+  staging"); Legion vouchers are played for the discount in EVERY phase (held
+  only while one voucher is outstanding) and Learning is priced as an A-tier
+  climb engine below hero level 6 with the expert full-level pick preferred
+  when a crown is spare (`legion-learning.test.ts`); a REVISIT_FIELD is noted
+  in per-turn memory so a Stables (its +1 MP refunds the revisit cost) can no
+  longer loop the runner to its 256-step cap (`memory.test.ts`). Gold-dwelling
+  tempo is pinned in `single-player-premium-rush.test.ts`: on Normal, three of
+  the eight fixed seeds build the Gold dwelling BEFORE round 9 (R7/R7/R8) and
+  7/8 by R11 — floors 2 and 5; the map's premium-economy placement decides the
+  per-seed ceiling, so an every-seed-before-R9 floor would be dishonest.
 - **Computer battles resolve IMMEDIATELY and off-screen; movement is REPLAYED
   behind an accept-gate, with a battle recap.**
   The whole computer turn (movement AND its neutral/bank combats) settles inside

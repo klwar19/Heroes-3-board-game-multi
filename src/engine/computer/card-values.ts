@@ -281,8 +281,12 @@ const MORALE_CARDS_RULE_PENALTY = 10;
 
 const NECROMANCY_CARD_ID = "ability.necromancy";
 const WISDOM_CARD_ID = "ability.wisdom";
+const LEARNING_CARD_ID = "ability.learning";
 const NECROPOLIS_FACTION_ID = "necropolis";
 const NEUTRAL_SEAT_ID = "neutrals";
+
+/** Hero level from which Learning falls back to its printed B tier. */
+const LEARNING_CLIMB_LEVEL_CAP = 6;
 
 /** Observable context the tier adjusters read. Built by `cardValueContext`. */
 export type CardValueContext = {
@@ -296,6 +300,8 @@ export type CardValueContext = {
   enemyNecropolis: boolean;
   /** This seat owns a town with a built Mage Guild. */
   mageGuildBuilt: boolean;
+  /** This seat's MAIN hero level (null when no main hero is on the map). */
+  ownHeroLevel: number | null;
 };
 
 /**
@@ -310,6 +316,10 @@ export type CardValueStateView = {
   towns?: Record<
     string,
     { controllerId?: string; buildings?: readonly string[] } | undefined
+  > | null;
+  heroes?: Record<
+    string,
+    { controllerId?: string; kind?: string; level?: number } | undefined
   > | null;
   adventure?: { moraleCards?: unknown } | null;
   sandboxRules?: { moraleCards?: boolean } | null;
@@ -337,6 +347,14 @@ export function cardValueContext(
       break;
     }
   }
+  let ownHeroLevel: number | null = null;
+  for (const hero of Object.values(state.heroes ?? {})) {
+    if (!hero || hero.controllerId !== playerId || hero.kind !== "main") {
+      continue;
+    }
+    ownHeroLevel = hero.level ?? null;
+    break;
+  }
   return {
     enemyHeroThreat,
     moraleCardsOn: Boolean(
@@ -345,6 +363,7 @@ export function cardValueContext(
     ownNecropolis: self?.factionId === NECROPOLIS_FACTION_ID,
     enemyNecropolis,
     mageGuildBuilt,
+    ownHeroLevel,
   };
 }
 
@@ -384,6 +403,17 @@ export function cardTierValue(
       // The list's Alamar/Adelaide caveat: Wisdom is a dead card until a Mage
       // Guild exists — drop the A-tier bonus to C until one is built.
       value = TIER_SCORE.C;
+    }
+    if (
+      cardId === LEARNING_CARD_ID &&
+      context.ownHeroLevel !== null &&
+      context.ownHeroLevel < LEARNING_CLIMB_LEVEL_CAP
+    ) {
+      // Levels gate which neutral guards the AI may even engage
+      // (neutralBattleLevel == hero level): while the hero still climbs,
+      // Learning's +Experience is an A-tier engine, not the list's B-tier
+      // trinket. From level 6 the printed tier stands.
+      value = Math.max(value, TIER_SCORE.A);
     }
   }
   return value;

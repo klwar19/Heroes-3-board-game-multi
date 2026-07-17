@@ -642,6 +642,37 @@ function collectExploreObjectives(
   return [...found.values()];
 }
 
+/**
+ * FALLBACK STAGING (never stand still): when NOTHING on the map is currently
+ * worth marching to — every guard/bank outmatches the army, no town/flag/visit
+ * remains, no face-down tile is reachable and no Ⅱ–Ⅲ supply is placeable —
+ * the old empty objective list made the hero END TURN in place, turn after
+ * turn ("feels not strong enough and just stands still"). Instead, list the
+ * still-unbeatable neutral guards and Creature Banks as march targets: the
+ * hero walks over and parks ADJACENT (moveScore blocks the actual entry while
+ * `canBeatGuardedField` is false — the same gate premium staging relies on),
+ * so the fight fires the round the level/army catches up instead of after a
+ * fresh cross-map march. Main hero only: a secondary never takes these fights.
+ */
+function collectStagingObjectives(
+  state: GameState,
+  hero: HeroState,
+): MapObjective[] {
+  if (hero.kind !== "main") {
+    return [];
+  }
+  const objectives: MapObjective[] = [];
+  const fields = state.adventure?.fields ?? {};
+  for (const spaceId of Object.keys(fields).sort()) {
+    const field = fields[spaceId];
+    if (!isFieldGuarded(field)) continue;
+    if (field.flagOwnerId) continue;
+    if (heroAtSpace(state, field.spaceId, hero.id)) continue;
+    objectives.push({ spaceId, kind: "guard" });
+  }
+  return objectives;
+}
+
 /** Every objective field on the map for this hero, in stable spaceId order. */
 export function collectMapObjectives(
   state: GameState,
@@ -662,6 +693,9 @@ export function collectMapObjectives(
     if (!claimed.has(explore.spaceId)) {
       objectives.push(explore);
     }
+  }
+  if (objectives.length === 0) {
+    return collectStagingObjectives(state, hero);
   }
   return objectives;
 }
