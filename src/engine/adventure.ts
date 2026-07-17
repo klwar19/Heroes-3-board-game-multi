@@ -3032,6 +3032,58 @@ export function refreshEliminationClock(state: GameState, playerId: PlayerId): v
 }
 
 /**
+ * Cards a pending visit lifted OUT of a shared zone and still holds inside its
+ * steps: the Polish Pandora Search (RESOLVE_PANDORA_SEARCH) and the reduced
+ * starting bonus's Minor-Artifact pick (RESOLVE_DRAW_CHOOSE_MINOR) both park
+ * the whole reveal in their CHOOSE_ONE options. Dropping such a visit (its
+ * owner was eliminated) must put those cards back on top of their draw pile —
+ * shared decks may never shrink because a seat died mid-pick. Every option of
+ * one CHOOSE_ONE carries the SAME `drawn` list, so only the first resolve step
+ * found is returned (identity dedupe would break across a serialize round-trip).
+ */
+function returnCardsLiftedIntoVisitSteps(state: GameState, steps: VisitStep[]): void {
+  const findResolveStep = (
+    scan: VisitStep[]
+  ): Extract<VisitStep, { type: "RESOLVE_PANDORA_SEARCH" | "RESOLVE_DRAW_CHOOSE_MINOR" }> | null => {
+    for (const step of scan) {
+      if (step.type === "RESOLVE_PANDORA_SEARCH" || step.type === "RESOLVE_DRAW_CHOOSE_MINOR") {
+        return step;
+      }
+      if (step.type === "CHOOSE_ONE") {
+        for (const option of step.options) {
+          const found = findResolveStep(option.steps);
+          if (found) {
+            return found;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  const step = findResolveStep(steps);
+  if (!step) {
+    return;
+  }
+  if (step.type === "RESOLVE_PANDORA_SEARCH") {
+    const pandoraDeck = state.adventure?.pandoraDeck;
+    if (pandoraDeck) {
+      // drawn[0] came off the top (pop) — push back in reverse so it returns on top.
+      for (let index = step.drawn.length - 1; index >= 0; index -= 1) {
+        pandoraDeck.push(step.drawn[index]!);
+      }
+    }
+    return;
+  }
+  const deck = state.decks[step.deckId];
+  if (deck) {
+    for (let index = step.drawn.length - 1; index >= 0; index -= 1) {
+      deck.drawPile.push(step.drawn[index]!);
+    }
+  }
+}
+
+/**
  * Removes a player from the game (they gave up, or the elimination clock ran
  * out). They keep a `players` entry so the table still shows them as an
  * observer, but they leave the turn order and their Hero models leave the map
@@ -3088,6 +3140,13 @@ export function eliminatePlayer(
       (reward) => reward.kind === "round-start-events-resolved" || reward.playerId !== playerId
     );
     if (state.adventure.pendingVisit?.playerId === playerId) {
+      // A visit step can hold cards LIFTED out of a shared zone (the Polish
+      // Pandora Search / reduced-starting-bonus Minor-Artifact pick keep the
+      // whole reveal inside their CHOOSE_ONE options). Return them before the
+      // visit drops so eliminating the owner never destroys shared cards, and
+      // drop any Random-Artifacts access latch the visit's roll left behind.
+      returnCardsLiftedIntoVisitSteps(state, state.adventure.pendingVisit.steps);
+      clearPolishArtifactAccess(state);
       state.adventure.pendingVisit = null;
     }
     if (state.adventure.pendingNecromancy?.playerId === playerId) {
@@ -3202,6 +3261,10 @@ export function eliminatePlayer(
   if (choice && choice.playerId === playerId) {
     if (choice.type === "DECK_SEARCH") {
       state.decks[choice.deckId]?.discardPile.push(...choice.revealedCardIds);
+      // Polish Random Artifacts: the dropped Search owned any live access
+      // latch (interactions are a singleton); resolveDeckSearch would have
+      // cleared it, so the drop must too.
+      clearPolishArtifactAccess(state);
     }
     if (choice.type === "OPTION_CHOICE" && choice.visionsScry) {
       state.decks[NEUTRAL_DECK_IDS[choice.visionsScry.tier]]?.discardPile.push(

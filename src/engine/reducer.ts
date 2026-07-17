@@ -7586,6 +7586,15 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
 
   const activeUnit = state.combat.units[unitId];
 
+  // Polish Wait: this activation is the unit's deferred RE-activation, not a
+  // fresh one. The unit already went through its start-of-activation package
+  // when it first became active this round (before it chose Wait) — re-running
+  // it here would double every once-per-activation rider (Wraith/Troll
+  // regeneration, poison-cube damage, the Fire Wall burn, the negative-morale
+  // skip check, a second "[activation]" ability use). Only the Paralysis skip
+  // still applies: a token gained while waiting eats the re-activation.
+  const waitedReactivation = Boolean(state.combat.waitPhase && activeUnit?.waitPending);
+
   // Paralysis: "If a unit would activate with a Paralysis Token on it, skip
   // its activation and remove the Token instead."
   if (hasToken(activeUnit, "paralysis")) {
@@ -7605,8 +7614,11 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // skips it": checked for every activation of the holder's units while the
   // card is face-up, resolving (and leaving) only when a skip actually
   // happens. The check die is an Attack die the holder rolls, so a "+1" on it
-  // still trips the holder's own reroll-the-"+1" curse first.
+  // still trips the holder's own reroll-the-"+1" curse first. A Polish-Wait
+  // re-activation was already checked when the unit first became active this
+  // round, so it is not a second check.
   if (
+    !waitedReactivation &&
     moraleCardsRuleEnabled(state) &&
     playerHoldsMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.skipActivation)
   ) {
@@ -7661,8 +7673,13 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   activeUnit.preActivationWindowOffered = false;
   // Remember where the unit started this activation (Harpy fly-back) and reset
   // the once-per-activation "[activation]" choice flag (Enchanters/Faeries).
+  // A Polish-Wait re-activation keeps the flag: the Wait deferred ONE
+  // activation, so an "[activation]" ability already used before the Wait may
+  // not fire a second time.
   activeUnit.activationStartPosition = activeUnit.position;
-  activeUnit.activationAbilityDone = false;
+  if (!waitedReactivation) {
+    activeUnit.activationAbilityDone = false;
+  }
 
   if (activeUnit.defenseToken) {
     activeUnit.defenseToken = false;
@@ -7673,6 +7690,14 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     unitId: activeUnit.id,
     playerId: activeUnit.controllerId
   });
+
+  // Polish Wait re-activation: the once-per-activation start package below
+  // (poison cube, Fire Wall burn, Yeti cleanse, auto "[activation]" abilities)
+  // already ran when the unit first became active this round — skip it so a
+  // Wait can never double-fire regeneration or double-charge poison.
+  if (waitedReactivation) {
+    return;
+  }
 
   // Fortress Wyverns' poison: a faction cube is removed for 1 damage at the
   // beginning of the unit's activation. A lethal cube ends the activation right
@@ -18713,7 +18738,19 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 
       if (!combat.activeUnitId) {
         const step = getActivationStep(combat, state.activeEffects);
-        if (step) {
+        // Polish Wait: the main phase can end on a path that never ran
+        // advanceActiveUnit (the corpse-drop above — the active unit died
+        // WITHOUT acting). Waited units still owe their re-activation, so the
+        // round must not end over their pending Wait tokens; advanceActiveUnit
+        // owns the actual waitPhase entry.
+        const waitEntryPending =
+          !step &&
+          !combat.waitPhase &&
+          houseRuleEnabled(state, "polish-wait") &&
+          Object.values(combat.units).some(
+            (unit) => isUnitAlive(unit) && unit.waitPending && unit.waitToken
+          );
+        if (step || waitEntryPending) {
           // Sets the next unit, or opens the tied-order choice for a human side.
           advanceActiveUnit(state);
           if (state.pendingChoice) {

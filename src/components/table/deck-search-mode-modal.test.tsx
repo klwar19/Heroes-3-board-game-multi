@@ -152,6 +152,49 @@ describe("SearchModal — zoom out for Search(3+)", () => {
     expect(screen.getByRole("button", { name: /Zoom out cards/i })).toBeTruthy();
   });
 
+  it("renders the Tournament Morale Search-again offer and dispatches it (CONTROL: absent without the offer)", () => {
+    const state = createAdventureGameState({ seed: "search-repeat-ui", rollFirstPlayer: false });
+    const cards = Object.keys(cardLibrary)
+      .filter((id) => id.startsWith("ability."))
+      .slice(0, 2);
+    state.pendingChoice = {
+      id: "choice_search_repeat",
+      type: "DECK_SEARCH",
+      playerId: "p1",
+      deckId: "abilities",
+      revealedCardIds: cards,
+      baseCount: 2,
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    const view = getPlayerView(state, "p1");
+    const onAction = vi.fn();
+    const repeatOffer = {
+      label: "Spend Morale token — discard all revealed, Search (2) again",
+      action: { type: "SPEND_MORALE" as const, playerId: "p1" as const, benefit: "repeat-search" as const }
+    };
+
+    wrap(
+      <SearchModal
+        legalActions={[repeatOffer]}
+        onAction={onAction}
+        state={state}
+        view={view}
+        viewerPlayerId="p1"
+      />
+    );
+    const button = screen.getByRole("button", { name: /Spend Morale token — discard all revealed/i });
+    fireEvent.click(button);
+    expect(onAction).toHaveBeenCalledWith(repeatOffer.action);
+
+    cleanup();
+    // CONTROL: no repeat offer in the legal actions → no such button.
+    wrap(
+      <SearchModal legalActions={[]} onAction={vi.fn()} state={state} view={view} viewerPlayerId="p1" />
+    );
+    expect(screen.queryByRole("button", { name: /Spend Morale token/i })).toBeNull();
+  });
+
   it("keeps the large layout for Search(2) with no zoom toggle", () => {
     const state = createAdventureGameState({ seed: "search-two", rollFirstPlayer: false });
     const cards = Object.keys(cardLibrary)

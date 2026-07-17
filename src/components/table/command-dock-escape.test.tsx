@@ -8,10 +8,12 @@ afterEach(cleanup);
 
 /**
  * A PvP combat past the pre-battle prep window (no prep panel). The board command
- * dock is the escape UI here, and per the house rule it shows ONLY Retreat —
- * never Surrender (a before-battle, prep-only option). Both the no-casualties
- * RETREAT_FROM_COMBAT and the in-fight GIVE_UP_COMBAT concede are surfaced as a
- * "Retreat" button.
+ * dock is the escape UI here: both the no-casualties RETREAT_FROM_COMBAT and the
+ * in-fight GIVE_UP_COMBAT concede are surfaced as a "Retreat" button. Surrender
+ * renders ONLY when legal-actions actually offers it — the classic rules offer it
+ * solely in the prep window (where the battle board is not rendered), while the
+ * polish-reduced-surrender house rule also offers it mid-fight, and this dock is
+ * that offer's only in-combat surface.
  */
 function pvpCombatState(seed: string): GameState {
   const state = createInitialGameState(seed);
@@ -28,14 +30,27 @@ function pvpCombatState(seed: string): GameState {
   return state;
 }
 
-describe("CommandDock — in-combat escape is Retreat only (Surrender is prep-only)", () => {
-  it("renders Retreat but NOT Surrender, even if a stray Surrender action is present", () => {
-    const state = pvpCombatState("dock-retreat-only");
-    // SURRENDER_COMBAT is deliberately NOT a command-bar action; the dock must
-    // never render it (Surrender belongs to the defender's prep panel only).
+describe("CommandDock — in-combat escape buttons", () => {
+  it("renders a Surrender offer as its own button and dispatches SURRENDER_COMBAT (mid-fight polish surrender)", () => {
+    const state = pvpCombatState("dock-surrender-offer");
+    const onAction = vi.fn();
+    // legal-actions is the gate: it emits SURRENDER_COMBAT mid-fight only under
+    // polish-reduced-surrender (and the handler re-checks the settled window).
     const actions: LegalAction[] = [
       { label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)", action: { type: "RETREAT_FROM_COMBAT", playerId: "p1" } },
-      { label: "Surrender (pay 10 gold, keep your whole army, return home)", action: { type: "SURRENDER_COMBAT", playerId: "p1" } }
+      { label: "Surrender (pay 7 gold, keep your whole army, return home)", action: { type: "SURRENDER_COMBAT", playerId: "p1" } }
+    ];
+    render(<CommandDock legalActions={actions} onAction={onAction} onReset={vi.fn()} state={state} viewerPlayerId="p1" />);
+    expect(screen.getByRole("button", { name: /retreat/i })).toBeTruthy();
+    const surrender = screen.getByRole("button", { name: /surrender/i });
+    fireEvent.click(surrender);
+    expect(onAction).toHaveBeenCalledWith({ type: "SURRENDER_COMBAT", playerId: "p1" });
+  });
+
+  it("CONTROL: with no Surrender offer in the legal actions, no Surrender button renders", () => {
+    const state = pvpCombatState("dock-no-surrender");
+    const actions: LegalAction[] = [
+      { label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)", action: { type: "RETREAT_FROM_COMBAT", playerId: "p1" } }
     ];
     render(<CommandDock legalActions={actions} onAction={vi.fn()} onReset={vi.fn()} state={state} viewerPlayerId="p1" />);
     expect(screen.getByRole("button", { name: /retreat/i })).toBeTruthy();
