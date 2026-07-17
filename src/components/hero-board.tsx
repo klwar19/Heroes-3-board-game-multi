@@ -9,6 +9,7 @@ import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import {
+  ABILITY_SEARCH_LEVELS,
   EXPERT_USES_BY_LEVEL,
   HAND_LIMIT_BY_LEVEL,
   MAX_EXPERIENCE,
@@ -187,9 +188,6 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
   const faction = coreFactionDefinitions[heroDef.faction];
   const theme = BOARD_THEMES[heroDef.faction] ?? BOARD_THEMES.castle;
   const ability = cardLibrary[heroDef.startingAbilityCardId];
-  const gainedSpecialtyLevels = SPECIALTY_TRACK_LEVELS.filter((level) => hero.level >= level);
-  const currentSpecialtyLevel = gainedSpecialtyLevels.at(-1) ?? 1;
-  const currentSpecialtyId = heroDef.specialtyCardIds?.[currentSpecialtyLevel as 1 | 4 | 6];
   const handLimit = effectiveHandLimit(state, playerId);
 
   const stats = [
@@ -248,16 +246,39 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
                 <span className="hbPanelLabel">{ability?.name ?? "Ability"}</span>
                 <CardArt cardId={heroDef.startingAbilityCardId} kind="ability" />
               </button>
-              <button
-                className="hbSpecialty"
-                onClick={() => (currentSpecialtyId ? zoomCard(currentSpecialtyId) : undefined)}
-                title="Current specialty card"
-                type="button"
-              >
+              <div className="hbSpecialtyGroup">
                 <span className="hbPanelLabel">Specialty</span>
-                <CardArt cardId={currentSpecialtyId} kind="specialty" />
-                <span className="hbSpecName">{currentSpecialtyId ? specialtyDisplayName(currentSpecialtyId) : "—"}</span>
-              </button>
+                {/* Every specialty card the hero can gain (Ⅰ / Ⅳ / Ⅵ) is shown:
+                    an EARNED one (hero level ≥ its level) wears a golden frame,
+                    an unearned one is dimmed so you can still preview it. */}
+                <div className="hbSpecialtyRow" aria-label="Specialty cards">
+                  {SPECIALTY_TRACK_LEVELS.map((level) => {
+                    const specId = heroDef.specialtyCardIds?.[level as 1 | 4 | 6];
+                    const earned = hero.level >= level;
+                    return (
+                      <button
+                        aria-label={`${specId ? specialtyDisplayName(specId) : "Specialty"} — level ${ROMAN[level]}${earned ? " (earned)" : " (locked)"}`}
+                        className={`hbSpecCard ${earned ? "earned" : "locked"}`}
+                        disabled={!specId}
+                        key={level}
+                        onClick={() => (specId ? zoomCard(specId) : undefined)}
+                        title={
+                          specId
+                            ? earned
+                              ? `${specialtyDisplayName(specId)} — level ${ROMAN[level]} specialty (earned)`
+                              : `${specialtyDisplayName(specId)} — gained at level ${ROMAN[level]}`
+                            : `Level ${ROMAN[level]} specialty`
+                        }
+                        type="button"
+                      >
+                        <span className="hbSpecCardLevel">{ROMAN[level]}</span>
+                        <CardArt cardId={specId} kind="specialty" />
+                        <span className="hbSpecName">{specId ? specialtyDisplayName(specId) : "—"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             {player.scrolls && player.scrolls.length > 0 ? (
               <div
@@ -287,6 +308,9 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
             const reached = hero.level >= level;
             const specialty = SPECIALTY_TRACK_LEVELS.includes(level);
             const specialtyCardId = specialty ? heroDef.specialtyCardIds?.[level as 1 | 4 | 6] : undefined;
+            // Ability-search levels (2/3/5/7): the card the player KEPT from that
+            // level-up Search, if any is recorded (public info, opponents too).
+            const keptAbilityId = ABILITY_SEARCH_LEVELS.includes(level) ? player.levelUpAbilityPicks?.[level] : undefined;
             const handGain = HAND_LIMIT_BY_LEVEL[level] !== HAND_LIMIT_BY_LEVEL[level - 1] || level === 1;
             const crowns = EXPERT_USES_BY_LEVEL[level] - (EXPERT_USES_BY_LEVEL[level - 1] ?? 0) > 0 ? EXPERT_USES_BY_LEVEL[level] : 0;
 
@@ -312,6 +336,15 @@ export function HeroBoard({ state, playerId }: { state: GameState; playerId: Pla
                       type="button"
                     >
                       {reached ? <CardArt cardId={specialtyCardId} kind="specialty" /> : null}
+                    </button>
+                  ) : keptAbilityId ? (
+                    <button
+                      className="hbSlot hbSlotSearch hbSlotAbilityPick"
+                      onClick={() => zoomCard(keptAbilityId)}
+                      title={`Level ${ROMAN[level]}: kept ${cardLibrary[keptAbilityId]?.name ?? keptAbilityId} from the Ability Search`}
+                      type="button"
+                    >
+                      <CardArt cardId={keptAbilityId} kind="ability" />
                     </button>
                   ) : (
                     <div className="hbSlot hbSlotSearch" title={`Level ${ROMAN[level]}: Search (2) the Ability deck`}>

@@ -4781,6 +4781,76 @@ button.hbBanner {
   max-width: 15cqw;
 }
 
+/* ---- Full specialty row (Ⅰ / Ⅳ / Ⅵ): earned = golden frame, locked = dim ---- */
+.hbSpecialtyGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8cqw;
+  min-width: 0;
+}
+
+.hbSpecialtyRow {
+  display: flex;
+  gap: 1.1cqw;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.hbSpecCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5cqw;
+  min-width: 0;
+  cursor: zoom-in;
+}
+
+.hbSpecCard:disabled {
+  cursor: default;
+}
+
+.hbSpecCardLevel {
+  font-family: Georgia, serif;
+  font-weight: 700;
+  font-size: 2.5cqw;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--hb-gold);
+  text-shadow: 0 0.2cqw 0.4cqw rgba(0, 0, 0, 0.85);
+}
+
+.hbSpecCard .hbArt-specialty {
+  width: 9.4cqw;
+}
+
+.hbSpecCard .hbSpecName {
+  font-size: 2.2cqw;
+  max-width: 10cqw;
+}
+
+/* Earned specialty: a bright GOLDEN frame + glow (the hero owns this card). */
+.hbSpecCard.earned .hbArt-specialty {
+  border-color: var(--hb-gold);
+  box-shadow:
+    inset 0 0 0 0.25cqw rgba(0, 0, 0, 0.8),
+    0 0 1.4cqw rgba(232, 201, 106, 0.6);
+}
+
+/* Locked specialty: dimmed + desaturated, no gold — a preview of what's coming. */
+.hbSpecCard.locked {
+  opacity: 0.55;
+}
+
+.hbSpecCard.locked .hbArt-specialty {
+  border-color: rgba(120, 122, 130, 0.5);
+  filter: grayscale(0.7) brightness(0.72);
+}
+
+.hbSpecCard.locked .hbSpecCardLevel {
+  color: #9aa0ac;
+}
+
 /* Card-art windows: a fixed crop over the scanned card recovers the art. */
 .hbArt {
   position: relative;
@@ -4942,6 +5012,27 @@ button.hbSlot:disabled { cursor: default; }
 
 .hbSlotSpecialty.gained {
   border-color: rgba(190, 146, 82, 0.8);
+}
+
+/* Ability-search level (2/3/5/7) whose kept card is on record: the ability art
+   fills the slot in place of the search glyph, framed like a gained specialty. */
+.hbSlotAbilityPick {
+  border-color: rgba(151, 161, 179, 0.7);
+}
+
+.hbSlotAbilityPick .hbArt {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  aspect-ratio: auto;
+  border: none;
+  border-radius: 0;
+  filter: none;
+}
+
+.hbSlotAbilityPick .hbArt-ability img {
+  width: 200%;
+  transform: translate(-25%, -8%);
 }
 
 .hbCube {
