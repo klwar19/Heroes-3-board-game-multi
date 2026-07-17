@@ -4299,8 +4299,9 @@ function addControlledNeutralUnitActions(
 
   if (!mustAttack) {
     // Free play ("do whatever"): the exact PvP menu — move anywhere legal,
-    // attack, Defend, the token "other actions", and hold once it has begun
-    // acting. Same for a normal field and a bank guard.
+    // attack, Defend, the token "other actions", and pure hold at any time
+    // (including activation start: consecutive-Defend ban still needs a way
+    // to sit still without attacking). Same for a normal field and a bank guard.
     for (const destination of moveDestinations) {
       pushMove(destination);
     }
@@ -4315,9 +4316,7 @@ function addControlledNeutralUnitActions(
     }
     addControlledNeutralTokenActions(actions, state, playerId, activeUnit);
     maybeAddControlledNeutralWait(actions, state, playerId, activeUnit);
-    if (activeUnit.movedThisActivation) {
-      actions.push(hold);
-    }
+    actions.push(hold);
     return;
   }
 
@@ -4548,33 +4547,24 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     });
   }
 
-  // Once a unit has begun acting (moved or fired), it may finish its activation
-  // without forcing an attack or defend — e.g. a ranged unit holding after a
-  // shot. The Arrow Tower may always hold instead of shooting.
+  // Pure hold is ALWAYS available on a normal activation — including at the
+  // start, before any move/attack. Required by the consecutive-Defend ban: a
+  // unit that Defended last activation cannot Defend again, but must still be
+  // able to sit still without being forced to attack or move. Hold also ends
+  // the activation after a shot/move (ranged post-shot step, move-only, etc.).
+  // Berserk / must-attack neutral menus deliberately do NOT offer free hold —
+  // they route through their own forced menus above.
   //
-  // A WOG commander that CAST a command ability this activation is
-  // `movementLockedThisActivation` (reducer.ts sets it on the cast: "may still
-  // attack, but no longer move"). Casting is that unit's action — so it too may
-  // hold. Without this a commander that cast, cannot reach any enemy to attack,
-  // AND defended last activation (the consecutive-Defend ban blocks Defend) was
-  // offered NO legal action at all, deadlocking the whole combat and stalling
-  // the computer pump (seen in the all-options soak: 3 opponents + Impossible +
-  // Morale + Events + WOG Commanders). See wog-commander-cast-hold coverage.
-  if (
-    alreadyAttacked ||
-    activeUnit.movedThisActivation ||
-    activeUnit.movementLockedThisActivation ||
-    isArrowTowerUnit(activeUnit)
-  ) {
-    actions.push({
-      label: `${activeUnit.name} hold position`,
-      action: {
-        type: "END_ACTIVATION",
-        playerId,
-        unitId: activeUnit.id
-      }
-    });
-  }
+  // END_ACTIVATION clears defendedLastActivation (markActivatedThisRound with
+  // defended=false), so pure hold is a valid "something else" between Defends.
+  actions.push({
+    label: `${activeUnit.name} hold position`,
+    action: {
+      type: "END_ACTIVATION",
+      playerId,
+      unitId: activeUnit.id
+    }
+  });
 
   // Polish Wait: once per combat round, at the beginning of activation (no
   // move/attack yet), the unit may take a Wait token and re-activate later.
