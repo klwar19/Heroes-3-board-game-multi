@@ -9356,7 +9356,8 @@ span.recruitThumb {
   color: #ffe9bd;
 }
 
-/* Opponent info — per-opponent button row (map + combat) and its read-only panel. */
+/* Opponent info — per-opponent button panel (map left rail + combat strip) and
+   its read-only panel. */
 .opponentInfoDock {
   display: flex;
   flex-wrap: wrap;
@@ -9366,6 +9367,39 @@ span.recruitThumb {
   border: 1px solid rgba(170, 130, 70, 0.4);
   border-radius: 10px;
   background: rgba(26, 22, 14, 0.7);
+}
+
+/* Map placement: a clear labelled panel in the left rail, matching the rhythm
+   of the Morale / Victory-Points docks around it — a header line over
+   full-width, stacked opponent buttons so each opponent reads at a glance. */
+.opponentInfoDock.map {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border-color: rgba(170, 130, 70, 0.45);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(34, 26, 17, 0.94), rgba(18, 14, 10, 0.97));
+  box-shadow: inset 0 1px 0 rgba(255, 235, 190, 0.06), 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.opponentInfoDock.map .opponentInfoDockLabel {
+  font-size: 13px;
+  color: #f2dfaf;
+}
+
+.opponentInfoDock.map .opponentInfoBtnRow {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.opponentInfoDock.map .opponentInfoBtn {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 7px 10px;
+  font-size: 13px;
 }
 
 .opponentInfoDock.combat {
@@ -9401,14 +9435,6 @@ span.recruitThumb {
 .opponentInfoBtn:hover {
   border-color: rgba(214, 178, 94, 0.9);
   color: #ffe9bd;
-}
-
-/* Opponent info folded INTO the adventure HUD ribbon: an aligned status cell
-   (label over a wrapping button row) that shares the rhythm of the Round /
-   Resources / Crowns cells beside it — no separate floating box on the map. */
-.advHudCell.opponents {
-  gap: 4px;
-  justify-content: center;
 }
 
 .opponentInfoBtnRow {
@@ -23930,9 +23956,9 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 /*                                                                          */
 /* Elevates the plainest chrome of the ADVENTURE MAP screen to match the    */
 /* leather-and-gold family already used elsewhere, using the v2 art kit in  */
-/* /assets/ui/ornate: a carved gem frame (frame-ornate), gold pilaster      */
-/* columns (column-gold), a filigree section rail (rail-divider) and a      */
-/* title cartouche (plaque-title). VISUAL-ONLY: overrides background /      */
+/* /assets/ui/ornate: a carved gem frame (frame-ornate), a filigree section  */
+/* rail (rail-divider) and a title cartouche (plaque-title). VISUAL-ONLY:    */
+/* overrides background /                                                    */
 /* border / box-shadow on existing classes; every decorative pseudo-element */
 /* is pointer-events:none, sits behind or clear of interactive content, and */
 /* makes no layout hit-area moves. Sits LAST (before the phone block) so it  */
@@ -23941,7 +23967,6 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
 /* ======================================================================== */
 :root {
   --orn-frame: url("/assets/ui/ornate/frame-ornate.webp");
-  --orn-column: url("/assets/ui/ornate/column-gold.webp");
   --orn-rail: url("/assets/ui/ornate/rail-divider.webp");
   --orn-plaque: url("/assets/ui/ornate/plaque-title.webp");
 }
@@ -24080,33 +24105,6 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
     linear-gradient(180deg, rgb(34 25 14 / 90%), rgb(20 14 8 / 93%)),
     var(--cmp-leather) center / 220px repeat;
   color: #f0dcb8;
-}
-
-/* ---- 4. Hand / permanents tray → flanking gold pilasters --------------- */
-/* Two carved columns hug the tray's left & right edges, BEHIND the content   */
-/* (z-index:-1), so the whole "your cards" block reads as a framed shelf. The */
-/* griffin watermark already lives on ::before, so the columns ride ::after.  */
-/* Hidden below 1100px so they never crowd a narrow tray.                    */
-.playerCardBar::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  top: 5px;
-  bottom: 5px;
-  left: 1px;
-  right: 1px;
-  background:
-    var(--orn-column) left center / auto 100% no-repeat,
-    var(--orn-column) right center / auto 100% no-repeat;
-  opacity: 0.5;
-  filter: drop-shadow(0 4px 9px rgb(0 0 0 / 45%));
-  pointer-events: none;
-}
-
-@media (max-width: 1100px) {
-  .playerCardBar::after {
-    display: none;
-  }
 }
 
 /* ---- 5. Top game-log banner → quiet leather strip with a gold rule ----- */

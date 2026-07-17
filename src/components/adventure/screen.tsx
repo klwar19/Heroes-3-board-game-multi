@@ -2422,20 +2422,12 @@ export function AdventureHud({
   state,
   viewerPlayerId,
   legalActions,
-  onAction,
-  opponentInfo
+  onAction
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
-  /**
-   * Optional opponent-info cell folded into the HUD ribbon (the seated map
-   * view passes `<OpponentInfoDock variant="hud" …/>` here). Injected as a prop
-   * so the HUD stays free of opponent-panel imports; renders nothing when there
-   * are no opponents. Sits just before the End turn / Give up buttons.
-   */
-  opponentInfo?: ReactNode;
 }) {
   const { zoomContent } = useCardZoom();
   const [confirmGiveUp, setConfirmGiveUp] = useState(false);
@@ -2645,7 +2637,6 @@ export function AdventureHud({
           <strong>{state.players[winner]?.name} wins!</strong>
         </div>
       ) : null}
-      {opponentInfo}
       <div className="advHudButtons">
         {/* OPTIONAL Undo mode (debug/testing): the button shows only when the
             lobby turned the option on (frozen onto adventure.undoMoves). The

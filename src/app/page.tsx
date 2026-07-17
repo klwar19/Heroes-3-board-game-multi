@@ -5211,11 +5211,6 @@ export default function Home() {
             <AdventureHud
               legalActions={legalActions}
               onAction={submitAction}
-              opponentInfo={
-                isSeated ? (
-                  <OpponentInfoDock seatIds={seatIds} state={state} variant="hud" viewerPlayerId={viewerPlayerId} />
-                ) : null
-              }
               state={state}
               viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
             />
@@ -5270,9 +5265,12 @@ export default function Home() {
                   viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
                 />
                 <MoraleCardsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
-                {/* Opponent info moved OUT of this rail into the adventure HUD
-                    ribbon (AdventureHud `opponentInfo` cell), so the map no
-                    longer carries a separate floating box for it. */}
+                {/* A seated player can inspect any opponent's public state
+                    (resources, units, hero level, buildings) from this clear
+                    left-rail panel. */}
+                {isSeated ? (
+                  <OpponentInfoDock seatIds={seatIds} state={state} variant="map" viewerPlayerId={viewerPlayerId} />
+                ) : null}
                 {/* Live "if scored now" Victory-Points standings — visible to
                     everyone when the designed map turns VP mode on. */}
                 <VictoryPointsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />

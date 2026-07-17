@@ -120,13 +120,12 @@ function OpponentInfoModal({
 }
 
 /**
- * A row of buttons — one per opponent — that each open the read-only opponent
+ * A per-opponent panel — one button per opponent, each opening the read-only
  * info panel. Self-contained (holds its own open-seat state), so it drops in
- * with no extra wiring. Two shapes:
- * - `"hud"`: folds INTO the adventure HUD ribbon as an aligned `advHudCell`
- *   (map screen) — no separate floating box.
+ * with no extra wiring. Two placements:
+ * - `"map"`: a bordered dock in the adventure map's LEFT rail (a clear labelled
+ *   panel with full-width stacked buttons, matching the rail's other docks).
  * - `"combat"`: a self-contained bordered pill-box in the combat card strip.
- * (`"map"` keeps the legacy standalone box for any caller that still wants it.)
  */
 export function OpponentInfoDock({
   state,
@@ -137,13 +136,13 @@ export function OpponentInfoDock({
   state: GameState;
   viewerPlayerId: PlayerId;
   seatIds: PlayerId[];
-  variant?: "map" | "combat" | "hud";
+  variant?: "map" | "combat";
 }) {
   const [openSeat, setOpenSeat] = useState<PlayerId | null>(null);
   const opponents = seatIds.filter((id) => id !== viewerPlayerId);
 
   // No opponents (solo / a one-live-seat table) → render nothing at all, so
-  // neither the HUD ribbon nor the combat strip is left with an empty box.
+  // neither the left rail nor the combat strip is left with an empty box.
   if (opponents.length === 0) {
     return null;
   }
@@ -173,22 +172,10 @@ export function OpponentInfoDock({
     <OpponentInfoModal onClose={() => setOpenSeat(null)} playerId={openSeat} state={state} />
   ) : null;
 
-  // HUD variant: an aligned status cell (label over a button row) that lives in
-  // the same flex ribbon as Round / Resources / Crowns — no standalone box.
-  if (variant === "hud") {
-    return (
-      <div className="advHudCell opponents" aria-label="Opponent info">
-        {label}
-        <div className="opponentInfoBtnRow">{buttons}</div>
-        {modal}
-      </div>
-    );
-  }
-
   return (
     <div className={`opponentInfoDock ${variant}`} aria-label="Opponent info">
       {label}
-      {buttons}
+      <div className="opponentInfoBtnRow">{buttons}</div>
       {modal}
     </div>
   );
