@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, FilePlus2, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, FilePlus2, Lock, Save, Trash2 } from "lucide-react";
 import { MapDesigner } from "@/components/adventure/map-designer";
 import { MapPresetEditor } from "@/components/adventure/map-preset-editor";
 import {
@@ -14,14 +14,21 @@ import {
   type CustomMapPreset,
   type CustomMapTilePlan
 } from "@/engine";
-import { clampMapPlayers, MAX_MAP_PLAYERS, MIN_MAP_PLAYERS, newSharedMapId } from "@/server/map-registry";
+import {
+  actorMayModifyMap,
+  clampMapPlayers,
+  MAX_MAP_PLAYERS,
+  MIN_MAP_PLAYERS,
+  newSharedMapId,
+  type MapActor
+} from "@/server/map-registry";
 import {
   deleteSharedMap,
   fetchSharedMaps,
   saveSharedMap,
   type SharedMapRecord
 } from "@/lib/shared-maps";
-import { getClientId, getDisplayName } from "@/lib/identity";
+import { getAccountIdentity, getClientId, getDisplayName, type AccountIdentity } from "@/lib/identity";
 import { assetUrl } from "@/lib/asset-url";
 import { DESIGNER_UI_ICONS } from "@/data/assets/homm-assets";
 
@@ -43,6 +50,12 @@ export default function MapDesignerPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // The signed-in account (if any) — the owner/admin gate for editing & deleting.
+  // Read from the client cache on mount and refreshed on focus so signing in
+  // (in this or another tab) lights up the controls without a reload. A guest /
+  // signed-out visitor gets a null actor: they can still browse, play, and copy,
+  // and can edit/delete only UNOWNED (legacy / guest-made) maps — exactly as before.
+  const [account, setAccount] = useState<AccountIdentity | null>(null);
 
   // The library lives on the server now (shared by everyone), so re-fetch on
   // mount and whenever the tab regains focus — a map saved in another tab or by
@@ -60,6 +73,25 @@ export default function MapDesignerPage() {
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
   }, [refresh]);
+
+  useEffect(() => {
+    const syncAccount = () => setAccount(getAccountIdentity());
+    syncAccount();
+    window.addEventListener("focus", syncAccount);
+    return () => window.removeEventListener("focus", syncAccount);
+  }, []);
+
+  const actor = useMemo<MapActor>(
+    () => ({ userId: account?.userId ?? null, role: account?.role ?? null }),
+    [account]
+  );
+  // The loaded map, and whether this actor may overwrite it (an owned map only by
+  // its owner/admin). A brand-new unsaved design (no currentId) is always saveable.
+  const currentRecord = useMemo(
+    () => (currentId ? saved.find((record) => record.id === currentId) : undefined),
+    [saved, currentId]
+  );
+  const canModifyCurrent = !currentId || actorMayModifyMap(currentRecord, actor);
 
   const scenario = scenarioDefinitions[scenarioId];
   const problems = useMemo(
@@ -120,7 +152,11 @@ export default function MapDesignerPage() {
       tiles,
       ...(preset ? { preset } : {}),
       createdByClientId: getClientId(),
-      createdByName: getDisplayName() || null
+      createdByName: getDisplayName() || null,
+      // The server stamps ownership from the AUTHENTICATED actor (cookie on
+      // /api/maps; this body on the edge) — sent so the edge can enforce the gate.
+      actorUserId: actor.userId,
+      actorRole: actor.role
     });
     if (!outcome.ok) {
       setSaveError(outcome.error);
@@ -133,14 +169,16 @@ export default function MapDesignerPage() {
   };
 
   const remove = async (id: string) => {
-    const next = await deleteSharedMap(id);
+    const next = await deleteSharedMap(id, actor);
     if (next) {
       setSaved(next);
+      if (currentId === id) {
+        startNew();
+      }
     } else {
+      // A failure (network, or a 403 on an owned map) leaves the map in place;
+      // re-sync from the server so the UI reflects reality.
       void refresh();
-    }
-    if (currentId === id) {
-      startNew();
     }
   };
 
@@ -210,18 +248,44 @@ export default function MapDesignerPage() {
                 ))}
               </select>
             </label>
-            <button className="commandButton primary" onClick={() => void save(false)} type="button">
-              <Save aria-hidden="true" size={13} /> {savedFlash ? "Saved!" : currentId ? "Save" : "Save map"}
-            </button>
-            {currentId ? (
-              <button className="commandButton" onClick={() => void save(true)} title="Keep the loaded map and save this design as a copy" type="button">
-                Save as copy
+            {currentId && !canModifyCurrent ? (
+              // The loaded map belongs to someone else — you can't overwrite it,
+              // only fork it. The primary action becomes "Save as copy".
+              <button
+                className="commandButton primary"
+                onClick={() => void save(true)}
+                title="This map belongs to another player — save your changes as your own copy"
+                type="button"
+              >
+                <Save aria-hidden="true" size={13} /> {savedFlash ? "Saved!" : "Save as copy"}
               </button>
-            ) : null}
+            ) : (
+              <>
+                <button className="commandButton primary" onClick={() => void save(false)} type="button">
+                  <Save aria-hidden="true" size={13} /> {savedFlash ? "Saved!" : currentId ? "Save" : "Save map"}
+                </button>
+                {currentId ? (
+                  <button className="commandButton" onClick={() => void save(true)} title="Keep the loaded map and save this design as a copy" type="button">
+                    Save as copy
+                  </button>
+                ) : null}
+              </>
+            )}
             <button className="commandButton ghost" onClick={startNew} type="button">
               <FilePlus2 aria-hidden="true" size={13} /> New map
             </button>
           </div>
+
+          {currentId && !canModifyCurrent ? (
+            <div className="designerOwnerNote" role="status">
+              <Lock aria-hidden="true" size={12} />
+              <small>
+                This map belongs to <strong>{currentRecord?.createdByName ?? "another player"}</strong>. You can play
+                and copy it, but only its owner or an admin can edit or delete the original — your changes save as
+                your own copy.
+              </small>
+            </div>
+          ) : null}
 
           {saveError ? (
             <div className="designerProblems" aria-label="Save error" role="alert">
@@ -294,15 +358,24 @@ export default function MapDesignerPage() {
                     {record.createdByName ? ` · by ${record.createdByName}` : ""}
                   </small>
                 </button>
-                <button
-                  aria-label={`Delete ${record.name}`}
-                  className="savedMapDelete"
-                  onClick={() => void remove(record.id)}
-                  title="Delete this saved map for everyone"
-                  type="button"
-                >
-                  <Trash2 aria-hidden="true" size={13} />
-                </button>
+                {actorMayModifyMap(record, actor) ? (
+                  <button
+                    aria-label={`Delete ${record.name}`}
+                    className="savedMapDelete"
+                    onClick={() => void remove(record.id)}
+                    title="Delete this saved map for everyone"
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={13} />
+                  </button>
+                ) : (
+                  <span
+                    className="savedMapLock"
+                    title={`Only ${record.createdByName ?? "the owner"} or an admin can edit or delete this map`}
+                  >
+                    <Lock aria-hidden="true" size={13} />
+                  </span>
+                )}
               </li>
             ))}
           </ul>

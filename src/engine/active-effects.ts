@@ -1,6 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { isAdjacent } from "./battlefield";
 import { appendEvent, nextEventNumber } from "./events";
+import { houseRuleEnabled } from "./house-rules";
 import {
   getUnitAbilityDefinitions,
   hasAmplifyInitiativeIncrease,
@@ -104,6 +105,12 @@ export function playerHasSpellTimingFreedom(state: GameState, playerId: PlayerId
  * one-Spell-per-combat-round limit (`spellLimitFor` returns Infinity for them).
  */
 export function playerSpellCastsIgnoreLimit(state: GameState, playerId: PlayerId): boolean {
+  // Polish Spell Book reading: Expert Intelligence raises the limit by +1 rather
+  // than lifting it (see spellLimitFor), so the "∞" affordance never applies under
+  // that rule — the UI shows the real finite number instead.
+  if (houseRuleEnabled(state, "polish-spell-book")) {
+    return false;
+  }
   return state.activeEffects.some(
     (effect) =>
       effect.controllerId === playerId &&

@@ -23,7 +23,8 @@ import {
   type GameDifficulty,
   type GameMode,
   type GameSessionMode,
-  type GameState
+  type GameState,
+  type PlayerId
 } from "@/engine";
 import {
   applyHumanComputerAdvance,
@@ -34,6 +35,13 @@ import {
 } from "@/server/computer-runner";
 import { deriveLobbyRecord, lobbyRecordSignature, lobbyReportIsDue, LOBBY_SINGLETON_ID, STALE_ROOM_TTL_MS } from "@/server/lobby-registry";
 import { detectFinishedMatch } from "@/server/match-report";
+import {
+  actorIsRoomParticipant,
+  applyUndoMove,
+  clearUndoHistory,
+  recordUndoSnapshot,
+  undoModeEnabled
+} from "@/server/undo-history";
 import { httpTokenVerifier, memoizeVerifier, type TokenVerifier } from "@/server/verified-actor";
 
 /**
@@ -1042,6 +1050,9 @@ export default class GameRoomServer implements Party.Server {
             }
           }
         }
+        // A reset wipes the running game — drop any undo history so the new
+        // game cannot roll back into the old one.
+        clearUndoHistory(this.room.id);
         const state = this.makeState(this.resetOptionsFor(previous, message));
         // Carry room membership (host, seats, observers) across a game reset.
         state.room = previous.state.room ?? null;
@@ -1085,6 +1096,18 @@ export default class GameRoomServer implements Party.Server {
         if (answered) {
           return { ...answered, applied: false, prev: null as GameState | null };
         }
+        // OPTIONAL Undo mode (debug/testing): an UNDO_MOVE never runs through the
+        // engine reducer — it pops the server-side per-room snapshot stack and
+        // restores it wholesale (atomic: open combats / choices / reward queues
+        // roll back together). Rejected when the mode is off, the actor is not a
+        // member, or there is nothing to undo. The history lives only in the
+        // undo-history module (never in state, never broadcast, never in a view).
+        if (message.action.type === "UNDO_MOVE") {
+          return await this.applyUndo(current, message.action.playerId, senderClientId, actorUserId, dedupeKey);
+        }
+        // Record the PRE-action state on the undo stack when the mode is on
+        // (no-op otherwise), so an undo rolls back exactly this action.
+        recordUndoSnapshot(this.room.id, current.state);
         const applyStartedAt = Date.now();
         const result = applyAction(current.state, message.action, {
           // Fresh crypto entropy per action makes every die roll, shuffle and Ⅱ–Ⅲ
@@ -1175,6 +1198,67 @@ export default class GameRoomServer implements Party.Server {
     }
   }
 
+  /**
+   * OPTIONAL Undo mode (debug/testing) — the WebSocket action path handler for
+   * UNDO_MOVE. Pops+restores the server-side prior snapshot (atomic whole-state
+   * swap), persists and broadcasts it. Returns the same outcome shape the normal
+   * action path builds. `prev` is null so no match report / lobby churn fires (an
+   * undo can never finish a game).
+   */
+  private async applyUndo(
+    current: RoomSnapshot,
+    playerId: PlayerId,
+    actorClientId: string | undefined,
+    actorUserId: string | undefined,
+    dedupeKey: string | null
+  ): Promise<{
+    errors: { code: string; message: string }[];
+    notices: string[];
+    version: number;
+    applied: boolean;
+    prev: GameState | null;
+    scheduleComputer?: boolean;
+    computerDelayMs?: number;
+  }> {
+    const reject = (message: string) => {
+      const rejected = {
+        errors: [{ code: "ACTION_NOT_LEGAL", message }],
+        notices: [] as string[],
+        version: current.version
+      };
+      if (dedupeKey) this.recordAnsweredRequest(dedupeKey, rejected);
+      return { ...rejected, applied: false, prev: null as GameState | null };
+    };
+    if (!undoModeEnabled(current.state)) {
+      return reject("Undo mode is off for this game.");
+    }
+    if (!actorIsRoomParticipant(current.state, actorClientId, actorUserId)) {
+      return reject("Only a member of this room can undo.");
+    }
+    const outcome = applyUndoMove(this.room.id, current.state, playerId);
+    if (!outcome.undone) {
+      return reject(outcome.reason);
+    }
+    this.snapshot = {
+      roomId: this.room.id,
+      version: current.version + 1,
+      updatedAt: new Date().toISOString(),
+      ...this.creationMeta(outcome.state),
+      state: outcome.state
+    };
+    await this.persist();
+    await this.broadcastSnapshot();
+    const accepted = { errors: [] as { code: string; message: string }[], notices: [] as string[], version: this.snapshot.version };
+    if (dedupeKey) this.recordAnsweredRequest(dedupeKey, accepted);
+    return {
+      ...accepted,
+      applied: true,
+      prev: null as GameState | null,
+      scheduleComputer: computerPumpOwed(outcome.state),
+      computerDelayMs: computerStepDelayMs(outcome.state)
+    };
+  }
+
   /** Detect a just-finished ranked game and POST it to the app's report route. */
   private async reportFinishedMatchToApp(prev: GameState, next: GameState): Promise<void> {
     const match = detectFinishedMatch(prev, next);
@@ -1228,6 +1312,7 @@ export default class GameRoomServer implements Party.Server {
         this.room.broadcast(JSON.stringify(message));
       }
       this.snapshot = null;
+      clearUndoHistory(this.room.id);
       try {
         await this.room.storage.delete(SNAPSHOT_KEY);
         await this.room.storage.deleteAlarm();
@@ -1290,6 +1375,7 @@ export default class GameRoomServer implements Party.Server {
           this.room.broadcast(JSON.stringify(message));
         }
         this.snapshot = null;
+        clearUndoHistory(this.room.id);
         await this.room.storage.delete(SNAPSHOT_KEY);
       });
       // Drop it from the lobby directory too, so the room browser stops listing it.
@@ -1319,7 +1405,10 @@ export default class GameRoomServer implements Party.Server {
               return { denied: authority.reason ?? "Only the host can reset this room.", snapshot: previous };
             }
           }
-          const state = this.makeState(this.resetOptionsFor(previous, body));
+          // A reset wipes the running game — drop any undo history so the new
+        // game cannot roll back into the old one.
+        clearUndoHistory(this.room.id);
+        const state = this.makeState(this.resetOptionsFor(previous, body));
           // Carry room membership (host, seats, observers) across a game reset.
           state.room = previous.state.room ?? null;
           this.snapshot = {
@@ -1350,6 +1439,49 @@ export default class GameRoomServer implements Party.Server {
         const action = body.action;
         const outcome = await this.serialized(async () => {
           const current = this.ensureSnapshot();
+          // OPTIONAL Undo mode: the HTTP action fallback mirrors the WebSocket
+          // path. UNDO_MOVE pops+restores the server-side prior snapshot; every
+          // other action first records its PRE-action state on the undo stack.
+          if (action.type === "UNDO_MOVE") {
+            const undoFail = (message: string) => ({
+              result: { state: current.state, events: [], errors: [{ code: "ACTION_NOT_LEGAL", message }] },
+              prev: current.state,
+              applied: false,
+              replyBase: this.snapshot ?? current,
+              scheduleComputer: false,
+              computerDelayMs: 0
+            });
+            if (!undoModeEnabled(current.state)) {
+              return undoFail("Undo mode is off for this game.");
+            }
+            if (!actorIsRoomParticipant(current.state, actorClientId, actorUserId)) {
+              return undoFail("Only a member of this room can undo.");
+            }
+            const undone = applyUndoMove(this.room.id, current.state, action.playerId);
+            if (!undone.undone) {
+              return undoFail(undone.reason);
+            }
+            this.snapshot = {
+              roomId: this.room.id,
+              version: current.version + 1,
+              updatedAt: new Date().toISOString(),
+              ...this.creationMeta(undone.state),
+              state: undone.state
+            };
+            await this.persist();
+            await this.broadcastSnapshot();
+            return {
+              result: { state: undone.state, events: [], errors: [] },
+              // prev === next: an undo can never finish a game, so match
+              // detection is a no-op.
+              prev: undone.state,
+              applied: true,
+              replyBase: this.snapshot,
+              scheduleComputer: computerPumpOwed(undone.state),
+              computerDelayMs: computerStepDelayMs(undone.state)
+            };
+          }
+          recordUndoSnapshot(this.room.id, current.state);
           const result = applyAction(current.state, action, {
             entropy: freshEntropy(),
             now: Date.now(),

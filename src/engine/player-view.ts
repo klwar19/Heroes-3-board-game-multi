@@ -18,14 +18,16 @@ function cloneSerializable<T>(value: T): T {
 
 /**
  * Redact a FACE-DOWN tile for a player view: hide its identity (`tileDefId`) AND
- * its designer Ⅶ-field designation (`viiField`), so a hidden center slot's forced
- * objective (Grail / Dragon Utopia / town) is not leaked before discovery. Every
- * other field (band label, borders, pending token) stays — the printed BACK is
- * public. Face-up tiles are never passed here.
+ * its designer Ⅶ-field designation (`viiField`) plus its bonus (`viiFieldReward` /
+ * `viiFieldVp`), so a hidden center slot's forced objective and reward are not
+ * leaked before discovery. Every other field (band label, borders, pending token)
+ * stays — the printed BACK is public. Face-up tiles are never passed here.
  */
 function maskFaceDownTile(tile: MapTileState): MapTileState {
   const masked: MapTileState = { ...tile, tileDefId: "hidden" };
   delete masked.viiField;
+  delete masked.viiFieldReward;
+  delete masked.viiFieldVp;
   return masked;
 }
 

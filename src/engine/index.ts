@@ -167,6 +167,7 @@ export {
   spellTimingKind
 } from "./effects";
 export type { SpellLadderRow, SpellTimingKind } from "./effects";
+export { appendEvent } from "./events";
 export { getPlayerView, OBSERVER_VIEWER_SEAT, PASSWORD_REDACTED, redactStateForSeat } from "./player-view";
 export { createSeededRandom } from "./random";
 export {
@@ -329,6 +330,8 @@ export {
   MAX_GATES_PER_PAIR,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
+  MAX_VII_FIELD_REWARD_AMOUNT,
+  MAX_VII_FIELD_VP,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
@@ -337,6 +340,8 @@ export {
   revertCustomMapPresetOptions,
   sanitizeCustomMapObject,
   sanitizeCustomMapPreset,
+  sanitizeViiFieldReward,
+  sanitizeViiFieldVp,
   secretFeatureDemandWarnings,
   tileMatchesSecretFeature,
   TIMED_EFFECT_KIND_LABELS,
@@ -672,6 +677,7 @@ export type {
   UnitType,
   UnitId,
   UnitTransformState,
+  ViiFieldReward,
   VictoryPointObjective,
   VisitStep,
   VpLedgerEntry,

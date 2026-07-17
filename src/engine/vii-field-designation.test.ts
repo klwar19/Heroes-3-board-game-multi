@@ -15,7 +15,7 @@ import {
   validateCustomMapPlan,
   getScenario
 } from "./adventure-setup";
-import { applyAction, createAdventureLobbyState } from "./index";
+import { applyAction, computeVictoryPoints, createAdventureLobbyState } from "./index";
 import { getPlayerView } from "./player-view";
 import {
   describeCustomMapPresetEntries,
@@ -28,7 +28,8 @@ import type {
   MapFieldState,
   MapSpaceId,
   MapTileState,
-  PlayerId
+  PlayerId,
+  ViiFieldReward
 } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -528,6 +529,136 @@ describe("objectives options", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 7b. Designer reward + Victory Points on a Ⅶ objective center.
+// ---------------------------------------------------------------------------
+describe("Ⅶ designation — designer reward + Victory Points", () => {
+  // A conquest game whose single center is a designer Grail Ⅶ objective (a plain
+  // Lvl-VII bank in conquest mode — the consolation path), optionally carrying a
+  // designer bonus. Valuables isolate the reward: the printed clear reward is
+  // gold, so a valuables gain can ONLY be the designer reward.
+  function grailBonusGame(bonus?: { reward?: ViiFieldReward; vp?: number }): GameState {
+    return createAdventureGameState({
+      seed: "vii-bonus-reward",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "conquest",
+      customMap: [
+        ...startPlans(),
+        {
+          row: CENTER.row,
+          col: CENTER.col,
+          group: "center",
+          faceDown: false,
+          tileDefId: "C2", // C2 prints a Grail Ⅶ field
+          viiField: "grail",
+          ...(bonus?.reward ? { viiFieldReward: bonus.reward } : {}),
+          ...(bonus?.vp !== undefined ? { viiFieldVp: bonus.vp } : {})
+        }
+      ]
+    });
+  }
+
+  it("materializes the designer reward + VP onto the Ⅶ field and grants them on the first clear", () => {
+    const state = grailBonusGame({ reward: { valuables: 4 }, vp: 5 });
+    const field = objectiveField(state)!;
+    expect(field.viiReward).toEqual({ valuables: 4 });
+    expect(field.viiVp).toBe(5);
+    expect(field.viiBonusClaimed).toBeUndefined();
+
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = field.spaceId;
+    const valuablesBefore = state.players.p1.resources.valuables;
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+
+    // Observable: valuables rose by EXACTLY the designer reward, the capturer's VP
+    // ledger recorded the designer VP, and the claim latched.
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 4);
+    expect(state.adventure!.vpLedger?.p1?.viiCenterVp).toBe(5);
+    expect(field.viiBonusClaimed).toBe(true);
+  });
+
+  it("grants the bonus ONCE — a re-visit never re-pays it (the claim latch)", () => {
+    const state = grailBonusGame({ reward: { valuables: 4 }, vp: 5 });
+    const field = objectiveField(state)!;
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = field.spaceId;
+    const valuablesBefore = state.players.p1.resources.valuables;
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+    beginFieldVisit(state, hero.id, field.spaceId, true); // a later revisit
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 4); // still just one grant
+    expect(state.adventure!.vpLedger?.p1?.viiCenterVp).toBe(5);
+  });
+
+  it("CONTROL: a Ⅶ designation with no reward / VP grants nothing extra", () => {
+    const state = grailBonusGame();
+    const field = objectiveField(state)!;
+    expect(field.viiReward).toBeUndefined();
+    expect(field.viiVp).toBeUndefined();
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = field.spaceId;
+    const valuablesBefore = state.players.p1.resources.valuables;
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore);
+    expect(state.adventure!.vpLedger?.p1?.viiCenterVp).toBeUndefined();
+  });
+
+  it("scores the captured-Ⅶ VP in computeVictoryPoints (CONTROL: no row without it)", () => {
+    const state = grailBonusGame({ vp: 5 });
+    state.adventure!.mapPreset = { ...(state.adventure!.mapPreset ?? {}), victoryPoints: { enabled: true } };
+    const field = objectiveField(state)!;
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = field.spaceId;
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+    const p1 = computeVictoryPoints(state).breakdown.find((row) => row.playerId === "p1")!;
+    const capturedRow = p1.rows.find((row) => row.label.includes("objectives captured"));
+    expect(capturedRow?.vp).toBe(5);
+
+    const control = grailBonusGame();
+    control.adventure!.mapPreset = { victoryPoints: { enabled: true } };
+    const cHero = getMainHero(control, "p1")!;
+    const cField = objectiveField(control)!;
+    cHero.spaceId = cField.spaceId;
+    beginFieldVisit(control, cHero.id, cField.spaceId, false);
+    const cp1 = computeVictoryPoints(control).breakdown.find((row) => row.playerId === "p1")!;
+    expect(cp1.rows.some((row) => row.label.includes("objectives captured"))).toBe(false);
+  });
+
+  it("masks the reward + VP on a FACE-DOWN center in other players' views (with a face-up CONTROL)", () => {
+    const state = createAdventureGameState({
+      seed: "vii-bonus-mask",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "conquest",
+      customMap: [
+        ...startPlans(),
+        {
+          row: CENTER.row,
+          col: CENTER.col,
+          group: "center",
+          faceDown: true,
+          viiField: "dragon_utopia",
+          viiFieldReward: { gold: 8 },
+          viiFieldVp: 4
+        }
+      ]
+    });
+    const centerTile = () =>
+      Object.values(state.adventure!.tiles).find((tile) => tile.centerRow === CENTER.row && tile.centerCol === CENTER.col)!;
+    // The authoritative state keeps the bonus…
+    expect(centerTile().viiFieldReward).toEqual({ gold: 8 });
+    expect(centerTile().viiFieldVp).toBe(4);
+    // …but a player view MASKS it on the still-face-down tile (like viiField).
+    const view = getPlayerView(state, "p2");
+    const maskedTile = Object.values(view.adventure!.tiles).find(
+      (tile) => tile.centerRow === CENTER.row && tile.centerCol === CENTER.col
+    )!;
+    expect(maskedTile.viiField).toBeUndefined();
+    expect(maskedTile.viiFieldReward).toBeUndefined();
+    expect(maskedTile.viiFieldVp).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 8. Sanitize / validate / describe.
 // ---------------------------------------------------------------------------
 describe("sanitize / validate / describe", () => {
@@ -552,6 +683,50 @@ describe("sanitize / validate / describe", () => {
     expect(center?.viiField).toBe("grail");
     expect(near?.viiField).toBeUndefined();
     expect(garbageCenter?.viiField).toBeUndefined();
+  });
+
+  it("validateCustomMapPlan drops a reward / VP that has no valid Ⅶ designation", () => {
+    const { accepted } = validateCustomMapPlan(
+      [
+        ...startPlans(),
+        // Center + valid designation → the bonus is KEPT.
+        {
+          row: CENTER.row,
+          col: CENTER.col,
+          group: "center",
+          faceDown: true,
+          viiField: "grail",
+          viiFieldReward: { gold: 6 },
+          viiFieldVp: 3
+        },
+        // A bonus on a non-center slot is meaningless — the whole thing is stripped.
+        {
+          row: 7,
+          col: 6,
+          group: "near",
+          faceDown: true,
+          viiFieldReward: { gold: 5 },
+          viiFieldVp: 2
+        } as CustomMapTilePlan,
+        // A center slot with a bonus but NO designation — the orphan bonus is dropped.
+        {
+          row: 11,
+          col: 2,
+          group: "center",
+          faceDown: true,
+          viiFieldReward: { valuables: 9 }
+        } as CustomMapTilePlan
+      ],
+      scenario
+    );
+    const center = accepted.find((plan) => plan.group === "center" && plan.row === CENTER.row);
+    const near = accepted.find((plan) => plan.group === "near");
+    const orphanCenter = accepted.find((plan) => plan.group === "center" && plan.row === 11);
+    expect(center?.viiFieldReward).toEqual({ gold: 6 });
+    expect(center?.viiFieldVp).toBe(3);
+    expect(near?.viiFieldReward).toBeUndefined();
+    expect(near?.viiFieldVp).toBeUndefined();
+    expect(orphanCenter?.viiFieldReward).toBeUndefined();
   });
 
   it("sanitizeCustomMapPreset keeps valid objectives and drops garbage", () => {

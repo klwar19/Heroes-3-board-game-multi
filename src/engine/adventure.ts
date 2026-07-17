@@ -46,6 +46,7 @@ import { clearResetVote } from "./reset-vote";
 import {
   computeVictoryPoints,
   recordVpUtopiaDefeat,
+  recordVpViiCenter,
   victoryPointsConfig,
   victoryPointsModeActive
 } from "./victory-points";
@@ -532,6 +533,19 @@ export function materializeTileFields(
     if (isWater) {
       field.terrain = "water";
     }
+    // Fold the designer Ⅶ-objective bonus onto the tile's difficulty-7 field
+    // (the objective — every center tile has exactly one). Attached whether or
+    // not the location was overridden above, so a designation whose bonus rides a
+    // printed-matching field still carries it. Granted once at visit time; the
+    // `viiBonusClaimed` latch lives on the field so a re-capture never re-pays.
+    if (tile.viiField && fieldDef.difficulty === 7) {
+      if (tile.viiFieldReward) {
+        field.viiReward = tile.viiFieldReward;
+      }
+      if (tile.viiFieldVp !== undefined) {
+        field.viiVp = tile.viiFieldVp;
+      }
+    }
     adventure.fields[spaceId] = field;
   }
 }
@@ -719,19 +733,28 @@ export function getHeroMovementCapabilities(state: GameState, hero: HeroState): 
       } else if (modifier.type === "HERO_WATER_WALK") {
         waterWalk = true;
       } else if (modifier.type === "HERO_PATHFINDING") {
-        // Pathfinding always grants the "regular" set: pass over blocked fields,
-        // through Neutral/enemy fields, and across yellow borders. The expert
-        // side adds water-walking (no coastline halt) and Surface↔Subterranean
-        // crossing — a strict superset, so it composes with the basic flags.
-        moveThrough = true;
+        // Passing THROUGH Neutral-Unit / enemy-Hero fields (Combat only if the
+        // hero ENDS there) is the PRINTED BASIC power — granted by both sides in
+        // both modes.
         passEncounters = true;
-        crossSealedBorders = true;
-        // House rule ("pathfinding-expert"): the Expert side additionally crosses
-        // the coastline and steps Surface↔Subterranean. Off: expert Pathfinding
-        // grants nothing beyond the basic set (and its option is not offered).
-        if (modifier.expert && houseRuleEnabled(state, "pathfinding-expert")) {
-          waterWalk = true;
-          crossLayers = true;
+        if (houseRuleEnabled(state, "pathfinding-expert")) {
+          // BINH house rule ON: the basic side bundles BOTH printed halves
+          // (pass-through AND crossing yellow borders / blocked fields); the
+          // expert side then adds the coastline (no halt) + Surface↔Subterranean
+          // crossing — a strict superset.
+          moveThrough = true;
+          crossSealedBorders = true;
+          if (modifier.expert) {
+            waterWalk = true;
+            crossLayers = true;
+          }
+        } else if (modifier.expert) {
+          // Printed card (rule OFF / legacy): crossing yellow borders & blocked
+          // fields (never ending on one) is the EXPERT power. The basic side
+          // grants only the pass-through above, and NEITHER side crosses the
+          // coastline or steps Surface↔Subterranean.
+          moveThrough = true;
+          crossSealedBorders = true;
         }
       }
     }
@@ -2549,6 +2572,8 @@ function applyRandomTownFlag(state: GameState, playerId: PlayerId, field: MapFie
   if (firstCapture) {
     gainResources(state, playerId, { gold: 10 }, "captured the Random Town");
   }
+  // Designer Ⅶ-objective bonus (latched, so only the first captor is paid).
+  grantViiFieldBonus(state, playerId, field);
 }
 
 /** The active win condition; absent on old snapshots means "conquest". */
@@ -3063,6 +3088,37 @@ function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, field
 }
 
 /**
+ * Grant the designer's Ⅶ-objective bonus ({@link MapFieldState.viiReward} resources
+ * + {@link MapFieldState.viiVp} Victory Points) the FIRST time the objective is
+ * cleared / captured. The `viiBonusClaimed` latch makes it strictly one-time, so a
+ * later re-capture (a Dragon Conqueror who lost then retook the center) never
+ * re-pays it — the bonus rewards whoever clears it first. VP is recorded
+ * unconditionally (it scores only in VP mode); the resource reward flows through
+ * the normal `gainResources` plumbing. A no-op on every field WITHOUT a bonus —
+ * i.e. everything except a designer-designated Ⅶ center — so it is safe to call
+ * from each objective handler.
+ */
+function grantViiFieldBonus(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+  if (field.viiBonusClaimed) {
+    return;
+  }
+  const reward = field.viiReward;
+  const hasReward =
+    !!reward && ((reward.gold ?? 0) > 0 || (reward.buildingMaterials ?? 0) > 0 || (reward.valuables ?? 0) > 0);
+  const vp = field.viiVp ?? 0;
+  if (!hasReward && vp <= 0) {
+    return;
+  }
+  field.viiBonusClaimed = true;
+  if (hasReward) {
+    gainResources(state, playerId, reward, "the Ⅶ objective reward");
+  }
+  if (vp > 0) {
+    recordVpViiCenter(state, playerId, vp);
+  }
+}
+
+/**
  * Dragon Utopia bonus Search — the designer option (`objectives.utopiaBonusSearch`,
  * 1-3) grants the defeater an EXTRA Artifact-deck Search ON TOP of the printed
  * reward, reusing the same reward-queue plumbing every field search uses. No-op
@@ -3158,6 +3214,10 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     return;
   }
 
+  // Designer Ⅶ-objective bonus on the FIRST clear (guards just fell — this visit
+  // is reached only on a win). Latched, so the later dig revisit never re-pays.
+  grantViiFieldBonus(state, hero.controllerId, field);
+
   if (adventureVictoryMode(state) !== "grail") {
     if (!field.blackCube) {
       field.blackCube = true;
@@ -3212,6 +3272,10 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
   // the only durable trace of WHO cleared it. Runs in every mode (the objective
   // is meaningful outside Dragon Hunt, where the Utopia is a plain bank).
   recordVpUtopiaDefeat(state, hero.controllerId);
+
+  // Designer Ⅶ-objective bonus on the first clear, before any mode-specific
+  // handling (harmless in Dragon Hunt, where the win is declared right after).
+  grantViiFieldBonus(state, hero.controllerId, field);
 
   if (mode === "dragon-hunt") {
     declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia", {

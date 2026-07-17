@@ -364,15 +364,25 @@ export const extraAbilityCards: CardLibrary = {
     implementationStatus: "implemented",
     source: abilitySource("necromancy")
   },
-  // Pathfinding (Rampart Ranger Clancy's starting ability) — BINH house rule.
+  // Pathfinding (Rampart Ranger Clancy's starting ability).
   // engine: a current-turn HERO_PATHFINDING active effect drives the adventure
   // pathfinding (getHeroMovementCapabilities → canCrossEdge / classifyHeroStep).
-  //   Basic  → move over yellow borders & blocked fields (never ending on a
-  //            blocked one) and THROUGH Neutral-Unit / enemy-Hero fields
-  //            (Combat only if the Hero ends there).
-  //   Expert → all of Basic PLUS cross the coastline (land↔sea) with no halt and
-  //            step directly between the Surface and a Subterranean Tile with no
-  //            Gate — which Dimension Door and Fly cannot do. Spends a crown.
+  // What each SIDE grants depends on the "pathfinding-expert" house rule, decided
+  // at the capabilities read (not the static data), so BOTH options are always
+  // offered — a held crown is usable in every mode:
+  //   Rule OFF (printed card / legacy default):
+  //     Basic  → move THROUGH Neutral-Unit / enemy-Hero fields (Combat only if
+  //              the Hero ends there).
+  //     Expert → all of Basic PLUS move over yellow borders & blocked fields
+  //              (never ending on a blocked one). Spends a crown. NO coastline /
+  //              Subterranean crossing.
+  //   Rule ON (BINH default):
+  //     Basic  → bundles both printed halves (pass-through AND yellow-border /
+  //              blocked-field crossing).
+  //     Expert → all of Basic PLUS cross the coastline (land↔sea) with no halt
+  //              and step directly between the Surface and a Subterranean Tile
+  //              with no Gate — which Dimension Door and Fly cannot do. Spends a
+  //              crown.
   "ability.pathfinding": {
     id: "ability.pathfinding",
     name: "Pathfinding",
@@ -382,13 +392,16 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "map",
-      "Basic (Map): This turn your Hero can move over yellow borders and blocked fields (never ending on a blocked field), and through fields with Neutral Units and enemy Heroes — ending on such a field starts Combat. Expert (BINH house rule): also cross between land and sea with no penalty and move directly between the Surface and a Subterranean Tile without a Gate (unlike Dimension Door or Fly)."
+      "Basic (Map): This turn your Hero can move through fields with Neutral Units and enemy Heroes — ending on such a field starts Combat. Expert (spend a crown): also move over yellow borders and blocked fields (never ending on a blocked field). BINH house rule (pathfinding-expert, on by default): the basic side already crosses yellow borders & blocked fields, and the expert side additionally crosses between land and sea with no penalty and steps directly between the Surface and a Subterranean Tile without a Gate (unlike Dimension Door or Fly)."
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Basic: this turn pass over borders/blocked fields and through Neutral & enemy fields",
+          // Capabilities read decides what this grants: rule OFF → only the
+          // pass-through; rule ON (BINH) → also crosses yellow borders & blocked
+          // fields (both printed halves bundled).
+          label: "Basic: this turn move through Neutral & enemy Hero fields (and, with the BINH crossing rule, over yellow borders & blocked fields)",
           mapOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
@@ -403,13 +416,15 @@ export const extraAbilityCards: CardLibrary = {
           }
         },
         {
-          // House rule ("pathfinding-expert"): the Expert side crosses the
-          // coastline and steps Surface↔Subterranean without a Gate. Offered only
-          // while the rule is on; off keeps Pathfinding to its basic map movement.
-          label: "Expert: also cross the coastline and step into the Subterranean this turn (spend a crown)",
+          // Always offered when a crown is available (no house-rule gate). What
+          // the expert side adds is decided at the capabilities read: rule OFF →
+          // move over yellow borders & blocked fields (the printed Expert power);
+          // rule ON (BINH) → additionally cross the coastline and step
+          // Surface↔Subterranean without a Gate.
+          label:
+            "Expert (spend a crown): also move over yellow borders & blocked fields (never ending on one); with the BINH crossing rule, also cross the coastline and step into the Subterranean",
           mapOnly: true,
           expertOnly: true,
-          requiresHouseRule: "pathfinding-expert",
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {

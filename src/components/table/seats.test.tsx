@@ -6,6 +6,8 @@ import { CardZoomProvider } from "./zoom";
 import * as sound from "@/lib/sound";
 import { cardLibrary } from "@/data/cards/library";
 import {
+  CAST_A_SPELL_CARD_ID,
+  createAdventureGameState,
   createInitialGameState,
   describePermanentEffect,
   getLegalActions,
@@ -542,6 +544,85 @@ describe("HandFan — Spell Book window (house rule)", () => {
     // …and opening it shows the grimoire's blank-pages message.
     const book = screen.getByRole("dialog", { name: /Spell Book/i });
     expect(book.textContent).toMatch(/pages are blank/i);
+  });
+});
+
+describe("HandFan — Polish Cast a Spell offers Open Spell Book / List the spells", () => {
+  /** A combat state with the Polish Spell Book rule on, a Cast a Spell card in
+   *  hand and a Lightning Bolt refreshed in the Book. */
+  function polishCastState(): GameState {
+    const state = createInitialGameState("polish-cast-a-spell-ui");
+    const adventure = createAdventureGameState({
+      seed: "polish-cast-a-spell-ui-rules",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true }
+    });
+    state.adventure = adventure.adventure;
+    state.ruleset = "binh";
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+    state.players.p1.spellBook = ["spell.lightning_bolt"];
+    state.players.p1.spellBookUsed = [];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    return state;
+  }
+
+  function renderHand(state: GameState, handlers: { onSelectCardAction?: (a: unknown) => void; onAction?: (a: unknown) => void }) {
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={handlers.onSelectCardAction ?? (() => {})}
+          onAction={handlers.onAction ?? (() => {})}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("clicking Cast a Spell opens a menu with both options", () => {
+    renderHand(polishCastState(), {});
+    fireEvent.click(screen.getByRole("button", { name: /Cast a Spell card/i }));
+    expect(screen.getByRole("button", { name: /Open Spell Book/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /List the spells/i })).toBeTruthy();
+  });
+
+  it("'Open Spell Book' opens the full grimoire with the refreshed Spell's cast button", () => {
+    renderHand(polishCastState(), {});
+    fireEvent.click(screen.getByRole("button", { name: /Cast a Spell card/i }));
+    expect(screen.queryByRole("dialog", { name: /Spell Book/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Open Spell Book/i }));
+    const book = screen.getByRole("dialog", { name: /Spell Book/i });
+    expect(book.textContent).toContain("Lightning Bolt");
+    expect(screen.getAllByRole("button", { name: /^Cast →/i }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("'List the spells' lists the castable Book Spell and starts the normal cast (arms targeting)", () => {
+    const onSelectCardAction = vi.fn();
+    renderHand(polishCastState(), { onSelectCardAction });
+    fireEvent.click(screen.getByRole("button", { name: /Cast a Spell card/i }));
+    fireEvent.click(screen.getByRole("button", { name: /List the spells/i }));
+
+    // The refreshed Lightning Bolt appears as a compact shortcut…
+    const castShortcut = screen.getByRole("button", { name: /Cast Lightning Bolt/i });
+    fireEvent.click(castShortcut);
+
+    // …and picking it arms the NORMAL board-targeting cast (fromSpellBook + enabler).
+    expect(onSelectCardAction).toHaveBeenCalledTimes(1);
+    expect(onSelectCardAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "CAST_SPELL",
+        cardId: "spell.lightning_bolt",
+        fromSpellBook: true,
+        castEnablerCardId: CAST_A_SPELL_CARD_ID
+      })
+    );
   });
 });
 

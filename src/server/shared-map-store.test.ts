@@ -65,11 +65,53 @@ describe("shared-map store (built-in backend)", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("deletes a map so it stops listing (anyone may delete)", () => {
+  it("deletes a map so it stops listing (anyone may delete an unowned map)", () => {
     const id = uniqueId("delete");
     saveSharedMap({ id, name: "Doomed", scenarioId: "skirmish", players: 2, tiles: [] });
     expect(findMap(id)).toBeDefined();
     deleteSharedMap(id);
+    expect(findMap(id)).toBeUndefined();
+  });
+});
+
+describe("shared-map store — ownership gate", () => {
+  const owner = { userId: "u_owner", role: "player" as const };
+  const stranger = { userId: "u_stranger", role: "player" as const };
+  const admin = { userId: "u_admin", role: "admin" as const };
+
+  it("stamps the creator as owner and blocks a stranger from editing OR deleting it", () => {
+    const id = uniqueId("owned");
+    const created = saveSharedMap({ id, name: "Mine", scenarioId: "skirmish", players: 2, tiles: [] }, owner);
+    expect(created.ok && created.map.createdByUserId).toBe("u_owner");
+
+    const strangerEdit = saveSharedMap(
+      { id, name: "Hijacked", scenarioId: "skirmish", players: 2, tiles: [] },
+      stranger
+    );
+    expect(strangerEdit.ok).toBe(false);
+    expect(strangerEdit.ok === false && strangerEdit.forbidden).toBe(true);
+    expect(findMap(id)?.name).toBe("Mine"); // untouched
+
+    expect(deleteSharedMap(id, stranger).ok).toBe(false);
+    expect(findMap(id)).toBeDefined(); // still there
+
+    // Controls that the gate is not a blanket block: the owner may edit, an admin
+    // may delete, and an owner-edit preserves ownership (no silent transfer).
+    const ownerEdit = saveSharedMap({ id, name: "Renamed", scenarioId: "skirmish", players: 2, tiles: [] }, owner);
+    expect(ownerEdit.ok).toBe(true);
+    expect(findMap(id)?.name).toBe("Renamed");
+    expect(findMap(id)?.createdByUserId).toBe("u_owner");
+
+    expect(deleteSharedMap(id, admin).ok).toBe(true);
+    expect(findMap(id)).toBeUndefined();
+  });
+
+  it("leaves an UNOWNED (legacy / guest) map editable and deletable by anyone", () => {
+    const id = uniqueId("legacy");
+    saveSharedMap({ id, name: "Shared", scenarioId: "skirmish", players: 2, tiles: [] }); // no actor → unowned
+    expect(findMap(id)?.createdByUserId).toBeNull();
+    expect(saveSharedMap({ id, name: "Edited", scenarioId: "skirmish", players: 2, tiles: [] }, stranger).ok).toBe(true);
+    expect(deleteSharedMap(id, stranger).ok).toBe(true);
     expect(findMap(id)).toBeUndefined();
   });
 });

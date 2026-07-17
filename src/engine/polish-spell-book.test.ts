@@ -5,6 +5,7 @@ import {
   createAdventureGameState,
   createInitialGameState,
   getLegalActions,
+  spellLimitFor,
   type GameAction,
   type GameState,
   type LegalAction
@@ -221,7 +222,7 @@ describe("Polish Spell Book lifecycle", () => {
     expect(resolved.players.p1.spellBook).not.toContain("spell.lightning_bolt");
   });
 
-  it("Mysticism refreshes the selected Book spell instead of moving it to hand", () => {
+  it("basic Mysticism refreshes the selected Book spell AND returns Cast a Spell to hand", () => {
     const state = polishCombat("polish-book-mysticism");
     state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism"];
     state.players.p1.spellBook = ["spell.lightning_bolt"];
@@ -233,10 +234,48 @@ describe("Polish Spell Book lifecycle", () => {
     expect(mysticism).toBeTruthy();
     const resolved = passAll(applyOk(opened, mysticism!.action));
 
+    // The Spell flips back to refreshed…
     expect(resolved.players.p1.spellBook).toContain("spell.lightning_bolt");
     expect(resolved.players.p1.spellBookUsed).not.toContain("spell.lightning_bolt");
     expect(resolved.players.p1.hand).not.toContain("spell.lightning_bolt");
-    expect(resolved.players.p1.discard).toContain(CAST_A_SPELL_CARD_ID);
+    // …and the reference sheet's "Cast a Spell returns → Hand" clause fires, so the
+    // consumed enabler comes back to hand rather than lingering in the discard pile.
+    expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(resolved.players.p1.discard).not.toContain(CAST_A_SPELL_CARD_ID);
+  });
+
+  it("expert Mysticism adds +1 Spell Power to the very cast it answers", () => {
+    // CONTROL half: basic Mysticism leaves the Lightning Bolt at its printed 2.
+    const basicState = polishCombat("polish-book-mysticism-basic-power");
+    basicState.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism"];
+    basicState.players.p1.spellBook = ["spell.lightning_bolt"];
+    const basicOpened = applyOk(basicState, castAtSkeletons(basicState, "spell.lightning_bolt").action);
+    const basicMyst = getLegalActions(basicOpened, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.mysticism"
+    );
+    const basicResolved = passAll(applyOk(basicOpened, basicMyst!.action));
+    expect(basicResolved.combat!.units.unit_p2_skeletons.damage).toBe(2);
+
+    // Expert half: a crown pays the expert side and the cast lands at 2 + 1 = 3.
+    const state = polishCombat("polish-book-mysticism-expert-power");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism"];
+    state.players.p1.spellBook = ["spell.lightning_bolt"];
+    state.players.p1.limits.expertUses = 1;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+
+    const opened = applyOk(state, castAtSkeletons(state, "spell.lightning_bolt").action);
+    const expertMyst = getLegalActions(opened, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "ability.mysticism" &&
+        legal.action.mode === "expert"
+    );
+    expect(expertMyst, "expert Mysticism should be offered with a crown available").toBeTruthy();
+    const resolved = passAll(applyOk(opened, expertMyst!.action));
+    expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(3);
+    // Expert still refreshes the Spell and returns the enabler like basic.
+    expect(resolved.players.p1.spellBook).toContain("spell.lightning_bolt");
+    expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
   });
 
   it("refreshes every used Spell at the beginning of a new game round", () => {
@@ -299,7 +338,68 @@ describe("Polish Spell Book lifecycle", () => {
     });
     expect(state.players.p1.spellBook).toHaveLength(1);
     expect(state.players.p1.spellBookUsed).toHaveLength(1);
-    expect(state.players.p1.discard).toContain(CAST_A_SPELL_CARD_ID);
+    // Reference sheet: these recovery cards ALSO return one Cast a Spell enabler
+    // from the discard pile to hand (fired up front, before the refresh pick).
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(state.players.p1.discard).not.toContain(CAST_A_SPELL_CARD_ID);
+  });
+
+  it("names the Spell Book (not the discard pile) when every recover option is a Book refresh, and refreshes exactly the picked Spell", () => {
+    let state = createAdventureGameState({
+      seed: "polish-book-refresh-prompt",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true }
+    });
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste", "spell.slow", "spell.lightning_bolt"];
+    // Nothing in the discard pile — so every recover option is a Book refresh.
+    state.players.p1.discard = [];
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(true);
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the Polish Book refresh choice");
+    }
+    // ONE option per USED Book Spell — the player picks which to refresh.
+    expect(state.pendingChoice.options).toHaveLength(3);
+    expect(state.pendingChoice.options.every((option) => option.label.startsWith("Refresh"))).toBe(true);
+    // Honest prompt: it NAMES the Spell Book and never the discard pile (nothing
+    // is being taken off the discard here).
+    expect(state.pendingChoice.prompt).toMatch(/Spell Book/);
+    expect(state.pendingChoice.prompt).not.toMatch(/discard pile/i);
+
+    // Pick Slow: exactly that Spell moves used → refreshed (castable again),
+    // leaving the other two used.
+    const slowIndex = state.pendingChoice.discardPick?.cardIds.indexOf("spell.slow") ?? -1;
+    expect(slowIndex).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice.id,
+      optionIndex: slowIndex
+    });
+    expect(state.players.p1.spellBook).toEqual(["spell.slow"]);
+    expect(new Set(state.players.p1.spellBookUsed)).toEqual(new Set(["spell.haste", "spell.lightning_bolt"]));
+  });
+
+  it("names BOTH the discard pile and the Spell Book when the recover pick mixes them", () => {
+    const state = createAdventureGameState({
+      seed: "polish-book-refresh-mixed",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true }
+    });
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    // A hero-specialty in the discard is a genuine "spell-or-specialty" discard
+    // candidate (not excluded like a discard Spell is), so the pick mixes a
+    // discard take with a Book refresh.
+    state.players.p1.discard = ["specialty.ciele.1"];
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell-or-specialty" })).toBe(true);
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the Polish Book mixed recover choice");
+    }
+    expect(state.pendingChoice.prompt).toMatch(/discard pile/i);
+    expect(state.pendingChoice.prompt).toMatch(/Spell Book/);
   });
 
   it("lets Ciele I refresh a used Magic Arrow and Ciele IV cast a refreshed one for free", () => {
@@ -411,6 +511,91 @@ describe("Polish Spell Book lifecycle", () => {
     });
     expect(state.players.p1.spellBook).toHaveLength(1);
     expect(state.players.p1.hand.every((cardId) => cardLibrary[cardId]?.kind !== "spell")).toBe(true);
+  });
+
+  it("Crown of Dragontooth option A does BOTH: returns Cast a Spell to hand AND refreshes a used Book spell", () => {
+    // USER REQUIREMENT: in Book mode the Crown must ALSO return the Cast a Spell
+    // enabler (Discard→Hand) and refresh a used Book spell — the same "√: return
+    // Cast a Spell (Discard→Hand). Refresh spell (1)" recover arm the four
+    // discard-recovery artifacts carry. Option A (TAKE_FROM_DISCARD, filter
+    // "spell") routes through the shared openDiscardPickChoice Polish path.
+    let state = createAdventureGameState({
+      seed: "polish-book-crown-recover",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true }
+    });
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.hand = ["artifact.crown_of_dragontooth"];
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste", "spell.slow"];
+    state.players.p1.discard = [CAST_A_SPELL_CARD_ID, "stat.attack"];
+
+    const recover = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.crown_of_dragontooth" &&
+        legal.action.optionIndex === 0
+    );
+    expect(recover, "Crown option A recover arm should be playable off the used Book").toBeTruthy();
+    state = applyOk(state, recover!.action);
+
+    // The Cast a Spell enabler comes back to hand up front (before the refresh pick).
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(state.players.p1.discard).not.toContain(CAST_A_SPELL_CARD_ID);
+
+    // …and the recover arm offers refreshing a used Book spell (not "take to hand").
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the used-Spell refresh choice");
+    }
+    expect(state.pendingChoice.options.every((option) => option.label.startsWith("Refresh"))).toBe(true);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice.id,
+      optionIndex: 0
+    });
+    expect(state.players.p1.spellBook).toContain("spell.haste");
+    expect(state.players.p1.spellBookUsed).not.toContain("spell.haste");
+    // The refreshed Book spell went to the Book, never to the hand — the only
+    // "spell"-kind card the recover ever put in hand is the Cast a Spell enabler.
+    expect(state.players.p1.hand).not.toContain("spell.haste");
+    expect(state.players.p1.hand).not.toContain("spell.slow");
+    expect(state.players.p1.hand.filter((cardId) => cardLibrary[cardId]?.kind === "spell")).toEqual([
+      CAST_A_SPELL_CARD_ID
+    ]);
+  });
+
+  it("CONTROL: with the rule OFF, Crown option A takes 2 Spells from discard to hand and ignores Cast a Spell", () => {
+    let state = createAdventureGameState({
+      seed: "polish-book-crown-recover-off",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": false }
+    });
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.hand = ["artifact.crown_of_dragontooth"];
+    state.players.p1.discard = [CAST_A_SPELL_CARD_ID, "spell.haste", "spell.slow"];
+
+    const recover = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.crown_of_dragontooth" &&
+        legal.action.optionIndex === 0
+    );
+    expect(recover, "classic Crown option A is a discard Spell recall").toBeTruthy();
+    state = applyOk(state, recover!.action);
+    // Classic behaviour: the discard Spells themselves are the picks (no "Refresh"
+    // wording), and the Cast a Spell card is never touched by the recover.
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the classic discard pick");
+    }
+    expect(state.pendingChoice.options.every((option) => !option.label.startsWith("Refresh"))).toBe(true);
+    expect(state.players.p1.discard).toContain(CAST_A_SPELL_CARD_ID);
   });
 });
 
@@ -536,5 +721,249 @@ describe("Polish Mage Guild", () => {
     gainExperience(state, "p1", 8);
     expect(state.heroes.hero_p1.level).toBe(5);
     expect(ownedCount(state.players.p1, CAST_A_SPELL_CARD_ID)).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reaction gating (Task B): casting a Book Spell as an instant/reaction still
+// needs — and consumes — a Cast a Spell card, exactly like an on-turn cast.
+// ---------------------------------------------------------------------------
+
+describe("Polish Spell Book — casting a Book Spell as a reaction requires Cast a Spell", () => {
+  function openBloodlustWindow(seed: string, hand: string[]): GameState {
+    // Bloodlust buffs a ground/flying attacker in the attack window — the flying
+    // Griffins set adjacent to the Skeletons (the spell-book.test.ts pattern).
+    const state = polishCombat(seed);
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.position = 9;
+    state.players.p1.hand = hand;
+    state.players.p1.spellBook = ["spell.bloodlust"];
+    const opened = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(opened.reactionWindow, "declaring the attack opens the buff window").toBeTruthy();
+    return opened;
+  }
+
+  it("offers the Book reaction only with a Cast a Spell card in hand, and consumes it", () => {
+    const opened = openBloodlustWindow("polish-react-with", [CAST_A_SPELL_CARD_ID]);
+    const play = getLegalActions(opened, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "spell.bloodlust" &&
+        Boolean(legal.action.fromSpellBook)
+    );
+    expect(play, "a Book reaction is offered when the enabler is in hand").toBeTruthy();
+    expect(play!.action).toMatchObject({ castEnablerCardId: CAST_A_SPELL_CARD_ID });
+
+    const resolved = passAll(applyOk(opened, play!.action));
+    // The enabler was spent (hand → discard) and the Spell is now used.
+    expect(resolved.players.p1.hand).not.toContain(CAST_A_SPELL_CARD_ID);
+    expect(resolved.players.p1.discard).toContain(CAST_A_SPELL_CARD_ID);
+    expect(resolved.players.p1.spellBook).not.toContain("spell.bloodlust");
+    expect(resolved.players.p1.spellBookUsed).toContain("spell.bloodlust");
+  });
+
+  it("CONTROL: without a Cast a Spell card in hand the Book reaction is not offered", () => {
+    const opened = openBloodlustWindow("polish-react-without", []);
+    const offered = getLegalActions(opened, "p1").some(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "spell.bloodlust" &&
+        Boolean(legal.action.fromSpellBook)
+    );
+    expect(offered, "no enabler in hand → the Book reaction is gated out").toBe(false);
+  });
+
+  it("CONTROL: resolution rejects a Book reaction when the enabler is not actually in hand", () => {
+    const opened = openBloodlustWindow("polish-react-forge", [CAST_A_SPELL_CARD_ID]);
+    const play = getLegalActions(opened, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "spell.bloodlust" &&
+        Boolean(legal.action.fromSpellBook)
+    );
+    // Palm the enabler away, then force the very same action: the resolution guard
+    // (consumePolishSpellBookCast) must reject it — offer removal is not the only line.
+    opened.players.p1.hand = [];
+    const result = applyAction(opened, play!.action);
+    expect(result.errors.length, "a Book reaction with no enabler in hand must be rejected").toBeGreaterThan(0);
+    expect(result.state.players.p1.spellBook).toContain("spell.bloodlust");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Intelligence (reference sheet): basic = "Start of Combat: Cast a Spell" (the
+// SPELL_CAST_ANYTIME freedom, limit 1); expert adds "+1 Limit" (limit rises to
+// 2 — NOT the base game's unlimited). In Book mode either still needs a Cast a
+// Spell card to actually cast (the shared gate).
+// ---------------------------------------------------------------------------
+
+describe("Polish Intelligence", () => {
+  function playIntelligence(state: GameState, mode: "basic" | "expert"): GameState {
+    state.players.p1.hand = ["ability.intelligence"];
+    state.players.p1.limits.expertUses = 1;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.intelligence" &&
+        legal.action.mode === mode
+    );
+    expect(play, `Intelligence (${mode}) should be playable`).toBeTruthy();
+    return applyOk(state, play!.action);
+  }
+
+  it("Expert Intelligence raises the per-round Spell limit by exactly 1", () => {
+    const after = playIntelligence(polishCombat("polish-intelligence-expert"), "expert");
+    expect(spellLimitFor(after, after.players.p1)).toBe(2);
+  });
+
+  it("basic Intelligence grants the cast freedom but no extra limit (still 1)", () => {
+    const after = playIntelligence(polishCombat("polish-intelligence-basic"), "basic");
+    expect(spellLimitFor(after, after.players.p1)).toBe(1);
+  });
+
+  it("CONTROL: with the rule OFF, Expert Intelligence lifts the limit entirely", () => {
+    const state = createInitialGameState("polish-intelligence-off");
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.players.p1.hand = ["ability.intelligence"];
+    state.players.p1.limits.expertUses = 1;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.intelligence" &&
+        legal.action.mode === "expert"
+    );
+    const after = applyOk(state, play!.action);
+    expect(spellLimitFor(after, after.players.p1)).toBe(Number.POSITIVE_INFINITY);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Discard-recovery artifacts (reference sheet): "√: return Cast a Spell
+// (Discard→Hand). Refresh spell (1)". Rib Cage additionally shuffles.
+// ---------------------------------------------------------------------------
+
+describe("Polish Spell Book — discard-recovery artifacts", () => {
+  const RECOVERY_ARTIFACTS = [
+    "artifact.rib_cage",
+    "artifact.helm_of_the_alabaster_unicorn",
+    "artifact.crown_of_the_five_seas",
+    "artifact.thunder_helmet"
+  ];
+
+  it("all four name a count-1, Spell-filtered TAKE_FROM_DISCARD recover arm (shared path)", () => {
+    for (const id of RECOVERY_ARTIFACTS) {
+      const effect = cardLibrary[id]?.effect;
+      expect(effect?.type, `${id} should be a CHOOSE_ONE`).toBe("CHOOSE_ONE");
+      if (effect?.type !== "CHOOSE_ONE") {
+        throw new Error("unreachable");
+      }
+      const recover = effect.options[0]?.effect;
+      expect(recover, `${id} option 0 recover effect`).toMatchObject({
+        type: "TAKE_FROM_DISCARD",
+        count: 1,
+        filter: "spell"
+      });
+    }
+  });
+
+  function playRecoveryArtifact(seed: string, artifactId: string, extraDiscard: string[]): GameState {
+    let state = createAdventureGameState({
+      seed,
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true }
+    });
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.hand = [artifactId];
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    state.players.p1.discard = [CAST_A_SPELL_CARD_ID, ...extraDiscard];
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === artifactId &&
+        legal.action.optionIndex === 0
+    );
+    expect(play, `${artifactId} recover arm should be playable on the map`).toBeTruthy();
+    return applyOk(state, play!.action);
+  }
+
+  it("Rib Cage returns Cast a Spell to hand, refreshes a used Book Spell, and shuffles the rest", () => {
+    let state = playRecoveryArtifact("polish-ribcage", "artifact.rib_cage", ["stat.attack"]);
+    // The enabler is already back in hand (returned up front), before the refresh.
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the used-Spell refresh choice");
+    }
+    expect(state.pendingChoice.options.every((option) => option.label.startsWith("Refresh"))).toBe(true);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice.id,
+      optionIndex: 0
+    });
+    // Refreshed the used Spell…
+    expect(state.players.p1.spellBook).toContain("spell.haste");
+    expect(state.players.p1.spellBookUsed).not.toContain("spell.haste");
+    // …the enabler stayed in hand (never shuffled away)…
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    // …and Rib Cage's "shuffle the rest into your deck" fired (discard emptied).
+    expect(state.players.p1.discard).toHaveLength(0);
+    expect(state.players.p1.deck).toContain("stat.attack");
+  });
+
+  it("Crown of the Five Seas returns Cast a Spell + refreshes, with NO shuffle", () => {
+    let state = playRecoveryArtifact("polish-five-seas", "artifact.crown_of_the_five_seas", ["stat.attack"]);
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the used-Spell refresh choice");
+    }
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice.id,
+      optionIndex: 0
+    });
+    expect(state.players.p1.spellBook).toContain("spell.haste");
+    // No shuffle side effect — the leftover discard card stays put.
+    expect(state.players.p1.discard).toContain("stat.attack");
+  });
+
+  it("CONTROL: with the rule OFF, the recover arm takes a Spell from discard and never touches Cast a Spell", () => {
+    let state = createAdventureGameState({
+      seed: "polish-recovery-off",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": false }
+    });
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.hand = ["artifact.crown_of_the_five_seas"];
+    state.players.p1.discard = ["spell.haste"];
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.crown_of_the_five_seas" &&
+        legal.action.optionIndex === 0
+    );
+    state = applyOk(state, play!.action);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the classic discard pick");
+    }
+    // Classic behaviour: the discard Spell itself is the pick (no "Refresh" wording).
+    expect(state.pendingChoice.options.some((option) => option.label.includes("spell.haste") || option.label.includes("Haste"))).toBe(true);
+    expect(state.pendingChoice.options.every((option) => !option.label.startsWith("Refresh"))).toBe(true);
   });
 });
