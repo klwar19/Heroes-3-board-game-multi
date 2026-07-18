@@ -38,6 +38,19 @@ describe("MapEventOverlay", () => {
     expect(vi.mocked(playLibrarySound)).toHaveBeenCalledWith("adventure/new-week", 0.4);
   });
 
+  it("uses a distinct 'Final round!' header when the cue is the VP final-round warning", () => {
+    render(
+      <MapEventOverlay
+        cue={cue({ finalRound: true, round: 20, messages: ["This is the final round — the game ends once it is over."] })}
+        onDone={() => {}}
+      />
+    );
+    expect(screen.getByText("Final round!")).toBeTruthy();
+    expect(screen.queryByText("Map event!")).toBeNull();
+    expect(screen.getByText("round 20")).toBeTruthy();
+    expect(screen.getByText(/game ends once it is over/i)).toBeTruthy();
+  });
+
   it("dismisses on the button and on a backdrop click", () => {
     const onDone = vi.fn();
     render(<MapEventOverlay cue={cue()} onDone={onDone} />);

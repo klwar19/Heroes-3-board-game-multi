@@ -1960,6 +1960,31 @@ export default function Home() {
         }
       }
 
+      // Victory-Points "final round" warning: pop the same ornate overlay (with
+      // a distinct header) once when the last round begins, so the impending
+      // end is never a surprise. Same seen-set/never-replay semantics; the
+      // synthesized cue id can never collide with a real event id.
+      {
+        const freshFinalRound = presentationEvents.filter(
+          (event): event is Extract<GameEvent, { type: "FINAL_ROUND" }> => event.type === "FINAL_ROUND"
+        );
+        const last = freshFinalRound[freshFinalRound.length - 1];
+        if (last) {
+          const cueId = `final-round-${last.round}`;
+          if (!seenMapEventIdsRef.current.has(cueId)) {
+            seenMapEventIdsRef.current.add(cueId);
+            setMapEventCue({
+              id: cueId,
+              round: last.round,
+              finalRound: true,
+              messages: [
+                "This is the final round — the game ends once it is over, and the player with the most Victory Points wins."
+              ]
+            });
+          }
+        }
+      }
+
       // Designer-triggered story scenes (Anime mod §11): pop the StoryOverlay
       // once per firing. Same seen-set/never-replay semantics as the map-event
       // block above; the LATEST unseen scene wins if several fire this batch.

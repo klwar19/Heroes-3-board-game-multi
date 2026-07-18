@@ -382,19 +382,23 @@ describe("Game options — Victory points", () => {
     });
   });
 
-  it("the round-limit select appears only when ON and dispatches the chosen number", () => {
-    // Default (Off): no round-limit select.
+  it("the round-limit buttons appear only when ON and dispatch the chosen number", () => {
+    // Default (Off): no round-limit buttons.
     openOptions();
-    expect(screen.queryByLabelText("Victory points round limit")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Victory points round limit" })).toBeNull();
     cleanup();
 
-    // With the toggle ON in state, the select shows and dispatches the number.
+    // With the toggle ON in state, the button group shows and dispatches the number.
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.victoryPoints = true;
     });
-    const select = screen.getByLabelText("Victory points round limit");
-    expect(select).toBeTruthy();
-    fireEvent.change(select, { target: { value: "20" } });
+    const group = screen.getByRole("group", { name: "Victory points round limit" });
+    expect(group).toBeTruthy();
+    // Offers 5..25 in fives (plus "No limit").
+    for (const label of ["No limit", "5", "10", "15", "20", "25"]) {
+      expect(within(group).getByRole("button", { name: label })).toBeTruthy();
+    }
+    fireEvent.click(within(group).getByRole("button", { name: "20" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",

@@ -102,6 +102,11 @@ export function CardFrame({
       // Eager on purpose (hand/tray cards are on-screen the moment they
       // mount); async decode keeps a burst of card art off the main thread.
       decoding="async"
+      // An <img> is draggable by default, so a click that drifts a pixel starts
+      // a native image-drag instead of a click — which made card art impossible
+      // to "pick" (the text-fallback frame, a <div>, was never draggable, so it
+      // clicked fine). Disable the native drag so every card selects on click.
+      draggable={false}
       loading="eager"
       onError={() => setFailedSrc(src)}
       referrerPolicy="no-referrer"

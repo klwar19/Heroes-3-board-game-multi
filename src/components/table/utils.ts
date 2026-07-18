@@ -458,6 +458,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         : `${roomMemberName(state, event.byClientId)} allows guests to join again.`;
     case "ROUND_STARTED":
       return `Round ${event.round} begins${event.kind === "resource" ? " (resource round)" : event.kind === "astrologers" ? " (Astrologers' round)" : ""}.`;
+    case "FINAL_ROUND":
+      return `This is the final round (round ${event.round}) — the game ends once it is over, and the player with the most Victory Points wins.`;
     case "TURN_STARTED":
       return `${playerName(state, event.playerId)} starts their turn.`;
     case "HAND_REFRESHED":
