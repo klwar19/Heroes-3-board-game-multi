@@ -1028,6 +1028,66 @@ pinned in `src/engine/wog-commanders.test.ts` + `wog-commander-casts.test.ts`
 + `wog-commander-combos.test.ts` (observable outcomes with CONTROLs; each
 fails if its wiring is removed).
 
+### Commander Artifacts (`wog.artifacts` + `wog.commanders`) — 8 slot items
+
+Eight authentic WoG commander artifacts (items worn by the COMMANDER, not the
+hero) acquired from the shared Artifact decks and bound PERMANENTLY into three
+slots — weapon / armor / trinket. Data + the SINGLE-SOURCE registry are in
+`src/data/wog/commander-artifacts.ts` (`COMMANDER_ARTIFACT_SPECS`, keyed by card
+id — carries the slot AND the wired effect; the card definitions are generated
+from it); state on `CommanderPlayerState.artifacts` (public, no player-view
+masking); engine folds live in `src/engine/commanders.ts` (`makeCommanderCombatUnit`
+/ `commanderCastPower` / `finalizeCommandersAfterCombat`), the bind effect
+(`BIND_COMMANDER_ARTIFACT`) in `reducer.ts` + `legal-actions.ts`. Behaviour pinned
+in `src/engine/wog-commander-artifacts.test.ts` (every claim an OBSERVABLE combat/
+economy outcome with a CONTROL, mutation-checked) + the chip render in
+`src/components/commander-card.test.tsx`.
+
+LEAD with the adaptations / deliberate limits:
+- **WoG's per-victory INCREMENTAL bonuses are NOT modeled** — each artifact grants
+  a FIXED printed bonus.
+- **Bow of Seeking and Slava's Ring of Power are NOT shipped** (no clean engine
+  arm for their WoG behaviours yet).
+- **Binding is PERMANENT by design** — no unbind, no swap; it survives the
+  commander's death and revive (the revive cost formula is unchanged), and one
+  artifact per slot (an occupied slot is not offered and a forged play is
+  rejected).
+- **Commander-scope is unchanged** — the artifacts affect only the MAIN hero's
+  commander in the fights the commander already joins.
+
+The 8 artifacts (each `tags` states EXACTLY the wired effect, CLAUDE.md §2):
+- weapon `axe_of_smashing` (major) — +2 Attack (flat fold).
+- weapon `sword_of_sharpness` (major) — +1 Might attack die (appends
+  `commander-might-1`, riding the Damage-grade Might-dice machinery — so both the
+  real roll AND the lethal-save preview read it).
+- armor `hardened_shield` (minor) — +1 Defense.
+- armor `mithril_mail` (major) — +2 Health.
+- armor `helm_of_immortality` (relic) — a commander that dies in combat revives
+  FREE at combat end (death never persists, no gold), via the free-revive branch
+  in `finalizeCommandersAfterCombat`.
+- trinket `boots_of_haste` (minor) — +1 Initiative.
+- trinket `pendant_of_sorcery` (major) — command cast Power +1 (folded in
+  `commanderCastPower` beside the Magic-grade ladder — lifts the cast tier without
+  touching the Magic-grade ability package).
+- trinket `dragon_eye_ring` (relic) — the commander's attacks also strike the
+  space directly behind the target (appends the Gold-Dragon line-attack arm
+  `dragon-line-attack-3`).
+
+Bind flow: the card's only play is a map-only, own-turn `BIND_COMMANDER_ARTIFACT`
+option (`cost.removeSelf`) legal only with the Commanders module on, a commander
+present (a DEAD commander binds for later) and the slot EMPTY; resolving removes
+the card FROM THE GAME (never the discard), sets the slot, and emits
+`COMMANDER_ARTIFACT_BOUND`. THREE-WAY DECK GATE: the eight cards join the shared
+Artifact deck(s) ONLY when `wog.enabled && wog.artifacts && wog.commanders` are
+all on (dead cards without a commander) — id lists `wogCommanderArtifact*Ids`
+joined in `makeSharedDecks` beside the Task-1 hero-artifact join (split tiers +
+legacy single deck), registered in `src/data/cards/library.ts`, and excluded from
+the `moduleGated` sets in `deck-coverage.test.ts` / `combat-sandbox-cards.test.ts`.
+They coexist with the anime Pháp Bảo artifacts in the same decks; the anime
+Equipment Iron-Blood Sword's per-player first-attack +1 STACKS with a bound Axe on
+the commander's first attack (the sword keys off the attacker's controller, and
+the commander is that player's unit — pinned as +3 total).
+
 Leading with what does NOT run / deliberate readings:
 - **The WoG PC reference layer did NOT ship**: the 5-tier primary skills and
   the PC numbers in `docs/wog-commanders-plan.md` §4–5 are design history. The

@@ -29,6 +29,8 @@ import {
   type CommanderSlug,
   type CommanderStatKey
 } from "@/data/commanders";
+import { COMMANDER_ARTIFACT_SPECS } from "@/data/wog/commander-artifacts";
+import type { CommanderArtifactSlot } from "@/engine/state";
 
 // ---------------------------------------------------------------------------
 // CommanderCard — renders a WOG Commander card (frame + art from
@@ -424,6 +426,8 @@ export function CommanderStatsPanel({
   level,
   statValues,
   stance,
+  artifacts,
+  showArtifactSlots = false,
   className,
   style
 }: {
@@ -433,6 +437,14 @@ export function CommanderStatsPanel({
   /** Live combat values (already fold in buffs/stance) for the four board stats. */
   statValues?: { attack: number; defense: number; health: number; speed: number };
   stance?: "attack" | "defense";
+  /** WOG Commander Artifacts (Task 2): the card id bound into each slot. */
+  artifacts?: Partial<Record<CommanderArtifactSlot, string>>;
+  /**
+   * Show the three artifact slots (bound chips + empty placeholders). True while
+   * the WOG Commander-Artifacts module is on; off (default) hides the section
+   * for a plain WOG Commanders game.
+   */
+  showArtifactSlots?: boolean;
   className?: string;
   style?: CSSProperties;
 }) {
@@ -588,6 +600,11 @@ export function CommanderStatsPanel({
         </div>
       </div>
 
+      {/* Commander Artifacts (Task 2) — the three permanent slots. Bound chips
+          show the icon + name + wired effect line; empty slots show a placeholder
+          so the growth path reads. Shown only while the module is on. */}
+      {showArtifactSlots ? <CommanderArtifactSlots artifacts={artifacts} /> : null}
+
       {/* Combination skills — the WoG comm3 symbols + full explanation. */}
       <div>
         <div style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, fontSize: 11, marginBottom: 4 }}>
@@ -636,6 +653,74 @@ export function CommanderStatsPanel({
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const ARTIFACT_SLOT_ORDER: readonly CommanderArtifactSlot[] = ["weapon", "armor", "trinket"];
+const ARTIFACT_SLOT_GLYPH: Record<CommanderArtifactSlot, string> = {
+  weapon: "⚔",
+  armor: "🛡",
+  trinket: "💍"
+};
+
+/** WOG Commander Artifact slot chips (bound icon + effect, or an empty placeholder). */
+function CommanderArtifactSlots({ artifacts }: { artifacts?: Partial<Record<CommanderArtifactSlot, string>> }) {
+  return (
+    <div>
+      <div style={{ color: "#e6c56a", fontWeight: 700, letterSpacing: 1, fontSize: 11, marginBottom: 4 }}>
+        COMMANDER ARTIFACTS <span style={{ opacity: 0.55, fontWeight: 400 }}>(permanent — one per slot)</span>
+      </div>
+      <div style={{ display: "grid", gap: 4 }}>
+        {ARTIFACT_SLOT_ORDER.map((slot) => {
+          const cardId = artifacts?.[slot];
+          const spec = cardId ? COMMANDER_ARTIFACT_SPECS[cardId] : undefined;
+          return (
+            <div
+              key={slot}
+              data-artifact-slot={slot}
+              data-artifact-bound={spec ? "true" : "false"}
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                background: spec ? "#2c210f" : "#161009",
+                border: `1px solid ${spec ? GOLD : "#4d3d26"}`,
+                borderRadius: 6,
+                padding: "5px 7px"
+              }}
+            >
+              {spec ? (
+                <img
+                  alt={spec.name}
+                  src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)}
+                  style={{ width: 30, height: 30, objectFit: "cover", borderRadius: 5, flexShrink: 0, border: "1px solid #6b5433" }}
+                />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, opacity: 0.5, flexShrink: 0 }}
+                >
+                  {ARTIFACT_SLOT_GLYPH[slot]}
+                </span>
+              )}
+              <span style={{ fontSize: 11.5, lineHeight: 1.3 }}>
+                <b style={{ color: spec ? GOLD : DIM, textTransform: "capitalize" }}>{slot}</b>
+                {spec ? (
+                  <>
+                    {" · "}
+                    <b style={{ color: PALE }}>{spec.name}</b>
+                    <br />
+                    <span style={{ opacity: 0.9, textTransform: "capitalize" }}>{spec.effectText}</span>
+                  </>
+                ) : (
+                  <span style={{ color: DIM, opacity: 0.75 }}> · empty</span>
+                )}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -704,6 +789,8 @@ export function CommanderCard({
   goldAvailable,
   stance,
   onSetStance,
+  artifacts,
+  showArtifactSlots = false,
   editable = false,
   showPanel = true,
   className
@@ -726,6 +813,10 @@ export function CommanderCard({
   stance?: "attack" | "defense";
   /** Live mode: change the Superior Combat stance (only outside combat). */
   onSetStance?: (stance: "attack" | "defense") => void;
+  /** WOG Commander Artifacts (Task 2): the card id bound into each slot. */
+  artifacts?: Partial<Record<CommanderArtifactSlot, string>>;
+  /** Show the three artifact slots (module on). */
+  showArtifactSlots?: boolean;
   /** Preview mode: local grade/level editing (no engine). */
   editable?: boolean;
   /** Hide the info panel to show just the card face. */
@@ -912,6 +1003,8 @@ export function CommanderCard({
             grades={grades}
             level={shownLevel}
             stance={hasStance ? shownStance : undefined}
+            artifacts={artifacts}
+            showArtifactSlots={showArtifactSlots}
             style={{ maxWidth: "100%", background: "transparent", border: "none", padding: 0 }}
           />
         </div>

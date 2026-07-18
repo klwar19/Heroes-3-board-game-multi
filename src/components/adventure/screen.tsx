@@ -3203,6 +3203,8 @@ export function TownHeroDock({
                     ? (stance) => onAction({ type: "COMMANDER_SET_STANCE", playerId: armyPlayer.id, stance })
                     : undefined
                 }
+                artifacts={commander.artifacts}
+                showArtifactSlots={Boolean(state.wog?.enabled && state.wog?.artifacts && state.wog?.commanders)}
               />
             </div>
           </div>
