@@ -143,6 +143,7 @@ import { tilePendingTokens } from "./tile-hex-placements";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
+import { grantUnitExperienceAfterCombat } from "./unit-experience";
 import {
   COMMANDER_MASTERY_MIN_HERO_LEVEL,
   COMMANDER_STAT_KEYS,
@@ -241,7 +242,7 @@ import {
   wisdomGoldDiscount,
   wisdomSearchCount
 } from "./ruleset";
-import { houseRuleEnabled } from "./house-rules";
+import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
@@ -7185,6 +7186,12 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
   }
 
+  // Anime Unit Experience: after the army-sync loop (dead cards already removed,
+  // survivors still in `player.army`), grant +1 veterancy XP to every surviving
+  // army card the WINNER fielded. No-op with the module off / a Neutral winner;
+  // never opens a window (pure grant), so the AI never stalls on it.
+  grantUnitExperienceAfterCombat(state);
+
   // Keep-troops Give up: the conceding hero loses no unit but discards its whole
   // hand to its discard pile (the cost of conceding when troops are kept).
   if (giveUpKeepsTroops && giveUpLoserId) {
@@ -8337,8 +8344,8 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       priced.push({ ref, finalCost });
       target.side = "pack";
     } else {
-      if (!houseRuleEnabled(state, "polish-unit-stacks")) {
-        throw new Error("The Polish Unit Stacks rule is not enabled.");
+      if (!armyUnitStacksActive(state)) {
+        throw new Error("Unit Stacks are not enabled (Polish Unit Stacks or the Anime Unit Stacks module).");
       }
       if (!canReinforce) {
         throw new Error("Buying a Unit Stack needs a Citadel.");

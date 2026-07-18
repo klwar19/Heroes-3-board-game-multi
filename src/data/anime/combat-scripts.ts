@@ -9,6 +9,10 @@
  * V1: only Bí Cảnh (Secret Realm) carries a guard among the current anime kinds,
  * so it is the only location with shipped scripts. Future guarded content
  * (isekai lairs, campaign set-pieces) attaches the same way — as data.
+ *
+ * Gated on the `combatEvents` content flag (`AnimeModOptions.combatEvents`,
+ * legacy absent === ON) so the Forced Battle Events system can be toggled
+ * independently of the anime map locations.
  */
 
 import {
@@ -27,7 +31,7 @@ export const ANIME_COMBAT_SCRIPT_DEFINITIONS: Record<string, CombatScriptDefinit
     id: "bi_canh_spirit_mist",
     name: { en: "Spirit Mist", vi: "Linh Vụ" },
     locationId: "anime.bi_canh",
-    requiresModule: "enabled",
+    requiresModule: "combatEvents",
     summary:
       "Combat-start: a spirit mist blankets the Secret Realm — every RANGED unit (both sides) fights at −1 Attack for the whole battle.",
     events: [
@@ -60,7 +64,7 @@ export const ANIME_COMBAT_SCRIPT_DEFINITIONS: Record<string, CombatScriptDefinit
     id: "bi_canh_earthvein_surge",
     name: { en: "Earthvein Surge", vi: "Địa Mạch Trào Dâng" },
     locationId: "anime.bi_canh",
-    requiresModule: "enabled",
+    requiresModule: "combatEvents",
     summary:
       "Round 2: the realm's earthvein surges, dealing 1 effect damage to every unit of the intruding (attacker) side.",
     events: [

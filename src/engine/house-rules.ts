@@ -1,3 +1,4 @@
+import { animeModuleEnabled } from "./anime";
 import type { GameRuleset, GameState, GameSetupOptions, HouseRuleId } from "./state";
 
 /**
@@ -302,7 +303,13 @@ export function houseRuleEnabled(state: Pick<GameState, "ruleset" | "adventure">
  * These are the `polish-unit-stacks` layers, bought at the Citadel. Polish Bank
  * Sizes uses the standard Creature Bank Stack Tokens (not army layers), so it
  * does not activate this machinery.
+ *
+ * TWO roads into ONE machinery (same purchase flow, same `polishArmyUnitStackCost`
+ * pricing, same caps): the Polish house rule `polish-unit-stacks`, OR the anime
+ * module `anime.unitStacks`. Either being on activates every downstream consumer
+ * (the Citadel purchase offer, the +1 Attack fold, the lethal-blow layer absorb,
+ * the badges). They coexist with no divergence — the OR is the whole seam.
  */
-export function armyUnitStacksActive(state: Pick<GameState, "ruleset" | "adventure">): boolean {
-  return houseRuleEnabled(state, "polish-unit-stacks");
+export function armyUnitStacksActive(state: Pick<GameState, "ruleset" | "adventure" | "anime">): boolean {
+  return houseRuleEnabled(state, "polish-unit-stacks") || animeModuleEnabled(state, "unitStacks");
 }

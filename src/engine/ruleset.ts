@@ -1,6 +1,7 @@
 import type { UnitSideDefinition } from "@/data/factions/types";
 import { cardLibrary } from "@/data/cards/library";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
+import { animeModuleEnabled } from "./anime";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import type {
   ArtifactDeckAccess,
@@ -123,14 +124,16 @@ export function applyUnitSideRules(
  * Marksman buffs each honour their own toggle rather than the bundled mode.
  */
 export function unitSideRuleOverrides(
-  state: Pick<GameState, "ruleset" | "adventure">
-): { griffinBuff: boolean; marksmanBuff: boolean; polishUnitStacks: boolean } {
+  state: Pick<GameState, "ruleset" | "adventure" | "anime">
+): { griffinBuff: boolean; marksmanBuff: boolean; polishUnitStacks: boolean; unitExperience: boolean } {
   return {
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
     marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
-    // Either Polish rule activates army Stack layers: polish-unit-stacks sells
-    // them, polish-bank-sizes grants them with a unit bank's Pack reward.
-    polishUnitStacks: armyUnitStacksActive(state)
+    // Army Stack layers: the Polish house rule OR the anime `unitStacks` module
+    // (one machinery — see armyUnitStacksActive).
+    polishUnitStacks: armyUnitStacksActive(state),
+    // Anime Unit Experience: fold the veterancy rank bonus onto both card sides.
+    unitExperience: animeModuleEnabled(state, "unitExperience")
   };
 }
 

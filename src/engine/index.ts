@@ -238,11 +238,20 @@ export {
 export {
   HOUSE_RULES,
   HOUSE_RULE_BY_ID,
+  armyUnitStacksActive,
   houseRuleDefaultFor,
   houseRuleEnabled,
   resolveHouseRules
 } from "./house-rules";
 export type { HouseRuleCategory, HouseRuleDef } from "./house-rules";
+export {
+  UNIT_EXPERIENCE_RANKS,
+  grantUnitExperienceAfterCombat,
+  unitExperienceActive,
+  unitExperienceBonus,
+  unitRankForXp
+} from "./unit-experience";
+export type { UnitRank, UnitRankBonus } from "./unit-experience";
 export {
   polishReducedStartingBonusVisitSteps,
   polishSurrenderGoldCost,

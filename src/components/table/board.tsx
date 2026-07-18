@@ -35,6 +35,7 @@ import {
   playerSpellCastsIgnoreLimit,
   unitHasUnlimitedRetaliationEffect,
   unitIsBerserk,
+  unitRankForXp,
   type BattlefieldTokenState,
   type CombatBoardArtId,
   type CombatTokenState,
@@ -1340,6 +1341,19 @@ export function BattlefieldBoard({
                   ×{unit!.armyStacks}
                 </span>
               ) : null}
+              {(() => {
+                const rank = unitRankForXp(unit?.unitXp);
+                return rank ? (
+                  <span
+                    className={`unitRankBadge rank-${rank.id}`}
+                    title={`${rank.name} (${unit?.unitXp ?? 0} XP): +${rank.bonus.attack} Attack${
+                      rank.bonus.defense ? ` / +${rank.bonus.defense} Defense` : ""
+                    }${rank.bonus.health ? ` / +${rank.bonus.health} Health` : ""}.`}
+                  >
+                    ★ {rank.name}
+                  </span>
+                ) : null;
+              })()}
               {retaliationSpent ? (
                 <span
                   className="retaliationSpentBadge"

@@ -53,6 +53,14 @@ function scriptModuleActive(state: Pick<GameState, "anime">, script: CombatScrip
   if (required === "enabled" || required === "waveCadence") {
     return animeEnabled(state);
   }
+  // Forced Battle Events content module — LEGACY SEMANTICS (absent === ON):
+  // gate on `enabled && combatEvents !== false` so old anime snapshots without
+  // the flag keep firing scripts, and an explicit `combatEvents: false` disables
+  // them. (`animeModuleEnabled` reads `Boolean(...)`, which would wrongly disable
+  // an absent flag — hence the dedicated `!== false` check.)
+  if (required === "combatEvents") {
+    return animeEnabled(state) && state.anime?.combatEvents !== false;
+  }
   return animeModuleEnabled(state, required);
 }
 

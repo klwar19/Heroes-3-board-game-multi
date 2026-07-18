@@ -599,6 +599,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         : `${event.unitName} loses a Unit Stack and survives the blow${
             event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
           } — ${event.remainingStacks} Stack${event.remainingStacks === 1 ? "" : "s"} left.`;
+    case "UNIT_EXPERIENCE_GAINED":
+      return event.rankName
+        ? `${event.unitName} reaches ${event.rankName} (${event.xp} XP).`
+        : `${event.unitName} gains battle experience (${event.xp} XP).`;
     case "GAME_OPTIONS_CHANGED":
       return event.message;
     case "MAP_PRESET_TRIGGERED":
