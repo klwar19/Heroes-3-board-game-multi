@@ -1,13 +1,39 @@
 # Anime mod — ONE mod, two theme packages: **Ninefold Realms** (xianxia) × **Otherworld Gate** (isekai) — design + implementation plan
 
-> **STATUS: ART FOUNDATION + FIELD-OVERRIDE SPINE IN PROGRESS — MOST GAMEPLAY
-> IS NOT IMPLEMENTED.** Editable Fuyuki City and Azure Breeze unit-card art
-> proofs exist under `scripts/anime-art/` (outside `public/assets`, not
-> playable). The **Field Override** system (§3.10 / §9b) and the first
-> Ninefold single-hex locations (§5.8) are the first engine slices. Every
-> other mechanic below is still a *proposal*, engine-shaped against the
-> codebase. Per CLAUDE.md, nothing may be called "done" until it is
-> engine-enforced AND covered by a test that fails when the logic is removed.
+> **STATUS (updated 2026-07-18): the mod SPINE + a first wave of gameplay
+> systems are SHIPPED — engine-wired and covered by tests that fail if the
+> logic is removed. Much of the ROSTER/CONTENT below is still a *proposal*.**
+>
+> **Shipped (default OFF, byte-identical when off; each with mode-off CONTROLs;
+> the machine-truth is the code/tests, this list is the map):**
+> - **Field Override system** (§3.10 / §9b) + **13 Ninefold single-hex
+>   locations** (§5.5 / §5.8) — global mechanism, `GameSetupOptions.fieldOverrides`.
+> - **Pháp Bảo artifacts** — 5 original cards, `anime.xianxiaArtifacts` (§5.10 / P0c).
+> - **Cultivation & Heavenly Tribulation** — `anime.cultivation` (§5.6).
+> - **Hero Grades** (Merit ladder + passive/skill tree) — `anime.heroGrades` (§3.11).
+> - **Equipment** (always-on hero items + outfitter hexes) — `anime.equipment` (§3.13).
+> - **Forced Battle Events** (scripted NEUTRAL combats, core mechanism) — §3.12.
+> - **Visual-novel Story system** (§11) + **campaign hub & Chapter 1 of BOTH
+>   campaigns** with live setup-injection (§12).
+> - **Cross-mod coexistence gates** (§3.8) — base + WOG + Polish + both anime
+>   packages thread into ONE game (all-on soak green).
+>
+> See `docs/anime-mod-session-2026-07.md` for the shipped-systems table + the
+> art-TODO pointer, and CLAUDE.md's "Field Overrides & multi-pin tiles" section
+> for the per-system what-runs-vs-limits detail.
+>
+> **Still PROPOSAL (engine-shaped in this doc, NOT implemented):** the anime
+> TOWNS and their units/heroes/commanders (Fuyuki City P1, Azure Breeze P6,
+> Hidden Leaf P9, Blood Demon Cult P10, Azur Lane P16), isekai + xianxia
+> NEUTRALS and banks (P2 / P7), the Adventurers' Guild + quest vocabulary (P3),
+> Calamity Waves (P4), Raid Bosses (P5), Traps + Quest Guards (P8), the Dungeon
+> (P12), Elixir Pills + Secret Realms (P7), the destiny/karma substrate + titles
+> + Gods (P11), and campaign chapters 2–7 (P13–P15). The editable Fuyuki City /
+> Azure Breeze unit-card ART proofs remain art-only under `scripts/anime-art/`
+> (outside `public/assets`, not playable).
+>
+> Per CLAUDE.md, nothing is "done" until it is engine-enforced AND covered by a
+> test that fails when the logic is removed.
 >
 > **This document MERGES two formerly separate plans into one mod** (per the
 > user's direction: "make them part of a whole mod … can select either, and
@@ -270,13 +296,38 @@ consumer wires **data only**. (Chief cases: `ATTACK_BONUS_ADJACENT_ALLY`,
 the die-face→token arm, `PLACE_TOKEN_ACTION` token variants, the charge unit
 tag, the `requiresNotMoved` gate.)
 
-### 3.8 The standing integration gates
+### 3.8 The standing integration gates — LANDED
 From P2 on, every phase re-runs: (a) the master byte-identical-when-off
 CONTROL (scripted game event-log identical to `main` with `anime` absent);
 (b) a fixed-seed single-player soak with **every module of both packages
 AND every WOG module ON** reaching round 6 with zero stalls (joins
 `single-player-soak.test.ts`); (c) the mixed-package CONTROL (one module
 from each package on — no cross-talk).
+
+**STATUS (shipped):** all four gates landed and green:
+- **(a) master byte-identical-when-off CONTROL** — `src/engine/anime-coexistence.test.ts`.
+  A scripted 2-human game to round 6 serializes IDENTICALLY (setup AND final
+  state + event log) across `anime` absent / `undefined` / `DEFAULT_ANIME_OPTIONS`;
+  a `enabled:true` build is the sensitivity control.
+- **(b) the ALL-ON soak** — `src/server/anime-coexistence-soak.test.ts` (reuses
+  `single-player-soak-helpers.ts`). Every shipped anime module + `fieldOverrides`
+  + every WOG module + Creature Banks + Polish Unit-Stacks/Bank-Sizes + Morale
+  Cards + stash Spell Book → round 6, zero stalls / negative resources; a
+  round-4 variant swaps in the mutually-exclusive Polish Spell Book; a 3-opponent
+  breadth run. Soft-asserts anime systems are live (overrides carved, Merit/grade/
+  realm progression). HONEST LIMIT: the AI declines the optional outfitter shop,
+  so it never buys Equipment in the soak (documented, not a coexistence bug).
+- **(c) mixed-package no-cross-talk CONTROL** — `src/engine/anime-coexistence.test.ts`.
+  An isekai field-override kind carved leaves the xianxia Cultivation/Grade event
+  sequence byte-identical; the grade register keys off MODULE FLAGS not carved
+  CONTENT (an isekai module flag flip is the mutation control → "core" fallback).
+- **(d) display coexistence** — `src/components/anime-coexistence-display.test.tsx`.
+  Realm + grade + equipment chips render together; the designer palette lists a
+  xianxia and an isekai kind together; the hero-actions dock renders under all-on.
+  KNOWN LIMIT surfaced: the two Equipment MARKETS (`requiresModule:"equipment"`)
+  are deliberately gated out of the ungated designer palette (pinned in
+  `src/engine/anime-equipment.test.ts`) — not flipped here to avoid contradicting
+  that prior CONTROL; the outfitters still reach a game via the pool draw.
 
 ### 3.10 Field Overrides — single-hex replacement (SHARED spine, headline map feature)
 
@@ -403,6 +454,320 @@ composition is tested:
   per hex stays the invariant).
 - **Gate:** §3.8(b) runs with all WOG modules on, and P1's content test
   includes a `wog.commanders`-on seat for the new town.
+
+---
+
+### 3.11 Hero Grades (shared system, `anime.heroGrades`) — SHIPPED
+
+A per-hero power ranking that fits EVERY hero (core factions and both anime
+packages) and coexists with Cultivation (§5.6) and the WOG/Polish rules as an
+independent track. **Default OFF ⇒ byte-identical.** Engine: the leaf read-layer
+`src/engine/anime-hero-grades.ts`; data `src/data/anime/hero-grades.ts`;
+behaviour pinned in `src/engine/anime-hero-grades.test.ts` (every claim
+mutation-checked with CONTROLs), the hero-board chip/picker in
+`src/components/hero-board.test.tsx`, and the combat reaction tile in
+`src/components/table/overlays.test.tsx`.
+
+**State (MAIN hero, optional/lazily-stamped, PUBLIC):** `hero.gradeProgress`
+(Merit), `hero.grade` (0..cap), `hero.gradePoints` (unspent picks),
+`hero.gradeNodes` (picked node ids), `hero.heroTrainedRound`; plus
+`combatStats.heroSkillsUsedThisCombat` and `player.heroSkillUsedRound`
+(cooldowns). Absent === 0/none, so legacy snapshots load unchanged.
+
+**Merit → grade** (`gainGradeProgress`, the ONE shared arm): thresholds live in a
+DATA array `HERO_GRADE_MERIT_THRESHOLDS = [3, 7, 12]` — grade 1 at 3 Merit, 2 at
+7, 3 at 12 (a widening 3/+4/+5 ladder: early grades from a couple of level-ups or
+hex visits, grade 3 a real investment). Crossing a threshold from ANY source
+auto-grades-up (+1 grade, +1 point, one `HERO_GRADE_ADVANCED` feed event per
+grade).
+
+**Merit sources (all funnel through the one arm):**
+1. **Level-ups** — +1 Merit per hero level-up (beside the Cultivation level-up
+   hook in `gainExperience`).
+2. **Hex riders** — `anime.dai_luyen_khi` + `anime.ngo_dao_thach` grant +1 Merit
+   IN ADDITION to their printed reward when on (runtime-gated at the visit-build
+   seam, so the module-OFF visit is byte-identical — CONTROL-pinned).
+3. **`HERO_TRAIN`** (handler-validated map action) — spend 2 MP → +1 Merit, once
+   per own turn.
+4. **Training Manual** (`anime.item.training_manual`, kind artifact/minor) — NOT
+   in any deck (declared in `animeNeverDeckedCardIds`, excluded from the
+   deck-coverage / sandbox invariants); bought for 2 gold at the Merchant Guild
+   Post AND Urahara's Shop (a module-gated appended `PAY_TO` → `GAIN_HAND_CARD`);
+   played on the map → +2 Merit, then removed from the game (`removeSelf`).
+5. **Generic payload** — the `GAIN_GRADE_PROGRESS { amount }` effect kind the
+   Manual uses is generic; any future card can carry it (that IS the arm).
+
+**The tree — 3 tiers × 3 nodes, pick 1 per tier** (`HERO_GRADE_PICK`,
+handler-validated: unspent point, tier ≤ grade, tier not full, node exists).
+Passives are always-on; **skills are used actively / as reactions, NOT via
+cards**, with cooldowns:
+- Tier 1 — Bounty Hunter's Eye (P, +1 gold after a won combat), Provisioner (P,
+  +1 building materials each Resources round), Battle Focus (S reaction, +1
+  Attack on your unit's declared attack, once/combat).
+- Tier 2 — Deep Pockets (P, +1 hand limit — stacks observably with Cultivation
+  Foundation, +2 total), Iron Will (S reaction, +1 Defense when your unit is
+  attacked, once/combat), Forced March (S map-active, +1 movement, once/round).
+- Tier 3 — Arcane Insight (P, +1 spell Power), War Cry (S combat-active during
+  your unit's activation, +1 Attack this activation, once/combat), Tactician (P,
+  +2 gold each Resources round).
+
+Skills are non-card offers: map/combat actives via legal-actions (`USE_HERO_SKILL`,
+surfaced as a combat command button / the map `HeroActionsDock` button for the
+Forced March map-active), reactions via
+`getLegalReactionsForTrigger` beside the commander defense reaction
+(`USE_HERO_SKILL_REACTION`, attribution + window advance exactly like
+`applyCommanderCastReaction`, rendered as a bespoke reaction-tray tile). Combat
+skills apply in the MAIN hero's combats only (commander-scope convention;
+garrison/secondary fights offer none). The +stat buffs reuse the commander cast
+machinery (an `ATTACK_BONUS`/`DEFENSE_BONUS` active effect — `current-combat-round`
+for reactions folding into the triggering attack, `current-activation` for War
+Cry).
+
+**Grade-name REGISTERS (one mechanic, package-specific NAMES)** — mirrors the §2
+resource-subtitle rule. Three bilingual registers indexed by grade 0..N in
+`src/data/anime/hero-grades.ts`: **core** (Recruit → Veteran → Champion →
+Legend), **xianxia** (Võ Giả → Cao Thủ → Tông Sư → Truyền Kỳ) and **isekai**
+(Rank F → C → A → S). Resolution (`heroGradeRegisterKey`): when EXACTLY ONE
+package's modules are active table-wide (module sets `XIANXIA_MODULE_FLAGS` /
+`ISEKAI_MODULE_FLAGS`; the package-neutral `enabled`/`heroGrades`/`destiny` count
+for neither) that package's register labels ALL heroes; when both or neither, fall
+back to the player's FACTION family (`FACTION_GRADE_REGISTER`, every current
+faction = core; a future anime town adds one data entry). The chip + picker use
+the resolved register; **mechanics/state never change with the label.**
+
+**Extensibility (pure data).** No literal tier number in engine logic: the grade
+cap, tier gating, picker grouping and register-length checks all derive from
+`HERO_GRADE_MERIT_THRESHOLDS.length`. The catalog is grouped by `tier` with any
+number of nodes per tier; pick-1-per-tier is `HERO_GRADE_PICKS_PER_TIER` (a future
+per-tier count is a one-line data change). The pure helpers `gradeForMerit` and
+`pickableNodesFrom` take the thresholds/catalog as parameters and are tested with
+a 4-tier fixture. **"Add a tier" recipe:** append a threshold to
+`HERO_GRADE_MERIT_THRESHOLDS`, add the tier's nodes to `HERO_GRADE_NODES`, and
+append ONE entry to every register in `HERO_GRADE_REGISTERS` (a test pins register
+length === tier count + 1).
+
+**Magnitudes-pegging (ONE power scale).** gold-after-win +1 ← Brute Soul-Reformer
+(+2) softened; Resources-round +1 materials ← Inexhaustible Cart of Ore; +2 gold
+← a major-artifact income tier; +1 hand limit ← Pandora / Cultivation Foundation;
++1 spell Power ← Pandora / Cultivation Nascent Soul; +1 Attack/Defense skill ←
+commander Precision/Shield reaction buffs; +1 movement ← Boots-of-Speed (single
+point).
+
+**AI (no stalls).** `HERO_GRADE_PICK` scores high in map-policy (spend the point
+immediately, prefer a passive at the lowest tier — no window to freeze on);
+`HERO_TRAIN` / Forced March score just above `END_TURN` (taken only when idle);
+War Cry scores in combat-policy just above a real attack (buff then strike); the
+reaction skills score above `PASS_REACTION` in card-policy (use, don't hoard).
+Optional offers auto-pass on AFK/timeout with no extra wiring.
+
+**Adaptations / deliberate limits (leading with what does NOT run):** HERO_TRAIN
+and Forced March now have a human MAP button — the compact `HeroActionsDock`
+under the hero board (alongside the Cultivation Heavenly Tribulation), each shown
+only while `getLegalActions` offers it and dispatching the exact payload (pinned
+in `hero-actions-dock.test.tsx`); the reaction/combat grade skills still ride the
+combat command dock. The AI does not specifically seek the Training Manual at a
+shop (it declines the optional PAY_TO from surplus by default; buying it is a
+human play). Per-package fancy grade-label fonts/art are deferred (the register
+text is bilingual plain text).
+
+### 3.12 Forced Battle Events (scripted combats) — SHIPPED (V1)
+
+A "certain battles do certain things" system: a fight on a particular MAP FIELD
+runs SCRIPTED EVENTS — a combat-long environment effect, an obstacle formation,
+a timed damage pulse, or a flavor announcement — at combat-start and/or a chosen
+round-start. **Default OFF ⇒ byte-identical** (a non-scripted field runs nothing;
+the mechanism no-ops when the fought field carries no script). Architecture
+mirrors the Field Override split (§3.10): the **mechanism is CORE**, content is a
+**package**.
+
+- **Registry (CORE, owns no scripts):** `src/data/map/combat-scripts.ts` —
+  `CombatScriptDefinition { id, name:{en,vi}, locationId, requiresModule?, events, summary }`;
+  `CombatScriptEvent { at:"combat-start"|"round-start", round?, effects[], announce:{en,vi} }`;
+  the effect vocabulary below. `registerCombatScriptDefinitions` / `combatScriptsForLocation`.
+- **Engine hook (CORE):** `src/engine/combat-scripts.ts` — resolves the fought
+  field's location (`combat.context.fieldId` → `adventure.fields[id].location`),
+  gates by `requiresModule`, and fires events. `combatScriptStatDelta` is the
+  live read consumed by the attack/defense resolution.
+- **Content (Anime package):** `src/data/anime/combat-scripts.ts` — the V1 Bí Cảnh
+  scripts. Registered via a side-effect import from the engine hook (mirrors
+  `field-overrides`).
+- **Tests:** `src/engine/combat-scripts.test.ts` — every claim mutation-checked
+  with a CONTROL (module-off / wrong-round / non-scripted / melee / PvP / sandbox).
+
+**V1 is FULLY AUTOMATIC — the deliberate anti-AI-freeze design.** No script effect
+opens a player window, choice or prompt, so the runner has nothing new to score
+(proved: a computer seat fights a scripted Bí Cảnh to a win with no stall, and the
+parallel-turns bystander fingerprint `parallelSlotSignature` is untouched — a
+scripted combat is already the exclusive singleton interaction). Every event still
+ANNOUNCES itself with a `COMBAT_SCRIPT_TRIGGERED` event (feed line + a
+`combat-start` cue + `formatEvent` case) so players SEE "something happens".
+
+**ScriptEffect vocabulary (only kinds with a proven engine seam ship):**
+1. `environment-stat` — a combat-long stat modifier on a side (`attacker` /
+   `defender` = the Neutral guards / `both`), optionally narrowed to one
+   `unitType`, on `attack` or `defense`. Stored on `combat.combatScripts.statModifiers`
+   and read LIVE at resolution (the Crag Hack `proclamationGroundAttackBonus`
+   precedent), so it survives Pack→Few flips / specialty recomputes. Added
+   UNCLAMPED (an environmental penalty bites an elemental unit; a bonus is not a
+   "buffable attack card").
+2. `damage-pulse` — N effect-damage to every living unit of a side, through the
+   normal removal path (the Astral Spirit `applyElementalScourge` precedent;
+   `source:{type:"system"}`, `damageKind:"effect"`, a 1-HP unit dies and
+   `finishCombatIfNeeded` closes a wipe).
+3. `place-obstacles` — push the given EMPTY board cells into `combat.obstacles`
+   (movement is already obstacle-aware; the number-array is read live). Occupied
+   cells are skipped.
+4. `announce` — pure feed-line flavor (every event announces anyway).
+
+**Trigger wiring (documented positions):** combat-start events fire in
+`finalizeCombatStart` AFTER `applyCommanderCombatStart`, before the first
+war-machine round (idempotent across its Wayfarer/tactics re-entries via
+`combat.combatScripts.startApplied`); round-start events fire in
+`advanceCombatRound` after `combat.round` is incremented (idempotent per round via
+`roundsFired[]`), and once from the combat-start pass for the opening round.
+**Scope:** NEUTRAL combats only — guard FIELDS **and** Creature Banks (both are
+`context.kind:"neutral"`); PvP and the combat sandbox carry no fought-field
+location and fire nothing (CONTROL-pinned). Every effect is per-combat; nothing
+persists into the next fight.
+
+**`requiresModule` choice:** anime locations only exist when the mod is on (their
+Field Override content is master-`enabled`-gated), so the Bí Cảnh scripts gate on
+`"enabled"` to MATCH — a game without anime never has a `anime.bi_canh` field to
+fight on anyway, and the gate makes "module off ⇒ nothing" trivially true.
+
+**V1 content — Bí Cảnh (Secret Realm), the only current anime kind with a guard:**
+- **Linh Vụ (Spirit Mist)** — combat-start `environment-stat`: ALL RANGED units
+  (both sides) −1 Attack for the whole battle.
+- **Địa Mạch Trào Dâng (Earthvein Surge)** — round-start round 2 `damage-pulse`:
+  1 effect damage to every unit of the ATTACKER's (the intruding hero's) side.
+- (Two scripts on one location — the registry supports several per location, and
+  a script supports several events.)
+
+**Leading with what does NOT ship / deliberate limits:**
+- **No V1 player-facing script effect** (no windows/choices) — pick-a-cell
+  obstacle placement, "choose an environment", branching scripts are all growth.
+- **No obstacle auto-pick** — `place-obstacles` takes explicit candidate cells
+  (deterministic); a seeded auto-pick from the empty deploy zone is future work.
+- **Creature-Bank support is by MECHANISM, not content** — a bank fight is
+  `context.kind:"neutral"`, so a script keyed off a bank field's location would
+  fire; there is no anime bank-script yet (banks are their own location kind).
+- **No designer / campaign attachment surface yet** — scripts attach only by a
+  content package registering off a location id. The intended growth path is
+  data: a map-designer `scriptId` field on a placed field, and campaign
+  set-pieces registering scripts on their scenario's locations — no new engine
+  vocabulary needed for either, only content.
+
+**Growth path (data-only unless noted):** future guarded content (isekai lairs,
+raid arenas, campaign boss fields) attaches scripts by registering off their
+location id; new effect kinds extend the `CombatScriptEffect` union with the same
+"prove a reuse seam, test the observable" bar; a player-facing kind would be the
+first to add a window (and its AI scoring). The `requiresModule` field already
+generalises the gate to any `AnimeModOptions` flag.
+
+### 3.13 Equipment (shared system, `anime.equipment`) — SHIPPED (V1)
+
+Always-on hero ITEMS, distinct from Artifact cards: an item sits in one of a MAIN
+hero's three slots (**weapon / armor / accessory**) and its effect runs while
+equipped — never in hand, never cast, never discarded. SHARED by both packages
+and every hero; independent of Hero Grades (§3.11) and Cultivation (§5.6) — all
+three tracks coexist on the same hero. **Default OFF ⇒ byte-identical** (no shop
+in the pool, no state stamped, every read returns 0/false/{}). Engine: the leaf
+read-layer `src/engine/anime-equipment.ts`; data `src/data/anime/equipment.ts`;
+behaviour pinned in `src/engine/anime-equipment.test.ts` (every claim
+mutation-checked with CONTROLs), the catalog in `src/data/anime/equipment.test.ts`,
+and the hero-board chips in `src/components/hero-board.test.tsx`.
+
+**State (MAIN hero, optional/lazily-stamped, PUBLIC):** `hero.equipment?:
+Partial<Record<slot,string>>` (slot → item id); plus per-combat charge flags
+`combatStats.equipmentFirstAttackUsed` / `equipmentIncomingAttackUsed` (cleared in
+`makeCombatShell`). Absent === nothing equipped, so legacy snapshots load
+unchanged and player-view never strips it.
+
+**Slot & replace rules.** Three slots, one item each. Buying into an OCCUPIED slot
+REPLACES the previous item — the old item is gone, **no refund** (stated at the
+buy step and pinned). `equipEquipment` is the one slot mutator; it emits a public
+`EQUIPMENT_EQUIPPED` feed line (`replacedId` names the overwritten item).
+
+**V1 catalog — 6 items, every effect a proven-seam REUSE pegged to a core
+magnitude:**
+
+| Item | Slot | Pkg | Cost | Effect (exactly what runs) | Seam / peg |
+|------|------|-----|-----:|----------------------------|-----------|
+| Iron-Blood Sword (Thiết Huyết Kiếm) | weapon | xianxia | 4 | your units' FIRST declared attack each combat +1 Attack | `getAttackStackDetails` unclamped delta, beside the combat-script delta; consumed at `finishResolvedAttack` |
+| Black Tortoise Mail (Huyền Vũ Giáp) | armor | xianxia | 4 | the FIRST incoming declared attack each combat resolves at −1 Attack | same site (−1 off the attacker when the defender's owner holds the mail) |
+| Cosmos Pendant (Càn Khôn Bội) | accessory | xianxia | 5 | +1 spell Power | `standingSpellPower` chokepoint (stacks with Cultivation Nascent + Arcane Insight) |
+| Adventurer's Blade | weapon | isekai | 4 | +1 gold after each won combat | the Brute/Bounty-Hunter's-Eye win-gold hook (stacks to +2 with the grade node) |
+| Guild-Issue Mail | armor | isekai | 4 | +1 hand limit | `effectiveHandLimit` (stacks with Cultivation Foundation + Deep Pockets → +3) |
+| Supply Satchel (Túi Tiếp Tế) | accessory | shared | 5 | +1 building materials each Resources round | the `resourceRoundGain` income loop `startAdventureRound` uses |
+
+The two combat items are **main-hero-scope** (commander convention,
+`playerMainHeroInCombat`): a garrison defense / secondary-hero fight gets neither
+(CONTROL-pinned). They are per-combat one-shots — the +1 rides only the first
+qualifying DECLARED attack (never a retaliation, which neither benefits nor spends
+the charge) and is consumed when that attack LANDS (past the lethal-save gate, so
+the preview and the resolved hit agree).
+
+**Markets — two new single-hex Field Overrides.** Rèn Binh Các (Blacksmith,
+`anime-xianxia`, glyph ⚒) sells the 3 xianxia items; Adventurer Outfitter
+(`anime-isekai`, glyph 🎒) sells the 3 isekai items; BOTH sell the shared Supply
+Satchel. The shop menu is built dynamically in `beginFieldVisit`'s shop-append
+seam (the Training-Manual pattern): a `CHOOSE_ONE` with one `BUY_EQUIPMENT
+{equipmentId}` option per item the hero does NOT already own (owned ⇒ option
+absent), plus "Leave". Affordability is gold-gated like a PAY_TO — legal-actions
+skips an unaffordable buy (poor ⇒ option absent) and the reducer CHOOSE_ONE
+backstop refuses a forged one; the `BUY_EQUIPMENT` leaf deducts the gold and
+equips (replace = overwrite). Both locations carve as a NONE base (revisitable, 1
+MP) so a module-off visit opens no menu.
+
+**`requiresModule` gate (the mechanism that keeps the shops OFF when equipment is
+off).** `FieldOverrideDefinition` gained `requiresModule?: keyof AnimeModOptions`;
+the two outfitter kinds carry `requiresModule: "equipment"`.
+`listFieldOverrideDefinitions` gained a `moduleEnabled?` predicate — a kind with
+`requiresModule` is listed ONLY when the predicate allows it, and with NO predicate
+it is EXCLUDED (safe default). The live pool builds
+(`assignPoolFieldOverrides` / `ensurePoolFieldOverrideOnReveal`) pass
+`moduleEnabled: (m) => animeModuleEnabled(state, m)`, so the outfitters join the
+random pool exactly when `anime.equipment` is on and appear in NO listing
+otherwise (CONTROL-pinned). The 11 existing kinds carry no `requiresModule` and are
+unaffected (CONTROL). This same field generalises to gate any future module's
+override content.
+
+**AI.** In the visit policy (`map-policy.ts` CHOOSE_ONE branch) a `BUY_EQUIPMENT`
+option scores above the shop's Leave option ONLY into an EMPTY slot and from
+genuine surplus (`gold ≥ cost + 6`); otherwise it scores below Leave, so the seat
+buys from surplus or exits cleanly (no stall, no auto-replace, drive-tested). The
+AI never seeks the shop specifically.
+
+**UI.** The hero board renders one `.hbEquip` chip per equipped item (slot glyph +
+EN/VI name), beside the realm/grade chips; module-off renders nothing (CONTROL).
+
+**Adaptations / deliberate limits (leading with what does NOT run):**
+- **No map-action BUTTONS for EQUIPMENT in this slice** — buying is only through
+  the outfitter visit; the hero board is a read-only display for items. (The other
+  hero map actives — HERO_TRAIN, Forced March, Heavenly Tribulation — DO now have
+  a human button via the map `HeroActionsDock`; only equipment purchase does not.)
+- **Art-later** — all 6 items ship WITHOUT a card face (declared in
+  `ANIME_EQUIPMENT_ART_PLACEHOLDERS`; the UI falls back to the slot glyph). Drop a
+  `.webp` under `public/assets/anime/equipment/<slug>.webp` and remove the id.
+- **No designer pin for the outfitters in V1** — they are pool-placed only (the
+  designer palette passes no `moduleEnabled` predicate, so a `requiresModule` kind
+  is hidden there). A designer surface is future data work.
+- **The Courier's-Charm → Supply-Satchel swap (documented).** The original sketch
+  had a "+1 movement point per turn" accessory (Courier's Charm), but no clean
+  once-per-turn movement-income chokepoint was established (unlike the Boots
+  family, which grants movement as a one-shot CARD, not a standing per-turn
+  drip). Rather than invent a new arm for a cosmetic item, V1 ships the Supply
+  Satchel (+1 building materials each Resources round) on the ALREADY-PROVEN
+  `resourceRoundGain` seam. A per-turn movement item is a growth item once a
+  standing movement-income arm exists.
+
+**Growth path (data-mostly):** more items are pure catalog rows on the six proven
+seams (attack/defense one-shots, spell Power, win-gold, hand limit, income);
+per-slot fancy art/fonts and a designer pin are UI/data work; a per-turn movement
+item awaits a standing movement-income arm; multi-item set bonuses would be the
+first to add a NEW read (and its test bar). Magnitudes stay on the ONE power scale
+shared with core / Hero Grades / Cultivation, so a new item never out-scales the
+existing precedents.
 
 ---
 
@@ -614,6 +979,69 @@ each die at "−1" deals 1 damage to a chosen army unit (normal removal path);
 survive all three → breakthrough + draw 1 Artifact. Decline/failure = retry
 next turn. Realm state is public (hero board).
 
+**SHIPPED** (`src/engine/anime-cultivation.ts` read-layer + wiring across
+`adventure.ts` / `adventure-reducer.ts` / `legal-actions.ts` / `reducer.ts`;
+UI in `hero-board.tsx`; behaviour pinned in `src/engine/anime-cultivation.test.ts`
+and the realm chip in `src/components/hero-board.test.tsx`, every grant
+mutation-checked with a realm-below CONTROL). Track state lives on the MAIN hero
+(`hero.cultivationRealm?`, lazily stamped — absent === realm 0, so module-off +
+legacy snapshots never carry it; realm 3 sets `hero.tribulationWon?`, the once-
+per-turn gate is `hero.tribulationAttemptedRound?`). Realms 1–2 advance
+AUTOMATICALLY on hero level-up and on a bank-win finalize (one feed event per
+realm, `CULTIVATION_REALM_ADVANCED`). Grants: **+1 hand limit** folded at the
+single effective-hand-limit site (`effectiveHandLimit`); **1 free Attack-die
+reroll/combat** as a standing `AttackRerollSource` (`cultivation` discriminator,
+per-combat `combatStats.cultivationRerollUsed` cleared in `makeCombatShell`,
+obeying every existing reroll-window rule incl. the Spirit-of-Oppression
+lockout); **+1 spell Power** folded beside the Pandora flat bonus at the shared
+`standingSpellPower` / `resolvedSpellPowerForStackItem` chokepoints. The
+Tribulation is a `HEAVEN_TRIBULATION` handler-validated map action opening a
+`pendingVisit` (the standard exclusive-interaction singleton, so parallel-turn
+bystander gating, the fingerprint backstop, AFK/timeout default-resolution and
+`eliminatePlayer` cleanup all cover it for free — verified by tests).
+
+**Design principle (one power scale):** the grant magnitudes are deliberately
+pegged to existing perk precedents — +1 hand limit = the Pandora
+`handLimitBonus` magnitude, one free reroll/combat = the morale-token /
+artifact reroll-source scale, +1 Power = the Pandora `spellPowerBonus` scale —
+so cultivation (xianxia flavour) coexists on the SAME balance scale as the core
+board game, WOG and isekai content rather than introducing a new power tier.
+
+**ADAPTATIONS (deviate from the sketch above; each documented at the wiring
+site):**
+- **No Foundation-Pill path** — Elixir Pills are not shipped (`anime.elixirPills`
+  is types/lobby only), so realm 1 advances by hero level 3 ALONE. The "consume a
+  Foundation Pill" alternative is deferred until pills ship.
+- **Core Formation gate = "≥1 CREATURE BANK won"** (not "≥1 Secret Realm won" —
+  Secret Realm banks / the Dungeon are not shipped). A new mod-agnostic
+  `player.bankWins?` counter (optional, additive) is incremented on EVERY bank-win
+  finalize (never gated on any module — a default table gains the field after a
+  bank win, nothing else reads it yet; it also seeds the future §3.5
+  `defeat-banks ≥ N` quest vocabulary).
+- **Toll reading = card loss, not HP damage.** Map-side army cards carry no HP, so
+  each "−1" die is paid by the player's cheapest-first pick of one army card: a
+  Pack flips to Few (reusing `FLIP_PACK_TO_FEW` with `source: "tribulation"`) and
+  any other card is lost with the standard recycle — the same Plague /
+  Monolith-toll conventions. Survive with ≥1 card → breakthrough + a Search(1)
+  Artifact draw (the Creature-Bank reward machinery); an emptied army fails and
+  may retry next turn.
+
+**Cross-mod seams (each tested in `anime-cultivation.test.ts`):**
+- **Polish Unit Stacks** — a Tribulation toll on a STACKED Pack sheds ONE Stack
+  layer (`ARMY_STACK_LOST`, the Plague convention: Stacks ARE the unit-level
+  cultivation) instead of flipping; an unstacked Pack still flips (source-
+  disambiguated exactly like Plague vs Pandora Silver-Muster).
+- **Spell Book (both worlds)** — the Nascent +1 Power lands on a cast from the
+  ORIGINAL stash-style Spell Book (BINH default) exactly as on a hand cast
+  (shared resolution chokepoint), and rides the same standing chokepoint under
+  the mutually-exclusive `polish-spell-book` mode.
+- **WOG Commanders** — the Core Formation reroll behaves as a normal attack-window
+  source in a commander fight (no crash, offered exactly once; the commander's
+  own Might dice are a separate mechanism, untouched).
+- **Mixed anime packages** — cultivation reads only its own `anime.cultivation`
+  flag + hero/player state, so an isekai module being on does not change any
+  cultivation event or grant.
+
 ### 5.7 Destiny & Karma titles (`anime.destiny`)
 
 Rides the §3.4 substrate. Xianxia karma sources: +1 win vs a demonic-aligned
@@ -679,10 +1107,29 @@ or pool), never printed on stock tiles in V1.
 | **Ngộ Đạo Thạch** (*Enlightenment Stone*) | Learning Stone / Scholar hybrid | Visitable, costs the normal visit stop (MP already spent to enter): `SEARCH_SHARED_DECK` **abilities** count **2** (look 2, keep 1, rest reshuffle — existing Search pipeline). Printed Learning Stone is +1 XP; this is the enlightenment twin. | far, near |
 | **Trận Pháp Truyền Tống** (*Teleportation Array*) | Two-Way Monolith (user said Subterranean Gate; **mechanics match Monolith**) | Revisitable: carves as `location: "monolith"` so it joins the **existing Monolith teleport network** (1 free travel / revisit 1 MP, traveller picks when 3+, occupied skipped) — **zero new travel code** in V1, no weird parallel network. Skin label/art is the Array. A future separate Array-only network is stretch. | far, near, center, subterranean |
 
-Also retained from earlier sketch: **Qi Refinement Platform** (revisitable;
-pay 1 MP → +1 Attack token for next combat), **Foundation Stone** (free
-reinforce, Hill Fort family), **Merchant Guild Post** / **Gambling Den**
-(§5.5), **Outer-Realm Rift** (guarded teleport — designer pin).
+**Wave 2 — SHIPPED** (3 more xianxia + the first 3 isekai, all PURE REUSE of
+the existing `LocationInteraction` vocabulary; no new engine arm). Effect tests:
+`src/engine/anime-locations.test.ts`. These 6 kinds ship WITHOUT hex art yet:
+each carries a `glyph` fallback and is declared in
+`FIELD_OVERRIDE_ART_PLACEHOLDERS` (`src/data/anime/field-overrides.ts`) — drop a
+`.webp` + set `image` + delete from that set to promote to full art. The
+art-or-placeholder invariant and the glyph fallback (board icon mode + designer
+overlay) are pinned in `field-overrides.test.ts`,
+`anime-field-override-board.test.tsx`, and `map-designer.test.tsx`.
+
+| Location | Package | HoMM3 twin | Engine reading (V1) | Tile groups |
+| --- | --- | --- | --- | --- |
+| **Trạm Thương Hội** (*Merchant Guild Post*, §5.5) | xianxia | Trading Post | Revisitable `TRADING_POST` — resource exchange + sell-card / war-machine (NOT `tradesOnly`). | far, near |
+| **Sòng Bạc Quán** (*Gambling Den*, §5.5) | xianxia | Crypt/Sea Chest gamble | Visitable `PAY_TO` 2 gold → `ATTACK_DIE_TABLE` (+1 → 5 gold, 0 → 2 back, −1 → −1 morale). | far, near |
+| **Đài Luyện Khí** (*Qi Refinement Platform*) | xianxia | — | Visitable `CHOOSE_ONE`: Meditate → `GAIN_MORALE` +1, or Push → `ATTACK_DIE_TABLE` experience gamble. **V1 REUSE reading** (§0 rule 4): the earlier "pay 1 MP → +1 Attack token next combat" needs a NEW engine arm and is NOT shipped. | far, near |
+| **Capsule Corp Lab** (*Dragon Ball*) | isekai | War Machine Factory | Revisitable `WAR_MACHINE_SHOP` — buy a war machine at the lower price. | far, near, center |
+| **Urahara's Shop** (*Bleach*) | isekai | curio counter | Revisitable `CHOOSE_ONE`: pay 3 gold → Search(1) Artifact, or pay 1 gold → 1 Treasure die (both `PAY_TO`). | far, near, center |
+| **Hot Spring Inn** (*Onsen*) | isekai | Fountain of Youth | Visitable `CHOOSE_ONE`: `GAIN_MORALE` +1, or `GAIN_MOVEMENT` +1 (no youth/cleanse arm). | far, near |
+
+Still on the earlier sketch, NOT yet shipped: **Foundation Stone** (free
+reinforce, Hill Fort family) and **Outer-Realm Rift** (guarded teleport —
+designer pin). The **Qi Refinement Platform**'s original "+1 Attack token" reading
+awaits a new engine arm (see the V1 reuse note above).
 
 ### 5.9 Elixir Pills (`anime.elixirPills`)
 
@@ -719,6 +1166,45 @@ to existing artifact slots.
 | **Túi Càn Khôn** (*Cosmic Bag*) | Misc | Resource Phase: +1 building material (Endless Sack of Wood twin — income rider). |
 | **Tụ Linh Bàn** (*Spirit Gathering Board*) | Misc | Resource Phase: if the hero is in a **Town**, that player gains +2 gold (town-stationed income rider). |
 | **Truyền Âm Ngọc Giản** (*Sound Transmission Jade*) | Misc | Once per round, Adventure Phase: trade resources and/or Artifact cards with **any allied hero** regardless of distance (NEW `REMOTE_ALLY_TRADE` arm; multiplayer only has meaning with ≥2 human/AI seats on the same team — on free-for-all tables the "allied" set is empty and the card is inert with a note). |
+
+#### 5.10 — V1 STATUS (P0c shipped)
+
+**SHIPPED (5 cards, engine-wired + mutation-checked, `src/data/anime/artifacts.ts`,
+tests `src/engine/anime-artifacts.test.ts` + `src/data/anime/anime-artifacts.test.ts`).**
+These are ORIGINAL cards, so the printed text is exactly what runs — no
+display-only clauses. They deck-join only when `anime.xianxiaArtifacts` is on
+(default OFF ⇒ byte-identical decks) and always resolve in the card library:
+
+- **Túi Càn Khôn** (Cosmic Bag, minor, income permanent): "At the beginning of
+  each Resources round, gain 1 building materials. — OR — Remove this card, then
+  gain 1 building materials and 1 valuables." (Inexhaustible-Cart family;
+  `resourceRoundGain`.)
+- **Tụ Linh Bàn** (Spirit Gathering Board, minor, income permanent): "At the
+  beginning of each Resources round, if your main Hero is in one of your Towns,
+  gain 2 gold. — OR — Remove this card, then gain 3 gold." Conditional income
+  runs off the NEW `resourceRoundGain.requiresHeroInTown` flag, gated at the
+  single income chokepoint (`startAdventureRound` → `mainHeroInOwnTown`).
+- **Phong Hỏa Luân** (Wind & Fire Wheels, major, instant): "Your Hero gains +2
+  movement. — OR — Remove this card, then your Hero gains +3 movement."
+  (`GAIN_HERO_MOVEMENT`; because it is a movement effect it is ALSO auto-offered
+  in a neutral combat's continue-or-retreat window as a movement top-up — pinned.)
+  The plan's "In combat, allied Bronze units +1 Initiative" aura is a DEFERRED
+  fancy half (not printed, not run).
+- **Tru Tiên Kiếm** (Heaven-Slaying Sword, relic, instant combat reaction):
+  "Discard 1 card to gain +3 attack. — OR — +2 attack." (Sword-of-Judgement
+  family, `ADD_COMBAT_STAT` on your unit's declared attack.) The plan's
+  once-per-combat Gold-unit cleave/exhaust half is DEFERRED (not printed).
+- **Bát Quái Kính** (Bagua Mirror, major, instant combat reaction): "Discard 1
+  card to gain +2 defense. — OR — +1 defense." (Sentinel's-Shield family, one
+  tier softer.) The plan's enemy-spell CANCEL half is DEFERRED — it needs the
+  interrupt/cancel arm, which does not exist cleanly yet (not printed, not run).
+
+**DESIGNED, NOT SHIPPED (waiting on their arms):**
+- **Đông Hoàng Chung** (Eastern Bell) — army-wide Armored (−1 physical damage):
+  needs a physical-only damage-reduction arm (Iron-Golem family parameterised or
+  a new `ARMORED_KEYWORD`).
+- **Truyền Âm Ngọc Giản** (Sound Transmission Jade) — remote allied-hero trade:
+  needs the NEW `REMOTE_ALLY_TRADE` arm (and only meaningful with team seats).
 
 ### 5.11 Tâm Ma (*Heart Demon*) status token (`anime.heartDemon`)
 
@@ -1386,6 +1872,55 @@ book-on/off CONTROLs in every phase that touches spells:
 
 ## 11. Visual-novel story system (shared presentation system)
 
+> **FOUNDATION SHIPPED (2026-07-17).** The presentation spine is engine/UI-wired
+> and covered by tests that fail if the wiring is removed. Leading with what does
+> **NOT** run yet:
+> - **No campaign hooks.** `on_start` / `on_victory` / `on_defeat` / `on_round:N`
+>   / `on_quest_complete` scene triggers are the NEXT step (§12) — this slice
+>   ships ONLY the map-designer timed-event trigger path.
+> - **No karma/fate/flag deltas on choices.** The destiny substrate (§3.4) is
+>   unshipped, so those fields are deliberately kept OUT of the `StoryChoice`
+>   type; a choice carries only bilingual `text` + optional `nextSceneId`. The
+>   campaign step adds what it consumes.
+> - **No music.** `music?` is not modeled (the stated ship limit); the overlay
+>   reuses the existing `adventure/new-week` open sting only (no new sound files).
+> - **No e2e.** jsdom/unit tests only this step; a browser smoke is deferred.
+> - **All art is placeholdered.** No file exists under `public/assets/story/…`
+>   yet — every referenced sprite/background is declared in
+>   `STORY_ART_PLACEHOLDERS` (`src/data/story/scenes.ts`) and the overlay falls
+>   back to a theme-tinted gradient background / an initial-letter avatar chip
+>   (never a broken `<img>`). Drop a `.webp` + remove its path from the set to
+>   promote it.
+>
+> **What runs (each pinned by a test that fails if the wiring is removed):**
+> - Data model + registry `src/data/story/scenes.ts` — `StoryScene` /
+>   `StoryLine` / `StoryChoice`, bilingual EN/VI by construction, 2 themed demo
+>   scenes (one xianxia with a 2-way choice chaining via `nextSceneId` to a tiny
+>   follow-up, one isekai) that double as sample content AND fixtures. Registry
+>   integrity + the art-or-declared-placeholder invariant pinned in
+>   `src/data/story/scenes.test.ts`.
+> - Language preference `src/lib/story-language.ts`
+>   (`localStorage["binh-story-lang"]`, default "en", SSR-safe; the
+>   `ui-mode-preference` pattern) — `src/lib/story-language.test.ts`.
+> - Component `StoryOverlay` (`src/components/table/story-overlay.tsx`):
+>   theme-tinted backdrop, two sprite slots (placeholder → avatar chip),
+>   nameplate, typewriter (click/Space: first press completes, next advances),
+>   Skip, history log, EN/VI toggle, choice buttons (a `nextSceneId` choice
+>   continues in the SAME session), `onDone` at the true end; `.xianxiaTheme`
+>   / `.isekaiTheme` stamped on the component ROOT (never the table root, §3.6).
+>   Behaviour pinned in `src/components/table/story-overlay.test.tsx` (jsdom).
+> - Trigger path — designer timed events: `CustomMapPreset.timedEvents` gains
+>   `{ kind: "story", sceneId }` (union in `state.ts`; sanitized in
+>   `map-preset.ts` — an unknown sceneId is dropped; round-trip in
+>   `map-registry.test.ts`); `applyCustomMapTimedEvents` fires a table-wide
+>   `STORY_SCENE_TRIGGERED` event; the client (`page.tsx`) pops the overlay
+>   ONCE per event id, never replayed on reconnect (the exact MapEventOverlay
+>   seen-set/prime semantics). Editor dropdown + scene-id select in
+>   `map-preset-editor.tsx`. Engine emission + sanitize pinned in
+>   `custom-setup.test.ts` (with a wrong-round CONTROL); editor UI in
+>   `map-preset-editor.test.tsx`. Story events are table-wide, so eliminated-seat
+>   skipping is a verified no-op for them.
+
 There is no narrative infrastructure today (verified — closest hooks:
 `EventDrawnOverlay`, `overlays.tsx:2571`, preset `notes`/timed `note`
 events). The mod adds ONE, package-agnostic:
@@ -1422,6 +1957,78 @@ events). The mod adds ONE, package-agnostic:
 ---
 
 ## 12. Story mode — the campaign hub
+
+> **HUB + CHAPTER 1 OF BOTH CAMPAIGNS SHIPPED (2026-07-17).** The campaign shell
+> around the §11 story system is engine-free presentation + localStorage. Leading
+> with what does **NOT** run:
+> - **Only Chapter 1 of each campaign is PLAYABLE.** Chapters 2–7 exist as DATA
+>   (bilingual title + synopsis, the §12.1 / §12.2 arc) with `playable:false`, no
+>   `setup`, empty `scenes`. Completing ch-1 UNLOCKS ch-2, which renders as a
+>   clear "in development" state — never beginnable.
+> - **Protagonists are PRESENTATION only.** Chen Fan / Bin live in the story
+>   scenes; the playable seat uses a CORE faction stand-in — **Jianghu ch-1 =
+>   Rampart**, **Bin ch-1 = Tower** (anime towns are unshipped). `setup.playerFaction`
+>   names the stand-in.
+> - **`setup` IS applied to the live game (setup-injection slice SHIPPED).** The
+>   Begin flow mints a STANDARD single-player room (opponent count only); once the
+>   human is seated in its setup lobby the table page pushes the chapter's config
+>   through the NORMAL action pipeline — `campaignSetupActions(chapter, seat)` →
+>   `SET_GAME_OPTIONS` (the chapter's `anime` + global `fieldOverrides` +
+>   `difficulty`) then `CHOOSE_FACTION` (the protagonist's core faction + its first
+>   hero, PRESELECTED). No new server surface. Once per room (persisted
+>   `setupApplied` marker); the player still sees the normal setup screen and may
+>   change any pick before starting. A latent gap was fixed alongside this:
+>   `buildAdventureFromLobby` was DROPPING `anime` + `fieldOverrides` when it built
+>   the game from the lobby (only the direct `createAdventureGameState` path carried
+>   them), so a lobby-set anime/FO toggle never reached the started game — now
+>   carried through. Pinned pure in `campaign-triggers.test.ts` and end-to-end in
+>   `campaign-setup-injection.test.ts` (Jianghu ch-1 starts with
+>   `anime.enabled + cultivation + xianxiaArtifacts + fieldOverrides` ON and the
+>   Rampart seat; a plain `/single-player` room stays all-default as the CONTROL).
+>   (Only shipped anime flags are ever set true: Jianghu ch-1 =
+>   `enabled + cultivation + xianxiaArtifacts` + global `fieldOverrides`; Bin ch-1
+>   = `enabled` + `fieldOverrides` — isekai modules do nothing yet, so none are
+>   enabled. A dead flag fails `campaigns.test.ts`.)
+> - **`mapPresetId` is unused** — campaign maps use standard map generation in V1
+>   (a designed `CustomMapPreset` per chapter is a later content pass; the type
+>   carries the optional field for it).
+> - **No routes / karma / cheat picks / quest-log.** A printed 5A/5B split is one
+>   chapter here; the split, Golden Fingers / Cheat Skills and the System
+>   quest-log are all deferred (§13, campaign-only). No convergence arc (§12.3).
+> - **All story art is placeholdered** (the §11 contract): the two new sprites
+>   (`system`, `guild-girl`) join `STORY_ART_PLACEHOLDERS`; the overlay's avatar /
+>   gradient fallbacks render them. No e2e — jsdom/unit only this slice.
+>
+> **What runs (each pinned by a test that fails if the wiring is removed):**
+> - **Campaign registry** `src/data/story/campaigns.ts` — both campaigns
+>   ("The Jianghu Chronicle" / Chen Fan, "Bin's Otherworld Chronicle" / Bin), 7
+>   chapters each, bilingual EN/VI. `chapterRoomOptions(chapter)` maps a chapter
+>   to room-creation options (seat count + resolved anime payload). Registry
+>   integrity, bilingual completeness, real-faction/sane-opponent setup, the
+>   shipped-anime-flag allowlist, and `chapterRoomOptions` in
+>   `src/data/story/campaigns.test.ts`.
+> - **Chapter-1 scenes** added to `src/data/story/scenes.ts` — intro (with a
+>   choice; the Jianghu intro chains a follow-up via `nextSceneId`), victory and
+>   defeat for both campaigns, xianxia vs. isekai register. Integrity + the
+>   art-placeholder invariant stay pinned in `scenes.test.ts`.
+> - **Progress store** `src/lib/campaign-progress.ts` — per-campaign completed
+>   chapters (`localStorage["binh-campaign:<id>"]`, the unlock chain), per-room
+>   binding + intro/outcome markers (`localStorage["binh-campaign-room:<roomId>"]`),
+>   SSR-safe (`ui-mode-preference` pattern). `campaign-progress.test.ts`.
+> - **Pure trigger** `src/lib/campaign-triggers.ts` (`campaignSceneToFire`):
+>   state + binding + shown-markers → the scene to fire (onStart once when the
+>   adventure is first visible; onVictory + completion / onDefeat at game-over;
+>   nothing for an UNBOUND room). `campaign-triggers.test.ts`.
+> - **`/story` route** `src/app/story/page.tsx` — theme-styled campaign cards
+>   (`.xianxiaTheme`/`.isekaiTheme` scoped to the CARDS, never the app root),
+>   chapter states (locked/in-development/ready/completed), the EN/VI toggle, and
+>   a Begin flow reusing `createSinglePlayerRoom` + `bindCampaignRoom`.
+>   `src/app/story/page.test.tsx`.
+> - **Menu entry** — "Story mode" → `/story` in `src/app/menu/page.tsx`
+>   (`menu/page.test.tsx`).
+> - **Table wiring** `src/app/page.tsx` — a bound campaign room pops the chapter's
+>   intro/outro through the EXISTING `storyCue`/`StoryOverlay` pipeline, once per
+>   room; game-over win → `markChapterCompleted`. Thin over the pure trigger.
 
 Shared shell (§3.3): each chapter = a private single-player room (`sp-` ids,
 `createSinglePlayerRoom`, `src/lib/realtime.ts:819`) built from a chapter
@@ -1756,11 +2363,23 @@ systems first — they are the new ask — with the xianxia towns folded in from
 P6). The two tracks only depend on the P0 spine and their own rows, so the
 user can reorder tracks without re-planning (§22 Q2).
 
+> **SHIPPED AHEAD OF PHASE ORDER (2026-07 session).** The default table order
+> below is unchanged, but several systems were pulled forward and shipped early
+> (each engine-wired + mutation-tested, cross-referenced in
+> `docs/anime-mod-session-2026-07.md`): **P0b** Field Override spine + Ninefold
+> locations, **P0c** Pháp Bảo artifacts, plus the new SHARED systems added
+> mid-session — **Hero Grades** (§3.11), **Forced Battle Events** (§3.12),
+> **Equipment** (§3.13) — and, ahead of their divinity-layer/story phases,
+> **Cultivation & Tribulation** (§5.6, part of the P11 divinity layer), the
+> **Story system** (§11) and the **campaign hub + Chapter 1** (§12, the P13
+> row's presentation half). Their P11/P13 rows still list the REMAINING work
+> (destiny substrate, Gods, chapters 2–7, the cheat shell).
+
 | Phase | Ships | Gate (beyond green lint/typecheck/test) |
 | --- | --- | --- |
 | **P0** | Spine: `AnimeModOptions`, crest + package quick-selects, `.animeMode` scaffold + both term dictionaries, art scaffolding (style bible, prompt sheets, shared compositor), CLAUDE.md section stub | §3.8(a) master CONTROL; quick-select = exact module groups; crest e2e |
-| **P0b** | **Field Override spine** (§3.10 / §9b): types, catalog, `carveFieldOverride`, setup pin + pending reveal (random/manual/manual-or-refuse), lobby placement mode, designer **Mod panel** (palette + face-down pin), Ninefold V1 locations (§5.8 table) with effect-level tests | module-off CONTROL; designer pin round-trip; each location visit outcome + guard fight for Bí Cảnh; AI answers placement window; bank/token coexistence |
-| **P0c** | **Pháp Bảo** artifacts that REUSE existing arms (Cosmic Bag, Spirit Gathering Board, Wind & Fire Wheels movement half, Heaven-Slaying Attack stat) | deck-join on/off; income riders with CONTROLs |
+| **P0b** — SHIPPED | **Field Override spine** (§3.10 / §9b): types, catalog, `carveFieldOverride`, setup pin + pending reveal (random/manual/manual-or-refuse), lobby placement mode, designer **Mod panel** (palette + face-down pin), Ninefold V1 locations (§5.8 table) with effect-level tests | module-off CONTROL; designer pin round-trip; each location visit outcome + guard fight for Bí Cảnh; AI answers placement window; bank/token coexistence — done |
+| **P0c** — SHIPPED | **Pháp Bảo** artifacts that REUSE existing arms (Cosmic Bag, Spirit Gathering Board, Wind & Fire Wheels movement, Heaven-Slaying Attack stat, Bagua Mirror defense) — 5 cards, `src/data/anime/artifacts.ts`; the Eastern Bell (army Armored) + Sound Transmission Jade (remote trade) remain DESIGNED-not-shipped (see §5.10 V1 STATUS). Deferred fancy halves (cleave-exhaust, spell-cancel, bronze aura) not printed. | deck-join on/off + income riders with CONTROLs — done (`anime-artifacts.test.ts`) |
 | **P0d** | **Tâm Ma** token arm + one producer stub; **Heavenly Tribulation** spell; remaining artifact combat arms + Đoạt Xá | token roll outcomes; spell area + survivor buff; possession fizzle CONTROL |
 | **P1** | **Fuyuki City** complete (units/buildings/heroes incl. **Bin**/commander **Ruler (Jeanne)**/tile/board/art) + Summoning Circle + its SHARED/NEW arms | content test; commander bijection updated with a `wog.commanders`-on seat; SP soak with a Fuyuki AI seat |
 | **P2** | **Isekai neutrals** + 4 isekai banks + Devour/`MORALE_LOCK` + isekai map locations | bank rows vs `polish-bank-sizes` on/off; Fear↔morale-deck interplay tests; §3.8 gates begin |

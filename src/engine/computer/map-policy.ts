@@ -1,5 +1,8 @@
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
+import { getEquipmentDefinition } from "@/data/anime/equipment";
+import { heroEquipmentSlot } from "../anime-equipment";
 import { cardLibrary } from "@/data/cards/library";
 import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
@@ -1175,6 +1178,23 @@ function buyWarMachineScore(
  * steps are the printed rules. Empty / pure-decline branches score low so the
  * AI still exits, but never freezes on a multi-option Event menu.
  */
+/**
+ * Gold-equivalent printed cost of an army card the Heavenly Tribulation toll
+ * would take — the tie-breaker so the runner deterministically pays the CHEAPEST
+ * card (matches the engine's cheapest-first offer ordering and the AFK default).
+ */
+function tribulationTollCost(state: GameState, playerId: PlayerId, unitId: string): number {
+  const unit = state.players[playerId]?.army.find((candidate) => candidate.id === unitId);
+  if (!unit) {
+    return 0;
+  }
+  const cost =
+    (unit.side === "neutral"
+      ? coreUnitDefinitions[unit.unitDefId]?.neutral?.cost
+      : getUnitSide(unit.unitDefId, unit.side)?.cost) ?? {};
+  return (cost.gold ?? 0) + (cost.buildingMaterials ?? 0) * 3 + (cost.valuables ?? 0) * 7;
+}
+
 function visitStepsUtility(
   state: GameState,
   playerId: PlayerId,
@@ -1217,6 +1237,20 @@ function visitStepsUtility(
         break;
       case "EVENT_DISCARD_CHEAPEST_UNIT":
         utility -= army <= 2 ? 40 : 18;
+        break;
+      case "FLIP_PACK_TO_FEW":
+        // Cultivation Heavenly Tribulation toll (§5.6) ONLY (Plague/Pandora
+        // flips are unscored, exactly as before): flipping / shedding a Stack
+        // from a Pack is a mild loss; prefer the CHEAPEST candidate so the pick
+        // is deterministic and minimal.
+        if (step.source === "tribulation") {
+          utility -= 4 + tribulationTollCost(state, playerId, step.armyUnitId) * 0.2;
+        }
+        break;
+      case "TRIBULATION_LOSE_UNIT":
+        // Losing a whole Few/Neutral card is worse than flipping a Pack — but
+        // still take the cheapest, so the runner protects value deterministically.
+        utility -= 14 + tribulationTollCost(state, playerId, step.unitId) * 0.2;
         break;
       case "REINFORCE_FREE":
         utility += 48;
@@ -1465,6 +1499,28 @@ function teleportDestinationScore(
  * Decline must outrank wasteful trades so an open market always exits cleanly;
  * every other open visit always has a scored pick so the runner never freezes.
  */
+/**
+ * Anime Equipment (§3.13): score a BUY_EQUIPMENT outfitter option. Buy only into
+ * an EMPTY slot and only from genuine surplus (gold ≥ cost + 6) — the AI never
+ * auto-replaces an equipped item. Below that it scores under the shop's Leave
+ * option (1_050) so the runner always has a clean exit (no stall, no over-spend).
+ */
+function equipmentBuyScore(state: GameState, playerId: string, equipmentId: string): number {
+  const def = getEquipmentDefinition(equipmentId);
+  if (!def) {
+    return 1_000;
+  }
+  // Slot already filled → do not auto-replace; leave instead.
+  if (heroEquipmentSlot(state, playerId, def.slot)) {
+    return 1_000;
+  }
+  const gold = playerGold(state, playerId);
+  if (gold < def.cost + 6) {
+    return 1_000;
+  }
+  return 1_120;
+}
+
 function resolveVisitStepScore(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>,
@@ -1511,6 +1567,13 @@ function resolveVisitStepScore(
   if (step.type === "CHOOSE_ONE") {
     const option = step.options[optionIndex];
     if (!option) return 1_000;
+    // Anime Equipment outfitter (§3.13): buy an item into an EMPTY slot only from
+    // genuine surplus (gold ≥ cost + 6); otherwise leave. A buy below that scores
+    // under the Leave option (1_050) so the shop always exits cleanly (no stall).
+    const buyStep = option.steps.find((inner) => inner.type === "BUY_EQUIPMENT");
+    if (buyStep && buyStep.type === "BUY_EQUIPMENT") {
+      return equipmentBuyScore(state, playerId, buyStep.equipmentId);
+    }
     // Monolith/Whirlpool (or Town-Portal) travel: route to the destination
     // nearest the march plan instead of the engine's first-listed token.
     const teleportScore = teleportDestinationScore(observation, option.steps);
@@ -1982,6 +2045,41 @@ export function scoreMapAction(
       // Only offered when the seat owns the window and chose not to play the
       // card — close the gate so the field reward / next turn can proceed.
       return { score: 1_120, policy: "map.skip-necromancy" };
+    case "HEAVEN_TRIBULATION": {
+      // Anime Cultivation (§5.6): brave the Tribulation ONLY with an army buffer
+      // (≥ 3 cards) so the toll gamble cannot strand the seat — otherwise skip
+      // (null → foundation 0, below END_TURN, never taken). Scored just above
+      // END_TURN so a well-stocked seat attempts it when nothing more productive
+      // (moves/recruits/builds, all ≥ 590) is on the table.
+      const army = state.players[observation.playerId]?.army.length ?? 0;
+      if (army < 3) {
+        return null;
+      }
+      return { score: 360, policy: "map.heaven-tribulation" };
+    }
+    case "HERO_GRADE_PICK": {
+      // Anime Hero Grades (§3.11): spending a grade point is free and beneficial,
+      // so grade up IMMEDIATELY (like COMMANDER_GRADE_UP). No earlier scorer
+      // claims this type, so map-policy owns it. Prefer PASSIVES and the lowest
+      // unlocked tier ("first affordable tier") so the pick is deterministic.
+      const node = HERO_GRADE_NODES[action.nodeId];
+      const passiveNudge = node?.kind === "passive" ? 4 : 0;
+      const tierNudge = node ? 3 - node.tier : 0;
+      return { score: 1200 + passiveNudge + tierNudge, policy: "map.hero-grade-pick" };
+    }
+    case "HERO_TRAIN":
+      // Train for Merit only when idle: scored just above END_TURN (300) and
+      // below every real map play (moves/recruits/builds ≥ ~590), so a reachable
+      // objective always outscores it — i.e. only when the seat would otherwise
+      // end the turn with the 2 MP unspent. Legal only with ≥2 MP (heroTrainAvailable).
+      return { score: 330, policy: "map.hero-train" };
+    case "USE_HERO_SKILL":
+      // On the map this is Forced March (+1 movement, once per round). Combat
+      // War Cry is claimed earlier by combat-policy, so a USE_HERO_SKILL reaching
+      // here is the map active. Scored just above END_TURN so a stuck hero pumps
+      // +1 MP and re-evaluates (a previously out-of-reach objective may open up);
+      // once-per-round, so it can never loop.
+      return state.combat ? null : { score: 340, policy: "map.hero-forced-march" };
     default:
       return null;
   }

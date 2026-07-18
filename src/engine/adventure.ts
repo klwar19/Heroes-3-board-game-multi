@@ -36,6 +36,27 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import { cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
+import {
+  gainGradeProgress,
+  heroGradeHandLimitBonus,
+  heroGradeResourceRoundGold,
+  heroGradeResourceRoundMaterials,
+  heroGradesEnabled
+} from "./anime-hero-grades";
+import {
+  HERO_GRADE_MANUAL_SHOP_LOCATION_IDS,
+  HERO_GRADE_MERIT_HEX_LOCATION_IDS,
+  HERO_GRADE_TRAINING_MANUAL_CARD_ID
+} from "@/data/anime/hero-grades";
+import {
+  equipEquipment,
+  equipmentEnabled,
+  equipmentHandLimitBonus,
+  equipmentResourceRoundMaterials,
+  playerHasEquipment
+} from "./anime-equipment";
+import { EQUIPMENT_SHOP_SALES, getEquipmentDefinition } from "@/data/anime/equipment";
 import {
   applyMoraleCardGain,
   consumeHeldMoraleCard,
@@ -46,9 +67,15 @@ import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
 import { clearResetVote } from "./reset-vote";
 import {
+  artifactCountOf,
   computeVictoryPoints,
+  controlledBuildingCount,
+  describeCustomWinCondition,
+  flaggedMineSettlementCount,
+  mainHeroOf,
   recordVpUtopiaDefeat,
   recordVpViiCenter,
+  townsControlledBy,
   victoryPointsConfig,
   victoryPointsModeActive
 } from "./victory-points";
@@ -119,6 +146,7 @@ import type {
   CustomCenterHexReward,
   CustomGuardSpec,
   CustomMapObjectKind,
+  CustomWinCondition,
   EventDiePoolEntry,
   EventPoolEntry,
   EventsState,
@@ -353,6 +381,24 @@ export const TILE_BACK_LABELS: Record<string, string> = {
   subterranean: "Ⅳ–Ⅴ"
 };
 
+/**
+ * Player-facing band name for a tile GROUP (feed + designer). Unlike
+ * {@link TILE_BACK_LABELS}, Sea and Underground get their own names rather than
+ * the shared Ⅳ–Ⅴ back numeral (a sea/underground tile back is ambiguous with a
+ * land Near tile), so a group filter reads unambiguously.
+ */
+export const TILE_GROUP_BAND_LABELS: Record<
+  "starting" | "far" | "near" | "center" | "sea" | "subterranean",
+  string
+> = {
+  starting: "Ⅰ",
+  far: "Ⅱ–Ⅲ",
+  near: "Ⅳ–Ⅴ",
+  center: "Ⅵ–Ⅶ",
+  sea: "Sea",
+  subterranean: "Underground"
+};
+
 export function getAstrologersState(state: GameState): AstrologersState | null {
   const adventure = state.adventure;
   if (!adventure) {
@@ -432,7 +478,23 @@ export function effectiveHandLimit(state: GameState, playerId: PlayerId): number
     (total, cardId) => total + (cardLibrary[cardId]?.permanentEffect?.handLimitBonus ?? 0),
     0
   );
-  const base = player.limits.hand + permanentBonus;
+  // Anime Cultivation Foundation (realm 1, §5.6): +1 hand limit. This is THE
+  // effective-hand-limit aggregation site (permanents.ts:permanentHandLimitBonus
+  // is a permanent-only delta helper that no live code feeds into a limit), so
+  // folding here covers BOTH consumers — the draw-up in refreshHand and the
+  // discard-down threshold in needsHandRefresh, which share this function.
+  // Anime Hero Grades Deep Pockets (tier 2, §3.11): +1 hand limit, folded at the
+  // same aggregation site as Cultivation Foundation so BOTH stack observably
+  // (a hero with both picks gets +2) across the draw-up and discard-down.
+  // Anime Equipment Guild-Issue Mail (§3.13): +1 hand limit, folded at the same
+  // aggregation site as Cultivation Foundation / Deep Pockets so ALL THREE stack
+  // observably (a hero with all three gets +3) across draw-up and discard-down.
+  const base =
+    player.limits.hand +
+    permanentBonus +
+    cultivationHandLimitBonus(state, playerId) +
+    heroGradeHandLimitBonus(state, playerId) +
+    equipmentHandLimitBonus(state, playerId);
 
   const active = getActiveAstrologersCard(state);
   let limit = base;
@@ -966,8 +1028,41 @@ export function isSeaField(state: GameState, spaceId: MapSpaceId): boolean {
  */
 export type MapLayer = "surface" | "subterranean";
 
+/**
+ * The tile groups a designer's UNDERGROUND layer override
+ * ({@link CustomMapTilePlan.underground}) is valid on: the supply/sea/center
+ * bands. Excluded are `starting` (seat tiles stay Surface — the opening ceremony
+ * assumes it, the deliberate v1 limit) and `subterranean` (already underground —
+ * the flag would be redundant). The persistence sanitiser and setup validator
+ * both strip the flag off any other group against THIS set, and the designer UI
+ * offers the toggle only for these groups.
+ */
+export const UNDERGROUND_LAYER_GROUPS: ReadonlySet<string> = new Set([
+  "far",
+  "near",
+  "center",
+  "sea"
+]);
+
+/**
+ * Whether a tile PLAN (or placed tile) sits on the Underground layer — THE
+ * plan-side layer predicate, the single definition every validator, preview and
+ * the designer share instead of an inline `group === "subterranean"` check. A
+ * printed cavern (`group: "subterranean"`) is always underground; a
+ * far/near/center/sea tile is underground when the designer set the
+ * {@link CustomMapTilePlan.underground} override. A `starting` seat tile is never
+ * underground (the flag is stripped there and ignored here defensively), so the
+ * opening ceremony and seat balance are untouched.
+ */
+export function planIsUnderground(plan: { group?: string; underground?: boolean }): boolean {
+  if (plan.group === "subterranean") {
+    return true;
+  }
+  return plan.underground === true && plan.group !== "starting";
+}
+
 export function tileLayer(tile: MapTileState | undefined): MapLayer {
-  return tile?.group === "subterranean" ? "subterranean" : "surface";
+  return tile && planIsUnderground(tile) ? "subterranean" : "surface";
 }
 
 /**
@@ -2042,6 +2137,22 @@ export function getMainHero(state: GameState, playerId: PlayerId): HeroState | n
   );
 }
 
+/**
+ * Whether `playerId`'s MAIN Hero currently stands on one of their OWN Towns'
+ * map fields. Used by the conditional income permanent (anime Tụ Linh Bàn,
+ * `resourceRoundGain.requiresHeroInTown`) — a hero with no position, or standing
+ * anywhere but a friendly Town, earns no town-stationed income.
+ */
+export function mainHeroInOwnTown(state: GameState, playerId: PlayerId): boolean {
+  const hero = getMainHero(state, playerId);
+  if (!hero?.spaceId) {
+    return false;
+  }
+  return Object.values(state.towns).some(
+    (town) => town.controllerId === playerId && town.fieldId === hero.spaceId
+  );
+}
+
 /** The single Secondary Hero a player may field, if they have gained one. */
 export function getSecondaryHero(state: GameState, playerId: PlayerId): HeroState | null {
   return (
@@ -2194,6 +2305,21 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
       level,
       effects
     });
+  }
+
+  // Anime Cultivation (§5.6): auto-advance the Foundation/Core-Formation realms
+  // once their hero-level (and bank-win) thresholds are met. Run once after the
+  // level loop so a multi-level jump advances every qualifying realm, each with
+  // exactly one feed event. No-op when the module is off.
+  maybeAdvanceCultivationRealm(state, playerId);
+
+  // Anime Hero Grades (§3.11): +1 Merit (grade progress) per hero level-up — the
+  // baseline Merit source. Granted once for the whole XP gain (one Merit per
+  // level crossed); a threshold crossing auto-grades the hero up inside
+  // gainGradeProgress. No-op when the module is off / no level was gained.
+  const levelsGained = hero.level - previousLevel;
+  if (levelsGained > 0) {
+    gainGradeProgress(state, playerId, levelsGained, "level-up");
   }
 
   // Learning ability: the Hero is "about to level up" (it just crossed at least
@@ -2918,6 +3044,91 @@ export function endGameByVictoryPoints(
     result.winnerId,
     `the most Victory Points (${winnerRow?.total ?? 0})`
   );
+}
+
+/** Whether a player currently satisfies one custom win condition. The metric
+ * readers ARE the Victory-Points readers (same numbers as VP scoring — an
+ * invariant); `defeat-heroes` counts main (once per opponent) + secondary hero
+ * defeats off the VP ledger, tolerating an absent ledger on legacy snapshots. */
+function playerMeetsCustomWinCondition(
+  state: GameState,
+  playerId: PlayerId,
+  condition: CustomWinCondition
+): boolean {
+  switch (condition.kind) {
+    case "control-towns":
+      return townsControlledBy(state, playerId).length >= condition.count;
+    case "flag-mines":
+      return flaggedMineSettlementCount(state, playerId) >= condition.count;
+    case "hero-level":
+      return (mainHeroOf(state, playerId)?.level ?? 0) >= condition.level;
+    case "gold":
+      return (state.players[playerId]?.resources.gold ?? 0) >= condition.amount;
+    case "artifacts":
+      return artifactCountOf(state.players[playerId]) >= condition.count;
+    case "buildings":
+      // Same reader VP scoring uses for its "Buildings in controlled Towns" row.
+      return controlledBuildingCount(state, playerId) >= condition.count;
+    case "obelisks":
+      // The per-player Holy-Grail Obelisk-visit tally (accrues in grail mode only).
+      return grailObelisksVisitedCount(state, playerId) >= condition.count;
+    case "defeat-heroes": {
+      const ledger = state.adventure?.vpLedger?.[playerId];
+      const defeats = (ledger?.mainHeroDefeats?.length ?? 0) + (ledger?.secondaryHeroDefeats ?? 0);
+      return defeats >= condition.count;
+    }
+    case "defeat-dragon-utopia":
+      return state.adventure?.vpLedger?.[playerId]?.utopiaDefeated === true;
+  }
+}
+
+/**
+ * Custom win conditions (map-designer / lobby authored): the FIRST live player
+ * — iterated in `turnOrder` (deterministic tie-break) — to satisfy ANY active
+ * condition wins immediately, an ADDITIONAL early-end trigger on top of the
+ * normal victory mode. Run from the reducer's post-action tail on EVERY action
+ * (all backends), AFTER END_TURN's synchronous round-income cascade, so a
+ * threshold crossed by round-start income is visible.
+ *
+ * Guards, in order (each cheap so an ordinary game pays almost nothing): the
+ * adventure exists; no winner yet; the effective condition list is non-empty
+ * (the FREE early-out for every existing game / legacy snapshot); and NO combat
+ * is open — a threshold crossed mid-battle is deferred to the next map-side
+ * action (ACKNOWLEDGE_COMBAT_END and co. flow through the same tail), so the
+ * game is never ended mid-fight. Conditions are evaluated in list order for the
+ * reason string, and a completion routes through {@link declareAdventureWinner}
+ * with `viaVictoryCondition: true` — an instant win with VP mode OFF, VP scoring
+ * with it ON — so both behaviours come for free.
+ */
+export function checkCustomWinConditions(state: GameState): void {
+  const adventure = state.adventure;
+  if (!adventure || adventure.winnerPlayerId) {
+    return;
+  }
+  const conditions = adventure.mapPreset?.customWinConditions;
+  if (!conditions || conditions.length === 0) {
+    return;
+  }
+  // Never end the game mid-battle (a crossing resolves on the next map-side action).
+  if (state.combat) {
+    return;
+  }
+  for (const playerId of state.turnOrder) {
+    if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId] || state.players[playerId]?.eliminated) {
+      continue;
+    }
+    for (const condition of conditions) {
+      if (playerMeetsCustomWinCondition(state, playerId, condition)) {
+        declareAdventureWinner(
+          state,
+          playerId,
+          `completed a custom win condition: ${describeCustomWinCondition(condition)}`,
+          { viaVictoryCondition: true }
+        );
+        return;
+      }
+    }
+  }
 }
 
 /** Human seats in turn order (the neutral seat never counts). */
@@ -3982,6 +4193,36 @@ export function elementalConfluxCandidates(
  * Begins resolving a field visit. Immediate effects apply at once; steps that
  * need player input wait in adventure.pendingVisit.
  */
+/**
+ * Anime Equipment (§3.13): build the outfitter shop menu for a visit, or null.
+ * A CHOOSE_ONE with one buy option per item this shop sells that the hero does
+ * NOT already own, plus a "Leave" option. Affordability is gated downstream
+ * (legal-actions skips an unaffordable buy; the reducer backstops a forged one),
+ * exactly like a PAY_TO — so a poor hero sees only Leave. Built at visit time
+ * with full state so already-owned items drop out (option absent). Returns null
+ * only if the module is off or the location sells nothing.
+ */
+function buildEquipmentShopStep(state: GameState, playerId: PlayerId, locationId: string): VisitStep | null {
+  if (!equipmentEnabled(state)) {
+    return null;
+  }
+  const sales = EQUIPMENT_SHOP_SALES[locationId];
+  if (!sales) {
+    return null;
+  }
+  const options = sales
+    .filter((equipmentId) => !playerHasEquipment(state, playerId, equipmentId))
+    .map((equipmentId) => {
+      const def = getEquipmentDefinition(equipmentId)!;
+      return {
+        label: `Buy ${def.name.en} (${def.name.vi}) — ${def.cost} gold · ${def.slot}`,
+        steps: [{ type: "BUY_EQUIPMENT" as const, equipmentId }]
+      };
+    });
+  options.push({ label: "Leave", steps: [] });
+  return { type: "CHOOSE_ONE", prompt: "Outfitter — always-on equipment:", options };
+}
+
 export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSpaceId, revisit: boolean): void {
   const adventure = state.adventure;
   const hero = state.heroes[heroId];
@@ -4155,6 +4396,36 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
       ? interactionToSteps(location.interaction, locationDiceBonusFor(state, playerId))
       : [];
 
+  // Anime Hero Grades (§3.11): the two "enlightenment" hexes grant +1 Merit IN
+  // ADDITION to their printed reward when the module is on. Runtime-gated so the
+  // module-OFF visit is byte-identical (the location definitions are untouched);
+  // reached only on a FRESH visit (past the black-cube guard above).
+  if (heroGradesEnabled(state) && HERO_GRADE_MERIT_HEX_LOCATION_IDS.has(location.id)) {
+    gainGradeProgress(state, playerId, 1, "hex");
+  }
+
+  // Anime Hero Grades (§3.11): the two guild shops sell the one-time Training
+  // Manual for 2 gold when the module is on. Appended (runtime-gated) as an
+  // optional PAY_TO the visitor resolves after the shop's own menu; the PAY_TO
+  // supplies the affordability gate + a Decline, and the inner GAIN_HAND_CARD
+  // grants the item straight to hand.
+  if (steps.length > 0 && heroGradesEnabled(state) && HERO_GRADE_MANUAL_SHOP_LOCATION_IDS.has(location.id)) {
+    steps.push({
+      type: "PAY_TO",
+      prompt: "Buy the Training Manual (Học Vũ Kinh)?",
+      costOptions: [{ gold: 2 }],
+      steps: [{ type: "GAIN_HAND_CARD", cardId: HERO_GRADE_TRAINING_MANUAL_CARD_ID }]
+    });
+  }
+
+  // Anime Equipment (§3.13): the two outfitter shops sell always-on items. The
+  // menu is built dynamically (already-owned items drop out) and appended even
+  // when the base interaction is empty (these locations carve as NONE bases).
+  const equipmentShopStep = buildEquipmentShopStep(state, playerId, location.id);
+  if (equipmentShopStep) {
+    steps.push(equipmentShopStep);
+  }
+
   if (steps.length === 0) {
     return;
   }
@@ -4218,6 +4489,22 @@ function queueVisitFollowUpReward(state: GameState, adventure: AdventureState, r
  * Resolves queued visit steps until one needs input or the visit completes.
  * Search steps hand off to the shared pendingChoice deck-search flow.
  */
+/**
+ * Gold-equivalent printed cost of an army card's current side — the ordering
+ * key for the Heavenly Tribulation toll (cheapest first). Mirrors the
+ * EVENT_DISCARD_CHEAPEST_UNIT valuation (materials/valuables at Trading Post
+ * rates) so the two "cheapest army card" reads agree.
+ */
+function tribulationUnitGoldValue(unit: ArmyUnitState): number {
+  const def = coreUnitDefinitions[unit.unitDefId];
+  const cost = (unit.side === "neutral" ? def?.neutral?.cost : getUnitSide(unit.unitDefId, unit.side)?.cost) ?? {};
+  return (Object.entries(cost) as [ResourceKind, number][]).reduce(
+    (sum, [resource, amount]) =>
+      sum + (resource === "gold" ? amount : amount * marketGoldValueOf(resource as "buildingMaterials" | "valuables")),
+    0
+  );
+}
+
 export function processPendingVisit(state: GameState): void {
   const adventure = state.adventure;
   const visit = adventure?.pendingVisit;
@@ -4477,22 +4764,140 @@ export function processPendingVisit(state: GameState): void {
         const player = state.players[visit.playerId];
         const armyUnit = player?.army.find((candidate) => candidate.id === step.armyUnitId);
         if (player && armyUnit && armyUnit.side === "pack") {
-          if ((step.source ?? "plague") === "plague") {
+          const source = step.source ?? "plague";
+          if (source === "plague") {
             // Polish Unit Stacks weaken the Plague: a Stacked pack sheds one
             // layer instead of flipping (applyPlagueToPack decides).
             applyPlagueToPack(state, visit.playerId, armyUnit);
+          } else if (source === "tribulation" && (armyUnit.stacks ?? 0) > 0) {
+            // Polish Unit Stacks × Heavenly Tribulation (§5.6): unit Stacks ARE
+            // the unit-level cultivation, so a Stacked Pack sheds ONE layer (the
+            // Plague convention) instead of flipping — an unstacked Pack still
+            // flips below. Only ever reachable with polish-unit-stacks on (a
+            // Stack layer can exist only under that rule).
+            armyUnit.stacks = (armyUnit.stacks ?? 0) - 1;
+            if (armyUnit.stacks === 0) {
+              delete armyUnit.stacks;
+            }
+            appendEvent(state, {
+              type: "ARMY_STACK_LOST",
+              unitId: armyUnit.id,
+              playerId: visit.playerId,
+              unitName: coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId,
+              remainingStacks: armyUnit.stacks ?? 0,
+              excessDamage: 0,
+              reason: "Heavenly Tribulation (weakened by Stacks)"
+            });
           } else {
-            // Pandora's Silver Muster reverse: always the plain printed flip
-            // (a Stack layer never absorbs a flip the player chose).
+            // Pandora's Silver Muster reverse, or a Heavenly Tribulation toll on
+            // an UNSTACKED Pack: the plain printed flip (a Stack layer never
+            // absorbs a flip; only the Plague and — via Stacks — the Tribulation
+            // are weakened above).
             armyUnit.side = "few";
             delete armyUnit.stacks;
             appendEvent(state, {
               type: "ARMY_UNIT_FLIPPED",
               playerId: visit.playerId,
               unitDefId: armyUnit.unitDefId,
-              reason: "Pandora's Box"
+              reason: source === "tribulation" ? "Heavenly Tribulation" : "Pandora's Box"
             });
           }
+        }
+        break;
+      }
+      case "TRIBULATION_TOLL": {
+        // Anime Heavenly Tribulation (§5.6): pay one toll per remaining "−1"
+        // die. Each toll is the player's cheapest-first pick of one army card —
+        // a Pack flips to Few (reusing FLIP_PACK_TO_FEW, source "tribulation"),
+        // any other card is lost with the standard recycle. Auto-resolves when
+        // one candidate remains; an empty army pays nothing further. The
+        // cheapest-first order makes the forced-resolution default (option 0)
+        // and the human's first choice the least valuable card.
+        const player = state.players[visit.playerId];
+        if (!player || step.remaining <= 0 || player.army.length === 0) {
+          break;
+        }
+        const tollStepFor = (unit: (typeof player.army)[number]): VisitStep =>
+          unit.side === "pack"
+            ? { type: "FLIP_PACK_TO_FEW", armyUnitId: unit.id, source: "tribulation" }
+            : { type: "TRIBULATION_LOSE_UNIT", unitId: unit.id };
+        if (player.army.length === 1) {
+          visit.steps.unshift(tollStepFor(player.army[0]), {
+            type: "TRIBULATION_TOLL",
+            remaining: step.remaining - 1
+          });
+          break;
+        }
+        const ordered = [...player.army].sort(
+          (left, right) => tribulationUnitGoldValue(left) - tribulationUnitGoldValue(right)
+        );
+        visit.steps.unshift(
+          {
+            type: "CHOOSE_ONE",
+            prompt: "Heavenly Tribulation strikes — pay one army card (a Pack flips to Few; any other card is lost)",
+            options: ordered.map((unit) => ({
+              label:
+                unit.side === "pack"
+                  ? (unit.stacks ?? 0) > 0
+                    ? `${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} loses 1 Stack (stays a Pack)`
+                    : `Flip ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (Pack → Few)`
+                  : `Lose ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${unit.side})`,
+              steps: [tollStepFor(unit)]
+            }))
+          },
+          { type: "TRIBULATION_TOLL", remaining: step.remaining - 1 }
+        );
+        break;
+      }
+      case "TRIBULATION_LOSE_UNIT": {
+        const player = state.players[visit.playerId];
+        const unit = player?.army.find((candidate) => candidate.id === step.unitId);
+        if (player && unit) {
+          player.army = player.army.filter((candidate) => candidate.id !== step.unitId);
+          // A Neutral-side card recycles to its tier discard pile, exactly like
+          // a combat casualty (the Monolith-toll / Cursed-Swamp convention).
+          if (unit.side === "neutral") {
+            const tier = (coreUnitDefinitions[unit.unitDefId]?.tier ?? "bronze") as
+              | "bronze"
+              | "silver"
+              | "gold"
+              | "azure";
+            state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(unit.unitDefId);
+          }
+          appendEvent(state, {
+            type: "ARMY_UNIT_FLIPPED",
+            playerId: visit.playerId,
+            unitDefId: unit.unitDefId,
+            reason: "Heavenly Tribulation"
+          });
+        }
+        break;
+      }
+      case "TRIBULATION_RESOLVE": {
+        // Anime Heavenly Tribulation (§5.6): after every toll, a surviving army
+        // BREAKS THROUGH to Nascent Soul (realm 3) and draws 1 Artifact; an
+        // emptied army fails (realm stays 2, retry allowed next turn).
+        const player = state.players[visit.playerId];
+        const hero = state.heroes[visit.heroId];
+        if (player && hero && player.army.length > 0) {
+          hero.cultivationRealm = 3;
+          hero.tribulationWon = true;
+          appendEvent(state, {
+            type: "CULTIVATION_REALM_ADVANCED",
+            playerId: visit.playerId,
+            heroId: hero.id,
+            realm: 3,
+            viaTribulation: true
+          });
+          // Reward: draw 1 Artifact through the same Search(1) machinery the
+          // Creature-Bank rewards use (deckId "artifacts" resolves the split).
+          visit.steps.unshift({ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 });
+        } else {
+          appendEvent(state, {
+            type: "CULTIVATION_TRIBULATION_FAILED",
+            playerId: visit.playerId,
+            heroId: visit.heroId
+          });
         }
         break;
       }
@@ -4904,6 +5309,19 @@ export function processPendingVisit(state: GameState): void {
         const movedHero = state.heroes[step.heroId];
         if (movedHero && adventure.fields[step.spaceId]) {
           const from = movedHero.spaceId ?? step.spaceId;
+          // Sound kind from the ORIGIN field (entry token) — Town Portal / defeat
+          // retreat have no map-token origin and fall through to "spell".
+          const origin = adventure.fields[from];
+          const teleportKind =
+            origin?.location === "whirlpool"
+              ? ("whirlpool" as const)
+              : origin?.location === "gate"
+                ? ("gate" as const)
+                : origin?.location === "monolith" ||
+                    origin?.location === "anime.tran_phap_truyen_tong" ||
+                    (origin?.location === "obelisk" && obeliskRoleIsMonolith(state))
+                  ? ("monolith" as const)
+                  : ("spell" as const);
           movedHero.spaceId = step.spaceId;
           // Town Portal Power 2/4: arriving grants the hero +1/+2 movement.
           if (step.movementBonus) {
@@ -4915,7 +5333,8 @@ export function processPendingVisit(state: GameState): void {
             heroId: movedHero.id,
             from,
             to: step.spaceId,
-            movementLeft: movedHero.movementPoints
+            movementLeft: movedHero.movementPoints,
+            teleport: teleportKind
           });
           commitPopulationOnMove(state, movedHero.controllerId);
           // Teleport-network arrival: a designed guard still standing on the
@@ -5118,6 +5537,35 @@ export function processPendingVisit(state: GameState): void {
           appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: true });
         }
         clearPolishArtifactAccess(state);
+        break;
+      }
+      case "GAIN_HAND_CARD": {
+        // Anime Hero Grades (§3.11): grant a specific library card to hand (the
+        // Training Manual bought at a guild shop). The wrapping PAY_TO already
+        // charged the cost, so this step is free.
+        const player = state.players[visit.playerId];
+        if (player) {
+          player.hand.push(step.cardId);
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} takes ${cardLibrary[step.cardId]?.name ?? step.cardId}.`,
+            visit.playerId
+          );
+        }
+        break;
+      }
+      case "BUY_EQUIPMENT": {
+        // Anime Equipment (§3.13): deduct the item's gold and equip it into the
+        // MAIN hero's slot (replacing whatever was there). Affordability + the
+        // already-owned filter are enforced upstream (the shop menu drops owned
+        // items; legal-actions + the reducer CHOOSE_ONE backstop gate gold), so
+        // this leaf guards only against an impossible pay.
+        const def = getEquipmentDefinition(step.equipmentId);
+        const player = state.players[visit.playerId];
+        if (def && player && hasResources(player, { gold: def.cost })) {
+          spendResources(state, visit.playerId, { gold: def.cost }, `bought ${def.name.en}`);
+          equipEquipment(state, visit.playerId, step.equipmentId);
+        }
         break;
       }
       case "DIG_ARTIFACT_DISCARD": {
@@ -7410,7 +7858,9 @@ function completeMapTokenTeleport(
     heroId: hero.id,
     from,
     to: destSpaceId,
-    movementLeft: hero.movementPoints
+    movementLeft: hero.movementPoints,
+    // Face-down destination resolve of a Monolith / Whirlpool / Gate travel.
+    teleport: teleport.kind
   });
   commitPopulationOnMove(state, hero.controllerId);
   // Reveal-travel arrival: the just-placed destination token may carry a
@@ -7999,7 +8449,7 @@ export function upsertGatePlan(adventure: AdventureState, candidate: Subterranea
 }
 
 /** A tile placement reduced to what gate planning needs: a centre and a layer. */
-export type TilePlacementLike = { row: number; col: number; group: string };
+export type TilePlacementLike = { row: number; col: number; group: string; underground?: boolean };
 
 /** One Subterranean Gate a layout implies: which two tiles, and the two hexes. */
 export type PlannedSubterraneanGate = {
@@ -8030,7 +8480,10 @@ export type DesignedGateLinkLike = {
   entranceHex?: HexCoord;
 };
 
-const isCavernPlacement = (tile: TilePlacementLike): boolean => tile.group === "subterranean";
+// A placement is on the Underground layer when its group IS subterranean OR the
+// designer flagged a supply/sea/center tile underground — the shared layer
+// predicate, so the pure gate preview mirrors the engine's `tileLayer` carve.
+const isCavernPlacement = (tile: TilePlacementLike): boolean => planIsUnderground(tile);
 
 /**
  * The Surface ring hex nearest `towardCenter` that physically touches
@@ -10435,6 +10888,23 @@ export function startAdventureRound(state: GameState): void {
       gainResources(state, playerId, income, "resource round income");
     }
 
+    // Anime Hero Grades (§3.11): Provisioner (+1 building materials) and
+    // Tactician (+2 gold) Resources-round passives — gated on the picked node,
+    // no-op when the module is off / unpicked.
+    const gradeMaterials = heroGradeResourceRoundMaterials(state, playerId);
+    const gradeGold = heroGradeResourceRoundGold(state, playerId);
+    if (gradeMaterials || gradeGold) {
+      gainResources(state, playerId, { buildingMaterials: gradeMaterials, gold: gradeGold }, "Hero Grade income");
+    }
+
+    // Anime Equipment (§3.13): the Supply Satchel accessory grants +1 building
+    // materials each Resources round — the same income chokepoint the grade
+    // passives / Pháp Bảo permanents use. No-op when off / unequipped.
+    const equipMaterials = equipmentResourceRoundMaterials(state, playerId);
+    if (equipMaterials) {
+      gainResources(state, playerId, { buildingMaterials: equipMaterials }, "Supply Satchel");
+    }
+
     // Crystal Dragons (army map ability): gain the printed resource each
     // Resource round, once per qualifying card in the army.
     for (const ability of getArmyMapAbilities(state, playerId)) {
@@ -10451,7 +10921,10 @@ export function startAdventureRound(state: GameState): void {
     for (const permanentId of incomePermanentIds) {
       const permanentEffect = cardLibrary[permanentId]?.permanentEffect;
       const incomeGain = permanentEffect?.resourceRoundGain;
-      if (incomeGain) {
+      // Conditional income (anime Tụ Linh Bàn): town-stationed permanents pay
+      // only while the main Hero stands in one of this player's Towns. The core
+      // income cards leave `requiresHeroInTown` unset and always pay.
+      if (incomeGain && (!incomeGain.requiresHeroInTown || mainHeroInOwnTown(state, playerId))) {
         gainResources(state, playerId, { [incomeGain.resource]: incomeGain.amount }, cardLibrary[permanentId]?.name ?? "income artifact");
       }
       // Pandora's Gift: Income — while the ∞ permanent is in play, its
@@ -10567,13 +11040,34 @@ const CUBE_CLEAR_MATCHES: Record<"windmill" | "water_wheel" | "mystical_garden",
  * adventure; no-ops when the active map has no preset timed events.
  * Runs AFTER refreshRoundTokens, so a movement grant stacks on refreshed MPs.
  */
+/**
+ * True when a designed timed event fires at `round`. A one-shot (no
+ * `repeatEveryRounds`) fires only on its own `round`; a repeating event fires on
+ * `round`, then every N rounds after (`round`, `round+N`, `round+2N`, …). A
+ * repeat interval < 2 is treated as a one-shot (the sanitizer already clamps it,
+ * but this guards a hand-edited snapshot against a modulo-0 / every-round loop).
+ */
+export function isTimedEventDue(
+  event: { round: number; repeatEveryRounds?: number },
+  round: number
+): boolean {
+  if (round === event.round) {
+    return true;
+  }
+  const interval = event.repeatEveryRounds;
+  if (!interval || interval < 2 || round < event.round) {
+    return false;
+  }
+  return (round - event.round) % interval === 0;
+}
+
 export function applyCustomMapTimedEvents(state: GameState): void {
   const preset = state.adventure?.mapPreset;
   if (!preset?.timedEvents?.length) {
     return;
   }
   const round = state.round;
-  const due = preset.timedEvents.filter((event) => event.round === round);
+  const due = preset.timedEvents.filter((event) => isTimedEventDue(event, round));
   if (due.length === 0) {
     return;
   }
@@ -10596,24 +11090,111 @@ export function applyCustomMapTimedEvents(state: GameState): void {
       });
       continue;
     }
+    if (effect.kind === "story") {
+      // Table-wide presentation cue (Anime mod §11): the whole table pops the
+      // StoryOverlay, every client dismissing independently. No player loop and
+      // no state mutation, so eliminated seats are a no-op here (nothing to
+      // skip) — this arm deliberately touches neither `players` nor `livePlayers`.
+      appendEvent(state, {
+        type: "STORY_SCENE_TRIGGERED",
+        round,
+        sceneId: effect.sceneId,
+        message: `Map event (round ${round}): a story unfolds.`
+      });
+      continue;
+    }
     if (effect.kind === "resources") {
+      const gold = effect.gold ?? 0;
+      const buildingMaterials = effect.buildingMaterials ?? 0;
+      const valuables = effect.valuables ?? 0;
+      // Negative amounts mean every player LOSES that much; the treasury is
+      // floored at 0 (a player can never go negative, even short of the loss).
+      const anyLoss = gold < 0 || buildingMaterials < 0 || valuables < 0;
       for (const playerId of players) {
-        gainResources(state, playerId, effect, `map event round ${round}`);
+        if (!anyLoss) {
+          // Pure gain — byte-identical to the legacy give-only path.
+          gainResources(state, playerId, { gold, buildingMaterials, valuables }, `map event round ${round}`);
+          continue;
+        }
+        const player = state.players[playerId];
+        if (!player) {
+          continue;
+        }
+        const before = { ...player.resources };
+        player.resources.gold = Math.max(0, before.gold + gold);
+        player.resources.buildingMaterials = Math.max(0, before.buildingMaterials + buildingMaterials);
+        player.resources.valuables = Math.max(0, before.valuables + valuables);
+        // Record the ACTUAL treasury movement (after the floor) as feed events.
+        const removed: ResourceCost = {};
+        const gained: { gold: number; buildingMaterials: number; valuables: number } = {
+          gold: 0,
+          buildingMaterials: 0,
+          valuables: 0
+        };
+        for (const kind of ["gold", "buildingMaterials", "valuables"] as const) {
+          const diff = player.resources[kind] - before[kind];
+          if (diff < 0) {
+            removed[kind] = -diff;
+          } else if (diff > 0) {
+            gained[kind] = diff;
+          }
+        }
+        if (Object.keys(removed).length > 0) {
+          appendEvent(state, {
+            type: "RESOURCES_SPENT",
+            playerId,
+            cost: removed,
+            reason: `map event round ${round}`
+          });
+        }
+        if (gained.gold || gained.buildingMaterials || gained.valuables) {
+          appendEvent(state, {
+            type: "RESOURCES_GAINED",
+            playerId,
+            gold: gained.gold,
+            buildingMaterials: gained.buildingMaterials,
+            valuables: gained.valuables,
+            reason: `map event round ${round}`
+          });
+        }
       }
-      const parts: string[] = [];
-      if (effect.gold) {
-        parts.push(`${effect.gold} gold`);
+      const gains: string[] = [];
+      const losses: string[] = [];
+      for (const [amount, label] of [
+        [gold, "gold"],
+        [buildingMaterials, "materials"],
+        [valuables, "valuables"]
+      ] as const) {
+        if (amount > 0) {
+          gains.push(`${amount} ${label}`);
+        } else if (amount < 0) {
+          losses.push(`${-amount} ${label}`);
+        }
       }
-      if (effect.buildingMaterials) {
-        parts.push(`${effect.buildingMaterials} materials`);
+      const clauses: string[] = [];
+      if (gains.length > 0) {
+        clauses.push(`gains ${gains.join(", ")}`);
       }
-      if (effect.valuables) {
-        parts.push(`${effect.valuables} valuables`);
+      if (losses.length > 0) {
+        clauses.push(`loses ${losses.join(", ")}`);
       }
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every player gains ${parts.join(", ") || "nothing"}.`
+        message: `Map event (round ${round}): every player ${clauses.join(" and ") || "gains nothing"}.`
+      });
+      continue;
+    }
+    if (effect.kind === "experience") {
+      for (const playerId of players) {
+        // Ride the NORMAL experience pipeline (level-ups, hand-limit / expert-use
+        // bumps, Ability searches, specialty cards, commander points, Learning).
+        gainExperience(state, playerId, effect.amount);
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every hero gains ${effect.amount} experience.`
       });
       continue;
     }
@@ -10661,6 +11242,53 @@ export function applyCustomMapTimedEvents(state: GameState): void {
         message: `Map event (round ${round}): cleared black cubes on ${effect.locations.join(
           ", "
         )} (${cleared} field${cleared === 1 ? "" : "s"}).`
+      });
+      continue;
+    }
+    if (effect.kind === "clear_tile_cubes") {
+      const groups = new Set(effect.groups);
+      // Tiles hosting a Settlement are excluded whole when the flag is set —
+      // precompute their instance ids in one pass over the fields.
+      const settlementTileIds = new Set<string>();
+      if (effect.excludeSettlementTiles) {
+        for (const field of Object.values(adventure.fields)) {
+          if (field.location === "settlement") {
+            settlementTileIds.add(field.tileInstanceId);
+          }
+        }
+      }
+      let cleared = 0;
+      for (const field of Object.values(adventure.fields)) {
+        if (!field.blackCube) {
+          continue;
+        }
+        // Creature Banks keep their defeat cube forever (hard rule); the Grail
+        // and Dragon Utopia victory fields are never re-opened (conservative
+        // safety, mirroring the token-placement victory-condition exclusions).
+        if (
+          field.location === "creature_bank" ||
+          field.location === "grail" ||
+          field.location === "dragon_utopia"
+        ) {
+          continue;
+        }
+        // Standalone designer hexes (no backing tile) fall through here safely.
+        const tile = adventure.tiles[field.tileInstanceId];
+        if (!tile?.group || !groups.has(tile.group)) {
+          continue;
+        }
+        if (effect.excludeSettlementTiles && settlementTileIds.has(field.tileInstanceId)) {
+          continue;
+        }
+        field.blackCube = false;
+        cleared += 1;
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): re-opened black cubes on ${effect.groups
+          .map((group) => TILE_GROUP_BAND_LABELS[group])
+          .join(", ")} Tiles (${cleared} field${cleared === 1 ? "" : "s"}).`
       });
       continue;
     }

@@ -1901,15 +1901,97 @@ What runs (each pinned by a test that fails if the wiring is removed):
   (`onewayMonolithImage`); outposts theirs (`outpostObjectImage`).
   `map-designer.test.tsx`, `gate-object-board.test.tsx`.
 
+## Underground designation (per-tile layer override, map designer) — what runs vs. limits
+
+The designer may mark ANY far/near/center/sea tile plan `underground?: true` on
+BOTH `CustomMapTilePlan` and `MapTileState` (copied plan→tile at setup by
+`applyDesignedUnderground`, face-down included). The tile is then topologically a
+cavern — reachable ONLY through a Subterranean Gate, sealed from the Surface at
+every other edge — while KEEPING its band identity (group, back art/numeral,
+guard tiers, Creature-Bank pile, token legality). "A cavern topologically, but
+with printed band content."
+
+- **The ONE seam is `tileLayer` / `planIsUnderground`** (`adventure.ts`).
+  `planIsUnderground(plan)` = `group === "subterranean" || (underground === true &&
+  group !== "starting")`; `tileLayer(tile)` delegates to it. Everything downstream
+  follows AUTOMATICALLY off that one bit: `mapFieldLayer` → `canCrossEdge`'s layer
+  check (movement, the AI's `objectiveDistanceField`, Dimension Door reach),
+  `recomputeSubterraneanGates` + `planGateChoiceForReveal` (auto-pairing,
+  one-gate-per-tile, pick-on-reveal), the discovery gate (`DISCOVER_TILE` /
+  `canHeroDiscoverAdjacentTile`), and the preview twin `isCavernPlacement` →
+  `planSubterraneanGates` / `unreachableUndergroundCenters`. Never inline a
+  `group === "subterranean"` LAYER check — use the predicate.
+- **BAND-vs-LAYER audit rule (for future contributors):** every
+  `"subterranean"` comparison is either BAND semantics (back art `tileBandLabel`,
+  `planBackLabel`/`planGroupLabel`, the `subBand` palette filter,
+  `creatureBankTierForGroup`'s NEAR-pile house rule, `VALID_TILE_GROUPS`) — keep
+  the GROUP check — or LAYER semantics (gate carve/pair, cross-layer seal,
+  standalone-hex layer inference, designer gate-link eligibility, the unreachable
+  ring) — use `tileLayer`/`planIsUnderground`. A flagged Far tile still draws the
+  FAR bank pile and the "Ⅱ–Ⅲ" back; only its topology flips.
+
+Leading with the DELIBERATE v1 limits:
+- **`underground` is stripped from `starting` (seat/home tiles stay Surface — the
+  opening ceremony, seat balance and first-discovery flow assume it) and from
+  printed `subterranean` plans (redundant).** Only far/near/center/sea keep it,
+  as a literal `true` — enforced in BOTH the persistence sanitiser
+  (`sanitizeTile`, `src/server/map-registry.ts`) and the setup validator
+  (`validateCustomMapPlan`, `adventure-setup.ts`) against `UNDERGROUND_LAYER_GROUPS`.
+  Legacy maps / snapshots (field absent) behave byte-for-byte as before.
+- **Band content stays band (topology only).** Back art keeps the band back (no
+  fake cavern art), the Creature-Bank pile stays keyed by GROUP (a flagged Far
+  tile draws the FAR pile; the printed-cavern NEAR-pile house rule stays
+  cavern-only), guards/tokens stay band-legal. Whirlpool/Monolith/Teleport-Gate
+  token networks remain layer-agnostic (cross-layer links already legal),
+  untouched.
+- **Designed gate links now belong to any UNDERGROUND-layer plan** (a flagged
+  Far tile links to a touching Surface tile exactly like a cavern);
+  `validateCustomMapPlan` + `sanitizeTile` KEEP them for a flagged plan and drop
+  them from a plain (Surface) plan.
+
+Designer UX: the far/near/center/sea popover gains an "Underground layer" toggle
+(writes `plan.underground`; NOT offered on starting/subterranean); a flagged
+tile's outline strokes the Underground purple + carries `data-underground` while
+keeping its `data-band-group` band label, participates in the cavern gate-link
+rows / "+ Gate" button, and gets the red unreachable ring when isolated. In game
+(`screen.tsx`) a flagged tile's hexes carry `data-underground` (an always-on CSS
+cue, the layer is not secret) and the face-down discovery hint / gate
+ascend-descend labels/art fire via the predicate switch.
+
+Behaviour is pinned in `src/engine/underground-designation.test.ts` (layer seam,
+setup plan→tile copy, cross-layer movement seal, auto-paired + designed-link gate
+carve, discovery, each with a plain-Far CONTROL), the preview==engine parity +
+unreachable cases in `subterranean-gate-planning.test.ts`, the sanitiser
+(`map-registry.test.ts`), the validator (`custom-setup.test.ts`), the designer UI
+(`map-designer.test.tsx`), the in-game cue (`subterranean-gate-board.test.tsx`),
+and the AI distance-field seal (`computer/map-navigation.test.ts`) — every claim
+mutation-checked.
+
 ## Field Overrides & multi-pin tiles (global system; Anime mod content) — what runs vs. limits
 
 `GameSetupOptions.fieldOverrides` (default OFF; auto-ON when a designed map
 carries `plan.fieldOverride(s)` pins). Mechanism is CORE (`src/data/map/
 field-overrides.ts` registry + `src/engine/field-overrides.ts` +
 `tile-hex-placements.ts`); the Anime mod only registers content kinds
-(`src/data/anime/field-overrides.ts` — 5 Ninefold objects whose locations are
-always in `locationDefinitions`, visits ride the normal interaction pipeline;
-`tran_phap_truyen_tong` joins the real Monolith network). On tile reveal the
+(`src/data/anime/field-overrides.ts` — 13 Ninefold objects across two packages,
+9 `anime-xianxia` + 4 `anime-isekai`: 11 are pool/palette-gated by the Anime mod
+alone (8 xianxia + 3 isekai), and 2 are the Equipment outfitters (Rèn Binh Các +
+Adventurer Outfitter) gated on `anime.equipment` via `requiresModule` (§3.13).
+Their locations are always in `locationDefinitions` and visits ride the normal
+interaction pipeline; every wave-2 kind is a PURE REUSE of the existing
+`LocationInteraction` vocabulary — `thuong_hoi_tram`/`capsule_lab` a
+Trading-Post/War-Machine shop, `song_bac_quan` a `PAY_TO`+`ATTACK_DIE_TABLE`
+gamble, `dai_luyen_khi`/`urahara_shop`/`onsen_ryokan` `CHOOSE_ONE` menus —
+effect-tested in `src/engine/anime-locations.test.ts`; `tran_phap_truyen_tong`
+joins the real Monolith network. **Art status is honest**: the 5 wave-1 kinds
+have real hex art on disk (512×512 webp); the other 8 art-less kinds — the 6
+wave-2 kinds AND the 2 Equipment outfitters — ship WITHOUT art (a `glyph`
+fallback for board icon mode + designer overlay), each declared in
+`FIELD_OVERRIDE_ART_PLACEHOLDERS` — the art-or-placeholder + "art wins over
+glyph" invariant is pinned in `field-overrides.test.ts`,
+`anime-field-override-board.test.tsx` and `map-designer.test.tsx`. Drop a
+`.webp` + set `image` + delete from the placeholder set to promote a kind.) On
+tile reveal the
 override places FIRST (before Subterranean Gates → Creature Banks → teleport
 tokens), pool draws obey `fieldOverridePlacement` (random / manual /
 manual-or-refuse; designer pins never refuse), and every Far/Near/Center
@@ -1928,15 +2010,300 @@ tokens (never strands the reveal chain). Pinned in
 Leading with what does NOT run / deliberate limits:
 - **Pool override kinds stamped on face-down tiles are readable in raw
   snapshots** (like designer tokens; no player-view masking in V1).
-- **Anime gameplay modules beyond Field Overrides are NOT implemented** —
-  `AnimeModOptions` flags (towns, neutrals, cultivation, …) exist as types
-  and lobby state only; `docs/anime-mod-plan.md` is the design contract.
+- **Several anime gameplay modules beyond Field Overrides have now shipped** —
+  enumerated in the "Also shipped" bullets below (`anime.xianxiaArtifacts`,
+  `anime.cultivation`, `anime.heroGrades`, `anime.equipment`, Forced Battle Events,
+  and the story/campaign spine); the REMAINING `AnimeModOptions` flags stay
+  types/lobby-only (closing note at the end of this bullet). FIRST shipped:
+  `anime.xianxiaArtifacts` (Pháp Bảo — 5 ORIGINAL
+  Artifact cards, `src/data/anime/artifacts.ts`). Default OFF ⇒ byte-identical
+  Artifact decks; ON ⇒ they join the shared Artifact deck(s) (split minor/major/
+  relic AND legacy single), riding the same tier/uniqueness gates as core
+  artifacts, and always resolve in the card library. What runs (each printed as
+  exactly its wired behaviour — no display-only clauses; each mutation-checked in
+  `src/engine/anime-artifacts.test.ts`): Túi Càn Khôn = +1 building-materials
+  income permanent (remove for +1 materials/+1 valuables); Tụ Linh Bàn = +2 gold
+  income CONDITIONAL on the main hero standing in a Town of yours (the NEW
+  `resourceRoundGain.requiresHeroInTown` flag, gated at the one income chokepoint
+  in `startAdventureRound` via `mainHeroInOwnTown`; unconditional cards
+  unaffected — CONTROL-pinned); Phong Hỏa Luân = +2/+3 `GAIN_HERO_MOVEMENT` map
+  card (also auto-offered as a neutral-combat continue-window movement top-up);
+  Tru Tiên Kiếm = attacker +2/+3 attack reaction; Bát Quái Kính = defender +1/+2
+  defense reaction. NOT shipped: Đông Hoàng Chung (army-wide Armored) and Truyền
+  Âm Ngọc Giản (remote allied-hero trade) are designed-not-shipped (await new
+  arms), and the fancier halves (cleave-exhaust, spell-cancel, bronze-init aura)
+  are deferred — see `docs/anime-mod-plan.md` §5.10 V1 STATUS. Art: all 5 ship
+  WITHOUT a card face yet (route to the deck back, declared in
+  `ANIME_ARTIFACT_ART_PLACEHOLDERS`; drop a `.webp` + remove the slug to promote).
+  No lobby UI toggles the anime modules yet — they are set via the setup
+  `anime` options payload. Every OTHER `AnimeModOptions` flag (towns, neutrals,
+  destiny, …) is still types + lobby state only; `docs/anime-mod-plan.md` is
+  the design contract.
+- **Also shipped: `anime.cultivation`** (per-hero Cultivation Realm track +
+  Heavenly Tribulation, §5.6; read-layer `src/engine/anime-cultivation.ts`,
+  behaviour pinned in `src/engine/anime-cultivation.test.ts` + the realm chip in
+  `src/components/hero-board.test.tsx`, every grant mutation-checked). Default
+  OFF ⇒ nothing stamped, no offers, no events (byte-identical). Realm lives on
+  the MAIN hero (`hero.cultivationRealm?`, lazily stamped, absent === realm 0;
+  `hero.tribulationWon?` / `hero.tribulationAttemptedRound?` optional). Realms 1
+  (Foundation, level ≥ 3) and 2 (Core Formation, level ≥ 5 AND a bank win)
+  advance AUTOMATICALLY on level-up / bank-win, one `CULTIVATION_REALM_ADVANCED`
+  feed event each. Grants: **+1 hand limit** (folded at the single
+  `effectiveHandLimit` site; `permanentHandLimitBonus` stays permanent-only,
+  documented); **1 free Attack-die reroll/combat** (standing `AttackRerollSource`
+  with `cultivation` flag + `combatStats.cultivationRerollUsed` cleared in
+  `makeCombatShell`, honouring every existing reroll-window rule); **+1 spell
+  Power** (realm 3, folded beside the Pandora bonus at
+  `standingSpellPower` / `resolvedSpellPowerForStackItem`). Realm 3 is reached
+  ONLY via the `HEAVEN_TRIBULATION` map action (never forced, ≤ once per own
+  turn; the human surface is the map `HeroActionsDock` button, offered only when
+  the engine does — `hero-actions-dock.test.tsx`): a seeded 3-Attack-die
+  `pendingVisit` gauntlet — each "−1" pays a
+  cheapest-first army-card toll (Pack→Few via `FLIP_PACK_TO_FEW` source
+  `"tribulation"`, else lost with recycle), survive with ≥1 card → realm 3 +
+  Search(1) Artifact, emptied army → retry next turn. As a standard `pendingVisit`
+  it inherits parallel-turn gating, the fingerprint backstop, AFK/timeout
+  default-resolution and `eliminatePlayer` cleanup (each verified). ADAPTATIONS
+  (documented at each wiring site): no Foundation-Pill path (Elixir Pills unshipped
+  ⇒ level-3 only); Core Formation gate is "≥1 CREATURE BANK won" (Secret Realms
+  unshipped) via a new mod-agnostic `player.bankWins?` counter incremented on
+  EVERY bank-win finalize (never module-gated — a default table gains the optional
+  field after a bank win, nothing else reads it yet); toll = card loss/flip (map
+  cards have no HP). Cross-mod seams tested: Polish Unit Stacks (a Stacked-Pack
+  toll sheds a layer, `ARMY_STACK_LOST`, not a flip), the ORIGINAL stash-style AND
+  Polish Spell Books (the +1 Power lands on a Book cast via the shared chokepoint),
+  WOG Commanders (the reroll behaves as a normal attack-window source, Might dice
+  untouched), and mixed anime packages (an isekai module on changes nothing).
+  Grant magnitudes are pegged to existing precedents (Pandora hand/Power bonuses,
+  the morale reroll source) so xianxia content shares ONE power scale with core /
+  WOG / isekai.
+- **Also shipped: `anime.heroGrades`** (Hero Grades — a per-hero Merit→grade 0-3
+  track + a 3-tier × 3-node passive/skill tree; SHARED by every hero, independent
+  of Cultivation). Default OFF ⇒ byte-identical. Read-layer
+  `src/engine/anime-hero-grades.ts`, data `src/data/anime/hero-grades.ts`,
+  behaviour pinned in `src/engine/anime-hero-grades.test.ts` (each claim
+  mutation-checked) + the hero-board chip/picker (`hero-board.test.tsx`) + the
+  combat reaction tile (`overlays.test.tsx`). Leading with what does NOT run /
+  limits: **HERO_TRAIN + Forced March now HAVE a human map button** — the compact
+  `HeroActionsDock` under the hero board (with the Cultivation Tribulation), each
+  shown only while `getLegalActions` offers it and dispatching the exact payload
+  (`hero-actions-dock.test.tsx`); the grade PICKER + combat command dock remain
+  the surfaces for grade-ups and combat/reaction skills; **the AI does not shop
+  for the Training Manual** (it declines the optional 2-gold PAY_TO by default —
+  buying it is a human play); **per-package fancy grade-label art/fonts are deferred** (the
+  register text is bilingual plain text); **combat skills are the MAIN hero's
+  fights only** (garrison/secondary offer none — commander-scope). What runs: five
+  Merit sources funnel through ONE arm (`gainGradeProgress`) — +1/level-up, the
+  two enlightenment-hex riders (+1 on top of the printed reward, runtime-gated so
+  module-OFF is byte-identical), HERO_TRAIN (2 MP→+1, once/turn), the Training
+  Manual item (bought 2 gold at the two guild shops, played for +2 then removed;
+  NEVER decked — `animeNeverDeckedCardIds`), and the generic `GAIN_GRADE_PROGRESS`
+  card payload. Crossing a threshold ([3,7,12], a DATA array) auto-grades-up (+1
+  point, one event/grade). The tree (pick 1 per tier): passives (Bounty Hunter's
+  Eye +1 gold/win, Provisioner +1 materials, Deep Pockets +1 hand — stacks with
+  Cultivation Foundation, Arcane Insight +1 Power, Tactician +2 gold) and
+  non-card SKILLS with cooldowns (Battle Focus/Iron Will reactions, War Cry
+  active — combat once/combat; Forced March map active once/round) reusing the
+  commander cast buff machinery. Grade NAMES wear per-family REGISTERS
+  (core/xianxia/isekai) resolved by the §2 rule (exactly-one-package → that
+  register table-wide, else per-faction family), but mechanics/state never change
+  with the label. EXTENSIBILITY: no literal tier count in engine logic (all
+  derives from the threshold array length); pure helpers `gradeForMerit` /
+  `pickableNodesFrom` are tested with a 4-tier fixture; "add a tier" = append a
+  threshold + nodes + one entry per register (§3.11 recipe). Magnitudes pegged to
+  existing precedents (Brute gold, Cart/artifact income, Pandora hand/Power,
+  commander reaction buffs, Boots movement).
+- **Also shipped: `anime.equipment`** (Equipment — always-on hero ITEMS in three
+  slots weapon/armor/accessory, DISTINCT from Artifact cards: never in hand,
+  never cast, one per slot, buying into an occupied slot REPLACES with no refund;
+  §3.13). Default OFF ⇒ byte-identical. Read-layer `src/engine/anime-equipment.ts`,
+  data `src/data/anime/equipment.ts`, behaviour pinned in
+  `src/engine/anime-equipment.test.ts` (each claim mutation-checked) + the catalog
+  in `src/data/anime/equipment.test.ts` + the hero-board chips
+  (`hero-board.test.tsx`). Leading with what does NOT run / limits: **NO
+  map-action button for EQUIPMENT in this slice** — buying is only through the two
+  outfitter Field Overrides; the hero board is a read-only chip display for items.
+  (The other hero map actives — HERO_TRAIN / Forced March (§3.11) and the Heavenly
+  Tribulation (§5.6) — DO now have a human button via the map `HeroActionsDock`;
+  only equipment purchase does not.) **Art-later** (all 6 items ship without a
+  card face — `ANIME_EQUIPMENT_ART_PLACEHOLDERS`, slot-glyph fallback); **no
+  designer pin for the outfitters** (pool-placed only); **combat items are the
+  MAIN hero's fights only** (commander-scope; a garrison fight gets neither —
+  CONTROL). What runs (6 items, each a proven-seam reuse pegged to a core
+  magnitude): Iron-Blood Sword = your units' FIRST declared attack each combat +1
+  Attack (a per-combat one-shot folded UNCLAMPED in `getAttackStackDetails` beside
+  the combat-script delta, consumed at `finishResolvedAttack` when the attack
+  lands; NOT on retaliations); Black Tortoise Mail = the FIRST incoming declared
+  attack each combat resolves at −1 Attack (same site, off the attacker); Cosmos
+  Pendant = +1 spell Power (`standingSpellPower`, stacks with Cultivation Nascent
+  + Arcane Insight → +3); Adventurer's Blade = +1 gold after a won combat (the
+  Bounty-Hunter's-Eye hook, stacks to +2 with the grade node); Guild-Issue Mail =
+  +1 hand limit (`effectiveHandLimit`, stacks with Foundation + Deep Pockets →
+  +3); Supply Satchel = +1 building materials each Resources round (the
+  `resourceRoundGain` income loop). MARKETS: two single-hex Field Overrides — Rèn
+  Binh Các (Blacksmith, xianxia, ⚒) + Adventurer Outfitter (isekai, 🎒), both
+  selling the shared Satchel; the shop menu is a dynamic `CHOOSE_ONE` of
+  `BUY_EQUIPMENT` options built in `beginFieldVisit` (owned item ⇒ absent;
+  affordability gold-gated like PAY_TO in legal-actions + a reducer backstop; the
+  leaf deducts gold + equips). GATING: `FieldOverrideDefinition.requiresModule`
+  (new) + a `moduleEnabled` predicate on `listFieldOverrideDefinitions` — with
+  `anime.equipment` off the two outfitters appear in NO pool/listing
+  (CONTROL-pinned); the 11 existing kinds carry no `requiresModule` and are
+  unaffected. DOCUMENTED SWAP: the original "Courier's Charm +1 MP/turn" idea
+  became the Supply Satchel because no clean per-turn movement-income chokepoint
+  existed (the Boots family grants movement as a one-shot CARD, not a standing
+  drip) — a per-turn movement item awaits that arm. AI buys into an EMPTY slot
+  from surplus (`gold ≥ cost + 6`) else leaves (no stall, no auto-replace).
+- **Also shipped: the cross-mod COEXISTENCE GATES (§3.8)** — the blanket
+  guarantees that base game + WOG + xianxia + isekai + Polish all thread into ONE
+  coherent game (different displays/power systems, one engine). Four gates, each
+  mutation-checked where meaningful:
+  - **(a) master byte-identical-when-off CONTROL** (`src/engine/anime-coexistence.test.ts`):
+    a scripted 2-human game driven to round 6 serializes IDENTICALLY (setup AND
+    final state, event log included) whether `anime` is absent, `undefined`, or
+    `DEFAULT_ANIME_OPTIONS` (all-false) — proving the default-off spine adds zero
+    behavioural surface. A `enabled:true` build is the sensitivity control (its
+    serialized state diverges).
+  - **(b) the ALL-ON soak** (`src/server/anime-coexistence-soak.test.ts`,
+    reusing `single-player-soak-helpers.ts`): a fixed-seed single-player game with
+    EVERY shipped anime module (`enabled, xianxiaArtifacts, cultivation,
+    heroGrades, equipment` + global `fieldOverrides`), EVERY WOG module, Creature
+    Banks, Polish Unit-Stacks + Bank-Sizes, Morale Cards and the stash Spell Book
+    reaches round 6 with ZERO stalls / negative resources (a shorter round-4
+    variant swaps in the mutually-exclusive Polish Spell Book; a 3-opponent run
+    for breadth). Soft-asserts anime systems are LIVE (overrides carved, Merit/
+    grade/realm progression fires). HONEST LIMIT: the AI never buys Equipment (it
+    declines the optional outfitter shop by policy), so `EQUIPMENT_EQUIPPED` stays
+    0 in the soak — a documented AI-policy limit, not a coexistence failure.
+  - **(c) mixed-package no-cross-talk CONTROL** (`src/engine/anime-coexistence.test.ts`):
+    carving an ISEKAI field-override kind (content present) leaves the xianxia
+    Cultivation/Grade event sequence byte-identical to a xianxia-only run, and the
+    grade-name register keys off MODULE FLAGS not carved CONTENT (turning an
+    isekai module flag on is the mutation control that flips the register to the
+    both-packages "core" fallback).
+  - **(d) display coexistence** (`src/components/anime-coexistence-display.test.tsx`):
+    a hero board renders realm + grade + all-three equipment chips simultaneously
+    with no collision; the map-designer Field Override palette lists a xianxia AND
+    an isekai kind together; the hero-actions dock renders under the all-on config.
+  - **KNOWN LIMIT surfaced by gate (d):** the two Equipment MARKETS
+    (`ren_binh_cac` / `adventurer_outfitter`, `requiresModule:"equipment"`) are
+    deliberately gated OUT of the ungated map-designer palette (a conscious §3.13
+    decision, pinned in `src/engine/anime-equipment.test.ts` "the DESIGNER-palette
+    style listing … also hides the outfitters"). So a designer cannot pin an
+    equipment outfitter today — a designer-pinned outfitter is not modeled, and
+    the coexistence slice did NOT flip that behaviour (it would contradict the
+    prior CONTROL). The outfitters still reach a game via the pool draw when
+    `anime.equipment` is on.
+- **Also shipped: Forced Battle Events (scripted combats, §3.12)** — a fight on a
+  particular MAP FIELD runs SCRIPTED EVENTS (an environment stat modifier, an
+  obstacle formation, a timed damage pulse, a flavor announce) at combat-start
+  and/or a chosen round-start. Mechanism CORE (`src/data/map/combat-scripts.ts`
+  registry + `src/engine/combat-scripts.ts` hook), content a package
+  (`src/data/anime/combat-scripts.ts`). Default OFF / non-scripted field ⇒
+  byte-identical. Leading with what does NOT run / limits: **V1 is FULLY
+  AUTOMATIC — no script effect opens a player window or choice** (the deliberate
+  anti-AI-freeze design: nothing new to score, `parallelSlotSignature` untouched);
+  **NEUTRAL fights only** (guard fields AND Creature Banks — `context.kind
+  "neutral"`; PvP and the combat sandbox fire nothing, CONTROL-pinned); **no
+  obstacle auto-pick** (`place-obstacles` takes explicit empty cells); **no
+  designer/campaign attachment surface yet** (scripts attach only by a package
+  registering off a location id — the growth path is data: a designer `scriptId`
+  and campaign set-pieces); **Creature-Bank support is by mechanism, not
+  content** (no bank-script ships). What runs (each mutation-checked in
+  `src/engine/combat-scripts.test.ts`): the four effect kinds — `environment-stat`
+  (combat-long stat modifier read LIVE at attack/defense resolution, the Crag Hack
+  `proclamationGroundAttackBonus` seam; added unclamped), `damage-pulse` (effect
+  damage through the removal path, the `applyElementalScourge` seam),
+  `place-obstacles` (empty cells → `combat.obstacles`, movement already
+  obstacle-aware), `announce` (a `COMBAT_SCRIPT_TRIGGERED` feed line —
+  `formatEvent` case + `combat-start` cue — so every event announces itself).
+  Trigger: combat-start in `finalizeCombatStart` (after `applyCommanderCombatStart`,
+  idempotent via `combat.combatScripts.startApplied`); round-start in
+  `advanceCombatRound` after the round increments (idempotent via `roundsFired[]`).
+  V1 content = the two **Bí Cảnh** scripts on `anime.bi_canh` (Spirit Mist: all
+  RANGED units both sides −1 Attack combat-long; Earthvein Surge: round-2 pulse 1
+  to the attacker side), gated on `"enabled"` since the anime location only exists
+  under the mod. Effects are per-combat; nothing persists to the next fight.
 - **No standalone (off-tile) override objects** — on-tile pins only.
 - **`linh_tuyen` is +1 movement only** (cleanse not wired, documented at the
   definition); no override kind may claim `starting` tiles (setup skips
   starting plans — enforced by a registry test).
 - The lobby "Field Overrides" row lives under Game options; enabling an
   anime-package pin map auto-flips BINH + the Anime crest at map pick/setup.
+- **Also shipped (FOUNDATION only): the visual-novel STORY system** (§11 /
+  §3.2). Leading with what does NOT run: **no campaign hooks** (`on_start`/
+  `on_victory`/… are the next step, §12), **no karma/fate/flag deltas on
+  choices** (the destiny substrate is unshipped — those fields are kept OUT of
+  the `StoryChoice` type on purpose), **no music** (the overlay reuses the
+  existing `adventure/new-week` open sting only, no new sound files), **no e2e**
+  (jsdom only), and **all art is placeholdered** (nothing under
+  `public/assets/story/…` yet — every referenced sprite/background is declared
+  in `STORY_ART_PLACEHOLDERS`, `src/data/story/scenes.ts`; the overlay falls back
+  to a theme-tinted gradient / an initial-letter avatar chip, never a broken
+  `<img>`). What RUNS (each mutation-checked): the bilingual EN/VI scene data +
+  registry (`src/data/story/scenes.ts`, `scenes.test.ts` — 2 themed demo scenes,
+  registry integrity + art-or-declared-placeholder invariant); the language
+  preference (`src/lib/story-language.ts`, default "en", SSR-safe,
+  `story-language.test.ts`); the `StoryOverlay` component
+  (`src/components/table/story-overlay.tsx`, `story-overlay.test.tsx` — typewriter
+  complete-then-advance on click/Space, Skip, history log, EN/VI toggle,
+  `nextSceneId` choice chaining in-session, `onDone` at the true end, the
+  package theme class `.xianxiaTheme`/`.isekaiTheme` stamped on the component
+  ROOT per §3.6 — never the table root); and ONE trigger path — the map-designer
+  timed event `{ kind: "story", sceneId }` (`CustomMapPreset.timedEvents` union
+  in `state.ts`; sanitized in `map-preset.ts` — unknown `sceneId` dropped;
+  round-trip in `map-registry.test.ts`; `applyCustomMapTimedEvents` fires a
+  table-wide `STORY_SCENE_TRIGGERED` — engine + wrong-round CONTROL in
+  `custom-setup.test.ts`; editor dropdown + scene select in
+  `map-preset-editor.tsx`/`.test.tsx`). The client (`page.tsx`) pops the overlay
+  ONCE per event id and never on reconnect (the exact MapEventOverlay seen-set /
+  prime semantics); story events are table-wide, so eliminated-seat skipping is a
+  verified no-op for them.
+- **Also shipped: the STORY-MODE campaign hub + Chapter 1 of BOTH campaigns**
+  (§12 / §3.3 — the campaign shell around the story system above). Client
+  presentation + localStorage around the existing `sp-` room flow, PLUS the setup
+  injection below (one small engine change: `buildAdventureFromLobby` now carries
+  the lobby's `anime` + `fieldOverrides` into the built game). Leading with what
+  does NOT run: **only Chapter 1 of each campaign is PLAYABLE** (chapters 2–7 are
+  DATA — `playable:false`, no `setup`, empty `scenes` — rendering "in development"
+  once the unlock chain reaches them); **protagonists are PRESENTATION** (Chen Fan
+  / Bin live only in the scenes — the playable seat uses a CORE faction stand-in:
+  **Jianghu ch-1 = Rampart, Bin ch-1 = Tower**, anime towns are unshipped);
+  **`mapPresetId` is unused** (standard map generation in V1); and **no
+  routes/karma/cheat picks/quest-log** (§13 deferred, campaign-only). Only shipped
+  anime flags may be set true on a playable chapter (allowlist
+  `{enabled, cultivation, xianxiaArtifacts}` + the global `fieldOverrides` toggle)
+  — a dead flag fails `campaigns.test.ts`. What RUNS (each mutation-checked): the
+  campaign registry (`src/data/story/campaigns.ts` — both campaigns, 7 bilingual
+  chapters each, `chapterRoomOptions`; `campaigns.test.ts`), the ch-1
+  intro/victory/defeat scenes added to `scenes.ts` (`scenes.test.ts`), the
+  progress store (`src/lib/campaign-progress.ts` — per-campaign completion +
+  unlock chain, per-room binding + intro/outcome/**setupApplied** markers,
+  SSR-safe; `campaign-progress.test.ts`), the PURE triggers in
+  `src/lib/campaign-triggers.ts` — `campaignSceneToFire` (state+binding+markers →
+  scene, UNBOUND-room CONTROL) AND `campaignSetupActions` (chapter →
+  `SET_GAME_OPTIONS` + `CHOOSE_FACTION`, LOCKED-chapter CONTROL;
+  `campaign-triggers.test.ts`), the `/story` route (theme-scoped campaign cards +
+  EN/VI toggle + Begin flow; `src/app/story/page.test.tsx`), the menu entry
+  (`menu/page.test.tsx`), and the thin table wiring in `page.tsx` (a bound room
+  pops intro/outro through the EXISTING `storyCue`/`StoryOverlay` pipeline once per
+  room; a game-over win calls `markChapterCompleted`).
+- **SETUP INJECTION — a chapter's config is now APPLIED (was carried-only).**
+  The Begin flow mints a standard `sp-` room (opponent count only); once the human
+  is seated in the setup lobby the table page pushes `campaignSetupActions(chapter,
+  seat)` — `SET_GAME_OPTIONS` (the chapter's `anime` + global `fieldOverrides` +
+  `difficulty`) then `CHOOSE_FACTION` (protagonist's core faction + its first hero,
+  PRESELECTED) — through the NORMAL action pipeline (no new server surface), once
+  per room (persisted `setupApplied` marker + a ref). The player still sees the
+  normal setup screen and may change any pick before starting. The engine change
+  it needed: `buildAdventureFromLobby` had been DROPPING `anime` + `fieldOverrides`
+  when building the game from a lobby (only the direct `createAdventureGameState`
+  path carried them), so a lobby-set toggle never reached the started game — now
+  carried through (defaults OFF ⇒ a plain lobby is byte-identical). Pinned
+  end-to-end in `src/server/campaign-setup-injection.test.ts`: a room built with
+  the Jianghu ch-1 options STARTS with `anime.enabled + cultivation +
+  xianxiaArtifacts + fieldOverrides` ON and the Rampart seat, with a plain
+  `/single-player` room (injects nothing) as the all-default CONTROL.
 
 ## First-round rules, Cove City Hall & bank/opponent UI (BINH house rules) — what runs
 
@@ -2037,17 +2404,48 @@ Two additions; each engine claim fails a named test if its wiring is removed.
   `pre-hit-heal-reactions.test.ts` (heal-before-damage event order, the
   no-heal/no-pause CONTROL, and the spell-hate gate with a real-Spell CONTROL).
 - **Map-designer timed events are freeform** (`CustomMapPreset.timedEvents`, cap
-  `MAX_TIMED_EVENTS` = 32): any round 1–30 × any effect — resources, deck
-  Search, clear-cubes (Windmill also re-opens Factory Prospector, Water Wheel
-  also Derrick), ±1 morale, +movement (stacks on the round's refreshed MPs),
-  Treasure/Resource dice (queued per live player), or a feed note. Eliminated
+  `MAX_TIMED_EVENTS` = 32): any round 1–30 × any effect — resources (positive =
+  every player GAINS; NEGATIVE = every player LOSES that much, the treasury
+  floored at 0 so a player never goes negative; clamp −50..50, ≥1 nonzero),
+  hero **experience** (clamp 1–5, every live player's MAIN hero gains it through
+  the NORMAL `gainExperience` pipeline — level-ups, hand-limit / expert-use
+  bumps, Ability searches, specialty cards, commander points, Learning all
+  ride it, never a hand-incremented level), deck Search, clear-cubes (Windmill
+  also re-opens Factory Prospector, Water Wheel also Derrick), ±1 morale,
+  +movement (stacks on the round's refreshed MPs), Treasure/Resource dice
+  (queued per live player), or a feed note. Any entry may also carry an optional
+  **`repeatEveryRounds`** (int 2–10): it fires at `round`, then every N rounds
+  after (`round`, `round+N`, `round+2N`, …) for the rest of the game (HoMM3
+  weekly events) — absent = a one-shot, byte-identical to a legacy preset; each
+  firing appends a DISTINCT `MAP_PRESET_TRIGGERED` id so the overlay never
+  swallows a repeat (`isTimedEventDue`). Eliminated
   seats and their heroes are skipped. Fired by `applyCustomMapTimedEvents` at
-  round start; sanitization clamps amounts and drops unknown kinds
-  (`custom-setup.test.ts`, `map-preset.ts`). Each firing pops the ornate
+  round start; sanitization clamps amounts, keeps `repeatEveryRounds` only as an
+  int ≥2 (99→10, 1 / non-int DROPPED → one-shot), keeps a legacy positive-only
+  resources entry byte-identical, and drops unknown kinds
+  (`custom-setup.test.ts`, `map-preset.ts`). A second cube-clear kind,
+  **`clear_tile_cubes`**, re-opens EVERY black cube on Tiles of chosen groups
+  (player-facing bands Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ / Sea / Underground, filtered by
+  `MapTileState.group`) with an optional "skip tiles containing a Settlement"
+  flag — but NEVER a Creature Bank (it keeps its defeat cube — hard rule) nor
+  the Grail / Dragon Utopia victory fields (conservative safety, mirroring the
+  token-placement exclusions); standalone designer hexes (no backing tile) are
+  skipped naturally. INTENDED consequence: a re-opened field with a printed
+  `difficulty` flips `isFieldGuarded` back to true, so it re-fights fresh guards
+  and re-earns its reward — the designer's re-open tool. Sanitizer dedupes /
+  drops invalid groups (empty → effect dropped) and keeps the flag only as a
+  real `=== true`; band labels live in `TILE_GROUP_BAND_LABELS` (adventure.ts,
+  Sea/Underground disambiguated from the shared Ⅳ–Ⅴ back numeral). Pinned in
+  `custom-setup.test.ts` (group filter, bank/victory exclusions, settlement flag
+  with its control, re-guard, no-preset twin, sanitizer) and
+  `map-preset-editor.test.tsx` (group chips + skip-settlement checkbox). Each
+  firing pops the ornate
   `MapEventOverlay` on every client (one card per batch, once per event id,
   never replayed on reconnect — `map-event-overlay.test.tsx`); the editor's
-  per-event cards (round rail, kind dropdown, params, live preview, warnings)
-  are pinned in `map-preset-editor.test.tsx`. The designer's face-down tiles
+  per-event cards (round rail, kind dropdown, a "Repeat" every-N-rounds select,
+  params incl. negative resource losses + the experience amount, a live preview
+  that spells the schedule "round 4, then every 3 rounds" and "lose N gold",
+  warnings) are pinned in `map-preset-editor.test.tsx`. The designer's face-down tiles
   draw band-correct printed BACKS (sea/underground Ⅵ–Ⅶ never wear Ⅳ–Ⅴ art;
   `planBackArt`, `map-designer.test.tsx`).
 
@@ -2159,6 +2557,60 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   save paid with one Expert Power + crown; a no-crown CONTROL rejects it) and
   `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
   accepts it, with a no-crown CONTROL that hides the toggle).
+
+## Map settings defaults (designer → lobby, seed-at-pick) — what runs vs. limits
+
+Three OPTIONAL defaults a designed map may carry on `CustomMapPreset` to SEED the
+lobby when that map is picked — `difficulty?: GameDifficulty`,
+`farTileOpening?: boolean`, `farTilesPerPlayer?: number` (0–6) — each hoisting
+1:1 onto the same-named `GameSetupOptions` field. They ride the EXISTING
+preset→lobby machinery in `map-preset.ts` (extended, not rebuilt): the three keys
+were added to `PresetForcedOptionKey` / `presetForcedOptionKeys` /
+`applyCustomMapPresetToOptions` (seed) / `revertCustomMapPresetOptions` (restore
+scenario default when the map is dropped/swapped) / `customMapPresetIsActive` /
+`sanitizeCustomMapPreset`, plus the build-time apply-once `explicit` skip set in
+`adventure-setup.ts` `createAdventureGameState`. Editor UI: two new sections in
+`map-preset-editor.tsx` — a Difficulty chip row (`MAP_PRESET_DIFFICULTY_OPTIONS`,
+Easy…Impossible, re-click clears) and an "Additional Ⅱ–Ⅲ tiles" row
+(Default/On/Off + a Default/0–6 per-player count that hides when opening is Off).
+Pinned in `custom-setup.test.ts` (seed-on-pick + host-edit-wins, direct-build
+seeding with a legacy CONTROL, build apply-once, revert, sanitizer clamps/drops,
+banner lines), `map-preset-editor.test.tsx` (the two controls write onChange, a
+sibling field survives, Off hides the count), and the persistence round-trip in
+`map-registry.test.ts` (registry sanitizes the preset through
+`sanitizeCustomMapPreset`).
+
+Semantics / deliberate limits:
+- **SOFT defaults, apply-once**: the preset seeds these three onto the lobby at
+  PICK (`setGameOptions` customMap block, no skip). A host's later
+  `SET_GAME_OPTIONS` edit of difficulty/far-tiles then WINS — the lobby path
+  passes every option to the build, so they land in the build-time `explicit`
+  skip set and the preset never re-forces them. A DIRECT build that omits a field
+  lets the preset fill it (the seeding path). Difficulty is a soft default like
+  victory mode — the host may change all three after pick; VP + round limit stay
+  MAP-AUTHORITATIVE (below), unchanged.
+- **Victory mode / VP / round-limit were ALREADY on the preset + editor** (this
+  task only ADDED difficulty + far-tiles). `preset.roundLimit` ends the game ONLY
+  when Victory Points is enabled (`adventure.ts` round-wrap: `if (vpConfig &&
+  roundLimit && …)`); with VP off it stays a mere "suggested length". The editor
+  already surfaces that coupling (the round-limit section relabels "Round limit
+  (hard end)" ↔ "Suggested length (rounds)" off `vpOn`, with a matching hint), and
+  the round-limit+VP end + the banner wording are already pinned in
+  `victory-points.test.ts` (VP-on-ends / VP-off-suggestion-only / no-limit-no-end,
+  and the `describeCustomMapPresetEntries` round-limit lines) — no new coupling
+  test or editor coupling change was needed.
+- **Additional-tile TYPES are NOT configurable** — only on/off + per-player count.
+  The Ⅱ–Ⅲ supply pool composition stays the engine default (a truly-random tile is
+  rolled from `farTilePool` when a player opens one).
+- **No custom "hold a town for X rounds" win conditions** — the victory default
+  picks among the four existing modes (conquest / grail / dragon-hunt /
+  dragon-conqueror = the capture-and-hold mode); the VP `objectives`
+  (control-towns / flag-mines / hero-level / defeat-utopia) already live under
+  `victoryPoints` config and stay there.
+- **Sanitizer**: garbage difficulty dropped (kept only if one of the 4 literals);
+  `farTilesPerPlayer` clamps 99→6, −1→0, a non-number DROPPED (never a silent 0);
+  `farTileOpening` kept only as a real boolean. Legacy presets (fields absent)
+  are byte-identical after sanitize and behave exactly as before.
 
 ## Map designer upgrade (designed gates/borders/locks/obelisks/objects/Ⅶ/VP) — what runs vs. limits
 
@@ -2320,3 +2772,103 @@ Homm3BG glyphs. Monochrome symbol glyphs are lightened in CSS to read on the dar
 panels; the tick/cross keep their own colour. Icon presence is pinned in
 `map-preset-editor.test.tsx`, `victory-points-panel.test.tsx`,
 `map-designer.test.tsx`.
+
+Tier-band outline colours (designer only): each tile's flower outline
+(`GROUP_COLORS`, `.designerFlowerOutline`) is stroked by its band's MAX unit tier
+— Ⅰ bronze `#b46f33` / Ⅱ–Ⅲ silver `#c7ccd6` / Ⅳ–Ⅴ gold `#e7b73c` / Ⅵ–Ⅶ azure
+`#3f7fd6` (reusing the app's `.tierDot`/`.neutralDeck` grade hues), Sea light-blue
+`#8fd8ff`, Underground kept purple `#7a5a9e`; the palette-button borders share
+them. A compact `.designerBandLegend` (six swatches + `TILE_GROUP_BAND_LABELS`
+numerals, now re-exported from `@/engine`) sits under the tile palette. Because
+Near-gold ≈ the selection gold `#ffd766` and Sea ≈ the secret-pin blue `#9ad0ff`,
+the `.selected`/`.secret` modifiers gained a stronger halo so an override always
+reads over its band. The IN-GAME yellow movement borders
+(`getTileBorderSegments`/`.tileBorderLine`) are untouched. Pinned in
+`map-designer.test.tsx` ("tier-band outline colours + legend": per-band stroke,
+the six-swatch legend, and a selected-overrides-band CONTROL).
+
+### Custom win conditions (map-designer + lobby, additional early-end trigger)
+
+A designed map (and, per-game, the lobby host) may author CUSTOM WIN CONDITIONS
+(`CustomMapPreset.customWinConditions` / `GameSetupOptions.customWinConditions`,
+`CustomWinCondition` in `state.ts`). ENGINE RULE: the FIRST live player — iterated
+in `turnOrder` — to satisfy ANY active condition WINS IMMEDIATELY, an ADDITIONAL
+early-end trigger layered on top of the normal victory mode (it does NOT replace
+it). Engine: `checkCustomWinConditions` (`adventure.ts`, next to
+`declareAdventureWinner`), called from the reducer's post-action tail
+(`reducer.ts`, right after `runAdventureAutomations` and before
+`ensureCombatActivation` — the ONE seam every action on every backend funnels
+through). Behaviour pinned in `src/engine/custom-win-conditions.test.ts` (each
+claim mutation-checked, with no-condition / below-threshold / VP-off CONTROLs).
+
+Nine kinds (params clamped by `sanitizeCustomWinConditions`, map-preset.ts):
+`control-towns` (count 2–8 — the home town counts, so a min of 2 avoids an
+instant win), `flag-mines` (2–12, mines+settlements combined), `hero-level`
+(main hero, 2–7), `gold` (treasury, 20–500), `artifacts` (own N, 1–10),
+`buildings` (Buildings in controlled Towns, 8–15 — the reader is VP scoring's
+own `controlledBuildingCount`; min 8 because the default opening is 3 Buildings
+and a preset can force at most 7, so an 8 floor can't instant-win at setup),
+`obelisks` (visit N Obelisks, 1–4 matching the grail dig knob — reuses the
+per-player `grail.obelisksVisited` tally, so HONEST LIMIT: it only accrues in
+GRAIL victory mode, a silent no-op on any other mode), `defeat-heroes` (1–6,
+main+secondary combined), `defeat-dragon-utopia` (no param).
+
+What runs (each with a failing-if-removed test):
+- **Any-of, first-to-satisfy**: conditions are evaluated in LIST ORDER for the
+  reason string; players in `turnOrder` (deterministic tie-break, documented).
+  The `GAME_WON` reason is `completed a custom win condition: <describe>` where
+  `<describe>` = `describeCustomWinCondition` (the SINGLE source for the editor
+  preview, the 🏁 map-pick banner line, the lobby list, and this reason — it
+  lives in `victory-points.ts`, NOT map-preset.ts, so `adventure.ts` can import
+  it without the map-preset→adventure cycle).
+- **The metrics ARE the Victory-Points readers** (reuse invariant): `mainHeroOf`,
+  `townsControlledBy`, `flaggedMineSettlementCount`, `artifactCountOf` are
+  exported from `victory-points.ts` and shared verbatim; gold is `resources.gold`;
+  `defeat-heroes` = `vpLedger.mainHeroDefeats.length + secondaryHeroDefeats`
+  (main once per opponent, VP-consistent; tolerates an absent ledger on legacy
+  snapshots); `defeat-dragon-utopia` = `vpLedger.utopiaDefeated`. Never duplicate
+  a metric — same numbers as VP scoring is the invariant.
+- **Combat-deferred**: the check SKIPS while a combat is open (`state.combat`), so
+  a threshold crossed mid-battle resolves on the next map-side action
+  (`ACKNOWLEDGE_COMBAT_END` and co. flow through the same tail) — the game is
+  never ended mid-fight. Pinned with an open-combat guard test + an
+  acknowledge-lands-the-win test.
+- **VP interplay**: the winner is declared through `declareAdventureWinner(…,
+  { viaVictoryCondition: true })`, so with VP mode OFF it is an INSTANT win (HUD +
+  GAME_WON, reason verbatim) exactly like the Grail, and with VP mode ON it
+  auto-routes to `endGameByVictoryPoints` (the completer earns the completion VP,
+  the most-VP seat wins, the VP_SCORING overlay fires). Both behaviours are free.
+- **Lobby is ADD-only, UNION at build**: `applyLobbyCustomWinConditions`
+  (adventure-setup.ts, chained after `applyLobbyVictoryPoints`) merges the map's
+  own list FIRST + the lobby-added list, exact-duplicate deduped, capped at
+  `MAX_CUSTOM_WIN_CONDITIONS` (4) via the shared pure `mergeCustomWinConditions`.
+  A map-authored condition is NEVER removed by the lobby. `setGameOptions` stores
+  the sanitised host list on `lobby.options.customWinConditions` and emits
+  `GAME_OPTIONS_CHANGED`.
+- **Public by design**: conditions ride `adventure.mapPreset`, which `player-view.ts`
+  does not mask — every seat can read them (unchanged; stated, not altered).
+- **Idempotent / live-only**: the win-declared guard makes a re-check a no-op (no
+  second GAME_WON); an ELIMINATED player satisfying a condition never wins
+  (the liveness skip mirrors last-faction-standing).
+
+UI: the map editor's "🏁 Custom win conditions" section (`map-preset-editor.tsx`,
+`CUSTOM_WIN_CONDITION_OPTIONS` / `defaultCustomWinCondition`, add/retype/param/
+remove up to 4) and the lobby "Custom win condition" section (`screen.tsx`
+**Match tab**, directly below the "Win condition" victory-mode selector — beside
+the game's other winning conditions, NOT on Mode & Rules: map-set conditions
+read-only + "map"-tagged, host add/remove dispatching
+`SET_GAME_OPTIONS { customWinConditions }`, Add disabled at the effective cap).
+Pinned in `map-preset-editor.test.tsx` and `game-options-tabs.test.tsx` (incl. a
+placement test: on Match after the Win condition row, absent from Mode & Rules).
+
+Deliberate LIMITS (documented, not bugs):
+- **No "defeat N Dragon Utopias"**: the VP ledger flag is a BOOLEAN
+  (`utopiaDefeated`), so `defeat-dragon-utopia` carries NO count even though a
+  designed map can host several Utopias — it fires on the FIRST one defeated.
+- **Instant-win foot-gun**: a condition already met at setup ends the game on the
+  first action — the designer's responsibility. The min-clamps REDUCE but cannot
+  eliminate it (e.g. a preset `startingResources` gold can exceed the gold
+  condition's 20 minimum; control-towns' min of 2 keeps the lone home town from
+  being an instant win, but a designed second town could still trip it).
+- **Never ends mid-battle** (the combat-deferred reading above) — a crossing
+  during combat waits for the next map-side action, by design.

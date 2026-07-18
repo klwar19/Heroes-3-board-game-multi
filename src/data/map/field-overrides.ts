@@ -9,6 +9,8 @@
  * their object rows.
  */
 
+import type { AnimeModOptions } from "@/engine/state";
+
 /** Tile groups that may host an override (matches MapTileState.group). */
 export type FieldOverrideTileGroup =
   | "starting"
@@ -33,6 +35,14 @@ export type FieldOverrideDefinition = {
   /** Optional secondary flavor label (e.g. Vietnamese). */
   nameVi?: string;
   package: FieldOverridePackage;
+  /**
+   * Optional anime-module gate (§3.13). A kind with `requiresModule` set is
+   * listed for pools / palette ONLY when that module is on — the caller passes a
+   * `moduleEnabled` predicate to {@link listFieldOverrideDefinitions}. Without a
+   * predicate a gated kind is EXCLUDED (so it never leaks into an ungated
+   * listing). Kinds WITHOUT `requiresModule` (the 11 base kinds) are unaffected.
+   */
+  requiresModule?: keyof AnimeModOptions;
   tileGroups: FieldOverrideTileGroup[];
   terrain: "land" | "water" | "any";
   /** Optional neutral guard difficulty (1–7) stamped on carve. */
@@ -44,6 +54,13 @@ export type FieldOverrideDefinition = {
    * designer render it like a Creature Bank / Monolith token.
    */
   image?: string;
+  /**
+   * Fallback emoji glyph for a kind that ships WITHOUT `image` yet (see
+   * {@link FIELD_OVERRIDE_ART_PLACEHOLDERS}). The live board (icon mode) and the
+   * map designer draw this so a carved/pinned override is never an invisible hex
+   * before its art is dropped in. Ignored once `image` is set.
+   */
+  glyph?: string;
 };
 
 /** Mutable registry — packages call {@link registerFieldOverrideDefinitions}. */
@@ -72,6 +89,13 @@ export function listFieldOverrideDefinitions(filter?: {
   implementedOnly?: boolean;
   /** When set, only kinds whose package is allowed by this predicate. */
   packageAllowed?: (pkg: FieldOverridePackage) => boolean;
+  /**
+   * Anime-module gate (§3.13): a kind carrying `requiresModule` is included ONLY
+   * when this predicate returns true for that module. Without the predicate a
+   * gated kind is EXCLUDED (safe default — an ungated listing never surfaces it).
+   * Kinds with no `requiresModule` ignore this entirely.
+   */
+  moduleEnabled?: (module: keyof AnimeModOptions) => boolean;
 }): FieldOverrideDefinition[] {
   const packages = filter?.package
     ? Array.isArray(filter.package)
@@ -86,6 +110,11 @@ export function listFieldOverrideDefinitions(filter?: {
       return false;
     }
     if (filter?.packageAllowed && !filter.packageAllowed(def.package)) {
+      return false;
+    }
+    // Module gate: a kind requiring a module appears only when the caller both
+    // provides the predicate AND it returns true. No predicate ⇒ excluded.
+    if (def.requiresModule && !(filter?.moduleEnabled?.(def.requiresModule) ?? false)) {
       return false;
     }
     if (filter?.tileGroup && !def.tileGroups.includes(filter.tileGroup)) {
@@ -122,6 +151,24 @@ export function fieldOverrideImage(kindOrLocationId: string): string | undefined
   for (const def of Object.values(REGISTRY)) {
     if (def.locationId === kindOrLocationId && def.image) {
       return def.image;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Fallback glyph for a kind or location id that has no art yet — the render
+ * layers (board icon mode, designer overlay) draw it so an art-less override is
+ * still a visible hex. Returns undefined once real art exists (art wins).
+ */
+export function fieldOverrideGlyph(kindOrLocationId: string): string | undefined {
+  const byKind = REGISTRY[kindOrLocationId];
+  if (byKind) {
+    return byKind.image ? undefined : byKind.glyph;
+  }
+  for (const def of Object.values(REGISTRY)) {
+    if (def.locationId === kindOrLocationId) {
+      return def.image ? undefined : def.glyph;
     }
   }
   return undefined;

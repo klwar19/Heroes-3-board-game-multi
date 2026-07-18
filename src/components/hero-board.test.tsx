@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { HeroBoard } from "./hero-board";
 import { CardZoomProvider } from "./table/zoom";
@@ -96,6 +96,134 @@ describe("HeroBoard — the Ⅰ/Ⅳ/Ⅵ specialty cards live in the LEVEL-TRACK 
     expect(container.querySelectorAll(".hbLoadout .hbSpecialty")).toHaveLength(1);
     expect(container.querySelector(".hbSpecialtyRow")).toBeNull();
     expect(container.querySelector(".hbSpecCard")).toBeNull();
+  });
+});
+
+describe("HeroBoard — anime Cultivation realm chip (§5.6)", () => {
+  function cultivationAdventure(): GameState {
+    return createAdventureGameState({
+      seed: "hero-board-cultivation",
+      rollFirstPlayer: false,
+      anime: { enabled: true, cultivation: true },
+      players: [
+        { id: "p1", name: "chen", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+  }
+
+  it("shows the realm name (EN + VI) on the board when the module is on", () => {
+    const state = cultivationAdventure();
+    getMainHero(state, "p1")!.cultivationRealm = 2;
+    const { container } = renderBoardState(state);
+    const chip = container.querySelector(".hbRealm");
+    expect(chip).toBeTruthy();
+    expect(chip?.textContent).toContain("Core Formation");
+    expect(chip?.textContent).toContain("Kim đan");
+  });
+
+  it("reads realm 0 (Qi Refinement) when the hero has no stamped realm", () => {
+    const { container } = renderBoardState(cultivationAdventure());
+    expect(container.querySelector(".hbRealm")?.textContent).toContain("Qi Refinement");
+  });
+
+  it("CONTROL — with the module OFF, no realm chip renders", () => {
+    // The default Bulwark adventure carries no anime options.
+    const { container } = renderHeroBoard("eikthurn");
+    expect(container.querySelector(".hbRealm")).toBeNull();
+  });
+});
+
+describe("HeroBoard — anime Hero Grades chip + picker (§3.11)", () => {
+  function gradesAdventure(anime: Record<string, unknown> = { enabled: true, heroGrades: true }): GameState {
+    return createAdventureGameState({
+      seed: "hero-board-grades",
+      rollFirstPlayer: false,
+      anime,
+      players: [
+        { id: "p1", name: "chen", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+  }
+
+  it("shows the grade chip + Merit progress using the resolved register (core for a plain table)", () => {
+    const state = gradesAdventure();
+    const hero = getMainHero(state, "p1")!;
+    hero.grade = 1;
+    hero.gradeProgress = 4;
+    const { container } = renderBoardState(state);
+    const chip = container.querySelector(".hbGrade");
+    expect(chip).toBeTruthy();
+    // Neither package active → per-faction (castle = core) register.
+    expect(chip?.textContent).toContain("Veteran");
+    expect(chip?.textContent).toContain("Merit 4");
+  });
+
+  it("uses the XIANXIA register when only a xianxia module is on (martial title)", () => {
+    const state = gradesAdventure({ enabled: true, heroGrades: true, cultivation: true });
+    getMainHero(state, "p1")!.grade = 1;
+    const { container } = renderBoardState(state);
+    expect(container.querySelector(".hbGrade")?.textContent).toContain("Expert");
+  });
+
+  it("renders a node picker with unspent points and dispatches HERO_GRADE_PICK on click", () => {
+    const state = gradesAdventure();
+    const hero = getMainHero(state, "p1")!;
+    hero.grade = 1;
+    hero.gradePoints = 1;
+    const dispatched: unknown[] = [];
+    const { container } = render(
+      <CardZoomProvider>
+        <HeroBoard state={state} playerId="p1" onAction={(action) => dispatched.push(action)} />
+      </CardZoomProvider>
+    );
+    const pick = container.querySelector(".hbGradePick");
+    expect(pick, "a pick button should render with an unspent point").toBeTruthy();
+    fireEvent.click(pick as Element);
+    expect(dispatched).toHaveLength(1);
+    expect((dispatched[0] as { type: string }).type).toBe("HERO_GRADE_PICK");
+  });
+
+  it("CONTROL — with the module OFF, no grade chip renders", () => {
+    const { container } = renderHeroBoard("eikthurn");
+    expect(container.querySelector(".hbGrade")).toBeNull();
+  });
+});
+
+describe("HeroBoard — anime Equipment chips (§3.13)", () => {
+  function equipmentAdventure(anime: Record<string, unknown> = { enabled: true, equipment: true }): GameState {
+    return createAdventureGameState({
+      seed: "hero-board-equip",
+      rollFirstPlayer: false,
+      anime,
+      players: [
+        { id: "p1", name: "chen", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+  }
+
+  it("shows a chip (slot glyph + EN/VI name) for each equipped item when the module is on", () => {
+    const state = equipmentAdventure();
+    getMainHero(state, "p1")!.equipment = {
+      weapon: "anime.equip.iron_blood_sword",
+      accessory: "anime.equip.supply_satchel"
+    };
+    const { container } = renderBoardState(state);
+    const chips = container.querySelectorAll(".hbEquip");
+    expect(chips).toHaveLength(2);
+    const text = Array.from(chips).map((chip) => chip.textContent).join(" | ");
+    expect(text).toContain("Iron-Blood Sword");
+    expect(text).toContain("Thiết Huyết Kiếm"); // VI name
+    expect(text).toContain("Supply Satchel");
+  });
+
+  it("CONTROL — with the module OFF, no equipment chip renders (even if a field is stamped)", () => {
+    const state = equipmentAdventure({}); // no anime options
+    getMainHero(state, "p1")!.equipment = { weapon: "anime.equip.iron_blood_sword" };
+    const { container } = renderBoardState(state);
+    expect(container.querySelector(".hbEquip")).toBeNull();
   });
 });
 

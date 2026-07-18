@@ -80,6 +80,19 @@ import {
   type EventDrawnCue,
   type MapEventCue
 } from "@/components/table/overlays";
+import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
+import { campaignSceneToFire, campaignSetupActions } from "@/lib/campaign-triggers";
+import { getCampaignChapter } from "@/data/story/campaigns";
+import {
+  getCampaignBinding,
+  isCampaignIntroShown,
+  isCampaignOutcomeShown,
+  isCampaignSetupApplied,
+  markCampaignIntroShown,
+  markCampaignOutcomeShown,
+  markCampaignSetupApplied,
+  markChapterCompleted
+} from "@/lib/campaign-progress";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
 import {
   buildMoraleCardCues,
@@ -134,6 +147,7 @@ import {
   type TilePlacementSelection
 } from "@/components/adventure/screen";
 import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
+import { HeroActionsDock } from "@/components/adventure/hero-actions-dock";
 import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
 import { OpponentInfoDock } from "@/components/adventure/opponent-info";
 import { VictoryPointsDock, VictoryPointsScoringOverlay } from "@/components/adventure/victory-points-panel";
@@ -191,11 +205,11 @@ import {
   planReturnMoveDelays
 } from "@/components/table/fx-sequence";
 import {
-  LOCATION_VISIT_SOUNDS,
+  heroMoveSoundKey,
+  locationVisitSoundKeys,
   MAP_CUE_SOUNDS,
   MAP_CUE_VOLUME,
   MAP_MOVE_VOLUME,
-  TERRAIN_MOVE_SOUNDS,
   TILE_SOUNDS
 } from "@/data/map-sounds";
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
@@ -902,6 +916,18 @@ export default function Home() {
   const [astrologerCue, setAstrologerCue] = useState<AstrologersProclamationCue | null>(null);
   const [eventCue, setEventCue] = useState<EventDrawnCue | null>(null);
   const [mapEventCue, setMapEventCue] = useState<MapEventCue | null>(null);
+  // Anime mod §11: a designer-triggered visual-novel scene, popped once per
+  // STORY_SCENE_TRIGGERED event id (never replayed on reconnect). Same cue
+  // semantics as the MapEventOverlay above.
+  const [storyCue, setStoryCue] = useState<StoryCue | null>(null);
+  // Campaign story mode (Anime mod §12): a single-player room launched from
+  // /story carries a localStorage binding; the chapter's intro / victory /
+  // defeat scenes pop through the SAME storyCue pipeline. A room with NO binding
+  // (every normal table) is inert — campaignSceneToFire returns null.
+  const campaignBinding = useMemo(() => (roomId ? getCampaignBinding(roomId) : null), [roomId]);
+  const firedCampaignStartRef = useRef(false);
+  const firedCampaignOutcomeRef = useRef(false);
+  const appliedCampaignSetupRef = useRef(false);
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   // Single-player: a computer opponent's whole map turn settles at once, so its
@@ -980,6 +1006,9 @@ export default function Home() {
   // Designed-map timed events already popped as the MapEventOverlay —
   // one pop per firing, never replayed on reconnect.
   const seenMapEventIdsRef = useRef<Set<string>>(new Set());
+  // Story scenes (Anime mod §11) already popped as the StoryOverlay —
+  // one pop per firing, never replayed on reconnect (MapEventOverlay semantics).
+  const seenStoryIdsRef = useRef<Set<string>>(new Set());
   // Parallel-turn stop warnings already popped (never replayed on reconnect).
   const seenParallelStopIdsRef = useRef<Set<string>>(new Set());
   const seenNeutralControlIdsRef = useRef<Set<string>>(new Set());
@@ -1130,6 +1159,79 @@ export default function Home() {
   useEffect(() => {
     viewerRef.current = viewerPlayerId;
   }, [viewerPlayerId]);
+
+  // Campaign SETUP INJECTION (Anime mod §12): a room launched from /story carries
+  // the chapter's config. Once the human is seated in the setup lobby, push the
+  // chapter's game options (anime + fieldOverrides + difficulty) and a faction
+  // preselect through the NORMAL action pipeline (SET_GAME_OPTIONS +
+  // CHOOSE_FACTION) — no new server surface. Once per room (persisted marker +
+  // ref), only while still in setup, so the player still sees the setup screen
+  // and may change anything. Unbound / non-campaign rooms inject nothing.
+  useEffect(() => {
+    const connection = connectionRef.current;
+    if (!state || !roomId || !campaignBinding || !connection) {
+      return;
+    }
+    if (state.phase !== "setup" || !state.setupLobby) {
+      return;
+    }
+    if (appliedCampaignSetupRef.current || isCampaignSetupApplied(roomId)) {
+      return;
+    }
+    const seat = state.room?.members.find((member) => member.clientId === clientId)?.seat;
+    if (!seat || seat === OBSERVER_SEAT) {
+      return;
+    }
+    const chapter = getCampaignChapter(campaignBinding.campaignId, campaignBinding.chapterId);
+    if (!chapter) {
+      return;
+    }
+    const actions = campaignSetupActions(chapter, seat);
+    if (actions.length === 0) {
+      return;
+    }
+    appliedCampaignSetupRef.current = true;
+    markCampaignSetupApplied(roomId);
+    // Sequential so options land before (or alongside) the faction pick; a
+    // failed submit degrades to the plain setup screen (the player picks by hand).
+    void (async () => {
+      for (const action of actions) {
+        await connection.submitAction(action).catch(() => {});
+      }
+    })();
+  }, [state, roomId, campaignBinding, clientId]);
+
+  // Campaign story-mode triggers (Anime mod §12): fire the chapter's onStart
+  // when the adventure first becomes visible, and onVictory / onDefeat at
+  // game-over — each once per room (localStorage markers + refs guard re-fire;
+  // markChapterCompleted persists a win). The decision is the pure
+  // campaignSceneToFire; this wiring stays thin. Unbound rooms fire nothing.
+  useEffect(() => {
+    if (!state || !roomId || !campaignBinding) {
+      return;
+    }
+    const trigger = campaignSceneToFire(state, campaignBinding, viewerPlayerId, {
+      introShown: firedCampaignStartRef.current || isCampaignIntroShown(roomId),
+      outcomeShown: firedCampaignOutcomeRef.current || isCampaignOutcomeShown(roomId)
+    });
+    if (!trigger) {
+      return;
+    }
+    if (trigger.kind === "start") {
+      firedCampaignStartRef.current = true;
+      markCampaignIntroShown(roomId);
+      setStoryCue({ id: `campaign:${roomId}:start`, sceneId: trigger.sceneId });
+      return;
+    }
+    firedCampaignOutcomeRef.current = true;
+    markCampaignOutcomeShown(roomId);
+    if (trigger.kind === "victory") {
+      markChapterCompleted(trigger.complete.campaignId, trigger.complete.chapterId);
+    }
+    if (trigger.sceneId) {
+      setStoryCue({ id: `campaign:${roomId}:outcome`, sceneId: trigger.sceneId });
+    }
+  }, [state, roomId, campaignBinding, viewerPlayerId]);
 
   // Map -> battle hand-off: the combat/map toggle is local and sticky, so a
   // fight opened (or finished) while it still pointed at "map" from a previous
@@ -1323,6 +1425,10 @@ export default function Home() {
       seenMapEventIdsRef.current = new Set(
         presentationEvents.filter((event) => event.type === "MAP_PRESET_TRIGGERED").map((event) => event.id)
       );
+      // ...and without re-popping past story scenes (Anime mod §11).
+      seenStoryIdsRef.current = new Set(
+        presentationEvents.filter((event) => event.type === "STORY_SCENE_TRIGGERED").map((event) => event.id)
+      );
       // Fresh room connection: drop any presentation state from the last room.
       setFxCues([]);
       setHiddenHandTail(0);
@@ -1345,6 +1451,7 @@ export default function Home() {
       setAstrologerCue(null);
       setEventCue(null);
       setMapEventCue(null);
+      setStoryCue(null);
       deferredStartDrawRef.current = null;
       pendingDiceFeedRef.current = { items: [], sounds: [] };
       // Mid-barrier (re)connect: the table is still resolving this round's
@@ -1379,12 +1486,26 @@ export default function Home() {
             continue;
           }
           const cue = ADVENTURE_FEED_CUES[event.type]?.cue;
-          let key = cue ? MAP_CUE_SOUNDS[cue] : null;
           if (event.type === "FIELD_VISITED") {
-            key = LOCATION_VISIT_SOUNDS[event.location] ?? key;
-          }
-          if (key && !cueSounds.includes(key)) {
-            cueSounds.push(key);
+            // Visit one-shot first, then optional ambient loop (staggered ~220ms).
+            const visitKeys = locationVisitSoundKeys(event.location);
+            if (visitKeys.length > 0) {
+              for (const key of visitKeys) {
+                if (!cueSounds.includes(key)) {
+                  cueSounds.push(key);
+                }
+              }
+            } else {
+              const key = cue ? MAP_CUE_SOUNDS[cue] : null;
+              if (key && !cueSounds.includes(key)) {
+                cueSounds.push(key);
+              }
+            }
+          } else {
+            const key = cue ? MAP_CUE_SOUNDS[cue] : null;
+            if (key && !cueSounds.includes(key)) {
+              cueSounds.push(key);
+            }
           }
         }
 
@@ -1818,6 +1939,23 @@ export default function Home() {
         }
       }
 
+      // Designer-triggered story scenes (Anime mod §11): pop the StoryOverlay
+      // once per firing. Same seen-set/never-replay semantics as the map-event
+      // block above; the LATEST unseen scene wins if several fire this batch.
+      {
+        const freshStoryEvents = presentationEvents.filter(
+          (event): event is Extract<GameEvent, { type: "STORY_SCENE_TRIGGERED" }> =>
+            event.type === "STORY_SCENE_TRIGGERED" && !seenStoryIdsRef.current.has(event.id)
+        );
+        for (const event of freshStoryEvents) {
+          seenStoryIdsRef.current.add(event.id);
+        }
+        const latest = freshStoryEvents[freshStoryEvents.length - 1];
+        if (latest) {
+          setStoryCue({ id: latest.id, sceneId: latest.sceneId });
+        }
+      }
+
       const seen = seenRollIdsRef.current;
       // Attacks that never rolled the Attack die (Bless, Elemental damage) carry
       // no rolling-dice cinematic — the damage shows through the normal hit
@@ -2019,7 +2157,9 @@ export default function Home() {
           ? nextState.adventure?.tiles[destinationField.tileInstanceId]
           : undefined;
         const terrain = destinationTile ? allTileDefinitions[destinationTile.tileDefId]?.terrain : undefined;
-        playLibrarySound(TERRAIN_MOVE_SOUNDS[terrain ?? "grass"] ?? TERRAIN_MOVE_SOUNDS.grass, MAP_MOVE_VOLUME);
+        // Monolith / Gate / Whirlpool / Subterranean Gate / spell teleports
+        // carry HERO_MOVED.teleport — object clips, not horse steps.
+        playLibrarySound(heroMoveSoundKey(liveWalks, terrain), MAP_MOVE_VOLUME);
         setMoveCue({
           id: liveWalks[0].id,
           heroId,
@@ -3610,6 +3750,7 @@ export default function Home() {
     setAstrologerCue(null);
     setEventCue(null);
     setMapEventCue(null);
+    setStoryCue(null);
     setDrawCue(null);
     setMoveCue(null);
     setFxCues([]);
@@ -3629,7 +3770,7 @@ export default function Home() {
 
   const presentationActive = Boolean(
     dice.current || mapDice.current || mapNotice.current || firstRoll || newDay.current || moraleCue.current ||
-    astrologerCue || eventCue || mapEventCue || drawCue || moveCue || fxCues.length > 0 || combatPresenting
+    astrologerCue || eventCue || mapEventCue || storyCue || drawCue || moveCue || fxCues.length > 0 || combatPresenting
   );
   useEffect(() => {
     if (!presentationActive) {
@@ -5304,6 +5445,12 @@ export default function Home() {
                   state={state}
                   viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
                 />
+                {/* Anime hero map actions (Cultivation §5.6 / Hero Grades
+                    §3.11): Train / Forced March / Heavenly Tribulation, shown
+                    only while the engine offers them to this seat. */}
+                {isSeated ? (
+                  <HeroActionsDock legalActions={legalActions} onAction={submitAction} />
+                ) : null}
                 <MoraleCardsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
                 {/* Live "if scored now" Victory-Points standings — visible to
                     everyone when the designed map turns VP mode on. */}
@@ -6214,6 +6361,9 @@ export default function Home() {
           {!firstRoll && !newDay.current && !astrologerCue && !eventCue && mapEventCue ? (
             <MapEventOverlay cue={mapEventCue} key={mapEventCue.id} onDone={() => setMapEventCue(null)} />
           ) : null}
+          {!firstRoll && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && storyCue ? (
+            <StoryOverlay cue={storyCue} key={storyCue.id} onDone={() => setStoryCue(null)} />
+          ) : null}
           {/* Morale-card moment: waits out dice and the bigger round ceremonies,
               then pops the card with its good/bad-morale sting. */}
           {!firstRoll && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && !mapDice.current && moraleCue.current ? (
@@ -6566,6 +6716,9 @@ export default function Home() {
       ) : null}
       {!firstRoll && !dice.current && !newDay.current && !astrologerCue && !eventCue && mapEventCue ? (
         <MapEventOverlay cue={mapEventCue} key={mapEventCue.id} onDone={() => setMapEventCue(null)} />
+      ) : null}
+      {!firstRoll && !dice.current && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && storyCue ? (
+        <StoryOverlay cue={storyCue} key={storyCue.id} onDone={() => setStoryCue(null)} />
       ) : null}
       {/* Morale-card moment over the battlefield: a Negative card striking
           mid-fight (skipped activation, forced −1 die…) or a Positive card

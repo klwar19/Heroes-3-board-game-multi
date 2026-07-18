@@ -111,6 +111,13 @@ export default function MenuPage() {
             <small>Playing with computer — a private table vs 1–3 computer opponents</small>
           </span>
         </Link>
+        <Link className="menuNavButton" href="/story">
+          <MenuNavIcon icon={SKILL_ICONS.wisdom} />
+          <span className="menuNavText">
+            <span className="menuNavLabel">Story mode</span>
+            <small>Solo campaigns — the Jianghu Chronicle and Bin&apos;s Otherworld Chronicle</small>
+          </span>
+        </Link>
         <Link className="menuNavButton" href="/play">
           <MenuNavIcon icon={SKILL_ICONS.leadership} />
           <span className="menuNavText">

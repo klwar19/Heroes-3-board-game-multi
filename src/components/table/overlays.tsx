@@ -532,6 +532,14 @@ export function ReactionTray({
     (legal) => legal.action.type === "USE_ACTIVE_EFFECT"
   );
 
+  // Anime Hero Grades (§3.11): the reaction skills (Battle Focus +Attack on your
+  // attack, Iron Will +Defense on the incoming hit) are non-card instants offered
+  // by the engine as USE_HERO_SKILL_REACTION; render each as its own one-click
+  // tile (they are not PLAY_REACTION cards, so the generic batch never shows them).
+  const heroSkillReactions = legalActions.filter(
+    (legal) => legal.action.type === "USE_HERO_SKILL_REACTION"
+  );
+
   if (!window) {
     return null;
   }
@@ -985,9 +993,22 @@ export function ReactionTray({
         scrollReactions.length === 0 &&
         spellBookReactions.length === 0 &&
         resurrectionActions.length === 0 &&
+        heroSkillReactions.length === 0 &&
         firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
+        {heroSkillReactions.map((legal) => (
+          <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+            <div className="trayTileBody">
+              <strong>
+                <Plus aria-hidden="true" size={15} /> Hero Grade skill
+              </strong>
+              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                {legal.label}
+              </button>
+            </div>
+          </div>
+        ))}
         {firstAidReactions.map((legal) => (
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">

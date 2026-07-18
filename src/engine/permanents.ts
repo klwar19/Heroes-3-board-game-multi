@@ -76,7 +76,16 @@ export function permanentLimitFor(state: GameState, playerId: PlayerId): number 
   );
 }
 
-/** Hand-limit bonus granted by in-play permanents (Pandora "hand +1"). */
+/**
+ * Hand-limit bonus granted by in-play permanents (Pandora "hand +1").
+ *
+ * This sums `permanentEffect.handLimitBonus` — the same term `effectiveHandLimit`
+ * (adventure.ts) inlines (they can't share: permanents.ts imports adventure.ts,
+ * so the cycle forces the duplicate). The anime Cultivation Foundation hand-limit
+ * bonus is NOT added here on purpose: this helper is PERMANENT-only, and the sole
+ * effective-hand-limit computation live code reads is `effectiveHandLimit`, where
+ * the cultivation bonus is folded (a Foundation realm is not a permanent card).
+ */
 export function permanentHandLimitBonus(state: GameState, playerId: PlayerId): number {
   return getPermanentDefinitions(state, playerId).reduce(
     (total, card) => total + (card.permanentEffect?.handLimitBonus ?? 0),

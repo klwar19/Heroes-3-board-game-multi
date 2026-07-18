@@ -6,12 +6,16 @@
 import { describe, expect, it } from "vitest";
 import { locationDefinitions } from "@/data/map/locations";
 import {
-  ANIME_FIELD_OVERRIDE_DEFINITIONS
+  ANIME_FIELD_OVERRIDE_DEFINITIONS,
+  FIELD_OVERRIDE_ART_PLACEHOLDERS
 } from "@/data/anime/field-overrides";
 import {
+  allFieldOverrideDefinitions,
   customMapHasAnimeFieldOverridePins,
   customMapHasFieldOverridePins,
+  fieldOverrideGlyph,
   fieldOverrideImage,
+  fieldOverridePackageAllowed,
   getFieldOverrideDefinition,
   listFieldOverrideDefinitions
 } from "@/data/map/field-overrides";
@@ -109,20 +113,97 @@ describe("Field Override is GLOBAL (not anime-mod-gated)", () => {
   });
 });
 
+// The 5 wave-1 kinds that shipped WITH hex art on disk — must keep their art.
+const WAVE1_ART_KINDS = [
+  "bi_canh",
+  "kiem_trung",
+  "linh_tuyen",
+  "ngo_dao_thach",
+  "tran_phap_truyen_tong"
+];
+
 describe("Anime content package registration", () => {
-  it("registers five Ninefold kinds with hex art on disk", () => {
-    const ids = listFieldOverrideDefinitions({
+  it("registers the xianxia + isekai Ninefold kinds, all implemented", () => {
+    const xianxia = listFieldOverrideDefinitions({
       package: "anime-xianxia",
       implementedOnly: true
     }).map((d) => d.id);
-    expect(ids.sort()).toEqual(
-      ["bi_canh", "kiem_trung", "linh_tuyen", "ngo_dao_thach", "tran_phap_truyen_tong"].sort()
+    expect(xianxia.sort()).toEqual(
+      [
+        "bi_canh",
+        "kiem_trung",
+        "linh_tuyen",
+        "ngo_dao_thach",
+        "tran_phap_truyen_tong",
+        // wave 2 (§5.5 / §5.8)
+        "thuong_hoi_tram",
+        "song_bac_quan",
+        "dai_luyen_khi"
+      ].sort()
     );
+    const isekai = listFieldOverrideDefinitions({
+      package: "anime-isekai",
+      implementedOnly: true
+    }).map((d) => d.id);
+    expect(isekai.sort()).toEqual(["capsule_lab", "urahara_shop", "onsen_ryokan"].sort());
+
+    // Every kind's location id resolves to an implemented location.
     for (const def of Object.values(ANIME_FIELD_OVERRIDE_DEFINITIONS)) {
-      expect(def.image, def.id).toBeTruthy();
-      const abs = resolve(process.cwd(), `public${def.image}`);
-      expect(existsSync(abs), `missing art ${def.image}`).toBe(true);
-      expect(locationDefinitions[def.locationId]?.implementationStatus).toBe("implemented");
+      expect(locationDefinitions[def.locationId]?.implementationStatus, def.id).toBe("implemented");
+    }
+  });
+
+  it("every registered kind has art ON DISK or is a declared art placeholder", () => {
+    for (const def of allFieldOverrideDefinitions()) {
+      const isPlaceholder = FIELD_OVERRIDE_ART_PLACEHOLDERS.has(def.id);
+      if (def.image) {
+        // Art claimed → the file must exist AND the kind must NOT be a placeholder.
+        const abs = resolve(process.cwd(), `public${def.image}`);
+        expect(existsSync(abs), `missing art file ${def.image} for ${def.id}`).toBe(true);
+        expect(isPlaceholder, `${def.id} has art but is also an art placeholder`).toBe(false);
+      } else {
+        // No art → it MUST be a declared placeholder (never a silent invisible hex).
+        expect(isPlaceholder, `${def.id} has no art and is not a declared placeholder`).toBe(true);
+      }
+    }
+  });
+
+  it("the 5 wave-1 kinds keep real hex art on disk (never demoted to placeholders)", () => {
+    for (const id of WAVE1_ART_KINDS) {
+      const def = getFieldOverrideDefinition(id)!;
+      expect(def.image, id).toBeTruthy();
+      expect(existsSync(resolve(process.cwd(), `public${def.image}`)), `missing ${def.image}`).toBe(true);
+      expect(FIELD_OVERRIDE_ART_PLACEHOLDERS.has(id), id).toBe(false);
+    }
+  });
+
+  it("the art-placeholder registry names only real, implemented, art-LESS kinds", () => {
+    expect(FIELD_OVERRIDE_ART_PLACEHOLDERS.size).toBeGreaterThan(0);
+    for (const id of FIELD_OVERRIDE_ART_PLACEHOLDERS) {
+      const def = getFieldOverrideDefinition(id);
+      expect(def, `placeholder "${id}" is not a registered kind`).toBeTruthy();
+      expect(def?.image, `placeholder "${id}" actually has art — remove it from the registry`).toBeFalsy();
+      expect(def?.implementationStatus, id).toBe("implemented");
+      // Promote-flow direction (a): dropping the .webp is HALF the promote — the
+      // registry entry must go too. A placeholder that already has a file on disk
+      // (even before its `image` is wired) is a stale registry, so it must fail.
+      const artOnDisk = resolve(process.cwd(), `public/assets/anime/field-overrides/${id}.webp`);
+      expect(
+        existsSync(artOnDisk),
+        `placeholder "${id}" already has a hex-art file on disk — set image: art("${id}") and remove it from FIELD_OVERRIDE_ART_PLACEHOLDERS`
+      ).toBe(false);
+    }
+  });
+
+  it("every kind renders visibly: art OR a fallback glyph (never a blank hex)", () => {
+    // Mutation guard: drop a placeholder kind's `glyph` and this fails.
+    for (const def of allFieldOverrideDefinitions()) {
+      const visible = Boolean(def.image) || Boolean(fieldOverrideGlyph(def.id));
+      expect(visible, `${def.id} would render as an invisible hex (no art, no glyph)`).toBe(true);
+      // Art wins: a kind WITH art exposes no glyph fallback.
+      if (def.image) {
+        expect(fieldOverrideGlyph(def.id), def.id).toBeUndefined();
+      }
     }
   });
 
@@ -131,10 +212,48 @@ describe("Anime content package registration", () => {
     expect(fieldOverrideImage("anime.kiem_trung")).toContain("kiem_trung.webp");
   });
 
+  it("fieldOverrideGlyph resolves an art-less kind by id AND location id", () => {
+    expect(fieldOverrideGlyph("song_bac_quan")).toBeTruthy();
+    expect(fieldOverrideGlyph("anime.song_bac_quan")).toBe(fieldOverrideGlyph("song_bac_quan"));
+    // A kind WITH art has no glyph fallback (art wins) — by id and by location id.
+    expect(fieldOverrideGlyph("kiem_trung")).toBeUndefined();
+    expect(fieldOverrideGlyph("anime.kiem_trung")).toBeUndefined();
+  });
+
   it("Teleportation Array is NOT a plain monolith location id (own art + network membership)", () => {
     expect(getFieldOverrideDefinition("tran_phap_truyen_tong")?.locationId).toBe(
       "anime.tran_phap_truyen_tong"
     );
+  });
+});
+
+describe("isekai package parity with xianxia (pool + palette gating)", () => {
+  it("anime-isekai kinds are pool-eligible exactly when the mod is on", () => {
+    // Mod ON: both anime packages are allowed; a center-eligible isekai kind
+    // (capsule_lab) joins the center pool alongside the xianxia bi_canh.
+    const onCenter = listFieldOverrideDefinitions({
+      tileGroup: "center",
+      implementedOnly: true,
+      packageAllowed: (pkg) => fieldOverridePackageAllowed(pkg, { animeEnabled: true })
+    }).map((d) => d.id);
+    expect(onCenter).toContain("capsule_lab"); // isekai
+    expect(onCenter).toContain("bi_canh"); // xianxia (control: same pool)
+
+    // Mod OFF: neither anime package is allowed → both drop out together.
+    const offCenter = listFieldOverrideDefinitions({
+      tileGroup: "center",
+      implementedOnly: true,
+      packageAllowed: (pkg) => fieldOverridePackageAllowed(pkg, { animeEnabled: false })
+    }).map((d) => d.id);
+    expect(offCenter).not.toContain("capsule_lab");
+    expect(offCenter).not.toContain("bi_canh");
+  });
+
+  it("an isekai pin auto-detects the Anime crest exactly like a xianxia pin", () => {
+    expect(customMapHasAnimeFieldOverridePins([{ fieldOverride: { kind: "capsule_lab" } }])).toBe(true);
+    expect(
+      customMapHasAnimeFieldOverridePins([{ fieldOverrides: [{ kind: "onsen_ryokan" }] }])
+    ).toBe(true);
   });
 });
 
@@ -193,7 +312,8 @@ describe("carve + placement", () => {
     tile.group = "far";
     delete tile.pendingFieldOverride;
     assignPoolFieldOverrides(state, () => 0, { enabled: true });
-    // Only anime-xianxia kinds exist today — with anime off the pool is empty.
+    // Every registered kind is anime-xianxia or anime-isekai — both need the
+    // Anime mod on, so with anime off the pool is empty.
     expect(state.adventure!.tiles[tile.id]?.pendingFieldOverride).toBeUndefined();
   });
 

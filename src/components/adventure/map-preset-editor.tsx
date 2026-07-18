@@ -1,20 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
-import { REWARD_GLYPH_ICONS } from "@/data/assets/homm-assets";
+import { DESIGNER_UI_ICONS, REWARD_GLYPH_ICONS, SECRET_FEATURE_ICONS } from "@/data/assets/homm-assets";
+import { listStoryScenes } from "@/data/story/scenes";
 import {
+  CUSTOM_WIN_CONDITION_OPTIONS,
   DEFAULT_VICTORY_CONDITION_VP,
+  defaultCustomWinCondition,
   defaultObeliskBonusForKind,
   defaultTimedEffect,
   defaultTimedEvent,
   defaultVictoryPointObjective,
   describeCustomMapPresetEntries,
+  describeObjectivesConfig,
+  describeVictoryPointsConfig,
   describeTimedMapEffect,
+  describeTimedEventSchedule,
+  MAX_CUSTOM_WIN_CONDITIONS,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
   MAP_PRESET_BUILDING_OPTIONS,
+  MAP_PRESET_DIFFICULTY_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
@@ -28,6 +36,7 @@ import {
   type CustomMapTimedEffect,
   type CustomMapTimedEvent,
   type CustomStartingUnit,
+  type CustomWinCondition,
   type TimedEffectKind,
   type UnitLevel,
   type VictoryMode,
@@ -95,6 +104,10 @@ export function MapPresetEditor({
       // An empty objectives block means "nothing forced" — drop the key so the
       // preset collapses to undefined when it was the only condition.
       delete next.objectives;
+    }
+    if ("customWinConditions" in partial && partial.customWinConditions === undefined) {
+      // Removing the last condition drops the key so the preset can collapse.
+      delete next.customWinConditions;
     }
     if ("victoryPoints" in partial && partial.victoryPoints === undefined) {
       // Toggling Victory Points off removes the block entirely.
@@ -207,6 +220,23 @@ export function MapPresetEditor({
     writeVictoryPoints({ objectives: vpObjectives.filter((_, i) => i !== index) });
   };
 
+  const winConditions = value.customWinConditions ?? [];
+  const writeWinConditions = (next: CustomWinCondition[]) => {
+    patch({ customWinConditions: next.length > 0 ? next : undefined });
+  };
+  const addWinCondition = () => {
+    if (winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS) {
+      return;
+    }
+    writeWinConditions([...winConditions, defaultCustomWinCondition("control-towns")]);
+  };
+  const updateWinCondition = (index: number, condition: CustomWinCondition) => {
+    writeWinConditions(winConditions.map((entry, i) => (i === index ? condition : entry)));
+  };
+  const removeWinCondition = (index: number) => {
+    writeWinConditions(winConditions.filter((_, i) => i !== index));
+  };
+
   const setTimed = (next: CustomMapTimedEvent[]) => {
     patch({ timedEvents: next });
   };
@@ -220,6 +250,35 @@ export function MapPresetEditor({
       return;
     }
     setTimed([...timed, event]);
+  };
+
+  // Active-entry count per collapsible group. Single source of truth: mirrors
+  // the per-field entries that `describeCustomMapPresetEntries` produces (the
+  // multi-line objectives / Victory-Points blocks reuse the SAME describe
+  // helpers so the count can never fork from the summary above). A group with
+  // ≥1 active entry starts OPEN; an empty group starts collapsed.
+  const groupCounts = {
+    matchSetup:
+      (value.difficulty ? 1 : 0) +
+      (value.farTileOpening !== undefined || value.farTilesPerPlayer !== undefined ? 1 : 0),
+    startingPosition:
+      (value.startingResources ? 1 : 0) +
+      (value.startingProduction ? 1 : 0) +
+      (value.startingBuildings && value.startingBuildings.length > 0 ? 1 : 0) +
+      (value.startingUnits ? 1 : 0) +
+      (value.startingBonuses && value.startingBonuses.length > 0 ? 1 : 0),
+    victoryScoring:
+      (value.victoryMode ? 1 : 0) +
+      (value.roundLimit ? 1 : 0) +
+      (value.victoryPoints?.enabled
+        ? describeVictoryPointsConfig(value.victoryPoints, value.roundLimit).length
+        : 0) +
+      (value.customWinConditions?.length ?? 0),
+    mapLocations:
+      (value.obelisks ? 1 : 0) +
+      (value.objectives ? describeObjectivesConfig(value.objectives).length : 0),
+    timedEvents: timed.length,
+    designerNote: value.notes ? 1 : 0
   };
 
   return (
@@ -263,19 +322,16 @@ export function MapPresetEditor({
         <small className="mapPresetEmpty">No special conditions — pure tile layout.</small>
       )}
 
+      <MapPresetGroup title="Match setup" glyphEmoji="⚙️" count={groupCounts.matchSetup}>
       <section className="mapPresetSection">
-        <div className="mapPresetSectionLabel">Victory (preset)</div>
-        <div className="mapPresetChipRow" role="group" aria-label="Victory mode">
-          {MAP_PRESET_VICTORY_OPTIONS.map((opt) => (
+        <div className="mapPresetSectionLabel">Difficulty (preset)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Difficulty">
+          {MAP_PRESET_DIFFICULTY_OPTIONS.map((opt) => (
             <button
-              aria-pressed={value.victoryMode === opt.id}
-              className={`mapPresetChip${value.victoryMode === opt.id ? " active" : ""}`}
+              aria-pressed={value.difficulty === opt.id}
+              className={`mapPresetChip${value.difficulty === opt.id ? " active" : ""}`}
               key={opt.id}
-              onClick={() =>
-                patch({
-                  victoryMode: value.victoryMode === opt.id ? undefined : (opt.id as VictoryMode)
-                })
-              }
+              onClick={() => patch({ difficulty: value.difficulty === opt.id ? undefined : opt.id })}
               type="button"
             >
               {opt.label}
@@ -283,11 +339,72 @@ export function MapPresetEditor({
           ))}
         </div>
         <small className="mapPresetHint">
-          Seeds the lobby when the map is picked — the host can still change it there (their choice wins), and
-          switching maps restores the scenario default.
+          Neutral guard strength (Field Difficulty Level Table) + the printed starting bonus. Seeds the lobby on
+          pick; the host can still change it there (their choice wins), and switching maps restores the scenario default.
         </small>
       </section>
 
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">Additional Ⅱ–Ⅲ tiles (preset)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Additional Ⅱ–Ⅲ tile opening">
+          {(
+            [
+              { id: "default", label: "Default" },
+              { id: "on", label: "On" },
+              { id: "off", label: "Off" }
+            ] as const
+          ).map((opt) => {
+            const active =
+              opt.id === "default"
+                ? value.farTileOpening === undefined
+                : opt.id === "on"
+                  ? value.farTileOpening === true
+                  : value.farTileOpening === false;
+            return (
+              <button
+                aria-pressed={active}
+                className={`mapPresetChip${active ? " active" : ""}`}
+                key={opt.id}
+                onClick={() =>
+                  patch({ farTileOpening: opt.id === "default" ? undefined : opt.id === "on" })
+                }
+                type="button"
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        {value.farTileOpening !== false ? (
+          <div className="mapPresetChipRow" role="group" aria-label="Ⅱ–Ⅲ tiles per player">
+            {([undefined, 0, 1, 2, 3, 4, 5, 6] as const).map((count) => {
+              const active = value.farTilesPerPlayer === count;
+              return (
+                <button
+                  aria-pressed={active}
+                  className={`mapPresetChip${active ? " active" : ""}`}
+                  key={String(count)}
+                  onClick={() => patch({ farTilesPerPlayer: count })}
+                  type="button"
+                >
+                  {count === undefined ? "Default" : count}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        <small className="mapPresetHint">
+          Whether players may open their own Ⅱ–Ⅲ Far tiles mid-game, and how many each may add (0–6). Only the
+          count of tiles is set here — the Ⅱ–Ⅲ supply pool itself stays the engine default. Seeds the lobby on pick.
+        </small>
+      </section>
+      </MapPresetGroup>
+
+      <MapPresetGroup
+        title="Starting position"
+        glyphSrc={SECRET_FEATURE_ICONS.town}
+        count={groupCounts.startingPosition}
+      >
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Starting resources</div>
         <div className="mapPresetResourceRow">
@@ -505,7 +622,232 @@ export function MapPresetEditor({
           </ul>
         ) : null}
       </section>
+      </MapPresetGroup>
 
+      <MapPresetGroup title="Victory & scoring" glyphEmoji="🏆" count={groupCounts.victoryScoring}>
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">Victory (preset)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Victory mode">
+          {MAP_PRESET_VICTORY_OPTIONS.map((opt) => (
+            <button
+              aria-pressed={value.victoryMode === opt.id}
+              className={`mapPresetChip${value.victoryMode === opt.id ? " active" : ""}`}
+              key={opt.id}
+              onClick={() =>
+                patch({
+                  victoryMode: value.victoryMode === opt.id ? undefined : (opt.id as VictoryMode)
+                })
+              }
+              type="button"
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <small className="mapPresetHint">
+          Seeds the lobby when the map is picked — the host can still change it there (their choice wins), and
+          switching maps restores the scenario default.
+        </small>
+      </section>
+
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">
+          {vpOn ? "Round limit (hard end)" : "Suggested length (rounds)"}
+        </div>
+        <div className="mapPresetResourceRow">
+          <ResourceField
+            label="Rounds"
+            value={value.roundLimit ?? null}
+            onChange={(roundLimit) => patch({ roundLimit: roundLimit || undefined })}
+          />
+        </div>
+        <small className="mapPresetHint">
+          {vpOn
+            ? "With Victory Points on, the game ENDS when this round wraps (then VPs are scored)."
+            : "A display-only note today — a suggested length, not a hard end."}
+        </small>
+      </section>
+
+      <section className="mapPresetSection mapPresetVpSection" aria-label="Victory Points">
+        <div className="mapPresetSectionLabel">🎖️ Victory Points</div>
+        <label className="mapPresetToggle">
+          <input
+            aria-label="Victory Points scoring"
+            checked={vpOn}
+            onChange={toggleVictoryPoints}
+            type="checkbox"
+          />
+          <span>Score Victory Points (rulebook scenario scoring)</span>
+        </label>
+        {vpOn ? (
+          <>
+            <small className="mapPresetHint">
+              The game ends at the round limit above OR when a player completes the victory condition —
+              the most VPs wins. Set a round limit above for a hard cap.
+              {value.roundLimit ? "" : " ⚠ No round limit set — completion is the only end trigger."}
+            </small>
+            <div className="mapPresetResourceRow">
+              <ResourceField
+                label="Completion VP"
+                value={victoryPoints?.victoryConditionVp ?? DEFAULT_VICTORY_CONDITION_VP}
+                onChange={(vp) => writeVictoryPoints({ victoryConditionVp: Math.max(0, Math.min(10, vp ?? 0)) })}
+              />
+            </div>
+
+            <div className="mapPresetVpObjectives" role="group" aria-label="Victory Point objectives">
+              <div className="mapPresetTimedSectionHeading">
+                <div className="mapPresetSectionLabel">Extra objectives</div>
+                <span className={`mapPresetTimedCount${vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES ? " full" : ""}`}>
+                  {vpObjectives.length}/{MAX_VICTORY_POINT_OBJECTIVES}
+                </span>
+              </div>
+              {vpObjectives.map((objective, index) => (
+                <div className="mapPresetVpObjectiveRow" key={index}>
+                  <RewardGlyph src={vpObjectiveGlyph(objective.kind)} title={`Objective ${index + 1}`} />
+                  <select
+                    aria-label={`Objective ${index + 1} kind`}
+                    className="mapPresetSelect"
+                    onChange={(e) =>
+                      updateVpObjective(index, {
+                        ...defaultVictoryPointObjective(e.target.value as VictoryPointObjective["kind"]),
+                        vp: objective.vp
+                      })
+                    }
+                    value={objective.kind}
+                  >
+                    {VICTORY_POINT_OBJECTIVE_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {objective.kind === "control-towns" || objective.kind === "flag-mines" ? (
+                    <ResourceField
+                      label="N"
+                      value={objective.count}
+                      onChange={(count) =>
+                        updateVpObjective(index, { ...objective, count: Math.max(1, count ?? 1) })
+                      }
+                    />
+                  ) : null}
+                  {objective.kind === "hero-level" ? (
+                    <ResourceField
+                      label="Level"
+                      value={objective.level}
+                      onChange={(level) =>
+                        updateVpObjective(index, { ...objective, level: Math.max(2, Math.min(7, level ?? 2)) })
+                      }
+                    />
+                  ) : null}
+                  <ResourceField
+                    label="VP"
+                    value={objective.vp}
+                    onChange={(vp) => updateVpObjective(index, { ...objective, vp: Math.max(1, Math.min(10, vp ?? 1)) })}
+                  />
+                  <button
+                    aria-label={`Remove objective ${index + 1}`}
+                    className="mapPresetTimedRemove"
+                    onClick={() => removeVpObjective(index)}
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={13} />
+                  </button>
+                </div>
+              ))}
+              <button
+                className="mapPresetTimedAdd"
+                disabled={vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES}
+                onClick={addVpObjective}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={13} /> Add objective
+              </button>
+            </div>
+          </>
+        ) : (
+          <small className="mapPresetHint">
+            Off — the round limit above stays a mere suggested length.
+          </small>
+        )}
+      </section>
+
+      <section className="mapPresetSection mapPresetVpSection" aria-label="Custom win conditions">
+        <div className="mapPresetSectionLabel">🏁 Custom win conditions</div>
+        <small className="mapPresetHint">
+          Extra early-end triggers on top of the victory mode: the FIRST player to satisfy ANY of these wins
+          immediately. Keep the thresholds above what a player already has at setup, or the game ends on the first
+          action.
+        </small>
+        <div className="mapPresetVpObjectives" role="group" aria-label="Custom win condition list">
+          <div className="mapPresetTimedSectionHeading">
+            <div className="mapPresetSectionLabel">Conditions</div>
+            <span className={`mapPresetTimedCount${winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS ? " full" : ""}`}>
+              {winConditions.length}/{MAX_CUSTOM_WIN_CONDITIONS}
+            </span>
+          </div>
+          {winConditions.map((condition, index) => {
+            const option = CUSTOM_WIN_CONDITION_OPTIONS.find((entry) => entry.id === condition.kind);
+            const paramValue =
+              condition.kind === "hero-level"
+                ? condition.level
+                : condition.kind === "gold"
+                  ? condition.amount
+                  : "count" in condition
+                    ? condition.count
+                    : null;
+            return (
+              <div className="mapPresetVpObjectiveRow" key={index}>
+                <RewardGlyph src={winConditionGlyph(condition.kind)} title={`Condition ${index + 1}`} />
+                <select
+                  aria-label={`Condition ${index + 1} kind`}
+                  className="mapPresetSelect"
+                  onChange={(e) =>
+                    updateWinCondition(index, defaultCustomWinCondition(e.target.value as CustomWinCondition["kind"]))
+                  }
+                  value={condition.kind}
+                >
+                  {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+                {option?.param && paramValue !== null ? (
+                  <ResourceField
+                    label={option.param.label}
+                    max={option.param.max}
+                    min={option.param.min}
+                    value={paramValue}
+                    onChange={(n) => {
+                      const clamped = Math.max(option.param!.min, Math.min(option.param!.max, n ?? option.param!.min));
+                      updateWinCondition(index, { ...condition, [option.param!.field]: clamped } as CustomWinCondition);
+                    }}
+                  />
+                ) : null}
+                <button
+                  aria-label={`Remove condition ${index + 1}`}
+                  className="mapPresetTimedRemove"
+                  onClick={() => removeWinCondition(index)}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={13} />
+                </button>
+              </div>
+            );
+          })}
+          <button
+            className="mapPresetTimedAdd"
+            disabled={winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS}
+            onClick={addWinCondition}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={13} /> Add win condition
+          </button>
+        </div>
+      </section>
+      </MapPresetGroup>
+
+      <MapPresetGroup title="Map locations" glyphSrc={DESIGNER_UI_ICONS.map} count={groupCounts.mapLocations}>
       <section className="mapPresetSection" aria-label="Obelisks">
         <div className="mapPresetSectionLabel">Obelisks (map-wide)</div>
         <small className="mapPresetHint">
@@ -641,7 +983,9 @@ export function MapPresetEditor({
           </div>
         </div>
       </section>
+      </MapPresetGroup>
 
+      <MapPresetGroup title="Timed events" glyphEmoji="⏳" count={groupCounts.timedEvents}>
       <section className="mapPresetSection mapPresetTimedSection" aria-label="Timed events">
         <div className="mapPresetTimedSectionHeading">
           <div>
@@ -787,7 +1131,7 @@ export function MapPresetEditor({
                       onChange={(e) => {
                         const kind = e.target.value as TimedEffectKind;
                         updateTimed(index, {
-                          round: event.round,
+                          ...event,
                           effect: defaultTimedEffect(kind)
                         });
                       }}
@@ -797,6 +1141,26 @@ export function MapPresetEditor({
                         <option key={kind} value={kind}>
                           {TIMED_EFFECT_KIND_LABELS[kind]}
                         </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="mapPresetTimedRepeat">
+                    Repeat
+                    <select
+                      aria-label={`Timed event ${index + 1} repeat`}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next: CustomMapTimedEvent = { round: event.round, effect: event.effect };
+                        if (n >= 2) {
+                          next.repeatEveryRounds = Math.min(10, n);
+                        }
+                        updateTimed(index, next);
+                      }}
+                      value={event.repeatEveryRounds ?? 0}
+                    >
+                      <option value={0}>Once</option>
+                      {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                        <option key={n} value={n}>{`Every ${n} rounds`}</option>
                       ))}
                     </select>
                   </label>
@@ -826,7 +1190,7 @@ export function MapPresetEditor({
                   onChange={(effect) => updateTimed(index, { ...event, effect })}
                 />
                 <div className="mapPresetTimedPreview" aria-live="polite">
-                  Round {event.round}: {describeTimedMapEffect(event.effect)}
+                  {describeTimedEventSchedule(event)}: {describeTimedMapEffect(event.effect)}
                 </div>
                 {timedEventWarning(event, value.roundLimit) ? (
                   <small className="mapPresetTimedWarning" role="status">
@@ -840,128 +1204,9 @@ export function MapPresetEditor({
           <small className="mapPresetEmpty">No timed events yet — add one or pick a template.</small>
         )}
       </section>
+      </MapPresetGroup>
 
-      <section className="mapPresetSection">
-        <div className="mapPresetSectionLabel">
-          {vpOn ? "Round limit (hard end)" : "Suggested length (rounds)"}
-        </div>
-        <div className="mapPresetResourceRow">
-          <ResourceField
-            label="Rounds"
-            value={value.roundLimit ?? null}
-            onChange={(roundLimit) => patch({ roundLimit: roundLimit || undefined })}
-          />
-        </div>
-        <small className="mapPresetHint">
-          {vpOn
-            ? "With Victory Points on, the game ENDS when this round wraps (then VPs are scored)."
-            : "A display-only note today — a suggested length, not a hard end."}
-        </small>
-      </section>
-
-      <section className="mapPresetSection mapPresetVpSection" aria-label="Victory Points">
-        <div className="mapPresetSectionLabel">🎖️ Victory Points</div>
-        <label className="mapPresetToggle">
-          <input
-            aria-label="Victory Points scoring"
-            checked={vpOn}
-            onChange={toggleVictoryPoints}
-            type="checkbox"
-          />
-          <span>Score Victory Points (rulebook scenario scoring)</span>
-        </label>
-        {vpOn ? (
-          <>
-            <small className="mapPresetHint">
-              The game ends at the round limit above OR when a player completes the victory condition —
-              the most VPs wins. Set a round limit above for a hard cap.
-              {value.roundLimit ? "" : " ⚠ No round limit set — completion is the only end trigger."}
-            </small>
-            <div className="mapPresetResourceRow">
-              <ResourceField
-                label="Completion VP"
-                value={victoryPoints?.victoryConditionVp ?? DEFAULT_VICTORY_CONDITION_VP}
-                onChange={(vp) => writeVictoryPoints({ victoryConditionVp: Math.max(0, Math.min(10, vp ?? 0)) })}
-              />
-            </div>
-
-            <div className="mapPresetVpObjectives" role="group" aria-label="Victory Point objectives">
-              <div className="mapPresetTimedSectionHeading">
-                <div className="mapPresetSectionLabel">Extra objectives</div>
-                <span className={`mapPresetTimedCount${vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES ? " full" : ""}`}>
-                  {vpObjectives.length}/{MAX_VICTORY_POINT_OBJECTIVES}
-                </span>
-              </div>
-              {vpObjectives.map((objective, index) => (
-                <div className="mapPresetVpObjectiveRow" key={index}>
-                  <RewardGlyph src={vpObjectiveGlyph(objective.kind)} title={`Objective ${index + 1}`} />
-                  <select
-                    aria-label={`Objective ${index + 1} kind`}
-                    className="mapPresetSelect"
-                    onChange={(e) =>
-                      updateVpObjective(index, {
-                        ...defaultVictoryPointObjective(e.target.value as VictoryPointObjective["kind"]),
-                        vp: objective.vp
-                      })
-                    }
-                    value={objective.kind}
-                  >
-                    {VICTORY_POINT_OBJECTIVE_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {objective.kind === "control-towns" || objective.kind === "flag-mines" ? (
-                    <ResourceField
-                      label="N"
-                      value={objective.count}
-                      onChange={(count) =>
-                        updateVpObjective(index, { ...objective, count: Math.max(1, count ?? 1) })
-                      }
-                    />
-                  ) : null}
-                  {objective.kind === "hero-level" ? (
-                    <ResourceField
-                      label="Level"
-                      value={objective.level}
-                      onChange={(level) =>
-                        updateVpObjective(index, { ...objective, level: Math.max(2, Math.min(7, level ?? 2)) })
-                      }
-                    />
-                  ) : null}
-                  <ResourceField
-                    label="VP"
-                    value={objective.vp}
-                    onChange={(vp) => updateVpObjective(index, { ...objective, vp: Math.max(1, Math.min(10, vp ?? 1)) })}
-                  />
-                  <button
-                    aria-label={`Remove objective ${index + 1}`}
-                    className="mapPresetTimedRemove"
-                    onClick={() => removeVpObjective(index)}
-                    type="button"
-                  >
-                    <Trash2 aria-hidden="true" size={13} />
-                  </button>
-                </div>
-              ))}
-              <button
-                className="mapPresetTimedAdd"
-                disabled={vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES}
-                onClick={addVpObjective}
-                type="button"
-              >
-                <Plus aria-hidden="true" size={13} /> Add objective
-              </button>
-            </div>
-          </>
-        ) : (
-          <small className="mapPresetHint">
-            Off — the round limit above stays a mere suggested length.
-          </small>
-        )}
-      </section>
-
+      <MapPresetGroup title="Designer note" glyphEmoji="📝" count={groupCounts.designerNote}>
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Designer note (shown when map is picked)</div>
         <textarea
@@ -974,7 +1219,72 @@ export function MapPresetEditor({
           value={value.notes ?? ""}
         />
       </section>
+      </MapPresetGroup>
     </details>
+  );
+}
+
+/**
+ * One collapsible sub-group inside the map-conditions panel: a glyph + title +
+ * active-count badge summary row (the disclosure control) over a body of leaf
+ * `.mapPresetSection`s. `open={count > 0}` seeds the group OPEN when it owns at
+ * least one set entry and collapsed otherwise — React only writes the `open`
+ * attribute when this value CHANGES, so a designer's manual expand/collapse of
+ * an empty/active group is preserved between re-renders and is only overridden
+ * when the group's active state actually flips.
+ */
+function MapPresetGroup({
+  title,
+  glyphSrc,
+  glyphEmoji,
+  count,
+  children
+}: {
+  title: string;
+  glyphSrc?: string;
+  glyphEmoji?: string;
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <details aria-label={title} className="mapPresetGroup" open={count > 0}>
+      <summary className="mapPresetGroupHead">
+        <span className="mapPresetGroupLead">
+          <MapPresetGroupGlyph emoji={glyphEmoji} src={glyphSrc} />
+          <span className="mapPresetGroupTitle">{title}</span>
+        </span>
+        {count > 0 ? <span className="mapPresetGroupCount">{count} active</span> : null}
+        <span aria-hidden="true" className="mapPresetGroupChevron">
+          ▸
+        </span>
+      </summary>
+      <div className="mapPresetGroupBody">{children}</div>
+    </details>
+  );
+}
+
+/**
+ * The group-header glyph: an asset-driven board glyph (rendered through
+ * `assetUrl()`) where one fits the group, else an emoji fallback. Decorative —
+ * aria-hidden; the visible title text carries the meaning.
+ */
+function MapPresetGroupGlyph({ emoji, src }: { emoji?: string; src?: string }) {
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- assetUrl CDN path; decorative
+      <img
+        alt=""
+        aria-hidden="true"
+        className="mapPresetGroupGlyph"
+        draggable={false}
+        src={assetUrl(src)}
+      />
+    );
+  }
+  return (
+    <span aria-hidden="true" className="mapPresetGroupGlyph mapPresetGroupGlyphEmoji">
+      {emoji}
+    </span>
   );
 }
 
@@ -987,6 +1297,19 @@ const CUBE_LOCATION_OPTIONS: {
   { id: "mystical_garden", label: "Mystical Garden" }
 ];
 
+/** Tile-group chips for the "clear_tile_cubes" event (player-facing bands). */
+const TILE_GROUP_OPTIONS: {
+  id: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
+  label: string;
+}[] = [
+  { id: "starting", label: "Ⅰ" },
+  { id: "far", label: "Ⅱ–Ⅲ" },
+  { id: "near", label: "Ⅳ–Ⅴ" },
+  { id: "center", label: "Ⅵ–Ⅶ" },
+  { id: "sea", label: "Sea" },
+  { id: "subterranean", label: "Underground" }
+];
+
 function TimedEffectFields({
   effect,
   index,
@@ -997,22 +1320,48 @@ function TimedEffectFields({
   onChange: (effect: CustomMapTimedEffect) => void;
 }) {
   if (effect.kind === "resources") {
+    // Negative = every player LOSES that much (floored at 0). The preview line
+    // spells out "lose N …" so give-vs-take is unmistakable.
+    return (
+      <>
+        <div className="mapPresetResourceRow">
+          <ResourceField
+            label="Gold"
+            min={-50}
+            max={50}
+            value={effect.gold ?? 0}
+            onChange={(gold) => onChange({ ...effect, gold })}
+          />
+          <ResourceField
+            label="Materials"
+            min={-50}
+            max={50}
+            value={effect.buildingMaterials ?? 0}
+            onChange={(buildingMaterials) => onChange({ ...effect, buildingMaterials })}
+          />
+          <ResourceField
+            label="Valuables"
+            min={-50}
+            max={50}
+            value={effect.valuables ?? 0}
+            onChange={(valuables) => onChange({ ...effect, valuables })}
+          />
+        </div>
+        <small className="mapPresetHint">
+          Positive = every player gains it; negative = every player loses it (never below 0).
+        </small>
+      </>
+    );
+  }
+  if (effect.kind === "experience") {
     return (
       <div className="mapPresetResourceRow">
         <ResourceField
-          label="Gold"
-          value={effect.gold ?? 0}
-          onChange={(gold) => onChange({ ...effect, gold })}
-        />
-        <ResourceField
-          label="Materials"
-          value={effect.buildingMaterials ?? 0}
-          onChange={(buildingMaterials) => onChange({ ...effect, buildingMaterials })}
-        />
-        <ResourceField
-          label="Valuables"
-          value={effect.valuables ?? 0}
-          onChange={(valuables) => onChange({ ...effect, valuables })}
+          label="Experience +"
+          max={5}
+          min={1}
+          value={effect.amount}
+          onChange={(amount) => onChange({ kind: "experience", amount: Math.max(1, Math.min(5, amount)) })}
         />
       </div>
     );
@@ -1083,6 +1432,53 @@ function TimedEffectFields({
       </div>
     );
   }
+  if (effect.kind === "clear_tile_cubes") {
+    const selected = new Set(effect.groups);
+    return (
+      <>
+        <div className="mapPresetChipRow" role="group" aria-label={`Timed event ${index + 1} tile groups`}>
+          {TILE_GROUP_OPTIONS.map((opt) => {
+            const on = selected.has(opt.id);
+            return (
+              <button
+                aria-pressed={on}
+                className={`mapPresetChip${on ? " active" : ""}`}
+                key={opt.id}
+                onClick={() => {
+                  const next = new Set(selected);
+                  if (on) {
+                    // Keep at least one group so the event stays valid.
+                    if (next.size <= 1) {
+                      return;
+                    }
+                    next.delete(opt.id);
+                  } else {
+                    next.add(opt.id);
+                  }
+                  onChange({
+                    ...effect,
+                    groups: TILE_GROUP_OPTIONS.map((o) => o.id).filter((id) => next.has(id))
+                  });
+                }}
+                type="button"
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <label className="mapPresetToggle">
+          <input
+            aria-label={`Timed event ${index + 1} skip settlement tiles`}
+            checked={effect.excludeSettlementTiles ?? false}
+            onChange={(e) => onChange({ ...effect, excludeSettlementTiles: e.target.checked })}
+            type="checkbox"
+          />
+          <span>Skip tiles with a settlement</span>
+        </label>
+      </>
+    );
+  }
   if (effect.kind === "morale") {
     return (
       <div className="mapPresetChipRow" role="group" aria-label={`Timed event ${index + 1} morale`}>
@@ -1128,6 +1524,26 @@ function TimedEffectFields({
           value={effect.count}
           onChange={(count) => onChange({ ...effect, count: Math.max(1, count) })}
         />
+      </div>
+    );
+  }
+  if (effect.kind === "story") {
+    return (
+      <div className="mapPresetResourceRow">
+        <label className="mapPresetResourceField">
+          <span>Scene</span>
+          <select
+            aria-label={`Timed event ${index + 1} story scene`}
+            onChange={(e) => onChange({ kind: "story", sceneId: e.target.value })}
+            value={effect.sceneId}
+          >
+            {listStoryScenes().map((scene) => (
+              <option key={scene.id} value={scene.id}>
+                {scene.theme ? `${scene.id} (${scene.theme})` : scene.id}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
     );
   }
@@ -1316,6 +1732,29 @@ function vpObjectiveGlyph(kind: VictoryPointObjective["kind"]): string {
   }
 }
 
+/** The reward glyph for a custom-win-condition kind. */
+function winConditionGlyph(kind: CustomWinCondition["kind"]): string {
+  switch (kind) {
+    case "control-towns":
+      return REWARD_GLYPH_ICONS.materials;
+    case "flag-mines":
+      return REWARD_GLYPH_ICONS.gold;
+    case "hero-level":
+      return REWARD_GLYPH_ICONS.experience;
+    case "gold":
+      return REWARD_GLYPH_ICONS.gold;
+    case "artifacts":
+      return REWARD_GLYPH_ICONS.treasure;
+    case "buildings":
+      return REWARD_GLYPH_ICONS.materials;
+    case "obelisks":
+      return REWARD_GLYPH_ICONS.movement;
+    case "defeat-heroes":
+    case "defeat-dragon-utopia":
+      return REWARD_GLYPH_ICONS.attack;
+  }
+}
+
 function setUnit(
   units: CustomStartingUnit[] | null,
   level: UnitLevel,
@@ -1358,13 +1797,17 @@ function suggestNextRound(existing: CustomMapTimedEvent[], roundLimit?: number):
 }
 
 function cloneTimedEvent(event: CustomMapTimedEvent): CustomMapTimedEvent {
-  return {
+  const clone: CustomMapTimedEvent = {
     round: event.round,
     effect:
       event.effect.kind === "clear_visitable_cubes"
         ? { ...event.effect, locations: [...event.effect.locations] }
         : { ...event.effect }
   };
+  if (event.repeatEveryRounds) {
+    clone.repeatEveryRounds = event.repeatEveryRounds;
+  }
+  return clone;
 }
 
 function timedEventWarning(event: CustomMapTimedEvent, roundLimit?: number): string | null {
