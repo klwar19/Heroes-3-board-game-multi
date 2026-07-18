@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 
-import { HERO_STAT_ICONS } from "@/data/assets/homm-assets";
+import { HERO_INFO_STAT_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -60,8 +60,10 @@ const BOARD_THEMES: Record<string, { banner: string; edge: string }> = {
 // ---------------------------------------------------------------------------
 
 /** The statistic icons are cropped from the printed board scans themselves. */
-function StatIcon({ stat }: { stat: keyof typeof HERO_STAT_ICONS }) {
-  return <img alt="" aria-hidden="true" className="hbStatIcon" src={assetUrl(HERO_STAT_ICONS[stat])} />;
+function StatIcon({ stat }: { stat: keyof typeof HERO_INFO_STAT_ICONS }) {
+  // Use the clean TRANSPARENT board-game glyphs (Heegu-sama/Homm3BG) — the same
+  // set the hero-selection info board uses — not the opaque scan crops.
+  return <img alt="" aria-hidden="true" className="hbStatIcon" src={assetUrl(HERO_INFO_STAT_ICONS[stat])} />;
 }
 
 function CrownIcon() {

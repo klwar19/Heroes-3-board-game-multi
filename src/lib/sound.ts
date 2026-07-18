@@ -103,24 +103,35 @@ function playClip(key: string, volume: number, onDone?: () => void): void {
   const audio = new Audio(assetUrl(entry?.src ?? `/sounds/${key}.mp3`));
   audio.volume = volume;
   let remainingPlays = Math.max(1, entry?.repeat ?? 1);
+  let doneFired = false;
+  const fireDone = () => {
+    if (!doneFired) {
+      doneFired = true;
+      onDone?.();
+    }
+  };
   audio.addEventListener("ended", () => {
     remainingPlays -= 1;
     if (remainingPlays > 0) {
       audio.currentTime = 0;
       playAudioElement(audio);
     } else {
-      onDone?.();
+      fireDone();
     }
   });
+  // A clip that fails to load (404 / codec) never fires "ended" — still hand
+  // control to any chained follow-up instead of silently swallowing it.
+  audio.addEventListener("error", fireDone);
   playAudioElement(audio);
 }
 
 /** Play the members of a `sequence` entry one after another, in order. */
-function playSequence(keys: string[], volume: number, index = 0): void {
+function playSequence(keys: string[], volume: number, index = 0, onDone?: () => void): void {
   if (index >= keys.length) {
+    onDone?.();
     return;
   }
-  playClip(keys[index], volume, () => playSequence(keys, volume, index + 1));
+  playClip(keys[index], volume, () => playSequence(keys, volume, index + 1, onDone));
 }
 
 /** Play a converted H3 sound by manifest key ("spells/fireball"). */
@@ -138,6 +149,29 @@ export function playLibrarySound(key: string, volume = 0.55): void {
     return;
   }
   playClip(key, volume);
+}
+
+/**
+ * Like playLibrarySound, but invokes `onDone` once the clip (including its
+ * repeats / sequence members) has finished — the hook the map-object visit
+ * ambience uses to start only after the one-shot visit sfx has ended.
+ * Muted / SSR calls stay fully silent (no onDone: the chained sound would be
+ * silent anyway).
+ */
+export function playLibrarySoundThen(key: string, volume: number, onDone: () => void): void {
+  if (muted || typeof window === "undefined") {
+    return;
+  }
+  const entry = soundLibrary[key];
+  if (entry?.random?.length) {
+    playLibrarySoundThen(entry.random[Math.floor(Math.random() * entry.random.length)], volume, onDone);
+    return;
+  }
+  if (entry?.sequence?.length) {
+    playSequence(entry.sequence, volume, 0, onDone);
+    return;
+  }
+  playClip(key, volume, onDone);
 }
 
 /**

@@ -1,150 +1,307 @@
-/**
- * Anime Unit Experience (`anime.unitExperience`) — WoG-style creature veterancy,
- * board-adapted.
- *
- * Design (deliberately simple):
- *  - GAIN: at adventure-combat finalize, when a player WINS (neutral guard,
- *    Creature Bank, or PvP) every one of their army unit cards that PARTICIPATED
- *    in and SURVIVED the fight gains 1 XP. XP lives on the army card
- *    (`ArmyUnitState.xp`, public state).
- *  - RANKS: data-driven thresholds ({@link UNIT_EXPERIENCE_RANKS}) — 2 XP →
- *    Veteran (+1 Attack), 5 XP → Elite (+1 Attack/+1 Defense), 9 XP → Legend
- *    (+1 Attack/+1 Defense/+1 Health). The rank bonus is folded onto BOTH card
- *    sides (Few and Pack) at the SAME combat-derivation seam as the Polish Stack
- *    +1 Attack and Gelu's permanentAttackBonus, so every consumer (attack/defense
- *    resolution, previews, the AI army-strength read) sees it.
- *  - LOSS/RESET: a card removed from the game / recycled to a Neutral tier discard
- *    loses its XP automatically (the discard pile stores only the def-id string,
- *    so a fresh recruit starts at 0). XP is KEPT across a Pack→Few flip (same
- *    card, same veterans) and NEVER transfers between cards.
- *
- * Default OFF ⇒ nothing granted, no fold, no events (byte-identical). Because XP
- * is only ever stamped while the module is on, reads of `xp` (e.g. the AI
- * army-strength value) can fold the bonus unconditionally without threading the
- * flag — a card carries `xp` only under the module.
- */
-
+import type { UnitTier } from "@/data/factions/types";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import {
+  ELITE_UNIT_RANK_ABILITIES,
+  MAX_UNIT_RANK,
+  UNIT_RANK_NAMES,
+  UNIT_RANK_STAT_BONUSES,
+  UNIT_RANK_THRESHOLDS,
+  type UnitRankStatBonus
+} from "@/data/units/experience";
+import { UNIT_XP_BANK_MIN, UNIT_XP_PVP_WIN } from "@/data/units/experience";
 import { animeModuleEnabled } from "./anime";
 import { equipmentVeteranBonusXp } from "./anime-equipment";
 import { appendEvent } from "./events";
-import { NEUTRAL_PLAYER_ID } from "./state";
-import type { AnimeModOptions, GameState } from "./state";
-
-/** The flat combat-stat bonus a veterancy rank grants (added onto both sides). */
-export type UnitRankBonus = { attack: number; defense: number; health: number };
-
-export type UnitRank = {
-  id: string;
-  name: string;
-  /** Minimum accumulated XP to hold this rank. */
-  minXp: number;
-  bonus: UnitRankBonus;
-};
+import {
+  NEUTRAL_PLAYER_ID,
+  type ArmyUnitState,
+  type CombatContext,
+  type CombatUnitState,
+  type GameState,
+  type PlayerId
+} from "./state";
 
 /**
- * Veterancy ranks, ASCENDING by `minXp`. The highest rank whose threshold the
- * card's XP meets applies (the bonus is that rank's, NOT a sum of earlier ones).
- * Tuning lives here — add/reprice a rank by editing this array alone.
+ * Unit Experience (optional rule) — engine read layer for the WoG UES board
+ * adaptation. Data (thresholds, per-tier stat packages, the elite registry)
+ * lives in src/data/units/experience.ts; wiring:
+ *  - XP awards: finalizeAdventureCombat (adventure-reducer.ts) — winner's
+ *    surviving deployed army units gain XP (neutral difficulty / bank Stacked
+ *    count / PvP flat).
+ *  - Stat/ability folds: makeCombatUnitFromArmy (adventure.ts) and
+ *    applyUnitCurrentSide (unit-transforms.ts) via `unitRankFold` /
+ *    `combatUnitRankFold`.
+ *  - Dilution: reinforcing Few→Pack halves the card's XP; each purchased
+ *    Polish Stack layer costs 1 XP (WoG Crexpmod "upgrades cost experience").
+ *  - Drill: DRILL_UNIT map action (adventure-reducer.ts drillUnit).
+ * Behaviour pinned in src/engine/unit-experience.test.ts (remote machinery) and
+ * src/engine/anime-unit-mechanics.test.ts (the anime enable road).
+ *
+ * TWO enable roads into ONE machinery (mirroring Unit Stacks): the frozen
+ * `adventure.unitExperience` flag (the lobby Game-options row / WOG module) OR
+ * the anime `unitExperience` module. Either activates the same thresholds,
+ * folds, dilution and Drill below — never two parallel XP systems.
  */
-export const UNIT_EXPERIENCE_RANKS: readonly UnitRank[] = [
-  { id: "veteran", name: "Veteran", minXp: 2, bonus: { attack: 1, defense: 0, health: 0 } },
-  { id: "elite", name: "Elite", minXp: 5, bonus: { attack: 1, defense: 1, health: 0 } },
-  { id: "legend", name: "Legend", minXp: 9, bonus: { attack: 1, defense: 1, health: 1 } }
-];
 
-const NO_BONUS: UnitRankBonus = { attack: 0, defense: 0, health: 0 };
+const ZERO_FOLD: UnitRankStatBonus = { attack: 0, defense: 0, health: 0, initiative: 0 };
 
-/** Whether the Unit Experience module is active in this game. */
-export function unitExperienceActive(
-  state: Pick<GameState, "anime"> | { anime?: AnimeModOptions } | null | undefined
-): boolean {
-  return animeModuleEnabled(state, "unitExperience");
+/**
+ * Whether the Unit Experience rule is on for this game. TWO roads: the frozen
+ * `adventure.unitExperience` flag (lobby row / WOG module) OR the anime
+ * `unitExperience` module (`anime.enabled && anime.unitExperience`). Off ⇒ no
+ * XP is ever stamped, so every downstream fold/read no-ops (byte-identical).
+ */
+export function unitExperienceActive(state: GameState): boolean {
+  return Boolean(state.adventure?.unitExperience) || animeModuleEnabled(state, "unitExperience");
 }
 
-/** The rank a given XP total holds, or null below the first threshold. */
-export function unitRankForXp(xp: number | undefined): UnitRank | null {
-  const value = Math.max(0, Math.trunc(xp ?? 0));
-  let rank: UnitRank | null = null;
-  for (const candidate of UNIT_EXPERIENCE_RANKS) {
-    if (value >= candidate.minXp) {
-      rank = candidate;
+/** Veteran rank (0-3) a card of this tier has at the given total XP. */
+export function unitRankForExperience(tier: UnitTier, experience: number): number {
+  const thresholds = UNIT_RANK_THRESHOLDS[tier] ?? UNIT_RANK_THRESHOLDS.gold;
+  const xp = Math.max(0, Math.trunc(experience));
+  let rank = 0;
+  for (const threshold of thresholds) {
+    if (xp >= threshold) {
+      rank += 1;
     }
   }
-  return rank;
+  return Math.min(MAX_UNIT_RANK, rank);
 }
 
-/** The flat stat bonus a given XP total grants (all-zero below the first rank). */
-export function unitExperienceBonus(xp: number | undefined): UnitRankBonus {
-  const rank = unitRankForXp(xp);
-  return rank ? rank.bonus : NO_BONUS;
+/** CUMULATIVE stat bonus at this rank for this tier (rank 0 = nothing). */
+export function unitRankStatBonuses(tier: UnitTier, rank: number): UnitRankStatBonus {
+  if (rank <= 0) {
+    return ZERO_FOLD;
+  }
+  const packages = UNIT_RANK_STAT_BONUSES[tier] ?? UNIT_RANK_STAT_BONUSES.gold;
+  return packages[Math.min(rank, MAX_UNIT_RANK) - 1] ?? ZERO_FOLD;
+}
+
+/** The unique ELITE (rank 3) ability this unit gains, if it has one. */
+export function eliteRankAbilityId(unitDefId: string): string | null {
+  return ELITE_UNIT_RANK_ABILITIES[unitDefId] ?? null;
+}
+
+export type UnitRankFold = UnitRankStatBonus & {
+  rank: number;
+  /** Elite ability granted at MAX_UNIT_RANK (null below it / none registered). */
+  abilityId: string | null;
+};
+
+const ZERO_RANK_FOLD: UnitRankFold = { ...ZERO_FOLD, rank: 0, abilityId: null };
+
+/**
+ * Everything a combat-unit build folds in for a card with this XP: the rank,
+ * its cumulative stat bonuses and (at max rank) the elite ability grant.
+ */
+export function unitRankFold(unitDefId: string, tier: UnitTier, experience: number): UnitRankFold {
+  const rank = unitRankForExperience(tier, experience);
+  if (rank <= 0) {
+    return ZERO_RANK_FOLD;
+  }
+  return {
+    ...unitRankStatBonuses(tier, rank),
+    rank,
+    abilityId: rank >= MAX_UNIT_RANK ? eliteRankAbilityId(unitDefId) : null
+  };
 }
 
 /**
- * Award veterancy XP after a WON adventure combat: every surviving army unit
- * card the winner still owns gains 1 XP. No-op with the module off, on a
- * Neutral "win", or with no combat/outcome. Never opens a window (pure grant),
- * so the AI never stalls on it.
+ * Rank fold for an already-built combat unit (mid-combat side recomputes in
+ * applyUnitCurrentSide). Reads the XP mirrored onto the unit at build time.
  */
-export function grantUnitExperienceAfterCombat(state: GameState): void {
-  const combat = state.combat;
-  if (!combat || !combat.outcome) {
-    return;
+export function combatUnitRankFold(unit: CombatUnitState): UnitRankFold {
+  const xp = unit.unitExperience ?? 0;
+  if (xp <= 0 || !unit.unitDefId) {
+    return ZERO_RANK_FOLD;
   }
-  if (!unitExperienceActive(state)) {
+  const def = coreUnitDefinitions[unit.unitDefId];
+  if (!def) {
+    return ZERO_RANK_FOLD;
+  }
+  return unitRankFold(unit.unitDefId, def.tier, xp);
+}
+
+/** Appends the fold's elite ability to a printed ability list (deduped). */
+export function withEliteAbility(abilities: string[], fold: UnitRankFold): string[] {
+  if (!fold.abilityId || abilities.includes(fold.abilityId)) {
+    return abilities;
+  }
+  return [...abilities, fold.abilityId];
+}
+
+export type ArmyUnitRankInfo = {
+  experience: number;
+  rank: number;
+  rankName: string;
+  bonus: UnitRankStatBonus;
+  /** XP total needed for the NEXT rank; null at max rank. */
+  nextThreshold: number | null;
+  /** The elite ability this unit gains at max rank (registered units only). */
+  eliteAbilityId: string | null;
+  /** Whether the elite ability is already active (rank = max). */
+  eliteActive: boolean;
+};
+
+/** UI summary of a card's veteran progression (badge + tooltip). */
+export function armyUnitRankInfo(armyUnit: Pick<ArmyUnitState, "unitDefId" | "experience">): ArmyUnitRankInfo | null {
+  const def = coreUnitDefinitions[armyUnit.unitDefId];
+  if (!def) {
+    return null;
+  }
+  const experience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
+  const rank = unitRankForExperience(def.tier, experience);
+  const thresholds = UNIT_RANK_THRESHOLDS[def.tier] ?? UNIT_RANK_THRESHOLDS.gold;
+  return {
+    experience,
+    rank,
+    rankName: UNIT_RANK_NAMES[rank] ?? "",
+    bonus: unitRankStatBonuses(def.tier, rank),
+    nextThreshold: rank >= MAX_UNIT_RANK ? null : thresholds[rank],
+    eliteAbilityId: eliteRankAbilityId(armyUnit.unitDefId),
+    eliteActive: rank >= MAX_UNIT_RANK && eliteRankAbilityId(armyUnit.unitDefId) !== null
+  };
+}
+
+/**
+ * XP a won combat awards the winner's surviving deployed units: neutral guard
+ * fights pay the Field Difficulty, Creature Banks pay max(2, Stacked count),
+ * PvP wins pay a flat 2. Exposed for the UI/tests.
+ */
+export function unitExperienceForWonCombat(context: CombatContext): number {
+  if (context.kind === "sandbox") {
+    return 0;
+  }
+  if (context.kind === "neutral") {
+    return context.bankId
+      ? Math.max(UNIT_XP_BANK_MIN, Math.trunc(context.bankStackCount ?? 0))
+      : Math.max(1, Math.trunc(context.difficulty ?? 1));
+  }
+  return UNIT_XP_PVP_WIN;
+}
+
+/**
+ * Award unit XP for a finished, WON adventure combat (WoG UES: "after winning
+ * a battle led by a hero, each SURVIVING creature gains experience"). Called
+ * from finalizeAdventureCombat after the army sync loop. Only the WINNER's
+ * units that were actually deployed (a real `armyUnitId` back-link — summons,
+ * commanders, war machines and borrowed temporaries never qualify) and
+ * survived (not removed at full damage) gain XP; each backing army card is
+ * awarded once even if mirrored by clones. Quick Combat never deploys units,
+ * so it trains nobody — fighting it out is what drills the troops (deliberate
+ * strategic trade-off). Crossing a rank threshold emits UNIT_RANK_UP.
+ * No-op while the rule is off.
+ *
+ * Anime Equipment (§3.13): the Veteran's Standard accessory grants +1 EXTRA XP
+ * per won combat, added to the base award (so 2 XP on a base-1 neutral win).
+ * Read once for the winner; 0 when the item is off / unworn (the CONTROL keeps
+ * a bare win at exactly the base amount).
+ */
+export function awardUnitExperienceAfterCombat(state: GameState): void {
+  const combat = state.combat;
+  if (!unitExperienceActive(state) || !combat?.outcome || combat.context.kind === "sandbox") {
     return;
   }
   const winnerId = combat.outcome.winnerPlayerId;
-  if (winnerId === NEUTRAL_PLAYER_ID) {
+  if (!winnerId || winnerId === NEUTRAL_PLAYER_ID) {
     return;
   }
   const player = state.players[winnerId];
   if (!player) {
     return;
   }
-
-  // Anime Equipment (§3.13): the Veteran's Standard accessory grants +1 EXTRA XP
-  // per surviving unit this win (2 total). Read once for the winner; 0 when the
-  // item is off / unworn (the CONTROL keeps a bare win at exactly 1 XP).
-  const perUnitXp = 1 + equipmentVeteranBonusXp(state, winnerId);
-
-  // De-dupe by army card: a card can only field ONE combat unit, but guard the
-  // loop so a future summon/clone sharing an armyUnitId can never double-grant.
-  const credited = new Set<string>();
+  const gained = unitExperienceForWonCombat(combat.context) + equipmentVeteranBonusXp(state, winnerId);
+  if (gained <= 0) {
+    return;
+  }
+  const awarded = new Set<string>();
   for (const unit of Object.values(combat.units)) {
-    if (unit.controllerId !== winnerId) {
+    if (unit.controllerId !== winnerId || !unit.armyUnitId || unit.temporary) {
       continue;
     }
-    // Survivors only; a removed unit is at/over its Health.
     if (unit.damage >= unit.maxHealth) {
+      // Fell in the fight — WoG awards survivors only.
       continue;
     }
-    // Clones and borrowed (Tarnum) units carry no persistent army card.
-    if (unit.cloneOfUnitId || unit.temporary) {
+    if (awarded.has(unit.armyUnitId)) {
       continue;
     }
-    if (!unit.armyUnitId || credited.has(unit.armyUnitId)) {
-      continue;
-    }
+    awarded.add(unit.armyUnitId);
     const armyUnit = player.army.find((candidate) => candidate.id === unit.armyUnitId);
     if (!armyUnit) {
       continue;
     }
-    credited.add(unit.armyUnitId);
+    grantArmyUnitExperience(state, winnerId, armyUnit, gained);
+  }
+}
 
-    const before = Math.max(0, Math.trunc(armyUnit.xp ?? 0));
-    const after = before + perUnitXp;
-    armyUnit.xp = after;
-    const beforeRank = unitRankForXp(before);
-    const afterRank = unitRankForXp(after);
-    const rankedUp = afterRank && afterRank.id !== beforeRank?.id;
+/**
+ * Grant XP to one army card, emitting UNIT_RANK_UP when a threshold is
+ * crossed. Shared by the combat award and the Drill action.
+ */
+export function grantArmyUnitExperience(
+  state: GameState,
+  playerId: PlayerId,
+  armyUnit: ArmyUnitState,
+  amount: number
+): void {
+  const def = coreUnitDefinitions[armyUnit.unitDefId];
+  if (!def || amount <= 0) {
+    return;
+  }
+  const before = unitRankForExperience(def.tier, armyUnit.experience ?? 0);
+  armyUnit.experience = Math.max(0, Math.trunc(armyUnit.experience ?? 0)) + Math.trunc(amount);
+  const after = unitRankForExperience(def.tier, armyUnit.experience);
+  if (after > before) {
     appendEvent(state, {
-      type: "UNIT_EXPERIENCE_GAINED",
-      playerId: winnerId,
-      armyUnitId: armyUnit.id,
+      type: "UNIT_RANK_UP",
+      playerId,
       unitDefId: armyUnit.unitDefId,
-      unitName: unit.name,
-      xp: after,
-      ...(rankedUp ? { rankId: afterRank!.id, rankName: afterRank!.name } : {})
+      unitName: def.name,
+      rank: after
     });
   }
+}
+
+/**
+ * WoG Crexpmod adaptation — upgrades cost experience. Reinforcing a Few card
+ * to a Pack halves its XP (fresh recruits dilute the veterans); buying a
+ * Polish Unit Stack layer costs 1 XP per layer (the same read, scaled to the
+ * smaller addition). Mutates the army card and emits UNIT_XP_DILUTED so the
+ * loss is never silent. A card with no XP (or a game without the rule — the
+ * field never appears) is untouched. The ONE documented exception, at its
+ * call sites: the Hierophant's post-combat First Aid flip-up restores THIS
+ * battle's own casualties, not fresh recruits, so it never dilutes (pinned by
+ * test). Mid-combat Pack→Few casualty flips are the other direction and keep
+ * XP in full.
+ */
+export function diluteUnitExperienceForUpgrade(
+  state: GameState,
+  playerId: PlayerId,
+  armyUnit: ArmyUnitState,
+  reason: "reinforce" | "stack",
+  layers = 1
+): void {
+  const xp = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
+  if (xp <= 0) {
+    return;
+  }
+  const remaining = reason === "reinforce" ? Math.floor(xp / 2) : Math.max(0, xp - Math.max(1, layers));
+  if (remaining === xp) {
+    return;
+  }
+  if (remaining > 0) {
+    armyUnit.experience = remaining;
+  } else {
+    delete armyUnit.experience;
+  }
+  const def = coreUnitDefinitions[armyUnit.unitDefId];
+  appendEvent(state, {
+    type: "UNIT_XP_DILUTED",
+    playerId,
+    unitDefId: armyUnit.unitDefId,
+    unitName: def?.name ?? armyUnit.unitDefId,
+    experience: remaining,
+    reason
+  });
 }

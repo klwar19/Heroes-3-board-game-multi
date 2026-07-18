@@ -198,6 +198,19 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   const secretFeature = isSecretTileFeature(candidate.secretFeature)
     ? candidate.secretFeature
     : undefined;
+  // Multi-value secret-landmark restriction (valuables OR gold …): keep the
+  // valid, deduped ids (face-down only).
+  const secretFeatures = Array.isArray(candidate.secretFeatures)
+    ? [...new Set(candidate.secretFeatures.filter(isSecretTileFeature))]
+    : [];
+  // "One of these tiles" random list (map designer): keep the unique string ids
+  // (never on a starting seat), capped so untrusted input can't balloon. Tile-id
+  // validity + group-pool membership is enforced by the setup validator; here we
+  // only guarantee a clean string array round-trips.
+  const oneOfTileDefIds =
+    candidate.group !== "starting" && Array.isArray(candidate.oneOfTileDefIds)
+      ? [...new Set(candidate.oneOfTileDefIds.filter((id): id is string => typeof id === "string"))].slice(0, 40)
+      : [];
   // Per-tile UNDERGROUND layer override: keep it ONLY as a literal true and ONLY
   // on far/near/center/sea (kept there, stripped on `subterranean` = redundant
   // and `starting` = the v1 Surface-only seat rule). Mirrors the setup validator.
@@ -242,7 +255,9 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     group: candidate.group as CustomMapTilePlan["group"],
     faceDown: Boolean(candidate.faceDown),
     ...(typeof candidate.tileDefId === "string" ? { tileDefId: candidate.tileDefId } : {}),
+    ...(oneOfTileDefIds.length > 0 ? { oneOfTileDefIds } : {}),
     ...(secretFeature && Boolean(candidate.faceDown) ? { secretFeature } : {}),
+    ...(secretFeatures.length > 0 && Boolean(candidate.faceDown) ? { secretFeatures } : {}),
     ...(Number.isInteger(candidate.rotation) ? { rotation: (((candidate.rotation as number) % 6) + 6) % 6 } : {}),
     // `lockRotation` fixes a starting seat's home-tile orientation (no opening
     // rotation). Meaningful only on a starting plan — kept there, dropped on any

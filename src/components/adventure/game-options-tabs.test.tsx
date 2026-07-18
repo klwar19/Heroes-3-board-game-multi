@@ -268,6 +268,147 @@ describe("Game options — tabbed layout", () => {
     expect(toggle.textContent).toContain("BANKS OFF");
   });
 
+  it("Enable-all turns the whole Polish group on in one dispatch (Spell Book side effect included)", () => {
+    const onAction = openOptions();
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
+    const call = onAction.mock.calls.at(-1)?.[0] as {
+      type: string;
+      options: { houseRules: Record<string, boolean>; spellBook?: boolean };
+    };
+    expect(call.type).toBe("SET_GAME_OPTIONS");
+    // Every dependency-free Polish rule flips on in a single action.
+    expect(call.options.houseRules["polish-reduced-starting-bonus"]).toBe(true);
+    expect(call.options.houseRules["polish-wait"]).toBe(true);
+    expect(call.options.houseRules["polish-spell-book"]).toBe(true);
+    // Turning on Polish Spell Book also forces the stash Spell Book off.
+    expect(call.options.spellBook).toBe(false);
+  });
+
+  it("selecting ANY Polish rule auto-selects Divided Artifact decks (split-decks) in the same dispatch", () => {
+    // Seed split-decks OFF (BINH defaults it on) so the auto-companion is observable.
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "split-decks": false
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: /Wait \(combat\)/i }));
+    expect(onAction).toHaveBeenLastCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "split-decks": true, "polish-wait": true } }
+    });
+
+    // CONTROL A: with split-decks already ON, only the rule itself dispatches.
+    cleanup();
+    const onDefault = openOptions();
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: /Wait \(combat\)/i }));
+    expect(onDefault).toHaveBeenLastCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "polish-wait": true } }
+    });
+
+    // CONTROL B: turning a Polish rule OFF never touches split-decks.
+    cleanup();
+    const onOff = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "split-decks": false,
+        "polish-wait": true
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: /Wait \(combat\)/i }));
+    expect(onOff).toHaveBeenLastCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "polish-wait": false } }
+    });
+  });
+
+  it("Enable-all Polish also auto-selects split-decks AND enables Random Artifacts (blocked only by it)", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "split-decks": false
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    // The companion lands in the SAME dispatch…
+    expect(hr["split-decks"]).toBe(true);
+    // …and Random Artifacts (which depends on it) is no longer skipped.
+    expect(hr["polish-random-artifacts"]).toBe(true);
+  });
+
+  it("Enable-all skips a dependency-blocked rule (Rolled Bank Sizes without Creature Banks)", () => {
+    const onAction = openOptions(vi.fn(), { creatureBanks: false });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    // Blocked (banks off) → not enabled; a free rule alongside it still turns on.
+    expect(hr["polish-bank-sizes"]).toBeUndefined();
+    expect(hr["polish-reduced-starting-bonus"]).toBe(true);
+  });
+
+  it("with the whole Polish group already on, the group button disables it in one dispatch", () => {
+    const polishOn: Record<string, boolean> = {
+      "split-decks": true,
+      "polish-spell-book": true,
+      "polish-bank-sizes": true,
+      "polish-unit-stacks": true,
+      "polish-reduced-starting-bonus": true,
+      "polish-rule-111": true,
+      "polish-reduced-surrender": true,
+      "polish-random-artifacts": true,
+      "polish-pandora-search": true,
+      "polish-wait": true
+    };
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        ...polishOn
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Disable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    expect(hr["polish-reduced-starting-bonus"]).toBe(false);
+    expect(hr["polish-wait"]).toBe(false);
+  });
+
+  it("Map & Setup exposes the Blind Ⅱ–Ⅲ tile choice toggle, default OFF, wired to farTileBlindChoice", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    const row = screen.getByText("Blind Ⅱ–Ⅲ tile choice").closest(".optionRow");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { farTileBlindChoice: true }
+    });
+
+    // CONTROL: with Ⅱ–Ⅲ tile opening OFF, the blind-choice row is hidden.
+    cleanup();
+    openOptionsWith((state) => {
+      state.setupLobby!.options.farTileOpening = false;
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    expect(screen.queryByText("Blind Ⅱ–Ⅲ tile choice")).toBeNull();
+  });
+
   it("Mode & Rules wires Event deck, Morale Cards, and Ban Diplomacy", () => {
     const onAction = openOptions();
 
@@ -316,6 +457,65 @@ describe("Game options — tabbed layout", () => {
       playerId: "p1",
       options: { undoMoves: true }
     });
+  });
+
+  it("exposes the OPTIONAL Manual-guard-control toggle, default OFF, wired to manualGuardControl", () => {
+    const onAction = openOptions();
+    const row = screen.getByText("Manual guard control").closest(".optionRow");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    expect(within(row as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe(
+      "false"
+    );
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { manualGuardControl: true }
+    });
+  });
+
+  it("exposes the OPTIONAL Unit-experience toggle, default OFF, wired to unitExperience", () => {
+    const onAction = openOptions();
+    const row = screen.getByText("Unit experience").closest(".optionRow");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    expect(within(row as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe(
+      "false"
+    );
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { unitExperience: true }
+    });
+  });
+
+  it("the WOG mod window lists a Unit-experience module row and toggling it dispatches wog.unitExperience", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+    const row = within(dialog).getByRole("button", { name: /WoG Unit Experience System/i });
+    expect(row.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(row);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SET_GAME_OPTIONS",
+        playerId: "p1",
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ enabled: true, unitExperience: true })
+        })
+      })
+    );
   });
 
   it("Legacy preset turns house rules off without locking them (notice + free toggle)", () => {
@@ -522,19 +722,23 @@ describe("Game options — Victory points", () => {
     });
   });
 
-  it("the round-limit select appears only when ON and dispatches the chosen number", () => {
-    // Default (Off): no round-limit select.
+  it("the round-limit buttons appear only when ON and dispatch the chosen number", () => {
+    // Default (Off): no round-limit buttons.
     openOptions();
-    expect(screen.queryByLabelText("Victory points round limit")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Victory points round limit" })).toBeNull();
     cleanup();
 
-    // With the toggle ON in state, the select shows and dispatches the number.
+    // With the toggle ON in state, the button group shows and dispatches the number.
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.victoryPoints = true;
     });
-    const select = screen.getByLabelText("Victory points round limit");
-    expect(select).toBeTruthy();
-    fireEvent.change(select, { target: { value: "20" } });
+    const group = screen.getByRole("group", { name: "Victory points round limit" });
+    expect(group).toBeTruthy();
+    // Offers 5..25 in fives (plus "No limit").
+    for (const label of ["No limit", "5", "10", "15", "20", "25"]) {
+      expect(within(group).getByRole("button", { name: label })).toBeTruthy();
+    }
+    fireEvent.click(within(group).getByRole("button", { name: "20" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",

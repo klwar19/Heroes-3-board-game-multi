@@ -365,4 +365,45 @@ describe("getActivationOrder — the rail preview matches the engine's real orde
     state = startFreshRound(state);
     expect(playOutRoundSequence(state)).toEqual(preview);
   });
+
+  it("re-queues Waited units at the TAIL, highest wait token first (CONTROL: unwaited lead)", () => {
+    const state = createInitialGameState("rail-wait");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    setInitiatives(state, {
+      unit_p1_griffins: 9,
+      unit_p1_crusaders: 8,
+      unit_p1_marksmen: 7,
+      unit_p2_skeletons: 6,
+      unit_p2_vampires: 5,
+      unit_p2_dread_knights: 4
+    });
+    const griffins = state.combat!.units.unit_p1_griffins;
+    const crusaders = state.combat!.units.unit_p1_crusaders;
+    // Both Waited in the main phase (activatedThisRound + waitPending). Crusaders
+    // waited first (lower token 1); griffins later (token 2) → griffins re-acts
+    // FIRST in the wait phase (highest token down).
+    griffins.activatedThisRound = true;
+    griffins.waitPending = true;
+    griffins.waitToken = 2;
+    crusaders.activatedThisRound = true;
+    crusaders.waitPending = true;
+    crusaders.waitToken = 1;
+
+    const order = getActivationOrder(state.combat!, state.activeEffects).map((unit) => unit.id);
+    // The two Waited units sit at the very tail, higher token first — NOT stranded
+    // in the greyed "done" bucket their activatedThisRound flag would put them in.
+    expect(order.slice(-2)).toEqual(["unit_p1_griffins", "unit_p1_crusaders"]);
+    // Every un-waited unit comes before them.
+    expect(order.indexOf("unit_p2_dread_knights")).toBeLessThan(order.indexOf("unit_p1_griffins"));
+
+    // CONTROL: clear the waits — griffins (9) leads, crusaders (8) is second.
+    for (const unit of [griffins, crusaders]) {
+      unit.activatedThisRound = false;
+      unit.waitPending = false;
+      unit.waitToken = undefined;
+    }
+    const normal = getActivationOrder(state.combat!, state.activeEffects).map((unit) => unit.id);
+    expect(normal.slice(0, 2)).toEqual(["unit_p1_griffins", "unit_p1_crusaders"]);
+  });
 });

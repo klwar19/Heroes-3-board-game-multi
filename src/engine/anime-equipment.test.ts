@@ -574,7 +574,7 @@ function runWonGuardCombat(
   finalizeAdventureCombat(state);
   return {
     goldGained: state.players.p1.resources.gold - goldBefore,
-    maxArmyXp: state.players.p1.army.reduce((max, unit) => Math.max(max, unit.xp ?? 0), 0)
+    maxArmyXp: state.players.p1.army.reduce((max, unit) => Math.max(max, unit.experience ?? 0), 0)
   };
 }
 
@@ -663,11 +663,14 @@ describe("anime.equipment — Windrider Saddle (mount)", () => {
 });
 
 describe("anime.equipment — Veteran's Standard (accessory)", () => {
-  it("surviving units gain +1 EXTRA XP per win (2 total) vs 1 without (CONTROL: unitExperience OFF → 0)", () => {
+  it("surviving units gain +1 EXTRA XP per win (4 total) vs 3 without (CONTROL: unitExperience OFF → 0)", () => {
     const bare = runWonGuardCombat("eq-vet-win", { ...EQUIP_ON, unitExperience: true }, []);
     const withStandard = runWonGuardCombat("eq-vet-win", { ...EQUIP_ON, unitExperience: true }, [["accessory", EQUIP_ID_VETERAN]]);
-    expect(bare.maxArmyXp).toBe(1); // baseline 1 XP per surviving unit
-    expect(withStandard.maxArmyXp).toBe(2); // +1 extra from the Standard
+    // The unified Unit Experience machinery (remote WoG UES adaptation) awards a
+    // neutral guard fight its Field Difficulty in XP — this guard-field is
+    // difficulty 3, so the base award is 3, not the old flat 1.
+    expect(bare.maxArmyXp).toBe(3); // baseline difficulty-3 guard fight = 3 XP per surviving unit
+    expect(withStandard.maxArmyXp).toBe(4); // +1 extra from the Standard
     // CONTROL: with the Unit Experience module OFF, NO XP is granted at all — the
     // Standard's effect is inert (the grant site never runs).
     const moduleOff = runWonGuardCombat("eq-vet-win", EQUIP_ON, [["accessory", EQUIP_ID_VETERAN]]);

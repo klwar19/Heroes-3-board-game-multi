@@ -128,6 +128,26 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(last.timedEvents!.length).toBe(2);
   });
 
+  it("round field is clearable to blank and accepts a single-digit value (regression: sticky leading '1')", () => {
+    const onChange = vi.fn();
+    const base: CustomMapPreset = {
+      timedEvents: [{ round: 16, effect: { kind: "note", text: "hi" } }]
+    };
+    render(<MapPresetEditor preset={base} onChange={onChange} />);
+    const roundInput = screen.getByLabelText("Timed event 1 round") as HTMLInputElement;
+    // Clearing must leave the field BLANK. The old idiom snapped it straight
+    // back to the floor "1", so the leading digit could never be removed and no
+    // round below 10 could be typed.
+    fireEvent.change(roundInput, { target: { value: "" } });
+    expect(roundInput.value).toBe("");
+    // And a fresh single-digit value commits as-is (not stuck at 1x).
+    fireEvent.change(roundInput, { target: { value: "5" } });
+    expect(roundInput.value).toBe("5");
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ timedEvents: [expect.objectContaining({ round: 5 })] })
+    );
+  });
+
   it("offers a 'story' timed-event effect and stores the chosen sceneId", () => {
     const onChange = vi.fn();
     const base: CustomMapPreset = {
@@ -313,7 +333,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
 
     // Default = Classic → no bonus controls, no obelisks config.
-    expect(screen.queryByLabelText("Obelisk bonus kind")).toBeNull();
+    expect(screen.queryByLabelText("Obelisk reward 1 kind")).toBeNull();
 
     // Monolith teleport → obelisks: { role: "monolith" }.
     fireEvent.click(screen.getByRole("button", { name: "Monolith teleport" }));
@@ -321,32 +341,104 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
       expect.objectContaining({ obelisks: { role: "monolith" } })
     );
 
-    // Fixed bonus → obelisks role "bonus" with the default +1 morale bonus.
+    // Fixed bonus → obelisks role "bonus" with the default +1 morale award
+    // (the editor now always writes the multi-award `bonuses` form).
     fireEvent.click(screen.getByRole("button", { name: "Fixed bonus" }));
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ obelisks: { role: "bonus", bonus: { kind: "morale", amount: 1 } } })
+      expect.objectContaining({ obelisks: { role: "bonus", bonuses: [{ kind: "morale", amount: 1 }] } })
     );
 
     // Re-render as a bonus preset: the kind dropdown appears and switching to
-    // resources writes a resources bonus.
+    // resources writes a resources award.
     rerender(
       <MapPresetEditor
-        preset={{ obelisks: { role: "bonus", bonus: { kind: "morale", amount: 1 } } }}
+        preset={{ obelisks: { role: "bonus", bonuses: [{ kind: "morale", amount: 1 }] } }}
         onChange={onChange}
       />
     );
-    const kind = screen.getByLabelText("Obelisk bonus kind") as HTMLSelectElement;
+    const kind = screen.getByLabelText("Obelisk reward 1 kind") as HTMLSelectElement;
     expect(kind).toBeTruthy();
-    // The bonus row is tagged with the board glyph for the current kind (+1 morale).
+    // The reward row is tagged with the board glyph for the current kind (+1 morale).
     expect(
       document.querySelector('.mapPresetRowGlyph[src*="morale_positive"]'),
-      "morale glyph on the bonus row"
+      "morale glyph on the reward row"
     ).toBeTruthy();
     fireEvent.change(kind, { target: { value: "resources" } });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        obelisks: { role: "bonus", bonus: expect.objectContaining({ kind: "resources" }) }
+        obelisks: { role: "bonus", bonuses: [expect.objectContaining({ kind: "resources" })] }
       })
+    );
+  });
+
+  it("Obelisks: add a second reward and switch to 'player picks one' (AND/OR)", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MapPresetEditor
+        preset={{ obelisks: { role: "bonus", bonuses: [{ kind: "morale", amount: 1 }] } }}
+        onChange={onChange}
+      />
+    );
+    // Add reward → a second default award appended.
+    fireEvent.click(screen.getByRole("button", { name: "Add reward" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        obelisks: expect.objectContaining({
+          role: "bonus",
+          bonuses: [
+            { kind: "morale", amount: 1 },
+            { kind: "morale", amount: 1 }
+          ]
+        })
+      })
+    );
+
+    // With 2+ awards, the mode toggle appears; "Player picks one" writes bonusMode.
+    rerender(
+      <MapPresetEditor
+        preset={{
+          obelisks: {
+            role: "bonus",
+            bonuses: [
+              { kind: "morale", amount: 1 },
+              { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 }
+            ]
+          }
+        }}
+        onChange={onChange}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Player picks one" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        obelisks: expect.objectContaining({ role: "bonus", bonusMode: "choose" })
+      })
+    );
+  });
+
+  it("Obelisks / Settlements: a guard level and settlement VP write the config", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MapPresetEditor preset={{ obelisks: { role: "monolith" } }} onChange={onChange} />
+    );
+    // Obelisk guard: pick level Ⅲ.
+    fireEvent.click(within(section("Obelisk guard")).getByRole("button", { name: "Ⅲ" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ obelisks: { role: "monolith", guard: { level: 3 } } })
+    );
+
+    // Settlement guard: pick level Ⅱ.
+    rerender(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    fireEvent.click(within(section("Settlement guard")).getByRole("button", { name: "Ⅱ" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ settlements: { guard: { level: 2 } } })
+    );
+
+    // Settlement bonus VP.
+    rerender(<MapPresetEditor preset={{ settlements: { guard: { level: 2 } } }} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("Bonus VP each"), { target: { value: "5" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ settlements: expect.objectContaining({ vp: 5 }) })
     );
   });
 
@@ -363,41 +455,63 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(screen.getByText("Obelisks: Monolith teleport network")).toBeTruthy();
   });
 
+  it("Objectives: the tuning is CONTEXTUAL to the chosen Win condition", () => {
+    // Conquest / no mode: the Grail + Dragon tuning is hidden (only a hint shows).
+    const { rerender } = render(<MapPresetEditor preset={{ victoryMode: "conquest" }} onChange={() => {}} />);
+    expect(screen.queryByRole("group", { name: "Grail Obelisks required" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Dragon Utopia guards" })).toBeNull();
+
+    // Holy Grail: the Grail dig tuning appears; the Dragon rows stay hidden.
+    rerender(<MapPresetEditor preset={{ victoryMode: "grail" }} onChange={() => {}} />);
+    expect(section("Grail Obelisks required")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Dragon Utopia guards" })).toBeNull();
+
+    // Dragon Conqueror: the Dragon Utopia tuning appears; the Grail row hides.
+    rerender(<MapPresetEditor preset={{ victoryMode: "dragon-conqueror" }} onChange={() => {}} />);
+    expect(section("Dragon Utopia guards")).toBeTruthy();
+    expect(section("Dragon Utopia bonus search")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Grail Obelisks required" })).toBeNull();
+  });
+
   it("Objectives: the chips write the objectives block; a default clears its field", () => {
     const onChange = vi.fn();
-    const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
-
-    // Grail Obelisks → objectives.grailObelisksRequired.
+    // Grail Obelisks → objectives.grailObelisksRequired (Holy Grail win condition).
+    const { rerender } = render(<MapPresetEditor preset={{ victoryMode: "grail" }} onChange={onChange} />);
     fireEvent.click(within(section("Grail Obelisks required")).getByRole("button", { name: "1" }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ objectives: { grailObelisksRequired: 1 } })
     );
 
-    // Utopia guards → objectives.utopiaGuards.
-    rerender(<MapPresetEditor preset={{ objectives: { grailObelisksRequired: 1 } }} onChange={onChange} />);
+    // Utopia guards → objectives.utopiaGuards (a Dragon win condition).
+    rerender(<MapPresetEditor preset={{ victoryMode: "dragon-conqueror" }} onChange={onChange} />);
     fireEvent.click(within(section("Dragon Utopia guards")).getByRole("button", { name: "Four dragons" }));
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ objectives: { grailObelisksRequired: 1, utopiaGuards: "four" } })
+      expect.objectContaining({ objectives: { utopiaGuards: "four" } })
     );
 
     // Utopia bonus search → objectives.utopiaBonusSearch.
     rerender(
       <MapPresetEditor
-        preset={{ objectives: { grailObelisksRequired: 1, utopiaGuards: "four" } }}
+        preset={{ victoryMode: "dragon-conqueror", objectives: { utopiaGuards: "four" } }}
         onChange={onChange}
       />
     );
     fireEvent.click(within(section("Dragon Utopia bonus search")).getByRole("button", { name: "Search(2)" }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        objectives: { grailObelisksRequired: 1, utopiaGuards: "four", utopiaBonusSearch: 2 }
+        objectives: { utopiaGuards: "four", utopiaBonusSearch: 2 }
       })
     );
 
-    // Clearing the only-remaining field collapses the whole preset to undefined.
-    rerender(<MapPresetEditor preset={{ objectives: { utopiaBonusSearch: 2 } }} onChange={onChange} />);
+    // Clearing the field drops it from the objectives block (the mode remains).
+    rerender(
+      <MapPresetEditor
+        preset={{ victoryMode: "dragon-conqueror", objectives: { utopiaBonusSearch: 2 } }}
+        onChange={onChange}
+      />
+    );
     fireEvent.click(within(section("Dragon Utopia bonus search")).getByRole("button", { name: "None" }));
-    expect(onChange).toHaveBeenLastCalledWith(undefined);
+    expect(onChange).toHaveBeenLastCalledWith({ victoryMode: "dragon-conqueror" });
   });
 
   it("Objectives: lines show in the active-conditions summary", () => {

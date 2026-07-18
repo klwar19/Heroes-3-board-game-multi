@@ -1276,6 +1276,30 @@ describe("BattlefieldBoard Polish army Stack badge", () => {
     expect(document.querySelectorAll(".stackTokenBadge")).toHaveLength(0);
   });
 
+  it("renders the Unit Experience veteran-rank badge (carets, Elite sword) from the mirrored rank", () => {
+    const state = createInitialGameState("unit-rank-badge");
+    state.combat!.units.unit_p1_griffins.unitRank = 2;
+    state.combat!.units.unit_p1_griffins.unitExperience = 5;
+    state.combat!.units.unit_p2_skeletons.unitRank = 3;
+    state.combat!.units.unit_p2_skeletons.unitExperience = 9;
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(document.querySelector(".unitRankBadge.combat.rank-2")?.textContent).toBe("^^");
+    expect(document.querySelector(".unitRankBadge.combat.rank-3")?.textContent).toBe("⚔");
+    // CONTROL: units without a mirrored rank draw no badge.
+    expect(document.querySelectorAll(".unitRankBadge").length).toBe(2);
+  });
+
   it("shows the standard Stack Token badge on a Stacked bank defender (Polish size uses normal tokens)", () => {
     const state = createInitialGameState("bank-stack-badge");
     const unit = state.combat!.units.unit_p2_skeletons;
@@ -1482,5 +1506,37 @@ describe("BattlefieldBoard — a berserked unit cannot move freely", () => {
     }
     // No MOVE_UNIT was ever dispatched — the unit truly cannot move freely.
     expect(onAction.mock.calls.some(([action]) => (action as GameAction).type === "MOVE_UNIT")).toBe(false);
+  });
+})
+
+describe("BattlefieldBoard — Polish Wait hourglass badge", () => {
+  function renderBoard(state: GameState) {
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("marks a Waited unit with an hourglass badge; CONTROL: none on a fresh board", () => {
+    const fresh = createInitialGameState("wait-badge-none");
+    renderBoard(fresh);
+    expect(document.querySelectorAll(".waitBadge")).toHaveLength(0);
+    cleanup();
+
+    const waited = createInitialGameState("wait-badge");
+    waited.combat!.units.unit_p1_marksmen.waitPending = true;
+    waited.combat!.units.unit_p1_marksmen.waitToken = 1;
+    renderBoard(waited);
+    const badges = document.querySelectorAll(".waitBadge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toContain("Wait");
   });
 })

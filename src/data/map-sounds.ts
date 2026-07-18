@@ -45,15 +45,17 @@ export const MAP_CUE_SOUNDS: Record<string, string | null> = {
  * Location audio on FIELD_VISITED.
  *
  * - `sfx` — VCMI `sounds.visit` one-shot (plays first).
- * - `ambient` — optional LOOP* ambience (plays after the sfx; still fine, not wrong).
+ * - `ambient` — optional LOOP* ambience (chained to start once the sfx ends).
  *
  * Plain string = sfx only (legacy shape).
  */
 export type LocationVisitAudio = string | { sfx: string; ambient?: string };
 
 /**
- * Expand a location's visit audio to an ordered list: sfx first, ambient after
- * (feed player staggers by ~220ms so ambient lands after the one-shot).
+ * Expand a location's visit audio to an ordered list: sfx first, ambient after.
+ * Prefer locationVisitSoundCue for playback (it keeps the pair together so the
+ * ambient can be chained to start only after the sfx has finished); this flat
+ * list remains for audits/tests over which keys a location references.
  */
 export function locationVisitSoundKeys(location: string): string[] {
   const entry = LOCATION_VISIT_SOUNDS[location];
@@ -64,6 +66,21 @@ export function locationVisitSoundKeys(location: string): string[] {
     return [entry];
   }
   return entry.ambient ? [entry.sfx, entry.ambient] : [entry.sfx];
+}
+
+/**
+ * A location's visit audio as a structured cue: the one-shot `sfx` plus the
+ * optional map-object `ambient`. The feed player plays the sfx first and
+ * starts the ambient only when the sfx has ENDED (chained on the clip's
+ * "ended" event) — the ambience sits just behind the one-shot instead of
+ * talking over it.
+ */
+export function locationVisitSoundCue(location: string): { sfx: string; ambient?: string } | null {
+  const entry = LOCATION_VISIT_SOUNDS[location];
+  if (!entry) {
+    return null;
+  }
+  return typeof entry === "string" ? { sfx: entry } : { sfx: entry.sfx, ambient: entry.ambient };
 }
 
 /**

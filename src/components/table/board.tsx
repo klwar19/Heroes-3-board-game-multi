@@ -2,9 +2,10 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChevronDown, ChevronUp, Crown, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
+import { ChevronDown, ChevronUp, Crown, Hourglass, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
+import { UNIT_RANK_NAMES } from "@/data/units/experience";
 import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -34,10 +35,10 @@ import {
   neutralFormationCellsFor,
   commanderDeploymentCellsFor,
   commanderUnitId,
+  neutralFormationCellsForGuard,
   playerSpellCastsIgnoreLimit,
   unitHasUnlimitedRetaliationEffect,
   unitIsBerserk,
-  unitRankForXp,
   type BattlefieldTokenState,
   type CombatBoardArtId,
   type CombatTokenState,
@@ -668,6 +669,10 @@ export function BattlefieldBoard({
   const [expertSwapArmed, setExpertSwapArmed] = useState(false);
   const [hoverDestination, setHoverDestination] = useState<number | null>(null);
   const [flashCells, setFlashCells] = useState<readonly number[]>([]);
+  // The Neutral guard currently being drag-sorted (Manual guard control): while
+  // it is held, only that guard's legal cells light up — a shooter shows just
+  // the back row, so a shooter can never be dropped onto the front line.
+  const [sortDragUnitId, setSortDragUnitId] = useState<string | null>(null);
   // Route-planner state: when the player chooses to hand-pick a move route
   // (to brave or dodge a Fire Wall) this holds the active unit and the waypoints
   // chosen so far. A plan left over from a different unit is ignored at render
@@ -858,10 +863,19 @@ export function BattlefieldBoard({
   // to any empty cell of its deployment zone (or swap it with one of their own
   // units), exactly like a deployment reposition, then press "Ready for battle".
   const commanderSorting = Boolean(combat && combat.pendingCommanderPlacement?.[0] === viewerPlayerId);
+  // Manual guard control restricts a shooter to the back row: while such a guard
+  // is being dragged, narrow the droppable cells to that guard's legal set so the
+  // front line simply does not accept it (the engine also rejects an illegal drop).
+  const sortDraggedGuard = sorting && sortDragUnitId ? combat?.units[sortDragUnitId] : undefined;
+  const sortCells = sorting
+    ? sortDraggedGuard
+      ? neutralFormationCellsForGuard(state, sortDraggedGuard)
+      : neutralFormationCellsFor(state)
+    : [];
   const ownRows = placing
     ? new Set(placementCellsFor(state, viewerPlayerId))
     : sorting
-      ? new Set(neutralFormationCellsFor(state))
+      ? new Set(sortCells)
       : commanderSorting
         ? new Set(commanderDeploymentCellsFor(state, viewerPlayerId))
         : new Set<number>();
@@ -1354,25 +1368,34 @@ export function BattlefieldBoard({
                   ×{unit!.armyStacks}
                 </span>
               ) : null}
-              {(() => {
-                const rank = unitRankForXp(unit?.unitXp);
-                return rank ? (
-                  <span
-                    className={`unitRankBadge rank-${rank.id}`}
-                    title={`${rank.name} (${unit?.unitXp ?? 0} XP): +${rank.bonus.attack} Attack${
-                      rank.bonus.defense ? ` / +${rank.bonus.defense} Defense` : ""
-                    }${rank.bonus.health ? ` / +${rank.bonus.health} Health` : ""}.`}
-                  >
-                    ★ {rank.name}
-                  </span>
-                ) : null;
-              })()}
+              {(unit?.unitRank ?? 0) > 0 ? (
+                <span
+                  className={`unitRankBadge combat rank-${unit!.unitRank}`}
+                  title={`Veteran rank ${unit!.unitRank} (${
+                    UNIT_RANK_NAMES[unit!.unitRank!] ?? ""
+                  }) — ${unit!.unitExperience ?? 0} XP. Rank stat bonuses are already folded into this unit's stats.`}
+                >
+                  {unit!.unitRank! >= 3 ? "⚔" : "^".repeat(unit!.unitRank!)}
+                </span>
+              ) : null}
               {retaliationSpent ? (
                 <span
                   className="retaliationSpentBadge"
                   title="Retaliation spent — this unit already used its once-per-round counter-attack, so a melee hit now will NOT draw a retaliation."
                 >
                   <Swords aria-hidden="true" size={9} /> no counter
+                </span>
+              ) : null}
+              {/* Polish Wait: an hourglass marks a unit that has Waited this
+                  round — it re-activates after all others, highest token first. */}
+              {unit?.waitPending ? (
+                <span
+                  className="waitBadge"
+                  title={`Waited — re-activates after the other units this round${
+                    unit.waitToken ? ` (wait token ${unit.waitToken})` : ""
+                  }.`}
+                >
+                  <Hourglass aria-hidden="true" size={9} /> Wait
                 </span>
               ) : null}
             </article>
@@ -1398,6 +1421,8 @@ export function BattlefieldBoard({
                 onPointerDown: (event: React.PointerEvent) => {
                   beginUnitPointerDrag(event, {
                     portraitUrl: unit!.assets?.cardImage,
+                    onDragStart: sortDraggable ? () => setSortDragUnitId(unit!.id) : undefined,
+                    onDragEnd: sortDraggable ? () => setSortDragUnitId(null) : undefined,
                     onDrop: (position) =>
                       onAction(
                         sortDraggable
@@ -1682,16 +1707,21 @@ export function InitiativeRail({ state }: { state: GameState }) {
         // see at a glance that a spell sped a unit up or slowed it down.
         const init = effectiveInitiative(unit, state.activeEffects);
         const delta = init - unit.initiative;
+        // A Waited unit is NOT "done" — getActivationOrder re-queues it later
+        // this round, so it stays ungreyed and wears an hourglass here.
+        const isDone = unit.activatedThisRound && !unit.waitPending;
         return (
           <button
             className={`initCard ${unit.controllerId} ${state.combat?.activeUnitId === unit.id ? "active" : ""} ${
-              unit.activatedThisRound ? "done" : ""
-            }`}
+              isDone ? "done" : ""
+            } ${unit.waitPending ? "waited" : ""} ${unit.defenseToken ? "defending" : ""}`}
             key={unit.id}
             onClick={() => zoomUnit(unit)}
             title={`${index + 1}. ${unit.cardName} — initiative ${init}${
               delta !== 0 ? ` (base ${unit.initiative}, ${delta > 0 ? "+" : ""}${delta} from effects)` : ""
-            }${unit.activatedThisRound ? " (already activated)" : ""}. Click to read the card.`}
+            }${isDone ? " (already activated)" : ""}${
+              unit.waitPending ? ` (Waited — acts after the others, token ${unit.waitToken ?? "?"})` : ""
+            }${unit.defenseToken ? " (Defending — +1 Defense when struck)" : ""}. Click to read the card.`}
             type="button"
           >
             {unit.assets?.cardImage ? (
@@ -1700,6 +1730,17 @@ export function InitiativeRail({ state }: { state: GameState }) {
               <span className="initCardFallback">{unit.name}</span>
             )}
             <b className={`initBadge ${delta > 0 ? "boosted" : delta < 0 ? "slowed" : ""}`}>{init}</b>
+            {unit.waitPending ? (
+              <span className="initWaitMark" aria-hidden="true" title="Waited">
+                <Hourglass size={9} />
+                {unit.waitToken ?? ""}
+              </span>
+            ) : null}
+            {unit.defenseToken ? (
+              <span className="initDefendMark" aria-hidden="true" title="Defending">
+                <Shield size={9} />
+              </span>
+            ) : null}
           </button>
         );
       })}
@@ -1937,6 +1978,9 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   // WOG Commanders: the "Ready for battle" button that ends the pre-combat
   // commander sort (PLACE_COMMANDER is board drag/click, like deployment).
   "FINISH_COMMANDER_PLACEMENT",
+  // Manual guard control: "Let the AI place them" — reset the pre-battle
+  // formation to the rulebook AI's auto-placement (return to AI auto control).
+  "AUTO_NEUTRAL_PLACEMENT",
   "SUMMON_DEMONS",
   "USE_GENIE_DECK_DRAW",
   // Anime Hero Grades (§3.11): War Cry — a combat active on the active unit,
@@ -1944,6 +1988,9 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "USE_HERO_SKILL",
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",
+  // Manual guard control: "Let <guard> act (automatic)" — hands the active
+  // guard's activation back to the rulebook AI, next to the manual commands.
+  "AUTO_NEUTRAL_ACTIVATION",
   // Retreat is the single in-combat escape button. RETREAT_FROM_COMBAT is the
   // no-casualties flee shown before any unit acts; GIVE_UP_COMBAT is the in-fight
   // concede shown after fighting begins — both labelled "Retreat" (legal-actions).

@@ -57,6 +57,7 @@ import {
   EVENTS_DECK_ID,
   gatePairColor,
   getTileFootprintSpaceIds,
+  DESIGNER_BORDER_SEALING_ENABLED,
   getUnitSide,
   instantiateTile,
   materializeTileFields,
@@ -86,7 +87,8 @@ import {
   revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
   sanitizeCustomWinConditions,
-  tileMatchesSecretFeature,
+  planAllowedSecretFeatures,
+  tileMatchesAnySecretFeature,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
   objectGuardSpec,
@@ -531,10 +533,29 @@ export type AdventureSetupOptions = {
    * See GameSetupOptions.undoMoves / src/server/undo-history.ts.
    */
   undoMoves?: boolean;
+  /**
+   * OPTIONAL "Manual guard control" mode (default off): the FIGHTER of a
+   * Neutral combat commands the guards (must-attack discipline) or delegates
+   * single activations to the AI. See GameSetupOptions.manualGuardControl.
+   */
+  manualGuardControl?: boolean;
+  /**
+   * OPTIONAL first-round starting-hand Mulligan mode (default off): in round 1,
+   * after the mandatory draw, replace up to FIRST_ROUND_MULLIGAN_LIMIT hand
+   * cards one at a time. See GameSetupOptions.startingHandMulligan.
+   */
+  startingHandMulligan?: boolean;
+  /**
+   * Unit Experience (optional rule): see GameSetupOptions.unitExperience —
+   * one of the three equivalent surfaces (with wog/anime.unitExperience).
+   */
+  unitExperience?: boolean;
   /** Whether players may open their own Ⅱ–Ⅲ Far tiles (default on). Off gives no Far-tile supply. */
   farTileOpening?: boolean;
   /** How many NEW Ⅱ–Ⅲ tiles each player may add to the map (default: the scenario's perPlayer, 2). */
   farTilesPerPlayer?: number;
+  /** Blind Ⅱ–Ⅲ tile choice (default off): pick gold/valuables/no-preference BEFORE the supply draw. */
+  farTileBlindChoice?: boolean;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -615,8 +636,11 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     // still enables every rule via resolveTournamentRules (false would block it).
     pvpNeutralControl: false,
     pvpNeutralControlMustAttack: true,
+    manualGuardControl: false,
+    startingHandMulligan: false,
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
+    farTileBlindChoice: false,
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -1020,7 +1044,42 @@ export function validateCustomMapPlan(
         problems.push(`Tile ${index + 1}: ${plan.tileDefId} belongs to the ${def.group} pool, not ${plan.group}.`);
         return false;
       }
-    } else if (plan.group !== "starting" && !plan.faceDown) {
+    }
+    // "One of these tiles" random list (map designer): every id must be a real
+    // tile of this slot's own pool; it never applies to a starting seat.
+    if (plan.oneOfTileDefIds !== undefined) {
+      if (plan.group === "starting") {
+        problems.push(`Tile ${index + 1}: starting tiles are placed by faction, not from a tile list.`);
+        return false;
+      }
+      if (!Array.isArray(plan.oneOfTileDefIds) || plan.oneOfTileDefIds.length === 0) {
+        problems.push(`Tile ${index + 1}: the "one of" tile list is empty.`);
+        return false;
+      }
+      for (const id of plan.oneOfTileDefIds) {
+        const def = allTileDefinitions[id];
+        if (!def) {
+          problems.push(`Tile ${index + 1}: unknown tile "${id}" in the tile list.`);
+          return false;
+        }
+        if (def.group === "starting") {
+          problems.push(`Tile ${index + 1}: starting tiles cannot appear in a tile list.`);
+          return false;
+        }
+        if (def.group !== plan.group) {
+          problems.push(`Tile ${index + 1}: ${id} belongs to the ${def.group} pool, not ${plan.group}.`);
+          return false;
+        }
+      }
+    }
+    // A face-up slot needs a concrete choice: an exact tile OR a non-empty "one
+    // of" list (a random pick lands there at setup).
+    if (
+      plan.group !== "starting" &&
+      !plan.faceDown &&
+      !plan.tileDefId &&
+      !(plan.oneOfTileDefIds && plan.oneOfTileDefIds.length > 0)
+    ) {
       problems.push(`Tile ${index + 1}: pick a tile for the face-up slot.`);
       return false;
     }
@@ -1035,6 +1094,16 @@ export function validateCustomMapPlan(
       }
       if (plan.group === "starting") {
         problems.push(`Tile ${index + 1}: starting towns cannot carry a secret landmark.`);
+        return false;
+      }
+    }
+    if (plan.secretFeatures !== undefined) {
+      if (!Array.isArray(plan.secretFeatures) || !plan.secretFeatures.every(isSecretTileFeature)) {
+        problems.push(`Tile ${index + 1}: invalid secret-landmark set.`);
+        return false;
+      }
+      if (!plan.faceDown || plan.group === "starting") {
+        problems.push(`Tile ${index + 1}: a secret-landmark set only applies to a face-down non-starting slot.`);
         return false;
       }
     }
@@ -1619,7 +1688,8 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
     }
     // Designer yellow border edges ride the object onto its carved field
     // (absolute dirs, re-normalised so a hand-edited save can't smuggle junk).
-    if (Array.isArray(object.borderEdges)) {
+    // Skipped while the sealing "lock" is disabled (see applyDesignedBorders).
+    if (DESIGNER_BORDER_SEALING_ENABLED && Array.isArray(object.borderEdges)) {
       const edges = [
         ...new Set(object.borderEdges.filter((dir) => Number.isInteger(dir) && dir >= 0 && dir <= 5))
       ].sort((a, b) => a - b);
@@ -1639,6 +1709,13 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
  * the plan's provenance.
  */
 function applyDesignedBorders(tile: MapTileState, plan: CustomMapTilePlan): void {
+  // The designer-border sealing "lock" is disabled for now: leave the plan's
+  // border data untouched (so the designer + save round-trip keep it), but do
+  // NOT copy it onto the live tile — so it neither seals movement nor renders as
+  // an inert in-game wall. Flip DESIGNER_BORDER_SEALING_ENABLED to restore it.
+  if (!DESIGNER_BORDER_SEALING_ENABLED) {
+    return;
+  }
   const borders = normalizeDesignedBorders(plan.extraBorders);
   if (borders.length > 0) {
     tile.extraBorders = borders;
@@ -1821,13 +1898,14 @@ function takeRemainingGrailTiles(centerPool: string[], max: number): string[] {
  */
 function popTileMatchingFeature(
   pool: string[],
-  feature: SecretTileFeature,
+  feature: SecretTileFeature | SecretTileFeature[],
   options?: {
     group?: CustomMapTilePlan["group"];
     seaBand?: CustomMapTilePlan["seaBand"];
     subBand?: CustomMapTilePlan["subBand"];
   }
 ): string | undefined {
+  const features = Array.isArray(feature) ? feature : [feature];
   for (let index = pool.length - 1; index >= 0; index -= 1) {
     const tileDefId = pool[index];
     const def = allTileDefinitions[tileDefId];
@@ -1847,7 +1925,7 @@ function popTileMatchingFeature(
     ) {
       continue;
     }
-    if (tileMatchesSecretFeature(def, feature)) {
+    if (tileMatchesAnySecretFeature(def, features)) {
       return pool.splice(index, 1)[0];
     }
   }
@@ -1972,6 +2050,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       : {}),
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.undoMoves !== undefined ? { undoMoves: options.undoMoves } : {}),
+    ...(options.unitExperience !== undefined ? { unitExperience: options.unitExperience } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.moraleCards !== undefined ? { moraleCards: options.moraleCards } : {}),
     ...(options.tournamentMode !== undefined ? { tournamentMode: options.tournamentMode } : {}),
@@ -1985,12 +2064,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       ? { tournamentSecondPlayerMorale: options.tournamentSecondPlayerMorale }
       : {}),
     ...(options.pvpNeutralControl !== undefined ? { pvpNeutralControl: options.pvpNeutralControl } : {}),
+    ...(options.manualGuardControl !== undefined ? { manualGuardControl: options.manualGuardControl } : {}),
+    ...(options.startingHandMulligan !== undefined ? { startingHandMulligan: options.startingHandMulligan } : {}),
     ...(options.pvpNeutralControlMustAttack !== undefined
       ? { pvpNeutralControlMustAttack: options.pvpNeutralControlMustAttack }
       : {}),
     ...(options.houseRules !== undefined ? { houseRules: options.houseRules } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
+    ...(options.farTileBlindChoice !== undefined ? { farTileBlindChoice: options.farTileBlindChoice } : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {}),
     ...(options.customMapPreset !== undefined ? { customMapPreset: options.customMapPreset } : {})
   };
@@ -2088,6 +2170,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const fieldOverridesOn =
     resolveFieldOverridesEnabled(setupOptions) || mapObjectsModuleActive({ wog, anime });
   const fieldOverridePlacement = resolveFieldOverridePlacement(setupOptions);
+  // Unit Experience (optional rule): three equivalent surfaces — the plain
+  // lobby toggle, the WOG module and the anime module — activate ONE shared
+  // engine flag, frozen onto adventure state below.
+  const unitExperienceOn =
+    Boolean(setupOptions.unitExperience) ||
+    Boolean(wog.enabled && wog.unitExperience) ||
+    Boolean(anime.enabled && anime.unitExperience);
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
@@ -2141,6 +2230,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // The undrawn Ⅱ–Ⅲ pool and per-player opened counters are populated below,
     // once the scenario's own face-down Far tiles have been dealt from the pool.
     farTilePool: [],
+    // Blind Ⅱ–Ⅲ tile choice (default OFF): a supply opening first asks for a
+    // blind gold/valuables/no-preference pick that filters the random draw.
+    ...(setupOptions.farTileBlindChoice ? { farTileBlindChoice: true } : {}),
     farTilesOpenedByPlayer: {},
     pendingFarTileFlip: null,
     // Setup: the war machine cards sit face up in a shared supply pile.
@@ -2177,12 +2269,22 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     tournamentSecondPlayerMorale: tournamentRules.secondPlayerMorale,
     pvpNeutralControl: pvpNeutralControlOn,
     pvpNeutralControlMustAttack: pvpNeutralControlMustAttackOn,
+    // Manual guard control (default OFF): frozen so every neutral-control read
+    // checks one plain boolean. Available in solo/single-player too (the
+    // computer-fighter gate lives in manualGuardControllerId).
+    ...(setupOptions.manualGuardControl ? { manualGuardControl: true } : {}),
+    // OPTIONAL first-round starting-hand Mulligan (default OFF): frozen so the
+    // one round-1 seeding read (finalizeStartOfTurnHand) checks a plain boolean.
+    ...(setupOptions.startingHandMulligan ? { startingHandMulligan: true } : {}),
     // OPTIONAL Undo mode (debug/testing): frozen here so the SERVER action
     // transaction (both backends) can read it and keep a bounded per-room undo
     // stack. Default OFF — no history kept and UNDO_MOVE rejected. Unlike the
     // multiplayer-only options above, undo is available in solo/single-player
     // too (it is a testing aid, not a competitive rule).
     ...(setupOptions.undoMoves ? { undoMoves: true } : {}),
+    // Unit Experience (optional rule): frozen so every engine read (XP awards,
+    // rank folds, DRILL_UNIT) checks one plain boolean. Default OFF.
+    ...(unitExperienceOn ? { unitExperience: true } : {}),
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
@@ -2415,12 +2517,42 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     const popSubTile = (band?: "iv-v" | "vi-vii"): string | undefined =>
       band ? popSubBandTile(subterraneanPool, band) : subterraneanPool.pop();
 
-    // Designed tiles that pin a specific id (face-up OR exact secret face-down)
-    // never also hide in a random / feature face-down pool draw.
-    for (const plan of customMap) {
+    // "One of these tiles" (map designer): a slot may name a LIST of candidate
+    // tile ids instead of one exact `tileDefId`. Resolve it to a single concrete
+    // id here — seeded by the slot's board position, so it is deterministic — and
+    // then treat it exactly like an exact pin everywhere below (pool removal,
+    // face-up placement, face-down secret pin). Memoized so every read of one
+    // slot returns the same pick. An exact `tileDefId` always wins; starting
+    // tiles (faction art) never draw from a list.
+    const oneOfPick = new Map<CustomMapTilePlan, string>();
+    const effectiveExactTileDefId = (plan: CustomMapTilePlan): string | undefined => {
       if (plan.tileDefId) {
+        return plan.tileDefId;
+      }
+      if (plan.group === "starting") {
+        return undefined;
+      }
+      const choices = (plan.oneOfTileDefIds ?? []).filter((id) => Boolean(allTileDefinitions[id]));
+      if (choices.length === 0) {
+        return undefined;
+      }
+      const cached = oneOfPick.get(plan);
+      if (cached) {
+        return cached;
+      }
+      const pick = shuffleCards(choices, `${seed}#tilechoice#${plan.row}#${plan.col}`)[0];
+      oneOfPick.set(plan, pick);
+      return pick;
+    };
+
+    // Designed tiles that pin a specific id (face-up OR exact secret face-down),
+    // including a resolved "one of" pick, never also hide in a random / feature
+    // face-down pool draw.
+    for (const plan of customMap) {
+      const pinnedId = effectiveExactTileDefId(plan);
+      if (pinnedId) {
         for (const pool of Object.values(pools)) {
-          const index = pool.indexOf(plan.tileDefId);
+          const index = pool.indexOf(pinnedId);
           if (index !== -1) {
             pool.splice(index, 1);
           }
@@ -2434,7 +2566,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // a specific Center tile or named a secretFeature keeps that choice.
     const unpinnedFaceDownCenterSlots = customMap.filter(
       (plan) =>
-        plan.faceDown && plan.group === "center" && !plan.tileDefId && !plan.secretFeature
+        plan.faceDown && plan.group === "center" && !effectiveExactTileDefId(plan) && !plan.secretFeature
     ).length;
     const forcedCenters = forcedObjectiveCenterTiles(centerPool, unpinnedFaceDownCenterSlots, victoryMode);
     let forcedCenterIndex = 0;
@@ -2465,19 +2597,23 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         continue;
       }
       const center = { row: plan.row, col: plan.col };
+      // Folded allowed-landmark set (multi-value `secretFeatures` + the legacy
+      // single `secretFeature`). Empty = a pure-random draw.
+      const allowedFeatures = planAllowedSecretFeatures(plan);
       if (plan.faceDown) {
         let tileDefId: string | undefined;
-        // Exact pin wins over a feature filter (legacy / advanced).
-        if (plan.tileDefId && allTileDefinitions[plan.tileDefId]) {
-          tileDefId = plan.tileDefId;
-        } else if (plan.secretFeature && isSecretTileFeature(plan.secretFeature)) {
-          // Feature secret: random remaining tile that has the landmark.
-          // Prefer the slot's own pool; fall back to an unfiltered draw so a
-          // starved pool never leaves an empty hole on the board — and note the
-          // table so players know the designer guarantee soft-failed.
+        // Exact pin (or a resolved "one of" pick) wins over a feature filter.
+        const pinnedId = effectiveExactTileDefId(plan);
+        if (pinnedId && allTileDefinitions[pinnedId]) {
+          tileDefId = pinnedId;
+        } else if (allowedFeatures.length > 0) {
+          // Feature secret: random remaining tile that has ANY allowed landmark
+          // (e.g. valuables OR gold). Prefer the slot's own pool; fall back to an
+          // unfiltered draw so a starved pool never leaves an empty hole on the
+          // board — and note the table so players know the guarantee soft-failed.
           const pool = pools[plan.group];
           if (pool) {
-            tileDefId = popTileMatchingFeature(pool, plan.secretFeature, {
+            tileDefId = popTileMatchingFeature(pool, allowedFeatures, {
               group: plan.group,
               seaBand: plan.seaBand,
               subBand: plan.subBand
@@ -2494,9 +2630,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
             if (tileDefId) {
               appendEvent(state, {
                 type: "MAP_SECRET_FEATURE_FALLBACK",
-                feature: plan.secretFeature,
+                feature: allowedFeatures[0],
                 group: plan.group,
-                message: `Secret “${secretFeatureFullLabel(plan.secretFeature)}” could not be fulfilled on a ${plan.group} slot — no matching tile left in the pool. Drew a random tile instead.`
+                message: `Secret “${allowedFeatures.map(secretFeatureFullLabel).join(" / ")}” could not be fulfilled on a ${plan.group} slot — no matching tile left in the pool. Drew a random tile instead.`
               });
             }
           }
@@ -2532,16 +2668,20 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
             plannedFieldOverrides.push({ plan, tile });
           }
         }
-      } else if (plan.tileDefId) {
-        const tile = instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);
-        applyDesignedBorders(tile, plan);
-        applyDesignedUnderground(tile, plan);
-        applyDesignedViiField(adventure, tile, plan);
-        if (planTokens(plan).length > 0) {
-          plannedTokens.push({ plan, tile });
-        }
-        if (planFieldOverrides(plan).length > 0) {
-          plannedFieldOverrides.push({ plan, tile });
+      } else {
+        // Face-up: an exact `tileDefId` or a resolved "one of" random pick.
+        const faceUpId = effectiveExactTileDefId(plan);
+        if (faceUpId && allTileDefinitions[faceUpId]) {
+          const tile = instantiateTile(adventure, faceUpId, center, plan.rotation ?? 0, false);
+          applyDesignedBorders(tile, plan);
+          applyDesignedUnderground(tile, plan);
+          applyDesignedViiField(adventure, tile, plan);
+          if (planTokens(plan).length > 0) {
+            plannedTokens.push({ plan, tile });
+          }
+          if (planFieldOverrides(plan).length > 0) {
+            plannedFieldOverrides.push({ plan, tile });
+          }
         }
       }
     }
@@ -2725,12 +2865,6 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
   }
 
-  // Then everyone draws their starting hand (visible from the first moment),
-  // and the active player's turn starts as usual.
-  for (const config of playerConfigs) {
-    drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
-  }
-
   // Setup step 17: each player takes the Scenario Difficulty starting bonus
   // (rulebook p.10). Queued before round/start-of-turn rewards so they resolve
   // first. Impossible has none. Artifacts go to hand, not the Starting Deck.
@@ -2745,6 +2879,22 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const bonusSteps = applyStartingBonus
     ? startingBonusVisitSteps(difficulty, { polishReduced: polishReducedStarting })
     : null;
+
+  // Then everyone draws their starting hand (visible from the first moment),
+  // and the active player's turn starts as usual. EXCEPTION: when a Scenario
+  // starting bonus IS in play, the opening hand is NOT pre-dealt here — instead
+  // each player draws UP TO their hand limit at their own first turn, AFTER
+  // taking the bonus card, via the mandatory start-of-turn REFRESH_HAND. That
+  // way the bonus card counts toward the limit (bonus + drawn = limit), so a
+  // player never opens holding limit+1 cards facing a forced discard. With no
+  // bonus (bonus off, or Impossible where `bonusSteps` is null) the hand is
+  // pre-dealt exactly as before.
+  if (!bonusSteps) {
+    for (const config of playerConfigs) {
+      drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
+    }
+  }
+
   if (bonusSteps) {
     for (const playerId of state.turnOrder) {
       if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId]) {
@@ -3024,8 +3174,17 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.pvpNeutralControl !== undefined) {
     setupOptions.pvpNeutralControl = options.pvpNeutralControl;
   }
+  if (options.farTileBlindChoice !== undefined) {
+    setupOptions.farTileBlindChoice = options.farTileBlindChoice;
+  }
   if (options.pvpNeutralControlMustAttack !== undefined) {
     setupOptions.pvpNeutralControlMustAttack = options.pvpNeutralControlMustAttack;
+  }
+  if (options.manualGuardControl !== undefined) {
+    setupOptions.manualGuardControl = options.manualGuardControl;
+  }
+  if (options.startingHandMulligan !== undefined) {
+    setupOptions.startingHandMulligan = options.startingHandMulligan;
   }
   // Map-setup default: a fresh lobby opens with the three universal core town
   // cards (Citadel, Mage Guild, Bronze Dwelling) already pre-built, so every
@@ -3176,7 +3335,8 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       commanders: Boolean(next.wog.commanders),
       newObjects: Boolean(next.wog.newObjects),
       newCreatures: Boolean(next.wog.newCreatures),
-      artifacts: Boolean(next.wog.artifacts)
+      artifacts: Boolean(next.wog.artifacts),
+      unitExperience: Boolean(next.wog.unitExperience)
     };
     // WOG is a BINH-family module. Enabling it while still on Legacy flips the
     // table to BINH so the module can actually load.
@@ -3447,6 +3607,21 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     changes.push(`Undo moves (testing) ${lobby.options.undoMoves ? "on" : "off"}`);
   }
 
+  if (next.manualGuardControl !== undefined) {
+    lobby.options.manualGuardControl = Boolean(next.manualGuardControl);
+    changes.push(`Manual guard control ${lobby.options.manualGuardControl ? "on" : "off"}`);
+  }
+
+  if (next.startingHandMulligan !== undefined) {
+    lobby.options.startingHandMulligan = Boolean(next.startingHandMulligan);
+    changes.push(`First-round Mulligan ${lobby.options.startingHandMulligan ? "on" : "off"}`);
+  }
+
+  if (next.unitExperience !== undefined) {
+    lobby.options.unitExperience = Boolean(next.unitExperience);
+    changes.push(`Unit experience (veterancy) ${lobby.options.unitExperience ? "on" : "off"}`);
+  }
+
   if (next.farTileOpening !== undefined) {
     lobby.options.farTileOpening = Boolean(next.farTileOpening);
     changes.push(`Ⅱ–Ⅲ tile opening ${next.farTileOpening ? "on" : "off"}`);
@@ -3459,6 +3634,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     const count = Math.max(0, Math.min(MAX_FAR_TILES_PER_PLAYER, Math.floor(next.farTilesPerPlayer)));
     lobby.options.farTilesPerPlayer = count;
     changes.push(`new Ⅱ–Ⅲ tiles per player ${count}`);
+  }
+
+  if (next.farTileBlindChoice !== undefined) {
+    lobby.options.farTileBlindChoice = Boolean(next.farTileBlindChoice);
+    changes.push(`blind Ⅱ–Ⅲ tile choice ${lobby.options.farTileBlindChoice ? "on" : "off"}`);
   }
 
   if (next.scenarioId !== undefined) {
@@ -4714,11 +4894,15 @@ function buildAdventureFromLobby(state: GameState): void {
     startingBonus: true,
     pvpNeutralControl: lobby.options.pvpNeutralControl,
     pvpNeutralControlMustAttack: lobby.options.pvpNeutralControlMustAttack,
+    manualGuardControl: lobby.options.manualGuardControl,
+    startingHandMulligan: lobby.options.startingHandMulligan,
     houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
     undoMoves: lobby.options.undoMoves,
+    unitExperience: lobby.options.unitExperience,
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,
+    farTileBlindChoice: lobby.options.farTileBlindChoice,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,

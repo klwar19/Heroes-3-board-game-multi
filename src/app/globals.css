@@ -4386,6 +4386,23 @@ button.battleCell {
   pointer-events: none;
 }
 
+/* Designer-ALTERED guard: a faint amber outline on the hex + a small gear so an
+   altered neutral fight (custom army / level / forced settlement) reads at a
+   glance. The tooltip and the pre-attack confirm carry the detail. */
+.hexCell.alteredGuard {
+  stroke: #e6b34a;
+  stroke-width: 2.2;
+}
+
+.hexAlteredGuard {
+  fill: #ffd98a;
+  font-size: 9px;
+  paint-order: stroke;
+  stroke: rgba(20, 12, 4, 0.92);
+  stroke-width: 2.2;
+  pointer-events: none;
+}
+
 /* The Creature Bank a tile drew at reveal, named on its Blocked Field while the
    player rotates (so they know the bank before committing the rotation). */
 .hexBankLabel {
@@ -5295,6 +5312,7 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .townBuilding {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -5308,6 +5326,31 @@ button.hbSlot:disabled { cursor: default; }
 
 .townBuilding.built {
   border-color: rgba(120, 200, 120, 0.5);
+}
+
+/* A not-built building keeps its full art, just a whisper of blur + a slight
+   desaturation so the eye tells built from pending at a glance. Kept tiny on
+   purpose — the artwork stays fully readable. */
+.townBuilding:not(.built) .townBuildingArt {
+  filter: blur(1.6px) saturate(0.6) brightness(0.8);
+  opacity: 0.78;
+}
+
+/* Small "not built" tag over the top-left of the art. */
+.townBuildingUnbuilt {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(16, 11, 7, 0.72);
+  border: 1px solid rgba(150, 118, 70, 0.5);
+  color: #cbb488;
+  font-size: 9px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
 }
 
 .townBuilding small {
@@ -5996,6 +6039,64 @@ button.hbSlot:disabled { cursor: default; }
 
 .promptTray.withTileCards {
   max-width: min(980px, 98vw);
+}
+
+/* Rule 111 (Polish house rule): a two-column either/or — the swap on the LEFT,
+   the drawn guard's card face with an "Accept the guard" button on the RIGHT. */
+.promptTray.rule111Tray {
+  max-width: min(560px, 96vw);
+}
+
+.rule111Columns {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.rule111Replace,
+.rule111Accept {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex: 1 1 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(220, 175, 95, 0.28);
+}
+
+.rule111ColHead {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.rule111ReplaceButton {
+  align-self: stretch;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.rule111GuardArt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.rule111GuardImage {
+  width: 96px;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.rule111AcceptButton {
+  align-self: stretch;
 }
 
 .promptOptions.rewardCards {
@@ -7868,6 +7969,49 @@ button.hbSlot:disabled { cursor: default; }
   z-index: 6;
 }
 
+/* Unit Experience (optional rule): the WoG-style veteran-rank badge — carets
+   for ranks 1-2, a gold sword at Elite (rank 3), echoing the PC mod's stack
+   icon markers. Rendered beside the army-row name and on the combat card. */
+.unitRankBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid rgb(198 147 65 / 82%);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(64 46 15 / 96%), rgb(34 23 9 / 96%));
+  color: #ffe7a1;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.25;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgb(255 226 144 / 18%), 0 0 6px rgb(219 163 66 / 26%);
+}
+
+.unitRankBadge.rank-2 {
+  border-color: rgb(214 176 92 / 90%);
+  box-shadow: inset 0 1px 0 rgb(255 226 144 / 24%), 0 0 8px rgb(219 163 66 / 38%);
+}
+
+.unitRankBadge.rank-3 {
+  border-color: #e7b73c;
+  background: linear-gradient(180deg, rgb(104 74 20 / 97%), rgb(52 34 10 / 97%));
+  color: #fff3c4;
+  text-shadow: 0 0 5px rgb(255 214 102 / 75%);
+  box-shadow: inset 0 1px 0 rgb(255 226 144 / 30%), 0 0 10px rgb(231 183 60 / 55%);
+}
+
+.unitRankBadge.combat {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 6;
+  font-size: 9px;
+}
+
 /* Berserk: a red chip flagging that this unit is forced to attack the nearest
    unit (friend or foe) on its next activation. Berserk is an active effect, not
    a token, so it needs its own badge — without it the player cannot tell the
@@ -7913,6 +8057,30 @@ button.hbSlot:disabled { cursor: default; }
   letter-spacing: 0.03em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+/* Polish Wait: an hourglass on a unit that Waited this round (re-activates
+   after the others). Top-right so it never collides with the retaliation or
+   stack badges. */
+.waitBadge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  background: rgb(70 52 12 / 94%);
+  border: 1px solid rgb(233 196 96 / 85%);
+  border-radius: 999px;
+  color: #ffe9b0;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 0 6px rgb(233 196 96 / 40%);
 }
 
 /* ---- Draw-card cinematic -------------------------------------------------- */
@@ -8305,6 +8473,32 @@ button.hbSlot:disabled { cursor: default; }
 .mapFloatCard.passive {
   border-color: rgba(170, 130, 70, 0.45);
   color: #d6bd92;
+}
+
+/* Pre-attack warning for a designer-ALTERED neutral fight (custom army/level/
+   forced settlement): a red-tinted note with what the hero will face. */
+.mapFloatCard.alteredGuardConfirm {
+  border-color: rgba(224, 121, 109, 0.85);
+}
+
+.alteredGuardWarn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 2px;
+  padding: 5px 7px;
+  background: rgba(70, 26, 22, 0.6);
+  border: 1px solid rgba(224, 121, 109, 0.6);
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.25;
+  color: #f6d9cf;
+}
+
+.alteredGuardWarn strong {
+  color: #ffccb8;
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 .mapFloatCard.passive small {
@@ -10262,6 +10456,21 @@ span.recruitThumb {
   margin-top: 6px;
 }
 
+.mapPresetObeliskAwards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.mapPresetObeliskAwards .mapPresetObeliskBonus {
+  margin-top: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(168, 137, 79, 0.22);
+  border-radius: 8px;
+  background: rgba(168, 137, 79, 0.06);
+}
+
 /* Board-game reward glyph tagging a preset row (Obelisk bonus kind, VP
    objective kind). Monochrome symbol glyphs, lightened to read on the dark
    editor panel. */
@@ -11840,6 +12049,18 @@ span.recruitThumb {
   font-weight: 700;
 }
 
+/* First-round starting-hand Mulligan (optional mode): the per-card replace. */
+.handPlayMenu button.firstRoundMulligan {
+  border-color: rgba(122, 179, 233, 0.7);
+  background: rgba(40, 70, 104, 0.55);
+  color: #dcecff;
+  font-weight: 700;
+}
+
+.handHint.mulliganHint {
+  color: #a9cdf2;
+}
+
 /* ---------- map Spell Book panel (house rule) ---------- */
 .spellBookPanel {
   position: relative;
@@ -12695,6 +12916,42 @@ span.recruitThumb {
   filter: grayscale(0.6);
 }
 
+/* Polish Wait / Defend markers in the order rail: an hourglass (bottom-left,
+   with the wait token) for a unit that Waited, a shield (bottom-right) for a
+   unit that is Defending. A waited card also wears a faint amber ring so it is
+   obvious it re-activates at the tail of the round. */
+.initCard.waited {
+  box-shadow: inset 0 0 0 2px rgb(233 196 96 / 80%);
+}
+
+.initCard .initWaitMark,
+.initCard .initDefendMark {
+  position: absolute;
+  bottom: 1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 2px;
+  height: 12px;
+  border-radius: 6px;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 60%);
+}
+
+.initCard .initWaitMark {
+  left: 1px;
+  background: rgb(233 196 96 / 92%);
+  color: #2a1e04;
+}
+
+.initCard .initDefendMark {
+  right: 1px;
+  background: rgb(130 170 214 / 92%);
+  color: #0b1a2a;
+}
+
 /* ---------------------------------------------------------------------------
    Reroll modal: a reroll replaces the result — history stays visible
 --------------------------------------------------------------------------- */
@@ -12916,6 +13173,68 @@ span.recruitThumb {
   text-align: center;
 }
 
+/* A mine's resource token stands in for the generic pickaxe emoji. */
+.mapNoticeResourceArt {
+  display: block;
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 6px rgb(0 0 0 / 45%));
+}
+
+/* Compact reward chips — the treasure-chest / mine result with correct icons. */
+.mapNoticeRewards {
+  margin-top: 6px;
+  padding-top: 8px;
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  border-top: 1px solid rgba(214, 168, 96, 0.25);
+}
+
+.mapNoticeReward {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px 4px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(214, 168, 96, 0.3);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.mapNoticeReward b {
+  font-family: Georgia, serif;
+  font-weight: 700;
+}
+
+.mapNoticeReward.tone-gain b {
+  color: #ffe9b3;
+}
+
+.mapNoticeReward.tone-loss b {
+  color: #f0a58a;
+}
+
+.mapNoticeReward.tone-neutral b {
+  color: #e6d8bd;
+}
+
+.mapNoticeRewardIcon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 45%));
+}
+
+.mapNoticeRewardGlyph {
+  font-size: 20px;
+  line-height: 1;
+}
+
 .mapNotice .mapNoticeHint {
   margin-top: 2px;
   font-size: 10px;
@@ -13068,6 +13387,12 @@ img.cardBack {
 
 .designerMain {
   display: grid;
+  /* A single, container-width column so a collapsible child (the Map conditions
+     panel) can't resize the column — and shove the board/toolbar sideways — when
+     it opens or closes. Items stay left-aligned at their own width via
+     justify-items:start; only a child that opts into justify-self:stretch fills
+     the width. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   justify-items: start;
 }
@@ -17803,6 +18128,35 @@ img.cardBack {
   box-shadow: inset 0 0 0 0.18cqw rgba(240, 196, 106, 0.7);
 }
 
+/* The not-built building's own art, shown as a faintly blurred + dimmed preview
+   behind its "not built" plaque. Clearly reads as pending, art still legible. */
+.tbDesignedTile.unbuilt .tbUnbuiltArt {
+  filter: blur(1.4px) saturate(0.55) brightness(0.62);
+  opacity: 0.5;
+}
+
+/* Scan-board (Cove / classic) not-built bar: the base town scan shows through
+   here, so blur + dim JUST this bar's region of it and centre a "not built"
+   plaque. pointer-events stay off so the bar's own click button still works. */
+.tbScanUnbuilt {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 1cqw;
+  pointer-events: none;
+  background: rgb(8 5 3 / 24%);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 55%);
+  backdrop-filter: blur(1.7px) saturate(0.68) brightness(0.8);
+  -webkit-backdrop-filter: blur(1.7px) saturate(0.68) brightness(0.8);
+}
+
+.tbScanUnbuilt.buildable {
+  box-shadow: inset 0 0 0 0.2cqw rgba(240, 196, 106, 0.55);
+}
+
 .tbUnbuiltPlaque {
   display: inline-flex;
   align-items: center;
@@ -21177,6 +21531,15 @@ img.cardBack {
   gap: 6px;
 }
 
+.houseRuleGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid rgba(168, 137, 79, 0.2);
+  padding-bottom: 3px;
+}
+
 .houseRuleGroupLabel {
   display: flex;
   align-items: center;
@@ -21185,8 +21548,39 @@ img.cardBack {
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: #a8894f;
-  border-bottom: 1px solid rgba(168, 137, 79, 0.2);
-  padding-bottom: 3px;
+}
+
+.houseRuleGroupToggleAll {
+  flex: none;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #d8b874;
+  background: rgba(168, 137, 79, 0.12);
+  border: 1px solid rgba(168, 137, 79, 0.4);
+  border-radius: 6px;
+  padding: 2px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.houseRuleGroupToggleAll:hover:not(:disabled) {
+  background: rgba(168, 137, 79, 0.24);
+  border-color: rgba(168, 137, 79, 0.7);
+  color: #f0daa6;
+}
+
+.houseRuleGroupToggleAll.on {
+  color: #e0a0a0;
+  border-color: rgba(190, 110, 110, 0.45);
+  background: rgba(150, 70, 70, 0.14);
+}
+
+.houseRuleGroupToggleAll:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .recruitRow.unitStackRow {
@@ -21352,6 +21746,9 @@ img.cardBack {
 
 .houseRuleGroup.polish .houseRuleGroupLabel {
   color: #f2cf75;
+}
+
+.houseRuleGroup.polish .houseRuleGroupHeader {
   border-bottom-color: rgba(210, 62, 55, 0.42);
 }
 
@@ -24760,6 +25157,12 @@ body {
   border-radius: 12px;
   border: 1px solid rgba(154, 208, 255, 0.28);
   background: linear-gradient(180deg, rgba(22, 30, 44, 0.95), rgba(14, 18, 28, 0.98));
+  /* Fill the (stable) column so collapsing the panel changes only its HEIGHT,
+     never its width — no horizontal jump. Capped so it never sprawls too wide. */
+  justify-self: stretch;
+  min-width: 0;
+  max-width: 860px;
+  box-sizing: border-box;
 }
 
 .mapPresetHeader {

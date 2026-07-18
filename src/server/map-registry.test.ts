@@ -363,6 +363,29 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[3].faceDown).toBe(true);
   });
 
+  it("preserves a face-down multi-landmark secretFeatures set (valuables OR gold), dropping garbage", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "mc",
+        tiles: [
+          // Kept: two valid ids on a face-down slot; duplicate + unknown dropped.
+          {
+            row: 1,
+            col: 1,
+            group: "near",
+            faceDown: true,
+            secretFeatures: ["valuables_mine", "gold_mine", "valuables_mine", "unicorn_ranch"]
+          },
+          // Face-up must never keep a secret-landmark set.
+          { row: 2, col: 2, group: "far", faceDown: false, tileDefId: "F1", secretFeatures: ["gold_mine"] }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0].secretFeatures).toEqual(["valuables_mine", "gold_mine"]);
+    expect(record!.tiles[1].secretFeatures).toBeUndefined();
+  });
+
   it("preserves a tile's Monolith/Whirlpool/Gate token through sanitization (malformed tokens dropped)", () => {
     // sanitizeTile rebuilds each plan from an allow-list, so the designed token
     // must be carried explicitly or a saved map silently loses its Monoliths/
@@ -644,6 +667,31 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[1].borderEdges!.length).toBeLessThanOrEqual(30);
     expect(record!.tiles[2]).not.toHaveProperty("borderEdges");
     expect(record!.tiles[3]).not.toHaveProperty("borderEdges");
+  });
+
+  it("preserves a designer \"one of these tiles\" list round-trip; dedupes, drops garbage, skips starting", () => {
+    // sanitizeTile rebuilds each plan from an allow-list, so `oneOfTileDefIds`
+    // must be carried explicitly or a saved map loses its random-tile choice on
+    // reload. Non-starting slots only; string ids, deduped.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          { row: 9, col: 9, group: "far", faceDown: false, oneOfTileDefIds: ["F1", "F1", "F2", 3, null] },
+          // Starting slots never carry a tile list → property absent.
+          { row: 5, col: 5, group: "starting", faceDown: false, oneOfTileDefIds: ["F1"] },
+          // Not an array → property absent.
+          { row: 12, col: 12, group: "near", faceDown: true, oneOfTileDefIds: "nope" },
+          // All-garbage list → property absent entirely.
+          { row: 15, col: 15, group: "sea", faceDown: true, oneOfTileDefIds: [1, null, {}] }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0].oneOfTileDefIds).toEqual(["F1", "F2"]);
+    expect(record!.tiles[1]).not.toHaveProperty("oneOfTileDefIds");
+    expect(record!.tiles[2]).not.toHaveProperty("oneOfTileDefIds");
+    expect(record!.tiles[3]).not.toHaveProperty("oneOfTileDefIds");
   });
 
   it("falls back to the default scenario when the id is unknown", () => {

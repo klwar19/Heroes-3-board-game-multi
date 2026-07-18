@@ -136,7 +136,14 @@ import {
 } from "./hex";
 import { createSeededRandom } from "./random";
 import { applyUnitCurrentSide } from "./unit-transforms";
-import { unitExperienceBonus } from "./unit-experience";
+import {
+  diluteUnitExperienceForUpgrade,
+  unitExperienceActive,
+  unitRankFold,
+  unitRankForExperience,
+  withEliteAbility
+} from "./unit-experience";
+import { DRILL_UNIT_GOLD_COST, MAX_UNIT_RANK } from "@/data/units/experience";
 import type {
   ActiveEffectState,
   AdventureReward,
@@ -179,9 +186,9 @@ import type {
   VictoryMode,
   VisitStep
 } from "./state";
-import { isNeutralSideCombatChoice, neutralCombatControllerId } from "./neutral-control";
+import { isNeutralSideCombatChoice, pvpNeutralControllerId } from "./neutral-control";
 import { DEFAULT_OBELISK_BONUS, GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
-import type { CustomMapObeliskBonus } from "./state";
+import type { CustomMapObeliskBonus, CustomMapObeliskConfig } from "./state";
 import { awardCommanderGradePoints, commandersModuleEnabled, wogNewObjectsEnabled } from "./commanders";
 import { WOG_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/wog/field-overrides";
 import { ANIME_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/anime/field-overrides";
@@ -289,8 +296,10 @@ export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuard
   if (guard.units && guard.units.length > 0) {
     field.customGuardUnits = [...guard.units];
     field.difficulty = customGuardArmyDifficulty(guard.units);
+    field.designedGuard = true;
   } else if (guard.level) {
     field.difficulty = guard.level;
+    field.designedGuard = true;
   }
 }
 
@@ -299,6 +308,33 @@ export function clearCustomGuard(field: MapFieldState): void {
   delete field.difficulty;
   delete field.customGuardUnits;
   delete field.customGuardLevel;
+  delete field.designedGuard;
+}
+
+/**
+ * A DESIGNER-ALTERED guard fight the player is about to enter, or null for a
+ * printed guard / no guard. Used to SHOW the altered fight on the map and to
+ * WARN the player before they attack it (the map designer changed this field's
+ * neutral guard — a forced settlement fight, a custom level, or an exact army).
+ * A field.customGuardUnits guard previews its EXACT units; a level/settlement
+ * guard can only preview the Field-Difficulty level (the army is drawn at fight
+ * time). The names come from each unit definition.
+ */
+export type DesignedGuardPreview = {
+  /** Field-Difficulty level (1–7) the guard fights at. */
+  difficulty: number;
+  /** Exact guard unit display names (empty for a level/settlement guard). */
+  units: string[];
+};
+
+export function designedGuardPreview(field: MapFieldState | undefined): DesignedGuardPreview | null {
+  if (!field || !field.designedGuard) {
+    return null;
+  }
+  const units = (field.customGuardUnits ?? []).map(
+    (unitDefId) => coreUnitDefinitions[unitDefId]?.name ?? unitDefId
+  );
+  return { difficulty: field.difficulty ?? 0, units };
 }
 
 /**
@@ -309,6 +345,18 @@ export function clearCustomGuard(field: MapFieldState): void {
  */
 export function isBankStyleGuardLocation(locationId: string): boolean {
   return locationId === "garrison" || locationId === "keymaster_tent" || locationId === "oneway_entrance";
+}
+
+/**
+ * A guard assigned to a single-hex TELEPORT gateway (Monolith / Teleport Gate /
+ * Whirlpool) must be truly FOUGHT to pass — a high-level hero cannot Quick-Combat
+ * past it — and it grants NO experience, like a Creature Bank guard. Unlike a
+ * designer outpost it keeps the normal Round limit and the continue-or-retreat
+ * window (only Quick Combat and the XP reward are dropped; the guard army still
+ * draws at its designed Field Difficulty).
+ */
+export function isTeleportObjectGuardLocation(locationId: string): boolean {
+  return locationId === "monolith" || locationId === "gate" || locationId === "whirlpool";
 }
 
 /**
@@ -469,6 +517,12 @@ export function freeSpellBookActive(state: GameState): boolean {
 export function abilityRollRerollActive(state: GameState): boolean {
   return getActiveAstrologersCard(state)?.effect.type === "ABILITY_ROLL_REROLL";
 }
+
+/**
+ * First-round starting-hand Mulligan mode: the maximum number of single-card
+ * replacements a player may make in round 1 (`GameSetupOptions.startingHandMulligan`).
+ */
+export const FIRST_ROUND_MULLIGAN_LIMIT = 4;
 
 /** Hand limit including temporary Astrologers effects (Profuse Growth / Restart). */
 export function effectiveHandLimit(state: GameState, playerId: PlayerId): number {
@@ -756,12 +810,9 @@ export function materializeTileFields(
       if (centerHex?.vp !== undefined) {
         field.centerHexVp = centerHex.vp;
       }
-      if (centerHex?.guard?.units && centerHex.guard.units.length > 0) {
-        field.customGuardUnits = [...centerHex.guard.units];
-        field.difficulty = customGuardArmyDifficulty(centerHex.guard.units);
-      } else if (centerHex?.guard?.level) {
-        field.difficulty = centerHex.guard.level;
-      }
+      // Shared stamp (sets designedGuard) so a center-hex guard is flagged as
+      // designer-altered exactly like a token / settlement / obelisk guard.
+      applyCustomGuardToField(field, centerHex?.guard);
       if (tile.viiField) {
         if (tile.viiFieldReward && !field.centerHexReward) {
           field.centerHexReward = tile.viiFieldReward;
@@ -770,6 +821,16 @@ export function materializeTileFields(
           field.centerHexVp = tile.viiFieldVp;
         }
       }
+    }
+    // MAP-WIDE designer guards on Obelisks / Settlements (making them matter on
+    // a scenario). Obelisks/settlements carry no printed difficulty, so this
+    // only ADDS a guard: `isFieldGuarded` is true while the guard difficulty is
+    // set and the field is still unflagged, so the first visitor fights it; the
+    // visit then flags the field (`everFlagged`) and the guard never respawns.
+    if (field.location === "obelisk") {
+      applyCustomGuardToField(field, adventure.mapPreset?.obelisks?.guard);
+    } else if (field.location === "settlement") {
+      applyCustomGuardToField(field, adventure.mapPreset?.settlements?.guard);
     }
     adventure.fields[spaceId] = field;
   }
@@ -1267,6 +1328,17 @@ export function isTileSlotOuterSealed(tileDefId: string, slot: number): boolean 
   return def ? Boolean(def.outerImpassable[slot - 1]) : false;
 }
 
+/**
+ * Master switch for DESIGNER-drawn yellow borders (`extraBorders` / `borderEdges`)
+ * SEALING the map — the movement / discovery / placement "lock". Turned OFF for
+ * now (the designer tool, its data and the map-registry round-trip are all
+ * untouched — this only stops the drawn lines from walling tiles off, and the
+ * setup wiring stops copying them onto the live map so no inert wall renders).
+ * Flip back to `true` to restore the full sealing feature. Printed tile borders
+ * (`outerImpassable`, internal lines) are unaffected either way.
+ */
+export const DESIGNER_BORDER_SEALING_ENABLED = false;
+
 /** A designer `extraBorders` list holds at most this many entries (one per board direction). */
 export const MAX_DESIGNED_BORDERS = 6;
 
@@ -1342,6 +1414,9 @@ function fieldFootprintIndex(slot: number, rotation: number): number {
  * the movement BFS hot path.
  */
 function tileEdgeDesignedSealed(tile: MapTileState, slot: number, absDir: number): boolean {
+  if (!DESIGNER_BORDER_SEALING_ENABLED) {
+    return false;
+  }
   const edges = tile.borderEdges;
   if (!edges || edges.length === 0) {
     return false;
@@ -1365,6 +1440,9 @@ export function isDesignedEdgeSealedBetween(
   to: MapSpaceId,
   toField: MapFieldState
 ): boolean {
+  if (!DESIGNER_BORDER_SEALING_ENABLED) {
+    return false;
+  }
   const fromTile = adventure.tiles[fromField.tileInstanceId];
   const toTile = adventure.tiles[toField.tileInstanceId];
   const fromHas = Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
@@ -1411,6 +1489,9 @@ export function isDesignedEdgeSealedBetween(
  * The centre (slot 0) is never sealed.
  */
 export function isTileSlotDesignedSealed(tile: MapTileState, slot: number): boolean {
+  if (!DESIGNER_BORDER_SEALING_ENABLED) {
+    return false;
+  }
   if (slot === 0 || !tile.extraBorders || tile.extraBorders.length === 0) {
     return false;
   }
@@ -1472,6 +1553,11 @@ export function heroCanDiscoverTileAcrossBorders(
 ): boolean {
   if (heroFieldSealedForDiscovery(adventure, heroField)) {
     return false;
+  }
+  // Designer per-edge borders never wall off discovery while the sealing "lock"
+  // is disabled — only the printed whole-arc rule above applies.
+  if (!DESIGNER_BORDER_SEALING_ENABLED) {
+    return true;
   }
   const heroTile = adventure.tiles[heroField.tileInstanceId];
   const tileEdges = tile.borderEdges;
@@ -1684,7 +1770,7 @@ export type HeroPathTarget = { spaceId: MapSpaceId; path: MapSpaceId[]; cost: nu
 export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<MapSpaceId, HeroPathTarget> {
   const results = new Map<MapSpaceId, HeroPathTarget>();
   const adventure = state.adventure;
-  if (!adventure || !hero.spaceId || hero.movementPoints <= 0 || hero.movementHaltedThisTurn) {
+  if (!adventure || !hero.spaceId || hero.movementHaltedThisTurn) {
     return results;
   }
 
@@ -1697,10 +1783,55 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
 
   const movement = getHeroMovementCapabilities(state, hero);
   const visited = new Set<MapSpaceId>([hero.spaceId]);
-  let frontier: { spaceId: MapSpaceId; path: MapSpaceId[] }[] = [{ spaceId: hero.spaceId, path: [] }];
+  type PathNode = { spaceId: MapSpaceId; path: MapSpaceId[]; freeHops: number };
+  let frontier: PathNode[] = [{ spaceId: hero.spaceId, path: [], freeHops: 0 }];
+
+  // Subterranean-Gate closure: the two linked halves are "one Field", so the
+  // hop between them is FREE (0 MP — see performHeroStep). Whenever a node is
+  // settled as continuable, its linked twin (if any) is settled at the SAME
+  // cost and joins the same expansion tier — so the tunnel never eats a
+  // movement point in the preview either, and a hero with 0 MP left can still
+  // be shown (and take) the crossing.
+  const settleGateTwin = (node: PathNode, tier: PathNode[]) => {
+    const fromField = adventure.fields[node.spaceId];
+    if (fromField?.location !== "subterranean_gate") {
+      return;
+    }
+    for (const neighbor of getAdjacentSpaceIds(node.spaceId)) {
+      if (
+        visited.has(neighbor) ||
+        !gateFieldsLinked(fromField, adventure.fields[neighbor]) ||
+        !canCrossEdge(state, node.spaceId, neighbor, movement)
+      ) {
+        continue;
+      }
+      const kind = classifyHeroStep(state, hero, neighbor, movement);
+      if (kind === "block") {
+        continue;
+      }
+      visited.add(neighbor);
+      const path = [...node.path, neighbor];
+      const freeHops = node.freeHops + 1;
+      const cost = path.length - freeHops;
+      if (kind === "stop") {
+        if (!parallelQuietOnly) {
+          results.set(neighbor, { spaceId: neighbor, path, cost });
+        }
+        continue;
+      }
+      if (kind !== "pass-only" && (!parallelQuietOnly || kind === "open")) {
+        results.set(neighbor, { spaceId: neighbor, path, cost });
+      }
+      tier.push({ spaceId: neighbor, path, freeHops });
+    }
+  };
+
+  // The hero may already stand ON a gate half: its twin is reachable for free
+  // even with no movement points left at all.
+  settleGateTwin(frontier[0], frontier);
 
   for (let depth = 1; depth <= hero.movementPoints && frontier.length > 0; depth += 1) {
-    const next: typeof frontier = [];
+    const next: PathNode[] = [];
     for (const node of frontier) {
       for (const neighbor of getAdjacentSpaceIds(node.spaceId)) {
         if (visited.has(neighbor) || !canCrossEdge(state, node.spaceId, neighbor, movement)) {
@@ -1718,17 +1849,20 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
         const halts = seaStepHalts(state, node.spaceId, neighbor, movement);
         visited.add(neighbor);
         const path = [...node.path, neighbor];
+        const cost = path.length - node.freeHops;
+        const settled: PathNode = { spaceId: neighbor, path, freeHops: node.freeHops };
 
         if (kind === "stop") {
           if (!parallelQuietOnly) {
-            results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
+            results.set(neighbor, { spaceId: neighbor, path, cost });
           }
           continue;
         }
 
         if (kind === "pass-only") {
           if (!halts) {
-            next.push({ spaceId: neighbor, path });
+            next.push(settled);
+            settleGateTwin(settled, next);
           }
           continue;
         }
@@ -1740,10 +1874,11 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
         // Quiet-only mode: ending on an "encounter" would start that Combat, so
         // it stays crossable but is not offered as a stop.
         if (!parallelQuietOnly || kind === "open") {
-          results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
+          results.set(neighbor, { spaceId: neighbor, path, cost });
         }
         if (!halts) {
-          next.push({ spaceId: neighbor, path });
+          next.push(settled);
+          settleGateTwin(settled, next);
         }
       }
     }
@@ -1751,6 +1886,23 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
   }
 
   return results;
+}
+
+/**
+ * Whether the hero stands on a Subterranean-Gate half whose linked twin is one
+ * step away — the FREE "one Field" crossing (0 MP, see performHeroStep). Lets
+ * the movement offers/guards allow that hop even with no movement points left.
+ */
+export function heroHasFreeGateStep(state: GameState, hero: HeroState): boolean {
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId) {
+    return false;
+  }
+  const from = adventure.fields[hero.spaceId];
+  if (from?.location !== "subterranean_gate") {
+    return false;
+  }
+  return getAdjacentSpaceIds(hero.spaceId).some((neighbor) => gateFieldsLinked(from, adventure.fields[neighbor]));
 }
 
 export function canPlaceTileAt(
@@ -2163,6 +2315,44 @@ export function mainHeroInOwnTown(state: GameState, playerId: PlayerId): boolean
   return Object.values(state.towns).some(
     (town) => town.controllerId === playerId && town.fieldId === hero.spaceId
   );
+}
+
+/**
+ * Unit Experience Drill (map action): the army cards still below max veteran
+ * rank (XP past the last threshold does nothing, so maxed cards are not
+ * offered).
+ */
+export function drillableArmyUnits(state: GameState, playerId: PlayerId): ArmyUnitState[] {
+  const player = state.players[playerId];
+  if (!player) {
+    return [];
+  }
+  return player.army.filter((armyUnit) => {
+    const def = coreUnitDefinitions[armyUnit.unitDefId];
+    return def ? unitRankForExperience(def.tier, armyUnit.experience ?? 0) < MAX_UNIT_RANK : false;
+  });
+}
+
+/**
+ * Whether DRILL_UNIT is available right now: Unit Experience on, the player's
+ * main hero standing in an OWN Town (the training grounds), the gold cost
+ * covered, once per own turn, and at least one card still below max rank.
+ */
+export function unitDrillAvailable(state: GameState, playerId: PlayerId): boolean {
+  if (!unitExperienceActive(state)) {
+    return false;
+  }
+  const player = state.players[playerId];
+  if (!player || player.unitDrillRound === state.round) {
+    return false;
+  }
+  if ((player.resources.gold ?? 0) < DRILL_UNIT_GOLD_COST) {
+    return false;
+  }
+  if (!mainHeroInOwnTown(state, playerId)) {
+    return false;
+  }
+  return drillableArmyUnits(state, playerId).length > 0;
 }
 
 /** The single Secondary Hero a player may field, if they have gained one. */
@@ -3468,7 +3658,7 @@ export function eliminatePlayer(
   // take the guards the table is down to the fighter (the game is ending), so
   // the window simply clears and priority returns to the fighter.
   if (state.combat && !state.combat.outcome && state.combat.pendingNeutralPlacement === playerId) {
-    const nextController = neutralCombatControllerId(state, state.combat);
+    const nextController = pvpNeutralControllerId(state, state.combat);
     state.combat.pendingNeutralPlacement = nextController;
     if (state.phase === "combat-setup") {
       state.priorityPlayerId = nextController ?? state.combat.attackerPlayerId;
@@ -3960,12 +4150,65 @@ function obeliskBonusVisitSteps(bonus: CustomMapObeliskBonus): VisitStep[] {
       ];
     case "movement":
       return [{ type: "GAIN_MOVEMENT", amount: bonus.amount }];
+    case "experience":
+      return [{ type: "GAIN_EXPERIENCE", amount: bonus.amount }];
     case "dice":
       return [
         ...Array.from({ length: bonus.treasure }, () => ({ type: "ROLL_TREASURE_DICE", count: 1 }) as const),
         ...Array.from({ length: bonus.resource }, () => ({ type: "ROLL_RESOURCE_DICE", count: 1 }) as const)
       ];
   }
+}
+
+/** A short human label for one Obelisk award (used on the OR pick menu). */
+function obeliskBonusLabel(bonus: CustomMapObeliskBonus): string {
+  switch (bonus.kind) {
+    case "morale":
+      return "+1 morale";
+    case "search":
+      return `Search (${bonus.count}) the ${bonus.deck} deck`;
+    case "resources": {
+      const parts: string[] = [];
+      if (bonus.gold) parts.push(`${bonus.gold} gold`);
+      if (bonus.buildingMaterials) parts.push(`${bonus.buildingMaterials} materials`);
+      if (bonus.valuables) parts.push(`${bonus.valuables} valuables`);
+      return parts.length > 0 ? `Gain ${parts.join(", ")}` : "Gain resources";
+    }
+    case "movement":
+      return `+${bonus.amount} movement`;
+    case "experience":
+      return `+${bonus.amount} experience`;
+    case "dice":
+      return `Roll ${bonus.treasure} Treasure + ${bonus.resource} Resource dice`;
+  }
+}
+
+/**
+ * The full visit steps a designer Obelisk "bonus" role grants. Reads the
+ * multi-award `bonuses` (falling back to the legacy single `bonus`, else
+ * {@link DEFAULT_OBELISK_BONUS}). With `bonusMode: "choose"` and 2+ awards the
+ * visiting player PICKS ONE (an OR, via a CHOOSE_ONE step); otherwise every
+ * award runs in order (an AND). No new reward machinery — same interaction
+ * plumbing every field visit uses.
+ */
+function obeliskConfigVisitSteps(config: CustomMapObeliskConfig | undefined): VisitStep[] {
+  const list =
+    config?.bonuses && config.bonuses.length > 0
+      ? config.bonuses
+      : [config?.bonus ?? DEFAULT_OBELISK_BONUS];
+  if (config?.bonusMode === "choose" && list.length > 1) {
+    return [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Obelisk — choose one reward",
+        options: list.map((bonus) => ({
+          label: obeliskBonusLabel(bonus),
+          steps: obeliskBonusVisitSteps(bonus)
+        }))
+      }
+    ];
+  }
+  return list.flatMap((bonus) => obeliskBonusVisitSteps(bonus));
 }
 
 /**
@@ -4031,12 +4274,11 @@ function handleObeliskVisit(state: GameState, hero: HeroState, field: MapFieldSt
     if (role === undefined) {
       grantClassicObeliskReward(state, hero, field, playerId);
     } else if (role === "bonus") {
-      const bonus = adventure.mapPreset?.obelisks?.bonus ?? DEFAULT_OBELISK_BONUS;
       adventure.pendingVisit = {
         heroId: hero.id,
         playerId,
         fieldId: field.spaceId,
-        steps: obeliskBonusVisitSteps(bonus)
+        steps: obeliskConfigVisitSteps(adventure.mapPreset?.obelisks)
       };
       processPendingVisit(state);
     } else if (role === "victory-only") {
@@ -5009,7 +5251,6 @@ function stepNeedsInput(step: VisitStep): boolean {
     step.type === "PAY_TO" ||
     step.type === "SETTLEMENT_CHOICE" ||
     step.type === "RESOURCE_GAIN_LEVEL" ||
-    step.type === "WITCH_HUT" ||
     step.type === "TRADING_POST" ||
     step.type === "WAR_MACHINE_SHOP" ||
     step.type === "DISCOVER_ADJACENT_TILE" ||
@@ -5069,21 +5310,6 @@ export function processPendingVisit(state: GameState): void {
 
   while (visit.steps.length > 0) {
     const step = visit.steps[0];
-
-    if (step.type === "WITCH_HUT") {
-      // The Witch Hut hands over the top Ability card, so it obeys the same
-      // acquisition rules as a deck search: discard any top card this hero may
-      // not take (a duplicate it already owns, or Necromancy for a non-Necropolis
-      // hero) so only an acquirable card is ever revealed and taken.
-      const abilityDeck = state.decks.abilities;
-      while (
-        abilityDeck &&
-        abilityDeck.drawPile.length > 0 &&
-        !canAcquireSharedDeckCard(state, visit.playerId, "abilities", abilityDeck.drawPile[abilityDeck.drawPile.length - 1])
-      ) {
-        abilityDeck.discardPile.push(abilityDeck.drawPile.pop() as string);
-      }
-    }
 
     if (stepNeedsInput(step)) {
       return;
@@ -5235,7 +5461,7 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "ROLL_RESOURCE_DICE":
-        rollResourceDice(state, visit, step.count);
+        rollResourceDice(state, visit, step.count, step.capHighValues);
         break;
       case "RESUME_FIELD_VISIT":
         beginFieldVisit(state, step.heroId, step.fieldId, step.revisit);
@@ -6148,6 +6374,71 @@ export function processPendingVisit(state: GameState): void {
         });
         break;
       }
+      case "WITCH_HUT": {
+        // "Look at the top card of the Ability Deck and put that card into your
+        // hand or into the Ability Deck Discard Pile." Obeys the same acquisition
+        // rules as a deck search: bin any top card this hero may not take (a
+        // duplicate it owns, or Necromancy for a non-Necropolis hero) onto the
+        // deck discard, then reveal the first acquirable card as a CHOOSE_ONE
+        // whose steps carry the cardId — so the prompt tray shows the actual
+        // card face (the DIG_ARTIFACT pattern), never a blind text pick.
+        const abilityDeck = state.decks.abilities;
+        if (!abilityDeck) {
+          break;
+        }
+        while (
+          abilityDeck.drawPile.length > 0 &&
+          !canAcquireSharedDeckCard(
+            state,
+            visit.playerId,
+            "abilities",
+            abilityDeck.drawPile[abilityDeck.drawPile.length - 1]
+          )
+        ) {
+          abilityDeck.discardPile.push(abilityDeck.drawPile.pop() as string);
+        }
+        const revealed = abilityDeck.drawPile.pop();
+        if (!revealed) {
+          eventNote(state, "The Witch Hut finds no Ability card to reveal.", visit.playerId);
+          break;
+        }
+        const revealedName = cardLibrary[revealed]?.name ?? revealed;
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Witch Hut: the top Ability card is ${revealedName} — take it or discard it?`,
+          options: [
+            { label: `Take ${revealedName} into hand`, steps: [{ type: "WITCH_HUT_TAKE", cardId: revealed }] },
+            {
+              label: `Put ${revealedName} into the Ability discard pile`,
+              steps: [{ type: "WITCH_HUT_DISCARD", cardId: revealed }]
+            }
+          ]
+        });
+        break;
+      }
+      case "WITCH_HUT_TAKE": {
+        const player = state.players[visit.playerId];
+        if (player) {
+          player.hand.push(step.cardId);
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} takes ${cardLibrary[step.cardId]?.name ?? step.cardId} from the Witch Hut.`,
+            visit.playerId
+          );
+        }
+        break;
+      }
+      case "WITCH_HUT_DISCARD": {
+        // Declined: the card goes to the SHARED Ability deck's discard pile —
+        // never into the player's own deck or discard.
+        state.decks.abilities?.discardPile.push(step.cardId);
+        eventNote(
+          state,
+          `${eventPlayerName(state, visit.playerId)} puts ${cardLibrary[step.cardId]?.name ?? step.cardId} into the Ability discard pile.`,
+          visit.playerId
+        );
+        break;
+      }
       case "DIG_ARTIFACT_KEEP": {
         const player = state.players[visit.playerId];
         if (player) {
@@ -6309,6 +6600,8 @@ export function processPendingVisit(state: GameState): void {
           spendRecruitResources(state, visit.playerId, step.cost, `${step.source} (Unit Stack)`);
         }
         unit.stacks = (unit.stacks ?? 0) + 1;
+        // Unit Experience: the added Stack layer dilutes the veterans (-1 XP).
+        diluteUnitExperienceForUpgrade(state, visit.playerId, unit, "stack");
         appendEvent(state, {
           type: "ARMY_STACK_PURCHASED",
           playerId: visit.playerId,
@@ -7494,6 +7787,25 @@ export function isMapTokenLocation(locationId: string): boolean {
  */
 export function isMapObjectLocation(locationId: string): boolean {
   return isMapTokenLocation(locationId) || locationId === "gate";
+}
+
+/**
+ * Whether a field's location links its tile into the map through a TELEPORT
+ * network (a Monolith / Whirlpool / Teleport Gate / Subterranean Gate / one-way
+ * Monolith) rather than by a walked edge. Used by the tile-rotation connectivity
+ * check: a tile that hosts — or sits next to — such a connector is reachable via
+ * the network, so a rotation is never "sealed off" just because a teleport gate
+ * is the doorway. (A gate carved onto a former Blocked Field keeps that slot's
+ * printed sealed arc, which used to make the connectivity heuristic wrongly read
+ * the gate as a blocked/sealed field and reject the rotation.)
+ */
+export function isTeleportConnectorLocation(locationId: string): boolean {
+  return (
+    isMapObjectLocation(locationId) ||
+    locationId === "subterranean_gate" ||
+    locationId === "oneway_entrance" ||
+    locationId === "oneway_exit"
+  );
 }
 
 /** Teleport-Gate pair (1-4) → its display colour name (red/blue/green/violet — the printed portal art). */
@@ -9648,9 +9960,38 @@ function resourceDieLabel(roll: { resource: ResourceKind; amount: number }): str
   return `${roll.amount} ${name}`;
 }
 
-function rollResourceDice(state: GameState, visit: PendingVisit, count: number): void {
+/**
+ * A Resource-die face the Polish reduced starting bonus rerolls away: the three
+ * "high value" faces (6 gold / 4 building materials / 2 valuables). The current
+ * RESOURCE_DIE_FACES table already caps valuables at 1, so the valuables clause
+ * is future-proofing rather than active — the reroll fires on 6-gold / 4-materials.
+ */
+function isHighResourceDieFace(face: { resource: ResourceKind; amount: number }): boolean {
+  if (face.resource === "gold") return face.amount >= 6;
+  if (face.resource === "buildingMaterials") return face.amount >= 4;
+  if (face.resource === "valuables") return face.amount >= 2;
+  return false;
+}
+
+function rollResourceDice(
+  state: GameState,
+  visit: PendingVisit,
+  count: number,
+  capHighValues = false
+): void {
   const random = adventureRandom(state, "resource-die");
-  const rolls = Array.from({ length: count }, () => RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)]);
+  const rollFace = () => {
+    let face = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+    if (capHighValues) {
+      // Reroll high faces; bounded because the low faces (2 materials, 1
+      // valuables ×2, 3 gold) always exist, so this terminates.
+      for (let guard = 0; guard < 64 && isHighResourceDieFace(face); guard += 1) {
+        face = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+      }
+    }
+    return face;
+  };
+  const rolls = Array.from({ length: count }, rollFace);
 
   appendEvent(state, {
     type: "ADVENTURE_DICE_ROLLED",
@@ -10983,7 +11324,7 @@ export function makeCombatUnitFromArmy(
     permanentAttackBonus?: number;
     permanentHealthBonus?: number;
     stacks?: number;
-    xp?: number;
+    experience?: number;
   },
   controllerId: PlayerId,
   unitId: UnitId,
@@ -10994,7 +11335,6 @@ export function makeCombatUnitFromArmy(
     griffinBuff?: boolean;
     marksmanBuff?: boolean;
     polishUnitStacks?: boolean;
-    unitExperience?: boolean;
   }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
@@ -11013,11 +11353,11 @@ export function makeCombatUnitFromArmy(
     overrides?.polishUnitStacks && (armyUnit.side === "pack" || armyUnit.side === "neutral")
       ? Math.max(0, Math.trunc(armyUnit.stacks ?? 0))
       : 0;
-  // Anime Unit Experience: the card's veterancy XP (mirrored) and its rank bonus,
-  // folded onto BOTH sides — the printed side computed here and every later
-  // applyUnitCurrentSide recompute (Pack→Few flip) alike.
-  const unitXp = overrides?.unitExperience ? Math.max(0, Math.trunc(armyUnit.xp ?? 0)) : 0;
-  const xpBonus = unitExperienceBonus(unitXp);
+  // Unit Experience (optional rule): veteran-rank stat bonuses + the elite
+  // ability fold into the printed side like permanentAttackBonus. With the rule
+  // off no card ever carries `experience`, so this is an exact no-op.
+  const unitExperience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
+  const rankFold = unitRankFold(armyUnit.unitDefId, def.tier, unitExperience);
 
   const unit: CombatUnitState = {
     id: unitId,
@@ -11027,23 +11367,24 @@ export function makeCombatUnitFromArmy(
     variant: armyUnit.side,
     grade: def.tier,
     type: side.type ?? def.type,
-    attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0) + xpBonus.attack,
-    defense: side.defense + xpBonus.defense,
-    maxHealth: side.health + permanentHealthBonus + xpBonus.health,
+    attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0) + rankFold.attack,
+    defense: side.defense + rankFold.defense,
+    maxHealth: side.health + permanentHealthBonus + rankFold.health,
     damage: 0,
-    initiative: side.initiative,
+    initiative: side.initiative + rankFold.initiative,
     position,
     activatedThisRound: false,
     movedThisActivation: false,
     retaliatedThisRound: false,
     defenseToken: false,
-    abilities: side.abilities,
+    abilities: withEliteAbility(side.abilities, rankFold),
     unitDefId: armyUnit.unitDefId,
     armyUnitId: armyUnit.id,
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
     ...(permanentHealthBonus ? { permanentHealthBonus } : {}),
     ...(armyStacks ? { armyStacks } : {}),
-    ...(unitXp ? { unitXp } : {}),
+    ...(unitExperience ? { unitExperience } : {}),
+    ...(rankFold.rank ? { unitRank: rankFold.rank } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `${def.name} unit card`,
@@ -11408,6 +11749,13 @@ export function startAdventureRound(state: GameState): void {
 
   refreshRoundTokens(state);
   appendEvent(state, { type: "ROUND_STARTED", round: state.round, kind });
+  // VP round-limit: announce the FINAL round as it begins (the end-of-round
+  // scoring above fires next round when the counter passes `roundLimit`), so the
+  // ending is never a surprise. `state.round <= roundLimit` here (the > guard
+  // returned already), so `=== roundLimit` is exactly the last round; fires once.
+  if (vpConfig && roundLimit && state.round === roundLimit && !state.adventure?.winnerPlayerId) {
+    appendEvent(state, { type: "FINAL_ROUND", round: state.round });
+  }
   // Map designer timed events fire for every round kind. On first / resource
   // rounds they queue right after the round-start feed line; on an Astrologers
   // round they wait until AFTER the proclamation is drawn (below), so the
@@ -12360,6 +12708,9 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // (the owner's next turn), like the other map abilities, so an unused voucher
   // never carries over.
   player.recruitDiscounts = [];
+  // Map draw-rider spell-Power bank (Sorcery / Scales) is a within-turn resource
+  // too — a value banked and never spent expires at the owner's next turn.
+  player.mapSpellPowerBank = 0;
 
   // "Resolve any 'at the beginning of your turn' abilities after drawing":
   // Necromancy Amplifier, Portal of Summoning, Mana Vortex.
@@ -12463,6 +12814,11 @@ export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): v
   }
   player.canMulligan = true;
   player.needsHandRefresh = player.hand.length > effectiveHandLimit(state, playerId);
+  // First-round starting-hand Mulligan (optional mode): seed this turn's
+  // replacement budget. Only in round 1; every other turn leaves it at 0 so the
+  // optional MULLIGAN_CARD is never offered outside the opening round.
+  player.firstRoundMulligansLeft =
+    state.round === 1 && state.adventure?.startingHandMulligan ? FIRST_ROUND_MULLIGAN_LIMIT : 0;
 }
 
 /**
@@ -13840,6 +14196,8 @@ export function reinforceArmyUnit(
     free ? "free reinforcement" : halfCost || halfGoldOnly ? "half-cost reinforcement" : "reinforcement"
   );
   armyUnit.side = "pack";
+  // Unit Experience: fresh recruits dilute the card's veterans (halved XP).
+  diluteUnitExperienceForUpgrade(state, playerId, armyUnit, "reinforce");
   // The reserved Legion voucher (if any) is spent on this unit, win or lose.
   consumeRecruitVoucherFor(state, playerId, purchase);
   appendEvent(state, {

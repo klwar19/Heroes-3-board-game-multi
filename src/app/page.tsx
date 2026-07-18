@@ -159,6 +159,7 @@ import {
   cardName,
   costCardEligible,
   formatEvent,
+  noticeRewardsFromEvents,
   reconnectRoundStartCues,
   titleCase,
   unitName,
@@ -206,7 +207,7 @@ import {
 } from "@/components/table/fx-sequence";
 import {
   heroMoveSoundKey,
-  locationVisitSoundKeys,
+  locationVisitSoundCue,
   MAP_CUE_SOUNDS,
   MAP_CUE_VOLUME,
   MAP_MOVE_VOLUME,
@@ -215,7 +216,13 @@ import {
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
 import { commanderCastFxPlan, commanderSpecialtySound } from "@/data/commander-fx";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { playLibrarySound, playSpellBookOpen, playTableUiClickSound, playUnitSound } from "@/lib/sound";
+import {
+  playLibrarySound,
+  playLibrarySoundThen,
+  playSpellBookOpen,
+  playTableUiClickSound,
+  playUnitSound
+} from "@/lib/sound";
 import { commanderVoiceId, unitAttackFlourish } from "@/data/unit-sounds";
 import { useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { MusicToggle } from "@/components/music-toggle";
@@ -337,6 +344,17 @@ const OBSERVER_SEAT = "observer";
  * "map" are NOT phone tabs: those entries flip the existing `combatTab`
  * surface switch instead.
  */
+/**
+ * One feed audio cue: a plain library key, or a visit pair whose map-object
+ * ambience is chained to start only after the one-shot sfx has ended.
+ */
+type FeedSoundCue = string | { sfx: string; ambient: string };
+
+/** Dedupe identity for a feed sound cue (pairs keyed by both halves). */
+function feedSoundCueKey(cue: FeedSoundCue): string {
+  return typeof cue === "string" ? cue : `${cue.sfx}>${cue.ambient}`;
+}
+
 type PhoneMapTab = "map" | "hand" | "army" | "decks" | "menu";
 type PhoneCombatTab = "board" | "hand" | "menu";
 
@@ -1052,7 +1070,7 @@ export default function Home() {
    * the roll reads first and the calculation/notice follow — never spoiling the
    * result mid-roll. Accumulates across batches while any map die is on screen.
    */
-  const pendingDiceFeedRef = useRef<{ items: AdventureFeedItem[]; sounds: string[] }>({ items: [], sounds: [] });
+  const pendingDiceFeedRef = useRef<{ items: AdventureFeedItem[]; sounds: FeedSoundCue[] }>({ items: [], sounds: [] });
   const connectionRef = useRef<RoomConnection | null>(null);
 
   // Hydrate browser-only state once, after mount: the URL's ?room= (enter that
@@ -1272,15 +1290,23 @@ export default function Home() {
   // Drops a batch of feed toasts on screen with their staggered audio cues and
   // an 8s auto-expiry. Pulled out so a visit's toasts can either show at once or
   // wait out a die roll (see pendingDiceFeedRef) through the same path.
-  const showFeedItems = useCallback((items: AdventureFeedItem[], sounds: string[]) => {
+  const showFeedItems = useCallback((items: AdventureFeedItem[], sounds: FeedSoundCue[]) => {
     if (items.length === 0) {
       return;
     }
     sounds
-      .filter((key, index) => sounds.indexOf(key) === index)
+      .filter((cue, index) => sounds.findIndex((other) => feedSoundCueKey(other) === feedSoundCueKey(cue)) === index)
       .slice(0, 3)
-      .forEach((key, index) => {
-        window.setTimeout(() => playLibrarySound(key, MAP_CUE_VOLUME), index * 220);
+      .forEach((cue, index) => {
+        window.setTimeout(() => {
+          if (typeof cue === "string") {
+            playLibrarySound(cue, MAP_CUE_VOLUME);
+          } else {
+            // Visit pair: the one-shot sfx first; the map-object ambience sits
+            // just behind it, starting only once the sfx has ENDED.
+            playLibrarySoundThen(cue.sfx, MAP_CUE_VOLUME, () => playLibrarySound(cue.ambient, MAP_CUE_VOLUME));
+          }
+        }, index * 220);
       });
     setFeedItems((current) => [...current, ...items].slice(-6));
     window.setTimeout(() => {
@@ -1477,7 +1503,12 @@ export default function Home() {
         // The promised audio hook: each cue name maps to a sound, visits
         // upgrade to their location's own recording. Deduped and staggered
         // so one snapshot never piles identical sounds.
-        const cueSounds: string[] = [];
+        const cueSounds: FeedSoundCue[] = [];
+        const pushCue = (cue: FeedSoundCue | null | undefined) => {
+          if (cue && !cueSounds.some((other) => feedSoundCueKey(other) === feedSoundCueKey(cue))) {
+            cueSounds.push(cue);
+          }
+        };
         for (const event of freshFeed) {
           // Morale-card events pop the big MoraleCardOverlay, which owns the
           // good/bad-morale sting — their feed lines stay silent (the plain
@@ -1487,25 +1518,16 @@ export default function Home() {
           }
           const cue = ADVENTURE_FEED_CUES[event.type]?.cue;
           if (event.type === "FIELD_VISITED") {
-            // Visit one-shot first, then optional ambient loop (staggered ~220ms).
-            const visitKeys = locationVisitSoundKeys(event.location);
-            if (visitKeys.length > 0) {
-              for (const key of visitKeys) {
-                if (!cueSounds.includes(key)) {
-                  cueSounds.push(key);
-                }
-              }
+            // Visit one-shot first; the map object's ambience is kept paired
+            // with it so playback can chain it to start once the sfx ends.
+            const visitCue = locationVisitSoundCue(event.location);
+            if (visitCue) {
+              pushCue(visitCue.ambient ? { sfx: visitCue.sfx, ambient: visitCue.ambient } : visitCue.sfx);
             } else {
-              const key = cue ? MAP_CUE_SOUNDS[cue] : null;
-              if (key && !cueSounds.includes(key)) {
-                cueSounds.push(key);
-              }
+              pushCue(cue ? MAP_CUE_SOUNDS[cue] : null);
             }
           } else {
-            const key = cue ? MAP_CUE_SOUNDS[cue] : null;
-            if (key && !cueSounds.includes(key)) {
-              cueSounds.push(key);
-            }
+            pushCue(cue ? MAP_CUE_SOUNDS[cue] : null);
           }
         }
 
@@ -1601,18 +1623,20 @@ export default function Home() {
           const from = eventNumber(visit.id);
           const nextVisit = freshVisits.find((candidate) => eventNumber(candidate.id) > from);
           const to = nextVisit ? eventNumber(nextVisit.id) : Number.POSITIVE_INFINITY;
-          const lines = nextState.eventLog
-            .filter((event) => {
-              const number = eventNumber(event.id);
-              return (
-                number > from &&
-                number < to &&
-                outcomeTypes.has(event.type) &&
-                ("playerId" in event ? event.playerId === visit.playerId : true)
-              );
-            })
-            .slice(0, 5)
-            .map((event) => formatEvent(event, nextState));
+          const outcomeEvents = nextState.eventLog.filter((event) => {
+            const number = eventNumber(event.id);
+            return (
+              number > from &&
+              number < to &&
+              outcomeTypes.has(event.type) &&
+              ("playerId" in event ? event.playerId === visit.playerId : true)
+            );
+          });
+          const lines = outcomeEvents.slice(0, 5).map((event) => formatEvent(event, nextState));
+          // Compact reward chips (resource token / XP / morale + "+N") — the
+          // treasure-chest / mine result with the correct icons, replacing the
+          // text list; the mine's resource token also becomes the notice art.
+          const { rewards, iconImage } = noticeRewardsFromEvents(outcomeEvents, nextState);
           return {
             id: visit.id,
             icon: LOCATION_GLYPHS[visit.location] ?? "📍",
@@ -1621,7 +1645,9 @@ export default function Home() {
               visit.revisit ? "revisits" : "visits"
             }`,
             lines,
-            location: visit.location
+            location: visit.location,
+            rewards,
+            iconImage
           } satisfies MapNoticeCue;
         });
         setMapNotice((current) => {
@@ -1936,6 +1962,31 @@ export default function Home() {
             return stripped.charAt(0).toUpperCase() + stripped.slice(1);
           });
           setMapEventCue({ id: first.id, round: first.round ?? nextState.round, messages });
+        }
+      }
+
+      // Victory-Points "final round" warning: pop the same ornate overlay (with
+      // a distinct header) once when the last round begins, so the impending
+      // end is never a surprise. Same seen-set/never-replay semantics; the
+      // synthesized cue id can never collide with a real event id.
+      {
+        const freshFinalRound = presentationEvents.filter(
+          (event): event is Extract<GameEvent, { type: "FINAL_ROUND" }> => event.type === "FINAL_ROUND"
+        );
+        const last = freshFinalRound[freshFinalRound.length - 1];
+        if (last) {
+          const cueId = `final-round-${last.round}`;
+          if (!seenMapEventIdsRef.current.has(cueId)) {
+            seenMapEventIdsRef.current.add(cueId);
+            setMapEventCue({
+              id: cueId,
+              round: last.round,
+              finalRound: true,
+              messages: [
+                "This is the final round — the game ends once it is over, and the player with the most Victory Points wins."
+              ]
+            });
+          }
         }
       }
 
@@ -5150,6 +5201,18 @@ export default function Home() {
     // forget it.
     const canDraw =
       Boolean(viewer?.canMulligan) && hasOpenAdventureTurn(state, viewerPlayerId) && !forcedDiscard;
+    // First-round starting-hand Mulligan (optional mode): after the mandatory
+    // start-of-turn draw, in ROUND 1 only, the viewer may replace up to a few
+    // more cards from their hand — one at a time — from each card's menu.
+    const firstRoundMulligansLeft = viewer?.firstRoundMulligansLeft ?? 0;
+    const canFirstRoundMulligan =
+      Boolean(state.adventure?.startingHandMulligan) &&
+      state.round === 1 &&
+      hasOpenAdventureTurn(state, viewerPlayerId) &&
+      !forcedDiscard &&
+      !viewer?.canMulligan &&
+      firstRoundMulligansLeft > 0 &&
+      handCards.length > 0;
     const hasMorale = (viewer?.morale ?? 0) > 0;
     const moraleRedrawCardAvailable = legalActions.some(
       (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "redraw"
@@ -5294,8 +5357,14 @@ export default function Home() {
       );
     };
 
+    // +Power banked on the map by a Sorcery / Scales "+Power, then draw" rider:
+    // it counts toward a map Spell's tier exactly like a discarded power source,
+    // so the picker shows fewer cards needed (and agrees with the engine, which
+    // folds it into standing Power in payCardCost).
+    const mapPowerBank = viewer?.mapSpellPowerBank ?? 0;
     // Live Power total for the map cost picker (View Air / Dimension Door tiers),
-    // including one optional Spell Book payment (once-per-turn Book Power budget).
+    // including the banked draw-rider Power and one optional Spell Book payment
+    // (once-per-turn Book Power budget).
     const pendingPowerTotal = (() => {
       if (!pendingCostPlay?.powerCost) {
         return 0;
@@ -5309,7 +5378,7 @@ export default function Home() {
       const fromBook = pendingCostPlay.bookCardId
         ? spellPowerValueOfCard(cardLibrary[pendingCostPlay.bookCardId], schools)
         : 0;
-      return fromHand + fromBook;
+      return mapPowerBank + fromHand + fromBook;
     })();
     const pendingPowerOk =
       pendingCostPlay?.powerCost === undefined ||
@@ -5733,6 +5802,13 @@ export default function Home() {
                     ⚠ Take your start-of-turn draw first — you must draw (or discard and draw) before moving or using a card.
                   </span>
                 ) : null}
+                {/* First-round Mulligan (optional mode): a gentle nudge that the
+                    player may still swap out a few opening cards this round. */}
+                {canFirstRoundMulligan && handMode === null ? (
+                  <span className="handHint mulliganHint">
+                    First-round Mulligan: open a card and choose “Replace this card” — {firstRoundMulligansLeft} left.
+                  </span>
+                ) : null}
                 {/* The mandatory start-of-turn draw: one either/or — draw new, OR
                     discard and draw new. Required every turn (including the first)
                     before moving or using a card. */}
@@ -5840,6 +5916,9 @@ export default function Home() {
                     {pendingCostPlay.powerCost === undefined
                       ? `— ${pendingCostPlay.picks.length} picked`
                       : null}
+                    {pendingCostPlay.powerCost !== undefined && mapPowerBank > 0 ? (
+                      <em className="costPickerBankNote"> (+{mapPowerBank} banked from Sorcery/Scales)</em>
+                    ) : null}
                   </span>
                   {pendingCostPlay.powerCost !== undefined && pendingCostPlay.picks.length > 0 ? (
                     <div className="costPickerModes" aria-label="Expert Power payments">
@@ -6015,8 +6094,9 @@ export default function Home() {
                       ? cardUnplayableReason(state, viewerPlayerId, cardId)
                       : null;
                   // Helper tips: always allow opening a non-playable card to read
-                  // why; otherwise keep the old gate (playable / start-of-turn draw).
-                  const canOpenMenu = actionable || canDraw || Boolean(whyBlocked);
+                  // why; otherwise keep the old gate (playable / start-of-turn draw /
+                  // an available first-round Mulligan replacement).
+                  const canOpenMenu = actionable || canDraw || Boolean(whyBlocked) || canFirstRoundMulligan;
 
                   return (
                     <div
@@ -6197,6 +6277,22 @@ export default function Home() {
                               type="button"
                             >
                               Discard this card, then draw
+                            </button>
+                          ) : null}
+                          {/* First-round Mulligan (optional mode): after the
+                              mandatory draw, swap this card for a fresh one — it
+                              goes to the bottom of your deck. Round 1 only. */}
+                          {canFirstRoundMulligan ? (
+                            <button
+                              className="firstRoundMulligan"
+                              onClick={() => {
+                                submitAction({ type: "MULLIGAN_CARD", playerId: viewerPlayerId, cardId });
+                                setOpenHandIndex(null);
+                              }}
+                              title="First-round Mulligan: swap this card for a fresh one (the replaced card goes to the bottom of your deck)"
+                              type="button"
+                            >
+                              Replace this card ({firstRoundMulligansLeft} left)
                             </button>
                           ) : null}
                           {stashAction ? (

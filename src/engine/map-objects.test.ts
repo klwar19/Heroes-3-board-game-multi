@@ -4,6 +4,7 @@ import {
   canCrossEdge,
   createAdventureGameState,
   customMapPresetIsActive,
+  DESIGNER_BORDER_SEALING_ENABLED,
   describeCustomMapPresetEntries,
   describeMapObjects,
   getLegalActions,
@@ -566,19 +567,26 @@ describe("guarded Gate — the battle gates the teleport", () => {
     return { state, entry, exit };
   }
 
-  it("a level > difficulty WIN (Quick Combat) teleports to the partner AND clears the guard", () => {
-    const { state: start, entry, exit } = guardedPair("gate-guard-win", 1, 2); // level 2 > difficulty 1
+  it("a guarded Gate is fought BANK-style — no Quick Combat even above its level, and no experience", () => {
+    const { state: start, entry, exit } = guardedPair("gate-guard-bankstyle", 1, 2); // level 2 > difficulty 1
     let state = start;
     expect(isFieldGuarded(adv(state).fields[entry]!)).toBe(true);
 
     state = moveHero(state, entry);
 
-    // A neutral win ran (Quick Combat), the teleport resolved, and the beaten
-    // guard is GONE (the field no longer carries its Field Difficulty).
-    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(true);
-    expect(state.heroes.hero_p1.spaceId).toBe(exit);
-    expect(adv(state).fields[entry]?.difficulty).toBeUndefined();
-    expect(isFieldGuarded(adv(state).fields[entry]!)).toBe(false);
+    // A high-level hero can NO LONGER Quick-Combat past a guarded teleport
+    // gateway (the earlier behaviour): the fight OPENS instead, at combat
+    // difficulty 0 (bank-style — the win grants no experience). Nothing
+    // teleported yet, and the guard still stands until it is beaten.
+    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(false);
+    expect(state.combat, "the guarded gateway opened a real fight").toBeTruthy();
+    expect(state.combat!.context.kind).toBe("neutral");
+    if (state.combat!.context.kind === "neutral") {
+      expect(state.combat!.context.fieldId).toBe(entry);
+      expect(state.combat!.context.difficulty, "bank-style: no experience").toBe(0);
+    }
+    expect(state.heroes.hero_p1.spaceId).not.toBe(exit);
+    expect(isFieldGuarded(adv(state).fields[entry]!)).toBe(true);
   });
 
   it("a level ≤ difficulty entry OPENS the neutral battle and leaves the guard intact (no teleport yet)", () => {
@@ -643,22 +651,21 @@ describe("guarded Gate — the battle gates the teleport", () => {
     expect(state.heroes.hero_p1.spaceId).toBe(exit);
   });
 
-  it("a guarded Gate WIN resolves the NETWORK travel — the pick opens among the free same-color partners", () => {
+  it("a Gate entry resolves the NETWORK travel — the pick opens among the free same-color partners", () => {
     let state = makeGame("gate-guard-network");
     const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
     const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
     const [c, tileC] = placeEmptyTile(b, "F4", { row: 36, col: 24 });
     state = c;
-    const entry = carveGate(state, tileA, 1, 1, 1); // guard difficulty 1
+    const entry = carveGate(state, tileA, 1, 1, 0); // unguarded — the pick opens immediately
     const exitB = carveGate(state, tileB, 1, 1);
     const exitC = carveGate(state, tileC, 1, 1);
-    state.heroes.hero_p1.level = 2; // level 2 > difficulty 1 → Quick Combat win
+    state.heroes.hero_p1.level = 2;
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
 
-    // The guard fell (Quick Combat), THEN the gate network opened its pick.
-    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(true);
+    // With two same-color partners free, the gate network opens its pick.
     const step = adv(state).pendingVisit?.steps[0];
     expect(step?.type).toBe("CHOOSE_ONE");
     if (step?.type !== "CHOOSE_ONE") {
@@ -884,7 +891,7 @@ describe("tile-slot gate placement", () => {
 // ---- 6. A guarded standalone monolith joins the monolith network -------------
 
 describe("guard composes with the generic kind", () => {
-  it("a guarded standalone Monolith teleports (after a win) to its partner Monolith", () => {
+  it("a guarded standalone Monolith is fought bank-style (no Quick Combat) before it can teleport", () => {
     const standalone = outwardHex(CLUSTER, 1);
     const state = objectsGame(
       [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
@@ -895,21 +902,25 @@ describe("guard composes with the generic kind", () => {
       ]
     );
     const guardedHex = hexSpaceId(standalone);
-    const partnerHex = hexSpaceId(tileFootprint(CLUSTER, 0)[3]);
     const guarded = adv(state).fields[guardedHex]!;
     expect(guarded.difficulty).toBe(1); // the designed guard is on the standalone
     expect(isFieldGuarded(guarded)).toBe(true);
 
-    // A Quick-Combat WIN (level 2 > difficulty 1) clears the guard and the
-    // Monolith network then teleports the hero to the partner.
+    // A high-level hero (level 2 > difficulty 1) can NO LONGER Quick-Combat past
+    // the guarded Monolith — it opens a bank-style fight (difficulty 0, no
+    // experience) and the hero stays put until the guard is beaten.
     const hero = state.heroes.hero_p1;
     hero.level = 2;
     hero.spaceId = guardedHex;
     startNeutralEncounter(state, hero, guarded);
 
-    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(true);
-    expect(hero.spaceId).toBe(partnerHex);
-    expect(adv(state).fields[guardedHex]?.difficulty).toBeUndefined();
+    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(false);
+    expect(state.combat?.context.kind).toBe("neutral");
+    if (state.combat?.context.kind === "neutral") {
+      expect(state.combat.context.difficulty).toBe(0);
+    }
+    expect(hero.spaceId).toBe(guardedHex);
+    expect(isFieldGuarded(adv(state).fields[guardedHex]!)).toBe(true);
   });
 });
 
@@ -1104,7 +1115,7 @@ describe("object sanitization + validation + describe", () => {
 // ---- 8. Designer guards everywhere: exact armies, token guards, arrival auto-win
 
 describe("designer guards on single hexes — exact armies + arrival auto-win", () => {
-  it("an EXACT-ARMY object guard mints the designed units and is never Quick-Combat skipped (CONTROL: level guard is)", () => {
+  it("a teleport-object guard (exact army OR level) is fought bank-style — never Quick-Combat skipped, no experience", () => {
     const standalone = outwardHex(CLUSTER, 1);
     const state = objectsGame(
       [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
@@ -1130,15 +1141,22 @@ describe("designer guards on single hexes — exact armies + arrival auto-win", 
     expect(draws.map((draw) => draw.unitDefId)).toEqual(["neutral.cyclopes", "neutral.troglodytes"]);
     expect(draws.every((draw) => draw.bankGuard)).toBe(true);
 
-    // A hero far above the derived difficulty still has to FIGHT.
+    // A hero far above the derived difficulty still has to FIGHT — and the
+    // teleport-object fight opens at combat difficulty 0 (no experience).
     let fight = refreshP1(state);
     fight.heroes.hero_p1.level = 7;
     putHero(fight, hexSpaceId(tileFootprint(CLUSTER, 0)[1]));
     fight = moveHero(fight, hex);
     expect(fight.combat?.context.kind).toBe("neutral");
     expect(fight.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(false);
+    if (fight.combat?.context.kind === "neutral") {
+      expect(fight.combat.context.difficulty, "bank-style: no experience").toBe(0);
+    }
 
-    // CONTROL: the same derived difficulty as a plain LEVEL guard IS skipped.
+    // A plain LEVEL guard on the SAME teleport object is now ALSO fought
+    // bank-style: a high-level hero can no longer Quick-Combat past a guarded
+    // gateway, and the fight grants no experience. (Before the teleport-object
+    // rule this level-3 guard was Quick-Combat skipped by a level-7 hero.)
     const controlState = objectsGame(
       [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
       [
@@ -1154,8 +1172,13 @@ describe("designer guards on single hexes — exact armies + arrival auto-win", 
     control.heroes.hero_p1.level = 7;
     putHero(control, hexSpaceId(tileFootprint(CLUSTER, 0)[1]));
     control = moveHero(control, hex);
-    expect(control.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(true);
-    expect(control.combat).toBeNull();
+    expect(control.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(false);
+    expect(control.combat?.context.kind).toBe("neutral");
+    if (control.combat?.context.kind === "neutral") {
+      expect(control.combat.context.difficulty).toBe(0);
+      // The army still draws at the designed level (customGuardLevel pinned).
+      expect(adv(control).fields[hex]?.customGuardLevel).toBe(3);
+    }
   });
 
   it("a teleport ARRIVAL onto a still-guarded partner AUTO-WINS: guard cleared, no battle, hero arrives (CONTROL: walking on fights)", () => {
@@ -1305,22 +1328,37 @@ describe("object-hex yellow borders", () => {
     );
   }
 
-  it("a sealed object edge blocks the crossing BOTH ways (CONTROL: other edges / no border stay open)", () => {
-    const state = borderedGame([3], "object-border-sealed");
-    expect(adv(state).fields[hex]?.borderEdges).toEqual([3]);
-    // Sealed toward the tile: neither direction may cross that edge.
-    expect(canCrossEdge(state, ring, hex)).toBe(false);
-    expect(canCrossEdge(state, hex, ring)).toBe(false);
+  // The designer-border sealing "lock" is disabled for now — see
+  // DESIGNER_BORDER_SEALING_ENABLED. This spec runs only when it is re-armed.
+  (DESIGNER_BORDER_SEALING_ENABLED ? it : it.skip)(
+    "a sealed object edge blocks the crossing BOTH ways (CONTROL: other edges / no border stay open)",
+    () => {
+      const state = borderedGame([3], "object-border-sealed");
+      expect(adv(state).fields[hex]?.borderEdges).toEqual([3]);
+      // Sealed toward the tile: neither direction may cross that edge.
+      expect(canCrossEdge(state, ring, hex)).toBe(false);
+      expect(canCrossEdge(state, hex, ring)).toBe(false);
 
-    // CONTROL 1: a seal on a DIFFERENT edge leaves the tile crossing open.
-    const otherEdge = borderedGame([0], "object-border-other");
-    expect(canCrossEdge(otherEdge, ring, hex)).toBe(true);
-    expect(canCrossEdge(otherEdge, hex, ring)).toBe(true);
+      // CONTROL 1: a seal on a DIFFERENT edge leaves the tile crossing open.
+      const otherEdge = borderedGame([0], "object-border-other");
+      expect(canCrossEdge(otherEdge, ring, hex)).toBe(true);
+      expect(canCrossEdge(otherEdge, hex, ring)).toBe(true);
 
-    // CONTROL 2: no border at all → open (the pre-feature behaviour).
-    const open = borderedGame(undefined, "object-border-none");
-    expect(canCrossEdge(open, ring, hex)).toBe(true);
-  });
+      // CONTROL 2: no border at all → open (the pre-feature behaviour).
+      const open = borderedGame(undefined, "object-border-none");
+      expect(canCrossEdge(open, ring, hex)).toBe(true);
+    }
+  );
+
+  (DESIGNER_BORDER_SEALING_ENABLED ? it.skip : it)(
+    "with the lock removed, an object border neither copies onto the field nor seals the crossing",
+    () => {
+      const state = borderedGame([3], "object-border-lock-off");
+      expect(adv(state).fields[hex]?.borderEdges).toBeUndefined();
+      expect(canCrossEdge(state, ring, hex)).toBe(true);
+      expect(canCrossEdge(state, hex, ring)).toBe(true);
+    }
+  );
 
   it("sanitize keeps clean object border edges and drops garbage", () => {
     const clean = sanitizeCustomMapObject({

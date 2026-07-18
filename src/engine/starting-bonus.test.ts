@@ -266,6 +266,49 @@ describe("starting bonus at game setup", () => {
     expect(startingBonusPrompt(skipped) ?? "").not.toMatch(/Starting bonus/);
   });
 
+  it("with an artifact bonus the opening hand fills UP TO the limit (bonus counts) — never limit+1 forcing a discard", () => {
+    // Hard difficulty's artifact option is a plain reveal-until-minor (no Search
+    // sub-flow), so the bonus card lands in hand directly.
+    let state = createAdventureGameState({
+      seed: "bonus-no-five",
+      difficulty: "hard",
+      rollFirstPlayer: false,
+      startingBonus: true,
+      houseRules: { "split-decks": false },
+      ruleset: "legacy"
+    });
+    const limit = state.players.p1!.limits.hand;
+    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
+
+    // p1 takes the artifact (option 1); drain the other seats' bonus visits so
+    // p1's start-of-turn hand step finalizes.
+    let guard = 0;
+    while (state.adventure?.pendingVisit && guard < 30) {
+      const owner = state.adventure.pendingVisit.playerId;
+      state = resolveVisitOption(state, owner, owner === "p1" ? 1 : 0);
+      state = resolveResourceDieWindow(state, owner);
+      guard += 1;
+    }
+
+    const p1 = state.players.p1!;
+    const bonusArtifact = p1.hand.find((id) => cardLibrary[id]?.kind === "artifact");
+    expect(bonusArtifact, "the bonus artifact is in hand").toBeTruthy();
+    // Mutation check: with the pre-deal restored the hand would be limit+1 and
+    // `needsHandRefresh` would be TRUE (a forced discard). The bonus counts toward
+    // the limit, so the player is never forced to discard before the optional draw.
+    expect(p1.hand.length).toBeLessThanOrEqual(limit);
+    expect(p1.needsHandRefresh).toBe(false);
+    expect(p1.canMulligan).toBe(true);
+
+    // The mandatory start-of-turn draw ("draw new", discarding nothing) succeeds
+    // and fills the hand to EXACTLY the limit — the bonus was one of those cards.
+    const drawn = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(drawn.errors, drawn.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+    const filled = drawn.state.players.p1!;
+    expect(filled.hand.length).toBe(limit);
+    expect(filled.hand).toContain(bonusArtifact);
+  });
+
   it("resolves for every player and hands off to a normal, playable round 1", () => {
     // The whole point of the feature: once the bonus is taken it must not strand
     // setup. After every seat resolves, the table is at round 1 with the first

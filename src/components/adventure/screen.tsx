@@ -59,6 +59,8 @@ import {
   tournamentRulesAllOn,
   getTileBorderSegments,
   gatePairColor,
+  designedGuardPreview,
+  isFieldGuarded,
   hasOpenAdventureTurn,
   hexDistance,
   hexSpaceId,
@@ -74,7 +76,6 @@ import {
   parallelInteractionBlocker,
   parallelTurnsActive,
   polishArmyUnitStackCap,
-  unitRankForXp,
   readyCheckConfirmers,
   remainingParallelPlayerIds,
   observatoryRevealTargets,
@@ -88,6 +89,7 @@ import {
   tierOfLevel,
   UNIT_LEVELS,
   unitAbilities,
+  armyUnitRankInfo,
   unitSideRuleOverrides,
   validateCustomMapPlan,
   astrologersCardDefinitions,
@@ -120,6 +122,7 @@ import {
   outpostObjectImage,
   teleportGateImage,
   RESOURCE_ICONS,
+  REWARD_GLYPH_ICONS,
   subterraneanGateTokenImage,
   tileBackImage,
   TILE_BACK_IMAGES,
@@ -231,7 +234,9 @@ const GATE_PAIR_COLORS: Record<number, string> = {
  */
 function gateHexMark(spaceId: string, x: number, y: number, pair: number): ReactNode {
   const color = GATE_PAIR_COLORS[pair] ?? "#c9a24b";
-  const art = HEX_SIZE * 1.6;
+  // A touch smaller than the monolith so the portal icon sits neatly inside its
+  // hex (the ring + pair badge below keep it identifiable at the reduced size).
+  const art = HEX_SIZE * 1.28;
   return (
     <g className="hexGateMark" key={`${spaceId}-gate-mark`} style={{ pointerEvents: "none" }}>
       {/* The Teleport Gate's own per-color portal artwork. */}
@@ -1350,6 +1355,15 @@ export function HexMapBoard({
       const mapChoice = pendingMapChoiceTargets.get(spaceId);
       const teleportTarget = teleportChoice?.targets.get(spaceId);
       const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
+      // Designer-ALTERED guard (custom army / level / forced settlement fight):
+      // surface what the player will face in the hex tooltip so an altered fight
+      // reads clearly on the map (the pre-attack confirm float warns again).
+      const alteredGuardPreview = guarded && field.designedGuard ? designedGuardPreview(field) : null;
+      const alteredGuardTip = alteredGuardPreview
+        ? alteredGuardPreview.units.length > 0
+          ? ` — ALTERED by the map designer: ${alteredGuardPreview.units.join(", ")}`
+          : " — ALTERED by the map designer"
+        : "";
       // Field Override kinds without hex art yet fall back to their registered
       // glyph so an art-less carve is a visible hex in icon mode (art wins once
       // it ships — fieldOverrideGlyph returns undefined then).
@@ -1367,9 +1381,11 @@ export function HexMapBoard({
             endTurnMove ? "endTurnMoveTarget" : "",
             mapChoice ? "mapChoiceTarget" : "",
             isSelected ? "selectedTarget" : "",
+            alteredGuardPreview ? "alteredGuard" : "",
             artShown ? "withArt" : ""
           ].join(" ")}
           data-space-id={spaceId}
+          data-altered-guard={alteredGuardPreview ? "true" : undefined}
           data-underground={undergroundTile ? "true" : undefined}
           fill={terrain}
           key={spaceId}
@@ -1418,7 +1434,7 @@ export function HexMapBoard({
               field.location === "creature_bank" && field.bankId
                 ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
                 : (location?.name ?? field.location)
-            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${
+            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${alteredGuardTip}${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${
               field.location === "subterranean_gate"
@@ -1636,6 +1652,21 @@ export function HexMapBoard({
         overlays.push(
           <text className="hexDifficulty" key={`${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
             {ROMAN[field.difficulty]}
+          </text>
+        );
+      }
+      // A small gear marks a designer-ALTERED guard so an altered fight is
+      // spotted at a glance (the tooltip + pre-attack confirm carry the detail).
+      if (alteredGuardPreview) {
+        overlays.push(
+          <text
+            className="hexAlteredGuard"
+            key={`${spaceId}-altered`}
+            textAnchor="middle"
+            x={x + HEX_SIZE * 0.52}
+            y={y - HEX_SIZE * 0.4}
+          >
+            ⚙
           </text>
         );
       }
@@ -2238,22 +2269,48 @@ export function HexMapBoard({
     const coord = parseHexSpaceId(selectedTarget.spaceId);
     if (coord) {
       const cost = selectedTarget.cost;
+      // Warn before attacking a neutral fight the MAP DESIGNER altered (a forced
+      // settlement fight, a custom level, or an exact custom army): show what the
+      // hero will face and require an explicit "Attack" confirmation. A printed
+      // guard (or an already-owned field) keeps the plain "Move there".
+      const destField = adventure?.fields[selectedTarget.spaceId];
+      const alteredGuard =
+        destField && isFieldGuarded(destField) && destField.flagOwnerId !== viewerPlayerId
+          ? designedGuardPreview(destField)
+          : null;
       mapFloats.push({
         key: "move-confirm-float",
         mapPoint: hexToPixel(coord, HEX_SIZE),
-        cardWidth: 230,
-        cardHeight: 104,
+        cardWidth: 236,
+        cardHeight: alteredGuard ? 148 + (alteredGuard.units.length > 0 ? 16 : 0) : 104,
         gap: HEX_SIZE * 0.62,
         render: () => (
           <div
             aria-label="Confirm movement"
-            className="mapFloatCard moveConfirmFloat"
+            className={`mapFloatCard moveConfirmFloat${alteredGuard ? " alteredGuardConfirm" : ""}`}
             onPointerDown={(event) => event.stopPropagation()}
             role="dialog"
           >
             <span className="mapFloatLabel">
               <span aria-hidden="true">🐎</span> Move {cost} field{cost === 1 ? "" : "s"} ({cost} MP)
             </span>
+            {alteredGuard ? (
+              <div className="alteredGuardWarn" role="note">
+                <strong>
+                  <span aria-hidden="true">⚔</span> Altered guard (map designer)
+                </strong>
+                {alteredGuard.units.length > 0 ? (
+                  <span>
+                    You will face {alteredGuard.units.join(", ")}
+                    {alteredGuard.difficulty ? ` (guard ${ROMAN[alteredGuard.difficulty] ?? alteredGuard.difficulty})` : ""}.
+                  </span>
+                ) : (
+                  <span>
+                    A guard {ROMAN[alteredGuard.difficulty] ?? alteredGuard.difficulty} army defends this field.
+                  </span>
+                )}
+              </div>
+            ) : null}
             <div className="mapFloatButtons">
               <button
                 className="commandButton primary"
@@ -2268,7 +2325,7 @@ export function HexMapBoard({
                 }}
                 type="button"
               >
-                <Check size={13} /> Move there
+                <Check size={13} /> {alteredGuard ? "Attack" : "Move there"}
               </button>
               <button className="commandButton ghost" onClick={() => setSelectedTarget(null)} type="button">
                 <X size={13} /> Cancel
@@ -2389,6 +2446,46 @@ export function HexMapBoard({
           </div>
         )
     });
+  }
+
+  // Designed Subterranean Gates are CARVED only once BOTH their tiles are
+  // revealed, so at game start a designed gate is invisible and the player can't
+  // tell where to descend. Mark every planned gate hex that isn't carved yet with
+  // a translucent gate token, so designer-placed gates are visible from the
+  // start ("player knows where to find them"). A carved hex is skipped — the
+  // field loop above already draws the real gate there. Only designer links
+  // (and player pick-on-reveal plans, already known to that player) have plans,
+  // so a plain random map shows nothing extra.
+  for (const plan of adventure.gatePlans ?? []) {
+    for (const hex of [plan.gateHex, plan.entranceHex]) {
+      if (!hex || adventure.fields[hex]?.location === "subterranean_gate") {
+        continue;
+      }
+      const coord = parseHexSpaceId(hex);
+      if (!coord) {
+        continue;
+      }
+      const { x, y } = hexToPixel(coord, HEX_SIZE);
+      track(x, y);
+      const markWidth = HEX_WIDTH * 0.6;
+      const markHeight = 2 * HEX_SIZE * 0.6;
+      overlays.push(
+        <g key={`gate-plan-${hex}`} className="gatePlanMarker" style={{ pointerEvents: "none" }}>
+          <title>A Subterranean Gate opens here — descend/ascend once this tile is revealed.</title>
+          <circle cx={x} cy={y} fill="#5b3f24" opacity={0.3} r={HEX_SIZE * 0.52} />
+          <circle cx={x} cy={y} fill="none" opacity={0.85} r={HEX_SIZE * 0.52} stroke="#e0b562" strokeDasharray="4 3" strokeWidth={2} />
+          <image
+            height={markHeight}
+            href={assetUrl(subterraneanGateTokenImage("surface"))}
+            opacity={0.9}
+            preserveAspectRatio="xMidYMid meet"
+            width={markWidth}
+            x={x - markWidth / 2}
+            y={y - markHeight / 2}
+          />
+        </g>
+      );
+    }
   }
 
   return (
@@ -3393,9 +3490,27 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
           // BINH stat tweaks (Griffins, Marksmen) show live values.
           const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides) : printed;
           const stackAttack = sideOverrides.polishUnitStacks && unit.side === "pack" && (unit.stacks ?? 0) > 0 ? 1 : 0;
-          const shownAttack = side ? side.attack + (unit.permanentAttackBonus ?? 0) + stackAttack : 0;
+          // Unit Experience (optional rule): show the same rank-folded stats
+          // the engine fights with, plus a WoG-style caret/sword rank badge.
+          const rankInfo = state.adventure?.unitExperience ? armyUnitRankInfo(unit) : null;
+          const rankBonus = rankInfo?.bonus ?? { attack: 0, defense: 0, health: 0, initiative: 0 };
+          const shownAttack = side ? side.attack + (unit.permanentAttackBonus ?? 0) + stackAttack + rankBonus.attack : 0;
+          const shownDefense = side ? side.defense + rankBonus.defense : 0;
+          const shownHealth = side ? side.health + rankBonus.health : 0;
+          const shownInitiative = side ? side.initiative + rankBonus.initiative : 0;
+          const eliteAbility = rankInfo?.eliteActive && rankInfo.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
+          const rankLine = rankInfo
+            ? rankInfo.rank > 0
+              ? `${rankInfo.rankName} (veteran rank ${rankInfo.rank}) — ${rankInfo.experience} XP${
+                  rankInfo.nextThreshold !== null ? `, next rank at ${rankInfo.nextThreshold}` : ", max rank"
+                }${eliteAbility ? ` · Elite ability: ${eliteAbility.name}` : ""}`
+              : rankInfo.experience > 0
+                ? `${rankInfo.experience} XP — first rank at ${rankInfo.nextThreshold}`
+                : ""
+            : "";
           const engineLines = implementedAbilityLines(side?.abilities);
-          const hoverTitle = [side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
+          const hoverTitle =
+            [rankLine, side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
           return (
             <li key={unit.id}>
               <button
@@ -3406,7 +3521,8 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                     image: side?.cardImage,
                     subtitle: def ? `${def.tier} ${def.type}` : undefined,
                     lines: [
-                      side ? `Attack ${shownAttack} · Defense ${side.defense} · HP ${side.health} · Initiative ${side.initiative}` : "",
+                      side ? `Attack ${shownAttack} · Defense ${shownDefense} · HP ${shownHealth} · Initiative ${shownInitiative}` : "",
+                      rankLine,
                       (unit.stacks ?? 0) > 0
                         ? `${unit.stacks} Polish Unit Stack${unit.stacks === 1 ? "" : "s"}: +1 Attack and ${unit.stacks} extra Pack health layer${unit.stacks === 1 ? "" : "s"}.`
                         : "",
@@ -3428,6 +3544,11 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                   {unit.side === "few" ? "Few" : unit.side === "neutral" ? "Neutral" : "Pack"}{" "}
                   {def?.name ?? unit.unitDefId}
                 </strong>
+                {rankInfo && rankInfo.rank > 0 ? (
+                  <span className={`unitRankBadge rank-${rankInfo.rank}`} title={rankLine}>
+                    {rankInfo.rank >= 3 ? "⚔" : "^".repeat(rankInfo.rank)}
+                  </span>
+                ) : null}
                 {(unit.stacks ?? 0) > 0 ? (
                   <span
                     className={`armyStackBadge count-${Math.min(3, unit.stacks ?? 0)} active`}
@@ -3437,22 +3558,9 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                     ×{unit.stacks}
                   </span>
                 ) : null}
-                {(() => {
-                  const rank = unitRankForXp(unit.xp);
-                  return rank ? (
-                    <span
-                      className={`unitRankBadge rank-${rank.id}`}
-                      title={`${rank.name} (${unit.xp ?? 0} XP): +${rank.bonus.attack} Attack${
-                        rank.bonus.defense ? ` / +${rank.bonus.defense} Defense` : ""
-                      }${rank.bonus.health ? ` / +${rank.bonus.health} Health` : ""}.`}
-                    >
-                      ★ {rank.name}
-                    </span>
-                  ) : null;
-                })()}
                 {side ? (
                   <small>
-                    A{shownAttack} D{side.defense} HP{side.health} I{side.initiative}
+                    A{shownAttack} D{shownDefense} HP{shownHealth} I{shownInitiative}
                   </small>
                 ) : null}
               </button>
@@ -3551,7 +3659,10 @@ export function TownPanel({
               onMouseLeave={() => clearBuildingTip(buildingId)}
               tabIndex={0}
             >
-              {/* Building art slot: fills in as soon as assets.image lands. */}
+              {/* Building art slot: fills in as soon as assets.image lands.
+                  A not-built building keeps its full art, just faintly blurred
+                  with a small "not built" tag so it reads as pending at a glance
+                  without obscuring the artwork. */}
               {building.assets?.image ? (
                 <img
                   alt={`${building.name} building tile`}
@@ -3560,6 +3671,11 @@ export function TownPanel({
                   referrerPolicy="no-referrer"
                   src={assetUrl(building.assets.image)}
                 />
+              ) : null}
+              {!built && building.assets?.image ? (
+                <span className="townBuildingUnbuilt" aria-hidden="true">
+                  not built
+                </span>
               ) : null}
               <strong>{building.name}</strong>
               <small>{built ? (cubes > 0 ? `built · ${cubes} cube${cubes === 1 ? "" : "s"}` : "built") : formatCost(building.cost)}</small>
@@ -3741,6 +3857,32 @@ function rewardArtFromVisitSteps(
     }
   }
   return null;
+}
+
+/**
+ * Representative art for a Scenario starting-bonus option (rulebook p.10). The
+ * options are GENERIC actions (roll Resource dice / Search the Artifact deck /
+ * reveal until a Minor Artifact / draw-and-choose a Minor Artifact / take a
+ * resource package), so there is no single card to show — instead each kind gets
+ * its Homm3BG glyph so the pick reads at a glance: an artifact icon for every
+ * "get an Artifact" option, a resource-die icon for every resource option.
+ */
+const STARTING_BONUS_ARTIFACT_STEPS = new Set([
+  "STARTING_BONUS_ARTIFACT_SEARCH",
+  "REVEAL_UNTIL_MINOR_ARTIFACT",
+  "DRAW_CHOOSE_MINOR_ARTIFACTS"
+]);
+function startingBonusOptionArt(
+  steps: { type: string; [key: string]: unknown }[] | undefined
+): VisitRewardArt | null {
+  if (!steps || steps.length === 0) {
+    return null;
+  }
+  if (steps.some((step) => step && STARTING_BONUS_ARTIFACT_STEPS.has(step.type))) {
+    return { image: REWARD_GLYPH_ICONS.artifact, name: "Artifact" };
+  }
+  // Every other starting-bonus option is a resource bonus (dice or a package).
+  return { image: REWARD_GLYPH_ICONS.resourceDie, name: "Resources" };
 }
 
 /** Resolve a card / unit / event id to display art + name. Never the Astrologers card. */
@@ -4290,6 +4432,21 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" && choice.context === "discard-pick" && choice.playerId === viewerPlayerId
       ? choice.discardPick?.cardIds ?? null
       : null;
+  // Rule 111 (Polish house rule): options 1..N each replace a bronze guard, so
+  // show that bronze unit's Neutral card face (option 0 keeps — a plain button).
+  const rule111Draws =
+    choice?.type === "OPTION_CHOICE" && choice.context === "rule-111" && choice.playerId === viewerPlayerId
+      ? (state.combat?.pendingNeutralDraws ?? []).filter((draw) => draw.tier === "bronze" && !draw.bankGuard)
+      : null;
+  // Scenario starting bonus (rulebook p.10): its options carry no card id, so
+  // give each kind a representative glyph (artifact / resource die) — scoped to
+  // the "Starting bonus" prompt so no other resource-dice / Search prompt changes.
+  const startingBonusStep = visit && visit.playerId === viewerPlayerId ? visit.steps[0] : undefined;
+  const startingBonusChoice =
+    Boolean(chooseOneOptions) &&
+    startingBonusStep?.type === "CHOOSE_ONE" &&
+    typeof startingBonusStep.prompt === "string" &&
+    /^Starting bonus/i.test(startingBonusStep.prompt);
   const rewardOptions =
     chooseOneOptions && !teleport
       ? body.map((legal) => {
@@ -4301,7 +4458,9 @@ export function PromptTray({
             optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
               ? chooseOneOptions[optionIndex]
               : undefined;
-          const art = rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps);
+          const art =
+            rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps) ??
+            (startingBonusChoice ? startingBonusOptionArt(option?.steps) : null);
           return { legal, art };
         })
       : discardPickCards
@@ -4324,7 +4483,21 @@ export function PromptTray({
               : null;
             return { legal, art };
           })
-        : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
+        : rule111Draws
+          ? body.map((legal) => {
+              const optionIndex =
+                legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                  ? legal.action.optionIndex
+                  : undefined;
+              // Option 0 keeps the drawn army (no card); options 1..N each replace
+              // the k-th bronze guard, so show that unit's Neutral card face.
+              const draw = optionIndex !== undefined && optionIndex > 0 ? rule111Draws[optionIndex - 1] : undefined;
+              const art: VisitRewardArt | null = draw
+                ? { ...rewardArtForId(draw.unitDefId), caption: legal.label }
+                : null;
+              return { legal, art };
+            })
+          : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
   const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
   const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
 
@@ -4408,7 +4581,14 @@ export function PromptTray({
                 style={art?.ring ? ({ ["--teleport-ring" as string]: art.ring } as CSSProperties) : undefined}
               >
                 {art?.image ? (
-                  <img alt="" aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(art.image)}
+                  />
                 ) : (
                   <span className="marketCardFallback">⇄</span>
                 )}
@@ -4418,6 +4598,74 @@ export function PromptTray({
               <small>{art?.label ?? legal.label}</small>
             </button>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Rule 111 (Polish house rule): a purpose-built two-column layout instead of
+  // the flat option row — the "replace the Guard" swap sits on the LEFT, and the
+  // drawn guard's card face with an "Accept the guard" button on the RIGHT, so
+  // the either/or reads at a glance (keep the guard you see, or gamble on a swap).
+  if (rule111Draws) {
+    const acceptEntry = rewardOptions.find(
+      (entry) => entry.legal.action.type === "CHOOSE_OPTION" && entry.legal.action.optionIndex === 0
+    );
+    const replaceEntries = rewardOptions.filter(
+      (entry) =>
+        entry.legal.action.type === "CHOOSE_OPTION" &&
+        typeof (entry.legal.action as { optionIndex?: number }).optionIndex === "number" &&
+        ((entry.legal.action as { optionIndex?: number }).optionIndex ?? 0) > 0
+    );
+    return (
+      <div className="promptTray rule111Tray" role="dialog" aria-label={title}>
+        <strong>{title}</strong>
+        <div className="rule111Columns">
+          <div className="rule111Replace">
+            <small className="rule111ColHead">Roll the dice</small>
+            {replaceEntries.map(({ legal }) => (
+              <button
+                className="commandButton rule111ReplaceButton"
+                key={actionKey(legal.action)}
+                onClick={() => onAction(legal.action)}
+                type="button"
+              >
+                {replaceEntries.length > 1 ? legal.label : "Use Rule 111: replace the Guard"}
+              </button>
+            ))}
+          </div>
+          <div className="rule111Accept">
+            <small className="rule111ColHead">Keep what you drew</small>
+            <div className="rule111GuardArt">
+              {rule111Draws.map((draw, index) => {
+                const art = rewardArtForId(draw.unitDefId);
+                return art.image ? (
+                  <img
+                    alt={art.name}
+                    className="rule111GuardImage"
+                    draggable={false}
+                    key={index}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(art.image)}
+                  />
+                ) : (
+                  <span className="marketCardFallback" key={index}>
+                    {art.name}
+                  </span>
+                );
+              })}
+            </div>
+            {acceptEntry ? (
+              <button
+                className="commandButton rule111AcceptButton"
+                onClick={() => onAction(acceptEntry.legal.action)}
+                type="button"
+              >
+                Accept the guard
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     );
@@ -4451,7 +4699,14 @@ export function PromptTray({
                       : undefined
                   }
                 >
-                  <img alt="" aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(art.image)}
+                  />
                 </span>
               ) : (
                 <span className="marketCardFallback">{art.name}</span>
@@ -6183,6 +6438,77 @@ function OptionRowLabel({
 }
 
 /**
+ * One-click "Enable all / Disable all" for a group of house rules — for players
+ * who run the same package every game. Enabling turns on every rule that CAN be
+ * enabled (dependency-blocked ones like Rolled Bank Sizes without Creature Banks
+ * are skipped); disabling turns the whole group off. All in a single dispatch.
+ */
+function GroupToggleAllButton({
+  rules,
+  groupLabel,
+  houseRules,
+  creatureBanksEnabled,
+  setHouseRules,
+  enableExtras
+}: {
+  rules: (typeof HOUSE_RULES)[number][];
+  groupLabel: string;
+  houseRules: Record<HouseRuleId, boolean>;
+  creatureBanksEnabled: boolean;
+  setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
+  /**
+   * Companion rules auto-enabled alongside the group (e.g. the Polish package
+   * pulls in "split-decks" — divided Artifact decks — which its Random
+   * Artifacts rule depends on). Dependency checks are evaluated AS IF the
+   * extras were already on, so a rule blocked only by an extra still enables
+   * in the same dispatch. Never touched by "Disable all".
+   */
+  enableExtras?: Partial<Record<HouseRuleId, boolean>>;
+}) {
+  // Evaluate dependencies as if the auto-enabled companions were already on
+  // (they land in the SAME dispatch), so e.g. Random Artifacts is not skipped
+  // just because Divided decks is currently off.
+  const withExtras = { ...houseRules, ...enableExtras };
+  const enableable = rules.filter(
+    (rule) => !houseRuleToggleDisabled(rule.id, withExtras, creatureBanksEnabled)
+  );
+  const allOn = enableable.length > 0 && enableable.every((rule) => houseRules[rule.id]);
+  const anyOn = rules.some((rule) => houseRules[rule.id]);
+  // Nothing to do only if the group cannot be enabled AND is already all-off.
+  const inert = enableable.length === 0 && !anyOn;
+  const apply = () => {
+    const updates: Partial<Record<HouseRuleId, boolean>> = {};
+    if (allOn) {
+      for (const rule of rules) updates[rule.id] = false;
+    } else {
+      for (const [id, value] of Object.entries(enableExtras ?? {})) {
+        if (value && !houseRules[id as HouseRuleId]) {
+          updates[id as HouseRuleId] = true;
+        }
+      }
+      for (const rule of enableable) updates[rule.id] = true;
+    }
+    setHouseRules(updates);
+  };
+  return (
+    <button
+      aria-label={`${allOn ? "Disable" : "Enable"} all ${groupLabel} rules`}
+      className={`houseRuleGroupToggleAll ${allOn ? "on" : "off"}`}
+      disabled={inert}
+      onClick={apply}
+      title={
+        allOn
+          ? `Turn every ${groupLabel} rule off`
+          : `Turn on every ${groupLabel} rule (dependency-blocked rules are skipped)`
+      }
+      type="button"
+    >
+      {allOn ? "Disable all" : "Enable all"}
+    </button>
+  );
+}
+
+/**
  * The individual house-rule toggles, rendered straight from the engine registry
  * so the menu and the engine never drift. Each button flips exactly one rule
  * (the reducer merges it); the value shown is the resolved effective boolean.
@@ -6193,11 +6519,13 @@ function OptionRowLabel({
 function HouseRulesSection({
   houseRules,
   creatureBanksEnabled,
-  setHouseRule
+  setHouseRule,
+  setHouseRules
 }: {
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
+  setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
 }) {
   // Default minimized — expand only when the host digs into the checklist.
   const [binhOpen, setBinhOpen] = useState(false);
@@ -6239,7 +6567,16 @@ function HouseRulesSection({
           }
           return (
             <div className="houseRuleGroup" key={category}>
-              <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+              <div className="houseRuleGroupHeader">
+                <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+                <GroupToggleAllButton
+                  creatureBanksEnabled={creatureBanksEnabled}
+                  groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
+                  houseRules={houseRules}
+                  rules={rules}
+                  setHouseRules={setHouseRules}
+                />
+              </div>
               <div className="houseRuleGrid">
                 {rules.map((rule) => (
                   <HouseRuleToggleButton
@@ -6276,6 +6613,17 @@ function HouseRulesSection({
         variant="polish"
       >
         <div className="houseRuleGroup polish">
+          <div className="houseRuleGroupHeader">
+            <span className="houseRuleGroupLabel">Whole Polish package</span>
+            <GroupToggleAllButton
+              creatureBanksEnabled={creatureBanksEnabled}
+              enableExtras={{ "split-decks": true }}
+              groupLabel="Polish"
+              houseRules={houseRules}
+              rules={polishRules}
+              setHouseRules={setHouseRules}
+            />
+          </div>
           <div className="houseRuleGrid">
             {polishRules.map((rule) => (
               <HouseRuleToggleButton
@@ -6364,11 +6712,27 @@ function GameOptionsPanel({
   // default). Flipping one sends just that id; the reducer merges it.
   const houseRules = resolveHouseRules(options);
   const setHouseRule = (id: HouseRuleId, value: boolean) => {
+    // Selecting ANY Polish rule also auto-selects "split-decks" (the divided
+    // Minor/Major/Relic Artifact decks): the Polish package assumes divided
+    // Artifacts (Random Artifacts outright depends on it). Turning a Polish
+    // rule OFF never touches it.
+    const polishAuto: Partial<Record<HouseRuleId, boolean>> =
+      value && id.startsWith("polish-") && !houseRules["split-decks"] ? { "split-decks": true } : {};
     if (id === "polish-spell-book" && value) {
-      send({ houseRules: { [id]: true }, spellBook: false });
+      send({ houseRules: { ...polishAuto, [id]: true }, spellBook: false });
       return;
     }
-    send({ houseRules: { [id]: value } });
+    send({ houseRules: { ...polishAuto, [id]: value } });
+  };
+  // Flip a whole group of rules in ONE dispatch (the reducer merges the ids).
+  // Enabling the Polish Spell Book also forces the stash Spell Book off, exactly
+  // like the single-rule toggle above.
+  const setHouseRules = (updates: Partial<Record<HouseRuleId, boolean>>) => {
+    const next: Partial<GameSetupOptions> = { houseRules: updates };
+    if (updates["polish-spell-book"]) {
+      next.spellBook = false;
+    }
+    send(next);
   };
   const tournamentRules = resolveTournamentRules(options);
   const tournamentAllOn = tournamentRulesAllOn(options);
@@ -6721,11 +7085,14 @@ function GameOptionsPanel({
         const polishSpellBookOn = houseRules["polish-spell-book"];
         const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
         const undoMovesOn = options.undoMoves ?? false;
+        const manualGuardControlOn = options.manualGuardControl ?? false;
+        const startingHandMulliganOn = options.startingHandMulligan ?? false;
+        const unitExperienceOn = options.unitExperience ?? false;
         return (
           <div className="optionalRulesCluster" aria-label="Optional scoring, decks, spell book, and testing aids">
             <div className="optionalRulesClusterHead">
               <strong>Optional systems</strong>
-              <small>Victory Points, Event deck, Morale Cards, Spell Book, and Undo moves</small>
+              <small>Victory Points, Event deck, Morale Cards, Spell Book, Unit experience, and Undo moves</small>
             </div>
 
             <div className="optionRow">
@@ -6748,21 +7115,23 @@ function GameOptionsPanel({
                     {on ? "On" : "Off"}
                   </button>
                 ))}
-                {vpOn ? (
-                  <select
-                    aria-label="Victory points round limit"
-                    onChange={(event) => send({ victoryPointsRoundLimit: Number(event.target.value) })}
-                    value={vpRoundLimit}
-                  >
-                    <option value={0}>No round limit</option>
-                    {[10, 15, 20, 25, 30].map((rounds) => (
-                      <option key={rounds} value={rounds}>
-                        {rounds} rounds
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
               </div>
+              {vpOn ? (
+                <div aria-label="Victory points round limit" className="optionButtons" role="group">
+                  {[0, 5, 10, 15, 20, 25].map((rounds) => (
+                    <button
+                      aria-pressed={vpRoundLimit === rounds}
+                      className={vpRoundLimit === rounds ? "selected" : ""}
+                      key={rounds}
+                      onClick={() => send({ victoryPointsRoundLimit: rounds })}
+                      title={rounds === 0 ? "No round limit" : `${rounds} rounds`}
+                      type="button"
+                    >
+                      {rounds === 0 ? "No limit" : rounds}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <small className="optionHint">
                 {presetVpEnabled
                   ? "The designed map already enables Victory Points — its own scoring settings and round limit apply, so this toggle does not govern them."
@@ -6891,6 +7260,90 @@ function GameOptionsPanel({
                   : "Off by default. Turn it On only for manual testing / bug-hunting; it exposes a map Undo button that rewinds recent actions."}
               </small>
             </div>
+
+            <div className="optionRow manualGuardControlRow">
+              <OptionRowLabel
+                hint="Fight the Neutral guards yourself: in your own Neutral combats YOU command each guard (it must still attack when it can; with the Polish Wait rule it may Wait instead, but its Waited re-activation must attack) — or press the automatic button to let the rulebook AI play that guard"
+                iconClassName="optionRowIcon crest"
+                iconSrc="/assets/spell-icons/bloodlust.png"
+                title="Manual guard control"
+              />
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={manualGuardControlOn === on}
+                    className={manualGuardControlOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() => send({ manualGuardControl: on })}
+                    title={on ? "Manual guard control on" : "Manual guard control off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {manualGuardControlOn
+                  ? "You play the Neutral units in your own guard and Creature-Bank fights — same must-attack discipline as PvP Neutral Control — with a \u201cLet the unit act\u201d button to hand any single guard back to the automatic player. PvP Neutral Control wins when both modes are on."
+                  : "Off: the rulebook Neutral player plays the guards automatically, exactly as usual."}
+              </small>
+            </div>
+
+            <div className="optionRow startingHandMulliganRow">
+              <OptionRowLabel
+                hint="First round only: after your mandatory opening draw you may still swap out up to 4 more cards from your hand, one at a time, drawing a fresh card for each"
+                iconClassName="optionRowIcon crest"
+                iconSrc="/assets/spell-icons/view-air.png"
+                title="First-round hand Mulligan"
+              />
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={startingHandMulliganOn === on}
+                    className={startingHandMulliganOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() => send({ startingHandMulligan: on })}
+                    title={on ? "First-round hand Mulligan on" : "First-round hand Mulligan off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {startingHandMulliganOn
+                  ? "In round 1 only, after your mandatory start-of-turn draw, you may replace up to 4 cards from your hand one at a time — each replaced card goes to the bottom of your deck and you draw a fresh one."
+                  : "Off: the opening hand is set after your start-of-turn draw, exactly as usual."}
+              </small>
+            </div>
+
+            <div className="optionRow unitExperienceRow">
+              <OptionRowLabel
+                hint="WoG Unit Experience (board adaptation): army units that survive combats won alongside your hero gain XP and veteran ranks — stat bonuses, elite abilities, and a Drill action at your Towns"
+                iconClassName="optionRowIcon crest"
+                iconSrc="/assets/spell-icons/slayer.png"
+                title="Unit experience"
+              />
+              <div className="optionButtons">
+                {([false, true] as const).map((on) => (
+                  <button
+                    aria-pressed={unitExperienceOn === on}
+                    className={unitExperienceOn === on ? "selected" : ""}
+                    key={on ? "on" : "off"}
+                    onClick={() => send({ unitExperience: on })}
+                    title={on ? "Unit experience on" : "Unit experience off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {unitExperienceOn
+                  ? "Survivors of won battles earn XP (guard difficulty / bank size / 2 for PvP). Ranks: Seasoned, Veteran, Elite — small stat bonuses, a unique Elite ability for one signature unit per faction. Reinforcing halves a card's XP; Stack layers cost 1 XP each. Drill (2 gold, once per turn at your Town) trains a unit by hand."
+                  : "Off by default. Also available as a Wake of Gods module — units level up like in the WoG Unit Experience System, adapted to the board game."}
+              </small>
+            </div>
           </div>
         );
       })()}
@@ -6899,6 +7352,7 @@ function GameOptionsPanel({
         creatureBanksEnabled={options.creatureBanks ?? true}
         houseRules={houseRules}
         setHouseRule={setHouseRule}
+        setHouseRules={setHouseRules}
       />
       </div>
       ) : null}
@@ -6927,7 +7381,8 @@ function GameOptionsPanel({
                 ["newCreatures", "New neutral creatures", "Adds the 15-card WOG roster to the Bronze, Silver, Gold and Azure Neutral decks."],
                 ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
                 ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
-                ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."]
+                ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
+                ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and a Drill action at your Towns."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
                 return (
@@ -7516,6 +7971,40 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
+        const farTileOpeningOn = options.farTileOpening ?? true;
+        if (!farTileOpeningOn) {
+          return null;
+        }
+        const blindChoiceOn = options.farTileBlindChoice ?? false;
+        return (
+          <div className="optionRow">
+            <small title="Optional: before seeing any tile, a player opening a Ⅱ–Ⅲ tile blindly picks whether they want one with a gold mine, one with a valuables mine, or no preference — the random draw is filtered by that pick">
+              Blind Ⅱ–Ⅲ tile choice
+            </small>
+            <div className="optionButtons">
+              {([true, false] as const).map((on) => (
+                <button
+                  aria-pressed={blindChoiceOn === on}
+                  className={blindChoiceOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ farTileBlindChoice: on })}
+                  title={on ? "Blind tile-type pick before the draw" : "No blind pick — draw straight away"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {blindChoiceOn
+                ? "Opening a Ⅱ–Ⅲ tile first asks — blindly, before any tile is seen — for a GOLD-mine tile, a VALUABLES-mine tile, or no preference; the random draw then matches the pick (falling back to a plain draw, with a note, when none is left)."
+                : "Off: opening a Ⅱ–Ⅲ tile draws straight from the pool at random, exactly as usual."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
         const scenario = scenarioDefinitions[options.scenarioId];
         const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
         // Single-player: the seat count is 1 human + N computers, changed only
@@ -7766,21 +8255,24 @@ function AbilitySymbol({ cardId }: { cardId: string | undefined }) {
 }
 
 /**
- * A hero's specialty symbol only — the top-centre art of the printed specialty
- * card, cropped by CSS (`.heroSpecArt img`) exactly as the hero board does, or,
- * for an art-less specialty (Bulwark/Conflux/spell specialists), the transparent
- * specialty symbol contained in the chip. A missing scan just shows the numeral.
+ * A hero's specialty symbol. Prefers the curated transparent specialty symbol
+ * (contained in the chip, never cropped) — for the unit / spell / skill
+ * specialists AND the Cove roster, whose full-card scans are inset in their
+ * canvas and mis-crop through the fixed `.heroSpecArt img` window. Only when no
+ * symbol is shipped does it fall back to the top-centre crop of the printed
+ * scan (the classic roster, whose edge-to-edge scans crop cleanly); a hero with
+ * neither just shows the numeral.
  */
 function SpecialtySymbol({ cardId }: { cardId: string | undefined }) {
   const card = cardId ? cardLibrary[cardId] : undefined;
   const scan = card?.assets?.cardImage;
-  const nativeIcon = !scan ? specialtyIconSrc(cardId) : undefined;
+  const nativeIcon = specialtyIconSrc(cardId);
   return (
     <span aria-hidden="true" className="heroSpecArt">
-      {scan ? (
-        <img alt="" src={assetUrl(scan)} />
-      ) : nativeIcon ? (
+      {nativeIcon ? (
         <img alt="" className="heroSpecIcon" src={assetUrl(nativeIcon)} />
+      ) : scan ? (
+        <img alt="" src={assetUrl(scan)} />
       ) : null}
     </span>
   );
@@ -8998,8 +9490,8 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   RESOURCES_SPENT: { icon: "💸", cue: "pay" },
   ADVENTURE_DICE_ROLLED: { icon: "🎲", cue: "dice" },
   EXPERIENCE_GAINED: { icon: "📈", cue: "experience" },
-  // Anime Unit Experience: a surviving unit card's veterancy gain / rank-up.
-  UNIT_EXPERIENCE_GAINED: { icon: "🎖️", cue: "experience" },
+  // Unit Experience: a unit card crossing a veteran-rank threshold.
+  UNIT_RANK_UP: { icon: "🎖️", cue: "experience" },
   HERO_LEVEL_UP: { icon: "⭐", cue: "level-up" },
   // Anime Cultivation (§5.6): a realm breakthrough rings the level-up sting; the
   // Tribulation dice show quietly, a failure uses the defeat sting.

@@ -149,6 +149,12 @@ export type WogModOptions = {
   newCreatures: boolean;
   /** Wake of Gods hero Artifact cards join the shared Artifact deck(s). */
   artifacts: boolean;
+  /**
+   * WoG Unit Experience System (board adaptation): army unit cards gain
+   * experience from combats won alongside the hero and earn veteran ranks
+   * (stat bonuses + elite abilities). See src/engine/unit-experience.ts.
+   */
+  unitExperience?: boolean;
 };
 
 export const DEFAULT_WOG_OPTIONS: WogModOptions = {
@@ -156,7 +162,8 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
   commanders: false,
   newObjects: false,
   newCreatures: true,
-  artifacts: false
+  artifacts: false,
+  unitExperience: false
 };
 
 /**
@@ -231,14 +238,12 @@ export type AnimeModOptions = {
    */
   unitStacks: boolean;
   /**
-   * Unit Experience (anime original, WoG-style veterancy): each army unit card
-   * that PARTICIPATES in and SURVIVES a WON combat gains 1 XP, climbing data-driven
-   * ranks (Veteran +1 Atk → Elite +1 Atk/Def → Legend +1 Atk/Def/HP) folded onto
-   * BOTH card sides in combat. XP lives on the army card (`ArmyUnitState.xp`) and
-   * is lost when the card leaves the game / recycles. See `unit-experience.ts`.
-   * Default OFF, opt-in (`=== true`).
+   * Unit Experience (anime-mod surface of the shared veterancy system): army
+   * unit cards gain experience and veteran ranks. Same engine as the WOG /
+   * lobby toggles — any one of the three activates it (unit-experience.ts). XP
+   * lives on the army card (`ArmyUnitState.experience`), folded at combat build.
    */
-  unitExperience: boolean;
+  unitExperience?: boolean;
   /** Calamity wave cadence when monsterWaves is on. */
   waveCadence?: 3 | 4 | 5;
 };
@@ -3007,6 +3012,16 @@ export type GameAction =
     }
   | {
       /**
+       * Unit Experience (optional rule): Drill one army unit at your own Town —
+       * pay DRILL_UNIT_GOLD_COST (2) gold for +1 unit XP. Once per own turn.
+       * Handler-validated (self-validating).
+       */
+      type: "DRILL_UNIT";
+      playerId: PlayerId;
+      armyUnitId: string;
+    }
+  | {
+      /**
        * Anime Hero Grades: spend one unspent grade point to pick a tree node
        * (one node per tier, tier ≤ current grade). Handler-validated
        * (self-validating; the node is baked into the action, so no window opens).
@@ -3235,6 +3250,18 @@ export type GameAction =
     }
   | {
       /**
+       * First-round starting-hand Mulligan (OPTIONAL, GameSetupOptions
+       * .startingHandMulligan): in ROUND 1 only, after the mandatory start-of-turn
+       * draw, replace ONE hand card — discard it to the BOTTOM of your own deck
+       * and draw one — consuming one of the player's FIRST_ROUND_MULLIGAN_LIMIT
+       * replacements. Repeatable (one card at a time) until the budget runs out.
+       */
+      type: "MULLIGAN_CARD";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
+      /**
        * Spell Book (house rule): move a Spell card from hand into the player's
        * Spell Book, freeing the hand slot WITHOUT drawing a replacement. Legal
        * only on the player's own map turn (no combat / reaction / pending choice),
@@ -3427,8 +3454,26 @@ export type GameAction =
       type: "FINISH_COMMANDER_PLACEMENT";
       playerId: PlayerId;
     }
+  | {
+      /**
+       * Manual guard control: during the pre-battle sort, reset the Neutral
+       * formation to the rulebook AI's auto-placement (shooters to the back
+       * row), leaving the sort window open. "Let the AI place them" / return to
+       * AI auto control. Legal only for the manual-control fighter arranging
+       * their OWN guards (never a PvP-Neutral-Control opponent).
+       */
+      type: "AUTO_NEUTRAL_PLACEMENT";
+      playerId: PlayerId;
+    }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
+  /**
+   * Manual guard control: the fighter hands the CURRENT guard's activation to
+   * the rulebook Neutral AI instead of commanding it by hand ("Let the unit
+   * act"). Legal only while `adventure.manualGuardControl` assigns them the
+   * guards and the active Neutral unit has not begun to act.
+   */
+  | { type: "AUTO_NEUTRAL_ACTIVATION"; playerId: PlayerId }
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
   | {
       /**
@@ -4848,6 +4893,14 @@ export type GameEvent =
     }
   | {
       id: string;
+      /** First-round starting-hand Mulligan: one card replaced (MULLIGAN_CARD). */
+      type: "HAND_MULLIGAN";
+      playerId: PlayerId;
+      /** Replacements still left this game after this one. */
+      remaining: number;
+    }
+  | {
+      id: string;
       type: "TILE_REVEALED";
       playerId: PlayerId;
       tileInstanceId: string;
@@ -5374,19 +5427,41 @@ export type GameEvent =
     }
   | {
       /**
-       * Anime Unit Experience: a surviving army unit card gained 1 veterancy XP
-       * from a won combat. `rankId`/`rankName` are set only on the XP that first
-       * crosses into a new rank (Veteran/Elite/Legend).
+       * Unit Experience: an army unit card crossed a veteran-rank threshold
+       * (after a won combat's XP award or a Drill). `rank` is the NEW rank 1-3.
        */
       id: string;
-      type: "UNIT_EXPERIENCE_GAINED";
+      type: "UNIT_RANK_UP";
       playerId: PlayerId;
-      armyUnitId: string;
       unitDefId: string;
       unitName: string;
-      xp: number;
-      rankId?: string;
-      rankName?: string;
+      rank: number;
+    }
+  | {
+      /**
+       * Unit Experience: the player paid gold to Drill one army unit at their
+       * own Town (+1 unit XP). `experience` is the card's new XP total.
+       */
+      id: string;
+      type: "UNIT_DRILLED";
+      playerId: PlayerId;
+      unitDefId: string;
+      unitName: string;
+      experience: number;
+    }
+  | {
+      /**
+       * Unit Experience: an upgrade diluted a card's XP (WoG Crexpmod read) —
+       * a Few→Pack reinforcement halves it, a purchased Stack layer costs 1.
+       * `experience` is the card's NEW XP total.
+       */
+      id: string;
+      type: "UNIT_XP_DILUTED";
+      playerId: PlayerId;
+      unitDefId: string;
+      unitName: string;
+      experience: number;
+      reason: "reinforce" | "stack";
     }
   | {
       id: string;
@@ -5403,6 +5478,18 @@ export type GameEvent =
       type: "MAP_PRESET_TRIGGERED";
       round?: number;
       message: string;
+    }
+  | {
+      /**
+       * Victory-Points round-limit warning: the round now beginning (`round`) is
+       * the FINAL round — the game ends after it completes. Table-wide and
+       * playerId-agnostic; emitted once at that round's start by
+       * {@link startAdventureRound}. The client pops a one-time overlay plus a
+       * feed line so the impending end is never a surprise.
+       */
+      id: string;
+      type: "FINAL_ROUND";
+      round: number;
     }
   | {
       /**
@@ -6365,14 +6452,15 @@ export type ArmyUnitState = {
    */
   stacks?: number;
   /**
-   * Anime Unit Experience (WoG-style veterancy): accumulated combat XP on THIS
-   * army card. +1 per WON combat this card participated in and survived; drives
-   * the Veteran/Elite/Legend rank bonus (see `unit-experience.ts`). Public state
-   * (no player-view masking). Lost when the card leaves the game / recycles to a
-   * Neutral tier discard; KEPT across a Pack→Few flip. Absent when the module is
-   * off or the card never fought.
+   * Unit Experience (optional rule, WoG UES board adaptation): total experience
+   * this unit card has earned from combats won alongside the hero (survivors
+   * only) and Drill training. Veteran rank + bonuses derive from it per tier
+   * (see src/engine/unit-experience.ts). Absent (= 0) when the rule is off —
+   * with the rule off no XP is ever awarded, so the field never appears.
+   * XP survives Pack→Few flips and reinforcement (a deliberate simplification
+   * of WoG's upgrade experience loss).
    */
-  xp?: number;
+  experience?: number;
 };
 
 export type TownTokenState = {
@@ -6588,6 +6676,17 @@ export type PlayerState = {
    */
   canMulligan?: boolean;
   /**
+   * First-round starting-hand Mulligan mode (OPTIONAL, `GameSetupOptions
+   * .startingHandMulligan`, default OFF): the number of single-card starting-hand
+   * replacements this player still has THIS GAME. Seeded to
+   * {@link FIRST_ROUND_MULLIGAN_LIMIT} at the start of a round-1 turn once the
+   * mode is on; each MULLIGAN_CARD (discard one hand card to the BOTTOM of your
+   * own deck, draw one) decrements it. Only usable in round 1 after the mandatory
+   * start-of-turn draw; absent/0 = no replacements (every non-round-1 turn, and
+   * every game with the mode off).
+   */
+  firstRoundMulligansLeft?: number;
+  /**
    * @deprecated Legacy sticky flag. Hand dump is now decided at END_TURN by
    * `morale <= -2` only (recover during the turn → keep hand). Kept so old
    * snapshots still deserialize; never re-armed by changeMorale.
@@ -6651,6 +6750,16 @@ export type PlayerState = {
    * See `totalRecruitGoldDiscount`/`consumeRecruitVoucherFor`.
    */
   recruitDiscounts?: RecruitDiscountVoucher[];
+  /**
+   * Map-side twin of `combatStats.pendingDrawRiderSpellPower`: +Power banked by
+   * playing a Sorcery / Scales-of-the-Greater-Basilisk-style "+Power, then draw
+   * a card" rider on the MAP (outside any combat). It counts toward the Power a
+   * map Spell needs (View Air / Dimension Door / Fly / Town Portal tiers), so a
+   * hero can bank Power, draw, then cast the drawn Spell for less. Consumed by
+   * the next map Spell that pays a Power cost, and cleared when the hero moves
+   * (the banked Power "goes away after you move") or at the owner's next turn.
+   */
+  mapSpellPowerBank?: number;
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
   rogueScoutUsedThisTurn?: boolean;
   /** Satyrs (army map ability): the once-per-turn attack-die morale roll was used this turn. */
@@ -6746,6 +6855,12 @@ export type PlayerState = {
    * Absent === 0. PUBLIC (player-view never strips it).
    */
   bankWins?: number;
+  /**
+   * Unit Experience (optional rule): the game round this player last used the
+   * DRILL_UNIT action (2 gold → +1 unit XP at their own Town). Once per own
+   * turn: legal only while `unitDrillRound !== state.round`. Absent = never.
+   */
+  unitDrillRound?: number;
   /**
    * Anime Hero Grades (anime.heroGrades, §3.11): the game round each
    * once-per-round map SKILL node was last used, keyed by node id (Forced
@@ -7053,12 +7168,15 @@ export type CombatUnitState = {
    */
   armyStacks?: number;
   /**
-   * Anime Unit Experience mirrored from the backing army card (`ArmyUnitState.xp`)
-   * when the module is on. Read by `applyUnitCurrentSide` / `makeCombatUnitFromArmy`
-   * to fold the rank bonus (attack/defense/health) onto BOTH card sides. Absent
-   * when the module is off or the card carries no XP.
+   * Unit Experience (optional rule): total XP mirrored from the backing army
+   * card (`ArmyUnitState.experience`). The derived veteran-rank stat bonuses
+   * and elite ability are folded into the unit's printed side every time it is
+   * (re)computed — creation AND mid-combat flips (applyUnitCurrentSide) — like
+   * `permanentAttackBonus`. Absent when the rule is off or the card has no XP.
    */
-  unitXp?: number;
+  unitExperience?: number;
+  /** Derived veteran rank (1-3) for badges/inspect; absent at rank 0. */
+  unitRank?: number;
   /**
    * Fixed creature-bank guard (Dragon Utopia's dragons, the Cyclops
    * Stockpile's 2 golden Cyclopes): minted for this fight only, so it must
@@ -7835,6 +7953,16 @@ export type MapFieldState = {
    */
   customGuardLevel?: number;
   /**
+   * Whether this field's guard was set by the MAP DESIGNER (a {@link CustomGuardSpec}
+   * — exact army OR level — a map-wide settlement/obelisk guard, or a center-hex
+   * guard) rather than a printed field difficulty. Set alongside the guard by
+   * {@link applyCustomGuardToField} and the settlement/center stamp sites, cleared
+   * with the guard. Purely informational: it flags an "altered" neutral fight so
+   * the map can show it and warn the player before they attack. Absent on printed
+   * guards and legacy snapshots.
+   */
+  designedGuard?: boolean;
+  /**
    * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
    * sacrificed hex's `location` becomes "subterranean_gate" and these point at
    * the tile on the OTHER layer the gate bridges:
@@ -8130,7 +8258,16 @@ export type VisitStep =
     }
   | { type: "GAIN_MOVEMENT_FOR_HERO"; heroId: HeroId; amount: number }
   | { type: "GAIN_MORALE"; amount: number }
-  | { type: "ROLL_RESOURCE_DICE"; count: number }
+  | {
+      type: "ROLL_RESOURCE_DICE";
+      count: number;
+      /**
+       * Polish reduced starting bonus: reroll any "high value" Resource-die face
+       * (6 gold / 4 building materials / 2 valuables) so the grant stays random
+       * but capped to the low faces. Default false (normal Resource-die roll).
+       */
+      capHighValues?: boolean;
+    }
   | { type: "RESUME_FIELD_VISIT"; heroId: HeroId; fieldId: MapSpaceId; revisit: boolean }
   | { type: "ROLL_TREASURE_DICE"; count: number }
   | {
@@ -8354,7 +8491,24 @@ export type VisitStep =
       type: "RESOURCE_GAIN_LEVEL";
     }
   | { type: "MAGIC_SPRING" }
-  | { type: "WITCH_HUT" }
+  | {
+      /**
+       * Witch Hut "look at the top Ability card": auto-resolves into a
+       * CHOOSE_ONE carrying the revealed card (so the tray shows its art),
+       * exactly like the Factory dig (DIG_ARTIFACT).
+       */
+      type: "WITCH_HUT";
+    }
+  | {
+      /** Witch Hut: take the revealed Ability card into hand. */
+      type: "WITCH_HUT_TAKE";
+      cardId: CardId;
+    }
+  | {
+      /** Witch Hut: put the revealed card on the SHARED Ability deck's discard. */
+      type: "WITCH_HUT_DISCARD";
+      cardId: CardId;
+    }
   | { type: "SCHOLAR" }
   | {
       /**
@@ -9477,7 +9631,11 @@ export type PendingFarTileFlip = {
   returnPhase: GamePhase;
   /** 1-based index of this opening for the player (the 2nd is settlement-guaranteed). */
   openingIndex: number;
-  /** The tile currently revealed and under decision. */
+  /**
+   * The tile currently revealed and under decision. During the "blind" stage
+   * (blind Ⅱ–Ⅲ choice: the preference is asked BEFORE any draw) no tile has
+   * been drawn yet and this holds the empty string.
+   */
   candidate: string;
   /** The most recent NON-settlement tile held aside during a settlement reroll, offered against the Settlement at the final pick. */
   lastNonSettlement: string | null;
@@ -9489,8 +9647,11 @@ export type PendingFarTileFlip = {
    *  - "settlement": [Keep, Reroll for a Settlement]
    *  - "mine":       [Keep, Reroll once (material mine)]
    *  - "pick":       [Place the Settlement tile, Place the previous tile]
+   *  - "blind":      [No preference, Prefer a GOLD mine, Prefer a VALUABLES
+   *                  mine] — the blind Ⅱ–Ⅲ choice asked BEFORE the draw
+   *                  (candidate is still ""); resolving it draws the tile.
    */
-  offerMode: "settlement" | "mine" | "pick";
+  offerMode: "settlement" | "mine" | "pick" | "blind";
 };
 
 export type AdventureState = {
@@ -9519,6 +9680,13 @@ export type AdventureState = {
    * the player-view (upcoming tiles are secret). Absent on pre-feature saves.
    */
   farTilePool?: string[];
+  /**
+   * Blind Ⅱ–Ⅲ tile choice (GameSetupOptions.farTileBlindChoice, default OFF):
+   * a supply opening first asks the player for a blind gold/valuables/no-
+   * preference pick that filters the random draw. Absent/false = the draw is
+   * immediate, exactly as before.
+   */
+  farTileBlindChoice?: boolean;
   /**
    * How many Ⅱ–Ⅲ tiles each player has already opened (placed). Drives the
    * "the 2nd tile each player opens is the settlement-guaranteed one" rule.
@@ -9717,6 +9885,31 @@ export type AdventureState = {
    * src/server/undo-history.ts.
    */
   undoMoves?: boolean;
+  /**
+   * OPTIONAL Manual guard control (default OFF). Frozen from
+   * GameSetupOptions.manualGuardControl at setup: the FIGHTER of a Neutral
+   * combat commands the guards through the PvP-Neutral-Control unit menu
+   * (must-attack discipline; polish-wait Wait allowed, Waited re-activation
+   * must attack) or delegates one activation to the AI with
+   * AUTO_NEUTRAL_ACTIVATION. Absent/false = the rulebook Neutral AI plays the
+   * guards exactly as before. See manualGuardControllerId in neutral-control.ts.
+   */
+  manualGuardControl?: boolean;
+  /**
+   * OPTIONAL first-round starting-hand Mulligan mode (default OFF). Frozen from
+   * GameSetupOptions.startingHandMulligan at setup: in round 1 only, after the
+   * mandatory start-of-turn draw, a player may replace up to
+   * FIRST_ROUND_MULLIGAN_LIMIT cards one at a time (MULLIGAN_CARD). Absent/false
+   * = no replacements ever. See mulliganCard in adventure-reducer.ts.
+   */
+  startingHandMulligan?: boolean;
+  /**
+   * Unit Experience (optional rule): frozen at setup when ANY of the three
+   * surfaces enabled it (lobby `unitExperience`, `wog.unitExperience`,
+   * `anime.unitExperience`). Absent/false = the rule is off: no XP is awarded,
+   * no rank folds, DRILL_UNIT rejected. See src/engine/unit-experience.ts.
+   */
+  unitExperience?: boolean;
   /**
    * Individual BINH house-rule toggles, resolved to concrete booleans at setup
    * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older
@@ -9963,6 +10156,42 @@ export type GameSetupOptions = {
    */
   undoMoves?: boolean;
   /**
+   * OPTIONAL "Manual guard control" mode (default OFF/absent, Game options —
+   * like Undo moves). With it ON, the FIGHTER of a Neutral combat (guard
+   * fields AND Creature Banks) first RELOCATES the revealed guards in a
+   * pre-battle formation window (move/swap within the defender's two rows —
+   * shooters kept on the back row — or "Let the AI place them" to return to the
+   * rulebook auto-placement), then personally commands each guard through the
+   * normal PvP-Neutral-Control unit menu — same must-attack discipline
+   * (`pvpNeutralControlMustAttack`, default ON: attack when you can; under
+   * polish-wait a guard may WAIT instead, but its Waited re-activation must
+   * attack) — or hands any single activation back to the rulebook AI with the
+   * "Let the unit act" button. Frozen onto `adventure.manualGuardControl` at
+   * setup. PvP Neutral Control (a HUMAN OPPONENT plays the guards) wins when
+   * both modes are on; computer-seat fighters keep the plain AI.
+   */
+  manualGuardControl?: boolean;
+  /**
+   * OPTIONAL first-round starting-hand Mulligan mode (default OFF/absent, Game
+   * options — like Undo moves / Manual guard control). With it ON, in ROUND 1
+   * only, AFTER the mandatory start-of-turn draw, a player may still replace up
+   * to {@link FIRST_ROUND_MULLIGAN_LIMIT} cards from their hand — one at a time
+   * (MULLIGAN_CARD: discard one card to the bottom of your own deck, draw one),
+   * continuing until they run out of replacements or choose to stop. Only in
+   * the first round. Frozen onto `adventure.startingHandMulligan` at setup;
+   * absent = no replacements ever (byte-identical to before).
+   */
+  startingHandMulligan?: boolean;
+  /**
+   * Unit Experience (optional rule, default OFF): army unit cards gain XP from
+   * combats won alongside the hero and earn veteran ranks (tier-scaled
+   * thresholds, stat bonuses, elite abilities). This lobby toggle is one of
+   * three equivalent surfaces — `wog.unitExperience` and `anime.unitExperience`
+   * activate the same engine; the effective flag freezes onto
+   * `adventure.unitExperience` at setup.
+   */
+  unitExperience?: boolean;
+  /**
    * Whether players may open their own Ⅱ–Ⅲ Far tiles (default ON). When ON each
    * player drafts a personal Far-tile supply they can place onto the map. Off
    * gives no supply at all — use it for scenarios whose map already includes its
@@ -9977,6 +10206,17 @@ export type GameSetupOptions = {
    * while `farTileOpening` is ON. Clamped to {@link MAX_FAR_TILES_PER_PLAYER}.
    */
   farTilesPerPlayer?: number;
+  /**
+   * OPTIONAL blind Ⅱ–Ⅲ tile choice (default OFF). With it ON, a player opening
+   * a Ⅱ–Ⅲ (Far) tile from their supply first chooses BLINDLY — before seeing
+   * any tile — whether they want a tile with a GOLD mine, one with a VALUABLES
+   * mine, or no preference; the random draw is then restricted to tiles
+   * carrying that landmark (falling back to a plain draw, with a public note,
+   * when none is left in the pool). Revealing a face-down Ⅱ–Ⅲ tile already on
+   * the map never asks (its identity is fixed). Frozen onto
+   * `adventure.farTileBlindChoice` at setup.
+   */
+  farTileBlindChoice?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
@@ -10123,12 +10363,40 @@ export type CustomMapPreset = {
    */
   obelisks?: {
     role: "monolith" | "bonus" | "victory-only";
-    bonus?:
-      | { kind: "morale"; amount: 1 }
-      | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
-      | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
-      | { kind: "movement"; amount: number }
-      | { kind: "dice"; treasure: number; resource: number };
+    /**
+     * The reward for role "bonus". Legacy SINGLE bonus (kept for old presets);
+     * `bonuses` below is the multi-award form. When both are absent the role
+     * grants {@link DEFAULT_OBELISK_BONUS}.
+     */
+    bonus?: CustomMapObeliskBonus;
+    /**
+     * Multiple designer awards for role "bonus". `bonusMode` decides whether the
+     * visitor gets them ALL ("all", the default — an AND) or PICKS ONE ("choose"
+     * — an OR the visiting player resolves). A single-entry list behaves like the
+     * legacy `bonus`.
+     */
+    bonuses?: CustomMapObeliskBonus[];
+    bonusMode?: "all" | "choose";
+    /**
+     * MAP-WIDE guard fought the first time each player visits ANY Obelisk (a
+     * level Ⅰ–Ⅶ, or an exact neutral army). The win flags the Obelisk as usual,
+     * so the guard never respawns (`everFlagged`); a later visitor still fights
+     * their own first-visit guard. Absent = unguarded (classic behaviour).
+     */
+    guard?: CustomGuardSpec;
+  };
+  /**
+   * MAP-WIDE settlement options — to make settlements matter on a scenario.
+   * Both optional; absent = classic settlements (unguarded, flat 1 VP).
+   *   - guard: a level Ⅰ–Ⅶ or exact army fought the FIRST time a settlement is
+   *     flagged (the win flags it, so it never respawns); a later capture from
+   *     another player transfers it with no fight, like an unguarded settlement.
+   *   - vp: extra Victory Points per settlement a player controls (VP mode only),
+   *     ON TOP of the flat 1 VP every flagged mine/settlement already scores.
+   */
+  settlements?: {
+    guard?: CustomGuardSpec;
+    vp?: number;
   };
   /**
    * Designer-placed one-hex map objects — a flexible list riding the preset (it
@@ -10355,11 +10623,20 @@ export type CustomMapObject = {
 /** The Obelisk-role config block of a {@link CustomMapPreset}. */
 export type CustomMapObeliskConfig = NonNullable<CustomMapPreset["obelisks"]>;
 
+/** The MAP-WIDE settlement options block of a {@link CustomMapPreset}. */
+export type CustomMapSettlementConfig = NonNullable<CustomMapPreset["settlements"]>;
+
 /** The Grail / Dragon Utopia options block of a {@link CustomMapPreset}. */
 export type CustomMapObjectivesConfig = NonNullable<CustomMapPreset["objectives"]>;
 
 /** One designer-chosen Obelisk visit bonus (role "bonus"). */
-export type CustomMapObeliskBonus = NonNullable<CustomMapObeliskConfig["bonus"]>;
+export type CustomMapObeliskBonus =
+  | { kind: "morale"; amount: 1 }
+  | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
+  | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
+  | { kind: "movement"; amount: number }
+  | { kind: "experience"; amount: number }
+  | { kind: "dice"; treasure: number; resource: number };
 
 /**
  * The Obelisk "bonus" role's default reward when the designer leaves it unset —
@@ -10424,18 +10701,39 @@ export type CustomMapTilePlan = {
   underground?: boolean;
   faceDown: boolean;
   /**
-   * Exact tile to place. Required while face-up (non-starting). Optional while
-   * face-down: when set, the tile is predetermined but stays face-down until
+   * Exact tile to place. Required while face-up (non-starting) unless
+   * {@link oneOfTileDefIds} supplies a random-from-list choice instead. Optional
+   * while face-down: when set, the tile is predetermined but stays face-down until
    * discovered (exact secret pin). Ignored on starting tiles. Mutually exclusive
    * with `secretFeature` at runtime (exact pin wins if both are present).
    */
   tileDefId?: string;
+  /**
+   * "One of these tiles" random choice (map designer): instead of a single exact
+   * {@link tileDefId}, name a LIST of candidate tile ids and the engine picks ONE
+   * at random (seeded by the slot's position) at setup. Works face-UP (a random
+   * one is placed revealed) and face-DOWN (a random one is placed, still hidden
+   * until discovery — so even the designer cannot tell which it will be). Every id
+   * must belong to this slot's group pool. Takes effect only when `tileDefId` is
+   * absent (an exact pin always wins); a 0/1-entry list folds away (1 entry ==
+   * that exact tile). Ignored on starting tiles. Absent (every legacy map) = the
+   * plain exact-or-random behaviour, byte-for-byte as before.
+   */
+  oneOfTileDefIds?: string[];
   /**
    * Face-down only: guarantee a landmark, not a specific tile. At setup the
    * engine pops a random remaining tile from this slot's pool that carries the
    * feature. Cleared for face-up and pure-random slots.
    */
   secretFeature?: SecretTileFeature;
+  /**
+   * Face-down only: restrict the random draw to tiles matching ANY of these
+   * landmarks — e.g. `["valuables_mine", "gold_mine"]` so the tile lands on
+   * valuables OR gold and never rolls stone or a settlement. A single-entry list
+   * behaves exactly like `secretFeature`; the two fold together at read time.
+   * Cleared for face-up and pure-random slots.
+   */
+  secretFeatures?: SecretTileFeature[];
   /** Clockwise 60° steps (0-5, default 0). Honoured face-up and face-down. */
   rotation?: number;
   /**
