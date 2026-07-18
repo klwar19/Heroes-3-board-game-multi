@@ -57,6 +57,8 @@ import {
   tournamentRulesAllOn,
   getTileBorderSegments,
   gatePairColor,
+  designedGuardPreview,
+  isFieldGuarded,
   hasOpenAdventureTurn,
   hexDistance,
   hexSpaceId,
@@ -1351,6 +1353,15 @@ export function HexMapBoard({
       const mapChoice = pendingMapChoiceTargets.get(spaceId);
       const teleportTarget = teleportChoice?.targets.get(spaceId);
       const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
+      // Designer-ALTERED guard (custom army / level / forced settlement fight):
+      // surface what the player will face in the hex tooltip so an altered fight
+      // reads clearly on the map (the pre-attack confirm float warns again).
+      const alteredGuardPreview = guarded && field.designedGuard ? designedGuardPreview(field) : null;
+      const alteredGuardTip = alteredGuardPreview
+        ? alteredGuardPreview.units.length > 0
+          ? ` — ALTERED by the map designer: ${alteredGuardPreview.units.join(", ")}`
+          : " — ALTERED by the map designer"
+        : "";
       // Field Override kinds without hex art yet fall back to their registered
       // glyph so an art-less carve is a visible hex in icon mode (art wins once
       // it ships — fieldOverrideGlyph returns undefined then).
@@ -1368,9 +1379,11 @@ export function HexMapBoard({
             endTurnMove ? "endTurnMoveTarget" : "",
             mapChoice ? "mapChoiceTarget" : "",
             isSelected ? "selectedTarget" : "",
+            alteredGuardPreview ? "alteredGuard" : "",
             artShown ? "withArt" : ""
           ].join(" ")}
           data-space-id={spaceId}
+          data-altered-guard={alteredGuardPreview ? "true" : undefined}
           data-underground={undergroundTile ? "true" : undefined}
           fill={terrain}
           key={spaceId}
@@ -1419,7 +1432,7 @@ export function HexMapBoard({
               field.location === "creature_bank" && field.bankId
                 ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
                 : (location?.name ?? field.location)
-            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${
+            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${alteredGuardTip}${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${
               field.location === "subterranean_gate"
@@ -1637,6 +1650,21 @@ export function HexMapBoard({
         overlays.push(
           <text className="hexDifficulty" key={`${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
             {ROMAN[field.difficulty]}
+          </text>
+        );
+      }
+      // A small gear marks a designer-ALTERED guard so an altered fight is
+      // spotted at a glance (the tooltip + pre-attack confirm carry the detail).
+      if (alteredGuardPreview) {
+        overlays.push(
+          <text
+            className="hexAlteredGuard"
+            key={`${spaceId}-altered`}
+            textAnchor="middle"
+            x={x + HEX_SIZE * 0.52}
+            y={y - HEX_SIZE * 0.4}
+          >
+            ⚙
           </text>
         );
       }
@@ -2239,22 +2267,48 @@ export function HexMapBoard({
     const coord = parseHexSpaceId(selectedTarget.spaceId);
     if (coord) {
       const cost = selectedTarget.cost;
+      // Warn before attacking a neutral fight the MAP DESIGNER altered (a forced
+      // settlement fight, a custom level, or an exact custom army): show what the
+      // hero will face and require an explicit "Attack" confirmation. A printed
+      // guard (or an already-owned field) keeps the plain "Move there".
+      const destField = adventure?.fields[selectedTarget.spaceId];
+      const alteredGuard =
+        destField && isFieldGuarded(destField) && destField.flagOwnerId !== viewerPlayerId
+          ? designedGuardPreview(destField)
+          : null;
       mapFloats.push({
         key: "move-confirm-float",
         mapPoint: hexToPixel(coord, HEX_SIZE),
-        cardWidth: 230,
-        cardHeight: 104,
+        cardWidth: 236,
+        cardHeight: alteredGuard ? 148 + (alteredGuard.units.length > 0 ? 16 : 0) : 104,
         gap: HEX_SIZE * 0.62,
         render: () => (
           <div
             aria-label="Confirm movement"
-            className="mapFloatCard moveConfirmFloat"
+            className={`mapFloatCard moveConfirmFloat${alteredGuard ? " alteredGuardConfirm" : ""}`}
             onPointerDown={(event) => event.stopPropagation()}
             role="dialog"
           >
             <span className="mapFloatLabel">
               <span aria-hidden="true">🐎</span> Move {cost} field{cost === 1 ? "" : "s"} ({cost} MP)
             </span>
+            {alteredGuard ? (
+              <div className="alteredGuardWarn" role="note">
+                <strong>
+                  <span aria-hidden="true">⚔</span> Altered guard (map designer)
+                </strong>
+                {alteredGuard.units.length > 0 ? (
+                  <span>
+                    You will face {alteredGuard.units.join(", ")}
+                    {alteredGuard.difficulty ? ` (guard ${ROMAN[alteredGuard.difficulty] ?? alteredGuard.difficulty})` : ""}.
+                  </span>
+                ) : (
+                  <span>
+                    A guard {ROMAN[alteredGuard.difficulty] ?? alteredGuard.difficulty} army defends this field.
+                  </span>
+                )}
+              </div>
+            ) : null}
             <div className="mapFloatButtons">
               <button
                 className="commandButton primary"
@@ -2269,7 +2323,7 @@ export function HexMapBoard({
                 }}
                 type="button"
               >
-                <Check size={13} /> Move there
+                <Check size={13} /> {alteredGuard ? "Attack" : "Move there"}
               </button>
               <button className="commandButton ghost" onClick={() => setSelectedTarget(null)} type="button">
                 <X size={13} /> Cancel

@@ -434,6 +434,8 @@ describe("Map-wide field guards (designer)", () => {
     } as MapTileState);
     const settlement = Object.values(state.adventure!.fields).find((f) => f.location === "settlement")!;
     expect(settlement.difficulty).toBe(6);
+    // A designer settlement guard is flagged "altered" so the map can warn on it.
+    expect(settlement.designedGuard).toBe(true);
 
     // CONTROL: no settlement config → F1's printed difficulty (3) stands.
     const control = makeGame();
@@ -448,6 +450,8 @@ describe("Map-wide field guards (designer)", () => {
     } as MapTileState);
     const cSettlement = Object.values(control.adventure!.fields).find((f) => f.location === "settlement")!;
     expect(cSettlement.difficulty).toBe(3);
+    // A printed settlement guard is NOT flagged as designer-altered.
+    expect(cSettlement.designedGuard ?? false).toBe(false);
   });
 });
 
