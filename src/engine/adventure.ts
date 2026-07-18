@@ -4679,7 +4679,6 @@ function stepNeedsInput(step: VisitStep): boolean {
     step.type === "PAY_TO" ||
     step.type === "SETTLEMENT_CHOICE" ||
     step.type === "RESOURCE_GAIN_LEVEL" ||
-    step.type === "WITCH_HUT" ||
     step.type === "TRADING_POST" ||
     step.type === "WAR_MACHINE_SHOP" ||
     step.type === "DISCOVER_ADJACENT_TILE" ||
@@ -4739,21 +4738,6 @@ export function processPendingVisit(state: GameState): void {
 
   while (visit.steps.length > 0) {
     const step = visit.steps[0];
-
-    if (step.type === "WITCH_HUT") {
-      // The Witch Hut hands over the top Ability card, so it obeys the same
-      // acquisition rules as a deck search: discard any top card this hero may
-      // not take (a duplicate it already owns, or Necromancy for a non-Necropolis
-      // hero) so only an acquirable card is ever revealed and taken.
-      const abilityDeck = state.decks.abilities;
-      while (
-        abilityDeck &&
-        abilityDeck.drawPile.length > 0 &&
-        !canAcquireSharedDeckCard(state, visit.playerId, "abilities", abilityDeck.drawPile[abilityDeck.drawPile.length - 1])
-      ) {
-        abilityDeck.discardPile.push(abilityDeck.drawPile.pop() as string);
-      }
-    }
 
     if (stepNeedsInput(step)) {
       return;
@@ -5792,6 +5776,71 @@ export function processPendingVisit(state: GameState): void {
             { label: "Discard it", steps: [{ type: "DIG_ARTIFACT_DISCARD", cardId: dug, deckId: dugDeckId }] }
           ]
         });
+        break;
+      }
+      case "WITCH_HUT": {
+        // "Look at the top card of the Ability Deck and put that card into your
+        // hand or into the Ability Deck Discard Pile." Obeys the same acquisition
+        // rules as a deck search: bin any top card this hero may not take (a
+        // duplicate it owns, or Necromancy for a non-Necropolis hero) onto the
+        // deck discard, then reveal the first acquirable card as a CHOOSE_ONE
+        // whose steps carry the cardId — so the prompt tray shows the actual
+        // card face (the DIG_ARTIFACT pattern), never a blind text pick.
+        const abilityDeck = state.decks.abilities;
+        if (!abilityDeck) {
+          break;
+        }
+        while (
+          abilityDeck.drawPile.length > 0 &&
+          !canAcquireSharedDeckCard(
+            state,
+            visit.playerId,
+            "abilities",
+            abilityDeck.drawPile[abilityDeck.drawPile.length - 1]
+          )
+        ) {
+          abilityDeck.discardPile.push(abilityDeck.drawPile.pop() as string);
+        }
+        const revealed = abilityDeck.drawPile.pop();
+        if (!revealed) {
+          eventNote(state, "The Witch Hut finds no Ability card to reveal.", visit.playerId);
+          break;
+        }
+        const revealedName = cardLibrary[revealed]?.name ?? revealed;
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Witch Hut: the top Ability card is ${revealedName} — take it or discard it?`,
+          options: [
+            { label: `Take ${revealedName} into hand`, steps: [{ type: "WITCH_HUT_TAKE", cardId: revealed }] },
+            {
+              label: `Put ${revealedName} into the Ability discard pile`,
+              steps: [{ type: "WITCH_HUT_DISCARD", cardId: revealed }]
+            }
+          ]
+        });
+        break;
+      }
+      case "WITCH_HUT_TAKE": {
+        const player = state.players[visit.playerId];
+        if (player) {
+          player.hand.push(step.cardId);
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} takes ${cardLibrary[step.cardId]?.name ?? step.cardId} from the Witch Hut.`,
+            visit.playerId
+          );
+        }
+        break;
+      }
+      case "WITCH_HUT_DISCARD": {
+        // Declined: the card goes to the SHARED Ability deck's discard pile —
+        // never into the player's own deck or discard.
+        state.decks.abilities?.discardPile.push(step.cardId);
+        eventNote(
+          state,
+          `${eventPlayerName(state, visit.playerId)} puts ${cardLibrary[step.cardId]?.name ?? step.cardId} into the Ability discard pile.`,
+          visit.playerId
+        );
         break;
       }
       case "DIG_ARTIFACT_KEEP": {
