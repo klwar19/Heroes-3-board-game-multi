@@ -1983,14 +1983,17 @@ interaction pipeline; every wave-2 kind is a PURE REUSE of the existing
 Trading-Post/War-Machine shop, `song_bac_quan` a `PAY_TO`+`ATTACK_DIE_TABLE`
 gamble, `dai_luyen_khi`/`urahara_shop`/`onsen_ryokan` `CHOOSE_ONE` menus —
 effect-tested in `src/engine/anime-locations.test.ts`; `tran_phap_truyen_tong`
-joins the real Monolith network. **Art status is honest**: the 5 wave-1 kinds
-have real hex art on disk (512×512 webp); the other 8 art-less kinds — the 6
-wave-2 kinds AND the 2 Equipment outfitters — ship WITHOUT art (a `glyph`
-fallback for board icon mode + designer overlay), each declared in
-`FIELD_OVERRIDE_ART_PLACEHOLDERS` — the art-or-placeholder + "art wins over
-glyph" invariant is pinned in `field-overrides.test.ts`,
-`anime-field-override-board.test.tsx` and `map-designer.test.tsx`. Drop a
-`.webp` + set `image` + delete from the placeholder set to promote a kind.) On
+joins the real Monolith network. **Art status (2026-07): ALL 13 kinds ship real
+512×512 hex art** (`image` set; wave-2 kinds keep their `glyph` as a text
+fallback the UI never draws while art exists). The 5 wave-1 hexes were
+REGENERATED on-register — the earlier files were mismatched stock-like scenes
+(a reading nook, a lighthouse…), not the described locations.
+`FIELD_OVERRIDE_ART_PLACEHOLDERS` is now legitimately EMPTY; the
+art-or-placeholder + "art wins over glyph" invariant stays pinned in
+`field-overrides.test.ts`, `anime-field-override-board.test.tsx` and
+`map-designer.test.tsx` via a test-only registered art-less kind. A FUTURE
+art-less kind must be declared in the placeholder set; pipeline:
+`scripts/place-anime-assets.mjs` + `scripts/anime-art/ART-TODO.md`.) On
 tile reveal the
 override places FIRST (before Subterranean Gates → Creature Banks → teleport
 tokens), pool draws obey `fieldOverridePlacement` (random / manual /
@@ -2032,9 +2035,13 @@ Leading with what does NOT run / deliberate limits:
   defense reaction. NOT shipped: Đông Hoàng Chung (army-wide Armored) and Truyền
   Âm Ngọc Giản (remote allied-hero trade) are designed-not-shipped (await new
   arms), and the fancier halves (cleave-exhaust, spell-cancel, bronze-init aura)
-  are deferred — see `docs/anime-mod-plan.md` §5.10 V1 STATUS. Art: all 5 ship
-  WITHOUT a card face yet (route to the deck back, declared in
-  `ANIME_ARTIFACT_ART_PLACEHOLDERS`; drop a `.webp` + remove the slug to promote).
+  are deferred — see `docs/anime-mod-plan.md` §5.10 V1 STATUS. Art (2026-07):
+  all 5 ship REAL 743×1040 card faces built by
+  `scripts/build-anime-artifact-cards.mjs` (editable SVG sources under
+  `scripts/anime-art/editable/artifacts/`, ornate keyed frame + ink-wash
+  masters under `raw/artifacts/`; keep face text in lockstep with the effects).
+  `ANIME_ARTIFACT_ART_PLACEHOLDERS` is now EMPTY (a future face-less card must
+  be declared there to route to the deck back).
   No lobby UI toggles the anime modules yet — they are set via the setup
   `anime` options payload. Every OTHER `AnimeModOptions` flag (towns, neutrals,
   destiny, …) is still types + lobby state only; `docs/anime-mod-plan.md` is
@@ -2125,8 +2132,11 @@ Leading with what does NOT run / deliberate limits:
   outfitter Field Overrides; the hero board is a read-only chip display for items.
   (The other hero map actives — HERO_TRAIN / Forced March (§3.11) and the Heavenly
   Tribulation (§5.6) — DO now have a human button via the map `HeroActionsDock`;
-  only equipment purchase does not.) **Art-later** (all 6 items ship without a
-  card face — `ANIME_EQUIPMENT_ART_PLACEHOLDERS`, slot-glyph fallback); **no
+  only equipment purchase does not.) **Art (2026-07): all 6 items ship real
+  512×512 transparent icons** (`public/assets/anime/equipment/`, drawn on the
+  hero-board chip — `.hbEquipIcon`, art wins over the slot glyph;
+  `ANIME_EQUIPMENT_ART_PLACEHOLDERS` is now EMPTY, a future art-less item must
+  be declared there for the glyph fallback); **no
   designer pin for the outfitters** (pool-placed only); **combat items are the
   MAIN hero's fights only** (commander-scope; a garrison fight gets neither —
   CONTROL). What runs (6 items, each a proven-seam reuse pegged to a core
@@ -2236,11 +2246,13 @@ Leading with what does NOT run / deliberate limits:
   choices** (the destiny substrate is unshipped — those fields are kept OUT of
   the `StoryChoice` type on purpose), **no music** (the overlay reuses the
   existing `adventure/new-week` open sting only, no new sound files), **no e2e**
-  (jsdom only), and **all art is placeholdered** (nothing under
-  `public/assets/story/…` yet — every referenced sprite/background is declared
-  in `STORY_ART_PLACEHOLDERS`, `src/data/story/scenes.ts`; the overlay falls back
-  to a theme-tinted gradient / an initial-letter avatar chip, never a broken
-  `<img>`). What RUNS (each mutation-checked): the bilingual EN/VI scene data +
+  (jsdom only), and — 2026-07 — **all referenced story art now SHIPS on disk**
+  (backgrounds 16:9 + transparent sprite cutouts under `public/assets/story/…`;
+  `STORY_ART_PLACEHOLDERS` is now EMPTY — a future referenced-but-unshipped
+  asset path must be declared there so the overlay keeps its theme-tinted
+  gradient / initial-letter avatar fallback instead of a broken `<img>`; the
+  fallback path stays pinned in `story-overlay.test.tsx` via a forced-placeholder
+  mock). What RUNS (each mutation-checked): the bilingual EN/VI scene data +
   registry (`src/data/story/scenes.ts`, `scenes.test.ts` — 2 themed demo scenes,
   registry integrity + art-or-declared-placeholder invariant); the language
   preference (`src/lib/story-language.ts`, default "en", SSR-safe,
@@ -2248,7 +2260,7 @@ Leading with what does NOT run / deliberate limits:
   (`src/components/table/story-overlay.tsx`, `story-overlay.test.tsx` — typewriter
   complete-then-advance on click/Space, Skip, history log, EN/VI toggle,
   `nextSceneId` choice chaining in-session, `onDone` at the true end, the
-  package theme class `.xianxiaTheme`/`.isekaiTheme` stamped on the component
+  package theme class `.xianxiaTheme`/`.isekaiTheme`/`.classicTheme` stamped on the component
   ROOT per §3.6 — never the table root); and ONE trigger path — the map-designer
   timed event `{ kind: "story", sceneId }` (`CustomMapPreset.timedEvents` union
   in `state.ts`; sanitized in `map-preset.ts` — unknown `sceneId` dropped;
@@ -2259,33 +2271,51 @@ Leading with what does NOT run / deliberate limits:
   ONCE per event id and never on reconnect (the exact MapEventOverlay seen-set /
   prime semantics); story events are table-wide, so eliminated-seat skipping is a
   verified no-op for them.
-- **Also shipped: the STORY-MODE campaign hub + Chapter 1 of BOTH campaigns**
-  (§12 / §3.3 — the campaign shell around the story system above). Client
-  presentation + localStorage around the existing `sp-` room flow, PLUS the setup
-  injection below (one small engine change: `buildAdventureFromLobby` now carries
-  the lobby's `anime` + `fieldOverrides` into the built game). Leading with what
-  does NOT run: **only Chapter 1 of each campaign is PLAYABLE** (chapters 2–7 are
-  DATA — `playable:false`, no `setup`, empty `scenes` — rendering "in development"
-  once the unlock chain reaches them); **protagonists are PRESENTATION** (Chen Fan
-  / Bin live only in the scenes — the playable seat uses a CORE faction stand-in:
-  **Jianghu ch-1 = Rampart, Bin ch-1 = Tower**, anime towns are unshipped);
-  **`mapPresetId` is unused** (standard map generation in V1); and **no
-  routes/karma/cheat picks/quest-log** (§13 deferred, campaign-only). Only shipped
-  anime flags may be set true on a playable chapter (allowlist
-  `{enabled, cultivation, xianxiaArtifacts}` + the global `fieldOverrides` toggle)
-  — a dead flag fails `campaigns.test.ts`. What RUNS (each mutation-checked): the
-  campaign registry (`src/data/story/campaigns.ts` — both campaigns, 7 bilingual
-  chapters each, `chapterRoomOptions`; `campaigns.test.ts`), the ch-1
-  intro/victory/defeat scenes added to `scenes.ts` (`scenes.test.ts`), the
-  progress store (`src/lib/campaign-progress.ts` — per-campaign completion +
-  unlock chain, per-room binding + intro/outcome/**setupApplied** markers,
-  SSR-safe; `campaign-progress.test.ts`), the PURE triggers in
+- **Also shipped: the STORY-MODE campaign hub + Chapter 1 of FOUR campaigns**
+  (§12 / §3.3 — the campaign shell around the story system above): the Jianghu
+  Chronicle (xianxia), Bin's Otherworld Chronicle (isekai), **Restoration of
+  Erathia** (the CLASSIC board-game campaign — `theme: "classic"`, painted
+  late-90s chrome, NO anime modules; protagonist Queen Catherine, stand-in
+  Castle) and **The Grand Convergence** (the EVERYTHING-TOGETHER crossover: its
+  ch-1 injects ALL shipped anime modules + Field Overrides + **WOG
+  `{enabled, commanders}`** + **`houseRules: {"polish-unit-stacks": true}`** on
+  one map — `CampaignChapterSetup` gained optional `wog` (resolved against
+  `DEFAULT_WOG_OPTIONS` to the full record `GameSetupOptions.wog` wants) +
+  `houseRules` passthroughs, folded into the `SET_GAME_OPTIONS` injection).
+  Client presentation + localStorage around the existing `sp-` room flow, PLUS
+  the setup injection below (one small engine change: `buildAdventureFromLobby`
+  now carries the lobby's `anime` + `fieldOverrides` into the built game).
+  Leading with what does NOT run: **only Chapter 1 of each campaign is
+  PLAYABLE** (chapters 2–7 are DATA — `playable:false`, no `setup`, empty
+  `scenes` — rendering "in development" once the unlock chain reaches them);
+  **protagonists are PRESENTATION** (the playable seat uses a CORE faction
+  stand-in: **Jianghu ch-1 = Rampart, Bin ch-1 = Tower, Erathia ch-1 = Castle,
+  Convergence ch-1 = Rampart**, anime towns are unshipped); **`mapPresetId` is
+  unused** (standard map generation in V1); and **no routes/karma/cheat
+  picks/quest-log** (§13 deferred, campaign-only). Only shipped anime flags may
+  be set true on a playable chapter (allowlist `{enabled, cultivation,
+  xianxiaArtifacts, heroGrades, equipment}` + the global `fieldOverrides`
+  toggle) — a dead flag fails `campaigns.test.ts`. Every campaign carries
+  codex-generated banner `cover` art (`public/assets/story/covers/<id>.webp`,
+  drawn on the /story card, on-disk-pinned in `campaigns.test.ts`). What RUNS
+  (each mutation-checked): the campaign registry (`src/data/story/campaigns.ts`
+  — four campaigns, 7 bilingual chapters each, `chapterRoomOptions`;
+  `campaigns.test.ts`), the ch-1 intro/victory/defeat scenes in `scenes.ts`
+  (`scenes.test.ts`; Erathia scenes use the `classic` theme + the
+  catherine/kendal sprites + erathia-shore background, Convergence reuses the
+  xianxia assets), the progress store (`src/lib/campaign-progress.ts` —
+  per-campaign completion + unlock chain, per-room binding +
+  intro/outcome/**setupApplied** markers, SSR-safe;
+  `campaign-progress.test.ts`), the PURE triggers in
   `src/lib/campaign-triggers.ts` — `campaignSceneToFire` (state+binding+markers →
   scene, UNBOUND-room CONTROL) AND `campaignSetupActions` (chapter →
   `SET_GAME_OPTIONS` + `CHOOSE_FACTION`, LOCKED-chapter CONTROL;
   `campaign-triggers.test.ts`), the `/story` route (theme-scoped campaign cards +
-  EN/VI toggle + Begin flow; `src/app/story/page.test.tsx`), the menu entry
-  (`menu/page.test.tsx`), and the thin table wiring in `page.tsx` (a bound room
+  EN/VI toggle + Begin flow; `src/app/story/page.test.tsx`), the **Story-mode
+  entry on `/single-player`** (moved OFF the main menu 2026-07 per user request;
+  a Homm3BG spell icon — `/assets/spell-icons/teleport.png` — marks it;
+  `single-player/page.test.tsx` + the menu ABSENCE pinned in
+  `menu/page.test.tsx`), and the thin table wiring in `page.tsx` (a bound room
   pops intro/outro through the EXISTING `storyCue`/`StoryOverlay` pipeline once per
   room; a game-over win calls `markChapterCompleted`).
 - **SETUP INJECTION — a chapter's config is now APPLIED (was carried-only).**

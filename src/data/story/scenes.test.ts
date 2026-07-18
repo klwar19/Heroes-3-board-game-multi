@@ -97,7 +97,8 @@ describe("story scene registry", () => {
   });
 
   it("the placeholder registry names only real, referenced, on-disk-LESS assets", () => {
-    expect(STORY_ART_PLACEHOLDERS.size).toBeGreaterThan(0);
+    // 2026-07: all referenced story art ships on disk, so the registry is
+    // legitimately EMPTY — the loop still guards any future declaration.
     const referenced = new Set(referencedStoryAssets());
     for (const asset of STORY_ART_PLACEHOLDERS) {
       expect(referenced.has(asset), `placeholder "${asset}" is referenced by no scene`).toBe(true);

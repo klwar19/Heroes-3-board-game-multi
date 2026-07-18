@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { HexMapBoard } from "./screen";
 import { instantiateTile } from "@/engine/adventure";
 import { carveFieldOverride } from "@/engine/field-overrides";
-import { fieldOverrideGlyph } from "@/data/map/field-overrides";
+import { fieldOverrideGlyph, registerFieldOverrideDefinitions } from "@/data/map/field-overrides";
 import {
   applyAction,
   createAdventureGameState,
@@ -19,11 +19,24 @@ afterEach(cleanup);
 
 /**
  * The live map board must show SOMETHING for a Field Override kind that has no
- * hex art yet (wave-2 kinds ship art-less with a `glyph` fallback). In icon
- * mode the existing hexGlyph path draws that glyph — so an art-less carve is a
- * visible hex, never a blank field. Art-backed kinds (wave 1) draw their image
- * instead (art wins), which is the CONTROL.
+ * hex art. Every SHIPPED kind now has art (2026-07), so the art-less fallback
+ * path is pinned via a TEST-ONLY registered kind: in icon mode the hexGlyph
+ * path draws its `glyph`, so an art-less carve is a visible hex, never a blank
+ * field. Art-backed kinds draw their image instead (art wins) — the CONTROL.
  */
+registerFieldOverrideDefinitions({
+  test_glyph_kind: {
+    id: "test_glyph_kind",
+    locationId: "anime.test_glyph_kind",
+    name: "Test Glyph Kind",
+    package: "anime-xianxia",
+    tileGroups: ["far"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Test-only art-less kind pinning the glyph fallback.",
+    glyph: "🧪"
+  }
+});
 
 function adv(state: GameState) {
   if (!state.adventure) {
@@ -74,9 +87,9 @@ function toggleArtOff(container: HTMLElement): void {
 }
 
 describe("live map board — art-less Field Override kinds fall back to a glyph", () => {
-  it("draws the Gambling Den's glyph on the map when it has no art yet", () => {
-    const { state } = boardWithCarve("song_bac_quan");
-    const expectedGlyph = fieldOverrideGlyph("anime.song_bac_quan");
+  it("draws an art-less kind's glyph on the map (test-only registered kind)", () => {
+    const { state } = boardWithCarve("test_glyph_kind");
+    const expectedGlyph = fieldOverrideGlyph("anime.test_glyph_kind");
     expect(expectedGlyph, "the art-less kind exposes a glyph").toBeTruthy();
 
     const container = renderBoard(state);

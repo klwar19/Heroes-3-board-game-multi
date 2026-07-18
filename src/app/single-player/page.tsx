@@ -1,9 +1,11 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
+import { assetUrl } from "@/lib/asset-url";
 import { createSinglePlayerRoom } from "@/lib/realtime";
 
 /**
@@ -76,6 +78,19 @@ export default function SinglePlayerPage() {
             <small>Pick your faction and hero on the next screen, then start</small>
           </span>
         </button>
+        <Link className="menuNavButton" href="/story">
+          <img
+            alt=""
+            aria-hidden="true"
+            className="spNavSpellIcon"
+            draggable={false}
+            src={assetUrl("/assets/spell-icons/teleport.png")}
+          />
+          <span className="menuNavText">
+            <span className="menuNavLabel">Story mode</span>
+            <small>Solo campaigns — Wuxia, Isekai, the classic chronicle and the Grand Convergence</small>
+          </span>
+        </Link>
         <Link className="menuNavButton" href="/menu">
           <span className="menuNavText">
             <span className="menuNavLabel">Back</span>

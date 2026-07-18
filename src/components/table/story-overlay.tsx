@@ -234,7 +234,14 @@ export function StoryOverlay({ cue, onDone }: { cue: StoryCue; onDone: () => voi
   const fullText = currentLine ? pick(currentLine.text, language) : "";
   const shownText = machine.completed ? fullText : fullText.slice(0, revealed);
   const speakerName = currentLine ? storySpeakerName(currentLine.speaker, language) : null;
-  const themeClass = scene.theme === "xianxia" ? "xianxiaTheme" : scene.theme === "isekai" ? "isekaiTheme" : "";
+  const themeClass =
+    scene.theme === "xianxia"
+      ? "xianxiaTheme"
+      : scene.theme === "isekai"
+        ? "isekaiTheme"
+        : scene.theme === "classic"
+          ? "classicTheme"
+          : "";
 
   // Sprite slots — carry forward the last sprite seen on each side up to the
   // current line; the active side (the current speaker) is highlighted.

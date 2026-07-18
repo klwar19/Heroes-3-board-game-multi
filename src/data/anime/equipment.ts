@@ -20,14 +20,12 @@
  *   • +1 hand limit                  → Pandora / Cultivation Foundation / grade
  *   • +1 building materials income   → Inexhaustible Cart of Ore / Pháp Bảo
  *
- * ART: none of these ship with a face yet. Each is declared in
- * `ANIME_EQUIPMENT_ART_PLACEHOLDERS`; the UI renders a slot glyph / initial
- * fallback until a real `.webp` lands under
- * `public/assets/anime/equipment/<slug>.webp` (drop the file, remove the id).
- * Art convention (the promote target): a square ITEM ICON, 512×512 webp,
- * transparent or subtle-frame background — a hero-board chip scale, register per
- * `package` (ink-wash xianxia vs anime-painterly isekai). The full art-TODO shop
- * list is `scripts/anime-art/ART-TODO.md`.
+ * ART: all 6 items ship real icons (2026-07) — square 512×512 webp, transparent
+ * chroma-keyed background, register per `package` (ink-wash xianxia vs
+ * anime-painterly isekai), under `public/assets/anime/equipment/<slug>.webp`.
+ * A future art-less item must be declared in `ANIME_EQUIPMENT_ART_PLACEHOLDERS`
+ * (slot-glyph fallback). Pipeline: `scripts/place-anime-assets.mjs`; shopping
+ * list history: `scripts/anime-art/ART-TODO.md`.
  */
 
 import type { AnimeEquipmentSlot } from "@/engine/state";
@@ -125,12 +123,9 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
  * and remove the id here (the UI then draws it instead of the glyph fallback).
  */
 export const ANIME_EQUIPMENT_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
-  EQUIPMENT_IDS.ironBloodSword,
-  EQUIPMENT_IDS.blackTortoiseMail,
-  EQUIPMENT_IDS.cosmosPendant,
-  EQUIPMENT_IDS.adventurersBlade,
-  EQUIPMENT_IDS.guildIssueMail,
-  EQUIPMENT_IDS.supplySatchel
+  // 2026-07: EMPTY — all 6 items ship real 512×512 transparent icons under
+  // public/assets/anime/equipment/. A FUTURE art-less item must be declared
+  // here (the UI then falls back to its slot glyph).
 ]);
 
 /** Slot → emoji glyph (UI fallback while items have no art). */
