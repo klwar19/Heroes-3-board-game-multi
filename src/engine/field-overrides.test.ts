@@ -184,6 +184,14 @@ describe("Anime content package registration", () => {
       expect(def, `placeholder "${id}" is not a registered kind`).toBeTruthy();
       expect(def?.image, `placeholder "${id}" actually has art — remove it from the registry`).toBeFalsy();
       expect(def?.implementationStatus, id).toBe("implemented");
+      // Promote-flow direction (a): dropping the .webp is HALF the promote — the
+      // registry entry must go too. A placeholder that already has a file on disk
+      // (even before its `image` is wired) is a stale registry, so it must fail.
+      const artOnDisk = resolve(process.cwd(), `public/assets/anime/field-overrides/${id}.webp`);
+      expect(
+        existsSync(artOnDisk),
+        `placeholder "${id}" already has a hex-art file on disk — set image: art("${id}") and remove it from FIELD_OVERRIDE_ART_PLACEHOLDERS`
+      ).toBe(false);
     }
   });
 

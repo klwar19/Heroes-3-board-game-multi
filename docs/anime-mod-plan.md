@@ -1,13 +1,39 @@
 # Anime mod — ONE mod, two theme packages: **Ninefold Realms** (xianxia) × **Otherworld Gate** (isekai) — design + implementation plan
 
-> **STATUS: ART FOUNDATION + FIELD-OVERRIDE SPINE IN PROGRESS — MOST GAMEPLAY
-> IS NOT IMPLEMENTED.** Editable Fuyuki City and Azure Breeze unit-card art
-> proofs exist under `scripts/anime-art/` (outside `public/assets`, not
-> playable). The **Field Override** system (§3.10 / §9b) and the first
-> Ninefold single-hex locations (§5.8) are the first engine slices. Every
-> other mechanic below is still a *proposal*, engine-shaped against the
-> codebase. Per CLAUDE.md, nothing may be called "done" until it is
-> engine-enforced AND covered by a test that fails when the logic is removed.
+> **STATUS (updated 2026-07-18): the mod SPINE + a first wave of gameplay
+> systems are SHIPPED — engine-wired and covered by tests that fail if the
+> logic is removed. Much of the ROSTER/CONTENT below is still a *proposal*.**
+>
+> **Shipped (default OFF, byte-identical when off; each with mode-off CONTROLs;
+> the machine-truth is the code/tests, this list is the map):**
+> - **Field Override system** (§3.10 / §9b) + **13 Ninefold single-hex
+>   locations** (§5.5 / §5.8) — global mechanism, `GameSetupOptions.fieldOverrides`.
+> - **Pháp Bảo artifacts** — 5 original cards, `anime.xianxiaArtifacts` (§5.10 / P0c).
+> - **Cultivation & Heavenly Tribulation** — `anime.cultivation` (§5.6).
+> - **Hero Grades** (Merit ladder + passive/skill tree) — `anime.heroGrades` (§3.11).
+> - **Equipment** (always-on hero items + outfitter hexes) — `anime.equipment` (§3.13).
+> - **Forced Battle Events** (scripted NEUTRAL combats, core mechanism) — §3.12.
+> - **Visual-novel Story system** (§11) + **campaign hub & Chapter 1 of BOTH
+>   campaigns** with live setup-injection (§12).
+> - **Cross-mod coexistence gates** (§3.8) — base + WOG + Polish + both anime
+>   packages thread into ONE game (all-on soak green).
+>
+> See `docs/anime-mod-session-2026-07.md` for the shipped-systems table + the
+> art-TODO pointer, and CLAUDE.md's "Field Overrides & multi-pin tiles" section
+> for the per-system what-runs-vs-limits detail.
+>
+> **Still PROPOSAL (engine-shaped in this doc, NOT implemented):** the anime
+> TOWNS and their units/heroes/commanders (Fuyuki City P1, Azure Breeze P6,
+> Hidden Leaf P9, Blood Demon Cult P10, Azur Lane P16), isekai + xianxia
+> NEUTRALS and banks (P2 / P7), the Adventurers' Guild + quest vocabulary (P3),
+> Calamity Waves (P4), Raid Bosses (P5), Traps + Quest Guards (P8), the Dungeon
+> (P12), Elixir Pills + Secret Realms (P7), the destiny/karma substrate + titles
+> + Gods (P11), and campaign chapters 2–7 (P13–P15). The editable Fuyuki City /
+> Azure Breeze unit-card ART proofs remain art-only under `scripts/anime-art/`
+> (outside `public/assets`, not playable).
+>
+> Per CLAUDE.md, nothing is "done" until it is engine-enforced AND covered by a
+> test that fails when the logic is removed.
 >
 > **This document MERGES two formerly separate plans into one mod** (per the
 > user's direction: "make them part of a whole mod … can select either, and
@@ -2337,10 +2363,22 @@ systems first — they are the new ask — with the xianxia towns folded in from
 P6). The two tracks only depend on the P0 spine and their own rows, so the
 user can reorder tracks without re-planning (§22 Q2).
 
+> **SHIPPED AHEAD OF PHASE ORDER (2026-07 session).** The default table order
+> below is unchanged, but several systems were pulled forward and shipped early
+> (each engine-wired + mutation-tested, cross-referenced in
+> `docs/anime-mod-session-2026-07.md`): **P0b** Field Override spine + Ninefold
+> locations, **P0c** Pháp Bảo artifacts, plus the new SHARED systems added
+> mid-session — **Hero Grades** (§3.11), **Forced Battle Events** (§3.12),
+> **Equipment** (§3.13) — and, ahead of their divinity-layer/story phases,
+> **Cultivation & Tribulation** (§5.6, part of the P11 divinity layer), the
+> **Story system** (§11) and the **campaign hub + Chapter 1** (§12, the P13
+> row's presentation half). Their P11/P13 rows still list the REMAINING work
+> (destiny substrate, Gods, chapters 2–7, the cheat shell).
+
 | Phase | Ships | Gate (beyond green lint/typecheck/test) |
 | --- | --- | --- |
 | **P0** | Spine: `AnimeModOptions`, crest + package quick-selects, `.animeMode` scaffold + both term dictionaries, art scaffolding (style bible, prompt sheets, shared compositor), CLAUDE.md section stub | §3.8(a) master CONTROL; quick-select = exact module groups; crest e2e |
-| **P0b** | **Field Override spine** (§3.10 / §9b): types, catalog, `carveFieldOverride`, setup pin + pending reveal (random/manual/manual-or-refuse), lobby placement mode, designer **Mod panel** (palette + face-down pin), Ninefold V1 locations (§5.8 table) with effect-level tests | module-off CONTROL; designer pin round-trip; each location visit outcome + guard fight for Bí Cảnh; AI answers placement window; bank/token coexistence |
+| **P0b** — SHIPPED | **Field Override spine** (§3.10 / §9b): types, catalog, `carveFieldOverride`, setup pin + pending reveal (random/manual/manual-or-refuse), lobby placement mode, designer **Mod panel** (palette + face-down pin), Ninefold V1 locations (§5.8 table) with effect-level tests | module-off CONTROL; designer pin round-trip; each location visit outcome + guard fight for Bí Cảnh; AI answers placement window; bank/token coexistence — done |
 | **P0c** — SHIPPED | **Pháp Bảo** artifacts that REUSE existing arms (Cosmic Bag, Spirit Gathering Board, Wind & Fire Wheels movement, Heaven-Slaying Attack stat, Bagua Mirror defense) — 5 cards, `src/data/anime/artifacts.ts`; the Eastern Bell (army Armored) + Sound Transmission Jade (remote trade) remain DESIGNED-not-shipped (see §5.10 V1 STATUS). Deferred fancy halves (cleave-exhaust, spell-cancel, bronze aura) not printed. | deck-join on/off + income riders with CONTROLs — done (`anime-artifacts.test.ts`) |
 | **P0d** | **Tâm Ma** token arm + one producer stub; **Heavenly Tribulation** spell; remaining artifact combat arms + Đoạt Xá | token roll outcomes; spell area + survivor buff; possession fizzle CONTROL |
 | **P1** | **Fuyuki City** complete (units/buildings/heroes incl. **Bin**/commander **Ruler (Jeanne)**/tile/board/art) + Summoning Circle + its SHARED/NEW arms | content test; commander bijection updated with a `wog.commanders`-on seat; SP soak with a Fuyuki AI seat |
