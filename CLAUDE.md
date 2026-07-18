@@ -2776,6 +2776,64 @@ Three engine-enforced additions; each fails a named test if its wiring is remove
   an end-to-end test proving the guard lands on the CELL the player picked), the
   composition in `adventure.test.ts`, and the board wiring in `board.test.tsx`.
 
+## Manual guard relocation, first-round Mulligan, Wait/Defend queue, altered-guard warning — what runs
+
+Four additions; each engine rule fails a named test if its wiring is removed.
+
+- **Manual guard control now RELOCATES the guards pre-battle**
+  (`GameSetupOptions.manualGuardControl`, default OFF). On top of the existing
+  mid-combat command, the FIGHTER now first gets the pre-battle formation-SORT
+  window (the same `pendingNeutralPlacement` machinery PvP Neutral Control uses):
+  `openNeutralPlacementWindow` opens for `neutralCombatControllerId` (pvp ??
+  manual), so the fighter may move/swap the revealed guards within the defender's
+  two rows, or "Let the AI place them" (`AUTO_NEUTRAL_PLACEMENT` — resets to the
+  rulebook `placeNeutralUnits` auto-placement, window stays open). ONE new rule:
+  a SHOOTER (ranged unit) is restricted to `DEFENDER_BACKLINE` — `placeNeutralGuard`
+  and `addNeutralPlacementActions` gate the move AND the swap partner through
+  `neutralFormationCellsForGuard` (manual-only via `neutralPlacementIsManual`, i.e.
+  the controller IS the fighter — a PvP opponent keeps ANY defender-row cell and
+  gets no auto-reset). The board drag narrows the drop highlights to a dragged
+  shooter's back-row cells (`onDragStart`/`onDragEnd` added to `beginUnitPointerDrag`).
+  Computer fighters never open the window (`manualGuardControllerId` returns null).
+  Pinned in `manual-guard-control.test.ts` (open/shooter/swap/auto-reset, each with
+  a CONTROL) and `pvp-neutral-control.test.ts` (the PvP-side CONTROLs: no shooter
+  restriction, no AI-reset offer).
+- **First-round starting-hand Mulligan** (`GameSetupOptions.startingHandMulligan`,
+  default OFF; frozen onto `adventure.startingHandMulligan`). In ROUND 1 only,
+  AFTER the mandatory start-of-turn draw, a player may replace up to
+  `FIRST_ROUND_MULLIGAN_LIMIT` (4) hand cards — one at a time (`MULLIGAN_CARD`:
+  discard one card to the BOTTOM of your own deck, draw one) — until the per-turn
+  budget (`player.firstRoundMulligansLeft`, seeded in `finalizeStartOfTurnHand`)
+  runs out. `canMulliganStartingHand` gates the offer (only after the mandatory
+  draw, round 1, budget left; computer seats keep their dealt hand). UI: a lobby
+  toggle, a per-card "Replace this card (N left)" menu button and a hand-step
+  hint; `HAND_MULLIGAN` feed line. Pinned in `starting-hand-mulligan.test.ts`
+  (replace-up-to-4-then-stop, with mode-off / round-2 / pre-draw CONTROLs).
+- **Wait/Defend combat-queue markers (Polish Wait presentation).** The initiative
+  rail (`getActivationOrder`) now RE-QUEUES a Waited unit at the TAIL of the round
+  (highest wait token first) instead of stranding it in the greyed "done" bucket —
+  so the queue shows waited units re-activating last, like the PC game. DISPLAY
+  ONLY (the engine order via `getActivationStep` is unchanged; byte-identical when
+  nothing waited). The rail marks a Waited card with an hourglass (+ wait token, un-
+  greyed with an amber ring) and a Defending card with a shield; the board unit
+  card gains an hourglass "Wait" badge. Pinned in `combat-activation-order.test.ts`
+  (the tail re-queue, highest-token-first, with an unwaited CONTROL),
+  `initiative-rail.test.tsx` and `board.test.tsx`.
+- **Designer altered-guard: shown on the map + a pre-attack warning.** A field
+  whose neutral guard was set by the MAP DESIGNER (a custom army, a custom level,
+  or a map-wide settlement/obelisk guard) now carries `field.designedGuard` (set by
+  `applyCustomGuardToField` + the center-hex stamp, cleared with the guard; a
+  printed guard is NEVER flagged). `designedGuardPreview(field)` returns the exact
+  army (custom units) or just the Field-Difficulty level (a level/settlement army
+  is drawn at fight time). The map hex gets an amber outline + a gear marker and a
+  tooltip listing the army; the move-confirm float warns with the army and its
+  button becomes "Attack" (Cancel backs out with no move) for an altered fight
+  only. LIMIT: the warning rides the deliberate map-move confirm — a teleport
+  (Dimension Door) onto an altered field is not gated. Pinned in
+  `designed-guard-preview.test.ts` (marker + preview, printed-guard CONTROL),
+  `obelisk-roles.test.ts` (settlement integration) and `map-floats-board.test.tsx`
+  (the map marker + the warn/Attack float, with a printed-guard CONTROL).
+
 ## Combat draw-only abilities, Knowledge recall & value-based Power costs (BINH house rules) — what runs
 
 Five additions; each engine rule fails a named test if its wiring is removed.
