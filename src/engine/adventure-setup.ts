@@ -160,6 +160,7 @@ import {
   assignPoolFieldOverrides,
   customMapHasAnimeFieldOverridePins,
   customMapHasFieldOverridePins,
+  customMapHasWogFieldOverridePins,
   resolveFieldOverridePlacement,
   resolveFieldOverridesEnabled
 } from "./field-overrides";
@@ -2055,9 +2056,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const spellBookOn = polishSpellBookOn
     ? false
     : setupOptions.spellBook ?? setupOptions.ruleset === "binh";
-  const wog: WogModOptions = ruleset === "binh"
+  let wog: WogModOptions = ruleset === "binh"
     ? { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog }
     : { ...DEFAULT_WOG_OPTIONS, ...setupOptions.wog, enabled: false };
+  // Designer pins of wog-package Field Overrides auto-enable the Wake of Gods
+  // `newObjects` module (content package) at map setup — mirrors the Anime pins
+  // below; the override *mechanism* itself is global. WoG content requires BINH.
+  if (customMapHasWogFieldOverridePins(setupOptions.customMap) && ruleset === "binh") {
+    wog = { ...wog, enabled: true, newObjects: true };
+  }
   // Designer pins of anime-package Field Overrides auto-enable the Anime mod
   // (content package) at map setup — the override *mechanism* is global.
   const animePinsOnMap = customMapHasAnimeFieldOverridePins(setupOptions.customMap);
@@ -3228,6 +3235,20 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
         state.ruleset = "binh";
       }
     }
+    // Wog-package pins auto-enable the Wake of Gods newObjects module (content).
+    if (customMapHasWogFieldOverridePins(lobby.options.customMap)) {
+      lobby.options.wog = {
+        ...DEFAULT_WOG_OPTIONS,
+        ...lobby.options.wog,
+        enabled: true,
+        newObjects: true
+      };
+      state.wog = lobby.options.wog;
+      if (lobby.options.ruleset !== "binh") {
+        lobby.options.ruleset = "binh";
+        state.ruleset = "binh";
+      }
+    }
     changes.push(
       `Field Overrides ${lobby.options.fieldOverrides ? "on" : "off"} (${lobby.options.fieldOverridePlacement ?? "manual-or-refuse"})`
     );
@@ -3592,6 +3613,21 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
           changes.push("game mode House rules BINH (Anime override objects on map)");
         }
         changes.push("Anime mod on (map has Anime Field Override objects)");
+      }
+      if (customMapHasWogFieldOverridePins(accepted)) {
+        lobby.options.wog = {
+          ...DEFAULT_WOG_OPTIONS,
+          ...lobby.options.wog,
+          enabled: true,
+          newObjects: true
+        };
+        state.wog = lobby.options.wog;
+        if (lobby.options.ruleset !== "binh") {
+          lobby.options.ruleset = "binh";
+          state.ruleset = "binh";
+          changes.push("game mode House rules BINH (WOG override objects on map)");
+        }
+        changes.push("WOG New Objects on (map has Wake of Gods Field Override objects)");
       }
       // Apply map-only conditions (resources, army, buildings, victory) when the
       // client sends a preset alongside the tile plan — restoring first anything

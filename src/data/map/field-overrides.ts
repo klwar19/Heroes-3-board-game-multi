@@ -22,10 +22,11 @@ export type FieldOverrideTileGroup =
 
 /**
  * Which content package owns this kind. `"core"` needs no mod toggle.
- * `"anime-xianxia"` / `"anime-isekai"` join the pool when the Anime mod is on
- * (and designer pins of those kinds auto-enable the mod at map setup).
+ * `"anime-xianxia"` / `"anime-isekai"` join the pool when the Anime mod is on;
+ * `"wog"` joins when the Wake of Gods `newObjects` module is on. In both cases
+ * designer pins of those kinds auto-enable the owning module at map setup.
  */
-export type FieldOverridePackage = "core" | "anime-xianxia" | "anime-isekai" | "shared";
+export type FieldOverridePackage = "core" | "anime-xianxia" | "anime-isekai" | "wog" | "shared";
 
 export type FieldOverrideDefinition = {
   id: string;
@@ -176,17 +177,21 @@ export function fieldOverrideGlyph(kindOrLocationId: string): string | undefined
 
 /**
  * Whether a package is available given active mods.
- * Core/shared always; anime packages need anime.enabled.
+ * Core/shared always; anime packages need anime.enabled; the wog package needs
+ * the Wake of Gods `newObjects` module (`wog.enabled && wog.newObjects`).
  */
 export function fieldOverridePackageAllowed(
   pkg: FieldOverridePackage,
-  mods: { animeEnabled?: boolean }
+  mods: { animeEnabled?: boolean; wogNewObjects?: boolean }
 ): boolean {
   if (pkg === "core" || pkg === "shared") {
     return true;
   }
   if (pkg === "anime-xianxia" || pkg === "anime-isekai") {
     return Boolean(mods.animeEnabled);
+  }
+  if (pkg === "wog") {
+    return Boolean(mods.wogNewObjects);
   }
   return false;
 }
@@ -195,6 +200,11 @@ export function fieldOverridePackageAllowed(
 export function fieldOverrideKindRequiresAnime(kind: string): boolean {
   const def = REGISTRY[kind];
   return def?.package === "anime-xianxia" || def?.package === "anime-isekai";
+}
+
+/** True when this kind belongs to the Wake of Gods (`wog.newObjects`) package. */
+export function fieldOverrideKindRequiresWog(kind: string): boolean {
+  return REGISTRY[kind]?.package === "wog";
 }
 
 /** Scan tile plans for any field-override pin (enables the global feature). */
@@ -233,6 +243,28 @@ export function customMapHasAnimeFieldOverridePins(
       }
       return Boolean(
         plan.fieldOverrides?.some((o) => o?.kind && fieldOverrideKindRequiresAnime(o.kind))
+      );
+    })
+  );
+}
+
+/** Scan tile plans for wog-package override pins (auto-enable `wog.newObjects`). */
+export function customMapHasWogFieldOverridePins(
+  plans:
+    | ReadonlyArray<{
+        fieldOverride?: { kind: string } | null | undefined;
+        fieldOverrides?: Array<{ kind: string } | null | undefined> | null | undefined;
+      }>
+    | null
+    | undefined
+): boolean {
+  return Boolean(
+    plans?.some((plan) => {
+      if (plan.fieldOverride?.kind && fieldOverrideKindRequiresWog(plan.fieldOverride.kind)) {
+        return true;
+      }
+      return Boolean(
+        plan.fieldOverrides?.some((o) => o?.kind && fieldOverrideKindRequiresWog(o.kind))
       );
     })
   );

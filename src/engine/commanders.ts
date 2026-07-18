@@ -55,6 +55,11 @@ export function commandersModuleEnabled(state: GameState): boolean {
   return Boolean(state.wog?.enabled && state.wog.commanders);
 }
 
+/** Whether this game runs the WOG New Objects module (`wog.newObjects`). */
+export function wogNewObjectsEnabled(state: Pick<GameState, "wog">): boolean {
+  return Boolean(state.wog?.enabled && state.wog.newObjects);
+}
+
 export function commanderSlugForFaction(factionId: string | undefined): CommanderSlug | null {
   return factionId ? (COMMANDER_SLUG_BY_FACTION[factionId] ?? null) : null;
 }

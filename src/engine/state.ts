@@ -7930,6 +7930,28 @@ export type VisitStep =
   | { type: "PAY_TO"; prompt: string; costOptions: ResourceCost[]; steps: VisitStep[] }
   | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }
   | { type: "GAIN_EXPERIENCE"; amount: number }
+  | {
+      /**
+       * WOG New Objects (Emerald Tower): award the visitor's commander `amount`
+       * stat point(s) — the same `commander.gradePoints` bump + COMMANDER_POINTS_
+       * AWARDED event the hero level-up uses, so the point-picker UI just works.
+       * A no-op with no commander / Commanders module off (the arm is filtered
+       * out at menu-build time, so this is only a resolution backstop).
+       */
+      type: "GAIN_COMMANDER_POINTS";
+      amount: number;
+    }
+  | {
+      /**
+       * WOG New Objects (Junk Merchant): sell the named Artifact card from the
+       * visitor's hand for `gold` (tier-priced by the menu). The card leaves the
+       * game (Trading-Post sell semantics: hand → removed pile). One arm per hand
+       * Artifact is enumerated at menu-build time, so this leaf auto-resolves.
+       */
+      type: "SELL_HAND_ARTIFACT";
+      cardId: CardId;
+      gold: number;
+    }
   | { type: "GAIN_MOVEMENT"; amount: number }
   | {
       /**

@@ -12,6 +12,8 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 // Side-effect: register Anime package kinds into the global catalog.
 import "@/data/anime/field-overrides";
+// Side-effect: register Wake of Gods (wog.newObjects) package kinds too.
+import "@/data/wog/field-overrides";
 import {
   customMapHasFieldOverridePins,
   fieldOverridePackageAllowed,
@@ -64,7 +66,9 @@ export { isFieldOverrideKind, getFieldOverrideDefinition, listFieldOverrideDefin
 export {
   customMapHasFieldOverridePins,
   customMapHasAnimeFieldOverridePins,
-  fieldOverrideKindRequiresAnime
+  customMapHasWogFieldOverridePins,
+  fieldOverrideKindRequiresAnime,
+  fieldOverrideKindRequiresWog
 } from "@/data/map/field-overrides";
 
 /** Global feature gate — frozen on adventure or live on setup options / state. */
@@ -116,12 +120,26 @@ export function fieldOverrideLabel(kind: string): string {
   return getFieldOverrideDefinition(kind)?.name ?? kind;
 }
 
-function modsFromState(state: Pick<GameState, "anime"> | { anime?: { enabled?: boolean } } | null | undefined) {
-  return { animeEnabled: animeEnabled(state as never) };
+function modsFromState(
+  state:
+    | Pick<GameState, "anime" | "wog">
+    | { anime?: { enabled?: boolean }; wog?: { enabled?: boolean; newObjects?: boolean } }
+    | null
+    | undefined
+) {
+  return {
+    animeEnabled: animeEnabled(state as never),
+    // Wake of Gods object package: gated on `wog.enabled && wog.newObjects`.
+    wogNewObjects: Boolean(state?.wog?.enabled && state.wog.newObjects)
+  };
 }
 
 function packageAllowedForState(
-  state: Pick<GameState, "anime"> | { anime?: { enabled?: boolean } } | null | undefined
+  state:
+    | Pick<GameState, "anime" | "wog">
+    | { anime?: { enabled?: boolean }; wog?: { enabled?: boolean; newObjects?: boolean } }
+    | null
+    | undefined
 ) {
   const mods = modsFromState(state);
   return (pkg: FieldOverrideDefinition["package"]) => fieldOverridePackageAllowed(pkg, mods);
