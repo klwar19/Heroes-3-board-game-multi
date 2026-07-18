@@ -2827,11 +2827,6 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       visit.steps.shift();
       break;
     }
-    case "WITCH_HUT": {
-      resolveWitchHut(state, action);
-      visit.steps.shift();
-      break;
-    }
     case "MAGIC_SPRING": {
       resolveMagicSpring(state, action);
       visit.steps.shift();
@@ -3052,42 +3047,6 @@ function resolveSettlementChoice(
     kind: "reinforce",
     cost
   });
-}
-
-function resolveWitchHut(state: GameState, action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>): void {
-  const player = state.players[action.playerId];
-  const deck = state.decks.abilities;
-  if (!player || !deck) {
-    throw new Error("The Witch Hut cannot resolve.");
-  }
-
-  if (action.decline) {
-    return;
-  }
-
-  // Take-the-top obeys the acquisition rules: redraw past any card this hero may
-  // not take (a duplicate it owns, or Necromancy for a non-Necropolis hero),
-  // dropping each onto the deck discard, so a duplicate is never gained.
-  if (action.optionIndex !== 1) {
-    while (
-      deck.drawPile.length > 0 &&
-      !canAcquireSharedDeckCard(state, action.playerId, "abilities", deck.drawPile[deck.drawPile.length - 1])
-    ) {
-      deck.discardPile.push(deck.drawPile.pop() as string);
-    }
-  }
-
-  // Option 0: take the top Ability card into hand. Option 1: discard it.
-  const top = deck.drawPile.pop();
-  if (!top) {
-    return;
-  }
-
-  if (action.optionIndex === 1) {
-    deck.discardPile.push(top);
-  } else {
-    player.hand.push(top);
-  }
 }
 
 /**
