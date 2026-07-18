@@ -194,6 +194,11 @@ import {
   markHeroSkillUsedThisRound,
   playerMainHeroInCombat
 } from "./anime-hero-grades";
+import {
+  equipmentFirstAttackBonus,
+  equipmentIncomingAttackPenalty,
+  markEquipmentAttackResolved
+} from "./anime-equipment";
 import { createSeededRandom, setActiveEntropy } from "./random";
 import {
   combatHasHumanParticipant,
@@ -3400,7 +3405,14 @@ function getAttackStackDetails(
       // script (e.g. Spirit Mist "ranged −1 Attack"). An environmental modifier,
       // added UNCLAMPED like the innate bonuses — a penalty still bites an
       // elemental unit, and a bonus is not treated as a buffable attack card.
-      combatScriptStatDelta(combat, attacker, "attack") -
+      combatScriptStatDelta(combat, attacker, "attack") +
+      // Anime Equipment (§3.13): the Iron-Blood Sword's +1 on the owner's FIRST
+      // declared attack this combat, and the Black Tortoise Mail's −1 on the
+      // FIRST declared attack against the defender's owner. Both are per-combat
+      // one-shots (unspent-charge gated, main-hero-scoped), added UNCLAMPED like
+      // the script delta; consumed when the attack lands (finishResolvedAttack).
+      equipmentFirstAttackBonus(state, attacker, isRetaliation) -
+      equipmentIncomingAttackPenalty(state, defender, isRetaliation) -
       retaliationAttackPenalty -
       // Negative Morale "-1 to your next Attack … roll": latched onto this
       // attack when its die rolled (applyMoraleAttackRollPenalty), then folded
@@ -4526,6 +4538,11 @@ function finishResolvedAttack(
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
   // Rune Keeper commander: +1 Rune the first time it is attacked this combat.
   applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
+
+  // Anime Equipment (§3.13): the attack LANDED (past the lethal-save gate) — mark
+  // the Iron-Blood Sword / Black Tortoise Mail per-combat charges spent so only
+  // this FIRST qualifying declared attack got the +1 / −1. Retaliations no-op.
+  markEquipmentAttackResolved(state, details.attacker, details.defender, details.isRetaliation);
 
   if (details.isRetaliation) {
     details.attacker.retaliatedThisRound = true;

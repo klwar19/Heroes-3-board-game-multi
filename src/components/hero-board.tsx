@@ -11,6 +11,7 @@ import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/cor
 import {
   ABILITY_SEARCH_LEVELS,
   CULTIVATION_REALMS,
+  EQUIPMENT_SLOT_GLYPH,
   EXPERT_USES_BY_LEVEL,
   HAND_LIMIT_BY_LEVEL,
   HERO_GRADE_MAX,
@@ -20,13 +21,17 @@ import {
   cultivationEnabled,
   cultivationRealmOf,
   effectiveHandLimit,
+  equipmentEnabled,
+  getEquipmentDefinition,
   getMainHero,
+  heroEquipmentOf,
   heroGradeLabel,
   heroGradeOf,
   heroGradePickableNodes,
   heroGradePointsOf,
   heroGradeProgressOf,
   heroGradesEnabled,
+  type AnimeEquipmentSlot,
   type GameAction,
   type GameState,
   type PlayerId
@@ -226,6 +231,18 @@ export function HeroBoard({
   const nextThreshold = gradeValue < HERO_GRADE_MAX ? HERO_GRADE_MERIT_THRESHOLDS[gradeValue] : null;
   const gradePoints = heroGradePointsOf(state, playerId);
   const pickableGradeNodes = heroGradePickableNodes(state, playerId);
+  // Anime Equipment (§3.13): always-on item chips (slot glyph + EN/VI name).
+  // Renders only with the module on AND something equipped (CONTROL: off = null).
+  const showEquip = equipmentEnabled(state);
+  const equippedItems = showEquip
+    ? (["weapon", "armor", "accessory"] as AnimeEquipmentSlot[])
+        .map((slot) => {
+          const id = heroEquipmentOf(state, playerId)[slot];
+          const def = id ? getEquipmentDefinition(id) : undefined;
+          return def ? { slot, def } : null;
+        })
+        .filter((entry): entry is { slot: AnimeEquipmentSlot; def: NonNullable<typeof entry>["def"] } => entry !== null)
+    : [];
 
   const stats = [
     { label: "Attack", value: heroDef.startingStats.attack, icon: <StatIcon stat="attack" /> },
@@ -410,6 +427,17 @@ export function HeroBoard({
               {gradePoints > 0 ? ` · ${gradePoints} pt` : ""}
             </span>
           ) : null}
+          {showEquip && equippedItems.length > 0
+            ? equippedItems.map(({ slot, def }) => (
+                <span
+                  className="hbEquip"
+                  key={slot}
+                  title={`Equipment (${slot}, always on): ${def.summary}`}
+                >
+                  {EQUIPMENT_SLOT_GLYPH[slot]} {def.name.en} · {def.name.vi}
+                </span>
+              ))
+            : null}
           <span>
             Hand {handLimit} · Crowns {player.limits.expertUses}
           </span>

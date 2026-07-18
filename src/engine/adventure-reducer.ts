@@ -182,6 +182,8 @@ import {
   HERO_TRAIN_MERIT,
   HERO_TRAIN_MOVEMENT_COST
 } from "./anime-hero-grades";
+import { equipmentWinGold, playerHasEquipment } from "./anime-equipment";
+import { getEquipmentDefinition } from "@/data/anime/equipment";
 import {
   consumeHeldMoraleCard,
   discardHeldMoraleCardByIndex,
@@ -2734,6 +2736,23 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       ) {
         throw new Error("Choose one of the printed options.");
       }
+      // Anime Equipment (§3.13): backstop a forged BUY_EQUIPMENT pick — reject an
+      // item the hero already owns or cannot afford (the legal-actions offer and
+      // the shop-menu build already hide both cases; this refuses a raw action).
+      const buyStep = option.steps.find((inner) => inner.type === "BUY_EQUIPMENT");
+      if (buyStep && buyStep.type === "BUY_EQUIPMENT") {
+        const def = getEquipmentDefinition(buyStep.equipmentId);
+        const buyer = state.players[action.playerId];
+        if (!def || !buyer) {
+          throw new Error("That equipment cannot be bought.");
+        }
+        if (playerHasEquipment(state, action.playerId, buyStep.equipmentId)) {
+          throw new Error("Your hero already carries that item.");
+        }
+        if (!hasResources(buyer, { gold: def.cost })) {
+          throw new Error("Not enough gold for that item.");
+        }
+      }
       visit.steps.shift();
       visit.steps.unshift(...option.steps);
       // Scholar's +1 result grants a Statistic card of the player's choice.
@@ -3545,6 +3564,10 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       // Anime Hero Grades (§3.11): the once-per-combat SKILL nodes (Battle Focus,
       // Iron Will, War Cry) refresh per COMBAT — clear the used set here.
       player.combatStats.heroSkillsUsedThisCombat = [];
+      // Anime Equipment (§3.13): the Iron-Blood Sword / Black Tortoise Mail
+      // one-shot charges refresh per COMBAT — clear the spent flags here.
+      player.combatStats.equipmentFirstAttackUsed = false;
+      player.combatStats.equipmentIncomingAttackUsed = false;
     }
   }
 
@@ -6997,6 +7020,13 @@ export function finalizeAdventureCombat(state: GameState): void {
   // unpicked, and never for a NEUTRAL "winner".
   if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && heroGradeWinGold(state, outcome.winnerPlayerId) > 0) {
     gainResources(state, outcome.winnerPlayerId, { gold: heroGradeWinGold(state, outcome.winnerPlayerId) }, "Bounty Hunter's Eye");
+  }
+
+  // Anime Equipment Adventurer's Blade (§3.13): +1 gold after each combat the
+  // player wins. A SEPARATE grant from Bounty Hunter's Eye, so a hero carrying
+  // both stacks to +2. Gated on the item; never for a NEUTRAL "winner".
+  if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && equipmentWinGold(state, outcome.winnerPlayerId) > 0) {
+    gainResources(state, outcome.winnerPlayerId, { gold: equipmentWinGold(state, outcome.winnerPlayerId) }, "Adventurer's Blade");
   }
 
   // Open the Hierophant's post-combat First Aid window (choose 1 casualty to

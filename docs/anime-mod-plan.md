@@ -611,6 +611,111 @@ location id; new effect kinds extend the `CombatScriptEffect` union with the sam
 first to add a window (and its AI scoring). The `requiresModule` field already
 generalises the gate to any `AnimeModOptions` flag.
 
+### 3.13 Equipment (shared system, `anime.equipment`) — SHIPPED (V1)
+
+Always-on hero ITEMS, distinct from Artifact cards: an item sits in one of a MAIN
+hero's three slots (**weapon / armor / accessory**) and its effect runs while
+equipped — never in hand, never cast, never discarded. SHARED by both packages
+and every hero; independent of Hero Grades (§3.11) and Cultivation (§5.6) — all
+three tracks coexist on the same hero. **Default OFF ⇒ byte-identical** (no shop
+in the pool, no state stamped, every read returns 0/false/{}). Engine: the leaf
+read-layer `src/engine/anime-equipment.ts`; data `src/data/anime/equipment.ts`;
+behaviour pinned in `src/engine/anime-equipment.test.ts` (every claim
+mutation-checked with CONTROLs), the catalog in `src/data/anime/equipment.test.ts`,
+and the hero-board chips in `src/components/hero-board.test.tsx`.
+
+**State (MAIN hero, optional/lazily-stamped, PUBLIC):** `hero.equipment?:
+Partial<Record<slot,string>>` (slot → item id); plus per-combat charge flags
+`combatStats.equipmentFirstAttackUsed` / `equipmentIncomingAttackUsed` (cleared in
+`makeCombatShell`). Absent === nothing equipped, so legacy snapshots load
+unchanged and player-view never strips it.
+
+**Slot & replace rules.** Three slots, one item each. Buying into an OCCUPIED slot
+REPLACES the previous item — the old item is gone, **no refund** (stated at the
+buy step and pinned). `equipEquipment` is the one slot mutator; it emits a public
+`EQUIPMENT_EQUIPPED` feed line (`replacedId` names the overwritten item).
+
+**V1 catalog — 6 items, every effect a proven-seam REUSE pegged to a core
+magnitude:**
+
+| Item | Slot | Pkg | Cost | Effect (exactly what runs) | Seam / peg |
+|------|------|-----|-----:|----------------------------|-----------|
+| Iron-Blood Sword (Thiết Huyết Kiếm) | weapon | xianxia | 4 | your units' FIRST declared attack each combat +1 Attack | `getAttackStackDetails` unclamped delta, beside the combat-script delta; consumed at `finishResolvedAttack` |
+| Black Tortoise Mail (Huyền Vũ Giáp) | armor | xianxia | 4 | the FIRST incoming declared attack each combat resolves at −1 Attack | same site (−1 off the attacker when the defender's owner holds the mail) |
+| Cosmos Pendant (Càn Khôn Bội) | accessory | xianxia | 5 | +1 spell Power | `standingSpellPower` chokepoint (stacks with Cultivation Nascent + Arcane Insight) |
+| Adventurer's Blade | weapon | isekai | 4 | +1 gold after each won combat | the Brute/Bounty-Hunter's-Eye win-gold hook (stacks to +2 with the grade node) |
+| Guild-Issue Mail | armor | isekai | 4 | +1 hand limit | `effectiveHandLimit` (stacks with Cultivation Foundation + Deep Pockets → +3) |
+| Supply Satchel (Túi Tiếp Tế) | accessory | shared | 5 | +1 building materials each Resources round | the `resourceRoundGain` income loop `startAdventureRound` uses |
+
+The two combat items are **main-hero-scope** (commander convention,
+`playerMainHeroInCombat`): a garrison defense / secondary-hero fight gets neither
+(CONTROL-pinned). They are per-combat one-shots — the +1 rides only the first
+qualifying DECLARED attack (never a retaliation, which neither benefits nor spends
+the charge) and is consumed when that attack LANDS (past the lethal-save gate, so
+the preview and the resolved hit agree).
+
+**Markets — two new single-hex Field Overrides.** Rèn Binh Các (Blacksmith,
+`anime-xianxia`, glyph ⚒) sells the 3 xianxia items; Adventurer Outfitter
+(`anime-isekai`, glyph 🎒) sells the 3 isekai items; BOTH sell the shared Supply
+Satchel. The shop menu is built dynamically in `beginFieldVisit`'s shop-append
+seam (the Training-Manual pattern): a `CHOOSE_ONE` with one `BUY_EQUIPMENT
+{equipmentId}` option per item the hero does NOT already own (owned ⇒ option
+absent), plus "Leave". Affordability is gold-gated like a PAY_TO — legal-actions
+skips an unaffordable buy (poor ⇒ option absent) and the reducer CHOOSE_ONE
+backstop refuses a forged one; the `BUY_EQUIPMENT` leaf deducts the gold and
+equips (replace = overwrite). Both locations carve as a NONE base (revisitable, 1
+MP) so a module-off visit opens no menu.
+
+**`requiresModule` gate (the mechanism that keeps the shops OFF when equipment is
+off).** `FieldOverrideDefinition` gained `requiresModule?: keyof AnimeModOptions`;
+the two outfitter kinds carry `requiresModule: "equipment"`.
+`listFieldOverrideDefinitions` gained a `moduleEnabled?` predicate — a kind with
+`requiresModule` is listed ONLY when the predicate allows it, and with NO predicate
+it is EXCLUDED (safe default). The live pool builds
+(`assignPoolFieldOverrides` / `ensurePoolFieldOverrideOnReveal`) pass
+`moduleEnabled: (m) => animeModuleEnabled(state, m)`, so the outfitters join the
+random pool exactly when `anime.equipment` is on and appear in NO listing
+otherwise (CONTROL-pinned). The 11 existing kinds carry no `requiresModule` and are
+unaffected (CONTROL). This same field generalises to gate any future module's
+override content.
+
+**AI.** In the visit policy (`map-policy.ts` CHOOSE_ONE branch) a `BUY_EQUIPMENT`
+option scores above the shop's Leave option ONLY into an EMPTY slot and from
+genuine surplus (`gold ≥ cost + 6`); otherwise it scores below Leave, so the seat
+buys from surplus or exits cleanly (no stall, no auto-replace, drive-tested). The
+AI never seeks the shop specifically.
+
+**UI.** The hero board renders one `.hbEquip` chip per equipped item (slot glyph +
+EN/VI name), beside the realm/grade chips; module-off renders nothing (CONTROL).
+
+**Adaptations / deliberate limits (leading with what does NOT run):**
+- **No map-action BUTTONS in this slice** — buying is only through the outfitter
+  visit; the hero board is a read-only display. (This limit also still covers
+  HERO_TRAIN / Forced March / Heavenly Tribulation — all legal actions with no
+  bespoke map button.)
+- **Art-later** — all 6 items ship WITHOUT a card face (declared in
+  `ANIME_EQUIPMENT_ART_PLACEHOLDERS`; the UI falls back to the slot glyph). Drop a
+  `.webp` under `public/assets/anime/equipment/<slug>.webp` and remove the id.
+- **No designer pin for the outfitters in V1** — they are pool-placed only (the
+  designer palette passes no `moduleEnabled` predicate, so a `requiresModule` kind
+  is hidden there). A designer surface is future data work.
+- **The Courier's-Charm → Supply-Satchel swap (documented).** The original sketch
+  had a "+1 movement point per turn" accessory (Courier's Charm), but no clean
+  once-per-turn movement-income chokepoint was established (unlike the Boots
+  family, which grants movement as a one-shot CARD, not a standing per-turn
+  drip). Rather than invent a new arm for a cosmetic item, V1 ships the Supply
+  Satchel (+1 building materials each Resources round) on the ALREADY-PROVEN
+  `resourceRoundGain` seam. A per-turn movement item is a growth item once a
+  standing movement-income arm exists.
+
+**Growth path (data-mostly):** more items are pure catalog rows on the six proven
+seams (attack/defense one-shots, spell Power, win-gold, hand limit, income);
+per-slot fancy art/fonts and a designer pin are UI/data work; a per-turn movement
+item awaits a standing movement-income arm; multi-item set bonuses would be the
+first to add a NEW read (and its test bar). Magnitudes stay on the ONE power scale
+shared with core / Hero Grades / Cultivation, so a new item never out-scales the
+existing precedents.
+
 ---
 
 ## 4. Mod plumbing (Phase 0)

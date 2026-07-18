@@ -154,9 +154,23 @@ export type AnimeModOptions = {
    * ALL heroes; independent of Cultivation. Default OFF ⇒ byte-identical.
    */
   heroGrades: boolean;
+  /**
+   * Equipment (shared spine, §3.13): always-on hero ITEMS (weapon/armor/
+   * accessory) bought at outfitter Field Overrides — distinct from Artifact
+   * cards (no hand, no cast, one per slot, replace-on-buy). Shared by BOTH
+   * packages and ALL heroes; independent of Hero Grades / Cultivation.
+   * Default OFF ⇒ byte-identical (no shops in the pool, no state stamped).
+   */
+  equipment: boolean;
   /** Calamity wave cadence when monsterWaves is on. */
   waveCadence?: 3 | 4 | 5;
 };
+
+/**
+ * Anime Equipment (§3.13): the three hero equipment slots. An item occupies one
+ * slot; buying into an occupied slot REPLACES the previous item (no refund).
+ */
+export type AnimeEquipmentSlot = "weapon" | "armor" | "accessory";
 
 /**
  * How pool-drawn Field Overrides place when a tile is revealed.
@@ -4931,6 +4945,20 @@ export type GameEvent =
       message: string;
     }
   | {
+      /**
+       * Anime Equipment (§3.13): the hero equipped an item into a slot at an
+       * outfitter shop. `replacedId` is the item overwritten (null on an empty
+       * slot). Public feed line — no hidden information.
+       */
+      id: string;
+      type: "EQUIPMENT_EQUIPPED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      equipmentId: string;
+      slot: AnimeEquipmentSlot;
+      replacedId: string | null;
+    }
+  | {
       /** Anime Hero Grades (§3.11): a "skill" node's active/reaction was used. */
       id: string;
       type: "HERO_SKILL_USED";
@@ -6484,6 +6512,19 @@ export type PlayerState = {
      * (makeCombatShell) — per COMBAT, not per round. Absent === none used.
      */
     heroSkillsUsedThisCombat?: string[];
+    /**
+     * Anime Equipment (§3.13): true once this player's Iron-Blood Sword has
+     * spent its "first declared attack +1 Attack" charge THIS COMBAT. Cleared
+     * at combat start (makeCombatShell) — per COMBAT, not per round. Absent ===
+     * not yet spent (so the first qualifying attack still gets +1).
+     */
+    equipmentFirstAttackUsed?: boolean;
+    /**
+     * Anime Equipment (§3.13): true once this player's Black Tortoise Mail has
+     * spent its "first incoming declared attack −1 Attack" charge THIS COMBAT.
+     * Cleared at combat start (makeCombatShell). Absent === not yet spent.
+     */
+    equipmentIncomingAttackUsed?: boolean;
   };
   /**
    * Mod-agnostic counter: total Creature Bank battles this player has WON.
@@ -8617,6 +8658,17 @@ export type VisitStep =
       cardId: CardId;
     }
   | {
+      /**
+       * Anime Equipment (§3.13): buy one always-on item at an outfitter Field
+       * Override. Resolving deducts the item's gold cost and sets it into the
+       * MAIN hero's matching slot, REPLACING whatever was there (no refund).
+       * Offered only for an item the hero does not already own, and only when
+       * affordable (gated in legal-actions + a reducer backstop, like PAY_TO).
+       */
+      type: "BUY_EQUIPMENT";
+      equipmentId: string;
+    }
+  | {
       /** Returns revealed cards to their shared decks (shuffle in / discard pile / deck top / deck bottom). */
       type: "EVENT_RETURN_CARDS";
       cards: { cardId: CardId; deckId: DeckId }[];
@@ -10141,6 +10193,14 @@ export type HeroState = {
    * already trained this turn. Absent === never trained.
    */
   heroTrainedRound?: number;
+  /**
+   * Anime Equipment (§3.13): the always-on items this MAIN hero has bought,
+   * keyed by slot (weapon/armor/accessory) → equipment id. Optional and lazily
+   * stamped (absent === nothing equipped), so a module-off table and every
+   * legacy snapshot never carry it. PUBLIC (player-view never strips it).
+   * Buying into an occupied slot overwrites (replace, no refund).
+   */
+  equipment?: Partial<Record<AnimeEquipmentSlot, string>>;
 };
 
 export type AttackRollCandidate = {

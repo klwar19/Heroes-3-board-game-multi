@@ -191,6 +191,42 @@ describe("HeroBoard — anime Hero Grades chip + picker (§3.11)", () => {
   });
 });
 
+describe("HeroBoard — anime Equipment chips (§3.13)", () => {
+  function equipmentAdventure(anime: Record<string, unknown> = { enabled: true, equipment: true }): GameState {
+    return createAdventureGameState({
+      seed: "hero-board-equip",
+      rollFirstPlayer: false,
+      anime,
+      players: [
+        { id: "p1", name: "chen", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+  }
+
+  it("shows a chip (slot glyph + EN/VI name) for each equipped item when the module is on", () => {
+    const state = equipmentAdventure();
+    getMainHero(state, "p1")!.equipment = {
+      weapon: "anime.equip.iron_blood_sword",
+      accessory: "anime.equip.supply_satchel"
+    };
+    const { container } = renderBoardState(state);
+    const chips = container.querySelectorAll(".hbEquip");
+    expect(chips).toHaveLength(2);
+    const text = Array.from(chips).map((chip) => chip.textContent).join(" | ");
+    expect(text).toContain("Iron-Blood Sword");
+    expect(text).toContain("Thiết Huyết Kiếm"); // VI name
+    expect(text).toContain("Supply Satchel");
+  });
+
+  it("CONTROL — with the module OFF, no equipment chip renders (even if a field is stamped)", () => {
+    const state = equipmentAdventure({}); // no anime options
+    getMainHero(state, "p1")!.equipment = { weapon: "anime.equip.iron_blood_sword" };
+    const { container } = renderBoardState(state);
+    expect(container.querySelector(".hbEquip")).toBeNull();
+  });
+});
+
 describe("HeroBoard — Feature B: the kept level-up Ability at levels 2/3/5/7", () => {
   it("renders the kept Ability card in the level slot when a pick is recorded", () => {
     const state = bulwarkAdventure("eikthurn");
