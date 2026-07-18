@@ -540,6 +540,8 @@ export type AdventureSetupOptions = {
   farTileOpening?: boolean;
   /** How many NEW Ⅱ–Ⅲ tiles each player may add to the map (default: the scenario's perPlayer, 2). */
   farTilesPerPlayer?: number;
+  /** Blind Ⅱ–Ⅲ tile choice (default off): pick gold/valuables/no-preference BEFORE the supply draw. */
+  farTileBlindChoice?: boolean;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -622,6 +624,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     pvpNeutralControlMustAttack: true,
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
+    farTileBlindChoice: false,
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -2008,6 +2011,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.houseRules !== undefined ? { houseRules: options.houseRules } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
+    ...(options.farTileBlindChoice !== undefined ? { farTileBlindChoice: options.farTileBlindChoice } : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {}),
     ...(options.customMapPreset !== undefined ? { customMapPreset: options.customMapPreset } : {})
   };
@@ -2157,6 +2161,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // The undrawn Ⅱ–Ⅲ pool and per-player opened counters are populated below,
     // once the scenario's own face-down Far tiles have been dealt from the pool.
     farTilePool: [],
+    // Blind Ⅱ–Ⅲ tile choice (default OFF): a supply opening first asks for a
+    // blind gold/valuables/no-preference pick that filters the random draw.
+    ...(setupOptions.farTileBlindChoice ? { farTileBlindChoice: true } : {}),
     farTilesOpenedByPlayer: {},
     pendingFarTileFlip: null,
     // Setup: the war machine cards sit face up in a shared supply pile.
@@ -3046,6 +3053,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.pvpNeutralControl !== undefined) {
     setupOptions.pvpNeutralControl = options.pvpNeutralControl;
   }
+  if (options.farTileBlindChoice !== undefined) {
+    setupOptions.farTileBlindChoice = options.farTileBlindChoice;
+  }
   if (options.pvpNeutralControlMustAttack !== undefined) {
     setupOptions.pvpNeutralControlMustAttack = options.pvpNeutralControlMustAttack;
   }
@@ -3471,6 +3481,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     const count = Math.max(0, Math.min(MAX_FAR_TILES_PER_PLAYER, Math.floor(next.farTilesPerPlayer)));
     lobby.options.farTilesPerPlayer = count;
     changes.push(`new Ⅱ–Ⅲ tiles per player ${count}`);
+  }
+
+  if (next.farTileBlindChoice !== undefined) {
+    lobby.options.farTileBlindChoice = Boolean(next.farTileBlindChoice);
+    changes.push(`blind Ⅱ–Ⅲ tile choice ${lobby.options.farTileBlindChoice ? "on" : "off"}`);
   }
 
   if (next.scenarioId !== undefined) {
@@ -4732,6 +4747,7 @@ function buildAdventureFromLobby(state: GameState): void {
     unitExperience: lobby.options.unitExperience,
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,
+    farTileBlindChoice: lobby.options.farTileBlindChoice,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,
