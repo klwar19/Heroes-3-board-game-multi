@@ -25,6 +25,7 @@ import {
 import { HEX_DIRECTIONS, hexEquals, hexNeighbor, parseHexSpaceId } from "./hex";
 import type {
   AdventureState,
+  AnimeModOptions,
   CustomMapTilePlan,
   FieldOverridePlacementMode,
   GameSetupOptions,
@@ -33,7 +34,7 @@ import type {
   MapSpaceId,
   MapTileState
 } from "./state";
-import { animeEnabled } from "./anime";
+import { animeEnabled, animeModuleEnabled } from "./anime";
 import { getTileFootprintSpaceIds } from "./adventure";
 import { appendEvent } from "./events";
 import { planFieldOverrides } from "./tile-hex-placements";
@@ -124,6 +125,16 @@ function packageAllowedForState(
 ) {
   const mods = modsFromState(state);
   return (pkg: FieldOverrideDefinition["package"]) => fieldOverridePackageAllowed(pkg, mods);
+}
+
+/**
+ * Module gate for the pool builds (§3.13): a kind carrying `requiresModule`
+ * (e.g. the equipment outfitters) joins the pool only when that anime module is
+ * on. With `anime.equipment` off the outfitters appear in no pool draw.
+ */
+function moduleEnabledForState(state: Pick<GameState, "anime">) {
+  return (module: keyof AnimeModOptions): boolean =>
+    module !== "enabled" && module !== "waveCadence" && animeModuleEnabled(state, module);
 }
 
 /**
@@ -398,7 +409,8 @@ export function assignPoolFieldOverrides(
     const pool = listFieldOverrideDefinitions({
       tileGroup: group,
       implementedOnly: true,
-      packageAllowed: allowed
+      packageAllowed: allowed,
+      moduleEnabled: moduleEnabledForState(state)
     });
     if (pool.length === 0) {
       continue;
@@ -433,7 +445,8 @@ export function ensurePoolFieldOverrideOnReveal(
   const pool = listFieldOverrideDefinitions({
     tileGroup: group,
     implementedOnly: true,
-    packageAllowed: packageAllowedForState(state)
+    packageAllowed: packageAllowedForState(state),
+    moduleEnabled: moduleEnabledForState(state)
   });
   if (pool.length === 0) {
     return;

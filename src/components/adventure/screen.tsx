@@ -36,9 +36,12 @@ import {
   VICTORY_MODE_LABELS,
   applyUnitSideRules,
   bannableHeroesForSeat,
+  CUSTOM_WIN_CONDITION_OPTIONS,
   deckDisplayName,
+  defaultCustomWinCondition,
   describeCardEffect,
   describeCustomMapPresetEntries,
+  describeCustomWinCondition,
   expertUsesAvailable,
   expertUsesTotalThisRound,
   DRAFT_FORMAT_LABELS,
@@ -63,7 +66,9 @@ import {
   isMapTokenLocation,
   isParallelActor,
   isRoundStartEventBarrierActive,
+  MAX_CUSTOM_WIN_CONDITIONS,
   MAX_PARALLEL_TURN_ROUNDS,
+  mergeCustomWinConditions,
   parallelInteractionBlocker,
   parallelTurnsActive,
   polishArmyUnitStackCap,
@@ -76,6 +81,7 @@ import {
   scenarioDefinitions,
   startingBonusDescription,
   tileFootprint,
+  tileLayer,
   tierOfLevel,
   UNIT_LEVELS,
   unitAbilities,
@@ -84,6 +90,7 @@ import {
   astrologersCardDefinitions,
   eventCardDefinitions,
   type CustomStartingUnit,
+  type CustomWinCondition,
   type DraftFormat,
   type FactionId,
   type UnitLevel,
@@ -115,7 +122,7 @@ import {
   TILE_BACK_IMAGES,
   whirlpoolTokenImage
 } from "@/data/assets/homm-assets";
-import { fieldOverrideImage } from "@/data/map/field-overrides";
+import { fieldOverrideGlyph, fieldOverrideImage } from "@/data/map/field-overrides";
 // Side-effect: register Anime package Field Override kinds into the global catalog.
 import "@/data/anime/field-overrides";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
@@ -1013,7 +1020,13 @@ export function HexMapBoard({
       // (or vice versa) — only a hero entering a Subterranean Gate opens it. When
       // it isn't otherwise discoverable, a tap explains that instead of doing
       // nothing, so players aren't left clicking a dead tile.
-      const cavernNeedsGate = tile.group === "subterranean" && !discover && !readOnly;
+      // The Underground layer (a printed cavern OR a designer-flagged
+      // far/near/center/sea tile) can't be discovered from the Surface — the
+      // shared `tileLayer` predicate, so a flagged tile shows the same "needs a
+      // Gate" hint as a cavern. `data-underground` is the always-on layer cue
+      // (present on every underground tile, absent on a plain Surface tile).
+      const undergroundTile = tileLayer(tile) === "subterranean";
+      const cavernNeedsGate = undergroundTile && !discover && !readOnly;
       for (const [slot, coord] of footprint.entries()) {
         const { x, y } = hexToPixel(coord, HEX_SIZE);
         track(x, y);
@@ -1022,6 +1035,7 @@ export function HexMapBoard({
             <polygon
               className={`hexFaceDown ${discover && !readOnly ? "discoverable" : ""} ${cavernNeedsGate ? "needsGate" : ""}`}
               data-tile-id={tile.id}
+              data-underground={undergroundTile ? "true" : undefined}
               onClick={
                 discover && !readOnly
                   ? () => {
@@ -1292,6 +1306,9 @@ export function HexMapBoard({
 
     // --- Revealed, materialized tiles --------------------------------------
     renderTileArt(tile, tile.rotation);
+    // Always-on layer cue: a printed cavern OR a designer-flagged far/near/
+    // center/sea tile reads as underground (the shared `tileLayer` predicate).
+    const undergroundTile = tileLayer(tile) === "subterranean";
     // The printed scan already shows the locations, numerals and mine icons:
     // hide the built-in markers and keep only live game state (cubes, flags,
     // settlement production, movement) on top of the art.
@@ -1330,7 +1347,10 @@ export function HexMapBoard({
       const mapChoice = pendingMapChoiceTargets.get(spaceId);
       const teleportTarget = teleportChoice?.targets.get(spaceId);
       const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
-      const glyph = LOCATION_GLYPHS[field.location] ?? "";
+      // Field Override kinds without hex art yet fall back to their registered
+      // glyph so an art-less carve is a visible hex in icon mode (art wins once
+      // it ships — fieldOverrideGlyph returns undefined then).
+      const glyph = LOCATION_GLYPHS[field.location] ?? fieldOverrideGlyph(field.location) ?? "";
       const isSelected = selectedTarget?.spaceId === spaceId;
 
       cells.push(
@@ -1347,6 +1367,7 @@ export function HexMapBoard({
             artShown ? "withArt" : ""
           ].join(" ")}
           data-space-id={spaceId}
+          data-underground={undergroundTile ? "true" : undefined}
           fill={terrain}
           key={spaceId}
           onClick={
@@ -1398,7 +1419,7 @@ export function HexMapBoard({
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${
               field.location === "subterranean_gate"
-                ? tile.group === "subterranean"
+                ? undergroundTile
                   ? " — step on to ascend to the Surface (the only crossing; reveals the Surface tile beyond for free)"
                   : " — step on to descend into the Underground (the only crossing; reveals the cavern beyond for free)"
                 : ""
@@ -1439,7 +1460,7 @@ export function HexMapBoard({
       if (field.location === "subterranean_gate" && (target || remindMove)) {
         overlays.push(
           <text className="hexGateCue" key={`${spaceId}-gate-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
-            {tile.group === "subterranean" ? "↥ ascend" : "↧ descend"}
+            {undergroundTile ? "↥ ascend" : "↧ descend"}
           </text>
         );
       }
@@ -1522,7 +1543,7 @@ export function HexMapBoard({
       const overrideArt = fieldOverrideImage(field.location);
       const tokenImage =
         field.location === "subterranean_gate"
-          ? subterraneanGateTokenImage(tile.group === "subterranean" ? "subterranean" : "surface")
+          ? subterraneanGateTokenImage(undergroundTile ? "subterranean" : "surface")
           : field.location === "creature_bank"
             ? creatureBankFieldImage(field.bankId)
             : field.location === "monolith"
@@ -3126,7 +3147,11 @@ export function TownHeroDock({
             >
               <X aria-hidden="true" size={16} />
             </button>
-            <HeroBoard playerId={openHeroSeat} state={state} />
+            <HeroBoard
+              playerId={openHeroSeat}
+              state={state}
+              onAction={onAction && openHeroSeat === viewerPlayerId ? onAction : undefined}
+            />
           </div>
         </>
       ) : null}
@@ -6919,6 +6944,115 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
+        // Custom win conditions — rendered HERE, directly beside the Win
+        // condition selector above, so the extra early-end triggers live with
+        // the rest of the victory setup. The map's own list is read-only (the
+        // lobby can only ADD, never remove a map-authored one) plus the
+        // host-added list for THIS game. The first player to satisfy any
+        // condition wins.
+        const mapConditions = options.customMapPreset?.customWinConditions ?? [];
+        const hostConditions = options.customWinConditions ?? [];
+        const effective = mergeCustomWinConditions(mapConditions, hostConditions);
+        const atCap = effective.length >= MAX_CUSTOM_WIN_CONDITIONS;
+        const sendConditions = (nextConditions: CustomWinCondition[]) =>
+          send({ customWinConditions: nextConditions });
+        const addCondition = () => {
+          if (atCap) {
+            return;
+          }
+          sendConditions([...hostConditions, defaultCustomWinCondition("control-towns")]);
+        };
+        const updateCondition = (index: number, condition: CustomWinCondition) =>
+          sendConditions(hostConditions.map((entry, i) => (i === index ? condition : entry)));
+        const removeCondition = (index: number) =>
+          sendConditions(hostConditions.filter((_, i) => i !== index));
+        return (
+          <div className="optionRow">
+            <small title="Extra early-end triggers: the first player to satisfy any listed condition wins immediately, on top of the victory mode. Map-set conditions can't be removed here — you can only add your own for this game.">
+              Custom win condition
+            </small>
+            <div className="customWinConditions" role="group" aria-label="Custom win conditions">
+              {mapConditions.map((condition, index) => (
+                <div className="customWinConditionRow mapSet" key={`map-${index}`}>
+                  <span className="customWinConditionText">🏁 {describeCustomWinCondition(condition)}</span>
+                  <span className="customWinConditionTag">map</span>
+                </div>
+              ))}
+              {hostConditions.map((condition, index) => {
+                const option = CUSTOM_WIN_CONDITION_OPTIONS.find((entry) => entry.id === condition.kind);
+                const paramValue =
+                  condition.kind === "hero-level"
+                    ? condition.level
+                    : condition.kind === "gold"
+                      ? condition.amount
+                      : "count" in condition
+                        ? condition.count
+                        : null;
+                return (
+                  <div className="customWinConditionRow" key={`host-${index}`}>
+                    <select
+                      aria-label={`Custom win condition ${index + 1} kind`}
+                      onChange={(event) =>
+                        updateCondition(
+                          index,
+                          defaultCustomWinCondition(event.target.value as CustomWinCondition["kind"])
+                        )
+                      }
+                      value={condition.kind}
+                    >
+                      {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.label}
+                        </option>
+                      ))}
+                    </select>
+                    {option?.param && paramValue !== null ? (
+                      <input
+                        aria-label={`Custom win condition ${index + 1} value`}
+                        max={option.param.max}
+                        min={option.param.min}
+                        onChange={(event) => {
+                          const raw = Number(event.target.value) || option.param!.min;
+                          const clamped = Math.max(option.param!.min, Math.min(option.param!.max, raw));
+                          updateCondition(index, {
+                            ...condition,
+                            [option.param!.field]: clamped
+                          } as CustomWinCondition);
+                        }}
+                        type="number"
+                        value={paramValue}
+                      />
+                    ) : null}
+                    <button
+                      aria-label={`Remove custom win condition ${index + 1}`}
+                      className="customWinConditionRemove"
+                      onClick={() => removeCondition(index)}
+                      type="button"
+                    >
+                      <X size={13} aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                className="customWinConditionAdd"
+                disabled={atCap}
+                onClick={addCondition}
+                type="button"
+              >
+                <Plus size={13} aria-hidden="true" /> Add win condition
+              </button>
+            </div>
+            <small className="optionHint">
+              {effective.length === 0
+                ? "None set. Add a condition and the first player to reach it wins immediately — an extra early-end trigger on top of the victory mode."
+                : "The first player to satisfy any condition wins immediately. Map-set conditions can't be removed here — you can only add your own for this game."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
         const pvpTroopLoss = options.pvpTroopLoss ?? "normal";
         return (
           <div className="optionRow">
@@ -8695,6 +8829,11 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   ADVENTURE_DICE_ROLLED: { icon: "🎲", cue: "dice" },
   EXPERIENCE_GAINED: { icon: "📈", cue: "experience" },
   HERO_LEVEL_UP: { icon: "⭐", cue: "level-up" },
+  // Anime Cultivation (§5.6): a realm breakthrough rings the level-up sting; the
+  // Tribulation dice show quietly, a failure uses the defeat sting.
+  CULTIVATION_REALM_ADVANCED: { icon: "☯️", cue: "level-up" },
+  CULTIVATION_TRIBULATION_ROLLED: { icon: "🎲", cue: "dice" },
+  CULTIVATION_TRIBULATION_FAILED: { icon: "🌩️", cue: "retreat" },
   HERO_GAINED: { icon: "🧙", cue: "recruit" },
   HERO_LOST: { icon: "🏳", cue: "retreat" },
   MORALE_CHANGED: { icon: "🎺", cue: "morale" },
@@ -8702,6 +8841,9 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   MORALE_CARD_DISCARDED: { icon: "🎺", cue: "morale" },
   MORALE_CARD_USED: { icon: "🎺", cue: "morale" },
   QUICK_COMBAT_WON: { icon: "⚡", cue: "quick-combat" },
+  // Forced Battle Events (Anime mod, §3.12): a scripted combat event announces
+  // itself in the feed (environment mist, an obstacle formation, a round pulse).
+  COMBAT_SCRIPT_TRIGGERED: { icon: "🌀", cue: "combat-start" },
   NEUTRAL_COMBAT_STARTED: { icon: "⚔️", cue: "battle-begin" },
   NEUTRAL_ARMY_REVEALED: { icon: "👁", cue: "reveal" },
   PLAYER_COMBAT_STARTED: { icon: "⚔️", cue: "battle-begin" },

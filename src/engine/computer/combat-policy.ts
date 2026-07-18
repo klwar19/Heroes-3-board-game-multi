@@ -853,6 +853,12 @@ export function scoreCombatAction(
       return { score: 600, policy: "combat.summon-demons" };
     case "USE_GENIE_DECK_DRAW":
       return { score: 590, policy: "combat.genie-wish" };
+    case "USE_HERO_SKILL":
+      // Anime Hero Grades War Cry (§3.11): a +Attack buff on the active unit,
+      // offered only BEFORE it attacks. Scored just above a real attack (700) so
+      // the AI lands the free once-per-combat buff first, then strikes. The map
+      // Forced March (no combat) is scored by map-policy instead.
+      return combat ? { score: 715, policy: "combat.hero-war-cry" } : null;
     case "DEFEND_UNIT": {
       // Prefer defending a wounded unit over a healthy one (still below any
       // real attack). A unit that already moved and cannot strike should sit

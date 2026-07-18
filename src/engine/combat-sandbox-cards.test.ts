@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
 import { moraleCardPolarity } from "@/data/cards/morale";
+import { animeXianxiaArtifactCardIds } from "@/data/anime/artifacts";
+import { animeNeverDeckedCardIds } from "@/data/anime/hero-grades";
 import { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 import { applyAction, createInitialGameState, getLegalActions, getRuleset, SHARED_DECK_IDS } from "./index";
 import type { SharedDeckId } from "./index";
@@ -27,8 +29,15 @@ const DECK_KINDS = ["spell", "ability", "artifact"] as const;
 // a well, so they are not expected to be searchable in the sandbox. Morale cards
 // (kind "ability") live in their own positive/negative morale decks behind the
 // optional Morale Cards rule, not the shared ability well, so they are excluded
-// too.
+// too. Optional anime-module artifacts (Pháp Bảo, `anime.xianxiaArtifacts`) join
+// the shared Artifact wells only when the module is on — the fixed sandbox is an
+// anime-OFF table, so they are excluded here (still addable via SANDBOX_ADD_CARD,
+// which reads cardLibrary directly).
+// The Hero Grades Training Manual (`anime.heroGrades`) NEVER joins a deck/well —
+// it is bought at a guild shop, so it is excluded here too (still addable via
+// SANDBOX_ADD_CARD, which reads cardLibrary directly). See `animeNeverDeckedCardIds`.
 const startingOnly = new Set(STARTING_ONLY_SPELLS);
+const moduleGated = new Set<string>([...animeXianxiaArtifactCardIds, ...animeNeverDeckedCardIds]);
 
 function implementedIdsOfKind(kind: (typeof DECK_KINDS)[number]): string[] {
   return Object.values(cardLibrary)
@@ -37,6 +46,7 @@ function implementedIdsOfKind(kind: (typeof DECK_KINDS)[number]): string[] {
         card.implementationStatus === "implemented" &&
         card.kind === kind &&
         !startingOnly.has(card.id) &&
+        !moduleGated.has(card.id) &&
         moraleCardPolarity(card.id) === null
     )
     .map((card) => card.id)

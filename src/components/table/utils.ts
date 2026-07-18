@@ -2,8 +2,11 @@ import { cardLibrary } from "@/data/cards/library";
 import { astrologersCardDefinitions } from "@/data/cards/astrologers";
 import { eventCardDefinitions } from "@/data/cards/events";
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
+import { getEquipmentDefinition } from "@/data/anime/equipment";
 import {
   cardCanBoostPower,
+  CULTIVATION_REALMS,
+  heroGradeLabel,
   getBattlefieldLabel,
   heroMoveStartsBattle,
   isRoundStartEventBarrierActive,
@@ -489,6 +492,43 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} gains ${event.amount} experience (level ${event.level}).`;
     case "HERO_LEVEL_UP":
       return `${playerName(state, event.playerId)} reaches level ${event.level}${event.effects.length ? `: ${event.effects.join(", ")}` : ""}.`;
+    case "CULTIVATION_REALM_ADVANCED": {
+      const realm = CULTIVATION_REALMS[event.realm];
+      return `${playerName(state, event.playerId)}'s hero breaks through to ${realm.en} (${realm.vi})${
+        event.viaTribulation ? " — the Heavenly Tribulation is survived!" : ""
+      }.`;
+    }
+    case "CULTIVATION_TRIBULATION_ROLLED": {
+      const tolls = event.rolls.filter((roll) => roll === -1).length;
+      const faces = event.rolls.map((roll) => (roll >= 0 ? `+${roll}` : `${roll}`)).join(", ");
+      return `${playerName(state, event.playerId)} braves the Heavenly Tribulation — dice: ${faces} (${tolls} toll${
+        tolls === 1 ? "" : "s"
+      }).`;
+    }
+    case "CULTIVATION_TRIBULATION_FAILED":
+      return `${playerName(state, event.playerId)}'s army is scattered by the Heavenly Tribulation — no breakthrough (retry next turn).`;
+    case "HERO_GRADE_ADVANCED": {
+      const grade = heroGradeLabel(state, event.playerId, event.grade);
+      return `${playerName(state, event.playerId)}'s hero rises to ${grade.en} (${grade.vi}) — a new grade point to spend.`;
+    }
+    case "HERO_TRAINED":
+      return `${playerName(state, event.playerId)}'s hero trains, gaining Merit.`;
+    case "COMBAT_SCRIPT_TRIGGERED":
+      // Forced Battle Events (Anime mod, §3.12): the announce line is a
+      // self-contained "something happens" sentence built by the engine.
+      return event.message;
+    case "HERO_GRADE_NODE_PICKED":
+      return event.message;
+    case "EQUIPMENT_EQUIPPED": {
+      // Anime Equipment (§3.13): a public "equipped X" feed line.
+      const def = getEquipmentDefinition(event.equipmentId);
+      const name = def ? `${def.name.en} (${def.name.vi})` : event.equipmentId;
+      const replaced = event.replacedId ? getEquipmentDefinition(event.replacedId) : undefined;
+      const replacedNote = replaced ? `, replacing ${replaced.name.en}` : "";
+      return `${playerName(state, event.playerId)}'s hero equips ${name}${replacedNote}.`;
+    }
+    case "HERO_SKILL_USED":
+      return event.message;
     case "COMMANDER_CAST_USED":
     case "COMMANDER_POINTS_AWARDED":
     case "COMMANDER_GRADED_UP":
@@ -560,6 +600,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "GAME_OPTIONS_CHANGED":
       return event.message;
     case "MAP_PRESET_TRIGGERED":
+      return event.message;
+    case "STORY_SCENE_TRIGGERED":
       return event.message;
     case "MAP_SECRET_FEATURE_FALLBACK":
       return event.message;

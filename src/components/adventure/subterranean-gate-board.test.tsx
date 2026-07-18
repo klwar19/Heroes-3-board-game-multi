@@ -317,6 +317,62 @@ describe("Subterranean Gate — UI affordances so players understand the crossin
   });
 });
 
+describe("Underground designation — the live board marks a flagged tile", () => {
+  it("tags a revealed flagged tile's hexes with data-underground; a plain Far tile has none (CONTROL)", () => {
+    let state = createAdventureGameState({ seed: "ug-cue", difficulty: "normal", rollFirstPlayer: false, chooseSubterraneanGate: false });
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }).state;
+    }
+    const flagged = instantiateTile(adv(state), "F1", { row: 24, col: 12 }, 0, false);
+    flagged.underground = true; // exactly what setup writes for plan.underground
+    const plain = instantiateTile(adv(state), "F3", { row: 40, col: 24 }, 0, false);
+    setAllEmpty(state, flagged);
+    setAllEmpty(state, plain);
+
+    const { container } = renderLiveBoard(state);
+    const flaggedHex = hex(container, hexSpaceId({ row: flagged.centerRow, col: flagged.centerCol }));
+    expect(flaggedHex.getAttribute("data-underground"), "flagged tile hex carries the layer cue").toBe("true");
+    const plainHex = hex(container, hexSpaceId({ row: plain.centerRow, col: plain.centerCol }));
+    expect(plainHex.getAttribute("data-underground"), "a plain Surface Far tile has no cue").toBeNull();
+  });
+
+  it("a face-down flagged tile shows the 'needs a Subterranean Gate' hint + data-underground, just like a cavern", () => {
+    let state = createAdventureGameState({ seed: "ug-cue-facedown", difficulty: "normal", rollFirstPlayer: false, chooseSubterraneanGate: false });
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }).state;
+    }
+    const surfaceCenter = { row: 24, col: 12 };
+    const surface = instantiateTile(adv(state), "F3", surfaceCenter, 0, false);
+    const flagged = instantiateTile(adv(state), "F1", tileLatticeNeighbors(surfaceCenter)[0], 0, true);
+    flagged.underground = true;
+    setAllEmpty(state, surface);
+    recomputeSubterraneanGates(adv(state));
+
+    // Park the hero on a Surface hex touching the flagged tile but NOT on the gate.
+    const flaggedHexes = new Set(getTileFootprintSpaceIds(flagged));
+    const gateSpaceId = gateHalfTo(state, flagged.id)?.spaceId;
+    const touchingSurface = getTileFootprintSpaceIds(surface).find(
+      (spaceId) =>
+        spaceId !== gateSpaceId &&
+        hexNeighbors(parseHexSpaceId(spaceId)!).some((n) => flaggedHexes.has(hexSpaceId(n)))
+    )!;
+    state.heroes.hero_p1.spaceId = touchingSurface;
+
+    const { container } = renderLiveBoard(state);
+    const cavernCells = [...container.querySelectorAll(`[data-tile-id="${flagged.id}"]`)];
+    expect(cavernCells.length).toBeGreaterThan(0);
+    // The flagged face-down tile is not discoverable across the divide (needsGate)…
+    expect(cavernCells.every((cell) => cell.classList.contains("needsGate")), "flagged tile reads needs-a-gate").toBe(true);
+    // …carries the always-on underground marker…
+    expect(cavernCells.every((cell) => cell.getAttribute("data-underground") === "true")).toBe(true);
+    // …and the standing "via Subterranean Gate" hint fires (the layer predicate).
+    const hints = [...container.querySelectorAll(".hexCavernHint")].map((node) => node.textContent);
+    expect(hints.some((text) => text?.includes("Subterranean Gate"))).toBe(true);
+  });
+});
+
 describe("Subterranean Gate — pick-on-reveal placement renders as a real choice", () => {
   /** A live state whose cavern reveal opened the path-up placement choice for p1. */
   function pathUpChoiceState(): { state: GameState; surface: MapTileState } {

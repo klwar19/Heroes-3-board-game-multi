@@ -331,6 +331,8 @@ export type { AdventurePlayerConfig, AdventureSetupOptions, DraftPhaseInfo } fro
 export {
   applyCustomMapPresetToOptions,
   customMapPresetIsActive,
+  CUSTOM_WIN_CONDITION_OPTIONS,
+  defaultCustomWinCondition,
   defaultObeliskBonusForKind,
   defaultTimedEffect,
   defaultTimedEvent,
@@ -343,6 +345,7 @@ export {
   describeObjectivesConfig,
   describeUtopiaGuards,
   describeTimedMapEffect,
+  describeTimedEventSchedule,
   describeVictoryPointsConfig,
   foldLegacyViiBonus,
   isCustomGuardUnit,
@@ -352,10 +355,13 @@ export {
   MAX_CENTER_HEX_SEARCH,
   MAX_CENTER_HEX_VP,
   MAX_CUSTOM_MAP_OBJECTS,
+  MAX_CUSTOM_WIN_CONDITIONS,
   MAX_GATES_PER_PAIR,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
+  mergeCustomWinConditions,
   MAP_PRESET_BUILDING_OPTIONS,
+  MAP_PRESET_DIFFICULTY_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
@@ -369,6 +375,7 @@ export {
   sanitizeCustomGuardSpec,
   sanitizeCustomMapObject,
   sanitizeCustomMapPreset,
+  sanitizeCustomWinConditions,
   sanitizeObjectGuard,
   secretFeatureDemandWarnings,
   tileMatchesSecretFeature,
@@ -381,6 +388,7 @@ export {
 export {
   computeVictoryPoints,
   DEFAULT_VICTORY_CONDITION_VP,
+  describeCustomWinCondition,
   describeVictoryPointObjective,
   recordVpHeroDefeat,
   recordVpSurrender,
@@ -439,6 +447,7 @@ export {
   canHeroReachPlacedTile,
   canHeroReachPlacementCenter,
   changeMorale,
+  checkCustomWinConditions,
   classifyHeroStep,
   declareAdventureWinner,
   endGameByVictoryPoints,
@@ -489,6 +498,8 @@ export {
   polishBankSizeForAttackRolls,
   tokenMayCoverFieldDef,
   planSubterraneanGates,
+  planIsUnderground,
+  UNDERGROUND_LAYER_GROUPS,
   legalGateHexPairs,
   planGateChoiceForReveal,
   upsertGatePlan,
@@ -505,6 +516,7 @@ export {
   seaTileBand,
   startingBonusDescription,
   subterraneanTileBand,
+  TILE_GROUP_BAND_LABELS,
   tileLayer
 } from "./adventure";
 export type { DesignedGateLinkLike, HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, MapTokenKind, PlannedSubterraneanGate, RecruitPurchaseRef, TilePlacementLike, TokenPlacementKind } from "./adventure";
@@ -599,6 +611,64 @@ export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
 export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, MAX_CUSTOM_GUARD_UNITS, NEUTRAL_PLAYER_ID } from "./state";
 export { DEFAULT_ANIME_OPTIONS, animeEnabled, animeModuleEnabled } from "./anime";
 export {
+  CULTIVATION_REALMS,
+  cultivationEnabled,
+  cultivationRealmOf,
+  cultivationHandLimitBonus,
+  cultivationSpellPowerBonus,
+  cultivationCombatRerollBonus,
+  maybeAdvanceCultivationRealm,
+  tribulationAvailable
+} from "./anime-cultivation";
+export {
+  heroGradesEnabled,
+  heroGradeOf,
+  heroGradeProgressOf,
+  heroGradePointsOf,
+  heroGradeNodesOf,
+  heroHasGradeNode,
+  heroGradeHandLimitBonus,
+  heroGradeSpellPowerBonus,
+  gainGradeProgress,
+  gradeForMerit,
+  pickableNodesFrom,
+  heroGradeNode,
+  heroGradePickableNodes,
+  heroGradeRegisterKey,
+  heroGradeLabel,
+  heroTrainAvailable
+} from "./anime-hero-grades";
+export {
+  HERO_GRADE_MERIT_THRESHOLDS,
+  HERO_GRADE_TIER_COUNT,
+  HERO_GRADE_MAX,
+  HERO_GRADE_PICKS_PER_TIER,
+  HERO_GRADE_REGISTERS
+} from "@/data/anime/hero-grades";
+export {
+  equipmentEnabled,
+  heroEquipmentOf,
+  heroEquipmentSlot,
+  playerHasEquipment,
+  equipmentSpellPowerBonus,
+  equipmentHandLimitBonus,
+  equipmentWinGold,
+  equipmentResourceRoundMaterials,
+  equipEquipment
+} from "./anime-equipment";
+export {
+  ANIME_EQUIPMENT_DEFINITIONS,
+  ANIME_EQUIPMENT_ART_PLACEHOLDERS,
+  EQUIPMENT_IDS,
+  EQUIPMENT_SLOT_GLYPH,
+  EQUIPMENT_SHOP_SALES,
+  EQUIPMENT_SHOP_LOCATION_IDS,
+  getEquipmentDefinition,
+  listEquipmentDefinitions,
+  equipmentImage,
+  type EquipmentDefinition
+} from "@/data/anime/equipment";
+export {
   carveFieldOverride,
   getFieldOverrideDefinition,
   listFieldOverrideDefinitions,
@@ -610,6 +680,23 @@ export {
   resolveFieldOverridesEnabled,
   resolveFieldOverridePlacement
 } from "./field-overrides";
+export {
+  applyCombatScriptCombatStart,
+  applyCombatScriptRoundStart,
+  combatScriptStatDelta,
+  combatScriptsActiveForCombat
+} from "./combat-scripts";
+export {
+  registerCombatScriptDefinitions,
+  getCombatScriptDefinition,
+  listCombatScriptDefinitions,
+  combatScriptsForLocation,
+  type CombatScriptDefinition,
+  type CombatScriptEffect,
+  type CombatScriptEvent,
+  type CombatScriptSide,
+  type CombatScriptText
+} from "@/data/map/combat-scripts";
 export {
   planTokens,
   planFieldOverrides,
@@ -625,6 +712,7 @@ export type {
   ActiveEffectModifier,
   ActiveEffectState,
   AbilityClass,
+  AnimeEquipmentSlot,
   AdventureReward,
   AdventureState,
   AstrologersState,
@@ -652,6 +740,7 @@ export type {
   CombatSandboxSetupState,
   CombatSandboxUnitPick,
   CombatSetupState,
+  CombatScriptStatModifier,
   DeckSearchPick,
   CombatStat,
   CombatState,
@@ -666,6 +755,7 @@ export type {
   CustomMapTilePlan,
   CustomMapGateLink,
   CustomStartingUnit,
+  CustomWinCondition,
   SecretTileFeature,
   VictoryMode,
   DamageKind,
@@ -744,7 +834,8 @@ export type {
   CombatTokenState,
   FirstPlayerRollState,
   SiegeState,
-  WogModOptions
+  WogModOptions,
+  AnimeModOptions
 } from "./state";
 
 export { getUnitTokens, tokenAttackBonus, tokenDefenseDelta } from "./tokens";

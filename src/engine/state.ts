@@ -179,9 +179,29 @@ export type AnimeModOptions = {
   gods: boolean;
   xianxiaArtifacts: boolean;
   heartDemon: boolean;
+  /**
+   * Hero Grades (shared spine, §3.11): a per-hero power ranking (Merit → grade
+   * 0-3) that unlocks a small passive/skill TREE. Shared by BOTH packages and
+   * ALL heroes; independent of Cultivation. Default OFF ⇒ byte-identical.
+   */
+  heroGrades: boolean;
+  /**
+   * Equipment (shared spine, §3.13): always-on hero ITEMS (weapon/armor/
+   * accessory) bought at outfitter Field Overrides — distinct from Artifact
+   * cards (no hand, no cast, one per slot, replace-on-buy). Shared by BOTH
+   * packages and ALL heroes; independent of Hero Grades / Cultivation.
+   * Default OFF ⇒ byte-identical (no shops in the pool, no state stamped).
+   */
+  equipment: boolean;
   /** Calamity wave cadence when monsterWaves is on. */
   waveCadence?: 3 | 4 | 5;
 };
+
+/**
+ * Anime Equipment (§3.13): the three hero equipment slots. An item occupies one
+ * slot; buying into an occupied slot REPLACES the previous item (no refund).
+ */
+export type AnimeEquipmentSlot = "weapon" | "armor" | "accessory";
 
 /**
  * How pool-drawn Field Overrides place when a tile is revealed.
@@ -1142,6 +1162,16 @@ export type EffectDefinition =
       waterWalkThisTurn?: boolean;
       /** Shield of Naval Glory (Sea side): also draw this many cards. */
       drawCards?: number;
+    }
+  | {
+      /**
+       * Anime Hero Grades (anime.heroGrades, §3.11): the played card grants the
+       * player `amount` Merit (grade progress). A generic payload — the Training
+       * Manual item uses it, and any future card can carry it (that IS the arm).
+       * No-op when the module is off (gainGradeProgress gates on it).
+       */
+      type: "GAIN_GRADE_PROGRESS";
+      amount: number;
     }
   | {
       /**
@@ -2463,8 +2493,13 @@ export type PermanentEffectDefinition = {
    * Income artifacts (Eversmoking Ring of Sulfur, Inexhaustible Cart of Ore):
    * while the card is in play, the owner gains `amount` of `resource` at the
    * start of every Resources round (the odd rounds after the first).
+   *
+   * `requiresHeroInTown` (anime Tụ Linh Bàn): the income is CONDITIONAL — it is
+   * paid only on a Resources round where the owner's MAIN Hero stands on one of
+   * that player's own Towns. Absent/false = unconditional income (the core
+   * cards). Enforced at the single income chokepoint in `startAdventureRound`.
    */
-  resourceRoundGain?: { resource: ResourceKind; amount: number };
+  resourceRoundGain?: { resource: ResourceKind; amount: number; requiresHeroInTown?: boolean };
   /**
    * Pandora's Gift: Income (card 174 — a PERMANENT, the printed ∞): entering
    * play rolls 1 Resource die and records the rolled resource on the owner
@@ -2869,6 +2904,17 @@ export type GameAction =
     }
   | {
       /**
+       * Anime Cultivation (anime.cultivation, §5.6): the main hero, at Core
+       * Formation (realm 2) with level ≥ 7 and no won Tribulation yet, braves
+       * the Heavenly Tribulation (Độ kiếp) — a seeded 3-Attack-die gauntlet on
+       * the map (no battlefield). NEVER forced; offered at most once per own
+       * turn. Handler-validated (self-validating; opens a pendingVisit).
+       */
+      type: "HEAVEN_TRIBULATION";
+      playerId: PlayerId;
+    }
+  | {
+      /**
        * Hierophant commander: resolve the post-combat First Aid window —
        * restore the chosen casualty (optionIndex) or decline (null).
        */
@@ -2885,6 +2931,48 @@ export type GameAction =
       type: "COMMANDER_SET_STANCE";
       playerId: PlayerId;
       stance: "attack" | "defense";
+    }
+  | {
+      /**
+       * Anime Hero Grades (anime.heroGrades, §3.11): TRAIN on your own map turn —
+       * spend 2 movement points to gain 1 Merit (grade progress). Once per own
+       * turn. Handler-validated (self-validating).
+       */
+      type: "HERO_TRAIN";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Anime Hero Grades: spend one unspent grade point to pick a tree node
+       * (one node per tier, tier ≤ current grade). Handler-validated
+       * (self-validating; the node is baked into the action, so no window opens).
+       */
+      type: "HERO_GRADE_PICK";
+      playerId: PlayerId;
+      nodeId: string;
+    }
+  | {
+      /**
+       * Anime Hero Grades: use a "skill" tree node's ACTIVE — Forced March on the
+       * map (+1 movement, once per round) or War Cry during your own unit's combat
+       * activation (+1 Attack this activation, once per combat). `unitId` is the
+       * acting unit for combat actives; omitted for map actives.
+       */
+      type: "USE_HERO_SKILL";
+      playerId: PlayerId;
+      nodeId: string;
+      unitId?: UnitId;
+    }
+  | {
+      /**
+       * Anime Hero Grades: use a "skill" tree node as an instant REACTION inside
+       * an open attack window — Battle Focus (+1 Attack on your attacking unit) or
+       * Iron Will (+1 Defense on your attacked unit). Once per combat.
+       */
+      type: "USE_HERO_SKILL_REACTION";
+      playerId: PlayerId;
+      nodeId: string;
+      unitId: UnitId;
     }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_ACTIVATION"; playerId: PlayerId; unitId: UnitId }
@@ -4392,6 +4480,12 @@ export type GameEvent =
       from: MapSpaceId;
       to: MapSpaceId;
       movementLeft: number;
+      /**
+       * Instant relocation kind — presentation picks TELPTOUT / DANGER /
+       * CAVEHEAD / spell teleport, never a terrain horse loop. Absent on
+       * ordinary adjacent steps.
+       */
+      teleport?: "monolith" | "gate" | "whirlpool" | "subterranean" | "spell";
     }
   | {
       /**
@@ -4846,6 +4940,106 @@ export type GameEvent =
       effects: string[];
     }
   | {
+      /**
+       * Anime Cultivation (§5.6): the hero's Cultivation Realm rose one step.
+       * `realm` is the NEW realm (1 Foundation / 2 Core Formation / 3 Nascent
+       * Soul); `viaTribulation` marks the realm-3 Heavenly-Tribulation win (the
+       * automatic realm-1/2 advances leave it unset). Fires exactly once per
+       * realm reached (the advance is idempotent).
+       */
+      id: string;
+      type: "CULTIVATION_REALM_ADVANCED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      realm: 1 | 2 | 3;
+      viaTribulation?: boolean;
+    }
+  | {
+      /** Anime Cultivation (§5.6): the Heavenly Tribulation's seeded 3-die roll. */
+      id: string;
+      type: "CULTIVATION_TRIBULATION_ROLLED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      rolls: number[];
+    }
+  | {
+      /**
+       * Anime Cultivation (§5.6): the Heavenly Tribulation emptied the army —
+       * no breakthrough this attempt (realm stays 2, retry allowed next turn).
+       */
+      id: string;
+      type: "CULTIVATION_TRIBULATION_FAILED";
+      playerId: PlayerId;
+      heroId: HeroId;
+    }
+  | {
+      /**
+       * Anime Hero Grades (§3.11): the hero crossed a Merit threshold and rose to
+       * a new grade (1/2/3), earning one grade point. One event per grade.
+       */
+      id: string;
+      type: "HERO_GRADE_ADVANCED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      /** The new grade reached (1..HERO_GRADE_MAX; typed `number` for extensibility). */
+      grade: number;
+    }
+  | {
+      /** Anime Hero Grades (§3.11): the hero TRAINED (spent 2 MP for +1 Merit). */
+      id: string;
+      type: "HERO_TRAINED";
+      playerId: PlayerId;
+      heroId: HeroId;
+    }
+  | {
+      /** Anime Hero Grades (§3.11): a grade tree node was picked (point spent). */
+      id: string;
+      type: "HERO_GRADE_NODE_PICKED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      nodeId: string;
+      message: string;
+    }
+  | {
+      /**
+       * Anime Equipment (§3.13): the hero equipped an item into a slot at an
+       * outfitter shop. `replacedId` is the item overwritten (null on an empty
+       * slot). Public feed line — no hidden information.
+       */
+      id: string;
+      type: "EQUIPMENT_EQUIPPED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      equipmentId: string;
+      slot: AnimeEquipmentSlot;
+      replacedId: string | null;
+    }
+  | {
+      /** Anime Hero Grades (§3.11): a "skill" node's active/reaction was used. */
+      id: string;
+      type: "HERO_SKILL_USED";
+      playerId: PlayerId;
+      nodeId: string;
+      message: string;
+    }
+  | {
+      /**
+       * Forced Battle Events (Anime mod, §3.12): a scripted combat event fired
+       * (combat-start or a configured round-start). `playerId` is the fighting
+       * hero's seat; `message`/`messageVi` are the bilingual "what happens" line.
+       * Purely informational — the mechanical effect has already applied.
+       */
+      id: string;
+      type: "COMBAT_SCRIPT_TRIGGERED";
+      playerId: PlayerId;
+      scriptId: string;
+      scriptName: string;
+      at: "combat-start" | "round-start";
+      round?: number;
+      message: string;
+      messageVi?: string;
+    }
+  | {
       /** WOG commander: its command ability resolved on a target. */
       id: string;
       type: "COMMANDER_CAST_USED";
@@ -5079,6 +5273,20 @@ export type GameEvent =
       id: string;
       type: "MAP_PRESET_TRIGGERED";
       round?: number;
+      message: string;
+    }
+  | {
+      /**
+       * Anime mod §11 — a designer-triggered visual-novel STORY scene fired at
+       * the start of a round (map-designer "Timed events"). Table-wide and
+       * playerId-agnostic: every client pops the StoryOverlay once per event id
+       * and dismisses independently, never replayed on reconnect. Presentation
+       * only — no rules state changes.
+       */
+      id: string;
+      type: "STORY_SCENE_TRIGGERED";
+      round?: number;
+      sceneId: string;
       message: string;
     }
   | {
@@ -6345,7 +6553,50 @@ export type PlayerState = {
      * one Spell cast exceed the per-round spell limit. NOT reset per round.
      */
     commanderManaCharges?: number;
+    /**
+     * Anime Cultivation Core Formation (realm 2, §5.6): true once this player
+     * has spent their one free Attack-die reroll THIS COMBAT. Reset to false at
+     * combat start (makeCombatShell) — per COMBAT, not per round — so the
+     * standing reroll source is offered again in the next fight but only once
+     * within any single one. Absent === not yet used.
+     */
+    cultivationRerollUsed?: boolean;
+    /**
+     * Anime Hero Grades (anime.heroGrades, §3.11): the ids of the "skill" tree
+     * nodes this player has already used THIS COMBAT (Battle Focus, Iron Will,
+     * War Cry are each once-per-combat). Reset to [] at combat start
+     * (makeCombatShell) — per COMBAT, not per round. Absent === none used.
+     */
+    heroSkillsUsedThisCombat?: string[];
+    /**
+     * Anime Equipment (§3.13): true once this player's Iron-Blood Sword has
+     * spent its "first declared attack +1 Attack" charge THIS COMBAT. Cleared
+     * at combat start (makeCombatShell) — per COMBAT, not per round. Absent ===
+     * not yet spent (so the first qualifying attack still gets +1).
+     */
+    equipmentFirstAttackUsed?: boolean;
+    /**
+     * Anime Equipment (§3.13): true once this player's Black Tortoise Mail has
+     * spent its "first incoming declared attack −1 Attack" charge THIS COMBAT.
+     * Cleared at combat start (makeCombatShell). Absent === not yet spent.
+     */
+    equipmentIncomingAttackUsed?: boolean;
   };
+  /**
+   * Mod-agnostic counter: total Creature Bank battles this player has WON.
+   * Incremented at the bank-win finalize ALWAYS (never gated on any module), so
+   * it is plain additive/optional state — a default table gains it only after a
+   * bank win and nothing but anime.cultivation's Core Formation gate reads it
+   * today (the §3.5 quest vocabulary will read `defeat-banks ≥ N` later).
+   * Absent === 0. PUBLIC (player-view never strips it).
+   */
+  bankWins?: number;
+  /**
+   * Anime Hero Grades (anime.heroGrades, §3.11): the game round each
+   * once-per-round map SKILL node was last used, keyed by node id (Forced
+   * March). `=== state.round` means already used this turn. Absent === never.
+   */
+  heroSkillUsedRound?: Record<string, number>;
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
   /** Round the Magic University deck-dig was last used ("once per round"). */
@@ -6842,6 +7093,21 @@ export type AttackSequenceState = {
   };
 };
 
+/**
+ * Forced Battle Events (Anime mod, §3.12): one combat-long environment stat
+ * modifier resolved from an `environment-stat` script effect. `side` names the
+ * fought side ("defender" = the Neutral guards in a neutral combat), `unitType`
+ * optionally narrows to one type. Read LIVE at attack/defense resolution (like
+ * `proclamationGroundAttackBonus`), so it survives Pack→Few flips and specialty
+ * recomputes. See `src/engine/combat-scripts.ts`.
+ */
+export type CombatScriptStatModifier = {
+  side: "attacker" | "defender" | "both";
+  unitType?: UnitType;
+  stat: "attack" | "defense";
+  amount: number;
+};
+
 export type CombatState = {
   id: string;
   round: number;
@@ -7094,6 +7360,19 @@ export type CombatState = {
    * blocked-space set); the others let units enter but bite them as they move.
    */
   battlefieldTokens?: BattlefieldTokenState[];
+  /**
+   * Forced Battle Events (Anime mod, §3.12): per-combat scripted-event state.
+   * `statModifiers` are the combat-long environment stat deltas read live at
+   * attack/defense resolution; `startApplied` / `roundsFired` make the
+   * combat-start and per-round firings idempotent across finalizeCombatStart /
+   * advanceCombatRound re-entry. Absent in every non-scripted (and legacy)
+   * combat — the mechanism no-ops when the fought field carries no script.
+   */
+  combatScripts?: {
+    statModifiers?: CombatScriptStatModifier[];
+    startApplied?: boolean;
+    roundsFired?: number[];
+  };
 };
 
 export type DeckState = {
@@ -7131,6 +7410,17 @@ export type MapTileState = {
   backLabel?: string;
   /** Tile group (public info — the printed back gives it away). */
   group?: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
+  /**
+   * Per-tile UNDERGROUND layer override carried from
+   * {@link CustomMapTilePlan.underground} onto the placed instance: a
+   * far/near/center/sea tile the designer marked as being on the Underground
+   * layer. Set at setup (face-down included) so {@link tileLayer} treats it as
+   * "subterranean" from the instant it is placed, keeping its band content
+   * unchanged. Public info (not secret — the cue is always on): a designed
+   * underground tile is visibly marked, like a cavern back. Absent (every legacy
+   * snapshot / printed tile) means the tile's plain group layer.
+   */
+  underground?: boolean;
   /**
    * Tile revealed/placed but its rotation not confirmed yet: fields are not
    * materialized until the owner locks the rotation in.
@@ -7716,11 +8006,40 @@ export type VisitStep =
        * text: "plague" (Terrible Plague — the default for legacy queued steps)
        * is weakened by Polish Unit Stacks (a Stacked pack sheds one layer
        * instead of flipping, see applyPlagueToPack); "pandora" (Pandora's
-       * Silver Muster reverse) is always the plain printed flip.
+       * Silver Muster reverse) and "tribulation" (anime Heavenly Tribulation
+       * toll, §5.6) are always the plain printed flip (a Stack layer never
+       * absorbs a flip the player chose to pay).
        */
       type: "FLIP_PACK_TO_FEW";
       armyUnitId: string;
-      source?: "plague" | "pandora";
+      source?: "plague" | "pandora" | "tribulation";
+    }
+  | {
+      /**
+       * Anime Heavenly Tribulation (§5.6): pay `remaining` more tolls (one per
+       * "−1" die). Each toll opens a cheapest-first CHOOSE_ONE pick of one army
+       * card — a Pack flips to Few, any other card is lost with the standard
+       * recycle. Auto-resolves the pick when one candidate remains; an empty
+       * army pays nothing further. Non-input control step (re-queues itself).
+       */
+      type: "TRIBULATION_TOLL";
+      remaining: number;
+    }
+  | {
+      /**
+       * Anime Heavenly Tribulation (§5.6): the chosen Few/Neutral army card is
+       * lost (Neutral-side recycles to its tier discard, Monolith-toll convention).
+       */
+      type: "TRIBULATION_LOSE_UNIT";
+      unitId: string;
+    }
+  | {
+      /**
+       * Anime Heavenly Tribulation (§5.6): after all tolls, resolve the outcome —
+       * a surviving army (≥1 card) BREAKS THROUGH to Nascent Soul (realm 3) and
+       * draws 1 Artifact; an emptied army fails (realm unchanged, retry next turn).
+       */
+      type: "TRIBULATION_RESOLVE";
     }
   | {
       /**
@@ -8550,6 +8869,26 @@ export type VisitStep =
       toDeck?: boolean;
     }
   | {
+      /**
+       * Anime Hero Grades (§3.11): grant a specific library card straight into
+       * the visitor's hand (the Training Manual item bought at the guild shops).
+       * Cost is charged by the wrapping PAY_TO step, so this step is free.
+       */
+      type: "GAIN_HAND_CARD";
+      cardId: CardId;
+    }
+  | {
+      /**
+       * Anime Equipment (§3.13): buy one always-on item at an outfitter Field
+       * Override. Resolving deducts the item's gold cost and sets it into the
+       * MAIN hero's matching slot, REPLACING whatever was there (no refund).
+       * Offered only for an item the hero does not already own, and only when
+       * affordable (gated in legal-actions + a reducer backstop, like PAY_TO).
+       */
+      type: "BUY_EQUIPMENT";
+      equipmentId: string;
+    }
+  | {
       /** Returns revealed cards to their shared decks (shuffle in / discard pile / deck top / deck bottom). */
       type: "EVENT_RETURN_CARDS";
       cards: { cardId: CardId; deckId: DeckId }[];
@@ -9289,6 +9628,14 @@ export type GameSetupOptions = {
    */
   victoryPointsRoundLimit?: number;
   /**
+   * OPTIONAL host-added CUSTOM WIN CONDITIONS ({@link CustomWinCondition}) for
+   * THIS game. Merged (preset-first, exact-duplicate deduped, capped) with the
+   * picked map's own `customWinConditions` at build time
+   * (`applyLobbyCustomWinConditions`). The lobby can only ADD — a map-authored
+   * condition is never removed by the lobby. Absent = the map's own list only.
+   */
+  customWinConditions?: CustomWinCondition[];
+  /**
    * Spell Book house rule (default ON). Gives every player a personal Spell Book
    * zone they may stash hand Spells into to free slots, then cast or boost from.
    * Off disables the move-to-Book action and the discard→Book pickup entirely.
@@ -9441,6 +9788,22 @@ export type CustomStartingUnit = {
  */
 export type CustomMapPreset = {
   victoryMode?: VictoryMode;
+  /**
+   * Map-settings DEFAULTS the designer seeds into the lobby when this map is
+   * picked (apply-once: the host may still change each after pick — their edit
+   * wins at build). Absent = the lobby keeps its own value (byte-identical to a
+   * legacy preset). These three hoist 1:1 onto the same-named `GameSetupOptions`
+   * fields via `presetForcedOptionKeys` / `applyCustomMapPresetToOptions` /
+   * `revertCustomMapPresetOptions`.
+   *   - `difficulty`: default scenario/Neutral difficulty (Field Difficulty Level
+   *     Table column + printed starting bonus).
+   *   - `farTileOpening`: whether players may open their own Ⅱ–Ⅲ Far tiles.
+   *   - `farTilesPerPlayer`: each player's Ⅱ–Ⅲ Far-tile supply size (0–6, clamped
+   *     to {@link MAX_FAR_TILES_PER_PLAYER}); only meaningful while opening is on.
+   */
+  difficulty?: GameDifficulty;
+  farTileOpening?: boolean;
+  farTilesPerPlayer?: number;
   startingResources?: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
   startingBuildings?: string[];
@@ -9453,24 +9816,52 @@ export type CustomMapPreset = {
   /**
    * One-shot (or multi-entry) events fired at the start of a given round.
    * Mission-book style: designer picks the round AND the effect freely —
-   * resource amounts, search size/deck, which locations to re-open, morale,
-   * bonus movement, treasure/resource dice, or a plain announcement.
+   * resource amounts (positive = gain, NEGATIVE = every player LOSES that much,
+   * floored at 0), search size/deck, which locations to re-open, morale, bonus
+   * movement, hero experience, treasure/resource dice, or a plain announcement.
+   *
+   * `repeatEveryRounds` (2–10, absent = one-shot) makes the event fire at
+   * `round`, then again every N rounds (`round`, `round+N`, `round+2N`, …) for
+   * the rest of the game — HoMM3's weekly timed events. Absent is byte-identical
+   * to a legacy one-shot.
    */
   timedEvents?: Array<{
     round: number;
+    repeatEveryRounds?: number;
     effect:
       | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
+      | { kind: "experience"; amount: number }
       | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
       | {
           kind: "clear_visitable_cubes";
           /** Windmill also clears Prospector; Water Wheel also clears Derrick (Factory). */
           locations: ("windmill" | "water_wheel" | "mystical_garden")[];
         }
+      | {
+          kind: "clear_tile_cubes";
+          /**
+           * Re-open every black cube on Tiles of these groups (player-facing
+           * bands Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ / Sea / Underground). NEVER touches a
+           * Creature Bank (it keeps its defeat cube — hard rule) nor the Grail /
+           * Dragon Utopia victory fields (conservative safety).
+           */
+          groups: ("starting" | "far" | "near" | "center" | "sea" | "subterranean")[];
+          /** Skip EVERY field of a Tile that currently contains a Settlement. */
+          excludeSettlementTiles?: boolean;
+        }
       | { kind: "morale"; amount: 1 | -1 }
       | { kind: "movement"; amount: number }
       | { kind: "treasure_roll"; count: number }
       | { kind: "resource_roll"; count: number }
-      | { kind: "note"; text: string };
+      | { kind: "note"; text: string }
+      /**
+       * Anime mod §11 — pop a bilingual visual-novel STORY scene for the whole
+       * table (every client dismisses independently, never replayed on
+       * reconnect). Presentation only: firing it emits a STORY_SCENE_TRIGGERED
+       * feed line and changes no rules state. `sceneId` must resolve in
+       * `storySceneRegistry` (an unknown id is dropped at sanitize).
+       */
+      | { kind: "story"; sceneId: string };
   }>;
   roundLimit?: number;
   notes?: string;
@@ -9550,7 +9941,46 @@ export type CustomMapPreset = {
     victoryConditionVp?: number;
     objectives?: VictoryPointObjective[];
   };
+  /**
+   * Designer-authored CUSTOM WIN CONDITIONS ({@link CustomWinCondition}). An
+   * ADDITIONAL early-end trigger layered on top of the normal victory mode: the
+   * FIRST live player (in turn order) to satisfy ANY listed condition wins
+   * immediately (`checkCustomWinConditions` in `adventure.ts`, run from the
+   * reducer's post-action tail). Absent = today's behaviour (byte-identical).
+   * Capped at {@link import("./map-preset").MAX_CUSTOM_WIN_CONDITIONS}; the lobby
+   * can only ADD to this list, never remove a map-authored one.
+   */
+  customWinConditions?: CustomWinCondition[];
 };
+
+/**
+ * One designer/lobby-authored CUSTOM WIN CONDITION ({@link
+ * CustomMapPreset.customWinConditions}). Every kind is engine-checkable at the
+ * reducer tail: a live-state read (control-towns / flag-mines / hero-level /
+ * gold / artifacts / buildings) or an event-sourced count — the VP ledger
+ * (defeat-heroes reads `mainHeroDefeats.length + secondaryHeroDefeats`;
+ * defeat-dragon-utopia reads `utopiaDefeated`) or the per-player Holy-Grail
+ * Obelisk-visit tally (obelisks reads `grail.obelisksVisited[player].length`).
+ * The metrics ARE the Victory-Points / grail-progress readers (same numbers as
+ * VP scoring / the dig unlock — an invariant, never a duplicate). Params are
+ * clamped by the sanitiser (`sanitizeCustomWinConditions`, map-preset.ts).
+ * `defeat-dragon-utopia` carries NO count: the ledger flag is a boolean, so
+ * "defeat N Utopias" is unsupported. HONEST LIMIT: `obelisks` only accrues in
+ * GRAIL victory mode — obelisk visits are recorded per player solely for the
+ * grail dig (`recordGrailObeliskVisit`), so the condition is meaningful on a
+ * grail map (where it short-circuits the dig+deliver) and is a silent no-op on
+ * any other victory mode.
+ */
+export type CustomWinCondition =
+  | { kind: "control-towns"; count: number }
+  | { kind: "flag-mines"; count: number }
+  | { kind: "hero-level"; level: number }
+  | { kind: "gold"; amount: number }
+  | { kind: "artifacts"; count: number }
+  | { kind: "buildings"; count: number }
+  | { kind: "obelisks"; count: number }
+  | { kind: "defeat-heroes"; count: number }
+  | { kind: "defeat-dragon-utopia" };
 
 /**
  * One extra Victory-Points scenario objective ({@link CustomMapPreset.victoryPoints}).
@@ -9736,6 +10166,20 @@ export type CustomMapTilePlan = {
    *   one or `secretFeature` filters the draw; face-up always places a chosen one.
    */
   group: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
+  /**
+   * Per-tile UNDERGROUND layer override (map designer): mark a far/near/center/sea
+   * tile as topologically on the Underground layer — reachable only through a
+   * Subterranean Gate, exactly like a printed cavern — WITHOUT changing its band
+   * identity. The tile keeps its group (back art, band numeral, guard tiers,
+   * Creature-Bank pile, token legality); only its LAYER flips. Read ONLY through
+   * {@link planIsUnderground} / {@link tileLayer} (the one layer seam) — never an
+   * inline group check. Kept as literal `true` and only on far/near/center/sea:
+   * stripped on `starting` (v1: seat tiles stay Surface, the opening ceremony
+   * assumes it) and `subterranean` (redundant — already underground) at both
+   * {@link validateCustomMapPlan} and the persistence sanitiser. Absent (every
+   * legacy map) = the tile's plain group layer, byte-for-byte as before.
+   */
+  underground?: boolean;
   faceDown: boolean;
   /**
    * Exact tile to place. Required while face-up (non-starting). Optional while
@@ -10167,6 +10611,70 @@ export type HeroState = {
    * Cleared and spent as +1 movement at the start of the owner's next turn.
    */
   wateringHoleBonusPending?: boolean;
+  /**
+   * Anime Cultivation (anime.cultivation, §5.6): the hero's Cultivation Realm —
+   * 0 Qi Refinement (Luyện khí) / 1 Foundation (Trúc cơ) / 2 Core Formation
+   * (Kim đan) / 3 Nascent Soul (Nguyên anh). Optional and lazily stamped (set
+   * only when it advances past 0), so a module-off table and every legacy
+   * snapshot never carry it — absent === realm 0. Only ever written on a MAIN
+   * hero; every grant reads it through the player's main hero (cultivationRealmOf
+   * in anime-cultivation.ts). PUBLIC (player-view never strips hero fields).
+   */
+  cultivationRealm?: 0 | 1 | 2 | 3;
+  /**
+   * Anime Cultivation: set once this hero WINS a Heavenly Tribulation (the realm
+   * 2 → 3 gauntlet). Optional/hero-scoped; gates the once-ever Nascent Soul
+   * breakthrough so a failed attempt can retry but a won one never repeats.
+   */
+  tribulationWon?: boolean;
+  /**
+   * Anime Cultivation: the game round in which this hero last ATTEMPTED a
+   * Heavenly Tribulation. Gates the offer to once per own turn (one turn per
+   * player per round, so `=== state.round` means "already tried this turn").
+   * Absent === never attempted.
+   */
+  tribulationAttemptedRound?: number;
+  /**
+   * Anime Hero Grades (anime.heroGrades, §3.11): accumulated Merit (grade
+   * progress). Crossing a threshold (3 / 7 / 12) auto-grades the hero up and
+   * awards one grade point. Optional and lazily stamped (absent === 0 Merit),
+   * so a module-off table and every legacy snapshot never carry it. Written only
+   * on a MAIN hero; every grant reads it through the player's main hero
+   * (heroGradeOf in anime-hero-grades.ts). PUBLIC (player-view never strips it).
+   */
+  gradeProgress?: number;
+  /**
+   * Anime Hero Grades: the hero's current grade — 0 up to the data-defined cap
+   * (HERO_GRADE_MAX = threshold array length; 3 as shipped). Optional/lazily
+   * stamped (absent === grade 0). Gates which tree tiers may be picked.
+   * Independent of {@link cultivationRealm} (both tracks coexist). Typed `number`
+   * so adding a tier is a pure data change.
+   */
+  grade?: number;
+  /**
+   * Anime Hero Grades: unspent grade points (one per grade-up). Spent by
+   * HERO_GRADE_PICK to pick one tree node per unlocked tier. Absent === 0.
+   */
+  gradePoints?: number;
+  /**
+   * Anime Hero Grades: the tree node ids this hero has picked (at most one per
+   * tier). Read by every passive/skill grant. Absent === none picked.
+   */
+  gradeNodes?: string[];
+  /**
+   * Anime Hero Grades: the game round in which this hero last used the
+   * HERO_TRAIN map action ("once per your turn"). `=== state.round` means
+   * already trained this turn. Absent === never trained.
+   */
+  heroTrainedRound?: number;
+  /**
+   * Anime Equipment (§3.13): the always-on items this MAIN hero has bought,
+   * keyed by slot (weapon/armor/accessory) → equipment id. Optional and lazily
+   * stamped (absent === nothing equipped), so a module-off table and every
+   * legacy snapshot never carry it. PUBLIC (player-view never strips it).
+   * Buying into an occupied slot overwrites (replace, no refund).
+   */
+  equipment?: Partial<Record<AnimeEquipmentSlot, string>>;
 };
 
 export type AttackRollCandidate = {
@@ -10257,6 +10765,12 @@ export type AttackRerollSource = {
   effectId?: string;
   /** Positive morale token: spending the reroll discards the token. */
   morale?: boolean;
+  /**
+   * Anime Cultivation Core Formation (realm 2, §5.6): the one free per-combat
+   * Attack-die reroll. Using it sets combatStats.cultivationRerollUsed so the
+   * source drops out for the rest of this combat.
+   */
+  cultivation?: boolean;
   /** Positive Morale card variant: using the reroll returns this card to the bottom of its deck. */
   moraleCardId?: CardId;
   /**

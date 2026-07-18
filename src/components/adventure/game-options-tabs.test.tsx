@@ -339,3 +339,107 @@ describe("Game options — Victory points", () => {
     expect(row.textContent).toMatch(/designed map already enables Victory Points/i);
   });
 });
+
+/**
+ * The "Custom win condition" lobby section — on the MATCH tab, directly beside
+ * the "Win condition" (victory mode) selector, so the extra early-end triggers
+ * live with the rest of the victory setup. These assert it is WIRED — Add
+ * dispatches the exact SET_GAME_OPTIONS the engine reads, map-set conditions
+ * render read-only, and the effective cap disables Add. (The engine half is
+ * pinned by custom-win-conditions.test.ts.)
+ */
+describe("Game options — Custom win condition", () => {
+  /** Open the options and switch to the Match tab, where the section lives. */
+  function openMatchTab(onAction = vi.fn(), mutate?: (state: GameState) => void) {
+    if (mutate) {
+      openOptionsWith(mutate, onAction);
+    } else {
+      openOptions(onAction);
+    }
+    fireEvent.click(screen.getByRole("tab", { name: /Match/ }));
+    return onAction;
+  }
+
+  it("lives on the MATCH tab beside the Win condition selector — NOT on Mode & Rules", () => {
+    openOptions();
+    // Mode & Rules (the default tab) does NOT carry the section any more.
+    expect(screen.queryByText("Custom win condition")).toBeNull();
+
+    // The Match tab renders it DIRECTLY BELOW the Win condition (victory mode) row.
+    fireEvent.click(screen.getByRole("tab", { name: /Match/ }));
+    const winCondition = screen.getByText("Win condition");
+    const customRow = screen.getByText("Custom win condition");
+    expect(
+      winCondition.compareDocumentPosition(customRow) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("renders the Custom win condition row and Add dispatches the default control-towns condition", () => {
+    const onAction = openMatchTab();
+    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Add win condition" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { customWinConditions: [{ kind: "control-towns", count: 3 }] }
+    });
+  });
+
+  it("shows map-set conditions read-only and Add APPENDS to the host list", () => {
+    const onAction = openMatchTab(vi.fn(), (state) => {
+      state.setupLobby!.options.customMapPreset = {
+        customWinConditions: [{ kind: "control-towns", count: 3 }]
+      };
+      state.setupLobby!.options.customWinConditions = [{ kind: "gold", amount: 200 }];
+    });
+    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
+    // The map-set condition is listed with a "map" tag (read-only — no controls).
+    expect(within(row).getByText(/control 3 Towns/)).toBeTruthy();
+    expect(within(row).getByText("map")).toBeTruthy();
+    // Add appends the new condition to the HOST list, keeping the existing host one.
+    fireEvent.click(within(row).getByRole("button", { name: "Add win condition" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: {
+        customWinConditions: [
+          { kind: "gold", amount: 200 },
+          { kind: "control-towns", count: 3 }
+        ]
+      }
+    });
+  });
+
+  it("removing a host condition dispatches the shrunk list", () => {
+    const onAction = openMatchTab(vi.fn(), (state) => {
+      state.setupLobby!.options.customWinConditions = [
+        { kind: "gold", amount: 200 },
+        { kind: "hero-level", level: 5 }
+      ];
+    });
+    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Remove custom win condition 1" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { customWinConditions: [{ kind: "hero-level", level: 5 }] }
+    });
+  });
+
+  it("Add is disabled at the effective cap (map + host = 4)", () => {
+    openMatchTab(vi.fn(), (state) => {
+      state.setupLobby!.options.customMapPreset = {
+        customWinConditions: [
+          { kind: "control-towns", count: 3 },
+          { kind: "gold", amount: 200 }
+        ]
+      };
+      state.setupLobby!.options.customWinConditions = [
+        { kind: "hero-level", level: 5 },
+        { kind: "flag-mines", count: 4 }
+      ];
+    });
+    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
+    expect((within(row).getByRole("button", { name: "Add win condition" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});

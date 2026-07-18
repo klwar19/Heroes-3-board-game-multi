@@ -5125,6 +5125,67 @@ button.hbSlot:disabled { cursor: default; }
   text-shadow: 0 0.2cqw 0.4cqw rgba(0, 0, 0, 0.8);
 }
 
+/* Anime Cultivation realm chip (§5.6) — the public Cultivation Realm on the board. */
+.hbRealm {
+  color: #d8c7f0;
+  white-space: nowrap;
+}
+
+/* Anime Hero Grades (§3.11): grade chip + node picker */
+.hbGrade {
+  color: #f0d8b0;
+  white-space: nowrap;
+}
+
+.hbGradePicker {
+  margin: 0.6cqw 1cqw 0;
+  padding: 0.6cqw 0.8cqw;
+  border: 1px solid rgba(244, 215, 116, 0.4);
+  border-radius: 0.6cqw;
+  background: rgba(244, 215, 116, 0.08);
+  font-size: 3cqw;
+}
+
+.hbGradePicker > strong {
+  color: #f4d774;
+}
+
+.hbGradePicker ul {
+  list-style: none;
+  margin: 0.4cqw 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4cqw;
+}
+
+.hbGradePick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1cqw;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  padding: 0.4cqw 0.6cqw;
+  border: 1px solid rgba(244, 215, 116, 0.35);
+  border-radius: 0.5cqw;
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+}
+
+.hbGradePick:hover {
+  background: rgba(244, 215, 116, 0.18);
+}
+
+.hbGradePickName {
+  font-weight: 700;
+  color: #f0d8b0;
+}
+
+.hbGradePickText {
+  opacity: 0.85;
+}
+
 /* Army + town panels */
 .armyPanel,
 .townPanel {
@@ -6849,6 +6910,384 @@ button.hbSlot:disabled { cursor: default; }
   align-self: center;
   min-width: 150px;
 }
+
+/* === Anime mod §11 — visual-novel StoryOverlay ===========================
+   All selectors are scoped to `.storyOverlayBackdrop` (or a package theme class
+   INSIDE it), so nothing here matches unless a story scene is on screen — the
+   package-chrome coexistence discipline (plan §3.6): theme classes live on this
+   component's own root, never the table root. Reuses the shared overlay base
+   (`.astrologersProclaimBackdrop`: fixed, inset 0, z-index, fade) for phone
+   re-anchoring parity. ---------------------------------------------------- */
+.storyOverlayBackdrop {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  background: rgba(6, 5, 10, 0.9);
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+}
+
+/* Theme-tinted gradient fallback for a placeholder (not-yet-on-disk) background. */
+.storyOverlayBackdrop.noArt.xianxiaTheme {
+  background: radial-gradient(circle at 50% 22%, rgba(28, 66, 58, 0.72), rgba(6, 12, 10, 0.94));
+}
+.storyOverlayBackdrop.noArt.isekaiTheme {
+  background: radial-gradient(circle at 50% 22%, rgba(46, 34, 86, 0.74), rgba(8, 6, 18, 0.94));
+}
+
+.storyStage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  padding: 16px clamp(12px, 5vw, 64px) clamp(16px, 4vh, 40px);
+  cursor: pointer;
+}
+
+.storySprites {
+  position: absolute;
+  inset: 0 clamp(12px, 5vw, 64px) 30%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.storySpriteSlot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  max-width: 40%;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.storySpriteSlot.empty {
+  opacity: 0;
+}
+.storySpriteSlot.dim {
+  opacity: 0.55;
+  filter: brightness(0.7) saturate(0.85);
+}
+.storySpriteSlot.active {
+  opacity: 1;
+  transform: translateY(-2px);
+}
+
+.storySpriteImage {
+  max-height: 46vh;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+/* Placeholder sprite: a styled initial-letter chip, never a broken <img>. */
+.storySpriteAvatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(64px, 12vw, 118px);
+  height: clamp(64px, 12vw, 118px);
+  border-radius: 50%;
+  border: 2px solid rgba(232, 200, 120, 0.45);
+  background: linear-gradient(160deg, rgba(40, 52, 74, 0.92), rgba(18, 24, 38, 0.92));
+  color: #efe4c4;
+  font-size: clamp(28px, 5vw, 52px);
+  font-weight: 700;
+  text-transform: uppercase;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+}
+.xianxiaTheme .storySpriteAvatar {
+  border-color: rgba(120, 210, 180, 0.5);
+}
+.isekaiTheme .storySpriteAvatar {
+  border-color: rgba(168, 140, 240, 0.55);
+}
+
+.storyToolbar {
+  position: absolute;
+  top: 12px;
+  right: clamp(12px, 5vw, 64px);
+  display: flex;
+  gap: 6px;
+  cursor: default;
+}
+.storyToolButton {
+  min-width: 42px;
+  padding: 5px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(14, 20, 30, 0.82);
+  color: #e8f0ff;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.storyToolButton[aria-pressed="true"] {
+  border-color: #e8c878;
+  color: #efd58f;
+}
+
+.storyHistory {
+  position: absolute;
+  top: 52px;
+  right: clamp(12px, 5vw, 64px);
+  width: min(420px, 80vw);
+  max-height: 46vh;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(10, 14, 22, 0.94);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.6);
+  overflow-y: auto;
+  cursor: default;
+}
+.storyHistoryList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.storyHistoryList li {
+  color: #d7e0f0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.storyHistoryList strong {
+  color: #efd58f;
+}
+
+.storyDialogBox {
+  position: relative;
+  align-self: center;
+  width: min(900px, 96vw);
+  min-height: 128px;
+  padding: 18px 20px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(16, 22, 32, 0.95) 0%, rgba(10, 14, 22, 0.96) 100%);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.72);
+  cursor: pointer;
+}
+.xianxiaTheme .storyDialogBox {
+  border-color: rgba(120, 210, 180, 0.5);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.72), 0 0 24px rgba(70, 190, 150, 0.18);
+}
+.isekaiTheme .storyDialogBox {
+  border-color: rgba(168, 140, 240, 0.55);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.72), 0 0 24px rgba(150, 120, 240, 0.2);
+}
+
+.storyNameplate {
+  position: absolute;
+  top: -14px;
+  left: 18px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: #1a2233;
+  color: #efd58f;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.xianxiaTheme .storyNameplate {
+  background: linear-gradient(160deg, #123028, #0c1a15);
+  border-color: rgba(120, 210, 180, 0.55);
+  color: #bff0dc;
+}
+.isekaiTheme .storyNameplate {
+  background: linear-gradient(160deg, #241a3a, #150f26);
+  border-color: rgba(168, 140, 240, 0.6);
+  color: #dcccff;
+}
+
+.storyLineText {
+  margin: 4px 0 0;
+  min-height: 48px;
+  color: #eef3ff;
+  font-size: 16px;
+  line-height: 1.6;
+}
+.storyAdvanceHint {
+  margin-top: 8px;
+  text-align: right;
+  color: rgba(210, 220, 240, 0.5);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+}
+
+.storyChoices {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  cursor: default;
+}
+.storyChoiceButton {
+  padding: 11px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(24, 32, 48, 0.9);
+  color: #eef3ff;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, transform 120ms ease;
+}
+.storyChoiceButton:hover {
+  border-color: #e8c878;
+  transform: translateX(2px);
+}
+.xianxiaTheme .storyChoiceButton:hover {
+  border-color: #6fd6b0;
+}
+.isekaiTheme .storyChoiceButton:hover {
+  border-color: #a88cf0;
+}
+/* === end StoryOverlay ==================================================== */
+
+/* === Story-mode hub (/story) ============================================= *
+   Campaign cards for the Story-mode hub. The package theme classes
+   (.xianxiaTheme / .isekaiTheme) are stamped on each CARD only — never on the
+   app root — so the mixed-package coexistence discipline holds and these rules
+   have zero effect anywhere but this page. */
+.storyHubToolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.storyHubBlurb {
+  flex: 1;
+  margin: 0;
+}
+.storyLangToggle {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 6px 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.storyCampaignList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+.storyCampaignCard {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 16px;
+  background: rgba(12, 14, 22, 0.55);
+}
+.storyCampaignCard.xianxiaTheme {
+  border-color: rgba(111, 214, 176, 0.45);
+  background: linear-gradient(160deg, rgba(14, 30, 26, 0.72), rgba(10, 16, 18, 0.6));
+}
+.storyCampaignCard.isekaiTheme {
+  border-color: rgba(168, 140, 240, 0.45);
+  background: linear-gradient(160deg, rgba(24, 18, 38, 0.72), rgba(12, 12, 20, 0.6));
+}
+.storyCampaignTitle {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+.xianxiaTheme .storyCampaignTitle {
+  color: #7fe3c0;
+}
+.isekaiTheme .storyCampaignTitle {
+  color: #b8a2f4;
+}
+.storyCampaignTagline {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+.storyCampaignProtagonist {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.storyChapterList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.storyChapter {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.22);
+}
+.storyChapter.status-locked {
+  opacity: 0.62;
+}
+.storyChapterHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.storyChapterNumber {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.1);
+}
+.storyChapterTitle {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+}
+.storyChapterStatus {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--muted);
+}
+.storyChapterStatus.status-completed {
+  color: #7fe3c0;
+  border-color: rgba(111, 214, 176, 0.6);
+}
+.storyChapterStatus.status-playable {
+  color: var(--gold);
+  border-color: rgba(232, 200, 120, 0.6);
+}
+.storyChapterSynopsis {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.storyChapterHint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-style: italic;
+}
+.storyBeginButton {
+  margin-top: 8px;
+  padding: 7px 14px;
+  font-weight: 700;
+}
+.storyHubNav {
+  margin-top: 16px;
+}
+/* === end Story-mode hub ================================================== */
 
 .astrologersProclaimHead {
   display: flex;
@@ -10000,6 +10439,88 @@ span.recruitThumb {
   cursor: pointer;
 }
 
+/* Custom win condition rows (lobby "rules" tab): a compact stacked list of the
+   map-set (read-only, tagged) and host-added conditions plus the Add button. */
+.customWinConditions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.customWinConditionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.customWinConditionRow.mapSet {
+  color: #cdb98d;
+  font-size: 11.5px;
+}
+
+.customWinConditionText {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.customWinConditionTag {
+  padding: 1px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 6px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  color: #c4a878;
+}
+
+.customWinConditionRow select,
+.customWinConditionRow input[type="number"] {
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 11.5px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8d3a8;
+}
+
+.customWinConditionRow input[type="number"] {
+  width: 78px;
+}
+
+.customWinConditionRemove {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8b0a0;
+  cursor: pointer;
+}
+
+.customWinConditionAdd {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  border-radius: 8px;
+  border: 1px dashed rgba(140, 110, 65, 0.6);
+  background: rgba(20, 14, 9, 0.6);
+  color: #e8d3a8;
+  cursor: pointer;
+}
+
+.customWinConditionAdd:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Wake of Gods is a BINH-only submodule. The crest is the on/off switch; its
    compact options window stays inside setup instead of becoming another tab. */
 .wogOptionRow {
@@ -11656,6 +12177,90 @@ span.recruitThumb {
   justify-items: start;
 }
 
+/* Pre-board chrome grouped into three labeled clusters — Tiles /
+   Objects & teleporters / Tools — so placeables read as visually distinct from
+   mode-arming tools. Each is a dark-glass card with a small-caps header,
+   matching the app's .mapPresetGroup family. The clusters only WRAP existing
+   markup; every inner class name (.designerPalette, .designerBandLegend,
+   .designerObjectPalette, .designerObjectButton, .designerModPanel, …) is
+   untouched. */
+.designerCluster {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(214, 178, 94, 0.24);
+  background: linear-gradient(180deg, rgba(30, 22, 13, 0.72), rgba(17, 13, 8, 0.82));
+  padding: 8px 11px 11px;
+  box-shadow: inset 0 1px 0 rgba(246, 226, 168, 0.08);
+}
+.designerClusterObjects {
+  border-color: rgba(120, 200, 255, 0.24);
+}
+.designerClusterTools {
+  border-color: rgba(180, 120, 255, 0.3);
+}
+.designerClusterLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(240, 220, 184, 0.66);
+}
+.designerClusterBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Tools cluster: buttons that ARM a mode (border brush / Mod panel) rather than
+   place an object. A dashed outline sets them apart from the solid placeable
+   object buttons, and the armed state is unmistakable (bright solid border +
+   glow). The .designerToolRow ancestor keeps these winning over the base
+   .designerObjectButton rules regardless of source order. */
+.designerToolRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.designerToolRow .designerToolButton {
+  border-style: dashed;
+  background: rgba(20, 15, 26, 0.55);
+}
+.designerToolRow .designerToolButton.armed {
+  border-style: solid;
+  border-color: #ffe9a8;
+  outline: 2px solid #ffe9a8;
+  box-shadow: 0 0 14px rgba(255, 233, 168, 0.7), inset 0 0 12px rgba(255, 233, 168, 0.22);
+}
+
+/* The long designer walkthrough — collapsed by default so it stops dominating
+   the page. Text is kept verbatim inside .optionHint. */
+.designerHelp {
+  width: 100%;
+  max-width: 620px;
+}
+.designerHelpSummary {
+  width: fit-content;
+  padding: 3px 2px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #e7c878;
+}
+.designerHelpSummary::-webkit-details-marker {
+  display: none;
+}
+.designerHelpSummary::before {
+  content: "▸ ";
+  color: rgba(231, 200, 120, 0.85);
+}
+.designerHelp[open] .designerHelpSummary::before {
+  content: "▾ ";
+}
+
 .designerBoard {
   position: relative;
   min-width: 120px;
@@ -13099,8 +13704,10 @@ img.cardBack {
   justify-content: flex-start;
 }
 
-/* Fix-orientation toggle on a starting-tile popover. */
-.popoverLockToggle {
+/* Fix-orientation toggle on a starting-tile popover; the per-tile Underground
+   layer toggle on a supply/sea/center popover shares the same look. */
+.popoverLockToggle,
+.popoverUndergroundToggle {
   display: inline-flex !important;
   align-items: center;
   gap: 6px;
@@ -13108,7 +13715,8 @@ img.cardBack {
   justify-content: flex-start;
 }
 
-.popoverLockToggle.active {
+.popoverLockToggle.active,
+.popoverUndergroundToggle.active {
   background: rgba(255, 215, 102, 0.18);
   border-color: rgba(255, 215, 102, 0.55);
   color: #ffe9a8;
@@ -13168,13 +13776,18 @@ img.cardBack {
   stroke-width: 1.6;
 }
 
+/* Secret-pin stroke (#9ad0ff) sits close to the Sea band's light blue, so a
+   dashed line PLUS a blue glow keeps a secret-pinned sea tile unmistakable. */
 .designerFlowerOutline.secret {
   stroke-dasharray: 5 3;
+  filter: drop-shadow(0 0 5px rgba(154, 208, 255, 0.75));
 }
 
+/* Selection gold (#ffd766) sits close to the Near band's gold, so the selected
+   ring is widened and haloed — it must read as "selected", not just "Near". */
 .designerFlowerOutline.selected {
-  stroke-width: 3.4;
-  filter: drop-shadow(0 0 6px rgba(255, 215, 102, 0.6));
+  stroke-width: 3.8;
+  filter: drop-shadow(0 0 4px rgba(255, 215, 102, 0.95)) drop-shadow(0 0 9px rgba(255, 215, 102, 0.55));
 }
 
 /* A cavern the layout leaves with no Subterranean Gate: ringed red so the
@@ -13194,6 +13807,15 @@ img.cardBack {
   paint-order: stroke;
   stroke: rgba(60, 8, 4, 0.85);
   stroke-width: 2.6px;
+  pointer-events: none;
+}
+
+/* Fallback glyph for a Field Override pin whose hex art has not shipped yet. */
+.designerFieldOverrideGlyph {
+  font-size: 18px;
+  paint-order: stroke;
+  stroke: rgba(8, 10, 24, 0.75);
+  stroke-width: 2.4px;
   pointer-events: none;
 }
 
@@ -13963,6 +14585,44 @@ img.cardBack {
   color: var(--muted);
   text-align: center;
   line-height: 1.2;
+}
+
+/* Compact band-colour key: swatch + numeral for each tile group, so the
+   creature-tier meaning of every outline colour is always on screen. */
+.designerBandLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid rgba(214, 178, 94, 0.28);
+  border-radius: 8px;
+  background: rgba(20, 16, 10, 0.55);
+}
+
+.designerBandLegendTitle {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.designerBandLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #f0dcb8;
+}
+
+.designerBandLegendSwatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+  flex: none;
 }
 
 /* --- Placed tiles, drop zones and drag ghost ---------------------------- */
@@ -18731,6 +19391,57 @@ img.cardBack {
   margin-bottom: 8px;
   color: #f2dfaf;
   font-size: 13px;
+}
+
+/* Anime hero map actions dock (Train / Forced March / Heavenly Tribulation) —
+   a compact command column under the hero board, styled like the morale dock. */
+.heroActionsDock {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(120, 150, 200, 0.4);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(20, 26, 38, 0.94), rgba(12, 15, 24, 0.97));
+  color: #d8e2f4;
+  box-shadow: inset 0 1px 0 rgba(200, 220, 255, 0.06), 0 8px 22px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.heroActionsDock header {
+  color: #eaf1ff;
+  font-size: 13px;
+  margin-bottom: 1px;
+}
+
+.heroActionButton {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 7px 9px;
+  border: 1px solid rgba(120, 150, 200, 0.42);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.24);
+  color: #eaf1ff;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.heroActionButton:hover {
+  background: rgba(70, 100, 160, 0.28);
+  border-color: rgba(150, 185, 240, 0.6);
+}
+
+.heroActionLabelEn {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.heroActionLabelVi {
+  font-size: 11px;
+  opacity: 0.72;
 }
 
 .moraleDeckGrid {
@@ -24396,6 +25107,104 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   border-color: rgba(255, 214, 130, 0.55);
   color: #ffd682;
   background: rgba(64, 50, 22, 0.75);
+}
+
+/* Collapsible sub-groups inside the map-conditions panel: each bundles a few
+   related leaf .mapPresetSections under a glyph + title + active-count header,
+   so the ~15 flat sections read as six clearly-separated, ordered groups. */
+.mapPresetGroup {
+  border-radius: 10px;
+  border: 1px solid rgba(154, 208, 255, 0.22);
+  background: linear-gradient(180deg, rgba(26, 36, 52, 0.72), rgba(16, 22, 34, 0.82));
+  overflow: hidden;
+}
+
+.mapPresetGroup[open] {
+  border-color: rgba(154, 208, 255, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(154, 208, 255, 0.06);
+}
+
+details.mapPresetGroup > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mapPresetGroupHead {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  color: #dce9ff;
+  transition: background 0.12s ease;
+}
+
+.mapPresetGroupHead:hover {
+  background: rgba(154, 208, 255, 0.06);
+}
+
+.mapPresetGroupLead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mapPresetGroupGlyph {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+.mapPresetGroupGlyphEmoji {
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.mapPresetGroupTitle {
+  font-family: var(--font-heroic);
+  font-size: 12.5px;
+  letter-spacing: 0.03em;
+  color: #eaf2ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mapPresetGroupCount {
+  flex: 0 0 auto;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 214, 130, 0.5);
+  color: #ffd682;
+  background: rgba(64, 50, 22, 0.7);
+  white-space: nowrap;
+}
+
+.mapPresetGroupChevron {
+  flex: 0 0 auto;
+  color: rgba(154, 208, 255, 0.85);
+  font-size: 12px;
+  transition: transform 0.15s ease;
+}
+
+.mapPresetGroup[open] .mapPresetGroupChevron {
+  transform: rotate(90deg);
+}
+
+.mapPresetGroupBody {
+  display: grid;
+  gap: 6px;
+  padding: 2px 11px 10px;
+  border-top: 1px solid rgba(154, 208, 255, 0.14);
 }
 
 /* Icon-tagged condition lines (designer summary + lobby banner). */

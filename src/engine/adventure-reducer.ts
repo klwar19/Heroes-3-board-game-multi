@@ -162,6 +162,7 @@ import {
 } from "./commanders";
 import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
+import { applyCombatScriptCombatStart } from "./combat-scripts";
 import { cardCanBoostPower } from "./effects";
 import { bakeEntropy, createSeededRandom } from "./random";
 import {
@@ -174,6 +175,19 @@ import {
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { getCombatStartDraws, getCombatStartMark } from "./unit-abilities";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import { maybeAdvanceCultivationRealm, tribulationAvailable } from "./anime-cultivation";
+import {
+  gainGradeProgress,
+  heroGradeNode,
+  heroGradePickableNodes,
+  heroGradeWinGold,
+  heroGradesEnabled,
+  heroTrainAvailable,
+  HERO_TRAIN_MERIT,
+  HERO_TRAIN_MOVEMENT_COST
+} from "./anime-hero-grades";
+import { equipmentWinGold, playerHasEquipment } from "./anime-equipment";
+import { getEquipmentDefinition } from "@/data/anime/equipment";
 import {
   consumeHeldMoraleCard,
   discardHeldMoraleCardByIndex,
@@ -836,8 +850,13 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
  * move without visiting, as the rulebook prescribes.
  */
 function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, passThrough: boolean): void {
-  requireAdventure(state);
+  const adventure = requireAdventure(state);
   const from = hero.spaceId ?? to;
+  const fromField = adventure.fields[from];
+  const toField = adventure.fields[to];
+  // The two halves of a Subterranean Gate Token are "one Field": stepping
+  // between them is the tunnel travel — cave-visit (CAVEHEAD), not horse steps.
+  const throughGate = gateFieldsLinked(fromField, toField);
   hero.spaceId = to;
   hero.movementPoints -= 1;
 
@@ -847,7 +866,8 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
     heroId: hero.id,
     from,
     to,
-    movementLeft: hero.movementPoints
+    movementLeft: hero.movementPoints,
+    ...(throughGate ? { teleport: "subterranean" as const } : {})
   });
   commitPopulationOnMove(state, hero.controllerId);
 
@@ -860,10 +880,7 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
   // Crossing OUT through a linked Subterranean Gate: a designed guard still
   // standing on the FAR half is swept aside (auto-win, no experience) — you
   // fight to step onto a gate from its own layer, never to come out of it.
-  const adventure = state.adventure;
-  const fromField = adventure?.fields[from];
-  const toField = adventure?.fields[to];
-  if (fromField && toField && gateFieldsLinked(fromField, toField)) {
+  if (fromField && toField && throughGate) {
     autoWinArrivalGuard(state, hero.controllerId, toField);
   }
 
@@ -1069,7 +1086,8 @@ function dimensionDoorTeleport(state: GameState, hero: HeroState, to: MapSpaceId
     heroId: hero.id,
     from,
     to,
-    movementLeft: hero.movementPoints
+    movementLeft: hero.movementPoints,
+    teleport: "spell"
   });
   commitPopulationOnMove(state, hero.controllerId);
   // A teleport that touches the sea halts further movement, like a sea step.
@@ -2754,6 +2772,23 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       ) {
         throw new Error("Choose one of the printed options.");
       }
+      // Anime Equipment (§3.13): backstop a forged BUY_EQUIPMENT pick — reject an
+      // item the hero already owns or cannot afford (the legal-actions offer and
+      // the shop-menu build already hide both cases; this refuses a raw action).
+      const buyStep = option.steps.find((inner) => inner.type === "BUY_EQUIPMENT");
+      if (buyStep && buyStep.type === "BUY_EQUIPMENT") {
+        const def = getEquipmentDefinition(buyStep.equipmentId);
+        const buyer = state.players[action.playerId];
+        if (!def || !buyer) {
+          throw new Error("That equipment cannot be bought.");
+        }
+        if (playerHasEquipment(state, action.playerId, buyStep.equipmentId)) {
+          throw new Error("Your hero already carries that item.");
+        }
+        if (!hasResources(buyer, { gold: def.cost })) {
+          throw new Error("Not enough gold for that item.");
+        }
+      }
       visit.steps.shift();
       visit.steps.unshift(...option.steps);
       // Scholar's +1 result grants a Statistic card of the player's choice.
@@ -3559,6 +3594,16 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       // Tarnum (Conflux) VI: the over-limit Search privilege never carries into a
       // fresh combat.
       player.combatStats.tarnumOverlimitCards = [];
+      // Anime Cultivation Core Formation reroll (§5.6): the one free Attack-die
+      // reroll refreshes per COMBAT (not per round) — clear the spent flag here.
+      player.combatStats.cultivationRerollUsed = false;
+      // Anime Hero Grades (§3.11): the once-per-combat SKILL nodes (Battle Focus,
+      // Iron Will, War Cry) refresh per COMBAT — clear the used set here.
+      player.combatStats.heroSkillsUsedThisCombat = [];
+      // Anime Equipment (§3.13): the Iron-Blood Sword / Black Tortoise Mail
+      // one-shot charges refresh per COMBAT — clear the spent flags here.
+      player.combatStats.equipmentFirstAttackUsed = false;
+      player.combatStats.equipmentIncomingAttackUsed = false;
     }
   }
 
@@ -6297,6 +6342,13 @@ function finalizeCombatStart(state: GameState): void {
   // Charming, Pacifist) resolve after unit abilities and BEFORE the first
   // war-machine round, so a charmed/fled defender never soaks a Ballista shot.
   applyCommanderCombatStart(state);
+  // Forced Battle Events (Anime mod, §3.12): a fought field's combat-start
+  // script events (environment mist, an obstacle formation, an opening pulse)
+  // settle LAST — after the commander package, before the first war-machine
+  // round — so the environment is in place for round 1. NEUTRAL fights only;
+  // idempotent across finalizeCombatStart re-entries. Also fires any
+  // round-start events configured for the opening round.
+  applyCombatScriptCombatStart(state);
   startWarMachineRound(state);
 }
 
@@ -7161,6 +7213,20 @@ export function finalizeAdventureCombat(state: GameState): void {
     });
   }
 
+  // Anime Hero Grades Bounty Hunter's Eye (tier 1, §3.11): +1 gold after each
+  // combat the player wins. Gated on the node; no-op when the module is off /
+  // unpicked, and never for a NEUTRAL "winner".
+  if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && heroGradeWinGold(state, outcome.winnerPlayerId) > 0) {
+    gainResources(state, outcome.winnerPlayerId, { gold: heroGradeWinGold(state, outcome.winnerPlayerId) }, "Bounty Hunter's Eye");
+  }
+
+  // Anime Equipment Adventurer's Blade (§3.13): +1 gold after each combat the
+  // player wins. A SEPARATE grant from Bounty Hunter's Eye, so a hero carrying
+  // both stacks to +2. Gated on the item; never for a NEUTRAL "winner".
+  if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && equipmentWinGold(state, outcome.winnerPlayerId) > 0) {
+    gainResources(state, outcome.winnerPlayerId, { gold: equipmentWinGold(state, outcome.winnerPlayerId) }, "Adventurer's Blade");
+  }
+
   // Open the Hierophant's post-combat First Aid window (choose 1 casualty to
   // restore, or decline). Gated in legal-actions: until resolved, the owner
   // may only answer it — exactly like the Necromancy deferral it mirrors.
@@ -7175,6 +7241,20 @@ export function finalizeAdventureCombat(state: GameState): void {
 
     if (hero && playerId) {
       if (outcome.winnerPlayerId === playerId) {
+        // Mod-agnostic bank-win counter: incremented on EVERY Creature-Bank win
+        // (never gated on any module) so it is plain additive state. It gates
+        // anime Cultivation's Core Formation realm (§5.6) and the future
+        // `defeat-banks ≥ N` quest vocabulary; nothing else reads it, and a
+        // module-off table simply carries the optional field after a bank win.
+        if (context.bankId) {
+          const seat = state.players[playerId];
+          if (seat) {
+            seat.bankWins = (seat.bankWins ?? 0) + 1;
+          }
+          // A bank win may complete the Core Formation threshold (level ≥ 5 AND
+          // ≥ 1 bank win) — auto-advance the realm now (no-op when off / unmet).
+          maybeAdvanceCultivationRealm(state, playerId);
+        }
         // Creature Banks have no Field Difficulty and grant NO experience
         // (rulebook p.66). Secondary Heroes never gain experience either; the
         // gold (Freelancer's Guild) and Necromancy rewards below are
@@ -7534,6 +7614,161 @@ function discardDefeatedArmyUnit(state: GameState, player: PlayerState, armyUnit
     const tier = (def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
     state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(armyUnit.unitDefId);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Anime Cultivation — Heavenly Tribulation (§5.6, the realm 2 → 3 gauntlet).
+// ---------------------------------------------------------------------------
+
+/**
+ * HEAVEN_TRIBULATION: the main hero (Core Formation / realm 2, level ≥ 7, no
+ * prior success, at most once per own turn) braves the Heavenly Tribulation — a
+ * seeded 3-Attack-die gauntlet resolved as a pendingVisit (the standard
+ * exclusive-interaction singleton, so parallel-turn bystander gating, the
+ * fingerprint backstop, AFK/timeout default-resolution and elimination cleanup
+ * all cover it generically). Each "−1" die costs one army-card toll; surviving
+ * all three breaks through to Nascent Soul (realm 3) and draws 1 Artifact. NEVER
+ * forced — declining is simply not taking the action; a failure retries next
+ * turn. Handler-validated (self-validating; usable without a legal-actions match).
+ */
+export function beginHeavenlyTribulation(
+  state: GameState,
+  action: Extract<GameAction, { type: "HEAVEN_TRIBULATION" }>
+): void {
+  const adventure = state.adventure;
+  const player = state.players[action.playerId];
+  if (!adventure || !player) {
+    throw new Error("No adventure in progress.");
+  }
+  if (state.combat) {
+    throw new Error("The Heavenly Tribulation cannot begin during a combat.");
+  }
+  if (!hasOpenAdventureTurn(state, action.playerId)) {
+    throw new Error("Brave the Heavenly Tribulation on your own turn.");
+  }
+  // Standard exclusive-interaction singleton — never open a second window.
+  if (state.pendingChoice || state.reactionWindow || adventure.pendingVisit || adventure.pendingNecromancy) {
+    throw new Error("Resolve the current interaction before the Heavenly Tribulation.");
+  }
+  assertParallelInteractionFree(state, action.playerId);
+  if (!tribulationAvailable(state, action.playerId)) {
+    throw new Error(
+      "The Heavenly Tribulation is not available (needs Core Formation, hero level 7, no prior success, once per turn)."
+    );
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero || hero.spaceId === null) {
+    throw new Error("Your main hero must be on the map to face the Tribulation.");
+  }
+
+  // Once per own turn — stamped BEFORE the roll so even a failed attempt
+  // (emptied army) consumes the turn's single attempt.
+  hero.tribulationAttemptedRound = state.round;
+
+  // Seeded 3-Attack-die gauntlet (map die faces, no battlefield). Each "−1"
+  // face costs one army-card toll. Same seeded-random convention as the other
+  // map Attack-die rolls (ATTACK_DIE_TABLE / bank-size); the live per-action
+  // entropy salts it in real play, deterministic from the seed in tests.
+  const random = createSeededRandom(`${state.seed}#adventure#heavenly-tribulation#${eventSeedNumber(state)}`);
+  const faces = [-1, -1, 0, 0, 1, 1];
+  const rolls = Array.from({ length: 3 }, () => faces[random.nextInt(0, faces.length - 1)] ?? 0);
+  const tolls = rolls.filter((roll) => roll === -1).length;
+
+  appendEvent(state, {
+    type: "CULTIVATION_TRIBULATION_ROLLED",
+    playerId: action.playerId,
+    heroId: hero.id,
+    rolls
+  });
+
+  adventure.pendingVisit = {
+    heroId: hero.id,
+    playerId: action.playerId,
+    fieldId: hero.spaceId,
+    steps: [
+      { type: "TRIBULATION_TOLL", remaining: tolls },
+      { type: "TRIBULATION_RESOLVE" }
+    ]
+  };
+  processPendingVisit(state);
+}
+
+// ---------------------------------------------------------------------------
+// Anime Hero Grades — map-side actions (train for Merit, spend a grade point).
+// ---------------------------------------------------------------------------
+
+/**
+ * HERO_TRAIN: spend HERO_TRAIN_MOVEMENT_COST (2) movement points on your own map
+ * turn to gain HERO_TRAIN_MERIT (1) Merit. Once per own turn. Self-validating;
+ * opens no window (a threshold crossing auto-grades-up inside gainGradeProgress).
+ */
+export function heroTrain(state: GameState, action: Extract<GameAction, { type: "HERO_TRAIN" }>): void {
+  const adventure = state.adventure;
+  const player = state.players[action.playerId];
+  if (!adventure || !player) {
+    throw new Error("No adventure in progress.");
+  }
+  if (state.combat) {
+    throw new Error("Train on your own map turn, not during combat.");
+  }
+  if (!hasOpenAdventureTurn(state, action.playerId)) {
+    throw new Error("Train on your own turn.");
+  }
+  assertParallelInteractionFree(state, action.playerId);
+  if (!heroTrainAvailable(state, action.playerId)) {
+    throw new Error(
+      `Training needs your main hero on the map with ${HERO_TRAIN_MOVEMENT_COST} movement, once per turn.`
+    );
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero || hero.spaceId === null) {
+    throw new Error("Your main hero must be on the map to train.");
+  }
+  hero.movementPoints -= HERO_TRAIN_MOVEMENT_COST;
+  hero.heroTrainedRound = state.round;
+  appendEvent(state, { type: "HERO_TRAINED", playerId: action.playerId, heroId: hero.id });
+  gainGradeProgress(state, action.playerId, HERO_TRAIN_MERIT, "train");
+}
+
+/**
+ * HERO_GRADE_PICK: spend one unspent grade point to pick a tree node (one node
+ * per tier, tier ≤ current grade). Self-validating (the node is baked into the
+ * action, so no window opens) — usable outside combat exactly like
+ * COMMANDER_GRADE_UP. Passives take effect immediately; skills become offerable.
+ */
+export function heroGradePick(state: GameState, action: Extract<GameAction, { type: "HERO_GRADE_PICK" }>): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if (state.combat) {
+    throw new Error("Grade nodes are picked outside of combat.");
+  }
+  if (!heroGradesEnabled(state)) {
+    throw new Error("Hero Grades is off for this game.");
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero) {
+    throw new Error("You have no main hero.");
+  }
+  const node = heroGradeNode(action.nodeId);
+  if (!node) {
+    throw new Error("Unknown grade node.");
+  }
+  if (!heroGradePickableNodes(state, action.playerId).some((candidate) => candidate.id === node.id)) {
+    throw new Error(
+      "That grade node cannot be picked now (need an unspent point, an unlocked tier, and that tier unpicked)."
+    );
+  }
+  hero.gradePoints = (hero.gradePoints ?? 0) - 1;
+  hero.gradeNodes = [...(hero.gradeNodes ?? []), node.id];
+  appendEvent(state, {
+    type: "HERO_GRADE_NODE_PICKED",
+    playerId: action.playerId,
+    heroId: hero.id,
+    nodeId: node.id,
+    message: `Grade node picked: ${node.name.en} (${node.name.vi}).`
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -8537,7 +8772,8 @@ export function activateTownBuilding(state: GameState, action: Extract<GameActio
       heroId: hero.id,
       from,
       to: action.spaceId,
-      movementLeft: hero.movementPoints
+      movementLeft: hero.movementPoints,
+      teleport: "spell"
     });
     commitPopulationOnMove(state, hero.controllerId);
     appendEvent(state, {

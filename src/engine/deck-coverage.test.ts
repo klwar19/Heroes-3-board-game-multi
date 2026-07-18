@@ -9,6 +9,8 @@ import {
 import { STARTING_ONLY_SPELLS, spellDeckBinhBasic, spellDeckBinhExpert, spellDeckLegacy } from "@/data/cards/spells";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import { moraleCardPolarity } from "@/data/cards/morale";
+import { animeXianxiaArtifactCardIds } from "@/data/anime/artifacts";
+import { animeNeverDeckedCardIds } from "@/data/anime/hero-grades";
 import { coreHeroDefinitions } from "@/data/factions/core";
 
 /**
@@ -23,6 +25,12 @@ import { coreHeroDefinitions } from "@/data/factions/core";
  *
  * This guards against the "implemented but orphaned" trap: a card whose effect
  * runs and is tested, yet can never be drawn because nobody added it to a deck.
+ *
+ * Optional anime-module artifacts (Pháp Bảo, `anime.xianxiaArtifacts`) are
+ * ALSO excluded: they join the shared Artifact deck(s) only when the module is
+ * on (append-at-setup, not in the base constant lists), so they are reachable
+ * but not unconditionally decked — their join is covered by
+ * `anime-artifacts.test.ts` ("Pháp Bảo deck join").
  */
 describe("deck coverage", () => {
   const decked = new Set<string>([
@@ -39,12 +47,19 @@ describe("deck coverage", () => {
 
   const DECK_KINDS = new Set(["artifact", "spell", "ability"]);
   const startingOnly = new Set(STARTING_ONLY_SPELLS);
+  // Optional-module cards join their decks only when the module is on (Pháp Bảo),
+  // or NEVER join a deck at all: the Hero Grades Training Manual
+  // (`anime.heroGrades`) is bought at a guild shop, never drawn, so it is
+  // reachable through the shop only — see `animeNeverDeckedCardIds`.
+  const moduleGated = new Set<string>([...animeXianxiaArtifactCardIds, ...animeNeverDeckedCardIds]);
 
   it("places every implemented artifact, spell and ability in a draw deck", () => {
     const orphaned = Object.entries(cardLibrary)
       .filter(([, card]) => card.implementationStatus === "implemented" && DECK_KINDS.has(card.kind))
       .map(([id]) => id)
-      .filter((id) => !decked.has(id) && !startingOnly.has(id) && moraleCardPolarity(id) === null)
+      .filter(
+        (id) => !decked.has(id) && !startingOnly.has(id) && !moduleGated.has(id) && moraleCardPolarity(id) === null
+      )
       .sort();
 
     expect(orphaned).toEqual([]);
@@ -94,6 +109,7 @@ describe("deck coverage", () => {
         card.implementationStatus !== "implemented" ||
         !DECK_KINDS.has(card.kind) ||
         startingOnly.has(card.id) ||
+        moduleGated.has(card.id) ||
         moraleCardPolarity(card.id) !== null
       ) {
         continue;

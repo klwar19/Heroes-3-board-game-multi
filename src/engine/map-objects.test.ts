@@ -161,6 +161,13 @@ describe("Colored Gate pair routing", () => {
     expect([blueA, blueB]).not.toContain(state.heroes.hero_p1.spaceId);
     // Arrival did not re-trigger (no ping-pong): the hero stayed on redExit.
     expect(state.heroes.hero_p1.spaceId).not.toBe(redEntry);
+    // Colored Gate hop = TELPTOUT (same visit as two-way Monolith).
+    const moves = state.eventLog.filter(
+      (event): event is Extract<(typeof state.eventLog)[number], { type: "HERO_MOVED" }> =>
+        event.type === "HERO_MOVED"
+    );
+    expect(moves.find((event) => event.to === redEntry)?.teleport).toBeUndefined();
+    expect(moves.find((event) => event.to === redExit)?.teleport).toBe("gate");
   });
 
   it("a hero on a Gate may Revisit (1 MP) to travel back to its pair partner", () => {

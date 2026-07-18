@@ -5,11 +5,13 @@ import {
   normalizeDesignedBorders,
   normalizeDesignedBorderEdges,
   parseHexSpaceId,
+  planIsUnderground,
   sanitizeCenterHexPlan,
   sanitizeCustomMapPreset,
   sanitizeObjectGuard,
   scenarioDefinitions,
   MAX_DESIGNED_GATE_LINKS,
+  UNDERGROUND_LAYER_GROUPS,
   type CustomMapGateLink,
   type CustomMapPreset,
   type CustomMapTilePlan
@@ -196,12 +198,19 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   const secretFeature = isSecretTileFeature(candidate.secretFeature)
     ? candidate.secretFeature
     : undefined;
-  // Designer Subterranean Gate links (cavern tiles only): keep well-formed
-  // entries — a Surface partner named by whole-grid centre plus optionally a
-  // valid absolute hex id per half — dropping malformed ones and capping the
-  // count so untrusted input can't balloon. Non-cavern groups carry none.
+  // Per-tile UNDERGROUND layer override: keep it ONLY as a literal true and ONLY
+  // on far/near/center/sea (kept there, stripped on `subterranean` = redundant
+  // and `starting` = the v1 Surface-only seat rule). Mirrors the setup validator.
+  const underground =
+    candidate.underground === true &&
+    typeof candidate.group === "string" &&
+    UNDERGROUND_LAYER_GROUPS.has(candidate.group);
+  // Designer Subterranean Gate links: kept for any UNDERGROUND-layer plan — a
+  // printed cavern OR a flagged far/near/center/sea tile (the layer predicate,
+  // never a bare group check) — dropping malformed ones and capping the count so
+  // untrusted input can't balloon. Surface plans carry none.
   const gateLinks =
-    candidate.group === "subterranean" && Array.isArray(candidate.gateLinks)
+    planIsUnderground({ group: candidate.group, underground }) && Array.isArray(candidate.gateLinks)
       ? candidate.gateLinks
           .map(sanitizeGateLink)
           .filter((link): link is CustomMapGateLink => link !== null)
@@ -247,6 +256,8 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(centerHex ? { centerHex } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
+    // The UNDERGROUND layer override (far/near/center/sea only), kept as true.
+    ...(underground ? { underground: true as const } : {}),
     ...(tokens && tokens.length > 0 ? { tokens } : {}),
     ...(fieldOverrides && fieldOverrides.length > 0 ? { fieldOverrides } : {}),
     ...(gateLinks.length > 0 ? { gateLinks } : {}),

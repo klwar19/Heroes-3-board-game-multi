@@ -6,6 +6,7 @@ import {
   abilityRollRerollActive,
   addArmyUnit,
   changeMorale,
+  checkCustomWinConditions,
   commitPopulationOnMove,
   ensureUniqueArmyUnitIds,
   gainResources,
@@ -90,6 +91,9 @@ import {
   skipNecromancy,
   commanderGradeUp,
   reviveCommander,
+  beginHeavenlyTribulation,
+  heroTrain,
+  heroGradePick,
   resolveCommanderFirstAid,
   commanderSetStance,
   spellBookAction,
@@ -156,6 +160,7 @@ import {
   planMovePath
 } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
+import { applyCombatScriptRoundStart, combatScriptStatDelta } from "./combat-scripts";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import { isNeutralSplashVictimChoice, neutralCombatControllerId } from "./neutral-control";
 import {
@@ -180,6 +185,22 @@ import {
   spendFirstAidExpert,
   startWarMachineRound
 } from "./permanents";
+import { cultivationCombatRerollBonus } from "./anime-cultivation";
+import {
+  gainGradeProgress,
+  heroGradeNode,
+  heroGradesEnabled,
+  heroSkillAvailableThisCombat,
+  heroSkillAvailableThisRound,
+  markHeroSkillUsedThisCombat,
+  markHeroSkillUsedThisRound,
+  playerMainHeroInCombat
+} from "./anime-hero-grades";
+import {
+  equipmentFirstAttackBonus,
+  equipmentIncomingAttackPenalty,
+  markEquipmentAttackResolved
+} from "./anime-equipment";
 import { createSeededRandom, setActiveEntropy } from "./random";
 import {
   combatHasHumanParticipant,
@@ -3269,7 +3290,14 @@ function getAttackStackDetails(
   // subtracts the defender's printed Defense value). Both are floored together
   // so the effective Defense never drops below 0.
   const defenseBonusBeforeAbility =
-    stackItem.modifiers.defenseBonus + activeDefenseBonus + tokenDefense + redirectedDefenseDelta;
+    stackItem.modifiers.defenseBonus +
+    activeDefenseBonus +
+    tokenDefense +
+    redirectedDefenseDelta +
+    // Forced Battle Events (Anime mod, §3.12): a fought field's environment-stat
+    // script targeting the DEFENDER's Defense (e.g. "the Neutral side +1 Defense").
+    // Folds into the printed/buffed Defense before the reduction-ability clamp.
+    combatScriptStatDelta(combat, defender, "defense");
   const defenseReductionSource =
     !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
   const ignoreCardDefenseSource =
@@ -3381,7 +3409,19 @@ function getAttackStackDetails(
       chargeAttackBonus +
       stackedAttackBonus +
       ownAttackFlatBonus +
-      astrologersRoundAttackBonus -
+      astrologersRoundAttackBonus +
+      // Forced Battle Events (Anime mod, §3.12): a fought field's environment-stat
+      // script (e.g. Spirit Mist "ranged −1 Attack"). An environmental modifier,
+      // added UNCLAMPED like the innate bonuses — a penalty still bites an
+      // elemental unit, and a bonus is not treated as a buffable attack card.
+      combatScriptStatDelta(combat, attacker, "attack") +
+      // Anime Equipment (§3.13): the Iron-Blood Sword's +1 on the owner's FIRST
+      // declared attack this combat, and the Black Tortoise Mail's −1 on the
+      // FIRST declared attack against the defender's owner. Both are per-combat
+      // one-shots (unspent-charge gated, main-hero-scoped), added UNCLAMPED like
+      // the script delta; consumed when the attack lands (finishResolvedAttack).
+      equipmentFirstAttackBonus(state, attacker, isRetaliation) -
+      equipmentIncomingAttackPenalty(state, defender, isRetaliation) -
       retaliationAttackPenalty -
       // Negative Morale "-1 to your next Attack … roll": latched onto this
       // attack when its die rolled (applyMoraleAttackRollPenalty), then folded
@@ -3525,6 +3565,18 @@ function buildRerollSources(
         }))
       : [];
 
+  // Anime Cultivation Core Formation (realm 2, §5.6): one FREE Attack-die reroll
+  // per combat, a standing source on the holder's own attack rolls (declared
+  // attacks AND retaliations, like the morale token — not gated on isRetaliation).
+  // Blocked by the same attackRerollsBlocked gate above (Spirit of Oppression)
+  // and offered like any generic source; the once-per-combat flag lives on
+  // combatStats and is set when it is spent (rerollPendingChoice). Scoped to
+  // Attack-die rolls only (see the note in buildAbilityRerollSources).
+  const cultivationSources: AttackRerollSource[] =
+    player && cultivationCombatRerollBonus(state, attacker.controllerId) > 0 && !player.combatStats.cultivationRerollUsed
+      ? [{ name: "Core Formation reroll", cultivation: true, remaining: 1, used: 0 }]
+      : [];
+
   return [
     ...abilitySources,
     ...ammoCartSources,
@@ -3536,7 +3588,8 @@ function buildRerollSources(
     })),
     ...artifactSources,
     ...moraleSources,
-    ...moraleSetSources
+    ...moraleSetSources,
+    ...cultivationSources
   ].filter((source) => source.remaining > 0);
 }
 
@@ -3703,6 +3756,10 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
       }))
     : [];
 
+  // NOTE: the anime Cultivation Core Formation reroll (§5.6) is deliberately
+  // scoped to ATTACK-die rolls (buildRerollSources) and is NOT added here — like
+  // the unit reroll abilities / Ammo Cart / Luck-Fortune-Mirth pools, it stays
+  // OFF ability rolls (Death Stare & co.). A documented, tested limit.
   return [...artifactSources, ...moraleSources, ...moraleSetSources].filter((source) => source.remaining > 0);
 }
 
@@ -4490,6 +4547,11 @@ function finishResolvedAttack(
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
   // Rune Keeper commander: +1 Rune the first time it is attacked this combat.
   applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
+
+  // Anime Equipment (§3.13): the attack LANDED (past the lethal-save gate) — mark
+  // the Iron-Blood Sword / Black Tortoise Mail per-combat charges spent so only
+  // this FIRST qualifying declared attack got the +1 / −1. Retaliations no-op.
+  markEquipmentAttackResolved(state, details.attacker, details.defender, details.isRetaliation);
 
   if (details.isRetaliation) {
     details.attacker.retaliatedThisRound = true;
@@ -12719,6 +12781,164 @@ function applyCommanderCastReaction(
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
 
+/**
+ * Anime Hero Grades (§3.11): create the +Attack / +Defense buff a skill node
+ * applies to `unit` for the current attack/activation. Mirrors the commander
+ * cast buffs — an ATTACK_BONUS / DEFENSE_BONUS active effect scoped to the unit,
+ * `current-combat-round` for the reaction skills (folds into the triggering
+ * attack, like the commander defense reaction) and `current-activation` for the
+ * War Cry active (ends when the unit's activation does).
+ */
+function applyHeroSkillStatBuff(
+  state: GameState,
+  playerId: PlayerId,
+  unit: CombatUnitState,
+  stat: "attack" | "defense",
+  amount: number,
+  duration: "current-combat-round" | "current-activation",
+  label: string
+): void {
+  createActiveEffect(
+    state,
+    {
+      name: label,
+      scope: "unit",
+      duration: { type: duration },
+      polarity: "positive",
+      removable: true,
+      modifiers: [{ type: stat === "attack" ? "ATTACK_BONUS" : "DEFENSE_BONUS", amount }]
+    },
+    { type: "unit", unitId: unit.id, controllerId: playerId },
+    playerId,
+    { type: "unit", unitId: unit.id }
+  );
+}
+
+/**
+ * USE_HERO_SKILL: a skill node's ACTIVE — Forced March on the map (+movement,
+ * once per round) or War Cry during your own unit's combat activation (+Attack
+ * this activation, once per combat). Self-validating; dispatched by the node.
+ */
+function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { type: "USE_HERO_SKILL" }>): void {
+  if (!heroGradesEnabled(state)) {
+    throw new Error("Hero Grades is off for this game.");
+  }
+  const node = heroGradeNode(action.nodeId);
+  if (!node || node.kind !== "skill" || !node.skill) {
+    throw new Error("That is not a usable Hero Grade skill.");
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero || !(hero.gradeNodes ?? []).includes(node.id)) {
+    throw new Error("You have not learned that skill.");
+  }
+
+  if (node.skill.mode === "map-active") {
+    // Forced March: +N movement, once per round, on your own map turn.
+    if (state.combat) {
+      throw new Error("Forced March is used on the map, not in combat.");
+    }
+    if (!hasOpenAdventureTurn(state, action.playerId)) {
+      throw new Error("Use Forced March on your own turn.");
+    }
+    if (hero.spaceId === null) {
+      throw new Error("Your main hero must be on the map.");
+    }
+    if (!heroSkillAvailableThisRound(state, action.playerId, node.id)) {
+      throw new Error("Forced March has already been used this round.");
+    }
+    hero.movementPoints += node.skill.amount;
+    markHeroSkillUsedThisRound(state, action.playerId, node.id);
+    appendEvent(state, {
+      type: "HERO_SKILL_USED",
+      playerId: action.playerId,
+      nodeId: node.id,
+      message: `Forced March: +${node.skill.amount} movement.`
+    });
+    return;
+  }
+
+  // War Cry: combat active during your own unit's activation.
+  const combat = state.combat;
+  if (!combat || node.skill.mode !== "combat-active") {
+    throw new Error("War Cry is used during your unit's combat activation.");
+  }
+  const unit = action.unitId ? combat.units[action.unitId] : undefined;
+  if (!unit || unit.controllerId !== action.playerId) {
+    throw new Error("Pick your own unit.");
+  }
+  if (combat.activeUnitId !== unit.id) {
+    throw new Error("War Cry is used during that unit's activation.");
+  }
+  if (!playerMainHeroInCombat(state, action.playerId)) {
+    throw new Error("Hero Grade combat skills only aid your main hero's battles.");
+  }
+  if (!heroSkillAvailableThisCombat(state, action.playerId, node.id)) {
+    throw new Error("War Cry has already been used this combat.");
+  }
+  applyHeroSkillStatBuff(state, action.playerId, unit, node.skill.stat, node.skill.amount, "current-activation", `War Cry (${node.name.en})`);
+  markHeroSkillUsedThisCombat(state, action.playerId, node.id);
+  appendEvent(state, {
+    type: "HERO_SKILL_USED",
+    playerId: action.playerId,
+    nodeId: node.id,
+    message: `War Cry: ${unit.cardName} +${node.skill.amount} Attack this activation.`
+  });
+}
+
+/**
+ * USE_HERO_SKILL_REACTION: a skill node used as an instant reaction inside an
+ * open attack window — Battle Focus (+Attack on your attacking unit) or Iron
+ * Will (+Defense on your attacked unit). Once per combat; buffs the unit BEFORE
+ * the hit resolves (a current-combat-round effect folds into the triggering
+ * attack, exactly like the commander defense reaction).
+ */
+function applyHeroSkillReaction(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_HERO_SKILL_REACTION" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  if (!window || window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.priorityPlayerId !== action.playerId) {
+    throw new Error("No attack window is open for that skill.");
+  }
+  if (!heroGradesEnabled(state)) {
+    throw new Error("Hero Grades is off for this game.");
+  }
+  const node = heroGradeNode(action.nodeId);
+  if (!node || node.kind !== "skill" || node.skill?.mode !== "reaction") {
+    throw new Error("That is not a Hero Grade reaction skill.");
+  }
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  if (!combat || !unit || unit.controllerId !== action.playerId) {
+    throw new Error("Pick your own unit.");
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero || !(hero.gradeNodes ?? []).includes(node.id)) {
+    throw new Error("You have not learned that skill.");
+  }
+  if (!playerMainHeroInCombat(state, action.playerId)) {
+    throw new Error("Hero Grade combat skills only aid your main hero's battles.");
+  }
+  // Role gate: Battle Focus buffs YOUR attacking unit, Iron Will YOUR attacked one.
+  const expectedUnitId = node.skill.role === "attacker" ? window.triggerEvent.attackerId : window.triggerEvent.defenderId;
+  if (unit.id !== expectedUnitId) {
+    throw new Error("That skill cannot target this unit right now.");
+  }
+  if (!heroSkillAvailableThisCombat(state, action.playerId, node.id)) {
+    throw new Error("That skill has already been used this combat.");
+  }
+  applyHeroSkillStatBuff(state, action.playerId, unit, node.skill.stat, node.skill.amount, "current-combat-round", `${node.name.en} (Hero Grade)`);
+  markHeroSkillUsedThisCombat(state, action.playerId, node.id);
+  appendEvent(state, {
+    type: "HERO_SKILL_USED",
+    playerId: action.playerId,
+    nodeId: node.id,
+    message: `${node.name.en}: ${unit.cardName} +${node.skill.amount} ${node.skill.stat === "attack" ? "Attack" : "Defense"} this attack.`
+  });
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
 /** WOG War Zealot's always-on Magic Mirror, resolved without spending a card. */
 function applyUnitMagicMirror(
   state: GameState,
@@ -14095,6 +14315,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // discount) and is spent when its unit is bought.
   if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
     queueLegionDiscountChoice(state, action.playerId, card.id, effect.amount);
+  }
+
+  if (effect.type === "GAIN_GRADE_PROGRESS") {
+    // Anime Hero Grades (§3.11): the played card grants Merit (grade progress).
+    // The generic card payload — the Training Manual item uses it (its option is
+    // removeSelf, so the card leaves the game), and any future card can carry it.
+    // No-op when the module is off (gainGradeProgress gates on it).
+    gainGradeProgress(state, action.playerId, effect.amount, "card");
   }
 
   if (effect.type === "GAIN_HERO_MOVEMENT") {
@@ -16291,6 +16519,16 @@ function rerollPendingChoice(
     returnHeldMoraleCardToDeckBottom(state, action.playerId, source.moraleCardId, "used");
   }
 
+  // Anime Cultivation Core Formation reroll: spent once per combat — latch the
+  // flag so the source drops out of buildRerollSources for the rest of the fight
+  // (cleared at the next combat start in makeCombatShell).
+  if (source.cultivation && source.used === 1) {
+    const player = state.players[action.playerId];
+    if (player) {
+      player.combatStats.cultivationRerollUsed = true;
+    }
+  }
+
   // Diplomat's Ring / Ambassador's Sash: playing the reroll discards the artifact.
   if (source.cardId && source.used === 1) {
     const player = state.players[action.playerId];
@@ -17864,6 +18102,12 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     activeUnitId: null
   });
 
+  // Forced Battle Events (Anime mod, §3.12): a fought field's round-start script
+  // events fire here — after the round is incremented, before war machines and
+  // the first activation — keyed on the new `combat.round`. NEUTRAL fights only;
+  // a lethal pulse ends the fight via the trailing finishCombatIfNeeded below.
+  applyCombatScriptRoundStart(state);
+
   // Round-start war machines fire BEFORE any unit activates, so the first
   // activation is chosen only once they finish. Leave the active unit unset
   // (like round 1's finalizeCombatStart): ensureCombatActivation — or, in
@@ -19029,6 +19273,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REVIVE_COMMANDER",
   "COMMANDER_FIRST_AID",
   "COMMANDER_SET_STANCE",
+  "HERO_TRAIN",
+  "HERO_GRADE_PICK",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
@@ -19501,6 +19747,21 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "REVIVE_COMMANDER":
         reviveCommander(nextState, action);
         break;
+      case "HEAVEN_TRIBULATION":
+        beginHeavenlyTribulation(nextState, action);
+        break;
+      case "HERO_TRAIN":
+        heroTrain(nextState, action);
+        break;
+      case "HERO_GRADE_PICK":
+        heroGradePick(nextState, action);
+        break;
+      case "USE_HERO_SKILL":
+        applyHeroSkillActive(nextState, action);
+        break;
+      case "USE_HERO_SKILL_REACTION":
+        applyHeroSkillReaction(nextState, action, cards);
+        break;
       case "COMMANDER_FIRST_AID":
         resolveCommanderFirstAid(nextState, action);
         break;
@@ -19733,6 +19994,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           : "The action could not complete its automatic follow-up."
     });
   }
+
+  // Custom win conditions (map-designer / lobby authored): the first live player
+  // to satisfy any active condition wins immediately. Runs here — after the
+  // END_TURN round-income cascade in runAdventureAutomations, so a round-start
+  // income crossing is seen — and free-early-outs when no condition is set (so
+  // every ordinary game / legacy snapshot is untouched). Deferred while a combat
+  // is open (see checkCustomWinConditions) so the game never ends mid-battle.
+  checkCustomWinConditions(nextState);
 
   // Combat-sandbox combats (and any post-war-machine round start) have no
   // adventure pump to hand out the activation slot, so settle it here: open the
