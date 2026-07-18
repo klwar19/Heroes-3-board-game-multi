@@ -3209,6 +3209,18 @@ export type GameAction =
     }
   | {
       /**
+       * First-round starting-hand Mulligan (OPTIONAL, GameSetupOptions
+       * .startingHandMulligan): in ROUND 1 only, after the mandatory start-of-turn
+       * draw, replace ONE hand card — discard it to the BOTTOM of your own deck
+       * and draw one — consuming one of the player's FIRST_ROUND_MULLIGAN_LIMIT
+       * replacements. Repeatable (one card at a time) until the budget runs out.
+       */
+      type: "MULLIGAN_CARD";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
+      /**
        * Spell Book (house rule): move a Spell card from hand into the player's
        * Spell Book, freeing the hand slot WITHOUT drawing a replacement. Legal
        * only on the player's own map turn (no combat / reaction / pending choice),
@@ -4810,6 +4822,14 @@ export type GameEvent =
       drawn: number;
       /** Set when the double-negative-morale penalty empties the hand at turn end. */
       reason?: "morale-double-negative";
+    }
+  | {
+      id: string;
+      /** First-round starting-hand Mulligan: one card replaced (MULLIGAN_CARD). */
+      type: "HAND_MULLIGAN";
+      playerId: PlayerId;
+      /** Replacements still left this game after this one. */
+      remaining: number;
     }
   | {
       id: string;
@@ -6587,6 +6607,17 @@ export type PlayerState = {
    * player takes their first map/exploration action of the turn.
    */
   canMulligan?: boolean;
+  /**
+   * First-round starting-hand Mulligan mode (OPTIONAL, `GameSetupOptions
+   * .startingHandMulligan`, default OFF): the number of single-card starting-hand
+   * replacements this player still has THIS GAME. Seeded to
+   * {@link FIRST_ROUND_MULLIGAN_LIMIT} at the start of a round-1 turn once the
+   * mode is on; each MULLIGAN_CARD (discard one hand card to the BOTTOM of your
+   * own deck, draw one) decrements it. Only usable in round 1 after the mandatory
+   * start-of-turn draw; absent/0 = no replacements (every non-round-1 turn, and
+   * every game with the mode off).
+   */
+  firstRoundMulligansLeft?: number;
   /**
    * @deprecated Legacy sticky flag. Hand dump is now decided at END_TURN by
    * `morale <= -2` only (recover during the turn → keep hand). Kept so old
@@ -9719,6 +9750,14 @@ export type AdventureState = {
    */
   manualGuardControl?: boolean;
   /**
+   * OPTIONAL first-round starting-hand Mulligan mode (default OFF). Frozen from
+   * GameSetupOptions.startingHandMulligan at setup: in round 1 only, after the
+   * mandatory start-of-turn draw, a player may replace up to
+   * FIRST_ROUND_MULLIGAN_LIMIT cards one at a time (MULLIGAN_CARD). Absent/false
+   * = no replacements ever. See mulliganCard in adventure-reducer.ts.
+   */
+  startingHandMulligan?: boolean;
+  /**
    * Unit Experience (optional rule): frozen at setup when ANY of the three
    * surfaces enabled it (lobby `unitExperience`, `wog.unitExperience`,
    * `anime.unitExperience`). Absent/false = the rule is off: no XP is awarded,
@@ -9986,6 +10025,17 @@ export type GameSetupOptions = {
    * both modes are on; computer-seat fighters keep the plain AI.
    */
   manualGuardControl?: boolean;
+  /**
+   * OPTIONAL first-round starting-hand Mulligan mode (default OFF/absent, Game
+   * options — like Undo moves / Manual guard control). With it ON, in ROUND 1
+   * only, AFTER the mandatory start-of-turn draw, a player may still replace up
+   * to {@link FIRST_ROUND_MULLIGAN_LIMIT} cards from their hand — one at a time
+   * (MULLIGAN_CARD: discard one card to the bottom of your own deck, draw one),
+   * continuing until they run out of replacements or choose to stop. Only in
+   * the first round. Frozen onto `adventure.startingHandMulligan` at setup;
+   * absent = no replacements ever (byte-identical to before).
+   */
+  startingHandMulligan?: boolean;
   /**
    * Unit Experience (optional rule, default OFF): army unit cards gain XP from
    * combats won alongside the hero and earn veteran ranks (tier-scaled

@@ -6891,6 +6891,7 @@ function GameOptionsPanel({
         const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
         const undoMovesOn = options.undoMoves ?? false;
         const manualGuardControlOn = options.manualGuardControl ?? false;
+        const startingHandMulliganOn = options.startingHandMulligan ?? false;
         const unitExperienceOn = options.unitExperience ?? false;
         return (
           <div className="optionalRulesCluster" aria-label="Optional scoring, decks, spell book, and testing aids">
@@ -7090,6 +7091,34 @@ function GameOptionsPanel({
                 {manualGuardControlOn
                   ? "You play the Neutral units in your own guard and Creature-Bank fights — same must-attack discipline as PvP Neutral Control — with a \u201cLet the unit act\u201d button to hand any single guard back to the automatic player. PvP Neutral Control wins when both modes are on."
                   : "Off: the rulebook Neutral player plays the guards automatically, exactly as usual."}
+              </small>
+            </div>
+
+            <div className="optionRow startingHandMulliganRow">
+              <OptionRowLabel
+                hint="First round only: after your mandatory opening draw you may still swap out up to 4 more cards from your hand, one at a time, drawing a fresh card for each"
+                iconClassName="optionRowIcon crest"
+                iconSrc="/assets/spell-icons/view-air.png"
+                title="First-round hand Mulligan"
+              />
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={startingHandMulliganOn === on}
+                    className={startingHandMulliganOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() => send({ startingHandMulligan: on })}
+                    title={on ? "First-round hand Mulligan on" : "First-round hand Mulligan off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {startingHandMulliganOn
+                  ? "In round 1 only, after your mandatory start-of-turn draw, you may replace up to 4 cards from your hand one at a time — each replaced card goes to the bottom of your deck and you draw a fresh one."
+                  : "Off: the opening hand is set after your start-of-turn draw, exactly as usual."}
               </small>
             </div>
 

@@ -472,6 +472,12 @@ export function abilityRollRerollActive(state: GameState): boolean {
   return getActiveAstrologersCard(state)?.effect.type === "ABILITY_ROLL_REROLL";
 }
 
+/**
+ * First-round starting-hand Mulligan mode: the maximum number of single-card
+ * replacements a player may make in round 1 (`GameSetupOptions.startingHandMulligan`).
+ */
+export const FIRST_ROUND_MULLIGAN_LIMIT = 4;
+
 /** Hand limit including temporary Astrologers effects (Profuse Growth / Restart). */
 export function effectiveHandLimit(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId];
@@ -12357,6 +12363,11 @@ export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): v
   }
   player.canMulligan = true;
   player.needsHandRefresh = player.hand.length > effectiveHandLimit(state, playerId);
+  // First-round starting-hand Mulligan (optional mode): seed this turn's
+  // replacement budget. Only in round 1; every other turn leaves it at 0 so the
+  // optional MULLIGAN_CARD is never offered outside the opening round.
+  player.firstRoundMulligansLeft =
+    state.round === 1 && state.adventure?.startingHandMulligan ? FIRST_ROUND_MULLIGAN_LIMIT : 0;
 }
 
 /**

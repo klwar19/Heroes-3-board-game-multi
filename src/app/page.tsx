@@ -5196,6 +5196,18 @@ export default function Home() {
     // forget it.
     const canDraw =
       Boolean(viewer?.canMulligan) && hasOpenAdventureTurn(state, viewerPlayerId) && !forcedDiscard;
+    // First-round starting-hand Mulligan (optional mode): after the mandatory
+    // start-of-turn draw, in ROUND 1 only, the viewer may replace up to a few
+    // more cards from their hand — one at a time — from each card's menu.
+    const firstRoundMulligansLeft = viewer?.firstRoundMulligansLeft ?? 0;
+    const canFirstRoundMulligan =
+      Boolean(state.adventure?.startingHandMulligan) &&
+      state.round === 1 &&
+      hasOpenAdventureTurn(state, viewerPlayerId) &&
+      !forcedDiscard &&
+      !viewer?.canMulligan &&
+      firstRoundMulligansLeft > 0 &&
+      handCards.length > 0;
     const hasMorale = (viewer?.morale ?? 0) > 0;
     const moraleRedrawCardAvailable = legalActions.some(
       (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "redraw"
@@ -5779,6 +5791,13 @@ export default function Home() {
                     ⚠ Take your start-of-turn draw first — you must draw (or discard and draw) before moving or using a card.
                   </span>
                 ) : null}
+                {/* First-round Mulligan (optional mode): a gentle nudge that the
+                    player may still swap out a few opening cards this round. */}
+                {canFirstRoundMulligan && handMode === null ? (
+                  <span className="handHint mulliganHint">
+                    First-round Mulligan: open a card and choose “Replace this card” — {firstRoundMulligansLeft} left.
+                  </span>
+                ) : null}
                 {/* The mandatory start-of-turn draw: one either/or — draw new, OR
                     discard and draw new. Required every turn (including the first)
                     before moving or using a card. */}
@@ -6061,8 +6080,9 @@ export default function Home() {
                       ? cardUnplayableReason(state, viewerPlayerId, cardId)
                       : null;
                   // Helper tips: always allow opening a non-playable card to read
-                  // why; otherwise keep the old gate (playable / start-of-turn draw).
-                  const canOpenMenu = actionable || canDraw || Boolean(whyBlocked);
+                  // why; otherwise keep the old gate (playable / start-of-turn draw /
+                  // an available first-round Mulligan replacement).
+                  const canOpenMenu = actionable || canDraw || Boolean(whyBlocked) || canFirstRoundMulligan;
 
                   return (
                     <div
@@ -6243,6 +6263,22 @@ export default function Home() {
                               type="button"
                             >
                               Discard this card, then draw
+                            </button>
+                          ) : null}
+                          {/* First-round Mulligan (optional mode): after the
+                              mandatory draw, swap this card for a fresh one — it
+                              goes to the bottom of your deck. Round 1 only. */}
+                          {canFirstRoundMulligan ? (
+                            <button
+                              className="firstRoundMulligan"
+                              onClick={() => {
+                                submitAction({ type: "MULLIGAN_CARD", playerId: viewerPlayerId, cardId });
+                                setOpenHandIndex(null);
+                              }}
+                              title="First-round Mulligan: swap this card for a fresh one (the replaced card goes to the bottom of your deck)"
+                              type="button"
+                            >
+                              Replace this card ({firstRoundMulligansLeft} left)
                             </button>
                           ) : null}
                           {stashAction ? (
