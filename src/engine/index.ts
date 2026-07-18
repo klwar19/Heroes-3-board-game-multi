@@ -678,7 +678,8 @@ export {
   customMapHasFieldOverridePins,
   customMapHasAnimeFieldOverridePins,
   resolveFieldOverridesEnabled,
-  resolveFieldOverridePlacement
+  resolveFieldOverridePlacement,
+  mapObjectsModuleActive
 } from "./field-overrides";
 export {
   applyCombatScriptCombatStart,

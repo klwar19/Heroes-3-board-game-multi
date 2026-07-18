@@ -45,6 +45,7 @@ import {
   describeCustomWinCondition,
   expertUsesAvailable,
   expertUsesTotalThisRound,
+  mapObjectsModuleActive,
   DRAFT_FORMAT_LABELS,
   getDraftPhase,
   getActiveAstrologersCard,
@@ -6912,7 +6913,7 @@ function GameOptionsPanel({
                 ["newCreatures", "New neutral creatures", "Adds the 15-card WOG roster to the Bronze, Silver, Gold and Azure Neutral decks."],
                 ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
                 ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
-                ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search)."]
+                ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
                 return (
@@ -6972,7 +6973,7 @@ function GameOptionsPanel({
             </small>
             <div className="wogModuleList">
               {([
-                ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool."],
+                ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool. Turns Field Overrides on."],
                 ["xianxiaArtifacts", "Pháp Bảo artifacts", "Shuffles 5 anime hero Artifact cards (Túi Càn Khôn, Phong Hỏa Luân, Tru Tiên Kiếm, Bát Quái Kính, Tụ Linh Bàn) into the shared Artifact decks by tier."],
                 ["cultivation", "Cultivation realms", "A per-hero Cultivation Realm track (hand limit / reroll / spell Power) plus the Heavenly Tribulation map action."],
                 ["heroGrades", "Hero Grades", "A per-hero Merit → grade track that unlocks a small passive / skill tree (shared by every hero)."],
@@ -7347,7 +7348,11 @@ function GameOptionsPanel({
         // GLOBAL single-hex Field Overrides (not Monolith/Gate/Whirlpool —
         // those are basic teleports). Auto-ticks ON when a designed map has
         // fieldOverride pins. Placement: Auto (random) vs Manual (player picks).
-        const fieldOverridesOn = options.fieldOverrides ?? false;
+        // A map-objects content module (WOG New Objects / Anime map objects)
+        // FORCES this on — the engine `setGameOptions` chokepoint flips it, and
+        // the row here renders locked-ON so the requirement is visible.
+        const mapObjectsLocked = mapObjectsModuleActive(options);
+        const fieldOverridesOn = (options.fieldOverrides ?? false) || mapObjectsLocked;
         const placement = options.fieldOverridePlacement ?? "manual-or-refuse";
         return (
           <div className="optionRow" data-testid="option-field-overrides">
@@ -7359,9 +7364,16 @@ function GameOptionsPanel({
                 <button
                   aria-pressed={fieldOverridesOn === on}
                   className={fieldOverridesOn === on ? "selected" : ""}
+                  disabled={mapObjectsLocked}
                   key={String(on)}
                   onClick={() => send({ fieldOverrides: on })}
-                  title={on ? "Field Overrides on" : "Field Overrides off"}
+                  title={
+                    mapObjectsLocked
+                      ? "On — WOG/Anime map objects are selected"
+                      : on
+                        ? "Field Overrides on"
+                        : "Field Overrides off"
+                  }
                   type="button"
                 >
                   {on ? "On" : "Off"}
@@ -7397,15 +7409,23 @@ function GameOptionsPanel({
               </div>
             ) : null}
             <small className="optionHint">
-              {fieldOverridesOn
-                ? `On — each Far/Near/Center tile open replaces ≥1 hex with a function object. Placement: ${
+              {mapObjectsLocked
+                ? `On — WOG/Anime map objects are selected, so Field Overrides is required (they place the objects). Placement: ${
                     placement === "random"
                       ? "Auto"
                       : placement === "manual"
                         ? "Manual pick"
                         : "Manual pick (or refuse)"
-                  }. Designer pins auto-enable this when the map is picked. Not for Monolith/Gate/Whirlpool/underground gates.`
-                : "Off — no single-hex overrides. Picking a map that already has override objects will tick this On automatically."}
+                  }. Untick the map-objects module to unlock this.`
+                : fieldOverridesOn
+                  ? `On — each Far/Near/Center tile open replaces ≥1 hex with a function object. Placement: ${
+                      placement === "random"
+                        ? "Auto"
+                        : placement === "manual"
+                          ? "Manual pick"
+                          : "Manual pick (or refuse)"
+                    }. Designer pins auto-enable this when the map is picked. Not for Monolith/Gate/Whirlpool/underground gates.`
+                  : "Off — no single-hex overrides. Picking a map that already has override objects will tick this On automatically."}
             </small>
           </div>
         );
