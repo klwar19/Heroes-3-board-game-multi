@@ -544,7 +544,7 @@ describe("anime.equipment — scope + cross-mod seams", () => {
 
   it("coexists with WOG Commanders enabled — a sword attack resolves without crashing", () => {
     let state = combat("eq-wog");
-    state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: true };
+    state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: true, artifacts: false };
     equip(state, "p1", "weapon", EQUIP_ID_SWORD);
     const result = applyAction(state, {
       type: "ATTACK_UNIT",

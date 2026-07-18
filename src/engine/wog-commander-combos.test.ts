@@ -71,7 +71,7 @@ function grades(overrides: Partial<Record<CommanderStatKey, number>>): Commander
  */
 function comboDuel(overrides: Partial<Record<CommanderStatKey, number>>, slug: CommanderSlug = "paladin"): GameState {
   const state = createInitialGameState();
-  state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false };
+  state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
   state.players.p1.commander = { slug, grades: grades(overrides) };
   const unit = makeCommanderCombatUnit(state.players.p1, 9);
   if (!unit) {

@@ -55,7 +55,7 @@ function allOnSetup(seed: string, extra: Partial<AdventureSetupOptions>): Advent
     fieldOverrides: true,
     creatureBanks: true,
     moraleCards: true,
-    wog: { enabled: true, commanders: true, newObjects: true, newCreatures: true },
+    wog: { enabled: true, commanders: true, newObjects: true, newCreatures: true, artifacts: true },
     ...extra,
   };
 }

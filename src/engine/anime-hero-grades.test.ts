@@ -714,7 +714,7 @@ describe("anime.heroGrades — skill node effects", () => {
 describe("anime.heroGrades — cross-mod seams", () => {
   it("a reaction skill works in a WOG commander fight without crashing (Might dice untouched)", () => {
     const state = combatState("hg-wog", [HERO_GRADE_NODE_IDS.battleFocus]);
-    state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false };
+    state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
     let current = attack(state);
     let guard = 30;
     while (current.reactionWindow && guard > 0) {

@@ -13,6 +13,12 @@ import {
   animeXianxiaArtifactMinorIds,
   animeXianxiaArtifactRelicIds
 } from "@/data/anime/artifacts";
+import {
+  wogArtifactCardIds,
+  wogArtifactMajorIds,
+  wogArtifactMinorIds,
+  wogArtifactRelicIds
+} from "@/data/wog/artifacts";
 import { pandoraDeckCardIds } from "@/data/cards/pandora";
 import { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 import { spellDeckBinhBasic, spellDeckBinhExpert, spellDeckLegacy } from "@/data/cards/spells";
@@ -702,7 +708,8 @@ function makeSharedDecks(
   splitDecks: boolean,
   tournament: { banDiplomacy: boolean; banHourglass: boolean },
   polishSpellBook = false,
-  xianxiaArtifacts = false
+  xianxiaArtifacts = false,
+  wogArtifacts = false
 ): Record<string, DeckState> {
   const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
     ban ? cardIds.filter((id) => id !== removeId) : cardIds;
@@ -713,6 +720,13 @@ function makeSharedDecks(
   // artifacts, so every downstream tier/uniqueness gate applies unchanged.
   const withAnime = (base: string[], animeIds: readonly string[]): string[] =>
     xianxiaArtifacts ? [...base, ...animeIds] : base;
+
+  // WOG (Wake of Gods) artifacts join the shared Artifact deck(s) ONLY when
+  // `wog.enabled && wog.artifacts` is on; default OFF ⇒ byte-identical decks.
+  // Same contract as the anime join — they ride the SAME per-tier decks as core
+  // artifacts, so every downstream tier/uniqueness gate applies unchanged.
+  const withWog = (base: string[], wogIds: readonly string[]): string[] =>
+    wogArtifacts ? [...base, ...wogIds] : base;
 
   const make = (id: string, cardIds: string[]): DeckState => {
     // First-round rule (as printed): each shared deck flips its top card face-up
@@ -741,10 +755,10 @@ function makeSharedDecks(
       ),
       "artifacts-minor": make(
         "artifacts-minor",
-        without(withAnime(artifactDeckBinhMinor, animeXianxiaArtifactMinorIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
+        without(withWog(withAnime(artifactDeckBinhMinor, animeXianxiaArtifactMinorIds), wogArtifactMinorIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
       ),
-      "artifacts-major": make("artifacts-major", withAnime(artifactDeckBinhMajor, animeXianxiaArtifactMajorIds)),
-      "artifacts-relic": make("artifacts-relic", withAnime(artifactDeckBinhRelic, animeXianxiaArtifactRelicIds))
+      "artifacts-major": make("artifacts-major", withWog(withAnime(artifactDeckBinhMajor, animeXianxiaArtifactMajorIds), wogArtifactMajorIds)),
+      "artifacts-relic": make("artifacts-relic", withWog(withAnime(artifactDeckBinhRelic, animeXianxiaArtifactRelicIds), wogArtifactRelicIds))
     };
   }
 
@@ -756,7 +770,7 @@ function makeSharedDecks(
     ),
     artifacts: make(
       "artifacts",
-      without(withAnime(artifactDeckLegacy, animeXianxiaArtifactCardIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
+      without(withWog(withAnime(artifactDeckLegacy, animeXianxiaArtifactCardIds), wogArtifactCardIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
     )
   };
 }
@@ -2217,7 +2231,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         houseRules["split-decks"],
         tournamentRules,
         polishSpellBookOn,
-        animeModuleEnabled({ anime }, "xianxiaArtifacts")
+        animeModuleEnabled({ anime }, "xianxiaArtifacts"),
+        wog.enabled && wog.artifacts
       ),
       ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
@@ -3130,7 +3145,8 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       enabled: Boolean(next.wog.enabled),
       commanders: Boolean(next.wog.commanders),
       newObjects: Boolean(next.wog.newObjects),
-      newCreatures: Boolean(next.wog.newCreatures)
+      newCreatures: Boolean(next.wog.newCreatures),
+      artifacts: Boolean(next.wog.artifacts)
     };
     // WOG is a BINH-family module. Enabling it while still on Legacy flips the
     // table to BINH so the module can actually load.
