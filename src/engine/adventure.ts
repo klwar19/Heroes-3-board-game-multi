@@ -343,6 +343,18 @@ export function isBankStyleGuardLocation(locationId: string): boolean {
 }
 
 /**
+ * A guard assigned to a single-hex TELEPORT gateway (Monolith / Teleport Gate /
+ * Whirlpool) must be truly FOUGHT to pass — a high-level hero cannot Quick-Combat
+ * past it — and it grants NO experience, like a Creature Bank guard. Unlike a
+ * designer outpost it keeps the normal Round limit and the continue-or-retreat
+ * window (only Quick Combat and the XP reward are dropped; the guard army still
+ * draws at its designed Field Difficulty).
+ */
+export function isTeleportObjectGuardLocation(locationId: string): boolean {
+  return locationId === "monolith" || locationId === "gate" || locationId === "whirlpool";
+}
+
+/**
  * Whether `playerId` holds a Keymaster's Tent flag of `pair`'s color — the key
  * that opens same-color Barriers. Tents allow multiple flags, so both the
  * first owner and every later `extraFlagOwnerIds` visitor count.
@@ -12286,6 +12298,9 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // (the owner's next turn), like the other map abilities, so an unused voucher
   // never carries over.
   player.recruitDiscounts = [];
+  // Map draw-rider spell-Power bank (Sorcery / Scales) is a within-turn resource
+  // too — a value banked and never spent expires at the owner's next turn.
+  player.mapSpellPowerBank = 0;
 
   // "Resolve any 'at the beginning of your turn' abilities after drawing":
   // Necromancy Amplifier, Portal of Summoning, Mana Vortex.

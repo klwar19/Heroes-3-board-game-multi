@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /**
- * Polish Rule 111 (home-tile bronze swap): the "Replace <unit>" options must
- * SHOW the neutral unit's card face in the prompt tray — picking a swap by art
- * is far more intuitive than by name alone. The "Keep the drawn army" option
- * stays a plain button (it names no unit).
+ * Polish Rule 111 (home-tile bronze swap): a purpose-built two-column tray —
+ * the "Use Rule 111: replace the Guard" swap on the LEFT, and the drawn guard's
+ * card face with an "Accept the guard" button on the RIGHT. Picking the either/or
+ * by the guard art (accept the unit you see) or the swap is far more intuitive
+ * than a flat row of same-looking buttons.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -60,8 +61,8 @@ function rule111State(seed: string): GameState {
   return state;
 }
 
-describe("Rule 111 choice tray — shows the neutral unit's card face", () => {
-  it("renders the replace options as unit-art tiles (Keep stays a plain button)", () => {
+describe("Rule 111 choice tray — replace on the left, accept the guard on the right", () => {
+  it("shows the guard art on the Accept side and wires both buttons", () => {
     const state = rule111State("rule111-art");
     const choice = state.pendingChoice;
     expect(choice?.type === "OPTION_CHOICE" && choice.context === "rule-111").toBe(true);
@@ -77,25 +78,35 @@ describe("Rule 111 choice tray — shows the neutral unit's card face", () => {
     expect(firstImage, "the bronze guard has card art").toBeTruthy();
 
     const onAction = vi.fn();
-    render(
+    const { container } = render(
       <PromptTray legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />
     );
 
-    // The first "Replace <unit>" option shows that unit's card image.
-    const replace = screen.getByRole("button", { name: /Replace/i });
-    expect(replace.querySelector("img")?.getAttribute("src")).toContain(firstImage!);
+    // The drawn guard's card face is shown on the Accept side (not on the swap button).
+    const guardImg = container.querySelector(".rule111Accept img.rule111GuardImage");
+    expect(guardImg?.getAttribute("src")).toContain(firstImage!);
 
-    // "Keep the drawn army" carries no unit, so it stays a plain (imageless) button.
-    const keep = screen.getByRole("button", { name: /Keep the drawn army/i });
-    expect(keep.querySelector("img")).toBeNull();
+    // The swap button carries the intuitive Rule-111 wording and NO card art.
+    const replace = screen.getByRole("button", { name: /replace the Guard/i });
+    expect(replace.querySelector("img")).toBeNull();
 
-    // Clicking the replace tile dispatches the option resolve (optionIndex 1).
+    // Clicking the swap dispatches the option resolve (optionIndex 1).
     fireEvent.click(replace);
     expect(onAction).toHaveBeenCalledWith({
       type: "CHOOSE_OPTION",
       playerId: "p1",
       choiceId: choice.id,
       optionIndex: 1
+    });
+
+    // "Accept the guard" keeps the drawn army (optionIndex 0).
+    const accept = screen.getByRole("button", { name: /Accept the guard/i });
+    fireEvent.click(accept);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: 0
     });
   });
 });

@@ -494,6 +494,7 @@ export {
   designedGuardPreview,
   gatePairColor,
   isBankStyleGuardLocation,
+  isTeleportObjectGuardLocation,
   isFieldGuarded,
   playerHoldsTentFlag,
   isMapObjectLocation,

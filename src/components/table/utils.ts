@@ -1,6 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { astrologersCardDefinitions } from "@/data/cards/astrologers";
 import { eventCardDefinitions } from "@/data/cards/events";
+import { RESOURCE_ICONS, REWARD_GLYPH_ICONS, moraleIcon } from "@/data/assets/homm-assets";
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { UNIT_RANK_NAMES } from "@/data/units/experience";
@@ -930,4 +931,106 @@ export function reconnectRoundStartCues(
     }
   }
   return none;
+}
+
+// ---------------------------------------------------------------------------
+// Map-visit reward chips (treasure chest / mine / resource notice).
+//
+// Instead of a "mass of text" bullet list, a location visit's outcome is shown
+// as a compact row of icon chips: the resource token / experience / morale
+// glyph plus a short "+N" (or "+N/turn" income) label — the concrete result of
+// the visit and its dice roll, with the correct board-game icons. Pure over the
+// event log so it can be unit-tested (see notice-rewards.test.ts).
+// ---------------------------------------------------------------------------
+
+/** A single reward chip on a map-visit notice. */
+export type NoticeReward = {
+  /** Icon image path (rendered through `assetUrl`), when there is one. */
+  icon?: string;
+  /** Text/emoji glyph fallback when there is no image icon. */
+  glyph?: string;
+  /** Short label, e.g. "+3", "+2/turn". */
+  label: string;
+  /** Accessible full description. */
+  title: string;
+  tone: "gain" | "loss" | "neutral";
+};
+
+/** The board resource-token icon for a resource kind (falls back to a coin). */
+function resourceRewardIcon(resource: ResourceKind): string {
+  return (RESOURCE_ICONS as Record<string, string>)[resource] ?? RESOURCE_ICONS.gold;
+}
+
+/**
+ * Derive the reward chips (and, for a mine, a resource icon for the notice) from
+ * a visit's follow-on outcome events. Covers the material results — resources
+ * gained, mine income (production), experience and morale — which is exactly
+ * what a treasure chest or mine visit produces. Events with no material chip
+ * (e.g. an Artifact Search) leave the chip list empty so the caller can fall
+ * back to its text summary.
+ */
+export function noticeRewardsFromEvents(
+  events: GameEvent[],
+  _state: GameState
+): { rewards: NoticeReward[]; iconImage?: string } {
+  const rewards: NoticeReward[] = [];
+  let iconImage: string | undefined;
+  for (const event of events) {
+    switch (event.type) {
+      case "RESOURCES_GAINED": {
+        const parts: [number | undefined, ResourceKind][] = [
+          [event.gold, "gold"],
+          [event.buildingMaterials, "buildingMaterials"],
+          [event.valuables, "valuables"]
+        ];
+        for (const [amount, resource] of parts) {
+          if (amount) {
+            rewards.push({
+              icon: resourceRewardIcon(resource),
+              label: `+${amount}`,
+              title: `+${amount} ${formatResourceName(resource)}`,
+              tone: "gain"
+            });
+          }
+        }
+        break;
+      }
+      case "PRODUCTION_CHANGED": {
+        const sign = event.amount >= 0 ? "+" : "";
+        rewards.push({
+          icon: resourceRewardIcon(event.resource),
+          label: `${sign}${event.amount}/turn`,
+          title: `${sign}${event.amount} ${formatResourceName(event.resource)} production`,
+          tone: event.amount >= 0 ? "gain" : "loss"
+        });
+        // A mine has no dedicated notice art — show its resource token instead of
+        // the generic pickaxe emoji. The first positive production wins.
+        if (iconImage === undefined && event.amount >= 0) {
+          iconImage = resourceRewardIcon(event.resource);
+        }
+        break;
+      }
+      case "EXPERIENCE_GAINED": {
+        rewards.push({
+          icon: REWARD_GLYPH_ICONS.experience,
+          label: `+${event.amount}`,
+          title: `+${event.amount} experience`,
+          tone: "gain"
+        });
+        break;
+      }
+      case "MORALE_CHANGED": {
+        rewards.push({
+          icon: moraleIcon(event.total),
+          label: `${event.amount > 0 ? "+" : ""}${event.amount}`,
+          title: `Morale ${event.amount > 0 ? "+" : ""}${event.amount}`,
+          tone: event.amount >= 0 ? "gain" : "loss"
+        });
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return { rewards, iconImage };
 }

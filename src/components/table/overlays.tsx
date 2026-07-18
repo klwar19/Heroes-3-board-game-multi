@@ -39,7 +39,15 @@ import {
   type PlayerVisibleState,
   type ReactionPlay
 } from "@/engine";
-import { cardIsEmpoweredFor, cardName, costCardEligible, formatDieFace, formatEvent, unitName } from "./utils";
+import {
+  cardIsEmpoweredFor,
+  cardName,
+  costCardEligible,
+  formatDieFace,
+  formatEvent,
+  unitName,
+  type NoticeReward
+} from "./utils";
 import { MORALE_CUE_SOUNDS, type MoraleCardCue } from "./morale-card-cue";
 import { CardBack, CardFrame } from "./seats";
 import { AnkhIcon, CrossedShovelsIcon, StarBannerIcon } from "./dice-icons";
@@ -2305,6 +2313,18 @@ export type MapNoticeCue = {
   lines: string[];
   /** Visited location id, so the notice can swap in dedicated art. */
   location?: string;
+  /**
+   * Compact reward chips (resource token / experience / morale + a short "+N"
+   * or "+N/turn" label) built from the visit's outcome events — the result of
+   * a treasure chest / mine visit shown with the correct board icons instead of
+   * a "mass of text". When present, the chips REPLACE the text lines.
+   */
+  rewards?: NoticeReward[];
+  /**
+   * A resource-token icon to use as the notice art when the location has no
+   * dedicated art (a mine shows its resource token instead of a pickaxe emoji).
+   */
+  iconImage?: string;
 };
 
 /** Locations with dedicated HD art in the visit notice. */
@@ -2330,30 +2350,59 @@ const NOTICE_ART_COMPACT = new Set(["sea_chest", "treasure_symbol"]);
  * dismiss; dice rolls layer on top with their own overlay.
  */
 export function MapNoticeOverlay({ cue, onDone }: { cue: MapNoticeCue; onDone: () => void }) {
+  const rewards = cue.rewards ?? [];
+  const hasRewards = rewards.length > 0;
   useEffect(() => {
-    const doneId = setTimeout(onDone, cue.lines.length > 0 ? 5200 : 3400);
+    const doneId = setTimeout(onDone, hasRewards || cue.lines.length > 0 ? 5200 : 3400);
     return () => clearTimeout(doneId);
-  }, [cue, onDone]);
+  }, [cue, onDone, hasRewards]);
 
   const noticeArt = cue.location ? NOTICE_ART_BY_LOCATION[cue.location] : undefined;
 
   return (
     <div className="mapNoticeBackdrop" onClick={onDone} role="status" aria-label={cue.title}>
       <div className="mapNotice">
-        <span aria-hidden="true" className={`mapNoticeIcon${noticeArt ? " withArt" : ""}`}>
+        <span
+          aria-hidden="true"
+          className={`mapNoticeIcon${noticeArt || cue.iconImage ? " withArt" : ""}`}
+        >
           {noticeArt ? (
             <img
               alt=""
               className={`mapNoticeArt${NOTICE_ART_COMPACT.has(cue.location ?? "") ? " compact" : ""}`}
               src={assetUrl(noticeArt)}
             />
+          ) : cue.iconImage ? (
+            <img alt="" className="mapNoticeResourceArt" src={assetUrl(cue.iconImage)} />
           ) : (
             cue.icon
           )}
         </span>
         <strong>{cue.title}</strong>
         <small>{cue.subtitle}</small>
-        {cue.lines.length > 0 ? (
+        {/* Prefer the compact reward chips (correct icons, no "mass of text");
+            fall back to the text lines only when there are no material chips
+            (e.g. an Artifact Search that grants no resource/XP). */}
+        {hasRewards ? (
+          <div className="mapNoticeRewards">
+            {rewards.map((reward, index) => (
+              <span
+                className={`mapNoticeReward tone-${reward.tone}`}
+                key={index}
+                title={reward.title}
+              >
+                {reward.icon ? (
+                  <img alt="" className="mapNoticeRewardIcon" src={assetUrl(reward.icon)} />
+                ) : (
+                  <span aria-hidden="true" className="mapNoticeRewardGlyph">
+                    {reward.glyph}
+                  </span>
+                )}
+                <b>{reward.label}</b>
+              </span>
+            ))}
+          </div>
+        ) : cue.lines.length > 0 ? (
           <ul>
             {cue.lines.map((line, index) => (
               <li key={index}>{line}</li>

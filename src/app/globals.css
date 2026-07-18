@@ -6041,6 +6041,64 @@ button.hbSlot:disabled { cursor: default; }
   max-width: min(980px, 98vw);
 }
 
+/* Rule 111 (Polish house rule): a two-column either/or — the swap on the LEFT,
+   the drawn guard's card face with an "Accept the guard" button on the RIGHT. */
+.promptTray.rule111Tray {
+  max-width: min(560px, 96vw);
+}
+
+.rule111Columns {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.rule111Replace,
+.rule111Accept {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex: 1 1 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(220, 175, 95, 0.28);
+}
+
+.rule111ColHead {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.rule111ReplaceButton {
+  align-self: stretch;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.rule111GuardArt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.rule111GuardImage {
+  width: 96px;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.rule111AcceptButton {
+  align-self: stretch;
+}
+
 .promptOptions.rewardCards {
   max-height: min(42vh, 360px);
   gap: 10px;
@@ -13039,6 +13097,68 @@ span.recruitThumb {
   border-top: 1px solid rgba(214, 168, 96, 0.25);
   font-size: 12.5px;
   text-align: center;
+}
+
+/* A mine's resource token stands in for the generic pickaxe emoji. */
+.mapNoticeResourceArt {
+  display: block;
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 6px rgb(0 0 0 / 45%));
+}
+
+/* Compact reward chips — the treasure-chest / mine result with correct icons. */
+.mapNoticeRewards {
+  margin-top: 6px;
+  padding-top: 8px;
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  border-top: 1px solid rgba(214, 168, 96, 0.25);
+}
+
+.mapNoticeReward {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px 4px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(214, 168, 96, 0.3);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.mapNoticeReward b {
+  font-family: Georgia, serif;
+  font-weight: 700;
+}
+
+.mapNoticeReward.tone-gain b {
+  color: #ffe9b3;
+}
+
+.mapNoticeReward.tone-loss b {
+  color: #f0a58a;
+}
+
+.mapNoticeReward.tone-neutral b {
+  color: #e6d8bd;
+}
+
+.mapNoticeRewardIcon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 45%));
+}
+
+.mapNoticeRewardGlyph {
+  font-size: 20px;
+  line-height: 1;
 }
 
 .mapNotice .mapNoticeHint {

@@ -357,6 +357,20 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
 }
 
 /**
+ * +Power banked on the MAP by a Sorcery / Scales-of-the-Greater-Basilisk-style
+ * "+Power, then draw" rider (player.mapSpellPowerBank), available to pay a map
+ * Spell's Power cost. Zero inside combat (the combat bank is the separate
+ * combatStats.pendingDrawRiderSpellPower, folded in performSpellCast) so a
+ * map-banked value can never leak into a combat cast.
+ */
+export function mapSpellPowerBankAvailable(state: GameState, playerId: PlayerId): number {
+  if (state.combat) {
+    return 0;
+  }
+  return state.players[playerId]?.mapSpellPowerBank ?? 0;
+}
+
+/**
  * Whether the player can pay an option's card cost from hand right now.
  *
  * Spell Book (house rule): one stashed Book Spell may count toward a value /
@@ -437,7 +451,11 @@ function canAffordCardCost(
   if (cost.powerCost !== undefined) {
     const card = cardLibrary[cardId];
     const schools = card?.spellSchools ?? [];
-    const standing = card ? standingSpellPower(state, playerId, card) : 0;
+    // The map draw-rider bank (Sorcery / Scales) counts toward a map Spell's
+    // Power exactly like standing Power, so a banked +1 makes a higher tier
+    // affordable with one fewer discard. Zero in combat (guarded in the helper).
+    const standing =
+      (card ? standingSpellPower(state, playerId, card) : 0) + mapSpellPowerBankAvailable(state, playerId);
     const crownsLeft =
       player.limits.expertUses +
       (player.combatStats.expertUseBonusThisRound ?? 0) -
@@ -3374,6 +3392,32 @@ function addTurnCardActions(
     }
 
     if (card.effect.type === "CHOOSE_ONE") {
+      // House-rule twin of the combat draw-only CHOOSE_ONE offer: a trigger SIDE
+      // carrying a "+Power/+stat, then draw" rider (Scales of the Greater
+      // Basilisk, Tunic of the Cyclops King, Armor of Wonder) may be played on
+      // your MAP turn just for the draw — outside its reaction window the
+      // stat/Power fizzles and only the draw resolves, and an ADD_SPELL_POWER
+      // side banks +Power for the next map Spell (mapSpellPowerBank; see the
+      // reducer draw-rider handler). Bypasses the card's reaction/combat
+      // phaseLimit exactly like the combat draw-only play bypasses the window.
+      if (!fromSpellBook) {
+        for (const [optionIndex, option] of card.effect.options.entries()) {
+          if (
+            !option.trigger ||
+            (option.effect.type !== "ADD_COMBAT_STAT" && option.effect.type !== "ADD_SPELL_POWER") ||
+            !option.effect.drawCards ||
+            !canAffordCardCost(state, playerId, cardId, option.cost)
+          ) {
+            continue;
+          }
+          actions.push({
+            label: `${card.name}: ${option.label} (draw only${
+              option.effect.type === "ADD_SPELL_POWER" ? ", next Spell +Power" : ""
+            })`,
+            action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", optionIndex, target: { type: "none" } }
+          });
+        }
+      }
       addOptionPlays(actions, state, playerId, card, cardId, "map", cards, undefined, fromSpellBook);
       continue;
     }

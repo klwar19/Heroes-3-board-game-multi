@@ -81,6 +81,7 @@ import {
   gateFieldsLinked,
   heroHasFreeGateStep,
   isBankStyleGuardLocation,
+  isTeleportObjectGuardLocation,
   capturableEnemyMinesWithin,
   freeSpellBookActive,
   abilityRollRerollActive,
@@ -947,6 +948,13 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
   hero.spaceId = to;
   if (!throughGate) {
     hero.movementPoints -= 1;
+  }
+  // The map draw-rider spell-Power bank (Sorcery / Scales) "goes away after you
+  // move" — a hero must cast the boosted Spell before stepping off. Cleared on
+  // any step (even a free Subterranean-Gate crossing counts as moving).
+  const mover = state.players[hero.controllerId];
+  if (mover?.mapSpellPowerBank) {
+    mover.mapSpellPowerBank = 0;
   }
 
   appendEvent(state, {
@@ -3848,6 +3856,21 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
   // exact list via `customGuardLevel` / `customGuardUnits` in drawGuardArmy.
   if (isBankStyleGuardLocation(field.location)) {
     beginNeutralCombatPlacement(state, hero, field, 0, { unlimitedRounds: true });
+    return;
+  }
+
+  // A guard on a single-hex TELEPORT gateway (Monolith / Teleport Gate /
+  // Whirlpool) is fought like a Creature-Bank guard: NO Quick Combat (a
+  // high-level hero cannot skip past a guarded gateway) and NO experience
+  // (combat difficulty 0). Unlike an outpost it keeps the normal Round limit and
+  // the continue-or-retreat window. Pin the army level so the difficulty-0 fight
+  // still draws the real designed guards — a plain LEVEL guard carries no
+  // `customGuardLevel` (an EXACT army uses `customGuardUnits` directly).
+  if (isTeleportObjectGuardLocation(field.location)) {
+    if (!field.customGuardUnits?.length && !field.customGuardLevel && field.difficulty) {
+      field.customGuardLevel = field.difficulty;
+    }
+    beginNeutralCombatPlacement(state, hero, field, 0);
     return;
   }
 
