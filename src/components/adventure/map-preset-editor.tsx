@@ -1112,15 +1112,11 @@ export function MapPresetEditor({
                 <div className="mapPresetTimedHeader">
                   <label className="mapPresetTimedRound">
                     Round
-                    <input
+                    <ClampedNumberInput
                       aria-label={`Timed event ${index + 1} round`}
                       max={30}
                       min={1}
-                      onChange={(e) => {
-                        const round = Math.max(1, Math.min(30, Number(e.target.value) || 1));
-                        updateTimed(index, { ...event, round });
-                      }}
-                      type="number"
+                      onCommit={(round) => updateTimed(index, { ...event, round })}
                       value={event.round}
                     />
                   </label>
@@ -1653,6 +1649,63 @@ function ObeliskBonusFields({
   return <small className="mapPresetHint">Each visitor gains a single positive morale token.</small>;
 }
 
+/**
+ * A clearable, clamped numeric input.
+ *
+ * The classic `value={aNumber}` + `Number(e.target.value) || floor` idiom snaps
+ * an emptied field straight back to its floor digit, so a low / single-digit
+ * value can never be typed — you cannot delete the leading digit to fix it
+ * (the reported timed-event "can't remove the first 1, cannot set below 10"
+ * bug). This keeps a local editing draft so the field may be BLANK while the
+ * user retypes; it commits a clamped integer only for a non-empty value, and
+ * reverts to the last committed value on blur when left blank.
+ */
+function ClampedNumberInput({
+  value,
+  min,
+  max,
+  onCommit,
+  className,
+  placeholder,
+  title,
+  "aria-label": ariaLabel
+}: {
+  value: number | null | undefined;
+  min: number;
+  max: number;
+  onCommit: (n: number) => void;
+  className?: string;
+  placeholder?: string;
+  title?: string;
+  "aria-label"?: string;
+}) {
+  const committed = value == null ? "" : String(value);
+  // `draft` is the raw text while editing (null = "show the committed value").
+  // An empty-string draft is a valid transient blank the user can type into.
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      aria-label={ariaLabel}
+      className={className}
+      max={max}
+      min={min}
+      onBlur={() => setDraft(null)}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setDraft(raw);
+        if (raw === "") return; // allow blank while editing; commit nothing yet
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return;
+        onCommit(Math.max(min, Math.min(max, Math.trunc(n))));
+      }}
+      placeholder={placeholder}
+      title={title}
+      type="number"
+      value={draft ?? committed}
+    />
+  );
+}
+
 function ResourceField({
   label,
   value,
@@ -1669,15 +1722,12 @@ function ResourceField({
   return (
     <label className="mapPresetResourceField">
       <span>{label}</span>
-      <input
+      <ClampedNumberInput
         max={max}
         min={min}
-        onChange={(e) =>
-          onChange(Math.max(min, Math.min(max, Number(e.target.value) || 0)))
-        }
-        type="number"
-        value={value ?? ""}
+        onCommit={onChange}
         placeholder="—"
+        value={value}
       />
     </label>
   );

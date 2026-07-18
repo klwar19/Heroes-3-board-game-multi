@@ -128,6 +128,26 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(last.timedEvents!.length).toBe(2);
   });
 
+  it("round field is clearable to blank and accepts a single-digit value (regression: sticky leading '1')", () => {
+    const onChange = vi.fn();
+    const base: CustomMapPreset = {
+      timedEvents: [{ round: 16, effect: { kind: "note", text: "hi" } }]
+    };
+    render(<MapPresetEditor preset={base} onChange={onChange} />);
+    const roundInput = screen.getByLabelText("Timed event 1 round") as HTMLInputElement;
+    // Clearing must leave the field BLANK. The old idiom snapped it straight
+    // back to the floor "1", so the leading digit could never be removed and no
+    // round below 10 could be typed.
+    fireEvent.change(roundInput, { target: { value: "" } });
+    expect(roundInput.value).toBe("");
+    // And a fresh single-digit value commits as-is (not stuck at 1x).
+    fireEvent.change(roundInput, { target: { value: "5" } });
+    expect(roundInput.value).toBe("5");
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ timedEvents: [expect.objectContaining({ round: 5 })] })
+    );
+  });
+
   it("offers a 'story' timed-event effect and stores the chosen sceneId", () => {
     const onChange = vi.fn();
     const base: CustomMapPreset = {
