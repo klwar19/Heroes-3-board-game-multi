@@ -32,6 +32,8 @@ import {
   pickCombatBoardArtId,
   placementCellsFor,
   neutralFormationCellsFor,
+  commanderDeploymentCellsFor,
+  commanderUnitId,
   playerSpellCastsIgnoreLimit,
   unitHasUnlimitedRetaliationEffect,
   unitIsBerserk,
@@ -852,11 +854,17 @@ export function BattlefieldBoard({
   // Bank), exactly like a defender repositioning their own line.
 
   const sorting = Boolean(combat && combat.pendingNeutralPlacement === viewerPlayerId);
+  // WOG Commanders pre-combat sort: the head owner may drag their own commander
+  // to any empty cell of its deployment zone (or swap it with one of their own
+  // units), exactly like a deployment reposition, then press "Ready for battle".
+  const commanderSorting = Boolean(combat && combat.pendingCommanderPlacement?.[0] === viewerPlayerId);
   const ownRows = placing
     ? new Set(placementCellsFor(state, viewerPlayerId))
     : sorting
       ? new Set(neutralFormationCellsFor(state))
-      : new Set<number>();
+      : commanderSorting
+        ? new Set(commanderDeploymentCellsFor(state, viewerPlayerId))
+        : new Set<number>();
 
   // Tactics swap: a click-to-select board interaction for BOTH the start-of-combat
   // setup window (Basic) and the mid-combat expert swap (Expert). Basic is always
@@ -1141,13 +1149,18 @@ export function BattlefieldBoard({
           // drag-sorting two guards could only move into empty spaces and swaps
           // silently failed (PLACE_NEUTRAL_GUARD is board-only, not a command).
           const dropTarget =
-            (placing || sorting) &&
+            (placing || sorting || commanderSorting) &&
             ownRows.has(index) &&
             !isObstacle &&
             (!unit ||
               (sorting &&
                 unit.controllerId === NEUTRAL_PLAYER_ID &&
-                !isArrowTowerUnit(unit)));
+                !isArrowTowerUnit(unit)) ||
+              // Commander sort: an own (non-commander) unit is a swap target.
+              (commanderSorting &&
+                unit.controllerId === viewerPlayerId &&
+                unit.id !== commanderUnitId(viewerPlayerId) &&
+                isUnitAlive(unit)));
           // Tactics swap roles for this cell's unit (only during the setup window).
           const isSwapSelected = Boolean(unit && activeSwapSelection === unit.id);
           const isSwapTarget = Boolean(unit && swapPartners.has(unit.id));
@@ -1375,7 +1388,11 @@ export function BattlefieldBoard({
           const sortDraggable = Boolean(
             sorting && unit && unit.controllerId === NEUTRAL_PLAYER_ID && !isArrowTowerUnit(unit)
           );
-          const placedUnitDraggable = deployDraggable || sortDraggable;
+          // Commander sort: the viewer's own commander is the draggable body.
+          const commanderDraggable = Boolean(
+            commanderSorting && unit && unit.id === commanderUnitId(viewerPlayerId) && unit.controllerId === viewerPlayerId
+          );
+          const placedUnitDraggable = deployDraggable || sortDraggable || commanderDraggable;
           const dragProps = placedUnitDraggable
             ? {
                 onPointerDown: (event: React.PointerEvent) => {
@@ -1385,12 +1402,14 @@ export function BattlefieldBoard({
                       onAction(
                         sortDraggable
                           ? { type: "PLACE_NEUTRAL_GUARD", playerId: viewerPlayerId, unitId: unit!.id, position }
-                          : {
-                              type: "PLACE_COMBAT_UNIT",
-                              playerId: viewerPlayerId,
-                              armyUnitId: unit!.armyUnitId as string,
-                              position
-                            }
+                          : commanderDraggable
+                            ? { type: "PLACE_COMMANDER", playerId: viewerPlayerId, position }
+                            : {
+                                type: "PLACE_COMBAT_UNIT",
+                                playerId: viewerPlayerId,
+                                armyUnitId: unit!.armyUnitId as string,
+                                position
+                              }
                       )
                   });
                 }
@@ -1915,6 +1934,9 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   // formation sort (the moves/swaps themselves are board drag/click, like
   // deployment, so PLACE_NEUTRAL_GUARD is intentionally NOT a command button).
   "FINISH_NEUTRAL_PLACEMENT",
+  // WOG Commanders: the "Ready for battle" button that ends the pre-combat
+  // commander sort (PLACE_COMMANDER is board drag/click, like deployment).
+  "FINISH_COMMANDER_PLACEMENT",
   "SUMMON_DEMONS",
   "USE_GENIE_DECK_DRAW",
   // Anime Hero Grades (§3.11): War Cry — a combat active on the active unit,

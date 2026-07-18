@@ -140,6 +140,12 @@ export function nextAfkDropAction(state: GameState, playerId: PlayerId): GameAct
     return { type: "FINISH_NEUTRAL_PLACEMENT", playerId };
   }
 
+  // WOG Commanders: the dropped seat holds the pre-combat commander SORT window —
+  // finish it (keep the auto-placement) so the battle proceeds.
+  if (combat && !combat.outcome && combat.pendingCommanderPlacement?.[0] === playerId) {
+    return { type: "FINISH_COMMANDER_PLACEMENT", playerId };
+  }
+
   // PvP Neutral Control: the dropped seat is playing the guards of an OPEN
   // fight — play the current guard action out with a default pick (prefer the
   // do-least option) so the fight advances and the drop can proceed. Only real

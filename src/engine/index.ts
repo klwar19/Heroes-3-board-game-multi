@@ -131,7 +131,11 @@ export {
   commanderDefinitionOf,
   commanderGradesOf,
   commanderGradeUpChoices,
+  commanderLiveAttackBonus,
+  commanderLiveDefenseBonus,
+  commanderOnOwnFrontLine,
   commanderPowerOf,
+  commanderPreCombatSortAvailable,
   commanderRunePool,
   commandersModuleEnabled,
   commanderSlugForFaction,
@@ -549,6 +553,7 @@ export {
   observatoryRevealTargets,
   placementCellsFor,
   neutralFormationCellsFor,
+  commanderDeploymentCellsFor,
   pumpAdventureQueues
 } from "./adventure-reducer";
 export {

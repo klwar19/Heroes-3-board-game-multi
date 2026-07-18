@@ -467,12 +467,22 @@ export interface CommanderSpecialtyDefinition {
     | "undead"
     | "ballista-master"
     | "superior-combat"
+    | "vanguard-marshal"
     | "elemental-scourge"
     | "tinkerer"
     | "rune-ritual";
   name: string;
   text: string;
 }
+
+/**
+ * Superior Combat stance (Shaman): the chosen +1 Attack/Defense applies only
+ * during combat rounds 1..COMMANDER_STANCE_MAX_ROUND of each combat; from the
+ * next round on the commander fights without it. A single source of truth so the
+ * engine's live fold (commanderLiveAttackBonus / commanderLiveDefenseBonus) and
+ * the printed text agree.
+ */
+export const COMMANDER_STANCE_MAX_ROUND = 2;
 
 export interface CommanderDefinition {
   slug: CommanderSlug;
@@ -670,7 +680,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "superior-combat",
       name: "Superior Combat",
-      text: "At combat setup, choose +1 Attack or +1 Defense for the commander (applied at the start of each of its combats)."
+      text: "Outside combat, choose +1 Attack or +1 Defense for the commander. The stance applies ONLY during combat rounds 1-2; from round 3 the commander fights without it."
     },
     cardImage: "/assets/units-commander-shaman.webp"
   },
@@ -714,9 +724,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       ]
     },
     specialty: {
-      id: "superior-combat",
-      name: "Battle Stance",
-      text: "At combat setup, choose +1 Attack or +1 Defense for the commander (applied at the start of each of its combats)."
+      id: "vanguard-marshal",
+      name: "Vanguard Marshal",
+      text: "At combat setup you may reposition the commander within your deployment zone. While it stands on your FRONT LINE (the row of your deployment zone nearest the enemy), the commander has +1 Attack — a live positional bonus, so moving on or off the front line during combat changes it."
     },
     cardImage: "/assets/units-commander-corsair.webp"
   },

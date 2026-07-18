@@ -155,12 +155,15 @@ import {
   applyCommanderCombatStart,
   collectFirstAidCandidates,
   commanderGradesOf,
+  commanderPreCombatSortAvailable,
   commandersModuleEnabled,
+  commanderUnitId,
   finalizeCommandersAfterCombat,
   injectCommanderIntoCombat,
   playerHasLivingCommander,
   type CommanderFirstAidOption
 } from "./commanders";
+import { isComputerPlayer } from "./computer/control";
 import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { applyCombatScriptCombatStart } from "./combat-scripts";
@@ -6323,6 +6326,37 @@ function finalizeCombatStart(state: GameState): void {
   // commander onto the board (auto-placed on the first free cell of its own
   // backline, then frontline; bank fights use the six central attacker cells).
   injectCombatCommanders(state);
+  // WOG Commanders pre-combat SORT (Vanguard Marshal, future equipment): now the
+  // commanders are placed, offer eligible OWNERS a reposition window before the
+  // battle's start-of-combat effects (Runes/Charming/war machines) fire. This is
+  // the CLEANEST seam — after the auto-place and after any Neutral sort / Tactics
+  // (those windows resolve BEFORE finalizeCombatStart, so they are already gone),
+  // and before the non-idempotent combat-start package below, so nothing needs a
+  // re-entry. When a window opens the rest is deferred to
+  // resumeCombatStartAfterCommanderPlacement (run when the queue drains).
+  if (openCommanderPlacementWindow(state)) {
+    return;
+  }
+  resumeCombatStartAfterCommanderPlacement(state);
+}
+
+/**
+ * The start-of-combat package that must run exactly once, AFTER the commanders
+ * are placed (and any pre-combat commander sort is resolved). Split out of
+ * finalizeCombatStart so the sort window can pause between the auto-place and
+ * this package without re-entering (and thus double-firing) the non-idempotent
+ * steps below (Charming/Scourge damage, war machines).
+ */
+function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  // The sort window (if any) is done: back to live combat, priority released.
+  combat.pendingCommanderPlacement = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+
   // Bulwark "Runes" (Gamefound Update #3): seed each Bulwark player's per-combat
   // Rune pool from their Sieidi/Altar baseline + City Hall flag, applying any
   // Rune Level the starting pool already qualifies for.
@@ -6351,6 +6385,141 @@ function finalizeCombatStart(state: GameState): void {
   // round-start events configured for the opening round.
   applyCombatScriptCombatStart(state);
   startWarMachineRound(state);
+}
+
+/**
+ * WOG Commanders pre-combat SORT window (generic capability, sources today: the
+ * Vanguard Marshal specialty — a future equipment item plugs into
+ * commanderPreCombatSortAvailable). Called from finalizeCombatStart right after
+ * the commanders are injected: queue every OWNER whose commander joins this
+ * combat AND holds the sort capability, skipping computer seats (they keep the
+ * auto-placement so the AI never stalls on a window). Returns true (holding
+ * priority for the head owner) when at least one human owner is queued.
+ */
+function openCommanderPlacementWindow(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || !commandersModuleEnabled(state)) {
+    return false;
+  }
+  const owners: PlayerId[] = [];
+  for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+    if (playerId === NEUTRAL_PLAYER_ID || owners.includes(playerId)) {
+      continue;
+    }
+    // A computer seat auto-confirms (keeps the auto-placement): never queued.
+    if (isComputerPlayer(state, playerId)) {
+      continue;
+    }
+    if (commanderPreCombatSortAvailable(state, playerId)) {
+      owners.push(playerId);
+    }
+  }
+  if (owners.length === 0) {
+    return false;
+  }
+
+  combat.pendingCommanderPlacement = owners;
+  state.phase = "combat-setup";
+  state.priorityPlayerId = owners[0];
+  appendEvent(state, {
+    type: "COMMANDER_PLACEMENT_OPENED",
+    playerId: owners[0],
+    combatPlayerId: combat.attackerPlayerId
+  });
+  return true;
+}
+
+/**
+ * Cells the given player's commander may occupy during the pre-combat sort —
+ * its own deployment zone: the attacker's two rows (a normal fight) or the six
+ * central cells (a Creature Bank), the defender's two rows for a PvP defender.
+ * Mirrors the cell lists injectCombatCommanders auto-places into.
+ */
+export function commanderDeploymentCellsFor(state: GameState, playerId: PlayerId): number[] {
+  const combat = state.combat;
+  if (!combat) {
+    return [];
+  }
+  const context = combat.context;
+  const isBankAttacker =
+    context.kind === "neutral" && Boolean(context.bankId) && playerId === combat.attackerPlayerId;
+  if (isBankAttacker) {
+    return [...CREATURE_BANK_ATTACKER_CELLS];
+  }
+  if (playerId === combat.defenderPlayerId && playerId !== combat.attackerPlayerId) {
+    return [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE];
+  }
+  return [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE];
+}
+
+/**
+ * WOG Commanders pre-combat sort: the head owner repositions THEIR commander
+ * (PLACE_COMMANDER) to an empty cell of their own deployment zone, or swaps it
+ * with one of their OWN units standing there. Enemy units, Neutral guards,
+ * obstacles and out-of-zone cells are refused.
+ */
+export function placeCommanderUnit(state: GameState, action: Extract<GameAction, { type: "PLACE_COMMANDER" }>): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingCommanderPlacement?.[0] !== action.playerId) {
+    throw new Error("There is no commander to reposition right now.");
+  }
+  const commander = combat.units[commanderUnitId(action.playerId)];
+  if (!commander || commander.controllerId !== action.playerId || commander.damage >= commander.maxHealth) {
+    throw new Error("Your commander is not on the battlefield.");
+  }
+  if (!commanderDeploymentCellsFor(state, action.playerId).includes(action.position)) {
+    throw new Error("The commander must stay in your own deployment zone.");
+  }
+  if ((combat.obstacles ?? []).includes(action.position)) {
+    throw new Error("That space is blocked.");
+  }
+
+  const occupant = Object.values(combat.units).find(
+    (unit) => unit.position === action.position && unit.id !== commander.id
+  );
+  if (occupant) {
+    // Only one of the player's OWN units may be swapped with.
+    if (occupant.controllerId !== action.playerId || occupant.damage >= occupant.maxHealth) {
+      throw new Error("That space is taken.");
+    }
+    occupant.position = commander.position;
+    appendEvent(state, {
+      type: "COMBAT_UNIT_PLACED",
+      playerId: action.playerId,
+      unitId: occupant.id,
+      position: occupant.position
+    });
+  }
+  commander.position = action.position;
+  appendEvent(state, {
+    type: "COMBAT_UNIT_PLACED",
+    playerId: action.playerId,
+    unitId: commander.id,
+    position: commander.position
+  });
+}
+
+/**
+ * Finish the head owner's commander sort (FINISH_COMMANDER_PLACEMENT). Pops the
+ * queue: hands priority to the next queued owner, or — when the queue drains —
+ * runs the deferred start-of-combat package (round 1).
+ */
+export function finishCommanderPlacement(
+  state: GameState,
+  action: Extract<GameAction, { type: "FINISH_COMMANDER_PLACEMENT" }>
+): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingCommanderPlacement?.[0] !== action.playerId) {
+    throw new Error("There is no commander sort to finish.");
+  }
+  const remaining = (combat.pendingCommanderPlacement ?? []).slice(1);
+  if (remaining.length > 0) {
+    combat.pendingCommanderPlacement = remaining;
+    state.phase = "combat-setup";
+    state.priorityPlayerId = remaining[0];
+    return;
+  }
+  resumeCombatStartAfterCommanderPlacement(state);
 }
 
 /**

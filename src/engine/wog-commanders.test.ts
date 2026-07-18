@@ -21,8 +21,12 @@ import {
   getMainHero,
   makeCommanderCombatUnit,
   commanderAbilityIds,
+  commanderDeploymentCellsFor,
+  commanderOnOwnFrontLine,
+  commanderPreCombatSortAvailable,
   commanderUnitId,
   gainExperience,
+  nextAfkDropAction,
   placementCellsFor,
   spellLimitFor
 } from "./index";
@@ -881,32 +885,100 @@ describe("WOG commanders — death and revive", () => {
 // ===========================================================================
 
 describe("WOG commanders — specialties", () => {
-  it("Superior Combat (Shaman / Sea Marshal): +1 Attack or +1 Defense on the commander at combat setup", () => {
-    // Default stance = Attack: the Fortress commander enters combat at Attack 3.
-    const atk = intoNeutralFight(adventureWithCommanders("cmd-stance-atk", "fortress", undefined));
-    const attackUnit = atk.combat!.units[commanderUnitId("p1")];
-    expect(attackUnit.attack).toBe(3); // base 2 + 1 stance
-    expect(attackUnit.defense).toBe(1);
+  it("Superior Combat (Shaman): the +1 Attack/Defense stance holds ONLY during combat rounds 1-2, not from round 3", () => {
+    // The stance is a LIVE fold (not baked into the unit), so a fresh combat unit
+    // reads the BASE stats — the +1 only shows up in resolved attacks.
+    const injected = intoNeutralFight(adventureWithCommanders("cmd-stance-base", "fortress", undefined));
+    const injectedUnit = injected.combat!.units[commanderUnitId("p1")];
+    expect(injectedUnit.attack).toBe(2); // base — the +1 stance is not baked in
+    expect(injectedUnit.defense).toBe(1);
 
-    // Switch to Defense on the map, then fight: +1 Defense instead.
-    let picked = adventureWithCommanders("cmd-stance-def", "fortress", undefined);
-    picked = apply(picked, { type: "COMMANDER_SET_STANCE", playerId: "p1", stance: "defense" });
-    expect(picked.players.p1.commander?.stance).toBe("defense");
-    const defFight = intoNeutralFight(picked);
-    const defenseUnit = defFight.combat!.units[commanderUnitId("p1")];
-    expect(defenseUnit.attack).toBe(2);
-    expect(defenseUnit.defense).toBe(2); // base 1 + 1 stance
+    // Attack-stance commander (base Attack 2) vs a stripped skeleton, die 0. The
+    // damage IS the effective attack, so the +1 stance is observable here.
+    function attackDamage(round: number, artifacts?: Record<string, string>): number {
+      const state = sandboxWithCommander("shaman", {}, 9); // stance defaults to Attack
+      if (artifacts) {
+        state.players.p1.commander!.artifacts = artifacts;
+        const commander = makeCommanderCombatUnit(state.players.p1, 9)!;
+        state.combat!.units[commander.id] = commander; // rebuild with the artifact folded
+      }
+      state.combat!.round = round;
+      const skeletons = state.combat!.units.unit_p2_skeletons;
+      skeletons.abilities = [];
+      skeletons.position = 10;
+      skeletons.defense = 0;
+      skeletons.maxHealth = 20;
+      skeletons.damage = 0;
+      skeletons.retaliatedThisRound = true;
+      state.combat!.activeUnitId = commanderUnitId("p1");
+      state.activePlayerId = "p1";
+      state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+      state.combat!.dice.rollCount = 0;
+      const next = settle(
+        apply(state, {
+          type: "ATTACK_UNIT",
+          playerId: "p1",
+          attackerId: commanderUnitId("p1"),
+          defenderId: "unit_p2_skeletons"
+        })
+      );
+      return next.combat!.units.unit_p2_skeletons.damage;
+    }
 
-    // Sea Marshal shares the specialty — it too gains the stance bonus.
-    const marshal = intoNeutralFight(adventureWithCommanders("cmd-stance-cove", "cove", undefined));
-    expect(marshal.combat!.units[commanderUnitId("p1")].attack).toBe(3);
+    // Rounds 1 & 2: base Attack 2 + 1 stance = 3. Round 3: the stance is gone → 2.
+    expect(attackDamage(1)).toBe(3);
+    expect(attackDamage(2)).toBe(3);
+    expect(attackDamage(3)).toBe(2);
 
-    // CONTROL: a Paladin commander has no stance bonus, and rejects the action.
-    const ctrl = intoNeutralFight(adventureWithCommanders("cmd-stance-ctrl"));
-    const ctrlUnit = ctrl.combat!.units[commanderUnitId("p1")];
-    expect(ctrlUnit.attack).toBe(2);
-    expect(ctrlUnit.defense).toBe(1);
+    // Defense-stance commander (base Defense 1) struck by an Attack-4 enemy, die 0.
+    function incomingDamage(round: number): number {
+      const state = sandboxWithCommander("shaman", {}, 9);
+      state.players.p1.commander!.stance = "defense";
+      state.combat!.round = round;
+      const skeletons = state.combat!.units.unit_p2_skeletons;
+      skeletons.abilities = [];
+      skeletons.position = 10;
+      skeletons.attack = 4;
+      const commander = state.combat!.units[commanderUnitId("p1")];
+      commander.maxHealth = 20;
+      commander.damage = 0;
+      commander.retaliatedThisRound = true;
+      state.combat!.activeUnitId = "unit_p2_skeletons";
+      state.activePlayerId = "p2";
+      state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+      state.combat!.dice.rollCount = 0;
+      const next = settle(
+        apply(state, {
+          type: "ATTACK_UNIT",
+          playerId: "p2",
+          attackerId: "unit_p2_skeletons",
+          defenderId: commanderUnitId("p1")
+        })
+      );
+      return next.combat!.units[commanderUnitId("p1")].damage;
+    }
+
+    // Rounds 1 & 2: Defense 1 + 1 stance = 2 → 4 - 2 = 2 damage. Round 3: 4 - 1 = 3.
+    expect(incomingDamage(1)).toBe(2);
+    expect(incomingDamage(2)).toBe(2);
+    expect(incomingDamage(3)).toBe(3);
+
+    // CONTROL: a NON-stance bonus persists into round 3. A bound Axe (+2 Attack,
+    // baked) keeps its +2 whether or not the stance holds: round 1 = base 2 + axe
+    // 2 + stance 1 = 5, round 3 = base 2 + axe 2 = 4 (the +2 axe never lapses).
+    const AXE = "wog.artifact.axe_of_smashing";
+    expect(attackDamage(1, { weapon: AXE })).toBe(5);
+    expect(attackDamage(3, { weapon: AXE })).toBe(4);
+
+    // CONTROL: a Paladin commander has no stance and rejects the action.
     applyError(adventureWithCommanders("cmd-stance-ctrl2"), {
+      type: "COMMANDER_SET_STANCE",
+      playerId: "p1",
+      stance: "defense"
+    });
+    // CONTROL: the Sea Marshal no longer shares the stance (it is the Vanguard
+    // Marshal now) — COMMANDER_SET_STANCE is rejected for it too.
+    applyError(adventureWithCommanders("cmd-stance-cove-reject", "cove", undefined), {
       type: "COMMANDER_SET_STANCE",
       playerId: "p1",
       stance: "defense"
@@ -1172,6 +1244,215 @@ describe("WOG commanders — specialties", () => {
     expect(ctrlAttacked.combat!.runes?.p1?.count ?? 0).toBe(0);
     const ctrlMoved = moveCommander(ritualState("paladin"), 10);
     expect(ctrlMoved.combat!.runes?.p1?.count ?? 0).toBe(0);
+  });
+});
+
+// ===========================================================================
+// Vanguard Marshal (Cove Sea Marshal) — the front-line +1 Attack and the
+// generic pre-combat SORT window (a reusable capability; the Cove specialty
+// is the only source today).
+// ===========================================================================
+
+describe("WOG commanders — Vanguard Marshal front-line +1 Attack", () => {
+  // The attacker's front line on the 4x5 board is the row nearest the enemy
+  // (cells 12-15); the backline is 16-19, the middle row 8-11.
+  const ATTACKER_FRONT = [12, 13, 14, 15];
+
+  /** Cove commander (base Attack 2) at `pos`, attacking a stripped adjacent enemy. */
+  function coveAttackDamage(pos: number, enemyPos: number): number {
+    const state = sandboxWithCommander("corsair", {}, pos);
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.abilities = [];
+    skeletons.position = enemyPos;
+    skeletons.defense = 0;
+    skeletons.maxHealth = 20;
+    skeletons.damage = 0;
+    skeletons.retaliatedThisRound = true;
+    state.combat!.activeUnitId = commanderUnitId("p1");
+    state.activePlayerId = "p1";
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    const next = settle(
+      apply(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: commanderUnitId("p1"),
+        defenderId: "unit_p2_skeletons"
+      })
+    );
+    return next.combat!.units.unit_p2_skeletons.damage;
+  }
+
+  it("grants +1 Attack while the commander stands on its own front line, and none off it", () => {
+    // On the front line (13) attacking an adjacent enemy (14): base 2 + 1 = 3.
+    expect(coveAttackDamage(13, 14)).toBe(3);
+    // CONTROL: off the front line (middle row 9, backline 17): base 2 only.
+    expect(coveAttackDamage(9, 10)).toBe(2);
+    expect(coveAttackDamage(17, 18)).toBe(2);
+  });
+
+  it("is a LIVE positional read: moving ONTO the front line mid-combat turns it on", () => {
+    // The commander starts on the backline (17) — off the front line — then MOVES
+    // onto a front cell (13) and attacks the adjacent enemy (14). The +1 applies
+    // because the read is against its CURRENT (moved-to) position.
+    const state = sandboxWithCommander("corsair", {}, 17);
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.abilities = [];
+    skeletons.position = 14;
+    skeletons.defense = 0;
+    skeletons.maxHealth = 20;
+    skeletons.damage = 0;
+    skeletons.retaliatedThisRound = true;
+    state.combat!.activeUnitId = commanderUnitId("p1");
+    state.activePlayerId = "p1";
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+
+    // Sanity: the start cell (17) is off the front line, the destination (13) on it.
+    expect(commanderOnOwnFrontLine(state, state.combat!.units[commanderUnitId("p1")])).toBe(false);
+    expect(ATTACKER_FRONT).toContain(13);
+
+    // Move onto the front line, then attack.
+    let moved = apply(state, { type: "MOVE_UNIT", playerId: "p1", unitId: commanderUnitId("p1"), destination: 13 });
+    expect(moved.combat!.units[commanderUnitId("p1")].position).toBe(13);
+    expect(commanderOnOwnFrontLine(moved, moved.combat!.units[commanderUnitId("p1")])).toBe(true);
+    moved = settle(
+      apply(moved, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: commanderUnitId("p1"),
+        defenderId: "unit_p2_skeletons"
+      })
+    );
+    // On the front line after the move → base 2 + 1 = 3.
+    expect(moved.combat!.units.unit_p2_skeletons.damage).toBe(3);
+  });
+
+  it("CONTROL: a non-Vanguard-Marshal commander gets NO front-line bonus", () => {
+    // A Paladin on the very same front cell deals only its base Attack 2.
+    const state = sandboxWithCommander("paladin", {}, 13);
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.abilities = [];
+    skeletons.position = 14;
+    skeletons.defense = 0;
+    skeletons.maxHealth = 20;
+    skeletons.damage = 0;
+    skeletons.retaliatedThisRound = true;
+    state.combat!.activeUnitId = commanderUnitId("p1");
+    state.activePlayerId = "p1";
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    const next = settle(
+      apply(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: commanderUnitId("p1"),
+        defenderId: "unit_p2_skeletons"
+      })
+    );
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(2);
+  });
+});
+
+describe("WOG commanders — pre-combat SORT capability & window", () => {
+  it("commanderPreCombatSortAvailable is true for a Cove commander, false for others and module-off", () => {
+    // A Cove (Vanguard Marshal) commander in combat has the capability.
+    const cove = intoNeutralFight(adventureWithCommanders("cmd-sort-cap-cove", "cove", undefined));
+    expect(commanderPreCombatSortAvailable(cove, "p1")).toBe(true);
+
+    // CONTROL: a Shaman commander does NOT (its specialty is the stance, not sort).
+    const shaman = sandboxWithCommander("shaman", {}, 9);
+    expect(commanderPreCombatSortAvailable(shaman, "p1")).toBe(false);
+    // CONTROL: a Cove commander with the module OFF has no capability.
+    const off = sandboxWithCommander("corsair", {}, 9);
+    off.wog = { enabled: false, commanders: false, newObjects: false, newCreatures: false, artifacts: false };
+    expect(commanderPreCombatSortAvailable(off, "p1")).toBe(false);
+  });
+
+  it("opens the sort window for a human Cove owner; PLACE_COMMANDER lands it on the clicked cell and FINISH starts the fight", () => {
+    const state = intoNeutralFight(adventureWithCommanders("cmd-sort-open", "cove", undefined));
+    // The window is open for p1 (the fighter/owner), phase held in setup.
+    expect(state.combat!.pendingCommanderPlacement).toEqual(["p1"]);
+    expect(state.phase).toBe("combat-setup");
+    expect(state.priorityPlayerId).toBe("p1");
+    expect(state.eventLog.some((event) => event.type === "COMMANDER_PLACEMENT_OPENED")).toBe(true);
+
+    const offers = getLegalActions(state, "p1");
+    expect(offers.some((offer) => offer.action.type === "PLACE_COMMANDER")).toBe(true);
+    expect(offers.some((offer) => offer.action.type === "FINISH_COMMANDER_PLACEMENT")).toBe(true);
+
+    // Pick an empty own-zone cell and move the commander there.
+    const zone = commanderDeploymentCellsFor(state, "p1");
+    const occupied = new Set(Object.values(state.combat!.units).map((unit) => unit.position));
+    const target = zone.find((cell) => !occupied.has(cell))!;
+    expect(target).toBeGreaterThanOrEqual(0);
+
+    let moved = apply(state, { type: "PLACE_COMMANDER", playerId: "p1", position: target });
+    expect(moved.combat!.units[commanderUnitId("p1")].position).toBe(target);
+    // Still the setup window — the sort is not the confirm.
+    expect(moved.phase).toBe("combat-setup");
+
+    // Ready → the window closes and the battle proceeds (round 1 begins).
+    moved = apply(moved, { type: "FINISH_COMMANDER_PLACEMENT", playerId: "p1" });
+    expect(moved.combat!.pendingCommanderPlacement ?? null).toBeNull();
+    expect(moved.phase).not.toBe("combat-setup");
+    // The deferred start-of-combat package ran (round 1 announced).
+    expect(moved.eventLog.some((event) => event.type === "COMBAT_ROUND_STARTED")).toBe(true);
+  });
+
+  it("CONTROL: a non-Cove commander opens NO sort window (the fight starts directly)", () => {
+    const shaman = intoNeutralFight(adventureWithCommanders("cmd-sort-none-shaman", "fortress", undefined));
+    expect(shaman.combat!.pendingCommanderPlacement ?? null).toBeNull();
+    expect(shaman.phase).not.toBe("combat-setup");
+    const paladin = intoNeutralFight(adventureWithCommanders("cmd-sort-none-paladin"));
+    expect(paladin.combat!.pendingCommanderPlacement ?? null).toBeNull();
+  });
+
+  it("CONTROL: with the Commanders module OFF a Cove fight opens no window", () => {
+    const noModule = createAdventureGameState({
+      seed: "cmd-sort-module-off",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "One", factionId: "cove" as never, heroDefId: undefined },
+        { id: "p2", name: "Two", factionId: "necropolis" }
+      ]
+    });
+    const fought = intoNeutralFight(noModule);
+    expect(fought.combat!.pendingCommanderPlacement ?? null).toBeNull();
+    // No commander at all with the module off.
+    expect(fought.combat!.units[commanderUnitId("p1")]).toBeUndefined();
+  });
+
+  it("a COMPUTER Cove seat AUTO-SKIPS the window (no stall) though the capability holds", () => {
+    const state = adventureWithCommanders("cmd-sort-ai", "cove", undefined);
+    // Make p1 a computer seat.
+    state.controllers = { p1: { kind: "computer", difficulty: "standard", policyVersion: 1 } };
+    const fought = intoNeutralFight(state);
+    // The window never opened for the computer — it kept the auto-placement.
+    expect(fought.combat!.pendingCommanderPlacement ?? null).toBeNull();
+    expect(fought.phase).not.toBe("combat-setup");
+    // ...and the capability WAS present (proving the skip is the computer check,
+    // not an absent capability): the commander stands, Cove, in the fight.
+    expect(commanderPreCombatSortAvailable(fought, "p1")).toBe(true);
+  });
+
+  it("the AFK/turn-timeout driver resolves an open sort window (FINISH_COMMANDER_PLACEMENT)", () => {
+    const state = intoNeutralFight(adventureWithCommanders("cmd-sort-afk", "cove", undefined));
+    expect(state.combat!.pendingCommanderPlacement).toEqual(["p1"]);
+    // The shared forced-resolution driver finishes the window for the dropped seat.
+    expect(nextAfkDropAction(state, "p1")).toEqual({ type: "FINISH_COMMANDER_PLACEMENT", playerId: "p1" });
+    // Applying it starts the fight.
+    const resumed = apply(state, { type: "FINISH_COMMANDER_PLACEMENT", playerId: "p1" });
+    expect(resumed.combat!.pendingCommanderPlacement ?? null).toBeNull();
+  });
+
+  it("PLACE_COMMANDER rejects an out-of-zone cell and a forged non-owner", () => {
+    const state = intoNeutralFight(adventureWithCommanders("cmd-sort-guard", "cove", undefined));
+    // An enemy-zone cell (defender backline 0) is out of the attacker's zone.
+    applyError(state, { type: "PLACE_COMMANDER", playerId: "p1", position: 0 });
+    // A player who is not the window's head owner cannot place.
+    applyError(state, { type: "PLACE_COMMANDER", playerId: "p2", position: 12 });
   });
 });
 

@@ -215,7 +215,8 @@ export function parallelSlotSignature(state: GameState): string {
           Boolean(state.combat.outcome),
           Boolean(state.combat.setup),
           Boolean(state.combat.prep),
-          state.combat.pendingNeutralPlacement ?? null
+          state.combat.pendingNeutralPlacement ?? null,
+          state.combat.pendingCommanderPlacement ?? null
         ]
       : null,
     state.pendingChoice?.id ?? null,

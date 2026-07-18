@@ -2,6 +2,7 @@ import {
   COMMANDER_DEFENSE_TOKEN_GRADE,
   COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION,
   COMMANDER_SLUG_BY_FACTION,
+  COMMANDER_STANCE_MAX_ROUND,
   COMMANDER_STAT_KEYS,
   commanderCanRaiseGrade,
   commanderCastIsInstantReaction,
@@ -260,9 +261,11 @@ export function makeCommanderCombatUnit(
   }
 
   const grades = commanderGradesOf(commander);
-  // Superior Combat specialty (Shaman / Sea Marshal): +1 to the chosen stance
-  // stat (default Attack), baked into the unit at combat setup.
-  const stanceStat = definition.specialty.id === "superior-combat" ? (commander.stance ?? "attack") : null;
+  // Superior Combat (Shaman) stance and the Vanguard Marshal (Cove) front-line
+  // +1 are NOT baked into the unit — both are LIVE reads at attack resolution
+  // (commanderLiveAttackBonus / commanderLiveDefenseBonus): the Shaman stance
+  // only holds for combat rounds 1-2, and the Vanguard Marshal bonus depends on
+  // the commander's live position, so baking would go stale.
   // Sharpshooter combination skill (Attack+Speed): the commander fights as a
   // ranged unit — the combo has no ability tag, the TYPE is the mechanic.
   const canShoot = commanderUnlockedCombos(grades).some((combo) => combo.id === "can-shoot");
@@ -280,8 +283,8 @@ export function makeCommanderCombatUnit(
     variant: "few",
     grade: "gold",
     type: canShoot ? "ranged" : "ground",
-    attack: commanderStatValue("attack", grades.attack) + (stanceStat === "attack" ? 1 : 0) + artifacts.attack,
-    defense: commanderStatValue("defense", grades.defense) + (stanceStat === "defense" ? 1 : 0) + artifacts.defense,
+    attack: commanderStatValue("attack", grades.attack) + artifacts.attack,
+    defense: commanderStatValue("defense", grades.defense) + artifacts.defense,
     maxHealth: commanderStatValue("health", grades.health) + artifacts.health,
     damage: 0,
     initiative: commanderStatValue("speed", grades.speed) + artifacts.initiative,
@@ -343,6 +346,151 @@ export function injectCommanderIntoCombat(
   }
   combat.units[unit.id] = unit;
   return unit;
+}
+
+// ---------------------------------------------------------------------------
+// Pre-combat SORT capability + live positional/stance stat folds.
+//
+// Board geometry (mirrors ATTACKER_FRONTLINE etc. in adventure-reducer.ts;
+// duplicated here as small documented constants so this import-safe module never
+// depends on adventure-reducer). The 4-wide, 20-cell board: the attacker deploys
+// on rows 3 (FRONT, 12-15) & 4 (back, 16-19); the defender on rows 0 (back) & 1
+// (FRONT, 4-7). "Front line" = the row of the owner's deployment zone nearest the
+// enemy.
+// ---------------------------------------------------------------------------
+
+const COMMANDER_ATTACKER_FRONT_CELLS: readonly number[] = [12, 13, 14, 15];
+const COMMANDER_DEFENDER_FRONT_CELLS: readonly number[] = [4, 5, 6, 7];
+// Creature-Bank / attacker-center layout: the attacker forms up in the six
+// central cells (5,6 / 9,10 / 13,14) while the four guards hold the corners
+// (rows 0 & 4). There is no single "enemy side" — the guards flank both ends —
+// so the front line is read as the two central rows that TOUCH a guard row: 5,6
+// (row 1, under the top corners) and 13,14 (row 3, above the bottom corners).
+// The shielded middle row (9,10) is NOT a front line.
+const COMMANDER_BANK_FRONT_CELLS: readonly number[] = [5, 6, 13, 14];
+
+/** The Vanguard Marshal specialty (Cove Sea Marshal). */
+function commanderIsVanguardMarshal(commander: CommanderPlayerState): boolean {
+  return commanderDefinitionOf(commander)?.specialty.id === "vanguard-marshal";
+}
+
+/** The Superior Combat stance specialty (Fortress Shaman). */
+function commanderHasSuperiorCombat(commander: CommanderPlayerState): boolean {
+  return commanderDefinitionOf(commander)?.specialty.id === "superior-combat";
+}
+
+/**
+ * GENERIC pre-combat SORT capability. True when the Commanders module is on, the
+ * player's commander is present + alive in THIS combat, AND some source grants
+ * the capability. The reusable predicate the setup window keys off — designed so
+ * a FUTURE hero-equipment item can grant it too (a second OR-branch reading the
+ * hero's equipment; see the marked seam below), never touching the window
+ * machinery.
+ */
+export function commanderPreCombatSortAvailable(state: GameState, playerId: PlayerId): boolean {
+  if (!commandersModuleEnabled(state)) {
+    return false;
+  }
+  const unit = findCommanderUnit(state, playerId);
+  if (!unit || unit.damage >= unit.maxHealth) {
+    return false;
+  }
+  const commander = state.players[playerId]?.commander;
+  if (!commander) {
+    return false;
+  }
+  // Source 1: the Vanguard Marshal specialty (Cove Sea Marshal).
+  if (commanderIsVanguardMarshal(commander)) {
+    return true;
+  }
+  // Source 2 — SEAM for a future hero-equipment item that grants the pre-combat
+  // sort. It would OR-in here, reading the hero's equipment off `state`, e.g.:
+  //   if (heroEquipmentGrantsCommanderSort(state, playerId)) return true;
+  return false;
+}
+
+/** The cells considered `unit`'s own front line in the current combat. */
+function commanderFrontLineCells(state: GameState, unit: CombatUnitState): readonly number[] {
+  const combat = state.combat;
+  if (!combat) {
+    return [];
+  }
+  // Bank fights: only the attacker deploys (in the central cells), so the bank
+  // front-line reading applies whatever side flag the commander carries.
+  if (combat.context.kind === "neutral" && combat.context.bankId) {
+    return COMMANDER_BANK_FRONT_CELLS;
+  }
+  if (unit.controllerId === combat.defenderPlayerId) {
+    return COMMANDER_DEFENDER_FRONT_CELLS;
+  }
+  // Attacker (the neutral fighter, or a PvP/sandbox attacker) — the default.
+  return COMMANDER_ATTACKER_FRONT_CELLS;
+}
+
+/** Whether the commander unit currently stands on its own front line. */
+export function commanderOnOwnFrontLine(state: GameState, unit: CombatUnitState): boolean {
+  return commanderFrontLineCells(state, unit).includes(unit.position);
+}
+
+/** Whether a Superior Combat stance is ACTIVE this combat round (rounds 1-2). */
+function commanderStanceRoundActive(state: GameState): boolean {
+  return (state.combat?.round ?? 1) <= COMMANDER_STANCE_MAX_ROUND;
+}
+
+/**
+ * LIVE Attack bonus on a COMMANDER's own combat unit, read at attack resolution
+ * (folded into getAttackStackDetails). Positional / stance-based, not
+ * attack-type-based, so it applies on the commander's own attacks AND its
+ * retaliations. Two sources:
+ *  - Vanguard Marshal (Cove Sea Marshal): +1 while the commander stands on its
+ *    own FRONT LINE (a live position read — walking on/off it flips the bonus).
+ *  - Superior Combat (Shaman): the chosen +1 Attack stance, but ONLY during
+ *    combat rounds 1-2 (from round 3 the stance is gone).
+ * 0 for any non-commander unit.
+ */
+export function commanderLiveAttackBonus(state: GameState, unit: CombatUnitState): number {
+  if (!unit.commanderSlug) {
+    return 0;
+  }
+  const commander = state.players[unit.controllerId]?.commander;
+  if (!commander) {
+    return 0;
+  }
+  let bonus = 0;
+  if (commanderIsVanguardMarshal(commander) && commanderOnOwnFrontLine(state, unit)) {
+    bonus += 1;
+  }
+  if (
+    commanderHasSuperiorCombat(commander) &&
+    (commander.stance ?? "attack") === "attack" &&
+    commanderStanceRoundActive(state)
+  ) {
+    bonus += 1;
+  }
+  return bonus;
+}
+
+/**
+ * LIVE Defense bonus on a COMMANDER's own combat unit, read when it is attacked
+ * (folded into getAttackStackDetails' defender bonus). The Superior Combat
+ * (Shaman) +1 Defense stance, ONLY during combat rounds 1-2. 0 otherwise.
+ */
+export function commanderLiveDefenseBonus(state: GameState, unit: CombatUnitState): number {
+  if (!unit.commanderSlug) {
+    return 0;
+  }
+  const commander = state.players[unit.controllerId]?.commander;
+  if (!commander) {
+    return 0;
+  }
+  if (
+    commanderHasSuperiorCombat(commander) &&
+    (commander.stance ?? "attack") === "defense" &&
+    commanderStanceRoundActive(state)
+  ) {
+    return 1;
+  }
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
