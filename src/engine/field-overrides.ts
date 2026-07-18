@@ -129,6 +129,10 @@ function modsFromState(
 ) {
   return {
     animeEnabled: animeEnabled(state as never),
+    // Anime `mapObjects` module gate (absent === ON): reported alongside so
+    // `fieldOverridePackageAllowed` can drop anime FO content when it is
+    // explicitly unticked in the lobby.
+    animeMapObjects: (state?.anime as { mapObjects?: boolean } | undefined)?.mapObjects,
     // Wake of Gods object package: gated on `wog.enabled && wog.newObjects`.
     wogNewObjects: Boolean(state?.wog?.enabled && state.wog.newObjects)
   };

@@ -165,6 +165,19 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
  */
 export type AnimeModOptions = {
   enabled: boolean;
+  /**
+   * Anime Field-Override MAP OBJECTS (the 11 Ninefold single-hex locations —
+   * Secret Realm, Sword Mound, Merchant Guild Post, …; the 2 Equipment
+   * outfitters keep their extra `equipment` gate on top). Mirrors
+   * `WogModOptions.newObjects`.
+   *
+   * LEGACY SEMANTICS — absent === ON: old snapshots and campaign chapters set
+   * `anime.enabled: true` WITHOUT this flag and must keep receiving anime
+   * Field-Override content, so every runtime gate reads `mapObjects !== false`
+   * (not `=== true`). `DEFAULT_ANIME_OPTIONS` sets it `true`; it is harmless
+   * while `enabled: false` because every anime gate also requires `enabled`.
+   */
+  mapObjects: boolean;
   /** Ninefold Realms towns. */
   xianxiaTowns: boolean;
   secretRealms: boolean;

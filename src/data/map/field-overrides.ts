@@ -177,18 +177,22 @@ export function fieldOverrideGlyph(kindOrLocationId: string): string | undefined
 
 /**
  * Whether a package is available given active mods.
- * Core/shared always; anime packages need anime.enabled; the wog package needs
+ * Core/shared always; anime packages need `anime.enabled` AND the `mapObjects`
+ * module (`enabled && mapObjects !== false` — absent === ON for legacy
+ * snapshots / campaign chapters that predate the flag); the wog package needs
  * the Wake of Gods `newObjects` module (`wog.enabled && wog.newObjects`).
  */
 export function fieldOverridePackageAllowed(
   pkg: FieldOverridePackage,
-  mods: { animeEnabled?: boolean; wogNewObjects?: boolean }
+  mods: { animeEnabled?: boolean; animeMapObjects?: boolean; wogNewObjects?: boolean }
 ): boolean {
   if (pkg === "core" || pkg === "shared") {
     return true;
   }
   if (pkg === "anime-xianxia" || pkg === "anime-isekai") {
-    return Boolean(mods.animeEnabled);
+    // `animeMapObjects` absent (legacy / campaign) counts as ON — only an
+    // explicit `false` (the lobby module unticked) drops the anime FO content.
+    return Boolean(mods.animeEnabled) && mods.animeMapObjects !== false;
   }
   if (pkg === "wog") {
     return Boolean(mods.wogNewObjects);

@@ -10847,6 +10847,50 @@ span.recruitThumb {
   flex: 0 0 auto;
 }
 
+/* Short honest description line shared by the mod option windows. */
+.wogWindowDesc {
+  display: block;
+  margin-top: 10px;
+  color: #c9b7d0;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+/* Anime mod — jade/gold accent variant of the WOG (purple) mod chrome. Reuses
+   the .wog* structure; these overrides only recolour so the two crests read
+   distinctly in the lobby. */
+.animeOptionRow {
+  border-color: rgba(64, 150, 120, 0.5);
+  background:
+    radial-gradient(circle at 12% 20%, rgba(58, 168, 128, 0.2), transparent 38%),
+    rgba(10, 20, 17, 0.72);
+}
+
+.animeOptionRow.enabled {
+  border-color: rgba(126, 224, 178, 0.74);
+  box-shadow: inset 0 0 24px rgba(46, 150, 110, 0.16);
+}
+
+.animeCrestButton {
+  border-color: rgba(120, 200, 158, 0.62);
+  background: linear-gradient(145deg, #10241c, #1c5b45 56%, #0b1c15);
+  color: #cdf2df;
+}
+
+.animeCrestButton:hover,
+.animeCrestButton.selected {
+  border-color: #9be7c1;
+  box-shadow: inset 0 0 15px rgba(136, 255, 200, 0.2), 0 0 15px rgba(76, 205, 150, 0.25);
+}
+
+.animeCrestButton .wogCrestIcon {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 8px rgba(140, 255, 200, 0.28));
+}
+
+.animeOptionsWindow header h4 {
+  color: #cdf2df;
+}
+
 .optionSteppers {
   display: flex;
   flex-wrap: wrap;

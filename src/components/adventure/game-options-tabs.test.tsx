@@ -140,6 +140,90 @@ describe("Game options — tabbed layout", () => {
     );
   });
 
+  it("renders the Anime mod crest row alongside the WOG row (both Mod lines)", () => {
+    openOptions();
+    // Both crest rows exist and are independent Mod lines (not game-mode cards).
+    expect(screen.getByRole("button", { name: /Enable Wake of Gods mod|Disable Wake of Gods mod/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Enable Anime mod|Disable Anime mod/i })).toBeTruthy();
+    // The Anime crest icon points at the generated crest art (with the fallback).
+    const animeCrest = document.querySelector(".animeCrestButton .wogCrestIcon");
+    expect(animeCrest?.getAttribute("src")).toMatch(/mod-anime-crest-clear|mod-anime-crest/);
+  });
+
+  it("toggling the Anime mod dispatches SET_GAME_OPTIONS with anime.enabled", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("button", { name: /Enable Anime mod/i }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SET_GAME_OPTIONS",
+        playerId: "p1",
+        options: expect.objectContaining({
+          anime: expect.objectContaining({ enabled: true })
+        })
+      })
+    );
+  });
+
+  it("the Anime mod window ticks each shipped module — dispatching that flag", () => {
+    const onAction = openOptionsWith((state) => {
+      // Anime must be ON for the mod-options window (and its rows) to render.
+      state.setupLobby!.options.anime = {
+        ...state.setupLobby!.options.anime!,
+        enabled: true
+      };
+    });
+    // Open the Anime mod-options window (only shown while the mod is enabled).
+    // Two "Mod options" buttons exist (WOG + Anime) once both are visible; here
+    // only Anime is ON, so its button is the one shown.
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    const dialog = screen.getByRole("dialog", { name: /Anime mod options/i });
+
+    // Each shipped module has a tick button that dispatches only its own flag.
+    const modules: Array<[string, string]> = [
+      ["anime-module-mapObjects", "mapObjects"],
+      ["anime-module-xianxiaArtifacts", "xianxiaArtifacts"],
+      ["anime-module-cultivation", "cultivation"],
+      ["anime-module-heroGrades", "heroGrades"],
+      ["anime-module-equipment", "equipment"]
+    ];
+    for (const [testid, flag] of modules) {
+      onAction.mockClear();
+      const row = within(dialog).getByTestId(testid);
+      fireEvent.click(row);
+      const call = onAction.mock.calls.at(-1)?.[0];
+      expect(call).toMatchObject({
+        type: "SET_GAME_OPTIONS",
+        playerId: "p1",
+        options: { anime: expect.objectContaining({ enabled: true }) }
+      });
+      // The clicked flag was flipped in the dispatched payload.
+      expect(call.options.anime).toHaveProperty(flag);
+    }
+
+    // Dead / unshipped flags are NOT surfaced as tick buttons.
+    expect(within(dialog).queryByTestId("anime-module-xianxiaTowns")).toBeNull();
+    expect(within(dialog).queryByTestId("anime-module-destiny")).toBeNull();
+  });
+
+  it("the Legacy preset forces BOTH the WOG and Anime mods off", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.wog = { ...state.setupLobby!.options.wog!, enabled: true };
+      state.setupLobby!.options.anime = { ...state.setupLobby!.options.anime!, enabled: true };
+    });
+    const modeGrid = screen.getByRole("group", { name: /Game mode presets/i });
+    fireEvent.click(within(modeGrid).getByRole("button", { name: /Legacy/i }));
+    const call = onAction.mock.calls.at(-1)?.[0];
+    expect(call).toMatchObject({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: {
+        ruleset: "legacy",
+        wog: expect.objectContaining({ enabled: false }),
+        anime: expect.objectContaining({ enabled: false })
+      }
+    });
+  });
+
   it("clicking a house-rule toggle dispatches just that rule's flag", () => {
     const onAction = openOptions();
     expandBinhHouseRules();

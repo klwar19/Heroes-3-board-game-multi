@@ -28,6 +28,7 @@ import {
   NEUTRAL_DECK_IDS,
   NEUTRAL_PLAYER_ID,
   DEFAULT_WOG_OPTIONS,
+  DEFAULT_ANIME_OPTIONS,
   PVP_TROOP_LOSS_DESCRIPTIONS,
   PVP_TROOP_LOSS_LABELS,
   RULESET_DESCRIPTIONS,
@@ -6329,6 +6330,7 @@ function GameOptionsPanel({
   onAction: (action: GameAction) => void;
 }) {
   const [wogOptionsOpen, setWogOptionsOpen] = useState(false);
+  const [animeOptionsOpen, setAnimeOptionsOpen] = useState(false);
   const [modeNotice, setModeNotice] = useState<string | null>(null);
   const [tournamentRulesOpen, setTournamentRulesOpen] = useState(false);
   const [tab, setTab] = useState<OptionsTabId>("rules");
@@ -6339,6 +6341,7 @@ function GameOptionsPanel({
 
   const options = lobby.options;
   const wog = { ...DEFAULT_WOG_OPTIONS, ...options.wog };
+  const anime = { ...DEFAULT_ANIME_OPTIONS, ...options.anime };
   const viewerFactionId = lobby.seats.find((seat) => seat.playerId === viewerPlayerId)?.factionId ?? null;
   const send = (next: Partial<GameSetupOptions>) =>
     onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
@@ -6371,6 +6374,7 @@ function GameOptionsPanel({
       send({
         ruleset: "legacy",
         wog: { ...wog, enabled: false },
+        anime: { ...anime, enabled: false },
         spellBook: false,
         tournamentMode: false,
         tournamentBanDiplomacy: false,
@@ -6380,7 +6384,7 @@ function GameOptionsPanel({
       setModeNotice(
         "Legacy mode applied: every house rule is off (printed rulebook). " +
           "Nothing is locked — you can re-enable any house rule, Spell Book, or tournament rule below. " +
-          "WOG (Mod) is off under Legacy."
+          "WOG and Anime (Mods) are off under Legacy."
       );
       return;
     }
@@ -6397,11 +6401,12 @@ function GameOptionsPanel({
       setModeNotice(null);
       return;
     }
-    // Tournament competitive preset — turns WOG off with the competitive package.
-    // Neutrals default to human control (next player clockwise plays the guards).
+    // Tournament competitive preset — turns WOG + Anime off with the competitive
+    // package. Neutrals default to human control (next player clockwise).
     send({
       ruleset: "legacy",
       wog: { ...wog, enabled: false },
+      anime: { ...anime, enabled: false },
       spellBook: false,
       tournamentMode: true,
       tournamentBanDiplomacy: true,
@@ -6556,6 +6561,73 @@ function GameOptionsPanel({
         </div>
         <small className="optionHint">
           WOG is a mod, not a game mode — toggle it on alongside house rules and other optional rules. Enabling it
+          under Legacy switches the table to BINH so the modules can load.
+        </small>
+      </div>
+
+      <div className={`optionRow wogOptionRow animeOptionRow ${anime.enabled ? "enabled" : ""}`}>
+        <small title="Optional modules you can stack on a game mode (not a separate mode)">Mod</small>
+        <div className="wogOptionControls">
+          <button
+            aria-label={anime.enabled ? "Disable Anime mod" : "Enable Anime mod"}
+            aria-pressed={anime.enabled}
+            className={`wogCrestButton animeCrestButton ${anime.enabled ? "selected" : ""}`}
+            onClick={() => {
+              const nextEnabled = !anime.enabled;
+              // Keep any module choices already made; the reducer flips a Legacy
+              // table to BINH when the Anime mod is enabled so it can load.
+              send({
+                anime: {
+                  ...DEFAULT_ANIME_OPTIONS,
+                  ...anime,
+                  enabled: nextEnabled
+                }
+              });
+              if (nextEnabled) {
+                setAnimeOptionsOpen(true);
+              }
+            }}
+            title={
+              anime.enabled
+                ? "Anime mod on — click to turn off. Configure map objects / artifacts / cultivation / grades / equipment."
+                : "Enable the Anime mod (Ninefold Realms × Otherworld Gate — works with BINH; turning it on while Legacy switches to BINH)."
+            }
+            type="button"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              className="wogCrestIcon"
+              decoding="async"
+              src={assetUrl("/assets/ui/mod-anime-crest-clear.webp")}
+              onError={(event) => {
+                // Prefer the transparent crest; fall back to the dark-backdrop variant.
+                const img = event.currentTarget;
+                if (!img.dataset.fallback) {
+                  img.dataset.fallback = "1";
+                  img.src = assetUrl("/assets/ui/mod-anime-crest.webp");
+                }
+              }}
+            />
+            <strong>Anime</strong>
+            <span>{anime.enabled ? "ON" : "OFF"}</span>
+          </button>
+          <div className="wogOptionSummary">
+            <strong>Anime mod</strong>
+            <small>
+              {anime.enabled
+                ? "Enabled — configure map objects, artifacts, cultivation, grades and equipment"
+                : "Optional mod — Ninefold Realms × Otherworld Gate; stack with BINH, WOG and other rules"}
+            </small>
+            {anime.enabled ? (
+              <button className="wogConfigureButton" onClick={() => setAnimeOptionsOpen(true)} type="button">
+                Mod options
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <small className="optionHint">
+          Anime is a mod, not a game mode — stack it alongside WOG, house rules and other optional rules. Enabling it
           under Legacy switches the table to BINH so the modules can load.
         </small>
       </div>
@@ -6869,6 +6941,64 @@ function GameOptionsPanel({
             </div>
             <footer>
               <button className="selected" onClick={() => setWogOptionsOpen(false)} type="button">Done</button>
+            </footer>
+          </section>
+          </div>
+        ), document.body)
+        : null}
+
+      {anime.enabled && animeOptionsOpen && typeof document !== "undefined"
+        ? createPortal((
+          <div className="wogWindowBackdrop" onMouseDown={() => setAnimeOptionsOpen(false)}>
+          <section
+            aria-label="Anime mod options"
+            aria-modal="true"
+            className="wogOptionsWindow animeOptionsWindow"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <header>
+              <div>
+                <span className="wogWindowEyebrow">Optional mod</span>
+                <h4>Anime mod</h4>
+              </div>
+              <button aria-label="Close Anime options" onClick={() => setAnimeOptionsOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+            <small className="wogWindowDesc">
+              Ninefold Realms × Otherworld Gate — a stack of BINH-family modules (xianxia + isekai). Tick
+              only what you want; each is independent and coexists with WOG and the house rules.
+            </small>
+            <div className="wogModuleList">
+              {([
+                ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool."],
+                ["xianxiaArtifacts", "Pháp Bảo artifacts", "Shuffles 5 anime hero Artifact cards (Túi Càn Khôn, Phong Hỏa Luân, Tru Tiên Kiếm, Bát Quái Kính, Tụ Linh Bàn) into the shared Artifact decks by tier."],
+                ["cultivation", "Cultivation realms", "A per-hero Cultivation Realm track (hand limit / reroll / spell Power) plus the Heavenly Tribulation map action."],
+                ["heroGrades", "Hero Grades", "A per-hero Merit → grade track that unlocks a small passive / skill tree (shared by every hero)."],
+                ["equipment", "Hero Equipment", "Always-on hero items in 3 slots (weapon / armor / accessory), bought at outfitter map locations."]
+              ] as const).map(([key, label, description]) => {
+                const active = anime[key];
+                return (
+                  <button
+                    aria-pressed={active}
+                    className={`wogModuleToggle ${active ? "selected" : ""}`}
+                    data-testid={`anime-module-${key}`}
+                    key={key}
+                    onClick={() => send({ anime: { ...anime, [key]: !active } })}
+                    type="button"
+                  >
+                    <span className="wogModuleCheck">{active ? <Check size={15} /> : null}</span>
+                    <span>
+                      <strong>{label}</strong>
+                      <small>{description}</small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <footer>
+              <button className="selected" onClick={() => setAnimeOptionsOpen(false)} type="button">Done</button>
             </footer>
           </section>
           </div>
