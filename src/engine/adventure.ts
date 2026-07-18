@@ -10729,13 +10729,34 @@ const CUBE_CLEAR_MATCHES: Record<"windmill" | "water_wheel" | "mystical_garden",
  * adventure; no-ops when the active map has no preset timed events.
  * Runs AFTER refreshRoundTokens, so a movement grant stacks on refreshed MPs.
  */
+/**
+ * True when a designed timed event fires at `round`. A one-shot (no
+ * `repeatEveryRounds`) fires only on its own `round`; a repeating event fires on
+ * `round`, then every N rounds after (`round`, `round+N`, `round+2N`, …). A
+ * repeat interval < 2 is treated as a one-shot (the sanitizer already clamps it,
+ * but this guards a hand-edited snapshot against a modulo-0 / every-round loop).
+ */
+export function isTimedEventDue(
+  event: { round: number; repeatEveryRounds?: number },
+  round: number
+): boolean {
+  if (round === event.round) {
+    return true;
+  }
+  const interval = event.repeatEveryRounds;
+  if (!interval || interval < 2 || round < event.round) {
+    return false;
+  }
+  return (round - event.round) % interval === 0;
+}
+
 export function applyCustomMapTimedEvents(state: GameState): void {
   const preset = state.adventure?.mapPreset;
   if (!preset?.timedEvents?.length) {
     return;
   }
   const round = state.round;
-  const due = preset.timedEvents.filter((event) => event.round === round);
+  const due = preset.timedEvents.filter((event) => isTimedEventDue(event, round));
   if (due.length === 0) {
     return;
   }
@@ -10759,23 +10780,97 @@ export function applyCustomMapTimedEvents(state: GameState): void {
       continue;
     }
     if (effect.kind === "resources") {
+      const gold = effect.gold ?? 0;
+      const buildingMaterials = effect.buildingMaterials ?? 0;
+      const valuables = effect.valuables ?? 0;
+      // Negative amounts mean every player LOSES that much; the treasury is
+      // floored at 0 (a player can never go negative, even short of the loss).
+      const anyLoss = gold < 0 || buildingMaterials < 0 || valuables < 0;
       for (const playerId of players) {
-        gainResources(state, playerId, effect, `map event round ${round}`);
+        if (!anyLoss) {
+          // Pure gain — byte-identical to the legacy give-only path.
+          gainResources(state, playerId, { gold, buildingMaterials, valuables }, `map event round ${round}`);
+          continue;
+        }
+        const player = state.players[playerId];
+        if (!player) {
+          continue;
+        }
+        const before = { ...player.resources };
+        player.resources.gold = Math.max(0, before.gold + gold);
+        player.resources.buildingMaterials = Math.max(0, before.buildingMaterials + buildingMaterials);
+        player.resources.valuables = Math.max(0, before.valuables + valuables);
+        // Record the ACTUAL treasury movement (after the floor) as feed events.
+        const removed: ResourceCost = {};
+        const gained: { gold: number; buildingMaterials: number; valuables: number } = {
+          gold: 0,
+          buildingMaterials: 0,
+          valuables: 0
+        };
+        for (const kind of ["gold", "buildingMaterials", "valuables"] as const) {
+          const diff = player.resources[kind] - before[kind];
+          if (diff < 0) {
+            removed[kind] = -diff;
+          } else if (diff > 0) {
+            gained[kind] = diff;
+          }
+        }
+        if (Object.keys(removed).length > 0) {
+          appendEvent(state, {
+            type: "RESOURCES_SPENT",
+            playerId,
+            cost: removed,
+            reason: `map event round ${round}`
+          });
+        }
+        if (gained.gold || gained.buildingMaterials || gained.valuables) {
+          appendEvent(state, {
+            type: "RESOURCES_GAINED",
+            playerId,
+            gold: gained.gold,
+            buildingMaterials: gained.buildingMaterials,
+            valuables: gained.valuables,
+            reason: `map event round ${round}`
+          });
+        }
       }
-      const parts: string[] = [];
-      if (effect.gold) {
-        parts.push(`${effect.gold} gold`);
+      const gains: string[] = [];
+      const losses: string[] = [];
+      for (const [amount, label] of [
+        [gold, "gold"],
+        [buildingMaterials, "materials"],
+        [valuables, "valuables"]
+      ] as const) {
+        if (amount > 0) {
+          gains.push(`${amount} ${label}`);
+        } else if (amount < 0) {
+          losses.push(`${-amount} ${label}`);
+        }
       }
-      if (effect.buildingMaterials) {
-        parts.push(`${effect.buildingMaterials} materials`);
+      const clauses: string[] = [];
+      if (gains.length > 0) {
+        clauses.push(`gains ${gains.join(", ")}`);
       }
-      if (effect.valuables) {
-        parts.push(`${effect.valuables} valuables`);
+      if (losses.length > 0) {
+        clauses.push(`loses ${losses.join(", ")}`);
       }
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every player gains ${parts.join(", ") || "nothing"}.`
+        message: `Map event (round ${round}): every player ${clauses.join(" and ") || "gains nothing"}.`
+      });
+      continue;
+    }
+    if (effect.kind === "experience") {
+      for (const playerId of players) {
+        // Ride the NORMAL experience pipeline (level-ups, hand-limit / expert-use
+        // bumps, Ability searches, specialty cards, commander points, Learning).
+        gainExperience(state, playerId, effect.amount);
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every hero gains ${effect.amount} experience.`
       });
       continue;
     }

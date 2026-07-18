@@ -9494,13 +9494,21 @@ export type CustomMapPreset = {
   /**
    * One-shot (or multi-entry) events fired at the start of a given round.
    * Mission-book style: designer picks the round AND the effect freely —
-   * resource amounts, search size/deck, which locations to re-open, morale,
-   * bonus movement, treasure/resource dice, or a plain announcement.
+   * resource amounts (positive = gain, NEGATIVE = every player LOSES that much,
+   * floored at 0), search size/deck, which locations to re-open, morale, bonus
+   * movement, hero experience, treasure/resource dice, or a plain announcement.
+   *
+   * `repeatEveryRounds` (2–10, absent = one-shot) makes the event fire at
+   * `round`, then again every N rounds (`round`, `round+N`, `round+2N`, …) for
+   * the rest of the game — HoMM3's weekly timed events. Absent is byte-identical
+   * to a legacy one-shot.
    */
   timedEvents?: Array<{
     round: number;
+    repeatEveryRounds?: number;
     effect:
       | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
+      | { kind: "experience"; amount: number }
       | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
       | {
           kind: "clear_visitable_cubes";
