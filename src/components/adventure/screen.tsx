@@ -6771,6 +6771,7 @@ function GameOptionsPanel({
         const polishSpellBookOn = houseRules["polish-spell-book"];
         const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
         const undoMovesOn = options.undoMoves ?? false;
+        const manualGuardControlOn = options.manualGuardControl ?? false;
         const unitExperienceOn = options.unitExperience ?? false;
         return (
           <div className="optionalRulesCluster" aria-label="Optional scoring, decks, spell book, and testing aids">
@@ -6942,6 +6943,34 @@ function GameOptionsPanel({
                 {undoMovesOn
                   ? "Debug/testing only: an Undo button on the map rolls the whole game back to the state before a recent action (up to the last 10). Not for competitive play — every rewind is announced in the feed."
                   : "Off by default. Turn it On only for manual testing / bug-hunting; it exposes a map Undo button that rewinds recent actions."}
+              </small>
+            </div>
+
+            <div className="optionRow manualGuardControlRow">
+              <OptionRowLabel
+                hint="Fight the Neutral guards yourself: in your own Neutral combats YOU command each guard (it must still attack when it can; with the Polish Wait rule it may Wait instead, but its Waited re-activation must attack) — or press the automatic button to let the rulebook AI play that guard"
+                iconClassName="optionRowIcon crest"
+                iconSrc="/assets/spell-icons/bloodlust.png"
+                title="Manual guard control"
+              />
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={manualGuardControlOn === on}
+                    className={manualGuardControlOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() => send({ manualGuardControl: on })}
+                    title={on ? "Manual guard control on" : "Manual guard control off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {manualGuardControlOn
+                  ? "You play the Neutral units in your own guard and Creature-Bank fights — same must-attack discipline as PvP Neutral Control — with a \u201cLet the unit act\u201d button to hand any single guard back to the automatic player. PvP Neutral Control wins when both modes are on."
+                  : "Off: the rulebook Neutral player plays the guards automatically, exactly as usual."}
               </small>
             </div>
 

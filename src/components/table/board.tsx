@@ -1919,6 +1919,9 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "USE_HERO_SKILL",
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",
+  // Manual guard control: "Let <guard> act (automatic)" — hands the active
+  // guard's activation back to the rulebook AI, next to the manual commands.
+  "AUTO_NEUTRAL_ACTIVATION",
   // Retreat is the single in-combat escape button. RETREAT_FROM_COMBAT is the
   // no-casualties flee shown before any unit acts; GIVE_UP_COMBAT is the in-fight
   // concede shown after fighting begins — both labelled "Retreat" (legal-actions).

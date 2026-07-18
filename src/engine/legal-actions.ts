@@ -42,7 +42,8 @@ import {
   townHasBuildingEffect,
   unlockedRecruitTiers,
   drillableArmyUnits,
-  unitDrillAvailable
+  unitDrillAvailable,
+  heroHasFreeGateStep
 } from "./adventure";
 import { DRILL_UNIT_GOLD_COST } from "@/data/units/experience";
 import {
@@ -124,7 +125,12 @@ import { equipmentSpellPowerBonus } from "./anime-equipment";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
-import { neutralCombatControllerId, neutralControlMustAttack } from "./neutral-control";
+import {
+  manualGuardControllerId,
+  neutralCombatControllerId,
+  neutralControlMustAttack,
+  pvpNeutralControllerId
+} from "./neutral-control";
 import {
   hasOpenAdventureTurn,
   isParallelActor,
@@ -4440,7 +4446,12 @@ function addControlledNeutralUnitActions(
     return;
   }
 
-  // Must-attack: a strike from here is mandatory when one exists.
+  // Must-attack: a strike from here is mandatory when one exists. Under the
+  // polish-wait house rule the guard may WAIT instead (all units can Wait) —
+  // but its Waited re-activation must attack (maybeAddControlledNeutralWait
+  // self-guards on the wait phase, so a Waited guard is never offered Wait
+  // again and `waitMustAttack` above forces the strike).
+  maybeAddControlledNeutralWait(actions, state, playerId, activeUnit);
   if (attacks.length > 0) {
     actions.push(...attacks);
     return;
@@ -4525,6 +4536,22 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
 
   if (controlsNeutral) {
     addControlledNeutralUnitActions(actions, state, playerId, activeUnit);
+    // Manual guard control (the FIGHTER commands their own guards): any single
+    // activation may instead be handed back to the rulebook AI — the classic
+    // "Let the unit act" button, next to the manual commands. Only before the
+    // guard has begun to act, and never under PvP Neutral Control (there a
+    // human OPPONENT plays the guards — no AI delegation).
+    if (
+      manualGuardControllerId(state, combat) === playerId &&
+      !pvpNeutralControllerId(state, combat) &&
+      !activeUnit.movedThisActivation &&
+      !activeUnit.attackedThisActivation
+    ) {
+      actions.push({
+        label: `Let ${activeUnit.name} act (automatic)`,
+        action: { type: "AUTO_NEUTRAL_ACTIVATION", playerId }
+      });
+    }
     return;
   }
 
@@ -4838,7 +4865,13 @@ function addHeroMoveActions(actions: LegalAction[], state: GameState, playerId: 
   }
 
   for (const hero of Object.values(state.heroes)) {
-    if (hero.controllerId !== playerId || hero.movementPoints <= 0 || !hero.spaceId) {
+    if (
+      hero.controllerId !== playerId ||
+      !hero.spaceId ||
+      // Out of movement, the FREE Subterranean-Gate crossing ("one Field",
+      // 0 MP) is still a legal step; anything else needs a point left.
+      (hero.movementPoints <= 0 && !heroHasFreeGateStep(state, hero))
+    ) {
       continue;
     }
 
@@ -8749,7 +8782,11 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
   // Quiet movement: getHeroMoveDestinations self-filters to trigger-free
   // ("open") fields while the table's interaction slot is busy.
   for (const hero of Object.values(state.heroes)) {
-    if (hero.controllerId !== playerId || !hero.spaceId || hero.movementPoints <= 0) {
+    if (
+      hero.controllerId !== playerId ||
+      !hero.spaceId ||
+      (hero.movementPoints <= 0 && !heroHasFreeGateStep(state, hero))
+    ) {
       continue;
     }
     for (const destination of getHeroMoveDestinations(state, hero)) {
@@ -8874,8 +8911,21 @@ function getCombatInteractionActions(
         // spells are offered off-turn.)
         actions.push(...getOffTurnCombatReactions(state, playerId, cards));
       }
+      // Manual guard control: after this pause the FIGHTER commands the unit
+      // (or delegates via the separate "Let … act (automatic)" button), so the
+      // continue label says so instead of promising the AI will act.
+      const manualNext =
+        pause.kind === "pre-activation" &&
+        combat.units[pause.unitId]?.controllerId === NEUTRAL_PLAYER_ID &&
+        manualGuardControllerId(state, combat) === playerId &&
+        !pvpNeutralControllerId(state, combat);
       actions.push({
-        label: pause.kind === "pre-activation" ? "Let the unit act" : "Continue the enemy turn",
+        label:
+          pause.kind === "pre-activation"
+            ? manualNext
+              ? "Continue — you command this unit"
+              : "Let the unit act"
+            : "Continue the enemy turn",
         action: { type: "CONTINUE_NEUTRAL_STEP", playerId }
       });
     }
@@ -9248,6 +9298,17 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         label: `Open the ${locationDefinitions[field.location]?.name ?? field.location}`,
         action: { type: "OPEN_MARKET", playerId, heroId: hero.id }
       });
+    }
+
+    // Out of movement, the FREE Subterranean-Gate crossing ("one Field", 0 MP)
+    // is still offered — but none of the 1-MP actions below (revisit, dig).
+    if (hero.movementPoints <= 0 && heroHasFreeGateStep(state, hero)) {
+      for (const destination of getHeroMoveDestinations(state, hero)) {
+        actions.push({
+          label: `Move hero to ${destination}`,
+          action: { type: "MOVE_HERO", playerId, heroId: hero.id, to: destination }
+        });
+      }
     }
 
     if (hero.movementPoints > 0) {

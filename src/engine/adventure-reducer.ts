@@ -78,6 +78,7 @@ import {
   autoWinArrivalGuard,
   flagField,
   gateFieldsLinked,
+  heroHasFreeGateStep,
   isBankStyleGuardLocation,
   capturableEnemyMinesWithin,
   freeSpellBookActive,
@@ -213,7 +214,7 @@ import {
   applyComputerCombatBoost,
   removeComputerCombatBoost,
 } from "./computer/combat-boost";
-import { neutralCombatControllerId } from "./neutral-control";
+import { pvpNeutralControllerId } from "./neutral-control";
 import {
   assertParallelInteractionFree,
   hasOpenAdventureTurn,
@@ -823,7 +824,13 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
 
 export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapSpaceId[] {
   const adventure = state.adventure;
-  if (!adventure || !hero.spaceId || hero.movementPoints <= 0 || hero.movementHaltedThisTurn) {
+  if (!adventure || !hero.spaceId || hero.movementHaltedThisTurn) {
+    return [];
+  }
+  // Out of movement: the only step left is the FREE Subterranean-Gate crossing
+  // (the two linked halves are "one Field" — 0 MP, see performHeroStep).
+  const freeGateOnly = hero.movementPoints <= 0;
+  if (freeGateOnly && !heroHasFreeGateStep(state, hero)) {
     return [];
   }
 
@@ -836,6 +843,12 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
 
   const movement = getHeroMovementCapabilities(state, hero);
   return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
+    if (
+      freeGateOnly &&
+      !gateFieldsLinked(adventure.fields[hero.spaceId as MapSpaceId], adventure.fields[spaceId])
+    ) {
+      return false;
+    }
     if (!canCrossEdge(state, hero.spaceId as MapSpaceId, spaceId, movement)) {
       return false;
     }
@@ -1338,7 +1351,7 @@ function parallelQuietMoveBlocker(state: GameState, playerId: PlayerId): PlayerI
 }
 
 export function moveHeroAdventure(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO" }>): void {
-  requireAdventure(state);
+  const adventure = requireAdventure(state);
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
   // Parallel turns: while another player's battle/choice is open, this hero may
@@ -1354,7 +1367,12 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
     throw new Error("That hero is not on the map.");
   }
 
-  if (hero.movementPoints <= 0) {
+  // The FREE Subterranean-Gate crossing ("one Field", 0 MP) is allowed even
+  // with no movement points left; every paid step still needs a point.
+  if (
+    hero.movementPoints <= 0 &&
+    !gateFieldsLinked(adventure.fields[hero.spaceId], adventure.fields[action.to])
+  ) {
     throw new Error("That hero has no movement points left.");
   }
 
@@ -1389,7 +1407,7 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
  * crossed mid-path but the walk cannot end on them.
  */
 export function moveHeroPathAdventure(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO_PATH" }>): void {
-  requireAdventure(state);
+  const adventure = requireAdventure(state);
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
   // Parallel turns: while another player's battle/choice is open the walk may
@@ -1408,7 +1426,12 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     throw new Error("The movement path is empty.");
   }
 
-  if (hero.movementPoints <= 0) {
+  // A walk that STARTS with the free Subterranean-Gate crossing ("one Field",
+  // 0 MP) may begin even with no movement points left.
+  if (
+    hero.movementPoints <= 0 &&
+    !gateFieldsLinked(adventure.fields[hero.spaceId], adventure.fields[action.path[0]])
+  ) {
     throw new Error("That hero has no movement points left.");
   }
 
@@ -1457,7 +1480,12 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
 
   const slotBefore = parallelBlocker ? parallelSlotSignature(state) : null;
   for (const [index, step] of action.path.entries()) {
-    if (hero.movementPoints <= 0) {
+    // Out of points: the walk ends — unless the NEXT step is the free
+    // Subterranean-Gate crossing ("one Field", 0 MP), which still executes.
+    if (
+      hero.movementPoints <= 0 &&
+      !gateFieldsLinked(adventure.fields[hero.spaceId ?? step], adventure.fields[step])
+    ) {
       break;
     }
 
@@ -3768,8 +3796,10 @@ function beginNeutralCombatPlacement(
   });
 
   // PvP Neutral Control: tell the table — and above all the controlling
-  // player — that a HUMAN plays the guards of this fight, PvP-style.
-  const neutralController = neutralCombatControllerId(state, combat);
+  // player — that a HUMAN plays the guards of this fight, PvP-style. Manual
+  // guard control stays silent here: the fighter commanding their own guards
+  // needs no announcement (pvpNeutralControllerId, not the combined read).
+  const neutralController = pvpNeutralControllerId(state, combat);
   if (neutralController) {
     const controllerName = state.players[neutralController]?.name ?? neutralController;
     const fighterName = state.players[playerId]?.name ?? playerId;
@@ -4894,7 +4924,10 @@ function openNeutralPlacementWindow(state: GameState): boolean {
   if (!combat) {
     return false;
   }
-  const controller = neutralCombatControllerId(state, combat);
+  // The pre-battle SORT belongs to a human OPPONENT playing the guards (PvP
+  // Neutral Control) only — under Manual guard control the FIGHTER never gets
+  // to rearrange the enemy formation they are about to attack.
+  const controller = pvpNeutralControllerId(state, combat);
   if (!controller) {
     return false;
   }

@@ -231,6 +231,24 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  it("exposes the OPTIONAL Manual-guard-control toggle, default OFF, wired to manualGuardControl", () => {
+    const onAction = openOptions();
+    const row = screen.getByText("Manual guard control").closest(".optionRow");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    expect(within(row as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe(
+      "false"
+    );
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { manualGuardControl: true }
+    });
+  });
+
   it("exposes the OPTIONAL Unit-experience toggle, default OFF, wired to unitExperience", () => {
     const onAction = openOptions();
     const row = screen.getByText("Unit experience").closest(".optionRow");
