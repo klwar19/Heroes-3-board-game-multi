@@ -371,6 +371,8 @@ export {
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
   mergeCustomWinConditions,
+  planAllowedSecretFeatures,
+  tileMatchesAnySecretFeature,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_DIFFICULTY_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,

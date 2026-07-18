@@ -756,14 +756,14 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(scope.getByRole("button", { name: /Face-up/i })).toBeTruthy();
     expect(popover.querySelector(".popoverModeCard.active")?.textContent).toMatch(/Random/i);
 
-    // Switch to Secret → mode handler sets a feature; re-render to see cards.
+    // Switch to Secret → mode handler sets a default landmark SET; re-render to see cards.
     fireEvent.click(scope.getByRole("button", { name: /Secret/i }));
-    expect(latest[1]?.secretFeature, "Secret mode sets a default landmark").toBeTruthy();
+    expect(latest[1]?.secretFeatures?.length, "Secret mode sets a default landmark").toBeGreaterThan(0);
 
     cleanup();
     const secretMap: CustomMapTilePlan[] = [
       latest[0],
-      { ...latest[1], faceDown: true, secretFeature: latest[1].secretFeature }
+      { ...latest[1], faceDown: true, secretFeatures: latest[1].secretFeatures }
     ];
     const container2 = renderDesigner(secretMap);
     const popover2 = openTilePopover(container2, 1);
@@ -774,6 +774,39 @@ describe("MapDesigner — face-down secret pins", () => {
       "Gold mine feature card listed"
     ).toBe(true);
     expect(popover2.querySelector(".popoverFeatureCard.selected")).toBeTruthy();
+  });
+
+  it("Secret mode multi-selects landmarks (valuables OR gold), and re-tapping removes one", () => {
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: spots[0].row, col: spots[0].col, group: "near", faceDown: true, secretFeatures: ["gold_mine"] }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    const container = renderDesigner(latest, onChange);
+    const popover = openTilePopover(container, 1);
+    // Tap a SECOND landmark → both are allowed (an OR set).
+    const valuablesCard = [...popover.querySelectorAll(".popoverFeatureCard")].find((card) =>
+      /Valuables mine/i.test(card.textContent ?? "")
+    ) as HTMLElement;
+    expect(valuablesCard, "Valuables mine card listed").toBeTruthy();
+    fireEvent.click(valuablesCard);
+    expect(new Set(latest[1]?.secretFeatures)).toEqual(new Set(["gold_mine", "valuables_mine"]));
+
+    // Re-render with both, then re-tap gold → only valuables remains.
+    cleanup();
+    const both: CustomMapTilePlan[] = [
+      latest[0],
+      { ...latest[1], secretFeatures: ["gold_mine", "valuables_mine"] }
+    ];
+    const container2 = renderDesigner(both, onChange);
+    const popover2 = openTilePopover(container2, 1);
+    const goldCard = [...popover2.querySelectorAll(".popoverFeatureCard")].find((card) =>
+      /Gold mine/i.test(card.textContent ?? "")
+    ) as HTMLElement;
+    fireEvent.click(goldCard);
+    expect(latest[1]?.secretFeatures).toEqual(["valuables_mine"]);
   });
 
   it("secret landmark cards render board-game icon art (not emoji-only)", () => {
@@ -799,7 +832,7 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(popover.querySelectorAll(".popoverModeGlyph").length).toBe(3);
   });
 
-  it("clicking Secret then a landmark stores secretFeature (not a specific tile)", () => {
+  it("clicking Secret then a landmark stores the secretFeatures set (not a specific tile)", () => {
     let latest: CustomMapTilePlan[] = [];
     const onChange = vi.fn((next: CustomMapTilePlan[]) => {
       latest = next;
@@ -812,17 +845,17 @@ describe("MapDesigner — face-down secret pins", () => {
     const popover = openTilePopover(container, 1);
 
     fireEvent.click(within(popover).getByRole("button", { name: /Secret/i }));
-    // setSelectedSlotMode already sets a default feature; re-render if needed.
+    // setSelectedSlotMode already sets a default landmark set; re-render if needed.
     const afterMode = latest[1] ?? onChange.mock.calls.at(-1)?.[0]?.[1];
     expect(afterMode?.faceDown).toBe(true);
-    expect(afterMode?.secretFeature, "default feature set on Secret mode").toBeTruthy();
+    expect(afterMode?.secretFeatures?.length, "default feature set on Secret mode").toBeGreaterThan(0);
     expect(afterMode?.tileDefId).toBeUndefined();
 
-    // Explicitly pick Obelisk if available (re-open with current state).
+    // Tapping Obelisk toggles it into the allowed set (re-open with current state).
     cleanup();
     const withFeature: CustomMapTilePlan[] = [
       map[0],
-      { ...map[1], faceDown: true, secretFeature: afterMode!.secretFeature }
+      { ...map[1], faceDown: true, secretFeatures: afterMode!.secretFeatures }
     ];
     let featureLatest: CustomMapTilePlan[] = withFeature;
     const onFeature = vi.fn((next: CustomMapTilePlan[]) => {
@@ -836,7 +869,7 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(obelisk, "Obelisk feature card present for near pool").toBeTruthy();
     fireEvent.click(obelisk!);
     expect(featureLatest[1]?.faceDown).toBe(true);
-    expect(featureLatest[1]?.secretFeature).toBe("obelisk");
+    expect(featureLatest[1]?.secretFeatures).toContain("obelisk");
     expect(featureLatest[1]?.tileDefId).toBeUndefined();
   });
 

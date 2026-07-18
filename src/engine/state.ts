@@ -10436,6 +10436,14 @@ export type CustomMapTilePlan = {
    * feature. Cleared for face-up and pure-random slots.
    */
   secretFeature?: SecretTileFeature;
+  /**
+   * Face-down only: restrict the random draw to tiles matching ANY of these
+   * landmarks — e.g. `["valuables_mine", "gold_mine"]` so the tile lands on
+   * valuables OR gold and never rolls stone or a settlement. A single-entry list
+   * behaves exactly like `secretFeature`; the two fold together at read time.
+   * Cleared for face-up and pure-random slots.
+   */
+  secretFeatures?: SecretTileFeature[];
   /** Clockwise 60° steps (0-5, default 0). Honoured face-up and face-down. */
   rotation?: number;
   /**

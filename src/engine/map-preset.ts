@@ -55,6 +55,24 @@ export type { CustomMapPreset };
  * the demand warnings AND the setup draw all share (adventure-setup imports
  * it from here, so the three consumers can never diverge).
  */
+/** Every legal {@link SecretTileFeature} id (local copy — map-preset is imported
+ *  by adventure-setup, so it cannot reuse that module's `isSecretTileFeature`). */
+const SECRET_FEATURE_IDS = new Set<SecretTileFeature>([
+  "gold_mine",
+  "valuables_mine",
+  "materials_mine",
+  "any_mine",
+  "obelisk",
+  "settlement",
+  "town",
+  "objective"
+]);
+
+/** True when `value` is a legal {@link SecretTileFeature} id. */
+export function isSecretTileFeatureId(value: unknown): value is SecretTileFeature {
+  return typeof value === "string" && SECRET_FEATURE_IDS.has(value as SecretTileFeature);
+}
+
 export function tileMatchesSecretFeature(def: TileDefinition, feature: SecretTileFeature): boolean {
   switch (feature) {
     case "gold_mine":
@@ -82,6 +100,32 @@ export function tileMatchesSecretFeature(def: TileDefinition, feature: SecretTil
     default:
       return false;
   }
+}
+
+/**
+ * The allowed secret-landmark set for a face-down plan, folding the multi-value
+ * `secretFeatures` and the legacy single `secretFeature` into one deduped list
+ * (empty when the slot is a pure-random draw). The single copy every consumer
+ * — setup draw, designer count, blind-choice — shares.
+ */
+export function planAllowedSecretFeatures(
+  plan: Pick<CustomMapTilePlan, "secretFeature" | "secretFeatures">
+): SecretTileFeature[] {
+  const list =
+    plan.secretFeatures && plan.secretFeatures.length > 0
+      ? plan.secretFeatures
+      : plan.secretFeature
+        ? [plan.secretFeature]
+        : [];
+  return [...new Set(list.filter(isSecretTileFeatureId))];
+}
+
+/** Whether a tile definition matches ANY of the allowed secret landmarks. */
+export function tileMatchesAnySecretFeature(
+  def: TileDefinition,
+  features: SecretTileFeature[]
+): boolean {
+  return features.some((feature) => tileMatchesSecretFeature(def, feature));
 }
 
 /** The three legal center-tile Ⅶ-field designations (allow-list for sanitize). */
