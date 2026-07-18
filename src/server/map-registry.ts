@@ -198,6 +198,11 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   const secretFeature = isSecretTileFeature(candidate.secretFeature)
     ? candidate.secretFeature
     : undefined;
+  // Multi-value secret-landmark restriction (valuables OR gold …): keep the
+  // valid, deduped ids (face-down only).
+  const secretFeatures = Array.isArray(candidate.secretFeatures)
+    ? [...new Set(candidate.secretFeatures.filter(isSecretTileFeature))]
+    : [];
   // Per-tile UNDERGROUND layer override: keep it ONLY as a literal true and ONLY
   // on far/near/center/sea (kept there, stripped on `subterranean` = redundant
   // and `starting` = the v1 Surface-only seat rule). Mirrors the setup validator.
@@ -243,6 +248,7 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     faceDown: Boolean(candidate.faceDown),
     ...(typeof candidate.tileDefId === "string" ? { tileDefId: candidate.tileDefId } : {}),
     ...(secretFeature && Boolean(candidate.faceDown) ? { secretFeature } : {}),
+    ...(secretFeatures.length > 0 && Boolean(candidate.faceDown) ? { secretFeatures } : {}),
     ...(Number.isInteger(candidate.rotation) ? { rotation: (((candidate.rotation as number) % 6) + 6) % 6 } : {}),
     // `lockRotation` fixes a starting seat's home-tile orientation (no opening
     // rotation). Meaningful only on a starting plan — kept there, dropped on any

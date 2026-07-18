@@ -86,6 +86,8 @@ import {
   revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
   sanitizeCustomWinConditions,
+  planAllowedSecretFeatures,
+  tileMatchesAnySecretFeature,
   tileMatchesSecretFeature,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
@@ -1042,6 +1044,16 @@ export function validateCustomMapPlan(
         return false;
       }
     }
+    if (plan.secretFeatures !== undefined) {
+      if (!Array.isArray(plan.secretFeatures) || !plan.secretFeatures.every(isSecretTileFeature)) {
+        problems.push(`Tile ${index + 1}: invalid secret-landmark set.`);
+        return false;
+      }
+      if (!plan.faceDown || plan.group === "starting") {
+        problems.push(`Tile ${index + 1}: a secret-landmark set only applies to a face-down non-starting slot.`);
+        return false;
+      }
+    }
     return true;
   });
 
@@ -1825,13 +1837,14 @@ function takeRemainingGrailTiles(centerPool: string[], max: number): string[] {
  */
 function popTileMatchingFeature(
   pool: string[],
-  feature: SecretTileFeature,
+  feature: SecretTileFeature | SecretTileFeature[],
   options?: {
     group?: CustomMapTilePlan["group"];
     seaBand?: CustomMapTilePlan["seaBand"];
     subBand?: CustomMapTilePlan["subBand"];
   }
 ): string | undefined {
+  const features = Array.isArray(feature) ? feature : [feature];
   for (let index = pool.length - 1; index >= 0; index -= 1) {
     const tileDefId = pool[index];
     const def = allTileDefinitions[tileDefId];
@@ -1851,7 +1864,7 @@ function popTileMatchingFeature(
     ) {
       continue;
     }
-    if (tileMatchesSecretFeature(def, feature)) {
+    if (tileMatchesAnySecretFeature(def, features)) {
       return pool.splice(index, 1)[0];
     }
   }
@@ -2472,19 +2485,22 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         continue;
       }
       const center = { row: plan.row, col: plan.col };
+      // Folded allowed-landmark set (multi-value `secretFeatures` + the legacy
+      // single `secretFeature`). Empty = a pure-random draw.
+      const allowedFeatures = planAllowedSecretFeatures(plan);
       if (plan.faceDown) {
         let tileDefId: string | undefined;
         // Exact pin wins over a feature filter (legacy / advanced).
         if (plan.tileDefId && allTileDefinitions[plan.tileDefId]) {
           tileDefId = plan.tileDefId;
-        } else if (plan.secretFeature && isSecretTileFeature(plan.secretFeature)) {
-          // Feature secret: random remaining tile that has the landmark.
-          // Prefer the slot's own pool; fall back to an unfiltered draw so a
-          // starved pool never leaves an empty hole on the board — and note the
-          // table so players know the designer guarantee soft-failed.
+        } else if (allowedFeatures.length > 0) {
+          // Feature secret: random remaining tile that has ANY allowed landmark
+          // (e.g. valuables OR gold). Prefer the slot's own pool; fall back to an
+          // unfiltered draw so a starved pool never leaves an empty hole on the
+          // board — and note the table so players know the guarantee soft-failed.
           const pool = pools[plan.group];
           if (pool) {
-            tileDefId = popTileMatchingFeature(pool, plan.secretFeature, {
+            tileDefId = popTileMatchingFeature(pool, allowedFeatures, {
               group: plan.group,
               seaBand: plan.seaBand,
               subBand: plan.subBand
@@ -2501,9 +2517,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
             if (tileDefId) {
               appendEvent(state, {
                 type: "MAP_SECRET_FEATURE_FALLBACK",
-                feature: plan.secretFeature,
+                feature: allowedFeatures[0],
                 group: plan.group,
-                message: `Secret “${secretFeatureFullLabel(plan.secretFeature)}” could not be fulfilled on a ${plan.group} slot — no matching tile left in the pool. Drew a random tile instead.`
+                message: `Secret “${allowedFeatures.map(secretFeatureFullLabel).join(" / ")}” could not be fulfilled on a ${plan.group} slot — no matching tile left in the pool. Drew a random tile instead.`
               });
             }
           }
