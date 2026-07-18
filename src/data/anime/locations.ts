@@ -200,6 +200,99 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
   },
 
   /**
+   * Thí Luyện Tháp (*Trial Tower*) — a xianxia escalating repeatable fight, the
+   * WOG Adventure Cave's twin. Guarded Ⅰ is stamped by the Field Override
+   * definition; the reward ladder (win 1: +2 gold, win 2: Search (1) Spell, win
+   * 3: +1 hero XP + optional cultivation/commander riders) and the re-guard one
+   * higher (Ⅰ→Ⅱ→Ⅲ, cleared after the 3rd win) are engine code in
+   * `beginFieldVisit` (`handleAnimeTrialTowerVisit` → the shared
+   * `handleEscalatingFightVisit`, keyed off `field.animeTrialWins`) — no static
+   * interaction.
+   */
+  "anime.thi_luyen_thap": {
+    id: "anime.thi_luyen_thap",
+    name: "Thí Luyện Tháp (Trial Tower)",
+    category: "revisitable",
+    // engine: the escalating reward / re-guard is handled in beginFieldVisit.
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: animeSource("thi_luyen_thap")
+  },
+
+  /**
+   * Linh Điền (*Spirit Field*) — a xianxia herb terrace. Revisitable (1 MP, no
+   * cube): pay 1 gold, then CHOOSE the harvest — +1 building materials (spirit
+   * herbs) or +1 valuables (spirit-fruit). Pure static PAY_TO + CHOOSE_ONE reuse.
+   */
+  "anime.linh_dien": {
+    id: "anime.linh_dien",
+    name: "Linh Điền (Spirit Field)",
+    category: "revisitable",
+    interaction: {
+      type: "PAY_TO",
+      costOptions: [{ gold: 1 }],
+      interaction: {
+        type: "CHOOSE_ONE",
+        options: [
+          {
+            label: "Harvest spirit herbs — gain 1 building materials",
+            interaction: { type: "GAIN_RESOURCES", buildingMaterials: 1 }
+          },
+          {
+            label: "Harvest spirit-fruit — gain 1 valuables",
+            interaction: { type: "GAIN_RESOURCES", valuables: 1 }
+          }
+        ]
+      }
+    },
+    implementationStatus: "implemented",
+    source: animeSource("linh_dien")
+  },
+
+  /**
+   * Dungeon Gate (isekai) — a "gamble fight" delve. Guarded Ⅰ (stamped by the
+   * Field Override definition); the visit runs only on the WIN, where a static
+   * ATTACK_DIE_TABLE gambles the loot: +1 → a Treasure die, 0 → +2 gold, −1 →
+   * +1 morale. Visitable (one delve, then a Black Cube). Board-adaptation of the
+   * brainstorm's variable-difficulty die (a rolled-guard-then-reward flow cannot
+   * be expressed in one visit — the fight resolves outside the visit), so the
+   * guard is fixed Ⅰ and the die picks the reward tier (documented, plan §5.8).
+   */
+  "anime.dungeon_gate": {
+    id: "anime.dungeon_gate",
+    name: "Dungeon Gate",
+    category: "visitable",
+    interaction: {
+      type: "ATTACK_DIE_TABLE",
+      plus: { type: "ROLL_TREASURE_DICE", count: 1 },
+      zero: { type: "GAIN_RESOURCES", gold: 2 },
+      minus: { type: "GAIN_MORALE", amount: 1 }
+    },
+    implementationStatus: "implemented",
+    source: animeSource("dungeon_gate")
+  },
+
+  /**
+   * Guild Bounty Board (isekai) — an adventurers' guild notice board.
+   * Revisitable (1 MP, no cube). Its menu is NOT a static interaction: the
+   * CHOOSE_ONE is built dynamically in `beginFieldVisit`
+   * (`buildAnimeFieldVisitStep`) so the +2-gold bounty arm can be gated per
+   * player — a once-ever claim tracked by the field's `animeBountyClaimedBy`
+   * latch (mirrors `extraFlagOwnerIds`) — beside a repeatable pay-2-gold Search
+   * (1) of the Ability deck. Carves as a NONE base (the menu is appended).
+   */
+  "anime.guild_bounty": {
+    id: "anime.guild_bounty",
+    name: "Guild Bounty Board",
+    category: "revisitable",
+    // engine: the bounty/search menu is built at visit time (buildAnimeFieldVisitStep);
+    // the bounty arm is per-player once-latched on field.animeBountyClaimedBy.
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: animeSource("guild_bounty")
+  },
+
+  /**
    * Capsule Corp Lab (*Dragon Ball*) — the War Machine Factory reskinned.
    * Revisitable shop (no cube, 1 MP to reuse): buy a war machine at the lower
    * factory price, sharing `war_machine_factory` behaviour verbatim.

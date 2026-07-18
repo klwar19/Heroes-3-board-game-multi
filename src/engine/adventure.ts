@@ -36,7 +36,7 @@ import {
 } from "./active-effects";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
-import { cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
+import { cultivationEnabled, cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
 import {
   gainGradeProgress,
   heroGradeHandLimitBonus,
@@ -181,6 +181,7 @@ import { DEFAULT_OBELISK_BONUS, GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOP
 import type { CustomMapObeliskBonus } from "./state";
 import { awardCommanderGradePoints, commandersModuleEnabled, wogNewObjectsEnabled } from "./commanders";
 import { WOG_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/wog/field-overrides";
+import { ANIME_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/anime/field-overrides";
 import { COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/wog/commander-artifacts";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
@@ -4326,48 +4327,50 @@ function grantCommanderArtifactReward(state: GameState, playerId: PlayerId): voi
 }
 
 /**
- * WOG New Objects — Adventure Cave (`wog.adventure_cave`): the escalating
- * repeatable fight. Reached from `beginFieldVisit` after the guard is dealt with
- * (a WIN / Quick-Combat win / Diplomacy skip — a retreat never visits). A guard
- * still standing on the field (`field.difficulty` truthy) means it was just
- * beaten, so this counts a win: pay the scaling reward (win 1: +3 gold, win 2: a
- * Treasure die, win 3: Search (1) the Artifact deck + the commander-artifact
- * bonus) and RE-GUARD one difficulty higher (Ⅰ→Ⅱ→Ⅲ) — after the 3rd win the cave
- * is cleared for good. A peaceful re-entry of a cleared cave is inert.
+ * SHARED escalating repeatable-fight visit (the WOG Adventure Cave AND the anime
+ * Trial Tower drive this one code path). Reached from `beginFieldVisit` after the
+ * guard is dealt with (a WIN / Quick-Combat win / Diplomacy skip — a retreat
+ * never visits). A guard still standing on the field (`field.difficulty` truthy)
+ * means it was just beaten, so this counts a win: pay the ladder reward for the
+ * new win count and RE-GUARD one difficulty higher (Ⅰ→Ⅱ→Ⅲ) until `maxWins`, after
+ * which the object is cleared for good. A peaceful re-entry of a cleared object
+ * is inert. The per-object win counter is a SEPARATE field prop (`wogCaveWins`
+ * vs `animeTrialWins`) so a mid-game snapshot of either keeps its own count —
+ * only the escalation/re-guard logic is shared.
  */
-function handleWogAdventureCaveVisit(
+function handleEscalatingFightVisit(
   state: GameState,
   playerId: PlayerId,
   heroId: HeroId,
-  field: MapFieldState
+  field: MapFieldState,
+  config: {
+    winsProp: "wogCaveWins" | "animeTrialWins";
+    maxWins: number;
+    rewardStepsForWin: (wins: number) => VisitStep[];
+    /** Extra side effects on the LAST win (commander-artifact bonus, riders). */
+    onFinalWin?: (hero: HeroState | undefined) => void;
+  }
 ): void {
   const adventure = state.adventure;
   if (!adventure) {
     return;
   }
-  const priorWins = field.wogCaveWins ?? 0;
-  // Not a fresh win: either the cave is already cleared for good (priorWins ≥ 3)
-  // or beginFieldVisit was reached with no standing guard (a peaceful re-entry).
-  if (!field.difficulty || priorWins >= 3) {
+  const priorWins = field[config.winsProp] ?? 0;
+  // Not a fresh win: either the object is already cleared for good
+  // (priorWins ≥ maxWins) or beginFieldVisit was reached with no standing guard
+  // (a peaceful re-entry).
+  if (!field.difficulty || priorWins >= config.maxWins) {
     clearCustomGuard(field);
     return;
   }
   const wins = priorWins + 1;
-  field.wogCaveWins = wins;
+  field[config.winsProp] = wins;
 
-  const steps: VisitStep[] = [];
-  if (wins === 1) {
-    steps.push({ type: "GAIN_RESOURCES", gold: 3 });
-  } else if (wins === 2) {
-    steps.push({ type: "ROLL_TREASURE_DICE", count: 1 });
-  } else {
-    steps.push({ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 });
-  }
+  const steps: VisitStep[] = config.rewardStepsForWin(wins);
 
-  if (wins >= 3) {
+  if (wins >= config.maxWins) {
     clearCustomGuard(field);
-    // Task 2: the deepest win ALSO drops a bindable commander artifact into hand.
-    grantCommanderArtifactReward(state, playerId);
+    config.onFinalWin?.(state.heroes[heroId]);
   } else {
     // Re-guard one difficulty higher for the next expedition (Ⅰ→Ⅱ→Ⅲ).
     applyCustomGuardToField(field, { level: wins + 1 });
@@ -4375,6 +4378,73 @@ function handleWogAdventureCaveVisit(
 
   adventure.pendingVisit = { heroId, playerId, fieldId: field.spaceId, steps };
   processPendingVisit(state);
+}
+
+/**
+ * WOG New Objects — Adventure Cave (`wog.adventure_cave`). The wog reward ladder
+ * over the shared escalating-fight machinery: win 1 → +3 gold, win 2 → a Treasure
+ * die, win 3 → Search (1) the Artifact deck + the commander-artifact bonus.
+ */
+function handleWogAdventureCaveVisit(
+  state: GameState,
+  playerId: PlayerId,
+  heroId: HeroId,
+  field: MapFieldState
+): void {
+  handleEscalatingFightVisit(state, playerId, heroId, field, {
+    winsProp: "wogCaveWins",
+    maxWins: 3,
+    rewardStepsForWin: (wins) =>
+      wins === 1
+        ? [{ type: "GAIN_RESOURCES", gold: 3 }]
+        : wins === 2
+          ? [{ type: "ROLL_TREASURE_DICE", count: 1 }]
+          : [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 }],
+    // Task 2: the deepest win ALSO drops a bindable commander artifact into hand.
+    onFinalWin: () => grantCommanderArtifactReward(state, playerId)
+  });
+}
+
+/**
+ * Anime Field Override — Thí Luyện Tháp / Trial Tower (`anime.thi_luyen_thap`).
+ * The xianxia twin of the Adventure Cave over the SAME machinery, with its own
+ * reward ladder: win 1 → +2 gold, win 2 → Search (1) the Spell deck, win 3 →
+ * +1 hero XP. On the 3rd win two cross-object riders fire: with `anime.cultivation`
+ * on, the hero banks "one fewer die" for their NEXT Heavenly Tribulation
+ * (`nextTribulationDiceRelief`); and (Task 2) with the WOG Commanders module on,
+ * a bindable commander artifact drops into hand (a no-op otherwise).
+ */
+function handleAnimeTrialTowerVisit(
+  state: GameState,
+  playerId: PlayerId,
+  heroId: HeroId,
+  field: MapFieldState
+): void {
+  handleEscalatingFightVisit(state, playerId, heroId, field, {
+    winsProp: "animeTrialWins",
+    maxWins: 3,
+    rewardStepsForWin: (wins) =>
+      wins === 1
+        ? [{ type: "GAIN_RESOURCES", gold: 2 }]
+        : wins === 2
+          ? [{ type: "SEARCH_SHARED_DECK", deckId: "spells", count: 1 }]
+          : [{ type: "GAIN_EXPERIENCE", amount: 1 }],
+    onFinalWin: (hero) => {
+      // Xianxia cross-object boon: with Cultivation on, the hero's NEXT Heavenly
+      // Tribulation rolls one fewer die (banked, consumed on that attempt).
+      if (cultivationEnabled(state) && hero) {
+        hero.nextTribulationDiceRelief = (hero.nextTribulationDiceRelief ?? 0) + 1;
+        eventNote(
+          state,
+          `${eventPlayerName(state, playerId)} tempers body and soul in the Trial Tower — their next Heavenly Tribulation strikes one die softer.`,
+          playerId
+        );
+      }
+      // Task 2 cross-mod: with the WOG Commanders module on, ALSO grant a
+      // bindable commander artifact (a no-op with the module off / no commander).
+      grantCommanderArtifactReward(state, playerId);
+    }
+  });
 }
 
 /**
@@ -4559,6 +4629,66 @@ function buildWogFieldVisitStep(
 }
 
 /**
+ * Whether the Anime Field Override CONTENT is live — mirrors the pool package
+ * gate (`fieldOverridePackageAllowed` for "anime-*"): master `enabled` AND
+ * `mapObjects` not explicitly false (absent === ON, for legacy snapshots /
+ * campaign chapters that predate the flag).
+ */
+function animeMapObjectsEnabled(state: GameState): boolean {
+  return Boolean(state.anime?.enabled) && state.anime?.mapObjects !== false;
+}
+
+/**
+ * Anime Field Override (`anime.mapObjects`): build the visit MENU for an anime
+ * single-hex object with a dynamic/context-filtered menu (Guild Bounty Board),
+ * or null when the module is off / the location has no dynamic menu. Mirrors
+ * `buildWogFieldVisitStep` — these objects carve as NONE-interaction bases and
+ * the menu is appended here so an arm can be gated against live state (here the
+ * board's per-player once-ever bounty latch). Paid arms use PAY_TO.
+ */
+function buildAnimeFieldVisitStep(
+  state: GameState,
+  playerId: PlayerId,
+  locationId: string,
+  field: MapFieldState
+): VisitStep | null {
+  if (!animeMapObjectsEnabled(state) || !ANIME_FIELD_OVERRIDE_LOCATION_IDS.has(locationId)) {
+    return null;
+  }
+  if (!state.players[playerId]) {
+    return null;
+  }
+
+  if (locationId === "anime.guild_bounty") {
+    const options: { label: string; steps: VisitStep[] }[] = [];
+    // Bounty arm — present ONLY when THIS player has not claimed it before (a
+    // per-player once-ever latch on the field). Grants +2 gold, then latches.
+    const alreadyClaimed = field.animeBountyClaimedBy?.includes(playerId) ?? false;
+    if (!alreadyClaimed) {
+      options.push({
+        label: "Claim the standing bounty: gain 2 gold",
+        steps: [{ type: "GAIN_RESOURCES", gold: 2 }, { type: "MARK_ANIME_BOUNTY_CLAIMED" }]
+      });
+    }
+    options.push({
+      label: "Pay 2 gold: Search (1) the Ability deck",
+      steps: [
+        {
+          type: "PAY_TO",
+          prompt: "Pay 2 gold to Search the Ability deck?",
+          costOptions: [{ gold: 2 }],
+          steps: [{ type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 1 }]
+        }
+      ]
+    });
+    options.push({ label: "Leave", steps: [] });
+    return { type: "CHOOSE_ONE", prompt: "Guild Bounty Board:", options };
+  }
+
+  return null;
+}
+
+/**
  * Anime Equipment (§3.13): build the outfitter shop menu for a visit, or null.
  * A CHOOSE_ONE with one buy option per item this shop sells that the hero does
  * NOT already own, plus a "Leave" option. Affordability is gated downstream
@@ -4659,6 +4789,13 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     handleWogAdventureCaveVisit(state, playerId, heroId, field);
     return;
   }
+  // Anime Field Override — Trial Tower: the xianxia twin of the Adventure Cave,
+  // same escalating reward/re-guard flow. Handle it here, before the generic
+  // FO clear below (which would just wipe the beaten guard without paying).
+  if (location.id === "anime.thi_luyen_thap") {
+    handleAnimeTrialTowerVisit(state, playerId, heroId, field);
+    return;
+  }
 
   // A DESIGNED guard on a map-object teleport field (Monolith / Whirlpool /
   // Gate), a Subterranean Gate half or an outpost (Garrison / Keymaster's
@@ -4678,10 +4815,12 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
       isFieldOverrideLocation(location.id)) &&
     field.difficulty
   ) {
-    // Task 2: the Emerald Tower's guard win ALSO drops a bindable commander
-    // artifact into the winner's hand (a no-op with the Commanders module off).
-    // `field.difficulty` here means the guard was just beaten (the win visit).
-    if (location.id === "wog.emerald_tower") {
+    // Task 2: a guarded REWARD Field Override that grants a commander-artifact
+    // BONUS on its guard win — WoG's Emerald Tower and the anime Secret Realm
+    // (Bí Cảnh) — drops a bindable commander artifact into the winner's hand (a
+    // no-op with the Commanders module off). `field.difficulty` here means the
+    // guard was just beaten (the win visit); the shared helper de-dups the card.
+    if (location.id === "wog.emerald_tower" || location.id === "anime.bi_canh") {
       grantCommanderArtifactReward(state, playerId);
     }
     clearCustomGuard(field);
@@ -4816,6 +4955,14 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   const wogFieldStep = buildWogFieldVisitStep(state, playerId, heroId, location.id, field);
   if (wogFieldStep) {
     steps.push(wogFieldStep);
+  }
+
+  // Anime Field Override (`anime.mapObjects`): the Guild Bounty Board carves as a
+  // NONE-interaction revisitable base and appends its per-player-gated menu here
+  // (mirrors the wog objects / equipment shop).
+  const animeFieldStep = buildAnimeFieldVisitStep(state, playerId, location.id, field);
+  if (animeFieldStep) {
+    steps.push(animeFieldStep);
   }
 
   if (steps.length === 0) {
@@ -5000,6 +5147,16 @@ export function processPendingVisit(state: GameState): void {
             `${eventPlayerName(state, visit.playerId)} smashes the Living Skull — it falls silent forever.`,
             visit.playerId
           );
+        }
+        break;
+      }
+      case "MARK_ANIME_BOUNTY_CLAIMED": {
+        // Anime Field Override (Guild Bounty Board): latch that this player has
+        // claimed the once-ever bounty, so its arm is absent on their next visit.
+        // Per-player set (mirrors extraFlagOwnerIds).
+        const bountyField = adventure.fields[visit.fieldId];
+        if (bountyField && !bountyField.animeBountyClaimedBy?.includes(visit.playerId)) {
+          bountyField.animeBountyClaimedBy = [...(bountyField.animeBountyClaimedBy ?? []), visit.playerId];
         }
         break;
       }

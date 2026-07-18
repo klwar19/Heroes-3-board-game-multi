@@ -7845,9 +7845,19 @@ export function beginHeavenlyTribulation(
   // face costs one army-card toll. Same seeded-random convention as the other
   // map Attack-die rolls (ATTACK_DIE_TABLE / bank-size); the live per-action
   // entropy salts it in real play, deterministic from the seed in tests.
+  //
+  // Trial Tower boon (`anime.thi_luyen_thap` 3rd win, cultivation on): a banked
+  // `nextTribulationDiceRelief` rolls FEWER dice — `max(1, 3 − relief)` — so the
+  // gauntlet is genuinely softer (fewer dice ⇒ fewer possible "−1" tolls). The
+  // relief is consumed by THIS attempt whether it wins or fails.
+  const relief = hero.nextTribulationDiceRelief ?? 0;
+  if (relief > 0) {
+    hero.nextTribulationDiceRelief = 0;
+  }
+  const diceCount = Math.max(1, 3 - relief);
   const random = createSeededRandom(`${state.seed}#adventure#heavenly-tribulation#${eventSeedNumber(state)}`);
   const faces = [-1, -1, 0, 0, 1, 1];
-  const rolls = Array.from({ length: 3 }, () => faces[random.nextInt(0, faces.length - 1)] ?? 0);
+  const rolls = Array.from({ length: diceCount }, () => faces[random.nextInt(0, faces.length - 1)] ?? 0);
   const tolls = rolls.filter((roll) => roll === -1).length;
 
   appendEvent(state, {
