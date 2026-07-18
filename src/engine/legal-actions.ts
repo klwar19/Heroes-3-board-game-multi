@@ -164,7 +164,7 @@ import {
   wisdomGoldDiscount,
   wisdomSearchCount
 } from "./ruleset";
-import { houseRuleEnabled } from "./house-rules";
+import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import { polishArmyUnitCanBuyStack, polishArmyUnitStackCost } from "./polish-unit-stacks";
 import type {
   AttackRerollSource,
@@ -8050,7 +8050,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
     // printed gold of that side plus its tier surcharge — minus a Legion
     // voucher reserved for this card's Stack, payable with the Freelancer's
     // Guild substitution (both mirror the reducer's charge exactly).
-    if (houseRuleEnabled(state, "polish-unit-stacks") && canReinforce) {
+    if (armyUnitStacksActive(state) && canReinforce) {
       for (const target of player.army) {
         if (!polishArmyUnitCanBuyStack(target)) {
           continue;

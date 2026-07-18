@@ -178,6 +178,18 @@ export type AnimeModOptions = {
    * while `enabled: false` because every anime gate also requires `enabled`.
    */
   mapObjects: boolean;
+  /**
+   * Forced Battle Events (§3.12): the anime CONTENT (Bí Cảnh combat scripts) that
+   * runs scripted events at combat-start / round-start on an anime field. The
+   * mechanism is CORE; this flag gates only the anime scripts.
+   *
+   * LEGACY SEMANTICS — absent === ON (mirrors `mapObjects`): old anime snapshots
+   * set `enabled: true` without this flag and must keep firing the scripts, so
+   * the runtime gate reads `combatEvents !== false`. `DEFAULT_ANIME_OPTIONS` sets
+   * it `true`; harmless while `enabled: false` (every anime script gate also
+   * requires `enabled`).
+   */
+  combatEvents: boolean;
   /** Ninefold Realms towns. */
   xianxiaTowns: boolean;
   secretRealms: boolean;
@@ -209,6 +221,24 @@ export type AnimeModOptions = {
    * Default OFF ⇒ byte-identical (no shops in the pool, no state stamped).
    */
   equipment: boolean;
+  /**
+   * Unit Stacks (anime road, §5.2): the ANIME entry into the EXISTING Polish
+   * army unit-stack machinery (Pack/Neutral cards buy persistent Group layers at
+   * the Citadel — +1 Attack while any layer remains, each layer absorbing one
+   * lethal blow). One machinery, one pricing (`polishArmyUnitStackCost`): with
+   * either this OR `houseRules["polish-unit-stacks"]` on, `armyUnitStacksActive`
+   * is true. Default OFF, opt-in (`=== true`, no legacy semantics — new).
+   */
+  unitStacks: boolean;
+  /**
+   * Unit Experience (anime original, WoG-style veterancy): each army unit card
+   * that PARTICIPATES in and SURVIVES a WON combat gains 1 XP, climbing data-driven
+   * ranks (Veteran +1 Atk → Elite +1 Atk/Def → Legend +1 Atk/Def/HP) folded onto
+   * BOTH card sides in combat. XP lives on the army card (`ArmyUnitState.xp`) and
+   * is lost when the card leaves the game / recycles. See `unit-experience.ts`.
+   * Default OFF, opt-in (`=== true`).
+   */
+  unitExperience: boolean;
   /** Calamity wave cadence when monsterWaves is on. */
   waveCadence?: 3 | 4 | 5;
 };
@@ -5310,6 +5340,22 @@ export type GameEvent =
       reason?: string;
     }
   | {
+      /**
+       * Anime Unit Experience: a surviving army unit card gained 1 veterancy XP
+       * from a won combat. `rankId`/`rankName` are set only on the XP that first
+       * crosses into a new rank (Veteran/Elite/Legend).
+       */
+      id: string;
+      type: "UNIT_EXPERIENCE_GAINED";
+      playerId: PlayerId;
+      armyUnitId: string;
+      unitDefId: string;
+      unitName: string;
+      xp: number;
+      rankId?: string;
+      rankName?: string;
+    }
+  | {
       id: string;
       type: "GAME_OPTIONS_CHANGED";
       playerId: PlayerId;
@@ -6285,6 +6331,15 @@ export type ArmyUnitState = {
    * in games where the rule is off.
    */
   stacks?: number;
+  /**
+   * Anime Unit Experience (WoG-style veterancy): accumulated combat XP on THIS
+   * army card. +1 per WON combat this card participated in and survived; drives
+   * the Veteran/Elite/Legend rank bonus (see `unit-experience.ts`). Public state
+   * (no player-view masking). Lost when the card leaves the game / recycles to a
+   * Neutral tier discard; KEPT across a Pack→Few flip. Absent when the module is
+   * off or the card never fought.
+   */
+  xp?: number;
 };
 
 export type TownTokenState = {
@@ -6964,6 +7019,13 @@ export type CombatUnitState = {
    * Creature Bank defender's `stackToken`.
    */
   armyStacks?: number;
+  /**
+   * Anime Unit Experience mirrored from the backing army card (`ArmyUnitState.xp`)
+   * when the module is on. Read by `applyUnitCurrentSide` / `makeCombatUnitFromArmy`
+   * to fold the rank bonus (attack/defense/health) onto BOTH card sides. Absent
+   * when the module is off or the card carries no XP.
+   */
+  unitXp?: number;
   /**
    * Fixed creature-bank guard (Dragon Utopia's dragons, the Cyclops
    * Stockpile's 2 golden Cyclopes): minted for this fight only, so it must

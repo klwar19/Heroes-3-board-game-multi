@@ -38,10 +38,15 @@ import { playUntilRound, type SoakRunResult } from "./single-player-soak-helpers
 const ALL_ANIME: AnimeModOptions = {
   ...DEFAULT_ANIME_OPTIONS,
   enabled: true,
+  combatEvents: true,
   xianxiaArtifacts: true,
   cultivation: true,
   heroGrades: true,
   equipment: true,
+  // Unit Stacks shares the Polish machinery (also on in the soak — one pricing,
+  // the OR seam composes); Unit Experience is a pure auto-grant.
+  unitStacks: true,
+  unitExperience: true,
 };
 
 function allOnSetup(seed: string, extra: Partial<AdventureSetupOptions>): AdventureSetupOptions {

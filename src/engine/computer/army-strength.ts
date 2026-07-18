@@ -9,6 +9,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { assessDwellingRush } from "./development";
 import type { UnitTier } from "@/data/factions/types";
 import { getUnitSide, NEUTRAL_ARMY_TABLE, neutralArmyDifficulty } from "../adventure";
+import { unitExperienceBonus } from "../unit-experience";
 import type {
   ArmyUnitState,
   BankSize,
@@ -38,9 +39,12 @@ export function unitSideStrength(unit: ArmyUnitState): number {
   // Pack health bar per layer, and the whole card has one flat +1 Attack while
   // any layer remains. Mirror that real combat durability instead of treating
   // a Stack as either zero value or a duplicate attacking unit.
-  const attack = side.attack + (unit.permanentAttackBonus ?? 0) + (stackLayers > 0 ? 1 : 0);
-  const health = (side.health + (unit.permanentHealthBonus ?? 0)) * (1 + stackLayers);
-  return attack * 3 + health * 2 + side.defense + Math.round(side.initiative / 2);
+  // Anime Unit Experience: a card only ever carries `xp` while the module is on,
+  // so the veterancy rank bonus can be folded unconditionally (no flag to thread).
+  const xpBonus = unitExperienceBonus(unit.xp);
+  const attack = side.attack + (unit.permanentAttackBonus ?? 0) + (stackLayers > 0 ? 1 : 0) + xpBonus.attack;
+  const health = (side.health + (unit.permanentHealthBonus ?? 0) + xpBonus.health) * (1 + stackLayers);
+  return attack * 3 + health * 2 + side.defense + xpBonus.defense + Math.round(side.initiative / 2);
 }
 
 /** Total army strength of a player's unit deck (all sides summed). */

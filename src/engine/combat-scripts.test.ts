@@ -16,6 +16,7 @@ import { getLegalMoveDestinations } from "./legal-actions";
 import { neutralCombatControllerId } from "./neutral-control";
 import { parallelSlotSignature } from "./parallel-turns";
 import type {
+  AnimeModOptions,
   CombatContext,
   CombatState,
   CombatUnitState,
@@ -105,6 +106,7 @@ function fightWithGuards(
   seed: string,
   opts: {
     anime?: boolean;
+    animeOverrides?: Partial<AnimeModOptions>;
     location?: string;
     fighter?: PlayerId;
     players?: 2 | 3;
@@ -112,7 +114,7 @@ function fightWithGuards(
     difficulty?: number;
   } = {}
 ): GameState {
-  const anime = opts.anime ? { ...DEFAULT_ANIME_OPTIONS, enabled: true } : undefined;
+  const anime = opts.anime ? { ...DEFAULT_ANIME_OPTIONS, enabled: true, ...opts.animeOverrides } : undefined;
   let state = createAdventureGameState({
     seed,
     difficulty: "normal",
@@ -443,6 +445,34 @@ describe("Forced Battle Events — mechanism", () => {
     expect(off.combat!.combatScripts).toBeUndefined();
     // The SAME field WITH the module on does fire — proving the gate is the difference.
     const on = fightWithGuards("mech-module-on", { anime: true, location: "anime.bi_canh" });
+    expect(scriptEvents(on, "bi_canh_spirit_mist").length).toBe(1);
+  });
+
+  it("the combatEvents module gates the anime scripts (false = silent; absent/true = fires)", () => {
+    // combatEvents: false disables the anime scripts even with the mod enabled.
+    const off = fightWithGuards("mech-combatevents-off", {
+      anime: true,
+      location: "anime.bi_canh",
+      animeOverrides: { combatEvents: false }
+    });
+    expect(scriptEvents(off).length).toBe(0);
+    expect(off.combat!.combatScripts).toBeUndefined();
+
+    // LEGACY SEMANTICS — an ABSENT combatEvents flag (old snapshot) still fires.
+    const legacy = fightWithGuards("mech-combatevents-absent", {
+      anime: true,
+      location: "anime.bi_canh",
+      animeOverrides: { combatEvents: undefined }
+    });
+    expect(legacy.anime?.combatEvents).toBeUndefined();
+    expect(scriptEvents(legacy, "bi_canh_spirit_mist").length).toBe(1);
+
+    // …and an explicit true fires — proving combatEvents is the only difference.
+    const on = fightWithGuards("mech-combatevents-on", {
+      anime: true,
+      location: "anime.bi_canh",
+      animeOverrides: { combatEvents: true }
+    });
     expect(scriptEvents(on, "bi_canh_spirit_mist").length).toBe(1);
   });
 });

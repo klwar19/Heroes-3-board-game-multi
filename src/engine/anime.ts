@@ -15,6 +15,9 @@ export const DEFAULT_ANIME_OPTIONS: AnimeModOptions = {
   enabled: false,
   // absent === ON (legacy); harmless while enabled:false (anime gates require enabled).
   mapObjects: true,
+  // absent === ON (legacy, mirrors mapObjects); the anime combat scripts gate on
+  // `combatEvents !== false`. Harmless while enabled:false.
+  combatEvents: true,
   xianxiaTowns: false,
   secretRealms: false,
   xianxiaNeutrals: false,
@@ -31,7 +34,10 @@ export const DEFAULT_ANIME_OPTIONS: AnimeModOptions = {
   xianxiaArtifacts: false,
   heartDemon: false,
   heroGrades: false,
-  equipment: false
+  equipment: false,
+  // Opt-in only (=== true, no legacy semantics — new mechanics).
+  unitStacks: false,
+  unitExperience: false
 };
 
 /** Master crest / skin gate. */

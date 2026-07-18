@@ -1,6 +1,7 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { CREATURE_BANK_UNIT_SIDES, stackTokenDelta } from "@/data/map/creature-banks";
 import { applyUnitSideRules, specialtyTransformHealth } from "./ruleset";
+import { unitExperienceBonus } from "./unit-experience";
 import type { CombatUnitState, EffectDefinition, GameRuleset, UnitTransformState } from "./state";
 
 /**
@@ -101,7 +102,12 @@ export function applyUnitCurrentSide(
   unit: CombatUnitState,
   ruleset: GameRuleset,
   /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean; polishUnitStacks?: boolean }
+  overrides?: {
+    griffinBuff?: boolean;
+    marksmanBuff?: boolean;
+    polishUnitStacks?: boolean;
+    unitExperience?: boolean;
+  }
 ): void {
   const top = topTransform(unit);
   if (top) {
@@ -166,9 +172,14 @@ export function applyUnitCurrentSide(
     (unit.armyStacks ?? 0) > 0
       ? 1
       : 0;
-  unit.attack = side.attack + (unit.permanentAttackBonus ?? 0) + armyStackAttack;
-  unit.defense = side.defense;
-  unit.maxHealth = side.health + (unit.permanentHealthBonus ?? 0);
+  // Anime Unit Experience: the veterancy rank bonus rides BOTH sides (few AND
+  // pack), so a Pack→Few flip recompute keeps the earned Attack/Defense/Health.
+  const xpBonus = overrides?.unitExperience
+    ? unitExperienceBonus(unit.unitXp)
+    : { attack: 0, defense: 0, health: 0 };
+  unit.attack = side.attack + (unit.permanentAttackBonus ?? 0) + armyStackAttack + xpBonus.attack;
+  unit.defense = side.defense + xpBonus.defense;
+  unit.maxHealth = side.health + (unit.permanentHealthBonus ?? 0) + xpBonus.health;
   unit.initiative = side.initiative;
   unit.abilities = side.abilities;
   if (unit.assets && side.cardImage) {

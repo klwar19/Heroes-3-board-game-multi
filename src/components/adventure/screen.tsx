@@ -74,6 +74,7 @@ import {
   parallelInteractionBlocker,
   parallelTurnsActive,
   polishArmyUnitStackCap,
+  unitRankForXp,
   readyCheckConfirmers,
   remainingParallelPlayerIds,
   observatoryRevealTargets,
@@ -3436,6 +3437,19 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                     ×{unit.stacks}
                   </span>
                 ) : null}
+                {(() => {
+                  const rank = unitRankForXp(unit.xp);
+                  return rank ? (
+                    <span
+                      className={`unitRankBadge rank-${rank.id}`}
+                      title={`${rank.name} (${unit.xp ?? 0} XP): +${rank.bonus.attack} Attack${
+                        rank.bonus.defense ? ` / +${rank.bonus.defense} Defense` : ""
+                      }${rank.bonus.health ? ` / +${rank.bonus.health} Health` : ""}.`}
+                    >
+                      ★ {rank.name}
+                    </span>
+                  ) : null;
+                })()}
                 {side ? (
                   <small>
                     A{shownAttack} D{side.defense} HP{side.health} I{side.initiative}
@@ -6974,10 +6988,13 @@ function GameOptionsPanel({
             <div className="wogModuleList">
               {([
                 ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool. Turns Field Overrides on."],
+                ["combatEvents", "Forced battle events", "Scripted combat events on anime fields (the Bí Cảnh spirit-mist / earthvein-surge). Fully automatic — no new prompts."],
                 ["xianxiaArtifacts", "Pháp Bảo artifacts", "Shuffles 5 anime hero Artifact cards (Túi Càn Khôn, Phong Hỏa Luân, Tru Tiên Kiếm, Bát Quái Kính, Tụ Linh Bàn) into the shared Artifact decks by tier."],
                 ["cultivation", "Cultivation realms", "A per-hero Cultivation Realm track (hand limit / reroll / spell Power) plus the Heavenly Tribulation map action."],
                 ["heroGrades", "Hero Grades", "A per-hero Merit → grade track that unlocks a small passive / skill tree (shared by every hero)."],
-                ["equipment", "Hero Equipment", "Always-on hero items in 3 slots (weapon / armor / accessory), bought at outfitter map locations."]
+                ["equipment", "Hero Equipment", "Always-on hero items in 3 slots (weapon / armor / accessory), bought at outfitter map locations."],
+                ["unitStacks", "Unit Stacks", "Pack / Neutral cards buy persistent Stack layers at the Citadel (+1 Attack, each layer soaks a lethal blow). The Polish Unit Stacks machinery — one pricing, coexists with the house rule."],
+                ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain veterancy XP, ranking up (Veteran → Elite → Legend) for +Attack / +Defense / +Health. Auto — no prompts."]
               ] as const).map(([key, label, description]) => {
                 const active = anime[key];
                 return (
@@ -8981,6 +8998,8 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   RESOURCES_SPENT: { icon: "💸", cue: "pay" },
   ADVENTURE_DICE_ROLLED: { icon: "🎲", cue: "dice" },
   EXPERIENCE_GAINED: { icon: "📈", cue: "experience" },
+  // Anime Unit Experience: a surviving unit card's veterancy gain / rank-up.
+  UNIT_EXPERIENCE_GAINED: { icon: "🎖️", cue: "experience" },
   HERO_LEVEL_UP: { icon: "⭐", cue: "level-up" },
   // Anime Cultivation (§5.6): a realm breakthrough rings the level-up sting; the
   // Tribulation dice show quietly, a failure uses the defeat sting.

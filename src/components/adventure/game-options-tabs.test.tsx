@@ -181,10 +181,13 @@ describe("Game options — tabbed layout", () => {
     // Each shipped module has a tick button that dispatches only its own flag.
     const modules: Array<[string, string]> = [
       ["anime-module-mapObjects", "mapObjects"],
+      ["anime-module-combatEvents", "combatEvents"],
       ["anime-module-xianxiaArtifacts", "xianxiaArtifacts"],
       ["anime-module-cultivation", "cultivation"],
       ["anime-module-heroGrades", "heroGrades"],
-      ["anime-module-equipment", "equipment"]
+      ["anime-module-equipment", "equipment"],
+      ["anime-module-unitStacks", "unitStacks"],
+      ["anime-module-unitExperience", "unitExperience"]
     ];
     for (const [testid, flag] of modules) {
       onAction.mockClear();

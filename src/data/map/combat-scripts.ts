@@ -86,10 +86,11 @@ export type CombatScriptDefinition = {
   /** The fought field's location id that triggers this script (must exist in locationDefinitions). */
   locationId: string;
   /**
-   * Anime module gate. Omit for a core (always-on) script. Anime locations only
-   * exist when the mod is on, so anime scripts use the master `"enabled"` flag —
-   * matching how the Field Override content that carves those locations is
-   * gated. See `docs/anime-mod-plan.md` §3.12.
+   * Anime module gate. Omit for a core (always-on) script. Anime combat scripts
+   * use the `"combatEvents"` content flag (LEGACY SEMANTICS — absent === ON;
+   * gated on `enabled && combatEvents !== false` in `scriptModuleActive`), so the
+   * Forced Battle Events system can be turned off independently of the anime
+   * locations it attaches to. See `docs/anime-mod-plan.md` §3.12.
    */
   requiresModule?: keyof AnimeModOptions;
   events: CombatScriptEvent[];

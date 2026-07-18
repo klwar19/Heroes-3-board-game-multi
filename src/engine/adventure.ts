@@ -90,7 +90,7 @@ import {
   NECROMANCY_ABILITY_ID,
   NECROPOLIS_FACTION_ID
 } from "./ruleset";
-import { houseRuleEnabled } from "./house-rules";
+import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
@@ -133,6 +133,7 @@ import {
 } from "./hex";
 import { createSeededRandom } from "./random";
 import { applyUnitCurrentSide } from "./unit-transforms";
+import { unitExperienceBonus } from "./unit-experience";
 import type {
   ActiveEffectState,
   AdventureReward,
@@ -5897,7 +5898,7 @@ export function processPendingVisit(state: GameState): void {
         if (
           !player ||
           !unit ||
-          !houseRuleEnabled(state, "polish-unit-stacks") ||
+          !armyUnitStacksActive(state) ||
           !polishArmyUnitCanBuyStack(unit) ||
           !hasRecruitResources(state, visit.playerId, step.cost)
         ) {
@@ -10583,13 +10584,19 @@ export function makeCombatUnitFromArmy(
     permanentAttackBonus?: number;
     permanentHealthBonus?: number;
     stacks?: number;
+    xp?: number;
   },
   controllerId: PlayerId,
   unitId: UnitId,
   position: number,
   ruleset: GameRuleset = "legacy",
   /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean; polishUnitStacks?: boolean }
+  overrides?: {
+    griffinBuff?: boolean;
+    marksmanBuff?: boolean;
+    polishUnitStacks?: boolean;
+    unitExperience?: boolean;
+  }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
   const printed = armyUnit.side === "few" ? def?.few : armyUnit.side === "pack" ? def?.pack : def?.neutral;
@@ -10607,6 +10614,11 @@ export function makeCombatUnitFromArmy(
     overrides?.polishUnitStacks && (armyUnit.side === "pack" || armyUnit.side === "neutral")
       ? Math.max(0, Math.trunc(armyUnit.stacks ?? 0))
       : 0;
+  // Anime Unit Experience: the card's veterancy XP (mirrored) and its rank bonus,
+  // folded onto BOTH sides — the printed side computed here and every later
+  // applyUnitCurrentSide recompute (Pack→Few flip) alike.
+  const unitXp = overrides?.unitExperience ? Math.max(0, Math.trunc(armyUnit.xp ?? 0)) : 0;
+  const xpBonus = unitExperienceBonus(unitXp);
 
   const unit: CombatUnitState = {
     id: unitId,
@@ -10616,9 +10628,9 @@ export function makeCombatUnitFromArmy(
     variant: armyUnit.side,
     grade: def.tier,
     type: side.type ?? def.type,
-    attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0),
-    defense: side.defense,
-    maxHealth: side.health + permanentHealthBonus,
+    attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0) + xpBonus.attack,
+    defense: side.defense + xpBonus.defense,
+    maxHealth: side.health + permanentHealthBonus + xpBonus.health,
     damage: 0,
     initiative: side.initiative,
     position,
@@ -10632,6 +10644,7 @@ export function makeCombatUnitFromArmy(
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
     ...(permanentHealthBonus ? { permanentHealthBonus } : {}),
     ...(armyStacks ? { armyStacks } : {}),
+    ...(unitXp ? { unitXp } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `${def.name} unit card`,
@@ -13451,7 +13464,7 @@ function stackOfferTargets(
   playerId: PlayerId,
   tiers?: readonly string[]
 ): { unit: ArmyUnitState; name: string; baseGold: number }[] {
-  if (!houseRuleEnabled(state, "polish-unit-stacks")) {
+  if (!armyUnitStacksActive(state)) {
     return [];
   }
   const targets: { unit: ArmyUnitState; name: string; baseGold: number }[] = [];
