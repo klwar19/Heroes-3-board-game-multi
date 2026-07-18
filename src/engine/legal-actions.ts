@@ -7601,21 +7601,6 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     return;
   }
 
-  if (step.type === "WITCH_HUT") {
-    // The rulebook reveals the top Ability card before the player decides.
-    const top = state.decks.abilities?.drawPile.at(-1);
-    const topName = top ? (cards[top]?.name ?? top) : "the top Ability card";
-    actions.push(
-      { label: `Take ${topName} into hand`, action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 } },
-      {
-        label: `Put ${topName} into the discard pile`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
-      },
-      { label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } }
-    );
-    return;
-  }
-
   if (step.type === "MAGIC_SPRING") {
     const topThree = player.discard.slice(-3).reverse();
     topThree.forEach((cardId, index) => {

@@ -206,7 +206,7 @@ import {
 } from "@/components/table/fx-sequence";
 import {
   heroMoveSoundKey,
-  locationVisitSoundKeys,
+  locationVisitSoundCue,
   MAP_CUE_SOUNDS,
   MAP_CUE_VOLUME,
   MAP_MOVE_VOLUME,
@@ -215,7 +215,13 @@ import {
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
 import { commanderCastFxPlan, commanderSpecialtySound } from "@/data/commander-fx";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { playLibrarySound, playSpellBookOpen, playTableUiClickSound, playUnitSound } from "@/lib/sound";
+import {
+  playLibrarySound,
+  playLibrarySoundThen,
+  playSpellBookOpen,
+  playTableUiClickSound,
+  playUnitSound
+} from "@/lib/sound";
 import { commanderVoiceId, unitAttackFlourish } from "@/data/unit-sounds";
 import { useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { MusicToggle } from "@/components/music-toggle";
@@ -337,6 +343,17 @@ const OBSERVER_SEAT = "observer";
  * "map" are NOT phone tabs: those entries flip the existing `combatTab`
  * surface switch instead.
  */
+/**
+ * One feed audio cue: a plain library key, or a visit pair whose map-object
+ * ambience is chained to start only after the one-shot sfx has ended.
+ */
+type FeedSoundCue = string | { sfx: string; ambient: string };
+
+/** Dedupe identity for a feed sound cue (pairs keyed by both halves). */
+function feedSoundCueKey(cue: FeedSoundCue): string {
+  return typeof cue === "string" ? cue : `${cue.sfx}>${cue.ambient}`;
+}
+
 type PhoneMapTab = "map" | "hand" | "army" | "decks" | "menu";
 type PhoneCombatTab = "board" | "hand" | "menu";
 
@@ -1052,7 +1069,7 @@ export default function Home() {
    * the roll reads first and the calculation/notice follow — never spoiling the
    * result mid-roll. Accumulates across batches while any map die is on screen.
    */
-  const pendingDiceFeedRef = useRef<{ items: AdventureFeedItem[]; sounds: string[] }>({ items: [], sounds: [] });
+  const pendingDiceFeedRef = useRef<{ items: AdventureFeedItem[]; sounds: FeedSoundCue[] }>({ items: [], sounds: [] });
   const connectionRef = useRef<RoomConnection | null>(null);
 
   // Hydrate browser-only state once, after mount: the URL's ?room= (enter that
@@ -1272,15 +1289,23 @@ export default function Home() {
   // Drops a batch of feed toasts on screen with their staggered audio cues and
   // an 8s auto-expiry. Pulled out so a visit's toasts can either show at once or
   // wait out a die roll (see pendingDiceFeedRef) through the same path.
-  const showFeedItems = useCallback((items: AdventureFeedItem[], sounds: string[]) => {
+  const showFeedItems = useCallback((items: AdventureFeedItem[], sounds: FeedSoundCue[]) => {
     if (items.length === 0) {
       return;
     }
     sounds
-      .filter((key, index) => sounds.indexOf(key) === index)
+      .filter((cue, index) => sounds.findIndex((other) => feedSoundCueKey(other) === feedSoundCueKey(cue)) === index)
       .slice(0, 3)
-      .forEach((key, index) => {
-        window.setTimeout(() => playLibrarySound(key, MAP_CUE_VOLUME), index * 220);
+      .forEach((cue, index) => {
+        window.setTimeout(() => {
+          if (typeof cue === "string") {
+            playLibrarySound(cue, MAP_CUE_VOLUME);
+          } else {
+            // Visit pair: the one-shot sfx first; the map-object ambience sits
+            // just behind it, starting only once the sfx has ENDED.
+            playLibrarySoundThen(cue.sfx, MAP_CUE_VOLUME, () => playLibrarySound(cue.ambient, MAP_CUE_VOLUME));
+          }
+        }, index * 220);
       });
     setFeedItems((current) => [...current, ...items].slice(-6));
     window.setTimeout(() => {
@@ -1477,7 +1502,12 @@ export default function Home() {
         // The promised audio hook: each cue name maps to a sound, visits
         // upgrade to their location's own recording. Deduped and staggered
         // so one snapshot never piles identical sounds.
-        const cueSounds: string[] = [];
+        const cueSounds: FeedSoundCue[] = [];
+        const pushCue = (cue: FeedSoundCue | null | undefined) => {
+          if (cue && !cueSounds.some((other) => feedSoundCueKey(other) === feedSoundCueKey(cue))) {
+            cueSounds.push(cue);
+          }
+        };
         for (const event of freshFeed) {
           // Morale-card events pop the big MoraleCardOverlay, which owns the
           // good/bad-morale sting — their feed lines stay silent (the plain
@@ -1487,25 +1517,16 @@ export default function Home() {
           }
           const cue = ADVENTURE_FEED_CUES[event.type]?.cue;
           if (event.type === "FIELD_VISITED") {
-            // Visit one-shot first, then optional ambient loop (staggered ~220ms).
-            const visitKeys = locationVisitSoundKeys(event.location);
-            if (visitKeys.length > 0) {
-              for (const key of visitKeys) {
-                if (!cueSounds.includes(key)) {
-                  cueSounds.push(key);
-                }
-              }
+            // Visit one-shot first; the map object's ambience is kept paired
+            // with it so playback can chain it to start once the sfx ends.
+            const visitCue = locationVisitSoundCue(event.location);
+            if (visitCue) {
+              pushCue(visitCue.ambient ? { sfx: visitCue.sfx, ambient: visitCue.ambient } : visitCue.sfx);
             } else {
-              const key = cue ? MAP_CUE_SOUNDS[cue] : null;
-              if (key && !cueSounds.includes(key)) {
-                cueSounds.push(key);
-              }
+              pushCue(cue ? MAP_CUE_SOUNDS[cue] : null);
             }
           } else {
-            const key = cue ? MAP_CUE_SOUNDS[cue] : null;
-            if (key && !cueSounds.includes(key)) {
-              cueSounds.push(key);
-            }
+            pushCue(cue ? MAP_CUE_SOUNDS[cue] : null);
           }
         }
 

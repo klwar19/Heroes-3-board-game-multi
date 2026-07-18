@@ -188,13 +188,21 @@ describe("visit step policy — Events / settlements", () => {
     expect((matsPick!.action as { optionIndex: number }).optionIndex).toBe(1);
   });
 
-  it("Witch Hut: takes the ability into hand over skip", () => {
-    const state = visitState([{ type: "WITCH_HUT" }]);
-    const legal = [
-      resolveOption(0),
-      resolveOption(1),
-      declineAction(),
-    ];
+  it("Witch Hut: takes the revealed ability into hand over discarding it", () => {
+    const state = visitState([
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Witch Hut: the top Ability card is Luck — take it or discard it?",
+        options: [
+          { label: "Take Luck into hand", steps: [{ type: "WITCH_HUT_TAKE", cardId: "ability.luck" }] },
+          {
+            label: "Put Luck into the Ability discard pile",
+            steps: [{ type: "WITCH_HUT_DISCARD", cardId: "ability.luck" }],
+          },
+        ],
+      },
+    ]);
+    const legal = [resolveOption(0), resolveOption(1)];
     const decision = chooseComputerAction(observe(state, legal));
     expect(decision?.action).toMatchObject({
       type: "RESOLVE_VISIT_STEP",

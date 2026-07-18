@@ -8188,7 +8188,24 @@ export type VisitStep =
       type: "RESOURCE_GAIN_LEVEL";
     }
   | { type: "MAGIC_SPRING" }
-  | { type: "WITCH_HUT" }
+  | {
+      /**
+       * Witch Hut "look at the top Ability card": auto-resolves into a
+       * CHOOSE_ONE carrying the revealed card (so the tray shows its art),
+       * exactly like the Factory dig (DIG_ARTIFACT).
+       */
+      type: "WITCH_HUT";
+    }
+  | {
+      /** Witch Hut: take the revealed Ability card into hand. */
+      type: "WITCH_HUT_TAKE";
+      cardId: CardId;
+    }
+  | {
+      /** Witch Hut: put the revealed card on the SHARED Ability deck's discard. */
+      type: "WITCH_HUT_DISCARD";
+      cardId: CardId;
+    }
   | { type: "SCHOLAR" }
   | {
       /**
