@@ -55,7 +55,7 @@ function castState(
   options: { runes?: number } = {}
 ): GameState {
   const state = createInitialGameState();
-  state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false };
+  state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
   state.players.p1.commander = {
     slug,
     grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0, ...grades }

@@ -147,13 +147,16 @@ export type WogModOptions = {
   commanders: boolean;
   newObjects: boolean;
   newCreatures: boolean;
+  /** Wake of Gods hero Artifact cards join the shared Artifact deck(s). */
+  artifacts: boolean;
 };
 
 export const DEFAULT_WOG_OPTIONS: WogModOptions = {
   enabled: false,
   commanders: false,
   newObjects: false,
-  newCreatures: true
+  newCreatures: true,
+  artifacts: false
 };
 
 /**

@@ -571,7 +571,7 @@ export function sandboxSetOptions(
     // Tournament is competitive — WOG modules stay off with the preset
     // (tester can still re-enable WOG after switching modes if they want).
     if (opts.playMode === "tournament" && setup.wog.enabled) {
-      setup.wog = { ...setup.wog, enabled: false, commanders: false, newObjects: false };
+      setup.wog = { ...setup.wog, enabled: false, commanders: false, newObjects: false, artifacts: false };
       state.wog = { ...setup.wog };
     }
   }
@@ -585,6 +585,7 @@ export function sandboxSetOptions(
     if (!nextWog.enabled) {
       nextWog.commanders = false;
       nextWog.newObjects = false;
+      nextWog.artifacts = false;
     }
     setup.wog = nextWog;
     state.wog = { ...nextWog };
@@ -688,7 +689,7 @@ export function sandboxBeginCombat(
   const wog: WogModOptions = {
     ...DEFAULT_WOG_OPTIONS,
     ...setup.wog,
-    ...(setup.wog.enabled ? {} : { commanders: false, newObjects: false })
+    ...(setup.wog.enabled ? {} : { commanders: false, newObjects: false, artifacts: false })
   };
   const unitLimit = unitLimitForWog(wog);
 

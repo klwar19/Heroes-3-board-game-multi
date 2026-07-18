@@ -1245,6 +1245,49 @@ Leading with what does NOT run / deliberate readings:
   the owner's map actions are gated to answering it (Necromancy-style);
   `eliminatePlayer` clears an eliminated seat's window.
 
+### WOG Artifacts (optional module, BINH-only) — what runs vs. adaptations
+
+Lobby `WogModOptions.artifacts` (default OFF; gated exactly like `commanders` —
+active only when `wog.enabled && wog.artifacts`). Five ORIGINAL, board-adapted
+"Wake of Gods" hero Artifact cards in `src/data/wog/artifacts.ts`; deck-join in
+`makeSharedDecks` (a `withWog(...)` beside the anime `withAnime(...)`, gated on
+`wog.enabled && wog.artifacts`), library registration in
+`src/data/cards/library.ts` (ALWAYS registered so lookups resolve; deck-join
+only when on). Behaviour pinned in `src/engine/wog-artifacts.test.ts`
+(observable outcomes + CONTROLs, each fails if its wiring is removed) and data/
+art hygiene in `src/data/wog/wog-artifacts.test.ts`.
+
+Leading with what does NOT run / adaptations: WoG's printed artifacts carry
+per-victory INCREMENTAL bonuses and special behaviours (transform one artifact
+into another, lock a Town, summon a dragon, …) — NONE of that is modeled. Each
+card is a clean REUSE of an already-wired arm (no new engine rule), with the WoG
+flavour as its name/art only. Art is the committed manual-derived faces at
+`public/assets/wog/artifacts/<slug>.webp` (no rules text on the face, no
+placeholder registry — all five ship with real art). Commander-specific
+artifacts arrive in a LATER task and are NOT part of this module.
+
+What runs (each mutation-checked; default OFF ⇒ byte-identical Artifact decks):
+- **Magic Wand** (minor, mapOnly instant) — remove the card (leaves the game) to
+  Search (1) the Artifact deck (`CARD_DECK_SEARCH`, Surcoat-of-Counterpoise arm).
+- **Gate Key** (minor, instant) — +1 movement, OR remove for +2 movement
+  (`GAIN_HERO_MOVEMENT`, Boots family — so also offered as a neutral-combat
+  continue-window movement top-up).
+- **Crimson Shield** (major, defender reaction) — +2 defense, OR remove for +3
+  (`ADD_COMBAT_STAT` on `UNIT_ATTACK_DECLARED`/opponent).
+- **Warlord's Banner** (major, attacker reaction) — +2 attack, OR remove for +3
+  (`ADD_COMBAT_STAT` on `UNIT_ATTACK_DECLARED`/self).
+- **Dragonheart** (relic, attacker reaction) — +3 attack, OR remove for +5
+  (same arm, relic-tier numbers). The remove side leaves the game (→ `removed`,
+  never the discard) — pinned by an explicit zone assertion.
+The three reactions ride the SAME per-tier split/legacy Artifact decks and
+tier/uniqueness gates as core artifacts; the relic shares the core relic deck's
+level/source access gate. Cross-mod (§3.8): the WOG and anime Pháp Bảo artifact
+sets join those same shared decks side by side (the deck-join composes
+`withWog(withAnime(...))`), neither displacing the other nor the core cards —
+pinned by the both-mods-on deck-join tests in `wog-artifacts.test.ts` and by the
+all-on coexistence soak (`anime-coexistence-soak.test.ts`, `artifacts: true` in
+the every-WOG-module config).
+
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
 A separate system from the Astrologers Proclaim deck (do not confuse the two).

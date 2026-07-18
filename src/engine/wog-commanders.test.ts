@@ -67,7 +67,7 @@ function settle(state: GameState): GameState {
   return current;
 }
 
-const WOG_ON = { enabled: true, commanders: true, newObjects: false, newCreatures: false };
+const WOG_ON = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
 
 function adventureWithCommanders(seed: string, factionId = "castle", heroDefId = "catherine"): GameState {
   return createAdventureGameState({

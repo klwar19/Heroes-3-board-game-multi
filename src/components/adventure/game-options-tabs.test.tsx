@@ -110,6 +110,34 @@ describe("Game options — tabbed layout", () => {
     );
   });
 
+  it("the WOG mod window lists an Artifacts module row and toggling it dispatches wog.artifacts", () => {
+    const onAction = openOptionsWith((state) => {
+      // WOG must be ON for the mod-options window (and its module rows) to render.
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true,
+        artifacts: false
+      };
+    });
+    // Open the WOG mod-options window (only shown while WOG is enabled).
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+    const artifactsRow = within(dialog).getByRole("button", { name: /Artifacts/i });
+    expect(artifactsRow).toBeTruthy();
+    expect(artifactsRow.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(artifactsRow);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SET_GAME_OPTIONS",
+        playerId: "p1",
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ enabled: true, artifacts: true })
+        })
+      })
+    );
+  });
+
   it("clicking a house-rule toggle dispatches just that rule's flag", () => {
     const onAction = openOptions();
     expandBinhHouseRules();
