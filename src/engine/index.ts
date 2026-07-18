@@ -784,7 +784,8 @@ export type {
   CombatTokenState,
   FirstPlayerRollState,
   SiegeState,
-  WogModOptions
+  WogModOptions,
+  AnimeModOptions
 } from "./state";
 
 export { getUnitTokens, tokenAttackBonus, tokenDefenseDelta } from "./tokens";

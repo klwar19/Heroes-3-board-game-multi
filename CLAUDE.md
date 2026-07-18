@@ -1922,6 +1922,46 @@ Leading with what does NOT run / deliberate limits:
   existed (the Boots family grants movement as a one-shot CARD, not a standing
   drip) — a per-turn movement item awaits that arm. AI buys into an EMPTY slot
   from surplus (`gold ≥ cost + 6`) else leaves (no stall, no auto-replace).
+- **Also shipped: the cross-mod COEXISTENCE GATES (§3.8)** — the blanket
+  guarantees that base game + WOG + xianxia + isekai + Polish all thread into ONE
+  coherent game (different displays/power systems, one engine). Four gates, each
+  mutation-checked where meaningful:
+  - **(a) master byte-identical-when-off CONTROL** (`src/engine/anime-coexistence.test.ts`):
+    a scripted 2-human game driven to round 6 serializes IDENTICALLY (setup AND
+    final state, event log included) whether `anime` is absent, `undefined`, or
+    `DEFAULT_ANIME_OPTIONS` (all-false) — proving the default-off spine adds zero
+    behavioural surface. A `enabled:true` build is the sensitivity control (its
+    serialized state diverges).
+  - **(b) the ALL-ON soak** (`src/server/anime-coexistence-soak.test.ts`,
+    reusing `single-player-soak-helpers.ts`): a fixed-seed single-player game with
+    EVERY shipped anime module (`enabled, xianxiaArtifacts, cultivation,
+    heroGrades, equipment` + global `fieldOverrides`), EVERY WOG module, Creature
+    Banks, Polish Unit-Stacks + Bank-Sizes, Morale Cards and the stash Spell Book
+    reaches round 6 with ZERO stalls / negative resources (a shorter round-4
+    variant swaps in the mutually-exclusive Polish Spell Book; a 3-opponent run
+    for breadth). Soft-asserts anime systems are LIVE (overrides carved, Merit/
+    grade/realm progression fires). HONEST LIMIT: the AI never buys Equipment (it
+    declines the optional outfitter shop by policy), so `EQUIPMENT_EQUIPPED` stays
+    0 in the soak — a documented AI-policy limit, not a coexistence failure.
+  - **(c) mixed-package no-cross-talk CONTROL** (`src/engine/anime-coexistence.test.ts`):
+    carving an ISEKAI field-override kind (content present) leaves the xianxia
+    Cultivation/Grade event sequence byte-identical to a xianxia-only run, and the
+    grade-name register keys off MODULE FLAGS not carved CONTENT (turning an
+    isekai module flag on is the mutation control that flips the register to the
+    both-packages "core" fallback).
+  - **(d) display coexistence** (`src/components/anime-coexistence-display.test.tsx`):
+    a hero board renders realm + grade + all-three equipment chips simultaneously
+    with no collision; the map-designer Field Override palette lists a xianxia AND
+    an isekai kind together; the hero-actions dock renders under the all-on config.
+  - **KNOWN LIMIT surfaced by gate (d):** the two Equipment MARKETS
+    (`ren_binh_cac` / `adventurer_outfitter`, `requiresModule:"equipment"`) are
+    deliberately gated OUT of the ungated map-designer palette (a conscious §3.13
+    decision, pinned in `src/engine/anime-equipment.test.ts` "the DESIGNER-palette
+    style listing … also hides the outfitters"). So a designer cannot pin an
+    equipment outfitter today — a designer-pinned outfitter is not modeled, and
+    the coexistence slice did NOT flip that behaviour (it would contradict the
+    prior CONTROL). The outfitters still reach a game via the pool draw when
+    `anime.equipment` is on.
 - **Also shipped: Forced Battle Events (scripted combats, §3.12)** — a fight on a
   particular MAP FIELD runs SCRIPTED EVENTS (an environment stat modifier, an
   obstacle formation, a timed damage pulse, a flavor announce) at combat-start

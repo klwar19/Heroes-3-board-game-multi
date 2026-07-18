@@ -270,13 +270,38 @@ consumer wires **data only**. (Chief cases: `ATTACK_BONUS_ADJACENT_ALLY`,
 the die-face→token arm, `PLACE_TOKEN_ACTION` token variants, the charge unit
 tag, the `requiresNotMoved` gate.)
 
-### 3.8 The standing integration gates
+### 3.8 The standing integration gates — LANDED
 From P2 on, every phase re-runs: (a) the master byte-identical-when-off
 CONTROL (scripted game event-log identical to `main` with `anime` absent);
 (b) a fixed-seed single-player soak with **every module of both packages
 AND every WOG module ON** reaching round 6 with zero stalls (joins
 `single-player-soak.test.ts`); (c) the mixed-package CONTROL (one module
 from each package on — no cross-talk).
+
+**STATUS (shipped):** all four gates landed and green:
+- **(a) master byte-identical-when-off CONTROL** — `src/engine/anime-coexistence.test.ts`.
+  A scripted 2-human game to round 6 serializes IDENTICALLY (setup AND final
+  state + event log) across `anime` absent / `undefined` / `DEFAULT_ANIME_OPTIONS`;
+  a `enabled:true` build is the sensitivity control.
+- **(b) the ALL-ON soak** — `src/server/anime-coexistence-soak.test.ts` (reuses
+  `single-player-soak-helpers.ts`). Every shipped anime module + `fieldOverrides`
+  + every WOG module + Creature Banks + Polish Unit-Stacks/Bank-Sizes + Morale
+  Cards + stash Spell Book → round 6, zero stalls / negative resources; a
+  round-4 variant swaps in the mutually-exclusive Polish Spell Book; a 3-opponent
+  breadth run. Soft-asserts anime systems are live (overrides carved, Merit/grade/
+  realm progression). HONEST LIMIT: the AI declines the optional outfitter shop,
+  so it never buys Equipment in the soak (documented, not a coexistence bug).
+- **(c) mixed-package no-cross-talk CONTROL** — `src/engine/anime-coexistence.test.ts`.
+  An isekai field-override kind carved leaves the xianxia Cultivation/Grade event
+  sequence byte-identical; the grade register keys off MODULE FLAGS not carved
+  CONTENT (an isekai module flag flip is the mutation control → "core" fallback).
+- **(d) display coexistence** — `src/components/anime-coexistence-display.test.tsx`.
+  Realm + grade + equipment chips render together; the designer palette lists a
+  xianxia and an isekai kind together; the hero-actions dock renders under all-on.
+  KNOWN LIMIT surfaced: the two Equipment MARKETS (`requiresModule:"equipment"`)
+  are deliberately gated out of the ungated designer palette (pinned in
+  `src/engine/anime-equipment.test.ts`) — not flipped here to avoid contradicting
+  that prior CONTROL; the outfitters still reach a game via the pool draw.
 
 ### 3.10 Field Overrides — single-hex replacement (SHARED spine, headline map feature)
 
