@@ -4601,6 +4601,74 @@ export function PromptTray({
     );
   }
 
+  // Rule 111 (Polish house rule): a purpose-built two-column layout instead of
+  // the flat option row — the "replace the Guard" swap sits on the LEFT, and the
+  // drawn guard's card face with an "Accept the guard" button on the RIGHT, so
+  // the either/or reads at a glance (keep the guard you see, or gamble on a swap).
+  if (rule111Draws) {
+    const acceptEntry = rewardOptions.find(
+      (entry) => entry.legal.action.type === "CHOOSE_OPTION" && entry.legal.action.optionIndex === 0
+    );
+    const replaceEntries = rewardOptions.filter(
+      (entry) =>
+        entry.legal.action.type === "CHOOSE_OPTION" &&
+        typeof (entry.legal.action as { optionIndex?: number }).optionIndex === "number" &&
+        ((entry.legal.action as { optionIndex?: number }).optionIndex ?? 0) > 0
+    );
+    return (
+      <div className="promptTray rule111Tray" role="dialog" aria-label={title}>
+        <strong>{title}</strong>
+        <div className="rule111Columns">
+          <div className="rule111Replace">
+            <small className="rule111ColHead">Roll the dice</small>
+            {replaceEntries.map(({ legal }) => (
+              <button
+                className="commandButton rule111ReplaceButton"
+                key={actionKey(legal.action)}
+                onClick={() => onAction(legal.action)}
+                type="button"
+              >
+                {replaceEntries.length > 1 ? legal.label : "Use Rule 111: replace the Guard"}
+              </button>
+            ))}
+          </div>
+          <div className="rule111Accept">
+            <small className="rule111ColHead">Keep what you drew</small>
+            <div className="rule111GuardArt">
+              {rule111Draws.map((draw, index) => {
+                const art = rewardArtForId(draw.unitDefId);
+                return art.image ? (
+                  <img
+                    alt={art.name}
+                    className="rule111GuardImage"
+                    draggable={false}
+                    key={index}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(art.image)}
+                  />
+                ) : (
+                  <span className="marketCardFallback" key={index}>
+                    {art.name}
+                  </span>
+                );
+              })}
+            </div>
+            {acceptEntry ? (
+              <button
+                className="commandButton rule111AcceptButton"
+                onClick={() => onAction(acceptEntry.legal.action)}
+                type="button"
+              >
+                Accept the guard
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`promptTray${hasAnyRewardArt ? " withRewardCards" : ""}${hasTileRewardArt ? " withTileCards" : ""}`}

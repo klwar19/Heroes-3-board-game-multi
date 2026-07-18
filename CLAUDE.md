@@ -2062,12 +2062,16 @@ Leading with what does NOT run / deliberate limits:
 - **A garrison defense is ARMY-only** (settlement-style): the defender picks
   units only — no hand cards, no hero — and pays 3 gold (towns keep 8;
   `garrisonDefenseCost`). Declining hands the flag over without a fight.
-- **No XP from outpost / one-way fights** (`isBankStyleGuardLocation`):
-  garrison, Keymaster's Tent and one-way ENTRANCE guards fight BANK-style —
-  no Quick Combat, no experience (combat difficulty 0), and NO round limit
-  (`CombatContext.unlimitedRounds` — the reducer's round-limit check skips it,
-  no MP-to-extend). Guards on monolith/gate/whirlpool tokens and objects keep
-  the NORMAL neutral flow (Quick Combat, XP, round limit) at their level.
+- **No XP from outpost / one-way / teleport-object fights**
+  (`isBankStyleGuardLocation`): garrison, Keymaster's Tent, one-way ENTRANCE
+  guards AND every single-hex teleport object (Monolith / Teleport Gate /
+  Whirlpool) fight BANK-style — no Quick Combat, no experience (combat
+  difficulty 0), and NO round limit (`CombatContext.unlimitedRounds` — the
+  reducer's round-limit check skips it, no MP-to-extend). A guard assigned to a
+  teleport gateway must be truly fought to pass — a high-level hero cannot
+  Quick-Combat past it. The guard army still draws at its designed level / exact
+  list (`customGuardLevel` / `customGuardUnits`); only Quick Combat, XP and the
+  round limit are dropped.
 - **An exact-army guard is never Quick-Combat or Diplomacy skipped** — the
   designed army always deploys and fights (minted at fight time from
   `field.customGuardUnits` in `drawGuardArmy`); its difficulty (for XP where
@@ -2890,6 +2894,71 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   save paid with one Expert Power + crown; a no-crown CONTROL rejects it) and
   `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
   accepts it, with a no-crown CONTROL that hides the toggle).
+
+## Map spell-power bank, map notice icons, teleport-guard bank fights & Rule 111 UI — what runs
+
+Five additions; each engine claim fails a named test if its wiring is removed.
+
+- **Map spell-power bank (Sorcery / Scales on the MAP).** The combat "+Power,
+  then draw" bank (`combatStats.pendingDrawRiderSpellPower`) now has a MAP twin:
+  playing an `ADD_SPELL_POWER` draw-rider on the map banks its +Power onto
+  `player.mapSpellPowerBank` and draws a card (reducer draw-rider handler, the
+  `!state.combat` else-branch). The banked Power counts toward a map Spell's
+  `powerCost` exactly like standing Power — folded in `payCardCost` and
+  `canAffordCardCost` via `mapSpellPowerBankAvailable` (zero in combat, so it can
+  never leak into a combat cast) — so a hero banks Power, draws, then casts the
+  drawn Spell (View Air / Dimension Door / Fly / …) with the bank paying part of
+  the tier. Consumed by the next map Spell that pays a Power cost (one Spell, one
+  boost); cleared when the hero **moves** (`performHeroStep` — "the saved Power
+  goes away after you move") and at the owner's next turn (`startAdventureTurn`).
+  The CHOOSE_ONE draw-rider ARTIFACTS (Scales of the Greater Basilisk, Tunic of
+  the Cyclops King, Armor of Wonder) are now map-playable draw-only too
+  (`addTurnCardActions` CHOOSE_ONE branch, mirroring the combat draw-only offer,
+  bypassing their reaction/combat phaseLimit). The picker shows the banked Power
+  (`mapPowerBank` folded into `pendingPowerTotal`, a "+N banked" note). Pinned in
+  `map-spell-power-bank.test.ts` (bank + draw, the bank pays a Power-1 View Air
+  with NO power cards, clear-on-move, Scales' map draw-rider, each with a
+  no-bank / base-tier CONTROL). LIMIT: only the printed map-Spell `powerCost`
+  tiers consume the bank (a bare `CAST_SPELL` map cast does not).
+- **Polish "Cast a Spell" is NEVER a Power source (crash fix).** The generic
+  `spell.cast_a_spell` enabler is a physical Spell card but no longer counts as
+  +1 Power for a spell-power COST — it let a 3-Power hand reach a Power-4
+  Dimension Door tier and then crashed the cast. Excluded in `cardCanBoostPower`
+  and `spellPowerValueOfCard` (`effects.ts`), so it is dropped from every
+  cost-filter power source (map tiers, Sorrow, Alamar, Magi's Power Drain). Its
+  combat "+1 Power" printed alternative (the `asPowerBoost` discard, filtered by
+  `kind === "spell"` directly) is a SEPARATE mechanic and deliberately kept.
+  Pinned in `map-spell-power-bank.test.ts` (a Cast-a-Spell cannot fund a map tier
+  / a real Power card does; paying with one throws).
+- **A teleport-gateway guard fights BANK-style (no Quick Combat, no XP).** A
+  designer guard on a single-hex Monolith / Teleport Gate / Whirlpool
+  (`isTeleportObjectGuardLocation`) must be truly fought to pass — a high-level
+  hero can no longer Quick-Combat past it — and the fight grants no experience
+  (combat difficulty 0), like a Creature-Bank guard. Unlike a designer OUTPOST it
+  keeps the normal Round limit and the continue-or-retreat window (only Quick
+  Combat and XP are dropped). The dedicated branch in `startNeutralEncounter`
+  pins `customGuardLevel` so the difficulty-0 fight still draws the real designed
+  guards. Pinned in `map-objects.test.ts` (a guarded Gate / Monolith opens a
+  difficulty-0 bank-style fight, exact-army AND level, with the no-QUICK_COMBAT
+  assertion as the mutation control).
+- **Map-visit notice = reward chips, not a "mass of text".** A treasure-chest /
+  mine / resource visit's outcome is shown as a compact row of icon chips
+  (resource token / experience / morale glyph + a short "+N" or "+N/turn" income
+  label) built from the visit's follow-on events by `noticeRewardsFromEvents`
+  (`utils.ts`, pure), instead of the old `formatEvent` bullet list — the dice
+  cube overlay still animates the roll, and the chips are its RESULT. A mine
+  (no dedicated notice art) now wears its RESOURCE token instead of the pickaxe
+  emoji (`cue.iconImage`). Chips REPLACE the text lines; an outcome with no
+  material chip (e.g. an Artifact Search) falls back to text. Pinned in
+  `notice-rewards.test.ts` (the chip derivation with CONTROLs) and
+  `overlays.test.tsx` ("renders reward chips … and a mine's resource token").
+- **Rule 111 tray (Polish house rule) = a two-column either/or.** The
+  `PromptTray` (`screen.tsx`) renders the Rule-111 choice as a purpose-built
+  layout — a "Use Rule 111: replace the Guard" swap on the LEFT, the drawn
+  guard's card face with an "Accept the guard" button on the RIGHT — instead of
+  a flat row of look-alike buttons. Pure presentation over the existing
+  `CHOOSE_OPTION` accept (optionIndex 0) / replace (1..N) actions. Pinned in
+  `rule-111-choice-art.test.tsx`.
 
 ## Map settings defaults (designer → lobby, seed-at-pick) — what runs vs. limits
 

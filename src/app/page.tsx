@@ -159,6 +159,7 @@ import {
   cardName,
   costCardEligible,
   formatEvent,
+  noticeRewardsFromEvents,
   reconnectRoundStartCues,
   titleCase,
   unitName,
@@ -1622,18 +1623,20 @@ export default function Home() {
           const from = eventNumber(visit.id);
           const nextVisit = freshVisits.find((candidate) => eventNumber(candidate.id) > from);
           const to = nextVisit ? eventNumber(nextVisit.id) : Number.POSITIVE_INFINITY;
-          const lines = nextState.eventLog
-            .filter((event) => {
-              const number = eventNumber(event.id);
-              return (
-                number > from &&
-                number < to &&
-                outcomeTypes.has(event.type) &&
-                ("playerId" in event ? event.playerId === visit.playerId : true)
-              );
-            })
-            .slice(0, 5)
-            .map((event) => formatEvent(event, nextState));
+          const outcomeEvents = nextState.eventLog.filter((event) => {
+            const number = eventNumber(event.id);
+            return (
+              number > from &&
+              number < to &&
+              outcomeTypes.has(event.type) &&
+              ("playerId" in event ? event.playerId === visit.playerId : true)
+            );
+          });
+          const lines = outcomeEvents.slice(0, 5).map((event) => formatEvent(event, nextState));
+          // Compact reward chips (resource token / XP / morale + "+N") — the
+          // treasure-chest / mine result with the correct icons, replacing the
+          // text list; the mine's resource token also becomes the notice art.
+          const { rewards, iconImage } = noticeRewardsFromEvents(outcomeEvents, nextState);
           return {
             id: visit.id,
             icon: LOCATION_GLYPHS[visit.location] ?? "📍",
@@ -1642,7 +1645,9 @@ export default function Home() {
               visit.revisit ? "revisits" : "visits"
             }`,
             lines,
-            location: visit.location
+            location: visit.location,
+            rewards,
+            iconImage
           } satisfies MapNoticeCue;
         });
         setMapNotice((current) => {
@@ -5352,8 +5357,14 @@ export default function Home() {
       );
     };
 
+    // +Power banked on the map by a Sorcery / Scales "+Power, then draw" rider:
+    // it counts toward a map Spell's tier exactly like a discarded power source,
+    // so the picker shows fewer cards needed (and agrees with the engine, which
+    // folds it into standing Power in payCardCost).
+    const mapPowerBank = viewer?.mapSpellPowerBank ?? 0;
     // Live Power total for the map cost picker (View Air / Dimension Door tiers),
-    // including one optional Spell Book payment (once-per-turn Book Power budget).
+    // including the banked draw-rider Power and one optional Spell Book payment
+    // (once-per-turn Book Power budget).
     const pendingPowerTotal = (() => {
       if (!pendingCostPlay?.powerCost) {
         return 0;
@@ -5367,7 +5378,7 @@ export default function Home() {
       const fromBook = pendingCostPlay.bookCardId
         ? spellPowerValueOfCard(cardLibrary[pendingCostPlay.bookCardId], schools)
         : 0;
-      return fromHand + fromBook;
+      return mapPowerBank + fromHand + fromBook;
     })();
     const pendingPowerOk =
       pendingCostPlay?.powerCost === undefined ||
@@ -5905,6 +5916,9 @@ export default function Home() {
                     {pendingCostPlay.powerCost === undefined
                       ? `— ${pendingCostPlay.picks.length} picked`
                       : null}
+                    {pendingCostPlay.powerCost !== undefined && mapPowerBank > 0 ? (
+                      <em className="costPickerBankNote"> (+{mapPowerBank} banked from Sorcery/Scales)</em>
+                    ) : null}
                   </span>
                   {pendingCostPlay.powerCost !== undefined && pendingCostPlay.picks.length > 0 ? (
                     <div className="costPickerModes" aria-label="Expert Power payments">

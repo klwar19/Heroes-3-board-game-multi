@@ -359,6 +359,7 @@ import {
   playerHasAttackInstantOfSchool,
   preHitHealReactions,
   reflectableAttackInstantForPlayer,
+  mapSpellPowerBankAvailable,
   resolvedSpellPowerForStackItem,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
@@ -11079,7 +11080,11 @@ function payOptionCardCost(
   // expertAmount and spends one crown per such card.
   if (cost.powerCost !== undefined) {
     const schools = playedCard.spellSchools ?? [];
-    const standing = standingSpellPower(state, playerId, playedCard);
+    // The map draw-rider bank (Sorcery / Scales) counts as standing Power, so a
+    // banked +1 pays part of a map Spell's tier. Zero in combat (the helper
+    // guards on state.combat), so a combat cost never touches the map bank.
+    const mapBank = mapSpellPowerBankAvailable(state, playerId);
+    const standing = standingSpellPower(state, playerId, playedCard) + mapBank;
     const values = paying.map((cardId, index) => spellPowerValueOfCard(cards[cardId], schools, payModes[index]));
     const expertPays = payModes.filter((mode) => mode === "expert").length;
     const crownsLeft =
@@ -11115,6 +11120,13 @@ function payOptionCardCost(
     }
     if (expertPays > 0) {
       player.combatStats.expertUsesSpentThisRound += expertPays;
+    }
+    // Consume the map bank: it paid toward this cast, so it is spent (one Spell,
+    // one boost — mirrors the combat pendingDrawRiderSpellPower consume). A
+    // base-tier map Spell that pays no Power cost never reaches here and leaves
+    // the bank standing until the hero moves.
+    if (mapBank > 0) {
+      player.mapSpellPowerBank = 0;
     }
   }
 
@@ -14262,6 +14274,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           const stats = state.players[action.playerId].combatStats;
           stats.pendingDrawRiderSpellPower = (stats.pendingDrawRiderSpellPower ?? 0) + bank;
         }
+      }
+    } else if (effect.type === "ADD_SPELL_POWER" && !state.combat) {
+      // MAP: bank the +Power for the NEXT map Spell this turn (View Air /
+      // Dimension Door / Fly / Town Portal tiers). Play Sorcery / Scales first
+      // to draw a card, then cast the drawn Spell with the banked Power. The
+      // bank is cleared when the hero moves (performHeroStep) or at the owner's
+      // next turn, and consumed by the next map Spell that pays a Power cost.
+      const bank = getEffectAmount(effect, mode);
+      if (bank > 0) {
+        const player = state.players[action.playerId];
+        player.mapSpellPowerBank = (player.mapSpellPowerBank ?? 0) + bank;
       }
     }
   }

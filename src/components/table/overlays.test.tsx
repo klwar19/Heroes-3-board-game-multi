@@ -287,6 +287,38 @@ describe("MapNoticeOverlay location art", () => {
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.getByText("W")).toBeTruthy();
   });
+
+  it("renders reward chips (icon + label) instead of the text list, and a mine's resource token as the notice art", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <MapNoticeOverlay
+        cue={{
+          id: "notice-mine",
+          icon: "⛏",
+          title: "Mine",
+          subtitle: "p1 visits",
+          lines: ["p1 flags Mine.", "p1 +1 gold production."],
+          location: "mine",
+          iconImage: "/assets/icons/resource-gold.webp",
+          rewards: [
+            { icon: "/assets/icons/resource-gold.webp", label: "+1/turn", title: "+1 gold production", tone: "gain" }
+          ]
+        }}
+        onDone={vi.fn()}
+      />
+    );
+
+    // Chips replace the "mass of text" bullet list.
+    const chips = container.querySelectorAll(".mapNoticeReward");
+    expect(chips).toHaveLength(1);
+    expect(chips[0].querySelector("img")?.getAttribute("src")).toContain("resource-gold");
+    expect(chips[0].textContent).toContain("+1/turn");
+    expect(container.querySelector(".mapNotice ul"), "no text list when chips are present").toBeNull();
+
+    // The mine wears its resource token instead of the pickaxe emoji.
+    expect(container.querySelector(".mapNoticeResourceArt")?.getAttribute("src")).toContain("resource-gold");
+    expect(container.textContent).not.toContain("⛏");
+  });
 });
 
 /** Minimal state carrying a pre-activation guard pause for the overlay. */

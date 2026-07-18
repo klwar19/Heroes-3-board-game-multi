@@ -6682,6 +6682,16 @@ export type PlayerState = {
    * See `totalRecruitGoldDiscount`/`consumeRecruitVoucherFor`.
    */
   recruitDiscounts?: RecruitDiscountVoucher[];
+  /**
+   * Map-side twin of `combatStats.pendingDrawRiderSpellPower`: +Power banked by
+   * playing a Sorcery / Scales-of-the-Greater-Basilisk-style "+Power, then draw
+   * a card" rider on the MAP (outside any combat). It counts toward the Power a
+   * map Spell needs (View Air / Dimension Door / Fly / Town Portal tiers), so a
+   * hero can bank Power, draw, then cast the drawn Spell for less. Consumed by
+   * the next map Spell that pays a Power cost, and cleared when the hero moves
+   * (the banked Power "goes away after you move") or at the owner's next turn.
+   */
+  mapSpellPowerBank?: number;
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
   rogueScoutUsedThisTurn?: boolean;
   /** Satyrs (army map ability): the once-per-turn attack-die morale roll was used this turn. */
