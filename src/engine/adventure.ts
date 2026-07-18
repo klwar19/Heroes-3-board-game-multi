@@ -50,6 +50,14 @@ import {
   HERO_GRADE_TRAINING_MANUAL_CARD_ID
 } from "@/data/anime/hero-grades";
 import {
+  equipEquipment,
+  equipmentEnabled,
+  equipmentHandLimitBonus,
+  equipmentResourceRoundMaterials,
+  playerHasEquipment
+} from "./anime-equipment";
+import { EQUIPMENT_SHOP_SALES, getEquipmentDefinition } from "@/data/anime/equipment";
+import {
   applyMoraleCardGain,
   consumeHeldMoraleCard,
   moraleCardsRuleEnabled,
@@ -331,11 +339,15 @@ export function effectiveHandLimit(state: GameState, playerId: PlayerId): number
   // Anime Hero Grades Deep Pockets (tier 2, §3.11): +1 hand limit, folded at the
   // same aggregation site as Cultivation Foundation so BOTH stack observably
   // (a hero with both picks gets +2) across the draw-up and discard-down.
+  // Anime Equipment Guild-Issue Mail (§3.13): +1 hand limit, folded at the same
+  // aggregation site as Cultivation Foundation / Deep Pockets so ALL THREE stack
+  // observably (a hero with all three gets +3) across draw-up and discard-down.
   const base =
     player.limits.hand +
     permanentBonus +
     cultivationHandLimitBonus(state, playerId) +
-    heroGradeHandLimitBonus(state, playerId);
+    heroGradeHandLimitBonus(state, playerId) +
+    equipmentHandLimitBonus(state, playerId);
 
   const active = getActiveAstrologersCard(state);
   let limit = base;
@@ -3757,6 +3769,36 @@ export function elementalConfluxCandidates(
  * Begins resolving a field visit. Immediate effects apply at once; steps that
  * need player input wait in adventure.pendingVisit.
  */
+/**
+ * Anime Equipment (§3.13): build the outfitter shop menu for a visit, or null.
+ * A CHOOSE_ONE with one buy option per item this shop sells that the hero does
+ * NOT already own, plus a "Leave" option. Affordability is gated downstream
+ * (legal-actions skips an unaffordable buy; the reducer backstops a forged one),
+ * exactly like a PAY_TO — so a poor hero sees only Leave. Built at visit time
+ * with full state so already-owned items drop out (option absent). Returns null
+ * only if the module is off or the location sells nothing.
+ */
+function buildEquipmentShopStep(state: GameState, playerId: PlayerId, locationId: string): VisitStep | null {
+  if (!equipmentEnabled(state)) {
+    return null;
+  }
+  const sales = EQUIPMENT_SHOP_SALES[locationId];
+  if (!sales) {
+    return null;
+  }
+  const options = sales
+    .filter((equipmentId) => !playerHasEquipment(state, playerId, equipmentId))
+    .map((equipmentId) => {
+      const def = getEquipmentDefinition(equipmentId)!;
+      return {
+        label: `Buy ${def.name.en} (${def.name.vi}) — ${def.cost} gold · ${def.slot}`,
+        steps: [{ type: "BUY_EQUIPMENT" as const, equipmentId }]
+      };
+    });
+  options.push({ label: "Leave", steps: [] });
+  return { type: "CHOOSE_ONE", prompt: "Outfitter — always-on equipment:", options };
+}
+
 export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSpaceId, revisit: boolean): void {
   const adventure = state.adventure;
   const hero = state.heroes[heroId];
@@ -3925,6 +3967,14 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
       costOptions: [{ gold: 2 }],
       steps: [{ type: "GAIN_HAND_CARD", cardId: HERO_GRADE_TRAINING_MANUAL_CARD_ID }]
     });
+  }
+
+  // Anime Equipment (§3.13): the two outfitter shops sell always-on items. The
+  // menu is built dynamically (already-owned items drop out) and appended even
+  // when the base interaction is empty (these locations carve as NONE bases).
+  const equipmentShopStep = buildEquipmentShopStep(state, playerId, location.id);
+  if (equipmentShopStep) {
+    steps.push(equipmentShopStep);
   }
 
   if (steps.length === 0) {
@@ -4956,6 +5006,20 @@ export function processPendingVisit(state: GameState): void {
             `${eventPlayerName(state, visit.playerId)} takes ${cardLibrary[step.cardId]?.name ?? step.cardId}.`,
             visit.playerId
           );
+        }
+        break;
+      }
+      case "BUY_EQUIPMENT": {
+        // Anime Equipment (§3.13): deduct the item's gold and equip it into the
+        // MAIN hero's slot (replacing whatever was there). Affordability + the
+        // already-owned filter are enforced upstream (the shop menu drops owned
+        // items; legal-actions + the reducer CHOOSE_ONE backstop gate gold), so
+        // this leaf guards only against an impossible pay.
+        const def = getEquipmentDefinition(step.equipmentId);
+        const player = state.players[visit.playerId];
+        if (def && player && hasResources(player, { gold: def.cost })) {
+          spendResources(state, visit.playerId, { gold: def.cost }, `bought ${def.name.en}`);
+          equipEquipment(state, visit.playerId, step.equipmentId);
         }
         break;
       }
@@ -9818,6 +9882,14 @@ export function startAdventureRound(state: GameState): void {
     const gradeGold = heroGradeResourceRoundGold(state, playerId);
     if (gradeMaterials || gradeGold) {
       gainResources(state, playerId, { buildingMaterials: gradeMaterials, gold: gradeGold }, "Hero Grade income");
+    }
+
+    // Anime Equipment (§3.13): the Supply Satchel accessory grants +1 building
+    // materials each Resources round — the same income chokepoint the grade
+    // passives / Pháp Bảo permanents use. No-op when off / unequipped.
+    const equipMaterials = equipmentResourceRoundMaterials(state, playerId);
+    if (equipMaterials) {
+      gainResources(state, playerId, { buildingMaterials: equipMaterials }, "Supply Satchel");
     }
 
     // Crystal Dragons (army map ability): gain the printed resource each

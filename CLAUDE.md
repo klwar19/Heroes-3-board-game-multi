@@ -1877,6 +1877,47 @@ Leading with what does NOT run / deliberate limits:
   threshold + nodes + one entry per register (§3.11 recipe). Magnitudes pegged to
   existing precedents (Brute gold, Cart/artifact income, Pandora hand/Power,
   commander reaction buffs, Boots movement).
+- **Also shipped: `anime.equipment`** (Equipment — always-on hero ITEMS in three
+  slots weapon/armor/accessory, DISTINCT from Artifact cards: never in hand,
+  never cast, one per slot, buying into an occupied slot REPLACES with no refund;
+  §3.13). Default OFF ⇒ byte-identical. Read-layer `src/engine/anime-equipment.ts`,
+  data `src/data/anime/equipment.ts`, behaviour pinned in
+  `src/engine/anime-equipment.test.ts` (each claim mutation-checked) + the catalog
+  in `src/data/anime/equipment.test.ts` + the hero-board chips
+  (`hero-board.test.tsx`). Leading with what does NOT run / limits: **NO
+  map-action buttons in this slice** — buying is only through the two outfitter
+  Field Overrides; the hero board is a read-only chip display. This "no bespoke
+  map button yet" limit ALSO covers HERO_TRAIN / Forced March (§3.11) and the
+  Heavenly Tribulation (§5.6) — all are legal actions surfaced through pickers /
+  the shop, never a dedicated button. **Art-later** (all 6 items ship without a
+  card face — `ANIME_EQUIPMENT_ART_PLACEHOLDERS`, slot-glyph fallback); **no
+  designer pin for the outfitters** (pool-placed only); **combat items are the
+  MAIN hero's fights only** (commander-scope; a garrison fight gets neither —
+  CONTROL). What runs (6 items, each a proven-seam reuse pegged to a core
+  magnitude): Iron-Blood Sword = your units' FIRST declared attack each combat +1
+  Attack (a per-combat one-shot folded UNCLAMPED in `getAttackStackDetails` beside
+  the combat-script delta, consumed at `finishResolvedAttack` when the attack
+  lands; NOT on retaliations); Black Tortoise Mail = the FIRST incoming declared
+  attack each combat resolves at −1 Attack (same site, off the attacker); Cosmos
+  Pendant = +1 spell Power (`standingSpellPower`, stacks with Cultivation Nascent
+  + Arcane Insight → +3); Adventurer's Blade = +1 gold after a won combat (the
+  Bounty-Hunter's-Eye hook, stacks to +2 with the grade node); Guild-Issue Mail =
+  +1 hand limit (`effectiveHandLimit`, stacks with Foundation + Deep Pockets →
+  +3); Supply Satchel = +1 building materials each Resources round (the
+  `resourceRoundGain` income loop). MARKETS: two single-hex Field Overrides — Rèn
+  Binh Các (Blacksmith, xianxia, ⚒) + Adventurer Outfitter (isekai, 🎒), both
+  selling the shared Satchel; the shop menu is a dynamic `CHOOSE_ONE` of
+  `BUY_EQUIPMENT` options built in `beginFieldVisit` (owned item ⇒ absent;
+  affordability gold-gated like PAY_TO in legal-actions + a reducer backstop; the
+  leaf deducts gold + equips). GATING: `FieldOverrideDefinition.requiresModule`
+  (new) + a `moduleEnabled` predicate on `listFieldOverrideDefinitions` — with
+  `anime.equipment` off the two outfitters appear in NO pool/listing
+  (CONTROL-pinned); the 11 existing kinds carry no `requiresModule` and are
+  unaffected. DOCUMENTED SWAP: the original "Courier's Charm +1 MP/turn" idea
+  became the Supply Satchel because no clean per-turn movement-income chokepoint
+  existed (the Boots family grants movement as a one-shot CARD, not a standing
+  drip) — a per-turn movement item awaits that arm. AI buys into an EMPTY slot
+  from surplus (`gold ≥ cost + 6`) else leaves (no stall, no auto-replace).
 - **Also shipped: Forced Battle Events (scripted combats, §3.12)** — a fight on a
   particular MAP FIELD runs SCRIPTED EVENTS (an environment stat modifier, an
   obstacle formation, a timed damage pulse, a flavor announce) at combat-start

@@ -602,6 +602,29 @@ export {
   HERO_GRADE_REGISTERS
 } from "@/data/anime/hero-grades";
 export {
+  equipmentEnabled,
+  heroEquipmentOf,
+  heroEquipmentSlot,
+  playerHasEquipment,
+  equipmentSpellPowerBonus,
+  equipmentHandLimitBonus,
+  equipmentWinGold,
+  equipmentResourceRoundMaterials,
+  equipEquipment
+} from "./anime-equipment";
+export {
+  ANIME_EQUIPMENT_DEFINITIONS,
+  ANIME_EQUIPMENT_ART_PLACEHOLDERS,
+  EQUIPMENT_IDS,
+  EQUIPMENT_SLOT_GLYPH,
+  EQUIPMENT_SHOP_SALES,
+  EQUIPMENT_SHOP_LOCATION_IDS,
+  getEquipmentDefinition,
+  listEquipmentDefinitions,
+  equipmentImage,
+  type EquipmentDefinition
+} from "@/data/anime/equipment";
+export {
   carveFieldOverride,
   getFieldOverrideDefinition,
   listFieldOverrideDefinitions,
@@ -645,6 +668,7 @@ export type {
   ActiveEffectModifier,
   ActiveEffectState,
   AbilityClass,
+  AnimeEquipmentSlot,
   AdventureReward,
   AdventureState,
   AstrologersState,

@@ -9,6 +9,8 @@
  * their object rows.
  */
 
+import type { AnimeModOptions } from "@/engine/state";
+
 /** Tile groups that may host an override (matches MapTileState.group). */
 export type FieldOverrideTileGroup =
   | "starting"
@@ -33,6 +35,14 @@ export type FieldOverrideDefinition = {
   /** Optional secondary flavor label (e.g. Vietnamese). */
   nameVi?: string;
   package: FieldOverridePackage;
+  /**
+   * Optional anime-module gate (§3.13). A kind with `requiresModule` set is
+   * listed for pools / palette ONLY when that module is on — the caller passes a
+   * `moduleEnabled` predicate to {@link listFieldOverrideDefinitions}. Without a
+   * predicate a gated kind is EXCLUDED (so it never leaks into an ungated
+   * listing). Kinds WITHOUT `requiresModule` (the 11 base kinds) are unaffected.
+   */
+  requiresModule?: keyof AnimeModOptions;
   tileGroups: FieldOverrideTileGroup[];
   terrain: "land" | "water" | "any";
   /** Optional neutral guard difficulty (1–7) stamped on carve. */
@@ -79,6 +89,13 @@ export function listFieldOverrideDefinitions(filter?: {
   implementedOnly?: boolean;
   /** When set, only kinds whose package is allowed by this predicate. */
   packageAllowed?: (pkg: FieldOverridePackage) => boolean;
+  /**
+   * Anime-module gate (§3.13): a kind carrying `requiresModule` is included ONLY
+   * when this predicate returns true for that module. Without the predicate a
+   * gated kind is EXCLUDED (safe default — an ungated listing never surfaces it).
+   * Kinds with no `requiresModule` ignore this entirely.
+   */
+  moduleEnabled?: (module: keyof AnimeModOptions) => boolean;
 }): FieldOverrideDefinition[] {
   const packages = filter?.package
     ? Array.isArray(filter.package)
@@ -93,6 +110,11 @@ export function listFieldOverrideDefinitions(filter?: {
       return false;
     }
     if (filter?.packageAllowed && !filter.packageAllowed(def.package)) {
+      return false;
+    }
+    // Module gate: a kind requiring a module appears only when the caller both
+    // provides the predicate AND it returns true. No predicate ⇒ excluded.
+    if (def.requiresModule && !(filter?.moduleEnabled?.(def.requiresModule) ?? false)) {
       return false;
     }
     if (filter?.tileGroup && !def.tileGroups.includes(filter.tileGroup)) {

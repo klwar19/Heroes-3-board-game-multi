@@ -178,6 +178,39 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     implementationStatus: "implemented",
     summary: "Choose: a long soak for +1 morale, or a quick dip for +1 movement this turn.",
     glyph: "♨"
+  },
+
+  // -------------------------------------------------------------------------
+  // Equipment outfitters (§3.13). Gated on `anime.equipment` via
+  // `requiresModule` — with the module off they appear in NO pool / listing
+  // (CONTROL-pinned). No art yet: glyph + placeholder as above.
+  // -------------------------------------------------------------------------
+  /** Rèn Binh Các (Blacksmith) — sells the 3 xianxia items + the shared Satchel. */
+  ren_binh_cac: {
+    id: "ren_binh_cac",
+    locationId: "anime.ren_binh_cac",
+    name: "Rèn Binh Các (Blacksmith)",
+    nameVi: "Rèn Binh Các",
+    package: "anime-xianxia",
+    requiresModule: "equipment",
+    tileGroups: ["far", "near", "center"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Outfitter: buy an always-on xianxia weapon/armor/accessory (or the shared Supply Satchel).",
+    glyph: "⚒"
+  },
+  /** Adventurer Outfitter — sells the 3 isekai items + the shared Satchel. */
+  adventurer_outfitter: {
+    id: "adventurer_outfitter",
+    locationId: "anime.adventurer_outfitter",
+    name: "Adventurer Outfitter",
+    package: "anime-isekai",
+    requiresModule: "equipment",
+    tileGroups: ["far", "near", "center"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Outfitter: buy an always-on isekai weapon/armor/accessory (or the shared Supply Satchel).",
+    glyph: "🎒"
   }
 };
 
@@ -195,7 +228,9 @@ export const FIELD_OVERRIDE_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
   "dai_luyen_khi",
   "capsule_lab",
   "urahara_shop",
-  "onsen_ryokan"
+  "onsen_ryokan",
+  "ren_binh_cac",
+  "adventurer_outfitter"
 ]);
 
 // Register into the global catalog at module load.

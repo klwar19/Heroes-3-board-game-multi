@@ -266,5 +266,38 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
     },
     implementationStatus: "implemented",
     source: animeSource("onsen_ryokan")
+  },
+
+  /**
+   * Rèn Binh Các (*Blacksmith*, §3.13) — a xianxia equipment OUTFITTER.
+   * Revisitable (1 MP, no cube). Its shop menu is NOT a static interaction: the
+   * BUY_EQUIPMENT CHOOSE_ONE is built dynamically in `beginFieldVisit`'s
+   * shop-append seam (per-hero — already-owned items are dropped, affordability
+   * gated like PAY_TO), gated on `anime.equipment`. With the module off the
+   * field carves as an inert revisitable hex (no steps), so no interaction is
+   * declared here beyond NONE.
+   */
+  "anime.ren_binh_cac": {
+    id: "anime.ren_binh_cac",
+    name: "Rèn Binh Các (Blacksmith)",
+    category: "revisitable",
+    // engine: the equipment shop menu is appended at visit time (see
+    // EQUIPMENT_SHOP_SALES + beginFieldVisit); there is no static interaction.
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: animeSource("ren_binh_cac")
+  },
+
+  /**
+   * Adventurer Outfitter (§3.13) — an isekai equipment OUTFITTER. Same
+   * dynamic-shop mechanism as Rèn Binh Các (see the note there).
+   */
+  "anime.adventurer_outfitter": {
+    id: "anime.adventurer_outfitter",
+    name: "Adventurer Outfitter",
+    category: "revisitable",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: animeSource("adventurer_outfitter")
   }
 };

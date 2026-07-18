@@ -2,6 +2,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { astrologersCardDefinitions } from "@/data/cards/astrologers";
 import { eventCardDefinitions } from "@/data/cards/events";
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
+import { getEquipmentDefinition } from "@/data/anime/equipment";
 import {
   cardCanBoostPower,
   CULTIVATION_REALMS,
@@ -518,6 +519,14 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     case "HERO_GRADE_NODE_PICKED":
       return event.message;
+    case "EQUIPMENT_EQUIPPED": {
+      // Anime Equipment (§3.13): a public "equipped X" feed line.
+      const def = getEquipmentDefinition(event.equipmentId);
+      const name = def ? `${def.name.en} (${def.name.vi})` : event.equipmentId;
+      const replaced = event.replacedId ? getEquipmentDefinition(event.replacedId) : undefined;
+      const replacedNote = replaced ? `, replacing ${replaced.name.en}` : "";
+      return `${playerName(state, event.playerId)}'s hero equips ${name}${replacedNote}.`;
+    }
     case "HERO_SKILL_USED":
       return event.message;
     case "COMMANDER_CAST_USED":

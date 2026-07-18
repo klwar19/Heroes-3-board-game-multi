@@ -115,6 +115,8 @@ import {
   heroTrainAvailable,
   playerMainHeroInCombat
 } from "./anime-hero-grades";
+import { equipmentSpellPowerBonus } from "./anime-equipment";
+import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
 import { neutralCombatControllerId, neutralControlMustAttack } from "./neutral-control";
@@ -334,6 +336,10 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
   // same standing chokepoint so it stacks with Cultivation / Pandora and a
   // Power-scaling Specialty picks it up too.
   bonus += heroGradeSpellPowerBonus(state, playerId);
+  // Anime Equipment Cosmos Pendant (§3.13): +1 Power, folded at the same
+  // standing chokepoint so it STACKS observably with Cultivation Nascent Soul
+  // and the Arcane Insight grade (a caster with all three casts three tiers up).
+  bonus += equipmentSpellPowerBonus(state, playerId);
   return bonus;
 }
 
@@ -6749,7 +6755,10 @@ export function resolvedSpellPowerForStackItem(
     cultivationSpellPowerBonus(state, playerId) +
     // Anime Hero Grades Arcane Insight (tier 3, §3.11): +1 Power at the resolve
     // chokepoint too, agreeing with the standingSpellPower preview above.
-    heroGradeSpellPowerBonus(state, playerId);
+    heroGradeSpellPowerBonus(state, playerId) +
+    // Anime Equipment Cosmos Pendant (§3.13): +1 Power at the resolve chokepoint
+    // too, agreeing with the standingSpellPower preview above.
+    equipmentSpellPowerBonus(state, playerId);
   const doubled = base * getSchoolPowerMultiplier(state, playerId, card);
   return Math.max(0, doubled - enemySpellPowerReductionFor(state, playerId));
 }
@@ -7285,6 +7294,16 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
         !state.adventure?.pandoraDeck?.length
       ) {
         continue;
+      }
+      // Anime Equipment (§3.13): a BUY_EQUIPMENT option is offered only when the
+      // hero can afford it — gold-gated like a PAY_TO option. An unaffordable
+      // item drops out (the "poor hero → option absent" rule); "Leave" remains.
+      const buyStep = option.steps.find((inner) => inner.type === "BUY_EQUIPMENT");
+      if (buyStep && buyStep.type === "BUY_EQUIPMENT") {
+        const cost = getEquipmentDefinition(buyStep.equipmentId)?.cost ?? 0;
+        if (!playerHasResources(player, { gold: cost })) {
+          continue;
+        }
       }
       actions.push({
         label: option.label,
