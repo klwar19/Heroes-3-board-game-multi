@@ -2369,6 +2369,15 @@ export function tileDefHasOreMine(tileDefId: string): boolean {
   );
 }
 
+/** A Ⅱ–Ⅲ tile definition that carries a Mine of the given resource. */
+export function tileDefHasResourceMine(tileDefId: string, resource: "gold" | "valuables"): boolean {
+  return Boolean(
+    allTileDefinitions[tileDefId]?.fields.some(
+      (field) => field.location === "mine" && field.resource === resource
+    )
+  );
+}
+
 /** Whether any tile still in the undrawn Ⅱ–Ⅲ pool carries a Settlement. */
 function farTilePoolHasSettlement(state: GameState): boolean {
   return (state.adventure?.farTilePool ?? []).some(tileDefHasSettlement);
@@ -2381,7 +2390,7 @@ function farTilePoolHasSettlement(state: GameState): boolean {
  * sequence (mirrors combat dice `scriptedRolls`). Returns undefined if the pool
  * is empty.
  */
-function drawFarTileFromPool(state: GameState): string | undefined {
+function drawFarTileFromPool(state: GameState, prefer?: "gold" | "valuables"): string | undefined {
   const adventure = requireAdventure(state);
   const pool = adventure.farTilePool ?? (adventure.farTilePool = []);
   const scripted = adventure.farTileScriptedDraws;
@@ -2395,6 +2404,26 @@ function drawFarTileFromPool(state: GameState): string | undefined {
   }
   if (pool.length === 0) {
     return undefined;
+  }
+  // Blind Ⅱ–Ⅲ choice: restrict the random draw to tiles carrying the preferred
+  // Mine. When none is left the draw falls back to the whole pool, with a
+  // public note — the guarantee soft-fails, it never blocks the opening.
+  if (prefer) {
+    const matching = pool
+      .map((id, index) => ({ id, index }))
+      .filter((entry) => tileDefHasResourceMine(entry.id, prefer));
+    if (matching.length > 0) {
+      const random = createSeededRandom(`${state.seed}#far-tile-open#${eventSeedNumber(state)}#${pool.length}`);
+      const picked = matching[random.nextInt(0, matching.length - 1)];
+      const [id] = pool.splice(picked.index, 1);
+      return id;
+    }
+    appendEvent(state, {
+      type: "MAP_SECRET_FEATURE_FALLBACK",
+      feature: prefer === "gold" ? "gold_mine" : "valuables_mine",
+      group: "far",
+      message: `No Ⅱ–Ⅲ tile with a ${prefer === "gold" ? "gold" : "valuables"} Mine is left in the pool — drew a random tile instead.`
+    });
   }
   const random = createSeededRandom(`${state.seed}#far-tile-open#${eventSeedNumber(state)}#${pool.length}`);
   const [id] = pool.splice(random.nextInt(0, pool.length - 1), 1);
@@ -2605,6 +2634,42 @@ function beginFarTileFlip(
   if (supply[ctx.supplyIndex] !== UNOPENED_FAR_TILE) {
     throw new Error("That Ⅱ–Ⅲ tile is not in your supply.");
   }
+
+  // Blind Ⅱ–Ⅲ tile choice (optional rule): BEFORE any tile is drawn, the
+  // opener picks blindly — gold mine / valuables mine / no preference — and the
+  // draw is filtered by that pick. The reveal-a-tile-already-on-the-map path
+  // never comes through here (its identity is fixed). Scripted test draws skip
+  // the stage so every legacy flip test keeps its exact sequence.
+  if (
+    adventure.farTileBlindChoice &&
+    (adventure.farTilePool?.length ?? 0) > 0 &&
+    (adventure.farTileScriptedDraws?.length ?? 0) === 0
+  ) {
+    supply.splice(ctx.supplyIndex, 1);
+    const flip: NonNullable<typeof adventure.pendingFarTileFlip> = {
+      playerId: ctx.playerId,
+      ...(ctx.heroId ? { heroId: ctx.heroId } : {}),
+      centerRow: ctx.centerRow,
+      centerCol: ctx.centerCol,
+      via: ctx.via,
+      ...(ctx.observatoryFieldId ? { observatoryFieldId: ctx.observatoryFieldId } : {}),
+      returnPhase: state.phase,
+      openingIndex: (adventure.farTilesOpenedByPlayer?.[ctx.playerId] ?? 0) + 1,
+      candidate: "",
+      lastNonSettlement: null,
+      mineRerollUsed: false,
+      offerMode: "blind"
+    };
+    adventure.pendingFarTileFlip = flip;
+    openFarTileFlipChoice(
+      state,
+      flip,
+      "Blind Ⅱ–Ⅲ tile choice — before seeing any tile, what kind do you want? (The draw falls back to a random tile if none is left.)",
+      ["No preference — draw any tile", "Prefer a tile with a GOLD mine", "Prefer a tile with a VALUABLES mine"]
+    );
+    return;
+  }
+
   const candidate = drawFarTileFromPool(state);
   if (!candidate) {
     throw new Error("There are no Ⅱ–Ⅲ tiles left to open.");
@@ -2692,6 +2757,26 @@ export function resolveFarTileFlip(state: GameState, optionIndex: number): void 
   const flip = adventure.pendingFarTileFlip;
   if (!flip) {
     throw new Error("There is no Ⅱ–Ⅲ tile flip to resolve.");
+  }
+
+  if (flip.offerMode === "blind") {
+    // Blind Ⅱ–Ⅲ choice: [0] no preference, [1] prefer a GOLD mine, [2] prefer a
+    // VALUABLES mine. Only NOW is the tile drawn (filtered by the pick, falling
+    // back to a plain draw with a note); it then runs the normal offer chain
+    // (2nd-opening Settlement guarantee, ore-mine reroll) unchanged.
+    const prefer = optionIndex === 1 ? "gold" : optionIndex === 2 ? "valuables" : undefined;
+    const candidate = drawFarTileFromPool(state, prefer);
+    if (!candidate) {
+      // Unreachable in practice (the pool was non-empty when the choice opened
+      // and no other draw can happen while it is), but never strand the choice.
+      throw new Error("There are no Ⅱ–Ⅲ tiles left to open.");
+    }
+    flip.candidate = candidate;
+    state.pendingChoice = null;
+    state.phase = flip.returnPhase;
+    state.priorityPlayerId = null;
+    presentFarTileOffersOrFinalize(state);
+    return;
   }
 
   if (flip.offerMode === "pick") {

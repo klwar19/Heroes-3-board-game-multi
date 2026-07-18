@@ -507,6 +507,38 @@ describe("VP table rows", () => {
     expect(rowVp(state, "p2", "Flagged Mines / Settlements")).toBe(1);
   });
 
+  it("designer settlement bonus VP scores extra per controlled settlement (CONTROL: absent = no bonus)", () => {
+    const state = makeGame();
+    zeroBaseVp(state);
+    state.adventure!.mapPreset = { settlements: { vp: 4 } };
+    const addSettlement = (spaceId: string, flagOwnerId: PlayerId | null) => {
+      state.adventure!.fields[spaceId] = {
+        spaceId,
+        tileInstanceId: `t-${spaceId}`,
+        slot: 0,
+        location: "settlement",
+        difficulty: undefined,
+        blackCube: false,
+        flagOwnerId,
+        everFlagged: Boolean(flagOwnerId),
+        settlementResource: null
+      };
+    };
+    addSettlement("20,20", "p1");
+    addSettlement("21,21", "p1");
+    addSettlement("22,22", "p2");
+
+    // 2 settlements × 4 = 8 bonus VP for p1; 1 × 4 = 4 for p2 — ON TOP of the flat
+    // 1-VP-each row, which is unchanged.
+    expect(rowVp(state, "p1", "Settlement bonus VP")).toBe(8);
+    expect(rowVp(state, "p2", "Settlement bonus VP")).toBe(4);
+    expect(rowVp(state, "p1", "Flagged Mines / Settlements")).toBe(2);
+
+    // CONTROL: with no settlements config the bonus row disappears entirely.
+    state.adventure!.mapPreset = null;
+    expect(rowVp(state, "p1", "Settlement bonus VP")).toBe(0);
+  });
+
   it("artifacts = 1 VP per 2 (floor), counting both owned zones AND removed-from-play", () => {
     const state = makeGame();
     zeroBaseVp(state);

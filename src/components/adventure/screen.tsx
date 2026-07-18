@@ -6304,6 +6304,77 @@ function OptionRowLabel({
 }
 
 /**
+ * One-click "Enable all / Disable all" for a group of house rules — for players
+ * who run the same package every game. Enabling turns on every rule that CAN be
+ * enabled (dependency-blocked ones like Rolled Bank Sizes without Creature Banks
+ * are skipped); disabling turns the whole group off. All in a single dispatch.
+ */
+function GroupToggleAllButton({
+  rules,
+  groupLabel,
+  houseRules,
+  creatureBanksEnabled,
+  setHouseRules,
+  enableExtras
+}: {
+  rules: (typeof HOUSE_RULES)[number][];
+  groupLabel: string;
+  houseRules: Record<HouseRuleId, boolean>;
+  creatureBanksEnabled: boolean;
+  setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
+  /**
+   * Companion rules auto-enabled alongside the group (e.g. the Polish package
+   * pulls in "split-decks" — divided Artifact decks — which its Random
+   * Artifacts rule depends on). Dependency checks are evaluated AS IF the
+   * extras were already on, so a rule blocked only by an extra still enables
+   * in the same dispatch. Never touched by "Disable all".
+   */
+  enableExtras?: Partial<Record<HouseRuleId, boolean>>;
+}) {
+  // Evaluate dependencies as if the auto-enabled companions were already on
+  // (they land in the SAME dispatch), so e.g. Random Artifacts is not skipped
+  // just because Divided decks is currently off.
+  const withExtras = { ...houseRules, ...enableExtras };
+  const enableable = rules.filter(
+    (rule) => !houseRuleToggleDisabled(rule.id, withExtras, creatureBanksEnabled)
+  );
+  const allOn = enableable.length > 0 && enableable.every((rule) => houseRules[rule.id]);
+  const anyOn = rules.some((rule) => houseRules[rule.id]);
+  // Nothing to do only if the group cannot be enabled AND is already all-off.
+  const inert = enableable.length === 0 && !anyOn;
+  const apply = () => {
+    const updates: Partial<Record<HouseRuleId, boolean>> = {};
+    if (allOn) {
+      for (const rule of rules) updates[rule.id] = false;
+    } else {
+      for (const [id, value] of Object.entries(enableExtras ?? {})) {
+        if (value && !houseRules[id as HouseRuleId]) {
+          updates[id as HouseRuleId] = true;
+        }
+      }
+      for (const rule of enableable) updates[rule.id] = true;
+    }
+    setHouseRules(updates);
+  };
+  return (
+    <button
+      aria-label={`${allOn ? "Disable" : "Enable"} all ${groupLabel} rules`}
+      className={`houseRuleGroupToggleAll ${allOn ? "on" : "off"}`}
+      disabled={inert}
+      onClick={apply}
+      title={
+        allOn
+          ? `Turn every ${groupLabel} rule off`
+          : `Turn on every ${groupLabel} rule (dependency-blocked rules are skipped)`
+      }
+      type="button"
+    >
+      {allOn ? "Disable all" : "Enable all"}
+    </button>
+  );
+}
+
+/**
  * The individual house-rule toggles, rendered straight from the engine registry
  * so the menu and the engine never drift. Each button flips exactly one rule
  * (the reducer merges it); the value shown is the resolved effective boolean.
@@ -6314,11 +6385,13 @@ function OptionRowLabel({
 function HouseRulesSection({
   houseRules,
   creatureBanksEnabled,
-  setHouseRule
+  setHouseRule,
+  setHouseRules
 }: {
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
+  setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
 }) {
   // Default minimized — expand only when the host digs into the checklist.
   const [binhOpen, setBinhOpen] = useState(false);
@@ -6360,7 +6433,16 @@ function HouseRulesSection({
           }
           return (
             <div className="houseRuleGroup" key={category}>
-              <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+              <div className="houseRuleGroupHeader">
+                <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+                <GroupToggleAllButton
+                  creatureBanksEnabled={creatureBanksEnabled}
+                  groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
+                  houseRules={houseRules}
+                  rules={rules}
+                  setHouseRules={setHouseRules}
+                />
+              </div>
               <div className="houseRuleGrid">
                 {rules.map((rule) => (
                   <HouseRuleToggleButton
@@ -6397,6 +6479,17 @@ function HouseRulesSection({
         variant="polish"
       >
         <div className="houseRuleGroup polish">
+          <div className="houseRuleGroupHeader">
+            <span className="houseRuleGroupLabel">Whole Polish package</span>
+            <GroupToggleAllButton
+              creatureBanksEnabled={creatureBanksEnabled}
+              enableExtras={{ "split-decks": true }}
+              groupLabel="Polish"
+              houseRules={houseRules}
+              rules={polishRules}
+              setHouseRules={setHouseRules}
+            />
+          </div>
           <div className="houseRuleGrid">
             {polishRules.map((rule) => (
               <HouseRuleToggleButton
@@ -6483,11 +6576,27 @@ function GameOptionsPanel({
   // default). Flipping one sends just that id; the reducer merges it.
   const houseRules = resolveHouseRules(options);
   const setHouseRule = (id: HouseRuleId, value: boolean) => {
+    // Selecting ANY Polish rule also auto-selects "split-decks" (the divided
+    // Minor/Major/Relic Artifact decks): the Polish package assumes divided
+    // Artifacts (Random Artifacts outright depends on it). Turning a Polish
+    // rule OFF never touches it.
+    const polishAuto: Partial<Record<HouseRuleId, boolean>> =
+      value && id.startsWith("polish-") && !houseRules["split-decks"] ? { "split-decks": true } : {};
     if (id === "polish-spell-book" && value) {
-      send({ houseRules: { [id]: true }, spellBook: false });
+      send({ houseRules: { ...polishAuto, [id]: true }, spellBook: false });
       return;
     }
-    send({ houseRules: { [id]: value } });
+    send({ houseRules: { ...polishAuto, [id]: value } });
+  };
+  // Flip a whole group of rules in ONE dispatch (the reducer merges the ids).
+  // Enabling the Polish Spell Book also forces the stash Spell Book off, exactly
+  // like the single-rule toggle above.
+  const setHouseRules = (updates: Partial<Record<HouseRuleId, boolean>>) => {
+    const next: Partial<GameSetupOptions> = { houseRules: updates };
+    if (updates["polish-spell-book"]) {
+      next.spellBook = false;
+    }
+    send(next);
   };
   const tournamentRules = resolveTournamentRules(options);
   const tournamentAllOn = tournamentRulesAllOn(options);
@@ -7009,6 +7118,7 @@ function GameOptionsPanel({
         creatureBanksEnabled={options.creatureBanks ?? true}
         houseRules={houseRules}
         setHouseRule={setHouseRule}
+        setHouseRules={setHouseRules}
       />
       </div>
       ) : null}
@@ -7541,6 +7651,40 @@ function GameOptionsPanel({
               Each player may add this many new Ⅱ–Ⅲ tiles (default {scenarioDefault}). Set 0 when a designed map already
               places its own Ⅱ–Ⅲ tiles. The 2nd tile a player opens is guaranteed a Settlement (keep / reroll until one
               appears, then pick); any tile showing a resource Mine may be rerolled once.
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        const farTileOpeningOn = options.farTileOpening ?? true;
+        if (!farTileOpeningOn) {
+          return null;
+        }
+        const blindChoiceOn = options.farTileBlindChoice ?? false;
+        return (
+          <div className="optionRow">
+            <small title="Optional: before seeing any tile, a player opening a Ⅱ–Ⅲ tile blindly picks whether they want one with a gold mine, one with a valuables mine, or no preference — the random draw is filtered by that pick">
+              Blind Ⅱ–Ⅲ tile choice
+            </small>
+            <div className="optionButtons">
+              {([true, false] as const).map((on) => (
+                <button
+                  aria-pressed={blindChoiceOn === on}
+                  className={blindChoiceOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ farTileBlindChoice: on })}
+                  title={on ? "Blind tile-type pick before the draw" : "No blind pick — draw straight away"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {blindChoiceOn
+                ? "Opening a Ⅱ–Ⅲ tile first asks — blindly, before any tile is seen — for a GOLD-mine tile, a VALUABLES-mine tile, or no preference; the random draw then matches the pick (falling back to a plain draw, with a note, when none is left)."
+                : "Off: opening a Ⅱ–Ⅲ tile draws straight from the pool at random, exactly as usual."}
             </small>
           </div>
         );

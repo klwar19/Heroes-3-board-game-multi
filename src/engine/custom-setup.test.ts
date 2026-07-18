@@ -309,6 +309,29 @@ describe("map designer", () => {
     expect(exactTile?.tileDefId).toBe("N3");
   });
 
+  it("secretFeatures draws a face-down tile matching ANY allowed landmark (valuables OR gold)", () => {
+    const allowed = ["gold_mine", "valuables_mine"] as const;
+    // Across several seeds the slot must ALWAYS land on a tile carrying gold OR
+    // valuables — never stone or a settlement. (A single-feature draw is the
+    // strict subset this generalises; the CONTROL is the exact-pin test above.)
+    for (const seed of ["a", "b", "c", "d", "e"]) {
+      const state = createAdventureGameState({
+        seed: `feature-multi-${seed}`,
+        customMap: [{ row: 9, col: 4, group: "near", faceDown: true, secretFeatures: [...allowed] }]
+      });
+      const near = Object.values(state.adventure!.tiles).find(
+        (tile) => tile.centerRow === 9 && tile.centerCol === 4
+      )!;
+      const def = allTileDefinitions[near.tileDefId];
+      const hasGold = def?.fields.some((f) => f.location === "mine" && f.resource === "gold");
+      const hasValuables = def?.fields.some((f) => f.location === "mine" && f.resource === "valuables");
+      expect(
+        hasGold || hasValuables,
+        `tile ${near.tileDefId} should carry a gold or valuables mine (fields=${JSON.stringify(def?.fields)})`
+      ).toBe(true);
+    }
+  });
+
   it("secretFeature obelisk / settlement resolve from the matching pool", () => {
     const make = (feature: "obelisk" | "settlement" | "any_mine", seed: string) => {
       // Settlements are rare on Near tiles — use Far for settlement, Near for

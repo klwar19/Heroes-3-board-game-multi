@@ -86,7 +86,8 @@ import {
   revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
   sanitizeCustomWinConditions,
-  tileMatchesSecretFeature,
+  planAllowedSecretFeatures,
+  tileMatchesAnySecretFeature,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
   objectGuardSpec,
@@ -545,6 +546,8 @@ export type AdventureSetupOptions = {
   farTileOpening?: boolean;
   /** How many NEW Ⅱ–Ⅲ tiles each player may add to the map (default: the scenario's perPlayer, 2). */
   farTilesPerPlayer?: number;
+  /** Blind Ⅱ–Ⅲ tile choice (default off): pick gold/valuables/no-preference BEFORE the supply draw. */
+  farTileBlindChoice?: boolean;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -628,6 +631,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     manualGuardControl: false,
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
+    farTileBlindChoice: false,
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -1046,6 +1050,16 @@ export function validateCustomMapPlan(
       }
       if (plan.group === "starting") {
         problems.push(`Tile ${index + 1}: starting towns cannot carry a secret landmark.`);
+        return false;
+      }
+    }
+    if (plan.secretFeatures !== undefined) {
+      if (!Array.isArray(plan.secretFeatures) || !plan.secretFeatures.every(isSecretTileFeature)) {
+        problems.push(`Tile ${index + 1}: invalid secret-landmark set.`);
+        return false;
+      }
+      if (!plan.faceDown || plan.group === "starting") {
+        problems.push(`Tile ${index + 1}: a secret-landmark set only applies to a face-down non-starting slot.`);
         return false;
       }
     }
@@ -1832,13 +1846,14 @@ function takeRemainingGrailTiles(centerPool: string[], max: number): string[] {
  */
 function popTileMatchingFeature(
   pool: string[],
-  feature: SecretTileFeature,
+  feature: SecretTileFeature | SecretTileFeature[],
   options?: {
     group?: CustomMapTilePlan["group"];
     seaBand?: CustomMapTilePlan["seaBand"];
     subBand?: CustomMapTilePlan["subBand"];
   }
 ): string | undefined {
+  const features = Array.isArray(feature) ? feature : [feature];
   for (let index = pool.length - 1; index >= 0; index -= 1) {
     const tileDefId = pool[index];
     const def = allTileDefinitions[tileDefId];
@@ -1858,7 +1873,7 @@ function popTileMatchingFeature(
     ) {
       continue;
     }
-    if (tileMatchesSecretFeature(def, feature)) {
+    if (tileMatchesAnySecretFeature(def, features)) {
       return pool.splice(index, 1)[0];
     }
   }
@@ -2004,6 +2019,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.houseRules !== undefined ? { houseRules: options.houseRules } : {}),
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
+    ...(options.farTileBlindChoice !== undefined ? { farTileBlindChoice: options.farTileBlindChoice } : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {}),
     ...(options.customMapPreset !== undefined ? { customMapPreset: options.customMapPreset } : {})
   };
@@ -2153,6 +2169,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // The undrawn Ⅱ–Ⅲ pool and per-player opened counters are populated below,
     // once the scenario's own face-down Far tiles have been dealt from the pool.
     farTilePool: [],
+    // Blind Ⅱ–Ⅲ tile choice (default OFF): a supply opening first asks for a
+    // blind gold/valuables/no-preference pick that filters the random draw.
+    ...(setupOptions.farTileBlindChoice ? { farTileBlindChoice: true } : {}),
     farTilesOpenedByPlayer: {},
     pendingFarTileFlip: null,
     // Setup: the war machine cards sit face up in a shared supply pile.
@@ -2484,19 +2503,22 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         continue;
       }
       const center = { row: plan.row, col: plan.col };
+      // Folded allowed-landmark set (multi-value `secretFeatures` + the legacy
+      // single `secretFeature`). Empty = a pure-random draw.
+      const allowedFeatures = planAllowedSecretFeatures(plan);
       if (plan.faceDown) {
         let tileDefId: string | undefined;
         // Exact pin wins over a feature filter (legacy / advanced).
         if (plan.tileDefId && allTileDefinitions[plan.tileDefId]) {
           tileDefId = plan.tileDefId;
-        } else if (plan.secretFeature && isSecretTileFeature(plan.secretFeature)) {
-          // Feature secret: random remaining tile that has the landmark.
-          // Prefer the slot's own pool; fall back to an unfiltered draw so a
-          // starved pool never leaves an empty hole on the board — and note the
-          // table so players know the designer guarantee soft-failed.
+        } else if (allowedFeatures.length > 0) {
+          // Feature secret: random remaining tile that has ANY allowed landmark
+          // (e.g. valuables OR gold). Prefer the slot's own pool; fall back to an
+          // unfiltered draw so a starved pool never leaves an empty hole on the
+          // board — and note the table so players know the guarantee soft-failed.
           const pool = pools[plan.group];
           if (pool) {
-            tileDefId = popTileMatchingFeature(pool, plan.secretFeature, {
+            tileDefId = popTileMatchingFeature(pool, allowedFeatures, {
               group: plan.group,
               seaBand: plan.seaBand,
               subBand: plan.subBand
@@ -2513,9 +2535,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
             if (tileDefId) {
               appendEvent(state, {
                 type: "MAP_SECRET_FEATURE_FALLBACK",
-                feature: plan.secretFeature,
+                feature: allowedFeatures[0],
                 group: plan.group,
-                message: `Secret “${secretFeatureFullLabel(plan.secretFeature)}” could not be fulfilled on a ${plan.group} slot — no matching tile left in the pool. Drew a random tile instead.`
+                message: `Secret “${allowedFeatures.map(secretFeatureFullLabel).join(" / ")}” could not be fulfilled on a ${plan.group} slot — no matching tile left in the pool. Drew a random tile instead.`
               });
             }
           }
@@ -3053,6 +3075,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.pvpNeutralControl !== undefined) {
     setupOptions.pvpNeutralControl = options.pvpNeutralControl;
   }
+  if (options.farTileBlindChoice !== undefined) {
+    setupOptions.farTileBlindChoice = options.farTileBlindChoice;
+  }
   if (options.pvpNeutralControlMustAttack !== undefined) {
     setupOptions.pvpNeutralControlMustAttack = options.pvpNeutralControlMustAttack;
   }
@@ -3486,6 +3511,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     const count = Math.max(0, Math.min(MAX_FAR_TILES_PER_PLAYER, Math.floor(next.farTilesPerPlayer)));
     lobby.options.farTilesPerPlayer = count;
     changes.push(`new Ⅱ–Ⅲ tiles per player ${count}`);
+  }
+
+  if (next.farTileBlindChoice !== undefined) {
+    lobby.options.farTileBlindChoice = Boolean(next.farTileBlindChoice);
+    changes.push(`blind Ⅱ–Ⅲ tile choice ${lobby.options.farTileBlindChoice ? "on" : "off"}`);
   }
 
   if (next.scenarioId !== undefined) {
@@ -4748,6 +4778,7 @@ function buildAdventureFromLobby(state: GameState): void {
     unitExperience: lobby.options.unitExperience,
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,
+    farTileBlindChoice: lobby.options.farTileBlindChoice,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,

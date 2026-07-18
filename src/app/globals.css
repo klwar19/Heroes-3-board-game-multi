@@ -10275,6 +10275,21 @@ span.recruitThumb {
   margin-top: 6px;
 }
 
+.mapPresetObeliskAwards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.mapPresetObeliskAwards .mapPresetObeliskBonus {
+  margin-top: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(168, 137, 79, 0.22);
+  border-radius: 8px;
+  background: rgba(168, 137, 79, 0.06);
+}
+
 /* Board-game reward glyph tagging a preset row (Obelisk bonus kind, VP
    objective kind). Monochrome symbol glyphs, lightened to read on the dark
    editor panel. */
@@ -21146,6 +21161,15 @@ img.cardBack {
   gap: 6px;
 }
 
+.houseRuleGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid rgba(168, 137, 79, 0.2);
+  padding-bottom: 3px;
+}
+
 .houseRuleGroupLabel {
   display: flex;
   align-items: center;
@@ -21154,8 +21178,39 @@ img.cardBack {
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: #a8894f;
-  border-bottom: 1px solid rgba(168, 137, 79, 0.2);
-  padding-bottom: 3px;
+}
+
+.houseRuleGroupToggleAll {
+  flex: none;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #d8b874;
+  background: rgba(168, 137, 79, 0.12);
+  border: 1px solid rgba(168, 137, 79, 0.4);
+  border-radius: 6px;
+  padding: 2px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.houseRuleGroupToggleAll:hover:not(:disabled) {
+  background: rgba(168, 137, 79, 0.24);
+  border-color: rgba(168, 137, 79, 0.7);
+  color: #f0daa6;
+}
+
+.houseRuleGroupToggleAll.on {
+  color: #e0a0a0;
+  border-color: rgba(190, 110, 110, 0.45);
+  background: rgba(150, 70, 70, 0.14);
+}
+
+.houseRuleGroupToggleAll:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .recruitRow.unitStackRow {
@@ -21321,6 +21376,9 @@ img.cardBack {
 
 .houseRuleGroup.polish .houseRuleGroupLabel {
   color: #f2cf75;
+}
+
+.houseRuleGroup.polish .houseRuleGroupHeader {
   border-bottom-color: rgba(210, 62, 55, 0.42);
 }
 

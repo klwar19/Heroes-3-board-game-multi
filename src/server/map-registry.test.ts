@@ -363,6 +363,29 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[3].faceDown).toBe(true);
   });
 
+  it("preserves a face-down multi-landmark secretFeatures set (valuables OR gold), dropping garbage", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "mc",
+        tiles: [
+          // Kept: two valid ids on a face-down slot; duplicate + unknown dropped.
+          {
+            row: 1,
+            col: 1,
+            group: "near",
+            faceDown: true,
+            secretFeatures: ["valuables_mine", "gold_mine", "valuables_mine", "unicorn_ranch"]
+          },
+          // Face-up must never keep a secret-landmark set.
+          { row: 2, col: 2, group: "far", faceDown: false, tileDefId: "F1", secretFeatures: ["gold_mine"] }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0].secretFeatures).toEqual(["valuables_mine", "gold_mine"]);
+    expect(record!.tiles[1].secretFeatures).toBeUndefined();
+  });
+
   it("preserves a tile's Monolith/Whirlpool/Gate token through sanitization (malformed tokens dropped)", () => {
     // sanitizeTile rebuilds each plan from an allow-list, so the designed token
     // must be carried explicitly or a saved map silently loses its Monoliths/
