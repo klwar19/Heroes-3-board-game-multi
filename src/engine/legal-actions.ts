@@ -76,6 +76,7 @@ import {
 } from "./effects";
 import { commanderReviveCost } from "@/data/commanders";
 import {
+  commandersModuleEnabled,
   commanderCastAvailable,
   commanderCastOf,
   commanderCastPower,
@@ -2506,6 +2507,19 @@ function isOptionEffectPlayable(
     // valid map play (a no-op when the module is off).
     case "GAIN_GRADE_PROGRESS":
       return true;
+    case "BIND_COMMANDER_ARTIFACT": {
+      // WOG Commander Artifact bind (Task 2): a map-only play, offered only when
+      // the Commanders module is on, the player has a commander (a DEAD one is
+      // fine — it binds for later), and the target slot is EMPTY. An occupied slot
+      // hides the option (and the reducer rejects a forged play).
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      const commander = state.players[playerId]?.commander;
+      return (
+        commandersModuleEnabled(state) && Boolean(commander) && !commander?.artifacts?.[effect.slot]
+      );
+    }
     case "ENTER_PLAY":
       // The permanent-income side of a hybrid artifact (Eversmoking Ring of
       // Sulfur, Inexhaustible Cart of Ore): putting the card into play is

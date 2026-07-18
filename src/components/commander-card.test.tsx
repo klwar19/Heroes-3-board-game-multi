@@ -70,6 +70,30 @@ describe("CommanderStatsPanel", () => {
     expect(getByText(/every enemy neutral unit takes 1 damage/i)).toBeTruthy();
   });
 
+  it("shows the WOG Commander-Artifact slots — bound chip + empty placeholders", () => {
+    const { getByText, container } = render(
+      <CommanderStatsPanel
+        slug="paladin"
+        grades={{}}
+        showArtifactSlots
+        artifacts={{ weapon: "wog.artifact.axe_of_smashing" }}
+      />
+    );
+    // The section header and the bound weapon chip (icon + name + effect line).
+    expect(getByText(/COMMANDER ARTIFACTS/i)).toBeTruthy();
+    expect(getByText(/Axe of Smashing/)).toBeTruthy();
+    expect(container.querySelector('img[src*="/assets/wog/artifacts/icons/axe_of_smashing.webp"]')).toBeTruthy();
+    const weaponRow = container.querySelector('[data-artifact-slot="weapon"]');
+    expect(weaponRow?.getAttribute("data-artifact-bound")).toBe("true");
+    // The two unfilled slots render an empty placeholder.
+    expect(container.querySelector('[data-artifact-slot="armor"]')?.getAttribute("data-artifact-bound")).toBe("false");
+    expect(container.querySelector('[data-artifact-slot="trinket"]')?.getAttribute("data-artifact-bound")).toBe("false");
+    cleanup();
+    // Without the module flag the section is hidden entirely.
+    const off = render(<CommanderStatsPanel slug="paladin" grades={{}} />);
+    expect(off.queryByText(/COMMANDER ARTIFACTS/i)).toBeNull();
+  });
+
   it("explains an unlocked combination skill with its comm3 symbol and tag", () => {
     // Attack 3 + Magic 2 unlocks No Enemy Retaliation ([N]).
     const { getByText, container } = render(

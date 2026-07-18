@@ -1178,6 +1178,18 @@ export type EffectDefinition =
     }
   | {
       /**
+       * WOG Commander Artifacts (Task 2): bind this card PERMANENTLY onto the
+       * player's commander in the named slot (the card leaves the game). Map-only,
+       * own turn; legal only when the WOG Commanders module is on, the player has
+       * a commander, and the slot is EMPTY. The per-slot wired effect lives in
+       * COMMANDER_ARTIFACT_SPECS (src/data/wog/commander-artifacts.ts), keyed by
+       * the card id — this effect only names which slot to fill.
+       */
+      type: "BIND_COMMANDER_ARTIFACT";
+      slot: CommanderArtifactSlot;
+    }
+  | {
+      /**
        * Dimension Door: move the casting player's Hero up to `fields` fields,
        * ignoring obstacles and the fields in-between, then resolve the
        * destination normally (a guarded/enemy field starts combat). The Power
@@ -5111,6 +5123,28 @@ export type GameEvent =
       message: string;
     }
   | {
+      /** WOG Commander Artifact bound permanently into a slot (Task 2). */
+      id: string;
+      type: "COMMANDER_ARTIFACT_BOUND";
+      playerId: PlayerId;
+      commanderSlug: string;
+      cardId: CardId;
+      slot: CommanderArtifactSlot;
+      message: string;
+    }
+  | {
+      /**
+       * Helm of Immortality (Task 2): a commander that died this combat was
+       * revived FREE at combat end (death never persisted, no gold paid).
+       */
+      id: string;
+      type: "COMMANDER_ARTIFACT_SAVED";
+      playerId: PlayerId;
+      commanderSlug: string;
+      cardId: CardId;
+      message: string;
+    }
+  | {
       id: string;
       type: "MORALE_CHANGED";
       playerId: PlayerId;
@@ -6287,6 +6321,13 @@ export type RecruitDiscountVoucher = {
 export type CommanderStatKey = "attack" | "defense" | "health" | "damage" | "magic" | "speed";
 
 /**
+ * WOG Commander Artifact slots (Task 2). A commander wears at most one artifact
+ * per slot; binding is PERMANENT (no unbind, no swap, survives death/revive).
+ * Card ids and the wired per-slot effects live in src/data/wog/commander-artifacts.ts.
+ */
+export type CommanderArtifactSlot = "weapon" | "armor" | "trinket";
+
+/**
  * WOG Commanders module: the player's persistent, hero-attached battlefield
  * champion. Present only when the game was created with `wog.commanders` on.
  * Level is NOT stored — the commander always matches its main hero's level.
@@ -6312,6 +6353,16 @@ export type CommanderPlayerState = {
    * each combat. Absent = "attack". Ignored for every other commander.
    */
   stance?: "attack" | "defense";
+  /**
+   * WOG Commander Artifacts (Task 2, `wog.artifacts + wog.commanders`): the card
+   * id bound into each slot. PERMANENT once bound — never unbound/swapped, and
+   * untouched by death/revive. Optional field ⇒ legacy snapshots unaffected. The
+   * per-slot wired stat/ability effects are the single-source
+   * COMMANDER_ARTIFACT_SPECS registry in src/data/wog/commander-artifacts.ts,
+   * consumed by makeCommanderCombatUnit / commanderCastPower /
+   * finalizeCommandersAfterCombat.
+   */
+  artifacts?: Partial<Record<CommanderArtifactSlot, string>>;
 };
 
 export type PlayerState = {

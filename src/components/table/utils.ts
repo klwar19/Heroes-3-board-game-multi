@@ -536,6 +536,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "COMMANDER_REVIVED":
     case "COMMANDER_FIRST_AID_USED":
     case "COMMANDER_SPECIALTY_TRIGGERED":
+    case "COMMANDER_ARTIFACT_BOUND":
+    case "COMMANDER_ARTIFACT_SAVED":
       return `${playerName(state, event.playerId)} — ${event.message}`;
     case "MORALE_CHANGED": {
       const delta = `${event.amount > 0 ? "+" : ""}${event.amount}`;

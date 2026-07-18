@@ -2,6 +2,7 @@ import type { CardLibrary } from "@/engine/state";
 import { animeArtifactCards } from "@/data/anime/artifacts";
 import { animeHeroGradeCards } from "@/data/anime/hero-grades";
 import { wogArtifactCards } from "@/data/wog/artifacts";
+import { wogCommanderArtifactCards } from "@/data/wog/commander-artifacts";
 import { extraAbilityCards } from "./abilities-extra";
 import { adventureCards } from "./adventure";
 import { artifactCards } from "./artifacts";
@@ -27,6 +28,7 @@ export const cardLibrary: CardLibrary = {
   ...artifactCards,
   ...animeArtifactCards,
   ...wogArtifactCards,
+  ...wogCommanderArtifactCards,
   ...animeHeroGradeCards,
   ...extraAbilityCards,
   ...permanentCards,

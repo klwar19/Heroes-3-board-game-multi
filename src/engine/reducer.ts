@@ -304,6 +304,7 @@ import { commanderCastIsInstantReaction, commanderCastTierIndex } from "@/data/c
 import {
   applyCommanderRuneOnMove,
   applyCommanderRuneRitual,
+  commandersModuleEnabled,
   commanderCastCandidates,
   commanderCastOf,
   commanderCastPower,
@@ -13629,6 +13630,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (option?.requiresWarMachine && !getPermanentCardIds(state, action.playerId).includes(option.requiresWarMachine)) {
     throw new Error(`${option.label} requires that war machine in play.`);
   }
+  // WOG Commander Artifact bind (Task 2): legal only with the Commanders module
+  // on, a commander present (a DEAD commander is fine — it binds for later), and
+  // the target slot EMPTY. Checked BEFORE the card is moved so a forged play that
+  // fails here never removes the card. Permanent — there is no unbind path.
+  if (effect.type === "BIND_COMMANDER_ARTIFACT") {
+    const commander = state.players[action.playerId]?.commander;
+    if (!commandersModuleEnabled(state) || !commander) {
+      throw new Error("Commander artifacts need the WOG Commanders module and a commander.");
+    }
+    if (commander.artifacts?.[effect.slot]) {
+      throw new Error(`Your commander's ${effect.slot} slot is already filled.`);
+    }
+  }
   // An Empowered ability may always use its Expert side without a crown.
   if (
     mode === "expert" &&
@@ -14323,6 +14337,27 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // removeSelf, so the card leaves the game), and any future card can carry it.
     // No-op when the module is off (gainGradeProgress gates on it).
     gainGradeProgress(state, action.playerId, effect.amount, "card");
+  }
+
+  if (effect.type === "BIND_COMMANDER_ARTIFACT") {
+    // WOG Commander Artifact (Task 2): the card was already removed from the game
+    // by option.cost.removeSelf above; bind it PERMANENTLY into its slot on the
+    // commander (legality was validated pre-move). The commander's next combat
+    // unit reads the slot for its wired stat/ability effect. Never unbound.
+    const commander = state.players[action.playerId]?.commander;
+    if (commander) {
+      const artifacts = commander.artifacts ?? {};
+      artifacts[effect.slot] = action.cardId;
+      commander.artifacts = artifacts;
+      appendEvent(state, {
+        type: "COMMANDER_ARTIFACT_BOUND",
+        playerId: action.playerId,
+        commanderSlug: commander.slug,
+        cardId: action.cardId,
+        slot: effect.slot,
+        message: `binds ${card.name} to their commander's ${effect.slot} slot.`
+      });
+    }
   }
 
   if (effect.type === "GAIN_HERO_MOVEMENT") {

@@ -17,6 +17,7 @@ import {
   type CommanderGrades,
   type CommanderSlug
 } from "@/data/commanders";
+import { aggregateCommanderArtifactBonuses } from "@/data/wog/commander-artifacts";
 import { unitImmuneToParalysis } from "./active-effects";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
@@ -260,6 +261,12 @@ export function makeCommanderCombatUnit(
   // Sharpshooter combination skill (Attack+Speed): the commander fights as a
   // ranged unit — the combo has no ability tag, the TYPE is the mechanic.
   const canShoot = commanderUnlockedCombos(grades).some((combo) => combo.id === "can-shoot");
+  // WOG Commander Artifacts (Task 2): fold the flat stat bonuses (axe/shield/
+  // mail/boots) into the built unit beside the grade values, and append the
+  // ability ids (sword's Might die, ring's line-attack). Cast-Power (pendant)
+  // and free-revive (helm) are read at their own sites (commanderCastPower /
+  // finalizeCommandersAfterCombat). Empty for a commander with no artifacts.
+  const artifacts = aggregateCommanderArtifactBonuses(commander.artifacts);
   return {
     id: commanderUnitId(player.id),
     controllerId: player.id,
@@ -268,17 +275,17 @@ export function makeCommanderCombatUnit(
     variant: "few",
     grade: "gold",
     type: canShoot ? "ranged" : "ground",
-    attack: commanderStatValue("attack", grades.attack) + (stanceStat === "attack" ? 1 : 0),
-    defense: commanderStatValue("defense", grades.defense) + (stanceStat === "defense" ? 1 : 0),
-    maxHealth: commanderStatValue("health", grades.health),
+    attack: commanderStatValue("attack", grades.attack) + (stanceStat === "attack" ? 1 : 0) + artifacts.attack,
+    defense: commanderStatValue("defense", grades.defense) + (stanceStat === "defense" ? 1 : 0) + artifacts.defense,
+    maxHealth: commanderStatValue("health", grades.health) + artifacts.health,
     damage: 0,
-    initiative: commanderStatValue("speed", grades.speed),
+    initiative: commanderStatValue("speed", grades.speed) + artifacts.initiative,
     position,
     activatedThisRound: false,
     movedThisActivation: false,
     retaliatedThisRound: false,
     defenseToken: false,
-    abilities: commanderAbilityIds(commander),
+    abilities: [...commanderAbilityIds(commander), ...artifacts.abilityIds],
     commanderSlug: commander.slug,
     // Grade snapshot for the UI (inspect/zoom render the dynamic card face
     // from it). Grades cannot change mid-combat, so the copy stays true.
@@ -342,10 +349,19 @@ export function commanderCastOf(unit: CombatUnitState): CommanderCastDefinition 
   return slug ? (commanderDefinitions[slug]?.cast ?? null) : null;
 }
 
-/** Power the cast resolves at (from the owner's Magic grade). */
+/**
+ * Power the cast resolves at (from the owner's Magic grade), plus the WOG
+ * Commander-Artifact Pendant of Sorcery bonus (+1 when bound). Folded here — the
+ * ONE cast-Power site — so the higher effective Power lifts the cast tier and
+ * every Power-laddered amount/target gate, while the Magic-grade ability package
+ * (spell ward, ongoing immunity) still keys off the raw grade.
+ */
 export function commanderCastPower(state: GameState, unit: CombatUnitState): number {
   const commander = state.players[unit.controllerId]?.commander;
-  return commander ? commanderPowerOf(commander) : 0;
+  if (!commander) {
+    return 0;
+  }
+  return commanderPowerOf(commander) + aggregateCommanderArtifactBonuses(commander.artifacts).castPowerBonus;
 }
 
 /** Runes the cast costs at the current Power (0 for every non-rune cast). */
@@ -728,7 +744,25 @@ export function finalizeCommandersAfterCombat(state: GameState): Set<PlayerId> {
       continue;
     }
     if (unit.damage >= unit.maxHealth) {
-      if (!player.commander.dead) {
+      // WOG Commander Artifact — Helm of Immortality (relic): a commander that
+      // died this combat is NOT marked dead. Death never persists, no revive gold
+      // is spent, and it re-enters the next combat at full health. Without the
+      // helm death persists exactly as before (the CONTROL).
+      const helm = aggregateCommanderArtifactBonuses(player.commander.artifacts);
+      if (helm.reviveFree) {
+        // The commander is alive AFTER this combat (helm revives it), so it
+        // counts as a survivor — a helm-saved Hierophant still tends the wounded.
+        survivors.add(unit.controllerId);
+        if (!player.commander.dead) {
+          appendEvent(state, {
+            type: "COMMANDER_ARTIFACT_SAVED",
+            playerId: unit.controllerId,
+            commanderSlug: unit.commanderSlug,
+            cardId: player.commander.artifacts?.armor ?? "wog.artifact.helm_of_immortality",
+            message: `${unit.cardName} would have fallen, but the Helm of Immortality revives it — free.`
+          });
+        }
+      } else if (!player.commander.dead) {
         player.commander.dead = true;
         appendEvent(state, {
           type: "COMMANDER_DIED",

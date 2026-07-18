@@ -12,6 +12,7 @@ import { moraleCardPolarity } from "@/data/cards/morale";
 import { animeXianxiaArtifactCardIds } from "@/data/anime/artifacts";
 import { animeNeverDeckedCardIds } from "@/data/anime/hero-grades";
 import { wogArtifactCardIds } from "@/data/wog/artifacts";
+import { wogCommanderArtifactCardIds } from "@/data/wog/commander-artifacts";
 import { coreHeroDefinitions } from "@/data/factions/core";
 
 /**
@@ -56,6 +57,7 @@ describe("deck coverage", () => {
   const moduleGated = new Set<string>([
     ...animeXianxiaArtifactCardIds,
     ...wogArtifactCardIds,
+    ...wogCommanderArtifactCardIds,
     ...animeNeverDeckedCardIds
   ]);
 

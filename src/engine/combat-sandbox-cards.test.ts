@@ -5,6 +5,7 @@ import { moraleCardPolarity } from "@/data/cards/morale";
 import { animeXianxiaArtifactCardIds } from "@/data/anime/artifacts";
 import { animeNeverDeckedCardIds } from "@/data/anime/hero-grades";
 import { wogArtifactCardIds } from "@/data/wog/artifacts";
+import { wogCommanderArtifactCardIds } from "@/data/wog/commander-artifacts";
 import { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 import { applyAction, createInitialGameState, getLegalActions, getRuleset, SHARED_DECK_IDS } from "./index";
 import type { SharedDeckId } from "./index";
@@ -41,6 +42,7 @@ const startingOnly = new Set(STARTING_ONLY_SPELLS);
 const moduleGated = new Set<string>([
   ...animeXianxiaArtifactCardIds,
   ...wogArtifactCardIds,
+  ...wogCommanderArtifactCardIds,
   ...animeNeverDeckedCardIds
 ]);
 

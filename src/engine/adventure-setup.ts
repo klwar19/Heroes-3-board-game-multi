@@ -19,6 +19,12 @@ import {
   wogArtifactMinorIds,
   wogArtifactRelicIds
 } from "@/data/wog/artifacts";
+import {
+  wogCommanderArtifactCardIds,
+  wogCommanderArtifactMajorIds,
+  wogCommanderArtifactMinorIds,
+  wogCommanderArtifactRelicIds
+} from "@/data/wog/commander-artifacts";
 import { pandoraDeckCardIds } from "@/data/cards/pandora";
 import { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 import { spellDeckBinhBasic, spellDeckBinhExpert, spellDeckLegacy } from "@/data/cards/spells";
@@ -709,7 +715,8 @@ function makeSharedDecks(
   tournament: { banDiplomacy: boolean; banHourglass: boolean },
   polishSpellBook = false,
   xianxiaArtifacts = false,
-  wogArtifacts = false
+  wogArtifacts = false,
+  wogCommanderArtifacts = false
 ): Record<string, DeckState> {
   const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
     ban ? cardIds.filter((id) => id !== removeId) : cardIds;
@@ -727,6 +734,12 @@ function makeSharedDecks(
   // artifacts, so every downstream tier/uniqueness gate applies unchanged.
   const withWog = (base: string[], wogIds: readonly string[]): string[] =>
     wogArtifacts ? [...base, ...wogIds] : base;
+
+  // WOG COMMANDER artifacts (Task 2) join the shared Artifact deck(s) ONLY when
+  // `wog.enabled && wog.artifacts && wog.commanders` — they are dead cards
+  // without a commander. Same per-tier contract as the hero-artifact join above.
+  const withWogCommander = (base: string[], wogIds: readonly string[]): string[] =>
+    wogCommanderArtifacts ? [...base, ...wogIds] : base;
 
   const make = (id: string, cardIds: string[]): DeckState => {
     // First-round rule (as printed): each shared deck flips its top card face-up
@@ -755,10 +768,10 @@ function makeSharedDecks(
       ),
       "artifacts-minor": make(
         "artifacts-minor",
-        without(withWog(withAnime(artifactDeckBinhMinor, animeXianxiaArtifactMinorIds), wogArtifactMinorIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
+        without(withWogCommander(withWog(withAnime(artifactDeckBinhMinor, animeXianxiaArtifactMinorIds), wogArtifactMinorIds), wogCommanderArtifactMinorIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
       ),
-      "artifacts-major": make("artifacts-major", withWog(withAnime(artifactDeckBinhMajor, animeXianxiaArtifactMajorIds), wogArtifactMajorIds)),
-      "artifacts-relic": make("artifacts-relic", withWog(withAnime(artifactDeckBinhRelic, animeXianxiaArtifactRelicIds), wogArtifactRelicIds))
+      "artifacts-major": make("artifacts-major", withWogCommander(withWog(withAnime(artifactDeckBinhMajor, animeXianxiaArtifactMajorIds), wogArtifactMajorIds), wogCommanderArtifactMajorIds)),
+      "artifacts-relic": make("artifacts-relic", withWogCommander(withWog(withAnime(artifactDeckBinhRelic, animeXianxiaArtifactRelicIds), wogArtifactRelicIds), wogCommanderArtifactRelicIds))
     };
   }
 
@@ -770,7 +783,7 @@ function makeSharedDecks(
     ),
     artifacts: make(
       "artifacts",
-      without(withWog(withAnime(artifactDeckLegacy, animeXianxiaArtifactCardIds), wogArtifactCardIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
+      without(withWogCommander(withWog(withAnime(artifactDeckLegacy, animeXianxiaArtifactCardIds), wogArtifactCardIds), wogCommanderArtifactCardIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
     )
   };
 }
@@ -2232,7 +2245,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         tournamentRules,
         polishSpellBookOn,
         animeModuleEnabled({ anime }, "xianxiaArtifacts"),
-        wog.enabled && wog.artifacts
+        wog.enabled && wog.artifacts,
+        wog.enabled && wog.artifacts && wog.commanders
       ),
       ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
