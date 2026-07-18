@@ -142,6 +142,53 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
   },
 
   // -------------------------------------------------------------------------
+  // Wave 3 — xianxia (WOG-parity objects; the same reusable machinery the Wake
+  // of Gods New Objects gained — escalating re-guard fights via
+  // `handleEscalatingFightVisit`, the commander-artifact reward helper). Real
+  // 512×512 hex art shipped; no glyph placeholder (art wins).
+  // -------------------------------------------------------------------------
+  /**
+   * Thí Luyện Tháp (Trial Tower) — a xianxia escalating repeatable fight, twin
+   * of WoG's Adventure Cave (both drive the shared `handleEscalatingFightVisit`).
+   * Guarded Ⅰ on first entry; each win re-guards one higher (Ⅰ→Ⅱ→Ⅲ) and pays a
+   * xianxia reward ladder (win 1: +2 gold, win 2: Search (1) Spell, win 3: +1
+   * hero XP — plus, with `anime.cultivation` on, one FEWER die on the hero's next
+   * Heavenly Tribulation, and with the WOG Commanders module on a commander
+   * artifact). Cleared after the 3rd win. Engine flow in `beginFieldVisit`.
+   */
+  thi_luyen_thap: {
+    id: "thi_luyen_thap",
+    locationId: "anime.thi_luyen_thap",
+    name: "Thí Luyện Tháp (Trial Tower)",
+    nameVi: "Thí Luyện Tháp",
+    package: "anime-xianxia",
+    tileGroups: ["far", "near", "center"],
+    terrain: "land",
+    guard: 1,
+    implementationStatus: "implemented",
+    summary:
+      "Escalating fight (guarded Ⅰ→Ⅱ→Ⅲ). Each win pays a bigger reward (+2 gold, then Search (1) Spell, then +1 hero XP) and re-guards one higher; cleared after the 3rd win.",
+    image: art("thi_luyen_thap")
+  },
+  /**
+   * Linh Điền (Spirit Field) — a xianxia herb terrace. Revisitable: pay 1 gold,
+   * then CHOOSE +1 building materials (harvest herbs) or +1 valuables (harvest
+   * spirit-fruit). A pure static PAY_TO + CHOOSE_ONE (no new engine arm).
+   */
+  linh_dien: {
+    id: "linh_dien",
+    locationId: "anime.linh_dien",
+    name: "Linh Điền (Spirit Field)",
+    nameVi: "Linh Điền",
+    package: "anime-xianxia",
+    tileGroups: ["far", "near"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Pay 1 gold to harvest: choose +1 building materials or +1 valuables. Revisitable.",
+    image: art("linh_dien")
+  },
+
+  // -------------------------------------------------------------------------
   // Wave 2 — isekai (first `anime-isekai` package content; source display names
   // per the plan's naming decision). Real hex art shipped 2026-07, glyph fallback kept.
   // -------------------------------------------------------------------------
@@ -183,6 +230,50 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     summary: "Choose: a long soak for +1 morale, or a quick dip for +1 movement this turn.",
     glyph: "♨",
     image: art("onsen_ryokan")
+  },
+
+  // -------------------------------------------------------------------------
+  // Wave 3 — isekai (WOG-parity objects). Real 512×512 hex art (no placeholder).
+  // -------------------------------------------------------------------------
+  /**
+   * Dungeon Gate (isekai) — a "gamble fight" delve. Guarded Ⅰ; the Attack die
+   * decides the loot on the WIN (a rolled-guard-then-reward flow cannot be
+   * expressed in one visit — the combat resolves OUTSIDE the visit — so the
+   * board-adaptation fixes the guard at Ⅰ and lets the die pick the reward tier:
+   * +1 → a Treasure die, 0 → +2 gold, −1 → +1 morale). Visitable (one delve, then
+   * a Black Cube). Static ATTACK_DIE_TABLE interaction.
+   */
+  dungeon_gate: {
+    id: "dungeon_gate",
+    locationId: "anime.dungeon_gate",
+    name: "Dungeon Gate",
+    package: "anime-isekai",
+    tileGroups: ["far", "near", "center"],
+    terrain: "land",
+    guard: 1,
+    implementationStatus: "implemented",
+    summary:
+      "Guarded (Ⅰ). On the win, gamble the Attack die for loot: +1 → a Treasure die, 0 → +2 gold, −1 → +1 morale.",
+    image: art("dungeon_gate")
+  },
+  /**
+   * Guild Bounty Board (isekai) — an adventurers' guild notice board.
+   * Revisitable CHOOSE_ONE: claim the standing bounty (+2 gold — once per player
+   * per game, a per-player latch on the field) or pay 2 gold to Search (1) the
+   * Ability deck (repeatable). Dynamic menu (the bounty arm is absent once this
+   * player has claimed it).
+   */
+  guild_bounty: {
+    id: "guild_bounty",
+    locationId: "anime.guild_bounty",
+    name: "Guild Bounty Board",
+    package: "anime-isekai",
+    tileGroups: ["far", "near", "center"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary:
+      "Claim the bounty for +2 gold (once per player, ever), or pay 2 gold to Search (1) the Ability deck.",
+    image: art("guild_bounty")
   },
 
   // -------------------------------------------------------------------------
@@ -235,6 +326,15 @@ export const FIELD_OVERRIDE_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
   // on-register — the earlier files were mismatched stock-like scenes). Any
   // FUTURE art-less kind must be declared here, keeping the glyph fallback.
 ]);
+
+/**
+ * The location ids the anime kinds carve. Used by the engine to gate the
+ * dynamic-menu anime objects (Guild Bounty Board) in `beginFieldVisit`, mirroring
+ * `WOG_FIELD_OVERRIDE_LOCATION_IDS`.
+ */
+export const ANIME_FIELD_OVERRIDE_LOCATION_IDS: ReadonlySet<string> = new Set(
+  Object.values(ANIME_FIELD_OVERRIDE_DEFINITIONS).map((def) => def.locationId)
+);
 
 // Register into the global catalog at module load.
 registerFieldOverrideDefinitions(ANIME_FIELD_OVERRIDE_DEFINITIONS);

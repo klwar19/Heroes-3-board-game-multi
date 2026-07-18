@@ -139,14 +139,19 @@ describe("Anime content package registration", () => {
         // wave 2 (§5.5 / §5.8)
         "thuong_hoi_tram",
         "song_bac_quan",
-        "dai_luyen_khi"
+        "dai_luyen_khi",
+        // wave 3 (WOG-parity)
+        "thi_luyen_thap",
+        "linh_dien"
       ].sort()
     );
     const isekai = listFieldOverrideDefinitions({
       package: "anime-isekai",
       implementedOnly: true
     }).map((d) => d.id);
-    expect(isekai.sort()).toEqual(["capsule_lab", "urahara_shop", "onsen_ryokan"].sort());
+    expect(isekai.sort()).toEqual(
+      ["capsule_lab", "urahara_shop", "onsen_ryokan", "dungeon_gate", "guild_bounty"].sort()
+    );
 
     // Every kind's location id resolves to an implemented location.
     for (const def of Object.values(ANIME_FIELD_OVERRIDE_DEFINITIONS)) {

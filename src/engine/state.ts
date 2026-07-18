@@ -7790,6 +7790,21 @@ export type MapFieldState = {
    * reward; at 3 the cave is cleared for good.
    */
   wogCaveWins?: number;
+  /**
+   * Anime Field Override — Thí Luyện Tháp / Trial Tower (`anime.thi_luyen_thap`):
+   * how many times this tower's guard has been beaten (0/absent → the fresh Ⅰ
+   * guard). The anime twin of {@link wogCaveWins} — both drive the shared
+   * `handleEscalatingFightVisit`, kept as SEPARATE field props for serialization
+   * compatibility (a mid-game snapshot of either object keeps its own count).
+   */
+  animeTrialWins?: number;
+  /**
+   * Anime Field Override — Guild Bounty Board (`anime.guild_bounty`): the player
+   * ids that have already claimed this board's once-ever +2-gold bounty. A
+   * per-player latch (mirrors {@link extraFlagOwnerIds}); the bounty arm is
+   * absent for a player already in this set. Absent === nobody has claimed it.
+   */
+  animeBountyClaimedBy?: PlayerId[];
   /** @deprecated Pre-centerHex snapshots only; the grant path reads both. */
   viiReward?: ViiFieldReward;
   /** @deprecated Pre-centerHex snapshots only; the grant path reads both. */
@@ -8086,6 +8101,16 @@ export type VisitStep =
        * everyone from now on. Auto-resolves (no player input).
        */
       type: "SMASH_WOG_SKULL";
+    }
+  | {
+      /**
+       * Anime Field Override — Guild Bounty Board (`anime.guild_bounty`): record
+       * that the visiting player has claimed the once-ever bounty (push into the
+       * visited field's `animeBountyClaimedBy` latch). Paired after the
+       * GAIN_RESOURCES that pays the bounty, mirroring SMASH_WOG_SKULL.
+       * Auto-resolves (no player input).
+       */
+      type: "MARK_ANIME_BOUNTY_CLAIMED";
     }
   | { type: "GAIN_MOVEMENT"; amount: number }
   | {
@@ -10845,6 +10870,15 @@ export type HeroState = {
    * Absent === never attempted.
    */
   tribulationAttemptedRound?: number;
+  /**
+   * Anime Cultivation × Trial Tower (`anime.thi_luyen_thap`): a banked "one
+   * fewer die" relief for this hero's NEXT Heavenly Tribulation. Granted by the
+   * Trial Tower's 3rd win when `anime.cultivation` is on (a xianxia cross-object
+   * boon); consumed (reset to 0) on the next Tribulation attempt, which then
+   * rolls `max(1, 3 − relief)` dice instead of 3. Optional/lazily stamped —
+   * absent === no relief, so a module-off table never carries it.
+   */
+  nextTribulationDiceRelief?: number;
   /**
    * Anime Hero Grades (anime.heroGrades, §3.11): accumulated Merit (grade
    * progress). Crossing a threshold (3 / 7 / 12) auto-grades the hero up and
