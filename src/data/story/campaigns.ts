@@ -472,7 +472,9 @@ const CONVERGENCE: Campaign = {
 // Registry.
 // -----------------------------------------------------------------------------
 
-export const CAMPAIGNS: readonly Campaign[] = [JIANGHU, BIN, ERATHIA, CONVERGENCE];
+// Restoration of Erathia leads the hub — the classic board-game campaign is the
+// front door to Story mode; the anime/crossover campaigns follow.
+export const CAMPAIGNS: readonly Campaign[] = [ERATHIA, JIANGHU, BIN, CONVERGENCE];
 
 export const campaignRegistry: Record<string, Campaign> = Object.fromEntries(
   CAMPAIGNS.map((campaign) => [campaign.id, campaign])
