@@ -125,6 +125,166 @@ function installIdentitySvgPolyfills(): () => void {
   };
 }
 
+describe("MapDesigner — tier-band outline colours + legend", () => {
+  // Outline colours mirror the creature-tier ladder (Ⅰ bronze, Ⅱ–Ⅲ silver,
+  // Ⅳ–Ⅴ gold, Ⅵ–Ⅶ azure) with a light-blue sea and the kept purple underground.
+  // jsdom leaves an inline SVG `stroke` hex un-normalised, so we assert the raw hex.
+  const BAND_STROKE: Record<string, string> = {
+    starting: "#b46f33",
+    far: "#c7ccd6",
+    near: "#e7b73c",
+    center: "#3f7fd6",
+    sea: "#8fd8ff",
+    subterranean: "#7a5a9e"
+  };
+
+  // jsdom normalises the CSS `background` shorthand hex to `rgb(...)`.
+  const hexToRgb = (hex: string): string => {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+  };
+
+  it("strokes each tile's outline in its creature-tier band colour", () => {
+    const town = { row: 10, col: 10 };
+    const spots = tileLatticeNeighbors(town);
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: spots[0].row, col: spots[0].col, group: "far", faceDown: true },
+      { row: spots[1].row, col: spots[1].col, group: "near", faceDown: true },
+      { row: spots[2].row, col: spots[2].col, group: "center", faceDown: true },
+      { row: spots[3].row, col: spots[3].col, group: "sea", faceDown: true, seaBand: "iv-v" },
+      { row: spots[4].row, col: spots[4].col, group: "subterranean", faceDown: true, subBand: "iv-v" }
+    ]);
+    for (const [group, hex] of Object.entries(BAND_STROKE)) {
+      const outline = container.querySelector(
+        `.designerFlowerOutline[data-band-group="${group}"]`
+      ) as SVGElement | null;
+      expect(outline, `outline path for the ${group} band`).toBeTruthy();
+      expect((outline as SVGElement).style.stroke, `${group} band stroke`).toBe(hex);
+    }
+  });
+
+  it("a selected tile's outline override beats its band colour (control)", () => {
+    const town = { row: 10, col: 10 };
+    const spots = tileLatticeNeighbors(town);
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: spots[0].row, col: spots[0].col, group: "near", faceDown: true }
+    ]);
+    const before = container.querySelector(
+      '.designerFlowerOutline[data-band-group="near"]'
+    ) as SVGElement;
+    // CONTROL: unselected, it wears the Near band gold.
+    expect(before.style.stroke, "unselected Near band gold").toBe("#e7b73c");
+    // Select plan 1 (its click opens the docked options panel).
+    openTilePopover(container, 1);
+    const after = container.querySelector(
+      '.designerFlowerOutline[data-band-group="near"]'
+    ) as SVGElement;
+    expect(after.classList.contains("selected"), "selected modifier applied").toBe(true);
+    expect(after.style.stroke, "selection gold overrides the band gold").toBe("#ffd766");
+  });
+
+  it("renders a band-colour legend with the six group swatches + labels", () => {
+    const container = renderDesigner([{ row: 10, col: 10, group: "starting", faceDown: false }]);
+    const legend = container.querySelector(".designerBandLegend");
+    expect(legend, "band legend present").toBeTruthy();
+    const items = legend!.querySelectorAll(".designerBandLegendItem");
+    expect(items.length, "one entry per DesignGroup").toBe(6);
+    const seen: string[] = [];
+    for (const item of Array.from(items)) {
+      const group = item.getAttribute("data-band-group")!;
+      seen.push(group);
+      const swatch = item.querySelector(".designerBandLegendSwatch") as HTMLElement;
+      expect(swatch.style.background, `${group} swatch colour`).toBe(hexToRgb(BAND_STROKE[group]));
+    }
+    expect(seen, "legend order weakest → sea/underground").toEqual([
+      "starting",
+      "far",
+      "near",
+      "center",
+      "sea",
+      "subterranean"
+    ]);
+    // Labels read from the shared engine band-label map (TILE_GROUP_BAND_LABELS).
+    for (const label of ["Ⅰ", "Ⅱ–Ⅲ", "Ⅳ–Ⅴ", "Ⅵ–Ⅶ", "Sea", "Underground"]) {
+      expect(legend!.textContent, `legend shows ${label}`).toContain(label);
+    }
+  });
+});
+
+describe("MapDesigner — clustered pre-board chrome", () => {
+  const loneTown = [{ row: 10, col: 10, group: "starting" as const, faceDown: false }];
+
+  it("renders three labeled clusters in order (Tiles → Objects & teleporters → Tools)", () => {
+    const container = renderDesigner(loneTown);
+    const clusters = [...container.querySelectorAll(".designerCluster")] as HTMLElement[];
+    expect(clusters.length, "three clusters").toBe(3);
+    const labels = clusters.map((c) => c.querySelector(".designerClusterLabel")?.textContent?.trim());
+    expect(labels, "labels in reading order").toEqual(["Tiles", "Objects & teleporters", "Tools"]);
+
+    const [tiles, objects, tools] = clusters;
+    // The tile palette lives in the Tiles cluster.
+    expect(tiles.querySelector(".designerPalette"), "tile palette in Tiles cluster").toBeTruthy();
+    // Placeable objects / teleporters live in the Objects cluster.
+    expect(objects.querySelector(".designerObjectPalette"), "object palette in Objects cluster").toBeTruthy();
+    expect(
+      objects.querySelector('.designerObjectButton[data-gate-pair="1"]'),
+      "a Teleport Gate button in Objects cluster"
+    ).toBeTruthy();
+    // Mode-arming tools live in the Tools cluster.
+    expect(tools.querySelector(".designerObjectButton.borderPaint"), "border tool in Tools cluster").toBeTruthy();
+    expect(
+      tools.querySelector('[data-testid="designer-mod-panel-toggle"]'),
+      "Mod toggle in Tools cluster"
+    ).toBeTruthy();
+    // …and are NOT cross-contaminated between clusters.
+    expect(objects.querySelector(".designerObjectButton.borderPaint"), "border tool NOT in Objects cluster").toBeNull();
+    expect(tools.querySelector(".designerObjectPalette"), "object palette NOT in Tools cluster").toBeNull();
+    expect(tiles.querySelector(".designerObjectPalette"), "object palette NOT in Tiles cluster").toBeNull();
+  });
+
+  it("integrates the band legend inside the Tiles cluster (same card as the palette)", () => {
+    const container = renderDesigner(loneTown);
+    const tiles = container.querySelector(".designerClusterTiles");
+    expect(tiles, "Tiles cluster present").toBeTruthy();
+    const body = tiles!.querySelector(".designerClusterBody");
+    expect(body!.querySelector(".designerPalette"), "palette in the Tiles card body").toBeTruthy();
+    expect(body!.querySelector(".designerBandLegend"), "band legend in the same Tiles card body").toBeTruthy();
+    // The legend no longer floats between the two palettes at the designer root.
+    expect(
+      [...container.children].some((c) => c.classList.contains("designerBandLegend")),
+      "band legend is not a bare mapDesigner child"
+    ).toBe(false);
+  });
+
+  it("collapses the walkthrough help into a closed <details> that keeps the verbatim text", () => {
+    const container = renderDesigner(loneTown);
+    const help = container.querySelector("details.designerHelp") as HTMLDetailsElement | null;
+    expect(help, "help details present").toBeTruthy();
+    expect(help!.open, "collapsed by default").toBe(false);
+    expect(help!.querySelector(".designerHelpSummary")?.textContent).toContain("How the designer works");
+    // The original walkthrough is preserved verbatim inside .optionHint.
+    const hint = help!.querySelector(".optionHint");
+    expect(hint, "optionHint kept inside the details").toBeTruthy();
+    expect(hint!.textContent).toContain("Drag a tile from the palette onto the board");
+    expect(hint!.textContent).toContain("Subterranean Gate");
+  });
+
+  it("arming the border tool flips its button to the armed styling class (behavior, not decoration)", () => {
+    const container = renderDesigner(loneTown);
+    const btn = container.querySelector(".designerObjectButton.borderPaint") as HTMLElement;
+    expect(btn, "border tool button present").toBeTruthy();
+    // It carries the shared tool-button class that gives the outlined tool look.
+    expect(btn.classList.contains("designerToolButton"), "border tool tagged designerToolButton").toBe(true);
+    expect(btn.classList.contains("armed"), "not armed at rest").toBe(false);
+    fireEvent.click(btn);
+    expect(btn.classList.contains("armed"), "armed after click").toBe(true);
+    fireEvent.click(btn);
+    expect(btn.classList.contains("armed"), "disarmed after a second click").toBe(false);
+  });
+});
+
 describe("MapDesigner — center Ⅶ-field designation", () => {
   it("the center-tile popover Ⅶ picker writes the plan's viiField", () => {
     const onChange = vi.fn();
@@ -180,54 +340,88 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     expect(art).toBe(true);
   });
 
-  it("edits the capture reward + Victory Points once an objective is forced, and writes them to the plan", () => {
+  it("edits the center-hex reward + Victory Points on a PLAIN center (no objective forced) and writes centerHex", () => {
     const onChange = vi.fn();
     const container = renderDesigner(
       [
         { row: 8, col: 2, group: "starting", faceDown: false },
-        { row: 9, col: 4, group: "center", faceDown: true, viiField: "grail" }
+        { row: 9, col: 4, group: "center", faceDown: true }
       ],
       onChange
     );
     const popover = openTilePopover(container, 1);
 
-    // A reward amount writes viiFieldReward on the plan…
-    fireEvent.change(within(popover as HTMLElement).getByLabelText(/reward Gold/i), { target: { value: "7" } });
+    // The editor is visible WITHOUT any objective designation (the old build
+    // hid it behind one — "click on tile VI-VII … BUT NOTHING THERE").
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex Gold/i), { target: { value: "7" } });
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.arrayContaining([expect.objectContaining({ viiField: "grail", viiFieldReward: { gold: 7 } })])
+      expect.arrayContaining([expect.objectContaining({ centerHex: { reward: { gold: 7 } } })])
     );
 
-    // …and a Victory-Points value writes viiFieldVp.
+    // A flexible reward kind (Treasure dice) rides the same reward object…
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex Treasure dice/i), {
+      target: { value: "2" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ centerHex: { reward: { treasureDice: 2 } } })])
+    );
+
+    // …and a Victory-Points value writes centerHex.vp.
     fireEvent.change(within(popover as HTMLElement).getByLabelText(/victory points/i), { target: { value: "4" } });
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.arrayContaining([expect.objectContaining({ viiField: "grail", viiFieldVp: 4 })])
+      expect.arrayContaining([expect.objectContaining({ centerHex: { vp: 4 } })])
     );
   });
 
-  it("hides the reward / VP editor on Default, and picking Default clears any existing bonus", () => {
-    // With no objective forced, there is no bonus editor at all.
-    const plain = renderDesigner([
-      { row: 8, col: 2, group: "starting", faceDown: false },
-      { row: 9, col: 4, group: "center", faceDown: true }
-    ]);
-    expect(openTilePopover(plain, 1).querySelector(".popoverViiBonus"), "no bonus editor without an objective").toBeNull();
-
-    // Picking "Default" on a designated slot clears viiField AND its bonus.
+  it("edits the center-hex guard: a level chip writes {level}, Exact army collects unit ids", () => {
     const onChange = vi.fn();
     const container = renderDesigner(
       [
         { row: 8, col: 2, group: "starting", faceDown: false },
-        { row: 9, col: 4, group: "center", faceDown: true, viiField: "grail", viiFieldReward: { gold: 5 }, viiFieldVp: 3 }
+        { row: 9, col: 4, group: "center", faceDown: true }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1);
+
+    // A level chip writes a level guard.
+    fireEvent.click(within(popover as HTMLElement).getByRole("button", { name: "Ⅲ" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { level: 3 } } })])
+    );
+
+    // Exact army mode + adding a unit writes a units guard.
+    const armed = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true, centerHex: { guard: { units: [] } } }
+      ],
+      onChange
+    );
+    const armyPopover = openTilePopover(armed, 1);
+    fireEvent.change(within(armyPopover as HTMLElement).getByLabelText(/Add a guard unit/i), {
+      target: { value: "neutral.cyclopes" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { units: ["neutral.cyclopes"] } } })])
+    );
+  });
+
+  it("picking Default clears only the objective — the center-hex customization stays", () => {
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true, viiField: "grail", centerHex: { reward: { gold: 5 }, vp: 3 } }
       ],
       onChange
     );
     const popover = openTilePopover(container, 1);
     fireEvent.click(within(popover as HTMLElement).getByRole("button", { name: "Default" }));
-    const lastPlans = onChange.mock.calls.at(-1)![0] as { group: string; viiField?: unknown; viiFieldReward?: unknown; viiFieldVp?: unknown }[];
+    const lastPlans = onChange.mock.calls.at(-1)![0] as { group: string; viiField?: unknown; centerHex?: unknown }[];
     const center = lastPlans.find((plan) => plan.group === "center")!;
     expect(center.viiField).toBeUndefined();
-    expect(center.viiFieldReward).toBeUndefined();
-    expect(center.viiFieldVp).toBeUndefined();
+    expect(center.centerHex, "customization survives an objective reset").toEqual({ reward: { gold: 5 }, vp: 3 });
   });
 
   it("stamps a badge on a center slot with a Ⅶ designation", () => {
@@ -1878,22 +2072,30 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(latest[0]).toMatchObject({ kind: "gate", pair: 3, placement: { type: "standalone" } });
   });
 
-  it("arms a Monolith and writes a TILE TOKEN (no pair) on a face-up tile", () => {
+  it("the plain Monolith is RETIRED from the palette; a one-way ENTRANCE writes a TILE TOKEN instead", () => {
     let tiles: CustomMapTilePlan[] = faceUpMap.map((plan) => ({ ...plan }));
     const onChange = vi.fn((next: CustomMapTilePlan[]) => {
       tiles = next;
     });
     const container = renderWithObjects(faceUpMap, [], () => {}, onChange);
 
+    // The old ⛩ Monolith button is gone — every two-way teleporter is a
+    // colored Teleport Gate now (legacy saved Monoliths still work in game).
     const monolithButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
-      /Monolith/i.test(btn.textContent ?? "")
+      /^⛩ Monolith$/.test(btn.textContent ?? "")
     );
-    fireEvent.click(monolithButton!);
+    expect(monolithButton, "no plain Monolith palette button").toBeUndefined();
+
+    // A one-way entrance token placement writes the token WITH its color pair.
+    const entranceButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
+      /Entrance/i.test(btn.textContent ?? "")
+    );
+    fireEvent.click(entranceButton!);
     fireEvent.click(container.querySelector(".designerObjectSlot.tileSlot")!);
 
     const f1 = tiles.find((plan) => plan.tileDefId === "F1");
-    expect(f1?.tokens?.[0]?.kind).toBe("monolith");
-    expect(f1?.tokens?.[0]).not.toHaveProperty("pair");
+    expect(f1?.tokens?.[0]?.kind).toBe("oneway_entrance");
+    expect(f1?.tokens?.[0]?.pair).toBe(1);
   });
 
   it("a tile already carrying a token offers only its FREE hexes (multi-token: same slot never stacks)", () => {
@@ -1921,25 +2123,75 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(gate?.slot).not.toBe(0);
   });
 
-  it("arms a Monolith and places a STANDALONE object on an off-tile hex", () => {
+  it("arms a red Teleport Gate and places a STANDALONE object on an off-tile hex", () => {
     let latest: CustomMapObject[] = [];
     const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
       latest = next;
     });
     const container = renderWithObjects(faceUpMap, [], onObjectsChange);
 
-    const monolithButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
-      /Monolith/i.test(btn.textContent ?? "")
-    );
-    fireEvent.click(monolithButton!);
+    fireEvent.click(container.querySelector('.designerObjectButton[data-gate-pair="1"]')!);
 
     const standalone = container.querySelector(".designerObjectSlot.standalone");
     expect(standalone, "an off-tile standalone candidate is offered").toBeTruthy();
     fireEvent.click(standalone!);
 
     expect(latest).toHaveLength(1);
-    expect(latest[0].kind).toBe("monolith");
+    expect(latest[0].kind).toBe("gate");
+    expect(latest[0].pair).toBe(1);
     expect(latest[0].placement.type).toBe("standalone");
+  });
+
+  it("outposts: Garrison places standalone-only (no tile targets); a Tent defaults to color 1", () => {
+    let latest: CustomMapObject[] = [];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, [], onObjectsChange);
+
+    const garrisonButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
+      /Garrison/i.test(btn.textContent ?? "")
+    );
+    fireEvent.click(garrisonButton!);
+    // Standalone candidates only — an outpost never offers a tile slot.
+    expect(container.querySelectorAll(".designerObjectSlot.tileSlot").length).toBe(0);
+    const standalone = container.querySelector(".designerObjectSlot.standalone");
+    expect(standalone, "off-tile candidates offered").toBeTruthy();
+    fireEvent.click(standalone!);
+    expect(latest[0]).toMatchObject({ kind: "garrison", placement: { type: "standalone" } });
+
+    // A placed Keymaster's Tent defaults to color 1 (red).
+    const tentContainer = renderWithObjects(faceUpMap, [], onObjectsChange);
+    const tentButton = [...tentContainer.querySelectorAll(".designerObjectButton")].find((btn) =>
+      /Keymaster/i.test(btn.textContent ?? "")
+    );
+    fireEvent.click(tentButton!);
+    fireEvent.click(tentContainer.querySelector(".designerObjectSlot.standalone")!);
+    expect(latest[0]).toMatchObject({ kind: "keymaster_tent", pair: 1 });
+  });
+
+  it("the outpost panel: a Tent's COLOR chips rewrite its pair; a Barrier offers NO guard editor", () => {
+    let latest: CustomMapObject[] = [
+      { kind: "keymaster_tent", pair: 1, placement: { type: "standalone", row: far.row + 2, col: far.col + 2 } }
+    ];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(container.querySelector(".designerObjectToken.standalone")!);
+    fireEvent.click(within(container).getByRole("button", { name: /Blue/ }));
+    expect(latest[0].pair).toBe(2);
+
+    // A Barrier's panel: color chips yes, guard editor no.
+    const barrier = renderWithObjects(
+      faceUpMap,
+      [{ kind: "barrier", pair: 3, placement: { type: "standalone", row: far.row + 2, col: far.col + 2 } }],
+      onObjectsChange
+    );
+    fireEvent.click(barrier.querySelector(".designerObjectToken.standalone")!);
+    const panel = barrier.querySelector(".designerObjectPopover") as HTMLElement;
+    expect(within(panel).queryByRole("button", { name: "Exact army" }), "no guard editor on a Barrier").toBeNull();
+    expect(panel.textContent).toMatch(/never guarded/i);
   });
 
   it("the guard picker writes the guard onto a placed object; the pair badge shows its number", () => {
@@ -1954,12 +2206,37 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     // The board token shows the pair number (colour-blind-safe label).
     expect(container.querySelector(".designerObjectPair")?.textContent).toBe("2");
 
-    // Click the token → its popover opens with a guard picker.
+    // Click the token → its popover opens with the shared guard editor.
     fireEvent.click(container.querySelector(".designerObjectToken")!);
-    const guardChip = container.querySelector('.popoverGuardChip[data-guard="3"]');
+    const guardChip = [...container.querySelectorAll(".popoverGuardChip")].find((chip) => chip.textContent === "Ⅲ");
     expect(guardChip, "guard Ⅲ chip present").toBeTruthy();
     fireEvent.click(guardChip!);
-    expect(latest[0].guard).toBe(3);
+    expect(latest[0].guard).toEqual({ level: 3 });
+  });
+
+  it("an EXACT-ARMY guard on a placed object collects unit ids and badges the derived difficulty", () => {
+    let latest: CustomMapObject[] = [
+      { kind: "monolith", placement: { type: "standalone", row: far.row + 2, col: far.col + 2 } }
+    ];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(container.querySelector(".designerObjectToken.standalone")!);
+    fireEvent.click(within(container).getByRole("button", { name: "Exact army" }));
+    expect(latest[0].guard).toEqual({ units: [] });
+
+    // Re-render with the armed army mode and add a unit through the picker.
+    const rerendered = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(rerendered.querySelector(".designerObjectToken.standalone")!);
+    fireEvent.change(within(rerendered).getByLabelText(/Add a guard unit/i), {
+      target: { value: "neutral.cyclopes" }
+    });
+    expect(latest[0].guard).toEqual({ units: ["neutral.cyclopes"] });
+
+    // The board badge shows the tier-derived difficulty (gold Cyclopes → Ⅱ).
+    const badged = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    expect(badged.querySelector(".designerObjectGuard")?.textContent).toBe("Ⅱ");
   });
 
   it("renders incomplete-pair and detached-hex warnings", () => {
@@ -1977,7 +2254,7 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(alerts.some((text) => /touches no tile|unreachable/i.test(text)), "detached warning").toBe(true);
   });
 
-  it("legacy per-tile Monolith token UI is untouched (both systems coexist)", () => {
+  it("a LEGACY saved Monolith token still renders and stays editable (retired from the palette only)", () => {
     // A legacy `token` on the tile plan still renders its art…
     const container = renderWithObjects(
       [
@@ -1987,11 +2264,10 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
       []
     );
     expect(container.querySelector('image[href*="tokens/monolith"]'), "legacy token art still renders").toBeTruthy();
-    // …while the Objects palette also offers its own Monolith button.
-    expect(
-      [...container.querySelectorAll(".designerObjectButton")].some((btn) => /Monolith/i.test(btn.textContent ?? "")),
-      "objects palette present alongside the legacy token"
-    ).toBe(true);
+    // …and clicking it still opens its token panel (edit/remove keep working) —
+    // only NEW plain Monoliths can no longer be placed.
+    fireEvent.click(container.querySelector(".designerMapToken")!);
+    expect(container.querySelector(".designerTokenPopover"), "legacy token panel opens").toBeTruthy();
   });
 });
 
@@ -2811,6 +3087,91 @@ describe("MapDesigner — fixed starting-tile orientation (lockRotation)", () =>
   });
 });
 
+describe("MapDesigner — per-tile UNDERGROUND designation", () => {
+  const town = { row: 10, col: 10 };
+  const far = tileLatticeNeighbors(town)[0]; // touches the town (Surface) tile
+
+  it("the far-tile popover toggles plan.underground, reveals the gate-link section, and offers NO toggle on a starting tile", () => {
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    let container = renderDesigner(latest, onChange);
+
+    // The far popover offers the Underground toggle (unpressed); a plain far tile
+    // shows NO gate-link section (it is Surface).
+    const popover = openTilePopover(container, 1);
+    const toggle = popover.querySelector('[data-testid="underground-toggle"]');
+    expect(toggle, "far popover offers the underground toggle").toBeTruthy();
+    expect(toggle!.getAttribute("aria-pressed")).toBe("false");
+    expect(popover.querySelector(".popoverGateLinks"), "no gate links while Surface").toBeNull();
+
+    // Flip it ON → onChange carries underground:true, keeping the band group.
+    fireEvent.click(toggle!);
+    expect(latest[1]).toMatchObject({ group: "far", underground: true });
+
+    // Re-render flagged: the toggle reads pressed AND the cavern gate-link
+    // section now appears (the tile is on the Underground layer).
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    const popover2 = openTilePopover(container, 1);
+    expect(popover2.querySelector('[data-testid="underground-toggle"]')!.getAttribute("aria-pressed")).toBe("true");
+    expect(popover2.querySelector(".popoverGateLinks"), "gate-link section appears once flagged").toBeTruthy();
+    // …and the touching town Surface tile is offered as a link target.
+    expect(popover2.querySelector(".popoverGateLinkToggle"), "a Surface link target is listed").toBeTruthy();
+
+    // Toggling OFF round-trips back to no flag.
+    fireEvent.click(popover2.querySelector('[data-testid="underground-toggle"]')!);
+    expect(latest[1].underground).toBeUndefined();
+
+    // CONTROL: a STARTING seat tile never offers the underground toggle.
+    cleanup();
+    container = renderDesigner(latest, onChange);
+    const startPopover = openTilePopover(container, 0);
+    expect(startPopover.querySelector('[data-testid="underground-toggle"]'), "no underground toggle on a seat tile").toBeNull();
+  });
+
+  it("a flagged tile's outline flips to the Underground layer (data-underground) while keeping its band group", () => {
+    const flagged = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true, underground: true }
+    ]);
+    const outline = flagged.querySelector('.designerFlowerOutline[data-band-group="far"]');
+    expect(outline, "the far tile keeps its band group attribute").toBeTruthy();
+    expect(outline!.getAttribute("data-underground"), "the outline is marked underground").toBe("true");
+
+    // CONTROL: the same plain far tile carries no underground marker.
+    cleanup();
+    const plain = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: far.row, col: far.col, group: "far", faceDown: true }
+    ]);
+    const plainOutline = plain.querySelector('.designerFlowerOutline[data-band-group="far"]');
+    expect(plainOutline!.getAttribute("data-underground"), "no marker on a Surface tile").toBeNull();
+  });
+
+  it("a flagged tile far from any Surface tile draws the unreachable red ring (CONTROL: a plain far tile does not)", () => {
+    const isolated = { row: town.row + 14, col: town.col + 9 };
+    const flagged = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: isolated.row, col: isolated.col, group: "far", faceDown: true, underground: true }
+    ]);
+    // No gate can form → the unreachable warning fires for the flagged tile too.
+    expect(flagged.querySelector(".designerFlowerOutline.cavernUnreachable"), "red ring on an unreachable flagged tile").toBeTruthy();
+
+    // CONTROL: the same tile without the flag is a plain Surface far tile — no ring.
+    cleanup();
+    const plain = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: isolated.row, col: isolated.col, group: "far", faceDown: true }
+    ]);
+    expect(plain.querySelector(".designerFlowerOutline.cavernUnreachable"), "no ring on a Surface tile").toBeNull();
+  });
+});
+
 describe("MapDesigner — docked inspector panel", () => {
   const town = { row: 10, col: 10 };
   const far = tileLatticeNeighbors(town)[1];
@@ -3151,27 +3512,25 @@ describe("MapDesigner — on-board per-edge yellow border painting", () => {
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1" }
     ]);
-    const monolith = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
-      /Monolith/i.test(btn.textContent ?? "")
-    ) as HTMLElement;
+    const gate = container.querySelector('.designerObjectButton[data-gate-pair="1"]') as HTMLElement;
     const paint = paintButton(container);
 
-    // Arm the Monolith → its candidate cells glow, no edge zones yet.
-    fireEvent.click(monolith);
-    expect(monolith.getAttribute("aria-pressed")).toBe("true");
+    // Arm the red Teleport Gate → its candidate cells glow, no edge zones yet.
+    fireEvent.click(gate);
+    expect(gate.getAttribute("aria-pressed")).toBe("true");
     expect(container.querySelectorAll(".designerObjectSlot").length).toBeGreaterThan(0);
     expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBe(0);
 
-    // Arm border paint → the Monolith disarms (no candidate cells), edge zones appear.
+    // Arm border paint → the gate disarms (no candidate cells), edge zones appear.
     fireEvent.click(paint);
     expect(paint.getAttribute("aria-pressed")).toBe("true");
-    expect(monolith.getAttribute("aria-pressed"), "monolith disarmed").toBe("false");
+    expect(gate.getAttribute("aria-pressed"), "gate disarmed").toBe("false");
     expect(container.querySelectorAll(".designerObjectSlot").length, "no object candidates").toBe(0);
     expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBeGreaterThan(0);
 
-    // Arm the Monolith again → border paint disarms, zones vanish.
-    fireEvent.click(monolith);
-    expect(monolith.getAttribute("aria-pressed")).toBe("true");
+    // Arm the gate again → border paint disarms, zones vanish.
+    fireEvent.click(gate);
+    expect(gate.getAttribute("aria-pressed")).toBe("true");
     expect(paint.getAttribute("aria-pressed"), "border paint disarmed").toBe("false");
     expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBe(0);
   });
@@ -3188,6 +3547,55 @@ describe("MapDesigner — on-board per-edge yellow border painting", () => {
       .map((zone) => Number(zone.getAttribute("data-edge-code")))
       .find((code) => code !== 0)!;
     expect(zoneByCode(container, otherCode).classList.contains("active")).toBe(false);
+  });
+
+  it("the brush works on a STANDALONE object hex too: zones appear, a click writes/erases object.borderEdges", () => {
+    // A detached object far from the tile → its 6 edges are all object-owned.
+    const objectHex = { row: town.row + 12, col: town.col + 12 };
+    let latest: CustomMapObject[] = [
+      { kind: "monolith", placement: { type: "standalone", row: objectHex.row, col: objectHex.col } }
+    ];
+    function Harness() {
+      const [objectsState, setObjects] = useState(latest);
+      return (
+        <MapDesigner
+          scenarioId="skirmish"
+          customMap={[{ row: town.row, col: town.col, group: "starting", faceDown: false }]}
+          onChange={() => {}}
+          objects={objectsState}
+          onObjectsChange={(next) => {
+            latest = next;
+            setObjects(next);
+          }}
+        />
+      );
+    }
+    const { container } = render(<Harness />);
+    fireEvent.click(paintButton(container));
+
+    // 30 tile zones + 6 object-hex zones (nothing shared: the object is detached).
+    expect(container.querySelectorAll(".designerBorderEdgeZone").length).toBe(36);
+    const objectZone = container.querySelector(
+      ".designerBorderEdgeZone[data-border-index='object-0'][data-edge-code='3']"
+    ) as HTMLElement;
+    expect(objectZone, "object-owned edge zone present").toBeTruthy();
+
+    // Draw: the direction lands on the OBJECT (not any tile plan).
+    fireEvent.pointerDown(objectZone, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(objectZone, { pointerId: 1 });
+    expect(latest[0].borderEdges).toEqual([3]);
+
+    // The zone re-renders active, and the bold border line is drawn on the hex.
+    const activeZone = container.querySelector(
+      ".designerBorderEdgeZone[data-border-index='object-0'][data-edge-code='3']"
+    ) as HTMLElement;
+    expect(activeZone.classList.contains("active")).toBe(true);
+    expect(container.querySelector(".designerBorderLine"), "border line rendered").toBeTruthy();
+
+    // Erase: clicking again clears it from the object.
+    fireEvent.pointerDown(activeZone, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(activeZone, { pointerId: 1 });
+    expect(latest[0].borderEdges).toBeUndefined();
   });
 });
 
@@ -3390,26 +3798,27 @@ describe("MapDesigner — canonical teleporter conversions (token ⇄ standalone
     }
   });
 
-  it("a Gate TILE TOKEN renders the MONOLITH art href plus its color ring + pair badge (designer)", () => {
+  it("a Gate TILE TOKEN renders its PER-COLOR portal art plus the color ring + pair badge (designer)", () => {
     const container = renderConv([
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       { row: far.row, col: far.col, group: "far", faceDown: false, tileDefId: "F1", token: { kind: "gate", pair: 2, slot: monoSlots[0] } }
     ]);
     const gateToken = container.querySelector(".designerMapToken.gate")!;
     expect(gateToken, "gate token rendered").toBeTruthy();
-    // A colored Gate is a colored Monolith: the monolith artwork is present…
-    expect(gateToken.querySelector('image[href*="tokens/monolith"]'), "monolith art href").toBeTruthy();
+    // The Teleport Gate wears its own per-color portal (blue for pair 2) — the
+    // tinted-monolith rendering is retired…
+    expect(gateToken.querySelector('image[href*="tokens/teleport-gate-blue"]'), "blue portal art href").toBeTruthy();
     // …plus a readable pair badge naming its color.
     expect(gateToken.querySelector(".designerMapTokenPair")?.textContent).toBe("2");
   });
 
-  it("a Gate STANDALONE object also renders the MONOLITH art + pair badge (designer)", () => {
+  it("a Gate STANDALONE object also renders the per-color portal art + pair badge (designer)", () => {
     const container = renderConv(
       [{ row: town.row, col: town.col, group: "starting", faceDown: false }],
       [{ kind: "gate", pair: 4, placement: { type: "standalone", row: town.row - 3, col: town.col } }]
     );
     const gate = container.querySelector(".designerObjectToken.gate")!;
-    expect(gate.querySelector('image[href*="tokens/monolith"]'), "standalone gate uses monolith art").toBeTruthy();
+    expect(gate.querySelector('image[href*="tokens/teleport-gate-violet"]'), "violet portal art").toBeTruthy();
     expect(gate.querySelector(".designerObjectPair")?.textContent).toBe("4");
   });
 });

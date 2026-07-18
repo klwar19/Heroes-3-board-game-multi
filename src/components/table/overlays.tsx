@@ -1741,39 +1741,80 @@ export function SearchModal({
   state,
   view,
   viewerPlayerId,
+  legalActions,
   onAction
 }: {
   state: GameState;
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
+  /**
+   * When provided, extra Search-window offers ride along the keep picks —
+   * today the Tournament Book p.54 Morale-token "discard all revealed, Search
+   * (X) again" (SPEND_MORALE repeat-search), which has no other surface while
+   * this modal covers the table.
+   */
+  legalActions?: LegalAction[];
   onAction: (action: GameAction) => void;
 }) {
   const { zoomCard } = useCardZoom();
-  const choice = view.pendingChoice;
-  if (!choice || choice.type !== "DECK_SEARCH") {
+  const pending = view.pendingChoice;
+  const searchChoice = pending?.type === "DECK_SEARCH" ? pending : null;
+  const cardCount = searchChoice?.revealedCardIds.length ?? 0;
+  const searchChoiceId = searchChoice?.id ?? null;
+  // Search(3+) packs the row; default to a compact zoom so every card is visible
+  // without scrolling. Search(1–2) keeps the large face-up layout. The player can
+  // always toggle (zoom out / zoom in) either way. Derived default + a per-choice
+  // override (no effect): a NEW search choice automatically resets to its default.
+  const [compactOverride, setCompactOverride] = useState<{ id: string | null; value: boolean } | null>(
+    null
+  );
+  const compact =
+    compactOverride && compactOverride.id === searchChoiceId ? compactOverride.value : cardCount > 2;
+
+  if (!searchChoice) {
     return null;
   }
 
-  if (choice.playerId !== viewerPlayerId) {
+  if (searchChoice.playerId !== viewerPlayerId) {
     return (
       <div className="reactionStrip waiting" role="status">
         <Hourglass aria-hidden="true" size={15} />
         <span>
-          {state.players[choice.playerId]?.name ?? choice.playerId} is searching the {choice.deckId} deck…
+          {state.players[searchChoice.playerId]?.name ?? searchChoice.playerId} is searching the{" "}
+          {searchChoice.deckId} deck…
         </span>
       </div>
     );
   }
 
+  // Tournament Book p.54: spend the positive Morale token to discard all
+  // revealed cards and perform the same Search (X) again. Offered by
+  // legal-actions only on tournament tables (token mode) — rendered here
+  // because this modal is the only thing the searcher can interact with.
+  const repeatSearchOffer = legalActions?.find(
+    (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "repeat-search"
+  );
+
   return (
-    <div className="modalBackdrop" role="dialog" aria-label={`Search the ${choice.deckId} deck`}>
-      <div className="searchModal">
+    <div className="modalBackdrop" role="dialog" aria-label={`Search the ${searchChoice.deckId} deck`}>
+      <div className={`searchModal${compact ? " searchModal--compact" : ""}`}>
         <header>
-          <strong>Search {choice.revealedCardIds.length} — {choice.deckId}</strong>
-          <span>Keep one card. The rest go to the {choice.deckId} discard pile.</span>
+          <strong>
+            Search {searchChoice.revealedCardIds.length} — {searchChoice.deckId}
+          </strong>
+          <span>Keep one card. The rest go to the {searchChoice.deckId} discard pile.</span>
+          {searchChoice.revealedCardIds.length > 2 ? (
+            <button
+              className="searchZoomToggle"
+              onClick={() => setCompactOverride({ id: searchChoiceId, value: !compact })}
+              type="button"
+            >
+              {compact ? "Zoom in cards" : "Zoom out cards"}
+            </button>
+          ) : null}
         </header>
-        <div className="searchCards">
-          {choice.revealedCardIds.map((cardId, index) => (
+        <div className={`searchCards${compact ? " searchCards--compact" : ""}`}>
+          {searchChoice.revealedCardIds.map((cardId, index) => (
             <div className="searchCardWrap" key={`${cardId}-${index}`}>
               <button
                 className="searchCard"
@@ -1781,7 +1822,7 @@ export function SearchModal({
                   onAction({
                     type: "RESOLVE_DECK_SEARCH",
                     playerId: viewerPlayerId,
-                    choiceId: choice.id,
+                    choiceId: searchChoice.id,
                     pick: { kind: "revealed", index }
                   })
                 }
@@ -1793,6 +1834,112 @@ export function SearchModal({
               <ZoomButton label={`Read ${cardName(cardId)}`} onZoom={() => zoomCard(cardId)} />
             </div>
           ))}
+        </div>
+        {repeatSearchOffer ? (
+          <footer className="searchRepeatRow">
+            <button
+              className="searchRepeatButton"
+              onClick={() => onAction(repeatSearchOffer.action)}
+              type="button"
+            >
+              {repeatSearchOffer.label}
+            </button>
+          </footer>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Up-front Search-or-take-discard (and Basic X Magic school-fetch) choice.
+ * Same search-modal vibe as SearchModal: Search shows the deck's card back,
+ * take-discard shows the face-up top of that discard pile.
+ */
+export function DeckSearchModeModal({
+  state,
+  view,
+  viewerPlayerId,
+  legalActions,
+  onAction
+}: {
+  state: GameState;
+  view: PlayerVisibleState;
+  viewerPlayerId: PlayerId;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
+  const { zoomCard } = useCardZoom();
+  const choice = state.pendingChoice;
+  if (choice?.type !== "OPTION_CHOICE" || choice.context !== "deck-search-mode") {
+    return null;
+  }
+
+  if (choice.playerId !== viewerPlayerId) {
+    return (
+      <div className="reactionStrip waiting" role="status">
+        <Hourglass aria-hidden="true" size={15} />
+        <span>
+          {state.players[choice.playerId]?.name ?? choice.playerId} is choosing how to search…
+        </span>
+      </div>
+    );
+  }
+
+  const mode = choice.deckSearchMode;
+  if (!mode) {
+    return null;
+  }
+
+  const optionActions = legalActions.filter(
+    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "CHOOSE_OPTION" }> } =>
+      legal.action.type === "CHOOSE_OPTION" && legal.action.choiceId === choice.id
+  );
+  if (optionActions.length === 0) {
+    return null;
+  }
+
+  const deckState = view.decks[mode.deckId];
+  const discardTopId =
+    mode.hasDiscardTop && deckState && deckState.discardPile.length > 0
+      ? deckState.discardPile[deckState.discardPile.length - 1]
+      : null;
+
+  return (
+    <div className="modalBackdrop" role="dialog" aria-label={choice.prompt}>
+      <div className="searchModal deckSearchModeModal">
+        <header>
+          <strong>{choice.prompt}</strong>
+          <span>Search reveals the top cards and you keep one. Taking the discard skips the search.</span>
+        </header>
+        <div className="searchCards">
+          {optionActions.map((legal) => {
+            const optionIndex = legal.action.optionIndex;
+            const isSearch = optionIndex === 0;
+            const isDiscard = Boolean(mode.hasDiscardTop) && optionIndex === 1;
+            const discardId = isDiscard ? discardTopId : null;
+            return (
+              <div className="searchCardWrap" key={optionIndex}>
+                <button
+                  className={`searchCard${isDiscard ? " discardPick" : ""}`}
+                  onClick={() => onAction(legal.action)}
+                  type="button"
+                >
+                  {isSearch ? (
+                    <CardBack className="searchCardImage" deckId={mode.deckId} />
+                  ) : discardId ? (
+                    <CardFrame cardId={discardId} className="searchCardImage" />
+                  ) : (
+                    <CardBack className="searchCardImage" deckId={mode.deckId} />
+                  )}
+                  <span>{legal.label}</span>
+                </button>
+                {discardId ? (
+                  <ZoomButton label={`Read ${cardName(discardId)}`} onZoom={() => zoomCard(discardId)} />
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

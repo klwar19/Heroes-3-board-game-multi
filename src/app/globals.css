@@ -2889,11 +2889,49 @@ button.battleCell {
   font-size: 12px;
 }
 
+.searchZoomToggle {
+  justify-self: start;
+  margin-top: 4px;
+  padding: 4px 10px;
+  border: 1px solid rgb(213 168 79 / 45%);
+  border-radius: 7px;
+  background: rgb(13 15 16 / 55%);
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.searchZoomToggle:hover {
+  border-color: var(--gold);
+  box-shadow: 0 0 10px rgb(213 168 79 / 28%);
+}
+
 .searchCards {
   display: flex;
   gap: 12px;
   justify-content: center;
   flex-wrap: wrap;
+}
+
+/* Search(3+) default / toggle: smaller faces so more cards fit one viewport. */
+.searchCards--compact {
+  gap: 8px;
+}
+
+.searchCards--compact .searchCard {
+  width: 104px;
+  padding: 6px;
+  font-size: 11px;
+}
+
+.searchCards--compact .searchCardImage {
+  width: 82px;
+}
+
+.searchModal--compact {
+  width: min(860px, 96vw);
 }
 
 .searchCard {
@@ -2914,6 +2952,34 @@ button.battleCell {
 .searchCard:hover {
   border-color: var(--gold);
   box-shadow: 0 0 16px rgb(213 168 79 / 35%);
+}
+
+/* Search-or-take-discard modal: slightly wider so Search back + discard face sit side by side. */
+.deckSearchModeModal {
+  width: min(640px, 94vw);
+}
+
+/* Tournament Morale token — "discard all revealed, Search (X) again" row. */
+.searchRepeatRow {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.searchRepeatButton {
+  padding: 6px 14px;
+  border: 1px solid rgb(213 168 79 / 55%);
+  border-radius: 8px;
+  background: rgb(13 15 16 / 65%);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.searchRepeatButton:hover {
+  border-color: var(--gold);
+  box-shadow: 0 0 12px rgb(213 168 79 / 30%);
 }
 
 .learningOfferModal {
@@ -8201,6 +8267,36 @@ button.hbSlot:disabled { cursor: default; }
   justify-content: center;
 }
 
+/* Active rotate prompt: soft gold pulse so the control is obvious without
+   thrashing the rest of the UI. Prefers-reduced-motion users get a steady ring. */
+.mapFloatCard.rotateFloat {
+  border-color: rgba(255, 215, 106, 0.85);
+  animation: rotateFloatPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes rotateFloatPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 6px 18px rgba(0, 0, 0, 0.5),
+      0 0 0 0 rgba(255, 215, 106, 0.15);
+  }
+  50% {
+    box-shadow:
+      0 6px 18px rgba(0, 0, 0, 0.5),
+      0 0 18px 2px rgba(255, 215, 106, 0.45);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapFloatCard.rotateFloat {
+    animation: none;
+    box-shadow:
+      0 6px 18px rgba(0, 0, 0, 0.5),
+      0 0 12px 1px rgba(255, 215, 106, 0.35);
+  }
+}
+
 .mapFloatWarn {
   color: #e0a05a;
   font-size: 11.5px;
@@ -10219,6 +10315,91 @@ span.recruitThumb {
   font-size: 11px;
 }
 
+.optionRowLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #c4a878;
+  font-size: 11px;
+}
+
+.optionRowLabelText {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #e0c896;
+}
+
+.optionRowIcons {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.optionRowIcons.pair {
+  gap: 2px;
+}
+
+.optionRowIcon {
+  display: block;
+  object-fit: contain;
+  background: transparent;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.optionRowIcon.crest {
+  width: 28px;
+  height: 28px;
+}
+
+.optionRowIcon.cardBack {
+  width: 22px;
+  height: 32px;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.optionRowIcon.spellBook {
+  width: 30px;
+  height: 30px;
+}
+
+.optionalRulesCluster {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 11px;
+  border-radius: 11px;
+  border: 1px solid rgba(168, 137, 79, 0.32);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 214, 120, 0.05), transparent 42%),
+    rgba(15, 10, 6, 0.4);
+}
+
+.optionalRulesClusterHead {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(168, 137, 79, 0.22);
+}
+
+.optionalRulesClusterHead strong {
+  font-family: var(--font-heroic);
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  color: #ffd76a;
+}
+
+.optionalRulesClusterHead small {
+  font-size: 10.5px;
+  color: #a89068;
+}
+
+.optionalRulesCluster .optionRow {
+  padding-top: 2px;
+}
+
 .optionButtons {
   display: flex;
   flex-wrap: wrap;
@@ -10258,6 +10439,88 @@ span.recruitThumb {
   cursor: pointer;
 }
 
+/* Custom win condition rows (lobby "rules" tab): a compact stacked list of the
+   map-set (read-only, tagged) and host-added conditions plus the Add button. */
+.customWinConditions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.customWinConditionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.customWinConditionRow.mapSet {
+  color: #cdb98d;
+  font-size: 11.5px;
+}
+
+.customWinConditionText {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.customWinConditionTag {
+  padding: 1px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 6px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  color: #c4a878;
+}
+
+.customWinConditionRow select,
+.customWinConditionRow input[type="number"] {
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 11.5px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8d3a8;
+}
+
+.customWinConditionRow input[type="number"] {
+  width: 78px;
+}
+
+.customWinConditionRemove {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 110, 65, 0.55);
+  background: rgba(20, 14, 9, 0.8);
+  color: #e8b0a0;
+  cursor: pointer;
+}
+
+.customWinConditionAdd {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  border-radius: 8px;
+  border: 1px dashed rgba(140, 110, 65, 0.6);
+  background: rgba(20, 14, 9, 0.6);
+  color: #e8d3a8;
+  cursor: pointer;
+}
+
+.customWinConditionAdd:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Wake of Gods is a BINH-only submodule. The crest is the on/off switch; its
    compact options window stays inside setup instead of becoming another tab. */
 .wogOptionRow {
@@ -10283,11 +10546,12 @@ span.recruitThumb {
 .wogCrestButton {
   position: relative;
   display: grid;
+  grid-template-rows: 1fr auto auto;
   place-items: center;
-  flex: 0 0 74px;
-  width: 74px;
-  height: 64px;
-  padding: 6px;
+  flex: 0 0 78px;
+  width: 78px;
+  height: 78px;
+  padding: 6px 6px 5px;
   overflow: hidden;
   border: 1px solid rgba(177, 115, 210, 0.62);
   border-radius: 50% 50% 42% 42%;
@@ -10304,11 +10568,22 @@ span.recruitThumb {
   box-shadow: inset 0 0 15px rgba(218, 136, 255, 0.2), 0 0 15px rgba(164, 76, 205, 0.25);
 }
 
+.wogCrestIcon {
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  background: transparent;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 8px rgba(210, 140, 255, 0.28));
+  margin-bottom: 1px;
+}
+
 .wogCrestButton strong {
   z-index: 1;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 17px;
+  font-size: 13px;
   letter-spacing: 0.09em;
+  line-height: 1;
   color: #ffe7a1;
   text-shadow: 0 2px 2px #000;
 }
@@ -10318,6 +10593,7 @@ span.recruitThumb {
   font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.18em;
+  line-height: 1.1;
 }
 
 .wogCrestWings {
@@ -10328,6 +10604,7 @@ span.recruitThumb {
   color: rgba(235, 189, 255, 0.2);
   font-size: 48px;
   transform: rotate(45deg);
+  pointer-events: none;
 }
 
 .wogOptionSummary {
@@ -10530,9 +10807,21 @@ span.recruitThumb {
   align-items: center;
 }
 
-.optionStepper > small {
+.optionStepper > small,
+.optionStepperLabel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   color: #c4a878;
   font-size: 10.5px;
+}
+
+.optionStepperIcon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55));
 }
 
 .optionStepper > div {
@@ -11886,6 +12175,90 @@ span.recruitThumb {
   display: grid;
   gap: 8px;
   justify-items: start;
+}
+
+/* Pre-board chrome grouped into three labeled clusters — Tiles /
+   Objects & teleporters / Tools — so placeables read as visually distinct from
+   mode-arming tools. Each is a dark-glass card with a small-caps header,
+   matching the app's .mapPresetGroup family. The clusters only WRAP existing
+   markup; every inner class name (.designerPalette, .designerBandLegend,
+   .designerObjectPalette, .designerObjectButton, .designerModPanel, …) is
+   untouched. */
+.designerCluster {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(214, 178, 94, 0.24);
+  background: linear-gradient(180deg, rgba(30, 22, 13, 0.72), rgba(17, 13, 8, 0.82));
+  padding: 8px 11px 11px;
+  box-shadow: inset 0 1px 0 rgba(246, 226, 168, 0.08);
+}
+.designerClusterObjects {
+  border-color: rgba(120, 200, 255, 0.24);
+}
+.designerClusterTools {
+  border-color: rgba(180, 120, 255, 0.3);
+}
+.designerClusterLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(240, 220, 184, 0.66);
+}
+.designerClusterBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Tools cluster: buttons that ARM a mode (border brush / Mod panel) rather than
+   place an object. A dashed outline sets them apart from the solid placeable
+   object buttons, and the armed state is unmistakable (bright solid border +
+   glow). The .designerToolRow ancestor keeps these winning over the base
+   .designerObjectButton rules regardless of source order. */
+.designerToolRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.designerToolRow .designerToolButton {
+  border-style: dashed;
+  background: rgba(20, 15, 26, 0.55);
+}
+.designerToolRow .designerToolButton.armed {
+  border-style: solid;
+  border-color: #ffe9a8;
+  outline: 2px solid #ffe9a8;
+  box-shadow: 0 0 14px rgba(255, 233, 168, 0.7), inset 0 0 12px rgba(255, 233, 168, 0.22);
+}
+
+/* The long designer walkthrough — collapsed by default so it stops dominating
+   the page. Text is kept verbatim inside .optionHint. */
+.designerHelp {
+  width: 100%;
+  max-width: 620px;
+}
+.designerHelpSummary {
+  width: fit-content;
+  padding: 3px 2px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #e7c878;
+}
+.designerHelpSummary::-webkit-details-marker {
+  display: none;
+}
+.designerHelpSummary::before {
+  content: "▸ ";
+  color: rgba(231, 200, 120, 0.85);
+}
+.designerHelp[open] .designerHelpSummary::before {
+  content: "▾ ";
 }
 
 .designerBoard {
@@ -13331,8 +13704,10 @@ img.cardBack {
   justify-content: flex-start;
 }
 
-/* Fix-orientation toggle on a starting-tile popover. */
-.popoverLockToggle {
+/* Fix-orientation toggle on a starting-tile popover; the per-tile Underground
+   layer toggle on a supply/sea/center popover shares the same look. */
+.popoverLockToggle,
+.popoverUndergroundToggle {
   display: inline-flex !important;
   align-items: center;
   gap: 6px;
@@ -13340,7 +13715,8 @@ img.cardBack {
   justify-content: flex-start;
 }
 
-.popoverLockToggle.active {
+.popoverLockToggle.active,
+.popoverUndergroundToggle.active {
   background: rgba(255, 215, 102, 0.18);
   border-color: rgba(255, 215, 102, 0.55);
   color: #ffe9a8;
@@ -13400,13 +13776,18 @@ img.cardBack {
   stroke-width: 1.6;
 }
 
+/* Secret-pin stroke (#9ad0ff) sits close to the Sea band's light blue, so a
+   dashed line PLUS a blue glow keeps a secret-pinned sea tile unmistakable. */
 .designerFlowerOutline.secret {
   stroke-dasharray: 5 3;
+  filter: drop-shadow(0 0 5px rgba(154, 208, 255, 0.75));
 }
 
+/* Selection gold (#ffd766) sits close to the Near band's gold, so the selected
+   ring is widened and haloed — it must read as "selected", not just "Near". */
 .designerFlowerOutline.selected {
-  stroke-width: 3.4;
-  filter: drop-shadow(0 0 6px rgba(255, 215, 102, 0.6));
+  stroke-width: 3.8;
+  filter: drop-shadow(0 0 4px rgba(255, 215, 102, 0.95)) drop-shadow(0 0 9px rgba(255, 215, 102, 0.55));
 }
 
 /* A cavern the layout leaves with no Subterranean Gate: ringed red so the
@@ -14032,6 +14413,68 @@ img.cardBack {
   color: #ffe9b8;
 }
 
+/* Shared designer guard editor (center hex, tokens, objects): level chips +
+   the exact-army builder. Chips reuse .popoverGuardChip. */
+.popoverGuardEditor {
+  margin: 4px 0 8px;
+}
+.popoverGuardRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.popoverGuardArmyChip {
+  font-weight: 600;
+}
+.popoverGuardArmy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid rgba(201, 162, 75, 0.35);
+  border-radius: 8px;
+  background: rgba(14, 10, 6, 0.4);
+}
+.popoverGuardArmyChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.popoverGuardUnitChip {
+  padding: 3px 7px;
+  border: 1px solid rgba(201, 162, 75, 0.55);
+  border-radius: 999px;
+  background: rgba(60, 44, 16, 0.6);
+  color: #f3e7c8;
+  font-size: 11px;
+  cursor: pointer;
+}
+.popoverGuardUnitChip:hover {
+  border-color: #ff9a8a;
+  color: #ffd9cf;
+}
+.popoverGuardUnitSelect {
+  max-width: 220px;
+}
+.popoverGuardArmyNote {
+  color: #d9c9a1;
+}
+.popoverColorChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.popoverCheckRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0 8px;
+  color: #f3e7c8;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .designerStartLabel {
   fill: #f3e7c8;
   font-size: 16px;
@@ -14142,6 +14585,44 @@ img.cardBack {
   color: var(--muted);
   text-align: center;
   line-height: 1.2;
+}
+
+/* Compact band-colour key: swatch + numeral for each tile group, so the
+   creature-tier meaning of every outline colour is always on screen. */
+.designerBandLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid rgba(214, 178, 94, 0.28);
+  border-radius: 8px;
+  background: rgba(20, 16, 10, 0.55);
+}
+
+.designerBandLegendTitle {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.designerBandLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #f0dcb8;
+}
+
+.designerBandLegendSwatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+  flex: none;
 }
 
 /* --- Placed tiles, drop zones and drag ghost ---------------------------- */
@@ -20135,21 +20616,21 @@ img.cardBack {
 /* --- Mode preset cards (Legacy / BINH / WOG / Tournament) --- */
 .modePresetGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(1, minmax(0, 1fr));
   gap: 8px;
 }
 
-@media (min-width: 720px) {
+@media (min-width: 560px) {
   .modePresetGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 .modePresetCard {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: flex-start;
-  gap: 3px;
+  gap: 10px;
   padding: 10px 11px;
   text-align: left;
   border-radius: 10px;
@@ -20171,6 +20652,27 @@ img.cardBack {
   background: linear-gradient(180deg, rgba(72, 48, 18, 0.95), rgba(36, 24, 10, 0.95));
 }
 
+.modePresetIcon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  background: transparent;
+  /* Soft lift only — no plate; transparent art blends into the card */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 6px rgba(255, 210, 120, 0.12));
+  margin-top: 1px;
+  mix-blend-mode: normal;
+  image-rendering: auto;
+}
+
+.modePresetCardText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
 .modePresetCard strong {
   font-family: var(--font-heroic);
   font-size: 14px;
@@ -20178,7 +20680,7 @@ img.cardBack {
   color: #ffe6a6;
 }
 
-.modePresetCard > span {
+.modePresetCardText > span {
   font-size: 11px;
   color: #d2b57a;
 }
@@ -20187,6 +20689,16 @@ img.cardBack {
   font-size: 10px;
   line-height: 1.35;
   color: #a89068;
+}
+
+.modePresetCard.mode-binh .modePresetIcon {
+  width: 48px;
+  height: 48px;
+}
+
+.modePresetCard.mode-tournament .modePresetIcon {
+  width: 46px;
+  height: 46px;
 }
 
 .modeNoticeBanner {
@@ -20299,6 +20811,237 @@ img.cardBack {
 .houseRuleHead small {
   font-size: 10.5px;
   color: #b39a72;
+}
+
+/* Collapsible BINH / Polish house-rule panels (default minimized). */
+.houseRuleCollapsible {
+  display: flex;
+  flex-direction: column;
+  border-radius: 11px;
+  border: 1px solid rgba(168, 137, 79, 0.38);
+  background: linear-gradient(180deg, rgba(28, 20, 12, 0.72), rgba(14, 10, 6, 0.78));
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.houseRuleCollapsible.open {
+  border-color: rgba(255, 214, 120, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 226, 160, 0.08), 0 4px 14px rgba(0, 0, 0, 0.28);
+}
+
+.houseRuleCollapsible.polish {
+  border-color: rgba(210, 62, 55, 0.38);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(232, 197, 94, 0.08), transparent 48%),
+    linear-gradient(135deg, rgba(92, 19, 18, 0.28), rgba(23, 12, 8, 0.72));
+}
+
+.houseRuleCollapsible.polish.open {
+  border-color: rgba(242, 207, 117, 0.55);
+}
+
+.houseRuleCollapsible.tournament {
+  border-color: rgba(180, 90, 70, 0.4);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 180, 90, 0.07), transparent 46%),
+    linear-gradient(180deg, rgba(48, 24, 16, 0.55), rgba(16, 10, 6, 0.72));
+}
+
+.houseRuleCollapsible.tournament.open {
+  border-color: rgba(255, 190, 110, 0.55);
+}
+
+.houseRuleCollapsibleCrest.tournament {
+  width: 40px;
+  height: 40px;
+}
+
+.houseRuleCollapsibleHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: #e8d3a8;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.houseRuleCollapsibleHead:hover {
+  background: rgba(255, 214, 120, 0.06);
+}
+
+.houseRuleCollapsible.polish .houseRuleCollapsibleHead:hover {
+  background: rgba(255, 180, 120, 0.07);
+}
+
+.houseRuleCollapsibleLead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.houseRuleCollapsibleCrest {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  background: transparent;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 5px rgba(255, 210, 120, 0.1));
+}
+
+.houseRuleCollapsibleCrest.binh {
+  width: 42px;
+  height: 42px;
+}
+
+.houseRuleCollapsibleCrest.polish {
+  width: 44px;
+  height: 44px;
+  margin: -4px -2px -4px -2px;
+}
+
+.houseRuleCollapsibleTitles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.houseRuleCollapsibleTitles strong {
+  font-family: var(--font-heroic);
+  font-size: 13.5px;
+  letter-spacing: 0.03em;
+  color: #ffe6a6;
+}
+
+.houseRuleCollapsible.polish .houseRuleCollapsibleTitles strong {
+  color: #f2cf75;
+}
+
+.houseRuleCollapsibleTitles small {
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: #a89068;
+}
+
+.houseRuleCollapsibleMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.houseRuleCollapsibleCount {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 110, 65, 0.45);
+  background: rgba(0, 0, 0, 0.28);
+  color: #a89068;
+  white-space: nowrap;
+}
+
+.houseRuleCollapsibleCount.hasOn {
+  color: #1a1105;
+  border-color: rgba(255, 214, 120, 0.65);
+  background: linear-gradient(180deg, #f6d27a, #d3a247);
+}
+
+.houseRuleCollapsibleChevron {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(220, 175, 95, 0.45);
+  background: linear-gradient(180deg, rgba(70, 48, 18, 0.55), rgba(30, 20, 8, 0.7));
+  color: #ffe6a6;
+  transition: transform 0.18s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.houseRuleCollapsible.collapsed .houseRuleCollapsibleChevron {
+  /* Pulse so collapsed state clearly invites expand */
+  animation: houseRuleExpandPulse 1.8s ease-in-out infinite;
+}
+
+.houseRuleCollapsibleChevron.open {
+  transform: rotate(180deg);
+  animation: none;
+  border-color: rgba(255, 214, 120, 0.7);
+}
+
+.houseRuleCollapsibleHint {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #c79a52;
+  min-width: 4.2em;
+  text-align: right;
+}
+
+@keyframes houseRuleExpandPulse {
+  0%,
+  100% {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 0 rgba(255, 214, 120, 0);
+  }
+  50% {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 4px rgba(255, 214, 120, 0.18);
+    border-color: rgba(255, 214, 120, 0.75);
+  }
+}
+
+.houseRuleCollapsiblePeek {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px 10px;
+  border: 0;
+  border-top: 1px dashed rgba(168, 137, 79, 0.28);
+  background: rgba(0, 0, 0, 0.14);
+  color: #b39a72;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.houseRuleCollapsiblePeek:hover {
+  color: #f0dcae;
+  background: rgba(255, 214, 120, 0.06);
+}
+
+.houseRuleCollapsiblePeekDots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.houseRuleCollapsiblePeekDots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #c79a52;
+  opacity: 0.7;
+}
+
+.houseRuleCollapsibleBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 11px 12px;
+  border-top: 1px solid rgba(168, 137, 79, 0.22);
+  animation: optionTabFade 0.16s ease;
 }
 
 .houseRuleGroup {
@@ -24366,6 +25109,104 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   background: rgba(64, 50, 22, 0.75);
 }
 
+/* Collapsible sub-groups inside the map-conditions panel: each bundles a few
+   related leaf .mapPresetSections under a glyph + title + active-count header,
+   so the ~15 flat sections read as six clearly-separated, ordered groups. */
+.mapPresetGroup {
+  border-radius: 10px;
+  border: 1px solid rgba(154, 208, 255, 0.22);
+  background: linear-gradient(180deg, rgba(26, 36, 52, 0.72), rgba(16, 22, 34, 0.82));
+  overflow: hidden;
+}
+
+.mapPresetGroup[open] {
+  border-color: rgba(154, 208, 255, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(154, 208, 255, 0.06);
+}
+
+details.mapPresetGroup > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mapPresetGroupHead {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  color: #dce9ff;
+  transition: background 0.12s ease;
+}
+
+.mapPresetGroupHead:hover {
+  background: rgba(154, 208, 255, 0.06);
+}
+
+.mapPresetGroupLead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mapPresetGroupGlyph {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+.mapPresetGroupGlyphEmoji {
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.mapPresetGroupTitle {
+  font-family: var(--font-heroic);
+  font-size: 12.5px;
+  letter-spacing: 0.03em;
+  color: #eaf2ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mapPresetGroupCount {
+  flex: 0 0 auto;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 214, 130, 0.5);
+  color: #ffd682;
+  background: rgba(64, 50, 22, 0.7);
+  white-space: nowrap;
+}
+
+.mapPresetGroupChevron {
+  flex: 0 0 auto;
+  color: rgba(154, 208, 255, 0.85);
+  font-size: 12px;
+  transition: transform 0.15s ease;
+}
+
+.mapPresetGroup[open] .mapPresetGroupChevron {
+  transform: rotate(90deg);
+}
+
+.mapPresetGroupBody {
+  display: grid;
+  gap: 6px;
+  padding: 2px 11px 10px;
+  border-top: 1px solid rgba(154, 208, 255, 0.14);
+}
+
 /* Icon-tagged condition lines (designer summary + lobby banner). */
 .mapPresetEntryList {
   list-style: none;
@@ -25783,6 +26624,82 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   max-height: 58vh;
   max-height: 58dvh;
   overflow-y: auto;
+}
+
+/* Phone: stronger tile-rotation halo so the active tile is obvious under the
+   smaller map, and a dashed ring that blinks a little harder. */
+.phoneMode .rotatingHalo {
+  stroke: rgba(255, 215, 106, 0.72);
+  stroke-width: 3.2;
+  animation: rotatingPulsePhone 1.1s ease-in-out infinite;
+}
+
+.phoneMode .hexCell.rotating {
+  animation: rotatingPulsePhone 1.1s ease-in-out infinite;
+}
+
+@keyframes rotatingPulsePhone {
+  0%,
+  100% {
+    filter: brightness(1);
+    stroke-opacity: 0.55;
+  }
+  50% {
+    filter: brightness(1.55);
+    stroke-opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phoneMode .rotatingHalo,
+  .phoneMode .hexCell.rotating {
+    animation: none;
+    filter: brightness(1.25);
+  }
+}
+
+/* Tile-rotate float sits on the map anchor; on a phone that often covers the
+   very tile you are lining up. Nudge it further away from the tile center
+   (above → higher; below → lower) so the flower stays readable, and give the
+   control a slightly larger touch target. */
+.phoneMode .mapFloatOuter:has(.rotateFloat).above {
+  transform: translateY(-52px);
+}
+
+.phoneMode .mapFloatOuter:has(.rotateFloat).below {
+  transform: translateY(48px);
+}
+
+.phoneMode .mapFloatOuter:has(.rotateFloat) {
+  width: min(300px, calc(100vw - 16px)) !important;
+}
+
+.phoneMode .mapFloatCard.rotateFloat {
+  padding: 10px 12px;
+  font-size: 13px;
+  animation: rotateFloatPulsePhone 1.2s ease-in-out infinite;
+}
+
+@keyframes rotateFloatPulsePhone {
+  0%,
+  100% {
+    box-shadow:
+      0 6px 18px rgba(0, 0, 0, 0.55),
+      0 0 0 0 rgba(255, 215, 106, 0.2);
+    border-color: rgba(255, 215, 106, 0.75);
+  }
+  50% {
+    box-shadow:
+      0 6px 18px rgba(0, 0, 0, 0.55),
+      0 0 22px 3px rgba(255, 215, 106, 0.55);
+    border-color: rgba(255, 230, 140, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phoneMode .mapFloatCard.rotateFloat {
+    animation: none;
+  }
 }
 
 .phoneMode .reactionTray {

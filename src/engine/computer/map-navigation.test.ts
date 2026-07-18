@@ -2678,6 +2678,75 @@ describe("computer pathing respects designer-placed yellow borders", () => {
   });
 });
 
+describe("computer pathing respects the UNDERGROUND layer divide", () => {
+  // The march / distance field walks via canCrossEdge, which enforces the
+  // Surface↔Underground divide (a designer-flagged tile is on the cavern layer).
+  // Without a gate, the AI cannot route a step across a flagged↔Surface boundary
+  // — same inheritance as the yellow-border case above.
+  const OPEN = "F23"; // fully-open tile (no printed seals / blocked / internal)
+
+  function twoTiles(flagUnderground: boolean): {
+    state: GameState;
+    hero: HeroState;
+    to: MapFieldState;
+  } {
+    const state = createAdventureGameState({
+      seed: "nav-underground-divide",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: false,
+    });
+    const adventure = state.adventure!;
+    const O = { row: 40, col: 30 };
+    const a = instantiateTile(adventure, OPEN, O, 0, false);
+    const neighbor = tileLatticeNeighbors(O).find(
+      (candidate) =>
+        !Object.values(adventure.tiles).some(
+          (t) => t.centerRow === candidate.row && t.centerCol === candidate.col,
+        ),
+    )!;
+    const b = instantiateTile(adventure, OPEN, neighbor, 0, false);
+    if (flagUnderground) {
+      // Exactly what setup writes for a designer `plan.underground` flag: tile B
+      // moves onto the cavern layer, so the shared boundary is a sealed divide.
+      b.underground = true;
+    }
+    // The shared doorway: a field of A adjacent to a field of B.
+    let from: MapFieldState | undefined;
+    let to: MapFieldState | undefined;
+    for (const candidate of Object.values(adventure.fields)) {
+      if (candidate.tileInstanceId !== a.id) {
+        continue;
+      }
+      const coord = parseHexSpaceId(candidate.spaceId)!;
+      for (let direction = 0; direction < 6; direction += 1) {
+        const other = adventure.fields[hexSpaceId(hexNeighbor(coord, direction))];
+        if (other && other.tileInstanceId === b.id) {
+          from = candidate;
+          to = other;
+          break;
+        }
+      }
+      if (from) {
+        break;
+      }
+    }
+    const hero: HeroState = { ...Object.values(state.heroes)[0], spaceId: from!.spaceId, controllerId: "p1" };
+    return { state, hero, to: to! };
+  }
+
+  it("the distance field does not route the march across a sealed flagged↔Surface boundary (CONTROL: one step when unflagged)", () => {
+    // CONTROL: both tiles Surface → the objective is one step from the hero.
+    const control = twoTiles(false);
+    expect(distanceFromHeroTo(control.state, control.hero, control.to.spaceId)).toBe(1);
+
+    // Flag tile B underground → the boundary is a layer divide with no gate, so
+    // the AND pathing (via canCrossEdge) cannot step across it — no 1-step reach.
+    const blocked = twoTiles(true);
+    expect(distanceFromHeroTo(blocked.state, blocked.hero, blocked.to.spaceId)).not.toBe(1);
+  });
+});
+
 describe("computer tile rotation chases the NEEDED resource payoff", () => {
   /**
    * A test tile split by internal borders into two pockets — cluster A

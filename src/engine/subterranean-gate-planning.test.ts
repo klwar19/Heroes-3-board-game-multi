@@ -386,6 +386,116 @@ describe("planSubterraneanGates matches the engine with DESIGNER gate links", ()
   });
 });
 
+// ---------------------------------------------------------------------------
+// Per-tile UNDERGROUND designation: a far/near/center/sea plan flagged
+// `underground` is on the cavern layer for gate planning, so the pure preview
+// must mirror the engine's carve bit-for-bit — exactly like a printed cavern.
+// ---------------------------------------------------------------------------
+describe("planSubterraneanGates matches the engine with a FLAGGED underground tile", () => {
+  /** Build a face-up custom map whose far tiles may carry the underground flag. */
+  function engineGateHexesFlagged(
+    tiles: { center: HexCoord; group: CustomMapTilePlan["group"]; tileDefId: string; underground?: boolean }[]
+  ): Set<string> {
+    const customMap: CustomMapTilePlan[] = [
+      { row: 24, col: 12, group: "starting", faceDown: false },
+      ...tiles.map((t) => ({
+        row: t.center.row,
+        col: t.center.col,
+        group: t.group,
+        faceDown: false,
+        tileDefId: t.tileDefId,
+        rotation: 0,
+        ...(t.underground ? { underground: true as const } : {})
+      }))
+    ];
+    const state = createAdventureGameState({
+      seed: "gate-plan-flagged",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      customMap,
+      players: [
+        { id: "p1", name: "P1", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "P2", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    return new Set(
+      Object.values(adv(state).fields)
+        .filter((f) => f.location === "subterranean_gate")
+        .map((f) => f.spaceId)
+    );
+  }
+
+  it("a flagged FAR tile auto-pairs a gate with a touching Surface tile — preview == engine", () => {
+    const surface = tileLatticeNeighbors({ row: 24, col: 12 })[0];
+    const flagged = tileLatticeNeighbors(surface)[0]; // interlocking neighbour of the surface tile
+    expect(tileCentersAdjacent(surface, flagged)).toBe(true);
+
+    // Preview: the flagged tile is `underground: true`, so it reads as a cavern.
+    const planned = planSubterraneanGates([
+      { row: 24, col: 12, group: "starting" },
+      { row: surface.row, col: surface.col, group: "far" },
+      { row: flagged.row, col: flagged.col, group: "far", underground: true }
+    ]);
+    expect(planned).toHaveLength(1);
+    const preview = new Set([hexSpaceId(planned[0].gateHex), hexSpaceId(planned[0].entranceHex)]);
+
+    const engine = engineGateHexesFlagged([
+      { center: surface, group: "far", tileDefId: "F1" },
+      { center: flagged, group: "far", tileDefId: "F3", underground: true }
+    ]);
+    expect(engine.size).toBe(2);
+    expect(preview).toEqual(engine);
+  });
+
+  it("CONTROL: WITHOUT the flag the two far tiles are one Surface layer — no gate in preview OR engine", () => {
+    const surface = tileLatticeNeighbors({ row: 24, col: 12 })[0];
+    const other = tileLatticeNeighbors(surface)[0];
+    const planned = planSubterraneanGates([
+      { row: 24, col: 12, group: "starting" },
+      { row: surface.row, col: surface.col, group: "far" },
+      { row: other.row, col: other.col, group: "far" } // no underground flag
+    ]);
+    expect(planned).toHaveLength(0);
+    const engine = engineGateHexesFlagged([
+      { center: surface, group: "far", tileDefId: "F1" },
+      { center: other, group: "far", tileDefId: "F3" }
+    ]);
+    expect(engine.size).toBe(0);
+  });
+
+  it("unreachableUndergroundCenters flags an isolated flagged tile, and clears it once it touches a Surface tile", () => {
+    const start = { row: 24, col: 12 };
+    const far = tileLatticeNeighbors(start)[0];
+    const isolated = { row: far.row + 12, col: far.col + 8 };
+    expect(tileFootprintsTouch(far, isolated)).toBe(false);
+
+    // A flagged far tile with no surface neighbour is unreachable, like a cavern.
+    const isolatedResult = unreachableUndergroundCenters([
+      { row: start.row, col: start.col, group: "starting" },
+      { row: far.row, col: far.col, group: "far" },
+      { row: isolated.row, col: isolated.col, group: "far", underground: true }
+    ]);
+    expect(isolatedResult).toEqual([{ row: isolated.row, col: isolated.col }]);
+
+    // Move the same flagged tile against the far (surface) tile → reachable.
+    const touching = tileLatticeNeighbors(far)[0];
+    const reachableResult = unreachableUndergroundCenters([
+      { row: start.row, col: start.col, group: "starting" },
+      { row: far.row, col: far.col, group: "far" },
+      { row: touching.row, col: touching.col, group: "far", underground: true }
+    ]);
+    expect(reachableResult).toEqual([]);
+
+    // CONTROL: without the flag it is a plain Surface far tile — never flagged.
+    const controlResult = unreachableUndergroundCenters([
+      { row: start.row, col: start.col, group: "starting" },
+      { row: far.row, col: far.col, group: "far" },
+      { row: isolated.row, col: isolated.col, group: "far" }
+    ]);
+    expect(controlResult).toEqual([]);
+  });
+});
+
 describe("unreachableUndergroundCenters", () => {
   it("flags a cavern that touches no surface tile (and clears it once it does)", () => {
     const start = { row: 24, col: 12 };

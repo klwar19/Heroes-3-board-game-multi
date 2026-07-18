@@ -6,6 +6,7 @@ import {
   abilityRollRerollActive,
   addArmyUnit,
   changeMorale,
+  checkCustomWinConditions,
   commitPopulationOnMove,
   ensureUniqueArmyUnitIds,
   gainResources,
@@ -63,6 +64,7 @@ import {
   openMarket,
   openSharedDeckSearch,
   maybeOpenPendantRepeatOffer,
+  clearPolishArtifactAccess,
   beginSharedDeckSearchNow,
   removableHandCards,
   openFortuneBoostStep,
@@ -223,6 +225,7 @@ import {
   SPELL_DECK_EXPERT
 } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
+import { nextWaitTokenNumber } from "./polish-house-rules";
 import {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
@@ -349,6 +352,8 @@ import {
   resolvedSpellPowerForStackItem,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
+  spellReactionAffectedUnitId,
+  spellReactionBlockedByImmunity,
   spellRedirectTargets,
   standingSpellPower,
   unitIdsThreatenedByDamageEffect
@@ -1497,7 +1502,11 @@ function playCardSpellPower(
 }
 
 /** Whether a stack item is a pending attack (its Power pool is split per side). */
-function isAttackStackItem(stackItem: ResolutionStackItem | undefined): boolean {
+function isAttackStackItem(
+  stackItem: ResolutionStackItem | undefined
+): stackItem is ResolutionStackItem & {
+  action: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
+} {
   return stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT";
 }
 
@@ -7645,6 +7654,15 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
 
   const activeUnit = state.combat.units[unitId];
 
+  // Polish Wait: this activation is the unit's deferred RE-activation, not a
+  // fresh one. The unit already went through its start-of-activation package
+  // when it first became active this round (before it chose Wait) — re-running
+  // it here would double every once-per-activation rider (Wraith/Troll
+  // regeneration, poison-cube damage, the Fire Wall burn, the negative-morale
+  // skip check, a second "[activation]" ability use). Only the Paralysis skip
+  // still applies: a token gained while waiting eats the re-activation.
+  const waitedReactivation = Boolean(state.combat.waitPhase && activeUnit?.waitPending);
+
   // Paralysis: "If a unit would activate with a Paralysis Token on it, skip
   // its activation and remove the Token instead."
   if (hasToken(activeUnit, "paralysis")) {
@@ -7664,8 +7682,11 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // skips it": checked for every activation of the holder's units while the
   // card is face-up, resolving (and leaving) only when a skip actually
   // happens. The check die is an Attack die the holder rolls, so a "+1" on it
-  // still trips the holder's own reroll-the-"+1" curse first.
+  // still trips the holder's own reroll-the-"+1" curse first. A Polish-Wait
+  // re-activation was already checked when the unit first became active this
+  // round, so it is not a second check.
   if (
+    !waitedReactivation &&
     moraleCardsRuleEnabled(state) &&
     playerHoldsMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.skipActivation)
   ) {
@@ -7720,8 +7741,13 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   activeUnit.preActivationWindowOffered = false;
   // Remember where the unit started this activation (Harpy fly-back) and reset
   // the once-per-activation "[activation]" choice flag (Enchanters/Faeries).
+  // A Polish-Wait re-activation keeps the flag: the Wait deferred ONE
+  // activation, so an "[activation]" ability already used before the Wait may
+  // not fire a second time.
   activeUnit.activationStartPosition = activeUnit.position;
-  activeUnit.activationAbilityDone = false;
+  if (!waitedReactivation) {
+    activeUnit.activationAbilityDone = false;
+  }
 
   if (activeUnit.defenseToken) {
     activeUnit.defenseToken = false;
@@ -7732,6 +7758,14 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     unitId: activeUnit.id,
     playerId: activeUnit.controllerId
   });
+
+  // Polish Wait re-activation: the once-per-activation start package below
+  // (poison cube, Fire Wall burn, Yeti cleanse, auto "[activation]" abilities)
+  // already ran when the unit first became active this round — skip it so a
+  // Wait can never double-fire regeneration or double-charge poison.
+  if (waitedReactivation) {
+    return;
+  }
 
   // Fortress Wyverns' poison: a faction cube is removed for 1 damage at the
   // beginning of the unit's activation. A lethal cube ends the activation right
@@ -7900,7 +7934,26 @@ function advanceActiveUnit(state: GameState): void {
     return;
   }
 
-  const step = getActivationStep(combat, state.activeEffects);
+  let step = getActivationStep(combat, state.activeEffects);
+
+  // Polish Wait: when the main initiative phase has no more units, open the
+  // Waited re-activation phase (highest token first) before ending the round.
+  if (!step && !combat.waitPhase && houseRuleEnabled(state, "polish-wait")) {
+    const waited = Object.values(combat.units).filter(
+      (unit) => isUnitAlive(unit) && unit.waitPending && unit.waitToken
+    );
+    if (waited.length > 0) {
+      combat.waitPhase = true;
+      for (const unit of waited) {
+        unit.activatedThisRound = false;
+        unit.movedThisActivation = false;
+        unit.attackedThisActivation = false;
+        unit.attacksThisActivation = 0;
+      }
+      step = getActivationStep(combat, state.activeEffects);
+    }
+  }
+
   if (step && step.candidates.length >= 2) {
     // A Neutral-side tie is broken by a human: the PvP Neutral Control
     // commander when the mode assigns one, else (rulebook) the attacker.
@@ -8635,12 +8688,15 @@ function maybeOpenPreActivationWindow(state: GameState, cards: CardLibrary): voi
 }
 
 function resetCombatRound(combat: CombatState): void {
+  combat.waitPhase = false;
   for (const unit of Object.values(combat.units)) {
     unit.activatedThisRound = false;
     unit.movedThisActivation = false;
     unit.attackedThisActivation = false;
     unit.attacksThisActivation = 0;
     unit.retaliatedThisRound = false;
+    unit.waitToken = undefined;
+    unit.waitPending = undefined;
     // Defense tokens persist into the next round: they are discarded at the
     // start of the unit's next activation, not at the end of the round.
     // defendedLastActivation also persists — consecutive-Defend ban spans rounds.
@@ -8655,6 +8711,52 @@ function resetCombatRound(combat: CombatState): void {
 function markActivatedThisRound(unit: CombatUnitState, defended = false): void {
   unit.activatedThisRound = true;
   unit.defendedLastActivation = defended;
+  // Finishing a Waited re-activation clears the token.
+  if (unit.waitPending) {
+    unit.waitPending = undefined;
+    unit.waitToken = undefined;
+  }
+}
+
+/**
+ * Polish Wait: the active unit takes the lowest free Wait token, ends its
+ * main-phase activation, and will re-activate after every other unit has acted.
+ */
+function waitUnit(state: GameState, action: Extract<GameAction, { type: "WAIT_UNIT" }>): void {
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  if (
+    !combat ||
+    !unit ||
+    combat.activeUnitId !== unit.id ||
+    unit.controllerId !== action.playerId ||
+    !houseRuleEnabled(state, "polish-wait")
+  ) {
+    throw new Error("That unit cannot Wait now.");
+  }
+  if (combat.waitPhase) {
+    throw new Error("A unit cannot Wait during the Waited re-activation phase.");
+  }
+  if (unit.movedThisActivation || unit.attackedThisActivation || unit.waitToken) {
+    throw new Error("Wait is only available at the beginning of the unit's activation.");
+  }
+
+  const token = nextWaitTokenNumber(Object.values(combat.units).map((u) => u.waitToken));
+  // Main-phase "done" without clearing Wait bookkeeping.
+  unit.activatedThisRound = true;
+  unit.defendedLastActivation = false;
+  unit.waitToken = token;
+  unit.waitPending = true;
+
+  appendEvent(state, {
+    type: "UNIT_ACTIVATION_ENDED",
+    playerId: action.playerId,
+    unitId: unit.id
+  });
+
+  advanceActiveUnit(state);
+  state.phase = "combat";
+  state.priorityPlayerId = null;
 }
 
 function refreshReactionWindowLegalReactions(state: GameState, cards: CardLibrary): void {
@@ -11209,6 +11311,31 @@ function applyReactionPlayCore(
     throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
   }
 
+  // Spell-school / Anti-Magic immunity backstop for attack-window and
+  // activation-skip Spell reactions (Bless, Bloodlust, Curse, Weakness, Sorrow…).
+  // The legal-action layer already withholds these offers; this rejects a forged
+  // play so an immune unit (Black Dragons Pack, Azure, Oceanids Pack, …) never
+  // takes a Spell effect from a quick reaction either — friend or foe.
+  if (card.kind === "spell") {
+    const triggerEvent = state.reactionWindow?.triggerEvent;
+    if (
+      triggerEvent &&
+      (triggerEvent.type === "UNIT_ATTACK_DECLARED" ||
+        triggerEvent.type === "UNIT_ACTIVATION_STARTED" ||
+        triggerEvent.type === "SPELL_CAST_STARTED") &&
+      spellReactionBlockedByImmunity(state, card, effect, triggerEvent)
+    ) {
+      const unitId =
+        triggerEvent.type === "UNIT_ATTACK_DECLARED"
+          ? spellReactionAffectedUnitId(effect, triggerEvent.attackerId, triggerEvent.defenderId)
+          : triggerEvent.type === "UNIT_ACTIVATION_STARTED"
+            ? triggerEvent.unitId
+            : null;
+      const unit = unitId ? state.combat?.units[unitId] : undefined;
+      throw new Error(`${unit?.cardName ?? "That unit"} is immune to ${card.name}.`);
+    }
+  }
+
   // Protection-from-X self-defends its School/level gate at resolution: a
   // fabricated reaction can never cancel a spell of the wrong School or, in
   // basic play, an Expert spell (the legal-action layer already filters offers).
@@ -11361,6 +11488,22 @@ function applyReactionPlayCore(
       ? card.effect.options[play.optionIndex]?.label
       : undefined;
 
+  // Anchor combat Spell-reaction FX on the unit the effect lands on (Curse on
+  // the defender, Bloodlust on the attacker, Sorrow on the skipped unit) so the
+  // sprite is not left floating at centre stage over the played card.
+  let cardPlayTargetUnitId: UnitId | undefined;
+  if (card.kind === "spell") {
+    if (stackItem && isAttackStackItem(stackItem)) {
+      cardPlayTargetUnitId =
+        spellReactionAffectedUnitId(effect, stackItem.action.attackerId, stackItem.action.defenderId) ?? undefined;
+    } else if (effect.type === "SKIP_ACTIVATION") {
+      const te = state.reactionWindow?.triggerEvent;
+      if (te?.type === "UNIT_ACTIVATION_STARTED") {
+        cardPlayTargetUnitId = te.unitId;
+      }
+    }
+  }
+
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId,
@@ -11368,7 +11511,8 @@ function applyReactionPlayCore(
     timing: card.timing,
     mode,
     effectAmount: effectAmount || undefined,
-    optionLabel
+    optionLabel,
+    ...(cardPlayTargetUnitId ? { targetUnitId: cardPlayTargetUnitId } : {})
   });
 
   if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
@@ -11473,18 +11617,19 @@ function applyReactionPlayCore(
   // closes and the spell resolves against the chosen unit once it is picked.
   if (effect.type === "REDIRECT_SPELL" && stackItem?.action.type === "CAST_SPELL") {
     const currentTarget = stackItem.action.target;
+    const castCard = cards[stackItem.action.cardId];
     // A space-centred blast (Inferno) has no single "current" unit to exclude —
-    // pass null so every legal unit qualifies as the new centre.
+    // pass null so every legal unit qualifies as the new centre. Spell-school
+    // immunity (Black Dragons Pack, Elementals, …) is keyed off the bounced spell.
     const candidates = spellRedirectTargets(
       state,
       currentTarget.type === "unit" ? currentTarget.unitId : null,
-      effect.grade
+      effect.grade,
+      castCard
     );
     if (candidates.length === 0) {
       throw new Error("There is no legal new target for that spell.");
     }
-
-    const castCard = cards[stackItem.action.cardId];
     const choiceId = `choice_${nextEventNumber(state)}`;
     state.pendingChoice = {
       id: choiceId,
@@ -11525,12 +11670,13 @@ function applyReactionPlayCore(
   ) {
     const found = reflectableAttackInstantForPlayer(state, stackItem, playerId, cards);
     const affected = found ? state.combat?.units[found.affectedUnitId] : undefined;
-    const candidates = found ? spellRedirectTargets(state, found.affectedUnitId, effect.grade) : [];
+    const instantCard = found ? cards[found.cardId] : undefined;
+    const candidates = found
+      ? spellRedirectTargets(state, found.affectedUnitId, effect.grade, instantCard)
+      : [];
     if (!found || !affected || candidates.length === 0) {
       throw new Error("There is no enemy Spell on this attack for Magic Mirror to reflect.");
     }
-
-    const instantCard = cards[found.cardId];
     const signedAmount = attackInstantSignedAmount(stackItem, found.cardId, cards);
     reverseCancelledInstantSpell(stackItem, found.cardId, cards);
     stackItem.modifiers.cancellableSpellInstants?.splice(found.index, 1);
@@ -12810,7 +12956,14 @@ function applyUnitMagicMirror(
     throw new Error("That unit cannot use Magic Mirror.");
   }
 
-  let candidates = spellRedirectTargets(state, unit.id, "azure");
+  let reflectedSpell: Pick<CardDefinition, "kind" | "spellSchools"> | undefined;
+  if (stackItem.action.type === "CAST_SPELL") {
+    reflectedSpell = cards[stackItem.action.cardId];
+  } else if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
+    const found = reflectableAttackInstantForPlayer(state, stackItem, action.playerId, cards);
+    reflectedSpell = found ? cards[found.cardId] : undefined;
+  }
+  let candidates = spellRedirectTargets(state, unit.id, "azure", reflectedSpell);
   if (candidates.length === 0) {
     throw new Error("There is no legal new target for Magic Mirror.");
   }
@@ -12841,7 +12994,7 @@ function applyUnitMagicMirror(
     if (!found || found.affectedUnitId !== unit.id) {
       throw new Error("There is no enemy Spell on that unit to reflect.");
     }
-    candidates = spellRedirectTargets(state, found.affectedUnitId, "azure");
+    candidates = spellRedirectTargets(state, found.affectedUnitId, "azure", cards[found.cardId]);
     const amount = attackInstantSignedAmount(stackItem, found.cardId, cards);
     reverseCancelledInstantSpell(stackItem, found.cardId, cards);
     stackItem.modifiers.cancellableSpellInstants?.splice(found.index, 1);
@@ -18368,6 +18521,10 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
+  // Polish Random Artifacts: the roll only covers this one acquisition.
+  if (String(choice.deckId).startsWith("artifacts")) {
+    clearPolishArtifactAccess(state);
+  }
 
   // Positive Morale "discard the cards gained from Search (X) to perform the
   // Search (X) again": right after a Search resolves into a kept card, its
@@ -18882,7 +19039,19 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 
       if (!combat.activeUnitId) {
         const step = getActivationStep(combat, state.activeEffects);
-        if (step) {
+        // Polish Wait: the main phase can end on a path that never ran
+        // advanceActiveUnit (the corpse-drop above — the active unit died
+        // WITHOUT acting). Waited units still owe their re-activation, so the
+        // round must not end over their pending Wait tokens; advanceActiveUnit
+        // owns the actual waitPhase entry.
+        const waitEntryPending =
+          !step &&
+          !combat.waitPhase &&
+          houseRuleEnabled(state, "polish-wait") &&
+          Object.values(combat.units).some(
+            (unit) => isUnitAlive(unit) && unit.waitPending && unit.waitToken
+          );
+        if (step || waitEntryPending) {
           // Sets the next unit, or opens the tied-order choice for a human side.
           advanceActiveUnit(state);
           if (state.pendingChoice) {
@@ -18915,6 +19084,9 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
           !combat.context.hasAzure &&
           !isDragonUtopiaFight &&
           !isLevelSevenField &&
+          // Designer outposts (Garrison / Keymaster's Tent / one-way entrance):
+          // "the fight is unlimited, as in Banks" — never a Round limit.
+          !combat.context.unlimitedRounds &&
           (combat.context.bankId === undefined || houseRuleEnabled(state, "bank-move-points"))
         ) {
           combat.awaitingContinue = true;
@@ -19014,7 +19186,16 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 function asNeutralSeatCommand<
   T extends Extract<
     GameAction,
-    { type: "MOVE_UNIT" | "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" | "DEFEND_UNIT" | "END_ACTIVATION" | "USE_UNIT_ABILITY" }
+    {
+      type:
+        | "MOVE_UNIT"
+        | "ATTACK_UNIT"
+        | "MOVE_AND_ATTACK_UNIT"
+        | "DEFEND_UNIT"
+        | "END_ACTIVATION"
+        | "WAIT_UNIT"
+        | "USE_UNIT_ABILITY";
+    }
   >
 >(state: GameState, action: T): T {
   const combat = state.combat;
@@ -19356,6 +19537,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "END_ACTIVATION":
         endActivation(nextState, asNeutralSeatCommand(nextState, action));
+        break;
+      case "WAIT_UNIT":
+        waitUnit(nextState, asNeutralSeatCommand(nextState, action));
         break;
       case "END_COMBAT_ROUND":
         endCombatRound(nextState, action);
@@ -19810,6 +19994,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           : "The action could not complete its automatic follow-up."
     });
   }
+
+  // Custom win conditions (map-designer / lobby authored): the first live player
+  // to satisfy any active condition wins immediately. Runs here — after the
+  // END_TURN round-income cascade in runAdventureAutomations, so a round-start
+  // income crossing is seen — and free-early-outs when no condition is set (so
+  // every ordinary game / legacy snapshot is untouched). Deferred while a combat
+  // is open (see checkCustomWinConditions) so the game never ends mid-battle.
+  checkCustomWinConditions(nextState);
 
   // Combat-sandbox combats (and any post-war-machine round start) have no
   // adventure pump to hand out the activation slot, so settle it here: open the

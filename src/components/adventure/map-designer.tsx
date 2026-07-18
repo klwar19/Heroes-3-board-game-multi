@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assetUrl } from "@/lib/asset-url";
-import { Lock, Trash2 } from "lucide-react";
+import { Layers, Lock, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import {
   DESIGNER_UI_ICONS,
   mapTokenImage,
-  monolithTokenImage,
+  onewayMonolithImage,
+  outpostObjectImage,
+  teleportGateImage,
   REWARD_GLYPH_ICONS,
   TILE_BACK_IMAGES,
   tileBackImage,
@@ -29,13 +31,16 @@ import {
   normalizeDesignedBorderEdges,
   parseHexSpaceId,
   pixelToHex,
+  planIsUnderground,
   planSubterraneanGates,
+  UNDERGROUND_LAYER_GROUPS,
   scenarioDefinitions,
   seaTileBand,
   secretFeatureFullLabel,
   secretFeatureLabel,
   SECRET_TILE_FEATURES,
   subterraneanTileBand,
+  TILE_GROUP_BAND_LABELS,
   tileCentersOverlap,
   tileFootprint,
   tileFootprintsTouch,
@@ -44,9 +49,17 @@ import {
   unreachableUndergroundCenters,
   validateCustomMapObjects,
   victoryDesignConflicts,
-  MAX_VII_FIELD_REWARD_AMOUNT,
-  MAX_VII_FIELD_VP,
+  customGuardArmyDifficulty,
+  MAX_CENTER_HEX_DICE,
+  MAX_CENTER_HEX_RESOURCE,
+  MAX_CENTER_HEX_SEARCH,
+  MAX_CENTER_HEX_VP,
+  MAX_CUSTOM_GUARD_UNITS,
+  type CustomCenterHexPlan,
+  type CustomCenterHexReward,
+  type CustomGuardSpec,
   type CustomMapGateLink,
+  type CustomMapTileToken,
   type CustomMapObject,
   type CustomMapObjectKind,
   type CustomMapTilePlan,
@@ -55,10 +68,12 @@ import {
   type MapTokenKind,
   type TokenPlacementKind,
   type PlannedSubterraneanGate,
+  objectGuardSpec,
+  OUTPOST_OBJECT_KINDS,
   type SecretTileFeature,
-  type ViiFieldReward,
   type VictoryMode
 } from "@/engine";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   fieldOverrideGlyph,
   fieldOverrideImage,
@@ -203,14 +218,32 @@ function planGroupLabel(plan: { group: DesignGroup; seaBand?: SeaBand; subBand?:
   return TILE_GROUP_LABELS[plan.group];
 }
 
+/**
+ * Tile-outline colours mirror the creature-tier ladder, so a designer instantly
+ * reads the band's MAX recruitable unit tier from the ring: Ⅰ = bronze, Ⅱ–Ⅲ =
+ * silver, Ⅳ–Ⅴ = gold, Ⅵ–Ⅶ = azure. The land hues reuse the app's canonical grade
+ * colours (`.tierDot.*` / `.neutralDeck.*` in globals.css). Sea is a light blue
+ * and Underground keeps its purple. This is the MAP-EDITOR outline only — the
+ * in-game yellow movement borders (screen.tsx / borders.ts) are untouched.
+ */
 const GROUP_COLORS: Record<DesignGroup, string> = {
-  starting: "#d9b54a",
-  far: "#4f8a4f",
-  near: "#b08d2f",
-  center: "#a14d4d",
-  sea: "#3f7fae",
-  subterranean: "#7a5a9e"
+  starting: "#b46f33", // bronze — Ⅰ tiles guard bronze units only
+  far: "#c7ccd6", // silver — Ⅱ–Ⅲ tiles top out at silver
+  near: "#e7b73c", // gold — Ⅳ–Ⅴ tiles top out at gold
+  center: "#3f7fd6", // azure — Ⅵ–Ⅶ tiles reach azure
+  sea: "#8fd8ff", // light blue — water
+  subterranean: "#7a5a9e" // purple — underground (kept, per the design brief)
 };
+
+/** Band-legend order: the six DesignGroups from weakest (Ⅰ) to Sea/Underground. */
+const BAND_LEGEND_GROUPS: readonly DesignGroup[] = [
+  "starting",
+  "far",
+  "near",
+  "center",
+  "sea",
+  "subterranean"
+];
 
 /** The draggable palette: one entry per tile type the designer can place. */
 const PALETTE: {
@@ -293,24 +326,28 @@ const VII_FIELD_OPTIONS: { id: CustomMapTilePlan["viiField"]; label: string; hin
   { id: "town", label: "Town", hint: "Force a neutral conquerable Random Town on this slot's Ⅶ field." }
 ];
 
-/** The three adventure resources a Ⅶ-field reward may grant, in picker order. */
-const VII_REWARD_FIELDS: { key: keyof ViiFieldReward; label: string }[] = [
-  { key: "gold", label: "Gold" },
-  { key: "buildingMaterials", label: "Materials" },
-  { key: "valuables", label: "Valuables" }
+/** The center-hex first-clear reward kinds, in picker order (label + clamp). */
+const CENTER_REWARD_FIELDS: { key: keyof CustomCenterHexReward; label: string; max: number }[] = [
+  { key: "gold", label: "Gold", max: MAX_CENTER_HEX_RESOURCE },
+  { key: "buildingMaterials", label: "Materials", max: MAX_CENTER_HEX_RESOURCE },
+  { key: "valuables", label: "Valuables", max: MAX_CENTER_HEX_RESOURCE },
+  { key: "treasureDice", label: "Treasure dice", max: MAX_CENTER_HEX_DICE },
+  { key: "searchSpell", label: "Spell Search", max: MAX_CENTER_HEX_SEARCH },
+  { key: "searchAbility", label: "Ability Search", max: MAX_CENTER_HEX_SEARCH },
+  { key: "searchArtifact", label: "Artifact Search", max: MAX_CENTER_HEX_SEARCH }
 ];
 
 /**
- * Fold one resource amount into a Ⅶ-field reward, returning the next reward (or
- * `undefined` when it empties). Pure so the popover input handlers stay a
- * one-liner and the "clears when zeroed" rule lives in one place.
+ * Fold one amount into a center-hex reward, returning the next reward (or
+ * `undefined` when it empties). Pure so the input handlers stay one-liners and
+ * the "clears when zeroed" rule lives in one place.
  */
-function nextViiReward(
-  current: ViiFieldReward | undefined,
-  key: keyof ViiFieldReward,
+function nextCenterReward(
+  current: CustomCenterHexReward | undefined,
+  key: keyof CustomCenterHexReward,
   amount: number
-): ViiFieldReward | undefined {
-  const next: ViiFieldReward = { ...(current ?? {}) };
+): CustomCenterHexReward | undefined {
+  const next: CustomCenterHexReward = { ...(current ?? {}) };
   if (amount > 0) {
     next[key] = amount;
   } else {
@@ -320,30 +357,211 @@ function nextViiReward(
 }
 
 /**
+ * Fold a partial patch into a plan's center-hex customization, dropping empty
+ * arms so an all-cleared editor stores `undefined` (nothing serialized).
+ */
+function nextCenterHex(
+  current: CustomCenterHexPlan | undefined,
+  patch: Partial<CustomCenterHexPlan>
+): CustomCenterHexPlan | undefined {
+  const next: CustomCenterHexPlan = { ...(current ?? {}), ...patch };
+  if (!next.guard) {
+    delete next.guard;
+  }
+  if (!next.reward) {
+    delete next.reward;
+  }
+  if (!next.vp) {
+    delete next.vp;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/** Tier display order + label for the guard unit picker. */
+const GUARD_TIER_ORDER = ["bronze", "silver", "gold", "azure"] as const;
+const GUARD_TIER_LABELS: Record<(typeof GUARD_TIER_ORDER)[number], string> = {
+  bronze: "Bronze",
+  silver: "Silver",
+  gold: "Gold",
+  azure: "Azure"
+};
+
+/**
+ * Every unit a designer may field in a "certain army" guard (it has a Neutral
+ * side), grouped by tier for the picker. Computed once at module load.
+ */
+const GUARD_UNIT_OPTIONS: { tier: (typeof GUARD_TIER_ORDER)[number]; units: { id: string; label: string }[] }[] =
+  GUARD_TIER_ORDER.map((tier) => ({
+    tier,
+    units: Object.values(coreUnitDefinitions)
+      .filter((def) => def.neutral && def.tier === tier)
+      .map((def) => ({ id: def.id, label: def.name }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  })).filter((group) => group.units.length > 0);
+
+/** Short display name for a guard-army unit chip. */
+function guardUnitLabel(unitDefId: string): string {
+  return coreUnitDefinitions[unitDefId]?.name ?? unitDefId;
+}
+
+/** Roman numeral for a guard level chip / badge. */
+const GUARD_LEVELS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+/**
+ * Designer guard editor — shared by the center-hex section and (via the same
+ * component) any single-hex guard editing. Three modes: none ("Printed" /
+ * "None"), a level Ⅰ–Ⅶ, or a certain army built unit by unit.
+ */
+function GuardSpecEditor({
+  guard,
+  noneLabel,
+  onChange
+}: {
+  guard: CustomGuardSpec | undefined;
+  /** Label of the "no designed guard" chip — "Printed" where a printed guard exists, else "None". */
+  noneLabel: string;
+  onChange: (guard: CustomGuardSpec | undefined) => void;
+}) {
+  const armyMode = Boolean(guard?.units);
+  const units = guard?.units ?? [];
+  return (
+    <div className="popoverGuardEditor">
+      <div className="popoverGuardRow" role="group" aria-label="Guard">
+        <button
+          aria-pressed={!guard}
+          className={`popoverGuardChip${!guard ? " active" : ""}`}
+          onClick={() => onChange(undefined)}
+          title="Keep the printed guard (no designed guard)."
+          type="button"
+        >
+          {noneLabel}
+        </button>
+        {GUARD_LEVELS.map((level) => {
+          const active = !armyMode && guard?.level === level;
+          return (
+            <button
+              aria-pressed={active}
+              className={`popoverGuardChip${active ? " active" : ""}`}
+              key={level}
+              onClick={() => onChange({ level })}
+              title={`Neutral guard of Field Difficulty ${ROMAN_NUMERALS[level]}.`}
+              type="button"
+            >
+              {ROMAN_NUMERALS[level]}
+            </button>
+          );
+        })}
+        <button
+          aria-pressed={armyMode}
+          className={`popoverGuardChip popoverGuardArmyChip${armyMode ? " active" : ""}`}
+          onClick={() => {
+            if (!armyMode) {
+              onChange({ units: [] });
+            }
+          }}
+          title="Field an exact army: pick the specific Neutral unit cards that guard this hex."
+          type="button"
+        >
+          Exact army
+        </button>
+      </div>
+      {armyMode ? (
+        <div className="popoverGuardArmy">
+          {units.length > 0 ? (
+            <div className="popoverGuardArmyChips">
+              {units.map((unitDefId, index) => (
+                <button
+                  className="popoverGuardUnitChip"
+                  key={`${unitDefId}-${index}`}
+                  onClick={() => {
+                    const next = units.filter((_, i) => i !== index);
+                    onChange(next.length > 0 ? { units: next } : { units: [] });
+                  }}
+                  title="Remove this unit from the guard army."
+                  type="button"
+                >
+                  {guardUnitLabel(unitDefId)} ✕
+                </button>
+              ))}
+            </div>
+          ) : (
+            <small className="popoverHint">No units yet — add up to {MAX_CUSTOM_GUARD_UNITS} below.</small>
+          )}
+          {units.length < MAX_CUSTOM_GUARD_UNITS ? (
+            <select
+              aria-label="Add a guard unit"
+              className="popoverSelect popoverGuardUnitSelect"
+              onChange={(event) => {
+                const unitId = event.target.value;
+                if (unitId) {
+                  onChange({ units: [...units, unitId] });
+                }
+                event.target.value = "";
+              }}
+              value=""
+            >
+              <option value="">+ Add unit…</option>
+              {GUARD_UNIT_OPTIONS.map((group) => (
+                <optgroup key={group.tier} label={GUARD_TIER_LABELS[group.tier]}>
+                  {group.units.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          ) : null}
+          {units.length > 0 ? (
+            <small className="popoverHint popoverGuardArmyNote">
+              Counts as difficulty {ROMAN_NUMERALS[customGuardArmyDifficulty(units)]} (experience); Quick Combat
+              never skips an exact army.
+            </small>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * Which token kinds a FACE-DOWN plan of this group may carry: sea tiles hide
  * Whirlpools, every other non-starting group hides
  * LAND teleporters — Monoliths AND colored Gates (a Gate is a Monolith with a
  * color, so it joins the Monolith groups). Face-up tiles instead offer whichever
  * kinds have a legal printed field on the chosen tile.
  */
-function faceDownTokenKinds(group: DesignGroup): TokenPlacementKind[] {
+function faceDownTokenKinds(group: DesignGroup): PlanTokenKind[] {
   if (group === "starting") {
     return [];
   }
-  return group === "sea" ? ["whirlpool"] : ["monolith", "gate"];
+  return group === "sea" ? ["whirlpool"] : ["monolith", "gate", "oneway_entrance", "oneway_exit"];
 }
 
-/** A colored Gate reuses the Monolith LAND legality for every slot/candidate check. */
-function tokenLegalityKind(kind: TokenPlacementKind): MapTokenKind {
-  return kind === "gate" ? "monolith" : kind;
+/** Every kind a tile-plan token may be (teleporters + one-way monoliths). */
+type PlanTokenKind = NonNullable<CustomMapTileToken["kind"]>;
+
+/** Gates and one-way monoliths reuse the Monolith LAND legality for every slot/candidate check. */
+function tokenLegalityKind(kind: PlanTokenKind): MapTokenKind {
+  return kind === "whirlpool" ? "whirlpool" : "monolith";
 }
 
 /**
  * Designer token art: a colored Gate renders as the MONOLITH image (tinted by a
  * color ring at the render site); Monolith/Whirlpool use their own scans.
  */
-function designerTokenImage(kind: TokenPlacementKind, number?: -1 | 0 | 1): string {
-  return kind === "gate" ? monolithTokenImage() : mapTokenImage(kind, number);
+function designerTokenImage(kind: CustomMapObjectKind, number?: -1 | 0 | 1, pair?: 1 | 2 | 3 | 4): string {
+  const outpost = outpostObjectImage(kind);
+  if (outpost) {
+    return outpost;
+  }
+  if (kind === "oneway_entrance" || kind === "oneway_exit") {
+    return onewayMonolithImage(kind === "oneway_entrance" ? "entrance" : "exit", pair ?? 1);
+  }
+  if (kind === "gate") {
+    return teleportGateImage(pair ?? 1);
+  }
+  return mapTokenImage(kind as "monolith" | "whirlpool", number);
 }
 
 /**
@@ -362,14 +580,27 @@ function faceDownTokenOf(token: CustomMapTilePlan["token"]): CustomMapTilePlan["
     : { kind: token.kind, ...slotPart };
 }
 
-/** Build a `plan.token` for a kind/pair, with an optional face-up slot. */
+/**
+ * Build a `plan.token` for a kind/pair, with an optional face-up slot, guard
+ * and the one-way extras (`carry` preserves exitMode / alwaysPickable across
+ * moves and slot changes so a drag never silently resets them).
+ */
 function tileTokenValue(
-  kind: TokenPlacementKind,
+  kind: PlanTokenKind,
   pair: 1 | 2 | 3 | 4 | undefined,
-  slot: number | undefined
+  slot: number | undefined,
+  guard?: CustomGuardSpec,
+  carry?: Pick<CustomMapTileToken, "exitMode" | "alwaysPickable">
 ): NonNullable<CustomMapTilePlan["token"]> {
   const slotPart = slot !== undefined ? { slot } : {};
-  return kind === "gate" ? { kind: "gate", pair, ...slotPart } : { kind, ...slotPart };
+  const guardPart = guard ? { guard } : {};
+  const pairPart =
+    kind === "gate" || kind === "oneway_entrance" || kind === "oneway_exit" ? { pair } : {};
+  const carryPart = {
+    ...(kind === "oneway_entrance" && carry?.exitMode ? { exitMode: carry.exitMode } : {}),
+    ...(kind === "oneway_exit" && carry?.alwaysPickable ? { alwaysPickable: true } : {})
+  };
+  return { kind, ...pairPart, ...slotPart, ...guardPart, ...carryPart };
 }
 
 /** A resolved drop target for a teleporter placement: an ON-tile token, or an OFF-tile standalone hex. */
@@ -391,7 +622,7 @@ type TokenDropTarget =
  */
 function computeTileTokenTargets(
   customMap: CustomMapTilePlan[],
-  kind: TokenPlacementKind,
+  kind: PlanTokenKind,
   sourceIndex: number | null,
   sourceTokenIndex = 0
 ): { planIndex: number; slot?: number; hex: HexCoord; row: number; col: number }[] {
@@ -745,12 +976,22 @@ function boardEdgeKey(a: HexCoord, b: HexCoord): string {
  */
 type BorderEdgeIncidence = { planIndex: number; code: number };
 
+/** A standalone object hex's stake in a board edge: which object, which of ITS six edges. */
+type BorderEdgeObjectIncidence = { objectIndex: number; direction: number };
+
 /**
  * A single clickable border-paint edge: its geometry (a footprint hex + the
- * absolute direction of the edge) and every plan that borders it. The FIRST
- * incidence (plans-array order) owns the WRITE; `active`/ERASE consider all.
+ * absolute direction of the edge) and every plan / standalone object that
+ * borders it. The FIRST tile incidence (plans-array order) owns the WRITE; a
+ * zone with no tile incidence is an OBJECT-hex edge and writes to its first
+ * object. `active`/ERASE consider all sides.
  */
-type BorderEdgeZone = { hex: HexCoord; direction: number; incidences: BorderEdgeIncidence[] };
+type BorderEdgeZone = {
+  hex: HexCoord;
+  direction: number;
+  incidences: BorderEdgeIncidence[];
+  objectIncidences: BorderEdgeObjectIncidence[];
+};
 
 /** A thin quad centred on a hex edge — the pointerdown/enter hit target for painting. */
 function edgeStripPoints(cx: number, cy: number, size: number, direction: number, thickness: number): string {
@@ -802,11 +1043,33 @@ type DesignDrag =
 /** Stable empty default so the `objects` prop never re-mounts on every render. */
 const EMPTY_OBJECTS: CustomMapObject[] = [];
 
-/** The four colored Gate pairs offered in the Objects palette (1 = red … 4 = yellow). */
+/** The four Teleport-Gate pairs offered in the Objects palette (1 = red … 4 = violet). */
 const GATE_PAIRS: (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
 
 /** Guard-difficulty picks for a placed object (0 = no guard, 1-7 = Ⅰ-Ⅶ). */
-const OBJECT_GUARD_LEVELS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
+/**
+ * The guard spec an object shows in the EDITOR: the raw spec (so a just-armed
+ * empty exact army stays in army mode), with only the legacy number folded.
+ * `objectGuardSpec` (the sanitizer) would collapse the transient `{units: []}`
+ * editing state, closing the army picker the moment it opened.
+ */
+function objectGuardDisplay(object: Pick<CustomMapObject, "guard">): CustomGuardSpec | undefined {
+  return typeof object.guard === "number" ? { level: object.guard } : object.guard;
+}
+
+/**
+ * Roman-numeral badge for a designer guard (object or token): a level shows its
+ * own numeral, an exact army shows the tier-derived difficulty it counts as.
+ */
+function guardBadgeNumeral(guard: CustomGuardSpec | undefined): string | null {
+  if (!guard) {
+    return null;
+  }
+  if (guard.units && guard.units.length > 0) {
+    return ROMAN_NUMERALS[customGuardArmyDifficulty(guard.units)];
+  }
+  return guard.level ? ROMAN_NUMERALS[guard.level] : null;
+}
 
 const ROMAN_NUMERALS = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
 
@@ -815,7 +1078,7 @@ const GATE_PAIR_CSS: Record<1 | 2 | 3 | 4, string> = {
   1: "#e0483c",
   2: "#3d7fe0",
   3: "#3caf52",
-  4: "#e0b93c"
+  4: "#b04fd6"
 };
 
 /**
@@ -942,7 +1205,7 @@ export function MapDesigner({
     index: number;
     /** Which of the plan's token pins (planTokens order) is being dragged. */
     tokenIndex: number;
-    kind: TokenPlacementKind;
+    kind: PlanTokenKind;
     pair?: 1 | 2 | 3 | 4;
     startX: number;
     startY: number;
@@ -954,6 +1217,8 @@ export function MapDesigner({
   const tokenClickSuppressRef = useRef(false);
   // Anime Mod panel — Field Override palette (docs/anime-mod-plan.md §9b).
   const [modPanelOpen, setModPanelOpen] = useState(false);
+  /** Which designer gate link (by index) has its guard editors expanded. */
+  const [gateGuardEditorIndex, setGateGuardEditorIndex] = useState<number | null>(null);
   // Border paint mode: armed from the Objects palette, it turns every placed
   // tile's six outer-edge ring hexes into clickable zones that seal/unseal a
   // designer yellow border directly on the board (one armed mode at a time).
@@ -1020,7 +1285,10 @@ export function MapDesigner({
   const gatePlacements = useMemo(
     () => [
       ...(hasDesignerStarts ? [] : starts.map((seat) => ({ row: seat.row, col: seat.col, group: "starting" as const }))),
-      ...customMap.map((plan) => ({ row: plan.row, col: plan.col, group: plan.group }))
+      // Carry the UNDERGROUND override so the gate preview / drag / unreachable
+      // ring treat a flagged far/near/center/sea tile as a cavern (the layer
+      // predicate mirrors the engine's carve).
+      ...customMap.map((plan) => ({ row: plan.row, col: plan.col, group: plan.group, underground: plan.underground }))
     ],
     [customMap, hasDesignerStarts, starts]
   );
@@ -1075,7 +1343,8 @@ export function MapDesigner({
   const designedLinks = useMemo<DesignedGateLinkLike[]>(() => {
     const links: DesignedGateLinkLike[] = [];
     for (const plan of customMap) {
-      if (plan.group !== "subterranean" || !plan.gateLinks) {
+      // Any UNDERGROUND-layer plan (printed cavern OR flagged tile) owns gate links.
+      if (!planIsUnderground(plan) || !plan.gateLinks) {
         continue;
       }
       for (const link of plan.gateLinks) {
@@ -1172,6 +1441,7 @@ export function MapDesigner({
     setSelectedIndex(null);
     setPopoverAt(null);
     setTilePickFilter("all");
+    setGateGuardEditorIndex(null);
   }, []);
 
   // Close the docked object panel. A single stable callback (mirroring
@@ -1265,14 +1535,14 @@ export function MapDesigner({
           if (changes.lockRotation === undefined && "lockRotation" in changes) {
             delete next.lockRotation;
           }
+          if (changes.underground === undefined && "underground" in changes) {
+            delete next.underground;
+          }
           if (changes.viiField === undefined && "viiField" in changes) {
             delete next.viiField;
           }
-          if (changes.viiFieldReward === undefined && "viiFieldReward" in changes) {
-            delete next.viiFieldReward;
-          }
-          if (changes.viiFieldVp === undefined && "viiFieldVp" in changes) {
-            delete next.viiFieldVp;
+          if (changes.centerHex === undefined && "centerHex" in changes) {
+            delete next.centerHex;
           }
           return next;
         })
@@ -1300,35 +1570,74 @@ export function MapDesigner({
   const paintEdgeZone = useCallback(
     (zone: BorderEdgeZone, mode: "draw" | "erase") => {
       const owner = zone.incidences[0];
-      onChange(
-        customMap.map((plan, planIndex) => {
-          if (mode === "draw") {
-            if (planIndex !== owner.planIndex) {
+      // DRAW on a tile-bordered edge writes the owner plan; a zone with NO tile
+      // incidence is a standalone OBJECT hex edge and writes to its object.
+      if (owner) {
+        onChange(
+          customMap.map((plan, planIndex) => {
+            if (mode === "draw") {
+              if (planIndex !== owner.planIndex) {
+                return plan;
+              }
+              // Already sealed with no legacy arc left to fold in → no-op.
+              if ((plan.borderEdges?.includes(owner.code) ?? false) && !plan.extraBorders) {
+                return plan;
+              }
+              const edges = normalizeDesignedBorderEdges([...planEffectiveBorderEdges(plan), owner.code]);
+              return writePlanBorderEdges(plan, edges);
+            }
+            const codes = zone.incidences
+              .filter((incidence) => incidence.planIndex === planIndex)
+              .map((incidence) => incidence.code);
+            if (codes.length === 0) {
               return plan;
             }
-            // Already sealed with no legacy arc left to fold in → no-op.
-            if ((plan.borderEdges?.includes(owner.code) ?? false) && !plan.extraBorders) {
-              return plan;
+            const effective = planEffectiveBorderEdges(plan);
+            if (!effective.some((code) => codes.includes(code))) {
+              return plan; // this plan doesn't hold the edge — left untouched
             }
-            const edges = normalizeDesignedBorderEdges([...planEffectiveBorderEdges(plan), owner.code]);
+            const edges = normalizeDesignedBorderEdges(effective.filter((code) => !codes.includes(code)));
             return writePlanBorderEdges(plan, edges);
-          }
-          const codes = zone.incidences
-            .filter((incidence) => incidence.planIndex === planIndex)
-            .map((incidence) => incidence.code);
-          if (codes.length === 0) {
-            return plan;
-          }
-          const effective = planEffectiveBorderEdges(plan);
-          if (!effective.some((code) => codes.includes(code))) {
-            return plan; // this plan doesn't hold the edge — left untouched
-          }
-          const edges = normalizeDesignedBorderEdges(effective.filter((code) => !codes.includes(code)));
-          return writePlanBorderEdges(plan, edges);
-        })
-      );
+          })
+        );
+      } else if (mode === "draw") {
+        const objectOwner = zone.objectIncidences[0];
+        if (objectOwner) {
+          onObjectsChange?.(
+            objects.map((object, index) => {
+              if (index !== objectOwner.objectIndex || object.borderEdges?.includes(objectOwner.direction)) {
+                return object;
+              }
+              const edges = [...(object.borderEdges ?? []), objectOwner.direction].sort((a, b) => a - b);
+              return { ...object, borderEdges: edges };
+            })
+          );
+        }
+      }
+      // ERASE always sweeps the OBJECT side too — a shared tile↔object edge may
+      // be sealed from either side, and one erase must clear the whole edge.
+      if (mode === "erase" && zone.objectIncidences.length > 0) {
+        onObjectsChange?.(
+          objects.map((object, index) => {
+            const directions = zone.objectIncidences
+              .filter((incidence) => incidence.objectIndex === index)
+              .map((incidence) => incidence.direction);
+            if (directions.length === 0 || !object.borderEdges?.some((dir) => directions.includes(dir))) {
+              return object;
+            }
+            const edges = object.borderEdges.filter((dir) => !directions.includes(dir));
+            const next = { ...object };
+            if (edges.length > 0) {
+              next.borderEdges = edges;
+            } else {
+              delete next.borderEdges;
+            }
+            return next;
+          })
+        );
+      }
     },
-    [customMap, onChange]
+    [customMap, objects, onChange, onObjectsChange]
   );
 
   /**
@@ -1402,7 +1711,7 @@ export function MapDesigner({
     : objectDrag
       ? objectDrag.kind
       : null;
-  const activeKind: TokenPlacementKind | null = placementKind ?? (tokenDrag ? tokenDrag.kind : null);
+  const activeKind: CustomMapObjectKind | null = placementKind ?? (tokenDrag ? tokenDrag.kind : null);
   // While dragging a placed object, its OWN hex must not count as occupied so its
   // current neighbourhood stays a legal drop target.
   const draggedObjectIndex = objectDrag ? objectDrag.index : null;
@@ -1470,10 +1779,11 @@ export function MapDesigner({
    * face-up slot is dropped when another object already sits on that hex.
    */
   const tileTokenTargets = useMemo(() => {
-    if (!placementKind) {
+    // Outposts (Garrison / Tent / Barrier) are standalone-only — never on a tile.
+    if (!placementKind || OUTPOST_OBJECT_KINDS.has(placementKind)) {
       return [] as ReturnType<typeof computeTileTokenTargets>;
     }
-    return computeTileTokenTargets(customMap, placementKind, null).filter(
+    return computeTileTokenTargets(customMap, placementKind as TokenPlacementKind, null).filter(
       (candidate) => candidate.slot === undefined || !objectHexSet.has(hexSpaceId(candidate.hex))
     );
   }, [placementKind, customMap, objectHexSet]);
@@ -1585,7 +1895,8 @@ export function MapDesigner({
   // monolith/gate only — Whirlpools never stand alone).
   const placeArmedTileToken = useCallback(
     (target: { planIndex: number; slot?: number }) => {
-      if (!armedObject) {
+      // Outposts are standalone-only (no tile targets ever light up for them).
+      if (!armedObject || OUTPOST_OBJECT_KINDS.has(armedObject.kind)) {
         return;
       }
       const plan = customMap[target.planIndex];
@@ -1600,7 +1911,7 @@ export function MapDesigner({
       if (slot === null) {
         return; // tile hexes full
       }
-      const nextToken = tileTokenValue(armedObject.kind, armedObject.pair, slot);
+      const nextToken = tileTokenValue(armedObject.kind as PlanTokenKind, armedObject.pair, slot);
       if (!nextToken) {
         return;
       }
@@ -1616,9 +1927,15 @@ export function MapDesigner({
       if (!armedObject || armedObject.kind === "whirlpool") {
         return;
       }
+      const needsPair =
+        armedObject.kind === "gate" ||
+        armedObject.kind === "keymaster_tent" ||
+        armedObject.kind === "barrier" ||
+        armedObject.kind === "oneway_entrance" ||
+        armedObject.kind === "oneway_exit";
       const object: CustomMapObject = {
         kind: armedObject.kind,
-        ...(armedObject.kind === "gate" && armedObject.pair ? { pair: armedObject.pair } : {}),
+        ...(needsPair ? { pair: armedObject.pair ?? 1 } : {}),
         placement: { type: "standalone", row, col }
       };
       onObjectsChange?.([...objects, object]);
@@ -1626,14 +1943,14 @@ export function MapDesigner({
     [armedObject, objects, onObjectsChange]
   );
   const setObjectGuard = useCallback(
-    (index: number, guard: number) => {
+    (index: number, guard: CustomGuardSpec | undefined) => {
       onObjectsChange?.(
         objects.map((object, i) => {
           if (i !== index) {
             return object;
           }
           const next = { ...object };
-          if (guard > 0) {
+          if (guard) {
             next.guard = guard;
           } else {
             delete next.guard;
@@ -1675,7 +1992,7 @@ export function MapDesigner({
       if (!source || !dragged) {
         return;
       }
-      const nextToken = tileTokenValue(dragged.kind, dragged.pair, target.slot);
+      const nextToken = tileTokenValue(dragged.kind, dragged.pair, target.slot, dragged.guard, dragged);
       // Never stack: a target slot another placement (token / Field Override)
       // already claims refuses the drop — computeTileTokenTargets filters these
       // out of the glow, this is the write-side backstop.
@@ -1715,14 +2032,16 @@ export function MapDesigner({
    * Convert a placed OBJECT → a tile TOKEN (an object→tile drop). Removes the
    * object AND writes the canonical `plan.token`. The two callbacks target
    * DIFFERENT arrays (objects vs tiles), so the parent's batched setState applies
-   * both without clobbering. The object's GUARD is DROPPED — a token carries no
-   * guard (a visible hint accompanies the drop); the `pair` is preserved.
+   * both without clobbering. The object's GUARD and `pair` are both preserved
+   * (tokens carry guards too).
    */
   const convertObjectToTileToken = useCallback(
     (objectIndex: number, target: { planIndex: number; slot?: number }) => {
       const object = objects[objectIndex];
       const plan = customMap[target.planIndex];
-      if (!object || !plan) {
+      // Outposts are standalone-only — they never convert onto a tile (their
+      // drags offer no tile targets, this is the write-side backstop).
+      if (!object || !plan || OUTPOST_OBJECT_KINDS.has(object.kind)) {
         return;
       }
       // Never stack on an occupied slot; fall back to the first free hex.
@@ -1736,7 +2055,10 @@ export function MapDesigner({
       }
       onObjectsChange?.(objects.filter((_, i) => i !== objectIndex));
       updateTile(target.planIndex, {
-        tokens: [...planTokens(plan), tileTokenValue(object.kind, object.pair, slot)],
+        tokens: [
+          ...planTokens(plan),
+          tileTokenValue(object.kind as PlanTokenKind, object.pair, slot, objectGuardSpec(object), object)
+        ],
         token: undefined
       });
     },
@@ -1756,7 +2078,8 @@ export function MapDesigner({
   /**
    * Convert a tile TOKEN → a standalone OBJECT (a token→standalone drop). Deletes
    * the `plan.token` AND appends a standalone object — batched like the reverse.
-   * Monolith/Gate only (a Whirlpool never stands alone). The `pair` is preserved.
+   * Monolith/Gate only (a Whirlpool never stands alone). The `pair` AND the
+   * designer guard are both preserved.
    */
   const convertTokenToStandalone = useCallback(
     (sourceIndex: number, tokenIndex: number, row: number, col: number) => {
@@ -1765,7 +2088,7 @@ export function MapDesigner({
       if (!source || !dragged || dragged.kind === "whirlpool") {
         return;
       }
-      const { kind, pair } = dragged;
+      const { kind, pair, guard, exitMode, alwaysPickable } = dragged;
       onChange(
         customMap.map((plan, planIndex) => {
           if (planIndex !== sourceIndex) {
@@ -1780,8 +2103,11 @@ export function MapDesigner({
       );
       const object: CustomMapObject = {
         kind,
-        ...(kind === "gate" && pair ? { pair } : {}),
-        placement: { type: "standalone", row, col }
+        ...((kind === "gate" || kind === "oneway_entrance" || kind === "oneway_exit") && pair ? { pair } : {}),
+        placement: { type: "standalone", row, col },
+        ...(guard ? { guard } : {}),
+        ...(kind === "oneway_entrance" && exitMode ? { exitMode } : {}),
+        ...(kind === "oneway_exit" && alwaysPickable ? { alwaysPickable: true } : {})
       };
       onObjectsChange?.([...objects, object]);
     },
@@ -1813,18 +2139,23 @@ export function MapDesigner({
   const pinGateLinkAt = useCallback(
     (cavernCenter: HexCoord, sourceIndex: number, surface: { row: number; col: number }, pair: GateHexPair) => {
       const index = customMap.findIndex(
-        (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
+        (plan) => planIsUnderground(plan) && plan.row === cavernCenter.row && plan.col === cavernCenter.col
       );
       const plan = index >= 0 ? customMap[index] : null;
       if (!plan) {
         return;
       }
+      const links = plan.gateLinks ?? [];
+      // Re-pinning a link in place keeps its designed GUARDS — dragging a gate
+      // to another boundary pair must never silently disarm it.
+      const previous = sourceIndex >= 0 && sourceIndex < links.length ? links[sourceIndex] : undefined;
       const entry: CustomMapGateLink = {
         surface: { row: surface.row, col: surface.col },
         gateHex: hexSpaceId(pair.gateHex),
-        entranceHex: hexSpaceId(pair.entranceHex)
+        entranceHex: hexSpaceId(pair.entranceHex),
+        ...(previous?.gateGuard ? { gateGuard: previous.gateGuard } : {}),
+        ...(previous?.entranceGuard ? { entranceGuard: previous.entranceGuard } : {})
       };
-      const links = plan.gateLinks ?? [];
       const nextLinks =
         sourceIndex >= 0 && sourceIndex < links.length
           ? links.map((link, i) => (i === sourceIndex ? entry : link))
@@ -1847,7 +2178,7 @@ export function MapDesigner({
   const gateDragCandidatesFor = useCallback(
     (cavernCenter: HexCoord, sourceIndex: number): GateDragCandidate[] => {
       const cavernPlan = customMap.find(
-        (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
+        (plan) => planIsUnderground(plan) && plan.row === cavernCenter.row && plan.col === cavernCenter.col
       );
       const links = cavernPlan?.gateLinks ?? [];
       const pinnedHexes = new Set<string>();
@@ -1864,7 +2195,9 @@ export function MapDesigner({
       });
       const candidates: GateDragCandidate[] = [];
       for (const tile of gatePlacements) {
-        if (tile.group === "subterranean") {
+        // Gate links land on SURFACE tiles only — skip every underground-layer
+        // tile (printed cavern OR flagged) as a surface candidate.
+        if (planIsUnderground(tile)) {
           continue;
         }
         const surfaceCenter = { row: tile.row, col: tile.col };
@@ -2263,18 +2596,19 @@ export function MapDesigner({
         : retargetTokensForDef(selected, tileDefId))
     });
   };
-  // Token kinds the tile-panel ADD picker offers — Monolith/Whirlpool only
-  // (colored Gates are placed from the Objects palette). A face-down tile hides
-  // its group's kind (sea → Whirlpool, land groups → Monolith); a revealed tile
-  // offers whichever kinds still have a legal printed field on it (an island hex
-  // on a sea tile can host a Monolith, the water hexes a Whirlpool).
+  // Token kinds the tile-panel ADD picker offers — Whirlpool ONLY. The plain
+  // Monolith is RETIRED from every palette (all two-way teleporters are the
+  // colored Teleport Gates now; one-way monoliths and Gates are placed from the
+  // Objects palette). Legacy saved Monoliths still render and stay editable.
   const selectedTokenKinds: MapTokenKind[] =
     !selected || selected.group === "starting"
       ? []
       : selected.faceDown
-        ? faceDownTokenKinds(selected.group).filter((kind): kind is MapTokenKind => kind !== "gate")
+        ? selected.group === "sea"
+          ? (["whirlpool"] as MapTokenKind[])
+          : []
         : selectedTileDef
-          ? (["monolith", "whirlpool"] as MapTokenKind[]).filter(
+          ? (["whirlpool"] as MapTokenKind[]).filter(
               (kind) => legalTokenSlotsForTileDef(selectedTileDef, kind).length > 0
             )
           : [];
@@ -2337,16 +2671,31 @@ export function MapDesigner({
     updateTile(selectedIndex, { lockRotation: selected.lockRotation ? undefined : true });
   };
 
+  /**
+   * Toggle a far/near/center/sea tile's UNDERGROUND layer. On: the tile is
+   * topologically a cavern (reachable only through a Subterranean Gate) while
+   * KEEPING its band content — back art, guard tiers, bank pile, tokens. Off:
+   * plain Surface. Offered only on the flag-valid groups (mirrors the engine
+   * predicate + sanitiser), so a starting seat tile or a printed cavern never
+   * carries it.
+   */
+  const toggleUnderground = () => {
+    if (selectedIndex === null || !selected || !UNDERGROUND_LAYER_GROUPS.has(selected.group)) {
+      return;
+    }
+    updateTile(selectedIndex, { underground: selected.underground ? undefined : true });
+  };
+
   const seatNumberOf = (index: number) => startingPlanIndexes.indexOf(index) + 1;
 
   // --- Designer Subterranean Gate links ------------------------------------
   // Every Surface tile (or seat) the selected cavern physically touches, so the
   // designer can toggle a link to any of them (and connect one cavern to several).
   const selectedCavernSurfaces =
-    selected && selected.group === "subterranean"
+    selected && planIsUnderground(selected)
       ? gatePlacements.filter(
           (tile) =>
-            tile.group !== "subterranean" &&
+            !planIsUnderground(tile) &&
             tileFootprintsTouch({ row: selected.row, col: selected.col }, { row: tile.row, col: tile.col })
         )
       : [];
@@ -2357,7 +2706,7 @@ export function MapDesigner({
   // surface): a new "+ Gate" pins the first boundary pair free of these, and two
   // gates never share a board hex.
   const selectedCavernUsedHexes = new Set<string>();
-  if (selected && selected.group === "subterranean") {
+  if (selected && planIsUnderground(selected)) {
     for (const gate of plannedGates) {
       if (sameGridCoord(gate.cavernCenter, { row: selected.row, col: selected.col })) {
         selectedCavernUsedHexes.add(hexSpaceId(gate.gateHex));
@@ -2371,7 +2720,7 @@ export function MapDesigner({
 
   /** Add the FIRST designer gate link between the selected cavern and a touching Surface tile. */
   const toggleGateLink = (surface: { row: number; col: number }) => {
-    if (selectedIndex === null || !selected || selected.group !== "subterranean") {
+    if (selectedIndex === null || !selected || !planIsUnderground(selected)) {
       return;
     }
     const links = selected.gateLinks ?? [];
@@ -2383,16 +2732,36 @@ export function MapDesigner({
 
   /** Remove ONE designer gate link by its index in the cavern's list. */
   const unlinkGateAt = (linkIndex: number) => {
-    if (selectedIndex === null || !selected || selected.group !== "subterranean" || !selected.gateLinks) {
+    if (selectedIndex === null || !selected || !planIsUnderground(selected) || !selected.gateLinks) {
       return;
     }
     const nextLinks = selected.gateLinks.filter((_, index) => index !== linkIndex);
     updateTile(selectedIndex, { gateLinks: nextLinks.length > 0 ? nextLinks : undefined });
   };
 
+  /** Set / clear a designer guard on ONE half of a designer gate link. */
+  const setGateLinkGuard = (linkIndex: number, half: "gateGuard" | "entranceGuard", guard: CustomGuardSpec | undefined) => {
+    if (selectedIndex === null || !selected || !planIsUnderground(selected) || !selected.gateLinks) {
+      return;
+    }
+    const nextLinks = selected.gateLinks.map((link, index) => {
+      if (index !== linkIndex) {
+        return link;
+      }
+      const next = { ...link };
+      if (guard) {
+        next[half] = guard;
+      } else {
+        delete next[half];
+      }
+      return next;
+    });
+    updateTile(selectedIndex, { gateLinks: nextLinks });
+  };
+
   /** The first legal boundary pair for `surface` free of the cavern's used hexes, or null. */
   const firstFreePairForSurface = (surface: { row: number; col: number }): GateHexPair | null => {
-    if (!selected || selected.group !== "subterranean") {
+    if (!selected || !planIsUnderground(selected)) {
       return null;
     }
     const cavernCenter = { row: selected.row, col: selected.col };
@@ -2411,7 +2780,7 @@ export function MapDesigner({
    * has no free pair left.
    */
   const addGateToSurface = (surface: { row: number; col: number }) => {
-    if (selectedIndex === null || !selected || selected.group !== "subterranean") {
+    if (selectedIndex === null || !selected || !planIsUnderground(selected)) {
       return;
     }
     const pair = firstFreePairForSurface(surface);
@@ -2429,7 +2798,7 @@ export function MapDesigner({
    * shared edge without colliding.
    */
   const cycleGateLinkAt = (linkIndex: number) => {
-    if (selectedIndex === null || !selected || selected.group !== "subterranean" || !selected.gateLinks) {
+    if (selectedIndex === null || !selected || !planIsUnderground(selected) || !selected.gateLinks) {
       return;
     }
     const link = selected.gateLinks[linkIndex];
@@ -2491,7 +2860,7 @@ export function MapDesigner({
   /** Select the cavern that owns a designed gate and open its options popover. */
   const selectCavernForGate = (cavernCenter: HexCoord, clientX: number, clientY: number) => {
     const index = customMap.findIndex(
-      (plan) => plan.group === "subterranean" && plan.row === cavernCenter.row && plan.col === cavernCenter.col
+      (plan) => planIsUnderground(plan) && plan.row === cavernCenter.row && plan.col === cavernCenter.col
     );
     if (index >= 0) {
       // Opening the docked tile panel closes any open object / token panel.
@@ -2527,7 +2896,7 @@ export function MapDesigner({
    * a legacy no-slot pending shape) untouched.
    */
   const beginTokenPress =
-    (index: number, tokenIndex: number, kind: TokenPlacementKind, pair?: 1 | 2 | 3 | 4) =>
+    (index: number, tokenIndex: number, kind: PlanTokenKind, pair?: 1 | 2 | 3 | 4) =>
     (event: React.PointerEvent) => {
       if (event.button !== 0) {
         return;
@@ -2580,7 +2949,7 @@ export function MapDesigner({
     // its surface + committed pair (so ONE of several same-surface gates moves); an
     // automatic gate owns no entry (index -1 → a drop APPENDS a fresh link).
     const cavernPlan = customMap.find(
-      (plan) => plan.group === "subterranean" && plan.row === gate.cavernCenter.row && plan.col === gate.cavernCenter.col
+      (plan) => planIsUnderground(plan) && plan.row === gate.cavernCenter.row && plan.col === gate.cavernCenter.col
     );
     const sourceIndex = gate.designed
       ? findGateLinkIndex(cavernPlan?.gateLinks ?? [], {
@@ -2769,8 +3138,21 @@ export function MapDesigner({
       <path
         className={`designerFlowerOutline ${isSelected ? "selected" : ""} ${secretPin ? "secret" : ""}`}
         d={flowerOutline(center, size)}
+        data-band-group={plan.group}
+        data-underground={planIsUnderground(plan) ? "true" : undefined}
         key={`plan-outline-${index}`}
-        style={{ stroke: isSelected ? "#ffd766" : secretPin ? "#9ad0ff" : GROUP_COLORS[plan.group] }}
+        style={{
+          // Band identity stays in `data-band-group`; a flagged tile strokes the
+          // Underground purple so the LAYER override reads at a glance (selection
+          // gold / secret blue still win). The band back-label is unchanged.
+          stroke: isSelected
+            ? "#ffd766"
+            : secretPin
+              ? "#9ad0ff"
+              : planIsUnderground(plan)
+                ? GROUP_COLORS.subterranean
+                : GROUP_COLORS[plan.group]
+        }}
       />
     );
 
@@ -3092,7 +3474,7 @@ export function MapDesigner({
         <image
           className="designerMapTokenArt"
           height={tokenHeight}
-          href={assetUrl(designerTokenImage(token.kind, whirlpoolNumberByIndex.get(`${index}:${tokenIndex}`)))}
+          href={assetUrl(designerTokenImage(token.kind, whirlpoolNumberByIndex.get(`${index}:${tokenIndex}`), token.pair))}
           preserveAspectRatio="xMidYMid meet"
           style={{ pointerEvents: "none" }}
           width={tokenWidth}
@@ -3115,6 +3497,17 @@ export function MapDesigner({
               {token.pair}
             </text>
           </>
+        ) : null}
+        {guardBadgeNumeral(token.guard) ? (
+          <text
+            className="designerObjectGuard"
+            style={{ pointerEvents: "none" }}
+            textAnchor="middle"
+            x={pixel.x}
+            y={pixel.y - size * 0.6}
+          >
+            {guardBadgeNumeral(token.guard)}
+          </text>
         ) : null}
         <title>{tokenTitle}</title>
       </g>
@@ -3180,7 +3573,9 @@ export function MapDesigner({
   // warning so the designer knows to nudge it against a Surface (or chained
   // cavern) tile until a gate appears.
   for (const plan of customMap) {
-    if (plan.group !== "subterranean" || !unreachableKeys.has(`${plan.row}:${plan.col}`)) {
+    // Any UNDERGROUND-layer tile (printed cavern OR flagged) with no way in gets
+    // the red "unreachable" ring — the same layer predicate the warning uses.
+    if (!planIsUnderground(plan) || !unreachableKeys.has(`${plan.row}:${plan.col}`)) {
       continue;
     }
     const center = { row: plan.row, col: plan.col };
@@ -3380,7 +3775,17 @@ export function MapDesigner({
     }
     const { x, y } = hexToPixel(coord, size);
     const isGate = object.kind === "gate";
-    const color = isGate && object.pair ? GATE_PAIR_CSS[object.pair] : "#c9a24b";
+    // Colored ring: gates / tents / barriers wear their pair color, the
+    // Garrison its printed light-blue frame, plain teleporters gold.
+    const isColored = isGate || object.kind === "keymaster_tent" || object.kind === "barrier";
+    const color = isColored && object.pair ? GATE_PAIR_CSS[object.pair] : object.kind === "garrison" ? "#4fc3f7" : "#c9a24b";
+    // Designer yellow borders on the object hex — the field-level twin of a
+    // tile's per-edge lines, drawn with the same bold casing+core.
+    for (const direction of object.borderEdges ?? []) {
+      const coords = hexEdgePoints(x, y, size - 0.8, direction);
+      borderLayer.push(<line className="designerBorderCasing" key={`obj-border-casing-${index}-${direction}`} {...coords} />);
+      borderLayer.push(<line className="designerBorderLine" key={`obj-border-${index}-${direction}`} {...coords} />);
+    }
     objectLayer.push(
       <g
         className={`designerObjectToken${isGate ? " gate" : ""}${object.placement.type === "standalone" ? " standalone" : ""}${
@@ -3405,11 +3810,13 @@ export function MapDesigner({
         onPointerDown={beginObjectDrag(index, object.kind)}
       >
         {/* A colored Gate reads as a colored Monolith: colored disc + monolith
-            art + colored ring + pair badge. Monolith/Whirlpool: art + gold ring. */}
+            art + colored ring + pair badge. Tents/Barriers wear their color the
+            same way; the Garrison a light-blue ring. Monolith/Whirlpool: art +
+            gold ring. */}
         {isGate ? <circle cx={x} cy={y} fill={color} opacity={0.32} r={size * 0.5} style={{ pointerEvents: "none" }} /> : null}
         <image
           height={size}
-          href={assetUrl(designerTokenImage(object.kind, object.kind === "whirlpool" ? 0 : undefined))}
+          href={assetUrl(designerTokenImage(object.kind, object.kind === "whirlpool" ? 0 : undefined, object.pair))}
           preserveAspectRatio="xMidYMid meet"
           style={{ pointerEvents: "none" }}
           width={size}
@@ -3417,14 +3824,14 @@ export function MapDesigner({
           y={y - size * 0.5}
         />
         <circle className="designerObjectRing" cx={x} cy={y} fill="none" r={size * 0.62} stroke={color} />
-        {isGate ? (
+        {isColored ? (
           <text className="designerObjectPair" fill={color} textAnchor="middle" x={x} y={y + size * 0.66}>
             {object.pair}
           </text>
         ) : null}
-        {object.guard ? (
+        {guardBadgeNumeral(objectGuardDisplay(object)) ? (
           <text className="designerObjectGuard" textAnchor="middle" x={x} y={y - size * 0.6}>
-            {ROMAN_NUMERALS[object.guard]}
+            {guardBadgeNumeral(objectGuardDisplay(object))}
           </text>
         ) : null}
       </g>
@@ -3453,7 +3860,7 @@ export function MapDesigner({
           const code = canonicalTileEdgeCode(footprintIndex, direction);
           let zone = zones.get(key);
           if (!zone) {
-            zone = { hex: cell, direction, incidences: [] };
+            zone = { hex: cell, direction, incidences: [], objectIncidences: [] };
             zones.set(key, zone);
           }
           // An inner edge is met twice from one plan (both its hexes) at the same
@@ -3464,17 +3871,40 @@ export function MapDesigner({
         }
       }
     }
+    // Standalone object hexes paint too: each contributes its six edges. An edge
+    // shared with a tile joins THAT zone (the tile side owns the write; erase
+    // sweeps both); an off-tile edge gets its own object-owned zone.
+    for (const [objectIndex, object] of objects.entries()) {
+      if (object.placement.type !== "standalone") {
+        continue;
+      }
+      const cell = { row: object.placement.row, col: object.placement.col };
+      for (let direction = 0; direction < 6; direction += 1) {
+        const neighbor = hexNeighbor(cell, direction);
+        const key = boardEdgeKey(cell, neighbor);
+        let zone = zones.get(key);
+        if (!zone) {
+          zone = { hex: cell, direction, incidences: [], objectIncidences: [] };
+          zones.set(key, zone);
+        }
+        if (!zone.objectIncidences.some((inc) => inc.objectIndex === objectIndex && inc.direction === direction)) {
+          zone.objectIncidences.push({ objectIndex, direction });
+        }
+      }
+    }
     const thickness = size * 0.36;
     for (const [key, zone] of zones) {
       const owner = zone.incidences[0];
-      const active = zone.incidences.some((inc) => effectiveByPlan[inc.planIndex]?.includes(inc.code));
+      const active =
+        zone.incidences.some((inc) => effectiveByPlan[inc.planIndex]?.includes(inc.code)) ||
+        zone.objectIncidences.some((inc) => objects[inc.objectIndex]?.borderEdges?.includes(inc.direction));
       const { x, y } = hexToPixel(zone.hex, size);
       borderPaintLayer.push(
         <polygon
           aria-label={`border edge ${hexSpaceId(zone.hex)} d:${zone.direction}`}
           className={`designerBorderEdgeZone${active ? " active" : ""}`}
-          data-border-index={owner.planIndex}
-          data-edge-code={owner.code}
+          data-border-index={owner ? owner.planIndex : `object-${zone.objectIncidences[0]?.objectIndex}`}
+          data-edge-code={owner ? owner.code : zone.objectIncidences[0]?.direction}
           key={`border-edge-${key}`}
           // Take the press so the tile press/drag and board pan never start; do
           // NOT capture the pointer (that would swallow pointerenter on siblings).
@@ -3499,6 +3929,9 @@ export function MapDesigner({
 
   return (
     <div className="mapDesigner" aria-label="Map designer">
+      <section className="designerCluster designerClusterTiles" aria-label="Tiles">
+        <span className="designerClusterLabel">Tiles</span>
+        <div className="designerClusterBody">
       <div className="designerPalette" aria-label="Tile palette">
         <small className="palettePrompt">Drag a tile onto the map</small>
         {PALETTE.map((entry) => (
@@ -3524,6 +3957,21 @@ export function MapDesigner({
         ))}
       </div>
 
+      <div className="designerBandLegend" aria-label="Tile outline colours — max unit tier per band">
+        <span className="designerBandLegendTitle">Max tier</span>
+        {BAND_LEGEND_GROUPS.map((group) => (
+          <span className="designerBandLegendItem" data-band-group={group} key={group}>
+            <i aria-hidden="true" className="designerBandLegendSwatch" style={{ background: GROUP_COLORS[group] }} />
+            {TILE_GROUP_BAND_LABELS[group]}
+          </span>
+        ))}
+      </div>
+        </div>
+      </section>
+
+      <section className="designerCluster designerClusterObjects" aria-label="Objects &amp; teleporters">
+        <span className="designerClusterLabel">Objects &amp; teleporters</span>
+        <div className="designerClusterBody">
       <div className="designerObjectPalette" aria-label="Objects palette">
         <small className="palettePrompt">
           {borderPaint
@@ -3547,14 +3995,14 @@ export function MapDesigner({
             const armed = armedObject?.kind === "gate" && armedObject.pair === pair;
             return (
               <button
-                aria-label={`${gatePairColor(pair)} gate pair`}
+                aria-label={`${gatePairColor(pair)} teleport gate`}
                 aria-pressed={armed}
                 className={`designerObjectButton gate${armed ? " armed" : ""}`}
                 data-gate-pair={pair}
                 key={`gate-${pair}`}
                 onClick={() => armObject("gate", pair)}
                 style={{ borderColor: GATE_PAIR_CSS[pair] }}
-                title={`${gatePairColor(pair)} Gate — per-color teleport network (needs at least 2; ${placed} placed)`}
+                title={`${gatePairColor(pair)} Teleport Gate (two-way monolith) — per-color teleport network (needs at least 2; ${placed} placed)`}
                 type="button"
               >
                 <span className="designerObjectSwatch" style={{ background: GATE_PAIR_CSS[pair] }}>
@@ -3565,15 +4013,6 @@ export function MapDesigner({
             );
           })}
           <button
-            aria-pressed={armedObject?.kind === "monolith"}
-            className={`designerObjectButton${armedObject?.kind === "monolith" ? " armed" : ""}`}
-            onClick={() => armObject("monolith")}
-            title="Monolith token — two-way teleport network (needs at least 2)"
-            type="button"
-          >
-            ⛩ Monolith
-          </button>
-          <button
             aria-pressed={armedObject?.kind === "whirlpool"}
             className={`designerObjectButton${armedObject?.kind === "whirlpool" ? " armed" : ""}`}
             onClick={() => armObject("whirlpool")}
@@ -3582,10 +4021,65 @@ export function MapDesigner({
           >
             🌀 Whirlpool
           </button>
-          <span className="designerObjectGroupLabel">Border tool</span>
+          <span className="designerObjectGroupLabel">One-way monolith</span>
+          <button
+            aria-pressed={armedObject?.kind === "oneway_entrance"}
+            className={`designerObjectButton${armedObject?.kind === "oneway_entrance" ? " armed" : ""}`}
+            onClick={() => armObject("oneway_entrance", 1)}
+            title="One-way monolith ENTRANCE — on a tile or standalone. May be guarded (bank-style fight, no XP); winning teleports to a same-color exit (random / pick / mix — set in the placed panel)."
+            type="button"
+          >
+            ⤇ Entrance
+          </button>
+          <button
+            aria-pressed={armedObject?.kind === "oneway_exit"}
+            className={`designerObjectButton${armedObject?.kind === "oneway_exit" ? " armed" : ""}`}
+            onClick={() => armObject("oneway_exit", 1)}
+            title="One-way monolith EXIT — on a tile or standalone. Never guarded; heroes arrive here from same-color entrances (mark it 'always pickable' for mix mode in the placed panel)."
+            type="button"
+          >
+            ⇥ Exit
+          </button>
+          <span className="designerObjectGroupLabel">Outposts</span>
+          <button
+            aria-pressed={armedObject?.kind === "garrison"}
+            className={`designerObjectButton${armedObject?.kind === "garrison" ? " armed" : ""}`}
+            onClick={() => armObject("garrison")}
+            title="Garrison — a standalone hex connecting tiles. Optional guard (bank-style fight, no XP); the winner flags it, and a flagged garrison is defended army-only for 3 gold."
+            type="button"
+          >
+            🏰 Garrison
+          </button>
+          <button
+            aria-pressed={armedObject?.kind === "keymaster_tent"}
+            className={`designerObjectButton${armedObject?.kind === "keymaster_tent" ? " armed" : ""}`}
+            onClick={() => armObject("keymaster_tent", 1)}
+            title="Keymaster's Tent — a standalone colored tent. Beat its (optional) guard to flag it (several players may); a tent flag opens same-color Barriers. Set the color in the placed tent's panel."
+            type="button"
+          >
+            ⛺ Keymaster
+          </button>
+          <button
+            aria-pressed={armedObject?.kind === "barrier"}
+            className={`designerObjectButton${armedObject?.kind === "barrier" ? " armed" : ""}`}
+            onClick={() => armObject("barrier", 1)}
+            title="Barrier — a standalone colored wall. Never guarded; only players holding a matching-color Keymaster's Tent flag may enter. Set the color in the placed barrier's panel."
+            type="button"
+          >
+            ⛔ Barrier
+          </button>
+        </div>
+      </div>
+        </div>
+      </section>
+
+      <section className="designerCluster designerClusterTools" aria-label="Tools">
+        <span className="designerClusterLabel">Tools</span>
+        <div className="designerClusterBody">
+        <div className="designerToolRow">
           <button
             aria-pressed={borderPaint}
-            className={`designerObjectButton borderPaint${borderPaint ? " armed" : ""}`}
+            className={`designerObjectButton designerToolButton borderPaint${borderPaint ? " armed" : ""}`}
             onClick={toggleBorderPaint}
             title="Yellow border — draw impassable lines edge by edge on the board: click an edge to seal it, click again to remove, drag to paint several"
             type="button"
@@ -3596,7 +4090,7 @@ export function MapDesigner({
             aria-controls="designer-mod-panel"
             aria-expanded={modPanelOpen}
             aria-pressed={modPanelOpen}
-            className={`designerObjectButton modPanel${modPanelOpen ? " armed" : ""}`}
+            className={`designerObjectButton designerToolButton modPanel${modPanelOpen ? " armed" : ""}`}
             data-testid="designer-mod-panel-toggle"
             onClick={() => {
               setModPanelOpen((open) => !open);
@@ -3762,7 +4256,8 @@ export function MapDesigner({
             ) : null}
           </div>
         ) : null}
-      </div>
+        </div>
+      </section>
 
       <div className="designerBoardWrap" ref={wrapRef}>
         <svg
@@ -4240,14 +4735,17 @@ export function MapDesigner({
                   </button>
                 </div>
 
-                {/* Center (Ⅵ–Ⅶ) tiles: force this slot's difficulty-7 objective
-                    field, whatever tile lands here. */}
+                {/* Center (Ⅵ–Ⅶ) tiles: the big difficulty-7 CENTER HEX — its
+                    objective, guard (monster), first-clear reward and Victory
+                    Points. Always shown for a center slot; every control is
+                    optional and independent. */}
                 {selected.group === "center" ? (
-                  <div className="popoverViiField popoverSection">
-                    <div className="popoverSectionLabel">Ⅶ objective field</div>
+                  <div className="popoverViiField popoverSection popoverCenterHex">
+                    <div className="popoverSectionLabel">Center (Ⅶ) hex</div>
+                    <div className="popoverSubLabel">Objective</div>
                     <small className="popoverHint">
-                      Force this centre slot&apos;s big (difficulty 7) field to a specific objective — whatever tile
-                      lands here. Default keeps whatever the drawn / chosen tile prints.
+                      Default keeps whatever the drawn / chosen tile prints; the others force this slot&apos;s
+                      difficulty-7 field, whatever tile lands here.
                     </small>
                     <div className="popoverModeRow" role="group" aria-label="Center Ⅶ field">
                       {VII_FIELD_OPTIONS.map((option) => {
@@ -4258,13 +4756,9 @@ export function MapDesigner({
                             className={`popoverFilterChip${active ? " active" : ""}`}
                             key={String(option.id)}
                             onClick={() =>
-                              // Picking "Default" also clears any bonus — a reward/VP
-                              // with no objective is meaningless (and would be stripped).
                               updateTile(
                                 selectedIndex as number,
-                                option.id === undefined
-                                  ? { viiField: undefined, viiFieldReward: undefined, viiFieldVp: undefined }
-                                  : { viiField: option.id }
+                                option.id === undefined ? { viiField: undefined } : { viiField: option.id }
                               )
                             }
                             title={option.hint}
@@ -4276,57 +4770,69 @@ export function MapDesigner({
                       })}
                     </div>
 
-                    {/* Designer bonus for THIS objective — only meaningful once a
-                        specific objective is forced (hidden on Default). */}
-                    {selected.viiField ? (
-                      <div className="popoverViiBonus">
-                        <div className="popoverSubLabel">Capture reward &amp; Victory Points (optional)</div>
-                        <small className="popoverHint">
-                          A one-time bonus for the player who first clears this objective, on top of its printed
-                          reward. Victory Points count only when Victory-Points scoring is on for the game.
-                        </small>
-                        <div className="popoverViiRewardRow" role="group" aria-label="Ⅶ capture reward">
-                          {VII_REWARD_FIELDS.map((field) => (
-                            <label className="popoverViiField_num" key={field.key}>
-                              <span>{field.label}</span>
-                              <input
-                                aria-label={`Ⅶ reward ${field.label}`}
-                                max={MAX_VII_FIELD_REWARD_AMOUNT}
-                                min={0}
-                                onChange={(event) => {
-                                  const amount = Math.max(
-                                    0,
-                                    Math.min(MAX_VII_FIELD_REWARD_AMOUNT, Math.floor(Number(event.target.value) || 0))
-                                  );
-                                  updateTile(selectedIndex as number, {
-                                    viiFieldReward: nextViiReward(selected.viiFieldReward, field.key, amount)
-                                  });
-                                }}
-                                type="number"
-                                value={selected.viiFieldReward?.[field.key] ?? ""}
-                              />
-                            </label>
-                          ))}
-                          <label className="popoverViiField_num popoverViiVp">
-                            <span>Victory Pts</span>
-                            <input
-                              aria-label="Ⅶ victory points"
-                              max={MAX_VII_FIELD_VP}
-                              min={0}
-                              onChange={(event) => {
-                                const vp = Math.max(
-                                  0,
-                                  Math.min(MAX_VII_FIELD_VP, Math.floor(Number(event.target.value) || 0))
-                                );
-                                updateTile(selectedIndex as number, { viiFieldVp: vp > 0 ? vp : undefined });
-                              }}
-                              type="number"
-                              value={selected.viiFieldVp ?? ""}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    ) : null}
+                    <div className="popoverSubLabel">Guard (monster)</div>
+                    <small className="popoverHint">
+                      Replace the printed Ⅶ guard with a Field-Difficulty level or an exact Neutral army.
+                    </small>
+                    <GuardSpecEditor
+                      guard={selected.centerHex?.guard}
+                      noneLabel="Printed"
+                      onChange={(guard) =>
+                        updateTile(selectedIndex as number, {
+                          centerHex: nextCenterHex(selected.centerHex, { guard })
+                        })
+                      }
+                    />
+
+                    <div className="popoverSubLabel">First-clear reward &amp; Victory Points</div>
+                    <small className="popoverHint">
+                      A one-time bonus for the player who first clears this objective, on top of its printed
+                      reward. Victory Points count when Victory-Points scoring is on.
+                    </small>
+                    <div className="popoverViiRewardRow" role="group" aria-label="Center hex reward">
+                      {CENTER_REWARD_FIELDS.map((field) => (
+                        <label className="popoverViiField_num" key={field.key}>
+                          <span>{field.label}</span>
+                          <input
+                            aria-label={`Center hex ${field.label}`}
+                            max={field.max}
+                            min={0}
+                            onChange={(event) => {
+                              const amount = Math.max(
+                                0,
+                                Math.min(field.max, Math.floor(Number(event.target.value) || 0))
+                              );
+                              updateTile(selectedIndex as number, {
+                                centerHex: nextCenterHex(selected.centerHex, {
+                                  reward: nextCenterReward(selected.centerHex?.reward, field.key, amount)
+                                })
+                              });
+                            }}
+                            type="number"
+                            value={selected.centerHex?.reward?.[field.key] ?? ""}
+                          />
+                        </label>
+                      ))}
+                      <label className="popoverViiField_num popoverViiVp">
+                        <span>Victory Pts</span>
+                        <input
+                          aria-label="Ⅶ victory points"
+                          max={MAX_CENTER_HEX_VP}
+                          min={0}
+                          onChange={(event) => {
+                            const vp = Math.max(
+                              0,
+                              Math.min(MAX_CENTER_HEX_VP, Math.floor(Number(event.target.value) || 0))
+                            );
+                            updateTile(selectedIndex as number, {
+                              centerHex: nextCenterHex(selected.centerHex, { vp: vp > 0 ? vp : undefined })
+                            });
+                          }}
+                          type="number"
+                          value={selected.centerHex?.vp ?? ""}
+                        />
+                      </label>
+                    </div>
                   </div>
                 ) : null}
 
@@ -4424,8 +4930,34 @@ export function MapDesigner({
                   </div>
                 ) : null}
 
-                {/* Designer Subterranean Gate links — cavern tiles only. */}
-                {selected.group === "subterranean" ? (
+                {/* Underground layer override — far/near/center/sea tiles only.
+                    Flips the tile onto the cavern layer (gate-only access) while
+                    keeping its band content; the gate-link panel below then
+                    appears just like a printed cavern's. */}
+                {UNDERGROUND_LAYER_GROUPS.has(selected.group) ? (
+                  <div className="popoverUnderground">
+                    <button
+                      aria-pressed={Boolean(selected.underground)}
+                      className={`popoverUndergroundToggle${selected.underground ? " active" : ""}`}
+                      data-testid="underground-toggle"
+                      onClick={toggleUnderground}
+                      type="button"
+                    >
+                      <Layers size={13} />
+                      Underground layer
+                    </button>
+                    <small className="popoverHint">
+                      {selected.underground
+                        ? "On the Underground layer: reachable only through a Subterranean Gate, like a cavern — but it keeps this band's back art, guards and Creature-Bank pile. Link a Surface tile below to place a gate."
+                        : "Surface tile. Turn on to move this band tile onto the Underground layer (cavern topology, same band content)."}
+                    </small>
+                  </div>
+                ) : null}
+
+                {/* Designer Subterranean Gate links — any underground-layer tile
+                    (printed cavern OR a far/near/center/sea tile flagged
+                    underground below). */}
+                {planIsUnderground(selected) ? (
                   <div className="popoverGateLinks">
                     <div className="popoverSectionLabel">Subterranean gate links</div>
                     {selectedCavernSurfaces.length === 0 ? (
@@ -4464,25 +4996,60 @@ export function MapDesigner({
                             return (
                               <div className="popoverGateLinkSurface" key={`${surface.row}:${surface.col}`}>
                                 {linkIndexes.map((linkIndex, ordinal) => (
-                                  <div className="popoverGateLinkRow" key={linkIndex}>
-                                    <button
-                                      aria-pressed
-                                      className="popoverGateLinkToggle linked"
-                                      onClick={() => unlinkGateAt(linkIndex)}
-                                      title="Remove this designer gate link"
-                                      type="button"
-                                    >
-                                      🔗 Linked · {surfaceLabel}
-                                      {linkIndexes.length > 1 ? ` (gate ${ordinal + 1})` : ""}
-                                    </button>
-                                    <button
-                                      className="popoverGateLinkCycle"
-                                      onClick={() => cycleGateLinkAt(linkIndex)}
-                                      title="Slide this gate to the next legal position along the shared edge"
-                                      type="button"
-                                    >
-                                      ↻ Move
-                                    </button>
+                                  <div className="popoverGateLinkRowWrap" key={linkIndex}>
+                                    <div className="popoverGateLinkRow">
+                                      <button
+                                        aria-pressed
+                                        className="popoverGateLinkToggle linked"
+                                        onClick={() => unlinkGateAt(linkIndex)}
+                                        title="Remove this designer gate link"
+                                        type="button"
+                                      >
+                                        🔗 Linked · {surfaceLabel}
+                                        {linkIndexes.length > 1 ? ` (gate ${ordinal + 1})` : ""}
+                                      </button>
+                                      <button
+                                        className="popoverGateLinkCycle"
+                                        onClick={() => cycleGateLinkAt(linkIndex)}
+                                        title="Slide this gate to the next legal position along the shared edge"
+                                        type="button"
+                                      >
+                                        ↻ Move
+                                      </button>
+                                      <button
+                                        aria-expanded={gateGuardEditorIndex === linkIndex}
+                                        className={`popoverGateLinkCycle popoverGateLinkGuards${
+                                          gateGuardEditorIndex === linkIndex ||
+                                          selected.gateLinks?.[linkIndex]?.gateGuard ||
+                                          selected.gateLinks?.[linkIndex]?.entranceGuard
+                                            ? " active"
+                                            : ""
+                                        }`}
+                                        onClick={() =>
+                                          setGateGuardEditorIndex(gateGuardEditorIndex === linkIndex ? null : linkIndex)
+                                        }
+                                        title="Guard either half of this gate — you fight to step onto a guarded half; coming out through the linked half auto-wins."
+                                        type="button"
+                                      >
+                                        ⚔ Guards
+                                      </button>
+                                    </div>
+                                    {gateGuardEditorIndex === linkIndex ? (
+                                      <div className="popoverGateLinkGuardEditors">
+                                        <div className="popoverSubLabel">Surface half (“gate down”)</div>
+                                        <GuardSpecEditor
+                                          guard={selected.gateLinks?.[linkIndex]?.gateGuard}
+                                          noneLabel="None"
+                                          onChange={(guard) => setGateLinkGuard(linkIndex, "gateGuard", guard)}
+                                        />
+                                        <div className="popoverSubLabel">Cavern half (“path up”)</div>
+                                        <GuardSpecEditor
+                                          guard={selected.gateLinks?.[linkIndex]?.entranceGuard}
+                                          noneLabel="None"
+                                          onChange={(guard) => setGateLinkGuard(linkIndex, "entranceGuard", guard)}
+                                        />
+                                      </div>
+                                    ) : null}
                                   </div>
                                 ))}
                                 <button
@@ -4543,14 +5110,12 @@ export function MapDesigner({
           </div>
         ) : null}
 
-        {/* Placed-object panel: guard picker + delete — docked like the tile panel. */}
+        {/* Placed-object panel: color, guard picker + delete — docked like the tile panel. */}
         {selectedObject && objectPopoverAt ? (
           <div className="designerPopover designerObjectPopover">
             <header>
               <strong>
-                {selectedObject.kind === "gate"
-                  ? `${titleCase(gatePairColor(selectedObject.pair ?? 1))} Gate`
-                  : mapTokenLabel(selectedObject.kind as MapTokenKind)}
+                {titleCase(placementTokenLabel(selectedObject))}
                 {selectedObject.placement.type === "standalone" ? " · standalone" : ""}
               </strong>
               <button
@@ -4563,22 +5128,117 @@ export function MapDesigner({
                 ✕
               </button>
             </header>
-            <div className="popoverSectionLabel">Neutral guard</div>
-            <div className="popoverObjectGuards">
-              {OBJECT_GUARD_LEVELS.map((level) => (
-                <button
-                  aria-pressed={(selectedObject.guard ?? 0) === level}
-                  className={`popoverGuardChip${(selectedObject.guard ?? 0) === level ? " active" : ""}`}
-                  data-guard={level}
-                  key={level}
-                  onClick={() => setObjectGuard(selectedObjectIndex as number, level)}
-                  title={level === 0 ? "No guard" : `Guard ${ROMAN_NUMERALS[level]}`}
-                  type="button"
+            {selectedObject.kind === "keymaster_tent" ||
+            selectedObject.kind === "barrier" ||
+            selectedObject.kind === "oneway_entrance" ||
+            selectedObject.kind === "oneway_exit" ? (
+              <>
+                <div className="popoverSectionLabel">Color</div>
+                <small className="popoverHint">
+                  {selectedObject.kind === "keymaster_tent"
+                    ? "A tent flag of this color opens same-color Barriers."
+                    : selectedObject.kind === "barrier"
+                      ? "Only players holding a same-color Keymaster's Tent flag may enter."
+                      : "One-way travel connects entrances and exits of the SAME color only."}
+                </small>
+                <div className="popoverGuardRow" role="group" aria-label="Outpost color">
+                  {GATE_PAIRS.map((pair) => {
+                    const active = (selectedObject.pair ?? 1) === pair;
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={`popoverGuardChip popoverColorChip${active ? " active" : ""}`}
+                        key={pair}
+                        onClick={() =>
+                          onObjectsChange?.(
+                            objects.map((object, i) =>
+                              i === (selectedObjectIndex as number) ? { ...object, pair } : object
+                            )
+                          )
+                        }
+                        style={{ borderColor: GATE_PAIR_CSS[pair] }}
+                        title={`${titleCase(gatePairColor(pair))}`}
+                        type="button"
+                      >
+                        <span className="designerObjectSwatch" style={{ background: GATE_PAIR_CSS[pair] }} />
+                        {titleCase(gatePairColor(pair))}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+            {selectedObject.kind === "oneway_entrance" ? (
+              <>
+                <div className="popoverSectionLabel">Exit pick</div>
+                <select
+                  aria-label="One-way exit mode"
+                  className="popoverSelect"
+                  onChange={(event) =>
+                    onObjectsChange?.(
+                      objects.map((object, i) =>
+                        i === (selectedObjectIndex as number)
+                          ? { ...object, exitMode: event.target.value as CustomMapObject["exitMode"] }
+                          : object
+                      )
+                    )
+                  }
+                  value={selectedObject.exitMode ?? "certain"}
                 >
-                  {level === 0 ? "None" : ROMAN_NUMERALS[level]}
-                </button>
-              ))}
-            </div>
+                  <option value="certain">Certain — the traveller picks the exit</option>
+                  <option value="random">Random — roll the die for the exit</option>
+                  <option value="mix">Mix — pick an “always” exit, or roll among the rest</option>
+                </select>
+              </>
+            ) : null}
+            {selectedObject.kind === "oneway_exit" ? (
+              <label className="popoverCheckRow">
+                <input
+                  checked={selectedObject.alwaysPickable === true}
+                  onChange={(event) =>
+                    onObjectsChange?.(
+                      objects.map((object, i) => {
+                        if (i !== (selectedObjectIndex as number)) {
+                          return object;
+                        }
+                        const next = { ...object };
+                        if (event.target.checked) {
+                          next.alwaysPickable = true;
+                        } else {
+                          delete next.alwaysPickable;
+                        }
+                        return next;
+                      })
+                    )
+                  }
+                  type="checkbox"
+                />
+                <span>Always pickable (“mix” entrances offer it before the roll)</span>
+              </label>
+            ) : null}
+            {selectedObject.kind !== "barrier" && selectedObject.kind !== "oneway_exit" ? (
+              <>
+                <div className="popoverSectionLabel">Guard (monster)</div>
+                <small className="popoverHint">
+                  {selectedObject.kind === "garrison" ||
+                  selectedObject.kind === "keymaster_tent" ||
+                  selectedObject.kind === "oneway_entrance"
+                    ? "The fight is bank-style: no Quick Combat, no experience, no round limit."
+                    : "A guard on this hex must be beaten to use it; arriving through a teleport network sweeps it aside (auto-win, no experience)."}
+                </small>
+                <GuardSpecEditor
+                  guard={objectGuardDisplay(selectedObject)}
+                  noneLabel="None"
+                  onChange={(guard) => setObjectGuard(selectedObjectIndex as number, guard)}
+                />
+              </>
+            ) : (
+              <small className="popoverHint">
+                {selectedObject.kind === "barrier"
+                  ? "A Barrier is never guarded — the matching tent flag is the only key."
+                  : "An exit monolith is never guarded — only entrances fight."}
+              </small>
+            )}
             <button className="popoverRemove" onClick={() => removeObject(selectedObjectIndex as number)} type="button">
               <Trash2 size={13} /> Remove
             </button>
@@ -4616,7 +5276,13 @@ export function MapDesigner({
                     updateTile(selectedTokenIndex as number, {
                       tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
                         i === tokenPanelPin
-                          ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, Number(event.target.value))
+                          ? tileTokenValue(
+                              tokenPanelToken.kind,
+                              tokenPanelToken.pair,
+                              Number(event.target.value),
+                              tokenPanelToken.guard,
+                              tokenPanelToken
+                            )
                           : token
                       ),
                       token: undefined
@@ -4646,6 +5312,120 @@ export function MapDesigner({
                 Face-down tile — whoever discovers it places the token on a field of their choosing, so its hex
                 can&apos;t be set here (or dragged on the board).
               </small>
+            )}
+            {tokenPanelToken.kind === "oneway_entrance" || tokenPanelToken.kind === "oneway_exit" ? (
+              <>
+                <div className="popoverSectionLabel">Color</div>
+                <div className="popoverGuardRow" role="group" aria-label="One-way color">
+                  {GATE_PAIRS.map((pair) => {
+                    const active = (tokenPanelToken.pair ?? 1) === pair;
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={`popoverGuardChip popoverColorChip${active ? " active" : ""}`}
+                        key={pair}
+                        onClick={() =>
+                          updateTile(selectedTokenIndex as number, {
+                            tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                              i === tokenPanelPin
+                                ? tileTokenValue(
+                                    tokenPanelToken.kind,
+                                    pair,
+                                    tokenPanelToken.slot,
+                                    tokenPanelToken.guard,
+                                    tokenPanelToken
+                                  )
+                                : token
+                            ),
+                            token: undefined
+                          })
+                        }
+                        style={{ borderColor: GATE_PAIR_CSS[pair] }}
+                        title={titleCase(gatePairColor(pair))}
+                        type="button"
+                      >
+                        <span className="designerObjectSwatch" style={{ background: GATE_PAIR_CSS[pair] }} />
+                        {titleCase(gatePairColor(pair))}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+            {tokenPanelToken.kind === "oneway_entrance" ? (
+              <>
+                <div className="popoverSectionLabel">Exit pick</div>
+                <select
+                  aria-label="One-way exit mode"
+                  className="popoverSelect"
+                  onChange={(event) =>
+                    updateTile(selectedTokenIndex as number, {
+                      tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                        i === tokenPanelPin
+                          ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, tokenPanelToken.slot, tokenPanelToken.guard, {
+                              ...tokenPanelToken,
+                              exitMode: event.target.value as CustomMapTileToken["exitMode"]
+                            })
+                          : token
+                      ),
+                      token: undefined
+                    })
+                  }
+                  value={tokenPanelToken.exitMode ?? "certain"}
+                >
+                  <option value="certain">Certain — the traveller picks the exit</option>
+                  <option value="random">Random — roll the die for the exit</option>
+                  <option value="mix">Mix — pick an “always” exit, or roll among the rest</option>
+                </select>
+              </>
+            ) : null}
+            {tokenPanelToken.kind === "oneway_exit" ? (
+              <label className="popoverCheckRow">
+                <input
+                  checked={tokenPanelToken.alwaysPickable === true}
+                  onChange={(event) =>
+                    updateTile(selectedTokenIndex as number, {
+                      tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                        i === tokenPanelPin
+                          ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, tokenPanelToken.slot, undefined, {
+                              ...tokenPanelToken,
+                              alwaysPickable: event.target.checked ? true : undefined
+                            })
+                          : token
+                      ),
+                      token: undefined
+                    })
+                  }
+                  type="checkbox"
+                />
+                <span>Always pickable (“mix” entrances offer it before the roll)</span>
+              </label>
+            ) : null}
+            {tokenPanelToken.kind !== "oneway_exit" ? (
+              <>
+                <div className="popoverSectionLabel">Guard (monster)</div>
+                <small className="popoverHint">
+                  {tokenPanelToken.kind === "oneway_entrance"
+                    ? "The fight is bank-style: no Quick Combat, no experience, no round limit; winning teleports."
+                    : "A guard on this hex must be beaten to use the teleporter; arriving through the network sweeps it aside (auto-win, no experience)."}
+                </small>
+                <GuardSpecEditor
+                  guard={tokenPanelToken.guard}
+                  noneLabel="None"
+                  onChange={(guard) =>
+                    updateTile(selectedTokenIndex as number, {
+                      tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                        i === tokenPanelPin
+                          ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, tokenPanelToken.slot, guard, tokenPanelToken)
+                          : token
+                      ),
+                      token: undefined
+                    })
+                  }
+                />
+              </>
+            ) : (
+              <small className="popoverHint">An exit monolith is never guarded — only entrances fight.</small>
             )}
             <button
               className="popoverRemove"
@@ -4710,6 +5490,8 @@ export function MapDesigner({
         </div>
       ) : null}
 
+      <details className="designerHelp">
+        <summary className="designerHelpSummary">How the designer works</summary>
       <small className="optionHint">
         Drag a tile from the palette onto the board, then <strong>click it</strong> to configure: choose{" "}
         <strong>Random</strong> (pool draw), <strong>Secret</strong> (landmark filter — mines, obelisks, … stay hidden
@@ -4732,6 +5514,7 @@ export function MapDesigner({
         Town (Ⅰ) tiles are seats; drag empty background to pan, pinch or use the toolbar to zoom (wheel zoom when
         unlocked).
       </small>
+      </details>
 
       {/* Floating drag ghost follows the pointer — band-correct printed back. */}
       {drag ? (

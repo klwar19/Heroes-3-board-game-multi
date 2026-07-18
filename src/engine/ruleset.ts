@@ -3,6 +3,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import type {
+  ArtifactDeckAccess,
   CardId,
   CardLibrary,
   CardPlayMode,
@@ -453,11 +454,7 @@ export function hasArtifactSource(state: GameState, playerId: PlayerId, building
   return Boolean(town?.buildings.some((buildingId) => buildingHasSmith(buildingId)));
 }
 
-export type ArtifactDeckAccess = {
-  minor: boolean;
-  major: boolean;
-  relic: boolean;
-};
+export type { ArtifactDeckAccess };
 
 /**
  * BINH artifact deck gates:
@@ -465,6 +462,10 @@ export type ArtifactDeckAccess = {
  *  - Major: hero on a IV–V or VI–VII tile, OR level ≥ 4 with an artifact
  *    source (Blacksmith / artifact-granting specialty).
  *  - Relic: hero on a VI–VII tile, OR level ≥ 6 with an artifact source.
+ *
+ * With `polish-random-artifacts` ON (and split decks), a live override on
+ * `adventure.polishArtifactAccess` replaces this table for the current
+ * acquisition — see polish-house-rules.ts.
  */
 export function artifactDeckAccess(
   state: GameState,
@@ -472,6 +473,11 @@ export function artifactDeckAccess(
   hero: HeroState | null,
   artifactSource: boolean
 ): ArtifactDeckAccess {
+  const polishOverride = state.adventure?.polishArtifactAccess;
+  if (polishOverride && houseRuleEnabled(state, "polish-random-artifacts")) {
+    return polishOverride;
+  }
+
   const group = heroTileGroup(state, hero);
   const level = hero?.level ?? 1;
 

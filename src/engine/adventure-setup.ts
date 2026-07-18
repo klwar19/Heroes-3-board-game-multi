@@ -37,9 +37,11 @@ import {
 } from "@/data/map/scenarios";
 import {
   addArmyUnit,
+  applyCustomGuardToField,
   ASTROLOGERS_DECK_ID,
   carveColoredGateField,
   carveMapTokenField,
+  carveOnewayField,
   EVENTS_DECK_ID,
   gatePairColor,
   getTileFootprintSpaceIds,
@@ -49,6 +51,8 @@ import {
   NEUTRAL_DECK_IDS,
   normalizeDesignedBorders,
   normalizeDesignedBorderEdges,
+  planIsUnderground,
+  UNDERGROUND_LAYER_GROUPS,
   recomputeSubterraneanGates,
   seaTileBand,
   subterraneanTileBand,
@@ -61,17 +65,22 @@ import {
   tokenMayCoverFieldDef,
   victoryModeCountsHeroDefeats
 } from "./adventure";
+import { describeCustomWinCondition } from "./victory-points";
 import {
   applyCustomMapPresetToOptions,
   customMapPresetIsActive,
   MAX_GATES_PER_PAIR,
+  mergeCustomWinConditions,
   revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
+  sanitizeCustomWinConditions,
   tileMatchesSecretFeature,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
-  sanitizeViiFieldReward,
-  sanitizeViiFieldVp,
+  objectGuardSpec,
+  OUTPOST_OBJECT_KINDS,
+  sanitizeCenterHexPlan,
+  sanitizeObjectGuard,
   type CustomMapPreset,
   type PresetForcedOptionKey
 } from "./map-preset";
@@ -101,6 +110,7 @@ import type {
   CustomMapTilePlan,
   CustomMapGateLink,
   CustomStartingUnit,
+  CustomWinCondition,
   MapFieldState,
   MapSpaceId,
   DeckState,
@@ -291,14 +301,25 @@ function applyCustomMapTokens(
     }
     const pendingList: NonNullable<MapTileState["pendingTokens"]> = [];
     for (const token of tokens) {
-      // A colored Gate REQUIRES its pair; a Monolith/Whirlpool must NOT carry one
-      // (setup mirrors the sanitiser). Anything malformed is dropped silently.
+      // A colored Gate / one-way monolith REQUIRES its pair; a
+      // Monolith/Whirlpool must NOT carry one (setup mirrors the sanitiser).
+      // Anything malformed is dropped silently.
       const isGate = token.kind === "gate";
-      if (isGate ? token.pair === undefined : token.kind !== "monolith" && token.kind !== "whirlpool") {
+      const isOneway = token.kind === "oneway_entrance" || token.kind === "oneway_exit";
+      if (
+        isGate || isOneway
+          ? token.pair === undefined
+          : token.kind !== "monolith" && token.kind !== "whirlpool"
+      ) {
         continue;
       }
-      // A Gate reuses the Monolith land legality for its slot check.
+      // Gates and one-way monoliths reuse the Monolith land legality.
       const legalityKind: "monolith" | "whirlpool" = token.kind === "whirlpool" ? "whirlpool" : "monolith";
+
+      // A designer guard rides the token wherever it lands (clamped again here
+      // so a hand-edited save can't smuggle garbage past the sanitiser). A
+      // one-way EXIT is never guarded.
+      const guard = token.kind === "oneway_exit" ? undefined : sanitizeObjectGuard(token.guard);
 
       if (tile.faceDown) {
         const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
@@ -307,8 +328,11 @@ function applyCustomMapTokens(
         pendingList.push({
           kind: token.kind,
           ...(number !== undefined ? { number } : {}),
-          ...(isGate && token.pair !== undefined ? { pair: token.pair } : {}),
-          ...(preferredSpaceId ? { preferredSpaceId } : {})
+          ...((isGate || isOneway) && token.pair !== undefined ? { pair: token.pair } : {}),
+          ...(preferredSpaceId ? { preferredSpaceId } : {}),
+          ...(guard ? { guard } : {}),
+          ...(token.kind === "oneway_entrance" && token.exitMode ? { exitMode: token.exitMode } : {}),
+          ...(token.kind === "oneway_exit" && token.alwaysPickable ? { alwaysPickable: true } : {})
         });
         continue;
       }
@@ -329,15 +353,31 @@ function applyCustomMapTokens(
         (existing.location === "monolith" ||
           existing.location === "whirlpool" ||
           existing.location === "gate" ||
+          existing.location === "oneway_entrance" ||
+          existing.location === "oneway_exit" ||
           isFieldOverrideLocation(existing.location))
       ) {
         continue;
       }
       if (isGate && token.pair !== undefined) {
         carveColoredGateField(adventure, spaceId, token.pair);
+      } else if (isOneway && token.pair !== undefined) {
+        carveOnewayField(adventure, spaceId, token.kind as "oneway_entrance" | "oneway_exit", token.pair, {
+          exitMode: token.exitMode,
+          alwaysPickable: token.alwaysPickable
+        });
       } else if (token.kind === "monolith" || token.kind === "whirlpool") {
         const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
         carveMapTokenField(adventure, spaceId, token.kind, number);
+      }
+      const carved = adventure.fields[spaceId];
+      if (carved) {
+        applyCustomGuardToField(carved, guard);
+        // One-way entrance fights are bank-style: keep the army level for the
+        // draw while the combat opens at difficulty 0.
+        if (token.kind === "oneway_entrance" && guard?.level && !guard.units) {
+          carved.customGuardLevel = guard.level;
+        }
       }
     }
     if (pendingList.length > 0) {
@@ -429,6 +469,11 @@ export type AdventureSetupOptions = {
    * `roundLimit` when the preset sets none. 0/absent = no round limit.
    */
   victoryPointsRoundLimit?: number;
+  /**
+   * OPTIONAL host-added custom win conditions for this game (merged preset-first
+   * with the map's own list at build via `applyLobbyCustomWinConditions`).
+   */
+  customWinConditions?: CustomWinCondition[];
   /**
    * Pick-on-reveal Subterranean Gate placement (default on): when a revealed tile
    * could host its Gate half in more than one spot, ask the revealing player which
@@ -639,6 +684,8 @@ export function tournamentRulesAllOn(
   const rules = resolveTournamentRules(options);
   return rules.banDiplomacy && rules.banHourglass && rules.secondPlayerMorale;
 }
+
+
 
 /**
  * Shared deck construction. Legacy: one mixed Spell deck, one Artifact deck.
@@ -1023,7 +1070,10 @@ export function validateCustomMapPlan(
       : scenario.layout.starts.map((start) => `${start.row}:${start.col}`)
   );
   for (const plan of accepted) {
-    if (plan.group !== "starting" && plan.group !== "subterranean") {
+    // A gate link's SURFACE side must be a non-underground tile: an
+    // underground-flagged far/near/center/sea plan is now on the cavern layer, so
+    // it is NOT a legal surface target (the layer predicate, never a group check).
+    if (plan.group !== "starting" && !planIsUnderground(plan)) {
       surfaceCenterKeys.add(`${plan.row}:${plan.col}`);
     }
   }
@@ -1032,7 +1082,10 @@ export function validateCustomMapPlan(
   const claimedPinnedHexes = new Set<MapSpaceId>();
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
-    if (plan.group !== "subterranean" || !plan.gateLinks || plan.gateLinks.length === 0) {
+    // Gate links belong to any UNDERGROUND-layer plan — a printed cavern OR a
+    // far/near/center/sea tile the designer flagged underground — not just
+    // `group === "subterranean"`, so a flagged tile keeps its designed links.
+    if (!planIsUnderground(plan) || !plan.gateLinks || plan.gateLinks.length === 0) {
       continue;
     }
     const cavernCenter = { row: plan.row, col: plan.col };
@@ -1144,26 +1197,51 @@ export function validateCustomMapPlan(
     }
   }
 
-  // `viiField` FORCES a center slot's difficulty-7 objective field (Grail /
-  // Dragon Utopia / Random Town). Meaningful only on a `center` plan — strip it
-  // on every other group (like lockRotation is starting-only) AND drop an unknown
-  // value, so a garbage designation can never reach setup.
+  // The UNDERGROUND layer override is a supply/sea/center-only flag (kept as a
+  // literal true): strip it on `starting` (seat tiles stay Surface — the v1
+  // limit) and `subterranean` (redundant — already underground), and drop any
+  // non-true garbage. Mirrors the persistence sanitiser exactly so an in-memory
+  // designer plan and a stored one flag the same layer.
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
-    if (plan.viiField === undefined && plan.viiFieldReward === undefined && plan.viiFieldVp === undefined) {
+    if (plan.underground === undefined) {
       continue;
     }
-    const validVii =
-      plan.group === "center" && plan.viiField !== undefined && VII_FIELD_DESIGNATIONS.has(plan.viiField);
-    if (!validVii) {
-      // A non-center / unknown designation is stripped — and so is any bonus,
-      // which is meaningless without a Ⅶ objective to attach it to.
-      const next = { ...plan };
-      delete next.viiField;
-      delete next.viiFieldReward;
-      delete next.viiFieldVp;
-      accepted[index] = next;
+    if (plan.underground === true && UNDERGROUND_LAYER_GROUPS.has(plan.group)) {
+      continue;
     }
+    const next = { ...plan };
+    delete next.underground;
+    accepted[index] = next;
+  }
+
+  // `viiField` FORCES a center slot's difficulty-7 objective field (Grail /
+  // Dragon Utopia / Random Town) and `centerHex` customizes that field's guard /
+  // reward / VP. Both are meaningful only on a `center` plan — strip them on
+  // every other group (like lockRotation is starting-only), drop an unknown
+  // designation, and re-clamp the customization defensively so an in-memory
+  // plan can never smuggle garbage past the persistence sanitiser.
+  for (let index = 0; index < accepted.length; index += 1) {
+    const plan = accepted[index];
+    if (plan.viiField === undefined && plan.centerHex === undefined) {
+      continue;
+    }
+    const isCenter = plan.group === "center";
+    const validVii = isCenter && plan.viiField !== undefined && VII_FIELD_DESIGNATIONS.has(plan.viiField);
+    const centerHex = isCenter ? sanitizeCenterHexPlan(plan.centerHex) : undefined;
+    if (validVii && centerHex === plan.centerHex) {
+      continue;
+    }
+    const next = { ...plan };
+    if (!validVii) {
+      delete next.viiField;
+    }
+    if (centerHex) {
+      next.centerHex = centerHex;
+    } else {
+      delete next.centerHex;
+    }
+    accepted[index] = next;
   }
 
   return { accepted, problems };
@@ -1220,7 +1298,10 @@ export function validateCustomMapObjects(
   const startingPlans = plans.filter((plan) => plan.group === "starting");
   const anchors: { center: HexCoord; layer: "surface" | "subterranean" }[] = plans.map((plan) => ({
     center: { row: plan.row, col: plan.col },
-    layer: plan.group === "subterranean" ? "subterranean" : "surface"
+    // A designer-flagged underground far/near/center/sea tile is on the cavern
+    // layer for the standalone-hex "may not bridge both layers" check, exactly
+    // like a printed cavern (the layer predicate, not a group check).
+    layer: planIsUnderground(plan) ? "subterranean" : "surface"
   }));
   if (startingPlans.length === 0) {
     for (const center of startingCenters) {
@@ -1255,6 +1336,12 @@ export function validateCustomMapObjects(
   objects.forEach((object, index) => {
     const label = `Object ${index + 1}`;
     if (object.placement.type === "tile-slot") {
+      // Outposts (Garrison / Keymaster's Tent / Barrier) are STANDALONE-only —
+      // "a separate hex out of the map"; a tile-slot placement is dropped.
+      if (OUTPOST_OBJECT_KINDS.has(object.kind)) {
+        problems.push(`${label}: a ${object.kind.replace("_", " ")} must be a standalone hex, never on a tile.`);
+        return;
+      }
       const { row, col, slot } = object.placement;
       const plan = faceUpPlanAt.get(`${row}:${col}`);
       if (!plan || !plan.tileDefId) {
@@ -1262,8 +1349,13 @@ export function validateCustomMapObjects(
         return;
       }
       const def = allTileDefinitions[plan.tileDefId];
-      // A Gate is a land structure, so it reuses the Monolith slot legality.
-      const slotKind = object.kind === "gate" ? "monolith" : object.kind;
+      // Gates and one-way monoliths are land structures, so they reuse the
+      // Monolith slot legality. (Outposts returned above.)
+      const slotKind = (
+        object.kind === "gate" || object.kind === "oneway_entrance" || object.kind === "oneway_exit"
+          ? "monolith"
+          : object.kind
+      ) as "monolith" | "whirlpool";
       if (!def || !tokenMayCoverFieldDef(def, slot, slotKind)) {
         problems.push(`${label}: slot ${slot} of ${plan.tileDefId} cannot host a ${object.kind}.`);
         return;
@@ -1338,6 +1430,52 @@ export function validateCustomMapObjects(
     }
   }
 
+  // A Barrier with no same-color Keymaster's Tent can never be entered by
+  // anyone — almost certainly a design mistake, so warn (not a problem: a
+  // deliberate permanent wall is legal).
+  const tentPairs = new Set(
+    accepted.filter((object) => object.kind === "keymaster_tent" && object.pair !== undefined).map((o) => o.pair)
+  );
+  for (const object of accepted) {
+    if (object.kind === "barrier" && object.pair !== undefined && !tentPairs.has(object.pair)) {
+      warnings.push(
+        `A ${gatePairColor(object.pair)} Barrier has no ${gatePairColor(object.pair)} Keymaster's Tent — nobody will ever be able to enter it.`
+      );
+    }
+  }
+
+  // One-way monolith networks need both halves of a color — counted ACROSS
+  // SOURCES (objects + every plan's tokens), like the gate networks above.
+  const onewayCounts = new Map<number, { entrances: number; exits: number }>();
+  const bumpOneway = (kind: string, pair: number | undefined): void => {
+    if (pair === undefined || (kind !== "oneway_entrance" && kind !== "oneway_exit")) {
+      return;
+    }
+    const entry = onewayCounts.get(pair) ?? { entrances: 0, exits: 0 };
+    if (kind === "oneway_entrance") {
+      entry.entrances += 1;
+    } else {
+      entry.exits += 1;
+    }
+    onewayCounts.set(pair, entry);
+  };
+  for (const object of accepted) {
+    bumpOneway(object.kind, object.pair);
+  }
+  for (const plan of plans) {
+    for (const token of planTokens(plan)) {
+      bumpOneway(token.kind, token.pair);
+    }
+  }
+  for (const [pair, counts] of onewayCounts) {
+    const color = gatePairColor(pair as 1 | 2 | 3 | 4);
+    if (counts.entrances > 0 && counts.exits === 0) {
+      warnings.push(`The ${color} one-way monolith has entrances but NO exit — the travel will lead nowhere.`);
+    } else if (counts.exits > 0 && counts.entrances === 0) {
+      warnings.push(`The ${color} one-way monolith has exits but NO entrance — nobody can ever arrive there.`);
+    }
+  }
+
   return { accepted, problems, warnings };
 }
 
@@ -1392,17 +1530,15 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
         const number = object.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolCount] : undefined;
         carveMapTokenField(adventure, spaceId, object.kind, number);
       }
-      if (object.guard) {
-        const carved = adventure.fields[spaceId];
-        if (carved) {
-          carved.difficulty = object.guard;
-        }
+      const carved = adventure.fields[spaceId];
+      if (carved) {
+        applyCustomGuardToField(carved, objectGuardSpec(object));
       }
       continue;
     }
 
-    // Standalone — LAND objects only (gate or monolith; a standalone whirlpool
-    // never reaches here, validation drops it).
+    // Standalone — LAND objects only (a standalone whirlpool never reaches
+    // here, validation drops it).
     if (object.kind === "whirlpool") {
       continue;
     }
@@ -1422,11 +1558,45 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       standalone: true,
       standaloneLayer: standaloneLayerFromLiveState(adventure, spaceId)
     };
-    if (object.kind === "gate" && object.pair !== undefined) {
+    // Tents, Barriers and one-way monoliths share the gate COLOR mechanism
+    // (`gatePair`) — a tent flag of a color opens same-color barriers, a
+    // one-way entrance targets same-color exits; gates keep their networks.
+    if (
+      (object.kind === "gate" ||
+        object.kind === "keymaster_tent" ||
+        object.kind === "barrier" ||
+        object.kind === "oneway_entrance" ||
+        object.kind === "oneway_exit") &&
+      object.pair !== undefined
+    ) {
       field.gatePair = object.pair;
     }
-    if (object.guard) {
-      field.difficulty = object.guard;
+    if (object.kind === "oneway_entrance" && object.exitMode) {
+      field.onewayExitMode = object.exitMode;
+    }
+    if (object.kind === "oneway_exit" && object.alwaysPickable) {
+      field.onewayAlwaysPickable = true;
+    }
+    applyCustomGuardToField(field, objectGuardSpec(object));
+    // Outpost / one-way-entrance fights run BANK-style (no Quick Combat, no
+    // experience, no Round limit) whatever the guard shape: a LEVEL guard
+    // additionally pins `customGuardLevel` so the army still draws at the
+    // designed level while the combat itself opens at difficulty 0.
+    if (object.kind === "garrison" || object.kind === "keymaster_tent" || object.kind === "oneway_entrance") {
+      const guard = objectGuardSpec(object);
+      if (guard?.level && !guard.units) {
+        field.customGuardLevel = guard.level;
+      }
+    }
+    // Designer yellow border edges ride the object onto its carved field
+    // (absolute dirs, re-normalised so a hand-edited save can't smuggle junk).
+    if (Array.isArray(object.borderEdges)) {
+      const edges = [
+        ...new Set(object.borderEdges.filter((dir) => Number.isInteger(dir) && dir >= 0 && dir <= 5))
+      ].sort((a, b) => a - b);
+      if (edges.length > 0) {
+        field.borderEdges = edges;
+      }
     }
     adventure.fields[spaceId] = field;
   }
@@ -1454,32 +1624,49 @@ function applyDesignedBorders(tile: MapTileState, plan: CustomMapTilePlan): void
 }
 
 /**
- * Center-tile Ⅶ-field designation (plan → instance): store the override on the
- * placed tile so its difficulty-7 objective field materializes as the designated
- * location. Meaningful only on a `center` plan (stripped elsewhere at
- * validation). A FACE-UP center tile already materialized its fields inside
- * `instantiateTile`, so re-run the materialization now that the override is set;
- * a FACE-DOWN tile materializes on reveal and reads the override then.
+ * Carry the designer's UNDERGROUND layer override (plan → instance): a
+ * far/near/center/sea tile flagged underground rides onto the placed tile so
+ * {@link tileLayer} reads it as "subterranean" from the instant it is placed —
+ * face-down included, so the Subterranean-Gate auto-pairing and the
+ * cross-layer discovery seal hold before the tile is ever revealed. Validation
+ * already stripped the flag from starting/subterranean plans; the group guard
+ * here is one more line of defence so a hand-built plan can never smuggle it
+ * onto a seat tile. Layer-only: it never touches the tile's band content.
+ */
+function applyDesignedUnderground(tile: MapTileState, plan: CustomMapTilePlan): void {
+  if (plan.underground === true && UNDERGROUND_LAYER_GROUPS.has(plan.group)) {
+    tile.underground = true;
+  }
+}
+
+/**
+ * Center-tile Ⅶ customization (plan → instance): store the objective override
+ * (`viiField`) and/or the center-hex guard / reward / VP (`centerHex`) on the
+ * placed tile so its difficulty-7 objective field materializes with them.
+ * Each is independent — a center hex may be customized on the PRINTED
+ * objective with no designation at all. Meaningful only on a `center` plan
+ * (stripped elsewhere at validation). A FACE-UP center tile already
+ * materialized its fields inside `instantiateTile`, so re-run the
+ * materialization now that the customization is set; a FACE-DOWN tile
+ * materializes on reveal and reads it then.
  */
 function applyDesignedViiField(
   adventure: AdventureState,
   tile: MapTileState,
   plan: CustomMapTilePlan
 ): void {
-  if (plan.group !== "center" || !plan.viiField) {
+  if (plan.group !== "center" || (!plan.viiField && !plan.centerHex)) {
     return;
   }
-  tile.viiField = plan.viiField;
-  // Carry the OPTIONAL designer bonus (reward / VP) onto the placed instance,
-  // clamped defensively so an in-memory plan can't smuggle a huge value past the
-  // persistence sanitiser. materializeTileFields folds it onto the Ⅶ field.
-  const reward = sanitizeViiFieldReward(plan.viiFieldReward);
-  if (reward) {
-    tile.viiFieldReward = reward;
+  if (plan.viiField) {
+    tile.viiField = plan.viiField;
   }
-  const vp = sanitizeViiFieldVp(plan.viiFieldVp);
-  if (vp !== undefined) {
-    tile.viiFieldVp = vp;
+  // Carry the OPTIONAL center-hex customization onto the placed instance,
+  // clamped defensively so an in-memory plan can't smuggle a huge value past
+  // the persistence sanitiser. materializeTileFields folds it onto the Ⅶ field.
+  const centerHex = sanitizeCenterHexPlan(plan.centerHex);
+  if (centerHex) {
+    tile.centerHex = centerHex;
   }
   if (!tile.faceDown) {
     materializeTileFields(adventure, tile);
@@ -1701,6 +1888,27 @@ function applyLobbyVictoryPoints(
   return next;
 }
 
+/**
+ * Fold the lobby-added custom win conditions into the (already-sanitized)
+ * effective map preset. No lobby list → the preset is returned UNCHANGED
+ * (byte-identical; a legacy build is untouched). Otherwise the map's own
+ * conditions come FIRST, the lobby's are appended, exact-duplicates are deduped
+ * and the union is capped ({@link mergeCustomWinConditions}) — the lobby can only
+ * ADD, never remove a map-authored condition. The lobby list is re-sanitised here
+ * (it may arrive raw from a direct `createAdventureGameState` call).
+ */
+function applyLobbyCustomWinConditions(
+  preset: CustomMapPreset | null,
+  setupOptions: GameSetupOptions
+): CustomMapPreset | null {
+  const lobbyConditions = sanitizeCustomWinConditions(setupOptions.customWinConditions);
+  if (lobbyConditions.length === 0) {
+    return preset;
+  }
+  const merged = mergeCustomWinConditions(preset?.customWinConditions, lobbyConditions);
+  return { ...(preset ?? {}), customWinConditions: merged };
+}
+
 export function createAdventureGameState(options: AdventureSetupOptions = {}): GameState {
   // A missing seed must NOT collapse to a constant — that is what made every
   // fresh game open on the same map and Creature Bank order. Mint fresh entropy.
@@ -1729,6 +1937,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.victoryPoints !== undefined ? { victoryPoints: options.victoryPoints } : {}),
     ...(options.victoryPointsRoundLimit !== undefined
       ? { victoryPointsRoundLimit: options.victoryPointsRoundLimit }
+      : {}),
+    ...(options.customWinConditions !== undefined
+      ? { customWinConditions: options.customWinConditions }
       : {}),
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.undoMoves !== undefined ? { undoMoves: options.undoMoves } : {}),
@@ -1762,6 +1973,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   if (setupOptions.customMapPreset) {
     const explicit = new Set<PresetForcedOptionKey>([
       ...(options.victoryMode !== undefined ? (["victoryMode"] as const) : []),
+      ...(options.difficulty !== undefined ? (["difficulty"] as const) : []),
+      ...(options.farTileOpening !== undefined ? (["farTileOpening"] as const) : []),
+      ...(options.farTilesPerPlayer !== undefined ? (["farTilesPerPlayer"] as const) : []),
       ...(options.startingResources !== undefined ? (["startingResources"] as const) : []),
       ...(options.startingProduction !== undefined ? (["startingProduction"] as const) : []),
       ...(options.startingBuildings !== undefined ? (["startingBuildings"] as const) : []),
@@ -1864,8 +2078,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // round-limit scored end in `startAdventureRound`, the standings dock + the
   // game-over overlay) with no further wiring. A designed preset that ALREADY
   // enables VP stays authoritative (see `applyLobbyVictoryPoints`).
-  const mapPreset = applyLobbyVictoryPoints(
-    sanitizeCustomMapPreset(setupOptions.customMapPreset ?? null) ?? null,
+  // Lobby custom win conditions merge onto the effective preset AFTER the VP fold
+  // (both edit `adventure.mapPreset`; the win-condition check reads it there).
+  const mapPreset = applyLobbyCustomWinConditions(
+    applyLobbyVictoryPoints(
+      sanitizeCustomMapPreset(setupOptions.customMapPreset ?? null) ?? null,
+      setupOptions
+    ),
     setupOptions
   );
 
@@ -2259,6 +2478,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           // the tile is revealed at the slot's rotation.
           const tile = instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
           applyDesignedBorders(tile, plan);
+          applyDesignedUnderground(tile, plan);
           applyDesignedViiField(adventure, tile, plan);
           if (planTokens(plan).length > 0) {
             plannedTokens.push({ plan, tile });
@@ -2270,6 +2490,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       } else if (plan.tileDefId) {
         const tile = instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);
         applyDesignedBorders(tile, plan);
+        applyDesignedUnderground(tile, plan);
         applyDesignedViiField(adventure, tile, plan);
         if (planTokens(plan).length > 0) {
           plannedTokens.push({ plan, tile });
@@ -2321,7 +2542,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
     const designedGatePlans: SubterraneanGatePlan[] = [];
     for (const plan of customMap) {
-      if (plan.group !== "subterranean" || !plan.gateLinks) {
+      // Seed gate plans from every UNDERGROUND-layer plan (printed cavern OR a
+      // flagged far/near/center/sea tile) — the layer predicate, so a flagged
+      // tile's designed links carve exactly like a cavern's.
+      if (!planIsUnderground(plan) || !plan.gateLinks) {
         continue;
       }
       const cavernId = tileIdByCenter.get(`${plan.row}:${plan.col}`);
@@ -2333,12 +2557,16 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         if (!surfaceId || surfaceId === cavernId) {
           continue;
         }
+        const gateGuard = sanitizeObjectGuard(link.gateGuard);
+        const entranceGuard = sanitizeObjectGuard(link.entranceGuard);
         designedGatePlans.push({
           surfaceTileId: surfaceId,
           undergroundTileId: cavernId,
           designed: true,
           ...(link.gateHex ? { gateHex: link.gateHex } : {}),
-          ...(link.entranceHex ? { entranceHex: link.entranceHex } : {})
+          ...(link.entranceHex ? { entranceHex: link.entranceHex } : {}),
+          ...(gateGuard ? { gateGuard } : {}),
+          ...(entranceGuard ? { entranceGuard } : {})
         });
       }
     }
@@ -2468,7 +2696,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // first player's turn-1 flow). The feature's own tests opt in with
   // `startingBonus: true`.
   const applyStartingBonus = options.startingBonus ?? false;
-  const bonusSteps = applyStartingBonus ? startingBonusVisitSteps(difficulty) : null;
+  const polishReducedStarting = Boolean(houseRules["polish-reduced-starting-bonus"]);
+  const bonusSteps = applyStartingBonus
+    ? startingBonusVisitSteps(difficulty, { polishReduced: polishReducedStarting })
+    : null;
   if (bonusSteps) {
     for (const playerId of state.turnOrder) {
       if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId]) {
@@ -3108,6 +3339,20 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     } else {
       delete lobby.options.victoryPointsRoundLimit;
       changes.push("Victory points round limit cleared");
+    }
+  }
+
+  if (next.customWinConditions !== undefined) {
+    // Sanitise the incoming list (untrusted): bad kinds dropped, params clamped,
+    // capped. These are the host-ADDED conditions; the map's own list is merged
+    // in preset-first at build (applyLobbyCustomWinConditions).
+    const conditions = sanitizeCustomWinConditions(next.customWinConditions);
+    if (conditions.length > 0) {
+      lobby.options.customWinConditions = conditions;
+      changes.push(`Custom win conditions: ${conditions.map(describeCustomWinCondition).join(", ")}`);
+    } else {
+      delete lobby.options.customWinConditions;
+      changes.push("Custom win conditions cleared");
     }
   }
 
@@ -4366,6 +4611,7 @@ function buildAdventureFromLobby(state: GameState): void {
     events: lobby.options.events,
     victoryPoints: lobby.options.victoryPoints,
     victoryPointsRoundLimit: lobby.options.victoryPointsRoundLimit,
+    customWinConditions: lobby.options.customWinConditions,
     spellBook: lobby.options.spellBook,
     moraleCards: lobby.options.moraleCards,
     tournamentMode: lobby.options.tournamentMode,

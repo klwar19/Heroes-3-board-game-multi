@@ -37,7 +37,12 @@ on:
       - "scripts/sync-assets-to-r2.sh"
       - "scripts/setup-r2-cors.mjs"
       - ".github/workflows/sync-media-r2.yml"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      purge_paths:
+        description: "Manual recovery: comma-separated public/ media paths to force-purge from the edge cache (e.g. public/assets/spells-magic_mirror.webp). Leave blank for a normal re-sync."
+        required: false
+        default: ""
 
 # The bucket is shared state — never run two syncs at once, and never cancel a
 # half-finished upload; queue instead.
@@ -67,7 +72,12 @@ jobs:
             exit 1
           fi
 
+      # fetch-depth: 0 so the purge step can `git diff` the pushed range to find
+      # which media files actually changed (the reliable replacement for the old
+      # push-payload detection, which silently missed rebased/force pushes).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install rclone
         run: sudo apt-get update -qq && sudo apt-get install -y -qq rclone
@@ -117,14 +127,35 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          PURGE_PATHS: ${{ github.event.inputs.purge_paths }}
         run: |
           set -euo pipefail
           if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ZONE_ID}" ]; then
             echo "::notice::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID not set — skipping cache purge (replaced files refresh within the browser/edge TTLs)."
             exit 0
           fi
-          files=$(jq -r '[.commits[]?.modified[]?] | unique | .[]' "$GITHUB_EVENT_PATH" \
-            | grep -E '^public/(assets|sounds|fonts)/' | sed 's|^public|https://cdn.hamthefirt.xyz|' || true)
+          # Which media URLs changed? Two sources, both mapped public/… → CDN URL:
+          #   - manual workflow_dispatch with purge_paths → exactly those files
+          #     (recovery lever when an earlier auto-purge missed them);
+          #   - a normal push → `git diff` of the pushed commit range. This is
+          #     the RELIABLE replacement for the old `.commits[].modified` push
+          #     payload, which came back empty for rebased/force pushes and let
+          #     replaced art keep serving stale from the edge (up to the 7-day
+          #     TTL) even though R2 already held the new bytes.
+          media_re='^public/(assets|sounds|fonts)/'
+          to_urls() { grep -E "$media_re" | sed 's|^public|https://cdn.hamthefirt.xyz|' || true; }
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${PURGE_PATHS:-}" ]; then
+            echo "Manual purge of the paths supplied to workflow_dispatch."
+            files=$(printf '%s' "${PURGE_PATHS}" | tr ',' '\n' | sed 's/[[:space:]]//g' | to_urls)
+          else
+            before="${EVENT_BEFORE:-}"
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+              before="${GITHUB_SHA}^"   # new branch / no base → diff against parent
+            fi
+            files=$(git diff --name-only "$before" "${GITHUB_SHA}" 2>/dev/null | to_urls || true)
+          fi
           count=$(printf '%s' "$files" | grep -c . || true)
           if [ "$count" -eq 0 ]; then
             echo "No replaced media files in this push — nothing to purge."

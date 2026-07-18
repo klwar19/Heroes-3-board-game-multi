@@ -30,6 +30,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
   CustomMapPreset,
+  CustomWinCondition,
   GameState,
   HeroState,
   PlayerId,
@@ -149,8 +150,12 @@ export function recordVpViiCenter(state: GameState, playerId: PlayerId, vp: numb
 // At-scoring-time reads (live state, never stored).
 // ---------------------------------------------------------------------------
 
-/** The player's MAIN hero (undefined if it has fallen / never existed). */
-function mainHeroOf(state: GameState, playerId: PlayerId): HeroState | undefined {
+/**
+ * The player's MAIN hero (undefined if it has fallen / never existed). Exported
+ * so custom win conditions (`checkCustomWinConditions`, adventure.ts) read the
+ * SAME hero level VP scoring does — a shared metric, never a duplicate.
+ */
+export function mainHeroOf(state: GameState, playerId: PlayerId): HeroState | undefined {
   return Object.values(state.heroes).find(
     (hero) => hero.controllerId === playerId && hero.kind === "main"
   );
@@ -161,7 +166,7 @@ function mainHeroOf(state: GameState, playerId: PlayerId): HeroState | undefined
  * enemy flagged is no longer yours; an enemy Town YOU flagged is). Falls back to
  * `town.controllerId` for a town with no map field (never happens in adventure).
  */
-function townsControlledBy(state: GameState, playerId: PlayerId): TownState[] {
+export function townsControlledBy(state: GameState, playerId: PlayerId): TownState[] {
   const adventure = state.adventure;
   return Object.values(state.towns).filter((town) => {
     if (town.fieldId && adventure) {
@@ -174,13 +179,18 @@ function townsControlledBy(state: GameState, playerId: PlayerId): TownState[] {
   });
 }
 
-/** Sum of Buildings across every Town the player controls (uncapped — the cap is applied by the scorer). */
-function controlledBuildingCount(state: GameState, playerId: PlayerId): number {
+/**
+ * Sum of Buildings across every Town the player controls (uncapped — the 8-VP
+ * cap is applied by the scorer). Exported so the `buildings` custom win condition
+ * (`checkCustomWinConditions`, adventure.ts) reads the SAME building count VP
+ * scoring uses — a shared metric, never a duplicate.
+ */
+export function controlledBuildingCount(state: GameState, playerId: PlayerId): number {
   return townsControlledBy(state, playerId).reduce((total, town) => total + town.buildings.length, 0);
 }
 
 /** How many Mine / Settlement fields the player currently holds a flag on. */
-function flaggedMineSettlementCount(state: GameState, playerId: PlayerId): number {
+export function flaggedMineSettlementCount(state: GameState, playerId: PlayerId): number {
   const adventure = state.adventure;
   if (!adventure) {
     return 0;
@@ -205,7 +215,7 @@ function flaggedMineSettlementCount(state: GameState, playerId: PlayerId): numbe
  * removed from play" means; the removed zone is the state the rulebook's
  * removed-from-play clause reads.
  */
-function artifactCountOf(player: PlayerState | undefined): number {
+export function artifactCountOf(player: PlayerState | undefined): number {
   if (!player) {
     return 0;
   }
@@ -232,6 +242,37 @@ export function describeVictoryPointObjective(objective: VictoryPointObjective):
       return `Reach Hero level ${objective.level}`;
     case "defeat-dragon-utopia":
       return "Defeat a Dragon Utopia";
+  }
+}
+
+/**
+ * Plain-words description of ONE custom win condition — the SINGLE source for the
+ * map editor preview, the map-pick banner entry, the lobby section list, and the
+ * `GAME_WON` reason string (`checkCustomWinConditions` prefixes it with
+ * "completed a custom win condition: "). Lives here (not map-preset.ts) so
+ * adventure.ts can import it without a cycle — map-preset.ts imports FROM
+ * adventure.ts, so the reason string could not reach a map-preset helper.
+ */
+export function describeCustomWinCondition(condition: CustomWinCondition): string {
+  switch (condition.kind) {
+    case "control-towns":
+      return `control ${condition.count} Town${condition.count === 1 ? "" : "s"}`;
+    case "flag-mines":
+      return `flag ${condition.count} Mines / Settlements`;
+    case "hero-level":
+      return `reach Hero level ${condition.level}`;
+    case "gold":
+      return `reach ${condition.amount} gold`;
+    case "artifacts":
+      return `own ${condition.count} Artifact${condition.count === 1 ? "" : "s"}`;
+    case "buildings":
+      return `build ${condition.count} Building${condition.count === 1 ? "" : "s"}`;
+    case "obelisks":
+      return `visit ${condition.count} Obelisk${condition.count === 1 ? "" : "s"}`;
+    case "defeat-heroes":
+      return `defeat ${condition.count} enemy Hero${condition.count === 1 ? "" : "es"}`;
+    case "defeat-dragon-utopia":
+      return "defeat the Dragon Utopia";
   }
 }
 

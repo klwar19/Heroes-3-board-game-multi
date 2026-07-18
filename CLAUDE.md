@@ -1391,12 +1391,55 @@ is NOT done:
 
 **Implemented and engine-enforced (a test fails if removed):**
 - **Polish house-rules rollout — current limit:** `polish-bank-sizes`,
-  `polish-unit-stacks`, and `polish-spell-book` are implemented and default OFF
-  in both BINH and Legacy. The existing stash-style Spell Book and Polish Spell
-  Book are mutually exclusive; enabling Polish forces the old toggle off. The
-  multi-round all-rules computer soak and Polish economy policy are covered.
-  Rolled bank sizes specifically are inert when the base
+  `polish-unit-stacks`, `polish-spell-book`, plus the newer variants
+  `polish-reduced-starting-bonus`, `polish-rule-111`, `polish-reduced-surrender`,
+  `polish-random-artifacts`, `polish-pandora-search`, and `polish-wait` are
+  implemented and default OFF in both BINH and Legacy. The existing stash-style
+  Spell Book and Polish Spell Book are mutually exclusive; enabling Polish
+  forces the old toggle off. The multi-round all-rules computer soak and Polish
+  economy policy cover the first three; the newer ones are pinned in
+  `polish-house-rules-extra.test.ts` (pure helpers + setup/surrender/wait/
+  Pandora CONTROLs). Rolled bank sizes specifically are inert when the base
   `creatureBanks` option is off; the lobby greys that toggle out in that case.
+  `polish-random-artifacts` requires split Artifact decks and is greyed out when
+  `split-decks` is off; it also upgrades Polish Pandora Search by +1 card on a
+  "+1" die. Random Artifacts rolls at every Artifact acquisition chokepoint
+  (shared-deck Search, dig, black market, event merchant/messenger draws) via
+  `polish-random-artifacts.ts`. Audit pass (2026-07, each fix mutation-checked
+  in `polish-house-rules-extra.test.ts`): the access LATCH from the roll can
+  never outlive its acquisition — taking the discard top, a zero-candidate /
+  empty-reveal Search, and eliminating the owner mid-Search/mid-visit all clear
+  it (a stale latch silently reused the old roll for the NEXT acquisition);
+  Rule 111 is pinned end-to-end (offer only on the OWN home tile at difficulty
+  I, swap consumes the once-per-game token, skip does not; rule-off /
+  foreign-tile / already-used CONTROLs) and now CHAINS after the Groovy Satyr /
+  Judge Dread / Visions pre-battle swap windows instead of being silently
+  skipped by them (`revealNeutralArmyAfterSwapWindows`); `polish-wait`'s Waited
+  re-activation runs a REDUCED start-of-activation package (no second
+  regeneration / poison cube / Fire Wall burn / negative-morale skip check /
+  "[activation]" ability reset — only the Paralysis skip still applies) and the
+  adventure pump enters the Waited phase even when the active unit dies without
+  acting (the corpse-drop path used to end the round over pending Wait tokens);
+  a mid-Pandora-Search elimination returns every lifted Pandora card to the
+  deck; the Wait and mid-fight Surrender buttons render in the combat command
+  dock (`board.tsx` COMMAND_ACTION_TYPES — engine offers existed with no UI
+  surface). KNOWN LIMIT: the sandbox-only "Start next combat round" button can
+  still skip pending waiters (test mode, deliberate); the reduced starting
+  bonus's Minor-Artifact draw returns skipped non-minors under the pile without
+  a reshuffle.
+- **Tournament Morale "Search again" (Tournament Book p.54)**: on a table with
+  ANY tournament flag frozen onto adventure state (master mode or a granular
+  rule) and Morale CARDS off, a player looking at their own revealed Search
+  cards may spend the positive Morale token (overflow first) to discard ALL
+  revealed cards and perform the same Search (X) again — re-run off
+  `DECK_SEARCH.baseCount`, preserving the Tarnum `allowRemove` privilege; the
+  Random-Artifacts latch clears so the re-run rolls fresh. Offered in
+  legal-actions inside the open DECK_SEARCH and rendered as a button in
+  `SearchModal` (its only surface — the modal covers the table). With Morale
+  Cards ON the printed repeat_search CARD flow is the only repeat (SPEND_MORALE
+  repeat-search throws). Pinned in `tournament-morale-search-again.test.ts`
+  (offer/spend/re-run + non-tournament and no-token CONTROLs) and the button in
+  `deck-search-mode-modal.test.tsx`.
 - With `polish-unit-stacks` ON, a faction Pack card — or a recruited NEUTRAL
   card — at its own Citadel may buy persistent Stack layers with the Population
   flow. One Stack costs that side's printed gold cost plus its tier number
@@ -1636,8 +1679,8 @@ tile CONVERTS between the two canonical forms in one batched
 always preserved). Legacy saved presets carrying a tile-slot object STILL carve
 exactly as before (`applyCustomMapObjects`).
 
-**Colored Gates are Monoliths WITH a color** — one per-color teleport NETWORK
-each (1 red, 2 blue, 3 green, 4 yellow), NEVER connecting across colors or to
+**Teleport Gates (colored Gates) are Monoliths WITH a color** — one per-color
+teleport NETWORK each (1 red, 2 blue, 3 green, 4 violet), NEVER connecting across colors or to
 Monoliths (and Monoliths/Obelisks never join a gate pair). A gate TILE TOKEN
 REQUIRES its `pair`; monolith/whirlpool tokens must NOT carry one (sanitisers
 drop/strip violations — `sanitizeTileToken` in `map-registry.ts`). Gate tokens
@@ -1653,18 +1696,25 @@ the traveller PICKS via the same CHOOSE_ONE visit-step the Monolith picker uses,
 <2 same-color gates → inert note, all occupied → fizzle; arrival never
 re-triggers. A guarded gate fights first and only a WIN resolves the network
 travel. On the board a gate FIELD (tile-carved or standalone) and a designer gate
-TOKEN/palette both draw the MONOLITH art tinted by a colored ring + pair badge
-(`gateHexMark` / `designerTokenImage`). LIMIT: a tile hosts at most ONE token
-(monolith AND gate cannot share a tile); a gate TOKEN carries NO guard (only a
-standalone gate OBJECT can); the per-color cap is `MAX_GATES_PER_PAIR` (8),
-counted across BOTH sources (plan gate tokens + gate objects) for the lone-gate /
-over-cap warnings (`validateCustomMapObjects`).
+TOKEN/palette draw the gate's OWN per-color portal art (`teleportGateImage` —
+1 red / 2 blue / 3 green / 4 violet, renamed from yellow) with the colored ring
++ pair badge (`gateHexMark` / `designerTokenImage`); gates are labeled
+"Teleport Gate" in the UI. LIMIT (updated 2026-07): a tile may host multiple
+tokens on DISTINCT slots; gate TOKENS (like every single-hex placement) may now
+carry a designer guard (see the "Designer guards, outposts & one-way monoliths"
+section below); the per-color cap is `MAX_GATES_PER_PAIR` (8), counted across
+BOTH sources (plan gate tokens + gate objects) for the lone-gate / over-cap
+warnings (`validateCustomMapObjects`).
 
 Leading with what does NOT run / deliberate readings:
-- **Only the Two-Way Monolith is modeled.** The printed One-Way
-  Entrance/Exit Monolith pair is NOT a separate location — every monolith is
-  two-way. With 3+ monoliths the TRAVELLER PICKS the destination (the printed
-  "corresponding" pairing has no meaning on a designed map); with exactly 2 the
+- **The plain (colorless) Monolith is RETIRED from the designer palette**
+  (2026-07): every NEW two-way teleporter is a colored Teleport Gate; one-way
+  monoliths are their own objects (section below). LEGACY saved maps with
+  Monolith tokens/objects still carve, travel and render exactly as before
+  (the Monolith network, the "monolith" Obelisk role and the anime
+  `tran_phap_truyen_tong` override are untouched); the whirlpool-only ADD
+  picker and the retired palette button are pinned in `map-designer.test.tsx`.
+  With 3+ monoliths the TRAVELLER PICKS the destination; with exactly 2 the
   travel is automatic.
 - **"Lose 1 unit from your unit Deck" is the traveller's pick** of one army
   card (the card names no unit); a Neutral-side card recycles to its tier
@@ -1741,6 +1791,181 @@ What runs (each with a failing-if-removed test):
   ("Colored Gate travel into a face-down (pending) gate tile" — the both-listed
   pick, the size-2 lone-carved+pending network, per-color/monolith isolation
   CONTROLs, and the mid-flow elimination auto-place).
+
+## Designer guards, outposts & one-way monoliths (map-designer content, 2026-07) — what runs vs. limits
+
+Six features on `CustomMapPreset` / `CustomMapTilePlan` / `CustomMapObject`.
+Types in `state.ts` (`CustomGuardSpec`, `CustomCenterHexPlan`,
+`OnewayExitMode`), sanitizers in `map-preset.ts` + `src/server/map-registry.ts`,
+engine in `adventure.ts` / `adventure-reducer.ts` / `adventure-setup.ts`,
+designer UI in `map-designer.tsx` (shared `GuardSpecEditor`). Pinned in
+`vii-field-designation.test.ts`, `map-objects.test.ts`,
+`outpost-objects.test.ts`, `designed-gate-links.test.ts`,
+`map-registry.test.ts`, `map-designer.test.tsx`, `gate-object-board.test.tsx`
+(each behaviour mutation-checked, CONTROLs included).
+
+Leading with what does NOT run / deliberate limits:
+- **The map AI treats every new object hex as an ordinary (guarded) field** —
+  it never plans a path through a one-way link, never seeks a Tent flag to open
+  a Barrier, and scores an outpost fight like any guard fight.
+- **Outposts (Garrison / Keymaster's Tent / Barrier) are STANDALONE-only**
+  (`OUTPOST_OBJECT_KINDS`): a tile-slot/token form is rejected by the
+  sanitizer + `validateCustomMapObjects` — they live out of every tile by
+  design. One-way monoliths exist in BOTH forms (standalone object AND tile
+  token); standalone whirlpools stay refused as before.
+- **A Barrier never fights** — it is a wall, not a guard post: the sanitizer
+  strips any `guard` off a barrier (and off a one-way EXIT); entry is blocked at
+  `classifyHeroStep` unless the hero's owner holds a same-color Tent flag, and
+  with the flag the step is an ordinary walk (no visit, no reward).
+- **A garrison defense is ARMY-only** (settlement-style): the defender picks
+  units only — no hand cards, no hero — and pays 3 gold (towns keep 8;
+  `garrisonDefenseCost`). Declining hands the flag over without a fight.
+- **No XP from outpost / one-way fights** (`isBankStyleGuardLocation`):
+  garrison, Keymaster's Tent and one-way ENTRANCE guards fight BANK-style —
+  no Quick Combat, no experience (combat difficulty 0), and NO round limit
+  (`CombatContext.unlimitedRounds` — the reducer's round-limit check skips it,
+  no MP-to-extend). Guards on monolith/gate/whirlpool tokens and objects keep
+  the NORMAL neutral flow (Quick Combat, XP, round limit) at their level.
+- **An exact-army guard is never Quick-Combat or Diplomacy skipped** — the
+  designed army always deploys and fights (minted at fight time from
+  `field.customGuardUnits` in `drawGuardArmy`); its difficulty (for XP where
+  XP applies) derives from the army's tiers
+  (`customGuardArmyDifficulty`: any azure body = Ⅶ, else bronze 1 / silver 2 /
+  gold 3 points mapped onto the `NEUTRAL_ARMY_TABLE` rows, capped Ⅵ).
+- **The center-hex bonus pays ONCE, to the first clearer** — `centerHexClaimed`
+  latches; a later re-capture (Town changing hands) never re-pays. VP is
+  recorded unconditionally but SCORES only in VP mode.
+
+What runs (each pinned by a test that fails if the wiring is removed):
+- **1. Ⅵ–Ⅶ center-hex editor** (`CustomMapTilePlan.centerHex` =
+  `{ guard?, reward?, vp? }`): clicking a Ⅵ–Ⅶ center tile always shows the
+  center-hex box — it works on PRINTED objectives (Cyclops Stockpile, Temple of
+  the Sea, settlement…) exactly like on the three Ⅶ designations
+  (Town/Grail/Utopia). GUARD = level Ⅰ–Ⅶ or an exact army (up to
+  `MAX_CUSTOM_GUARD_UNITS` = 6 neutral-deck unit cards, shared
+  `GuardSpecEditor`); REWARD = gold/materials/valuables (≤50 each), Treasure
+  dice (≤3), Spell/Ability/Artifact deck Searches (≤5 each); VP ≤10.
+  `materializeTileFields` stamps it on the difficulty-7 field;
+  `grantCenterHexBonus` (ONE seam, top of `beginFieldVisit` — reached only
+  after the guards are dealt with) pays resources inline and queues dice/
+  Searches as a `visit-steps` reward. Legacy `viiFieldReward`/`viiBonus`
+  snapshots fold in (`foldLegacyViiBonus`, shared claim latch).
+  `vii-field-designation.test.ts`.
+- **2. Guards on EVERY single-hex placement** (`CustomGuardSpec`
+  `{ level?: 1-7 } | { units: [...] }`): tile TOKENS (monolith / whirlpool /
+  Teleport Gate / one-way), standalone OBJECTS, BOTH subterranean gate-link
+  halves (`CustomMapGateLink.gateGuard`/`entranceGuard`, per-half ⚔ editor in
+  the link rows) and the center hex — one shared stamp
+  (`applyCustomGuardToField`). A hero must FIGHT to enter; a WIN clears the
+  guard for good (`clearCustomGuard`), a loss/retreat leaves it.
+- **3. Teleport ARRIVAL auto-wins the exit's guard** (user rule "auto win when
+  get out"): every teleport arrival — Monolith, Teleport Gate, whirlpool,
+  one-way, AND stepping OUT through a linked subterranean gate — sweeps a
+  still-standing guard on the destination for free
+  (`TELEPORT_HERO.sweepGuard` → `autoWinArrivalGuard`: guard cleared, feed
+  note, no fight, no XP, no reward). Walking onto the same hex normally still
+  fights it.
+- **4. Yellow border edges on standalone object hexes**
+  (`CustomMapObject.borderEdges`, absolute dirs 0-5 →
+  `MapFieldState.borderEdges`): the 🖌 border tool paints object-hex edges
+  exactly like tile edges; each sealed edge blocks movement/discovery both
+  ways (`isDesignedEdgeSealedBetween` inside `canCrossEdge` +
+  `heroCanDiscoverTileAcrossBorders`), rendered with the same gold casing.
+- **5. Outposts** (standalone, always revealed, optional bank-style guard,
+  winner FLAGS it): **Garrison** — connects tiles as a walkable junction; the
+  winner flags it (single owner + light-blue ring); a flagged garrison offers
+  its owner a 3-gold ARMY-only defense when an enemy walks in
+  (`garrisonDefenderFor` → the settlement defense flow, `pending.goldCost`).
+  **Keymaster's Tent** — colored (pair 1-4); EVERY visitor who clears it flags
+  it (multi-flag `extraFlagOwnerIds` — flagging never steals the previous
+  owner's key); holding a tent flag opens same-color **Barriers**
+  (`playerHoldsTentFlag`). `outpost-objects.test.ts`.
+- **6. One-way monoliths** (4 colors, `oneway_entrance` / `oneway_exit`,
+  standalone or tile token): only the ENTRANCE may carry a guard (bank-style,
+  above); winning teleports to a same-color EXIT per the entrance's
+  `exitMode` — **random** (seeded die among free exits), **certain** (traveller
+  picks, default), **mix** (exits flagged `alwaysPickable` are offered up
+  front + one "Roll the die" option over the rest; degenerates gracefully —
+  all-always = certain, none-always = random, resolved at CHOICE time via
+  `ONEWAY_RANDOM_EXIT` so the pick leaks nothing). Occupied exits are skipped;
+  no exit on the map / all occupied = inert note. Arrival never re-triggers
+  and (rule 3) sweeps any hand-edited exit guard. Exits are one-way: standing
+  ON an exit offers no travel. `map-objects.test.ts` ("one-way monolith"
+  suites).
+- **7. Teleport Gate reskin** (was "Colored Gate"): per-color PORTAL art on
+  the board, the palette and tokens (`teleportGateImage`, 1 red / 2 blue /
+  3 green / 4 violet — pair 4 renamed from yellow, `gatePairColor`); the
+  location is labeled "Teleport Gate"; the plain (colorless) Monolith is
+  RETIRED from the designer palette (legacy maps unaffected — see the
+  Monolith section above). One-way monoliths use their own per-color art
+  (`onewayMonolithImage`); outposts theirs (`outpostObjectImage`).
+  `map-designer.test.tsx`, `gate-object-board.test.tsx`.
+
+## Underground designation (per-tile layer override, map designer) — what runs vs. limits
+
+The designer may mark ANY far/near/center/sea tile plan `underground?: true` on
+BOTH `CustomMapTilePlan` and `MapTileState` (copied plan→tile at setup by
+`applyDesignedUnderground`, face-down included). The tile is then topologically a
+cavern — reachable ONLY through a Subterranean Gate, sealed from the Surface at
+every other edge — while KEEPING its band identity (group, back art/numeral,
+guard tiers, Creature-Bank pile, token legality). "A cavern topologically, but
+with printed band content."
+
+- **The ONE seam is `tileLayer` / `planIsUnderground`** (`adventure.ts`).
+  `planIsUnderground(plan)` = `group === "subterranean" || (underground === true &&
+  group !== "starting")`; `tileLayer(tile)` delegates to it. Everything downstream
+  follows AUTOMATICALLY off that one bit: `mapFieldLayer` → `canCrossEdge`'s layer
+  check (movement, the AI's `objectiveDistanceField`, Dimension Door reach),
+  `recomputeSubterraneanGates` + `planGateChoiceForReveal` (auto-pairing,
+  one-gate-per-tile, pick-on-reveal), the discovery gate (`DISCOVER_TILE` /
+  `canHeroDiscoverAdjacentTile`), and the preview twin `isCavernPlacement` →
+  `planSubterraneanGates` / `unreachableUndergroundCenters`. Never inline a
+  `group === "subterranean"` LAYER check — use the predicate.
+- **BAND-vs-LAYER audit rule (for future contributors):** every
+  `"subterranean"` comparison is either BAND semantics (back art `tileBandLabel`,
+  `planBackLabel`/`planGroupLabel`, the `subBand` palette filter,
+  `creatureBankTierForGroup`'s NEAR-pile house rule, `VALID_TILE_GROUPS`) — keep
+  the GROUP check — or LAYER semantics (gate carve/pair, cross-layer seal,
+  standalone-hex layer inference, designer gate-link eligibility, the unreachable
+  ring) — use `tileLayer`/`planIsUnderground`. A flagged Far tile still draws the
+  FAR bank pile and the "Ⅱ–Ⅲ" back; only its topology flips.
+
+Leading with the DELIBERATE v1 limits:
+- **`underground` is stripped from `starting` (seat/home tiles stay Surface — the
+  opening ceremony, seat balance and first-discovery flow assume it) and from
+  printed `subterranean` plans (redundant).** Only far/near/center/sea keep it,
+  as a literal `true` — enforced in BOTH the persistence sanitiser
+  (`sanitizeTile`, `src/server/map-registry.ts`) and the setup validator
+  (`validateCustomMapPlan`, `adventure-setup.ts`) against `UNDERGROUND_LAYER_GROUPS`.
+  Legacy maps / snapshots (field absent) behave byte-for-byte as before.
+- **Band content stays band (topology only).** Back art keeps the band back (no
+  fake cavern art), the Creature-Bank pile stays keyed by GROUP (a flagged Far
+  tile draws the FAR pile; the printed-cavern NEAR-pile house rule stays
+  cavern-only), guards/tokens stay band-legal. Whirlpool/Monolith/Teleport-Gate
+  token networks remain layer-agnostic (cross-layer links already legal),
+  untouched.
+- **Designed gate links now belong to any UNDERGROUND-layer plan** (a flagged
+  Far tile links to a touching Surface tile exactly like a cavern);
+  `validateCustomMapPlan` + `sanitizeTile` KEEP them for a flagged plan and drop
+  them from a plain (Surface) plan.
+
+Designer UX: the far/near/center/sea popover gains an "Underground layer" toggle
+(writes `plan.underground`; NOT offered on starting/subterranean); a flagged
+tile's outline strokes the Underground purple + carries `data-underground` while
+keeping its `data-band-group` band label, participates in the cavern gate-link
+rows / "+ Gate" button, and gets the red unreachable ring when isolated. In game
+(`screen.tsx`) a flagged tile's hexes carry `data-underground` (an always-on CSS
+cue, the layer is not secret) and the face-down discovery hint / gate
+ascend-descend labels/art fire via the predicate switch.
+
+Behaviour is pinned in `src/engine/underground-designation.test.ts` (layer seam,
+setup plan→tile copy, cross-layer movement seal, auto-paired + designed-link gate
+carve, discovery, each with a plain-Far CONTROL), the preview==engine parity +
+unreachable cases in `subterranean-gate-planning.test.ts`, the sanitiser
+(`map-registry.test.ts`), the validator (`custom-setup.test.ts`), the designer UI
+(`map-designer.test.tsx`), the in-game cue (`subterranean-gate-board.test.tsx`),
+and the AI distance-field seal (`computer/map-navigation.test.ts`) — every claim
+mutation-checked.
 
 ## Field Overrides & multi-pin tiles (global system; Anime mod content) — what runs vs. limits
 
@@ -2179,17 +2404,48 @@ Two additions; each engine claim fails a named test if its wiring is removed.
   `pre-hit-heal-reactions.test.ts` (heal-before-damage event order, the
   no-heal/no-pause CONTROL, and the spell-hate gate with a real-Spell CONTROL).
 - **Map-designer timed events are freeform** (`CustomMapPreset.timedEvents`, cap
-  `MAX_TIMED_EVENTS` = 32): any round 1–30 × any effect — resources, deck
-  Search, clear-cubes (Windmill also re-opens Factory Prospector, Water Wheel
-  also Derrick), ±1 morale, +movement (stacks on the round's refreshed MPs),
-  Treasure/Resource dice (queued per live player), or a feed note. Eliminated
+  `MAX_TIMED_EVENTS` = 32): any round 1–30 × any effect — resources (positive =
+  every player GAINS; NEGATIVE = every player LOSES that much, the treasury
+  floored at 0 so a player never goes negative; clamp −50..50, ≥1 nonzero),
+  hero **experience** (clamp 1–5, every live player's MAIN hero gains it through
+  the NORMAL `gainExperience` pipeline — level-ups, hand-limit / expert-use
+  bumps, Ability searches, specialty cards, commander points, Learning all
+  ride it, never a hand-incremented level), deck Search, clear-cubes (Windmill
+  also re-opens Factory Prospector, Water Wheel also Derrick), ±1 morale,
+  +movement (stacks on the round's refreshed MPs), Treasure/Resource dice
+  (queued per live player), or a feed note. Any entry may also carry an optional
+  **`repeatEveryRounds`** (int 2–10): it fires at `round`, then every N rounds
+  after (`round`, `round+N`, `round+2N`, …) for the rest of the game (HoMM3
+  weekly events) — absent = a one-shot, byte-identical to a legacy preset; each
+  firing appends a DISTINCT `MAP_PRESET_TRIGGERED` id so the overlay never
+  swallows a repeat (`isTimedEventDue`). Eliminated
   seats and their heroes are skipped. Fired by `applyCustomMapTimedEvents` at
-  round start; sanitization clamps amounts and drops unknown kinds
-  (`custom-setup.test.ts`, `map-preset.ts`). Each firing pops the ornate
+  round start; sanitization clamps amounts, keeps `repeatEveryRounds` only as an
+  int ≥2 (99→10, 1 / non-int DROPPED → one-shot), keeps a legacy positive-only
+  resources entry byte-identical, and drops unknown kinds
+  (`custom-setup.test.ts`, `map-preset.ts`). A second cube-clear kind,
+  **`clear_tile_cubes`**, re-opens EVERY black cube on Tiles of chosen groups
+  (player-facing bands Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ / Sea / Underground, filtered by
+  `MapTileState.group`) with an optional "skip tiles containing a Settlement"
+  flag — but NEVER a Creature Bank (it keeps its defeat cube — hard rule) nor
+  the Grail / Dragon Utopia victory fields (conservative safety, mirroring the
+  token-placement exclusions); standalone designer hexes (no backing tile) are
+  skipped naturally. INTENDED consequence: a re-opened field with a printed
+  `difficulty` flips `isFieldGuarded` back to true, so it re-fights fresh guards
+  and re-earns its reward — the designer's re-open tool. Sanitizer dedupes /
+  drops invalid groups (empty → effect dropped) and keeps the flag only as a
+  real `=== true`; band labels live in `TILE_GROUP_BAND_LABELS` (adventure.ts,
+  Sea/Underground disambiguated from the shared Ⅳ–Ⅴ back numeral). Pinned in
+  `custom-setup.test.ts` (group filter, bank/victory exclusions, settlement flag
+  with its control, re-guard, no-preset twin, sanitizer) and
+  `map-preset-editor.test.tsx` (group chips + skip-settlement checkbox). Each
+  firing pops the ornate
   `MapEventOverlay` on every client (one card per batch, once per event id,
   never replayed on reconnect — `map-event-overlay.test.tsx`); the editor's
-  per-event cards (round rail, kind dropdown, params, live preview, warnings)
-  are pinned in `map-preset-editor.test.tsx`. The designer's face-down tiles
+  per-event cards (round rail, kind dropdown, a "Repeat" every-N-rounds select,
+  params incl. negative resource losses + the experience amount, a live preview
+  that spells the schedule "round 4, then every 3 rounds" and "lose N gold",
+  warnings) are pinned in `map-preset-editor.test.tsx`. The designer's face-down tiles
   draw band-correct printed BACKS (sea/underground Ⅵ–Ⅶ never wear Ⅳ–Ⅴ art;
   `planBackArt`, `map-designer.test.tsx`).
 
@@ -2302,6 +2558,60 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
   accepts it, with a no-crown CONTROL that hides the toggle).
 
+## Map settings defaults (designer → lobby, seed-at-pick) — what runs vs. limits
+
+Three OPTIONAL defaults a designed map may carry on `CustomMapPreset` to SEED the
+lobby when that map is picked — `difficulty?: GameDifficulty`,
+`farTileOpening?: boolean`, `farTilesPerPlayer?: number` (0–6) — each hoisting
+1:1 onto the same-named `GameSetupOptions` field. They ride the EXISTING
+preset→lobby machinery in `map-preset.ts` (extended, not rebuilt): the three keys
+were added to `PresetForcedOptionKey` / `presetForcedOptionKeys` /
+`applyCustomMapPresetToOptions` (seed) / `revertCustomMapPresetOptions` (restore
+scenario default when the map is dropped/swapped) / `customMapPresetIsActive` /
+`sanitizeCustomMapPreset`, plus the build-time apply-once `explicit` skip set in
+`adventure-setup.ts` `createAdventureGameState`. Editor UI: two new sections in
+`map-preset-editor.tsx` — a Difficulty chip row (`MAP_PRESET_DIFFICULTY_OPTIONS`,
+Easy…Impossible, re-click clears) and an "Additional Ⅱ–Ⅲ tiles" row
+(Default/On/Off + a Default/0–6 per-player count that hides when opening is Off).
+Pinned in `custom-setup.test.ts` (seed-on-pick + host-edit-wins, direct-build
+seeding with a legacy CONTROL, build apply-once, revert, sanitizer clamps/drops,
+banner lines), `map-preset-editor.test.tsx` (the two controls write onChange, a
+sibling field survives, Off hides the count), and the persistence round-trip in
+`map-registry.test.ts` (registry sanitizes the preset through
+`sanitizeCustomMapPreset`).
+
+Semantics / deliberate limits:
+- **SOFT defaults, apply-once**: the preset seeds these three onto the lobby at
+  PICK (`setGameOptions` customMap block, no skip). A host's later
+  `SET_GAME_OPTIONS` edit of difficulty/far-tiles then WINS — the lobby path
+  passes every option to the build, so they land in the build-time `explicit`
+  skip set and the preset never re-forces them. A DIRECT build that omits a field
+  lets the preset fill it (the seeding path). Difficulty is a soft default like
+  victory mode — the host may change all three after pick; VP + round limit stay
+  MAP-AUTHORITATIVE (below), unchanged.
+- **Victory mode / VP / round-limit were ALREADY on the preset + editor** (this
+  task only ADDED difficulty + far-tiles). `preset.roundLimit` ends the game ONLY
+  when Victory Points is enabled (`adventure.ts` round-wrap: `if (vpConfig &&
+  roundLimit && …)`); with VP off it stays a mere "suggested length". The editor
+  already surfaces that coupling (the round-limit section relabels "Round limit
+  (hard end)" ↔ "Suggested length (rounds)" off `vpOn`, with a matching hint), and
+  the round-limit+VP end + the banner wording are already pinned in
+  `victory-points.test.ts` (VP-on-ends / VP-off-suggestion-only / no-limit-no-end,
+  and the `describeCustomMapPresetEntries` round-limit lines) — no new coupling
+  test or editor coupling change was needed.
+- **Additional-tile TYPES are NOT configurable** — only on/off + per-player count.
+  The Ⅱ–Ⅲ supply pool composition stays the engine default (a truly-random tile is
+  rolled from `farTilePool` when a player opens one).
+- **No custom "hold a town for X rounds" win conditions** — the victory default
+  picks among the four existing modes (conquest / grail / dragon-hunt /
+  dragon-conqueror = the capture-and-hold mode); the VP `objectives`
+  (control-towns / flag-mines / hero-level / defeat-utopia) already live under
+  `victoryPoints` config and stay there.
+- **Sanitizer**: garbage difficulty dropped (kept only if one of the 4 literals);
+  `farTilesPerPlayer` clamps 99→6, −1→0, a non-number DROPPED (never a silent 0);
+  `farTileOpening` kept only as a real boolean. Legacy presets (fields absent)
+  are byte-identical after sanitize and behave exactly as before.
+
 ## Map designer upgrade (designed gates/borders/locks/obelisks/objects/Ⅶ/VP) — what runs vs. limits
 
 Seven map-only features on `CustomMapPreset` / `CustomMapTilePlan` (applied when
@@ -2311,9 +2621,11 @@ glyphs via `REWARD_GLYPH_ICONS` (`homm-assets.ts`) through `assetUrl()`.
 
 Leading with what does NOT run / deliberate limits:
 - **Standalone (off-tile) Whirlpool teleporters are REFUSED** — a Whirlpool must
-  sit on a tile (its token); only Monoliths and colored Gates may be standalone
-  objects. A standalone hex touching BOTH layers is also rejected
-  (`map-objects.test.ts`).
+  sit on a tile (its token); Monoliths (legacy), Teleport Gates, one-way
+  monolith halves and the three outposts (Garrison / Keymaster's Tent /
+  Barrier — standalone-ONLY, see the "Designer guards, outposts & one-way
+  monoliths" section) may be standalone objects. A standalone hex touching BOTH
+  layers is also rejected (`map-objects.test.ts`).
 - **CANONICAL forms (see the "Monolith & Whirlpool Tokens" section):** an ON-tile
   teleporter is a `CustomMapTilePlan.token` (kind monolith/whirlpool/gate); an
   OFF-tile one is a standalone `CustomMapObject`. The designer never writes NEW
@@ -2395,10 +2707,13 @@ What runs (each pinned by a test that fails if the wiring is removed):
   `.tileBorderCasing`/`.tileBorderLine`). The legacy whole-arc `extraBorders`
   (absolute dirs 0-5, 3-edge outer arcs) stays fully engine-enforced for old
   saves; the designer now writes ONLY `borderEdges`, folding legacy arcs in on a
-  plan's first border edit. LIMIT: edges exist only on tile footprints (no
-  borders on standalone object hexes). `designed-borders.test.ts` (arc + edge
+  plan's first border edit. Standalone OBJECT hexes take border edges too
+  (2026-07, `CustomMapObject.borderEdges` → `MapFieldState.borderEdges` —
+  same tool, same seal, same rendering; see the "Designer guards, outposts &
+  one-way monoliths" section). `designed-borders.test.ts` (arc + edge
   suites), `map-navigation.test.ts` (AI), `map-registry.test.ts` (round-trip),
-  `map-designer.test.tsx` (draw/erase/stroke/conversion UI).
+  `map-designer.test.tsx` (draw/erase/stroke/conversion UI),
+  `map-objects.test.ts` (object-hex edges).
 - **3. Fixed starting-tile orientation** (`lockRotation` + `rotation`): a locked
   seat's home tile is placed at the designed rotation and owes NO opening
   rotation; the opening chain skips it in seat order (no stall), the reducer
@@ -2410,21 +2725,28 @@ What runs (each pinned by a test that fails if the wiring is removed):
   morale/search/resources/movement/dice, never farmable on re-entry), or
   `victory-only` (no reward, still a dig marker). `obelisk-roles.test.ts`.
 - **5. One-hex objects** (`CustomMapPreset.objects`, the CANONICAL OFF-tile form):
-  standalone off-tile hexes (layer inferred from the touched tile) — Monoliths and
-  4 colored Gate NETWORKS (each color its own teleport network, separate from
-  Monoliths; up to `MAX_GATES_PER_PAIR` = 8 of a color across plan tokens +
-  objects), with optional guards 1-7 running the real neutral-battle flow (a
-  level>difficulty Quick-Combat win teleports + clears; a loss/retreat leaves the
-  guard). An ON-tile teleporter is instead a `CustomMapTilePlan.token` (see the
-  "Monolith & Whirlpool Tokens" section) — the designer no longer writes new
-  tile-slot objects, but a LEGACY tile-slot object in a saved preset still carves.
-  `map-objects.test.ts`.
+  standalone off-tile hexes (layer inferred from the touched tile) — Monoliths
+  (legacy) and 4 colored Teleport-Gate NETWORKS (each color its own teleport
+  network, separate from Monoliths; up to `MAX_GATES_PER_PAIR` = 8 of a color
+  across plan tokens + objects), plus — 2026-07 — one-way monolith halves and
+  the three outposts (Garrison / Keymaster's Tent / Barrier). Optional guards
+  (level 1-7 OR an exact army) run the real neutral-battle flow on teleporters
+  (a level>difficulty Quick-Combat win teleports + clears; a loss/retreat
+  leaves the guard) and BANK-style (no XP, unlimited rounds) on outposts /
+  one-way entrances — see the "Designer guards, outposts & one-way monoliths"
+  section. An ON-tile teleporter is instead a `CustomMapTilePlan.token` (see
+  the "Monolith & Whirlpool Tokens" section) — the designer no longer writes
+  new tile-slot objects, but a LEGACY tile-slot object in a saved preset still
+  carves. `map-objects.test.ts`, `outpost-objects.test.ts`.
 - **6. Ⅶ-field designation** (a centre plan's `viiField` town/dragon_utopia/grail):
   forces the difficulty-7 objective field whatever tile lands there (face-up at
   setup, face-down on reveal, masked in other views until then); a victory-vs-
   design conflict BLOCKS the start (lobby intact) with live warnings; the knobs
   `grailObelisksRequired` / `utopiaGuards` / `utopiaBonusSearch` tune the dig /
-  Utopia. `vii-field-designation.test.ts`.
+  Utopia. The centre hex additionally takes a designer guard / reward / VP
+  bonus (`CustomMapTilePlan.centerHex`) with or without a designation — see
+  the "Designer guards, outposts & one-way monoliths" section.
+  `vii-field-designation.test.ts`.
 - **7. Victory Points** (`CustomMapPreset.victoryPoints`): a round-limit OR
   victory-completion end trigger scores the full rulebook VP table via an
   event-sourced ledger (heroes defeated, buildings, hero levels, flagged mines/
@@ -2450,3 +2772,103 @@ Homm3BG glyphs. Monochrome symbol glyphs are lightened in CSS to read on the dar
 panels; the tick/cross keep their own colour. Icon presence is pinned in
 `map-preset-editor.test.tsx`, `victory-points-panel.test.tsx`,
 `map-designer.test.tsx`.
+
+Tier-band outline colours (designer only): each tile's flower outline
+(`GROUP_COLORS`, `.designerFlowerOutline`) is stroked by its band's MAX unit tier
+— Ⅰ bronze `#b46f33` / Ⅱ–Ⅲ silver `#c7ccd6` / Ⅳ–Ⅴ gold `#e7b73c` / Ⅵ–Ⅶ azure
+`#3f7fd6` (reusing the app's `.tierDot`/`.neutralDeck` grade hues), Sea light-blue
+`#8fd8ff`, Underground kept purple `#7a5a9e`; the palette-button borders share
+them. A compact `.designerBandLegend` (six swatches + `TILE_GROUP_BAND_LABELS`
+numerals, now re-exported from `@/engine`) sits under the tile palette. Because
+Near-gold ≈ the selection gold `#ffd766` and Sea ≈ the secret-pin blue `#9ad0ff`,
+the `.selected`/`.secret` modifiers gained a stronger halo so an override always
+reads over its band. The IN-GAME yellow movement borders
+(`getTileBorderSegments`/`.tileBorderLine`) are untouched. Pinned in
+`map-designer.test.tsx` ("tier-band outline colours + legend": per-band stroke,
+the six-swatch legend, and a selected-overrides-band CONTROL).
+
+### Custom win conditions (map-designer + lobby, additional early-end trigger)
+
+A designed map (and, per-game, the lobby host) may author CUSTOM WIN CONDITIONS
+(`CustomMapPreset.customWinConditions` / `GameSetupOptions.customWinConditions`,
+`CustomWinCondition` in `state.ts`). ENGINE RULE: the FIRST live player — iterated
+in `turnOrder` — to satisfy ANY active condition WINS IMMEDIATELY, an ADDITIONAL
+early-end trigger layered on top of the normal victory mode (it does NOT replace
+it). Engine: `checkCustomWinConditions` (`adventure.ts`, next to
+`declareAdventureWinner`), called from the reducer's post-action tail
+(`reducer.ts`, right after `runAdventureAutomations` and before
+`ensureCombatActivation` — the ONE seam every action on every backend funnels
+through). Behaviour pinned in `src/engine/custom-win-conditions.test.ts` (each
+claim mutation-checked, with no-condition / below-threshold / VP-off CONTROLs).
+
+Nine kinds (params clamped by `sanitizeCustomWinConditions`, map-preset.ts):
+`control-towns` (count 2–8 — the home town counts, so a min of 2 avoids an
+instant win), `flag-mines` (2–12, mines+settlements combined), `hero-level`
+(main hero, 2–7), `gold` (treasury, 20–500), `artifacts` (own N, 1–10),
+`buildings` (Buildings in controlled Towns, 8–15 — the reader is VP scoring's
+own `controlledBuildingCount`; min 8 because the default opening is 3 Buildings
+and a preset can force at most 7, so an 8 floor can't instant-win at setup),
+`obelisks` (visit N Obelisks, 1–4 matching the grail dig knob — reuses the
+per-player `grail.obelisksVisited` tally, so HONEST LIMIT: it only accrues in
+GRAIL victory mode, a silent no-op on any other mode), `defeat-heroes` (1–6,
+main+secondary combined), `defeat-dragon-utopia` (no param).
+
+What runs (each with a failing-if-removed test):
+- **Any-of, first-to-satisfy**: conditions are evaluated in LIST ORDER for the
+  reason string; players in `turnOrder` (deterministic tie-break, documented).
+  The `GAME_WON` reason is `completed a custom win condition: <describe>` where
+  `<describe>` = `describeCustomWinCondition` (the SINGLE source for the editor
+  preview, the 🏁 map-pick banner line, the lobby list, and this reason — it
+  lives in `victory-points.ts`, NOT map-preset.ts, so `adventure.ts` can import
+  it without the map-preset→adventure cycle).
+- **The metrics ARE the Victory-Points readers** (reuse invariant): `mainHeroOf`,
+  `townsControlledBy`, `flaggedMineSettlementCount`, `artifactCountOf` are
+  exported from `victory-points.ts` and shared verbatim; gold is `resources.gold`;
+  `defeat-heroes` = `vpLedger.mainHeroDefeats.length + secondaryHeroDefeats`
+  (main once per opponent, VP-consistent; tolerates an absent ledger on legacy
+  snapshots); `defeat-dragon-utopia` = `vpLedger.utopiaDefeated`. Never duplicate
+  a metric — same numbers as VP scoring is the invariant.
+- **Combat-deferred**: the check SKIPS while a combat is open (`state.combat`), so
+  a threshold crossed mid-battle resolves on the next map-side action
+  (`ACKNOWLEDGE_COMBAT_END` and co. flow through the same tail) — the game is
+  never ended mid-fight. Pinned with an open-combat guard test + an
+  acknowledge-lands-the-win test.
+- **VP interplay**: the winner is declared through `declareAdventureWinner(…,
+  { viaVictoryCondition: true })`, so with VP mode OFF it is an INSTANT win (HUD +
+  GAME_WON, reason verbatim) exactly like the Grail, and with VP mode ON it
+  auto-routes to `endGameByVictoryPoints` (the completer earns the completion VP,
+  the most-VP seat wins, the VP_SCORING overlay fires). Both behaviours are free.
+- **Lobby is ADD-only, UNION at build**: `applyLobbyCustomWinConditions`
+  (adventure-setup.ts, chained after `applyLobbyVictoryPoints`) merges the map's
+  own list FIRST + the lobby-added list, exact-duplicate deduped, capped at
+  `MAX_CUSTOM_WIN_CONDITIONS` (4) via the shared pure `mergeCustomWinConditions`.
+  A map-authored condition is NEVER removed by the lobby. `setGameOptions` stores
+  the sanitised host list on `lobby.options.customWinConditions` and emits
+  `GAME_OPTIONS_CHANGED`.
+- **Public by design**: conditions ride `adventure.mapPreset`, which `player-view.ts`
+  does not mask — every seat can read them (unchanged; stated, not altered).
+- **Idempotent / live-only**: the win-declared guard makes a re-check a no-op (no
+  second GAME_WON); an ELIMINATED player satisfying a condition never wins
+  (the liveness skip mirrors last-faction-standing).
+
+UI: the map editor's "🏁 Custom win conditions" section (`map-preset-editor.tsx`,
+`CUSTOM_WIN_CONDITION_OPTIONS` / `defaultCustomWinCondition`, add/retype/param/
+remove up to 4) and the lobby "Custom win condition" section (`screen.tsx`
+**Match tab**, directly below the "Win condition" victory-mode selector — beside
+the game's other winning conditions, NOT on Mode & Rules: map-set conditions
+read-only + "map"-tagged, host add/remove dispatching
+`SET_GAME_OPTIONS { customWinConditions }`, Add disabled at the effective cap).
+Pinned in `map-preset-editor.test.tsx` and `game-options-tabs.test.tsx` (incl. a
+placement test: on Match after the Win condition row, absent from Mode & Rules).
+
+Deliberate LIMITS (documented, not bugs):
+- **No "defeat N Dragon Utopias"**: the VP ledger flag is a BOOLEAN
+  (`utopiaDefeated`), so `defeat-dragon-utopia` carries NO count even though a
+  designed map can host several Utopias — it fires on the FIRST one defeated.
+- **Instant-win foot-gun**: a condition already met at setup ends the game on the
+  first action — the designer's responsibility. The min-clamps REDUCE but cannot
+  eliminate it (e.g. a preset `startingResources` gold can exceed the gold
+  condition's 20 minimum; control-towns' min of 2 keeps the lone home town from
+  being an instant win, but a designed second town could still trip it).
+- **Never ends mid-battle** (the combat-deferred reading above) — a crossing
+  during combat waits for the next map-side action, by design.

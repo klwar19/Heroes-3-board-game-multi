@@ -26,6 +26,7 @@ function cloneSerializable<T>(value: T): T {
 function maskFaceDownTile(tile: MapTileState): MapTileState {
   const masked: MapTileState = { ...tile, tileDefId: "hidden" };
   delete masked.viiField;
+  delete masked.centerHex;
   delete masked.viiFieldReward;
   delete masked.viiFieldVp;
   return masked;

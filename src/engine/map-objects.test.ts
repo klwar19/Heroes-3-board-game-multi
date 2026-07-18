@@ -25,7 +25,7 @@ import {
   type MapSpaceId,
   type MapTileState
 } from "./index";
-import { carveColoredGateField, eliminatePlayer, instantiateTile } from "./adventure";
+import { beginFieldVisit, carveColoredGateField, carveOnewayField, drawGuardArmy, eliminatePlayer, instantiateTile } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
 import { canBeatGuardedField } from "./computer/map-navigation";
 import { hexNeighbor, hexNeighbors, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint, type HexCoord } from "./hex";
@@ -161,6 +161,13 @@ describe("Colored Gate pair routing", () => {
     expect([blueA, blueB]).not.toContain(state.heroes.hero_p1.spaceId);
     // Arrival did not re-trigger (no ping-pong): the hero stayed on redExit.
     expect(state.heroes.hero_p1.spaceId).not.toBe(redEntry);
+    // Colored Gate hop = TELPTOUT (same visit as two-way Monolith).
+    const moves = state.eventLog.filter(
+      (event): event is Extract<(typeof state.eventLog)[number], { type: "HERO_MOVED" }> =>
+        event.type === "HERO_MOVED"
+    );
+    expect(moves.find((event) => event.to === redEntry)?.teleport).toBeUndefined();
+    expect(moves.find((event) => event.to === redExit)?.teleport).toBe("gate");
   });
 
   it("a hero on a Gate may Revisit (1 MP) to travel back to its pair partner", () => {
@@ -207,7 +214,7 @@ describe("Colored Gate pair routing", () => {
     state = moveHero(state, entry);
 
     expect(state.heroes.hero_p1.spaceId).toBe(entry);
-    expect(lastNote(state).toLowerCase()).toContain("yellow"); // pair 4 = yellow
+    expect(lastNote(state).toLowerCase()).toContain("violet"); // pair 4 = violet
     expect(lastNote(state)).toContain("nowhere");
   });
 
@@ -960,15 +967,31 @@ describe("computer AI treats object hexes as ordinary guarded fields", () => {
 // ---- 8. Sanitization / validation / describe --------------------------------
 
 describe("object sanitization + validation + describe", () => {
-  it("round-trips a valid object set through sanitizeCustomMapPreset unchanged", () => {
+  it("round-trips a valid object set; a LEGACY number guard normalises to the {level} spec", () => {
     const objects: CustomMapObject[] = [
       { kind: "gate", pair: 1, placement: { type: "standalone", row: 5, col: 6 } },
+      // Legacy saved shape: a plain number level.
       { kind: "gate", pair: 1, guard: 3, placement: { type: "tile-slot", row: 7, col: 8, slot: 2 } },
       { kind: "monolith", placement: { type: "standalone", row: 9, col: 10 } }
     ];
     const preset = sanitizeCustomMapPreset({ objects });
-    expect(preset?.objects).toEqual(objects);
+    expect(preset?.objects).toEqual([
+      objects[0],
+      // The number folds to the canonical CustomGuardSpec — same level, one shape.
+      { ...objects[1], guard: { level: 3 } },
+      objects[2]
+    ]);
     expect(customMapPresetIsActive({ objects })).toBe(true);
+
+    // The spec form round-trips unchanged (units clamped to known neutral ids).
+    const specObjects: CustomMapObject[] = [
+      {
+        kind: "monolith",
+        placement: { type: "standalone", row: 2, col: 2 },
+        guard: { units: ["neutral.cyclopes"] }
+      }
+    ];
+    expect(sanitizeCustomMapPreset({ objects: specObjects })?.objects).toEqual(specObjects);
   });
 
   it("caps the object count and the gates-per-pair, and drops garbage", () => {
@@ -992,9 +1015,16 @@ describe("object sanitization + validation + describe", () => {
     expect(sanitizeCustomMapObject({ kind: "bogus", placement: { type: "standalone", row: 1, col: 1 } })).toBeNull();
     expect(sanitizeCustomMapObject({ kind: "gate", placement: { type: "standalone", row: 1, col: 1 } })).toBeNull();
     expect(sanitizeCustomMapObject({ kind: "monolith", placement: { type: "nope", row: 1, col: 1 } })).toBeNull();
-    // A guard is clamped to 1-7.
+    // A (legacy number) guard is clamped to 1-7 and normalised to the spec form.
     const clamped = sanitizeCustomMapObject({ kind: "monolith", guard: 99, placement: { type: "standalone", row: 1, col: 1 } });
-    expect(clamped?.guard).toBe(7);
+    expect(clamped?.guard).toEqual({ level: 7 });
+    // Unknown army ids are dropped; an emptied army guard vanishes entirely.
+    const emptied = sanitizeCustomMapObject({
+      kind: "monolith",
+      guard: { units: ["not.a.unit"] },
+      placement: { type: "standalone", row: 1, col: 1 }
+    });
+    expect(emptied?.guard).toBeUndefined();
   });
 
   it("reports geometry problems and an incomplete-pair warning; a standalone Whirlpool is refused", () => {
@@ -1068,5 +1098,519 @@ describe("object sanitization + validation + describe", () => {
     expect(summary).toContain("2 guarded");
     const entry = describeCustomMapPresetEntries({ objects }).find((e) => e.text.startsWith("Objects:"));
     expect(entry?.text).toContain("2 gate pairs");
+  });
+});
+
+// ---- 8. Designer guards everywhere: exact armies, token guards, arrival auto-win
+
+describe("designer guards on single hexes — exact armies + arrival auto-win", () => {
+  it("an EXACT-ARMY object guard mints the designed units and is never Quick-Combat skipped (CONTROL: level guard is)", () => {
+    const standalone = outwardHex(CLUSTER, 1);
+    const state = objectsGame(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "monolith",
+          placement: { type: "standalone", row: standalone.row, col: standalone.col },
+          guard: { units: ["neutral.cyclopes", "neutral.troglodytes"] }
+        }
+      ],
+      "exact-army-object"
+    );
+    const hex = hexSpaceId(standalone);
+    const field = adv(state).fields[hex]!;
+    // Carve stamped the exact army + the tier-derived difficulty (gold 3 + bronze 1 → Ⅲ).
+    expect(field.customGuardUnits).toEqual(["neutral.cyclopes", "neutral.troglodytes"]);
+    expect(field.difficulty).toBe(3);
+    expect(isFieldGuarded(field)).toBe(true);
+
+    // The guard army for the fight is EXACTLY the designed units, minted
+    // Creature-Bank style (never drawn from the tier decks).
+    const draws = drawGuardArmy(state, field, field.difficulty!);
+    expect(draws.map((draw) => draw.unitDefId)).toEqual(["neutral.cyclopes", "neutral.troglodytes"]);
+    expect(draws.every((draw) => draw.bankGuard)).toBe(true);
+
+    // A hero far above the derived difficulty still has to FIGHT.
+    let fight = refreshP1(state);
+    fight.heroes.hero_p1.level = 7;
+    putHero(fight, hexSpaceId(tileFootprint(CLUSTER, 0)[1]));
+    fight = moveHero(fight, hex);
+    expect(fight.combat?.context.kind).toBe("neutral");
+    expect(fight.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(false);
+
+    // CONTROL: the same derived difficulty as a plain LEVEL guard IS skipped.
+    const controlState = objectsGame(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "monolith",
+          placement: { type: "standalone", row: standalone.row, col: standalone.col },
+          guard: { level: 3 }
+        }
+      ],
+      "level-guard-object"
+    );
+    let control = refreshP1(controlState);
+    control.heroes.hero_p1.level = 7;
+    putHero(control, hexSpaceId(tileFootprint(CLUSTER, 0)[1]));
+    control = moveHero(control, hex);
+    expect(control.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(true);
+    expect(control.combat).toBeNull();
+  });
+
+  it("a teleport ARRIVAL onto a still-guarded partner AUTO-WINS: guard cleared, no battle, hero arrives (CONTROL: walking on fights)", () => {
+    let state = makeGame("arrival-auto-win");
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    state = b;
+    const entry = carveGate(state, tileA, 1, 1); // unguarded entry
+    const exit = carveGate(state, tileB, 1, 1, 4); // guarded destination (level Ⅳ)
+    state.heroes.hero_p1.level = 1;
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+
+    // The travel resolved: the hero ARRIVED on the guarded partner, the guard
+    // was swept aside (auto-win) with NO battle and NO experience, and the note
+    // says so.
+    expect(state.heroes.hero_p1.spaceId).toBe(exit);
+    expect(state.combat).toBeNull();
+    expect(adv(state).fields[exit]?.difficulty).toBeUndefined();
+    expect(isFieldGuarded(adv(state).fields[exit]!)).toBe(false);
+    expect(state.heroes.hero_p1.level).toBe(1);
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /swept aside/i.test((event as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+
+    // CONTROL: WALKING onto the same guarded gate from the map opens the battle.
+    let walk = makeGame("arrival-auto-win-ctl");
+    const [wa, wTileA] = placeEmptyTile(walk, "F1", { row: 24, col: 12 });
+    walk = wa;
+    const guarded = carveGate(walk, wTileA, 1, 1, 4);
+    walk.heroes.hero_p1.level = 1;
+    putHero(walk, getTileFootprintSpaceIds(wTileA)[0]);
+    walk = moveHero(walk, guarded);
+    expect(walk.combat?.context.kind).toBe("neutral");
+    expect(isFieldGuarded(adv(walk).fields[guarded]!)).toBe(true);
+  });
+
+  it("a tile-plan TOKEN guard carves onto the token hex (face-up) and rides the pending token (face-down)", () => {
+    // Face-up plan: the token guard is stamped at setup.
+    const faceUp = objectsGame(
+      [
+        {
+          row: CLUSTER.row,
+          col: CLUSTER.col,
+          group: "far",
+          faceDown: false,
+          tileDefId: "F1",
+          tokens: [{ kind: "monolith", slot: 1, guard: { level: 5 } }]
+        }
+      ],
+      [],
+      "token-guard-faceup"
+    );
+    const tokenHex = hexSpaceId(tileFootprint(CLUSTER, 0)[1]);
+    const carved = adv(faceUp).fields[tokenHex]!;
+    expect(carved.location).toBe("monolith");
+    expect(carved.difficulty).toBe(5);
+    expect(isFieldGuarded(carved)).toBe(true);
+
+    // Face-down plan: the guard rides the pending token, and stamps when placed.
+    const faceDown = objectsGame(
+      [
+        {
+          row: CLUSTER.row,
+          col: CLUSTER.col,
+          group: "far",
+          faceDown: true,
+          tokens: [{ kind: "monolith", slot: 1, guard: { units: ["neutral.cyclopes"] } }]
+        }
+      ],
+      [],
+      "token-guard-facedown"
+    );
+    const tile = Object.values(adv(faceDown).tiles).find(
+      (candidate) => candidate.centerRow === CLUSTER.row && candidate.centerCol === CLUSTER.col
+    )!;
+    expect(tile.pendingTokens?.[0]?.guard).toEqual({ units: ["neutral.cyclopes"] });
+
+    // CONTROL: an unguarded token plan stamps no difficulty.
+    const control = objectsGame(
+      [
+        {
+          row: CLUSTER.row,
+          col: CLUSTER.col,
+          group: "far",
+          faceDown: false,
+          tileDefId: "F1",
+          tokens: [{ kind: "monolith", slot: 1 }]
+        }
+      ],
+      [],
+      "token-noguard"
+    );
+    expect(adv(control).fields[tokenHex]?.difficulty).toBeUndefined();
+  });
+
+  it("beating a guarded token clears its EXACT army too (no respawn on re-entry)", () => {
+    const standalone = outwardHex(CLUSTER, 1);
+    const state = objectsGame(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "monolith",
+          placement: { type: "standalone", row: standalone.row, col: standalone.col },
+          guard: { units: ["neutral.troglodytes"] }
+        }
+      ],
+      "guard-cleanup"
+    );
+    const hex = hexSpaceId(standalone);
+    expect(adv(state).fields[hex]?.customGuardUnits).toEqual(["neutral.troglodytes"]);
+    // Simulate the win seam directly: beginFieldVisit is reached only on a win.
+    // (refreshP1 CLONES the state, so re-read the field from the clone.)
+    const withHero = refreshP1(state);
+    withHero.heroes.hero_p1.spaceId = hex;
+    beginFieldVisit(withHero, "hero_p1", hex, false);
+    const field = adv(withHero).fields[hex]!;
+    expect(field.difficulty).toBeUndefined();
+    expect(field.customGuardUnits).toBeUndefined();
+    expect(isFieldGuarded(field)).toBe(false);
+  });
+});
+
+// ---- 9. Designer yellow borders on standalone object hexes -------------------
+
+describe("object-hex yellow borders", () => {
+  const standalone = outwardHex(CLUSTER, 1);
+  const hex = hexSpaceId(standalone);
+  // The ring hex of the F1 tile the object touches: R→S is absolute direction 0
+  // (outwardHex extends along slot 1's facing), so S→R is the mirror, 3.
+  const ring = hexSpaceId(tileFootprint(CLUSTER, 0)[1]);
+
+  function borderedGame(borderEdges: number[] | undefined, seed: string): GameState {
+    return objectsGame(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "monolith",
+          placement: { type: "standalone", row: standalone.row, col: standalone.col },
+          ...(borderEdges ? { borderEdges } : {})
+        }
+      ],
+      seed
+    );
+  }
+
+  it("a sealed object edge blocks the crossing BOTH ways (CONTROL: other edges / no border stay open)", () => {
+    const state = borderedGame([3], "object-border-sealed");
+    expect(adv(state).fields[hex]?.borderEdges).toEqual([3]);
+    // Sealed toward the tile: neither direction may cross that edge.
+    expect(canCrossEdge(state, ring, hex)).toBe(false);
+    expect(canCrossEdge(state, hex, ring)).toBe(false);
+
+    // CONTROL 1: a seal on a DIFFERENT edge leaves the tile crossing open.
+    const otherEdge = borderedGame([0], "object-border-other");
+    expect(canCrossEdge(otherEdge, ring, hex)).toBe(true);
+    expect(canCrossEdge(otherEdge, hex, ring)).toBe(true);
+
+    // CONTROL 2: no border at all → open (the pre-feature behaviour).
+    const open = borderedGame(undefined, "object-border-none");
+    expect(canCrossEdge(open, ring, hex)).toBe(true);
+  });
+
+  it("sanitize keeps clean object border edges and drops garbage", () => {
+    const clean = sanitizeCustomMapObject({
+      kind: "monolith",
+      placement: { type: "standalone", row: 1, col: 1 },
+      borderEdges: [3, 0, 3, 9, -1, "x"]
+    });
+    expect(clean?.borderEdges).toEqual([0, 3]);
+    const none = sanitizeCustomMapObject({
+      kind: "monolith",
+      placement: { type: "standalone", row: 1, col: 1 },
+      borderEdges: ["junk"]
+    });
+    expect(none?.borderEdges).toBeUndefined();
+  });
+});
+
+// ---- 10. One-way monoliths (4 colors, entrance → same-color exits) -----------
+
+describe("one-way monoliths — entrance → same-color exits, random/certain/mix", () => {
+  /** Carve a one-way half onto a tile's slot (designer-content harness). */
+  function carveOneway(
+    state: GameState,
+    tile: MapTileState,
+    slot: number,
+    kind: "oneway_entrance" | "oneway_exit",
+    pair: 1 | 2 | 3 | 4,
+    extras?: { exitMode?: "random" | "certain" | "mix"; alwaysPickable?: boolean; guard?: number }
+  ): MapSpaceId {
+    const spaceId = getTileFootprintSpaceIds(tile)[slot];
+    carveOnewayField(adv(state), spaceId, kind, pair, extras);
+    if (extras?.guard) {
+      adv(state).fields[spaceId]!.difficulty = extras.guard;
+    }
+    return spaceId;
+  }
+
+  function threeTileGame(seed: string): { state: GameState; tiles: [MapTileState, MapTileState, MapTileState] } {
+    let state = makeGame(seed);
+    const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
+    const [c, tileC] = placeEmptyTile(b, "F4", { row: 36, col: 24 });
+    state = c;
+    return { state, tiles: [tileA, tileB, tileC] };
+  }
+
+  it("mode CERTAIN (default): the traveller PICKS among same-color exits — never entrances, never other colors", () => {
+    const { state: start, tiles } = threeTileGame("oneway-certain");
+    let state = start;
+    const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1);
+    const exitB = carveOneway(state, tiles[1], 1, "oneway_exit", 1);
+    const exitC = carveOneway(state, tiles[2], 1, "oneway_exit", 1);
+    // Distractors: a second RED entrance (never a destination) and a BLUE exit.
+    const otherEntrance = carveOneway(state, tiles[1], 2, "oneway_entrance", 1);
+    const blueExit = carveOneway(state, tiles[2], 2, "oneway_exit", 2);
+    putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
+
+    state = moveHero(state, entry);
+
+    const step = adv(state).pendingVisit?.steps[0];
+    if (step?.type !== "CHOOSE_ONE") {
+      throw new Error("no one-way destination choice");
+    }
+    expect(step.teleport).toEqual({ kind: "oneway", pair: 1 });
+    const optionHexes = step.options.map((option) =>
+      option.steps[0]?.type === "TELEPORT_HERO" ? option.steps[0].spaceId : null
+    );
+    expect(optionHexes).toContain(exitB);
+    expect(optionHexes).toContain(exitC);
+    expect(optionHexes).not.toContain(otherEntrance);
+    expect(optionHexes).not.toContain(blueExit);
+
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
+  });
+
+  it("mode RANDOM: a seeded roll sends the hero to one of the exits with a table note (no picker)", () => {
+    const { state: start, tiles } = threeTileGame("oneway-random");
+    let state = start;
+    const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1, { exitMode: "random" });
+    const exitB = carveOneway(state, tiles[1], 1, "oneway_exit", 1);
+    const exitC = carveOneway(state, tiles[2], 1, "oneway_exit", 1);
+    putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
+
+    state = moveHero(state, entry);
+
+    expect(adv(state).pendingVisit?.steps?.[0]?.type ?? "none").not.toBe("CHOOSE_ONE");
+    expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /rolls for the one-way exit/i.test((event as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+  });
+
+  it("mode MIX: pick the ALWAYS exit up front, or take the roll option (rolls only the random pool)", () => {
+    const { state: start, tiles } = threeTileGame("oneway-mix");
+    let state = start;
+    const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1, { exitMode: "mix" });
+    const alwaysExit = carveOneway(state, tiles[1], 1, "oneway_exit", 1, { alwaysPickable: true });
+    const randomExit = carveOneway(state, tiles[2], 1, "oneway_exit", 1);
+    putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
+
+    state = moveHero(state, entry);
+    const step = adv(state).pendingVisit?.steps[0];
+    if (step?.type !== "CHOOSE_ONE") {
+      throw new Error("no mix choice");
+    }
+    // One direct always-exit option + one roll option.
+    expect(step.options).toHaveLength(2);
+    const direct = step.options[0];
+    expect(direct.steps[0]?.type === "TELEPORT_HERO" && direct.steps[0].spaceId).toBe(alwaysExit);
+    expect(step.options[1].label).toMatch(/roll/i);
+
+    // Taking the ROLL lands on the random-pool exit (the only one in the pool).
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 1 });
+    expect(state.heroes.hero_p1.spaceId).toBe(randomExit);
+  });
+
+  it("a single free exit travels automatically; NO exit is inert; all-occupied fizzles", () => {
+    const { state: start, tiles } = threeTileGame("oneway-single");
+    let state = start;
+    const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1);
+    const exitB = carveOneway(state, tiles[1], 1, "oneway_exit", 1);
+    putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
+    state = moveHero(state, entry);
+    expect(state.heroes.hero_p1.spaceId).toBe(exitB);
+
+    // NO exit anywhere: the entrance notes and the hero stays.
+    const { state: bare, tiles: bareTiles } = threeTileGame("oneway-none");
+    let none = bare;
+    const loneEntry = carveOneway(none, bareTiles[0], 1, "oneway_entrance", 1);
+    putHero(none, getTileFootprintSpaceIds(bareTiles[0])[0]);
+    none = moveHero(none, loneEntry);
+    expect(none.heroes.hero_p1.spaceId).toBe(loneEntry);
+    expect(
+      none.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /leads nowhere/i.test((event as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+
+    // All exits OCCUPIED: fizzle note, hero stays.
+    const { state: occStart, tiles: occTiles } = threeTileGame("oneway-occupied");
+    let occ = occStart;
+    const occEntry = carveOneway(occ, occTiles[0], 1, "oneway_entrance", 1);
+    const occExit = carveOneway(occ, occTiles[1], 1, "oneway_exit", 1);
+    occ.heroes.hero_p2.spaceId = occExit; // the enemy hero squats the only exit
+    putHero(occ, getTileFootprintSpaceIds(occTiles[0])[0]);
+    occ = moveHero(occ, occEntry);
+    expect(occ.heroes.hero_p1.spaceId).toBe(occEntry);
+    expect(
+      occ.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /fizzles/i.test((event as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+  });
+
+  it("a GUARDED entrance fights BANK-style and the WIN travels (CONTROL: no Quick Combat for a high-level hero)", () => {
+    const { state: start, tiles } = threeTileGame("oneway-guarded");
+    let state = start;
+    const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1, { guard: 2 });
+    carveOneway(state, tiles[1], 1, "oneway_exit", 1);
+    state.heroes.hero_p1.level = 7; // far above the guard — still no Quick Combat
+    putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
+
+    state = moveHero(state, entry);
+    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(false);
+    expect(state.combat?.context.kind === "neutral" && state.combat.context.difficulty).toBe(0);
+    expect(state.combat?.context.kind === "neutral" && state.combat.context.unlimitedRounds).toBe(true);
+
+    // The WIN seam (beginFieldVisit runs only on a win): guard cleared, travel resolves.
+    const { state: winStart, tiles: winTiles } = threeTileGame("oneway-win");
+    const win = winStart;
+    const winEntry = carveOneway(win, winTiles[0], 1, "oneway_entrance", 1, { guard: 2 });
+    const winExit = carveOneway(win, winTiles[1], 1, "oneway_exit", 1);
+    win.heroes.hero_p1.spaceId = winEntry;
+    beginFieldVisit(win, "hero_p1", winEntry, false);
+    expect(adv(win).fields[winEntry]?.difficulty).toBeUndefined();
+    expect(win.heroes.hero_p1.spaceId).toBe(winExit);
+    expect(winExit).not.toBe(winEntry);
+  });
+
+  it("one-way OBJECTS carve at setup with mode/always/color; an exit's guard is stripped by sanitize", () => {
+    const entranceHex = outwardHex(CLUSTER, 1);
+    const exitHex = outwardHex(CLUSTER, 2);
+    const state = objectsGame(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "oneway_entrance",
+          pair: 3,
+          exitMode: "mix",
+          placement: { type: "standalone", row: entranceHex.row, col: entranceHex.col },
+          guard: { level: 4 }
+        },
+        {
+          kind: "oneway_exit",
+          pair: 3,
+          alwaysPickable: true,
+          placement: { type: "standalone", row: exitHex.row, col: exitHex.col }
+        }
+      ],
+      "oneway-objects"
+    );
+    const entrance = adv(state).fields[hexSpaceId(entranceHex)]!;
+    const exit = adv(state).fields[hexSpaceId(exitHex)]!;
+    expect(entrance.location).toBe("oneway_entrance");
+    expect(entrance.gatePair).toBe(3);
+    expect(entrance.onewayExitMode).toBe("mix");
+    expect(entrance.difficulty).toBe(4);
+    expect(entrance.customGuardLevel).toBe(4);
+    expect(exit.location).toBe("oneway_exit");
+    expect(exit.onewayAlwaysPickable).toBe(true);
+    expect(exit.difficulty, "an exit is never guarded").toBeUndefined();
+
+    // Sanitize: an exit with a guard loses it; entrance keeps mode; pair required.
+    const cleaned = sanitizeCustomMapObject({
+      kind: "oneway_exit",
+      pair: 2,
+      guard: { level: 5 },
+      alwaysPickable: true,
+      placement: { type: "standalone", row: 1, col: 1 }
+    });
+    expect(cleaned?.guard).toBeUndefined();
+    expect(cleaned?.alwaysPickable).toBe(true);
+    expect(
+      sanitizeCustomMapObject({ kind: "oneway_entrance", placement: { type: "standalone", row: 1, col: 1 } })
+    ).toBeNull();
+  });
+
+  it("one-way TILE TOKENS carve face-up and ride face-down (pending) with their extras", () => {
+    const state = objectsGame(
+      [
+        {
+          row: CLUSTER.row,
+          col: CLUSTER.col,
+          group: "far",
+          faceDown: false,
+          tileDefId: "F1",
+          tokens: [{ kind: "oneway_entrance", pair: 2, slot: 1, exitMode: "random", guard: { level: 3 } }]
+        }
+      ],
+      [],
+      "oneway-token-faceup"
+    );
+    const carved = adv(state).fields[hexSpaceId(tileFootprint(CLUSTER, 0)[1])]!;
+    expect(carved.location).toBe("oneway_entrance");
+    expect(carved.gatePair).toBe(2);
+    expect(carved.onewayExitMode).toBe("random");
+    expect(carved.difficulty).toBe(3);
+    expect(carved.customGuardLevel).toBe(3);
+
+    const faceDown = objectsGame(
+      [
+        {
+          row: CLUSTER.row,
+          col: CLUSTER.col,
+          group: "far",
+          faceDown: true,
+          tokens: [{ kind: "oneway_exit", pair: 2, slot: 1, alwaysPickable: true }]
+        }
+      ],
+      [],
+      "oneway-token-facedown"
+    );
+    const tile = Object.values(adv(faceDown).tiles).find(
+      (candidate) => candidate.centerRow === CLUSTER.row && candidate.centerCol === CLUSTER.col
+    )!;
+    expect(tile.pendingTokens?.[0]).toMatchObject({ kind: "oneway_exit", pair: 2, alwaysPickable: true });
+  });
+
+  it("validation warns on a color with entrances but no exit (and vice versa)", () => {
+    const entranceHex = outwardHex(CLUSTER, 1);
+    const { warnings } = validateCustomMapObjects(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [
+        {
+          kind: "oneway_entrance",
+          pair: 1,
+          placement: { type: "standalone", row: entranceHex.row, col: entranceHex.col }
+        }
+      ]
+    );
+    expect(warnings.join(" ")).toMatch(/entrances but NO exit/i);
+
+    const exitHex = outwardHex(CLUSTER, 2);
+    const { warnings: exitWarnings } = validateCustomMapObjects(
+      [{ row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }],
+      [{ kind: "oneway_exit", pair: 1, placement: { type: "standalone", row: exitHex.row, col: exitHex.col } }]
+    );
+    expect(exitWarnings.join(" ")).toMatch(/exits but NO entrance/i);
   });
 });

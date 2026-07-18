@@ -831,7 +831,7 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
   },
   gate: {
     id: "gate",
-    name: "Colored Gate",
+    name: "Teleport Gate",
     // Map-designer object (rulebook p.83, "corresponding Two-Way Monolith" read
     // as EXACT colored pairs). Entering (or Revisiting for 1 MP, like a Monolith)
     // teleports the hero to THE OTHER gate of the same colored pair — never a
@@ -859,6 +859,78 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     interaction: { type: "TOKEN_TELEPORT", token: "whirlpool" },
     implementationStatus: "implemented",
     source: source("whirlpool")
+  },
+  garrison: {
+    id: "garrison",
+    name: "Garrison",
+    // Map-designer standalone object (Polish fan-map convention): a one-hex
+    // fortification OUT of every tile, connecting 2+ tiles, always revealed.
+    // Optionally guarded (a designed guard fights BANK-style: no Quick Combat,
+    // no experience, no Round limit); the winner marks it with their flag. A
+    // FLAGGED garrison is defended like a settlement: an enemy entering lets
+    // the owner pay 3 gold to defend with units only (no hand cards) — decline
+    // or an empty purse and the flag simply changes hands. The engine routes
+    // all of that by location id (beginFieldVisit / garrisonDefenderFor), so
+    // the interaction is NONE here. "flaggable" gives the flag rendering; the
+    // single-owner steal is the id-dispatched branch, never the multi-flag one.
+    category: "flaggable",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: source("garrison")
+  },
+  keymaster_tent: {
+    id: "keymaster_tent",
+    name: "Keymaster's Tent",
+    // Map-designer standalone object: a colored tent (color = the field's
+    // `gatePair`, matching the Barrier of the same color). Optionally guarded —
+    // the guard fights BANK-style (no Quick Combat, no experience, no Round
+    // limit) and dies once; after that every visitor may flag it. MULTIPLE
+    // flags are allowed (the printed rule) — exactly the generic "flaggable"
+    // multi-flag flow (flagField + extraFlagOwnerIds). Holding a tent flag of
+    // a color lets that player ENTER Barriers of the same color.
+    category: "flaggable",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: source("keymaster_tent")
+  },
+  barrier: {
+    id: "barrier",
+    name: "Barrier",
+    // Map-designer standalone object: a colored wall (color = `gatePair`).
+    // NEVER guarded, never an interaction — a hero may not even ENTER the
+    // field unless their player holds a matching-color Keymaster's Tent flag
+    // (enforced in the movement classifier like a Blocked Field; Fly may cross
+    // over, nobody may land). With the flag it is an ordinary open field
+    // connecting the tiles it touches.
+    category: "empty",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: source("border_guard")
+  },
+  oneway_entrance: {
+    id: "oneway_entrance",
+    name: "One-Way Monolith (entrance)",
+    // Map-designer object (standalone OR tile token, 4 colors via `gatePair`):
+    // entering teleports the hero to a SAME-COLOR one-way EXIT per the
+    // entrance's `onewayExitMode` (random roll / free pick / mix). Optionally
+    // guarded — the guard fights BANK-style (no Quick Combat, no experience,
+    // no Round limit) and only a WIN travels. "revisitable" = always STOP +
+    // pay 1 MP to travel again, like the Two-Way Monolith.
+    category: "revisitable",
+    interaction: { type: "ONEWAY_TELEPORT" },
+    implementationStatus: "implemented",
+    source: source("one-way_monolith")
+  },
+  oneway_exit: {
+    id: "oneway_exit",
+    name: "One-Way Monolith (exit)",
+    // The arrival arch: an ordinary walkable field — entering it does NOTHING
+    // (no travel back; one-way). Never guarded (sanitize strips any guard).
+    // `onewayAlwaysPickable` marks it freely choosable in "mix" mode.
+    category: "empty",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: source("one-way_monolith")
   },
   subterranean_gate: {
     id: "subterranean_gate",

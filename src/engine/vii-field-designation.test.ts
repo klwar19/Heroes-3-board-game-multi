@@ -16,6 +16,7 @@ import {
   getScenario
 } from "./adventure-setup";
 import { applyAction, computeVictoryPoints, createAdventureLobbyState } from "./index";
+import { startNeutralEncounter } from "./adventure-reducer";
 import { getPlayerView } from "./player-view";
 import {
   describeCustomMapPresetEntries,
@@ -23,13 +24,13 @@ import {
   victoryDesignConflicts
 } from "./map-preset";
 import type {
+  CustomCenterHexPlan,
   CustomMapTilePlan,
   GameState,
   MapFieldState,
   MapSpaceId,
   MapTileState,
-  PlayerId,
-  ViiFieldReward
+  PlayerId
 } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -529,16 +530,18 @@ describe("objectives options", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7b. Designer reward + Victory Points on a Ⅶ objective center.
+// 7b. Designer center-hex customization: guard / first-clear reward / VP.
 // ---------------------------------------------------------------------------
-describe("Ⅶ designation — designer reward + Victory Points", () => {
-  // A conquest game whose single center is a designer Grail Ⅶ objective (a plain
-  // Lvl-VII bank in conquest mode — the consolation path), optionally carrying a
-  // designer bonus. Valuables isolate the reward: the printed clear reward is
+describe("center hex — designer guard, reward + Victory Points", () => {
+  // A conquest game whose single center is the C2 tile (prints a Grail Ⅶ field —
+  // a plain Lvl-VII bank in conquest mode), optionally customized. NO viiField
+  // designation: the customization must work on the PRINTED objective (the old
+  // build's editor was gated on a designation, which is exactly the bug this
+  // suite pins). Valuables isolate the reward: the printed clear reward is
   // gold, so a valuables gain can ONLY be the designer reward.
-  function grailBonusGame(bonus?: { reward?: ViiFieldReward; vp?: number }): GameState {
+  function centerHexGame(centerHex?: CustomCenterHexPlan, seed = "vii-center-hex"): GameState {
     return createAdventureGameState({
-      seed: "vii-bonus-reward",
+      seed,
       difficulty: "normal",
       rollFirstPlayer: false,
       victoryMode: "conquest",
@@ -550,20 +553,18 @@ describe("Ⅶ designation — designer reward + Victory Points", () => {
           group: "center",
           faceDown: false,
           tileDefId: "C2", // C2 prints a Grail Ⅶ field
-          viiField: "grail",
-          ...(bonus?.reward ? { viiFieldReward: bonus.reward } : {}),
-          ...(bonus?.vp !== undefined ? { viiFieldVp: bonus.vp } : {})
+          ...(centerHex ? { centerHex } : {})
         }
       ]
     });
   }
 
-  it("materializes the designer reward + VP onto the Ⅶ field and grants them on the first clear", () => {
-    const state = grailBonusGame({ reward: { valuables: 4 }, vp: 5 });
+  it("materializes the reward + VP onto the PRINTED Ⅶ field (no designation needed) and grants them on the first clear", () => {
+    const state = centerHexGame({ reward: { valuables: 4 }, vp: 5 });
     const field = objectiveField(state)!;
-    expect(field.viiReward).toEqual({ valuables: 4 });
-    expect(field.viiVp).toBe(5);
-    expect(field.viiBonusClaimed).toBeUndefined();
+    expect(field.centerHexReward).toEqual({ valuables: 4 });
+    expect(field.centerHexVp).toBe(5);
+    expect(field.centerHexClaimed).toBeUndefined();
 
     const hero = getMainHero(state, "p1")!;
     hero.spaceId = field.spaceId;
@@ -574,11 +575,33 @@ describe("Ⅶ designation — designer reward + Victory Points", () => {
     // ledger recorded the designer VP, and the claim latched.
     expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 4);
     expect(state.adventure!.vpLedger?.p1?.viiCenterVp).toBe(5);
-    expect(field.viiBonusClaimed).toBe(true);
+    expect(field.centerHexClaimed).toBe(true);
+  });
+
+  it("queues Treasure dice + deck Searches as a visit-steps reward (CONTROL: none without them)", () => {
+    const state = centerHexGame({ reward: { treasureDice: 2, searchSpell: 3, searchArtifact: 1 } });
+    const field = objectiveField(state)!;
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = field.spaceId;
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+    const queued = state.adventure!.rewardQueue.find((reward) => reward.kind === "visit-steps");
+    expect(queued && queued.kind === "visit-steps" ? queued.steps : []).toEqual([
+      { type: "ROLL_TREASURE_DICE", count: 2 },
+      { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 3 },
+      { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 }
+    ]);
+
+    // CONTROL: no designed reward → no visit-steps reward queued by the clear.
+    const control = centerHexGame(undefined, "vii-center-hex-ctl");
+    const cField = objectiveField(control)!;
+    const cHero = getMainHero(control, "p1")!;
+    cHero.spaceId = cField.spaceId;
+    beginFieldVisit(control, cHero.id, cField.spaceId, false);
+    expect(control.adventure!.rewardQueue.some((reward) => reward.kind === "visit-steps")).toBe(false);
   });
 
   it("grants the bonus ONCE — a re-visit never re-pays it (the claim latch)", () => {
-    const state = grailBonusGame({ reward: { valuables: 4 }, vp: 5 });
+    const state = centerHexGame({ reward: { valuables: 4 }, vp: 5 });
     const field = objectiveField(state)!;
     const hero = getMainHero(state, "p1")!;
     hero.spaceId = field.spaceId;
@@ -589,11 +612,11 @@ describe("Ⅶ designation — designer reward + Victory Points", () => {
     expect(state.adventure!.vpLedger?.p1?.viiCenterVp).toBe(5);
   });
 
-  it("CONTROL: a Ⅶ designation with no reward / VP grants nothing extra", () => {
-    const state = grailBonusGame();
+  it("CONTROL: a plain center (no customization) grants nothing extra", () => {
+    const state = centerHexGame();
     const field = objectiveField(state)!;
-    expect(field.viiReward).toBeUndefined();
-    expect(field.viiVp).toBeUndefined();
+    expect(field.centerHexReward).toBeUndefined();
+    expect(field.centerHexVp).toBeUndefined();
     const hero = getMainHero(state, "p1")!;
     hero.spaceId = field.spaceId;
     const valuablesBefore = state.players.p1.resources.valuables;
@@ -602,8 +625,60 @@ describe("Ⅶ designation — designer reward + Victory Points", () => {
     expect(state.adventure!.vpLedger?.p1?.viiCenterVp).toBeUndefined();
   });
 
+  it("a guard LEVEL override replaces the printed Ⅶ difficulty (CONTROL: printed 7 without it)", () => {
+    const state = centerHexGame({ guard: { level: 3 } });
+    const field = Object.values(state.adventure!.fields).find((f) => f.location === "grail")!;
+    expect(field.difficulty).toBe(3);
+    // The guard army drawn for the fight follows the designed level: difficulty 3
+    // at Normal = 3 cards (2 bronze + 1 silver), never the azure Ⅶ party.
+    const draws = drawGuardArmy(state, field, field.difficulty!);
+    expect(draws).toHaveLength(3);
+    expect(draws.every((draw) => draw.tier !== "azure")).toBe(true);
+
+    // CONTROL: no guard override → the printed difficulty-7 field.
+    const control = centerHexGame(undefined, "vii-guard-ctl");
+    expect(objectiveField(control)?.difficulty).toBe(7);
+  });
+
+  it("an EXACT-ARMY guard mints the designed units and is never Quick-Combat skipped (CONTROL: level guard is)", () => {
+    const state = centerHexGame({ guard: { units: ["neutral.cyclopes", "neutral.troglodytes"] } });
+    const field = Object.values(state.adventure!.fields).find((f) => f.location === "grail")!;
+    expect(field.customGuardUnits).toEqual(["neutral.cyclopes", "neutral.troglodytes"]);
+    // Difficulty derives from the tiers (gold 3 + bronze 1 = 4 points → Ⅲ).
+    expect(field.difficulty).toBe(3);
+
+    // The guard army is EXACTLY the designed units, minted bank-style (never
+    // drawn from the tier decks).
+    const draws = drawGuardArmy(state, field, field.difficulty!);
+    expect(draws.map((draw) => draw.unitDefId)).toEqual(["neutral.cyclopes", "neutral.troglodytes"]);
+    expect(draws.every((draw) => draw.bankGuard)).toBe(true);
+
+    // A hero far above the derived difficulty still has to FIGHT: the encounter
+    // opens combat setup instead of a Quick-Combat win.
+    const hero = getMainHero(state, "p1")!;
+    hero.level = 7;
+    hero.spaceId = field.spaceId;
+    clearHandGate(state);
+    startNeutralEncounter(state, hero, field);
+    expect(state.combat?.context.kind).toBe("neutral");
+    expect(state.phase).toBe("combat-setup");
+    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(false);
+
+    // CONTROL: the SAME derived difficulty as a plain LEVEL guard IS
+    // Quick-Combat skipped by the same hero — the exact army is what blocks it.
+    const control = centerHexGame({ guard: { level: 3 } }, "vii-army-ctl");
+    const cField = Object.values(control.adventure!.fields).find((f) => f.location === "grail")!;
+    const cHero = getMainHero(control, "p1")!;
+    cHero.level = 7;
+    cHero.spaceId = cField.spaceId;
+    clearHandGate(control);
+    startNeutralEncounter(control, cHero, cField);
+    expect(control.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(true);
+    expect(control.combat).toBeNull();
+  });
+
   it("scores the captured-Ⅶ VP in computeVictoryPoints (CONTROL: no row without it)", () => {
-    const state = grailBonusGame({ vp: 5 });
+    const state = centerHexGame({ vp: 5 });
     state.adventure!.mapPreset = { ...(state.adventure!.mapPreset ?? {}), victoryPoints: { enabled: true } };
     const field = objectiveField(state)!;
     const hero = getMainHero(state, "p1")!;
@@ -613,7 +688,7 @@ describe("Ⅶ designation — designer reward + Victory Points", () => {
     const capturedRow = p1.rows.find((row) => row.label.includes("objectives captured"));
     expect(capturedRow?.vp).toBe(5);
 
-    const control = grailBonusGame();
+    const control = centerHexGame(undefined, "vii-vp-ctl");
     control.adventure!.mapPreset = { victoryPoints: { enabled: true } };
     const cHero = getMainHero(control, "p1")!;
     const cField = objectiveField(control)!;
@@ -623,7 +698,24 @@ describe("Ⅶ designation — designer reward + Victory Points", () => {
     expect(cp1.rows.some((row) => row.label.includes("objectives captured"))).toBe(false);
   });
 
-  it("masks the reward + VP on a FACE-DOWN center in other players' views (with a face-up CONTROL)", () => {
+  it("a LEGACY mid-game snapshot's viiReward/viiVp still pays through the same seam", () => {
+    // Simulate a pre-centerHex snapshot: the field carries the old names.
+    const state = centerHexGame();
+    const field = objectiveField(state)!;
+    field.viiReward = { valuables: 6 };
+    field.viiVp = 2;
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = field.spaceId;
+    const valuablesBefore = state.players.p1.resources.valuables;
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 6);
+    expect(state.adventure!.vpLedger?.p1?.viiCenterVp).toBe(2);
+    // The legacy latch is set too, so neither name can double-pay.
+    expect(field.viiBonusClaimed).toBe(true);
+    expect(field.centerHexClaimed).toBe(true);
+  });
+
+  it("masks the customization on a FACE-DOWN center in other players' views", () => {
     const state = createAdventureGameState({
       seed: "vii-bonus-mask",
       difficulty: "normal",
@@ -637,24 +729,21 @@ describe("Ⅶ designation — designer reward + Victory Points", () => {
           group: "center",
           faceDown: true,
           viiField: "dragon_utopia",
-          viiFieldReward: { gold: 8 },
-          viiFieldVp: 4
+          centerHex: { guard: { level: 5 }, reward: { gold: 8 }, vp: 4 }
         }
       ]
     });
     const centerTile = () =>
       Object.values(state.adventure!.tiles).find((tile) => tile.centerRow === CENTER.row && tile.centerCol === CENTER.col)!;
-    // The authoritative state keeps the bonus…
-    expect(centerTile().viiFieldReward).toEqual({ gold: 8 });
-    expect(centerTile().viiFieldVp).toBe(4);
+    // The authoritative state keeps the customization…
+    expect(centerTile().centerHex).toEqual({ guard: { level: 5 }, reward: { gold: 8 }, vp: 4 });
     // …but a player view MASKS it on the still-face-down tile (like viiField).
     const view = getPlayerView(state, "p2");
     const maskedTile = Object.values(view.adventure!.tiles).find(
       (tile) => tile.centerRow === CENTER.row && tile.centerCol === CENTER.col
     )!;
     expect(maskedTile.viiField).toBeUndefined();
-    expect(maskedTile.viiFieldReward).toBeUndefined();
-    expect(maskedTile.viiFieldVp).toBeUndefined();
+    expect(maskedTile.centerHex).toBeUndefined();
   });
 });
 
@@ -685,48 +774,49 @@ describe("sanitize / validate / describe", () => {
     expect(garbageCenter?.viiField).toBeUndefined();
   });
 
-  it("validateCustomMapPlan drops a reward / VP that has no valid Ⅶ designation", () => {
+  it("validateCustomMapPlan keeps centerHex on centers (designation or not) and strips it elsewhere", () => {
     const { accepted } = validateCustomMapPlan(
       [
         ...startPlans(),
-        // Center + valid designation → the bonus is KEPT.
+        // Center + designation → both KEPT.
         {
           row: CENTER.row,
           col: CENTER.col,
           group: "center",
           faceDown: true,
           viiField: "grail",
-          viiFieldReward: { gold: 6 },
-          viiFieldVp: 3
+          centerHex: { reward: { gold: 6 }, vp: 3 }
         },
-        // A bonus on a non-center slot is meaningless — the whole thing is stripped.
+        // A customization on a non-center slot is meaningless — stripped whole.
         {
           row: 7,
           col: 6,
           group: "near",
           faceDown: true,
-          viiFieldReward: { gold: 5 },
-          viiFieldVp: 2
-        } as CustomMapTilePlan,
-        // A center slot with a bonus but NO designation — the orphan bonus is dropped.
+          centerHex: { reward: { gold: 5 }, vp: 2 }
+        },
+        // A center slot with a customization but NO designation — KEPT (it
+        // customizes the printed objective; the old build wrongly required a
+        // designation). Garbage inside is clamped away.
         {
           row: 11,
           col: 2,
           group: "center",
           faceDown: true,
-          viiFieldReward: { valuables: 9 }
-        } as CustomMapTilePlan
+          centerHex: {
+            reward: { valuables: 9 },
+            guard: { units: ["not.a.unit"] }
+          } as CustomCenterHexPlan
+        }
       ],
       scenario
     );
     const center = accepted.find((plan) => plan.group === "center" && plan.row === CENTER.row);
     const near = accepted.find((plan) => plan.group === "near");
-    const orphanCenter = accepted.find((plan) => plan.group === "center" && plan.row === 11);
-    expect(center?.viiFieldReward).toEqual({ gold: 6 });
-    expect(center?.viiFieldVp).toBe(3);
-    expect(near?.viiFieldReward).toBeUndefined();
-    expect(near?.viiFieldVp).toBeUndefined();
-    expect(orphanCenter?.viiFieldReward).toBeUndefined();
+    const printedCenter = accepted.find((plan) => plan.group === "center" && plan.row === 11);
+    expect(center?.centerHex).toEqual({ reward: { gold: 6 }, vp: 3 });
+    expect(near?.centerHex).toBeUndefined();
+    expect(printedCenter?.centerHex).toEqual({ reward: { valuables: 9 } });
   });
 
   it("sanitizeCustomMapPreset keeps valid objectives and drops garbage", () => {

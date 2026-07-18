@@ -62,6 +62,12 @@ describe("house-rule resolver", () => {
     expect(binh["polish-spell-book"], "Polish variants are opt-in under BINH too").toBe(false);
     expect(binh["polish-bank-sizes"], "Polish variants are opt-in under BINH too").toBe(false);
     expect(binh["polish-unit-stacks"], "Polish variants are opt-in under BINH too").toBe(false);
+    expect(binh["polish-reduced-starting-bonus"], "Polish variants are opt-in under BINH too").toBe(false);
+    expect(binh["polish-rule-111"], "Polish variants are opt-in under BINH too").toBe(false);
+    expect(binh["polish-reduced-surrender"], "Polish variants are opt-in under BINH too").toBe(false);
+    expect(binh["polish-random-artifacts"], "Polish variants are opt-in under BINH too").toBe(false);
+    expect(binh["polish-pandora-search"], "Polish variants are opt-in under BINH too").toBe(false);
+    expect(binh["polish-wait"], "Polish variants are opt-in under BINH too").toBe(false);
   });
 
   it("lets explicit flags override defaults in BINH and soft Legacy", () => {

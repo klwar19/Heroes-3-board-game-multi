@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyCustomMapTimedEvents,
+  isFieldGuarded,
   materializeTileFields,
   processPendingVisit,
   startAdventureRound
@@ -491,6 +492,29 @@ describe("map designer", () => {
     expect(near).toMatchObject({ group: "near", faceDown: true, rotation: 2 });
   });
 
+  it("keeps the UNDERGROUND flag on far/near/center/sea but strips it off starting/subterranean", () => {
+    const scenario = getScenario("skirmish");
+    const { accepted } = validateCustomMapPlan(
+      [
+        // A supply tile flagged underground — the layer override is meaningful,
+        // it stays (and the tile keeps its band identity).
+        { row: 9, col: 4, group: "near", faceDown: true, underground: true },
+        // A starting seat tile — Surface only (v1), the flag is stripped.
+        { row: 8, col: 2, group: "starting", faceDown: false, underground: true },
+        // A printed cavern — already underground, the flag is redundant → stripped.
+        { row: 20, col: 20, group: "subterranean", faceDown: true, underground: true }
+      ],
+      scenario
+    );
+    const near = accepted.find((plan) => plan.group === "near");
+    const start = accepted.find((plan) => plan.group === "starting");
+    const cavern = accepted.find((plan) => plan.group === "subterranean");
+    expect(near?.underground, "supply tile keeps its underground flag").toBe(true);
+    expect(near, "otherwise unchanged").toMatchObject({ group: "near", faceDown: true });
+    expect(start?.underground, "stripped off a starting seat tile").toBeUndefined();
+    expect(cavern?.underground, "stripped off a printed cavern (redundant)").toBeUndefined();
+  });
+
   it("rejects overlapping and duplicate positions", () => {
     const scenario = getScenario("skirmish");
     const overlapping = validateCustomMapPlan([{ row: 8, col: 3, group: "near", faceDown: true }], scenario);
@@ -541,7 +565,8 @@ describe("map preset conditions — effects and apply-once semantics", () => {
   function injectCubeField(
     state: import("./state").GameState,
     spaceId: string,
-    location: string
+    location: string,
+    overrides: Partial<import("./state").MapFieldState> = {}
   ): import("./state").MapFieldState {
     const field: import("./state").MapFieldState = {
       spaceId,
@@ -551,10 +576,28 @@ describe("map preset conditions — effects and apply-once semantics", () => {
       blackCube: true,
       flagOwnerId: null,
       everFlagged: false,
-      settlementResource: null
+      settlementResource: null,
+      ...overrides
     };
     state.adventure!.fields[spaceId] = field;
     return field;
+  }
+
+  /** Plant a live tile of a given group so tile-group filters can resolve it. */
+  function injectTile(
+    state: import("./state").GameState,
+    id: string,
+    group: import("./state").MapTileState["group"]
+  ): void {
+    state.adventure!.tiles[id] = {
+      id,
+      tileDefId: "F1",
+      centerRow: 0,
+      centerCol: 0,
+      rotation: 0,
+      faceDown: false,
+      group
+    };
   }
 
   it("an explicit victory choice OVERRIDES the preset at build (apply-once), while unset fields still fill", () => {
@@ -642,6 +685,178 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     expect(lobby().options.victoryMode).toBe(baseVictory);
   });
 
+  // ---- Map-settings defaults (difficulty / far-tile supply) hoisted 1:1 ----
+
+  it("seeds the map-settings defaults (difficulty / far tiles / victory) onto the lobby on pick, then a host edit wins", () => {
+    let state = createAdventureLobbyState({ seed: "preset-map-settings", scenarioId: "skirmish" });
+    const lobby = () => state.setupLobby!;
+    const baseDifficulty = lobby().options.difficulty; // "impossible"
+    const apply = (options: Record<string, unknown>) => {
+      const result = applyAction(state, { type: "SET_GAME_OPTIONS", playerId: "p1", options });
+      expect(result.errors, result.errors.map((e) => e.message).join("; ")).toHaveLength(0);
+      state = result.state;
+    };
+
+    // CONTROL: a legacy preset WITHOUT the new fields leaves every lobby default.
+    apply({ customMap: NEAR_SLOT, customMapName: "Legacy", customMapPreset: { victoryMode: "grail" } });
+    expect(lobby().options.difficulty).toBe(baseDifficulty);
+    expect(lobby().options.farTileOpening).toBe(true);
+    expect(lobby().options.farTilesPerPlayer).toBe(2);
+
+    // Pick a map whose preset carries all three map-settings defaults → they seed.
+    apply({
+      customMap: NEAR_SLOT,
+      customMapName: "Settings",
+      customMapPreset: {
+        difficulty: "hard",
+        farTileOpening: false,
+        farTilesPerPlayer: 0,
+        victoryMode: "grail"
+      }
+    });
+    expect(lobby().options.difficulty).toBe("hard");
+    expect(lobby().options.farTileOpening).toBe(false);
+    expect(lobby().options.farTilesPerPlayer).toBe(0);
+    expect(lobby().options.victoryMode).toBe("grail");
+
+    // APPLY-ONCE: a later bare edit sticks — the preset does not re-force it.
+    apply({ difficulty: "easy" });
+    expect(lobby().options.difficulty).toBe("easy");
+    apply({ farTileOpening: true, farTilesPerPlayer: 4 });
+    expect(lobby().options.farTileOpening).toBe(true);
+    expect(lobby().options.farTilesPerPlayer).toBe(4);
+  });
+
+  it("build seeds the preset difficulty + far-tile supply into the adventure (direct build, legacy CONTROL)", () => {
+    const built = createAdventureGameState({
+      seed: "preset-build-settings",
+      customMap: NEAR_SLOT,
+      customMapPreset: { difficulty: "hard", farTilesPerPlayer: 0 }
+    });
+    // Difficulty landed on the built GameState (adventure.difficulty is the store;
+    // its downstream consumers — guard-army strength via NEUTRAL_ARMY_TABLE, the
+    // Scenario-Difficulty starting bonus — are covered by existing difficulty tests).
+    expect(built.adventure?.difficulty).toBe("hard");
+    // farTilesPerPlayer 0 → no Ⅱ–Ⅲ supply for any player.
+    expect(built.adventure?.playerFarTiles.p1).toEqual([]);
+    expect(built.adventure?.playerFarTiles.p2).toEqual([]);
+
+    // A supply of 3 → three face-down "?" markers per player.
+    const three = createAdventureGameState({
+      seed: "preset-build-settings",
+      customMap: NEAR_SLOT,
+      customMapPreset: { farTilesPerPlayer: 3 }
+    });
+    expect(three.adventure?.playerFarTiles.p1).toHaveLength(3);
+
+    // farTileOpening false → empty supply even with a positive count.
+    const off = createAdventureGameState({
+      seed: "preset-build-settings",
+      customMap: NEAR_SLOT,
+      customMapPreset: { farTileOpening: false, farTilesPerPlayer: 5 }
+    });
+    expect(off.adventure?.playerFarTiles.p1).toEqual([]);
+
+    // CONTROL: a legacy preset (no map-settings fields) keeps the scenario
+    // defaults — Impossible difficulty and the 2-tile skirmish supply.
+    const control = createAdventureGameState({
+      seed: "preset-build-settings",
+      customMap: NEAR_SLOT,
+      customMapPreset: { victoryMode: "grail" }
+    });
+    expect(control.adventure?.difficulty).toBe("impossible");
+    expect(control.adventure?.playerFarTiles.p1).toHaveLength(2);
+  });
+
+  it("build honours an explicit difficulty over the preset (apply-once at build), else the preset fills it", () => {
+    // The lobby build path passes every option, so a host's edited difficulty wins.
+    const explicit = createAdventureGameState({
+      seed: "preset-build-applyonce",
+      difficulty: "easy",
+      customMap: NEAR_SLOT,
+      customMapPreset: { difficulty: "hard" }
+    });
+    expect(explicit.adventure?.difficulty).toBe("easy");
+    // CONTROL: with no explicit difficulty the preset decides.
+    const implicit = createAdventureGameState({
+      seed: "preset-build-applyonce",
+      customMap: NEAR_SLOT,
+      customMapPreset: { difficulty: "hard" }
+    });
+    expect(implicit.adventure?.difficulty).toBe("hard");
+  });
+
+  it("switching away from a map-settings preset restores the scenario difficulty + far-tile defaults", () => {
+    let state = createAdventureLobbyState({ seed: "preset-settings-revert", scenarioId: "skirmish" });
+    const lobby = () => state.setupLobby!;
+    const baseDifficulty = lobby().options.difficulty;
+    const baseFarOpening = lobby().options.farTileOpening;
+    const baseFarCount = lobby().options.farTilesPerPlayer;
+    const apply = (options: Record<string, unknown>) => {
+      const result = applyAction(state, { type: "SET_GAME_OPTIONS", playerId: "p1", options });
+      expect(result.errors, result.errors.map((e) => e.message).join("; ")).toHaveLength(0);
+      state = result.state;
+    };
+
+    apply({
+      customMap: NEAR_SLOT,
+      customMapName: "Settings",
+      customMapPreset: { difficulty: "easy", farTileOpening: false, farTilesPerPlayer: 0 }
+    });
+    expect(lobby().options.difficulty).toBe("easy");
+    expect(lobby().options.farTileOpening).toBe(false);
+    expect(lobby().options.farTilesPerPlayer).toBe(0);
+
+    // Switch to a preset-less map: the map-settings revert to the scenario defaults.
+    apply({ customMap: NEAR_SLOT, customMapName: "Plain", customMapPreset: null });
+    expect(lobby().options.difficulty).toBe(baseDifficulty);
+    expect(lobby().options.farTileOpening).toBe(baseFarOpening);
+    expect(lobby().options.farTilesPerPlayer).toBe(baseFarCount);
+  });
+
+  it("sanitizeCustomMapPreset validates the map-settings defaults (difficulty / far tiles); legacy untouched", async () => {
+    const { sanitizeCustomMapPreset } = await import("./map-preset");
+    // Garbage difficulty dropped; farTilesPerPlayer clamps 99→6; farTileOpening kept as a real boolean.
+    const cleaned = sanitizeCustomMapPreset({
+      difficulty: "nightmare",
+      farTileOpening: false,
+      farTilesPerPlayer: 99
+    });
+    expect(cleaned?.difficulty).toBeUndefined();
+    expect(cleaned?.farTileOpening).toBe(false);
+    expect(cleaned?.farTilesPerPlayer).toBe(6);
+
+    // A valid difficulty is kept; a negative count floors to 0; a non-number count is dropped.
+    const kept = sanitizeCustomMapPreset({ difficulty: "hard", farTilesPerPlayer: -1 });
+    expect(kept?.difficulty).toBe("hard");
+    expect(kept?.farTilesPerPlayer).toBe(0);
+    const garbageCount = sanitizeCustomMapPreset({ difficulty: "normal", farTilesPerPlayer: "lots" });
+    expect(garbageCount?.difficulty).toBe("normal");
+    expect(garbageCount?.farTilesPerPlayer).toBeUndefined();
+
+    // A non-boolean farTileOpening is dropped (only a real boolean is kept).
+    const noOpen = sanitizeCustomMapPreset({ difficulty: "easy", farTileOpening: "yes" });
+    expect(noOpen?.farTileOpening).toBeUndefined();
+
+    // LEGACY CONTROL: a preset without the new fields is byte-identical after sanitize.
+    expect(sanitizeCustomMapPreset({ victoryMode: "grail" })).toEqual({ victoryMode: "grail" });
+  });
+
+  it("describeCustomMapPresetEntries names the map-settings defaults (difficulty + additional tiles), legacy CONTROL shows neither", async () => {
+    const { describeCustomMapPresetEntries } = await import("./map-preset");
+    const hardOff = describeCustomMapPresetEntries({ difficulty: "hard", farTileOpening: false }).map((e) => e.text);
+    expect(hardOff.some((t) => t.includes("Difficulty") && t.includes("Hard"))).toBe(true);
+    expect(hardOff.some((t) => t.includes("Additional") && t.includes("off"))).toBe(true);
+
+    const perPlayer = describeCustomMapPresetEntries({ farTilesPerPlayer: 3 }).map((e) => e.text);
+    expect(perPlayer.some((t) => t.includes("Additional") && t.includes("3 per player"))).toBe(true);
+
+    // CONTROL: a legacy preset without the map-settings fields shows neither line.
+    const legacy = describeCustomMapPresetEntries({ victoryMode: "grail" }).map((e) => e.text);
+    expect(legacy.some((t) => t.includes("Difficulty"))).toBe(false);
+    expect(legacy.some((t) => t.includes("Additional"))).toBe(false);
+  });
+
   it("a round-N timed event fires when THAT round starts: cubes clear, resources land (with controls)", () => {
     const build = (withPreset: boolean) =>
       createAdventureGameState({
@@ -721,6 +936,128 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     expect(derrick.blackCube).toBe(false);
     expect(prospector.blackCube).toBe(false);
     expect(garden.blackCube).toBe(true);
+  });
+
+  it("clear_tile_cubes re-opens matching-group Tile cubes but never banks or victory fields (with controls)", () => {
+    const build = (withPreset: boolean) =>
+      createAdventureGameState({
+        seed: "preset-tile-cubes",
+        customMap: NEAR_SLOT,
+        ...(withPreset
+          ? {
+              customMapPreset: {
+                timedEvents: [
+                  {
+                    round: 3,
+                    effect: { kind: "clear_tile_cubes" as const, groups: ["far" as const] }
+                  }
+                ]
+              }
+            }
+          : {})
+      });
+
+    const state = build(true);
+    const control = build(false);
+    injectTile(state, "far-tile", "far");
+    injectTile(state, "near-tile", "near");
+    injectTile(control, "far-tile", "far");
+
+    // On the FAR (Ⅱ–Ⅲ) tile: a plain visitable cube, a Creature-Bank cube (bank
+    // rule) and a Grail victory-field cube (victory safety) — the discriminating
+    // pair/trio that a mutation would clear.
+    const farPlain = injectCubeField(state, "60,60", "windmill", { tileInstanceId: "far-tile" });
+    const farBank = injectCubeField(state, "60,61", "creature_bank", {
+      tileInstanceId: "far-tile",
+      bankId: "dragon_fly_hive" // realism only — the exclusion keys off `location`
+    });
+    const farGrail = injectCubeField(state, "60,62", "grail", { tileInstanceId: "far-tile" });
+    // NEAR (Ⅳ–Ⅴ) tile — wrong group, must stay cubed.
+    const nearPlain = injectCubeField(state, "61,61", "windmill", { tileInstanceId: "near-tile" });
+    // CONTROL twin (no preset): the same far plain cube must survive.
+    const controlPlain = injectCubeField(control, "60,60", "windmill", {
+      tileInstanceId: "far-tile"
+    });
+
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+    control.round = 3;
+    applyCustomMapTimedEvents(control);
+
+    expect(farPlain.blackCube).toBe(false); // matching group → re-opened
+    expect(farBank.blackCube).toBe(true); // bank keeps its defeat cube (hard rule)
+    expect(farGrail.blackCube).toBe(true); // victory field never re-opened
+    expect(nearPlain.blackCube).toBe(true); // wrong group → untouched
+    expect(controlPlain.blackCube).toBe(true); // no preset → nothing clears
+    expect(
+      state.eventLog.some(
+        (e) => e.type === "MAP_PRESET_TRIGGERED" && e.round === 3 && e.message.includes("Ⅱ–Ⅲ")
+      )
+    ).toBe(true);
+  });
+
+  it("clear_tile_cubes excludeSettlementTiles spares a whole settlement Tile (flag control)", () => {
+    const build = (exclude: boolean) => {
+      const s = createAdventureGameState({
+        seed: "preset-tile-cube-settlement",
+        customMap: NEAR_SLOT,
+        customMapPreset: {
+          timedEvents: [
+            {
+              round: 3,
+              effect: {
+                kind: "clear_tile_cubes" as const,
+                groups: ["far" as const],
+                excludeSettlementTiles: exclude
+              }
+            }
+          ]
+        }
+      });
+      injectTile(s, "far-a", "far");
+      injectTile(s, "far-b", "far");
+      // far-a hosts a Settlement; far-b does not.
+      injectCubeField(s, "settle", "settlement", { tileInstanceId: "far-a", blackCube: false });
+      const aCube = injectCubeField(s, "a-cube", "windmill", { tileInstanceId: "far-a" });
+      const bCube = injectCubeField(s, "b-cube", "windmill", { tileInstanceId: "far-b" });
+      s.round = 3;
+      applyCustomMapTimedEvents(s);
+      return { aCube, bCube };
+    };
+
+    const excluded = build(true);
+    expect(excluded.aCube.blackCube).toBe(true); // settlement tile spared
+    expect(excluded.bCube.blackCube).toBe(false); // non-settlement far tile cleared
+
+    // FLAG CONTROL: with the flag off, the settlement tile's cube clears too.
+    const included = build(false);
+    expect(included.aCube.blackCube).toBe(false);
+    expect(included.bCube.blackCube).toBe(false);
+  });
+
+  it("a re-opened Tile field with printed difficulty becomes guarded again (the re-open tool)", () => {
+    const state = createAdventureGameState({
+      seed: "preset-tile-cube-reguard",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [
+          { round: 3, effect: { kind: "clear_tile_cubes" as const, groups: ["far" as const] } }
+        ]
+      }
+    });
+    injectTile(state, "far-tile", "far");
+    // A defeated guarded field: printed difficulty, cube marked, never flagged.
+    const field = injectCubeField(state, "guard", "windmill", {
+      tileInstanceId: "far-tile",
+      difficulty: 3
+    });
+    expect(isFieldGuarded(field)).toBe(false); // cube down → not guarded
+
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+
+    expect(field.blackCube).toBe(false);
+    expect(isFieldGuarded(field)).toBe(true); // re-opened → guards return, re-fightable
   });
 
   it("timed morale / movement / treasure-roll / resource-roll fire with observable outcomes (and controls)", () => {
@@ -835,6 +1172,144 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     expect(timedRollOwners).toEqual(["p1"]);
   });
 
+  it("a repeating timed event fires on its schedule (round, +N, +2N…) but never off-schedule (controls)", () => {
+    const build = (repeat: number | undefined) =>
+      createAdventureGameState({
+        seed: "preset-timed-repeat",
+        customMap: NEAR_SLOT,
+        customMapPreset: {
+          timedEvents: [
+            {
+              round: 3,
+              ...(repeat ? { repeatEveryRounds: repeat } : {}),
+              effect: { kind: "resources" as const, gold: 5, buildingMaterials: 0, valuables: 0 }
+            }
+          ]
+        }
+      });
+
+    const state = build(2);
+    const oneShot = build(undefined); // CONTROL: a legacy one-shot (no repeat).
+
+    const gold = (s: import("./state").GameState) => s.players.p1.resources.gold;
+    const fire = (s: import("./state").GameState, round: number) => {
+      s.round = round;
+      applyCustomMapTimedEvents(s);
+    };
+    const base = gold(state);
+    const oneShotBase = gold(oneShot);
+
+    // Round 2 (< the event round): neither fires.
+    fire(state, 2);
+    fire(oneShot, 2);
+    expect(gold(state)).toBe(base);
+    expect(gold(oneShot)).toBe(oneShotBase);
+
+    // Round 3: both fire (+5).
+    fire(state, 3);
+    fire(oneShot, 3);
+    expect(gold(state)).toBe(base + 5);
+    expect(gold(oneShot)).toBe(oneShotBase + 5);
+
+    // Round 4 (CONTROL): interval 2 → NOT due; the one-shot is also silent.
+    fire(state, 4);
+    fire(oneShot, 4);
+    expect(gold(state)).toBe(base + 5);
+    expect(gold(oneShot)).toBe(oneShotBase + 5);
+
+    // Round 5: the repeating event fires again (+5); the one-shot NEVER fires
+    // again (CONTROL: a one-shot fires exactly once).
+    fire(state, 5);
+    fire(oneShot, 5);
+    expect(gold(state)).toBe(base + 10);
+    expect(gold(oneShot)).toBe(oneShotBase + 5);
+
+    // Round 6 (CONTROL): off-schedule, no fire.
+    fire(state, 6);
+    expect(gold(state)).toBe(base + 10);
+
+    // Round 7: the third firing (+5).
+    fire(state, 7);
+    expect(gold(state)).toBe(base + 15);
+
+    // Each firing appends a DISTINCT MAP_PRESET_TRIGGERED (the map-event overlay
+    // dedupes by id — a repeat firing must not be swallowed as the same event).
+    const firedIds = state.eventLog
+      .filter((e) => e.type === "MAP_PRESET_TRIGGERED")
+      .map((e) => e.id);
+    expect(firedIds).toHaveLength(3); // rounds 3, 5, 7
+    expect(new Set(firedIds).size).toBe(3); // all distinct
+  });
+
+  it("a timed experience event raises the main hero via the NORMAL level pipeline (eliminated seat skipped)", () => {
+    const state = createAdventureGameState({
+      seed: "preset-timed-xp",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [{ round: 3, effect: { kind: "experience", amount: 4 } }]
+      }
+    });
+    const p1Hero = Object.values(state.heroes).find((h) => h.controllerId === "p1")!;
+    const p2Hero = Object.values(state.heroes).find((h) => h.controllerId === "p2")!;
+    // Baseline: heroes start at level 1 / exp 0, expert-use limit 0, hand 4.
+    expect(p1Hero.level).toBe(1);
+    expect(state.players.p1.limits.expertUses).toBe(0);
+    const p2ExpBefore = p2Hero.experience;
+    const p2LevelBefore = p2Hero.level;
+
+    // CONTROL: p2 is eliminated and must gain nothing.
+    state.players.p2.eliminated = true;
+
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+
+    // +4 XP → level 3 (levelOfExperience(4) = 3): the NORMAL pipeline bumps the
+    // hero LEVEL and its downstream hand-limit / expert-use limits, and appends
+    // the same EXPERIENCE_GAINED / HERO_LEVEL_UP events a combat award produces.
+    expect(p1Hero.experience).toBe(4);
+    expect(p1Hero.level).toBe(3);
+    expect(state.players.p1.limits.expertUses).toBe(1); // EXPERT_USES_BY_LEVEL[3]
+    expect(state.players.p1.limits.hand).toBe(5); // HAND_LIMIT_BY_LEVEL[3]
+    expect(state.eventLog.some((e) => e.type === "HERO_LEVEL_UP" && e.playerId === "p1")).toBe(true);
+    expect(state.eventLog.some((e) => e.type === "EXPERIENCE_GAINED" && e.playerId === "p1")).toBe(true);
+
+    // Eliminated seat untouched (no XP, no level change).
+    expect(p2Hero.experience).toBe(p2ExpBefore);
+    expect(p2Hero.level).toBe(p2LevelBefore);
+  });
+
+  it("a NEGATIVE resources timed event drains every treasury, floored at 0 (floor control)", () => {
+    const state = createAdventureGameState({
+      seed: "preset-timed-loss",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [
+          { round: 3, effect: { kind: "resources", gold: -5, buildingMaterials: 0, valuables: 0 } }
+        ]
+      }
+    });
+    // p1 holds plenty; p2 is short (1 gold) — the FLOOR control.
+    state.players.p1.resources.gold = 20;
+    state.players.p2.resources.gold = 1;
+
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+
+    expect(state.players.p1.resources.gold).toBe(15); // 20 − 5
+    expect(state.players.p2.resources.gold).toBe(0); // 1 − 5 floored at 0, never negative
+
+    // Feed line says the players LOSE, not gain.
+    expect(
+      state.eventLog.some(
+        (e) =>
+          e.type === "MAP_PRESET_TRIGGERED" && e.round === 3 && e.message.includes("loses 5 gold")
+      )
+    ).toBe(true);
+    // The ACTUAL removal is recorded — p2 only lost its lone gold, not the full 5.
+    const p2Spent = state.eventLog.find((e) => e.type === "RESOURCES_SPENT" && e.playerId === "p2");
+    expect(p2Spent?.type === "RESOURCES_SPENT" ? p2Spent.cost.gold : undefined).toBe(1);
+  });
+
   it("sanitizeCustomMapPreset keeps freer timed-effect kinds and clamps amounts", async () => {
     const { sanitizeCustomMapPreset } = await import("./map-preset");
     const cleaned = sanitizeCustomMapPreset({
@@ -892,6 +1367,73 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     });
     expect(cleaned?.timedEvents).toEqual([
       { round: 2, effect: { kind: "story", sceneId: STORY_SCENE_IDS[0] } }
+    ]);
+  });
+
+  it("sanitizeCustomMapPreset cleans a clear_tile_cubes effect (groups deduped/filtered, flag coerced)", async () => {
+    const { sanitizeCustomMapPreset } = await import("./map-preset");
+    const cleaned = sanitizeCustomMapPreset({
+      timedEvents: [
+        {
+          round: 4,
+          effect: {
+            kind: "clear_tile_cubes",
+            groups: ["far", "far", "bogus", "subterranean"], // dedupe + drop invalid
+            excludeSettlementTiles: "yes" // non-boolean coerced away
+          }
+        },
+        // No valid group survives → the whole event is dropped.
+        { round: 5, effect: { kind: "clear_tile_cubes", groups: ["nonsense"] } },
+        {
+          round: 6,
+          effect: { kind: "clear_tile_cubes", groups: ["center"], excludeSettlementTiles: true }
+        }
+      ]
+    });
+    expect(cleaned?.timedEvents).toEqual([
+      { round: 4, effect: { kind: "clear_tile_cubes", groups: ["far", "subterranean"] } },
+      {
+        round: 6,
+        effect: { kind: "clear_tile_cubes", groups: ["center"], excludeSettlementTiles: true }
+      }
+    ]);
+
+    // LEGACY CONTROL: a preset without the new kind is byte-identical after sanitize.
+    const legacy = sanitizeCustomMapPreset({
+      timedEvents: [{ round: 2, effect: { kind: "clear_visitable_cubes", locations: ["windmill"] } }]
+    });
+    expect(legacy?.timedEvents).toEqual([
+      { round: 2, effect: { kind: "clear_visitable_cubes", locations: ["windmill"] } }
+    ]);
+  });
+
+  it("sanitizeCustomMapPreset clamps negative resource losses, the repeat interval, and experience", async () => {
+    const { sanitizeCustomMapPreset } = await import("./map-preset");
+    const cleaned = sanitizeCustomMapPreset({
+      timedEvents: [
+        // Positive legacy entry — unchanged (byte-identical).
+        { round: 2, effect: { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 } },
+        // −999 gold clamps to the −50 loss floor.
+        { round: 3, effect: { kind: "resources", gold: -999, buildingMaterials: 0, valuables: 0 } },
+        // repeatEveryRounds 99 clamps to 10.
+        { round: 4, repeatEveryRounds: 99, effect: { kind: "morale", amount: 1 } },
+        // repeatEveryRounds 1 is DROPPED (below the 2 minimum → one-shot).
+        { round: 5, repeatEveryRounds: 1, effect: { kind: "movement", amount: 1 } },
+        // a non-int repeat is DROPPED.
+        { round: 6, repeatEveryRounds: "weekly", effect: { kind: "movement", amount: 1 } },
+        // experience clamps to 1..5.
+        { round: 7, effect: { kind: "experience", amount: 99 } },
+        // an all-zero resources loss/gain is dropped entirely.
+        { round: 8, effect: { kind: "resources", gold: 0, buildingMaterials: 0, valuables: 0 } }
+      ]
+    } as unknown);
+    expect(cleaned?.timedEvents).toEqual([
+      { round: 2, effect: { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 } },
+      { round: 3, effect: { kind: "resources", gold: -50, buildingMaterials: 0, valuables: 0 } },
+      { round: 4, repeatEveryRounds: 10, effect: { kind: "morale", amount: 1 } },
+      { round: 5, effect: { kind: "movement", amount: 1 } },
+      { round: 6, effect: { kind: "movement", amount: 1 } },
+      { round: 7, effect: { kind: "experience", amount: 5 } }
     ]);
   });
 

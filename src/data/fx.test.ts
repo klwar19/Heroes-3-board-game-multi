@@ -534,9 +534,14 @@ describe("area spells & specialties carry their correct SFX + animation", () => 
 describe("more spells wired with SFX + animation (no silent resolves)", () => {
   // Damage / debuff spells that animate over a board target with their converted
   // sprite sheet + measured sound. These had no FX plan and resolved silently.
-  const SPRITE_SPELLS: Record<string, { sprite: string; sound: string }> = {
+  const SPRITE_SPELLS: Record<string, { sprite: string; sound: string; projectile?: string }> = {
     "spell.implosion": { sprite: "implosion", sound: "spells/implosion" },
-    "spell.disrupting_ray": { sprite: "disrupting-ray", sound: "spells/disrupting-ray" },
+    // H3 pair: projectile then the ray shimmer over the unit whose Defense falls.
+    "spell.disrupting_ray": {
+      sprite: "disrupting-ray",
+      sound: "spells/disrupting-ray",
+      projectile: "disrupting-ray-projectile"
+    },
     "spell.frenzy": { sprite: "frenzy", sound: "spells/frenzy" }
   };
 
@@ -545,6 +550,10 @@ describe("more spells wired with SFX + animation (no silent resolves)", () => {
     expect(plan, `${id} needs an FX plan`).toBeTruthy();
     expect(plan.affect?.[0]?.key).toBe(expected.sprite);
     expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
+    if (expected.projectile) {
+      expect(plan.projectile).toBe(expected.projectile);
+      expect(spriteDurationMs(plan.projectile)).toBeGreaterThan(0);
+    }
     expect(plan.sound).toBe(expected.sound);
     expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);

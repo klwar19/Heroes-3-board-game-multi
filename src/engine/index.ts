@@ -244,6 +244,25 @@ export {
 } from "./house-rules";
 export type { HouseRuleCategory, HouseRuleDef } from "./house-rules";
 export {
+  polishReducedStartingBonusVisitSteps,
+  polishSurrenderGoldCost,
+  polishArtifactAccessAfterRoll,
+  polishArtifactBandFromHeroLevel,
+  polishArtifactBandFromTileGroup,
+  polishPandoraBaseSearchCount,
+  polishPandoraSearchCount,
+  nextWaitTokenNumber
+} from "./polish-house-rules";
+export type { PolishArtifactBand } from "./polish-house-rules";
+export {
+  clearPolishArtifactAccess,
+  isArtifactSharedDeckId,
+  maybeApplyPolishRandomArtifactRoll,
+  polishArtifactDeckAllowed,
+  polishArtifactTierAllowed
+} from "./polish-random-artifacts";
+export { currentSurrenderGoldCost, tournamentMoraleSearchAgainEnabled } from "./adventure";
+export {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
   isCastASpellCard,
@@ -312,6 +331,8 @@ export type { AdventurePlayerConfig, AdventureSetupOptions, DraftPhaseInfo } fro
 export {
   applyCustomMapPresetToOptions,
   customMapPresetIsActive,
+  CUSTOM_WIN_CONDITION_OPTIONS,
+  defaultCustomWinCondition,
   defaultObeliskBonusForKind,
   defaultTimedEffect,
   defaultTimedEvent,
@@ -324,24 +345,38 @@ export {
   describeObjectivesConfig,
   describeUtopiaGuards,
   describeTimedMapEffect,
+  describeTimedEventSchedule,
   describeVictoryPointsConfig,
+  foldLegacyViiBonus,
+  isCustomGuardUnit,
   isViiFieldDesignation,
+  MAX_CENTER_HEX_DICE,
+  MAX_CENTER_HEX_RESOURCE,
+  MAX_CENTER_HEX_SEARCH,
+  MAX_CENTER_HEX_VP,
   MAX_CUSTOM_MAP_OBJECTS,
+  MAX_CUSTOM_WIN_CONDITIONS,
   MAX_GATES_PER_PAIR,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
-  MAX_VII_FIELD_REWARD_AMOUNT,
-  MAX_VII_FIELD_VP,
+  mergeCustomWinConditions,
   MAP_PRESET_BUILDING_OPTIONS,
+  MAP_PRESET_DIFFICULTY_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
   presetForcedOptionKeys,
   revertCustomMapPresetOptions,
+  objectGuardSpec,
+  ONEWAY_EXIT_MODES,
+  OUTPOST_OBJECT_KINDS,
+  sanitizeCenterHexPlan,
+  sanitizeCenterHexReward,
+  sanitizeCustomGuardSpec,
   sanitizeCustomMapObject,
   sanitizeCustomMapPreset,
-  sanitizeViiFieldReward,
-  sanitizeViiFieldVp,
+  sanitizeCustomWinConditions,
+  sanitizeObjectGuard,
   secretFeatureDemandWarnings,
   tileMatchesSecretFeature,
   TIMED_EFFECT_KIND_LABELS,
@@ -353,6 +388,7 @@ export {
 export {
   computeVictoryPoints,
   DEFAULT_VICTORY_CONDITION_VP,
+  describeCustomWinCondition,
   describeVictoryPointObjective,
   recordVpHeroDefeat,
   recordVpSurrender,
@@ -411,6 +447,7 @@ export {
   canHeroReachPlacedTile,
   canHeroReachPlacementCenter,
   changeMorale,
+  checkCustomWinConditions,
   classifyHeroStep,
   declareAdventureWinner,
   endGameByVictoryPoints,
@@ -436,8 +473,12 @@ export {
   heroMovementMax,
   heroMoveStartsBattle,
   carveColoredGateField,
+  carveOnewayField,
+  customGuardArmyDifficulty,
   gatePairColor,
+  isBankStyleGuardLocation,
   isFieldGuarded,
+  playerHoldsTentFlag,
   isMapObjectLocation,
   isMapTokenLocation,
   mapFieldLayer,
@@ -457,6 +498,8 @@ export {
   polishBankSizeForAttackRolls,
   tokenMayCoverFieldDef,
   planSubterraneanGates,
+  planIsUnderground,
+  UNDERGROUND_LAYER_GROUPS,
   legalGateHexPairs,
   planGateChoiceForReveal,
   upsertGatePlan,
@@ -473,6 +516,7 @@ export {
   seaTileBand,
   startingBonusDescription,
   subterraneanTileBand,
+  TILE_GROUP_BAND_LABELS,
   tileLayer
 } from "./adventure";
 export type { DesignedGateLinkLike, HeroMovementCapabilities, HeroPathTarget, HeroStepKind, MapLayer, MapTokenKind, PlannedSubterraneanGate, RecruitPurchaseRef, TilePlacementLike, TokenPlacementKind } from "./adventure";
@@ -564,7 +608,7 @@ export {
 export { describePermanentEffect } from "./effects";
 export { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
-export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, NEUTRAL_PLAYER_ID } from "./state";
+export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, MAX_CUSTOM_GUARD_UNITS, NEUTRAL_PLAYER_ID } from "./state";
 export { DEFAULT_ANIME_OPTIONS, animeEnabled, animeModuleEnabled } from "./anime";
 export {
   CULTIVATION_REALMS,
@@ -711,6 +755,7 @@ export type {
   CustomMapTilePlan,
   CustomMapGateLink,
   CustomStartingUnit,
+  CustomWinCondition,
   SecretTileFeature,
   VictoryMode,
   DamageKind,
@@ -777,6 +822,11 @@ export type {
   UnitId,
   UnitTransformState,
   ViiFieldReward,
+  CustomCenterHexPlan,
+  CustomCenterHexReward,
+  CustomGuardSpec,
+  CustomMapTileToken,
+  OnewayExitMode,
   VictoryPointObjective,
   VisitStep,
   VpLedgerEntry,
