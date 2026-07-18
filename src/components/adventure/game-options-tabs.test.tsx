@@ -181,6 +181,147 @@ describe("Game options — tabbed layout", () => {
     expect(toggle.textContent).toContain("BANKS OFF");
   });
 
+  it("Enable-all turns the whole Polish group on in one dispatch (Spell Book side effect included)", () => {
+    const onAction = openOptions();
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
+    const call = onAction.mock.calls.at(-1)?.[0] as {
+      type: string;
+      options: { houseRules: Record<string, boolean>; spellBook?: boolean };
+    };
+    expect(call.type).toBe("SET_GAME_OPTIONS");
+    // Every dependency-free Polish rule flips on in a single action.
+    expect(call.options.houseRules["polish-reduced-starting-bonus"]).toBe(true);
+    expect(call.options.houseRules["polish-wait"]).toBe(true);
+    expect(call.options.houseRules["polish-spell-book"]).toBe(true);
+    // Turning on Polish Spell Book also forces the stash Spell Book off.
+    expect(call.options.spellBook).toBe(false);
+  });
+
+  it("selecting ANY Polish rule auto-selects Divided Artifact decks (split-decks) in the same dispatch", () => {
+    // Seed split-decks OFF (BINH defaults it on) so the auto-companion is observable.
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "split-decks": false
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: /Wait \(combat\)/i }));
+    expect(onAction).toHaveBeenLastCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "split-decks": true, "polish-wait": true } }
+    });
+
+    // CONTROL A: with split-decks already ON, only the rule itself dispatches.
+    cleanup();
+    const onDefault = openOptions();
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: /Wait \(combat\)/i }));
+    expect(onDefault).toHaveBeenLastCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "polish-wait": true } }
+    });
+
+    // CONTROL B: turning a Polish rule OFF never touches split-decks.
+    cleanup();
+    const onOff = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "split-decks": false,
+        "polish-wait": true
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: /Wait \(combat\)/i }));
+    expect(onOff).toHaveBeenLastCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "polish-wait": false } }
+    });
+  });
+
+  it("Enable-all Polish also auto-selects split-decks AND enables Random Artifacts (blocked only by it)", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "split-decks": false
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    // The companion lands in the SAME dispatch…
+    expect(hr["split-decks"]).toBe(true);
+    // …and Random Artifacts (which depends on it) is no longer skipped.
+    expect(hr["polish-random-artifacts"]).toBe(true);
+  });
+
+  it("Enable-all skips a dependency-blocked rule (Rolled Bank Sizes without Creature Banks)", () => {
+    const onAction = openOptions(vi.fn(), { creatureBanks: false });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    // Blocked (banks off) → not enabled; a free rule alongside it still turns on.
+    expect(hr["polish-bank-sizes"]).toBeUndefined();
+    expect(hr["polish-reduced-starting-bonus"]).toBe(true);
+  });
+
+  it("with the whole Polish group already on, the group button disables it in one dispatch", () => {
+    const polishOn: Record<string, boolean> = {
+      "split-decks": true,
+      "polish-spell-book": true,
+      "polish-bank-sizes": true,
+      "polish-unit-stacks": true,
+      "polish-reduced-starting-bonus": true,
+      "polish-rule-111": true,
+      "polish-reduced-surrender": true,
+      "polish-random-artifacts": true,
+      "polish-pandora-search": true,
+      "polish-wait": true
+    };
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        ...polishOn
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Disable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    expect(hr["polish-reduced-starting-bonus"]).toBe(false);
+    expect(hr["polish-wait"]).toBe(false);
+  });
+
+  it("Map & Setup exposes the Blind Ⅱ–Ⅲ tile choice toggle, default OFF, wired to farTileBlindChoice", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    const row = screen.getByText("Blind Ⅱ–Ⅲ tile choice").closest(".optionRow");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { farTileBlindChoice: true }
+    });
+
+    // CONTROL: with Ⅱ–Ⅲ tile opening OFF, the blind-choice row is hidden.
+    cleanup();
+    openOptionsWith((state) => {
+      state.setupLobby!.options.farTileOpening = false;
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    expect(screen.queryByText("Blind Ⅱ–Ⅲ tile choice")).toBeNull();
+  });
+
   it("Mode & Rules wires Event deck, Morale Cards, and Ban Diplomacy", () => {
     const onAction = openOptions();
 

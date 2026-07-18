@@ -128,6 +128,26 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(last.timedEvents!.length).toBe(2);
   });
 
+  it("round field is clearable to blank and accepts a single-digit value (regression: sticky leading '1')", () => {
+    const onChange = vi.fn();
+    const base: CustomMapPreset = {
+      timedEvents: [{ round: 16, effect: { kind: "note", text: "hi" } }]
+    };
+    render(<MapPresetEditor preset={base} onChange={onChange} />);
+    const roundInput = screen.getByLabelText("Timed event 1 round") as HTMLInputElement;
+    // Clearing must leave the field BLANK. The old idiom snapped it straight
+    // back to the floor "1", so the leading digit could never be removed and no
+    // round below 10 could be typed.
+    fireEvent.change(roundInput, { target: { value: "" } });
+    expect(roundInput.value).toBe("");
+    // And a fresh single-digit value commits as-is (not stuck at 1x).
+    fireEvent.change(roundInput, { target: { value: "5" } });
+    expect(roundInput.value).toBe("5");
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ timedEvents: [expect.objectContaining({ round: 5 })] })
+    );
+  });
+
   it("offers a 'story' timed-event effect and stores the chosen sceneId", () => {
     const onChange = vi.fn();
     const base: CustomMapPreset = {
@@ -313,7 +333,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
 
     // Default = Classic → no bonus controls, no obelisks config.
-    expect(screen.queryByLabelText("Obelisk bonus kind")).toBeNull();
+    expect(screen.queryByLabelText("Obelisk reward 1 kind")).toBeNull();
 
     // Monolith teleport → obelisks: { role: "monolith" }.
     fireEvent.click(screen.getByRole("button", { name: "Monolith teleport" }));
@@ -321,32 +341,104 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
       expect.objectContaining({ obelisks: { role: "monolith" } })
     );
 
-    // Fixed bonus → obelisks role "bonus" with the default +1 morale bonus.
+    // Fixed bonus → obelisks role "bonus" with the default +1 morale award
+    // (the editor now always writes the multi-award `bonuses` form).
     fireEvent.click(screen.getByRole("button", { name: "Fixed bonus" }));
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ obelisks: { role: "bonus", bonus: { kind: "morale", amount: 1 } } })
+      expect.objectContaining({ obelisks: { role: "bonus", bonuses: [{ kind: "morale", amount: 1 }] } })
     );
 
     // Re-render as a bonus preset: the kind dropdown appears and switching to
-    // resources writes a resources bonus.
+    // resources writes a resources award.
     rerender(
       <MapPresetEditor
-        preset={{ obelisks: { role: "bonus", bonus: { kind: "morale", amount: 1 } } }}
+        preset={{ obelisks: { role: "bonus", bonuses: [{ kind: "morale", amount: 1 }] } }}
         onChange={onChange}
       />
     );
-    const kind = screen.getByLabelText("Obelisk bonus kind") as HTMLSelectElement;
+    const kind = screen.getByLabelText("Obelisk reward 1 kind") as HTMLSelectElement;
     expect(kind).toBeTruthy();
-    // The bonus row is tagged with the board glyph for the current kind (+1 morale).
+    // The reward row is tagged with the board glyph for the current kind (+1 morale).
     expect(
       document.querySelector('.mapPresetRowGlyph[src*="morale_positive"]'),
-      "morale glyph on the bonus row"
+      "morale glyph on the reward row"
     ).toBeTruthy();
     fireEvent.change(kind, { target: { value: "resources" } });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        obelisks: { role: "bonus", bonus: expect.objectContaining({ kind: "resources" }) }
+        obelisks: { role: "bonus", bonuses: [expect.objectContaining({ kind: "resources" })] }
       })
+    );
+  });
+
+  it("Obelisks: add a second reward and switch to 'player picks one' (AND/OR)", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MapPresetEditor
+        preset={{ obelisks: { role: "bonus", bonuses: [{ kind: "morale", amount: 1 }] } }}
+        onChange={onChange}
+      />
+    );
+    // Add reward → a second default award appended.
+    fireEvent.click(screen.getByRole("button", { name: "Add reward" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        obelisks: expect.objectContaining({
+          role: "bonus",
+          bonuses: [
+            { kind: "morale", amount: 1 },
+            { kind: "morale", amount: 1 }
+          ]
+        })
+      })
+    );
+
+    // With 2+ awards, the mode toggle appears; "Player picks one" writes bonusMode.
+    rerender(
+      <MapPresetEditor
+        preset={{
+          obelisks: {
+            role: "bonus",
+            bonuses: [
+              { kind: "morale", amount: 1 },
+              { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 }
+            ]
+          }
+        }}
+        onChange={onChange}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Player picks one" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        obelisks: expect.objectContaining({ role: "bonus", bonusMode: "choose" })
+      })
+    );
+  });
+
+  it("Obelisks / Settlements: a guard level and settlement VP write the config", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MapPresetEditor preset={{ obelisks: { role: "monolith" } }} onChange={onChange} />
+    );
+    // Obelisk guard: pick level Ⅲ.
+    fireEvent.click(within(section("Obelisk guard")).getByRole("button", { name: "Ⅲ" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ obelisks: { role: "monolith", guard: { level: 3 } } })
+    );
+
+    // Settlement guard: pick level Ⅱ.
+    rerender(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    fireEvent.click(within(section("Settlement guard")).getByRole("button", { name: "Ⅱ" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ settlements: { guard: { level: 2 } } })
+    );
+
+    // Settlement bonus VP.
+    rerender(<MapPresetEditor preset={{ settlements: { guard: { level: 2 } } }} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("Bonus VP each"), { target: { value: "5" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ settlements: expect.objectContaining({ vp: 5 }) })
     );
   });
 

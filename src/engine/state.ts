@@ -8070,7 +8070,16 @@ export type VisitStep =
     }
   | { type: "GAIN_MOVEMENT_FOR_HERO"; heroId: HeroId; amount: number }
   | { type: "GAIN_MORALE"; amount: number }
-  | { type: "ROLL_RESOURCE_DICE"; count: number }
+  | {
+      type: "ROLL_RESOURCE_DICE";
+      count: number;
+      /**
+       * Polish reduced starting bonus: reroll any "high value" Resource-die face
+       * (6 gold / 4 building materials / 2 valuables) so the grant stays random
+       * but capped to the low faces. Default false (normal Resource-die roll).
+       */
+      capHighValues?: boolean;
+    }
   | { type: "RESUME_FIELD_VISIT"; heroId: HeroId; fieldId: MapSpaceId; revisit: boolean }
   | { type: "ROLL_TREASURE_DICE"; count: number }
   | {
@@ -9434,7 +9443,11 @@ export type PendingFarTileFlip = {
   returnPhase: GamePhase;
   /** 1-based index of this opening for the player (the 2nd is settlement-guaranteed). */
   openingIndex: number;
-  /** The tile currently revealed and under decision. */
+  /**
+   * The tile currently revealed and under decision. During the "blind" stage
+   * (blind Ⅱ–Ⅲ choice: the preference is asked BEFORE any draw) no tile has
+   * been drawn yet and this holds the empty string.
+   */
   candidate: string;
   /** The most recent NON-settlement tile held aside during a settlement reroll, offered against the Settlement at the final pick. */
   lastNonSettlement: string | null;
@@ -9446,8 +9459,11 @@ export type PendingFarTileFlip = {
    *  - "settlement": [Keep, Reroll for a Settlement]
    *  - "mine":       [Keep, Reroll once (material mine)]
    *  - "pick":       [Place the Settlement tile, Place the previous tile]
+   *  - "blind":      [No preference, Prefer a GOLD mine, Prefer a VALUABLES
+   *                  mine] — the blind Ⅱ–Ⅲ choice asked BEFORE the draw
+   *                  (candidate is still ""); resolving it draws the tile.
    */
-  offerMode: "settlement" | "mine" | "pick";
+  offerMode: "settlement" | "mine" | "pick" | "blind";
 };
 
 export type AdventureState = {
@@ -9476,6 +9492,13 @@ export type AdventureState = {
    * the player-view (upcoming tiles are secret). Absent on pre-feature saves.
    */
   farTilePool?: string[];
+  /**
+   * Blind Ⅱ–Ⅲ tile choice (GameSetupOptions.farTileBlindChoice, default OFF):
+   * a supply opening first asks the player for a blind gold/valuables/no-
+   * preference pick that filters the random draw. Absent/false = the draw is
+   * immediate, exactly as before.
+   */
+  farTileBlindChoice?: boolean;
   /**
    * How many Ⅱ–Ⅲ tiles each player has already opened (placed). Drives the
    * "the 2nd tile each player opens is the settlement-guaranteed one" rule.
@@ -9973,6 +9996,17 @@ export type GameSetupOptions = {
    * while `farTileOpening` is ON. Clamped to {@link MAX_FAR_TILES_PER_PLAYER}.
    */
   farTilesPerPlayer?: number;
+  /**
+   * OPTIONAL blind Ⅱ–Ⅲ tile choice (default OFF). With it ON, a player opening
+   * a Ⅱ–Ⅲ (Far) tile from their supply first chooses BLINDLY — before seeing
+   * any tile — whether they want a tile with a GOLD mine, one with a VALUABLES
+   * mine, or no preference; the random draw is then restricted to tiles
+   * carrying that landmark (falling back to a plain draw, with a public note,
+   * when none is left in the pool). Revealing a face-down Ⅱ–Ⅲ tile already on
+   * the map never asks (its identity is fixed). Frozen onto
+   * `adventure.farTileBlindChoice` at setup.
+   */
+  farTileBlindChoice?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
@@ -10119,12 +10153,40 @@ export type CustomMapPreset = {
    */
   obelisks?: {
     role: "monolith" | "bonus" | "victory-only";
-    bonus?:
-      | { kind: "morale"; amount: 1 }
-      | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
-      | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
-      | { kind: "movement"; amount: number }
-      | { kind: "dice"; treasure: number; resource: number };
+    /**
+     * The reward for role "bonus". Legacy SINGLE bonus (kept for old presets);
+     * `bonuses` below is the multi-award form. When both are absent the role
+     * grants {@link DEFAULT_OBELISK_BONUS}.
+     */
+    bonus?: CustomMapObeliskBonus;
+    /**
+     * Multiple designer awards for role "bonus". `bonusMode` decides whether the
+     * visitor gets them ALL ("all", the default — an AND) or PICKS ONE ("choose"
+     * — an OR the visiting player resolves). A single-entry list behaves like the
+     * legacy `bonus`.
+     */
+    bonuses?: CustomMapObeliskBonus[];
+    bonusMode?: "all" | "choose";
+    /**
+     * MAP-WIDE guard fought the first time each player visits ANY Obelisk (a
+     * level Ⅰ–Ⅶ, or an exact neutral army). The win flags the Obelisk as usual,
+     * so the guard never respawns (`everFlagged`); a later visitor still fights
+     * their own first-visit guard. Absent = unguarded (classic behaviour).
+     */
+    guard?: CustomGuardSpec;
+  };
+  /**
+   * MAP-WIDE settlement options — to make settlements matter on a scenario.
+   * Both optional; absent = classic settlements (unguarded, flat 1 VP).
+   *   - guard: a level Ⅰ–Ⅶ or exact army fought the FIRST time a settlement is
+   *     flagged (the win flags it, so it never respawns); a later capture from
+   *     another player transfers it with no fight, like an unguarded settlement.
+   *   - vp: extra Victory Points per settlement a player controls (VP mode only),
+   *     ON TOP of the flat 1 VP every flagged mine/settlement already scores.
+   */
+  settlements?: {
+    guard?: CustomGuardSpec;
+    vp?: number;
   };
   /**
    * Designer-placed one-hex map objects — a flexible list riding the preset (it
@@ -10351,11 +10413,20 @@ export type CustomMapObject = {
 /** The Obelisk-role config block of a {@link CustomMapPreset}. */
 export type CustomMapObeliskConfig = NonNullable<CustomMapPreset["obelisks"]>;
 
+/** The MAP-WIDE settlement options block of a {@link CustomMapPreset}. */
+export type CustomMapSettlementConfig = NonNullable<CustomMapPreset["settlements"]>;
+
 /** The Grail / Dragon Utopia options block of a {@link CustomMapPreset}. */
 export type CustomMapObjectivesConfig = NonNullable<CustomMapPreset["objectives"]>;
 
 /** One designer-chosen Obelisk visit bonus (role "bonus"). */
-export type CustomMapObeliskBonus = NonNullable<CustomMapObeliskConfig["bonus"]>;
+export type CustomMapObeliskBonus =
+  | { kind: "morale"; amount: 1 }
+  | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
+  | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
+  | { kind: "movement"; amount: number }
+  | { kind: "experience"; amount: number }
+  | { kind: "dice"; treasure: number; resource: number };
 
 /**
  * The Obelisk "bonus" role's default reward when the designer leaves it unset —
@@ -10432,6 +10503,14 @@ export type CustomMapTilePlan = {
    * feature. Cleared for face-up and pure-random slots.
    */
   secretFeature?: SecretTileFeature;
+  /**
+   * Face-down only: restrict the random draw to tiles matching ANY of these
+   * landmarks — e.g. `["valuables_mine", "gold_mine"]` so the tile lands on
+   * valuables OR gold and never rolls stone or a settlement. A single-entry list
+   * behaves exactly like `secretFeature`; the two fold together at read time.
+   * Cleared for face-up and pure-random slots.
+   */
+  secretFeatures?: SecretTileFeature[];
   /** Clockwise 60° steps (0-5, default 0). Honoured face-up and face-down. */
   rotation?: number;
   /**

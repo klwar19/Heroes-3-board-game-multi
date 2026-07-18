@@ -19,6 +19,7 @@ import {
   describeTimedMapEffect,
   describeTimedEventSchedule,
   MAX_CUSTOM_WIN_CONDITIONS,
+  MAX_OBELISK_BONUSES,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
   MAP_PRESET_BUILDING_OPTIONS,
@@ -29,8 +30,10 @@ import {
   TIMED_EFFECT_KIND_LABELS,
   TIMED_EFFECT_KINDS,
   VICTORY_POINT_OBJECTIVE_OPTIONS,
+  type CustomGuardSpec,
   type CustomMapObeliskBonus,
   type CustomMapObeliskConfig,
+  type CustomMapSettlementConfig,
   type CustomMapPreset,
   type CustomMapStartingBonus,
   type CustomMapTimedEffect,
@@ -133,22 +136,82 @@ export function MapPresetEditor({
   const units = value.startingUnits ?? null;
   const bonuses = value.startingBonuses ?? [];
   const timed = value.timedEvents ?? [];
-  const obeliskRole: CustomMapObeliskConfig["role"] | "classic" = value.obelisks?.role ?? "classic";
-  const obeliskBonus: CustomMapObeliskBonus =
-    value.obelisks?.bonus ?? defaultObeliskBonusForKind("morale");
+  const obeliskConfig = value.obelisks;
+  const obeliskRole: CustomMapObeliskConfig["role"] | "classic" = obeliskConfig?.role ?? "classic";
+  const obeliskGuard = obeliskConfig?.guard;
+  // The award list, folding the legacy single `bonus` into a one-item list.
+  const obeliskBonuses: CustomMapObeliskBonus[] =
+    obeliskConfig?.bonuses && obeliskConfig.bonuses.length > 0
+      ? obeliskConfig.bonuses
+      : obeliskConfig?.bonus
+        ? [obeliskConfig.bonus]
+        : [defaultObeliskBonusForKind("morale")];
+  const obeliskBonusMode = obeliskConfig?.bonusMode ?? "all";
 
-  const setObeliskRole = (role: CustomMapObeliskConfig["role"] | "classic") => {
+  // Commit the whole obelisk block from current pieces + explicit overrides.
+  // `guardSet` distinguishes "clear the guard" (guard: undefined) from "leave it".
+  const commitObelisk = (parts: {
+    role?: CustomMapObeliskConfig["role"] | "classic";
+    bonuses?: CustomMapObeliskBonus[];
+    mode?: "all" | "choose";
+    guard?: CustomGuardSpec | undefined;
+    guardSet?: boolean;
+  }) => {
+    const role = parts.role ?? obeliskRole;
     if (role === "classic") {
       patch({ obelisks: undefined });
-    } else if (role === "bonus") {
-      patch({ obelisks: { role: "bonus", bonus: value.obelisks?.bonus ?? defaultObeliskBonusForKind("morale") } });
-    } else {
-      patch({ obelisks: { role } });
+      return;
     }
+    const guard = parts.guardSet ? parts.guard : obeliskGuard;
+    if (role !== "bonus") {
+      patch({ obelisks: { role, ...(guard ? { guard } : {}) } });
+      return;
+    }
+    const list = parts.bonuses ?? obeliskBonuses;
+    const mode = parts.mode ?? obeliskBonusMode;
+    patch({
+      obelisks: {
+        role: "bonus",
+        bonuses: list,
+        ...(mode === "choose" && list.length > 1 ? { bonusMode: "choose" as const } : {}),
+        ...(guard ? { guard } : {})
+      }
+    });
   };
-  const setObeliskBonus = (bonus: CustomMapObeliskBonus) => {
-    patch({ obelisks: { role: "bonus", bonus } });
+  const setObeliskRole = (role: CustomMapObeliskConfig["role"] | "classic") => commitObelisk({ role });
+  const setObeliskGuard = (guard: CustomGuardSpec | undefined) =>
+    commitObelisk({ guard, guardSet: true });
+  const updateObeliskBonus = (index: number, bonus: CustomMapObeliskBonus) =>
+    commitObelisk({ bonuses: obeliskBonuses.map((entry, i) => (i === index ? bonus : entry)) });
+  const addObeliskBonus = () => {
+    if (obeliskBonuses.length >= MAX_OBELISK_BONUSES) return;
+    commitObelisk({ bonuses: [...obeliskBonuses, defaultObeliskBonusForKind("morale")] });
   };
+  const removeObeliskBonus = (index: number) => {
+    if (obeliskBonuses.length <= 1) return;
+    commitObelisk({ bonuses: obeliskBonuses.filter((_, i) => i !== index) });
+  };
+  const setObeliskBonusMode = (mode: "all" | "choose") => commitObelisk({ mode });
+
+  // Map-wide settlement options (guard + extra VP each).
+  const settlementConfig = value.settlements;
+  const settlementGuard = settlementConfig?.guard;
+  const settlementVp = settlementConfig?.vp ?? 0;
+  const commitSettlements = (parts: {
+    guard?: CustomGuardSpec | undefined;
+    guardSet?: boolean;
+    vp?: number;
+  }) => {
+    const guard = parts.guardSet ? parts.guard : settlementGuard;
+    const vp = parts.vp !== undefined ? parts.vp : settlementVp;
+    const next: CustomMapSettlementConfig = {};
+    if (guard) next.guard = guard;
+    if (vp > 0) next.vp = vp;
+    patch({ settlements: next.guard || next.vp !== undefined ? next : undefined });
+  };
+  const setSettlementGuard = (guard: CustomGuardSpec | undefined) =>
+    commitSettlements({ guard, guardSet: true });
+  const setSettlementVp = (vp: number) => commitSettlements({ vp });
 
   const objectives = value.objectives ?? {};
   const patchObjectives = (next: NonNullable<CustomMapPreset["objectives"]>) => {
@@ -276,6 +339,7 @@ export function MapPresetEditor({
       (value.customWinConditions?.length ?? 0),
     mapLocations:
       (value.obelisks ? 1 : 0) +
+      (value.settlements ? 1 : 0) +
       (value.objectives ? describeObjectivesConfig(value.objectives).length : 0),
     timedEvents: timed.length,
     designerNote: value.notes ? 1 : 0
@@ -868,26 +932,101 @@ export function MapPresetEditor({
             </button>
           ))}
         </div>
+        {obeliskRole !== "classic" ? (
+          <GuardLevelChips
+            ariaLabel="Obelisk guard"
+            guard={obeliskGuard}
+            label="Guard (fought on first visit)"
+            onChange={setObeliskGuard}
+          />
+        ) : null}
         {obeliskRole === "bonus" ? (
-          <div className="mapPresetObeliskBonus">
-            <RewardGlyph src={obeliskBonusGlyph(obeliskBonus.kind)} title="Selected Obelisk bonus" />
-            <label className="mapPresetTimedKind">
-              Bonus
-              <select
-                aria-label="Obelisk bonus kind"
-                onChange={(e) => setObeliskBonus(defaultObeliskBonusForKind(e.target.value as CustomMapObeliskBonus["kind"]))}
-                value={obeliskBonus.kind}
-              >
-                {MAP_PRESET_OBELISK_BONUS_KINDS.map((kind) => (
-                  <option key={kind.id} value={kind.id}>
-                    {kind.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <ObeliskBonusFields bonus={obeliskBonus} onChange={setObeliskBonus} />
+          <div className="mapPresetObeliskAwards">
+            {obeliskBonuses.length > 1 ? (
+              <div className="mapPresetChipRow" role="group" aria-label="Obelisk reward mode">
+                <button
+                  aria-pressed={obeliskBonusMode === "all"}
+                  className={`mapPresetChip${obeliskBonusMode === "all" ? " active" : ""}`}
+                  onClick={() => setObeliskBonusMode("all")}
+                  title="The visitor gets every reward."
+                  type="button"
+                >
+                  Get all
+                </button>
+                <button
+                  aria-pressed={obeliskBonusMode === "choose"}
+                  className={`mapPresetChip${obeliskBonusMode === "choose" ? " active" : ""}`}
+                  onClick={() => setObeliskBonusMode("choose")}
+                  title="The visiting player picks ONE reward."
+                  type="button"
+                >
+                  Player picks one
+                </button>
+              </div>
+            ) : null}
+            {obeliskBonuses.map((bonus, index) => (
+              <div className="mapPresetObeliskBonus" key={index}>
+                <RewardGlyph src={obeliskBonusGlyph(bonus.kind)} title={`Obelisk reward ${index + 1}`} />
+                <label className="mapPresetTimedKind">
+                  Reward {obeliskBonuses.length > 1 ? index + 1 : ""}
+                  <select
+                    aria-label={`Obelisk reward ${index + 1} kind`}
+                    onChange={(e) =>
+                      updateObeliskBonus(index, defaultObeliskBonusForKind(e.target.value as CustomMapObeliskBonus["kind"]))
+                    }
+                    value={bonus.kind}
+                  >
+                    {MAP_PRESET_OBELISK_BONUS_KINDS.map((kind) => (
+                      <option key={kind.id} value={kind.id}>
+                        {kind.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <ObeliskBonusFields bonus={bonus} onChange={(next) => updateObeliskBonus(index, next)} />
+                {obeliskBonuses.length > 1 ? (
+                  <button
+                    aria-label={`Remove Obelisk reward ${index + 1}`}
+                    className="mapPresetTimedIconButton danger"
+                    onClick={() => removeObeliskBonus(index)}
+                    title="Remove this reward"
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={13} />
+                  </button>
+                ) : null}
+              </div>
+            ))}
+            {obeliskBonuses.length < MAX_OBELISK_BONUSES ? (
+              <button className="mapPresetTimedAdd" onClick={addObeliskBonus} type="button">
+                <Plus aria-hidden="true" size={13} /> Add reward
+              </button>
+            ) : null}
           </div>
         ) : null}
+      </section>
+
+      <section className="mapPresetSection" aria-label="Settlements">
+        <div className="mapPresetSectionLabel">Settlements (map-wide)</div>
+        <small className="mapPresetHint">
+          Make settlements matter: a guard fought the first time each one is flagged, and extra Victory
+          Points for every settlement a player controls (VP mode only — on top of the flat 1 VP each).
+        </small>
+        <GuardLevelChips
+          ariaLabel="Settlement guard"
+          guard={settlementGuard}
+          label="Guard (fought on first flag)"
+          onChange={setSettlementGuard}
+        />
+        <div className="mapPresetResourceRow">
+          <ResourceField
+            label="Bonus VP each"
+            max={10}
+            min={0}
+            value={settlementVp || null}
+            onChange={setSettlementVp}
+          />
+        </div>
       </section>
 
       <section className="mapPresetSection" aria-label="Objectives">
@@ -1112,15 +1251,11 @@ export function MapPresetEditor({
                 <div className="mapPresetTimedHeader">
                   <label className="mapPresetTimedRound">
                     Round
-                    <input
+                    <ClampedNumberInput
                       aria-label={`Timed event ${index + 1} round`}
                       max={30}
                       min={1}
-                      onChange={(e) => {
-                        const round = Math.max(1, Math.min(30, Number(e.target.value) || 1));
-                        updateTimed(index, { ...event, round });
-                      }}
-                      type="number"
+                      onCommit={(round) => updateTimed(index, { ...event, round })}
                       value={event.round}
                     />
                   </label>
@@ -1562,6 +1697,62 @@ function TimedEffectFields({
 }
 
 /** Amount controls for the "bonus" Obelisk role (morale is a fixed +1, no fields). */
+const GUARD_LEVEL_ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
+
+/**
+ * A compact guard picker (None / level Ⅰ–Ⅶ) for a MAP-WIDE guarded field
+ * (Obelisks, Settlements). The engine also supports an exact-army guard, but
+ * these map-wide guards keep the UI simple with a Field-Difficulty level; an
+ * army guard hand-authored in a preset is preserved and labelled.
+ */
+function GuardLevelChips({
+  label,
+  guard,
+  onChange,
+  ariaLabel
+}: {
+  label: string;
+  guard: CustomGuardSpec | undefined;
+  onChange: (guard: CustomGuardSpec | undefined) => void;
+  ariaLabel: string;
+}) {
+  const hasArmy = Boolean(guard?.units && guard.units.length > 0);
+  const level = hasArmy ? undefined : guard?.level;
+  return (
+    <div className="mapPresetObjectiveRow" role="group" aria-label={ariaLabel}>
+      <span className="mapPresetObjectiveLabel">⚔ {label}</span>
+      <div className="mapPresetChipRow">
+        <button
+          aria-pressed={!guard}
+          className={`mapPresetChip${!guard ? " active" : ""}`}
+          onClick={() => onChange(undefined)}
+          title="No guard"
+          type="button"
+        >
+          None
+        </button>
+        {[1, 2, 3, 4, 5, 6, 7].map((lvl) => (
+          <button
+            aria-pressed={level === lvl}
+            className={`mapPresetChip${level === lvl ? " active" : ""}`}
+            key={lvl}
+            onClick={() => onChange({ level: lvl })}
+            title={`Field Difficulty ${lvl} guard`}
+            type="button"
+          >
+            {GUARD_LEVEL_ROMAN[lvl]}
+          </button>
+        ))}
+      </div>
+      {hasArmy ? (
+        <small className="mapPresetHint">
+          A custom army guard ({guard?.units?.length} units) is set — pick a level to replace it.
+        </small>
+      ) : null}
+    </div>
+  );
+}
+
 function ObeliskBonusFields({
   bonus,
   onChange
@@ -1631,6 +1822,19 @@ function ObeliskBonusFields({
       </div>
     );
   }
+  if (bonus.kind === "experience") {
+    return (
+      <div className="mapPresetResourceRow">
+        <ResourceField
+          label="Experience +"
+          max={5}
+          min={1}
+          value={bonus.amount}
+          onChange={(amount) => onChange({ kind: "experience", amount: Math.max(1, Math.min(5, amount)) })}
+        />
+      </div>
+    );
+  }
   if (bonus.kind === "dice") {
     return (
       <div className="mapPresetResourceRow">
@@ -1653,6 +1857,63 @@ function ObeliskBonusFields({
   return <small className="mapPresetHint">Each visitor gains a single positive morale token.</small>;
 }
 
+/**
+ * A clearable, clamped numeric input.
+ *
+ * The classic `value={aNumber}` + `Number(e.target.value) || floor` idiom snaps
+ * an emptied field straight back to its floor digit, so a low / single-digit
+ * value can never be typed — you cannot delete the leading digit to fix it
+ * (the reported timed-event "can't remove the first 1, cannot set below 10"
+ * bug). This keeps a local editing draft so the field may be BLANK while the
+ * user retypes; it commits a clamped integer only for a non-empty value, and
+ * reverts to the last committed value on blur when left blank.
+ */
+function ClampedNumberInput({
+  value,
+  min,
+  max,
+  onCommit,
+  className,
+  placeholder,
+  title,
+  "aria-label": ariaLabel
+}: {
+  value: number | null | undefined;
+  min: number;
+  max: number;
+  onCommit: (n: number) => void;
+  className?: string;
+  placeholder?: string;
+  title?: string;
+  "aria-label"?: string;
+}) {
+  const committed = value == null ? "" : String(value);
+  // `draft` is the raw text while editing (null = "show the committed value").
+  // An empty-string draft is a valid transient blank the user can type into.
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      aria-label={ariaLabel}
+      className={className}
+      max={max}
+      min={min}
+      onBlur={() => setDraft(null)}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setDraft(raw);
+        if (raw === "") return; // allow blank while editing; commit nothing yet
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return;
+        onCommit(Math.max(min, Math.min(max, Math.trunc(n))));
+      }}
+      placeholder={placeholder}
+      title={title}
+      type="number"
+      value={draft ?? committed}
+    />
+  );
+}
+
 function ResourceField({
   label,
   value,
@@ -1669,15 +1930,12 @@ function ResourceField({
   return (
     <label className="mapPresetResourceField">
       <span>{label}</span>
-      <input
+      <ClampedNumberInput
         max={max}
         min={min}
-        onChange={(e) =>
-          onChange(Math.max(min, Math.min(max, Number(e.target.value) || 0)))
-        }
-        type="number"
-        value={value ?? ""}
+        onCommit={onChange}
         placeholder="—"
+        value={value}
       />
     </label>
   );
@@ -1713,6 +1971,8 @@ function obeliskBonusGlyph(kind: CustomMapObeliskBonus["kind"]): string {
       return REWARD_GLYPH_ICONS.gold;
     case "movement":
       return REWARD_GLYPH_ICONS.movement;
+    case "experience":
+      return REWARD_GLYPH_ICONS.experience;
     case "dice":
       return REWARD_GLYPH_ICONS.resourceDie;
   }
