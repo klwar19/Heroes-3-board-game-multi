@@ -181,6 +181,61 @@ describe("Game options — tabbed layout", () => {
     expect(toggle.textContent).toContain("BANKS OFF");
   });
 
+  it("Enable-all turns the whole Polish group on in one dispatch (Spell Book side effect included)", () => {
+    const onAction = openOptions();
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
+    const call = onAction.mock.calls.at(-1)?.[0] as {
+      type: string;
+      options: { houseRules: Record<string, boolean>; spellBook?: boolean };
+    };
+    expect(call.type).toBe("SET_GAME_OPTIONS");
+    // Every dependency-free Polish rule flips on in a single action.
+    expect(call.options.houseRules["polish-reduced-starting-bonus"]).toBe(true);
+    expect(call.options.houseRules["polish-wait"]).toBe(true);
+    expect(call.options.houseRules["polish-spell-book"]).toBe(true);
+    // Turning on Polish Spell Book also forces the stash Spell Book off.
+    expect(call.options.spellBook).toBe(false);
+  });
+
+  it("Enable-all skips a dependency-blocked rule (Rolled Bank Sizes without Creature Banks)", () => {
+    const onAction = openOptions(vi.fn(), { creatureBanks: false });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    // Blocked (banks off) → not enabled; a free rule alongside it still turns on.
+    expect(hr["polish-bank-sizes"]).toBeUndefined();
+    expect(hr["polish-reduced-starting-bonus"]).toBe(true);
+  });
+
+  it("with the whole Polish group already on, the group button disables it in one dispatch", () => {
+    const polishOn: Record<string, boolean> = {
+      "split-decks": true,
+      "polish-spell-book": true,
+      "polish-bank-sizes": true,
+      "polish-unit-stacks": true,
+      "polish-reduced-starting-bonus": true,
+      "polish-rule-111": true,
+      "polish-reduced-surrender": true,
+      "polish-random-artifacts": true,
+      "polish-pandora-search": true,
+      "polish-wait": true
+    };
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        ...polishOn
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Disable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    expect(hr["polish-reduced-starting-bonus"]).toBe(false);
+    expect(hr["polish-wait"]).toBe(false);
+  });
+
   it("Mode & Rules wires Event deck, Morale Cards, and Ban Diplomacy", () => {
     const onAction = openOptions();
 

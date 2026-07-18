@@ -6192,6 +6192,59 @@ function OptionRowLabel({
 }
 
 /**
+ * One-click "Enable all / Disable all" for a group of house rules — for players
+ * who run the same package every game. Enabling turns on every rule that CAN be
+ * enabled (dependency-blocked ones like Rolled Bank Sizes without Creature Banks
+ * are skipped); disabling turns the whole group off. All in a single dispatch.
+ */
+function GroupToggleAllButton({
+  rules,
+  groupLabel,
+  houseRules,
+  creatureBanksEnabled,
+  setHouseRules
+}: {
+  rules: (typeof HOUSE_RULES)[number][];
+  groupLabel: string;
+  houseRules: Record<HouseRuleId, boolean>;
+  creatureBanksEnabled: boolean;
+  setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
+}) {
+  const enableable = rules.filter(
+    (rule) => !houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)
+  );
+  const allOn = enableable.length > 0 && enableable.every((rule) => houseRules[rule.id]);
+  const anyOn = rules.some((rule) => houseRules[rule.id]);
+  // Nothing to do only if the group cannot be enabled AND is already all-off.
+  const inert = enableable.length === 0 && !anyOn;
+  const apply = () => {
+    const updates: Partial<Record<HouseRuleId, boolean>> = {};
+    if (allOn) {
+      for (const rule of rules) updates[rule.id] = false;
+    } else {
+      for (const rule of enableable) updates[rule.id] = true;
+    }
+    setHouseRules(updates);
+  };
+  return (
+    <button
+      aria-label={`${allOn ? "Disable" : "Enable"} all ${groupLabel} rules`}
+      className={`houseRuleGroupToggleAll ${allOn ? "on" : "off"}`}
+      disabled={inert}
+      onClick={apply}
+      title={
+        allOn
+          ? `Turn every ${groupLabel} rule off`
+          : `Turn on every ${groupLabel} rule (dependency-blocked rules are skipped)`
+      }
+      type="button"
+    >
+      {allOn ? "Disable all" : "Enable all"}
+    </button>
+  );
+}
+
+/**
  * The individual house-rule toggles, rendered straight from the engine registry
  * so the menu and the engine never drift. Each button flips exactly one rule
  * (the reducer merges it); the value shown is the resolved effective boolean.
@@ -6202,11 +6255,13 @@ function OptionRowLabel({
 function HouseRulesSection({
   houseRules,
   creatureBanksEnabled,
-  setHouseRule
+  setHouseRule,
+  setHouseRules
 }: {
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
+  setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
 }) {
   // Default minimized — expand only when the host digs into the checklist.
   const [binhOpen, setBinhOpen] = useState(false);
@@ -6248,7 +6303,16 @@ function HouseRulesSection({
           }
           return (
             <div className="houseRuleGroup" key={category}>
-              <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+              <div className="houseRuleGroupHeader">
+                <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+                <GroupToggleAllButton
+                  creatureBanksEnabled={creatureBanksEnabled}
+                  groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
+                  houseRules={houseRules}
+                  rules={rules}
+                  setHouseRules={setHouseRules}
+                />
+              </div>
               <div className="houseRuleGrid">
                 {rules.map((rule) => (
                   <HouseRuleToggleButton
@@ -6285,6 +6349,16 @@ function HouseRulesSection({
         variant="polish"
       >
         <div className="houseRuleGroup polish">
+          <div className="houseRuleGroupHeader">
+            <span className="houseRuleGroupLabel">Whole Polish package</span>
+            <GroupToggleAllButton
+              creatureBanksEnabled={creatureBanksEnabled}
+              groupLabel="Polish"
+              houseRules={houseRules}
+              rules={polishRules}
+              setHouseRules={setHouseRules}
+            />
+          </div>
           <div className="houseRuleGrid">
             {polishRules.map((rule) => (
               <HouseRuleToggleButton
@@ -6376,6 +6450,16 @@ function GameOptionsPanel({
       return;
     }
     send({ houseRules: { [id]: value } });
+  };
+  // Flip a whole group of rules in ONE dispatch (the reducer merges the ids).
+  // Enabling the Polish Spell Book also forces the stash Spell Book off, exactly
+  // like the single-rule toggle above.
+  const setHouseRules = (updates: Partial<Record<HouseRuleId, boolean>>) => {
+    const next: Partial<GameSetupOptions> = { houseRules: updates };
+    if (updates["polish-spell-book"]) {
+      next.spellBook = false;
+    }
+    send(next);
   };
   const tournamentRules = resolveTournamentRules(options);
   const tournamentAllOn = tournamentRulesAllOn(options);
@@ -6866,6 +6950,7 @@ function GameOptionsPanel({
         creatureBanksEnabled={options.creatureBanks ?? true}
         houseRules={houseRules}
         setHouseRule={setHouseRule}
+        setHouseRules={setHouseRules}
       />
       </div>
       ) : null}
