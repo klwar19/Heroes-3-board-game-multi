@@ -4386,6 +4386,23 @@ button.battleCell {
   pointer-events: none;
 }
 
+/* Designer-ALTERED guard: a faint amber outline on the hex + a small gear so an
+   altered neutral fight (custom army / level / forced settlement) reads at a
+   glance. The tooltip and the pre-attack confirm carry the detail. */
+.hexCell.alteredGuard {
+  stroke: #e6b34a;
+  stroke-width: 2.2;
+}
+
+.hexAlteredGuard {
+  fill: #ffd98a;
+  font-size: 9px;
+  paint-order: stroke;
+  stroke: rgba(20, 12, 4, 0.92);
+  stroke-width: 2.2;
+  pointer-events: none;
+}
+
 /* The Creature Bank a tile drew at reveal, named on its Blocked Field while the
    player rotates (so they know the bank before committing the rotation). */
 .hexBankLabel {
@@ -8368,6 +8385,32 @@ button.hbSlot:disabled { cursor: default; }
 .mapFloatCard.passive {
   border-color: rgba(170, 130, 70, 0.45);
   color: #d6bd92;
+}
+
+/* Pre-attack warning for a designer-ALTERED neutral fight (custom army/level/
+   forced settlement): a red-tinted note with what the hero will face. */
+.mapFloatCard.alteredGuardConfirm {
+  border-color: rgba(224, 121, 109, 0.85);
+}
+
+.alteredGuardWarn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 2px;
+  padding: 5px 7px;
+  background: rgba(70, 26, 22, 0.6);
+  border: 1px solid rgba(224, 121, 109, 0.6);
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.25;
+  color: #f6d9cf;
+}
+
+.alteredGuardWarn strong {
+  color: #ffccb8;
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 .mapFloatCard.passive small {

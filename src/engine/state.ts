@@ -7835,6 +7835,16 @@ export type MapFieldState = {
    */
   customGuardLevel?: number;
   /**
+   * Whether this field's guard was set by the MAP DESIGNER (a {@link CustomGuardSpec}
+   * — exact army OR level — a map-wide settlement/obelisk guard, or a center-hex
+   * guard) rather than a printed field difficulty. Set alongside the guard by
+   * {@link applyCustomGuardToField} and the settlement/center stamp sites, cleared
+   * with the guard. Purely informational: it flags an "altered" neutral fight so
+   * the map can show it and warn the player before they attack. Absent on printed
+   * guards and legacy snapshots.
+   */
+  designedGuard?: boolean;
+  /**
    * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
    * sacrificed hex's `location` becomes "subterranean_gate" and these point at
    * the tile on the OTHER layer the gate bridges:

@@ -291,8 +291,10 @@ export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuard
   if (guard.units && guard.units.length > 0) {
     field.customGuardUnits = [...guard.units];
     field.difficulty = customGuardArmyDifficulty(guard.units);
+    field.designedGuard = true;
   } else if (guard.level) {
     field.difficulty = guard.level;
+    field.designedGuard = true;
   }
 }
 
@@ -301,6 +303,33 @@ export function clearCustomGuard(field: MapFieldState): void {
   delete field.difficulty;
   delete field.customGuardUnits;
   delete field.customGuardLevel;
+  delete field.designedGuard;
+}
+
+/**
+ * A DESIGNER-ALTERED guard fight the player is about to enter, or null for a
+ * printed guard / no guard. Used to SHOW the altered fight on the map and to
+ * WARN the player before they attack it (the map designer changed this field's
+ * neutral guard — a forced settlement fight, a custom level, or an exact army).
+ * A field.customGuardUnits guard previews its EXACT units; a level/settlement
+ * guard can only preview the Field-Difficulty level (the army is drawn at fight
+ * time). The names come from each unit definition.
+ */
+export type DesignedGuardPreview = {
+  /** Field-Difficulty level (1–7) the guard fights at. */
+  difficulty: number;
+  /** Exact guard unit display names (empty for a level/settlement guard). */
+  units: string[];
+};
+
+export function designedGuardPreview(field: MapFieldState | undefined): DesignedGuardPreview | null {
+  if (!field || !field.designedGuard) {
+    return null;
+  }
+  const units = (field.customGuardUnits ?? []).map(
+    (unitDefId) => coreUnitDefinitions[unitDefId]?.name ?? unitDefId
+  );
+  return { difficulty: field.difficulty ?? 0, units };
 }
 
 /**
@@ -759,12 +788,9 @@ export function materializeTileFields(
       if (centerHex?.vp !== undefined) {
         field.centerHexVp = centerHex.vp;
       }
-      if (centerHex?.guard?.units && centerHex.guard.units.length > 0) {
-        field.customGuardUnits = [...centerHex.guard.units];
-        field.difficulty = customGuardArmyDifficulty(centerHex.guard.units);
-      } else if (centerHex?.guard?.level) {
-        field.difficulty = centerHex.guard.level;
-      }
+      // Shared stamp (sets designedGuard) so a center-hex guard is flagged as
+      // designer-altered exactly like a token / settlement / obelisk guard.
+      applyCustomGuardToField(field, centerHex?.guard);
       if (tile.viiField) {
         if (tile.viiFieldReward && !field.centerHexReward) {
           field.centerHexReward = tile.viiFieldReward;

@@ -159,3 +159,73 @@ describe("map floating cards — rendered as HTML overlays, not SVG foreignObjec
     expect(container.querySelector("foreignObject")).toBeNull();
   });
 });
+
+describe("map floating cards — designer altered-guard preview + confirm", () => {
+  /** A p1 turn with a reachable, guarded neighbour — optionally designer-altered. */
+  function guardedNeighbour(seed: string, altered: boolean): { state: GameState; spaceId: string } {
+    let state = createAdventureGameState({ seed, rollFirstPlayer: false });
+    state.activePlayerId = "p1";
+    if (state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    // Ample movement so stepping onto the neighbour is a normal target (not an
+    // end-of-turn move, which would dispatch directly with no confirm float).
+    state.heroes.hero_p1!.movementPoints = 5;
+    const heroSpace = state.heroes.hero_p1!.spaceId as string;
+    for (const spaceId of getAdjacentSpaceIds(heroSpace)) {
+      const field = state.adventure!.fields[spaceId];
+      if (!field) {
+        continue;
+      }
+      field.location = "empty_field";
+      field.difficulty = 2;
+      field.blackCube = false;
+      field.flagOwnerId = null;
+      field.everFlagged = false;
+      delete field.customGuardUnits;
+      delete field.designedGuard;
+      if (altered) {
+        field.designedGuard = true;
+        field.customGuardUnits = ["neutral.cyclopes", "neutral.troglodytes"];
+      }
+      if (canCrossEdge(state, heroSpace, spaceId)) {
+        return { state, spaceId };
+      }
+    }
+    throw new Error("need a crossable guarded neighbour");
+  }
+
+  it("marks the hex and warns with the guard's army + an Attack button before an altered fight", () => {
+    const { state, spaceId } = guardedNeighbour("altered-guard-confirm", true);
+    const { container } = renderBoard(state);
+    // The map flags the altered fight at a glance (gear + data attribute).
+    expect(container.querySelector('[data-altered-guard="true"]')).toBeTruthy();
+    expect(container.querySelector(".hexAlteredGuard")).toBeTruthy();
+
+    const hex = container.querySelector(`.hexCell[data-space-id="${spaceId}"]`) as HTMLElement;
+    expect(hex, "the altered guarded neighbour hex").toBeTruthy();
+    fireEvent.click(hex);
+
+    const float = container.querySelector(".moveConfirmFloat") as HTMLElement;
+    expect(float, "the move-confirm float").toBeTruthy();
+    const warn = float.querySelector(".alteredGuardWarn");
+    expect(warn, "the altered-guard warning").toBeTruthy();
+    expect(warn!.textContent).toContain("Cyclopes");
+    expect(warn!.textContent).toContain("Troglodytes");
+    // The primary button reads "Attack", not "Move there".
+    expect(within(float).getByRole("button", { name: /Attack/i })).toBeTruthy();
+  });
+
+  it("CONTROL: a PRINTED guard shows the plain Move there, no altered warning", () => {
+    const { state, spaceId } = guardedNeighbour("printed-guard-confirm", false);
+    const { container } = renderBoard(state);
+    expect(container.querySelector('[data-altered-guard="true"]')).toBeNull();
+
+    const hex = container.querySelector(`.hexCell[data-space-id="${spaceId}"]`) as HTMLElement;
+    fireEvent.click(hex);
+    const float = container.querySelector(".moveConfirmFloat") as HTMLElement;
+    expect(float).toBeTruthy();
+    expect(float.querySelector(".alteredGuardWarn")).toBeNull();
+    expect(within(float).getByRole("button", { name: /Move there/i })).toBeTruthy();
+  });
+});
