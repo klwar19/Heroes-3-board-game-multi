@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChevronDown, ChevronUp, Crown, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
+import { ChevronDown, ChevronUp, Crown, Hourglass, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { UNIT_RANK_NAMES } from "@/data/units/experience";
@@ -1374,6 +1374,18 @@ export function BattlefieldBoard({
                   <Swords aria-hidden="true" size={9} /> no counter
                 </span>
               ) : null}
+              {/* Polish Wait: an hourglass marks a unit that has Waited this
+                  round — it re-activates after all others, highest token first. */}
+              {unit?.waitPending ? (
+                <span
+                  className="waitBadge"
+                  title={`Waited — re-activates after the other units this round${
+                    unit.waitToken ? ` (wait token ${unit.waitToken})` : ""
+                  }.`}
+                >
+                  <Hourglass aria-hidden="true" size={9} /> Wait
+                </span>
+              ) : null}
             </article>
           ) : (
             tokenMark ?? <span className="emptyBoardMark" aria-hidden="true" />
@@ -1677,16 +1689,21 @@ export function InitiativeRail({ state }: { state: GameState }) {
         // see at a glance that a spell sped a unit up or slowed it down.
         const init = effectiveInitiative(unit, state.activeEffects);
         const delta = init - unit.initiative;
+        // A Waited unit is NOT "done" — getActivationOrder re-queues it later
+        // this round, so it stays ungreyed and wears an hourglass here.
+        const isDone = unit.activatedThisRound && !unit.waitPending;
         return (
           <button
             className={`initCard ${unit.controllerId} ${state.combat?.activeUnitId === unit.id ? "active" : ""} ${
-              unit.activatedThisRound ? "done" : ""
-            }`}
+              isDone ? "done" : ""
+            } ${unit.waitPending ? "waited" : ""} ${unit.defenseToken ? "defending" : ""}`}
             key={unit.id}
             onClick={() => zoomUnit(unit)}
             title={`${index + 1}. ${unit.cardName} — initiative ${init}${
               delta !== 0 ? ` (base ${unit.initiative}, ${delta > 0 ? "+" : ""}${delta} from effects)` : ""
-            }${unit.activatedThisRound ? " (already activated)" : ""}. Click to read the card.`}
+            }${isDone ? " (already activated)" : ""}${
+              unit.waitPending ? ` (Waited — acts after the others, token ${unit.waitToken ?? "?"})` : ""
+            }${unit.defenseToken ? " (Defending — +1 Defense when struck)" : ""}. Click to read the card.`}
             type="button"
           >
             {unit.assets?.cardImage ? (
@@ -1695,6 +1712,17 @@ export function InitiativeRail({ state }: { state: GameState }) {
               <span className="initCardFallback">{unit.name}</span>
             )}
             <b className={`initBadge ${delta > 0 ? "boosted" : delta < 0 ? "slowed" : ""}`}>{init}</b>
+            {unit.waitPending ? (
+              <span className="initWaitMark" aria-hidden="true" title="Waited">
+                <Hourglass size={9} />
+                {unit.waitToken ?? ""}
+              </span>
+            ) : null}
+            {unit.defenseToken ? (
+              <span className="initDefendMark" aria-hidden="true" title="Defending">
+                <Shield size={9} />
+              </span>
+            ) : null}
           </button>
         );
       })}

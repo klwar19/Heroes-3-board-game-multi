@@ -84,6 +84,70 @@ describe("InitiativeRail — the order stripe tracks Haste/Slow, not just printe
   });
 });
 
+describe("InitiativeRail — Polish Wait and Defend markers", () => {
+  function findCard(container: HTMLElement, cardName: string): HTMLElement {
+    const button = within(container)
+      .getAllByRole("button")
+      .find((element) => (element.getAttribute("title") ?? "").includes(cardName));
+    if (!button) {
+      throw new Error(`No initiative card for ${cardName}`);
+    }
+    return button;
+  }
+
+  it("marks a Waited unit with an hourglass, un-greys it, and moves it to the TAIL of the rail", () => {
+    const state = createInitialGameState("rail-wait-ui");
+    const marksmen = state.combat!.units[HASTED_UNIT];
+    // Make it the fastest, so without the wait it would LEAD the rail…
+    marksmen.initiative = 30;
+    // …but it Waited: it acted in the main phase and re-queues at the tail.
+    marksmen.activatedThisRound = true;
+    marksmen.waitPending = true;
+    marksmen.waitToken = 1;
+
+    const { container } = render(
+      <CardZoomProvider>
+        <InitiativeRail state={state} />
+      </CardZoomProvider>
+    );
+    const card = findCard(container, marksmen.cardName);
+    // Wears the wait class + hourglass mark, and is NOT greyed as "done".
+    expect(card.className).toContain("waited");
+    expect(card.className).not.toContain("done");
+    expect(card.querySelector(".initWaitMark")).toBeTruthy();
+
+    // Despite being the fastest, it is the LAST card in the order stripe.
+    const initCards = within(container)
+      .getAllByRole("button")
+      .filter((element) => element.querySelector(".initBadge"));
+    expect(initCards[initCards.length - 1]).toBe(card);
+  });
+
+  it("marks a Defending unit with a shield", () => {
+    const state = createInitialGameState("rail-defend-ui");
+    const unit = state.combat!.units[HASTED_UNIT];
+    unit.defenseToken = true;
+    const { container } = render(
+      <CardZoomProvider>
+        <InitiativeRail state={state} />
+      </CardZoomProvider>
+    );
+    const card = findCard(container, unit.cardName);
+    expect(card.className).toContain("defending");
+    expect(card.querySelector(".initDefendMark")).toBeTruthy();
+
+    // CONTROL: an un-defending unit shows no shield.
+    cleanup();
+    const fresh = createInitialGameState("rail-defend-none");
+    const { container: freshContainer } = render(
+      <CardZoomProvider>
+        <InitiativeRail state={fresh} />
+      </CardZoomProvider>
+    );
+    expect(freshContainer.querySelectorAll(".initDefendMark")).toHaveLength(0);
+  });
+});
+
 describe("InspectPanel — the unit card definition reflects the effective initiative", () => {
   it("prints the Haste-boosted initiative (with the base noted), not the printed value", () => {
     const state = createInitialGameState("hand-cast-expert");

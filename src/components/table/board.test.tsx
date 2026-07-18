@@ -1447,3 +1447,35 @@ describe("BattlefieldBoard — a berserked unit cannot move freely", () => {
     expect(onAction.mock.calls.some(([action]) => (action as GameAction).type === "MOVE_UNIT")).toBe(false);
   });
 })
+
+describe("BattlefieldBoard — Polish Wait hourglass badge", () => {
+  function renderBoard(state: GameState) {
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("marks a Waited unit with an hourglass badge; CONTROL: none on a fresh board", () => {
+    const fresh = createInitialGameState("wait-badge-none");
+    renderBoard(fresh);
+    expect(document.querySelectorAll(".waitBadge")).toHaveLength(0);
+    cleanup();
+
+    const waited = createInitialGameState("wait-badge");
+    waited.combat!.units.unit_p1_marksmen.waitPending = true;
+    waited.combat!.units.unit_p1_marksmen.waitToken = 1;
+    renderBoard(waited);
+    const badges = document.querySelectorAll(".waitBadge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toContain("Wait");
+  });
+})
