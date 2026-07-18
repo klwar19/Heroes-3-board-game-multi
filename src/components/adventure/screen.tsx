@@ -6,7 +6,7 @@ import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Ban, Castle, Check, ChevronsUp, Crown, Dices, Fence, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
+import { Ban, Castle, Check, ChevronDown, ChevronsUp, Crown, Dices, Fence, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { HelperCoachLobbyPrompt } from "@/components/table/helper-coach-ui";
 import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
 import { cardLibrary } from "@/data/cards/library";
@@ -5935,16 +5935,24 @@ function MapPicker({
 
 function ResourceStepper({
   label,
+  iconSrc,
   value,
   onChange
 }: {
   label: string;
+  /** Board-game resource token art (gold coin / materials / valuables). */
+  iconSrc?: string;
   value: number;
   onChange: (next: number) => void;
 }) {
   return (
     <div className="optionStepper">
-      <small>{label}</small>
+      <small className="optionStepperLabel">
+        {iconSrc ? (
+          <img alt="" aria-hidden="true" className="optionStepperIcon" decoding="async" src={assetUrl(iconSrc)} />
+        ) : null}
+        <span>{label}</span>
+      </small>
       <div>
         <button aria-label={`Decrease ${label}`} onClick={() => onChange(Math.max(0, value - 1))} type="button">
           <Minus size={11} />
@@ -5976,10 +5984,186 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   polish: "Polish house rule type 1"
 };
 
+const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat"] as const;
+
+function houseRuleToggleDisabled(
+  ruleId: HouseRuleId,
+  houseRules: Record<HouseRuleId, boolean>,
+  creatureBanksEnabled: boolean
+): boolean {
+  return (
+    (ruleId === "polish-bank-sizes" && !creatureBanksEnabled) ||
+    (ruleId === "polish-random-artifacts" && !houseRules["split-decks"])
+  );
+}
+
+function HouseRuleToggleButton({
+  rule,
+  on,
+  disabled,
+  onToggle
+}: {
+  rule: (typeof HOUSE_RULES)[number];
+  on: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={on}
+      className={`houseRuleToggle ${on ? "on" : "off"} ${disabled ? "disabled" : ""}`}
+      disabled={disabled}
+      onClick={onToggle}
+      title={
+        disabled
+          ? rule.id === "polish-random-artifacts"
+            ? `${rule.description} Turn Split Spell/Artifact decks on first.`
+            : `${rule.description} Turn Creature Banks on in Map & Setup first.`
+          : rule.description
+      }
+      type="button"
+    >
+      <span aria-hidden="true" className="houseRuleCheck">
+        {on ? <Check size={13} /> : null}
+      </span>
+      <span className="houseRuleText">
+        <strong>{rule.label}</strong>
+        <small>{rule.description}</small>
+      </span>
+      <span className={`houseRuleState ${on ? "on" : "off"}`}>
+        {disabled ? "BANKS OFF" : on ? "ON" : "OFF"}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Collapsible panel for a bundle of house-rule checkboxes. Stays in place —
+ * only the body expands/collapses. Default is minimized so the Mode & Rules
+ * tab stays short, with a clear "expand" affordance on the header.
+ */
+function HouseRuleCollapsible({
+  id,
+  title,
+  subtitle,
+  crestSrc,
+  crestClassName,
+  open,
+  onToggle,
+  onCount,
+  totalCount,
+  children,
+  variant = "binh"
+}: {
+  id: string;
+  title: string;
+  subtitle: string;
+  crestSrc?: string;
+  crestClassName?: string;
+  open: boolean;
+  onToggle: () => void;
+  onCount: number;
+  totalCount: number;
+  children: ReactNode;
+  variant?: "binh" | "polish" | "tournament";
+}) {
+  const panelId = `${id}-panel`;
+  return (
+    <div className={`houseRuleCollapsible ${variant} ${open ? "open" : "collapsed"}`}>
+      <button
+        aria-controls={panelId}
+        aria-expanded={open}
+        className="houseRuleCollapsibleHead"
+        onClick={onToggle}
+        title={open ? `Collapse ${title}` : `Expand ${title} — show all toggles`}
+        type="button"
+      >
+        <span className="houseRuleCollapsibleLead">
+          {crestSrc ? (
+            <img alt="" aria-hidden="true" className={crestClassName ?? "houseRuleCollapsibleCrest"} src={crestSrc} />
+          ) : null}
+          <span className="houseRuleCollapsibleTitles">
+            <strong>{title}</strong>
+            <small>{subtitle}</small>
+          </span>
+        </span>
+        <span className="houseRuleCollapsibleMeta">
+          <span className={`houseRuleCollapsibleCount ${onCount > 0 ? "hasOn" : ""}`} title={`${onCount} of ${totalCount} on`}>
+            {onCount}/{totalCount} on
+          </span>
+          <span className={`houseRuleCollapsibleChevron ${open ? "open" : ""}`} aria-hidden="true">
+            <ChevronDown size={16} strokeWidth={2.5} />
+          </span>
+          <span className="houseRuleCollapsibleHint">{open ? "Minimize" : "Expand"}</span>
+        </span>
+      </button>
+      {open ? (
+        <div className="houseRuleCollapsibleBody" id={panelId} role="region" aria-label={title}>
+          {children}
+        </div>
+      ) : (
+        <button
+          aria-controls={panelId}
+          className="houseRuleCollapsiblePeek"
+          onClick={onToggle}
+          type="button"
+        >
+          <span className="houseRuleCollapsiblePeekDots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+          <span>Click to expand full checklist · {totalCount} rules</span>
+          <ChevronDown size={14} aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Label strip for an option row — optional crest/card-back art + title text. */
+function OptionRowLabel({
+  title,
+  hint,
+  iconSrc,
+  iconClassName,
+  icons
+}: {
+  title: string;
+  hint?: string;
+  iconSrc?: string;
+  iconClassName?: string;
+  /** Multiple icons (e.g. positive + negative morale backs). */
+  icons?: string[];
+}) {
+  const srcs = icons?.length ? icons : iconSrc ? [iconSrc] : [];
+  return (
+    <span className="optionRowLabel" title={hint}>
+      {srcs.length > 0 ? (
+        <span className={`optionRowIcons ${srcs.length > 1 ? "pair" : ""}`} aria-hidden="true">
+          {srcs.map((src) => (
+            <img
+              alt=""
+              className={iconClassName ?? "optionRowIcon"}
+              decoding="async"
+              key={src}
+              src={assetUrl(src)}
+            />
+          ))}
+        </span>
+      ) : null}
+      <span className="optionRowLabelText">{title}</span>
+    </span>
+  );
+}
+
 /**
  * The individual house-rule toggles, rendered straight from the engine registry
  * so the menu and the engine never drift. Each button flips exactly one rule
  * (the reducer merges it); the value shown is the resolved effective boolean.
+ *
+ * BINH core rules and Polish type-1 rules each live in their own collapsible
+ * panel (default minimized) so the Mode & Rules tab stays scannable.
  */
 function HouseRulesSection({
   houseRules,
@@ -5990,79 +6174,96 @@ function HouseRulesSection({
   creatureBanksEnabled: boolean;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
 }) {
-  const categories = ["decks", "units", "abilities", "combat", "polish"] as const;
+  // Default minimized — expand only when the host digs into the checklist.
+  const [binhOpen, setBinhOpen] = useState(false);
+  const [polishOpen, setPolishOpen] = useState(false);
+
+  const binhRules = HOUSE_RULES.filter((rule) =>
+    (BINH_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
+  );
+  const polishRules = HOUSE_RULES.filter((rule) => rule.category === "polish");
+  const binhOn = binhRules.filter((rule) => houseRules[rule.id]).length;
+  const polishOn = polishRules.filter((rule) => houseRules[rule.id]).length;
+
   return (
     <div className="houseRuleSection" aria-label="House rules">
       <div className="houseRuleHead">
         <strong>House rules</strong>
         <small>
           BINH starts with its core tweaks on. Polish house rule type 1 stays opt-in, and Legacy clears every rule.
+          Expand a section to flip individual checkboxes.
         </small>
       </div>
-      {categories.map((category) => {
-        const rules = HOUSE_RULES.filter((rule) => rule.category === category);
-        if (rules.length === 0) {
-          return null;
-        }
-        return (
-          <div className={`houseRuleGroup ${category === "polish" ? "polish" : ""}`} key={category}>
-            <span className="houseRuleGroupLabel">
-              {category === "polish" ? (
-                <img
-                  alt=""
-                  aria-hidden="true"
-                  className="polishRuleCrest"
-                  src={assetUrl("/assets/ui/polish-house-rules-flag.webp")}
-                />
-              ) : null}
-              {HOUSE_RULE_CATEGORY_LABELS[category]}
-            </span>
-            <div className="houseRuleGrid">
-              {rules.map((rule) => {
-                const on = houseRules[rule.id];
-                const disabled =
-                  (rule.id === "polish-bank-sizes" && !creatureBanksEnabled) ||
-                  (rule.id === "polish-random-artifacts" && !houseRules["split-decks"]);
-                return (
-                  <button
-                    aria-pressed={on}
-                    className={`houseRuleToggle ${on ? "on" : "off"} ${disabled ? "disabled" : ""}`}
-                    disabled={disabled}
+
+      <HouseRuleCollapsible
+        crestSrc={assetUrl("/assets/ui/mode-binh-crest-clear.webp")}
+        crestClassName="houseRuleCollapsibleCrest binh"
+        id="binh-house-rules"
+        onCount={binhOn}
+        onToggle={() => setBinhOpen((v) => !v)}
+        open={binhOpen}
+        subtitle="Core BINH tweaks — decks, units, abilities, combat & map"
+        title="BINH house rules"
+        totalCount={binhRules.length}
+        variant="binh"
+      >
+        {BINH_HOUSE_RULE_CATEGORIES.map((category) => {
+          const rules = binhRules.filter((rule) => rule.category === category);
+          if (rules.length === 0) {
+            return null;
+          }
+          return (
+            <div className="houseRuleGroup" key={category}>
+              <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+              <div className="houseRuleGrid">
+                {rules.map((rule) => (
+                  <HouseRuleToggleButton
+                    disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
                     key={rule.id}
-                    onClick={() => setHouseRule(rule.id, !on)}
-                    title={
-                      disabled
-                        ? rule.id === "polish-random-artifacts"
-                          ? `${rule.description} Turn Split Spell/Artifact decks on first.`
-                          : `${rule.description} Turn Creature Banks on in Map & Setup first.`
-                        : rule.description
-                    }
-                    type="button"
-                  >
-                    <span aria-hidden="true" className="houseRuleCheck">
-                      {on ? <Check size={13} /> : null}
-                    </span>
-                    <span className="houseRuleText">
-                      <strong>{rule.label}</strong>
-                      <small>{rule.description}</small>
-                    </span>
-                    <span className={`houseRuleState ${on ? "on" : "off"}`}>
-                      {disabled ? "BANKS OFF" : on ? "ON" : "OFF"}
-                    </span>
-                  </button>
-                );
-              })}
+                    on={houseRules[rule.id]}
+                    onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
+                    rule={rule}
+                  />
+                ))}
+              </div>
             </div>
+          );
+        })}
+        <p className="houseRuleAlwaysOn">
+          <Info size={11} aria-hidden="true" />
+          <span>
+            Earthquake already matches the wiki, so there is nothing to toggle — its Power-2 collapse of the Arrow Tower
+            is the standard “a full breach fells the tower” rule, not a buff.
+          </span>
+        </p>
+      </HouseRuleCollapsible>
+
+      <HouseRuleCollapsible
+        crestSrc={assetUrl("/assets/ui/polish-house-rules-flag.webp")}
+        crestClassName="houseRuleCollapsibleCrest polish"
+        id="polish-house-rules"
+        onCount={polishOn}
+        onToggle={() => setPolishOpen((v) => !v)}
+        open={polishOpen}
+        subtitle="Optional competitive Polish package — all opt-in, default off"
+        title="Polish house rule type 1"
+        totalCount={polishRules.length}
+        variant="polish"
+      >
+        <div className="houseRuleGroup polish">
+          <div className="houseRuleGrid">
+            {polishRules.map((rule) => (
+              <HouseRuleToggleButton
+                disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
+                key={rule.id}
+                on={houseRules[rule.id]}
+                onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
+                rule={rule}
+              />
+            ))}
           </div>
-        );
-      })}
-      <p className="houseRuleAlwaysOn">
-        <Info size={11} aria-hidden="true" />
-        <span>
-          Earthquake already matches the wiki, so there is nothing to toggle — its Power-2 collapse of the Arrow Tower
-          is the standard “a full breach fells the tower” rule, not a buff.
-        </span>
-      </p>
+        </div>
+      </HouseRuleCollapsible>
     </div>
   );
 }
@@ -6075,24 +6276,31 @@ const SETUP_MODE_CARDS: {
   label: string;
   blurb: string;
   hint: string;
+  /** Optional crest art under public/assets/ui (passed through assetUrl). */
+  iconSrc?: string;
 }[] = [
   {
     id: "legacy",
     label: "Legacy",
     blurb: "Printed rulebook",
-    hint: "Turns every house rule off. Toggles stay free — re-enable any rule you want."
+    hint: "Turns every house rule off. Toggles stay free — re-enable any rule you want.",
+    // Falls back to a book-ish glyph if the crest is not yet present.
+    iconSrc: "/assets/ui/mode-legacy-crest-clear.webp"
   },
   {
     id: "binh",
     label: "BINH",
     blurb: "House-rule edition",
-    hint: "Default fan edition: every house rule on, Spell Book on. Mods (WOG) stay free to toggle."
+    hint: "Default fan edition: every house rule on, Spell Book on. Mods (WOG) stay free to toggle.",
+    // Classic griffin-on-blue-shield crest (transparent, blends into the panel).
+    iconSrc: "/assets/ui/mode-binh-crest-clear.webp"
   },
   {
     id: "tournament",
     label: "Tournament",
     blurb: "Competitive preset",
-    hint: "House rules off, tournament bans on, Hard difficulty, Neutral AI, Diplomacy banned."
+    hint: "House rules off, tournament bans on, Hard difficulty, human-controlled Neutrals, Diplomacy banned.",
+    iconSrc: "/assets/ui/mode-tournament-crest-clear.webp"
   }
 ];
 
@@ -6113,6 +6321,7 @@ function GameOptionsPanel({
 }) {
   const [wogOptionsOpen, setWogOptionsOpen] = useState(false);
   const [modeNotice, setModeNotice] = useState<string | null>(null);
+  const [tournamentRulesOpen, setTournamentRulesOpen] = useState(false);
   const [tab, setTab] = useState<OptionsTabId>("rules");
   const lobby = state.setupLobby;
   if (!lobby) {
@@ -6180,6 +6389,7 @@ function GameOptionsPanel({
       return;
     }
     // Tournament competitive preset — turns WOG off with the competitive package.
+    // Neutrals default to human control (next player clockwise plays the guards).
     send({
       ruleset: "legacy",
       wog: { ...wog, enabled: false },
@@ -6189,13 +6399,13 @@ function GameOptionsPanel({
       tournamentBanHourglass: true,
       tournamentSecondPlayerMorale: true,
       difficulty: "hard",
-      pvpNeutralControl: false,
+      pvpNeutralControl: true,
       events: false,
       moraleCards: false
     });
     setModeNotice(
       "Tournament mode applied: house rules off, Diplomacy + Hourglass banned, second player +1 morale, " +
-        "Hard difficulty, and Neutral units stay under the AI. Toggles below stay free if you need to adjust."
+        "Hard difficulty, and Neutrals under human control (next player clockwise). Toggles below stay free if you need to adjust."
     );
   };
 
@@ -6232,15 +6442,26 @@ function GameOptionsPanel({
           {SETUP_MODE_CARDS.map((card) => (
             <button
               aria-pressed={activeSetupMode === card.id}
-              className={`modePresetCard ${activeSetupMode === card.id ? "selected" : ""}`}
+              className={`modePresetCard mode-${card.id} ${activeSetupMode === card.id ? "selected" : ""}`}
               key={card.id}
               onClick={() => applySetupMode(card.id)}
               title={card.hint}
               type="button"
             >
-              <strong>{card.label}</strong>
-              <span>{card.blurb}</span>
-              <small>{card.hint}</small>
+              {card.iconSrc ? (
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="modePresetIcon"
+                  decoding="async"
+                  src={assetUrl(card.iconSrc)}
+                />
+              ) : null}
+              <span className="modePresetCardText">
+                <strong>{card.label}</strong>
+                <span>{card.blurb}</span>
+                <small>{card.hint}</small>
+              </span>
             </button>
           ))}
         </div>
@@ -6248,58 +6469,10 @@ function GameOptionsPanel({
           {activeSetupMode === "legacy"
             ? RULESET_DESCRIPTIONS.legacy
             : activeSetupMode === "tournament"
-            ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + Neutral AI."
+            ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + human-controlled Neutrals."
             : RULESET_DESCRIPTIONS.binh}
         </small>
       </div>
-
-      {(() => {
-        const vpOn = options.victoryPoints === true;
-        const vpRoundLimit = options.victoryPointsRoundLimit ?? 0;
-        // A designed map preset that already enables VP is authoritative — the
-        // lobby toggle does not govern its scoring (see applyLobbyVictoryPoints).
-        const presetVpEnabled = options.customMapPreset?.victoryPoints?.enabled === true;
-        return (
-          <div className="optionRow">
-            <small title="Optional Victory Points scoring: at the round limit (or on victory completion) the player with the most Victory Points wins — the full rulebook scoring table.">
-              Victory points
-            </small>
-            <div className="optionButtons">
-              {([false, true] as const).map((on) => (
-                <button
-                  aria-pressed={vpOn === on}
-                  className={vpOn === on ? "selected" : ""}
-                  key={on ? "on" : "off"}
-                  onClick={() => send({ victoryPoints: on })}
-                  title={on ? "Victory Points scoring on" : "Victory Points scoring off"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-              {vpOn ? (
-                <select
-                  aria-label="Victory points round limit"
-                  onChange={(event) => send({ victoryPointsRoundLimit: Number(event.target.value) })}
-                  value={vpRoundLimit}
-                >
-                  <option value={0}>No round limit</option>
-                  {[10, 15, 20, 25, 30].map((rounds) => (
-                    <option key={rounds} value={rounds}>
-                      {rounds} rounds
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-            </div>
-            <small className="optionHint">
-              {presetVpEnabled
-                ? "The designed map already enables Victory Points — its own scoring settings and round limit apply, so this toggle does not govern them."
-                : "The game ends at the round limit (or when a player completes the victory condition), and the player with the most Victory Points wins — the full rulebook scoring table (heroes defeated, buildings, hero levels, flagged mines/settlements, artifacts). Without a round limit a conquest-style game ends only by completion or last-faction-standing."}
-            </small>
-          </div>
-        );
-      })()}
 
       {modeNotice ? (
         <div className="modeNoticeBanner" role="status">
@@ -6340,9 +6513,21 @@ function GameOptionsPanel({
             }
             type="button"
           >
-            <span aria-hidden="true" className="wogCrestWings">
-              ◆
-            </span>
+            <img
+              alt=""
+              aria-hidden="true"
+              className="wogCrestIcon"
+              decoding="async"
+              src={assetUrl("/assets/ui/mod-wog-eye-clear.webp")}
+              onError={(event) => {
+                // Prefer clear HD eye; fall back to classic pixel eye if missing.
+                const img = event.currentTarget;
+                if (!img.dataset.fallback) {
+                  img.dataset.fallback = "1";
+                  img.src = assetUrl("/assets/ui/mod-wog-eye.webp");
+                }
+              }}
+            />
             <strong>WOG</strong>
             <span>{wog.enabled ? "ON" : "OFF"}</span>
           </button>
@@ -6366,67 +6551,136 @@ function GameOptionsPanel({
         </small>
       </div>
 
-      <div className="optionRow tournamentRulesRow">
-        <small title="Rulebook Tournament Mode setup rules (p.54), each toggleable on its own">
-          Tournament rules
-        </small>
-        <div className="tournamentRuleGrid">
-          {(
-            [
-              {
-                key: "tournamentBanDiplomacy" as const,
-                label: "Ban Diplomacy",
-                on: tournamentRules.banDiplomacy,
-                hint: "Remove Diplomacy from the shared Ability deck (heroes keep a starting copy)."
-              },
-              {
-                key: "tournamentBanHourglass" as const,
-                label: "Ban Hourglass",
-                on: tournamentRules.banHourglass,
-                hint: "Remove Hourglass of the Evil Hour from the shared Artifact deck."
-              },
-              {
-                key: "tournamentSecondPlayerMorale" as const,
-                label: "2nd player +1 morale",
-                on: tournamentRules.secondPlayerMorale,
-                hint: "The second player gains 1 positive morale at game start."
-              }
-            ] as const
-          ).map((rule) => (
-            <button
-              aria-pressed={rule.on}
-              className={`tournamentRuleToggle ${rule.on ? "on" : "off"}`}
-              key={rule.key}
-              onClick={() => send({ [rule.key]: !rule.on })}
-              title={rule.hint}
-              type="button"
-            >
-              <span aria-hidden="true" className="houseRuleCheck">
-                {rule.on ? <Check size={13} /> : null}
-              </span>
-              <span>
-                <strong>{rule.label}</strong>
-                <small>{rule.hint}</small>
-              </span>
-              <span className={`houseRuleState ${rule.on ? "on" : "off"}`}>{rule.on ? "ON" : "OFF"}</span>
-            </button>
-          ))}
-        </div>
-        <small className="optionHint">
-          Toggle each Tournament setup rule independently, or use the Tournament mode card above to apply the full competitive package.
-        </small>
-      </div>
-
       {(() => {
+        const tournamentDefs = [
+          {
+            key: "tournamentBanDiplomacy" as const,
+            label: "Ban Diplomacy",
+            on: tournamentRules.banDiplomacy,
+            hint: "Remove Diplomacy from the shared Ability deck (heroes keep a starting copy)."
+          },
+          {
+            key: "tournamentBanHourglass" as const,
+            label: "Ban Hourglass",
+            on: tournamentRules.banHourglass,
+            hint: "Remove Hourglass of the Evil Hour from the shared Artifact deck."
+          },
+          {
+            key: "tournamentSecondPlayerMorale" as const,
+            label: "2nd player +1 morale",
+            on: tournamentRules.secondPlayerMorale,
+            hint: "The second player gains 1 positive morale at game start."
+          }
+        ] as const;
+        const tournamentOn = tournamentDefs.filter((rule) => rule.on).length;
+        return (
+          <HouseRuleCollapsible
+            crestSrc={assetUrl("/assets/ui/mode-tournament-crest-clear.webp")}
+            crestClassName="houseRuleCollapsibleCrest tournament"
+            id="tournament-rules"
+            onCount={tournamentOn}
+            onToggle={() => setTournamentRulesOpen((v) => !v)}
+            open={tournamentRulesOpen}
+            subtitle="Rulebook Tournament setup (p.54) — each rule toggleable on its own"
+            title="Tournament rules"
+            totalCount={tournamentDefs.length}
+            variant="tournament"
+          >
+            <div className="tournamentRuleGrid">
+              {tournamentDefs.map((rule) => (
+                <button
+                  aria-pressed={rule.on}
+                  className={`tournamentRuleToggle ${rule.on ? "on" : "off"}`}
+                  key={rule.key}
+                  onClick={() => send({ [rule.key]: !rule.on })}
+                  title={rule.hint}
+                  type="button"
+                >
+                  <span aria-hidden="true" className="houseRuleCheck">
+                    {rule.on ? <Check size={13} /> : null}
+                  </span>
+                  <span>
+                    <strong>{rule.label}</strong>
+                    <small>{rule.hint}</small>
+                  </span>
+                  <span className={`houseRuleState ${rule.on ? "on" : "off"}`}>{rule.on ? "ON" : "OFF"}</span>
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              Toggle each Tournament setup rule independently, or use the Tournament mode card above to apply the full
+              competitive package.
+            </small>
+          </HouseRuleCollapsible>
+        );
+      })()}
+
+      {/* Optional systems clustered together: VP · Event · Morale · Spell Book */}
+      {(() => {
+        const vpOn = options.victoryPoints === true;
+        const vpRoundLimit = options.victoryPointsRoundLimit ?? 0;
+        const presetVpEnabled = options.customMapPreset?.victoryPoints?.enabled === true;
         const eventsOn = options.events ?? false;
         const moraleCardsOn = options.moraleCards ?? false;
+        const polishSpellBookOn = houseRules["polish-spell-book"];
+        const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
         const undoMovesOn = options.undoMoves ?? false;
         return (
-          <>
+          <div className="optionalRulesCluster" aria-label="Optional scoring, decks, spell book, and testing aids">
+            <div className="optionalRulesClusterHead">
+              <strong>Optional systems</strong>
+              <small>Victory Points, Event deck, Morale Cards, Spell Book, and Undo moves</small>
+            </div>
+
             <div className="optionRow">
-              <small title="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)">
-                Event deck
+              <OptionRowLabel
+                hint="Optional Victory Points scoring: at the round limit (or on victory completion) the player with the most Victory Points wins — the full rulebook scoring table."
+                iconClassName="optionRowIcon crest"
+                iconSrc="/assets/ui/option-victory-points-clear.webp"
+                title="Victory points"
+              />
+              <div className="optionButtons">
+                {([false, true] as const).map((on) => (
+                  <button
+                    aria-pressed={vpOn === on}
+                    className={vpOn === on ? "selected" : ""}
+                    key={on ? "on" : "off"}
+                    onClick={() => send({ victoryPoints: on })}
+                    title={on ? "Victory Points scoring on" : "Victory Points scoring off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+                {vpOn ? (
+                  <select
+                    aria-label="Victory points round limit"
+                    onChange={(event) => send({ victoryPointsRoundLimit: Number(event.target.value) })}
+                    value={vpRoundLimit}
+                  >
+                    <option value={0}>No round limit</option>
+                    {[10, 15, 20, 25, 30].map((rounds) => (
+                      <option key={rounds} value={rounds}>
+                        {rounds} rounds
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
+              <small className="optionHint">
+                {presetVpEnabled
+                  ? "The designed map already enables Victory Points — its own scoring settings and round limit apply, so this toggle does not govern them."
+                  : "The game ends at the round limit (or when a player completes the victory condition), and the player with the most Victory Points wins — the full rulebook scoring table (heroes defeated, buildings, hero levels, flagged mines/settlements, artifacts). Without a round limit a conquest-style game ends only by completion or last-faction-standing."}
               </small>
+            </div>
+
+            <div className="optionRow">
+              <OptionRowLabel
+                hint="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)"
+                iconClassName="optionRowIcon cardBack"
+                iconSrc="/assets/card_back-events.webp"
+                title="Event deck"
+              />
               <div className="optionButtons">
                 {([true, false] as const).map((on) => (
                   <button
@@ -6447,10 +6701,17 @@ function GameOptionsPanel({
                   : "Off by default. No Event deck — Resource rounds pay income only. Turn it On to add the Fortress-expansion Events (multiplayer only)."}
               </small>
             </div>
+
             <div className="optionRow">
-              <small title="Optional rule: replace normal morale tokens with Positive and Negative Morale decks">
-                Morale Cards
-              </small>
+              <OptionRowLabel
+                hint="Optional rule: replace normal morale tokens with Positive and Negative Morale decks"
+                iconClassName="optionRowIcon cardBack"
+                icons={[
+                  "/assets/morale-cards/morale-positive-back.png",
+                  "/assets/morale-cards/morale-negative-back.png"
+                ]}
+                title="Morale Cards"
+              />
               <div className="optionButtons">
                 {([true, false] as const).map((on) => (
                   <button
@@ -6471,10 +6732,49 @@ function GameOptionsPanel({
                   : "Normal morale tokens: positive morale can be spent for draw/redraw/reroll, and doubled negative morale discards your hand at turn end."}
               </small>
             </div>
+
             <div className="optionRow">
-              <small title="Testing/debug aid (OFF by default): lets a player roll the game back to before a recent action, so bugs are easier to reproduce and hunt">
-                Undo moves (testing)
+              <OptionRowLabel
+                hint="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from"
+                iconClassName="optionRowIcon spellBook"
+                iconSrc="/assets/ui/spell-book-button.png"
+                title="Spell Book"
+              />
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={spellBookOn === on}
+                    className={spellBookOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() =>
+                      send({
+                        spellBook: on,
+                        ...(on ? { houseRules: { "polish-spell-book": false } } : {})
+                      })
+                    }
+                    title={on ? "Spell Book on (house rule)" : "Spell Book off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {polishSpellBookOn
+                  ? "Off because Polish Spell Book is selected; the two lifecycles cannot be combined."
+                  : spellBookOn
+                  ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
+                  : "No Spell Book — Spells live only in hand, deck and discard."}
               </small>
+            </div>
+
+            <div className="optionRow undoMovesRow">
+              <OptionRowLabel
+                hint="Testing/debug aid (OFF by default): lets a player roll the game back to before a recent action, so bugs are easier to reproduce and hunt"
+                iconClassName="optionRowIcon crest"
+                iconSrc="/assets/ui/option-undo-moves-clear.webp"
+                title="Undo moves (testing)"
+              />
               <div className="optionButtons">
                 {([true, false] as const).map((on) => (
                   <button
@@ -6495,7 +6795,7 @@ function GameOptionsPanel({
                   : "Off by default. Turn it On only for manual testing / bug-hunting; it exposes a map Undo button that rewinds recent actions."}
               </small>
             </div>
-          </>
+          </div>
         );
       })()}
 
@@ -6504,44 +6804,6 @@ function GameOptionsPanel({
         houseRules={houseRules}
         setHouseRule={setHouseRule}
       />
-
-      {(() => {
-        const polishSpellBookOn = houseRules["polish-spell-book"];
-        const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
-        return (
-          <div className="optionRow">
-            <small title="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from">
-              Spell Book
-            </small>
-            <div className="optionButtons">
-              {([true, false] as const).map((on) => (
-                <button
-                  aria-pressed={spellBookOn === on}
-                  className={spellBookOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() =>
-                    send({
-                      spellBook: on,
-                      ...(on ? { houseRules: { "polish-spell-book": false } } : {})
-                    })
-                  }
-                  title={on ? "Spell Book on (house rule)" : "Spell Book off"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {polishSpellBookOn
-                ? "Off because Polish Spell Book is selected; the two lifecycles cannot be combined."
-                : spellBookOn
-                ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
-                : "No Spell Book — Spells live only in hand, deck and discard."}
-            </small>
-          </div>
-        );
-      })()}
       </div>
       ) : null}
 
@@ -7191,19 +7453,22 @@ function GameOptionsPanel({
         <small>Starting resources</small>
         <div className="optionSteppers">
           <ResourceStepper
-            label="🪙 gold"
+            iconSrc={RESOURCE_ICONS.gold}
+            label="gold"
             onChange={(gold) => send({ startingResources: { ...options.startingResources, gold } })}
             value={options.startingResources.gold}
           />
           <ResourceStepper
-            label="⚒ materials"
+            iconSrc={RESOURCE_ICONS.buildingMaterials}
+            label="materials"
             onChange={(buildingMaterials) =>
               send({ startingResources: { ...options.startingResources, buildingMaterials } })
             }
             value={options.startingResources.buildingMaterials}
           />
           <ResourceStepper
-            label="♦ valuables"
+            iconSrc={RESOURCE_ICONS.valuables}
+            label="valuables"
             onChange={(valuables) => send({ startingResources: { ...options.startingResources, valuables } })}
             value={options.startingResources.valuables}
           />
@@ -7216,19 +7481,22 @@ function GameOptionsPanel({
         </small>
         <div className="optionSteppers">
           <ResourceStepper
-            label="🪙 gold"
+            iconSrc={RESOURCE_ICONS.gold}
+            label="gold"
             onChange={(gold) => send({ startingProduction: { ...options.startingProduction, gold } })}
             value={options.startingProduction.gold}
           />
           <ResourceStepper
-            label="⚒ materials"
+            iconSrc={RESOURCE_ICONS.buildingMaterials}
+            label="materials"
             onChange={(buildingMaterials) =>
               send({ startingProduction: { ...options.startingProduction, buildingMaterials } })
             }
             value={options.startingProduction.buildingMaterials}
           />
           <ResourceStepper
-            label="♦ valuables"
+            iconSrc={RESOURCE_ICONS.valuables}
+            label="valuables"
             onChange={(valuables) => send({ startingProduction: { ...options.startingProduction, valuables } })}
             value={options.startingProduction.valuables}
           />

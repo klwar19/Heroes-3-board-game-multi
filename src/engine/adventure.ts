@@ -5040,6 +5040,19 @@ export function processPendingVisit(state: GameState): void {
         const movedHero = state.heroes[step.heroId];
         if (movedHero && adventure.fields[step.spaceId]) {
           const from = movedHero.spaceId ?? step.spaceId;
+          // Sound kind from the ORIGIN field (entry token) — Town Portal / defeat
+          // retreat have no map-token origin and fall through to "spell".
+          const origin = adventure.fields[from];
+          const teleportKind =
+            origin?.location === "whirlpool"
+              ? ("whirlpool" as const)
+              : origin?.location === "gate"
+                ? ("gate" as const)
+                : origin?.location === "monolith" ||
+                    origin?.location === "anime.tran_phap_truyen_tong" ||
+                    (origin?.location === "obelisk" && obeliskRoleIsMonolith(state))
+                  ? ("monolith" as const)
+                  : ("spell" as const);
           movedHero.spaceId = step.spaceId;
           // Town Portal Power 2/4: arriving grants the hero +1/+2 movement.
           if (step.movementBonus) {
@@ -5051,7 +5064,8 @@ export function processPendingVisit(state: GameState): void {
             heroId: movedHero.id,
             from,
             to: step.spaceId,
-            movementLeft: movedHero.movementPoints
+            movementLeft: movedHero.movementPoints,
+            teleport: teleportKind
           });
           commitPopulationOnMove(state, movedHero.controllerId);
           // Teleport-network arrival: a designed guard still standing on the
@@ -7546,7 +7560,9 @@ function completeMapTokenTeleport(
     heroId: hero.id,
     from,
     to: destSpaceId,
-    movementLeft: hero.movementPoints
+    movementLeft: hero.movementPoints,
+    // Face-down destination resolve of a Monolith / Whirlpool / Gate travel.
+    teleport: teleport.kind
   });
   commitPopulationOnMove(state, hero.controllerId);
   // Reveal-travel arrival: the just-placed destination token may carry a

@@ -836,8 +836,13 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
  * move without visiting, as the rulebook prescribes.
  */
 function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, passThrough: boolean): void {
-  requireAdventure(state);
+  const adventure = requireAdventure(state);
   const from = hero.spaceId ?? to;
+  const fromField = adventure.fields[from];
+  const toField = adventure.fields[to];
+  // The two halves of a Subterranean Gate Token are "one Field": stepping
+  // between them is the tunnel travel — cave-visit (CAVEHEAD), not horse steps.
+  const throughGate = gateFieldsLinked(fromField, toField);
   hero.spaceId = to;
   hero.movementPoints -= 1;
 
@@ -847,7 +852,8 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
     heroId: hero.id,
     from,
     to,
-    movementLeft: hero.movementPoints
+    movementLeft: hero.movementPoints,
+    ...(throughGate ? { teleport: "subterranean" as const } : {})
   });
   commitPopulationOnMove(state, hero.controllerId);
 
@@ -860,10 +866,7 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
   // Crossing OUT through a linked Subterranean Gate: a designed guard still
   // standing on the FAR half is swept aside (auto-win, no experience) — you
   // fight to step onto a gate from its own layer, never to come out of it.
-  const adventure = state.adventure;
-  const fromField = adventure?.fields[from];
-  const toField = adventure?.fields[to];
-  if (fromField && toField && gateFieldsLinked(fromField, toField)) {
+  if (fromField && toField && throughGate) {
     autoWinArrivalGuard(state, hero.controllerId, toField);
   }
 
@@ -1069,7 +1072,8 @@ function dimensionDoorTeleport(state: GameState, hero: HeroState, to: MapSpaceId
     heroId: hero.id,
     from,
     to,
-    movementLeft: hero.movementPoints
+    movementLeft: hero.movementPoints,
+    teleport: "spell"
   });
   commitPopulationOnMove(state, hero.controllerId);
   // A teleport that touches the sea halts further movement, like a sea step.
@@ -8537,7 +8541,8 @@ export function activateTownBuilding(state: GameState, action: Extract<GameActio
       heroId: hero.id,
       from,
       to: action.spaceId,
-      movementLeft: hero.movementPoints
+      movementLeft: hero.movementPoints,
+      teleport: "spell"
     });
     commitPopulationOnMove(state, hero.controllerId);
     appendEvent(state, {

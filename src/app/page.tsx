@@ -191,11 +191,11 @@ import {
   planReturnMoveDelays
 } from "@/components/table/fx-sequence";
 import {
-  LOCATION_VISIT_SOUNDS,
+  heroMoveSoundKey,
+  locationVisitSoundKeys,
   MAP_CUE_SOUNDS,
   MAP_CUE_VOLUME,
   MAP_MOVE_VOLUME,
-  TERRAIN_MOVE_SOUNDS,
   TILE_SOUNDS
 } from "@/data/map-sounds";
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
@@ -1379,12 +1379,26 @@ export default function Home() {
             continue;
           }
           const cue = ADVENTURE_FEED_CUES[event.type]?.cue;
-          let key = cue ? MAP_CUE_SOUNDS[cue] : null;
           if (event.type === "FIELD_VISITED") {
-            key = LOCATION_VISIT_SOUNDS[event.location] ?? key;
-          }
-          if (key && !cueSounds.includes(key)) {
-            cueSounds.push(key);
+            // Visit one-shot first, then optional ambient loop (staggered ~220ms).
+            const visitKeys = locationVisitSoundKeys(event.location);
+            if (visitKeys.length > 0) {
+              for (const key of visitKeys) {
+                if (!cueSounds.includes(key)) {
+                  cueSounds.push(key);
+                }
+              }
+            } else {
+              const key = cue ? MAP_CUE_SOUNDS[cue] : null;
+              if (key && !cueSounds.includes(key)) {
+                cueSounds.push(key);
+              }
+            }
+          } else {
+            const key = cue ? MAP_CUE_SOUNDS[cue] : null;
+            if (key && !cueSounds.includes(key)) {
+              cueSounds.push(key);
+            }
           }
         }
 
@@ -2019,7 +2033,9 @@ export default function Home() {
           ? nextState.adventure?.tiles[destinationField.tileInstanceId]
           : undefined;
         const terrain = destinationTile ? allTileDefinitions[destinationTile.tileDefId]?.terrain : undefined;
-        playLibrarySound(TERRAIN_MOVE_SOUNDS[terrain ?? "grass"] ?? TERRAIN_MOVE_SOUNDS.grass, MAP_MOVE_VOLUME);
+        // Monolith / Gate / Whirlpool / Subterranean Gate / spell teleports
+        // carry HERO_MOVED.teleport — object clips, not horse steps.
+        playLibrarySound(heroMoveSoundKey(liveWalks, terrain), MAP_MOVE_VOLUME);
         setMoveCue({
           id: liveWalks[0].id,
           heroId,
