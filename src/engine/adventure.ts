@@ -1274,6 +1274,17 @@ export function isTileSlotOuterSealed(tileDefId: string, slot: number): boolean 
   return def ? Boolean(def.outerImpassable[slot - 1]) : false;
 }
 
+/**
+ * Master switch for DESIGNER-drawn yellow borders (`extraBorders` / `borderEdges`)
+ * SEALING the map — the movement / discovery / placement "lock". Turned OFF for
+ * now (the designer tool, its data and the map-registry round-trip are all
+ * untouched — this only stops the drawn lines from walling tiles off, and the
+ * setup wiring stops copying them onto the live map so no inert wall renders).
+ * Flip back to `true` to restore the full sealing feature. Printed tile borders
+ * (`outerImpassable`, internal lines) are unaffected either way.
+ */
+export const DESIGNER_BORDER_SEALING_ENABLED = false;
+
 /** A designer `extraBorders` list holds at most this many entries (one per board direction). */
 export const MAX_DESIGNED_BORDERS = 6;
 
@@ -1349,6 +1360,9 @@ function fieldFootprintIndex(slot: number, rotation: number): number {
  * the movement BFS hot path.
  */
 function tileEdgeDesignedSealed(tile: MapTileState, slot: number, absDir: number): boolean {
+  if (!DESIGNER_BORDER_SEALING_ENABLED) {
+    return false;
+  }
   const edges = tile.borderEdges;
   if (!edges || edges.length === 0) {
     return false;
@@ -1372,6 +1386,9 @@ export function isDesignedEdgeSealedBetween(
   to: MapSpaceId,
   toField: MapFieldState
 ): boolean {
+  if (!DESIGNER_BORDER_SEALING_ENABLED) {
+    return false;
+  }
   const fromTile = adventure.tiles[fromField.tileInstanceId];
   const toTile = adventure.tiles[toField.tileInstanceId];
   const fromHas = Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
@@ -1418,6 +1435,9 @@ export function isDesignedEdgeSealedBetween(
  * The centre (slot 0) is never sealed.
  */
 export function isTileSlotDesignedSealed(tile: MapTileState, slot: number): boolean {
+  if (!DESIGNER_BORDER_SEALING_ENABLED) {
+    return false;
+  }
   if (slot === 0 || !tile.extraBorders || tile.extraBorders.length === 0) {
     return false;
   }
@@ -1479,6 +1499,11 @@ export function heroCanDiscoverTileAcrossBorders(
 ): boolean {
   if (heroFieldSealedForDiscovery(adventure, heroField)) {
     return false;
+  }
+  // Designer per-edge borders never wall off discovery while the sealing "lock"
+  // is disabled — only the printed whole-arc rule above applies.
+  if (!DESIGNER_BORDER_SEALING_ENABLED) {
+    return true;
   }
   const heroTile = adventure.tiles[heroField.tileInstanceId];
   const tileEdges = tile.borderEdges;

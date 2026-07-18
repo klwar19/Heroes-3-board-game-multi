@@ -8,6 +8,7 @@ import {
   canHeroReachPlacedTile,
   canHeroReachPlacementCenter,
   createAdventureGameState,
+  DESIGNER_BORDER_SEALING_ENABLED,
   getLegalActions,
   isDesignedEdgeSealedBetween,
   isOuterEdgeSealed,
@@ -56,6 +57,61 @@ const PATHFINDING: HeroMovementCapabilities = {
 // internal border — a clean canvas so any seal seen is the DESIGNED one.
 const OPEN_TILE = "F23";
 
+// The designer-border SEALING "lock" is disabled for now
+// (DESIGNER_BORDER_SEALING_ENABLED === false). The suites that assert a designed
+// border WALLS movement / discovery / placement off are the spec for when it is
+// re-enabled, so they run only while the flag is on; the pure rendering +
+// normalizer suites (unaffected by the lock) always run. A dedicated suite below
+// pins the current, disabled behavior (borders no longer seal).
+const sealingDescribe = DESIGNER_BORDER_SEALING_ENABLED ? describe : describe.skip;
+
+// Pins the CURRENT shipped behavior: the designer-border "lock" is removed, so a
+// designed border neither seals movement nor gets copied onto the live map. If
+// someone re-arms the wiring without flipping DESIGNER_BORDER_SEALING_ENABLED,
+// these fail. (When the flag is flipped back on, the sealing suites above cover
+// it and these become the CONTROL that no longer applies — hence gated off.)
+const lockRemovedDescribe = DESIGNER_BORDER_SEALING_ENABLED ? describe.skip : describe;
+
+lockRemovedDescribe("designer-border sealing DISABLED (lock removed)", () => {
+  it("a designed outer-arc border no longer seals the edge (movement stays open)", () => {
+    const state = cleanState("db-lock-off-move");
+    const O: HexCoord = { row: 40, col: 30 };
+    const a = instantiateTile(adv(state), OPEN_TILE, O, 0, false);
+    const neighbor = tileLatticeNeighbors(O).find(
+      (candidate) =>
+        !Object.values(adv(state).tiles).some((t) => t.centerRow === candidate.row && t.centerCol === candidate.col)
+    )!;
+    const b = instantiateTile(adv(state), OPEN_TILE, neighbor, 0, false);
+    const { from, to } = sharedEdge(adv(state), a, b);
+
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, NONE)).toBe(true);
+    // Draw a designed border right on the shared arc — it is now inert.
+    a.extraBorders = [slotDirection(from.slot, a.rotation)!];
+    b.borderEdges = normalizeDesignedBorderEdges([slotDirection(to.slot, b.rotation)! % 6]);
+    expect(isOuterEdgeSealed(adv(state), from)).toBe(false);
+    expect(isDesignedEdgeSealedBetween(adv(state), from.spaceId, from, to.spaceId, to)).toBe(false);
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, NONE)).toBe(true);
+    expect(canCrossEdge(state, to.spaceId, from.spaceId, NONE)).toBe(true);
+  });
+
+  it("setup does NOT copy a plan's designed borders onto the live tile", () => {
+    const TOWN: HexCoord = { row: 24, col: 12 };
+    const state = createAdventureGameState({
+      seed: "db-lock-off-setup",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      customMap: [{ row: TOWN.row, col: TOWN.col, group: "starting", faceDown: false, borderEdges: [9, 9, 0] }],
+      players: [
+        { id: "p1", name: "P1", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "P2", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    const tile = Object.values(adv(state).tiles).find((t) => t.centerRow === TOWN.row && t.centerCol === TOWN.col)!;
+    expect(tile.borderEdges).toBeUndefined();
+    expect(tile.extraBorders).toBeUndefined();
+  });
+});
+
 function cleanState(seed: string): GameState {
   return createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, events: false });
 }
@@ -101,7 +157,7 @@ function sharedEdge(
   throw new Error("no shared edge between the two tiles");
 }
 
-describe("designer-placed yellow borders — movement", () => {
+sealingDescribe("designer-placed yellow borders — movement", () => {
   it("blocks an ordinary step across the arc; Pathfinding crosses it, Fly does not", () => {
     const state = cleanState("db-move");
     const O: HexCoord = { row: 40, col: 30 };
@@ -250,7 +306,7 @@ describe("designer-placed yellow borders — movement", () => {
   });
 });
 
-describe("designer-placed yellow borders — absolute frame (rotation-independent)", () => {
+sealingDescribe("designer-placed yellow borders — absolute frame (rotation-independent)", () => {
   it("seals the SAME absolute edge at two different rotations of the placed tile", () => {
     const state = cleanState("db-rot");
     const O: HexCoord = { row: 40, col: 30 };
@@ -272,7 +328,7 @@ describe("designer-placed yellow borders — absolute frame (rotation-independen
   });
 });
 
-describe("designer-placed yellow borders — face-down + random draw", () => {
+sealingDescribe("designer-placed yellow borders — face-down + random draw", () => {
   it("carries the seal from setup and applies on reveal at any rotation, whatever tile was drawn", () => {
     const TOWN: HexCoord = { row: 24, col: 12 };
     const FAR = tileLatticeNeighbors(TOWN)[0];
@@ -319,7 +375,7 @@ function clearFieldsOf(adventure: AdventureState, tile: MapTileState): void {
   }
 }
 
-describe("designer-placed yellow borders — tile discovery", () => {
+sealingDescribe("designer-placed yellow borders — tile discovery", () => {
   // makeGame seed "test-seed": h:10:6 is S1 slot 5 (an OPEN printed arc, absolute
   // direction 4) and borders the face-down center hub at (9,4) — the exact open
   // vantage the printed-border discovery tests use as their control.
@@ -373,7 +429,7 @@ describe("designer-placed yellow borders — tile discovery", () => {
   });
 });
 
-describe("designer-placed yellow borders — new tile placement", () => {
+sealingDescribe("designer-placed yellow borders — new tile placement", () => {
   it("a designed arc under the hero refuses placing/reaching a new supply tile across it", () => {
     const state = cleanState("test-seed");
     if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
@@ -508,7 +564,7 @@ function heroFieldFacing(
   return null;
 }
 
-describe("per-edge designer borders — movement", () => {
+sealingDescribe("per-edge designer borders — movement", () => {
   it("a single per-edge line blocks exactly that crossing both ways; a sibling edge stays open", () => {
     const state = cleanState("db-edge-move");
     const O: HexCoord = { row: 40, col: 30 };
@@ -593,7 +649,7 @@ describe("per-edge designer borders — movement", () => {
   });
 });
 
-describe("per-edge designer borders — absolute frame (rotation-independent)", () => {
+sealingDescribe("per-edge designer borders — absolute frame (rotation-independent)", () => {
   it("seals the SAME board edge whatever the tile's rotation (different slot each time)", () => {
     const state = cleanState("db-edge-rot");
     const O: HexCoord = { row: 40, col: 30 };
@@ -627,7 +683,7 @@ describe("per-edge designer borders — absolute frame (rotation-independent)", 
   });
 });
 
-describe("per-edge designer borders — face-down + random draw", () => {
+sealingDescribe("per-edge designer borders — face-down + random draw", () => {
   it("carries borderEdges from setup (any tile drawn) and seals an inner edge on reveal at any rotation", () => {
     const TOWN: HexCoord = { row: 24, col: 12 };
     const FAR = tileLatticeNeighbors(TOWN)[0];
@@ -691,7 +747,7 @@ describe("per-edge designer borders — face-down + random draw", () => {
   });
 });
 
-describe("per-edge designer borders — tile discovery", () => {
+sealingDescribe("per-edge designer borders — tile discovery", () => {
   function discoveryFixture(): {
     state: GameState;
     aTile: MapTileState;
@@ -754,7 +810,7 @@ describe("per-edge designer borders — tile discovery", () => {
   });
 });
 
-describe("per-edge designer borders — new tile placement", () => {
+sealingDescribe("per-edge designer borders — new tile placement", () => {
   it("a per-edge line under the hero refuses reaching/placing a new tile across THAT edge; a non-facing edge does not", () => {
     const state = cleanState("test-seed");
     if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {

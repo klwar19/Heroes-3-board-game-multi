@@ -776,6 +776,38 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(popover2.querySelector(".popoverFeatureCard.selected")).toBeTruthy();
   });
 
+  it("One of mode: builds a random tile list (multi-select), placed face-up", () => {
+    let latest: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: spots[0].row, col: spots[0].col, group: "near", faceDown: true }
+    ];
+    const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+      latest = next;
+    });
+    const container = renderDesigner(latest, onChange);
+    const popover = openTilePopover(container, 1);
+
+    // A fourth mode card offers "One of these tiles".
+    fireEvent.click(within(popover).getByRole("button", { name: /One of/i }));
+    // The slot becomes a face-up "one of" list seeded with one tile.
+    expect(latest[1]?.faceDown, "one-of is a face-up slot").toBe(false);
+    expect(latest[1]?.tileDefId, "no exact pin").toBeUndefined();
+    expect(latest[1]?.oneOfTileDefIds?.length, "seeded with one tile").toBe(1);
+    const firstId = latest[1].oneOfTileDefIds![0];
+
+    // Re-render in one-of mode and add a SECOND tile from the grid (multi-select).
+    cleanup();
+    const container2 = renderDesigner([latest[0], { ...latest[1] }], onChange);
+    const popover2 = openTilePopover(container2, 1);
+    const cards = [...popover2.querySelectorAll(".popoverTileCard")] as HTMLButtonElement[];
+    const another = cards.find((card) => !card.disabled && !card.className.includes("selected"));
+    expect(another, "a second selectable tile card exists").toBeTruthy();
+    fireEvent.click(another!);
+    expect(latest[1]?.oneOfTileDefIds?.length, "second tile added to the set").toBe(2);
+    expect(latest[1]?.oneOfTileDefIds, "keeps the first tile").toContain(firstId);
+    expect(latest[1]?.tileDefId, "still no exact pin in a 2-tile set").toBeUndefined();
+  });
+
   it("Secret mode multi-selects landmarks (valuables OR gold), and re-tapping removes one", () => {
     let latest: CustomMapTilePlan[] = [
       { row: town.row, col: town.col, group: "starting", faceDown: false },
@@ -828,8 +860,8 @@ describe("MapDesigner — face-down secret pins", () => {
       const src = (img as HTMLImageElement).getAttribute("src") ?? "";
       expect(src, "feature art path").toMatch(/\/assets\//);
     }
-    // Mode cards use Homm3BG glyphs too.
-    expect(popover.querySelectorAll(".popoverModeGlyph").length).toBe(3);
+    // Mode cards use Homm3BG glyphs too (Random / Secret / Face-up / One of).
+    expect(popover.querySelectorAll(".popoverModeGlyph").length).toBe(4);
   });
 
   it("clicking Secret then a landmark stores the secretFeatures set (not a specific tile)", () => {

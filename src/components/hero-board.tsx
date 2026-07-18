@@ -155,18 +155,20 @@ function CardArt({ cardId, kind }: { cardId?: string; kind: "ability" | "special
   // wiki); fall back to the empty-art slot rather than a broken image. Keyed by
   // src so a different card in the same slot still renders.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  // Specialties: prefer the curated transparent symbol (drawn `object-fit:
+  // contain`, so it is never cropped) over the full-card scan. Several expansion
+  // scans (notably Cove) are inset in their canvas and mis-crop through the fixed
+  // top-center crop window; the symbol is the intended art in every case we ship
+  // one. Ability cards keep their scan.
+  const nativeIcon = kind === "specialty" ? specialtyIconSrc(cardId) : undefined;
+  if (nativeIcon) {
+    return (
+      <div className={`hbArt hbArt-${kind}`}>
+        <img alt="" className="hbSpecIcon" src={assetUrl(nativeIcon)} />
+      </div>
+    );
+  }
   if (!image || failedSrc === image) {
-    // Art-less specialties (Bulwark/Conflux) have no scanned card; show the
-    // specialty symbol so the slot isn't blank — the full native card opens on
-    // zoom (see CardZoomProvider).
-    const nativeIcon = kind === "specialty" ? specialtyIconSrc(cardId) : undefined;
-    if (nativeIcon) {
-      return (
-        <div className={`hbArt hbArt-${kind}`}>
-          <img alt="" className="hbSpecIcon" src={assetUrl(nativeIcon)} />
-        </div>
-      );
-    }
     return <div className={`hbArt hbArt-${kind} hbArtEmpty`} />;
   }
 

@@ -911,7 +911,16 @@ export function MapPresetEditor({
       </section>
       </MapPresetGroup>
 
-      <MapPresetGroup title="Map locations" glyphSrc={DESIGNER_UI_ICONS.map} count={groupCounts.mapLocations}>
+      <MapPresetGroup
+        title="Map locations"
+        glyphSrc={DESIGNER_UI_ICONS.map}
+        count={groupCounts.mapLocations}
+        openWhen={
+          value.victoryMode === "grail" ||
+          value.victoryMode === "dragon-hunt" ||
+          value.victoryMode === "dragon-conqueror"
+        }
+      >
       <section className="mapPresetSection" aria-label="Obelisks">
         <div className="mapPresetSectionLabel">Obelisks (map-wide)</div>
         <small className="mapPresetHint">
@@ -1032,95 +1041,110 @@ export function MapPresetEditor({
       <section className="mapPresetSection" aria-label="Objectives">
         <div className="mapPresetSectionLabel">Objectives (Grail / Dragon Utopia)</div>
         <small className="mapPresetHint">
-          Tuning knobs for the victory objectives. Absent = the game defaults. These apply to whichever
-          objective fields the map carries (set a centre tile&apos;s Ⅶ field in the tile popover).
+          Tuning knobs for the CHOSEN victory objective — they appear once you pick the matching Win
+          condition above. Set a centre tile&apos;s Ⅶ field in the tile popover to place the objective.
         </small>
 
-        <div className="mapPresetObjectiveRow" role="group" aria-label="Grail Obelisks required">
-          <span className="mapPresetObjectiveLabel">🏆 Grail dig — Obelisks needed</span>
-          <div className="mapPresetChipRow">
-            <button
-              aria-pressed={objectives.grailObelisksRequired === undefined}
-              className={`mapPresetChip${objectives.grailObelisksRequired === undefined ? " active" : ""}`}
-              onClick={() => setGrailObelisks(undefined)}
-              title="Use the default (2 Obelisks)."
-              type="button"
-            >
-              Default (2)
-            </button>
-            {([1, 2, 3, 4] as const).map((count) => (
+        {value.victoryMode === "grail" ? (
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Grail Obelisks required">
+            <span className="mapPresetObjectiveLabel">🏆 Grail dig — Obelisks needed</span>
+            <div className="mapPresetChipRow">
               <button
-                aria-pressed={objectives.grailObelisksRequired === count}
-                className={`mapPresetChip${objectives.grailObelisksRequired === count ? " active" : ""}`}
-                key={count}
-                onClick={() => setGrailObelisks(count)}
+                aria-pressed={objectives.grailObelisksRequired === undefined}
+                className={`mapPresetChip${objectives.grailObelisksRequired === undefined ? " active" : ""}`}
+                onClick={() => setGrailObelisks(undefined)}
+                title="Use the default (2 Obelisks)."
                 type="button"
               >
-                {count}
+                Default (2)
               </button>
-            ))}
+              {([1, 2, 3, 4] as const).map((count) => (
+                <button
+                  aria-pressed={objectives.grailObelisksRequired === count}
+                  className={`mapPresetChip${objectives.grailObelisksRequired === count ? " active" : ""}`}
+                  key={count}
+                  onClick={() => setGrailObelisks(count)}
+                  type="button"
+                >
+                  {count}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
 
-        <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia guards">
-          <span className="mapPresetObjectiveLabel">🐉 Dragon Utopia guards</span>
-          <div className="mapPresetChipRow">
-            <button
-              aria-pressed={objectives.utopiaGuards === undefined}
-              className={`mapPresetChip${objectives.utopiaGuards === undefined ? " active" : ""}`}
-              onClick={() => setUtopiaGuards(undefined)}
-              title="Use the lobby / game default."
-              type="button"
-            >
-              Default
-            </button>
-            <button
-              aria-pressed={objectives.utopiaGuards === "by-difficulty"}
-              className={`mapPresetChip${objectives.utopiaGuards === "by-difficulty" ? " active" : ""}`}
-              onClick={() => setUtopiaGuards("by-difficulty")}
-              title="Trim the dragon party to the difficulty-scaled count (Easy 1 … Impossible 4)."
-              type="button"
-            >
-              Scale by difficulty
-            </button>
-            <button
-              aria-pressed={objectives.utopiaGuards === "four"}
-              className={`mapPresetChip${objectives.utopiaGuards === "four" ? " active" : ""}`}
-              onClick={() => setUtopiaGuards("four")}
-              title="The full four-dragon party always stands."
-              type="button"
-            >
-              Four dragons
-            </button>
-          </div>
-        </div>
+        {value.victoryMode === "dragon-hunt" || value.victoryMode === "dragon-conqueror" ? (
+          <>
+            <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia guards">
+              <span className="mapPresetObjectiveLabel">🐉 Dragon Utopia guards</span>
+              <div className="mapPresetChipRow">
+                <button
+                  aria-pressed={objectives.utopiaGuards === undefined}
+                  className={`mapPresetChip${objectives.utopiaGuards === undefined ? " active" : ""}`}
+                  onClick={() => setUtopiaGuards(undefined)}
+                  title="Use the lobby / game default."
+                  type="button"
+                >
+                  Default
+                </button>
+                <button
+                  aria-pressed={objectives.utopiaGuards === "by-difficulty"}
+                  className={`mapPresetChip${objectives.utopiaGuards === "by-difficulty" ? " active" : ""}`}
+                  onClick={() => setUtopiaGuards("by-difficulty")}
+                  title="Trim the dragon party to the difficulty-scaled count (Easy 1 … Impossible 4)."
+                  type="button"
+                >
+                  Scale by difficulty
+                </button>
+                <button
+                  aria-pressed={objectives.utopiaGuards === "four"}
+                  className={`mapPresetChip${objectives.utopiaGuards === "four" ? " active" : ""}`}
+                  onClick={() => setUtopiaGuards("four")}
+                  title="The full four-dragon party always stands."
+                  type="button"
+                >
+                  Four dragons
+                </button>
+              </div>
+            </div>
 
-        <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia bonus search">
-          <span className="mapPresetObjectiveLabel">🐉 Dragon Utopia bonus Search</span>
-          <div className="mapPresetChipRow">
-            <button
-              aria-pressed={objectives.utopiaBonusSearch === undefined}
-              className={`mapPresetChip${objectives.utopiaBonusSearch === undefined ? " active" : ""}`}
-              onClick={() => setUtopiaBonusSearch(undefined)}
-              title="No extra Search on top of the printed reward."
-              type="button"
-            >
-              None
-            </button>
-            {([1, 2, 3] as const).map((count) => (
-              <button
-                aria-pressed={objectives.utopiaBonusSearch === count}
-                className={`mapPresetChip${objectives.utopiaBonusSearch === count ? " active" : ""}`}
-                key={count}
-                onClick={() => setUtopiaBonusSearch(count)}
-                title={`Grant the defeater an extra Search(${count}) of the Artifact deck.`}
-                type="button"
-              >
-                Search({count})
-              </button>
-            ))}
-          </div>
-        </div>
+            <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia bonus search">
+              <span className="mapPresetObjectiveLabel">🐉 Dragon Utopia bonus Search</span>
+              <div className="mapPresetChipRow">
+                <button
+                  aria-pressed={objectives.utopiaBonusSearch === undefined}
+                  className={`mapPresetChip${objectives.utopiaBonusSearch === undefined ? " active" : ""}`}
+                  onClick={() => setUtopiaBonusSearch(undefined)}
+                  title="No extra Search on top of the printed reward."
+                  type="button"
+                >
+                  None
+                </button>
+                {([1, 2, 3] as const).map((count) => (
+                  <button
+                    aria-pressed={objectives.utopiaBonusSearch === count}
+                    className={`mapPresetChip${objectives.utopiaBonusSearch === count ? " active" : ""}`}
+                    key={count}
+                    onClick={() => setUtopiaBonusSearch(count)}
+                    title={`Grant the defeater an extra Search(${count}) of the Artifact deck.`}
+                    type="button"
+                  >
+                    Search({count})
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : null}
+
+        {value.victoryMode !== "grail" &&
+        value.victoryMode !== "dragon-hunt" &&
+        value.victoryMode !== "dragon-conqueror" ? (
+          <small className="mapPresetHint">
+            Pick the <strong>Holy Grail</strong> or a <strong>Dragon</strong> Win condition above to tune
+            its objective here.
+          </small>
+        ) : null}
       </section>
       </MapPresetGroup>
 
@@ -1373,16 +1397,45 @@ function MapPresetGroup({
   glyphSrc,
   glyphEmoji,
   count,
+  openWhen,
   children
 }: {
   title: string;
   glyphSrc?: string;
   glyphEmoji?: string;
   count: number;
+  /** Force the group OPEN the moment this becomes true (e.g. a related choice
+   *  elsewhere made this group's content relevant). Still user-collapsible after. */
+  openWhen?: boolean;
   children: ReactNode;
 }) {
+  // Controlled collapse with STICKY state: `open={count > 0}` alone re-asserted
+  // itself on every re-render, so clicking to collapse a group with active
+  // settings snapped straight back open (a jarring "jump"). Keep the convenience
+  // of auto-opening a group the moment it gains content (0 → >0) or becomes
+  // relevant (openWhen 0 → 1), but otherwise honour the user's toggle.
+  const [open, setOpen] = useState(count > 0 || Boolean(openWhen));
+  const prevCount = useRef(count);
+  const prevOpenWhen = useRef(Boolean(openWhen));
+  useEffect(() => {
+    if (prevCount.current === 0 && count > 0) {
+      setOpen(true);
+    }
+    prevCount.current = count;
+  }, [count]);
+  useEffect(() => {
+    if (openWhen && !prevOpenWhen.current) {
+      setOpen(true);
+    }
+    prevOpenWhen.current = Boolean(openWhen);
+  }, [openWhen]);
   return (
-    <details aria-label={title} className="mapPresetGroup" open={count > 0}>
+    <details
+      aria-label={title}
+      className="mapPresetGroup"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       <summary className="mapPresetGroupHead">
         <span className="mapPresetGroupLead">
           <MapPresetGroupGlyph emoji={glyphEmoji} src={glyphSrc} />

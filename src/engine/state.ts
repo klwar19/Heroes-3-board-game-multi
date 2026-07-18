@@ -10491,12 +10491,25 @@ export type CustomMapTilePlan = {
   underground?: boolean;
   faceDown: boolean;
   /**
-   * Exact tile to place. Required while face-up (non-starting). Optional while
-   * face-down: when set, the tile is predetermined but stays face-down until
+   * Exact tile to place. Required while face-up (non-starting) unless
+   * {@link oneOfTileDefIds} supplies a random-from-list choice instead. Optional
+   * while face-down: when set, the tile is predetermined but stays face-down until
    * discovered (exact secret pin). Ignored on starting tiles. Mutually exclusive
    * with `secretFeature` at runtime (exact pin wins if both are present).
    */
   tileDefId?: string;
+  /**
+   * "One of these tiles" random choice (map designer): instead of a single exact
+   * {@link tileDefId}, name a LIST of candidate tile ids and the engine picks ONE
+   * at random (seeded by the slot's position) at setup. Works face-UP (a random
+   * one is placed revealed) and face-DOWN (a random one is placed, still hidden
+   * until discovery — so even the designer cannot tell which it will be). Every id
+   * must belong to this slot's group pool. Takes effect only when `tileDefId` is
+   * absent (an exact pin always wins); a 0/1-entry list folds away (1 entry ==
+   * that exact tile). Ignored on starting tiles. Absent (every legacy map) = the
+   * plain exact-or-random behaviour, byte-for-byte as before.
+   */
+  oneOfTileDefIds?: string[];
   /**
    * Face-down only: guarantee a landmark, not a specific tile. At setup the
    * engine pops a random remaining tile from this slot's pool that carries the

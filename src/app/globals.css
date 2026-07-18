@@ -5295,6 +5295,7 @@ button.hbSlot:disabled { cursor: default; }
 }
 
 .townBuilding {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -5308,6 +5309,31 @@ button.hbSlot:disabled { cursor: default; }
 
 .townBuilding.built {
   border-color: rgba(120, 200, 120, 0.5);
+}
+
+/* A not-built building keeps its full art, just a whisper of blur + a slight
+   desaturation so the eye tells built from pending at a glance. Kept tiny on
+   purpose — the artwork stays fully readable. */
+.townBuilding:not(.built) .townBuildingArt {
+  filter: blur(0.6px) saturate(0.82) brightness(0.94);
+  opacity: 0.9;
+}
+
+/* Small "not built" tag over the top-left of the art. */
+.townBuildingUnbuilt {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(16, 11, 7, 0.72);
+  border: 1px solid rgba(150, 118, 70, 0.5);
+  color: #cbb488;
+  font-size: 9px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
 }
 
 .townBuilding small {
@@ -13052,6 +13078,12 @@ img.cardBack {
 
 .designerMain {
   display: grid;
+  /* A single, container-width column so a collapsible child (the Map conditions
+     panel) can't resize the column — and shove the board/toolbar sideways — when
+     it opens or closes. Items stay left-aligned at their own width via
+     justify-items:start; only a child that opts into justify-self:stretch fills
+     the width. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   justify-items: start;
 }
@@ -24787,6 +24819,12 @@ body {
   border-radius: 12px;
   border: 1px solid rgba(154, 208, 255, 0.28);
   background: linear-gradient(180deg, rgba(22, 30, 44, 0.95), rgba(14, 18, 28, 0.98));
+  /* Fill the (stable) column so collapsing the panel changes only its HEIGHT,
+     never its width — no horizontal jump. Capped so it never sprawls too wide. */
+  justify-self: stretch;
+  min-width: 0;
+  max-width: 860px;
+  box-sizing: border-box;
 }
 
 .mapPresetHeader {

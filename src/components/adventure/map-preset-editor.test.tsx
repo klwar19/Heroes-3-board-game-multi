@@ -455,41 +455,63 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(screen.getByText("Obelisks: Monolith teleport network")).toBeTruthy();
   });
 
+  it("Objectives: the tuning is CONTEXTUAL to the chosen Win condition", () => {
+    // Conquest / no mode: the Grail + Dragon tuning is hidden (only a hint shows).
+    const { rerender } = render(<MapPresetEditor preset={{ victoryMode: "conquest" }} onChange={() => {}} />);
+    expect(screen.queryByRole("group", { name: "Grail Obelisks required" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Dragon Utopia guards" })).toBeNull();
+
+    // Holy Grail: the Grail dig tuning appears; the Dragon rows stay hidden.
+    rerender(<MapPresetEditor preset={{ victoryMode: "grail" }} onChange={() => {}} />);
+    expect(section("Grail Obelisks required")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Dragon Utopia guards" })).toBeNull();
+
+    // Dragon Conqueror: the Dragon Utopia tuning appears; the Grail row hides.
+    rerender(<MapPresetEditor preset={{ victoryMode: "dragon-conqueror" }} onChange={() => {}} />);
+    expect(section("Dragon Utopia guards")).toBeTruthy();
+    expect(section("Dragon Utopia bonus search")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Grail Obelisks required" })).toBeNull();
+  });
+
   it("Objectives: the chips write the objectives block; a default clears its field", () => {
     const onChange = vi.fn();
-    const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
-
-    // Grail Obelisks → objectives.grailObelisksRequired.
+    // Grail Obelisks → objectives.grailObelisksRequired (Holy Grail win condition).
+    const { rerender } = render(<MapPresetEditor preset={{ victoryMode: "grail" }} onChange={onChange} />);
     fireEvent.click(within(section("Grail Obelisks required")).getByRole("button", { name: "1" }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ objectives: { grailObelisksRequired: 1 } })
     );
 
-    // Utopia guards → objectives.utopiaGuards.
-    rerender(<MapPresetEditor preset={{ objectives: { grailObelisksRequired: 1 } }} onChange={onChange} />);
+    // Utopia guards → objectives.utopiaGuards (a Dragon win condition).
+    rerender(<MapPresetEditor preset={{ victoryMode: "dragon-conqueror" }} onChange={onChange} />);
     fireEvent.click(within(section("Dragon Utopia guards")).getByRole("button", { name: "Four dragons" }));
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ objectives: { grailObelisksRequired: 1, utopiaGuards: "four" } })
+      expect.objectContaining({ objectives: { utopiaGuards: "four" } })
     );
 
     // Utopia bonus search → objectives.utopiaBonusSearch.
     rerender(
       <MapPresetEditor
-        preset={{ objectives: { grailObelisksRequired: 1, utopiaGuards: "four" } }}
+        preset={{ victoryMode: "dragon-conqueror", objectives: { utopiaGuards: "four" } }}
         onChange={onChange}
       />
     );
     fireEvent.click(within(section("Dragon Utopia bonus search")).getByRole("button", { name: "Search(2)" }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        objectives: { grailObelisksRequired: 1, utopiaGuards: "four", utopiaBonusSearch: 2 }
+        objectives: { utopiaGuards: "four", utopiaBonusSearch: 2 }
       })
     );
 
-    // Clearing the only-remaining field collapses the whole preset to undefined.
-    rerender(<MapPresetEditor preset={{ objectives: { utopiaBonusSearch: 2 } }} onChange={onChange} />);
+    // Clearing the field drops it from the objectives block (the mode remains).
+    rerender(
+      <MapPresetEditor
+        preset={{ victoryMode: "dragon-conqueror", objectives: { utopiaBonusSearch: 2 } }}
+        onChange={onChange}
+      />
+    );
     fireEvent.click(within(section("Dragon Utopia bonus search")).getByRole("button", { name: "None" }));
-    expect(onChange).toHaveBeenLastCalledWith(undefined);
+    expect(onChange).toHaveBeenLastCalledWith({ victoryMode: "dragon-conqueror" });
   });
 
   it("Objectives: lines show in the active-conditions summary", () => {

@@ -496,6 +496,7 @@ export {
   isMapObjectLocation,
   isMapTokenLocation,
   mapFieldLayer,
+  DESIGNER_BORDER_SEALING_ENABLED,
   isDesignedEdgeSealedBetween,
   isOuterEdgeSealed,
   isTileSlotDesignedSealed,
