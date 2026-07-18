@@ -7193,6 +7193,25 @@ export function isMapObjectLocation(locationId: string): boolean {
   return isMapTokenLocation(locationId) || locationId === "gate";
 }
 
+/**
+ * Whether a field's location links its tile into the map through a TELEPORT
+ * network (a Monolith / Whirlpool / Teleport Gate / Subterranean Gate / one-way
+ * Monolith) rather than by a walked edge. Used by the tile-rotation connectivity
+ * check: a tile that hosts — or sits next to — such a connector is reachable via
+ * the network, so a rotation is never "sealed off" just because a teleport gate
+ * is the doorway. (A gate carved onto a former Blocked Field keeps that slot's
+ * printed sealed arc, which used to make the connectivity heuristic wrongly read
+ * the gate as a blocked/sealed field and reject the rotation.)
+ */
+export function isTeleportConnectorLocation(locationId: string): boolean {
+  return (
+    isMapObjectLocation(locationId) ||
+    locationId === "subterranean_gate" ||
+    locationId === "oneway_entrance" ||
+    locationId === "oneway_exit"
+  );
+}
+
 /** Teleport-Gate pair (1-4) → its display colour name (red/blue/green/violet — the printed portal art). */
 export function gatePairColor(pair: 1 | 2 | 3 | 4): string {
   return { 1: "red", 2: "blue", 3: "green", 4: "violet" }[pair];
