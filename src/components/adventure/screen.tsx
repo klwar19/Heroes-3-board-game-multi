@@ -230,7 +230,9 @@ const GATE_PAIR_COLORS: Record<number, string> = {
  */
 function gateHexMark(spaceId: string, x: number, y: number, pair: number): ReactNode {
   const color = GATE_PAIR_COLORS[pair] ?? "#c9a24b";
-  const art = HEX_SIZE * 1.6;
+  // A touch smaller than the monolith so the portal icon sits neatly inside its
+  // hex (the ring + pair badge below keep it identifiable at the reduced size).
+  const art = HEX_SIZE * 1.28;
   return (
     <g className="hexGateMark" key={`${spaceId}-gate-mark`} style={{ pointerEvents: "none" }}>
       {/* The Teleport Gate's own per-color portal artwork. */}
@@ -3601,7 +3603,10 @@ export function TownPanel({
               onMouseLeave={() => clearBuildingTip(buildingId)}
               tabIndex={0}
             >
-              {/* Building art slot: fills in as soon as assets.image lands. */}
+              {/* Building art slot: fills in as soon as assets.image lands.
+                  A not-built building keeps its full art, just faintly blurred
+                  with a small "not built" tag so it reads as pending at a glance
+                  without obscuring the artwork. */}
               {building.assets?.image ? (
                 <img
                   alt={`${building.name} building tile`}
@@ -3610,6 +3615,11 @@ export function TownPanel({
                   referrerPolicy="no-referrer"
                   src={assetUrl(building.assets.image)}
                 />
+              ) : null}
+              {!built && building.assets?.image ? (
+                <span className="townBuildingUnbuilt" aria-hidden="true">
+                  not built
+                </span>
               ) : null}
               <strong>{building.name}</strong>
               <small>{built ? (cubes > 0 ? `built · ${cubes} cube${cubes === 1 ? "" : "s"}` : "built") : formatCost(building.cost)}</small>
@@ -7941,21 +7951,24 @@ function AbilitySymbol({ cardId }: { cardId: string | undefined }) {
 }
 
 /**
- * A hero's specialty symbol only — the top-centre art of the printed specialty
- * card, cropped by CSS (`.heroSpecArt img`) exactly as the hero board does, or,
- * for an art-less specialty (Bulwark/Conflux/spell specialists), the transparent
- * specialty symbol contained in the chip. A missing scan just shows the numeral.
+ * A hero's specialty symbol. Prefers the curated transparent specialty symbol
+ * (contained in the chip, never cropped) — for the unit / spell / skill
+ * specialists AND the Cove roster, whose full-card scans are inset in their
+ * canvas and mis-crop through the fixed `.heroSpecArt img` window. Only when no
+ * symbol is shipped does it fall back to the top-centre crop of the printed
+ * scan (the classic roster, whose edge-to-edge scans crop cleanly); a hero with
+ * neither just shows the numeral.
  */
 function SpecialtySymbol({ cardId }: { cardId: string | undefined }) {
   const card = cardId ? cardLibrary[cardId] : undefined;
   const scan = card?.assets?.cardImage;
-  const nativeIcon = !scan ? specialtyIconSrc(cardId) : undefined;
+  const nativeIcon = specialtyIconSrc(cardId);
   return (
     <span aria-hidden="true" className="heroSpecArt">
-      {scan ? (
-        <img alt="" src={assetUrl(scan)} />
-      ) : nativeIcon ? (
+      {nativeIcon ? (
         <img alt="" className="heroSpecIcon" src={assetUrl(nativeIcon)} />
+      ) : scan ? (
+        <img alt="" src={assetUrl(scan)} />
       ) : null}
     </span>
   );

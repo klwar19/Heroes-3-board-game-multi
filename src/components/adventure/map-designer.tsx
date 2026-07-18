@@ -771,10 +771,15 @@ const TILE_PICK_FILTERS: {
 ];
 
 /** How a non-starting designed tile is configured for players. */
-type TileSlotMode = "random" | "secret" | "faceup";
+type TileSlotMode = "random" | "secret" | "faceup" | "one-of";
 
 function tileSlotMode(plan: CustomMapTilePlan): TileSlotMode {
   if (!plan.faceDown) {
+    // Face-up: an exact chosen tile, OR a "one of these tiles" random list (a
+    // random one from the list is placed revealed at game start).
+    if (!plan.tileDefId && plan.oneOfTileDefIds && plan.oneOfTileDefIds.length > 0) {
+      return "one-of";
+    }
     return "faceup";
   }
   // Secret = a landmark filter (one or several) OR a legacy exact pin (both stay
@@ -1510,6 +1515,9 @@ export function MapDesigner({
           // Explicit `undefined` clears an optional field (secret pin / feature / token / gate links).
           if (changes.tileDefId === undefined && "tileDefId" in changes) {
             delete next.tileDefId;
+          }
+          if (changes.oneOfTileDefIds === undefined && "oneOfTileDefIds" in changes) {
+            delete next.oneOfTileDefIds;
           }
           if (changes.secretFeature === undefined && "secretFeature" in changes) {
             delete next.secretFeature;
@@ -2532,6 +2540,7 @@ export function MapDesigner({
       updateTile(selectedIndex, {
         faceDown: true,
         tileDefId: undefined,
+        oneOfTileDefIds: undefined,
         secretFeature: undefined,
         secretFeatures: undefined,
         ...faceDownTokens
@@ -2549,9 +2558,39 @@ export function MapDesigner({
         faceDown: true,
         // Feature secrets clear an exact pin so the pool can still vary.
         tileDefId: features.length > 0 ? undefined : selected.tileDefId ?? fallbackId,
+        oneOfTileDefIds: undefined,
         secretFeature: undefined,
         secretFeatures: features.length > 0 ? features : undefined,
         ...faceDownTokens
+      });
+      return;
+    }
+    if (mode === "one-of") {
+      // "One of these tiles": a face-up slot that places a RANDOM tile from a
+      // designer-chosen list at setup. Seed the list with the current exact tile
+      // (or the fallback) so it is never empty; the designer then toggles more
+      // tiles in the grid below. Tokens fold to their face-down (physical-hex)
+      // form since the concrete tile — and its printed slots — is unknown here.
+      const seedList =
+        selected.oneOfTileDefIds && selected.oneOfTileDefIds.length > 0
+          ? selected.oneOfTileDefIds
+          : selected.tileDefId
+            ? [selected.tileDefId]
+            : fallbackId
+              ? [fallbackId]
+              : [];
+      if (seedList.length === 0) {
+        return;
+      }
+      updateTile(selectedIndex, {
+        faceDown: false,
+        tileDefId: undefined,
+        oneOfTileDefIds: seedList,
+        secretFeature: undefined,
+        secretFeatures: undefined,
+        ...tokensPatch(selected, (token) =>
+          faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
+        )
       });
       return;
     }
@@ -2562,6 +2601,7 @@ export function MapDesigner({
     updateTile(selectedIndex, {
       faceDown: false,
       tileDefId: fallbackId,
+      oneOfTileDefIds: undefined,
       secretFeature: undefined,
       secretFeatures: undefined,
       ...retargetTokensForDef(selected, fallbackId)
@@ -2584,6 +2624,7 @@ export function MapDesigner({
     updateTile(selectedIndex, {
       faceDown: true,
       tileDefId: undefined,
+      oneOfTileDefIds: undefined,
       secretFeature: undefined,
       secretFeatures: nextSet.length > 0 ? nextSet : undefined,
       ...tokensPatch(selected, (token) =>
@@ -2607,6 +2648,7 @@ export function MapDesigner({
     updateTile(selectedIndex, {
       faceDown: nextFaceDown,
       tileDefId,
+      oneOfTileDefIds: undefined,
       secretFeature: undefined,
       secretFeatures: undefined,
       ...(nextFaceDown
@@ -2614,6 +2656,38 @@ export function MapDesigner({
             faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
           )
         : retargetTokensForDef(selected, tileDefId))
+    });
+  };
+
+  /**
+   * "One of these tiles" mode: TOGGLE a tile in the random list. Removing the
+   * last one drops back to a plain face-up exact pin on the first available tile
+   * (a slot always resolves to a real tile). The slot stays face-up.
+   */
+  const pickOneOfTile = (tileDefId: string) => {
+    if (selectedIndex === null || !selected || selected.group === "starting") {
+      return;
+    }
+    const current = selected.oneOfTileDefIds ?? [];
+    const nextList = current.includes(tileDefId)
+      ? current.filter((id) => id !== tileDefId)
+      : [...current, tileDefId];
+    if (nextList.length === 0) {
+      // Last one removed → fall back to a plain exact face-up tile.
+      updateTile(selectedIndex, {
+        faceDown: false,
+        tileDefId,
+        oneOfTileDefIds: undefined,
+        ...retargetTokensForDef(selected, tileDefId)
+      });
+      return;
+    }
+    updateTile(selectedIndex, {
+      faceDown: false,
+      tileDefId: undefined,
+      oneOfTileDefIds: nextList,
+      secretFeature: undefined,
+      secretFeatures: undefined
     });
   };
   // Token kinds the tile-panel ADD picker offers — Whirlpool ONLY. The plain
@@ -3076,13 +3150,18 @@ export function MapDesigner({
     const planSecretSet = planAllowedSecretFeatures(plan);
     const secretPin = plan.faceDown && Boolean(plan.tileDefId || planSecretSet.length > 0);
     const featureSecret = plan.faceDown && planSecretSet.length > 0 && !plan.tileDefId;
+    // A face-up "one of these tiles" slot has no concrete tile yet — show the
+    // FIRST candidate's art as a representative (a 🎲 badge below marks it random).
+    const oneOfList = !plan.faceDown && !plan.tileDefId ? plan.oneOfTileDefIds ?? [] : [];
     const art = isStart
       ? TILE_BACK_IMAGES.starting
       : plan.faceDown
         ? planBackArt(plan)
         : plan.tileDefId
           ? allTileDefinitions[plan.tileDefId]?.assets?.tileImage
-          : undefined;
+          : oneOfList.length > 0
+            ? allTileDefinitions[oneOfList[0]]?.assets?.tileImage
+            : undefined;
     const width = 3 * hexWidth;
     const height = 5 * size;
 
@@ -3219,6 +3298,24 @@ export function MapDesigner({
         >
           <title>{`Ⅶ field forced to ${viiFull}`}</title>
           {viiBadge}
+        </text>
+      );
+    }
+
+    // "One of these tiles" random set — a 🎲 badge with the count, so the
+    // representative (first-candidate) art above is never mistaken for an exact
+    // pick. Face-up one-of slots only.
+    if (!isStart && !plan.faceDown && !plan.tileDefId && (plan.oneOfTileDefIds?.length ?? 0) > 0) {
+      labelLayer.push(
+        <text
+          className="designerViiBadge"
+          key={`plan-oneof-${index}`}
+          textAnchor="middle"
+          x={centerPixel.x}
+          y={centerPixel.y + size * 0.85}
+        >
+          <title>{`Random at game start: one of ${plan.oneOfTileDefIds!.length} tiles`}</title>
+          {`🎲 1 of ${plan.oneOfTileDefIds!.length}`}
         </text>
       );
     }
@@ -4571,6 +4668,17 @@ export function MapDesigner({
                     <span className="popoverModeTitle">Face-up</span>
                     <span className="popoverModeSub">Visible now</span>
                   </button>
+                  <button
+                    aria-pressed={selectedMode === "one-of"}
+                    className={`popoverModeCard${selectedMode === "one-of" ? " active" : ""}`}
+                    onClick={() => setSelectedSlotMode("one-of")}
+                    title="Pick a LIST of tiles; the game places ONE of them at random (face-up) when it starts."
+                    type="button"
+                  >
+                    <DesignerGlyph className="popoverModeGlyph" src={DESIGNER_UI_ICONS.modeRandom} />
+                    <span className="popoverModeTitle">One of</span>
+                    <span className="popoverModeSub">From a list</span>
+                  </button>
                 </div>
 
                 <small className="popoverHint">
@@ -4582,7 +4690,9 @@ export function MapDesigner({
                         : selected.tileDefId
                           ? `Exact secret pin: ${selected.tileDefId} stays face-down. Prefer a landmark below so the pool can still vary.`
                           : "Secret: tap one or more landmarks below. The game draws one random tile matching ANY of them from this pool."
-                      : "Face-up: click a tile below. Everyone sees it from the start of the game."}
+                      : selectedMode === "one-of"
+                        ? `One of: the game places a RANDOM tile from your list (${(selected.oneOfTileDefIds ?? []).length} selected) face-up at game start. Tap tiles below to add or remove them.`
+                        : "Face-up: click a tile below. Everyone sees it from the start of the game."}
                 </small>
 
                 {/* Step 2a — Secret: pick one or more landmark features (primary). */}
@@ -4645,16 +4755,21 @@ export function MapDesigner({
 
                 {/* Step 2b — Face-up tile grid, or advanced exact secret pin under Secret/Random. */}
                 {PICKABLE_GROUPS.has(selected.group) &&
-                (selectedMode === "faceup" || selectedMode === "secret" || selectedMode === "random") ? (
+                (selectedMode === "faceup" ||
+                  selectedMode === "secret" ||
+                  selectedMode === "random" ||
+                  selectedMode === "one-of") ? (
                   <div className="popoverTilePicker">
                     <div className="popoverSectionLabel">
                       {selectedMode === "faceup"
                         ? "Click the face-up tile"
-                        : selectedMode === "secret"
-                          ? "Advanced: pin one exact tile instead"
-                          : "Or pin a specific tile as exact Secret"}
+                        : selectedMode === "one-of"
+                          ? "Tap tiles to include in the random set"
+                          : selectedMode === "secret"
+                            ? "Advanced: pin one exact tile instead"
+                            : "Or pin a specific tile as exact Secret"}
                     </div>
-                    {selectedMode !== "faceup" ? (
+                    {selectedMode === "secret" || selectedMode === "random" ? (
                       <small className="popoverHint">
                         {selectedMode === "secret"
                           ? "Locks one tile id (legacy). Prefer a landmark above so any matching tile can appear."
@@ -4679,8 +4794,11 @@ export function MapDesigner({
                     </div>
                     <div className="popoverTileGrid" role="listbox" aria-label="Tiles in this pool">
                       {filteredPickableTiles.map((tile) => {
+                        const isOneOf = selectedMode === "one-of";
                         const taken = usedPinnedIds.has(tile.id) && selected.tileDefId !== tile.id;
-                        const isPicked = selected.tileDefId === tile.id;
+                        const isPicked = isOneOf
+                          ? (selected.oneOfTileDefIds ?? []).includes(tile.id)
+                          : selected.tileDefId === tile.id;
                         const tags = tileFeatureTags(tile);
                         const art = tile.assets?.tileImage;
                         return (
@@ -4689,7 +4807,7 @@ export function MapDesigner({
                             className={`popoverTileCard${isPicked ? " selected" : ""}${taken ? " taken" : ""}`}
                             disabled={taken}
                             key={tile.id}
-                            onClick={() => pickTileForSelected(tile.id)}
+                            onClick={() => (isOneOf ? pickOneOfTile(tile.id) : pickTileForSelected(tile.id))}
                             role="option"
                             title={
                               taken
@@ -4722,7 +4840,7 @@ export function MapDesigner({
                             </span>
                             {isPicked ? (
                               <span className="popoverTileCardBadge">
-                                {selectedMode === "faceup" ? "Face-up" : "Exact"}
+                                {isOneOf ? "In set" : selectedMode === "faceup" ? "Face-up" : "Exact"}
                               </span>
                             ) : null}
                             {taken ? <span className="popoverTileCardBadge taken">Used</span> : null}

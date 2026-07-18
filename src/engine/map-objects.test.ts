@@ -4,6 +4,7 @@ import {
   canCrossEdge,
   createAdventureGameState,
   customMapPresetIsActive,
+  DESIGNER_BORDER_SEALING_ENABLED,
   describeCustomMapPresetEntries,
   describeMapObjects,
   getLegalActions,
@@ -1305,22 +1306,37 @@ describe("object-hex yellow borders", () => {
     );
   }
 
-  it("a sealed object edge blocks the crossing BOTH ways (CONTROL: other edges / no border stay open)", () => {
-    const state = borderedGame([3], "object-border-sealed");
-    expect(adv(state).fields[hex]?.borderEdges).toEqual([3]);
-    // Sealed toward the tile: neither direction may cross that edge.
-    expect(canCrossEdge(state, ring, hex)).toBe(false);
-    expect(canCrossEdge(state, hex, ring)).toBe(false);
+  // The designer-border sealing "lock" is disabled for now — see
+  // DESIGNER_BORDER_SEALING_ENABLED. This spec runs only when it is re-armed.
+  (DESIGNER_BORDER_SEALING_ENABLED ? it : it.skip)(
+    "a sealed object edge blocks the crossing BOTH ways (CONTROL: other edges / no border stay open)",
+    () => {
+      const state = borderedGame([3], "object-border-sealed");
+      expect(adv(state).fields[hex]?.borderEdges).toEqual([3]);
+      // Sealed toward the tile: neither direction may cross that edge.
+      expect(canCrossEdge(state, ring, hex)).toBe(false);
+      expect(canCrossEdge(state, hex, ring)).toBe(false);
 
-    // CONTROL 1: a seal on a DIFFERENT edge leaves the tile crossing open.
-    const otherEdge = borderedGame([0], "object-border-other");
-    expect(canCrossEdge(otherEdge, ring, hex)).toBe(true);
-    expect(canCrossEdge(otherEdge, hex, ring)).toBe(true);
+      // CONTROL 1: a seal on a DIFFERENT edge leaves the tile crossing open.
+      const otherEdge = borderedGame([0], "object-border-other");
+      expect(canCrossEdge(otherEdge, ring, hex)).toBe(true);
+      expect(canCrossEdge(otherEdge, hex, ring)).toBe(true);
 
-    // CONTROL 2: no border at all → open (the pre-feature behaviour).
-    const open = borderedGame(undefined, "object-border-none");
-    expect(canCrossEdge(open, ring, hex)).toBe(true);
-  });
+      // CONTROL 2: no border at all → open (the pre-feature behaviour).
+      const open = borderedGame(undefined, "object-border-none");
+      expect(canCrossEdge(open, ring, hex)).toBe(true);
+    }
+  );
+
+  (DESIGNER_BORDER_SEALING_ENABLED ? it.skip : it)(
+    "with the lock removed, an object border neither copies onto the field nor seals the crossing",
+    () => {
+      const state = borderedGame([3], "object-border-lock-off");
+      expect(adv(state).fields[hex]?.borderEdges).toBeUndefined();
+      expect(canCrossEdge(state, ring, hex)).toBe(true);
+      expect(canCrossEdge(state, hex, ring)).toBe(true);
+    }
+  );
 
   it("sanitize keeps clean object border edges and drops garbage", () => {
     const clean = sanitizeCustomMapObject({

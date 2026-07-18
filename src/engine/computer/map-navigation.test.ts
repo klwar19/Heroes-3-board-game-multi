@@ -7,6 +7,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { createAdventureGameState } from "../adventure-setup";
 import {
   canHeroReachPlacedTile,
+  DESIGNER_BORDER_SEALING_ENABLED,
   farTilePlacementCenters,
   getAdjacentSpaceIds,
   instantiateTile,
@@ -2584,7 +2585,10 @@ describe("navigation across sea / underground, teleport routing, Spell-Book stas
   });
 });
 
-describe("computer pathing respects designer-placed yellow borders", () => {
+// The designer-border sealing "lock" is disabled for now
+// (DESIGNER_BORDER_SEALING_ENABLED === false), so a designed border no longer
+// severs the AI's pathing — this spec runs only when the lock is re-armed.
+(DESIGNER_BORDER_SEALING_ENABLED ? describe : describe.skip)("computer pathing respects designer-placed yellow borders", () => {
   // The march / distance field walks via canCrossEdge, so a designed border it
   // inherits automatically — this pins it: the AI cannot route a step across a
   // designer-placed yellow border (CONTROL: the same layout without the border

@@ -57,6 +57,7 @@ import {
   EVENTS_DECK_ID,
   gatePairColor,
   getTileFootprintSpaceIds,
+  DESIGNER_BORDER_SEALING_ENABLED,
   getUnitSide,
   instantiateTile,
   materializeTileFields,
@@ -1035,7 +1036,42 @@ export function validateCustomMapPlan(
         problems.push(`Tile ${index + 1}: ${plan.tileDefId} belongs to the ${def.group} pool, not ${plan.group}.`);
         return false;
       }
-    } else if (plan.group !== "starting" && !plan.faceDown) {
+    }
+    // "One of these tiles" random list (map designer): every id must be a real
+    // tile of this slot's own pool; it never applies to a starting seat.
+    if (plan.oneOfTileDefIds !== undefined) {
+      if (plan.group === "starting") {
+        problems.push(`Tile ${index + 1}: starting tiles are placed by faction, not from a tile list.`);
+        return false;
+      }
+      if (!Array.isArray(plan.oneOfTileDefIds) || plan.oneOfTileDefIds.length === 0) {
+        problems.push(`Tile ${index + 1}: the "one of" tile list is empty.`);
+        return false;
+      }
+      for (const id of plan.oneOfTileDefIds) {
+        const def = allTileDefinitions[id];
+        if (!def) {
+          problems.push(`Tile ${index + 1}: unknown tile "${id}" in the tile list.`);
+          return false;
+        }
+        if (def.group === "starting") {
+          problems.push(`Tile ${index + 1}: starting tiles cannot appear in a tile list.`);
+          return false;
+        }
+        if (def.group !== plan.group) {
+          problems.push(`Tile ${index + 1}: ${id} belongs to the ${def.group} pool, not ${plan.group}.`);
+          return false;
+        }
+      }
+    }
+    // A face-up slot needs a concrete choice: an exact tile OR a non-empty "one
+    // of" list (a random pick lands there at setup).
+    if (
+      plan.group !== "starting" &&
+      !plan.faceDown &&
+      !plan.tileDefId &&
+      !(plan.oneOfTileDefIds && plan.oneOfTileDefIds.length > 0)
+    ) {
       problems.push(`Tile ${index + 1}: pick a tile for the face-up slot.`);
       return false;
     }
@@ -1644,7 +1680,8 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
     }
     // Designer yellow border edges ride the object onto its carved field
     // (absolute dirs, re-normalised so a hand-edited save can't smuggle junk).
-    if (Array.isArray(object.borderEdges)) {
+    // Skipped while the sealing "lock" is disabled (see applyDesignedBorders).
+    if (DESIGNER_BORDER_SEALING_ENABLED && Array.isArray(object.borderEdges)) {
       const edges = [
         ...new Set(object.borderEdges.filter((dir) => Number.isInteger(dir) && dir >= 0 && dir <= 5))
       ].sort((a, b) => a - b);
@@ -1664,6 +1701,13 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
  * the plan's provenance.
  */
 function applyDesignedBorders(tile: MapTileState, plan: CustomMapTilePlan): void {
+  // The designer-border sealing "lock" is disabled for now: leave the plan's
+  // border data untouched (so the designer + save round-trip keep it), but do
+  // NOT copy it onto the live tile — so it neither seals movement nor renders as
+  // an inert in-game wall. Flip DESIGNER_BORDER_SEALING_ENABLED to restore it.
+  if (!DESIGNER_BORDER_SEALING_ENABLED) {
+    return;
+  }
   const borders = normalizeDesignedBorders(plan.extraBorders);
   if (borders.length > 0) {
     tile.extraBorders = borders;
@@ -2453,12 +2497,42 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     const popSubTile = (band?: "iv-v" | "vi-vii"): string | undefined =>
       band ? popSubBandTile(subterraneanPool, band) : subterraneanPool.pop();
 
-    // Designed tiles that pin a specific id (face-up OR exact secret face-down)
-    // never also hide in a random / feature face-down pool draw.
-    for (const plan of customMap) {
+    // "One of these tiles" (map designer): a slot may name a LIST of candidate
+    // tile ids instead of one exact `tileDefId`. Resolve it to a single concrete
+    // id here — seeded by the slot's board position, so it is deterministic — and
+    // then treat it exactly like an exact pin everywhere below (pool removal,
+    // face-up placement, face-down secret pin). Memoized so every read of one
+    // slot returns the same pick. An exact `tileDefId` always wins; starting
+    // tiles (faction art) never draw from a list.
+    const oneOfPick = new Map<CustomMapTilePlan, string>();
+    const effectiveExactTileDefId = (plan: CustomMapTilePlan): string | undefined => {
       if (plan.tileDefId) {
+        return plan.tileDefId;
+      }
+      if (plan.group === "starting") {
+        return undefined;
+      }
+      const choices = (plan.oneOfTileDefIds ?? []).filter((id) => Boolean(allTileDefinitions[id]));
+      if (choices.length === 0) {
+        return undefined;
+      }
+      const cached = oneOfPick.get(plan);
+      if (cached) {
+        return cached;
+      }
+      const pick = shuffleCards(choices, `${seed}#tilechoice#${plan.row}#${plan.col}`)[0];
+      oneOfPick.set(plan, pick);
+      return pick;
+    };
+
+    // Designed tiles that pin a specific id (face-up OR exact secret face-down),
+    // including a resolved "one of" pick, never also hide in a random / feature
+    // face-down pool draw.
+    for (const plan of customMap) {
+      const pinnedId = effectiveExactTileDefId(plan);
+      if (pinnedId) {
         for (const pool of Object.values(pools)) {
-          const index = pool.indexOf(plan.tileDefId);
+          const index = pool.indexOf(pinnedId);
           if (index !== -1) {
             pool.splice(index, 1);
           }
@@ -2472,7 +2546,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // a specific Center tile or named a secretFeature keeps that choice.
     const unpinnedFaceDownCenterSlots = customMap.filter(
       (plan) =>
-        plan.faceDown && plan.group === "center" && !plan.tileDefId && !plan.secretFeature
+        plan.faceDown && plan.group === "center" && !effectiveExactTileDefId(plan) && !plan.secretFeature
     ).length;
     const forcedCenters = forcedObjectiveCenterTiles(centerPool, unpinnedFaceDownCenterSlots, victoryMode);
     let forcedCenterIndex = 0;
@@ -2508,9 +2582,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       const allowedFeatures = planAllowedSecretFeatures(plan);
       if (plan.faceDown) {
         let tileDefId: string | undefined;
-        // Exact pin wins over a feature filter (legacy / advanced).
-        if (plan.tileDefId && allTileDefinitions[plan.tileDefId]) {
-          tileDefId = plan.tileDefId;
+        // Exact pin (or a resolved "one of" pick) wins over a feature filter.
+        const pinnedId = effectiveExactTileDefId(plan);
+        if (pinnedId && allTileDefinitions[pinnedId]) {
+          tileDefId = pinnedId;
         } else if (allowedFeatures.length > 0) {
           // Feature secret: random remaining tile that has ANY allowed landmark
           // (e.g. valuables OR gold). Prefer the slot's own pool; fall back to an
@@ -2573,16 +2648,20 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
             plannedFieldOverrides.push({ plan, tile });
           }
         }
-      } else if (plan.tileDefId) {
-        const tile = instantiateTile(adventure, plan.tileDefId, center, plan.rotation ?? 0, false);
-        applyDesignedBorders(tile, plan);
-        applyDesignedUnderground(tile, plan);
-        applyDesignedViiField(adventure, tile, plan);
-        if (planTokens(plan).length > 0) {
-          plannedTokens.push({ plan, tile });
-        }
-        if (planFieldOverrides(plan).length > 0) {
-          plannedFieldOverrides.push({ plan, tile });
+      } else {
+        // Face-up: an exact `tileDefId` or a resolved "one of" random pick.
+        const faceUpId = effectiveExactTileDefId(plan);
+        if (faceUpId && allTileDefinitions[faceUpId]) {
+          const tile = instantiateTile(adventure, faceUpId, center, plan.rotation ?? 0, false);
+          applyDesignedBorders(tile, plan);
+          applyDesignedUnderground(tile, plan);
+          applyDesignedViiField(adventure, tile, plan);
+          if (planTokens(plan).length > 0) {
+            plannedTokens.push({ plan, tile });
+          }
+          if (planFieldOverrides(plan).length > 0) {
+            plannedFieldOverrides.push({ plan, tile });
+          }
         }
       }
     }

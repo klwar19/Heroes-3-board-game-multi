@@ -1513,3 +1513,114 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     expect(control.players.p1.morale).toBe(0);
   });
 });
+
+describe("map designer — \"one of these tiles\" random tile choice", () => {
+  const farTileIds = Object.keys(allTileDefinitions).filter(
+    (id) => allTileDefinitions[id].group === "far"
+  );
+
+  it("places a face-up slot as one of the listed tiles, with its fields materialized", () => {
+    const choices = farTileIds.slice(0, 3);
+    const state = createAdventureGameState({
+      seed: "one-of-faceup",
+      customMap: [{ row: 11, col: 2, group: "far", faceDown: false, oneOfTileDefIds: choices }]
+    });
+    const placed = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.group === "far" && !tile.faceDown
+    );
+    expect(placed, "the one-of face-up tile was placed").toBeDefined();
+    expect(placed!.faceDown).toBe(false);
+    // The placed tile is ONE of the listed candidates (never something else).
+    expect(choices).toContain(placed!.tileDefId);
+    // Face-up: all seven fields materialize from the start (a real placed tile).
+    expect(
+      Object.values(state.adventure!.fields).filter((field) => field.tileInstanceId === placed!.id)
+    ).toHaveLength(7);
+  });
+
+  it("is deterministic by seed and varies across seeds (a real random pick)", () => {
+    const choices = farTileIds.slice(0, 4);
+    const pick = (seed: string): string | undefined =>
+      Object.values(
+        createAdventureGameState({
+          seed,
+          customMap: [{ row: 11, col: 2, group: "far", faceDown: false, oneOfTileDefIds: choices }]
+        }).adventure!.tiles
+      ).find((tile) => tile.group === "far" && !tile.faceDown)?.tileDefId;
+
+    // Same seed → same pick.
+    expect(pick("one-of-detA")).toBe(pick("one-of-detA"));
+    // Across many seeds the pick genuinely varies (not pinned to one tile).
+    const seen = new Set(
+      ["a", "b", "c", "d", "e", "f", "g", "h"].map((s) => pick(`one-of-var-${s}`))
+    );
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("an exact tileDefId always overrides the list (pin wins)", () => {
+    const choices = farTileIds.slice(0, 3);
+    const exact = farTileIds[5] ?? farTileIds[0];
+    const state = createAdventureGameState({
+      seed: "one-of-exact-wins",
+      customMap: [
+        { row: 11, col: 2, group: "far", faceDown: false, tileDefId: exact, oneOfTileDefIds: choices }
+      ]
+    });
+    const placed = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.group === "far" && !tile.faceDown
+    );
+    expect(placed!.tileDefId).toBe(exact);
+  });
+
+  it("resolves a FACE-DOWN one-of slot to a hidden pick from the list", () => {
+    const choices = farTileIds.slice(0, 2);
+    const state = createAdventureGameState({
+      seed: "one-of-facedown",
+      customMap: [{ row: 11, col: 2, group: "far", faceDown: true, oneOfTileDefIds: choices }]
+    });
+    const placed = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.group === "far" && tile.faceDown
+    );
+    expect(placed, "the one-of face-down tile was placed").toBeDefined();
+    expect(choices).toContain(placed!.tileDefId);
+    // Still face-down: no fields until discovery.
+    expect(
+      Object.values(state.adventure!.fields).filter((field) => field.tileInstanceId === placed!.id)
+    ).toHaveLength(0);
+  });
+
+  it("validator accepts a valid face-up list and rejects empty / unknown / wrong-group / starting", () => {
+    const scenario = getScenario("skirmish");
+    const nearId = Object.keys(allTileDefinitions).find((id) => allTileDefinitions[id].group === "near")!;
+    const { accepted } = validateCustomMapPlan(
+      [{ row: 9, col: 4, group: "far", faceDown: false, oneOfTileDefIds: farTileIds.slice(0, 2) }],
+      scenario
+    );
+    expect(accepted, "a valid face-up list satisfies the face-up requirement").toHaveLength(1);
+    expect(accepted[0].oneOfTileDefIds).toEqual(farTileIds.slice(0, 2));
+
+    // Empty list on a face-up slot → dropped (and no valid tile either).
+    const empty = validateCustomMapPlan(
+      [{ row: 9, col: 4, group: "far", faceDown: false, oneOfTileDefIds: [] }],
+      scenario
+    );
+    expect(empty.accepted).toHaveLength(0);
+    expect(empty.problems.length).toBeGreaterThan(0);
+
+    // Unknown tile id → dropped.
+    expect(
+      validateCustomMapPlan(
+        [{ row: 9, col: 4, group: "far", faceDown: true, oneOfTileDefIds: ["NOPE_TILE"] }],
+        scenario
+      ).accepted
+    ).toHaveLength(0);
+
+    // A tile from the wrong pool (near tile in a far slot) → dropped.
+    expect(
+      validateCustomMapPlan(
+        [{ row: 9, col: 4, group: "far", faceDown: true, oneOfTileDefIds: [nearId] }],
+        scenario
+      ).accepted
+    ).toHaveLength(0);
+  });
+});
