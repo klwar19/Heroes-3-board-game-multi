@@ -116,6 +116,33 @@ export function resolveFieldOverridePlacement(
   return options?.fieldOverridePlacement ?? DEFAULT_FIELD_OVERRIDE_PLACEMENT;
 }
 
+/**
+ * A map-objects CONTENT module — the Wake of Gods "New Objects" package
+ * (`wog.enabled && wog.newObjects`) or the Anime "Map objects" package
+ * (`anime.enabled && anime.mapObjects !== false`, absent === ON for
+ * legacy/campaign) — requires the GLOBAL Field Override mechanism to place its
+ * hexes. True when either package is active in the given options; callers force
+ * `fieldOverrides` ON when this holds (the `setGameOptions` chokepoint AND the
+ * game-build backstop). The anime gate mirrors `fieldOverridePackageAllowed`
+ * verbatim so the "is content legal in the pool" and "is FO forced on"
+ * questions can never diverge.
+ */
+export function mapObjectsModuleActive(
+  options:
+    | {
+        wog?: { enabled?: boolean; newObjects?: boolean } | null;
+        anime?: { enabled?: boolean; mapObjects?: boolean } | null;
+      }
+    | null
+    | undefined
+): boolean {
+  const wog = options?.wog;
+  const wogObjectsOn = Boolean(wog?.enabled) && Boolean(wog?.newObjects);
+  const anime = options?.anime;
+  const animeObjectsOn = Boolean(anime?.enabled) && anime?.mapObjects !== false;
+  return wogObjectsOn || animeObjectsOn;
+}
+
 export function fieldOverrideLabel(kind: string): string {
   return getFieldOverrideDefinition(kind)?.name ?? kind;
 }

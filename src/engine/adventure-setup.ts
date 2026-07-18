@@ -161,6 +161,7 @@ import {
   customMapHasAnimeFieldOverridePins,
   customMapHasFieldOverridePins,
   customMapHasWogFieldOverridePins,
+  mapObjectsModuleActive,
   resolveFieldOverridePlacement,
   resolveFieldOverridesEnabled
 } from "./field-overrides";
@@ -2079,7 +2080,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // Anime content requires BINH; flip so pins are not silently stripped.
     anime = { ...resolveAnimeOptions(setupOptions.anime), enabled: true, mapObjects: true };
   }
-  const fieldOverridesOn = resolveFieldOverridesEnabled(setupOptions);
+  // A map-objects content module (WOG New Objects / Anime map objects) forces
+  // the global Field Override mechanism ON — read the RESOLVED `wog`/`anime`
+  // above (designer pins already folded in) so this backstop mirrors the
+  // `setGameOptions` chokepoint even for a direct build payload that ticked the
+  // module but left `fieldOverrides` off/absent. Force-ON only.
+  const fieldOverridesOn =
+    resolveFieldOverridesEnabled(setupOptions) || mapObjectsModuleActive({ wog, anime });
   const fieldOverridePlacement = resolveFieldOverridePlacement(setupOptions);
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
@@ -3255,6 +3262,21 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     changes.push(
       `Field Overrides ${lobby.options.fieldOverrides ? "on" : "off"} (${lobby.options.fieldOverridePlacement ?? "manual-or-refuse"})`
     );
+  }
+
+  // Force-ON chokepoint: a map-objects module (WOG New Objects / Anime map
+  // objects) REQUIRES the global Field Override mechanism to place its content,
+  // so whenever such a module is active in the RESOLVED lobby options
+  // `fieldOverrides` must be ON — no matter what this payload asked for (a
+  // multiplayer client cannot land with map objects ticked but FO off). This
+  // runs on EVERY SET_GAME_OPTIONS (guarded by the `!== true` check), so it
+  // also catches a payload that only ticks the module and never mentions FO.
+  // Force-ON only: unticking the module never forces FO back off (the table may
+  // keep FO for other content), and an explicit `fieldOverrides: false` in the
+  // same payload as an active module loses to this force.
+  if (mapObjectsModuleActive(lobby.options) && lobby.options.fieldOverrides !== true) {
+    lobby.options.fieldOverrides = true;
+    changes.push("Field Overrides on (required by map objects)");
   }
 
   if (next.victoryMode !== undefined) {

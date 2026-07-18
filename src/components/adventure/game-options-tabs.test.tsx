@@ -392,6 +392,100 @@ describe("Game options — tabbed layout", () => {
 });
 
 /**
+ * The Field Overrides row + placement chips (Map & Setup tab). A map-objects
+ * content module (WOG New Objects / Anime Map objects) REQUIRES the global
+ * Field Override mechanism, so while such a module is active the row renders
+ * locked-ON. The three placement chips dispatch the exact
+ * SET_GAME_OPTIONS.fieldOverridePlacement the engine reads. (The engine force
+ * seam is pinned by field-override-map-objects-force.test.ts.)
+ */
+describe("Game options — Field Overrides row + placement", () => {
+  function foRow(): HTMLElement {
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    return screen.getByTestId("option-field-overrides");
+  }
+
+  it("renders the placement chips when FO is on and dispatches the chosen mode", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.fieldOverrides = true;
+    });
+    const row = foRow();
+    const chips = within(row).getByTestId("option-field-override-placement");
+    fireEvent.click(within(chips).getByRole("button", { name: "Manual" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { fieldOverridePlacement: "manual" }
+    });
+    onAction.mockClear();
+    fireEvent.click(within(chips).getByRole("button", { name: "Auto" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { fieldOverridePlacement: "random" }
+    });
+  });
+
+  it("no placement chips render while FO is off (default)", () => {
+    openOptions();
+    const row = foRow();
+    expect(within(row).queryByTestId("option-field-override-placement")).toBeNull();
+  });
+
+  it("locks the row ON (both buttons disabled) while WOG New Objects is active", () => {
+    openOptionsWith((state) => {
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true,
+        newObjects: true
+      };
+      // Deliberately leave fieldOverrides unset — the row must still read ON.
+      state.setupLobby!.options.fieldOverrides = undefined;
+    });
+    const row = foRow();
+    const onBtn = within(row).getByRole("button", { name: "On" }) as HTMLButtonElement;
+    const offBtn = within(row).getByRole("button", { name: "Off" }) as HTMLButtonElement;
+    expect(onBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(onBtn.disabled).toBe(true);
+    expect(offBtn.disabled).toBe(true);
+    // The locked hint is visible, and the placement chips still render.
+    expect(row.textContent).toMatch(/map objects are selected/i);
+    expect(within(row).getByTestId("option-field-override-placement")).toBeTruthy();
+  });
+
+  it("locks the row ON while the Anime Map-objects module is active (absent mapObjects === on)", () => {
+    openOptionsWith((state) => {
+      state.setupLobby!.options.anime = {
+        ...state.setupLobby!.options.anime!,
+        enabled: true,
+        mapObjects: true
+      };
+      state.setupLobby!.options.fieldOverrides = false;
+    });
+    const row = foRow();
+    const onBtn = within(row).getByRole("button", { name: "On" }) as HTMLButtonElement;
+    expect(onBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(onBtn.disabled).toBe(true);
+  });
+
+  it("CONTROL: the row is a normal free toggle when no map-objects module is active", () => {
+    const onAction = openOptions();
+    const row = foRow();
+    const onBtn = within(row).getByRole("button", { name: "On" }) as HTMLButtonElement;
+    const offBtn = within(row).getByRole("button", { name: "Off" }) as HTMLButtonElement;
+    // Default OFF, both buttons enabled (free), clicking On dispatches it.
+    expect(offBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(onBtn.disabled).toBe(false);
+    fireEvent.click(onBtn);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { fieldOverrides: true }
+    });
+  });
+});
+
+/**
  * The lobby Victory-Points toggle (Mode & Rules tab, directly below Game mode,
  * default Off). These assert the row is WIRED — clicking On / picking a round
  * limit dispatches the exact SET_GAME_OPTIONS the engine reads — and that a
