@@ -50,6 +50,7 @@ import {
   placementCellsFor,
   neutralFormationCellsForGuard,
   neutralPlacementIsManual,
+  canMulliganStartingHand,
   getHeroMoveDestinations,
   hillFortCost,
   inCombatPrep,
@@ -9232,6 +9233,19 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       action: { type: "END_TURN", playerId }
     });
     return actions;
+  }
+
+  // First-round starting-hand Mulligan (optional mode): after the mandatory
+  // start-of-turn draw, replace up to FIRST_ROUND_MULLIGAN_LIMIT cards one at a
+  // time, in round 1 only. Optional and non-blocking — offered alongside normal
+  // play until the budget runs out.
+  if (canMulliganStartingHand(state, playerId)) {
+    for (const cardId of new Set(player.hand)) {
+      actions.push({
+        label: `Replace ${cards[cardId]?.name ?? cardId} (starting-hand Mulligan)`,
+        action: { type: "MULLIGAN_CARD", playerId, cardId }
+      });
+    }
   }
 
   // Instant, Ongoing and Map cards may be played during your own map turn.

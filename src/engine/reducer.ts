@@ -82,6 +82,7 @@ import {
   openDiscardPickChoice,
   giveUpCombat,
   refreshHand,
+  mulliganCard,
   resolveVisitStep,
   retreatFromCombat,
   surrenderFromCombat,
@@ -19300,6 +19301,7 @@ function asNeutralSeatCommand<
 /** Adventure actions are validated inside their handlers, not by enumeration. */
 const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REFRESH_HAND",
+  "MULLIGAN_CARD",
   "ASTROLOGERS_HERO_EMPOWER",
   "REVISIT_FIELD",
   "OPEN_MARKET",
@@ -19699,6 +19701,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "REFRESH_HAND":
         refreshHand(nextState, action);
+        break;
+      case "MULLIGAN_CARD":
+        mulliganCard(nextState, action);
         break;
       case "ASTROLOGERS_HERO_EMPOWER":
         astrologersHeroEmpower(nextState, action);

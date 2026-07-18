@@ -539,6 +539,12 @@ export type AdventureSetupOptions = {
    */
   manualGuardControl?: boolean;
   /**
+   * OPTIONAL first-round starting-hand Mulligan mode (default off): in round 1,
+   * after the mandatory draw, replace up to FIRST_ROUND_MULLIGAN_LIMIT hand
+   * cards one at a time. See GameSetupOptions.startingHandMulligan.
+   */
+  startingHandMulligan?: boolean;
+  /**
    * Unit Experience (optional rule): see GameSetupOptions.unitExperience —
    * one of the three equivalent surfaces (with wog/anime.unitExperience).
    */
@@ -630,6 +636,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     pvpNeutralControl: false,
     pvpNeutralControlMustAttack: true,
     manualGuardControl: false,
+    startingHandMulligan: false,
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
     farTileBlindChoice: false,
@@ -2057,6 +2064,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       : {}),
     ...(options.pvpNeutralControl !== undefined ? { pvpNeutralControl: options.pvpNeutralControl } : {}),
     ...(options.manualGuardControl !== undefined ? { manualGuardControl: options.manualGuardControl } : {}),
+    ...(options.startingHandMulligan !== undefined ? { startingHandMulligan: options.startingHandMulligan } : {}),
     ...(options.pvpNeutralControlMustAttack !== undefined
       ? { pvpNeutralControlMustAttack: options.pvpNeutralControlMustAttack }
       : {}),
@@ -2256,6 +2264,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // checks one plain boolean. Available in solo/single-player too (the
     // computer-fighter gate lives in manualGuardControllerId).
     ...(setupOptions.manualGuardControl ? { manualGuardControl: true } : {}),
+    // OPTIONAL first-round starting-hand Mulligan (default OFF): frozen so the
+    // one round-1 seeding read (finalizeStartOfTurnHand) checks a plain boolean.
+    ...(setupOptions.startingHandMulligan ? { startingHandMulligan: true } : {}),
     // OPTIONAL Undo mode (debug/testing): frozen here so the SERVER action
     // transaction (both backends) can read it and keep a bounded per-room undo
     // stack. Default OFF — no history kept and UNDO_MOVE rejected. Unlike the
@@ -3163,6 +3174,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.manualGuardControl !== undefined) {
     setupOptions.manualGuardControl = options.manualGuardControl;
   }
+  if (options.startingHandMulligan !== undefined) {
+    setupOptions.startingHandMulligan = options.startingHandMulligan;
+  }
   // Map-setup default: a fresh lobby opens with the three universal core town
   // cards (Citadel, Mage Guild, Bronze Dwelling) already pre-built, so every
   // faction starts the adventure with the standard opening buildings. Any seat
@@ -3571,6 +3585,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.manualGuardControl !== undefined) {
     lobby.options.manualGuardControl = Boolean(next.manualGuardControl);
     changes.push(`Manual guard control ${lobby.options.manualGuardControl ? "on" : "off"}`);
+  }
+
+  if (next.startingHandMulligan !== undefined) {
+    lobby.options.startingHandMulligan = Boolean(next.startingHandMulligan);
+    changes.push(`First-round Mulligan ${lobby.options.startingHandMulligan ? "on" : "off"}`);
   }
 
   if (next.unitExperience !== undefined) {
@@ -4851,6 +4870,7 @@ function buildAdventureFromLobby(state: GameState): void {
     pvpNeutralControl: lobby.options.pvpNeutralControl,
     pvpNeutralControlMustAttack: lobby.options.pvpNeutralControlMustAttack,
     manualGuardControl: lobby.options.manualGuardControl,
+    startingHandMulligan: lobby.options.startingHandMulligan,
     houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
     undoMoves: lobby.options.undoMoves,

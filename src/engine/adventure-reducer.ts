@@ -51,6 +51,7 @@ import {
   drawFromNeutralDeck,
   drawGuardArmy,
   effectiveHandLimit,
+  FIRST_ROUND_MULLIGAN_LIMIT,
   fieldCreatureBankId,
   grantCreatureBankReward,
   isCreatureBankId,
@@ -816,6 +817,66 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   if (explorers?.type === "EMPOWER_PER_DISCARD" && explorers.per > 0) {
     queueExplorersEmpower(state, action.playerId, Math.floor(action.discardCardIds.length / explorers.per));
   }
+}
+
+/** Whether `playerId` may still replace a starting-hand card this turn (round 1). */
+export function canMulliganStartingHand(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  return Boolean(
+    state.adventure?.startingHandMulligan &&
+      state.round === 1 &&
+      player &&
+      // A human convenience — a computer seat keeps its dealt opening hand.
+      state.controllers?.[playerId]?.kind !== "computer" &&
+      // Only after the mandatory start-of-turn hand step is done.
+      !player.needsHandRefresh &&
+      !player.canMulligan &&
+      (player.firstRoundMulligansLeft ?? 0) > 0 &&
+      player.hand.length > 0
+  );
+}
+
+/**
+ * First-round starting-hand Mulligan (optional mode): replace ONE hand card.
+ * The card goes to the BOTTOM of the player's own deck (the round-1 discard
+ * rule — never stranded in discard, never handed straight back) and one card is
+ * drawn to replace it, consuming one of the turn's replacements. Repeatable one
+ * card at a time until the budget runs out; round 1 only, after the mandatory
+ * start-of-turn draw.
+ */
+export function mulliganCard(state: GameState, action: Extract<GameAction, { type: "MULLIGAN_CARD" }>): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  assertActiveTurn(state, action.playerId);
+  if (!state.adventure?.startingHandMulligan) {
+    throw new Error("Starting-hand Mulligan is off for this game.");
+  }
+  if (state.round !== 1) {
+    throw new Error("The starting-hand Mulligan is only available in the first round.");
+  }
+  if (player.needsHandRefresh || player.canMulligan) {
+    throw new Error("Take your start-of-turn draw first.");
+  }
+  const left = player.firstRoundMulligansLeft ?? 0;
+  if (left <= 0) {
+    throw new Error(`You may replace at most ${FIRST_ROUND_MULLIGAN_LIMIT} starting-hand cards.`);
+  }
+  const index = player.hand.indexOf(action.cardId);
+  if (index === -1) {
+    throw new Error("That card is not in your hand.");
+  }
+  // Discard the chosen card to the BOTTOM of your own deck, then draw one.
+  player.hand.splice(index, 1);
+  player.deck.unshift(action.cardId);
+  drawCardsForPlayer(state, action.playerId, 1);
+  player.firstRoundMulligansLeft = left - 1;
+  appendEvent(state, {
+    type: "HAND_MULLIGAN",
+    playerId: action.playerId,
+    remaining: player.firstRoundMulligansLeft
+  });
 }
 
 // ---------------------------------------------------------------------------

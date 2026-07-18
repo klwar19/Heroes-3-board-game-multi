@@ -11850,6 +11850,18 @@ span.recruitThumb {
   font-weight: 700;
 }
 
+/* First-round starting-hand Mulligan (optional mode): the per-card replace. */
+.handPlayMenu button.firstRoundMulligan {
+  border-color: rgba(122, 179, 233, 0.7);
+  background: rgba(40, 70, 104, 0.55);
+  color: #dcecff;
+  font-weight: 700;
+}
+
+.handHint.mulliganHint {
+  color: #a9cdf2;
+}
+
 /* ---------- map Spell Book panel (house rule) ---------- */
 .spellBookPanel {
   position: relative;

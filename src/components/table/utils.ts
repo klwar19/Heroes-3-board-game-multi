@@ -469,6 +469,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         } (double negative morale).`;
       }
       return `${playerName(state, event.playerId)} refreshes their hand (discarded ${event.discarded}, drew ${event.drawn}).`;
+    case "HAND_MULLIGAN":
+      return `${playerName(state, event.playerId)} replaces a starting-hand card (${event.remaining} replacement${
+        event.remaining === 1 ? "" : "s"
+      } left).`;
     case "TILE_REVEALED":
       return `${playerName(state, event.playerId)} discovers map tile ${event.tileDefId}.`;
     case "TILE_PLACED":
