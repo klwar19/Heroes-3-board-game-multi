@@ -67,9 +67,15 @@ import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
 import { clearResetVote } from "./reset-vote";
 import {
+  artifactCountOf,
   computeVictoryPoints,
+  controlledBuildingCount,
+  describeCustomWinCondition,
+  flaggedMineSettlementCount,
+  mainHeroOf,
   recordVpUtopiaDefeat,
   recordVpViiCenter,
+  townsControlledBy,
   victoryPointsConfig,
   victoryPointsModeActive
 } from "./victory-points";
@@ -95,6 +101,19 @@ import {
   gainOwnedCard,
   polishSpellBookEnabled
 } from "./polish-spell-book";
+import {
+  polishPandoraSearchCount,
+  polishReducedStartingBonusDescription,
+  polishReducedStartingBonusVisitSteps,
+  polishSurrenderGoldCost
+} from "./polish-house-rules";
+import {
+  clearPolishArtifactAccess,
+  maybeApplyPolishRandomArtifactRoll,
+  polishArtifactBandForField,
+  polishArtifactDeckAllowed,
+  polishArtifactTierAllowed
+} from "./polish-random-artifacts";
 import {
   canonicalTileEdgeCode,
   hexDirectionBetween,
@@ -124,6 +143,10 @@ import type {
   BankSize,
   CardId,
   CombatUnitState,
+  CustomCenterHexReward,
+  CustomGuardSpec,
+  CustomMapObjectKind,
+  CustomWinCondition,
   EventDiePoolEntry,
   EventPoolEntry,
   EventsState,
@@ -135,6 +158,7 @@ import type {
   MapFieldState,
   MapSpaceId,
   MapTileState,
+  OnewayExitMode,
   PendingVisit,
   SubterraneanGateChoiceCandidate,
   SubterraneanGatePlan,
@@ -216,6 +240,111 @@ export const NEUTRAL_DECK_IDS = {
   azure: "neutral-azure"
 } as const;
 
+/**
+ * The Field Difficulty a designer "certain army" guard ({@link CustomGuardSpec.units})
+ * COUNTS AS — it drives the fight trigger, the map's Roman numeral and the
+ * experience reward exactly like a printed level. Derived from the army's
+ * tiers, calibrated against the NORMAL {@link NEUTRAL_ARMY_TABLE} rows (bronze
+ * 1 / silver 2 / gold 3 points): any azure body makes it a Ⅶ fight (azure IS
+ * the level-7 tier — winning jumps the hero to level 7, like every azure
+ * guard); otherwise the point total maps onto the closest table row, capped at
+ * Ⅵ. Unknown ids count 0 (the sanitiser drops them before play).
+ */
+export function customGuardArmyDifficulty(units: string[]): number {
+  let points = 0;
+  for (const unitDefId of units) {
+    const tier = coreUnitDefinitions[unitDefId]?.tier;
+    if (tier === "azure") {
+      return 7;
+    }
+    points += tier === "gold" ? 3 : tier === "silver" ? 2 : tier === "bronze" ? 1 : 0;
+  }
+  if (points <= 1) return 1;
+  if (points <= 3) return 2;
+  if (points === 4) return 3;
+  if (points <= 7) return 4;
+  if (points <= 10) return 5;
+  return 6;
+}
+
+/**
+ * Stamp a designer guard ({@link CustomGuardSpec}) onto a carved field: a
+ * LEVEL becomes the field's normal Field Difficulty (Quick Combat / experience
+ * follow it); an EXACT ARMY additionally pins `customGuardUnits` (minted at
+ * fight time; never Quick-Combat/Diplomacy skipped) with the difficulty
+ * derived from its tiers. The shared stamp for tile tokens, standalone map
+ * objects and subterranean gate halves — one code path, one behaviour.
+ */
+export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuardSpec | undefined): void {
+  if (!guard) {
+    return;
+  }
+  if (guard.units && guard.units.length > 0) {
+    field.customGuardUnits = [...guard.units];
+    field.difficulty = customGuardArmyDifficulty(guard.units);
+  } else if (guard.level) {
+    field.difficulty = guard.level;
+  }
+}
+
+/** Remove a beaten / swept designed guard from a field (all its traces). */
+export function clearCustomGuard(field: MapFieldState): void {
+  delete field.difficulty;
+  delete field.customGuardUnits;
+  delete field.customGuardLevel;
+}
+
+/**
+ * Locations whose designed guard fights BANK-style (rulebook Creature-Bank
+ * semantics — "the fight is unlimited, as in Banks"): no Quick Combat, no
+ * experience (combat difficulty 0) and no Round limit / MP-to-extend. The
+ * designer outposts.
+ */
+export function isBankStyleGuardLocation(locationId: string): boolean {
+  return locationId === "garrison" || locationId === "keymaster_tent" || locationId === "oneway_entrance";
+}
+
+/**
+ * Whether `playerId` holds a Keymaster's Tent flag of `pair`'s color — the key
+ * that opens same-color Barriers. Tents allow multiple flags, so both the
+ * first owner and every later `extraFlagOwnerIds` visitor count.
+ */
+export function playerHoldsTentFlag(
+  state: GameState,
+  playerId: PlayerId,
+  pair: 1 | 2 | 3 | 4 | undefined
+): boolean {
+  if (!pair) {
+    return false;
+  }
+  return Object.values(state.adventure?.fields ?? {}).some(
+    (field) =>
+      field.location === "keymaster_tent" &&
+      field.gatePair === pair &&
+      (field.flagOwnerId === playerId || Boolean(field.extraFlagOwnerIds?.includes(playerId)))
+  );
+}
+
+/**
+ * Teleport-ARRIVAL auto-win: a hero who arrives THROUGH a teleport network
+ * (Monolith / colored Gate — including a reveal-travel) or crosses OUT through
+ * a linked Subterranean Gate onto a hex whose designed guard still stands
+ * sweeps that guard aside — an automatic victory with no fight, no experience
+ * and no reward ("you fight to get IN; a monster at the EXIT is auto-won").
+ * A no-op on unguarded destinations.
+ */
+export function autoWinArrivalGuard(state: GameState, playerId: PlayerId, field: MapFieldState | undefined): void {
+  if (!field || !isFieldGuarded(field) || !field.difficulty) {
+    return;
+  }
+  clearCustomGuard(field);
+  eventNote(
+    state,
+    `The guards at the ${locationDefinitionName(field.location)} are swept aside by the arrival — automatic victory (no experience).`,
+    playerId
+  );
+}
+
 export const RESOURCE_DIE_FACES: { resource: ResourceKind; amount: number }[] = [
   { resource: "buildingMaterials", amount: 2 },
   { resource: "buildingMaterials", amount: 4 },
@@ -250,6 +379,24 @@ export const TILE_BACK_LABELS: Record<string, string> = {
   // (see seaTileBand / subterraneanTileBand). This default is the Ⅳ–Ⅴ tier.
   sea: "Ⅳ–Ⅴ",
   subterranean: "Ⅳ–Ⅴ"
+};
+
+/**
+ * Player-facing band name for a tile GROUP (feed + designer). Unlike
+ * {@link TILE_BACK_LABELS}, Sea and Underground get their own names rather than
+ * the shared Ⅳ–Ⅴ back numeral (a sea/underground tile back is ambiguous with a
+ * land Near tile), so a group filter reads unambiguously.
+ */
+export const TILE_GROUP_BAND_LABELS: Record<
+  "starting" | "far" | "near" | "center" | "sea" | "subterranean",
+  string
+> = {
+  starting: "Ⅰ",
+  far: "Ⅱ–Ⅲ",
+  near: "Ⅳ–Ⅴ",
+  center: "Ⅵ–Ⅶ",
+  sea: "Sea",
+  subterranean: "Underground"
 };
 
 export function getAstrologersState(state: GameState): AstrologersState | null {
@@ -578,17 +725,38 @@ export function materializeTileFields(
     if (isWater) {
       field.terrain = "water";
     }
-    // Fold the designer Ⅶ-objective bonus onto the tile's difficulty-7 field
-    // (the objective — every center tile has exactly one). Attached whether or
-    // not the location was overridden above, so a designation whose bonus rides a
-    // printed-matching field still carries it. Granted once at visit time; the
-    // `viiBonusClaimed` latch lives on the field so a re-capture never re-pays.
-    if (tile.viiField && fieldDef.difficulty === 7) {
-      if (tile.viiFieldReward) {
-        field.viiReward = tile.viiFieldReward;
+    // Fold the designer center-hex customization onto the tile's difficulty-7
+    // field (the objective — every center tile has exactly one). Attached
+    // whether or not the location was overridden above, so a customization on a
+    // printed objective carries too. The reward/VP are granted once at visit
+    // time (`centerHexClaimed` latches so a re-capture never re-pays); a guard
+    // override REPLACES the printed difficulty-7 guard — a level becomes the
+    // field's Field Difficulty (Quick Combat / experience follow it as usual), a
+    // certain army is minted at fight time from `customGuardUnits` with the
+    // difficulty derived from its tiers. Legacy pre-centerHex snapshots carried
+    // the bonus as `viiFieldReward`/`viiFieldVp` (with a `viiField` gate) — fold
+    // those too so a mid-flight game keeps its designed bonus.
+    if (fieldDef.difficulty === 7) {
+      const centerHex = tile.centerHex;
+      if (centerHex?.reward) {
+        field.centerHexReward = centerHex.reward;
       }
-      if (tile.viiFieldVp !== undefined) {
-        field.viiVp = tile.viiFieldVp;
+      if (centerHex?.vp !== undefined) {
+        field.centerHexVp = centerHex.vp;
+      }
+      if (centerHex?.guard?.units && centerHex.guard.units.length > 0) {
+        field.customGuardUnits = [...centerHex.guard.units];
+        field.difficulty = customGuardArmyDifficulty(centerHex.guard.units);
+      } else if (centerHex?.guard?.level) {
+        field.difficulty = centerHex.guard.level;
+      }
+      if (tile.viiField) {
+        if (tile.viiFieldReward && !field.centerHexReward) {
+          field.centerHexReward = tile.viiFieldReward;
+        }
+        if (tile.viiFieldVp !== undefined && field.centerHexVp === undefined) {
+          field.centerHexVp = tile.viiFieldVp;
+        }
       }
     }
     adventure.fields[spaceId] = field;
@@ -860,8 +1028,41 @@ export function isSeaField(state: GameState, spaceId: MapSpaceId): boolean {
  */
 export type MapLayer = "surface" | "subterranean";
 
+/**
+ * The tile groups a designer's UNDERGROUND layer override
+ * ({@link CustomMapTilePlan.underground}) is valid on: the supply/sea/center
+ * bands. Excluded are `starting` (seat tiles stay Surface — the opening ceremony
+ * assumes it, the deliberate v1 limit) and `subterranean` (already underground —
+ * the flag would be redundant). The persistence sanitiser and setup validator
+ * both strip the flag off any other group against THIS set, and the designer UI
+ * offers the toggle only for these groups.
+ */
+export const UNDERGROUND_LAYER_GROUPS: ReadonlySet<string> = new Set([
+  "far",
+  "near",
+  "center",
+  "sea"
+]);
+
+/**
+ * Whether a tile PLAN (or placed tile) sits on the Underground layer — THE
+ * plan-side layer predicate, the single definition every validator, preview and
+ * the designer share instead of an inline `group === "subterranean"` check. A
+ * printed cavern (`group: "subterranean"`) is always underground; a
+ * far/near/center/sea tile is underground when the designer set the
+ * {@link CustomMapTilePlan.underground} override. A `starting` seat tile is never
+ * underground (the flag is stripped there and ignored here defensively), so the
+ * opening ceremony and seat balance are untouched.
+ */
+export function planIsUnderground(plan: { group?: string; underground?: boolean }): boolean {
+  if (plan.group === "subterranean") {
+    return true;
+  }
+  return plan.underground === true && plan.group !== "starting";
+}
+
 export function tileLayer(tile: MapTileState | undefined): MapLayer {
-  return tile?.group === "subterranean" ? "subterranean" : "surface";
+  return tile && planIsUnderground(tile) ? "subterranean" : "surface";
 }
 
 /**
@@ -1156,7 +1357,11 @@ export function isDesignedEdgeSealedBetween(
   const toTile = adventure.tiles[toField.tileInstanceId];
   const fromHas = Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
   const toHas = Boolean(toTile?.borderEdges && toTile.borderEdges.length > 0);
-  if (!fromHas && !toHas) {
+  // Field-level borders: a STANDALONE object hex carries its own edge list
+  // (it has no backing tile). Same seal, same both-direction rule.
+  const fromFieldHas = Boolean(fromField.borderEdges && fromField.borderEdges.length > 0);
+  const toFieldHas = Boolean(toField.borderEdges && toField.borderEdges.length > 0);
+  if (!fromHas && !toHas && !fromFieldHas && !toFieldHas) {
     return false;
   }
   const fromCoord = parseHexSpaceId(from);
@@ -1172,6 +1377,12 @@ export function isDesignedEdgeSealedBetween(
     return true;
   }
   if (toHas && toTile && tileEdgeDesignedSealed(toTile, toField.slot, (direction + 3) % 6)) {
+    return true;
+  }
+  if (fromFieldHas && fromField.borderEdges!.includes(direction)) {
+    return true;
+  }
+  if (toFieldHas && toField.borderEdges!.includes((direction + 3) % 6)) {
     return true;
   }
   return false;
@@ -1252,7 +1463,11 @@ export function heroCanDiscoverTileAcrossBorders(
   }
   const heroTile = adventure.tiles[heroField.tileInstanceId];
   const tileEdges = tile.borderEdges;
-  const heroHasEdges = Boolean(heroTile?.borderEdges && heroTile.borderEdges.length > 0);
+  // A standalone object hex carries its own field-level edge list.
+  const heroFieldEdges = heroField.borderEdges;
+  const heroHasEdges = Boolean(
+    (heroTile?.borderEdges && heroTile.borderEdges.length > 0) || (heroFieldEdges && heroFieldEdges.length > 0)
+  );
   const tileHasEdges = Boolean(tileEdges && tileEdges.length > 0);
   if (!heroHasEdges && !tileHasEdges) {
     // No per-edge borders anywhere: the whole-arc rule (already passed) decides,
@@ -1273,7 +1488,8 @@ export function heroCanDiscoverTileAcrossBorders(
     }
     sharedEdge = true;
     const heroSideSealed =
-      heroHasEdges && heroTile ? tileEdgeDesignedSealed(heroTile, heroField.slot, direction) : false;
+      (heroHasEdges && heroTile ? tileEdgeDesignedSealed(heroTile, heroField.slot, direction) : false) ||
+      Boolean(heroFieldEdges && heroFieldEdges.includes(direction));
     const tileSideSealed =
       tileHasEdges &&
       Boolean(tileEdges) &&
@@ -1348,6 +1564,14 @@ export function classifyHeroStep(
   if (location?.category === "blocked") {
     // Flying (move-through) turns a blocked field into a hex the hero may pass
     // over but never stop on; otherwise it is impassable.
+    return movement.moveThrough ? "pass-only" : "block";
+  }
+
+  // A designer Barrier may be ENTERED only by a player holding a same-color
+  // Keymaster's Tent flag ("you are never allowed to enter the field unless
+  // you visited the keymaster's tent in its color"). To everyone else it
+  // behaves exactly like a Blocked Field — Fly may pass over, never land.
+  if (field.location === "barrier" && !playerHoldsTentFlag(state, playerId, field.gatePair)) {
     return movement.moveThrough ? "pass-only" : "block";
   }
 
@@ -2383,6 +2607,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
       return [{ type: "SUBTERRANEAN_GATE" }];
     case "TOKEN_TELEPORT":
       return [{ type: "TOKEN_TELEPORT", token: interaction.token }];
+    case "ONEWAY_TELEPORT":
+      return [{ type: "ONEWAY_TELEPORT" }];
     case "GATE_TELEPORT":
       return [{ type: "GATE_TELEPORT" }];
     case "DRAW_PANDORA_CARD":
@@ -2648,8 +2874,6 @@ function applyRandomTownFlag(state: GameState, playerId: PlayerId, field: MapFie
   if (firstCapture) {
     gainResources(state, playerId, { gold: 10 }, "captured the Random Town");
   }
-  // Designer Ⅶ-objective bonus (latched, so only the first captor is paid).
-  grantViiFieldBonus(state, playerId, field);
 }
 
 /** The active win condition; absent on old snapshots means "conquest". */
@@ -2690,6 +2914,40 @@ export function adventurePvpTroopLoss(state: GameState): "normal" | "none" {
  */
 export const SURRENDER_GOLD_COST = 10;
 export const RETREAT_GOLD_COST = 5;
+
+/**
+ * Tournament Book p.54 "Additional Morale token action": while a Search is open,
+ * spend the positive Morale token to discard all revealed cards and Search (X)
+ * again. Active when any tournament setup flag was frozen onto adventure state
+ * (master Tournament mode or any granular tournament rule).
+ */
+export function tournamentMoraleSearchAgainEnabled(
+  state: Pick<GameState, "adventure">
+): boolean {
+  const a = state.adventure;
+  if (!a) {
+    return false;
+  }
+  return Boolean(
+    a.tournamentMode ||
+      a.tournamentBanDiplomacy ||
+      a.tournamentBanHourglass ||
+      a.tournamentSecondPlayerMorale
+  );
+}
+
+/**
+ * Gold toll to surrender right now. With `polish-reduced-surrender` ON the cost
+ * starts at 10 and drops by 3 after each completed combat round (min 1). With
+ * the rule OFF (or no combat) it is always the flat 10.
+ */
+export function currentSurrenderGoldCost(state: GameState): number {
+  if (!houseRuleEnabled(state, "polish-reduced-surrender")) {
+    return SURRENDER_GOLD_COST;
+  }
+  const round = state.combat?.round ?? 1;
+  return polishSurrenderGoldCost(round);
+}
 
 /**
  * Whether the "defeat every enemy hero" path can win this game. Shared by the
@@ -2786,6 +3044,91 @@ export function endGameByVictoryPoints(
     result.winnerId,
     `the most Victory Points (${winnerRow?.total ?? 0})`
   );
+}
+
+/** Whether a player currently satisfies one custom win condition. The metric
+ * readers ARE the Victory-Points readers (same numbers as VP scoring — an
+ * invariant); `defeat-heroes` counts main (once per opponent) + secondary hero
+ * defeats off the VP ledger, tolerating an absent ledger on legacy snapshots. */
+function playerMeetsCustomWinCondition(
+  state: GameState,
+  playerId: PlayerId,
+  condition: CustomWinCondition
+): boolean {
+  switch (condition.kind) {
+    case "control-towns":
+      return townsControlledBy(state, playerId).length >= condition.count;
+    case "flag-mines":
+      return flaggedMineSettlementCount(state, playerId) >= condition.count;
+    case "hero-level":
+      return (mainHeroOf(state, playerId)?.level ?? 0) >= condition.level;
+    case "gold":
+      return (state.players[playerId]?.resources.gold ?? 0) >= condition.amount;
+    case "artifacts":
+      return artifactCountOf(state.players[playerId]) >= condition.count;
+    case "buildings":
+      // Same reader VP scoring uses for its "Buildings in controlled Towns" row.
+      return controlledBuildingCount(state, playerId) >= condition.count;
+    case "obelisks":
+      // The per-player Holy-Grail Obelisk-visit tally (accrues in grail mode only).
+      return grailObelisksVisitedCount(state, playerId) >= condition.count;
+    case "defeat-heroes": {
+      const ledger = state.adventure?.vpLedger?.[playerId];
+      const defeats = (ledger?.mainHeroDefeats?.length ?? 0) + (ledger?.secondaryHeroDefeats ?? 0);
+      return defeats >= condition.count;
+    }
+    case "defeat-dragon-utopia":
+      return state.adventure?.vpLedger?.[playerId]?.utopiaDefeated === true;
+  }
+}
+
+/**
+ * Custom win conditions (map-designer / lobby authored): the FIRST live player
+ * — iterated in `turnOrder` (deterministic tie-break) — to satisfy ANY active
+ * condition wins immediately, an ADDITIONAL early-end trigger on top of the
+ * normal victory mode. Run from the reducer's post-action tail on EVERY action
+ * (all backends), AFTER END_TURN's synchronous round-income cascade, so a
+ * threshold crossed by round-start income is visible.
+ *
+ * Guards, in order (each cheap so an ordinary game pays almost nothing): the
+ * adventure exists; no winner yet; the effective condition list is non-empty
+ * (the FREE early-out for every existing game / legacy snapshot); and NO combat
+ * is open — a threshold crossed mid-battle is deferred to the next map-side
+ * action (ACKNOWLEDGE_COMBAT_END and co. flow through the same tail), so the
+ * game is never ended mid-fight. Conditions are evaluated in list order for the
+ * reason string, and a completion routes through {@link declareAdventureWinner}
+ * with `viaVictoryCondition: true` — an instant win with VP mode OFF, VP scoring
+ * with it ON — so both behaviours come for free.
+ */
+export function checkCustomWinConditions(state: GameState): void {
+  const adventure = state.adventure;
+  if (!adventure || adventure.winnerPlayerId) {
+    return;
+  }
+  const conditions = adventure.mapPreset?.customWinConditions;
+  if (!conditions || conditions.length === 0) {
+    return;
+  }
+  // Never end the game mid-battle (a crossing resolves on the next map-side action).
+  if (state.combat) {
+    return;
+  }
+  for (const playerId of state.turnOrder) {
+    if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId] || state.players[playerId]?.eliminated) {
+      continue;
+    }
+    for (const condition of conditions) {
+      if (playerMeetsCustomWinCondition(state, playerId, condition)) {
+        declareAdventureWinner(
+          state,
+          playerId,
+          `completed a custom win condition: ${describeCustomWinCondition(condition)}`,
+          { viaVictoryCondition: true }
+        );
+        return;
+      }
+    }
+  }
 }
 
 /** Human seats in turn order (the neutral seat never counts). */
@@ -2900,6 +3243,58 @@ export function refreshEliminationClock(state: GameState, playerId: PlayerId): v
 }
 
 /**
+ * Cards a pending visit lifted OUT of a shared zone and still holds inside its
+ * steps: the Polish Pandora Search (RESOLVE_PANDORA_SEARCH) and the reduced
+ * starting bonus's Minor-Artifact pick (RESOLVE_DRAW_CHOOSE_MINOR) both park
+ * the whole reveal in their CHOOSE_ONE options. Dropping such a visit (its
+ * owner was eliminated) must put those cards back on top of their draw pile —
+ * shared decks may never shrink because a seat died mid-pick. Every option of
+ * one CHOOSE_ONE carries the SAME `drawn` list, so only the first resolve step
+ * found is returned (identity dedupe would break across a serialize round-trip).
+ */
+function returnCardsLiftedIntoVisitSteps(state: GameState, steps: VisitStep[]): void {
+  const findResolveStep = (
+    scan: VisitStep[]
+  ): Extract<VisitStep, { type: "RESOLVE_PANDORA_SEARCH" | "RESOLVE_DRAW_CHOOSE_MINOR" }> | null => {
+    for (const step of scan) {
+      if (step.type === "RESOLVE_PANDORA_SEARCH" || step.type === "RESOLVE_DRAW_CHOOSE_MINOR") {
+        return step;
+      }
+      if (step.type === "CHOOSE_ONE") {
+        for (const option of step.options) {
+          const found = findResolveStep(option.steps);
+          if (found) {
+            return found;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  const step = findResolveStep(steps);
+  if (!step) {
+    return;
+  }
+  if (step.type === "RESOLVE_PANDORA_SEARCH") {
+    const pandoraDeck = state.adventure?.pandoraDeck;
+    if (pandoraDeck) {
+      // drawn[0] came off the top (pop) — push back in reverse so it returns on top.
+      for (let index = step.drawn.length - 1; index >= 0; index -= 1) {
+        pandoraDeck.push(step.drawn[index]!);
+      }
+    }
+    return;
+  }
+  const deck = state.decks[step.deckId];
+  if (deck) {
+    for (let index = step.drawn.length - 1; index >= 0; index -= 1) {
+      deck.drawPile.push(step.drawn[index]!);
+    }
+  }
+}
+
+/**
  * Removes a player from the game (they gave up, or the elimination clock ran
  * out). They keep a `players` entry so the table still shows them as an
  * observer, but they leave the turn order and their Hero models leave the map
@@ -2956,6 +3351,13 @@ export function eliminatePlayer(
       (reward) => reward.kind === "round-start-events-resolved" || reward.playerId !== playerId
     );
     if (state.adventure.pendingVisit?.playerId === playerId) {
+      // A visit step can hold cards LIFTED out of a shared zone (the Polish
+      // Pandora Search / reduced-starting-bonus Minor-Artifact pick keep the
+      // whole reveal inside their CHOOSE_ONE options). Return them before the
+      // visit drops so eliminating the owner never destroys shared cards, and
+      // drop any Random-Artifacts access latch the visit's roll left behind.
+      returnCardsLiftedIntoVisitSteps(state, state.adventure.pendingVisit.steps);
+      clearPolishArtifactAccess(state);
       state.adventure.pendingVisit = null;
     }
     if (state.adventure.pendingNecromancy?.playerId === playerId) {
@@ -3070,6 +3472,10 @@ export function eliminatePlayer(
   if (choice && choice.playerId === playerId) {
     if (choice.type === "DECK_SEARCH") {
       state.decks[choice.deckId]?.discardPile.push(...choice.revealedCardIds);
+      // Polish Random Artifacts: the dropped Search owned any live access
+      // latch (interactions are a singleton); resolveDeckSearch would have
+      // cleared it, so the drop must too.
+      clearPolishArtifactAccess(state);
     }
     if (choice.type === "OPTION_CHOICE" && choice.visionsScry) {
       state.decks[NEUTRAL_DECK_IDS[choice.visionsScry.tier]]?.discardPile.push(
@@ -3202,30 +3608,56 @@ function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, field
 }
 
 /**
- * Grant the designer's Ⅶ-objective bonus ({@link MapFieldState.viiReward} resources
- * + {@link MapFieldState.viiVp} Victory Points) the FIRST time the objective is
- * cleared / captured. The `viiBonusClaimed` latch makes it strictly one-time, so a
- * later re-capture (a Dragon Conqueror who lost then retook the center) never
- * re-pays it — the bonus rewards whoever clears it first. VP is recorded
- * unconditionally (it scores only in VP mode); the resource reward flows through
- * the normal `gainResources` plumbing. A no-op on every field WITHOUT a bonus —
- * i.e. everything except a designer-designated Ⅶ center — so it is safe to call
- * from each objective handler.
+ * Grant the designer's center-hex bonus ({@link MapFieldState.centerHexReward}
+ * + {@link MapFieldState.centerHexVp} — plus the legacy pre-centerHex
+ * `viiReward`/`viiVp` a mid-flight snapshot may still carry) the FIRST time the
+ * objective is cleared / captured. Called from ONE seam — the top of
+ * `beginFieldVisit` — which is reached only once the field's guards are dealt
+ * with (a fought win, a Quick-Combat win or a Diplomacy skip; a retreat never
+ * visits), so it uniformly covers every Ⅶ objective kind: the three designations
+ * (Grail / Dragon Utopia / Random Town) AND printed centers (Cyclops Stockpile,
+ * Temple of the Sea, settlement, airship yard…). The `centerHexClaimed` latch
+ * (shared with the legacy `viiBonusClaimed`) makes it strictly one-time, so a
+ * later re-capture never re-pays it. Resources are granted inline; Treasure
+ * dice and deck Searches queue as a `visit-steps` reward so they never collide
+ * with the location's own visit interaction. VP is recorded unconditionally
+ * (it scores only in VP mode).
  */
-function grantViiFieldBonus(state: GameState, playerId: PlayerId, field: MapFieldState): void {
-  if (field.viiBonusClaimed) {
+function grantCenterHexBonus(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+  if (field.centerHexClaimed || field.viiBonusClaimed) {
     return;
   }
-  const reward = field.viiReward;
-  const hasReward =
-    !!reward && ((reward.gold ?? 0) > 0 || (reward.buildingMaterials ?? 0) > 0 || (reward.valuables ?? 0) > 0);
-  const vp = field.viiVp ?? 0;
-  if (!hasReward && vp <= 0) {
+  const reward: CustomCenterHexReward = { ...(field.viiReward ?? {}), ...(field.centerHexReward ?? {}) };
+  const vp = field.centerHexVp ?? field.viiVp ?? 0;
+  const resources: { gold?: number; buildingMaterials?: number; valuables?: number } = {};
+  for (const key of ["gold", "buildingMaterials", "valuables"] as const) {
+    if ((reward[key] ?? 0) > 0) {
+      resources[key] = reward[key];
+    }
+  }
+  const steps: VisitStep[] = [];
+  if ((reward.treasureDice ?? 0) > 0) {
+    steps.push({ type: "ROLL_TREASURE_DICE", count: reward.treasureDice as number });
+  }
+  for (const [key, deckId] of [
+    ["searchSpell", "spells"],
+    ["searchAbility", "abilities"],
+    ["searchArtifact", "artifacts"]
+  ] as const) {
+    if ((reward[key] ?? 0) > 0) {
+      steps.push({ type: "SEARCH_SHARED_DECK", deckId, count: reward[key] as number });
+    }
+  }
+  if (Object.keys(resources).length === 0 && steps.length === 0 && vp <= 0) {
     return;
   }
+  field.centerHexClaimed = true;
   field.viiBonusClaimed = true;
-  if (hasReward) {
-    gainResources(state, playerId, reward, "the Ⅶ objective reward");
+  if (Object.keys(resources).length > 0) {
+    gainResources(state, playerId, resources, "the Ⅶ objective reward");
+  }
+  if (steps.length > 0) {
+    state.adventure?.rewardQueue.push({ playerId, kind: "visit-steps", steps });
   }
   if (vp > 0) {
     recordVpViiCenter(state, playerId, vp);
@@ -3328,10 +3760,6 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     return;
   }
 
-  // Designer Ⅶ-objective bonus on the FIRST clear (guards just fell — this visit
-  // is reached only on a win). Latched, so the later dig revisit never re-pays.
-  grantViiFieldBonus(state, hero.controllerId, field);
-
   if (adventureVictoryMode(state) !== "grail") {
     if (!field.blackCube) {
       field.blackCube = true;
@@ -3386,10 +3814,6 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
   // the only durable trace of WHO cleared it. Runs in every mode (the objective
   // is meaningful outside Dragon Hunt, where the Utopia is a plain bank).
   recordVpUtopiaDefeat(state, hero.controllerId);
-
-  // Designer Ⅶ-objective bonus on the first clear, before any mode-specific
-  // handling (harmless in Dragon Hunt, where the win is declared right after).
-  grantViiFieldBonus(state, hero.controllerId, field);
 
   if (mode === "dragon-hunt") {
     declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia", {
@@ -3837,6 +4261,13 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
 
   adventure.lastVisitedField[heroId] = fieldId;
 
+  // Designer center-hex bonus (reward / VP): ONE seam for every Ⅶ objective
+  // kind. beginFieldVisit is reached only once the field's guards are dealt
+  // with (win / Quick Combat / Diplomacy — a retreat never visits), so this IS
+  // the "first clear"; the latch inside makes it one-time. Runs before the
+  // bespoke grail/utopia routing so every printed or designated center pays.
+  grantCenterHexBonus(state, playerId, field);
+
   // Creature banks with bespoke win/objective behavior are handled before the
   // generic visitable/flaggable routing.
   if (location.id === "grail") {
@@ -3856,14 +4287,32 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
-  // A DESIGNED guard on a map-object teleport field (Monolith / Whirlpool / Gate)
-  // is defeated the moment this visit runs: beginFieldVisit is reached only on a
-  // WIN, a Quick-Combat win, or a Diplomacy skip — a retreat never calls it. A
-  // revisitable teleport field takes no Black Cube / flag, so clear the leftover
-  // Field Difficulty here; otherwise the beaten guard would respawn on the hero's
-  // next entry. (Retreat leaves it intact — the guard stands for next time.)
-  if (isMapObjectLocation(location.id) && field.difficulty) {
-    delete field.difficulty;
+  // A DESIGNED guard on a map-object teleport field (Monolith / Whirlpool /
+  // Gate), a Subterranean Gate half or an outpost (Garrison / Keymaster's
+  // Tent) is defeated the moment this visit runs: beginFieldVisit is reached
+  // only on a WIN, a Quick-Combat win, or a Diplomacy skip — a retreat never
+  // calls it. These fields take no Black Cube, so clear the leftover guard
+  // here; otherwise the beaten guard would respawn on the hero's next entry.
+  // (Retreat leaves it intact — the guard stands for next time.)
+  if (
+    (isMapObjectLocation(location.id) ||
+      location.id === "subterranean_gate" ||
+      isBankStyleGuardLocation(location.id)) &&
+    field.difficulty
+  ) {
+    clearCustomGuard(field);
+  }
+
+  // Designer Garrison: the winner (or an unopposed visitor) marks it with
+  // THEIR flag — single-owner, stolen on entry (an enemy-FLAGGED garrison
+  // routes through the 3-gold defend prompt BEFORE this visit ever runs).
+  // Walking through your own garrison does nothing.
+  if (location.id === "garrison") {
+    field.everFlagged = true;
+    if (field.flagOwnerId !== playerId) {
+      flagField(state, playerId, field);
+    }
+    return;
   }
 
   if (location.category === "visitable") {
@@ -4676,6 +5125,38 @@ export function processPendingVisit(state: GameState): void {
       case "REVEAL_UNTIL_MINOR_ARTIFACT":
         revealUntilMinorArtifact(state, visit.playerId);
         break;
+      case "DRAW_CHOOSE_MINOR_ARTIFACTS":
+        openDrawChooseMinorArtifacts(state, visit, step.drawCount, step.keepCount);
+        break;
+      case "RESOLVE_DRAW_CHOOSE_MINOR": {
+        const player = state.players[visit.playerId];
+        const deck = state.decks[step.deckId];
+        if (player) {
+          const keepSet = new Set(step.keepIndexes);
+          const returned: CardId[] = [];
+          for (let i = 0; i < step.drawn.length; i += 1) {
+            const cardId = step.drawn[i]!;
+            if (keepSet.has(i)) {
+              player.hand.push(cardId);
+            } else {
+              returned.push(cardId);
+            }
+          }
+          if (deck && returned.length > 0) {
+            // Under the draw pile (index 0 = bottom).
+            deck.drawPile = [...returned, ...deck.drawPile];
+          }
+          appendEvent(state, {
+            type: "DECK_SEARCH_RESOLVED",
+            playerId: visit.playerId,
+            deckId: step.deckId,
+            choiceId: `polish_minor_keep_${nextEventNumber(state)}`,
+            pick: "revealed",
+            discardedCardIds: returned
+          });
+        }
+        break;
+      }
       case "RESHUFFLE_ARTIFACT_DECKS":
         reshuffleArtifactDecksAfterStartingBonus(state);
         break;
@@ -4769,6 +5250,12 @@ export function processPendingVisit(state: GameState): void {
       case "TOKEN_TELEPORT":
         resolveTokenTeleport(state, visit, step.token);
         break;
+      case "ONEWAY_TELEPORT":
+        resolveOnewayTeleport(state, visit);
+        break;
+      case "ONEWAY_RANDOM_EXIT":
+        resolveOnewayRandomExit(state, visit, step.pair, step.fromSpaceId);
+        break;
       case "GATE_TELEPORT":
         resolveGateTeleport(state, visit);
         break;
@@ -4822,6 +5309,19 @@ export function processPendingVisit(state: GameState): void {
         const movedHero = state.heroes[step.heroId];
         if (movedHero && adventure.fields[step.spaceId]) {
           const from = movedHero.spaceId ?? step.spaceId;
+          // Sound kind from the ORIGIN field (entry token) — Town Portal / defeat
+          // retreat have no map-token origin and fall through to "spell".
+          const origin = adventure.fields[from];
+          const teleportKind =
+            origin?.location === "whirlpool"
+              ? ("whirlpool" as const)
+              : origin?.location === "gate"
+                ? ("gate" as const)
+                : origin?.location === "monolith" ||
+                    origin?.location === "anime.tran_phap_truyen_tong" ||
+                    (origin?.location === "obelisk" && obeliskRoleIsMonolith(state))
+                  ? ("monolith" as const)
+                  : ("spell" as const);
           movedHero.spaceId = step.spaceId;
           // Town Portal Power 2/4: arriving grants the hero +1/+2 movement.
           if (step.movementBonus) {
@@ -4833,9 +5333,15 @@ export function processPendingVisit(state: GameState): void {
             heroId: movedHero.id,
             from,
             to: step.spaceId,
-            movementLeft: movedHero.movementPoints
+            movementLeft: movedHero.movementPoints,
+            teleport: teleportKind
           });
           commitPopulationOnMove(state, movedHero.controllerId);
+          // Teleport-network arrival: a designed guard still standing on the
+          // destination token/gate is swept aside (auto-win, no experience).
+          if (step.sweepGuard) {
+            autoWinArrivalGuard(state, movedHero.controllerId, adventure.fields[step.spaceId]);
+          }
           if (step.visit) {
             adventure.lastVisitedField[movedHero.id] = step.spaceId;
             beginFieldVisit(state, movedHero.id, step.spaceId, false);
@@ -4874,6 +5380,12 @@ export function processPendingVisit(state: GameState): void {
         state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== step.effectId);
         break;
       case "DRAW_PANDORA_CARD": {
+        // Polish Pandora Search: Search(N) choose 1 (N=2 on IV–V, N=3 on VI–VII;
+        // with polish-random-artifacts a "+1" die raises N by 1). Off: draw 1.
+        if (houseRuleEnabled(state, "polish-pandora-search")) {
+          openPolishPandoraSearch(state, visit);
+          break;
+        }
         const player = state.players[visit.playerId];
         const drawn = adventure.pandoraDeck?.pop();
         if (player && drawn) {
@@ -4884,6 +5396,33 @@ export function processPendingVisit(state: GameState): void {
             cardId: drawn
           });
         }
+        break;
+      }
+      case "RESOLVE_PANDORA_SEARCH": {
+        const player = state.players[visit.playerId];
+        if (player) {
+          const keepSet = new Set(step.keepIndexes);
+          const returned: CardId[] = [];
+          for (let i = 0; i < step.drawn.length; i += 1) {
+            const cardId = step.drawn[i]!;
+            if (keepSet.has(i)) {
+              player.hand.push(cardId);
+              appendEvent(state, {
+                type: "PANDORA_CARD_DRAWN",
+                playerId: visit.playerId,
+                cardId
+              });
+            } else {
+              returned.push(cardId);
+            }
+          }
+          // Unchosen cards go under the Pandora deck (bottom).
+          if (returned.length > 0 && adventure.pandoraDeck) {
+            adventure.pandoraDeck = [...returned, ...adventure.pandoraDeck];
+          }
+        }
+        // Die was for the Search size only; clear any residual random-artifact latch.
+        clearPolishArtifactAccess(state);
         break;
       }
       case "NECROMANCY_FETCH":
@@ -4960,11 +5499,15 @@ export function processPendingVisit(state: GameState): void {
         // The Factory "shovel": draw the top Artifact card the visitor can take
         // (across the split minor/major/relic decks in BINH mode, else the single
         // "artifacts" deck), then let them keep it or discard it.
-        const deckIds = state.decks["artifacts"]
+        // Polish Random Artifacts: roll first and only dig from allowed tiers.
+        const digHero = state.heroes[visit.heroId] ?? getMainHero(state, visit.playerId);
+        maybeApplyPolishRandomArtifactRoll(state, visit.playerId, digHero, "tile");
+        const deckIds = (state.decks["artifacts"]
           ? ["artifacts"]
-          : ["artifacts-minor", "artifacts-major", "artifacts-relic"];
+          : ["artifacts-minor", "artifacts-major", "artifacts-relic"]
+        ).filter((deckId) => polishArtifactDeckAllowed(state, deckId));
         let dug: string | null = null;
-        let dugDeckId = deckIds[0];
+        let dugDeckId = deckIds[0] ?? "artifacts";
         for (const deckId of deckIds) {
           dug = drawTopOfSharedDeck(state, deckId, visit.playerId);
           if (dug) {
@@ -4973,6 +5516,7 @@ export function processPendingVisit(state: GameState): void {
           }
         }
         if (!dug) {
+          clearPolishArtifactAccess(state);
           break;
         }
         const name = cardLibrary[dug]?.name ?? dug;
@@ -4992,6 +5536,7 @@ export function processPendingVisit(state: GameState): void {
           player.hand.push(step.cardId);
           appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: true });
         }
+        clearPolishArtifactAccess(state);
         break;
       }
       case "GAIN_HAND_CARD": {
@@ -5026,6 +5571,7 @@ export function processPendingVisit(state: GameState): void {
       case "DIG_ARTIFACT_DISCARD": {
         state.decks[step.deckId]?.discardPile.push(step.cardId);
         appendEvent(state, { type: "ARTIFACT_DUG", playerId: visit.playerId, cardId: step.cardId, kept: false });
+        clearPolishArtifactAccess(state);
         break;
       }
       case "GRANT_MOVE_THROUGH": {
@@ -5941,16 +6487,24 @@ export function processPendingVisit(state: GameState): void {
         if (!player) {
           break;
         }
+        // Polish Random Artifacts: roll once for this browse (field/tile band).
+        const marketHero = state.heroes[visit.heroId] ?? getMainHero(state, visit.playerId);
+        maybeApplyPolishRandomArtifactRoll(state, visit.playerId, marketHero, "tile");
         const options = blackMarketOffers(state)
-          .filter((offer) => hasResources(player, { gold: offer.price }))
+          .filter(
+            (offer) =>
+              hasResources(player, { gold: offer.price }) &&
+              polishArtifactTierAllowed(state, cardLibrary[offer.cardId]?.artifactTier)
+          )
           .map((offer) => ({
             label: `Buy ${cardLibrary[offer.cardId]?.name ?? offer.cardId} (${offer.price} gold)`,
             steps: [{ type: "BLACK_MARKET_BUY", cardId: offer.cardId, deckId: offer.deckId, price: offer.price } as VisitStep]
           }));
         if (options.length === 0) {
+          clearPolishArtifactAccess(state);
           break;
         }
-        options.push({ label: "Leave", steps: [] });
+        options.push({ label: "Leave", steps: [{ type: "CLEAR_POLISH_ARTIFACT_ACCESS" } as VisitStep] });
         visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Black Market: buy an artifact", options });
         break;
       }
@@ -5959,13 +6513,18 @@ export function processPendingVisit(state: GameState): void {
         const deck = state.decks[step.deckId];
         const index = deck?.discardPile.lastIndexOf(step.cardId) ?? -1;
         if (!player || !deck || index === -1 || !hasResources(player, { gold: step.price })) {
+          clearPolishArtifactAccess(state);
           break;
         }
         spendResources(state, visit.playerId, { gold: step.price }, "Black Market");
         deck.discardPile.splice(index, 1);
         player.hand.push(step.cardId);
+        clearPolishArtifactAccess(state);
         break;
       }
+      case "CLEAR_POLISH_ARTIFACT_ACCESS":
+        clearPolishArtifactAccess(state);
+        break;
       case "ELEMENTAL_CONFLUX": {
         const candidates = elementalConfluxCandidates(state, visit.playerId);
         if (candidates.length === 0) {
@@ -6271,9 +6830,27 @@ export function mapTokenLabel(kind: MapTokenKind): string {
  * placement prompt and the carve/drop event notes so a gate token reads
  * consistently wherever a monolith/whirlpool one would.
  */
-export function placementTokenLabel(token: { kind: TokenPlacementKind; pair?: 1 | 2 | 3 | 4 }): string {
+export function placementTokenLabel(token: {
+  kind: TokenPlacementKind | CustomMapObjectKind;
+  pair?: 1 | 2 | 3 | 4;
+}): string {
   if (token.kind === "gate") {
     return `${gatePairColor(token.pair ?? 1)} Gate`;
+  }
+  if (token.kind === "garrison") {
+    return "Garrison";
+  }
+  if (token.kind === "keymaster_tent") {
+    return `${gatePairColor(token.pair ?? 1)} Keymaster's Tent`;
+  }
+  if (token.kind === "barrier") {
+    return `${gatePairColor(token.pair ?? 1)} Barrier`;
+  }
+  if (token.kind === "oneway_entrance") {
+    return `${gatePairColor(token.pair ?? 1)} one-way monolith (entrance)`;
+  }
+  if (token.kind === "oneway_exit") {
+    return `${gatePairColor(token.pair ?? 1)} one-way monolith (exit)`;
   }
   return mapTokenLabel(token.kind);
 }
@@ -6301,9 +6878,9 @@ export function isMapObjectLocation(locationId: string): boolean {
   return isMapTokenLocation(locationId) || locationId === "gate";
 }
 
-/** Colored Gate pair (1-4) → its display colour name (red/blue/green/yellow). */
+/** Teleport-Gate pair (1-4) → its display colour name (red/blue/green/violet — the printed portal art). */
 export function gatePairColor(pair: 1 | 2 | 3 | 4): string {
-  return { 1: "red", 2: "blue", 3: "green", 4: "yellow" }[pair];
+  return { 1: "red", 2: "blue", 3: "green", 4: "violet" }[pair];
 }
 
 /**
@@ -6414,14 +6991,21 @@ function tokenMayCoverField(state: GameState, field: MapFieldState | undefined, 
 }
 
 /** The legal hexes of `tile` a just-discovered `kind` token may be placed on. */
-export function tokenPlacementCandidates(state: GameState, tile: MapTileState, kind: TokenPlacementKind): MapSpaceId[] {
+export function tokenPlacementCandidates(
+  state: GameState,
+  tile: MapTileState,
+  kind: TokenPlacementKind | "oneway_entrance" | "oneway_exit"
+): MapSpaceId[] {
   const adventure = state.adventure;
   if (!adventure) {
     return [];
   }
+  // One-way monoliths are land structures — they reuse the Monolith legality.
+  const legality: TokenPlacementKind =
+    kind === "oneway_entrance" || kind === "oneway_exit" ? "monolith" : kind;
   return getTileFootprintSpaceIds(tile).filter((spaceId) => {
     const field = adventure.fields[spaceId];
-    return field?.tileInstanceId === tile.id && tokenMayCoverField(state, field, kind);
+    return field?.tileInstanceId === tile.id && tokenMayCoverField(state, field, legality);
   });
 }
 
@@ -6518,8 +7102,9 @@ function mapTokenTravelSteps(visit: PendingVisit, kind: MapTokenKind, destinatio
   return [
     // TELEPORT_HERO without `visit`: arriving on the destination token must
     // NOT re-run its own TOKEN_TELEPORT (an instant ping-pong loop). The hero
-    // may Revisit (1 MP) or re-enter later to travel again.
-    { type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId },
+    // may Revisit (1 MP) or re-enter later to travel again. `sweepGuard`:
+    // a designed guard still standing on the destination is auto-won.
+    { type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId, sweepGuard: true },
     ...(kind === "whirlpool" ? [{ type: "WHIRLPOOL_PENALTY" } as const] : [])
   ];
 }
@@ -6710,7 +7295,8 @@ function coloredGateTravelSteps(visit: PendingVisit, pair: 1 | 2 | 3 | 4, destin
   }
   // TELEPORT_HERO without `visit`: arriving on the destination gate must NOT
   // re-run its own GATE_TELEPORT (no ping-pong); Revisit (1 MP) travels again.
-  return [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId }];
+  // `sweepGuard`: a designed guard still standing there is auto-won on arrival.
+  return [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId, sweepGuard: true }];
 }
 
 /**
@@ -6794,6 +7380,196 @@ export function carveColoredGateField(
   // the caller AFTER this carve.
   field.location = "gate";
   field.gatePair = pair;
+  delete field.difficulty;
+  delete field.resource;
+  delete field.amount;
+  delete field.faction;
+  field.blackCube = false;
+  field.flagOwnerId = null;
+  delete field.extraFlagOwnerIds;
+  field.everFlagged = false;
+  field.settlementResource = null;
+  delete field.grailDiggable;
+  delete field.gateToTileId;
+  delete field.gateLinkSpaceId;
+  delete field.bankId;
+  delete field.terrain;
+  delete field.whirlpoolNumber;
+  return field;
+}
+
+/**
+ * Every CARVED free same-color one-way EXIT a travel from `fromSpaceId` may
+ * reach: `location: "oneway_exit"` fields of `pair`, minus hero-occupied ones.
+ * Exits still riding a FACE-DOWN tile are deliberately NOT offered (reveal the
+ * tile first) — the documented one-way limit, unlike the Monolith network.
+ */
+function onewayExitFields(state: GameState, pair: 1 | 2 | 3 | 4, fromSpaceId: MapSpaceId): MapFieldState[] {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return [];
+  }
+  return Object.values(adventure.fields).filter(
+    (field) =>
+      field.location === "oneway_exit" &&
+      field.gatePair === pair &&
+      field.spaceId !== fromSpaceId &&
+      !heroAtSpace(state, field.spaceId)
+  );
+}
+
+/** The travel steps to one one-way exit (arrival sweeps any hand-edited guard). */
+function onewayTravelSteps(visit: PendingVisit, exit: MapFieldState): VisitStep[] {
+  return [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: exit.spaceId, sweepGuard: true }];
+}
+
+/** A short board label for a one-way exit destination. */
+function onewayExitLabel(state: GameState, exit: MapFieldState): string {
+  const tile = state.adventure?.tiles[exit.tileInstanceId];
+  const where = tile ? ` on the ${tile.backLabel ?? tile.group ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol})` : "";
+  return `One-way exit${where || ` at ${exit.spaceId}`}${exit.onewayAlwaysPickable ? " (always pickable)" : ""}`;
+}
+
+/** Roll (seeded) among `exits` and unshift the travel; notes the roll for the table. */
+function rollOnewayExit(state: GameState, visit: PendingVisit, exits: MapFieldState[]): void {
+  const random = adventureRandom(state, "oneway-exit");
+  const exit = exits[random.nextInt(0, exits.length - 1)];
+  eventNote(
+    state,
+    `${eventPlayerName(state, visit.playerId)} rolls for the one-way exit — the monolith hurls the hero to ${onewayExitLabel(state, exit)}.`,
+    visit.playerId
+  );
+  visit.steps.unshift(...onewayTravelSteps(visit, exit));
+}
+
+/**
+ * One-way monolith travel (map-designer objects, 4 colors). Entering (or
+ * Revisiting, 1 MP) an ENTRANCE moves the hero to a SAME-COLOR carved EXIT:
+ *  - no carved same-color exit → inert with a note;
+ *  - every exit occupied → fizzle with a note;
+ *  - exactly one free exit → straight there (whatever the mode);
+ *  - mode "random" → a seeded roll among ALL free exits;
+ *  - mode "certain" (default) → the traveller picks;
+ *  - mode "mix" → pick an ALWAYS-PICKABLE exit up front, or roll among the
+ *    random-pool (non-always) exits — the printed "choose before the roll".
+ * Entrances are never destinations (one-way), other colors never mix, and the
+ * Monolith/Gate networks stay separate.
+ */
+function resolveOnewayTeleport(state: GameState, visit: PendingVisit): void {
+  const adventure = state.adventure;
+  const field = adventure?.fields[visit.fieldId];
+  if (!adventure || !field || field.location !== "oneway_entrance" || field.gatePair === undefined) {
+    return;
+  }
+  const pair = field.gatePair;
+  const color = gatePairColor(pair);
+  const anyExit = Object.values(adventure.fields).some(
+    (candidate) => candidate.location === "oneway_exit" && candidate.gatePair === pair
+  );
+  if (!anyExit) {
+    eventNote(
+      state,
+      `The ${color} one-way monolith leads nowhere — no ${color} exit monolith is on the map (a face-down one must be revealed first).`,
+      visit.playerId
+    );
+    return;
+  }
+  const exits = onewayExitFields(state, pair, visit.fieldId);
+  if (exits.length === 0) {
+    eventNote(state, `The ${color} one-way monolith fizzles — every ${color} exit is occupied by a hero.`, visit.playerId);
+    return;
+  }
+  if (exits.length === 1) {
+    visit.steps.unshift(...onewayTravelSteps(visit, exits[0]));
+    return;
+  }
+
+  const mode: OnewayExitMode = field.onewayExitMode ?? "certain";
+  if (mode === "random") {
+    rollOnewayExit(state, visit, exits);
+    return;
+  }
+  if (mode === "certain") {
+    visit.steps.unshift({
+      type: "CHOOSE_ONE",
+      prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} one-way monolith — choose the exit`,
+      teleport: { kind: "oneway", pair },
+      options: exits.map((exit) => ({
+        label: onewayExitLabel(state, exit),
+        steps: onewayTravelSteps(visit, exit)
+      }))
+    });
+    return;
+  }
+
+  // "mix": always-pickable exits are offered up front; the rest are the random
+  // pool behind a single "roll" option. Degenerates gracefully: all-always =
+  // certain, none-always = random.
+  const always = exits.filter((exit) => exit.onewayAlwaysPickable);
+  const randomPool = exits.filter((exit) => !exit.onewayAlwaysPickable);
+  if (always.length === 0) {
+    rollOnewayExit(state, visit, exits);
+    return;
+  }
+  const options = always.map((exit) => ({
+    label: onewayExitLabel(state, exit),
+    steps: onewayTravelSteps(visit, exit)
+  }));
+  if (randomPool.length > 0) {
+    options.push({
+      label: `Roll the die — a random exit (${randomPool.length})`,
+      steps: [{ type: "ONEWAY_RANDOM_EXIT", pair, fromSpaceId: visit.fieldId }]
+    });
+  }
+  visit.steps.unshift({
+    type: "CHOOSE_ONE",
+    prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} one-way monolith — pick an exit, or roll`,
+    teleport: { kind: "oneway", pair },
+    options
+  });
+}
+
+/**
+ * The "mix" roll leaf, resolved at CHOICE time so the pick option leaks
+ * nothing: roll among the CURRENT free non-always exits (they may have shifted
+ * while the choice was open), falling back to every free exit.
+ */
+function resolveOnewayRandomExit(
+  state: GameState,
+  visit: PendingVisit,
+  pair: 1 | 2 | 3 | 4,
+  fromSpaceId: MapSpaceId
+): void {
+  const exits = onewayExitFields(state, pair, fromSpaceId);
+  const pool = exits.filter((exit) => !exit.onewayAlwaysPickable);
+  const rollable = pool.length > 0 ? pool : exits;
+  if (rollable.length === 0) {
+    eventNote(state, `The one-way travel fizzles — every exit is occupied.`, visit.playerId);
+    return;
+  }
+  rollOnewayExit(state, visit, rollable);
+}
+
+/** Carves a one-way monolith half onto a materialized field (designer content). */
+export function carveOnewayField(
+  adventure: AdventureState,
+  spaceId: MapSpaceId,
+  kind: "oneway_entrance" | "oneway_exit",
+  pair: 1 | 2 | 3 | 4,
+  extras?: { exitMode?: OnewayExitMode; alwaysPickable?: boolean }
+): MapFieldState | null {
+  const field = adventure.fields[spaceId];
+  if (!field) {
+    return null;
+  }
+  field.location = kind;
+  field.gatePair = pair;
+  if (kind === "oneway_entrance" && extras?.exitMode) {
+    field.onewayExitMode = extras.exitMode;
+  }
+  if (kind === "oneway_exit" && extras?.alwaysPickable) {
+    field.onewayAlwaysPickable = true;
+  }
   delete field.difficulty;
   delete field.resource;
   delete field.amount;
@@ -6969,12 +7745,33 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
     return;
   }
   const sacrificed = field.location;
-  // A colored Gate token carves its own per-color gate field; Monolith/Whirlpool
-  // carve the network token field. Both clear the sacrificed location's trappings.
+  // A colored Gate token carves its own per-color gate field; a one-way token
+  // its entrance/exit; Monolith/Whirlpool carve the network token field. All
+  // clear the sacrificed location's trappings.
   if (pendingToken.kind === "gate" && pendingToken.pair !== undefined) {
     carveColoredGateField(adventure, spaceId, pendingToken.pair);
+  } else if (
+    (pendingToken.kind === "oneway_entrance" || pendingToken.kind === "oneway_exit") &&
+    pendingToken.pair !== undefined
+  ) {
+    carveOnewayField(adventure, spaceId, pendingToken.kind, pendingToken.pair, {
+      exitMode: pendingToken.exitMode,
+      alwaysPickable: pendingToken.alwaysPickable
+    });
+    // Bank-style entrance fight: the army still draws at the designed level.
+    if (pendingToken.kind === "oneway_entrance" && pendingToken.guard?.level && !pendingToken.guard.units) {
+      const carvedEntrance = adventure.fields[spaceId];
+      if (carvedEntrance) {
+        carvedEntrance.customGuardLevel = pendingToken.guard.level;
+      }
+    }
   } else if (pendingToken.kind === "monolith" || pendingToken.kind === "whirlpool") {
     carveMapTokenField(adventure, spaceId, pendingToken.kind, pendingToken.number);
+  }
+  // A designer guard rides the token onto whichever hex it lands on.
+  const carvedField = adventure.fields[spaceId];
+  if (carvedField) {
+    applyCustomGuardToField(carvedField, pendingToken.guard);
   }
   shiftPendingMapToken(tile);
   eventNote(
@@ -7061,9 +7858,14 @@ function completeMapTokenTeleport(
     heroId: hero.id,
     from,
     to: destSpaceId,
-    movementLeft: hero.movementPoints
+    movementLeft: hero.movementPoints,
+    // Face-down destination resolve of a Monolith / Whirlpool / Gate travel.
+    teleport: teleport.kind
   });
   commitPopulationOnMove(state, hero.controllerId);
+  // Reveal-travel arrival: the just-placed destination token may carry a
+  // designed guard — swept aside on arrival like every network exit.
+  autoWinArrivalGuard(state, hero.controllerId, adventure.fields[destSpaceId]);
   if (teleport.kind === "whirlpool") {
     const penalty: VisitStep = { type: "WHIRLPOOL_PENALTY" };
     if (adventure.pendingVisit) {
@@ -7365,6 +8167,11 @@ function ensureSubterraneanGate(
       : chooseAnchorGateHex(adventure, surface, { row: subterranean.centerRow, col: subterranean.centerCol }, subterranean, plan?.gateHex);
     if (spaceId) {
       surfaceHalf = carveGateField(adventure, spaceId, subterranean.id);
+      // Designer guard on the surface half — stamped ONLY at first carve, so a
+      // later recompute never respawns a beaten guard.
+      if (surfaceHalf) {
+        applyCustomGuardToField(surfaceHalf, plan?.gateGuard);
+      }
     }
   }
 
@@ -7377,6 +8184,10 @@ function ensureSubterraneanGate(
       : chooseAnchorGateHex(adventure, subterranean, { row: surface.centerRow, col: surface.centerCol }, surface, plan?.entranceHex);
     if (spaceId) {
       undergroundHalf = carveGateField(adventure, spaceId, surface.id);
+      // Designer guard on the cavern half — first carve only (see above).
+      if (undergroundHalf) {
+        applyCustomGuardToField(undergroundHalf, plan?.entranceGuard);
+      }
     }
   }
 
@@ -7638,7 +8449,7 @@ export function upsertGatePlan(adventure: AdventureState, candidate: Subterranea
 }
 
 /** A tile placement reduced to what gate planning needs: a centre and a layer. */
-export type TilePlacementLike = { row: number; col: number; group: string };
+export type TilePlacementLike = { row: number; col: number; group: string; underground?: boolean };
 
 /** One Subterranean Gate a layout implies: which two tiles, and the two hexes. */
 export type PlannedSubterraneanGate = {
@@ -7669,7 +8480,10 @@ export type DesignedGateLinkLike = {
   entranceHex?: HexCoord;
 };
 
-const isCavernPlacement = (tile: TilePlacementLike): boolean => tile.group === "subterranean";
+// A placement is on the Underground layer when its group IS subterranean OR the
+// designer flagged a supply/sea/center tile underground — the shared layer
+// predicate, so the pure gate preview mirrors the engine's `tileLayer` carve.
+const isCavernPlacement = (tile: TilePlacementLike): boolean => planIsUnderground(tile);
 
 /**
  * The Surface ring hex nearest `towardCenter` that physically touches
@@ -8782,7 +9596,13 @@ const ARTIFACT_DECK_IDS = ["artifacts", "artifacts-minor", "artifacts-major", "a
  * choice prompts). Campaign scenarios replace these with unique bonuses —
  * this digital build has no campaign scenarios, so every table uses these.
  */
-export function startingBonusDescription(difficulty: GameDifficulty): string {
+export function startingBonusDescription(
+  difficulty: GameDifficulty,
+  options?: { polishReduced?: boolean }
+): string {
+  if (options?.polishReduced && difficulty !== "impossible") {
+    return polishReducedStartingBonusDescription(difficulty);
+  }
   switch (difficulty) {
     case "easy":
       return "Roll 2 Resource Dice and receive Resources from both — OR — Search (2) the Artifact Deck, twice.";
@@ -8799,8 +9619,17 @@ export function startingBonusDescription(difficulty: GameDifficulty): string {
  * Visit steps for the printed starting bonus at `difficulty`. Null on Impossible
  * (no bonus). Artifacts go to hand (via Search / reveal), never into the
  * Starting Deck. After any Artifact Search the Artifact decks reshuffle.
+ *
+ * With the Polish reduced-starting-bonus house rule, Easy/Normal/Hard all use
+ * the same fixed reduced choice (see polish-house-rules.ts).
  */
-export function startingBonusVisitSteps(difficulty: GameDifficulty): VisitStep[] | null {
+export function startingBonusVisitSteps(
+  difficulty: GameDifficulty,
+  options?: { polishReduced?: boolean }
+): VisitStep[] | null {
+  if (options?.polishReduced && difficulty !== "impossible") {
+    return polishReducedStartingBonusVisitSteps();
+  }
   switch (difficulty) {
     case "easy":
       return [
@@ -8883,6 +9712,168 @@ export function reshuffleArtifactDecksAfterStartingBonus(state: GameState): void
       deck.discardPile.push(top);
     }
   }
+}
+
+/**
+ * Polish Pandora Search: draw Search(N) Pandora cards, keep 1, return the rest
+ * under the deck. N = 2 on IV–V / 3 on VI–VII; with polish-random-artifacts a
+ * "+1" die raises N by 1.
+ */
+export function openPolishPandoraSearch(state: GameState, visit: PendingVisit): void {
+  const adventure = state.adventure;
+  const player = state.players[visit.playerId];
+  if (!adventure || !player) {
+    return;
+  }
+
+  const band = polishArtifactBandForField(state, visit.fieldId);
+  let dieFace: number | null = null;
+  if (houseRuleEnabled(state, "polish-random-artifacts")) {
+    // Roll for the Search(X+1) upgrade only — do not leave a tier access latch
+    // that would poison a later Artifact Search on the same turn. We store the
+    // face, then clear access after reading it.
+    const hero = state.heroes[visit.heroId] ?? getMainHero(state, visit.playerId);
+    dieFace = maybeApplyPolishRandomArtifactRoll(state, visit.playerId, hero, "tile");
+    // Keep only the die face for the count; drop the access override immediately
+    // so it does not gate a following Artifact Search this turn.
+    const face = adventure.polishRandomArtifactDie ?? dieFace;
+    clearPolishArtifactAccess(state);
+    dieFace = face;
+  }
+
+  const count = polishPandoraSearchCount(band, dieFace);
+  const drawn: CardId[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const cardId = adventure.pandoraDeck?.pop();
+    if (cardId) {
+      drawn.push(cardId);
+    }
+  }
+  if (drawn.length === 0) {
+    return;
+  }
+  if (drawn.length === 1) {
+    player.hand.push(drawn[0]!);
+    appendEvent(state, {
+      type: "PANDORA_CARD_DRAWN",
+      playerId: visit.playerId,
+      cardId: drawn[0]!
+    });
+    return;
+  }
+
+  visit.steps.unshift({
+    type: "CHOOSE_ONE",
+    prompt: `Pandora Search (${drawn.length}): choose 1 card to keep`,
+    options: drawn.map((cardId, index) => ({
+      label: `Keep ${cardLibrary[cardId]?.name ?? cardId}`,
+      steps: [
+        {
+          type: "RESOLVE_PANDORA_SEARCH" as const,
+          keepIndexes: [index],
+          drawn
+        }
+      ]
+    }))
+  });
+}
+
+/**
+ * Polish reduced starting bonus: draw `drawCount` Minor Artifacts from the
+ * Minor draw pile (or combined Artifact deck, filtering to minors) — never the
+ * discard top — then open a visit CHOOSE_ONE so the player keeps `keepCount`
+ * and the rest go under the draw pile (not discarded).
+ */
+export function openDrawChooseMinorArtifacts(
+  state: GameState,
+  visit: PendingVisit,
+  drawCount: number,
+  keepCount: number
+): void {
+  const player = state.players[visit.playerId];
+  if (!player) {
+    return;
+  }
+
+  const deckId = state.decks["artifacts-minor"] ? "artifacts-minor" : "artifacts";
+  const deck = state.decks[deckId];
+  if (!deck) {
+    return;
+  }
+
+  const drawn: CardId[] = [];
+  // Prefer drawing straight off the Minor pile. On a combined deck, skip
+  // non-minors back under the pile so we never offer a Major/Relic here.
+  const skipped: CardId[] = [];
+  while (drawn.length < drawCount && deck.drawPile.length > 0) {
+    const cardId = deck.drawPile.pop() as CardId;
+    const card = cardLibrary[cardId];
+    const isMinor = card?.kind === "artifact" && (card.artifactTier ?? "minor") === "minor";
+    if (isMinor && canAcquireSharedDeckCard(state, visit.playerId, deckId, cardId)) {
+      drawn.push(cardId);
+    } else {
+      skipped.push(cardId);
+    }
+  }
+  // Put non-minors back under the draw pile (index 0 = bottom).
+  if (skipped.length > 0) {
+    deck.drawPile = [...skipped, ...deck.drawPile];
+  }
+
+  if (drawn.length === 0) {
+    return;
+  }
+
+  if (drawn.length <= keepCount) {
+    for (const cardId of drawn) {
+      player.hand.push(cardId);
+    }
+    appendEvent(state, {
+      type: "DECK_SEARCH_RESOLVED",
+      playerId: visit.playerId,
+      deckId,
+      choiceId: `polish_minor_draw_${nextEventNumber(state)}`,
+      pick: "revealed",
+      discardedCardIds: []
+    });
+    return;
+  }
+
+  // Offer every single-card keep combination (keepCount is 1 in the printed
+  // reduced bonus; generalise for a future keep-2 if needed).
+  const options =
+    keepCount === 1
+      ? drawn.map((cardId, index) => ({
+          label: `Keep ${cardLibrary[cardId]?.name ?? cardId}`,
+          steps: [
+            {
+              type: "RESOLVE_DRAW_CHOOSE_MINOR" as const,
+              deckId,
+              keepIndexes: [index],
+              drawn
+            }
+          ]
+        }))
+      : [
+          {
+            label: `Keep the first ${keepCount}`,
+            steps: [
+              {
+                type: "RESOLVE_DRAW_CHOOSE_MINOR" as const,
+                deckId,
+                keepIndexes: drawn.slice(0, keepCount).map((_, i) => i),
+                drawn
+              }
+            ]
+          }
+        ];
+
+  // Unshift so the pick resolves before the rest of the visit queue.
+  visit.steps.unshift({
+    type: "CHOOSE_ONE",
+    prompt: `Choose ${keepCount} of ${drawn.length} Minor Artifacts to keep`,
+    options
+  });
 }
 
 /**
@@ -8988,6 +9979,28 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
  * Every other field draws normally from the Field Difficulty Level Table.
  */
 export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
+  // Designer "certain army" guard: mint the exact Neutral cards, Creature-Bank
+  // style — never drawn from nor recycled to the tier decks. It REPLACES every
+  // printed/location draw below (a customized Ⅶ objective fights the designed
+  // army, not the printed one). Unknown / non-neutral ids are skipped
+  // defensively (the sanitiser already drops them).
+  if (field?.customGuardUnits && field.customGuardUnits.length > 0) {
+    return field.customGuardUnits
+      .filter((unitDefId) => coreUnitDefinitions[unitDefId]?.neutral)
+      .map((unitDefId) => ({
+        unitDefId,
+        tier: coreUnitDefinitions[unitDefId].tier,
+        bankGuard: true
+      }));
+  }
+
+  // Designer guard LEVEL on a bank-style object (Garrison / Keymaster's Tent /
+  // one-way monolith entrance): the army is drawn at the designed level even
+  // though the FIGHT runs bank-style (combat difficulty 0 — no experience).
+  if (field?.customGuardLevel) {
+    return drawNeutralArmy(state, field.customGuardLevel);
+  }
+
   if (field?.location === "dragon_utopia") {
     return dragonUtopiaGuardIds(state, difficulty).map((unitDefId) => ({
       unitDefId,
@@ -10027,13 +11040,34 @@ const CUBE_CLEAR_MATCHES: Record<"windmill" | "water_wheel" | "mystical_garden",
  * adventure; no-ops when the active map has no preset timed events.
  * Runs AFTER refreshRoundTokens, so a movement grant stacks on refreshed MPs.
  */
+/**
+ * True when a designed timed event fires at `round`. A one-shot (no
+ * `repeatEveryRounds`) fires only on its own `round`; a repeating event fires on
+ * `round`, then every N rounds after (`round`, `round+N`, `round+2N`, …). A
+ * repeat interval < 2 is treated as a one-shot (the sanitizer already clamps it,
+ * but this guards a hand-edited snapshot against a modulo-0 / every-round loop).
+ */
+export function isTimedEventDue(
+  event: { round: number; repeatEveryRounds?: number },
+  round: number
+): boolean {
+  if (round === event.round) {
+    return true;
+  }
+  const interval = event.repeatEveryRounds;
+  if (!interval || interval < 2 || round < event.round) {
+    return false;
+  }
+  return (round - event.round) % interval === 0;
+}
+
 export function applyCustomMapTimedEvents(state: GameState): void {
   const preset = state.adventure?.mapPreset;
   if (!preset?.timedEvents?.length) {
     return;
   }
   const round = state.round;
-  const due = preset.timedEvents.filter((event) => event.round === round);
+  const due = preset.timedEvents.filter((event) => isTimedEventDue(event, round));
   if (due.length === 0) {
     return;
   }
@@ -10070,23 +11104,97 @@ export function applyCustomMapTimedEvents(state: GameState): void {
       continue;
     }
     if (effect.kind === "resources") {
+      const gold = effect.gold ?? 0;
+      const buildingMaterials = effect.buildingMaterials ?? 0;
+      const valuables = effect.valuables ?? 0;
+      // Negative amounts mean every player LOSES that much; the treasury is
+      // floored at 0 (a player can never go negative, even short of the loss).
+      const anyLoss = gold < 0 || buildingMaterials < 0 || valuables < 0;
       for (const playerId of players) {
-        gainResources(state, playerId, effect, `map event round ${round}`);
+        if (!anyLoss) {
+          // Pure gain — byte-identical to the legacy give-only path.
+          gainResources(state, playerId, { gold, buildingMaterials, valuables }, `map event round ${round}`);
+          continue;
+        }
+        const player = state.players[playerId];
+        if (!player) {
+          continue;
+        }
+        const before = { ...player.resources };
+        player.resources.gold = Math.max(0, before.gold + gold);
+        player.resources.buildingMaterials = Math.max(0, before.buildingMaterials + buildingMaterials);
+        player.resources.valuables = Math.max(0, before.valuables + valuables);
+        // Record the ACTUAL treasury movement (after the floor) as feed events.
+        const removed: ResourceCost = {};
+        const gained: { gold: number; buildingMaterials: number; valuables: number } = {
+          gold: 0,
+          buildingMaterials: 0,
+          valuables: 0
+        };
+        for (const kind of ["gold", "buildingMaterials", "valuables"] as const) {
+          const diff = player.resources[kind] - before[kind];
+          if (diff < 0) {
+            removed[kind] = -diff;
+          } else if (diff > 0) {
+            gained[kind] = diff;
+          }
+        }
+        if (Object.keys(removed).length > 0) {
+          appendEvent(state, {
+            type: "RESOURCES_SPENT",
+            playerId,
+            cost: removed,
+            reason: `map event round ${round}`
+          });
+        }
+        if (gained.gold || gained.buildingMaterials || gained.valuables) {
+          appendEvent(state, {
+            type: "RESOURCES_GAINED",
+            playerId,
+            gold: gained.gold,
+            buildingMaterials: gained.buildingMaterials,
+            valuables: gained.valuables,
+            reason: `map event round ${round}`
+          });
+        }
       }
-      const parts: string[] = [];
-      if (effect.gold) {
-        parts.push(`${effect.gold} gold`);
+      const gains: string[] = [];
+      const losses: string[] = [];
+      for (const [amount, label] of [
+        [gold, "gold"],
+        [buildingMaterials, "materials"],
+        [valuables, "valuables"]
+      ] as const) {
+        if (amount > 0) {
+          gains.push(`${amount} ${label}`);
+        } else if (amount < 0) {
+          losses.push(`${-amount} ${label}`);
+        }
       }
-      if (effect.buildingMaterials) {
-        parts.push(`${effect.buildingMaterials} materials`);
+      const clauses: string[] = [];
+      if (gains.length > 0) {
+        clauses.push(`gains ${gains.join(", ")}`);
       }
-      if (effect.valuables) {
-        parts.push(`${effect.valuables} valuables`);
+      if (losses.length > 0) {
+        clauses.push(`loses ${losses.join(", ")}`);
       }
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every player gains ${parts.join(", ") || "nothing"}.`
+        message: `Map event (round ${round}): every player ${clauses.join(" and ") || "gains nothing"}.`
+      });
+      continue;
+    }
+    if (effect.kind === "experience") {
+      for (const playerId of players) {
+        // Ride the NORMAL experience pipeline (level-ups, hand-limit / expert-use
+        // bumps, Ability searches, specialty cards, commander points, Learning).
+        gainExperience(state, playerId, effect.amount);
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every hero gains ${effect.amount} experience.`
       });
       continue;
     }
@@ -10134,6 +11242,53 @@ export function applyCustomMapTimedEvents(state: GameState): void {
         message: `Map event (round ${round}): cleared black cubes on ${effect.locations.join(
           ", "
         )} (${cleared} field${cleared === 1 ? "" : "s"}).`
+      });
+      continue;
+    }
+    if (effect.kind === "clear_tile_cubes") {
+      const groups = new Set(effect.groups);
+      // Tiles hosting a Settlement are excluded whole when the flag is set —
+      // precompute their instance ids in one pass over the fields.
+      const settlementTileIds = new Set<string>();
+      if (effect.excludeSettlementTiles) {
+        for (const field of Object.values(adventure.fields)) {
+          if (field.location === "settlement") {
+            settlementTileIds.add(field.tileInstanceId);
+          }
+        }
+      }
+      let cleared = 0;
+      for (const field of Object.values(adventure.fields)) {
+        if (!field.blackCube) {
+          continue;
+        }
+        // Creature Banks keep their defeat cube forever (hard rule); the Grail
+        // and Dragon Utopia victory fields are never re-opened (conservative
+        // safety, mirroring the token-placement victory-condition exclusions).
+        if (
+          field.location === "creature_bank" ||
+          field.location === "grail" ||
+          field.location === "dragon_utopia"
+        ) {
+          continue;
+        }
+        // Standalone designer hexes (no backing tile) fall through here safely.
+        const tile = adventure.tiles[field.tileInstanceId];
+        if (!tile?.group || !groups.has(tile.group)) {
+          continue;
+        }
+        if (effect.excludeSettlementTiles && settlementTileIds.has(field.tileInstanceId)) {
+          continue;
+        }
+        field.blackCube = false;
+        cleared += 1;
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): re-opened black cubes on ${effect.groups
+          .map((group) => TILE_GROUP_BAND_LABELS[group])
+          .join(", ")} Tiles (${cleared} field${cleared === 1 ? "" : "s"}).`
       });
       continue;
     }
@@ -12994,13 +14149,23 @@ function drawEventFamilyCard(
   // single Artifact deck instead redraws past Relic cards below (the `accept`
   // filter).
   const relicLocked = family === "artifacts" && eventRelicsLocked(state);
+  // Polish Random Artifacts: when drawing Artifacts for a player, roll once
+  // with the hero-level band (merchant / card-effect reading) and drop forbidden
+  // tier piles from the weighted pick.
+  if (family === "artifacts" && playerId) {
+    maybeApplyPolishRandomArtifactRoll(state, playerId, getMainHero(state, playerId), "level");
+  }
   const piles = eventFamilyDrawableDeckIds(state, family)
+    .filter((deckId) => (family === "artifacts" ? polishArtifactDeckAllowed(state, deckId) : true))
     .map((deckId) => {
       const deck = state.decks[deckId];
       return { deckId, size: (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0) };
     })
     .filter((pile) => pile.size > 0);
   if (piles.length === 0) {
+    if (family === "artifacts" && playerId) {
+      clearPolishArtifactAccess(state);
+    }
     return null;
   }
 
@@ -13021,11 +14186,24 @@ function drawEventFamilyCard(
       state,
       pile.deckId,
       playerId,
-      relicLocked ? (candidate) => cardLibrary[candidate]?.artifactTier !== "relic" : undefined
+      (candidate) => {
+        if (relicLocked && cardLibrary[candidate]?.artifactTier === "relic") {
+          return false;
+        }
+        if (family === "artifacts" && !polishArtifactTierAllowed(state, cardLibrary[candidate]?.artifactTier)) {
+          return false;
+        }
+        return true;
+      }
     );
     if (cardId) {
+      // Leave access set until the caller finishes the acquisition; shops that
+      // draw multiple cards re-use the same roll via the early-return guard.
       return { cardId, deckId: pile.deckId };
     }
+  }
+  if (family === "artifacts" && playerId) {
+    clearPolishArtifactAccess(state);
   }
   return null;
 }
@@ -13726,6 +14904,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
     }
     case "EVENT_TAKE_CARD": {
       if (!player || (step.cost && !hasResources(player, step.cost))) {
+        clearPolishArtifactAccess(state);
         break;
       }
       if (step.cost) {
@@ -13749,6 +14928,10 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         `${eventPlayerName(state, visit.playerId)} takes ${cardLibrary[step.cardId]?.name ?? step.cardId}.`,
         visit.playerId
       );
+      // Polish Random Artifacts: one roll per Messenger/market acquisition.
+      if (cardLibrary[step.cardId]?.kind === "artifact") {
+        clearPolishArtifactAccess(state);
+      }
       break;
     }
     case "EVENT_RETURN_CARDS": {
@@ -13775,6 +14958,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
             deck.drawPile.unshift(entry.cardId);
             break;
         }
+      }
+      if (step.cards.some((entry) => cardLibrary[entry.cardId]?.kind === "artifact")) {
+        clearPolishArtifactAccess(state);
       }
       break;
     }
@@ -14278,6 +15464,8 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       if (!player || !events || events.pool.length === 0) {
         break;
       }
+      // Polish Random Artifacts: merchant path uses hero-level band.
+      maybeApplyPolishRandomArtifactRoll(state, visit.playerId, getMainHero(state, visit.playerId), "level");
       const options: { label: string; steps: VisitStep[] }[] = [];
       const seen = new Set<CardId>();
       for (const entry of events.pool) {
@@ -14286,6 +15474,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         }
         seen.add(entry.cardId);
         const tier = cardLibrary[entry.cardId]?.artifactTier ?? "minor";
+        if (!polishArtifactTierAllowed(state, tier)) {
+          continue;
+        }
         const price = EVENT_ARTIFACT_PRICES[tier];
         if (
           canAcquireSharedDeckCard(state, visit.playerId, entry.deckId, entry.cardId) &&
@@ -14305,6 +15496,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       // and buying it ends this player's shopping.
       if (!step.boughtFromPool) {
         for (const deckId of eventFamilyDeckIds(state, "artifacts")) {
+          if (!polishArtifactDeckAllowed(state, deckId)) {
+            continue;
+          }
           const pile = state.decks[deckId]?.discardPile ?? [];
           const top = pile.length > 0 ? pile[pile.length - 1] : null;
           if (!top) {
@@ -14313,6 +15507,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
           const tier = cardLibrary[top]?.artifactTier ?? "minor";
           // The early-game Relic lock covers the discard-top offer too.
           if (tier === "relic" && eventRelicsLocked(state)) {
+            continue;
+          }
+          if (!polishArtifactTierAllowed(state, tier)) {
             continue;
           }
           const price = EVENT_ARTIFACT_PRICES[tier];
@@ -14325,9 +15522,13 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         }
       }
       if (options.length === 0) {
+        clearPolishArtifactAccess(state);
         break;
       }
-      options.push({ label: "Pass the cards on", steps: [] });
+      options.push({
+        label: "Pass the cards on",
+        steps: [{ type: "CLEAR_POLISH_ARTIFACT_ACCESS" } as VisitStep]
+      });
       visit.steps.unshift({
         type: "CHOOSE_ONE",
         prompt: "Artifact Merchant: buy any number (minor 3 / major 5 / relic 7 gold)",

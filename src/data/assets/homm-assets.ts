@@ -424,6 +424,62 @@ export function mapTokenImage(kind: "monolith" | "whirlpool", number?: -1 | 0 | 
 }
 
 /**
+ * Designer outpost object art (Polish fan-map hex scans): the Garrison
+ * fortress, the Keymaster's Tent and the Barrier wall. One image each — a
+ * tent/barrier's COLOR (1-4) is shown by the tinted ring + number badge the
+ * colored Gates already use, and the Garrison wears its printed light-blue
+ * hex frame.
+ */
+export const OUTPOST_OBJECT_IMAGES = {
+  garrison: "/assets/board/tokens/garrison.webp",
+  keymaster_tent: "/assets/board/tokens/keymaster-tent.webp",
+  barrier: "/assets/board/tokens/barrier.webp"
+} as const;
+
+/** The outpost art for a location id, or undefined for every other location. */
+export function outpostObjectImage(locationId: string): string | undefined {
+  return OUTPOST_OBJECT_IMAGES[locationId as keyof typeof OUTPOST_OBJECT_IMAGES];
+}
+
+/**
+ * One-way monolith art (fan hex scans, 4 colors): the ENTRANCE arch glows with
+ * its portal, the EXIT arch stands empty. Color follows the gate-pair palette
+ * (1 red / 2 blue / 3 green / 4 violet).
+ */
+export const ONEWAY_MONOLITH_IMAGES = {
+  "entrance-1": "/assets/board/tokens/oneway-entrance-red.webp",
+  "entrance-2": "/assets/board/tokens/oneway-entrance-blue.webp",
+  "entrance-3": "/assets/board/tokens/oneway-entrance-green.webp",
+  "entrance-4": "/assets/board/tokens/oneway-entrance-violet.webp",
+  "exit-1": "/assets/board/tokens/oneway-exit-red.webp",
+  "exit-2": "/assets/board/tokens/oneway-exit-blue.webp",
+  "exit-3": "/assets/board/tokens/oneway-exit-green.webp",
+  "exit-4": "/assets/board/tokens/oneway-exit-violet.webp"
+} as const;
+
+/** The art for a one-way monolith half of a color pair. */
+export function onewayMonolithImage(direction: "entrance" | "exit", pair: 1 | 2 | 3 | 4 = 1): string {
+  return ONEWAY_MONOLITH_IMAGES[`${direction}-${pair}`];
+}
+
+/**
+ * Two-way Teleport Gate art (fan portal scans) — one glowing portal per color
+ * pair (1 red / 2 blue / 3 green / 4 violet). Replaces the old tinted-monolith
+ * rendering; the colored ring + number badge stay for colour-blind safety.
+ */
+export const TELEPORT_GATE_IMAGES = {
+  1: "/assets/board/tokens/teleport-gate-red.webp",
+  2: "/assets/board/tokens/teleport-gate-blue.webp",
+  3: "/assets/board/tokens/teleport-gate-green.webp",
+  4: "/assets/board/tokens/teleport-gate-violet.webp"
+} as const;
+
+/** The Teleport-Gate portal art of a color pair. */
+export function teleportGateImage(pair: 1 | 2 | 3 | 4 = 1): string {
+  return TELEPORT_GATE_IMAGES[pair];
+}
+
+/**
  * Creature Bank field-tile art (Naval Battles), shown on a placed bank's hex.
  *
  * Each of the twelve banks has its OWN cropped field-tile scan (the Crypt

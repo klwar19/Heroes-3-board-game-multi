@@ -6,7 +6,7 @@ import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Ban, Castle, Check, ChevronsUp, Crown, Dices, Fence, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
+import { Ban, Castle, Check, ChevronDown, ChevronsUp, Crown, Dices, Fence, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { HelperCoachLobbyPrompt } from "@/components/table/helper-coach-ui";
 import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
 import { cardLibrary } from "@/data/cards/library";
@@ -36,9 +36,12 @@ import {
   VICTORY_MODE_LABELS,
   applyUnitSideRules,
   bannableHeroesForSeat,
+  CUSTOM_WIN_CONDITION_OPTIONS,
   deckDisplayName,
+  defaultCustomWinCondition,
   describeCardEffect,
   describeCustomMapPresetEntries,
+  describeCustomWinCondition,
   expertUsesAvailable,
   expertUsesTotalThisRound,
   DRAFT_FORMAT_LABELS,
@@ -63,7 +66,9 @@ import {
   isMapTokenLocation,
   isParallelActor,
   isRoundStartEventBarrierActive,
+  MAX_CUSTOM_WIN_CONDITIONS,
   MAX_PARALLEL_TURN_ROUNDS,
+  mergeCustomWinConditions,
   parallelInteractionBlocker,
   parallelTurnsActive,
   polishArmyUnitStackCap,
@@ -76,6 +81,7 @@ import {
   scenarioDefinitions,
   startingBonusDescription,
   tileFootprint,
+  tileLayer,
   tierOfLevel,
   UNIT_LEVELS,
   unitAbilities,
@@ -84,6 +90,7 @@ import {
   astrologersCardDefinitions,
   eventCardDefinitions,
   type CustomStartingUnit,
+  type CustomWinCondition,
   type DraftFormat,
   type FactionId,
   type UnitLevel,
@@ -106,6 +113,9 @@ import {
   mapTokenImage,
   monolithTokenImage,
   moraleIcon,
+  onewayMonolithImage,
+  outpostObjectImage,
+  teleportGateImage,
   RESOURCE_ICONS,
   subterraneanGateTokenImage,
   tileBackImage,
@@ -208,7 +218,7 @@ const GATE_PAIR_COLORS: Record<number, string> = {
   1: "#e0483c",
   2: "#3d7fe0",
   3: "#3caf52",
-  4: "#e0b93c"
+  4: "#b04fd6"
 };
 
 /**
@@ -218,24 +228,22 @@ const GATE_PAIR_COLORS: Record<number, string> = {
  */
 function gateHexMark(spaceId: string, x: number, y: number, pair: number): ReactNode {
   const color = GATE_PAIR_COLORS[pair] ?? "#c9a24b";
-  const art = HEX_SIZE * 1.12;
+  const art = HEX_SIZE * 1.6;
   return (
     <g className="hexGateMark" key={`${spaceId}-gate-mark`} style={{ pointerEvents: "none" }}>
-      {/* Colored disc backing so the pair colour reads under the monolith art. */}
-      <circle cx={x} cy={y} fill={color} opacity={0.32} r={HEX_SIZE * 0.6} />
-      {/* The monolith artwork — a colored Gate renders as a colored Monolith. */}
+      {/* The Teleport Gate's own per-color portal artwork. */}
       <image
         className="hexGateMonolith"
-        height={art}
-        href={assetUrl(monolithTokenImage())}
+        height={art * 1.4}
+        href={assetUrl(teleportGateImage((pair as 1 | 2 | 3 | 4) ?? 1))}
         preserveAspectRatio="xMidYMid meet"
         width={art}
         x={x - art / 2}
-        y={y - art / 2}
+        y={y - art * 0.72}
       />
-      {/* Colored ring identifying the pair colour. */}
+      {/* Colored ring identifying the pair colour (colour-blind-safe with the badge). */}
       <circle cx={x} cy={y} fill="none" r={HEX_SIZE * 0.62} stroke={color} strokeWidth={3} />
-      {/* Small pair-number badge (top-right), colour-blind-safe. */}
+      {/* Small pair-number badge (top-right). */}
       <circle cx={x + HEX_SIZE * 0.46} cy={y - HEX_SIZE * 0.46} fill="rgba(12,8,4,0.85)" r={HEX_SIZE * 0.3} stroke={color} strokeWidth={2} />
       <text
         fill={color}
@@ -922,12 +930,15 @@ export function HexMapBoard({
           ? parseHexSpaceId(pendingToken.preferredSpaceId) ?? center
           : center;
         const tokenBackPixel = hexToPixel(tokenBackCoord, HEX_SIZE);
-        const isGateToken = pendingToken.kind === "gate";
+        const isGateToken =
+          pendingToken.kind === "gate" ||
+          pendingToken.kind === "oneway_entrance" ||
+          pendingToken.kind === "oneway_exit";
         const gateColor = isGateToken ? GATE_PAIR_COLORS[pendingToken.pair ?? 1] ?? "#c9a24b" : null;
         const tokenBackImage =
-          pendingToken.kind === "gate"
-            ? monolithTokenImage()
-            : mapTokenImage(pendingToken.kind, pendingToken.number);
+          pendingToken.kind === "whirlpool"
+            ? mapTokenImage("whirlpool", pendingToken.number)
+            : monolithTokenImage();
         const tokenBackWidth = HEX_WIDTH * 0.9;
         const tokenBackHeight = 2 * HEX_SIZE * 0.9;
         artLayer.push(
@@ -1009,7 +1020,13 @@ export function HexMapBoard({
       // (or vice versa) — only a hero entering a Subterranean Gate opens it. When
       // it isn't otherwise discoverable, a tap explains that instead of doing
       // nothing, so players aren't left clicking a dead tile.
-      const cavernNeedsGate = tile.group === "subterranean" && !discover && !readOnly;
+      // The Underground layer (a printed cavern OR a designer-flagged
+      // far/near/center/sea tile) can't be discovered from the Surface — the
+      // shared `tileLayer` predicate, so a flagged tile shows the same "needs a
+      // Gate" hint as a cavern. `data-underground` is the always-on layer cue
+      // (present on every underground tile, absent on a plain Surface tile).
+      const undergroundTile = tileLayer(tile) === "subterranean";
+      const cavernNeedsGate = undergroundTile && !discover && !readOnly;
       for (const [slot, coord] of footprint.entries()) {
         const { x, y } = hexToPixel(coord, HEX_SIZE);
         track(x, y);
@@ -1018,6 +1035,7 @@ export function HexMapBoard({
             <polygon
               className={`hexFaceDown ${discover && !readOnly ? "discoverable" : ""} ${cavernNeedsGate ? "needsGate" : ""}`}
               data-tile-id={tile.id}
+              data-underground={undergroundTile ? "true" : undefined}
               onClick={
                 discover && !readOnly
                   ? () => {
@@ -1288,6 +1306,9 @@ export function HexMapBoard({
 
     // --- Revealed, materialized tiles --------------------------------------
     renderTileArt(tile, tile.rotation);
+    // Always-on layer cue: a printed cavern OR a designer-flagged far/near/
+    // center/sea tile reads as underground (the shared `tileLayer` predicate).
+    const undergroundTile = tileLayer(tile) === "subterranean";
     // The printed scan already shows the locations, numerals and mine icons:
     // hide the built-in markers and keep only live game state (cubes, flags,
     // settlement production, movement) on top of the art.
@@ -1346,6 +1367,7 @@ export function HexMapBoard({
             artShown ? "withArt" : ""
           ].join(" ")}
           data-space-id={spaceId}
+          data-underground={undergroundTile ? "true" : undefined}
           fill={terrain}
           key={spaceId}
           onClick={
@@ -1397,7 +1419,7 @@ export function HexMapBoard({
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${
               field.location === "subterranean_gate"
-                ? tile.group === "subterranean"
+                ? undergroundTile
                   ? " — step on to ascend to the Surface (the only crossing; reveals the Surface tile beyond for free)"
                   : " — step on to descend into the Underground (the only crossing; reveals the cavern beyond for free)"
                 : ""
@@ -1438,14 +1460,14 @@ export function HexMapBoard({
       if (field.location === "subterranean_gate" && (target || remindMove)) {
         overlays.push(
           <text className="hexGateCue" key={`${spaceId}-gate-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
-            {tile.group === "subterranean" ? "↥ ascend" : "↧ descend"}
+            {undergroundTile ? "↥ ascend" : "↧ descend"}
           </text>
         );
       }
 
       // A reachable Monolith/Whirlpool/Gate is a doorway too: cue the teleport so
       // players realise stepping on moves them across the map.
-      if (isMapObjectLocation(field.location) && (target || remindMove)) {
+      if ((isMapObjectLocation(field.location) || field.location === "oneway_entrance") && (target || remindMove)) {
         overlays.push(
           <text className="hexGateCue" key={`${spaceId}-token-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
             ⇄ teleport
@@ -1521,14 +1543,19 @@ export function HexMapBoard({
       const overrideArt = fieldOverrideImage(field.location);
       const tokenImage =
         field.location === "subterranean_gate"
-          ? subterraneanGateTokenImage(tile.group === "subterranean" ? "subterranean" : "surface")
+          ? subterraneanGateTokenImage(undergroundTile ? "subterranean" : "surface")
           : field.location === "creature_bank"
             ? creatureBankFieldImage(field.bankId)
             : field.location === "monolith"
               ? monolithTokenImage()
               : field.location === "whirlpool"
                 ? whirlpoolTokenImage(field.whirlpoolNumber)
-                : overrideArt;
+                : field.location === "oneway_entrance" || field.location === "oneway_exit"
+                  ? onewayMonolithImage(
+                      field.location === "oneway_entrance" ? "entrance" : "exit",
+                      field.gatePair ?? 1
+                    )
+                  : overrideArt;
       if (tokenImage) {
         // Clip landscape/field art to the hex (Creature Banks + Field Override objects).
         if (field.location === "creature_bank" || Boolean(overrideArt)) {
@@ -1598,7 +1625,11 @@ export function HexMapBoard({
           </text>
         );
       }
-      if (!artShown && field.difficulty && guarded) {
+      // Designed guards on map-object hexes (teleport tokens / gates / gate
+      // halves) are NOT printed on the tile scan, so their numeral shows even
+      // in art mode — otherwise a designed guard would be invisible.
+      const designedGuardHex = isMapObjectLocation(field.location) || field.location === "subterranean_gate";
+      if ((!artShown || designedGuardHex) && field.difficulty && guarded) {
         overlays.push(
           <text className="hexDifficulty" key={`${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
             {ROMAN[field.difficulty]}
@@ -1831,6 +1862,97 @@ export function HexMapBoard({
           y={y - HEX_SIZE}
         />
       );
+    } else if (field.location === "oneway_entrance" || field.location === "oneway_exit") {
+      // One-way monolith halves: per-color art + a small pair badge.
+      overlays.push(
+        <image
+          className="locationToken"
+          height={2 * HEX_SIZE}
+          href={assetUrl(
+            onewayMonolithImage(field.location === "oneway_entrance" ? "entrance" : "exit", field.gatePair ?? 1)
+          )}
+          key={`standalone-${spaceId}-oneway`}
+          preserveAspectRatio="none"
+          style={{ pointerEvents: "none" }}
+          width={HEX_WIDTH}
+          x={x - HEX_WIDTH / 2}
+          y={y - HEX_SIZE}
+        />
+      );
+      if (field.gatePair) {
+        const color = GATE_PAIR_COLORS[field.gatePair];
+        overlays.push(
+          <g className="hexGateMark" key={`standalone-${spaceId}-oneway-badge`} style={{ pointerEvents: "none" }}>
+            <circle cx={x + HEX_SIZE * 0.52} cy={y - HEX_SIZE * 0.56} fill={color} r={7} stroke="#160f06" strokeWidth={1} />
+            <text
+              fill="#fff"
+              fontSize={9}
+              fontWeight={700}
+              textAnchor="middle"
+              x={x + HEX_SIZE * 0.52}
+              y={y - HEX_SIZE * 0.56 + 3}
+            >
+              {field.gatePair}
+            </text>
+          </g>
+        );
+      }
+    } else if (outpostObjectImage(field.location)) {
+      // Designer outposts: the printed hex scan (Garrison / Keymaster's Tent /
+      // Barrier). Tents and Barriers add a colored ring + number (their color
+      // is the key mechanism); the Garrison wears its printed light-blue frame.
+      overlays.push(
+        <image
+          className="locationToken"
+          height={2 * HEX_SIZE}
+          href={assetUrl(outpostObjectImage(field.location)!)}
+          key={`standalone-${spaceId}-outpost`}
+          preserveAspectRatio="none"
+          style={{ pointerEvents: "none" }}
+          width={HEX_WIDTH}
+          x={x - HEX_WIDTH / 2}
+          y={y - HEX_SIZE}
+        />
+      );
+      if (field.location !== "garrison" && field.gatePair) {
+        const color = GATE_PAIR_COLORS[field.gatePair];
+        overlays.push(
+          <g className="hexGateMark" key={`standalone-${spaceId}-outpost-color`} style={{ pointerEvents: "none" }}>
+            <circle cx={x} cy={y} fill="none" r={HEX_SIZE * 0.55} stroke={color} strokeWidth={2.4} />
+            <circle cx={x + HEX_SIZE * 0.52} cy={y - HEX_SIZE * 0.56} fill={color} r={7} stroke="#160f06" strokeWidth={1} />
+            <text
+              fill="#fff"
+              fontSize={9}
+              fontWeight={700}
+              textAnchor="middle"
+              x={x + HEX_SIZE * 0.52}
+              y={y - HEX_SIZE * 0.56 + 3}
+            >
+              {field.gatePair}
+            </text>
+          </g>
+        );
+      }
+    }
+    // Outposts carry flags (the winner's marker; tents allow several).
+    if (field.flagOwnerId) {
+      overlays.push(
+        <g key={`standalone-${spaceId}-flag`} transform={`translate(${x - HEX_SIZE * 0.62}, ${y - HEX_SIZE * 0.72})`}>
+          <line className="flagPole" x1={0} x2={0} y1={0} y2={16} />
+          <path d="M0 1 L11 4.5 L0 8 Z" fill={playerColor(state, field.flagOwnerId)} stroke="#1d1206" strokeWidth={0.7} />
+        </g>
+      );
+    }
+    for (const [extraIndex, extraOwnerId] of (field.extraFlagOwnerIds ?? []).entries()) {
+      overlays.push(
+        <g
+          key={`standalone-${spaceId}-extra-flag-${extraOwnerId}`}
+          transform={`translate(${x - HEX_SIZE * 0.62 + (extraIndex + 1) * 9}, ${y - HEX_SIZE * 0.6})`}
+        >
+          <line className="flagPole" x1={0} x2={0} y1={0} y2={12} />
+          <path d="M0 1 L8 3.5 L0 6 Z" fill={playerColor(state, extraOwnerId)} stroke="#1d1206" strokeWidth={0.6} />
+        </g>
+      );
     }
     if (guarded && field.difficulty) {
       overlays.push(
@@ -1839,7 +1961,16 @@ export function HexMapBoard({
         </text>
       );
     }
-    if (isMapObjectLocation(field.location) && (target || remindMove)) {
+    // Designer yellow borders on the object hex — same bold casing+core the
+    // tile-carried per-edge borders use, so a sealed edge reads identically.
+    for (const direction of field.borderEdges ?? []) {
+      pushBorderLines(
+        overlays,
+        `standalone-${spaceId}-border-${direction}`,
+        hexEdgeForDirection(x, y, HEX_SIZE - 0.8, direction)
+      );
+    }
+    if ((isMapObjectLocation(field.location) || field.location === "oneway_entrance") && (target || remindMove)) {
       overlays.push(
         <text className="hexGateCue" key={`standalone-${spaceId}-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
           ⇄ teleport
@@ -2196,8 +2327,9 @@ export function HexMapBoard({
       cardWidth: iAmRotating ? 272 : 230,
       cardHeight: iAmRotating ? 158 : 70,
       // The rotating tile spans a 5-hex-tall flower; clear its top edge so the
-      // card never covers the art it is acting on.
-      gap: HEX_SIZE * 2.9,
+      // card never covers the art it is acting on. Phone CSS adds an extra
+      // translate nudge on top of this gap.
+      gap: HEX_SIZE * 3.35,
       render: () =>
         iAmRotating ? (
           <div
@@ -3640,7 +3772,7 @@ type TeleportOptionArt = {
  */
 function teleportOptionArt(
   state: GameState,
-  teleport: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4 },
+  teleport: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 },
   option: { label: string; steps: { type: string; [key: string]: unknown }[] }
 ): TeleportOptionArt {
   const inner = option.steps[0] as { type?: string; spaceId?: string; tileInstanceId?: string } | undefined;
@@ -3652,14 +3784,14 @@ function teleportOptionArt(
     faceDown = true;
     number = state.adventure?.tiles[inner.tileInstanceId]?.pendingToken?.number;
   }
-  const image = teleport.kind === "gate" ? monolithTokenImage() : mapTokenImage(teleport.kind, number);
-  const ring = teleport.kind === "gate" ? GATE_PAIR_COLORS[teleport.pair ?? 1] ?? "#c9a24b" : undefined;
-  const badge =
-    teleport.kind === "gate"
-      ? String(teleport.pair ?? 1)
-      : teleport.kind === "whirlpool" && number !== undefined
-        ? `${number >= 0 ? "+" : ""}${number}`
-        : undefined;
+  const colored = teleport.kind === "gate" || teleport.kind === "oneway";
+  const image = teleport.kind === "whirlpool" ? mapTokenImage("whirlpool", number) : monolithTokenImage();
+  const ring = colored ? GATE_PAIR_COLORS[teleport.pair ?? 1] ?? "#c9a24b" : undefined;
+  const badge = colored
+    ? String(teleport.pair ?? 1)
+    : teleport.kind === "whirlpool" && number !== undefined
+      ? `${number >= 0 ? "+" : ""}${number}`
+      : undefined;
   return { image, ring, badge, faceDown, label: option.label };
 }
 
@@ -3926,7 +4058,8 @@ export function PromptTray({
   const tileChoice = state.adventure?.pendingTileChoice;
   const waitingOn =
     choice && choice.playerId !== viewerPlayerId
-      ? choice.type === "OPTION_CHOICE" && choice.context === "learning-level-up"
+      ? choice.type === "OPTION_CHOICE" &&
+        (choice.context === "learning-level-up" || choice.context === "deck-search-mode")
         ? null
         : { ownerId: choice.playerId, doing: "is deciding…" }
       : !choice && visit && visit.playerId !== viewerPlayerId
@@ -3977,13 +4110,15 @@ export function PromptTray({
   // The Monolith/Whirlpool/Gate travel picker (`step.teleport`): the tray shows
   // each destination as a themed token card (art + label + number/pair badge)
   // and a "pick your exit on the map" hint, not a bare numbered option list.
-  let teleport: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4 } | null = null;
+  let teleport: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 } | null = null;
 
   if (
     choice?.type === "OPTION_CHOICE" &&
     choice.playerId === viewerPlayerId &&
     // The Learning level-up offer has its own card-showing modal (LearningOfferModal).
-    choice.context !== "learning-level-up"
+    // The Search-or-take-discard prompt has DeckSearchModeModal (card back / discard face).
+    choice.context !== "learning-level-up" &&
+    choice.context !== "deck-search-mode"
   ) {
     title = choice.prompt;
     body = optionActions;
@@ -4104,16 +4239,18 @@ export function PromptTray({
   // Safety net against a frozen table: ANY pending choice OWNED by this viewer
   // that no surface above claimed — and that no sibling modal owns (DECK_SEARCH →
   // SearchModal, ATTACK_DIE_REROLL → RerollModal, learning-level-up →
-  // LearningOfferModal) — still renders its resolving actions here. A pending
-  // choice returns ONLY its own resolving actions from getLegalActions, so this
-  // can never leak unrelated turn actions. It exists so a new/rare choice type
-  // (the Tarnum-search class of bug) can never silently strand its owner with a
-  // blank table — the failure the closed-room report described.
+  // LearningOfferModal, deck-search-mode → DeckSearchModeModal) — still renders
+  // its resolving actions here. A pending choice returns ONLY its own resolving
+  // actions from getLegalActions, so this can never leak unrelated turn actions.
+  // It exists so a new/rare choice type (the Tarnum-search class of bug) can never
+  // silently strand its owner with a blank table — the failure the closed-room
+  // report described.
   if (!title && choice && choice.playerId === viewerPlayerId) {
     const ownedElsewhere =
       choice.type === "DECK_SEARCH" ||
       choice.type === "ATTACK_DIE_REROLL" ||
-      (choice.type === "OPTION_CHOICE" && choice.context === "learning-level-up");
+      (choice.type === "OPTION_CHOICE" &&
+        (choice.context === "learning-level-up" || choice.context === "deck-search-mode"));
     if (!ownedElsewhere && legalActions.length > 0) {
       title = choice.type === "OPTION_CHOICE" ? choice.prompt : "Choose how to resolve this";
       body = legalActions;
@@ -4129,6 +4266,12 @@ export function PromptTray({
   // picker is handled by teleportOptions below (its own themed cards), and MUST
   // be excluded here: rewardArtFromVisitSteps keys a face-down destination off
   // its tileInstanceId and would show the hidden tile's scan (a preview leak).
+  // discard-pick (take a card from your discard / refresh a used Book Spell) also
+  // shows each candidate's face — same "pick by art" vibe as a market pool.
+  const discardPickCards =
+    choice?.type === "OPTION_CHOICE" && choice.context === "discard-pick" && choice.playerId === viewerPlayerId
+      ? choice.discardPick?.cardIds ?? null
+      : null;
   const rewardOptions =
     chooseOneOptions && !teleport
       ? body.map((legal) => {
@@ -4143,7 +4286,27 @@ export function PromptTray({
           const art = rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps);
           return { legal, art };
         })
-      : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
+      : discardPickCards
+        ? body.map((legal) => {
+            const optionIndex =
+              legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                ? legal.action.optionIndex
+                : undefined;
+            const cardId =
+              optionIndex !== undefined && optionIndex < discardPickCards.length
+                ? discardPickCards[optionIndex]
+                : undefined;
+            const card = cardId ? cardLibrary[cardId] : undefined;
+            const art: VisitRewardArt | null = cardId
+              ? {
+                  name: card?.name ?? cardId,
+                  image: card?.assets?.cardImage,
+                  caption: legal.label
+                }
+              : null;
+            return { legal, art };
+          })
+        : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
   const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
   const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
 
@@ -5779,16 +5942,24 @@ function MapPicker({
 
 function ResourceStepper({
   label,
+  iconSrc,
   value,
   onChange
 }: {
   label: string;
+  /** Board-game resource token art (gold coin / materials / valuables). */
+  iconSrc?: string;
   value: number;
   onChange: (next: number) => void;
 }) {
   return (
     <div className="optionStepper">
-      <small>{label}</small>
+      <small className="optionStepperLabel">
+        {iconSrc ? (
+          <img alt="" aria-hidden="true" className="optionStepperIcon" decoding="async" src={assetUrl(iconSrc)} />
+        ) : null}
+        <span>{label}</span>
+      </small>
       <div>
         <button aria-label={`Decrease ${label}`} onClick={() => onChange(Math.max(0, value - 1))} type="button">
           <Minus size={11} />
@@ -5817,13 +5988,189 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   units: "Unit buffs",
   abilities: "Abilities & heroes",
   combat: "Combat & map rules",
-  polish: "Polish house rules"
+  polish: "Polish house rule type 1"
 };
+
+const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat"] as const;
+
+function houseRuleToggleDisabled(
+  ruleId: HouseRuleId,
+  houseRules: Record<HouseRuleId, boolean>,
+  creatureBanksEnabled: boolean
+): boolean {
+  return (
+    (ruleId === "polish-bank-sizes" && !creatureBanksEnabled) ||
+    (ruleId === "polish-random-artifacts" && !houseRules["split-decks"])
+  );
+}
+
+function HouseRuleToggleButton({
+  rule,
+  on,
+  disabled,
+  onToggle
+}: {
+  rule: (typeof HOUSE_RULES)[number];
+  on: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={on}
+      className={`houseRuleToggle ${on ? "on" : "off"} ${disabled ? "disabled" : ""}`}
+      disabled={disabled}
+      onClick={onToggle}
+      title={
+        disabled
+          ? rule.id === "polish-random-artifacts"
+            ? `${rule.description} Turn Split Spell/Artifact decks on first.`
+            : `${rule.description} Turn Creature Banks on in Map & Setup first.`
+          : rule.description
+      }
+      type="button"
+    >
+      <span aria-hidden="true" className="houseRuleCheck">
+        {on ? <Check size={13} /> : null}
+      </span>
+      <span className="houseRuleText">
+        <strong>{rule.label}</strong>
+        <small>{rule.description}</small>
+      </span>
+      <span className={`houseRuleState ${on ? "on" : "off"}`}>
+        {disabled ? "BANKS OFF" : on ? "ON" : "OFF"}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Collapsible panel for a bundle of house-rule checkboxes. Stays in place —
+ * only the body expands/collapses. Default is minimized so the Mode & Rules
+ * tab stays short, with a clear "expand" affordance on the header.
+ */
+function HouseRuleCollapsible({
+  id,
+  title,
+  subtitle,
+  crestSrc,
+  crestClassName,
+  open,
+  onToggle,
+  onCount,
+  totalCount,
+  children,
+  variant = "binh"
+}: {
+  id: string;
+  title: string;
+  subtitle: string;
+  crestSrc?: string;
+  crestClassName?: string;
+  open: boolean;
+  onToggle: () => void;
+  onCount: number;
+  totalCount: number;
+  children: ReactNode;
+  variant?: "binh" | "polish" | "tournament";
+}) {
+  const panelId = `${id}-panel`;
+  return (
+    <div className={`houseRuleCollapsible ${variant} ${open ? "open" : "collapsed"}`}>
+      <button
+        aria-controls={panelId}
+        aria-expanded={open}
+        className="houseRuleCollapsibleHead"
+        onClick={onToggle}
+        title={open ? `Collapse ${title}` : `Expand ${title} — show all toggles`}
+        type="button"
+      >
+        <span className="houseRuleCollapsibleLead">
+          {crestSrc ? (
+            <img alt="" aria-hidden="true" className={crestClassName ?? "houseRuleCollapsibleCrest"} src={crestSrc} />
+          ) : null}
+          <span className="houseRuleCollapsibleTitles">
+            <strong>{title}</strong>
+            <small>{subtitle}</small>
+          </span>
+        </span>
+        <span className="houseRuleCollapsibleMeta">
+          <span className={`houseRuleCollapsibleCount ${onCount > 0 ? "hasOn" : ""}`} title={`${onCount} of ${totalCount} on`}>
+            {onCount}/{totalCount} on
+          </span>
+          <span className={`houseRuleCollapsibleChevron ${open ? "open" : ""}`} aria-hidden="true">
+            <ChevronDown size={16} strokeWidth={2.5} />
+          </span>
+          <span className="houseRuleCollapsibleHint">{open ? "Minimize" : "Expand"}</span>
+        </span>
+      </button>
+      {open ? (
+        <div className="houseRuleCollapsibleBody" id={panelId} role="region" aria-label={title}>
+          {children}
+        </div>
+      ) : (
+        <button
+          aria-controls={panelId}
+          className="houseRuleCollapsiblePeek"
+          onClick={onToggle}
+          type="button"
+        >
+          <span className="houseRuleCollapsiblePeekDots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+          <span>Click to expand full checklist · {totalCount} rules</span>
+          <ChevronDown size={14} aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Label strip for an option row — optional crest/card-back art + title text. */
+function OptionRowLabel({
+  title,
+  hint,
+  iconSrc,
+  iconClassName,
+  icons
+}: {
+  title: string;
+  hint?: string;
+  iconSrc?: string;
+  iconClassName?: string;
+  /** Multiple icons (e.g. positive + negative morale backs). */
+  icons?: string[];
+}) {
+  const srcs = icons?.length ? icons : iconSrc ? [iconSrc] : [];
+  return (
+    <span className="optionRowLabel" title={hint}>
+      {srcs.length > 0 ? (
+        <span className={`optionRowIcons ${srcs.length > 1 ? "pair" : ""}`} aria-hidden="true">
+          {srcs.map((src) => (
+            <img
+              alt=""
+              className={iconClassName ?? "optionRowIcon"}
+              decoding="async"
+              key={src}
+              src={assetUrl(src)}
+            />
+          ))}
+        </span>
+      ) : null}
+      <span className="optionRowLabelText">{title}</span>
+    </span>
+  );
+}
 
 /**
  * The individual house-rule toggles, rendered straight from the engine registry
  * so the menu and the engine never drift. Each button flips exactly one rule
  * (the reducer merges it); the value shown is the resolved effective boolean.
+ *
+ * BINH core rules and Polish type-1 rules each live in their own collapsible
+ * panel (default minimized) so the Mode & Rules tab stays scannable.
  */
 function HouseRulesSection({
   houseRules,
@@ -5834,71 +6181,96 @@ function HouseRulesSection({
   creatureBanksEnabled: boolean;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
 }) {
-  const categories = ["decks", "units", "abilities", "combat", "polish"] as const;
+  // Default minimized — expand only when the host digs into the checklist.
+  const [binhOpen, setBinhOpen] = useState(false);
+  const [polishOpen, setPolishOpen] = useState(false);
+
+  const binhRules = HOUSE_RULES.filter((rule) =>
+    (BINH_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
+  );
+  const polishRules = HOUSE_RULES.filter((rule) => rule.category === "polish");
+  const binhOn = binhRules.filter((rule) => houseRules[rule.id]).length;
+  const polishOn = polishRules.filter((rule) => houseRules[rule.id]).length;
+
   return (
     <div className="houseRuleSection" aria-label="House rules">
       <div className="houseRuleHead">
         <strong>House rules</strong>
         <small>
-          BINH starts with its core tweaks on. Polish house rules stay opt-in, and Legacy clears every rule.
+          BINH starts with its core tweaks on. Polish house rule type 1 stays opt-in, and Legacy clears every rule.
+          Expand a section to flip individual checkboxes.
         </small>
       </div>
-      {categories.map((category) => {
-        const rules = HOUSE_RULES.filter((rule) => rule.category === category);
-        if (rules.length === 0) {
-          return null;
-        }
-        return (
-          <div className={`houseRuleGroup ${category === "polish" ? "polish" : ""}`} key={category}>
-            <span className="houseRuleGroupLabel">
-              {category === "polish" ? (
-                <img
-                  alt=""
-                  aria-hidden="true"
-                  className="polishRuleCrest"
-                  src={assetUrl("/assets/ui/polish-house-rules-flag.webp")}
-                />
-              ) : null}
-              {HOUSE_RULE_CATEGORY_LABELS[category]}
-            </span>
-            <div className="houseRuleGrid">
-              {rules.map((rule) => {
-                const on = houseRules[rule.id];
-                const disabled = rule.id === "polish-bank-sizes" && !creatureBanksEnabled;
-                return (
-                  <button
-                    aria-pressed={on}
-                    className={`houseRuleToggle ${on ? "on" : "off"} ${disabled ? "disabled" : ""}`}
-                    disabled={disabled}
+
+      <HouseRuleCollapsible
+        crestSrc={assetUrl("/assets/ui/mode-binh-crest-clear.webp")}
+        crestClassName="houseRuleCollapsibleCrest binh"
+        id="binh-house-rules"
+        onCount={binhOn}
+        onToggle={() => setBinhOpen((v) => !v)}
+        open={binhOpen}
+        subtitle="Core BINH tweaks — decks, units, abilities, combat & map"
+        title="BINH house rules"
+        totalCount={binhRules.length}
+        variant="binh"
+      >
+        {BINH_HOUSE_RULE_CATEGORIES.map((category) => {
+          const rules = binhRules.filter((rule) => rule.category === category);
+          if (rules.length === 0) {
+            return null;
+          }
+          return (
+            <div className="houseRuleGroup" key={category}>
+              <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+              <div className="houseRuleGrid">
+                {rules.map((rule) => (
+                  <HouseRuleToggleButton
+                    disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
                     key={rule.id}
-                    onClick={() => setHouseRule(rule.id, !on)}
-                    title={disabled ? `${rule.description} Turn Creature Banks on in Map & Setup first.` : rule.description}
-                    type="button"
-                  >
-                    <span aria-hidden="true" className="houseRuleCheck">
-                      {on ? <Check size={13} /> : null}
-                    </span>
-                    <span className="houseRuleText">
-                      <strong>{rule.label}</strong>
-                      <small>{rule.description}</small>
-                    </span>
-                    <span className={`houseRuleState ${on ? "on" : "off"}`}>
-                      {disabled ? "BANKS OFF" : on ? "ON" : "OFF"}
-                    </span>
-                  </button>
-                );
-              })}
+                    on={houseRules[rule.id]}
+                    onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
+                    rule={rule}
+                  />
+                ))}
+              </div>
             </div>
+          );
+        })}
+        <p className="houseRuleAlwaysOn">
+          <Info size={11} aria-hidden="true" />
+          <span>
+            Earthquake already matches the wiki, so there is nothing to toggle — its Power-2 collapse of the Arrow Tower
+            is the standard “a full breach fells the tower” rule, not a buff.
+          </span>
+        </p>
+      </HouseRuleCollapsible>
+
+      <HouseRuleCollapsible
+        crestSrc={assetUrl("/assets/ui/polish-house-rules-flag.webp")}
+        crestClassName="houseRuleCollapsibleCrest polish"
+        id="polish-house-rules"
+        onCount={polishOn}
+        onToggle={() => setPolishOpen((v) => !v)}
+        open={polishOpen}
+        subtitle="Optional competitive Polish package — all opt-in, default off"
+        title="Polish house rule type 1"
+        totalCount={polishRules.length}
+        variant="polish"
+      >
+        <div className="houseRuleGroup polish">
+          <div className="houseRuleGrid">
+            {polishRules.map((rule) => (
+              <HouseRuleToggleButton
+                disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
+                key={rule.id}
+                on={houseRules[rule.id]}
+                onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
+                rule={rule}
+              />
+            ))}
           </div>
-        );
-      })}
-      <p className="houseRuleAlwaysOn">
-        <Info size={11} aria-hidden="true" />
-        <span>
-          Earthquake already matches the wiki, so there is nothing to toggle — its Power-2 collapse of the Arrow Tower
-          is the standard “a full breach fells the tower” rule, not a buff.
-        </span>
-      </p>
+        </div>
+      </HouseRuleCollapsible>
     </div>
   );
 }
@@ -5911,24 +6283,31 @@ const SETUP_MODE_CARDS: {
   label: string;
   blurb: string;
   hint: string;
+  /** Optional crest art under public/assets/ui (passed through assetUrl). */
+  iconSrc?: string;
 }[] = [
   {
     id: "legacy",
     label: "Legacy",
     blurb: "Printed rulebook",
-    hint: "Turns every house rule off. Toggles stay free — re-enable any rule you want."
+    hint: "Turns every house rule off. Toggles stay free — re-enable any rule you want.",
+    // Falls back to a book-ish glyph if the crest is not yet present.
+    iconSrc: "/assets/ui/mode-legacy-crest-clear.webp"
   },
   {
     id: "binh",
     label: "BINH",
     blurb: "House-rule edition",
-    hint: "Default fan edition: every house rule on, Spell Book on. Mods (WOG) stay free to toggle."
+    hint: "Default fan edition: every house rule on, Spell Book on. Mods (WOG) stay free to toggle.",
+    // Classic griffin-on-blue-shield crest (transparent, blends into the panel).
+    iconSrc: "/assets/ui/mode-binh-crest-clear.webp"
   },
   {
     id: "tournament",
     label: "Tournament",
     blurb: "Competitive preset",
-    hint: "House rules off, tournament bans on, Hard difficulty, Neutral AI, Diplomacy banned."
+    hint: "House rules off, tournament bans on, Hard difficulty, human-controlled Neutrals, Diplomacy banned.",
+    iconSrc: "/assets/ui/mode-tournament-crest-clear.webp"
   }
 ];
 
@@ -5949,6 +6328,7 @@ function GameOptionsPanel({
 }) {
   const [wogOptionsOpen, setWogOptionsOpen] = useState(false);
   const [modeNotice, setModeNotice] = useState<string | null>(null);
+  const [tournamentRulesOpen, setTournamentRulesOpen] = useState(false);
   const [tab, setTab] = useState<OptionsTabId>("rules");
   const lobby = state.setupLobby;
   if (!lobby) {
@@ -6016,6 +6396,7 @@ function GameOptionsPanel({
       return;
     }
     // Tournament competitive preset — turns WOG off with the competitive package.
+    // Neutrals default to human control (next player clockwise plays the guards).
     send({
       ruleset: "legacy",
       wog: { ...wog, enabled: false },
@@ -6025,13 +6406,13 @@ function GameOptionsPanel({
       tournamentBanHourglass: true,
       tournamentSecondPlayerMorale: true,
       difficulty: "hard",
-      pvpNeutralControl: false,
+      pvpNeutralControl: true,
       events: false,
       moraleCards: false
     });
     setModeNotice(
       "Tournament mode applied: house rules off, Diplomacy + Hourglass banned, second player +1 morale, " +
-        "Hard difficulty, and Neutral units stay under the AI. Toggles below stay free if you need to adjust."
+        "Hard difficulty, and Neutrals under human control (next player clockwise). Toggles below stay free if you need to adjust."
     );
   };
 
@@ -6068,15 +6449,26 @@ function GameOptionsPanel({
           {SETUP_MODE_CARDS.map((card) => (
             <button
               aria-pressed={activeSetupMode === card.id}
-              className={`modePresetCard ${activeSetupMode === card.id ? "selected" : ""}`}
+              className={`modePresetCard mode-${card.id} ${activeSetupMode === card.id ? "selected" : ""}`}
               key={card.id}
               onClick={() => applySetupMode(card.id)}
               title={card.hint}
               type="button"
             >
-              <strong>{card.label}</strong>
-              <span>{card.blurb}</span>
-              <small>{card.hint}</small>
+              {card.iconSrc ? (
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="modePresetIcon"
+                  decoding="async"
+                  src={assetUrl(card.iconSrc)}
+                />
+              ) : null}
+              <span className="modePresetCardText">
+                <strong>{card.label}</strong>
+                <span>{card.blurb}</span>
+                <small>{card.hint}</small>
+              </span>
             </button>
           ))}
         </div>
@@ -6084,58 +6476,10 @@ function GameOptionsPanel({
           {activeSetupMode === "legacy"
             ? RULESET_DESCRIPTIONS.legacy
             : activeSetupMode === "tournament"
-            ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + Neutral AI."
+            ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + human-controlled Neutrals."
             : RULESET_DESCRIPTIONS.binh}
         </small>
       </div>
-
-      {(() => {
-        const vpOn = options.victoryPoints === true;
-        const vpRoundLimit = options.victoryPointsRoundLimit ?? 0;
-        // A designed map preset that already enables VP is authoritative — the
-        // lobby toggle does not govern its scoring (see applyLobbyVictoryPoints).
-        const presetVpEnabled = options.customMapPreset?.victoryPoints?.enabled === true;
-        return (
-          <div className="optionRow">
-            <small title="Optional Victory Points scoring: at the round limit (or on victory completion) the player with the most Victory Points wins — the full rulebook scoring table.">
-              Victory points
-            </small>
-            <div className="optionButtons">
-              {([false, true] as const).map((on) => (
-                <button
-                  aria-pressed={vpOn === on}
-                  className={vpOn === on ? "selected" : ""}
-                  key={on ? "on" : "off"}
-                  onClick={() => send({ victoryPoints: on })}
-                  title={on ? "Victory Points scoring on" : "Victory Points scoring off"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-              {vpOn ? (
-                <select
-                  aria-label="Victory points round limit"
-                  onChange={(event) => send({ victoryPointsRoundLimit: Number(event.target.value) })}
-                  value={vpRoundLimit}
-                >
-                  <option value={0}>No round limit</option>
-                  {[10, 15, 20, 25, 30].map((rounds) => (
-                    <option key={rounds} value={rounds}>
-                      {rounds} rounds
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-            </div>
-            <small className="optionHint">
-              {presetVpEnabled
-                ? "The designed map already enables Victory Points — its own scoring settings and round limit apply, so this toggle does not govern them."
-                : "The game ends at the round limit (or when a player completes the victory condition), and the player with the most Victory Points wins — the full rulebook scoring table (heroes defeated, buildings, hero levels, flagged mines/settlements, artifacts). Without a round limit a conquest-style game ends only by completion or last-faction-standing."}
-            </small>
-          </div>
-        );
-      })()}
 
       {modeNotice ? (
         <div className="modeNoticeBanner" role="status">
@@ -6176,9 +6520,21 @@ function GameOptionsPanel({
             }
             type="button"
           >
-            <span aria-hidden="true" className="wogCrestWings">
-              ◆
-            </span>
+            <img
+              alt=""
+              aria-hidden="true"
+              className="wogCrestIcon"
+              decoding="async"
+              src={assetUrl("/assets/ui/mod-wog-eye-clear.webp")}
+              onError={(event) => {
+                // Prefer clear HD eye; fall back to classic pixel eye if missing.
+                const img = event.currentTarget;
+                if (!img.dataset.fallback) {
+                  img.dataset.fallback = "1";
+                  img.src = assetUrl("/assets/ui/mod-wog-eye.webp");
+                }
+              }}
+            />
             <strong>WOG</strong>
             <span>{wog.enabled ? "ON" : "OFF"}</span>
           </button>
@@ -6202,67 +6558,136 @@ function GameOptionsPanel({
         </small>
       </div>
 
-      <div className="optionRow tournamentRulesRow">
-        <small title="Rulebook Tournament Mode setup rules (p.54), each toggleable on its own">
-          Tournament rules
-        </small>
-        <div className="tournamentRuleGrid">
-          {(
-            [
-              {
-                key: "tournamentBanDiplomacy" as const,
-                label: "Ban Diplomacy",
-                on: tournamentRules.banDiplomacy,
-                hint: "Remove Diplomacy from the shared Ability deck (heroes keep a starting copy)."
-              },
-              {
-                key: "tournamentBanHourglass" as const,
-                label: "Ban Hourglass",
-                on: tournamentRules.banHourglass,
-                hint: "Remove Hourglass of the Evil Hour from the shared Artifact deck."
-              },
-              {
-                key: "tournamentSecondPlayerMorale" as const,
-                label: "2nd player +1 morale",
-                on: tournamentRules.secondPlayerMorale,
-                hint: "The second player gains 1 positive morale at game start."
-              }
-            ] as const
-          ).map((rule) => (
-            <button
-              aria-pressed={rule.on}
-              className={`tournamentRuleToggle ${rule.on ? "on" : "off"}`}
-              key={rule.key}
-              onClick={() => send({ [rule.key]: !rule.on })}
-              title={rule.hint}
-              type="button"
-            >
-              <span aria-hidden="true" className="houseRuleCheck">
-                {rule.on ? <Check size={13} /> : null}
-              </span>
-              <span>
-                <strong>{rule.label}</strong>
-                <small>{rule.hint}</small>
-              </span>
-              <span className={`houseRuleState ${rule.on ? "on" : "off"}`}>{rule.on ? "ON" : "OFF"}</span>
-            </button>
-          ))}
-        </div>
-        <small className="optionHint">
-          Toggle each Tournament setup rule independently, or use the Tournament mode card above to apply the full competitive package.
-        </small>
-      </div>
-
       {(() => {
+        const tournamentDefs = [
+          {
+            key: "tournamentBanDiplomacy" as const,
+            label: "Ban Diplomacy",
+            on: tournamentRules.banDiplomacy,
+            hint: "Remove Diplomacy from the shared Ability deck (heroes keep a starting copy)."
+          },
+          {
+            key: "tournamentBanHourglass" as const,
+            label: "Ban Hourglass",
+            on: tournamentRules.banHourglass,
+            hint: "Remove Hourglass of the Evil Hour from the shared Artifact deck."
+          },
+          {
+            key: "tournamentSecondPlayerMorale" as const,
+            label: "2nd player +1 morale",
+            on: tournamentRules.secondPlayerMorale,
+            hint: "The second player gains 1 positive morale at game start."
+          }
+        ] as const;
+        const tournamentOn = tournamentDefs.filter((rule) => rule.on).length;
+        return (
+          <HouseRuleCollapsible
+            crestSrc={assetUrl("/assets/ui/mode-tournament-crest-clear.webp")}
+            crestClassName="houseRuleCollapsibleCrest tournament"
+            id="tournament-rules"
+            onCount={tournamentOn}
+            onToggle={() => setTournamentRulesOpen((v) => !v)}
+            open={tournamentRulesOpen}
+            subtitle="Rulebook Tournament setup (p.54) — each rule toggleable on its own"
+            title="Tournament rules"
+            totalCount={tournamentDefs.length}
+            variant="tournament"
+          >
+            <div className="tournamentRuleGrid">
+              {tournamentDefs.map((rule) => (
+                <button
+                  aria-pressed={rule.on}
+                  className={`tournamentRuleToggle ${rule.on ? "on" : "off"}`}
+                  key={rule.key}
+                  onClick={() => send({ [rule.key]: !rule.on })}
+                  title={rule.hint}
+                  type="button"
+                >
+                  <span aria-hidden="true" className="houseRuleCheck">
+                    {rule.on ? <Check size={13} /> : null}
+                  </span>
+                  <span>
+                    <strong>{rule.label}</strong>
+                    <small>{rule.hint}</small>
+                  </span>
+                  <span className={`houseRuleState ${rule.on ? "on" : "off"}`}>{rule.on ? "ON" : "OFF"}</span>
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              Toggle each Tournament setup rule independently, or use the Tournament mode card above to apply the full
+              competitive package.
+            </small>
+          </HouseRuleCollapsible>
+        );
+      })()}
+
+      {/* Optional systems clustered together: VP · Event · Morale · Spell Book */}
+      {(() => {
+        const vpOn = options.victoryPoints === true;
+        const vpRoundLimit = options.victoryPointsRoundLimit ?? 0;
+        const presetVpEnabled = options.customMapPreset?.victoryPoints?.enabled === true;
         const eventsOn = options.events ?? false;
         const moraleCardsOn = options.moraleCards ?? false;
+        const polishSpellBookOn = houseRules["polish-spell-book"];
+        const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
         const undoMovesOn = options.undoMoves ?? false;
         return (
-          <>
+          <div className="optionalRulesCluster" aria-label="Optional scoring, decks, spell book, and testing aids">
+            <div className="optionalRulesClusterHead">
+              <strong>Optional systems</strong>
+              <small>Victory Points, Event deck, Morale Cards, Spell Book, and Undo moves</small>
+            </div>
+
             <div className="optionRow">
-              <small title="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)">
-                Event deck
+              <OptionRowLabel
+                hint="Optional Victory Points scoring: at the round limit (or on victory completion) the player with the most Victory Points wins — the full rulebook scoring table."
+                iconClassName="optionRowIcon crest"
+                iconSrc="/assets/ui/option-victory-points-clear.webp"
+                title="Victory points"
+              />
+              <div className="optionButtons">
+                {([false, true] as const).map((on) => (
+                  <button
+                    aria-pressed={vpOn === on}
+                    className={vpOn === on ? "selected" : ""}
+                    key={on ? "on" : "off"}
+                    onClick={() => send({ victoryPoints: on })}
+                    title={on ? "Victory Points scoring on" : "Victory Points scoring off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+                {vpOn ? (
+                  <select
+                    aria-label="Victory points round limit"
+                    onChange={(event) => send({ victoryPointsRoundLimit: Number(event.target.value) })}
+                    value={vpRoundLimit}
+                  >
+                    <option value={0}>No round limit</option>
+                    {[10, 15, 20, 25, 30].map((rounds) => (
+                      <option key={rounds} value={rounds}>
+                        {rounds} rounds
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
+              <small className="optionHint">
+                {presetVpEnabled
+                  ? "The designed map already enables Victory Points — its own scoring settings and round limit apply, so this toggle does not govern them."
+                  : "The game ends at the round limit (or when a player completes the victory condition), and the player with the most Victory Points wins — the full rulebook scoring table (heroes defeated, buildings, hero levels, flagged mines/settlements, artifacts). Without a round limit a conquest-style game ends only by completion or last-faction-standing."}
               </small>
+            </div>
+
+            <div className="optionRow">
+              <OptionRowLabel
+                hint="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)"
+                iconClassName="optionRowIcon cardBack"
+                iconSrc="/assets/card_back-events.webp"
+                title="Event deck"
+              />
               <div className="optionButtons">
                 {([true, false] as const).map((on) => (
                   <button
@@ -6283,10 +6708,17 @@ function GameOptionsPanel({
                   : "Off by default. No Event deck — Resource rounds pay income only. Turn it On to add the Fortress-expansion Events (multiplayer only)."}
               </small>
             </div>
+
             <div className="optionRow">
-              <small title="Optional rule: replace normal morale tokens with Positive and Negative Morale decks">
-                Morale Cards
-              </small>
+              <OptionRowLabel
+                hint="Optional rule: replace normal morale tokens with Positive and Negative Morale decks"
+                iconClassName="optionRowIcon cardBack"
+                icons={[
+                  "/assets/morale-cards/morale-positive-back.png",
+                  "/assets/morale-cards/morale-negative-back.png"
+                ]}
+                title="Morale Cards"
+              />
               <div className="optionButtons">
                 {([true, false] as const).map((on) => (
                   <button
@@ -6307,10 +6739,49 @@ function GameOptionsPanel({
                   : "Normal morale tokens: positive morale can be spent for draw/redraw/reroll, and doubled negative morale discards your hand at turn end."}
               </small>
             </div>
+
             <div className="optionRow">
-              <small title="Testing/debug aid (OFF by default): lets a player roll the game back to before a recent action, so bugs are easier to reproduce and hunt">
-                Undo moves (testing)
+              <OptionRowLabel
+                hint="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from"
+                iconClassName="optionRowIcon spellBook"
+                iconSrc="/assets/ui/spell-book-button.png"
+                title="Spell Book"
+              />
+              <div className="optionButtons">
+                {([true, false] as const).map((on) => (
+                  <button
+                    aria-pressed={spellBookOn === on}
+                    className={spellBookOn === on ? "selected" : ""}
+                    key={String(on)}
+                    onClick={() =>
+                      send({
+                        spellBook: on,
+                        ...(on ? { houseRules: { "polish-spell-book": false } } : {})
+                      })
+                    }
+                    title={on ? "Spell Book on (house rule)" : "Spell Book off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {polishSpellBookOn
+                  ? "Off because Polish Spell Book is selected; the two lifecycles cannot be combined."
+                  : spellBookOn
+                  ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
+                  : "No Spell Book — Spells live only in hand, deck and discard."}
               </small>
+            </div>
+
+            <div className="optionRow undoMovesRow">
+              <OptionRowLabel
+                hint="Testing/debug aid (OFF by default): lets a player roll the game back to before a recent action, so bugs are easier to reproduce and hunt"
+                iconClassName="optionRowIcon crest"
+                iconSrc="/assets/ui/option-undo-moves-clear.webp"
+                title="Undo moves (testing)"
+              />
               <div className="optionButtons">
                 {([true, false] as const).map((on) => (
                   <button
@@ -6331,7 +6802,7 @@ function GameOptionsPanel({
                   : "Off by default. Turn it On only for manual testing / bug-hunting; it exposes a map Undo button that rewinds recent actions."}
               </small>
             </div>
-          </>
+          </div>
         );
       })()}
 
@@ -6340,44 +6811,6 @@ function GameOptionsPanel({
         houseRules={houseRules}
         setHouseRule={setHouseRule}
       />
-
-      {(() => {
-        const polishSpellBookOn = houseRules["polish-spell-book"];
-        const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
-        return (
-          <div className="optionRow">
-            <small title="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from">
-              Spell Book
-            </small>
-            <div className="optionButtons">
-              {([true, false] as const).map((on) => (
-                <button
-                  aria-pressed={spellBookOn === on}
-                  className={spellBookOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() =>
-                    send({
-                      spellBook: on,
-                      ...(on ? { houseRules: { "polish-spell-book": false } } : {})
-                    })
-                  }
-                  title={on ? "Spell Book on (house rule)" : "Spell Book off"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {polishSpellBookOn
-                ? "Off because Polish Spell Book is selected; the two lifecycles cannot be combined."
-                : spellBookOn
-                ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
-                : "No Spell Book — Spells live only in hand, deck and discard."}
-            </small>
-          </div>
-        );
-      })()}
       </div>
       ) : null}
 
@@ -6505,6 +6938,115 @@ function GameOptionsPanel({
               {guards === "four"
                 ? "Four dragons guard the Utopia — Azure, Rust, Crystal and Faerie. The featured lead is a random Azure or Rust Dragon."
                 : "The guard count follows the difficulty (Easy 1 · Normal 2 · Hard 3 · Impossible 4). The featured lead is always an Azure or Rust Dragon."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        // Custom win conditions — rendered HERE, directly beside the Win
+        // condition selector above, so the extra early-end triggers live with
+        // the rest of the victory setup. The map's own list is read-only (the
+        // lobby can only ADD, never remove a map-authored one) plus the
+        // host-added list for THIS game. The first player to satisfy any
+        // condition wins.
+        const mapConditions = options.customMapPreset?.customWinConditions ?? [];
+        const hostConditions = options.customWinConditions ?? [];
+        const effective = mergeCustomWinConditions(mapConditions, hostConditions);
+        const atCap = effective.length >= MAX_CUSTOM_WIN_CONDITIONS;
+        const sendConditions = (nextConditions: CustomWinCondition[]) =>
+          send({ customWinConditions: nextConditions });
+        const addCondition = () => {
+          if (atCap) {
+            return;
+          }
+          sendConditions([...hostConditions, defaultCustomWinCondition("control-towns")]);
+        };
+        const updateCondition = (index: number, condition: CustomWinCondition) =>
+          sendConditions(hostConditions.map((entry, i) => (i === index ? condition : entry)));
+        const removeCondition = (index: number) =>
+          sendConditions(hostConditions.filter((_, i) => i !== index));
+        return (
+          <div className="optionRow">
+            <small title="Extra early-end triggers: the first player to satisfy any listed condition wins immediately, on top of the victory mode. Map-set conditions can't be removed here — you can only add your own for this game.">
+              Custom win condition
+            </small>
+            <div className="customWinConditions" role="group" aria-label="Custom win conditions">
+              {mapConditions.map((condition, index) => (
+                <div className="customWinConditionRow mapSet" key={`map-${index}`}>
+                  <span className="customWinConditionText">🏁 {describeCustomWinCondition(condition)}</span>
+                  <span className="customWinConditionTag">map</span>
+                </div>
+              ))}
+              {hostConditions.map((condition, index) => {
+                const option = CUSTOM_WIN_CONDITION_OPTIONS.find((entry) => entry.id === condition.kind);
+                const paramValue =
+                  condition.kind === "hero-level"
+                    ? condition.level
+                    : condition.kind === "gold"
+                      ? condition.amount
+                      : "count" in condition
+                        ? condition.count
+                        : null;
+                return (
+                  <div className="customWinConditionRow" key={`host-${index}`}>
+                    <select
+                      aria-label={`Custom win condition ${index + 1} kind`}
+                      onChange={(event) =>
+                        updateCondition(
+                          index,
+                          defaultCustomWinCondition(event.target.value as CustomWinCondition["kind"])
+                        )
+                      }
+                      value={condition.kind}
+                    >
+                      {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.label}
+                        </option>
+                      ))}
+                    </select>
+                    {option?.param && paramValue !== null ? (
+                      <input
+                        aria-label={`Custom win condition ${index + 1} value`}
+                        max={option.param.max}
+                        min={option.param.min}
+                        onChange={(event) => {
+                          const raw = Number(event.target.value) || option.param!.min;
+                          const clamped = Math.max(option.param!.min, Math.min(option.param!.max, raw));
+                          updateCondition(index, {
+                            ...condition,
+                            [option.param!.field]: clamped
+                          } as CustomWinCondition);
+                        }}
+                        type="number"
+                        value={paramValue}
+                      />
+                    ) : null}
+                    <button
+                      aria-label={`Remove custom win condition ${index + 1}`}
+                      className="customWinConditionRemove"
+                      onClick={() => removeCondition(index)}
+                      type="button"
+                    >
+                      <X size={13} aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                className="customWinConditionAdd"
+                disabled={atCap}
+                onClick={addCondition}
+                type="button"
+              >
+                <Plus size={13} aria-hidden="true" /> Add win condition
+              </button>
+            </div>
+            <small className="optionHint">
+              {effective.length === 0
+                ? "None set. Add a condition and the first player to reach it wins immediately — an extra early-end trigger on top of the victory mode."
+                : "The first player to satisfy any condition wins immediately. Map-set conditions can't be removed here — you can only add your own for this game."}
             </small>
           </div>
         );
@@ -6901,7 +7443,9 @@ function GameOptionsPanel({
         </div>
         <small className="optionHint">
           <strong>Starting bonus ({options.difficulty}):</strong>{" "}
-          {startingBonusDescription(options.difficulty)}
+          {startingBonusDescription(options.difficulty, {
+            polishReduced: Boolean(options.houseRules?.["polish-reduced-starting-bonus"])
+          })}
           {" "}Guards use the Field Difficulty Level Table column for this difficulty.
         </small>
       </div>
@@ -6916,19 +7460,22 @@ function GameOptionsPanel({
         <small>Starting resources</small>
         <div className="optionSteppers">
           <ResourceStepper
-            label="🪙 gold"
+            iconSrc={RESOURCE_ICONS.gold}
+            label="gold"
             onChange={(gold) => send({ startingResources: { ...options.startingResources, gold } })}
             value={options.startingResources.gold}
           />
           <ResourceStepper
-            label="⚒ materials"
+            iconSrc={RESOURCE_ICONS.buildingMaterials}
+            label="materials"
             onChange={(buildingMaterials) =>
               send({ startingResources: { ...options.startingResources, buildingMaterials } })
             }
             value={options.startingResources.buildingMaterials}
           />
           <ResourceStepper
-            label="♦ valuables"
+            iconSrc={RESOURCE_ICONS.valuables}
+            label="valuables"
             onChange={(valuables) => send({ startingResources: { ...options.startingResources, valuables } })}
             value={options.startingResources.valuables}
           />
@@ -6941,19 +7488,22 @@ function GameOptionsPanel({
         </small>
         <div className="optionSteppers">
           <ResourceStepper
-            label="🪙 gold"
+            iconSrc={RESOURCE_ICONS.gold}
+            label="gold"
             onChange={(gold) => send({ startingProduction: { ...options.startingProduction, gold } })}
             value={options.startingProduction.gold}
           />
           <ResourceStepper
-            label="⚒ materials"
+            iconSrc={RESOURCE_ICONS.buildingMaterials}
+            label="materials"
             onChange={(buildingMaterials) =>
               send({ startingProduction: { ...options.startingProduction, buildingMaterials } })
             }
             value={options.startingProduction.buildingMaterials}
           />
           <ResourceStepper
-            label="♦ valuables"
+            iconSrc={RESOURCE_ICONS.valuables}
+            label="valuables"
             onChange={(valuables) => send({ startingProduction: { ...options.startingProduction, valuables } })}
             value={options.startingProduction.valuables}
           />

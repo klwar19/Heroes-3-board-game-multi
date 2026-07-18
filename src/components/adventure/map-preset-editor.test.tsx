@@ -162,6 +162,119 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     );
   });
 
+  it("clear_tile_cubes event: group chips + skip-settlement checkbox write through onChange", () => {
+    const onChange = vi.fn();
+    const base: CustomMapPreset = {
+      timedEvents: [{ round: 4, effect: { kind: "clear_tile_cubes", groups: ["far"] } }]
+    };
+    render(<MapPresetEditor preset={base} onChange={onChange} />);
+
+    // The six player-facing Roman-band chips render, and the preview pins the
+    // describe string (nothing else in the suite covers describeTimedMapEffect).
+    const groups = section("Timed event 1 tile groups");
+    expect(within(groups).getByRole("button", { name: "Ⅱ–Ⅲ" })).toBeTruthy();
+    expect(within(groups).getByRole("button", { name: "Underground" })).toBeTruthy();
+    // Rendered in both the summary and the live preview (describeTimedMapEffect).
+    expect(screen.getAllByText(/clear black cubes on Ⅱ–Ⅲ Tiles/).length).toBeGreaterThan(0);
+
+    // Toggle ON the Underground (subterranean) band — canonical group order kept.
+    fireEvent.click(within(groups).getByRole("button", { name: "Underground" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [
+          expect.objectContaining({
+            effect: { kind: "clear_tile_cubes", groups: ["far", "subterranean"] }
+          })
+        ]
+      })
+    );
+
+    // Toggle the skip-settlement checkbox (operating on the controlled base).
+    onChange.mockClear();
+    fireEvent.click(screen.getByLabelText("Timed event 1 skip settlement tiles"));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [
+          expect.objectContaining({
+            effect: expect.objectContaining({
+              kind: "clear_tile_cubes",
+              excludeSettlementTiles: true
+            })
+          })
+        ]
+      })
+    );
+  });
+
+  it("timed event: the repeat control writes repeatEveryRounds and the preview shows the schedule", () => {
+    const onChange = vi.fn();
+    const base: CustomMapPreset = {
+      timedEvents: [{ round: 4, effect: { kind: "movement", amount: 1 } }]
+    };
+    const { rerender } = render(<MapPresetEditor preset={base} onChange={onChange} />);
+
+    // A one-shot preview reads "Round 4: …" (no repeat clause).
+    expect(screen.getAllByText(/Round 4: all heroes gain \+1 movement/).length).toBeGreaterThan(0);
+
+    // Pick "Every 3 rounds" → repeatEveryRounds: 3.
+    fireEvent.change(screen.getByLabelText("Timed event 1 repeat"), { target: { value: "3" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [expect.objectContaining({ round: 4, repeatEveryRounds: 3 })]
+      })
+    );
+
+    // Re-render repeating: the preview + summary now spell the schedule out.
+    rerender(
+      <MapPresetEditor
+        preset={{ timedEvents: [{ round: 4, repeatEveryRounds: 3, effect: { kind: "movement", amount: 1 } }] }}
+        onChange={onChange}
+      />
+    );
+    expect(screen.getAllByText(/Round 4, then every 3 rounds/).length).toBeGreaterThan(0);
+
+    // Back to "Once" clears the field (one-shot again).
+    fireEvent.change(screen.getByLabelText("Timed event 1 repeat"), { target: { value: "0" } });
+    const last = onChange.mock.calls.at(-1)?.[0] as CustomMapPreset;
+    expect(last.timedEvents![0].repeatEveryRounds).toBeUndefined();
+  });
+
+  it("timed resources: a negative amount reads as a LOSS in the live preview", () => {
+    render(
+      <MapPresetEditor
+        preset={{
+          timedEvents: [
+            { round: 5, effect: { kind: "resources", gold: -5, buildingMaterials: 0, valuables: 0 } }
+          ]
+        }}
+        onChange={() => {}}
+      />
+    );
+    // The give-vs-take wording is unmistakable: "lose 5 gold", never "gain".
+    expect(screen.getAllByText(/all players lose 5 gold/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/all players gain 5 gold/)).toBeNull();
+  });
+
+  it("timed events: the experience kind is selectable and writes its default effect", () => {
+    const onChange = vi.fn();
+    render(
+      <MapPresetEditor
+        preset={{ timedEvents: [{ round: 6, effect: { kind: "note", text: "x" } }] }}
+        onChange={onChange}
+      />
+    );
+    // The kind dropdown offers "experience".
+    const kind = screen.getByLabelText("Timed event 1 effect type") as HTMLSelectElement;
+    expect(Array.from(kind.options).some((o) => o.value === "experience")).toBe(true);
+
+    fireEvent.change(kind, { target: { value: "experience" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [expect.objectContaining({ round: 6, effect: { kind: "experience", amount: 2 } })]
+      })
+    );
+  });
+
   it("exposes the storage cap instead of silently adding events that will be discarded", () => {
     const timedEvents: NonNullable<CustomMapPreset["timedEvents"]> = Array.from(
       { length: MAX_TIMED_EVENTS },
@@ -359,5 +472,205 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(screen.getByText("Objective: Control 3 Towns — +2 VP")).toBeTruthy();
     // The round-limit section relabels to the hard meaning.
     expect(screen.getByText("Round limit (hard end)")).toBeTruthy();
+  });
+
+  it("Custom win conditions: add / retype kind + param / remove; the cap disables Add", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+
+    // Add a condition → the default control-towns condition.
+    fireEvent.click(screen.getByRole("button", { name: "Add win condition" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "control-towns", count: 3 }] })
+    );
+
+    // Retype the kind → the new kind's default params.
+    rerender(
+      <MapPresetEditor preset={{ customWinConditions: [{ kind: "control-towns", count: 3 }] }} onChange={onChange} />
+    );
+    fireEvent.change(screen.getByLabelText("Condition 1 kind"), { target: { value: "gold" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "gold", amount: 100 }] })
+    );
+
+    // Edit the param (scoped to the win-condition group to avoid the resource "Gold" fields).
+    rerender(<MapPresetEditor preset={{ customWinConditions: [{ kind: "gold", amount: 100 }] }} onChange={onChange} />);
+    const group = screen.getByRole("group", { name: "Custom win condition list" });
+    fireEvent.change(within(group).getByRole("spinbutton"), { target: { value: "250" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "gold", amount: 250 }] })
+    );
+
+    // Remove the only condition → the whole preset collapses to undefined.
+    rerender(<MapPresetEditor preset={{ customWinConditions: [{ kind: "gold", amount: 250 }] }} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove condition 1" }));
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+
+    // At the cap of 4, Add is disabled.
+    rerender(
+      <MapPresetEditor
+        preset={{
+          customWinConditions: [
+            { kind: "control-towns", count: 3 },
+            { kind: "flag-mines", count: 4 },
+            { kind: "hero-level", level: 5 },
+            { kind: "gold", amount: 100 }
+          ]
+        }}
+        onChange={onChange}
+      />
+    );
+    expect((screen.getByRole("button", { name: "Add win condition" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("Custom win conditions: a 🏁 summary line renders per condition", () => {
+    render(
+      <MapPresetEditor
+        preset={{ customWinConditions: [{ kind: "control-towns", count: 3 }] }}
+        onChange={() => {}}
+      />
+    );
+    expect(screen.getByText("Custom win: control 3 Towns")).toBeTruthy();
+  });
+
+  it("Custom win conditions: the new buildings + obelisks kinds render their param band", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MapPresetEditor preset={{ customWinConditions: [{ kind: "buildings", count: 10 }] }} onChange={onChange} />
+    );
+    // buildings → count param clamped to the instant-win-safe 8-15 band.
+    const buildingsInput = within(
+      screen.getByRole("group", { name: "Custom win condition list" })
+    ).getByRole("spinbutton") as HTMLInputElement;
+    expect(buildingsInput.min).toBe("8");
+    expect(buildingsInput.max).toBe("15");
+    expect(buildingsInput.value).toBe("10");
+
+    // Retype buildings → obelisks yields the obelisks default (count 2).
+    fireEvent.change(screen.getByLabelText("Condition 1 kind"), { target: { value: "obelisks" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "obelisks", count: 2 }] })
+    );
+
+    // obelisks → count param clamped to the grail-knob 1-4 band.
+    rerender(
+      <MapPresetEditor preset={{ customWinConditions: [{ kind: "obelisks", count: 2 }] }} onChange={onChange} />
+    );
+    const obeliskInput = within(
+      screen.getByRole("group", { name: "Custom win condition list" })
+    ).getByRole("spinbutton") as HTMLInputElement;
+    expect(obeliskInput.min).toBe("1");
+    expect(obeliskInput.max).toBe("4");
+    expect(obeliskInput.value).toBe("2");
+  });
+
+  it("Map settings: a difficulty chip writes the preset difficulty; re-clicking it clears back to undefined", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    fireEvent.click(within(section("Difficulty")).getByRole("button", { name: "Hard" }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ difficulty: "hard" }));
+    // Re-clicking the active chip clears the only condition → the preset collapses.
+    rerender(<MapPresetEditor preset={{ difficulty: "hard" }} onChange={onChange} />);
+    fireEvent.click(within(section("Difficulty")).getByRole("button", { name: "Hard" }));
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("Map settings: far-tile opening + per-player chips write through onChange, a sibling field survives, and Off hides the count row", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={{ victoryMode: "grail" }} onChange={onChange} />);
+    // Turn Ⅱ–Ⅲ opening OFF — the unrelated victoryMode must survive (no clobber).
+    fireEvent.click(within(section("Additional Ⅱ–Ⅲ tile opening")).getByRole("button", { name: "Off" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ victoryMode: "grail", farTileOpening: false })
+    );
+
+    // With opening on, pick a per-player count.
+    rerender(<MapPresetEditor preset={{ farTileOpening: true }} onChange={onChange} />);
+    fireEvent.click(within(section("Ⅱ–Ⅲ tiles per player")).getByRole("button", { name: "3" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ farTileOpening: true, farTilesPerPlayer: 3 })
+    );
+
+    // CONTROL: with opening OFF the per-player row is hidden entirely.
+    rerender(<MapPresetEditor preset={{ farTileOpening: false }} onChange={onChange} />);
+    expect(screen.queryByRole("group", { name: "Ⅱ–Ⅲ tiles per player" })).toBeNull();
+  });
+
+  // The collapsible section GROUPS (re-parented ordering layer over the leaf
+  // sections). `groupByTitle` reads the visible title span rather than the
+  // group's role/name, because the inner "Timed events" section label shares
+  // that string.
+  const groupByTitle = (title: string): HTMLDetailsElement => {
+    const el = Array.from(document.querySelectorAll("details.mapPresetGroup")).find(
+      (g) => (g.querySelector(".mapPresetGroupTitle") as HTMLElement | null)?.textContent === title
+    );
+    if (!el) {
+      throw new Error(`condition group not found: ${title}`);
+    }
+    return el as HTMLDetailsElement;
+  };
+
+  it("groups the conditions into six ordered, separated collapsible groups", () => {
+    render(<MapPresetEditor preset={undefined} onChange={() => {}} />);
+    const groups = Array.from(document.querySelectorAll("details.mapPresetGroup"));
+    expect(groups.length).toBe(6);
+    const order = groups.map(
+      (g) => (g.querySelector(".mapPresetGroupTitle") as HTMLElement).textContent
+    );
+    expect(order).toEqual([
+      "Match setup",
+      "Starting position",
+      "Victory & scoring",
+      "Map locations",
+      "Timed events",
+      "Designer note"
+    ]);
+  });
+
+  it("shows an active-count badge only on the groups that own set entries", () => {
+    render(
+      <MapPresetEditor
+        preset={{
+          difficulty: "hard",
+          timedEvents: [{ round: 4, effect: { kind: "movement", amount: 1 } }]
+        }}
+        onChange={() => {}}
+      />
+    );
+    // Match setup owns the difficulty entry (1); Timed events owns the one event (1).
+    expect(within(groupByTitle("Match setup")).getByText("1 active")).toBeTruthy();
+    expect(within(groupByTitle("Timed events")).getByText("1 active")).toBeTruthy();
+    // The four groups with nothing set carry NO count badge (absent, not "0").
+    for (const title of ["Starting position", "Victory & scoring", "Map locations", "Designer note"]) {
+      expect(groupByTitle(title).querySelector(".mapPresetGroupCount")).toBeNull();
+    }
+  });
+
+  it("opens groups that own set entries and collapses empty ones by default", () => {
+    render(<MapPresetEditor preset={{ difficulty: "hard" }} onChange={() => {}} />);
+    // The group owning the difficulty entry starts OPEN…
+    expect(groupByTitle("Match setup").open).toBe(true);
+    // …every empty group starts collapsed.
+    expect(groupByTitle("Starting position").open).toBe(false);
+    expect(groupByTitle("Victory & scoring").open).toBe(false);
+    expect(groupByTitle("Timed events").open).toBe(false);
+    expect(groupByTitle("Designer note").open).toBe(false);
+  });
+
+  it("a leaf control inside a collapsed group still fires onChange once the group is expanded", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    const group = groupByTitle("Starting position");
+    // Empty → collapsed by default.
+    expect(group.open).toBe(false);
+    // Expand it via the native summary disclosure, then use a leaf control.
+    fireEvent.click(group.querySelector("summary") as HTMLElement);
+    expect(group.open).toBe(true);
+    fireEvent.click(within(group).getByRole("button", { name: "+5 gold" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        startingBonuses: [{ kind: "resources", gold: 5, buildingMaterials: 0, valuables: 0 }]
+      })
+    );
   });
 });

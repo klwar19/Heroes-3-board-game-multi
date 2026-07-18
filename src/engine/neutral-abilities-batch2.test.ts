@@ -397,6 +397,117 @@ describe("Dragon spell & specialty immunity", () => {
     expect(targets("spell.magic_arrow")).toContain("unit_p2_vampires");
   });
 
+  /**
+   * Attack-window / activation-skip Spell reactions must honour the same
+   * immunity as CAST_SPELL targeting — "ignore any spell effects" includes
+   * quick instants (Bless, Bloodlust, Curse, Weakness) from either side.
+   */
+  describe("attack-window Spell reactions vs immune-all-spells", () => {
+    function declareGriffinsVsImmune(p1Hand: string[], p2Hand: string[], immuneSide: "attacker" | "defender"): GameState {
+      const state = createInitialGameState("dragon-reaction-immunity");
+      state.players.p1.hand = p1Hand;
+      state.players.p2.hand = p2Hand;
+      state.combat!.units.unit_p1_griffins.position = 9;
+      state.combat!.units.unit_p2_skeletons.position = 13;
+      if (immuneSide === "attacker") {
+        state.combat!.units.unit_p1_griffins.abilities = ["immune-all-spells"];
+      } else {
+        state.combat!.units.unit_p2_skeletons.abilities = ["immune-all-spells"];
+      }
+      return applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_griffins",
+        defenderId: "unit_p2_skeletons"
+      });
+    }
+
+    /** True when the Spell's own effect is offered — not a "+1 Power" discard. */
+    function reactionOffered(state: GameState, playerId: PlayerId, cardId: string): boolean {
+      return (state.reactionWindow?.legalReactions[playerId] ?? []).some(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === cardId &&
+          !legal.action.asPowerBoost
+      );
+    }
+
+    it("blocks own Bless / Bloodlust on an immune attacker (and forged play fails)", () => {
+      const state = declareGriffinsVsImmune(["spell.bless", "spell.bloodlust"], [], "attacker");
+      expect(reactionOffered(state, "p1", "spell.bless")).toBe(false);
+      expect(reactionOffered(state, "p1", "spell.bloodlust")).toBe(false);
+      // Membership gate rejects a forged play before the apply-time message;
+      // either way the reaction must not land.
+      const forged = applyAction(state, {
+        type: "PLAY_REACTION",
+        playerId: "p1",
+        cardId: "spell.bless",
+        mode: "basic"
+      });
+      expect(forged.errors.length).toBeGreaterThan(0);
+      expect(forged.state.stack.at(-1)?.modifiers.ignoreAttackDie).not.toBe(true);
+    });
+
+    it("blocks enemy Curse on an immune defender and enemy Weakness on an immune attacker", () => {
+      const curseOnDefender = declareGriffinsVsImmune(["spell.curse"], [], "defender");
+      expect(reactionOffered(curseOnDefender, "p1", "spell.curse")).toBe(false);
+
+      const weaknessOnAttacker = declareGriffinsVsImmune([], ["spell.weakness"], "attacker");
+      expect(reactionOffered(weaknessOnAttacker, "p2", "spell.weakness")).toBe(false);
+    });
+
+    it("CONTROL: the same reactions are still offered when the unit is not immune", () => {
+      const state = declareGriffinsVsImmune(["spell.bless", "spell.bloodlust", "spell.curse"], ["spell.weakness"], "defender");
+      // Defender is immune → Curse off; attacker is ordinary → Bless/Bloodlust on.
+      expect(reactionOffered(state, "p1", "spell.bless")).toBe(true);
+      expect(reactionOffered(state, "p1", "spell.bloodlust")).toBe(true);
+      expect(reactionOffered(state, "p1", "spell.curse")).toBe(false);
+      expect(reactionOffered(state, "p2", "spell.weakness")).toBe(true);
+
+      // Mutual non-immune CONTROL: every instant offered.
+      const open = createInitialGameState("dragon-reaction-control");
+      open.players.p1.hand = ["spell.bless", "spell.curse"];
+      open.players.p2.hand = ["spell.weakness"];
+      open.combat!.units.unit_p1_griffins.position = 9;
+      open.combat!.units.unit_p2_skeletons.position = 13;
+      const declared = applyOk(open, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_griffins",
+        defenderId: "unit_p2_skeletons"
+      });
+      expect(reactionOffered(declared, "p1", "spell.bless")).toBe(true);
+      expect(reactionOffered(declared, "p1", "spell.curse")).toBe(true);
+      expect(reactionOffered(declared, "p2", "spell.weakness")).toBe(true);
+    });
+
+    it("CONTROL: non-Spell attack reactions still land on an immune unit (Offense)", () => {
+      // Offense is an ability, not a Spell — printed Spell immunity must not
+      // silence it. Bloodlust (the Spell twin) stays blocked as the control.
+      const state = declareGriffinsVsImmune(["ability.offense", "spell.bloodlust"], [], "attacker");
+      expect(reactionOffered(state, "p1", "ability.offense")).toBe(true);
+      expect(reactionOffered(state, "p1", "spell.bloodlust")).toBe(false);
+    });
+
+    it("records targetUnitId on CARD_PLAYED so Curse/Bloodlust FX can anchor on the unit", () => {
+      const state = declareGriffinsVsImmune(["spell.curse"], [], "attacker");
+      // Attacker immune does not block Curse (lands on defender).
+      expect(reactionOffered(state, "p1", "spell.curse")).toBe(true);
+      const played = applyOk(state, {
+        type: "PLAY_REACTION",
+        playerId: "p1",
+        cardId: "spell.curse",
+        mode: "basic"
+      });
+      const cardPlayed = [...played.eventLog].reverse().find(
+        (event) => event.type === "CARD_PLAYED" && event.cardId === "spell.curse"
+      );
+      expect(cardPlayed?.type === "CARD_PLAYED" ? cardPlayed.targetUnitId : undefined).toBe(
+        "unit_p2_skeletons"
+      );
+    });
+  });
+
   it("Black Dragon Few reduces spell damage by 2 (Magic Arrow → 0)", () => {
     const state = createInitialGameState();
     state.players.p1.hand = [];

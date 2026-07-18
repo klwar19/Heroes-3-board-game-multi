@@ -1,14 +1,17 @@
 import {
+  foldLegacyViiBonus,
   isSecretTileFeature,
   isViiFieldDesignation,
   normalizeDesignedBorders,
   normalizeDesignedBorderEdges,
   parseHexSpaceId,
+  planIsUnderground,
+  sanitizeCenterHexPlan,
   sanitizeCustomMapPreset,
-  sanitizeViiFieldReward,
-  sanitizeViiFieldVp,
+  sanitizeObjectGuard,
   scenarioDefinitions,
   MAX_DESIGNED_GATE_LINKS,
+  UNDERGROUND_LAYER_GROUPS,
   type CustomMapGateLink,
   type CustomMapPreset,
   type CustomMapTilePlan
@@ -195,12 +198,19 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   const secretFeature = isSecretTileFeature(candidate.secretFeature)
     ? candidate.secretFeature
     : undefined;
-  // Designer Subterranean Gate links (cavern tiles only): keep well-formed
-  // entries — a Surface partner named by whole-grid centre plus optionally a
-  // valid absolute hex id per half — dropping malformed ones and capping the
-  // count so untrusted input can't balloon. Non-cavern groups carry none.
+  // Per-tile UNDERGROUND layer override: keep it ONLY as a literal true and ONLY
+  // on far/near/center/sea (kept there, stripped on `subterranean` = redundant
+  // and `starting` = the v1 Surface-only seat rule). Mirrors the setup validator.
+  const underground =
+    candidate.underground === true &&
+    typeof candidate.group === "string" &&
+    UNDERGROUND_LAYER_GROUPS.has(candidate.group);
+  // Designer Subterranean Gate links: kept for any UNDERGROUND-layer plan — a
+  // printed cavern OR a flagged far/near/center/sea tile (the layer predicate,
+  // never a bare group check) — dropping malformed ones and capping the count so
+  // untrusted input can't balloon. Surface plans carry none.
   const gateLinks =
-    candidate.group === "subterranean" && Array.isArray(candidate.gateLinks)
+    planIsUnderground({ group: candidate.group, underground }) && Array.isArray(candidate.gateLinks)
       ? candidate.gateLinks
           .map(sanitizeGateLink)
           .filter((link): link is CustomMapGateLink => link !== null)
@@ -212,15 +222,19 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   // Designer per-edge yellow borders (any group): canonical edge codes, garbage
   // dropped, deduped, capped at 30 — the per-edge twin of the whole-arc rule.
   const borderEdges = normalizeDesignedBorderEdges(candidate.borderEdges);
-  // A center Ⅶ-field designation, plus its OPTIONAL designer bonus. The reward /
-  // VP are meaningful ONLY alongside a designation (a bonus with no objective is
-  // dropped), and amounts are clamped by the shared sanitisers.
+  // A center Ⅶ-field designation, plus the OPTIONAL center-hex customization
+  // (guard / first-clear reward / VP). Both center-only; the customization no
+  // longer requires a designation. Legacy `viiFieldReward`/`viiFieldVp` saves
+  // fold into `centerHex` so the one earlier build's maps keep their bonus.
   const viiField =
     candidate.group === "center" && isViiFieldDesignation(candidate.viiField)
       ? candidate.viiField
       : undefined;
-  const viiFieldReward = viiField ? sanitizeViiFieldReward(candidate.viiFieldReward) : undefined;
-  const viiFieldVp = viiField ? sanitizeViiFieldVp(candidate.viiFieldVp) : undefined;
+  const legacy = candidate as { viiFieldReward?: unknown; viiFieldVp?: unknown };
+  const centerHex =
+    candidate.group === "center"
+      ? foldLegacyViiBonus(sanitizeCenterHexPlan(candidate.centerHex), legacy.viiFieldReward, legacy.viiFieldVp)
+      : undefined;
 
   return {
     row: candidate.row as number,
@@ -236,13 +250,14 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(candidate.group === "starting" && candidate.lockRotation === true ? { lockRotation: true } : {}),
     // `viiField` forces a center slot's Ⅶ objective field (Grail / Dragon Utopia
     // / town). Meaningful only on a center plan — kept there, dropped elsewhere;
-    // only a known designation survives so garbage can't set it. Its optional
-    // designer bonus (reward / VP) rides alongside it, dropped without it.
+    // only a known designation survives so garbage can't set it. The center-hex
+    // customization (guard / reward / VP) is independent of the designation.
     ...(viiField ? { viiField } : {}),
-    ...(viiFieldReward ? { viiFieldReward } : {}),
-    ...(viiFieldVp !== undefined ? { viiFieldVp } : {}),
+    ...(centerHex ? { centerHex } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
+    // The UNDERGROUND layer override (far/near/center/sea only), kept as true.
+    ...(underground ? { underground: true as const } : {}),
     ...(tokens && tokens.length > 0 ? { tokens } : {}),
     ...(fieldOverrides && fieldOverrides.length > 0 ? { fieldOverrides } : {}),
     ...(gateLinks.length > 0 ? { gateLinks } : {}),
@@ -286,22 +301,44 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as { kind?: unknown; pair?: unknown; slot?: unknown };
-  if (raw.kind !== "monolith" && raw.kind !== "whirlpool" && raw.kind !== "gate") {
+  const raw = input as {
+    kind?: unknown;
+    pair?: unknown;
+    slot?: unknown;
+    guard?: unknown;
+    exitMode?: unknown;
+    alwaysPickable?: unknown;
+  };
+  if (
+    raw.kind !== "monolith" &&
+    raw.kind !== "whirlpool" &&
+    raw.kind !== "gate" &&
+    raw.kind !== "oneway_entrance" &&
+    raw.kind !== "oneway_exit"
+  ) {
     return undefined;
   }
   const slot =
     Number.isInteger(raw.slot) && (raw.slot as number) >= 0 && (raw.slot as number) <= 6
       ? { slot: raw.slot as number }
       : {};
-  if (raw.kind === "gate") {
+  // A designer guard on the token hex (level 1-7 or exact army; clamped). A
+  // one-way EXIT is never guarded.
+  const guardSpec = raw.kind === "oneway_exit" ? undefined : sanitizeObjectGuard(raw.guard);
+  const guard = guardSpec ? { guard: guardSpec } : {};
+  if (raw.kind === "gate" || raw.kind === "oneway_entrance" || raw.kind === "oneway_exit") {
     if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
       return undefined;
     }
-    return { kind: "gate", pair: raw.pair, ...slot };
+    const exitMode =
+      raw.kind === "oneway_entrance" && (raw.exitMode === "random" || raw.exitMode === "certain" || raw.exitMode === "mix")
+        ? { exitMode: raw.exitMode as "random" | "certain" | "mix" }
+        : {};
+    const alwaysPickable = raw.kind === "oneway_exit" && raw.alwaysPickable === true ? { alwaysPickable: true } : {};
+    return { kind: raw.kind, pair: raw.pair, ...slot, ...guard, ...exitMode, ...alwaysPickable };
   }
   // Monolith / Whirlpool: never carry a pair.
-  return { kind: raw.kind, ...slot };
+  return { kind: raw.kind, ...slot, ...guard };
 }
 
 /**
@@ -377,16 +414,26 @@ function sanitizeGateLink(link: unknown): CustomMapGateLink | null {
   if (!link || typeof link !== "object") {
     return null;
   }
-  const candidate = link as { surface?: { row?: unknown; col?: unknown }; gateHex?: unknown; entranceHex?: unknown };
+  const candidate = link as {
+    surface?: { row?: unknown; col?: unknown };
+    gateHex?: unknown;
+    entranceHex?: unknown;
+    gateGuard?: unknown;
+    entranceGuard?: unknown;
+  };
   const surface = candidate.surface;
   if (!surface || !Number.isInteger(surface.row) || !Number.isInteger(surface.col)) {
     return null;
   }
   const validHex = (value: unknown): value is string => typeof value === "string" && parseHexSpaceId(value) !== null;
+  const gateGuard = sanitizeObjectGuard(candidate.gateGuard);
+  const entranceGuard = sanitizeObjectGuard(candidate.entranceGuard);
   return {
     surface: { row: surface.row as number, col: surface.col as number },
     ...(validHex(candidate.gateHex) ? { gateHex: candidate.gateHex } : {}),
-    ...(validHex(candidate.entranceHex) ? { entranceHex: candidate.entranceHex } : {})
+    ...(validHex(candidate.entranceHex) ? { entranceHex: candidate.entranceHex } : {}),
+    ...(gateGuard ? { gateGuard } : {}),
+    ...(entranceGuard ? { entranceGuard } : {})
   };
 }
 

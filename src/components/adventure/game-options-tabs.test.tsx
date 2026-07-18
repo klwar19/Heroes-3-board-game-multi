@@ -29,6 +29,19 @@ function openOptionsWith(mutate: (state: GameState) => void, onAction = vi.fn())
   return onAction;
 }
 
+/** House-rule checklists default to minimized — expand before querying toggles. */
+function expandBinhHouseRules() {
+  fireEvent.click(screen.getByRole("button", { name: /BINH house rules/i }));
+}
+
+function expandPolishHouseRules() {
+  fireEvent.click(screen.getByRole("button", { name: /Polish house rule type 1/i }));
+}
+
+function expandTournamentRules() {
+  fireEvent.click(screen.getByRole("button", { name: /Tournament rules/i }));
+}
+
 describe("Game options — tabbed layout", () => {
   it("shows the four setup tabs", () => {
     openOptions();
@@ -37,25 +50,46 @@ describe("Game options — tabbed layout", () => {
     }
   });
 
-  it("renders mode presets, Mod (WOG), and house-rule toggles on Mode & Rules (BINH default)", () => {
+  it("renders mode presets, Mod (WOG), and collapsible house-rule panels on Mode & Rules (BINH default)", () => {
     openOptions();
-    expect(screen.getByRole("button", { name: /Legacy/i }).getAttribute("aria-pressed")).toBe("false");
-    expect(screen.getByRole("button", { name: /^BINH/i }).getAttribute("aria-pressed")).toBe("true");
+    const modeGrid = screen.getByRole("group", { name: /Game mode presets/i });
+    expect(within(modeGrid).getByRole("button", { name: /Legacy/i }).getAttribute("aria-pressed")).toBe("false");
+    expect(within(modeGrid).getByRole("button", { name: /BINH/i }).getAttribute("aria-pressed")).toBe("true");
     // WOG is a Mod line, not a game-mode card.
     expect(screen.queryByRole("button", { name: /^WOG$/i })).toBeNull();
     expect(screen.getByRole("button", { name: /Enable Wake of Gods mod|Disable Wake of Gods mod/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Tournament/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Obelisk die rewards/i })).toBeTruthy();
+    expect(within(modeGrid).getByRole("button", { name: /Tournament/i })).toBeTruthy();
 
+    // Mode crest icons (BINH griffin + Tournament competitive crest).
+    expect(document.querySelector(".modePresetCard.mode-binh .modePresetIcon")?.getAttribute("src")).toContain(
+      "mode-binh-crest-clear",
+    );
+    expect(document.querySelector(".modePresetCard.mode-tournament .modePresetIcon")?.getAttribute("src")).toContain(
+      "mode-tournament-crest-clear",
+    );
+    expect(document.querySelector(".wogCrestIcon")?.getAttribute("src")).toMatch(/mod-wog-eye-clear|mod-wog-eye/);
+
+    // House-rule checklists are minimized by default (toggles not in the DOM yet).
+    const binhPanel = screen.getByRole("button", { name: /BINH house rules/i });
+    const polishPanel = screen.getByRole("button", { name: /Polish house rule type 1/i });
+    expect(binhPanel.getAttribute("aria-expanded")).toBe("false");
+    expect(polishPanel.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: /Griffin buff/ })).toBeNull();
+    expect(document.querySelector(".houseRuleCollapsibleCrest.polish")?.getAttribute("src")).toContain(
+      "polish-house-rules-flag.webp",
+    );
+
+    expandBinhHouseRules();
+    expect(binhPanel.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: /Obelisk die rewards/i })).toBeTruthy();
     const griffin = screen.getByRole("button", { name: /Griffin buff/ });
     expect(griffin.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: /Split Spell\/Artifact decks by tier/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Estates nerf/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Gelu IV Sharpshooter buff/ })).toBeTruthy();
-    expect(screen.getAllByText(/Polish house rules/i).length).toBeGreaterThan(0);
-    expect(document.querySelector(".polishRuleCrest")?.getAttribute("src")).toContain(
-      "polish-house-rules-flag.webp",
-    );
+
+    expandPolishHouseRules();
+    expect(polishPanel.getAttribute("aria-expanded")).toBe("true");
     const bankSizes = screen.getByRole("button", { name: /Rolled Creature Bank sizes/ });
     expect(bankSizes.getAttribute("aria-pressed")).toBe("false");
     expect((bankSizes as HTMLButtonElement).disabled).toBe(false);
@@ -78,6 +112,7 @@ describe("Game options — tabbed layout", () => {
 
   it("clicking a house-rule toggle dispatches just that rule's flag", () => {
     const onAction = openOptions();
+    expandBinhHouseRules();
     fireEvent.click(screen.getByRole("button", { name: /Estates nerf/ }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
@@ -88,6 +123,7 @@ describe("Game options — tabbed layout", () => {
 
   it("wires the opt-in Polish bank-size variant through the shared registry UI", () => {
     const onAction = openOptions();
+    expandPolishHouseRules();
     fireEvent.click(screen.getByRole("button", { name: /Rolled Creature Bank sizes/ }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
@@ -98,6 +134,7 @@ describe("Game options — tabbed layout", () => {
 
   it("selecting Polish Spell Book switches the standard Spell Book off", () => {
     const onAction = openOptions();
+    expandPolishHouseRules();
     fireEvent.click(screen.getByRole("button", { name: /Polish Spell Book/ }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
@@ -108,6 +145,7 @@ describe("Game options — tabbed layout", () => {
 
   it("greys out Polish bank sizes while the base Creature Banks option is off", () => {
     openOptions(vi.fn(), { creatureBanks: false });
+    expandPolishHouseRules();
     const toggle = screen.getByRole("button", { name: /Rolled Creature Bank sizes/ }) as HTMLButtonElement;
     expect(toggle.disabled).toBe(true);
     expect(toggle.textContent).toContain("BANKS OFF");
@@ -135,6 +173,7 @@ describe("Game options — tabbed layout", () => {
     });
 
     onAction.mockClear();
+    expandTournamentRules();
     fireEvent.click(screen.getByRole("button", { name: /Ban Diplomacy/i }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
@@ -164,7 +203,7 @@ describe("Game options — tabbed layout", () => {
 
   it("Legacy preset turns house rules off without locking them (notice + free toggle)", () => {
     const onAction = openOptions();
-    fireEvent.click(screen.getByRole("button", { name: /Legacy/i }));
+    fireEvent.click(within(screen.getByRole("group", { name: /Game mode presets/i })).getByRole("button", { name: /Legacy/i }));
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "SET_GAME_OPTIONS",
@@ -180,6 +219,7 @@ describe("Game options — tabbed layout", () => {
 
     // House-rule chips stay clickable after the preset (soft Legacy).
     onAction.mockClear();
+    expandBinhHouseRules();
     fireEvent.click(screen.getByRole("button", { name: /Estates nerf/ }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
@@ -188,9 +228,11 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
-  it("Tournament preset applies competitive package (rules off, bans, hard, AI neutrals)", () => {
+  it("Tournament preset applies competitive package (rules off, bans, hard, human Neutrals)", () => {
     const onAction = openOptions();
-    fireEvent.click(screen.getByRole("button", { name: /^Tournament/i }));
+    fireEvent.click(
+      within(screen.getByRole("group", { name: /Game mode presets/i })).getByRole("button", { name: /Tournament/i })
+    );
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "SET_GAME_OPTIONS",
@@ -202,7 +244,7 @@ describe("Game options — tabbed layout", () => {
           tournamentBanHourglass: true,
           tournamentSecondPlayerMorale: true,
           difficulty: "hard",
-          pvpNeutralControl: false
+          pvpNeutralControl: true
         })
       })
     );
@@ -243,12 +285,15 @@ describe("Game options — tabbed layout", () => {
  * engine half is pinned by victory-points.test.ts.)
  */
 describe("Game options — Victory points", () => {
-  it("renders the Victory points row DIRECTLY BELOW the Game mode row, default Off", () => {
+  it("renders Victory points inside the Optional systems cluster, default Off", () => {
     openOptions();
-    const gameMode = screen.getByText("Game mode");
-    const victoryPoints = screen.getByText("Victory points");
-    // DOM order: the Victory points label follows the Game mode label.
-    expect(gameMode.compareDocumentPosition(victoryPoints) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const cluster = screen.getByLabelText(/Optional scoring, decks/i);
+    const victoryPoints = within(cluster).getByText("Victory points");
+    // Cluster also holds Event / Morale / Spell Book / Undo together.
+    expect(within(cluster).getByText("Event deck")).toBeTruthy();
+    expect(within(cluster).getByText("Morale Cards")).toBeTruthy();
+    expect(within(cluster).getByText("Spell Book")).toBeTruthy();
+    expect(within(cluster).getByText("Undo moves (testing)")).toBeTruthy();
 
     const row = victoryPoints.closest(".optionRow") as HTMLElement;
     expect(within(row).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe("true");
@@ -292,5 +337,109 @@ describe("Game options — Victory points", () => {
     });
     const row = screen.getByText("Victory points").closest(".optionRow") as HTMLElement;
     expect(row.textContent).toMatch(/designed map already enables Victory Points/i);
+  });
+});
+
+/**
+ * The "Custom win condition" lobby section — on the MATCH tab, directly beside
+ * the "Win condition" (victory mode) selector, so the extra early-end triggers
+ * live with the rest of the victory setup. These assert it is WIRED — Add
+ * dispatches the exact SET_GAME_OPTIONS the engine reads, map-set conditions
+ * render read-only, and the effective cap disables Add. (The engine half is
+ * pinned by custom-win-conditions.test.ts.)
+ */
+describe("Game options — Custom win condition", () => {
+  /** Open the options and switch to the Match tab, where the section lives. */
+  function openMatchTab(onAction = vi.fn(), mutate?: (state: GameState) => void) {
+    if (mutate) {
+      openOptionsWith(mutate, onAction);
+    } else {
+      openOptions(onAction);
+    }
+    fireEvent.click(screen.getByRole("tab", { name: /Match/ }));
+    return onAction;
+  }
+
+  it("lives on the MATCH tab beside the Win condition selector — NOT on Mode & Rules", () => {
+    openOptions();
+    // Mode & Rules (the default tab) does NOT carry the section any more.
+    expect(screen.queryByText("Custom win condition")).toBeNull();
+
+    // The Match tab renders it DIRECTLY BELOW the Win condition (victory mode) row.
+    fireEvent.click(screen.getByRole("tab", { name: /Match/ }));
+    const winCondition = screen.getByText("Win condition");
+    const customRow = screen.getByText("Custom win condition");
+    expect(
+      winCondition.compareDocumentPosition(customRow) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("renders the Custom win condition row and Add dispatches the default control-towns condition", () => {
+    const onAction = openMatchTab();
+    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Add win condition" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { customWinConditions: [{ kind: "control-towns", count: 3 }] }
+    });
+  });
+
+  it("shows map-set conditions read-only and Add APPENDS to the host list", () => {
+    const onAction = openMatchTab(vi.fn(), (state) => {
+      state.setupLobby!.options.customMapPreset = {
+        customWinConditions: [{ kind: "control-towns", count: 3 }]
+      };
+      state.setupLobby!.options.customWinConditions = [{ kind: "gold", amount: 200 }];
+    });
+    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
+    // The map-set condition is listed with a "map" tag (read-only — no controls).
+    expect(within(row).getByText(/control 3 Towns/)).toBeTruthy();
+    expect(within(row).getByText("map")).toBeTruthy();
+    // Add appends the new condition to the HOST list, keeping the existing host one.
+    fireEvent.click(within(row).getByRole("button", { name: "Add win condition" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: {
+        customWinConditions: [
+          { kind: "gold", amount: 200 },
+          { kind: "control-towns", count: 3 }
+        ]
+      }
+    });
+  });
+
+  it("removing a host condition dispatches the shrunk list", () => {
+    const onAction = openMatchTab(vi.fn(), (state) => {
+      state.setupLobby!.options.customWinConditions = [
+        { kind: "gold", amount: 200 },
+        { kind: "hero-level", level: 5 }
+      ];
+    });
+    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Remove custom win condition 1" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { customWinConditions: [{ kind: "hero-level", level: 5 }] }
+    });
+  });
+
+  it("Add is disabled at the effective cap (map + host = 4)", () => {
+    openMatchTab(vi.fn(), (state) => {
+      state.setupLobby!.options.customMapPreset = {
+        customWinConditions: [
+          { kind: "control-towns", count: 3 },
+          { kind: "gold", amount: 200 }
+        ]
+      };
+      state.setupLobby!.options.customWinConditions = [
+        { kind: "hero-level", level: 5 },
+        { kind: "flag-mines", count: 4 }
+      ];
+    });
+    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
+    expect((within(row).getByRole("button", { name: "Add win condition" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

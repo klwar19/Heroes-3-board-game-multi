@@ -152,6 +152,58 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[3].lockRotation, "absent when unset").toBeUndefined();
   });
 
+  it("round-trips the UNDERGROUND flag on far/near/center/sea, strips it off starting/subterranean, and drops garbage", () => {
+    // The per-tile underground layer override is kept ONLY as literal true and
+    // ONLY on the flag-valid groups; it is redundant on a printed cavern and
+    // excluded on a seat tile (the v1 Surface-only rule).
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          { row: 1, col: 1, group: "far", faceDown: true, underground: true }, // kept
+          { row: 2, col: 2, group: "sea", faceDown: true, underground: true, seaBand: "iv-v" }, // kept
+          { row: 3, col: 3, group: "starting", faceDown: false, underground: true }, // seat tile → stripped
+          { row: 4, col: 4, group: "subterranean", faceDown: true, subBand: "iv-v", underground: true }, // redundant → stripped
+          { row: 5, col: 5, group: "near", faceDown: true, underground: "yes" }, // garbage → dropped
+          { row: 6, col: 6, group: "center", faceDown: true } // absent stays absent
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0], "far tile keeps its band + underground flag").toMatchObject({ group: "far", underground: true });
+    expect(record!.tiles[1]).toMatchObject({ group: "sea", underground: true });
+    expect(record!.tiles[2].underground, "stripped off a starting seat tile").toBeUndefined();
+    expect(record!.tiles[3].underground, "stripped off a printed cavern (redundant)").toBeUndefined();
+    expect(record!.tiles[4].underground, "non-boolean garbage dropped").toBeUndefined();
+    expect(record!.tiles[5].underground, "absent when unset").toBeUndefined();
+  });
+
+  it("keeps gate links on a FLAGGED far plan (CONTROL: still stripped on a plain far plan)", () => {
+    // Gate links belong to any underground-LAYER plan — a printed cavern OR a
+    // far/near/center/sea tile flagged underground. A plain (Surface) far plan
+    // still carries none.
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          {
+            row: 1,
+            col: 1,
+            group: "far",
+            faceDown: true,
+            underground: true,
+            gateLinks: [{ surface: { row: 2, col: 2 } }]
+          },
+          // CONTROL: no underground flag → Surface → gate links dropped.
+          { row: 3, col: 3, group: "far", faceDown: true, gateLinks: [{ surface: { row: 2, col: 2 } }] }
+        ]
+      },
+      1
+    );
+    expect(record!.tiles[0].gateLinks, "a flagged far plan keeps its gate links").toEqual([{ surface: { row: 2, col: 2 } }]);
+    expect(record!.tiles[1], "a plain far plan keeps none").not.toHaveProperty("gateLinks");
+  });
+
   it("round-trips viiField on a CENTER plan, strips it off non-center groups, and drops garbage", () => {
     // viiField FORCES a center slot's Ⅶ objective field (Grail / Dragon Utopia /
     // town) — a center-only designation. It must survive on a center plan, never
@@ -174,37 +226,46 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[3].viiField, "absent when unset").toBeUndefined();
   });
 
-  it("round-trips a Ⅶ reward + VP on a designated center, clamps amounts, and drops an orphan bonus", () => {
-    // The designer bonus (viiFieldReward / viiFieldVp) is meaningful ONLY with a
-    // Ⅶ designation: it survives WITH one (clamped), and is dropped without one or
-    // on a non-center group — otherwise a saved map would smuggle an orphan reward.
+  it("round-trips a centerHex (guard/reward/VP), clamps it, folds LEGACY viiField* saves, and strips non-centers", () => {
     const record = sanitizeSharedMap(
       {
         id: "m",
         tiles: [
-          // Kept + clamped (gold 999 → 50 cap; VP 99 → 10 cap; junk resource dropped).
+          // Kept + clamped (gold 999 → 50 cap; VP 99 → 10 cap; junk resource +
+          // unknown guard unit dropped; a valid exact army survives).
           {
             row: 1,
             col: 1,
             group: "center",
             faceDown: true,
             viiField: "grail",
-            viiFieldReward: { gold: 999, valuables: 2, unicorns: 5 },
-            viiFieldVp: 99
+            centerHex: {
+              guard: { units: ["neutral.cyclopes", "not.a.unit"] },
+              reward: { gold: 999, valuables: 2, unicorns: 5, treasureDice: 9, searchSpell: 2 },
+              vp: 99
+            }
           },
-          // A bonus WITHOUT a designation on a center slot → orphan, dropped.
+          // LEGACY save shape (the one earlier build): viiFieldReward/viiFieldVp
+          // fold into centerHex — WITHOUT needing a designation any more.
           { row: 2, col: 2, group: "center", faceDown: true, viiFieldReward: { gold: 5 }, viiFieldVp: 3 },
-          // A bonus on a non-center slot → dropped with the (already-illegal) designation.
-          { row: 3, col: 3, group: "near", faceDown: true, viiField: "grail", viiFieldReward: { gold: 5 } }
+          // A customization on a non-center slot → dropped with the (already-
+          // illegal) designation.
+          { row: 3, col: 3, group: "near", faceDown: true, viiField: "grail", centerHex: { reward: { gold: 5 } } }
         ]
       },
       1
     );
-    expect(record!.tiles[0]).toMatchObject({ viiField: "grail", viiFieldReward: { gold: 50, valuables: 2 }, viiFieldVp: 10 });
-    expect(record!.tiles[0].viiFieldReward).not.toHaveProperty("unicorns");
-    expect(record!.tiles[1].viiFieldReward, "orphan reward dropped").toBeUndefined();
-    expect(record!.tiles[1].viiFieldVp, "orphan VP dropped").toBeUndefined();
-    expect(record!.tiles[2].viiFieldReward, "non-center bonus dropped").toBeUndefined();
+    expect(record!.tiles[0]).toMatchObject({
+      viiField: "grail",
+      centerHex: {
+        guard: { units: ["neutral.cyclopes"] },
+        reward: { gold: 50, valuables: 2, treasureDice: 3, searchSpell: 2 },
+        vp: 10
+      }
+    });
+    expect(record!.tiles[0].centerHex?.reward).not.toHaveProperty("unicorns");
+    expect(record!.tiles[1].centerHex, "legacy bonus folded in").toEqual({ reward: { gold: 5 }, vp: 3 });
+    expect(record!.tiles[2].centerHex, "non-center customization dropped").toBeUndefined();
   });
 
   it("round-trips a preset objectives block through save/load", () => {
@@ -426,6 +487,80 @@ describe("sanitizeSharedMap", () => {
     expect(cavern.gateLinks![2]).toEqual({ surface: { row: 7, col: 7 } });
     // A near tile keeps no gate links.
     expect(record!.tiles[1]).not.toHaveProperty("gateLinks");
+  });
+
+  it("round-trips designer GUARDS on tile tokens and gate-link halves (clamped; garbage dropped)", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          {
+            row: 3,
+            col: 3,
+            group: "far",
+            faceDown: true,
+            tokens: [
+              // Level guard survives; over-clamp folds to 7.
+              { kind: "monolith", slot: 1, guard: { level: 99 } },
+              // Exact-army guard keeps known ids, drops unknown ones.
+              { kind: "gate", pair: 2, slot: 2, guard: { units: ["neutral.cyclopes", "not.a.unit"] } },
+              // Garbage guard vanishes, the token itself survives.
+              { kind: "whirlpool", slot: 3, guard: "junk" }
+            ]
+          },
+          {
+            row: 5,
+            col: 5,
+            group: "subterranean",
+            faceDown: true,
+            gateLinks: [
+              {
+                surface: { row: 4, col: 4 },
+                gateGuard: { level: 4 },
+                entranceGuard: { units: ["neutral.troglodytes"] }
+              }
+            ]
+          }
+        ]
+      },
+      1
+    );
+    const tokens = record!.tiles[0].tokens!;
+    expect(tokens[0].guard).toEqual({ level: 7 });
+    expect(tokens[1].guard).toEqual({ units: ["neutral.cyclopes"] });
+    expect(tokens[2].guard).toBeUndefined();
+    const link = record!.tiles[1].gateLinks![0];
+    expect(link.gateGuard).toEqual({ level: 4 });
+    expect(link.entranceGuard).toEqual({ units: ["neutral.troglodytes"] });
+  });
+
+  it("round-trips ONE-WAY monolith tokens (pair required, exit guard stripped, mode/always kept)", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [
+          {
+            row: 3,
+            col: 3,
+            group: "far",
+            faceDown: true,
+            tokens: [
+              { kind: "oneway_entrance", pair: 2, slot: 1, exitMode: "mix", guard: { level: 3 } },
+              // An exit is never guarded; alwaysPickable survives.
+              { kind: "oneway_exit", pair: 2, slot: 2, guard: { level: 5 }, alwaysPickable: true },
+              // No pair → dropped whole.
+              { kind: "oneway_entrance", slot: 3 }
+            ]
+          }
+        ]
+      },
+      1
+    );
+    const tokens = record!.tiles[0].tokens!;
+    expect(tokens).toHaveLength(2);
+    expect(tokens[0]).toMatchObject({ kind: "oneway_entrance", pair: 2, exitMode: "mix", guard: { level: 3 } });
+    expect(tokens[1]).toMatchObject({ kind: "oneway_exit", pair: 2, alwaysPickable: true });
+    expect(tokens[1].guard).toBeUndefined();
   });
 
   it("round-trips MORE than the old cap of 4 designer gate links (one cavern → many gates)", () => {

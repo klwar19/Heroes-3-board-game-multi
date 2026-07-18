@@ -13,13 +13,21 @@
 
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TileDefinition } from "@/data/map/types";
 import { getStoryScene, isStoryScene, STORY_SCENE_IDS } from "@/data/story/scenes";
-import { seaTileBand, subterraneanTileBand, VII_FIELD_LOCATION } from "./adventure";
+import { seaTileBand, subterraneanTileBand, TILE_GROUP_BAND_LABELS, VII_FIELD_LOCATION } from "./adventure";
 import { VICTORY_MODE_LABELS } from "./ruleset";
-import { DEFAULT_OBELISK_BONUS } from "./state";
-import { DEFAULT_VICTORY_CONDITION_VP, describeVictoryPointObjective } from "./victory-points";
+import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS, MAX_FAR_TILES_PER_PLAYER } from "./state";
+import {
+  DEFAULT_VICTORY_CONDITION_VP,
+  describeCustomWinCondition,
+  describeVictoryPointObjective
+} from "./victory-points";
 import type {
+  CustomCenterHexPlan,
+  CustomCenterHexReward,
+  CustomGuardSpec,
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
   CustomMapObject,
@@ -29,11 +37,12 @@ import type {
   CustomMapPreset,
   CustomMapTilePlan,
   CustomStartingUnit,
+  CustomWinCondition,
   DragonUtopiaGuards,
+  GameDifficulty,
   GameSetupOptions,
   SecretTileFeature,
   UnitLevel,
-  ViiFieldReward,
   VictoryMode,
   VictoryPointObjective
 } from "./state";
@@ -88,44 +97,121 @@ export function isViiFieldDesignation(
   return typeof value === "string" && VII_FIELD_DESIGNATIONS.has(value as never);
 }
 
-/** Largest amount a single Ⅶ-field resource reward may grant, per resource. */
-export const MAX_VII_FIELD_REWARD_AMOUNT = 50;
-/** Largest Victory-Point award a designer may attach to a Ⅶ objective. */
-export const MAX_VII_FIELD_VP = 10;
-/** The three adventure resources a Ⅶ-field reward may carry. */
-const VII_REWARD_RESOURCES = ["gold", "buildingMaterials", "valuables"] as const;
+/** Largest amount a single center-hex resource reward may grant, per resource. */
+export const MAX_CENTER_HEX_RESOURCE = 50;
+/** Largest Victory-Point award a designer may attach to a center hex. */
+export const MAX_CENTER_HEX_VP = 10;
+/** Largest Treasure-dice count a center-hex reward may roll. */
+export const MAX_CENTER_HEX_DICE = 3;
+/** Largest Search size a center-hex reward may grant per shared deck. */
+export const MAX_CENTER_HEX_SEARCH = 5;
+/** The three adventure resources a center-hex reward may carry. */
+const CENTER_HEX_RESOURCES = ["gold", "buildingMaterials", "valuables"] as const;
+
+/** True when `unitDefId` names a unit that can guard a hex (it has a `neutral` side). */
+export function isCustomGuardUnit(unitDefId: unknown): unitDefId is string {
+  return typeof unitDefId === "string" && Boolean(coreUnitDefinitions[unitDefId]?.neutral);
+}
 
 /**
- * Clamp a designer Ⅶ-field Resource reward ({@link CustomMapTilePlan.viiFieldReward})
- * to a clean, positive-integer `{ gold?, buildingMaterials?, valuables? }`, or
- * `undefined` when nothing valid remains. Shared by the persistence sanitiser,
- * setup seeding and the designer UI so the clamp can never drift.
+ * Clamp a designer guard ({@link CustomGuardSpec}) to exactly one clean arm:
+ * a certain army of known neutral-sided units (capped, unknown ids dropped) or
+ * a level 1-7; `undefined` when nothing valid remains. `units` wins when both
+ * are present. Shared by the persistence sanitiser, setup validation and the
+ * designer UI so the clamp can never drift.
  */
-export function sanitizeViiFieldReward(input: unknown): ViiFieldReward | undefined {
+export function sanitizeCustomGuardSpec(input: unknown): CustomGuardSpec | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
   }
   const raw = input as Record<string, unknown>;
-  const reward: ViiFieldReward = {};
-  for (const key of VII_REWARD_RESOURCES) {
-    const value = raw[key];
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      reward[key] = Math.min(MAX_VII_FIELD_REWARD_AMOUNT, Math.floor(value));
+  const units = Array.isArray(raw.units)
+    ? raw.units.filter(isCustomGuardUnit).slice(0, MAX_CUSTOM_GUARD_UNITS)
+    : [];
+  if (units.length > 0) {
+    return { units };
+  }
+  const level = clampInt(raw.level, 1, 7, 0);
+  return level > 0 ? { level } : undefined;
+}
+
+/**
+ * Clamp a designer center-hex reward ({@link CustomCenterHexReward}) to clean,
+ * positive integers, or `undefined` when nothing valid remains.
+ */
+export function sanitizeCenterHexReward(input: unknown): CustomCenterHexReward | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as Record<string, unknown>;
+  const reward: CustomCenterHexReward = {};
+  for (const key of CENTER_HEX_RESOURCES) {
+    const amount = clampInt(raw[key], 1, MAX_CENTER_HEX_RESOURCE, 0);
+    if (amount > 0) {
+      reward[key] = amount;
+    }
+  }
+  const dice = clampInt(raw.treasureDice, 1, MAX_CENTER_HEX_DICE, 0);
+  if (dice > 0) {
+    reward.treasureDice = dice;
+  }
+  for (const key of ["searchSpell", "searchAbility", "searchArtifact"] as const) {
+    const size = clampInt(raw[key], 1, MAX_CENTER_HEX_SEARCH, 0);
+    if (size > 0) {
+      reward[key] = size;
     }
   }
   return Object.keys(reward).length > 0 ? reward : undefined;
 }
 
 /**
- * Clamp a designer Ⅶ-field VP award ({@link CustomMapTilePlan.viiFieldVp}) to an
- * integer 1..{@link MAX_VII_FIELD_VP}; `0` / absent / garbage → `undefined` (no award).
+ * Clamp a whole center-hex customization ({@link CustomMapTilePlan.centerHex})
+ * — guard, first-clear reward, VP — or `undefined` when every arm is empty.
  */
-export function sanitizeViiFieldVp(input: unknown): number | undefined {
-  if (typeof input !== "number" || !Number.isFinite(input)) {
+export function sanitizeCenterHexPlan(input: unknown): CustomCenterHexPlan | undefined {
+  if (!input || typeof input !== "object") {
     return undefined;
   }
-  const vp = Math.floor(input);
-  return vp > 0 ? Math.min(MAX_VII_FIELD_VP, vp) : undefined;
+  const raw = input as Record<string, unknown>;
+  const centerHex: CustomCenterHexPlan = {};
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  if (guard) {
+    centerHex.guard = guard;
+  }
+  const reward = sanitizeCenterHexReward(raw.reward);
+  if (reward) {
+    centerHex.reward = reward;
+  }
+  const vp = clampInt(raw.vp, 1, MAX_CENTER_HEX_VP, 0);
+  if (vp > 0) {
+    centerHex.vp = vp;
+  }
+  return Object.keys(centerHex).length > 0 ? centerHex : undefined;
+}
+
+/**
+ * Fold the pre-centerHex `viiFieldReward` / `viiFieldVp` plan fields (one
+ * earlier build wrote them) into the canonical {@link CustomCenterHexPlan}.
+ * An explicit `centerHex` always wins; the legacy pair only fills gaps.
+ */
+export function foldLegacyViiBonus(
+  centerHex: CustomCenterHexPlan | undefined,
+  legacyReward: unknown,
+  legacyVp: unknown
+): CustomCenterHexPlan | undefined {
+  const reward = sanitizeCenterHexReward(legacyReward);
+  const vp = clampInt(legacyVp, 1, MAX_CENTER_HEX_VP, 0);
+  if (!reward && vp <= 0) {
+    return centerHex;
+  }
+  const folded: CustomCenterHexPlan = { ...(centerHex ?? {}) };
+  if (!folded.reward && reward) {
+    folded.reward = reward;
+  }
+  if (folded.vp === undefined && vp > 0) {
+    folded.vp = vp;
+  }
+  return Object.keys(folded).length > 0 ? folded : undefined;
 }
 
 // The location a Ⅶ-field designation resolves to ("town" → the neutral Random
@@ -158,6 +244,15 @@ const VICTORY_MODES = new Set<VictoryMode>([
   "dragon-conqueror"
 ]);
 
+const DIFFICULTY_VALUES = new Set<GameDifficulty>(["easy", "normal", "hard", "impossible"]);
+
+const DIFFICULTY_LABELS: Record<GameDifficulty, string> = {
+  easy: "Easy",
+  normal: "Normal",
+  hard: "Hard",
+  impossible: "Impossible"
+};
+
 const BUILDING_SUFFIXES = new Set([
   "citadel",
   "city_hall",
@@ -173,6 +268,8 @@ const BUILDING_SUFFIXES = new Set([
 
 const SEARCH_DECKS = new Set(["artifacts", "spells", "abilities"]);
 const CUBE_LOCATIONS = new Set(["windmill", "water_wheel", "mystical_garden"]);
+/** The six tile groups a clear_tile_cubes filter may target. */
+const TILE_GROUPS = new Set(["starting", "far", "near", "center", "sea", "subterranean"]);
 const OBELISK_ROLES = new Set<CustomMapObeliskConfig["role"]>(["monolith", "bonus", "victory-only"]);
 const VICTORY_POINT_OBJECTIVE_KINDS = new Set<VictoryPointObjective["kind"]>([
   "control-towns",
@@ -183,6 +280,22 @@ const VICTORY_POINT_OBJECTIVE_KINDS = new Set<VictoryPointObjective["kind"]>([
 
 /** Max designer-chosen VP objectives per map (sanitisation cap). */
 export const MAX_VICTORY_POINT_OBJECTIVES = 4;
+
+/** The custom-win-condition kinds a map / lobby may author (sanitiser allowlist). */
+const CUSTOM_WIN_CONDITION_KINDS = new Set<CustomWinCondition["kind"]>([
+  "control-towns",
+  "flag-mines",
+  "hero-level",
+  "gold",
+  "artifacts",
+  "buildings",
+  "obelisks",
+  "defeat-heroes",
+  "defeat-dragon-utopia"
+]);
+
+/** Max custom win conditions on one map/game (preset + lobby MERGED — sanitisation cap). */
+export const MAX_CUSTOM_WIN_CONDITIONS = 4;
 
 export type { CustomMapObeliskBonus, CustomMapObeliskConfig };
 
@@ -201,12 +314,29 @@ export const MAX_CUSTOM_MAP_OBJECTS = 16;
  */
 export const MAX_GATES_PER_PAIR = 8;
 
-const CUSTOM_MAP_OBJECT_KINDS = new Set<CustomMapObjectKind>(["monolith", "whirlpool", "gate"]);
+const CUSTOM_MAP_OBJECT_KINDS = new Set<CustomMapObjectKind>([
+  "monolith",
+  "whirlpool",
+  "gate",
+  "garrison",
+  "keymaster_tent",
+  "barrier",
+  "oneway_entrance",
+  "oneway_exit"
+]);
+
+/** The three one-way exit-pick modes (allow-list for sanitize + the editor). */
+export const ONEWAY_EXIT_MODES = ["random", "certain", "mix"] as const;
+
+/** The outpost kinds — STANDALONE-only one-hex objects out of every tile. */
+export const OUTPOST_OBJECT_KINDS = new Set<CustomMapObjectKind>(["garrison", "keymaster_tent", "barrier"]);
 
 /** Designer effect kinds (order = editor dropdown order). */
 export const TIMED_EFFECT_KINDS = [
   "clear_visitable_cubes",
+  "clear_tile_cubes",
   "resources",
+  "experience",
   "search",
   "morale",
   "movement",
@@ -220,7 +350,9 @@ export type TimedEffectKind = (typeof TIMED_EFFECT_KINDS)[number];
 
 export const TIMED_EFFECT_KIND_LABELS: Record<TimedEffectKind, string> = {
   clear_visitable_cubes: "Clear black cubes (revisit sites)",
-  resources: "All players gain resources",
+  clear_tile_cubes: "Clear black cubes (Tiles)",
+  resources: "All players gain/lose resources",
+  experience: "All heroes gain experience",
   search: "All players Search a deck",
   morale: "All players gain/lose morale",
   movement: "All heroes gain movement",
@@ -238,8 +370,12 @@ export function defaultTimedEffect(kind: TimedEffectKind): CustomMapTimedEffect 
         kind: "clear_visitable_cubes",
         locations: ["windmill", "water_wheel", "mystical_garden"]
       };
+    case "clear_tile_cubes":
+      return { kind: "clear_tile_cubes", groups: ["far"], excludeSettlementTiles: false };
     case "resources":
       return { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 };
+    case "experience":
+      return { kind: "experience", amount: 2 };
     case "search":
       return { kind: "search", deck: "artifacts", count: 1 };
     case "morale":
@@ -489,6 +625,98 @@ function sanitizeVictoryPoints(input: unknown): CustomMapPreset["victoryPoints"]
 }
 
 /**
+ * Sanitize ONE custom win condition (untrusted). Drops an unknown kind; clamps
+ * each kind's threshold to its legal band. The min-clamps (control-towns ≥ 2 so
+ * the home town alone can't instant-win, level ≥ 2, gold ≥ 20…) REDUCE but never
+ * eliminate the instant-win foot-gun — a condition already met at setup ends the
+ * game on the first action (the designer's responsibility). Returns null for an
+ * unusable input so the array filter removes it.
+ */
+function sanitizeCustomWinCondition(input: unknown): CustomWinCondition | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const raw = input as { kind?: unknown; count?: unknown; level?: unknown; amount?: unknown };
+  if (
+    typeof raw.kind !== "string" ||
+    !CUSTOM_WIN_CONDITION_KINDS.has(raw.kind as CustomWinCondition["kind"])
+  ) {
+    return null;
+  }
+  switch (raw.kind as CustomWinCondition["kind"]) {
+    case "control-towns":
+      return { kind: "control-towns", count: clampInt(raw.count, 2, 8, 2) };
+    case "flag-mines":
+      return { kind: "flag-mines", count: clampInt(raw.count, 2, 12, 2) };
+    case "hero-level":
+      return { kind: "hero-level", level: clampInt(raw.level, 2, 7, 2) };
+    case "gold":
+      return { kind: "gold", amount: clampInt(raw.amount, 20, 500, 20) };
+    case "artifacts":
+      return { kind: "artifacts", count: clampInt(raw.count, 1, 10, 1) };
+    case "buildings":
+      // min 8: the DEFAULT opening is 3 buildings (citadel/mage_guild/dwelling)
+      // and a preset can force at most 7 (Castle's blacksmith + the 6 core-
+      // suffix buildings any faction defines), so 8 is the smallest instant-win-
+      // safe floor. max 15: a single Town caps near 8, so a high target is a
+      // genuine multi-Town economic race. The reader sums all controlled Towns.
+      return { kind: "buildings", count: clampInt(raw.count, 8, 15, 8) };
+    case "obelisks":
+      // 1-4 matches the grail dig knob's Obelisk range. NOTE: obelisk visits are
+      // tracked per player only in GRAIL victory mode (see CustomWinCondition).
+      return { kind: "obelisks", count: clampInt(raw.count, 1, 4, 1) };
+    case "defeat-heroes":
+      return { kind: "defeat-heroes", count: clampInt(raw.count, 1, 6, 1) };
+    case "defeat-dragon-utopia":
+      return { kind: "defeat-dragon-utopia" };
+  }
+}
+
+/**
+ * Sanitize a LIST of custom win conditions (untrusted) — the SHARED sanitiser
+ * used by both the designed-preset path and the lobby `SET_GAME_OPTIONS` block.
+ * Unknown kinds / degenerate params are dropped/clamped and the list is capped at
+ * {@link MAX_CUSTOM_WIN_CONDITIONS}. A non-array yields `[]`.
+ */
+export function sanitizeCustomWinConditions(input: unknown): CustomWinCondition[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input
+    .map(sanitizeCustomWinCondition)
+    .filter((condition): condition is CustomWinCondition => condition !== null)
+    .slice(0, MAX_CUSTOM_WIN_CONDITIONS);
+}
+
+/**
+ * The EFFECTIVE custom-win-condition list for a game: the map-authored list
+ * first, the lobby-added list appended, exact-duplicate deduped (same kind +
+ * params) and capped at {@link MAX_CUSTOM_WIN_CONDITIONS}. Map-authored
+ * conditions are never removed — the lobby can only ADD. Pure (no sanitisation);
+ * callers pass already-sanitised lists. Shared by the engine build
+ * (`applyLobbyCustomWinConditions`) and the lobby UI so they never drift.
+ */
+export function mergeCustomWinConditions(
+  presetConditions: CustomWinCondition[] | undefined,
+  lobbyConditions: CustomWinCondition[] | undefined
+): CustomWinCondition[] {
+  const merged: CustomWinCondition[] = [];
+  const seen = new Set<string>();
+  for (const condition of [...(presetConditions ?? []), ...(lobbyConditions ?? [])]) {
+    const key = JSON.stringify(condition);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(condition);
+    if (merged.length >= MAX_CUSTOM_WIN_CONDITIONS) {
+      break;
+    }
+  }
+  return merged;
+}
+
+/**
  * Sanitize ONE designer-placed map object (untrusted input). Keeps only a
  * well-formed shape: a known kind, a valid placement (tile-slot with a 0-6 slot,
  * or standalone), a colored pair 1-4 REQUIRED for a gate (and never on another
@@ -528,21 +756,64 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
     return null;
   }
   const object: CustomMapObject = { kind, placement };
-  // A gate carries a colored pair 1-4 (required); any other kind never does.
-  if (kind === "gate") {
+  // A gate / tent / barrier / one-way monolith carries a colored pair 1-4
+  // (required); the other kinds never do.
+  if (
+    kind === "gate" ||
+    kind === "keymaster_tent" ||
+    kind === "barrier" ||
+    kind === "oneway_entrance" ||
+    kind === "oneway_exit"
+  ) {
     if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
       return null;
     }
     object.pair = raw.pair;
   }
-  // A deliberate neutral guard difficulty 1-7 (optional; clamped).
-  if (raw.guard !== undefined) {
-    const guard = clampInt(raw.guard, 1, 7, 0);
-    if (guard > 0) {
-      object.guard = guard;
+  // A designer guard (optional): the LEGACY plain number is a level 1-7; the
+  // spec form adds "certain army" guards. Both normalise to a clean spec. A
+  // Barrier and a one-way EXIT are NEVER guarded (printed rules) — stripped.
+  const guard = kind === "barrier" || kind === "oneway_exit" ? undefined : sanitizeObjectGuard(raw.guard);
+  if (guard) {
+    object.guard = guard;
+  }
+  // One-way extras: an ENTRANCE may pick its exit mode; an EXIT may be flagged
+  // always-pickable ("mix" mode). Anything else never carries either.
+  const rawOneway = input as { exitMode?: unknown; alwaysPickable?: unknown };
+  if (kind === "oneway_entrance" && ONEWAY_EXIT_MODES.includes(rawOneway.exitMode as never)) {
+    object.exitMode = rawOneway.exitMode as CustomMapObject["exitMode"];
+  }
+  if (kind === "oneway_exit" && rawOneway.alwaysPickable === true) {
+    object.alwaysPickable = true;
+  }
+  // Designer yellow border edges on the object hex (absolute dirs 0-5).
+  const rawEdges = (input as { borderEdges?: unknown }).borderEdges;
+  if (Array.isArray(rawEdges)) {
+    const edges = [
+      ...new Set(rawEdges.filter((dir): dir is number => Number.isInteger(dir) && dir >= 0 && dir <= 5))
+    ].sort((a, b) => a - b);
+    if (edges.length > 0) {
+      object.borderEdges = edges;
     }
   }
   return object;
+}
+
+/**
+ * Normalise a {@link CustomMapObject.guard} — a LEGACY plain level number or a
+ * full {@link CustomGuardSpec} — to a clean spec (or `undefined`).
+ */
+export function sanitizeObjectGuard(input: unknown): CustomGuardSpec | undefined {
+  if (typeof input === "number") {
+    const level = clampInt(input, 1, 7, 0);
+    return level > 0 ? { level } : undefined;
+  }
+  return sanitizeCustomGuardSpec(input);
+}
+
+/** The guard spec of a {@link CustomMapObject}, whichever shape it was stored in. */
+export function objectGuardSpec(object: Pick<CustomMapObject, "guard">): CustomGuardSpec | undefined {
+  return sanitizeObjectGuard(object.guard);
 }
 
 function sanitizeCustomMapObjects(input: unknown): CustomMapObject[] {
@@ -581,13 +852,19 @@ function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
   }
   const raw = input as { kind?: string } & Record<string, unknown>;
   if (raw.kind === "resources") {
-    const gold = clampInt(raw.gold, 0, 30, 0);
-    const buildingMaterials = clampInt(raw.buildingMaterials, 0, 30, 0);
-    const valuables = clampInt(raw.valuables, 0, 30, 0);
-    if (gold + buildingMaterials + valuables <= 0) {
+    // Positive = every player GAINS; negative = every player LOSES (the engine
+    // floors the treasury at 0). Clamp each field to [-50, 50]; a legacy
+    // positive-only entry (was 0..30) stays byte-identical. At least one nonzero.
+    const gold = clampInt(raw.gold, -50, 50, 0);
+    const buildingMaterials = clampInt(raw.buildingMaterials, -50, 50, 0);
+    const valuables = clampInt(raw.valuables, -50, 50, 0);
+    if (gold === 0 && buildingMaterials === 0 && valuables === 0) {
       return null;
     }
     return { kind: "resources", gold, buildingMaterials, valuables };
+  }
+  if (raw.kind === "experience") {
+    return { kind: "experience", amount: clampInt(raw.amount, 1, 5, 1) };
   }
   if (raw.kind === "search" && typeof raw.deck === "string" && SEARCH_DECKS.has(raw.deck)) {
     return {
@@ -605,6 +882,23 @@ function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
       return null;
     }
     return { kind: "clear_visitable_cubes", locations: [...new Set(locations)] };
+  }
+  if (raw.kind === "clear_tile_cubes" && Array.isArray(raw.groups)) {
+    const groups = raw.groups.filter(
+      (group): group is "starting" | "far" | "near" | "center" | "sea" | "subterranean" =>
+        typeof group === "string" && TILE_GROUPS.has(group)
+    );
+    if (groups.length === 0) {
+      return null;
+    }
+    const effect: Extract<CustomMapTimedEffect, { kind: "clear_tile_cubes" }> = {
+      kind: "clear_tile_cubes",
+      groups: [...new Set(groups)]
+    };
+    if (raw.excludeSettlementTiles === true) {
+      effect.excludeSettlementTiles = true;
+    }
+    return effect;
   }
   if (raw.kind === "morale" && (raw.amount === 1 || raw.amount === -1)) {
     return { kind: "morale", amount: raw.amount };
@@ -641,6 +935,21 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
 
   if (typeof raw.victoryMode === "string" && VICTORY_MODES.has(raw.victoryMode as VictoryMode)) {
     preset.victoryMode = raw.victoryMode as VictoryMode;
+  }
+  // Map-settings defaults (difficulty / far-tile supply). Garbage difficulty is
+  // dropped; farTilesPerPlayer clamps to 0..MAX (a non-number is dropped, never
+  // coerced to a silent 0). farTileOpening is kept only as a real boolean.
+  if (typeof raw.difficulty === "string" && DIFFICULTY_VALUES.has(raw.difficulty as GameDifficulty)) {
+    preset.difficulty = raw.difficulty as GameDifficulty;
+  }
+  if (typeof raw.farTileOpening === "boolean") {
+    preset.farTileOpening = raw.farTileOpening;
+  }
+  if (typeof raw.farTilesPerPlayer === "number" && Number.isFinite(raw.farTilesPerPlayer)) {
+    preset.farTilesPerPlayer = Math.max(
+      0,
+      Math.min(MAX_FAR_TILES_PER_PLAYER, Math.floor(raw.farTilesPerPlayer))
+    );
   }
   const resources = sanitizeResources(raw.startingResources);
   if (resources) {
@@ -683,7 +992,18 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       const round = clampInt((entry as CustomMapTimedEvent).round, 1, 30, 0);
       const effect = sanitizeTimedEffect((entry as CustomMapTimedEvent).effect);
       if (round > 0 && effect) {
-        events.push({ round, effect });
+        const event: CustomMapTimedEvent = { round, effect };
+        // Optional repeat schedule: an int in [2, 10] fires the event again
+        // every N rounds. Anything below 2 (incl. a hand-edited 1) or a non-int
+        // is DROPPED — the event stays a one-shot (byte-identical to legacy).
+        const rawRepeat = (entry as CustomMapTimedEvent).repeatEveryRounds;
+        if (typeof rawRepeat === "number" && Number.isFinite(rawRepeat)) {
+          const repeat = Math.floor(rawRepeat);
+          if (repeat >= 2) {
+            event.repeatEveryRounds = Math.min(10, repeat);
+          }
+        }
+        events.push(event);
       }
     }
     events.sort((a, b) => a.round - b.round);
@@ -727,6 +1047,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.victoryPoints = victoryPoints;
     }
   }
+  if (raw.customWinConditions !== undefined) {
+    const conditions = sanitizeCustomWinConditions(raw.customWinConditions);
+    if (conditions.length > 0) {
+      preset.customWinConditions = conditions;
+    }
+  }
 
   return customMapPresetIsActive(preset) ? preset : undefined;
 }
@@ -738,6 +1064,9 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
   }
   return Boolean(
     preset.victoryMode ||
+      preset.difficulty ||
+      preset.farTileOpening !== undefined ||
+      preset.farTilesPerPlayer !== undefined ||
       preset.startingResources ||
       preset.startingProduction ||
       (preset.startingBuildings && preset.startingBuildings.length > 0) ||
@@ -749,7 +1078,8 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.obelisks ||
       (preset.objects && preset.objects.length > 0) ||
       Boolean(preset.objectives) ||
-      Boolean(preset.victoryPoints?.enabled)
+      Boolean(preset.victoryPoints?.enabled) ||
+      (preset.customWinConditions && preset.customWinConditions.length > 0)
   );
 }
 
@@ -822,6 +1152,21 @@ function formatResources(r: { gold: number; buildingMaterials: number; valuables
 /** Plain-words line for a timed effect (feed + designer). */
 export function describeTimedMapEffect(effect: CustomMapTimedEffect): string {
   return describeTimedEffect(effect);
+}
+
+/**
+ * Schedule prefix for a timed event — "Round 4" for a one-shot, or "Round 4,
+ * then every 3 rounds" for a repeating event. Shared by the designer summary
+ * line and the editor's live preview.
+ */
+export function describeTimedEventSchedule(event: {
+  round: number;
+  repeatEveryRounds?: number;
+}): string {
+  if (event.repeatEveryRounds && event.repeatEveryRounds >= 2) {
+    return `Round ${event.round}, then every ${event.repeatEveryRounds} rounds`;
+  }
+  return `Round ${event.round}`;
 }
 
 function describeBonus(bonus: CustomMapStartingBonus): string {
@@ -926,7 +1271,30 @@ export function describeObeliskRole(config: CustomMapObeliskConfig): string {
 
 function describeTimedEffect(effect: CustomMapTimedEffect): string {
   if (effect.kind === "resources") {
-    return `all players gain ${formatPresetResources(effect)}`;
+    const gains: string[] = [];
+    const losses: string[] = [];
+    for (const [amount, label] of [
+      [effect.gold ?? 0, "gold"],
+      [effect.buildingMaterials ?? 0, "materials"],
+      [effect.valuables ?? 0, "valuables"]
+    ] as const) {
+      if (amount > 0) {
+        gains.push(`${amount} ${label}`);
+      } else if (amount < 0) {
+        losses.push(`${-amount} ${label}`);
+      }
+    }
+    const clauses: string[] = [];
+    if (gains.length > 0) {
+      clauses.push(`gain ${gains.join(", ")}`);
+    }
+    if (losses.length > 0) {
+      clauses.push(`lose ${losses.join(", ")}`);
+    }
+    return `all players ${clauses.join(" and ") || "gain nothing"}`;
+  }
+  if (effect.kind === "experience") {
+    return `all heroes gain ${effect.amount} experience`;
   }
   if (effect.kind === "search") {
     return `all players Search(${effect.count}) ${effect.deck}`;
@@ -936,6 +1304,12 @@ function describeTimedEffect(effect: CustomMapTimedEffect): string {
       (id) => locationDefinitions[id]?.name ?? id.replace(/_/g, " ")
     );
     return `clear black cubes on ${names.join(", ")}`;
+  }
+  if (effect.kind === "clear_tile_cubes") {
+    const bands = effect.groups.map((group) => TILE_GROUP_BAND_LABELS[group]);
+    return `clear black cubes on ${bands.join(", ")} Tiles${
+      effect.excludeSettlementTiles ? " (skip settlements)" : ""
+    }`;
   }
   if (effect.kind === "morale") {
     return effect.amount > 0 ? "all players gain +1 morale" : "all players lose 1 morale";
@@ -977,6 +1351,21 @@ export function describeCustomMapPresetEntries(
       text: `Victory: ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`
     });
   }
+  if (preset.difficulty) {
+    entries.push({ icon: "⚙️", text: `Difficulty: ${DIFFICULTY_LABELS[preset.difficulty]}` });
+  }
+  if (preset.farTileOpening !== undefined || preset.farTilesPerPlayer !== undefined) {
+    const on = preset.farTileOpening !== false;
+    const count = preset.farTilesPerPlayer;
+    entries.push({
+      icon: "🀆",
+      text: !on
+        ? "Additional Ⅱ–Ⅲ tiles: off"
+        : count !== undefined
+          ? `Additional Ⅱ–Ⅲ tiles: ${count} per player`
+          : "Additional Ⅱ–Ⅲ tiles: on"
+    });
+  }
   if (preset.startingResources) {
     entries.push({
       icon: "🪙",
@@ -1009,7 +1398,10 @@ export function describeCustomMapPresetEntries(
   }
   if (preset.timedEvents && preset.timedEvents.length > 0) {
     for (const event of preset.timedEvents) {
-      entries.push({ icon: "⏳", text: `Round ${event.round}: ${describeTimedEffect(event.effect)}` });
+      entries.push({
+        icon: "⏳",
+        text: `${describeTimedEventSchedule(event)}: ${describeTimedEffect(event.effect)}`
+      });
     }
   }
   if (preset.roundLimit) {
@@ -1035,6 +1427,11 @@ export function describeCustomMapPresetEntries(
       entries.push(line);
     }
   }
+  if (preset.customWinConditions && preset.customWinConditions.length > 0) {
+    for (const condition of preset.customWinConditions) {
+      entries.push({ icon: "🏁", text: `Custom win: ${describeCustomWinCondition(condition)}` });
+    }
+  }
   if (preset.objects && preset.objects.length > 0) {
     const summary = describeMapObjects(preset.objects);
     if (summary.length > 0) {
@@ -1055,6 +1452,9 @@ export function describeCustomMapPreset(preset: CustomMapPreset | null | undefin
 /** GameSetupOptions keys a map preset may force. */
 export type PresetForcedOptionKey =
   | "victoryMode"
+  | "difficulty"
+  | "farTileOpening"
+  | "farTilesPerPlayer"
   | "startingResources"
   | "startingProduction"
   | "startingBuildings"
@@ -1070,6 +1470,15 @@ export function presetForcedOptionKeys(
   const keys: PresetForcedOptionKey[] = [];
   if (preset.victoryMode) {
     keys.push("victoryMode");
+  }
+  if (preset.difficulty) {
+    keys.push("difficulty");
+  }
+  if (preset.farTileOpening !== undefined) {
+    keys.push("farTileOpening");
+  }
+  if (preset.farTilesPerPlayer !== undefined) {
+    keys.push("farTilesPerPlayer");
   }
   if (preset.startingResources) {
     keys.push("startingResources");
@@ -1104,6 +1513,18 @@ export function applyCustomMapPresetToOptions(
   if (preset.victoryMode && !skip?.has("victoryMode")) {
     options.victoryMode = preset.victoryMode;
     changes.push(`victory ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`);
+  }
+  if (preset.difficulty && !skip?.has("difficulty")) {
+    options.difficulty = preset.difficulty;
+    changes.push(`difficulty ${DIFFICULTY_LABELS[preset.difficulty]}`);
+  }
+  if (preset.farTileOpening !== undefined && !skip?.has("farTileOpening")) {
+    options.farTileOpening = preset.farTileOpening;
+    changes.push(`Ⅱ–Ⅲ tile opening ${preset.farTileOpening ? "on" : "off"}`);
+  }
+  if (preset.farTilesPerPlayer !== undefined && !skip?.has("farTilesPerPlayer")) {
+    options.farTilesPerPlayer = preset.farTilesPerPlayer;
+    changes.push(`Ⅱ–Ⅲ tiles per player ${preset.farTilesPerPlayer}`);
   }
   if (preset.startingResources && !skip?.has("startingResources")) {
     options.startingResources = { ...preset.startingResources };
@@ -1150,6 +1571,18 @@ export function revertCustomMapPresetOptions(
       case "victoryMode":
         options.victoryMode = defaults.victoryMode;
         changes.push(`victory back to ${VICTORY_LABELS[defaults.victoryMode ?? "conquest"] ?? "Conquest"}`);
+        break;
+      case "difficulty":
+        options.difficulty = defaults.difficulty;
+        changes.push(`difficulty back to ${DIFFICULTY_LABELS[defaults.difficulty]}`);
+        break;
+      case "farTileOpening":
+        options.farTileOpening = defaults.farTileOpening;
+        changes.push("Ⅱ–Ⅲ tile opening back to the scenario default");
+        break;
+      case "farTilesPerPlayer":
+        options.farTilesPerPlayer = defaults.farTilesPerPlayer;
+        changes.push("Ⅱ–Ⅲ tiles per player back to the scenario default");
         break;
       case "startingResources":
         options.startingResources = { ...defaults.startingResources };
@@ -1374,6 +1807,11 @@ export const MAP_PRESET_VICTORY_OPTIONS: { id: VictoryMode; label: string }[] = 
   Object.keys(VICTORY_MODE_LABELS) as VictoryMode[]
 ).map((id) => ({ id, label: VICTORY_MODE_LABELS[id] }));
 
+/** Difficulty chips for the map-settings designer (Easy … Impossible). */
+export const MAP_PRESET_DIFFICULTY_OPTIONS: { id: GameDifficulty; label: string }[] = (
+  ["easy", "normal", "hard", "impossible"] as GameDifficulty[]
+).map((id) => ({ id, label: DIFFICULTY_LABELS[id] }));
+
 /**
  * Obelisk role picker for the designer. "classic" is the ABSENCE of a config
  * (the locked-die house rule) — it is NOT a stored enum value; the editor maps
@@ -1466,5 +1904,50 @@ export function defaultVictoryPointObjective(kind: VictoryPointObjective["kind"]
       return { kind: "hero-level", vp: 3, level: 5 };
     case "defeat-dragon-utopia":
       return { kind: "defeat-dragon-utopia", vp: 5 };
+  }
+}
+
+/**
+ * Custom-win-condition kinds the designer/host may add (editor + lobby dropdown
+ * order). `param` names which numeric field the row edits and its clamp band
+ * (matches {@link sanitizeCustomWinConditions}); `null` = no parameter.
+ */
+export const CUSTOM_WIN_CONDITION_OPTIONS: {
+  id: CustomWinCondition["kind"];
+  label: string;
+  param: { field: "count" | "level" | "amount"; label: string; min: number; max: number } | null;
+}[] = [
+  { id: "control-towns", label: "Control N Towns", param: { field: "count", label: "Towns", min: 2, max: 8 } },
+  { id: "flag-mines", label: "Flag N Mines / Settlements", param: { field: "count", label: "Mines", min: 2, max: 12 } },
+  { id: "hero-level", label: "Reach Hero level N", param: { field: "level", label: "Level", min: 2, max: 7 } },
+  { id: "gold", label: "Reach N gold", param: { field: "amount", label: "Gold", min: 20, max: 500 } },
+  { id: "artifacts", label: "Own N Artifacts", param: { field: "count", label: "Artifacts", min: 1, max: 10 } },
+  { id: "buildings", label: "Build N Buildings", param: { field: "count", label: "Buildings", min: 8, max: 15 } },
+  { id: "obelisks", label: "Visit N Obelisks (grail maps)", param: { field: "count", label: "Obelisks", min: 1, max: 4 } },
+  { id: "defeat-heroes", label: "Defeat N enemy Heroes", param: { field: "count", label: "Heroes", min: 1, max: 6 } },
+  { id: "defeat-dragon-utopia", label: "Defeat the Dragon Utopia", param: null }
+];
+
+/** Fresh default custom win condition when one is added / its kind is switched. */
+export function defaultCustomWinCondition(kind: CustomWinCondition["kind"]): CustomWinCondition {
+  switch (kind) {
+    case "control-towns":
+      return { kind: "control-towns", count: 3 };
+    case "flag-mines":
+      return { kind: "flag-mines", count: 4 };
+    case "hero-level":
+      return { kind: "hero-level", level: 5 };
+    case "gold":
+      return { kind: "gold", amount: 100 };
+    case "artifacts":
+      return { kind: "artifacts", count: 3 };
+    case "buildings":
+      return { kind: "buildings", count: 10 };
+    case "obelisks":
+      return { kind: "obelisks", count: 2 };
+    case "defeat-heroes":
+      return { kind: "defeat-heroes", count: 1 };
+    case "defeat-dragon-utopia":
+      return { kind: "defeat-dragon-utopia" };
   }
 }

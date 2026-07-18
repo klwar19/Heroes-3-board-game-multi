@@ -40,6 +40,13 @@ export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
  */
 export type GameRuleset = "legacy" | "binh";
 
+/** Which Artifact tier decks a hero may search right now (BINH split decks). */
+export type ArtifactDeckAccess = {
+  minor: boolean;
+  major: boolean;
+  relic: boolean;
+};
+
 /**
  * Individual BINH house-rule toggle ids. Each gates one real engine tweak; the
  * registry, defaults and resolver live in house-rules.ts (which imports this
@@ -103,6 +110,30 @@ export type HouseRuleId =
   // at a Citadel (bank-guard Neutrals use the higher bank max). +1 Attack while
   // stacked; each layer absorbs one full health bar.
   | "polish-unit-stacks"
+  // Polish house rule: replace the difficulty-scaled starting bonus with a
+  // fixed reduced choice — draw 2 Minor Artifacts and keep 1, OR take one of
+  // 3 gold / 2 building materials / 1 valuables.
+  | "polish-reduced-starting-bonus"
+  // Polish house rule ("Rule 111"): once per game, when fighting a difficulty-I
+  // combat on your own starting tile, replace one bronze guard with the next
+  // random bronze unit from the Neutral deck.
+  | "polish-rule-111"
+  // Polish house rule: surrender costs 10 gold, reduced by 3 after each combat
+  // round (min 1). Available mid-fight (not prep-only). Attacker still gets 1 VP.
+  | "polish-reduced-surrender"
+  // Polish house rule (requires split Artifact decks): when gaining an Artifact,
+  // roll an Attack die to optionally upgrade/restrict the tier class allowed
+  // (field uses tile band; merchant/card effects use hero level). Also upgrades
+  // polish-pandora-search by +1 card on a "+1" face.
+  | "polish-random-artifacts"
+  // Polish house rule: Pandora's Box field draws become Search(N) choose 1 —
+  // N=2 on IV–V tiles, N=3 on VI–VII. With polish-random-artifacts, a "+1" die
+  // raises N by 1 (Search 3 / Search 4).
+  | "polish-pandora-search"
+  // Polish house rule: units may Wait once per combat round at the start of
+  // their activation; waited units re-activate after everyone else, highest
+  // Wait-token number first (reverse order).
+  | "polish-wait"
   // Pit Lords' Summon Demons: while ON, a Pit Lords may summon a new Few even
   // when Demons are already on the field (multiple Demon units). Off (official):
   // only ONE Demons unit may stand on the field (Few or Pack) — summon is
@@ -2945,6 +2976,16 @@ export type GameAction =
     }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
   | { type: "END_ACTIVATION"; playerId: PlayerId; unitId: UnitId }
+  | {
+      /**
+       * Polish Wait house rule: the active unit takes a Wait token (lowest free
+       * number) and ends its main-phase activation; it re-activates after every
+       * non-waiting unit has acted, highest token first.
+       */
+      type: "WAIT_UNIT";
+      playerId: PlayerId;
+      unitId: UnitId;
+    }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
   | { type: "BUILD_STRUCTURE"; playerId: PlayerId; townId: TownId; buildingId: BuildingId }
   | { type: "COMPLETE_SIMULTANEOUS_TURN"; playerId: PlayerId }
@@ -3507,14 +3548,17 @@ export type GameAction =
       type: "SPEND_MORALE";
       playerId: PlayerId;
       /**
-       * Token mode spends the +1 token for "draw" / "redraw". With the Morale
-       * Cards rule on, each benefit maps to a held Positive Morale card:
-       * "redraw" (discard any number, draw as many), "combat-bonus" (+1 Attack
-       * or +1 Defense for the rest of this Combat — `bonus` picks which) and
-       * "remove-token" (remove one negative combat token from an own unit —
-       * `unitId` + `tokenKind` name it).
+       * Token mode spends the +1 token for "draw" / "redraw" / "repeat-search"
+       * (Tournament Book p.54: while a Search is open, discard all revealed
+       * cards and Search (X) again). With the Morale Cards rule on, each benefit
+       * maps to a held Positive Morale card: "redraw" (discard any number, draw
+       * as many), "combat-bonus" (+1 Attack or +1 Defense for the rest of this
+       * Combat — `bonus` picks which) and "remove-token" (remove one negative
+       * combat token from an own unit — `unitId` + `tokenKind` name it). The
+       * card equivalent of repeat-search is the post-Search
+       * morale.positive.repeat_search offer, not SPEND_MORALE.
        */
-      benefit: "draw" | "redraw" | "combat-bonus" | "remove-token";
+      benefit: "draw" | "redraw" | "combat-bonus" | "remove-token" | "repeat-search";
       discardCardIds?: CardId[];
       bonus?: "attack" | "defense";
       unitId?: UnitId;
@@ -4368,6 +4412,12 @@ export type GameEvent =
       mode: CardPlayMode;
       effectAmount?: number;
       optionLabel?: string;
+      /**
+       * Combat Spell reaction: the unit the effect lands on (Curse → defender,
+       * Bloodlust → attacker, Sorrow → skipped unit). Presentation anchors the
+       * spell sprite there instead of centre stage.
+       */
+      targetUnitId?: UnitId;
     }
   | {
       id: string;
@@ -4430,6 +4480,12 @@ export type GameEvent =
       from: MapSpaceId;
       to: MapSpaceId;
       movementLeft: number;
+      /**
+       * Instant relocation kind — presentation picks TELPTOUT / DANGER /
+       * CAVEHEAD / spell teleport, never a terrain horse loop. Absent on
+       * ordinary adjacent steps.
+       */
+      teleport?: "monolith" | "gate" | "whirlpool" | "subterranean" | "spell";
     }
   | {
       /**
@@ -4800,7 +4856,7 @@ export type GameEvent =
       id: string;
       type: "MORALE_SPENT";
       playerId: PlayerId;
-      benefit: "draw" | "redraw" | "reroll";
+      benefit: "draw" | "redraw" | "reroll" | "repeat-search";
     }
   | {
       id: string;
@@ -6686,6 +6742,17 @@ export type CombatUnitState = {
   position: number;
   activatedThisRound: boolean;
   movedThisActivation: boolean;
+  /**
+   * Polish Wait house rule: 1-based Wait-token number assigned when this unit
+   * chose Wait this combat round. Cleared when the Waited re-activation finishes
+   * or at round reset. Absent when the rule is off / the unit did not Wait.
+   */
+  waitToken?: number;
+  /**
+   * Polish Wait: true while this unit is in (or awaiting) its post-main-phase
+   * Waited re-activation. Cleared when that re-activation ends.
+   */
+  waitPending?: boolean;
   attackedThisActivation?: boolean;
   /** Attacks resolved during this activation (double-attack abilities stop at 2). */
   attacksThisActivation?: number;
@@ -6935,6 +7002,14 @@ export type CombatContext =
       bankId?: string;
       /** Number of Stacked defenders placed on the bank (the reward's X). */
       bankStackCount?: number;
+      /**
+       * Designer outpost fight (Garrison / Keymaster's Tent / one-way monolith
+       * entrance): the printed "unlimited, as in Banks" reading — the combat
+       * rolls straight into the next Round with NO continue-or-retreat window
+       * and no MP to extend. Set with `difficulty: 0` (no Quick Combat, no
+       * experience), independent of the Creature-Bank house rule.
+       */
+      unlimitedRounds?: boolean;
     }
   | {
       kind: "player";
@@ -7150,6 +7225,12 @@ export type CombatState = {
      */
     volleyShots?: number | null;
   } | null;
+  /**
+   * Polish Wait house rule: true while the combat is in the Waited re-activation
+   * phase (after every unit has either acted or taken a Wait token). Cleared at
+   * round end. Absent / false when the rule is off or still in the main phase.
+   */
+  waitPhase?: boolean;
   outcome: {
     winnerPlayerId: PlayerId;
     defeatedPlayerId: PlayerId;
@@ -7330,6 +7411,17 @@ export type MapTileState = {
   /** Tile group (public info — the printed back gives it away). */
   group?: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
   /**
+   * Per-tile UNDERGROUND layer override carried from
+   * {@link CustomMapTilePlan.underground} onto the placed instance: a
+   * far/near/center/sea tile the designer marked as being on the Underground
+   * layer. Set at setup (face-down included) so {@link tileLayer} treats it as
+   * "subterranean" from the instant it is placed, keeping its band content
+   * unchanged. Public info (not secret — the cue is always on): a designed
+   * underground tile is visibly marked, like a cavern back. Absent (every legacy
+   * snapshot / printed tile) means the tile's plain group layer.
+   */
+  underground?: boolean;
+  /**
    * Tile revealed/placed but its rotation not confirmed yet: fields are not
    * materialized until the owner locks the rotation in.
    */
@@ -7346,10 +7438,15 @@ export type MapTileState = {
    * 1-4) is the colored pair the carved Gate joins.
    */
   pendingToken?: {
-    kind: "monolith" | "whirlpool" | "gate";
+    kind: "monolith" | "whirlpool" | "gate" | "oneway_entrance" | "oneway_exit";
     number?: -1 | 0 | 1;
     pair?: 1 | 2 | 3 | 4;
     preferredSpaceId?: MapSpaceId;
+    /** Designer guard placed with the token (level or exact army). */
+    guard?: CustomGuardSpec;
+    /** One-way entrance/exit extras, carried to the carved field. */
+    exitMode?: OnewayExitMode;
+    alwaysPickable?: boolean;
   };
   /**
    * GLOBAL Field Override queue for a still-face-down / just-revealed tile.
@@ -7375,10 +7472,15 @@ export type MapTileState = {
    * remains for legacy single-token tiles (normalized into this list when set).
    */
   pendingTokens?: Array<{
-    kind: "monolith" | "whirlpool" | "gate";
+    kind: "monolith" | "whirlpool" | "gate" | "oneway_entrance" | "oneway_exit";
     number?: -1 | 0 | 1;
     pair?: 1 | 2 | 3 | 4;
     preferredSpaceId?: MapSpaceId;
+    /** Designer guard placed with the token (level or exact army). */
+    guard?: CustomGuardSpec;
+    /** One-way entrance/exit extras, carried to the carved field. */
+    exitMode?: OnewayExitMode;
+    alwaysPickable?: boolean;
   }>;
   /**
    * Naval Battles optional rule: the Creature Bank token drawn for this tile's
@@ -7427,12 +7529,15 @@ export type MapTileState = {
    */
   viiField?: "town" | "dragon_utopia" | "grail";
   /**
-   * Designer bonus for this tile's Ⅶ objective, carried from
-   * {@link CustomMapTilePlan.viiFieldReward} / `viiFieldVp` onto the placed
-   * instance and folded onto the difficulty-7 field when it materializes. SECRET
-   * like `viiField`: player views MASK both while the tile is face-down.
+   * Designer center-hex customization (guard / first-clear reward / VP) carried
+   * from {@link CustomMapTilePlan.centerHex} onto the placed instance and folded
+   * onto the difficulty-7 field when it materializes. SECRET like `viiField`:
+   * player views MASK it while the tile is face-down.
    */
+  centerHex?: CustomCenterHexPlan;
+  /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
   viiFieldReward?: ViiFieldReward;
+  /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
   viiFieldVp?: number;
   /**
    * Polish Bank Sizes: up to two face-up candidates, including their seeded
@@ -7495,16 +7600,38 @@ export type MapFieldState = {
    */
   grailDiggable?: boolean;
   /**
-   * Designer Ⅶ-objective bonus resolved onto this field when its center tile
-   * materialized (from {@link MapTileState.viiFieldReward} / `viiFieldVp`). Granted
-   * ONCE, the first time the objective is cleared / captured — `viiBonusClaimed`
-   * latches so a re-capture never re-pays it. Present only on a designer-designated
-   * difficulty-7 objective field; public once the tile is revealed (a visible
-   * objective, like a mine's resource).
+   * Designer center-hex bonus resolved onto this field when its center tile
+   * materialized (from {@link MapTileState.centerHex}). Granted ONCE, to the
+   * player who FIRST clears / captures the objective — `centerHexClaimed`
+   * latches so a re-capture never re-pays it. Public once the tile is revealed
+   * (a visible objective, like a mine's resource).
    */
+  centerHexReward?: CustomCenterHexReward;
+  centerHexVp?: number;
+  centerHexClaimed?: boolean;
+  /** @deprecated Pre-centerHex snapshots only; the grant path reads both. */
   viiReward?: ViiFieldReward;
+  /** @deprecated Pre-centerHex snapshots only; the grant path reads both. */
   viiVp?: number;
+  /** @deprecated Pre-centerHex snapshots only (same latch as centerHexClaimed). */
   viiBonusClaimed?: boolean;
+  /**
+   * Designer "certain army" guard on this field ({@link CustomGuardSpec.units}):
+   * the exact Neutral unit cards minted for the guard fight instead of the tier
+   * table draw (`drawGuardArmy` consumes it). The field still carries a normal
+   * {@link difficulty} — derived from the army's tiers — which drives the fight
+   * trigger and the experience reward; Quick Combat and Diplomacy never bypass
+   * a certain army. Cleared with the guard when the fight is won.
+   */
+  customGuardUnits?: string[];
+  /**
+   * Designer guard LEVEL on a bank-style object field (Garrison / Keymaster's
+   * Tent / one-way monolith entrance): the neutral army is drawn at this level
+   * while the FIGHT itself stays bank-style (no Quick Combat, no experience,
+   * no Round limit). Plain guarded objects (teleport tokens, center hexes) do
+   * NOT use this — their `difficulty` alone drives a normal guard fight.
+   */
+  customGuardLevel?: number;
   /**
    * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
    * sacrificed hex's `location` becomes "subterranean_gate" and these point at
@@ -7535,8 +7662,27 @@ export type MapFieldState = {
    * `location: "gate"` field belongs to. Entering a gate teleports to THE OTHER
    * gate of the SAME pair — never a choice, never another pair, and never joining
    * the generic Monolith/Whirlpool network. Set only when `location` is "gate".
+   * ALSO reused as the COLOR of a Keymaster's Tent / Barrier / one-way
+   * monolith entrance-exit (same four colors, separate mechanisms).
    */
   gatePair?: 1 | 2 | 3 | 4;
+  /**
+   * One-way monolith ENTRANCE (`location: "oneway_entrance"`): how the
+   * traveller's same-color exit is picked — "random" (a seeded roll),
+   * "certain" (free pick) or "mix" (pick an always-pickable exit BEFORE the
+   * roll, else roll among the rest). Absent = "certain".
+   */
+  onewayExitMode?: OnewayExitMode;
+  /** One-way monolith EXIT: freely choosable before the roll in "mix" mode. */
+  onewayAlwaysPickable?: boolean;
+  /**
+   * Designer yellow border lines on a STANDALONE object hex — ABSOLUTE
+   * directions 0-5 sealing single edges of THIS field, the field-level twin of
+   * {@link MapTileState.borderEdges} (an object hex has no backing tile to
+   * carry them). Consulted by the same crossing/discovery seals; public info,
+   * like a printed yellow line. Stamped from {@link CustomMapObject.borderEdges}.
+   */
+  borderEdges?: number[];
   /**
    * A map-designer STANDALONE object hex — a one-hex field materialized OFF every
    * tile (no backing {@link MapTileState}: `tileInstanceId` is a reserved marker
@@ -7578,6 +7724,14 @@ export type SubterraneanGatePlan = {
    * designer committed. Absent = a player pick-on-reveal plan (or none).
    */
   designed?: boolean;
+  /**
+   * Designer guards on the two halves (from {@link CustomMapGateLink.gateGuard}
+   * / `entranceGuard`), stamped onto the carved gate fields: you fight to STEP
+   * onto a guarded half from its own layer; crossing OUT through the linked
+   * half instead auto-wins (guard swept aside, no experience).
+   */
+  gateGuard?: CustomGuardSpec;
+  entranceGuard?: CustomGuardSpec;
 };
 
 /**
@@ -7608,6 +7762,11 @@ export type AdventureReward =
       deckId: DeckId;
       count: number;
       allowRemove?: boolean;
+      /**
+       * Polish Random Artifacts: which band table to use for the die roll.
+       * `"tile"` = field finds (default); `"level"` = merchant / card effects.
+       */
+      polishArtifactBand?: "tile" | "level";
       /**
        * Mage Guild spell purchase: enforce the strict Expert gate (Basic-only
        * until the hero is level 4 or a IV–V tile is revealed) — the
@@ -7712,7 +7871,7 @@ export type VisitStep =
        * `RESOLVE_VISIT_STEP` the tray button would. It reaches only the traveller
        * (getVisiblePendingVisit masks every other seat's visit steps to []).
        */
-      teleport?: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4 };
+      teleport?: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 };
     }
   | { type: "PAY_TO"; prompt: string; costOptions: ResourceCost[]; steps: VisitStep[] }
   | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }
@@ -7748,6 +7907,39 @@ export type VisitStep =
        * go to the discard pile. Not a Search — no post-search reshuffle.
        */
       type: "REVEAL_UNTIL_MINOR_ARTIFACT";
+    }
+  | {
+      /**
+       * Polish reduced starting bonus: draw `drawCount` Minor Artifacts from the
+       * Minor (or combined) Artifact draw pile — never the discard top — then
+       * keep `keepCount` and return the rest under the draw pile.
+       */
+      type: "DRAW_CHOOSE_MINOR_ARTIFACTS";
+      drawCount: number;
+      keepCount: number;
+    }
+  | {
+      /**
+       * Resolution arm of DRAW_CHOOSE_MINOR_ARTIFACTS — put the kept cards in
+       * hand and return the rest under the named draw pile.
+       */
+      type: "RESOLVE_DRAW_CHOOSE_MINOR";
+      deckId: DeckId;
+      keepIndexes: number[];
+      drawn: CardId[];
+    }
+  | {
+      /**
+       * Polish Pandora Search: keep the chosen drawn Pandora card(s) and return
+       * the rest under the Pandora deck.
+       */
+      type: "RESOLVE_PANDORA_SEARCH";
+      keepIndexes: number[];
+      drawn: CardId[];
+    }
+  | {
+      /** Clears polish-random-artifacts access after a declined Black Market. */
+      type: "CLEAR_POLISH_ARTIFACT_ACCESS";
     }
   | {
       /**
@@ -8148,6 +8340,27 @@ export type VisitStep =
     }
   | {
       /**
+       * One-way monolith travel: entering (or Revisiting) an ENTRANCE resolves
+       * where the hero goes among the SAME-COLOR carved exits, per the
+       * entrance's `onewayExitMode` — a seeded roll ("random"), the
+       * traveller's pick ("certain"), or pick-an-always-exit-else-roll
+       * ("mix"). Exits still riding a face-down tile are NOT offered (reveal
+       * the tile first) — a deliberate limit, unlike the Monolith network.
+       */
+      type: "ONEWAY_TELEPORT";
+    }
+  | {
+      /**
+       * The "mix" roll leaf: roll among the CURRENT free same-color exits that
+       * are NOT always-pickable (resolution-time, so the pick option leaks
+       * nothing). Falls back to every free exit when none is flagged random.
+       */
+      type: "ONEWAY_RANDOM_EXIT";
+      pair: 1 | 2 | 3 | 4;
+      fromSpaceId: MapSpaceId;
+    }
+  | {
+      /**
        * Colored Gate travel (map-designer objects): entering (or Revisiting) a
        * gate moves the hero to THE OTHER gate of the SAME colored pair — always
        * that exact partner, never a choice and never the Monolith network. A pair
@@ -8192,6 +8405,13 @@ export type VisitStep =
       spaceId: MapSpaceId;
       /** Whether arriving resolves the field like a normal visit. */
       visit?: boolean;
+      /**
+       * Teleport-NETWORK travel only (Monolith / colored Gate steps): a designed
+       * guard still standing on the destination is swept aside on arrival — an
+       * automatic win, no fight, no experience. Never set by Town Portal /
+       * Logistics placements.
+       */
+      sweepGuard?: boolean;
       /** Town Portal Power 2/4: movement granted to the hero on arrival. */
       movementBonus?: number;
     }
@@ -8961,6 +9181,12 @@ export type PendingGarrisonState = {
   attackerHeroId: HeroId;
   defenderPlayerId: PlayerId;
   fieldId: MapSpaceId;
+  /**
+   * Gold the defender pays to garrison: 8 for a town / settlement / captured
+   * Utopia (the printed rule), 3 for a designer Garrison object. Absent on a
+   * pre-feature snapshot = 8.
+   */
+  goldCost?: number;
 };
 
 /** Opaque marker for an unopened Ⅱ–Ⅲ supply tile (its identity is rolled at flip). */
@@ -9256,6 +9482,25 @@ export type AdventureState = {
    */
   houseRules?: Partial<Record<HouseRuleId, boolean>>;
   /**
+   * Polish Rule 111: player ids that have already used their once-per-game
+   * bronze-guard swap on a home-tile difficulty-I fight. Absent when the rule
+   * is off or nobody has used it yet.
+   */
+  rule111UsedBy?: PlayerId[];
+  /**
+   * Polish Random Artifacts: access override computed from the latest Attack-die
+   * roll for an in-flight Artifact acquisition. Consumed by eligibleArtifactDecks
+   * while set; cleared when the search/choice closes. Absent when the rule is
+   * off or no roll is pending.
+   */
+  polishArtifactAccess?: ArtifactDeckAccess | null;
+  /**
+   * Polish Random Artifacts: the Attack-die face of the latest roll (−1 / 0 / +1).
+   * Used by polish-pandora-search for the Search(X+1) upgrade. Cleared with
+   * polishArtifactAccess.
+   */
+  polishRandomArtifactDie?: number | null;
+  /**
    * Holy Grail: the single Grail Token's progress. Only one token exists in
    * the game even when several Grail fields are on the map. Digging requires
    * the digger to have visited {@link GRAIL_OBELISKS_REQUIRED} distinct Obelisks
@@ -9382,6 +9627,14 @@ export type GameSetupOptions = {
    * to the same 1–30 range as a designed preset's round limit.
    */
   victoryPointsRoundLimit?: number;
+  /**
+   * OPTIONAL host-added CUSTOM WIN CONDITIONS ({@link CustomWinCondition}) for
+   * THIS game. Merged (preset-first, exact-duplicate deduped, capped) with the
+   * picked map's own `customWinConditions` at build time
+   * (`applyLobbyCustomWinConditions`). The lobby can only ADD — a map-authored
+   * condition is never removed by the lobby. Absent = the map's own list only.
+   */
+  customWinConditions?: CustomWinCondition[];
   /**
    * Spell Book house rule (default ON). Gives every player a personal Spell Book
    * zone they may stash hand Spells into to free slots, then cast or boost from.
@@ -9535,6 +9788,22 @@ export type CustomStartingUnit = {
  */
 export type CustomMapPreset = {
   victoryMode?: VictoryMode;
+  /**
+   * Map-settings DEFAULTS the designer seeds into the lobby when this map is
+   * picked (apply-once: the host may still change each after pick — their edit
+   * wins at build). Absent = the lobby keeps its own value (byte-identical to a
+   * legacy preset). These three hoist 1:1 onto the same-named `GameSetupOptions`
+   * fields via `presetForcedOptionKeys` / `applyCustomMapPresetToOptions` /
+   * `revertCustomMapPresetOptions`.
+   *   - `difficulty`: default scenario/Neutral difficulty (Field Difficulty Level
+   *     Table column + printed starting bonus).
+   *   - `farTileOpening`: whether players may open their own Ⅱ–Ⅲ Far tiles.
+   *   - `farTilesPerPlayer`: each player's Ⅱ–Ⅲ Far-tile supply size (0–6, clamped
+   *     to {@link MAX_FAR_TILES_PER_PLAYER}); only meaningful while opening is on.
+   */
+  difficulty?: GameDifficulty;
+  farTileOpening?: boolean;
+  farTilesPerPlayer?: number;
   startingResources?: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
   startingBuildings?: string[];
@@ -9547,18 +9816,38 @@ export type CustomMapPreset = {
   /**
    * One-shot (or multi-entry) events fired at the start of a given round.
    * Mission-book style: designer picks the round AND the effect freely —
-   * resource amounts, search size/deck, which locations to re-open, morale,
-   * bonus movement, treasure/resource dice, or a plain announcement.
+   * resource amounts (positive = gain, NEGATIVE = every player LOSES that much,
+   * floored at 0), search size/deck, which locations to re-open, morale, bonus
+   * movement, hero experience, treasure/resource dice, or a plain announcement.
+   *
+   * `repeatEveryRounds` (2–10, absent = one-shot) makes the event fire at
+   * `round`, then again every N rounds (`round`, `round+N`, `round+2N`, …) for
+   * the rest of the game — HoMM3's weekly timed events. Absent is byte-identical
+   * to a legacy one-shot.
    */
   timedEvents?: Array<{
     round: number;
+    repeatEveryRounds?: number;
     effect:
       | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
+      | { kind: "experience"; amount: number }
       | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
       | {
           kind: "clear_visitable_cubes";
           /** Windmill also clears Prospector; Water Wheel also clears Derrick (Factory). */
           locations: ("windmill" | "water_wheel" | "mystical_garden")[];
+        }
+      | {
+          kind: "clear_tile_cubes";
+          /**
+           * Re-open every black cube on Tiles of these groups (player-facing
+           * bands Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ / Sea / Underground). NEVER touches a
+           * Creature Bank (it keeps its defeat cube — hard rule) nor the Grail /
+           * Dragon Utopia victory fields (conservative safety).
+           */
+          groups: ("starting" | "far" | "near" | "center" | "sea" | "subterranean")[];
+          /** Skip EVERY field of a Tile that currently contains a Settlement. */
+          excludeSettlementTiles?: boolean;
         }
       | { kind: "morale"; amount: 1 | -1 }
       | { kind: "movement"; amount: number }
@@ -9652,7 +9941,46 @@ export type CustomMapPreset = {
     victoryConditionVp?: number;
     objectives?: VictoryPointObjective[];
   };
+  /**
+   * Designer-authored CUSTOM WIN CONDITIONS ({@link CustomWinCondition}). An
+   * ADDITIONAL early-end trigger layered on top of the normal victory mode: the
+   * FIRST live player (in turn order) to satisfy ANY listed condition wins
+   * immediately (`checkCustomWinConditions` in `adventure.ts`, run from the
+   * reducer's post-action tail). Absent = today's behaviour (byte-identical).
+   * Capped at {@link import("./map-preset").MAX_CUSTOM_WIN_CONDITIONS}; the lobby
+   * can only ADD to this list, never remove a map-authored one.
+   */
+  customWinConditions?: CustomWinCondition[];
 };
+
+/**
+ * One designer/lobby-authored CUSTOM WIN CONDITION ({@link
+ * CustomMapPreset.customWinConditions}). Every kind is engine-checkable at the
+ * reducer tail: a live-state read (control-towns / flag-mines / hero-level /
+ * gold / artifacts / buildings) or an event-sourced count — the VP ledger
+ * (defeat-heroes reads `mainHeroDefeats.length + secondaryHeroDefeats`;
+ * defeat-dragon-utopia reads `utopiaDefeated`) or the per-player Holy-Grail
+ * Obelisk-visit tally (obelisks reads `grail.obelisksVisited[player].length`).
+ * The metrics ARE the Victory-Points / grail-progress readers (same numbers as
+ * VP scoring / the dig unlock — an invariant, never a duplicate). Params are
+ * clamped by the sanitiser (`sanitizeCustomWinConditions`, map-preset.ts).
+ * `defeat-dragon-utopia` carries NO count: the ledger flag is a boolean, so
+ * "defeat N Utopias" is unsupported. HONEST LIMIT: `obelisks` only accrues in
+ * GRAIL victory mode — obelisk visits are recorded per player solely for the
+ * grail dig (`recordGrailObeliskVisit`), so the condition is meaningful on a
+ * grail map (where it short-circuits the dig+deliver) and is a silent no-op on
+ * any other victory mode.
+ */
+export type CustomWinCondition =
+  | { kind: "control-towns"; count: number }
+  | { kind: "flag-mines"; count: number }
+  | { kind: "hero-level"; level: number }
+  | { kind: "gold"; amount: number }
+  | { kind: "artifacts"; count: number }
+  | { kind: "buildings"; count: number }
+  | { kind: "obelisks"; count: number }
+  | { kind: "defeat-heroes"; count: number }
+  | { kind: "defeat-dragon-utopia" };
 
 /**
  * One extra Victory-Points scenario objective ({@link CustomMapPreset.victoryPoints}).
@@ -9701,7 +10029,37 @@ export type VpLedgerEntry = {
 };
 
 /** A designer-placed one-hex map object's kind. Open for future kinds. */
-export type CustomMapObjectKind = "monolith" | "whirlpool" | "gate";
+export type CustomMapObjectKind =
+  | "monolith"
+  | "whirlpool"
+  | "gate"
+  /**
+   * Outpost objects (STANDALONE only — a separate hex out of every tile,
+   * always revealed, connecting the tiles it touches):
+   * - "garrison": optionally guarded (bank-style fight); the winner flags it,
+   *   and a flagged garrison is defended army-only for 3 gold.
+   * - "keymaster_tent": colored (`pair`); optionally guarded; multiple players
+   *   may flag it — a tent flag opens same-color Barriers.
+   * - "barrier": colored (`pair`); NEVER guarded; only players holding a
+   *   matching tent flag may enter.
+   */
+  | "garrison"
+  | "keymaster_tent"
+  | "barrier"
+  /**
+   * One-way monoliths (4 colors via `pair`) — standalone objects OR tile
+   * tokens ("out of the map OR in map"), always revealed:
+   * - "oneway_entrance": may be guarded (bank-style fight — no Quick Combat,
+   *   no experience, no Round limit). Winning (or entering unguarded)
+   *   teleports to a same-color EXIT per the entrance's `exitMode`.
+   * - "oneway_exit": NEVER guarded; an ordinary walkable field otherwise.
+   *   `alwaysPickable` marks it freely choosable in "mix" mode.
+   */
+  | "oneway_entrance"
+  | "oneway_exit";
+
+/** How a one-way entrance picks its same-color exit. */
+export type OnewayExitMode = "random" | "certain" | "mix";
 
 /**
  * Where a {@link CustomMapObject} sits on the board:
@@ -9726,15 +10084,30 @@ export type CustomMapObjectPlacement =
  * One designer-placed one-hex map object.
  * - `pair` (gates only): which colored pair (1 = red, 2 = blue, 3 = green, 4 =
  *   yellow) the gate belongs to; entering teleports to the OTHER gate of the pair.
- * - `guard` (any object): a deliberate neutral guard difficulty (1-7) on the
- *   object's hex — stepping on opens the standard neutral battle at that
- *   difficulty, and only a WIN resolves the object's teleport.
+ * - `guard` (any object): a designer guard on the object's hex — a plain number
+ *   is the LEGACY level shape (1-7, folded to `{ level }` at sanitize); the
+ *   {@link CustomGuardSpec} form adds "certain army" guards. Stepping on opens
+ *   the standard neutral battle, and only a WIN resolves the object's teleport;
+ *   arriving THROUGH a teleport network onto a still-guarded hex auto-wins.
  */
 export type CustomMapObject = {
   kind: CustomMapObjectKind;
   pair?: 1 | 2 | 3 | 4;
   placement: CustomMapObjectPlacement;
-  guard?: number;
+  guard?: number | CustomGuardSpec;
+  /**
+   * Designer yellow border lines on THIS one-hex object — ABSOLUTE directions
+   * 0-5 (NE,E,SE,SW,W,NW), each sealing that single hex edge exactly like a
+   * tile's per-edge border: movement, discovery and the AI refuse the crossing
+   * (only Expert Pathfinding passes). Stamped onto the carved field
+   * ({@link MapFieldState.borderEdges}) at setup. Normalised (ints, dedupe,
+   * cap 6) at sanitize.
+   */
+  borderEdges?: number[];
+  /** One-way ENTRANCE only: how the traveller's exit is picked (default "certain"). */
+  exitMode?: OnewayExitMode;
+  /** One-way EXIT only ("mix" mode): freely choosable BEFORE the roll. */
+  alwaysPickable?: boolean;
 };
 
 /** The Obelisk-role config block of a {@link CustomMapPreset}. */
@@ -9793,6 +10166,20 @@ export type CustomMapTilePlan = {
    *   one or `secretFeature` filters the draw; face-up always places a chosen one.
    */
   group: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
+  /**
+   * Per-tile UNDERGROUND layer override (map designer): mark a far/near/center/sea
+   * tile as topologically on the Underground layer — reachable only through a
+   * Subterranean Gate, exactly like a printed cavern — WITHOUT changing its band
+   * identity. The tile keeps its group (back art, band numeral, guard tiers,
+   * Creature-Bank pile, token legality); only its LAYER flips. Read ONLY through
+   * {@link planIsUnderground} / {@link tileLayer} (the one layer seam) — never an
+   * inline group check. Kept as literal `true` and only on far/near/center/sea:
+   * stripped on `starting` (v1: seat tiles stay Surface, the opening ceremony
+   * assumes it) and `subterranean` (redundant — already underground) at both
+   * {@link validateCustomMapPlan} and the persistence sanitiser. Absent (every
+   * legacy map) = the tile's plain group layer, byte-for-byte as before.
+   */
+  underground?: boolean;
   faceDown: boolean;
   /**
    * Exact tile to place. Required while face-up (non-starting). Optional while
@@ -9847,9 +10234,9 @@ export type CustomMapTilePlan = {
    * face-down tile it pins a preferred physical flower hex. Monoliths /
    * same-color Gates / Whirlpools still need ≥2 members map-wide to travel.
    */
-  tokens?: Array<{ kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4; slot?: number }>;
+  tokens?: CustomMapTileToken[];
   /** @deprecated Prefer {@link tokens}. Kept for old saves; sanitize folds it in. */
-  token?: { kind: "monolith" | "whirlpool" | "gate"; pair?: 1 | 2 | 3 | 4; slot?: number };
+  token?: CustomMapTileToken;
   /**
    * GLOBAL Field Override pins on this tile. Multiple allowed when each uses a
    * **distinct** hex slot (no stacking with each other OR with {@link tokens}
@@ -9928,25 +10315,103 @@ export type CustomMapTilePlan = {
    */
   viiField?: "town" | "dragon_utopia" | "grail";
   /**
-   * Center (Ⅶ) slots WITH a {@link viiField} designation ONLY: an OPTIONAL bonus
-   * the capturing player gets from THIS Ⅶ objective, ON TOP of the printed clear
-   * reward. Both are stripped whenever `viiField` is absent (a bonus with no
-   * objective is meaningless) at {@link validateCustomMapPlan} and the persistence
-   * sanitiser, and masked with `viiField` while the slot is face-down.
-   *   - `viiFieldReward`: a one-time Resource grant (gold / building materials /
-   *     valuables) applied the first time the objective is cleared / captured.
-   *   - `viiFieldVp`: Victory Points awarded to that capturer (omit / 0 = none).
-   *     Scored only when Victory-Points mode is on, but recorded on capture
-   *     regardless so a mid-game preset toggle can't rewrite the score.
+   * Center (Ⅵ–Ⅶ) slots ONLY: customize this slot's difficulty-7 CENTER HEX —
+   * its guard (monster), a one-time first-clear reward, and Victory Points —
+   * independently of (and combinable with) the {@link viiField} objective
+   * override. Works on the PRINTED objective too: a designer may leave the
+   * objective alone and still re-guard it, attach a reward, or score it.
+   * Stripped on every non-center group at {@link validateCustomMapPlan} and the
+   * persistence sanitiser; masked in player views while the slot is face-down
+   * (like `viiField`). This replaces the earlier `viiFieldReward`/`viiFieldVp`
+   * fields (persistence folds those legacy saves in).
    */
-  viiFieldReward?: ViiFieldReward;
-  viiFieldVp?: number;
+  centerHex?: CustomCenterHexPlan;
 };
 
 /**
- * A designer-set one-time Resource reward on a Ⅶ objective field
- * ({@link CustomMapTilePlan.viiFieldReward}) — the board game's three adventure
- * resources, each optional. Amounts are clamped by the sanitiser.
+ * A designer guard on a single hex — the "monster" of a customized center hex,
+ * map object or Location Token. Exactly one arm is meaningful:
+ *   - `level` (1-7): a normal Field-Difficulty guard — the neutral army is
+ *     drawn from the tier table exactly like a printed guard of that level
+ *     (Quick Combat and experience follow the level as usual).
+ *   - `units`: a CERTAIN ARMY — the exact Neutral unit cards (unit definition
+ *     ids that carry a `neutral` side), MINTED for the fight like Creature-Bank
+ *     guards (never drawn from nor recycled to the tier decks). Quick Combat
+ *     and Diplomacy never bypass a certain army — the fight is always real; its
+ *     experience uses the field's difficulty, derived from the army's tiers.
+ * Sanitisers keep exactly one arm (`units` wins) and clamp both.
+ */
+export type CustomGuardSpec = {
+  level?: number;
+  units?: string[];
+};
+
+/** How many exact units a {@link CustomGuardSpec.units} army may field. */
+export const MAX_CUSTOM_GUARD_UNITS = 6;
+
+/**
+ * One on-tile Location Token (Monolith / Whirlpool / colored Gate) on a
+ * {@link CustomMapTilePlan}. On a face-up tile `slot` is the printed field
+ * overwritten at setup; on a face-down tile it pins a preferred physical
+ * flower hex. `pair` (1-4) is required for a gate, absent otherwise.
+ * `guard` puts a designer guard on the carved token hex — stepping on fights
+ * it (a normal guard fight: Quick Combat / experience follow the level; an
+ * exact army is never skipped), and only a WIN resolves the teleport.
+ * Arriving THROUGH the network onto a still-guarded token instead auto-wins
+ * (the guard is swept aside, no experience).
+ */
+export type CustomMapTileToken = {
+  kind: "monolith" | "whirlpool" | "gate" | "oneway_entrance" | "oneway_exit";
+  pair?: 1 | 2 | 3 | 4;
+  slot?: number;
+  guard?: CustomGuardSpec;
+  /** One-way ENTRANCE token only: how the exit is picked (default "certain"). */
+  exitMode?: OnewayExitMode;
+  /** One-way EXIT token only ("mix" mode): freely choosable BEFORE the roll. */
+  alwaysPickable?: boolean;
+};
+
+/**
+ * A designer-set one-time reward on a customized center hex
+ * ({@link CustomCenterHexPlan.reward}), granted to the player who FIRST clears
+ * the objective. Resources are granted inline; Treasure dice and deck Searches
+ * resolve through the normal visit-step pipeline. Amounts are clamped by the
+ * sanitiser ({@link sanitizeCenterHexPlan}).
+ */
+export type CustomCenterHexReward = {
+  gold?: number;
+  buildingMaterials?: number;
+  valuables?: number;
+  /** Roll N Treasure dice (1-3). */
+  treasureDice?: number;
+  /** Search (N) of the shared Spell deck (1-5). */
+  searchSpell?: number;
+  /** Search (N) of the shared Ability deck (1-5). */
+  searchAbility?: number;
+  /** Search (N) of the shared Artifact deck (1-5). */
+  searchArtifact?: number;
+};
+
+/**
+ * A center (Ⅵ–Ⅶ) slot's designer customization ({@link CustomMapTilePlan.centerHex}):
+ * override the Ⅶ field's guard, attach a first-clear reward, award Victory
+ * Points — each optional and independent. Carried onto the placed instance
+ * ({@link MapTileState.centerHex}, masked while face-down) and folded onto the
+ * difficulty-7 objective field when the tile materializes.
+ */
+export type CustomCenterHexPlan = {
+  /** Replace the printed difficulty-7 guard with a level or a certain army. */
+  guard?: CustomGuardSpec;
+  /** One-time bonus for whoever first clears / captures the objective. */
+  reward?: CustomCenterHexReward;
+  /** Victory Points for the first clearer (scored in VP mode; 1-10). */
+  vp?: number;
+};
+
+/**
+ * @deprecated Legacy shape of the pre-centerHex `viiFieldReward` (kept only so
+ * mid-game snapshots and saved maps from that build keep working — persistence
+ * folds it into {@link CustomCenterHexPlan.reward}).
  */
 export type ViiFieldReward = { gold?: number; buildingMaterials?: number; valuables?: number };
 
@@ -9962,6 +10427,15 @@ export type CustomMapGateLink = {
   gateHex?: MapSpaceId;
   /** Pinned cavern-half ("path up") hex — absolute id. Omit for the nearest adjacent. */
   entranceHex?: MapSpaceId;
+  /**
+   * Designer guard on the SURFACE half ("gate down"): stepping onto the gate
+   * hex fights it first; crossing INTO it from the linked cavern half instead
+   * auto-wins (the guard is swept aside, no experience) — you fight to get in,
+   * never to get out.
+   */
+  gateGuard?: CustomGuardSpec;
+  /** Designer guard on the CAVERN half ("path up") — same rules as {@link gateGuard}. */
+  entranceGuard?: CustomGuardSpec;
 };
 
 /**
@@ -10433,6 +10907,7 @@ export type PendingChoice =
         | "place-field-override"
         | "subterranean-gate-placement"
         | "judge-dread"
+        | "rule-111"
         | "far-tile-flip"
         | "combat-remove-then-search"
         | "combat-remove-another"
@@ -10790,7 +11265,7 @@ export type PendingChoice =
        */
       mapToken?: {
         tileInstanceId: string;
-        kind: "monolith" | "whirlpool" | "gate";
+        kind: "monolith" | "whirlpool" | "gate" | "oneway_entrance" | "oneway_exit";
         number?: -1 | 0 | 1;
         pair?: 1 | 2 | 3 | 4;
         candidates: MapSpaceId[];

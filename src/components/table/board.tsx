@@ -1485,7 +1485,20 @@ export function BattlefieldBoard({
             placeTokenAction ??
             (unit ? (attackAction ?? healAction) : planning ? undefined : moveAction);
 
-          if (interactiveAction && (!selectedCardAction || activationOrderAction || cardAction || spaceCardAction || teleportAction || placeTokenAction)) {
+          // Ability-target picks (Magog splash, Lich Death Cloud, …) must stay
+          // clickable even while a hand card is still "selected" — otherwise the
+          // board silently falls back to inspect-only and friendlies (and every
+          // other candidate) cannot be clicked for the splash.
+          if (
+            interactiveAction &&
+            (!selectedCardAction ||
+              activationOrderAction ||
+              abilityAction ||
+              cardAction ||
+              spaceCardAction ||
+              teleportAction ||
+              placeTokenAction)
+          ) {
             const label = activationOrderAction
               ? `Choose ${unit?.name} to activate first`
               : abilityAction
@@ -1873,6 +1886,10 @@ export function EffectsRail({
 
 const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "DEFEND_UNIT",
+  // Polish Wait (house rule): offered at the start of the active unit's
+  // activation; the unit re-activates after all other units, highest token
+  // first. Never offered with the rule off (legal-actions gates it).
+  "WAIT_UNIT",
   "END_ACTIVATION",
   "END_COMBAT_ROUND",
   "USE_UNIT_ABILITY",
@@ -1894,8 +1911,12 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   // Retreat is the single in-combat escape button. RETREAT_FROM_COMBAT is the
   // no-casualties flee shown before any unit acts; GIVE_UP_COMBAT is the in-fight
   // concede shown after fighting begins — both labelled "Retreat" (legal-actions).
-  // Surrender is NOT here: it is a before-battle option, shown only in the
-  // defender's prep panel (PlacementPanel).
+  // Surrender is normally a before-battle option shown only in the prep panel
+  // (the battle board is not rendered during prep, so this entry is inert
+  // then). With the polish-reduced-surrender house rule, legal-actions ALSO
+  // offers it mid-fight — the dropping per-round toll is the point — and this
+  // command button is that offer's only in-combat surface.
+  "SURRENDER_COMBAT",
   "RETREAT_FROM_COMBAT",
   "GIVE_UP_COMBAT",
   "ACKNOWLEDGE_COMBAT_END",
@@ -1913,6 +1934,8 @@ function commandLabel(legal: LegalAction): string {
   switch (action.type) {
     case "DEFEND_UNIT":
       return "Defend";
+    case "WAIT_UNIT":
+      return "Wait (re-activate after the other units)";
     case "END_ACTIVATION":
       return "Hold position";
     case "END_COMBAT_ROUND":

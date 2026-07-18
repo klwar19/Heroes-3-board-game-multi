@@ -66,6 +66,7 @@ import {
   ReactionTray,
   RerollModal,
   SearchModal,
+  DeckSearchModeModal,
   ABILITY_DICE_READ_MS,
   DICE_PRESENT_MS,
   DICE_ROLL_MS,
@@ -204,11 +205,11 @@ import {
   planReturnMoveDelays
 } from "@/components/table/fx-sequence";
 import {
-  LOCATION_VISIT_SOUNDS,
+  heroMoveSoundKey,
+  locationVisitSoundKeys,
   MAP_CUE_SOUNDS,
   MAP_CUE_VOLUME,
   MAP_MOVE_VOLUME,
-  TERRAIN_MOVE_SOUNDS,
   TILE_SOUNDS
 } from "@/data/map-sounds";
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
@@ -1485,12 +1486,26 @@ export default function Home() {
             continue;
           }
           const cue = ADVENTURE_FEED_CUES[event.type]?.cue;
-          let key = cue ? MAP_CUE_SOUNDS[cue] : null;
           if (event.type === "FIELD_VISITED") {
-            key = LOCATION_VISIT_SOUNDS[event.location] ?? key;
-          }
-          if (key && !cueSounds.includes(key)) {
-            cueSounds.push(key);
+            // Visit one-shot first, then optional ambient loop (staggered ~220ms).
+            const visitKeys = locationVisitSoundKeys(event.location);
+            if (visitKeys.length > 0) {
+              for (const key of visitKeys) {
+                if (!cueSounds.includes(key)) {
+                  cueSounds.push(key);
+                }
+              }
+            } else {
+              const key = cue ? MAP_CUE_SOUNDS[cue] : null;
+              if (key && !cueSounds.includes(key)) {
+                cueSounds.push(key);
+              }
+            }
+          } else {
+            const key = cue ? MAP_CUE_SOUNDS[cue] : null;
+            if (key && !cueSounds.includes(key)) {
+              cueSounds.push(key);
+            }
           }
         }
 
@@ -2142,7 +2157,9 @@ export default function Home() {
           ? nextState.adventure?.tiles[destinationField.tileInstanceId]
           : undefined;
         const terrain = destinationTile ? allTileDefinitions[destinationTile.tileDefId]?.terrain : undefined;
-        playLibrarySound(TERRAIN_MOVE_SOUNDS[terrain ?? "grass"] ?? TERRAIN_MOVE_SOUNDS.grass, MAP_MOVE_VOLUME);
+        // Monolith / Gate / Whirlpool / Subterranean Gate / spell teleports
+        // carry HERO_MOVED.teleport — object clips, not horse steps.
+        playLibrarySound(heroMoveSoundKey(liveWalks, terrain), MAP_MOVE_VOLUME);
         setMoveCue({
           id: liveWalks[0].id,
           heroId,
@@ -2751,31 +2768,62 @@ export default function Home() {
               const playedPlan = isPowerBoost ? undefined : spellFxPlans[event.cardId];
               if (playedPlan) {
                 const at = start + FLIGHT_MS;
+                // Attack-window / Sorrow reactions carry the unit they land on
+                // (Curse on the defender, Bloodlust on the attacker). Anchor the
+                // H3 sprite/tint there; map spells and untargeted plays stay
+                // centre-stage over the card flight.
+                const anchor =
+                  event.targetUnitId && inCombat ? `unit:${event.targetUnitId}` : "center";
                 const affectKey = playedPlan.affect?.[0]?.key;
                 if (affectKey) {
                   cues.push({
                     kind: "sprite",
                     id: `${event.id}-played-fx`,
                     fxKey: affectKey,
-                    at: "center",
+                    at: anchor,
                     sound: playedPlan.sound,
                     delayMs: at
                   });
                 } else if (playedPlan.tint) {
-                  // Bloodlust-style specialty: no sprite and no board unit to tint
-                  // on a card play, so flash its red battle-rage wash at centre
-                  // stage with the cast roar.
-                  cues.push({
-                    kind: "glow",
-                    id: `${event.id}-played-tint`,
-                    at: "center",
-                    tint: playedPlan.tint,
-                    sound: playedPlan.sound,
-                    delayMs: at
-                  });
+                  // Bloodlust: no sprite in H3 — red battle-rage wash on the
+                  // buffed unit when known, else centre stage over the card.
+                  if (event.targetUnitId && inCombat) {
+                    const tint = playedPlan.tint;
+                    const soundKey = playedPlan.sound;
+                    const unitId = event.targetUnitId;
+                    window.setTimeout(() => {
+                      if (soundKey) {
+                        playLibrarySound(soundKey);
+                      }
+                      setTintedUnits((current) => new Map(current).set(unitId, tint));
+                      window.setTimeout(() => {
+                        setTintedUnits((current) => {
+                          const next = new Map(current);
+                          next.delete(unitId);
+                          return next;
+                        });
+                      }, 1600);
+                    }, at);
+                  } else {
+                    cues.push({
+                      kind: "glow",
+                      id: `${event.id}-played-tint`,
+                      at: "center",
+                      tint: playedPlan.tint,
+                      sound: playedPlan.sound,
+                      delayMs: at
+                    });
+                  }
                 } else if (playedPlan.sound) {
                   const soundKey = playedPlan.sound;
                   window.setTimeout(() => playLibrarySound(soundKey), at);
+                }
+                if (inCombat && event.targetUnitId) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(
+                    combatPresentationEnd,
+                    at + spellPresentationMs(playedPlan) + 400
+                  );
                 }
               }
               break;
@@ -6241,7 +6289,14 @@ export default function Home() {
             <PromptTray legalActions={legalActions} onAction={submitAction} onSwitchSeat={roomHosted ? undefined : (seat) => setViewerPlayerId(seat)} state={state} viewerPlayerId={viewerPlayerId} />
           ) : null}
           <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
-          <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
+          <DeckSearchModeModal
+            legalActions={legalActions}
+            onAction={submitAction}
+            state={state}
+            view={playerView}
+            viewerPlayerId={viewerPlayerId}
+          />
+          <SearchModal legalActions={legalActions} onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           <LogDrawer state={state} />
           {isSeated && handMode === null && !forcedDiscard ? (
             <MoraleOverflowPrompt
@@ -6580,6 +6635,13 @@ export default function Home() {
         <PromptTray legalActions={legalActions} onAction={submitAction} onSwitchSeat={roomHosted ? undefined : (seat) => setViewerPlayerId(seat)} state={state} viewerPlayerId={viewerPlayerId} />
       ) : null}
       <LearningOfferModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <DeckSearchModeModal
+        legalActions={legalActions}
+        onAction={submitAction}
+        state={state}
+        view={playerView}
+        viewerPlayerId={viewerPlayerId}
+      />
       {/* Hold the instant window back until the attack-die animation has fully
           played out, so a post-roll reaction prompt (e.g. a lethal-save window
           in a neutral fight) never pops over the rolling dice. `combatPresenting`
@@ -6623,7 +6685,7 @@ export default function Home() {
           viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
         />
       ) : null}
-      <SearchModal onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
+      <SearchModal legalActions={legalActions} onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
       <RerollModal legalActions={legalActions} onAction={submitAction} state={state} viewerPlayerId={viewerPlayerId} />
       {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
       {drawCue && !dice.current && !firstRoll ? (

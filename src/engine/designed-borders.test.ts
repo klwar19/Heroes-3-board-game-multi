@@ -175,6 +175,79 @@ describe("designer-placed yellow borders — movement", () => {
     to.location = "empty_field";
     expect(canCrossEdge(state, from.spaceId, to.spaceId, NONE)).toBe(false);
   });
+
+  it("a step THROUGH a linked Subterranean Gate marks HERO_MOVED.teleport (cave-visit sfx)", () => {
+    // The tunnel between the two gate halves is the only Surface↔Underground
+    // walk that should play adventure/cave-visit instead of horse footsteps.
+    let state = cleanState("db-gate-teleport-sfx");
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      const result = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+      expect(result.errors).toHaveLength(0);
+      state = result.state;
+    }
+    const O: HexCoord = { row: 40, col: 30 };
+    const tileA = instantiateTile(adv(state), OPEN_TILE, O, 0, false);
+    const neighbor = tileLatticeNeighbors(O).find(
+      (candidate) =>
+        !Object.values(adv(state).tiles).some((t) => t.centerRow === candidate.row && t.centerCol === candidate.col)
+    )!;
+    const tileB = instantiateTile(adv(state), OPEN_TILE, neighbor, 0, false);
+    const edge = sharedEdge(adv(state), tileA, tileB);
+    const fromId = edge.from.spaceId;
+    const toId = edge.to.spaceId;
+    edge.from.location = "subterranean_gate";
+    edge.to.location = "subterranean_gate";
+    edge.from.gateLinkSpaceId = toId;
+    edge.to.gateLinkSpaceId = fromId;
+    delete edge.from.difficulty;
+    delete edge.to.difficulty;
+
+    state.heroes.hero_p1.spaceId = fromId;
+    state.heroes.hero_p1.movementPoints = 3;
+    state.heroes.hero_p1.movementHaltedThisTurn = false;
+
+    const moved = applyAction(state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: toId
+    });
+    expect(moved.errors, moved.errors.map((e) => e.message).join("; ")).toHaveLength(0);
+    state = moved.state;
+    expect(state.heroes.hero_p1.spaceId).toBe(toId);
+
+    const hop = state.eventLog
+      .filter((event): event is Extract<(typeof state.eventLog)[number], { type: "HERO_MOVED" }> => event.type === "HERO_MOVED")
+      .find((event) => event.from === fromId && event.to === toId);
+    expect(hop?.teleport).toBe("subterranean");
+
+    // CONTROL: an ordinary adjacent walk between the same hexes (link broken)
+    // is NOT a teleport. Re-read fields from the post-move state (applyAction
+    // clones; the earlier `edge` objects are stale).
+    const fromField = adv(state).fields[fromId]!;
+    const toField = adv(state).fields[toId]!;
+    fromField.gateLinkSpaceId = undefined;
+    toField.gateLinkSpaceId = undefined;
+    fromField.location = "empty_field";
+    toField.location = "empty_field";
+    state.heroes.hero_p1.spaceId = fromId;
+    state.heroes.hero_p1.movementPoints = 3;
+    const logBefore = state.eventLog.length;
+    const plain = applyAction(state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: toId
+    });
+    expect(plain.errors).toHaveLength(0);
+    // Only the NEW hop (after logBefore) — the earlier teleport move stays in the log.
+    const plainHop = plain.state.eventLog
+      .slice(logBefore)
+      .filter((event): event is Extract<(typeof plain.state.eventLog)[number], { type: "HERO_MOVED" }> => event.type === "HERO_MOVED")
+      .find((event) => event.from === fromId && event.to === toId);
+    expect(plainHop?.teleport).toBeUndefined();
+  });
 });
 
 describe("designer-placed yellow borders — absolute frame (rotation-independent)", () => {

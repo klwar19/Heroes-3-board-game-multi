@@ -186,6 +186,60 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false
   },
   {
+    id: "polish-reduced-starting-bonus",
+    label: "Reduced starting bonus",
+    description:
+      "Polish house rule: instead of the difficulty-scaled starting bonus, choose draw 2 Minor Artifacts and keep 1 (no discard-top) OR take 3 gold / 2 building materials / 1 valuables. Impossible still has no bonus.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "polish-rule-111",
+    label: "Rule 111 (home bronze swap)",
+    description:
+      "Polish house rule: once per game, when you fight a difficulty-I combat on your own starting tile, you may replace one bronze guard with the next random bronze unit from the Neutral deck.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "polish-reduced-surrender",
+    label: "Reduced surrender cost",
+    description:
+      "Polish house rule: surrender costs 10 gold, −3 after each combat round (min 1). Available during the fight, not only in prep. Attacker still earns 1 VP for a surrender.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "polish-random-artifacts",
+    label: "Random Artifacts",
+    description:
+      "Polish house rule (requires split Artifact decks): when gaining an Artifact, roll an Attack die. +1 can unlock one tier higher than usual; on a central tile / hero VI–VII a −1 blocks Relics (0/+1 can allow them). Field uses the tile band; merchants and card effects use hero level. Also raises Polish Pandora Search by +1 card on a \"+1\" face.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "polish-pandora-search",
+    label: "Polish Pandora Search",
+    description:
+      "Polish house rule: Pandora's Box draws become Search (2) choose 1 on IV–V tiles and Search (3) choose 1 on VI–VII. With Random Artifacts, a \"+1\" Attack-die face raises the Search by 1 (3 / 4).",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "polish-wait",
+    label: "Wait (combat)",
+    description:
+      "Polish house rule: at the start of its activation a unit may Wait once per combat round, taking the lowest free Wait token. After all other units act, Waited units activate from highest token number to lowest. Neutrals that Waited must attack if they can.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
     id: "multi-demon-summon",
     label: "Pit Lords: multiple Demons",
     description:
