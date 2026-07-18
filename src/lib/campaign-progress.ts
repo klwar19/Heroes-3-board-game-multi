@@ -26,6 +26,8 @@ export type CampaignProgress = { completed: string[] };
 export type CampaignRoomBinding = {
   campaignId: string;
   chapterId: string;
+  /** The chapter's setup injection (game options + faction preselect) has run. */
+  setupApplied?: boolean;
   /** The chapter's onStart scene has been popped for this room. */
   introShown?: boolean;
   /** The chapter's onVictory/onDefeat scene has been popped for this room. */
@@ -130,6 +132,14 @@ function updateBinding(roomId: string, patch: Partial<CampaignRoomBinding>): voi
     return;
   }
   writeJson(`${ROOM_PREFIX}${roomId}`, { ...current, ...patch });
+}
+
+export function markCampaignSetupApplied(roomId: string): void {
+  updateBinding(roomId, { setupApplied: true });
+}
+
+export function isCampaignSetupApplied(roomId: string): boolean {
+  return getCampaignBinding(roomId)?.setupApplied === true;
 }
 
 export function markCampaignIntroShown(roomId: string): void {

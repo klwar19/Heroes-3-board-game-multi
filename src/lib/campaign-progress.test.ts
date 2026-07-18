@@ -7,10 +7,12 @@ import {
   getCampaignProgress,
   isCampaignIntroShown,
   isCampaignOutcomeShown,
+  isCampaignSetupApplied,
   isChapterCompleted,
   isChapterUnlocked,
   markCampaignIntroShown,
   markCampaignOutcomeShown,
+  markCampaignSetupApplied,
   markChapterCompleted
 } from "./campaign-progress";
 
@@ -90,8 +92,23 @@ describe("per-room campaign binding + one-per-room markers", () => {
   it("marking an UNBOUND room is a no-op — it never conjures a binding", () => {
     markCampaignIntroShown("sp-none");
     markCampaignOutcomeShown("sp-none");
+    markCampaignSetupApplied("sp-none");
     expect(getCampaignBinding("sp-none")).toBeNull();
     expect(isCampaignIntroShown("sp-none")).toBe(false);
+    expect(isCampaignSetupApplied("sp-none")).toBe(false);
+  });
+
+  it("the setupApplied marker defaults false, flips true once, and preserves the binding", () => {
+    bindCampaignRoom("sp-2", { campaignId: "jianghu", chapterId: "ch1" });
+    expect(isCampaignSetupApplied("sp-2")).toBe(false);
+
+    markCampaignSetupApplied("sp-2");
+    expect(isCampaignSetupApplied("sp-2")).toBe(true);
+    expect(getCampaignBinding("sp-2")).toEqual({
+      campaignId: "jianghu",
+      chapterId: "ch1",
+      setupApplied: true
+    });
   });
 });
 

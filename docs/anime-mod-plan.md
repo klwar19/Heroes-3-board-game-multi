@@ -461,7 +461,8 @@ cards**, with cooldowns:
   +2 gold each Resources round).
 
 Skills are non-card offers: map/combat actives via legal-actions (`USE_HERO_SKILL`,
-surfaced as a combat command button / the map picker), reactions via
+surfaced as a combat command button / the map `HeroActionsDock` button for the
+Forced March map-active), reactions via
 `getLegalReactionsForTrigger` beside the commander defense reaction
 (`USE_HERO_SKILL_REACTION`, attribution + window advance exactly like
 `applyCommanderCastReaction`, rendered as a bespoke reaction-tray tile). Combat
@@ -509,13 +510,14 @@ reaction skills score above `PASS_REACTION` in card-policy (use, don't hoard).
 Optional offers auto-pass on AFK/timeout with no extra wiring.
 
 **Adaptations / deliberate limits (leading with what does NOT run):** HERO_TRAIN
-and Forced March, like the Cultivation Heavenly Tribulation before them, are
-offered as legal actions but rely on the hero-board picker / combat command dock
-for their surface (map-only actives get no bespoke button beyond the picker). The
-AI does not specifically seek the Training Manual at a shop (it declines the
-optional PAY_TO from surplus by default; buying it is a human play). Per-package
-fancy grade-label fonts/art are deferred (the register text is bilingual plain
-text).
+and Forced March now have a human MAP button — the compact `HeroActionsDock`
+under the hero board (alongside the Cultivation Heavenly Tribulation), each shown
+only while `getLegalActions` offers it and dispatching the exact payload (pinned
+in `hero-actions-dock.test.tsx`); the reaction/combat grade skills still ride the
+combat command dock. The AI does not specifically seek the Training Manual at a
+shop (it declines the optional PAY_TO from surplus by default; buying it is a
+human play). Per-package fancy grade-label fonts/art are deferred (the register
+text is bilingual plain text).
 
 ### 3.12 Forced Battle Events (scripted combats) — SHIPPED (V1)
 
@@ -689,10 +691,10 @@ AI never seeks the shop specifically.
 EN/VI name), beside the realm/grade chips; module-off renders nothing (CONTROL).
 
 **Adaptations / deliberate limits (leading with what does NOT run):**
-- **No map-action BUTTONS in this slice** — buying is only through the outfitter
-  visit; the hero board is a read-only display. (This limit also still covers
-  HERO_TRAIN / Forced March / Heavenly Tribulation — all legal actions with no
-  bespoke map button.)
+- **No map-action BUTTONS for EQUIPMENT in this slice** — buying is only through
+  the outfitter visit; the hero board is a read-only display for items. (The other
+  hero map actives — HERO_TRAIN, Forced March, Heavenly Tribulation — DO now have
+  a human button via the map `HeroActionsDock`; only equipment purchase does not.)
 - **Art-later** — all 6 items ship WITHOUT a card face (declared in
   `ANIME_EQUIPMENT_ART_PLACEHOLDERS`; the UI falls back to the slot glyph). Drop a
   `.webp` under `public/assets/anime/equipment/<slug>.webp` and remove the id.
@@ -1916,16 +1918,26 @@ events). The mod adds ONE, package-agnostic:
 >   scenes; the playable seat uses a CORE faction stand-in — **Jianghu ch-1 =
 >   Rampart**, **Bin ch-1 = Tower** (anime towns are unshipped). `setup.playerFaction`
 >   names the stand-in.
-> - **`setup` is carried config, NOT applied to the live game.** The Begin flow
->   mints a STANDARD single-player room and passes **only the opponent count** to
->   `createSinglePlayerRoom`. `playerFaction`, `difficulty`, `fieldOverrides` and
->   `anime` are surfaced by the tested pure helper `chapterRoomOptions` for the
->   setup-injection slice that lands later — the player still picks their faction
->   on the normal setup screen and the game runs with DEFAULT options. **No engine
->   change ships here.** (Only shipped anime flags are ever set true: Jianghu ch-1
->   = `enabled + cultivation + xianxiaArtifacts` + global `fieldOverrides`; Bin
->   ch-1 = `enabled` + `fieldOverrides` — isekai modules do nothing yet, so none
->   are enabled. A dead flag fails `campaigns.test.ts`.)
+> - **`setup` IS applied to the live game (setup-injection slice SHIPPED).** The
+>   Begin flow mints a STANDARD single-player room (opponent count only); once the
+>   human is seated in its setup lobby the table page pushes the chapter's config
+>   through the NORMAL action pipeline — `campaignSetupActions(chapter, seat)` →
+>   `SET_GAME_OPTIONS` (the chapter's `anime` + global `fieldOverrides` +
+>   `difficulty`) then `CHOOSE_FACTION` (the protagonist's core faction + its first
+>   hero, PRESELECTED). No new server surface. Once per room (persisted
+>   `setupApplied` marker); the player still sees the normal setup screen and may
+>   change any pick before starting. A latent gap was fixed alongside this:
+>   `buildAdventureFromLobby` was DROPPING `anime` + `fieldOverrides` when it built
+>   the game from the lobby (only the direct `createAdventureGameState` path carried
+>   them), so a lobby-set anime/FO toggle never reached the started game — now
+>   carried through. Pinned pure in `campaign-triggers.test.ts` and end-to-end in
+>   `campaign-setup-injection.test.ts` (Jianghu ch-1 starts with
+>   `anime.enabled + cultivation + xianxiaArtifacts + fieldOverrides` ON and the
+>   Rampart seat; a plain `/single-player` room stays all-default as the CONTROL).
+>   (Only shipped anime flags are ever set true: Jianghu ch-1 =
+>   `enabled + cultivation + xianxiaArtifacts` + global `fieldOverrides`; Bin ch-1
+>   = `enabled` + `fieldOverrides` — isekai modules do nothing yet, so none are
+>   enabled. A dead flag fails `campaigns.test.ts`.)
 > - **`mapPresetId` is unused** — campaign maps use standard map generation in V1
 >   (a designed `CustomMapPreset` per chapter is a later content pass; the type
 >   carries the optional field for it).

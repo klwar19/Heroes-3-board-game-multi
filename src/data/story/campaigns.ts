@@ -12,13 +12,15 @@
  *  - **Protagonists are PRESENTATION only.** Chen Fan / Bin live in the story
  *    scenes; the playable seat uses a CORE faction stand-in (anime towns are
  *    unshipped). `setup.playerFaction` names that stand-in.
- *  - **`setup` is carried config, not yet applied to the live game.** The V1
- *    Begin flow (see `chapterRoomOptions` + `/story`) mints a standard
- *    single-player room and passes ONLY the opponent count. `playerFaction`,
- *    `difficulty`, `fieldOverrides` and `anime` are surfaced by the tested pure
- *    helper `chapterRoomOptions` for the setup-injection slice that lands later;
- *    the player still picks their faction on the normal setup screen and the
- *    game runs with default options. No engine change ships here.
+ *  - **`setup` is APPLIED to the live game** (setup-injection slice). The Begin
+ *    flow mints a standard single-player room; once the human is seated the page
+ *    pushes the chapter's `anime` + `fieldOverrides` + `difficulty` into the
+ *    room's game options and PRESELECTS `playerFaction` for the human seat, all
+ *    through the NORMAL action pipeline (`campaignSetupActions` →
+ *    `SET_GAME_OPTIONS` + `CHOOSE_FACTION`; pinned in `campaign-triggers.test.ts`
+ *    and the integration `campaign-setup-injection.test.ts`). The player still
+ *    sees the normal setup screen and may change any pick before starting.
+ *    `chapterRoomOptions` remains the tested pure source for those options.
  *  - **`mapPresetId` is unused.** Campaign maps use standard map generation in
  *    V1; a designed `CustomMapPreset` per chapter is a later content pass.
  *  - **No routes / karma / cheat picks / quest-log (§13).** Chapters that print
@@ -293,10 +295,11 @@ export function getCampaignChapter(campaignId: string, chapterId: string): Campa
 }
 
 /**
- * The room-creation options a chapter maps to. Pure — no side effects. Only
- * `opponents` reaches the created room in V1 (see `/story` Begin flow); the rest
- * is the intended setup, surfaced here (and tested) for the injection slice that
- * lands later. Returns null for a chapter with no `setup` (a locked chapter).
+ * The room-creation options a chapter maps to. Pure — no side effects.
+ * `opponents` sizes the minted room; `playerFaction` / `difficulty` /
+ * `fieldOverrides` / `anime` are injected into the room's game options + seat
+ * after join (`campaignSetupActions`). Returns null for a chapter with no
+ * `setup` (a locked chapter).
  */
 export type ChapterRoomOptions = {
   opponents: number;
