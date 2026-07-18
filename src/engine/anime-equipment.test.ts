@@ -12,13 +12,14 @@ import {
   EQUIPMENT_IDS,
   equipmentEnabled,
   heroEquipmentOf,
+  heroEquipmentSlot,
   playerHasEquipment,
   type GameAction,
   type GameEvent,
   type GameState,
   type PlayerId
 } from "./index";
-import { beginFieldVisit, startAdventureRound } from "./adventure";
+import { beginFieldVisit, refreshRoundTokens, startAdventureRound } from "./adventure";
 import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
 import { finishCombatIfNeeded } from "./combat-units";
 import { scoreMapAction } from "./computer/map-policy";
@@ -112,7 +113,7 @@ function combat(seed: string): GameState {
   return state;
 }
 
-function equip(state: GameState, playerId: PlayerId, slot: "weapon" | "armor" | "accessory", id: string): void {
+function equip(state: GameState, playerId: PlayerId, slot: "weapon" | "armor" | "accessory" | "mount", id: string): void {
   const hero = getMainHero(state, playerId)!;
   hero.equipment = { ...(hero.equipment ?? {}), [slot]: id };
 }
@@ -123,6 +124,12 @@ const EQUIP_ID_COSMOS = EQUIPMENT_IDS.cosmosPendant;
 const EQUIP_ID_BLADE = EQUIPMENT_IDS.adventurersBlade;
 const EQUIP_ID_GUILD = EQUIPMENT_IDS.guildIssueMail;
 const EQUIP_ID_SATCHEL = EQUIPMENT_IDS.supplySatchel;
+// Wave 2.
+const EQUIP_ID_WINDRIDER = EQUIPMENT_IDS.windriderSaddle;
+const EQUIP_ID_TRIAL = EQUIPMENT_IDS.bladeOfTheTrial;
+const EQUIP_ID_ALCHEMIST = EQUIPMENT_IDS.alchemistsSatchel;
+const EQUIP_ID_WARHORN = EQUIPMENT_IDS.marshalsWarHorn;
+const EQUIP_ID_VETERAN = EQUIPMENT_IDS.veteransStandard;
 
 // ===========================================================================
 // Mode OFF — byte-identical: no pool/palette kinds, no state, refused buys
@@ -520,6 +527,220 @@ describe("anime.equipment — Supply Satchel (accessory)", () => {
 });
 
 // ===========================================================================
+// Wave 2 — mount slot, shop context hide rule, and the four map/combat items
+// ===========================================================================
+
+/**
+ * Set up, fight, and finalize a WON difficulty-3 neutral guard fight for p1 with
+ * the given equipment, returning the gold gained and the max army XP. A fixed
+ * SEED makes the fight deterministic, so comparing WITH-item vs WITHOUT-item at
+ * the same seed isolates the item's grant (the mine reward is identical in both).
+ */
+function runWonGuardCombat(
+  seed: string,
+  anime: typeof EQUIP_ON,
+  equipItems: Array<["weapon" | "armor" | "accessory" | "mount", string]>
+): { goldGained: number; maxArmyXp: number } {
+  let state = adventure(seed, anime);
+  state = startTurn(state);
+  const hero = getMainHero(state, "p1")!;
+  hero.level = 1;
+  hero.spaceId = "guard-field";
+  for (const [slot, id] of equipItems) {
+    equip(state, "p1", slot, id);
+  }
+  state.adventure!.fields["guard-field"] = {
+    spaceId: "guard-field",
+    tileInstanceId: "t",
+    slot: 0,
+    location: "mine",
+    difficulty: 3,
+    blackCube: false,
+    flagOwnerId: null,
+    everFlagged: false,
+    settlementResource: null
+  };
+  startNeutralEncounter(state, hero, state.adventure!.fields["guard-field"]);
+  const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+  if (place) {
+    state = applyOk(state, place.action);
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  }
+  for (const unit of Object.values(state.combat!.units)) {
+    if (unit.controllerId === "neutrals") unit.damage = unit.maxHealth;
+  }
+  const goldBefore = state.players.p1.resources.gold;
+  finishCombatIfNeeded(state);
+  finalizeAdventureCombat(state);
+  return {
+    goldGained: state.players.p1.resources.gold - goldBefore,
+    maxArmyXp: state.players.p1.army.reduce((max, unit) => Math.max(max, unit.xp ?? 0), 0)
+  };
+}
+
+const WOG_COMMANDERS_ON = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
+
+describe("anime.equipment — mount slot (the 4th slot)", () => {
+  it("equips/replaces the mount slot without touching the others; a legacy 3-slot hero reads mount empty", () => {
+    const state = adventure("eq-mount");
+    equip(state, "p1", "weapon", EQUIP_ID_SWORD);
+    equip(state, "p1", "mount", EQUIP_ID_WINDRIDER);
+    expect(heroEquipmentOf(state, "p1").mount).toBe(EQUIP_ID_WINDRIDER);
+    expect(heroEquipmentSlot(state, "p1", "mount")).toBe(EQUIP_ID_WINDRIDER);
+
+    // Replace the mount (Spirit Crane) — old mount gone, weapon untouched (no refund).
+    equip(state, "p1", "mount", EQUIPMENT_IDS.spiritCraneMount);
+    expect(heroEquipmentOf(state, "p1").mount).toBe(EQUIPMENT_IDS.spiritCraneMount);
+    expect(playerHasEquipment(state, "p1", EQUIP_ID_WINDRIDER)).toBe(false);
+    expect(heroEquipmentOf(state, "p1").weapon).toBe(EQUIP_ID_SWORD);
+
+    // Legacy 3-slot hero (no mount key) loads fine and reads mount empty.
+    const legacy = adventure("eq-mount-legacy");
+    const hero = getMainHero(legacy, "p1")!;
+    hero.equipment = { weapon: EQUIP_ID_SWORD, armor: EQUIP_ID_MAIL, accessory: EQUIP_ID_COSMOS };
+    expect(heroEquipmentSlot(legacy, "p1", "mount")).toBeUndefined();
+    expect(heroEquipmentSlot(legacy, "p1", "weapon")).toBe(EQUIP_ID_SWORD);
+    expect(getLegalActions(legacy, "p1").length).toBeGreaterThan(0);
+  });
+
+  it("BUYING a mount at the outfitter deducts gold and fills the mount slot", () => {
+    const state = adventure("eq-mount-buy");
+    state.players.p1.resources.gold = 20;
+    injectField(state, "anime.ren_binh_cac");
+    visitShop(state);
+    const buy = getLegalActions(state, "p1").find(
+      (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label.includes("Windrider Saddle")
+    );
+    expect(buy, "the Windrider Saddle mount is offered").toBeTruthy();
+    const bought = applyOk(state, buy!.action);
+    expect(heroEquipmentOf(bought, "p1").mount).toBe(EQUIP_ID_WINDRIDER);
+    expect(bought.players.p1.resources.gold).toBe(15); // 20 − 5
+  });
+});
+
+describe("anime.equipment — outfitter context hide rule (never a dead purchase)", () => {
+  function blacksmithLabels(state: GameState): string[] {
+    state.players.p1.resources.gold = 50;
+    injectField(state, "anime.ren_binh_cac");
+    visitShop(state);
+    return getLegalActions(state, "p1")
+      .filter((entry) => entry.action.type === "RESOLVE_VISIT_STEP")
+      .map((entry) => entry.label);
+  }
+
+  it("War Horn & Spirit Crane are HIDDEN while WOG Commanders is off, SHOWN when on (CONTROL: ungated stays)", () => {
+    const off = blacksmithLabels(adventure("eq-ctx-off"));
+    expect(off.some((label) => label.includes("Marshal's War Horn"))).toBe(false);
+    expect(off.some((label) => label.includes("Spirit Crane Mount"))).toBe(false);
+    // CONTROL: an ungated wave-2 item (mount) is still offered regardless.
+    expect(off.some((label) => label.includes("Windrider Saddle"))).toBe(true);
+
+    const on = blacksmithLabels(adventure("eq-ctx-on", EQUIP_ON, { wog: { ...WOG_COMMANDERS_ON } }));
+    expect(on.some((label) => label.includes("Marshal's War Horn"))).toBe(true);
+    expect(on.some((label) => label.includes("Spirit Crane Mount"))).toBe(true);
+  });
+
+  it("Veteran's Standard is HIDDEN while Unit Experience is off, SHOWN when on (CONTROL)", () => {
+    const off = blacksmithLabels(adventure("eq-vet-ctx-off"));
+    expect(off.some((label) => label.includes("Veteran's Standard"))).toBe(false);
+    const on = blacksmithLabels(adventure("eq-vet-ctx-on", { ...EQUIP_ON, unitExperience: true }));
+    expect(on.some((label) => label.includes("Veteran's Standard"))).toBe(true);
+  });
+});
+
+describe("anime.equipment — Windrider Saddle (mount)", () => {
+  it("+1 movement to the MAIN hero at turn refresh (CONTROL: no saddle → no rise)", () => {
+    function refreshedMovement(withSaddle: boolean): number {
+      const state = adventure(`eq-move-${withSaddle}`);
+      const hero = getMainHero(state, "p1")!;
+      if (withSaddle) equip(state, "p1", "mount", EQUIP_ID_WINDRIDER);
+      hero.movementPoints = 0; // spent to the floor
+      refreshRoundTokens(state); // the per-turn movement refresh chokepoint
+      return hero.movementPoints;
+    }
+    expect(refreshedMovement(true)).toBe(refreshedMovement(false) + 1);
+  });
+});
+
+describe("anime.equipment — Veteran's Standard (accessory)", () => {
+  it("surviving units gain +1 EXTRA XP per win (2 total) vs 1 without (CONTROL: unitExperience OFF → 0)", () => {
+    const bare = runWonGuardCombat("eq-vet-win", { ...EQUIP_ON, unitExperience: true }, []);
+    const withStandard = runWonGuardCombat("eq-vet-win", { ...EQUIP_ON, unitExperience: true }, [["accessory", EQUIP_ID_VETERAN]]);
+    expect(bare.maxArmyXp).toBe(1); // baseline 1 XP per surviving unit
+    expect(withStandard.maxArmyXp).toBe(2); // +1 extra from the Standard
+    // CONTROL: with the Unit Experience module OFF, NO XP is granted at all — the
+    // Standard's effect is inert (the grant site never runs).
+    const moduleOff = runWonGuardCombat("eq-vet-win", EQUIP_ON, [["accessory", EQUIP_ID_VETERAN]]);
+    expect(moduleOff.maxArmyXp).toBe(0);
+  });
+});
+
+describe("anime.equipment — Blade of the Trial (weapon)", () => {
+  it("+1 Attack on declared attacks in ROUND 1, gone by round 2 (CONTROL: no blade → no delta)", () => {
+    function firstAttackValue(round: number, withBlade: boolean): number {
+      let state = combat(`eq-trial-${round}-${withBlade}`);
+      state.combat!.round = round;
+      if (withBlade) equip(state, "p1", "weapon", EQUIP_ID_TRIAL);
+      state = resolveReactions(
+        applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+      );
+      return initiatingAttackValues(state)[0];
+    }
+    // Round 1: the blade adds +1 over the bare baseline.
+    expect(firstAttackValue(1, true)).toBe(firstAttackValue(1, false) + 1);
+    // Round 2: no bonus — equals the bare value (the round gate cut it off).
+    expect(firstAttackValue(2, true)).toBe(firstAttackValue(2, false));
+    // The bare hero shows the SAME value both rounds (nothing else moves it).
+    expect(firstAttackValue(1, false)).toBe(firstAttackValue(2, false));
+  });
+
+  it("does NOT fire on a retaliation (declared attacks only)", () => {
+    function retaliationValue(withBlade: boolean): number {
+      let state = combat(`eq-trial-retal-${withBlade}`);
+      state.combat!.round = 1;
+      if (withBlade) equip(state, "p1", "weapon", EQUIP_ID_TRIAL);
+      const skeletons = state.combat!.units.unit_p2_skeletons;
+      skeletons.attack = 6;
+      state.combat!.activeUnitId = "unit_p2_skeletons";
+      state.activePlayerId = "p2";
+      state = resolveReactions(
+        applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: "unit_p2_skeletons", defenderId: "unit_p1_griffins" })
+      );
+      const retaliation = state.eventLog.find(
+        (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED" && event.isRetaliation
+      );
+      return retaliation!.attackValue;
+    }
+    expect(retaliationValue(true)).toBe(retaliationValue(false)); // no +1 on the griffins' retaliation
+  });
+});
+
+describe("anime.equipment — Alchemist's Satchel (armor)", () => {
+  it("+1 gold at a Resources round (CONTROL: unequipped → no rise)", () => {
+    function roundGold(withSatchel: boolean): number {
+      const state = adventure(`eq-alch-round-${withSatchel}`);
+      if (withSatchel) equip(state, "p1", "armor", EQUIP_ID_ALCHEMIST);
+      const before = state.players.p1.resources.gold;
+      state.round = 3;
+      startAdventureRound(state);
+      return state.players.p1.resources.gold - before;
+    }
+    expect(roundGold(true)).toBe(roundGold(false) + 1);
+  });
+
+  it("+1 gold after a won combat, STACKING to +2 with Adventurer's Blade (CONTROL: neither)", () => {
+    const none = runWonGuardCombat("eq-alch-win", EQUIP_ON, []).goldGained;
+    expect(runWonGuardCombat("eq-alch-win", EQUIP_ON, [["armor", EQUIP_ID_ALCHEMIST]]).goldGained).toBe(none + 1);
+    expect(
+      runWonGuardCombat("eq-alch-win", EQUIP_ON, [
+        ["armor", EQUIP_ID_ALCHEMIST],
+        ["weapon", EQUIP_ID_BLADE]
+      ]).goldGained
+    ).toBe(none + 2);
+  });
+});
+
+// ===========================================================================
 // Scope + cross-mod coexistence
 // ===========================================================================
 
@@ -624,6 +845,39 @@ describe("anime.equipment — computer policy", () => {
     expect(state.adventure?.pendingVisit ?? null).toBeNull();
     // With surplus into empty slots, the AI bought at least one item.
     expect(Object.keys(heroEquipmentOf(state, "p1")).length).toBeGreaterThan(0);
+  });
+
+  it("extends to the MOUNT slot: buys a mount into an empty slot above Leave, never auto-replaces a filled one (CONTROL)", () => {
+    // Empty mount slot + surplus → the Windrider mount buy outranks Leave.
+    const rich = shopOpen(40);
+    const buyMount = getLegalActions(rich, "p1").find(
+      (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label.includes("Windrider Saddle")
+    )!;
+    const leaveRich = getLegalActions(rich, "p1").find(
+      (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && /leave/i.test(entry.label)
+    )!;
+    expect(buyMount, "the mount is offered").toBeTruthy();
+    expect(scoreMapAction(observe(rich, "p1"), buyMount.action)!.score).toBeGreaterThan(
+      scoreMapAction(observe(rich, "p1"), leaveRich.action)!.score
+    );
+
+    // CONTROL: the mount slot already filled → a SECOND mount buy scores BELOW
+    // Leave (no auto-replace). Commanders-on so the Spirit Crane is a 2nd mount.
+    const filled = adventure("eq-ai-mount-filled", EQUIP_ON, { wog: { ...WOG_COMMANDERS_ON } });
+    filled.players.p1.resources.gold = 40;
+    equip(filled, "p1", "mount", EQUIP_ID_WINDRIDER);
+    injectField(filled, "anime.ren_binh_cac");
+    visitShop(filled);
+    const buyCrane = getLegalActions(filled, "p1").find(
+      (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label.includes("Spirit Crane Mount")
+    )!;
+    const leaveFilled = getLegalActions(filled, "p1").find(
+      (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && /leave/i.test(entry.label)
+    )!;
+    expect(buyCrane, "the second mount is offered").toBeTruthy();
+    expect(scoreMapAction(observe(filled, "p1"), buyCrane.action)!.score).toBeLessThan(
+      scoreMapAction(observe(filled, "p1"), leaveFilled.action)!.score
+    );
   });
 });
 

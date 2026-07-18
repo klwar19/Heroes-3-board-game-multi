@@ -25,6 +25,7 @@
  */
 
 import { animeModuleEnabled } from "./anime";
+import { equipmentVeteranBonusXp } from "./anime-equipment";
 import { appendEvent } from "./events";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { AnimeModOptions, GameState } from "./state";
@@ -101,6 +102,11 @@ export function grantUnitExperienceAfterCombat(state: GameState): void {
     return;
   }
 
+  // Anime Equipment (§3.13): the Veteran's Standard accessory grants +1 EXTRA XP
+  // per surviving unit this win (2 total). Read once for the winner; 0 when the
+  // item is off / unworn (the CONTROL keeps a bare win at exactly 1 XP).
+  const perUnitXp = 1 + equipmentVeteranBonusXp(state, winnerId);
+
   // De-dupe by army card: a card can only field ONE combat unit, but guard the
   // loop so a future summon/clone sharing an armyUnitId can never double-grant.
   const credited = new Set<string>();
@@ -126,7 +132,7 @@ export function grantUnitExperienceAfterCombat(state: GameState): void {
     credited.add(unit.armyUnitId);
 
     const before = Math.max(0, Math.trunc(armyUnit.xp ?? 0));
-    const after = before + 1;
+    const after = before + perUnitXp;
     armyUnit.xp = after;
     const beforeRank = unitRankForXp(before);
     const afterRank = unitRankForXp(after);

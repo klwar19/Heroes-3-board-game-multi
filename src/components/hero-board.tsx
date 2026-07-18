@@ -10,6 +10,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import {
   ABILITY_SEARCH_LEVELS,
+  ANIME_EQUIPMENT_SLOTS,
   CULTIVATION_REALMS,
   EQUIPMENT_SLOT_GLYPH,
   EXPERT_USES_BY_LEVEL,
@@ -236,7 +237,7 @@ export function HeroBoard({
   // Renders only with the module on AND something equipped (CONTROL: off = null).
   const showEquip = equipmentEnabled(state);
   const equippedItems = showEquip
-    ? (["weapon", "armor", "accessory"] as AnimeEquipmentSlot[])
+    ? ANIME_EQUIPMENT_SLOTS
         .map((slot) => {
           const id = heroEquipmentOf(state, playerId)[slot];
           const def = id ? getEquipmentDefinition(id) : undefined;

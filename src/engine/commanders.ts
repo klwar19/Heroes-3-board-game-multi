@@ -19,6 +19,7 @@ import {
   type CommanderSlug
 } from "@/data/commanders";
 import { aggregateCommanderArtifactBonuses } from "@/data/wog/commander-artifacts";
+import { equipmentGrantsCommanderRevive, equipmentGrantsCommanderSort } from "./anime-equipment";
 import { unitImmuneToParalysis } from "./active-effects";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
@@ -403,9 +404,12 @@ export function commanderPreCombatSortAvailable(state: GameState, playerId: Play
   if (commanderIsVanguardMarshal(commander)) {
     return true;
   }
-  // Source 2 — SEAM for a future hero-equipment item that grants the pre-combat
-  // sort. It would OR-in here, reading the hero's equipment off `state`, e.g.:
-  //   if (heroEquipmentGrantsCommanderSort(state, playerId)) return true;
+  // Source 2: the Marshal's War Horn hero-equipment item (anime.equipment). Reads
+  // the main hero's equipment off `state`; module-off / unworn ⇒ false. This is
+  // the seam the predicate was designed around — the window machinery is untouched.
+  if (equipmentGrantsCommanderSort(state, playerId)) {
+    return true;
+  }
   return false;
 }
 
@@ -897,22 +901,30 @@ export function finalizeCommandersAfterCombat(state: GameState): Set<PlayerId> {
       continue;
     }
     if (unit.damage >= unit.maxHealth) {
-      // WOG Commander Artifact — Helm of Immortality (relic): a commander that
-      // died this combat is NOT marked dead. Death never persists, no revive gold
-      // is spent, and it re-enters the next combat at full health. Without the
-      // helm death persists exactly as before (the CONTROL).
+      // FREE-REVIVE gate: a commander that died this combat is NOT marked dead.
+      // Death never persists, no revive gold is spent, and it re-enters the next
+      // combat at full health. Two sources (DELIBERATE overlap — different
+      // modules, so a player usually has only one): the WOG Commander Artifact
+      // Helm of Immortality (relic, bound to the commander's armor slot) OR the
+      // anime.equipment Spirit Crane Mount (the main hero's mount slot). Without
+      // either, death persists exactly as before (the CONTROL).
       const helm = aggregateCommanderArtifactBonuses(player.commander.artifacts);
-      if (helm.reviveFree) {
-        // The commander is alive AFTER this combat (helm revives it), so it
-        // counts as a survivor — a helm-saved Hierophant still tends the wounded.
+      const craneRevive = equipmentGrantsCommanderRevive(state, unit.controllerId);
+      if (helm.reviveFree || craneRevive) {
+        // The commander is alive AFTER this combat (revived free), so it counts
+        // as a survivor — a saved Hierophant still tends the wounded.
         survivors.add(unit.controllerId);
         if (!player.commander.dead) {
           appendEvent(state, {
             type: "COMMANDER_ARTIFACT_SAVED",
             playerId: unit.controllerId,
             commanderSlug: unit.commanderSlug,
-            cardId: player.commander.artifacts?.armor ?? "wog.artifact.helm_of_immortality",
-            message: `${unit.cardName} would have fallen, but the Helm of Immortality revives it — free.`
+            cardId: helm.reviveFree
+              ? player.commander.artifacts?.armor ?? "wog.artifact.helm_of_immortality"
+              : "anime.equip.spirit_crane_mount",
+            message: helm.reviveFree
+              ? `${unit.cardName} would have fallen, but the Helm of Immortality revives it — free.`
+              : `${unit.cardName} would have fallen, but the Spirit Crane Mount revives it — free.`
           });
         }
       } else if (!player.commander.dead) {
