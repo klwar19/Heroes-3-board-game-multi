@@ -288,6 +288,12 @@ export {
 } from "./unit-transforms";
 export { markUnitRemovedIfNeeded } from "./combat-units";
 export { makeCombatUnitFromArmy } from "./adventure";
+export {
+  armyUnitRankInfo,
+  unitExperienceActive,
+  unitRankForExperience,
+  unitRankStatBonuses
+} from "./unit-experience";
 export { createInitialGameState } from "./setup";
 export {
   createCombatSandboxLobbyState,

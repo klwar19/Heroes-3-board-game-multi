@@ -231,6 +231,47 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  it("exposes the OPTIONAL Unit-experience toggle, default OFF, wired to unitExperience", () => {
+    const onAction = openOptions();
+    const row = screen.getByText("Unit experience").closest(".optionRow");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    expect(within(row as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe(
+      "false"
+    );
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { unitExperience: true }
+    });
+  });
+
+  it("the WOG mod window lists a Unit-experience module row and toggling it dispatches wog.unitExperience", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+    const row = within(dialog).getByRole("button", { name: /WoG Unit Experience System/i });
+    expect(row.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(row);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SET_GAME_OPTIONS",
+        playerId: "p1",
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ enabled: true, unitExperience: true })
+        })
+      })
+    );
+  });
+
   it("Legacy preset turns house rules off without locking them (notice + free toggle)", () => {
     const onAction = openOptions();
     fireEvent.click(within(screen.getByRole("group", { name: /Game mode presets/i })).getByRole("button", { name: /Legacy/i }));

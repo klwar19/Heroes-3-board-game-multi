@@ -1,4 +1,11 @@
 import { cardLibrary } from "@/data/cards/library";
+import { DRILL_UNIT_GOLD_COST, DRILL_UNIT_XP } from "@/data/units/experience";
+import {
+  awardUnitExperienceAfterCombat,
+  diluteUnitExperienceForUpgrade,
+  grantArmyUnitExperience,
+  unitExperienceActive
+} from "./unit-experience";
 import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
@@ -83,6 +90,8 @@ import {
   type RecruitPurchaseRef,
   getHeroMovementCapabilities,
   getMainHero,
+  mainHeroInOwnTown,
+  unitDrillAvailable,
   neutralBattleLevel,
   getTileFootprintSpaceIds,
   getTownOfPlayer,
@@ -3027,6 +3036,8 @@ function resolveSettlementChoice(
   }
 
   target.side = "pack";
+  // Unit Experience: fresh recruits dilute the card's veterans (halved XP).
+  diluteUnitExperienceForUpgrade(state, action.playerId, target, "reinforce");
   // The reserved Legion voucher (if any) is spent on this unit, win or lose.
   consumeRecruitVoucherFor(state, action.playerId, {
     kind: "reinforce",
@@ -3265,6 +3276,8 @@ function resolveHillFort(state: GameState, action: Extract<GameAction, { type: "
   }
   spendResources(state, action.playerId, cost, "Hill Fort reinforcement");
   target.side = "pack";
+  // Unit Experience: fresh recruits dilute the card's veterans (halved XP).
+  diluteUnitExperienceForUpgrade(state, action.playerId, target, "reinforce");
   appendEvent(state, {
     type: "UNIT_RECRUITED",
     playerId: action.playerId,
@@ -7195,6 +7208,13 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
   }
 
+  // Unit Experience (optional rule): the winner's surviving deployed units
+  // gain XP now that the army-card sync above has settled sides/casualties
+  // (WoG UES: survivors of a hero-led won battle train). The Hierophant First
+  // Aid flip-up BELOW deliberately never dilutes this award — it restores this
+  // battle's own casualties, not fresh recruits. No-op while the rule is off.
+  awardUnitExperienceAfterCombat(state);
+
   // Brute "Soul Reformer": the winner gains 2 gold after each combat won while
   // the Brute survived it (the board adaptation of "50% of battle experience
   // in gold" — this game has no mana/XP pools to convert).
@@ -7728,6 +7748,57 @@ export function heroTrain(state: GameState, action: Extract<GameAction, { type: 
   hero.heroTrainedRound = state.round;
   appendEvent(state, { type: "HERO_TRAINED", playerId: action.playerId, heroId: hero.id });
   gainGradeProgress(state, action.playerId, HERO_TRAIN_MERIT, "train");
+}
+
+/**
+ * DRILL_UNIT (Unit Experience optional rule): with the main hero standing in
+ * an OWN Town, pay DRILL_UNIT_GOLD_COST (2) gold to grant one army unit card
+ * DRILL_UNIT_XP (1) experience. Once per own turn; cards already at max rank
+ * are not drillable. Self-validating; opens no window (a threshold crossing
+ * emits UNIT_RANK_UP inside grantArmyUnitExperience).
+ */
+export function drillUnit(state: GameState, action: Extract<GameAction, { type: "DRILL_UNIT" }>): void {
+  const adventure = state.adventure;
+  const player = state.players[action.playerId];
+  if (!adventure || !player) {
+    throw new Error("No adventure in progress.");
+  }
+  if (!unitExperienceActive(state)) {
+    throw new Error("Unit experience is off for this game.");
+  }
+  if (state.combat) {
+    throw new Error("Drill on your own map turn, not during combat.");
+  }
+  if (!hasOpenAdventureTurn(state, action.playerId)) {
+    throw new Error("Drill on your own turn.");
+  }
+  assertParallelInteractionFree(state, action.playerId);
+  if (!mainHeroInOwnTown(state, action.playerId)) {
+    throw new Error("Drilling needs your main hero in one of your Towns.");
+  }
+  if (!unitDrillAvailable(state, action.playerId)) {
+    throw new Error(
+      `Drilling needs ${DRILL_UNIT_GOLD_COST} gold, once per turn, and a unit below max rank.`
+    );
+  }
+  const armyUnit = player.army.find((candidate) => candidate.id === action.armyUnitId);
+  if (!armyUnit) {
+    throw new Error("That unit is not in your army.");
+  }
+  const def = coreUnitDefinitions[armyUnit.unitDefId];
+  if (!def) {
+    throw new Error("That unit cannot be drilled.");
+  }
+  spendResources(state, action.playerId, { gold: DRILL_UNIT_GOLD_COST }, "unit drill");
+  player.unitDrillRound = state.round;
+  grantArmyUnitExperience(state, action.playerId, armyUnit, DRILL_UNIT_XP);
+  appendEvent(state, {
+    type: "UNIT_DRILLED",
+    playerId: action.playerId,
+    unitDefId: armyUnit.unitDefId,
+    unitName: def.name,
+    experience: armyUnit.experience ?? 0
+  });
 }
 
 /**
@@ -8396,6 +8467,8 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       const target = player.army.find((unit) => unit.id === purchase.armyUnitId);
       if (target) {
         target.side = "pack";
+        // Unit Experience: recruits dilute the card's veterans (halved XP).
+        diluteUnitExperienceForUpgrade(state, action.playerId, target, "reinforce");
         appendEvent(state, {
           type: "UNIT_RECRUITED",
           playerId: action.playerId,
@@ -8408,6 +8481,8 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       const target = player.army.find((unit) => unit.id === purchase.armyUnitId);
       if (target) {
         target.stacks = (target.stacks ?? 0) + 1;
+        // Unit Experience: the added Stack layer dilutes the veterans (-1 XP).
+        diluteUnitExperienceForUpgrade(state, action.playerId, target, "stack");
         appendEvent(state, {
           type: "ARMY_STACK_PURCHASED",
           playerId: action.playerId,

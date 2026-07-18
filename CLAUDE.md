@@ -1407,6 +1407,86 @@ all-on coexistence soak (`anime-coexistence-soak.test.ts`) already runs
 scoring resolves every arm (the leaves `GAIN_COMMANDER_POINTS` /
 `SELL_HAND_ARTIFACT` are auto-resolving — kept OUT of `stepNeedsInput`).
 
+## Unit Experience / veterancy (OPTIONAL rule; lobby toggle + WOG module + anime module) — what runs vs. limits
+
+Board adaptation of the WoG Unit Experience System (UES; ues.shtml + the
+CREXPBON table). THREE equivalent surfaces activate ONE shared engine flag,
+frozen onto `adventure.unitExperience` at setup: the lobby
+`GameSetupOptions.unitExperience` (Game options → Optional systems, default
+OFF), `wog.enabled && wog.unitExperience` (WOG Mod options row), and
+`anime.enabled && anime.unitExperience` (types + resolution only — like the
+other anime flags there is no anime lobby UI yet). Data in
+`src/data/units/experience.ts`, engine read layer in
+`src/engine/unit-experience.ts`, wired through `makeCombatUnitFromArmy` +
+`applyUnitCurrentSide` (stat/ability folds), `finalizeAdventureCombat` (the XP
+award), the reducer/legal-actions (`DRILL_UNIT`) and every Few→Pack / Stack
+upgrade site (dilution). Behaviour pinned in `src/engine/unit-experience.test.ts`
+(off/rank/lost-fight CONTROLs; the award call, the attack fold and the elite
+grant are mutation-checked), UI in `unit-rank-badge.test.tsx`,
+`board.test.tsx` ("veteran-rank badge") and `game-options-tabs.test.tsx`.
+
+Leading with what does NOT run / deliberate limits:
+- **Quick Combat trains nobody** — the army never deploys, so an auto-win pays
+  no unit XP. Fighting a battle out by hand is the deliberate way to drill
+  troops (a real strategic trade-off, documented, not a bug).
+- **Clone tokens and Sandro's-Cloak covers ignore ranks**: a Clone is built as
+  a fresh XP-less copy (the existing `permanentAttackBonus` precedent), and a
+  specialty cover replaces stats wholesale, suppressing the rank folds while it
+  is on top (same read as the permanent bonuses).
+- **Only 12 units — one signature unit per faction — carry a unique ELITE
+  ability** (`ELITE_UNIT_RANK_ABILITIES`); every other card gets the generic
+  per-tier stat packages only. Every grant REUSES an already-implemented
+  ability id (no new engine effects; registry hygiene — real unit, implemented,
+  not already printed on any side — is pinned by test).
+- **The Hierophant First Aid flip-up never dilutes** — it restores THIS
+  battle's own casualties, not fresh recruits (the one reinforce-shaped
+  exception, pinned with the reinforce halving as its control).
+- **The AI has no bespoke veterancy strategy**: it drills only as an idle-time
+  luxury from surplus gold (`map-policy.ts` DRILL_UNIT, score 325 when gold ≥
+  10) and otherwise just benefits from the folds like a human.
+- **Badge art is drawn (CSS/text), not a binary asset**: WoG-authentic carets
+  (`^`, `^^`) and an Elite sword (⚔) in `.unitRankBadge`, plus the existing
+  slayer spell icon on the lobby row — image-gen art can replace them later.
+
+What runs (each with a failing-if-removed test):
+- **XP awards (WoG "survivors of a hero-led won battle train")**: after a WON
+  combat the winner's surviving DEPLOYED army cards each gain XP — neutral
+  guard fights pay the Field Difficulty, Creature Banks pay max(2, Stacked
+  count), PvP wins pay a flat 2 (`unitExperienceForWonCombat`). Dead cards,
+  undeployed cards, summons/temporaries/commanders and the loser get nothing;
+  each card is awarded once (clone-safe Set). XP rides the CARD
+  (`ArmyUnitState.experience`) and survives Pack→Few casualty flips.
+- **Ranks 0–3 with tier-scaled thresholds** (bronze 2/5/9, silver 3/7/12,
+  gold/azure 4/9/15 — higher tiers rank slower, the UES per-level scaling) and
+  CUMULATIVE per-tier stat packages (CREXPBON default progressions): bronze &
+  silver R1 +1 Defense, R2 +1 Attack, R3 +1 Health (bronze Elites also +1
+  Initiative — the "Speed R4" bump); gold/azure R1 +1 Attack, R2 +1 Defense,
+  R3 +1 Health. Folded at combat-unit build AND on every mid-combat printed-
+  side recompute, so a Pack→Few flip keeps its rank.
+- **Elite abilities at rank 3** (CREXPBON-derived, e.g. Champions
+  `ignores-retaliation`, Behemoths `wog-nightmare-fear`, Phoenixes
+  `wog-fire-shield-1`, Nagas/Cerberi/Hydras `unlimited-retaliation`, Jotunns
+  `reduce-spell-damage-1`, Dreadnoughts `ignore-paralysis`), appended to the
+  unit's runtime `abilities` (deduped) — never edits printed card data, so the
+  ability-text enforcement invariant is untouched.
+- **Dilution (WoG Crexpmod "upgrades cost experience")**: reinforcing Few→Pack
+  HALVES the card's XP at every reinforce site (settlement, Hill Fort, town
+  Population batch, the shared `reinforceArmyUnit` helper, and the mid-combat
+  Summon-Demons reinforce, which re-syncs the fighting unit's folds); each
+  purchased Polish Unit Stack layer costs 1 XP. Every dilution emits
+  `UNIT_XP_DILUTED` so the loss is never silent.
+- **Drill (new board mechanic)**: `DRILL_UNIT` — with the main hero in an OWN
+  Town, pay 2 gold for +1 XP on one army card, once per own turn; maxed cards
+  are not offered. Handler-validated like HERO_TRAIN; `UNIT_DRILLED` event.
+- **Presentation**: `UNIT_RANK_UP` / `UNIT_DRILLED` / `UNIT_XP_DILUTED` feed
+  lines (`formatEvent`); rank badges on army rows (`ArmyPanel`, with the
+  rank-FOLDED stats and an XP-progress tooltip), on combat cards
+  (`board.tsx`, mirrored `unitRank`/`unitExperience`) and in the zoom/inspect
+  lines (`zoom.tsx`).
+- **Default OFF ⇒ byte-identical**: with the rule off no card ever carries
+  `experience`, so every fold is an exact no-op and no award/dilution/Drill
+  runs (off-CONTROLs pinned; legacy snapshots unaffected).
+
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
 A separate system from the Astrologers Proclaim deck (do not confuse the two).

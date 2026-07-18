@@ -40,8 +40,11 @@ import {
   currentSurrenderGoldCost,
   tournamentMoraleSearchAgainEnabled,
   townHasBuildingEffect,
-  unlockedRecruitTiers
+  unlockedRecruitTiers,
+  drillableArmyUnits,
+  unitDrillAvailable
 } from "./adventure";
+import { DRILL_UNIT_GOLD_COST } from "@/data/units/experience";
 import {
   placementCellsFor,
   neutralFormationCellsFor,
@@ -9208,6 +9211,19 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       label: "Train (2 movement → +1 Merit)",
       action: { type: "HERO_TRAIN", playerId }
     });
+  }
+
+  // Unit Experience Drill (optional rule): with the main hero in an own Town,
+  // pay gold to grant one army unit +1 XP — once per turn, offered per card
+  // still below max veteran rank. All no-ops when the rule is off.
+  if (unitDrillAvailable(state, playerId)) {
+    for (const armyUnit of drillableArmyUnits(state, playerId)) {
+      const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
+      actions.push({
+        label: `Drill ${unitName} (${DRILL_UNIT_GOLD_COST} gold → +1 unit XP)`,
+        action: { type: "DRILL_UNIT", playerId, armyUnitId: armyUnit.id }
+      });
+    }
   }
   for (const node of heroGradePickableNodes(state, playerId)) {
     actions.push({

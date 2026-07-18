@@ -25,6 +25,7 @@ import {
   queueNecromancyReinforce,
   recordLevelUpAbilityPick
 } from "./adventure";
+import { diluteUnitExperienceForUpgrade } from "./unit-experience";
 import {
   applyUnitCurrentSide,
   canPlaceTransformOn,
@@ -93,6 +94,7 @@ import {
   reviveCommander,
   beginHeavenlyTribulation,
   heroTrain,
+  drillUnit,
   heroGradePick,
   resolveCommanderFirstAid,
   commanderSetStance,
@@ -16315,12 +16317,21 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
     }
 
     targetUnit.variant = "pack";
-    applyUnitCurrentSide(targetUnit, ruleset, unitSideRuleOverrides(state));
     // Mirror onto the backing army card so the reinforcement survives the combat.
     const armyUnit = player.army.find((candidate) => candidate.id === targetUnit.armyUnitId);
     if (armyUnit) {
       armyUnit.side = "pack";
+      // Unit Experience: the conjured demon bodies dilute the veterans like
+      // any other Few→Pack reinforcement; mirror the new XP onto the combat
+      // unit BEFORE the side recompute below so its rank folds stay in sync.
+      diluteUnitExperienceForUpgrade(state, action.playerId, armyUnit, "reinforce");
+      if (armyUnit.experience) {
+        targetUnit.unitExperience = armyUnit.experience;
+      } else {
+        delete targetUnit.unitExperience;
+      }
     }
+    applyUnitCurrentSide(targetUnit, ruleset, unitSideRuleOverrides(state));
 
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -19310,6 +19321,9 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "COMMANDER_SET_STANCE",
   "HERO_TRAIN",
   "HERO_GRADE_PICK",
+  // Unit Experience Drill: fully self-validated (rule on, own turn, own Town,
+  // gold, once-per-turn, own army card) and touches only the actor's state.
+  "DRILL_UNIT",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
@@ -19790,6 +19804,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "HERO_GRADE_PICK":
         heroGradePick(nextState, action);
+        break;
+      case "DRILL_UNIT":
+        drillUnit(nextState, action);
         break;
       case "USE_HERO_SKILL":
         applyHeroSkillActive(nextState, action);

@@ -1215,6 +1215,30 @@ describe("BattlefieldBoard Polish army Stack badge", () => {
     expect(document.querySelectorAll(".stackTokenBadge")).toHaveLength(0);
   });
 
+  it("renders the Unit Experience veteran-rank badge (carets, Elite sword) from the mirrored rank", () => {
+    const state = createInitialGameState("unit-rank-badge");
+    state.combat!.units.unit_p1_griffins.unitRank = 2;
+    state.combat!.units.unit_p1_griffins.unitExperience = 5;
+    state.combat!.units.unit_p2_skeletons.unitRank = 3;
+    state.combat!.units.unit_p2_skeletons.unitExperience = 9;
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(document.querySelector(".unitRankBadge.combat.rank-2")?.textContent).toBe("^^");
+    expect(document.querySelector(".unitRankBadge.combat.rank-3")?.textContent).toBe("⚔");
+    // CONTROL: units without a mirrored rank draw no badge.
+    expect(document.querySelectorAll(".unitRankBadge").length).toBe(2);
+  });
+
   it("shows the standard Stack Token badge on a Stacked bank defender (Polish size uses normal tokens)", () => {
     const state = createInitialGameState("bank-stack-badge");
     const unit = state.combat!.units.unit_p2_skeletons;

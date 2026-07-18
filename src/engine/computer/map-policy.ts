@@ -2073,6 +2073,14 @@ export function scoreMapAction(
       // objective always outscores it — i.e. only when the seat would otherwise
       // end the turn with the 2 MP unspent. Legal only with ≥2 MP (heroTrainAvailable).
       return { score: 330, policy: "map.hero-train" };
+    case "DRILL_UNIT":
+      // Unit Experience Drill: an idle-time luxury like HERO_TRAIN, but it
+      // costs gold — only worth it from surplus (never eat the dwelling fund).
+      // Below HERO_TRAIN so a free Merit is drilled first when both are legal.
+      return {
+        score: playerGold(state, observation.playerId) >= 10 ? 325 : 5,
+        policy: "map.drill-unit"
+      };
     case "USE_HERO_SKILL":
       // On the map this is Forced March (+1 movement, once per round). Combat
       // War Cry is claimed earlier by combat-policy, so a USE_HERO_SKILL reaching

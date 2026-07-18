@@ -85,6 +85,7 @@ import {
   tierOfLevel,
   UNIT_LEVELS,
   unitAbilities,
+  armyUnitRankInfo,
   unitSideRuleOverrides,
   validateCustomMapPlan,
   astrologersCardDefinitions,
@@ -3390,9 +3391,27 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
           // BINH stat tweaks (Griffins, Marksmen) show live values.
           const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides) : printed;
           const stackAttack = sideOverrides.polishUnitStacks && unit.side === "pack" && (unit.stacks ?? 0) > 0 ? 1 : 0;
-          const shownAttack = side ? side.attack + (unit.permanentAttackBonus ?? 0) + stackAttack : 0;
+          // Unit Experience (optional rule): show the same rank-folded stats
+          // the engine fights with, plus a WoG-style caret/sword rank badge.
+          const rankInfo = state.adventure?.unitExperience ? armyUnitRankInfo(unit) : null;
+          const rankBonus = rankInfo?.bonus ?? { attack: 0, defense: 0, health: 0, initiative: 0 };
+          const shownAttack = side ? side.attack + (unit.permanentAttackBonus ?? 0) + stackAttack + rankBonus.attack : 0;
+          const shownDefense = side ? side.defense + rankBonus.defense : 0;
+          const shownHealth = side ? side.health + rankBonus.health : 0;
+          const shownInitiative = side ? side.initiative + rankBonus.initiative : 0;
+          const eliteAbility = rankInfo?.eliteActive && rankInfo.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
+          const rankLine = rankInfo
+            ? rankInfo.rank > 0
+              ? `${rankInfo.rankName} (veteran rank ${rankInfo.rank}) — ${rankInfo.experience} XP${
+                  rankInfo.nextThreshold !== null ? `, next rank at ${rankInfo.nextThreshold}` : ", max rank"
+                }${eliteAbility ? ` · Elite ability: ${eliteAbility.name}` : ""}`
+              : rankInfo.experience > 0
+                ? `${rankInfo.experience} XP — first rank at ${rankInfo.nextThreshold}`
+                : ""
+            : "";
           const engineLines = implementedAbilityLines(side?.abilities);
-          const hoverTitle = [side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
+          const hoverTitle =
+            [rankLine, side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
           return (
             <li key={unit.id}>
               <button
@@ -3403,7 +3422,8 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                     image: side?.cardImage,
                     subtitle: def ? `${def.tier} ${def.type}` : undefined,
                     lines: [
-                      side ? `Attack ${shownAttack} · Defense ${side.defense} · HP ${side.health} · Initiative ${side.initiative}` : "",
+                      side ? `Attack ${shownAttack} · Defense ${shownDefense} · HP ${shownHealth} · Initiative ${shownInitiative}` : "",
+                      rankLine,
                       (unit.stacks ?? 0) > 0
                         ? `${unit.stacks} Polish Unit Stack${unit.stacks === 1 ? "" : "s"}: +1 Attack and ${unit.stacks} extra Pack health layer${unit.stacks === 1 ? "" : "s"}.`
                         : "",
@@ -3425,6 +3445,11 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                   {unit.side === "few" ? "Few" : unit.side === "neutral" ? "Neutral" : "Pack"}{" "}
                   {def?.name ?? unit.unitDefId}
                 </strong>
+                {rankInfo && rankInfo.rank > 0 ? (
+                  <span className={`unitRankBadge rank-${rankInfo.rank}`} title={rankLine}>
+                    {rankInfo.rank >= 3 ? "⚔" : "^".repeat(rankInfo.rank)}
+                  </span>
+                ) : null}
                 {(unit.stacks ?? 0) > 0 ? (
                   <span
                     className={`armyStackBadge count-${Math.min(3, unit.stacks ?? 0)} active`}
@@ -3436,7 +3461,7 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                 ) : null}
                 {side ? (
                   <small>
-                    A{shownAttack} D{side.defense} HP{side.health} I{side.initiative}
+                    A{shownAttack} D{shownDefense} HP{shownHealth} I{shownInitiative}
                   </small>
                 ) : null}
               </button>
@@ -6634,11 +6659,12 @@ function GameOptionsPanel({
         const polishSpellBookOn = houseRules["polish-spell-book"];
         const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
         const undoMovesOn = options.undoMoves ?? false;
+        const unitExperienceOn = options.unitExperience ?? false;
         return (
           <div className="optionalRulesCluster" aria-label="Optional scoring, decks, spell book, and testing aids">
             <div className="optionalRulesClusterHead">
               <strong>Optional systems</strong>
-              <small>Victory Points, Event deck, Morale Cards, Spell Book, and Undo moves</small>
+              <small>Victory Points, Event deck, Morale Cards, Spell Book, Unit experience, and Undo moves</small>
             </div>
 
             <div className="optionRow">
@@ -6804,6 +6830,34 @@ function GameOptionsPanel({
                   : "Off by default. Turn it On only for manual testing / bug-hunting; it exposes a map Undo button that rewinds recent actions."}
               </small>
             </div>
+
+            <div className="optionRow unitExperienceRow">
+              <OptionRowLabel
+                hint="WoG Unit Experience (board adaptation): army units that survive combats won alongside your hero gain XP and veteran ranks — stat bonuses, elite abilities, and a Drill action at your Towns"
+                iconClassName="optionRowIcon crest"
+                iconSrc="/assets/spell-icons/slayer.png"
+                title="Unit experience"
+              />
+              <div className="optionButtons">
+                {([false, true] as const).map((on) => (
+                  <button
+                    aria-pressed={unitExperienceOn === on}
+                    className={unitExperienceOn === on ? "selected" : ""}
+                    key={on ? "on" : "off"}
+                    onClick={() => send({ unitExperience: on })}
+                    title={on ? "Unit experience on" : "Unit experience off"}
+                    type="button"
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+              <small className="optionHint">
+                {unitExperienceOn
+                  ? "Survivors of won battles earn XP (guard difficulty / bank size / 2 for PvP). Ranks: Seasoned, Veteran, Elite — small stat bonuses, a unique Elite ability for one signature unit per faction. Reinforcing halves a card's XP; Stack layers cost 1 XP each. Drill (2 gold, once per turn at your Town) trains a unit by hand."
+                  : "Off by default. Also available as a Wake of Gods module — units level up like in the WoG Unit Experience System, adapted to the board game."}
+              </small>
+            </div>
           </div>
         );
       })()}
@@ -6840,7 +6894,8 @@ function GameOptionsPanel({
                 ["newCreatures", "New neutral creatures", "Adds the 15-card WOG roster to the Bronze, Silver, Gold and Azure Neutral decks."],
                 ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
                 ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
-                ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search)."]
+                ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search)."],
+                ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and a Drill action at your Towns."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
                 return (

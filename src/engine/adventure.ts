@@ -133,6 +133,14 @@ import {
 } from "./hex";
 import { createSeededRandom } from "./random";
 import { applyUnitCurrentSide } from "./unit-transforms";
+import {
+  diluteUnitExperienceForUpgrade,
+  unitExperienceActive,
+  unitRankFold,
+  unitRankForExperience,
+  withEliteAbility
+} from "./unit-experience";
+import { DRILL_UNIT_GOLD_COST, MAX_UNIT_RANK } from "@/data/units/experience";
 import type {
   ActiveEffectState,
   AdventureReward,
@@ -2152,6 +2160,44 @@ export function mainHeroInOwnTown(state: GameState, playerId: PlayerId): boolean
   return Object.values(state.towns).some(
     (town) => town.controllerId === playerId && town.fieldId === hero.spaceId
   );
+}
+
+/**
+ * Unit Experience Drill (map action): the army cards still below max veteran
+ * rank (XP past the last threshold does nothing, so maxed cards are not
+ * offered).
+ */
+export function drillableArmyUnits(state: GameState, playerId: PlayerId): ArmyUnitState[] {
+  const player = state.players[playerId];
+  if (!player) {
+    return [];
+  }
+  return player.army.filter((armyUnit) => {
+    const def = coreUnitDefinitions[armyUnit.unitDefId];
+    return def ? unitRankForExperience(def.tier, armyUnit.experience ?? 0) < MAX_UNIT_RANK : false;
+  });
+}
+
+/**
+ * Whether DRILL_UNIT is available right now: Unit Experience on, the player's
+ * main hero standing in an OWN Town (the training grounds), the gold cost
+ * covered, once per own turn, and at least one card still below max rank.
+ */
+export function unitDrillAvailable(state: GameState, playerId: PlayerId): boolean {
+  if (!unitExperienceActive(state)) {
+    return false;
+  }
+  const player = state.players[playerId];
+  if (!player || player.unitDrillRound === state.round) {
+    return false;
+  }
+  if ((player.resources.gold ?? 0) < DRILL_UNIT_GOLD_COST) {
+    return false;
+  }
+  if (!mainHeroInOwnTown(state, playerId)) {
+    return false;
+  }
+  return drillableArmyUnits(state, playerId).length > 0;
 }
 
 /** The single Secondary Hero a player may field, if they have gained one. */
@@ -5909,6 +5955,8 @@ export function processPendingVisit(state: GameState): void {
           spendRecruitResources(state, visit.playerId, step.cost, `${step.source} (Unit Stack)`);
         }
         unit.stacks = (unit.stacks ?? 0) + 1;
+        // Unit Experience: the added Stack layer dilutes the veterans (-1 XP).
+        diluteUnitExperienceForUpgrade(state, visit.playerId, unit, "stack");
         appendEvent(state, {
           type: "ARMY_STACK_PURCHASED",
           playerId: visit.playerId,
@@ -10583,6 +10631,7 @@ export function makeCombatUnitFromArmy(
     permanentAttackBonus?: number;
     permanentHealthBonus?: number;
     stacks?: number;
+    experience?: number;
   },
   controllerId: PlayerId,
   unitId: UnitId,
@@ -10607,6 +10656,11 @@ export function makeCombatUnitFromArmy(
     overrides?.polishUnitStacks && (armyUnit.side === "pack" || armyUnit.side === "neutral")
       ? Math.max(0, Math.trunc(armyUnit.stacks ?? 0))
       : 0;
+  // Unit Experience (optional rule): veteran-rank stat bonuses + the elite
+  // ability fold into the printed side like permanentAttackBonus. With the rule
+  // off no card ever carries `experience`, so this is an exact no-op.
+  const unitExperience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
+  const rankFold = unitRankFold(armyUnit.unitDefId, def.tier, unitExperience);
 
   const unit: CombatUnitState = {
     id: unitId,
@@ -10616,22 +10670,24 @@ export function makeCombatUnitFromArmy(
     variant: armyUnit.side,
     grade: def.tier,
     type: side.type ?? def.type,
-    attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0),
-    defense: side.defense,
-    maxHealth: side.health + permanentHealthBonus,
+    attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0) + rankFold.attack,
+    defense: side.defense + rankFold.defense,
+    maxHealth: side.health + permanentHealthBonus + rankFold.health,
     damage: 0,
-    initiative: side.initiative,
+    initiative: side.initiative + rankFold.initiative,
     position,
     activatedThisRound: false,
     movedThisActivation: false,
     retaliatedThisRound: false,
     defenseToken: false,
-    abilities: side.abilities,
+    abilities: withEliteAbility(side.abilities, rankFold),
     unitDefId: armyUnit.unitDefId,
     armyUnitId: armyUnit.id,
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
     ...(permanentHealthBonus ? { permanentHealthBonus } : {}),
     ...(armyStacks ? { armyStacks } : {}),
+    ...(unitExperience ? { unitExperience } : {}),
+    ...(rankFold.rank ? { unitRank: rankFold.rank } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `${def.name} unit card`,
@@ -13421,6 +13477,8 @@ export function reinforceArmyUnit(
     free ? "free reinforcement" : halfCost || halfGoldOnly ? "half-cost reinforcement" : "reinforcement"
   );
   armyUnit.side = "pack";
+  // Unit Experience: fresh recruits dilute the card's veterans (halved XP).
+  diluteUnitExperienceForUpgrade(state, playerId, armyUnit, "reinforce");
   // The reserved Legion voucher (if any) is spent on this unit, win or lose.
   consumeRecruitVoucherFor(state, playerId, purchase);
   appendEvent(state, {
