@@ -1350,19 +1350,21 @@ the every-WOG-module config).
 
 ### WOG New Objects (`wog.newObjects`, BINH-only) — what runs vs. adaptations
 
-Three authentic-WoG adventure-map objects shipped as single-hex **Field
+SEVEN authentic-WoG adventure-map objects shipped as single-hex **Field
 Overrides** (the GLOBAL override mechanism — `src/data/wog/field-overrides.ts`
-registers the 3 kinds as package `"wog"`, `src/data/wog/locations.ts` merges
-their locations into `locationDefinitions`; the visit menus are built dynamically
-in `beginFieldVisit`'s `buildWogFieldVisitStep`, mirroring the anime package).
-Default OFF ⇒ byte-identical (the wog package returns false from
+registers the 7 kinds as package `"wog"`, `src/data/wog/locations.ts` merges
+their locations into `locationDefinitions`; the dynamic/context-filtered visit
+menus are built in `beginFieldVisit`'s `buildWogFieldVisitStep`, mirroring the
+anime package). Default OFF ⇒ byte-identical (the wog package returns false from
 `fieldOverridePackageAllowed` unless `wog.enabled && wog.newObjects`, so no pool
 membership, no palette surprise). Behaviour pinned in
 `src/engine/wog-objects.test.ts` (each claim mutation-checked, with CONTROLs).
 
 Leading with what does NOT run / deliberate adaptations:
-- **Only 3 of WoG's many scripted objects ship.** Fishing Well, Living Skull,
-  Adventure Cave, God's Altars, the Colosseum, etc. are NOT modeled.
+- **Only 7 of WoG's many scripted objects ship.** God's Altars beyond the one
+  below, the Colosseum, Fishing Wells' variable catch, etc. are NOT modeled;
+  each shipped object is a board-adapted READING (the printed `summary` states
+  exactly the wired effect).
 - **Emerald Tower's creature-enchanting is REPLACED by commander/hero training.**
   WoG's tower enchants a creature stack; here it is guarded (difficulty Ⅲ,
   stamped via the registry's `guard`) and, after the win, opens a City-Hall-style
@@ -1388,24 +1390,62 @@ Leading with what does NOT run / deliberate adaptations:
   sell set absent with no Artifact in hand — plus "Pay 4 gold: Search (1) the
   Artifact deck" (the shared-deck search pipeline, so the normal BINH tier gates
   apply) and Leave.
-- **Art: only Emerald Tower's hex sprite is an authentic WoG scan**; the Mirror
-  and Junk Merchant hexes are composed in-palette. All three ship WITH art on
-  disk (`public/assets/wog/field-overrides/<slug>.webp`), so NO glyph placeholder
-  is registered (art wins).
+- **Fishing Well is a fixed Attack-die gamble** (WoG's variable catch is NOT
+  modeled). A STATIC `PAY_TO(1 gold)` → `ATTACK_DIE_TABLE` (no dynamic menu —
+  the interaction lives on the location def, like the anime Gambling Den): +1 →
+  +1 valuables, 0 → 2 gold back (net even), −1 → nothing. Revisitable, once per
+  visit; a broke hero / decline pays nothing.
+- **Living Skull is a Listen/Smash CHOOSE_ONE with a permanent destruction
+  latch** (WoG's scripted lore is NOT modeled). "Listen" = Search (1) the Ability
+  deck (repeatable). "Smash" = +2 gold, then the new `SMASH_WOG_SKULL` leaf sets
+  `field.wogSkullSmashed` — the hex is INERT for EVERYONE thereafter (no menu on
+  any later visit, any player). The latch mirrors `centerHexClaimed`.
+- **Adventure Cave is an escalating repeatable fight** (WoG's dungeon crawl is
+  NOT modeled). Guarded Ⅰ on first entry; each WIN pays a scaling reward (win 1:
+  +3 gold, win 2: a Treasure die, win 3: Search (1) the Artifact deck) and
+  RE-GUARDS one difficulty higher (Ⅰ→Ⅱ→Ⅲ, `applyCustomGuardToField`) — after the
+  3rd win it is cleared for good (`clearCustomGuard`). `field.wogCaveWins` counts
+  the wins; the whole reward/re-guard flow is `handleWogAdventureCaveVisit` in
+  `beginFieldVisit`, BEFORE the generic FO guard-clear (which would just clear it).
+  All reward leaves are auto-resolving so a computer win never parks on a window.
+- **Altar of the Gods is a pay-3-valuables blessing** (WoG's full sacrifice table
+  is NOT modeled). `PAY_TO(3 valuables)` → CHOOSE_ONE: +1 morale, +2 hero XP
+  (`gainExperience`), or — only with `wog.commanders` on AND a commander — +1
+  commander stat point (`GAIN_COMMANDER_POINTS`). Plain revisitable (1 MP); NO
+  per-round latch (deliberate — the 3-valuables cost gates each visit).
+- **Commander-artifact BONUS on reward locations** (user spec "some location that
+  gives rewards also adds a bonus commander artifact along with it"): with
+  `wog.enabled && wog.commanders` on and a commander present, the **Emerald
+  Tower** guard win AND the **Adventure Cave** 3rd win ALSO drop ONE random
+  NOT-in-play commander-artifact card into the winner's hand (the normal bindable
+  card — unchanged bind flow). `freeCommanderArtifactCardIds` scans every player's
+  hand/discard/deck/removed, every commander's bound slots, AND every shared deck
+  draw/discard pile (so a `wog.artifacts` deck-join copy is never duplicated); if
+  all 8 are in play the grant is a no-op with a feed note. `grantCommanderArtifactReward`
+  in `beginFieldVisit`.
+- **Art: only Emerald Tower's hex sprite is an authentic WoG scan**; the other
+  six (Mirror, Junk Merchant, Fishing Well, Living Skull, Adventure Cave, Altar of
+  the Gods) are codex-generated late-90s-HoMM3-style hexes. All seven ship WITH
+  512×512 webp art on disk (`public/assets/wog/field-overrides/<slug>.webp`), so
+  NO glyph placeholder is registered (art wins).
 
 What runs (each with a failing-if-removed test in `wog-objects.test.ts`): the
-3 kinds register under package `"wog"` with art on disk and locations in
+7 kinds register under package `"wog"` with art on disk and locations in
 `locationDefinitions`; pool/palette listing includes wog kinds ONLY with
 `wog.enabled + newObjects` (CONTROLs: each flag off; anime-on-but-wog-off does
 NOT leak wog kinds; both-on lists BOTH packages — coexistence); a carved wog hex
-is Location-Token-protected; the three visit effects above with their CONTROLs;
-a wog designer pin survives the map-registry sanitize round-trip and auto-enables
-`wog.enabled + newObjects` at setup (`customMapHasWogFieldOverridePins`,
+is Location-Token-protected; every visit effect above with its CONTROLs (the
+gamble branch table keyed off the rolled face, the skull latch inert-for-a-second-
+visitor, the cave Ⅰ→Ⅱ→Ⅲ ladder + stays-cleared, the altar's commander-gated arm,
+the commander-artifact grant with a commanders-off / all-in-play / held-copy
+CONTROL); a wog designer pin survives the map-registry sanitize round-trip and
+auto-enables `wog.enabled + newObjects` at setup (`customMapHasWogFieldOverridePins`,
 mirroring the anime pins twin at the three `adventure-setup.ts` sites). The
-all-on coexistence soak (`anime-coexistence-soak.test.ts`) already runs
-`newObjects: true`; AI seats now meet the wog objects and the generic visit-menu
-scoring resolves every arm (the leaves `GAIN_COMMANDER_POINTS` /
-`SELL_HAND_ARTIFACT` are auto-resolving — kept OUT of `stepNeedsInput`).
+all-on coexistence soak (`anime-coexistence-soak.test.ts`) runs `newObjects:
+true`; AI seats meet the wog objects and the generic visit-menu scoring resolves
+every arm (the leaves `GAIN_COMMANDER_POINTS` / `SELL_HAND_ARTIFACT` /
+`SMASH_WOG_SKULL` are auto-resolving — kept OUT of `stepNeedsInput`; the cave's
+reward leaves too).
 
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
