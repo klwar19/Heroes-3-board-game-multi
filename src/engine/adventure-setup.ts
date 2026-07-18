@@ -88,7 +88,6 @@ import {
   sanitizeCustomWinConditions,
   planAllowedSecretFeatures,
   tileMatchesAnySecretFeature,
-  tileMatchesSecretFeature,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
   objectGuardSpec,
