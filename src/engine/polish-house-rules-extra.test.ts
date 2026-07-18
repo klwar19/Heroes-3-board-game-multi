@@ -159,15 +159,16 @@ describe("polish-reduced-starting-bonus", () => {
     expect(step?.type === "CHOOSE_ONE" ? step.prompt : null).toMatch(/Reduced/i);
   });
 
-  it("resource package grants exactly one of the three fixed packages", () => {
+  // Resolve the reduced-bonus resource option for p1 and return the resource
+  // delta the die granted. Returns null if the prompt could not be reached.
+  const rollReducedResourceDelta = (seed: string) => {
     let state = createAdventureGameState({
-      seed: "polish-reduced-res",
+      seed,
       difficulty: "hard",
       rollFirstPlayer: false,
       startingBonus: true,
       houseRules: { "polish-reduced-starting-bonus": true, "split-decks": true }
     });
-    // Drain until the reduced prompt for p1.
     for (let i = 0; i < 30; i += 1) {
       const visit = state.adventure?.pendingVisit;
       if (
@@ -177,7 +178,6 @@ describe("polish-reduced-starting-bonus", () => {
       ) {
         break;
       }
-      // Force-open via applying the queued visit by pumping legal actions.
       const pid = visit?.playerId ?? "p1";
       const legal = getLegalActions(state, pid);
       const step = legal.find((l) => l.action.type === "RESOLVE_VISIT_STEP");
@@ -185,15 +185,39 @@ describe("polish-reduced-starting-bonus", () => {
       state = applyOk(state, step.action);
     }
     const visit = state.adventure?.pendingVisit;
-    expect(visit?.playerId).toBe("p1");
-    expect(visit?.steps[0]?.type).toBe("CHOOSE_ONE");
-    // Option 1 = resource package menu.
+    if (visit?.playerId !== "p1" || visit.steps[0]?.type !== "CHOOSE_ONE") return null;
+    const before = { ...state.players.p1.resources };
+    // Option 1 = "Roll for resources" — no manual pick; the die auto-grants.
     state = resolveVisitOption(state, "p1", 1);
-    const resStep = state.adventure?.pendingVisit?.steps[0];
-    expect(resStep?.type === "CHOOSE_ONE" ? resStep.prompt : "").toMatch(/resource package/i);
-    const beforeGold = state.players.p1.resources.gold;
-    state = resolveVisitOption(state, "p1", 0); // 3 gold
-    expect(state.players.p1.resources.gold).toBe(beforeGold + 3);
+    const after = state.players.p1.resources;
+    return {
+      gold: after.gold - before.gold,
+      buildingMaterials: after.buildingMaterials - before.buildingMaterials,
+      valuables: after.valuables - before.valuables
+    };
+  };
+
+  it("resource option rolls one random LOW resource face (no manual pick)", () => {
+    const delta = rollReducedResourceDelta("polish-reduced-res");
+    expect(delta).not.toBeNull();
+    // Exactly one of the three capped low faces landed.
+    expect([
+      { gold: 3, buildingMaterials: 0, valuables: 0 },
+      { gold: 0, buildingMaterials: 2, valuables: 0 },
+      { gold: 0, buildingMaterials: 0, valuables: 1 }
+    ]).toContainEqual(delta);
+  });
+
+  it("never grants a high value across many seeds (CONTROL for the cap)", () => {
+    // Without the capHighValues reroll, ~1/3 of rolls would land 6 gold or 4
+    // building materials; across 30 seeds that is essentially certain to appear.
+    for (let i = 0; i < 30; i += 1) {
+      const delta = rollReducedResourceDelta(`polish-reduced-cap-${i}`);
+      if (!delta) continue;
+      expect(delta.gold).toBeLessThan(6);
+      expect(delta.buildingMaterials).toBeLessThan(4);
+      expect(delta.valuables).toBeLessThan(2);
+    }
   });
 
   it("exports the pure reduced steps helper", () => {
