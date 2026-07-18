@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="743" height="1040" viewBox="0 0 743 1040">
+  <title>Túi Càn Khôn (Cosmic Bag) — Pháp Bảo artifact card face</title>
+  <metadata data-layout="phap-bao-artifact-v1" data-slug="tui_can_khon" data-tier="minor" data-master="tui_can_khon-master.png" data-frame="frame-artifact-keyed.png" data-source="src/data/anime/artifacts.ts"/>
+  <defs>
+    <filter id="textShadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="2"/><feOffset dy="2"/><feComponentTransfer><feFuncA type="linear" slope=".8"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <clipPath id="artClip"><rect x="58" y="127" width="627" height="445"/></clipPath>
+    <style>
+      .titleText { fill: #f2dfa4; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+      .tierText { font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 22px; font-weight: 700; letter-spacing: 4px; text-anchor: middle; filter: url(#textShadow); }
+      .enText { fill: #cfc6a6; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 24px; font-style: italic; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+      .ruleText { fill: #efe3c2; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 24px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+    </style>
+  </defs>
+
+  <g inkscape:groupmode="layer" inkscape:label="01 Illustration (linked master)" id="layer-art" clip-path="url(#artClip)">
+    <rect x="58" y="127" width="627" height="445" fill="#151b16"/>
+    <image id="linked-master" x="58" y="127" width="627" height="445" preserveAspectRatio="xMidYMid slice" href="../../raw/artifacts/tui_can_khon-master.png" xlink:href="../../raw/artifacts/tui_can_khon-master.png"/>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="02 Keyed ornate frame (linked master)" id="layer-frame">
+    <image id="linked-frame" x="0" y="0" width="743" height="1040" preserveAspectRatio="none" href="../../raw/artifacts/frame-artifact-keyed.png" xlink:href="../../raw/artifacts/frame-artifact-keyed.png"/>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="03 Editable typography" id="layer-type">
+    <text x="371" y="93" class="titleText" font-size="40">Túi Càn Khôn</text>
+    <text x="371" y="640" class="tierText" fill="#c7ccd6">MINOR ARTIFACT</text>
+    <text x="371" y="674" class="enText">Cosmic Bag</text>
+    <g id="editable-rules"><text x="371" y="771" class="ruleText">Each Resources round: gain 1 building</text><text x="371" y="803" class="ruleText">materials.</text><text x="371" y="845" class="ruleText">— OR — Remove this card: gain 1 building</text><text x="371" y="877" class="ruleText">materials and 1 valuables.</text></g>
+  </g>
+</svg>

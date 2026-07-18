@@ -34,11 +34,16 @@
 
 import type { FactionId } from "@/data/factions/types";
 import { resolveAnimeOptions } from "@/engine/anime";
-import type { AnimeModOptions, GameDifficulty } from "@/engine/state";
+import { DEFAULT_WOG_OPTIONS } from "@/engine/state";
+import type { AnimeModOptions, GameDifficulty, HouseRuleId, WogModOptions } from "@/engine/state";
 
 export type LocalizedText = { en: string; vi: string };
 
-export type CampaignTheme = "xianxia" | "isekai";
+/**
+ * "classic" is the BOARD-GAME campaign register (painted late-90s HoMM chrome,
+ * no anime modules at all) beside the two anime packages.
+ */
+export type CampaignTheme = "xianxia" | "isekai" | "classic";
 
 /** The boolean anime module flags (every AnimeModOptions key except waveCadence). */
 export type AnimeModuleFlag = keyof Omit<AnimeModOptions, "waveCadence">;
@@ -61,6 +66,10 @@ export type CampaignChapterSetup = {
   fieldOverrides?: boolean;
   /** Anime module flags this chapter wants (carried config, not applied in V1). */
   anime?: Partial<AnimeModOptions>;
+  /** WOG module flags (Commanders …) this chapter wants injected. */
+  wog?: Partial<WogModOptions>;
+  /** House-rule toggles (Polish stacks …) this chapter wants injected. */
+  houseRules?: Partial<Record<HouseRuleId, boolean>>;
 };
 
 /** Scene hooks into the shared `storySceneRegistry` (all optional). */
@@ -89,8 +98,12 @@ export type Campaign = {
   title: LocalizedText;
   tagline: LocalizedText;
   protagonist: LocalizedText;
+  /** Banner cover art under /assets/story/covers/ (drawn on the /story hub card). */
+  cover: string;
   chapters: CampaignChapter[];
 };
+
+const cover = (slug: string) => `/assets/story/covers/${slug}.webp`;
 
 // -----------------------------------------------------------------------------
 // Locked-chapter helper — chapters 2–7 are DATA only (no setup, no scenes).
@@ -108,6 +121,7 @@ const JIANGHU: Campaign = {
   id: "jianghu",
   theme: "xianxia",
   title: { en: "The Jianghu Chronicle", vi: "Giang Hồ Chí" },
+  cover: cover("jianghu"),
   tagline: {
     en: "A transmigrator's sword carves a new fate across the Ninefold Realms.",
     vi: "Thanh kiếm của kẻ xuyên không khắc nên vận mệnh mới giữa Cửu Giới."
@@ -194,6 +208,7 @@ const BIN: Campaign = {
   id: "bin-otherworld",
   theme: "isekai",
   title: { en: "Bin's Otherworld Chronicle", vi: "Dị Giới Ký Của Bin" },
+  cover: cover("bin-otherworld"),
   tagline: {
     en: "A summoned gamer, a broke goddess, and a world that runs suspiciously like his favorite board game.",
     vi: "Một game thủ bị triệu hồi, một nữ thần rỗng túi, và một thế giới vận hành y hệt trò chơi bàn cờ hắn mê nhất."
@@ -273,10 +288,191 @@ const BIN: Campaign = {
 };
 
 // -----------------------------------------------------------------------------
+// Campaign 3 — "Restoration of Erathia" (Catherine), the CLASSIC board-game
+// campaign: no anime modules, no field overrides — the plain base game with
+// classic painted chrome. Chapter 1 is playable like the other two.
+// -----------------------------------------------------------------------------
+
+const ERATHIA: Campaign = {
+  id: "erathia",
+  theme: "classic",
+  title: { en: "Restoration of Erathia", vi: "Phục Quốc Erathia" },
+  cover: cover("erathia"),
+  tagline: {
+    en: "Queen Catherine sails home to a kingdom in ruin — and raises its banners one battle at a time.",
+    vi: "Nữ hoàng Catherine giong buồm về cố quốc hoang tàn — và dựng lại từng ngọn cờ qua mỗi trận chiến."
+  },
+  protagonist: { en: "Queen Catherine", vi: "Nữ Hoàng Catherine" },
+  chapters: [
+    {
+      id: "ch1",
+      title: { en: "The Landing", vi: "Đổ Bộ" },
+      synopsis: {
+        en: "The royal fleet beaches at dawn on Erathia's ravaged coast. Raise a beachhead town, rally the scattered garrisons, and win your first foothold back from the invaders.",
+        vi: "Hạm đội hoàng gia cập bờ lúc rạng đông trên bờ biển Erathia điêu tàn. Hãy dựng thị trấn đầu cầu, tập hợp các đồn binh tan tác, và giành lại chỗ đứng đầu tiên từ tay quân xâm lược."
+      },
+      playable: true,
+      setup: {
+        playerFaction: "castle",
+        opponents: 1,
+        difficulty: "easy"
+      },
+      scenes: {
+        onStart: "story.erathia.ch1.intro",
+        onVictory: "story.erathia.ch1.victory",
+        onDefeat: "story.erathia.ch1.defeat"
+      }
+    },
+    lockedChapter(
+      "ch2",
+      { en: "Raising the Banners", vi: "Dựng Cờ" },
+      {
+        en: "Word of the Queen's landing spreads. An economy scenario: rebuild the border garrisons and out-supply the occupiers before winter closes the roads.",
+        vi: "Tin nữ hoàng đổ bộ lan nhanh. Một chiến dịch kinh tế: tái thiết các đồn biên và vượt mặt quân chiếm đóng về quân nhu trước khi mùa đông phong tỏa đường sá."
+      }
+    ),
+    lockedChapter(
+      "ch3",
+      { en: "The Underground Roads", vi: "Đường Hầm Sâu" },
+      {
+        en: "The mountain passes are held against you, so the army goes under them. A subterranean scenario of gates, caverns and the things that mine in the dark.",
+        vi: "Các đèo núi đã bị trấn giữ, vậy nên đại quân phải chui xuống lòng núi. Một chiến dịch hầm ngầm với cổng đá, hang động và những kẻ đào bới trong bóng tối."
+      }
+    ),
+    lockedChapter(
+      "ch4",
+      { en: "The Deathless March", vi: "Đoàn Quân Bất Tử" },
+      {
+        en: "From the eastern wastes the Deathless March pours across the border. Hold the river line: a defense scenario where ground given is never given back.",
+        vi: "Từ hoang mạc phía đông, Đoàn Quân Bất Tử tràn qua biên giới. Hãy giữ vững phòng tuyến bên sông: một chiến dịch phòng thủ nơi tấc đất đã mất là không thể đòi lại."
+      }
+    ),
+    lockedChapter(
+      "ch5",
+      { en: "The Siege of Steadwick", vi: "Công Thành Steadwick" },
+      {
+        en: "The capital. Its walls have held every siege in living memory — now they hold against their own Queen. Break them, or starve before them.",
+        vi: "Kinh đô. Tường thành ấy chưa từng thất thủ trong ký ức người đời — giờ đây nó lại chống chính nữ hoàng của mình. Hãy phá vỡ nó, hoặc chết đói dưới chân thành."
+      }
+    ),
+    lockedChapter(
+      "ch6",
+      { en: "The Traitor's Price", vi: "Cái Giá Của Kẻ Phản Bội" },
+      {
+        en: "The lords who sold Erathia scatter to their keeps. Hunt them down one by one — every keep taken is a name struck from the shame-roll.",
+        vi: "Những lãnh chúa đã bán rẻ Erathia tháo chạy về thành lũy riêng. Hãy truy lùng từng kẻ một — mỗi tòa thành hạ được là một cái tên bị gạch khỏi bảng ô nhục."
+      }
+    ),
+    lockedChapter(
+      "ch7",
+      { en: "The Crown Restored", vi: "Vương Miện Phục Hưng" },
+      {
+        en: "One last host stands between Catherine and a whole kingdom. The final field battle — win it, and the griffin banners fly from every tower in Erathia.",
+        vi: "Chỉ còn một đạo quân cuối cùng chắn giữa Catherine và giang sơn trọn vẹn. Trận dã chiến sau chót — thắng nó, và cờ sư điểu sẽ tung bay trên mọi tòa tháp Erathia."
+      }
+    )
+  ]
+};
+
+// -----------------------------------------------------------------------------
+// Campaign 4 — "The Grand Convergence": the EVERYTHING-TOGETHER crossover.
+// One map with every coexisting mod at once — the anime/wuxia modules
+// (cultivation, Pháp Bảo, hero grades, equipment + Field Overrides), WOG
+// Commanders AND the Polish unit-stacks house rule — the §3.8 coexistence
+// gates prove they thread into one coherent game; this chapter is the playable
+// front door for that combination.
+// -----------------------------------------------------------------------------
+
+const CONVERGENCE: Campaign = {
+  id: "convergence",
+  theme: "xianxia",
+  title: { en: "The Grand Convergence", vi: "Vạn Giới Hội Tụ" },
+  cover: cover("convergence"),
+  tagline: {
+    en: "Every realm on one board: sword cultivators, commanders and stacked legions collide where the worlds overlap.",
+    vi: "Mọi cõi giới trên cùng một bàn cờ: kiếm tu, thống soái và những quân đoàn chồng lớp va chạm nơi các thế giới giao thoa."
+  },
+  protagonist: { en: "The Convergent Heroes", vi: "Quần Hùng Hội Tụ" },
+  chapters: [
+    {
+      id: "ch1",
+      title: { en: "Where Worlds Overlap", vi: "Nơi Thế Giới Giao Thoa" },
+      synopsis: {
+        en: "The realms fold into one map: cultivate, grade up, equip, command your commander and stack your legions — every module at once, against a rival who does the same.",
+        vi: "Các cõi giới gập vào một bản đồ: tu luyện, thăng phẩm, trang bị, thống lĩnh chỉ huy quan và chồng lớp quân đoàn — mọi mô-đun cùng lúc, trước một đối thủ cũng làm hệt như vậy."
+      },
+      playable: true,
+      setup: {
+        playerFaction: "rampart",
+        opponents: 2,
+        difficulty: "normal",
+        fieldOverrides: true,
+        anime: { enabled: true, cultivation: true, xianxiaArtifacts: true, heroGrades: true, equipment: true },
+        wog: { enabled: true, commanders: true },
+        houseRules: { "polish-unit-stacks": true }
+      },
+      scenes: {
+        onStart: "story.convergence.ch1.intro",
+        onVictory: "story.convergence.ch1.victory",
+        onDefeat: "story.convergence.ch1.defeat"
+      }
+    },
+    lockedChapter(
+      "ch2",
+      { en: "The Stacked Legion", vi: "Quân Đoàn Chồng Lớp" },
+      {
+        en: "The overlap widens and armies learn the old Polish drill: layered packs holding the line while commanders duel above them.",
+        vi: "Vùng giao thoa mở rộng và các đạo quân học lại binh pháp Ba Lan xưa: những đội hình chồng lớp giữ phòng tuyến trong khi các chỉ huy quan quyết đấu bên trên."
+      }
+    ),
+    lockedChapter(
+      "ch3",
+      { en: "The Commander's Dao", vi: "Đạo Của Thống Soái" },
+      {
+        en: "A WOG commander seeks enlightenment at the Enlightenment Stone. Nobody is sure the realms can survive what it comprehends.",
+        vi: "Một chỉ huy quan WOG tìm cầu giác ngộ nơi Ngộ Đạo Thạch. Chẳng ai dám chắc các cõi giới chịu nổi điều mà hắn lĩnh hội."
+      }
+    ),
+    lockedChapter(
+      "ch4",
+      { en: "Bazaar of Ten Thousand Things", vi: "Chợ Phiên Vạn Vật" },
+      {
+        en: "Outfitters, guild posts, gambling dens and onsen on one trade road — an economy scenario where every shop of every world is open at once.",
+        vi: "Tiệm trang bị, trạm thương hội, sòng bạc và cả suối nước nóng trên cùng một con đường thương mại — một chiến dịch kinh tế nơi mọi cửa tiệm của mọi thế giới cùng mở cửa."
+      }
+    ),
+    lockedChapter(
+      "ch5",
+      { en: "The Tribulation Gauntlet", vi: "Ải Độ Kiếp" },
+      {
+        en: "Heavenly Tribulation, morale storms and forced battle events stack onto one gauntlet map. Survive it with any build you can assemble.",
+        vi: "Thiên kiếp, bão sĩ khí và những trận chiến cưỡng bách chồng chất lên một bản đồ thử luyện. Hãy sống sót bằng bất cứ lối chơi nào ngươi ghép nổi."
+      }
+    ),
+    lockedChapter(
+      "ch6",
+      { en: "The Rulebreakers", vi: "Những Kẻ Phá Luật" },
+      {
+        en: "Rival heroes who each mastered a different world's rules meet in one arena. Whoever combines them best writes the next rulebook.",
+        vi: "Những anh hùng kình địch, mỗi người tinh thông luật chơi của một thế giới, hội ngộ trong cùng một đấu trường. Ai kết hợp giỏi nhất sẽ viết nên cuốn luật kế tiếp."
+      }
+    ),
+    lockedChapter(
+      "ch7",
+      { en: "One Board to Hold Them", vi: "Một Bàn Cờ Trọn Vạn Giới" },
+      {
+        en: "The convergence completes: one final battle with every module, every system and every world in play at once.",
+        vi: "Cuộc hội tụ hoàn tất: một trận chiến cuối cùng với mọi mô-đun, mọi hệ thống và mọi thế giới cùng hiện diện."
+      }
+    )
+  ]
+};
+
+// -----------------------------------------------------------------------------
 // Registry.
 // -----------------------------------------------------------------------------
 
-export const CAMPAIGNS: readonly Campaign[] = [JIANGHU, BIN];
+export const CAMPAIGNS: readonly Campaign[] = [JIANGHU, BIN, ERATHIA, CONVERGENCE];
 
 export const campaignRegistry: Record<string, Campaign> = Object.fromEntries(
   CAMPAIGNS.map((campaign) => [campaign.id, campaign])
@@ -309,6 +505,10 @@ export type ChapterRoomOptions = {
   fieldOverrides: boolean;
   /** Fully-resolved anime options (defaults merged with the chapter's partial). */
   anime: AnimeModOptions;
+  /** Fully-resolved WOG modules to inject (absent = untouched defaults). */
+  wog?: WogModOptions;
+  /** House-rule toggles to inject (absent = untouched defaults). */
+  houseRules?: Partial<Record<HouseRuleId, boolean>>;
 };
 
 export function chapterRoomOptions(chapter: CampaignChapter): ChapterRoomOptions | null {
@@ -321,6 +521,10 @@ export function chapterRoomOptions(chapter: CampaignChapter): ChapterRoomOptions
     playerFaction: setup.playerFaction,
     ...(setup.difficulty ? { difficulty: setup.difficulty } : {}),
     fieldOverrides: Boolean(setup.fieldOverrides),
-    anime: resolveAnimeOptions(setup.anime ?? null)
+    anime: resolveAnimeOptions(setup.anime ?? null),
+    // GameSetupOptions.wog wants the FULL module record — resolve the partial
+    // against the defaults (the anime twin of resolveAnimeOptions).
+    ...(setup.wog ? { wog: { ...DEFAULT_WOG_OPTIONS, ...setup.wog } } : {}),
+    ...(setup.houseRules ? { houseRules: setup.houseRules } : {})
   };
 }

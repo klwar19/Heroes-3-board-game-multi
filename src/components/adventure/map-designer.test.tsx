@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { MapDesigner, planBackArt, planBackLabel } from "./map-designer";
 import { nearestGateDragCandidate, nearestGateHexPair, type GateDragCandidate, type GateHexPair } from "./gate-drag";
 import { allTileDefinitions } from "@/data/map/tiles";
+import { registerFieldOverrideDefinitions } from "@/data/map/field-overrides";
 import {
   canonicalTileEdgeCode,
   hexNeighbor,
@@ -24,6 +25,22 @@ import {
 } from "@/engine";
 
 afterEach(cleanup);
+
+// Every SHIPPED Field Override kind now has hex art (2026-07), so the art-less
+// glyph fallback is pinned via a TEST-ONLY registered kind.
+registerFieldOverrideDefinitions({
+  test_glyph_kind: {
+    id: "test_glyph_kind",
+    locationId: "anime.test_glyph_kind",
+    name: "Test Glyph Kind",
+    package: "anime-xianxia",
+    tileGroups: ["far"],
+    terrain: "land",
+    implementationStatus: "implemented",
+    summary: "Test-only art-less kind pinning the designer glyph fallback.",
+    glyph: "🧪"
+  }
+});
 
 function renderDesigner(
   customMap: CustomMapTilePlan[],
@@ -314,14 +331,14 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     expect(popover.querySelector(".popoverViiField")).toBeNull();
   });
 
-  it("a pinned Field Override with NO art yet draws its fallback glyph on the map", () => {
-    // song_bac_quan (Gambling Den) ships without hex art — the designer overlay
+  it("a pinned Field Override with NO art draws its fallback glyph on the map", () => {
+    // Art-less kinds (test-only registered — all shipped kinds have art now)
     // must still show a glyph marker so the pin is a visible hex, not skipped.
     const container = renderDesigner([
       { row: 8, col: 2, group: "starting", faceDown: false },
-      { row: 9, col: 4, group: "far", faceDown: false, tileDefId: "F1", fieldOverrides: [{ kind: "song_bac_quan", slot: 0 }] }
+      { row: 9, col: 4, group: "far", faceDown: false, tileDefId: "F1", fieldOverrides: [{ kind: "test_glyph_kind", slot: 0 }] }
     ]);
-    const glyph = container.querySelector('[data-testid="designer-fo-glyph-song_bac_quan"]');
+    const glyph = container.querySelector('[data-testid="designer-fo-glyph-test_glyph_kind"]');
     expect(glyph).not.toBeNull();
     expect(glyph?.textContent?.length ?? 0).toBeGreaterThan(0);
   });

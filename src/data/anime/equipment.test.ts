@@ -62,8 +62,9 @@ describe("anime equipment catalog integrity", () => {
         expect(equipmentArtOnDisk(def.id), `${def.id} art missing on disk at ${equipmentArtPath(def.id)}`).toBe(true);
       }
     }
-    // Every placeholder id names a real item with no committed art (no dangling / stale placeholder).
-    expect(ANIME_EQUIPMENT_ART_PLACEHOLDERS.size).toBeGreaterThan(0);
+    // Every placeholder id names a real item with no committed art (no dangling /
+    // stale placeholder). 2026-07: all 6 items ship art, so the set is
+    // legitimately EMPTY — the loop still guards any future declaration.
     for (const id of ANIME_EQUIPMENT_ART_PLACEHOLDERS) {
       expect(getEquipmentDefinition(id), `placeholder ${id} must name a real item`).toBeTruthy();
       expect(

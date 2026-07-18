@@ -5137,6 +5137,15 @@ button.hbSlot:disabled { cursor: default; }
   white-space: nowrap;
 }
 
+/* Equipment chip item icon (art wins over the slot glyph) */
+.hbEquipIcon {
+  width: 1.15em;
+  height: 1.15em;
+  object-fit: contain;
+  vertical-align: -0.2em;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
+}
+
 .hbGradePicker {
   margin: 0.6cqw 1cqw 0;
   padding: 0.6cqw 0.8cqw;
@@ -6935,6 +6944,9 @@ button.hbSlot:disabled { cursor: default; }
 .storyOverlayBackdrop.noArt.isekaiTheme {
   background: radial-gradient(circle at 50% 22%, rgba(46, 34, 86, 0.74), rgba(8, 6, 18, 0.94));
 }
+.storyOverlayBackdrop.noArt.classicTheme {
+  background: radial-gradient(circle at 50% 22%, rgba(84, 58, 26, 0.72), rgba(16, 10, 6, 0.94));
+}
 
 .storyStage {
   position: relative;
@@ -7004,6 +7016,9 @@ button.hbSlot:disabled { cursor: default; }
 }
 .isekaiTheme .storySpriteAvatar {
   border-color: rgba(168, 140, 240, 0.55);
+}
+.classicTheme .storySpriteAvatar {
+  border-color: rgba(232, 200, 120, 0.6);
 }
 
 .storyToolbar {
@@ -7080,6 +7095,10 @@ button.hbSlot:disabled { cursor: default; }
   border-color: rgba(168, 140, 240, 0.55);
   box-shadow: 0 26px 70px rgba(0, 0, 0, 0.72), 0 0 24px rgba(150, 120, 240, 0.2);
 }
+.classicTheme .storyDialogBox {
+  border-color: rgba(232, 200, 120, 0.55);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.72), 0 0 24px rgba(220, 170, 80, 0.18);
+}
 
 .storyNameplate {
   position: absolute;
@@ -7103,6 +7122,11 @@ button.hbSlot:disabled { cursor: default; }
   background: linear-gradient(160deg, #241a3a, #150f26);
   border-color: rgba(168, 140, 240, 0.6);
   color: #dcccff;
+}
+.classicTheme .storyNameplate {
+  background: linear-gradient(160deg, #3a2c14, #1d1408);
+  border-color: rgba(232, 200, 120, 0.6);
+  color: #f2dfa4;
 }
 
 .storyLineText {
@@ -7147,6 +7171,9 @@ button.hbSlot:disabled { cursor: default; }
 .isekaiTheme .storyChoiceButton:hover {
   border-color: #a88cf0;
 }
+.classicTheme .storyChoiceButton:hover {
+  border-color: #e8c878;
+}
 /* === end StoryOverlay ==================================================== */
 
 /* === Story-mode hub (/story) ============================================= *
@@ -7190,6 +7217,20 @@ button.hbSlot:disabled { cursor: default; }
   border-color: rgba(168, 140, 240, 0.45);
   background: linear-gradient(160deg, rgba(24, 18, 38, 0.72), rgba(12, 12, 20, 0.6));
 }
+.storyCampaignCard.classicTheme {
+  border-color: rgba(232, 200, 120, 0.5);
+  background: linear-gradient(160deg, rgba(38, 28, 14, 0.72), rgba(16, 12, 8, 0.6));
+}
+/* Campaign banner cover art (codex-generated, /assets/story/covers). */
+.storyCampaignCover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 12 / 5;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  margin-bottom: 10px;
+}
 .storyCampaignTitle {
   margin: 0 0 4px;
   font-size: 20px;
@@ -7199,6 +7240,18 @@ button.hbSlot:disabled { cursor: default; }
 }
 .isekaiTheme .storyCampaignTitle {
   color: #b8a2f4;
+}
+.classicTheme .storyCampaignTitle {
+  color: #f2dfa4;
+}
+/* Story-mode entry icon on /single-player (Homm3BG spell icon, not a skill emblem). */
+.spNavSpellIcon {
+  width: 2.4em;
+  height: 2.4em;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 0.4em;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
 }
 .storyCampaignTagline {
   margin: 0 0 4px;

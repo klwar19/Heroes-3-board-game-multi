@@ -1,4 +1,7 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_WOG_OPTIONS } from "@/engine/state";
 import {
   CAMPAIGNS,
   chapterRoomOptions,
@@ -19,6 +22,8 @@ import { coreFactionDefinitions, isPlayableFaction } from "@/data/factions/core"
  *  - `enabled`        — the master crest / skin gate (required by all the rest).
  *  - `cultivation`    — the Cultivation Realm track (`anime-cultivation.test.ts`).
  *  - `xianxiaArtifacts` — the 5 Pháp Bảo artifacts (`anime-artifacts.test.ts`).
+ *  - `heroGrades`     — the Merit/grade track (`anime-hero-grades.test.ts`).
+ *  - `equipment`      — hero equipment slots + outfitters (`anime-equipment.test.ts`).
  * Every OTHER AnimeModOptions flag (towns, neutrals, destiny, guild, waves,
  * raidBosses, dungeon, gods, heartDemon, elixirPills, secretRealms) is still
  * types/lobby-only per the plan §1 status — enabling one on a playable chapter
@@ -26,7 +31,13 @@ import { coreFactionDefinitions, isPlayableFaction } from "@/data/factions/core"
  * (`fieldOverrides` is NOT here: it is a global GameSetupOptions toggle, a
  * sibling of `anime`, not an AnimeModOptions key.)
  */
-const SHIPPED_ANIME_MODULES = new Set<AnimeModuleFlag>(["enabled", "cultivation", "xianxiaArtifacts"]);
+const SHIPPED_ANIME_MODULES = new Set<AnimeModuleFlag>([
+  "enabled",
+  "cultivation",
+  "xianxiaArtifacts",
+  "heroGrades",
+  "equipment"
+]);
 
 function bilingual(text: LocalizedText, label: string) {
   expect(typeof text.en === "string" && text.en.trim().length > 0, `${label}.en`).toBe(true);
@@ -34,10 +45,10 @@ function bilingual(text: LocalizedText, label: string) {
 }
 
 describe("campaign registry", () => {
-  it("ships BOTH campaigns, each with 7 chapters and matching registry lookups", () => {
+  it("ships all FOUR campaigns, each with 7 chapters and matching registry lookups", () => {
     expect(listCampaigns()).toBe(CAMPAIGNS);
-    expect(CAMPAIGNS.map((c) => c.id)).toEqual(["jianghu", "bin-otherworld"]);
-    expect(CAMPAIGNS.map((c) => c.theme)).toEqual(["xianxia", "isekai"]);
+    expect(CAMPAIGNS.map((c) => c.id)).toEqual(["jianghu", "bin-otherworld", "erathia", "convergence"]);
+    expect(CAMPAIGNS.map((c) => c.theme)).toEqual(["xianxia", "isekai", "classic", "xianxia"]);
     for (const campaign of CAMPAIGNS) {
       expect(campaign.chapters.length, `${campaign.id} chapters`).toBe(7);
       expect(getCampaign(campaign.id)).toBe(campaign);
@@ -151,10 +162,47 @@ describe("chapterRoomOptions", () => {
     expect(options.anime.xianxiaArtifacts).toBe(false);
   });
 
+  it("maps the classic Erathia ch-1 to the plain base game (no anime, no wog, no house rules)", () => {
+    const options = chapterRoomOptions(ch1("erathia"))!;
+    expect(options.opponents).toBe(1);
+    expect(options.playerFaction).toBe("castle");
+    expect(options.fieldOverrides).toBe(false);
+    expect(options.anime.enabled).toBe(false);
+    expect(options.wog).toBeUndefined();
+    expect(options.houseRules).toBeUndefined();
+  });
+
+  it("maps the Convergence ch-1 to EVERYTHING at once — anime modules + WOG Commanders + Polish stacks", () => {
+    const options = chapterRoomOptions(ch1("convergence"))!;
+    expect(options.opponents).toBe(2);
+    expect(options.playerFaction).toBe("rampart");
+    expect(options.fieldOverrides).toBe(true);
+    // Every SHIPPED anime module is on.
+    expect(options.anime.enabled).toBe(true);
+    expect(options.anime.cultivation).toBe(true);
+    expect(options.anime.xianxiaArtifacts).toBe(true);
+    expect(options.anime.heroGrades).toBe(true);
+    expect(options.anime.equipment).toBe(true);
+    // WOG resolves to the FULL module record (GameSetupOptions.wog shape).
+    expect(options.wog).toEqual({ ...DEFAULT_WOG_OPTIONS, enabled: true, commanders: true });
+    // Polish unit stacks ride the house-rule toggles.
+    expect(options.houseRules).toEqual({ "polish-unit-stacks": true });
+  });
+
   it("returns null for a locked chapter with no setup (CONTROL)", () => {
     const locked = getCampaign("jianghu")!.chapters[1];
     expect(locked.playable).toBe(false);
     expect(chapterRoomOptions(locked)).toBeNull();
+  });
+});
+
+describe("campaign covers", () => {
+  it("every campaign's cover art is on disk (the /story hub draws it)", () => {
+    for (const campaign of CAMPAIGNS) {
+      expect(campaign.cover, `${campaign.id} cover path`).toMatch(/^\/assets\/story\/covers\/.+\.webp$/);
+      const abs = fileURLToPath(new URL(`../../../public${campaign.cover}`, import.meta.url));
+      expect(existsSync(abs), `${campaign.id} cover missing on disk at ${campaign.cover}`).toBe(true);
+    }
   });
 });
 
@@ -165,6 +213,7 @@ const _typecheck: Campaign = {
   title: { en: "a", vi: "b" },
   tagline: { en: "a", vi: "b" },
   protagonist: { en: "a", vi: "b" },
+  cover: "/assets/story/covers/x.webp",
   chapters: []
 };
 void _typecheck;
