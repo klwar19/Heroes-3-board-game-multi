@@ -207,6 +207,21 @@ export function flaggedMineSettlementCount(state: GameState, playerId: PlayerId)
   return count;
 }
 
+/** How many Settlement fields the player currently holds a flag on. */
+export function controlledSettlementCount(state: GameState, playerId: PlayerId): number {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return 0;
+  }
+  let count = 0;
+  for (const field of Object.values(adventure.fields)) {
+    if (field.flagOwnerId === playerId && field.location === "settlement") {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 /**
  * Artifacts attributable to a player — every zone their Might & Magic deck
  * cycles through (hand / deck / discard / Spell Book / permanents) PLUS the
@@ -325,6 +340,12 @@ function buildBreakdown(
   add("Buildings in controlled Towns", Math.min(8, controlledBuildingCount(state, playerId)));
   add("Hero Experience Levels", mainHeroOf(state, playerId)?.level ?? 0);
   add("Flagged Mines / Settlements", flaggedMineSettlementCount(state, playerId));
+  // Designer MAP-WIDE settlement bonus VP — extra VP per settlement controlled,
+  // ON TOP of the flat 1 above, so a map can make settlements worth holding.
+  const settlementVpEach = state.adventure?.mapPreset?.settlements?.vp ?? 0;
+  if (settlementVpEach > 0) {
+    add("Settlement bonus VP", settlementVpEach * controlledSettlementCount(state, playerId));
+  }
   add("Artifacts (1 VP per 2)", Math.floor(artifactCountOf(state.players[playerId]) / 2));
 
   for (const objective of config?.objectives ?? []) {

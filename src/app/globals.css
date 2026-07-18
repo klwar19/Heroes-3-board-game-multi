@@ -10275,6 +10275,21 @@ span.recruitThumb {
   margin-top: 6px;
 }
 
+.mapPresetObeliskAwards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.mapPresetObeliskAwards .mapPresetObeliskBonus {
+  margin-top: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(168, 137, 79, 0.22);
+  border-radius: 8px;
+  background: rgba(168, 137, 79, 0.06);
+}
+
 /* Board-game reward glyph tagging a preset row (Obelisk bonus kind, VP
    objective kind). Monochrome symbol glyphs, lightened to read on the dark
    editor panel. */
