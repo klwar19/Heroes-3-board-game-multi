@@ -11738,6 +11738,90 @@ span.recruitThumb {
   justify-items: start;
 }
 
+/* Pre-board chrome grouped into three labeled clusters — Tiles /
+   Objects & teleporters / Tools — so placeables read as visually distinct from
+   mode-arming tools. Each is a dark-glass card with a small-caps header,
+   matching the app's .mapPresetGroup family. The clusters only WRAP existing
+   markup; every inner class name (.designerPalette, .designerBandLegend,
+   .designerObjectPalette, .designerObjectButton, .designerModPanel, …) is
+   untouched. */
+.designerCluster {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(214, 178, 94, 0.24);
+  background: linear-gradient(180deg, rgba(30, 22, 13, 0.72), rgba(17, 13, 8, 0.82));
+  padding: 8px 11px 11px;
+  box-shadow: inset 0 1px 0 rgba(246, 226, 168, 0.08);
+}
+.designerClusterObjects {
+  border-color: rgba(120, 200, 255, 0.24);
+}
+.designerClusterTools {
+  border-color: rgba(180, 120, 255, 0.3);
+}
+.designerClusterLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(240, 220, 184, 0.66);
+}
+.designerClusterBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Tools cluster: buttons that ARM a mode (border brush / Mod panel) rather than
+   place an object. A dashed outline sets them apart from the solid placeable
+   object buttons, and the armed state is unmistakable (bright solid border +
+   glow). The .designerToolRow ancestor keeps these winning over the base
+   .designerObjectButton rules regardless of source order. */
+.designerToolRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.designerToolRow .designerToolButton {
+  border-style: dashed;
+  background: rgba(20, 15, 26, 0.55);
+}
+.designerToolRow .designerToolButton.armed {
+  border-style: solid;
+  border-color: #ffe9a8;
+  outline: 2px solid #ffe9a8;
+  box-shadow: 0 0 14px rgba(255, 233, 168, 0.7), inset 0 0 12px rgba(255, 233, 168, 0.22);
+}
+
+/* The long designer walkthrough — collapsed by default so it stops dominating
+   the page. Text is kept verbatim inside .optionHint. */
+.designerHelp {
+  width: 100%;
+  max-width: 620px;
+}
+.designerHelpSummary {
+  width: fit-content;
+  padding: 3px 2px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #e7c878;
+}
+.designerHelpSummary::-webkit-details-marker {
+  display: none;
+}
+.designerHelpSummary::before {
+  content: "▸ ";
+  color: rgba(231, 200, 120, 0.85);
+}
+.designerHelp[open] .designerHelpSummary::before {
+  content: "▾ ";
+}
+
 .designerBoard {
   position: relative;
   min-width: 120px;
