@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   ANIME_EQUIPMENT_ART_PLACEHOLDERS,
@@ -11,6 +13,10 @@ import {
   listEquipmentDefinitions,
   type AnimeEquipmentSlot
 } from "./equipment";
+
+/** True when an item's art file exists under public/ (the promote target). */
+const equipmentArtOnDisk = (id: string) =>
+  existsSync(fileURLToPath(new URL(`../../../public${equipmentArtPath(id)}`, import.meta.url)));
 
 describe("anime equipment catalog integrity", () => {
   it("ships exactly the 6 V1 items with the specced slot / cost / package", () => {
@@ -33,17 +39,37 @@ describe("anime equipment catalog integrity", () => {
     }
   });
 
-  it("all 6 items are art placeholders (no card face yet) and expose no image", () => {
+  it("art placeholder contract (drop-art-later, promote-safe both directions)", () => {
+    // All 6 ship art-less TODAY (no equipment art on disk yet), but the check is
+    // written promote-SAFE: it branches on membership so dropping art + removing
+    // an id from the set keeps this green, and it disk-checks BOTH directions.
     for (const def of listEquipmentDefinitions()) {
-      expect(ANIME_EQUIPMENT_ART_PLACEHOLDERS.has(def.id), def.id).toBe(true);
-      // Art placeholder ⇒ no image (UI falls back to the slot glyph).
-      expect(equipmentImage(def.id), def.id).toBeUndefined();
+      const isPlaceholder = ANIME_EQUIPMENT_ART_PLACEHOLDERS.has(def.id);
       // The art path is well-formed for the day the placeholder is removed.
       expect(equipmentArtPath(def.id)).toContain("/assets/anime/equipment/");
+      if (isPlaceholder) {
+        // Placeholder ⇒ UI falls back to the slot glyph (no image)...
+        expect(equipmentImage(def.id), `${def.id} placeholder ⇒ no image`).toBeUndefined();
+        // ...and (direction a) the .webp must NOT already be on disk — dropping it
+        // is half the promote; the registry entry must go too.
+        expect(
+          equipmentArtOnDisk(def.id),
+          `${def.id} is a placeholder but art exists on disk — remove it from ANIME_EQUIPMENT_ART_PLACEHOLDERS`
+        ).toBe(false);
+      } else {
+        // Promoted ⇒ (direction b) the image is wired to its art path AND the file exists.
+        expect(equipmentImage(def.id), `${def.id} names its art path`).toBe(equipmentArtPath(def.id));
+        expect(equipmentArtOnDisk(def.id), `${def.id} art missing on disk at ${equipmentArtPath(def.id)}`).toBe(true);
+      }
     }
-    // Every placeholder id names a real item (no dangling placeholder).
+    // Every placeholder id names a real item with no committed art (no dangling / stale placeholder).
+    expect(ANIME_EQUIPMENT_ART_PLACEHOLDERS.size).toBeGreaterThan(0);
     for (const id of ANIME_EQUIPMENT_ART_PLACEHOLDERS) {
-      expect(getEquipmentDefinition(id), id).toBeTruthy();
+      expect(getEquipmentDefinition(id), `placeholder ${id} must name a real item`).toBeTruthy();
+      expect(
+        equipmentArtOnDisk(id),
+        `placeholder ${id} already has art on disk — remove it from ANIME_EQUIPMENT_ART_PLACEHOLDERS`
+      ).toBe(false);
     }
   });
 

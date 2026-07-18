@@ -24,6 +24,10 @@
  * `ANIME_EQUIPMENT_ART_PLACEHOLDERS`; the UI renders a slot glyph / initial
  * fallback until a real `.webp` lands under
  * `public/assets/anime/equipment/<slug>.webp` (drop the file, remove the id).
+ * Art convention (the promote target): a square ITEM ICON, 512×512 webp,
+ * transparent or subtle-frame background — a hero-board chip scale, register per
+ * `package` (ink-wash xianxia vs anime-painterly isekai). The full art-TODO shop
+ * list is `scripts/anime-art/ART-TODO.md`.
  */
 
 import type { AnimeEquipmentSlot } from "@/engine/state";

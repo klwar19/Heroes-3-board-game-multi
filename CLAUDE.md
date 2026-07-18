@@ -1748,8 +1748,10 @@ What runs (each with a failing-if-removed test):
 carries `plan.fieldOverride(s)` pins). Mechanism is CORE (`src/data/map/
 field-overrides.ts` registry + `src/engine/field-overrides.ts` +
 `tile-hex-placements.ts`); the Anime mod only registers content kinds
-(`src/data/anime/field-overrides.ts` — 11 Ninefold objects across two packages:
-8 `anime-xianxia` + 3 `anime-isekai`, all pool/palette-gated by the Anime mod.
+(`src/data/anime/field-overrides.ts` — 13 Ninefold objects across two packages,
+9 `anime-xianxia` + 4 `anime-isekai`: 11 are pool/palette-gated by the Anime mod
+alone (8 xianxia + 3 isekai), and 2 are the Equipment outfitters (Rèn Binh Các +
+Adventurer Outfitter) gated on `anime.equipment` via `requiresModule` (§3.13).
 Their locations are always in `locationDefinitions` and visits ride the normal
 interaction pipeline; every wave-2 kind is a PURE REUSE of the existing
 `LocationInteraction` vocabulary — `thuong_hoi_tram`/`capsule_lab` a
@@ -1757,7 +1759,8 @@ Trading-Post/War-Machine shop, `song_bac_quan` a `PAY_TO`+`ATTACK_DIE_TABLE`
 gamble, `dai_luyen_khi`/`urahara_shop`/`onsen_ryokan` `CHOOSE_ONE` menus —
 effect-tested in `src/engine/anime-locations.test.ts`; `tran_phap_truyen_tong`
 joins the real Monolith network. **Art status is honest**: the 5 wave-1 kinds
-have real hex art on disk; the 6 wave-2 kinds ship WITHOUT art (a `glyph`
+have real hex art on disk (512×512 webp); the other 8 art-less kinds — the 6
+wave-2 kinds AND the 2 Equipment outfitters — ship WITHOUT art (a `glyph`
 fallback for board icon mode + designer overlay), each declared in
 `FIELD_OVERRIDE_ART_PLACEHOLDERS` — the art-or-placeholder + "art wins over
 glyph" invariant is pinned in `field-overrides.test.ts`,
@@ -1782,8 +1785,12 @@ tokens (never strands the reveal chain). Pinned in
 Leading with what does NOT run / deliberate limits:
 - **Pool override kinds stamped on face-down tiles are readable in raw
   snapshots** (like designer tokens; no player-view masking in V1).
-- **Anime gameplay modules beyond Field Overrides are MOSTLY types/lobby only.**
-  Exception now shipped: `anime.xianxiaArtifacts` (Pháp Bảo — 5 ORIGINAL
+- **Several anime gameplay modules beyond Field Overrides have now shipped** —
+  enumerated in the "Also shipped" bullets below (`anime.xianxiaArtifacts`,
+  `anime.cultivation`, `anime.heroGrades`, `anime.equipment`, Forced Battle Events,
+  and the story/campaign spine); the REMAINING `AnimeModOptions` flags stay
+  types/lobby-only (closing note at the end of this bullet). FIRST shipped:
+  `anime.xianxiaArtifacts` (Pháp Bảo — 5 ORIGINAL
   Artifact cards, `src/data/anime/artifacts.ts`). Default OFF ⇒ byte-identical
   Artifact decks; ON ⇒ they join the shared Artifact deck(s) (split minor/major/
   relic AND legacy single), riding the same tier/uniqueness gates as core
