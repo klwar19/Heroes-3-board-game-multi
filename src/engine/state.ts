@@ -4392,6 +4392,12 @@ export type GameEvent =
       from: MapSpaceId;
       to: MapSpaceId;
       movementLeft: number;
+      /**
+       * Instant relocation kind — presentation picks TELPTOUT / DANGER /
+       * CAVEHEAD / spell teleport, never a terrain horse loop. Absent on
+       * ordinary adjacent steps.
+       */
+      teleport?: "monolith" | "gate" | "whirlpool" | "subterranean" | "spell";
     }
   | {
       /**
