@@ -6840,7 +6840,7 @@ function GameOptionsPanel({
                 ["newCreatures", "New neutral creatures", "Adds the 15-card WOG roster to the Bronze, Silver, Gold and Azure Neutral decks."],
                 ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
                 ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
-                ["newObjects", "New adventure objects", "Saves the object module choice; WOG map objects will be added as their data and art arrive."]
+                ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search)."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
                 return (

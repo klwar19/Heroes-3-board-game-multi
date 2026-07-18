@@ -1348,6 +1348,65 @@ pinned by the both-mods-on deck-join tests in `wog-artifacts.test.ts` and by the
 all-on coexistence soak (`anime-coexistence-soak.test.ts`, `artifacts: true` in
 the every-WOG-module config).
 
+### WOG New Objects (`wog.newObjects`, BINH-only) — what runs vs. adaptations
+
+Three authentic-WoG adventure-map objects shipped as single-hex **Field
+Overrides** (the GLOBAL override mechanism — `src/data/wog/field-overrides.ts`
+registers the 3 kinds as package `"wog"`, `src/data/wog/locations.ts` merges
+their locations into `locationDefinitions`; the visit menus are built dynamically
+in `beginFieldVisit`'s `buildWogFieldVisitStep`, mirroring the anime package).
+Default OFF ⇒ byte-identical (the wog package returns false from
+`fieldOverridePackageAllowed` unless `wog.enabled && wog.newObjects`, so no pool
+membership, no palette surprise). Behaviour pinned in
+`src/engine/wog-objects.test.ts` (each claim mutation-checked, with CONTROLs).
+
+Leading with what does NOT run / deliberate adaptations:
+- **Only 3 of WoG's many scripted objects ship.** Fishing Well, Living Skull,
+  Adventure Cave, God's Altars, the Colosseum, etc. are NOT modeled.
+- **Emerald Tower's creature-enchanting is REPLACED by commander/hero training.**
+  WoG's tower enchants a creature stack; here it is guarded (difficulty Ⅲ,
+  stamped via the registry's `guard`) and, after the win, opens a City-Hall-style
+  CHOOSE_ONE: "Pay 3 gold: +1 commander stat point" — offered ONLY when
+  `wog.commanders` is on AND the visitor has a commander (context-filtered arm
+  absent otherwise) — via the SAME `commander.gradePoints` bump +
+  `COMMANDER_POINTS_AWARDED` event the level-up uses (the point is then spendable
+  through `COMMANDER_GRADE_UP`); "Pay 2 gold: +1 hero experience" through the
+  normal `gainExperience` pipeline (level-ups, bumps ride it); or Leave. Both
+  paid arms are PAY_TO (gold-gated at offer AND resolution). As a REVISITABLE hex
+  the beaten guard is cleared on the win (the FO branch of the beginFieldVisit
+  guard-clear) so re-entry is a peaceful menu, not a re-fight.
+- **Mirror of the Home-Way is a flat pay-2-gold Town teleport** (WoG's full
+  Town-Portal price/movement table is NOT modeled). Visit: "Pay 2 gold: teleport
+  to one of your Towns/Settlements" (the visitor picks when several are reachable,
+  reusing the Town-Portal `TELEPORT_HERO` machinery) or Leave; with no reachable
+  Town (zero owned, or every destination occupied by another hero) the pay arm is
+  absent. No free teleport without paying; arrival never re-triggers.
+- **Junk Merchant is tier-priced sells + a paid search** (WoG's 32-artifact fixed
+  trade table is NOT modeled). Visit CHOOSE_ONE: one "Sell <artifact> (<tier>):
+  gain N gold" arm per hand Artifact — minor 2 / major 3 / relic 4, the card
+  leaving the game (Trading-Post sell semantics: hand → removed pile), the whole
+  sell set absent with no Artifact in hand — plus "Pay 4 gold: Search (1) the
+  Artifact deck" (the shared-deck search pipeline, so the normal BINH tier gates
+  apply) and Leave.
+- **Art: only Emerald Tower's hex sprite is an authentic WoG scan**; the Mirror
+  and Junk Merchant hexes are composed in-palette. All three ship WITH art on
+  disk (`public/assets/wog/field-overrides/<slug>.webp`), so NO glyph placeholder
+  is registered (art wins).
+
+What runs (each with a failing-if-removed test in `wog-objects.test.ts`): the
+3 kinds register under package `"wog"` with art on disk and locations in
+`locationDefinitions`; pool/palette listing includes wog kinds ONLY with
+`wog.enabled + newObjects` (CONTROLs: each flag off; anime-on-but-wog-off does
+NOT leak wog kinds; both-on lists BOTH packages — coexistence); a carved wog hex
+is Location-Token-protected; the three visit effects above with their CONTROLs;
+a wog designer pin survives the map-registry sanitize round-trip and auto-enables
+`wog.enabled + newObjects` at setup (`customMapHasWogFieldOverridePins`,
+mirroring the anime pins twin at the three `adventure-setup.ts` sites). The
+all-on coexistence soak (`anime-coexistence-soak.test.ts`) already runs
+`newObjects: true`; AI seats now meet the wog objects and the generic visit-menu
+scoring resolves every arm (the leaves `GAIN_COMMANDER_POINTS` /
+`SELL_HAND_ARTIFACT` are auto-resolving — kept OUT of `stepNeedsInput`).
+
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
 A separate system from the Astrologers Proclaim deck (do not confuse the two).
@@ -2075,7 +2134,10 @@ mutation-checked.
 `GameSetupOptions.fieldOverrides` (default OFF; auto-ON when a designed map
 carries `plan.fieldOverride(s)` pins). Mechanism is CORE (`src/data/map/
 field-overrides.ts` registry + `src/engine/field-overrides.ts` +
-`tile-hex-placements.ts`); the Anime mod only registers content kinds
+`tile-hex-placements.ts`); the Anime mod AND the Wake of Gods mod only register
+content kinds (WOG: `src/data/wog/field-overrides.ts` — 3 objects, package
+`"wog"`, gated on `wog.enabled && wog.newObjects`; see the "WOG New Objects"
+bullet). Anime content
 (`src/data/anime/field-overrides.ts` — 13 Ninefold objects across two packages,
 9 `anime-xianxia` + 4 `anime-isekai`: 11 are pool/palette-gated by the Anime mod
 alone (8 xianxia + 3 isekai), and 2 are the Equipment outfitters (Rèn Binh Các +

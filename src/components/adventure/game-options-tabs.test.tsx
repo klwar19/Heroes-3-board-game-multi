@@ -122,7 +122,9 @@ describe("Game options — tabbed layout", () => {
     // Open the WOG mod-options window (only shown while WOG is enabled).
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
     const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
-    const artifactsRow = within(dialog).getByRole("button", { name: /Artifacts/i });
+    // The New-adventure-objects row's description also mentions "Artifacts",
+    // so anchor on this row's unique card list instead of the bare word.
+    const artifactsRow = within(dialog).getByRole("button", { name: /Shuffles 5 Wake of Gods hero Artifact cards/i });
     expect(artifactsRow).toBeTruthy();
     expect(artifactsRow.getAttribute("aria-pressed")).toBe("false");
 

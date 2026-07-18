@@ -178,7 +178,8 @@ import type {
 import { isNeutralSideCombatChoice, neutralCombatControllerId } from "./neutral-control";
 import { DEFAULT_OBELISK_BONUS, GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 import type { CustomMapObeliskBonus } from "./state";
-import { awardCommanderGradePoints } from "./commanders";
+import { awardCommanderGradePoints, commandersModuleEnabled, wogNewObjectsEnabled } from "./commanders";
+import { WOG_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/wog/field-overrides";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
 export const HAND_LIMIT_BY_LEVEL: Record<number, number> = { 1: 4, 2: 4, 3: 5, 4: 5, 5: 6, 6: 6, 7: 7 };
@@ -4194,6 +4195,171 @@ export function elementalConfluxCandidates(
  * need player input wait in adventure.pendingVisit.
  */
 /**
+/**
+ * WOG New Objects (`wog.newObjects`): the reachable Town / Settlement teleport
+ * destinations for the Mirror of the Home-Way — the visiting hero's own Towns
+ * and flagged Settlements, minus the hero's current field and any field already
+ * holding another hero (Town-Portal semantics, without the movement-bonus
+ * tiers). Empty ⇒ the Mirror's pay arm is absent.
+ */
+function wogMirrorTownDestinations(
+  state: GameState,
+  playerId: PlayerId,
+  heroId: HeroId
+): { label: string; spaceId: MapSpaceId }[] {
+  const adventure = state.adventure;
+  const hero = state.heroes[heroId];
+  if (!adventure || !hero) {
+    return [];
+  }
+  const fieldHasOtherHero = (spaceId: string) =>
+    Object.values(state.heroes).some((other) => other.id !== hero.id && other.spaceId === spaceId);
+  const destinations: { label: string; spaceId: MapSpaceId }[] = [];
+  for (const town of Object.values(state.towns)) {
+    if (
+      town.controllerId === playerId &&
+      town.fieldId &&
+      town.fieldId !== hero.spaceId &&
+      !fieldHasOtherHero(town.fieldId)
+    ) {
+      destinations.push({ label: `Town (${town.factionId ?? town.id})`, spaceId: town.fieldId });
+    }
+  }
+  for (const field of Object.values(adventure.fields)) {
+    if (
+      field.location === "settlement" &&
+      field.flagOwnerId === playerId &&
+      field.spaceId !== hero.spaceId &&
+      !fieldHasOtherHero(field.spaceId)
+    ) {
+      destinations.push({ label: "Settlement", spaceId: field.spaceId });
+    }
+  }
+  return destinations;
+}
+
+/**
+ * WOG New Objects (`wog.newObjects`): build the visit MENU for one of the three
+ * Wake of Gods single-hex objects (Emerald Tower / Mirror of the Home-Way /
+ * Junk Merchant), or null when the module is off / the location is not a wog
+ * object. Mirrors buildEquipmentShopStep — the objects carve as NONE-interaction
+ * revisitable bases and the whole menu is appended here so each arm can be
+ * context-filtered against live state (commander presence, controlled Towns,
+ * hand Artifacts) City-Hall-style: an arm with no valid target is simply absent.
+ * Paid arms use PAY_TO (gold-gated at offer AND resolution).
+ */
+function buildWogFieldVisitStep(
+  state: GameState,
+  playerId: PlayerId,
+  heroId: HeroId,
+  locationId: string
+): VisitStep | null {
+  if (!wogNewObjectsEnabled(state) || !WOG_FIELD_OVERRIDE_LOCATION_IDS.has(locationId)) {
+    return null;
+  }
+  const player = state.players[playerId];
+  if (!player) {
+    return null;
+  }
+
+  if (locationId === "wog.emerald_tower") {
+    const options: { label: string; steps: VisitStep[] }[] = [];
+    // Commander training arm — present ONLY with the Commanders module on AND a
+    // commander to train (context filter). Paid via PAY_TO.
+    if (commandersModuleEnabled(state) && player.commander) {
+      options.push({
+        label: "Pay 3 gold: your commander gains +1 stat point",
+        steps: [
+          {
+            type: "PAY_TO",
+            prompt: "Train your commander for 3 gold?",
+            costOptions: [{ gold: 3 }],
+            steps: [{ type: "GAIN_COMMANDER_POINTS", amount: 1 }]
+          }
+        ]
+      });
+    }
+    options.push({
+      label: "Pay 2 gold: your main Hero gains 1 experience",
+      steps: [
+        {
+          type: "PAY_TO",
+          prompt: "Train your hero for 2 gold?",
+          costOptions: [{ gold: 2 }],
+          steps: [{ type: "GAIN_EXPERIENCE", amount: 1 }]
+        }
+      ]
+    });
+    options.push({ label: "Leave", steps: [] });
+    return { type: "CHOOSE_ONE", prompt: "Emerald Tower — train:", options };
+  }
+
+  if (locationId === "wog.mirror_home_way") {
+    const destinations = wogMirrorTownDestinations(state, playerId, heroId);
+    const options: { label: string; steps: VisitStep[] }[] = [];
+    // Pay-2-gold teleport arm — present ONLY when at least one Town/Settlement
+    // is reachable (never on your current field, never onto another hero).
+    if (destinations.length > 0) {
+      options.push({
+        label: "Pay 2 gold: teleport your Hero to one of your Towns",
+        steps: [
+          {
+            type: "PAY_TO",
+            prompt: "Pay 2 gold to travel the Mirror of the Home-Way?",
+            costOptions: [{ gold: 2 }],
+            steps: [
+              {
+                type: "CHOOSE_ONE",
+                prompt: "Mirror of the Home-Way: move your Hero to…",
+                options: destinations.map((destination) => ({
+                  label: destination.label,
+                  steps: [{ type: "TELEPORT_HERO" as const, heroId, spaceId: destination.spaceId }]
+                }))
+              }
+            ]
+          }
+        ]
+      });
+    }
+    options.push({ label: "Leave", steps: [] });
+    return { type: "CHOOSE_ONE", prompt: "Mirror of the Home-Way:", options };
+  }
+
+  if (locationId === "wog.junk_merchant") {
+    const options: { label: string; steps: VisitStep[] }[] = [];
+    // One sell arm per Artifact in hand (absent with no Artifact) — tier-priced
+    // gold, the card leaves the game (Trading-Post sell semantics).
+    for (const cardId of player.hand) {
+      const card = cardLibrary[cardId];
+      if (card?.kind !== "artifact") {
+        continue;
+      }
+      const tier = card.artifactTier ?? "minor";
+      const gold = tier === "relic" ? 4 : tier === "major" ? 3 : 2;
+      options.push({
+        label: `Sell ${card.name} (${tier}): gain ${gold} gold`,
+        steps: [{ type: "SELL_HAND_ARTIFACT", cardId, gold }]
+      });
+    }
+    options.push({
+      label: "Pay 4 gold: Search (1) the Artifact deck",
+      steps: [
+        {
+          type: "PAY_TO",
+          prompt: "Pay 4 gold to Search the Artifact deck?",
+          costOptions: [{ gold: 4 }],
+          steps: [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 }]
+        }
+      ]
+    });
+    options.push({ label: "Leave", steps: [] });
+    return { type: "CHOOSE_ONE", prompt: "Junk Merchant:", options };
+  }
+
+  return null;
+}
+
+/**
  * Anime Equipment (§3.13): build the outfitter shop menu for a visit, or null.
  * A CHOOSE_ONE with one buy option per item this shop sells that the hero does
  * NOT already own, plus a "Leave" option. Affordability is gated downstream
@@ -4294,10 +4460,15 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   // calls it. These fields take no Black Cube, so clear the leftover guard
   // here; otherwise the beaten guard would respawn on the hero's next entry.
   // (Retreat leaves it intact — the guard stands for next time.)
+  //
+  // A guarded Field Override (e.g. WoG's Emerald Tower, guard Ⅲ) is the same
+  // case: it is a REVISITABLE hex (no Black Cube), so once its guard is beaten
+  // it must not respawn on every re-entry — clear it here on the win.
   if (
     (isMapObjectLocation(location.id) ||
       location.id === "subterranean_gate" ||
-      isBankStyleGuardLocation(location.id)) &&
+      isBankStyleGuardLocation(location.id) ||
+      isFieldOverrideLocation(location.id)) &&
     field.difficulty
   ) {
     clearCustomGuard(field);
@@ -4424,6 +4595,14 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   const equipmentShopStep = buildEquipmentShopStep(state, playerId, location.id);
   if (equipmentShopStep) {
     steps.push(equipmentShopStep);
+  }
+
+  // WOG New Objects (`wog.newObjects`): the Emerald Tower / Mirror of the
+  // Home-Way / Junk Merchant carve as NONE-interaction revisitable bases and
+  // append their context-filtered menu here (mirrors the equipment shop).
+  const wogFieldStep = buildWogFieldVisitStep(state, playerId, heroId, location.id);
+  if (wogFieldStep) {
+    steps.push(wogFieldStep);
   }
 
   if (steps.length === 0) {
@@ -4558,6 +4737,45 @@ export function processPendingVisit(state: GameState): void {
           gainExperience(state, visit.playerId, step.amount);
         }
         break;
+      case "GAIN_COMMANDER_POINTS": {
+        // WOG New Objects (Emerald Tower): award commander stat point(s) — the
+        // same gradePoints bump + COMMANDER_POINTS_AWARDED event the hero
+        // level-up fires, so the point-picker UI / pulse just works.
+        const player = state.players[visit.playerId];
+        const commander = player?.commander;
+        if (commander && step.amount > 0) {
+          commander.gradePoints = (commander.gradePoints ?? 0) + step.amount;
+          appendEvent(state, {
+            type: "COMMANDER_POINTS_AWARDED",
+            playerId: visit.playerId,
+            commanderSlug: commander.slug,
+            points: step.amount,
+            level: state.heroes[visit.heroId]?.level ?? 1,
+            totalUnspent: commander.gradePoints,
+            message: `Your commander earned ${step.amount} stat ${
+              step.amount === 1 ? "point" : "points"
+            } at the Emerald Tower.`
+          });
+        }
+        break;
+      }
+      case "SELL_HAND_ARTIFACT": {
+        // WOG New Objects (Junk Merchant): sell the named Artifact for gold; the
+        // card leaves the game (Trading-Post sell semantics: hand → removed).
+        const player = state.players[visit.playerId];
+        const index = player?.hand.indexOf(step.cardId) ?? -1;
+        if (player && index >= 0) {
+          player.hand.splice(index, 1);
+          player.removed.push(step.cardId);
+          gainResources(
+            state,
+            visit.playerId,
+            { gold: step.gold },
+            `sold ${cardLibrary[step.cardId]?.name ?? step.cardId} at the Junk Merchant`
+          );
+        }
+        break;
+      }
       case "GAIN_MOVEMENT": {
         const hero = state.heroes[visit.heroId];
         if (hero) {
