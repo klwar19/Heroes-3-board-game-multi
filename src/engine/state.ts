@@ -7777,6 +7777,19 @@ export type MapFieldState = {
   centerHexReward?: CustomCenterHexReward;
   centerHexVp?: number;
   centerHexClaimed?: boolean;
+  /**
+   * WOG New Objects — Living Skull (`wog.living_skull`): set once a visitor
+   * chooses "smash it". A one-shot destruction latch: a smashed skull is INERT
+   * for EVERYONE (the visit menu is absent thereafter). Absent === intact.
+   */
+  wogSkullSmashed?: boolean;
+  /**
+   * WOG New Objects — Adventure Cave (`wog.adventure_cave`): how many times this
+   * cave's guard has been beaten (0/absent → the fresh Ⅰ guard). Each win
+   * increments it, re-guards one difficulty higher (Ⅰ→Ⅱ→Ⅲ) and pays a scaling
+   * reward; at 3 the cave is cleared for good.
+   */
+  wogCaveWins?: number;
   /** @deprecated Pre-centerHex snapshots only; the grant path reads both. */
   viiReward?: ViiFieldReward;
   /** @deprecated Pre-centerHex snapshots only; the grant path reads both. */
@@ -8065,6 +8078,14 @@ export type VisitStep =
       type: "SELL_HAND_ARTIFACT";
       cardId: CardId;
       gold: number;
+    }
+  | {
+      /**
+       * WOG New Objects (Living Skull): set the visited field's permanent
+       * destruction latch (`field.wogSkullSmashed`) so the hex is INERT for
+       * everyone from now on. Auto-resolves (no player input).
+       */
+      type: "SMASH_WOG_SKULL";
     }
   | { type: "GAIN_MOVEMENT"; amount: number }
   | {

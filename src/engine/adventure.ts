@@ -181,6 +181,7 @@ import { DEFAULT_OBELISK_BONUS, GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOP
 import type { CustomMapObeliskBonus } from "./state";
 import { awardCommanderGradePoints, commandersModuleEnabled, wogNewObjectsEnabled } from "./commanders";
 import { WOG_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/wog/field-overrides";
+import { COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/wog/commander-artifacts";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
 export const HAND_LIMIT_BY_LEVEL: Record<number, number> = { 1: 4, 2: 4, 3: 5, 4: 5, 5: 6, 6: 6, 7: 7 };
@@ -4259,20 +4260,141 @@ function wogMirrorTownDestinations(
 }
 
 /**
- * WOG New Objects (`wog.newObjects`): build the visit MENU for one of the three
- * Wake of Gods single-hex objects (Emerald Tower / Mirror of the Home-Way /
- * Junk Merchant), or null when the module is off / the location is not a wog
- * object. Mirrors buildEquipmentShopStep — the objects carve as NONE-interaction
- * revisitable bases and the whole menu is appended here so each arm can be
- * context-filtered against live state (commander presence, controlled Towns,
- * hand Artifacts) City-Hall-style: an arm with no valid target is simply absent.
- * Paid arms use PAY_TO (gold-gated at offer AND resolution).
+ * WOG commander-artifact reward (Task 2): the 8 commander-artifact card ids that
+ * are NOT currently in play anywhere — no player's hand/discard/deck/removed, no
+ * shared deck draw/discard pile (covers a `wog.artifacts` deck-join copy), and
+ * not bound onto any commander. Reward locations pick one of these to grant so a
+ * location-granted copy can never duplicate an existing one.
+ */
+function freeCommanderArtifactCardIds(state: GameState): string[] {
+  const inPlay = new Set<string>();
+  for (const p of Object.values(state.players)) {
+    for (const id of p.hand) inPlay.add(id);
+    for (const id of p.discard) inPlay.add(id);
+    for (const id of p.deck) inPlay.add(id);
+    for (const id of p.removed) inPlay.add(id);
+    const bound = p.commander?.artifacts;
+    if (bound) {
+      for (const id of Object.values(bound)) {
+        if (id) inPlay.add(id);
+      }
+    }
+  }
+  for (const deck of Object.values(state.decks)) {
+    for (const id of deck.drawPile) inPlay.add(id);
+    for (const id of deck.discardPile) inPlay.add(id);
+  }
+  return COMMANDER_ARTIFACT_SPEC_LIST.map((spec) => spec.cardId).filter((id) => !inPlay.has(id));
+}
+
+/**
+ * WOG commander-artifact BONUS on a reward location (Task 2 — user spec "some
+ * location that gives rewards also adds a bonus commander artifact along with
+ * it"): with the Commanders module on and a commander present, drop one random
+ * NOT-in-play commander-artifact card into the winner's hand (the normal
+ * bindable card — no change to the bind flow). Fired by the Emerald Tower guard
+ * win and the Adventure Cave's 3rd win. A no-op (with a feed note) when every
+ * commander artifact is already in play, and absent when the module is off /
+ * there is no commander. Works whether or not `wog.artifacts` deck-join is on —
+ * `freeCommanderArtifactCardIds` scans deck copies too, so no duplicate.
+ */
+function grantCommanderArtifactReward(state: GameState, playerId: PlayerId): void {
+  if (!commandersModuleEnabled(state)) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (!player?.commander) {
+    return;
+  }
+  const freeIds = freeCommanderArtifactCardIds(state);
+  if (freeIds.length === 0) {
+    eventNote(
+      state,
+      `${eventPlayerName(state, playerId)} finds no unclaimed commander artifact to take.`,
+      playerId
+    );
+    return;
+  }
+  const random = adventureRandom(state, "wog-commander-artifact-reward");
+  const cardId = freeIds[random.nextInt(0, freeIds.length - 1)];
+  player.hand.push(cardId);
+  eventNote(
+    state,
+    `${eventPlayerName(state, playerId)} claims ${cardLibrary[cardId]?.name ?? cardId}, a commander artifact, and may bind it to their commander.`,
+    playerId
+  );
+}
+
+/**
+ * WOG New Objects — Adventure Cave (`wog.adventure_cave`): the escalating
+ * repeatable fight. Reached from `beginFieldVisit` after the guard is dealt with
+ * (a WIN / Quick-Combat win / Diplomacy skip — a retreat never visits). A guard
+ * still standing on the field (`field.difficulty` truthy) means it was just
+ * beaten, so this counts a win: pay the scaling reward (win 1: +3 gold, win 2: a
+ * Treasure die, win 3: Search (1) the Artifact deck + the commander-artifact
+ * bonus) and RE-GUARD one difficulty higher (Ⅰ→Ⅱ→Ⅲ) — after the 3rd win the cave
+ * is cleared for good. A peaceful re-entry of a cleared cave is inert.
+ */
+function handleWogAdventureCaveVisit(
+  state: GameState,
+  playerId: PlayerId,
+  heroId: HeroId,
+  field: MapFieldState
+): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  const priorWins = field.wogCaveWins ?? 0;
+  // Not a fresh win: either the cave is already cleared for good (priorWins ≥ 3)
+  // or beginFieldVisit was reached with no standing guard (a peaceful re-entry).
+  if (!field.difficulty || priorWins >= 3) {
+    clearCustomGuard(field);
+    return;
+  }
+  const wins = priorWins + 1;
+  field.wogCaveWins = wins;
+
+  const steps: VisitStep[] = [];
+  if (wins === 1) {
+    steps.push({ type: "GAIN_RESOURCES", gold: 3 });
+  } else if (wins === 2) {
+    steps.push({ type: "ROLL_TREASURE_DICE", count: 1 });
+  } else {
+    steps.push({ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 });
+  }
+
+  if (wins >= 3) {
+    clearCustomGuard(field);
+    // Task 2: the deepest win ALSO drops a bindable commander artifact into hand.
+    grantCommanderArtifactReward(state, playerId);
+  } else {
+    // Re-guard one difficulty higher for the next expedition (Ⅰ→Ⅱ→Ⅲ).
+    applyCustomGuardToField(field, { level: wins + 1 });
+  }
+
+  adventure.pendingVisit = { heroId, playerId, fieldId: field.spaceId, steps };
+  processPendingVisit(state);
+}
+
+/**
+ * WOG New Objects (`wog.newObjects`): build the visit MENU for a Wake of Gods
+ * single-hex object with a dynamic/context-filtered menu (Emerald Tower / Mirror
+ * of the Home-Way / Junk Merchant / Living Skull / Altar of the Gods), or null
+ * when the module is off / the location has no dynamic menu (Fishing Well uses a
+ * static interaction; Adventure Cave is handled in `beginFieldVisit`). Mirrors
+ * buildEquipmentShopStep — these objects carve as NONE-interaction revisitable
+ * bases and the whole menu is appended here so each arm can be context-filtered
+ * against live state (commander presence, controlled Towns, hand Artifacts, the
+ * skull's destruction latch) City-Hall-style: an arm with no valid target is
+ * simply absent. Paid arms use PAY_TO (resource-gated at offer AND resolution).
  */
 function buildWogFieldVisitStep(
   state: GameState,
   playerId: PlayerId,
   heroId: HeroId,
-  locationId: string
+  locationId: string,
+  field: MapFieldState
 ): VisitStep | null {
   if (!wogNewObjectsEnabled(state) || !WOG_FIELD_OVERRIDE_LOCATION_IDS.has(locationId)) {
     return null;
@@ -4376,6 +4498,63 @@ function buildWogFieldVisitStep(
     return { type: "CHOOSE_ONE", prompt: "Junk Merchant:", options };
   }
 
+  if (locationId === "wog.living_skull") {
+    // A smashed skull is INERT for everyone — no menu, no visit.
+    if (field.wogSkullSmashed) {
+      return null;
+    }
+    return {
+      type: "CHOOSE_ONE",
+      prompt: "Living Skull:",
+      options: [
+        {
+          label: "Listen to its secret: Search (1) the Ability deck",
+          steps: [{ type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 1 }]
+        },
+        {
+          // +2 gold, then set the permanent destruction latch (SMASH_WOG_SKULL).
+          label: "Smash it: gain 2 gold (silences it for everyone forever)",
+          steps: [{ type: "GAIN_RESOURCES", gold: 2 }, { type: "SMASH_WOG_SKULL" }]
+        },
+        { label: "Leave", steps: [] }
+      ]
+    };
+  }
+
+  if (locationId === "wog.altar_of_gods") {
+    // Pay 3 valuables → choose a blessing. Decline (or too few valuables) = leave.
+    const blessings: { label: string; steps: VisitStep[] }[] = [
+      { label: "+1 morale", steps: [{ type: "GAIN_MORALE", amount: 1 }] },
+      { label: "+2 hero experience", steps: [{ type: "GAIN_EXPERIENCE", amount: 2 }] }
+    ];
+    // Commander stat-point arm — present ONLY with the Commanders module on AND a
+    // commander to train (context filter), like the Emerald Tower.
+    if (commandersModuleEnabled(state) && player.commander) {
+      blessings.push({
+        label: "+1 commander stat point",
+        steps: [{ type: "GAIN_COMMANDER_POINTS", amount: 1 }]
+      });
+    }
+    return {
+      type: "CHOOSE_ONE",
+      prompt: "Altar of the Gods:",
+      options: [
+        {
+          label: "Make an offering: pay 3 valuables for a blessing",
+          steps: [
+            {
+              type: "PAY_TO",
+              prompt: "Offer 3 valuables at the Altar of the Gods?",
+              costOptions: [{ valuables: 3 }],
+              steps: [{ type: "CHOOSE_ONE", prompt: "The gods grant a blessing:", options: blessings }]
+            }
+          ]
+        },
+        { label: "Leave", steps: [] }
+      ]
+    };
+  }
+
   return null;
 }
 
@@ -4472,6 +4651,14 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     handleObeliskVisit(state, hero, field);
     return;
   }
+  // WOG New Objects — Adventure Cave: the escalating repeatable fight has its
+  // OWN reward/re-guard flow (it must re-guard higher instead of just clearing
+  // the beaten guard like the generic FO branch below). Handle it here, before
+  // that generic clear.
+  if (location.id === "wog.adventure_cave") {
+    handleWogAdventureCaveVisit(state, playerId, heroId, field);
+    return;
+  }
 
   // A DESIGNED guard on a map-object teleport field (Monolith / Whirlpool /
   // Gate), a Subterranean Gate half or an outpost (Garrison / Keymaster's
@@ -4491,6 +4678,12 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
       isFieldOverrideLocation(location.id)) &&
     field.difficulty
   ) {
+    // Task 2: the Emerald Tower's guard win ALSO drops a bindable commander
+    // artifact into the winner's hand (a no-op with the Commanders module off).
+    // `field.difficulty` here means the guard was just beaten (the win visit).
+    if (location.id === "wog.emerald_tower") {
+      grantCommanderArtifactReward(state, playerId);
+    }
     clearCustomGuard(field);
   }
 
@@ -4620,7 +4813,7 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   // WOG New Objects (`wog.newObjects`): the Emerald Tower / Mirror of the
   // Home-Way / Junk Merchant carve as NONE-interaction revisitable bases and
   // append their context-filtered menu here (mirrors the equipment shop).
-  const wogFieldStep = buildWogFieldVisitStep(state, playerId, heroId, location.id);
+  const wogFieldStep = buildWogFieldVisitStep(state, playerId, heroId, location.id, field);
   if (wogFieldStep) {
     steps.push(wogFieldStep);
   }
@@ -4792,6 +4985,20 @@ export function processPendingVisit(state: GameState): void {
             visit.playerId,
             { gold: step.gold },
             `sold ${cardLibrary[step.cardId]?.name ?? step.cardId} at the Junk Merchant`
+          );
+        }
+        break;
+      }
+      case "SMASH_WOG_SKULL": {
+        // WOG New Objects (Living Skull): set the permanent destruction latch so
+        // the hex is INERT for everyone from now on (no menu on any later visit).
+        const smashedField = adventure.fields[visit.fieldId];
+        if (smashedField) {
+          smashedField.wogSkullSmashed = true;
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} smashes the Living Skull — it falls silent forever.`,
+            visit.playerId
           );
         }
         break;
