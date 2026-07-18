@@ -2485,11 +2485,17 @@ it). Engine: `checkCustomWinConditions` (`adventure.ts`, next to
 through). Behaviour pinned in `src/engine/custom-win-conditions.test.ts` (each
 claim mutation-checked, with no-condition / below-threshold / VP-off CONTROLs).
 
-Seven kinds (params clamped by `sanitizeCustomWinConditions`, map-preset.ts):
+Nine kinds (params clamped by `sanitizeCustomWinConditions`, map-preset.ts):
 `control-towns` (count 2–8 — the home town counts, so a min of 2 avoids an
 instant win), `flag-mines` (2–12, mines+settlements combined), `hero-level`
 (main hero, 2–7), `gold` (treasury, 20–500), `artifacts` (own N, 1–10),
-`defeat-heroes` (1–6, main+secondary combined), `defeat-dragon-utopia` (no param).
+`buildings` (Buildings in controlled Towns, 8–15 — the reader is VP scoring's
+own `controlledBuildingCount`; min 8 because the default opening is 3 Buildings
+and a preset can force at most 7, so an 8 floor can't instant-win at setup),
+`obelisks` (visit N Obelisks, 1–4 matching the grail dig knob — reuses the
+per-player `grail.obelisksVisited` tally, so HONEST LIMIT: it only accrues in
+GRAIL victory mode, a silent no-op on any other mode), `defeat-heroes` (1–6,
+main+secondary combined), `defeat-dragon-utopia` (no param).
 
 What runs (each with a failing-if-removed test):
 - **Any-of, first-to-satisfy**: conditions are evaluated in LIST ORDER for the

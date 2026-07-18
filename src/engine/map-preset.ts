@@ -287,6 +287,8 @@ const CUSTOM_WIN_CONDITION_KINDS = new Set<CustomWinCondition["kind"]>([
   "hero-level",
   "gold",
   "artifacts",
+  "buildings",
+  "obelisks",
   "defeat-heroes",
   "defeat-dragon-utopia"
 ]);
@@ -643,6 +645,17 @@ function sanitizeCustomWinCondition(input: unknown): CustomWinCondition | null {
       return { kind: "gold", amount: clampInt(raw.amount, 20, 500, 20) };
     case "artifacts":
       return { kind: "artifacts", count: clampInt(raw.count, 1, 10, 1) };
+    case "buildings":
+      // min 8: the DEFAULT opening is 3 buildings (citadel/mage_guild/dwelling)
+      // and a preset can force at most 7 (Castle's blacksmith + the 6 core-
+      // suffix buildings any faction defines), so 8 is the smallest instant-win-
+      // safe floor. max 15: a single Town caps near 8, so a high target is a
+      // genuine multi-Town economic race. The reader sums all controlled Towns.
+      return { kind: "buildings", count: clampInt(raw.count, 8, 15, 8) };
+    case "obelisks":
+      // 1-4 matches the grail dig knob's Obelisk range. NOTE: obelisk visits are
+      // tracked per player only in GRAIL victory mode (see CustomWinCondition).
+      return { kind: "obelisks", count: clampInt(raw.count, 1, 4, 1) };
     case "defeat-heroes":
       return { kind: "defeat-heroes", count: clampInt(raw.count, 1, 6, 1) };
     case "defeat-dragon-utopia":
@@ -1833,6 +1846,8 @@ export const CUSTOM_WIN_CONDITION_OPTIONS: {
   { id: "hero-level", label: "Reach Hero level N", param: { field: "level", label: "Level", min: 2, max: 7 } },
   { id: "gold", label: "Reach N gold", param: { field: "amount", label: "Gold", min: 20, max: 500 } },
   { id: "artifacts", label: "Own N Artifacts", param: { field: "count", label: "Artifacts", min: 1, max: 10 } },
+  { id: "buildings", label: "Build N Buildings", param: { field: "count", label: "Buildings", min: 8, max: 15 } },
+  { id: "obelisks", label: "Visit N Obelisks (grail maps)", param: { field: "count", label: "Obelisks", min: 1, max: 4 } },
   { id: "defeat-heroes", label: "Defeat N enemy Heroes", param: { field: "count", label: "Heroes", min: 1, max: 6 } },
   { id: "defeat-dragon-utopia", label: "Defeat the Dragon Utopia", param: null }
 ];
@@ -1850,6 +1865,10 @@ export function defaultCustomWinCondition(kind: CustomWinCondition["kind"]): Cus
       return { kind: "gold", amount: 100 };
     case "artifacts":
       return { kind: "artifacts", count: 3 };
+    case "buildings":
+      return { kind: "buildings", count: 10 };
+    case "obelisks":
+      return { kind: "obelisks", count: 2 };
     case "defeat-heroes":
       return { kind: "defeat-heroes", count: 1 };
     case "defeat-dragon-utopia":

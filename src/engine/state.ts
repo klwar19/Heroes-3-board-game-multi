@@ -9619,12 +9619,19 @@ export type CustomMapPreset = {
  * One designer/lobby-authored CUSTOM WIN CONDITION ({@link
  * CustomMapPreset.customWinConditions}). Every kind is engine-checkable at the
  * reducer tail: a live-state read (control-towns / flag-mines / hero-level /
- * gold / artifacts) or an event-sourced VP-ledger count (defeat-heroes reads
- * `mainHeroDefeats.length + secondaryHeroDefeats`; defeat-dragon-utopia reads
- * `utopiaDefeated`). The metrics ARE the Victory-Points readers (same numbers as
- * VP scoring — an invariant). Params are clamped by the sanitiser
- * (`sanitizeCustomWinConditions`, map-preset.ts). `defeat-dragon-utopia` carries
- * NO count: the ledger flag is a boolean, so "defeat N Utopias" is unsupported.
+ * gold / artifacts / buildings) or an event-sourced count — the VP ledger
+ * (defeat-heroes reads `mainHeroDefeats.length + secondaryHeroDefeats`;
+ * defeat-dragon-utopia reads `utopiaDefeated`) or the per-player Holy-Grail
+ * Obelisk-visit tally (obelisks reads `grail.obelisksVisited[player].length`).
+ * The metrics ARE the Victory-Points / grail-progress readers (same numbers as
+ * VP scoring / the dig unlock — an invariant, never a duplicate). Params are
+ * clamped by the sanitiser (`sanitizeCustomWinConditions`, map-preset.ts).
+ * `defeat-dragon-utopia` carries NO count: the ledger flag is a boolean, so
+ * "defeat N Utopias" is unsupported. HONEST LIMIT: `obelisks` only accrues in
+ * GRAIL victory mode — obelisk visits are recorded per player solely for the
+ * grail dig (`recordGrailObeliskVisit`), so the condition is meaningful on a
+ * grail map (where it short-circuits the dig+deliver) and is a silent no-op on
+ * any other victory mode.
  */
 export type CustomWinCondition =
   | { kind: "control-towns"; count: number }
@@ -9632,6 +9639,8 @@ export type CustomWinCondition =
   | { kind: "hero-level"; level: number }
   | { kind: "gold"; amount: number }
   | { kind: "artifacts"; count: number }
+  | { kind: "buildings"; count: number }
+  | { kind: "obelisks"; count: number }
   | { kind: "defeat-heroes"; count: number }
   | { kind: "defeat-dragon-utopia" };
 

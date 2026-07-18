@@ -179,8 +179,13 @@ export function townsControlledBy(state: GameState, playerId: PlayerId): TownSta
   });
 }
 
-/** Sum of Buildings across every Town the player controls (uncapped — the cap is applied by the scorer). */
-function controlledBuildingCount(state: GameState, playerId: PlayerId): number {
+/**
+ * Sum of Buildings across every Town the player controls (uncapped — the 8-VP
+ * cap is applied by the scorer). Exported so the `buildings` custom win condition
+ * (`checkCustomWinConditions`, adventure.ts) reads the SAME building count VP
+ * scoring uses — a shared metric, never a duplicate.
+ */
+export function controlledBuildingCount(state: GameState, playerId: PlayerId): number {
   return townsControlledBy(state, playerId).reduce((total, town) => total + town.buildings.length, 0);
 }
 
@@ -260,6 +265,10 @@ export function describeCustomWinCondition(condition: CustomWinCondition): strin
       return `reach ${condition.amount} gold`;
     case "artifacts":
       return `own ${condition.count} Artifact${condition.count === 1 ? "" : "s"}`;
+    case "buildings":
+      return `build ${condition.count} Building${condition.count === 1 ? "" : "s"}`;
+    case "obelisks":
+      return `visit ${condition.count} Obelisk${condition.count === 1 ? "" : "s"}`;
     case "defeat-heroes":
       return `defeat ${condition.count} enemy Hero${condition.count === 1 ? "" : "es"}`;
     case "defeat-dragon-utopia":

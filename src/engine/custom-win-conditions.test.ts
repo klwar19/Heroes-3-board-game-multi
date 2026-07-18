@@ -280,6 +280,45 @@ describe("End-to-end wins (real actions)", () => {
     expect(won.adventure?.winnerPlayerId).toBe("p1");
     expect(wonReason(won)).toBe("completed a custom win condition: defeat 2 enemy Heroes");
   });
+
+  it("buildings (state-read): reaching the required Building count wins (below-threshold CONTROL)", () => {
+    const state = makeGame();
+    setWinConditions(state, [{ kind: "buildings", count: 10 }]);
+    // CONTROL: p1's home Town holds 9 Buildings (< 10) → the action does NOT win.
+    // (The reader is controlledBuildingCount — the SAME sum VP scoring uses; the
+    // actual ids are irrelevant, only the count matters.)
+    state.towns.town_p1.buildings = Array.from({ length: 9 }, (_, i) => `castle.b${i}`);
+    const control = apply(state, { type: "END_TURN", playerId: "p1" });
+    expect(control.adventure?.winnerPlayerId ?? null).toBeNull();
+
+    // A 10th Building crosses the line → met on the next action.
+    state.towns.town_p1.buildings = Array.from({ length: 10 }, (_, i) => `castle.b${i}`);
+    const won = apply(state, { type: "END_TURN", playerId: "p1" });
+    expect(won.adventure?.winnerPlayerId).toBe("p1");
+    expect(wonReason(won)).toBe("completed a custom win condition: build 10 Buildings");
+  });
+
+  it("obelisks (grail-progress read): visiting the required Obelisks wins (below-threshold CONTROL)", () => {
+    // Obelisk visits are tracked per player on grail.obelisksVisited — the SAME
+    // tally the Holy-Grail dig unlock reads (grailObelisksVisitedCount). Seeded
+    // directly here (like the defeat-heroes ledger above); real-game accrual is
+    // grail-mode only, documented on CustomWinCondition.
+    const state = makeGame();
+    setWinConditions(state, [{ kind: "obelisks", count: 3 }]);
+    // CONTROL: only 2 distinct Obelisks visited (< 3) → no win.
+    state.adventure!.grail = { status: "uncollected", obelisksVisited: { p1: ["60,60", "61,61"] } };
+    const control = apply(state, { type: "END_TURN", playerId: "p1" });
+    expect(control.adventure?.winnerPlayerId ?? null).toBeNull();
+
+    // A third distinct Obelisk → met.
+    state.adventure!.grail = {
+      status: "uncollected",
+      obelisksVisited: { p1: ["60,60", "61,61", "62,62"] }
+    };
+    const won = apply(state, { type: "END_TURN", playerId: "p1" });
+    expect(won.adventure?.winnerPlayerId).toBe("p1");
+    expect(wonReason(won)).toBe("completed a custom win condition: visit 3 Obelisks");
+  });
 });
 
 // ===========================================================================
@@ -612,6 +651,33 @@ describe("Sanitize (preset path)", () => {
     ]);
   });
 
+  it("buildings clamps to 8-15 (min 8 so starting Buildings can't instant-win); obelisks clamps to 1-4", () => {
+    // Below-band inputs clamp UP to the floor…
+    expect(
+      sanitizeCustomMapPreset({
+        customWinConditions: [
+          { kind: "buildings", count: 3 }, // min 8
+          { kind: "obelisks", count: 0 } // min 1
+        ]
+      })?.customWinConditions
+    ).toEqual([
+      { kind: "buildings", count: 8 },
+      { kind: "obelisks", count: 1 }
+    ]);
+    // …and above-band inputs clamp DOWN to the ceiling; both kinds pass the allowlist.
+    expect(
+      sanitizeCustomMapPreset({
+        customWinConditions: [
+          { kind: "buildings", count: 99 }, // max 15
+          { kind: "obelisks", count: 9 } // max 4
+        ]
+      })?.customWinConditions
+    ).toEqual([
+      { kind: "buildings", count: 15 },
+      { kind: "obelisks", count: 4 }
+    ]);
+  });
+
   it("a non-array / all-garbage list drops the block; a legacy preset is untouched", () => {
     expect(sanitizeCustomMapPreset({ customWinConditions: "nope" })?.customWinConditions).toBeUndefined();
     expect(
@@ -645,6 +711,9 @@ describe("Banner + describe", () => {
     expect(describeCustomWinCondition({ kind: "hero-level", level: 5 })).toBe("reach Hero level 5");
     expect(describeCustomWinCondition({ kind: "gold", amount: 100 })).toBe("reach 100 gold");
     expect(describeCustomWinCondition({ kind: "artifacts", count: 2 })).toBe("own 2 Artifacts");
+    expect(describeCustomWinCondition({ kind: "buildings", count: 10 })).toBe("build 10 Buildings");
+    expect(describeCustomWinCondition({ kind: "obelisks", count: 3 })).toBe("visit 3 Obelisks");
+    expect(describeCustomWinCondition({ kind: "obelisks", count: 1 })).toBe("visit 1 Obelisk");
     expect(describeCustomWinCondition({ kind: "defeat-heroes", count: 2 })).toBe("defeat 2 enemy Heroes");
     expect(describeCustomWinCondition({ kind: "defeat-dragon-utopia" })).toBe("defeat the Dragon Utopia");
   });

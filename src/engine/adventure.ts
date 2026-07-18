@@ -48,6 +48,7 @@ import { clearResetVote } from "./reset-vote";
 import {
   artifactCountOf,
   computeVictoryPoints,
+  controlledBuildingCount,
   describeCustomWinCondition,
   flaggedMineSettlementCount,
   mainHeroOf,
@@ -2997,6 +2998,12 @@ function playerMeetsCustomWinCondition(
       return (state.players[playerId]?.resources.gold ?? 0) >= condition.amount;
     case "artifacts":
       return artifactCountOf(state.players[playerId]) >= condition.count;
+    case "buildings":
+      // Same reader VP scoring uses for its "Buildings in controlled Towns" row.
+      return controlledBuildingCount(state, playerId) >= condition.count;
+    case "obelisks":
+      // The per-player Holy-Grail Obelisk-visit tally (accrues in grail mode only).
+      return grailObelisksVisitedCount(state, playerId) >= condition.count;
     case "defeat-heroes": {
       const ledger = state.adventure?.vpLedger?.[playerId];
       const defeats = (ledger?.mainHeroDefeats?.length ?? 0) + (ledger?.secondaryHeroDefeats ?? 0);

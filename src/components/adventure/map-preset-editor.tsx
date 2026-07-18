@@ -1566,6 +1566,10 @@ function winConditionGlyph(kind: CustomWinCondition["kind"]): string {
       return REWARD_GLYPH_ICONS.gold;
     case "artifacts":
       return REWARD_GLYPH_ICONS.treasure;
+    case "buildings":
+      return REWARD_GLYPH_ICONS.materials;
+    case "obelisks":
+      return REWARD_GLYPH_ICONS.movement;
     case "defeat-heroes":
     case "defeat-dragon-utopia":
       return REWARD_GLYPH_ICONS.attack;

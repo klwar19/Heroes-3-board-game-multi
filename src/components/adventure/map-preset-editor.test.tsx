@@ -429,6 +429,37 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(screen.getByText("Custom win: control 3 Towns")).toBeTruthy();
   });
 
+  it("Custom win conditions: the new buildings + obelisks kinds render their param band", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MapPresetEditor preset={{ customWinConditions: [{ kind: "buildings", count: 10 }] }} onChange={onChange} />
+    );
+    // buildings → count param clamped to the instant-win-safe 8-15 band.
+    const buildingsInput = within(
+      screen.getByRole("group", { name: "Custom win condition list" })
+    ).getByRole("spinbutton") as HTMLInputElement;
+    expect(buildingsInput.min).toBe("8");
+    expect(buildingsInput.max).toBe("15");
+    expect(buildingsInput.value).toBe("10");
+
+    // Retype buildings → obelisks yields the obelisks default (count 2).
+    fireEvent.change(screen.getByLabelText("Condition 1 kind"), { target: { value: "obelisks" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "obelisks", count: 2 }] })
+    );
+
+    // obelisks → count param clamped to the grail-knob 1-4 band.
+    rerender(
+      <MapPresetEditor preset={{ customWinConditions: [{ kind: "obelisks", count: 2 }] }} onChange={onChange} />
+    );
+    const obeliskInput = within(
+      screen.getByRole("group", { name: "Custom win condition list" })
+    ).getByRole("spinbutton") as HTMLInputElement;
+    expect(obeliskInput.min).toBe("1");
+    expect(obeliskInput.max).toBe("4");
+    expect(obeliskInput.value).toBe("2");
+  });
+
   it("Map settings: a difficulty chip writes the preset difficulty; re-clicking it clears back to undefined", () => {
     const onChange = vi.fn();
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
