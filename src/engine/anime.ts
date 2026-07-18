@@ -13,6 +13,8 @@ import type { AnimeModOptions, GameSetupOptions, GameState } from "./state";
 
 export const DEFAULT_ANIME_OPTIONS: AnimeModOptions = {
   enabled: false,
+  // absent === ON (legacy); harmless while enabled:false (anime gates require enabled).
+  mapObjects: true,
   xianxiaTowns: false,
   secretRealms: false,
   xianxiaNeutrals: false,

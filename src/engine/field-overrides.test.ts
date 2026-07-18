@@ -42,6 +42,7 @@ import { resolve } from "node:path";
 function animeOn() {
   return {
     enabled: true,
+    mapObjects: true,
     xianxiaTowns: false,
     secretRealms: false,
     xianxiaNeutrals: false,
@@ -257,6 +258,80 @@ describe("isekai package parity with xianxia (pool + palette gating)", () => {
     expect(
       customMapHasAnimeFieldOverridePins([{ fieldOverrides: [{ kind: "onsen_ryokan" }] }])
     ).toBe(true);
+  });
+});
+
+describe("anime `mapObjects` module gates the Field Override pool", () => {
+  it("fieldOverridePackageAllowed: anime FO needs enabled && mapObjects !== false", () => {
+    // enabled + mapObjects ON → both anime packages allowed.
+    expect(fieldOverridePackageAllowed("anime-xianxia", { animeEnabled: true, animeMapObjects: true })).toBe(true);
+    expect(fieldOverridePackageAllowed("anime-isekai", { animeEnabled: true, animeMapObjects: true })).toBe(true);
+    // enabled + mapObjects EXPLICITLY FALSE (module unticked) → dropped.
+    expect(fieldOverridePackageAllowed("anime-xianxia", { animeEnabled: true, animeMapObjects: false })).toBe(false);
+    expect(fieldOverridePackageAllowed("anime-isekai", { animeEnabled: true, animeMapObjects: false })).toBe(false);
+    // enabled + mapObjects ABSENT → ON (legacy snapshots / campaign chapters).
+    expect(fieldOverridePackageAllowed("anime-xianxia", { animeEnabled: true })).toBe(true);
+    expect(fieldOverridePackageAllowed("anime-isekai", { animeEnabled: true })).toBe(true);
+    // Master off → never allowed, even with mapObjects true.
+    expect(fieldOverridePackageAllowed("anime-xianxia", { animeEnabled: false, animeMapObjects: true })).toBe(false);
+    // WOG on / anime off must NOT leak an anime kind (and wog stays allowed).
+    expect(fieldOverridePackageAllowed("anime-xianxia", { wogNewObjects: true })).toBe(false);
+    expect(fieldOverridePackageAllowed("wog", { wogNewObjects: true })).toBe(true);
+    // core/shared always available.
+    expect(fieldOverridePackageAllowed("core", {})).toBe(true);
+  });
+
+  it("listFieldOverrideDefinitions surfaces anime kinds only when mapObjects allows", () => {
+    const ids = (mods: Parameters<typeof fieldOverridePackageAllowed>[1]) =>
+      listFieldOverrideDefinitions({
+        tileGroup: "far",
+        implementedOnly: true,
+        packageAllowed: (pkg) => fieldOverridePackageAllowed(pkg, mods)
+      }).map((d) => d.id);
+    expect(ids({ animeEnabled: true, animeMapObjects: true })).toContain("bi_canh");
+    expect(ids({ animeEnabled: true, animeMapObjects: false })).not.toContain("bi_canh");
+    expect(ids({ animeEnabled: true })).toContain("bi_canh"); // absent = ON
+  });
+
+  it("the pool draws anime overrides iff mapObjects is not explicitly false (state seam)", () => {
+    const build = () =>
+      createAdventureGameState({
+        seed: "anime-mapobjects-gate",
+        ruleset: "binh",
+        fieldOverrides: true,
+        fieldOverridePlacement: "random",
+        anime: animeOn(),
+        rollFirstPlayer: false,
+        rotateStartTiles: false
+      });
+    const pendingCount = (state: GameState) =>
+      Object.values(state.adventure!.tiles).filter(
+        (t) => t.pendingFieldOverride || (t.pendingFieldOverrides?.length ?? 0) > 0
+      ).length;
+    const clearPending = (state: GameState) => {
+      for (const t of Object.values(state.adventure!.tiles)) {
+        t.pendingFieldOverride = undefined;
+        t.pendingFieldOverrides = undefined;
+      }
+    };
+
+    // mapObjects ON (animeOn): setup populates the anime pool.
+    const on = build();
+    expect(pendingCount(on)).toBeGreaterThan(0);
+
+    // mapObjects EXPLICITLY FALSE → the pool stays empty (no other FO package on).
+    const off = build();
+    clearPending(off);
+    off.anime!.mapObjects = false;
+    assignPoolFieldOverrides(off, () => 0.5, { enabled: true });
+    expect(pendingCount(off)).toBe(0);
+
+    // mapObjects ABSENT (legacy snapshot) → still ON, the pool repopulates.
+    const legacy = build();
+    clearPending(legacy);
+    delete (legacy.anime as { mapObjects?: boolean }).mapObjects;
+    assignPoolFieldOverrides(legacy, () => 0.5, { enabled: true });
+    expect(pendingCount(legacy)).toBeGreaterThan(0);
   });
 });
 

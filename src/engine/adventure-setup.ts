@@ -2072,10 +2072,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ? resolveAnimeOptions(setupOptions.anime)
     : { ...resolveAnimeOptions(setupOptions.anime), enabled: false };
   if (animePinsOnMap && ruleset === "binh") {
-    anime = { ...anime, enabled: true };
+    // Force the map-objects module on too (mirror wog `newObjects: true`) so a
+    // pinned anime FO is legal in the pool even if the lobby unticked it.
+    anime = { ...anime, enabled: true, mapObjects: true };
   } else if (animePinsOnMap && ruleset !== "binh") {
     // Anime content requires BINH; flip so pins are not silently stripped.
-    anime = { ...resolveAnimeOptions(setupOptions.anime), enabled: true };
+    anime = { ...resolveAnimeOptions(setupOptions.anime), enabled: true, mapObjects: true };
   }
   const fieldOverridesOn = resolveFieldOverridesEnabled(setupOptions);
   const fieldOverridePlacement = resolveFieldOverridePlacement(setupOptions);
@@ -3226,9 +3228,10 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     if (customMapHasFieldOverridePins(lobby.options.customMap)) {
       lobby.options.fieldOverrides = true;
     }
-    // Anime-package pins auto-enable the Anime mod crest (content only).
+    // Anime-package pins auto-enable the Anime mod crest (content only) — with
+    // the map-objects module on so the pinned content is legal in the pool.
     if (customMapHasAnimeFieldOverridePins(lobby.options.customMap)) {
-      lobby.options.anime = { ...resolveAnimeOptions(lobby.options.anime), enabled: true };
+      lobby.options.anime = { ...resolveAnimeOptions(lobby.options.anime), enabled: true, mapObjects: true };
       state.anime = lobby.options.anime;
       if (lobby.options.ruleset !== "binh") {
         lobby.options.ruleset = "binh";
@@ -3605,7 +3608,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
         changes.push("Field Overrides on (map has single-hex override objects)");
       }
       if (customMapHasAnimeFieldOverridePins(accepted)) {
-        lobby.options.anime = { ...resolveAnimeOptions(lobby.options.anime), enabled: true };
+        lobby.options.anime = { ...resolveAnimeOptions(lobby.options.anime), enabled: true, mapObjects: true };
         state.anime = lobby.options.anime;
         if (lobby.options.ruleset !== "binh") {
           lobby.options.ruleset = "binh";
