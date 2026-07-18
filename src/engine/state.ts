@@ -3386,6 +3386,17 @@ export type GameAction =
       type: "FINISH_NEUTRAL_PLACEMENT";
       playerId: PlayerId;
     }
+  | {
+      /**
+       * Manual guard control: during the pre-battle sort, reset the Neutral
+       * formation to the rulebook AI's auto-placement (shooters to the back
+       * row), leaving the sort window open. "Let the AI place them" / return to
+       * AI auto control. Legal only for the manual-control fighter arranging
+       * their OWN guards (never a PvP-Neutral-Control opponent).
+       */
+      type: "AUTO_NEUTRAL_PLACEMENT";
+      playerId: PlayerId;
+    }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
   /**
@@ -9962,7 +9973,10 @@ export type GameSetupOptions = {
   /**
    * OPTIONAL "Manual guard control" mode (default OFF/absent, Game options —
    * like Undo moves). With it ON, the FIGHTER of a Neutral combat (guard
-   * fields AND Creature Banks) personally commands each guard through the
+   * fields AND Creature Banks) first RELOCATES the revealed guards in a
+   * pre-battle formation window (move/swap within the defender's two rows —
+   * shooters kept on the back row — or "Let the AI place them" to return to the
+   * rulebook auto-placement), then personally commands each guard through the
    * normal PvP-Neutral-Control unit menu — same must-attack discipline
    * (`pvpNeutralControlMustAttack`, default ON: attack when you can; under
    * polish-wait a guard may WAIT instead, but its Waited re-activation must

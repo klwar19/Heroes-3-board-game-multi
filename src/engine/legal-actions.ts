@@ -48,7 +48,8 @@ import {
 import { DRILL_UNIT_GOLD_COST } from "@/data/units/experience";
 import {
   placementCellsFor,
-  neutralFormationCellsFor,
+  neutralFormationCellsForGuard,
+  neutralPlacementIsManual,
   getHeroMoveDestinations,
   hillFortCost,
   inCombatPrep,
@@ -7912,8 +7913,6 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
   const guards = Object.values(combat.units).filter(
     (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && isUnitAlive(unit) && !isArrowTowerUnit(unit)
   );
-  // Field = defender's two rows (any cell); Creature Bank = the four corners.
-  const cells = neutralFormationCellsFor(state);
   const occupantAt = new Map<number, CombatUnitState>();
   for (const unit of Object.values(combat.units)) {
     occupantAt.set(unit.position, unit);
@@ -7921,13 +7920,20 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
 
   const obstacles = new Set(combat.obstacles ?? []);
   for (const guard of guards) {
-    for (const position of cells) {
+    // Field = defender's two rows (a shooter is limited to the back row under
+    // Manual guard control); Creature Bank = the four corners.
+    for (const position of neutralFormationCellsForGuard(state, guard)) {
       if (position === guard.position || obstacles.has(position)) {
         continue;
       }
       const occupant = occupantAt.get(position);
       // An empty cell (move) or a fellow guard (swap); anything else stays blocked.
       if (occupant && (occupant.controllerId !== NEUTRAL_PLAYER_ID || isArrowTowerUnit(occupant))) {
+        continue;
+      }
+      // A swap must also respect the partner's rule: a shooter cannot be pushed
+      // off the back row (it would land on the mover's old cell).
+      if (occupant && !neutralFormationCellsForGuard(state, occupant).includes(guard.position)) {
         continue;
       }
       actions.push({
@@ -7937,6 +7943,15 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
         action: { type: "PLACE_NEUTRAL_GUARD", playerId, unitId: guard.id, position }
       });
     }
+  }
+
+  // Manual guard control: the fighter may hand the formation back to the AI's
+  // auto-placement at any point ("return to AI auto control").
+  if (neutralPlacementIsManual(state)) {
+    actions.push({
+      label: "Let the AI place them",
+      action: { type: "AUTO_NEUTRAL_PLACEMENT", playerId }
+    });
   }
 
   actions.push({
