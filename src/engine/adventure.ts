@@ -51,8 +51,11 @@ import {
 } from "@/data/anime/hero-grades";
 import {
   equipEquipment,
+  equipmentContextAvailable,
   equipmentEnabled,
   equipmentHandLimitBonus,
+  equipmentMovementBonus,
+  equipmentResourceRoundGold,
   equipmentResourceRoundMaterials,
   playerHasEquipment
 } from "./anime-equipment";
@@ -523,7 +526,12 @@ export const SECONDARY_HERO_MOVEMENT = 2;
 export function heroMovementMax(state: GameState, hero: HeroState): number {
   const active = getActiveAstrologersCard(state);
   const modifier = active?.effect.type === "MOVEMENT_MODIFIER" ? active.effect.amount : 0;
-  return Math.max(0, hero.movementPointsMax + modifier);
+  // Anime Equipment (§3.13): the Windrider Saddle mount grants the MAIN hero +1
+  // movement each turn — folded into the per-turn max here (the clean per-turn
+  // movement seam), so the drip lands once on the refresh. Main-hero-only (the
+  // item sits on the main hero; a secondary hero of the same player gets none).
+  const equipBonus = hero.kind === "main" ? equipmentMovementBonus(state, hero.controllerId) : 0;
+  return Math.max(0, hero.movementPointsMax + modifier + equipBonus);
 }
 
 export function getUnitDefinition(unitDefId: string): UnitDefinition | undefined {
@@ -4707,6 +4715,14 @@ function buildEquipmentShopStep(state: GameState, playerId: PlayerId, locationId
   }
   const options = sales
     .filter((equipmentId) => !playerHasEquipment(state, playerId, equipmentId))
+    // Anime Equipment (§3.13): a context-gated item (Marshal's War Horn / Spirit
+    // Crane Mount → WOG Commanders; Veteran's Standard → Unit Experience) is
+    // HIDDEN while its context is off — its effect would be inert, so it is never
+    // a dead purchase (CLAUDE.md §2). Ungated items always pass.
+    .filter((equipmentId) => {
+      const requirement = getEquipmentDefinition(equipmentId)?.requiresContext;
+      return !requirement || equipmentContextAvailable(state, requirement);
+    })
     .map((equipmentId) => {
       const def = getEquipmentDefinition(equipmentId)!;
       return {
@@ -11517,6 +11533,13 @@ export function startAdventureRound(state: GameState): void {
     const equipMaterials = equipmentResourceRoundMaterials(state, playerId);
     if (equipMaterials) {
       gainResources(state, playerId, { buildingMaterials: equipMaterials }, "Supply Satchel");
+    }
+
+    // Anime Equipment (§3.13): the Alchemist's Satchel armor grants +1 gold each
+    // Resources round (its income half — the win-gold half rides the combat seam).
+    const equipGold = equipmentResourceRoundGold(state, playerId);
+    if (equipGold) {
+      gainResources(state, playerId, { gold: equipGold }, "Alchemist's Satchel");
     }
 
     // Crystal Dragons (army map ability): gain the printed resource each

@@ -7396,11 +7396,12 @@ export function finalizeAdventureCombat(state: GameState): void {
     gainResources(state, outcome.winnerPlayerId, { gold: heroGradeWinGold(state, outcome.winnerPlayerId) }, "Bounty Hunter's Eye");
   }
 
-  // Anime Equipment Adventurer's Blade (§3.13): +1 gold after each combat the
-  // player wins. A SEPARATE grant from Bounty Hunter's Eye, so a hero carrying
-  // both stacks to +2. Gated on the item; never for a NEUTRAL "winner".
+  // Anime Equipment (§3.13): +1 gold after each combat the player wins per
+  // win-gold item worn — Adventurer's Blade and Alchemist's Satchel each add 1
+  // (stacking to +2 with both), a SEPARATE grant from Bounty Hunter's Eye. Gated
+  // on the item(s); never for a NEUTRAL "winner".
   if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && equipmentWinGold(state, outcome.winnerPlayerId) > 0) {
-    gainResources(state, outcome.winnerPlayerId, { gold: equipmentWinGold(state, outcome.winnerPlayerId) }, "Adventurer's Blade");
+    gainResources(state, outcome.winnerPlayerId, { gold: equipmentWinGold(state, outcome.winnerPlayerId) }, "Equipment win reward");
   }
 
   // Open the Hierophant's post-combat First Aid window (choose 1 casualty to

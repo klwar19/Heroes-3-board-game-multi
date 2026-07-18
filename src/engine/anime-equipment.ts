@@ -2,7 +2,7 @@
  * Anime Equipment (`anime.equipment`, plan §3.13).
  *
  * Always-on hero ITEMS, distinct from Artifact cards: an item sits in one of a
- * MAIN hero's three slots (weapon/armor/accessory) and its effect runs while
+ * MAIN hero's four slots (weapon/armor/accessory/mount) and its effect runs while
  * equipped — never in hand, never cast. Bought at two outfitter Field Overrides;
  * buying into an occupied slot REPLACES the previous item (no refund). SHARED by
  * both packages and every hero; independent of Hero Grades (§3.11) and
@@ -23,13 +23,35 @@ import { appendEvent } from "./events";
 import { animeModuleEnabled } from "./anime";
 import {
   EQUIPMENT_IDS,
-  getEquipmentDefinition
+  getEquipmentDefinition,
+  type EquipmentContextRequirement
 } from "@/data/anime/equipment";
 import type { AnimeEquipmentSlot, CombatUnitState, GameState, HeroState, PlayerId } from "./state";
 
 /** Whether the Equipment module is on (implies anime master enabled). */
 export function equipmentEnabled(state: Pick<GameState, "anime">): boolean {
   return animeModuleEnabled(state, "equipment");
+}
+
+/**
+ * Whether a context-gated item is worth offering — the shop HIDE rule. Inlined
+ * here (reading `state.wog` / the anime flag directly) so this stays a LEAF
+ * module: importing commanders.ts or unit-experience.ts would form a cycle
+ * (both of THOSE consume this file's grants). Mirrors `commandersModuleEnabled`
+ * / `unitExperienceActive` byte-for-byte.
+ */
+export function equipmentContextAvailable(
+  state: Pick<GameState, "anime" | "wog">,
+  requirement: EquipmentContextRequirement
+): boolean {
+  switch (requirement) {
+    case "wog.commanders":
+      return Boolean(state.wog?.enabled && state.wog.commanders);
+    case "anime.unitExperience":
+      return animeModuleEnabled(state, "unitExperience");
+    default:
+      return true;
+  }
 }
 
 /** The player's MAIN hero (inlined to keep this a leaf — see the file header). */
@@ -77,14 +99,73 @@ export function equipmentHandLimitBonus(state: GameState, playerId: PlayerId): n
   return playerHasEquipment(state, playerId, EQUIPMENT_IDS.guildIssueMail) ? 1 : 0;
 }
 
-/** Adventurer's Blade (weapon): +1 gold after each won combat. */
+/**
+ * Post-combat WIN gold from equipment: Adventurer's Blade (+1) AND Alchemist's
+ * Satchel (+1) each grant, so a hero carrying both stacks to +2 (on top of the
+ * Hero-Grade Bounty Hunter's Eye, a separate seam). Folded at finalizeAdventureCombat.
+ */
 export function equipmentWinGold(state: GameState, playerId: PlayerId): number {
-  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.adventurersBlade) ? 1 : 0;
+  let gold = 0;
+  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.adventurersBlade)) {
+    gold += 1;
+  }
+  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.alchemistsSatchel)) {
+    gold += 1;
+  }
+  return gold;
 }
 
 /** Supply Satchel (accessory): +1 building materials each Resources round. */
 export function equipmentResourceRoundMaterials(state: GameState, playerId: PlayerId): number {
   return playerHasEquipment(state, playerId, EQUIPMENT_IDS.supplySatchel) ? 1 : 0;
+}
+
+/** Alchemist's Satchel (armor): +1 gold each Resources round (its income half). */
+export function equipmentResourceRoundGold(state: GameState, playerId: PlayerId): number {
+  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.alchemistsSatchel) ? 1 : 0;
+}
+
+/**
+ * Windrider Saddle (mount): +1 movement point to the player's MAIN hero each
+ * turn refresh — the "Courier's Charm" idea CLAUDE.md documents as previously
+ * unshipped for lack of a per-turn movement seam. The clean seam is the
+ * per-turn movement MAX (`heroMovementMax`, folded there), so the drip lands
+ * exactly once per turn on the refresh and raises the displayed max. 0 when the
+ * module is off / no saddle.
+ */
+export function equipmentMovementBonus(state: GameState, playerId: PlayerId): number {
+  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.windriderSaddle) ? 1 : 0;
+}
+
+/**
+ * Veteran's Standard (accessory): the EXTRA Unit-Experience XP the player's
+ * surviving units gain per won combat (0 or 1). Added at the unit-experience
+ * grant site (so 1 base + 1 = 2 XP per win). Only meaningful while the Unit
+ * Experience module is on (the grant site never runs otherwise), and only for
+ * the player who actually won and wears it.
+ */
+export function equipmentVeteranBonusXp(state: GameState, playerId: PlayerId): number {
+  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.veteransStandard) ? 1 : 0;
+}
+
+/**
+ * Marshal's War Horn (accessory): whether the player's main hero wears it — the
+ * Source-2 branch of `commanderPreCombatSortAvailable`. Gated by
+ * `playerHasEquipment` (module-off ⇒ false), so a bare / module-off hero grants
+ * no sort capability. Commanders-module presence is checked by the caller.
+ */
+export function equipmentGrantsCommanderSort(state: GameState, playerId: PlayerId): boolean {
+  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.marshalsWarHorn);
+}
+
+/**
+ * Spirit Crane Mount (mount): whether the player's main hero wears it — OR-branch
+ * of the commander free-revive gate in `finalizeCommandersAfterCombat`. Reuses
+ * the Helm-of-Immortality free-revive semantics (a fallen commander does not
+ * persist its death, costs no revive gold). Module-off ⇒ false.
+ */
+export function equipmentGrantsCommanderRevive(state: GameState, playerId: PlayerId): boolean {
+  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.spiritCraneMount);
 }
 
 // ===========================================================================
@@ -167,6 +248,27 @@ export function equipmentIncomingAttackPenalty(state: GameState, defender: Comba
     return 0;
   }
   return mailAvailable(state, defender.controllerId) ? 1 : 0;
+}
+
+/**
+ * Blade of the Trial (weapon): +1 Attack on the owner's declared attacks during
+ * combat ROUND 1 only — a LIVE read (round-gated, NOT a one-shot charge like the
+ * sword), so every round-1 attack benefits and round 2 onward does not. Read
+ * beside the sword in getAttackStackDetails; added UNCLAMPED. Excludes
+ * retaliations (declared attacks only, matching the sword). 0 when the module is
+ * off / no blade / past round 1 / the main hero is not in this combat.
+ */
+export function equipmentRound1AttackBonus(state: GameState, attacker: CombatUnitState, isRetaliation: boolean): number {
+  if (isRetaliation || !equipmentEnabled(state)) {
+    return 0;
+  }
+  if ((state.combat?.round ?? 1) !== 1) {
+    return 0;
+  }
+  if (!playerHasEquipment(state, attacker.controllerId, EQUIPMENT_IDS.bladeOfTheTrial)) {
+    return 0;
+  }
+  return playerMainHeroInCombat(state, attacker.controllerId) ? 1 : 0;
 }
 
 /**

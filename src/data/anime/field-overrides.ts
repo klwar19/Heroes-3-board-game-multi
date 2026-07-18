@@ -292,7 +292,7 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near", "center"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Outfitter: buy an always-on xianxia weapon/armor/accessory (or the shared Supply Satchel).",
+    summary: "Outfitter: buy always-on hero equipment (weapon / armor / accessory / mount) — the xianxia items plus the shared wave-2 gear.",
     glyph: "⚒",
     image: art("ren_binh_cac")
   },
@@ -306,7 +306,7 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near", "center"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Outfitter: buy an always-on isekai weapon/armor/accessory (or the shared Supply Satchel).",
+    summary: "Outfitter: buy always-on hero equipment (weapon / armor / accessory / mount) — the isekai items plus the shared wave-2 gear.",
     glyph: "🎒",
     image: art("adventurer_outfitter")
   }

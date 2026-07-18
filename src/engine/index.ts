@@ -661,6 +661,7 @@ export {
 } from "@/data/anime/hero-grades";
 export {
   equipmentEnabled,
+  equipmentContextAvailable,
   heroEquipmentOf,
   heroEquipmentSlot,
   playerHasEquipment,
@@ -668,11 +669,18 @@ export {
   equipmentHandLimitBonus,
   equipmentWinGold,
   equipmentResourceRoundMaterials,
+  equipmentResourceRoundGold,
+  equipmentMovementBonus,
+  equipmentVeteranBonusXp,
+  equipmentRound1AttackBonus,
+  equipmentGrantsCommanderSort,
+  equipmentGrantsCommanderRevive,
   equipEquipment
 } from "./anime-equipment";
 export {
   ANIME_EQUIPMENT_DEFINITIONS,
   ANIME_EQUIPMENT_ART_PLACEHOLDERS,
+  ANIME_EQUIPMENT_SLOTS,
   EQUIPMENT_IDS,
   EQUIPMENT_SLOT_GLYPH,
   EQUIPMENT_SHOP_SALES,
@@ -680,7 +688,8 @@ export {
   getEquipmentDefinition,
   listEquipmentDefinitions,
   equipmentImage,
-  type EquipmentDefinition
+  type EquipmentDefinition,
+  type EquipmentContextRequirement
 } from "@/data/anime/equipment";
 export {
   carveFieldOverride,

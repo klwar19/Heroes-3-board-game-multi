@@ -244,10 +244,16 @@ export type AnimeModOptions = {
 };
 
 /**
- * Anime Equipment (§3.13): the three hero equipment slots. An item occupies one
- * slot; buying into an occupied slot REPLACES the previous item (no refund).
+ * Anime Equipment (§3.13): the hero equipment slots, as a SINGLE ordered
+ * source-of-truth constant every consumer iterates (hero-board chips, the slot
+ * glyph registry, catalog/data tests). An item occupies one slot; buying into an
+ * occupied slot REPLACES the previous item (no refund). "mount" is the 4th slot
+ * (new equipment types) — legacy 3-slot snapshots load fine (absent === empty).
+ * Add a slot here and TypeScript forces every Record<AnimeEquipmentSlot, …> to
+ * cover it.
  */
-export type AnimeEquipmentSlot = "weapon" | "armor" | "accessory";
+export const ANIME_EQUIPMENT_SLOTS = ["weapon", "armor", "accessory", "mount"] as const;
+export type AnimeEquipmentSlot = (typeof ANIME_EQUIPMENT_SLOTS)[number];
 
 /**
  * How pool-drawn Field Overrides place when a tile is revealed.
@@ -10914,10 +10920,11 @@ export type HeroState = {
   heroTrainedRound?: number;
   /**
    * Anime Equipment (§3.13): the always-on items this MAIN hero has bought,
-   * keyed by slot (weapon/armor/accessory) → equipment id. Optional and lazily
-   * stamped (absent === nothing equipped), so a module-off table and every
-   * legacy snapshot never carry it. PUBLIC (player-view never strips it).
-   * Buying into an occupied slot overwrites (replace, no refund).
+   * keyed by slot (weapon/armor/accessory/mount) → equipment id. Optional and
+   * lazily stamped (absent === nothing equipped), so a module-off table and every
+   * legacy snapshot (incl. 3-slot heroes with no mount) never carry it. PUBLIC
+   * (player-view never strips it). Buying into an occupied slot overwrites
+   * (replace, no refund).
    */
   equipment?: Partial<Record<AnimeEquipmentSlot, string>>;
 };

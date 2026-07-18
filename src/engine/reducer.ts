@@ -201,6 +201,7 @@ import {
 import {
   equipmentFirstAttackBonus,
   equipmentIncomingAttackPenalty,
+  equipmentRound1AttackBonus,
   markEquipmentAttackResolved
 } from "./anime-equipment";
 import { createSeededRandom, setActiveEntropy } from "./random";
@@ -3437,7 +3438,10 @@ function getAttackStackDetails(
       // FIRST declared attack against the defender's owner. Both are per-combat
       // one-shots (unspent-charge gated, main-hero-scoped), added UNCLAMPED like
       // the script delta; consumed when the attack lands (finishResolvedAttack).
-      equipmentFirstAttackBonus(state, attacker, isRetaliation) -
+      // The Blade of the Trial's +1 rides alongside — a LIVE round-1-only read
+      // (not a charge), so every round-1 declared attack benefits.
+      equipmentFirstAttackBonus(state, attacker, isRetaliation) +
+      equipmentRound1AttackBonus(state, attacker, isRetaliation) -
       equipmentIncomingAttackPenalty(state, defender, isRetaliation) -
       retaliationAttackPenalty -
       // Negative Morale "-1 to your next Attack … roll": latched onto this

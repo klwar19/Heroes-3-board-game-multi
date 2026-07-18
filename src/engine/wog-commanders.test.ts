@@ -25,11 +25,15 @@ import {
   commanderOnOwnFrontLine,
   commanderPreCombatSortAvailable,
   commanderUnitId,
+  findCommanderUnit,
   gainExperience,
   nextAfkDropAction,
   placementCellsFor,
-  spellLimitFor
+  spellLimitFor,
+  DEFAULT_ANIME_OPTIONS,
+  EQUIPMENT_IDS
 } from "./index";
+import { finalizeCommandersAfterCombat } from "./commanders";
 import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
 import { warMachinesForSale } from "./permanents";
 import { hasBallistaChooseTarget, effectiveInitiative } from "./active-effects";
@@ -1453,6 +1457,58 @@ describe("WOG commanders — pre-combat SORT capability & window", () => {
     applyError(state, { type: "PLACE_COMMANDER", playerId: "p1", position: 0 });
     // A player who is not the window's head owner cannot place.
     applyError(state, { type: "PLACE_COMMANDER", playerId: "p2", position: 12 });
+  });
+});
+
+// ===========================================================================
+// Anime Equipment cross-mod: hero items that grant commander capabilities.
+// ===========================================================================
+
+const ANIME_EQUIP_ON = { ...DEFAULT_ANIME_OPTIONS, enabled: true, equipment: true };
+
+describe("WOG commanders — anime Equipment cross-mod grants", () => {
+  it("Marshal's War Horn grants the pre-combat SORT to a non-Cove commander (CONTROLs: no horn, module off)", () => {
+    // A Shaman commander's specialty is Superior Combat, NOT Vanguard Marshal —
+    // so ONLY the War Horn can grant the sort capability here.
+    const wearing = sandboxWithCommander("shaman", {}, 9);
+    wearing.anime = { ...ANIME_EQUIP_ON };
+    getMainHero(wearing, "p1")!.equipment = { accessory: EQUIPMENT_IDS.marshalsWarHorn };
+    expect(commanderPreCombatSortAvailable(wearing, "p1")).toBe(true);
+
+    // CONTROL: same commander, no horn → the specialty grants nothing.
+    const bare = sandboxWithCommander("shaman", {}, 9);
+    bare.anime = { ...ANIME_EQUIP_ON };
+    expect(commanderPreCombatSortAvailable(bare, "p1")).toBe(false);
+
+    // CONTROL: horn worn but the anime.equipment module OFF → the read is inert.
+    const moduleOff = sandboxWithCommander("shaman", {}, 9);
+    getMainHero(moduleOff, "p1")!.equipment = { accessory: EQUIPMENT_IDS.marshalsWarHorn };
+    expect(commanderPreCombatSortAvailable(moduleOff, "p1")).toBe(false);
+  });
+
+  it("Spirit Crane Mount revives a fallen commander FREE at combat end (CONTROL: no mount → it stays dead)", () => {
+    function fallAndFinalize(withMount: boolean): GameState {
+      const state = sandboxWithCommander("shaman", {}, 9);
+      state.anime = { ...ANIME_EQUIP_ON };
+      if (withMount) {
+        getMainHero(state, "p1")!.equipment = { mount: EQUIPMENT_IDS.spiritCraneMount };
+      }
+      const unit = findCommanderUnit(state, "p1")!;
+      unit.damage = unit.maxHealth; // the commander unit ended the fight at 0 Health
+      finalizeCommandersAfterCombat(state);
+      return state;
+    }
+
+    const saved = fallAndFinalize(true);
+    // The mount revives it: death never persists, and a SAVED event names the mount.
+    expect(saved.players.p1.commander!.dead ?? false).toBe(false);
+    const savedEvent = saved.eventLog.find((event) => event.type === "COMMANDER_ARTIFACT_SAVED");
+    expect(savedEvent && "cardId" in savedEvent ? savedEvent.cardId : null).toBe(EQUIPMENT_IDS.spiritCraneMount);
+
+    // CONTROL: without the mount the commander is marked dead (revive for gold).
+    const dead = fallAndFinalize(false);
+    expect(dead.players.p1.commander!.dead).toBe(true);
+    expect(dead.eventLog.some((event) => event.type === "COMMANDER_DIED")).toBe(true);
   });
 });
 

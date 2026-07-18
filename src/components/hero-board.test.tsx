@@ -223,6 +223,23 @@ describe("HeroBoard — anime Equipment chips (§3.13)", () => {
     expect(icons.some((src) => src.includes("/assets/anime/equipment/supply_satchel.webp"))).toBe(true);
   });
 
+  it("renders a chip for the 4th (MOUNT) slot — all four slots filled show four chips", () => {
+    const state = equipmentAdventure();
+    getMainHero(state, "p1")!.equipment = {
+      weapon: "anime.equip.iron_blood_sword",
+      armor: "anime.equip.black_tortoise_mail",
+      accessory: "anime.equip.supply_satchel",
+      mount: "anime.equip.windrider_saddle"
+    };
+    const { container } = renderBoardState(state);
+    const chips = container.querySelectorAll(".hbEquip");
+    expect(chips).toHaveLength(4);
+    const text = Array.from(chips).map((chip) => chip.textContent).join(" | ");
+    expect(text).toContain("Windrider Saddle"); // the mount chip is present
+    const icons = Array.from(container.querySelectorAll(".hbEquipIcon")).map((img) => img.getAttribute("src") ?? "");
+    expect(icons.some((src) => src.includes("/assets/anime/equipment/windrider_saddle.webp"))).toBe(true);
+  });
+
   it("CONTROL — with the module OFF, no equipment chip renders (even if a field is stamped)", () => {
     const state = equipmentAdventure({}); // no anime options
     getMainHero(state, "p1")!.equipment = { weapon: "anime.equip.iron_blood_sword" };

@@ -4,31 +4,60 @@ import { describe, expect, it } from "vitest";
 import {
   ANIME_EQUIPMENT_ART_PLACEHOLDERS,
   ANIME_EQUIPMENT_DEFINITIONS,
+  ANIME_EQUIPMENT_SLOTS,
   EQUIPMENT_IDS,
   EQUIPMENT_SHOP_SALES,
   EQUIPMENT_SLOT_GLYPH,
   equipmentArtPath,
   equipmentImage,
   getEquipmentDefinition,
-  listEquipmentDefinitions,
-  type AnimeEquipmentSlot
+  listEquipmentDefinitions
 } from "./equipment";
+
+/** Wave-2 shared items — sold at BOTH outfitters. */
+const WAVE_2_SHARED = [
+  EQUIPMENT_IDS.marshalsWarHorn,
+  EQUIPMENT_IDS.veteransStandard,
+  EQUIPMENT_IDS.windriderSaddle,
+  EQUIPMENT_IDS.spiritCraneMount,
+  EQUIPMENT_IDS.bladeOfTheTrial,
+  EQUIPMENT_IDS.alchemistsSatchel
+];
 
 /** True when an item's art file exists under public/ (the promote target). */
 const equipmentArtOnDisk = (id: string) =>
   existsSync(fileURLToPath(new URL(`../../../public${equipmentArtPath(id)}`, import.meta.url)));
 
 describe("anime equipment catalog integrity", () => {
-  it("ships exactly the 6 V1 items with the specced slot / cost / package", () => {
+  it("ships exactly the 12 items with the specced slot / cost / package / context", () => {
     const items = listEquipmentDefinitions();
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(12);
     const bySlug = (id: string) => getEquipmentDefinition(id)!;
+    // V1 (6).
     expect(bySlug(EQUIPMENT_IDS.ironBloodSword)).toMatchObject({ slot: "weapon", cost: 4, package: "anime-xianxia" });
     expect(bySlug(EQUIPMENT_IDS.blackTortoiseMail)).toMatchObject({ slot: "armor", cost: 4, package: "anime-xianxia" });
     expect(bySlug(EQUIPMENT_IDS.cosmosPendant)).toMatchObject({ slot: "accessory", cost: 5, package: "anime-xianxia" });
     expect(bySlug(EQUIPMENT_IDS.adventurersBlade)).toMatchObject({ slot: "weapon", cost: 4, package: "anime-isekai" });
     expect(bySlug(EQUIPMENT_IDS.guildIssueMail)).toMatchObject({ slot: "armor", cost: 4, package: "anime-isekai" });
     expect(bySlug(EQUIPMENT_IDS.supplySatchel)).toMatchObject({ slot: "accessory", cost: 5, package: "shared" });
+    // Wave 2 (6): two context-gated accessories, two mounts, a weapon, an armor.
+    expect(bySlug(EQUIPMENT_IDS.marshalsWarHorn)).toMatchObject({ slot: "accessory", cost: 6, package: "shared", requiresContext: "wog.commanders" });
+    expect(bySlug(EQUIPMENT_IDS.veteransStandard)).toMatchObject({ slot: "accessory", cost: 5, package: "shared", requiresContext: "anime.unitExperience" });
+    expect(bySlug(EQUIPMENT_IDS.windriderSaddle)).toMatchObject({ slot: "mount", cost: 5, package: "shared" });
+    expect(bySlug(EQUIPMENT_IDS.spiritCraneMount)).toMatchObject({ slot: "mount", cost: 6, package: "shared", requiresContext: "wog.commanders" });
+    expect(bySlug(EQUIPMENT_IDS.bladeOfTheTrial)).toMatchObject({ slot: "weapon", cost: 5, package: "shared" });
+    expect(bySlug(EQUIPMENT_IDS.alchemistsSatchel)).toMatchObject({ slot: "armor", cost: 6, package: "shared" });
+    // Ungated V1 + wave-2 mount/weapon/armor carry NO context requirement.
+    expect(bySlug(EQUIPMENT_IDS.windriderSaddle).requiresContext).toBeUndefined();
+    expect(bySlug(EQUIPMENT_IDS.ironBloodSword).requiresContext).toBeUndefined();
+  });
+
+  it("covers all FOUR slots including the new mount slot", () => {
+    expect(ANIME_EQUIPMENT_SLOTS).toEqual(["weapon", "armor", "accessory", "mount"]);
+    const slotsUsed = new Set(listEquipmentDefinitions().map((def) => def.slot));
+    for (const slot of ANIME_EQUIPMENT_SLOTS) {
+      expect(slotsUsed.has(slot), `some item uses the ${slot} slot`).toBe(true);
+    }
   });
 
   it("every item has a bilingual name and a non-empty behaviour summary", () => {
@@ -74,29 +103,36 @@ describe("anime equipment catalog integrity", () => {
     }
   });
 
-  it("the slot glyph registry covers all three slots", () => {
-    for (const slot of ["weapon", "armor", "accessory"] as AnimeEquipmentSlot[]) {
-      expect(EQUIPMENT_SLOT_GLYPH[slot].length).toBeGreaterThan(0);
+  it("the slot glyph registry covers all four slots (incl. mount)", () => {
+    for (const slot of ANIME_EQUIPMENT_SLOTS) {
+      expect(EQUIPMENT_SLOT_GLYPH[slot].length, slot).toBeGreaterThan(0);
     }
   });
 
-  it("each outfitter sells its package's 3 items + the shared Satchel; no shop sells the other package", () => {
+  it("each outfitter sells its package's items + the shared Satchel + the wave-2 shared gear; no shop sells the other package's V1 items", () => {
     const blacksmith = EQUIPMENT_SHOP_SALES["anime.ren_binh_cac"];
     const outfitter = EQUIPMENT_SHOP_SALES["anime.adventurer_outfitter"];
     expect(blacksmith).toEqual([
       EQUIPMENT_IDS.ironBloodSword,
       EQUIPMENT_IDS.blackTortoiseMail,
       EQUIPMENT_IDS.cosmosPendant,
-      EQUIPMENT_IDS.supplySatchel
+      EQUIPMENT_IDS.supplySatchel,
+      ...WAVE_2_SHARED
     ]);
     expect(outfitter).toEqual([
       EQUIPMENT_IDS.adventurersBlade,
       EQUIPMENT_IDS.guildIssueMail,
-      EQUIPMENT_IDS.supplySatchel
+      EQUIPMENT_IDS.supplySatchel,
+      ...WAVE_2_SHARED
     ]);
-    // Both include the shared Satchel; neither crosses into the other package.
+    // Both include the shared Satchel + every wave-2 item; neither crosses into
+    // the OTHER package's V1 items.
     expect(blacksmith).toContain(EQUIPMENT_IDS.supplySatchel);
     expect(outfitter).toContain(EQUIPMENT_IDS.supplySatchel);
+    for (const id of WAVE_2_SHARED) {
+      expect(blacksmith, id).toContain(id);
+      expect(outfitter, id).toContain(id);
+    }
     expect(blacksmith).not.toContain(EQUIPMENT_IDS.adventurersBlade);
     expect(outfitter).not.toContain(EQUIPMENT_IDS.ironBloodSword);
     // Every sold id resolves to a real definition.
