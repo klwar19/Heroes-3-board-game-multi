@@ -5375,6 +5375,18 @@ export type GameEvent =
     }
   | {
       /**
+       * Victory-Points round-limit warning: the round now beginning (`round`) is
+       * the FINAL round — the game ends after it completes. Table-wide and
+       * playerId-agnostic; emitted once at that round's start by
+       * {@link startAdventureRound}. The client pops a one-time overlay plus a
+       * feed line so the impending end is never a surprise.
+       */
+      id: string;
+      type: "FINAL_ROUND";
+      round: number;
+    }
+  | {
+      /**
        * Anime mod §11 — a designer-triggered visual-novel STORY scene fired at
        * the start of a round (map-designer "Timed events"). Table-wide and
        * playerId-agnostic: every client pops the StoryOverlay once per event id

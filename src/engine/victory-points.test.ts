@@ -281,6 +281,40 @@ describe("Round-limit end trigger", () => {
     expect(next.adventure?.winnerPlayerId ?? null).toBeNull();
     expect(next.round).toBe(2);
   });
+
+  it("announces the FINAL round as it BEGINS, and ends only AFTER it completes (not before)", () => {
+    const state = makeGame();
+    setVictoryPoints(state, VP_ON, 2);
+    zeroBaseVp(state);
+    getMainHero(state, "p1")!.level = 4; // p1 leads at the limit
+
+    // Round 1 wraps → round 2 (the FINAL round) begins: announced, NOT ended.
+    let next = apply(state, { type: "END_TURN", playerId: "p1" });
+    next = apply(next, { type: "END_TURN", playerId: "p2" });
+    expect(next.round).toBe(2);
+    expect(next.adventure?.winnerPlayerId ?? null).toBeNull();
+    expect(next.eventLog.some((event) => event.type === "FINAL_ROUND" && event.round === 2)).toBe(true);
+    expect(next.eventLog.some((event) => event.type === "VP_SCORING")).toBe(false);
+
+    // Round 2 (the last round) wraps → NOW the game ends by scoring.
+    for (const player of Object.values(next.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    next = apply(next, { type: "END_TURN", playerId: "p1" });
+    next = apply(next, { type: "END_TURN", playerId: "p2" });
+    expect(next.adventure?.winnerPlayerId).toBe("p1");
+    expect(next.eventLog.some((event) => event.type === "VP_SCORING")).toBe(true);
+  });
+
+  it("CONTROL: no FINAL_ROUND fires with VP on but no round limit", () => {
+    const state = makeGame();
+    setVictoryPoints(state, VP_ON); // no round limit
+
+    let next = apply(state, { type: "END_TURN", playerId: "p1" });
+    next = apply(next, { type: "END_TURN", playerId: "p2" });
+    expect(next.eventLog.some((event) => event.type === "FINAL_ROUND")).toBe(false);
+  });
 });
 
 // ===========================================================================

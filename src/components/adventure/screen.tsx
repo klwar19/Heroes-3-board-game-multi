@@ -118,6 +118,7 @@ import {
   outpostObjectImage,
   teleportGateImage,
   RESOURCE_ICONS,
+  REWARD_GLYPH_ICONS,
   subterraneanGateTokenImage,
   tileBackImage,
   TILE_BACK_IMAGES,
@@ -2389,6 +2390,46 @@ export function HexMapBoard({
     });
   }
 
+  // Designed Subterranean Gates are CARVED only once BOTH their tiles are
+  // revealed, so at game start a designed gate is invisible and the player can't
+  // tell where to descend. Mark every planned gate hex that isn't carved yet with
+  // a translucent gate token, so designer-placed gates are visible from the
+  // start ("player knows where to find them"). A carved hex is skipped — the
+  // field loop above already draws the real gate there. Only designer links
+  // (and player pick-on-reveal plans, already known to that player) have plans,
+  // so a plain random map shows nothing extra.
+  for (const plan of adventure.gatePlans ?? []) {
+    for (const hex of [plan.gateHex, plan.entranceHex]) {
+      if (!hex || adventure.fields[hex]?.location === "subterranean_gate") {
+        continue;
+      }
+      const coord = parseHexSpaceId(hex);
+      if (!coord) {
+        continue;
+      }
+      const { x, y } = hexToPixel(coord, HEX_SIZE);
+      track(x, y);
+      const markWidth = HEX_WIDTH * 0.6;
+      const markHeight = 2 * HEX_SIZE * 0.6;
+      overlays.push(
+        <g key={`gate-plan-${hex}`} className="gatePlanMarker" style={{ pointerEvents: "none" }}>
+          <title>A Subterranean Gate opens here — descend/ascend once this tile is revealed.</title>
+          <circle cx={x} cy={y} fill="#5b3f24" opacity={0.3} r={HEX_SIZE * 0.52} />
+          <circle cx={x} cy={y} fill="none" opacity={0.85} r={HEX_SIZE * 0.52} stroke="#e0b562" strokeDasharray="4 3" strokeWidth={2} />
+          <image
+            height={markHeight}
+            href={assetUrl(subterraneanGateTokenImage("surface"))}
+            opacity={0.9}
+            preserveAspectRatio="xMidYMid meet"
+            width={markWidth}
+            x={x - markWidth / 2}
+            y={y - markHeight / 2}
+          />
+        </g>
+      );
+    }
+  }
+
   return (
     // The outer div is the positioning host for the floating control cards:
     // they must live OUTSIDE .hexMapWrap (whose `isolation: isolate` traps any
@@ -3752,6 +3793,32 @@ function rewardArtFromVisitSteps(
   return null;
 }
 
+/**
+ * Representative art for a Scenario starting-bonus option (rulebook p.10). The
+ * options are GENERIC actions (roll Resource dice / Search the Artifact deck /
+ * reveal until a Minor Artifact / draw-and-choose a Minor Artifact / take a
+ * resource package), so there is no single card to show — instead each kind gets
+ * its Homm3BG glyph so the pick reads at a glance: an artifact icon for every
+ * "get an Artifact" option, a resource-die icon for every resource option.
+ */
+const STARTING_BONUS_ARTIFACT_STEPS = new Set([
+  "STARTING_BONUS_ARTIFACT_SEARCH",
+  "REVEAL_UNTIL_MINOR_ARTIFACT",
+  "DRAW_CHOOSE_MINOR_ARTIFACTS"
+]);
+function startingBonusOptionArt(
+  steps: { type: string; [key: string]: unknown }[] | undefined
+): VisitRewardArt | null {
+  if (!steps || steps.length === 0) {
+    return null;
+  }
+  if (steps.some((step) => step && STARTING_BONUS_ARTIFACT_STEPS.has(step.type))) {
+    return { image: REWARD_GLYPH_ICONS.artifact, name: "Artifact" };
+  }
+  // Every other starting-bonus option is a resource bonus (dice or a package).
+  return { image: REWARD_GLYPH_ICONS.resourceDie, name: "Resources" };
+}
+
 /** Resolve a card / unit / event id to display art + name. Never the Astrologers card. */
 function rewardArtForId(cardId: string): VisitRewardArt {
   const card = cardLibrary[cardId];
@@ -4299,6 +4366,21 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" && choice.context === "discard-pick" && choice.playerId === viewerPlayerId
       ? choice.discardPick?.cardIds ?? null
       : null;
+  // Rule 111 (Polish house rule): options 1..N each replace a bronze guard, so
+  // show that bronze unit's Neutral card face (option 0 keeps — a plain button).
+  const rule111Draws =
+    choice?.type === "OPTION_CHOICE" && choice.context === "rule-111" && choice.playerId === viewerPlayerId
+      ? (state.combat?.pendingNeutralDraws ?? []).filter((draw) => draw.tier === "bronze" && !draw.bankGuard)
+      : null;
+  // Scenario starting bonus (rulebook p.10): its options carry no card id, so
+  // give each kind a representative glyph (artifact / resource die) — scoped to
+  // the "Starting bonus" prompt so no other resource-dice / Search prompt changes.
+  const startingBonusStep = visit && visit.playerId === viewerPlayerId ? visit.steps[0] : undefined;
+  const startingBonusChoice =
+    Boolean(chooseOneOptions) &&
+    startingBonusStep?.type === "CHOOSE_ONE" &&
+    typeof startingBonusStep.prompt === "string" &&
+    /^Starting bonus/i.test(startingBonusStep.prompt);
   const rewardOptions =
     chooseOneOptions && !teleport
       ? body.map((legal) => {
@@ -4310,7 +4392,9 @@ export function PromptTray({
             optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
               ? chooseOneOptions[optionIndex]
               : undefined;
-          const art = rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps);
+          const art =
+            rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps) ??
+            (startingBonusChoice ? startingBonusOptionArt(option?.steps) : null);
           return { legal, art };
         })
       : discardPickCards
@@ -4333,7 +4417,21 @@ export function PromptTray({
               : null;
             return { legal, art };
           })
-        : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
+        : rule111Draws
+          ? body.map((legal) => {
+              const optionIndex =
+                legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                  ? legal.action.optionIndex
+                  : undefined;
+              // Option 0 keeps the drawn army (no card); options 1..N each replace
+              // the k-th bronze guard, so show that unit's Neutral card face.
+              const draw = optionIndex !== undefined && optionIndex > 0 ? rule111Draws[optionIndex - 1] : undefined;
+              const art: VisitRewardArt | null = draw
+                ? { ...rewardArtForId(draw.unitDefId), caption: legal.label }
+                : null;
+              return { legal, art };
+            })
+          : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
   const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
   const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
 
@@ -4417,7 +4515,14 @@ export function PromptTray({
                 style={art?.ring ? ({ ["--teleport-ring" as string]: art.ring } as CSSProperties) : undefined}
               >
                 {art?.image ? (
-                  <img alt="" aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(art.image)}
+                  />
                 ) : (
                   <span className="marketCardFallback">⇄</span>
                 )}
@@ -4460,7 +4565,14 @@ export function PromptTray({
                       : undefined
                   }
                 >
-                  <img alt="" aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(art.image)}
+                  />
                 </span>
               ) : (
                 <span className="marketCardFallback">{art.name}</span>
@@ -6687,21 +6799,23 @@ function GameOptionsPanel({
                     {on ? "On" : "Off"}
                   </button>
                 ))}
-                {vpOn ? (
-                  <select
-                    aria-label="Victory points round limit"
-                    onChange={(event) => send({ victoryPointsRoundLimit: Number(event.target.value) })}
-                    value={vpRoundLimit}
-                  >
-                    <option value={0}>No round limit</option>
-                    {[10, 15, 20, 25, 30].map((rounds) => (
-                      <option key={rounds} value={rounds}>
-                        {rounds} rounds
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
               </div>
+              {vpOn ? (
+                <div aria-label="Victory points round limit" className="optionButtons" role="group">
+                  {[0, 5, 10, 15, 20, 25].map((rounds) => (
+                    <button
+                      aria-pressed={vpRoundLimit === rounds}
+                      className={vpRoundLimit === rounds ? "selected" : ""}
+                      key={rounds}
+                      onClick={() => send({ victoryPointsRoundLimit: rounds })}
+                      title={rounds === 0 ? "No round limit" : `${rounds} rounds`}
+                      type="button"
+                    >
+                      {rounds === 0 ? "No limit" : rounds}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <small className="optionHint">
                 {presetVpEnabled
                   ? "The designed map already enables Victory Points — its own scoring settings and round limit apply, so this toggle does not govern them."

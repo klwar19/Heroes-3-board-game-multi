@@ -2661,6 +2661,12 @@ export type MapEventCue = {
   round: number;
   /** One line per timed effect that fired this round (several can share a round). */
   messages: string[];
+  /**
+   * When set, this cue is the Victory-Points "final round" warning (not a
+   * designed-map timed event): the overlay uses a distinct header so the player
+   * understands the game ends once this round is over.
+   */
+  finalRound?: boolean;
 };
 
 /**
@@ -2692,13 +2698,13 @@ export function MapEventOverlay({ cue, onDone }: { cue: MapEventCue; onDone: () 
     <div
       className="astrologersProclaimBackdrop mapEventBackdrop"
       role="dialog"
-      aria-label={`Map event — round ${cue.round}`}
+      aria-label={cue.finalRound ? `Final round — round ${cue.round}` : `Map event — round ${cue.round}`}
       onClick={onDone}
     >
       <div className="mapEventCard" onClick={(event) => event.stopPropagation()}>
         <header className="mapEventHead">
-          <span aria-hidden="true">🗺️</span>
-          <strong>Map event!</strong>
+          <span aria-hidden="true">{cue.finalRound ? "⏳" : "🗺️"}</span>
+          <strong>{cue.finalRound ? "Final round!" : "Map event!"}</strong>
           <span className="mapEventRound">round {cue.round}</span>
         </header>
         <ul className="mapEventLines">

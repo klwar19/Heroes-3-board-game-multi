@@ -2732,12 +2732,6 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
   }
 
-  // Then everyone draws their starting hand (visible from the first moment),
-  // and the active player's turn starts as usual.
-  for (const config of playerConfigs) {
-    drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
-  }
-
   // Setup step 17: each player takes the Scenario Difficulty starting bonus
   // (rulebook p.10). Queued before round/start-of-turn rewards so they resolve
   // first. Impossible has none. Artifacts go to hand, not the Starting Deck.
@@ -2752,6 +2746,22 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const bonusSteps = applyStartingBonus
     ? startingBonusVisitSteps(difficulty, { polishReduced: polishReducedStarting })
     : null;
+
+  // Then everyone draws their starting hand (visible from the first moment),
+  // and the active player's turn starts as usual. EXCEPTION: when a Scenario
+  // starting bonus IS in play, the opening hand is NOT pre-dealt here — instead
+  // each player draws UP TO their hand limit at their own first turn, AFTER
+  // taking the bonus card, via the mandatory start-of-turn REFRESH_HAND. That
+  // way the bonus card counts toward the limit (bonus + drawn = limit), so a
+  // player never opens holding limit+1 cards facing a forced discard. With no
+  // bonus (bonus off, or Impossible where `bonusSteps` is null) the hand is
+  // pre-dealt exactly as before.
+  if (!bonusSteps) {
+    for (const config of playerConfigs) {
+      drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
+    }
+  }
+
   if (bonusSteps) {
     for (const playerId of state.turnOrder) {
       if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId]) {

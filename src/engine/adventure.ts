@@ -11101,6 +11101,13 @@ export function startAdventureRound(state: GameState): void {
 
   refreshRoundTokens(state);
   appendEvent(state, { type: "ROUND_STARTED", round: state.round, kind });
+  // VP round-limit: announce the FINAL round as it begins (the end-of-round
+  // scoring above fires next round when the counter passes `roundLimit`), so the
+  // ending is never a surprise. `state.round <= roundLimit` here (the > guard
+  // returned already), so `=== roundLimit` is exactly the last round; fires once.
+  if (vpConfig && roundLimit && state.round === roundLimit && !state.adventure?.winnerPlayerId) {
+    appendEvent(state, { type: "FINAL_ROUND", round: state.round });
+  }
   // Map designer timed events fire for every round kind. On first / resource
   // rounds they queue right after the round-start feed line; on an Astrologers
   // round they wait until AFTER the proclamation is drawn (below), so the

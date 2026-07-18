@@ -866,9 +866,13 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
   const toField = adventure.fields[to];
   // The two halves of a Subterranean Gate Token are "one Field": stepping
   // between them is the tunnel travel — cave-visit (CAVEHEAD), not horse steps.
+  // Because they are one Field, the descend/ascend step is FREE (0 MP); every
+  // other step spends its 1 MP as usual.
   const throughGate = gateFieldsLinked(fromField, toField);
   hero.spaceId = to;
-  hero.movementPoints -= 1;
+  if (!throughGate) {
+    hero.movementPoints -= 1;
+  }
 
   appendEvent(state, {
     type: "HERO_MOVED",

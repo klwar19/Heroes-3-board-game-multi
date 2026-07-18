@@ -814,3 +814,78 @@ describe("designed gate links — guarded halves", () => {
     expect(walked.state.adventure!.fields[freshGate.spaceId]?.difficulty).toBe(4);
   });
 });
+
+describe("subterranean gate crossing is one Field (0 MP)", () => {
+  it("stepping between the two linked halves spends NO movement (a normal step spends 1)", () => {
+    const cavern = cavernNextToFar();
+    const customMap: CustomMapTilePlan[] = [
+      { row: TOWN.row, col: TOWN.col, group: "starting", faceDown: false },
+      { row: FAR.row, col: FAR.col, group: "far", faceDown: false, tileDefId: "F1" },
+      {
+        row: cavern.row,
+        col: cavern.col,
+        group: "subterranean",
+        faceDown: false,
+        tileDefId: "U1",
+        gateLinks: [{ surface: { row: FAR.row, col: FAR.col } }]
+      }
+    ];
+    const state = twoPlayerGame(customMap);
+    const surfaceId = tileIdAt(state, FAR);
+    const cavernId = tileIdAt(state, cavern);
+    const gate = gateHalfTo(state, cavernId); // surface half → cavern
+    const entrance = gateHalfTo(state, surfaceId); // cavern half → surface
+    expect(gate, "surface gate carved").toBeDefined();
+    expect(entrance, "cavern entrance carved").toBeDefined();
+    expect(gateFieldsLinked(gate, entrance)).toBe(true);
+
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    state.activePlayerId = "p1";
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = gate!.spaceId;
+    hero.movementPoints = 4;
+    hero.movementHaltedThisTurn = false;
+
+    // Crossing the gate to its linked entrance is the tunnel travel — FREE.
+    const crossed = applyAction(state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: entrance!.spaceId
+    });
+    expect(crossed.errors, crossed.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+    expect(crossed.state.heroes.hero_p1.spaceId).toBe(entrance!.spaceId);
+    // 0 MP spent — the two halves are one Field (fails if the throughGate guard is removed).
+    expect(crossed.state.heroes.hero_p1.movementPoints).toBe(4);
+    expect(
+      crossed.state.eventLog.some(
+        (event) => event.type === "HERO_MOVED" && (event as { teleport?: string }).teleport === "subterranean"
+      )
+    ).toBe(true);
+
+    // CONTROL: a plain adjacent step inside the cavern spends its 1 MP as usual.
+    const cavernTile = Object.values(adv(crossed.state).tiles).find((tile) => tile.id === cavernId)!;
+    const openNeighbor = getTileFootprintSpaceIds(cavernTile).find((spaceId) => {
+      const field = adv(crossed.state).fields[spaceId];
+      return (
+        field &&
+        spaceId !== entrance!.spaceId &&
+        field.location === "empty_field" &&
+        !field.difficulty &&
+        canCrossEdge(crossed.state, entrance!.spaceId, spaceId)
+      );
+    });
+    expect(openNeighbor, "an open cavern hex next to the entrance").toBeTruthy();
+    const stepped = applyAction(crossed.state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: "hero_p1",
+      to: openNeighbor!
+    });
+    expect(stepped.errors, stepped.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+    expect(stepped.state.heroes.hero_p1.movementPoints).toBe(3);
+  });
+});
