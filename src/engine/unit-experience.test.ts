@@ -416,6 +416,41 @@ describe("Unit Experience — observable rank effects in combat", () => {
     expect(unit.defense, "the Few side keeps the rank-1 Defense fold").toBe(fewDef.defense + 1);
     expect(unit.unitRank).toBe(1);
   });
+
+  it("silver rank 1 (+1 Defense) lowers the incoming hit by exactly 1 over the XP-0 CONTROL", () => {
+    // castle.crusaders is a clean silver Few (defense 2, no abilities); silver's
+    // rank-1 threshold is 3 XP and its rank-1 package is +1 Defense.
+    const control = resolveArmyAttack(
+      "uxp-silver-ctl",
+      { unitDefId: "castle.champions", side: "few" },
+      { unitDefId: "castle.crusaders", side: "few" }
+    );
+    const veteran = resolveArmyAttack(
+      "uxp-silver-vet",
+      { unitDefId: "castle.champions", side: "few" },
+      { unitDefId: "castle.crusaders", side: "few", experience: 3 }
+    );
+    const controlDamage = control.combat!.units.unit_p2_skeletons.damage;
+    expect(controlDamage, "5 attack + 0 die − 2 defense").toBe(3);
+    expect(
+      veteran.combat!.units.unit_p2_skeletons.damage,
+      "silver rank 1 (threshold 3): +1 Defense"
+    ).toBe(controlDamage - 1);
+  });
+
+  it("silver folds: rank 2 = +1 Attack +1 Defense, rank 3 adds +1 Health but NO Initiative (bronze-only)", () => {
+    const CRUSADERS = { id: "xp_crusaders", unitDefId: "castle.crusaders", side: "few" as const };
+    const plain = makeCombatUnitFromArmy({ ...CRUSADERS }, "p1", "u_s0", 0, "legacy")!;
+    const rank2 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 7 }, "p1", "u_s2", 0, "legacy")!;
+    const rank3 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 12 }, "p1", "u_s3", 0, "legacy")!;
+    expect(rank2.attack, "silver rank 2 = +1 Attack").toBe(plain.attack + 1);
+    expect(rank2.defense, "silver rank 2 = +1 Defense").toBe(plain.defense + 1);
+    expect(rank2.maxHealth, "no Health until rank 3").toBe(plain.maxHealth);
+    expect(rank2.unitRank).toBe(2);
+    expect(rank3.maxHealth, "silver rank 3 = +1 Health").toBe(plain.maxHealth + 1);
+    expect(rank3.initiative, "silver Elites gain no Initiative (bronze-only bump)").toBe(plain.initiative);
+    expect(rank3.unitRank).toBe(3);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -555,5 +590,18 @@ describe("Unit Experience — Drill", () => {
     expect(
       applyAction(away, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id }).errors[0]?.message
     ).toContain("Town");
+  });
+
+  it("CONTROL — a Drill aimed at a MAXED card is rejected and spends no gold", () => {
+    // `maxed` (halberdiers, bronze rank 3 at 9 XP) is filtered out of the offer;
+    // a forged/stale DRILL_UNIT at it must fail cleanly, not burn 2 gold and the
+    // once-per-turn drill on a rank that can never move.
+    const state = drillState("uxp-drill-maxed");
+    const result = applyAction(state, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: "maxed" });
+    expect(result.errors[0]?.message).toContain("max veteran rank");
+    expect(result.state.players.p1.resources.gold, "no gold spent on a rejected drill").toBe(10);
+    expect(result.state.players.p1.unitDrillRound, "the once-per-turn drill is not consumed").not.toBe(
+      state.round
+    );
   });
 });

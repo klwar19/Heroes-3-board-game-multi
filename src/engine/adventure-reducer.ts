@@ -1,10 +1,11 @@
 import { cardLibrary } from "@/data/cards/library";
-import { DRILL_UNIT_GOLD_COST, DRILL_UNIT_XP } from "@/data/units/experience";
+import { DRILL_UNIT_GOLD_COST, DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
 import {
   awardUnitExperienceAfterCombat,
   diluteUnitExperienceForUpgrade,
   grantArmyUnitExperience,
-  unitExperienceActive
+  unitExperienceActive,
+  unitRankForExperience
 } from "./unit-experience";
 import {
   coreBuildingDefinitions,
@@ -7788,6 +7789,15 @@ export function drillUnit(state: GameState, action: Extract<GameAction, { type: 
   const def = coreUnitDefinitions[armyUnit.unitDefId];
   if (!def) {
     throw new Error("That unit cannot be drilled.");
+  }
+  // Guard the SPECIFIC target: `unitDrillAvailable` only proves SOME card is
+  // drillable, and the offer (drillableArmyUnits) hides maxed cards — but a
+  // forged/stale DRILL_UNIT aimed at a max-rank card would otherwise spend the
+  // gold and burn the once-per-turn drill on a no-op (XP past the top threshold
+  // never changes the rank). Reject it cleanly, honouring the documented rule
+  // "cards already at max rank are not drillable".
+  if (unitRankForExperience(def.tier, armyUnit.experience ?? 0) >= MAX_UNIT_RANK) {
+    throw new Error("That unit is already at max veteran rank.");
   }
   spendResources(state, action.playerId, { gold: DRILL_UNIT_GOLD_COST }, "unit drill");
   player.unitDrillRound = state.round;
