@@ -9424,7 +9424,11 @@ export type PendingFarTileFlip = {
   returnPhase: GamePhase;
   /** 1-based index of this opening for the player (the 2nd is settlement-guaranteed). */
   openingIndex: number;
-  /** The tile currently revealed and under decision. */
+  /**
+   * The tile currently revealed and under decision. During the "blind" stage
+   * (blind Ⅱ–Ⅲ choice: the preference is asked BEFORE any draw) no tile has
+   * been drawn yet and this holds the empty string.
+   */
   candidate: string;
   /** The most recent NON-settlement tile held aside during a settlement reroll, offered against the Settlement at the final pick. */
   lastNonSettlement: string | null;
@@ -9436,8 +9440,11 @@ export type PendingFarTileFlip = {
    *  - "settlement": [Keep, Reroll for a Settlement]
    *  - "mine":       [Keep, Reroll once (material mine)]
    *  - "pick":       [Place the Settlement tile, Place the previous tile]
+   *  - "blind":      [No preference, Prefer a GOLD mine, Prefer a VALUABLES
+   *                  mine] — the blind Ⅱ–Ⅲ choice asked BEFORE the draw
+   *                  (candidate is still ""); resolving it draws the tile.
    */
-  offerMode: "settlement" | "mine" | "pick";
+  offerMode: "settlement" | "mine" | "pick" | "blind";
 };
 
 export type AdventureState = {
@@ -9466,6 +9473,13 @@ export type AdventureState = {
    * the player-view (upcoming tiles are secret). Absent on pre-feature saves.
    */
   farTilePool?: string[];
+  /**
+   * Blind Ⅱ–Ⅲ tile choice (GameSetupOptions.farTileBlindChoice, default OFF):
+   * a supply opening first asks the player for a blind gold/valuables/no-
+   * preference pick that filters the random draw. Absent/false = the draw is
+   * immediate, exactly as before.
+   */
+  farTileBlindChoice?: boolean;
   /**
    * How many Ⅱ–Ⅲ tiles each player has already opened (placed). Drives the
    * "the 2nd tile each player opens is the settlement-guaranteed one" rule.
@@ -9940,6 +9954,17 @@ export type GameSetupOptions = {
    * while `farTileOpening` is ON. Clamped to {@link MAX_FAR_TILES_PER_PLAYER}.
    */
   farTilesPerPlayer?: number;
+  /**
+   * OPTIONAL blind Ⅱ–Ⅲ tile choice (default OFF). With it ON, a player opening
+   * a Ⅱ–Ⅲ (Far) tile from their supply first chooses BLINDLY — before seeing
+   * any tile — whether they want a tile with a GOLD mine, one with a VALUABLES
+   * mine, or no preference; the random draw is then restricted to tiles
+   * carrying that landmark (falling back to a plain draw, with a public note,
+   * when none is left in the pool). Revealing a face-down Ⅱ–Ⅲ tile already on
+   * the map never asks (its identity is fixed). Frozen onto
+   * `adventure.farTileBlindChoice` at setup.
+   */
+  farTileBlindChoice?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
