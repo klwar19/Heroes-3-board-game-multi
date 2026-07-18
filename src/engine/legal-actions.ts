@@ -1108,11 +1108,24 @@ export function getActivationOrder(
   const alive = Object.values(combat.units).filter(isUnitAlive);
   const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
 
-  const acted = new Set<UnitId>(alive.filter((unit) => unit.activatedThisRound).map((unit) => unit.id));
+  // Polish Wait: a unit that Waited has finished its MAIN-phase turn but will
+  // re-activate AFTER every other unit, highest wait token first (the engine's
+  // wait phase). So it leaves the greyed "done" bucket and joins the TAIL of the
+  // upcoming list, and counts as already-acted for the main-phase ordering below.
+  const waited = alive
+    .filter((unit) => unit.waitPending)
+    .sort((left, right) => (right.waitToken ?? 0) - (left.waitToken ?? 0) || left.id.localeCompare(right.id));
+
+  // Truly finished this round (won't act again): activated and NOT waiting.
   const done = alive
-    .filter((unit) => unit.activatedThisRound)
+    .filter((unit) => unit.activatedThisRound && !unit.waitPending)
     .sort((left, right) => initiativeOf(right) - initiativeOf(left) || left.id.localeCompare(right.id));
 
+  // Remaining MAIN-phase units, in the engine's true (alternating) order. A
+  // waited unit is treated as acted here so it never appears in this bucket.
+  const acted = new Set<UnitId>(
+    alive.filter((unit) => unit.activatedThisRound || unit.waitPending).map((unit) => unit.id)
+  );
   const upcoming: CombatUnitState[] = [];
   // Bounded by the unit count: each pass marks exactly one more unit acted.
   for (let guard = alive.length; guard > 0; guard -= 1) {
@@ -1125,7 +1138,8 @@ export function getActivationOrder(
     acted.add(next.id);
   }
 
-  return [...done, ...upcoming];
+  // Order: finished (grey) · upcoming main-phase · waited (re-activate last).
+  return [...done, ...upcoming, ...waited];
 }
 
 function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
