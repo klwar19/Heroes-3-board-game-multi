@@ -90,9 +90,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
   },
 
   // -------------------------------------------------------------------------
-  // Wave 2 — xianxia (§5.5 / §5.8 "retained from earlier sketch"). No art yet:
-  // each ships with a `glyph` fallback and is declared in
-  // FIELD_OVERRIDE_ART_PLACEHOLDERS below (drop a .webp + set `image` later).
+  // Wave 2 — xianxia (§5.5 / §5.8 "retained from earlier sketch"). Real hex art
+  // shipped 2026-07 (`image`); the `glyph` stays as a text/icon fallback.
   // -------------------------------------------------------------------------
   /** Merchant Guild Post (§5.5) — the Trading Post as a xianxia guild stall. */
   thuong_hoi_tram: {
@@ -105,7 +104,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     terrain: "land",
     implementationStatus: "implemented",
     summary: "Revisitable Trading Post — trade resources at market rates any turn.",
-    glyph: "🏪"
+    glyph: "🏪",
+    image: art("thuong_hoi_tram")
   },
   /** Brotherhood Gambling Den (§5.5) — Crypt-cousin Attack-die gamble for a fee. */
   song_bac_quan: {
@@ -118,7 +118,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     terrain: "land",
     implementationStatus: "implemented",
     summary: "Pay 2 gold to gamble on the Attack die: +1 wins 5 gold, 0 returns 2, −1 costs morale.",
-    glyph: "🀄"
+    glyph: "🀄",
+    image: art("song_bac_quan")
   },
   /**
    * Qi Refinement Platform. V1 REUSE reading (plan §0 rule 4): the original
@@ -136,12 +137,13 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     terrain: "land",
     implementationStatus: "implemented",
     summary: "Choose: meditate for +1 morale, or gamble a breakthrough on the Attack die for experience.",
-    glyph: "🧘"
+    glyph: "🧘",
+    image: art("dai_luyen_khi")
   },
 
   // -------------------------------------------------------------------------
   // Wave 2 — isekai (first `anime-isekai` package content; source display names
-  // per the plan's naming decision). No art yet — glyph + placeholder as above.
+  // per the plan's naming decision). Real hex art shipped 2026-07, glyph fallback kept.
   // -------------------------------------------------------------------------
   /** Capsule Corp Lab (Dragon Ball) — the War Machine Factory. */
   capsule_lab: {
@@ -153,7 +155,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     terrain: "land",
     implementationStatus: "implemented",
     summary: "Revisitable War Machine Factory — buy a war machine at the lower price any turn.",
-    glyph: "🚀"
+    glyph: "🚀",
+    image: art("capsule_lab")
   },
   /** Urahara's Shop (Bleach) — a paid curio counter + bargain bin. */
   urahara_shop: {
@@ -165,7 +168,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     terrain: "land",
     implementationStatus: "implemented",
     summary: "Revisitable: pay 3 gold to Search (1) an Artifact, or 1 gold for a Treasure-die roll.",
-    glyph: "🏮"
+    glyph: "🏮",
+    image: art("urahara_shop")
   },
   /** Hot Spring Inn / Onsen — Fountain-of-Youth twin without the youth. */
   onsen_ryokan: {
@@ -177,13 +181,14 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     terrain: "land",
     implementationStatus: "implemented",
     summary: "Choose: a long soak for +1 morale, or a quick dip for +1 movement this turn.",
-    glyph: "♨"
+    glyph: "♨",
+    image: art("onsen_ryokan")
   },
 
   // -------------------------------------------------------------------------
   // Equipment outfitters (§3.13). Gated on `anime.equipment` via
   // `requiresModule` — with the module off they appear in NO pool / listing
-  // (CONTROL-pinned). No art yet: glyph + placeholder as above.
+  // (CONTROL-pinned). Real hex art shipped 2026-07, glyph fallback kept.
   // -------------------------------------------------------------------------
   /** Rèn Binh Các (Blacksmith) — sells the 3 xianxia items + the shared Satchel. */
   ren_binh_cac: {
@@ -197,7 +202,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     terrain: "land",
     implementationStatus: "implemented",
     summary: "Outfitter: buy an always-on xianxia weapon/armor/accessory (or the shared Supply Satchel).",
-    glyph: "⚒"
+    glyph: "⚒",
+    image: art("ren_binh_cac")
   },
   /** Adventurer Outfitter — sells the 3 isekai items + the shared Satchel. */
   adventurer_outfitter: {
@@ -210,7 +216,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     terrain: "land",
     implementationStatus: "implemented",
     summary: "Outfitter: buy an always-on isekai weapon/armor/accessory (or the shared Supply Satchel).",
-    glyph: "🎒"
+    glyph: "🎒",
+    image: art("adventurer_outfitter")
   }
 };
 
@@ -223,14 +230,10 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
  * set `image: art("<id>")`, and remove the id from this set.
  */
 export const FIELD_OVERRIDE_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
-  "thuong_hoi_tram",
-  "song_bac_quan",
-  "dai_luyen_khi",
-  "capsule_lab",
-  "urahara_shop",
-  "onsen_ryokan",
-  "ren_binh_cac",
-  "adventurer_outfitter"
+  // 2026-07: EMPTY — all 13 kinds now ship real 512×512 hex art (the 8 former
+  // placeholders were generated + promoted; the 5 wave-1 hexes were regenerated
+  // on-register — the earlier files were mismatched stock-like scenes). Any
+  // FUTURE art-less kind must be declared here, keeping the glyph fallback.
 ]);
 
 // Register into the global catalog at module load.

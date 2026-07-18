@@ -178,7 +178,8 @@ describe("Anime content package registration", () => {
   });
 
   it("the art-placeholder registry names only real, implemented, art-LESS kinds", () => {
-    expect(FIELD_OVERRIDE_ART_PLACEHOLDERS.size).toBeGreaterThan(0);
+    // 2026-07: every shipped kind has art, so the registry is legitimately
+    // EMPTY — the loop below still guards any future declared placeholder.
     for (const id of FIELD_OVERRIDE_ART_PLACEHOLDERS) {
       const def = getFieldOverrideDefinition(id);
       expect(def, `placeholder "${id}" is not a registered kind`).toBeTruthy();
@@ -212,10 +213,12 @@ describe("Anime content package registration", () => {
     expect(fieldOverrideImage("anime.kiem_trung")).toContain("kiem_trung.webp");
   });
 
-  it("fieldOverrideGlyph resolves an art-less kind by id AND location id", () => {
-    expect(fieldOverrideGlyph("song_bac_quan")).toBeTruthy();
-    expect(fieldOverrideGlyph("anime.song_bac_quan")).toBe(fieldOverrideGlyph("song_bac_quan"));
-    // A kind WITH art has no glyph fallback (art wins) — by id and by location id.
+  it("fieldOverrideGlyph: art wins over the glyph — by id and by location id", () => {
+    // 2026-07: every shipped kind has art, so even glyph-carrying kinds
+    // (song_bac_quan keeps its "🀄" as a text fallback) resolve to NO glyph.
+    expect(getFieldOverrideDefinition("song_bac_quan")?.glyph).toBeTruthy();
+    expect(fieldOverrideGlyph("song_bac_quan")).toBeUndefined();
+    expect(fieldOverrideGlyph("anime.song_bac_quan")).toBeUndefined();
     expect(fieldOverrideGlyph("kiem_trung")).toBeUndefined();
     expect(fieldOverrideGlyph("anime.kiem_trung")).toBeUndefined();
   });

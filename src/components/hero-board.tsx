@@ -22,6 +22,7 @@ import {
   cultivationRealmOf,
   effectiveHandLimit,
   equipmentEnabled,
+  equipmentImage,
   getEquipmentDefinition,
   getMainHero,
   heroEquipmentOf,
@@ -428,15 +429,24 @@ export function HeroBoard({
             </span>
           ) : null}
           {showEquip && equippedItems.length > 0
-            ? equippedItems.map(({ slot, def }) => (
-                <span
-                  className="hbEquip"
-                  key={slot}
-                  title={`Equipment (${slot}, always on): ${def.summary}`}
-                >
-                  {EQUIPMENT_SLOT_GLYPH[slot]} {def.name.en} · {def.name.vi}
-                </span>
-              ))
+            ? equippedItems.map(({ slot, def }) => {
+                // Real item icon when art shipped; slot glyph fallback otherwise.
+                const icon = equipmentImage(def.id);
+                return (
+                  <span
+                    className="hbEquip"
+                    key={slot}
+                    title={`Equipment (${slot}, always on): ${def.summary}`}
+                  >
+                    {icon ? (
+                      <img alt="" className="hbEquipIcon" src={assetUrl(icon)} />
+                    ) : (
+                      EQUIPMENT_SLOT_GLYPH[slot]
+                    )}{" "}
+                    {def.name.en} · {def.name.vi}
+                  </span>
+                );
+              })
             : null}
           <span>
             Hand {handLimit} · Crowns {player.limits.expertUses}

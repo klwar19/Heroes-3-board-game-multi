@@ -119,7 +119,11 @@ export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerI
       options: {
         anime: options.anime,
         fieldOverrides: options.fieldOverrides,
-        ...(options.difficulty ? { difficulty: options.difficulty } : {})
+        ...(options.difficulty ? { difficulty: options.difficulty } : {}),
+        // Cross-mod chapters (the Convergence) also inject WOG modules and
+        // house-rule toggles; absent = the room's defaults stay untouched.
+        ...(options.wog ? { wog: options.wog } : {}),
+        ...(options.houseRules ? { houseRules: options.houseRules } : {})
       }
     }
   ];

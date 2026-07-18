@@ -14,10 +14,11 @@
  * lookups resolve), but they DECK-JOIN only when the module is on — see
  * `animeXianxiaArtifact*Ids` consumed by `makeSharedDecks`.
  *
- * ART: none of these ship with a card face yet. Each is declared in
- * `ANIME_ARTIFACT_ART_PLACEHOLDERS` and routes to the deck back until a real
- * `.webp` lands under `public/assets/anime/artifacts/<slug>.webp` (drop the
- * file, remove the id from the set — the hygiene test enforces the contract).
+ * ART: all 5 ship real card faces (2026-07) built by
+ * `scripts/build-anime-artifact-cards.mjs` (editable SVG sources under
+ * `scripts/anime-art/editable/artifacts/`). A future face-less card must be
+ * declared in `ANIME_ARTIFACT_ART_PLACEHOLDERS` to route to the deck back
+ * (the hygiene test enforces the contract in both directions).
  */
 
 import type { CardLibrary } from "@/engine/state";
@@ -45,11 +46,10 @@ export function animeArtifactArtPath(slug: string): string {
  * then renders its own face).
  */
 export const ANIME_ARTIFACT_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
-  "tui_can_khon",
-  "tu_linh_ban",
-  "phong_hoa_luan",
-  "bat_qua_kinh",
-  "tru_tien_kiem"
+  // 2026-07: EMPTY — all 5 Pháp Bảo ship real 743×1040 card faces, composed by
+  // `scripts/build-anime-artifact-cards.mjs` from the editable SVG sources in
+  // `scripts/anime-art/editable/artifacts/` (keep face text in lockstep with the
+  // effects below). A FUTURE face-less artifact must be declared here.
 ]);
 
 function animeArtifactAssets(slug: string, name: string) {

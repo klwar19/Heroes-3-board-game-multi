@@ -30,8 +30,9 @@ describe("/menu (main menu, guest-only build)", () => {
 
     expect(screen.getByRole("link", { name: /Single player/i }).getAttribute("href")).toBe("/single-player");
 
-    // Story mode — the solo campaign hub (Anime mod §12).
-    expect(screen.getByRole("link", { name: /Story mode/i }).getAttribute("href")).toBe("/story");
+    // Story mode moved INTO the single-player page (2026-07) — the main menu
+    // no longer carries a direct /story entry.
+    expect(screen.queryByRole("link", { name: /Story mode/i })).toBeNull();
 
     expect(screen.getByRole("link", { name: /Multiplayer/i }).getAttribute("href")).toBe("/play");
     // The shared Battle Test arenas and Map Designer are first-class menu destinations.
