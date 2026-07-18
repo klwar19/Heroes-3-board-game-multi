@@ -8051,7 +8051,16 @@ export type VisitStep =
     }
   | { type: "GAIN_MOVEMENT_FOR_HERO"; heroId: HeroId; amount: number }
   | { type: "GAIN_MORALE"; amount: number }
-  | { type: "ROLL_RESOURCE_DICE"; count: number }
+  | {
+      type: "ROLL_RESOURCE_DICE";
+      count: number;
+      /**
+       * Polish reduced starting bonus: reroll any "high value" Resource-die face
+       * (6 gold / 4 building materials / 2 valuables) so the grant stays random
+       * but capped to the low faces. Default false (normal Resource-die roll).
+       */
+      capHighValues?: boolean;
+    }
   | { type: "RESUME_FIELD_VISIT"; heroId: HeroId; fieldId: MapSpaceId; revisit: boolean }
   | { type: "ROLL_TREASURE_DICE"; count: number }
   | {

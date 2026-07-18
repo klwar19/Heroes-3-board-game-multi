@@ -4865,7 +4865,7 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "ROLL_RESOURCE_DICE":
-        rollResourceDice(state, visit, step.count);
+        rollResourceDice(state, visit, step.count, step.capHighValues);
         break;
       case "RESUME_FIELD_VISIT":
         beginFieldVisit(state, step.heroId, step.fieldId, step.revisit);
@@ -9345,9 +9345,38 @@ function resourceDieLabel(roll: { resource: ResourceKind; amount: number }): str
   return `${roll.amount} ${name}`;
 }
 
-function rollResourceDice(state: GameState, visit: PendingVisit, count: number): void {
+/**
+ * A Resource-die face the Polish reduced starting bonus rerolls away: the three
+ * "high value" faces (6 gold / 4 building materials / 2 valuables). The current
+ * RESOURCE_DIE_FACES table already caps valuables at 1, so the valuables clause
+ * is future-proofing rather than active — the reroll fires on 6-gold / 4-materials.
+ */
+function isHighResourceDieFace(face: { resource: ResourceKind; amount: number }): boolean {
+  if (face.resource === "gold") return face.amount >= 6;
+  if (face.resource === "buildingMaterials") return face.amount >= 4;
+  if (face.resource === "valuables") return face.amount >= 2;
+  return false;
+}
+
+function rollResourceDice(
+  state: GameState,
+  visit: PendingVisit,
+  count: number,
+  capHighValues = false
+): void {
   const random = adventureRandom(state, "resource-die");
-  const rolls = Array.from({ length: count }, () => RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)]);
+  const rollFace = () => {
+    let face = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+    if (capHighValues) {
+      // Reroll high faces; bounded because the low faces (2 materials, 1
+      // valuables ×2, 3 gold) always exist, so this terminates.
+      for (let guard = 0; guard < 64 && isHighResourceDieFace(face); guard += 1) {
+        face = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+      }
+    }
+    return face;
+  };
+  const rolls = Array.from({ length: count }, rollFace);
 
   appendEvent(state, {
     type: "ADVENTURE_DICE_ROLLED",
