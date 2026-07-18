@@ -531,6 +531,12 @@ export type AdventureSetupOptions = {
    */
   undoMoves?: boolean;
   /**
+   * OPTIONAL "Manual guard control" mode (default off): the FIGHTER of a
+   * Neutral combat commands the guards (must-attack discipline) or delegates
+   * single activations to the AI. See GameSetupOptions.manualGuardControl.
+   */
+  manualGuardControl?: boolean;
+  /**
    * Unit Experience (optional rule): see GameSetupOptions.unitExperience —
    * one of the three equivalent surfaces (with wog/anime.unitExperience).
    */
@@ -619,6 +625,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     // still enables every rule via resolveTournamentRules (false would block it).
     pvpNeutralControl: false,
     pvpNeutralControlMustAttack: true,
+    manualGuardControl: false,
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
     difficulty: "impossible",
@@ -1990,6 +1997,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       ? { tournamentSecondPlayerMorale: options.tournamentSecondPlayerMorale }
       : {}),
     ...(options.pvpNeutralControl !== undefined ? { pvpNeutralControl: options.pvpNeutralControl } : {}),
+    ...(options.manualGuardControl !== undefined ? { manualGuardControl: options.manualGuardControl } : {}),
     ...(options.pvpNeutralControlMustAttack !== undefined
       ? { pvpNeutralControlMustAttack: options.pvpNeutralControlMustAttack }
       : {}),
@@ -2181,6 +2189,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     tournamentSecondPlayerMorale: tournamentRules.secondPlayerMorale,
     pvpNeutralControl: pvpNeutralControlOn,
     pvpNeutralControlMustAttack: pvpNeutralControlMustAttackOn,
+    // Manual guard control (default OFF): frozen so every neutral-control read
+    // checks one plain boolean. Available in solo/single-player too (the
+    // computer-fighter gate lives in manualGuardControllerId).
+    ...(setupOptions.manualGuardControl ? { manualGuardControl: true } : {}),
     // OPTIONAL Undo mode (debug/testing): frozen here so the SERVER action
     // transaction (both backends) can read it and keep a bounded per-room undo
     // stack. Default OFF — no history kept and UNDO_MOVE rejected. Unlike the
@@ -3044,6 +3056,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.pvpNeutralControlMustAttack !== undefined) {
     setupOptions.pvpNeutralControlMustAttack = options.pvpNeutralControlMustAttack;
   }
+  if (options.manualGuardControl !== undefined) {
+    setupOptions.manualGuardControl = options.manualGuardControl;
+  }
   // Map-setup default: a fresh lobby opens with the three universal core town
   // cards (Citadel, Mage Guild, Bronze Dwelling) already pre-built, so every
   // faction starts the adventure with the standard opening buildings. Any seat
@@ -3447,6 +3462,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.undoMoves !== undefined) {
     lobby.options.undoMoves = Boolean(next.undoMoves);
     changes.push(`Undo moves (testing) ${lobby.options.undoMoves ? "on" : "off"}`);
+  }
+
+  if (next.manualGuardControl !== undefined) {
+    lobby.options.manualGuardControl = Boolean(next.manualGuardControl);
+    changes.push(`Manual guard control ${lobby.options.manualGuardControl ? "on" : "off"}`);
   }
 
   if (next.unitExperience !== undefined) {
@@ -4721,6 +4741,7 @@ function buildAdventureFromLobby(state: GameState): void {
     startingBonus: true,
     pvpNeutralControl: lobby.options.pvpNeutralControl,
     pvpNeutralControlMustAttack: lobby.options.pvpNeutralControlMustAttack,
+    manualGuardControl: lobby.options.manualGuardControl,
     houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
     undoMoves: lobby.options.undoMoves,

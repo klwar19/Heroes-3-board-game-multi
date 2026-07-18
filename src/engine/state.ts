@@ -3388,6 +3388,13 @@ export type GameAction =
     }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
+  /**
+   * Manual guard control: the fighter hands the CURRENT guard's activation to
+   * the rulebook Neutral AI instead of commanding it by hand ("Let the unit
+   * act"). Legal only while `adventure.manualGuardControl` assigns them the
+   * guards and the active Neutral unit has not begun to act.
+   */
+  | { type: "AUTO_NEUTRAL_ACTIVATION"; playerId: PlayerId }
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
   | {
       /**
@@ -9668,6 +9675,16 @@ export type AdventureState = {
    */
   undoMoves?: boolean;
   /**
+   * OPTIONAL Manual guard control (default OFF). Frozen from
+   * GameSetupOptions.manualGuardControl at setup: the FIGHTER of a Neutral
+   * combat commands the guards through the PvP-Neutral-Control unit menu
+   * (must-attack discipline; polish-wait Wait allowed, Waited re-activation
+   * must attack) or delegates one activation to the AI with
+   * AUTO_NEUTRAL_ACTIVATION. Absent/false = the rulebook Neutral AI plays the
+   * guards exactly as before. See manualGuardControllerId in neutral-control.ts.
+   */
+  manualGuardControl?: boolean;
+  /**
    * Unit Experience (optional rule): frozen at setup when ANY of the three
    * surfaces enabled it (lobby `unitExperience`, `wog.unitExperience`,
    * `anime.unitExperience`). Absent/false = the rule is off: no XP is awarded,
@@ -9919,6 +9936,19 @@ export type GameSetupOptions = {
    * recorded and `UNDO_MOVE` is rejected — zero behaviour change.
    */
   undoMoves?: boolean;
+  /**
+   * OPTIONAL "Manual guard control" mode (default OFF/absent, Game options —
+   * like Undo moves). With it ON, the FIGHTER of a Neutral combat (guard
+   * fields AND Creature Banks) personally commands each guard through the
+   * normal PvP-Neutral-Control unit menu — same must-attack discipline
+   * (`pvpNeutralControlMustAttack`, default ON: attack when you can; under
+   * polish-wait a guard may WAIT instead, but its Waited re-activation must
+   * attack) — or hands any single activation back to the rulebook AI with the
+   * "Let the unit act" button. Frozen onto `adventure.manualGuardControl` at
+   * setup. PvP Neutral Control (a HUMAN OPPONENT plays the guards) wins when
+   * both modes are on; computer-seat fighters keep the plain AI.
+   */
+  manualGuardControl?: boolean;
   /**
    * Unit Experience (optional rule, default OFF): army unit cards gain XP from
    * combats won alongside the hero and earn veteran ranks (tier-scaled

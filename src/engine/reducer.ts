@@ -164,7 +164,12 @@ import {
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { applyCombatScriptRoundStart, combatScriptStatDelta } from "./combat-scripts";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
-import { isNeutralSplashVictimChoice, neutralCombatControllerId } from "./neutral-control";
+import {
+  isNeutralSplashVictimChoice,
+  manualGuardControllerId,
+  neutralCombatControllerId,
+  pvpNeutralControllerId
+} from "./neutral-control";
 import {
   activateBallistas,
   applyPermanentCombatEffectsForPlayer,
@@ -8172,6 +8177,38 @@ function continueNeutralStep(
 
   combat.pendingNeutralStep = null;
   advanceActiveUnit(state);
+}
+
+/**
+ * Manual guard control's "Let the unit act" button: the fighter hands the
+ * CURRENT guard's activation to the rulebook Neutral AI instead of commanding
+ * it by hand. Legal only for the manual controller (never under PvP Neutral
+ * Control, where a human OPPONENT plays the guards) and only before the guard
+ * has begun to act — a half-played activation must be finished manually.
+ */
+function autoNeutralActivation(
+  state: GameState,
+  action: Extract<GameAction, { type: "AUTO_NEUTRAL_ACTIVATION" }>,
+  cards: CardLibrary
+): void {
+  const combat = state.combat;
+  if (!combat || combat.outcome) {
+    throw new Error("No combat is running.");
+  }
+  if (
+    manualGuardControllerId(state, combat) !== action.playerId ||
+    pvpNeutralControllerId(state, combat)
+  ) {
+    throw new Error("You do not command the Neutral units of this combat.");
+  }
+  const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  if (!active || !isNeutralUnit(active) || !isUnitAlive(active) || active.activatedThisRound) {
+    throw new Error("No Neutral unit is waiting to act.");
+  }
+  if (active.movedThisActivation || active.attackedThisActivation) {
+    throw new Error("This guard already began its activation — finish it manually.");
+  }
+  executeNeutralActivation(state, active, cards);
 }
 
 /** Living friendly units the Enchanters could heal (other friendlies only). */
@@ -19850,6 +19887,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "CONTINUE_NEUTRAL_STEP":
         continueNeutralStep(nextState, action);
+        break;
+      case "AUTO_NEUTRAL_ACTIVATION":
+        autoNeutralActivation(nextState, action, cards);
         break;
       case "RETREAT_FROM_COMBAT":
         retreatFromCombat(nextState, action);

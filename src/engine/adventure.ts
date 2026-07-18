@@ -183,7 +183,7 @@ import type {
   VictoryMode,
   VisitStep
 } from "./state";
-import { isNeutralSideCombatChoice, neutralCombatControllerId } from "./neutral-control";
+import { isNeutralSideCombatChoice, pvpNeutralControllerId } from "./neutral-control";
 import { DEFAULT_OBELISK_BONUS, GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 import type { CustomMapObeliskBonus } from "./state";
 import { awardCommanderGradePoints, commandersModuleEnabled, wogNewObjectsEnabled } from "./commanders";
@@ -1681,7 +1681,7 @@ export type HeroPathTarget = { spaceId: MapSpaceId; path: MapSpaceId[]; cost: nu
 export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<MapSpaceId, HeroPathTarget> {
   const results = new Map<MapSpaceId, HeroPathTarget>();
   const adventure = state.adventure;
-  if (!adventure || !hero.spaceId || hero.movementPoints <= 0 || hero.movementHaltedThisTurn) {
+  if (!adventure || !hero.spaceId || hero.movementHaltedThisTurn) {
     return results;
   }
 
@@ -1694,10 +1694,55 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
 
   const movement = getHeroMovementCapabilities(state, hero);
   const visited = new Set<MapSpaceId>([hero.spaceId]);
-  let frontier: { spaceId: MapSpaceId; path: MapSpaceId[] }[] = [{ spaceId: hero.spaceId, path: [] }];
+  type PathNode = { spaceId: MapSpaceId; path: MapSpaceId[]; freeHops: number };
+  let frontier: PathNode[] = [{ spaceId: hero.spaceId, path: [], freeHops: 0 }];
+
+  // Subterranean-Gate closure: the two linked halves are "one Field", so the
+  // hop between them is FREE (0 MP — see performHeroStep). Whenever a node is
+  // settled as continuable, its linked twin (if any) is settled at the SAME
+  // cost and joins the same expansion tier — so the tunnel never eats a
+  // movement point in the preview either, and a hero with 0 MP left can still
+  // be shown (and take) the crossing.
+  const settleGateTwin = (node: PathNode, tier: PathNode[]) => {
+    const fromField = adventure.fields[node.spaceId];
+    if (fromField?.location !== "subterranean_gate") {
+      return;
+    }
+    for (const neighbor of getAdjacentSpaceIds(node.spaceId)) {
+      if (
+        visited.has(neighbor) ||
+        !gateFieldsLinked(fromField, adventure.fields[neighbor]) ||
+        !canCrossEdge(state, node.spaceId, neighbor, movement)
+      ) {
+        continue;
+      }
+      const kind = classifyHeroStep(state, hero, neighbor, movement);
+      if (kind === "block") {
+        continue;
+      }
+      visited.add(neighbor);
+      const path = [...node.path, neighbor];
+      const freeHops = node.freeHops + 1;
+      const cost = path.length - freeHops;
+      if (kind === "stop") {
+        if (!parallelQuietOnly) {
+          results.set(neighbor, { spaceId: neighbor, path, cost });
+        }
+        continue;
+      }
+      if (kind !== "pass-only" && (!parallelQuietOnly || kind === "open")) {
+        results.set(neighbor, { spaceId: neighbor, path, cost });
+      }
+      tier.push({ spaceId: neighbor, path, freeHops });
+    }
+  };
+
+  // The hero may already stand ON a gate half: its twin is reachable for free
+  // even with no movement points left at all.
+  settleGateTwin(frontier[0], frontier);
 
   for (let depth = 1; depth <= hero.movementPoints && frontier.length > 0; depth += 1) {
-    const next: typeof frontier = [];
+    const next: PathNode[] = [];
     for (const node of frontier) {
       for (const neighbor of getAdjacentSpaceIds(node.spaceId)) {
         if (visited.has(neighbor) || !canCrossEdge(state, node.spaceId, neighbor, movement)) {
@@ -1715,17 +1760,20 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
         const halts = seaStepHalts(state, node.spaceId, neighbor, movement);
         visited.add(neighbor);
         const path = [...node.path, neighbor];
+        const cost = path.length - node.freeHops;
+        const settled: PathNode = { spaceId: neighbor, path, freeHops: node.freeHops };
 
         if (kind === "stop") {
           if (!parallelQuietOnly) {
-            results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
+            results.set(neighbor, { spaceId: neighbor, path, cost });
           }
           continue;
         }
 
         if (kind === "pass-only") {
           if (!halts) {
-            next.push({ spaceId: neighbor, path });
+            next.push(settled);
+            settleGateTwin(settled, next);
           }
           continue;
         }
@@ -1737,10 +1785,11 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
         // Quiet-only mode: ending on an "encounter" would start that Combat, so
         // it stays crossable but is not offered as a stop.
         if (!parallelQuietOnly || kind === "open") {
-          results.set(neighbor, { spaceId: neighbor, path, cost: path.length });
+          results.set(neighbor, { spaceId: neighbor, path, cost });
         }
         if (!halts) {
-          next.push({ spaceId: neighbor, path });
+          next.push(settled);
+          settleGateTwin(settled, next);
         }
       }
     }
@@ -1748,6 +1797,23 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
   }
 
   return results;
+}
+
+/**
+ * Whether the hero stands on a Subterranean-Gate half whose linked twin is one
+ * step away — the FREE "one Field" crossing (0 MP, see performHeroStep). Lets
+ * the movement offers/guards allow that hop even with no movement points left.
+ */
+export function heroHasFreeGateStep(state: GameState, hero: HeroState): boolean {
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId) {
+    return false;
+  }
+  const from = adventure.fields[hero.spaceId];
+  if (from?.location !== "subterranean_gate") {
+    return false;
+  }
+  return getAdjacentSpaceIds(hero.spaceId).some((neighbor) => gateFieldsLinked(from, adventure.fields[neighbor]));
 }
 
 export function canPlaceTileAt(
@@ -3503,7 +3569,7 @@ export function eliminatePlayer(
   // take the guards the table is down to the fighter (the game is ending), so
   // the window simply clears and priority returns to the fighter.
   if (state.combat && !state.combat.outcome && state.combat.pendingNeutralPlacement === playerId) {
-    const nextController = neutralCombatControllerId(state, state.combat);
+    const nextController = pvpNeutralControllerId(state, state.combat);
     state.combat.pendingNeutralPlacement = nextController;
     if (state.phase === "combat-setup") {
       state.priorityPlayerId = nextController ?? state.combat.attackerPlayerId;
