@@ -45,6 +45,7 @@ import {
 import {
   placementCellsFor,
   neutralFormationCellsFor,
+  commanderDeploymentCellsFor,
   getHeroMoveDestinations,
   hillFortCost,
   inCombatPrep,
@@ -82,7 +83,8 @@ import {
   commanderCastPower,
   commanderCastRuneCost,
   commanderDefenseReactionUnit,
-  commanderGradeUpChoices
+  commanderGradeUpChoices,
+  commanderUnitId
 } from "./commanders";
 import { RUNE_MAX } from "./runes";
 import {
@@ -7925,6 +7927,52 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
 }
 
 /**
+ * WOG Commanders pre-combat SORT window offered to the head owner
+ * (`combat.pendingCommanderPlacement[0] === playerId`). Enumerates every
+ * `PLACE_COMMANDER` (move the commander to an empty own-zone cell, or swap it
+ * with one of the owner's own units there) plus the `FINISH_COMMANDER_PLACEMENT`
+ * "Ready". The board also drives this by drag/click; enumerating keeps the AFK
+ * driver and tests exercising the exact same commands.
+ */
+function addCommanderPlacementActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingCommanderPlacement?.[0] !== playerId) {
+    return;
+  }
+  const commander = combat.units[commanderUnitId(playerId)];
+  if (commander && isUnitAlive(commander)) {
+    const cells = commanderDeploymentCellsFor(state, playerId);
+    const occupantAt = new Map<number, CombatUnitState>();
+    for (const unit of Object.values(combat.units)) {
+      occupantAt.set(unit.position, unit);
+    }
+    const obstacles = new Set(combat.obstacles ?? []);
+    for (const position of cells) {
+      if (position === commander.position || obstacles.has(position)) {
+        continue;
+      }
+      const occupant = occupantAt.get(position);
+      // An empty cell (move) or one of the owner's OWN units (swap); anything
+      // else (enemy / Neutral guard) stays blocked.
+      if (occupant && (occupant.controllerId !== playerId || !isUnitAlive(occupant))) {
+        continue;
+      }
+      actions.push({
+        label: occupant
+          ? `Swap ${commander.cardName} (${getBattlefieldLabel(commander.position)}) with ${occupant.cardName} (${getBattlefieldLabel(position)})`
+          : `Move ${commander.cardName} to ${getBattlefieldLabel(position)}`,
+        action: { type: "PLACE_COMMANDER", playerId, position }
+      });
+    }
+  }
+
+  actions.push({
+    label: "Ready for battle",
+    action: { type: "FINISH_COMMANDER_PLACEMENT", playerId }
+  });
+}
+
+/**
  * Expert Tactics mid-combat: on the holder's turn, before their active unit has
  * moved or attacked, spend one expert use to switch any two of their units.
  */
@@ -8858,6 +8906,16 @@ function getCombatInteractionActions(
   if (combat.pendingTacticsSwaps && combat.pendingTacticsSwaps.length > 0) {
     if (combat.pendingTacticsSwaps[0] === playerId) {
       addTacticsSetupActions(actions, state, playerId);
+    }
+    return actions;
+  }
+
+  // WOG Commanders pre-combat SORT window: the head owner repositions their
+  // commander in their deployment zone, then Ready — the LAST setup window,
+  // after the Neutral sort / Tactics have already resolved.
+  if (combat.pendingCommanderPlacement && combat.pendingCommanderPlacement.length > 0) {
+    if (combat.pendingCommanderPlacement[0] === playerId) {
+      addCommanderPlacementActions(actions, state, playerId);
     }
     return actions;
   }

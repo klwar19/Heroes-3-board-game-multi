@@ -3406,6 +3406,21 @@ export type GameAction =
       type: "FINISH_NEUTRAL_PLACEMENT";
       playerId: PlayerId;
     }
+  | {
+      /**
+       * WOG Commanders pre-combat sort: move the player's commander to an empty
+       * cell of its own deployment zone, or swap it with one of the player's own
+       * units there. Validated in placeCommanderUnit.
+       */
+      type: "PLACE_COMMANDER";
+      playerId: PlayerId;
+      position: number;
+    }
+  | {
+      /** Finish the commander's pre-combat sort (→ next owner, or round 1). */
+      type: "FINISH_COMMANDER_PLACEMENT";
+      playerId: PlayerId;
+    }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
   | { type: "RETREAT_FROM_COMBAT"; playerId: PlayerId }
@@ -4720,6 +4735,18 @@ export type GameEvent =
       /** The player controlling (sorting) the Neutral formation. */
       playerId: PlayerId;
       /** The player whose hero is fighting the Neutral units. */
+      combatPlayerId: PlayerId;
+    }
+  | {
+      /**
+       * WOG Commanders: the pre-combat SORT window opened for an owner who may
+       * reposition their commander in their deployment zone before round 1.
+       */
+      id: string;
+      type: "COMMANDER_PLACEMENT_OPENED";
+      /** The owner repositioning their commander. */
+      playerId: PlayerId;
+      /** The player whose hero is fighting this combat (the attacker). */
       combatPlayerId: PlayerId;
     }
   | {
@@ -7439,6 +7466,18 @@ export type CombatState = {
    * round 1). Absent when no controller exists or for a bank.
    */
   pendingNeutralPlacement?: PlayerId | null;
+  /**
+   * WOG Commanders — pre-combat SORT window. Owners (attacker/defender/sandbox
+   * both) whose commander joins this combat AND holds the sort capability
+   * (`commanderPreCombatSortAvailable`) may reposition it in their own
+   * deployment zone before round 1. Opened AFTER the commanders are injected
+   * (and after any Neutral sort / Tactics), the LAST setup window; the head
+   * holds priority (phase "combat-setup", `setup` already null, like the Tactics
+   * queue). `PLACE_COMMANDER` moves/swaps the commander within its zone;
+   * `FINISH_COMMANDER_PLACEMENT` pops the queue and, when empty, starts round 1.
+   * Computer seats are never queued (they keep the auto-placement — no stall).
+   */
+  pendingCommanderPlacement?: PlayerId[] | null;
   /**
    * Controllers who have had at least one unit removed from the board this
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).

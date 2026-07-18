@@ -73,6 +73,8 @@ import {
   swapCombatUnits,
   placeNeutralGuard,
   finishNeutralPlacement,
+  placeCommanderUnit,
+  finishCommanderPlacement,
   placeTile,
   placeObservatoryTile,
   populationAction,
@@ -311,6 +313,8 @@ import {
   commanderCastRuneCost,
   commanderCastUsedThisRound,
   commanderDefenseReactionUnit,
+  commanderLiveAttackBonus,
+  commanderLiveDefenseBonus,
   commanderRunePool
 } from "./commanders";
 import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
@@ -3295,6 +3299,10 @@ function getAttackStackDetails(
     activeDefenseBonus +
     tokenDefense +
     redirectedDefenseDelta +
+    // WOG commander Superior Combat (Shaman) +1 Defense stance, live while it
+    // holds (combat rounds 1-2 only). Folds into the commander-defender's
+    // printed/buffed Defense before the reduction-ability clamp.
+    commanderLiveDefenseBonus(state, defender) +
     // Forced Battle Events (Anime mod, §3.12): a fought field's environment-stat
     // script targeting the DEFENDER's Defense (e.g. "the Neutral side +1 Defense").
     // Folds into the printed/buffed Defense before the reduction-ability clamp.
@@ -3348,6 +3356,13 @@ function getAttackStackDetails(
   // never on a retaliation.
   const chargeAttackBonus =
     !isRetaliation && attacker.movedThisActivation ? getAttackBonusAfterMove(attacker) : 0;
+
+  // WOG commander live positional/stance Attack: the Vanguard Marshal (Cove)
+  // front-line +1 (a live position read) and the Superior Combat (Shaman) +1
+  // Attack stance while it holds (combat rounds 1-2). Positional/stance, not
+  // attack-type — applies on the commander's own attacks AND its retaliations —
+  // and added UNCLAMPED like the other innate commander bonuses.
+  const commanderPositionalAttackBonus = commanderLiveAttackBonus(state, attacker);
 
   // WOG commander Haste/Slow riders: signed Attack shift on the buffed/slowed
   // unit when its target is strictly slower/faster (effective Initiative).
@@ -3408,6 +3423,7 @@ function getAttackStackDetails(
       markAttackBonus +
       flippedAttackBonus +
       chargeAttackBonus +
+      commanderPositionalAttackBonus +
       stackedAttackBonus +
       ownAttackFlatBonus +
       astrologersRoundAttackBonus +
@@ -18176,6 +18192,9 @@ function ensureCombatActivation(state: GameState): void {
     combat.awaitingContinue ||
     combat.warMachineRound ||
     combat.activeUnitId ||
+    // WOG Commanders pre-combat sort: hold activation while an owner repositions
+    // their commander (the deferred start-of-combat package has not run yet).
+    (combat.pendingCommanderPlacement && combat.pendingCommanderPlacement.length > 0) ||
     state.pendingChoice ||
     state.reactionWindow ||
     state.stack.length > 0
@@ -19058,6 +19077,10 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       combat &&
       !combat.outcome &&
       !combat.setup &&
+      // WOG Commanders pre-combat sort: the deferred start-of-combat package
+      // (Runes/permanents/war machines) has not run yet, so the pump must NOT
+      // advance an activation until the owner finishes the sort.
+      !(combat.pendingCommanderPlacement && combat.pendingCommanderPlacement.length > 0) &&
       !combat.awaitingContinue &&
       !state.reactionWindow &&
       !state.pendingChoice &&
@@ -19266,6 +19289,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SWAP_COMBAT_UNITS",
   "PLACE_NEUTRAL_GUARD",
   "FINISH_NEUTRAL_PLACEMENT",
+  "PLACE_COMMANDER",
+  "FINISH_COMMANDER_PLACEMENT",
   "SANDBOX_ADD_CARD",
   "SANDBOX_CONFIGURE_SEAT",
   "SANDBOX_SET_OPTIONS",
@@ -19826,6 +19851,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "FINISH_NEUTRAL_PLACEMENT":
         finishNeutralPlacement(nextState, action);
+        break;
+      case "PLACE_COMMANDER":
+        placeCommanderUnit(nextState, action);
+        break;
+      case "FINISH_COMMANDER_PLACEMENT":
+        finishCommanderPlacement(nextState, action);
         break;
       case "CONTINUE_NEUTRAL_COMBAT":
         continueNeutralCombat(nextState, action);

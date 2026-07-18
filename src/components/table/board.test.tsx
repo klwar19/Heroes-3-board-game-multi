@@ -6,6 +6,7 @@ import { CardZoomProvider } from "./zoom";
 import {
   applyCombatBoardArtObstacles,
   assignCombatBoardArt,
+  commanderUnitId,
   createInitialGameState,
   eligibleCombatBoardArtIds,
   fortificationTargetId,
@@ -15,6 +16,7 @@ import {
   RUNE_LEVEL_THRESHOLDS,
   isCreatureBankCombat,
   makeArrowTowerUnit,
+  makeCommanderCombatUnit,
   SHIP_BATTLE_OBSTACLES,
   weightedCombatBoardArtIds,
   type ActiveEffectModifier,
@@ -524,6 +526,65 @@ describe("BattlefieldBoard — PvP Neutral Control pre-battle formation sort", (
     const { container } = render(
       <CardZoomProvider>
         <CommandDock legalActions={[finish]} onAction={onAction} onReset={() => {}} state={sortState()} viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+    const button = [...container.querySelectorAll("button")].find((entry) => /ready for battle/i.test(entry.textContent ?? ""));
+    expect(button, "the Ready-for-battle button should render").toBeTruthy();
+    fireEvent.click(button!);
+    expect(onAction).toHaveBeenCalledWith(finish.action);
+  });
+});
+
+describe("BattlefieldBoard — WOG Commanders pre-combat sort", () => {
+  // The owner sees their own commander as draggable and its empty deployment-zone
+  // cells as drop targets, plus a "Ready for battle" command. The engine wiring is
+  // pinned in wog-commanders.test.ts; here we pin the board presentation.
+  function commanderSortState(): GameState {
+    const state = createInitialGameState("cmd-sort-ui");
+    state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
+    state.players.p1.commander = {
+      slug: "corsair",
+      grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0 }
+    };
+    const commander = makeCommanderCombatUnit(state.players.p1, 16)!;
+    // Leave only the commander plus a lone enemy so the whole attacker zone is open.
+    const enemy = state.combat!.units.unit_p2_skeletons;
+    enemy.position = 0;
+    state.combat!.units = { [commander.id]: commander, [enemy.id]: enemy };
+    state.combat!.obstacles = [];
+    state.combat!.pendingCommanderPlacement = ["p1"];
+    return state;
+  }
+
+  it("makes the owner's commander draggable and its empty zone cells drop targets", () => {
+    const { container } = render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={commanderSortState()}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(container.querySelector(".unitDraggable"), "the commander should be draggable to sort").toBeTruthy();
+    expect(
+      container.querySelectorAll(".dropTarget").length,
+      "empty deployment-zone cells should accept a drop"
+    ).toBeGreaterThan(0);
+  });
+
+  it("shows the 'Ready for battle' command that finishes the commander sort", () => {
+    const finish: LegalAction = {
+      label: "Ready for battle",
+      action: { type: "FINISH_COMMANDER_PLACEMENT", playerId: "p1" }
+    };
+    const onAction = vi.fn();
+    const { container } = render(
+      <CardZoomProvider>
+        <CommandDock legalActions={[finish]} onAction={onAction} onReset={() => {}} state={commanderSortState()} viewerPlayerId="p1" />
       </CardZoomProvider>
     );
     const button = [...container.querySelectorAll("button")].find((entry) => /ready for battle/i.test(entry.textContent ?? ""));

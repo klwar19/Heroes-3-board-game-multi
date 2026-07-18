@@ -3465,6 +3465,25 @@ export function eliminatePlayer(
     }
   }
 
+  // WOG Commanders: the eliminated seat was queued for (or holds) the pre-combat
+  // commander SORT window. Drop it from the queue; if a live owner remains, hand
+  // priority to the new head. (In practice a participant cannot be eliminated
+  // WHILE its own setup window is live — the AFK/timeout driver finishes the
+  // window first, and give-up / retreat / town-loss resolve the combat before
+  // eliminating, which sets combat.outcome and skips this block — so, like the
+  // Neutral sort above, no start-of-combat resume is attempted here.)
+  if (
+    state.combat &&
+    !state.combat.outcome &&
+    (state.combat.pendingCommanderPlacement?.length ?? 0) > 0
+  ) {
+    const remaining = state.combat.pendingCommanderPlacement!.filter((id) => id !== playerId);
+    state.combat.pendingCommanderPlacement = remaining.length > 0 ? remaining : null;
+    if (state.phase === "combat-setup" && state.priorityPlayerId === playerId) {
+      state.priorityPlayerId = remaining[0] ?? state.combat.attackerPlayerId;
+    }
+  }
+
   // An OPEN choice owned by the seat is the same table-freezing trap as a
   // queued reward (only the owner may answer a pendingChoice, and under the
   // round-start Event/Astrologers barrier every other seat is frozen behind
