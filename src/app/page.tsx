@@ -80,13 +80,16 @@ import {
   type MapEventCue
 } from "@/components/table/overlays";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
-import { campaignSceneToFire } from "@/lib/campaign-triggers";
+import { campaignSceneToFire, campaignSetupActions } from "@/lib/campaign-triggers";
+import { getCampaignChapter } from "@/data/story/campaigns";
 import {
   getCampaignBinding,
   isCampaignIntroShown,
   isCampaignOutcomeShown,
+  isCampaignSetupApplied,
   markCampaignIntroShown,
   markCampaignOutcomeShown,
+  markCampaignSetupApplied,
   markChapterCompleted
 } from "@/lib/campaign-progress";
 import { CardZoomProvider, useCardZoom, ZoomButton } from "@/components/table/zoom";
@@ -143,6 +146,7 @@ import {
   type TilePlacementSelection
 } from "@/components/adventure/screen";
 import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
+import { HeroActionsDock } from "@/components/adventure/hero-actions-dock";
 import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
 import { OpponentInfoDock } from "@/components/adventure/opponent-info";
 import { VictoryPointsDock, VictoryPointsScoringOverlay } from "@/components/adventure/victory-points-panel";
@@ -922,6 +926,7 @@ export default function Home() {
   const campaignBinding = useMemo(() => (roomId ? getCampaignBinding(roomId) : null), [roomId]);
   const firedCampaignStartRef = useRef(false);
   const firedCampaignOutcomeRef = useRef(false);
+  const appliedCampaignSetupRef = useRef(false);
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
   // Single-player: a computer opponent's whole map turn settles at once, so its
@@ -1153,6 +1158,47 @@ export default function Home() {
   useEffect(() => {
     viewerRef.current = viewerPlayerId;
   }, [viewerPlayerId]);
+
+  // Campaign SETUP INJECTION (Anime mod §12): a room launched from /story carries
+  // the chapter's config. Once the human is seated in the setup lobby, push the
+  // chapter's game options (anime + fieldOverrides + difficulty) and a faction
+  // preselect through the NORMAL action pipeline (SET_GAME_OPTIONS +
+  // CHOOSE_FACTION) — no new server surface. Once per room (persisted marker +
+  // ref), only while still in setup, so the player still sees the setup screen
+  // and may change anything. Unbound / non-campaign rooms inject nothing.
+  useEffect(() => {
+    const connection = connectionRef.current;
+    if (!state || !roomId || !campaignBinding || !connection) {
+      return;
+    }
+    if (state.phase !== "setup" || !state.setupLobby) {
+      return;
+    }
+    if (appliedCampaignSetupRef.current || isCampaignSetupApplied(roomId)) {
+      return;
+    }
+    const seat = state.room?.members.find((member) => member.clientId === clientId)?.seat;
+    if (!seat || seat === OBSERVER_SEAT) {
+      return;
+    }
+    const chapter = getCampaignChapter(campaignBinding.campaignId, campaignBinding.chapterId);
+    if (!chapter) {
+      return;
+    }
+    const actions = campaignSetupActions(chapter, seat);
+    if (actions.length === 0) {
+      return;
+    }
+    appliedCampaignSetupRef.current = true;
+    markCampaignSetupApplied(roomId);
+    // Sequential so options land before (or alongside) the faction pick; a
+    // failed submit degrades to the plain setup screen (the player picks by hand).
+    void (async () => {
+      for (const action of actions) {
+        await connection.submitAction(action).catch(() => {});
+      }
+    })();
+  }, [state, roomId, campaignBinding, clientId]);
 
   // Campaign story-mode triggers (Anime mod §12): fire the chapter's onStart
   // when the adventure first becomes visible, and onVictory / onDefeat at
@@ -5351,6 +5397,12 @@ export default function Home() {
                   state={state}
                   viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
                 />
+                {/* Anime hero map actions (Cultivation §5.6 / Hero Grades
+                    §3.11): Train / Forced March / Heavenly Tribulation, shown
+                    only while the engine offers them to this seat. */}
+                {isSeated ? (
+                  <HeroActionsDock legalActions={legalActions} onAction={submitAction} />
+                ) : null}
                 <MoraleCardsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
                 {/* Live "if scored now" Victory-Points standings — visible to
                     everyone when the designed map turns VP mode on. */}

@@ -11,9 +11,10 @@
  * every normal, non-campaign table silent.
  */
 
-import { getCampaign } from "@/data/story/campaigns";
+import { chapterRoomOptions, getCampaign, type CampaignChapter } from "@/data/story/campaigns";
+import { coreFactionDefinitions } from "@/data/factions/core";
 import type { CampaignRoomBinding } from "@/lib/campaign-progress";
-import type { GamePhase, PlayerId } from "@/engine";
+import type { GameAction, GamePhase, PlayerId } from "@/engine";
 
 /** The minimal slice of game state the decision needs (a `GameState` is assignable). */
 export type CampaignStateRead = {
@@ -85,4 +86,51 @@ export function campaignSceneToFire(
     return { kind: "start", sceneId: chapter.scenes.onStart };
   }
   return null;
+}
+
+/**
+ * The setup-lobby actions that make a chapter's carried config REAL (Anime mod
+ * §12). PURE — no side effects, no dispatch. The Begin flow mints a standard
+ * single-player room; once the human is seated in its setup lobby the page
+ * pushes these through the NORMAL action pipeline (no new server surface), so
+ * the room ends up with the chapter's game options and the protagonist's core
+ * faction preselected. The player still sees the setup screen and may change
+ * anything before starting.
+ *
+ * Returns, in order:
+ *  1. `SET_GAME_OPTIONS` carrying the chapter's fully-resolved `anime` options,
+ *     the global `fieldOverrides` toggle, and the `difficulty` when specified.
+ *  2. `CHOOSE_FACTION` preselecting the chapter's `playerFaction` for `playerId`,
+ *     paired with that faction's first (default) hero — a fresh Free-pick lobby
+ *     accepts it and the player may re-pick.
+ *
+ * A locked chapter (no `setup` ⇒ `chapterRoomOptions` null) or a faction with no
+ * heroes yields an empty list (nothing to inject).
+ */
+export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerId): GameAction[] {
+  const options = chapterRoomOptions(chapter);
+  if (!options) {
+    return [];
+  }
+  const actions: GameAction[] = [
+    {
+      type: "SET_GAME_OPTIONS",
+      playerId,
+      options: {
+        anime: options.anime,
+        fieldOverrides: options.fieldOverrides,
+        ...(options.difficulty ? { difficulty: options.difficulty } : {})
+      }
+    }
+  ];
+  const heroDefId = coreFactionDefinitions[options.playerFaction]?.heroes[0];
+  if (heroDefId) {
+    actions.push({
+      type: "CHOOSE_FACTION",
+      playerId,
+      factionId: options.playerFaction,
+      heroDefId
+    });
+  }
+  return actions;
 }

@@ -24,9 +24,11 @@ import { useStoryLanguage, type StoryLanguage } from "@/lib/story-language";
  *
  * LIMITS (what does NOT run): only Chapter 1 of each campaign is playable;
  * chapters 2–7 render as "in development" once unlocked. The protagonist is
- * presentation — the seat uses a core faction stand-in — and only the opponent
- * count reaches the created room in V1 (see `chapterRoomOptions`). The card
- * theme classes are scoped to the cards, never the app root.
+ * presentation — the seat uses a core faction stand-in. The chapter's options
+ * (`chapterRoomOptions`) ARE applied to the room after join by the table page
+ * (`campaignSetupActions` → SET_GAME_OPTIONS + CHOOSE_FACTION), so the Begin
+ * flow here only needs the opponent count to size the room. The card theme
+ * classes are scoped to the cards, never the app root.
  */
 
 function pickText(text: LocalizedText, language: StoryLanguage): string {

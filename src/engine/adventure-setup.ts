@@ -4352,6 +4352,14 @@ function buildAdventureFromLobby(state: GameState): void {
     scenarioId: lobby.options.scenarioId,
     ruleset: lobby.options.ruleset,
     wog: lobby.options.wog,
+    // Anime mod + the GLOBAL Field Override system are set on the lobby (the
+    // setGameOptions `anime` / `fieldOverrides` / `fieldOverridePlacement`
+    // branches — e.g. a Story-mode chapter injects them at Begin). They must be
+    // carried into the built game or the lobby choice is silently dropped; both
+    // default to OFF for a plain lobby, so a normal table is byte-identical.
+    anime: lobby.options.anime,
+    fieldOverrides: lobby.options.fieldOverrides,
+    fieldOverridePlacement: lobby.options.fieldOverridePlacement,
     victoryMode: lobby.options.victoryMode,
     pvpTroopLoss: lobby.options.pvpTroopLoss,
     dragonUtopiaGuards: lobby.options.dragonUtopiaGuards,

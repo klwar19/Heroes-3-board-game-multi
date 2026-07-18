@@ -1824,7 +1824,9 @@ Leading with what does NOT run / deliberate limits:
   Power** (realm 3, folded beside the Pandora bonus at
   `standingSpellPower` / `resolvedSpellPowerForStackItem`). Realm 3 is reached
   ONLY via the `HEAVEN_TRIBULATION` map action (never forced, ≤ once per own
-  turn): a seeded 3-Attack-die `pendingVisit` gauntlet — each "−1" pays a
+  turn; the human surface is the map `HeroActionsDock` button, offered only when
+  the engine does — `hero-actions-dock.test.tsx`): a seeded 3-Attack-die
+  `pendingVisit` gauntlet — each "−1" pays a
   cheapest-first army-card toll (Pack→Few via `FLIP_PACK_TO_FEW` source
   `"tribulation"`, else lost with recycle), survive with ≥1 card → realm 3 +
   Search(1) Artifact, emptied army → retry next turn. As a standard `pendingVisit`
@@ -1850,11 +1852,13 @@ Leading with what does NOT run / deliberate limits:
   behaviour pinned in `src/engine/anime-hero-grades.test.ts` (each claim
   mutation-checked) + the hero-board chip/picker (`hero-board.test.tsx`) + the
   combat reaction tile (`overlays.test.tsx`). Leading with what does NOT run /
-  limits: **HERO_TRAIN + Forced March are legal actions with no bespoke map
-  button** (like the Cultivation Tribulation) — the human surface is the hero
-  board's grade picker + the combat command dock; **the AI does not shop for the
-  Training Manual** (it declines the optional 2-gold PAY_TO by default — buying it
-  is a human play); **per-package fancy grade-label art/fonts are deferred** (the
+  limits: **HERO_TRAIN + Forced March now HAVE a human map button** — the compact
+  `HeroActionsDock` under the hero board (with the Cultivation Tribulation), each
+  shown only while `getLegalActions` offers it and dispatching the exact payload
+  (`hero-actions-dock.test.tsx`); the grade PICKER + combat command dock remain
+  the surfaces for grade-ups and combat/reaction skills; **the AI does not shop
+  for the Training Manual** (it declines the optional 2-gold PAY_TO by default —
+  buying it is a human play); **per-package fancy grade-label art/fonts are deferred** (the
   register text is bilingual plain text); **combat skills are the MAIN hero's
   fights only** (garrison/secondary offer none — commander-scope). What runs: five
   Merit sources funnel through ONE arm (`gainGradeProgress`) — +1/level-up, the
@@ -1885,11 +1889,11 @@ Leading with what does NOT run / deliberate limits:
   `src/engine/anime-equipment.test.ts` (each claim mutation-checked) + the catalog
   in `src/data/anime/equipment.test.ts` + the hero-board chips
   (`hero-board.test.tsx`). Leading with what does NOT run / limits: **NO
-  map-action buttons in this slice** — buying is only through the two outfitter
-  Field Overrides; the hero board is a read-only chip display. This "no bespoke
-  map button yet" limit ALSO covers HERO_TRAIN / Forced March (§3.11) and the
-  Heavenly Tribulation (§5.6) — all are legal actions surfaced through pickers /
-  the shop, never a dedicated button. **Art-later** (all 6 items ship without a
+  map-action button for EQUIPMENT in this slice** — buying is only through the two
+  outfitter Field Overrides; the hero board is a read-only chip display for items.
+  (The other hero map actives — HERO_TRAIN / Forced March (§3.11) and the Heavenly
+  Tribulation (§5.6) — DO now have a human button via the map `HeroActionsDock`;
+  only equipment purchase does not.) **Art-later** (all 6 items ship without a
   card face — `ANIME_EQUIPMENT_ART_PLACEHOLDERS`, slot-glyph fallback); **no
   designer pin for the outfitters** (pool-placed only); **combat items are the
   MAIN hero's fights only** (commander-scope; a garrison fight gets neither —
@@ -1984,37 +1988,50 @@ Leading with what does NOT run / deliberate limits:
   prime semantics); story events are table-wide, so eliminated-seat skipping is a
   verified no-op for them.
 - **Also shipped: the STORY-MODE campaign hub + Chapter 1 of BOTH campaigns**
-  (§12 / §3.3 — the campaign shell around the story system above). This is
-  ENGINE-FREE: client presentation + localStorage around the existing `sp-` room
-  flow and the existing game-over state — NO engine change. Leading with what does
-  NOT run: **only Chapter 1 of each campaign is PLAYABLE** (chapters 2–7 are DATA
-  — `playable:false`, no `setup`, empty `scenes` — rendering "in development" once
-  the unlock chain reaches them); **protagonists are PRESENTATION** (Chen Fan / Bin
-  live only in the scenes — the playable seat uses a CORE faction stand-in:
+  (§12 / §3.3 — the campaign shell around the story system above). Client
+  presentation + localStorage around the existing `sp-` room flow, PLUS the setup
+  injection below (one small engine change: `buildAdventureFromLobby` now carries
+  the lobby's `anime` + `fieldOverrides` into the built game). Leading with what
+  does NOT run: **only Chapter 1 of each campaign is PLAYABLE** (chapters 2–7 are
+  DATA — `playable:false`, no `setup`, empty `scenes` — rendering "in development"
+  once the unlock chain reaches them); **protagonists are PRESENTATION** (Chen Fan
+  / Bin live only in the scenes — the playable seat uses a CORE faction stand-in:
   **Jianghu ch-1 = Rampart, Bin ch-1 = Tower**, anime towns are unshipped);
-  **`setup` is carried config, NOT applied to the live game** — the Begin flow
-  mints a STANDARD single-player room and passes ONLY the opponent count to
-  `createSinglePlayerRoom`; `playerFaction`/`difficulty`/`fieldOverrides`/`anime`
-  are surfaced by the tested pure helper `chapterRoomOptions` for a later
-  setup-injection slice (the player still picks a faction on the normal setup
-  screen; the game runs with DEFAULT options); **`mapPresetId` is unused**
-  (standard map generation in V1); and **no routes/karma/cheat picks/quest-log**
-  (§13 deferred, campaign-only). Only shipped anime flags may be set true on a
-  playable chapter (allowlist `{enabled, cultivation, xianxiaArtifacts}` + the
-  global `fieldOverrides` toggle) — a dead flag fails `campaigns.test.ts`. What
-  RUNS (each mutation-checked): the campaign registry
-  (`src/data/story/campaigns.ts` — both campaigns, 7 bilingual chapters each,
-  `chapterRoomOptions`; `campaigns.test.ts`), the ch-1 intro/victory/defeat scenes
-  added to `scenes.ts` (`scenes.test.ts`), the progress store
-  (`src/lib/campaign-progress.ts` — per-campaign completion + unlock chain,
-  per-room binding + intro/outcome markers, SSR-safe; `campaign-progress.test.ts`),
-  the PURE trigger `campaignSceneToFire` (`src/lib/campaign-triggers.ts` —
-  state+binding+markers → scene to fire, with an UNBOUND-room CONTROL;
+  **`mapPresetId` is unused** (standard map generation in V1); and **no
+  routes/karma/cheat picks/quest-log** (§13 deferred, campaign-only). Only shipped
+  anime flags may be set true on a playable chapter (allowlist
+  `{enabled, cultivation, xianxiaArtifacts}` + the global `fieldOverrides` toggle)
+  — a dead flag fails `campaigns.test.ts`. What RUNS (each mutation-checked): the
+  campaign registry (`src/data/story/campaigns.ts` — both campaigns, 7 bilingual
+  chapters each, `chapterRoomOptions`; `campaigns.test.ts`), the ch-1
+  intro/victory/defeat scenes added to `scenes.ts` (`scenes.test.ts`), the
+  progress store (`src/lib/campaign-progress.ts` — per-campaign completion +
+  unlock chain, per-room binding + intro/outcome/**setupApplied** markers,
+  SSR-safe; `campaign-progress.test.ts`), the PURE triggers in
+  `src/lib/campaign-triggers.ts` — `campaignSceneToFire` (state+binding+markers →
+  scene, UNBOUND-room CONTROL) AND `campaignSetupActions` (chapter →
+  `SET_GAME_OPTIONS` + `CHOOSE_FACTION`, LOCKED-chapter CONTROL;
   `campaign-triggers.test.ts`), the `/story` route (theme-scoped campaign cards +
   EN/VI toggle + Begin flow; `src/app/story/page.test.tsx`), the menu entry
   (`menu/page.test.tsx`), and the thin table wiring in `page.tsx` (a bound room
   pops intro/outro through the EXISTING `storyCue`/`StoryOverlay` pipeline once per
   room; a game-over win calls `markChapterCompleted`).
+- **SETUP INJECTION — a chapter's config is now APPLIED (was carried-only).**
+  The Begin flow mints a standard `sp-` room (opponent count only); once the human
+  is seated in the setup lobby the table page pushes `campaignSetupActions(chapter,
+  seat)` — `SET_GAME_OPTIONS` (the chapter's `anime` + global `fieldOverrides` +
+  `difficulty`) then `CHOOSE_FACTION` (protagonist's core faction + its first hero,
+  PRESELECTED) — through the NORMAL action pipeline (no new server surface), once
+  per room (persisted `setupApplied` marker + a ref). The player still sees the
+  normal setup screen and may change any pick before starting. The engine change
+  it needed: `buildAdventureFromLobby` had been DROPPING `anime` + `fieldOverrides`
+  when building the game from a lobby (only the direct `createAdventureGameState`
+  path carried them), so a lobby-set toggle never reached the started game — now
+  carried through (defaults OFF ⇒ a plain lobby is byte-identical). Pinned
+  end-to-end in `src/server/campaign-setup-injection.test.ts`: a room built with
+  the Jianghu ch-1 options STARTS with `anime.enabled + cultivation +
+  xianxiaArtifacts + fieldOverrides` ON and the Rampart seat, with a plain
+  `/single-player` room (injects nothing) as the all-default CONTROL.
 
 ## First-round rules, Cove City Hall & bank/opponent UI (BINH house rules) — what runs
 
