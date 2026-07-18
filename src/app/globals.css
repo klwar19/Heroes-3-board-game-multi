@@ -24526,6 +24526,104 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
   background: rgba(64, 50, 22, 0.75);
 }
 
+/* Collapsible sub-groups inside the map-conditions panel: each bundles a few
+   related leaf .mapPresetSections under a glyph + title + active-count header,
+   so the ~15 flat sections read as six clearly-separated, ordered groups. */
+.mapPresetGroup {
+  border-radius: 10px;
+  border: 1px solid rgba(154, 208, 255, 0.22);
+  background: linear-gradient(180deg, rgba(26, 36, 52, 0.72), rgba(16, 22, 34, 0.82));
+  overflow: hidden;
+}
+
+.mapPresetGroup[open] {
+  border-color: rgba(154, 208, 255, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(154, 208, 255, 0.06);
+}
+
+details.mapPresetGroup > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mapPresetGroupHead {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  color: #dce9ff;
+  transition: background 0.12s ease;
+}
+
+.mapPresetGroupHead:hover {
+  background: rgba(154, 208, 255, 0.06);
+}
+
+.mapPresetGroupLead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mapPresetGroupGlyph {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+.mapPresetGroupGlyphEmoji {
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.mapPresetGroupTitle {
+  font-family: var(--font-heroic);
+  font-size: 12.5px;
+  letter-spacing: 0.03em;
+  color: #eaf2ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mapPresetGroupCount {
+  flex: 0 0 auto;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 214, 130, 0.5);
+  color: #ffd682;
+  background: rgba(64, 50, 22, 0.7);
+  white-space: nowrap;
+}
+
+.mapPresetGroupChevron {
+  flex: 0 0 auto;
+  color: rgba(154, 208, 255, 0.85);
+  font-size: 12px;
+  transition: transform 0.15s ease;
+}
+
+.mapPresetGroup[open] .mapPresetGroupChevron {
+  transform: rotate(90deg);
+}
+
+.mapPresetGroupBody {
+  display: grid;
+  gap: 6px;
+  padding: 2px 11px 10px;
+  border-top: 1px solid rgba(154, 208, 255, 0.14);
+}
+
 /* Icon-tagged condition lines (designer summary + lobby banner). */
 .mapPresetEntryList {
   list-style: none;

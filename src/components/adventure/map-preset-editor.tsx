@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
-import { REWARD_GLYPH_ICONS } from "@/data/assets/homm-assets";
+import { DESIGNER_UI_ICONS, REWARD_GLYPH_ICONS, SECRET_FEATURE_ICONS } from "@/data/assets/homm-assets";
 import {
   CUSTOM_WIN_CONDITION_OPTIONS,
   DEFAULT_VICTORY_CONDITION_VP,
@@ -13,6 +13,8 @@ import {
   defaultTimedEvent,
   defaultVictoryPointObjective,
   describeCustomMapPresetEntries,
+  describeObjectivesConfig,
+  describeVictoryPointsConfig,
   describeTimedMapEffect,
   describeTimedEventSchedule,
   MAX_CUSTOM_WIN_CONDITIONS,
@@ -249,6 +251,35 @@ export function MapPresetEditor({
     setTimed([...timed, event]);
   };
 
+  // Active-entry count per collapsible group. Single source of truth: mirrors
+  // the per-field entries that `describeCustomMapPresetEntries` produces (the
+  // multi-line objectives / Victory-Points blocks reuse the SAME describe
+  // helpers so the count can never fork from the summary above). A group with
+  // ≥1 active entry starts OPEN; an empty group starts collapsed.
+  const groupCounts = {
+    matchSetup:
+      (value.difficulty ? 1 : 0) +
+      (value.farTileOpening !== undefined || value.farTilesPerPlayer !== undefined ? 1 : 0),
+    startingPosition:
+      (value.startingResources ? 1 : 0) +
+      (value.startingProduction ? 1 : 0) +
+      (value.startingBuildings && value.startingBuildings.length > 0 ? 1 : 0) +
+      (value.startingUnits ? 1 : 0) +
+      (value.startingBonuses && value.startingBonuses.length > 0 ? 1 : 0),
+    victoryScoring:
+      (value.victoryMode ? 1 : 0) +
+      (value.roundLimit ? 1 : 0) +
+      (value.victoryPoints?.enabled
+        ? describeVictoryPointsConfig(value.victoryPoints, value.roundLimit).length
+        : 0) +
+      (value.customWinConditions?.length ?? 0),
+    mapLocations:
+      (value.obelisks ? 1 : 0) +
+      (value.objectives ? describeObjectivesConfig(value.objectives).length : 0),
+    timedEvents: timed.length,
+    designerNote: value.notes ? 1 : 0
+  };
+
   return (
     <details
       className="mapPresetEditor"
@@ -290,6 +321,7 @@ export function MapPresetEditor({
         <small className="mapPresetEmpty">No special conditions — pure tile layout.</small>
       )}
 
+      <MapPresetGroup title="Match setup" glyphEmoji="⚙️" count={groupCounts.matchSetup}>
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Difficulty (preset)</div>
         <div className="mapPresetChipRow" role="group" aria-label="Difficulty">
@@ -365,32 +397,13 @@ export function MapPresetEditor({
           count of tiles is set here — the Ⅱ–Ⅲ supply pool itself stays the engine default. Seeds the lobby on pick.
         </small>
       </section>
+      </MapPresetGroup>
 
-      <section className="mapPresetSection">
-        <div className="mapPresetSectionLabel">Victory (preset)</div>
-        <div className="mapPresetChipRow" role="group" aria-label="Victory mode">
-          {MAP_PRESET_VICTORY_OPTIONS.map((opt) => (
-            <button
-              aria-pressed={value.victoryMode === opt.id}
-              className={`mapPresetChip${value.victoryMode === opt.id ? " active" : ""}`}
-              key={opt.id}
-              onClick={() =>
-                patch({
-                  victoryMode: value.victoryMode === opt.id ? undefined : (opt.id as VictoryMode)
-                })
-              }
-              type="button"
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        <small className="mapPresetHint">
-          Seeds the lobby when the map is picked — the host can still change it there (their choice wins), and
-          switching maps restores the scenario default.
-        </small>
-      </section>
-
+      <MapPresetGroup
+        title="Starting position"
+        glyphSrc={SECRET_FEATURE_ICONS.town}
+        count={groupCounts.startingPosition}
+      >
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Starting resources</div>
         <div className="mapPresetResourceRow">
@@ -608,7 +621,232 @@ export function MapPresetEditor({
           </ul>
         ) : null}
       </section>
+      </MapPresetGroup>
 
+      <MapPresetGroup title="Victory & scoring" glyphEmoji="🏆" count={groupCounts.victoryScoring}>
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">Victory (preset)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Victory mode">
+          {MAP_PRESET_VICTORY_OPTIONS.map((opt) => (
+            <button
+              aria-pressed={value.victoryMode === opt.id}
+              className={`mapPresetChip${value.victoryMode === opt.id ? " active" : ""}`}
+              key={opt.id}
+              onClick={() =>
+                patch({
+                  victoryMode: value.victoryMode === opt.id ? undefined : (opt.id as VictoryMode)
+                })
+              }
+              type="button"
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <small className="mapPresetHint">
+          Seeds the lobby when the map is picked — the host can still change it there (their choice wins), and
+          switching maps restores the scenario default.
+        </small>
+      </section>
+
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">
+          {vpOn ? "Round limit (hard end)" : "Suggested length (rounds)"}
+        </div>
+        <div className="mapPresetResourceRow">
+          <ResourceField
+            label="Rounds"
+            value={value.roundLimit ?? null}
+            onChange={(roundLimit) => patch({ roundLimit: roundLimit || undefined })}
+          />
+        </div>
+        <small className="mapPresetHint">
+          {vpOn
+            ? "With Victory Points on, the game ENDS when this round wraps (then VPs are scored)."
+            : "A display-only note today — a suggested length, not a hard end."}
+        </small>
+      </section>
+
+      <section className="mapPresetSection mapPresetVpSection" aria-label="Victory Points">
+        <div className="mapPresetSectionLabel">🎖️ Victory Points</div>
+        <label className="mapPresetToggle">
+          <input
+            aria-label="Victory Points scoring"
+            checked={vpOn}
+            onChange={toggleVictoryPoints}
+            type="checkbox"
+          />
+          <span>Score Victory Points (rulebook scenario scoring)</span>
+        </label>
+        {vpOn ? (
+          <>
+            <small className="mapPresetHint">
+              The game ends at the round limit above OR when a player completes the victory condition —
+              the most VPs wins. Set a round limit above for a hard cap.
+              {value.roundLimit ? "" : " ⚠ No round limit set — completion is the only end trigger."}
+            </small>
+            <div className="mapPresetResourceRow">
+              <ResourceField
+                label="Completion VP"
+                value={victoryPoints?.victoryConditionVp ?? DEFAULT_VICTORY_CONDITION_VP}
+                onChange={(vp) => writeVictoryPoints({ victoryConditionVp: Math.max(0, Math.min(10, vp ?? 0)) })}
+              />
+            </div>
+
+            <div className="mapPresetVpObjectives" role="group" aria-label="Victory Point objectives">
+              <div className="mapPresetTimedSectionHeading">
+                <div className="mapPresetSectionLabel">Extra objectives</div>
+                <span className={`mapPresetTimedCount${vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES ? " full" : ""}`}>
+                  {vpObjectives.length}/{MAX_VICTORY_POINT_OBJECTIVES}
+                </span>
+              </div>
+              {vpObjectives.map((objective, index) => (
+                <div className="mapPresetVpObjectiveRow" key={index}>
+                  <RewardGlyph src={vpObjectiveGlyph(objective.kind)} title={`Objective ${index + 1}`} />
+                  <select
+                    aria-label={`Objective ${index + 1} kind`}
+                    className="mapPresetSelect"
+                    onChange={(e) =>
+                      updateVpObjective(index, {
+                        ...defaultVictoryPointObjective(e.target.value as VictoryPointObjective["kind"]),
+                        vp: objective.vp
+                      })
+                    }
+                    value={objective.kind}
+                  >
+                    {VICTORY_POINT_OBJECTIVE_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {objective.kind === "control-towns" || objective.kind === "flag-mines" ? (
+                    <ResourceField
+                      label="N"
+                      value={objective.count}
+                      onChange={(count) =>
+                        updateVpObjective(index, { ...objective, count: Math.max(1, count ?? 1) })
+                      }
+                    />
+                  ) : null}
+                  {objective.kind === "hero-level" ? (
+                    <ResourceField
+                      label="Level"
+                      value={objective.level}
+                      onChange={(level) =>
+                        updateVpObjective(index, { ...objective, level: Math.max(2, Math.min(7, level ?? 2)) })
+                      }
+                    />
+                  ) : null}
+                  <ResourceField
+                    label="VP"
+                    value={objective.vp}
+                    onChange={(vp) => updateVpObjective(index, { ...objective, vp: Math.max(1, Math.min(10, vp ?? 1)) })}
+                  />
+                  <button
+                    aria-label={`Remove objective ${index + 1}`}
+                    className="mapPresetTimedRemove"
+                    onClick={() => removeVpObjective(index)}
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={13} />
+                  </button>
+                </div>
+              ))}
+              <button
+                className="mapPresetTimedAdd"
+                disabled={vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES}
+                onClick={addVpObjective}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={13} /> Add objective
+              </button>
+            </div>
+          </>
+        ) : (
+          <small className="mapPresetHint">
+            Off — the round limit above stays a mere suggested length.
+          </small>
+        )}
+      </section>
+
+      <section className="mapPresetSection mapPresetVpSection" aria-label="Custom win conditions">
+        <div className="mapPresetSectionLabel">🏁 Custom win conditions</div>
+        <small className="mapPresetHint">
+          Extra early-end triggers on top of the victory mode: the FIRST player to satisfy ANY of these wins
+          immediately. Keep the thresholds above what a player already has at setup, or the game ends on the first
+          action.
+        </small>
+        <div className="mapPresetVpObjectives" role="group" aria-label="Custom win condition list">
+          <div className="mapPresetTimedSectionHeading">
+            <div className="mapPresetSectionLabel">Conditions</div>
+            <span className={`mapPresetTimedCount${winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS ? " full" : ""}`}>
+              {winConditions.length}/{MAX_CUSTOM_WIN_CONDITIONS}
+            </span>
+          </div>
+          {winConditions.map((condition, index) => {
+            const option = CUSTOM_WIN_CONDITION_OPTIONS.find((entry) => entry.id === condition.kind);
+            const paramValue =
+              condition.kind === "hero-level"
+                ? condition.level
+                : condition.kind === "gold"
+                  ? condition.amount
+                  : "count" in condition
+                    ? condition.count
+                    : null;
+            return (
+              <div className="mapPresetVpObjectiveRow" key={index}>
+                <RewardGlyph src={winConditionGlyph(condition.kind)} title={`Condition ${index + 1}`} />
+                <select
+                  aria-label={`Condition ${index + 1} kind`}
+                  className="mapPresetSelect"
+                  onChange={(e) =>
+                    updateWinCondition(index, defaultCustomWinCondition(e.target.value as CustomWinCondition["kind"]))
+                  }
+                  value={condition.kind}
+                >
+                  {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+                {option?.param && paramValue !== null ? (
+                  <ResourceField
+                    label={option.param.label}
+                    max={option.param.max}
+                    min={option.param.min}
+                    value={paramValue}
+                    onChange={(n) => {
+                      const clamped = Math.max(option.param!.min, Math.min(option.param!.max, n ?? option.param!.min));
+                      updateWinCondition(index, { ...condition, [option.param!.field]: clamped } as CustomWinCondition);
+                    }}
+                  />
+                ) : null}
+                <button
+                  aria-label={`Remove condition ${index + 1}`}
+                  className="mapPresetTimedRemove"
+                  onClick={() => removeWinCondition(index)}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={13} />
+                </button>
+              </div>
+            );
+          })}
+          <button
+            className="mapPresetTimedAdd"
+            disabled={winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS}
+            onClick={addWinCondition}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={13} /> Add win condition
+          </button>
+        </div>
+      </section>
+      </MapPresetGroup>
+
+      <MapPresetGroup title="Map locations" glyphSrc={DESIGNER_UI_ICONS.map} count={groupCounts.mapLocations}>
       <section className="mapPresetSection" aria-label="Obelisks">
         <div className="mapPresetSectionLabel">Obelisks (map-wide)</div>
         <small className="mapPresetHint">
@@ -744,7 +982,9 @@ export function MapPresetEditor({
           </div>
         </div>
       </section>
+      </MapPresetGroup>
 
+      <MapPresetGroup title="Timed events" glyphEmoji="⏳" count={groupCounts.timedEvents}>
       <section className="mapPresetSection mapPresetTimedSection" aria-label="Timed events">
         <div className="mapPresetTimedSectionHeading">
           <div>
@@ -963,203 +1203,9 @@ export function MapPresetEditor({
           <small className="mapPresetEmpty">No timed events yet — add one or pick a template.</small>
         )}
       </section>
+      </MapPresetGroup>
 
-      <section className="mapPresetSection">
-        <div className="mapPresetSectionLabel">
-          {vpOn ? "Round limit (hard end)" : "Suggested length (rounds)"}
-        </div>
-        <div className="mapPresetResourceRow">
-          <ResourceField
-            label="Rounds"
-            value={value.roundLimit ?? null}
-            onChange={(roundLimit) => patch({ roundLimit: roundLimit || undefined })}
-          />
-        </div>
-        <small className="mapPresetHint">
-          {vpOn
-            ? "With Victory Points on, the game ENDS when this round wraps (then VPs are scored)."
-            : "A display-only note today — a suggested length, not a hard end."}
-        </small>
-      </section>
-
-      <section className="mapPresetSection mapPresetVpSection" aria-label="Victory Points">
-        <div className="mapPresetSectionLabel">🎖️ Victory Points</div>
-        <label className="mapPresetToggle">
-          <input
-            aria-label="Victory Points scoring"
-            checked={vpOn}
-            onChange={toggleVictoryPoints}
-            type="checkbox"
-          />
-          <span>Score Victory Points (rulebook scenario scoring)</span>
-        </label>
-        {vpOn ? (
-          <>
-            <small className="mapPresetHint">
-              The game ends at the round limit above OR when a player completes the victory condition —
-              the most VPs wins. Set a round limit above for a hard cap.
-              {value.roundLimit ? "" : " ⚠ No round limit set — completion is the only end trigger."}
-            </small>
-            <div className="mapPresetResourceRow">
-              <ResourceField
-                label="Completion VP"
-                value={victoryPoints?.victoryConditionVp ?? DEFAULT_VICTORY_CONDITION_VP}
-                onChange={(vp) => writeVictoryPoints({ victoryConditionVp: Math.max(0, Math.min(10, vp ?? 0)) })}
-              />
-            </div>
-
-            <div className="mapPresetVpObjectives" role="group" aria-label="Victory Point objectives">
-              <div className="mapPresetTimedSectionHeading">
-                <div className="mapPresetSectionLabel">Extra objectives</div>
-                <span className={`mapPresetTimedCount${vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES ? " full" : ""}`}>
-                  {vpObjectives.length}/{MAX_VICTORY_POINT_OBJECTIVES}
-                </span>
-              </div>
-              {vpObjectives.map((objective, index) => (
-                <div className="mapPresetVpObjectiveRow" key={index}>
-                  <RewardGlyph src={vpObjectiveGlyph(objective.kind)} title={`Objective ${index + 1}`} />
-                  <select
-                    aria-label={`Objective ${index + 1} kind`}
-                    className="mapPresetSelect"
-                    onChange={(e) =>
-                      updateVpObjective(index, {
-                        ...defaultVictoryPointObjective(e.target.value as VictoryPointObjective["kind"]),
-                        vp: objective.vp
-                      })
-                    }
-                    value={objective.kind}
-                  >
-                    {VICTORY_POINT_OBJECTIVE_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {objective.kind === "control-towns" || objective.kind === "flag-mines" ? (
-                    <ResourceField
-                      label="N"
-                      value={objective.count}
-                      onChange={(count) =>
-                        updateVpObjective(index, { ...objective, count: Math.max(1, count ?? 1) })
-                      }
-                    />
-                  ) : null}
-                  {objective.kind === "hero-level" ? (
-                    <ResourceField
-                      label="Level"
-                      value={objective.level}
-                      onChange={(level) =>
-                        updateVpObjective(index, { ...objective, level: Math.max(2, Math.min(7, level ?? 2)) })
-                      }
-                    />
-                  ) : null}
-                  <ResourceField
-                    label="VP"
-                    value={objective.vp}
-                    onChange={(vp) => updateVpObjective(index, { ...objective, vp: Math.max(1, Math.min(10, vp ?? 1)) })}
-                  />
-                  <button
-                    aria-label={`Remove objective ${index + 1}`}
-                    className="mapPresetTimedRemove"
-                    onClick={() => removeVpObjective(index)}
-                    type="button"
-                  >
-                    <Trash2 aria-hidden="true" size={13} />
-                  </button>
-                </div>
-              ))}
-              <button
-                className="mapPresetTimedAdd"
-                disabled={vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES}
-                onClick={addVpObjective}
-                type="button"
-              >
-                <Plus aria-hidden="true" size={13} /> Add objective
-              </button>
-            </div>
-          </>
-        ) : (
-          <small className="mapPresetHint">
-            Off — the round limit above stays a mere suggested length.
-          </small>
-        )}
-      </section>
-
-      <section className="mapPresetSection mapPresetVpSection" aria-label="Custom win conditions">
-        <div className="mapPresetSectionLabel">🏁 Custom win conditions</div>
-        <small className="mapPresetHint">
-          Extra early-end triggers on top of the victory mode: the FIRST player to satisfy ANY of these wins
-          immediately. Keep the thresholds above what a player already has at setup, or the game ends on the first
-          action.
-        </small>
-        <div className="mapPresetVpObjectives" role="group" aria-label="Custom win condition list">
-          <div className="mapPresetTimedSectionHeading">
-            <div className="mapPresetSectionLabel">Conditions</div>
-            <span className={`mapPresetTimedCount${winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS ? " full" : ""}`}>
-              {winConditions.length}/{MAX_CUSTOM_WIN_CONDITIONS}
-            </span>
-          </div>
-          {winConditions.map((condition, index) => {
-            const option = CUSTOM_WIN_CONDITION_OPTIONS.find((entry) => entry.id === condition.kind);
-            const paramValue =
-              condition.kind === "hero-level"
-                ? condition.level
-                : condition.kind === "gold"
-                  ? condition.amount
-                  : "count" in condition
-                    ? condition.count
-                    : null;
-            return (
-              <div className="mapPresetVpObjectiveRow" key={index}>
-                <RewardGlyph src={winConditionGlyph(condition.kind)} title={`Condition ${index + 1}`} />
-                <select
-                  aria-label={`Condition ${index + 1} kind`}
-                  className="mapPresetSelect"
-                  onChange={(e) =>
-                    updateWinCondition(index, defaultCustomWinCondition(e.target.value as CustomWinCondition["kind"]))
-                  }
-                  value={condition.kind}
-                >
-                  {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.label}
-                    </option>
-                  ))}
-                </select>
-                {option?.param && paramValue !== null ? (
-                  <ResourceField
-                    label={option.param.label}
-                    max={option.param.max}
-                    min={option.param.min}
-                    value={paramValue}
-                    onChange={(n) => {
-                      const clamped = Math.max(option.param!.min, Math.min(option.param!.max, n ?? option.param!.min));
-                      updateWinCondition(index, { ...condition, [option.param!.field]: clamped } as CustomWinCondition);
-                    }}
-                  />
-                ) : null}
-                <button
-                  aria-label={`Remove condition ${index + 1}`}
-                  className="mapPresetTimedRemove"
-                  onClick={() => removeWinCondition(index)}
-                  type="button"
-                >
-                  <Trash2 aria-hidden="true" size={13} />
-                </button>
-              </div>
-            );
-          })}
-          <button
-            className="mapPresetTimedAdd"
-            disabled={winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS}
-            onClick={addWinCondition}
-            type="button"
-          >
-            <Plus aria-hidden="true" size={13} /> Add win condition
-          </button>
-        </div>
-      </section>
-
+      <MapPresetGroup title="Designer note" glyphEmoji="📝" count={groupCounts.designerNote}>
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Designer note (shown when map is picked)</div>
         <textarea
@@ -1172,7 +1218,72 @@ export function MapPresetEditor({
           value={value.notes ?? ""}
         />
       </section>
+      </MapPresetGroup>
     </details>
+  );
+}
+
+/**
+ * One collapsible sub-group inside the map-conditions panel: a glyph + title +
+ * active-count badge summary row (the disclosure control) over a body of leaf
+ * `.mapPresetSection`s. `open={count > 0}` seeds the group OPEN when it owns at
+ * least one set entry and collapsed otherwise — React only writes the `open`
+ * attribute when this value CHANGES, so a designer's manual expand/collapse of
+ * an empty/active group is preserved between re-renders and is only overridden
+ * when the group's active state actually flips.
+ */
+function MapPresetGroup({
+  title,
+  glyphSrc,
+  glyphEmoji,
+  count,
+  children
+}: {
+  title: string;
+  glyphSrc?: string;
+  glyphEmoji?: string;
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <details aria-label={title} className="mapPresetGroup" open={count > 0}>
+      <summary className="mapPresetGroupHead">
+        <span className="mapPresetGroupLead">
+          <MapPresetGroupGlyph emoji={glyphEmoji} src={glyphSrc} />
+          <span className="mapPresetGroupTitle">{title}</span>
+        </span>
+        {count > 0 ? <span className="mapPresetGroupCount">{count} active</span> : null}
+        <span aria-hidden="true" className="mapPresetGroupChevron">
+          ▸
+        </span>
+      </summary>
+      <div className="mapPresetGroupBody">{children}</div>
+    </details>
+  );
+}
+
+/**
+ * The group-header glyph: an asset-driven board glyph (rendered through
+ * `assetUrl()`) where one fits the group, else an emoji fallback. Decorative —
+ * aria-hidden; the visible title text carries the meaning.
+ */
+function MapPresetGroupGlyph({ emoji, src }: { emoji?: string; src?: string }) {
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- assetUrl CDN path; decorative
+      <img
+        alt=""
+        aria-hidden="true"
+        className="mapPresetGroupGlyph"
+        draggable={false}
+        src={assetUrl(src)}
+      />
+    );
+  }
+  return (
+    <span aria-hidden="true" className="mapPresetGroupGlyph mapPresetGroupGlyphEmoji">
+      {emoji}
+    </span>
   );
 }
 
