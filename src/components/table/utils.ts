@@ -1,8 +1,10 @@
 import { cardLibrary } from "@/data/cards/library";
 import { astrologersCardDefinitions } from "@/data/cards/astrologers";
 import { eventCardDefinitions } from "@/data/cards/events";
+import { RESOURCE_ICONS, REWARD_GLYPH_ICONS, moraleIcon } from "@/data/assets/homm-assets";
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
+import { UNIT_RANK_NAMES } from "@/data/units/experience";
 import {
   cardCanBoostPower,
   CULTIVATION_REALMS,
@@ -459,6 +461,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         : `${roomMemberName(state, event.byClientId)} allows guests to join again.`;
     case "ROUND_STARTED":
       return `Round ${event.round} begins${event.kind === "resource" ? " (resource round)" : event.kind === "astrologers" ? " (Astrologers' round)" : ""}.`;
+    case "FINAL_ROUND":
+      return `This is the final round (round ${event.round}) — the game ends once it is over, and the player with the most Victory Points wins.`;
     case "TURN_STARTED":
       return `${playerName(state, event.playerId)} starts their turn.`;
     case "HAND_REFRESHED":
@@ -468,6 +472,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         } (double negative morale).`;
       }
       return `${playerName(state, event.playerId)} refreshes their hand (discarded ${event.discarded}, drew ${event.drawn}).`;
+    case "HAND_MULLIGAN":
+      return `${playerName(state, event.playerId)} replaces a starting-hand card (${event.remaining} replacement${
+        event.remaining === 1 ? "" : "s"
+      } left).`;
     case "TILE_REVEALED":
       return `${playerName(state, event.playerId)} discovers map tile ${event.tileDefId}.`;
     case "TILE_PLACED":
@@ -591,6 +599,16 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} adds Stack ${event.stacks} to ${
         event.unitDefId.split(".")[1] ?? event.unitDefId
       } (${formatCost(event.cost)}).`;
+    case "UNIT_RANK_UP":
+      return `${playerName(state, event.playerId)}'s ${event.unitName} are now ${
+        UNIT_RANK_NAMES[event.rank] ?? `rank ${event.rank}`
+      } (veteran rank ${event.rank}).`;
+    case "UNIT_DRILLED":
+      return `${playerName(state, event.playerId)} drills ${event.unitName} (+1 unit XP, now ${event.experience}).`;
+    case "UNIT_XP_DILUTED":
+      return event.reason === "reinforce"
+        ? `${playerName(state, event.playerId)}'s ${event.unitName} veterans are diluted by the new recruits (XP now ${event.experience}).`
+        : `${playerName(state, event.playerId)}'s ${event.unitName} veterans are diluted by the new Stack layer (XP now ${event.experience}).`;
     case "ARMY_STACK_LOST":
       // With a `reason` this was a map effect absorbed by the Stack (Terrible
       // Plague weakened); otherwise the combat lethal-damage absorb.
@@ -601,10 +619,6 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         : `${event.unitName} loses a Unit Stack and survives the blow${
             event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
           } — ${event.remainingStacks} Stack${event.remainingStacks === 1 ? "" : "s"} left.`;
-    case "UNIT_EXPERIENCE_GAINED":
-      return event.rankName
-        ? `${event.unitName} reaches ${event.rankName} (${event.xp} XP).`
-        : `${event.unitName} gains battle experience (${event.xp} XP).`;
     case "GAME_OPTIONS_CHANGED":
       return event.message;
     case "MAP_PRESET_TRIGGERED":
@@ -919,4 +933,106 @@ export function reconnectRoundStartCues(
     }
   }
   return none;
+}
+
+// ---------------------------------------------------------------------------
+// Map-visit reward chips (treasure chest / mine / resource notice).
+//
+// Instead of a "mass of text" bullet list, a location visit's outcome is shown
+// as a compact row of icon chips: the resource token / experience / morale
+// glyph plus a short "+N" (or "+N/turn" income) label — the concrete result of
+// the visit and its dice roll, with the correct board-game icons. Pure over the
+// event log so it can be unit-tested (see notice-rewards.test.ts).
+// ---------------------------------------------------------------------------
+
+/** A single reward chip on a map-visit notice. */
+export type NoticeReward = {
+  /** Icon image path (rendered through `assetUrl`), when there is one. */
+  icon?: string;
+  /** Text/emoji glyph fallback when there is no image icon. */
+  glyph?: string;
+  /** Short label, e.g. "+3", "+2/turn". */
+  label: string;
+  /** Accessible full description. */
+  title: string;
+  tone: "gain" | "loss" | "neutral";
+};
+
+/** The board resource-token icon for a resource kind (falls back to a coin). */
+function resourceRewardIcon(resource: ResourceKind): string {
+  return (RESOURCE_ICONS as Record<string, string>)[resource] ?? RESOURCE_ICONS.gold;
+}
+
+/**
+ * Derive the reward chips (and, for a mine, a resource icon for the notice) from
+ * a visit's follow-on outcome events. Covers the material results — resources
+ * gained, mine income (production), experience and morale — which is exactly
+ * what a treasure chest or mine visit produces. Events with no material chip
+ * (e.g. an Artifact Search) leave the chip list empty so the caller can fall
+ * back to its text summary.
+ */
+export function noticeRewardsFromEvents(
+  events: GameEvent[],
+  _state: GameState
+): { rewards: NoticeReward[]; iconImage?: string } {
+  const rewards: NoticeReward[] = [];
+  let iconImage: string | undefined;
+  for (const event of events) {
+    switch (event.type) {
+      case "RESOURCES_GAINED": {
+        const parts: [number | undefined, ResourceKind][] = [
+          [event.gold, "gold"],
+          [event.buildingMaterials, "buildingMaterials"],
+          [event.valuables, "valuables"]
+        ];
+        for (const [amount, resource] of parts) {
+          if (amount) {
+            rewards.push({
+              icon: resourceRewardIcon(resource),
+              label: `+${amount}`,
+              title: `+${amount} ${formatResourceName(resource)}`,
+              tone: "gain"
+            });
+          }
+        }
+        break;
+      }
+      case "PRODUCTION_CHANGED": {
+        const sign = event.amount >= 0 ? "+" : "";
+        rewards.push({
+          icon: resourceRewardIcon(event.resource),
+          label: `${sign}${event.amount}/turn`,
+          title: `${sign}${event.amount} ${formatResourceName(event.resource)} production`,
+          tone: event.amount >= 0 ? "gain" : "loss"
+        });
+        // A mine has no dedicated notice art — show its resource token instead of
+        // the generic pickaxe emoji. The first positive production wins.
+        if (iconImage === undefined && event.amount >= 0) {
+          iconImage = resourceRewardIcon(event.resource);
+        }
+        break;
+      }
+      case "EXPERIENCE_GAINED": {
+        rewards.push({
+          icon: REWARD_GLYPH_ICONS.experience,
+          label: `+${event.amount}`,
+          title: `+${event.amount} experience`,
+          tone: "gain"
+        });
+        break;
+      }
+      case "MORALE_CHANGED": {
+        rewards.push({
+          icon: moraleIcon(event.total),
+          label: `${event.amount > 0 ? "+" : ""}${event.amount}`,
+          title: `Morale ${event.amount > 0 ? "+" : ""}${event.amount}`,
+          tone: event.amount >= 0 ? "gain" : "loss"
+        });
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return { rewards, iconImage };
 }

@@ -1255,6 +1255,14 @@ function visitStepsUtility(
       case "REINFORCE_FREE":
         utility += 48;
         break;
+      case "WITCH_HUT_TAKE":
+        // Witch Hut reveal: taking the revealed Ability into hand always
+        // outranks binning it (which still progresses the deck a little).
+        utility += 24 + Math.min(30, cardKeepValue(step.cardId, { state, playerId }));
+        break;
+      case "WITCH_HUT_DISCARD":
+        utility += 2;
+        break;
       case "REINFORCE_ARMY_UNIT":
         utility += 36;
         break;
@@ -1545,7 +1553,6 @@ function resolveVisitStepScore(
     // Optional pay-sites / shops: declining is fine but below a real take.
     if (
       step?.type === "PAY_TO" ||
-      step?.type === "WITCH_HUT" ||
       step?.type === "MAGIC_SPRING" ||
       step?.type === "HILL_FORT" ||
       step?.type === "TAVERN" ||
@@ -1610,13 +1617,6 @@ function resolveVisitStepScore(
   // --- Settlement / mine income levels --------------------------------------
   if (step.type === "SETTLEMENT_CHOICE" || step.type === "RESOURCE_GAIN_LEVEL") {
     return resourceIncomeOptionScore(state, playerId, optionIndex);
-  }
-
-  // --- Witch Hut: take ability > put in discard > skip ----------------------
-  if (step.type === "WITCH_HUT") {
-    if (optionIndex === 0) return 1_140; // take into hand
-    if (optionIndex === 1) return 1_090; // discard (still progresses deck)
-    return 1_050;
   }
 
   // --- Magic Spring: return highest-value discard card ----------------------
@@ -2073,6 +2073,14 @@ export function scoreMapAction(
       // objective always outscores it — i.e. only when the seat would otherwise
       // end the turn with the 2 MP unspent. Legal only with ≥2 MP (heroTrainAvailable).
       return { score: 330, policy: "map.hero-train" };
+    case "DRILL_UNIT":
+      // Unit Experience Drill: an idle-time luxury like HERO_TRAIN, but it
+      // costs gold — only worth it from surplus (never eat the dwelling fund).
+      // Below HERO_TRAIN so a free Merit is drilled first when both are legal.
+      return {
+        score: playerGold(state, observation.playerId) >= 10 ? 325 : 5,
+        policy: "map.drill-unit"
+      };
     case "USE_HERO_SKILL":
       // On the map this is Forced March (+1 movement, once per round). Combat
       // War Cry is claimed earlier by combat-policy, so a USE_HERO_SKILL reaching

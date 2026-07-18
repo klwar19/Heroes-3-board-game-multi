@@ -1,7 +1,6 @@
 import type { UnitSideDefinition } from "@/data/factions/types";
 import { cardLibrary } from "@/data/cards/library";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
-import { animeModuleEnabled } from "./anime";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import type {
   ArtifactDeckAccess,
@@ -125,15 +124,17 @@ export function applyUnitSideRules(
  */
 export function unitSideRuleOverrides(
   state: Pick<GameState, "ruleset" | "adventure" | "anime">
-): { griffinBuff: boolean; marksmanBuff: boolean; polishUnitStacks: boolean; unitExperience: boolean } {
+): { griffinBuff: boolean; marksmanBuff: boolean; polishUnitStacks: boolean } {
   return {
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
     marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
     // Army Stack layers: the Polish house rule OR the anime `unitStacks` module
     // (one machinery — see armyUnitStacksActive).
-    polishUnitStacks: armyUnitStacksActive(state),
-    // Anime Unit Experience: fold the veterancy rank bonus onto both card sides.
-    unitExperience: animeModuleEnabled(state, "unitExperience")
+    polishUnitStacks: armyUnitStacksActive(state)
+    // Unit Experience is NOT threaded through these overrides: the shared
+    // veterancy machinery folds the rank bonus straight off `armyUnit.experience`
+    // / the mirrored `unit.unitExperience` (see unit-experience.ts), which a card
+    // only ever carries while the rule is on — no flag to pass here.
   };
 }
 

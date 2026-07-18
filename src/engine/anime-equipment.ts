@@ -41,14 +41,18 @@ export function equipmentEnabled(state: Pick<GameState, "anime">): boolean {
  * / `unitExperienceActive` byte-for-byte.
  */
 export function equipmentContextAvailable(
-  state: Pick<GameState, "anime" | "wog">,
+  state: Pick<GameState, "anime" | "wog" | "adventure">,
   requirement: EquipmentContextRequirement
 ): boolean {
   switch (requirement) {
     case "wog.commanders":
       return Boolean(state.wog?.enabled && state.wog.commanders);
     case "anime.unitExperience":
-      return animeModuleEnabled(state, "unitExperience");
+      // Unit Experience has TWO enable roads into one machinery (mirroring
+      // `unitExperienceActive`, inlined to keep this a leaf module): the frozen
+      // adventure flag (lobby row / WOG module) OR the anime module. Either
+      // makes the Veteran's Standard grant live, so either un-hides it.
+      return Boolean(state.adventure?.unitExperience) || animeModuleEnabled(state, "unitExperience");
     default:
       return true;
   }

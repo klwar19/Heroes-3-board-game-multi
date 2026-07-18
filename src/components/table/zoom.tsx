@@ -7,6 +7,7 @@ import { assetUrl } from "@/lib/asset-url";
 import { Sparkles, X, ZoomIn } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { describeCardEffect, getUnitAbilityDefinitions, type CombatUnitState } from "@/engine";
+import { UNIT_RANK_NAMES } from "@/data/units/experience";
 import { getCardMetaLabels, isEmpoweredStatisticCard, titleCase } from "./utils";
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
@@ -105,11 +106,16 @@ export function unitZoomContent(unit: CombatUnitState): ZoomContent {
       : `${titleCase(unit.grade)} ${unit.type} · initiative ${unit.initiative}`,
     lines: [
       `Attack ${unit.attack} · Defense ${unit.defense}${unit.defenseToken ? " (defending: rolls +1 for +1 Defense)" : ""} · HP ${health}/${unit.maxHealth}`,
+      (unit.unitRank ?? 0) > 0
+        ? `Veteran rank ${unit.unitRank} (${UNIT_RANK_NAMES[unit.unitRank ?? 0] ?? ""}) — ${
+            unit.unitExperience ?? 0
+          } XP; rank bonuses are folded into the stats above.`
+        : "",
       ...abilities.map(
         (ability) =>
           `${ability.name}: ${ability.text}${ability.implementationStatus === "implemented" ? "" : " (manual rule)"}`
       )
-    ]
+    ].filter(Boolean)
   };
 }
 

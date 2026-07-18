@@ -634,7 +634,7 @@ describe("Witch Hut — hands out an Ability under the same rules", () => {
     return state;
   }
 
-  it("revealing the top discards cards the hero may not take (duplicate / Necromancy)", () => {
+  it("reveals only an acquirable card, binning duplicates / Necromancy, and shows WHICH card", () => {
     const state = witchHutState("witch-reveal");
     state.players.p1.deck = ["ability.archery"]; // already owns Archery
     state.players.p1.hand = [];
@@ -646,9 +646,19 @@ describe("Witch Hut — hands out an Ability under the same rules", () => {
 
     processPendingVisit(state);
 
-    // Only the acquirable Luck is left on top; the two off-limits cards were binned.
-    expect(state.decks.abilities.drawPile.at(-1)).toBe("ability.luck");
+    // The two off-limits cards were binned; the acquirable Luck was drawn and
+    // is now offered as a CHOOSE_ONE whose steps carry the cardId — the reveal
+    // the prompt tray renders as the card's actual face (a masked drawPile
+    // means the client could never show it otherwise).
     expect(state.decks.abilities.discardPile).toEqual(["ability.archery", "ability.necromancy"]);
+    expect(state.decks.abilities.drawPile).toEqual([]);
+    const step = state.adventure!.pendingVisit!.steps[0];
+    expect(step.type).toBe("CHOOSE_ONE");
+    if (step.type === "CHOOSE_ONE") {
+      expect(step.prompt).toContain("Luck");
+      expect(step.options[0].steps).toEqual([{ type: "WITCH_HUT_TAKE", cardId: "ability.luck" }]);
+      expect(step.options[1].steps).toEqual([{ type: "WITCH_HUT_DISCARD", cardId: "ability.luck" }]);
+    }
   });
 
   it("taking the card never hands the hero a duplicate or Necromancy", () => {
@@ -658,11 +668,13 @@ describe("Witch Hut — hands out an Ability under the same rules", () => {
     state.players.p1.discard = [];
     state.decks.abilities.drawPile = ["ability.luck", "ability.necromancy", "ability.archery"];
     state.decks.abilities.discardPile = [];
+    processPendingVisit(state);
 
     const take = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex === 0
     );
     expect(take, "the Witch Hut take option should be offered").toBeTruthy();
+    expect(take!.label).toContain("Luck");
 
     const result = applyAction(state, take!.action);
     expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
@@ -670,5 +682,30 @@ describe("Witch Hut — hands out an Ability under the same rules", () => {
     expect(result.state.players.p1.hand).toContain("ability.luck");
     expect(result.state.players.p1.hand).not.toContain("ability.archery");
     expect(result.state.players.p1.hand).not.toContain("ability.necromancy");
+  });
+
+  it("declining puts the revealed card on the SHARED Ability discard, not any pile of the player's own", () => {
+    const state = witchHutState("witch-discard");
+    state.players.p1.deck = ["ability.archery"];
+    state.players.p1.hand = [];
+    state.players.p1.discard = [];
+    state.decks.abilities.drawPile = ["ability.luck"];
+    state.decks.abilities.discardPile = [];
+    processPendingVisit(state);
+
+    const discard = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex === 1
+    );
+    expect(discard, "the Witch Hut discard option should be offered").toBeTruthy();
+
+    const result = applyAction(state, discard!.action);
+    expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+
+    // The card lands on the shared Ability deck's discard pile — the CONTROL:
+    // the player's own deck / hand / discard never see it.
+    expect(result.state.decks.abilities.discardPile).toEqual(["ability.luck"]);
+    expect(result.state.players.p1.hand).not.toContain("ability.luck");
+    expect(result.state.players.p1.deck).not.toContain("ability.luck");
+    expect(result.state.players.p1.discard).not.toContain("ability.luck");
   });
 });

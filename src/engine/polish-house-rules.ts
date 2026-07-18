@@ -25,21 +25,11 @@ export function polishReducedStartingBonusVisitSteps(): VisitStep[] {
           steps: [{ type: "DRAW_CHOOSE_MINOR_ARTIFACTS", drawCount: 2, keepCount: 1 }]
         },
         {
-          label: "Take 3 gold, 2 building materials, or 1 valuables",
-          steps: [
-            {
-              type: "CHOOSE_ONE",
-              prompt: "Reduced starting bonus — pick one resource package",
-              options: [
-                { label: "3 gold", steps: [{ type: "GAIN_RESOURCES", gold: 3 }] },
-                {
-                  label: "2 building materials",
-                  steps: [{ type: "GAIN_RESOURCES", buildingMaterials: 2 }]
-                },
-                { label: "1 valuables", steps: [{ type: "GAIN_RESOURCES", valuables: 1 }] }
-              ]
-            }
-          ]
+          // Polish rule: you do NOT pick a resource — roll the Resource die, but
+          // reroll any "high value" face (6 gold / 4 building materials / 2
+          // valuables) so the grant is random yet capped to the low faces.
+          label: "Roll for resources (random, no high value)",
+          steps: [{ type: "ROLL_RESOURCE_DICE", count: 1, capHighValues: true }]
         }
       ]
     }
@@ -47,7 +37,7 @@ export function polishReducedStartingBonusVisitSteps(): VisitStep[] {
 }
 
 export function polishReducedStartingBonusDescription(_difficulty: GameDifficulty): string {
-  return "Draw 2 Minor Artifacts and choose 1 — OR — take 3 gold / 2 building materials / 1 valuables.";
+  return "Draw 2 Minor Artifacts and choose 1 — OR — roll for resources (random, never 6 gold / 4 building materials / 2 valuables).";
 }
 
 // ---------------------------------------------------------------------------

@@ -25,6 +25,7 @@ import {
   queueNecromancyReinforce,
   recordLevelUpAbilityPick
 } from "./adventure";
+import { diluteUnitExperienceForUpgrade } from "./unit-experience";
 import {
   applyUnitCurrentSide,
   canPlaceTransformOn,
@@ -75,6 +76,7 @@ import {
   finishNeutralPlacement,
   placeCommanderUnit,
   finishCommanderPlacement,
+  autoNeutralPlacement,
   placeTile,
   placeObservatoryTile,
   populationAction,
@@ -82,6 +84,7 @@ import {
   openDiscardPickChoice,
   giveUpCombat,
   refreshHand,
+  mulliganCard,
   resolveVisitStep,
   retreatFromCombat,
   surrenderFromCombat,
@@ -95,6 +98,7 @@ import {
   reviveCommander,
   beginHeavenlyTribulation,
   heroTrain,
+  drillUnit,
   heroGradePick,
   resolveCommanderFirstAid,
   commanderSetStance,
@@ -164,7 +168,12 @@ import {
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { applyCombatScriptRoundStart, combatScriptStatDelta } from "./combat-scripts";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
-import { isNeutralSplashVictimChoice, neutralCombatControllerId } from "./neutral-control";
+import {
+  isNeutralSplashVictimChoice,
+  manualGuardControllerId,
+  neutralCombatControllerId,
+  pvpNeutralControllerId
+} from "./neutral-control";
 import {
   activateBallistas,
   applyPermanentCombatEffectsForPlayer,
@@ -355,6 +364,7 @@ import {
   playerHasAttackInstantOfSchool,
   preHitHealReactions,
   reflectableAttackInstantForPlayer,
+  mapSpellPowerBankAvailable,
   resolvedSpellPowerForStackItem,
   rerollSourceAvailableFor,
   spellAbilitiesSuppressed,
@@ -8192,6 +8202,38 @@ function continueNeutralStep(
   advanceActiveUnit(state);
 }
 
+/**
+ * Manual guard control's "Let the unit act" button: the fighter hands the
+ * CURRENT guard's activation to the rulebook Neutral AI instead of commanding
+ * it by hand. Legal only for the manual controller (never under PvP Neutral
+ * Control, where a human OPPONENT plays the guards) and only before the guard
+ * has begun to act — a half-played activation must be finished manually.
+ */
+function autoNeutralActivation(
+  state: GameState,
+  action: Extract<GameAction, { type: "AUTO_NEUTRAL_ACTIVATION" }>,
+  cards: CardLibrary
+): void {
+  const combat = state.combat;
+  if (!combat || combat.outcome) {
+    throw new Error("No combat is running.");
+  }
+  if (
+    manualGuardControllerId(state, combat) !== action.playerId ||
+    pvpNeutralControllerId(state, combat)
+  ) {
+    throw new Error("You do not command the Neutral units of this combat.");
+  }
+  const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  if (!active || !isNeutralUnit(active) || !isUnitAlive(active) || active.activatedThisRound) {
+    throw new Error("No Neutral unit is waiting to act.");
+  }
+  if (active.movedThisActivation || active.attackedThisActivation) {
+    throw new Error("This guard already began its activation — finish it manually.");
+  }
+  executeNeutralActivation(state, active, cards);
+}
+
 /** Living friendly units the Enchanters could heal (other friendlies only). */
 function enchanterHealCandidates(
   combat: CombatState,
@@ -11058,7 +11100,11 @@ function payOptionCardCost(
   // expertAmount and spends one crown per such card.
   if (cost.powerCost !== undefined) {
     const schools = playedCard.spellSchools ?? [];
-    const standing = standingSpellPower(state, playerId, playedCard);
+    // The map draw-rider bank (Sorcery / Scales) counts as standing Power, so a
+    // banked +1 pays part of a map Spell's tier. Zero in combat (the helper
+    // guards on state.combat), so a combat cost never touches the map bank.
+    const mapBank = mapSpellPowerBankAvailable(state, playerId);
+    const standing = standingSpellPower(state, playerId, playedCard) + mapBank;
     const values = paying.map((cardId, index) => spellPowerValueOfCard(cards[cardId], schools, payModes[index]));
     const expertPays = payModes.filter((mode) => mode === "expert").length;
     const crownsLeft =
@@ -11094,6 +11140,13 @@ function payOptionCardCost(
     }
     if (expertPays > 0) {
       player.combatStats.expertUsesSpentThisRound += expertPays;
+    }
+    // Consume the map bank: it paid toward this cast, so it is spent (one Spell,
+    // one boost — mirrors the combat pendingDrawRiderSpellPower consume). A
+    // base-tier map Spell that pays no Power cost never reaches here and leaves
+    // the bank standing until the hero moves.
+    if (mapBank > 0) {
+      player.mapSpellPowerBank = 0;
     }
   }
 
@@ -14242,6 +14295,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           stats.pendingDrawRiderSpellPower = (stats.pendingDrawRiderSpellPower ?? 0) + bank;
         }
       }
+    } else if (effect.type === "ADD_SPELL_POWER" && !state.combat) {
+      // MAP: bank the +Power for the NEXT map Spell this turn (View Air /
+      // Dimension Door / Fly / Town Portal tiers). Play Sorcery / Scales first
+      // to draw a card, then cast the drawn Spell with the banked Power. The
+      // bank is cleared when the hero moves (performHeroStep) or at the owner's
+      // next turn, and consumed by the next map Spell that pays a Power cost.
+      const bank = getEffectAmount(effect, mode);
+      if (bank > 0) {
+        const player = state.players[action.playerId];
+        player.mapSpellPowerBank = (player.mapSpellPowerBank ?? 0) + bank;
+      }
     }
   }
 
@@ -16335,12 +16399,21 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
     }
 
     targetUnit.variant = "pack";
-    applyUnitCurrentSide(targetUnit, ruleset, unitSideRuleOverrides(state));
     // Mirror onto the backing army card so the reinforcement survives the combat.
     const armyUnit = player.army.find((candidate) => candidate.id === targetUnit.armyUnitId);
     if (armyUnit) {
       armyUnit.side = "pack";
+      // Unit Experience: the conjured demon bodies dilute the veterans like
+      // any other Few→Pack reinforcement; mirror the new XP onto the combat
+      // unit BEFORE the side recompute below so its rank folds stay in sync.
+      diluteUnitExperienceForUpgrade(state, action.playerId, armyUnit, "reinforce");
+      if (armyUnit.experience) {
+        targetUnit.unitExperience = armyUnit.experience;
+      } else {
+        delete targetUnit.unitExperience;
+      }
     }
+    applyUnitCurrentSide(targetUnit, ruleset, unitSideRuleOverrides(state));
 
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -19278,6 +19351,7 @@ function asNeutralSeatCommand<
 /** Adventure actions are validated inside their handlers, not by enumeration. */
 const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REFRESH_HAND",
+  "MULLIGAN_CARD",
   "ASTROLOGERS_HERO_EMPOWER",
   "REVISIT_FIELD",
   "OPEN_MARKET",
@@ -19295,6 +19369,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "FINISH_NEUTRAL_PLACEMENT",
   "PLACE_COMMANDER",
   "FINISH_COMMANDER_PLACEMENT",
+  "AUTO_NEUTRAL_PLACEMENT",
   "SANDBOX_ADD_CARD",
   "SANDBOX_CONFIGURE_SEAT",
   "SANDBOX_SET_OPTIONS",
@@ -19339,6 +19414,9 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "COMMANDER_SET_STANCE",
   "HERO_TRAIN",
   "HERO_GRADE_PICK",
+  // Unit Experience Drill: fully self-validated (rule on, own turn, own Town,
+  // gold, once-per-turn, own army card) and touches only the actor's state.
+  "DRILL_UNIT",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
@@ -19676,6 +19754,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "REFRESH_HAND":
         refreshHand(nextState, action);
         break;
+      case "MULLIGAN_CARD":
+        mulliganCard(nextState, action);
+        break;
       case "ASTROLOGERS_HERO_EMPOWER":
         astrologersHeroEmpower(nextState, action);
         break;
@@ -19820,6 +19901,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "HERO_GRADE_PICK":
         heroGradePick(nextState, action);
         break;
+      case "DRILL_UNIT":
+        drillUnit(nextState, action);
+        break;
       case "USE_HERO_SKILL":
         applyHeroSkillActive(nextState, action);
         break;
@@ -19862,12 +19946,18 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "FINISH_COMMANDER_PLACEMENT":
         finishCommanderPlacement(nextState, action);
         break;
+      case "AUTO_NEUTRAL_PLACEMENT":
+        autoNeutralPlacement(nextState, action);
+        break;
       case "CONTINUE_NEUTRAL_COMBAT":
         continueNeutralCombat(nextState, action);
         advanceCombatRound(nextState, action.playerId);
         break;
       case "CONTINUE_NEUTRAL_STEP":
         continueNeutralStep(nextState, action);
+        break;
+      case "AUTO_NEUTRAL_ACTIVATION":
+        autoNeutralActivation(nextState, action, cards);
         break;
       case "RETREAT_FROM_COMBAT":
         retreatFromCombat(nextState, action);

@@ -40,12 +40,19 @@ import {
   currentSurrenderGoldCost,
   tournamentMoraleSearchAgainEnabled,
   townHasBuildingEffect,
-  unlockedRecruitTiers
+  unlockedRecruitTiers,
+  drillableArmyUnits,
+  unitDrillAvailable,
+  heroHasFreeGateStep
 } from "./adventure";
+import { DRILL_UNIT_GOLD_COST } from "@/data/units/experience";
 import {
   placementCellsFor,
   neutralFormationCellsFor,
   commanderDeploymentCellsFor,
+  neutralFormationCellsForGuard,
+  neutralPlacementIsManual,
+  canMulliganStartingHand,
   getHeroMoveDestinations,
   hillFortCost,
   inCombatPrep,
@@ -123,7 +130,12 @@ import { equipmentSpellPowerBonus } from "./anime-equipment";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
-import { neutralCombatControllerId, neutralControlMustAttack } from "./neutral-control";
+import {
+  manualGuardControllerId,
+  neutralCombatControllerId,
+  neutralControlMustAttack,
+  pvpNeutralControllerId
+} from "./neutral-control";
 import {
   hasOpenAdventureTurn,
   isParallelActor,
@@ -348,6 +360,20 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
 }
 
 /**
+ * +Power banked on the MAP by a Sorcery / Scales-of-the-Greater-Basilisk-style
+ * "+Power, then draw" rider (player.mapSpellPowerBank), available to pay a map
+ * Spell's Power cost. Zero inside combat (the combat bank is the separate
+ * combatStats.pendingDrawRiderSpellPower, folded in performSpellCast) so a
+ * map-banked value can never leak into a combat cast.
+ */
+export function mapSpellPowerBankAvailable(state: GameState, playerId: PlayerId): number {
+  if (state.combat) {
+    return 0;
+  }
+  return state.players[playerId]?.mapSpellPowerBank ?? 0;
+}
+
+/**
  * Whether the player can pay an option's card cost from hand right now.
  *
  * Spell Book (house rule): one stashed Book Spell may count toward a value /
@@ -428,7 +454,11 @@ function canAffordCardCost(
   if (cost.powerCost !== undefined) {
     const card = cardLibrary[cardId];
     const schools = card?.spellSchools ?? [];
-    const standing = card ? standingSpellPower(state, playerId, card) : 0;
+    // The map draw-rider bank (Sorcery / Scales) counts toward a map Spell's
+    // Power exactly like standing Power, so a banked +1 makes a higher tier
+    // affordable with one fewer discard. Zero in combat (guarded in the helper).
+    const standing =
+      (card ? standingSpellPower(state, playerId, card) : 0) + mapSpellPowerBankAvailable(state, playerId);
     const crownsLeft =
       player.limits.expertUses +
       (player.combatStats.expertUseBonusThisRound ?? 0) -
@@ -1099,11 +1129,24 @@ export function getActivationOrder(
   const alive = Object.values(combat.units).filter(isUnitAlive);
   const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
 
-  const acted = new Set<UnitId>(alive.filter((unit) => unit.activatedThisRound).map((unit) => unit.id));
+  // Polish Wait: a unit that Waited has finished its MAIN-phase turn but will
+  // re-activate AFTER every other unit, highest wait token first (the engine's
+  // wait phase). So it leaves the greyed "done" bucket and joins the TAIL of the
+  // upcoming list, and counts as already-acted for the main-phase ordering below.
+  const waited = alive
+    .filter((unit) => unit.waitPending)
+    .sort((left, right) => (right.waitToken ?? 0) - (left.waitToken ?? 0) || left.id.localeCompare(right.id));
+
+  // Truly finished this round (won't act again): activated and NOT waiting.
   const done = alive
-    .filter((unit) => unit.activatedThisRound)
+    .filter((unit) => unit.activatedThisRound && !unit.waitPending)
     .sort((left, right) => initiativeOf(right) - initiativeOf(left) || left.id.localeCompare(right.id));
 
+  // Remaining MAIN-phase units, in the engine's true (alternating) order. A
+  // waited unit is treated as acted here so it never appears in this bucket.
+  const acted = new Set<UnitId>(
+    alive.filter((unit) => unit.activatedThisRound || unit.waitPending).map((unit) => unit.id)
+  );
   const upcoming: CombatUnitState[] = [];
   // Bounded by the unit count: each pass marks exactly one more unit acted.
   for (let guard = alive.length; guard > 0; guard -= 1) {
@@ -1116,7 +1159,8 @@ export function getActivationOrder(
     acted.add(next.id);
   }
 
-  return [...done, ...upcoming];
+  // Order: finished (grey) · upcoming main-phase · waited (re-activate last).
+  return [...done, ...upcoming, ...waited];
 }
 
 function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
@@ -3351,6 +3395,32 @@ function addTurnCardActions(
     }
 
     if (card.effect.type === "CHOOSE_ONE") {
+      // House-rule twin of the combat draw-only CHOOSE_ONE offer: a trigger SIDE
+      // carrying a "+Power/+stat, then draw" rider (Scales of the Greater
+      // Basilisk, Tunic of the Cyclops King, Armor of Wonder) may be played on
+      // your MAP turn just for the draw — outside its reaction window the
+      // stat/Power fizzles and only the draw resolves, and an ADD_SPELL_POWER
+      // side banks +Power for the next map Spell (mapSpellPowerBank; see the
+      // reducer draw-rider handler). Bypasses the card's reaction/combat
+      // phaseLimit exactly like the combat draw-only play bypasses the window.
+      if (!fromSpellBook) {
+        for (const [optionIndex, option] of card.effect.options.entries()) {
+          if (
+            !option.trigger ||
+            (option.effect.type !== "ADD_COMBAT_STAT" && option.effect.type !== "ADD_SPELL_POWER") ||
+            !option.effect.drawCards ||
+            !canAffordCardCost(state, playerId, cardId, option.cost)
+          ) {
+            continue;
+          }
+          actions.push({
+            label: `${card.name}: ${option.label} (draw only${
+              option.effect.type === "ADD_SPELL_POWER" ? ", next Spell +Power" : ""
+            })`,
+            action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", optionIndex, target: { type: "none" } }
+          });
+        }
+      }
       addOptionPlays(actions, state, playerId, card, cardId, "map", cards, undefined, fromSpellBook);
       continue;
     }
@@ -4439,7 +4509,12 @@ function addControlledNeutralUnitActions(
     return;
   }
 
-  // Must-attack: a strike from here is mandatory when one exists.
+  // Must-attack: a strike from here is mandatory when one exists. Under the
+  // polish-wait house rule the guard may WAIT instead (all units can Wait) —
+  // but its Waited re-activation must attack (maybeAddControlledNeutralWait
+  // self-guards on the wait phase, so a Waited guard is never offered Wait
+  // again and `waitMustAttack` above forces the strike).
+  maybeAddControlledNeutralWait(actions, state, playerId, activeUnit);
   if (attacks.length > 0) {
     actions.push(...attacks);
     return;
@@ -4524,6 +4599,22 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
 
   if (controlsNeutral) {
     addControlledNeutralUnitActions(actions, state, playerId, activeUnit);
+    // Manual guard control (the FIGHTER commands their own guards): any single
+    // activation may instead be handed back to the rulebook AI — the classic
+    // "Let the unit act" button, next to the manual commands. Only before the
+    // guard has begun to act, and never under PvP Neutral Control (there a
+    // human OPPONENT plays the guards — no AI delegation).
+    if (
+      manualGuardControllerId(state, combat) === playerId &&
+      !pvpNeutralControllerId(state, combat) &&
+      !activeUnit.movedThisActivation &&
+      !activeUnit.attackedThisActivation
+    ) {
+      actions.push({
+        label: `Let ${activeUnit.name} act (automatic)`,
+        action: { type: "AUTO_NEUTRAL_ACTIVATION", playerId }
+      });
+    }
     return;
   }
 
@@ -4837,7 +4928,13 @@ function addHeroMoveActions(actions: LegalAction[], state: GameState, playerId: 
   }
 
   for (const hero of Object.values(state.heroes)) {
-    if (hero.controllerId !== playerId || hero.movementPoints <= 0 || !hero.spaceId) {
+    if (
+      hero.controllerId !== playerId ||
+      !hero.spaceId ||
+      // Out of movement, the FREE Subterranean-Gate crossing ("one Field",
+      // 0 MP) is still a legal step; anything else needs a point left.
+      (hero.movementPoints <= 0 && !heroHasFreeGateStep(state, hero))
+    ) {
       continue;
     }
 
@@ -7603,21 +7700,6 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     return;
   }
 
-  if (step.type === "WITCH_HUT") {
-    // The rulebook reveals the top Ability card before the player decides.
-    const top = state.decks.abilities?.drawPile.at(-1);
-    const topName = top ? (cards[top]?.name ?? top) : "the top Ability card";
-    actions.push(
-      { label: `Take ${topName} into hand`, action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 } },
-      {
-        label: `Put ${topName} into the discard pile`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
-      },
-      { label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } }
-    );
-    return;
-  }
-
   if (step.type === "MAGIC_SPRING") {
     const topThree = player.discard.slice(-3).reverse();
     topThree.forEach((cardId, index) => {
@@ -7893,8 +7975,6 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
   const guards = Object.values(combat.units).filter(
     (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && isUnitAlive(unit) && !isArrowTowerUnit(unit)
   );
-  // Field = defender's two rows (any cell); Creature Bank = the four corners.
-  const cells = neutralFormationCellsFor(state);
   const occupantAt = new Map<number, CombatUnitState>();
   for (const unit of Object.values(combat.units)) {
     occupantAt.set(unit.position, unit);
@@ -7902,13 +7982,20 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
 
   const obstacles = new Set(combat.obstacles ?? []);
   for (const guard of guards) {
-    for (const position of cells) {
+    // Field = defender's two rows (a shooter is limited to the back row under
+    // Manual guard control); Creature Bank = the four corners.
+    for (const position of neutralFormationCellsForGuard(state, guard)) {
       if (position === guard.position || obstacles.has(position)) {
         continue;
       }
       const occupant = occupantAt.get(position);
       // An empty cell (move) or a fellow guard (swap); anything else stays blocked.
       if (occupant && (occupant.controllerId !== NEUTRAL_PLAYER_ID || isArrowTowerUnit(occupant))) {
+        continue;
+      }
+      // A swap must also respect the partner's rule: a shooter cannot be pushed
+      // off the back row (it would land on the mover's old cell).
+      if (occupant && !neutralFormationCellsForGuard(state, occupant).includes(guard.position)) {
         continue;
       }
       actions.push({
@@ -7918,6 +8005,15 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
         action: { type: "PLACE_NEUTRAL_GUARD", playerId, unitId: guard.id, position }
       });
     }
+  }
+
+  // Manual guard control: the fighter may hand the formation back to the AI's
+  // auto-placement at any point ("return to AI auto control").
+  if (neutralPlacementIsManual(state)) {
+    actions.push({
+      label: "Let the AI place them",
+      action: { type: "AUTO_NEUTRAL_PLACEMENT", playerId }
+    });
   }
 
   actions.push({
@@ -8809,7 +8905,11 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
   // Quiet movement: getHeroMoveDestinations self-filters to trigger-free
   // ("open") fields while the table's interaction slot is busy.
   for (const hero of Object.values(state.heroes)) {
-    if (hero.controllerId !== playerId || !hero.spaceId || hero.movementPoints <= 0) {
+    if (
+      hero.controllerId !== playerId ||
+      !hero.spaceId ||
+      (hero.movementPoints <= 0 && !heroHasFreeGateStep(state, hero))
+    ) {
       continue;
     }
     for (const destination of getHeroMoveDestinations(state, hero)) {
@@ -8944,8 +9044,21 @@ function getCombatInteractionActions(
         // spells are offered off-turn.)
         actions.push(...getOffTurnCombatReactions(state, playerId, cards));
       }
+      // Manual guard control: after this pause the FIGHTER commands the unit
+      // (or delegates via the separate "Let … act (automatic)" button), so the
+      // continue label says so instead of promising the AI will act.
+      const manualNext =
+        pause.kind === "pre-activation" &&
+        combat.units[pause.unitId]?.controllerId === NEUTRAL_PLAYER_ID &&
+        manualGuardControllerId(state, combat) === playerId &&
+        !pvpNeutralControllerId(state, combat);
       actions.push({
-        label: pause.kind === "pre-activation" ? "Let the unit act" : "Continue the enemy turn",
+        label:
+          pause.kind === "pre-activation"
+            ? manualNext
+              ? "Continue — you command this unit"
+              : "Let the unit act"
+            : "Continue the enemy turn",
         action: { type: "CONTINUE_NEUTRAL_STEP", playerId }
       });
     }
@@ -9239,6 +9352,19 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
+  // First-round starting-hand Mulligan (optional mode): after the mandatory
+  // start-of-turn draw, replace up to FIRST_ROUND_MULLIGAN_LIMIT cards one at a
+  // time, in round 1 only. Optional and non-blocking — offered alongside normal
+  // play until the budget runs out.
+  if (canMulliganStartingHand(state, playerId)) {
+    for (const cardId of new Set(player.hand)) {
+      actions.push({
+        label: `Replace ${cards[cardId]?.name ?? cardId} (starting-hand Mulligan)`,
+        action: { type: "MULLIGAN_CARD", playerId, cardId }
+      });
+    }
+  }
+
   // Instant, Ongoing and Map cards may be played during your own map turn.
   addTurnCardActions(actions, state, playerId, cards);
   // Spell Book (house rule): stash hand Spells into the Book to free hand slots.
@@ -9266,6 +9392,19 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       label: "Train (2 movement → +1 Merit)",
       action: { type: "HERO_TRAIN", playerId }
     });
+  }
+
+  // Unit Experience Drill (optional rule): with the main hero in an own Town,
+  // pay gold to grant one army unit +1 XP — once per turn, offered per card
+  // still below max veteran rank. All no-ops when the rule is off.
+  if (unitDrillAvailable(state, playerId)) {
+    for (const armyUnit of drillableArmyUnits(state, playerId)) {
+      const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
+      actions.push({
+        label: `Drill ${unitName} (${DRILL_UNIT_GOLD_COST} gold → +1 unit XP)`,
+        action: { type: "DRILL_UNIT", playerId, armyUnitId: armyUnit.id }
+      });
+    }
   }
   for (const node of heroGradePickableNodes(state, playerId)) {
     actions.push({
@@ -9305,6 +9444,17 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         label: `Open the ${locationDefinitions[field.location]?.name ?? field.location}`,
         action: { type: "OPEN_MARKET", playerId, heroId: hero.id }
       });
+    }
+
+    // Out of movement, the FREE Subterranean-Gate crossing ("one Field", 0 MP)
+    // is still offered — but none of the 1-MP actions below (revisit, dig).
+    if (hero.movementPoints <= 0 && heroHasFreeGateStep(state, hero)) {
+      for (const destination of getHeroMoveDestinations(state, hero)) {
+        actions.push({
+          label: `Move hero to ${destination}`,
+          action: { type: "MOVE_HERO", playerId, heroId: hero.id, to: destination }
+        });
+      }
     }
 
     if (hero.movementPoints > 0) {

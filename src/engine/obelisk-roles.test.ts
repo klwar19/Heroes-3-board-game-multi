@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { GameState, MapFieldState, MapSpaceId, PlayerId } from "./state";
+import type { GameState, MapFieldState, MapSpaceId, MapTileState, PlayerId } from "./state";
 import { GRAIL_OBELISKS_REQUIRED } from "./state";
 import {
   beginFieldVisit,
@@ -7,6 +7,8 @@ import {
   classifyHeroStep,
   getMainHero,
   grailObelisksVisitedCount,
+  isFieldGuarded,
+  materializeTileFields,
   obeliskPresetRole
 } from "./adventure";
 import { pumpAdventureQueues, resolveVisitStep, revisitField } from "./adventure-reducer";
@@ -336,6 +338,121 @@ describe("Obelisk role — bonus", () => {
     expect(state.players.p1.morale).toBe(1);
     expect(state.adventure!.fields[O1]?.obeliskRoll).toBeUndefined();
   });
+
+  it("MULTIPLE awards in 'all' mode grant EVERY reward (AND)", () => {
+    const state = makeGame();
+    setObeliskRole(state, {
+      role: "bonus",
+      bonuses: [
+        { kind: "morale", amount: 1 },
+        { kind: "resources", gold: 5, buildingMaterials: 0, valuables: 0 }
+      ]
+    });
+    const goldBefore = state.players.p1.resources.gold;
+    const hero = parkHero(state, "p1", O1);
+    injectField(state, O1, "obelisk");
+
+    beginFieldVisit(state, hero.id, O1, false);
+    driveVisit(state, "p1");
+
+    // Both awards landed (no pick — every step runs).
+    expect(state.players.p1.morale).toBe(1);
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 5);
+  });
+
+  it("'choose' mode offers ONE reward (OR); picking one applies only it", () => {
+    const state = makeGame();
+    setObeliskRole(state, {
+      role: "bonus",
+      bonusMode: "choose",
+      bonuses: [
+        { kind: "morale", amount: 1 },
+        { kind: "resources", gold: 5, buildingMaterials: 0, valuables: 0 }
+      ]
+    });
+    const goldBefore = state.players.p1.resources.gold;
+    const hero = parkHero(state, "p1", O1);
+    injectField(state, O1, "obelisk");
+
+    beginFieldVisit(state, hero.id, O1, false);
+    // A single pick prompt is open — pick option 1 (resources).
+    const step = state.adventure!.pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 1 });
+
+    // Only the chosen reward landed — the other did NOT (the AND-mode CONTROL above
+    // shows both would apply).
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 5);
+    expect(state.players.p1.morale).toBe(0);
+  });
+});
+
+// --- Map-wide Obelisk / Settlement guard (materialized onto the field) --------
+
+describe("Map-wide field guards (designer)", () => {
+  it("stamps the map-wide Obelisk guard onto obelisk fields (CONTROL: unguarded without it)", () => {
+    const state = makeGame();
+    state.adventure!.mapPreset = { obelisks: { role: "victory-only", guard: { level: 4 } } };
+    state.adventure!.fields = {};
+    materializeTileFields(state.adventure!, {
+      id: "t-ob",
+      tileDefId: "N3",
+      centerRow: 60,
+      centerCol: 60,
+      rotation: 0
+    } as MapTileState);
+    const obelisk = Object.values(state.adventure!.fields).find((f) => f.location === "obelisk")!;
+    expect(obelisk.difficulty).toBe(4);
+    expect(isFieldGuarded(obelisk)).toBe(true);
+
+    // CONTROL: no guard → the obelisk stays unguarded (no difficulty).
+    const control = makeGame();
+    control.adventure!.mapPreset = { obelisks: { role: "victory-only" } };
+    control.adventure!.fields = {};
+    materializeTileFields(control.adventure!, {
+      id: "c",
+      tileDefId: "N3",
+      centerRow: 60,
+      centerCol: 60,
+      rotation: 0
+    } as MapTileState);
+    const cObelisk = Object.values(control.adventure!.fields).find((f) => f.location === "obelisk")!;
+    expect(cObelisk.difficulty).toBeUndefined();
+    expect(isFieldGuarded(cObelisk)).toBe(false);
+  });
+
+  it("a map-wide Settlement guard OVERRIDES the printed settlement difficulty (CONTROL: printed 3 stands)", () => {
+    const state = makeGame();
+    state.adventure!.mapPreset = { settlements: { guard: { level: 6 } } };
+    state.adventure!.fields = {};
+    materializeTileFields(state.adventure!, {
+      id: "t-set",
+      tileDefId: "F1",
+      centerRow: 60,
+      centerCol: 60,
+      rotation: 0
+    } as MapTileState);
+    const settlement = Object.values(state.adventure!.fields).find((f) => f.location === "settlement")!;
+    expect(settlement.difficulty).toBe(6);
+    // A designer settlement guard is flagged "altered" so the map can warn on it.
+    expect(settlement.designedGuard).toBe(true);
+
+    // CONTROL: no settlement config → F1's printed difficulty (3) stands.
+    const control = makeGame();
+    control.adventure!.mapPreset = null;
+    control.adventure!.fields = {};
+    materializeTileFields(control.adventure!, {
+      id: "c",
+      tileDefId: "F1",
+      centerRow: 60,
+      centerCol: 60,
+      rotation: 0
+    } as MapTileState);
+    const cSettlement = Object.values(control.adventure!.fields).find((f) => f.location === "settlement")!;
+    expect(cSettlement.difficulty).toBe(3);
+    // A printed settlement guard is NOT flagged as designer-altered.
+    expect(cSettlement.designedGuard ?? false).toBe(false);
+  });
 });
 
 // --- Role: victory-only ------------------------------------------------------
@@ -511,5 +628,79 @@ describe("Obelisk role — sanitization & describe", () => {
       obelisks: { role: "bonus", bonus: { kind: "resources", gold: 4, valuables: 1 } }
     });
     expect(bonus.some((e) => e.icon === "🗿" && e.text.includes("4 gold, 1 valuables"))).toBe(true);
+  });
+
+  it("round-trips multiple awards + a 'choose' mode + the experience kind", () => {
+    const preset = sanitizeCustomMapPreset({
+      obelisks: {
+        role: "bonus",
+        bonusMode: "choose",
+        bonuses: [
+          { kind: "experience", amount: 3 },
+          { kind: "morale", amount: 1 }
+        ]
+      }
+    });
+    expect(preset?.obelisks).toEqual({
+      role: "bonus",
+      bonusMode: "choose",
+      bonuses: [
+        { kind: "experience", amount: 3 },
+        { kind: "morale", amount: 1 }
+      ]
+    });
+    // A "choose" mode with a single award is meaningless → dropped.
+    const single = sanitizeCustomMapPreset({
+      obelisks: { role: "bonus", bonusMode: "choose", bonuses: [{ kind: "morale", amount: 1 }] }
+    });
+    expect(single?.obelisks).toEqual({ role: "bonus", bonuses: [{ kind: "morale", amount: 1 }] });
+    // Describe shows the OR joiner.
+    const line = describeCustomMapPresetEntries({
+      obelisks: {
+        role: "bonus",
+        bonusMode: "choose",
+        bonuses: [
+          { kind: "morale", amount: 1 },
+          { kind: "movement", amount: 2 }
+        ]
+      }
+    });
+    expect(line.some((e) => e.icon === "🗿" && e.text.includes(" OR "))).toBe(true);
+  });
+
+  it("round-trips a map-wide Obelisk guard (kept on every role)", () => {
+    const bonus = sanitizeCustomMapPreset({
+      obelisks: { role: "bonus", bonus: { kind: "morale", amount: 1 }, guard: { level: 4 } }
+    });
+    expect(bonus?.obelisks).toEqual({
+      role: "bonus",
+      bonus: { kind: "morale", amount: 1 },
+      guard: { level: 4 }
+    });
+    // A guard survives on a non-bonus role too; an over-range level clamps to 7,
+    // and a non-numeric level drops the guard entirely.
+    const monolith = sanitizeCustomMapPreset({
+      obelisks: { role: "monolith", guard: { level: 3 } }
+    });
+    expect(monolith?.obelisks).toEqual({ role: "monolith", guard: { level: 3 } });
+    const clamped = sanitizeCustomMapPreset({ obelisks: { role: "monolith", guard: { level: 99 } } });
+    expect(clamped?.obelisks).toEqual({ role: "monolith", guard: { level: 7 } });
+    const noLevel = sanitizeCustomMapPreset({ obelisks: { role: "monolith", guard: { level: "big" } } });
+    expect(noLevel?.obelisks).toEqual({ role: "monolith" });
+  });
+
+  it("round-trips the map-wide Settlement config (guard + VP) and drops an empty one", () => {
+    const full = sanitizeCustomMapPreset({ settlements: { guard: { level: 5 }, vp: 4 } });
+    expect(full?.settlements).toEqual({ guard: { level: 5 }, vp: 4 });
+
+    const vpOnly = sanitizeCustomMapPreset({ settlements: { vp: 99 } });
+    expect(vpOnly?.settlements).toEqual({ vp: 10 }); // VP clamps to 10
+
+    // Empty / all-degenerate → whole block dropped.
+    const empty = sanitizeCustomMapPreset({ settlements: { vp: 0 } });
+    expect(empty).toBeUndefined();
+
+    const line = describeCustomMapPresetEntries({ settlements: { guard: { level: 5 }, vp: 4 } });
+    expect(line).toContainEqual({ icon: "🏠", text: "Settlements: guard level 5, +4 VP each" });
   });
 });

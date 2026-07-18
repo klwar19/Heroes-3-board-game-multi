@@ -281,6 +281,40 @@ describe("Round-limit end trigger", () => {
     expect(next.adventure?.winnerPlayerId ?? null).toBeNull();
     expect(next.round).toBe(2);
   });
+
+  it("announces the FINAL round as it BEGINS, and ends only AFTER it completes (not before)", () => {
+    const state = makeGame();
+    setVictoryPoints(state, VP_ON, 2);
+    zeroBaseVp(state);
+    getMainHero(state, "p1")!.level = 4; // p1 leads at the limit
+
+    // Round 1 wraps → round 2 (the FINAL round) begins: announced, NOT ended.
+    let next = apply(state, { type: "END_TURN", playerId: "p1" });
+    next = apply(next, { type: "END_TURN", playerId: "p2" });
+    expect(next.round).toBe(2);
+    expect(next.adventure?.winnerPlayerId ?? null).toBeNull();
+    expect(next.eventLog.some((event) => event.type === "FINAL_ROUND" && event.round === 2)).toBe(true);
+    expect(next.eventLog.some((event) => event.type === "VP_SCORING")).toBe(false);
+
+    // Round 2 (the last round) wraps → NOW the game ends by scoring.
+    for (const player of Object.values(next.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    next = apply(next, { type: "END_TURN", playerId: "p1" });
+    next = apply(next, { type: "END_TURN", playerId: "p2" });
+    expect(next.adventure?.winnerPlayerId).toBe("p1");
+    expect(next.eventLog.some((event) => event.type === "VP_SCORING")).toBe(true);
+  });
+
+  it("CONTROL: no FINAL_ROUND fires with VP on but no round limit", () => {
+    const state = makeGame();
+    setVictoryPoints(state, VP_ON); // no round limit
+
+    let next = apply(state, { type: "END_TURN", playerId: "p1" });
+    next = apply(next, { type: "END_TURN", playerId: "p2" });
+    expect(next.eventLog.some((event) => event.type === "FINAL_ROUND")).toBe(false);
+  });
 });
 
 // ===========================================================================
@@ -471,6 +505,38 @@ describe("VP table rows", () => {
 
     expect(rowVp(state, "p1", "Flagged Mines / Settlements")).toBe(2);
     expect(rowVp(state, "p2", "Flagged Mines / Settlements")).toBe(1);
+  });
+
+  it("designer settlement bonus VP scores extra per controlled settlement (CONTROL: absent = no bonus)", () => {
+    const state = makeGame();
+    zeroBaseVp(state);
+    state.adventure!.mapPreset = { settlements: { vp: 4 } };
+    const addSettlement = (spaceId: string, flagOwnerId: PlayerId | null) => {
+      state.adventure!.fields[spaceId] = {
+        spaceId,
+        tileInstanceId: `t-${spaceId}`,
+        slot: 0,
+        location: "settlement",
+        difficulty: undefined,
+        blackCube: false,
+        flagOwnerId,
+        everFlagged: Boolean(flagOwnerId),
+        settlementResource: null
+      };
+    };
+    addSettlement("20,20", "p1");
+    addSettlement("21,21", "p1");
+    addSettlement("22,22", "p2");
+
+    // 2 settlements × 4 = 8 bonus VP for p1; 1 × 4 = 4 for p2 — ON TOP of the flat
+    // 1-VP-each row, which is unchanged.
+    expect(rowVp(state, "p1", "Settlement bonus VP")).toBe(8);
+    expect(rowVp(state, "p2", "Settlement bonus VP")).toBe(4);
+    expect(rowVp(state, "p1", "Flagged Mines / Settlements")).toBe(2);
+
+    // CONTROL: with no settlements config the bonus row disappears entirely.
+    state.adventure!.mapPreset = null;
+    expect(rowVp(state, "p1", "Settlement bonus VP")).toBe(0);
   });
 
   it("artifacts = 1 VP per 2 (floor), counting both owned zones AND removed-from-play", () => {

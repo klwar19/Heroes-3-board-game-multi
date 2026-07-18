@@ -1,4 +1,12 @@
 import { cardLibrary } from "@/data/cards/library";
+import { DRILL_UNIT_GOLD_COST, DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
+import {
+  awardUnitExperienceAfterCombat,
+  diluteUnitExperienceForUpgrade,
+  grantArmyUnitExperience,
+  unitExperienceActive,
+  unitRankForExperience
+} from "./unit-experience";
 import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
@@ -43,6 +51,7 @@ import {
   drawFromNeutralDeck,
   drawGuardArmy,
   effectiveHandLimit,
+  FIRST_ROUND_MULLIGAN_LIMIT,
   fieldCreatureBankId,
   grantCreatureBankReward,
   isCreatureBankId,
@@ -70,7 +79,9 @@ import {
   autoWinArrivalGuard,
   flagField,
   gateFieldsLinked,
+  heroHasFreeGateStep,
   isBankStyleGuardLocation,
+  isTeleportObjectGuardLocation,
   capturableEnemyMinesWithin,
   freeSpellBookActive,
   abilityRollRerollActive,
@@ -83,6 +94,8 @@ import {
   type RecruitPurchaseRef,
   getHeroMovementCapabilities,
   getMainHero,
+  mainHeroInOwnTown,
+  unitDrillAvailable,
   neutralBattleLevel,
   getTileFootprintSpaceIds,
   getTownOfPlayer,
@@ -96,6 +109,7 @@ import {
   instantiateTile,
   isFieldGuarded,
   isOuterEdgeSealed,
+  isTeleportConnectorLocation,
   isTileSlotDesignedSealed,
   isSharedEventBookkeepingReward,
   seaStepHalts,
@@ -143,7 +157,6 @@ import { tilePendingTokens } from "./tile-hex-placements";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
-import { grantUnitExperienceAfterCombat } from "./unit-experience";
 import {
   COMMANDER_MASTERY_MIN_HERO_LEVEL,
   COMMANDER_STAT_KEYS,
@@ -206,7 +219,7 @@ import {
   applyComputerCombatBoost,
   removeComputerCombatBoost,
 } from "./computer/combat-boost";
-import { neutralCombatControllerId } from "./neutral-control";
+import { neutralCombatControllerId, pvpNeutralControllerId } from "./neutral-control";
 import {
   assertParallelInteractionFree,
   hasOpenAdventureTurn,
@@ -810,13 +823,79 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   }
 }
 
+/** Whether `playerId` may still replace a starting-hand card this turn (round 1). */
+export function canMulliganStartingHand(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  return Boolean(
+    state.adventure?.startingHandMulligan &&
+      state.round === 1 &&
+      player &&
+      // A human convenience — a computer seat keeps its dealt opening hand.
+      state.controllers?.[playerId]?.kind !== "computer" &&
+      // Only after the mandatory start-of-turn hand step is done.
+      !player.needsHandRefresh &&
+      !player.canMulligan &&
+      (player.firstRoundMulligansLeft ?? 0) > 0 &&
+      player.hand.length > 0
+  );
+}
+
+/**
+ * First-round starting-hand Mulligan (optional mode): replace ONE hand card.
+ * The card goes to the BOTTOM of the player's own deck (the round-1 discard
+ * rule — never stranded in discard, never handed straight back) and one card is
+ * drawn to replace it, consuming one of the turn's replacements. Repeatable one
+ * card at a time until the budget runs out; round 1 only, after the mandatory
+ * start-of-turn draw.
+ */
+export function mulliganCard(state: GameState, action: Extract<GameAction, { type: "MULLIGAN_CARD" }>): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  assertActiveTurn(state, action.playerId);
+  if (!state.adventure?.startingHandMulligan) {
+    throw new Error("Starting-hand Mulligan is off for this game.");
+  }
+  if (state.round !== 1) {
+    throw new Error("The starting-hand Mulligan is only available in the first round.");
+  }
+  if (player.needsHandRefresh || player.canMulligan) {
+    throw new Error("Take your start-of-turn draw first.");
+  }
+  const left = player.firstRoundMulligansLeft ?? 0;
+  if (left <= 0) {
+    throw new Error(`You may replace at most ${FIRST_ROUND_MULLIGAN_LIMIT} starting-hand cards.`);
+  }
+  const index = player.hand.indexOf(action.cardId);
+  if (index === -1) {
+    throw new Error("That card is not in your hand.");
+  }
+  // Discard the chosen card to the BOTTOM of your own deck, then draw one.
+  player.hand.splice(index, 1);
+  player.deck.unshift(action.cardId);
+  drawCardsForPlayer(state, action.playerId, 1);
+  player.firstRoundMulligansLeft = left - 1;
+  appendEvent(state, {
+    type: "HAND_MULLIGAN",
+    playerId: action.playerId,
+    remaining: player.firstRoundMulligansLeft
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Map movement
 // ---------------------------------------------------------------------------
 
 export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapSpaceId[] {
   const adventure = state.adventure;
-  if (!adventure || !hero.spaceId || hero.movementPoints <= 0 || hero.movementHaltedThisTurn) {
+  if (!adventure || !hero.spaceId || hero.movementHaltedThisTurn) {
+    return [];
+  }
+  // Out of movement: the only step left is the FREE Subterranean-Gate crossing
+  // (the two linked halves are "one Field" — 0 MP, see performHeroStep).
+  const freeGateOnly = hero.movementPoints <= 0;
+  if (freeGateOnly && !heroHasFreeGateStep(state, hero)) {
     return [];
   }
 
@@ -829,6 +908,12 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
 
   const movement = getHeroMovementCapabilities(state, hero);
   return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
+    if (
+      freeGateOnly &&
+      !gateFieldsLinked(adventure.fields[hero.spaceId as MapSpaceId], adventure.fields[spaceId])
+    ) {
+      return false;
+    }
     if (!canCrossEdge(state, hero.spaceId as MapSpaceId, spaceId, movement)) {
       return false;
     }
@@ -860,9 +945,20 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
   const toField = adventure.fields[to];
   // The two halves of a Subterranean Gate Token are "one Field": stepping
   // between them is the tunnel travel — cave-visit (CAVEHEAD), not horse steps.
+  // Because they are one Field, the descend/ascend step is FREE (0 MP); every
+  // other step spends its 1 MP as usual.
   const throughGate = gateFieldsLinked(fromField, toField);
   hero.spaceId = to;
-  hero.movementPoints -= 1;
+  if (!throughGate) {
+    hero.movementPoints -= 1;
+  }
+  // The map draw-rider spell-Power bank (Sorcery / Scales) "goes away after you
+  // move" — a hero must cast the boosted Spell before stepping off. Cleared on
+  // any step (even a free Subterranean-Gate crossing counts as moving).
+  const mover = state.players[hero.controllerId];
+  if (mover?.mapSpellPowerBank) {
+    mover.mapSpellPowerBank = 0;
+  }
 
   appendEvent(state, {
     type: "HERO_MOVED",
@@ -1327,7 +1423,7 @@ function parallelQuietMoveBlocker(state: GameState, playerId: PlayerId): PlayerI
 }
 
 export function moveHeroAdventure(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO" }>): void {
-  requireAdventure(state);
+  const adventure = requireAdventure(state);
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
   // Parallel turns: while another player's battle/choice is open, this hero may
@@ -1343,7 +1439,12 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
     throw new Error("That hero is not on the map.");
   }
 
-  if (hero.movementPoints <= 0) {
+  // The FREE Subterranean-Gate crossing ("one Field", 0 MP) is allowed even
+  // with no movement points left; every paid step still needs a point.
+  if (
+    hero.movementPoints <= 0 &&
+    !gateFieldsLinked(adventure.fields[hero.spaceId], adventure.fields[action.to])
+  ) {
     throw new Error("That hero has no movement points left.");
   }
 
@@ -1378,7 +1479,7 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
  * crossed mid-path but the walk cannot end on them.
  */
 export function moveHeroPathAdventure(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO_PATH" }>): void {
-  requireAdventure(state);
+  const adventure = requireAdventure(state);
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
   // Parallel turns: while another player's battle/choice is open the walk may
@@ -1397,7 +1498,12 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     throw new Error("The movement path is empty.");
   }
 
-  if (hero.movementPoints <= 0) {
+  // A walk that STARTS with the free Subterranean-Gate crossing ("one Field",
+  // 0 MP) may begin even with no movement points left.
+  if (
+    hero.movementPoints <= 0 &&
+    !gateFieldsLinked(adventure.fields[hero.spaceId], adventure.fields[action.path[0]])
+  ) {
     throw new Error("That hero has no movement points left.");
   }
 
@@ -1446,7 +1552,12 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
 
   const slotBefore = parallelBlocker ? parallelSlotSignature(state) : null;
   for (const [index, step] of action.path.entries()) {
-    if (hero.movementPoints <= 0) {
+    // Out of points: the walk ends — unless the NEXT step is the free
+    // Subterranean-Gate crossing ("one Field", 0 MP), which still executes.
+    if (
+      hero.movementPoints <= 0 &&
+      !gateFieldsLinked(adventure.fields[hero.spaceId ?? step], adventure.fields[step])
+    ) {
       break;
     }
 
@@ -1788,6 +1899,15 @@ export function isTileRotationConnected(state: GameState, tile: MapTileState, ro
     return true;
   }
 
+  // A tile linked by a Subterranean Gate plan joins the map THROUGH that gate
+  // (surface↔cavern), not by a walked edge — so no rotation can "seal it off".
+  // This also covers the designer's own gate links, whose gate has not carved
+  // yet during the rotation choice. (The user's bug: a rotation toward a gate
+  // was rejected as sealed.)
+  if ((adventure.gatePlans ?? []).some((plan) => plan.surfaceTileId === tile.id || plan.undergroundTileId === tile.id)) {
+    return true;
+  }
+
   const center = { row: tile.centerRow, col: tile.centerCol };
   const footprint = tileFootprint(center, rotation);
   const footprintIds = new Set(footprint.map(hexSpaceId));
@@ -1796,6 +1916,13 @@ export function isTileRotationConnected(state: GameState, tile: MapTileState, ro
     const fieldDef = def.fields[slot];
     if (!fieldDef || locationDefinitions[fieldDef.location]?.category === "blocked") {
       continue;
+    }
+
+    // A teleport connector already carved on THIS slot (Monolith / Teleport Gate
+    // / Subterranean Gate / Whirlpool / one-way) links the tile into the map via
+    // the teleport network — the tile is connected whatever its walked edges.
+    if (isTeleportConnectorLocation(adventure.fields[hexSpaceId(footprint[slot])]?.location ?? "")) {
+      return true;
     }
 
     // The slot's own outer border must be open — printed (tile-frame) OR a
@@ -1817,6 +1944,14 @@ export function isTileRotationConnected(state: GameState, tile: MapTileState, ro
       const neighborField = adventure.fields[neighborId];
       if (!neighborField) {
         continue;
+      }
+      // A teleport connector NEIGHBOUR (Monolith / Teleport Gate / Subterranean
+      // Gate / …) is a valid doorway even when its own outer arc reads sealed —
+      // a gate carved onto a former Blocked Field keeps that slot's printed
+      // sealed arc, which used to make the check wrongly treat the gate as a
+      // blocked field and report the tile "sealed off".
+      if (isTeleportConnectorLocation(neighborField.location)) {
+        return true;
       }
       if (locationDefinitions[neighborField.location]?.category === "blocked") {
         continue;
@@ -2306,6 +2441,15 @@ export function tileDefHasOreMine(tileDefId: string): boolean {
   );
 }
 
+/** A Ⅱ–Ⅲ tile definition that carries a Mine of the given resource. */
+export function tileDefHasResourceMine(tileDefId: string, resource: "gold" | "valuables"): boolean {
+  return Boolean(
+    allTileDefinitions[tileDefId]?.fields.some(
+      (field) => field.location === "mine" && field.resource === resource
+    )
+  );
+}
+
 /** Whether any tile still in the undrawn Ⅱ–Ⅲ pool carries a Settlement. */
 function farTilePoolHasSettlement(state: GameState): boolean {
   return (state.adventure?.farTilePool ?? []).some(tileDefHasSettlement);
@@ -2318,7 +2462,7 @@ function farTilePoolHasSettlement(state: GameState): boolean {
  * sequence (mirrors combat dice `scriptedRolls`). Returns undefined if the pool
  * is empty.
  */
-function drawFarTileFromPool(state: GameState): string | undefined {
+function drawFarTileFromPool(state: GameState, prefer?: "gold" | "valuables"): string | undefined {
   const adventure = requireAdventure(state);
   const pool = adventure.farTilePool ?? (adventure.farTilePool = []);
   const scripted = adventure.farTileScriptedDraws;
@@ -2332,6 +2476,26 @@ function drawFarTileFromPool(state: GameState): string | undefined {
   }
   if (pool.length === 0) {
     return undefined;
+  }
+  // Blind Ⅱ–Ⅲ choice: restrict the random draw to tiles carrying the preferred
+  // Mine. When none is left the draw falls back to the whole pool, with a
+  // public note — the guarantee soft-fails, it never blocks the opening.
+  if (prefer) {
+    const matching = pool
+      .map((id, index) => ({ id, index }))
+      .filter((entry) => tileDefHasResourceMine(entry.id, prefer));
+    if (matching.length > 0) {
+      const random = createSeededRandom(`${state.seed}#far-tile-open#${eventSeedNumber(state)}#${pool.length}`);
+      const picked = matching[random.nextInt(0, matching.length - 1)];
+      const [id] = pool.splice(picked.index, 1);
+      return id;
+    }
+    appendEvent(state, {
+      type: "MAP_SECRET_FEATURE_FALLBACK",
+      feature: prefer === "gold" ? "gold_mine" : "valuables_mine",
+      group: "far",
+      message: `No Ⅱ–Ⅲ tile with a ${prefer === "gold" ? "gold" : "valuables"} Mine is left in the pool — drew a random tile instead.`
+    });
   }
   const random = createSeededRandom(`${state.seed}#far-tile-open#${eventSeedNumber(state)}#${pool.length}`);
   const [id] = pool.splice(random.nextInt(0, pool.length - 1), 1);
@@ -2542,6 +2706,42 @@ function beginFarTileFlip(
   if (supply[ctx.supplyIndex] !== UNOPENED_FAR_TILE) {
     throw new Error("That Ⅱ–Ⅲ tile is not in your supply.");
   }
+
+  // Blind Ⅱ–Ⅲ tile choice (optional rule): BEFORE any tile is drawn, the
+  // opener picks blindly — gold mine / valuables mine / no preference — and the
+  // draw is filtered by that pick. The reveal-a-tile-already-on-the-map path
+  // never comes through here (its identity is fixed). Scripted test draws skip
+  // the stage so every legacy flip test keeps its exact sequence.
+  if (
+    adventure.farTileBlindChoice &&
+    (adventure.farTilePool?.length ?? 0) > 0 &&
+    (adventure.farTileScriptedDraws?.length ?? 0) === 0
+  ) {
+    supply.splice(ctx.supplyIndex, 1);
+    const flip: NonNullable<typeof adventure.pendingFarTileFlip> = {
+      playerId: ctx.playerId,
+      ...(ctx.heroId ? { heroId: ctx.heroId } : {}),
+      centerRow: ctx.centerRow,
+      centerCol: ctx.centerCol,
+      via: ctx.via,
+      ...(ctx.observatoryFieldId ? { observatoryFieldId: ctx.observatoryFieldId } : {}),
+      returnPhase: state.phase,
+      openingIndex: (adventure.farTilesOpenedByPlayer?.[ctx.playerId] ?? 0) + 1,
+      candidate: "",
+      lastNonSettlement: null,
+      mineRerollUsed: false,
+      offerMode: "blind"
+    };
+    adventure.pendingFarTileFlip = flip;
+    openFarTileFlipChoice(
+      state,
+      flip,
+      "Blind Ⅱ–Ⅲ tile choice — before seeing any tile, what kind do you want? (The draw falls back to a random tile if none is left.)",
+      ["No preference — draw any tile", "Prefer a tile with a GOLD mine", "Prefer a tile with a VALUABLES mine"]
+    );
+    return;
+  }
+
   const candidate = drawFarTileFromPool(state);
   if (!candidate) {
     throw new Error("There are no Ⅱ–Ⅲ tiles left to open.");
@@ -2629,6 +2829,26 @@ export function resolveFarTileFlip(state: GameState, optionIndex: number): void 
   const flip = adventure.pendingFarTileFlip;
   if (!flip) {
     throw new Error("There is no Ⅱ–Ⅲ tile flip to resolve.");
+  }
+
+  if (flip.offerMode === "blind") {
+    // Blind Ⅱ–Ⅲ choice: [0] no preference, [1] prefer a GOLD mine, [2] prefer a
+    // VALUABLES mine. Only NOW is the tile drawn (filtered by the pick, falling
+    // back to a plain draw with a note); it then runs the normal offer chain
+    // (2nd-opening Settlement guarantee, ore-mine reroll) unchanged.
+    const prefer = optionIndex === 1 ? "gold" : optionIndex === 2 ? "valuables" : undefined;
+    const candidate = drawFarTileFromPool(state, prefer);
+    if (!candidate) {
+      // Unreachable in practice (the pool was non-empty when the choice opened
+      // and no other draw can happen while it is), but never strand the choice.
+      throw new Error("There are no Ⅱ–Ⅲ tiles left to open.");
+    }
+    flip.candidate = candidate;
+    state.pendingChoice = null;
+    state.phase = flip.returnPhase;
+    state.priorityPlayerId = null;
+    presentFarTileOffersOrFinalize(state);
+    return;
   }
 
   if (flip.offerMode === "pick") {
@@ -2831,11 +3051,6 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       visit.steps.shift();
       break;
     }
-    case "WITCH_HUT": {
-      resolveWitchHut(state, action);
-      visit.steps.shift();
-      break;
-    }
     case "MAGIC_SPRING": {
       resolveMagicSpring(state, action);
       visit.steps.shift();
@@ -3031,6 +3246,8 @@ function resolveSettlementChoice(
   }
 
   target.side = "pack";
+  // Unit Experience: fresh recruits dilute the card's veterans (halved XP).
+  diluteUnitExperienceForUpgrade(state, action.playerId, target, "reinforce");
   // The reserved Legion voucher (if any) is spent on this unit, win or lose.
   consumeRecruitVoucherFor(state, action.playerId, {
     kind: "reinforce",
@@ -3056,42 +3273,6 @@ function resolveSettlementChoice(
     kind: "reinforce",
     cost
   });
-}
-
-function resolveWitchHut(state: GameState, action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>): void {
-  const player = state.players[action.playerId];
-  const deck = state.decks.abilities;
-  if (!player || !deck) {
-    throw new Error("The Witch Hut cannot resolve.");
-  }
-
-  if (action.decline) {
-    return;
-  }
-
-  // Take-the-top obeys the acquisition rules: redraw past any card this hero may
-  // not take (a duplicate it owns, or Necromancy for a non-Necropolis hero),
-  // dropping each onto the deck discard, so a duplicate is never gained.
-  if (action.optionIndex !== 1) {
-    while (
-      deck.drawPile.length > 0 &&
-      !canAcquireSharedDeckCard(state, action.playerId, "abilities", deck.drawPile[deck.drawPile.length - 1])
-    ) {
-      deck.discardPile.push(deck.drawPile.pop() as string);
-    }
-  }
-
-  // Option 0: take the top Ability card into hand. Option 1: discard it.
-  const top = deck.drawPile.pop();
-  if (!top) {
-    return;
-  }
-
-  if (action.optionIndex === 1) {
-    deck.discardPile.push(top);
-  } else {
-    player.hand.push(top);
-  }
 }
 
 /**
@@ -3269,6 +3450,8 @@ function resolveHillFort(state: GameState, action: Extract<GameAction, { type: "
   }
   spendResources(state, action.playerId, cost, "Hill Fort reinforcement");
   target.side = "pack";
+  // Unit Experience: fresh recruits dilute the card's veterans (halved XP).
+  diluteUnitExperienceForUpgrade(state, action.playerId, target, "reinforce");
   appendEvent(state, {
     type: "UNIT_RECRUITED",
     playerId: action.playerId,
@@ -3679,6 +3862,21 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
     return;
   }
 
+  // A guard on a single-hex TELEPORT gateway (Monolith / Teleport Gate /
+  // Whirlpool) is fought like a Creature-Bank guard: NO Quick Combat (a
+  // high-level hero cannot skip past a guarded gateway) and NO experience
+  // (combat difficulty 0). Unlike an outpost it keeps the normal Round limit and
+  // the continue-or-retreat window. Pin the army level so the difficulty-0 fight
+  // still draws the real designed guards — a plain LEVEL guard carries no
+  // `customGuardLevel` (an EXACT army uses `customGuardUnits` directly).
+  if (isTeleportObjectGuardLocation(field.location)) {
+    if (!field.customGuardUnits?.length && !field.customGuardLevel && field.difficulty) {
+      field.customGuardLevel = field.difficulty;
+    }
+    beginNeutralCombatPlacement(state, hero, field, 0);
+    return;
+  }
+
   // Designer "certain army" guard: Quick Combat and Diplomacy never bypass an
   // exact designed army — a high-level hero cannot auto-win past units it has
   // never seen. The fight is always real; the field's (tier-derived) difficulty
@@ -3770,8 +3968,10 @@ function beginNeutralCombatPlacement(
   });
 
   // PvP Neutral Control: tell the table — and above all the controlling
-  // player — that a HUMAN plays the guards of this fight, PvP-style.
-  const neutralController = neutralCombatControllerId(state, combat);
+  // player — that a HUMAN plays the guards of this fight, PvP-style. Manual
+  // guard control stays silent here: the fighter commanding their own guards
+  // needs no announcement (pvpNeutralControllerId, not the combined read).
+  const neutralController = pvpNeutralControllerId(state, combat);
   if (neutralController) {
     const controllerName = state.players[neutralController]?.name ?? neutralController;
     const fighterName = state.players[playerId]?.name ?? playerId;
@@ -4896,6 +5096,12 @@ function openNeutralPlacementWindow(state: GameState): boolean {
   if (!combat) {
     return false;
   }
+  // The pre-battle SORT opens for whoever plays the guards: a human OPPONENT
+  // under PvP Neutral Control, OR — new — the FIGHTER themselves under Manual
+  // guard control, who may relocate the guards within the defender's two rows
+  // (shooters kept on the back row) before the battle begins, or hand the
+  // formation back to the AI with "Let the AI place them". A plain AI fight (no
+  // controller) never opens the window.
   const controller = neutralCombatControllerId(state, combat);
   if (!controller) {
     return false;
@@ -4936,6 +5142,40 @@ export function neutralFormationCellsFor(state: GameState): number[] {
 }
 
 /**
+ * Whether the OPEN placement window is the Manual-guard-control fighter
+ * arranging their OWN guards (as opposed to a PvP-Neutral-Control opponent
+ * arranging an enemy's guards). The PvP controller is never the fighter, so the
+ * controller being the fighter uniquely identifies Manual guard control — the
+ * only mode that carries the "shooters on the back row" restriction and the
+ * "Let the AI place them" reset.
+ */
+export function neutralPlacementIsManual(state: GameState): boolean {
+  const combat = state.combat;
+  return Boolean(combat && combat.pendingNeutralPlacement && combat.pendingNeutralPlacement === combat.attackerPlayerId);
+}
+
+/**
+ * The formation cells a SPECIFIC Neutral guard may occupy during the pre-battle
+ * sort. Same as {@link neutralFormationCellsFor} for a PvP-Neutral-Control sort
+ * (any defender-row cell on a field, any corner on a bank). Under Manual guard
+ * control (the FIGHTER arranges their OWN guards) a SHOOTER — a ranged unit — is
+ * restricted to the defender BACK row (Heroes 3 "shooters in the back"); ground
+ * and flying guards keep both rows, and bank corners never restrict.
+ */
+export function neutralFormationCellsForGuard(state: GameState, guard: CombatUnitState): number[] {
+  const combat = state.combat;
+  const cells = neutralFormationCellsFor(state);
+  if (!combat) {
+    return cells;
+  }
+  const isBank = combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId);
+  if (!isBank && guard.type === "ranged" && neutralPlacementIsManual(state)) {
+    return [...DEFENDER_BACKLINE];
+  }
+  return cells;
+}
+
+/**
  * PvP Neutral Control: the controller repositions ONE Neutral guard during the
  * pre-battle sort (PLACE_NEUTRAL_GUARD). Moves the guard to an empty cell in the
  * formation zone, or SWAPS it with another guard already standing there. Field
@@ -4950,12 +5190,17 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
   if (!guard || guard.controllerId !== NEUTRAL_PLAYER_ID || guard.damage >= guard.maxHealth || isArrowTowerUnit(guard)) {
     throw new Error("That unit is not a Neutral guard you can reposition.");
   }
-  // Field = any defender-row cell; bank = the four corners only.
-  if (!neutralFormationCellsFor(state).includes(action.position)) {
+  // Field = any defender-row cell (shooters restricted to the back row under
+  // Manual guard control); bank = the four corners only.
+  const isBank = combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId);
+  const shooterRestricted = !isBank && guard.type === "ranged" && neutralPlacementIsManual(state);
+  if (!neutralFormationCellsForGuard(state, guard).includes(action.position)) {
     throw new Error(
-      combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)
+      isBank
         ? "A Creature Bank guard must stay on one of the four corner cells."
-        : "A Neutral guard must stay on the defender's back or front line."
+        : shooterRestricted
+          ? "A shooter must be placed on the defender's back row."
+          : "A Neutral guard must stay on the defender's back or front line."
     );
   }
   // Combat obstacles (walls, force fields, …) are never landable.
@@ -4971,6 +5216,11 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
     // holds its cell (there are none but the neutral guards during this window).
     if (occupant.controllerId !== NEUTRAL_PLAYER_ID || isArrowTowerUnit(occupant)) {
       throw new Error("That space is taken.");
+    }
+    // A swap must also respect the partner's own rule: a shooter cannot be
+    // pushed to the front row (its destination is the mover's old cell).
+    if (!neutralFormationCellsForGuard(state, occupant).includes(guard.position)) {
+      throw new Error("A shooter must stay on the defender's back row.");
     }
     occupant.position = guard.position;
     appendEvent(state, {
@@ -5003,6 +5253,51 @@ export function finishNeutralPlacement(
     return;
   }
   finalizeCombatStart(state);
+}
+
+/** Re-run the rulebook AI's auto-placement for the current Neutral guards. */
+function resetNeutralFormationToAuto(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  const guards = Object.values(combat.units).filter(
+    (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage < unit.maxHealth && !isArrowTowerUnit(unit)
+  );
+  if (combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)) {
+    placeCreatureBankGuards(guards);
+  } else {
+    placeNeutralUnits(guards, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
+  }
+  for (const guard of guards) {
+    appendEvent(state, {
+      type: "COMBAT_UNIT_PLACED",
+      playerId: combat.attackerPlayerId,
+      unitId: guard.id,
+      position: guard.position
+    });
+  }
+}
+
+/**
+ * Manual guard control: reset the Neutral formation to the rulebook AI's
+ * auto-placement (shooters to the back row) during the pre-battle sort, then
+ * keep the window open — "Let the AI place them / return to AI auto control".
+ * Legal only for the manual-control fighter arranging their OWN guards; a PvP
+ * opponent sorting an enemy's formation has no auto fallback.
+ */
+export function autoNeutralPlacement(
+  state: GameState,
+  action: Extract<GameAction, { type: "AUTO_NEUTRAL_PLACEMENT" }>
+): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingNeutralPlacement !== action.playerId) {
+    throw new Error("There is no Neutral formation to sort right now.");
+  }
+  if (!neutralPlacementIsManual(state)) {
+    throw new Error("Only the fighter may hand the formation back to the AI.");
+  }
+  resetNeutralFormationToAuto(state);
 }
 
 /**
@@ -7355,12 +7650,6 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
   }
 
-  // Anime Unit Experience: after the army-sync loop (dead cards already removed,
-  // survivors still in `player.army`), grant +1 veterancy XP to every surviving
-  // army card the WINNER fielded. No-op with the module off / a Neutral winner;
-  // never opens a window (pure grant), so the AI never stalls on it.
-  grantUnitExperienceAfterCombat(state);
-
   // Keep-troops Give up: the conceding hero loses no unit but discards its whole
   // hand to its discard pile (the cost of conceding when troops are kept).
   if (giveUpKeepsTroops && giveUpLoserId) {
@@ -7370,6 +7659,13 @@ export function finalizeAdventureCombat(state: GameState): void {
       player.hand = [];
     }
   }
+
+  // Unit Experience (optional rule): the winner's surviving deployed units
+  // gain XP now that the army-card sync above has settled sides/casualties
+  // (WoG UES: survivors of a hero-led won battle train). The Hierophant First
+  // Aid flip-up BELOW deliberately never dilutes this award — it restores this
+  // battle's own casualties, not fresh recruits. No-op while the rule is off.
+  awardUnitExperienceAfterCombat(state);
 
   // Brute "Soul Reformer": the winner gains 2 gold after each combat won while
   // the Brute survived it (the board adaptation of "50% of battle experience
@@ -7915,6 +8211,66 @@ export function heroTrain(state: GameState, action: Extract<GameAction, { type: 
   hero.heroTrainedRound = state.round;
   appendEvent(state, { type: "HERO_TRAINED", playerId: action.playerId, heroId: hero.id });
   gainGradeProgress(state, action.playerId, HERO_TRAIN_MERIT, "train");
+}
+
+/**
+ * DRILL_UNIT (Unit Experience optional rule): with the main hero standing in
+ * an OWN Town, pay DRILL_UNIT_GOLD_COST (2) gold to grant one army unit card
+ * DRILL_UNIT_XP (1) experience. Once per own turn; cards already at max rank
+ * are not drillable. Self-validating; opens no window (a threshold crossing
+ * emits UNIT_RANK_UP inside grantArmyUnitExperience).
+ */
+export function drillUnit(state: GameState, action: Extract<GameAction, { type: "DRILL_UNIT" }>): void {
+  const adventure = state.adventure;
+  const player = state.players[action.playerId];
+  if (!adventure || !player) {
+    throw new Error("No adventure in progress.");
+  }
+  if (!unitExperienceActive(state)) {
+    throw new Error("Unit experience is off for this game.");
+  }
+  if (state.combat) {
+    throw new Error("Drill on your own map turn, not during combat.");
+  }
+  if (!hasOpenAdventureTurn(state, action.playerId)) {
+    throw new Error("Drill on your own turn.");
+  }
+  assertParallelInteractionFree(state, action.playerId);
+  if (!mainHeroInOwnTown(state, action.playerId)) {
+    throw new Error("Drilling needs your main hero in one of your Towns.");
+  }
+  if (!unitDrillAvailable(state, action.playerId)) {
+    throw new Error(
+      `Drilling needs ${DRILL_UNIT_GOLD_COST} gold, once per turn, and a unit below max rank.`
+    );
+  }
+  const armyUnit = player.army.find((candidate) => candidate.id === action.armyUnitId);
+  if (!armyUnit) {
+    throw new Error("That unit is not in your army.");
+  }
+  const def = coreUnitDefinitions[armyUnit.unitDefId];
+  if (!def) {
+    throw new Error("That unit cannot be drilled.");
+  }
+  // Guard the SPECIFIC target: `unitDrillAvailable` only proves SOME card is
+  // drillable, and the offer (drillableArmyUnits) hides maxed cards — but a
+  // forged/stale DRILL_UNIT aimed at a max-rank card would otherwise spend the
+  // gold and burn the once-per-turn drill on a no-op (XP past the top threshold
+  // never changes the rank). Reject it cleanly, honouring the documented rule
+  // "cards already at max rank are not drillable".
+  if (unitRankForExperience(def.tier, armyUnit.experience ?? 0) >= MAX_UNIT_RANK) {
+    throw new Error("That unit is already at max veteran rank.");
+  }
+  spendResources(state, action.playerId, { gold: DRILL_UNIT_GOLD_COST }, "unit drill");
+  player.unitDrillRound = state.round;
+  grantArmyUnitExperience(state, action.playerId, armyUnit, DRILL_UNIT_XP);
+  appendEvent(state, {
+    type: "UNIT_DRILLED",
+    playerId: action.playerId,
+    unitDefId: armyUnit.unitDefId,
+    unitName: def.name,
+    experience: armyUnit.experience ?? 0
+  });
 }
 
 /**
@@ -8583,6 +8939,8 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       const target = player.army.find((unit) => unit.id === purchase.armyUnitId);
       if (target) {
         target.side = "pack";
+        // Unit Experience: recruits dilute the card's veterans (halved XP).
+        diluteUnitExperienceForUpgrade(state, action.playerId, target, "reinforce");
         appendEvent(state, {
           type: "UNIT_RECRUITED",
           playerId: action.playerId,
@@ -8595,6 +8953,8 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       const target = player.army.find((unit) => unit.id === purchase.armyUnitId);
       if (target) {
         target.stacks = (target.stacks ?? 0) + 1;
+        // Unit Experience: the added Stack layer dilutes the veterans (-1 XP).
+        diluteUnitExperienceForUpgrade(state, action.playerId, target, "stack");
         appendEvent(state, {
           type: "ARMY_STACK_PURCHASED",
           playerId: action.playerId,

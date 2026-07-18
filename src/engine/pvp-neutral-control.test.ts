@@ -664,6 +664,9 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     const controllerSorts = getLegalActions(state, "p2");
     expect(controllerSorts.some((offer) => offer.action.type === "PLACE_NEUTRAL_GUARD")).toBe(true);
     expect(controllerSorts.some((offer) => offer.action.type === "FINISH_NEUTRAL_PLACEMENT")).toBe(true);
+    // The "Let the AI place them" reset is Manual-guard-control ONLY: a PvP
+    // opponent arranging an enemy's formation is never offered it.
+    expect(controllerSorts.some((offer) => offer.action.type === "AUTO_NEUTRAL_PLACEMENT")).toBe(false);
     // The FIGHTER may not sort the neutral formation.
     expect(getLegalActions(state, "p1").some((offer) => offer.action.type === "PLACE_NEUTRAL_GUARD")).toBe(false);
     expect(getLegalActions(state, "p1").some((offer) => offer.action.type === "FINISH_NEUTRAL_PLACEMENT")).toBe(false);
@@ -714,6 +717,21 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
       position: freeDefenderCell
     });
     expect(state.combat!.units[a.id].position).toBe(freeDefenderCell);
+
+    // CONTROL: the shooter-on-the-back-row rule is Manual-guard-control ONLY. A
+    // PvP opponent may place even a RANGED guard on a FRONT-row cell.
+    state.combat!.units[a.id].type = "ranged";
+    const frontCell = [4, 5, 6, 7].find(
+      (cell) => !Object.values(state.combat!.units).some((unit) => unit.position === cell)
+    )!;
+    const rangedToFront = applyAction(state, {
+      type: "PLACE_NEUTRAL_GUARD",
+      playerId: "p2",
+      unitId: a.id,
+      position: frontCell
+    });
+    expect(rangedToFront.errors).toEqual([]);
+    expect(rangedToFront.state.combat!.units[a.id].position).toBe(frontCell);
 
     // Attacker-side cell 12 is outside the defender's two rows — rejected.
     const outOfZone = applyAction(state, { type: "PLACE_NEUTRAL_GUARD", playerId: "p2", unitId: a.id, position: 12 });

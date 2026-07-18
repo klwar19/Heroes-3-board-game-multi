@@ -30,6 +30,7 @@ import type {
   CustomGuardSpec,
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
+  CustomMapSettlementConfig,
   CustomMapObject,
   CustomMapObjectKind,
   CustomMapObjectPlacement,
@@ -54,6 +55,24 @@ export type { CustomMapPreset };
  * the demand warnings AND the setup draw all share (adventure-setup imports
  * it from here, so the three consumers can never diverge).
  */
+/** Every legal {@link SecretTileFeature} id (local copy — map-preset is imported
+ *  by adventure-setup, so it cannot reuse that module's `isSecretTileFeature`). */
+const SECRET_FEATURE_IDS = new Set<SecretTileFeature>([
+  "gold_mine",
+  "valuables_mine",
+  "materials_mine",
+  "any_mine",
+  "obelisk",
+  "settlement",
+  "town",
+  "objective"
+]);
+
+/** True when `value` is a legal {@link SecretTileFeature} id. */
+export function isSecretTileFeatureId(value: unknown): value is SecretTileFeature {
+  return typeof value === "string" && SECRET_FEATURE_IDS.has(value as SecretTileFeature);
+}
+
 export function tileMatchesSecretFeature(def: TileDefinition, feature: SecretTileFeature): boolean {
   switch (feature) {
     case "gold_mine":
@@ -81,6 +100,32 @@ export function tileMatchesSecretFeature(def: TileDefinition, feature: SecretTil
     default:
       return false;
   }
+}
+
+/**
+ * The allowed secret-landmark set for a face-down plan, folding the multi-value
+ * `secretFeatures` and the legacy single `secretFeature` into one deduped list
+ * (empty when the slot is a pure-random draw). The single copy every consumer
+ * — setup draw, designer count, blind-choice — shares.
+ */
+export function planAllowedSecretFeatures(
+  plan: Pick<CustomMapTilePlan, "secretFeature" | "secretFeatures">
+): SecretTileFeature[] {
+  const list =
+    plan.secretFeatures && plan.secretFeatures.length > 0
+      ? plan.secretFeatures
+      : plan.secretFeature
+        ? [plan.secretFeature]
+        : [];
+  return [...new Set(list.filter(isSecretTileFeatureId))];
+}
+
+/** Whether a tile definition matches ANY of the allowed secret landmarks. */
+export function tileMatchesAnySecretFeature(
+  def: TileDefinition,
+  features: SecretTileFeature[]
+): boolean {
+  return features.some((feature) => tileMatchesSecretFeature(def, feature));
 }
 
 /** The three legal center-tile Ⅶ-field designations (allow-list for sanitize). */
@@ -297,7 +342,7 @@ const CUSTOM_WIN_CONDITION_KINDS = new Set<CustomWinCondition["kind"]>([
 /** Max custom win conditions on one map/game (preset + lobby MERGED — sanitisation cap). */
 export const MAX_CUSTOM_WIN_CONDITIONS = 4;
 
-export type { CustomMapObeliskBonus, CustomMapObeliskConfig };
+export type { CustomMapObeliskBonus, CustomMapObeliskConfig, CustomMapSettlementConfig };
 
 /** Storage/editor limit for one designed map. Keep UI and sanitization in lock-step. */
 export const MAX_TIMED_EVENTS = 32;
@@ -501,6 +546,9 @@ function sanitizeObeliskBonus(input: unknown): CustomMapObeliskBonus | null {
   if (raw.kind === "movement") {
     return { kind: "movement", amount: clampInt(raw.amount, 1, 3, 1) };
   }
+  if (raw.kind === "experience") {
+    return { kind: "experience", amount: clampInt(raw.amount, 1, 5, 1) };
+  }
   if (raw.kind === "dice") {
     const treasure = clampInt(raw.treasure, 0, 2, 0);
     const resource = clampInt(raw.resource, 0, 2, 0);
@@ -513,26 +561,80 @@ function sanitizeObeliskBonus(input: unknown): CustomMapObeliskBonus | null {
   return null;
 }
 
+/** Cap on the number of Obelisk awards a "bonus" role may list. */
+export const MAX_OBELISK_BONUSES = 4;
+
+/** Cap on the extra VP a designer may attach to each controlled settlement. */
+export const MAX_SETTLEMENT_VP = 10;
+
 /**
  * Sanitize the map-wide Obelisk role. Unknown role → undefined (treated as
- * ABSENT = classic locked-die). Only "bonus" carries a reward; a stray bonus on
- * "monolith"/"victory-only" is dropped, and a "bonus" role with no/degenerate
- * bonus falls back to {@link DEFAULT_OBELISK_BONUS} (so the stored config always
- * spells out the reward the engine will grant).
+ * ABSENT = classic locked-die). A guard applies to every role (an Obelisk may be
+ * guarded in any mode). Only "bonus" carries awards: the multi-award `bonuses`
+ * list (degenerate entries dropped, capped) with an optional `bonusMode` OR the
+ * legacy single `bonus`, falling back to {@link DEFAULT_OBELISK_BONUS} so the
+ * stored config always spells out the reward the engine will grant.
  */
 function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as { role?: unknown; bonus?: unknown };
+  const raw = input as {
+    role?: unknown;
+    bonus?: unknown;
+    bonuses?: unknown;
+    bonusMode?: unknown;
+    guard?: unknown;
+  };
   if (typeof raw.role !== "string" || !OBELISK_ROLES.has(raw.role as CustomMapObeliskConfig["role"])) {
     return undefined;
   }
   const role = raw.role as CustomMapObeliskConfig["role"];
+  const guard = sanitizeCustomGuardSpec(raw.guard);
   if (role !== "bonus") {
-    return { role };
+    return guard ? { role, guard } : { role };
   }
-  return { role, bonus: sanitizeObeliskBonus(raw.bonus) ?? DEFAULT_OBELISK_BONUS };
+  const config: CustomMapObeliskConfig = { role };
+  const bonuses = Array.isArray(raw.bonuses)
+    ? raw.bonuses
+        .map(sanitizeObeliskBonus)
+        .filter((bonus): bonus is CustomMapObeliskBonus => bonus !== null)
+        .slice(0, MAX_OBELISK_BONUSES)
+    : [];
+  if (bonuses.length > 0) {
+    config.bonuses = bonuses;
+    if (raw.bonusMode === "choose" && bonuses.length > 1) {
+      config.bonusMode = "choose";
+    }
+  } else {
+    config.bonus = sanitizeObeliskBonus(raw.bonus) ?? DEFAULT_OBELISK_BONUS;
+  }
+  if (guard) {
+    config.guard = guard;
+  }
+  return config;
+}
+
+/**
+ * Sanitize the MAP-WIDE settlement options: a guard ({@link CustomGuardSpec})
+ * and/or extra VP per controlled settlement (clamped). Returns undefined when
+ * neither survives, so an empty block never persists.
+ */
+function sanitizeSettlementConfig(input: unknown): CustomMapSettlementConfig | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { guard?: unknown; vp?: unknown };
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  const vp = clampInt(raw.vp, 0, MAX_SETTLEMENT_VP, 0);
+  const config: CustomMapSettlementConfig = {};
+  if (guard) {
+    config.guard = guard;
+  }
+  if (vp > 0) {
+    config.vp = vp;
+  }
+  return config.guard || config.vp !== undefined ? config : undefined;
 }
 
 /**
@@ -1029,6 +1131,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.obelisks = obelisks;
     }
   }
+  if (raw.settlements !== undefined) {
+    const settlements = sanitizeSettlementConfig(raw.settlements);
+    if (settlements) {
+      preset.settlements = settlements;
+    }
+  }
   if (raw.objects !== undefined) {
     const objects = sanitizeCustomMapObjects(raw.objects);
     if (objects.length > 0) {
@@ -1076,6 +1184,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.roundLimit ||
       (preset.notes && preset.notes.length > 0) ||
       preset.obelisks ||
+      Boolean(preset.settlements) ||
       (preset.objects && preset.objects.length > 0) ||
       Boolean(preset.objectives) ||
       Boolean(preset.victoryPoints?.enabled) ||
@@ -1190,6 +1299,8 @@ export function describeObeliskBonus(bonus: CustomMapObeliskBonus): string {
       return `+${formatPresetResources(bonus)}`;
     case "movement":
       return `+${bonus.amount} movement`;
+    case "experience":
+      return `+${bonus.amount} experience`;
     case "dice": {
       const parts: string[] = [];
       if (bonus.treasure) {
@@ -1258,15 +1369,46 @@ export function describeVictoryPointsConfig(
   return entries;
 }
 
+/** Short label for a designer guard: a level Ⅰ–Ⅶ or an N-unit exact army. */
+export function describeGuardSpec(guard: CustomGuardSpec): string {
+  if (guard.units && guard.units.length > 0) {
+    return `${guard.units.length}-unit army`;
+  }
+  return guard.level ? `level ${guard.level}` : "none";
+}
+
+/** Plain-words description of the awards a "bonus" Obelisk grants. */
+export function describeObeliskAwards(config: CustomMapObeliskConfig): string {
+  const list =
+    config.bonuses && config.bonuses.length > 0
+      ? config.bonuses
+      : [config.bonus ?? DEFAULT_OBELISK_BONUS];
+  const joiner = config.bonusMode === "choose" && list.length > 1 ? " OR " : " + ";
+  return list.map(describeObeliskBonus).join(joiner);
+}
+
 /** Plain-words line for the map-wide Obelisk role (lobby banner + designer). */
 export function describeObeliskRole(config: CustomMapObeliskConfig): string {
+  const guard = config.guard ? ` (guard ${describeGuardSpec(config.guard)})` : "";
   if (config.role === "monolith") {
-    return "Obelisks: Monolith teleport network";
+    return `Obelisks: Monolith teleport network${guard}`;
   }
   if (config.role === "victory-only") {
-    return "Obelisks: victory marker only (no reward)";
+    return `Obelisks: victory marker only (no reward)${guard}`;
   }
-  return `Obelisks: fixed bonus — ${describeObeliskBonus(config.bonus ?? DEFAULT_OBELISK_BONUS)}`;
+  return `Obelisks: fixed bonus — ${describeObeliskAwards(config)}${guard}`;
+}
+
+/** Plain-words line for the map-wide settlement options (banner + designer). */
+export function describeSettlementConfig(config: CustomMapSettlementConfig): string {
+  const parts: string[] = [];
+  if (config.guard) {
+    parts.push(`guard ${describeGuardSpec(config.guard)}`);
+  }
+  if (config.vp) {
+    parts.push(`+${config.vp} VP each`);
+  }
+  return `Settlements: ${parts.length > 0 ? parts.join(", ") : "classic"}`;
 }
 
 function describeTimedEffect(effect: CustomMapTimedEffect): string {
@@ -1416,6 +1558,9 @@ export function describeCustomMapPresetEntries(
   }
   if (preset.obelisks) {
     entries.push({ icon: "🗿", text: describeObeliskRole(preset.obelisks) });
+  }
+  if (preset.settlements) {
+    entries.push({ icon: "🏠", text: describeSettlementConfig(preset.settlements) });
   }
   if (preset.objectives) {
     for (const line of describeObjectivesConfig(preset.objectives)) {
@@ -1846,6 +1991,7 @@ export const MAP_PRESET_OBELISK_BONUS_KINDS: { id: CustomMapObeliskBonus["kind"]
   { id: "search", label: "Search a deck" },
   { id: "resources", label: "Resources" },
   { id: "movement", label: "Movement" },
+  { id: "experience", label: "Experience" },
   { id: "dice", label: "Treasure / Resource dice" }
 ];
 
@@ -1860,6 +2006,8 @@ export function defaultObeliskBonusForKind(kind: CustomMapObeliskBonus["kind"]):
       return { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 };
     case "movement":
       return { kind: "movement", amount: 1 };
+    case "experience":
+      return { kind: "experience", amount: 1 };
     case "dice":
       return { kind: "dice", treasure: 1, resource: 0 };
   }

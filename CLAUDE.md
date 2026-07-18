@@ -1447,6 +1447,86 @@ every arm (the leaves `GAIN_COMMANDER_POINTS` / `SELL_HAND_ARTIFACT` /
 `SMASH_WOG_SKULL` are auto-resolving — kept OUT of `stepNeedsInput`; the cave's
 reward leaves too).
 
+## Unit Experience / veterancy (OPTIONAL rule; lobby toggle + WOG module + anime module) — what runs vs. limits
+
+Board adaptation of the WoG Unit Experience System (UES; ues.shtml + the
+CREXPBON table). THREE equivalent surfaces activate ONE shared engine flag,
+frozen onto `adventure.unitExperience` at setup: the lobby
+`GameSetupOptions.unitExperience` (Game options → Optional systems, default
+OFF), `wog.enabled && wog.unitExperience` (WOG Mod options row), and
+`anime.enabled && anime.unitExperience` (types + resolution only — like the
+other anime flags there is no anime lobby UI yet). Data in
+`src/data/units/experience.ts`, engine read layer in
+`src/engine/unit-experience.ts`, wired through `makeCombatUnitFromArmy` +
+`applyUnitCurrentSide` (stat/ability folds), `finalizeAdventureCombat` (the XP
+award), the reducer/legal-actions (`DRILL_UNIT`) and every Few→Pack / Stack
+upgrade site (dilution). Behaviour pinned in `src/engine/unit-experience.test.ts`
+(off/rank/lost-fight CONTROLs; the award call, the attack fold and the elite
+grant are mutation-checked), UI in `unit-rank-badge.test.tsx`,
+`board.test.tsx` ("veteran-rank badge") and `game-options-tabs.test.tsx`.
+
+Leading with what does NOT run / deliberate limits:
+- **Quick Combat trains nobody** — the army never deploys, so an auto-win pays
+  no unit XP. Fighting a battle out by hand is the deliberate way to drill
+  troops (a real strategic trade-off, documented, not a bug).
+- **Clone tokens and Sandro's-Cloak covers ignore ranks**: a Clone is built as
+  a fresh XP-less copy (the existing `permanentAttackBonus` precedent), and a
+  specialty cover replaces stats wholesale, suppressing the rank folds while it
+  is on top (same read as the permanent bonuses).
+- **Only 12 units — one signature unit per faction — carry a unique ELITE
+  ability** (`ELITE_UNIT_RANK_ABILITIES`); every other card gets the generic
+  per-tier stat packages only. Every grant REUSES an already-implemented
+  ability id (no new engine effects; registry hygiene — real unit, implemented,
+  not already printed on any side — is pinned by test).
+- **The Hierophant First Aid flip-up never dilutes** — it restores THIS
+  battle's own casualties, not fresh recruits (the one reinforce-shaped
+  exception, pinned with the reinforce halving as its control).
+- **The AI has no bespoke veterancy strategy**: it drills only as an idle-time
+  luxury from surplus gold (`map-policy.ts` DRILL_UNIT, score 325 when gold ≥
+  10) and otherwise just benefits from the folds like a human.
+- **Badge art is drawn (CSS/text), not a binary asset**: WoG-authentic carets
+  (`^`, `^^`) and an Elite sword (⚔) in `.unitRankBadge`, plus the existing
+  slayer spell icon on the lobby row — image-gen art can replace them later.
+
+What runs (each with a failing-if-removed test):
+- **XP awards (WoG "survivors of a hero-led won battle train")**: after a WON
+  combat the winner's surviving DEPLOYED army cards each gain XP — neutral
+  guard fights pay the Field Difficulty, Creature Banks pay max(2, Stacked
+  count), PvP wins pay a flat 2 (`unitExperienceForWonCombat`). Dead cards,
+  undeployed cards, summons/temporaries/commanders and the loser get nothing;
+  each card is awarded once (clone-safe Set). XP rides the CARD
+  (`ArmyUnitState.experience`) and survives Pack→Few casualty flips.
+- **Ranks 0–3 with tier-scaled thresholds** (bronze 2/5/9, silver 3/7/12,
+  gold/azure 4/9/15 — higher tiers rank slower, the UES per-level scaling) and
+  CUMULATIVE per-tier stat packages (CREXPBON default progressions): bronze &
+  silver R1 +1 Defense, R2 +1 Attack, R3 +1 Health (bronze Elites also +1
+  Initiative — the "Speed R4" bump); gold/azure R1 +1 Attack, R2 +1 Defense,
+  R3 +1 Health. Folded at combat-unit build AND on every mid-combat printed-
+  side recompute, so a Pack→Few flip keeps its rank.
+- **Elite abilities at rank 3** (CREXPBON-derived, e.g. Champions
+  `ignores-retaliation`, Behemoths `wog-nightmare-fear`, Phoenixes
+  `wog-fire-shield-1`, Nagas/Cerberi/Hydras `unlimited-retaliation`, Jotunns
+  `reduce-spell-damage-1`, Dreadnoughts `ignore-paralysis`), appended to the
+  unit's runtime `abilities` (deduped) — never edits printed card data, so the
+  ability-text enforcement invariant is untouched.
+- **Dilution (WoG Crexpmod "upgrades cost experience")**: reinforcing Few→Pack
+  HALVES the card's XP at every reinforce site (settlement, Hill Fort, town
+  Population batch, the shared `reinforceArmyUnit` helper, and the mid-combat
+  Summon-Demons reinforce, which re-syncs the fighting unit's folds); each
+  purchased Polish Unit Stack layer costs 1 XP. Every dilution emits
+  `UNIT_XP_DILUTED` so the loss is never silent.
+- **Drill (new board mechanic)**: `DRILL_UNIT` — with the main hero in an OWN
+  Town, pay 2 gold for +1 XP on one army card, once per own turn; maxed cards
+  are not offered. Handler-validated like HERO_TRAIN; `UNIT_DRILLED` event.
+- **Presentation**: `UNIT_RANK_UP` / `UNIT_DRILLED` / `UNIT_XP_DILUTED` feed
+  lines (`formatEvent`); rank badges on army rows (`ArmyPanel`, with the
+  rank-FOLDED stats and an XP-progress tooltip), on combat cards
+  (`board.tsx`, mirrored `unitRank`/`unitExperience`) and in the zoom/inspect
+  lines (`zoom.tsx`).
+- **Default OFF ⇒ byte-identical**: with the rule off no card ever carries
+  `experience`, so every fold is an exact no-op and no award/dilution/Drill
+  runs (off-CONTROLs pinned; legacy snapshots unaffected).
+
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
 A separate system from the Astrologers Proclaim deck (do not confuse the two).
@@ -2022,12 +2102,16 @@ Leading with what does NOT run / deliberate limits:
 - **A garrison defense is ARMY-only** (settlement-style): the defender picks
   units only — no hand cards, no hero — and pays 3 gold (towns keep 8;
   `garrisonDefenseCost`). Declining hands the flag over without a fight.
-- **No XP from outpost / one-way fights** (`isBankStyleGuardLocation`):
-  garrison, Keymaster's Tent and one-way ENTRANCE guards fight BANK-style —
-  no Quick Combat, no experience (combat difficulty 0), and NO round limit
-  (`CombatContext.unlimitedRounds` — the reducer's round-limit check skips it,
-  no MP-to-extend). Guards on monolith/gate/whirlpool tokens and objects keep
-  the NORMAL neutral flow (Quick Combat, XP, round limit) at their level.
+- **No XP from outpost / one-way / teleport-object fights**
+  (`isBankStyleGuardLocation`): garrison, Keymaster's Tent, one-way ENTRANCE
+  guards AND every single-hex teleport object (Monolith / Teleport Gate /
+  Whirlpool) fight BANK-style — no Quick Combat, no experience (combat
+  difficulty 0), and NO round limit (`CombatContext.unlimitedRounds` — the
+  reducer's round-limit check skips it, no MP-to-extend). A guard assigned to a
+  teleport gateway must be truly fought to pass — a high-level hero cannot
+  Quick-Combat past it. The guard army still draws at its designed level / exact
+  list (`customGuardLevel` / `customGuardUnits`); only Quick Combat, XP and the
+  round limit are dropped.
 - **An exact-army guard is never Quick-Combat or Diplomacy skipped** — the
   designed army always deploys and fights (minted at fight time from
   `field.customGuardUnits` in `drawGuardArmy`); its difficulty (for XP where
@@ -2736,6 +2820,64 @@ Three engine-enforced additions; each fails a named test if its wiring is remove
   an end-to-end test proving the guard lands on the CELL the player picked), the
   composition in `adventure.test.ts`, and the board wiring in `board.test.tsx`.
 
+## Manual guard relocation, first-round Mulligan, Wait/Defend queue, altered-guard warning — what runs
+
+Four additions; each engine rule fails a named test if its wiring is removed.
+
+- **Manual guard control now RELOCATES the guards pre-battle**
+  (`GameSetupOptions.manualGuardControl`, default OFF). On top of the existing
+  mid-combat command, the FIGHTER now first gets the pre-battle formation-SORT
+  window (the same `pendingNeutralPlacement` machinery PvP Neutral Control uses):
+  `openNeutralPlacementWindow` opens for `neutralCombatControllerId` (pvp ??
+  manual), so the fighter may move/swap the revealed guards within the defender's
+  two rows, or "Let the AI place them" (`AUTO_NEUTRAL_PLACEMENT` — resets to the
+  rulebook `placeNeutralUnits` auto-placement, window stays open). ONE new rule:
+  a SHOOTER (ranged unit) is restricted to `DEFENDER_BACKLINE` — `placeNeutralGuard`
+  and `addNeutralPlacementActions` gate the move AND the swap partner through
+  `neutralFormationCellsForGuard` (manual-only via `neutralPlacementIsManual`, i.e.
+  the controller IS the fighter — a PvP opponent keeps ANY defender-row cell and
+  gets no auto-reset). The board drag narrows the drop highlights to a dragged
+  shooter's back-row cells (`onDragStart`/`onDragEnd` added to `beginUnitPointerDrag`).
+  Computer fighters never open the window (`manualGuardControllerId` returns null).
+  Pinned in `manual-guard-control.test.ts` (open/shooter/swap/auto-reset, each with
+  a CONTROL) and `pvp-neutral-control.test.ts` (the PvP-side CONTROLs: no shooter
+  restriction, no AI-reset offer).
+- **First-round starting-hand Mulligan** (`GameSetupOptions.startingHandMulligan`,
+  default OFF; frozen onto `adventure.startingHandMulligan`). In ROUND 1 only,
+  AFTER the mandatory start-of-turn draw, a player may replace up to
+  `FIRST_ROUND_MULLIGAN_LIMIT` (4) hand cards — one at a time (`MULLIGAN_CARD`:
+  discard one card to the BOTTOM of your own deck, draw one) — until the per-turn
+  budget (`player.firstRoundMulligansLeft`, seeded in `finalizeStartOfTurnHand`)
+  runs out. `canMulliganStartingHand` gates the offer (only after the mandatory
+  draw, round 1, budget left; computer seats keep their dealt hand). UI: a lobby
+  toggle, a per-card "Replace this card (N left)" menu button and a hand-step
+  hint; `HAND_MULLIGAN` feed line. Pinned in `starting-hand-mulligan.test.ts`
+  (replace-up-to-4-then-stop, with mode-off / round-2 / pre-draw CONTROLs).
+- **Wait/Defend combat-queue markers (Polish Wait presentation).** The initiative
+  rail (`getActivationOrder`) now RE-QUEUES a Waited unit at the TAIL of the round
+  (highest wait token first) instead of stranding it in the greyed "done" bucket —
+  so the queue shows waited units re-activating last, like the PC game. DISPLAY
+  ONLY (the engine order via `getActivationStep` is unchanged; byte-identical when
+  nothing waited). The rail marks a Waited card with an hourglass (+ wait token, un-
+  greyed with an amber ring) and a Defending card with a shield; the board unit
+  card gains an hourglass "Wait" badge. Pinned in `combat-activation-order.test.ts`
+  (the tail re-queue, highest-token-first, with an unwaited CONTROL),
+  `initiative-rail.test.tsx` and `board.test.tsx`.
+- **Designer altered-guard: shown on the map + a pre-attack warning.** A field
+  whose neutral guard was set by the MAP DESIGNER (a custom army, a custom level,
+  or a map-wide settlement/obelisk guard) now carries `field.designedGuard` (set by
+  `applyCustomGuardToField` + the center-hex stamp, cleared with the guard; a
+  printed guard is NEVER flagged). `designedGuardPreview(field)` returns the exact
+  army (custom units) or just the Field-Difficulty level (a level/settlement army
+  is drawn at fight time). The map hex gets an amber outline + a gear marker and a
+  tooltip listing the army; the move-confirm float warns with the army and its
+  button becomes "Attack" (Cancel backs out with no move) for an altered fight
+  only. LIMIT: the warning rides the deliberate map-move confirm — a teleport
+  (Dimension Door) onto an altered field is not gated. Pinned in
+  `designed-guard-preview.test.ts` (marker + preview, printed-guard CONTROL),
+  `obelisk-roles.test.ts` (settlement integration) and `map-floats-board.test.tsx`
+  (the map marker + the warn/Attack float, with a printed-guard CONTROL).
+
 ## Combat draw-only abilities, Knowledge recall & value-based Power costs (BINH house rules) — what runs
 
 Five additions; each engine rule fails a named test if its wiring is removed.
@@ -2792,6 +2934,71 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   save paid with one Expert Power + crown; a no-crown CONTROL rejects it) and
   `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
   accepts it, with a no-crown CONTROL that hides the toggle).
+
+## Map spell-power bank, map notice icons, teleport-guard bank fights & Rule 111 UI — what runs
+
+Five additions; each engine claim fails a named test if its wiring is removed.
+
+- **Map spell-power bank (Sorcery / Scales on the MAP).** The combat "+Power,
+  then draw" bank (`combatStats.pendingDrawRiderSpellPower`) now has a MAP twin:
+  playing an `ADD_SPELL_POWER` draw-rider on the map banks its +Power onto
+  `player.mapSpellPowerBank` and draws a card (reducer draw-rider handler, the
+  `!state.combat` else-branch). The banked Power counts toward a map Spell's
+  `powerCost` exactly like standing Power — folded in `payCardCost` and
+  `canAffordCardCost` via `mapSpellPowerBankAvailable` (zero in combat, so it can
+  never leak into a combat cast) — so a hero banks Power, draws, then casts the
+  drawn Spell (View Air / Dimension Door / Fly / …) with the bank paying part of
+  the tier. Consumed by the next map Spell that pays a Power cost (one Spell, one
+  boost); cleared when the hero **moves** (`performHeroStep` — "the saved Power
+  goes away after you move") and at the owner's next turn (`startAdventureTurn`).
+  The CHOOSE_ONE draw-rider ARTIFACTS (Scales of the Greater Basilisk, Tunic of
+  the Cyclops King, Armor of Wonder) are now map-playable draw-only too
+  (`addTurnCardActions` CHOOSE_ONE branch, mirroring the combat draw-only offer,
+  bypassing their reaction/combat phaseLimit). The picker shows the banked Power
+  (`mapPowerBank` folded into `pendingPowerTotal`, a "+N banked" note). Pinned in
+  `map-spell-power-bank.test.ts` (bank + draw, the bank pays a Power-1 View Air
+  with NO power cards, clear-on-move, Scales' map draw-rider, each with a
+  no-bank / base-tier CONTROL). LIMIT: only the printed map-Spell `powerCost`
+  tiers consume the bank (a bare `CAST_SPELL` map cast does not).
+- **Polish "Cast a Spell" is NEVER a Power source (crash fix).** The generic
+  `spell.cast_a_spell` enabler is a physical Spell card but no longer counts as
+  +1 Power for a spell-power COST — it let a 3-Power hand reach a Power-4
+  Dimension Door tier and then crashed the cast. Excluded in `cardCanBoostPower`
+  and `spellPowerValueOfCard` (`effects.ts`), so it is dropped from every
+  cost-filter power source (map tiers, Sorrow, Alamar, Magi's Power Drain). Its
+  combat "+1 Power" printed alternative (the `asPowerBoost` discard, filtered by
+  `kind === "spell"` directly) is a SEPARATE mechanic and deliberately kept.
+  Pinned in `map-spell-power-bank.test.ts` (a Cast-a-Spell cannot fund a map tier
+  / a real Power card does; paying with one throws).
+- **A teleport-gateway guard fights BANK-style (no Quick Combat, no XP).** A
+  designer guard on a single-hex Monolith / Teleport Gate / Whirlpool
+  (`isTeleportObjectGuardLocation`) must be truly fought to pass — a high-level
+  hero can no longer Quick-Combat past it — and the fight grants no experience
+  (combat difficulty 0), like a Creature-Bank guard. Unlike a designer OUTPOST it
+  keeps the normal Round limit and the continue-or-retreat window (only Quick
+  Combat and XP are dropped). The dedicated branch in `startNeutralEncounter`
+  pins `customGuardLevel` so the difficulty-0 fight still draws the real designed
+  guards. Pinned in `map-objects.test.ts` (a guarded Gate / Monolith opens a
+  difficulty-0 bank-style fight, exact-army AND level, with the no-QUICK_COMBAT
+  assertion as the mutation control).
+- **Map-visit notice = reward chips, not a "mass of text".** A treasure-chest /
+  mine / resource visit's outcome is shown as a compact row of icon chips
+  (resource token / experience / morale glyph + a short "+N" or "+N/turn" income
+  label) built from the visit's follow-on events by `noticeRewardsFromEvents`
+  (`utils.ts`, pure), instead of the old `formatEvent` bullet list — the dice
+  cube overlay still animates the roll, and the chips are its RESULT. A mine
+  (no dedicated notice art) now wears its RESOURCE token instead of the pickaxe
+  emoji (`cue.iconImage`). Chips REPLACE the text lines; an outcome with no
+  material chip (e.g. an Artifact Search) falls back to text. Pinned in
+  `notice-rewards.test.ts` (the chip derivation with CONTROLs) and
+  `overlays.test.tsx` ("renders reward chips … and a mine's resource token").
+- **Rule 111 tray (Polish house rule) = a two-column either/or.** The
+  `PromptTray` (`screen.tsx`) renders the Rule-111 choice as a purpose-built
+  layout — a "Use Rule 111: replace the Guard" swap on the LEFT, the drawn
+  guard's card face with an "Accept the guard" button on the RIGHT — instead of
+  a flat row of look-alike buttons. Pure presentation over the existing
+  `CHOOSE_OPTION` accept (optionIndex 0) / replace (1..N) actions. Pinned in
+  `rule-111-choice-art.test.tsx`.
 
 ## Map settings defaults (designer → lobby, seed-at-pick) — what runs vs. limits
 
@@ -2929,7 +3136,21 @@ What runs (each pinned by a test that fails if the wiring is removed):
   `subterranean-gate-planning.test.ts` (preview == engine, incl. the five-surface
   and double-gate cases and `unreachableUndergroundCenters`),
   `map-designer.test.tsx`, `map-registry.test.ts`.
-- **2. Yellow borders — PER EDGE** (`CustomMapTilePlan.borderEdges`, canonical
+- **2. Yellow borders — PER EDGE.** ⚠️ **SEALING DISABLED for now** (`DESIGNER_BORDER_SEALING_ENABLED
+  = false` in `adventure.ts`): the designer 🖌 tool, its `borderEdges`/`extraBorders`
+  data and the save round-trip are all UNTOUCHED, but a drawn border no longer
+  walls anything off — the engine predicates (`isDesignedEdgeSealedBetween`,
+  `isTileSlotDesignedSealed`, `tileEdgeDesignedSealed`, the per-edge branch of
+  `heroCanDiscoverTileAcrossBorders`) short-circuit while the flag is off, AND
+  `applyDesignedBorders` / the object-border copy skip stamping the data onto the
+  live map so no inert in-game "wall" renders either. Flip the flag back to `true`
+  to restore everything below. The sealing suites in `designed-borders.test.ts` /
+  `map-objects.test.ts` / `computer/map-navigation.test.ts` are gated on the flag
+  (skipped while off) with a dedicated "lock removed" pin asserting the disabled
+  behaviour; PRINTED tile borders (`outerImpassable`, internal lines) are
+  unaffected either way. The rest of this bullet describes the feature as it works
+  when re-enabled:
+  (`CustomMapTilePlan.borderEdges`, canonical
   edge codes `footprintIndex*6 + absoluteDirection` in the rotation-0 board
   frame; 30 distinct edges per 7-hex flower, inner edges included): drawn freely
   edge-by-edge on the board (armed 🖌 tool — click an edge to seal, click again

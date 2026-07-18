@@ -190,7 +190,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "polish-reduced-starting-bonus",
     label: "Reduced starting bonus",
     description:
-      "Polish house rule: instead of the difficulty-scaled starting bonus, choose draw 2 Minor Artifacts and keep 1 (no discard-top) OR take 3 gold / 2 building materials / 1 valuables. Impossible still has no bonus.",
+      "Polish house rule: instead of the difficulty-scaled starting bonus, choose draw 2 Minor Artifacts and keep 1 (no discard-top) OR roll for resources — a random Resource die, rerolling any high value (never 6 gold / 4 building materials / 2 valuables). Impossible still has no bonus.",
     category: "polish",
     default: false,
     legacyDefault: false

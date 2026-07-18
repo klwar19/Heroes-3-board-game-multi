@@ -249,14 +249,6 @@ export {
 } from "./house-rules";
 export type { HouseRuleCategory, HouseRuleDef } from "./house-rules";
 export {
-  UNIT_EXPERIENCE_RANKS,
-  grantUnitExperienceAfterCombat,
-  unitExperienceActive,
-  unitExperienceBonus,
-  unitRankForXp
-} from "./unit-experience";
-export type { UnitRank, UnitRankBonus } from "./unit-experience";
-export {
   polishReducedStartingBonusVisitSteps,
   polishSurrenderGoldCost,
   polishArtifactAccessAfterRoll,
@@ -301,6 +293,12 @@ export {
 } from "./unit-transforms";
 export { markUnitRemovedIfNeeded } from "./combat-units";
 export { makeCombatUnitFromArmy } from "./adventure";
+export {
+  armyUnitRankInfo,
+  unitExperienceActive,
+  unitRankForExperience,
+  unitRankStatBonuses
+} from "./unit-experience";
 export { createInitialGameState } from "./setup";
 export {
   createCombatSandboxLobbyState,
@@ -352,9 +350,12 @@ export {
   defaultVictoryPointObjective,
   describeCustomMapPreset,
   describeCustomMapPresetEntries,
+  describeGuardSpec,
   describeMapObjects,
+  describeObeliskAwards,
   describeObeliskBonus,
   describeObeliskRole,
+  describeSettlementConfig,
   describeObjectivesConfig,
   describeUtopiaGuards,
   describeTimedMapEffect,
@@ -370,9 +371,13 @@ export {
   MAX_CUSTOM_MAP_OBJECTS,
   MAX_CUSTOM_WIN_CONDITIONS,
   MAX_GATES_PER_PAIR,
+  MAX_OBELISK_BONUSES,
+  MAX_SETTLEMENT_VP,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
   mergeCustomWinConditions,
+  planAllowedSecretFeatures,
+  tileMatchesAnySecretFeature,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_DIFFICULTY_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
@@ -400,6 +405,7 @@ export {
 } from "./map-preset";
 export {
   computeVictoryPoints,
+  controlledSettlementCount,
   DEFAULT_VICTORY_CONDITION_VP,
   describeCustomWinCondition,
   describeVictoryPointObjective,
@@ -487,14 +493,19 @@ export {
   heroMoveStartsBattle,
   carveColoredGateField,
   carveOnewayField,
+  applyCustomGuardToField,
+  clearCustomGuard,
   customGuardArmyDifficulty,
+  designedGuardPreview,
   gatePairColor,
   isBankStyleGuardLocation,
+  isTeleportObjectGuardLocation,
   isFieldGuarded,
   playerHoldsTentFlag,
   isMapObjectLocation,
   isMapTokenLocation,
   mapFieldLayer,
+  DESIGNER_BORDER_SEALING_ENABLED,
   isDesignedEdgeSealedBetween,
   isOuterEdgeSealed,
   isTileSlotDesignedSealed,
@@ -554,6 +565,8 @@ export {
   placementCellsFor,
   neutralFormationCellsFor,
   commanderDeploymentCellsFor,
+  neutralFormationCellsForGuard,
+  neutralPlacementIsManual,
   pumpAdventureQueues
 } from "./adventure-reducer";
 export {
@@ -577,7 +590,13 @@ export {
 } from "./hex";
 export type { HexCoord, HexDirection } from "./hex";
 export { isNeutralUnit, pickNeutralTarget, planNeutralActivation } from "./neutral-ai";
-export { isNeutralSideCombatChoice, neutralCombatControllerId, neutralControlMustAttack } from "./neutral-control";
+export {
+  isNeutralSideCombatChoice,
+  manualGuardControllerId,
+  neutralCombatControllerId,
+  neutralControlMustAttack,
+  pvpNeutralControllerId
+} from "./neutral-control";
 export {
   canUnitAttack,
   canUnitMoveAndAttack,
@@ -771,6 +790,7 @@ export type {
   CombatUnitState,
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
+  CustomMapSettlementConfig,
   CustomMapObjectivesConfig,
   CustomMapObject,
   CustomMapObjectKind,

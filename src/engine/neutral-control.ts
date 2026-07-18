@@ -32,6 +32,16 @@ import type { CombatState, GameState, PendingChoice, PlayerId } from "./state";
  * next live seat (or back to the AI) automatically.
  */
 export function neutralCombatControllerId(state: GameState, combat: CombatState): PlayerId | null {
+  return pvpNeutralControllerId(state, combat) ?? manualGuardControllerId(state, combat);
+}
+
+/**
+ * The PvP-Neutral-Control controller alone (a human OPPONENT plays the guards),
+ * ignoring Manual guard control. Use this for the mode's opponent-only perks —
+ * the pre-battle formation SORT window and the NEUTRAL_CONTROL_ASSIGNED notice
+ * — which must NOT light up when the FIGHTER merely commands their own guards.
+ */
+export function pvpNeutralControllerId(state: GameState, combat: CombatState): PlayerId | null {
   if (combat.context.kind !== "neutral" || !state.adventure?.pvpNeutralControl) {
     return null;
   }
@@ -42,6 +52,29 @@ export function neutralCombatControllerId(state: GameState, combat: CombatState)
   }
   const next = order[(index + 1) % order.length];
   return next && next !== combat.attackerPlayerId && next !== NEUTRAL_PLAYER_ID ? next : null;
+}
+
+/**
+ * Manual guard control (`GameSetupOptions.manualGuardControl`, default OFF —
+ * a Game-options toggle like Undo moves): the FIGHTER of a Neutral combat
+ * commands the guards themselves through the exact PvP-Neutral-Control unit
+ * menu (same must-attack discipline; under polish-wait a guard may WAIT, and
+ * its Waited re-activation must attack), or delegates single activations back
+ * to the AI via AUTO_NEUTRAL_ACTIVATION. Null when the mode is off, the fight
+ * is not Neutral, PvP Neutral Control already assigns a human opponent
+ * (checked by the caller — pvp wins in neutralCombatControllerId), or the
+ * fighter is a COMPUTER seat (the AI would otherwise have to drive the guards
+ * through the human-facing menu and could stall).
+ */
+export function manualGuardControllerId(state: GameState, combat: CombatState): PlayerId | null {
+  if (combat.context.kind !== "neutral" || !state.adventure?.manualGuardControl) {
+    return null;
+  }
+  const fighter = combat.attackerPlayerId;
+  if (!fighter || fighter === NEUTRAL_PLAYER_ID || state.controllers?.[fighter]?.kind === "computer") {
+    return null;
+  }
+  return fighter;
 }
 
 /**

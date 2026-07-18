@@ -6,6 +6,7 @@ import { ADVENTURE_FEED_CUES } from "../components/adventure/screen";
 import {
   heroMoveSoundKey,
   LOCATION_VISIT_SOUNDS,
+  locationVisitSoundCue,
   locationVisitSoundKeys,
   MAP_CUE_SOUNDS,
   MAP_TELEPORT_SOUNDS,
@@ -87,6 +88,16 @@ describe("LOCATION_VISIT_SOUNDS (sfx first, optional ambient after)", () => {
     expect(visitSfx("redwood_observatory")).toBe("adventure/lighthouse");
     expect(locationVisitSoundKeys("redwood_observatory")).toEqual(["adventure/lighthouse"]);
     expect(visitSfx("shipwreck_survivor")).toBe("adventure/treasure");
+  });
+
+  it("locationVisitSoundCue keeps the sfx/ambient PAIRED so ambience can chain after the sfx ends", () => {
+    // The feed player consumes the pair (not the flat list) so it can start the
+    // map-object ambience only once the one-shot has ENDED — see showFeedItems.
+    expect(locationVisitSoundCue("tavern")).toEqual({ sfx: "adventure/store", ambient: "ambient/tavern" });
+    expect(locationVisitSoundCue("windmill")).toEqual({ sfx: "units/genie-special", ambient: "ambient/windmill" });
+    // Legacy string entries: sfx only, no ambient half.
+    expect(locationVisitSoundCue("redwood_observatory")).toEqual({ sfx: "adventure/lighthouse" });
+    expect(locationVisitSoundCue("no_such_location")).toBeNull();
   });
 
   it("every location sfx/ambient clip exists on disk", () => {

@@ -6,6 +6,7 @@ import type {
   EffectDurationDefinition,
   SpellSchool
 } from "./state";
+import { CAST_A_SPELL_CARD_ID } from "./polish-spell-book";
 
 export const implementedCardEffectTypes = [
   "DEAL_DAMAGE",
@@ -192,6 +193,16 @@ export function cardCanBoostPower(card: CardDefinition | undefined): boolean {
   if (!card) {
     return false;
   }
+  // The Polish Spell Book "Cast a Spell" enabler is a physical Spell card but is
+  // NOT a real Power source: spending it toward a spell-power COST (the map View
+  // Air / Dimension Door tiers, Sorrow, Alamar's Resurrection, Magi's Power
+  // Drain) mis-counted the payable Power (letting a 3-Power hand reach a Power-4
+  // tier) and crashed the cast. It never pays a Power cost. (Its combat "+1
+  // Power" printed alternative is a separate discard mechanic, filtered by
+  // `kind === "spell"` directly, and is deliberately kept.)
+  if (card.id === CAST_A_SPELL_CARD_ID) {
+    return false;
+  }
   if (card.kind === "spell") {
     return true;
   }
@@ -275,6 +286,10 @@ export function spellPowerValueOfCard(
   mode: CardPlayMode = "basic"
 ): number {
   if (!card) {
+    return 0;
+  }
+  // The "Cast a Spell" enabler pays no Power cost (see cardCanBoostPower).
+  if (card.id === CAST_A_SPELL_CARD_ID) {
     return 0;
   }
   if (card.kind === "spell") {
