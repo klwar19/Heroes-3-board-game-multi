@@ -31,6 +31,15 @@ describe("/single-player (creation panel)", () => {
     expect(screen.getByRole("button", { name: "3" }).getAttribute("aria-pressed")).toBe("false");
   });
 
+  it("carries the Story-mode entry (moved here from the main menu) with its spell icon", () => {
+    render(<SinglePlayerPage />);
+    const story = screen.getByRole("link", { name: /Story mode/i });
+    expect(story.getAttribute("href")).toBe("/story");
+    const icon = story.querySelector("img.spNavSpellIcon");
+    expect(icon, "Homm3BG spell icon on the story entry").toBeTruthy();
+    expect(icon!.getAttribute("src")).toContain("/assets/spell-icons/teleport.png");
+  });
+
   it("creates the private game with the chosen count and navigates to the room", async () => {
     createSinglePlayerRoom.mockResolvedValue({ roomId: "sp-abc123" });
     render(<SinglePlayerPage />);

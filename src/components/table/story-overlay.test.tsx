@@ -7,6 +7,18 @@ vi.mock("@/lib/sound", async (importOriginal) => {
   return { ...actual, playLibrarySound: vi.fn() };
 });
 
+// All shipped story art is on disk (2026-07), so the placeholder-fallback path
+// is pinned by FORCING sprite paths back into placeholder mode for one test.
+const placeholderMock = vi.hoisted(() => ({ forceSprites: false }));
+vi.mock("@/data/story/scenes", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/data/story/scenes")>();
+  return {
+    ...actual,
+    storyAssetIsPlaceholder: (path: string) =>
+      (placeholderMock.forceSprites && path.includes("/sprites/")) || actual.storyAssetIsPlaceholder(path)
+  };
+});
+
 import { playLibrarySound } from "@/lib/sound";
 import { StoryOverlay } from "./story-overlay";
 import { getStoryScene } from "@/data/story/scenes";
@@ -140,19 +152,36 @@ describe("StoryOverlay", () => {
     expect(document.querySelector(".storyOverlayBackdrop.isekaiTheme")).toBeTruthy();
   });
 
-  it("renders a placeholder sprite as an initial-letter avatar chip, never a broken <img>", () => {
+  it("renders a DECLARED-placeholder sprite as an initial-letter avatar chip, never a broken <img>", () => {
+    placeholderMock.forceSprites = true;
+    try {
+      renderScene("story.demo.xianxia");
+      // Advance to the first named line that carries a sprite.
+      for (let i = 0; i < NAMED_SPRITE_INDEX; i += 1) {
+        clickStage(); // complete
+        clickStage(); // advance
+      }
+      const avatar = document.querySelector(".storySpriteAvatar");
+      expect(avatar).toBeTruthy();
+      const speaker = XIANXIA.lines[NAMED_SPRITE_INDEX].speaker as { en: string };
+      expect(avatar?.textContent).toBe(speaker.en.charAt(0));
+      // No real <img> for a placeholder sprite.
+      expect(document.querySelector(".storySpriteImage")).toBeNull();
+    } finally {
+      placeholderMock.forceSprites = false;
+    }
+  });
+
+  it("renders the real sprite <img> now that the art shipped (no avatar fallback)", () => {
     renderScene("story.demo.xianxia");
-    // Advance to the first named line that carries a (placeholder) sprite.
     for (let i = 0; i < NAMED_SPRITE_INDEX; i += 1) {
       clickStage(); // complete
       clickStage(); // advance
     }
-    const avatar = document.querySelector(".storySpriteAvatar");
-    expect(avatar).toBeTruthy();
-    const speaker = XIANXIA.lines[NAMED_SPRITE_INDEX].speaker as { en: string };
-    expect(avatar?.textContent).toBe(speaker.en.charAt(0));
-    // No real <img> for a placeholder sprite.
-    expect(document.querySelector(".storySpriteImage")).toBeNull();
+    const img = document.querySelector(".storySpriteImage");
+    expect(img, "shipped sprite art draws as a real image").toBeTruthy();
+    expect(img!.getAttribute("src")).toContain("/assets/story/sprites/");
+    expect(document.querySelector(".storySpriteAvatar")).toBeNull();
   });
 
   it("the history log shows the lines seen so far", () => {

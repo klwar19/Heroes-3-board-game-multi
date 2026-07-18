@@ -12,6 +12,7 @@ import {
   type LocalizedText
 } from "@/data/story/campaigns";
 import { bindCampaignRoom, getCampaignProgress } from "@/lib/campaign-progress";
+import { assetUrl } from "@/lib/asset-url";
 import { createSinglePlayerRoom } from "@/lib/realtime";
 import { useStoryLanguage, type StoryLanguage } from "@/lib/story-language";
 
@@ -128,6 +129,8 @@ export default function StoryPage() {
           return (
             <section className={`storyCampaignCard ${campaign.theme}Theme`} key={campaign.id}>
               <header className="storyCampaignHeader">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img alt="" className="storyCampaignCover" draggable={false} src={assetUrl(campaign.cover)} />
                 <h2 className="storyCampaignTitle">{pickText(campaign.title, language)}</h2>
                 <p className="storyCampaignTagline">{pickText(campaign.tagline, language)}</p>
                 <p className="storyCampaignProtagonist">

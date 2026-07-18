@@ -204,7 +204,7 @@ describe("HeroBoard — anime Equipment chips (§3.13)", () => {
     });
   }
 
-  it("shows a chip (slot glyph + EN/VI name) for each equipped item when the module is on", () => {
+  it("shows a chip (item icon + EN/VI name) for each equipped item when the module is on", () => {
     const state = equipmentAdventure();
     getMainHero(state, "p1")!.equipment = {
       weapon: "anime.equip.iron_blood_sword",
@@ -217,6 +217,10 @@ describe("HeroBoard — anime Equipment chips (§3.13)", () => {
     expect(text).toContain("Iron-Blood Sword");
     expect(text).toContain("Thiết Huyết Kiếm"); // VI name
     expect(text).toContain("Supply Satchel");
+    // Real item icons (art shipped 2026-07) draw instead of the slot glyph.
+    const icons = Array.from(container.querySelectorAll(".hbEquipIcon")).map((img) => img.getAttribute("src") ?? "");
+    expect(icons.some((src) => src.includes("/assets/anime/equipment/iron_blood_sword.webp"))).toBe(true);
+    expect(icons.some((src) => src.includes("/assets/anime/equipment/supply_satchel.webp"))).toBe(true);
   });
 
   it("CONTROL — with the module OFF, no equipment chip renders (even if a field is stamped)", () => {

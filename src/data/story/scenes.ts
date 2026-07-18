@@ -47,8 +47,8 @@ export type StoryChoice = {
 
 export type StoryScene = {
   id: string;
-  /** Styling hint — ink-wash chrome vs. anime dialogue-box chrome. */
-  theme?: "xianxia" | "isekai";
+  /** Styling hint — ink-wash / anime / classic painted dialogue-box chrome. */
+  theme?: "xianxia" | "isekai" | "classic";
   /** Path under /assets/story/backgrounds/... — declared in STORY_ART_PLACEHOLDERS until art lands. */
   background?: string;
   lines: StoryLine[];
@@ -70,6 +70,8 @@ const THE_SYSTEM: StorySpeaker = { en: "The System", vi: "Hệ Thống" };
 const HIKARI: StorySpeaker = { en: "Hikari", vi: "Hikari" };
 const BIN: StorySpeaker = { en: "Bin", vi: "Bin" };
 const GUILD_GIRL: StorySpeaker = { en: "Guild Girl", vi: "Tiếp Tân Hội" };
+const CATHERINE: StorySpeaker = { en: "Queen Catherine", vi: "Nữ Hoàng Catherine" };
+const KENDAL: StorySpeaker = { en: "General Kendal", vi: "Tướng Quân Kendal" };
 
 const DEMO_SCENES: StoryScene[] = [
   {
@@ -562,6 +564,188 @@ const CH1_SCENES: StoryScene[] = [
         }
       }
     ]
+  },
+  // --- Restoration of Erathia (classic), Chapter 1: "The Landing" -----------
+  {
+    id: "story.erathia.ch1.intro",
+    theme: "classic",
+    background: bg("erathia-shore"),
+    lines: [
+      {
+        speaker: "narrator",
+        text: {
+          en: "At first light the royal fleet grinds ashore on the coast of Erathia. Smoke stains the horizon where border towns used to stand.",
+          vi: "Khi trời vừa hửng sáng, hạm đội hoàng gia nghiến cát cập bờ Erathia. Khói hoen chân trời, nơi những thị trấn biên cương từng tọa lạc."
+        }
+      },
+      {
+        speaker: CATHERINE,
+        sprite: sprite("catherine"),
+        side: "left",
+        text: {
+          en: "I left a kingdom. I return to a graveyard of banners. Whoever did this will answer for every one of them.",
+          vi: "Ta rời đi từ một vương quốc. Ta trở về giữa nghĩa trang của những lá cờ. Kẻ nào gây ra chuyện này sẽ phải trả giá cho từng lá cờ một."
+        }
+      },
+      {
+        speaker: KENDAL,
+        sprite: sprite("kendal"),
+        side: "right",
+        text: {
+          en: "The garrisons are scattered, Majesty, not broken. Give them a beachhead town and a griffin banner to look at, and they will come.",
+          vi: "Thưa Bệ Hạ, các đồn binh chỉ tan tác chứ chưa tan vỡ. Hãy cho họ một thị trấn đầu cầu và một lá cờ sư điểu để ngước nhìn, họ sẽ kéo về."
+        }
+      },
+      {
+        speaker: CATHERINE,
+        sprite: sprite("catherine"),
+        side: "left",
+        text: {
+          en: "Then we build, General. Raise the town, rally every blade on this coast — and take back the first mile of Erathia.",
+          vi: "Vậy thì ta dựng nghiệp, Tướng Quân. Dựng thị trấn, tập hợp mọi lưỡi kiếm trên bờ biển này — và giành lại dặm đất đầu tiên của Erathia."
+        }
+      }
+    ]
+  },
+  {
+    id: "story.erathia.ch1.victory",
+    theme: "classic",
+    background: bg("erathia-shore"),
+    lines: [
+      {
+        speaker: KENDAL,
+        sprite: sprite("kendal"),
+        side: "right",
+        text: {
+          en: "The coast is ours, Majesty. The garrisons march under the griffin again — and the road inland lies open.",
+          vi: "Bờ biển đã về tay ta, thưa Bệ Hạ. Các đồn binh lại hành quân dưới cờ sư điểu — và con đường vào nội địa đã rộng mở."
+        }
+      },
+      {
+        speaker: CATHERINE,
+        sprite: sprite("catherine"),
+        side: "left",
+        text: {
+          en: "One mile of Erathia, restored. Rest the men tonight, General. Tomorrow we raise the banners on the border marches.",
+          vi: "Một dặm đất Erathia đã phục hưng. Đêm nay cho quân sĩ nghỉ ngơi, Tướng Quân. Ngày mai ta dựng cờ nơi biên cương."
+        }
+      }
+    ]
+  },
+  {
+    id: "story.erathia.ch1.defeat",
+    theme: "classic",
+    background: bg("erathia-shore"),
+    lines: [
+      {
+        speaker: "narrator",
+        text: {
+          en: "The beachhead falls. Under cover of dark the boats pull back to the fleet, and the coast burns on without its Queen.",
+          vi: "Đầu cầu thất thủ. Nương theo màn đêm, những chiếc thuyền rút về hạm đội, và bờ biển tiếp tục rực cháy vắng bóng nữ hoàng."
+        }
+      },
+      {
+        speaker: CATHERINE,
+        sprite: sprite("catherine"),
+        side: "left",
+        text: {
+          en: "Mourn tonight. At dawn we land again — Erathia has waited long enough for us; it can be avenged only by those who return.",
+          vi: "Đêm nay cứ tiếc thương. Rạng đông ta lại đổ bộ — Erathia đã đợi chúng ta quá lâu; chỉ những kẻ quay về mới báo thù được cho nó."
+        }
+      }
+    ]
+  },
+  // --- The Grand Convergence (crossover), Chapter 1: "Where Worlds Overlap" -
+  {
+    id: "story.convergence.ch1.intro",
+    theme: "xianxia",
+    background: bg("azure-peak"),
+    lines: [
+      {
+        speaker: "narrator",
+        text: {
+          en: "The mist over Azure Cloud parts — onto castle plains that were never there before. The realms are folding into one board.",
+          vi: "Màn sương trên Thanh Vân rẽ ra — để lộ những bình nguyên thành quách chưa từng tồn tại nơi đây. Các cõi giới đang gập vào cùng một bàn cờ."
+        }
+      },
+      {
+        speaker: THE_SYSTEM,
+        sprite: sprite("system"),
+        side: "right",
+        text: {
+          en: "[ Convergence detected. All rule modules loaded: cultivation, grades, equipment, commanders, stacked legions. Good luck. ]",
+          vi: "[ Phát hiện hội tụ. Đã nạp toàn bộ mô-đun luật: tu luyện, phẩm cấp, trang bị, chỉ huy quan, quân đoàn chồng lớp. Chúc may mắn. ]"
+        }
+      },
+      {
+        speaker: CHEN_FAN,
+        sprite: sprite("chen-fan"),
+        side: "left",
+        text: {
+          en: "Every world's rules at once? Fine. I have read all their stories — now I get to combine the endings.",
+          vi: "Luật của mọi thế giới cùng lúc sao? Được thôi. Ta đã đọc hết truyện của chúng — giờ là lúc kết hợp những cái kết lại."
+        }
+      },
+      {
+        speaker: BIN,
+        sprite: sprite("bin"),
+        side: "right",
+        text: {
+          en: "Hey, mountain guy! If your world runs on my board game too, then trust me — buy the stacks. Always buy the stacks.",
+          vi: "Này, anh bạn trên núi! Nếu thế giới của cậu cũng chạy trên ván cờ của tôi, thì tin tôi đi — mua chồng lớp ấy. Lúc nào cũng nên mua chồng lớp."
+        }
+      }
+    ]
+  },
+  {
+    id: "story.convergence.ch1.victory",
+    theme: "xianxia",
+    background: bg("azure-peak"),
+    lines: [
+      {
+        speaker: THE_SYSTEM,
+        sprite: sprite("system"),
+        side: "right",
+        text: {
+          en: "[ Convergence stabilized. Every module mastered on a single board. Achievement unlocked: Rulekeeper of All Realms. ]",
+          vi: "[ Hội tụ đã ổn định. Mọi mô-đun đều được chinh phục trên cùng một bàn cờ. Thành tựu mở khóa: Chưởng Luật Vạn Giới. ]"
+        }
+      },
+      {
+        speaker: CHEN_FAN,
+        sprite: sprite("chen-fan"),
+        side: "left",
+        text: {
+          en: "Cultivator, commander, quartermaster — today I was all of them. The overlap holds, and it answers to us.",
+          vi: "Kiếm tu, thống soái, quan quân nhu — hôm nay ta là tất cả. Vùng giao thoa đã vững, và nó nghe lệnh chúng ta."
+        }
+      }
+    ]
+  },
+  {
+    id: "story.convergence.ch1.defeat",
+    theme: "xianxia",
+    background: bg("azure-peak"),
+    lines: [
+      {
+        speaker: THE_SYSTEM,
+        sprite: sprite("system"),
+        side: "right",
+        text: {
+          en: "[ Convergence destabilized. Too many rules, too few victories. Rolling the realms back to their checkpoints... ]",
+          vi: "[ Hội tụ mất ổn định. Quá nhiều luật, quá ít chiến thắng. Đang khôi phục các cõi giới về điểm lưu... ]"
+        }
+      },
+      {
+        speaker: BIN,
+        sprite: sprite("bin"),
+        side: "right",
+        text: {
+          en: "Okay, so juggling five rulebooks at once has a learning curve. Rematch. I've already got a better build in mind.",
+          vi: "Được rồi, tung hứng năm cuốn luật cùng lúc đúng là cần thời gian làm quen. Đấu lại đi. Tôi đã nghĩ ra lối chơi ngon hơn rồi."
+        }
+      }
+    ]
   }
 ];
 
@@ -616,14 +800,11 @@ export function referencedStoryAssets(): string[] {
  * "no art" (theme-gradient background / initial-letter sprite avatar).
  */
 export const STORY_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
-  bg("azure-peak"),
-  bg("dawn-gate"),
-  sprite("chen-fan"),
-  sprite("azure-elder"),
-  sprite("system"),
-  sprite("hikari"),
-  sprite("bin"),
-  sprite("guild-girl")
+  // 2026-07: EMPTY — both backgrounds and all six base sprites ship real art
+  // (backgrounds 16:9, sprites transparent cutouts; pipeline:
+  // `scripts/place-anime-assets.mjs`). Any FUTURE referenced-but-unshipped
+  // asset path (e.g. an expression variant) must be declared here so the
+  // overlay keeps its gradient/avatar fallback instead of a broken image.
 ]);
 
 /** True when this asset path has no file on disk yet (use the fallback). */
