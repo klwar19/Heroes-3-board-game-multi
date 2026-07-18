@@ -34,7 +34,6 @@ import {
   placementCellsFor,
   neutralFormationCellsFor,
   neutralFormationCellsForGuard,
-  neutralPlacementIsManual,
   playerSpellCastsIgnoreLimit,
   unitHasUnlimitedRetaliationEffect,
   unitIsBerserk,
