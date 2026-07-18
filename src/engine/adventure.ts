@@ -185,7 +185,7 @@ import type {
 } from "./state";
 import { isNeutralSideCombatChoice, neutralCombatControllerId } from "./neutral-control";
 import { DEFAULT_OBELISK_BONUS, GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
-import type { CustomMapObeliskBonus } from "./state";
+import type { CustomMapObeliskBonus, CustomMapObeliskConfig } from "./state";
 import { awardCommanderGradePoints, commandersModuleEnabled, wogNewObjectsEnabled } from "./commanders";
 import { WOG_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/wog/field-overrides";
 
@@ -767,6 +767,16 @@ export function materializeTileFields(
           field.centerHexVp = tile.viiFieldVp;
         }
       }
+    }
+    // MAP-WIDE designer guards on Obelisks / Settlements (making them matter on
+    // a scenario). Obelisks/settlements carry no printed difficulty, so this
+    // only ADDS a guard: `isFieldGuarded` is true while the guard difficulty is
+    // set and the field is still unflagged, so the first visitor fights it; the
+    // visit then flags the field (`everFlagged`) and the guard never respawns.
+    if (field.location === "obelisk") {
+      applyCustomGuardToField(field, adventure.mapPreset?.obelisks?.guard);
+    } else if (field.location === "settlement") {
+      applyCustomGuardToField(field, adventure.mapPreset?.settlements?.guard);
     }
     adventure.fields[spaceId] = field;
   }
@@ -3976,12 +3986,65 @@ function obeliskBonusVisitSteps(bonus: CustomMapObeliskBonus): VisitStep[] {
       ];
     case "movement":
       return [{ type: "GAIN_MOVEMENT", amount: bonus.amount }];
+    case "experience":
+      return [{ type: "GAIN_EXPERIENCE", amount: bonus.amount }];
     case "dice":
       return [
         ...Array.from({ length: bonus.treasure }, () => ({ type: "ROLL_TREASURE_DICE", count: 1 }) as const),
         ...Array.from({ length: bonus.resource }, () => ({ type: "ROLL_RESOURCE_DICE", count: 1 }) as const)
       ];
   }
+}
+
+/** A short human label for one Obelisk award (used on the OR pick menu). */
+function obeliskBonusLabel(bonus: CustomMapObeliskBonus): string {
+  switch (bonus.kind) {
+    case "morale":
+      return "+1 morale";
+    case "search":
+      return `Search (${bonus.count}) the ${bonus.deck} deck`;
+    case "resources": {
+      const parts: string[] = [];
+      if (bonus.gold) parts.push(`${bonus.gold} gold`);
+      if (bonus.buildingMaterials) parts.push(`${bonus.buildingMaterials} materials`);
+      if (bonus.valuables) parts.push(`${bonus.valuables} valuables`);
+      return parts.length > 0 ? `Gain ${parts.join(", ")}` : "Gain resources";
+    }
+    case "movement":
+      return `+${bonus.amount} movement`;
+    case "experience":
+      return `+${bonus.amount} experience`;
+    case "dice":
+      return `Roll ${bonus.treasure} Treasure + ${bonus.resource} Resource dice`;
+  }
+}
+
+/**
+ * The full visit steps a designer Obelisk "bonus" role grants. Reads the
+ * multi-award `bonuses` (falling back to the legacy single `bonus`, else
+ * {@link DEFAULT_OBELISK_BONUS}). With `bonusMode: "choose"` and 2+ awards the
+ * visiting player PICKS ONE (an OR, via a CHOOSE_ONE step); otherwise every
+ * award runs in order (an AND). No new reward machinery — same interaction
+ * plumbing every field visit uses.
+ */
+function obeliskConfigVisitSteps(config: CustomMapObeliskConfig | undefined): VisitStep[] {
+  const list =
+    config?.bonuses && config.bonuses.length > 0
+      ? config.bonuses
+      : [config?.bonus ?? DEFAULT_OBELISK_BONUS];
+  if (config?.bonusMode === "choose" && list.length > 1) {
+    return [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Obelisk — choose one reward",
+        options: list.map((bonus) => ({
+          label: obeliskBonusLabel(bonus),
+          steps: obeliskBonusVisitSteps(bonus)
+        }))
+      }
+    ];
+  }
+  return list.flatMap((bonus) => obeliskBonusVisitSteps(bonus));
 }
 
 /**
@@ -4047,12 +4110,11 @@ function handleObeliskVisit(state: GameState, hero: HeroState, field: MapFieldSt
     if (role === undefined) {
       grantClassicObeliskReward(state, hero, field, playerId);
     } else if (role === "bonus") {
-      const bonus = adventure.mapPreset?.obelisks?.bonus ?? DEFAULT_OBELISK_BONUS;
       adventure.pendingVisit = {
         heroId: hero.id,
         playerId,
         fieldId: field.spaceId,
-        steps: obeliskBonusVisitSteps(bonus)
+        steps: obeliskConfigVisitSteps(adventure.mapPreset?.obelisks)
       };
       processPendingVisit(state);
     } else if (role === "victory-only") {
