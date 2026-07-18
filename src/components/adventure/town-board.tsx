@@ -227,6 +227,12 @@ function DesignedTileUnbuilt({
       className={`tbDesignedTile unbuilt ${compact ? "compact" : ""} ${buildable ? "buildable" : ""}`}
       aria-label={`${building.name} — not built`}
     >
+      {/* A not-built building shows its own art, faintly BLURRED + dimmed, so you
+          can preview what will go up while it still reads clearly as "not built"
+          (the plaque below spells it out). Art stays recognizable. */}
+      {building.assets?.image ? (
+        <LoadedImg className="tbTilePcArt tbUnbuiltArt" src={building.assets.image} />
+      ) : null}
       <DesignedPlate building={building} />
       <span className="tbUnbuiltPlaque">
         <Hammer aria-hidden="true" size={compact ? 10 : 12} />
@@ -877,7 +883,21 @@ export function TownBoardView({
                     return building ? <DesignedPlate building={building} key={buildingId} /> : null;
                   })}
                 </div>
-              ) : null}
+              ) : (
+                // Scan board, nothing built in this bar: the base town scan shows
+                // through here. Lay a faint blur + dim over just this bar's region
+                // and flag it "not built" so pending buildings read at a glance,
+                // without touching the built bars or the artwork elsewhere.
+                <div
+                  aria-label={`${label} — not built`}
+                  className={`tbScanUnbuilt ${anyBuildable ? "buildable" : ""}`}
+                >
+                  <span className="tbUnbuiltPlaque">
+                    <Hammer aria-hidden="true" size={12} />
+                    not built{anyBuildable ? " · buildable" : ""}
+                  </span>
+                </div>
+              )}
               {/* Scan boards paint the whole bar from ONE fully-built crop, so a
                   two-in-one bar with just one building up looks like both are
                   built. Name BOTH halves — which is built (✓) and which is not

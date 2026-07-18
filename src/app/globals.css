@@ -5315,8 +5315,8 @@ button.hbSlot:disabled { cursor: default; }
    desaturation so the eye tells built from pending at a glance. Kept tiny on
    purpose — the artwork stays fully readable. */
 .townBuilding:not(.built) .townBuildingArt {
-  filter: blur(0.6px) saturate(0.82) brightness(0.94);
-  opacity: 0.9;
+  filter: blur(1.6px) saturate(0.6) brightness(0.8);
+  opacity: 0.78;
 }
 
 /* Small "not built" tag over the top-left of the art. */
@@ -17817,6 +17817,35 @@ img.cardBack {
 
 .tbDesignedTile.unbuilt.buildable {
   box-shadow: inset 0 0 0 0.18cqw rgba(240, 196, 106, 0.7);
+}
+
+/* The not-built building's own art, shown as a faintly blurred + dimmed preview
+   behind its "not built" plaque. Clearly reads as pending, art still legible. */
+.tbDesignedTile.unbuilt .tbUnbuiltArt {
+  filter: blur(1.4px) saturate(0.55) brightness(0.62);
+  opacity: 0.5;
+}
+
+/* Scan-board (Cove / classic) not-built bar: the base town scan shows through
+   here, so blur + dim JUST this bar's region of it and centre a "not built"
+   plaque. pointer-events stay off so the bar's own click button still works. */
+.tbScanUnbuilt {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 1cqw;
+  pointer-events: none;
+  background: rgb(8 5 3 / 24%);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 55%);
+  backdrop-filter: blur(1.7px) saturate(0.68) brightness(0.8);
+  -webkit-backdrop-filter: blur(1.7px) saturate(0.68) brightness(0.8);
+}
+
+.tbScanUnbuilt.buildable {
+  box-shadow: inset 0 0 0 0.2cqw rgba(240, 196, 106, 0.55);
 }
 
 .tbUnbuiltPlaque {

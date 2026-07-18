@@ -68,6 +68,14 @@ describe("TownBoardView — bars", () => {
     expect(container.querySelectorAll(".tbBarHit")).toHaveLength(7);
   });
 
+  it("marks every not-built bar with a blurred 'not built' overlay (fresh town)", () => {
+    const { container } = render(viewFor(freshState()));
+    // A fresh town has all 7 bars unbuilt → each gets the blur + label overlay
+    // (distinct from `.tbFill`, which marks a BUILT bar's crop).
+    expect(container.querySelectorAll(".tbScanUnbuilt")).toHaveLength(7);
+    expect(container.textContent).toContain("not built");
+  });
+
   it("fills a bar with the fully-built crop once its building is built", () => {
     const state = freshState();
     state.towns.town_p1.buildings.push("castle.city_hall");
