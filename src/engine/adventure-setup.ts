@@ -530,6 +530,11 @@ export type AdventureSetupOptions = {
    * See GameSetupOptions.undoMoves / src/server/undo-history.ts.
    */
   undoMoves?: boolean;
+  /**
+   * Unit Experience (optional rule): see GameSetupOptions.unitExperience —
+   * one of the three equivalent surfaces (with wog/anime.unitExperience).
+   */
+  unitExperience?: boolean;
   /** Whether players may open their own Ⅱ–Ⅲ Far tiles (default on). Off gives no Far-tile supply. */
   farTileOpening?: boolean;
   /** How many NEW Ⅱ–Ⅲ tiles each player may add to the map (default: the scenario's perPlayer, 2). */
@@ -1971,6 +1976,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       : {}),
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.undoMoves !== undefined ? { undoMoves: options.undoMoves } : {}),
+    ...(options.unitExperience !== undefined ? { unitExperience: options.unitExperience } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.moraleCards !== undefined ? { moraleCards: options.moraleCards } : {}),
     ...(options.tournamentMode !== undefined ? { tournamentMode: options.tournamentMode } : {}),
@@ -2079,6 +2085,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   }
   const fieldOverridesOn = resolveFieldOverridesEnabled(setupOptions);
   const fieldOverridePlacement = resolveFieldOverridePlacement(setupOptions);
+  // Unit Experience (optional rule): three equivalent surfaces — the plain
+  // lobby toggle, the WOG module and the anime module — activate ONE shared
+  // engine flag, frozen onto adventure state below.
+  const unitExperienceOn =
+    Boolean(setupOptions.unitExperience) ||
+    Boolean(wog.enabled && wog.unitExperience) ||
+    Boolean(anime.enabled && anime.unitExperience);
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
@@ -2174,6 +2187,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // multiplayer-only options above, undo is available in solo/single-player
     // too (it is a testing aid, not a competitive rule).
     ...(setupOptions.undoMoves ? { undoMoves: true } : {}),
+    // Unit Experience (optional rule): frozen so every engine read (XP awards,
+    // rank folds, DRILL_UNIT) checks one plain boolean. Default OFF.
+    ...(unitExperienceOn ? { unitExperience: true } : {}),
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
@@ -3167,7 +3183,8 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       commanders: Boolean(next.wog.commanders),
       newObjects: Boolean(next.wog.newObjects),
       newCreatures: Boolean(next.wog.newCreatures),
-      artifacts: Boolean(next.wog.artifacts)
+      artifacts: Boolean(next.wog.artifacts),
+      unitExperience: Boolean(next.wog.unitExperience)
     };
     // WOG is a BINH-family module. Enabling it while still on Legacy flips the
     // table to BINH so the module can actually load.
@@ -3420,6 +3437,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.undoMoves !== undefined) {
     lobby.options.undoMoves = Boolean(next.undoMoves);
     changes.push(`Undo moves (testing) ${lobby.options.undoMoves ? "on" : "off"}`);
+  }
+
+  if (next.unitExperience !== undefined) {
+    lobby.options.unitExperience = Boolean(next.unitExperience);
+    changes.push(`Unit experience (veterancy) ${lobby.options.unitExperience ? "on" : "off"}`);
   }
 
   if (next.farTileOpening !== undefined) {
@@ -4692,6 +4714,7 @@ function buildAdventureFromLobby(state: GameState): void {
     houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
     undoMoves: lobby.options.undoMoves,
+    unitExperience: lobby.options.unitExperience,
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,
     difficulty: lobby.options.difficulty,

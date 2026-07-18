@@ -29,7 +29,8 @@ export const DEFAULT_ANIME_OPTIONS: AnimeModOptions = {
   xianxiaArtifacts: false,
   heartDemon: false,
   heroGrades: false,
-  equipment: false
+  equipment: false,
+  unitExperience: false
 };
 
 /** Master crest / skin gate. */

@@ -3,6 +3,7 @@ import { astrologersCardDefinitions } from "@/data/cards/astrologers";
 import { eventCardDefinitions } from "@/data/cards/events";
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
+import { UNIT_RANK_NAMES } from "@/data/units/experience";
 import {
   cardCanBoostPower,
   CULTIVATION_REALMS,
@@ -589,6 +590,16 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} adds Stack ${event.stacks} to ${
         event.unitDefId.split(".")[1] ?? event.unitDefId
       } (${formatCost(event.cost)}).`;
+    case "UNIT_RANK_UP":
+      return `${playerName(state, event.playerId)}'s ${event.unitName} are now ${
+        UNIT_RANK_NAMES[event.rank] ?? `rank ${event.rank}`
+      } (veteran rank ${event.rank}).`;
+    case "UNIT_DRILLED":
+      return `${playerName(state, event.playerId)} drills ${event.unitName} (+1 unit XP, now ${event.experience}).`;
+    case "UNIT_XP_DILUTED":
+      return event.reason === "reinforce"
+        ? `${playerName(state, event.playerId)}'s ${event.unitName} veterans are diluted by the new recruits (XP now ${event.experience}).`
+        : `${playerName(state, event.playerId)}'s ${event.unitName} veterans are diluted by the new Stack layer (XP now ${event.experience}).`;
     case "ARMY_STACK_LOST":
       // With a `reason` this was a map effect absorbed by the Stack (Terrible
       // Plague weakened); otherwise the combat lethal-damage absorb.

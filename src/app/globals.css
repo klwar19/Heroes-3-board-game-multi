@@ -7838,6 +7838,49 @@ button.hbSlot:disabled { cursor: default; }
   z-index: 6;
 }
 
+/* Unit Experience (optional rule): the WoG-style veteran-rank badge — carets
+   for ranks 1-2, a gold sword at Elite (rank 3), echoing the PC mod's stack
+   icon markers. Rendered beside the army-row name and on the combat card. */
+.unitRankBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid rgb(198 147 65 / 82%);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(64 46 15 / 96%), rgb(34 23 9 / 96%));
+  color: #ffe7a1;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.25;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgb(255 226 144 / 18%), 0 0 6px rgb(219 163 66 / 26%);
+}
+
+.unitRankBadge.rank-2 {
+  border-color: rgb(214 176 92 / 90%);
+  box-shadow: inset 0 1px 0 rgb(255 226 144 / 24%), 0 0 8px rgb(219 163 66 / 38%);
+}
+
+.unitRankBadge.rank-3 {
+  border-color: #e7b73c;
+  background: linear-gradient(180deg, rgb(104 74 20 / 97%), rgb(52 34 10 / 97%));
+  color: #fff3c4;
+  text-shadow: 0 0 5px rgb(255 214 102 / 75%);
+  box-shadow: inset 0 1px 0 rgb(255 226 144 / 30%), 0 0 10px rgb(231 183 60 / 55%);
+}
+
+.unitRankBadge.combat {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 6;
+  font-size: 9px;
+}
+
 /* Berserk: a red chip flagging that this unit is forced to attack the nearest
    unit (friend or foe) on its next activation. Berserk is an active effect, not
    a token, so it needs its own badge — without it the player cannot tell the

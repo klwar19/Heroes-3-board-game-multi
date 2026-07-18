@@ -149,6 +149,12 @@ export type WogModOptions = {
   newCreatures: boolean;
   /** Wake of Gods hero Artifact cards join the shared Artifact deck(s). */
   artifacts: boolean;
+  /**
+   * WoG Unit Experience System (board adaptation): army unit cards gain
+   * experience from combats won alongside the hero and earn veteran ranks
+   * (stat bonuses + elite abilities). See src/engine/unit-experience.ts.
+   */
+  unitExperience?: boolean;
 };
 
 export const DEFAULT_WOG_OPTIONS: WogModOptions = {
@@ -156,7 +162,8 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
   commanders: false,
   newObjects: false,
   newCreatures: true,
-  artifacts: false
+  artifacts: false,
+  unitExperience: false
 };
 
 /**
@@ -196,6 +203,12 @@ export type AnimeModOptions = {
    * Default OFF ⇒ byte-identical (no shops in the pool, no state stamped).
    */
   equipment: boolean;
+  /**
+   * Unit Experience (anime-mod surface of the shared veterancy system): army
+   * unit cards gain experience and veteran ranks. Same engine as the WOG /
+   * lobby toggles — any one of the three activates it (unit-experience.ts).
+   */
+  unitExperience?: boolean;
   /** Calamity wave cadence when monsterWaves is on. */
   waveCadence?: 3 | 4 | 5;
 };
@@ -2958,6 +2971,16 @@ export type GameAction =
     }
   | {
       /**
+       * Unit Experience (optional rule): Drill one army unit at your own Town —
+       * pay DRILL_UNIT_GOLD_COST (2) gold for +1 unit XP. Once per own turn.
+       * Handler-validated (self-validating).
+       */
+      type: "DRILL_UNIT";
+      playerId: PlayerId;
+      armyUnitId: string;
+    }
+  | {
+      /**
        * Anime Hero Grades: spend one unspent grade point to pick a tree node
        * (one node per tier, tier ≤ current grade). Handler-validated
        * (self-validating; the node is baked into the action, so no window opens).
@@ -5297,6 +5320,44 @@ export type GameEvent =
       reason?: string;
     }
   | {
+      /**
+       * Unit Experience: an army unit card crossed a veteran-rank threshold
+       * (after a won combat's XP award or a Drill). `rank` is the NEW rank 1-3.
+       */
+      id: string;
+      type: "UNIT_RANK_UP";
+      playerId: PlayerId;
+      unitDefId: string;
+      unitName: string;
+      rank: number;
+    }
+  | {
+      /**
+       * Unit Experience: the player paid gold to Drill one army unit at their
+       * own Town (+1 unit XP). `experience` is the card's new XP total.
+       */
+      id: string;
+      type: "UNIT_DRILLED";
+      playerId: PlayerId;
+      unitDefId: string;
+      unitName: string;
+      experience: number;
+    }
+  | {
+      /**
+       * Unit Experience: an upgrade diluted a card's XP (WoG Crexpmod read) —
+       * a Few→Pack reinforcement halves it, a purchased Stack layer costs 1.
+       * `experience` is the card's NEW XP total.
+       */
+      id: string;
+      type: "UNIT_XP_DILUTED";
+      playerId: PlayerId;
+      unitDefId: string;
+      unitName: string;
+      experience: number;
+      reason: "reinforce" | "stack";
+    }
+  | {
       id: string;
       type: "GAME_OPTIONS_CHANGED";
       playerId: PlayerId;
@@ -6272,6 +6333,16 @@ export type ArmyUnitState = {
    * in games where the rule is off.
    */
   stacks?: number;
+  /**
+   * Unit Experience (optional rule, WoG UES board adaptation): total experience
+   * this unit card has earned from combats won alongside the hero (survivors
+   * only) and Drill training. Veteran rank + bonuses derive from it per tier
+   * (see src/engine/unit-experience.ts). Absent (= 0) when the rule is off —
+   * with the rule off no XP is ever awarded, so the field never appears.
+   * XP survives Pack→Few flips and reinforcement (a deliberate simplification
+   * of WoG's upgrade experience loss).
+   */
+  experience?: number;
 };
 
 export type TownTokenState = {
@@ -6646,6 +6717,12 @@ export type PlayerState = {
    */
   bankWins?: number;
   /**
+   * Unit Experience (optional rule): the game round this player last used the
+   * DRILL_UNIT action (2 gold → +1 unit XP at their own Town). Once per own
+   * turn: legal only while `unitDrillRound !== state.round`. Absent = never.
+   */
+  unitDrillRound?: number;
+  /**
    * Anime Hero Grades (anime.heroGrades, §3.11): the game round each
    * once-per-round map SKILL node was last used, keyed by node id (Forced
    * March). `=== state.round` means already used this turn. Absent === never.
@@ -6951,6 +7028,16 @@ export type CombatUnitState = {
    * Creature Bank defender's `stackToken`.
    */
   armyStacks?: number;
+  /**
+   * Unit Experience (optional rule): total XP mirrored from the backing army
+   * card (`ArmyUnitState.experience`). The derived veteran-rank stat bonuses
+   * and elite ability are folded into the unit's printed side every time it is
+   * (re)computed — creation AND mid-combat flips (applyUnitCurrentSide) — like
+   * `permanentAttackBonus`. Absent when the rule is off or the card has no XP.
+   */
+  unitExperience?: number;
+  /** Derived veteran rank (1-3) for badges/inspect; absent at rank 0. */
+  unitRank?: number;
   /**
    * Fixed creature-bank guard (Dragon Utopia's dragons, the Cyclops
    * Stockpile's 2 golden Cyclopes): minted for this fight only, so it must
@@ -9552,6 +9639,13 @@ export type AdventureState = {
    */
   undoMoves?: boolean;
   /**
+   * Unit Experience (optional rule): frozen at setup when ANY of the three
+   * surfaces enabled it (lobby `unitExperience`, `wog.unitExperience`,
+   * `anime.unitExperience`). Absent/false = the rule is off: no XP is awarded,
+   * no rank folds, DRILL_UNIT rejected. See src/engine/unit-experience.ts.
+   */
+  unitExperience?: boolean;
+  /**
    * Individual BINH house-rule toggles, resolved to concrete booleans at setup
    * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older
    * snapshots and the combat sandbox, where the mode default is derived instead.
@@ -9796,6 +9890,15 @@ export type GameSetupOptions = {
    * recorded and `UNDO_MOVE` is rejected — zero behaviour change.
    */
   undoMoves?: boolean;
+  /**
+   * Unit Experience (optional rule, default OFF): army unit cards gain XP from
+   * combats won alongside the hero and earn veteran ranks (tier-scaled
+   * thresholds, stat bonuses, elite abilities). This lobby toggle is one of
+   * three equivalent surfaces — `wog.unitExperience` and `anime.unitExperience`
+   * activate the same engine; the effective flag freezes onto
+   * `adventure.unitExperience` at setup.
+   */
+  unitExperience?: boolean;
   /**
    * Whether players may open their own Ⅱ–Ⅲ Far tiles (default ON). When ON each
    * player drafts a personal Far-tile supply they can place onto the map. Off

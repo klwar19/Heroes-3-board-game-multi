@@ -1,6 +1,7 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { CREATURE_BANK_UNIT_SIDES, stackTokenDelta } from "@/data/map/creature-banks";
 import { applyUnitSideRules, specialtyTransformHealth } from "./ruleset";
+import { combatUnitRankFold, withEliteAbility } from "./unit-experience";
 import type { CombatUnitState, EffectDefinition, GameRuleset, UnitTransformState } from "./state";
 
 /**
@@ -166,11 +167,20 @@ export function applyUnitCurrentSide(
     (unit.armyStacks ?? 0) > 0
       ? 1
       : 0;
-  unit.attack = side.attack + (unit.permanentAttackBonus ?? 0) + armyStackAttack;
-  unit.defense = side.defense;
-  unit.maxHealth = side.health + (unit.permanentHealthBonus ?? 0);
-  unit.initiative = side.initiative;
-  unit.abilities = side.abilities;
+  // Unit Experience (optional rule): re-fold the veteran-rank bonuses + elite
+  // ability on every printed-side recompute (a Pack→Few flip keeps its rank),
+  // exactly like the permanent bonuses above. No-op without mirrored XP.
+  const rankFold = combatUnitRankFold(unit);
+  unit.attack = side.attack + (unit.permanentAttackBonus ?? 0) + armyStackAttack + rankFold.attack;
+  unit.defense = side.defense + rankFold.defense;
+  unit.maxHealth = side.health + (unit.permanentHealthBonus ?? 0) + rankFold.health;
+  unit.initiative = side.initiative + rankFold.initiative;
+  unit.abilities = withEliteAbility(side.abilities, rankFold);
+  if (rankFold.rank > 0) {
+    unit.unitRank = rankFold.rank;
+  } else {
+    delete unit.unitRank;
+  }
   if (unit.assets && side.cardImage) {
     unit.assets.cardImage = side.cardImage;
   }
