@@ -560,4 +560,82 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     rerender(<MapPresetEditor preset={{ farTileOpening: false }} onChange={onChange} />);
     expect(screen.queryByRole("group", { name: "Ⅱ–Ⅲ tiles per player" })).toBeNull();
   });
+
+  // The collapsible section GROUPS (re-parented ordering layer over the leaf
+  // sections). `groupByTitle` reads the visible title span rather than the
+  // group's role/name, because the inner "Timed events" section label shares
+  // that string.
+  const groupByTitle = (title: string): HTMLDetailsElement => {
+    const el = Array.from(document.querySelectorAll("details.mapPresetGroup")).find(
+      (g) => (g.querySelector(".mapPresetGroupTitle") as HTMLElement | null)?.textContent === title
+    );
+    if (!el) {
+      throw new Error(`condition group not found: ${title}`);
+    }
+    return el as HTMLDetailsElement;
+  };
+
+  it("groups the conditions into six ordered, separated collapsible groups", () => {
+    render(<MapPresetEditor preset={undefined} onChange={() => {}} />);
+    const groups = Array.from(document.querySelectorAll("details.mapPresetGroup"));
+    expect(groups.length).toBe(6);
+    const order = groups.map(
+      (g) => (g.querySelector(".mapPresetGroupTitle") as HTMLElement).textContent
+    );
+    expect(order).toEqual([
+      "Match setup",
+      "Starting position",
+      "Victory & scoring",
+      "Map locations",
+      "Timed events",
+      "Designer note"
+    ]);
+  });
+
+  it("shows an active-count badge only on the groups that own set entries", () => {
+    render(
+      <MapPresetEditor
+        preset={{
+          difficulty: "hard",
+          timedEvents: [{ round: 4, effect: { kind: "movement", amount: 1 } }]
+        }}
+        onChange={() => {}}
+      />
+    );
+    // Match setup owns the difficulty entry (1); Timed events owns the one event (1).
+    expect(within(groupByTitle("Match setup")).getByText("1 active")).toBeTruthy();
+    expect(within(groupByTitle("Timed events")).getByText("1 active")).toBeTruthy();
+    // The four groups with nothing set carry NO count badge (absent, not "0").
+    for (const title of ["Starting position", "Victory & scoring", "Map locations", "Designer note"]) {
+      expect(groupByTitle(title).querySelector(".mapPresetGroupCount")).toBeNull();
+    }
+  });
+
+  it("opens groups that own set entries and collapses empty ones by default", () => {
+    render(<MapPresetEditor preset={{ difficulty: "hard" }} onChange={() => {}} />);
+    // The group owning the difficulty entry starts OPEN…
+    expect(groupByTitle("Match setup").open).toBe(true);
+    // …every empty group starts collapsed.
+    expect(groupByTitle("Starting position").open).toBe(false);
+    expect(groupByTitle("Victory & scoring").open).toBe(false);
+    expect(groupByTitle("Timed events").open).toBe(false);
+    expect(groupByTitle("Designer note").open).toBe(false);
+  });
+
+  it("a leaf control inside a collapsed group still fires onChange once the group is expanded", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    const group = groupByTitle("Starting position");
+    // Empty → collapsed by default.
+    expect(group.open).toBe(false);
+    // Expand it via the native summary disclosure, then use a leaf control.
+    fireEvent.click(group.querySelector("summary") as HTMLElement);
+    expect(group.open).toBe(true);
+    fireEvent.click(within(group).getByRole("button", { name: "+5 gold" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        startingBonuses: [{ kind: "resources", gold: 5, buildingMaterials: 0, valuables: 0 }]
+      })
+    );
+  });
 });
