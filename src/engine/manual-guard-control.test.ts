@@ -43,8 +43,12 @@ function makeGame(
   return state;
 }
 
-/** Opens a level-1 guard fight for p1 through the real Combat Setup flow. */
-function fightWithGuards(
+/**
+ * Runs the Combat Setup flow for a p1 guard fight up to (and stopping at) the
+ * pre-battle Neutral formation-sort window when one opens (Manual guard control,
+ * ≥2 guards). Used by the placement tests, which then drive the sort by hand.
+ */
+function fightToPlacement(
   seed: string,
   options: { manualGuardControl?: boolean; houseRules?: Record<string, boolean>; difficulty?: number } = {}
 ): GameState {
@@ -72,6 +76,20 @@ function fightWithGuards(
   state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: fighter });
   state.combat!.dice.scriptedRolls = Array(40).fill(0);
   state.combat!.dice.rollCount = 0;
+  return state;
+}
+
+/** Opens a level-1 guard fight for p1 through the real Combat Setup flow. */
+function fightWithGuards(
+  seed: string,
+  options: { manualGuardControl?: boolean; houseRules?: Record<string, boolean>; difficulty?: number } = {}
+): GameState {
+  let state = fightToPlacement(seed, options);
+  // Manual guard control opens a pre-battle formation sort for the fighter with
+  // ≥2 guards — finish it so downstream combat scenes reach round 1 as before.
+  if (state.combat?.pendingNeutralPlacement === "p1") {
+    state = applyOk(state, { type: "FINISH_NEUTRAL_PLACEMENT", playerId: "p1" });
+  }
   return state;
 }
 
@@ -177,7 +195,9 @@ describe("Manual guard control — controller derivation", () => {
     const state = fightWithGuards("mgc-derive", { manualGuardControl: true });
     expect(manualGuardControllerId(state, state.combat!)).toBe("p1");
     expect(neutralCombatControllerId(state, state.combat!)).toBe("p1");
-    // Never the PvP-mode controller — so no formation sort, no assignment notice.
+    // Never the PvP-mode controller: the fighter DOES get the pre-battle
+    // formation sort (fightWithGuards finished it above, so it is null here),
+    // but never the PvP NEUTRAL_CONTROL_ASSIGNED opponent-assignment notice.
     expect(pvpNeutralControllerId(state, state.combat!)).toBeNull();
     expect(state.combat!.pendingNeutralPlacement ?? null).toBeNull();
     expect(state.eventLog.some((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED")).toBe(false);
@@ -300,5 +320,105 @@ describe("Manual guard control — option plumbing", () => {
 
     const off = createAdventureGameState({ seed: "mgc-freeze-off", difficulty: "normal", rollFirstPlayer: false });
     expect(off.adventure?.manualGuardControl ?? false).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pre-battle formation RELOCATION (the fighter arranges their OWN guards before
+// the battle): the sort window opens for the fighter under Manual guard control,
+// a shooter is restricted to the defender BACK row, and "Let the AI place them"
+// resets to the rulebook auto-placement. Each claim fails if its wiring is gone.
+// ---------------------------------------------------------------------------
+
+describe("Manual guard control — pre-battle formation relocation", () => {
+  it("opens the sort window for the FIGHTER (≥2 guards) with relocate/reset/ready; CONTROL: mode off = none", () => {
+    // normal difficulty-2 → two bronze guards, so the window opens for p1.
+    const state = fightToPlacement("mgc-place-open", { difficulty: 2 });
+    expect(state.combat!.pendingNeutralPlacement).toBe("p1");
+    expect(state.phase).toBe("combat-setup");
+    expect(state.eventLog.some((event) => event.type === "NEUTRAL_FORMATION_SORT_OPENED")).toBe(true);
+    // The fighter arranges their OWN guards — never the PvP opponent notice.
+    expect(state.eventLog.some((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED")).toBe(false);
+
+    const offers = getLegalActions(state, "p1").map((legal) => legal.action.type);
+    expect(offers).toContain("PLACE_NEUTRAL_GUARD");
+    expect(offers).toContain("AUTO_NEUTRAL_PLACEMENT");
+    expect(offers).toContain("FINISH_NEUTRAL_PLACEMENT");
+
+    // CONTROL: with the mode OFF the same difficulty-2 fight opens no window —
+    // the guards are auto-placed and the battle is ready immediately.
+    const off = fightToPlacement("mgc-place-off", { difficulty: 2, manualGuardControl: false });
+    expect(off.combat!.pendingNeutralPlacement ?? null).toBeNull();
+    expect(off.phase).not.toBe("combat-setup");
+  });
+
+  it("keeps a shooter on the back row; CONTROL: a ground guard may take the front", () => {
+    const state = fightToPlacement("mgc-place-shooter", { difficulty: 2 });
+    const [shooter, ground] = guardsOf(state);
+    shooter.type = "ranged";
+    shooter.position = 0; // back row
+    ground.type = "ground";
+    ground.position = 4; // front row
+
+    // A shooter may move to another BACK-row cell.
+    const toBack = applyAction(state, { type: "PLACE_NEUTRAL_GUARD", playerId: "p1", unitId: shooter.id, position: 1 });
+    expect(toBack.errors).toEqual([]);
+    expect(toBack.state.combat!.units[shooter.id].position).toBe(1);
+
+    // A shooter may NOT move to a FRONT-row cell (5).
+    const toFront = applyAction(toBack.state, {
+      type: "PLACE_NEUTRAL_GUARD",
+      playerId: "p1",
+      unitId: shooter.id,
+      position: 5
+    });
+    expect(toFront.errors.length).toBeGreaterThan(0);
+    expect(toFront.state.combat!.units[shooter.id].position).toBe(1);
+
+    // CONTROL: a GROUND guard is unrestricted — it may take a front-row cell.
+    const groundFront = applyAction(toBack.state, {
+      type: "PLACE_NEUTRAL_GUARD",
+      playerId: "p1",
+      unitId: ground.id,
+      position: 6
+    });
+    expect(groundFront.errors).toEqual([]);
+    expect(groundFront.state.combat!.units[ground.id].position).toBe(6);
+  });
+
+  it("rejects a swap that would push a shooter to the front row", () => {
+    const state = fightToPlacement("mgc-place-swap", { difficulty: 2 });
+    const [shooter, ground] = guardsOf(state);
+    shooter.type = "ranged";
+    shooter.position = 0; // back row
+    ground.type = "ground";
+    ground.position = 4; // front row
+
+    // Dropping the ground guard onto the shooter's back cell would trade cells,
+    // pushing the shooter to the front (4) — rejected, both stay put.
+    const swap = applyAction(state, { type: "PLACE_NEUTRAL_GUARD", playerId: "p1", unitId: ground.id, position: 0 });
+    expect(swap.errors.length).toBeGreaterThan(0);
+    expect(swap.state.combat!.units[shooter.id].position).toBe(0);
+    expect(swap.state.combat!.units[ground.id].position).toBe(4);
+  });
+
+  it("'Let the AI place them' resets to the auto formation (shooters to back); FINISH starts the battle", () => {
+    const state = fightToPlacement("mgc-place-auto", { difficulty: 2 });
+    const [shooter, ground] = guardsOf(state);
+    shooter.type = "ranged";
+    ground.type = "ground";
+    // Scramble the layout by hand (shooter on the front line), then reset it.
+    shooter.position = 5;
+    ground.position = 1;
+
+    const reset = applyOk(state, { type: "AUTO_NEUTRAL_PLACEMENT", playerId: "p1" });
+    // The AI auto-placement returns the shooter to the back row [0..3]…
+    expect([0, 1, 2, 3]).toContain(reset.combat!.units[shooter.id].position);
+    // …and keeps the sort window OPEN (reset ≠ commit).
+    expect(reset.combat!.pendingNeutralPlacement).toBe("p1");
+
+    const started = applyOk(reset, { type: "FINISH_NEUTRAL_PLACEMENT", playerId: "p1" });
+    expect(started.combat!.pendingNeutralPlacement ?? null).toBeNull();
+    expect(started.phase).not.toBe("combat-setup");
   });
 });

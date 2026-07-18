@@ -214,7 +214,7 @@ import {
   applyComputerCombatBoost,
   removeComputerCombatBoost,
 } from "./computer/combat-boost";
-import { pvpNeutralControllerId } from "./neutral-control";
+import { neutralCombatControllerId, pvpNeutralControllerId } from "./neutral-control";
 import {
   assertParallelInteractionFree,
   hasOpenAdventureTurn,
@@ -5009,10 +5009,13 @@ function openNeutralPlacementWindow(state: GameState): boolean {
   if (!combat) {
     return false;
   }
-  // The pre-battle SORT belongs to a human OPPONENT playing the guards (PvP
-  // Neutral Control) only — under Manual guard control the FIGHTER never gets
-  // to rearrange the enemy formation they are about to attack.
-  const controller = pvpNeutralControllerId(state, combat);
+  // The pre-battle SORT opens for whoever plays the guards: a human OPPONENT
+  // under PvP Neutral Control, OR — new — the FIGHTER themselves under Manual
+  // guard control, who may relocate the guards within the defender's two rows
+  // (shooters kept on the back row) before the battle begins, or hand the
+  // formation back to the AI with "Let the AI place them". A plain AI fight (no
+  // controller) never opens the window.
+  const controller = neutralCombatControllerId(state, combat);
   if (!controller) {
     return false;
   }
@@ -5052,6 +5055,40 @@ export function neutralFormationCellsFor(state: GameState): number[] {
 }
 
 /**
+ * Whether the OPEN placement window is the Manual-guard-control fighter
+ * arranging their OWN guards (as opposed to a PvP-Neutral-Control opponent
+ * arranging an enemy's guards). The PvP controller is never the fighter, so the
+ * controller being the fighter uniquely identifies Manual guard control — the
+ * only mode that carries the "shooters on the back row" restriction and the
+ * "Let the AI place them" reset.
+ */
+export function neutralPlacementIsManual(state: GameState): boolean {
+  const combat = state.combat;
+  return Boolean(combat && combat.pendingNeutralPlacement && combat.pendingNeutralPlacement === combat.attackerPlayerId);
+}
+
+/**
+ * The formation cells a SPECIFIC Neutral guard may occupy during the pre-battle
+ * sort. Same as {@link neutralFormationCellsFor} for a PvP-Neutral-Control sort
+ * (any defender-row cell on a field, any corner on a bank). Under Manual guard
+ * control (the FIGHTER arranges their OWN guards) a SHOOTER — a ranged unit — is
+ * restricted to the defender BACK row (Heroes 3 "shooters in the back"); ground
+ * and flying guards keep both rows, and bank corners never restrict.
+ */
+export function neutralFormationCellsForGuard(state: GameState, guard: CombatUnitState): number[] {
+  const combat = state.combat;
+  const cells = neutralFormationCellsFor(state);
+  if (!combat) {
+    return cells;
+  }
+  const isBank = combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId);
+  if (!isBank && guard.type === "ranged" && neutralPlacementIsManual(state)) {
+    return [...DEFENDER_BACKLINE];
+  }
+  return cells;
+}
+
+/**
  * PvP Neutral Control: the controller repositions ONE Neutral guard during the
  * pre-battle sort (PLACE_NEUTRAL_GUARD). Moves the guard to an empty cell in the
  * formation zone, or SWAPS it with another guard already standing there. Field
@@ -5066,12 +5103,17 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
   if (!guard || guard.controllerId !== NEUTRAL_PLAYER_ID || guard.damage >= guard.maxHealth || isArrowTowerUnit(guard)) {
     throw new Error("That unit is not a Neutral guard you can reposition.");
   }
-  // Field = any defender-row cell; bank = the four corners only.
-  if (!neutralFormationCellsFor(state).includes(action.position)) {
+  // Field = any defender-row cell (shooters restricted to the back row under
+  // Manual guard control); bank = the four corners only.
+  const isBank = combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId);
+  const shooterRestricted = !isBank && guard.type === "ranged" && neutralPlacementIsManual(state);
+  if (!neutralFormationCellsForGuard(state, guard).includes(action.position)) {
     throw new Error(
-      combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)
+      isBank
         ? "A Creature Bank guard must stay on one of the four corner cells."
-        : "A Neutral guard must stay on the defender's back or front line."
+        : shooterRestricted
+          ? "A shooter must be placed on the defender's back row."
+          : "A Neutral guard must stay on the defender's back or front line."
     );
   }
   // Combat obstacles (walls, force fields, …) are never landable.
@@ -5087,6 +5129,11 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
     // holds its cell (there are none but the neutral guards during this window).
     if (occupant.controllerId !== NEUTRAL_PLAYER_ID || isArrowTowerUnit(occupant)) {
       throw new Error("That space is taken.");
+    }
+    // A swap must also respect the partner's own rule: a shooter cannot be
+    // pushed to the front row (its destination is the mover's old cell).
+    if (!neutralFormationCellsForGuard(state, occupant).includes(guard.position)) {
+      throw new Error("A shooter must stay on the defender's back row.");
     }
     occupant.position = guard.position;
     appendEvent(state, {
@@ -5119,6 +5166,51 @@ export function finishNeutralPlacement(
     return;
   }
   finalizeCombatStart(state);
+}
+
+/** Re-run the rulebook AI's auto-placement for the current Neutral guards. */
+function resetNeutralFormationToAuto(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  const guards = Object.values(combat.units).filter(
+    (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage < unit.maxHealth && !isArrowTowerUnit(unit)
+  );
+  if (combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)) {
+    placeCreatureBankGuards(guards);
+  } else {
+    placeNeutralUnits(guards, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
+  }
+  for (const guard of guards) {
+    appendEvent(state, {
+      type: "COMBAT_UNIT_PLACED",
+      playerId: combat.attackerPlayerId,
+      unitId: guard.id,
+      position: guard.position
+    });
+  }
+}
+
+/**
+ * Manual guard control: reset the Neutral formation to the rulebook AI's
+ * auto-placement (shooters to the back row) during the pre-battle sort, then
+ * keep the window open — "Let the AI place them / return to AI auto control".
+ * Legal only for the manual-control fighter arranging their OWN guards; a PvP
+ * opponent sorting an enemy's formation has no auto fallback.
+ */
+export function autoNeutralPlacement(
+  state: GameState,
+  action: Extract<GameAction, { type: "AUTO_NEUTRAL_PLACEMENT" }>
+): void {
+  const combat = state.combat;
+  if (!combat || combat.pendingNeutralPlacement !== action.playerId) {
+    throw new Error("There is no Neutral formation to sort right now.");
+  }
+  if (!neutralPlacementIsManual(state)) {
+    throw new Error("Only the fighter may hand the formation back to the AI.");
+  }
+  resetNeutralFormationToAuto(state);
 }
 
 /**

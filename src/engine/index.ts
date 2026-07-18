@@ -555,6 +555,8 @@ export {
   observatoryRevealTargets,
   placementCellsFor,
   neutralFormationCellsFor,
+  neutralFormationCellsForGuard,
+  neutralPlacementIsManual,
   pumpAdventureQueues
 } from "./adventure-reducer";
 export {

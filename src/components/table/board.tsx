@@ -33,6 +33,8 @@ import {
   pickCombatBoardArtId,
   placementCellsFor,
   neutralFormationCellsFor,
+  neutralFormationCellsForGuard,
+  neutralPlacementIsManual,
   playerSpellCastsIgnoreLimit,
   unitHasUnlimitedRetaliationEffect,
   unitIsBerserk,
@@ -666,6 +668,10 @@ export function BattlefieldBoard({
   const [expertSwapArmed, setExpertSwapArmed] = useState(false);
   const [hoverDestination, setHoverDestination] = useState<number | null>(null);
   const [flashCells, setFlashCells] = useState<readonly number[]>([]);
+  // The Neutral guard currently being drag-sorted (Manual guard control): while
+  // it is held, only that guard's legal cells light up — a shooter shows just
+  // the back row, so a shooter can never be dropped onto the front line.
+  const [sortDragUnitId, setSortDragUnitId] = useState<string | null>(null);
   // Route-planner state: when the player chooses to hand-pick a move route
   // (to brave or dodge a Fire Wall) this holds the active unit and the waypoints
   // chosen so far. A plan left over from a different unit is ignored at render
@@ -852,10 +858,19 @@ export function BattlefieldBoard({
   // Bank), exactly like a defender repositioning their own line.
 
   const sorting = Boolean(combat && combat.pendingNeutralPlacement === viewerPlayerId);
+  // Manual guard control restricts a shooter to the back row: while such a guard
+  // is being dragged, narrow the droppable cells to that guard's legal set so the
+  // front line simply does not accept it (the engine also rejects an illegal drop).
+  const sortDraggedGuard = sorting && sortDragUnitId ? combat?.units[sortDragUnitId] : undefined;
+  const sortCells = sorting
+    ? sortDraggedGuard
+      ? neutralFormationCellsForGuard(state, sortDraggedGuard)
+      : neutralFormationCellsFor(state)
+    : [];
   const ownRows = placing
     ? new Set(placementCellsFor(state, viewerPlayerId))
     : sorting
-      ? new Set(neutralFormationCellsFor(state))
+      ? new Set(sortCells)
       : new Set<number>();
 
   // Tactics swap: a click-to-select board interaction for BOTH the start-of-combat
@@ -1378,6 +1393,8 @@ export function BattlefieldBoard({
                 onPointerDown: (event: React.PointerEvent) => {
                   beginUnitPointerDrag(event, {
                     portraitUrl: unit!.assets?.cardImage,
+                    onDragStart: sortDraggable ? () => setSortDragUnitId(unit!.id) : undefined,
+                    onDragEnd: sortDraggable ? () => setSortDragUnitId(null) : undefined,
                     onDrop: (position) =>
                       onAction(
                         sortDraggable
@@ -1912,6 +1929,9 @@ const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   // formation sort (the moves/swaps themselves are board drag/click, like
   // deployment, so PLACE_NEUTRAL_GUARD is intentionally NOT a command button).
   "FINISH_NEUTRAL_PLACEMENT",
+  // Manual guard control: "Let the AI place them" — reset the pre-battle
+  // formation to the rulebook AI's auto-placement (return to AI auto control).
+  "AUTO_NEUTRAL_PLACEMENT",
   "SUMMON_DEMONS",
   "USE_GENIE_DECK_DRAW",
   // Anime Hero Grades (§3.11): War Cry — a combat active on the active unit,

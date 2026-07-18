@@ -37,6 +37,10 @@ export type UnitPointerDragOptions = {
   portraitUrl?: string;
   /** Dispatch the placement for the deployment cell the pointer is released over. */
   onDrop: (cellIndex: number) => void;
+  /** Fired once the gesture becomes a real drag (past the activation threshold). */
+  onDragStart?: () => void;
+  /** Fired when a real drag ends (drop or cancel). Never fires for a plain tap. */
+  onDragEnd?: () => void;
 };
 
 function dropCellAt(x: number, y: number): Element | null {
@@ -157,6 +161,7 @@ export function beginUnitPointerDrag(event: ReactPointerEvent, options: UnitPoin
       activated = true;
       ghost = makeGhost(options.portraitUrl);
       document.body.appendChild(ghost);
+      options.onDragStart?.();
     }
     placeGhost(moveEvent.clientX, moveEvent.clientY);
     setHover(dropCellAt(moveEvent.clientX, moveEvent.clientY));
@@ -169,6 +174,7 @@ export function beginUnitPointerDrag(event: ReactPointerEvent, options: UnitPoin
     if (wasDragging) {
       // A real drag's trailing click (select/take-back/inspect) must not also fire.
       suppressNextClick();
+      options.onDragEnd?.();
       if (index !== null) {
         options.onDrop(index);
       }
@@ -180,6 +186,7 @@ export function beginUnitPointerDrag(event: ReactPointerEvent, options: UnitPoin
     cleanup();
     if (wasDragging) {
       suppressNextClick();
+      options.onDragEnd?.();
     }
   }
 
