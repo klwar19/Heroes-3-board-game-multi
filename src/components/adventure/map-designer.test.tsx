@@ -213,6 +213,78 @@ describe("MapDesigner — tier-band outline colours + legend", () => {
   });
 });
 
+describe("MapDesigner — clustered pre-board chrome", () => {
+  const loneTown = [{ row: 10, col: 10, group: "starting" as const, faceDown: false }];
+
+  it("renders three labeled clusters in order (Tiles → Objects & teleporters → Tools)", () => {
+    const container = renderDesigner(loneTown);
+    const clusters = [...container.querySelectorAll(".designerCluster")] as HTMLElement[];
+    expect(clusters.length, "three clusters").toBe(3);
+    const labels = clusters.map((c) => c.querySelector(".designerClusterLabel")?.textContent?.trim());
+    expect(labels, "labels in reading order").toEqual(["Tiles", "Objects & teleporters", "Tools"]);
+
+    const [tiles, objects, tools] = clusters;
+    // The tile palette lives in the Tiles cluster.
+    expect(tiles.querySelector(".designerPalette"), "tile palette in Tiles cluster").toBeTruthy();
+    // Placeable objects / teleporters live in the Objects cluster.
+    expect(objects.querySelector(".designerObjectPalette"), "object palette in Objects cluster").toBeTruthy();
+    expect(
+      objects.querySelector('.designerObjectButton[data-gate-pair="1"]'),
+      "a Teleport Gate button in Objects cluster"
+    ).toBeTruthy();
+    // Mode-arming tools live in the Tools cluster.
+    expect(tools.querySelector(".designerObjectButton.borderPaint"), "border tool in Tools cluster").toBeTruthy();
+    expect(
+      tools.querySelector('[data-testid="designer-mod-panel-toggle"]'),
+      "Mod toggle in Tools cluster"
+    ).toBeTruthy();
+    // …and are NOT cross-contaminated between clusters.
+    expect(objects.querySelector(".designerObjectButton.borderPaint"), "border tool NOT in Objects cluster").toBeNull();
+    expect(tools.querySelector(".designerObjectPalette"), "object palette NOT in Tools cluster").toBeNull();
+    expect(tiles.querySelector(".designerObjectPalette"), "object palette NOT in Tiles cluster").toBeNull();
+  });
+
+  it("integrates the band legend inside the Tiles cluster (same card as the palette)", () => {
+    const container = renderDesigner(loneTown);
+    const tiles = container.querySelector(".designerClusterTiles");
+    expect(tiles, "Tiles cluster present").toBeTruthy();
+    const body = tiles!.querySelector(".designerClusterBody");
+    expect(body!.querySelector(".designerPalette"), "palette in the Tiles card body").toBeTruthy();
+    expect(body!.querySelector(".designerBandLegend"), "band legend in the same Tiles card body").toBeTruthy();
+    // The legend no longer floats between the two palettes at the designer root.
+    expect(
+      [...container.children].some((c) => c.classList.contains("designerBandLegend")),
+      "band legend is not a bare mapDesigner child"
+    ).toBe(false);
+  });
+
+  it("collapses the walkthrough help into a closed <details> that keeps the verbatim text", () => {
+    const container = renderDesigner(loneTown);
+    const help = container.querySelector("details.designerHelp") as HTMLDetailsElement | null;
+    expect(help, "help details present").toBeTruthy();
+    expect(help!.open, "collapsed by default").toBe(false);
+    expect(help!.querySelector(".designerHelpSummary")?.textContent).toContain("How the designer works");
+    // The original walkthrough is preserved verbatim inside .optionHint.
+    const hint = help!.querySelector(".optionHint");
+    expect(hint, "optionHint kept inside the details").toBeTruthy();
+    expect(hint!.textContent).toContain("Drag a tile from the palette onto the board");
+    expect(hint!.textContent).toContain("Subterranean Gate");
+  });
+
+  it("arming the border tool flips its button to the armed styling class (behavior, not decoration)", () => {
+    const container = renderDesigner(loneTown);
+    const btn = container.querySelector(".designerObjectButton.borderPaint") as HTMLElement;
+    expect(btn, "border tool button present").toBeTruthy();
+    // It carries the shared tool-button class that gives the outlined tool look.
+    expect(btn.classList.contains("designerToolButton"), "border tool tagged designerToolButton").toBe(true);
+    expect(btn.classList.contains("armed"), "not armed at rest").toBe(false);
+    fireEvent.click(btn);
+    expect(btn.classList.contains("armed"), "armed after click").toBe(true);
+    fireEvent.click(btn);
+    expect(btn.classList.contains("armed"), "disarmed after a second click").toBe(false);
+  });
+});
+
 describe("MapDesigner — center Ⅶ-field designation", () => {
   it("the center-tile popover Ⅶ picker writes the plan's viiField", () => {
     const onChange = vi.fn();

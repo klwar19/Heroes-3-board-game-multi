@@ -3914,6 +3914,9 @@ export function MapDesigner({
 
   return (
     <div className="mapDesigner" aria-label="Map designer">
+      <section className="designerCluster designerClusterTiles" aria-label="Tiles">
+        <span className="designerClusterLabel">Tiles</span>
+        <div className="designerClusterBody">
       <div className="designerPalette" aria-label="Tile palette">
         <small className="palettePrompt">Drag a tile onto the map</small>
         {PALETTE.map((entry) => (
@@ -3948,7 +3951,12 @@ export function MapDesigner({
           </span>
         ))}
       </div>
+        </div>
+      </section>
 
+      <section className="designerCluster designerClusterObjects" aria-label="Objects &amp; teleporters">
+        <span className="designerClusterLabel">Objects &amp; teleporters</span>
+        <div className="designerClusterBody">
       <div className="designerObjectPalette" aria-label="Objects palette">
         <small className="palettePrompt">
           {borderPaint
@@ -4045,10 +4053,18 @@ export function MapDesigner({
           >
             ⛔ Barrier
           </button>
-          <span className="designerObjectGroupLabel">Border tool</span>
+        </div>
+      </div>
+        </div>
+      </section>
+
+      <section className="designerCluster designerClusterTools" aria-label="Tools">
+        <span className="designerClusterLabel">Tools</span>
+        <div className="designerClusterBody">
+        <div className="designerToolRow">
           <button
             aria-pressed={borderPaint}
-            className={`designerObjectButton borderPaint${borderPaint ? " armed" : ""}`}
+            className={`designerObjectButton designerToolButton borderPaint${borderPaint ? " armed" : ""}`}
             onClick={toggleBorderPaint}
             title="Yellow border — draw impassable lines edge by edge on the board: click an edge to seal it, click again to remove, drag to paint several"
             type="button"
@@ -4059,7 +4075,7 @@ export function MapDesigner({
             aria-controls="designer-mod-panel"
             aria-expanded={modPanelOpen}
             aria-pressed={modPanelOpen}
-            className={`designerObjectButton modPanel${modPanelOpen ? " armed" : ""}`}
+            className={`designerObjectButton designerToolButton modPanel${modPanelOpen ? " armed" : ""}`}
             data-testid="designer-mod-panel-toggle"
             onClick={() => {
               setModPanelOpen((open) => !open);
@@ -4225,7 +4241,8 @@ export function MapDesigner({
             ) : null}
           </div>
         ) : null}
-      </div>
+        </div>
+      </section>
 
       <div className="designerBoardWrap" ref={wrapRef}>
         <svg
@@ -5458,6 +5475,8 @@ export function MapDesigner({
         </div>
       ) : null}
 
+      <details className="designerHelp">
+        <summary className="designerHelpSummary">How the designer works</summary>
       <small className="optionHint">
         Drag a tile from the palette onto the board, then <strong>click it</strong> to configure: choose{" "}
         <strong>Random</strong> (pool draw), <strong>Secret</strong> (landmark filter — mines, obelisks, … stay hidden
@@ -5480,6 +5499,7 @@ export function MapDesigner({
         Town (Ⅰ) tiles are seats; drag empty background to pan, pinch or use the toolbar to zoom (wheel zoom when
         unlocked).
       </small>
+      </details>
 
       {/* Floating drag ghost follows the pointer — band-correct printed back. */}
       {drag ? (
