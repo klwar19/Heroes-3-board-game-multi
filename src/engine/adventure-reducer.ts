@@ -106,6 +106,7 @@ import {
   instantiateTile,
   isFieldGuarded,
   isOuterEdgeSealed,
+  isTeleportConnectorLocation,
   isTileSlotDesignedSealed,
   isSharedEventBookkeepingReward,
   seaStepHalts,
@@ -1798,6 +1799,15 @@ export function isTileRotationConnected(state: GameState, tile: MapTileState, ro
     return true;
   }
 
+  // A tile linked by a Subterranean Gate plan joins the map THROUGH that gate
+  // (surface↔cavern), not by a walked edge — so no rotation can "seal it off".
+  // This also covers the designer's own gate links, whose gate has not carved
+  // yet during the rotation choice. (The user's bug: a rotation toward a gate
+  // was rejected as sealed.)
+  if ((adventure.gatePlans ?? []).some((plan) => plan.surfaceTileId === tile.id || plan.undergroundTileId === tile.id)) {
+    return true;
+  }
+
   const center = { row: tile.centerRow, col: tile.centerCol };
   const footprint = tileFootprint(center, rotation);
   const footprintIds = new Set(footprint.map(hexSpaceId));
@@ -1806,6 +1816,13 @@ export function isTileRotationConnected(state: GameState, tile: MapTileState, ro
     const fieldDef = def.fields[slot];
     if (!fieldDef || locationDefinitions[fieldDef.location]?.category === "blocked") {
       continue;
+    }
+
+    // A teleport connector already carved on THIS slot (Monolith / Teleport Gate
+    // / Subterranean Gate / Whirlpool / one-way) links the tile into the map via
+    // the teleport network — the tile is connected whatever its walked edges.
+    if (isTeleportConnectorLocation(adventure.fields[hexSpaceId(footprint[slot])]?.location ?? "")) {
+      return true;
     }
 
     // The slot's own outer border must be open — printed (tile-frame) OR a
@@ -1827,6 +1844,14 @@ export function isTileRotationConnected(state: GameState, tile: MapTileState, ro
       const neighborField = adventure.fields[neighborId];
       if (!neighborField) {
         continue;
+      }
+      // A teleport connector NEIGHBOUR (Monolith / Teleport Gate / Subterranean
+      // Gate / …) is a valid doorway even when its own outer arc reads sealed —
+      // a gate carved onto a former Blocked Field keeps that slot's printed
+      // sealed arc, which used to make the check wrongly treat the gate as a
+      // blocked field and report the tile "sealed off".
+      if (isTeleportConnectorLocation(neighborField.location)) {
+        return true;
       }
       if (locationDefinitions[neighborField.location]?.category === "blocked") {
         continue;
