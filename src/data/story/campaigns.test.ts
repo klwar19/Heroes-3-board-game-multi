@@ -45,10 +45,17 @@ function bilingual(text: LocalizedText, label: string) {
 }
 
 describe("campaign registry", () => {
+  it("lists Restoration of Erathia FIRST on the /story hub (registry order)", () => {
+    // The /story page renders listCampaigns() in registry order, so pinning the
+    // registry order pins the hub order. Erathia (classic) leads.
+    expect(CAMPAIGNS[0].id).toBe("erathia");
+    expect(listCampaigns()[0].id).toBe("erathia");
+  });
+
   it("ships all FOUR campaigns, each with 7 chapters and matching registry lookups", () => {
     expect(listCampaigns()).toBe(CAMPAIGNS);
-    expect(CAMPAIGNS.map((c) => c.id)).toEqual(["jianghu", "bin-otherworld", "erathia", "convergence"]);
-    expect(CAMPAIGNS.map((c) => c.theme)).toEqual(["xianxia", "isekai", "classic", "xianxia"]);
+    expect(CAMPAIGNS.map((c) => c.id)).toEqual(["erathia", "jianghu", "bin-otherworld", "convergence"]);
+    expect(CAMPAIGNS.map((c) => c.theme)).toEqual(["classic", "xianxia", "isekai", "xianxia"]);
     for (const campaign of CAMPAIGNS) {
       expect(campaign.chapters.length, `${campaign.id} chapters`).toBe(7);
       expect(getCampaign(campaign.id)).toBe(campaign);

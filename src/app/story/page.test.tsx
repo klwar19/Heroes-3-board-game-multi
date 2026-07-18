@@ -32,6 +32,14 @@ describe("/story (campaign hub)", () => {
     expect(screen.getByRole("heading", { name: "Bin's Otherworld Chronicle" })).toBeTruthy();
   });
 
+  it("renders Restoration of Erathia FIRST (registry order)", () => {
+    render(<StoryPage />);
+    const titles = screen
+      .getAllByRole("heading", { level: 2 })
+      .map((node) => node.textContent);
+    expect(titles[0]).toBe("Restoration of Erathia");
+  });
+
   it("shows Begin on the playable, unlocked Chapter 1 of each campaign", () => {
     render(<StoryPage />);
     expect(screen.getByRole("button", { name: /Begin chapter: Awakening/i })).toBeTruthy();
