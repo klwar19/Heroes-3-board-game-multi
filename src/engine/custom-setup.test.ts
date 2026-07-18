@@ -1171,6 +1171,144 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     expect(timedRollOwners).toEqual(["p1"]);
   });
 
+  it("a repeating timed event fires on its schedule (round, +N, +2N…) but never off-schedule (controls)", () => {
+    const build = (repeat: number | undefined) =>
+      createAdventureGameState({
+        seed: "preset-timed-repeat",
+        customMap: NEAR_SLOT,
+        customMapPreset: {
+          timedEvents: [
+            {
+              round: 3,
+              ...(repeat ? { repeatEveryRounds: repeat } : {}),
+              effect: { kind: "resources" as const, gold: 5, buildingMaterials: 0, valuables: 0 }
+            }
+          ]
+        }
+      });
+
+    const state = build(2);
+    const oneShot = build(undefined); // CONTROL: a legacy one-shot (no repeat).
+
+    const gold = (s: import("./state").GameState) => s.players.p1.resources.gold;
+    const fire = (s: import("./state").GameState, round: number) => {
+      s.round = round;
+      applyCustomMapTimedEvents(s);
+    };
+    const base = gold(state);
+    const oneShotBase = gold(oneShot);
+
+    // Round 2 (< the event round): neither fires.
+    fire(state, 2);
+    fire(oneShot, 2);
+    expect(gold(state)).toBe(base);
+    expect(gold(oneShot)).toBe(oneShotBase);
+
+    // Round 3: both fire (+5).
+    fire(state, 3);
+    fire(oneShot, 3);
+    expect(gold(state)).toBe(base + 5);
+    expect(gold(oneShot)).toBe(oneShotBase + 5);
+
+    // Round 4 (CONTROL): interval 2 → NOT due; the one-shot is also silent.
+    fire(state, 4);
+    fire(oneShot, 4);
+    expect(gold(state)).toBe(base + 5);
+    expect(gold(oneShot)).toBe(oneShotBase + 5);
+
+    // Round 5: the repeating event fires again (+5); the one-shot NEVER fires
+    // again (CONTROL: a one-shot fires exactly once).
+    fire(state, 5);
+    fire(oneShot, 5);
+    expect(gold(state)).toBe(base + 10);
+    expect(gold(oneShot)).toBe(oneShotBase + 5);
+
+    // Round 6 (CONTROL): off-schedule, no fire.
+    fire(state, 6);
+    expect(gold(state)).toBe(base + 10);
+
+    // Round 7: the third firing (+5).
+    fire(state, 7);
+    expect(gold(state)).toBe(base + 15);
+
+    // Each firing appends a DISTINCT MAP_PRESET_TRIGGERED (the map-event overlay
+    // dedupes by id — a repeat firing must not be swallowed as the same event).
+    const firedIds = state.eventLog
+      .filter((e) => e.type === "MAP_PRESET_TRIGGERED")
+      .map((e) => e.id);
+    expect(firedIds).toHaveLength(3); // rounds 3, 5, 7
+    expect(new Set(firedIds).size).toBe(3); // all distinct
+  });
+
+  it("a timed experience event raises the main hero via the NORMAL level pipeline (eliminated seat skipped)", () => {
+    const state = createAdventureGameState({
+      seed: "preset-timed-xp",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [{ round: 3, effect: { kind: "experience", amount: 4 } }]
+      }
+    });
+    const p1Hero = Object.values(state.heroes).find((h) => h.controllerId === "p1")!;
+    const p2Hero = Object.values(state.heroes).find((h) => h.controllerId === "p2")!;
+    // Baseline: heroes start at level 1 / exp 0, expert-use limit 0, hand 4.
+    expect(p1Hero.level).toBe(1);
+    expect(state.players.p1.limits.expertUses).toBe(0);
+    const p2ExpBefore = p2Hero.experience;
+    const p2LevelBefore = p2Hero.level;
+
+    // CONTROL: p2 is eliminated and must gain nothing.
+    state.players.p2.eliminated = true;
+
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+
+    // +4 XP → level 3 (levelOfExperience(4) = 3): the NORMAL pipeline bumps the
+    // hero LEVEL and its downstream hand-limit / expert-use limits, and appends
+    // the same EXPERIENCE_GAINED / HERO_LEVEL_UP events a combat award produces.
+    expect(p1Hero.experience).toBe(4);
+    expect(p1Hero.level).toBe(3);
+    expect(state.players.p1.limits.expertUses).toBe(1); // EXPERT_USES_BY_LEVEL[3]
+    expect(state.players.p1.limits.hand).toBe(5); // HAND_LIMIT_BY_LEVEL[3]
+    expect(state.eventLog.some((e) => e.type === "HERO_LEVEL_UP" && e.playerId === "p1")).toBe(true);
+    expect(state.eventLog.some((e) => e.type === "EXPERIENCE_GAINED" && e.playerId === "p1")).toBe(true);
+
+    // Eliminated seat untouched (no XP, no level change).
+    expect(p2Hero.experience).toBe(p2ExpBefore);
+    expect(p2Hero.level).toBe(p2LevelBefore);
+  });
+
+  it("a NEGATIVE resources timed event drains every treasury, floored at 0 (floor control)", () => {
+    const state = createAdventureGameState({
+      seed: "preset-timed-loss",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [
+          { round: 3, effect: { kind: "resources", gold: -5, buildingMaterials: 0, valuables: 0 } }
+        ]
+      }
+    });
+    // p1 holds plenty; p2 is short (1 gold) — the FLOOR control.
+    state.players.p1.resources.gold = 20;
+    state.players.p2.resources.gold = 1;
+
+    state.round = 3;
+    applyCustomMapTimedEvents(state);
+
+    expect(state.players.p1.resources.gold).toBe(15); // 20 − 5
+    expect(state.players.p2.resources.gold).toBe(0); // 1 − 5 floored at 0, never negative
+
+    // Feed line says the players LOSE, not gain.
+    expect(
+      state.eventLog.some(
+        (e) =>
+          e.type === "MAP_PRESET_TRIGGERED" && e.round === 3 && e.message.includes("loses 5 gold")
+      )
+    ).toBe(true);
+    // The ACTUAL removal is recorded — p2 only lost its lone gold, not the full 5.
+    const p2Spent = state.eventLog.find((e) => e.type === "RESOURCES_SPENT" && e.playerId === "p2");
+    expect(p2Spent?.type === "RESOURCES_SPENT" ? p2Spent.cost.gold : undefined).toBe(1);
+  });
+
   it("sanitizeCustomMapPreset keeps freer timed-effect kinds and clamps amounts", async () => {
     const { sanitizeCustomMapPreset } = await import("./map-preset");
     const cleaned = sanitizeCustomMapPreset({
@@ -1225,6 +1363,36 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     });
     expect(legacy?.timedEvents).toEqual([
       { round: 2, effect: { kind: "clear_visitable_cubes", locations: ["windmill"] } }
+    ]);
+  });
+
+  it("sanitizeCustomMapPreset clamps negative resource losses, the repeat interval, and experience", async () => {
+    const { sanitizeCustomMapPreset } = await import("./map-preset");
+    const cleaned = sanitizeCustomMapPreset({
+      timedEvents: [
+        // Positive legacy entry — unchanged (byte-identical).
+        { round: 2, effect: { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 } },
+        // −999 gold clamps to the −50 loss floor.
+        { round: 3, effect: { kind: "resources", gold: -999, buildingMaterials: 0, valuables: 0 } },
+        // repeatEveryRounds 99 clamps to 10.
+        { round: 4, repeatEveryRounds: 99, effect: { kind: "morale", amount: 1 } },
+        // repeatEveryRounds 1 is DROPPED (below the 2 minimum → one-shot).
+        { round: 5, repeatEveryRounds: 1, effect: { kind: "movement", amount: 1 } },
+        // a non-int repeat is DROPPED.
+        { round: 6, repeatEveryRounds: "weekly", effect: { kind: "movement", amount: 1 } },
+        // experience clamps to 1..5.
+        { round: 7, effect: { kind: "experience", amount: 99 } },
+        // an all-zero resources loss/gain is dropped entirely.
+        { round: 8, effect: { kind: "resources", gold: 0, buildingMaterials: 0, valuables: 0 } }
+      ]
+    } as unknown);
+    expect(cleaned?.timedEvents).toEqual([
+      { round: 2, effect: { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 } },
+      { round: 3, effect: { kind: "resources", gold: -50, buildingMaterials: 0, valuables: 0 } },
+      { round: 4, repeatEveryRounds: 10, effect: { kind: "morale", amount: 1 } },
+      { round: 5, effect: { kind: "movement", amount: 1 } },
+      { round: 6, effect: { kind: "movement", amount: 1 } },
+      { round: 7, effect: { kind: "experience", amount: 5 } }
     ]);
   });
 

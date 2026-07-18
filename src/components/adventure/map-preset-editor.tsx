@@ -14,6 +14,7 @@ import {
   defaultVictoryPointObjective,
   describeCustomMapPresetEntries,
   describeTimedMapEffect,
+  describeTimedEventSchedule,
   MAX_CUSTOM_WIN_CONDITIONS,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
@@ -889,7 +890,7 @@ export function MapPresetEditor({
                       onChange={(e) => {
                         const kind = e.target.value as TimedEffectKind;
                         updateTimed(index, {
-                          round: event.round,
+                          ...event,
                           effect: defaultTimedEffect(kind)
                         });
                       }}
@@ -899,6 +900,26 @@ export function MapPresetEditor({
                         <option key={kind} value={kind}>
                           {TIMED_EFFECT_KIND_LABELS[kind]}
                         </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="mapPresetTimedRepeat">
+                    Repeat
+                    <select
+                      aria-label={`Timed event ${index + 1} repeat`}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next: CustomMapTimedEvent = { round: event.round, effect: event.effect };
+                        if (n >= 2) {
+                          next.repeatEveryRounds = Math.min(10, n);
+                        }
+                        updateTimed(index, next);
+                      }}
+                      value={event.repeatEveryRounds ?? 0}
+                    >
+                      <option value={0}>Once</option>
+                      {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                        <option key={n} value={n}>{`Every ${n} rounds`}</option>
                       ))}
                     </select>
                   </label>
@@ -928,7 +949,7 @@ export function MapPresetEditor({
                   onChange={(effect) => updateTimed(index, { ...event, effect })}
                 />
                 <div className="mapPresetTimedPreview" aria-live="polite">
-                  Round {event.round}: {describeTimedMapEffect(event.effect)}
+                  {describeTimedEventSchedule(event)}: {describeTimedMapEffect(event.effect)}
                 </div>
                 {timedEventWarning(event, value.roundLimit) ? (
                   <small className="mapPresetTimedWarning" role="status">
@@ -1187,22 +1208,48 @@ function TimedEffectFields({
   onChange: (effect: CustomMapTimedEffect) => void;
 }) {
   if (effect.kind === "resources") {
+    // Negative = every player LOSES that much (floored at 0). The preview line
+    // spells out "lose N …" so give-vs-take is unmistakable.
+    return (
+      <>
+        <div className="mapPresetResourceRow">
+          <ResourceField
+            label="Gold"
+            min={-50}
+            max={50}
+            value={effect.gold ?? 0}
+            onChange={(gold) => onChange({ ...effect, gold })}
+          />
+          <ResourceField
+            label="Materials"
+            min={-50}
+            max={50}
+            value={effect.buildingMaterials ?? 0}
+            onChange={(buildingMaterials) => onChange({ ...effect, buildingMaterials })}
+          />
+          <ResourceField
+            label="Valuables"
+            min={-50}
+            max={50}
+            value={effect.valuables ?? 0}
+            onChange={(valuables) => onChange({ ...effect, valuables })}
+          />
+        </div>
+        <small className="mapPresetHint">
+          Positive = every player gains it; negative = every player loses it (never below 0).
+        </small>
+      </>
+    );
+  }
+  if (effect.kind === "experience") {
     return (
       <div className="mapPresetResourceRow">
         <ResourceField
-          label="Gold"
-          value={effect.gold ?? 0}
-          onChange={(gold) => onChange({ ...effect, gold })}
-        />
-        <ResourceField
-          label="Materials"
-          value={effect.buildingMaterials ?? 0}
-          onChange={(buildingMaterials) => onChange({ ...effect, buildingMaterials })}
-        />
-        <ResourceField
-          label="Valuables"
-          value={effect.valuables ?? 0}
-          onChange={(valuables) => onChange({ ...effect, valuables })}
+          label="Experience +"
+          max={5}
+          min={1}
+          value={effect.amount}
+          onChange={(amount) => onChange({ kind: "experience", amount: Math.max(1, Math.min(5, amount)) })}
         />
       </div>
     );
@@ -1618,13 +1665,17 @@ function suggestNextRound(existing: CustomMapTimedEvent[], roundLimit?: number):
 }
 
 function cloneTimedEvent(event: CustomMapTimedEvent): CustomMapTimedEvent {
-  return {
+  const clone: CustomMapTimedEvent = {
     round: event.round,
     effect:
       event.effect.kind === "clear_visitable_cubes"
         ? { ...event.effect, locations: [...event.effect.locations] }
         : { ...event.effect }
   };
+  if (event.repeatEveryRounds) {
+    clone.repeatEveryRounds = event.repeatEveryRounds;
+  }
+  return clone;
 }
 
 function timedEventWarning(event: CustomMapTimedEvent, roundLimit?: number): string | null {

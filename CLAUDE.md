@@ -2103,12 +2103,25 @@ Two additions; each engine claim fails a named test if its wiring is removed.
   `pre-hit-heal-reactions.test.ts` (heal-before-damage event order, the
   no-heal/no-pause CONTROL, and the spell-hate gate with a real-Spell CONTROL).
 - **Map-designer timed events are freeform** (`CustomMapPreset.timedEvents`, cap
-  `MAX_TIMED_EVENTS` = 32): any round 1–30 × any effect — resources, deck
-  Search, clear-cubes (Windmill also re-opens Factory Prospector, Water Wheel
-  also Derrick), ±1 morale, +movement (stacks on the round's refreshed MPs),
-  Treasure/Resource dice (queued per live player), or a feed note. Eliminated
+  `MAX_TIMED_EVENTS` = 32): any round 1–30 × any effect — resources (positive =
+  every player GAINS; NEGATIVE = every player LOSES that much, the treasury
+  floored at 0 so a player never goes negative; clamp −50..50, ≥1 nonzero),
+  hero **experience** (clamp 1–5, every live player's MAIN hero gains it through
+  the NORMAL `gainExperience` pipeline — level-ups, hand-limit / expert-use
+  bumps, Ability searches, specialty cards, commander points, Learning all
+  ride it, never a hand-incremented level), deck Search, clear-cubes (Windmill
+  also re-opens Factory Prospector, Water Wheel also Derrick), ±1 morale,
+  +movement (stacks on the round's refreshed MPs), Treasure/Resource dice
+  (queued per live player), or a feed note. Any entry may also carry an optional
+  **`repeatEveryRounds`** (int 2–10): it fires at `round`, then every N rounds
+  after (`round`, `round+N`, `round+2N`, …) for the rest of the game (HoMM3
+  weekly events) — absent = a one-shot, byte-identical to a legacy preset; each
+  firing appends a DISTINCT `MAP_PRESET_TRIGGERED` id so the overlay never
+  swallows a repeat (`isTimedEventDue`). Eliminated
   seats and their heroes are skipped. Fired by `applyCustomMapTimedEvents` at
-  round start; sanitization clamps amounts and drops unknown kinds
+  round start; sanitization clamps amounts, keeps `repeatEveryRounds` only as an
+  int ≥2 (99→10, 1 / non-int DROPPED → one-shot), keeps a legacy positive-only
+  resources entry byte-identical, and drops unknown kinds
   (`custom-setup.test.ts`, `map-preset.ts`). A second cube-clear kind,
   **`clear_tile_cubes`**, re-opens EVERY black cube on Tiles of chosen groups
   (player-facing bands Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ / Ⅵ–Ⅶ / Sea / Underground, filtered by
@@ -2128,8 +2141,10 @@ Two additions; each engine claim fails a named test if its wiring is removed.
   firing pops the ornate
   `MapEventOverlay` on every client (one card per batch, once per event id,
   never replayed on reconnect — `map-event-overlay.test.tsx`); the editor's
-  per-event cards (round rail, kind dropdown, params, live preview, warnings)
-  are pinned in `map-preset-editor.test.tsx`. The designer's face-down tiles
+  per-event cards (round rail, kind dropdown, a "Repeat" every-N-rounds select,
+  params incl. negative resource losses + the experience amount, a live preview
+  that spells the schedule "round 4, then every 3 rounds" and "lose N gold",
+  warnings) are pinned in `map-preset-editor.test.tsx`. The designer's face-down tiles
   draw band-correct printed BACKS (sea/underground Ⅵ–Ⅶ never wear Ⅳ–Ⅴ art;
   `planBackArt`, `map-designer.test.tsx`).
 

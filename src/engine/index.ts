@@ -345,6 +345,7 @@ export {
   describeObjectivesConfig,
   describeUtopiaGuards,
   describeTimedMapEffect,
+  describeTimedEventSchedule,
   describeVictoryPointsConfig,
   foldLegacyViiBonus,
   isCustomGuardUnit,

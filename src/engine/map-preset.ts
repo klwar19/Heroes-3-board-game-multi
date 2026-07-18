@@ -335,6 +335,7 @@ export const TIMED_EFFECT_KINDS = [
   "clear_visitable_cubes",
   "clear_tile_cubes",
   "resources",
+  "experience",
   "search",
   "morale",
   "movement",
@@ -348,7 +349,8 @@ export type TimedEffectKind = (typeof TIMED_EFFECT_KINDS)[number];
 export const TIMED_EFFECT_KIND_LABELS: Record<TimedEffectKind, string> = {
   clear_visitable_cubes: "Clear black cubes (revisit sites)",
   clear_tile_cubes: "Clear black cubes (Tiles)",
-  resources: "All players gain resources",
+  resources: "All players gain/lose resources",
+  experience: "All heroes gain experience",
   search: "All players Search a deck",
   morale: "All players gain/lose morale",
   movement: "All heroes gain movement",
@@ -369,6 +371,8 @@ export function defaultTimedEffect(kind: TimedEffectKind): CustomMapTimedEffect 
       return { kind: "clear_tile_cubes", groups: ["far"], excludeSettlementTiles: false };
     case "resources":
       return { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 };
+    case "experience":
+      return { kind: "experience", amount: 2 };
     case "search":
       return { kind: "search", deck: "artifacts", count: 1 };
     case "morale":
@@ -843,13 +847,19 @@ function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
   }
   const raw = input as { kind?: string } & Record<string, unknown>;
   if (raw.kind === "resources") {
-    const gold = clampInt(raw.gold, 0, 30, 0);
-    const buildingMaterials = clampInt(raw.buildingMaterials, 0, 30, 0);
-    const valuables = clampInt(raw.valuables, 0, 30, 0);
-    if (gold + buildingMaterials + valuables <= 0) {
+    // Positive = every player GAINS; negative = every player LOSES (the engine
+    // floors the treasury at 0). Clamp each field to [-50, 50]; a legacy
+    // positive-only entry (was 0..30) stays byte-identical. At least one nonzero.
+    const gold = clampInt(raw.gold, -50, 50, 0);
+    const buildingMaterials = clampInt(raw.buildingMaterials, -50, 50, 0);
+    const valuables = clampInt(raw.valuables, -50, 50, 0);
+    if (gold === 0 && buildingMaterials === 0 && valuables === 0) {
       return null;
     }
     return { kind: "resources", gold, buildingMaterials, valuables };
+  }
+  if (raw.kind === "experience") {
+    return { kind: "experience", amount: clampInt(raw.amount, 1, 5, 1) };
   }
   if (raw.kind === "search" && typeof raw.deck === "string" && SEARCH_DECKS.has(raw.deck)) {
     return {
@@ -972,7 +982,18 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       const round = clampInt((entry as CustomMapTimedEvent).round, 1, 30, 0);
       const effect = sanitizeTimedEffect((entry as CustomMapTimedEvent).effect);
       if (round > 0 && effect) {
-        events.push({ round, effect });
+        const event: CustomMapTimedEvent = { round, effect };
+        // Optional repeat schedule: an int in [2, 10] fires the event again
+        // every N rounds. Anything below 2 (incl. a hand-edited 1) or a non-int
+        // is DROPPED — the event stays a one-shot (byte-identical to legacy).
+        const rawRepeat = (entry as CustomMapTimedEvent).repeatEveryRounds;
+        if (typeof rawRepeat === "number" && Number.isFinite(rawRepeat)) {
+          const repeat = Math.floor(rawRepeat);
+          if (repeat >= 2) {
+            event.repeatEveryRounds = Math.min(10, repeat);
+          }
+        }
+        events.push(event);
       }
     }
     events.sort((a, b) => a.round - b.round);
@@ -1123,6 +1144,21 @@ export function describeTimedMapEffect(effect: CustomMapTimedEffect): string {
   return describeTimedEffect(effect);
 }
 
+/**
+ * Schedule prefix for a timed event — "Round 4" for a one-shot, or "Round 4,
+ * then every 3 rounds" for a repeating event. Shared by the designer summary
+ * line and the editor's live preview.
+ */
+export function describeTimedEventSchedule(event: {
+  round: number;
+  repeatEveryRounds?: number;
+}): string {
+  if (event.repeatEveryRounds && event.repeatEveryRounds >= 2) {
+    return `Round ${event.round}, then every ${event.repeatEveryRounds} rounds`;
+  }
+  return `Round ${event.round}`;
+}
+
 function describeBonus(bonus: CustomMapStartingBonus): string {
   if (bonus.kind === "resources") {
     return `+${formatPresetResources(bonus)}`;
@@ -1225,7 +1261,30 @@ export function describeObeliskRole(config: CustomMapObeliskConfig): string {
 
 function describeTimedEffect(effect: CustomMapTimedEffect): string {
   if (effect.kind === "resources") {
-    return `all players gain ${formatPresetResources(effect)}`;
+    const gains: string[] = [];
+    const losses: string[] = [];
+    for (const [amount, label] of [
+      [effect.gold ?? 0, "gold"],
+      [effect.buildingMaterials ?? 0, "materials"],
+      [effect.valuables ?? 0, "valuables"]
+    ] as const) {
+      if (amount > 0) {
+        gains.push(`${amount} ${label}`);
+      } else if (amount < 0) {
+        losses.push(`${-amount} ${label}`);
+      }
+    }
+    const clauses: string[] = [];
+    if (gains.length > 0) {
+      clauses.push(`gain ${gains.join(", ")}`);
+    }
+    if (losses.length > 0) {
+      clauses.push(`lose ${losses.join(", ")}`);
+    }
+    return `all players ${clauses.join(" and ") || "gain nothing"}`;
+  }
+  if (effect.kind === "experience") {
+    return `all heroes gain ${effect.amount} experience`;
   }
   if (effect.kind === "search") {
     return `all players Search(${effect.count}) ${effect.deck}`;
@@ -1325,7 +1384,10 @@ export function describeCustomMapPresetEntries(
   }
   if (preset.timedEvents && preset.timedEvents.length > 0) {
     for (const event of preset.timedEvents) {
-      entries.push({ icon: "⏳", text: `Round ${event.round}: ${describeTimedEffect(event.effect)}` });
+      entries.push({
+        icon: "⏳",
+        text: `${describeTimedEventSchedule(event)}: ${describeTimedEffect(event.effect)}`
+      });
     }
   }
   if (preset.roundLimit) {

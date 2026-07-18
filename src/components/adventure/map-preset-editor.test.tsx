@@ -171,6 +171,75 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     );
   });
 
+  it("timed event: the repeat control writes repeatEveryRounds and the preview shows the schedule", () => {
+    const onChange = vi.fn();
+    const base: CustomMapPreset = {
+      timedEvents: [{ round: 4, effect: { kind: "movement", amount: 1 } }]
+    };
+    const { rerender } = render(<MapPresetEditor preset={base} onChange={onChange} />);
+
+    // A one-shot preview reads "Round 4: …" (no repeat clause).
+    expect(screen.getAllByText(/Round 4: all heroes gain \+1 movement/).length).toBeGreaterThan(0);
+
+    // Pick "Every 3 rounds" → repeatEveryRounds: 3.
+    fireEvent.change(screen.getByLabelText("Timed event 1 repeat"), { target: { value: "3" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [expect.objectContaining({ round: 4, repeatEveryRounds: 3 })]
+      })
+    );
+
+    // Re-render repeating: the preview + summary now spell the schedule out.
+    rerender(
+      <MapPresetEditor
+        preset={{ timedEvents: [{ round: 4, repeatEveryRounds: 3, effect: { kind: "movement", amount: 1 } }] }}
+        onChange={onChange}
+      />
+    );
+    expect(screen.getAllByText(/Round 4, then every 3 rounds/).length).toBeGreaterThan(0);
+
+    // Back to "Once" clears the field (one-shot again).
+    fireEvent.change(screen.getByLabelText("Timed event 1 repeat"), { target: { value: "0" } });
+    const last = onChange.mock.calls.at(-1)?.[0] as CustomMapPreset;
+    expect(last.timedEvents![0].repeatEveryRounds).toBeUndefined();
+  });
+
+  it("timed resources: a negative amount reads as a LOSS in the live preview", () => {
+    render(
+      <MapPresetEditor
+        preset={{
+          timedEvents: [
+            { round: 5, effect: { kind: "resources", gold: -5, buildingMaterials: 0, valuables: 0 } }
+          ]
+        }}
+        onChange={() => {}}
+      />
+    );
+    // The give-vs-take wording is unmistakable: "lose 5 gold", never "gain".
+    expect(screen.getAllByText(/all players lose 5 gold/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/all players gain 5 gold/)).toBeNull();
+  });
+
+  it("timed events: the experience kind is selectable and writes its default effect", () => {
+    const onChange = vi.fn();
+    render(
+      <MapPresetEditor
+        preset={{ timedEvents: [{ round: 6, effect: { kind: "note", text: "x" } }] }}
+        onChange={onChange}
+      />
+    );
+    // The kind dropdown offers "experience".
+    const kind = screen.getByLabelText("Timed event 1 effect type") as HTMLSelectElement;
+    expect(Array.from(kind.options).some((o) => o.value === "experience")).toBe(true);
+
+    fireEvent.change(kind, { target: { value: "experience" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [expect.objectContaining({ round: 6, effect: { kind: "experience", amount: 2 } })]
+      })
+    );
+  });
+
   it("exposes the storage cap instead of silently adding events that will be discarded", () => {
     const timedEvents: NonNullable<CustomMapPreset["timedEvents"]> = Array.from(
       { length: MAX_TIMED_EVENTS },
