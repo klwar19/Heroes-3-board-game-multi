@@ -124,9 +124,9 @@ function sandboxWithCommander(
 // ===========================================================================
 
 describe("WOG commanders — content integrity", () => {
-  it("all 12 factions map to a commander and back", () => {
-    expect(Object.keys(COMMANDER_SLUG_BY_FACTION)).toHaveLength(12);
-    expect(new Set(Object.values(COMMANDER_SLUG_BY_FACTION)).size).toBe(12);
+  it("all 14 factions map to a commander and back", () => {
+    expect(Object.keys(COMMANDER_SLUG_BY_FACTION)).toHaveLength(14);
+    expect(new Set(Object.values(COMMANDER_SLUG_BY_FACTION)).size).toBe(14);
     for (const slug of COMMANDER_SLUGS) {
       expect(commanderDefinitions[slug], slug).toBeTruthy();
     }

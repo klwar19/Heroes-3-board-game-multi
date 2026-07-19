@@ -12,7 +12,9 @@ export type FactionId =
   | "conflux"
   | "cove"
   | "bulwark"
-  | "factory";
+  | "factory"
+  | "fuyuki"
+  | "azure_breeze";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {

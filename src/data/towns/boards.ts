@@ -463,6 +463,36 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
       ["factory.mage_guild"]
     ],
     geometry: DESIGNED_GEOMETRY
+  },
+  fuyuki: {
+    factionId: "fuyuki",
+    panoramaImage: "/assets/anime/towns/fuyuki-city.png",
+    panelImage: DESIGNED_PANEL_IMAGE,
+    bars: [
+      ["fuyuki.city_hall"],
+      ["fuyuki.dwelling_bronze"],
+      ["fuyuki.summoning_circle"],
+      ["fuyuki.dwelling_silver", "fuyuki.mystic_outfitter"],
+      ["fuyuki.mage_guild"],
+      ["fuyuki.citadel"],
+      ["fuyuki.dwelling_gold"]
+    ],
+    geometry: DESIGNED_GEOMETRY
+  },
+  azure_breeze: {
+    factionId: "azure_breeze",
+    panoramaImage: "/assets/anime/towns/azure-breeze-sect.png",
+    panelImage: DESIGNED_PANEL_IMAGE,
+    bars: [
+      ["azure_breeze.dwelling_bronze"],
+      ["azure_breeze.sword_pavilion"],
+      ["azure_breeze.dwelling_silver"],
+      ["azure_breeze.mage_guild", "azure_breeze.alchemy_pavilion"],
+      ["azure_breeze.city_hall"],
+      ["azure_breeze.citadel"],
+      ["azure_breeze.dwelling_gold"]
+    ],
+    geometry: DESIGNED_GEOMETRY
   }
 };
 

@@ -180,6 +180,8 @@ describe("Game options — tabbed layout", () => {
 
     // Each shipped module has a tick button that dispatches only its own flag.
     const modules: Array<[string, string]> = [
+      ["anime-module-isekaiTowns", "isekaiTowns"],
+      ["anime-module-xianxiaTowns", "xianxiaTowns"],
       ["anime-module-mapObjects", "mapObjects"],
       ["anime-module-combatEvents", "combatEvents"],
       ["anime-module-xianxiaArtifacts", "xianxiaArtifacts"],
@@ -204,7 +206,6 @@ describe("Game options — tabbed layout", () => {
     }
 
     // Dead / unshipped flags are NOT surfaced as tick buttons.
-    expect(within(dialog).queryByTestId("anime-module-xianxiaTowns")).toBeNull();
     expect(within(dialog).queryByTestId("anime-module-destiny")).toBeNull();
   });
 

@@ -8680,7 +8680,7 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
   );
   const untakenFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
-    .filter((id) => !takenFactions.has(id) && isPlayableFaction(id));
+    .filter((id) => !takenFactions.has(id) && isPlayableFaction(id, lobby.options.anime));
 
   if (state.sessionMode === "single-player" && controllerOf(state, playerId).kind === "human" &&
       humanPlayerIdsByController(state).length === 1 && !lobby.startCheck) {
@@ -8707,7 +8707,7 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
         );
         for (const factionId of (Object.values(coreFactionDefinitions) as { id: FactionId }[])
           .map((faction) => faction.id)
-          .filter((id) => !takenForSeat.has(id) && isPlayableFaction(id))) {
+          .filter((id) => !takenForSeat.has(id) && isPlayableFaction(id, lobby.options.anime))) {
           const faction = coreFactionDefinitions[factionId];
           for (const heroDefId of faction.heroes) {
             if (computerSeat.factionId === factionId && computerSeat.heroDefId === heroDefId) {

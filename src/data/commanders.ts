@@ -47,7 +47,7 @@
 export const COMMANDER_SLUGS = [
   "paladin", "hierophant", "temple_guardian", "succubus", "brute",
   "soul_eater", "ogre_leader", "shaman", "astral_spirit",
-  "corsair", "factory", "bulwark"
+  "corsair", "factory", "bulwark", "ruler", "sword_saint"
 ] as const;
 
 export type CommanderSlug = (typeof COMMANDER_SLUGS)[number];
@@ -782,6 +782,48 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       text: "Gain +1 Rune every time the commander MOVES, and +1 Rune every time it is attacked."
     },
     cardImage: "/assets/units-commander-bulwark.webp"
+  },
+  ruler: {
+    slug: "ruler", name: "Astral Regent", faction: "Fuyuki City", original: true,
+    cast: {
+      abilityId: "commander-cast-brute",
+      name: "Command Seal",
+      icon: "/assets/spell-icons/bloodlust.png",
+      targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
+      effect: { kind: "attack-buff", amountByPower: [1, 1, 2] },
+      tierText: [
+        "A nearby allied melee Servant gains +1 Attack this round.",
+        "An allied melee Servant anywhere gains +1 Attack this round.",
+        "An allied melee Servant anywhere gains +2 Attack this round."
+      ]
+    },
+    specialty: {
+      id: "vanguard-marshal",
+      name: "Unbroken Contract",
+      text: "At combat setup you may reposition the Regent in your deployment zone. On the front line, the Regent has +1 Attack."
+    },
+    cardImage: "/assets/units-commander-ruler.webp"
+  },
+  sword_saint: {
+    slug: "sword_saint", name: "Sword Saint", faction: "Azure Breeze Sect", original: true,
+    cast: {
+      abilityId: "commander-cast-temple_guardian",
+      name: "Sword Intent",
+      icon: "/assets/spell-icons/precision.png",
+      targeting: { side: "friendly", unitType: "ranged", adjacentBelowPower: 1, canTargetSelf: false },
+      effect: { kind: "precision", amountByPower: [1, 1, 2] },
+      tierText: [
+        "A nearby allied ranged disciple gains +1 Attack and ignores ranged penalties this round.",
+        "An allied ranged disciple anywhere gains +1 Attack and ignores ranged penalties this round.",
+        "An allied ranged disciple anywhere gains +2 Attack and ignores ranged penalties this round."
+      ]
+    },
+    specialty: {
+      id: "superior-combat",
+      name: "One With the Blade",
+      text: "Choose +1 Attack or +1 Defense before combat; the stance lasts through rounds 1–2."
+    },
+    cardImage: "/assets/units-commander-sword_saint.webp"
   }
 };
 
@@ -798,7 +840,9 @@ export const COMMANDER_SLUG_BY_FACTION: Record<string, CommanderSlug> = {
   conflux: "astral_spirit",
   cove: "corsair",
   factory: "factory",
-  bulwark: "bulwark"
+  bulwark: "bulwark",
+  fuyuki: "ruler",
+  azure_breeze: "sword_saint"
 };
 
 export function commanderCastTierIndex(power: number): 0 | 1 | 2 {

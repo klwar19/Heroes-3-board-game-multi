@@ -185,6 +185,25 @@ describe("HeroBoard — anime Hero Grades chip + picker (§3.11)", () => {
     expect((dispatched[0] as { type: string }).type).toBe("HERO_GRADE_PICK");
   });
 
+  it("opens the full skill/passive tree and learns from an available node", () => {
+    const state = gradesAdventure();
+    const hero = getMainHero(state, "p1")!;
+    hero.grade = 1;
+    hero.gradePoints = 1;
+    const dispatched: unknown[] = [];
+    render(
+      <CardZoomProvider>
+        <HeroBoard state={state} playerId="p1" onAction={(action) => dispatched.push(action)} />
+      </CardZoomProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Hero Grade/i }));
+    expect(screen.getByRole("dialog", { name: "Hero Grade" })).toBeTruthy();
+    const available = document.querySelector(".heroGradeNode.available");
+    expect(available).toBeTruthy();
+    fireEvent.click(available as Element);
+    expect((dispatched[0] as { type: string }).type).toBe("HERO_GRADE_PICK");
+  });
+
   it("CONTROL — with the module OFF, no grade chip renders", () => {
     const { container } = renderHeroBoard("eikthurn");
     expect(container.querySelector(".hbGrade")).toBeNull();
@@ -203,6 +222,14 @@ describe("HeroBoard — anime Equipment chips (§3.13)", () => {
       ]
     });
   }
+
+  it("opens a graphic four-slot equipment window", () => {
+    renderBoardState(equipmentAdventure());
+    fireEvent.click(screen.getByRole("button", { name: /Hero Equipment/i }));
+    const dialog = screen.getByRole("dialog", { name: "Hero Equipment" });
+    expect(dialog.querySelectorAll(".equipmentSlot")).toHaveLength(4);
+    expect(dialog.querySelector(".equipmentSilhouette")).toBeTruthy();
+  });
 
   it("shows a chip (item icon + EN/VI name) for each equipped item when the module is on", () => {
     const state = equipmentAdventure();

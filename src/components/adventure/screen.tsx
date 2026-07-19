@@ -6,7 +6,7 @@ import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Ban, Castle, Check, ChevronDown, ChevronsUp, Crown, Dices, Fence, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Sparkles, Swords, Unlock, X } from "lucide-react";
+import { Ban, Castle, Check, ChevronDown, ChevronsUp, Crown, Dices, Fence, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { HelperCoachLobbyPrompt } from "@/components/table/helper-coach-ui";
 import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
 import { cardLibrary } from "@/data/cards/library";
@@ -90,6 +90,7 @@ import {
   UNIT_LEVELS,
   unitAbilities,
   armyUnitRankInfo,
+  unitExperienceActive,
   unitSideRuleOverrides,
   validateCustomMapPlan,
   astrologersCardDefinitions,
@@ -134,6 +135,9 @@ import "@/data/anime/field-overrides";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { CommanderCard, CommanderLevelUpOverlay } from "@/components/commander-card";
 import { commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@/data/commanders";
+import { COMMANDER_ARTIFACT_SPECS, COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/wog/commander-artifacts";
+import { UNIT_RANK_THRESHOLDS } from "@/data/units/experience";
+import { factionUiLexicon } from "@/data/faction-theme";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, isEmpoweredStatisticCard, titleCase } from "@/components/table/utils";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
@@ -2983,6 +2987,7 @@ export function AdventureHud({
 /** The painted town portrait (thelazy.net), with a plaque fallback (Bulwark). */
 function TownIcon({ factionId, size }: { factionId: string; size: number }) {
   const [failed, setFailed] = useState(false);
+  const image = coreFactionDefinitions[factionId]?.townImage ?? townIconUrl(factionId);
   if (failed) {
     return (
       <span
@@ -3001,7 +3006,7 @@ function TownIcon({ factionId, size }: { factionId: string; size: number }) {
       className="dockTownIcon"
       draggable={false}
       onError={() => setFailed(true)}
-      src={assetUrl(townIconUrl(factionId))}
+      src={assetUrl(image)}
       style={{ width: size, height: size }}
     />
   );
@@ -3017,7 +3022,8 @@ export function TownHeroDock({
   heroSeatIds,
   onOpenTown,
   armySeatId,
-  onAction
+  onAction,
+  legalActions = []
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -3029,10 +3035,13 @@ export function TownHeroDock({
   armySeatId?: PlayerId;
   /** Seated viewer's dispatcher (commander grade-up / revive live on the dock). */
   onAction?: (action: GameAction) => void;
+  /** Engine-validated actions used by Unit XP and commander equipment controls. */
+  legalActions?: LegalAction[];
 }) {
   const [openHeroSeat, setOpenHeroSeat] = useState<PlayerId | null>(null);
   const [armyOpen, setArmyOpen] = useState(false);
   const [commanderOpen, setCommanderOpen] = useState(false);
+  const [commanderEquipmentOpen, setCommanderEquipmentOpen] = useState(false);
   const player = state.players[viewerPlayerId];
   const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
 
@@ -3043,6 +3052,7 @@ export function TownHeroDock({
 
   const armyPlayer = armySeatId ? state.players[armySeatId] : undefined;
   const army = armyPlayer?.army ?? [];
+  const lexicon = factionUiLexicon(armyPlayer?.factionId ?? player?.factionId);
 
   // WOG Commanders: the seated viewer's commander tile (module on = the state
   // exists). Everything on it is live: grades, level, death, owed grade-ups.
@@ -3054,6 +3064,16 @@ export function TownHeroDock({
       )
     : undefined;
   const commanderGradeUps = commander?.gradePoints ?? 0;
+  const commanderArtifactsEnabled = Boolean(state.wog?.enabled && state.wog?.artifacts && state.wog?.commanders);
+  const heldCommanderArtifacts = armyPlayer
+    ? armyPlayer.hand
+        .filter((cardId) => Boolean(COMMANDER_ARTIFACT_SPECS[cardId]))
+        .sort((a, b) => {
+          const aa = COMMANDER_ARTIFACT_SPECS[a];
+          const bb = COMMANDER_ARTIFACT_SPECS[b];
+          return aa.slot.localeCompare(bb.slot) || aa.tier.localeCompare(bb.tier) || aa.name.localeCompare(bb.name);
+        })
+    : [];
 
   // Commander level-up notice: when NEW stat points arrive, blink the commander
   // tile hard for a few seconds (the steady gold pulse then stays until every
@@ -3084,7 +3104,7 @@ export function TownHeroDock({
   const tokens = player?.townTokens;
 
   return (
-    <div className="townHeroDock" aria-label="Town and hero">
+    <div className={`townHeroDock theme-${lexicon.register}`} aria-label="Town and hero">
       {onOpenTown && faction ? (
         <button
           aria-label={`Open your ${faction.name} town`}
@@ -3279,6 +3299,20 @@ export function TownHeroDock({
             >
               <X aria-hidden="true" size={16} />
             </button>
+            {commanderArtifactsEnabled ? (
+              <button
+                className={`commanderEquipButton${heldCommanderArtifacts.length > 0 ? " attention" : ""}`}
+                onClick={() => setCommanderEquipmentOpen(true)}
+                type="button"
+              >
+                <Shield aria-hidden="true" size={18} />
+                <span>
+                  <strong>{lexicon.commanderEquipment}</strong>
+                  <small>{Object.keys(commander.artifacts ?? {}).length}/3 equipped · {heldCommanderArtifacts.length} in hand</small>
+                </span>
+                <ChevronDown aria-hidden="true" size={16} />
+              </button>
+            ) : null}
             <div style={{ maxHeight: "min(78vh, 900px)", overflowY: "auto", padding: 4 }}>
               <CommanderCard
                 slug={commander.slug as CommanderSlug}
@@ -3304,11 +3338,85 @@ export function TownHeroDock({
                     : undefined
                 }
                 artifacts={commander.artifacts}
-                showArtifactSlots={Boolean(state.wog?.enabled && state.wog?.artifacts && state.wog?.commanders)}
+                showArtifactSlots={commanderArtifactsEnabled}
               />
             </div>
           </div>
         </>
+      ) : null}
+
+      {commanderEquipmentOpen && commander && commanderDef && armyPlayer && commanderArtifactsEnabled ? (
+        <div className={`commanderEquipmentBackdrop theme-${lexicon.register}`} onMouseDown={() => setCommanderEquipmentOpen(false)}>
+          <section
+            aria-label={lexicon.commanderEquipment}
+            aria-modal="true"
+            className="commanderEquipmentWindow"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <header>
+              <div>
+                <small>{commanderDef.name} · permanently bound equipment</small>
+                <h2>{lexicon.commanderEquipment}</h2>
+              </div>
+              <button aria-label="Close commander equipment" onClick={() => setCommanderEquipmentOpen(false)} type="button"><X size={20} /></button>
+            </header>
+            <div className="commanderEquipmentBody">
+              <div className="commanderPaperdoll">
+                <img alt="" className="commanderPaperdollPortrait" src={assetUrl(commanderDef.cardImage)} />
+                {(["weapon", "armor", "trinket"] as const).map((slot) => {
+                  const cardId = commander.artifacts?.[slot];
+                  const spec = cardId ? COMMANDER_ARTIFACT_SPECS[cardId] : undefined;
+                  return (
+                    <div className={`commanderArtifactSlot slot-${slot} ${spec ? "filled" : "empty"}`} key={slot}>
+                      <small>{slot}</small>
+                      {spec ? <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} /> : <Shield aria-hidden="true" size={25} />}
+                      <strong>{spec?.name ?? "Empty slot"}</strong>
+                      <span>{spec?.effectText ?? "Bind an artifact from your hand"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <aside className="commanderArtifactInventory">
+                <div className="commanderInventoryHead">
+                  <h3>Artifact inventory</h3>
+                  <small>Sorted by slot and tier · {heldCommanderArtifacts.length}/{COMMANDER_ARTIFACT_SPEC_LIST.length} available</small>
+                </div>
+                {heldCommanderArtifacts.length === 0 ? (
+                  <p className="commanderInventoryEmpty">No commander artifacts in hand. Find them in the shared Artifact decks.</p>
+                ) : (
+                  heldCommanderArtifacts.map((cardId) => {
+                    const spec = COMMANDER_ARTIFACT_SPECS[cardId];
+                    const action = legalActions.find(
+                      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === cardId
+                    );
+                    const occupied = Boolean(commander.artifacts?.[spec.slot]);
+                    return (
+                      <article className={`commanderInventoryCard ${occupied ? "blocked" : ""}`} key={cardId}>
+                        {cardLibrary[cardId]?.assets?.cardImage ? (
+                          <img alt={`${spec.name} card`} src={assetUrl(cardLibrary[cardId].assets!.cardImage!)} />
+                        ) : null}
+                        <div>
+                          <span className="commanderArtifactMeta">{spec.slot} · {spec.tier}</span>
+                          <strong>{spec.name}</strong>
+                          <p>{spec.effectText}</p>
+                          <button
+                            disabled={!action || occupied || !onAction}
+                            onClick={() => action && onAction?.(action.action)}
+                            type="button"
+                          >
+                            {occupied ? `${spec.slot} already filled` : action ? "Bind permanently" : "Unavailable now"}
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })
+                )}
+              </aside>
+            </div>
+            <footer>Binding is permanent. The artifact remains equipped if the commander falls and is revived.</footer>
+          </section>
+        </div>
       ) : null}
 
       {armyOpen && armyPlayer ? (
@@ -3323,7 +3431,7 @@ export function TownHeroDock({
             >
               <X aria-hidden="true" size={16} />
             </button>
-            <ArmyPanel playerId={armyPlayer.id} state={state} />
+            <ArmyPanel legalActions={legalActions} onAction={onAction} playerId={armyPlayer.id} state={state} />
           </div>
         </>
       ) : null}
@@ -3463,13 +3571,24 @@ function implementedAbilityLines(abilityIds: readonly string[] | undefined): str
     .map((ability) => `✦ ${ability.name}: ${ability.text}`);
 }
 
-export function ArmyPanel({ state, playerId }: { state: GameState; playerId: PlayerId }) {
+export function ArmyPanel({
+  state,
+  playerId,
+  legalActions = [],
+  onAction
+}: {
+  state: GameState;
+  playerId: PlayerId;
+  legalActions?: LegalAction[];
+  onAction?: (action: GameAction) => void;
+}) {
   const { zoomContent } = useCardZoom();
   const player = state.players[playerId];
+  const lexicon = factionUiLexicon(player?.factionId);
   if (!player || player.army.length === 0) {
     return (
-      <section className="armyPanel">
-        <h3>Unit deck</h3>
+      <section className={`armyPanel theme-${lexicon.register}`}>
+        <h3>{lexicon.army}</h3>
         <small>No units. The scenario&apos;s starting units return after the next combat.</small>
       </section>
     );
@@ -3481,8 +3600,8 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
   const sideOverrides = unitSideRuleOverrides(state);
 
   return (
-    <section className="armyPanel" aria-label="Unit deck">
-      <h3>Unit deck ({player.army.length})</h3>
+    <section className={`armyPanel theme-${lexicon.register}`} aria-label={lexicon.army}>
+      <h3>{lexicon.army} ({player.army.length})</h3>
       <ul>
         {player.army.map((unit) => {
           const def = coreUnitDefinitions[unit.unitDefId];
@@ -3492,13 +3611,31 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
           const stackAttack = sideOverrides.polishUnitStacks && unit.side === "pack" && (unit.stacks ?? 0) > 0 ? 1 : 0;
           // Unit Experience (optional rule): show the same rank-folded stats
           // the engine fights with, plus a WoG-style caret/sword rank badge.
-          const rankInfo = state.adventure?.unitExperience ? armyUnitRankInfo(unit) : null;
+          const rankInfo = unitExperienceActive(state) ? armyUnitRankInfo(unit) : null;
           const rankBonus = rankInfo?.bonus ?? { attack: 0, defense: 0, health: 0, initiative: 0 };
           const shownAttack = side ? side.attack + (unit.permanentAttackBonus ?? 0) + stackAttack + rankBonus.attack : 0;
           const shownDefense = side ? side.defense + rankBonus.defense : 0;
           const shownHealth = side ? side.health + rankBonus.health : 0;
           const shownInitiative = side ? side.initiative + rankBonus.initiative : 0;
           const eliteAbility = rankInfo?.eliteActive && rankInfo.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
+          const elitePreview = rankInfo?.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
+          const thresholds = def ? UNIT_RANK_THRESHOLDS[def.tier] : null;
+          const maxXp = thresholds?.[2] ?? 1;
+          const xpPercent = rankInfo ? Math.min(100, (rankInfo.experience / maxXp) * 100) : 0;
+          const drillAction = legalActions.find(
+            (legal) => legal.action.type === "DRILL_UNIT" && legal.action.armyUnitId === unit.id
+          );
+          const populationActions = legalActions.filter(
+            (legal) =>
+              legal.action.type === "POPULATION_ACTION" &&
+              legal.action.purchases.some((purchase) => purchase.armyUnitId === unit.id)
+          );
+          const reinforceAction = populationActions.find(
+            (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases.some((purchase) => purchase.kind === "reinforce")
+          );
+          const stackAction = populationActions.find(
+            (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases.some((purchase) => purchase.kind === "stack")
+          );
           const rankLine = rankInfo
             ? rankInfo.rank > 0
               ? `${rankInfo.rankName} (veteran rank ${rankInfo.rank}) — ${rankInfo.experience} XP${
@@ -3564,6 +3701,37 @@ export function ArmyPanel({ state, playerId }: { state: GameState; playerId: Pla
                   </small>
                 ) : null}
               </button>
+              {rankInfo ? (
+                <div className="armyXpPanel" aria-label={`${def?.name ?? unit.unitDefId} experience`}>
+                  <div className="armyXpHead">
+                    <span><img alt="" src={assetUrl("/assets/spell-icons/slayer.png")} /><strong>{rankInfo.rankName || "Recruit"}</strong></span>
+                    <b>{rankInfo.experience} / {maxXp} XP</b>
+                  </div>
+                  <div className="armyXpTrack" aria-label={`${Math.round(xpPercent)} percent to Elite`}>
+                    <span className="armyXpFill" style={{ width: `${xpPercent}%` }} />
+                    {thresholds?.map((threshold, index) => (
+                      <span className={`armyXpMilestone ${rankInfo.rank > index ? "reached" : ""}`} key={threshold} style={{ left: `${(threshold / maxXp) * 100}%` }}>
+                        <i>{index + 1}</i><small>{threshold}</small>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="armyXpDetails">
+                    <span>Bonus: A+{rankBonus.attack} D+{rankBonus.defense} HP+{rankBonus.health} I+{rankBonus.initiative}</span>
+                    {elitePreview ? (
+                      <span className={rankInfo.eliteActive ? "eliteAbility active" : "eliteAbility locked"}>
+                        <Sparkles aria-hidden="true" size={12} /> Elite: {elitePreview.name}{rankInfo.eliteActive ? " · active" : " · unlocks at rank 3"}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+              {onAction && (drillAction || reinforceAction || stackAction) ? (
+                <div className="armyUnitActions" aria-label={`${def?.name ?? unit.unitDefId} actions`}>
+                  {drillAction ? <button onClick={() => onAction(drillAction.action)} type="button"><Sparkles size={13} /> {lexicon.train} · 2 gold → +1 XP</button> : null}
+                  {reinforceAction ? <button onClick={() => onAction(reinforceAction.action)} type="button"><ChevronsUp size={13} /> Reinforce to Pack</button> : null}
+                  {stackAction ? <button onClick={() => onAction(stackAction.action)} type="button"><Layers size={13} /> Increase Stack</button> : null}
+                </div>
+              ) : null}
             </li>
           );
         })}
@@ -7442,6 +7610,8 @@ function GameOptionsPanel({
             </small>
             <div className="wogModuleList">
               {([
+                ["isekaiTowns", "Fuyuki City", "Adds the complete anime city: 7-unit Servant roster, two original heroes, its town board, buildings, starting tile, and anime-themed system vocabulary."],
+                ["xianxiaTowns", "Azure Breeze Sect", "Adds the complete wuxia sect: 7-unit cultivation roster, two original heroes, its mountain town board, buildings, starting tile, and wuxia-themed system vocabulary."],
                 ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool. Turns Field Overrides on."],
                 ["combatEvents", "Forced battle events", "Scripted combat events on anime fields (the Bí Cảnh spirit-mist / earthvein-surge). Fully automatic — no new prompts."],
                 ["xianxiaArtifacts", "Pháp Bảo artifacts", "Shuffles 5 anime hero Artifact cards (Túi Càn Khôn, Phong Hỏa Luân, Tru Tiên Kiếm, Bát Quái Kính, Tụ Linh Bàn) into the shared Artifact decks by tier."],
@@ -7449,7 +7619,7 @@ function GameOptionsPanel({
                 ["heroGrades", "Hero Grades", "A per-hero Merit → grade track that unlocks a small passive / skill tree (shared by every hero)."],
                 ["equipment", "Hero Equipment", "Always-on hero items in 4 slots (weapon / armor / accessory / mount), bought at outfitter map locations."],
                 ["unitStacks", "Unit Stacks", "Pack / Neutral cards buy persistent Stack layers at the Citadel (+1 Attack, each layer soaks a lethal blow). The Polish Unit Stacks machinery — one pricing, coexists with the house rule."],
-                ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain veterancy XP, ranking up (Veteran → Elite → Legend) for +Attack / +Defense / +Health. Auto — no prompts."]
+                ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Town Drill training."]
               ] as const).map(([key, label, description]) => {
                 const active = anime[key];
                 return (
@@ -8653,7 +8823,7 @@ function DraftTownPhase({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps
   const takenByOthers = reservedTownIdsForOtherSeats(lobby, viewerPlayerId);
   const untaken = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
-    .filter((id) => !takenByOthers.has(id) && isPlayableFaction(id));
+    .filter((id) => !takenByOthers.has(id) && isPlayableFaction(id, lobby.options.anime));
   const options = lobby.draft?.seatRolls?.[viewerPlayerId]?.townOptions ?? [];
   const lockedFaction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
 
@@ -8969,7 +9139,9 @@ function DraftFlowPanel({ state, viewerPlayerId, onAction, onInspect }: DraftFlo
   } else if (draft.format === "open") {
     flow = (
       <FactionPickGrid
-        factionIds={(Object.keys(coreFactionDefinitions) as FactionId[]).filter(isPlayableFaction)}
+        factionIds={(Object.keys(coreFactionDefinitions) as FactionId[]).filter((id) =>
+          isPlayableFaction(id, lobby.options.anime)
+        )}
         heroStateFor={(factionId, heroDefId) => ({
           selected: seat.factionId === factionId && seat.heroDefId === heroDefId,
           banned: false,
@@ -9037,7 +9209,9 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
         .map((candidate) => candidate.factionId)
         .filter((id): id is FactionId => Boolean(id))
     );
-  const playableFactions = (Object.keys(coreFactionDefinitions) as FactionId[]).filter(isPlayableFaction);
+  const playableFactions = (Object.keys(coreFactionDefinitions) as FactionId[]).filter((id) =>
+    isPlayableFaction(id, lobby.options.anime)
+  );
 
   return (
     <section className="computerSeatPickers" aria-label="Computer opponents setup">
