@@ -407,16 +407,30 @@ function BattlefieldTokenMark({
   const owner = state.players[token.controllerId]?.name ?? token.controllerId;
   const spriteSheet = getFxSheet(view.sprite);
 
-  let detail = "";
+  let detail: React.ReactNode = null;
   if (token.kind === "fire_wall") {
-    detail = `${token.damage ?? 0}`;
+    detail = <small>{token.damage ?? 0}</small>;
   } else if (token.kind === "force_field") {
-    detail = token.expiresAtCombatRoundEnd === undefined ? "combat" : `r${token.expiresAtCombatRoundEnd}`;
+    detail = (
+      <small>{token.expiresAtCombatRoundEnd === undefined ? "combat" : `r${token.expiresAtCombatRoundEnd}`}</small>
+    );
   } else if (hideArmedState) {
     // The opponent sees the trap's icon but not whether it is armed or a decoy.
-    detail = "";
+    detail = null;
+  } else if (token.armed) {
+    // Armed traps: the sprite alone is enough — no tiny "armed" label.
+    detail = null;
   } else {
-    detail = token.armed ? "armed" : "decoy";
+    // Empty decoy: a subtle circle-with-cross (not text) so the owner can tell
+    // which half of the shuffle is inert without reading a small label.
+    detail = (
+      <span aria-hidden="true" className="trapDecoyMark" title="empty decoy">
+        <svg viewBox="0 0 16 16" focusable="false">
+          <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          <line x1="4.2" y1="4.2" x2="11.8" y2="11.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      </span>
+    );
   }
 
   const describe =
@@ -426,7 +440,7 @@ function BattlefieldTokenMark({
         ? `Force Field (${owner}) — an obstacle; blocks non-flying movement${token.expiresAtCombatRoundEnd === undefined ? " for this combat" : ` until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
         : hideArmedState
           ? `${view.label} (${owner}) — an enemy trap; you cannot see whether it is armed or a decoy`
-          : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "decoy"}`;
+          : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "empty decoy"}`;
 
   let art: React.ReactNode;
   if (spriteSheet) {
@@ -448,12 +462,12 @@ function BattlefieldTokenMark({
     <span
       aria-label={describe}
       className={`battlefieldToken ${token.kind} ${hideArmedState ? "hiddenTrap" : ""} ${
-        token.controllerId === viewerPlayerId ? "own" : "enemy"
-      }`}
+        !hideArmedState && isTrap && !token.armed ? "decoy" : ""
+      } ${token.controllerId === viewerPlayerId ? "own" : "enemy"}`}
       title={describe}
     >
       {art}
-      {detail ? <small>{detail}</small> : null}
+      {detail}
     </span>
   );
 }

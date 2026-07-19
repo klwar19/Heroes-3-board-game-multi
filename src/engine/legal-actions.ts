@@ -181,7 +181,11 @@ import {
   wisdomSearchCount
 } from "./ruleset";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
-import { polishArmyUnitCanBuyStack, polishArmyUnitStackCost } from "./polish-unit-stacks";
+import {
+  polishArmyUnitCanBuyStack,
+  polishArmyUnitStackCost,
+  polishUnitStackCap
+} from "./polish-unit-stacks";
 import type {
   AttackRerollSource,
   AttackRollMode,
@@ -4153,6 +4157,40 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
               }
             });
           }
+        }
+      }
+
+      // Unit Stacks (Polish / Anime): add ONE free Stack layer to a living Pack
+      // of Demons below its tier cap. This is the stack-mode path for Summon
+      // Demons — without it, a table with only Pack Demons (no Few left to
+      // reinforce) and multi-demon-summon OFF had no legal Summon action after
+      // a friendly died.
+      if (armyUnitStacksActive(state)) {
+        for (const candidate of livingDemons) {
+          if (candidate.variant !== "pack") {
+            continue;
+          }
+          const armyCard = state.players[playerId]?.army.find(
+            (entry) => entry.id === candidate.armyUnitId
+          );
+          // Prefer the army card (cap + side), fall back to the combat unit's
+          // live stack count when the army card is missing (shouldn't happen).
+          const canStack = armyCard
+            ? polishArmyUnitCanBuyStack(armyCard)
+            : (candidate.armyStacks ?? 0) < polishUnitStackCap(demonDefId, "pack");
+          if (!canStack) {
+            continue;
+          }
+          actions.push({
+            label: `${activeUnit.name}: Add a Stack to ${candidate.cardName}`,
+            action: {
+              type: "SUMMON_DEMONS",
+              playerId,
+              unitId: activeUnit.id,
+              mode: "stack",
+              targetUnitId: candidate.id
+            }
+          });
         }
       }
     }
