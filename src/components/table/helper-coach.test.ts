@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { createInitialGameState, type GameState } from "@/engine";
+import { createAdventureGameState, createInitialGameState, type GameState } from "@/engine";
 import { buildCoachTip, cardUnplayableReason } from "./helper-coach";
 
 describe("buildCoachTip", () => {
@@ -106,5 +106,25 @@ describe("cardUnplayableReason", () => {
     state.players.p1.combatStats.spellsCastThisRound = 99;
     const reason = cardUnplayableReason(state, "p1", "spell.magic_arrow");
     expect(reason.toLowerCase()).toMatch(/spell limit/);
+  });
+
+  it("Polish Cast a Spell: points at own unit activation, not a reaction Instant window", () => {
+    const state = createInitialGameState("helper-coach-polish-cast") as GameState;
+    const adventure = createAdventureGameState({
+      seed: "helper-coach-polish-cast-rules",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true }
+    });
+    state.adventure = adventure.adventure;
+    state.ruleset = "binh";
+    state.reactionWindow = null;
+    state.pendingChoice = null;
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.players.p1.hand = ["spell.cast_a_spell"];
+    state.players.p1.spellBook = ["spell.magic_arrow"];
+    const reason = cardUnplayableReason(state, "p1", "spell.cast_a_spell");
+    expect(reason.toLowerCase()).toMatch(/own unit|activation|before it attacks/);
+    expect(reason.toLowerCase()).not.toMatch(/instant spell|power cards can empower/);
   });
 });
