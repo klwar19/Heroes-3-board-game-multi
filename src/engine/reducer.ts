@@ -8095,11 +8095,18 @@ function advanceActiveUnit(state: GameState): void {
       return;
     }
     // Imp Cache / identical bank clones: four Familiars (same unitDefId) at the
-    // same initiative are not a meaningful pick — auto-take the first so the
-    // Neutral turn starts immediately after the player's unit (cross-side
-    // alternation stays intact; only the redundant 4-way prompt is skipped).
-    // Distinct unit types still open a real order choice.
-    if (step.side === NEUTRAL_PLAYER_ID && activationOrderCandidatesAreIndistinguishable(step.candidates)) {
+    // same initiative are not a meaningful pick for the RULEBOOK AI — auto-take
+    // the first so the Neutral turn starts immediately after the player's unit
+    // (cross-side alternation stays intact; only the redundant 4-way prompt is
+    // skipped). Distinct unit types still open a real order choice, and so does
+    // ANY tie when a human plays the guard side (PvP Neutral Control / Manual
+    // guard control): there the controller commands each guard, so which clone
+    // leads is their real decision (positions/damage differ).
+    if (
+      step.side === NEUTRAL_PLAYER_ID &&
+      neutralCombatControllerId(state, combat) === null &&
+      activationOrderCandidatesAreIndistinguishable(step.candidates)
+    ) {
       setActiveUnit(state, step.candidates[0]?.id ?? null);
       return;
     }

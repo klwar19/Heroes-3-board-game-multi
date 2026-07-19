@@ -547,4 +547,71 @@ describe("Imp Cache — Pack Orcs/Ogres (init 5) alternate with Familiars (init 
     }
     expect(state.combat!.activeUnitId).not.toBe("unit_p1_crusaders");
   });
+
+  /** Shared Imp Cache clone setup: three Neutral units of the SAME card type tied at 5. */
+  function cloneFightSetup(seed: string): GameState {
+    let state = createInitialGameState(seed);
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.players[NEUTRAL_PLAYER_ID] = { ...structuredClone(state.players.p2), id: NEUTRAL_PLAYER_ID };
+    state.combat!.defenderPlayerId = NEUTRAL_PLAYER_ID;
+    for (const id of P2) {
+      state.combat!.units[id].controllerId = NEUTRAL_PLAYER_ID;
+      // Identical bank clones (Imp Cache Familiars stand-in).
+      state.combat!.units[id].unitDefId = "inferno.familiars";
+    }
+    setInitiatives(state, {
+      unit_p1_griffins: 5,
+      unit_p1_crusaders: 5,
+      unit_p1_marksmen: 1,
+      unit_p2_skeletons: 5,
+      unit_p2_vampires: 5,
+      unit_p2_dread_knights: 5
+    });
+    state = startFreshRound(state);
+    const choice = orderChoice(state)!;
+    const firstIdx = choice.activationOrder!.unitIds.indexOf("unit_p1_griffins");
+    return applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: firstIdx >= 0 ? firstIdx : 0
+    });
+  }
+
+  it("identical Neutral clones skip the redundant order prompt (AI-driven guards auto-pick)", () => {
+    let state = cloneFightSetup("imp-cache-clones");
+    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+
+    // Same card type on every tied Neutral candidate: no 3-way prompt — the
+    // Neutral turn starts immediately (alternation intact, Ogres never cut in).
+    expect(orderChoice(state)).toBeNull();
+    const active = state.combat!.units[state.combat!.activeUnitId!];
+    expect(active.controllerId).toBe(NEUTRAL_PLAYER_ID);
+    expect(state.combat!.activeUnitId).not.toBe("unit_p1_crusaders");
+  });
+
+  it("CONTROL: with a human playing the guards (Manual guard control), the clone tie still prompts", () => {
+    let state = cloneFightSetup("imp-cache-clones-manual");
+    // Flip the fight to a real neutral context with Manual guard control on: the
+    // FIGHTER commands the guards, so which clone leads is their decision.
+    state.combat!.context = {
+      kind: "neutral",
+      heroId: "hero_p1",
+      fieldId: "space_0_0",
+      difficulty: 1,
+      hasAzure: false
+    } as NonNullable<GameState["combat"]>["context"];
+    state.adventure = {
+      ...(state.adventure ?? ({} as NonNullable<GameState["adventure"]>)),
+      manualGuardControl: true
+    } as GameState["adventure"];
+
+    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+
+    const controlChoice = orderChoice(state);
+    expect(controlChoice, "the guard commander keeps the clone tie-break").toBeTruthy();
+    expect(controlChoice!.playerId).toBe("p1");
+    expect(controlChoice!.activationOrder!.side).toBe(NEUTRAL_PLAYER_ID);
+  });
 });
