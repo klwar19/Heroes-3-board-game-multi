@@ -42,6 +42,46 @@ function applyOk(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
+/**
+ * Cast a Power-tiered map spell, optionally discard power sources after cast
+ * (cast-then-boost, like combat), then resolve at that Power.
+ */
+function castMapPowerSpell(state: GameState, cardId: string, powerCardIds: string[] = []): GameState {
+  let next = applyOk(state, {
+    type: "PLAY_CARD",
+    playerId: "p1",
+    cardId,
+    mode: "basic",
+    target: { type: "none" }
+  });
+  for (const powerId of powerCardIds) {
+    const choice = next.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "map-spell-boost" || !choice.mapSpellBoost) {
+      throw new Error(`expected map-spell-boost to spend ${powerId}`);
+    }
+    const index = choice.mapSpellBoost.offers.findIndex(
+      (offer) => offer.kind === "card" && offer.cardId === powerId && offer.mode === "basic"
+    );
+    expect(index, `boost offer for ${powerId}`).toBeGreaterThanOrEqual(0);
+    next = applyOk(next, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: index
+    });
+  }
+  if (next.pendingChoice?.type === "OPTION_CHOICE" && next.pendingChoice.context === "map-spell-boost") {
+    const choice = next.pendingChoice;
+    next = applyOk(next, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: choice.mapSpellBoost?.offers.length ?? choice.options.length - 1
+    });
+  }
+  return next;
+}
+
 function expectError(state: GameState, action: GameAction): void {
   const result = applyAction(state, action);
   expect(result.errors.length).toBeGreaterThan(0);
@@ -147,15 +187,22 @@ describe("pathfinding: move through blocked fields", () => {
       expect(grounded.has(blocker)).toBe(false);
     }
 
-    // Fly grants move-through for the turn.
+    // Fly grants move-through for the turn (cast-then-boost: resolve at Power 0).
     state = applyOk(state, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "spell.fly",
       mode: "basic",
-      optionIndex: 0,
       target: { type: "none" }
     });
+    if (state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "map-spell-boost") {
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: state.pendingChoice.id,
+        optionIndex: state.pendingChoice.mapSpellBoost?.offers.length ?? state.pendingChoice.options.length - 1
+      });
+    }
 
     const flying = getReachableHeroPaths(state, heroP1(state));
     expect(flying.has(beyond)).toBe(true); // reached by flying over a blocker
@@ -229,9 +276,16 @@ describe("Fly spell", () => {
       playerId: "p1",
       cardId: "spell.fly",
       mode: "basic",
-      optionIndex: 0,
       target: { type: "none" }
     });
+    if (state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "map-spell-boost") {
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: state.pendingChoice.id,
+        optionIndex: state.pendingChoice.mapSpellBoost?.offers.length ?? state.pendingChoice.options.length - 1
+      });
+    }
     expect(hasModifier(state, "p1", "HERO_MOVE_THROUGH")).toBe(true);
     // Basic Fly is move-through only: movement is unchanged.
     expect(heroP1(state).movementPoints).toBe(3);
@@ -241,17 +295,33 @@ describe("Fly spell", () => {
     expect(heroP1(state).movementPoints).toBe(1); // two hexes crossed, blocked one included
   });
 
-  it("the Power 4 side also grants +2 movement (paid with power-source cards)", () => {
+  it("boosting to Power 4 grants +2 movement (discard power-source cards after cast)", () => {
     let state = withHand(makeGame(), ["spell.fly", "spell.haste", "spell.slow", "spell.bless", "spell.curse"]);
     state = applyOk(state, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "spell.fly",
       mode: "basic",
-      optionIndex: 2,
-      target: { type: "none" },
-      costCardIds: ["spell.haste", "spell.slow", "spell.bless", "spell.curse"]
+      target: { type: "none" }
     });
+    // Discard four Spells (+1 each) to reach Power 4.
+    for (const powerId of ["spell.haste", "spell.slow", "spell.bless", "spell.curse"]) {
+      const choice = state.pendingChoice;
+      expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("map-spell-boost");
+      if (choice?.type !== "OPTION_CHOICE" || !choice.mapSpellBoost) {
+        throw new Error("expected map-spell-boost");
+      }
+      const index = choice.mapSpellBoost.offers.findIndex(
+        (offer) => offer.cardId === powerId && offer.mode === "basic"
+      );
+      expect(index).toBeGreaterThanOrEqual(0);
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: choice.id,
+        optionIndex: index
+      });
+    }
     expect(hasModifier(state, "p1", "HERO_MOVE_THROUGH")).toBe(true);
     expect(heroP1(state).movementPoints).toBe(5); // 3 + 2
   });
@@ -404,14 +474,7 @@ describe("Water Walk spell", () => {
     // Without the spell, crossing the coastline halts.
     expect(seaStepHalts(state, heroP1(state).spaceId!, sea1)).toBe(true);
 
-    state = applyOk(state, {
-      type: "PLAY_CARD",
-      playerId: "p1",
-      cardId: "spell.water_walk",
-      mode: "basic",
-      optionIndex: 0,
-      target: { type: "none" }
-    });
+    state = castMapPowerSpell(state, "spell.water_walk");
     expect(hasModifier(state, "p1", "HERO_WATER_WALK")).toBe(true);
     expect(getHeroMovementCapabilities(state, heroP1(state)).waterWalk).toBe(true);
     expect(seaStepHalts(state, heroP1(state).spaceId!, sea1, { moveThrough: false, waterWalk: true })).toBe(false);
@@ -427,15 +490,7 @@ describe("Water Walk spell", () => {
     let state = makeGame();
     seaSetup(state);
     state.players.p1.hand = ["spell.water_walk", "spell.haste", "spell.slow"];
-    state = applyOk(state, {
-      type: "PLAY_CARD",
-      playerId: "p1",
-      cardId: "spell.water_walk",
-      mode: "basic",
-      optionIndex: 2,
-      target: { type: "none" },
-      costCardIds: ["spell.haste", "spell.slow"]
-    });
+    state = castMapPowerSpell(state, "spell.water_walk", ["spell.haste", "spell.slow"]);
     expect(hasModifier(state, "p1", "HERO_WATER_WALK")).toBe(true);
     expect(heroP1(state).movementPoints).toBe(5); // 3 + 2
   });
@@ -477,16 +532,9 @@ function dimensionDoorSetup(state: GameState): {
   return { hero, near, far, footprint };
 }
 
+/** Cast Dimension Door at a Power tier: 0 → no cost, 1 → pay 2 Spells, 2 → pay 4 Spells. */
 function playDimensionDoor(state: GameState, optionIndex: number, costCardIds: string[] = []): GameState {
-  return applyOk(state, {
-    type: "PLAY_CARD",
-    playerId: "p1",
-    cardId: "spell.dimension_door",
-    mode: "basic",
-    optionIndex,
-    target: { type: "none" },
-    ...(costCardIds.length > 0 ? { costCardIds } : {})
-  });
+  return castMapPowerSpell(state, "spell.dimension_door", costCardIds);
 }
 
 function dimensionDoorDestinations(state: GameState): string[] {
@@ -685,11 +733,8 @@ describe("Expert Knowledge after a map Spell", () => {
   it("marks a lasting map Spell to return after its effect ends instead of duplicating an active card", () => {
     let state = withHand(makeGame(), ["spell.fly", "stat.knowledge"]);
     state.players.p1.limits.expertUses = 1;
-    const fly = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "spell.fly" && legal.action.optionIndex === 0
-    );
-    expect(fly).toBeTruthy();
-    state = applyOk(state, fly!.action);
+    // Knowledge can also pay Power — resolve at Power 0 so Knowledge stays for recall.
+    state = castMapPowerSpell(state, "spell.fly");
 
     expect(state.players.p1.ongoingCards?.find((entry) => entry.cardId === "spell.fly")?.returnTo).toBe("discard");
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
@@ -716,11 +761,19 @@ describe("Expert Knowledge after a map Spell", () => {
       (legal) =>
         legal.action.type === "PLAY_CARD" &&
         legal.action.cardId === "spell.fly" &&
-        legal.action.fromSpellBook === true &&
-        legal.action.optionIndex === 0
+        legal.action.fromSpellBook === true
     );
     expect(fly, "a Book Fly should be playable from the map").toBeTruthy();
     state = applyOk(state, fly!.action);
+    // Resolve boost if Knowledge is offered as a Power source (keep it for recall).
+    if (state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "map-spell-boost") {
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: state.pendingChoice.id,
+        optionIndex: state.pendingChoice.mapSpellBoost?.offers.length ?? state.pendingChoice.options.length - 1
+      });
+    }
     expect(state.players.p1.spellBook).not.toContain("spell.fly"); // held ongoing, out of the Book
 
     // Take it back with basic Knowledge → marked to return to the BOOK (a
@@ -768,14 +821,7 @@ describe("Town Portal spell", () => {
     const dest = heroTileFootprint(state)[4];
     flagSettlement(state, dest);
 
-    state = applyOk(state, {
-      type: "PLAY_CARD",
-      playerId: "p1",
-      cardId: "spell.town_portal",
-      mode: "basic",
-      optionIndex: 0,
-      target: { type: "none" }
-    });
+    state = castMapPowerSpell(state, "spell.town_portal");
 
     const destIndex = townPortalDestinationIndex(state, dest);
     expect(destIndex).toBeGreaterThanOrEqual(0);
@@ -792,15 +838,7 @@ describe("Town Portal spell", () => {
     const dest = heroTileFootprint(state)[4];
     flagSettlement(state, dest);
 
-    state = applyOk(state, {
-      type: "PLAY_CARD",
-      playerId: "p1",
-      cardId: "spell.town_portal",
-      mode: "basic",
-      optionIndex: 1,
-      target: { type: "none" },
-      costCardIds: ["spell.haste", "spell.slow"]
-    });
+    state = castMapPowerSpell(state, "spell.town_portal", ["spell.haste", "spell.slow"]);
 
     const destIndex = townPortalDestinationIndex(state, dest);
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: destIndex });
@@ -825,14 +863,7 @@ describe("Town Portal spell", () => {
     }
     otherHero.spaceId = occupied;
 
-    state = applyOk(state, {
-      type: "PLAY_CARD",
-      playerId: "p1",
-      cardId: "spell.town_portal",
-      mode: "basic",
-      optionIndex: 0,
-      target: { type: "none" }
-    });
+    state = castMapPowerSpell(state, "spell.town_portal");
 
     expect(townPortalDestinationIndex(state, free)).toBeGreaterThanOrEqual(0); // free settlement offered
     expect(townPortalDestinationIndex(state, occupied)).toBe(-1); // occupied one withheld
@@ -852,15 +883,7 @@ describe("Town Portal spell", () => {
 
     // Power 2 grants +1 movement on arrival, so the hero could step out: the
     // occupied settlement becomes a legal destination again.
-    state = applyOk(state, {
-      type: "PLAY_CARD",
-      playerId: "p1",
-      cardId: "spell.town_portal",
-      mode: "basic",
-      optionIndex: 1,
-      target: { type: "none" },
-      costCardIds: ["spell.haste", "spell.slow"]
-    });
+    state = castMapPowerSpell(state, "spell.town_portal", ["spell.haste", "spell.slow"]);
 
     expect(townPortalDestinationIndex(state, occupied)).toBeGreaterThanOrEqual(0);
     expect(townPortalOptions(state).some((option) => /h:-?\d+:-?\d+/.test(option.label))).toBe(false);
