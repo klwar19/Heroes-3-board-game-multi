@@ -1063,8 +1063,16 @@ function selectActivationStep(
   // ties. Whichever side has activated fewer units at this tier goes next; on an
   // even split the attacker leads (the player in a Neutral fight, the attacking
   // hero in PvP), so the two sides go back and forth starting with the attacker.
+  //
+  // Imp Cache (all initiative 5): Pack Orcs → Familiar → Pack Ogres → Familiar…
+  // NEVER Orcs then Ogres with Familiars skipped. Count acted units by the
+  // initiative band they BEGAN their activation in (`activationInitiative`),
+  // not their current effective initiative — a Pack→Few flip mid-activation
+  // drops printed initiative (5→4) and would otherwise erase the attacker from
+  // the tier count, handing the next slot to another attacker unit.
+  const bandOf = (unit: CombatUnitState) => unit.activationInitiative ?? initiativeOf(unit);
   const actedAtTier = (predicate: (unit: CombatUnitState) => boolean) =>
-    units.filter((unit) => hasActed(unit) && initiativeOf(unit) === topInitiative && predicate(unit)).length;
+    units.filter((unit) => hasActed(unit) && bandOf(unit) === topInitiative && predicate(unit)).length;
   const attackerActed = actedAtTier((unit) => unit.controllerId === attackerId);
   const othersActed = actedAtTier((unit) => unit.controllerId !== attackerId);
 

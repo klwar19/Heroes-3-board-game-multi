@@ -407,3 +407,144 @@ describe("getActivationOrder — the rail preview matches the engine's real orde
     expect(normal.slice(0, 2)).toEqual(["unit_p1_griffins", "unit_p1_crusaders"]);
   });
 });
+
+/**
+ * Imp Cache reproduction: Pack Orcs + Pack Ogres (both initiative 5) vs Neutral
+ * Familiars (initiative 5). Cross-side alternation must put a Familiar between
+ * the two player packs — including when the first pack's initiative DROPS after
+ * it acts (Pack→Few flip mid-activation), which used to erase it from the tier
+ * count and hand the next slot to Ogres (rail still showed Familiar next).
+ */
+describe("Imp Cache — Pack Orcs/Ogres (init 5) alternate with Familiars (init 5)", () => {
+  it("after the first attacker unit acts, a Neutral unit is next — never the other pack", () => {
+    let state = createInitialGameState("imp-cache-alt");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.players[NEUTRAL_PLAYER_ID] = { ...structuredClone(state.players.p2), id: NEUTRAL_PLAYER_ID };
+    state.combat!.defenderPlayerId = NEUTRAL_PLAYER_ID;
+    for (const id of P2) {
+      state.combat!.units[id].controllerId = NEUTRAL_PLAYER_ID;
+    }
+    // Orcs + Ogres + three Familiars all at 5 (marksmen slower).
+    setInitiatives(state, {
+      unit_p1_griffins: 5,
+      unit_p1_crusaders: 5,
+      unit_p1_marksmen: 1,
+      unit_p2_skeletons: 5,
+      unit_p2_vampires: 5,
+      unit_p2_dread_knights: 5
+    });
+
+    state = startFreshRound(state);
+    const choice = orderChoice(state);
+    expect(choice, "attacker picks which pack goes first").toBeTruthy();
+    // Pick griffins (stand-in for Orcs).
+    const firstIdx = choice!.activationOrder!.unitIds.indexOf("unit_p1_griffins");
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: firstIdx >= 0 ? firstIdx : 0
+    });
+    expect(state.combat!.activeUnitId).toBe("unit_p1_griffins");
+
+    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+
+    // Next must be Neutral — never the second pack (crusaders / Ogres).
+    const nextChoice = orderChoice(state);
+    if (nextChoice) {
+      expect(nextChoice.activationOrder!.side).toBe(NEUTRAL_PLAYER_ID);
+    } else {
+      const active = state.combat!.units[state.combat!.activeUnitId!];
+      expect(active.controllerId).toBe(NEUTRAL_PLAYER_ID);
+    }
+    expect(state.combat!.activeUnitId).not.toBe("unit_p1_crusaders");
+  });
+
+  it("still hands the next slot to Neutral after a Pack→Few initiative drop (the real skip bug)", () => {
+    const state = createInitialGameState("imp-cache-flip");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.players[NEUTRAL_PLAYER_ID] = { ...structuredClone(state.players.p2), id: NEUTRAL_PLAYER_ID };
+    state.combat!.defenderPlayerId = NEUTRAL_PLAYER_ID;
+    for (const id of P2) {
+      state.combat!.units[id].controllerId = NEUTRAL_PLAYER_ID;
+    }
+    setInitiatives(state, {
+      unit_p1_griffins: 5,
+      unit_p1_crusaders: 5,
+      unit_p1_marksmen: 1,
+      unit_p2_skeletons: 5,
+      unit_p2_vampires: 5,
+      unit_p2_dread_knights: 5
+    });
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = false;
+    }
+
+    // Synthetic mid-round state: Orcs already finished their activation at band 5,
+    // then Pack→Few rewrote printed initiative to 4. Sticky activationInitiative
+    // keeps them in the tier-5 count so Neutral is next (not Ogres).
+    const orcs = state.combat!.units.unit_p1_griffins;
+    orcs.activatedThisRound = true;
+    orcs.activationInitiative = 5;
+    orcs.initiative = 4;
+    state.combat!.activeUnitId = null;
+    state.pendingChoice = null;
+
+    const step = getActivationStep(state.combat!, state.activeEffects);
+    expect(step?.side).toBe(NEUTRAL_PLAYER_ID);
+    expect(step?.candidates.every((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)).toBe(true);
+
+    // CONTROL: drop the sticky band — Orcs vanish from the tier-5 acted count,
+    // even split at 5, attacker leads again → Ogres (crusaders) cut in.
+    orcs.activationInitiative = undefined;
+    const broken = getActivationStep(state.combat!, state.activeEffects);
+    expect(broken?.side).toBe("p1");
+    expect(broken?.candidates.map((unit) => unit.id)).toContain("unit_p1_crusaders");
+  });
+
+  it("Wait (polish-wait): after Orcs Wait, Neutral is next — never Ogres", () => {
+    let state = createInitialGameState("imp-cache-wait");
+    state.adventure = {
+      ...(state.adventure ?? ({} as NonNullable<GameState["adventure"]>)),
+      houseRules: { "polish-wait": true }
+    } as GameState["adventure"];
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.players[NEUTRAL_PLAYER_ID] = { ...structuredClone(state.players.p2), id: NEUTRAL_PLAYER_ID };
+    state.combat!.defenderPlayerId = NEUTRAL_PLAYER_ID;
+    for (const id of P2) {
+      state.combat!.units[id].controllerId = NEUTRAL_PLAYER_ID;
+    }
+    setInitiatives(state, {
+      unit_p1_griffins: 5,
+      unit_p1_crusaders: 5,
+      unit_p1_marksmen: 1,
+      unit_p2_skeletons: 5,
+      unit_p2_vampires: 5,
+      unit_p2_dread_knights: 5
+    });
+
+    state = startFreshRound(state);
+    const choice = orderChoice(state)!;
+    const firstIdx = choice.activationOrder!.unitIds.indexOf("unit_p1_griffins");
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: firstIdx >= 0 ? firstIdx : 0
+    });
+
+    state = applyOk(state, { type: "WAIT_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(state.combat!.units.unit_p1_griffins.waitPending).toBe(true);
+
+    const nextChoice = orderChoice(state);
+    if (nextChoice) {
+      expect(nextChoice.activationOrder!.side).toBe(NEUTRAL_PLAYER_ID);
+    } else {
+      expect(state.combat!.units[state.combat!.activeUnitId!].controllerId).toBe(NEUTRAL_PLAYER_ID);
+    }
+    expect(state.combat!.activeUnitId).not.toBe("unit_p1_crusaders");
+  });
+});

@@ -7055,6 +7055,15 @@ export type CombatUnitState = {
   initiative: number;
   position: number;
   activatedThisRound: boolean;
+  /**
+   * Effective initiative when this unit's current activation BEGAN. Used by
+   * same-speed cross-side alternation so a mid-activation Pack→Few flip (or an
+   * expired Haste) cannot drop the unit out of its initiative band and let the
+   * next same-side unit cut in before the enemy (Imp Cache: Orcs then Ogres
+   * with Familiars skipped). Cleared at round reset / when the unit is not the
+   * one that just finished a turn.
+   */
+  activationInitiative?: number;
   movedThisActivation: boolean;
   /**
    * Polish Wait house rule: 1-based Wait-token number assigned when this unit

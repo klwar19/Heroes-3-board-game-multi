@@ -7767,6 +7767,10 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   }
 
   const activeUnit = state.combat.units[unitId];
+  // Sticky initiative band for cross-side alternation (see selectActivationStep):
+  // capture NOW, before a mid-activation Pack→Few flip or effect expiry can
+  // change effectiveInitiative and drop this unit out of its speed tier.
+  activeUnit.activationInitiative = effectiveInitiative(activeUnit, state.activeEffects);
 
   // Polish Wait: this activation is the unit's deferred RE-activation, not a
   // fresh one. The unit already went through its start-of-activation package
@@ -8083,6 +8087,15 @@ function advanceActiveUnit(state: GameState): void {
       setActiveUnit(state, step.candidates[0]?.id ?? null);
       return;
     }
+    // Imp Cache / identical bank clones: four Familiars (same unitDefId) at the
+    // same initiative are not a meaningful pick — auto-take the first so the
+    // Neutral turn starts immediately after the player's unit (cross-side
+    // alternation stays intact; only the redundant 4-way prompt is skipped).
+    // Distinct unit types still open a real order choice.
+    if (step.side === NEUTRAL_PLAYER_ID && activationOrderCandidatesAreIndistinguishable(step.candidates)) {
+      setActiveUnit(state, step.candidates[0]?.id ?? null);
+      return;
+    }
     // Clear the just-finished unit so nothing reads it as still active while the
     // order choice is open.
     combat.activeUnitId = null;
@@ -8091,6 +8104,16 @@ function advanceActiveUnit(state: GameState): void {
   }
 
   setActiveUnit(state, step?.candidates[0]?.id ?? null);
+}
+
+/** True when every candidate is the same card type (e.g. four Imp Cache Familiars). */
+function activationOrderCandidatesAreIndistinguishable(candidates: CombatUnitState[]): boolean {
+  if (candidates.length < 2) {
+    return true;
+  }
+  const keyOf = (unit: CombatUnitState) => unit.unitDefId ?? unit.name;
+  const first = keyOf(candidates[0]!);
+  return candidates.every((unit) => keyOf(unit) === first);
 }
 
 /**
@@ -8837,6 +8860,7 @@ function resetCombatRound(combat: CombatState): void {
   combat.waitPhase = false;
   for (const unit of Object.values(combat.units)) {
     unit.activatedThisRound = false;
+    unit.activationInitiative = undefined;
     unit.movedThisActivation = false;
     unit.attackedThisActivation = false;
     unit.attacksThisActivation = 0;
