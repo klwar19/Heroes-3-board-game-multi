@@ -597,9 +597,12 @@ function tileTokenValue(
   const guardPart = guard ? { guard } : {};
   const pairPart =
     kind === "gate" || kind === "oneway_entrance" || kind === "oneway_exit" ? { pair } : {};
+  // Exit-mode vocabulary is shared by one-way entrances AND two-way gates/monoliths.
+  const carriesExitMode = kind === "oneway_entrance" || kind === "gate" || kind === "monolith";
+  const carriesAlwaysPickable = kind === "oneway_exit" || kind === "gate" || kind === "monolith";
   const carryPart = {
-    ...(kind === "oneway_entrance" && carry?.exitMode ? { exitMode: carry.exitMode } : {}),
-    ...(kind === "oneway_exit" && carry?.alwaysPickable ? { alwaysPickable: true } : {})
+    ...(carriesExitMode && carry?.exitMode ? { exitMode: carry.exitMode } : {}),
+    ...(carriesAlwaysPickable && carry?.alwaysPickable ? { alwaysPickable: true } : {})
   };
   return { kind, ...pairPart, ...slotPart, ...guardPart, ...carryPart };
 }
@@ -5492,11 +5495,15 @@ export function MapDesigner({
                 </div>
               </>
             ) : null}
-            {tokenPanelToken.kind === "oneway_entrance" ? (
+            {tokenPanelToken.kind === "oneway_entrance" ||
+            tokenPanelToken.kind === "gate" ||
+            tokenPanelToken.kind === "monolith" ? (
               <>
                 <div className="popoverSectionLabel">Exit pick</div>
                 <select
-                  aria-label="One-way exit mode"
+                  aria-label={
+                    tokenPanelToken.kind === "oneway_entrance" ? "One-way exit mode" : "Two-way exit mode"
+                  }
                   className="popoverSelect"
                   onChange={(event) =>
                     updateTile(selectedTokenIndex as number, {
@@ -5519,7 +5526,9 @@ export function MapDesigner({
                 </select>
               </>
             ) : null}
-            {tokenPanelToken.kind === "oneway_exit" ? (
+            {tokenPanelToken.kind === "oneway_exit" ||
+            tokenPanelToken.kind === "gate" ||
+            tokenPanelToken.kind === "monolith" ? (
               <label className="popoverCheckRow">
                 <input
                   checked={tokenPanelToken.alwaysPickable === true}
@@ -5527,10 +5536,16 @@ export function MapDesigner({
                     updateTile(selectedTokenIndex as number, {
                       tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
                         i === tokenPanelPin
-                          ? tileTokenValue(tokenPanelToken.kind, tokenPanelToken.pair, tokenPanelToken.slot, undefined, {
-                              ...tokenPanelToken,
-                              alwaysPickable: event.target.checked ? true : undefined
-                            })
+                          ? tileTokenValue(
+                              tokenPanelToken.kind,
+                              tokenPanelToken.pair,
+                              tokenPanelToken.slot,
+                              tokenPanelToken.kind === "oneway_exit" ? undefined : tokenPanelToken.guard,
+                              {
+                                ...tokenPanelToken,
+                                alwaysPickable: event.target.checked ? true : undefined
+                              }
+                            )
                           : token
                       ),
                       token: undefined
@@ -5538,7 +5553,12 @@ export function MapDesigner({
                   }
                   type="checkbox"
                 />
-                <span>Always pickable (“mix” entrances offer it before the roll)</span>
+                <span>
+                  Always pickable
+                  {tokenPanelToken.kind === "oneway_exit"
+                    ? " (“mix” entrances offer it before the roll)"
+                    : " (in “mix” mode, other network nodes offer this exit before the roll)"}
+                </span>
               </label>
             ) : null}
             {tokenPanelToken.kind !== "oneway_exit" ? (

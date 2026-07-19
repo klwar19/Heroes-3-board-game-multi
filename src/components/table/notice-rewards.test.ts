@@ -71,4 +71,47 @@ describe("noticeRewardsFromEvents — map-visit reward chips", () => {
     expect(rewards).toEqual([]);
     expect(iconImage).toBeUndefined();
   });
+
+  it("shows Treasure-die GET images (face chips) on a chest notice, not just the paid-out gold/XP", () => {
+    const { rewards } = noticeRewardsFromEvents(
+      [
+        ev({
+          type: "ADVENTURE_DICE_ROLLED",
+          playerId: "p1",
+          dice: "treasure",
+          results: ["Gain 1 experience"],
+          treasureRolls: ["experience"]
+        }),
+        ev({ type: "EXPERIENCE_GAINED", playerId: "p1", amount: 1, level: 1 })
+      ],
+      NO_STATE
+    );
+    // Die face first (the GET image), then the material XP payout.
+    expect(rewards.map((r) => r.label)).toEqual(["XP", "+1"]);
+    expect(rewards[0].icon, "treasure experience face glyph").toContain("experience");
+    expect(rewards[0].title).toMatch(/Treasure die/i);
+    expect(rewards[1].icon).toContain("experience");
+  });
+
+  it("shows Resource-die GET images with the resource token + amount", () => {
+    const { rewards } = noticeRewardsFromEvents(
+      [
+        ev({
+          type: "ADVENTURE_DICE_ROLLED",
+          playerId: "p1",
+          dice: "resource",
+          results: ["3 gold"],
+          resourceRolls: [{ resource: "gold", amount: 3 }]
+        }),
+        ev({ type: "RESOURCES_GAINED", playerId: "p1", gold: 3, reason: "treasure" })
+      ],
+      NO_STATE
+    );
+    expect(rewards[0].label).toBe("+3");
+    expect(rewards[0].icon).toContain("resource-gold");
+    expect(rewards[0].title).toMatch(/Resource die/i);
+    // RESOURCES_GAINED still chips the stockpile (same numbers — two chips is fine:
+    // die face + paid-out result). formatResourceName uses lowercase "gold".
+    expect(rewards.some((r) => /gold/i.test(r.title))).toBe(true);
+  });
 });

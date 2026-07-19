@@ -928,16 +928,30 @@ export function HexMapBoard({
           y={centerPixel.y - backHeight / 2}
         />
       );
-      // A designed Monolith/Whirlpool/colored-Gate token riding this face-down
-      // tile is public info. A modern designed token carries its exact physical
-      // preferred hex, so render it there instead of collapsing every marker to
-      // the tile centre. Legacy pending tokens without a preference stay centred.
-      if (tile.pendingToken) {
-        const pendingToken = tile.pendingToken;
+      // Designed Monolith/Whirlpool/colored-Gate tokens riding this face-down
+      // tile are public info — including Whirlpools BEFORE the tile is revealed.
+      // Render EVERY pending token (multi-token tiles), not only the legacy
+      // singular first entry. Modern tokens carry their exact physical preferred
+      // hex; legacy ones without a preference stay centred (stacked slightly).
+      const faceDownPendingTokens =
+        tile.pendingTokens && tile.pendingTokens.length > 0
+          ? tile.pendingTokens
+          : tile.pendingToken
+            ? [tile.pendingToken]
+            : [];
+      for (const [pendingIndex, pendingToken] of faceDownPendingTokens.entries()) {
         const tokenBackCoord = pendingToken.preferredSpaceId
           ? parseHexSpaceId(pendingToken.preferredSpaceId) ?? center
           : center;
         const tokenBackPixel = hexToPixel(tokenBackCoord, HEX_SIZE);
+        // Legacy multi-token without preferred hex: slight offset so they don't
+        // fully stack on the centre.
+        const stackOffset =
+          !pendingToken.preferredSpaceId && faceDownPendingTokens.length > 1
+            ? (pendingIndex - (faceDownPendingTokens.length - 1) / 2) * (HEX_SIZE * 0.35)
+            : 0;
+        const drawX = tokenBackPixel.x + stackOffset;
+        const drawY = tokenBackPixel.y;
         const isGateToken =
           pendingToken.kind === "gate" ||
           pendingToken.kind === "oneway_entrance" ||
@@ -950,37 +964,41 @@ export function HexMapBoard({
         const tokenBackWidth = HEX_WIDTH * 0.9;
         const tokenBackHeight = 2 * HEX_SIZE * 0.9;
         artLayer.push(
-          <g key={`back-token-${tile.id}`} style={{ pointerEvents: "none" }}>
+          <g
+            key={`back-token-${tile.id}-${pendingIndex}-${pendingToken.kind}`}
+            data-pending-token-kind={pendingToken.kind}
+            style={{ pointerEvents: "none" }}
+          >
             {pendingToken.preferredSpaceId ? (
               <polygon
                 className="tileBackPendingTokenSlot"
                 data-space-id={pendingToken.preferredSpaceId}
-                points={hexCorners(tokenBackPixel.x, tokenBackPixel.y, HEX_SIZE - 2.2)}
+                points={hexCorners(drawX, drawY, HEX_SIZE - 2.2)}
               />
             ) : null}
             {gateColor ? (
-              <circle cx={tokenBackPixel.x} cy={tokenBackPixel.y} fill={gateColor} opacity={0.3} r={HEX_SIZE * 0.55} />
+              <circle cx={drawX} cy={drawY} fill={gateColor} opacity={0.3} r={HEX_SIZE * 0.55} />
             ) : null}
             <image
-              className="tileBackPendingToken"
+              className={`tileBackPendingToken${pendingToken.kind === "whirlpool" ? " whirlpoolPending" : ""}`}
               height={tokenBackHeight}
               href={assetUrl(tokenBackImage)}
-              opacity={0.9}
+              opacity={0.95}
               preserveAspectRatio="xMidYMid meet"
               width={tokenBackWidth}
-              x={tokenBackPixel.x - tokenBackWidth / 2}
-              y={tokenBackPixel.y - tokenBackHeight / 2}
+              x={drawX - tokenBackWidth / 2}
+              y={drawY - tokenBackHeight / 2}
             />
             {gateColor ? (
               <>
-                <circle cx={tokenBackPixel.x} cy={tokenBackPixel.y} fill="none" r={HEX_SIZE * 0.55} stroke={gateColor} strokeWidth={2.5} />
+                <circle cx={drawX} cy={drawY} fill="none" r={HEX_SIZE * 0.55} stroke={gateColor} strokeWidth={2.5} />
                 <text
                   fill={gateColor}
                   fontSize={HEX_SIZE * 0.5}
                   fontWeight={700}
                   textAnchor="middle"
-                  x={tokenBackPixel.x}
-                  y={tokenBackPixel.y + HEX_SIZE * 0.66}
+                  x={drawX}
+                  y={drawY + HEX_SIZE * 0.66}
                 >
                   {pendingToken.pair}
                 </text>
@@ -997,7 +1015,7 @@ export function HexMapBoard({
         const teleportBackTarget = teleportChoice?.targets.get(tokenBackSpaceId);
         if (teleportBackTarget && !readOnly) {
           overlays.push(
-            <g key={`teleport-back-${tile.id}`}>
+            <g key={`teleport-back-${tile.id}-${pendingIndex}`}>
               <polygon
                 className="teleportTargetFaceDown"
                 data-space-id={tokenBackSpaceId}
@@ -1007,17 +1025,12 @@ export function HexMapBoard({
                     onAction(teleportBackTarget.action);
                   }
                 }}
-                points={hexCorners(tokenBackPixel.x, tokenBackPixel.y, HEX_SIZE - 1.2)}
+                points={hexCorners(drawX, drawY, HEX_SIZE - 1.2)}
                 style={{ pointerEvents: "all" }}
               >
                 <title>Click to teleport your hero here (reveals this face-down tile)</title>
               </polygon>
-              <text
-                className="hexTeleportCue"
-                textAnchor="middle"
-                x={tokenBackPixel.x}
-                y={tokenBackPixel.y + HEX_SIZE * 0.92}
-              >
+              <text className="hexTeleportCue" textAnchor="middle" x={drawX} y={drawY + HEX_SIZE * 0.92}>
                 ⇄ exit here
               </text>
             </g>
@@ -1071,14 +1084,18 @@ export function HexMapBoard({
                       ? `Underground tile (${backLabelDisplay}) — you can't discover it from the Surface. Enter a Subterranean Gate to open it.`
                       : `Face-down tile ${backLabelDisplay}`
                 }${
-                  tile.pendingToken
-                    ? ` — carries a ${
-                        tile.pendingToken.kind === "gate"
-                          ? `${gatePairColor(tile.pendingToken.pair ?? 1)} Gate`
-                          : tile.pendingToken.kind === "monolith"
-                            ? "Monolith"
-                            : "Whirlpool"
-                      } token${tile.pendingToken.preferredSpaceId ? " reserved on the marked hex" : ": placed on reveal"}`
+                  faceDownPendingTokens.length > 0
+                    ? ` — carries ${faceDownPendingTokens
+                        .map((token) =>
+                          token.kind === "gate"
+                            ? `${gatePairColor(token.pair ?? 1)} Gate`
+                            : token.kind === "whirlpool"
+                              ? "Whirlpool"
+                              : token.kind === "monolith"
+                                ? "Monolith"
+                                : token.kind
+                        )
+                        .join(", ")} token${faceDownPendingTokens.length === 1 ? "" : "s"} (visible before reveal)`
                     : ""
                 }`}
               </title>
@@ -2197,9 +2214,6 @@ export function HexMapBoard({
     }
   };
 
-  const rotationConnected =
-    rotatingTile && iAmRotating ? legalRotations.size === 0 || legalRotations.has(previewRotation) : true;
-
   // Spell out why click-to-move is locked right now, instead of a map that
   // silently ignores clicks.
   const moveLockReason = (() => {
@@ -2424,7 +2438,6 @@ export function HexMapBoard({
               </button>
               <button
                 className="commandButton primary"
-                disabled={!rotationConnected}
                 onClick={() =>
                   onAction({
                     type: "SET_TILE_ROTATION",
@@ -2438,7 +2451,6 @@ export function HexMapBoard({
                 <Check size={13} /> Confirm
               </button>
             </div>
-            {!rotationConnected ? <small className="mapFloatWarn">Border lines seal the tile off — keep rotating.</small> : null}
           </div>
         ) : (
           <div className="mapFloatCard passive">
@@ -5656,16 +5668,29 @@ export function PreBattlePanel({
                 Accept the battle
               </button>
             ) : null}
-            {escapeActions.map((legal) => (
-              <button
-                className="commandButton"
-                key={actionKey(legal.action)}
-                onClick={() => onAction(legal.action)}
-                type="button"
-              >
-                {legal.label}
-              </button>
-            ))}
+            {escapeActions.map((legal) => {
+              const isSurrender = legal.action.type === "SURRENDER_COMBAT";
+              const vpOn = Boolean(state.adventure?.mapPreset?.victoryPoints?.enabled);
+              const label =
+                isSurrender && vpOn
+                  ? `${legal.label} (opponent gains 1 VP)`
+                  : legal.label;
+              return (
+                <button
+                  className="commandButton"
+                  key={actionKey(legal.action)}
+                  onClick={() => onAction(legal.action)}
+                  title={
+                    isSurrender && vpOn
+                      ? "Surrendering awards the opponent 1 Victory Point (not the full 3 VP main-hero defeat)."
+                      : undefined
+                  }
+                  type="button"
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </>
       ) : viewerIsParticipant ? (
@@ -5802,6 +5827,15 @@ export function PlacementPanel({
               ) : (
                 <span className={`tierDot ${def?.tier}`} />
               )}
+              {(unit.stacks ?? 0) > 0 ? (
+                <span
+                  className={`armyStackBadge placement count-${Math.min(3, unit.stacks ?? 0)} active`}
+                  title={`${unit.stacks} Polish Unit Stack${unit.stacks === 1 ? "" : "s"}: +1 Attack; each Stack absorbs one full Pack health bar.`}
+                >
+                  <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
+                  ×{unit.stacks}
+                </span>
+              ) : null}
               <span className="placementUnitName">
                 {unit.side} {def?.name ?? unit.unitDefId}
                 {isPlaced ? " ✓" : ""}

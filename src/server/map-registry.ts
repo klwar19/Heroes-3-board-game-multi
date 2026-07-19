@@ -345,15 +345,27 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
     if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
       return undefined;
     }
+    // Exit pick mode: one-way entrances AND two-way gates (same certain/random/mix).
     const exitMode =
-      raw.kind === "oneway_entrance" && (raw.exitMode === "random" || raw.exitMode === "certain" || raw.exitMode === "mix")
+      (raw.kind === "oneway_entrance" || raw.kind === "gate") &&
+      (raw.exitMode === "random" || raw.exitMode === "certain" || raw.exitMode === "mix")
         ? { exitMode: raw.exitMode as "random" | "certain" | "mix" }
         : {};
-    const alwaysPickable = raw.kind === "oneway_exit" && raw.alwaysPickable === true ? { alwaysPickable: true } : {};
+    // Always-pickable: one-way exits AND two-way gates (mix-mode free destinations).
+    const alwaysPickable =
+      (raw.kind === "oneway_exit" || raw.kind === "gate") && raw.alwaysPickable === true
+        ? { alwaysPickable: true }
+        : {};
     return { kind: raw.kind, pair: raw.pair, ...slot, ...guard, ...exitMode, ...alwaysPickable };
   }
-  // Monolith / Whirlpool: never carry a pair.
-  return { kind: raw.kind, ...slot, ...guard };
+  // Monolith / Whirlpool: never carry a pair. Monoliths share the two-way exit modes.
+  const monolithExit =
+    raw.kind === "monolith" && (raw.exitMode === "random" || raw.exitMode === "certain" || raw.exitMode === "mix")
+      ? { exitMode: raw.exitMode as "random" | "certain" | "mix" }
+      : {};
+  const monolithAlways =
+    raw.kind === "monolith" && raw.alwaysPickable === true ? { alwaysPickable: true as const } : {};
+  return { kind: raw.kind, ...slot, ...guard, ...monolithExit, ...monolithAlways };
 }
 
 /**

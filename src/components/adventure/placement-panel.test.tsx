@@ -90,6 +90,22 @@ describe("PlacementPanel — deploy sidebar", () => {
     expect(container.querySelector(".combatReadyButton")).toBeTruthy();
   });
 
+  it("shows Polish Unit Stack markings on preparation units (not only once on the field)", () => {
+    const state = deployState();
+    state.players.p1.army = [
+      { id: "army_1", unitDefId: "castle.marksmen", side: "pack", stacks: 2 },
+      { id: "army_2", unitDefId: "castle.griffins", side: "few" }
+    ];
+    const { container } = render(
+      <PlacementPanel legalActions={PLACE_ACTIONS} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+    );
+    const badge = container.querySelector(".armyStackBadge.placement");
+    expect(badge, "prep sidebar shows the stack coin badge").toBeTruthy();
+    expect(badge?.textContent).toContain("×2");
+    // CONTROL: the unstacked unit has no badge.
+    expect(container.querySelectorAll(".armyStackBadge.placement")).toHaveLength(1);
+  });
+
   it("deploys the dragged army unit onto the battlefield cell it is dropped on", () => {
     const onAction = vi.fn<(action: GameAction) => void>();
     const { container } = render(
