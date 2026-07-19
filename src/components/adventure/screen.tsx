@@ -138,7 +138,7 @@ import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { CommanderCard, CommanderLevelUpOverlay } from "@/components/commander-card";
 import { commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@/data/commanders";
 import { COMMANDER_ARTIFACT_SPECS, COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/wog/commander-artifacts";
-import { UNIT_RANK_THRESHOLDS } from "@/data/units/experience";
+import { UNIT_RANK_THRESHOLDS, unitRankBadgeImage } from "@/data/units/experience";
 import { factionUiLexicon } from "@/data/faction-theme";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardName, formatCost, isEmpoweredStatisticCard, titleCase } from "@/components/table/utils";
@@ -3792,7 +3792,7 @@ export function ArmyPanel({
           const eliteAbility = rankInfo?.eliteActive && rankInfo.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
           const elitePreview = rankInfo?.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
           const thresholds = def ? UNIT_RANK_THRESHOLDS[def.tier] : null;
-          const maxXp = thresholds?.[2] ?? 1;
+          const maxXp = thresholds?.[thresholds.length - 1] ?? 1;
           const xpPercent = rankInfo ? Math.min(100, (rankInfo.experience / maxXp) * 100) : 0;
           const drillAction = legalActions.find(
             (legal) => legal.action.type === "DRILL_UNIT" && legal.action.armyUnitId === unit.id
@@ -3808,11 +3808,16 @@ export function ArmyPanel({
           const stackAction = populationActions.find(
             (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases.some((purchase) => purchase.kind === "stack")
           );
+          const activeRankAbilities = (rankInfo?.rankAbilityIds ?? [])
+            .map((id) => unitAbilities[id]?.name)
+            .filter(Boolean);
           const rankLine = rankInfo
             ? rankInfo.rank > 0
-              ? `${rankInfo.rankName} (veteran rank ${rankInfo.rank}) — ${rankInfo.experience} XP${
-                  rankInfo.nextThreshold !== null ? `, next rank at ${rankInfo.nextThreshold}` : ", max rank"
-                }${eliteAbility ? ` · Elite ability: ${eliteAbility.name}` : ""}`
+              ? `${rankInfo.rankName} (rank ${rankInfo.rank}) — ${rankInfo.experience} XP${
+                  rankInfo.nextThreshold !== null ? `, next at ${rankInfo.nextThreshold}` : ", max"
+                } · ${rankInfo.abilityBudget} ability path${
+                  activeRankAbilities.length ? ` · ${activeRankAbilities.join(", ")}` : ""
+                }`
               : rankInfo.experience > 0
                 ? `${rankInfo.experience} XP — first rank at ${rankInfo.nextThreshold}`
                 : ""
@@ -3855,7 +3860,20 @@ export function ArmyPanel({
                 </strong>
                 {rankInfo && rankInfo.rank > 0 ? (
                   <span className={`unitRankBadge rank-${rankInfo.rank}`} title={rankLine}>
-                    {rankInfo.rank >= 3 ? "⚔" : "^".repeat(rankInfo.rank)}
+                    {unitRankBadgeImage(rankInfo.rank) ? (
+                      <img
+                        alt=""
+                        aria-hidden="true"
+                        className="unitRankBadgeArt"
+                        src={assetUrl(unitRankBadgeImage(rankInfo.rank)!)}
+                      />
+                    ) : rankInfo.rank >= 4 ? (
+                      "★"
+                    ) : rankInfo.rank >= 3 ? (
+                      "⚔"
+                    ) : (
+                      "^".repeat(rankInfo.rank)
+                    )}
                   </span>
                 ) : null}
                 {(unit.stacks ?? 0) > 0 ? (
@@ -3879,7 +3897,7 @@ export function ArmyPanel({
                     <span><img alt="" src={assetUrl("/assets/spell-icons/slayer.png")} /><strong>{rankInfo.rankName || "Recruit"}</strong></span>
                     <b>{rankInfo.experience} / {maxXp} XP</b>
                   </div>
-                  <div className="armyXpTrack" aria-label={`${Math.round(xpPercent)} percent to Elite`}>
+                  <div className="armyXpTrack" aria-label={`${Math.round(xpPercent)} percent to Legend`}>
                     <span className="armyXpFill" style={{ width: `${xpPercent}%` }} />
                     {thresholds?.map((threshold, index) => (
                       <span className={`armyXpMilestone ${rankInfo.rank > index ? "reached" : ""}`} key={threshold} style={{ left: `${(threshold / maxXp) * 100}%` }}>
@@ -3889,9 +3907,18 @@ export function ArmyPanel({
                   </div>
                   <div className="armyXpDetails">
                     <span>Bonus: A+{rankBonus.attack} D+{rankBonus.defense} HP+{rankBonus.health} I+{rankBonus.initiative}</span>
-                    {elitePreview ? (
-                      <span className={rankInfo.eliteActive ? "eliteAbilityCard active" : "eliteAbilityCard locked"}>
-                        <Sparkles aria-hidden="true" size={12} /> Elite: {elitePreview.name}{rankInfo.eliteActive ? " · active" : " · unlocks at rank 3"}
+                    {rankInfo.rankAbilityIds.length > 0 ? (
+                      <span className="eliteAbilityCard active">
+                        <Sparkles aria-hidden="true" size={12} />{" "}
+                        {rankInfo.rankAbilityIds
+                          .map((id) => unitAbilities[id]?.name)
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    ) : null}
+                    {elitePreview && !rankInfo.eliteActive ? (
+                      <span className="eliteAbilityCard locked">
+                        <Sparkles aria-hidden="true" size={12} /> Signature: {elitePreview.name} · unlocks at rank 3
                         <small>{elitePreview.text}</small>
                       </span>
                     ) : null}

@@ -141,7 +141,7 @@ import {
   unitExperienceActive,
   unitRankFold,
   unitRankForExperience,
-  withEliteAbility
+  withRankAbilities
 } from "./unit-experience";
 import { DRILL_UNIT_GOLD_COST, MAX_UNIT_RANK } from "@/data/units/experience";
 import type {
@@ -11645,7 +11645,7 @@ export function makeCombatUnitFromArmy(
     movedThisActivation: false,
     retaliatedThisRound: false,
     defenseToken: false,
-    abilities: withEliteAbility(side.abilities, rankFold),
+    abilities: withRankAbilities(side.abilities, rankFold),
     unitDefId: armyUnit.unitDefId,
     armyUnitId: armyUnit.id,
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),

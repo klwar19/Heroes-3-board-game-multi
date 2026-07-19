@@ -9,12 +9,19 @@ import { factionUiLexicon } from "@/data/faction-theme";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { unitAbilities } from "@/data/units/abilities";
-import { MAX_UNIT_RANK, UNIT_RANK_NAMES, UNIT_RANK_THRESHOLDS } from "@/data/units/experience";
+import {
+  MAX_UNIT_RANK,
+  RANK_ABILITY_TRACK_LABELS,
+  UNIT_RANK_NAMES,
+  UNIT_RANK_THRESHOLDS,
+  unitRankAbilityIcon,
+  unitRankBadgeImage,
+  type RankAbilityTrackId
+} from "@/data/units/experience";
 import {
   applyUnitSideRules,
   armyUnitRankInfo,
   getRuleset,
-  unitRankStatBonuses,
   unitSideRuleOverrides,
   type ArmyUnitState,
   type GameAction,
@@ -23,14 +30,11 @@ import {
   type PlayerId
 } from "@/engine";
 
-/** The printed side an army card currently shows (recruited Neutrals included). */
 export function armyUnitPrintedSide(
   def: UnitDefinition | undefined,
   side: ArmyUnitState["side"]
 ): UnitSideDefinition | undefined {
-  if (!def) {
-    return undefined;
-  }
+  if (!def) return undefined;
   return side === "few" ? def.few : side === "pack" ? def.pack : (def.neutral ?? def.pack);
 }
 
@@ -43,16 +47,26 @@ function statReadout(label: string, base: number, bonus: number) {
   );
 }
 
+function formatStatDelta(delta: { attack: number; defense: number; health: number; initiative: number }): string {
+  const parts: string[] = [];
+  if (delta.attack) parts.push(`+${delta.attack} Attack`);
+  if (delta.defense) parts.push(`+${delta.defense} Defense`);
+  if (delta.health) parts.push(`+${delta.health} Health`);
+  if (delta.initiative) parts.push(`+${delta.initiative} Initiative`);
+  return parts.join(" · ") || "—";
+}
+
+function RankBadgeIcon({ rank }: { rank: number }) {
+  const image = unitRankBadgeImage(rank);
+  if (image) {
+    return <img alt="" aria-hidden="true" className="unitRankBadgeArt" src={assetUrl(image)} />;
+  }
+  return <>{rank >= MAX_UNIT_RANK ? "★" : rank >= 3 ? "⚔" : "^".repeat(rank)}</>;
+}
+
 /**
- * Unit Experience Board — a pop-up window (portal shell shared with the Hero
- * Grade / Hero Equipment windows) detailing every army card's veterancy:
- * current XP on the tier's REAL thresholds, the exact stat package each rank
- * adds (rank-by-rank deltas, not just the cumulative total), the live folded
- * stats the engine fights with, and the signature Elite ability with its full
- * rules text (active at rank 3, locked below). Engine-backed controls (Drill /
- * Reinforce to Pack / Stack layer) ride the SAME legal-action offers as the
- * roster rows — the window never invents an action. Read-only without
- * onAction (opponent info). Themed per faction register (classic/anime/wuxia).
+ * Unit Experience Board — each rank is clearly either STATS or ABILITY.
+ * Gold units do not get more abilities; budget is 1 / 2 / 3 by path rarity.
  */
 export function UnitExperienceWindow({
   state,
@@ -69,11 +83,10 @@ export function UnitExperienceWindow({
 }) {
   const player = state.players[playerId];
   const lexicon = factionUiLexicon(player?.factionId);
-  if (!player) {
-    return null;
-  }
+  if (!player) return null;
   const ruleset = getRuleset(state);
   const sideOverrides = unitSideRuleOverrides(state);
+  const rankSteps = Array.from({ length: MAX_UNIT_RANK }, (_, i) => i + 1);
 
   return (
     <div className={`heroSystemBackdrop theme-${lexicon.register}`} onMouseDown={onClose}>
@@ -94,29 +107,25 @@ export function UnitExperienceWindow({
           </button>
         </header>
         <p className="unitXpSources">
-          Cards earn XP by winning a combat they were deployed in and survived — guard fights pay the Field
-          Difficulty, Creature Banks pay the Stacked count (minimum 2), PvP wins pay 2 — or by {lexicon.train}
-          {" "}at your own Town (2 gold → +1 XP, once per turn). Reinforcing Few→Pack halves a card&apos;s XP and each
-          bought Stack layer costs 1 XP; Quick Combat trains nobody.
+          Each rank grants <strong>either stats or one ability</strong> — never both. Paths have 1, 2, or (rare) 3
+          abilities; gold units do not get more. XP from won fights you survived, or {lexicon.train} (2 gold → +1 XP).
+          Reinforce halves XP; Stacks cost 1 XP; Quick Combat trains nobody.
         </p>
         <div className="unitXpList">
           {player.army.map((unit) => {
             const def = coreUnitDefinitions[unit.unitDefId];
             const rankInfo = armyUnitRankInfo(unit);
-            if (!def || !rankInfo) {
-              return null;
-            }
+            if (!def || !rankInfo) return null;
             const printed = armyUnitPrintedSide(def, unit.side);
             const side = printed
               ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides)
               : undefined;
             const thresholds = UNIT_RANK_THRESHOLDS[def.tier] ?? UNIT_RANK_THRESHOLDS.gold;
-            const maxXp = thresholds[2];
+            const maxXp = thresholds[MAX_UNIT_RANK - 1];
             const xpPercent = Math.min(100, (rankInfo.experience / maxXp) * 100);
             const stackAttack =
               sideOverrides.polishUnitStacks && unit.side === "pack" && (unit.stacks ?? 0) > 0 ? 1 : 0;
             const baseAttack = (side?.attack ?? 0) + (unit.permanentAttackBonus ?? 0) + stackAttack;
-            const elite = rankInfo.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
             const drillAction = legalActions.find(
               (legal) => legal.action.type === "DRILL_UNIT" && legal.action.armyUnitId === unit.id
             );
@@ -135,6 +144,9 @@ export function UnitExperienceWindow({
                 legal.action.type === "POPULATION_ACTION" &&
                 legal.action.purchases.some((purchase) => purchase.kind === "stack")
             );
+            const trackLabel =
+              RANK_ABILITY_TRACK_LABELS[rankInfo.trackId as RankAbilityTrackId] ?? rankInfo.trackId;
+
             return (
               <article aria-label={`${def.name} experience detail`} className="unitXpEntry" key={unit.id}>
                 {side?.cardImage ? (
@@ -150,10 +162,14 @@ export function UnitExperienceWindow({
                     </strong>
                     {rankInfo.rank > 0 ? (
                       <span className={`unitRankBadge rank-${rankInfo.rank}`}>
-                        {rankInfo.rank >= MAX_UNIT_RANK ? "⚔" : "^".repeat(rankInfo.rank)}
+                        <RankBadgeIcon rank={rankInfo.rank} />
                       </span>
                     ) : null}
                     <em>{rankInfo.rank > 0 ? rankInfo.rankName : "Recruit"}</em>
+                    <span className="unitXpTrackTag">{trackLabel}</span>
+                    <span className="unitXpBudgetTag" title="Ability ranks on this path (not by tier)">
+                      {rankInfo.abilityBudget} {rankInfo.abilityBudget === 1 ? "ability" : "abilities"}
+                    </span>
                     <b>
                       {rankInfo.experience} / {maxXp} XP
                     </b>
@@ -172,28 +188,42 @@ export function UnitExperienceWindow({
                     ))}
                   </div>
                   {side ? (
-                    <div className="unitXpStats" aria-label={`${def.name} live stats`}>
+                    <div className="unitXpStats" aria-label={`${def.name} live folded stats`}>
                       {statReadout("A", baseAttack, rankInfo.bonus.attack)}
                       {statReadout("D", side.defense, rankInfo.bonus.defense)}
                       {statReadout("HP", side.health, rankInfo.bonus.health)}
                       {statReadout("I", side.initiative, rankInfo.bonus.initiative)}
                     </div>
                   ) : null}
+                  {rankInfo.rankAbilityIds.length > 0 ? (
+                    <div className="unitXpActiveAbilities" aria-label="Active rank abilities">
+                      {rankInfo.rankAbilityIds.map((id) => {
+                        const ability = unitAbilities[id];
+                        if (!ability) return null;
+                        return (
+                          <span className="unitXpActiveChip" key={id}>
+                            <img alt="" src={assetUrl(unitRankAbilityIcon(id))} />
+                            <b>{ability.name}</b>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   <div className="unitXpRanks">
-                    {([1, 2, 3] as const).map((rank) => {
-                      const cumulative = unitRankStatBonuses(def.tier, rank);
-                      const previous = unitRankStatBonuses(def.tier, rank - 1);
-                      const gains: string[] = [];
-                      if (cumulative.attack > previous.attack) gains.push(`+${cumulative.attack - previous.attack} Attack`);
-                      if (cumulative.defense > previous.defense) gains.push(`+${cumulative.defense - previous.defense} Defense`);
-                      if (cumulative.health > previous.health) gains.push(`+${cumulative.health - previous.health} Health`);
-                      if (cumulative.initiative > previous.initiative)
-                        gains.push(`+${cumulative.initiative - previous.initiative} Initiative`);
+                    {rankSteps.map((rank) => {
+                      const kind = rankInfo.stepKindByRank[rank] ?? "stats";
+                      const abilityIds = rankInfo.abilitiesByRank[rank] ?? [];
+                      const statDelta = rankInfo.statGainsByRank[rank] ?? {
+                        attack: 0,
+                        defense: 0,
+                        health: 0,
+                        initiative: 0
+                      };
                       const reached = rankInfo.rank >= rank;
                       const next = !reached && rankInfo.rank === rank - 1;
                       return (
                         <div
-                          className={`unitXpRank ${reached ? "reached" : next ? "next" : "locked"}`}
+                          className={`unitXpRank kind-${kind} ${reached ? "reached" : next ? "next" : "locked"}`}
                           key={rank}
                         >
                           <span className="unitXpRankIcon" aria-hidden="true">
@@ -202,17 +232,48 @@ export function UnitExperienceWindow({
                           <b>
                             {rank} · {UNIT_RANK_NAMES[rank]}
                           </b>
+                          <span className={`unitXpKindPill kind-${kind}`}>
+                            {kind === "stats" ? "STATS" : "ABILITY"}
+                          </span>
                           <small>
                             at {thresholds[rank - 1]} XP
                             {next ? ` · ${thresholds[rank - 1] - rankInfo.experience} to go` : reached ? " · reached" : ""}
                           </small>
-                          <span className="unitXpRankGains">{gains.join(" · ")}</span>
-                          {rank === MAX_UNIT_RANK && elite ? (
-                            <span className={`unitXpElite ${rankInfo.eliteActive ? "active" : "locked"}`}>
-                              <Sparkles aria-hidden="true" size={12} />
-                              <b>{elite.name}</b>
-                              {rankInfo.eliteActive ? " · ACTIVE" : " · locked"}
-                              <small>{elite.text}</small>
+                          {kind === "stats" ? (
+                            <span className="unitXpRankGains">{formatStatDelta(statDelta)}</span>
+                          ) : (
+                            abilityIds.map((abilityId) => {
+                              const ability = unitAbilities[abilityId];
+                              if (!ability) {
+                                return (
+                                  <span className="unitXpElite locked" key={abilityId}>
+                                    (ability already on card — next fallback applied)
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span
+                                  className={`unitXpElite ${reached ? "active" : "locked"}`}
+                                  key={abilityId}
+                                >
+                                  <img
+                                    alt=""
+                                    aria-hidden="true"
+                                    className="unitXpAbilityIcon"
+                                    src={assetUrl(unitRankAbilityIcon(abilityId))}
+                                  />
+                                  <b>{ability.name}</b>
+                                  {reached ? " · ACTIVE" : " · locked"}
+                                  <small>{ability.text}</small>
+                                </span>
+                              );
+                            })
+                          )}
+                          {kind === "ability" && abilityIds.length === 0 ? (
+                            <span className="unitXpRankGains">
+                              {reached
+                                ? "All path abilities already printed on this unit"
+                                : "Ability rank (see path)"}
                             </span>
                           ) : null}
                         </div>

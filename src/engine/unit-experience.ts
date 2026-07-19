@@ -1,11 +1,14 @@
 import type { UnitTier } from "@/data/factions/types";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
-  ELITE_UNIT_RANK_ABILITIES,
   MAX_UNIT_RANK,
   UNIT_RANK_NAMES,
-  UNIT_RANK_STAT_BONUSES,
   UNIT_RANK_THRESHOLDS,
+  UNIT_STAT_STEPS,
+  rankScheduleFor,
+  rankAbilityTrackFor,
+  scheduleAbilityCount,
+  type RankStep,
   type UnitRankStatBonus
 } from "@/data/units/experience";
 import { UNIT_XP_BANK_MIN, UNIT_XP_PVP_WIN } from "@/data/units/experience";
@@ -22,87 +25,192 @@ import {
 } from "./state";
 
 /**
- * Unit Experience (optional rule) — engine read layer for the WoG UES board
- * adaptation. Data (thresholds, per-tier stat packages, the elite registry)
- * lives in src/data/units/experience.ts; wiring:
- *  - XP awards: finalizeAdventureCombat (adventure-reducer.ts) — winner's
- *    surviving deployed army units gain XP (neutral difficulty / bank Stacked
- *    count / PvP flat).
- *  - Stat/ability folds: makeCombatUnitFromArmy (adventure.ts) and
- *    applyUnitCurrentSide (unit-transforms.ts) via `unitRankFold` /
- *    `combatUnitRankFold`.
- *  - Dilution: reinforcing Few→Pack halves the card's XP; each purchased
- *    Polish Stack layer costs 1 XP (WoG Crexpmod "upgrades cost experience").
- *  - Drill: DRILL_UNIT map action (adventure-reducer.ts drillUnit).
- * Behaviour pinned in src/engine/unit-experience.test.ts (remote machinery) and
- * src/engine/anime-unit-mechanics.test.ts (the anime enable road).
- *
- * TWO enable roads into ONE machinery (mirroring Unit Stacks): the frozen
- * `adventure.unitExperience` flag (the lobby Game-options row / WOG module) OR
- * the anime `unitExperience` module. Either activates the same thresholds,
- * folds, dilution and Drill below — never two parallel XP systems.
+ * Unit Experience — each rank is EITHER stats OR one ability (never both).
+ * Ability count is by track rarity (1 / 2 / 3), never by gold tier.
+ * Stats only accumulate on stats ranks (schedule-driven steps).
  */
 
 const ZERO_FOLD: UnitRankStatBonus = { attack: 0, defense: 0, health: 0, initiative: 0 };
 
-/**
- * Whether the Unit Experience rule is on for this game. TWO roads: the frozen
- * `adventure.unitExperience` flag (lobby row / WOG module) OR the anime
- * `unitExperience` module (`anime.enabled && anime.unitExperience`). Off ⇒ no
- * XP is ever stamped, so every downstream fold/read no-ops (byte-identical).
- */
 export function unitExperienceActive(state: GameState): boolean {
   return Boolean(state.adventure?.unitExperience) || animeModuleEnabled(state, "unitExperience");
 }
 
-/** Veteran rank (0-3) a card of this tier has at the given total XP. */
 export function unitRankForExperience(tier: UnitTier, experience: number): number {
   const thresholds = UNIT_RANK_THRESHOLDS[tier] ?? UNIT_RANK_THRESHOLDS.gold;
   const xp = Math.max(0, Math.trunc(experience));
   let rank = 0;
   for (const threshold of thresholds) {
-    if (xp >= threshold) {
-      rank += 1;
-    }
+    if (xp >= threshold) rank += 1;
   }
   return Math.min(MAX_UNIT_RANK, rank);
 }
 
-/** CUMULATIVE stat bonus at this rank for this tier (rank 0 = nothing). */
-export function unitRankStatBonuses(tier: UnitTier, rank: number): UnitRankStatBonus {
-  if (rank <= 0) {
-    return ZERO_FOLD;
-  }
-  const packages = UNIT_RANK_STAT_BONUSES[tier] ?? UNIT_RANK_STAT_BONUSES.gold;
-  return packages[Math.min(rank, MAX_UNIT_RANK) - 1] ?? ZERO_FOLD;
+function addStats(a: UnitRankStatBonus, b: UnitRankStatBonus): UnitRankStatBonus {
+  return {
+    attack: a.attack + b.attack,
+    defense: a.defense + b.defense,
+    health: a.health + b.health,
+    initiative: a.initiative + b.initiative
+  };
 }
 
-/** The unique ELITE (rank 3) ability this unit gains, if it has one. */
-export function eliteRankAbilityId(unitDefId: string): string | null {
-  return ELITE_UNIT_RANK_ABILITIES[unitDefId] ?? null;
+/**
+ * Cumulative stats at this rank for this unit — only ranks whose schedule step
+ * is `kind: "stats"` contribute. Gold does not get larger packages; it only
+ * uses Attack-first steps when a stats rank lands.
+ *
+ * Overload-friendly: `unitRankStatBonuses(tier, rank)` still works for tests
+ * that pass a plain melee path (no unitDefId) — treats every rank as stats
+ * using the deprecated cumulative table path via steps 0..rank-1.
+ */
+const TIER_KEYS = new Set<string>(["bronze", "silver", "gold", "azure"]);
+
+export function unitRankStatBonuses(
+  tierOrUnitDefId: UnitTier | string,
+  rankOrTier: number | UnitTier,
+  maybeRank?: number
+): UnitRankStatBonus {
+  // (unitDefId, tier, rank)
+  if (
+    typeof tierOrUnitDefId === "string" &&
+    !TIER_KEYS.has(tierOrUnitDefId) &&
+    typeof rankOrTier === "string" &&
+    TIER_KEYS.has(rankOrTier) &&
+    typeof maybeRank === "number"
+  ) {
+    return unitRankStatBonusesFor(tierOrUnitDefId, rankOrTier as UnitTier, maybeRank);
+  }
+  // (unitDefId, rank) — tier from definition
+  if (
+    typeof tierOrUnitDefId === "string" &&
+    !TIER_KEYS.has(tierOrUnitDefId) &&
+    typeof rankOrTier === "number" &&
+    maybeRank === undefined
+  ) {
+    const def = coreUnitDefinitions[tierOrUnitDefId];
+    const tier = def?.tier ?? "gold";
+    return unitRankStatBonusesFor(tierOrUnitDefId, tier, rankOrTier);
+  }
+  // (tier, rank) — pure step table (no schedule; for tier-step unit tests)
+  const tier = tierOrUnitDefId as UnitTier;
+  const rank = rankOrTier as number;
+  if (rank <= 0) return ZERO_FOLD;
+  const steps = UNIT_STAT_STEPS[tier] ?? UNIT_STAT_STEPS.gold;
+  let total = ZERO_FOLD;
+  const count = Math.min(rank, steps.length);
+  for (let i = 0; i < count; i++) {
+    total = addStats(total, steps[i]!);
+  }
+  return total;
 }
+
+export function unitRankStatBonusesFor(unitDefId: string, tier: UnitTier, rank: number): UnitRankStatBonus {
+  if (rank <= 0) return ZERO_FOLD;
+  const schedule = rankScheduleFor(unitDefId);
+  const steps = UNIT_STAT_STEPS[tier] ?? UNIT_STAT_STEPS.gold;
+  let total = ZERO_FOLD;
+  let statsIndex = 0;
+  for (let r = 1; r <= Math.min(rank, MAX_UNIT_RANK); r++) {
+    const step = schedule[r as 1 | 2 | 3 | 4];
+    if (step.kind === "stats") {
+      const delta = steps[statsIndex] ?? ZERO_FOLD;
+      total = addStats(total, delta);
+      statsIndex += 1;
+    }
+  }
+  return total;
+}
+
+/** The schedule step at a given rank (stats | ability). */
+export function unitRankStep(unitDefId: string, rank: number): RankStep | null {
+  if (rank < 1 || rank > MAX_UNIT_RANK) return null;
+  return rankScheduleFor(unitDefId)[rank as 1 | 2 | 3 | 4] ?? null;
+}
+
+export function printedAbilityIdsOf(unitDefId: string): ReadonlySet<string> {
+  const def = coreUnitDefinitions[unitDefId];
+  const ids = new Set<string>();
+  if (!def) return ids;
+  for (const side of [def.few, def.pack, def.neutral]) {
+    for (const abilityId of side?.abilities ?? []) ids.add(abilityId);
+  }
+  return ids;
+}
+
+/**
+ * Abilities granted by ability-ranks only (up through `rank`).
+ * Stats ranks contribute nothing here.
+ */
+export function unitRankAbilityIds(unitDefId: string, rank: number): string[] {
+  if (rank <= 0) return [];
+  const printed = printedAbilityIdsOf(unitDefId);
+  const granted: string[] = [];
+  const already = new Set<string>(printed);
+  const schedule = rankScheduleFor(unitDefId);
+
+  for (let r = 1; r <= Math.min(rank, MAX_UNIT_RANK); r++) {
+    const step = schedule[r as 1 | 2 | 3 | 4];
+    if (step.kind !== "ability") continue;
+    for (const abilityId of step.choices) {
+      if (!already.has(abilityId)) {
+        granted.push(abilityId);
+        already.add(abilityId);
+        break;
+      }
+    }
+  }
+  return granted;
+}
+
+/** Ability gained exactly at this rank (empty if the rank is a stats rank). */
+export function unitRankAbilityGainsAt(unitDefId: string, rank: number): string[] {
+  if (rank <= 0) return [];
+  const step = unitRankStep(unitDefId, rank);
+  if (!step || step.kind !== "ability") return [];
+  const before = new Set(unitRankAbilityIds(unitDefId, rank - 1));
+  return unitRankAbilityIds(unitDefId, rank).filter((id) => !before.has(id));
+}
+
+/** Stat delta gained exactly at this rank (zeros if the rank is an ability rank). */
+export function unitRankStatGainsAt(
+  unitDefId: string,
+  tier: UnitTier,
+  rank: number
+): UnitRankStatBonus {
+  if (rank <= 0) return ZERO_FOLD;
+  const step = unitRankStep(unitDefId, rank);
+  if (!step || step.kind !== "stats") return ZERO_FOLD;
+  const after = unitRankStatBonusesFor(unitDefId, tier, rank);
+  const before = unitRankStatBonusesFor(unitDefId, tier, rank - 1);
+  return {
+    attack: after.attack - before.attack,
+    defense: after.defense - before.defense,
+    health: after.health - before.health,
+    initiative: after.initiative - before.initiative
+  };
+}
+
+export { rankAbilityTrackFor, scheduleAbilityCount };
 
 export type UnitRankFold = UnitRankStatBonus & {
   rank: number;
-  /** Elite ability granted at MAX_UNIT_RANK (null below it / none registered). */
+  abilityIds: string[];
+  /** First rank ability id if any (UI convenience). */
   abilityId: string | null;
 };
 
-const ZERO_RANK_FOLD: UnitRankFold = { ...ZERO_FOLD, rank: 0, abilityId: null };
+const ZERO_RANK_FOLD: UnitRankFold = { ...ZERO_FOLD, rank: 0, abilityIds: [], abilityId: null };
 
-/**
- * Everything a combat-unit build folds in for a card with this XP: the rank,
- * its cumulative stat bonuses and (at max rank) the elite ability grant.
- */
 export function unitRankFold(unitDefId: string, tier: UnitTier, experience: number): UnitRankFold {
   const rank = unitRankForExperience(tier, experience);
-  if (rank <= 0) {
-    return ZERO_RANK_FOLD;
-  }
+  if (rank <= 0) return ZERO_RANK_FOLD;
+  const abilityIds = unitRankAbilityIds(unitDefId, rank);
   return {
-    ...unitRankStatBonuses(tier, rank),
+    ...unitRankStatBonusesFor(unitDefId, tier, rank),
     rank,
-    abilityId: rank >= MAX_UNIT_RANK ? eliteRankAbilityId(unitDefId) : null
+    abilityIds,
+    abilityId: abilityIds[0] ?? null
   };
 }
 
@@ -122,44 +230,86 @@ export function combatUnitRankFold(unit: CombatUnitState): UnitRankFold {
   return unitRankFold(unit.unitDefId, def.tier, xp);
 }
 
-/** Appends the fold's elite ability to a printed ability list (deduped). */
-export function withEliteAbility(abilities: string[], fold: UnitRankFold): string[] {
-  if (!fold.abilityId || abilities.includes(fold.abilityId)) {
+/**
+ * Appends every rank-granted ability to a printed ability list (deduped).
+ * Replaces the old single-elite `withEliteAbility` helper.
+ */
+export function withRankAbilities(abilities: string[], fold: UnitRankFold): string[] {
+  if (!fold.abilityIds.length) {
     return abilities;
   }
-  return [...abilities, fold.abilityId];
+  let next = abilities;
+  for (const abilityId of fold.abilityIds) {
+    if (!next.includes(abilityId)) {
+      if (next === abilities) {
+        next = [...abilities];
+      }
+      next.push(abilityId);
+    }
+  }
+  return next;
 }
+
+/** @deprecated Use `withRankAbilities`. Alias kept for any lingering imports. */
+export const withEliteAbility = withRankAbilities;
 
 export type ArmyUnitRankInfo = {
   experience: number;
   rank: number;
   rankName: string;
   bonus: UnitRankStatBonus;
-  /** XP total needed for the NEXT rank; null at max rank. */
   nextThreshold: number | null;
-  /** The elite ability this unit gains at max rank (registered units only). */
+  trackId: string;
+  /** How many ability ranks this unit's path has (1–3). */
+  abilityBudget: number;
+  /** Kept for UI that still labels "elite" — first ability on the path if any. */
   eliteAbilityId: string | null;
-  /** Whether the elite ability is already active (rank = max). */
   eliteActive: boolean;
+  legendAbilityId: string | null;
+  legendActive: boolean;
+  rankAbilityIds: string[];
+  /** Per-rank ability gains (empty array on stats ranks). */
+  abilitiesByRank: Record<number, string[]>;
+  /** Per-rank step kind for the board. */
+  stepKindByRank: Record<number, "stats" | "ability">;
+  /** Per-rank stat deltas (zeros on ability ranks). */
+  statGainsByRank: Record<number, UnitRankStatBonus>;
 };
 
-/** UI summary of a card's veteran progression (badge + tooltip). */
+/** UI summary of a card's veteran progression (badge + tooltip + board window). */
 export function armyUnitRankInfo(armyUnit: Pick<ArmyUnitState, "unitDefId" | "experience">): ArmyUnitRankInfo | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
-  if (!def) {
-    return null;
-  }
+  if (!def) return null;
   const experience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
   const rank = unitRankForExperience(def.tier, experience);
   const thresholds = UNIT_RANK_THRESHOLDS[def.tier] ?? UNIT_RANK_THRESHOLDS.gold;
+  const schedule = rankScheduleFor(armyUnit.unitDefId);
+  const activeIds = unitRankAbilityIds(armyUnit.unitDefId, rank);
+  const abilitiesByRank: Record<number, string[]> = {};
+  const stepKindByRank: Record<number, "stats" | "ability"> = {};
+  const statGainsByRank: Record<number, UnitRankStatBonus> = {};
+  for (let r = 1; r <= MAX_UNIT_RANK; r++) {
+    const step = schedule[r as 1 | 2 | 3 | 4];
+    stepKindByRank[r] = step.kind;
+    abilitiesByRank[r] = unitRankAbilityGainsAt(armyUnit.unitDefId, r);
+    statGainsByRank[r] = unitRankStatGainsAt(armyUnit.unitDefId, def.tier, r);
+  }
   return {
     experience,
     rank,
     rankName: UNIT_RANK_NAMES[rank] ?? "",
-    bonus: unitRankStatBonuses(def.tier, rank),
+    bonus: unitRankStatBonusesFor(armyUnit.unitDefId, def.tier, rank),
     nextThreshold: rank >= MAX_UNIT_RANK ? null : thresholds[rank],
-    eliteAbilityId: eliteRankAbilityId(armyUnit.unitDefId),
-    eliteActive: rank >= MAX_UNIT_RANK && eliteRankAbilityId(armyUnit.unitDefId) !== null
+    trackId: rankAbilityTrackFor(armyUnit.unitDefId),
+    abilityBudget: scheduleAbilityCount(schedule),
+    eliteAbilityId: activeIds[0] ?? unitRankAbilityIds(armyUnit.unitDefId, MAX_UNIT_RANK)[0] ?? null,
+    eliteActive: activeIds.length > 0,
+    legendAbilityId: null,
+    legendActive: false,
+    rankAbilityIds: activeIds,
+    abilitiesByRank,
+    stepKindByRank,
+    statGainsByRank
   };
 }
 

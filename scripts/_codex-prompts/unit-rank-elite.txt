@@ -1,0 +1,29 @@
+Use IMAGE GENERATION tools only. Overwrite ONE file.
+
+THIS IS A UI BADGE ICON for a Heroes of Might and Magic III board-game app: unit veteran rank 3 "Elite".
+
+MANDATORY SUBJECT (exactly this, nothing else):
+- ONE short vertical sword / blade pointing UP (classic military "elite" mark)
+- Small gold metal pin badge, square, centered
+- PURE BLACK background #000000
+
+MANDATORY COLOR PALETTE:
+- Blade fill: #e7b73c (app gold #e7b73c)
+- Edge highlight: #fff3c4
+- Guard/hilt accent: #c79341
+- Shadow: #52320a
+- Background: pure black #000000
+
+FORBIDDEN:
+- NO text, letters, numbers
+- NO full warrior body
+- NO shield, crown, or star (those are other ranks)
+- NO ornate baroque frame
+- NO white background
+
+Style: clean premium HoMM3 board-game UI glyph, HD, simple silhouette, readable at 24–32px.
+
+SAVE OVERWRITE:
+public/assets/ui/unit-rank-elite.webp
+
+Convert with node sharp if needed. Verify > 8KB. Reply path + bytes only.

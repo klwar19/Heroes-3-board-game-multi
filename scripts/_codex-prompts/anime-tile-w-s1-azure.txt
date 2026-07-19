@@ -1,0 +1,41 @@
+Use your IMAGE GENERATION / IMAGE EDIT tools only (not SVG scripts, not procedural drawing).
+
+TASK: precise IMAGE EDIT of ONE finished Heroes of Might & Magic III board-game starting map tile.
+
+ATTACHED IMAGES (in order):
+- Image 1 = Castle starting tile S3 (finished hexagonal map TILE — 7-hex flower with cream borders and painted field symbols).
+- Image 2 = Azure Breeze Sect town panorama reference (wuxia/xianxia mountain sect with jade roofs).
+
+EDIT Image 1 into the Azure Breeze Sect starting tile (id W-S1). Precise local edit of Image 1 only — NOT a full regeneration, NOT a collage of seven separate scenes.
+
+KEEP 100% identical and pixel-aligned from Image 1:
+- Exact 7-hex FLOWER silhouette (centre hex + six ring hexes). NEVER one big hex with fancy internal scenes.
+- Cream/parchment outer hex borders and yellow outer-impassable arcs.
+- Dotted internal hex division lines.
+- EVERY field symbol at the SAME place and board-game style as Image 1:
+  - NE: open grassy empty field
+  - E: campfire + crossed pick/shovel tools (resource symbol)
+  - SE: open grassy empty field
+  - SW: materials mine building with loop "↻2" + stone/materials icon + Roman "I" guard
+  - W: treasure chest / cart + Roman "I" guard (treasure symbol difficulty 1)
+  - NW: rocky blocked mountain field with impassable border treatment
+- Transparent/black corners OUTSIDE the flower (must stay flower-shaped).
+- Late-90s board-game print look, soft painterly terrain, readable icons.
+
+CHANGE ONLY:
+- CENTRAL town hex: replace the Castle town with the Azure Breeze Sect sanctuary from Image 2.
+  Keep sect identity (jade/celadon roofs, sword pavilion feel, refined wuxia mountain architecture) but REPAINT to match Image 1 perspective, scale, lighting, and grass board-game setting. Same footprint as the Castle town. No characters. No giant floating sword dominating the hex.
+
+DO NOT:
+- Redraw the whole tile from scratch
+- Turn it into anime scenery panels / cloud bridges / crystal mines as field art
+- Move, remove, restyle, or invent field symbols
+- Add UI, text, watermarks, labels ("W-S1", "S3"), card frames
+- Photoreal / plastic 3D / cyberpunk
+
+OUTPUT:
+- SAVE final PNG to exactly: out/anime-tiles/w-s1.png
+- Convert to WebP WITH ALPHA at: public/assets/anime/tiles/w-s1.webp
+  (sharp/node OK). Must declare alpha (VP8X/VP8L). Prefer ~1024×985 like Image 1, flower-cropped with transparent outside.
+- Verify public/assets/anime/tiles/w-s1.webp exists and is > 80KB.
+- Reply with only: output paths and byte sizes.

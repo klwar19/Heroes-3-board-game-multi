@@ -1,0 +1,41 @@
+Use your IMAGE GENERATION / IMAGE EDIT tools only (not SVG, not procedural drawing).
+
+TASK: ADD board-game bonus SYMBOLS only. Do NOT change the town atmosphere.
+
+ATTACHED IMAGES (in order):
+- Image 1 = Azure Breeze Sect starting tile W-S1 (wuxia mountain sect, 7-hex flower). KEEP this look.
+- Image 2 = Castle starting tile S3 (reference ONLY for icon STYLE: cream parchment Roman I, treasure chest glyph, campfire + crossed pick/shovel, mine loop ↻2 + stone pile icons).
+
+EDIT Image 1. This is a light overlay edit — NOT a retheme, NOT a regeneration.
+
+KEEP 100% from Image 1 (do not restyle):
+- Full wuxia/xianxia atmosphere: jade roofs, cloud sea, waterfalls, pines, gold/jade ornament, soft daylight
+- Centre sword-pavilion town (identity, colours, lighting)
+- Exact 7-hex flower silhouette and decorative gold/jade hex borders
+- All terrain in every ring hex (crystal cave, terrace, path, mountains, grotto, shrine)
+- Transparent/black corners outside the flower
+
+ADD only the classic HoMM3 board-game icon language from Image 2's style (cream/ivory embossed glyphs, readable at small size), onto these hexes:
+
+Ring order (flat-top / game slots: 1=NE, 2=E, 3=SE, 4=SW, 5=W, 6=NW):
+- NE (upper-right terrace / empty): NO bonus icon (leave open)
+- E (right winding path / empty): NO bonus icon
+- SE (lower-right spirit shrine): free RESOURCE symbol — small campfire + crossed pickaxe/shovel tools (cream icons like Image 2), no guard numeral
+- SW (lower-left jagged peaks / blocked): already impassable mountains — do NOT add bonus icons; may keep impassable feel
+- W (left treasure grotto with gold): TREASURE symbol — cream treasure-chest glyph + Roman numeral "I" guard marker (like Image 2)
+- NW (upper-left crystal/mine cave): MATERIALS MINE — cream loop "↻2" + stone/materials pile icon + Roman "I" guard (like Image 2 mine), even if crystals stay as flavour art under the icons
+- Centre town: no extra icons
+
+DO NOT:
+- Turn the tile into green European grass like S3
+- Replace the centre town
+- Remove clouds, jade roofs, or wuxia mood
+- Add text labels, "W-S1", UI, watermarks
+- Invent Learning Stone XP icons or valuables-only icons as the only mine marker — use the standard materials ↻2 + I
+
+OUTPUT:
+- Save PNG: out/anime-tiles/w-s1.png
+- Convert to WebP WITH ALPHA: public/assets/anime/tiles/w-s1.webp
+  (node sharp OK). Must have alpha (transparent corners). Size ~1024–1254 px.
+- Verify file > 80KB.
+- Reply with paths and byte sizes only.
