@@ -562,8 +562,9 @@ export type AdventureSetupOptions = {
   manualGuardControl?: boolean;
   /**
    * OPTIONAL first-round starting-hand Mulligan mode (default off): in round 1,
-   * after the mandatory draw, replace up to FIRST_ROUND_MULLIGAN_LIMIT hand
-   * cards one at a time. See GameSetupOptions.startingHandMulligan.
+   * when ON (default) allows discarding during the round-1 start-of-turn hand
+   * step; when OFF, round-1 discards are blocked (draw-only). See
+   * GameSetupOptions.startingHandMulligan.
    */
   startingHandMulligan?: boolean;
   /**
@@ -658,7 +659,9 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     pvpNeutralControl: false,
     pvpNeutralControlMustAttack: true,
     manualGuardControl: false,
-    startingHandMulligan: false,
+    // Default ON: round-1 start-of-turn hand discards stay legal (current normal
+    // play). Turn OFF to lock the opening hand — no discard at the start of round 1.
+    startingHandMulligan: true,
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
     farTileBlindChoice: false,
@@ -2374,9 +2377,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // checks one plain boolean. Available in solo/single-player too (the
     // computer-fighter gate lives in manualGuardControllerId).
     ...(setupOptions.manualGuardControl ? { manualGuardControl: true } : {}),
-    // OPTIONAL first-round starting-hand Mulligan (default OFF): frozen so the
-    // one round-1 seeding read (finalizeStartOfTurnHand) checks a plain boolean.
-    ...(setupOptions.startingHandMulligan ? { startingHandMulligan: true } : {}),
+    // First-round hand Mulligan (default ON): whether round-1 start-of-turn
+    // discards are allowed. Frozen so every R1 REFRESH_HAND read is a plain
+    // boolean (absent/undefined is treated as ON for legacy snapshots).
+    startingHandMulligan: setupOptions.startingHandMulligan !== false,
     // OPTIONAL Undo mode (debug/testing): frozen here so the SERVER action
     // transaction (both backends) can read it and keep a bounded per-room undo
     // stack. Default OFF — no history kept and UNDO_MOVE rejected. Unlike the

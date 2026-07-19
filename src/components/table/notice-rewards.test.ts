@@ -93,7 +93,7 @@ describe("noticeRewardsFromEvents — map-visit reward chips", () => {
     expect(rewards[1].icon).toContain("experience");
   });
 
-  it("shows Resource-die GET images with the resource token + amount", () => {
+  it("shows Resource-die GET images with ONE resource token + amount (no duplicate stockpile chip)", () => {
     const { rewards } = noticeRewardsFromEvents(
       [
         ev({
@@ -107,11 +107,11 @@ describe("noticeRewardsFromEvents — map-visit reward chips", () => {
       ],
       NO_STATE
     );
+    // One chip only — the die face already names the paid-out gold; a second
+    // RESOURCES_GAINED icon for the same amount is suppressed.
+    expect(rewards).toHaveLength(1);
     expect(rewards[0].label).toBe("+3");
     expect(rewards[0].icon).toContain("resource-gold");
     expect(rewards[0].title).toMatch(/Resource die/i);
-    // RESOURCES_GAINED still chips the stockpile (same numbers — two chips is fine:
-    // die face + paid-out result). formatResourceName uses lowercase "gold".
-    expect(rewards.some((r) => /gold/i.test(r.title))).toBe(true);
   });
 });

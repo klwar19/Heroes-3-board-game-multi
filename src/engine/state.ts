@@ -9952,11 +9952,11 @@ export type AdventureState = {
    */
   manualGuardControl?: boolean;
   /**
-   * OPTIONAL first-round starting-hand Mulligan mode (default OFF). Frozen from
-   * GameSetupOptions.startingHandMulligan at setup: in round 1 only, after the
-   * mandatory start-of-turn draw, a player may replace up to
-   * FIRST_ROUND_MULLIGAN_LIMIT cards one at a time (MULLIGAN_CARD). Absent/false
-   * = no replacements ever. See mulliganCard in adventure-reducer.ts.
+   * First-round hand Mulligan (default ON). Frozen from
+   * GameSetupOptions.startingHandMulligan at setup: when true/absent, round-1
+   * start-of-turn discards are allowed (current normal play); when explicitly
+   * false, round-1 REFRESH_HAND rejects non-empty discards (draw-only opening
+   * hand). See refreshHand in adventure-reducer.ts.
    */
   startingHandMulligan?: boolean;
   /**
@@ -10228,14 +10228,11 @@ export type GameSetupOptions = {
    */
   manualGuardControl?: boolean;
   /**
-   * OPTIONAL first-round starting-hand Mulligan mode (default OFF/absent, Game
-   * options — like Undo moves / Manual guard control). With it ON, in ROUND 1
-   * only, AFTER the mandatory start-of-turn draw, a player may still replace up
-   * to {@link FIRST_ROUND_MULLIGAN_LIMIT} cards from their hand — one at a time
-   * (MULLIGAN_CARD: discard one card to the bottom of your own deck, draw one),
-   * continuing until they run out of replacements or choose to stop. Only in
-   * the first round. Frozen onto `adventure.startingHandMulligan` at setup;
-   * absent = no replacements ever (byte-identical to before).
+   * First-round hand Mulligan (default ON, Game options). When ON, round 1 allows
+   * discarding during the start-of-turn hand step (current normal play; discarded
+   * cards return to the bottom of your deck). When OFF, players cannot discard at
+   * the beginning of round 1 — keep the opening hand (draw-only if under limit).
+   * Frozen onto `adventure.startingHandMulligan` at setup.
    */
   startingHandMulligan?: boolean;
   /**

@@ -143,29 +143,45 @@ describe("Subterranean Gate — real board, real engine, click on geometry", () 
     expect(latest().adventure!.tiles[underground.id].faceDown).toBe(false);
     expect(latest().adventure!.pendingTileChoice?.tileInstanceId).toBe(underground.id);
 
-    // 3) Confirm the rotation — the entrance is carved on the underground tile
-    //    and the two halves link into one crossing.
+    // 3) Confirm the rotation. Reveal chain is bank → gate; choose-off auto-carves
+    //    the gate after the bank. Board-only harness has no PromptTray — resolve
+    //    the bank via the engine, remount, then continue.
     clickButton(container, /Confirm/i);
-    const entrance = gateHalfTo(latest(), surface.id);
+    let postRotate = latest();
+    const bankChoice = postRotate.pendingChoice;
+    if (bankChoice?.type === "OPTION_CHOICE" && bankChoice.context === "place-creature-bank") {
+      const declined = applyAction(postRotate, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: bankChoice.id,
+        optionIndex: bankChoice.options.length - 1
+      });
+      expect(declined.errors).toHaveLength(0);
+      postRotate = declined.state;
+    }
+    const entrance = gateHalfTo(postRotate, surface.id);
     expect(entrance).toBeDefined();
     expect(getTileFootprintSpaceIds(underground)).toContain(entrance!.spaceId);
-    expect(latest().adventure!.fields[gateSpaceId]!.gateLinkSpaceId).toBe(entrance!.spaceId);
+    expect(postRotate.adventure!.fields[gateSpaceId]!.gateLinkSpaceId).toBe(entrance!.spaceId);
+
+    cleanup();
+    const { container: board, latest: live } = renderLiveBoard(postRotate);
 
     // 4) Now cross: a hex on the underground tile is reachable only through the
     //    gate. Click it and move — the hero ends up on the Subterranean layer.
-    const reachable = getReachableHeroPaths(latest(), latest().heroes.hero_p1);
+    const reachable = getReachableHeroPaths(live(), live().heroes.hero_p1);
     const undergroundTarget = [...reachable.keys()].find(
-      (spaceId) => fieldLayer(latest(), spaceId) === "subterranean" && spaceId !== entrance!.spaceId
+      (spaceId) => fieldLayer(live(), spaceId) === "subterranean" && spaceId !== entrance!.spaceId
     );
     expect(undergroundTarget, "an underground hex must be reachable through the gate").toBeTruthy();
     // The hero is parked on the gate; the only way across is the entrance, so the
     // first step of the underground path is the linked entrance half.
     expect(reachable.get(undergroundTarget!)!.path[0]).toBe(entrance!.spaceId);
 
-    fireEvent.click(hex(container, undergroundTarget!));
-    clickButton(container, /Move there/i);
-    expect(latest().heroes.hero_p1.spaceId).toBe(undergroundTarget);
-    expect(fieldLayer(latest(), latest().heroes.hero_p1.spaceId!)).toBe("subterranean");
+    fireEvent.click(hex(board, undergroundTarget!));
+    clickButton(board, /Move there/i);
+    expect(live().heroes.hero_p1.spaceId).toBe(undergroundTarget);
+    expect(fieldLayer(live(), live().heroes.hero_p1.spaceId!)).toBe("subterranean");
   });
 
   it("does NOT offer the face-down Subterranean tile as an across-the-divide discovery from the Surface", () => {
@@ -374,6 +390,20 @@ describe("Underground designation — the live board marks a flagged tile", () =
 });
 
 describe("Subterranean Gate — pick-on-reveal placement renders as a real choice", () => {
+  /** Decline an open bank prompt so the reveal chain reaches the gate exit pick. */
+  function declineBankIfOpen(state: GameState): GameState {
+    const choice = state.pendingChoice;
+    if (choice?.type === "OPTION_CHOICE" && choice.context === "place-creature-bank") {
+      return applyAction(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: choice.id,
+        optionIndex: choice.options.length - 1
+      }).state;
+    }
+    return state;
+  }
+
   /** A live state whose cavern reveal opened the path-up placement choice for p1. */
   function pathUpChoiceState(): { state: GameState; surface: MapTileState } {
     let state = createAdventureGameState({
@@ -391,14 +421,15 @@ describe("Subterranean Gate — pick-on-reveal placement renders as a real choic
     const cavern = instantiateTile(adv(state), "U1", tileLatticeNeighbors(surfaceCenter)[0], 0, true);
     setAllEmpty(state, surface);
     recomputeSubterraneanGates(adv(state)); // auto surface gate toward the face-down cavern
-    // Reveal the cavern through the real reducer so the path-up choice opens.
+    // Reveal the cavern through the real reducer so the path-up choice opens
+    // (bank prompt first, then gate exit — decline the bank).
     adv(state).tiles[cavern.id].faceDown = false;
     adv(state).tiles[cavern.id].awaitingRotation = true;
     adv(state).pendingTileChoice = { tileInstanceId: cavern.id, playerId: "p1", kind: "reveal" };
     for (const rotation of [0, 1, 2, 3, 4, 5]) {
       const result = applyAction(state, { type: "SET_TILE_ROTATION", playerId: "p1", tileInstanceId: cavern.id, rotation });
       if (result.errors.length === 0) {
-        return { state: result.state, surface };
+        return { state: declineBankIfOpen(result.state), surface };
       }
     }
     throw new Error("cavern did not reveal");
@@ -428,23 +459,28 @@ describe("Subterranean Gate — pick-on-reveal placement renders as a real choic
     return { container, latest: () => live };
   }
 
-  it("shows the placement options as buttons and a click carves + links the crossing", () => {
+  it("shows cycle + Confirm controls and Confirm carves + links the crossing", () => {
     const { state, surface } = pathUpChoiceState();
     expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "subterranean-gate-placement").toBe(
       true
     );
     const { container, latest } = renderLivePrompt(state);
 
-    // The choice surfaces as a dialog with a button per candidate hex.
+    // Cycle/Confirm UI (not one button per candidate).
     const dialog = container.querySelector('[role="dialog"]');
     expect(dialog, "the gate placement choice renders").toBeTruthy();
-    expect(dialog!.getAttribute("aria-label")).toMatch(/path up|gate/i);
-    const options = [...container.querySelectorAll(".promptOptions .commandButton")];
-    expect(options.length, "one button per candidate placement").toBeGreaterThanOrEqual(2);
+    expect(dialog!.getAttribute("aria-label")).toMatch(/path up|gate|exit/i);
+    const confirm = [...container.querySelectorAll(".promptOptions .commandButton")].find((button) =>
+      /Confirm/i.test(button.textContent ?? "")
+    );
+    expect(confirm, "Confirm button is offered").toBeTruthy();
+    const cycleButtons = [...container.querySelectorAll(".promptOptions .commandButton")].filter((button) =>
+      /Previous|Next/i.test(button.textContent ?? "")
+    );
+    expect(cycleButtons.length, "cycle Previous/Next buttons").toBeGreaterThanOrEqual(2);
 
-    // Clicking a placement routes CHOOSE_OPTION through the engine and completes
-    // the crossing: the entrance is carved and linked to the surface gate.
-    fireEvent.click(options[0] as unknown as HTMLElement);
+    // Confirm routes CHOOSE_OPTION through the engine and completes the crossing.
+    fireEvent.click(confirm as unknown as HTMLElement);
     const resolvedChoice = latest().pendingChoice;
     expect(
       resolvedChoice?.type === "OPTION_CHOICE" && resolvedChoice.context === "subterranean-gate-placement"
@@ -468,33 +504,44 @@ describe("Subterranean Gate — pick-on-reveal placement renders as a real choic
     };
   }
 
-  it("glows every candidate 'path up' hex ON THE MAP and a map click carves + links it", () => {
+  it("glows the selected path-up exit ON THE MAP; Confirm carves + links it", () => {
     const { state } = pathUpChoiceState();
     const { hexes, labels } = gateChoice(state);
     expect(hexes.length, "≥2 candidate entrance hexes").toBeGreaterThanOrEqual(2);
     const { container, latest } = renderLiveBoard(state);
 
-    // Each candidate field glows as a clickable map choice target…
+    // Only the selected candidate is the glowing mapChoiceTarget; others are
+    // marked as alternate exits (gateExitCandidate).
+    const selected = hexes.find((spaceId) => hex(container, spaceId).classList.contains("mapChoiceTarget"));
+    expect(selected, "one selected exit glows").toBeTruthy();
     for (const spaceId of hexes) {
-      expect(hex(container, spaceId).classList.contains("mapChoiceTarget"), `${spaceId} glows on the map`).toBe(true);
+      if (spaceId === selected) {
+        continue;
+      }
+      expect(
+        hex(container, spaceId).classList.contains("gateExitCandidate") ||
+          hex(container, spaceId).classList.contains("mapChoiceTarget"),
+        `${spaceId} is an alternate exit`
+      ).toBe(true);
     }
-    // …and carries the on-map "path up here" cue, one per candidate.
-    const cues = [...container.querySelectorAll(".hexGateChoiceCue")].map((node) => node.textContent);
-    expect(cues.length).toBe(hexes.length);
-    expect(cues.every((text) => text?.includes("path up here"))).toBe(true);
+    // Map float: cycle + Confirm.
+    const float = container.querySelector(".gateExitFloat");
+    expect(float, "gate exit cycle float on the map").toBeTruthy();
+    const confirm = [...container.querySelectorAll(".gateExitFloat .commandButton")].find((button) =>
+      /Confirm/i.test(button.textContent ?? "")
+    );
+    expect(confirm).toBeTruthy();
 
-    // The prompt labels read in plain language (compass edge + what is sacrificed)
-    // — never the old raw "hex r,c" grid coordinates the player complained about.
+    // Labels stay plain-language (compass edge), never raw hex coordinates.
     expect(labels.every((label) => /Path up on the (NE|E|SE|SW|W|NW) edge/.test(label))).toBe(true);
     expect(labels.some((label) => /hex\s*-?\d+\s*,\s*-?\d+/.test(label))).toBe(false);
 
-    // Clicking the glowing hex ITSELF (not a button) resolves the choice and
-    // carves the Path up on exactly that field, linked to the surface gate.
-    fireEvent.click(hex(container, hexes[0]));
+    // Confirm carves the currently selected path-up hex.
+    fireEvent.click(confirm as unknown as HTMLElement);
     const resolved = latest().pendingChoice;
     expect(resolved?.type === "OPTION_CHOICE" && resolved.context === "subterranean-gate-placement").toBe(false);
-    const chosen = latest().adventure!.fields[hexes[0]];
-    expect(chosen?.location, "the clicked hex became the entrance").toBe("subterranean_gate");
+    const chosen = latest().adventure!.fields[selected!];
+    expect(chosen?.location, "the selected hex became the entrance").toBe("subterranean_gate");
     expect(chosen?.gateLinkSpaceId, "the crossing is linked").toBeTruthy();
   });
 
@@ -514,43 +561,47 @@ describe("Subterranean Gate — pick-on-reveal placement renders as a real choic
     const cavernCenter = { row: 24, col: 12 };
     const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true); // face-down cavern (no half yet)
     const surface = instantiateTile(adv(state), "F3", tileLatticeNeighbors(cavernCenter)[0], 0, true);
-    // Reveal the SURFACE tile through the real reducer so the gate-hex choice opens.
+    // Reveal the SURFACE tile through the real reducer so the gate-hex choice opens
+    // (after declining any bank offered first).
     adv(state).tiles[surface.id].faceDown = false;
     adv(state).tiles[surface.id].awaitingRotation = true;
     adv(state).pendingTileChoice = { tileInstanceId: surface.id, playerId: "p1", kind: "reveal" };
     for (const rotation of [0, 1, 2, 3, 4, 5]) {
       const result = applyAction(state, { type: "SET_TILE_ROTATION", playerId: "p1", tileInstanceId: surface.id, rotation });
       if (result.errors.length === 0) {
-        return { state: result.state, cavern };
+        return { state: declineBankIfOpen(result.state), cavern };
       }
     }
     throw new Error("surface tile did not reveal");
   }
 
-  it("glows every candidate 'gate' hex ON THE MAP so the player sees which Surface hex becomes the gate", () => {
+  it("glows the selected Surface gate exit ON THE MAP; Confirm carves it toward the cavern", () => {
     const { state, cavern } = gateHexChoiceState();
     const { hexes, labels } = gateChoice(state);
     expect(hexes.length, "≥2 candidate gate hexes").toBeGreaterThanOrEqual(2);
     const { container, latest } = renderLiveBoard(state);
 
-    for (const spaceId of hexes) {
-      expect(hex(container, spaceId).classList.contains("mapChoiceTarget"), `${spaceId} glows on the map`).toBe(true);
-    }
-    const cues = [...container.querySelectorAll(".hexGateChoiceCue")].map((node) => node.textContent);
-    expect(cues.length).toBe(hexes.length);
-    expect(cues.every((text) => text?.includes("gate here"))).toBe(true);
-
+    const selected = hexes.find((spaceId) => hex(container, spaceId).classList.contains("mapChoiceTarget"));
+    expect(selected, "one selected gate exit glows").toBeTruthy();
+    const float = container.querySelector(".gateExitFloat");
+    expect(float, "gate exit cycle float on the map").toBeTruthy();
     expect(labels.every((label) => /Gate on the (NE|E|SE|SW|W|NW) edge/.test(label))).toBe(true);
     expect(labels.some((label) => /hex\s*-?\d+\s*,\s*-?\d+/.test(label))).toBe(false);
 
-    // Clicking a glowing Surface hex carves the gate there, pointing at the cavern.
-    fireEvent.click(hex(container, hexes[0]));
-    const chosen = latest().adventure!.fields[hexes[0]];
-    expect(chosen?.location, "the clicked hex became the gate").toBe("subterranean_gate");
+    // Selecting another candidate then Confirm carves that hex.
+    const alternate = hexes.find((spaceId) => spaceId !== selected) ?? selected!;
+    fireEvent.click(hex(container, alternate));
+    const confirm = [...container.querySelectorAll(".gateExitFloat .commandButton")].find((button) =>
+      /Confirm/i.test(button.textContent ?? "")
+    );
+    expect(confirm).toBeTruthy();
+    fireEvent.click(confirm as unknown as HTMLElement);
+    const chosen = latest().adventure!.fields[alternate];
+    expect(chosen?.location, "the selected hex became the gate").toBe("subterranean_gate");
     expect(chosen?.gateToTileId, "the gate points at the cavern").toBe(cavern.id);
   });
 
-  it("MULTIPLAYER: another player's board shows NO gate-choice glow, cue, or click while it is p1's choice", () => {
+  it("MULTIPLAYER: another player's board shows NO gate-choice glow, float, or click while it is p1's choice", () => {
     const { state } = pathUpChoiceState();
     const { hexes } = gateChoice(state);
     // The choice belongs to p1; render the board exactly as p2's client would.
@@ -565,11 +616,15 @@ describe("Subterranean Gate — pick-on-reveal placement renders as a real choic
         viewerPlayerId="p2"
       />
     );
-    // No candidate hex glows, and no on-map "path up here" cue is drawn — the
-    // placement is private to the deciding player (same gating as Dimension Door).
+    // No candidate hex glows, no cue, no exit float — the placement is private
+    // to the deciding player (same gating as Dimension Door).
     for (const spaceId of hexes) {
       expect(hex(container, spaceId).classList.contains("mapChoiceTarget"), `${spaceId} must not glow for p2`).toBe(false);
+      expect(hex(container, spaceId).classList.contains("gateExitCandidate"), `${spaceId} not a candidate for p2`).toBe(
+        false
+      );
     }
     expect(container.querySelectorAll(".hexGateChoiceCue").length, "no cue for the non-deciding player").toBe(0);
+    expect(container.querySelector(".gateExitFloat"), "no gate float for p2").toBeNull();
   });
 });

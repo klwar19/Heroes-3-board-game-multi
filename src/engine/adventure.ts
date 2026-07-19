@@ -520,7 +520,8 @@ export function abilityRollRerollActive(state: GameState): boolean {
 
 /**
  * First-round starting-hand Mulligan mode: the maximum number of single-card
- * replacements a player may make in round 1 (`GameSetupOptions.startingHandMulligan`).
+ * replacements a player may make in round 1 (retired post-draw MULLIGAN_CARD
+ * path; the lobby option now only gates round-1 start-of-turn discards).
  */
 export const FIRST_ROUND_MULLIGAN_LIMIT = 4;
 
@@ -13088,11 +13089,11 @@ export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): v
   }
   player.canMulligan = true;
   player.needsHandRefresh = player.hand.length > effectiveHandLimit(state, playerId);
-  // First-round starting-hand Mulligan (optional mode): seed this turn's
-  // replacement budget. Only in round 1; every other turn leaves it at 0 so the
-  // optional MULLIGAN_CARD is never offered outside the opening round.
-  player.firstRoundMulligansLeft =
-    state.round === 1 && state.adventure?.startingHandMulligan ? FIRST_ROUND_MULLIGAN_LIMIT : 0;
+  // The post-draw one-at-a-time MULLIGAN_CARD budget is retired: the lobby
+  // "First-round hand Mulligan" option now only gates whether round-1
+  // start-of-turn discards are allowed (default ON = current normal play).
+  // Keep the field at 0 so legacy MULLIGAN_CARD offers never reappear.
+  player.firstRoundMulligansLeft = 0;
 }
 
 /**
