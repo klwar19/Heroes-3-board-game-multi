@@ -7789,6 +7789,10 @@ export type MapTileState = {
     preferredSpaceId?: MapSpaceId;
     /** Designer guard placed with the token (level or exact army). */
     guard?: CustomGuardSpec;
+    /** Designer first-clear reward, carried to the carved field. */
+    reward?: CustomFieldReward;
+    /** Designer first-clear VP, carried to the carved field. */
+    vp?: number;
     /** One-way entrance/exit extras, carried to the carved field. */
     exitMode?: OnewayExitMode;
     alwaysPickable?: boolean;
@@ -7823,6 +7827,10 @@ export type MapTileState = {
     preferredSpaceId?: MapSpaceId;
     /** Designer guard placed with the token (level or exact army). */
     guard?: CustomGuardSpec;
+    /** Designer first-clear reward, carried to the carved field. */
+    reward?: CustomFieldReward;
+    /** Designer first-clear VP, carried to the carved field. */
+    vp?: number;
     /** One-way entrance/exit extras, carried to the carved field. */
     exitMode?: OnewayExitMode;
     alwaysPickable?: boolean;
@@ -7970,10 +7978,24 @@ export type MapFieldState = {
    * player who FIRST clears / captures the objective — `centerHexClaimed`
    * latches so a re-capture never re-pays it. Public once the tile is revealed
    * (a visible objective, like a mine's resource).
+   *
+   * Also used as the unified stamp for object/token/settlement designer
+   * rewards (same shape, same grant path). Prefer reading via the grant helper
+   * which folds {@link designerReward} for newer stamps.
    */
   centerHexReward?: CustomCenterHexReward;
   centerHexVp?: number;
   centerHexClaimed?: boolean;
+  /**
+   * Unified designer first-clear reward stamped from a standalone object, tile
+   * token or settlement plan. The grant path merges this with
+   * {@link centerHexReward} (either may be set). Same once-only latch as
+   * centerHexClaimed / designerRewardClaimed / viiBonusClaimed.
+   */
+  designerReward?: CustomFieldReward;
+  designerRewardVp?: number;
+  /** Shared once-only latch for any designer field reward (aliases centerHexClaimed). */
+  designerRewardClaimed?: boolean;
   /**
    * Per-settlement bonus Victory Points for THIS field only (from a tile's
    * {@link CustomMapTilePlan.settlement}.vp). Scored while the player controls
@@ -10805,6 +10827,15 @@ export type CustomMapObject = {
   placement: CustomMapObjectPlacement;
   guard?: number | CustomGuardSpec;
   /**
+   * One-time first-clear reward on the object's hex (resources / dice /
+   * Times×Search(X)). Stamped onto the carved field at setup; granted once via
+   * the shared designer-reward latch when the visitor first successfully
+   * visits (after any guard is cleared). Barriers never keep a reward.
+   */
+  reward?: CustomFieldReward;
+  /** Optional first-clear Victory Points (VP mode only). */
+  vp?: number;
+  /**
    * Designer yellow border lines on THIS one-hex object — ABSOLUTE directions
    * 0-5 (NE,E,SE,SW,W,NW), each sealing that single hex edge exactly like a
    * tile's per-edge border: movement, discovery and the AI refuse the crossing
@@ -11123,6 +11154,12 @@ export type CustomMapTilePlan = {
  */
 export type CustomMapSettlementFieldPlan = {
   guard?: CustomGuardSpec;
+  /**
+   * One-time first-flag reward (same shape as a center-hex first-clear bonus:
+   * resources / dice / Times×Search(X)). Paid once when the settlement is
+   * first successfully flagged.
+   */
+  reward?: CustomFieldReward;
   vp?: number;
   holdRoundsToWin?: number;
 };
@@ -11169,6 +11206,14 @@ export type CustomMapTileToken = {
   pair?: 1 | 2 | 3 | 4;
   slot?: number;
   guard?: CustomGuardSpec;
+  /**
+   * One-time first-clear reward on the carved token hex (same shape as a
+   * center-hex reward). Granted once after the guard is cleared / on a peaceful
+   * visit; latched on the field so it never re-pays.
+   */
+  reward?: CustomFieldReward;
+  /** Optional first-clear Victory Points (VP mode only). */
+  vp?: number;
   /** One-way ENTRANCE token only: how the exit is picked (default "certain"). */
   exitMode?: OnewayExitMode;
   /** One-way EXIT token only ("mix" mode): freely choosable BEFORE the roll. */
@@ -11176,25 +11221,43 @@ export type CustomMapTileToken = {
 };
 
 /**
- * A designer-set one-time reward on a customized center hex
- * ({@link CustomCenterHexPlan.reward}), granted to the player who FIRST clears
- * the objective. Resources are granted inline; Treasure dice and deck Searches
- * resolve through the normal visit-step pipeline. Amounts are clamped by the
- * sanitiser ({@link sanitizeCenterHexPlan}).
+ * A designer-set one-time field reward — used on center hexes, standalone map
+ * objects, tile tokens and per-tile settlements. Granted to the player who
+ * FIRST clears / successfully visits the hex. Resources are granted inline;
+ * Treasure dice and deck Searches resolve through the visit-step pipeline.
+ *
+ * Search rewards are **Times × Search(X)**: `searchArtifact: 5` with
+ * `searchArtifactTimes: 2` queues two separate Search(5) Artifact steps.
+ * Absent times (or times 1) is byte-identical to a single Search of size X.
+ * Amounts are clamped by the sanitiser ({@link sanitizeCenterHexPlan} /
+ * {@link sanitizeFieldReward}).
  */
-export type CustomCenterHexReward = {
+export type CustomFieldReward = {
   gold?: number;
   buildingMaterials?: number;
   valuables?: number;
   /** Roll N Treasure dice (1-3). */
   treasureDice?: number;
-  /** Search (N) of the shared Spell deck (1-5). */
+  /** Search (X) of the shared Spell deck (1-5). */
   searchSpell?: number;
-  /** Search (N) of the shared Ability deck (1-5). */
+  /** Search (X) of the shared Ability deck (1-5). */
   searchAbility?: number;
-  /** Search (N) of the shared Artifact deck (1-5). */
+  /** Search (X) of the shared Artifact deck (1-5). */
   searchArtifact?: number;
+  /**
+   * How many separate Search(X) steps for that deck (1–5). Only kept when the
+   * matching search* size is set; absent / 1 = one Search (legacy default).
+   */
+  searchSpellTimes?: number;
+  searchAbilityTimes?: number;
+  searchArtifactTimes?: number;
 };
+
+/**
+ * @deprecated Alias of {@link CustomFieldReward} — kept so existing imports and
+ * center-hex field names stay stable.
+ */
+export type CustomCenterHexReward = CustomFieldReward;
 
 /**
  * A center (Ⅵ–Ⅶ) slot's designer customization ({@link CustomMapTilePlan.centerHex}):
@@ -11207,7 +11270,7 @@ export type CustomCenterHexPlan = {
   /** Replace the printed difficulty-7 guard with a level or a certain army. */
   guard?: CustomGuardSpec;
   /** One-time bonus for whoever first clears / captures the objective. */
-  reward?: CustomCenterHexReward;
+  reward?: CustomFieldReward;
   /** Victory Points for the first clearer (scored in VP mode; 1-10). */
   vp?: number;
 };

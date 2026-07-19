@@ -4424,6 +4424,14 @@ button.battleCell {
   stroke-width: 2.2;
   pointer-events: none;
 }
+.hexDesignerReward {
+  fill: #9dffb0;
+  font-size: 9px;
+  paint-order: stroke;
+  stroke: rgba(8, 20, 10, 0.92);
+  stroke-width: 2.2;
+  pointer-events: none;
+}
 
 /* The Creature Bank a tile drew at reveal, named on its Blocked Field while the
    player rotates (so they know the bank before committing the rotation). */
@@ -15157,6 +15165,126 @@ img.cardBack {
 }
 .popoverGuardArmyNote {
   color: #d9c9a1;
+}
+.popoverGuardQuickRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.popoverGuardQuickChip {
+  font-size: 10px;
+  padding: 2px 7px;
+}
+.popoverGuardQuickChip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.popoverGuardCapHint {
+  margin-left: auto;
+  font-size: 10px;
+  color: #c9b88a;
+  opacity: 0.85;
+}
+.popoverGuardArmyGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.popoverGuardArmyGroup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(40, 28, 12, 0.45);
+  border: 1px solid rgba(201, 162, 75, 0.28);
+}
+.popoverGuardArmyGroupLabel {
+  font-size: 11px;
+  color: #f3e7c8;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.popoverGuardArmyCount {
+  font-weight: 700;
+  color: #ffe9a8;
+  margin-right: 2px;
+}
+.popoverGuardArmySteppers {
+  display: inline-flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.popoverGuardStepBtn {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid rgba(201, 162, 75, 0.45);
+  border-radius: 4px;
+  background: rgba(24, 18, 10, 0.65);
+  color: #f3e7c8;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.popoverGuardStepBtn:hover:not(:disabled) {
+  border-color: #ffe9a8;
+  color: #ffe9b8;
+}
+.popoverGuardStepBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.popoverGuardRemoveAll {
+  color: #ffb4a8;
+}
+.popoverGuardEditorCompact .popoverGuardArmy {
+  padding: 4px;
+}
+.fieldRewardEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+.fieldRewardResourceRow {
+  flex-wrap: wrap;
+}
+.fieldRewardSearchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px;
+}
+.fieldRewardSearchCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid rgba(201, 162, 75, 0.35);
+  border-radius: 8px;
+  background: rgba(14, 10, 6, 0.4);
+}
+.fieldRewardSearchTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffe9a8;
+  letter-spacing: 0.02em;
+}
+.fieldRewardSearchPreview {
+  font-size: 10px;
+  color: #d9c9a1;
+}
+.fieldRewardSearchPreview.muted {
+  opacity: 0.55;
+}
+.fieldRewardSummary {
+  font-size: 11px;
+  color: #ffe9b8;
+  font-weight: 600;
 }
 .popoverColorChip {
   display: inline-flex;

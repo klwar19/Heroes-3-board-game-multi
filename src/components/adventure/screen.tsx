@@ -60,6 +60,7 @@ import {
   tournamentRulesAllOn,
   getTileBorderSegments,
   gatePairColor,
+  describeFieldReward,
   designedGuardPreview,
   isFieldGuarded,
   hasOpenAdventureTurn,
@@ -1471,6 +1472,27 @@ export function HexMapBoard({
           ? ` — ALTERED by the map designer: ${alteredGuardPreview.units.join(", ")}`
           : " — ALTERED by the map designer"
         : "";
+      // Designer first-clear reward (center / object / token / settlement) —
+      // public once revealed; hide after the once-only latch fires.
+      const designerRewardClaimed = Boolean(
+        field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed
+      );
+      const designerRewardSummary = !designerRewardClaimed
+        ? describeFieldReward({
+            ...(field.viiReward ?? {}),
+            ...(field.centerHexReward ?? {}),
+            ...(field.designerReward ?? {})
+          })
+        : "";
+      const designerVp = !designerRewardClaimed
+        ? (field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0)
+        : 0;
+      const designerRewardTip =
+        designerRewardSummary || designerVp > 0
+          ? ` — Reward: ${[designerRewardSummary, designerVp > 0 ? `+${designerVp} VP` : ""]
+              .filter(Boolean)
+              .join(" · ")}`
+          : "";
       // Field Override kinds without hex art yet fall back to their registered
       // glyph so an art-less carve is a visible hex in icon mode (art wins once
       // it ships — fieldOverrideGlyph returns undefined then).
@@ -1548,7 +1570,7 @@ export function HexMapBoard({
               field.location === "creature_bank" && field.bankId
                 ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
                 : (location?.name ?? field.location)
-            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${alteredGuardTip}${
+            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${alteredGuardTip}${designerRewardTip}${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${
               field.location === "subterranean_gate"
@@ -1836,6 +1858,21 @@ export function HexMapBoard({
             y={y - HEX_SIZE * 0.4}
           >
             ⚙
+          </text>
+        );
+      }
+      // A gift mark for an unclaimed designer first-clear reward.
+      if (designerRewardTip) {
+        overlays.push(
+          <text
+            className="hexDesignerReward"
+            data-designer-reward="true"
+            key={`${spaceId}-designer-reward`}
+            textAnchor="middle"
+            x={x + HEX_SIZE * 0.52}
+            y={y + HEX_SIZE * (alteredGuardPreview ? 0.05 : -0.4)}
+          >
+            ★
           </text>
         );
       }

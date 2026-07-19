@@ -103,6 +103,56 @@ export function guardUnitEntryLabel(id: string): string {
 }
 
 /**
+ * Collapse consecutive-identical certain-army entries into { id, count } rows
+ * for the designer UI and tooltips (presentation only — the stored list stays
+ * expanded so sanitize / fight resolve stay slot-based).
+ */
+export function groupGuardUnitEntries(units: string[]): { id: string; count: number }[] {
+  const groups: { id: string; count: number }[] = [];
+  for (const id of units) {
+    const last = groups[groups.length - 1];
+    if (last && last.id === id) {
+      last.count += 1;
+    } else {
+      groups.push({ id, count: 1 });
+    }
+  }
+  return groups;
+}
+
+/**
+ * Plain-words army summary, e.g. "3× Random gold, Storm Elementals".
+ * Empty list → "".
+ */
+export function describeGuardArmyGrouped(units: string[]): string {
+  return groupGuardUnitEntries(units)
+    .map(({ id, count }) => {
+      const label = guardUnitEntryLabel(id);
+      return count > 1 ? `${count}× ${label}` : label;
+    })
+    .join(", ");
+}
+
+/**
+ * Expand a grouped count edit back into a flat unit list (capped).
+ * Pure helper for the designer +/− steppers.
+ */
+export function expandGuardUnitGroups(
+  groups: { id: string; count: number }[],
+  maxUnits: number = MAX_CUSTOM_GUARD_UNITS
+): string[] {
+  const out: string[] = [];
+  for (const { id, count } of groups) {
+    const n = Math.max(0, Math.floor(count));
+    for (let i = 0; i < n && out.length < maxUnits; i++) {
+      out.push(id);
+    }
+    if (out.length >= maxUnits) break;
+  }
+  return out;
+}
+
+/**
  * Difficulty contribution of one certain-army entry for the map Roman numeral /
  * experience (random tier slots use the tier's point value; packs use the
  * unit's tier). Azure body ⇒ Ⅶ overall when ANY entry is azure-tier.

@@ -45,6 +45,7 @@ import {
   type VictoryMode,
   type VictoryPointObjective
 } from "@/engine";
+import { GuardSpecEditor } from "./guard-spec-editor";
 
 /**
  * Map designer panel: mission-book style conditions (resources, army, buildings,
@@ -2117,13 +2118,9 @@ function TimedEffectFields({
 }
 
 /** Amount controls for the "bonus" Obelisk role (morale is a fixed +1, no fields). */
-const GUARD_LEVEL_ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
-
 /**
- * A compact guard picker (None / level Ⅰ–Ⅶ) for a MAP-WIDE guarded field
- * (Obelisks, Settlements). The engine also supports an exact-army guard, but
- * these map-wide guards keep the UI simple with a Field-Difficulty level; an
- * army guard hand-authored in a preset is preserved and labelled.
+ * Map-wide guard picker (Obelisks, Settlements, Mines, Random Towns) — full
+ * shared editor: level Ⅰ–Ⅶ or exact army with random-tier + named units.
  */
 function GuardLevelChips({
   label,
@@ -2136,82 +2133,10 @@ function GuardLevelChips({
   onChange: (guard: CustomGuardSpec | undefined) => void;
   ariaLabel: string;
 }) {
-  const hasArmy = Boolean(guard?.units && guard.units.length > 0);
-  const level = hasArmy ? undefined : guard?.level;
-  const units = guard?.units ?? [];
-  const addRandom = (slot: string) => {
-    if (units.length >= 6) return;
-    onChange({ units: [...units, slot] });
-  };
   return (
     <div className="mapPresetObjectiveRow" role="group" aria-label={ariaLabel}>
       <span className="mapPresetObjectiveLabel">⚔ {label}</span>
-      <div className="mapPresetChipRow">
-        <button
-          aria-pressed={!guard}
-          className={`mapPresetChip${!guard ? " active" : ""}`}
-          onClick={() => onChange(undefined)}
-          title="No guard"
-          type="button"
-        >
-          None
-        </button>
-        {[1, 2, 3, 4, 5, 6, 7].map((lvl) => (
-          <button
-            aria-pressed={level === lvl}
-            className={`mapPresetChip${level === lvl ? " active" : ""}`}
-            key={lvl}
-            onClick={() => onChange({ level: lvl })}
-            title={`Field Difficulty ${lvl} guard`}
-            type="button"
-          >
-            {GUARD_LEVEL_ROMAN[lvl]}
-          </button>
-        ))}
-      </div>
-      <div className="mapPresetChipRow" role="group" aria-label={`${ariaLabel} random units`}>
-        {(
-          [
-            ["random:bronze", "+Brown"],
-            ["random:silver", "+Silver"],
-            ["random:gold", "+Gold"],
-            ["random:azure", "+Azure"]
-          ] as const
-        ).map(([slot, labelText]) => (
-          <button
-            className="mapPresetChip"
-            key={slot}
-            onClick={() => addRandom(slot)}
-            title={`Add a random ${labelText.slice(1).toLowerCase()} unit to a certain army (rolled at fight time).`}
-            type="button"
-          >
-            {labelText}
-          </button>
-        ))}
-      </div>
-      {hasArmy ? (
-        <div className="mapPresetChipRow" role="list" aria-label="Certain army units">
-          {units.map((id, index) => (
-            <button
-              className="mapPresetChip active"
-              key={`${id}-${index}`}
-              onClick={() => {
-                const next = units.filter((_, i) => i !== index);
-                onChange(next.length > 0 ? { units: next } : undefined);
-              }}
-              title="Remove this unit"
-              type="button"
-            >
-              {id.startsWith("random:")
-                ? id.replace("random:", "Rnd ")
-                : id.startsWith("pack:")
-                  ? id.slice(5)
-                  : id.replace(/^neutral\./, "")}{" "}
-              ✕
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <GuardSpecEditor compact guard={guard} noneLabel="None" onChange={onChange} />
     </div>
   );
 }
