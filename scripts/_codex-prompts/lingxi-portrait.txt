@@ -1,0 +1,20 @@
+﻿ONLY task: use the built-in image_gen tool ONCE, then save the result.
+
+Subject: Lingxi — Azure Breeze Sect Formation Sage hero PORTRAIT for a Heroes of Might and Magic III board-game.
+She is a young East-Asian woman (late 20s), elegant wuxia formation mage / healer, NOT a bird, NOT a crane, NOT an animal.
+Appearance:
+- Long flowing black hair with a few jade-green ribbons, hairpins of pale jade
+- Soft calm face, intelligent eyes, gentle healer expression
+- Teal / jade / white wuxia robes with silver embroidery and formation talismans
+- Holding a short jade formation brush or floating soft green healing sigils around one hand
+- Background: misty azure mountain pavilion, soft golden light, pines and cloud sea (wuxia landscape)
+Composition: vertical portrait, hero centered from mid-thigh up, cinematic lighting, highly detailed digital painting
+Style match: premium HoMM3 board-game hero portrait quality (painterly, not anime chibi, not photoreal selfie)
+FORBIDDEN: birds/cranes as the subject, modern clothes, text, watermark, UI chrome, multiple people, gore
+
+SAVE OVERWRITE to EXACT path (create dirs if needed):
+C:\Users\klwar\Heroes-3-board-game-multi\public\assets\anime\heroes\lingxi.png
+
+If generated elsewhere under ~/.codex/generated_images, copy/move to the exact path above.
+Use node + sharp if needed to ensure a clean PNG portrait >= 1024px on the long edge.
+Verify file exists and size > 200KB. Reply path + bytes only. No git.

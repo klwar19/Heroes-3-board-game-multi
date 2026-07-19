@@ -3598,8 +3598,17 @@ export function TownHeroDock({
               <button aria-label="Close commander equipment" onClick={() => setCommanderEquipmentOpen(false)} type="button"><X size={20} /></button>
             </header>
             <div className="commanderEquipmentBody">
-              <div className="commanderPaperdoll">
-                <img alt="" className="commanderPaperdollPortrait" src={assetUrl(commanderDef.cardImage)} />
+              <div className="commanderPaperdoll" aria-label="Commander paperdoll slots">
+                {/* Diablo-style empty body silhouette; commander art as a bust overlay. */}
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="commanderPaperdollBody"
+                  src={assetUrl("/assets/ui/commander-paperdoll-body.webp")}
+                />
+                <div className="commanderPaperdollBust">
+                  <img alt="" className="commanderPaperdollPortrait" src={assetUrl(commanderDef.cardImage)} />
+                </div>
                 {(["weapon", "armor", "trinket"] as const).map((slot) => {
                   const cardId = commander.artifacts?.[slot];
                   const spec = cardId ? COMMANDER_ARTIFACT_SPECS[cardId] : undefined;
@@ -3627,21 +3636,34 @@ export function TownHeroDock({
                         setDraggedCommanderArtifactId(null);
                       }}
                     >
-                      <small>{slot}</small>
-                      {spec ? <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} /> : <Shield aria-hidden="true" size={25} />}
-                      <strong>{spec?.name ?? "Empty slot"}</strong>
-                      <span>{spec?.effectText ?? "Bind an artifact from your hand"}</span>
+                      <div className="commanderArtifactSlotWell">
+                        {spec ? (
+                          <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} />
+                        ) : (
+                          <Shield aria-hidden="true" size={28} />
+                        )}
+                      </div>
+                      <div className="commanderArtifactSlotMeta">
+                        <small>{slot}</small>
+                        <strong>{spec?.name ?? "Empty"}</strong>
+                        <span>{spec?.effectText ?? "Drag a matching artifact from the bag"}</span>
+                      </div>
                     </div>
                   );
                 })}
               </div>
               <aside className="commanderArtifactInventory">
                 <div className="commanderInventoryHead">
-                  <h3>Artifact inventory</h3>
-                  <small>Sorted by slot and tier · {heldCommanderArtifacts.length}/{COMMANDER_ARTIFACT_SPEC_LIST.length} available</small>
+                  <h3>Artifact bag</h3>
+                  <small>
+                    Drag onto a body slot · {heldCommanderArtifacts.length} in hand ·{" "}
+                    {Object.keys(commander.artifacts ?? {}).length}/3 bound
+                  </small>
                 </div>
                 {heldCommanderArtifacts.length === 0 ? (
-                  <p className="commanderInventoryEmpty">No commander artifacts in hand. Find them in the shared Artifact decks.</p>
+                  <p className="commanderInventoryEmpty">
+                    No commander artifacts in hand. Find them in the shared Artifact decks, then bind them here.
+                  </p>
                 ) : (
                   heldCommanderArtifacts.map((cardId) => {
                     const spec = COMMANDER_ARTIFACT_SPECS[cardId];
@@ -3664,7 +3686,9 @@ export function TownHeroDock({
                       >
                         {cardLibrary[cardId]?.assets?.cardImage ? (
                           <img alt={`${spec.name} card`} src={assetUrl(cardLibrary[cardId].assets!.cardImage!)} />
-                        ) : null}
+                        ) : (
+                          <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} />
+                        )}
                         <div>
                           <span className="commanderArtifactMeta">{spec.slot} · {spec.tier}</span>
                           <strong>{spec.name}</strong>

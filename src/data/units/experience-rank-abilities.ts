@@ -531,6 +531,7 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   "azure_breeze.inner_swordsmen": buildScheduleFromTemplate("standard", [
     ["bulwark-thick-hide", "commander-charge"]
   ]),
+  // Bronze early flyer.
   "azure_breeze.spirit_crane": buildScheduleFromTemplate("standard", [
     ["bulwark-air-shield", "reduce-spell-damage-1"]
   ]),
@@ -538,15 +539,17 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
     ["bulwark-air-shield", "reduce-spell-damage-1"], // few already Guarded
     ["wog-fire-shield-1", "ignore-paralysis"]
   ]),
+  // Silver formation mage (was gold).
+  "azure_breeze.core_master": buildScheduleFromTemplate("strong", [
+    ["reduce-spell-damage-1", "bulwark-air-shield"],
+    ["ignore-paralysis", "commander-defense-token"]
+  ]),
   "azure_breeze.true_inheritors": buildScheduleFromTemplate("rare", [
     ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
     ["double-attack", "commander-max-damage"],
     ["commander-max-damage", "ignore-paralysis"] // pack already no-retaliation
   ]),
-  "azure_breeze.core_master": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
+  // Gold mountain tank — never bronze.
   "azure_breeze.mountain_guardian": buildScheduleFromTemplate("strong", [
     ["bulwark-thick-hide", "commander-defense-token"],
     ["commander-defense-token", "reduce-spell-damage-1"]
