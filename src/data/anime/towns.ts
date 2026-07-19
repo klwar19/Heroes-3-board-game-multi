@@ -61,6 +61,10 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     source
   },
 
+  // Azure Breeze: classic 3 bronze / 2 silver / 2 gold. Gold stays True Inheritors
+  // + Mountain Guardian (never demote the mountain tank). Spirit Crane is early flyer
+  // (bronze); Core Formation Master is mid-tier formation support (silver).
+  // --- BRONZE (3) ----------------------------------------------------------
   "azure_breeze.outer_disciples": {
     id: "azure_breeze.outer_disciples", name: "Outer Sect Disciples", faction: "azure_breeze", tier: "bronze", type: "ground",
     few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 2 }, abilities: [], cardImage: azureCard("bronze", "outer-sect-disciples", "few") },
@@ -73,28 +77,32 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     pack: { attack: 3, defense: 1, health: 2, initiative: 9, cost: { gold: 5 }, abilities: ["ignore-all-combat-penalties"], abilityText: "Flowing Step — ignores all Combat penalties.", cardImage: azureCard("bronze", "inner-sect-swordsmen", "pack") },
     source
   },
+  // Early spirit flyer (bronze) — was silver when the roster had 3 golds.
   "azure_breeze.spirit_crane": {
-    id: "azure_breeze.spirit_crane", name: "Spirit Crane", faction: "azure_breeze", tier: "silver", type: "flying",
-    few: { attack: 3, defense: 1, health: 3, initiative: 10, cost: { gold: 7 }, abilities: [], cardImage: azureCard("silver", "spirit-crane", "few") },
-    pack: { attack: 4, defense: 2, health: 4, initiative: 11, cost: { gold: 11 }, abilities: ["ignores-retaliation"], abilityText: "Wingbeat — attacks do not provoke Retaliation.", cardImage: azureCard("silver", "spirit-crane", "pack") },
+    id: "azure_breeze.spirit_crane", name: "Spirit Crane", faction: "azure_breeze", tier: "bronze", type: "flying",
+    few: { attack: 2, defense: 1, health: 2, initiative: 9, cost: { gold: 4 }, abilities: [], cardImage: azureCard("bronze", "spirit-crane", "few") },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 10, cost: { gold: 6 }, abilities: ["ignores-retaliation"], abilityText: "Wingbeat — attacks do not provoke Retaliation.", cardImage: azureCard("bronze", "spirit-crane", "pack") },
     source
   },
+  // --- SILVER (2) ----------------------------------------------------------
   "azure_breeze.sect_protectors": {
     id: "azure_breeze.sect_protectors", name: "Sect Protectors", faction: "azure_breeze", tier: "silver", type: "ground",
     few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "Iron Ward — always rolls the Defend die when attacked.", cardImage: azureCard("silver", "sect-protectors", "few") },
     pack: { attack: 4, defense: 2, health: 5, initiative: 4, cost: { gold: 12 }, abilities: ["unlimited-retaliation"], abilityText: "Unbroken Guard — may Retaliate any number of times each round.", cardImage: azureCard("silver", "sect-protectors", "pack") },
     source
   },
+  // Mid-tier formation mage (was gold; demoted so Mountain Guardian can stay gold).
+  "azure_breeze.core_master": {
+    id: "azure_breeze.core_master", name: "Core Formation Master", faction: "azure_breeze", tier: "silver", type: "ranged",
+    few: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 9 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("silver", "core-formation-master", "few") },
+    pack: { attack: 4, defense: 2, health: 5, initiative: 5, cost: { gold: 13 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("silver", "core-formation-master", "pack") },
+    source
+  },
+  // --- GOLD (2) — True Inheritors (Qingyun specialty) + Mountain Guardian tank
   "azure_breeze.true_inheritors": {
     id: "azure_breeze.true_inheritors", name: "True Inheritors", faction: "azure_breeze", tier: "gold", type: "ground",
     few: { attack: 5, defense: 2, health: 6, initiative: 7, cost: { gold: 13, valuables: 1 }, abilities: ["commander-charge"], abilityText: "Charge — +1 Attack after moving.", cardImage: azureCard("golden", "true-inheritors", "few") },
     pack: { attack: 6, defense: 2, health: 7, initiative: 8, cost: { gold: 20, valuables: 2 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Peerless Form — Charge; ignores Retaliation.", cardImage: azureCard("golden", "true-inheritors", "pack") },
-    source
-  },
-  "azure_breeze.core_master": {
-    id: "azure_breeze.core_master", name: "Core Formation Master", faction: "azure_breeze", tier: "gold", type: "ranged",
-    few: { attack: 4, defense: 2, health: 5, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("golden", "core-formation-master", "few") },
-    pack: { attack: 5, defense: 3, health: 6, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("golden", "core-formation-master", "pack") },
     source
   },
   "azure_breeze.mountain_guardian": {

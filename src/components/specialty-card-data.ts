@@ -83,9 +83,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // Aoko's Leyline Mending IS a heal/cleanse set (the generic medic wiring), so
   // she shares the Cure SPELL icon like Astra.
   aoko: "/assets/specialty-card/icon-cure.webp",
-  // Lingxi's Healing Arts set grants/doubles the First Aid TENT, so she wears
-  // the First Aid war-machine emblem itself.
-  lingxi: "/assets/abilities-first_aid.webp",
+  // Lingxi's Healing Arts set grants/doubles the First Aid Tent — dedicated
+  // specialty-card medallion icon (not the full First Aid ability card scan,
+  // which is unreadable in the specialty icon well).
+  lingxi: "/assets/specialty-card/icon-first_aid.webp",
   kriv: "/assets/runes-emblem.webp", // Rune specialist — our own emblem
   // --- Skill / war-machine / spell-themed specialists: the matching printed
   // secondary-skill icon (public/assets/abilities-<skill>.webp) -------------
@@ -138,7 +139,11 @@ export const LEVEL_STYLE: Record<1 | 4 | 6, { border: string; numeral: string }>
 /** The level-panel accent (the Hero Creator tints it by town colour). */
 export const FACTION_ACCENT: Record<string, string> = {
   bulwark: "#1f3a5f",
-  conflux: "#2b6c6c"
+  conflux: "#2b6c6c",
+  // Anime Realms towns — match faction.color so native specialty cards wear
+  // the same town tint as the hero board / commander chrome.
+  fuyuki: "#7256d8",
+  azure_breeze: "#27a9a0"
 };
 
 /** Parse `specialty.<slug>.<level>` → its hero slug and I/IV/VI level. */

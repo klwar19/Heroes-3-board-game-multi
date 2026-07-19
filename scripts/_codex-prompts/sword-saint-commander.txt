@@ -1,0 +1,20 @@
+﻿ONLY task: use the built-in image_gen tool ONCE, then save the result.
+
+Subject: full unit/commander CARD art for the Azure Breeze Sect WOG commander "Sword Saint".
+Layout MUST match classic Heroes 3 board-game commander cards:
+- Ornate dark leather gold-trimmed CARD FRAME (full card, not just a floating character)
+- Left sidebar brown leather strip with 4 small gold embossed icons stacked (crossed swords, blue/white shield, red cross on gold, running figure) matching existing commander cards
+- Large central portrait panel
+- Bottom brown name plate empty (no text)
+- Top leather banner empty, one gold star top-right
+Portrait subject inside the central panel:
+- East-Asian male sword cultivator in white/jade-green flowing robes
+- Dynamic heroic stance with a glowing green spirit sword, floating secondary jade blades
+- Misty Chinese mountain pavilion background
+- Painterly HoMM3 board-game card illustration (same family as Paladin/Hierophant commander cards)
+FORBIDDEN: text/letters/numbers, modern fashion, watermark, UI chrome, empty unframed character crop only
+
+SAVE OVERWRITE to EXACT path:
+C:\Users\klwar\Heroes-3-board-game-multi\public\assets\units-commander-sword_saint.webp
+
+If needed convert with node sharp to webp quality 90. Verify > 40KB. Reply path + bytes only. No git.

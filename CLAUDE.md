@@ -1820,7 +1820,7 @@ is NOT done:
 - The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct
   from Few/Pack/Neutral), and resource/morale/search rewards scaled by the
   number of Stacked defenders (X). The two sea banks (Shipwreck, Derelict Ship)
-  grant POSITIVE morale (`morale_positive` on the wiki), and the Medusa Stores
+  grant NEGATIVE morale (−1; a haunted-wreck house reading), and the Medusa Stores
   per-Stack bonus is a CHOICE of +3 gold OR +1 valuables (not both); both are
   pinned in `creature-banks.test.ts`.
 - Gradeless targeting: a bank card carries NO tier ("grade 0"), so the neutral

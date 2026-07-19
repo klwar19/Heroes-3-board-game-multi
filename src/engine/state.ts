@@ -2943,16 +2943,18 @@ export type GameAction =
   | {
       /**
        * Pit Lords' "Summon Demons" other action: instead of moving/attacking,
-       * summon a Few of Demons onto an empty adjacent space, or reinforce a
-       * friendly Few of Demons up to a Pack. Once per combat per Pit Lords unit.
+       * summon a Few of Demons onto an empty adjacent space, reinforce a
+       * friendly Few of Demons up to a Pack, or (with Unit Stacks on) add one
+       * free Stack layer to a living Pack of Demons below its cap. Once per
+       * combat per Pit Lords unit.
        */
       type: "SUMMON_DEMONS";
       playerId: PlayerId;
       unitId: UnitId;
-      mode: "summon" | "reinforce";
+      mode: "summon" | "reinforce" | "stack";
       /** Summon: the empty space to place the new Few of Demons on. */
       position?: number;
-      /** Reinforce: the friendly Few of Demons to flip up to a Pack. */
+      /** Reinforce / stack: the friendly Demons target. */
       targetUnitId?: UnitId;
     }
   | {

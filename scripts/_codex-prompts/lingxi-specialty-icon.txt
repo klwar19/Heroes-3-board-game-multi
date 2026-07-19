@@ -1,0 +1,13 @@
+﻿ONLY task: use the built-in image_gen tool ONCE, then save the result.
+
+Subject: specialty CARD CENTER ICON for Lingxi's "Healing Arts" specialty.
+Must match the existing Heroes of Might and Magic III specialty-card icon family (see icon-cure style):
+- Square-ish emblem, ornate beige/gold oval medallion frame with scroll flourishes
+- Center symbol: a glowing First-Aid TENT / healer tent with a soft green-jade healing aura (or a golden caduceus + small tent silhouette)
+- Readable at 48px; high contrast; painted classic HoMM3 icon look
+FORBIDDEN: full ability CARD with rules text, people, photoreal photo, watermark, letters/numbers, modern UI
+
+SAVE OVERWRITE to EXACT path:
+C:\Users\klwar\Heroes-3-board-game-multi\public\assets\specialty-card\icon-first_aid.webp
+
+Convert with node sharp to ~256x256 webp if needed. Verify > 8KB. Reply path + bytes only. No git.
