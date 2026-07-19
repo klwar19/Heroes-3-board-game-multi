@@ -2638,7 +2638,9 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-charge": {
     id: "commander-charge",
     name: "Charge",
-    text: "[unit_attack] +1 Attack when this commander attacks after moving this activation.",
+    // Shared by WOG commanders AND printed unit sides (anime Sabers / True
+    // Inheritors), so the text is unit-neutral.
+    text: "[unit_attack] +1 Attack when this unit attacks after moving this activation.",
     effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 },
     implementationStatus: "implemented"
   },
@@ -2655,7 +2657,9 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     // WOG commander Defense grade II ("+1 def when attacked"): a permanent
     // Defense token (unlike the bank sibling, NOT gated on Stacked). Grade III
     // is a flat Defense 3 with no die and does NOT carry this.
-    text: "[unit_passive] This commander is always treated as if it had a Defense token — it rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).",
+    // Shared by WOG commanders AND printed unit sides (anime Sect Protectors),
+    // so the text is unit-neutral.
+    text: "[unit_passive] This unit is always treated as if it had a Defense token — it rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).",
     effect: { type: "SELF_DEFENSE_TOKEN" },
     implementationStatus: "implemented"
   },

@@ -331,3 +331,37 @@ describe("HeroBoard — Feature B: the kept level-up Ability at levels 2/3/5/7",
     expect(container.querySelectorAll(".hbSlotAbilityPick")).toHaveLength(1);
   });
 });
+
+describe("HeroBoard — Unit Experience Board system button", () => {
+  function xpAdventure(unitExperience: boolean): GameState {
+    const state = createAdventureGameState({
+      seed: "hero-board-unitxp",
+      rollFirstPlayer: false,
+      ...(unitExperience ? { unitExperience: true } : {}),
+      players: [
+        { id: "p1", name: "chen", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    } as Parameters<typeof createAdventureGameState>[0]);
+    state.players.p1.army = [{ id: "vets", unitDefId: "castle.marksmen", side: "few", experience: 5 }];
+    return state;
+  }
+
+  it("opens the Unit Experience Board window from the hero-systems row (like Grade / Equipment)", () => {
+    renderBoardState(xpAdventure(true));
+    const button = screen.getByRole("button", { name: /Unit Experience Board/i });
+    expect(button.textContent).toContain("1/1 card ranked");
+    fireEvent.click(button);
+    const dialog = screen.getByRole("dialog", { name: "Unit Experience Board" });
+    expect(dialog.classList.contains("unitXpWindow")).toBe(true);
+    // Per-unit detail is inside: rank ladder + live XP readout.
+    expect(dialog.textContent).toContain("Few Marksmen");
+    expect(dialog.textContent).toContain("5 / 9 XP");
+    expect(dialog.textContent).toContain("2 · Veteran");
+  });
+
+  it("CONTROL — with the rule off, no Unit Experience button renders", () => {
+    renderBoardState(xpAdventure(false));
+    expect(screen.queryByRole("button", { name: /Unit Experience Board/i })).toBeNull();
+  });
+});

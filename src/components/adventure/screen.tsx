@@ -144,6 +144,7 @@ import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/components/adventure/map-pinch";
 import { computeMapFloatPosition } from "@/components/adventure/map-float-position";
 import { HeroBoard } from "@/components/hero-board";
+import { UnitExperienceWindow, armyUnitPrintedSide } from "@/components/adventure/unit-experience-window";
 import { useCardZoom } from "@/components/table/zoom";
 import {
   BuildingDetailPanel,
@@ -2987,7 +2988,10 @@ export function AdventureHud({
 /** The painted town portrait (thelazy.net), with a plaque fallback (Bulwark). */
 function TownIcon({ factionId, size }: { factionId: string; size: number }) {
   const [failed, setFailed] = useState(false);
-  const image = coreFactionDefinitions[factionId]?.townImage ?? townIconUrl(factionId);
+  // ONE convention for every faction (anime towns included): the small capitol
+  // sprite at town-icon-<faction>.webp — never the wide town panorama, which
+  // reads as noise squeezed into a dock-sized square.
+  const image = townIconUrl(factionId);
   if (failed) {
     return (
       <span
@@ -3271,6 +3275,7 @@ export function TownHeroDock({
             <HeroBoard
               playerId={openHeroSeat}
               state={state}
+              legalActions={openHeroSeat === viewerPlayerId ? legalActions : undefined}
               onAction={onAction && openHeroSeat === viewerPlayerId ? onAction : undefined}
             />
           </div>
@@ -3617,6 +3622,7 @@ export function ArmyPanel({
   onAction?: (action: GameAction) => void;
 }) {
   const { zoomContent } = useCardZoom();
+  const [xpBoardOpen, setXpBoardOpen] = useState(false);
   const player = state.players[playerId];
   const lexicon = factionUiLexicon(player?.factionId);
   if (!player || player.army.length === 0) {
@@ -3638,25 +3644,28 @@ export function ArmyPanel({
     <section className={`armyPanel theme-${lexicon.register}`} aria-label={lexicon.army}>
       <h3>{lexicon.army} ({player.army.length})</h3>
       {experienceActive ? (
-        <section className="armyExperienceBoard" aria-label="Unit Experience Board">
-          <header>
-            <span><Crown aria-hidden="true" size={18} /><strong>Unit Experience Board</strong></span>
-            <small>Live army-card veterancy</small>
-          </header>
-          <div className="armyExperienceRanks">
-            <span><Shield aria-hidden="true" size={17} /><b>1 · Seasoned</b><small>Low tiers +1 Defense · high tiers +1 Attack</small></span>
-            <span><Swords aria-hidden="true" size={17} /><b>2 · Veteran</b><small>Both Attack and Defense bonuses active</small></span>
-            <span><Sparkles aria-hidden="true" size={17} /><b>3 · Elite</b><small>+1 Health · Bronze +1 Initiative · signature ability</small></span>
-          </div>
-          <p>
-            Win with surviving deployed units: guard difficulty XP, bank stacks (minimum 2), or 2 XP in PvP. Drill at Town: 2 gold → 1 XP once per turn. Reinforce halves XP; each added Stack costs 1 XP.
-          </p>
-        </section>
+        // The board itself is a POP-UP WINDOW (like the Hero Grade / Hero
+        // Equipment windows): this button opens it with per-unit XP, the
+        // rank-by-rank stat changes and the elite-ability rules text.
+        <button
+          aria-haspopup="dialog"
+          className="armyExperienceBoard"
+          onClick={() => setXpBoardOpen(true)}
+          type="button"
+        >
+          <span className="armyXpBoardTitle">
+            <Crown aria-hidden="true" size={18} />
+            <strong>{lexicon.experienceBoard}</strong>
+          </span>
+          <small>XP · rank-by-rank stat changes · elite abilities — open the board</small>
+        </button>
       ) : null}
       <ul>
         {player.army.map((unit) => {
           const def = coreUnitDefinitions[unit.unitDefId];
-          const printed = unit.side === "few" ? def?.few : def?.pack;
+          // Few/Pack printed sides, with a recruited Neutral card's own side
+          // (it used to fall through to `pack`, hiding a Neutral's stats).
+          const printed = armyUnitPrintedSide(def, unit.side);
           // BINH stat tweaks (Griffins, Marksmen) show live values.
           const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides) : printed;
           const stackAttack = sideOverrides.polishUnitStacks && unit.side === "pack" && (unit.stacks ?? 0) > 0 ? 1 : 0;
@@ -3788,6 +3797,18 @@ export function ArmyPanel({
           );
         })}
       </ul>
+      {xpBoardOpen && typeof document !== "undefined"
+        ? createPortal(
+            <UnitExperienceWindow
+              legalActions={legalActions}
+              onAction={onAction}
+              onClose={() => setXpBoardOpen(false)}
+              playerId={playerId}
+              state={state}
+            />,
+            document.body
+          )
+        : null}
     </section>
   );
 }

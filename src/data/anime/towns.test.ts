@@ -2,11 +2,12 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { cardLibrary } from "@/data/cards/library";
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions, isPlayableFaction } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { townBoardSpecs } from "@/data/towns/boards";
+import { townBoardSpecs, townIconUrl } from "@/data/towns/boards";
 import { unitAbilities } from "@/data/units/abilities";
 
 const MOD_FACTIONS = ["fuyuki", "azure_breeze"] as const;
@@ -26,10 +27,22 @@ describe("playable Anime Realms towns", () => {
     expect(townBoardSpecs[factionId]?.panoramaImage).toBe(faction.townImage);
     expect(existsSync(join(process.cwd(), "public", faction.townImage!.replace(/^\//, "")))).toBe(true);
 
+    // The dock/window town icon follows the same convention as every classic
+    // faction (a real square-ish capitol crop, scripts/build-anime-town-icons.mjs).
+    expect(existsSync(join(process.cwd(), "public", townIconUrl(factionId).replace(/^\//, "")))).toBe(true);
+
     for (const heroId of faction.heroes) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero?.faction).toBe(factionId);
       expect(hero?.portrait && existsSync(join(process.cwd(), "public", hero.portrait.replace(/^\//, "")))).toBe(true);
+      // Each hero owns its OWN specialty set (no borrowed Castle/Rampart ids —
+      // a borrowed unit-specialist set carried clauses that could never fire,
+      // e.g. Gelu IV's "discard a Pack of Elves").
+      for (const level of [1, 4, 6] as const) {
+        const cardId = hero?.specialtyCardIds?.[level];
+        expect(cardId, `${heroId} level ${level}`).toBe(`specialty.${heroId}.${level}`);
+        expect(cardLibrary[cardId ?? ""]?.implementationStatus, cardId).toBe("implemented");
+      }
     }
 
     for (const unitId of faction.units) {
@@ -66,6 +79,26 @@ describe("playable Anime Realms towns", () => {
     expect(isPlayableFaction("azure_breeze", { enabled: true, xianxiaTowns: false })).toBe(false);
     expect(isPlayableFaction("azure_breeze", { enabled: true, xianxiaTowns: true })).toBe(true);
     expect(isPlayableFaction("castle", { enabled: false })).toBe(true);
+  });
+
+  it("might specialists double on a unit of their OWN faction (mutation control: the borrowed sets never could)", () => {
+    for (const [heroId, factionId] of [
+      ["bin", "fuyuki"],
+      ["qingyun", "azure_breeze"]
+    ] as const) {
+      const card = cardLibrary[`specialty.${heroId}.1`];
+      const effect = card?.effect;
+      expect(effect?.type).toBe("CHOOSE_ONE");
+      const doubled =
+        effect?.type === "CHOOSE_ONE" &&
+        effect.options[0]?.effect?.type === "ADD_COMBAT_STAT" &&
+        effect.options[0].effect.doubleForUnitName;
+      expect(doubled, heroId).toBeTruthy();
+      const factionUnitNames = coreFactionDefinitions[factionId].units.map(
+        (unitId) => coreUnitDefinitions[unitId]?.name
+      );
+      expect(factionUnitNames, `${heroId} doubles for a unit it can actually field`).toContain(doubled);
+    }
   });
 
   it.each(MOD_FACTIONS)("gives %s a themed, fully registered commander", (factionId) => {

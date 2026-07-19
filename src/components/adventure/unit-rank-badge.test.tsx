@@ -59,9 +59,12 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(stats).toContain(`D${printed.defense}`);
   });
 
-  it("shows the XP board and dispatches an engine-offered Drill action", () => {
+  it("opens the Unit Experience Board pop-up with per-rank stat changes, elite text and a live Drill", () => {
     const state = makeState(true, "rank-badge-action");
     state.players.p1.army[0].experience = 1;
+    // A second card with a registered ELITE ability: its name + rules text must
+    // read in the window even while locked (rank below 3).
+    state.players.p1.army.push({ id: "champs", unitDefId: "castle.champions", side: "few", experience: 0 });
     const dispatched: unknown[] = [];
     render(
       <CardZoomProvider>
@@ -73,10 +76,37 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
         />
       </CardZoomProvider>
     );
-    expect(document.querySelector(".armyExperienceBoard")?.textContent).toContain("Unit Experience Board");
-    expect(document.querySelector(".armyExperienceBoard")?.textContent).toContain("surviving deployed units");
+    // The roster keeps the inline per-card XP track…
     expect(document.querySelector(".armyXpTrack")).toBeTruthy();
-    fireEvent.click(document.querySelector(".armyUnitActions button") as Element);
-    expect((dispatched[0] as { type: string }).type).toBe("DRILL_UNIT");
+    // …and the board itself is a BUTTON that opens a pop-up window (like the
+    // Hero Grade / Hero Equipment windows).
+    const boardButton = document.querySelector("button.armyExperienceBoard") as HTMLButtonElement;
+    expect(boardButton?.textContent).toContain("Unit Experience Board");
+    fireEvent.click(boardButton);
+    const dialog = document.querySelector(".heroSystemModal.unitXpWindow") as HTMLElement;
+    expect(dialog).toBeTruthy();
+    const text = dialog.textContent ?? "";
+    // XP sources are spelled out…
+    expect(text).toContain("Cards earn XP");
+    // …the marksmen's BRONZE ladder shows every rank's threshold and stat
+    // delta (bronze: 2/5/9 XP; Elite adds the bronze-only +1 Initiative), and
+    // the champions' GOLD ladder shows its slower 4/9/15 thresholds…
+    expect(text).toContain("1 · Seasoned");
+    expect(text).toContain("2 · Veteran");
+    expect(text).toContain("3 · Elite");
+    expect(text).toContain("at 2 XP");
+    expect(text).toContain("at 5 XP");
+    expect(text).toContain("at 9 XP");
+    expect(text).toContain("at 15 XP");
+    expect(text).toContain("+1 Defense");
+    expect(text).toContain("+1 Attack");
+    expect(text).toContain("+1 Health · +1 Initiative");
+    // …and the champions' registered elite ability appears with its FULL rules
+    // text while still locked.
+    expect(text).toContain("No Retaliation");
+    expect(text).toContain("never provoke a Retaliation");
+    // The window's Drill button dispatches the engine-offered action verbatim.
+    fireEvent.click(dialog.querySelector(".armyUnitActions button") as Element);
+    expect(dispatched[0]).toEqual({ type: "DRILL_UNIT", playerId: "p1", armyUnitId: "vets" });
   });
 });

@@ -2624,6 +2624,70 @@ Leading with what does NOT run / deliberate limits:
   xianxiaArtifacts + fieldOverrides` ON and the Rampart seat, with a plain
   `/single-player` room (injects nothing) as the all-default CONTROL.
 
+## Anime Towns (`anime.isekaiTowns` / `anime.xianxiaTowns`) & themed mod UI — what runs vs. limits
+
+Two COMPLETE playable factions behind their own anime module flags (default OFF ⇒
+byte-identical; `isPlayableFaction(id, animeOptions)` gates every pick surface —
+lobby grids, draft rolls, computer seats, Random-Town defenders): **Fuyuki City**
+(`fuyuki`, isekai) and **Azure Breeze Sect** (`azure_breeze`, wuxia). Each ships a
+7-unit roster (every ability tag a REUSE of an already-implemented engine
+ability — pinned per-side in `src/data/anime/towns.test.ts`), 8 buildings on the
+SHARED building-effect archetypes (City-Hall choice, dwellings, Mage Guild,
+Portal Summon, Artifact Smith, Hall of Valhalla, resource die — nothing bespoke),
+2 heroes each with REAL portraits, a starting tile (`A-S1` / `W-S1`), a designed
+town board whose bars are seven real contiguous panorama slices (empty↔full
+pairs, `townBoardSpecs.barTileImages`), a capitol icon on the same
+`town-icon-<faction>.webp` convention as every classic faction
+(`scripts/build-anime-town-icons.mjs`), and a WOG commander (Astral Regent /
+Sword Saint) reusing the Brute / Temple-Guardian cast arms and the
+`vanguard-marshal` / `superior-combat` specialty machinery verbatim.
+
+Leading with what does NOT run / deliberate limits:
+- **The combat sandbox never offers the anime factions** (its
+  `isPlayableFaction` call passes no anime options — conservative).
+- **Unit voices are thematic reuses of complete H3 voice sets** (documented in
+  `unit-sounds.ts`); no dedicated voiced package.
+- **Hero specialties**: each anime hero owns its OWN specialty set —
+  Bin = Sabers specialist, Qingyun = True Inheritors specialist (the three
+  generic unit-specialist generators, doubling LIVE on their own faction's gold
+  unit); Aoko / Lingxi = themed clones (`rethemedSpecialty`) of the fully
+  generic Rion medic / Gem First-Aid sets. They previously borrowed
+  Catherine's / Gelu's sets whose doubling (and Gelu IV's "discard a Pack of
+  Elves" trade) could never fire in these factions — dead clauses, fixed and
+  pinned in `towns.test.ts` ("might specialists double on a unit of their OWN
+  faction"). All face-less (native specialty renderer, hero's own portrait).
+
+**Themed mod UI (visual registers).** `src/data/faction-theme.ts` maps a faction
+to a register — `classic` / `anime` (fuyuki) / `wuxia` (azure_breeze) — with a
+per-register lexicon (Hero Grade/Spirit Rank/Martial Path, Unit deck/Servant
+roster/Sect retinue, Drill/Field training/Cultivate, …). The register stamps
+`theme-<register>` + `--mod-*` CSS vars on the hero board, town window/board,
+army panel and every mod-system window, so the three registers genuinely look
+different (leather ridge / astral glass / jade double borders + register art).
+The hero-systems row on the hero board opens POP-UP WINDOWS (portal, shared
+`heroSystemModal` shell): the Hero-Grade skill tree, the Hero-Equipment
+paper-doll (drag-drop + accessible Equip/Unequip buttons over the REAL
+`EQUIP_HERO_ITEM`/`UNEQUIP_HERO_ITEM` reducer actions — replaced gear moves to
+the hero's `equipmentInventory` bag, never vanishes; forged unowned/wrong-slot
+actions rejected, pinned in `anime-equipment.test.ts`), the commander-artifact
+window (bind via the engine's PLAY_CARD offers only), **and the Unit Experience
+Board (below)**.
+
+**Unit Experience Board window.** The veterancy board is a BUTTON that opens a
+pop-up window like the other systems — from the hero board's systems row
+(`HeroBoard`, needs `legalActions` for live controls) AND from the army panel
+(`ArmyPanel`). Per army card it shows: XP on the tier's REAL thresholds
+(milestoned progress track), the rank-by-rank stat DELTAS (not just the
+cumulative total), the live folded stats (`base → folded` per stat, Polish-Stack
+and permanent bonuses included), the signature ELITE ability with its FULL rules
+text (active at rank 3 / locked below), and the engine-offered Drill / Reinforce
+/ Stack actions (never invented — the exact `legalActions` entries). Read-only
+without `onAction` (opponent info). Pinned in
+`src/components/adventure/unit-rank-badge.test.tsx` (window content from real
+tier data + Drill dispatch + rule-off CONTROL) and `hero-board.test.tsx`
+(systems-row button + CONTROL). Component:
+`src/components/adventure/unit-experience-window.tsx`.
+
 ## First-round rules, Cove City Hall & bank/opponent UI (BINH house rules) — what runs
 
 Six additions; each engine rule fails a named test if its wiring is removed.
