@@ -27,10 +27,10 @@ describe("Starting bonus tray — representative glyph art per option", () => {
     );
 
     const diceOption = screen.getByRole("button", { name: /Resource Dice/i });
-    expect(diceOption.querySelector("img")?.getAttribute("src")).toContain("resource_die");
+    expect(diceOption.querySelector("img")?.getAttribute("src")).toContain("starting-bonus-resource");
 
     const artifactOption = screen.getByRole("button", { name: /Artifact Deck/i });
-    expect(artifactOption.querySelector("img")?.getAttribute("src")).toContain("artifact");
+    expect(artifactOption.querySelector("img")?.getAttribute("src")).toContain("starting-bonus-artifact");
 
     // The images are non-draggable so a stray-pixel click still picks the option.
     for (const button of [diceOption, artifactOption]) {

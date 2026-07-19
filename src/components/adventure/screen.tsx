@@ -124,6 +124,7 @@ import {
   teleportGateImage,
   RESOURCE_ICONS,
   REWARD_GLYPH_ICONS,
+  UI_REWARD_ICONS,
   subterraneanGateTokenImage,
   tileBackImage,
   TILE_BACK_IMAGES,
@@ -4132,10 +4133,12 @@ function startingBonusOptionArt(
     return null;
   }
   if (steps.some((step) => step && STARTING_BONUS_ARTIFACT_STEPS.has(step.type))) {
-    return { image: REWARD_GLYPH_ICONS.artifact, name: "Artifact" };
+    // HD origin-faithful pendant (normal + reduced polish modes share this art).
+    return { image: UI_REWARD_ICONS.startingBonusArtifact, name: "Artifact" };
   }
   // Every other starting-bonus option is a resource bonus (dice or a package).
-  return { image: REWARD_GLYPH_ICONS.resourceDie, name: "Resources" };
+  // Uses the polished tools art so normal + reduced modes both read clearly.
+  return { image: UI_REWARD_ICONS.startingBonusResource, name: "Resources" };
 }
 
 /** Resolve a card / unit / event id to display art + name. Never the Astrologers card. */
@@ -4883,7 +4886,14 @@ export function PromptTray({
                 onClick={() => onAction(legal.action)}
                 type="button"
               >
-                {replaceEntries.length > 1 ? legal.label : "Use Rule 111: replace the Guard"}
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="rule111Icon"
+                  draggable={false}
+                  src={assetUrl(UI_REWARD_ICONS.rule111)}
+                />
+                <span>{replaceEntries.length > 1 ? legal.label : "Use Rule 111: replace the Guard"}</span>
               </button>
             ))}
           </div>
@@ -6552,6 +6562,11 @@ function houseRuleToggleDisabled(
   );
 }
 
+/** Optional crest/icon for individual house-rule toggles (paths under public/). */
+const HOUSE_RULE_ICONS: Partial<Record<(typeof HOUSE_RULES)[number]["id"], string>> = {
+  "polish-rule-111": UI_REWARD_ICONS.rule111
+};
+
 function HouseRuleToggleButton({
   rule,
   on,
@@ -6563,6 +6578,7 @@ function HouseRuleToggleButton({
   disabled: boolean;
   onToggle: () => void;
 }) {
+  const iconSrc = HOUSE_RULE_ICONS[rule.id];
   return (
     <button
       aria-pressed={on}
@@ -6582,7 +6598,18 @@ function HouseRuleToggleButton({
         {on ? <Check size={13} /> : null}
       </span>
       <span className="houseRuleText">
-        <strong>{rule.label}</strong>
+        <strong className="houseRuleLabelRow">
+          {iconSrc ? (
+            <img
+              alt=""
+              aria-hidden="true"
+              className="houseRuleToggleIcon"
+              draggable={false}
+              src={assetUrl(iconSrc)}
+            />
+          ) : null}
+          {rule.label}
+        </strong>
         <small>{rule.description}</small>
       </span>
       <span className={`houseRuleState ${on ? "on" : "off"}`}>

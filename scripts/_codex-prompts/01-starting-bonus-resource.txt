@@ -1,0 +1,17 @@
+Use your IMAGE GENERATION tools only (not SVG scripts, not Grok).
+
+Generate ONE premium HD Heroes of Might and Magic III board-game style UI icon:
+- Crossed shovel + pickaxe (resource tools), polished gold/metal, late-90s fantasy board UI
+- Square, transparent or pure black background
+- Close to the attached reference silhouette, but nicer and more HD
+
+SAVE OVERWRITE exactly to:
+public/assets/ui/starting-bonus-resource.webp
+
+If you generate png first, convert with node sharp to that webp path.
+Also copy the same file to:
+public/assets/ui/icon-resource-tools.webp
+public/assets/ui/treasure-face-resource-die.webp
+
+Verify each file exists and is > 8KB. Reply with paths and byte sizes only.
+No stock photos. No text letters.

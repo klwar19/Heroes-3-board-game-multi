@@ -266,7 +266,14 @@ export {
   polishArtifactDeckAllowed,
   polishArtifactTierAllowed
 } from "./polish-random-artifacts";
-export { currentSurrenderGoldCost, tournamentMoraleSearchAgainEnabled } from "./adventure";
+export {
+  currentSurrenderGoldCost,
+  flagField,
+  materializeTileFields,
+  startAdventureRound,
+  tickSettlementHoldControl,
+  tournamentMoraleSearchAgainEnabled
+} from "./adventure";
 export {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
@@ -356,6 +363,8 @@ export {
   describeObeliskBonus,
   describeObeliskRole,
   describeSettlementConfig,
+  describeSettlementFieldPlan,
+  sanitizeSettlementFieldPlan,
   describeObjectivesConfig,
   describeUtopiaGuards,
   describeTimedMapEffect,
@@ -373,6 +382,7 @@ export {
   MAX_GATES_PER_PAIR,
   MAX_OBELISK_BONUSES,
   MAX_SETTLEMENT_VP,
+  MAX_SETTLEMENT_HOLD_ROUNDS,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
   mergeCustomWinConditions,
@@ -794,6 +804,7 @@ export type {
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
   CustomMapSettlementConfig,
+  CustomMapSettlementFieldPlan,
   CustomMapObjectivesConfig,
   CustomMapObject,
   CustomMapObjectKind,

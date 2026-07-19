@@ -31,6 +31,7 @@ import type {
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
   CustomMapSettlementConfig,
+  CustomMapSettlementFieldPlan,
   CustomMapObject,
   CustomMapObjectKind,
   CustomMapObjectPlacement,
@@ -566,6 +567,37 @@ export const MAX_OBELISK_BONUSES = 4;
 
 /** Cap on the extra VP a designer may attach to each controlled settlement. */
 export const MAX_SETTLEMENT_VP = 10;
+
+/** Cap on consecutive rounds a hold-to-win settlement may require. */
+export const MAX_SETTLEMENT_HOLD_ROUNDS = 10;
+
+/**
+ * Sanitize a per-tile settlement customization ({@link CustomMapTilePlan.settlement}).
+ * Returns undefined when every arm is empty so nothing is serialized.
+ */
+export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlementFieldPlan | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { guard?: unknown; vp?: unknown; holdRoundsToWin?: unknown };
+  const plan: CustomMapSettlementFieldPlan = {};
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  if (guard) {
+    plan.guard = guard;
+  }
+  // clampInt(0, min=1, …) would lift 0 → 1; treat non-positive as "absent".
+  if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+    plan.vp = Math.min(MAX_SETTLEMENT_VP, Math.floor(raw.vp));
+  }
+  if (
+    typeof raw.holdRoundsToWin === "number" &&
+    Number.isFinite(raw.holdRoundsToWin) &&
+    raw.holdRoundsToWin > 0
+  ) {
+    plan.holdRoundsToWin = Math.min(MAX_SETTLEMENT_HOLD_ROUNDS, Math.floor(raw.holdRoundsToWin));
+  }
+  return Object.keys(plan).length > 0 ? plan : undefined;
+}
 
 /**
  * Sanitize the map-wide Obelisk role. Unknown role → undefined (treated as
@@ -1413,6 +1445,21 @@ export function describeSettlementConfig(config: CustomMapSettlementConfig): str
     parts.push(`+${config.vp} VP each`);
   }
   return `Settlements: ${parts.length > 0 ? parts.join(", ") : "classic"}`;
+}
+
+/** Plain-words line for a per-tile settlement customization. */
+export function describeSettlementFieldPlan(plan: CustomMapSettlementFieldPlan): string {
+  const parts: string[] = [];
+  if (plan.guard) {
+    parts.push(`guard ${describeGuardSpec(plan.guard)}`);
+  }
+  if (plan.vp) {
+    parts.push(`+${plan.vp} VP`);
+  }
+  if (plan.holdRoundsToWin) {
+    parts.push(`hold ${plan.holdRoundsToWin} round${plan.holdRoundsToWin === 1 ? "" : "s"} to win`);
+  }
+  return `This settlement: ${parts.length > 0 ? parts.join(", ") : "classic"}`;
 }
 
 function describeTimedEffect(effect: CustomMapTimedEffect): string {

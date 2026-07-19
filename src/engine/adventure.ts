@@ -827,10 +827,25 @@ export function materializeTileFields(
     // only ADDS a guard: `isFieldGuarded` is true while the guard difficulty is
     // set and the field is still unflagged, so the first visitor fights it; the
     // visit then flags the field (`everFlagged`) and the guard never respawns.
+    // Per-TILE settlement customization OVERRIDES the map-wide guard for this
+    // field only and may stamp extra VP / hold-to-win (see tile.settlement).
     if (field.location === "obelisk") {
       applyCustomGuardToField(field, adventure.mapPreset?.obelisks?.guard);
     } else if (field.location === "settlement") {
-      applyCustomGuardToField(field, adventure.mapPreset?.settlements?.guard);
+      const perTile = tile.settlement;
+      applyCustomGuardToField(field, perTile?.guard ?? adventure.mapPreset?.settlements?.guard);
+      if (perTile?.vp && perTile.vp > 0) {
+        field.settlementBonusVp = perTile.vp;
+      } else {
+        delete field.settlementBonusVp;
+      }
+      if (perTile?.holdRoundsToWin && perTile.holdRoundsToWin > 0) {
+        field.holdRoundsToWin = perTile.holdRoundsToWin;
+      } else {
+        delete field.holdRoundsToWin;
+        delete field.holdControlOwnerId;
+        delete field.holdControlRounds;
+      }
     }
     adventure.fields[spaceId] = field;
   }
@@ -2869,6 +2884,15 @@ export function flagField(state: GameState, playerId: PlayerId, field: MapFieldS
 
   field.flagOwnerId = playerId;
 
+  // Hold-to-win settlements: a NEW owner restarts the continuous-hold counter
+  // at 0; the next startAdventureRound ticks begin counting full rounds held.
+  if (field.holdRoundsToWin && field.holdRoundsToWin > 0) {
+    if (field.holdControlOwnerId !== playerId) {
+      field.holdControlOwnerId = playerId;
+      field.holdControlRounds = 0;
+    }
+  }
+
   appendEvent(state, {
     type: "FIELD_FLAGGED",
     playerId,
@@ -3307,12 +3331,18 @@ export function checkCustomWinConditions(state: GameState): void {
   if (!adventure || adventure.winnerPlayerId) {
     return;
   }
-  const conditions = adventure.mapPreset?.customWinConditions;
-  if (!conditions || conditions.length === 0) {
-    return;
-  }
   // Never end the game mid-battle (a crossing resolves on the next map-side action).
   if (state.combat) {
+    return;
+  }
+  // Per-settlement hold-to-win (designer tile.settlement.holdRoundsToWin): first
+  // continuous holder to reach N full rounds wins. Runs even when the map has no
+  // customWinConditions list so a designed hold settlement is never inert.
+  if (checkSettlementHoldWins(state)) {
+    return;
+  }
+  const conditions = adventure.mapPreset?.customWinConditions;
+  if (!conditions || conditions.length === 0) {
     return;
   }
   for (const playerId of state.turnOrder) {
@@ -3331,6 +3361,67 @@ export function checkCustomWinConditions(state: GameState): void {
       }
     }
   }
+}
+
+/**
+ * Tick continuous hold counters on designer hold-to-win settlements and declare
+ * a winner when any reaches its threshold. Called from startAdventureRound (after
+ * the round number advances) so each full round of continuous control counts once.
+ * Safe no-op when no field carries holdRoundsToWin.
+ */
+export function tickSettlementHoldControl(state: GameState): void {
+  const adventure = state.adventure;
+  if (!adventure || adventure.winnerPlayerId) {
+    return;
+  }
+  let any = false;
+  for (const field of Object.values(adventure.fields)) {
+    if (!field.holdRoundsToWin || field.holdRoundsToWin <= 0) {
+      continue;
+    }
+    any = true;
+    if (!field.flagOwnerId || field.flagOwnerId === NEUTRAL_PLAYER_ID) {
+      delete field.holdControlOwnerId;
+      delete field.holdControlRounds;
+      continue;
+    }
+    if (field.holdControlOwnerId !== field.flagOwnerId) {
+      field.holdControlOwnerId = field.flagOwnerId;
+      field.holdControlRounds = 0;
+    }
+    field.holdControlRounds = (field.holdControlRounds ?? 0) + 1;
+  }
+  if (any) {
+    checkSettlementHoldWins(state);
+  }
+}
+
+/** Declare a winner if any hold-to-win settlement has reached its round threshold. */
+function checkSettlementHoldWins(state: GameState): boolean {
+  const adventure = state.adventure;
+  if (!adventure || adventure.winnerPlayerId) {
+    return false;
+  }
+  for (const field of Object.values(adventure.fields)) {
+    const needed = field.holdRoundsToWin;
+    if (!needed || needed <= 0) {
+      continue;
+    }
+    const owner = field.flagOwnerId;
+    if (!owner || owner === NEUTRAL_PLAYER_ID || !state.players[owner] || state.players[owner]?.eliminated) {
+      continue;
+    }
+    if (field.holdControlOwnerId === owner && (field.holdControlRounds ?? 0) >= needed) {
+      declareAdventureWinner(
+        state,
+        owner,
+        `held a settlement for ${needed} consecutive round${needed === 1 ? "" : "s"}`,
+        { viaVictoryCondition: true }
+      );
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Human seats in turn order (the neutral seat never counts). */
@@ -11926,6 +12017,12 @@ export function startAdventureRound(state: GameState): void {
 
   refreshRoundTokens(state);
   appendEvent(state, { type: "ROUND_STARTED", round: state.round, kind });
+  // Per-settlement hold-to-win: each full round of continuous control counts once
+  // (restarts on recapture). May end the game here when the threshold is met.
+  tickSettlementHoldControl(state);
+  if (state.adventure?.winnerPlayerId) {
+    return;
+  }
   // VP round-limit: announce the FINAL round as it begins (the end-of-round
   // scoring above fires next round when the counter passes `roundLimit`), so the
   // ending is never a surprise. `state.round <= roundLimit` here (the > guard

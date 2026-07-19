@@ -1,0 +1,17 @@
+Use your IMAGE GENERATION tools only (not SVG scripts, not Grok).
+
+Generate ONE premium HD Heroes of Might and Magic III board-game style UI icon:
+- Large numeral 2 on the left + crossed shovel and pickaxe on the right (double resource die face)
+- Close to the attached reference silhouette, but nicer and more HD gold metal tools
+- Square, transparent or pure black background
+- The "2" is the only allowed glyph (numeral), no words
+
+SAVE OVERWRITE exactly to:
+public/assets/ui/treasure-face-double-resource.webp
+
+If png first, convert with node sharp to webp.
+Also copy same file to:
+public/assets/ui/icon-double-resource.webp
+
+Verify each file exists and is > 8KB. Reply with paths and byte sizes only.
+No stock photos.

@@ -88,7 +88,7 @@ describe("noticeRewardsFromEvents — map-visit reward chips", () => {
     );
     // Die face first (the GET image), then the material XP payout.
     expect(rewards.map((r) => r.label)).toEqual(["XP", "+1"]);
-    expect(rewards[0].icon, "treasure experience face glyph").toContain("experience");
+    expect(rewards[0].icon, "treasure experience face glyph").toContain("treasure-face-experience");
     expect(rewards[0].title).toMatch(/Treasure die/i);
     expect(rewards[1].icon).toContain("experience");
   });

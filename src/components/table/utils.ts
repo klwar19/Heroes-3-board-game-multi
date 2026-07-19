@@ -1,7 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { astrologersCardDefinitions } from "@/data/cards/astrologers";
 import { eventCardDefinitions } from "@/data/cards/events";
-import { RESOURCE_ICONS, REWARD_GLYPH_ICONS, moraleIcon } from "@/data/assets/homm-assets";
+import { RESOURCE_ICONS, REWARD_GLYPH_ICONS, UI_REWARD_ICONS, moraleIcon } from "@/data/assets/homm-assets";
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { UNIT_RANK_NAMES } from "@/data/units/experience";
@@ -974,22 +974,22 @@ const TREASURE_FACE_NOTICE: Record<
   { icon: string; label: string; title: string }
 > = {
   experience: {
-    icon: REWARD_GLYPH_ICONS.experience,
+    icon: UI_REWARD_ICONS.treasureFaceExperience,
     label: "XP",
     title: "Treasure die: Gain 1 experience"
   },
   "artifact-search": {
-    icon: REWARD_GLYPH_ICONS.artifact,
+    icon: UI_REWARD_ICONS.treasureFaceArtifact,
     label: "Art",
     title: "Treasure die: Search (2) the Artifact deck"
   },
   "resource-die": {
-    icon: REWARD_GLYPH_ICONS.resourceDie,
+    icon: UI_REWARD_ICONS.treasureFaceResourceDie,
     label: "1×",
     title: "Treasure die: Roll 1 Resource die"
   },
   "double-resource-die": {
-    icon: "/assets/glyphs/2_treasure_die.svg",
+    icon: UI_REWARD_ICONS.treasureFaceDoubleResource,
     label: "2×",
     title: "Treasure die: Roll 2 Resource dice, choose one"
   }

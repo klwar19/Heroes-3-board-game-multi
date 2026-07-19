@@ -7855,6 +7855,13 @@ export type MapTileState = {
    * player views MASK it while the tile is face-down.
    */
   centerHex?: CustomCenterHexPlan;
+  /**
+   * Per-tile settlement customization (guard / bonus VP / hold-to-win) carried
+   * from {@link CustomMapTilePlan.settlement} onto the placed instance and folded
+   * onto every settlement field when the tile materializes. Public once revealed
+   * (like a mine's resource). Absent = map-wide settlement options only.
+   */
+  settlement?: CustomMapSettlementFieldPlan;
   /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
   viiFieldReward?: ViiFieldReward;
   /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
@@ -7929,6 +7936,27 @@ export type MapFieldState = {
   centerHexReward?: CustomCenterHexReward;
   centerHexVp?: number;
   centerHexClaimed?: boolean;
+  /**
+   * Per-settlement bonus Victory Points for THIS field only (from a tile's
+   * {@link CustomMapTilePlan.settlement}.vp). Scored while the player controls
+   * the settlement, ON TOP of the map-wide {@link CustomMapPreset.settlements}.vp
+   * and the flat 1 VP every flagged mine/settlement already scores. Absent = 0.
+   */
+  settlementBonusVp?: number;
+  /**
+   * Hold-to-win: consecutive full rounds of continuous control needed on THIS
+   * settlement to end the game (from {@link CustomMapTilePlan.settlement}.holdRoundsToWin).
+   * Absent = no hold condition on this field.
+   */
+  holdRoundsToWin?: number;
+  /** Owner currently counting toward {@link holdRoundsToWin} (reset on recapture). */
+  holdControlOwnerId?: PlayerId;
+  /**
+   * Full rounds the current {@link holdControlOwnerId} has continuously held this
+   * settlement (incremented at each {@link startAdventureRound}). When it reaches
+   * {@link holdRoundsToWin} that player wins immediately.
+   */
+  holdControlRounds?: number;
   /**
    * WOG New Objects — Living Skull (`wog.living_skull`): set once a visitor
    * chooses "smash it". A one-shot destruction latch: a smashed skull is INERT
@@ -10421,6 +10449,8 @@ export type CustomMapPreset = {
    *     another player transfers it with no fight, like an unguarded settlement.
    *   - vp: extra Victory Points per settlement a player controls (VP mode only),
    *     ON TOP of the flat 1 VP every flagged mine/settlement already scores.
+   * Per-TILE overrides live on {@link CustomMapTilePlan.settlement} (stronger
+   * guard / extra VP / hold-to-win on a specific settlement only).
    */
   settlements?: {
     guard?: CustomGuardSpec;
@@ -10894,6 +10924,32 @@ export type CustomMapTilePlan = {
    * fields (persistence folds those legacy saves in).
    */
   centerHex?: CustomCenterHexPlan;
+  /**
+   * Per-TILE settlement customization — apply a stronger guard, extra VP, and/or
+   * a hold-to-win condition to the settlement field(s) on THIS tile only (the
+   * map-wide {@link CustomMapPreset.settlements} block remains the default for
+   * every other settlement). Meaningful on any group that can host a settlement
+   * (far/near/center/…); a tile with no settlement field simply carries the
+   * plan inertly until materialize finds nothing to stamp. Sanitised at
+   * persistence + setup.
+   */
+  settlement?: CustomMapSettlementFieldPlan;
+};
+
+/**
+ * Per-tile settlement customization ({@link CustomMapTilePlan.settlement}).
+ * All arms optional; an empty block collapses to undefined.
+ *   - guard: overrides the map-wide settlement guard on this tile's settlement
+ *     field(s) only (level Ⅰ–Ⅶ or exact army).
+ *   - vp: extra Victory Points for controlling THIS settlement (VP mode), on top
+ *     of the map-wide settlement VP and the flat 1.
+ *   - holdRoundsToWin: hold this settlement continuously for N full rounds
+ *     (1–10) to win the game immediately (an additional early-end trigger).
+ */
+export type CustomMapSettlementFieldPlan = {
+  guard?: CustomGuardSpec;
+  vp?: number;
+  holdRoundsToWin?: number;
 };
 
 /**

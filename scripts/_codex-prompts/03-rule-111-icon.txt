@@ -1,0 +1,15 @@
+Use your IMAGE GENERATION tools only (not SVG scripts, not Grok).
+
+Generate ONE premium HD Heroes of Might and Magic III board-game style UI icon for Polish house rule "Rule 111" (swap one bronze guard for another random bronze):
+- Gold circular medallion
+- Two small bronze unit shields / tokens with curved swap arrows between them
+- Small dice motif
+- Square, transparent or pure black background
+- NO text letters, NO words, NO numbers except optional dice pips
+
+SAVE OVERWRITE exactly to:
+public/assets/ui/rule-111-icon.webp
+
+If png first, convert with node sharp to that webp path.
+Verify file exists and is > 8KB. Reply with path and byte size only.
+No stock photos.
