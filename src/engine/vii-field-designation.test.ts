@@ -222,6 +222,22 @@ describe("Ⅶ designation — face-down center slot", () => {
     expect(maskedTile.viiField).toBeUndefined();
   });
 
+  it("masks a face-down center slot's Ⅶ MULTI-SELECT (viiFields) the same way", () => {
+    // Mutation control: the multi-select carries the same objective info as
+    // viiField — leaking it would tell opponents the hidden slot is (say)
+    // Grail-or-Utopia before discovery.
+    const state = faceDownGrailGame("grail");
+    const tile = centerTile(state);
+    tile.viiFields = ["grail", "dragon_utopia"];
+    tile.playerViiPick = true;
+
+    const p2View = getPlayerView(state, "p2");
+    const maskedTile = p2View.adventure!.tiles[tile.id];
+    expect(maskedTile.viiFields).toBeUndefined();
+    // The owner-agnostic pick FLAG may stay (behaviour-public, like a pending
+    // token) — only the designation set is secret.
+  });
+
   it("CONTROL: a face-down center pinned to a Utopia tile keeps the Utopia when NOT designated", () => {
     const state = createAdventureGameState({
       seed: "vii-facedown-control",

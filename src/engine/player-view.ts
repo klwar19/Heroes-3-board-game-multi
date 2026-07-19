@@ -26,6 +26,10 @@ function cloneSerializable<T>(value: T): T {
 function maskFaceDownTile(tile: MapTileState): MapTileState {
   const masked: MapTileState = { ...tile, tileDefId: "hidden" };
   delete masked.viiField;
+  // The multi-select of allowed Ⅶ designations leaks the same objective info
+  // as viiField — mask it too (the pick flags themselves are behaviour-public,
+  // like a pending token: viewers may know a choice will open, not its set).
+  delete masked.viiFields;
   delete masked.centerHex;
   delete masked.viiFieldReward;
   delete masked.viiFieldVp;

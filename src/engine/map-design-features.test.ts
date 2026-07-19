@@ -187,13 +187,13 @@ describe("map-design-features — break field + persistent army", () => {
     const living = [
       { unitDefId: "neutral.skeletons", damage: 0, maxHealth: 2 },
       { unitDefId: "neutral.zombies", damage: 5, maxHealth: 5 }, // dead
-      { unitDefId: "castle.swordsmen", factionPack: true, damage: 0, maxHealth: 3 }
+      { unitDefId: "castle.halberdiers", factionPack: true, damage: 0, maxHealth: 3 }
     ];
     // Filter like the combat hook (living only).
     const survivors = survivorsToCustomGuardUnits(
       living.filter((u) => u.damage < u.maxHealth)
     );
-    expect(survivors).toEqual(["neutral.skeletons", "pack:castle.swordsmen"]);
+    expect(survivors).toEqual(["neutral.skeletons", "pack:castle.halberdiers"]);
   });
 
   it("persistentGuard stamps survivors after a retreated fight", () => {
@@ -253,6 +253,77 @@ describe("map-design-features — break field + persistent army", () => {
     expect(field.customGuardUnits?.length).toBeGreaterThan(0);
     expect(field.customGuardUnits?.length).toBeLessThan(3);
     expect(field.persistentGuard).toBe(true);
+  });
+
+  it("persistentGuard keeps a faction-Pack survivor AS a pack: slot (variant-derived — CombatUnitState has no factionPack flag)", () => {
+    // Mutation control: reading a nonexistent unit.factionPack instead of the
+    // variant would persist "castle.swordsmen" bare, which resolveCustomGuardDraws
+    // then DROPS (no neutral side) — the guard would vanish from the re-fight.
+    const state = makeGame("persist-pack-guard");
+    const hero = getMainHero(state, "p1")!;
+    hero.level = 1;
+    const field = injectField(state, "mine", "21,21", {
+      difficulty: 2,
+      designedGuard: true,
+      persistentGuard: true,
+      customGuardUnits: ["pack:castle.halberdiers", "neutral.zombies"]
+    });
+    placeHero(state, "p1", field.spaceId);
+    startNeutralEncounter(state, hero, field);
+    const combat = state.combat!;
+    combat.setup = null;
+    // Mint the two guards the way the engine would: the pack: slot is variant
+    // "pack", the plain neutral is variant "neutral". Zombies die; the Pack —
+    // flipped down to Few mid-fight — survives.
+    combat.units.n0 = {
+      id: "n0",
+      controllerId: NEUTRAL_PLAYER_ID,
+      name: "Halberdiers",
+      cardName: "Pack of Halberdiers",
+      variant: "few",
+      grade: "bronze",
+      type: "melee",
+      attack: 1,
+      defense: 0,
+      maxHealth: 2,
+      damage: 0,
+      initiative: 1,
+      position: 0,
+      unitDefId: "castle.halberdiers",
+      bankGuard: true,
+      abilities: []
+    } as never;
+    combat.units.n1 = {
+      id: "n1",
+      controllerId: NEUTRAL_PLAYER_ID,
+      name: "Zombies",
+      cardName: "Neutral Zombies",
+      variant: "neutral",
+      grade: "bronze",
+      type: "melee",
+      attack: 1,
+      defense: 0,
+      maxHealth: 2,
+      damage: 2, // dead
+      initiative: 1,
+      position: 1,
+      unitDefId: "neutral.zombies",
+      bankGuard: true,
+      abilities: []
+    } as never;
+    combat.outcome = {
+      winnerPlayerId: NEUTRAL_PLAYER_ID,
+      defeatedPlayerId: "p1",
+      reason: "retreat"
+    };
+    finalizeAdventureCombat(state);
+    expect(field.customGuardUnits, "Few survivor re-persists as its pack: slot").toEqual([
+      "pack:castle.halberdiers"
+    ]);
+    // And the re-fight actually minted it (not silently dropped).
+    const redraw = drawGuardArmy(state, field, 2);
+    expect(redraw.map((d) => d.unitDefId)).toEqual(["castle.halberdiers"]);
+    expect(redraw[0]?.factionPack).toBe(true);
   });
 });
 
