@@ -281,26 +281,34 @@ describe("Spell Book — any Book Spell pays Power costs (incl. map Fly)", () =>
     state.players.p1.spellBook = ["spell.fly"];
     state.players.p1.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
 
-    // Option index 1: "Gain 2 Building Materials (pay 1 Power)".
+    // Cast View Air, then discard Book Fly as the Power boost (+1).
     const offer = getLegalActions(state, "p1").find(
-      (legal) =>
-        legal.action.type === "PLAY_CARD" &&
-        legal.action.cardId === "spell.view_air" &&
-        legal.action.optionIndex === 1
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "spell.view_air"
     );
-    expect(offer, "View Air Power-1 tier must be offered when Book Fly can pay").toBeTruthy();
-
-    const played = applyOk(state, {
-      ...(offer!.action as Extract<GameAction, { type: "PLAY_CARD" }>),
-      costCardIds: ["spell.fly"]
-    });
+    expect(offer, "View Air must be castable").toBeTruthy();
+    let played = applyOk(state, offer!.action as Extract<GameAction, { type: "PLAY_CARD" }>);
+    expect(played.pendingChoice?.type === "OPTION_CHOICE" && played.pendingChoice.context).toBe(
+      "map-spell-boost"
+    );
+    if (played.pendingChoice?.type === "OPTION_CHOICE" && played.pendingChoice.mapSpellBoost) {
+      const flyIndex = played.pendingChoice.mapSpellBoost.offers.findIndex(
+        (entry) => entry.kind === "card" && entry.cardId === "spell.fly" && entry.fromBook
+      );
+      expect(flyIndex, "Book Fly is a boost source").toBeGreaterThanOrEqual(0);
+      played = applyOk(played, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: played.pendingChoice.id,
+        optionIndex: flyIndex
+      });
+    }
     expect(played.players.p1.resources.buildingMaterials).toBe(2);
     expect(played.players.p1.spellBook).not.toContain("spell.fly");
     expect(played.players.p1.discard).toContain("spell.fly");
     expect(played.players.p1.combatStats.spellBookPowerUsedThisTurn).toBe(true);
   });
 
-  it("CONTROL: without Book Fly, View Air Power-1 is not offered from an empty hand of power sources", () => {
+  it("CONTROL: without Book Fly, View Air cast resolves at Power 0 (no materials tier)", () => {
     let state = createAdventureGameState({
       seed: "book-fly-map-control",
       difficulty: "normal",
@@ -314,14 +322,16 @@ describe("Spell Book — any Book Spell pays Power costs (incl. map Fly)", () =>
     state.players.p1.canMulligan = false;
     state.players.p1.hand = ["spell.view_air"];
     state.players.p1.spellBook = [];
+    state.players.p1.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
 
     const offer = getLegalActions(state, "p1").find(
-      (legal) =>
-        legal.action.type === "PLAY_CARD" &&
-        legal.action.cardId === "spell.view_air" &&
-        legal.action.optionIndex === 1
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "spell.view_air"
     );
-    expect(offer, "no Book Power → Power-1 tier unaffordable").toBeFalsy();
+    expect(offer, "View Air is still castable at Power 0").toBeTruthy();
+    const played = applyOk(state, offer!.action as Extract<GameAction, { type: "PLAY_CARD" }>);
+    // No power sources → auto-resolves at Power 0 (3 gold, not materials).
+    expect(played.players.p1.resources.gold).toBe(3);
+    expect(played.players.p1.resources.buildingMaterials).toBe(0);
   });
 });
 

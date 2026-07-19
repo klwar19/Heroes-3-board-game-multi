@@ -898,6 +898,17 @@ describe("tile discovery and placement", () => {
 
     expect(next.adventure!.playerFarTiles.p1).toHaveLength(supplyBefore - 1);
     expect(next.heroes.hero_p1.movementPoints).toBe(2);
+
+    // A Far flip may open keep/reroll/pick choices before rotation; drain them.
+    for (let guard = 0; guard < 8 && next.pendingChoice?.type === "OPTION_CHOICE"; guard += 1) {
+      const choice = next.pendingChoice;
+      next = apply(next, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: choice.id,
+        optionIndex: 0
+      });
+    }
     expect(next.adventure!.pendingTileChoice?.kind).toBe("place");
 
     const rotations = getLegalActions(next, "p1").filter((legal) => legal.action.type === "SET_TILE_ROTATION");
@@ -920,18 +931,15 @@ describe("tile discovery and placement", () => {
     expect(result.errors).toHaveLength(1);
   });
 
-  it("only offers far-tile rotations the placing hero can cross onto", () => {
+  it("offers every far-tile rotation (seal gate OFF) and Confirm accepts a sealed orientation", () => {
     const state = refreshP1(makeGame());
     // The hero stands on h:8:1 — an OPEN-border S3 field directly bordering the
-    // (10,0) notch (rule #2: opening a tile needs the hero's own edge open). At
-    // this slot the NEW tile's rotation 2 turns its own yellow arc back toward the
-    // hero (sealed off), while the other rotations leave a doorway — so the gate
-    // has both an allowed and a rejected rotation to exercise.
+    // (10,0) notch. At this slot some F1 rotations turn a yellow arc back toward
+    // the hero (geometry still has sealed vs open doorways) — but with
+    // TILE_ROTATION_SEAL_GATE_ENABLED = false every orientation is offered and
+    // Confirmable. Movement sealing after materialize is unchanged.
     state.heroes.hero_p1.spaceId = "h:8:1";
     state.heroes.hero_p1.movementPoints = 3;
-    // The supply tile's identity is rolled at the flip, so force F1 — a Settlement
-    // (no Mine) tile that auto-finalizes on the 1st opening (no reroll) and whose
-    // border lines give a mix of crossable and sealed rotations at this slot.
     state.adventure!.farTileScriptedDraws = ["F1"];
     const tileDefId = "F1";
     const center = { row: 10, col: 0 };
@@ -945,7 +953,6 @@ describe("tile discovery and placement", () => {
       centerCol: 0
     });
 
-    // The placing hero is recorded so the rotation gate knows who must cross in.
     expect(next.adventure!.pendingTileChoice?.heroId).toBe("hero_p1");
 
     const hero = next.heroes.hero_p1;
@@ -954,39 +961,26 @@ describe("tile discovery and placement", () => {
         legal.action.type === "SET_TILE_ROTATION"
       )
       .map((legal) => legal.action.rotation);
-    expect(offered.length).toBeGreaterThan(0);
+    // Gate off → all six rotations are legal.
+    expect(offered.sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5]);
 
-    // This geometry has at least one sealed-off rotation and at least one open
-    // one, so both gate branches get exercised.
+    // Geometry still has at least one sealed doorway orientation (the pure helper
+    // is live; only the hard reject is disabled).
     const reach = [0, 1, 2, 3, 4, 5].map((rotation) => canHeroReachPlacedTile(next, hero, tileDefId, center, rotation));
     expect(reach.some((value) => value)).toBe(true);
     expect(reach.some((value) => !value)).toBe(true);
 
-    // Every offered rotation is one the hero can actually cross onto, and any
-    // rotation the hero cannot cross onto is withheld and rejected by the engine.
+    // A previously-sealed orientation confirms and materializes.
+    const sealedRotation = reach.findIndex((value) => !value);
     const tileInstanceId = next.adventure!.pendingTileChoice!.tileInstanceId;
-    for (let rotation = 0; rotation < 6; rotation += 1) {
-      expect(offered.includes(rotation)).toBe(reach[rotation]);
-      if (!reach[rotation]) {
-        const rejected = applyAction(next, {
-          type: "SET_TILE_ROTATION",
-          playerId: "p1",
-          tileInstanceId,
-          rotation
-        });
-        expect(rejected.errors).toHaveLength(1);
-      }
-    }
-
-    // A doorway rotation still confirms and materializes the tile.
-    const openRotation = reach.findIndex((value) => value);
     const confirmed = apply(next, {
       type: "SET_TILE_ROTATION",
       playerId: "p1",
       tileInstanceId,
-      rotation: openRotation
+      rotation: sealedRotation
     });
     expect(confirmed.adventure!.tiles[tileInstanceId].awaitingRotation).toBe(false);
+    expect(confirmed.adventure!.tiles[tileInstanceId].rotation).toBe(sealedRotation);
   });
 
   it("reports a hero cannot cross to a disconnected area", () => {
@@ -1035,15 +1029,16 @@ describe("tile discovery and placement", () => {
     expect(placeResult.errors[0].message).toContain("yellow border");
     expect(placeResult.state.heroes.hero_p1.movementPoints).toBe(mpBefore);
 
-    // SECONDARY FIX: even if a tile arrives at (9,4) via another path, every
-    // SET_TILE_ROTATION must be rejected when the hero cannot reach any rotation.
-    // Confirm no rotation of F1 at (9,4) is reachable from h:8:3.
+    // Pure doorway helper still reports every rotation of F1 at (9,4) unreachable
+    // from h:8:3 (placement stay-out is the real guard now; rotation Confirm is
+    // free while TILE_ROTATION_SEAL_GATE_ENABLED is off).
     const reachable = [0, 1, 2, 3, 4, 5].map((r) =>
       canHeroReachPlacedTile(state, state.heroes.hero_p1, "F1", { row: 9, col: 4 }, r)
     );
     expect(reachable.every((v) => !v)).toBe(true);
 
-    // Manually plant an F1 tile at (9,4) in pendingTileChoice state.
+    // Manually plant an F1 tile at (9,4) in pendingTileChoice state — rotation
+    // Confirm is free (seal gate OFF); the tile materializes at the chosen angle.
     const tile = instantiateTile(state.adventure!, "F1", { row: 9, col: 4 }, 0, false, { materialize: false });
     tile.awaitingRotation = true;
     state.adventure!.pendingTileChoice = {
@@ -1052,15 +1047,14 @@ describe("tile discovery and placement", () => {
       kind: "place",
       heroId: "hero_p1"
     };
-    for (let rotation = 0; rotation < 6; rotation++) {
-      const rotResult = applyAction(state, {
-        type: "SET_TILE_ROTATION",
-        playerId: "p1",
-        tileInstanceId: tile.id,
-        rotation
-      });
-      expect(rotResult.errors, `rotation ${rotation} should be rejected`).toHaveLength(1);
-    }
+    const rotResult = applyAction(state, {
+      type: "SET_TILE_ROTATION",
+      playerId: "p1",
+      tileInstanceId: tile.id,
+      rotation: 0
+    });
+    expect(rotResult.errors, "seal gate OFF → Confirm accepts any rotation").toHaveLength(0);
+    expect(rotResult.state.adventure!.tiles[tile.id].awaitingRotation).toBe(false);
   });
 });
 

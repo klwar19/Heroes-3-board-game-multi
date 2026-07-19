@@ -8,11 +8,11 @@ import type { CombatUnitState, GameAction, GameState, PlayerId, UnitGrade, UnitT
 /**
  * Manual guard control (OPTIONAL Game-options toggle,
  * `GameSetupOptions.manualGuardControl`, default OFF — set like Undo moves):
- * the FIGHTER of a Neutral combat commands each guard personally through the
- * PvP-Neutral-Control unit menu — same must-attack discipline (attack when you
- * can; under polish-wait the guard may WAIT instead, and its Waited
- * re-activation must attack) — or hands any single activation back to the
- * rulebook AI with the "Let the unit act (automatic)" button.
+ * the FIGHTER of a Neutral combat commands each guard personally with FULL free
+ * control (move, attack, Defend, Wait, hold, tokens — never the must-attack AI
+ * menu; that sub-toggle only binds a PvP Neutral Control opponent). They may
+ * still hand any single activation back to the rulebook AI with the
+ * "Let the unit act (automatic)" button.
  *
  * Every claim below is mutation-checked with a mode-off CONTROL, and the mode
  * never grants the fighter the PvP-only perks (the pre-battle formation sort,
@@ -214,18 +214,26 @@ describe("Manual guard control — controller derivation", () => {
 });
 
 describe("Manual guard control — the fighter commands the guard", () => {
-  it("stops the pump on the guard's activation; the fighter attacks with it (must-attack: no Defend), or delegates to the AI", () => {
+  it("stops the pump on the guard's activation; the fighter has FULL free control (attack OR Defend/hold), or delegates to the AI", () => {
     const state = sceneGuardAdjacent("mgc-command", { manualGuardControl: true });
     expect(guardSlotOpen(state)).toBe(true);
     const [guard] = guardsOf(state);
 
     const offers = getLegalActions(state, "p1").map((legal) => legal.action);
-    // Must-attack discipline: strikes are offered, Defend is not.
+    // Free control (manual-only): strikes AND Defend/hold are offered — not the
+    // must-attack AI menu (that sub-toggle only binds PvP Neutral Control).
     const attack = offers.find(
       (action) => action.type === "ATTACK_UNIT" && action.attackerId === guard.id
     );
     expect(attack, "the guard's attack is offered to the fighter").toBeTruthy();
-    expect(offers.some((action) => action.type === "DEFEND_UNIT" && action.unitId === guard.id)).toBe(false);
+    expect(
+      offers.some((action) => action.type === "DEFEND_UNIT" && action.unitId === guard.id),
+      "Defend is offered under free manual control"
+    ).toBe(true);
+    expect(
+      offers.some((action) => action.type === "END_ACTIVATION" && action.unitId === guard.id),
+      "hold is offered under free manual control"
+    ).toBe(true);
     // The AI delegation button is offered right next to the manual commands.
     expect(offers.some((action) => action.type === "AUTO_NEUTRAL_ACTIVATION")).toBe(true);
 
@@ -270,7 +278,7 @@ describe("Manual guard control — the fighter commands the guard", () => {
 });
 
 describe("Manual guard control — polish-wait interplay", () => {
-  it("in must-attack mode the guard may WAIT (polish-wait on), and its Waited re-activation must attack (no second Wait)", () => {
+  it("under free manual control the guard may WAIT (polish-wait on), and its Waited re-activation must attack (no second Wait)", () => {
     const state = sceneGuardAdjacent("mgc-wait", {
       manualGuardControl: true,
       houseRules: { "polish-wait": true }
@@ -280,8 +288,10 @@ describe("Manual guard control — polish-wait interplay", () => {
 
     const offers = getLegalActions(state, "p1").map((legal) => legal.action);
     const wait = offers.find((action) => action.type === "WAIT_UNIT" && action.unitId === guard.id);
-    expect(wait, "WAIT is offered beside the mandatory attack").toBeTruthy();
+    expect(wait, "WAIT is offered under free manual control + polish-wait").toBeTruthy();
     expect(offers.some((action) => action.type === "ATTACK_UNIT" && action.attackerId === guard.id)).toBe(true);
+    // Free control also keeps Defend (must-attack would strip it).
+    expect(offers.some((action) => action.type === "DEFEND_UNIT" && action.unitId === guard.id)).toBe(true);
 
     // Wait, then drive to the guard's RE-activation in the wait phase.
     const waited = driveTo(applyOk(state, wait!), (s) => {
@@ -296,11 +306,11 @@ describe("Manual guard control — polish-wait interplay", () => {
     });
     expect(waited.combat?.waitPhase).toBe(true);
     const reOffers = getLegalActions(waited, "p1").map((legal) => legal.action);
-    // The Waited guard must attack: strikes offered, Wait no longer offered.
+    // The Waited guard must attack (polish-wait sheet): strikes offered, Wait no longer offered.
     expect(reOffers.some((action) => action.type === "ATTACK_UNIT")).toBe(true);
     expect(reOffers.some((action) => action.type === "WAIT_UNIT")).toBe(false);
 
-    // CONTROL: without polish-wait the must-attack menu never offers WAIT.
+    // CONTROL: without polish-wait free manual control still has no WAIT (Wait is polish-only).
     const noWait = sceneGuardAdjacent("mgc-wait-off", { manualGuardControl: true });
     expect(
       getLegalActions(noWait, "p1").some((legal) => legal.action.type === "WAIT_UNIT")
@@ -420,5 +430,34 @@ describe("Manual guard control — pre-battle formation relocation", () => {
     const started = applyOk(reset, { type: "FINISH_NEUTRAL_PLACEMENT", playerId: "p1" });
     expect(started.combat!.pendingNeutralPlacement ?? null).toBeNull();
     expect(started.phase).not.toBe("combat-setup");
+  });
+});
+
+describe("Manual guard control — must-attack binds only a REAL PvP opponent", () => {
+  it("PvP Neutral Control ON but nobody left to take the guards → the manual fighter keeps FREE control; CONTROL: a live opponent gets the must-attack menu", () => {
+    // Corner: both modes on, every other seat eliminated (live turnOrder is the
+    // fighter alone) → pvpNeutralControllerId is null, the MANUAL fighter
+    // drives — and the PvP sub-toggle must bind nobody (free play).
+    const state = sceneGuardAdjacent("mgc-pvp-corner", { manualGuardControl: true });
+    const [guard] = guardsOf(state);
+    state.adventure!.pvpNeutralControl = true;
+    state.adventure!.pvpNeutralControlMustAttack = true;
+    state.turnOrder = ["p1"];
+    const offers = getLegalActions(state, "p1").map((legal) => legal.action);
+    expect(offers.some((action) => action.type === "ATTACK_UNIT" && action.attackerId === guard.id)).toBe(true);
+    expect(
+      offers.some((action) => action.type === "DEFEND_UNIT" && action.unitId === guard.id),
+      "free manual control — the PvP must-attack sub-toggle binds nobody here"
+    ).toBe(true);
+
+    // CONTROL: with a live opponent the PvP controller (p2) IS bound — strikes
+    // offered, Defend stripped.
+    const pvp = sceneGuardAdjacent("mgc-pvp-corner-live", { manualGuardControl: true });
+    const [pvpGuard] = guardsOf(pvp);
+    pvp.adventure!.pvpNeutralControl = true;
+    pvp.adventure!.pvpNeutralControlMustAttack = true;
+    const pvpOffers = getLegalActions(pvp, "p2").map((legal) => legal.action);
+    expect(pvpOffers.some((action) => action.type === "ATTACK_UNIT" && action.attackerId === pvpGuard.id)).toBe(true);
+    expect(pvpOffers.some((action) => action.type === "DEFEND_UNIT" && action.unitId === pvpGuard.id)).toBe(false);
   });
 });

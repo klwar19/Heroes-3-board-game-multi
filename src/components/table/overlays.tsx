@@ -1912,6 +1912,10 @@ export function DeckSearchModeModal({
     mode.hasDiscardTop && deckState && deckState.discardPile.length > 0
       ? deckState.discardPile[deckState.discardPile.length - 1]
       : null;
+  // Spell searches offer EVERY acquirable discarded spell (indices 1..N map
+  // onto discardPickCardIds); other decks keep the single top-only take.
+  const discardPickIds = mode.discardPickCardIds ?? [];
+  const discardOptionCount = discardPickIds.length > 0 ? discardPickIds.length : mode.hasDiscardTop ? 1 : 0;
 
   return (
     <div className="modalBackdrop" role="dialog" aria-label={choice.prompt}>
@@ -1924,8 +1928,15 @@ export function DeckSearchModeModal({
           {optionActions.map((legal) => {
             const optionIndex = legal.action.optionIndex;
             const isSearch = optionIndex === 0;
-            const isDiscard = Boolean(mode.hasDiscardTop) && optionIndex === 1;
-            const discardId = isDiscard ? discardTopId : null;
+            const isDiscard =
+              Boolean(mode.hasDiscardTop) && optionIndex >= 1 && optionIndex <= discardOptionCount;
+            // Multi-pick spell takes show EACH pick's own card face; the
+            // classic single take keeps the pile top.
+            const discardId = isDiscard
+              ? discardPickIds.length > 0
+                ? discardPickIds[optionIndex - 1] ?? null
+                : discardTopId
+              : null;
             return (
               <div className="searchCardWrap" key={optionIndex}>
                 <button

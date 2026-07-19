@@ -5905,7 +5905,9 @@ export default function Home() {
                   <span>
                     {cardName(pendingCostPlay.action.cardId)}:{" "}
                     {pendingCostPlay.powerCost !== undefined
-                      ? `pay ${pendingCostPlay.powerCost} Power — ${pendingPowerTotal}/${pendingCostPlay.powerCost}`
+                      ? // Map power tiers: play the spell first, then add Power
+                        // (like combat) — the bank + picked sources pay the tier.
+                        `cast ready — add Power (${pendingPowerTotal}/${pendingCostPlay.powerCost} needed for this effect)`
                       : pendingCostPlay.exact !== undefined
                         ? `pick exactly ${pendingCostPlay.exact} card${pendingCostPlay.exact === 1 ? "" : "s"} to discard`
                         : `pick up to ${pendingCostPlay.upTo} card${(pendingCostPlay.upTo ?? 0) === 1 ? "" : "s"} to discard`}

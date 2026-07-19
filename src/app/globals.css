@@ -10295,6 +10295,52 @@ span.recruitThumb {
   color: #ffe08a;
 }
 
+.vpDockSurrenderNote {
+  display: block;
+  margin: 2px 4px 0;
+  font-size: 10px;
+  line-height: 1.25;
+  color: #c9b48a;
+  opacity: 0.92;
+}
+
+.vpScoringActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.vpScoringClose {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 220, 150, 0.35);
+  border-radius: 8px;
+  background: transparent;
+  color: #ffdf9b;
+  cursor: pointer;
+}
+
+.vpScoringClose:hover {
+  background: rgba(255, 220, 150, 0.12);
+}
+
+.armyStackBadge.placement {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.placementUnit {
+  position: relative;
+}
+
 .vpStandingsBackdrop {
   z-index: 120;
   padding: 16px;
