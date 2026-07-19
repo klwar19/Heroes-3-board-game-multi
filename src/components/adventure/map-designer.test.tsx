@@ -3980,3 +3980,170 @@ describe("MapDesigner — canonical teleporter conversions (token ⇄ standalone
     expect(gate.querySelector(".designerObjectPair")?.textContent).toBe("4");
   });
 });
+
+// ---------------------------------------------------------------------------
+// SPECIFIC per-tile object plans + pick mode + hex-event markers (2026-07).
+// ---------------------------------------------------------------------------
+describe("MapDesigner — specific object plans & hex events", () => {
+  // N15 prints BOTH an obelisk and a mine (near tile).
+  const town = { row: 8, col: 2 };
+  const n15 = { row: 12, col: 6 };
+
+  it("the popover shows the Mine/Obelisk sections ONLY for an eligible tile, and the winCondition tick writes objectPlans", () => {
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: n15.row, col: n15.col, group: "near", faceDown: false, tileDefId: "N15" }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1);
+    expect(within(popover).getByLabelText("Special mine (this tile)")).toBeTruthy();
+    expect(within(popover).getByLabelText("Special obelisk (this tile)")).toBeTruthy();
+
+    fireEvent.click(within(popover).getByLabelText("First clear of this mine wins the game"));
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ group: "starting" }),
+      expect.objectContaining({
+        tileDefId: "N15",
+        objectPlans: { mine: { winCondition: true } }
+      })
+    ]);
+  });
+
+  it("CONTROL: a tile whose def has no mine/obelisk shows neither section", () => {
+    // F1 is a far tile without an obelisk (far pool never carries one).
+    const farNoObelisk = Object.values(allTileDefinitions).find(
+      (def) =>
+        def.group === "far" &&
+        !def.fields.some((field) => field.location === "obelisk") &&
+        !def.fields.some((field) => field.location === "mine")
+    );
+    if (!farNoObelisk) {
+      // Every far tile carries a mine — the mine section may show; obelisk must not.
+      const anyFar = Object.values(allTileDefinitions).find(
+        (def) => def.group === "far" && !def.fields.some((field) => field.location === "obelisk")
+      )!;
+      const container = renderDesigner([
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: n15.row, col: n15.col, group: "far", faceDown: false, tileDefId: anyFar.id }
+      ]);
+      const popover = openTilePopover(container, 1);
+      expect(within(popover).queryByLabelText("Special obelisk (this tile)")).toBeNull();
+      return;
+    }
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: n15.row, col: n15.col, group: "far", faceDown: false, tileDefId: farNoObelisk.id }
+    ]);
+    const popover = openTilePopover(container, 1);
+    expect(within(popover).queryByLabelText("Special mine (this tile)")).toBeNull();
+    expect(within(popover).queryByLabelText("Special obelisk (this tile)")).toBeNull();
+  });
+
+  it("pick mode highlights eligible tiles, resolves on an eligible click, and ignores ineligible tiles", () => {
+    const onPickResolved = vi.fn();
+    const { container } = render(
+      <MapDesigner
+        customMap={[
+          { row: town.row, col: town.col, group: "starting", faceDown: false },
+          { row: n15.row, col: n15.col, group: "near", faceDown: false, tileDefId: "N15" }
+        ]}
+        onChange={() => {}}
+        onPickResolved={onPickResolved}
+        pickRequest={{ kind: "object-plan", objectKind: "mine" }}
+        scenarioId="skirmish"
+      />
+    );
+    // The banner + highlight classes render.
+    expect(container.querySelector(".designerPickBanner")).toBeTruthy();
+    expect(container.querySelector(".designerFlowerOutline.pickEligible")).toBeTruthy();
+    expect(container.querySelector(".designerFlowerOutline.pickDim")).toBeTruthy();
+
+    // Clicking the INELIGIBLE starting tile does nothing.
+    const hexes = container.querySelectorAll(".designerHexPlan");
+    fireEvent.pointerDown(hexes[0], { button: 0, pointerId: 1, clientX: 40, clientY: 40 });
+    fireEvent.pointerUp(hexes[0], { button: 0, pointerId: 1, clientX: 40, clientY: 40 });
+    expect(onPickResolved).not.toHaveBeenCalled();
+
+    // Clicking the ELIGIBLE N15 tile resolves the pick and opens its popover.
+    fireEvent.pointerDown(hexes[7], { button: 0, pointerId: 2, clientX: 40, clientY: 40 });
+    fireEvent.pointerUp(hexes[7], { button: 0, pointerId: 2, clientX: 40, clientY: 40 });
+    expect(onPickResolved).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".designerPopover")).toBeTruthy();
+  });
+
+  it("a tile with a specific plan wears the ⚔ badge (🏁⚔ when a win condition is set)", () => {
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: n15.row,
+        col: n15.col,
+        group: "near",
+        faceDown: false,
+        tileDefId: "N15",
+        objectPlans: { mine: { guard: { level: 5 }, winCondition: true } }
+      }
+    ]);
+    const badge = container.querySelector(".designerSpecificBadge");
+    expect(badge).toBeTruthy();
+    expect(badge!.textContent).toContain("🏁⚔");
+    expect(badge!.querySelector("title")!.textContent).toContain("mine");
+    expect(badge!.querySelector("title")!.textContent).toContain("WIN on clear");
+  });
+
+  it("hex events render a designer-only ⚡ marker with the full tooltip", () => {
+    const { container } = render(
+      <MapDesigner
+        customMap={[{ row: town.row, col: town.col, group: "starting", faceDown: false }]}
+        hexEvents={[
+          {
+            id: "e1",
+            placement: { row: town.row, col: town.col },
+            message: "Boo!",
+            reward: { gold: 3 }
+          }
+        ]}
+        onChange={() => {}}
+        scenarioId="skirmish"
+      />
+    );
+    const mark = container.querySelector(".designerHexEventMark");
+    expect(mark).toBeTruthy();
+    expect(mark!.querySelector("title")!.textContent).toContain("Hidden event");
+    expect(mark!.querySelector("title")!.textContent).toContain("3 gold");
+  });
+
+  it("hex-event pick mode drops an event on the clicked hex (jsdom identity CTM)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const onHexEventsChange = vi.fn();
+      const onPickResolved = vi.fn();
+      const { container } = render(
+        <MapDesigner
+          customMap={[{ row: town.row, col: town.col, group: "starting", faceDown: false }]}
+          hexEvents={[]}
+          onChange={() => {}}
+          onHexEventsChange={onHexEventsChange}
+          onPickResolved={onPickResolved}
+          pickRequest={{ kind: "hex-event" }}
+          scenarioId="skirmish"
+        />
+      );
+      const target = container.querySelector(".designerHexPlan")!;
+      // The designer board renders at DESIGN_HEX = 24; identity CTM makes
+      // client coords equal board coords, so aim at the town's centre hex.
+      const pixel = hexToPixel(town, 24);
+      fireEvent.pointerDown(target, { button: 0, pointerId: 1, clientX: pixel.x, clientY: pixel.y });
+      fireEvent.pointerUp(target, { button: 0, pointerId: 1, clientX: pixel.x, clientY: pixel.y });
+      expect(onHexEventsChange).toHaveBeenCalledTimes(1);
+      const events = onHexEventsChange.mock.calls[0][0];
+      expect(events).toHaveLength(1);
+      expect(events[0].placement).toEqual({ row: town.row, col: town.col });
+      expect(onPickResolved).toHaveBeenCalledTimes(1);
+    } finally {
+      restore();
+    }
+  });
+});

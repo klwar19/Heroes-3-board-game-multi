@@ -7908,6 +7908,17 @@ export type MapTileState = {
    * (like a mine's resource). Absent = map-wide settlement options only.
    */
   settlement?: CustomMapSettlementFieldPlan;
+  /**
+   * SPECIFIC (per-tile) object plans (obelisk / mine) carried from
+   * {@link CustomMapTilePlan.objectPlans} onto the placed instance and folded
+   * onto every matching field when the tile materializes — a set field
+   * OVERRIDES the map-wide config, an unset one falls back to it. Public once
+   * revealed (like the settlement plan).
+   */
+  objectPlans?: {
+    obelisk?: CustomObjectFieldPlan;
+    mine?: CustomObjectFieldPlan;
+  };
   /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
   viiFieldReward?: ViiFieldReward;
   /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
@@ -7996,6 +8007,13 @@ export type MapFieldState = {
   designerRewardVp?: number;
   /** Shared once-only latch for any designer field reward (aliases centerHexClaimed). */
   designerRewardClaimed?: boolean;
+  /**
+   * Designer "first clear wins" stamp (a SPECIFIC object plan / settlement /
+   * center-hex `winCondition`): the first player to successfully clear / flag
+   * this field wins the game immediately (declared viaVictoryCondition, so VP
+   * mode routes to scoring). Fired at the beginFieldVisit designer seam.
+   */
+  designerWinCondition?: boolean;
   /**
    * Per-settlement bonus Victory Points for THIS field only (from a tile's
    * {@link CustomMapTilePlan.settlement}.vp). Scored while the player controls
@@ -9823,6 +9841,12 @@ export type AdventureState = {
    */
   nearTilePool?: string[];
   /**
+   * Live designer hex events keyed by their hex ({@link HexEventState}).
+   * REDACTED from every player view — an unsprung event must stay invisible in
+   * the real game; only the engine reads it (the beginFieldVisit trigger seam).
+   */
+  hexEvents?: Record<MapSpaceId, HexEventState>;
+  /**
    * Blind Ⅱ–Ⅲ tile choice (GameSetupOptions.farTileBlindChoice, default OFF):
    * a supply opening first asks the player for a blind gold/valuables/no-
    * preference pick that filters the random draw. Absent/false = the draw is
@@ -10570,6 +10594,18 @@ export type CustomMapPreset = {
     incomeGold?: number;
   };
   /**
+   * Designer HEX EVENTS — invisible triggers on chosen board hexes (the PC
+   * "Event" map object). Stepping onto the hex fires the event: an optional
+   * ambush guard (fought first, stamped as a designed guard the moment it
+   * springs), then a message + reward + VP. `mode` "first" fires once for the
+   * first player; "each-player" pays every player once (the guard is still
+   * beaten once, globally). `replaceVisit` suppresses the field's normal visit
+   * on the triggering entry. NEVER rendered on the game map (designer-only
+   * markers) and redacted from player views until they spring; capped at
+   * {@link MAX_HEX_EVENTS}, sanitised at persistence + setup.
+   */
+  hexEvents?: CustomHexEvent[];
+  /**
    * MAP-WIDE settlement options — to make settlements matter on a scenario.
    * Both optional; absent = classic settlements (unguarded, flat 1 VP).
    *   - guard: a level Ⅰ–Ⅶ or exact army fought the FIRST time a settlement is
@@ -10888,6 +10924,54 @@ export type CustomMapObeliskBonus =
 export const DEFAULT_OBELISK_BONUS: CustomMapObeliskBonus = { kind: "morale", amount: 1 };
 
 /**
+ * One designer HEX EVENT ({@link CustomMapPreset.hexEvents}) — an invisible
+ * trigger on a chosen board hex, the PC "Event" map object. Stepping onto the
+ * hex springs it: `guard` opens an ambush fight FIRST (stamped as a designed
+ * guard the moment it springs — invisible until then); once beaten (or absent)
+ * the message / reward / VP pay per `mode`. It never renders on the game map.
+ */
+export type CustomHexEvent = {
+  /** Stable designer id (list rows / removal). */
+  id: string;
+  /** Absolute board hex the event sits on (standalone placement shape). */
+  placement: { row: number; col: number };
+  /** Text shown to the triggering player (feed note; ≤240 chars). */
+  message?: string;
+  /** Reward paid on trigger (resources inline; dice/Searches as visit-steps). */
+  reward?: CustomFieldReward;
+  /** Victory Points for the triggering player (VP mode; 1-10). */
+  vp?: number;
+  /** Ambush guard — fought before the reward; beaten once, globally. */
+  guard?: CustomGuardSpec;
+  /**
+   * "first" (default): fires once, for the first player to step on the hex.
+   * "each-player": message/reward/VP pay once PER player (guard still once).
+   */
+  mode?: "first" | "each-player";
+  /** Suppress the field's normal visit on the entry that springs the event. */
+  replaceVisit?: boolean;
+};
+
+/** How many hex events a designed map may carry. */
+export const MAX_HEX_EVENTS = 24;
+
+/**
+ * Live state of one hex event during a game ({@link AdventureState.hexEvents},
+ * keyed by the hex's space id). REDACTED from every player view — clients never
+ * see unsprung events ("not shown in the real game"); the engine announces a
+ * sprung event through the normal event log instead.
+ */
+export type HexEventState = {
+  event: CustomHexEvent;
+  /** Players the message/reward already paid for (mode-aware). */
+  firedPlayerIds: PlayerId[];
+  /** The ambush guard was stamped onto the field (sprung, maybe unbeaten). */
+  guardStamped?: boolean;
+  /** The ambush guard was beaten (reward may pay). */
+  guardBeaten?: boolean;
+};
+
+/**
  * Landmark a face-down "Secret" slot guarantees at game start. The engine
  * draws a random tile from that slot's pool that carries the feature (not a
  * specific tile id) — so "Gold mine" means any Ⅱ–Ⅲ/Ⅳ–Ⅴ/… tile with a gold
@@ -11140,6 +11224,38 @@ export type CustomMapTilePlan = {
    * persistence + setup.
    */
   settlement?: CustomMapSettlementFieldPlan;
+  /**
+   * SPECIFIC (per-tile) object settings — the tile-scoped twin of the map-wide
+   * {@link CustomMapPreset.obelisks} / {@link CustomMapPreset.mines} configs.
+   * Each entry customizes every matching location on THIS tile only: guard,
+   * first-clear reward, VP, break flags, and an optional "first clear wins"
+   * condition. A set field OVERRIDES the map-wide config field-by-field (an
+   * unset field falls back to it — same fallback the per-tile settlement plan
+   * uses). A tile whose def carries no such location holds the plan inertly.
+   * Sanitised at persistence + setup.
+   */
+  objectPlans?: {
+    obelisk?: CustomObjectFieldPlan;
+    mine?: CustomObjectFieldPlan;
+  };
+};
+
+/**
+ * A SPECIFIC (per-tile) object customization ({@link CustomMapTilePlan.objectPlans}):
+ * guard / first-clear reward / VP / break flags for one object kind on one tile,
+ * plus `winCondition` — the first player to clear/flag that object WINS the game
+ * immediately (an additional early-end trigger, VP-mode aware like custom win
+ * conditions). All arms optional; empty collapses to undefined.
+ */
+export type CustomObjectFieldPlan = {
+  guard?: CustomGuardSpec;
+  reward?: CustomFieldReward;
+  vp?: number;
+  breakField?: boolean;
+  persistentGuard?: boolean;
+  unlimitedRounds?: boolean;
+  /** First player to clear / flag THIS object wins the game immediately. */
+  winCondition?: boolean;
 };
 
 /**
@@ -11151,6 +11267,8 @@ export type CustomMapTilePlan = {
  *     of the map-wide settlement VP and the flat 1.
  *   - holdRoundsToWin: hold this settlement continuously for N full rounds
  *     (1–10) to win the game immediately (an additional early-end trigger).
+ *   - winCondition: the first player to FLAG this settlement wins immediately
+ *     (the instant twin of holdRoundsToWin).
  */
 export type CustomMapSettlementFieldPlan = {
   guard?: CustomGuardSpec;
@@ -11162,6 +11280,7 @@ export type CustomMapSettlementFieldPlan = {
   reward?: CustomFieldReward;
   vp?: number;
   holdRoundsToWin?: number;
+  winCondition?: boolean;
 };
 
 /**
@@ -11273,6 +11392,8 @@ export type CustomCenterHexPlan = {
   reward?: CustomFieldReward;
   /** Victory Points for the first clearer (scored in VP mode; 1-10). */
   vp?: number;
+  /** First player to clear / capture THIS objective wins the game immediately. */
+  winCondition?: boolean;
 };
 
 /**

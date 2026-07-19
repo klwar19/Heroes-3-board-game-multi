@@ -406,6 +406,9 @@ export {
   ONEWAY_EXIT_MODES,
   OUTPOST_OBJECT_KINDS,
   describeFieldReward,
+  describeHexEvent,
+  MAX_HEX_EVENT_MESSAGE,
+  OBJECT_PLAN_KINDS,
   sanitizeCenterHexPlan,
   sanitizeCenterHexReward,
   sanitizeFieldReward,
@@ -413,6 +416,10 @@ export {
   sanitizeCustomMapObject,
   sanitizeCustomMapPreset,
   sanitizeCustomWinConditions,
+  sanitizeHexEvent,
+  sanitizeHexEvents,
+  sanitizeObjectFieldPlan,
+  sanitizeObjectPlans,
   sanitizeObjectGuard,
   secretFeatureDemandWarnings,
   tileMatchesSecretFeature,
@@ -459,6 +466,7 @@ export type {
   CustomMapStartingBonus,
   CustomMapTimedEffect,
   CustomMapTimedEvent,
+  ObjectPlanKind,
   PresetForcedOptionKey,
   TimedEffectKind
 } from "./map-preset";
@@ -675,7 +683,7 @@ export {
 export { describePermanentEffect } from "./effects";
 export { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
-export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, MAX_CUSTOM_GUARD_UNITS, NEUTRAL_PLAYER_ID } from "./state";
+export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, MAX_CUSTOM_GUARD_UNITS, MAX_HEX_EVENTS, NEUTRAL_PLAYER_ID } from "./state";
 export { DEFAULT_ANIME_OPTIONS, animeEnabled, animeModuleEnabled } from "./anime";
 export {
   CULTIVATION_REALMS,
@@ -907,7 +915,10 @@ export type {
   CustomCenterHexReward,
   CustomFieldReward,
   CustomGuardSpec,
+  CustomHexEvent,
   CustomMapTileToken,
+  CustomObjectFieldPlan,
+  HexEventState,
   OnewayExitMode,
   VictoryPointObjective,
   VisitStep,

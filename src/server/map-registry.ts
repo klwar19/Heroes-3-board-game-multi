@@ -9,6 +9,7 @@ import {
   sanitizeCenterHexPlan,
   sanitizeCustomMapPreset,
   sanitizeFieldReward,
+  sanitizeObjectPlans,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
   scenarioDefinitions,
@@ -267,6 +268,9 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
       : undefined;
   // Per-tile settlement customization (guard / VP / hold-to-win) — any group.
   const settlement = sanitizeSettlementFieldPlan(candidate.settlement);
+  // SPECIFIC (per-tile) object plans (obelisk / mine) — any group that can host
+  // them; a plan on a tile with no such location stays inert (settlement twin).
+  const objectPlans = sanitizeObjectPlans(candidate.objectPlans);
 
   return {
     row: candidate.row as number,
@@ -292,6 +296,7 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(playerResourcePick ? { playerResourcePick: true as const } : {}),
     ...(centerHex ? { centerHex } : {}),
     ...(settlement ? { settlement } : {}),
+    ...(objectPlans ? { objectPlans } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
     // The UNDERGROUND layer override (far/near/center/sea only), kept as true.

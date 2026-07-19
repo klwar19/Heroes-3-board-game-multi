@@ -398,6 +398,9 @@ export function HexMapBoard({
   // at that hex — a gentle reminder, never a stacked or repeating toast (a fresh
   // tap just re-anchors the one note and restarts its timer).
   const [drawReminderAt, setDrawReminderAt] = useState<MapSpaceId | null>(null);
+  // Click-to-inspect a designer-altered object: which hex's guard/reward info
+  // float is open (click again / elsewhere closes it).
+  const [inspectGuardAt, setInspectGuardAt] = useState<MapSpaceId | null>(null);
   const drawReminderTimer = useRef<number | null>(null);
   const remindToDraw = (spaceId: MapSpaceId) => {
     setDrawReminderAt(spaceId);
@@ -1561,7 +1564,17 @@ export function HexMapBoard({
                         }
                         remindToDraw(spaceId);
                       }
-                    : undefined
+                    : alteredGuardPreview || designerRewardTip
+                      ? () => {
+                          // Inspect a designer-altered object: click toggles a
+                          // float listing the exact guard army / reward — the
+                          // hover tooltip's touch-friendly, readable twin.
+                          if (suppressClickRef.current) {
+                            return;
+                          }
+                          setInspectGuardAt((current) => (current === spaceId ? null : spaceId));
+                        }
+                      : undefined
           }
           points={hexCorners(x, y, HEX_SIZE - 1.2)}
         >
@@ -2467,6 +2480,74 @@ export function HexMapBoard({
     render: () => ReactNode;
   };
   const mapFloats: MapFloat[] = [];
+
+  // Click-to-inspect a designer-altered object: the exact guard army / reward
+  // in a readable card (the hover tooltip's touch-friendly twin). Closes on a
+  // second click, the ✕, or when the field stops being altered (guard beaten).
+  if (inspectGuardAt) {
+    const coord = parseHexSpaceId(inspectGuardAt);
+    const field = adventure?.fields[inspectGuardAt];
+    const preview = designedGuardPreview(field);
+    const inspectClaimed = Boolean(
+      field && (field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed)
+    );
+    const rewardSummary =
+      field && !inspectClaimed
+        ? describeFieldReward({
+            ...(field.viiReward ?? {}),
+            ...(field.centerHexReward ?? {}),
+            ...(field.designerReward ?? {})
+          })
+        : "";
+    const rewardVp =
+      field && !inspectClaimed ? (field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0) : 0;
+    if (coord && field && (preview || rewardSummary || rewardVp > 0)) {
+      mapFloats.push({
+        key: "designed-guard-inspect-float",
+        mapPoint: hexToPixel(coord, HEX_SIZE),
+        cardWidth: 250,
+        cardHeight: 96 + (preview?.units.length ? Math.min(3, preview.units.length) * 14 : 0),
+        gap: HEX_SIZE * 0.62,
+        render: () => (
+          <div
+            aria-label="Designer object details"
+            className="mapFloatCard designedGuardInspectFloat"
+            data-inspect-guard={inspectGuardAt}
+            onPointerDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <span className="mapFloatTitle">
+              <span aria-hidden="true">⚔</span>{" "}
+              {locationDefinitions[field.location]?.name ?? field.location} — altered by the map designer
+            </span>
+            {preview ? (
+              <span className="designedGuardInspectUnits">
+                {preview.units.length > 0
+                  ? `Guard: ${preview.units.join(", ")}`
+                  : `Guard level ${ROMAN[preview.difficulty] ?? preview.difficulty}`}
+                {preview.units.length > 0 && preview.difficulty
+                  ? ` (counts as ${ROMAN[preview.difficulty] ?? preview.difficulty})`
+                  : ""}
+              </span>
+            ) : null}
+            {rewardSummary || rewardVp > 0 ? (
+              <span className="designedGuardInspectReward">
+                <span aria-hidden="true">★</span> First-clear reward:{" "}
+                {[rewardSummary, rewardVp > 0 ? `+${rewardVp} VP` : ""].filter(Boolean).join(" · ")}
+              </span>
+            ) : null}
+            <button
+              className="commandButton ghost"
+              onClick={() => setInspectGuardAt(null)}
+              type="button"
+            >
+              Close
+            </button>
+          </div>
+        )
+      });
+    }
+  }
 
   if (selectedTarget && myHero && !readOnly) {
     const coord = parseHexSpaceId(selectedTarget.spaceId);

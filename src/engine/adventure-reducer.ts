@@ -139,6 +139,7 @@ import {
   resolveMagicUniversityDig,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
+  setHexEventEncounterHook,
   setOnMapTileRevealHook,
   spendRecruitResources,
   spendResources,
@@ -3334,6 +3335,17 @@ function reassignTileDefForResource(
 // Let the Subterranean Gate reveal (which lives in adventure.ts, on the far side
 // of the import cycle) run a Ⅱ–Ⅲ surface tile through the same flip.
 setOnMapTileRevealHook(revealOnMapTile);
+
+// Designer hex-event AMBUSH starter (registered across the same import cycle):
+// the sprung guard fights for REAL — straight to combat placement, bypassing
+// Quick Combat and Diplomacy (you cannot out-level a surprise). Experience
+// follows the stamped difficulty as usual; a lost/retreated fight leaves the
+// now-public guard, and a LATER attempt runs the normal guarded-field flow.
+setHexEventEncounterHook((state, hero, field) => {
+  beginNeutralCombatPlacement(state, hero, field, field.difficulty ?? 1, {
+    unlimitedRounds: Boolean(field.unlimitedCombatRounds)
+  });
+});
 
 /** Resolves a keep / reroll / pick decision on the Ⅱ–Ⅲ flip in progress. */
 export function resolveFarTileFlip(state: GameState, optionIndex: number): void {
