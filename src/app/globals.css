@@ -14682,19 +14682,12 @@ img.cardBack {
 .mapPresetSpecificList li { font-size: 12px; }
 .mapPresetPickChip { font-weight: 700; }
 .mapPresetPickWarning { color: #ffd2a1; }
-.mapPresetHexEventCard { display: grid; gap: 6px; }
-.mapPresetHexEventMessage {
-  display: grid;
-  gap: 3px;
-}
-.mapPresetHexEventMessage span { font-size: 11px; opacity: 0.85; }
-.mapPresetHexEventMessage input {
-  background: rgba(10, 14, 24, 0.7);
-  border: 1px solid rgba(140, 150, 180, 0.4);
-  border-radius: 6px;
-  color: inherit;
-  font-size: 12.5px;
-  padding: 5px 8px;
+/* Lean one-line pointer: hex events are placed/edited on the BOARD, not here. */
+.mapPresetHexEventNote {
+  border-left: 2px solid rgba(201, 156, 255, 0.5);
+  display: block;
+  margin: 6px 0 2px;
+  padding-left: 8px;
 }
 
 /* In-game click-to-inspect float for designer-altered objects. */

@@ -1115,13 +1115,11 @@ export function MapDesigner({
   /**
    * SPECIFIC-mode pick armed from the objects panel: eligible tiles highlight,
    * clicking one attaches the per-tile setting (object-plan → opens the tile's
-   * options; hex-event → places an event on the exact clicked hex). Escape or
-   * a resolving click clears it via {@link onPickResolved}.
+   * options). Escape or a resolving click clears it via {@link onPickResolved}.
+   * Hidden hex events have no pick flow — they place from the board's own
+   * Objects palette ("Hidden event" button).
    */
-  pickRequest?:
-    | { kind: "object-plan"; objectKind: SpecificPickKind }
-    | { kind: "hex-event" }
-    | null;
+  pickRequest?: { kind: "object-plan"; objectKind: SpecificPickKind } | null;
   onPickResolved?: () => void;
   /** Designer hex events (invisible in game; markers here only). */
   hexEvents?: CustomHexEvent[];
@@ -2096,20 +2094,8 @@ export function MapDesigner({
       closeAllPanels();
       setSelectedHexEventId(eventId);
       setHexEventPopoverAt({ x: 8, y: 0 });
-      if (pickRequest?.kind === "hex-event") {
-        onPickResolved?.();
-      }
     },
-    [
-      onHexEventsChange,
-      hexEvents,
-      hexEventCandidateIds,
-      hexEventTakenIds,
-      nextHexEventId,
-      closeAllPanels,
-      pickRequest,
-      onPickResolved
-    ]
+    [onHexEventsChange, hexEvents, hexEventCandidateIds, hexEventTakenIds, nextHexEventId, closeAllPanels]
   );
   /** Patch one event's fields; `undefined` clears the optional field (preset-editor parity). */
   const patchHexEvent = useCallback(
@@ -4347,8 +4333,7 @@ export function MapDesigner({
       })()
     : null;
   const showHexEventCandidates =
-    Boolean(onHexEventsChange) &&
-    (armedHexEvent || pickRequest?.kind === "hex-event" || Boolean(hexEventDrag?.moved));
+    Boolean(onHexEventsChange) && (armedHexEvent || Boolean(hexEventDrag?.moved));
   if (showHexEventCandidates) {
     const hoverId = hexEventDrag?.hover ? hexSpaceId(hexEventDrag.hover) : null;
     for (const id of hexEventCandidateIds) {
@@ -4895,9 +4880,7 @@ export function MapDesigner({
           <div className="designerPickBanner" role="status" aria-label="Pick a tile on the map">
             <span aria-hidden="true">📍</span>
             <strong>
-              {pickRequest.kind === "hex-event"
-                ? "Click any hex of a placed tile to drop a hidden event there."
-                : pickRequest.objectKind === "obelisk"
+              {pickRequest.objectKind === "obelisk"
                   ? "Click a highlighted tile with an Obelisk to set its specific options."
                   : pickRequest.objectKind === "mine"
                     ? "Click a highlighted tile with a Mine to set its specific options."
@@ -5042,20 +5025,9 @@ export function MapDesigner({
             const press = pressRef.current;
             if (press && press.pointerId === event.pointerId && !press.promoted) {
               pressRef.current = null;
-              // SPECIFIC-mode pick: a hex-event click drops an event on the
-              // exact hex under the pointer; an object-plan click on an
-              // ELIGIBLE tile selects it and opens its options (scrolled to
-              // the object section). Ineligible tiles ignore the click.
-              if (pickRequest?.kind === "hex-event") {
-                const local = clientToLocal(event.clientX, event.clientY);
-                const hex = local ? pixelToHex(local.x, local.y, hexSize) : null;
-                if (hex) {
-                  // Shared placement path (validates the cell, dedupes, opens
-                  // the new event's editor and resolves the pick).
-                  placeHexEventAt(hex);
-                }
-                return;
-              }
+              // SPECIFIC-mode pick: an object-plan click on an ELIGIBLE tile
+              // selects it and opens its options (scrolled to the object
+              // section). Ineligible tiles ignore the click.
               if (pickRequest?.kind === "object-plan") {
                 const plan = customMap[press.index];
                 if (plan && planEligibleForPick(plan, pickRequest.objectKind)) {

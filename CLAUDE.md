@@ -2266,29 +2266,29 @@ What runs (each behaviour has a failing-if-removed test):
 - **Designer UX**: the preset editor's "Map objects" group (renamed from "Map
   locations") — 🌍 Global | 📍 Specific tabs per kind (specific lists per-tile
   plans with summaries + "Pick a tile on the map"; a no-eligible-tile state
-  shows a ⚠ warning instead of a dead button), the "Hidden hex events" section
-  (per-event cards: message, ambush GuardSpecEditor, FieldRewardEditor + VP,
-  first/each-player, replaceVisit, remove; "Place an event on the map"). The
-  pick arms `MapDesigner.pickRequest`: eligible tiles pulse green, others dim,
+  shows a ⚠ warning instead of a dead button). The object-plan pick arms
+  `MapDesigner.pickRequest`: eligible tiles pulse green, others dim,
   Esc/banner-cancel disarms, an eligible click opens the tile popover (which
   gained "Special obelisk/mine (this tile)" sections — shown ONLY on eligible
   tiles — plus 🏁 win ticks on settlement/center sections). Tiles with specific
-  settings wear a ⚔ (🏁⚔ with a win) badge. HEX EVENTS are additionally a
-  first-class palette object (2026-07): a "Hidden event" button in the board's
-  Objects palette (glyph `DESIGNER_UI_ICONS.hexEvent`) arms placement — every
-  placed-tile hex AND every standalone object hex glows (the event is invisible
-  in game, so it SHARES its hex with whatever is printed there; only another
-  event blocks a cell, one per hex) — a click places, disarms, and opens the
-  event's own docked editor (message / ambush / reward+VP / mode chips /
-  replaceVisit / remove — the preset-editor card's twin). A placed marker is a
+  settings wear a ⚔ (🏁⚔ with a win) badge. HEX EVENTS have ONE surface, the
+  BOARD (2026-07 — the preset editor's old per-event card section AND its
+  "Place an event on the map" pick flow are REMOVED; the editor keeps only a
+  one-line count note, `pickRequest` is object-plan-only again): a "Hidden
+  event" button in the board's Objects palette (glyph
+  `DESIGNER_UI_ICONS.hexEvent`) arms placement — every placed-tile hex AND
+  every standalone object hex glows (the event is invisible in game, so it
+  SHARES its hex with whatever is printed there; only another event blocks a
+  cell, one per hex) — a click places, disarms, and opens the event's own
+  docked editor (message / ambush GuardSpecEditor / FieldRewardEditor + VP /
+  first-vs-each-player + replaceVisit chips / remove). A placed marker is a
   subtle violet image hex with a full hover tooltip: click opens the editor,
   drag moves it to any other legal hex (object-drag lifecycle: 6px promote,
   hover preview + PLACE reticle, Escape aborts, trailing click suppressed).
-  The preset editor's pick flow still works and now shares the same placement
-  path (same candidates, dedupe, editor-on-place). Pinned in
-  `map-designer.test.tsx` ("specific object plans & hex events": marker +
-  tooltip, palette arm/place incl. a standalone object hex, editor
-  edit/remove, drag move).
+  Pinned in `map-designer.test.tsx` ("specific object plans & hex events":
+  marker + tooltip, palette arm/place incl. a standalone object hex, editor
+  edit/remove, drag move) and `map-preset-editor.test.tsx` (the editor carries
+  only the count note — no cards, no pick button).
 - **Guard visibility in game**: clicking a designer-altered object that is NOT
   a move target opens the `designedGuardInspectFloat` — exact army (grouped
   labels), level, unclaimed first-clear reward/VP — the move-confirm warning's

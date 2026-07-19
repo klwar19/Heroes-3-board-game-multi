@@ -4126,38 +4126,6 @@ describe("MapDesigner — specific object plans & hex events", () => {
     expect(token!.querySelector("polygon.designerHexEventHex")).toBeTruthy();
   });
 
-  it("hex-event pick mode drops an event on the clicked hex (jsdom identity CTM)", () => {
-    const restore = installIdentitySvgPolyfills();
-    try {
-      const onHexEventsChange = vi.fn();
-      const onPickResolved = vi.fn();
-      const { container } = render(
-        <MapDesigner
-          customMap={[{ row: town.row, col: town.col, group: "starting", faceDown: false }]}
-          hexEvents={[]}
-          onChange={() => {}}
-          onHexEventsChange={onHexEventsChange}
-          onPickResolved={onPickResolved}
-          pickRequest={{ kind: "hex-event" }}
-          scenarioId="skirmish"
-        />
-      );
-      const target = container.querySelector(".designerHexPlan")!;
-      // The designer board renders at DESIGN_HEX = 24; identity CTM makes
-      // client coords equal board coords, so aim at the town's centre hex.
-      const pixel = hexToPixel(town, 24);
-      fireEvent.pointerDown(target, { button: 0, pointerId: 1, clientX: pixel.x, clientY: pixel.y });
-      fireEvent.pointerUp(target, { button: 0, pointerId: 1, clientX: pixel.x, clientY: pixel.y });
-      expect(onHexEventsChange).toHaveBeenCalledTimes(1);
-      const events = onHexEventsChange.mock.calls[0][0];
-      expect(events).toHaveLength(1);
-      expect(events[0].placement).toEqual({ row: town.row, col: town.col });
-      expect(onPickResolved).toHaveBeenCalledTimes(1);
-    } finally {
-      restore();
-    }
-  });
-
   /**
    * Stateful harness with LIVE hex events (and optional standalone objects), so
    * placing / editing / dragging re-renders like production. `get()` reads the
