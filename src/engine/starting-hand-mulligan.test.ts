@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, type GameAction, type GameState } from "./index";
-import { getLegalActions } from "./legal-actions";
 
 // ---------------------------------------------------------------------------
-// First-round starting-hand Mulligan mode (GameSetupOptions.startingHandMulligan,
-// default OFF). In ROUND 1 only, AFTER the mandatory start-of-turn draw, a player
-// may replace up to FIRST_ROUND_MULLIGAN_LIMIT (4) cards — one at a time
-// (MULLIGAN_CARD: discard one to the bottom of your own deck, draw one) — until
-// the budget runs out. Each claim fails if its wiring is removed; the mode-off,
-// round-2 and pre-draw cases are the CONTROLs.
+// First-round hand Mulligan (GameSetupOptions.startingHandMulligan, default ON).
+// ON  = current normal play: round-1 start-of-turn discards are allowed (cards
+//       return to the bottom of your own deck).
+// OFF = no discards at the beginning of round 1 — keep the opening hand
+//       (draw-only if under the limit). Later rounds discard normally.
+// Each claim fails if its wiring is removed; the OFF and later-round cases are
+// CONTROLs.
 // ---------------------------------------------------------------------------
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -17,11 +17,20 @@ function apply(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
+function applyExpectError(state: GameState, action: GameAction): string {
+  const result = applyAction(state, action);
+  expect(result.errors.length, "expected a rejection").toBeGreaterThan(0);
+  return result.errors.map((error) => error.message).join("; ");
+}
+
 /** A fresh 2-player game with the active player's starting tile rotated, so the
- *  opening hand step (canMulligan) — and, with the mode on, the round-1 Mulligan
- *  budget — are armed. */
-function openedGame(seed: string, mode = true): { state: GameState; active: string } {
-  let state = createAdventureGameState({ seed, difficulty: "normal", startingHandMulligan: mode });
+ *  opening hand step (canMulligan) is armed. */
+function openedGame(seed: string, mode?: boolean): { state: GameState; active: string } {
+  let state = createAdventureGameState({
+    seed,
+    difficulty: "normal",
+    ...(mode !== undefined ? { startingHandMulligan: mode } : {})
+  });
   const active = state.activePlayerId;
   const pendingTile = state.adventure!.pendingTileChoice;
   expect(pendingTile?.kind).toBe("starting");
@@ -34,94 +43,100 @@ function openedGame(seed: string, mode = true): { state: GameState; active: stri
   return { state, active };
 }
 
-/** Take the mandatory start-of-turn draw (draw new, no discards). */
-function takeMandatoryDraw(state: GameState, active: string): GameState {
-  return apply(state, { type: "REFRESH_HAND", playerId: active, discardCardIds: [] });
-}
-
-describe("First-round starting-hand Mulligan", () => {
-  it("freezes the option and seeds the round-1 budget (CONTROL: absent by default)", () => {
-    const { state, active } = openedGame("shm-freeze");
+describe("First-round hand Mulligan", () => {
+  it("defaults ON (current normal: round-1 discards allowed)", () => {
+    const { state } = openedGame("shm-default-on");
     expect(state.adventure!.startingHandMulligan).toBe(true);
-    // The budget is seeded at turn start (before the mandatory draw is taken).
-    expect(state.players[active]!.firstRoundMulligansLeft).toBe(4);
 
-    const off = createAdventureGameState({ seed: "shm-freeze-off", difficulty: "normal" });
-    expect(off.adventure!.startingHandMulligan ?? false).toBe(false);
-  });
-
-  it("round 1: replaces a card (to deck bottom, draws the top), up to 4, then stops", () => {
-    const { state: opened, active } = openedGame("shm-basic");
-    expect(opened.round).toBe(1);
-    let state = takeMandatoryDraw(opened, active);
-    const player = () => state.players[active]!;
-    // The mandatory draw is spent; the replacement budget stands at 4.
-    expect(player().canMulligan).toBe(false);
-    expect(player().needsHandRefresh ?? false).toBe(false);
-    expect(player().firstRoundMulligansLeft).toBe(4);
-
-    // Deterministic hand/deck for the replacement.
-    player().hand = ["stat.attack", "stat.defense", "stat.power", "stat.knowledge"];
-    player().deck = ["ability.luck"];
-    player().discard = [];
-
-    // MULLIGAN_CARD is offered for each hand card.
-    const offers = getLegalActions(state, active).map((legal) => legal.action);
-    expect(offers.some((action) => action.type === "MULLIGAN_CARD" && action.cardId === "stat.attack")).toBe(true);
-
-    // Replace stat.attack: it goes to the BOTTOM of the deck; draw the top card…
-    state = apply(state, { type: "MULLIGAN_CARD", playerId: active, cardId: "stat.attack" });
-    expect(player().hand).toEqual(["stat.defense", "stat.power", "stat.knowledge", "ability.luck"]);
-    expect(player().deck).toEqual(["stat.attack"]);
-    // …never onto the discard pile (the round-1 rule), and one replacement spent.
-    expect(player().discard).toEqual([]);
-    expect(player().firstRoundMulligansLeft).toBe(3);
-
-    // Spend the remaining three replacements.
-    for (let i = 0; i < 3; i += 1) {
-      state = apply(state, { type: "MULLIGAN_CARD", playerId: active, cardId: player().hand[0] });
-    }
-    expect(player().firstRoundMulligansLeft).toBe(0);
-
-    // A fifth replacement is rejected, and none is offered any more.
-    const fifth = applyAction(state, { type: "MULLIGAN_CARD", playerId: active, cardId: player().hand[0] });
-    expect(fifth.errors.length).toBeGreaterThan(0);
-    expect(getLegalActions(state, active).some((legal) => legal.action.type === "MULLIGAN_CARD")).toBe(false);
-  });
-
-  it("CONTROL: with the mode OFF no replacement is offered or accepted", () => {
-    const { state: opened, active } = openedGame("shm-off", false);
-    const state = takeMandatoryDraw(opened, active);
-    expect(state.players[active]!.firstRoundMulligansLeft ?? 0).toBe(0);
-    state.players[active]!.hand = ["stat.attack", "stat.defense"];
-    state.players[active]!.deck = ["ability.luck"];
-    expect(getLegalActions(state, active).some((legal) => legal.action.type === "MULLIGAN_CARD")).toBe(false);
-    const rejected = applyAction(state, { type: "MULLIGAN_CARD", playerId: active, cardId: "stat.attack" });
-    expect(rejected.errors.length).toBeGreaterThan(0);
-  });
-
-  it("CONTROL: only in round 1 — a later round offers no replacement even with budget", () => {
-    const { state: opened, active } = openedGame("shm-round2");
-    const state = takeMandatoryDraw(opened, active);
-    state.round = 2;
-    state.players[active]!.firstRoundMulligansLeft = 4;
-    state.players[active]!.hand = ["stat.attack"];
-    state.players[active]!.deck = ["ability.luck"];
-    expect(getLegalActions(state, active).some((legal) => legal.action.type === "MULLIGAN_CARD")).toBe(false);
-    const rejected = applyAction(state, { type: "MULLIGAN_CARD", playerId: active, cardId: "stat.attack" });
-    expect(rejected.errors.length).toBeGreaterThan(0);
-  });
-
-  it("CONTROL: unavailable until the mandatory start-of-turn draw is taken", () => {
-    const { state: opened, active } = openedGame("shm-pre");
-    // The mandatory draw is still pending (canMulligan), so no replacement yet.
-    expect(opened.players[active]!.canMulligan).toBe(true);
-    expect(getLegalActions(opened, active).some((legal) => legal.action.type === "MULLIGAN_CARD")).toBe(false);
-    const rejected = applyAction(opened, {
-      type: "MULLIGAN_CARD",
-      playerId: active,
-      cardId: opened.players[active]!.hand[0] ?? "stat.attack"
+    const off = createAdventureGameState({
+      seed: "shm-default-off",
+      difficulty: "normal",
+      startingHandMulligan: false
     });
-    expect(rejected.errors.length).toBeGreaterThan(0);
+    expect(off.adventure!.startingHandMulligan).toBe(false);
+  });
+
+  it("ON: round 1 may discard during the start-of-turn hand step (deck bottom)", () => {
+    const { state: opened, active } = openedGame("shm-on-discard", true);
+    expect(opened.round).toBe(1);
+    const player = opened.players[active]!;
+    player.hand = ["stat.attack", "stat.defense", "stat.power", "stat.knowledge"];
+    player.deck = ["ability.luck"];
+    player.discard = [];
+
+    const state = apply(opened, {
+      type: "REFRESH_HAND",
+      playerId: active,
+      discardCardIds: ["stat.attack"]
+    });
+    expect(state.players[active]!.hand).toEqual([
+      "stat.defense",
+      "stat.power",
+      "stat.knowledge",
+      "ability.luck"
+    ]);
+    expect(state.players[active]!.deck).toEqual(["stat.attack"]);
+    expect(state.players[active]!.discard).toEqual([]);
+  });
+
+  it("OFF: round 1 rejects a start-of-turn discard (CONTROL)", () => {
+    const { state: opened, active } = openedGame("shm-off-lock", false);
+    expect(opened.adventure!.startingHandMulligan).toBe(false);
+    expect(opened.round).toBe(1);
+    const player = opened.players[active]!;
+    player.hand = ["stat.attack", "stat.defense", "stat.power", "stat.knowledge"];
+    player.deck = ["ability.luck"];
+    player.discard = [];
+    player.canMulligan = true;
+    player.needsHandRefresh = false;
+
+    const message = applyExpectError(opened, {
+      type: "REFRESH_HAND",
+      playerId: active,
+      discardCardIds: ["stat.attack"]
+    });
+    expect(message).toMatch(/First-round hand discards are off/i);
+    // Hand unchanged — the reject is whole-action.
+    expect(opened.players[active]!.hand).toEqual([
+      "stat.attack",
+      "stat.defense",
+      "stat.power",
+      "stat.knowledge"
+    ]);
+  });
+
+  it("OFF: round 1 still allows draw-only (empty discard list)", () => {
+    const { state: opened, active } = openedGame("shm-off-draw", false);
+    const player = opened.players[active]!;
+    player.hand = ["stat.attack", "stat.defense", "stat.power"];
+    player.deck = ["ability.luck"];
+    player.discard = [];
+
+    const state = apply(opened, {
+      type: "REFRESH_HAND",
+      playerId: active,
+      discardCardIds: []
+    });
+    expect(state.players[active]!.hand).toContain("ability.luck");
+    expect(state.players[active]!.canMulligan).toBe(false);
+  });
+
+  it("CONTROL — a later round discards normally even when the option is off", () => {
+    const { state: opened, active } = openedGame("shm-later-round", false);
+    opened.round = 3;
+    const player = opened.players[active]!;
+    player.canMulligan = true;
+    player.needsHandRefresh = false;
+    player.hand = ["stat.attack", "stat.defense", "stat.power", "stat.knowledge"];
+    player.deck = ["ability.luck"];
+    player.discard = [];
+
+    const state = apply(opened, {
+      type: "REFRESH_HAND",
+      playerId: active,
+      discardCardIds: ["stat.attack"]
+    });
+    expect(state.players[active]!.discard).toEqual(["stat.attack"]);
+    expect(state.players[active]!.deck).toEqual([]);
   });
 });

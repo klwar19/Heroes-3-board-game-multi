@@ -652,10 +652,15 @@ export function HexMapBoard({
   // Map-targeted spell choices belong on the map. Dimension Door and View
   // Earth used to expose only opaque location-code buttons; index-align their
   // legal actions with the destination fields so the glowing hex is clickable.
+  // Subterranean Gate placement is NOT instant-confirm on click — the player
+  // cycles positions and Confirms (see gatePlacementChoice + the gate float).
   const pendingMapChoiceTargets = useMemo(() => {
     const targets = new Map<MapSpaceId, GameAction>();
     const choice = state.pendingChoice;
     if (readOnly || choice?.type !== "OPTION_CHOICE" || choice.playerId !== viewerPlayerId) {
+      return targets;
+    }
+    if (choice.context === "subterranean-gate-placement") {
       return targets;
     }
     const spaceIds =
@@ -663,13 +668,11 @@ export function HexMapBoard({
         ? choice.dimensionDoor?.destinations
         : choice.context === "view-earth"
           ? choice.viewEarth?.mineSpaceIds
-          : choice.context === "subterranean-gate-placement"
-            ? choice.subterraneanGate?.candidates.map((candidate) => candidate.hex)
-            : choice.context === "place-map-token"
-              ? choice.mapToken?.candidates
-              : choice.context === "place-field-override"
-                ? choice.fieldOverride?.candidates
-                : undefined;
+          : choice.context === "place-map-token"
+            ? choice.mapToken?.candidates
+            : choice.context === "place-field-override"
+              ? choice.fieldOverride?.candidates
+              : undefined;
     if (!spaceIds) {
       return targets;
     }
@@ -697,11 +700,10 @@ export function HexMapBoard({
     return targets;
   }, [state.pendingChoice, viewerPlayerId, legalActions, readOnly]);
 
-  // During the Subterranean Gate pick-on-reveal choice, tag every candidate hex
-  // so the map can spell out — right on the flower — which field would become the
-  // Gate (down, on a Surface tile) or the Path up (a Subterranean tile's entrance
-  // to the Surface). The choice is otherwise legible only from the prompt text.
-  const gatePlacementChoice = useMemo(() => {
+  // During the Subterranean Gate pick-on-reveal choice the player cycles between
+  // candidate exits and Confirms — only the SELECTED candidate glows. A lone
+  // candidate is auto-carved by the engine (never opens this choice).
+  const gatePlacementOpen = useMemo(() => {
     const choice = state.pendingChoice;
     if (
       readOnly ||
@@ -713,11 +715,39 @@ export function HexMapBoard({
       return null;
     }
     const { candidates } = choice.subterraneanGate;
-    // Every candidate of one choice carves the same half type — it depends only on
-    // which layer was just revealed — so a single role labels the whole set.
     const role = candidates[0]?.role ?? "gate";
-    return { role, hexes: new Set<MapSpaceId>(candidates.map((candidate) => candidate.hex)) };
+    return {
+      choiceId: choice.id,
+      role,
+      candidates,
+      labels: choice.options.map((option) => option.label)
+    };
   }, [state.pendingChoice, viewerPlayerId, readOnly]);
+
+  const [gatePickIndex, setGatePickIndex] = useState(0);
+  useEffect(() => {
+    setGatePickIndex(0);
+  }, [gatePlacementOpen?.choiceId]);
+
+  const gatePlacementChoice = useMemo(() => {
+    if (!gatePlacementOpen) {
+      return null;
+    }
+    const count = gatePlacementOpen.candidates.length;
+    const index = count > 0 ? ((gatePickIndex % count) + count) % count : 0;
+    const selected = gatePlacementOpen.candidates[index];
+    if (!selected) {
+      return null;
+    }
+    return {
+      role: gatePlacementOpen.role,
+      selectedHex: selected.hex as MapSpaceId,
+      selectedIndex: index,
+      allHexes: new Set<MapSpaceId>(gatePlacementOpen.candidates.map((candidate) => candidate.hex)),
+      label: gatePlacementOpen.labels[index] ?? "",
+      count
+    };
+  }, [gatePlacementOpen, gatePickIndex]);
 
   // During a Monolith/Whirlpool token placement, tag every candidate hex so the
   // map spells out — right on the revealed tile — which field the token would
@@ -1427,6 +1457,10 @@ export function HexMapBoard({
       const endTurnMove = endTurnMoveTargets.get(spaceId);
       const mapChoice = pendingMapChoiceTargets.get(spaceId);
       const teleportTarget = teleportChoice?.targets.get(spaceId);
+      const gateCandidateIndex =
+        gatePlacementOpen?.candidates.findIndex((candidate) => candidate.hex === spaceId) ?? -1;
+      const isGateCandidate = gateCandidateIndex >= 0;
+      const isGateSelected = gatePlacementChoice?.selectedHex === spaceId;
       const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
       // Designer-ALTERED guard (custom army / level / forced settlement fight):
       // surface what the player will face in the hex tooltip so an altered fight
@@ -1452,7 +1486,8 @@ export function HexMapBoard({
             remindMove ? "moveTargetLocked" : "",
             teleportTarget ? "teleportTarget" : "",
             endTurnMove ? "endTurnMoveTarget" : "",
-            mapChoice ? "mapChoiceTarget" : "",
+            mapChoice || isGateSelected ? "mapChoiceTarget" : "",
+            isGateCandidate && !isGateSelected ? "gateExitCandidate" : "",
             isSelected ? "selectedTarget" : "",
             alteredGuardPreview ? "alteredGuard" : "",
             artShown ? "withArt" : ""
@@ -1469,6 +1504,12 @@ export function HexMapBoard({
                 ? () => {
                     if (!suppressClickRef.current) {
                       onAction(teleportTarget.action);
+                    }
+                  }
+                : isGateCandidate
+                ? () => {
+                    if (!suppressClickRef.current) {
+                      setGatePickIndex(gateCandidateIndex);
                     }
                   }
                 : mapChoice
@@ -1610,20 +1651,24 @@ export function HexMapBoard({
         );
       }
 
-      // Pick-on-reveal Subterranean Gate placement: label each candidate field on
-      // the map so the player sees exactly which hex becomes the Gate (Surface) or
-      // the Path up (Underground) before committing — the field also glows and is
-      // clickable via pendingMapChoiceTargets above.
-      if (gatePlacementChoice?.hexes.has(spaceId)) {
+      // Pick-on-reveal Subterranean Gate placement: only the SELECTED exit glows
+      // (cycle + Confirm on the map float). Other candidates stay dimly marked so
+      // the player sees every legal exit while rotating between them.
+      if (gatePlacementChoice?.allHexes.has(spaceId)) {
+        const isSelected = gatePlacementChoice.selectedHex === spaceId;
         overlays.push(
           <text
-            className="hexGateChoiceCue"
+            className={`hexGateChoiceCue${isSelected ? " selected" : " dim"}`}
             key={`${spaceId}-gate-choice-cue`}
             textAnchor="middle"
             x={x}
             y={y + HEX_SIZE * 0.92}
           >
-            {gatePlacementChoice.role === "gate" ? "🕳 gate here" : "🕳 path up here"}
+            {isSelected
+              ? gatePlacementChoice.role === "gate"
+                ? "🕳 gate here"
+                : "🕳 path up here"
+              : "·"}
           </text>
         );
       }
@@ -2493,6 +2538,79 @@ export function HexMapBoard({
               ⛰ You can&apos;t discover an Underground tile from the Surface. Reach a Subterranean Gate (the cave-mouth
               hex on a revealed tile) and step onto it — the tile beyond opens for free.
             </span>
+          </div>
+        )
+      });
+    }
+  }
+
+  // Subterranean Gate exit pick: cycle positions on the selected candidate hex
+  // and Confirm — locks the exit for the rest of the game.
+  if (gatePlacementChoice && gatePlacementOpen) {
+    const coord = parseHexSpaceId(gatePlacementChoice.selectedHex);
+    if (coord) {
+      const confirmAction = legalActions.find(
+        (legal) =>
+          legal.action.type === "CHOOSE_OPTION" &&
+          legal.action.choiceId === gatePlacementOpen.choiceId &&
+          legal.action.optionIndex === gatePlacementChoice.selectedIndex
+      )?.action;
+      mapFloats.push({
+        key: "gate-exit-float",
+        mapPoint: hexToPixel(coord, HEX_SIZE),
+        cardWidth: 280,
+        cardHeight: 128,
+        gap: HEX_SIZE * 0.72,
+        render: () => (
+          <div
+            aria-label="Place the Subterranean Gate exit"
+            className="mapFloatCard gateExitFloat"
+            onPointerDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <span className="mapFloatTitle">
+              {gatePlacementChoice.role === "gate" ? "Gate exit" : "Path up"} — cycle &amp; confirm
+            </span>
+            <small className="mapFloatLabel">{gatePlacementChoice.label}</small>
+            <div className="mapFloatButtons rotateFloatRow">
+              <button
+                className="commandButton"
+                disabled={gatePlacementChoice.count <= 1}
+                onClick={() =>
+                  setGatePickIndex(
+                    (value) => (value + gatePlacementChoice.count - 1) % gatePlacementChoice.count
+                  )
+                }
+                title="Previous exit position"
+                type="button"
+              >
+                <RotateCcw size={14} />
+              </button>
+              <span className="rotateDegrees">
+                {gatePlacementChoice.selectedIndex + 1}/{gatePlacementChoice.count}
+              </span>
+              <button
+                className="commandButton"
+                disabled={gatePlacementChoice.count <= 1}
+                onClick={() => setGatePickIndex((value) => (value + 1) % gatePlacementChoice.count)}
+                title="Next exit position"
+                type="button"
+              >
+                <RotateCw size={14} />
+              </button>
+              <button
+                className="commandButton primary"
+                disabled={!confirmAction}
+                onClick={() => {
+                  if (confirmAction) {
+                    onAction(confirmAction);
+                  }
+                }}
+                type="button"
+              >
+                <Check size={13} /> Confirm
+              </button>
+            </div>
           </div>
         )
       });
@@ -4389,6 +4507,72 @@ export function PromptTray({
       legal.action.type === "PLACE_OBSERVATORY_TILE"
   );
   const optionActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_OPTION");
+  // Subterranean Gate exit: cycle positions + Confirm (mirrors the map float).
+  // Local index — the map board keeps its own copy for the glow.
+  const gateExitChoice =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "subterranean-gate-placement" &&
+    choice.playerId === viewerPlayerId &&
+    choice.subterraneanGate
+      ? choice
+      : null;
+  const [gateTrayIndex, setGateTrayIndex] = useState(0);
+  useEffect(() => {
+    setGateTrayIndex(0);
+  }, [gateExitChoice?.id]);
+  if (gateExitChoice && gateExitChoice.subterraneanGate) {
+    const candidates = gateExitChoice.subterraneanGate.candidates;
+    const count = Math.max(1, candidates.length);
+    const index = ((gateTrayIndex % count) + count) % count;
+    const label = gateExitChoice.options[index]?.label ?? `Exit ${index + 1}`;
+    const confirm = optionActions.find(
+      (legal) =>
+        legal.action.type === "CHOOSE_OPTION" &&
+        legal.action.choiceId === gateExitChoice.id &&
+        legal.action.optionIndex === index
+    );
+    const role = candidates[0]?.role ?? "gate";
+    return (
+      <div
+        className="promptTray"
+        role="dialog"
+        aria-label={gateExitChoice.prompt}
+      >
+        <strong>
+          {role === "gate" ? "Subterranean Gate — fix the gate exit" : "Subterranean Gate — fix the path up"}
+        </strong>
+        <small>
+          Cycle the positions on the map (or here), then Confirm. The exit is fixed for the rest of the game.
+        </small>
+        <div className="promptOptions rotateFloatRow">
+          <button
+            className="commandButton"
+            disabled={count <= 1}
+            onClick={() => setGateTrayIndex((value) => (value + count - 1) % count)}
+            type="button"
+          >
+            <RotateCcw size={14} /> Previous
+          </button>
+          <span className="rotateDegrees">
+            {index + 1}/{count}: {label}
+          </span>
+          <button
+            className="commandButton"
+            disabled={count <= 1}
+            onClick={() => setGateTrayIndex((value) => (value + 1) % count)}
+            type="button"
+          >
+            Next <RotateCw size={14} />
+          </button>
+          {confirm ? (
+            <button className="commandButton primary" onClick={() => onAction(confirm.action)} type="button">
+              <Check size={13} /> Confirm
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
   const abilityTargetActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_ABILITY_TARGET");
   const combatDiscardActions = legalActions.filter((legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD");
   // WOG Hierophant commander: the after-combat First Aid window (heal 1
@@ -7514,7 +7698,7 @@ function GameOptionsPanel({
         const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
         const undoMovesOn = options.undoMoves ?? false;
         const manualGuardControlOn = options.manualGuardControl ?? false;
-        const startingHandMulliganOn = options.startingHandMulligan ?? false;
+        const startingHandMulliganOn = options.startingHandMulligan !== false;
         const unitExperienceOn = options.unitExperience ?? false;
         return (
           <div className="optionalRulesCluster" aria-label="Optional scoring, decks, spell book, and testing aids">
@@ -7719,7 +7903,7 @@ function GameOptionsPanel({
 
             <div className="optionRow startingHandMulliganRow">
               <OptionRowLabel
-                hint="First round only: after your mandatory opening draw you may still swap out up to 4 more cards from your hand, one at a time, drawing a fresh card for each"
+                hint="Default ON: in round 1 you may discard and redraw during your start-of-turn hand step (current normal play). Turn OFF to lock the opening hand — draw only, no discards in round 1."
                 iconClassName="optionRowIcon crest"
                 iconSrc="/assets/spell-icons/view-air.png"
                 title="First-round hand Mulligan"
@@ -7740,8 +7924,8 @@ function GameOptionsPanel({
               </div>
               <small className="optionHint">
                 {startingHandMulliganOn
-                  ? "In round 1 only, after your mandatory start-of-turn draw, you may replace up to 4 cards from your hand one at a time — each replaced card goes to the bottom of your deck and you draw a fresh one."
-                  : "Off: the opening hand is set after your start-of-turn draw, exactly as usual."}
+                  ? "On (default): in round 1 you may discard cards during your start-of-turn hand step and draw back up — discarded cards return to the bottom of your deck."
+                  : "Off: in round 1 you cannot discard at the start of your turn — keep the dealt opening hand (draw only if under the limit). Later rounds discard normally."}
               </small>
             </div>
 

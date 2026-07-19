@@ -5201,18 +5201,9 @@ export default function Home() {
     // forget it.
     const canDraw =
       Boolean(viewer?.canMulligan) && hasOpenAdventureTurn(state, viewerPlayerId) && !forcedDiscard;
-    // First-round starting-hand Mulligan (optional mode): after the mandatory
-    // start-of-turn draw, in ROUND 1 only, the viewer may replace up to a few
-    // more cards from their hand — one at a time — from each card's menu.
-    const firstRoundMulligansLeft = viewer?.firstRoundMulligansLeft ?? 0;
-    const canFirstRoundMulligan =
-      Boolean(state.adventure?.startingHandMulligan) &&
-      state.round === 1 &&
-      hasOpenAdventureTurn(state, viewerPlayerId) &&
-      !forcedDiscard &&
-      !viewer?.canMulligan &&
-      firstRoundMulligansLeft > 0 &&
-      handCards.length > 0;
+    // First-round hand Mulligan (default ON): when OFF, the R1 start-of-turn
+    // step is draw-only — no "Discard and draw new".
+    const firstRoundDiscardsAllowed = state.adventure?.startingHandMulligan !== false;
     const hasMorale = (viewer?.morale ?? 0) > 0;
     const moraleRedrawCardAvailable = legalActions.some(
       (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "redraw"
@@ -5803,16 +5794,16 @@ export default function Home() {
                     ⚠ Take your start-of-turn draw first — you must draw (or discard and draw) before moving or using a card.
                   </span>
                 ) : null}
-                {/* First-round Mulligan (optional mode): a gentle nudge that the
-                    player may still swap out a few opening cards this round. */}
-                {canFirstRoundMulligan && handMode === null ? (
+                {/* Round-1 lock when First-round hand Mulligan is off. */}
+                {canDraw && state.round === 1 && !firstRoundDiscardsAllowed && handMode === null ? (
                   <span className="handHint mulliganHint">
-                    First-round Mulligan: open a card and choose “Replace this card” — {firstRoundMulligansLeft} left.
+                    First-round hand Mulligan is off — keep your opening hand (draw only).
                   </span>
                 ) : null}
                 {/* The mandatory start-of-turn draw: one either/or — draw new, OR
                     discard and draw new. Required every turn (including the first)
-                    before moving or using a card. */}
+                    before moving or using a card. When First-round hand Mulligan
+                    is off, round 1 is draw-only. */}
                 {!forcedDiscard && handMode === null ? (
                   <div className="handButtons">
                     {canDraw ? (
@@ -5827,7 +5818,8 @@ export default function Home() {
                         >
                           Draw new (up to {handLimit})
                         </button>
-                        {handCards.length > 0 ? (
+                        {handCards.length > 0 &&
+                        (state.round !== 1 || firstRoundDiscardsAllowed) ? (
                           <button className="commandButton" onClick={() => setHandMode("mulligan")} type="button">
                             Discard and draw new
                           </button>
@@ -6280,22 +6272,6 @@ export default function Home() {
                               type="button"
                             >
                               Discard this card, then draw
-                            </button>
-                          ) : null}
-                          {/* First-round Mulligan (optional mode): after the
-                              mandatory draw, swap this card for a fresh one — it
-                              goes to the bottom of your deck. Round 1 only. */}
-                          {canFirstRoundMulligan ? (
-                            <button
-                              className="firstRoundMulligan"
-                              onClick={() => {
-                                submitAction({ type: "MULLIGAN_CARD", playerId: viewerPlayerId, cardId });
-                                setOpenHandIndex(null);
-                              }}
-                              title="First-round Mulligan: swap this card for a fresh one (the replaced card goes to the bottom of your deck)"
-                              type="button"
-                            >
-                              Replace this card ({firstRoundMulligansLeft} left)
                             </button>
                           ) : null}
                           {stashAction ? (

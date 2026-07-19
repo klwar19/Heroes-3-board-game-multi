@@ -795,6 +795,19 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
     handCounts.set(cardId, left - 1);
   }
 
+  // First-round hand Mulligan (default ON): when the option is OFF, players may
+  // not discard during the round-1 start-of-turn hand step — the opening hand
+  // is kept (draw-up only if under the limit). Forced over-limit discards
+  // (needsHandRefresh) still run so a hand effect cannot trap the seat.
+  if (
+    state.round === 1 &&
+    state.adventure?.startingHandMulligan === false &&
+    action.discardCardIds.length > 0 &&
+    !player.needsHandRefresh
+  ) {
+    throw new Error("First-round hand discards are off for this game — keep your opening hand.");
+  }
+
   // First-round rule: a card discarded during the opening round goes back to the
   // BOTTOM of your OWN deck, not onto the discard pile — an early mulligan must
   // not strand cards in the discard for the whole first deck cycle. It sits at
@@ -2062,49 +2075,26 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
     rotation
   });
 
-  // GLOBAL Field Overrides place FIRST — before Subterranean Gates, Creature
-  // Banks, and Monolith/Whirlpool/teleport tokens — so those systems never
+  // GLOBAL Field Overrides place FIRST — before Creature Banks, Subterranean
+  // Gates, and Monolith/Whirlpool/teleport tokens — so those systems never
   // compete for the same hex and the override always carves a clean printed
   // field (user rule). Home (Ⅰ) tiles never roll a pool override.
   // Only a choice the offer itself OPENED (its `true` return) pauses the chain
   // — a pre-existing unrelated pendingChoice (another tile's bank prompt in
-  // parallel play) must not silently skip this tile's gate/bank/token flow.
+  // parallel play) must not silently skip this tile's bank/gate/token flow.
   if (!isStartTile && offerPendingFieldOverridePlacement(state, tile, action.playerId)) {
-    // Manual / manual-or-refuse window open: gate/bank/token wait behind it
+    // Manual / manual-or-refuse window open: bank/gate/token wait behind it
     // (re-offered when the override choice resolves).
     return;
   }
 
-  // Rotate first, THEN pick: with this tile's fields on the board, decide the
-  // Subterranean Gate it shares with a tile on the other layer. When the
-  // placement is ambiguous — which touching hex becomes the gate, later which
-  // underground hex is the path up, and which of two Surface tiles a cavern joins
-  // — the revealing player CHOOSES (pick-on-reveal). The home (Ⅰ) tile, setup,
-  // and single-candidate cases carve automatically at the nearest hex.
-  const gateCandidates =
-    !isStartTile && adventure.chooseGatePlacement ? planGateChoiceForReveal(adventure, tile) : [];
-  if (gateCandidates.length >= 2) {
-    // Open the placement choice; the gate is carved on resolution and the
-    // Creature Bank offer waits behind it, so a Blocked Field that becomes the
-    // gate hex yields no bank ("not at the gate hex").
-    openSubterraneanGatePlacementChoice(state, tile, action.playerId, gateCandidates);
-    return;
-  }
-
-  // Automatic carve (0 or 1 candidate, or the choice is off): sacrifice the
-  // nearest hex and warn what it cost, then offer the Creature Bank.
-  carveGatesWithWarning(state, action.playerId, false);
-
-  // Naval Battles optional rule: a freshly discovered Far/Near tile — or a
-  // Subterranean cavern (house rule) — with a Blocked Field lets the discovering
-  // player place a Creature Bank token there. The home (Ⅰ) tile never offers one.
+  // Reveal chain after rotation: pick the bank → fix the Subterranean Gate exit
+  // (cycle positions + confirm when ≥2 candidates; auto when only one) → tokens.
+  // Home (Ⅰ) tiles never run bank/gate placement.
   if (!isStartTile) {
     offerCreatureBankPlacement(state, tile, action.playerId);
-    // A designed Monolith/Whirlpool token riding this tile is placed by the
-    // discovering player ("a Field of your choosing", p.35). It waits behind an
-    // open bank prompt; the bank resolution re-offers it.
     if (!state.pendingChoice) {
-      offerPendingTokenPlacement(state, tile, action.playerId);
+      continueRevealAfterBank(state, tile, action.playerId);
     }
   }
 
@@ -2114,6 +2104,25 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
   if (isStartTile && parallelTurnsActive(state)) {
     beginNextPendingStartTileRotation(state);
   }
+}
+
+/**
+ * After the Creature Bank prompt (or when none was offered), fix the
+ * Subterranean Gate exit on the just-revealed tile, then place any waiting
+ * Monolith/Whirlpool/Gate tokens. ≥2 candidate hexes/partners → player cycles
+ * and confirms; 0–1 → automatic carve.
+ */
+function continueRevealAfterBank(state: GameState, tile: MapTileState, playerId: PlayerId): void {
+  const adventure = requireAdventure(state);
+  const gateCandidates = adventure.chooseGatePlacement ? planGateChoiceForReveal(adventure, tile) : [];
+  if (gateCandidates.length >= 2) {
+    openSubterraneanGatePlacementChoice(state, tile, playerId, gateCandidates);
+    return;
+  }
+  // Automatic carve (0 or 1 candidate, or the choice is off): sacrifice the
+  // nearest hex and warn what it cost, then offer teleport tokens.
+  carveGatesWithWarning(state, playerId, false);
+  offerPendingTokenPlacement(state, tile, playerId);
 }
 
 /**
@@ -2187,8 +2196,9 @@ function gateCandidateLabel(state: GameState, tile: MapTileState, candidate: Sub
 
 /**
  * Opens the pick-on-reveal Subterranean Gate placement choice for the revealing
- * player: one option per candidate hex/partner. Resolving it records the plan,
- * carves the chosen gate, then offers the deferred Creature Bank.
+ * player: one option per candidate hex/partner. The UI cycles positions and
+ * confirms; resolving records the plan, carves the chosen gate, then offers
+ * any waiting Monolith/Whirlpool tokens (bank already ran earlier in the chain).
  */
 function openSubterraneanGatePlacementChoice(
   state: GameState,
@@ -2199,8 +2209,8 @@ function openSubterraneanGatePlacementChoice(
   const revealedIsCavern = tileLayer(tile) === "subterranean";
   // Two options only ever share a label when they place the SAME hex toward two
   // different partners (a cavern touching two Surface tiles); that hex is left to
-  // the buttons on the map (it is ambiguous to click), so number the collision so
-  // the two buttons stay distinguishable. Distinct hexes get distinct edges.
+  // the cycle/confirm UI on the map, so number the collision so the two options
+  // stay distinguishable. Distinct hexes get distinct edges.
   const rawLabels = candidates.map((candidate) => gateCandidateLabel(state, tile, candidate));
   const labelTotals = new Map<string, number>();
   for (const label of rawLabels) {
@@ -2220,11 +2230,12 @@ function openSubterraneanGatePlacementChoice(
     type: "OPTION_CHOICE",
     playerId,
     prompt: revealedIsCavern
-      ? "Subterranean Gate — choose which glowing hex becomes the path up to the Surface (it sacrifices that field)."
-      : "Subterranean Gate — choose which glowing hex becomes the gate down to the cavern (it sacrifices that field).",
+      ? "Subterranean Gate — cycle the path-up exit on the map and Confirm (it sacrifices that field)."
+      : "Subterranean Gate — cycle the gate exit on the map and Confirm (it sacrifices that field).",
     options,
     context: "subterranean-gate-placement",
-    subterraneanGate: { tileInstanceId: tile.id, candidates, deferBank: true },
+    // Bank already ran before the gate choice; only tokens wait behind it.
+    subterraneanGate: { tileInstanceId: tile.id, candidates, deferBank: false },
     returnPhase: state.phase
   };
   state.phase = "choice";
@@ -2239,10 +2250,9 @@ function openSubterraneanGatePlacementChoice(
  * starting tiles never trigger this — even a sea tile that carries a Blocked
  * Field / impassable terrain (the gate is the tile group, not the Blocked Field).
  *
- * Called AFTER the Subterranean Gate is carved, so if the tile's Blocked Field
- * was sacrificed to the gate it is no longer a Blocked Field and no bank is
- * offered there ("not at the gate hex"). No-op when the rule is off (no piles) or
- * the pile is empty.
+ * Called AFTER rotation and BEFORE the Subterranean Gate exit is fixed, so the
+ * player sees the bank first, then locks the gate position. No-op when the rule
+ * is off (no piles) or the pile is empty.
  */
 function offerCreatureBankPlacement(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
@@ -10810,11 +10820,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
-    // A Monolith/Whirlpool token riding the same tile waited behind the bank
-    // prompt; its placement (by the same discovering player) opens now.
+    // Bank settled — fix the Subterranean Gate exit next, then tokens.
     // Field Overrides already ran before the bank (first in the reveal chain).
     if (bankTile) {
-      offerPendingTokenPlacement(state, bankTile, action.playerId);
+      continueRevealAfterBank(state, bankTile, action.playerId);
     }
     return;
   }
@@ -10873,17 +10882,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       if (offerPendingFieldOverridePlacement(state, tile, action.playerId, { allowPoolDraw: false })) {
         return;
       }
-      // Override queue drained — resume gate → bank → teleport.
-      const gateCandidates =
-        adventure.chooseGatePlacement ? planGateChoiceForReveal(adventure, tile) : [];
-      if (gateCandidates.length >= 2) {
-        openSubterraneanGatePlacementChoice(state, tile, action.playerId, gateCandidates);
-        return;
-      }
-      carveGatesWithWarning(state, action.playerId, false);
+      // Override queue drained — resume bank → gate → teleport.
       offerCreatureBankPlacement(state, tile, action.playerId);
       if (!state.pendingChoice) {
-        offerPendingTokenPlacement(state, tile, action.playerId);
+        continueRevealAfterBank(state, tile, action.playerId);
       }
     }
     return;
@@ -10902,16 +10904,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
-    // Gate carved first, so a Blocked Field that became the gate hex is gone and
-    // no bank is offered there — otherwise the freshly revealed tile may still
-    // bank on a Blocked Field the gate spared.
+    // Gate exit fixed for the rest of the game. Bank already ran earlier; only
+    // Monolith/Whirlpool tokens wait behind the gate prompt.
     const tile = data ? adventure?.tiles[data.tileInstanceId] : undefined;
     if (data?.deferBank && tile) {
+      // Legacy snapshots that opened a gate choice with deferBank:true still
+      // offer the bank after the pick (old reveal chain).
       offerCreatureBankPlacement(state, tile, action.playerId);
     }
-    // And a Monolith/Whirlpool token on the tile waits behind BOTH the gate and
-    // the bank prompts (the gate carve may have consumed a candidate hex).
-    // Field Overrides already ran before the gate (first in the reveal chain).
     if (tile && !state.pendingChoice) {
       offerPendingTokenPlacement(state, tile, action.playerId);
     }

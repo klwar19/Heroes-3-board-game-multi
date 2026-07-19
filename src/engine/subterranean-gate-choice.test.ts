@@ -65,7 +65,12 @@ function setAllEmpty(state: GameState, tile: MapTileState): void {
   }
 }
 
-/** Reveal a placed (or face-down) tile through the real SET_TILE_ROTATION flow. */
+/**
+ * Reveal a placed (or face-down) tile through the real SET_TILE_ROTATION flow.
+ * Does NOT auto-resolve the Creature Bank / gate prompts that may open after
+ * rotation — use {@link declineCreatureBankIfOpen} when a test only cares about
+ * the subsequent gate exit pick / auto-carve.
+ */
 function revealTile(state: GameState, tileId: string, playerId = "p1"): GameState {
   const tile = adv(state).tiles[tileId];
   tile.faceDown = false;
@@ -78,6 +83,26 @@ function revealTile(state: GameState, tileId: string, playerId = "p1"): GameStat
     }
   }
   throw new Error(`no legal rotation revealed ${tileId}`);
+}
+
+/** Decline an open Creature Bank place/leave prompt so the reveal chain reaches
+ *  the Subterranean Gate exit step (bank → gate → tokens). */
+function declineCreatureBankIfOpen(state: GameState, playerId = "p1"): GameState {
+  const choice = state.pendingChoice;
+  if (choice?.type === "OPTION_CHOICE" && choice.context === "place-creature-bank") {
+    return applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId,
+      choiceId: choice.id,
+      optionIndex: choice.options.length - 1
+    });
+  }
+  return state;
+}
+
+/** Reveal and pass the bank step so the gate exit is auto-carved or offered. */
+function revealPastBank(state: GameState, tileId: string, playerId = "p1"): GameState {
+  return declineCreatureBankIfOpen(revealTile(state, tileId, playerId), playerId);
 }
 
 function gateHalfTo(state: GameState, towardTileId: string): MapFieldState | undefined {
@@ -115,7 +140,7 @@ describe("pick-on-reveal: the gate hex", () => {
     const cavernCenter = tileLatticeNeighbors(surfaceCenter)[0];
     const surface = instantiateTile(adv(state), "F1", surfaceCenter, 0, true);
     const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true);
-    const revealed = revealTile(state, surface.id);
+    const revealed = revealPastBank(state, surface.id);
     // No choice was offered (auto path); the gate carved at the nearest hex.
     expect(gatePlacementChoice(revealed)).toBeNull();
     return gateHalfTo(revealed, cavern.id)!.spaceId;
@@ -130,7 +155,7 @@ describe("pick-on-reveal: the gate hex", () => {
     const surface = instantiateTile(adv(state), "F1", surfaceCenter, 0, true);
     const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true);
 
-    const revealed = revealTile(state, surface.id);
+    const revealed = revealPastBank(state, surface.id);
     const choice = gatePlacementChoice(revealed);
     expect(choice, "revealing the Surface tile opens the gate-hex choice").toBeTruthy();
     const candidates = choice!.subterraneanGate!.candidates;
@@ -173,12 +198,12 @@ describe("pick-on-reveal: the path up (entrance)", () => {
   it("carves the entrance on the hex the player chooses and links the crossing", () => {
     // Control: choose-off carves the entrance at the nearest hex automatically.
     const auto = forwardSetup(false);
-    const autoRevealed = revealTile(auto.state, auto.cavern.id);
+    const autoRevealed = revealPastBank(auto.state, auto.cavern.id);
     const autoEntrance = gateHalfTo(autoRevealed, auto.surface.id)!;
     expect(autoEntrance).toBeDefined();
 
     const { state, surface, cavern } = forwardSetup(true);
-    const revealed = revealTile(state, cavern.id);
+    const revealed = revealPastBank(state, cavern.id);
     const choice = gatePlacementChoice(revealed);
     expect(choice, "revealing the cavern opens the path-up choice").toBeTruthy();
     const candidates = choice!.subterraneanGate!.candidates;
@@ -226,7 +251,7 @@ describe("pick-on-reveal: which Surface tile a cavern joins", () => {
   it("lets the player connect the cavern to EITHER touching Surface tile (and clears the loser)", () => {
     // Control: choose-off links the cavern to the auto-picked surface.
     const auto = twoSurfaceSetup(false);
-    const autoRevealed = revealTile(auto.state, auto.cavern.id);
+    const autoRevealed = revealPastBank(auto.state, auto.cavern.id);
     const autoLinkedSurface =
       gatesOn(autoRevealed, auto.surfaceA).some((f) => f.gateLinkSpaceId) ? auto.surfaceA : auto.surfaceB;
     const autoOtherSurface = autoLinkedSurface === auto.surfaceA ? auto.surfaceB : auto.surfaceA;
@@ -234,7 +259,7 @@ describe("pick-on-reveal: which Surface tile a cavern joins", () => {
 
     // Choice: pick a candidate that connects the OTHER surface tile.
     const { state, cavern, surfaceA, surfaceB } = twoSurfaceSetup(true);
-    const revealed = revealTile(state, cavern.id);
+    const revealed = revealPastBank(state, cavern.id);
     const choice = gatePlacementChoice(revealed);
     expect(choice, "the cavern reveal opens the which-Surface choice").toBeTruthy();
     const candidates = choice!.subterraneanGate!.candidates;
@@ -269,7 +294,7 @@ describe("gate placement warns what it sacrifices", () => {
     const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true);
     // The Surface gate is carved (auto) toward the face-down cavern; its warning
     // names the F1 Location the gate covered and is flagged as an automatic carve.
-    const revealedSurface = revealTile(state, surface.id);
+    const revealedSurface = revealPastBank(state, surface.id);
     const surfaceGate = gateHalfTo(revealedSurface, cavern.id)!;
     const surfaceWarn = revealedSurface.eventLog.find(
       (event) => event.type === "SUBTERRANEAN_GATE_PLACED" && event.fieldId === surfaceGate.spaceId
@@ -284,8 +309,8 @@ describe("gate placement warns what it sacrifices", () => {
 
     // Reveal the cavern: the entrance sacrifices whatever U1's tile art printed on
     // that hex, and the warning names that Location (the captured pre-carve value,
-    // never the gate it became).
-    const after = revealTile(revealedSurface, cavern.id);
+    // never the gate it became). Bank step first — pass it so the auto-carve runs.
+    const after = revealPastBank(revealedSurface, cavern.id);
     const entrance = gateHalfTo(after, surface.id)!;
     const entranceWarn = after.eventLog.find(
       (event) => event.type === "SUBTERRANEAN_GATE_PLACED" && event.fieldId === entrance.spaceId
@@ -326,48 +351,49 @@ describe("subterranean Creature Banks (house rule)", () => {
     expect(adv(placed).creatureBankTokensNear!.length).toBe(nearBefore - 1);
   });
 
-  it("offers NO bank when the gate hex IS the Blocked Field, but DOES when the gate spares it", () => {
-    // Forward setup at neighbour[0]: the cavern reveal opens a 2-hex path-up
-    // choice whose candidates include the cavern's Blocked Field.
-    function forward(): { state: GameState; cavern: MapTileState; blockedHex: string; revealed: GameState } {
-      const state = makeGame(true);
-      const surfaceCenter = { row: 24, col: 12 };
-      const cavernCenter = tileLatticeNeighbors(surfaceCenter)[0];
-      const surface = instantiateTile(adv(state), "F1", surfaceCenter, 0, false);
-      const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true);
-      setAllEmpty(state, surface);
-      recomputeSubterraneanGates(adv(state));
-      const revealed = revealTile(state, cavern.id);
-      const blockedHex = getTileFootprintSpaceIds(cavern).find(
-        (id) => adv(revealed).fields[id]?.location === "blocked_field"
-      )!;
-      return { state, cavern, blockedHex, revealed };
-    }
+  it("offers the bank BEFORE the gate exit pick (bank → gate order)", () => {
+    // Reveal chain after rotation: Creature Bank first, then Subterranean Gate
+    // exit (cycle + confirm when ≥2 candidates). A bank on the Blocked Field
+    // that later becomes a gate exit is overwritten when the gate carves.
+    const state = makeGame(true);
+    const surfaceCenter = { row: 24, col: 12 };
+    const cavernCenter = tileLatticeNeighbors(surfaceCenter)[0];
+    const surface = instantiateTile(adv(state), "F1", surfaceCenter, 0, false);
+    const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true);
+    setAllEmpty(state, surface);
+    recomputeSubterraneanGates(adv(state));
+    const revealed = revealTile(state, cavern.id);
 
-    // (a) Path up placed ON the Blocked Field → the gate consumes it → NO bank.
-    const onBlocked = forward();
-    const choiceA = gatePlacementChoice(onBlocked.revealed)!;
-    const blockedIndex = choiceA.subterraneanGate!.candidates.findIndex((c) => c.hex === onBlocked.blockedHex);
-    expect(blockedIndex, "the Blocked Field is a path-up candidate here").toBeGreaterThanOrEqual(0);
-    const afterOnBlocked = resolveGateChoice(onBlocked.revealed, blockedIndex);
-    expect(adv(afterOnBlocked).fields[onBlocked.blockedHex]!.location).toBe("subterranean_gate");
+    // First prompt is the bank (Blocked Field still present).
     expect(
-      afterOnBlocked.pendingChoice?.type === "OPTION_CHOICE" &&
-        afterOnBlocked.pendingChoice.context === "place-creature-bank",
-      "no bank is offered on a hex the gate took"
-    ).toBe(false);
-
-    // (b) Path up placed on the OTHER hex → the Blocked Field survives → a bank IS
-    //     offered there (the mutation control: same setup, different pick).
-    const spared = forward();
-    const choiceB = gatePlacementChoice(spared.revealed)!;
-    const sparedIndex = choiceB.subterraneanGate!.candidates.findIndex((c) => c.hex !== spared.blockedHex);
-    expect(sparedIndex).toBeGreaterThanOrEqual(0);
-    const afterSpared = resolveGateChoice(spared.revealed, sparedIndex);
-    expect(adv(afterSpared).fields[spared.blockedHex]!.location).toBe("blocked_field");
-    expect(
-      afterSpared.pendingChoice?.type === "OPTION_CHOICE" &&
-        afterSpared.pendingChoice.context === "place-creature-bank"
+      revealed.pendingChoice?.type === "OPTION_CHOICE" &&
+        revealed.pendingChoice.context === "place-creature-bank",
+      "bank is offered first"
     ).toBe(true);
+    const bankChoice = revealed.pendingChoice!;
+    const afterBank = applyOk(revealed, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: bankChoice.id,
+      optionIndex: 1 // Leave it blocked — keep the Blocked Field for the gate test
+    });
+
+    // Then the gate exit pick opens.
+    const gateChoice = gatePlacementChoice(afterBank);
+    expect(gateChoice, "gate exit choice opens after the bank").toBeTruthy();
+    const blockedHex = getTileFootprintSpaceIds(cavern).find(
+      (id) => adv(afterBank).fields[id]?.location === "blocked_field"
+    )!;
+    const blockedIndex = gateChoice!.subterraneanGate!.candidates.findIndex((c) => c.hex === blockedHex);
+    expect(blockedIndex, "the Blocked Field is a path-up candidate").toBeGreaterThanOrEqual(0);
+
+    // Confirming the gate on the Blocked Field carves it (no bank re-offer).
+    const afterGate = resolveGateChoice(afterBank, blockedIndex);
+    expect(adv(afterGate).fields[blockedHex]!.location).toBe("subterranean_gate");
+    expect(
+      afterGate.pendingChoice?.type === "OPTION_CHOICE" &&
+        afterGate.pendingChoice.context === "place-creature-bank",
+      "bank is not re-offered after the gate"
+    ).toBe(false);
   });
 });

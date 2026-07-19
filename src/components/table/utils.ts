@@ -1010,6 +1010,10 @@ export function noticeRewardsFromEvents(
 ): { rewards: NoticeReward[]; iconImage?: string } {
   const rewards: NoticeReward[] = [];
   let iconImage: string | undefined;
+  // Resource-die faces already show the paid-out token + amount. A follow-on
+  // RESOURCES_GAINED for the same amounts used to double the icon (die face +
+  // stockpile chip). Track shown amounts so each resource appears once.
+  const resourceDieShown = new Map<ResourceKind, number>();
   for (const event of events) {
     switch (event.type) {
       case "ADVENTURE_DICE_ROLLED": {
@@ -1035,6 +1039,10 @@ export function noticeRewardsFromEvents(
               title: `Resource die: +${roll.amount} ${formatResourceName(roll.resource)}`,
               tone: "gain"
             });
+            resourceDieShown.set(
+              roll.resource,
+              (resourceDieShown.get(roll.resource) ?? 0) + roll.amount
+            );
           }
         } else if (event.dice === "attack" && event.attackRolls?.length) {
           for (const face of event.attackRolls) {
@@ -1055,14 +1063,29 @@ export function noticeRewardsFromEvents(
           [event.valuables, "valuables"]
         ];
         for (const [amount, resource] of parts) {
-          if (amount) {
-            rewards.push({
-              icon: resourceRewardIcon(resource),
-              label: `+${amount}`,
-              title: `+${amount} ${formatResourceName(resource)}`,
-              tone: "gain"
-            });
+          if (!amount) {
+            continue;
           }
+          // Skip amounts already shown by the resource-die face chip(s).
+          const alreadyShown = resourceDieShown.get(resource) ?? 0;
+          if (alreadyShown > 0) {
+            const remaining = Math.max(0, alreadyShown - amount);
+            if (remaining === 0) {
+              resourceDieShown.delete(resource);
+            } else {
+              resourceDieShown.set(resource, remaining);
+            }
+            // Fully covered by a die face → no second icon.
+            if (alreadyShown >= amount) {
+              continue;
+            }
+          }
+          rewards.push({
+            icon: resourceRewardIcon(resource),
+            label: `+${amount}`,
+            title: `+${amount} ${formatResourceName(resource)}`,
+            tone: "gain"
+          });
         }
         break;
       }
