@@ -2996,6 +2996,87 @@ Five additions; each engine claim fails a named test if its wiring is removed.
   `CHOOSE_OPTION` accept (optionIndex 0) / replace (1..N) actions. Pinned in
   `rule-111-choice-art.test.tsx`.
 
+## Map UX & rules batch (2026-07) + audit fixes — what runs vs. limits
+
+Nine changes shipped together; a follow-up audit fixed the holes marked (AUDIT
+FIX). Each engine claim fails a named test if its wiring is removed.
+
+- **Free tile rotation (seal gate OFF).** `TILE_ROTATION_SEAL_GATE_ENABLED =
+  false` (`adventure-reducer.ts`): every rotation of a revealed/placed tile is
+  offered AND Confirmable — the "border lines seal the tile off" hard reject and
+  the placing-hero doorway gate are both disabled. Yellow arcs still seal
+  MOVEMENT after materialize (untouched), the pure geometry helpers
+  (`isTileRotationConnected` / `canHeroReachPlacedTile`) stay live for AI
+  scoring, and flipping the flag back to `true` restores both gates. Pinned in
+  `adventure.test.ts` ("offers every far-tile rotation …") and the e2e rotate
+  flow.
+- **Spell searches take ANY acquirable discarded spell** (other decks keep the
+  classic top-only take): `openSharedDeckSearch` offers one take per acquirable
+  card in the Spell discard (`deckSearchMode.discardPickCardIds`, options 1..N,
+  school-fetch offers after). After a Spell Search leaves 2+ unkept cards, the
+  searcher PICKS which sits face-up on top (`spell-discard-top` choice).
+  (AUDIT FIX ×3): the pick INTERPOSES but never swallows the post-Search
+  offers — the morale repeat-search / Pendant of Courage offers re-open after it
+  through the ONE shared seam `maybeOpenPostSearchOffers` (adventure-reducer,
+  also the tail of `resolveDeckSearch`); `eliminatePlayer` returns the parked
+  unkept cards to the shared discard (they sit only on the open choice — a
+  mid-pick elimination destroys nothing); and the `DeckSearchModeModal` renders
+  EACH pick's own card face (it used to show the pile top's face on option 1
+  and blank backs on the rest). Pinned in `spell-discard-pick.test.ts` (offer /
+  face-up pick / morale-after-pick / elimination) and
+  `deck-search-mode-modal.test.tsx` (per-pick faces).
+- **Manual guard control is FREE play.** `neutralControlMustAttack` returns
+  false without PvP Neutral Control — the manual fighter may move, attack,
+  Defend, Wait (polish-wait), hold or use tokens; only a REAL PvP Neutral
+  Control opponent is bound by `pvpNeutralControlMustAttack`. (AUDIT FIX): the
+  read is per-combat — with the PvP option ON but nobody left to take the
+  guards (`pvpNeutralControllerId` null), the manual fighter still gets free
+  play, never the sub-toggle. Polish-wait re-activation and Astrologers frenzy
+  keep their own force-attack paths. Pinned in `manual-guard-control.test.ts`
+  (free-control cases + the PvP-corner case with a live-opponent CONTROL).
+- **Two-way exit modes on Gates AND Monoliths** (shared one-way vocabulary:
+  certain / random / mix + always-pickable destinations, default certain =
+  classic traveller-picks): stored on the origin field
+  (`onewayExitMode`/`onewayAlwaysPickable`), read in `resolveGateTeleport` /
+  `resolveTokenTeleport`. The 3-whirlpool die and the 2-monolith auto-travel
+  are unchanged; mix rolls its random pick ONCE per visit open. (AUDIT FIX ×3):
+  a face-down designed token KEEPS its mode when the reveal places it
+  (`placeMapToken` now carries the extras for gate + monolith, like one-way); a
+  "mix" always-pickable destination that is still a PENDING token on a
+  face-down tile is offered up front (`tokenDestinationAlwaysPickable` — the
+  shipped code read a non-existent field and pending tiles always fell into the
+  roll pool); and STANDALONE gate/monolith objects share the whole vocabulary
+  (sanitizer + `applyCustomMapObjects` + designer object panel + token↔object
+  conversion carry). Pinned in `two-way-exit-modes.test.ts` (reveal parity,
+  pending-tile mix, standalone carve + sanitizer, each with CONTROLs).
+- **Far (Ⅱ–Ⅲ) pool never carries an Obelisk tile** (house rule; Obelisks live
+  on Ⅳ–Ⅴ Near): the far pool filter strips obelisk-bearing tiles (Factory &F1)
+  at setup, and the Grail obelisk shortfall pulls from the NEAR pool only (12
+  near obelisk tiles exist — supply is safe). Designer exact pins bypass the
+  pool. Pinned in `far-pool-no-obelisk.test.ts` +
+  `expansion-content.test.ts` (catalog minus the obelisk far tiles).
+- **Power-boost windows are MASKED for other viewers** (AUDIT FIX): the
+  `map-spell-boost`, `visions-boost` and `fortune-boost` option labels name the
+  caster's PRIVATE hand cards ("Discard <card> …"), so `player-view` scrubs
+  labels + payload card ids for non-owners (visions/fortune had leaked since
+  they shipped — the new window copied it; all three are masked at the one
+  chokepoint). Pinned in `map-spell-cast.test.ts` ("hidden-info safety").
+- **VP surrender note + scoring menu (pure UI over engine-real rules):** the
+  pre-battle escape button and the VP dock note that surrender awards the
+  opponent 1 VP — the ENGINE side (`recordVpSurrender`, 1 VP vs the full 3 VP
+  main-hero defeat) predates this batch and stays pinned in
+  `victory-points.test.ts`; the scoring overlay gains Close + "Go to main menu".
+- **Presentation only:** treasure/resource/attack die GET chips on visit
+  notices (`noticeRewardsFromEvents`, `notice-rewards.test.ts`), Polish
+  Unit-Stack badges on the combat placement panel
+  (`placement-panel.test.tsx`), and face-down tiles render EVERY pending token
+  (multi-token tiles, whirlpools included — public designer info) instead of
+  only the legacy first entry (`screen.tsx`).
+- **LIMIT (AI):** computer seats answer the new `spell-discard-top` and
+  `map-spell-boost` choices through the GENERIC option scorer (bounded — each
+  boost pick shrinks the offer list — but greedy: no bespoke tier-value
+  policy), and the AI never sets designer exit modes.
+
 ## Map settings defaults (designer → lobby, seed-at-pick) — what runs vs. limits
 
 Three OPTIONAL defaults a designed map may carry on `CustomMapPreset` to SEED the

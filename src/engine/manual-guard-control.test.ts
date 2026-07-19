@@ -432,3 +432,32 @@ describe("Manual guard control — pre-battle formation relocation", () => {
     expect(started.phase).not.toBe("combat-setup");
   });
 });
+
+describe("Manual guard control — must-attack binds only a REAL PvP opponent", () => {
+  it("PvP Neutral Control ON but nobody left to take the guards → the manual fighter keeps FREE control; CONTROL: a live opponent gets the must-attack menu", () => {
+    // Corner: both modes on, every other seat eliminated (live turnOrder is the
+    // fighter alone) → pvpNeutralControllerId is null, the MANUAL fighter
+    // drives — and the PvP sub-toggle must bind nobody (free play).
+    const state = sceneGuardAdjacent("mgc-pvp-corner", { manualGuardControl: true });
+    const [guard] = guardsOf(state);
+    state.adventure!.pvpNeutralControl = true;
+    state.adventure!.pvpNeutralControlMustAttack = true;
+    state.turnOrder = ["p1"];
+    const offers = getLegalActions(state, "p1").map((legal) => legal.action);
+    expect(offers.some((action) => action.type === "ATTACK_UNIT" && action.attackerId === guard.id)).toBe(true);
+    expect(
+      offers.some((action) => action.type === "DEFEND_UNIT" && action.unitId === guard.id),
+      "free manual control — the PvP must-attack sub-toggle binds nobody here"
+    ).toBe(true);
+
+    // CONTROL: with a live opponent the PvP controller (p2) IS bound — strikes
+    // offered, Defend stripped.
+    const pvp = sceneGuardAdjacent("mgc-pvp-corner-live", { manualGuardControl: true });
+    const [pvpGuard] = guardsOf(pvp);
+    pvp.adventure!.pvpNeutralControl = true;
+    pvp.adventure!.pvpNeutralControlMustAttack = true;
+    const pvpOffers = getLegalActions(pvp, "p2").map((legal) => legal.action);
+    expect(pvpOffers.some((action) => action.type === "ATTACK_UNIT" && action.attackerId === pvpGuard.id)).toBe(true);
+    expect(pvpOffers.some((action) => action.type === "DEFEND_UNIT" && action.unitId === pvpGuard.id)).toBe(false);
+  });
+});

@@ -104,6 +104,53 @@ describe("DeckSearchModeModal — search back + discard face", () => {
     );
   });
 
+  it("multi-pick Spell takes render EACH pick's OWN card face — not the pile top for every option", () => {
+    // Two acquirable discarded spells; the pile TOP is Haste, but option 1 maps
+    // onto discardPickCardIds[0] = Bless (pile order, bottom first).
+    const state = createAdventureGameState({ seed: "deck-search-mode-multi", rollFirstPlayer: false });
+    state.activePlayerId = "p1";
+    state.decks.spells.discardPile = ["spell.bless", "spell.haste"];
+    state.pendingChoice = {
+      id: "choice_search_mode_multi",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Search the Spell deck, or take a discarded spell (pick which one)?",
+      options: [
+        { label: "Search (2) — look at the top cards and keep one" },
+        { label: "Take discarded Bless" },
+        { label: "Take discarded Haste (face-up top)" }
+      ],
+      context: "deck-search-mode",
+      deckSearchMode: {
+        deckId: "spells",
+        count: 2,
+        hasDiscardTop: true,
+        discardPickCardIds: ["spell.bless", "spell.haste"]
+      },
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+
+    wrap(
+      <DeckSearchModeModal
+        legalActions={getLegalActions(state, "p1")}
+        onAction={vi.fn()}
+        state={state}
+        view={getPlayerView(state, "p1")}
+        viewerPlayerId="p1"
+      />
+    );
+
+    const blessBtn = screen.getByRole("button", { name: /Take discarded Bless/i });
+    const hasteBtn = screen.getByRole("button", { name: /Take discarded Haste/i });
+    // Each take renders ITS pick's face (alt names the card), styled as a discard pick.
+    expect(blessBtn.querySelector("img")?.getAttribute("alt") ?? "").toMatch(/Bless/i);
+    expect(hasteBtn.querySelector("img")?.getAttribute("alt") ?? "").toMatch(/Haste/i);
+    expect(blessBtn.className).toMatch(/discardPick/);
+    expect(hasteBtn.className).toMatch(/discardPick/);
+  });
+
   it("renders nothing for a non-owner (waiting strip only, no modal)", () => {
     const state = openDeckSearchMode("ability.attack");
     const view = getPlayerView(state, "p2");

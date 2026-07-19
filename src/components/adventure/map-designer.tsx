@@ -2123,8 +2123,14 @@ export function MapDesigner({
         ...((kind === "gate" || kind === "oneway_entrance" || kind === "oneway_exit") && pair ? { pair } : {}),
         placement: { type: "standalone", row, col },
         ...(guard ? { guard } : {}),
-        ...(kind === "oneway_entrance" && exitMode ? { exitMode } : {}),
-        ...(kind === "oneway_exit" && alwaysPickable ? { alwaysPickable: true } : {})
+        // Exit-pick extras survive the conversion — one-way AND two-way
+        // (gate/monolith) alike, mirroring tileTokenValue's carry rules.
+        ...((kind === "oneway_entrance" || kind === "gate" || kind === "monolith") && exitMode
+          ? { exitMode }
+          : {}),
+        ...((kind === "oneway_exit" || kind === "gate" || kind === "monolith") && alwaysPickable
+          ? { alwaysPickable: true }
+          : {})
       };
       onObjectsChange?.([...objects, object]);
     },
@@ -5311,11 +5317,15 @@ export function MapDesigner({
                 </div>
               </>
             ) : null}
-            {selectedObject.kind === "oneway_entrance" ? (
+            {selectedObject.kind === "oneway_entrance" ||
+            selectedObject.kind === "gate" ||
+            selectedObject.kind === "monolith" ? (
               <>
                 <div className="popoverSectionLabel">Exit pick</div>
                 <select
-                  aria-label="One-way exit mode"
+                  aria-label={
+                    selectedObject.kind === "oneway_entrance" ? "One-way exit mode" : "Two-way exit mode"
+                  }
                   className="popoverSelect"
                   onChange={(event) =>
                     onObjectsChange?.(
@@ -5334,7 +5344,9 @@ export function MapDesigner({
                 </select>
               </>
             ) : null}
-            {selectedObject.kind === "oneway_exit" ? (
+            {selectedObject.kind === "oneway_exit" ||
+            selectedObject.kind === "gate" ||
+            selectedObject.kind === "monolith" ? (
               <label className="popoverCheckRow">
                 <input
                   checked={selectedObject.alwaysPickable === true}
@@ -5356,7 +5368,12 @@ export function MapDesigner({
                   }
                   type="checkbox"
                 />
-                <span>Always pickable (“mix” entrances offer it before the roll)</span>
+                <span>
+                  Always pickable
+                  {selectedObject.kind === "oneway_exit"
+                    ? " (“mix” entrances offer it before the roll)"
+                    : " (in “mix” mode, other network nodes offer this exit before the roll)"}
+                </span>
               </label>
             ) : null}
             {selectedObject.kind !== "barrier" && selectedObject.kind !== "oneway_exit" ? (

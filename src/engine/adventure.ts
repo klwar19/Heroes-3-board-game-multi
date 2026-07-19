@@ -3698,6 +3698,12 @@ export function eliminatePlayer(
       // cleared it, so the drop must too.
       clearPolishArtifactAccess(state);
     }
+    if (choice.type === "OPTION_CHOICE" && choice.context === "spell-discard-top" && choice.spellDiscardTopPick) {
+      // The Spell face-up pick had lifted the unkept Search cards OUT of the
+      // shared deck (they sit only on the choice while it is open) — return
+      // them to the discard pile so eliminating the picker destroys nothing.
+      state.decks[choice.spellDiscardTopPick.deckId]?.discardPile.push(...choice.spellDiscardTopPick.cardIds);
+    }
     if (choice.type === "OPTION_CHOICE" && choice.visionsScry) {
       state.decks[NEUTRAL_DECK_IDS[choice.visionsScry.tier]]?.discardPile.push(
         ...choice.visionsScry.remaining,
@@ -7969,6 +7975,33 @@ type MapTokenDestination =
   | { type: "pending-tile"; tileInstanceId: string; number?: -1 | 0 | 1; label: string };
 
 /**
+ * Whether a Monolith / colored-Gate travel destination is a "mix"-mode free
+ * pick: a carved field reads its own `onewayAlwaysPickable`; a still-face-down
+ * tile reads the matching pending token's designer flag (same kind — and, for
+ * gates, same pair — as the network being travelled).
+ */
+function tokenDestinationAlwaysPickable(
+  adventure: AdventureState,
+  destination: MapTokenDestination,
+  kind: "monolith" | "gate",
+  pair?: 1 | 2 | 3 | 4
+): boolean {
+  if (destination.type === "field") {
+    return Boolean(adventure.fields[destination.spaceId]?.onewayAlwaysPickable);
+  }
+  const tile = adventure.tiles[destination.tileInstanceId];
+  if (!tile) {
+    return false;
+  }
+  return tilePendingTokens(tile).some(
+    (token) =>
+      token.kind === kind &&
+      (kind !== "gate" || token.pair === pair) &&
+      token.alwaysPickable === true
+  );
+}
+
+/**
  * Where a `kind` travel from `fromSpaceId` may go: every OTHER token of the
  * kind — carved fields (skipping any a hero currently occupies: the p.83 note
  * "skip the movement" reading) plus face-down tiles still carrying the token
@@ -8098,10 +8131,9 @@ function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTo
       return;
     }
     if (mode === "mix") {
-      const always = destinations.filter((destination) => {
-        const destField = destination.spaceId ? adventure.fields[destination.spaceId] : undefined;
-        return Boolean(destField?.onewayAlwaysPickable);
-      });
+      const always = destinations.filter((destination) =>
+        tokenDestinationAlwaysPickable(adventure, destination, "monolith")
+      );
       const randomPool = destinations.filter((destination) => !always.includes(destination));
       if (always.length === 0) {
         const random = adventureRandom(state, "monolith-exit-mix");
@@ -8348,10 +8380,9 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
     return;
   }
   if (mode === "mix") {
-    const always = destinations.filter((destination) => {
-      const destField = destination.spaceId ? adventure.fields[destination.spaceId] : undefined;
-      return Boolean(destField?.onewayAlwaysPickable);
-    });
+    const always = destinations.filter((destination) =>
+      tokenDestinationAlwaysPickable(adventure, destination, "gate", pair)
+    );
     const randomPool = destinations.filter((destination) => !always.includes(destination));
     // Degenerate: none always-pickable → full random; all always → certain pick.
     if (always.length === 0) {
@@ -8802,7 +8833,12 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
   // its entrance/exit; Monolith/Whirlpool carve the network token field. All
   // clear the sacrificed location's trappings.
   if (pendingToken.kind === "gate" && pendingToken.pair !== undefined) {
-    carveColoredGateField(adventure, spaceId, pendingToken.pair);
+    // Face-down parity: a designed gate token keeps its two-way exit mode /
+    // always-pickable flag on reveal, exactly like a face-up placement.
+    carveColoredGateField(adventure, spaceId, pendingToken.pair, {
+      exitMode: pendingToken.exitMode,
+      alwaysPickable: pendingToken.alwaysPickable
+    });
   } else if (
     (pendingToken.kind === "oneway_entrance" || pendingToken.kind === "oneway_exit") &&
     pendingToken.pair !== undefined
@@ -8820,6 +8856,17 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
     }
   } else if (pendingToken.kind === "monolith" || pendingToken.kind === "whirlpool") {
     carveMapTokenField(adventure, spaceId, pendingToken.kind, pendingToken.number);
+    // Face-down parity: a designed Monolith token keeps its two-way exit mode /
+    // always-pickable flag on reveal, exactly like a face-up placement.
+    const carvedToken = adventure.fields[spaceId];
+    if (carvedToken && pendingToken.kind === "monolith") {
+      if (pendingToken.exitMode) {
+        carvedToken.onewayExitMode = pendingToken.exitMode;
+      }
+      if (pendingToken.alwaysPickable) {
+        carvedToken.onewayAlwaysPickable = true;
+      }
+    }
   }
   // A designer guard rides the token onto whichever hex it lands on.
   const carvedField = adventure.fields[spaceId];

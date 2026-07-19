@@ -62,6 +62,48 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Power-boost windows (map-spell-boost / visions-boost / fortune-boost): the
+  // option labels name the caster's PRIVATE hand cards ("Discard <card> …"), so
+  // other viewers only learn that the boost decision is open — never which
+  // power sources are in hand. Payload card ids are scrubbed alongside.
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    (choice.context === "map-spell-boost" ||
+      choice.context === "visions-boost" ||
+      choice.context === "fortune-boost") &&
+    choice.playerId !== viewerPlayerId
+  ) {
+    return {
+      ...cloneSerializable(choice),
+      prompt:
+        choice.context === "map-spell-boost"
+          ? "Deciding whether to add Power to a map Spell."
+          : choice.context === "visions-boost"
+            ? "Visions: deciding whether to add Power."
+            : "Fortune: deciding whether to add Power.",
+      options: choice.options.map(() => ({ label: "Hidden option" })),
+      ...(choice.mapSpellBoost
+        ? {
+            mapSpellBoost: {
+              ...choice.mapSpellBoost,
+              offers: choice.mapSpellBoost.offers.map(() => ({
+                kind: "card" as const,
+                cardId: "hidden",
+                mode: "basic" as const,
+                value: 0
+              }))
+            }
+          }
+        : {}),
+      ...(choice.visionsBoost
+        ? { visionsBoost: { ...choice.visionsBoost, spellCardIds: choice.visionsBoost.spellCardIds.map(() => "hidden") } }
+        : {}),
+      ...(choice.fortuneBoost
+        ? { fortuneBoost: { ...choice.fortuneBoost, spellCardIds: choice.fortuneBoost.spellCardIds.map(() => "hidden") } }
+        : {})
+    };
+  }
+
   // Own-deck searches (Mana Vortex): the revealed cards and their labels stay
   // private to the searching player.
   if (choice.type === "OPTION_CHOICE" && choice.context === "own-deck-pick" && choice.playerId !== viewerPlayerId) {

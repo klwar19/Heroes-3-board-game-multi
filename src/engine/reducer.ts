@@ -64,7 +64,7 @@ import {
   openViewEarthChoice,
   openMarket,
   openSharedDeckSearch,
-  maybeOpenPendantRepeatOffer,
+  maybeOpenPostSearchOffers,
   clearPolishArtifactAccess,
   beginSharedDeckSearchNow,
   removableHandCards,
@@ -18712,7 +18712,8 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   }
 
   // Spell discard face-up pick: park the unkept cards, then open the choice
-  // BEFORE morale/pendant post-Search offers (those re-open after).
+  // BEFORE the morale/pendant post-Search offers — the pick handler re-opens
+  // them (maybeOpenPostSearchOffers) once the cards are placed.
   if (openSpellDiscardTopPick) {
     state.pendingChoice = {
       id: `choice_${nextEventNumber(state)}`,
@@ -18723,7 +18724,12 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
         label: `Face-up: ${cardLibrary[cardId]?.name ?? cardId}`
       })),
       context: "spell-discard-top",
-      spellDiscardTopPick: { deckId: choice.deckId, cardIds: discardedCardIds },
+      spellDiscardTopPick: {
+        deckId: choice.deckId,
+        cardIds: discardedCardIds,
+        ...(choice.baseCount !== undefined ? { baseCount: choice.baseCount } : {}),
+        ...(removePicked ? {} : { keptCardId })
+      },
       returnPhase: choice.returnPhase
     };
     state.phase = "choice";
@@ -18732,40 +18738,16 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   }
 
   // Positive Morale "discard the cards gained from Search (X) to perform the
-  // Search (X) again": right after a Search resolves into a kept card, its
-  // holder may resolve the card — the offer opens as its own choice, and the
-  // Pendant repeat below waits behind it (offered when the morale card declines).
-  if (
-    !removePicked &&
-    moraleCardsRuleEnabled(state) &&
-    choice.baseCount !== undefined &&
-    playerHoldsMoraleCard(state, action.playerId, MORALE_CARD_IDS.repeatSearch)
-  ) {
-    const keptName = cardLibrary[keptCardId]?.name ?? keptCardId;
-    state.pendingChoice = {
-      id: `choice_${nextEventNumber(state)}`,
-      type: "OPTION_CHOICE",
-      playerId: action.playerId,
-      prompt: `Positive Morale: discard ${keptName} to perform the Search (${choice.baseCount}) again?`,
-      options: [
-        { label: `Discard ${keptName} — repeat the Search (${choice.baseCount})` },
-        { label: `Keep ${keptName} (save the morale card)` }
-      ],
-      context: "morale-repeat-search",
-      moraleRepeatSearch: { deckId: choice.deckId, count: choice.baseCount, cardId: keptCardId },
-      returnPhase: choice.returnPhase
-    };
-    state.phase = "choice";
-    state.priorityPlayerId = action.playerId;
-    return;
-  }
-
-  // Pendant of Courage: "Play immediately after you perform a Search action and
-  // perform that action again." Offered as a post-Search CHOICE (not a hand
-  // pre-activation): its holder may discard the Pendant to re-run this Search.
-  if (choice.baseCount !== undefined) {
-    maybeOpenPendantRepeatOffer(state, action.playerId, choice.deckId, choice.baseCount, choice.returnPhase);
-  }
+  // Search (X) again", else the Pendant of Courage repeat — the shared
+  // post-Search seam (also re-run after a Spell discard face-up pick).
+  maybeOpenPostSearchOffers(
+    state,
+    action.playerId,
+    choice.deckId,
+    choice.baseCount,
+    removePicked ? undefined : keptCardId,
+    choice.returnPhase
+  );
 }
 
 function moveHero(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO" }>): void {

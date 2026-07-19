@@ -25,13 +25,12 @@ function dimensionDoorChoice(): GameState {
   state.players.p1.canMulligan = false;
   state.players.p1.needsHandRefresh = false;
   state.players.p1.hand = ["spell.dimension_door"];
+  // Cast-then-boost: ONE Cast action (no optionIndex); with no Power source in
+  // hand the boost window auto-resolves at Power 0 → the destination choice.
   const play = getLegalActions(state, "p1").find(
-    (legal) =>
-      legal.action.type === "PLAY_CARD" &&
-      legal.action.cardId === "spell.dimension_door" &&
-      legal.action.optionIndex === 0
+    (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "spell.dimension_door"
   );
-  expect(play, "Dimension Door needs a Power 0 map play").toBeTruthy();
+  expect(play, "Dimension Door needs a single Cast map play").toBeTruthy();
   state = applyOk(state, play!.action);
   expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("dimension-door");
   return state;
