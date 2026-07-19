@@ -8734,10 +8734,14 @@ export type VisitStep =
       prompt: string;
     }
   | {
-      /** Removes the named card from the player's hand or discard pile (→ removed). */
+      /**
+       * Removes the named card from a player zone (→ removed). Under Polish
+       * Spell Book, `spellBook` / `spellBookUsed` are valid sources for owned
+       * Spells (hand never holds them).
+       */
       type: "REMOVE_CARD_FROM_PILE";
       cardId: CardId;
-      source: "hand" | "discard";
+      source: "hand" | "discard" | "spellBook" | "spellBookUsed";
     }
   | {
       /** University: pick one of the top cards of a shared discard pile. */
@@ -9393,6 +9397,8 @@ export type VisitStep =
       /** Leaf: the named hand card goes face-down into the Event pool. */
       type: "EVENT_POOL_ADD_FROM_HAND";
       cardId: CardId;
+      /** Under Polish Spell Book a real Spell may come from the Book. Default hand. */
+      source?: "hand" | "spellBook" | "spellBookUsed";
     }
   | {
       /** Leaf: draw-and-view the top card of the chosen deck family face-down into the pool. */
