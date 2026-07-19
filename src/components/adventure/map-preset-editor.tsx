@@ -919,8 +919,12 @@ export function MapPresetEditor({
                   key={String(opt.id)}
                   onClick={() => {
                     const next = { ...objectives };
-                    if (opt.id === undefined) delete next.grailBuildAt;
-                    else next.grailBuildAt = opt.id;
+                    if (opt.id === undefined) {
+                      delete next.grailBuildAt;
+                      delete next.grailBuildReward;
+                    } else {
+                      next.grailBuildAt = opt.id;
+                    }
                     patchObjectives(next);
                   }}
                   type="button"
@@ -930,9 +934,38 @@ export function MapPresetEditor({
               ))}
             </div>
           </div>
+          {objectives.grailBuildAt ? (
+            <div className="mapPresetObjectiveRow" role="group" aria-label="Grail build free building">
+              <span className="mapPresetObjectiveLabel">Build reward</span>
+              <button
+                aria-pressed={Boolean(objectives.grailBuildReward?.freeBuilding)}
+                className={`mapPresetChip${objectives.grailBuildReward?.freeBuilding ? " active" : ""}`}
+                onClick={() => {
+                  const next = { ...objectives };
+                  const reward = { ...(next.grailBuildReward ?? {}) };
+                  if (reward.freeBuilding) {
+                    delete reward.freeBuilding;
+                  } else {
+                    reward.freeBuilding = true;
+                  }
+                  if (!reward.freeBuilding && !reward.gold && !reward.buildingMaterials && !reward.valuables && !reward.vp) {
+                    delete next.grailBuildReward;
+                  } else {
+                    next.grailBuildReward = reward;
+                  }
+                  patchObjectives(next);
+                }}
+                title="Opens a free Town building picker when the Grail is built."
+                type="button"
+              >
+                Free Building picker
+              </button>
+            </div>
+          ) : null}
           <small className="mapPresetHint">
             Place the Grail dig site on the map via a centre tile&apos;s Ⅶ field in the tile popover. A hero carrying
-            the Grail shows a marker; build puts the Grail on that location for possession VP.
+            the Grail shows a marker; build puts the Grail on that location for possession VP. Contesting a built Grail
+            is a siege control fight. Free Building opens a real Town picker (no cost, no Build token).
           </small>
         </section>
       ) : null}

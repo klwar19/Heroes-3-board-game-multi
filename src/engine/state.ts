@@ -9773,6 +9773,15 @@ export type AdventureState = {
    */
   farTilePool?: string[];
   /**
+   * Leftover Ⅳ–Ⅴ (Near) tile pool after setup's face-down Near draws. Used by
+   * the map-designer `playerResourcePick` on Near tiles so a gold/valuables
+   * preference can pull from a LIVE near pool (mirroring {@link farTilePool}),
+   * not by swapping two face-down Near tiles. Redacted in the player-view.
+   * Absent on pre-feature saves (near resource pick falls back to face-down
+   * swap when the pool is missing/empty).
+   */
+  nearTilePool?: string[];
+  /**
    * Blind Ⅱ–Ⅲ tile choice (GameSetupOptions.farTileBlindChoice, default OFF):
    * a supply opening first asks the player for a blind gold/valuables/no-
    * preference pick that filters the random draw. Absent/false = the draw is
@@ -11706,9 +11715,17 @@ export type PendingChoice =
         | "far-tile-flip"
         | "player-resource-pick"
         | "player-vii-pick"
+        | "grail-free-building"
         | "combat-remove-then-search"
         | "combat-remove-another"
         | "polish-spell-or-cast";
+      /**
+       * grail-free-building: one free Town building after BUILD_GRAIL when
+       * `grailBuildReward.freeBuilding` is set. `buildingIds` is index-aligned
+       * with `options` (a trailing "Skip" option has no id). Building is free
+       * (no gold/materials, does not spend the Build token).
+       */
+      grailFreeBuilding?: { townId: TownId; buildingIds: BuildingId[] };
       /**
        * city-hall: the income options for the City Hall (Resource-round) choice
        * under resolution, index-aligned with `options`. Stored here in game

@@ -1568,6 +1568,15 @@ export function describeObjectivesConfig(config: CustomMapObjectivesConfig): Cus
             : "Town";
     entries.push({ icon: "🏆", text: `Grail may be built in a ${where}` });
   }
+  if (config.grailBuildReward?.freeBuilding) {
+    entries.push({ icon: "🏆", text: "Building the Grail grants one free Town building (picker)" });
+  }
+  if (config.grailBuildReward) {
+    const res = formatPresetResources(config.grailBuildReward);
+    if (res && res !== "nothing") {
+      entries.push({ icon: "🏆", text: `Grail build reward: +${res}` });
+    }
+  }
   return entries;
 }
 

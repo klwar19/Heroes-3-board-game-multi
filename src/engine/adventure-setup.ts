@@ -2382,6 +2382,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // The undrawn Ⅱ–Ⅲ pool and per-player opened counters are populated below,
     // once the scenario's own face-down Far tiles have been dealt from the pool.
     farTilePool: [],
+    nearTilePool: [],
     // Blind Ⅱ–Ⅲ tile choice (default OFF): a supply opening first asks for a
     // blind gold/valuables/no-preference pick that filters the random draw.
     ...(setupOptions.farTileBlindChoice ? { farTileBlindChoice: true } : {}),
@@ -2999,6 +3000,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // left after the scenario's own face-down Far tiles is parked on the adventure
   // for those in-play draws (and the reroll returns).
   adventure.farTilePool = [...farPool];
+  // Leftover Near (Ⅳ–Ⅴ) tiles after the layout's face-down Near draws — used by
+  // designer player-resource-pick on Near tiles (live pool, not face-down swap).
+  adventure.nearTilePool = [...nearPool];
   const openedCounters = (adventure.farTilesOpenedByPlayer ??= {});
   for (const config of playerConfigs) {
     adventure.playerFarTiles[config.id] =
