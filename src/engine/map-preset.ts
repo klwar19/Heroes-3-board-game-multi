@@ -24,10 +24,11 @@ import {
   describeCustomWinCondition,
   describeVictoryPointObjective
 } from "./victory-points";
-import { isCustomGuardUnitEntry } from "./map-design-features";
+import { describeGuardArmyGrouped, isCustomGuardUnitEntry } from "./map-design-features";
 import type {
   CustomCenterHexPlan,
   CustomCenterHexReward,
+  CustomFieldReward,
   CustomGuardSpec,
   CustomMapMinesConfig,
   CustomMapObeliskBonus,
@@ -154,8 +155,16 @@ export const MAX_CENTER_HEX_VP = 10;
 export const MAX_CENTER_HEX_DICE = 3;
 /** Largest Search size a center-hex reward may grant per shared deck. */
 export const MAX_CENTER_HEX_SEARCH = 5;
+/** How many separate Search(X) steps a designer reward may queue per deck. */
+export const MAX_CENTER_HEX_SEARCH_TIMES = 5;
 /** The three adventure resources a center-hex reward may carry. */
 const CENTER_HEX_RESOURCES = ["gold", "buildingMaterials", "valuables"] as const;
+/** Search size keys paired with their optional Times multipliers. */
+const CENTER_HEX_SEARCH_SPECS = [
+  { size: "searchSpell", times: "searchSpellTimes", label: "Spells" },
+  { size: "searchAbility", times: "searchAbilityTimes", label: "Abilities" },
+  { size: "searchArtifact", times: "searchArtifactTimes", label: "Artifacts" }
+] as const;
 
 /**
  * True when `unitDefId` is a legal certain-army entry: a Neutral unit, a
@@ -188,15 +197,18 @@ export function sanitizeCustomGuardSpec(input: unknown): CustomGuardSpec | undef
 }
 
 /**
- * Clamp a designer center-hex reward ({@link CustomCenterHexReward}) to clean,
- * positive integers, or `undefined` when nothing valid remains.
+ * Clamp a designer field reward ({@link CustomFieldReward} /
+ * {@link CustomCenterHexReward}) to clean positive integers, or `undefined`
+ * when nothing valid remains. Search rewards are Times×Search(X): a size of N
+ * with times T queues T separate Search(N) steps. Times is only kept when the
+ * matching size is set; absent / 1 is the legacy single-Search default.
  */
-export function sanitizeCenterHexReward(input: unknown): CustomCenterHexReward | undefined {
+export function sanitizeFieldReward(input: unknown): CustomFieldReward | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
   }
   const raw = input as Record<string, unknown>;
-  const reward: CustomCenterHexReward = {};
+  const reward: CustomFieldReward = {};
   for (const key of CENTER_HEX_RESOURCES) {
     const amount = clampInt(raw[key], 1, MAX_CENTER_HEX_RESOURCE, 0);
     if (amount > 0) {
@@ -207,13 +219,47 @@ export function sanitizeCenterHexReward(input: unknown): CustomCenterHexReward |
   if (dice > 0) {
     reward.treasureDice = dice;
   }
-  for (const key of ["searchSpell", "searchAbility", "searchArtifact"] as const) {
-    const size = clampInt(raw[key], 1, MAX_CENTER_HEX_SEARCH, 0);
-    if (size > 0) {
-      reward[key] = size;
+  for (const { size, times } of CENTER_HEX_SEARCH_SPECS) {
+    const searchSize = clampInt(raw[size], 1, MAX_CENTER_HEX_SEARCH, 0);
+    if (searchSize > 0) {
+      reward[size] = searchSize;
+      const t = clampInt(raw[times], 1, MAX_CENTER_HEX_SEARCH_TIMES, 0);
+      // Only store times when > 1 so legacy single-Search snapshots stay lean.
+      if (t > 1) {
+        reward[times] = t;
+      }
     }
   }
   return Object.keys(reward).length > 0 ? reward : undefined;
+}
+
+/** @deprecated Prefer {@link sanitizeFieldReward} — identical clamp. */
+export function sanitizeCenterHexReward(input: unknown): CustomCenterHexReward | undefined {
+  return sanitizeFieldReward(input);
+}
+
+/**
+ * Plain-words summary of a designer field reward, e.g.
+ * "7 gold · 2× Search(5) Artifacts · 2 Treasure dice". Empty → "".
+ */
+export function describeFieldReward(reward: CustomFieldReward | undefined | null): string {
+  if (!reward) return "";
+  const parts: string[] = [];
+  if ((reward.gold ?? 0) > 0) parts.push(`${reward.gold} gold`);
+  if ((reward.buildingMaterials ?? 0) > 0) parts.push(`${reward.buildingMaterials} materials`);
+  if ((reward.valuables ?? 0) > 0) parts.push(`${reward.valuables} valuables`);
+  if ((reward.treasureDice ?? 0) > 0) {
+    parts.push(
+      reward.treasureDice === 1 ? "1 Treasure die" : `${reward.treasureDice} Treasure dice`
+    );
+  }
+  for (const { size, times, label } of CENTER_HEX_SEARCH_SPECS) {
+    const searchSize = reward[size] ?? 0;
+    if (searchSize <= 0) continue;
+    const t = reward[times] ?? 1;
+    parts.push(t > 1 ? `${t}× Search(${searchSize}) ${label}` : `Search(${searchSize}) ${label}`);
+  }
+  return parts.join(" · ");
 }
 
 /**
@@ -588,11 +634,15 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as { guard?: unknown; vp?: unknown; holdRoundsToWin?: unknown };
+  const raw = input as { guard?: unknown; reward?: unknown; vp?: unknown; holdRoundsToWin?: unknown };
   const plan: CustomMapSettlementFieldPlan = {};
   const guard = sanitizeCustomGuardSpec(raw.guard);
   if (guard) {
     plan.guard = guard;
+  }
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) {
+    plan.reward = reward;
   }
   // clampInt(0, min=1, …) would lift 0 → 1; treat non-positive as "absent".
   if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
@@ -1011,7 +1061,14 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   if (!input || typeof input !== "object") {
     return null;
   }
-  const raw = input as { kind?: unknown; pair?: unknown; guard?: unknown; placement?: unknown };
+  const raw = input as {
+    kind?: unknown;
+    pair?: unknown;
+    guard?: unknown;
+    reward?: unknown;
+    vp?: unknown;
+    placement?: unknown;
+  };
   if (typeof raw.kind !== "string" || !CUSTOM_MAP_OBJECT_KINDS.has(raw.kind as CustomMapObjectKind)) {
     return null;
   }
@@ -1058,6 +1115,17 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   const guard = kind === "barrier" || kind === "oneway_exit" ? undefined : sanitizeObjectGuard(raw.guard);
   if (guard) {
     object.guard = guard;
+  }
+  // First-clear reward / VP (optional). Barriers never keep either (no fight,
+  // no farmable free hex). One-way exits may carry a reward (landing bonus).
+  if (kind !== "barrier") {
+    const reward = sanitizeFieldReward(raw.reward);
+    if (reward) {
+      object.reward = reward;
+    }
+    if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+      object.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
+    }
   }
   // Exit-pick extras: a one-way ENTRANCE picks its exit mode; a one-way EXIT
   // may be flagged always-pickable ("mix" mode). Two-way GATES and MONOLITHS
@@ -1608,10 +1676,11 @@ export function describeVictoryPointsConfig(
   return entries;
 }
 
-/** Short label for a designer guard: a level Ⅰ–Ⅶ or an N-unit exact army. */
+/** Short label for a designer guard: a level Ⅰ–Ⅶ or a grouped exact army. */
 export function describeGuardSpec(guard: CustomGuardSpec): string {
   if (guard.units && guard.units.length > 0) {
-    return `${guard.units.length}-unit army`;
+    const grouped = describeGuardArmyGrouped(guard.units);
+    return grouped || `${guard.units.length}-unit army`;
   }
   return guard.level ? `level ${guard.level}` : "none";
 }

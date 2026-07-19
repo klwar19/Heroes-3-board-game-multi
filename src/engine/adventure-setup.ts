@@ -54,6 +54,7 @@ import {
   carveColoredGateField,
   carveMapTokenField,
   carveOnewayField,
+  stampDesignerFieldReward,
   EVENTS_DECK_ID,
   gatePairColor,
   getTileFootprintSpaceIds,
@@ -94,6 +95,7 @@ import {
   objectGuardSpec,
   OUTPOST_OBJECT_KINDS,
   sanitizeCenterHexPlan,
+  sanitizeFieldReward,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
   type CustomMapPreset,
@@ -337,6 +339,11 @@ function applyCustomMapTokens(
       // so a hand-edited save can't smuggle garbage past the sanitiser). A
       // one-way EXIT is never guarded.
       const guard = token.kind === "oneway_exit" ? undefined : sanitizeObjectGuard(token.guard);
+      const reward = sanitizeFieldReward(token.reward);
+      const tokenVp =
+        typeof token.vp === "number" && Number.isFinite(token.vp) && token.vp > 0
+          ? Math.floor(token.vp)
+          : undefined;
 
       if (tile.faceDown) {
         const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
@@ -348,6 +355,8 @@ function applyCustomMapTokens(
           ...((isGate || isOneway) && token.pair !== undefined ? { pair: token.pair } : {}),
           ...(preferredSpaceId ? { preferredSpaceId } : {}),
           ...(guard ? { guard } : {}),
+          ...(reward ? { reward } : {}),
+          ...(tokenVp !== undefined ? { vp: tokenVp } : {}),
           // Two-way gates/monoliths share the one-way exit-mode vocabulary
           // (certain / random / mix + always-pickable destinations).
           ...((token.kind === "oneway_entrance" || token.kind === "gate" || token.kind === "monolith") &&
@@ -410,6 +419,7 @@ function applyCustomMapTokens(
       const carved = adventure.fields[spaceId];
       if (carved) {
         applyCustomGuardToField(carved, guard);
+        stampDesignerFieldReward(carved, reward, tokenVp);
         // One-way entrance fights are bank-style: keep the army level for the
         // draw while the combat opens at difficulty 0.
         if (token.kind === "oneway_entrance" && guard?.level && !guard.units) {
@@ -1714,6 +1724,7 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       const carved = adventure.fields[spaceId];
       if (carved) {
         applyCustomGuardToField(carved, objectGuardSpec(object));
+        stampDesignerFieldReward(carved, object.reward, object.vp);
       }
       continue;
     }
@@ -1768,6 +1779,7 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       field.onewayAlwaysPickable = true;
     }
     applyCustomGuardToField(field, objectGuardSpec(object));
+    stampDesignerFieldReward(field, object.reward, object.vp);
     // Outpost / one-way-entrance fights run BANK-style (no Quick Combat, no
     // experience, no Round limit) whatever the guard shape: a LEVEL guard
     // additionally pins `customGuardLevel` so the army still draws at the

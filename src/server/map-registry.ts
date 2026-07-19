@@ -8,6 +8,7 @@ import {
   planIsUnderground,
   sanitizeCenterHexPlan,
   sanitizeCustomMapPreset,
+  sanitizeFieldReward,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
   scenarioDefinitions,
@@ -343,6 +344,8 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
     pair?: unknown;
     slot?: unknown;
     guard?: unknown;
+    reward?: unknown;
+    vp?: unknown;
     exitMode?: unknown;
     alwaysPickable?: unknown;
   };
@@ -363,6 +366,13 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
   // one-way EXIT is never guarded.
   const guardSpec = raw.kind === "oneway_exit" ? undefined : sanitizeObjectGuard(raw.guard);
   const guard = guardSpec ? { guard: guardSpec } : {};
+  // First-clear reward / VP (optional on every token kind including exits).
+  const rewardSpec = sanitizeFieldReward(raw.reward);
+  const reward = rewardSpec ? { reward: rewardSpec } : {};
+  const vp =
+    typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0
+      ? { vp: Math.min(10, Math.floor(raw.vp)) }
+      : {};
   if (raw.kind === "gate" || raw.kind === "oneway_entrance" || raw.kind === "oneway_exit") {
     if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
       return undefined;
@@ -378,7 +388,7 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
       (raw.kind === "oneway_exit" || raw.kind === "gate") && raw.alwaysPickable === true
         ? { alwaysPickable: true }
         : {};
-    return { kind: raw.kind, pair: raw.pair, ...slot, ...guard, ...exitMode, ...alwaysPickable };
+    return { kind: raw.kind, pair: raw.pair, ...slot, ...guard, ...reward, ...vp, ...exitMode, ...alwaysPickable };
   }
   // Monolith / Whirlpool: never carry a pair. Monoliths share the two-way exit modes.
   const monolithExit =
@@ -387,7 +397,7 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
       : {};
   const monolithAlways =
     raw.kind === "monolith" && raw.alwaysPickable === true ? { alwaysPickable: true as const } : {};
-  return { kind: raw.kind, ...slot, ...guard, ...monolithExit, ...monolithAlways };
+  return { kind: raw.kind, ...slot, ...guard, ...reward, ...vp, ...monolithExit, ...monolithAlways };
 }
 
 /**

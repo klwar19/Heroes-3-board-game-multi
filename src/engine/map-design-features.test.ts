@@ -19,6 +19,9 @@ import { applyAction, createAdventureGameState } from "./index";
 import {
   applyBreakFieldOptions,
   customGuardArmyDifficultyFromEntries,
+  describeGuardArmyGrouped,
+  expandGuardUnitGroups,
+  groupGuardUnitEntries,
   isCustomGuardUnitEntry,
   isPackGuardSlot,
   isRandomGuardSlot,
@@ -116,6 +119,22 @@ describe("map-design-features — certain army slots", () => {
   it("customGuardArmyDifficulty understands random azure as Ⅶ", () => {
     expect(customGuardArmyDifficultyFromEntries(["random:azure"])).toBe(7);
     expect(customGuardArmyDifficulty(["random:bronze", "random:bronze"])).toBe(2);
+  });
+
+  it("groups consecutive certain-army entries for the designer UI (presentation only)", () => {
+    expect(groupGuardUnitEntries(["random:gold", "random:gold", "random:gold", "neutral.storm_elementals"])).toEqual([
+      { id: "random:gold", count: 3 },
+      { id: "neutral.storm_elementals", count: 1 }
+    ]);
+    expect(describeGuardArmyGrouped(["random:gold", "random:gold", "random:gold", "neutral.storm_elementals"])).toBe(
+      "3× Random gold, Storm Elementals"
+    );
+    expect(
+      expandGuardUnitGroups([
+        { id: "random:gold", count: 3 },
+        { id: "neutral.storm_elementals", count: 1 }
+      ])
+    ).toEqual(["random:gold", "random:gold", "random:gold", "neutral.storm_elementals"]);
   });
 });
 

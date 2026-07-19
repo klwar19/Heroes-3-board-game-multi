@@ -155,6 +155,7 @@ import type {
   CardId,
   CombatUnitState,
   CustomCenterHexReward,
+  CustomFieldReward,
   CustomGuardSpec,
   CustomMapObjectKind,
   CustomWinCondition,
@@ -196,6 +197,7 @@ import { COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/wog/commander-artifacts";
 import {
   applyBreakFieldOptions,
   customGuardArmyDifficultyFromEntries,
+  describeGuardArmyGrouped,
   resolveCustomGuardDraws,
   randomTownCaptureReward,
   randomTownCustomGuard,
@@ -332,26 +334,44 @@ export function designedGuardPreview(field: MapFieldState | undefined): Designed
   if (!field || !field.designedGuard) {
     return null;
   }
-  const units = (field.customGuardUnits ?? []).map((unitDefId) => {
-    // Lazy import-free: random/pack prefixes resolved by string shape.
-    if (typeof unitDefId === "string" && unitDefId.startsWith("random:")) {
-      const tier = unitDefId.slice("random:".length);
-      const labels: Record<string, string> = {
-        bronze: "Random brown",
-        silver: "Random silver",
-        gold: "Random gold",
-        azure: "Random azure"
-      };
-      return labels[tier] ?? unitDefId;
-    }
-    if (typeof unitDefId === "string" && unitDefId.startsWith("pack:")) {
-      const id = unitDefId.slice("pack:".length);
-      const def = coreUnitDefinitions[id];
-      return def ? `Pack of ${def.name}` : unitDefId;
-    }
-    return coreUnitDefinitions[unitDefId]?.name ?? unitDefId;
-  });
+  // Grouped labels (e.g. "3× Random gold") so the map tooltip matches the
+  // designer army summary; empty for a level-only designed guard.
+  const unitsRaw = field.customGuardUnits ?? [];
+  const grouped = describeGuardArmyGrouped(unitsRaw);
+  const units = grouped
+    ? grouped.split(", ").filter(Boolean)
+    : [];
   return { difficulty: field.difficulty ?? 0, units };
+}
+
+/**
+ * Stamp a designer first-clear reward onto a carved field (objects, tokens,
+ * settlements). Uses the unified designerReward fields; the grant path also
+ * still reads centerHexReward for center-hex stamps.
+ */
+export function stampDesignerFieldReward(
+  field: MapFieldState,
+  reward: CustomFieldReward | undefined,
+  vp?: number
+): void {
+  if (reward && Object.keys(reward).length > 0) {
+    field.designerReward = { ...reward };
+  }
+  if (vp !== undefined && vp > 0) {
+    field.designerRewardVp = vp;
+  }
+}
+
+/** True when any designer-reward latch is already set (once-only). */
+function designerRewardAlreadyClaimed(field: MapFieldState): boolean {
+  return Boolean(field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed);
+}
+
+/** Latch every alias so a re-visit / re-capture never re-pays. */
+function latchDesignerRewardClaimed(field: MapFieldState): void {
+  field.centerHexClaimed = true;
+  field.viiBonusClaimed = true;
+  field.designerRewardClaimed = true;
 }
 
 /**
@@ -862,6 +882,9 @@ export function materializeTileFields(
     } else if (field.location === "settlement") {
       const perTile = tile.settlement;
       applyCustomGuardToField(field, perTile?.guard ?? adventure.mapPreset?.settlements?.guard);
+      if (perTile?.reward) {
+        stampDesignerFieldReward(field, perTile.reward);
+      }
       if (perTile?.vp && perTile.vp > 0) {
         field.settlementBonusVp = perTile.vp;
       } else {
@@ -3994,12 +4017,24 @@ function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, field
  * with the location's own visit interaction. VP is recorded unconditionally
  * (it scores only in VP mode).
  */
+/**
+ * Grant any designer first-clear field reward (center hex, object, token,
+ * settlement). Resources inline; Treasure dice + deck Searches as visit-steps.
+ * Search rewards expand Times×Search(X): `searchArtifact: 5` with
+ * `searchArtifactTimes: 2` queues two separate Search(5) Artifact steps.
+ * Once-only via the shared latch (centerHexClaimed / designerRewardClaimed /
+ * viiBonusClaimed all set together).
+ */
 function grantCenterHexBonus(state: GameState, playerId: PlayerId, field: MapFieldState): void {
-  if (field.centerHexClaimed || field.viiBonusClaimed) {
+  if (designerRewardAlreadyClaimed(field)) {
     return;
   }
-  const reward: CustomCenterHexReward = { ...(field.viiReward ?? {}), ...(field.centerHexReward ?? {}) };
-  const vp = field.centerHexVp ?? field.viiVp ?? 0;
+  const reward: CustomCenterHexReward = {
+    ...(field.viiReward ?? {}),
+    ...(field.centerHexReward ?? {}),
+    ...(field.designerReward ?? {})
+  };
+  const vp = field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0;
   const resources: { gold?: number; buildingMaterials?: number; valuables?: number } = {};
   for (const key of ["gold", "buildingMaterials", "valuables"] as const) {
     if ((reward[key] ?? 0) > 0) {
@@ -4010,22 +4045,25 @@ function grantCenterHexBonus(state: GameState, playerId: PlayerId, field: MapFie
   if ((reward.treasureDice ?? 0) > 0) {
     steps.push({ type: "ROLL_TREASURE_DICE", count: reward.treasureDice as number });
   }
-  for (const [key, deckId] of [
-    ["searchSpell", "spells"],
-    ["searchAbility", "abilities"],
-    ["searchArtifact", "artifacts"]
+  for (const [sizeKey, timesKey, deckId] of [
+    ["searchSpell", "searchSpellTimes", "spells"],
+    ["searchAbility", "searchAbilityTimes", "abilities"],
+    ["searchArtifact", "searchArtifactTimes", "artifacts"]
   ] as const) {
-    if ((reward[key] ?? 0) > 0) {
-      steps.push({ type: "SEARCH_SHARED_DECK", deckId, count: reward[key] as number });
+    const size = reward[sizeKey] ?? 0;
+    if (size > 0) {
+      const times = Math.max(1, reward[timesKey] ?? 1);
+      for (let i = 0; i < times; i++) {
+        steps.push({ type: "SEARCH_SHARED_DECK", deckId, count: size });
+      }
     }
   }
   if (Object.keys(resources).length === 0 && steps.length === 0 && vp <= 0) {
     return;
   }
-  field.centerHexClaimed = true;
-  field.viiBonusClaimed = true;
+  latchDesignerRewardClaimed(field);
   if (Object.keys(resources).length > 0) {
-    gainResources(state, playerId, resources, "the Ⅶ objective reward");
+    gainResources(state, playerId, resources, "the designer field reward");
   }
   if (steps.length > 0) {
     state.adventure?.rewardQueue.push({ playerId, kind: "visit-steps", steps });
@@ -9059,10 +9097,11 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
       }
     }
   }
-  // A designer guard rides the token onto whichever hex it lands on.
+  // A designer guard / first-clear reward rides the token onto the landing hex.
   const carvedField = adventure.fields[spaceId];
   if (carvedField) {
     applyCustomGuardToField(carvedField, pendingToken.guard);
+    stampDesignerFieldReward(carvedField, pendingToken.reward, pendingToken.vp);
   }
   shiftPendingMapToken(tile);
   eventNote(
