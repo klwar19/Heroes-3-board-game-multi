@@ -120,7 +120,7 @@ import {
   type ComputerBattleCue,
 } from "@/components/table/computer-battle-report";
 import { OpponentTurnOverlay } from "@/components/table/opponent-turn-overlay";
-import { singlePlayerAutoAdvanceDefault, usePacedComputerAdvance } from "@/components/table/computer-auto-advance";
+import { usePacedComputerAdvance } from "@/components/table/computer-auto-advance";
 import { TableErrorBoundary } from "@/components/error-boundary";
 import {
   ADVENTURE_FEED_CUES,
@@ -952,14 +952,8 @@ export default function Home() {
   // hero walks are replayed for the human slowly, cell by cell, one hero at a
   // time. The pawns render at these override cells until the walk finishes.
   const computerReplay = useComputerMoveReplay();
-  // Single-player AUTO-ADVANCES the computer's map turn BY DEFAULT (see
-  // singlePlayerAutoAdvanceDefault): the paced hook below submits one
-  // ADVANCE_COMPUTER per beat so the AI actually TAKES its turn instead of the
-  // player having to press "Next" for every step (the "AI doesn't move" report).
-  const autoAdvanceEnabled = singlePlayerAutoAdvanceDefault(
-    state?.sessionMode,
-    autoAdvanceMatchSeed,
-    state?.seed,
+  const autoAdvanceEnabled = Boolean(
+    state?.sessionMode === "single-player" && autoAdvanceMatchSeed === state.seed,
   );
   const startComputerReplayRef = useRef(computerReplay.start);
   startComputerReplayRef.current = computerReplay.start;

@@ -3,37 +3,6 @@ import type { GameAction, LegalAction } from "@/engine";
 
 export const COMPUTER_AUTO_ADVANCE_MS = 850;
 
-/**
- * Whether the client should AUTO-ADVANCE a single-player computer's map turn
- * (submit one ADVANCE_COMPUTER per beat via {@link usePacedComputerAdvance})
- * WITHOUT the human pressing "Next" for every step.
- *
- * ON BY DEFAULT for single-player. A map computer turn is human-gated — the
- * server never auto-pumps it (that path is PvP-only), so SOMETHING must submit
- * ADVANCE_COMPUTER or the AI hero simply never leaves its start cell ("single
- * player AI … not move at all, even though so many paths"). This used to be
- * opt-in, so the default made the player grind a "Next step" button — and a
- * lingering battle recap / move replay could even hide that button while the
- * computer still owed a move, freezing the turn. Defaulting it ON drives the
- * whole computer turn at a readable pace (the hook still waits for dice, recaps
- * and replays via its `blocked` set).
- *
- * A per-tab MANUAL opt-out is preserved: storing `manual:<seed>` in
- * `autoAdvanceMatchSeed` turns auto OFF for that exact match so a player can
- * step through by hand. A bare seed (the legacy "Skip confirmations" marker) or
- * null both leave the default ON.
- */
-export function singlePlayerAutoAdvanceDefault(
-  sessionMode: string | undefined,
-  autoAdvanceMatchSeed: string | null,
-  seed: string | undefined,
-): boolean {
-  return (
-    sessionMode === "single-player" &&
-    autoAdvanceMatchSeed !== `manual:${seed ?? ""}`
-  );
-}
-
 export type ComputerAutoAdvanceOptions = {
   enabled: boolean;
   roomKey: string;
