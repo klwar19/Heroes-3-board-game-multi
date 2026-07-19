@@ -11441,6 +11441,7 @@ export type PendingChoice =
         | "view-earth"
         | "learning-level-up"
         | "fortune-boost"
+        | "map-spell-boost"
         | "visions-boost"
         | "visions-deck"
         | "visions-scry"
@@ -11745,6 +11746,44 @@ export type PendingChoice =
        * rerollsByPower maps the boost to the final reroll budget.
        */
       fortuneBoost?: { boost: number; spellCardIds: CardId[]; cardId: CardId };
+      /**
+       * map-spell-boost: after casting a Power-tiered map spell (View Air, Fly,
+       * Dimension Door, …). Power is added one source at a time (like combat) —
+       * hand/Book power cards, School-of-Magic expert discard, Basic X Magic
+       * expert +3 — then the trailing option resolves at the current Power.
+       * `offers` is index-aligned with the leading options.
+       */
+      mapSpellBoost?: {
+        spellCardId: CardId;
+        power: number;
+        offers: Array<
+          | {
+              kind: "card";
+              cardId: CardId;
+              mode: "basic" | "expert";
+              value: number;
+              fromBook?: boolean;
+            }
+          | {
+              /** School of Magic permanent: discard for expert (+3 instead of basic +1). */
+              kind: "school-permanent-expert";
+              permanentCardId: CardId;
+              value: number;
+            }
+          | {
+              /** Basic X Magic permanent: crown for +3, permanent stays (once per cast). */
+              kind: "school-fetch-expert";
+              school: "air" | "earth" | "fire" | "water";
+              value: number;
+            }
+        >;
+        /** Basic Magic expert already spent on this cast (once per cast, like combat). */
+        schoolFetchExpertUsed?: boolean;
+        /** School permanent already experted on this cast. */
+        schoolPermanentExpertUsed?: boolean;
+        fromSpellBook?: boolean;
+        castEnablerCardId?: CardId;
+      };
       /**
        * visions-deck: the Neutral tier decks Visions may scry (index-aligned with
        * the options) and how many cards the chosen power level draws.

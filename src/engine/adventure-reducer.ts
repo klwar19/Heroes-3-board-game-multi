@@ -94,6 +94,7 @@ import {
   type RecruitPurchaseRef,
   getHeroMovementCapabilities,
   getMainHero,
+  liftSeaHaltForWaterWalk,
   mainHeroInOwnTown,
   unitDrillAvailable,
   neutralBattleLevel,
@@ -180,7 +181,14 @@ import { isComputerPlayer } from "./computer/control";
 import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { applyCombatScriptCombatStart } from "./combat-scripts";
-import { cardCanBoostPower } from "./effects";
+import { cardCanBoostPower, spellPowerSourceDrawCards, spellPowerValueOfCard } from "./effects";
+import {
+  bestMapSpellTier,
+  isMapPowerTierSpell,
+  mapSpellPowerTiers,
+  mapSpellTierSummary,
+  type MapSpellTierEffect
+} from "./map-spell-cast";
 import { bakeEntropy, createSeededRandom } from "./random";
 import {
   destroyFortification,
@@ -234,11 +242,14 @@ import {
 } from "./parallel-turns";
 import {
   applyPermanentCombatEffects,
+  discardSchoolPermanentForExpert,
   getPermanentCardIds,
+  getPermanentSchoolBonus,
   removePermanentFromPlayToRemoved,
   resolveWarMachineOption,
   startWarMachineRound
 } from "./permanents";
+import { getSchoolPowerBonus, getSchoolPowerMultiplier } from "./active-effects";
 import { seedRunesForCombat } from "./runes";
 import {
   activeSchoolFetches,
@@ -252,6 +263,7 @@ import {
   expertUsesAvailable,
   getRuleset,
   isSpellDeck,
+  spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
   unitSideRuleOverrides,
@@ -267,6 +279,7 @@ import {
 import {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
+  isCastASpellCard,
   polishSpellBookEnabled
 } from "./polish-spell-book";
 import {
@@ -4567,6 +4580,673 @@ export function resolveFortuneBoostChoice(state: GameState, playerId: PlayerId, 
 export function openVisionsScry(state: GameState, playerId: PlayerId, cardsByPower: Record<number, number>): void {
   openVisionsBoostStep(state, playerId, cardsByPower, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Map power-tier spells: cast first, then add Power (like combat / Visions)
+// ---------------------------------------------------------------------------
+
+/** Power added mid-cast on the map — cards, School of Magic expert, Basic Magic expert. */
+type MapSpellBoostOffer =
+  | {
+      kind: "card";
+      cardId: CardId;
+      mode: "basic" | "expert";
+      value: number;
+      fromBook?: boolean;
+    }
+  | {
+      kind: "school-permanent-expert";
+      permanentCardId: CardId;
+      value: number;
+    }
+  | {
+      kind: "school-fetch-expert";
+      school: "air" | "earth" | "fire" | "water";
+      value: number;
+    };
+
+/** Basic X Magic expert: +3 Power, permanent stays (mirrors combat USE_SCHOOL_FETCH_EXPERT). */
+const MAP_SCHOOL_FETCH_EXPERT_POWER = 3;
+
+type MapSpellBoostFlags = {
+  fromSpellBook?: boolean;
+  castEnablerCardId?: CardId;
+  schoolFetchExpertUsed?: boolean;
+  schoolPermanentExpertUsed?: boolean;
+};
+
+function mapSpellCrownsLeft(state: GameState, playerId: PlayerId): number {
+  const player = state.players[playerId];
+  if (!player) {
+    return 0;
+  }
+  return (
+    player.limits.expertUses +
+    (player.combatStats.expertUseBonusThisRound ?? 0) -
+    player.combatStats.expertUsesSpentThisRound
+  );
+}
+
+function listMapSpellBoostOffers(
+  state: GameState,
+  playerId: PlayerId,
+  spell: CardDefinition,
+  currentPower: number,
+  maxPower: number,
+  flags: MapSpellBoostFlags
+): MapSpellBoostOffer[] {
+  if (currentPower >= maxPower) {
+    return [];
+  }
+  const player = state.players[playerId];
+  if (!player) {
+    return [];
+  }
+  const schools = spell.spellSchools ?? [];
+  const crowns = mapSpellCrownsLeft(state, playerId);
+  const offers: MapSpellBoostOffer[] = [];
+  const seen = new Set<string>();
+
+  const consider = (cardId: CardId, fromBook?: boolean) => {
+    const key = `${fromBook ? "book" : "hand"}:${cardId}`;
+    if (seen.has(key)) {
+      return;
+    }
+    const card = cardLibrary[cardId];
+    if (!cardCanBoostPower(card)) {
+      return;
+    }
+    const basic = spellPowerValueOfCard(card, schools, "basic");
+    if (basic > 0) {
+      seen.add(key);
+      offers.push({ kind: "card", cardId, mode: "basic", value: basic, fromBook });
+    }
+    const expert = spellPowerValueOfCard(card, schools, "expert");
+    if (expert > basic && crowns > 0) {
+      offers.push({ kind: "card", cardId, mode: "expert", value: expert, fromBook });
+    }
+  };
+
+  for (const cardId of player.hand) {
+    consider(cardId);
+  }
+
+  // --- Spell Book power fuel (two house rules, mutually exclusive) ---
+  // OLD stash Book: one Book Spell may burn for +1 Power per turn (crown-style).
+  // POLISH Book: Book Spells cannot be burned for Power; the generic "Cast a
+  // Spell" enabler keeps its printed +1 Power alternative (like combat
+  // asPowerBoost) — cardCanBoostPower excludes it from generic power-cost filters,
+  // so it is offered here explicitly.
+  if (polishSpellBookEnabled(state)) {
+    for (const cardId of player.hand) {
+      if (isCastASpellCard(cardId)) {
+        const key = `hand:${cardId}:cast`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          offers.push({ kind: "card", cardId, mode: "basic", value: 1 });
+        }
+      }
+    }
+  } else if (spellBookRuleEnabled(state) && !player.combatStats.spellBookPowerUsedThisTurn) {
+    for (const cardId of player.spellBook ?? []) {
+      if (cardLibrary[cardId]?.kind === "spell" && !isCastASpellCard(cardId)) {
+        consider(cardId, true);
+        break; // only one Book source is ever offered
+      }
+    }
+  }
+
+  // School of Magic permanent expert: discard for +expert (basic already in
+  // starting Power via standingSpellPower — only the extra is offered here).
+  // Combat: useSchoolExpert on CAST_SPELL. Once per cast; needs a crown.
+  if (!flags.schoolPermanentExpertUsed && crowns > 0) {
+    const school = getPermanentSchoolBonus(state, playerId, spell);
+    if (school) {
+      const extra = Math.max(0, school.expertPower - school.basicPower);
+      if (extra > 0) {
+        offers.push({
+          kind: "school-permanent-expert",
+          permanentCardId: school.card.id,
+          value: extra
+        });
+      }
+    }
+  }
+
+  // Basic X Magic permanent expert: +3 with a crown, permanent stays. Once per
+  // cast (combat: USE_SCHOOL_FETCH_EXPERT). Matching school only.
+  if (!flags.schoolFetchExpertUsed && crowns > 0) {
+    const spellSchools = spell.spellSchools ?? [];
+    for (const school of activeSchoolFetches(state, playerId)) {
+      if (spellSchools.includes(school) || spellSchools.includes("any")) {
+        offers.push({
+          kind: "school-fetch-expert",
+          school,
+          value: MAP_SCHOOL_FETCH_EXPERT_POWER
+        });
+        break; // one Basic Magic school offer (first matching), like one expert use
+      }
+    }
+  }
+
+  return offers;
+}
+
+function mapSpellBoostOfferLabel(
+  offer: MapSpellBoostOffer,
+  tiers: NonNullable<ReturnType<typeof mapSpellPowerTiers>>,
+  power: number
+): string {
+  const next = Math.min(tiers.maxPower, power + offer.value);
+  const tierHint = mapSpellTierSummary(tiers, next);
+  if (offer.kind === "card") {
+    const name = cardLibrary[offer.cardId]?.name ?? offer.cardId;
+    const modeTag = offer.mode === "expert" ? " expert" : "";
+    const bookTag = offer.fromBook ? " (Book)" : "";
+    return `Discard ${name}${modeTag}${bookTag} (+${offer.value} Power) → ${tierHint}`;
+  }
+  if (offer.kind === "school-permanent-expert") {
+    const name = cardLibrary[offer.permanentCardId]?.name ?? "School of Magic";
+    return `Discard ${name} expert (+${offer.value} more Power, school to +3) → ${tierHint}`;
+  }
+  const schoolName = offer.school.charAt(0).toUpperCase() + offer.school.slice(1);
+  return `Basic ${schoolName} Magic expert (+${offer.value} Power) → ${tierHint}`;
+}
+
+/**
+ * Opens (or re-opens) the Power boost step after a map power-tier spell is cast.
+ * When no further boost is possible, resolves at the current Power immediately.
+ */
+export function openMapSpellBoost(
+  state: GameState,
+  playerId: PlayerId,
+  spellCardId: CardId,
+  power: number,
+  flags: MapSpellBoostFlags = {}
+): void {
+  const spell = cardLibrary[spellCardId];
+  const tiers = mapSpellPowerTiers(spell);
+  if (!spell || !tiers) {
+    return;
+  }
+
+  const offers = listMapSpellBoostOffers(state, playerId, spell, power, tiers.maxPower, flags);
+  if (offers.length === 0) {
+    applyMapSpellAtPower(state, playerId, spellCardId, power, flags);
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `${spell.name}: Power ${power} — ${mapSpellTierSummary(tiers, power)}. Add Power (cards / School / Basic Magic), or resolve now.`,
+    options: [
+      ...offers.map((offer) => ({ label: mapSpellBoostOfferLabel(offer, tiers, power) })),
+      { label: `Resolve now — Power ${power}: ${mapSpellTierSummary(tiers, power)}` }
+    ],
+    context: "map-spell-boost",
+    mapSpellBoost: {
+      spellCardId,
+      power,
+      offers,
+      ...(flags.schoolFetchExpertUsed ? { schoolFetchExpertUsed: true as const } : {}),
+      ...(flags.schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true as const } : {}),
+      ...(flags.fromSpellBook ? { fromSpellBook: true as const } : {}),
+      ...(flags.castEnablerCardId ? { castEnablerCardId: flags.castEnablerCardId } : {})
+    },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves one step of a map-spell-boost OPTION_CHOICE. */
+export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "map-spell-boost" ||
+    !choice.mapSpellBoost ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no map Spell Power decision to resolve.");
+  }
+
+  const boost = choice.mapSpellBoost;
+  const {
+    spellCardId,
+    power,
+    offers,
+    fromSpellBook,
+    castEnablerCardId,
+    schoolFetchExpertUsed,
+    schoolPermanentExpertUsed
+  } = boost;
+  const spell = cardLibrary[spellCardId];
+  const player = state.players[playerId];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  const flags: MapSpellBoostFlags = {
+    ...(fromSpellBook ? { fromSpellBook: true as const } : {}),
+    ...(castEnablerCardId ? { castEnablerCardId } : {}),
+    ...(schoolFetchExpertUsed ? { schoolFetchExpertUsed: true } : {}),
+    ...(schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true } : {})
+  };
+
+  if (!player || !spell || optionIndex >= offers.length) {
+    applyMapSpellAtPower(state, playerId, spellCardId, power, flags);
+    if (!state.pendingChoice) {
+      pumpAdventureQueues(state);
+    }
+    return;
+  }
+
+  const offer = offers[optionIndex]!;
+  let nextPower = power;
+  let nextFlags = { ...flags };
+
+  if (offer.kind === "school-permanent-expert") {
+    // Discard the School permanent for expert Power; crown spent inside helper.
+    // Starting Power already counted basic — only the extra is added.
+    const expert = discardSchoolPermanentForExpert(state, playerId, spell);
+    if (!expert) {
+      throw new Error("No matching School of Magic permanent to discard for expert Power.");
+    }
+    nextPower = power + offer.value;
+    nextFlags = { ...nextFlags, schoolPermanentExpertUsed: true };
+  } else if (offer.kind === "school-fetch-expert") {
+    if (mapSpellCrownsLeft(state, playerId) <= 0) {
+      throw new Error("No crown left for Basic Magic expert Power.");
+    }
+    if (!activeSchoolFetches(state, playerId).includes(offer.school)) {
+      throw new Error("No Basic Magic of that school is in play.");
+    }
+    player.combatStats.expertUsesSpentThisRound += 1;
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId,
+      cardId: `ability.basic_${offer.school}_magic` as CardId,
+      timing: "instant",
+      mode: "expert",
+      effectAmount: offer.value,
+      optionLabel: `+${offer.value} Power (${spell.name})`
+    });
+    nextPower = power + offer.value;
+    nextFlags = { ...nextFlags, schoolFetchExpertUsed: true };
+  } else {
+    // Hand / Book power-source card (or Polish Cast-a-Spell +1 alternative).
+    const zone = offer.fromBook ? player.spellBook : player.hand;
+    const handIndex = zone?.indexOf(offer.cardId) ?? -1;
+    if (handIndex === -1 || !zone) {
+      applyMapSpellAtPower(state, playerId, spellCardId, power, flags);
+      if (!state.pendingChoice) {
+        pumpAdventureQueues(state);
+      }
+      return;
+    }
+
+    // Polish: Book Spells are never a map Power fuel — only the enabler is.
+    if (offer.fromBook && polishSpellBookEnabled(state)) {
+      throw new Error("Polish Spell Book Spells cannot be burned for Power.");
+    }
+    // Old Book: one Book Power burn per turn.
+    if (offer.fromBook && !spellBookPowerAvailable(player)) {
+      throw new Error("Only one Spell Book Power discard is allowed per turn.");
+    }
+
+    if (offer.mode === "expert") {
+      if (mapSpellCrownsLeft(state, playerId) <= 0) {
+        throw new Error("No crown left for expert Power payment.");
+      }
+      player.combatStats.expertUsesSpentThisRound += 1;
+    }
+
+    zone.splice(handIndex, 1);
+    player.discard.push(offer.cardId);
+    if (offer.fromBook) {
+      player.combatStats.spellBookPowerUsedThisTurn = true;
+    }
+
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId,
+      cardId: offer.cardId,
+      timing: cardLibrary[offer.cardId]?.timing ?? "instant",
+      mode: offer.mode,
+      optionLabel: `+${offer.value} Power (${spell.name})`
+    });
+
+    // Cast a Spell is not a power-source for draw riders; real Sorcery still is.
+    const draws = isCastASpellCard(offer.cardId)
+      ? 0
+      : spellPowerSourceDrawCards(cardLibrary[offer.cardId], spell.spellSchools ?? []);
+    if (draws > 0) {
+      drawCardsForPlayer(state, playerId, draws);
+    }
+    nextPower = power + offer.value;
+  }
+
+  openMapSpellBoost(state, playerId, spellCardId, nextPower, nextFlags);
+  if (!state.pendingChoice) {
+    pumpAdventureQueues(state);
+  }
+}
+
+function applyMapSpellAtPower(
+  state: GameState,
+  playerId: PlayerId,
+  spellCardId: CardId,
+  power: number,
+  bookFlags: MapSpellBoostFlags
+): void {
+  const spell = cardLibrary[spellCardId];
+  const tiers = mapSpellPowerTiers(spell);
+  if (!spell || !tiers) {
+    return;
+  }
+  // Orb doubling (SPELL_POWER_DOUBLE) multiplies total Power at resolve — same
+  // as combat resolvedSpellPowerForStackItem (map rarely has orbs, but parity).
+  const multiplier = getSchoolPowerMultiplier(state, playerId, spell);
+  const effectivePower = power * multiplier;
+  const best = bestMapSpellTier(tiers, effectivePower);
+  const effectCountBefore = state.activeEffects.length;
+  applyMapSpellEffect(state, playerId, spell, best.effect);
+  // Lasting map effects (Fly / Water Walk): hold the physical card while the
+  // effect lives — same as playCard's holdOngoingCardIfEffectCreated.
+  //   - Hand / OLD Book cast: card is in discard → hold it (default returnTo
+  //     discard; Knowledge may re-mark returnTo hand/spellBook).
+  //   - POLISH Book cast: card is in spellBookUsed (never discard) → do NOT
+  //     hold; it stays used until the Book refreshes. Knowledge only returns
+  //     Cast a Spell (see offerMapSpellKnowledgeRecall).
+  if (!(bookFlags.fromSpellBook && bookFlags.castEnablerCardId && polishSpellBookEnabled(state))) {
+    holdMapSpellOngoingIfEffectCreated(state, playerId, spellCardId, effectCountBefore, "discard");
+  }
+  offerMapSpellKnowledgeRecall(state, playerId, spell, bookFlags);
+}
+
+/** Mirror of reducer holdOngoingCardIfEffectCreated for the map cast-then-boost path. */
+function holdMapSpellOngoingIfEffectCreated(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  effectCountBefore: number,
+  returnTo: "discard" | "hand" | "spellBook"
+): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+  const createdEffects = state.activeEffects
+    .slice(effectCountBefore)
+    .filter((effect) => effect.source.type === "card" && effect.source.cardId === cardId);
+  if (createdEffects.length === 0) {
+    return false;
+  }
+  const discardIndex = player.discard.lastIndexOf(cardId);
+  if (discardIndex === -1) {
+    return false;
+  }
+  player.discard.splice(discardIndex, 1);
+  player.ongoingCards = player.ongoingCards ?? [];
+  player.ongoingCards.push({
+    cardId,
+    effectIds: createdEffects.map((effect) => effect.id),
+    returnTo
+  });
+  return true;
+}
+
+function applyMapSpellEffect(
+  state: GameState,
+  playerId: PlayerId,
+  spell: CardDefinition,
+  effect: MapSpellTierEffect
+): void {
+  if (effect.type === "GAIN_RESOURCES") {
+    gainResources(state, playerId, effect.gain, `played ${spell.name}`);
+    return;
+  }
+  if (effect.type === "DIMENSION_DOOR") {
+    openDimensionDoorChoice(state, playerId, effect.fields);
+    return;
+  }
+  if (effect.type === "VIEW_EARTH") {
+    openViewEarthChoice(state, playerId, effect.withinFields);
+    return;
+  }
+  if (effect.type === "TELEPORT_HERO_TO_TOWN") {
+    queueTownPortalFromMapSpell(state, playerId, effect.movementBonus ?? 0);
+    return;
+  }
+  if (effect.type === "GAIN_HERO_MOVEMENT") {
+    const amount = effect.amount;
+    const heroes = Object.values(state.heroes).filter(
+      (hero) => hero.controllerId === playerId && hero.spaceId !== null
+    );
+    if (heroes.length <= 1) {
+      if (heroes[0]) {
+        heroes[0].movementPoints += amount;
+      }
+    } else if (state.adventure) {
+      state.adventure.rewardQueue.unshift({
+        playerId,
+        kind: "visit-steps",
+        steps: [
+          {
+            type: "CHOOSE_ONE",
+            prompt: `Which Hero gains +${amount} movement?`,
+            options: heroes.map((hero) => ({
+              label: hero.kind === "main" ? "Main Hero" : "Secondary Hero",
+              steps: [{ type: "GAIN_MOVEMENT_FOR_HERO", heroId: hero.id, amount }]
+            }))
+          }
+        ]
+      });
+    } else {
+      const main = heroes.find((hero) => hero.kind === "main") ?? heroes[0];
+      if (main) {
+        main.movementPoints += amount;
+      }
+    }
+    if (effect.moveThroughThisTurn) {
+      pushMapSpellHeroModifier(state, playerId, spell, "HERO_MOVE_THROUGH");
+    }
+    if (effect.waterWalkThisTurn) {
+      pushMapSpellHeroModifier(state, playerId, spell, "HERO_WATER_WALK");
+      liftSeaHaltForWaterWalk(state, playerId);
+    }
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, playerId, effect.drawCards);
+    }
+  }
+}
+
+function pushMapSpellHeroModifier(
+  state: GameState,
+  playerId: PlayerId,
+  spell: CardDefinition,
+  modifier: "HERO_MOVE_THROUGH" | "HERO_WATER_WALK"
+): void {
+  const effect = makeActiveEffect(
+    state,
+    {
+      name: spell.name,
+      scope: "player",
+      duration: { type: "current-turn" },
+      polarity: "positive",
+      removable: false,
+      modifiers: [{ type: modifier }]
+    },
+    { type: "card", cardId: spell.id, controllerId: playerId },
+    playerId
+  );
+  state.activeEffects.push(effect);
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_CREATED",
+    effectId: effect.id,
+    controllerId: effect.controllerId,
+    name: effect.name,
+    duration: effect.duration
+  });
+}
+
+function queueTownPortalFromMapSpell(state: GameState, playerId: PlayerId, movementBonus: number): void {
+  const adventure = state.adventure;
+  const hero = getMainHero(state, playerId);
+  if (!adventure || !hero) {
+    return;
+  }
+  const projectedMovement = hero.movementPoints + movementBonus;
+  const fieldHasOtherHero = (spaceId: string) =>
+    Object.values(state.heroes).some((other) => other.id !== hero.id && other.spaceId === spaceId);
+  const destinationAllowed = (spaceId: string) => !fieldHasOtherHero(spaceId) || projectedMovement > 0;
+  const destinations: { label: string; spaceId: string }[] = [];
+  const origin = hero.spaceId ? parseHexSpaceId(hero.spaceId) : null;
+  const distanceSuffix = (spaceId: string): string => {
+    const coord = parseHexSpaceId(spaceId);
+    const distance = origin && coord ? hexDistance(origin, coord) : null;
+    return distance ? ` (${distance} field${distance === 1 ? "" : "s"} away)` : "";
+  };
+  for (const town of Object.values(state.towns)) {
+    if (
+      town.controllerId === playerId &&
+      town.fieldId &&
+      town.fieldId !== hero.spaceId &&
+      destinationAllowed(town.fieldId)
+    ) {
+      destinations.push({
+        label: `Town (${town.factionId ?? town.id})${distanceSuffix(town.fieldId)}`,
+        spaceId: town.fieldId
+      });
+    }
+  }
+  for (const field of Object.values(adventure.fields)) {
+    if (
+      field.location === "settlement" &&
+      field.flagOwnerId === playerId &&
+      field.spaceId !== hero.spaceId &&
+      destinationAllowed(field.spaceId)
+    ) {
+      destinations.push({ label: `Settlement${distanceSuffix(field.spaceId)}`, spaceId: field.spaceId });
+    }
+  }
+  if (destinations.length === 0) {
+    return;
+  }
+  adventure.rewardQueue.unshift({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Town Portal: move your hero to…",
+        options: [
+          ...destinations.map((destination) => ({
+            label: destination.label,
+            steps: [
+              {
+                type: "TELEPORT_HERO" as const,
+                heroId: hero.id,
+                spaceId: destination.spaceId,
+                movementBonus
+              }
+            ]
+          })),
+          { label: "Cancel (stay)", steps: [] }
+        ]
+      }
+    ]
+  });
+}
+
+function offerMapSpellKnowledgeRecall(
+  state: GameState,
+  playerId: PlayerId,
+  spell: CardDefinition,
+  bookFlags: { fromSpellBook?: boolean; castEnablerCardId?: CardId }
+): void {
+  if (!state.adventure || state.combat) {
+    return;
+  }
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  const knowledgeCardId = player.hand.find((cardId) => {
+    const held = cardLibrary[cardId];
+    return (
+      held?.effect.type === "RECALL_SPELL" &&
+      (Boolean(held.effect.expertSpellLimitBonus) || Boolean(held.effect.basicSpellLimitBonus))
+    );
+  });
+  const knowledge = knowledgeCardId ? cardLibrary[knowledgeCardId] : undefined;
+  const recallEffect = knowledge?.effect.type === "RECALL_SPELL" ? knowledge.effect : null;
+  const polishBookCast = Boolean(bookFlags.fromSpellBook && bookFlags.castEnablerCardId);
+  const spellIsRecallable =
+    (polishBookCast
+      ? Boolean(bookFlags.castEnablerCardId && player.discard.includes(bookFlags.castEnablerCardId))
+      : Boolean(player.discard.includes(spell.id))) ||
+    Boolean(player.ongoingCards?.some((entry) => entry.cardId === spell.id));
+  if (!knowledgeCardId || !recallEffect || !spellIsRecallable) {
+    return;
+  }
+  const returnLabel = polishBookCast
+    ? "return Cast a Spell to your hand (the Book spell stays used)"
+    : bookFlags.fromSpellBook
+      ? `return ${spell.name} to your Spell Book`
+      : `return ${spell.name} to your hand`;
+  const bookFlag = polishBookCast
+    ? { castEnablerCardId: bookFlags.castEnablerCardId }
+    : bookFlags.fromSpellBook
+      ? { fromSpellBook: true as const }
+      : {};
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  options.push({
+    label: `Use Knowledge: ${returnLabel}`,
+    steps: [
+      {
+        type: "KNOWLEDGE_RECALL_MAP_SPELL",
+        spellCardId: spell.id,
+        knowledgeCardId,
+        mode: "basic",
+        ...bookFlag
+      }
+    ]
+  });
+  if (!recallEffect.basicSpellLimitBonus && mapSpellCrownsLeft(state, playerId) > 0 && recallEffect.expertSpellLimitBonus) {
+    options.push({
+      label: `Use Knowledge expert (1 crown): ${returnLabel} and +1 spell limit`,
+      steps: [
+        {
+          type: "KNOWLEDGE_RECALL_MAP_SPELL",
+          spellCardId: spell.id,
+          knowledgeCardId,
+          mode: "expert",
+          ...bookFlag
+        }
+      ]
+    });
+  }
+  options.push({ label: `Keep Knowledge; leave ${spell.name} spent`, steps: [] });
+  state.adventure.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `Knowledge: take ${spell.name} back?`,
+        options
+      }
+    ]
+  });
+}
+
+/** True when the card is a map Power-tier spell (cast-then-boost flow). */
+export { isMapPowerTierSpell, mapSpellPowerTiers };
 
 /**
  * Offers one Power boost: discard a Spell for +1 card, or scry now. Re-opens
@@ -10736,6 +11416,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "fortune-boost") {
     resolveFortuneBoostChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "map-spell-boost") {
+    resolveMapSpellBoostChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
