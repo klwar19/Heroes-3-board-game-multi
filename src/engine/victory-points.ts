@@ -362,6 +362,25 @@ function buildBreakdown(
   if (specialSettlementVp > 0) {
     add("Special settlement VP", specialSettlementVp);
   }
+  // Map-maker Grail possession VP: carrier OR controller of the built field.
+  const grailVp = state.adventure?.mapPreset?.objectives?.grailPossessionVp ?? 0;
+  if (grailVp > 0) {
+    const grail = state.adventure?.grail;
+    let possesses = false;
+    if (grail?.status === "carried" && grail.carrierHeroId) {
+      const carrier = state.heroes[grail.carrierHeroId];
+      possesses = carrier?.controllerId === playerId;
+    } else if (grail?.status === "built" && grail.builtFieldId) {
+      const field = state.adventure?.fields[grail.builtFieldId];
+      possesses = field?.flagOwnerId === playerId;
+    } else if (grail?.status === "delivered") {
+      // Delivered = grail win path; still counts for the deliverer if scored.
+      // Possession after delivery is the completer; skip here (completion VP covers it).
+    }
+    if (possesses) {
+      add("Possessing the Grail", grailVp);
+    }
+  }
   add("Artifacts (1 VP per 2)", Math.floor(artifactCountOf(state.players[playerId]) / 2));
 
   for (const objective of config?.objectives ?? []) {

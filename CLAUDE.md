@@ -2197,6 +2197,88 @@ What runs (each pinned by a test that fails if the wiring is removed):
   (`onewayMonolithImage`); outposts theirs (`outpostObjectImage`).
   `map-designer.test.tsx`, `gate-object-board.test.tsx`.
 
+## Map objects Global|Specific, hex events & guard visibility (2026-07) — what runs vs. limits
+
+Three designer systems on top of the exact-army/Times×Search branch (whose audit
+fixed the pack-survivor persistence, the `viiFields` face-down leak and the
+lethal HP-strip — see `map-design-features.test.ts` / `fortress-faction.test.ts`).
+Engine in `map-preset.ts` (sanitizers), `adventure.ts` (materialize folds, the
+`beginFieldVisit` designer seam), `adventure-setup.ts` (plan carry + hex-event
+carve); UI in `map-preset-editor.tsx` (Map objects group), `map-designer.tsx`
+(pick flow, popover sections, badges/markers), `screen.tsx` (inspect float).
+Pinned in `map-object-plans.test.ts` (engine, mutation-checked with CONTROLs),
+`map-designer.test.tsx`, `map-preset-editor.test.tsx`, `map-floats-board.test.tsx`.
+
+Leading with what does NOT run / deliberate limits:
+- **Obelisk ROLE stays map-wide** (face-down tiles hide which is which); a
+  SPECIFIC obelisk plan overrides guard/reward/VP/break/win only. Mines are one
+  kind ("mines all types" share the config — no per-resource split).
+- **SPECIFIC eligibility is conservative**: face-up tiles must PRINT the
+  location; a face-down tile qualifies only when a Secret landmark guarantees a
+  mine (obelisk secrets qualify for obelisks). A plan on a random face-down
+  tile would be inert, so the pick never offers one.
+- **Grail / Dragon Utopia / Random Town SPECIFIC = the center-hex editor**
+  (pick a Ⅵ–Ⅶ center tile; its `centerHex` guard/reward/VP/win covers the
+  designated OR printed objective). Their map-wide knobs stay under Victory &
+  scoring (contextual to the Win condition — unchanged).
+- **Hex-event ambush degradations**: the guard is beaten ONCE globally
+  (each-player mode re-pays only the message/reward/VP); an event stamped on an
+  already-cleared field springs fight-less; the ambush overwrites a designer
+  guard already on that field (designer foot-gun, sanitizer cannot see it).
+- **`replaceVisit` suppresses only the TRIGGERING entry** — later entries visit
+  normally (not a permanent field replacement).
+- **Hex events are invisible but not cryptographic**: player VIEWS redact both
+  `adventure.hexEvents` and `mapPreset.hexEvents` (pinned), but the engine
+  state carries them — same class as other designer secrets.
+- **The win-condition tick is an instant-win foot-gun** by design (same as
+  custom win conditions): a `winCondition` on a home-tile object ends the game
+  on the first visit. The removed win-condition kinds (control-towns /
+  flag-mines / obelisks / defeat-dragon-utopia) are EDITOR-only removals — the
+  engine + sanitizer still honour them on legacy maps, and a legacy row still
+  renders/edits (its kind joins the row's select).
+
+What runs (each behaviour has a failing-if-removed test):
+- **Global|Specific per object kind** (Obelisks · Mines · Settlements · Random
+  Town/center): `CustomMapTilePlan.objectPlans.{obelisk,mine}`
+  (`CustomObjectFieldPlan` = guard/reward/vp/break flags/winCondition,
+  `sanitizeObjectPlans`), per-tile settlement plan + centerHex gained
+  `winCondition`. Materialize folds SPECIFIC over global FIELD-BY-FIELD (an
+  unset field falls back — the settlement-plan semantic;
+  `mergeObjectBreakFlags`), stamps rewards via the shared
+  `stampDesignerFieldReward`/designer-reward latch and `designerWinCondition`.
+- **Designer "first clear wins"**: `fireDesignerWinCondition` at the
+  `beginFieldVisit` seam (after the reward grant) declares the visitor winner
+  `viaVictoryCondition` — VP mode routes to scoring, eliminated seats are
+  skipped, `declareAdventureWinner` idempotence holds.
+- **Hex events** (`CustomMapPreset.hexEvents`, cap `MAX_HEX_EVENTS` 24, one per
+  hex): carved to `adventure.hexEvents` keyed by space id (only hexes on a
+  placed tile footprint / carved standalone hex — the designer warns, setup
+  drops the rest). Trigger runs FIRST in `beginFieldVisit`: an armed guard
+  stamps as a designed guard + opens a REAL fight via the registered
+  `setHexEventEncounterHook` (straight to combat placement — never
+  Quick-Combat/Diplomacy skipped on the surprise; a LATER attempt on the
+  now-public guard runs the normal guarded-field flow, where Quick Combat may
+  apply); reaching a visit with the guard stamped marks it beaten and sweeps
+  the remnants (one seam covers fought/Quick-Combat/Diplomacy wins). Then
+  message (feed note) + reward/VP via the shared `payDesignerFieldReward`
+  (factored out of `grantCenterHexBonus`), `mode` "first" (record deleted on
+  fire) or "each-player" (per-player latch).
+- **Designer UX**: the preset editor's "Map objects" group (renamed from "Map
+  locations") — 🌍 Global | 📍 Specific tabs per kind (specific lists per-tile
+  plans with summaries + "Pick a tile on the map"; a no-eligible-tile state
+  shows a ⚠ warning instead of a dead button), the "Hidden hex events" section
+  (per-event cards: message, ambush GuardSpecEditor, FieldRewardEditor + VP,
+  first/each-player, replaceVisit, remove; "Place an event on the map"). The
+  pick arms `MapDesigner.pickRequest`: eligible tiles pulse green, others dim,
+  Esc/banner-cancel disarms, an eligible click opens the tile popover (which
+  gained "Special obelisk/mine (this tile)" sections — shown ONLY on eligible
+  tiles — plus 🏁 win ticks on settlement/center sections). Tiles with specific
+  settings wear a ⚔ (🏁⚔ with a win) badge; hex events a designer-only ⚡ mark.
+- **Guard visibility in game**: clicking a designer-altered object that is NOT
+  a move target opens the `designedGuardInspectFloat` — exact army (grouped
+  labels), level, unclaimed first-clear reward/VP — the move-confirm warning's
+  touch-friendly twin (which still covers in-reach hexes).
+
 ## Underground designation (per-tile layer override, map designer) — what runs vs. limits
 
 The designer may mark ANY far/near/center/sea tile plan `underground?: true` on

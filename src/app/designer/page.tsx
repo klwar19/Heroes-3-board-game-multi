@@ -44,6 +44,13 @@ export default function MapDesignerPage() {
   const [scenarioId, setScenarioId] = useState("skirmish");
   const [tiles, setTiles] = useState<CustomMapTilePlan[]>([]);
   const [preset, setPreset] = useState<CustomMapPreset | undefined>(undefined);
+  // SPECIFIC-mode / hex-event "pick on the map" armed from the objects panel;
+  // the MapDesigner highlights eligible tiles and resolves it.
+  const [pickRequest, setPickRequest] = useState<
+    | { kind: "object-plan"; objectKind: "obelisk" | "mine" | "settlement" | "center" }
+    | { kind: "hex-event" }
+    | null
+  >(null);
   const [name, setName] = useState("My map");
   const [players, setPlayers] = useState(2);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -315,8 +322,20 @@ export default function MapDesignerPage() {
 
           <MapDesigner
             customMap={tiles}
+            hexEvents={preset?.hexEvents ?? []}
             objects={preset?.objects ?? []}
             onChange={setTiles}
+            onHexEventsChange={(hexEvents) =>
+              setPreset((current) => {
+                const next: CustomMapPreset = { ...(current ?? {}) };
+                if (hexEvents.length > 0) {
+                  next.hexEvents = hexEvents;
+                } else {
+                  delete next.hexEvents;
+                }
+                return customMapPresetIsActive(next) ? next : undefined;
+              })
+            }
             onObjectsChange={(objects: CustomMapObject[]) =>
               setPreset((current) => {
                 const next: CustomMapPreset = { ...(current ?? {}) };
@@ -328,6 +347,8 @@ export default function MapDesignerPage() {
                 return customMapPresetIsActive(next) ? next : undefined;
               })
             }
+            onPickResolved={() => setPickRequest(null)}
+            pickRequest={pickRequest}
             scenarioId={scenarioId}
             victoryMode={preset?.victoryMode}
           />
@@ -337,7 +358,26 @@ export default function MapDesignerPage() {
             match, pure random — players are notified).
           </small>
 
-          <MapPresetEditor onChange={setPreset} preset={preset} />
+          <MapPresetEditor
+            onChange={setPreset}
+            onPickOnMap={(request) => {
+              // Arm the on-map pick and bring the board into view ("jump to
+              // the map"); a second press on the same button disarms.
+              setPickRequest((current) =>
+                current &&
+                ((current.kind === "hex-event" && request.kind === "hex-event") ||
+                  (current.kind === "object-plan" &&
+                    request.kind === "object-plan" &&
+                    current.objectKind === request.objectKind))
+                  ? null
+                  : request
+              );
+              document.querySelector(".designerBoardWrap")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+            }}
+            pickArmed={pickRequest}
+            preset={preset}
+            tiles={tiles}
+          />
         </section>
 
         <aside className="designerSaved" aria-label="Saved maps">

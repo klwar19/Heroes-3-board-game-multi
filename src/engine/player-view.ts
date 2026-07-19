@@ -26,6 +26,10 @@ function cloneSerializable<T>(value: T): T {
 function maskFaceDownTile(tile: MapTileState): MapTileState {
   const masked: MapTileState = { ...tile, tileDefId: "hidden" };
   delete masked.viiField;
+  // The multi-select of allowed Ⅶ designations leaks the same objective info
+  // as viiField — mask it too (the pick flags themselves are behaviour-public,
+  // like a pending token: viewers may know a choice will open, not its set).
+  delete masked.viiFields;
   delete masked.centerHex;
   delete masked.viiFieldReward;
   delete masked.viiFieldVp;
@@ -350,6 +354,16 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         // The undrawn Ⅱ–Ⅲ pool is face down — players must not see which tiles
         // could come up; only its size (the reroll/draw headroom) shows.
         farTilePool: base.adventure.farTilePool?.map(() => "hidden"),
+        // Same secrecy for the leftover Near (Ⅳ–Ⅴ) pool (designer resource pick).
+        nearTilePool: base.adventure.nearTilePool?.map(() => "hidden"),
+        // Designer hex events are INVISIBLE in the real game: clients never see
+        // where they sit or what they do — an unsprung ambush must stay a
+        // surprise. Both the live records AND the preset list are redacted for
+        // every viewer (the engine announces a sprung event via the event log).
+        hexEvents: undefined,
+        mapPreset: base.adventure.mapPreset?.hexEvents
+          ? { ...base.adventure.mapPreset, hexEvents: undefined }
+          : base.adventure.mapPreset,
         // The Pandora's Box draw pile stays face down; only its size shows.
         pandoraDeck: base.adventure.pandoraDeck?.map(() => "hidden"),
         // Event resolution secrets: a face-down pool card (Magical Forest)

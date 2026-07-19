@@ -527,6 +527,11 @@ describe("Subterranean Gate — pick-on-reveal placement renders as a real choic
     // Map float: cycle + Confirm.
     const float = container.querySelector(".gateExitFloat");
     expect(float, "gate exit cycle float on the map").toBeTruthy();
+    // The full "Path up on the … edge — sacrifices …" label must wrap inside the
+    // float (mapFloatLabel is nowrap elsewhere); never clip into unreadable text.
+    const floatLabel = float!.querySelector(".mapFloatLabel");
+    expect(floatLabel, "gate exit float shows the selected exit label").toBeTruthy();
+    expect(floatLabel!.textContent ?? "").toMatch(/Path up on the/);
     const confirm = [...container.querySelectorAll(".gateExitFloat .commandButton")].find((button) =>
       /Confirm/i.test(button.textContent ?? "")
     );
@@ -535,6 +540,10 @@ describe("Subterranean Gate — pick-on-reveal placement renders as a real choic
     // Labels stay plain-language (compass edge), never raw hex coordinates.
     expect(labels.every((label) => /Path up on the (NE|E|SE|SW|W|NW) edge/.test(label))).toBe(true);
     expect(labels.some((label) => /hex\s*-?\d+\s*,\s*-?\d+/.test(label))).toBe(false);
+    // Hex cue is short so the cave-mouth art stays fully visible.
+    const selectedCue = container.querySelector(".hexGateChoiceCue.selected");
+    expect(selectedCue?.textContent ?? "").toMatch(/path up/i);
+    expect(selectedCue?.textContent ?? "").not.toMatch(/path up here/i);
 
     // Confirm carves the currently selected path-up hex.
     fireEvent.click(confirm as unknown as HTMLElement);

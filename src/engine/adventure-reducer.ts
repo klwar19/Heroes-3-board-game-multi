@@ -18,6 +18,7 @@ import { unitAbilities } from "@/data/units/abilities";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { recordVpHeroDefeat, recordVpSurrender, recordVpUtopiaDefeat } from "./victory-points";
+import { grailDigMovementCost, survivorsToCustomGuardUnits } from "./map-design-features";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   addArmyUnit,
@@ -31,6 +32,7 @@ import {
   grailObelisksRequired,
   grailObelisksVisitedCount,
   obeliskRoleIsMonolith,
+  applyCustomGuardToField,
   buildCreatureBankCombatUnits,
   canCrossEdge,
   canHeroReachPlacedTile,
@@ -137,6 +139,7 @@ import {
   resolveMagicUniversityDig,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
+  setHexEventEncounterHook,
   setOnMapTileRevealHook,
   spendRecruitResources,
   spendResources,
@@ -1074,6 +1077,20 @@ function resolveHeroArrival(state: GameState, hero: HeroState, to: MapSpaceId): 
   beginFieldVisit(state, hero.id, to, false);
 }
 
+/**
+ * True when this field hosts a BUILT Grail (map-maker build path). Contested as
+ * a special control fight — always garrisonable and always a siege when fought.
+ */
+export function isBuiltGrailField(state: GameState, field: MapFieldState | undefined | null): boolean {
+  if (!field) return false;
+  const grail = state.adventure?.grail;
+  return (
+    grail?.status === "built" &&
+    Boolean(grail.builtFieldId) &&
+    grail.builtFieldId === field.spaceId
+  );
+}
+
 /** Whether this field is an enemy town or settlement the owner may garrison. */
 function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFieldState): PlayerId | null {
   const location = locationDefinitions[field.location];
@@ -1085,10 +1102,13 @@ function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFi
     field.location === "dragon_utopia" &&
     adventureVictoryMode(state) === "dragon-conqueror" &&
     Boolean(field.flagOwnerId);
+  // Built Grail (map-maker): the field is a control contest — its holder may
+  // garrison even when the location would not otherwise open that window.
+  const isBuiltGrail = isBuiltGrailField(state, field) && Boolean(field.flagOwnerId);
   // Designer Garrison object: its flag holder defends it like a settlement,
   // for 3 gold (the printed rule).
   const isGarrisonObject = field.location === "garrison" && Boolean(field.flagOwnerId);
-  if (!isTown && !isSettlement && !isCapturedUtopia && !isGarrisonObject) {
+  if (!isTown && !isSettlement && !isCapturedUtopia && !isBuiltGrail && !isGarrisonObject) {
     return null;
   }
 
@@ -1151,19 +1171,20 @@ function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field
     goldCost: cost
   };
 
+  const siteLabel = isBuiltGrailField(state, field)
+    ? "Grail site"
+    : field.location === "dragon_utopia"
+      ? "Dragon Utopia"
+      : field.location === "garrison"
+        ? "garrison"
+        : locationDefinitions[field.location]?.category === "town"
+          ? "town"
+          : "settlement";
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId: defenderId,
-    prompt: `${state.players[attacker.controllerId]?.name ?? "An enemy"} attacks your ${
-      field.location === "dragon_utopia"
-        ? "Dragon Utopia"
-        : field.location === "garrison"
-          ? "garrison"
-          : locationDefinitions[field.location]?.category === "town"
-            ? "town"
-            : "settlement"
-    } — pay ${cost} gold to defend with your units (no cards, your hero is away)?`,
+    prompt: `${state.players[attacker.controllerId]?.name ?? "An enemy"} contests your ${siteLabel} — pay ${cost} gold to defend with your units (no cards, your hero is away)?`,
     options: [{ label: `Pay ${cost} gold and defend` }, { label: "Let it fall" }],
     context: "garrison",
     returnPhase: "player-turn"
@@ -1633,11 +1654,19 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
     throw new Error("That hero is not on a field.");
   }
 
-  if (hero.movementPoints <= 0) {
-    throw new Error(field.grailDiggable ? "Digging the Grail costs 1 movement point." : "Revisiting costs 1 movement point.");
+  // Grail dig cost is map-maker configurable (0 / 1 / 2 MP); classic revisit is 1.
+  const digCost = field.grailDiggable ? grailDigMovementCost(state) : 1;
+  if (hero.movementPoints < digCost) {
+    throw new Error(
+      field.grailDiggable
+        ? digCost === 0
+          ? "Cannot dig the Grail right now."
+          : `Digging the Grail costs ${digCost} movement point${digCost === 1 ? "" : "s"}.`
+        : "Revisiting costs 1 movement point."
+    );
   }
 
-  // Revisitable fields, a cleared Grail field (dug for 1 MP), and an Obelisk
+  // Revisitable fields, a cleared Grail field (dug for N MP), and an Obelisk
   // acting as a Monolith network member (role "monolith" — Revisit travels
   // again, mirroring a Monolith token).
   if (
@@ -1659,8 +1688,246 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
     );
   }
 
-  hero.movementPoints -= 1;
+  hero.movementPoints -= digCost;
   beginFieldVisit(state, hero.id, hero.spaceId, true);
+}
+
+/**
+ * Build a carried Grail at the hero's current Town/Settlement (map-maker
+ * `objectives.grailBuildAt`). Grants optional build reward; the Grail stays
+ * on that field and its controller scores possession VP at end of game.
+ */
+export function buildGrail(state: GameState, action: Extract<GameAction, { type: "BUILD_GRAIL" }>): void {
+  const adventure = requireAdventure(state);
+  assertActiveTurn(state, action.playerId);
+  assertHandRefreshed(state, action.playerId);
+  assertNoPendingInput(state);
+
+  const buildAt = adventure.mapPreset?.objectives?.grailBuildAt;
+  if (!buildAt) {
+    throw new Error("Building the Grail is not allowed on this map.");
+  }
+  const grail = adventure.grail;
+  if (!grail || grail.status !== "carried" || grail.carrierHeroId !== action.heroId) {
+    throw new Error("That hero is not carrying the Grail.");
+  }
+  const hero = requireHero(state, action.playerId, action.heroId);
+  const field = hero.spaceId ? adventure.fields[hero.spaceId] : undefined;
+  if (!hero.spaceId || !field) {
+    throw new Error("That hero is not on a field.");
+  }
+  const isTown = field.location === "town" || field.location === "random_town";
+  const isSettlement = field.location === "settlement";
+  const town = getTownOfPlayer(state, action.playerId);
+  const isStartingTown = Boolean(isTown && town?.fieldId === field.spaceId);
+  const owned =
+    field.flagOwnerId === action.playerId ||
+    (isTown && town?.fieldId === field.spaceId);
+
+  let legal = false;
+  if (buildAt === "town" && isTown && owned) legal = true;
+  if (buildAt === "settlement" && isSettlement && owned) legal = true;
+  if (buildAt === "both" && (isTown || isSettlement) && owned) legal = true;
+  if (buildAt === "starting-town" && isStartingTown) legal = true;
+  if (!legal) {
+    throw new Error("The Grail cannot be built here.");
+  }
+
+  grail.status = "built";
+  delete grail.carrierHeroId;
+  grail.builtFieldId = field.spaceId;
+  field.flagOwnerId = action.playerId;
+  field.everFlagged = true;
+
+  const reward = adventure.mapPreset?.objectives?.grailBuildReward;
+  if (reward) {
+    const resources: { gold?: number; buildingMaterials?: number; valuables?: number } = {};
+    if (reward.gold) resources.gold = reward.gold;
+    if (reward.buildingMaterials) resources.buildingMaterials = reward.buildingMaterials;
+    if (reward.valuables) resources.valuables = reward.valuables;
+    if (Object.keys(resources).length > 0) {
+      gainResources(state, action.playerId, resources, "built the Grail");
+    }
+  }
+
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId: action.playerId,
+    message: `${state.players[action.playerId]?.name ?? action.playerId} builds the Grail here.`
+  });
+
+  // freeBuilding: open a real free-build Town picker (prereqs met, no cost, no
+  // Build token). The player's own Town is always the build target — even when
+  // the Grail was built at a Settlement.
+  if (reward?.freeBuilding) {
+    openGrailFreeBuildingPicker(state, action.playerId);
+  }
+}
+
+/**
+ * Candidate Town buildings the Grail free-build picker may offer: implemented,
+ * not already built, prerequisites met. Cost and the Build token are ignored.
+ */
+export function grailFreeBuildingCandidates(
+  state: GameState,
+  playerId: PlayerId,
+  townId: string
+): { buildingId: string; name: string }[] {
+  const player = state.players[playerId];
+  const town = state.towns[townId];
+  if (!player || !town || town.controllerId !== playerId) {
+    return [];
+  }
+  const candidates: { buildingId: string; name: string }[] = [];
+  for (const buildingId of coreFactionDefinitions[player.factionId ?? ""]?.buildings ?? []) {
+    const building = coreBuildingDefinitions[buildingId];
+    if (!building || building.implementationStatus !== "implemented") continue;
+    if (town.buildings.includes(buildingId)) continue;
+    if ((building.prerequisites ?? []).some((prereq) => !town.buildings.includes(prereq))) continue;
+    candidates.push({ buildingId, name: building.name });
+  }
+  return candidates;
+}
+
+/** Open the free-build OPTION_CHOICE after BUILD_GRAIL (or note if none). */
+function openGrailFreeBuildingPicker(state: GameState, playerId: PlayerId): void {
+  const town = getTownOfPlayer(state, playerId);
+  if (!town) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: "The Grail grants a free Building, but you have no Town to build in."
+    });
+    return;
+  }
+  const candidates = grailFreeBuildingCandidates(state, playerId, town.id);
+  if (candidates.length === 0) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: "The Grail grants a free Building, but no eligible structure is available."
+    });
+    return;
+  }
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "The Grail grants a free Building — choose one to construct (no cost, does not use the Build token)",
+    options: [
+      ...candidates.map((c) => ({ label: `Build ${c.name} (free)` })),
+      { label: "Skip free Building" }
+    ],
+    context: "grail-free-building",
+    grailFreeBuilding: {
+      townId: town.id,
+      buildingIds: candidates.map((c) => c.buildingId)
+    },
+    returnPhase: state.phase === "choice" ? "player-turn" : state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/**
+ * Resolve grail-free-building OPTION_CHOICE: construct the pick for free, or
+ * skip. Does not spend the Build token and does not charge resources.
+ */
+export function resolveGrailFreeBuilding(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "grail-free-building") {
+    throw new Error("There is no free Building choice to resolve.");
+  }
+  if (choice.playerId !== playerId) {
+    throw new Error("That free Building choice is not yours.");
+  }
+  const data = choice.grailFreeBuilding;
+  const buildingId = data?.buildingIds[optionIndex];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase ?? "player-turn";
+  state.priorityPlayerId = null;
+
+  if (!data || !buildingId) {
+    // Skip, or out-of-range index → no build.
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: "Declined the Grail's free Building."
+    });
+    return;
+  }
+
+  grantFreeTownBuilding(state, playerId, data.townId, buildingId);
+}
+
+/**
+ * Construct one Town building at no cost and without consuming the Build token.
+ * Still fires STRUCTURE_BUILT and Mage Guild / cube side-effects.
+ */
+function grantFreeTownBuilding(
+  state: GameState,
+  playerId: PlayerId,
+  townId: string,
+  buildingId: string
+): void {
+  const player = state.players[playerId];
+  const town = state.towns[townId];
+  const building = coreBuildingDefinitions[buildingId];
+  if (!player || !town || !building) {
+    throw new Error("That free Building cannot be constructed.");
+  }
+  if (town.controllerId !== playerId) {
+    throw new Error("Players may only build in their own town.");
+  }
+  if (building.implementationStatus !== "implemented") {
+    throw new Error(`${building.name} is not implemented yet.`);
+  }
+  if (town.buildings.includes(buildingId)) {
+    throw new Error("That building already stands.");
+  }
+  if ((building.prerequisites ?? []).some((prerequisite) => !town.buildings.includes(prerequisite))) {
+    throw new Error("Lower-level dwellings must be built first.");
+  }
+
+  // Free: no spendResources, no townTokens.build flip.
+  town.buildings.push(buildingId);
+
+  appendEvent(state, {
+    type: "STRUCTURE_BUILT",
+    playerId,
+    townId,
+    buildingId,
+    cost: {}
+  });
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: `The Grail builds ${building.name} for free.`
+  });
+
+  if (building.effect?.type === "MAGE_GUILD") {
+    player.mageGuildBuiltRound = state.round;
+    const searchCount = polishSpellBookEnabled(state) ? 3 : 2;
+    state.adventure?.rewardQueue.push(
+      {
+        playerId,
+        kind: "shared-deck-search",
+        deckId: "spells",
+        count: searchCount,
+        ...(polishSpellBookEnabled(state) ? { allowCastCardInstead: true } : {})
+      },
+      {
+        playerId,
+        kind: "shared-deck-search",
+        deckId: "spells",
+        count: searchCount,
+        ...(polishSpellBookEnabled(state) ? { allowCastCardInstead: true } : {})
+      }
+    );
+  }
+  if (building.effect?.type === "COMBAT_CUBES") {
+    gainTownCube(state, town, buildingId, building.effect.max);
+  }
 }
 
 /**
@@ -2859,8 +3126,22 @@ function beginFarTileReveal(state: GameState, playerId: PlayerId, tile: MapTileS
  * exactly like opening one from your supply); every other group flips straight to
  * its rotation choice. The movement point (if any) is already spent by the
  * caller, and no opening hero is recorded — a discovered tile rotates freely.
+ *
+ * Map-designer player picks (resource gold/valuables, multi-select Ⅶ) open
+ * BEFORE the normal reveal chain when the tile carries those flags.
  */
 function revealOnMapTile(state: GameState, playerId: PlayerId, tile: MapTileState): void {
+  // Designer: player chooses Gold vs Valuables mine before the tile content is
+  // fixed (replaces tileDefId from the matching pool for that group).
+  if (tile.playerResourcePick && (tile.group === "far" || tile.group === "near")) {
+    openPlayerResourcePick(state, playerId, tile);
+    return;
+  }
+  // Designer: player chooses among multi-selected Ⅶ designations (Town / Utopia / Grail).
+  if (tile.playerViiPick && tile.viiFields && tile.viiFields.length > 1 && tile.group === "center") {
+    openPlayerViiPick(state, playerId, tile);
+    return;
+  }
   if (tile.group === "far") {
     beginFarTileReveal(state, playerId, tile);
     return;
@@ -2868,9 +3149,203 @@ function revealOnMapTile(state: GameState, playerId: PlayerId, tile: MapTileStat
   beginTileRotation(state, playerId, tile, "reveal");
 }
 
+/**
+ * Map-designer player resource pick: gold mine / valuables mine before reveal.
+ * On resolve the tile's def is swapped for a matching pool draw (same group).
+ */
+function openPlayerResourcePick(state: GameState, playerId: PlayerId, tile: MapTileState): void {
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Choose the mine type for this tile",
+    options: [
+      { label: "Gold mine" },
+      { label: "Valuables mine" },
+      { label: "No preference (random)" }
+    ],
+    context: "player-resource-pick",
+    playerTilePick: { tileInstanceId: tile.id },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+function openPlayerViiPick(state: GameState, playerId: PlayerId, tile: MapTileState): void {
+  const labels: Record<"town" | "dragon_utopia" | "grail", string> = {
+    town: "Random Town",
+    dragon_utopia: "Dragon Utopia",
+    grail: "Grail"
+  };
+  const fields = tile.viiFields ?? [];
+  const options = fields.map((id) => ({ label: labels[id] ?? id }));
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Choose this tile's Ⅶ objective",
+    options,
+    context: "player-vii-pick",
+    playerTilePick: { tileInstanceId: tile.id, viiFields: fields },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolve designer player-resource-pick / player-vii-pick OPTION_CHOICE. */
+export function resolvePlayerTileDesignPick(state: GameState, optionIndex: number): boolean {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE") {
+    return false;
+  }
+  if (choice.context !== "player-resource-pick" && choice.context !== "player-vii-pick") {
+    return false;
+  }
+  const adventure = requireAdventure(state);
+  const tileId = choice.playerTilePick?.tileInstanceId;
+  const tile = tileId ? adventure.tiles[tileId] : undefined;
+  if (!tile) {
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase ?? "player-turn";
+    state.priorityPlayerId = null;
+    return true;
+  }
+  const returnPhase = choice.returnPhase ?? "player-turn";
+  const playerId = choice.playerId;
+  state.pendingChoice = null;
+  state.phase = returnPhase;
+  state.priorityPlayerId = null;
+
+  if (choice.context === "player-resource-pick") {
+    const prefer: "gold" | "valuables" | undefined =
+      optionIndex === 0 ? "gold" : optionIndex === 1 ? "valuables" : undefined;
+    delete tile.playerResourcePick;
+    if (prefer) {
+      reassignTileDefForResource(state, tile, prefer);
+    }
+    // Continue normal reveal (far flip or rotation).
+    if (tile.group === "far") {
+      beginFarTileReveal(state, playerId, tile);
+    } else {
+      beginTileRotation(state, playerId, tile, "reveal");
+    }
+    return true;
+  }
+
+  // player-vii-pick
+  const fields = choice.playerTilePick?.viiFields ?? tile.viiFields ?? [];
+  const picked = fields[optionIndex] ?? fields[0];
+  if (picked) {
+    tile.viiField = picked;
+  }
+  delete tile.playerViiPick;
+  delete tile.viiFields;
+  beginTileRotation(state, playerId, tile, "reveal");
+  return true;
+}
+
+/**
+ * Reassign a face-down tile's def from its LIVE group pool so it carries the
+ * preferred mine resource. The previous def returns to the pool when known.
+ * Far → {@link AdventureState.farTilePool}; Near → {@link AdventureState.nearTilePool}.
+ * Legacy snapshots with no near pool fall back to a face-down Near-tile swap.
+ */
+function reassignTileDefForResource(
+  state: GameState,
+  tile: MapTileState,
+  prefer: "gold" | "valuables"
+): void {
+  const adventure = requireAdventure(state);
+  const group = tile.group;
+  if (group !== "far" && group !== "near") {
+    return;
+  }
+
+  const tryLivePool = (pool: string[], seedTag: string): boolean => {
+    const matching = pool
+      .map((id, index) => ({ id, index }))
+      .filter((entry) => tileDefHasResourceMine(entry.id, prefer));
+    if (matching.length === 0) {
+      return false;
+    }
+    const random = createSeededRandom(
+      `${state.seed}#${seedTag}#${tile.id}#${eventSeedNumber(state)}`
+    );
+    const picked = matching[random.nextInt(0, matching.length - 1)];
+    const [id] = pool.splice(picked.index, 1);
+    // Return the provisional def to the pool when it was a real tile id.
+    if (tile.tileDefId && allTileDefinitions[tile.tileDefId]) {
+      pool.push(tile.tileDefId);
+    }
+    tile.tileDefId = id;
+    return true;
+  };
+
+  if (group === "far") {
+    const pool = adventure.farTilePool ?? (adventure.farTilePool = []);
+    if (tryLivePool(pool, "resource-pick")) {
+      return;
+    }
+    appendEvent(state, {
+      type: "MAP_SECRET_FEATURE_FALLBACK",
+      feature: prefer === "gold" ? "gold_mine" : "valuables_mine",
+      group: "far",
+      message: `No ${prefer} mine tile left in the Ⅱ–Ⅲ pool — kept the drawn tile.`
+    });
+    return;
+  }
+
+  // Near: prefer the live leftover near pool (mirrors Far).
+  const nearPool = adventure.nearTilePool ?? (adventure.nearTilePool = []);
+  if (tryLivePool(nearPool, "resource-pick-near")) {
+    return;
+  }
+  // Legacy fallback: no live pool entries — scan other face-down near tiles.
+  const candidates = Object.values(adventure.tiles).filter(
+    (t) =>
+      t.id !== tile.id &&
+      t.faceDown &&
+      t.group === "near" &&
+      tileDefHasResourceMine(t.tileDefId, prefer)
+  );
+  if (candidates.length > 0) {
+    const random = createSeededRandom(
+      `${state.seed}#resource-pick-near-swap#${tile.id}#${eventSeedNumber(state)}`
+    );
+    const other = candidates[random.nextInt(0, candidates.length - 1)];
+    const swap = other.tileDefId;
+    other.tileDefId = tile.tileDefId;
+    tile.tileDefId = swap;
+    return;
+  }
+  // Already matches?
+  if (tileDefHasResourceMine(tile.tileDefId, prefer)) {
+    return;
+  }
+  appendEvent(state, {
+    type: "MAP_SECRET_FEATURE_FALLBACK",
+    feature: prefer === "gold" ? "gold_mine" : "valuables_mine",
+    group: "near",
+    message: `No ${prefer} mine tile left in the Ⅳ–Ⅴ pool — kept the drawn tile.`
+  });
+}
+
 // Let the Subterranean Gate reveal (which lives in adventure.ts, on the far side
 // of the import cycle) run a Ⅱ–Ⅲ surface tile through the same flip.
 setOnMapTileRevealHook(revealOnMapTile);
+
+// Designer hex-event AMBUSH starter (registered across the same import cycle):
+// the sprung guard fights for REAL — straight to combat placement, bypassing
+// Quick Combat and Diplomacy (you cannot out-level a surprise). Experience
+// follows the stamped difficulty as usual; a lost/retreated fight leaves the
+// now-public guard, and a LATER attempt runs the normal guarded-field flow.
+setHexEventEncounterHook((state, hero, field) => {
+  beginNeutralCombatPlacement(state, hero, field, field.difficulty ?? 1, {
+    unlimitedRounds: Boolean(field.unlimitedCombatRounds)
+  });
+});
 
 /** Resolves a keep / reroll / pick decision on the Ⅱ–Ⅲ flip in progress. */
 export function resolveFarTileFlip(state: GameState, optionIndex: number): void {
@@ -3931,7 +4406,15 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
   // never seen. The fight is always real; the field's (tier-derived) difficulty
   // still drives the experience reward as usual.
   if (field.customGuardUnits && field.customGuardUnits.length > 0) {
-    beginNeutralCombatPlacement(state, hero, field, difficulty);
+    beginNeutralCombatPlacement(state, hero, field, difficulty, {
+      unlimitedRounds: Boolean(field.unlimitedCombatRounds)
+    });
+    return;
+  }
+
+  // Break-field unlimited rounds (level guard or printed guard with the flag).
+  if (field.unlimitedCombatRounds) {
+    beginNeutralCombatPlacement(state, hero, field, difficulty, { unlimitedRounds: true });
     return;
   }
 
@@ -3969,6 +4452,53 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
   }
 
   beginNeutralCombatPlacement(state, hero, field, difficulty);
+}
+
+/**
+ * Break-field persistent army: after a lost/retreated neutral fight, stamp the
+ * living guards back onto the field as a certain army so a re-entry fights the
+ * survivors only (dead units stay gone). Full health on the re-fight (the
+ * engine mints fresh combat units from the list).
+ */
+function persistLivingGuardsOnField(
+  state: GameState,
+  field: MapFieldState,
+  combat: CombatState
+): void {
+  const living = Object.values(combat.units)
+    .filter(
+      (unit) =>
+        unit.controllerId === NEUTRAL_PLAYER_ID &&
+        unit.damage < unit.maxHealth &&
+        Boolean(unit.unitDefId)
+    )
+    // CombatUnitState carries no factionPack flag — derive pack-ness from the
+    // minted variant ("pack", or "few" after a mid-fight flip; plain neutral
+    // guards are variant "neutral"), so a `pack:` slot survivor re-persists as
+    // a faction Pack instead of silently vanishing from the re-fight. A Few
+    // survivor re-fights as a full Pack ("full health on the re-fight").
+    .map((unit) => ({
+      unitDefId: unit.unitDefId,
+      factionPack: unit.variant === "pack" || unit.variant === "few"
+    }));
+  const survivors = survivorsToCustomGuardUnits(living);
+  if (survivors.length === 0) {
+    // All guards fell but the hero still lost (e.g. simultaneous wipe) — clear.
+    return;
+  }
+  // Keep break/persistent/unlimited flags; re-stamp the certain army.
+  const breakField = field.breakField;
+  const persistentGuard = field.persistentGuard;
+  const unlimited = field.unlimitedCombatRounds;
+  applyCustomGuardToField(field, { units: survivors });
+  if (breakField) field.breakField = true;
+  if (persistentGuard) field.persistentGuard = true;
+  if (unlimited) field.unlimitedCombatRounds = true;
+  // Do NOT set everFlagged — the field stays guarded for a second attempt.
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    message: `${survivors.length} guard${survivors.length === 1 ? "" : "s"} remain on the field.`
+  });
 }
 
 /** Rulebook Combat Setup against guards: the hero places, then guards reveal. */
@@ -6599,8 +7129,14 @@ export function startPlayerCombat(
     field?.location === "dragon_utopia" &&
     adventureVictoryMode(state) === "dragon-conqueror" &&
     field.flagOwnerId === defenderPlayerId;
+  // Built Grail control fight: contesting the field where the Grail was built
+  // is always a siege (special control contest, not a plain town/settlement
+  // capture) — Walls / Gate / Arrow Tower when the defender holds the site.
+  const grailSiege =
+    isBuiltGrailField(state, field) && field?.flagOwnerId === defenderPlayerId;
   const siege =
     utopiaSiege ||
+    grailSiege ||
     Boolean(
       town &&
         town.factionId &&
@@ -6632,6 +7168,15 @@ export function startPlayerCombat(
     defenderPlayerId,
     fieldId
   });
+  if (grailSiege) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId: attacker.controllerId,
+      message: `Control fight for the Grail — siege against ${
+        state.players[defenderPlayerId]?.name ?? defenderPlayerId
+      }.`
+    });
+  }
 
   // Cover of Darkness: "At the beginning of Combat with an Enemy Hero,
   // discard 1 random card from the enemy's hand" — offered to each owner
@@ -8505,6 +9050,10 @@ export function finalizeAdventureCombat(state: GameState): void {
           queueSkeletonReinforce(state, playerId);
         }
       } else if (outcome.reason === "retreat") {
+        // Persistent break-field army: keep living guards for a later re-fight.
+        if (field?.persistentGuard) {
+          persistLivingGuardsOnField(state, field, combat);
+        }
         const returnTo = adventure.lastVisitedField[hero.id];
         if (returnTo) {
           hero.spaceId = returnTo;
@@ -8516,6 +9065,10 @@ export function finalizeAdventureCombat(state: GameState): void {
           returnedTo: hero.spaceId ?? context.fieldId
         });
       } else {
+        // Defeat: living guards stay on a break field when persistent is on.
+        if (field?.persistentGuard) {
+          persistLivingGuardsOnField(state, field, combat);
+        }
         // Defeat: the hero falls back to a friendly town or settlement. The
         // fighter is always the turn-owner, so offer the town-or-settlement
         // retreat CHOICE (interactive) when they own more than one.
@@ -10922,6 +11475,16 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     // resolveFarTileFlip drives the keep/reroll/pick state machine — it either
     // re-opens the next choice or finalizes (placing the tile, restoring phase).
     resolveFarTileFlip(state, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "player-resource-pick" || choice.context === "player-vii-pick") {
+    resolvePlayerTileDesignPick(state, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "grail-free-building") {
+    resolveGrailFreeBuilding(state, action.playerId, action.optionIndex);
     return;
   }
 

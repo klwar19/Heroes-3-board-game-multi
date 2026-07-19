@@ -155,6 +155,7 @@ import type {
   CardId,
   CombatUnitState,
   CustomCenterHexReward,
+  CustomFieldReward,
   CustomGuardSpec,
   CustomMapObjectKind,
   CustomWinCondition,
@@ -193,6 +194,16 @@ import { awardCommanderGradePoints, commandersModuleEnabled, wogNewObjectsEnable
 import { WOG_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/wog/field-overrides";
 import { ANIME_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/anime/field-overrides";
 import { COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/wog/commander-artifacts";
+import {
+  applyBreakFieldOptions,
+  customGuardArmyDifficultyFromEntries,
+  describeGuardArmyGrouped,
+  resolveCustomGuardDraws,
+  randomTownCaptureReward,
+  randomTownIncomeGold,
+  grailDigMovementCost,
+  grailAsUtopiaMode
+} from "./map-design-features";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
 export const HAND_LIMIT_BY_LEVEL: Record<number, number> = { 1: 4, 2: 4, 3: 5, 4: 5, 5: 6, 6: 6, 7: 7 };
@@ -262,23 +273,11 @@ export const NEUTRAL_DECK_IDS = {
  * 1 / silver 2 / gold 3 points): any azure body makes it a Ⅶ fight (azure IS
  * the level-7 tier — winning jumps the hero to level 7, like every azure
  * guard); otherwise the point total maps onto the closest table row, capped at
- * Ⅵ. Unknown ids count 0 (the sanitiser drops them before play).
+ * Ⅵ. Unknown ids count 0 (the sanitiser drops them before play). Understands
+ * `random:<tier>` and `pack:<unitDefId>` certain-army slots.
  */
 export function customGuardArmyDifficulty(units: string[]): number {
-  let points = 0;
-  for (const unitDefId of units) {
-    const tier = coreUnitDefinitions[unitDefId]?.tier;
-    if (tier === "azure") {
-      return 7;
-    }
-    points += tier === "gold" ? 3 : tier === "silver" ? 2 : tier === "bronze" ? 1 : 0;
-  }
-  if (points <= 1) return 1;
-  if (points <= 3) return 2;
-  if (points === 4) return 3;
-  if (points <= 7) return 4;
-  if (points <= 10) return 5;
-  return 6;
+  return customGuardArmyDifficultyFromEntries(units);
 }
 
 /**
@@ -309,6 +308,9 @@ export function clearCustomGuard(field: MapFieldState): void {
   delete field.customGuardUnits;
   delete field.customGuardLevel;
   delete field.designedGuard;
+  delete field.breakField;
+  delete field.persistentGuard;
+  delete field.unlimitedCombatRounds;
 }
 
 /**
@@ -331,10 +333,44 @@ export function designedGuardPreview(field: MapFieldState | undefined): Designed
   if (!field || !field.designedGuard) {
     return null;
   }
-  const units = (field.customGuardUnits ?? []).map(
-    (unitDefId) => coreUnitDefinitions[unitDefId]?.name ?? unitDefId
-  );
+  // Grouped labels (e.g. "3× Random gold") so the map tooltip matches the
+  // designer army summary; empty for a level-only designed guard.
+  const unitsRaw = field.customGuardUnits ?? [];
+  const grouped = describeGuardArmyGrouped(unitsRaw);
+  const units = grouped
+    ? grouped.split(", ").filter(Boolean)
+    : [];
   return { difficulty: field.difficulty ?? 0, units };
+}
+
+/**
+ * Stamp a designer first-clear reward onto a carved field (objects, tokens,
+ * settlements). Uses the unified designerReward fields; the grant path also
+ * still reads centerHexReward for center-hex stamps.
+ */
+export function stampDesignerFieldReward(
+  field: MapFieldState,
+  reward: CustomFieldReward | undefined,
+  vp?: number
+): void {
+  if (reward && Object.keys(reward).length > 0) {
+    field.designerReward = { ...reward };
+  }
+  if (vp !== undefined && vp > 0) {
+    field.designerRewardVp = vp;
+  }
+}
+
+/** True when any designer-reward latch is already set (once-only). */
+function designerRewardAlreadyClaimed(field: MapFieldState): boolean {
+  return Boolean(field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed);
+}
+
+/** Latch every alias so a re-visit / re-capture never re-pays. */
+function latchDesignerRewardClaimed(field: MapFieldState): void {
+  field.centerHexClaimed = true;
+  field.viiBonusClaimed = true;
+  field.designerRewardClaimed = true;
 }
 
 /**
@@ -811,6 +847,9 @@ export function materializeTileFields(
       if (centerHex?.vp !== undefined) {
         field.centerHexVp = centerHex.vp;
       }
+      if (centerHex?.winCondition) {
+        field.designerWinCondition = true;
+      }
       // Shared stamp (sets designedGuard) so a center-hex guard is flagged as
       // designer-altered exactly like a token / settlement / obelisk guard.
       applyCustomGuardToField(field, centerHex?.guard);
@@ -831,10 +870,36 @@ export function materializeTileFields(
     // Per-TILE settlement customization OVERRIDES the map-wide guard for this
     // field only and may stamp extra VP / hold-to-win (see tile.settlement).
     if (field.location === "obelisk") {
-      applyCustomGuardToField(field, adventure.mapPreset?.obelisks?.guard);
+      // SPECIFIC (per-tile) plan overrides the map-wide config field-by-field
+      // (an unset field falls back — the settlement-plan fallback semantic).
+      const obelisks = adventure.mapPreset?.obelisks;
+      const perTile = tile.objectPlans?.obelisk;
+      applyCustomGuardToField(field, perTile?.guard ?? obelisks?.guard);
+      applyBreakFieldOptions(field, mergeObjectBreakFlags(perTile, obelisks));
+      stampDesignerFieldReward(field, perTile?.reward, perTile?.vp);
+      if (perTile?.winCondition) {
+        field.designerWinCondition = true;
+      }
+      // Grail-as-utopia "always": a Grail dig site also fights Utopia dragons.
+    } else if (field.location === "mine") {
+      const mines = adventure.mapPreset?.mines;
+      const perTile = tile.objectPlans?.mine;
+      // Only OVERRIDE when a designer guard is set; printed mine difficulty stays.
+      const guard = perTile?.guard ?? mines?.guard;
+      if (guard) {
+        applyCustomGuardToField(field, guard);
+      }
+      applyBreakFieldOptions(field, mergeObjectBreakFlags(perTile, mines));
+      stampDesignerFieldReward(field, perTile?.reward, perTile?.vp);
+      if (perTile?.winCondition) {
+        field.designerWinCondition = true;
+      }
     } else if (field.location === "settlement") {
       const perTile = tile.settlement;
       applyCustomGuardToField(field, perTile?.guard ?? adventure.mapPreset?.settlements?.guard);
+      if (perTile?.reward) {
+        stampDesignerFieldReward(field, perTile.reward);
+      }
       if (perTile?.vp && perTile.vp > 0) {
         field.settlementBonusVp = perTile.vp;
       } else {
@@ -847,9 +912,41 @@ export function materializeTileFields(
         delete field.holdControlOwnerId;
         delete field.holdControlRounds;
       }
+      if (perTile?.winCondition) {
+        field.designerWinCondition = true;
+      }
+    } else if (field.location === "random_town") {
+      const rtGuard = adventure.mapPreset?.randomTowns?.guard;
+      if (rtGuard) {
+        applyCustomGuardToField(field, rtGuard);
+      }
     }
     adventure.fields[spaceId] = field;
   }
+}
+
+/**
+ * Fold a SPECIFIC object plan's break flags over the map-wide config: a flag
+ * the per-tile plan sets wins; with no per-tile plan the global flags apply
+ * verbatim. A per-tile plan that exists but leaves a flag unset falls back to
+ * the global flag (same per-field fallback its guard uses).
+ */
+function mergeObjectBreakFlags(
+  perTile:
+    | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean }
+    | undefined,
+  global:
+    | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean }
+    | undefined
+): { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean } | undefined {
+  if (!perTile && !global) {
+    return undefined;
+  }
+  return {
+    breakField: perTile?.breakField ?? global?.breakField,
+    persistentGuard: perTile?.persistentGuard ?? global?.persistentGuard,
+    unlimitedRounds: perTile?.unlimitedRounds ?? global?.unlimitedRounds
+  };
 }
 
 export function getTileFootprintSpaceIds(tile: MapTileState): MapSpaceId[] {
@@ -1704,6 +1801,11 @@ export function classifyHeroStep(
   }
 
   if (isFieldGuarded(field) && field.flagOwnerId !== playerId) {
+    // Break fields (PC-style): Pathfinding may NOT walk through — must fight
+    // to enter / clear. Classic guarded fields still allow Pathfinding pass.
+    if (field.breakField) {
+      return "stop";
+    }
     // Pathfinding walks through Neutral Units; Combat only if you END here.
     return movement.passEncounters ? "encounter" : "stop";
   }
@@ -3075,16 +3177,24 @@ function applyTownFlag(state: GameState, playerId: PlayerId, field: MapFieldStat
 }
 
 /**
- * Random Town capture: the conqueror gains +10 gold income (transferred from
- * any previous holder) and, the first time the town falls, the 10 gold at once.
+ * Random Town capture: the conqueror gains gold income (map-maker override via
+ * `randomTowns.incomeGold`, default 10 — transferred from any previous holder)
+ * and, the first time the town falls, a capture reward (map-maker
+ * `randomTowns.captureReward`, else the classic 10 gold).
  */
 function applyRandomTownFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+  const income = randomTownIncomeGold(state);
   const previousOwnerId = field.flagOwnerId;
   if (previousOwnerId && previousOwnerId !== playerId) {
     const previous = state.players[previousOwnerId];
-    if (previous) {
-      previous.production.gold = Math.max(0, previous.production.gold - 10);
-      appendEvent(state, { type: "PRODUCTION_CHANGED", playerId: previousOwnerId, resource: "gold", amount: -10 });
+    if (previous && income > 0) {
+      previous.production.gold = Math.max(0, previous.production.gold - income);
+      appendEvent(state, {
+        type: "PRODUCTION_CHANGED",
+        playerId: previousOwnerId,
+        resource: "gold",
+        amount: -income
+      });
     }
   }
 
@@ -3096,10 +3206,17 @@ function applyRandomTownFlag(state: GameState, playerId: PlayerId, field: MapFie
   if (!player) {
     return;
   }
-  player.production.gold += 10;
-  appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource: "gold", amount: 10 });
+  if (income > 0) {
+    player.production.gold += income;
+    appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource: "gold", amount: income });
+  }
   if (firstCapture) {
-    gainResources(state, playerId, { gold: 10 }, "captured the Random Town");
+    const customReward = randomTownCaptureReward(state);
+    if (customReward) {
+      gainResources(state, playerId, customReward, "captured the Random Town");
+    } else {
+      gainResources(state, playerId, { gold: 10 }, "captured the Random Town");
+    }
   }
 }
 
@@ -3942,12 +4059,43 @@ function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, field
  * with the location's own visit interaction. VP is recorded unconditionally
  * (it scores only in VP mode).
  */
+/**
+ * Grant any designer first-clear field reward (center hex, object, token,
+ * settlement). Resources inline; Treasure dice + deck Searches as visit-steps.
+ * Search rewards expand Times×Search(X): `searchArtifact: 5` with
+ * `searchArtifactTimes: 2` queues two separate Search(5) Artifact steps.
+ * Once-only via the shared latch (centerHexClaimed / designerRewardClaimed /
+ * viiBonusClaimed all set together).
+ */
 function grantCenterHexBonus(state: GameState, playerId: PlayerId, field: MapFieldState): void {
-  if (field.centerHexClaimed || field.viiBonusClaimed) {
+  if (designerRewardAlreadyClaimed(field)) {
     return;
   }
-  const reward: CustomCenterHexReward = { ...(field.viiReward ?? {}), ...(field.centerHexReward ?? {}) };
-  const vp = field.centerHexVp ?? field.viiVp ?? 0;
+  const reward: CustomCenterHexReward = {
+    ...(field.viiReward ?? {}),
+    ...(field.centerHexReward ?? {}),
+    ...(field.designerReward ?? {})
+  };
+  const vp = field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0;
+  const paid = payDesignerFieldReward(state, playerId, reward, vp, "the designer field reward");
+  if (paid) {
+    latchDesignerRewardClaimed(field);
+  }
+}
+
+/**
+ * Pay one designer reward package (resources inline; Treasure dice + deck
+ * Searches queued as a `visit-steps` reward; VP recorded — it scores only in
+ * VP mode). Shared by the field first-clear bonus and the hex-event trigger.
+ * Returns false when the package is empty (the caller must NOT latch then).
+ */
+function payDesignerFieldReward(
+  state: GameState,
+  playerId: PlayerId,
+  reward: CustomFieldReward,
+  vp: number,
+  reason: string
+): boolean {
   const resources: { gold?: number; buildingMaterials?: number; valuables?: number } = {};
   for (const key of ["gold", "buildingMaterials", "valuables"] as const) {
     if ((reward[key] ?? 0) > 0) {
@@ -3958,22 +4106,24 @@ function grantCenterHexBonus(state: GameState, playerId: PlayerId, field: MapFie
   if ((reward.treasureDice ?? 0) > 0) {
     steps.push({ type: "ROLL_TREASURE_DICE", count: reward.treasureDice as number });
   }
-  for (const [key, deckId] of [
-    ["searchSpell", "spells"],
-    ["searchAbility", "abilities"],
-    ["searchArtifact", "artifacts"]
+  for (const [sizeKey, timesKey, deckId] of [
+    ["searchSpell", "searchSpellTimes", "spells"],
+    ["searchAbility", "searchAbilityTimes", "abilities"],
+    ["searchArtifact", "searchArtifactTimes", "artifacts"]
   ] as const) {
-    if ((reward[key] ?? 0) > 0) {
-      steps.push({ type: "SEARCH_SHARED_DECK", deckId, count: reward[key] as number });
+    const size = reward[sizeKey] ?? 0;
+    if (size > 0) {
+      const times = Math.max(1, reward[timesKey] ?? 1);
+      for (let i = 0; i < times; i++) {
+        steps.push({ type: "SEARCH_SHARED_DECK", deckId, count: size });
+      }
     }
   }
   if (Object.keys(resources).length === 0 && steps.length === 0 && vp <= 0) {
-    return;
+    return false;
   }
-  field.centerHexClaimed = true;
-  field.viiBonusClaimed = true;
   if (Object.keys(resources).length > 0) {
-    gainResources(state, playerId, resources, "the Ⅶ objective reward");
+    gainResources(state, playerId, resources, reason);
   }
   if (steps.length > 0) {
     state.adventure?.rewardQueue.push({ playerId, kind: "visit-steps", steps });
@@ -3981,6 +4131,128 @@ function grantCenterHexBonus(state: GameState, playerId: PlayerId, field: MapFie
   if (vp > 0) {
     recordVpViiCenter(state, playerId, vp);
   }
+  return true;
+}
+
+/**
+ * Designer "first clear wins" (a SPECIFIC object / settlement / center-hex
+ * plan's winCondition): the first player to successfully clear / flag the
+ * stamped field wins immediately. Fired from the beginFieldVisit designer seam
+ * — reached only once the field's guards are dealt with — and declared
+ * viaVictoryCondition so VP mode routes to scoring instead of an outright end.
+ * declareAdventureWinner's own idempotence guard makes a re-fire a no-op.
+ */
+function fireDesignerWinCondition(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+  if (!field.designerWinCondition) {
+    return;
+  }
+  if (state.players[playerId]?.eliminated) {
+    return;
+  }
+  const location = locationDefinitionsSafe(field.location);
+  declareAdventureWinner(state, playerId, `captured the designated ${location.name ?? field.location}`, {
+    viaVictoryCondition: true
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Designer HEX EVENTS — invisible triggers (see CustomHexEvent in state.ts).
+// ---------------------------------------------------------------------------
+
+/**
+ * The ambush-fight starter the hex-event trigger uses. Lives in
+ * adventure-reducer.ts (startNeutralEncounter) on the far side of the import
+ * cycle, registered at module init like {@link setOnMapTileRevealHook}. Until
+ * registered, an ambush guard simply stays stamped on the field — the NEXT
+ * entry fights it through the normal guarded-field flow (safe fallback).
+ */
+let hexEventEncounterHook:
+  | ((state: GameState, hero: HeroState, field: MapFieldState) => void)
+  | null = null;
+export function setHexEventEncounterHook(
+  hook: ((state: GameState, hero: HeroState, field: MapFieldState) => void) | null
+): void {
+  hexEventEncounterHook = hook;
+}
+
+/**
+ * Spring the designer hex event on this field, if one is armed for this
+ * player. Called from the beginFieldVisit seam (before the field's own
+ * designer bonus), so a WON ambush re-enters here with the guard beaten.
+ * Returns:
+ *  - "combat"  — the ambush guard just sprang and a fight opened; the visit
+ *                must ABORT (the post-combat win re-runs beginFieldVisit).
+ *  - "replace" — the event fired and `replaceVisit` suppresses the rest of
+ *                this visit (the field behaves normally on later entries).
+ *  - null      — nothing armed (or already fired for this player): continue.
+ */
+function processHexEventOnVisit(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState
+): "combat" | "replace" | null {
+  const entry = state.adventure?.hexEvents?.[field.spaceId];
+  if (!entry) {
+    return null;
+  }
+  const playerId = hero.controllerId;
+  const event = entry.event;
+  const mode = event.mode ?? "first";
+  // Already fired for this player (or, in "first" mode, for anyone)?
+  if (mode === "first" && entry.firedPlayerIds.length > 0) {
+    return null;
+  }
+  if (entry.firedPlayerIds.includes(playerId)) {
+    return null;
+  }
+
+  // Ambush guard: stamped as a designed guard the moment it springs (invisible
+  // until now). The FIRST spring always fights for real (the dedicated starter
+  // bypasses Quick Combat — you cannot out-level a surprise); a lost/retreated
+  // fight leaves the now-public stamped guard on the field, and a later
+  // re-entry fights it through the NORMAL guarded-field flow (where Quick
+  // Combat may apply — it is no longer a surprise). Reaching a VISIT with the
+  // guard stamped means it was dealt with (a fought win re-visits; a
+  // Quick-Combat win / Diplomacy skip visits directly), so the seam itself
+  // marks it beaten and sweeps the guard remnants — one seam, all win paths.
+  if (event.guard && !entry.guardBeaten) {
+    if (!entry.guardStamped) {
+      entry.guardStamped = true;
+      applyCustomGuardToField(field, event.guard);
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        playerId,
+        message: "An ambush springs from the field!"
+      });
+      if (hexEventEncounterHook && isFieldGuarded(field)) {
+        hexEventEncounterHook(state, hero, field);
+        return "combat";
+      }
+      // Field cannot host a fight (already cubed/flagged) or no hook is
+      // registered — the ambush degrades to a fight-less spring: fall through.
+    }
+    entry.guardBeaten = true;
+    clearCustomGuard(field);
+  }
+
+  // Fire: message + reward + VP for this player, per mode.
+  entry.firedPlayerIds.push(playerId);
+  if (event.message) {
+    appendEvent(state, { type: "EVENT_NOTE", playerId, message: event.message });
+  }
+  payDesignerFieldReward(
+    state,
+    playerId,
+    event.reward ?? {},
+    event.vp ?? 0,
+    "a map event"
+  );
+  // One-shot events drop their record once spent (nothing left to hide);
+  // each-player events keep it so later players can still fire.
+  if (mode === "first" && state.adventure?.hexEvents) {
+    delete state.adventure.hexEvents[field.spaceId];
+  }
+  return event.replaceVisit ? "replace" : null;
 }
 
 /**
@@ -4114,6 +4386,49 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
       location: field.location,
       previousOwnerId: null
     });
+    // Optional dig reward (map-maker resources).
+    const digReward = adventure.mapPreset?.objectives?.grailDigReward;
+    if (digReward) {
+      gainResources(state, hero.controllerId, digReward, "dug the Grail");
+    }
+    // After dig: convert OTHER undug Grail fields (utopia or empty).
+    applyGrailAfterDigConversion(state, field.spaceId);
+  }
+}
+
+/**
+ * When the Grail is dug, optionally convert every OTHER still-undug Grail
+ * field: become a Dragon Utopia (`after-dig-utopia`) or empty (`after-dig-empty`).
+ * The dug field itself stays a spent dig site (black cube, no diggable flag).
+ */
+function applyGrailAfterDigConversion(state: GameState, dugFieldId: MapSpaceId): void {
+  const mode = grailAsUtopiaMode(state);
+  if (mode !== "after-dig-utopia" && mode !== "after-dig-empty") {
+    return;
+  }
+  const adventure = state.adventure;
+  if (!adventure) return;
+  for (const field of Object.values(adventure.fields)) {
+    if (field.spaceId === dugFieldId) continue;
+    if (field.location !== "grail") continue;
+    if (mode === "after-dig-utopia") {
+      field.location = "dragon_utopia";
+      // Fresh Utopia fight: clear dig flag / cube so it fights as a normal Utopia.
+      delete field.grailDiggable;
+      field.blackCube = false;
+      field.everFlagged = false;
+      field.flagOwnerId = null;
+      if (!field.difficulty) {
+        field.difficulty = 7;
+      }
+      eventNote(state, "A second Grail site transforms into a Dragon Utopia.");
+    } else {
+      field.location = "empty_field";
+      delete field.grailDiggable;
+      delete field.difficulty;
+      field.blackCube = false;
+      eventNote(state, "A second Grail site crumbles into an empty field.");
+    }
   }
 }
 
@@ -4237,6 +4552,8 @@ function obeliskBonusVisitSteps(bonus: CustomMapObeliskBonus): VisitStep[] {
       return [{ type: "GAIN_MORALE", amount: bonus.amount }];
     case "search":
       return [{ type: "SEARCH_SHARED_DECK", deckId: bonus.deck, count: bonus.count }];
+    case "ability_token":
+      return [{ type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 1 }];
     case "resources":
       return [
         {
@@ -4265,6 +4582,8 @@ function obeliskBonusLabel(bonus: CustomMapObeliskBonus): string {
       return "+1 morale";
     case "search":
       return `Search (${bonus.count}) the ${bonus.deck} deck`;
+    case "ability_token":
+      return "Ability token (Search 1 Ability)";
     case "resources": {
       const parts: string[] = [];
       if (bonus.gold) parts.push(`${bonus.gold} gold`);
@@ -5110,7 +5429,27 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     revisit
   });
 
+  const previousVisitedField = adventure.lastVisitedField[heroId];
   adventure.lastVisitedField[heroId] = fieldId;
+
+  // Designer HEX EVENT (invisible trigger) — springs BEFORE the field's own
+  // designer bonus and its printed visit. "combat" = the ambush just opened a
+  // fight (the win re-enters this visit); "replace" = the event fired and
+  // suppresses the rest of THIS visit only.
+  const hexEventOutcome = processHexEventOnVisit(state, hero, field);
+  if (hexEventOutcome === "combat") {
+    // A RETREAT from the sprung ambush must pull the hero back WHENCE THEY
+    // CAME (finalize reads lastVisitedField) — not "return" them onto the
+    // ambush field itself, which a normal guarded arrival never records. The
+    // winning re-visit re-stamps this field as truly visited.
+    if (previousVisitedField && previousVisitedField !== fieldId) {
+      adventure.lastVisitedField[heroId] = previousVisitedField;
+    }
+    return;
+  }
+  if (hexEventOutcome === "replace") {
+    return;
+  }
 
   // Designer center-hex bonus (reward / VP): ONE seam for every Ⅶ objective
   // kind. beginFieldVisit is reached only once the field's guards are dealt
@@ -5118,6 +5457,13 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   // the "first clear"; the latch inside makes it one-time. Runs before the
   // bespoke grail/utopia routing so every printed or designated center pays.
   grantCenterHexBonus(state, playerId, field);
+
+  // Designer "first clear wins" (SPECIFIC object / settlement / center-hex
+  // winCondition): the first player to clear / flag the stamped field wins.
+  fireDesignerWinCondition(state, playerId, field);
+  if (state.adventure?.winnerPlayerId) {
+    return;
+  }
 
   // Creature banks with bespoke win/objective behavior are handled before the
   // generic visitable/flaggable routing.
@@ -8960,10 +9306,11 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
       }
     }
   }
-  // A designer guard rides the token onto whichever hex it lands on.
+  // A designer guard / first-clear reward rides the token onto the landing hex.
   const carvedField = adventure.fields[spaceId];
   if (carvedField) {
     applyCustomGuardToField(carvedField, pendingToken.guard);
+    stampDesignerFieldReward(carvedField, pendingToken.reward, pendingToken.vp);
   }
   shiftPendingMapToken(tile);
   eventNote(
@@ -11206,13 +11553,10 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
   // army, not the printed one). Unknown / non-neutral ids are skipped
   // defensively (the sanitiser already drops them).
   if (field?.customGuardUnits && field.customGuardUnits.length > 0) {
-    return field.customGuardUnits
-      .filter((unitDefId) => coreUnitDefinitions[unitDefId]?.neutral)
-      .map((unitDefId) => ({
-        unitDefId,
-        tier: coreUnitDefinitions[unitDefId].tier,
-        bankGuard: true
-      }));
+    // Certain army: resolves `random:<tier>` / `pack:<id>` slots at fight time
+    // (seeded) and mints every entry bankGuard-style.
+    const random = adventureRandom(state, `custom-guard-${field.spaceId}`);
+    return resolveCustomGuardDraws(field.customGuardUnits, random) as NeutralDraw[];
   }
 
   // Designer guard LEVEL on a bank-style object (Garrison / Keymaster's Tent /
@@ -11220,6 +11564,18 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
   // though the FIGHT runs bank-style (combat difficulty 0 — no experience).
   if (field?.customGuardLevel) {
     return drawNeutralArmy(state, field.customGuardLevel);
+  }
+
+  // Grail dig site with "always as Utopia": fight Utopia dragons (still digs after).
+  if (
+    field?.location === "grail" &&
+    grailAsUtopiaMode(state) === "always"
+  ) {
+    return dragonUtopiaGuardIds(state, difficulty).map((unitDefId) => ({
+      unitDefId,
+      tier: "azure" as const,
+      bankGuard: true
+    }));
   }
 
   if (field?.location === "dragon_utopia") {
@@ -11231,6 +11587,8 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
   }
 
   if (field?.location === "random_town") {
+    // A map-maker custom guard (certain army / level) was already handled by
+    // the branches above — this is the classic rolled-faction party.
     return randomTownGuardDraws(state, field);
   }
 

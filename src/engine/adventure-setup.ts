@@ -54,6 +54,7 @@ import {
   carveColoredGateField,
   carveMapTokenField,
   carveOnewayField,
+  stampDesignerFieldReward,
   EVENTS_DECK_ID,
   gatePairColor,
   getTileFootprintSpaceIds,
@@ -94,6 +95,9 @@ import {
   objectGuardSpec,
   OUTPOST_OBJECT_KINDS,
   sanitizeCenterHexPlan,
+  sanitizeFieldReward,
+  sanitizeHexEvents,
+  sanitizeObjectPlans,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
   type CustomMapPreset,
@@ -121,6 +125,7 @@ import {
 } from "./hex";
 import type {
   AdventureState,
+  CustomHexEvent,
   CustomMapObject,
   CustomMapTilePlan,
   CustomMapGateLink,
@@ -337,6 +342,11 @@ function applyCustomMapTokens(
       // so a hand-edited save can't smuggle garbage past the sanitiser). A
       // one-way EXIT is never guarded.
       const guard = token.kind === "oneway_exit" ? undefined : sanitizeObjectGuard(token.guard);
+      const reward = sanitizeFieldReward(token.reward);
+      const tokenVp =
+        typeof token.vp === "number" && Number.isFinite(token.vp) && token.vp > 0
+          ? Math.floor(token.vp)
+          : undefined;
 
       if (tile.faceDown) {
         const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
@@ -348,6 +358,8 @@ function applyCustomMapTokens(
           ...((isGate || isOneway) && token.pair !== undefined ? { pair: token.pair } : {}),
           ...(preferredSpaceId ? { preferredSpaceId } : {}),
           ...(guard ? { guard } : {}),
+          ...(reward ? { reward } : {}),
+          ...(tokenVp !== undefined ? { vp: tokenVp } : {}),
           // Two-way gates/monoliths share the one-way exit-mode vocabulary
           // (certain / random / mix + always-pickable destinations).
           ...((token.kind === "oneway_entrance" || token.kind === "gate" || token.kind === "monolith") &&
@@ -410,6 +422,7 @@ function applyCustomMapTokens(
       const carved = adventure.fields[spaceId];
       if (carved) {
         applyCustomGuardToField(carved, guard);
+        stampDesignerFieldReward(carved, reward, tokenVp);
         // One-way entrance fights are bank-style: keep the army level for the
         // draw while the combat opens at difficulty 0.
         if (token.kind === "oneway_entrance" && guard?.level && !guard.units) {
@@ -1337,26 +1350,51 @@ export function validateCustomMapPlan(
     accepted[index] = next;
   }
 
-  // `viiField` FORCES a center slot's difficulty-7 objective field (Grail /
-  // Dragon Utopia / Random Town) and `centerHex` customizes that field's guard /
-  // reward / VP. Both are meaningful only on a `center` plan — strip them on
-  // every other group (like lockRotation is starting-only), drop an unknown
-  // designation, and re-clamp the customization defensively so an in-memory
-  // plan can never smuggle garbage past the persistence sanitiser.
+  // `viiField` / `viiFields` FORCE a center slot's difficulty-7 objective field
+  // (Grail / Dragon Utopia / Random Town) and `centerHex` customizes that
+  // field's guard / reward / VP. Center-only — strip on every other group.
+  // `playerResourcePick` is face-down far/near only; `playerViiPick` needs
+  // multi-select Ⅶ on a face-down center.
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
-    if (plan.viiField === undefined && plan.centerHex === undefined) {
+    if (
+      plan.viiField === undefined &&
+      plan.viiFields === undefined &&
+      plan.centerHex === undefined &&
+      plan.playerResourcePick === undefined &&
+      plan.playerViiPick === undefined
+    ) {
       continue;
     }
     const isCenter = plan.group === "center";
     const validVii = isCenter && plan.viiField !== undefined && VII_FIELD_DESIGNATIONS.has(plan.viiField);
+    const multi =
+      isCenter && Array.isArray(plan.viiFields)
+        ? [...new Set(plan.viiFields.filter((v) => VII_FIELD_DESIGNATIONS.has(v)))]
+        : [];
     const centerHex = isCenter ? sanitizeCenterHexPlan(plan.centerHex) : undefined;
-    if (validVii && centerHex === plan.centerHex) {
-      continue;
-    }
     const next = { ...plan };
     if (!validVii) {
       delete next.viiField;
+    }
+    if (multi.length > 0) {
+      next.viiFields = multi;
+    } else {
+      delete next.viiFields;
+    }
+    if (plan.playerViiPick === true && multi.length > 1 && plan.faceDown && isCenter) {
+      next.playerViiPick = true;
+    } else {
+      delete next.playerViiPick;
+    }
+    if (
+      plan.playerResourcePick === true &&
+      plan.faceDown &&
+      (plan.group === "far" || plan.group === "near")
+    ) {
+      next.playerResourcePick = true;
+    } else {
+      delete next.playerResourcePick;
     }
     if (centerHex) {
       next.centerHex = centerHex;
@@ -1371,11 +1409,13 @@ export function validateCustomMapPlan(
   // host settlements; we still keep a valid plan (inert if no settlement field).
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
-    if (plan.settlement === undefined) {
+    if (plan.settlement === undefined && plan.objectPlans === undefined) {
       continue;
     }
     const settlement = sanitizeSettlementFieldPlan(plan.settlement);
-    if (settlement === plan.settlement) {
+    // SPECIFIC object plans (obelisk / mine) ride the same defensive re-clamp.
+    const objectPlans = sanitizeObjectPlans(plan.objectPlans);
+    if (settlement === plan.settlement && objectPlans === plan.objectPlans) {
       continue;
     }
     const next = { ...plan };
@@ -1383,6 +1423,11 @@ export function validateCustomMapPlan(
       next.settlement = settlement;
     } else {
       delete next.settlement;
+    }
+    if (objectPlans) {
+      next.objectPlans = objectPlans;
+    } else {
+      delete next.objectPlans;
     }
     accepted[index] = next;
   }
@@ -1648,6 +1693,36 @@ function standaloneLayerFromLiveState(adventure: AdventureState, spaceId: MapSpa
  * resolves the teleport. Runs BEFORE recomputeSubterraneanGates (which now
  * refuses a gate object's hex too — {@link gateMayCoverField}).
  */
+/**
+ * Carve designer HEX EVENTS into engine-side state ({@link AdventureState.hexEvents},
+ * keyed by hex). An event is kept only when its hex belongs to a placed tile's
+ * footprint or an already-carved standalone hex — anywhere else it could never
+ * fire (the designer UI warns before save). Face-down tiles are fine: the field
+ * materializes at reveal and the trigger reads the record by space id then.
+ */
+function applyCustomHexEvents(adventure: AdventureState, events: CustomHexEvent[]): void {
+  if (events.length === 0) {
+    return;
+  }
+  const reachable = new Set<string>(Object.keys(adventure.fields));
+  for (const tile of Object.values(adventure.tiles)) {
+    for (const spaceId of getTileFootprintSpaceIds(tile)) {
+      reachable.add(spaceId);
+    }
+  }
+  for (const event of events) {
+    const spaceId = hexSpaceId({ row: event.placement.row, col: event.placement.col });
+    if (!reachable.has(spaceId)) {
+      continue;
+    }
+    const store = (adventure.hexEvents ??= {});
+    if (store[spaceId]) {
+      continue; // one event per hex (sanitiser enforces; defensive here)
+    }
+    store[spaceId] = { event, firedPlayerIds: [] };
+  }
+}
+
 function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObject[]): void {
   const WHIRLPOOL_NUMBERS: (-1 | 0 | 1)[] = [1, 0, -1];
   const tileAtCenter = (row: number, col: number): MapTileState | undefined =>
@@ -1689,6 +1764,7 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       const carved = adventure.fields[spaceId];
       if (carved) {
         applyCustomGuardToField(carved, objectGuardSpec(object));
+        stampDesignerFieldReward(carved, object.reward, object.vp);
       }
       continue;
     }
@@ -1743,6 +1819,7 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       field.onewayAlwaysPickable = true;
     }
     applyCustomGuardToField(field, objectGuardSpec(object));
+    stampDesignerFieldReward(field, object.reward, object.vp);
     // Outpost / one-way-entrance fights run BANK-style (no Quick Combat, no
     // experience, no Round limit) whatever the guard shape: a LEVEL guard
     // additionally pins `customGuardLevel` so the army still draws at the
@@ -1828,10 +1905,33 @@ function applyDesignedViiField(
   tile: MapTileState,
   plan: CustomMapTilePlan
 ): void {
-  if (plan.group !== "center" || (!plan.viiField && !plan.centerHex)) {
+  // Player resource pick (Far/Near face-down): carried onto the instance so
+  // discovery can offer Gold vs Valuables before the tile content is fixed.
+  if (plan.playerResourcePick && plan.faceDown && (plan.group === "far" || plan.group === "near")) {
+    tile.playerResourcePick = true;
+  }
+  if (plan.group !== "center" || (!plan.viiField && !plan.viiFields?.length && !plan.centerHex)) {
     return;
   }
-  if (plan.viiField) {
+  // Multi-select of allowed Ⅶ designations. When playerViiPick is on and 2+
+  // options remain, store the set for the reveal choice; otherwise resolve now.
+  const multi = (plan.viiFields ?? []).filter(
+    (v): v is "town" | "dragon_utopia" | "grail" =>
+      v === "town" || v === "dragon_utopia" || v === "grail"
+  );
+  if (multi.length > 1) {
+    if (plan.playerViiPick && plan.faceDown) {
+      tile.viiFields = multi;
+      tile.playerViiPick = true;
+    } else {
+      // Deterministic pick from the multi-set (seeded by plan position).
+      const idx =
+        Math.abs((plan.row ?? 0) * 31 + (plan.col ?? 0) * 17) % multi.length;
+      tile.viiField = multi[idx];
+    }
+  } else if (multi.length === 1) {
+    tile.viiField = multi[0];
+  } else if (plan.viiField) {
     tile.viiField = plan.viiField;
   }
   // Carry the OPTIONAL center-hex customization onto the placed instance,
@@ -1863,7 +1963,15 @@ function applyDesignedSettlement(
   } else {
     delete tile.settlement;
   }
-  if (settlement && !tile.faceDown) {
+  // SPECIFIC (per-tile) object plans (obelisk / mine) ride the instance the
+  // same way — materialize folds them over the map-wide configs field-by-field.
+  const objectPlans = sanitizeObjectPlans(plan.objectPlans);
+  if (objectPlans) {
+    tile.objectPlans = objectPlans;
+  } else {
+    delete tile.objectPlans;
+  }
+  if ((settlement || objectPlans) && !tile.faceDown) {
     materializeTileFields(adventure, tile);
   }
 }
@@ -2334,6 +2442,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // The undrawn Ⅱ–Ⅲ pool and per-player opened counters are populated below,
     // once the scenario's own face-down Far tiles have been dealt from the pool.
     farTilePool: [],
+    nearTilePool: [],
     // Blind Ⅱ–Ⅲ tile choice (default OFF): a supply opening first asks for a
     // blind gold/valuables/no-preference pick that filters the random draw.
     ...(setupOptions.farTileBlindChoice ? { farTileBlindChoice: true } : {}),
@@ -2951,6 +3060,16 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // left after the scenario's own face-down Far tiles is parked on the adventure
   // for those in-play draws (and the reroll returns).
   adventure.farTilePool = [...farPool];
+  // Leftover Near (Ⅳ–Ⅴ) tiles after the layout's face-down Near draws — used by
+  // designer player-resource-pick on Near tiles (live pool, not face-down swap).
+  adventure.nearTilePool = [...nearPool];
+
+  // Designer HEX EVENTS — invisible triggers keyed by hex. Runs on the COMMON
+  // path (custom AND standard layouts, once every tile is placed): an event is
+  // kept only when its hex lands on a placed tile footprint or an already
+  // carved standalone hex (elsewhere it could never fire; the designer UI
+  // warns). Engine-side state, REDACTED from every player view.
+  applyCustomHexEvents(adventure, sanitizeHexEvents(mapPreset?.hexEvents));
   const openedCounters = (adventure.farTilesOpenedByPlayer ??= {});
   for (const config of playerConfigs) {
     adventure.playerFarTiles[config.id] =

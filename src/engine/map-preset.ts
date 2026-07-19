@@ -24,12 +24,17 @@ import {
   describeCustomWinCondition,
   describeVictoryPointObjective
 } from "./victory-points";
+import { describeGuardArmyGrouped, isCustomGuardUnitEntry } from "./map-design-features";
 import type {
   CustomCenterHexPlan,
   CustomCenterHexReward,
+  CustomFieldReward,
   CustomGuardSpec,
+  CustomHexEvent,
+  CustomMapMinesConfig,
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
+  CustomMapRandomTownsConfig,
   CustomMapSettlementConfig,
   CustomMapSettlementFieldPlan,
   CustomMapObject,
@@ -38,6 +43,7 @@ import type {
   CustomMapObjectivesConfig,
   CustomMapPreset,
   CustomMapTilePlan,
+  CustomObjectFieldPlan,
   CustomStartingUnit,
   CustomWinCondition,
   DragonUtopiaGuards,
@@ -48,6 +54,7 @@ import type {
   VictoryMode,
   VictoryPointObjective
 } from "./state";
+import { MAX_HEX_EVENTS } from "./state";
 
 export type { CustomMapPreset };
 
@@ -151,19 +158,30 @@ export const MAX_CENTER_HEX_VP = 10;
 export const MAX_CENTER_HEX_DICE = 3;
 /** Largest Search size a center-hex reward may grant per shared deck. */
 export const MAX_CENTER_HEX_SEARCH = 5;
+/** How many separate Search(X) steps a designer reward may queue per deck. */
+export const MAX_CENTER_HEX_SEARCH_TIMES = 5;
 /** The three adventure resources a center-hex reward may carry. */
 const CENTER_HEX_RESOURCES = ["gold", "buildingMaterials", "valuables"] as const;
+/** Search size keys paired with their optional Times multipliers. */
+const CENTER_HEX_SEARCH_SPECS = [
+  { size: "searchSpell", times: "searchSpellTimes", label: "Spells" },
+  { size: "searchAbility", times: "searchAbilityTimes", label: "Abilities" },
+  { size: "searchArtifact", times: "searchArtifactTimes", label: "Artifacts" }
+] as const;
 
-/** True when `unitDefId` names a unit that can guard a hex (it has a `neutral` side). */
+/**
+ * True when `unitDefId` is a legal certain-army entry: a Neutral unit, a
+ * `random:<tier>` slot, or a `pack:<unitDefId>` faction Pack slot.
+ */
 export function isCustomGuardUnit(unitDefId: unknown): unitDefId is string {
-  return typeof unitDefId === "string" && Boolean(coreUnitDefinitions[unitDefId]?.neutral);
+  return isCustomGuardUnitEntry(unitDefId);
 }
 
 /**
  * Clamp a designer guard ({@link CustomGuardSpec}) to exactly one clean arm:
- * a certain army of known neutral-sided units (capped, unknown ids dropped) or
- * a level 1-7; `undefined` when nothing valid remains. `units` wins when both
- * are present. Shared by the persistence sanitiser, setup validation and the
+ * a certain army of known entries (capped, unknown ids dropped) or a level
+ * 1-7; `undefined` when nothing valid remains. `units` wins when both are
+ * present. Shared by the persistence sanitiser, setup validation and the
  * designer UI so the clamp can never drift.
  */
 export function sanitizeCustomGuardSpec(input: unknown): CustomGuardSpec | undefined {
@@ -182,15 +200,18 @@ export function sanitizeCustomGuardSpec(input: unknown): CustomGuardSpec | undef
 }
 
 /**
- * Clamp a designer center-hex reward ({@link CustomCenterHexReward}) to clean,
- * positive integers, or `undefined` when nothing valid remains.
+ * Clamp a designer field reward ({@link CustomFieldReward} /
+ * {@link CustomCenterHexReward}) to clean positive integers, or `undefined`
+ * when nothing valid remains. Search rewards are Times×Search(X): a size of N
+ * with times T queues T separate Search(N) steps. Times is only kept when the
+ * matching size is set; absent / 1 is the legacy single-Search default.
  */
-export function sanitizeCenterHexReward(input: unknown): CustomCenterHexReward | undefined {
+export function sanitizeFieldReward(input: unknown): CustomFieldReward | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
   }
   const raw = input as Record<string, unknown>;
-  const reward: CustomCenterHexReward = {};
+  const reward: CustomFieldReward = {};
   for (const key of CENTER_HEX_RESOURCES) {
     const amount = clampInt(raw[key], 1, MAX_CENTER_HEX_RESOURCE, 0);
     if (amount > 0) {
@@ -201,13 +222,47 @@ export function sanitizeCenterHexReward(input: unknown): CustomCenterHexReward |
   if (dice > 0) {
     reward.treasureDice = dice;
   }
-  for (const key of ["searchSpell", "searchAbility", "searchArtifact"] as const) {
-    const size = clampInt(raw[key], 1, MAX_CENTER_HEX_SEARCH, 0);
-    if (size > 0) {
-      reward[key] = size;
+  for (const { size, times } of CENTER_HEX_SEARCH_SPECS) {
+    const searchSize = clampInt(raw[size], 1, MAX_CENTER_HEX_SEARCH, 0);
+    if (searchSize > 0) {
+      reward[size] = searchSize;
+      const t = clampInt(raw[times], 1, MAX_CENTER_HEX_SEARCH_TIMES, 0);
+      // Only store times when > 1 so legacy single-Search snapshots stay lean.
+      if (t > 1) {
+        reward[times] = t;
+      }
     }
   }
   return Object.keys(reward).length > 0 ? reward : undefined;
+}
+
+/** @deprecated Prefer {@link sanitizeFieldReward} — identical clamp. */
+export function sanitizeCenterHexReward(input: unknown): CustomCenterHexReward | undefined {
+  return sanitizeFieldReward(input);
+}
+
+/**
+ * Plain-words summary of a designer field reward, e.g.
+ * "7 gold · 2× Search(5) Artifacts · 2 Treasure dice". Empty → "".
+ */
+export function describeFieldReward(reward: CustomFieldReward | undefined | null): string {
+  if (!reward) return "";
+  const parts: string[] = [];
+  if ((reward.gold ?? 0) > 0) parts.push(`${reward.gold} gold`);
+  if ((reward.buildingMaterials ?? 0) > 0) parts.push(`${reward.buildingMaterials} materials`);
+  if ((reward.valuables ?? 0) > 0) parts.push(`${reward.valuables} valuables`);
+  if ((reward.treasureDice ?? 0) > 0) {
+    parts.push(
+      reward.treasureDice === 1 ? "1 Treasure die" : `${reward.treasureDice} Treasure dice`
+    );
+  }
+  for (const { size, times, label } of CENTER_HEX_SEARCH_SPECS) {
+    const searchSize = reward[size] ?? 0;
+    if (searchSize <= 0) continue;
+    const t = reward[times] ?? 1;
+    parts.push(t > 1 ? `${t}× Search(${searchSize}) ${label}` : `Search(${searchSize}) ${label}`);
+  }
+  return parts.join(" · ");
 }
 
 /**
@@ -231,6 +286,9 @@ export function sanitizeCenterHexPlan(input: unknown): CustomCenterHexPlan | und
   const vp = clampInt(raw.vp, 1, MAX_CENTER_HEX_VP, 0);
   if (vp > 0) {
     centerHex.vp = vp;
+  }
+  if (raw.winCondition === true) {
+    centerHex.winCondition = true;
   }
   return Object.keys(centerHex).length > 0 ? centerHex : undefined;
 }
@@ -559,6 +617,9 @@ function sanitizeObeliskBonus(input: unknown): CustomMapObeliskBonus | null {
     }
     return { kind: "dice", treasure, resource };
   }
+  if (raw.kind === "ability_token") {
+    return { kind: "ability_token" };
+  }
   return null;
 }
 
@@ -579,11 +640,21 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as { guard?: unknown; vp?: unknown; holdRoundsToWin?: unknown };
+  const raw = input as {
+    guard?: unknown;
+    reward?: unknown;
+    vp?: unknown;
+    holdRoundsToWin?: unknown;
+    winCondition?: unknown;
+  };
   const plan: CustomMapSettlementFieldPlan = {};
   const guard = sanitizeCustomGuardSpec(raw.guard);
   if (guard) {
     plan.guard = guard;
+  }
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) {
+    plan.reward = reward;
   }
   // clampInt(0, min=1, …) would lift 0 → 1; treat non-positive as "absent".
   if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
@@ -596,7 +667,72 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
   ) {
     plan.holdRoundsToWin = Math.min(MAX_SETTLEMENT_HOLD_ROUNDS, Math.floor(raw.holdRoundsToWin));
   }
+  if (raw.winCondition === true) {
+    plan.winCondition = true;
+  }
   return Object.keys(plan).length > 0 ? plan : undefined;
+}
+
+/**
+ * Sanitize one SPECIFIC (per-tile) object plan ({@link CustomMapTilePlan.objectPlans}
+ * entry): guard / reward / VP / break flags / winCondition, all optional.
+ * Returns undefined when every arm is empty so nothing is serialized.
+ */
+export function sanitizeObjectFieldPlan(input: unknown): CustomObjectFieldPlan | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as {
+    guard?: unknown;
+    reward?: unknown;
+    vp?: unknown;
+    breakField?: unknown;
+    persistentGuard?: unknown;
+    unlimitedRounds?: unknown;
+    winCondition?: unknown;
+  };
+  const plan: CustomObjectFieldPlan = {};
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  if (guard) {
+    plan.guard = guard;
+  }
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) {
+    plan.reward = reward;
+  }
+  if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+    plan.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
+  }
+  if (raw.breakField === true) plan.breakField = true;
+  if (raw.persistentGuard === true) plan.persistentGuard = true;
+  if (raw.unlimitedRounds === true) plan.unlimitedRounds = true;
+  if (raw.winCondition === true) plan.winCondition = true;
+  return Object.keys(plan).length > 0 ? plan : undefined;
+}
+
+/** The object kinds a per-tile SPECIFIC plan may target. */
+export const OBJECT_PLAN_KINDS = ["obelisk", "mine"] as const;
+export type ObjectPlanKind = (typeof OBJECT_PLAN_KINDS)[number];
+
+/**
+ * Sanitize a tile's whole `objectPlans` record — unknown kinds dropped, each
+ * plan clamped; undefined when nothing valid remains.
+ */
+export function sanitizeObjectPlans(
+  input: unknown
+): CustomMapTilePlan["objectPlans"] | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as Record<string, unknown>;
+  const plans: NonNullable<CustomMapTilePlan["objectPlans"]> = {};
+  for (const kind of OBJECT_PLAN_KINDS) {
+    const plan = sanitizeObjectFieldPlan(raw[kind]);
+    if (plan) {
+      plans[kind] = plan;
+    }
+  }
+  return Object.keys(plans).length > 0 ? plans : undefined;
 }
 
 /**
@@ -607,6 +743,27 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
  * legacy single `bonus`, falling back to {@link DEFAULT_OBELISK_BONUS} so the
  * stored config always spells out the reward the engine will grant.
  */
+/** Shared break-field flag trio (obelisks / mines). Only true values survive. */
+function sanitizeBreakFlags(raw: {
+  breakField?: unknown;
+  persistentGuard?: unknown;
+  unlimitedRounds?: unknown;
+}): {
+  breakField?: true;
+  persistentGuard?: true;
+  unlimitedRounds?: true;
+} {
+  const flags: {
+    breakField?: true;
+    persistentGuard?: true;
+    unlimitedRounds?: true;
+  } = {};
+  if (raw.breakField === true) flags.breakField = true;
+  if (raw.persistentGuard === true) flags.persistentGuard = true;
+  if (raw.unlimitedRounds === true) flags.unlimitedRounds = true;
+  return flags;
+}
+
 function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
@@ -617,16 +774,22 @@ function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefin
     bonuses?: unknown;
     bonusMode?: unknown;
     guard?: unknown;
+    breakField?: unknown;
+    persistentGuard?: unknown;
+    unlimitedRounds?: unknown;
   };
   if (typeof raw.role !== "string" || !OBELISK_ROLES.has(raw.role as CustomMapObeliskConfig["role"])) {
     return undefined;
   }
   const role = raw.role as CustomMapObeliskConfig["role"];
   const guard = sanitizeCustomGuardSpec(raw.guard);
+  const breakFlags = sanitizeBreakFlags(raw);
   if (role !== "bonus") {
-    return guard ? { role, guard } : { role };
+    const config: CustomMapObeliskConfig = { role, ...breakFlags };
+    if (guard) config.guard = guard;
+    return config;
   }
-  const config: CustomMapObeliskConfig = { role };
+  const config: CustomMapObeliskConfig = { role, ...breakFlags };
   const bonuses = Array.isArray(raw.bonuses)
     ? raw.bonuses
         .map(sanitizeObeliskBonus)
@@ -645,6 +808,57 @@ function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefin
     config.guard = guard;
   }
   return config;
+}
+
+/** Sanitize MAP-WIDE mine options (guard + break flags). Empty → undefined. */
+function sanitizeMinesConfig(input: unknown): CustomMapMinesConfig | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as {
+    guard?: unknown;
+    breakField?: unknown;
+    persistentGuard?: unknown;
+    unlimitedRounds?: unknown;
+  };
+  const config: CustomMapMinesConfig = { ...sanitizeBreakFlags(raw) };
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  if (guard) config.guard = guard;
+  return config.guard || config.breakField || config.persistentGuard || config.unlimitedRounds
+    ? config
+    : undefined;
+}
+
+/** Sanitize MAP-WIDE Random Town options. Empty → undefined. */
+function sanitizeRandomTownsConfig(input: unknown): CustomMapRandomTownsConfig | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as {
+    guard?: unknown;
+    captureReward?: unknown;
+    incomeGold?: unknown;
+  };
+  const config: CustomMapRandomTownsConfig = {};
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  if (guard) config.guard = guard;
+  if (raw.captureReward && typeof raw.captureReward === "object") {
+    const r = raw.captureReward as Record<string, unknown>;
+    const gold = clampInt(r.gold, 0, 50, 0);
+    const buildingMaterials = clampInt(r.buildingMaterials, 0, 30, 0);
+    const valuables = clampInt(r.valuables, 0, 30, 0);
+    if (gold + buildingMaterials + valuables > 0) {
+      config.captureReward = {
+        ...(gold > 0 ? { gold } : {}),
+        ...(buildingMaterials > 0 ? { buildingMaterials } : {}),
+        ...(valuables > 0 ? { valuables } : {})
+      };
+    }
+  }
+  if (typeof raw.incomeGold === "number" && Number.isFinite(raw.incomeGold) && raw.incomeGold >= 0) {
+    config.incomeGold = Math.min(50, Math.floor(raw.incomeGold));
+  }
+  return config.guard || config.captureReward || config.incomeGold !== undefined ? config : undefined;
 }
 
 /**
@@ -682,6 +896,12 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
     grailObelisksRequired?: unknown;
     utopiaGuards?: unknown;
     utopiaBonusSearch?: unknown;
+    grailAsUtopia?: unknown;
+    grailDigCost?: unknown;
+    grailDigReward?: unknown;
+    grailPossessionVp?: unknown;
+    grailBuildAt?: unknown;
+    grailBuildReward?: unknown;
   };
   const config: CustomMapObjectivesConfig = {};
   if (raw.grailObelisksRequired === 1 || raw.grailObelisksRequired === 2 || raw.grailObelisksRequired === 3 || raw.grailObelisksRequired === 4) {
@@ -692,6 +912,61 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
   }
   if (raw.utopiaBonusSearch === 1 || raw.utopiaBonusSearch === 2 || raw.utopiaBonusSearch === 3) {
     config.utopiaBonusSearch = raw.utopiaBonusSearch;
+  }
+  if (
+    raw.grailAsUtopia === "always" ||
+    raw.grailAsUtopia === "after-dig-utopia" ||
+    raw.grailAsUtopia === "after-dig-empty"
+  ) {
+    config.grailAsUtopia = raw.grailAsUtopia;
+  }
+  if (raw.grailDigCost === 0 || raw.grailDigCost === 1 || raw.grailDigCost === 2) {
+    config.grailDigCost = raw.grailDigCost;
+  }
+  if (raw.grailDigReward && typeof raw.grailDigReward === "object") {
+    const r = raw.grailDigReward as Record<string, unknown>;
+    const gold = clampInt(r.gold, 0, 50, 0);
+    const buildingMaterials = clampInt(r.buildingMaterials, 0, 30, 0);
+    const valuables = clampInt(r.valuables, 0, 30, 0);
+    if (gold + buildingMaterials + valuables > 0) {
+      config.grailDigReward = {
+        ...(gold > 0 ? { gold } : {}),
+        ...(buildingMaterials > 0 ? { buildingMaterials } : {}),
+        ...(valuables > 0 ? { valuables } : {})
+      };
+    }
+  }
+  if (
+    typeof raw.grailPossessionVp === "number" &&
+    Number.isFinite(raw.grailPossessionVp) &&
+    raw.grailPossessionVp > 0
+  ) {
+    config.grailPossessionVp = Math.min(20, Math.floor(raw.grailPossessionVp));
+  }
+  if (
+    raw.grailBuildAt === "town" ||
+    raw.grailBuildAt === "settlement" ||
+    raw.grailBuildAt === "both" ||
+    raw.grailBuildAt === "starting-town"
+  ) {
+    config.grailBuildAt = raw.grailBuildAt;
+  }
+  if (raw.grailBuildReward && typeof raw.grailBuildReward === "object") {
+    const r = raw.grailBuildReward as Record<string, unknown>;
+    const reward: NonNullable<CustomMapObjectivesConfig["grailBuildReward"]> = {};
+    const gold = clampInt(r.gold, 0, 50, 0);
+    const buildingMaterials = clampInt(r.buildingMaterials, 0, 30, 0);
+    const valuables = clampInt(r.valuables, 0, 30, 0);
+    if (gold > 0) reward.gold = gold;
+    if (buildingMaterials > 0) reward.buildingMaterials = buildingMaterials;
+    if (valuables > 0) reward.valuables = valuables;
+    if (typeof r.vp === "number" && Number.isFinite(r.vp) && r.vp > 0) {
+      reward.vp = Math.min(20, Math.floor(r.vp));
+    }
+    if (r.freeBuilding === true) reward.freeBuilding = true;
+    if (Object.keys(reward).length > 0) {
+      config.grailBuildReward = reward;
+    }
   }
   return Object.keys(config).length > 0 ? config : undefined;
 }
@@ -863,7 +1138,14 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   if (!input || typeof input !== "object") {
     return null;
   }
-  const raw = input as { kind?: unknown; pair?: unknown; guard?: unknown; placement?: unknown };
+  const raw = input as {
+    kind?: unknown;
+    pair?: unknown;
+    guard?: unknown;
+    reward?: unknown;
+    vp?: unknown;
+    placement?: unknown;
+  };
   if (typeof raw.kind !== "string" || !CUSTOM_MAP_OBJECT_KINDS.has(raw.kind as CustomMapObjectKind)) {
     return null;
   }
@@ -911,6 +1193,17 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   if (guard) {
     object.guard = guard;
   }
+  // First-clear reward / VP (optional). Barriers never keep either (no fight,
+  // no farmable free hex). One-way exits may carry a reward (landing bonus).
+  if (kind !== "barrier") {
+    const reward = sanitizeFieldReward(raw.reward);
+    if (reward) {
+      object.reward = reward;
+    }
+    if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+      object.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
+    }
+  }
   // Exit-pick extras: a one-way ENTRANCE picks its exit mode; a one-way EXIT
   // may be flagged always-pickable ("mix" mode). Two-way GATES and MONOLITHS
   // share the whole vocabulary (they are both the origin AND a destination) —
@@ -952,6 +1245,136 @@ export function sanitizeObjectGuard(input: unknown): CustomGuardSpec | undefined
 /** The guard spec of a {@link CustomMapObject}, whichever shape it was stored in. */
 export function objectGuardSpec(object: Pick<CustomMapObject, "guard">): CustomGuardSpec | undefined {
   return sanitizeObjectGuard(object.guard);
+}
+
+/** Longest hex-event message a designer may store. */
+export const MAX_HEX_EVENT_MESSAGE = 240;
+
+/**
+ * Sanitize one designer hex event: placement required (integer row/col), every
+ * payload arm optional and clamped. Null when nothing meaningful remains (an
+ * event with no message, reward, VP AND no guard does nothing — dropped).
+ */
+export function sanitizeHexEvent(input: unknown): CustomHexEvent | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const raw = input as {
+    id?: unknown;
+    placement?: unknown;
+    message?: unknown;
+    reward?: unknown;
+    vp?: unknown;
+    guard?: unknown;
+    mode?: unknown;
+    replaceVisit?: unknown;
+  };
+  const placement = raw.placement as { row?: unknown; col?: unknown } | undefined;
+  if (
+    !placement ||
+    typeof placement.row !== "number" ||
+    typeof placement.col !== "number" ||
+    !Number.isInteger(placement.row) ||
+    !Number.isInteger(placement.col)
+  ) {
+    return null;
+  }
+  const event: CustomHexEvent = {
+    id:
+      typeof raw.id === "string" && raw.id.length > 0 && raw.id.length <= 40
+        ? raw.id
+        : `hexev_${placement.row}_${placement.col}`,
+    placement: { row: placement.row, col: placement.col }
+  };
+  if (typeof raw.message === "string" && raw.message.trim().length > 0) {
+    event.message = raw.message.trim().slice(0, MAX_HEX_EVENT_MESSAGE);
+  }
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) {
+    event.reward = reward;
+  }
+  if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+    event.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
+  }
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  if (guard) {
+    event.guard = guard;
+  }
+  if (raw.mode === "each-player") {
+    event.mode = "each-player";
+  }
+  if (raw.replaceVisit === true) {
+    event.replaceVisit = true;
+  }
+  if (!event.message && !event.reward && !event.vp && !event.guard) {
+    return null;
+  }
+  return event;
+}
+
+/**
+ * Sanitize the preset's hex-event list: degenerate entries dropped, one event
+ * per hex (first wins), unique ids enforced, capped at {@link MAX_HEX_EVENTS}.
+ */
+export function sanitizeHexEvents(input: unknown): CustomHexEvent[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const events: CustomHexEvent[] = [];
+  const seenHexes = new Set<string>();
+  const seenIds = new Set<string>();
+  for (const entry of input) {
+    if (events.length >= MAX_HEX_EVENTS) {
+      break;
+    }
+    const event = sanitizeHexEvent(entry);
+    if (!event) {
+      continue;
+    }
+    const hexKey = `${event.placement.row},${event.placement.col}`;
+    if (seenHexes.has(hexKey)) {
+      continue;
+    }
+    if (seenIds.has(event.id)) {
+      event.id = `${event.id}_${hexKey}`;
+      if (seenIds.has(event.id)) {
+        continue;
+      }
+    }
+    seenHexes.add(hexKey);
+    seenIds.add(event.id);
+    events.push(event);
+  }
+  return events;
+}
+
+/** Plain-words summary of one hex event (designer list rows / preset banner). */
+export function describeHexEvent(event: CustomHexEvent): string {
+  const parts: string[] = [];
+  if (event.guard) {
+    parts.push(
+      event.guard.units && event.guard.units.length > 0
+        ? `ambush: ${describeGuardArmyGrouped(event.guard.units)}`
+        : `ambush guard Ⅰ-Ⅶ level ${event.guard.level ?? "?"}`
+    );
+  }
+  const reward = describeFieldReward(event.reward);
+  if (reward) {
+    parts.push(reward);
+  }
+  if ((event.vp ?? 0) > 0) {
+    parts.push(`+${event.vp} VP`);
+  }
+  if (event.message) {
+    parts.push(`“${event.message.length > 32 ? `${event.message.slice(0, 32)}…` : event.message}”`);
+  }
+  if (event.mode === "each-player") {
+    parts.push("every player");
+  }
+  if (event.replaceVisit) {
+    parts.push("replaces the visit");
+  }
+  return parts.join(" · ") || "empty event";
 }
 
 function sanitizeCustomMapObjects(input: unknown): CustomMapObject[] {
@@ -1173,6 +1596,18 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.settlements = settlements;
     }
   }
+  if (raw.mines !== undefined) {
+    const mines = sanitizeMinesConfig(raw.mines);
+    if (mines) {
+      preset.mines = mines;
+    }
+  }
+  if (raw.randomTowns !== undefined) {
+    const randomTowns = sanitizeRandomTownsConfig(raw.randomTowns);
+    if (randomTowns) {
+      preset.randomTowns = randomTowns;
+    }
+  }
   if (raw.objects !== undefined) {
     const objects = sanitizeCustomMapObjects(raw.objects);
     if (objects.length > 0) {
@@ -1195,6 +1630,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
     const conditions = sanitizeCustomWinConditions(raw.customWinConditions);
     if (conditions.length > 0) {
       preset.customWinConditions = conditions;
+    }
+  }
+  if (raw.hexEvents !== undefined) {
+    const hexEvents = sanitizeHexEvents(raw.hexEvents);
+    if (hexEvents.length > 0) {
+      preset.hexEvents = hexEvents;
     }
   }
 
@@ -1221,10 +1662,13 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       (preset.notes && preset.notes.length > 0) ||
       preset.obelisks ||
       Boolean(preset.settlements) ||
+      Boolean(preset.mines) ||
+      Boolean(preset.randomTowns) ||
       (preset.objects && preset.objects.length > 0) ||
       Boolean(preset.objectives) ||
       Boolean(preset.victoryPoints?.enabled) ||
-      (preset.customWinConditions && preset.customWinConditions.length > 0)
+      (preset.customWinConditions && preset.customWinConditions.length > 0) ||
+      (preset.hexEvents && preset.hexEvents.length > 0)
   );
 }
 
@@ -1331,6 +1775,8 @@ export function describeObeliskBonus(bonus: CustomMapObeliskBonus): string {
       return "+1 morale";
     case "search":
       return `Search(${bonus.count}) ${bonus.deck}`;
+    case "ability_token":
+      return "Ability token (Search 1 Ability)";
     case "resources":
       return `+${formatPresetResources(bonus)}`;
     case "movement":
@@ -1374,6 +1820,45 @@ export function describeObjectivesConfig(config: CustomMapObjectivesConfig): Cus
   if (config.utopiaBonusSearch) {
     entries.push({ icon: "🐉", text: `Dragon Utopia bonus: Search(${config.utopiaBonusSearch}) Artifacts` });
   }
+  if (config.grailAsUtopia === "always") {
+    entries.push({ icon: "🏆", text: "Grail fields also fight as Dragon Utopia" });
+  } else if (config.grailAsUtopia === "after-dig-utopia") {
+    entries.push({ icon: "🏆", text: "After dig, other Grail tiles become Utopia" });
+  } else if (config.grailAsUtopia === "after-dig-empty") {
+    entries.push({ icon: "🏆", text: "After dig, other Grail tiles become empty" });
+  }
+  if (config.grailDigCost !== undefined && config.grailDigCost !== 1) {
+    entries.push({
+      icon: "🏆",
+      text: config.grailDigCost === 0 ? "Grail dig is free (0 MP)" : `Grail dig costs ${config.grailDigCost} MP`
+    });
+  }
+  if (config.grailDigReward) {
+    entries.push({ icon: "🏆", text: `Grail dig reward: +${formatPresetResources(config.grailDigReward)}` });
+  }
+  if (config.grailPossessionVp) {
+    entries.push({ icon: "🏆", text: `Grail possession: +${config.grailPossessionVp} VP at scoring` });
+  }
+  if (config.grailBuildAt) {
+    const where =
+      config.grailBuildAt === "both"
+        ? "Town or Settlement"
+        : config.grailBuildAt === "starting-town"
+          ? "starting Town"
+          : config.grailBuildAt === "settlement"
+            ? "Settlement"
+            : "Town";
+    entries.push({ icon: "🏆", text: `Grail may be built in a ${where}` });
+  }
+  if (config.grailBuildReward?.freeBuilding) {
+    entries.push({ icon: "🏆", text: "Building the Grail grants one free Town building (picker)" });
+  }
+  if (config.grailBuildReward) {
+    const res = formatPresetResources(config.grailBuildReward);
+    if (res && res !== "nothing") {
+      entries.push({ icon: "🏆", text: `Grail build reward: +${res}` });
+    }
+  }
   return entries;
 }
 
@@ -1405,10 +1890,11 @@ export function describeVictoryPointsConfig(
   return entries;
 }
 
-/** Short label for a designer guard: a level Ⅰ–Ⅶ or an N-unit exact army. */
+/** Short label for a designer guard: a level Ⅰ–Ⅶ or a grouped exact army. */
 export function describeGuardSpec(guard: CustomGuardSpec): string {
   if (guard.units && guard.units.length > 0) {
-    return `${guard.units.length}-unit army`;
+    const grouped = describeGuardArmyGrouped(guard.units);
+    return grouped || `${guard.units.length}-unit army`;
   }
   return guard.level ? `level ${guard.level}` : "none";
 }
@@ -1425,14 +1911,19 @@ export function describeObeliskAwards(config: CustomMapObeliskConfig): string {
 
 /** Plain-words line for the map-wide Obelisk role (lobby banner + designer). */
 export function describeObeliskRole(config: CustomMapObeliskConfig): string {
-  const guard = config.guard ? ` (guard ${describeGuardSpec(config.guard)})` : "";
+  const extras: string[] = [];
+  if (config.guard) extras.push(`guard ${describeGuardSpec(config.guard)}`);
+  if (config.breakField) extras.push("break field");
+  if (config.persistentGuard) extras.push("persistent army");
+  if (config.unlimitedRounds) extras.push("unlimited rounds");
+  const tail = extras.length > 0 ? ` (${extras.join(", ")})` : "";
   if (config.role === "monolith") {
-    return `Obelisks: Monolith teleport network${guard}`;
+    return `Obelisks: Monolith teleport network${tail}`;
   }
   if (config.role === "victory-only") {
-    return `Obelisks: victory marker only (no reward)${guard}`;
+    return `Obelisks: victory marker only (no reward)${tail}`;
   }
-  return `Obelisks: fixed bonus — ${describeObeliskAwards(config)}${guard}`;
+  return `Obelisks: fixed bonus — ${describeObeliskAwards(config)}${tail}`;
 }
 
 /** Plain-words line for the map-wide settlement options (banner + designer). */
@@ -1612,6 +2103,25 @@ export function describeCustomMapPresetEntries(
   }
   if (preset.settlements) {
     entries.push({ icon: "🏠", text: describeSettlementConfig(preset.settlements) });
+  }
+  if (preset.mines) {
+    const parts: string[] = [];
+    if (preset.mines.guard) parts.push(`guard ${describeGuardSpec(preset.mines.guard)}`);
+    if (preset.mines.breakField) parts.push("break field");
+    if (preset.mines.persistentGuard) parts.push("persistent army");
+    if (preset.mines.unlimitedRounds) parts.push("unlimited rounds");
+    entries.push({ icon: "⛏️", text: `Mines: ${parts.join(", ") || "custom"}` });
+  }
+  if (preset.randomTowns) {
+    const parts: string[] = [];
+    if (preset.randomTowns.guard) parts.push(`guard ${describeGuardSpec(preset.randomTowns.guard)}`);
+    if (preset.randomTowns.incomeGold !== undefined) {
+      parts.push(`${preset.randomTowns.incomeGold} gold income`);
+    }
+    if (preset.randomTowns.captureReward) {
+      parts.push(`capture +${formatPresetResources(preset.randomTowns.captureReward)}`);
+    }
+    entries.push({ icon: "🏰", text: `Random Town: ${parts.join(", ") || "custom"}` });
   }
   if (preset.objectives) {
     for (const line of describeObjectivesConfig(preset.objectives)) {
@@ -2040,6 +2550,7 @@ export const MAP_PRESET_OBELISK_ROLE_OPTIONS: {
 export const MAP_PRESET_OBELISK_BONUS_KINDS: { id: CustomMapObeliskBonus["kind"]; label: string }[] = [
   { id: "morale", label: "+1 morale" },
   { id: "search", label: "Search a deck" },
+  { id: "ability_token", label: "Ability token" },
   { id: "resources", label: "Resources" },
   { id: "movement", label: "Movement" },
   { id: "experience", label: "Experience" },
@@ -2053,6 +2564,8 @@ export function defaultObeliskBonusForKind(kind: CustomMapObeliskBonus["kind"]):
       return { kind: "morale", amount: 1 };
     case "search":
       return { kind: "search", deck: "artifacts", count: 1 };
+    case "ability_token":
+      return { kind: "ability_token" };
     case "resources":
       return { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 };
     case "movement":
