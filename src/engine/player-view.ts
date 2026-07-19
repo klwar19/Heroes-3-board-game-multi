@@ -350,6 +350,8 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         // The undrawn Ⅱ–Ⅲ pool is face down — players must not see which tiles
         // could come up; only its size (the reroll/draw headroom) shows.
         farTilePool: base.adventure.farTilePool?.map(() => "hidden"),
+        // Same secrecy for the leftover Near (Ⅳ–Ⅴ) pool (designer resource pick).
+        nearTilePool: base.adventure.nearTilePool?.map(() => "hidden"),
         // The Pandora's Box draw pile stays face down; only its size shows.
         pandoraDeck: base.adventure.pandoraDeck?.map(() => "hidden"),
         // Event resolution secrets: a face-down pool card (Magical Forest)

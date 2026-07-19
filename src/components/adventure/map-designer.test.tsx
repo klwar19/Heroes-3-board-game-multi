@@ -313,7 +313,7 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       onChange
     );
     const popover = openTilePopover(container, 1); // plan 1 = the center tile
-    const picker = popover.querySelector(".popoverViiField");
+    const picker = popover.querySelector(".popoverCenterHex");
     expect(picker, "Ⅶ-field picker shown for a center tile").toBeTruthy();
 
     fireEvent.click(within(picker as HTMLElement).getByRole("button", { name: "Grail" }));
@@ -328,7 +328,8 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       { row: 9, col: 4, group: "far", faceDown: true }
     ]);
     const popover = openTilePopover(container, 1);
-    expect(popover.querySelector(".popoverViiField")).toBeNull();
+    // Settlement customization may still appear; the center Ⅶ block must not.
+    expect(popover.querySelector(".popoverCenterHex")).toBeNull();
   });
 
   it("a pinned Field Override with NO art draws its fallback glyph on the map", () => {
@@ -370,13 +371,15 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
 
     // The editor is visible WITHOUT any objective designation (the old build
     // hid it behind one — "click on tile VI-VII … BUT NOTHING THERE").
-    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex Gold/i), { target: { value: "7" } });
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex reward Gold/i), {
+      target: { value: "7" }
+    });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.arrayContaining([expect.objectContaining({ centerHex: { reward: { gold: 7 } } })])
     );
 
     // A flexible reward kind (Treasure dice) rides the same reward object…
-    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex Treasure dice/i), {
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex reward Treasure dice/i), {
       target: { value: "2" }
     });
     expect(onChange).toHaveBeenLastCalledWith(
@@ -384,7 +387,9 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     );
 
     // …and a Victory-Points value writes centerHex.vp.
-    fireEvent.change(within(popover as HTMLElement).getByLabelText(/victory points/i), { target: { value: "4" } });
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex reward victory points/i), {
+      target: { value: "4" }
+    });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.arrayContaining([expect.objectContaining({ centerHex: { vp: 4 } })])
     );
@@ -400,9 +405,10 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       onChange
     );
     const popover = openTilePopover(container, 1);
+    const centerBlock = popover.querySelector(".popoverCenterHex") as HTMLElement;
 
-    // A level chip writes a level guard.
-    fireEvent.click(within(popover as HTMLElement).getByRole("button", { name: "Ⅲ" }));
+    // A level chip writes a level guard (scoped to the center block — settlement has its own).
+    fireEvent.click(within(centerBlock).getByRole("button", { name: "Ⅲ" }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { level: 3 } } })])
     );
@@ -416,11 +422,81 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       onChange
     );
     const armyPopover = openTilePopover(armed, 1);
-    fireEvent.change(within(armyPopover as HTMLElement).getByLabelText(/Add a guard unit/i), {
+    fireEvent.change(within(armyPopover as HTMLElement).getByLabelText(/Add a named guard unit/i), {
       target: { value: "neutral.cyclopes" }
     });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { units: ["neutral.cyclopes"] } } })])
+    );
+
+    // Quick +Gold appends a random-tier slot (controlled re-render for each add).
+    let armyUnits: string[] = [];
+    const addGold = () => {
+      const mixed = renderDesigner(
+        [
+          { row: 8, col: 2, group: "starting", faceDown: false },
+          {
+            row: 9,
+            col: 4,
+            group: "center",
+            faceDown: true,
+            centerHex: { guard: { units: [...armyUnits] } }
+          }
+        ],
+        onChange
+      );
+      const mixedPopover = openTilePopover(mixed, 1);
+      fireEvent.click(within(mixedPopover as HTMLElement).getByRole("button", { name: "+ Gold" }));
+      const last = onChange.mock.calls.at(-1)![0] as { centerHex?: { guard?: { units?: string[] } } }[];
+      armyUnits = last.find((p) => p.centerHex)?.centerHex?.guard?.units ?? [];
+    };
+    addGold();
+    addGold();
+    addGold();
+    expect(armyUnits).toEqual(["random:gold", "random:gold", "random:gold"]);
+  });
+
+  it("center-hex reward Times × Search(X) writes search size and times", () => {
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1);
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex reward Artifacts Search size/i), {
+      target: { value: "5" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ centerHex: { reward: { searchArtifact: 5 } } })])
+    );
+
+    // Controlled re-render with size already set so Times is enabled.
+    const withSize = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        {
+          row: 9,
+          col: 4,
+          group: "center",
+          faceDown: true,
+          centerHex: { reward: { searchArtifact: 5 } }
+        }
+      ],
+      onChange
+    );
+    const sizedPopover = openTilePopover(withSize, 1);
+    fireEvent.change(within(sizedPopover as HTMLElement).getByLabelText(/Center hex reward Artifacts Search times/i), {
+      target: { value: "2" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          centerHex: { reward: { searchArtifact: 5, searchArtifactTimes: 2 } }
+        })
+      ])
     );
   });
 
@@ -2311,7 +2387,7 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     // Re-render with the armed army mode and add a unit through the picker.
     const rerendered = renderWithObjects(faceUpMap, latest, onObjectsChange);
     fireEvent.click(rerendered.querySelector(".designerObjectToken.standalone")!);
-    fireEvent.change(within(rerendered).getByLabelText(/Add a guard unit/i), {
+    fireEvent.change(within(rerendered).getByLabelText(/Add a named guard unit/i), {
       target: { value: "neutral.cyclopes" }
     });
     expect(latest[0].guard).toEqual({ units: ["neutral.cyclopes"] });

@@ -382,6 +382,7 @@ export {
   MAX_CENTER_HEX_DICE,
   MAX_CENTER_HEX_RESOURCE,
   MAX_CENTER_HEX_SEARCH,
+  MAX_CENTER_HEX_SEARCH_TIMES,
   MAX_CENTER_HEX_VP,
   MAX_CUSTOM_MAP_OBJECTS,
   MAX_CUSTOM_WIN_CONDITIONS,
@@ -404,8 +405,10 @@ export {
   objectGuardSpec,
   ONEWAY_EXIT_MODES,
   OUTPOST_OBJECT_KINDS,
+  describeFieldReward,
   sanitizeCenterHexPlan,
   sanitizeCenterHexReward,
+  sanitizeFieldReward,
   sanitizeCustomGuardSpec,
   sanitizeCustomMapObject,
   sanitizeCustomMapPreset,
@@ -419,6 +422,19 @@ export {
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS
 } from "./map-preset";
+export {
+  describeGuardArmyGrouped,
+  expandGuardUnitGroups,
+  groupGuardUnitEntries,
+  guardUnitEntryLabel,
+  isCustomGuardUnitEntry,
+  isPackGuardSlot,
+  isRandomGuardSlot,
+  PACK_GUARD_PREFIX,
+  RANDOM_GUARD_PREFIX,
+  RANDOM_GUARD_TIERS
+} from "./map-design-features";
+export type { RandomGuardTier } from "./map-design-features";
 export {
   computeVictoryPoints,
   controlledSettlementCount,
@@ -513,6 +529,7 @@ export {
   clearCustomGuard,
   customGuardArmyDifficulty,
   designedGuardPreview,
+  stampDesignerFieldReward,
   gatePairColor,
   isBankStyleGuardLocation,
   isTeleportObjectGuardLocation,
@@ -888,6 +905,7 @@ export type {
   ViiFieldReward,
   CustomCenterHexPlan,
   CustomCenterHexReward,
+  CustomFieldReward,
   CustomGuardSpec,
   CustomMapTileToken,
   OnewayExitMode,

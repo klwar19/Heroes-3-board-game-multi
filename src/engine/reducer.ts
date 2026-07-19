@@ -91,6 +91,7 @@ import {
   retreatFromCombat,
   surrenderFromCombat,
   revisitField,
+  buildGrail,
   roguesScoutDeck,
   satyrMoraleRoll,
   thievesGuildAction,
@@ -1743,6 +1744,80 @@ function doubleAmountForUnitName(amount: number, unit: CombatUnitState | undefin
 }
 
 /**
+ * ADD_UNIT_MAX_HEALTH (Valeska Marksmen, Vial of Lifeblood, Ivor VI, …): grant
+ * combat-long max Health that survives Pack→Few flips and Polish Unit Stack
+ * layer losses. The amount is stored on the unit (`combatMaxHealthBonus`) so
+ * applyUnitCurrentSide re-folds it onto every printed side recompute, AND as a
+ * unit-scoped HEALTH_BONUS ongoing effect for the combat effects panel / dispel.
+ */
+function applyUnitMaxHealthBonus(
+  state: GameState,
+  unit: CombatUnitState,
+  amount: number,
+  effectName: string,
+  source: ActiveEffectState["source"],
+  controllerId: PlayerId
+): void {
+  if (amount <= 0 || !state.combat) {
+    return;
+  }
+  unit.combatMaxHealthBonus = (unit.combatMaxHealthBonus ?? 0) + amount;
+  unit.maxHealth += amount;
+  createActiveEffect(
+    state,
+    {
+      name: effectName,
+      scope: "unit",
+      duration: { type: "combat" },
+      polarity: "positive",
+      // Specialty / artifact combat-long HP is not Cure-stripped (matches the
+      // previous baked-maxHealth behaviour). Dragon Flies still dispel it via
+      // the controller-owned path, which also strips combatMaxHealthBonus.
+      removable: false,
+      modifiers: [{ type: "HEALTH_BONUS", amount }]
+    },
+    source,
+    controllerId,
+    { type: "unit", unitId: unit.id }
+  );
+}
+
+/** When HEALTH_BONUS ongoing effects are stripped, drop the matching unit HP. */
+function stripCombatHealthBonusFromRemovedEffects(
+  state: GameState,
+  removed: ActiveEffectState[]
+): void {
+  if (!state.combat || removed.length === 0) {
+    return;
+  }
+  for (const effect of removed) {
+    if (effect.target?.type !== "unit") {
+      continue;
+    }
+    const unit = state.combat.units[effect.target.unitId];
+    if (!unit) {
+      continue;
+    }
+    let healthLoss = 0;
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "HEALTH_BONUS") {
+        healthLoss += modifier.amount;
+      }
+    }
+    if (healthLoss <= 0) {
+      continue;
+    }
+    const nextBonus = Math.max(0, (unit.combatMaxHealthBonus ?? 0) - healthLoss);
+    if (nextBonus > 0) {
+      unit.combatMaxHealthBonus = nextBonus;
+    } else {
+      delete unit.combatMaxHealthBonus;
+    }
+    unit.maxHealth = Math.max(1, unit.maxHealth - healthLoss);
+  }
+}
+
+/**
  * Records that `player` cast a Spell this combat round/turn (the printed
  * one-Spell-per-round accounting) and fires any ongoing "after casting a Spell,
  * draw N cards" effects (Zydar's Sorcery VI).
@@ -2034,6 +2109,7 @@ function removeEffectsFromTarget(
 
   const removedIds = new Set(removed.map((effect) => effect.id));
   state.activeEffects = state.activeEffects.filter((effect) => !removedIds.has(effect.id));
+  stripCombatHealthBonusFromRemovedEffects(state, removed);
 
   appendEvent(state, {
     type: "ACTIVE_EFFECTS_REMOVED",
@@ -2063,6 +2139,7 @@ function removeOneEffectFromTarget(
       effect.removable !== false
     ) {
       state.activeEffects.splice(index, 1);
+      stripCombatHealthBonusFromRemovedEffects(state, [effect]);
       appendEvent(state, {
         type: "ACTIVE_EFFECTS_REMOVED",
         source,
@@ -6271,6 +6348,7 @@ function applyDispelFollowUps(state: GameState, attacker: CombatUnitState, defen
 
   const removedIds = new Set(removed.map((effect) => effect.id));
   state.activeEffects = state.activeEffects.filter((effect) => !removedIds.has(effect.id));
+  stripCombatHealthBonusFromRemovedEffects(state, removed);
 
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
@@ -10076,7 +10154,14 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     if (card?.effect.type === "ADD_UNIT_MAX_HEALTH" && state.combat && stackItem.action.target.type === "unit") {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && target.controllerId === stackItem.action.playerId) {
-        target.maxHealth += doubleAmountForUnitName(card.effect.amount, target, card.effect.doubleForUnitName);
+        applyUnitMaxHealthBonus(
+          state,
+          target,
+          doubleAmountForUnitName(card.effect.amount, target, card.effect.doubleForUnitName),
+          card.name,
+          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          stackItem.action.playerId
+        );
       }
     }
 
@@ -14856,7 +14941,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "ADD_UNIT_MAX_HEALTH" && target && state.combat) {
     const unit = state.combat.units[target.unitId];
     if (unit && unit.controllerId === action.playerId) {
-      unit.maxHealth += doubleAmountForUnitName(effect.amount, unit, effect.doubleForUnitName);
+      applyUnitMaxHealthBonus(
+        state,
+        unit,
+        doubleAmountForUnitName(effect.amount, unit, effect.doubleForUnitName),
+        card.name,
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId
+      );
     }
   }
 
@@ -19412,6 +19504,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "MULLIGAN_CARD",
   "ASTROLOGERS_HERO_EMPOWER",
   "REVISIT_FIELD",
+  "BUILD_GRAIL",
   "OPEN_MARKET",
   "DISCOVER_TILE",
   "PLACE_TILE",
@@ -19825,6 +19918,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "REVISIT_FIELD":
         revisitField(nextState, action);
+        break;
+      case "BUILD_GRAIL":
+        buildGrail(nextState, action);
         break;
       case "OPEN_MARKET":
         openMarket(nextState, action);
