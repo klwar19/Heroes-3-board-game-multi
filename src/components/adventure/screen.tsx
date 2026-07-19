@@ -1508,7 +1508,26 @@ export function HexMapBoard({
                   }
                 : isGateCandidate
                 ? () => {
-                    if (!suppressClickRef.current) {
+                    if (suppressClickRef.current) {
+                      return;
+                    }
+                    // The visual way to set a Subterranean Gate exit: click the
+                    // glowing hex you want and it is placed there right away — no
+                    // dependence on a cycle float that could scroll off-screen or
+                    // hide behind a die animation (the old "the window disappears
+                    // and won't work"). Falls back to just selecting if the engine
+                    // did not offer this option (should not happen).
+                    const place = gatePlacementOpen
+                      ? legalActions.find(
+                          (legal) =>
+                            legal.action.type === "CHOOSE_OPTION" &&
+                            legal.action.choiceId === gatePlacementOpen.choiceId &&
+                            legal.action.optionIndex === gateCandidateIndex
+                        )?.action
+                      : undefined;
+                    if (place) {
+                      onAction(place);
+                    } else {
                       setGatePickIndex(gateCandidateIndex);
                     }
                   }
@@ -2569,7 +2588,7 @@ export function HexMapBoard({
             role="dialog"
           >
             <span className="mapFloatTitle">
-              {gatePlacementChoice.role === "gate" ? "Gate exit" : "Path up"} — cycle &amp; confirm
+              {gatePlacementChoice.role === "gate" ? "Gate exit" : "Path up"} — click a glowing hex
             </span>
             <small className="mapFloatLabel">{gatePlacementChoice.label}</small>
             <div className="mapFloatButtons rotateFloatRow">
@@ -4542,7 +4561,7 @@ export function PromptTray({
           {role === "gate" ? "Subterranean Gate — fix the gate exit" : "Subterranean Gate — fix the path up"}
         </strong>
         <small>
-          Cycle the positions on the map (or here), then Confirm. The exit is fixed for the rest of the game.
+          Click a glowing hex on the map to place the exit (or cycle here and Confirm). It is fixed for the rest of the game.
         </small>
         <div className="promptOptions rotateFloatRow">
           <button

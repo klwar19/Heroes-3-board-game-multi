@@ -6,7 +6,10 @@ import {
   type GameAction,
   type GameState,
 } from "@/engine";
-import { driveComputerPlayers } from "./computer-runner";
+import {
+  driveComputerPlayers,
+  settleComputerVisibleStep,
+} from "./computer-runner";
 import {
   invariantViolations,
   pickHumanAction,
@@ -48,7 +51,22 @@ describe("single-player multi-round soak", () => {
         playerCount: 2,
         sessionMode: "single-player",
       });
-      const result = playUntilRound(initial, ROUNDS_TARGET);
+      // Track the computer main hero's position across the whole run. A stall-
+      // free game that ADVANCES ROUNDS but never MOVES the hero used to pass
+      // this soak silently — the "AI takes its turn and does nothing / sits
+      // still" report. Asserting the pawn actually walks pins the observable
+      // outcome (a moved hero), not just "the pump didn't crash".
+      const computerHeroCells = new Set<string>();
+      const result = playUntilRound(initial, ROUNDS_TARGET, {
+        onLoop: (state) => {
+          const hero = Object.values(state.heroes).find(
+            (candidate) => candidate.controllerId === "p2" && candidate.kind === "main",
+          );
+          if (hero?.spaceId) {
+            computerHeroCells.add(hero.spaceId);
+          }
+        },
+      });
       expect(result.stalled, result.reason).toBe(false);
       // Per-loop invariants accumulated over the whole run stayed clean.
       expect(result.violations, result.violations.join("; ")).toEqual([]);
@@ -62,12 +80,66 @@ describe("single-player multi-round soak", () => {
           Boolean(result.state.adventure?.winnerPlayerId),
       ).toBe(true);
       assertInvariants(result.state, seed);
+      // The computer hero actually WALKED — it visited more than the single
+      // home cell it started on over ~5 rounds (fails if the AI freezes in
+      // place: objective detection / distance field / move scoring regressions).
+      expect(
+        computerHeroCells.size,
+        `computer hero never moved (cells: ${[...computerHeroCells].join(", ")})`,
+      ).toBeGreaterThan(1);
       // Memory should have been written for the computer seat at some point.
       if (result.state.computerMemory?.p2) {
         expect(result.state.computerMemory.p2.resourceTrail.length).toBeGreaterThan(0);
       }
     });
   }
+
+  it("the PACED production path (one ADVANCE_COMPUTER per beat) actually WALKS the computer hero", () => {
+    // The live single-player table drives the computer via settleComputerVisibleStep,
+    // ONE visible beat per ADVANCE_COMPUTER — NOT the whole-turn driveComputerPlayers
+    // the soak above uses. With the client auto-advancing (the single-player DEFAULT
+    // now), the AI takes its whole turn a beat at a time. This is the exact path that
+    // was silently NOT driven when auto-advance was opt-in — the map computer turn does
+    // nothing on its own (server auto-pump is PvP-only), so with no ADVANCE_COMPUTER the
+    // hero never left home ("single player AI … not move at all"). Regression guard: if
+    // the paced path stops walking the hero (or moves stop counting as progress), the
+    // distinct-cell set collapses to the single home cell and this fails.
+    let state: GameState = createAdventureGameState({
+      seed: "sp-paced-move",
+      scenarioId: "skirmish",
+      playerCount: 2,
+      sessionMode: "single-player",
+    });
+    const cells = new Set<string>();
+    const computerHero = (s: GameState) =>
+      Object.values(s.heroes).find((h) => h.controllerId === "p2" && h.kind === "main");
+    let loops = 0;
+    while (state.round < 5 && loops < 400) {
+      loops += 1;
+      // Drive the computer's owed beats one visible step at a time (client sends
+      // one ADVANCE_COMPUTER per step; the server runs settleComputerVisibleStep).
+      let ticks = 0;
+      while (computerDecisionOwner(state) && ticks < 600) {
+        ticks += 1;
+        const run = settleComputerVisibleStep(state);
+        expect(run.stalled, run.reason).toBeFalsy();
+        if (run.decisions.length === 0) break;
+        state = run.state;
+        const hero = computerHero(state);
+        if (hero?.spaceId) cells.add(hero.spaceId);
+      }
+      if (state.phase === "game-over") break;
+      const action = pickHumanAction(state, "p1");
+      if (!action) break;
+      const result = applyAction(state, action);
+      expect(result.errors, result.errors.join("; ")).toEqual([]);
+      state = result.state;
+    }
+    expect(
+      cells.size,
+      `paced computer hero never moved (cells: ${[...cells].join(", ")})`,
+    ).toBeGreaterThan(1);
+  });
 
   it("2 computers for 3 rounds without stall (seed soak-2p)", () => {
     const initial = createAdventureGameState({

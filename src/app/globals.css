@@ -4164,6 +4164,26 @@ button.battleCell {
   }
 }
 
+/* Subterranean Gate exit picker: EVERY candidate hex the player may click to
+   place the gate/path-up glows amber (the currently-highlighted one wears the
+   brighter mapChoiceTarget purple above). Without this the alternate exits were
+   invisible, so the only way to change the exit was a cycle float that could
+   vanish — "the window disappears and won't work". Now the whole choice is on
+   the map: click the hex you want. */
+.hexCell.gateExitCandidate {
+  cursor: pointer;
+  stroke: #f4c95d;
+  stroke-width: 3.2;
+  fill-opacity: 0.4;
+  filter: brightness(1.3) drop-shadow(0 0 6px rgb(244 201 93 / 90%));
+  animation: mapChoicePulse 1.15s ease-in-out infinite;
+}
+
+.hexCell.gateExitCandidate:hover {
+  stroke: #ffe6a3;
+  filter: brightness(1.65) drop-shadow(0 0 10px rgb(244 201 93 / 100%));
+}
+
 /* Monolith / Whirlpool / colored-Gate travel picker: each destination is a
    glowing, clickable EXIT hex. A bright aqua-green — distinct from the teal
    end-of-turn move and the violet spell destination — reads as "teleport". The
@@ -17947,10 +17967,42 @@ img.cardBack {
   align-items: center;
   gap: 6%;
   padding-top: 7%;
+  overflow: hidden;
   /* The plates hang over the dimmed panorama like the printed board — no
      full-bar backing, the townscape stays visible beneath. */
   background: linear-gradient(180deg, rgb(8 8 8 / 55%), rgb(8 8 8 / 0%) 55%);
   box-shadow: inset 0.12cqw 0 0 rgb(0 0 0 / 45%), inset -0.12cqw 0 0 rgb(0 0 0 / 45%);
+}
+
+/* The built-town slice previewed BLURRED + dimmed behind the plates, so an
+   unbuilt DESIGNED bar reads "not built" the way a scan board's blurred bar
+   does. The plates/plaque stay crisp above it (z-index below). */
+.tbEmptyBar .tbEmptyPreview {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  filter: blur(1.7px) saturate(0.6) brightness(0.66);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.tbEmptyBar > .tbPlate,
+.tbEmptyBar > .tbUnbuiltPlaque {
+  position: relative;
+  z-index: 1;
+}
+
+/* Buildable-now unbuilt designed bar: the same gold hint ring the scan boards
+   show, so a bar you can build right now stands out. */
+.tbEmptyBar.buildable {
+  box-shadow:
+    inset 0 0 0 0.2cqw rgba(240, 196, 106, 0.55),
+    inset 0.12cqw 0 0 rgb(0 0 0 / 45%),
+    inset -0.12cqw 0 0 rgb(0 0 0 / 45%);
 }
 
 .tbPlate {
