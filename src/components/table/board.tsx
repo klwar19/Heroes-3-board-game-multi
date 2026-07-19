@@ -1699,7 +1699,10 @@ export function InitiativeRail({ state }: { state: GameState }) {
 
   return (
     <div className="initiativeRail" aria-label="Initiative order">
-      <span className="initLabel" title="Units activate in this order (highest initiative first)">
+      <span
+        className="initLabel"
+        title="Units activate in this order (highest initiative first). Same-speed units from opposite sides alternate — attacker, then defender/Neutral, then attacker…"
+      >
         <Swords aria-hidden="true" size={14} />
         {inSetup ? "Order" : "Order"}
       </span>
