@@ -97,12 +97,17 @@ import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
-  polishStackTier
+  polishStackTier,
+  polishUnitStackCap
 } from "./polish-unit-stacks";
 import {
   CAST_A_SPELL_CARD_ID,
+  eventZoneMatches,
   gainOwnedCard,
-  polishSpellBookEnabled
+  isOwnedSpellCard,
+  polishSpellBookEnabled,
+  removeCardFromPlayerZone,
+  type PolishCardZone
 } from "./polish-spell-book";
 import {
   polishPandoraSearchCount,
@@ -6009,13 +6014,23 @@ export function processPendingVisit(state: GameState): void {
       }
       case "RECRUIT_FREE": {
         // Add a unit to the army for free: a Few (Garden of Life) or a Pack
-        // (a Creature Bank "gain a Stacked unit" reward). Optional stacks are
-        // Polish bank-size Pack layers (Dragon Fly Hive / Griffin Conservatory).
+        // (a Creature Bank "gain a Stacked unit" reward). Optional `stacks` only
+        // apply when army Unit Stacks are active (polish-unit-stacks / anime
+        // unitStacks) — bank rewards deliberately do NOT set this field.
         const recruitPlayer = state.players[visit.playerId];
         if (recruitPlayer) {
           const added = addArmyUnit(recruitPlayer, step.unitDefId, step.side ?? "few");
-          if (step.stacks && step.stacks > 0 && (step.side ?? "few") === "pack") {
-            added.stacks = Math.max(0, Math.trunc(step.stacks));
+          if (
+            armyUnitStacksActive(state) &&
+            step.stacks &&
+            step.stacks > 0 &&
+            (step.side ?? "few") === "pack"
+          ) {
+            const cap = polishUnitStackCap(step.unitDefId, "pack");
+            const layers = Math.min(cap, Math.max(0, Math.trunc(step.stacks)));
+            if (layers > 0) {
+              added.stacks = layers;
+            }
           }
           appendEvent(state, {
             type: "UNIT_RECRUITED",
@@ -6913,13 +6928,10 @@ export function processPendingVisit(state: GameState): void {
       }
       case "REMOVE_CARD_FROM_PILE": {
         const player = state.players[visit.playerId];
-        const pile = step.source === "hand" ? player?.hand : player?.discard;
-        const index = pile?.indexOf(step.cardId) ?? -1;
-        if (!player || !pile || index === -1) {
+        if (!player) {
           break;
         }
-        pile.splice(index, 1);
-        player.removed.push(step.cardId);
+        removeCardFromPlayerZone(player, step.cardId, step.source as PolishCardZone);
         break;
       }
       case "STAT_EMPOWER_OFFER": {
@@ -7052,19 +7064,40 @@ export function processPendingVisit(state: GameState): void {
         };
         const seen = new Set<string>();
         const options: { label: string; steps: VisitStep[] }[] = [];
-        const addSource = (cardId: CardId, source: "hand" | "discard") => {
+        const addSource = (
+          cardId: CardId,
+          source: "hand" | "discard" | "spellBook" | "spellBookUsed"
+        ) => {
           const deckId = deckForKind(cardId);
           // Only Spell/Ability/Artifact cards (the searchable decks) qualify, and
           // never the hero's Starting Ability — matching the "removable" rule used
-          // by the Faerie Ring / Market of Time removals.
+          // by the Faerie Ring / Market of Time removals. Cast-a-Spell is not an
+          // owned Spell under Polish (it has no shared-deck Search destination).
           if (!deckId || cardId === startingAbility) {
             return;
+          }
+          if (polishSpellBookEnabled(state) && cardId === CAST_A_SPELL_CARD_ID) {
+            return;
+          }
+          // Under Polish, personal-discard Spells are a leak; Book is the real zone.
+          if (
+            polishSpellBookEnabled(state) &&
+            isOwnedSpellCard(cardId) &&
+            (source === "hand" || source === "discard")
+          ) {
+            // Still allow removing a leaked hand/discard Spell so it is not stuck.
           }
           const key = `${source}:${cardId}`;
           if (seen.has(key)) {
             return;
           }
           seen.add(key);
+          const zoneLabel =
+            source === "spellBook"
+              ? "Spell Book"
+              : source === "spellBookUsed"
+                ? "used Spell Book"
+                : source;
           const steps: VisitStep[] = [
             { type: "REMOVE_CARD_FROM_PILE", cardId, source },
             { type: "SEARCH_SHARED_DECK", deckId, count: step.searchCount }
@@ -7073,12 +7106,16 @@ export function processPendingVisit(state: GameState): void {
             steps.push({ type: "REMOVE_THEN_SEARCH_REPEAT", remaining: step.remaining - 1, searchCount: step.searchCount });
           }
           options.push({
-            label: `Remove ${cardLibrary[cardId]?.name ?? cardId} (${source}), Search (${step.searchCount}) the ${deckId} deck`,
+            label: `Remove ${cardLibrary[cardId]?.name ?? cardId} (${zoneLabel}), Search (${step.searchCount}) the ${deckId} deck`,
             steps
           });
         };
         player.hand.forEach((cardId) => addSource(cardId, "hand"));
         player.discard.forEach((cardId) => addSource(cardId, "discard"));
+        if (polishSpellBookEnabled(state)) {
+          (player.spellBook ?? []).forEach((cardId) => addSource(cardId, "spellBook"));
+          (player.spellBookUsed ?? []).forEach((cardId) => addSource(cardId, "spellBookUsed"));
+        }
         if (options.length === 0) {
           break;
         }
@@ -15490,26 +15527,22 @@ function sharedDeckIdForCard(state: GameState, cardId: CardId): string {
   return "abilities";
 }
 
-/** Cards in `player.hand` matching an Event filter, index-preserving. */
+/**
+ * Cards matching an Event filter for remove / contribute menus.
+ * Under Polish Spell Book, real Spells come from the Book (refreshed + used);
+ * Cast-a-Spell never counts as an owned Spell for spell-style filters.
+ * `index` is kept for legacy hand-only call sites (always 0 for Book sources).
+ */
 function eventHandMatches(
+  state: GameState,
   player: PlayerState,
   filter: "spell" | "spell-or-ability" | "artifact-or-spell" | "pool-kinds"
-): { cardId: CardId; index: number }[] {
-  return player.hand
-    .map((cardId, index) => ({ cardId, index }))
-    .filter(({ cardId }) => {
-      const kind = cardLibrary[cardId]?.kind;
-      switch (filter) {
-        case "spell":
-          return kind === "spell";
-        case "spell-or-ability":
-          return kind === "spell" || kind === "ability";
-        case "artifact-or-spell":
-          return kind === "artifact" || kind === "spell";
-        case "pool-kinds":
-          return kind === "spell" || kind === "artifact" || kind === "ability";
-      }
-    });
+): { cardId: CardId; index: number; source: PolishCardZone }[] {
+  return eventZoneMatches(state, player, filter).map((entry, index) => ({
+    cardId: entry.cardId,
+    index,
+    source: entry.source
+  }));
 }
 
 /** Removes one pool entry by card id; returns it or null. */
@@ -15590,9 +15623,11 @@ function buildEventPlayerChoice(state: GameState, visit: PendingVisit, card: Eve
           { type: "ROLL_TREASURE_DICE", count: 2 }
         ]
       });
-      if (eventHandMatches(player, "spell").length > 0) {
+      if (eventHandMatches(state, player, "spell").length > 0) {
         options.push({
-          label: "Remove one or more Spells from your hand (2+ removed: Search (3) the Artifact deck)",
+          label: polishSpellBookEnabled(state)
+            ? "Remove one or more Spells from your Spell Book (2+ removed: Search (3) the Artifact deck)"
+            : "Remove one or more Spells from your hand (2+ removed: Search (3) the Artifact deck)",
           steps: [
             {
               type: "EVENT_REMOVE_FOR_SEARCH",
@@ -15703,10 +15738,16 @@ function buildEventPlayerChoice(state: GameState, visit: PendingVisit, card: Eve
       break;
     }
     case "VILLAGERS_PLEA": {
-      for (const { cardId } of eventHandMatches(player, "artifact-or-spell")) {
+      for (const { cardId, source } of eventHandMatches(state, player, "artifact-or-spell")) {
+        const zone =
+          source === "spellBook"
+            ? "Spell Book"
+            : source === "spellBookUsed"
+              ? "used Spell Book"
+              : "hand";
         options.push({
-          label: `Remove ${cardLibrary[cardId]?.name ?? cardId} from your hand`,
-          steps: [{ type: "REMOVE_CARD_FROM_PILE", cardId, source: "hand" }]
+          label: `Remove ${cardLibrary[cardId]?.name ?? cardId} from your ${zone}`,
+          steps: [{ type: "REMOVE_CARD_FROM_PILE", cardId, source }]
         });
       }
       if (hasResources(player, { buildingMaterials: 1 })) {
@@ -15980,7 +16021,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         finish();
         break;
       }
-      const matches = eventHandMatches(player, step.filter);
+      const matches = eventHandMatches(state, player, step.filter);
       const canBeDone = step.removed >= (step.mustRemove ?? 0);
       if (matches.length === 0) {
         if (canBeDone) {
@@ -15988,22 +16029,36 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         }
         break;
       }
-      const options: { label: string; steps: VisitStep[] }[] = matches.map(({ cardId }) => ({
-        label: `Remove ${cardLibrary[cardId]?.name ?? cardId}`,
-        steps: [
-          { type: "REMOVE_CARD_FROM_PILE", cardId, source: "hand" } as VisitStep,
-          { ...step, removed: step.removed + 1 } as VisitStep
-        ]
-      }));
+      const options: { label: string; steps: VisitStep[] }[] = matches.map(({ cardId, source }) => {
+        const zone =
+          source === "spellBook"
+            ? "Spell Book"
+            : source === "spellBookUsed"
+              ? "used Spell Book"
+              : "hand";
+        return {
+          label: `Remove ${cardLibrary[cardId]?.name ?? cardId}${source !== "hand" ? ` (${zone})` : ""}`,
+          steps: [
+            { type: "REMOVE_CARD_FROM_PILE", cardId, source } as VisitStep,
+            { ...step, removed: step.removed + 1 } as VisitStep
+          ]
+        };
+      });
       if (canBeDone) {
         options.push({
           label: earnedSearches > 0 ? `Done — ${earnedSearches} Search${earnedSearches > 1 ? "es" : ""} earned` : "Done",
           steps: [{ ...step, finished: true } as VisitStep]
         });
       }
+      const where =
+        polishSpellBookEnabled(state) && step.filter === "spell"
+          ? "Spell Book"
+          : polishSpellBookEnabled(state)
+            ? "hand / Spell Book"
+            : "hand";
       visit.steps.unshift({
         type: "CHOOSE_ONE",
-        prompt: `Remove ${step.filter === "spell" ? "Spell" : "Spell or Ability"} cards from your hand (${step.removed} removed)`,
+        prompt: `Remove ${step.filter === "spell" ? "Spell" : "Spell or Ability"} cards from your ${where} (${step.removed} removed)`,
         options
       });
       break;
@@ -16181,8 +16236,16 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         spendResources(state, visit.playerId, step.cost, `bought ${cardLibrary[step.cardId]?.name ?? step.cardId}`);
       }
       if (step.toDeck) {
-        if (polishSpellBookEnabled(state) && cardLibrary[step.cardId]?.kind === "spell") {
+        if (polishSpellBookEnabled(state) && isOwnedSpellCard(step.cardId)) {
+          // Mage Laboratory: bought Spell goes to the Book, but the printed
+          // "shuffle deck + discard along with the new card" still reshuffles
+          // the M&M piles (the Spell itself is not shuffled in — it is owned).
           gainOwnedCard(state, visit.playerId, step.cardId);
+          player.deck = shuffleCards(
+            [...player.deck, ...player.discard],
+            `${state.seed}#event-buy#${visit.playerId}#${eventSeedNumber(state)}`
+          );
+          player.discard = [];
         } else {
           player.deck = shuffleCards(
             [...player.deck, ...player.discard, step.cardId],
@@ -16293,8 +16356,14 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       }
       if (step.toDeck) {
         // Mage Laboratory: the bought card shuffles straight into the deck.
-        if (polishSpellBookEnabled(state) && cardLibrary[step.cardId]?.kind === "spell") {
+        // Polish: owned Spell → Book, still reshuffle M&M deck+discard.
+        if (polishSpellBookEnabled(state) && isOwnedSpellCard(step.cardId)) {
           gainOwnedCard(state, visit.playerId, step.cardId);
+          player.deck = shuffleCards(
+            [...player.deck, ...player.discard],
+            `${state.seed}#event-buy#${visit.playerId}#${eventSeedNumber(state)}`
+          );
+          player.discard = [];
         } else {
           player.deck = shuffleCards(
             [...player.deck, ...player.discard, step.cardId],
@@ -16339,10 +16408,22 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         break;
       }
       const options: { label: string; steps: VisitStep[] }[] = [];
-      for (const { cardId } of eventHandMatches(player, "pool-kinds")) {
+      for (const { cardId, source } of eventHandMatches(state, player, "pool-kinds")) {
+        const zone =
+          source === "spellBook"
+            ? " (Spell Book)"
+            : source === "spellBookUsed"
+              ? " (used Spell Book)"
+              : "";
         options.push({
-          label: `Put ${cardLibrary[cardId]?.name ?? cardId} face-down into the pool`,
-          steps: [{ type: "EVENT_POOL_ADD_FROM_HAND", cardId }]
+          label: `Put ${cardLibrary[cardId]?.name ?? cardId}${zone} face-down into the pool`,
+          steps: [
+            {
+              type: "EVENT_POOL_ADD_FROM_HAND",
+              cardId,
+              ...(source !== "hand" ? { source } : {})
+            } as VisitStep
+          ]
         });
       }
       for (const family of ["spells", "artifacts", "abilities"] as EventDeckFamily[]) {
@@ -16368,13 +16449,43 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       break;
     }
     case "EVENT_POOL_ADD_FROM_HAND": {
-      const index = player?.hand.indexOf(step.cardId) ?? -1;
-      if (!player || !events || index === -1) {
+      if (!player || !events) {
         break;
       }
-      player.hand.splice(index, 1);
+      const source: PolishCardZone = step.source ?? "hand";
+      let removed = false;
+      if (source === "hand") {
+        const index = player.hand.indexOf(step.cardId);
+        if (index !== -1) {
+          player.hand.splice(index, 1);
+          removed = true;
+        }
+      } else if (source === "spellBook") {
+        const index = player.spellBook.indexOf(step.cardId);
+        if (index !== -1) {
+          player.spellBook.splice(index, 1);
+          removed = true;
+        }
+      } else if (source === "spellBookUsed") {
+        const used = player.spellBookUsed ?? [];
+        const index = used.indexOf(step.cardId);
+        if (index !== -1) {
+          used.splice(index, 1);
+          player.spellBookUsed = used;
+          removed = true;
+        }
+      }
+      if (!removed) {
+        break;
+      }
+      // Contributed Spells re-enter the shared pool as deckless entries (take
+      // path uses gainOwnedCard → Book under Polish).
       events.pool.push({ cardId: step.cardId, deckId: "", faceUp: false });
-      eventNote(state, `${eventPlayerName(state, visit.playerId)} adds a card from their hand to the pool.`, visit.playerId);
+      eventNote(
+        state,
+        `${eventPlayerName(state, visit.playerId)} adds a card${source !== "hand" ? " from their Spell Book" : " from their hand"} to the pool.`,
+        visit.playerId
+      );
       break;
     }
     case "EVENT_POOL_ADD_DRAWN": {

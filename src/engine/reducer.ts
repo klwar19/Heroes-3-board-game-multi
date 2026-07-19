@@ -1485,6 +1485,37 @@ function playerHasLethalSave(state: GameState, defenderId: UnitId, cards: CardLi
   return Object.values(reactions).some((list) => list.length > 0);
 }
 
+/**
+ * Polish Unit Stacks: simulate the army-stack peel in `markUnitRemovedIfNeeded`.
+ * If the unit still has layers that would leave it alive after this hit, the
+ * lethal-save window must not open (the unit is not actually dying).
+ */
+function armyStacksWouldAbsorbHit(
+  state: GameState,
+  unit: { variant?: string; armyStacks?: number; maxHealth: number; damage: number },
+  incomingDamage: number
+): boolean {
+  if (!armyUnitStacksActive(state)) {
+    return false;
+  }
+  if (unit.variant !== "pack" && unit.variant !== "neutral") {
+    return false;
+  }
+  let stacks = unit.armyStacks ?? 0;
+  if (stacks <= 0) {
+    return false;
+  }
+  let damage = unit.damage + incomingDamage;
+  const maxHealth = unit.maxHealth;
+  while (stacks > 0 && damage >= maxHealth) {
+    damage = Math.max(0, damage - maxHealth);
+    stacks -= 1;
+  }
+  // Survives if after peeling every available layer the remaining damage is
+  // still below one full bar, OR layers remain (redundant with loop exit).
+  return damage < maxHealth;
+}
+
 function getAmountByPower(amountByPower: Record<number, number> | undefined, fallback: number, power: number): number {
   if (!amountByPower) {
     return fallback;
@@ -4420,7 +4451,13 @@ function finishResolvedAttack(
       mightBonus,
       details.isRetaliation
     );
-    if (preview.damage > 0 && details.defender.damage + preview.damage >= details.defender.maxHealth) {
+    if (
+      preview.damage > 0 &&
+      details.defender.damage + preview.damage >= details.defender.maxHealth &&
+      // Polish Unit Stacks: a paid layer will absorb this blow (and possibly
+      // further layers) before the card dies — not a real lethal window.
+      !armyStacksWouldAbsorbHit(state, details.defender, preview.damage)
+    ) {
       stackItem.modifiers.rolledCandidate = candidate;
       stackItem.modifiers.lethalSaveOffered = true;
       const lethalEvent = appendEvent(state, {
@@ -4482,6 +4519,7 @@ function finishResolvedAttack(
       return (
         preview.damage > 0 &&
         details.defender.damage + preview.damage >= details.defender.maxHealth &&
+        !armyStacksWouldAbsorbHit(state, details.defender, preview.damage) &&
         gradeRankOfUnit(details.defender) <= gradeRank(lethalCancel.grade)
       );
     })();
@@ -15009,7 +15047,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       revealed.push(drawn);
     }
     if (revealed.length === 1) {
-      digPlayer.hand.push(revealed[0]);
+      // Polish Spell Book: owned Spells enter the Book, not hand.
+      gainOwnedCard(state, action.playerId, revealed[0], cards);
     } else if (revealed.length > 1) {
       state.pendingChoice = {
         id: `choice_${nextEventNumber(state)}`,
@@ -15042,7 +15081,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       const matches =
         effect.filter === "spell-or-specialty" && (drawnKind === "spell" || drawnKind === "hero-specialty");
       if (matches) {
-        digPlayer.hand.push(drawn);
+        // Polish: owned Spells → Book; specialties / Cast-a-Spell → hand.
+        gainOwnedCard(state, action.playerId, drawn, cards);
         kept.push(drawn);
       } else {
         digPlayer.discard.push(drawn);
@@ -15114,7 +15154,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     } else {
       // 0 or 1 revealed: keep the single card (if any), then reshuffle now.
       if (revealed.length === 1) {
-        searchPlayer.hand.push(revealed[0]);
+        gainOwnedCard(state, action.playerId, revealed[0], cards);
       }
       searchPlayer.deck = shuffleCards(
         [...searchPlayer.deck, ...searchPlayer.discard],
@@ -15471,13 +15511,17 @@ function resolveEagleEyeDig(
   const digLabel = school ? `${school} Magic` : "Eagle Eye";
   deck.drawPile = shuffleCards(remaining, `${state.seed}#eagle-eye#${eventSeedNumber(state)}`);
 
+  const takeDest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "OPTION_CHOICE",
     playerId,
     prompt: `${digLabel} found ${cards[foundCardId]?.name ?? foundCardId}`,
-    options: [{ label: `Take ${cards[foundCardId]?.name ?? foundCardId} into hand` }, { label: "Discard it" }],
+    options: [
+      { label: `Take ${cards[foundCardId]?.name ?? foundCardId} into ${takeDest}` },
+      { label: "Discard it" }
+    ],
     context: "eagle-eye",
     eagleEye: { deckId, cardId: foundCardId },
     returnPhase: state.combat ? "combat" : "player-turn"

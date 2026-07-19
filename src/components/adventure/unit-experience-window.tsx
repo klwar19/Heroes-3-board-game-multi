@@ -124,7 +124,11 @@ export function UnitExperienceWindow({
             const maxXp = thresholds[MAX_UNIT_RANK - 1];
             const xpPercent = Math.min(100, (rankInfo.experience / maxXp) * 100);
             const stackAttack =
-              sideOverrides.polishUnitStacks && unit.side === "pack" && (unit.stacks ?? 0) > 0 ? 1 : 0;
+              sideOverrides.polishUnitStacks &&
+              (unit.side === "pack" || unit.side === "neutral") &&
+              (unit.stacks ?? 0) > 0
+                ? 1
+                : 0;
             const baseAttack = (side?.attack ?? 0) + (unit.permanentAttackBonus ?? 0) + stackAttack;
             const drillAction = legalActions.find(
               (legal) => legal.action.type === "DRILL_UNIT" && legal.action.armyUnitId === unit.id
