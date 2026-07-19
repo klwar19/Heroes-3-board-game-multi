@@ -1337,26 +1337,51 @@ export function validateCustomMapPlan(
     accepted[index] = next;
   }
 
-  // `viiField` FORCES a center slot's difficulty-7 objective field (Grail /
-  // Dragon Utopia / Random Town) and `centerHex` customizes that field's guard /
-  // reward / VP. Both are meaningful only on a `center` plan — strip them on
-  // every other group (like lockRotation is starting-only), drop an unknown
-  // designation, and re-clamp the customization defensively so an in-memory
-  // plan can never smuggle garbage past the persistence sanitiser.
+  // `viiField` / `viiFields` FORCE a center slot's difficulty-7 objective field
+  // (Grail / Dragon Utopia / Random Town) and `centerHex` customizes that
+  // field's guard / reward / VP. Center-only — strip on every other group.
+  // `playerResourcePick` is face-down far/near only; `playerViiPick` needs
+  // multi-select Ⅶ on a face-down center.
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
-    if (plan.viiField === undefined && plan.centerHex === undefined) {
+    if (
+      plan.viiField === undefined &&
+      plan.viiFields === undefined &&
+      plan.centerHex === undefined &&
+      plan.playerResourcePick === undefined &&
+      plan.playerViiPick === undefined
+    ) {
       continue;
     }
     const isCenter = plan.group === "center";
     const validVii = isCenter && plan.viiField !== undefined && VII_FIELD_DESIGNATIONS.has(plan.viiField);
+    const multi =
+      isCenter && Array.isArray(plan.viiFields)
+        ? [...new Set(plan.viiFields.filter((v) => VII_FIELD_DESIGNATIONS.has(v)))]
+        : [];
     const centerHex = isCenter ? sanitizeCenterHexPlan(plan.centerHex) : undefined;
-    if (validVii && centerHex === plan.centerHex) {
-      continue;
-    }
     const next = { ...plan };
     if (!validVii) {
       delete next.viiField;
+    }
+    if (multi.length > 0) {
+      next.viiFields = multi;
+    } else {
+      delete next.viiFields;
+    }
+    if (plan.playerViiPick === true && multi.length > 1 && plan.faceDown && isCenter) {
+      next.playerViiPick = true;
+    } else {
+      delete next.playerViiPick;
+    }
+    if (
+      plan.playerResourcePick === true &&
+      plan.faceDown &&
+      (plan.group === "far" || plan.group === "near")
+    ) {
+      next.playerResourcePick = true;
+    } else {
+      delete next.playerResourcePick;
     }
     if (centerHex) {
       next.centerHex = centerHex;
@@ -1828,10 +1853,33 @@ function applyDesignedViiField(
   tile: MapTileState,
   plan: CustomMapTilePlan
 ): void {
-  if (plan.group !== "center" || (!plan.viiField && !plan.centerHex)) {
+  // Player resource pick (Far/Near face-down): carried onto the instance so
+  // discovery can offer Gold vs Valuables before the tile content is fixed.
+  if (plan.playerResourcePick && plan.faceDown && (plan.group === "far" || plan.group === "near")) {
+    tile.playerResourcePick = true;
+  }
+  if (plan.group !== "center" || (!plan.viiField && !plan.viiFields?.length && !plan.centerHex)) {
     return;
   }
-  if (plan.viiField) {
+  // Multi-select of allowed Ⅶ designations. When playerViiPick is on and 2+
+  // options remain, store the set for the reveal choice; otherwise resolve now.
+  const multi = (plan.viiFields ?? []).filter(
+    (v): v is "town" | "dragon_utopia" | "grail" =>
+      v === "town" || v === "dragon_utopia" || v === "grail"
+  );
+  if (multi.length > 1) {
+    if (plan.playerViiPick && plan.faceDown) {
+      tile.viiFields = multi;
+      tile.playerViiPick = true;
+    } else {
+      // Deterministic pick from the multi-set (seeded by plan position).
+      const idx =
+        Math.abs((plan.row ?? 0) * 31 + (plan.col ?? 0) * 17) % multi.length;
+      tile.viiField = multi[idx];
+    }
+  } else if (multi.length === 1) {
+    tile.viiField = multi[0];
+  } else if (plan.viiField) {
     tile.viiField = plan.viiField;
   }
   // Carry the OPTIONAL center-hex customization onto the placed instance,

@@ -9499,6 +9499,51 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       }
     }
 
+    // Dig / build the Grail may be free (0 MP) — offered even when the hero has
+    // no movement left. Other movement actions still need MP.
+    if (field?.grailDiggable && canDigGrail(state, playerId)) {
+      const digCost = state.adventure?.mapPreset?.objectives?.grailDigCost;
+      const cost = digCost === 0 || digCost === 1 || digCost === 2 ? digCost : 1;
+      if (hero.movementPoints >= cost) {
+        actions.push({
+          label:
+            cost === 0
+              ? "Dig the Grail (free)"
+              : `Dig the Grail (${cost} movement point${cost === 1 ? "" : "s"})`,
+          action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
+        });
+      }
+    }
+    // Build carried Grail at a legal Town/Settlement (map-maker grailBuildAt).
+    {
+      const grail = adventure.grail;
+      const buildAt = adventure.mapPreset?.objectives?.grailBuildAt;
+      if (
+        buildAt &&
+        grail?.status === "carried" &&
+        grail.carrierHeroId === hero.id &&
+        field
+      ) {
+        const isTown = field.location === "town" || field.location === "random_town";
+        const isSettlement = field.location === "settlement";
+        const town = getTownOfPlayer(state, playerId);
+        const isStartingTown = Boolean(isTown && town?.fieldId === field.spaceId);
+        const owned =
+          field.flagOwnerId === playerId || (isTown && town?.fieldId === field.spaceId);
+        let legal = false;
+        if (buildAt === "town" && isTown && owned) legal = true;
+        if (buildAt === "settlement" && isSettlement && owned) legal = true;
+        if (buildAt === "both" && (isTown || isSettlement) && owned) legal = true;
+        if (buildAt === "starting-town" && isStartingTown) legal = true;
+        if (legal) {
+          actions.push({
+            label: "Build the Grail here",
+            action: { type: "BUILD_GRAIL", playerId, heroId: hero.id }
+          });
+        }
+      }
+    }
+
     if (hero.movementPoints > 0) {
       for (const destination of getHeroMoveDestinations(state, hero)) {
         actions.push({
@@ -9507,13 +9552,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         });
       }
 
-      if (field?.grailDiggable && canDigGrail(state, playerId)) {
-        actions.push({
-          label: "Dig the Grail (1 movement point)",
-          action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
-        });
-      } else if (
+      if (
         field &&
+        !field.grailDiggable &&
         (locationDefinitions[field.location]?.category === "revisitable" ||
           // Obelisk role "monolith": Revisit (1 MP) travels the network again,
           // like a Monolith token (which is category "revisitable").

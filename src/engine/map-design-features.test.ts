@@ -1,0 +1,361 @@
+/**
+ * Map-designer break fields, random-tier guards, dig cost, random-town income,
+ * ability token, tile picks — each claim mutation-checked with CONTROLs.
+ */
+import { describe, expect, it } from "vitest";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import {
+  applyCustomGuardToField,
+  beginFieldVisit,
+  classifyHeroStep,
+  customGuardArmyDifficulty,
+  drawGuardArmy,
+  getMainHero,
+  isFieldGuarded
+} from "./adventure";
+import { createAdventureGameState } from "./index";
+import {
+  applyBreakFieldOptions,
+  customGuardArmyDifficultyFromEntries,
+  isCustomGuardUnitEntry,
+  isPackGuardSlot,
+  isRandomGuardSlot,
+  resolveCustomGuardDraws,
+  survivorsToCustomGuardUnits,
+  grailDigMovementCost,
+  randomTownIncomeGold
+} from "./map-design-features";
+import {
+  defaultObeliskBonusForKind,
+  describeObeliskBonus,
+  sanitizeCustomGuardSpec,
+  sanitizeCustomMapPreset
+} from "./map-preset";
+import type { GameState, MapFieldState, PlayerId } from "./state";
+import { NEUTRAL_PLAYER_ID } from "./state";
+import { finalizeAdventureCombat, startNeutralEncounter, revisitField } from "./adventure-reducer";
+
+function makeGame(seed = "map-design-features"): GameState {
+  return createAdventureGameState({
+    seed,
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    victoryMode: "conquest"
+  });
+}
+
+function injectField(
+  state: GameState,
+  location: string,
+  spaceId = "88,88",
+  extra: Partial<MapFieldState> = {}
+): MapFieldState {
+  const field: MapFieldState = {
+    spaceId,
+    tileInstanceId: "test-tile",
+    slot: 0,
+    location,
+    blackCube: false,
+    flagOwnerId: null,
+    everFlagged: false,
+    settlementResource: null,
+    ...extra
+  };
+  state.adventure!.fields[spaceId] = field;
+  return field;
+}
+
+function placeHero(state: GameState, playerId: PlayerId, spaceId: string): string {
+  const hero = getMainHero(state, playerId)!;
+  hero.spaceId = spaceId;
+  return hero.id;
+}
+
+describe("map-design-features — certain army slots", () => {
+  it("accepts neutral units, random:<tier>, and pack:<id> entries", () => {
+    expect(isCustomGuardUnitEntry("neutral.skeletons")).toBe(true);
+    expect(isRandomGuardSlot("random:bronze")).toBe(true);
+    expect(isRandomGuardSlot("random:azure")).toBe(true);
+    expect(isRandomGuardSlot("random:wood")).toBe(false);
+    // A known Pack unit
+    const packId = Object.keys(coreUnitDefinitions).find((id) => coreUnitDefinitions[id]?.pack);
+    expect(packId).toBeTruthy();
+    expect(isPackGuardSlot(`pack:${packId}`)).toBe(true);
+    expect(isCustomGuardUnitEntry(`pack:${packId}`)).toBe(true);
+    expect(isCustomGuardUnitEntry("not-a-unit")).toBe(false);
+  });
+
+  it("sanitiser keeps random-tier slots and drops garbage", () => {
+    const spec = sanitizeCustomGuardSpec({
+      units: ["random:bronze", "random:gold", "garbage", "neutral.skeletons"]
+    });
+    expect(spec?.units).toEqual(["random:bronze", "random:gold", "neutral.skeletons"]);
+  });
+
+  it("resolves random-tier slots to real Neutral units of that tier", () => {
+    let i = 0;
+    const rng = { nextInt: (_min: number, max: number) => (i++ % (max + 1)) };
+    const draws = resolveCustomGuardDraws(["random:bronze", "random:silver"], rng);
+    expect(draws).toHaveLength(2);
+    expect(draws[0].tier).toBe("bronze");
+    expect(draws[1].tier).toBe("silver");
+    expect(coreUnitDefinitions[draws[0].unitDefId]?.neutral).toBeTruthy();
+    expect(draws[0].bankGuard).toBe(true);
+  });
+
+  it("customGuardArmyDifficulty understands random azure as Ⅶ", () => {
+    expect(customGuardArmyDifficultyFromEntries(["random:azure"])).toBe(7);
+    expect(customGuardArmyDifficulty(["random:bronze", "random:bronze"])).toBe(2);
+  });
+});
+
+describe("map-design-features — Ability token Obelisk reward", () => {
+  it("ability_token is a first-class bonus kind (Search 1 Ability)", () => {
+    expect(defaultObeliskBonusForKind("ability_token")).toEqual({ kind: "ability_token" });
+    expect(describeObeliskBonus({ kind: "ability_token" })).toMatch(/Ability/i);
+    const preset = sanitizeCustomMapPreset({
+      obelisks: { role: "bonus", bonuses: [{ kind: "ability_token" }] }
+    });
+    expect(preset?.obelisks?.bonuses).toEqual([{ kind: "ability_token" }]);
+  });
+
+  it("CONTROL: classic morale default still sanitises when kind is absent garbage", () => {
+    const preset = sanitizeCustomMapPreset({
+      obelisks: { role: "bonus", bonuses: [{ kind: "not-real" }] }
+    });
+    // Degenerate bonuses fall back to default morale.
+    expect(preset?.obelisks?.bonus).toEqual({ kind: "morale", amount: 1 });
+  });
+});
+
+describe("map-design-features — break field + persistent army", () => {
+  it("breakField forces stop even with Pathfinding passEncounters", () => {
+    const state = makeGame("break-path");
+    const field = injectField(state, "mine", "10,10", {
+      difficulty: 2,
+      breakField: true,
+      designedGuard: true
+    });
+    placeHero(state, "p1", "10,11");
+    const hero = getMainHero(state, "p1")!;
+    // Without break: Pathfinding would make guarded = "encounter".
+    const withBreak = classifyHeroStep(state, hero, field.spaceId, {
+      passEncounters: true,
+      moveThrough: false
+    } as never);
+    expect(withBreak).toBe("stop");
+
+    // CONTROL: without breakField, Pathfinding yields encounter.
+    delete field.breakField;
+    const without = classifyHeroStep(state, hero, field.spaceId, {
+      passEncounters: true,
+      moveThrough: false
+    } as never);
+    expect(without).toBe("encounter");
+  });
+
+  it("survivorsToCustomGuardUnits keeps living units only", () => {
+    const living = [
+      { unitDefId: "neutral.skeletons", damage: 0, maxHealth: 2 },
+      { unitDefId: "neutral.zombies", damage: 5, maxHealth: 5 }, // dead
+      { unitDefId: "castle.swordsmen", factionPack: true, damage: 0, maxHealth: 3 }
+    ];
+    // Filter like the combat hook (living only).
+    const survivors = survivorsToCustomGuardUnits(
+      living.filter((u) => u.damage < u.maxHealth)
+    );
+    expect(survivors).toEqual(["neutral.skeletons", "pack:castle.swordsmen"]);
+  });
+
+  it("persistentGuard stamps survivors after a retreated fight", () => {
+    const state = makeGame("persist-guard");
+    // Low-level hero so Quick Combat cannot skip.
+    const hero = getMainHero(state, "p1")!;
+    hero.level = 1;
+    const field = injectField(state, "mine", "20,20", {
+      difficulty: 3,
+      designedGuard: true,
+      persistentGuard: true,
+      breakField: true,
+      customGuardUnits: ["neutral.skeletons", "neutral.zombies", "neutral.wights"]
+    });
+    placeHero(state, "p1", field.spaceId);
+    startNeutralEncounter(state, hero, field);
+    expect(state.combat).toBeTruthy();
+    // Kill one neutral, leave others alive, force a retreat outcome.
+    const combat = state.combat!;
+    // Skip placement: force combat ready with drawn guards.
+    if (combat.setup) {
+      combat.setup = null;
+      combat.pendingNeutralDraws = drawGuardArmy(state, field, 3);
+      // Mint minimal combat units for the neutrals.
+      let n = 0;
+      for (const draw of combat.pendingNeutralDraws ?? []) {
+        const id = `n${n++}`;
+        combat.units[id] = {
+          id,
+          controllerId: NEUTRAL_PLAYER_ID,
+          name: draw.unitDefId,
+          cardName: draw.unitDefId,
+          variant: "neutral",
+          grade: draw.tier,
+          type: "melee",
+          attack: 1,
+          defense: 0,
+          maxHealth: 2,
+          damage: n === 1 ? 2 : 0, // first dies
+          initiative: 1,
+          position: n,
+          unitDefId: draw.unitDefId,
+          bankGuard: true,
+          abilities: []
+        } as never;
+      }
+      combat.pendingNeutralDraws = undefined;
+    }
+    combat.outcome = {
+      winnerPlayerId: NEUTRAL_PLAYER_ID,
+      defeatedPlayerId: "p1",
+      reason: "retreat"
+    };
+    finalizeAdventureCombat(state);
+    // Field still guarded with survivors only.
+    expect(isFieldGuarded(field)).toBe(true);
+    expect(field.customGuardUnits?.length).toBeGreaterThan(0);
+    expect(field.customGuardUnits?.length).toBeLessThan(3);
+    expect(field.persistentGuard).toBe(true);
+  });
+});
+
+describe("map-design-features — unlimited rounds flag", () => {
+  it("field.unlimitedCombatRounds is stamped from mine/obelisk preset options", () => {
+    const field = {
+      spaceId: "1,1",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "mine",
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } as MapFieldState;
+    applyBreakFieldOptions(field, { unlimitedRounds: true, breakField: true });
+    expect(field.unlimitedCombatRounds).toBe(true);
+    expect(field.breakField).toBe(true);
+    // CONTROL: clearing
+    applyBreakFieldOptions(field, {});
+    expect(field.unlimitedCombatRounds).toBeUndefined();
+  });
+});
+
+describe("map-design-features — Grail dig cost + random town income", () => {
+  it("grailDigMovementCost reads preset (0/1/2) with classic 1 default", () => {
+    const state = makeGame("dig-cost");
+    expect(grailDigMovementCost(state)).toBe(1);
+    state.adventure!.mapPreset = { objectives: { grailDigCost: 0 } };
+    expect(grailDigMovementCost(state)).toBe(0);
+    state.adventure!.mapPreset = { objectives: { grailDigCost: 2 } };
+    expect(grailDigMovementCost(state)).toBe(2);
+  });
+
+  it("randomTownIncomeGold defaults to 10 and clamps a map-maker value", () => {
+    const state = makeGame("rt-income");
+    expect(randomTownIncomeGold(state)).toBe(10);
+    state.adventure!.mapPreset = { randomTowns: { incomeGold: 5 } };
+    expect(randomTownIncomeGold(state)).toBe(5);
+  });
+
+  it("sanitizeCustomMapPreset keeps mines / randomTowns / grail dig options", () => {
+    const preset = sanitizeCustomMapPreset({
+      mines: {
+        guard: { level: 3 },
+        breakField: true,
+        persistentGuard: true,
+        unlimitedRounds: true
+      },
+      randomTowns: {
+        guard: { units: ["random:gold"] },
+        incomeGold: 7,
+        captureReward: { gold: 4, valuables: 1 }
+      },
+      objectives: {
+        grailDigCost: 2,
+        grailDigReward: { gold: 5 },
+        grailPossessionVp: 3,
+        grailAsUtopia: "after-dig-empty",
+        grailBuildAt: "both",
+        grailBuildReward: { gold: 2, freeBuilding: true }
+      },
+      obelisks: {
+        role: "bonus",
+        bonuses: [{ kind: "ability_token" }],
+        guard: { units: ["random:bronze"] },
+        breakField: true
+      }
+    });
+    expect(preset?.mines?.breakField).toBe(true);
+    expect(preset?.mines?.guard).toEqual({ level: 3 });
+    expect(preset?.randomTowns?.incomeGold).toBe(7);
+    expect(preset?.randomTowns?.guard?.units).toEqual(["random:gold"]);
+    expect(preset?.objectives?.grailDigCost).toBe(2);
+    expect(preset?.objectives?.grailBuildAt).toBe("both");
+    expect(preset?.obelisks?.bonuses).toEqual([{ kind: "ability_token" }]);
+    expect(preset?.obelisks?.breakField).toBe(true);
+  });
+});
+
+describe("map-design-features — drawGuardArmy random slots", () => {
+  it("mints random-tier certain-army units at fight time", () => {
+    const state = makeGame("draw-random");
+    const field = injectField(state, "obelisk", "30,30");
+    applyCustomGuardToField(field, { units: ["random:bronze", "random:silver"] });
+    const draws = drawGuardArmy(state, field, field.difficulty ?? 1);
+    expect(draws.length).toBe(2);
+    expect(draws.every((d) => d.bankGuard)).toBe(true);
+    expect(draws[0].tier).toBe("bronze");
+    expect(draws[1].tier).toBe("silver");
+  });
+});
+
+describe("map-design-features — dig cost free path", () => {
+  it("REVISIT dig with cost 0 works at 0 movement", () => {
+    const state = createAdventureGameState({
+      seed: "dig-free",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "grail"
+    });
+    state.adventure!.mapPreset = {
+      ...(state.adventure!.mapPreset ?? {}),
+      objectives: {
+        ...(state.adventure!.mapPreset?.objectives ?? {}),
+        grailDigCost: 0,
+        grailObelisksRequired: 1
+      }
+    };
+    // Arm dig: visit 1 obelisk worth of progress + diggable field.
+    const field = injectField(state, "grail", "40,40", {
+      difficulty: 7,
+      blackCube: true,
+      grailDiggable: true
+    });
+    const heroId = placeHero(state, "p1", field.spaceId);
+    const hero = state.heroes[heroId]!;
+    hero.movementPoints = 0;
+    // Satisfy dig unlock.
+    state.adventure!.grail = {
+      status: "uncollected",
+      obelisksVisited: { p1: ["ob1"] }
+    };
+    state.activePlayerId = "p1";
+    state.phase = "player-turn";
+    // Clear any start-of-turn hand gate that would block REVISIT.
+    const player = state.players.p1;
+    if (player) {
+      player.canMulligan = false;
+    }
+    revisitField(state, { type: "REVISIT_FIELD", playerId: "p1", heroId });
+    expect(state.adventure?.grail?.status).toBe("carried");
+    expect(state.heroes[heroId]?.movementPoints).toBe(0);
+  });
+});

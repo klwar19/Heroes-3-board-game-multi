@@ -91,6 +91,7 @@ import {
   retreatFromCombat,
   surrenderFromCombat,
   revisitField,
+  buildGrail,
   roguesScoutDeck,
   satyrMoraleRoll,
   thievesGuildAction,
@@ -19412,6 +19413,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "MULLIGAN_CARD",
   "ASTROLOGERS_HERO_EMPOWER",
   "REVISIT_FIELD",
+  "BUILD_GRAIL",
   "OPEN_MARKET",
   "DISCOVER_TILE",
   "PLACE_TILE",
@@ -19825,6 +19827,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "REVISIT_FIELD":
         revisitField(nextState, action);
+        break;
+      case "BUILD_GRAIL":
+        buildGrail(nextState, action);
         break;
       case "OPEN_MARKET":
         openMarket(nextState, action);

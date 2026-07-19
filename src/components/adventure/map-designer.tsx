@@ -421,8 +421,33 @@ const GUARD_UNIT_OPTIONS: { tier: (typeof GUARD_TIER_ORDER)[number]; units: { id
       .sort((a, b) => a.label.localeCompare(b.label))
   })).filter((group) => group.units.length > 0);
 
+/** Faction Pack sides for Random Town / certain-army custom guards (`pack:<id>`). */
+const GUARD_PACK_UNIT_OPTIONS: { tier: (typeof GUARD_TIER_ORDER)[number]; units: { id: string; label: string }[] }[] =
+  GUARD_TIER_ORDER.map((tier) => ({
+    tier,
+    units: Object.values(coreUnitDefinitions)
+      .filter((def) => def.pack && def.tier === tier)
+      .map((def) => ({ id: `pack:${def.id}`, label: `Pack of ${def.name}` }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  })).filter((group) => group.units.length > 0);
+
 /** Short display name for a guard-army unit chip. */
 function guardUnitLabel(unitDefId: string): string {
+  if (unitDefId.startsWith("random:")) {
+    const tier = unitDefId.slice("random:".length);
+    const labels: Record<string, string> = {
+      bronze: "Random brown",
+      silver: "Random silver",
+      gold: "Random gold",
+      azure: "Random azure"
+    };
+    return labels[tier] ?? unitDefId;
+  }
+  if (unitDefId.startsWith("pack:")) {
+    const id = unitDefId.slice("pack:".length);
+    const def = coreUnitDefinitions[id];
+    return def ? `Pack of ${def.name}` : unitDefId;
+  }
   return coreUnitDefinitions[unitDefId]?.name ?? unitDefId;
 }
 
@@ -523,8 +548,23 @@ function GuardSpecEditor({
               value=""
             >
               <option value="">+ Add unit…</option>
+              <optgroup label="Random tier">
+                <option value="random:bronze">Random brown</option>
+                <option value="random:silver">Random silver</option>
+                <option value="random:gold">Random gold</option>
+                <option value="random:azure">Random azure</option>
+              </optgroup>
               {GUARD_UNIT_OPTIONS.map((group) => (
-                <optgroup key={group.tier} label={GUARD_TIER_LABELS[group.tier]}>
+                <optgroup key={group.tier} label={`Neutral · ${GUARD_TIER_LABELS[group.tier]}`}>
+                  {group.units.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+              {GUARD_PACK_UNIT_OPTIONS.map((group) => (
+                <optgroup key={`pack-${group.tier}`} label={`Faction Pack · ${GUARD_TIER_LABELS[group.tier]}`}>
                   {group.units.map((unit) => (
                     <option key={unit.id} value={unit.id}>
                       {unit.label}
@@ -1578,6 +1618,15 @@ export function MapDesigner({
           }
           if (changes.viiField === undefined && "viiField" in changes) {
             delete next.viiField;
+          }
+          if (changes.viiFields === undefined && "viiFields" in changes) {
+            delete next.viiFields;
+          }
+          if (changes.playerViiPick === undefined && "playerViiPick" in changes) {
+            delete next.playerViiPick;
+          }
+          if (changes.playerResourcePick === undefined && "playerResourcePick" in changes) {
+            delete next.playerResourcePick;
           }
           if (changes.centerHex === undefined && "centerHex" in changes) {
             delete next.centerHex;
@@ -4783,6 +4832,21 @@ export function MapDesigner({
                         </div>
                       </div>
                     ) : null}
+                    {selected.faceDown && (selected.group === "far" || selected.group === "near") ? (
+                      <button
+                        aria-pressed={Boolean(selected.playerResourcePick)}
+                        className={`popoverFilterChip${selected.playerResourcePick ? " active" : ""}`}
+                        onClick={() =>
+                          updateTile(selectedIndex as number, {
+                            playerResourcePick: selected.playerResourcePick ? undefined : true
+                          })
+                        }
+                        title="Before reveal the discovering player chooses Gold or Valuables mine; the game draws a matching tile from the pool."
+                        type="button"
+                      >
+                        Player picks Gold / Valuables on reveal
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -4915,25 +4979,57 @@ export function MapDesigner({
                 {selected.group === "center" ? (
                   <div className="popoverViiField popoverSection popoverCenterHex">
                     <div className="popoverSectionLabel">Center (Ⅶ) hex</div>
-                    <div className="popoverSubLabel">Objective</div>
+                    <div className="popoverSubLabel">Objective (multi-select)</div>
                     <small className="popoverHint">
-                      Default keeps whatever the drawn / chosen tile prints; the others force this slot&apos;s
-                      difficulty-7 field, whatever tile lands here.
+                      Default keeps the printed objective. Toggle Town / Utopia / Grail to allow any of those —
+                      with several selected the engine picks randomly (or the discovering player, when
+                      &quot;Player picks&quot; is on).
                     </small>
                     <div className="popoverModeRow" role="group" aria-label="Center Ⅶ field">
                       {VII_FIELD_OPTIONS.map((option) => {
-                        const active = (selected.viiField ?? undefined) === option.id;
+                        const multi = selected.viiFields ?? [];
+                        const active =
+                          option.id === undefined
+                            ? !selected.viiField && multi.length === 0
+                            : multi.includes(option.id) || selected.viiField === option.id;
                         return (
                           <button
                             aria-pressed={active}
                             className={`popoverFilterChip${active ? " active" : ""}`}
                             key={String(option.id)}
-                            onClick={() =>
-                              updateTile(
-                                selectedIndex as number,
-                                option.id === undefined ? { viiField: undefined } : { viiField: option.id }
-                              )
-                            }
+                            onClick={() => {
+                              if (option.id === undefined) {
+                                updateTile(selectedIndex as number, {
+                                  viiField: undefined,
+                                  viiFields: undefined,
+                                  playerViiPick: undefined
+                                });
+                                return;
+                              }
+                              const current = new Set(selected.viiFields ?? (selected.viiField ? [selected.viiField] : []));
+                              if (current.has(option.id)) current.delete(option.id);
+                              else current.add(option.id);
+                              const next = [...current] as Array<"town" | "dragon_utopia" | "grail">;
+                              if (next.length === 0) {
+                                updateTile(selectedIndex as number, {
+                                  viiField: undefined,
+                                  viiFields: undefined,
+                                  playerViiPick: undefined
+                                });
+                              } else if (next.length === 1) {
+                                updateTile(selectedIndex as number, {
+                                  viiField: next[0],
+                                  viiFields: undefined,
+                                  playerViiPick: undefined
+                                });
+                              } else {
+                                updateTile(selectedIndex as number, {
+                                  viiField: undefined,
+                                  viiFields: next,
+                                  playerViiPick: selected.playerViiPick
+                                });
+                              }
+                            }}
                             title={option.hint}
                             type="button"
                           >
@@ -4942,6 +5038,21 @@ export function MapDesigner({
                         );
                       })}
                     </div>
+                    {(selected.viiFields?.length ?? 0) > 1 && selected.faceDown ? (
+                      <button
+                        aria-pressed={Boolean(selected.playerViiPick)}
+                        className={`popoverFilterChip${selected.playerViiPick ? " active" : ""}`}
+                        onClick={() =>
+                          updateTile(selectedIndex as number, {
+                            playerViiPick: selected.playerViiPick ? undefined : true
+                          })
+                        }
+                        title="Discovering player chooses which Ⅶ objective this tile becomes."
+                        type="button"
+                      >
+                        Player picks on reveal
+                      </button>
+                    ) : null}
 
                     <div className="popoverSubLabel">Guard (monster)</div>
                     <small className="popoverHint">
