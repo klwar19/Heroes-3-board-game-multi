@@ -106,7 +106,7 @@ export default function SessionArtPreviewPage() {
       </h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
         {azureUnits.map((unit) => {
-          const img = unit.few.cardImage;
+          const img = unit.few?.cardImage;
           return (
             <article
               key={unit.id}
