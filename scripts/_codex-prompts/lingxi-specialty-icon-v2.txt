@@ -1,0 +1,17 @@
+﻿ONLY task: use the built-in image_gen tool ONCE, then save.
+
+Subject: Heroes of Might and Magic III specialty CARD center ICON for "Healing Arts / First Aid Tent".
+Must match the existing specialty-card icon family (icon-cure, icon-ballista style):
+- Ornate beige/gold oval medallion with soft scroll flourishes
+- Center: classic First Aid TENT (white/cream canvas tent) with a small green healing glow and a gold caduceus or medical cross above/on the tent
+- Soft parchment/beige fill INSIDE the medallion (NOT pure white full-bleed plate)
+- FLAT solid chroma-key BACKGROUND outside the medallion: pure #00FF00 green (so we can remove it to transparency). The medallion itself must NOT be green.
+- Readable at 48px; painted classic HoMM3 board-game icon look (same family as Cure flask icon)
+FORBIDDEN: full ability card with rules text, people, photoreal photo, watermark, letters/numbers, modern UI, pure white outer background
+
+After generation: save the raw image under the workspace, then use node sharp OR the codex remove_chroma_key helper to produce a TRANSPARENT webp.
+
+FINAL SAVE OVERWRITE:
+C:\Users\klwar\Heroes-3-board-game-multi\public\assets\specialty-card\icon-first_aid.webp
+
+Target ~256x256 webp with real alpha (transparent outside the medallion). Verify file > 6KB and has transparent pixels. Reply path + bytes only. No git.

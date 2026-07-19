@@ -7876,6 +7876,35 @@ button.hbSlot:disabled { cursor: default; }
   max-width: 31%;
 }
 
+/* Owner-only empty decoy mark on Quicksand / Land Mine: a small circle with a
+   diagonal cross (no tiny "decoy"/"empty" text). Subtle, readable on the dark
+   board art; armed traps show no mark. */
+.battlefieldToken .trapDecoyMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.72rem;
+  height: 0.72rem;
+  margin-top: 1px;
+  color: rgba(244, 234, 212, 0.88);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.75));
+  pointer-events: none;
+}
+
+.battlefieldToken .trapDecoyMark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.battlefieldToken.quicksand.decoy .trapDecoyMark {
+  color: rgba(224, 203, 134, 0.92);
+}
+
+.battlefieldToken.land_mine.decoy .trapDecoyMark {
+  color: rgba(255, 140, 140, 0.9);
+}
+
 /* Route planner: a banner, the offered/chosen cells, and the step-number badge. */
 .routePlanBanner,
 .tacticsExpertBanner {
@@ -28409,35 +28438,202 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 .commanderEquipButton.attention { box-shadow: 0 0 16px var(--mod-accent-soft, rgb(228 189 104 / 20%)); }
 .commanderEquipButton:hover { border-color: var(--mod-accent, #e4bd68); }
 
-.commanderEquipmentWindow { width: min(1040px, 96vw); }
-.commanderEquipmentBody { display: grid; grid-template-columns: minmax(420px, 1.1fr) minmax(340px, 0.9fr); height: 580px; min-height: 580px; }
-.commanderPaperdoll { position: relative; min-height: 580px; border-right: 1px solid var(--mod-line); overflow: hidden; background: radial-gradient(circle, var(--mod-accent-soft), transparent 50%); }
-.commanderPaperdollPortrait { position: absolute; left: 50%; top: 51%; width: 250px; height: 390px; transform: translate(-50%, -50%); object-fit: cover; object-position: 60% 24%; border-radius: 42% 42% 16px 16px; opacity: 0.75; mask-image: linear-gradient(#000 70%, transparent); filter: drop-shadow(0 0 25px var(--mod-accent-soft)); }
-.commanderArtifactSlot { position: absolute; display: grid; grid-template-columns: 52px 1fr; gap: 3px 10px; width: 205px; min-height: 104px; padding: 11px; border: 1px solid var(--mod-line); border-radius: 12px; background: rgb(2 7 11 / 78%); }
-.commanderArtifactSlot img,
-.commanderArtifactSlot > svg { grid-row: 1 / 4; width: 48px; height: 48px; object-fit: contain; align-self: center; }
-.commanderArtifactSlot small { color: var(--mod-accent); text-transform: uppercase; letter-spacing: 0.1em; }
-.commanderArtifactSlot strong { color: #f2e5ca; font: 700 13px Georgia, serif; }
-.commanderArtifactSlot > span { color: #9c927f; font-size: 10px; line-height: 1.3; }
-.commanderArtifactSlot.empty { opacity: 0.62; border-style: dashed; }
-.commanderArtifactSlot.filled { box-shadow: 0 0 18px var(--mod-accent-soft); }
-.commanderArtifactSlot.slot-weapon { left: 25px; top: 74px; }
-.commanderArtifactSlot.slot-armor { right: 25px; top: 212px; }
-.commanderArtifactSlot.slot-trinket { left: 25px; bottom: 54px; }
-.commanderArtifactInventory { min-height: 0; padding: 22px; overflow: auto; }
+.commanderEquipmentWindow { width: min(1100px, 96vw); }
+.commanderEquipmentBody {
+  display: grid;
+  grid-template-columns: minmax(460px, 1.2fr) minmax(340px, 0.85fr);
+  height: 620px;
+  min-height: 620px;
+}
+.commanderPaperdoll {
+  position: relative;
+  min-height: 620px;
+  border-right: 1px solid var(--mod-line);
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 42%, var(--mod-accent-soft), transparent 52%),
+    radial-gradient(circle at 50% 100%, rgb(0 0 0 / 55%), transparent 48%),
+    linear-gradient(180deg, #12151b 0%, #07090d 100%);
+}
+/* Diablo-style empty paperdoll body (Codex art). Falls back invisibly if missing. */
+.commanderPaperdollBody {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  width: min(320px, 62%);
+  height: 88%;
+  transform: translate(-50%, -50%);
+  object-fit: contain;
+  opacity: 0.92;
+  filter: drop-shadow(0 0 28px var(--mod-accent-soft)) drop-shadow(0 18px 30px rgb(0 0 0 / 70%));
+  pointer-events: none;
+  user-select: none;
+}
+.commanderPaperdollBust {
+  position: absolute;
+  left: 50%;
+  top: 12%;
+  width: 132px;
+  height: 148px;
+  transform: translateX(-50%);
+  border-radius: 50% 50% 42% 42%;
+  overflow: hidden;
+  border: 2px solid rgb(228 189 104 / 45%);
+  box-shadow: 0 0 22px var(--mod-accent-soft), inset 0 0 18px rgb(0 0 0 / 55%);
+  pointer-events: none;
+  z-index: 2;
+}
+.commanderPaperdollPortrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 18%;
+  filter: saturate(1.05);
+}
+.commanderArtifactSlot {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  gap: 8px 12px;
+  align-items: center;
+  width: min(240px, 42%);
+  min-height: 92px;
+  padding: 10px 12px;
+  border: 1px solid rgb(228 189 104 / 28%);
+  border-radius: 14px;
+  background:
+    linear-gradient(145deg, rgb(18 14 8 / 88%), rgb(4 6 10 / 90%));
+  box-shadow: 0 10px 24px rgb(0 0 0 / 45%), inset 0 0 0 1px rgb(255 255 255 / 4%);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+.commanderArtifactSlotWell {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid rgb(228 189 104 / 42%);
+  background:
+    radial-gradient(circle at 40% 30%, rgb(80 62 30 / 35%), rgb(8 8 10 / 90%) 70%);
+  box-shadow: inset 0 0 14px rgb(0 0 0 / 70%), 0 0 10px rgb(0 0 0 / 40%);
+}
+.commanderArtifactSlotWell img,
+.commanderArtifactSlotWell svg {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  color: var(--mod-accent, #e4bd68);
+}
+.commanderArtifactSlotMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.commanderArtifactSlot small {
+  color: var(--mod-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 9px;
+}
+.commanderArtifactSlot strong {
+  color: #f2e5ca;
+  font: 700 13px Georgia, serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.commanderArtifactSlot span {
+  color: #9c927f;
+  font-size: 10px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.commanderArtifactSlot.empty {
+  opacity: 0.78;
+  border-style: dashed;
+}
+.commanderArtifactSlot.filled {
+  border-color: var(--mod-accent, #e4bd68);
+  box-shadow: 0 0 20px var(--mod-accent-soft), 0 10px 24px rgb(0 0 0 / 45%);
+}
+.commanderArtifactSlot.dropReady {
+  border-color: #f0c46a;
+  border-style: solid;
+  transform: translateY(-2px);
+  box-shadow: 0 0 28px rgb(240 196 106 / 45%), 0 12px 28px rgb(0 0 0 / 50%);
+}
+.commanderArtifactSlot.dropReady .commanderArtifactSlotWell {
+  border-color: #f0c46a;
+  box-shadow: 0 0 18px rgb(240 196 106 / 40%), inset 0 0 14px rgb(0 0 0 / 70%);
+}
+/* Diablo-ish slot anchors around the body silhouette. */
+.commanderArtifactSlot.slot-weapon { left: 4%; top: 18%; }
+.commanderArtifactSlot.slot-armor { right: 4%; top: 34%; }
+.commanderArtifactSlot.slot-trinket { left: 4%; bottom: 10%; }
+.commanderArtifactInventory {
+  min-height: 0;
+  padding: 22px;
+  overflow: auto;
+  background: rgb(0 0 0 / 18%);
+}
 .commanderInventoryHead h3 { margin: 0 0 3px; color: #f1e4ca; font: 700 18px Georgia, serif; }
 .commanderInventoryHead small { color: #8f887a; }
-.commanderInventoryEmpty { margin: 30px 0; padding: 20px; border: 1px dashed var(--mod-line); border-radius: 12px; color: #aaa08e; text-align: center; }
-.commanderInventoryCard { display: grid; grid-template-columns: 92px 1fr; gap: 13px; margin-top: 14px; padding: 10px; border: 1px solid rgb(255 255 255 / 9%); border-radius: 12px; background: rgb(0 0 0 / 22%); }
-.commanderInventoryCard > img { width: 92px; height: 128px; object-fit: cover; border-radius: 7px; }
-.commanderInventoryCard > div { display: flex; flex-direction: column; align-items: flex-start; }
+.commanderInventoryEmpty {
+  margin: 30px 0;
+  padding: 20px;
+  border: 1px dashed var(--mod-line);
+  border-radius: 12px;
+  color: #aaa08e;
+  text-align: center;
+  line-height: 1.45;
+}
+.commanderInventoryCard {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 12px;
+  background: rgb(0 0 0 / 22%);
+  cursor: grab;
+}
+.commanderInventoryCard:active { cursor: grabbing; }
+.commanderInventoryCard > img {
+  width: 72px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgb(228 189 104 / 22%);
+  background: rgb(0 0 0 / 35%);
+}
+.commanderInventoryCard > div { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .commanderArtifactMeta { color: var(--mod-accent); font-size: 9px; text-transform: uppercase; letter-spacing: 0.13em; }
 .commanderInventoryCard strong { margin-top: 2px; color: #efe2c8; font: 700 14px Georgia, serif; }
 .commanderInventoryCard p { margin: 5px 0; color: #aaa08f; font-size: 10px; line-height: 1.4; }
-.commanderInventoryCard button { margin-top: auto; padding: 7px 10px; border: 1px solid var(--mod-line); border-radius: 7px; background: var(--mod-accent-soft); color: #eee0c6; cursor: pointer; }
+.commanderInventoryCard button {
+  margin-top: auto;
+  padding: 7px 10px;
+  border: 1px solid var(--mod-line);
+  border-radius: 7px;
+  background: var(--mod-accent-soft);
+  color: #eee0c6;
+  cursor: pointer;
+}
 .commanderInventoryCard button:disabled { opacity: 0.46; cursor: not-allowed; }
-.commanderInventoryCard.blocked { opacity: 0.62; }
-.commanderEquipmentWindow > footer { padding: 12px 24px 18px; border-top: 1px solid var(--mod-line); color: #998f7e; font-size: 10px; text-align: center; }
+.commanderInventoryCard.blocked { opacity: 0.62; cursor: default; }
+.commanderEquipmentWindow > footer {
+  padding: 12px 24px 18px;
+  border-top: 1px solid var(--mod-line);
+  color: #998f7e;
+  font-size: 10px;
+  text-align: center;
+}
 
 /* Unit Experience board: milestones, elite reward and engine-backed controls. */
 .armyPanel li { flex-direction: column; align-items: stretch; gap: 0; padding: 5px; border: 1px solid rgb(255 255 255 / 6%); border-radius: 9px; background: rgb(0 0 0 / 15%); }

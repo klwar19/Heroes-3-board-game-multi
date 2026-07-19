@@ -797,7 +797,7 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
   it("shows the opponent the trap's icon but not its armed/decoy state; the caster sees both", () => {
     const hiddenState = createInitialGameState("board-hidden-trap");
     // The trap KIND is public, so the opponent sees the same Land Mine sprite —
-    // but never the armed/decoy label (here the raw state even carries armed).
+    // but never the armed/decoy mark (here the raw state even carries armed).
     hiddenState.combat!.battlefieldTokens = [
       { id: "t1", kind: "land_mine", position: 10, controllerId: "p2", armed: true, damage: 2 }
     ];
@@ -806,19 +806,22 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     expect(hidden!.className).toContain("hiddenTrap");
     expect(hidden!.querySelector(".battlefieldTokenSprite"), "the opponent still sees the trap's icon").toBeTruthy();
     expect(spriteOnCell(10)!.style.backgroundImage).toContain("land-mine-b");
-    expect(hidden!.textContent ?? "", "armed/decoy must not leak to the opponent").not.toContain("armed");
+    expect(hidden!.querySelector(".trapDecoyMark"), "decoy mark must not leak to the opponent").toBeNull();
+    expect(hidden!.textContent ?? "", "armed/decoy text must not leak to the opponent").not.toContain("armed");
     expect(hidden!.textContent ?? "").not.toContain("decoy");
 
     cleanup();
 
-    const ownState = createInitialGameState("board-own-trap");
-    ownState.combat!.battlefieldTokens = [
+    const ownArmed = createInitialGameState("board-own-trap-armed");
+    ownArmed.combat!.battlefieldTokens = [
       { id: "t1", kind: "land_mine", position: 10, controllerId: "p1", armed: true, damage: 2 }
     ];
-    renderBoard(ownState);
+    renderBoard(ownArmed);
     const own = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
     expect(own!.className).not.toContain("hiddenTrap");
-    expect(own!.textContent ?? "").toContain("armed");
+    // Armed: no tiny "armed" text and no decoy cross — the sprite alone is enough.
+    expect(own!.querySelector(".trapDecoyMark")).toBeNull();
+    expect(own!.textContent ?? "").not.toContain("armed");
     // A dormant mine shows the STATIC placed-mine frame (land-mine-b), never the
     // igniting/detonation animations (land-mine-a / -c). Those would loop the
     // mine sparking forever; the real blast is land-mine-hit, played only when
@@ -828,12 +831,26 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     expect(bg).not.toContain("land-mine-a");
     expect(bg).not.toContain("land-mine-c");
     expect(bg).not.toContain("land-mine-hit");
+
+    cleanup();
+
+    // Empty decoy: owner sees a circle-with-cross mark (no "decoy" text).
+    const ownDecoy = createInitialGameState("board-own-trap-decoy");
+    ownDecoy.combat!.battlefieldTokens = [
+      { id: "t1", kind: "quicksand", position: 10, controllerId: "p1", armed: false }
+    ];
+    renderBoard(ownDecoy);
+    const decoy = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
+    expect(decoy!.className).toContain("decoy");
+    expect(decoy!.querySelector(".trapDecoyMark"), "owner sees the empty-decoy cross").toBeTruthy();
+    expect(decoy!.textContent ?? "").not.toContain("decoy");
+    expect(decoy!.getAttribute("aria-label") ?? "").toMatch(/empty decoy/i);
   });
 
   it("never leaks an enemy trap's armed/decoy state, even when the board is fed RAW state", () => {
     // The live board receives the raw GameState (not the masked player-view), so
     // an enemy trap still carries its real `armed` flag. The opponent sees the
-    // icon (the kind is public) but the armed/decoy label must NEVER show —
+    // icon (the kind is public) but the armed/decoy mark must NEVER show —
     // whether the trap is armed or a decoy.
     for (const armed of [true, false]) {
       const state = createInitialGameState(`board-enemy-trap-${armed}`);
@@ -844,6 +861,7 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
       const mark = document.querySelector('[data-fx-cell="10"] .battlefieldToken');
       expect(mark!.className, "an enemy trap hides its armed state").toContain("hiddenTrap");
       expect(mark!.querySelector(".battlefieldTokenSprite"), "the icon is still shown").toBeTruthy();
+      expect(mark!.querySelector(".trapDecoyMark"), "decoy mark must not leak").toBeNull();
       const text = mark!.textContent ?? "";
       expect(text).not.toContain("armed");
       expect(text).not.toContain("decoy");

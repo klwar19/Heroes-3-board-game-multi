@@ -209,13 +209,13 @@ describe("Creature Bank rewards", () => {
     }
   });
 
-  it("grants POSITIVE morale, scaled gold, and a scaled search for the sea banks", () => {
-    // Wiki shows a <morale_positive> token for both the Shipwreck and the
-    // Derelict Ship — a morale bonus, not the penalty the code once granted.
+  it("grants NEGATIVE morale, scaled gold, and a scaled search for the sea banks", () => {
+    // Shipwreck / Derelict Ship: haunted wrecks leave a morale curse (−1), not
+    // a boost — gold and the scaled search still pay out as printed.
     expect(CREATURE_BANKS.shipwreck.buildReward(2)).toEqual({
       type: "SEQUENCE",
       interactions: [
-        { type: "GAIN_MORALE", amount: 1 },
+        { type: "GAIN_MORALE", amount: -1 },
         { type: "GAIN_RESOURCES", gold: 9 },
         { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 2 }
       ]
@@ -223,7 +223,7 @@ describe("Creature Bank rewards", () => {
     expect(CREATURE_BANKS.derelict_ship.buildReward(1)).toEqual({
       type: "SEQUENCE",
       interactions: [
-        { type: "GAIN_MORALE", amount: 1 },
+        { type: "GAIN_MORALE", amount: -1 },
         { type: "GAIN_RESOURCES", gold: 9 },
         { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 1 }
       ]

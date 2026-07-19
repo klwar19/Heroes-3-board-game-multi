@@ -6,7 +6,9 @@ import {
   getEffectDamageAmount,
   getLegalActions,
   makeCombatUnitFromArmy,
-  unitMatchesSpecialtyName
+  markUnitRemovedIfNeeded,
+  unitMatchesSpecialtyName,
+  unitSideRuleOverrides
 } from "./index";
 import { coreFactionDefinitions, startingTileByFaction } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -573,6 +575,105 @@ describe("Pit Lords' Summon Demons", () => {
       (legal) => legal.action.type === "SUMMON_DEMONS" && legal.action.mode === "summon"
     );
     expect(summon, "official rule still summons when the field has no Demons").toBeTruthy();
+  });
+
+  it("Unit Stacks: after Magog dies, Pit Lords can add a free Stack to living Pack Demons", () => {
+    // Precondition: Magog (a friendly) is fully removed → unitRemovedControllerIds
+    // arms Summon Demons. With polish-unit-stacks ON and only a Pack of Demons
+    // on the field, the stack path is the way to "summon" (not Few→Pack alone).
+    const state = createInitialGameState("pit-lords-stack-magog");
+    state.adventure = {
+      houseRules: { "polish-unit-stacks": true, "multi-demon-summon": false }
+    } as GameState["adventure"];
+    const overrides = unitSideRuleOverrides(state);
+    const combat = state.combat!;
+    combat.obstacles = [];
+    combat.units = {
+      unit_p1_marksmen: makeCombatUnitFromArmy(
+        { id: "army_p1_m", unitDefId: "castle.marksmen", side: "pack" },
+        "p1",
+        "unit_p1_marksmen",
+        1
+      )!,
+      unit_p2_pit_lords: makeCombatUnitFromArmy(
+        { id: "army_p2_pl", unitDefId: "inferno.pit_lords", side: "pack" },
+        "p2",
+        "unit_p2_pit_lords",
+        10,
+        "binh",
+        overrides
+      )!,
+      unit_p2_demons: makeCombatUnitFromArmy(
+        { id: "army_p2_dem", unitDefId: "inferno.demons", side: "pack", stacks: 0 },
+        "p2",
+        "unit_p2_demons",
+        13,
+        "binh",
+        overrides
+      )!,
+      unit_p2_magog: makeCombatUnitFromArmy(
+        { id: "army_p2_mag", unitDefId: "inferno.magogs", side: "few" },
+        "p2",
+        "unit_p2_magog",
+        14,
+        "binh",
+        overrides
+      )!
+    };
+    state.players.p2.army = [
+      { id: "army_p2_pl", unitDefId: "inferno.pit_lords", side: "pack" },
+      { id: "army_p2_dem", unitDefId: "inferno.demons", side: "pack", stacks: 0 },
+      { id: "army_p2_mag", unitDefId: "inferno.magogs", side: "few" }
+    ];
+    state.activePlayerId = "p2";
+    combat.activeUnitId = "unit_p2_pit_lords";
+
+    // Magog dies for real → Summon Demons becomes legal.
+    const magog = combat.units.unit_p2_magog;
+    magog.damage = magog.maxHealth;
+    markUnitRemovedIfNeeded(state, magog);
+    expect(combat.unitRemovedControllerIds, "Magog's death arms Summon Demons").toContain("p2");
+
+    const beforeStack = combat.units.unit_p2_demons.armyStacks ?? 0;
+    const stack = getLegalActions(state, "p2").find(
+      (legal) =>
+        legal.action.type === "SUMMON_DEMONS" &&
+        legal.action.mode === "stack" &&
+        legal.action.targetUnitId === "unit_p2_demons"
+    );
+    expect(stack, "stack mode must offer a free Demon Stack after a friendly dies").toBeTruthy();
+
+    // CONTROL: with multi-demon OFF and only Pack Demons, summon a second Few
+    // is blocked — the stack path is what keeps Pit Lords useful.
+    expect(
+      getLegalActions(state, "p2").some(
+        (legal) => legal.action.type === "SUMMON_DEMONS" && legal.action.mode === "summon"
+      )
+    ).toBe(false);
+
+    const attackBefore = state.combat!.units.unit_p2_demons.attack;
+    const next = applyOk(state, stack!.action);
+    expect(next.combat!.units.unit_p2_demons.armyStacks).toBe(beforeStack + 1);
+    expect(next.players.p2.army.find((unit) => unit.id === "army_p2_dem")?.stacks).toBe(1);
+    // +1 Attack while any Stack remains (polish Unit Stacks rule).
+    expect(next.combat!.units.unit_p2_demons.attack).toBe(attackBefore + 1);
+    expect(next.combat!.units.unit_p2_pit_lords.summonedThisCombat).toBe(true);
+  });
+
+  it("Unit Stacks OFF: no free Demon Stack offer (CONTROL)", () => {
+    const state = pitLordsCombat();
+    // Pack of Demons already on the field (upgrade the fixture Few first).
+    state.combat!.units.unit_p2_demons.variant = "pack";
+    state.players.p2.army.find((unit) => unit.id === "army_p2_dem")!.side = "pack";
+    state.adventure = {
+      houseRules: { "polish-unit-stacks": false, "multi-demon-summon": false }
+    } as GameState["adventure"];
+    state.combat!.unitRemovedControllerIds = ["p2"];
+
+    const offered = getLegalActions(state, "p2").filter((legal) => legal.action.type === "SUMMON_DEMONS");
+    expect(offered.some((legal) => legal.action.type === "SUMMON_DEMONS" && legal.action.mode === "stack")).toBe(
+      false
+    );
   });
 });
 

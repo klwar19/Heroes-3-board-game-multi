@@ -1,0 +1,14 @@
+﻿ONLY task: use the built-in image_gen tool ONCE, then save the result.
+
+Subject: Diablo-style paperdoll BODY silhouette for a commander equipment inventory window.
+- Front-facing humanoid body mannequin (head, torso, arms, legs), empty of gear
+- Dark fantasy inventory UI art like Diablo II/III character paperdoll: charcoal silhouette with subtle rim light, worn iron/leather plate outlines suggesting empty slots
+- Soft gold/amber edge highlights on a pure dark background (#0a0c10)
+- Subtle empty circular slot rings at left shoulder (weapon), chest (armor), and right hip (trinket) as faint dashed gold rings only — no items inside
+- Premium game UI, high resolution vertical composition, centered body
+FORBIDDEN: text, logo, watermark, real photo, cluttered inventory grid, weapons/armor already equipped, bright white background
+
+SAVE OVERWRITE to EXACT path:
+C:\Users\klwar\Heroes-3-board-game-multi\public\assets\ui\commander-paperdoll-body.webp
+
+Convert with node sharp if needed (webp). Verify > 20KB. Reply path + bytes only. No git.
