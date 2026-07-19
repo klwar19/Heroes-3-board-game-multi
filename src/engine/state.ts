@@ -433,6 +433,16 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Combat-long max Health (Valeska / Vial of Lifeblood / Ivor VI…). The
+       * amount is ALSO folded into `CombatUnitState.combatMaxHealthBonus` so
+       * Pack→Few and stack-layer recomputes keep the HP; this modifier is the
+       * ongoing-effect entry for the combat effects panel / dispel paths.
+       */
+      type: "HEALTH_BONUS";
+      amount: number;
+    }
+  | {
+      /**
        * Merist's Stone Skin VI: a player-scoped, combat-duration flag. While the
        * controller has it, their units' Defense tokens grant the +1 Defense on a
        * "0" OR a "+1" Defense-die roll (instead of only on a "+1"). Carries no
@@ -7195,6 +7205,15 @@ export type CombatUnitState = {
   permanentAttackBonus?: number;
   /** WOG Ghost: persistent Soul Harvest Health mirrored from its army card. */
   permanentHealthBonus?: number;
+  /**
+   * Combat-only max Health from ADD_UNIT_MAX_HEALTH (Valeska Marksmen, Vial of
+   * Lifeblood, Ivor VI, …). Folded into maxHealth on every printed-side
+   * recompute (applyUnitCurrentSide) so Pack→Few flips and Polish Unit Stack
+   * layer losses KEEP the bonus on every health bar (stack / pack / few). Not
+   * mirrored to the army card — combat-scoped only. Absent (= 0) until a
+   * +HP-this-combat effect lands.
+   */
+  combatMaxHealthBonus?: number;
   /**
    * Polish Unit Stacks mirrored from the backing Pack army card. Each remaining
    * layer absorbs one full Pack health bar; deliberately separate from the

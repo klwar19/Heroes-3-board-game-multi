@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  getLegalActions,
+  getRuleset,
+  makeCombatUnitFromArmy,
+  markUnitRemovedIfNeeded,
+  unitSideRuleOverrides
+} from "./index";
+import { applyUnitCurrentSide } from "./unit-transforms";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import type { FactionId } from "@/data/factions/types";
 import { adventureCards } from "@/data/cards/adventure";
@@ -181,12 +191,111 @@ describe("Valeska's Marksmen specialty", () => {
     const crusBefore = onCrusaders.combat!.units.unit_p1_crusaders.maxHealth;
     const afterCrus = applyOk(onCrusaders, findPlay(onCrusaders, "specialty.valeska.1", undefined, "unit_p1_crusaders")!.action);
     expect(afterCrus.combat!.units.unit_p1_crusaders.maxHealth).toBe(crusBefore + 1);
+    expect(afterCrus.combat!.units.unit_p1_crusaders.combatMaxHealthBonus).toBe(1);
+    expect(
+      afterCrus.activeEffects.some(
+        (effect) =>
+          effect.target?.type === "unit" &&
+          effect.target.unitId === "unit_p1_crusaders" &&
+          effect.modifiers.some((mod) => mod.type === "HEALTH_BONUS" && mod.amount === 1)
+      ),
+      "ongoing HEALTH_BONUS effect is recorded"
+    ).toBe(true);
 
     const onMarksmen = createInitialGameState("valeska-1b");
     onMarksmen.players.p1.hand = ["specialty.valeska.1"];
     const mkBefore = onMarksmen.combat!.units.unit_p1_marksmen.maxHealth;
     const afterMk = applyOk(onMarksmen, findPlay(onMarksmen, "specialty.valeska.1", undefined, "unit_p1_marksmen")!.action);
     expect(afterMk.combat!.units.unit_p1_marksmen.maxHealth).toBe(mkBefore + 2);
+    expect(afterMk.combat!.units.unit_p1_marksmen.combatMaxHealthBonus).toBe(2);
+  });
+
+  it("I's +HP survives a Pack→Few flip (ongoing effect does not vanish with the side)", () => {
+    // Mutation control: without combatMaxHealthBonus re-fold in applyUnitCurrentSide,
+    // a Pack→Few recompute would reset maxHealth to the printed Few and drop the
+    // Valeska bonus — the bug this pins.
+    const state = createInitialGameState("valeska-1-flip");
+    state.players.p1.hand = ["specialty.valeska.1"];
+    const unit = state.combat!.units.unit_p1_marksmen;
+    // Force a Pack side so a lethal hit flips to Few.
+    unit.variant = "pack";
+    unit.abilities = [];
+    applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
+    const basePackHp = unit.maxHealth;
+    const after = applyOk(state, findPlay(state, "specialty.valeska.1", undefined, "unit_p1_marksmen")!.action);
+    const buffed = after.combat!.units.unit_p1_marksmen;
+    expect(buffed.maxHealth, "Pack has printed HP + Valeska +2").toBe(basePackHp + 2);
+    expect(buffed.combatMaxHealthBonus).toBe(2);
+
+    // Capture Few printed HP without the combat bonus as the CONTROL baseline.
+    const fewProbe = { ...buffed, variant: "few" as const, combatMaxHealthBonus: undefined, damage: 0 };
+    applyUnitCurrentSide(fewProbe, getRuleset(after), unitSideRuleOverrides(after));
+    const printedFewHp = fewProbe.maxHealth;
+
+    // Lethal damage flips Pack → Few; the +2 must still be on the Few health bar.
+    buffed.damage = buffed.maxHealth;
+    markUnitRemovedIfNeeded(after, buffed);
+    expect(buffed.variant, "flipped to Few").toBe("few");
+    expect(buffed.combatMaxHealthBonus, "bonus field survives the flip").toBe(2);
+    expect(buffed.maxHealth, "Few side also carries the +2 HP").toBe(printedFewHp + 2);
+    // Ongoing effect still targets this unit (not cleared by the flip).
+    expect(
+      after.activeEffects.some(
+        (effect) =>
+          effect.target?.type === "unit" &&
+          effect.target.unitId === buffed.id &&
+          effect.modifiers.some((mod) => mod.type === "HEALTH_BONUS")
+      )
+    ).toBe(true);
+  });
+
+  it("I's +HP applies to every Polish Unit Stack layer (stack / pack / few bars)", () => {
+    // Adventure shell freezes polish-unit-stacks so armyStacks peels are live.
+    const adventure = createAdventureGameState({
+      seed: "valeska-1-stacks",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: false,
+      ruleset: "legacy",
+      houseRules: { "polish-unit-stacks": true }
+    });
+    // Open a combat so PLAY_CARD specialty is legal; mint a Pack Marksmen with 1 stack.
+    const state = createInitialGameState("valeska-1-stacks-combat");
+    state.adventure = adventure.adventure;
+    state.ruleset = "legacy";
+    state.players.p1.hand = ["specialty.valeska.1"];
+    const minted = makeCombatUnitFromArmy(
+      { id: "army_marksmen", unitDefId: "castle.marksmen", side: "pack", stacks: 1 },
+      "p1",
+      "unit_p1_marksmen",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state)
+    )!;
+    state.combat!.units.unit_p1_marksmen = minted;
+    const after = applyOk(state, findPlay(state, "specialty.valeska.1", undefined, "unit_p1_marksmen")!.action);
+    const buffed = after.combat!.units.unit_p1_marksmen;
+    const stackHp = buffed.maxHealth;
+    expect(buffed.armyStacks).toBe(1);
+    expect(buffed.combatMaxHealthBonus).toBe(2);
+    // Printed Pack Marksmen HP is 2 under legacy; +2 Valeska → 4 on the stack bar.
+    expect(stackHp, "stack bar = printed +2").toBe(4);
+
+    // Peel the stack layer → still Pack, still +2.
+    buffed.damage = buffed.maxHealth;
+    markUnitRemovedIfNeeded(after, buffed);
+    expect(buffed.armyStacks ?? 0, "stack peeled").toBe(0);
+    expect(buffed.variant).toBe("pack");
+    expect(buffed.combatMaxHealthBonus).toBe(2);
+    expect(buffed.maxHealth, "pack bar keeps +2").toBe(4);
+    expect(buffed.damage).toBe(0);
+
+    // Flip Pack → Few → still +2 (Few printed 2 + 2 = 4).
+    buffed.damage = buffed.maxHealth;
+    markUnitRemovedIfNeeded(after, buffed);
+    expect(buffed.variant).toBe("few");
+    expect(buffed.combatMaxHealthBonus).toBe(2);
+    expect(buffed.maxHealth, "few bar keeps +2").toBe(4);
   });
 
   it("IV gives +1 attack on the attack, doubled (+2) for a Marksmen attacker", () => {

@@ -1656,18 +1656,20 @@ export function HexMapBoard({
       // the player sees every legal exit while rotating between them.
       if (gatePlacementChoice?.allHexes.has(spaceId)) {
         const isSelected = gatePlacementChoice.selectedHex === spaceId;
+        // Short cue at the hex bottom — keeps the cave-mouth / path art fully
+        // visible; the map float carries the full "sacrifices …" detail.
         overlays.push(
           <text
             className={`hexGateChoiceCue${isSelected ? " selected" : " dim"}`}
             key={`${spaceId}-gate-choice-cue`}
             textAnchor="middle"
             x={x}
-            y={y + HEX_SIZE * 0.92}
+            y={y + HEX_SIZE * 0.88}
           >
             {isSelected
               ? gatePlacementChoice.role === "gate"
-                ? "🕳 gate here"
-                : "🕳 path up here"
+                ? "🕳 gate"
+                : "🕳 path up"
               : "·"}
           </text>
         );
@@ -2558,8 +2560,10 @@ export function HexMapBoard({
       mapFloats.push({
         key: "gate-exit-float",
         mapPoint: hexToPixel(coord, HEX_SIZE),
-        cardWidth: 280,
-        cardHeight: 128,
+        // Wider + taller so the multi-line "sacrifices …" label wraps cleanly
+        // without clipping (mapFloatLabel is nowrap by default elsewhere).
+        cardWidth: 300,
+        cardHeight: 148,
         gap: HEX_SIZE * 0.72,
         render: () => (
           <div
@@ -5004,6 +5008,16 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" && choice.context === "rule-111" && choice.playerId === viewerPlayerId
       ? (state.combat?.pendingNeutralDraws ?? []).filter((draw) => draw.tier === "bronze" && !draw.bankGuard)
       : null;
+  // Polish Bank Sizes: A/B choice of rolled banks — each option shows the bank's
+  // field art above the name + size so the pick is visual, not text-only.
+  const polishBankCandidates =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "place-creature-bank" &&
+    choice.playerId === viewerPlayerId &&
+    choice.creatureBank?.candidates &&
+    choice.creatureBank.candidates.length > 1
+      ? choice.creatureBank.candidates
+      : null;
   // Scenario starting bonus (rulebook p.10): its options carry no card id, so
   // give each kind a representative glyph (artifact / resource die) — scoped to
   // the "Starting bonus" prompt so no other resource-dice / Search prompt changes.
@@ -5063,7 +5077,30 @@ export function PromptTray({
                 : null;
               return { legal, art };
             })
-          : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
+          : polishBankCandidates
+            ? body.map((legal) => {
+                const optionIndex =
+                  legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                    ? legal.action.optionIndex
+                    : undefined;
+                const candidate =
+                  optionIndex !== undefined ? polishBankCandidates[optionIndex] : undefined;
+                if (!candidate) {
+                  return { legal, art: null as VisitRewardArt | null };
+                }
+                const bank = CREATURE_BANKS[candidate.bankId as CreatureBankId];
+                const letter = String.fromCharCode(65 + (optionIndex ?? 0));
+                const sizeRoman = ROMAN[candidate.size] ?? String(candidate.size);
+                return {
+                  legal,
+                  art: {
+                    name: bank?.name ?? "Creature Bank",
+                    image: creatureBankFieldImage(candidate.bankId),
+                    caption: `${letter} · size ${sizeRoman}`
+                  } as VisitRewardArt
+                };
+              })
+            : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
   const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
   const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
 
@@ -5164,6 +5201,73 @@ export function PromptTray({
               <small>{art?.label ?? legal.label}</small>
             </button>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Polish Bank Sizes A/B pick: field art ABOVE the name + size coin so the
+  // choice is intuitive (which bank am I taking on?). Text labels alone used to
+  // force a memory match against the map preview.
+  if (polishBankCandidates) {
+    return (
+      <div className="promptTray withPolishBankCards" role="dialog" aria-label={title}>
+        <strong>{title}</strong>
+        <span className="promptTeleportHint">Pick a bank — art and size show above the name.</span>
+        <div className="promptOptions polishBankCards">
+          {body.map((legal) => {
+            const optionIndex =
+              legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                ? legal.action.optionIndex
+                : undefined;
+            const candidate =
+              optionIndex !== undefined ? polishBankCandidates[optionIndex] : undefined;
+            const bank = candidate
+              ? CREATURE_BANKS[candidate.bankId as CreatureBankId]
+              : undefined;
+            const letter =
+              optionIndex !== undefined ? String.fromCharCode(65 + optionIndex) : "?";
+            const size = candidate?.size;
+            const sizeRoman = size ? (ROMAN[size] ?? String(size)) : "";
+            return (
+              <button
+                aria-label={legal.label}
+                className="polishBankOptionCard"
+                key={actionKey(legal.action)}
+                onClick={() => onAction(legal.action)}
+                title={legal.label}
+                type="button"
+              >
+                <span className="polishBankOptionArt">
+                  {candidate ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      draggable={false}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      src={assetUrl(creatureBankFieldImage(candidate.bankId))}
+                    />
+                  ) : (
+                    <span className="marketCardFallback">🏦</span>
+                  )}
+                  {size ? (
+                    <span
+                      aria-label={`Size ${sizeRoman}`}
+                      className={`polishBankSizeCoin size-${size}`}
+                    >
+                      {size}
+                    </span>
+                  ) : null}
+                </span>
+                <strong className="polishBankOptionLetter">{letter}</strong>
+                <small className="polishBankOptionName">{bank?.name ?? "Creature Bank"}</small>
+                {sizeRoman ? (
+                  <small className="polishBankOptionSize">size {sizeRoman}</small>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       </div>
     );
