@@ -30,6 +30,7 @@ import type {
   CustomCenterHexReward,
   CustomFieldReward,
   CustomGuardSpec,
+  CustomHexEvent,
   CustomMapMinesConfig,
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
@@ -42,6 +43,7 @@ import type {
   CustomMapObjectivesConfig,
   CustomMapPreset,
   CustomMapTilePlan,
+  CustomObjectFieldPlan,
   CustomStartingUnit,
   CustomWinCondition,
   DragonUtopiaGuards,
@@ -52,6 +54,7 @@ import type {
   VictoryMode,
   VictoryPointObjective
 } from "./state";
+import { MAX_HEX_EVENTS } from "./state";
 
 export type { CustomMapPreset };
 
@@ -283,6 +286,9 @@ export function sanitizeCenterHexPlan(input: unknown): CustomCenterHexPlan | und
   const vp = clampInt(raw.vp, 1, MAX_CENTER_HEX_VP, 0);
   if (vp > 0) {
     centerHex.vp = vp;
+  }
+  if (raw.winCondition === true) {
+    centerHex.winCondition = true;
   }
   return Object.keys(centerHex).length > 0 ? centerHex : undefined;
 }
@@ -634,7 +640,13 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as { guard?: unknown; reward?: unknown; vp?: unknown; holdRoundsToWin?: unknown };
+  const raw = input as {
+    guard?: unknown;
+    reward?: unknown;
+    vp?: unknown;
+    holdRoundsToWin?: unknown;
+    winCondition?: unknown;
+  };
   const plan: CustomMapSettlementFieldPlan = {};
   const guard = sanitizeCustomGuardSpec(raw.guard);
   if (guard) {
@@ -655,7 +667,72 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
   ) {
     plan.holdRoundsToWin = Math.min(MAX_SETTLEMENT_HOLD_ROUNDS, Math.floor(raw.holdRoundsToWin));
   }
+  if (raw.winCondition === true) {
+    plan.winCondition = true;
+  }
   return Object.keys(plan).length > 0 ? plan : undefined;
+}
+
+/**
+ * Sanitize one SPECIFIC (per-tile) object plan ({@link CustomMapTilePlan.objectPlans}
+ * entry): guard / reward / VP / break flags / winCondition, all optional.
+ * Returns undefined when every arm is empty so nothing is serialized.
+ */
+export function sanitizeObjectFieldPlan(input: unknown): CustomObjectFieldPlan | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as {
+    guard?: unknown;
+    reward?: unknown;
+    vp?: unknown;
+    breakField?: unknown;
+    persistentGuard?: unknown;
+    unlimitedRounds?: unknown;
+    winCondition?: unknown;
+  };
+  const plan: CustomObjectFieldPlan = {};
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  if (guard) {
+    plan.guard = guard;
+  }
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) {
+    plan.reward = reward;
+  }
+  if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+    plan.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
+  }
+  if (raw.breakField === true) plan.breakField = true;
+  if (raw.persistentGuard === true) plan.persistentGuard = true;
+  if (raw.unlimitedRounds === true) plan.unlimitedRounds = true;
+  if (raw.winCondition === true) plan.winCondition = true;
+  return Object.keys(plan).length > 0 ? plan : undefined;
+}
+
+/** The object kinds a per-tile SPECIFIC plan may target. */
+export const OBJECT_PLAN_KINDS = ["obelisk", "mine"] as const;
+export type ObjectPlanKind = (typeof OBJECT_PLAN_KINDS)[number];
+
+/**
+ * Sanitize a tile's whole `objectPlans` record — unknown kinds dropped, each
+ * plan clamped; undefined when nothing valid remains.
+ */
+export function sanitizeObjectPlans(
+  input: unknown
+): CustomMapTilePlan["objectPlans"] | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as Record<string, unknown>;
+  const plans: NonNullable<CustomMapTilePlan["objectPlans"]> = {};
+  for (const kind of OBJECT_PLAN_KINDS) {
+    const plan = sanitizeObjectFieldPlan(raw[kind]);
+    if (plan) {
+      plans[kind] = plan;
+    }
+  }
+  return Object.keys(plans).length > 0 ? plans : undefined;
 }
 
 /**
@@ -1170,6 +1247,136 @@ export function objectGuardSpec(object: Pick<CustomMapObject, "guard">): CustomG
   return sanitizeObjectGuard(object.guard);
 }
 
+/** Longest hex-event message a designer may store. */
+export const MAX_HEX_EVENT_MESSAGE = 240;
+
+/**
+ * Sanitize one designer hex event: placement required (integer row/col), every
+ * payload arm optional and clamped. Null when nothing meaningful remains (an
+ * event with no message, reward, VP AND no guard does nothing — dropped).
+ */
+export function sanitizeHexEvent(input: unknown): CustomHexEvent | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const raw = input as {
+    id?: unknown;
+    placement?: unknown;
+    message?: unknown;
+    reward?: unknown;
+    vp?: unknown;
+    guard?: unknown;
+    mode?: unknown;
+    replaceVisit?: unknown;
+  };
+  const placement = raw.placement as { row?: unknown; col?: unknown } | undefined;
+  if (
+    !placement ||
+    typeof placement.row !== "number" ||
+    typeof placement.col !== "number" ||
+    !Number.isInteger(placement.row) ||
+    !Number.isInteger(placement.col)
+  ) {
+    return null;
+  }
+  const event: CustomHexEvent = {
+    id:
+      typeof raw.id === "string" && raw.id.length > 0 && raw.id.length <= 40
+        ? raw.id
+        : `hexev_${placement.row}_${placement.col}`,
+    placement: { row: placement.row, col: placement.col }
+  };
+  if (typeof raw.message === "string" && raw.message.trim().length > 0) {
+    event.message = raw.message.trim().slice(0, MAX_HEX_EVENT_MESSAGE);
+  }
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) {
+    event.reward = reward;
+  }
+  if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+    event.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
+  }
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  if (guard) {
+    event.guard = guard;
+  }
+  if (raw.mode === "each-player") {
+    event.mode = "each-player";
+  }
+  if (raw.replaceVisit === true) {
+    event.replaceVisit = true;
+  }
+  if (!event.message && !event.reward && !event.vp && !event.guard) {
+    return null;
+  }
+  return event;
+}
+
+/**
+ * Sanitize the preset's hex-event list: degenerate entries dropped, one event
+ * per hex (first wins), unique ids enforced, capped at {@link MAX_HEX_EVENTS}.
+ */
+export function sanitizeHexEvents(input: unknown): CustomHexEvent[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const events: CustomHexEvent[] = [];
+  const seenHexes = new Set<string>();
+  const seenIds = new Set<string>();
+  for (const entry of input) {
+    if (events.length >= MAX_HEX_EVENTS) {
+      break;
+    }
+    const event = sanitizeHexEvent(entry);
+    if (!event) {
+      continue;
+    }
+    const hexKey = `${event.placement.row},${event.placement.col}`;
+    if (seenHexes.has(hexKey)) {
+      continue;
+    }
+    if (seenIds.has(event.id)) {
+      event.id = `${event.id}_${hexKey}`;
+      if (seenIds.has(event.id)) {
+        continue;
+      }
+    }
+    seenHexes.add(hexKey);
+    seenIds.add(event.id);
+    events.push(event);
+  }
+  return events;
+}
+
+/** Plain-words summary of one hex event (designer list rows / preset banner). */
+export function describeHexEvent(event: CustomHexEvent): string {
+  const parts: string[] = [];
+  if (event.guard) {
+    parts.push(
+      event.guard.units && event.guard.units.length > 0
+        ? `ambush: ${describeGuardArmyGrouped(event.guard.units)}`
+        : `ambush guard Ⅰ-Ⅶ level ${event.guard.level ?? "?"}`
+    );
+  }
+  const reward = describeFieldReward(event.reward);
+  if (reward) {
+    parts.push(reward);
+  }
+  if ((event.vp ?? 0) > 0) {
+    parts.push(`+${event.vp} VP`);
+  }
+  if (event.message) {
+    parts.push(`“${event.message.length > 32 ? `${event.message.slice(0, 32)}…` : event.message}”`);
+  }
+  if (event.mode === "each-player") {
+    parts.push("every player");
+  }
+  if (event.replaceVisit) {
+    parts.push("replaces the visit");
+  }
+  return parts.join(" · ") || "empty event";
+}
+
 function sanitizeCustomMapObjects(input: unknown): CustomMapObject[] {
   if (!Array.isArray(input)) {
     return [];
@@ -1425,6 +1632,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.customWinConditions = conditions;
     }
   }
+  if (raw.hexEvents !== undefined) {
+    const hexEvents = sanitizeHexEvents(raw.hexEvents);
+    if (hexEvents.length > 0) {
+      preset.hexEvents = hexEvents;
+    }
+  }
 
   return customMapPresetIsActive(preset) ? preset : undefined;
 }
@@ -1454,7 +1667,8 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       (preset.objects && preset.objects.length > 0) ||
       Boolean(preset.objectives) ||
       Boolean(preset.victoryPoints?.enabled) ||
-      (preset.customWinConditions && preset.customWinConditions.length > 0)
+      (preset.customWinConditions && preset.customWinConditions.length > 0) ||
+      (preset.hexEvents && preset.hexEvents.length > 0)
   );
 }
 

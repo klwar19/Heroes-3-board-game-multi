@@ -356,6 +356,14 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         farTilePool: base.adventure.farTilePool?.map(() => "hidden"),
         // Same secrecy for the leftover Near (Ⅳ–Ⅴ) pool (designer resource pick).
         nearTilePool: base.adventure.nearTilePool?.map(() => "hidden"),
+        // Designer hex events are INVISIBLE in the real game: clients never see
+        // where they sit or what they do — an unsprung ambush must stay a
+        // surprise. Both the live records AND the preset list are redacted for
+        // every viewer (the engine announces a sprung event via the event log).
+        hexEvents: undefined,
+        mapPreset: base.adventure.mapPreset?.hexEvents
+          ? { ...base.adventure.mapPreset, hexEvents: undefined }
+          : base.adventure.mapPreset,
         // The Pandora's Box draw pile stays face down; only its size shows.
         pandoraDeck: base.adventure.pandoraDeck?.map(() => "hidden"),
         // Event resolution secrets: a face-down pool card (Magical Forest)

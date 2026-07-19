@@ -96,6 +96,8 @@ import {
   OUTPOST_OBJECT_KINDS,
   sanitizeCenterHexPlan,
   sanitizeFieldReward,
+  sanitizeHexEvents,
+  sanitizeObjectPlans,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
   type CustomMapPreset,
@@ -123,6 +125,7 @@ import {
 } from "./hex";
 import type {
   AdventureState,
+  CustomHexEvent,
   CustomMapObject,
   CustomMapTilePlan,
   CustomMapGateLink,
@@ -1406,11 +1409,13 @@ export function validateCustomMapPlan(
   // host settlements; we still keep a valid plan (inert if no settlement field).
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
-    if (plan.settlement === undefined) {
+    if (plan.settlement === undefined && plan.objectPlans === undefined) {
       continue;
     }
     const settlement = sanitizeSettlementFieldPlan(plan.settlement);
-    if (settlement === plan.settlement) {
+    // SPECIFIC object plans (obelisk / mine) ride the same defensive re-clamp.
+    const objectPlans = sanitizeObjectPlans(plan.objectPlans);
+    if (settlement === plan.settlement && objectPlans === plan.objectPlans) {
       continue;
     }
     const next = { ...plan };
@@ -1418,6 +1423,11 @@ export function validateCustomMapPlan(
       next.settlement = settlement;
     } else {
       delete next.settlement;
+    }
+    if (objectPlans) {
+      next.objectPlans = objectPlans;
+    } else {
+      delete next.objectPlans;
     }
     accepted[index] = next;
   }
@@ -1683,6 +1693,36 @@ function standaloneLayerFromLiveState(adventure: AdventureState, spaceId: MapSpa
  * resolves the teleport. Runs BEFORE recomputeSubterraneanGates (which now
  * refuses a gate object's hex too — {@link gateMayCoverField}).
  */
+/**
+ * Carve designer HEX EVENTS into engine-side state ({@link AdventureState.hexEvents},
+ * keyed by hex). An event is kept only when its hex belongs to a placed tile's
+ * footprint or an already-carved standalone hex — anywhere else it could never
+ * fire (the designer UI warns before save). Face-down tiles are fine: the field
+ * materializes at reveal and the trigger reads the record by space id then.
+ */
+function applyCustomHexEvents(adventure: AdventureState, events: CustomHexEvent[]): void {
+  if (events.length === 0) {
+    return;
+  }
+  const reachable = new Set<string>(Object.keys(adventure.fields));
+  for (const tile of Object.values(adventure.tiles)) {
+    for (const spaceId of getTileFootprintSpaceIds(tile)) {
+      reachable.add(spaceId);
+    }
+  }
+  for (const event of events) {
+    const spaceId = hexSpaceId({ row: event.placement.row, col: event.placement.col });
+    if (!reachable.has(spaceId)) {
+      continue;
+    }
+    const store = (adventure.hexEvents ??= {});
+    if (store[spaceId]) {
+      continue; // one event per hex (sanitiser enforces; defensive here)
+    }
+    store[spaceId] = { event, firedPlayerIds: [] };
+  }
+}
+
 function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObject[]): void {
   const WHIRLPOOL_NUMBERS: (-1 | 0 | 1)[] = [1, 0, -1];
   const tileAtCenter = (row: number, col: number): MapTileState | undefined =>
@@ -1923,7 +1963,15 @@ function applyDesignedSettlement(
   } else {
     delete tile.settlement;
   }
-  if (settlement && !tile.faceDown) {
+  // SPECIFIC (per-tile) object plans (obelisk / mine) ride the instance the
+  // same way — materialize folds them over the map-wide configs field-by-field.
+  const objectPlans = sanitizeObjectPlans(plan.objectPlans);
+  if (objectPlans) {
+    tile.objectPlans = objectPlans;
+  } else {
+    delete tile.objectPlans;
+  }
+  if ((settlement || objectPlans) && !tile.faceDown) {
     materializeTileFields(adventure, tile);
   }
 }
@@ -3015,6 +3063,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Leftover Near (Ⅳ–Ⅴ) tiles after the layout's face-down Near draws — used by
   // designer player-resource-pick on Near tiles (live pool, not face-down swap).
   adventure.nearTilePool = [...nearPool];
+
+  // Designer HEX EVENTS — invisible triggers keyed by hex. Runs on the COMMON
+  // path (custom AND standard layouts, once every tile is placed): an event is
+  // kept only when its hex lands on a placed tile footprint or an already
+  // carved standalone hex (elsewhere it could never fire; the designer UI
+  // warns). Engine-side state, REDACTED from every player view.
+  applyCustomHexEvents(adventure, sanitizeHexEvents(mapPreset?.hexEvents));
   const openedCounters = (adventure.farTilesOpenedByPlayer ??= {});
   for (const config of playerConfigs) {
     adventure.playerFarTiles[config.id] =
