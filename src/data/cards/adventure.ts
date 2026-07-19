@@ -1404,6 +1404,19 @@ export const adventureCards: CardLibrary = {
   "specialty.agar.1": withoutArt(mightSpecialtyOne("agar", "Sandworms", "Sandworms")),
   "specialty.agar.4": withoutArt(unitHealthSpecialty("agar", "Sandworms", 4, 1, "Sandworms")),
   "specialty.agar.6": withoutArt(unitInitiativeSpecialty("agar", "Sandworms", 6, 1, "Sandworms")),
+  // Anime Realms might heroes (src/data/anime/towns.ts) — unit specialists for
+  // their OWN faction's signature gold unit, on the proven generic I/IV/VI
+  // shape. They previously borrowed Catherine's Crusaders / Gelu's
+  // Sharpshooters sets, whose doubling (and Gelu IV's Elves trade) could never
+  // fire without those Castle/Rampart units — dead clauses, now live on Sabers
+  // / True Inheritors. Face-less: withoutArt renders them natively with the
+  // hero's own portrait.
+  "specialty.bin.1": withoutArt(mightSpecialtyOne("bin", "Sabers", "Sabers")),
+  "specialty.bin.4": withoutArt(unitHealthSpecialty("bin", "Sabers", 4, 1, "Sabers")),
+  "specialty.bin.6": withoutArt(unitInitiativeSpecialty("bin", "Sabers", 6, 1, "Sabers")),
+  "specialty.qingyun.1": withoutArt(mightSpecialtyOne("qingyun", "True Inheritors", "True Inheritors")),
+  "specialty.qingyun.4": withoutArt(unitHealthSpecialty("qingyun", "True Inheritors", 4, 1, "True Inheritors")),
+  "specialty.qingyun.6": withoutArt(unitInitiativeSpecialty("qingyun", "True Inheritors", 6, 1, "True Inheritors")),
   "specialty.rion.1": {
     id: "specialty.rion.1",
     name: "Battlefield Medic I",
@@ -4919,3 +4932,42 @@ export const adventureCards: CardLibrary = {
     source: heroSource("casmetra")
   }
 };
+
+// ---------------------------------------------------------------------------
+// Anime Realms magic heroes — themed clones of proven GENERIC specialties.
+// ---------------------------------------------------------------------------
+
+/**
+ * Clone an existing, fully generic specialty under a new hero slug: same wired
+ * effect (so every behaviour test on the source card covers it), new id/name,
+ * no baked art (the native renderer draws the new hero's own portrait instead
+ * of the source hero's printed scan). Used by the Anime Realms magic heroes,
+ * whose sets are mechanically the generic medic / first-aid specialties.
+ */
+function rethemedSpecialty(
+  from: CardLibrary[string],
+  fromSlug: string,
+  heroSlug: string,
+  level: 1 | 4 | 6,
+  name: string
+): CardLibrary[string] {
+  const next = structuredClone(from) as CardLibrary[string];
+  next.id = `specialty.${heroSlug}.${level}`;
+  next.name = `${name} ${ROMAN[level]}`;
+  next.tags = from.tags?.map((tag) => (tag === fromSlug ? heroSlug : tag));
+  delete next.assets;
+  next.source = {
+    product: "Anime Mod — Ninefold Realms × Otherworld Gate",
+    credit: `Original hero specialty for this digital module; identical wiring to ${from.name}.`
+  };
+  return next;
+}
+
+// Aoko (Fuyuki, magic): Rion's generic medic set — heal/cleanse + card draw.
+adventureCards["specialty.aoko.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "aoko", 1, "Leyline Mending");
+adventureCards["specialty.aoko.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "aoko", 4, "Leyline Mending");
+adventureCards["specialty.aoko.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "aoko", 6, "Leyline Mending");
+// Lingxi (Azure Breeze, magic): Gem's generic First Aid set (Tent + heals).
+adventureCards["specialty.lingxi.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "lingxi", 1, "Healing Arts");
+adventureCards["specialty.lingxi.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "lingxi", 4, "Healing Arts");
+adventureCards["specialty.lingxi.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "lingxi", 6, "Healing Arts");

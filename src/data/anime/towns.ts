@@ -171,28 +171,28 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     id: "bin", name: "Bin", faction: "fuyuki", class: "Contractor", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.leadership",
-    specialtyCardIds: { 1: "specialty.catherine.1", 4: "specialty.catherine.4", 6: "specialty.catherine.6" },
+    specialtyCardIds: { 1: "specialty.bin.1", 4: "specialty.bin.4", 6: "specialty.bin.6" },
     portrait: "/assets/anime/heroes/bin.png", source
   },
   aoko: {
     id: "aoko", name: "Aoko", faction: "fuyuki", class: "Leyline Magus", type: "magic",
     startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
     startingAbilityCardId: "ability.sorcery",
-    specialtyCardIds: { 1: "specialty.rion.1", 4: "specialty.rion.4", 6: "specialty.rion.6" },
+    specialtyCardIds: { 1: "specialty.aoko.1", 4: "specialty.aoko.4", 6: "specialty.aoko.6" },
     portrait: "/assets/anime/heroes/aoko.png", source
   },
   qingyun: {
     id: "qingyun", name: "Qingyun", faction: "azure_breeze", class: "Sword Cultivator", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.offense",
-    specialtyCardIds: { 1: "specialty.gelu.1", 4: "specialty.gelu.4", 6: "specialty.gelu.6" },
+    specialtyCardIds: { 1: "specialty.qingyun.1", 4: "specialty.qingyun.4", 6: "specialty.qingyun.6" },
     portrait: "/assets/anime/heroes/qingyun.png", source
   },
   lingxi: {
     id: "lingxi", name: "Lingxi", faction: "azure_breeze", class: "Formation Sage", type: "magic",
     startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
     startingAbilityCardId: "ability.wisdom",
-    specialtyCardIds: { 1: "specialty.gem.1", 4: "specialty.gem.4", 6: "specialty.gem.6" },
+    specialtyCardIds: { 1: "specialty.lingxi.1", 4: "specialty.lingxi.4", 6: "specialty.lingxi.6" },
     portrait: "/assets/anime/heroes/lingxi.png", source
   }
 };

@@ -58,6 +58,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // three cards used to reference baked scans (hero_specialties-moandor-*.webp)
   // that were never shipped — broken <img> links; they are art-less now.
   moandor: "/assets/units-lich-portrait.webp", // Liches (Power Lich portrait)
+  // Anime Realms unit specialists — the signature unit's own portrait, cropped
+  // from its commissioned card art (scripts/build-anime-town-icons.mjs).
+  bin: "/assets/anime/units/portraits/fuyuki-sabers.webp", // Sabers (Fuyuki)
+  qingyun: "/assets/anime/units/portraits/azure-breeze-true-inheritors.webp", // True Inheritors (Azure Breeze)
   // --- Spell / emblem specialists -----------------------------------------
   oidana: "/assets/specialty-card/icon-diplomacy.webp", // Diplomacy dove
   glacius: "/assets/specialty-card/icon-frost_ring.webp", // Homm3BG symbols
@@ -76,6 +80,12 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // heroes.thelazy.net, same script) — not the First Aid Tent war-machine emblem
   // (abilities-first_aid.webp) she used to (wrongly) borrow.
   astra: "/assets/specialty-card/icon-cure.webp", // Cure spell icon
+  // Aoko's Leyline Mending IS a heal/cleanse set (the generic medic wiring), so
+  // she shares the Cure SPELL icon like Astra.
+  aoko: "/assets/specialty-card/icon-cure.webp",
+  // Lingxi's Healing Arts set grants/doubles the First Aid TENT, so she wears
+  // the First Aid war-machine emblem itself.
+  lingxi: "/assets/abilities-first_aid.webp",
   kriv: "/assets/runes-emblem.webp", // Rune specialist — our own emblem
   // --- Skill / war-machine / spell-themed specialists: the matching printed
   // secondary-skill icon (public/assets/abilities-<skill>.webp) -------------

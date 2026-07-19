@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, GripVertical, Lock, PackageOpen, Sparkles, X } from "lucide-react";
+import { Check, GripVertical, Lock, Medal, PackageOpen, Sparkles, X } from "lucide-react";
 
 import { HERO_INFO_STAT_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
@@ -13,6 +13,7 @@ import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/cor
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { ANIME_EQUIPMENT_DEFINITIONS } from "@/data/anime/equipment";
 import { factionUiLexicon } from "@/data/faction-theme";
+import { UnitExperienceWindow } from "@/components/adventure/unit-experience-window";
 import {
   ABILITY_SEARCH_LEVELS,
   ANIME_EQUIPMENT_SLOTS,
@@ -24,6 +25,7 @@ import {
   HERO_GRADE_MERIT_THRESHOLDS,
   MAX_EXPERIENCE,
   SPECIALTY_LEVELS,
+  armyUnitRankInfo,
   cultivationEnabled,
   cultivationRealmOf,
   effectiveHandLimit,
@@ -40,9 +42,11 @@ import {
   heroGradeProgressOf,
   heroGradeNodesOf,
   heroGradesEnabled,
+  unitExperienceActive,
   type AnimeEquipmentSlot,
   type GameAction,
   type GameState,
+  type LegalAction,
   type PlayerId
 } from "@/engine";
 import { useCardZoom } from "@/components/table/zoom";
@@ -209,15 +213,18 @@ function specialtyDisplayName(cardId: string): string {
 export function HeroBoard({
   state,
   playerId,
-  onAction
+  onAction,
+  legalActions = []
 }: {
   state: GameState;
   playerId: PlayerId;
   /** When provided, the Hero-Grade node picker dispatches HERO_GRADE_PICK. */
   onAction?: (action: GameAction) => void;
+  /** Engine-validated offers for the Unit Experience Board (Drill etc.). */
+  legalActions?: LegalAction[];
 }) {
   const { zoomCard, zoomContent } = useCardZoom();
-  const [systemsOpen, setSystemsOpen] = useState<"grade" | "equipment" | null>(null);
+  const [systemsOpen, setSystemsOpen] = useState<"grade" | "equipment" | "unitxp" | null>(null);
   const [draggedEquipmentId, setDraggedEquipmentId] = useState<string | null>(null);
   const player = state.players[playerId];
   const hero = getMainHero(state, playerId);
@@ -255,6 +262,12 @@ export function HeroBoard({
   const equipmentInventory = heroEquipmentInventoryOf(state, playerId);
   const inventoryEquipmentIds = new Set(equipmentInventory);
   const equippedEquipmentIds = new Set(Object.values(heroEquipmentOf(state, playerId)));
+  // Unit Experience (optional rule): the veterancy board pop-up, opened from
+  // the same hero-systems row as Grade / Equipment ("all systems are windows").
+  const showUnitXp = unitExperienceActive(state);
+  const rankedUnitCount = showUnitXp
+    ? player.army.filter((unit) => (armyUnitRankInfo(unit)?.rank ?? 0) > 0).length
+    : 0;
   const equippedItems = showEquip
     ? ANIME_EQUIPMENT_SLOTS
         .map((slot) => {
@@ -473,7 +486,7 @@ export function HeroBoard({
           </span>
         </footer>
 
-        {showGrade || showEquip ? (
+        {showGrade || showEquip || showUnitXp ? (
           <div className="heroSystemButtons" aria-label="Hero systems">
             {showGrade ? (
               <button
@@ -489,6 +502,15 @@ export function HeroBoard({
               <button className="heroSystemButton equipment" onClick={() => setSystemsOpen("equipment")} type="button">
                 <PackageOpen aria-hidden="true" size={18} />
                 <span><strong>{lexicon.equipment}</strong><small>{equippedItems.length}/{ANIME_EQUIPMENT_SLOTS.length} slots filled</small></span>
+              </button>
+            ) : null}
+            {showUnitXp ? (
+              <button className="heroSystemButton unitxp" onClick={() => setSystemsOpen("unitxp")} type="button">
+                <Medal aria-hidden="true" size={18} />
+                <span>
+                  <strong>{lexicon.experienceBoard}</strong>
+                  <small>{rankedUnitCount}/{player.army.length} card{player.army.length === 1 ? "" : "s"} ranked</small>
+                </span>
               </button>
             ) : null}
           </div>
@@ -522,7 +544,19 @@ export function HeroBoard({
           </div>
         ) : null}
       </section>
-      {systemsOpen && typeof document !== "undefined"
+      {systemsOpen === "unitxp" && typeof document !== "undefined"
+        ? createPortal(
+            <UnitExperienceWindow
+              legalActions={legalActions}
+              onAction={onAction}
+              onClose={() => setSystemsOpen(null)}
+              playerId={playerId}
+              state={state}
+            />,
+            document.body
+          )
+        : null}
+      {systemsOpen && systemsOpen !== "unitxp" && typeof document !== "undefined"
         ? createPortal(
             <div className={`heroSystemBackdrop theme-${lexicon.register}`} onMouseDown={() => setSystemsOpen(null)}>
               <section

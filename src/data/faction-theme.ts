@@ -10,6 +10,8 @@ export type FactionUiLexicon = {
   commanderEquipment: string;
   army: string;
   train: string;
+  /** Title of the Unit Experience pop-up window (veterancy board). */
+  experienceBoard: string;
 };
 
 const CLASSIC: FactionUiLexicon = {
@@ -18,7 +20,8 @@ const CLASSIC: FactionUiLexicon = {
   equipment: "Hero Equipment",
   commanderEquipment: "Commander Artifacts",
   army: "Unit deck",
-  train: "Drill"
+  train: "Drill",
+  experienceBoard: "Unit Experience Board"
 };
 
 const ANIME: FactionUiLexicon = {
@@ -27,7 +30,8 @@ const ANIME: FactionUiLexicon = {
   equipment: "Mystic Loadout",
   commanderEquipment: "Command Relics",
   army: "Servant roster",
-  train: "Field training"
+  train: "Field training",
+  experienceBoard: "Servant Ascension Board"
 };
 
 const WUXIA: FactionUiLexicon = {
@@ -36,7 +40,8 @@ const WUXIA: FactionUiLexicon = {
   equipment: "Spirit Arsenal",
   commanderEquipment: "Sacred Treasures",
   army: "Sect retinue",
-  train: "Cultivate"
+  train: "Cultivate",
+  experienceBoard: "Retinue Cultivation Board"
 };
 
 export function factionVisualRegister(factionId: string | undefined): FactionVisualRegister {
