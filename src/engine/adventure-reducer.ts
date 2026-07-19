@@ -4453,12 +4453,22 @@ function persistLivingGuardsOnField(
   field: MapFieldState,
   combat: CombatState
 ): void {
-  const living = Object.values(combat.units).filter(
-    (unit) =>
-      unit.controllerId === NEUTRAL_PLAYER_ID &&
-      unit.damage < unit.maxHealth &&
-      Boolean(unit.unitDefId)
-  );
+  const living = Object.values(combat.units)
+    .filter(
+      (unit) =>
+        unit.controllerId === NEUTRAL_PLAYER_ID &&
+        unit.damage < unit.maxHealth &&
+        Boolean(unit.unitDefId)
+    )
+    // CombatUnitState carries no factionPack flag — derive pack-ness from the
+    // minted variant ("pack", or "few" after a mid-fight flip; plain neutral
+    // guards are variant "neutral"), so a `pack:` slot survivor re-persists as
+    // a faction Pack instead of silently vanishing from the re-fight. A Few
+    // survivor re-fights as a full Pack ("full health on the re-fight").
+    .map((unit) => ({
+      unitDefId: unit.unitDefId,
+      factionPack: unit.variant === "pack" || unit.variant === "few"
+    }));
   const survivors = survivorsToCustomGuardUnits(living);
   if (survivors.length === 0) {
     // All guards fell but the hero still lost (e.g. simultaneous wipe) — clear.

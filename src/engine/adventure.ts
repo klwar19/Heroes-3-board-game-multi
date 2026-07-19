@@ -200,7 +200,6 @@ import {
   describeGuardArmyGrouped,
   resolveCustomGuardDraws,
   randomTownCaptureReward,
-  randomTownCustomGuard,
   randomTownIncomeGold,
   grailDigMovementCost,
   grailAsUtopiaMode
@@ -11378,13 +11377,8 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
   }
 
   if (field?.location === "random_town") {
-    // Map-maker custom guard already applied as customGuardUnits above; this
-    // path is the classic rolled-faction party.
-    if (randomTownCustomGuard(state)) {
-      // Guard was level-only (no units) — customGuardLevel path already handled
-      // level stamps; if only level was set, difficulty is set but customGuardUnits
-      // empty. Fall through to default rolled party when no certain army.
-    }
+    // A map-maker custom guard (certain army / level) was already handled by
+    // the branches above — this is the classic rolled-faction party.
     return randomTownGuardDraws(state, field);
   }
 

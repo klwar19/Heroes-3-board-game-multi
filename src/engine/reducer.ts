@@ -1813,7 +1813,14 @@ function stripCombatHealthBonusFromRemovedEffects(
     } else {
       delete unit.combatMaxHealthBonus;
     }
+    const wasAlive = unit.damage < unit.maxHealth;
     unit.maxHealth = Math.max(1, unit.maxHealth - healthLoss);
+    // Losing the bonus can be lethal (a unit already damaged past its printed
+    // Health): run the normal removal path so the Pack→Few flip / UNIT_REMOVED
+    // bookkeeping fires instead of leaving a dead-in-place unit unprocessed.
+    if (wasAlive && unit.damage >= unit.maxHealth) {
+      markUnitRemovedIfNeeded(state, unit);
+    }
   }
 }
 

@@ -317,6 +317,51 @@ describe("Dragon Flies dispel", () => {
     state = settle(state);
     expect(state.activeEffects.some((effect) => effect.name === "Anti-Magic")).toBe(false);
   });
+
+  it("a dispelled +max-Health bonus can be LETHAL — the removal path runs (no zombie unit)", () => {
+    // Mutation control: without the markUnitRemovedIfNeeded call in
+    // stripCombatHealthBonusFromRemovedEffects, the unit ends dead-in-place
+    // (damage ≥ maxHealth) with NO UNIT_REMOVED bookkeeping — no flip, no
+    // removal event, no Summon-Demons trigger.
+    let state = rangedAttackState();
+    state.combat!.units.unit_p1_marksmen.abilities = ["dragon-fly-dispel"];
+    const defender = state.combat!.units.unit_p2_skeletons;
+    // High defense so the shot itself deals 0 — only the dispel is lethal.
+    defender.defense = 10;
+    defender.variant = "few"; // clean removal (no Pack→Few flip in this case)
+    // +2 combat max Health (ADD_UNIT_MAX_HEALTH shape) keeping the unit alive:
+    // printed 20, damage 20, alive only through the bonus (22).
+    defender.combatMaxHealthBonus = 2;
+    defender.maxHealth = 22;
+    defender.damage = 20;
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Vial of Lifeblood",
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "HEALTH_BONUS", amount: 2 }]
+        },
+        { type: "card", cardId: "artifact.vial_of_lifeblood", controllerId: "p2" },
+        "p2",
+        { type: "unit", unitId: "unit_p2_skeletons" }
+      )
+    );
+
+    state = applyOk(state, ATTACK);
+    state = settle(state);
+
+    const after = state.combat!.units.unit_p2_skeletons;
+    expect(after.combatMaxHealthBonus, "bonus stripped").toBeUndefined();
+    expect(after.damage >= after.maxHealth, "losing the bonus was lethal").toBe(true);
+    expect(
+      state.eventLog.some((event) => event.type === "UNIT_REMOVED" && event.unitId === "unit_p2_skeletons"),
+      "the normal removal bookkeeping ran"
+    ).toBe(true);
+  });
 });
 
 describe("Fortress City Hall trading option", () => {
