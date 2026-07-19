@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameAction, LegalAction } from "@/engine";
-import { singlePlayerAutoAdvanceDefault, usePacedComputerAdvance } from "./computer-auto-advance";
+import { usePacedComputerAdvance } from "./computer-auto-advance";
 
 const advance: LegalAction = {
   label: "Next computer step",
@@ -11,28 +11,6 @@ const advance: LegalAction = {
 
 afterEach(() => {
   vi.useRealTimers();
-});
-
-describe("singlePlayerAutoAdvanceDefault", () => {
-  it("is ON by default for a single-player match (the AI takes its turn without manual Next)", () => {
-    // Fresh match, nothing stored → auto-advance is on. If this flips to false
-    // (the old opt-in default), the single-player AI never advances its map turn
-    // until the human clicks "Next" for every beat — the "AI doesn't move" bug.
-    expect(singlePlayerAutoAdvanceDefault("single-player", null, "seed-1")).toBe(true);
-    // The legacy per-match "Skip confirmations" marker (a bare seed) keeps it on.
-    expect(singlePlayerAutoAdvanceDefault("single-player", "seed-1", "seed-1")).toBe(true);
-    expect(singlePlayerAutoAdvanceDefault("single-player", "other-seed", "seed-1")).toBe(true);
-  });
-
-  it("respects the per-match MANUAL opt-out and is OFF outside single-player (CONTROLs)", () => {
-    // Explicit manual opt-out for THIS match → off (step through by hand).
-    expect(singlePlayerAutoAdvanceDefault("single-player", "manual:seed-1", "seed-1")).toBe(false);
-    // A manual marker for a DIFFERENT match does not disable this one.
-    expect(singlePlayerAutoAdvanceDefault("single-player", "manual:other", "seed-1")).toBe(true);
-    // CONTROL: multiplayer / undefined session never auto-advances (humans play).
-    expect(singlePlayerAutoAdvanceDefault(undefined, null, "seed-1")).toBe(false);
-    expect(singlePlayerAutoAdvanceDefault("multiplayer", null, "seed-1")).toBe(false);
-  });
 });
 
 describe("usePacedComputerAdvance", () => {
