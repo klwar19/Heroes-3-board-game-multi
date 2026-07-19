@@ -581,7 +581,17 @@ export function HandFan({
       {entries.length === 0 ? <div className="handEmpty">Empty hand</div> : null}
       {entries.map((entry, entryIndex) => {
         const card = cardLibrary[entry.cardId];
-        const playable = !trayActive && (entry.boardSelections.length > 0 || entry.immediateActions.length > 0);
+        // Polish Cast a Spell is never a direct CAST_SPELL/PLAY_CARD offer (the
+        // gate strips those and rewrites Book casts with fromSpellBook). Treat
+        // it as playable whenever a Book Spell is currently castable — the map
+        // hand already does the same (isCastCard). Without this the enabler
+        // stays grey/"blocked" for the whole fight even while Magic Arrow is
+        // legal on your unit's activation, which reads as "cannot cast".
+        const isPolishCastEnabler = polishBook && isCastASpellCard(entry.cardId);
+        const polishCastReady = isPolishCastEnabler && bookCastShortcuts.length > 0;
+        const playable =
+          !trayActive &&
+          (entry.boardSelections.length > 0 || entry.immediateActions.length > 0 || polishCastReady);
         const selected = entry.boardSelections.some((action) => sameCardSelection(selectedCardAction, action));
         const open = openIndex === entry.handIndex;
         const incoming = entryIndex >= hiddenFromIndex;
@@ -660,7 +670,10 @@ export function HandFan({
                         {castListIndex === entry.handIndex ? (
                           <div className="castASpellSpells" role="menu" aria-label="Castable Book Spells">
                             {bookCastShortcuts.length === 0 ? (
-                              <small className="noTiming">No refreshed Spell is castable right now.</small>
+                              <small className="noTiming">
+                                {timingHint(entry.cardId) ||
+                                  "No refreshed Spell is castable right now — combat spells need your own unit active, before it attacks."}
+                              </small>
                             ) : (
                               bookCastShortcuts.map(({ spellId, board, immediate }) => (
                                 <button
@@ -725,7 +738,16 @@ export function HandFan({
                         </button>
                       );
                     })}
-                    {!playable ? (
+                    {/* Cast a Spell carries its own Open Book / List UI above;
+                        do not also paste the generic "Instant spell window"
+                        reason under it when Book casts are ready (or when the
+                        enabler's only job is that menu). */}
+                    {!playable && !isPolishCastEnabler ? (
+                      <small className={`noTiming ${helperCoach.enabled ? "helperWhy" : ""}`}>
+                        {timingHint(entry.cardId)}
+                      </small>
+                    ) : null}
+                    {isPolishCastEnabler && !polishCastReady && !trayActive ? (
                       <small className={`noTiming ${helperCoach.enabled ? "helperWhy" : ""}`}>
                         {timingHint(entry.cardId)}
                       </small>
