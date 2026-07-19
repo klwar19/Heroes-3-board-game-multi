@@ -272,7 +272,9 @@ export const DESIGNER_UI_ICONS = {
   /** Rotate tile. */
   rotate: "/assets/glyphs/movement.svg",
   /** Map glyph (header / branding). */
-  map: "/assets/glyphs/map.svg"
+  map: "/assets/glyphs/map.svg",
+  /** Hidden hex event — designer-only violet hex + spark glyph (never in game). */
+  hexEvent: "/assets/glyphs/hex-event.svg"
 } as const;
 
 /**

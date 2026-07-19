@@ -53,6 +53,8 @@ import {
   customGuardArmyDifficulty,
   describeGuardArmyGrouped,
   describeHexEvent,
+  MAX_HEX_EVENTS,
+  MAX_HEX_EVENT_MESSAGE,
   MAX_SETTLEMENT_HOLD_ROUNDS,
   MAX_SETTLEMENT_VP,
   type CustomCenterHexPlan,
@@ -1239,6 +1241,27 @@ export function MapDesigner({
   // tile's six outer-edge ring hexes into clickable zones that seal/unseal a
   // designer yellow border directly on the board (one armed mode at a time).
   const [borderPaint, setBorderPaint] = useState(false);
+  // --- Hidden hex events (invisible in-game triggers) -------------------------
+  // First-class board citizens like the teleporters: arm the ⚡ palette button,
+  // click any glowing hex (every placed-tile hex AND every standalone object
+  // hex — the event is invisible in play, so it stacks on top of printed
+  // content; only another event blocks a cell). A placed marker opens its own
+  // docked editor on click and drags to any other legal hex.
+  const [armedHexEvent, setArmedHexEvent] = useState(false);
+  const [selectedHexEventId, setSelectedHexEventId] = useState<string | null>(null);
+  const [hexEventPopoverAt, setHexEventPopoverAt] = useState<{ x: number; y: number } | null>(null);
+  // Live drag of a placed hex-event marker; same lifecycle as the object drag
+  // (6px promote, hover preview, Escape/pointercancel aborts, release commits).
+  const [hexEventDrag, setHexEventDrag] = useState<{
+    id: string;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    hover: HexCoord | null;
+  } | null>(null);
+  // Set when a hex-event drag actually moved, so the trailing click never also
+  // opens the event editor.
+  const hexEventClickSuppressRef = useRef(false);
 
   const starts = useMemo<HexCoord[]>(
     () => (scenario ? scenario.layout.starts.map((start) => ({ ...start })) : []),
@@ -1477,15 +1500,22 @@ export function MapDesigner({
     setTokenPopoverAt(null);
   }, []);
 
-  // The three docked panels (tile / object / token) are mutually exclusive: one
-  // shared clear that every opener calls first, then sets its own state. Factored
-  // into a single stable callback so the "which two to close" bookkeeping never
-  // becomes a fresh inline closure in the hook chains.
+  // Close the docked hidden-hex-event editor (stable, like its siblings).
+  const closeHexEventPopover = useCallback(() => {
+    setSelectedHexEventId(null);
+    setHexEventPopoverAt(null);
+  }, []);
+
+  // The four docked panels (tile / object / token / hex event) are mutually
+  // exclusive: one shared clear that every opener calls first, then sets its own
+  // state. Factored into a single stable callback so the "which to close"
+  // bookkeeping never becomes a fresh inline closure in the hook chains.
   const closeAllPanels = useCallback(() => {
     closePopover();
     closeObjectPopover();
     closeTokenPopover();
-  }, [closePopover, closeObjectPopover, closeTokenPopover]);
+    closeHexEventPopover();
+  }, [closePopover, closeObjectPopover, closeTokenPopover, closeHexEventPopover]);
 
   const addTile = useCallback(
     (group: DesignGroup, center: HexCoord, seaBand?: SeaBand, subBand?: SubBand) => {
@@ -1730,6 +1760,7 @@ export function MapDesigner({
    */
   const toggleBorderPaint = useCallback(() => {
     setArmedObject(null);
+    setArmedHexEvent(false);
     closeAllPanels();
     setBorderPaint((current) => !current);
   }, [closeAllPanels]);
@@ -1823,6 +1854,28 @@ export function MapDesigner({
     }
     return set;
   }, [customMap]);
+  /**
+   * Hexes a HIDDEN HEX EVENT may sit on: every placed tile's footprint hex PLUS
+   * every standalone object hex (both exist as fields in game, so an event there
+   * can fire — the engine drops events anywhere else). Events are invisible in
+   * play and coexist with printed content / tokens / overrides, so nothing else
+   * blocks a cell — only another event does (one per hex, sanitiser-enforced).
+   */
+  const hexEventCandidateIds = useMemo(() => {
+    const set = new Set<string>(occupiedTileHexes);
+    for (const object of objects) {
+      if (object.placement.type === "standalone") {
+        set.add(hexSpaceId({ row: object.placement.row, col: object.placement.col }));
+      }
+    }
+    return set;
+  }, [occupiedTileHexes, objects]);
+  /** Hexes already carrying a hidden event (one event per hex). */
+  const hexEventTakenIds = useMemo(
+    () =>
+      new Set(hexEvents.map((event) => hexSpaceId({ row: event.placement.row, col: event.placement.col }))),
+    [hexEvents]
+  );
   /**
    * ON-tile token targets for ARMED placement / a placed-OBJECT drag — both write
    * the canonical `plan.token`. Face-up legal slots + all seven physical slots
@@ -1938,8 +1991,9 @@ export function MapDesigner({
   const armObject = useCallback((kind: CustomMapObjectKind, pair?: 1 | 2 | 3 | 4) => {
     setSelectedObjectIndex(null);
     setObjectPopoverAt(null);
-    // One armed mode at a time: arming an object disarms border paint.
+    // One armed mode at a time: arming an object disarms border paint + events.
     setBorderPaint(false);
+    setArmedHexEvent(false);
     setArmedObject((current) => (current && current.kind === kind && current.pair === pair ? null : { kind, pair }));
   }, []);
   // Armed placement writers (canonical forms). A TILE target writes `plan.token`
@@ -1994,6 +2048,127 @@ export function MapDesigner({
     },
     [armedObject, objects, onObjectsChange]
   );
+
+  // --- Hidden hex-event actions (arm / place / edit / move / remove) ---------
+  /** Arm ⚡ placement from the palette (one armed mode at a time; re-click stops). */
+  const armHexEvent = useCallback(() => {
+    setArmedObject(null);
+    setBorderPaint(false);
+    closeAllPanels();
+    setArmedHexEvent((current) => !current);
+  }, [closeAllPanels]);
+  /** Unique id for a NEW event — the hex makes a readable base, suffixed on clash. */
+  const nextHexEventId = useCallback(
+    (hex: HexCoord) => {
+      const base = `hexev_${hex.row}_${hex.col}`;
+      if (!hexEvents.some((event) => event.id === base)) {
+        return base;
+      }
+      let n = 2;
+      while (hexEvents.some((event) => event.id === `${base}_${n}`)) {
+        n += 1;
+      }
+      return `${base}_${n}`;
+    },
+    [hexEvents]
+  );
+  /**
+   * Place a fresh hidden event on `hex` (armed-palette cell click AND the preset
+   * editor's pick flow). Validates the cell (a legal, un-taken candidate), then
+   * disarms and opens the new event's editor right away — an event wants its
+   * message / ambush / reward tuned, so one placement per arm, editor first.
+   */
+  const placeHexEventAt = useCallback(
+    (hex: HexCoord) => {
+      if (!onHexEventsChange || hexEvents.length >= MAX_HEX_EVENTS) {
+        return;
+      }
+      const id = hexSpaceId(hex);
+      if (!hexEventCandidateIds.has(id) || hexEventTakenIds.has(id)) {
+        return;
+      }
+      const eventId = nextHexEventId(hex);
+      onHexEventsChange([
+        ...hexEvents,
+        { id: eventId, placement: { row: hex.row, col: hex.col }, message: "Something stirs here…" }
+      ]);
+      setArmedHexEvent(false);
+      closeAllPanels();
+      setSelectedHexEventId(eventId);
+      setHexEventPopoverAt({ x: 8, y: 0 });
+      if (pickRequest?.kind === "hex-event") {
+        onPickResolved?.();
+      }
+    },
+    [
+      onHexEventsChange,
+      hexEvents,
+      hexEventCandidateIds,
+      hexEventTakenIds,
+      nextHexEventId,
+      closeAllPanels,
+      pickRequest,
+      onPickResolved
+    ]
+  );
+  /** Patch one event's fields; `undefined` clears the optional field (preset-editor parity). */
+  const patchHexEvent = useCallback(
+    (id: string, changes: Partial<CustomHexEvent>) => {
+      onHexEventsChange?.(
+        hexEvents.map((event) => {
+          if (event.id !== id) {
+            return event;
+          }
+          const next: CustomHexEvent = { ...event, ...changes };
+          for (const key of ["message", "reward", "vp", "guard", "mode", "replaceVisit"] as const) {
+            if (next[key] === undefined) {
+              delete next[key];
+            }
+          }
+          return next;
+        })
+      );
+    },
+    [hexEvents, onHexEventsChange]
+  );
+  const removeHexEvent = useCallback(
+    (id: string) => {
+      onHexEventsChange?.(hexEvents.filter((event) => event.id !== id));
+      closeHexEventPopover();
+    },
+    [hexEvents, onHexEventsChange, closeHexEventPopover]
+  );
+  /** Move a placed event to a new hex, its id and every setting preserved. */
+  const moveHexEvent = useCallback(
+    (id: string, hex: HexCoord) => {
+      onHexEventsChange?.(
+        hexEvents.map((event) =>
+          event.id === id ? { ...event, placement: { row: hex.row, col: hex.col } } : event
+        )
+      );
+    },
+    [hexEvents, onHexEventsChange]
+  );
+  /**
+   * The hex an event drag would land on over `hex`: any candidate cell not taken
+   * by ANOTHER event (its own current hex stays a legal "stay put" target).
+   */
+  const hexEventDropTargetAtHex = useCallback(
+    (hex: HexCoord, dragId: string): HexCoord | null => {
+      const id = hexSpaceId(hex);
+      if (!hexEventCandidateIds.has(id)) {
+        return null;
+      }
+      const clash = hexEvents.some(
+        (event) =>
+          event.id !== dragId &&
+          hexSpaceId({ row: event.placement.row, col: event.placement.col }) === id
+      );
+      return clash ? null : hex;
+    },
+    [hexEventCandidateIds, hexEvents]
+  );
+
   const setObjectGuard = useCallback(
     (index: number, guard: CustomGuardSpec | undefined) => {
       onObjectsChange?.(
@@ -2487,6 +2662,54 @@ export function MapDesigner({
       window.removeEventListener("keydown", onKey);
     };
   }, [tokenDrag, clientToLocal, hexSize, tokenDropTargetAtHex, commitTokenDrop]);
+
+  // Hidden-hex-event drag lifecycle: same shape as the object drag — preview the
+  // candidate hex under the pointer, promote past 6px, commit the move on
+  // release (id + every setting preserved), abort on Escape / pointercancel.
+  useEffect(() => {
+    if (!hexEventDrag) {
+      return;
+    }
+    const onMove = (event: PointerEvent) => {
+      const local = clientToLocal(event.clientX, event.clientY);
+      const hex = local ? pixelToHex(local.x, local.y, hexSize) : null;
+      const target = hex ? hexEventDropTargetAtHex(hex, hexEventDrag.id) : null;
+      setHexEventDrag((current) =>
+        current
+          ? {
+              ...current,
+              moved:
+                current.moved ||
+                Math.abs(event.clientX - current.startX) + Math.abs(event.clientY - current.startY) > 6,
+              hover: target
+            }
+          : current
+      );
+    };
+    const onUp = () => {
+      if (hexEventDrag.moved && hexEventDrag.hover) {
+        moveHexEvent(hexEventDrag.id, hexEventDrag.hover);
+        hexEventClickSuppressRef.current = true;
+      }
+      setHexEventDrag(null);
+    };
+    const onCancel = () => setHexEventDrag(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setHexEventDrag(null);
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [hexEventDrag, clientToLocal, hexSize, hexEventDropTargetAtHex, moveHexEvent]);
 
   if (!scenario) {
     return null;
@@ -3046,8 +3269,26 @@ export function MapDesigner({
     event.stopPropagation();
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
     setArmedObject(null);
+    setArmedHexEvent(false);
     setBorderPaint(false);
     setObjectDrag({ index, kind, startX: event.clientX, startY: event.clientY, moved: false, hover: null });
+  };
+
+  /**
+   * Press a placed hidden-event marker. Takes the press (stopPropagation) so the
+   * tile panel never opens underneath it and the board never pans, and arms a
+   * drag; a release in place stays a plain click that opens the event editor.
+   */
+  const beginHexEventDrag = (id: string) => (event: React.PointerEvent) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.stopPropagation();
+    (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+    setArmedObject(null);
+    setArmedHexEvent(false);
+    setBorderPaint(false);
+    setHexEventDrag({ id, startX: event.clientX, startY: event.clientY, moved: false, hover: null });
   };
 
   /**
@@ -3067,6 +3308,7 @@ export function MapDesigner({
       event.stopPropagation();
       (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
       setArmedObject(null);
+      setArmedHexEvent(false);
       setBorderPaint(false);
       setTokenDrag({
         index,
@@ -3882,6 +4124,11 @@ export function MapDesigner({
 
   // --- Designer objects overlay: candidate placement cells + placed tokens ----
   const selectedObject = selectedObjectIndex !== null ? objects[selectedObjectIndex] : undefined;
+  // The event the docked editor shows — resolved live from the prop, so an
+  // external removal simply closes the panel (find returns undefined).
+  const selectedHexEvent = selectedHexEventId
+    ? hexEvents.find((event) => event.id === selectedHexEventId)
+    : undefined;
   const objectLayer: React.ReactNode[] = [];
   const armedLabel = armedObject
     ? armedObject.kind === "gate"
@@ -4085,18 +4332,117 @@ export function MapDesigner({
     );
   }
 
-  // --- Designer HEX EVENTS (⚡, DESIGNER-ONLY markers) ------------------------
-  // Invisible in the real game; here each event hex wears a lightning mark with
-  // a full plain-words tooltip. Clicks fall through to the tile underneath.
+  // --- Designer HIDDEN HEX EVENTS (subtle image hexes, DESIGNER-ONLY) --------
+  // Invisible in the real game; in the designer each event is a subtle violet
+  // hex wearing the event glyph — click to edit, drag to move, hover for the
+  // full plain-words story. Candidate cells glow while the ⚡ palette button
+  // (or the preset editor's pick) is armed — click one to place — or while a
+  // placed marker is being dragged (release to move).
+  const draggedHexEventHexId = hexEventDrag
+    ? (() => {
+        const dragged = hexEvents.find((event) => event.id === hexEventDrag.id);
+        return dragged
+          ? hexSpaceId({ row: dragged.placement.row, col: dragged.placement.col })
+          : null;
+      })()
+    : null;
+  const showHexEventCandidates =
+    Boolean(onHexEventsChange) &&
+    (armedHexEvent || pickRequest?.kind === "hex-event" || Boolean(hexEventDrag?.moved));
+  if (showHexEventCandidates) {
+    const hoverId = hexEventDrag?.hover ? hexSpaceId(hexEventDrag.hover) : null;
+    for (const id of hexEventCandidateIds) {
+      // A taken cell never glows — except the dragged event's own hex ("stay put").
+      if (hexEventTakenIds.has(id) && id !== draggedHexEventHexId) {
+        continue;
+      }
+      const coord = parseHexSpaceId(id);
+      if (!coord) {
+        continue;
+      }
+      const { x, y } = hexToPixel(coord, size);
+      objectLayer.push(
+        <polygon
+          className={`designerHexEventSlot${hoverId === id ? " hover" : ""}`}
+          key={`hex-event-slot-${id}`}
+          onClick={!hexEventDrag ? () => placeHexEventAt(coord) : undefined}
+          points={hexCorners(x, y, size - 1.6)}
+        >
+          <title>
+            {hexEventDrag
+              ? "Release to move the hidden event to this hex"
+              : "Place the hidden event on this hex — invisible in the real game, it can share the hex with any printed content"}
+          </title>
+        </polygon>
+      );
+    }
+    if (hexEventDrag?.moved && hexEventDrag.hover) {
+      const { x, y } = hexToPixel(hexEventDrag.hover, size);
+      objectLayer.push(
+        <g
+          aria-label={`Drop target ${hexSpaceId(hexEventDrag.hover)}`}
+          className="designerTokenDropReticle hexEvent"
+          data-space-id={hexSpaceId(hexEventDrag.hover)}
+          key="hex-event-drop-reticle"
+          style={{ pointerEvents: "none" }}
+        >
+          <polygon points={hexCorners(x, y, size - 3.2)} />
+          <circle cx={x} cy={y} r={Math.max(2.2, size * 0.12)} />
+          <text textAnchor="middle" x={x} y={y + size * 0.82}>PLACE</text>
+        </g>
+      );
+    }
+  }
   for (const event of hexEvents) {
-    const { x, y } = hexToPixel({ row: event.placement.row, col: event.placement.col }, size);
+    const draggingThis = Boolean(hexEventDrag && hexEventDrag.id === event.id && hexEventDrag.moved);
+    // Follow the hovered drop hex while dragging; otherwise sit at the placement.
+    const coord =
+      draggingThis && hexEventDrag!.hover
+        ? hexEventDrag!.hover
+        : { row: event.placement.row, col: event.placement.col };
+    const { x, y } = hexToPixel(coord, size);
     objectLayer.push(
-      <g key={`hex-event-${event.id}`} style={{ pointerEvents: "none" }}>
-        <circle className="designerHexEventRing" cx={x} cy={y} fill="none" r={size * 0.5} />
-        <text className="designerHexEventMark" data-hex-event={event.id} textAnchor="middle" x={x} y={y + size * 0.22}>
-          <title>{`Hidden event (designer-only) — ${describeHexEvent(event)}`}</title>
-          ⚡
-        </text>
+      <g
+        className={`designerHexEventToken${selectedHexEventId === event.id ? " selected" : ""}${
+          draggingThis ? " dragging" : ""
+        }`}
+        data-hex-event={event.id}
+        key={`hex-event-${event.id}`}
+        onClick={(clickEvent) => {
+          if (hexEventClickSuppressRef.current) {
+            hexEventClickSuppressRef.current = false;
+            return;
+          }
+          if (!onHexEventsChange) {
+            return;
+          }
+          const rect = wrapRef.current?.getBoundingClientRect();
+          closeAllPanels();
+          setSelectedHexEventId(event.id);
+          setHexEventPopoverAt(
+            rect
+              ? {
+                  x: Math.max(8, Math.min(clickEvent.clientX - rect.left, rect.width - 8)),
+                  y: clickEvent.clientY - rect.top
+                }
+              : { x: 8, y: 0 }
+          );
+        }}
+        onPointerDown={onHexEventsChange ? beginHexEventDrag(event.id) : undefined}
+      >
+        <title>{`Hidden event (invisible in the real game) — ${describeHexEvent(
+          event
+        )}. Players see nothing on this hex; the first hero to step on it springs the event. Click to edit its message, ambush and reward; drag to move it to another hex.`}</title>
+        <polygon className="designerHexEventHex" points={hexCorners(x, y, size - 2)} />
+        <image
+          className="designerHexEventImage"
+          height={size * 0.8}
+          href={assetUrl(DESIGNER_UI_ICONS.hexEvent)}
+          preserveAspectRatio="xMidYMid meet"
+          width={size * 0.8}
+          x={x - size * 0.4}
+          y={y - size * 0.4}
+        />
       </g>
     );
   }
@@ -4239,9 +4585,11 @@ export function MapDesigner({
         <small className="palettePrompt">
           {borderPaint
             ? "Painting yellow borders — click an edge to seal it, click again to remove, or drag to paint a line of edges"
-            : armedObject
-              ? `Placing a ${armedLabel} — click a glowing cell (tile hex or off-tile), or the button again to stop`
-              : "Click an object, then click a board cell to place it"}
+            : armedHexEvent
+              ? "Placing a hidden event — click any glowing hex (players never see it), or the button again to stop"
+              : armedObject
+                ? `Placing a ${armedLabel} — click a glowing cell (tile hex or off-tile), or the button again to stop`
+                : "Click an object, then click a board cell to place it"}
         </small>
         {armedObject || objectDrag?.moved || tokenDrag?.moved ? (
           <div aria-live="polite" className="designerPlacementLegend" role="status">
@@ -4331,6 +4679,25 @@ export function MapDesigner({
           >
             ⛔ Barrier
           </button>
+          {onHexEventsChange ? (
+            <>
+              <span className="designerObjectGroupLabel">Hidden</span>
+              <button
+                aria-pressed={armedHexEvent}
+                className={`designerObjectButton hexEvent${armedHexEvent ? " armed" : ""}`}
+                disabled={hexEvents.length >= MAX_HEX_EVENTS && !armedHexEvent}
+                onClick={armHexEvent}
+                title={`Hidden hex event — an INVISIBLE trigger that never shows in the real game. Place it on any hex of a placed tile or on a standalone object hex (it shares the hex with whatever is printed there). The first hero to step on it springs the event: an optional ambush fight, then a message, reward and Victory Points. Click a placed marker to edit it, drag it to move it. ${hexEvents.length}/${MAX_HEX_EVENTS} placed.`}
+                type="button"
+              >
+                <DesignerGlyph className="designerObjectGlyphIcon" src={DESIGNER_UI_ICONS.hexEvent} />
+                Hidden event
+                <span className="designerObjectCount">
+                  {hexEvents.length}/{MAX_HEX_EVENTS}
+                </span>
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
         </div>
@@ -4358,6 +4725,7 @@ export function MapDesigner({
             onClick={() => {
               setModPanelOpen((open) => !open);
               setArmedObject(null);
+              setArmedHexEvent(false);
               if (borderPaint) {
                 toggleBorderPaint();
               }
@@ -4681,23 +5049,10 @@ export function MapDesigner({
               if (pickRequest?.kind === "hex-event") {
                 const local = clientToLocal(event.clientX, event.clientY);
                 const hex = local ? pixelToHex(local.x, local.y, hexSize) : null;
-                if (hex && occupiedTileHexes.has(hexSpaceId(hex)) && onHexEventsChange) {
-                  const taken = hexEvents.some(
-                    (candidate) =>
-                      candidate.placement.row === hex.row && candidate.placement.col === hex.col
-                  );
-                  if (!taken) {
-                    onHexEventsChange([
-                      ...hexEvents,
-                      {
-                        // One event per hex, so the hex IS a stable unique id.
-                        id: `hexev_${hex.row}_${hex.col}`,
-                        placement: { row: hex.row, col: hex.col },
-                        message: "Something stirs here…"
-                      }
-                    ]);
-                    onPickResolved?.();
-                  }
+                if (hex) {
+                  // Shared placement path (validates the cell, dedupes, opens
+                  // the new event's editor and resolves the pick).
+                  placeHexEventAt(hex);
                 }
                 return;
               }
@@ -5895,6 +6250,104 @@ export function MapDesigner({
             ) : null}
             <button className="popoverRemove" onClick={() => removeObject(selectedObjectIndex as number)} type="button">
               <Trash2 size={13} /> Remove
+            </button>
+          </div>
+        ) : null}
+
+        {/* Hidden-hex-event editor — docked like the tile / object panels.
+            Clicking a placed ⚡ marker opens THIS (never the tile underneath). */}
+        {selectedHexEvent && hexEventPopoverAt ? (
+          <div className="designerPopover designerHexEventPopover">
+            <header>
+              <strong>
+                <DesignerGlyph className="popoverActionGlyph" src={DESIGNER_UI_ICONS.hexEvent} /> Hidden hex event
+              </strong>
+              <button
+                aria-label="Close hidden event options"
+                className="popoverClose"
+                onClick={closeHexEventPopover}
+                title="Close"
+                type="button"
+              >
+                ✕
+              </button>
+            </header>
+            <small className="popoverHint">
+              Invisible in the real game — players see nothing on this hex. The first hero to step on it
+              springs the event: the ambush fight first (if set), then the message, reward and Victory
+              Points. Drag the marker on the board to move it to another hex.
+            </small>
+            <div className="popoverSectionLabel">Message</div>
+            <input
+              aria-label="Hidden event message"
+              className="popoverTextInput"
+              maxLength={MAX_HEX_EVENT_MESSAGE}
+              onChange={(inputEvent) =>
+                patchHexEvent(selectedHexEvent.id, {
+                  message: inputEvent.target.value.length > 0 ? inputEvent.target.value : undefined
+                })
+              }
+              placeholder="Shown to the triggering player"
+              value={selectedHexEvent.message ?? ""}
+            />
+            <div className="popoverSectionLabel">Ambush guard</div>
+            <small className="popoverHint">
+              Fought on the spot the moment the event springs — never Quick-Combat skipped. Beaten once,
+              globally.
+            </small>
+            <GuardSpecEditor
+              compact
+              guard={selectedHexEvent.guard}
+              noneLabel="None"
+              onChange={(guard) => patchHexEvent(selectedHexEvent.id, { guard })}
+            />
+            <div className="popoverSectionLabel">Reward &amp; Victory Points</div>
+            <FieldRewardEditor
+              ariaLabel="Hidden event reward"
+              onChange={(reward) => patchHexEvent(selectedHexEvent.id, { reward })}
+              onVpChange={(vp) => patchHexEvent(selectedHexEvent.id, { vp })}
+              reward={selectedHexEvent.reward}
+              vp={selectedHexEvent.vp}
+            />
+            <div className="popoverGuardRow" role="group" aria-label="Hidden event options">
+              <button
+                aria-pressed={(selectedHexEvent.mode ?? "first") === "first"}
+                className={`popoverGuardChip${(selectedHexEvent.mode ?? "first") === "first" ? " active" : ""}`}
+                onClick={() => patchHexEvent(selectedHexEvent.id, { mode: undefined })}
+                title="Fires once, for the first player to step on the hex."
+                type="button"
+              >
+                First player only
+              </button>
+              <button
+                aria-pressed={selectedHexEvent.mode === "each-player"}
+                className={`popoverGuardChip${selectedHexEvent.mode === "each-player" ? " active" : ""}`}
+                onClick={() => patchHexEvent(selectedHexEvent.id, { mode: "each-player" })}
+                title="Message / reward / VP pay once per player (the ambush is still beaten once)."
+                type="button"
+              >
+                Every player once
+              </button>
+              <button
+                aria-pressed={Boolean(selectedHexEvent.replaceVisit)}
+                className={`popoverGuardChip${selectedHexEvent.replaceVisit ? " active" : ""}`}
+                onClick={() =>
+                  patchHexEvent(selectedHexEvent.id, {
+                    replaceVisit: selectedHexEvent.replaceVisit ? undefined : true
+                  })
+                }
+                title="The hex's own content is skipped on the entry that springs the event (later entries behave normally)."
+                type="button"
+              >
+                Replace the hex&apos;s visit
+              </button>
+            </div>
+            <button
+              className="popoverRemove"
+              onClick={() => removeHexEvent(selectedHexEvent.id)}
+              type="button"
+            >
+              <Trash2 size={13} /> Remove event
             </button>
           </div>
         ) : null}

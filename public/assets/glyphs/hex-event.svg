@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Hidden hex event — designer-only marker: a violet hex with a gold spark.
+       Original art (simple flat glyph in the style of the sibling glyphs). -->
+  <defs>
+    <linearGradient id="hexFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6d4a9e"/>
+      <stop offset="1" stop-color="#3d2762"/>
+    </linearGradient>
+  </defs>
+  <polygon points="32,3 57,17.5 57,46.5 32,61 7,46.5 7,17.5" fill="url(#hexFill)" stroke="#c99cff" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="32,9 51.5,20.5 51.5,43.5 32,55 12.5,43.5 12.5,20.5" fill="none" stroke="#e7d6ff" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.7"/>
+  <polygon points="36,12 22,35 30,35 26,52 43,27 34,27" fill="#ffd766" stroke="#7a4c07" stroke-width="2" stroke-linejoin="round"/>
+</svg>
