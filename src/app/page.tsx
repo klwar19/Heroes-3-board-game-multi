@@ -6091,7 +6091,9 @@ export default function Home() {
                   // Helper tips: always allow opening a non-playable card to read
                   // why; otherwise keep the old gate (playable / start-of-turn draw /
                   // an available first-round Mulligan replacement).
-                  const canOpenMenu = actionable || canDraw || Boolean(whyBlocked) || canFirstRoundMulligan;
+                  // The first-round Mulligan is now folded into the start-of-turn
+                  // draw step (canDraw), so no separate mulligan term is needed.
+                  const canOpenMenu = actionable || canDraw || Boolean(whyBlocked);
 
                   return (
                     <div

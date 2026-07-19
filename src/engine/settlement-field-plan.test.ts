@@ -35,7 +35,7 @@ function makeSettlementField(
   const tileId = "settlement-plan-tile";
   const tile: MapTileState = {
     id: tileId,
-    defId: "test",
+    tileDefId: "test",
     group: "far",
     faceDown: false,
     centerRow: 10,
@@ -114,7 +114,7 @@ describe("per-tile settlement guard / VP", () => {
       victoryPoints: { enabled: true },
       settlements: { vp: 1 }
     };
-    const row = computeVictoryPoints(state, null).breakdown.find((b) => b.playerId === "p1")!;
+    const row = computeVictoryPoints(state).breakdown.find((b) => b.playerId === "p1")!;
     const mapWide = row.rows.find((r) => r.label === "Settlement bonus VP");
     const special = row.rows.find((r) => r.label === "Special settlement VP");
     expect(mapWide?.vp, "map-wide still counts both").toBe(2);
@@ -126,9 +126,9 @@ describe("per-tile settlement hold-to-win", () => {
   it("wins after N consecutive full rounds of continuous control; recapture restarts", () => {
     let state = createAdventureGameState({ seed: "settlement-hold", rollFirstPlayer: false });
     // Clear any open start-of-turn hand so we can freely tick rounds.
-    state.adventure!.pendingVisit = undefined;
+    state.adventure!.pendingVisit = null;
     state.adventure!.rewardQueue = [];
-    state.pendingChoice = undefined;
+    state.pendingChoice = null;
 
     const field = makeSettlementField(state, {
       fieldId: "hold-settlement",
@@ -153,9 +153,9 @@ describe("per-tile settlement hold-to-win", () => {
 
     // CONTROL: a recapture restarts the counter (fresh state).
     state = createAdventureGameState({ seed: "settlement-hold-reset", rollFirstPlayer: false });
-    state.adventure!.pendingVisit = undefined;
+    state.adventure!.pendingVisit = null;
     state.adventure!.rewardQueue = [];
-    state.pendingChoice = undefined;
+    state.pendingChoice = null;
     const field2 = makeSettlementField(state, {
       fieldId: "hold-settlement-2",
       tileSettlement: { holdRoundsToWin: 2 }
@@ -176,7 +176,7 @@ describe("per-tile settlement hold-to-win", () => {
 
   it("does not win mid-combat (checkCustomWinConditions combat guard)", () => {
     const state = createAdventureGameState({ seed: "settlement-hold-combat", rollFirstPlayer: false });
-    state.adventure!.pendingVisit = undefined;
+    state.adventure!.pendingVisit = null;
     state.adventure!.rewardQueue = [];
     const field = makeSettlementField(state, {
       fieldId: "hold-combat",
@@ -185,7 +185,7 @@ describe("per-tile settlement hold-to-win", () => {
     flagField(state, "p1", field);
     field.holdControlRounds = 1;
     // Fake an open combat — hold win must wait.
-    state.combat = { phase: "active" } as GameState["combat"];
+    state.combat = { phase: "active" } as unknown as GameState["combat"];
     checkCustomWinConditions(state);
     expect(state.adventure!.winnerPlayerId).toBeFalsy();
     state.combat = null;

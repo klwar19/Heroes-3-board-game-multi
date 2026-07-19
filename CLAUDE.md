@@ -1461,8 +1461,8 @@ other anime flags there is no anime lobby UI yet). Data in
 `applyUnitCurrentSide` (stat/ability folds), `finalizeAdventureCombat` (the XP
 award), the reducer/legal-actions (`DRILL_UNIT`) and every Few→Pack / Stack
 upgrade site (dilution). Behaviour pinned in `src/engine/unit-experience.test.ts`
-(off/rank/lost-fight CONTROLs; the award call, the attack fold and the elite
-grant are mutation-checked), UI in `unit-rank-badge.test.tsx`,
+(off/rank/lost-fight CONTROLs; the award call, the attack fold and the
+rank-ability grant are mutation-checked), UI in `unit-rank-badge.test.tsx`,
 `board.test.tsx` ("veteran-rank badge") and `game-options-tabs.test.tsx`.
 
 Leading with what does NOT run / deliberate limits:
@@ -1473,20 +1473,25 @@ Leading with what does NOT run / deliberate limits:
   a fresh XP-less copy (the existing `permanentAttackBonus` precedent), and a
   specialty cover replaces stats wholesale, suppressing the rank folds while it
   is on top (same read as the permanent bonuses).
-- **Only 12 units — one signature unit per faction — carry a unique ELITE
-  ability** (`ELITE_UNIT_RANK_ABILITIES`); every other card gets the generic
-  per-tier stat packages only. Every grant REUSES an already-implemented
-  ability id (no new engine effects; registry hygiene — real unit, implemented,
-  not already printed on any side — is pinned by test).
+- **Every unit has its own rank SCHEDULE** (`rankScheduleFor`): a unique one
+  where authored (`UNIT_RANK_SCHEDULES`), else a flavour-template fill
+  (`FLAVOUR_ABILITIES`). A schedule is 4 steps, each EITHER stats OR one
+  ability (never both), matching one of three templates — standard (1 ability),
+  strong (2), rare (3). Ability ranks draw from `ELITE_UNIT_RANK_ABILITIES` /
+  `LEGEND_UNIT_RANK_ABILITIES` plus the track pools; every granted id REUSES an
+  already-implemented ability (no new engine effects; registry hygiene — real
+  unit, implemented, not already printed on the side — is pinned by test).
 - **The Hierophant First Aid flip-up never dilutes** — it restores THIS
   battle's own casualties, not fresh recruits (the one reinforce-shaped
   exception, pinned with the reinforce halving as its control).
 - **The AI has no bespoke veterancy strategy**: it drills only as an idle-time
   luxury from surplus gold (`map-policy.ts` DRILL_UNIT, score 325 when gold ≥
   10) and otherwise just benefits from the folds like a human.
-- **Badge art is drawn (CSS/text), not a binary asset**: WoG-authentic carets
-  (`^`, `^^`) and an Elite sword (⚔) in `.unitRankBadge`, plus the existing
-  slayer spell icon on the lobby row — image-gen art can replace them later.
+- **Badge art now ships as real webp icons**: per-rank badges
+  (`/assets/ui/unit-rank-{seasoned,veteran,elite,legend}.webp`,
+  `unitRankBadgeImage`) and per-ability icons (`/assets/ui/rank-ability/*.webp`,
+  `unitRankAbilityIcon`) — Codex-generated, drawn on the badge / board window
+  (the old CSS carets are the text fallback).
 
 What runs (each with a failing-if-removed test):
 - **XP awards (WoG "survivors of a hero-led won battle train")**: after a WON
@@ -1496,19 +1501,21 @@ What runs (each with a failing-if-removed test):
   undeployed cards, summons/temporaries/commanders and the loser get nothing;
   each card is awarded once (clone-safe Set). XP rides the CARD
   (`ArmyUnitState.experience`) and survives Pack→Few casualty flips.
-- **Ranks 0–3 with tier-scaled thresholds** (bronze 2/5/9, silver 3/7/12,
-  gold/azure 4/9/15 — higher tiers rank slower, the UES per-level scaling) and
-  CUMULATIVE per-tier stat packages (CREXPBON default progressions): bronze &
-  silver R1 +1 Defense, R2 +1 Attack, R3 +1 Health (bronze Elites also +1
-  Initiative — the "Speed R4" bump); gold/azure R1 +1 Attack, R2 +1 Defense,
-  R3 +1 Health. Folded at combat-unit build AND on every mid-combat printed-
-  side recompute, so a Pack→Few flip keeps its rank.
-- **Elite abilities at rank 3** (CREXPBON-derived, e.g. Champions
-  `ignores-retaliation`, Behemoths `wog-nightmare-fear`, Phoenixes
-  `wog-fire-shield-1`, Nagas/Cerberi/Hydras `unlimited-retaliation`, Jotunns
-  `reduce-spell-damage-1`, Dreadnoughts `ignore-paralysis`), appended to the
-  unit's runtime `abilities` (deduped) — never edits printed card data, so the
-  ability-text enforcement invariant is untouched.
+- **Four named ranks 1–4 (Seasoned / Veteran / Elite / Legend) with tier-scaled
+  thresholds** (`UNIT_RANK_NAMES`, `MAX_UNIT_RANK` = 4, `UNIT_RANK_THRESHOLDS`):
+  bronze 3/6/10/14, silver 4/8/13/18, gold/azure 5/10/16/22 — higher tiers rank
+  slower. Stats accumulate ONLY on a schedule's stats ranks, drawing the tier's
+  ordered `UNIT_STAT_STEPS` (bronze +Def / +Atk / +Health&Init; silver +Def /
+  +Atk / +Health; gold/azure +Atk / +Def / +Health), so a rank spent on an
+  ability adds no stats. Folded at combat-unit build AND on every mid-combat
+  printed-side recompute, so a Pack→Few flip keeps its rank.
+- **Abilities at the schedule's ability ranks** (not fixed at one rank): each
+  ability rank grants ONE not-already-printed id from that unit's schedule step
+  (e.g. Champions `ignores-retaliation`, Behemoths `wog-nightmare-fear`,
+  Phoenixes `wog-fire-shield-1`, Nagas/Cerberi/Hydras `unlimited-retaliation`,
+  Jotunns `reduce-spell-damage-1`, Dreadnoughts `ignore-paralysis`), appended to
+  the unit's runtime `abilities` (deduped) by `withRankAbilities` — never edits
+  printed card data, so the ability-text enforcement invariant is untouched.
 - **Dilution (WoG Crexpmod "upgrades cost experience")**: reinforcing Few→Pack
   HALVES the card's XP at every reinforce site (settlement, Hill Fort, town
   Population batch, the shared `reinforceArmyUnit` helper, and the mid-combat
@@ -1881,11 +1888,14 @@ is NOT done:
   rule — a **Subterranean cavern also offers a bank, drawing from the NEAR pile**.
   Sea/center/starting tiles never trigger it — including sea tiles that DO carry a
   Blocked Field / impassable terrain (e.g. the Cove tile W1). A cavern's bank
-  lands on its Blocked Field EXCEPT when that field was sacrificed to a
-  Subterranean Gate: the gate carves before the bank is offered, so a Blocked
-  Field that became the gate hex is gone and no bank is offered there ("not at the
-  gate hex"). Engine-enforced in `subterranean-gate-choice.test.ts` (a cavern gets
-  a Near bank; the path-up-on-the-Blocked-Field control gets none). A bank is
+  lands on its Blocked Field. The tile-reveal chain is now **bank-then-gate**
+  (`continueRevealAfterBank`): the discovering player answers the Creature Bank
+  prompt FIRST, then the Subterranean Gate exit is fixed (cycle/confirm when ≥2
+  candidate hexes, else auto-carve on the nearest free hex — a bank already
+  placed is skipped). Verified in `subterranean-gate-choice.test.ts` (a cavern
+  gets a Near bank; `revealPastBank` passes the bank prompt to reach the gate
+  exit step). Gate-isolation tests (`subterranean-gates.test.ts`,
+  `designed-gate-links.test.ts`) turn banks off to pin the carve directly. A bank is
   reachable only from within its own Tile — you can walk in to fight, but it is
   never a route across a Tile edge to the outside (enforced in `canCrossEdge`,
   even for Pathfinding).
@@ -2906,17 +2916,21 @@ Four additions; each engine rule fails a named test if its wiring is removed.
   Pinned in `manual-guard-control.test.ts` (open/shooter/swap/auto-reset, each with
   a CONTROL) and `pvp-neutral-control.test.ts` (the PvP-side CONTROLs: no shooter
   restriction, no AI-reset offer).
-- **First-round starting-hand Mulligan** (`GameSetupOptions.startingHandMulligan`,
-  default OFF; frozen onto `adventure.startingHandMulligan`). In ROUND 1 only,
-  AFTER the mandatory start-of-turn draw, a player may replace up to
-  `FIRST_ROUND_MULLIGAN_LIMIT` (4) hand cards — one at a time (`MULLIGAN_CARD`:
-  discard one card to the BOTTOM of your own deck, draw one) — until the per-turn
-  budget (`player.firstRoundMulligansLeft`, seeded in `finalizeStartOfTurnHand`)
-  runs out. `canMulliganStartingHand` gates the offer (only after the mandatory
-  draw, round 1, budget left; computer seats keep their dealt hand). UI: a lobby
-  toggle, a per-card "Replace this card (N left)" menu button and a hand-step
-  hint; `HAND_MULLIGAN` feed line. Pinned in `starting-hand-mulligan.test.ts`
-  (replace-up-to-4-then-stop, with mode-off / round-2 / pre-draw CONTROLs).
+- **First-round hand Mulligan** (`GameSetupOptions.startingHandMulligan`,
+  **default ON**; frozen onto `adventure.startingHandMulligan`, absent/undefined
+  treated as ON for legacy snapshots). It now gates ONLY the round-1
+  start-of-turn hand step: **ON** = the "Discard and draw new" option is offered
+  in round 1 (normal play — discards return to the BOTTOM of your own deck per
+  the first-round-discard rule above); **OFF** = round-1 `REFRESH_HAND` rejects a
+  non-empty discard (draw-only opening hand), enforced in `refreshHand` (a forced
+  over-limit `needsHandRefresh` discard still runs so a hand effect cannot trap
+  the seat). The old per-card `MULLIGAN_CARD` "replace up to
+  `FIRST_ROUND_MULLIGAN_LIMIT` cards after the draw" flow is **retired**:
+  `finalizeStartOfTurnHand` seeds `firstRoundMulligansLeft = 0`, so
+  `canMulliganStartingHand` is always false and the action is never offered (the
+  handler stays for legacy snapshots). Pinned in `starting-hand-mulligan.test.ts`
+  (default-on R1 discard allowed, mode-off rejects, round-2 / forced-refresh
+  CONTROLs).
 - **Wait/Defend combat-queue markers (Polish Wait presentation).** The initiative
   rail (`getActivationOrder`) now RE-QUEUES a Waited unit at the TAIL of the round
   (highest wait token first) instead of stranding it in the greyed "done" bucket —
