@@ -556,9 +556,14 @@ describe("Imp Cache — Pack Orcs/Ogres (init 5) alternate with Familiars (init 
     state.players[NEUTRAL_PLAYER_ID] = { ...structuredClone(state.players.p2), id: NEUTRAL_PLAYER_ID };
     state.combat!.defenderPlayerId = NEUTRAL_PLAYER_ID;
     for (const id of P2) {
-      state.combat!.units[id].controllerId = NEUTRAL_PLAYER_ID;
-      // Identical bank clones (Imp Cache Familiars stand-in).
-      state.combat!.units[id].unitDefId = "inferno.familiars";
+      const unit = state.combat!.units[id];
+      unit.controllerId = NEUTRAL_PLAYER_ID;
+      // Identical bank clones (Imp Cache Familiars stand-in): same card, same
+      // side, no Stack Token — a variant/token difference keeps the prompt.
+      unit.unitDefId = "inferno.familiars";
+      unit.variant = "neutral";
+      unit.stackToken = null;
+      unit.armyStacks = 0;
     }
     setInitiatives(state, {
       unit_p1_griffins: 5,
@@ -589,6 +594,18 @@ describe("Imp Cache — Pack Orcs/Ogres (init 5) alternate with Familiars (init 
     const active = state.combat!.units[state.combat!.activeUnitId!];
     expect(active.controllerId).toBe(NEUTRAL_PLAYER_ID);
     expect(state.combat!.activeUnitId).not.toBe("unit_p1_crusaders");
+  });
+
+  it("CONTROL: a Stacked clone among unstacked ones keeps the order prompt (different printed stats)", () => {
+    let state = cloneFightSetup("imp-cache-clones-stacked");
+    // One guard carries a bank Stack Token — no longer interchangeable.
+    state.combat!.units.unit_p2_vampires.stackToken = "attack";
+
+    state = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+
+    const stackedChoice = orderChoice(state);
+    expect(stackedChoice, "a stat-relevant difference keeps the tie a real choice").toBeTruthy();
+    expect(stackedChoice!.activationOrder!.side).toBe(NEUTRAL_PLAYER_ID);
   });
 
   it("CONTROL: with a human playing the guards (Manual guard control), the clone tie still prompts", () => {
