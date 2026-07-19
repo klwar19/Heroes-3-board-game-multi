@@ -23,6 +23,7 @@ import {
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions } from "@/data/map/locations";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
+import { fieldSymbolOverlayFor } from "@/data/map/field-symbol-modules";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   NEUTRAL_DECK_IDS,
@@ -1308,6 +1309,52 @@ export function HexMapBoard({
             );
           }
         }
+        // Atmosphere tiles: attach symbol modules during rotation preview too.
+        if (fieldDef && artShown && tileDef?.assets?.attachFieldSymbols) {
+          const symbol = fieldSymbolOverlayFor(fieldDef);
+          if (symbol) {
+            const iconSize = HEX_SIZE * 0.85;
+            overlays.push(
+              <image
+                className="fieldSymbolModule"
+                height={iconSize}
+                href={assetUrl(symbol.image)}
+                key={`${tile.id}-rot-symbol-${slot}`}
+                preserveAspectRatio="xMidYMid meet"
+                style={{ pointerEvents: "none" }}
+                width={iconSize}
+                x={x - iconSize / 2}
+                y={y - iconSize * 0.1}
+              />
+            );
+            if (symbol.difficulty) {
+              overlays.push(
+                <text
+                  className="hexDifficulty"
+                  key={`${tile.id}-rot-symbol-diff-${slot}`}
+                  textAnchor="middle"
+                  x={x}
+                  y={y - HEX_SIZE * 0.48}
+                >
+                  {ROMAN[symbol.difficulty]}
+                </text>
+              );
+            }
+            if (symbol.amount != null && symbol.amount > 0) {
+              overlays.push(
+                <text
+                  className="hexProduction"
+                  key={`${tile.id}-rot-symbol-amt-${slot}`}
+                  textAnchor="middle"
+                  x={x}
+                  y={y + HEX_SIZE * 0.62}
+                >
+                  {`↻${symbol.amount}`}
+                </text>
+              );
+            }
+          }
+        }
         // Printed + designed yellow border lines (arcs, blocked-field rings and
         // per-edge lines) move with the rotation preview.
         for (const segment of borderSegments) {
@@ -1343,7 +1390,10 @@ export function HexMapBoard({
     // The printed scan already shows the locations, numerals and mine icons:
     // hide the built-in markers and keep only live game state (cubes, flags,
     // settlement production, movement) on top of the art.
+    // Atmosphere-only tiles (anime seats) opt into attachFieldSymbols so the
+    // shared icon modules are pinned on top without re-baking the whole tile.
     const artShown = showArt && Boolean(tileDef?.assets?.tileImage);
+    const attachFieldSymbols = Boolean(tileDef?.assets?.attachFieldSymbols);
     const footprint = tileFootprint(center, tile.rotation);
     // A Blocked Field carved into a Creature Bank is open inward (you walk in
     // from within the Tile) — tell the border builder so it draws only the
@@ -1666,6 +1716,55 @@ export function HexMapBoard({
             {glyph}
           </text>
         );
+      }
+      // Modular field icons for atmosphere tiles that ship no baked bonuses
+      // (anime A-S1 / W-S1). Attached one module per field — never a full-tile
+      // image regen. Classic printed tiles leave attachFieldSymbols off.
+      if (artShown && attachFieldSymbols && !tokenImage) {
+        const symbol = fieldSymbolOverlayFor(field);
+        if (symbol) {
+          const iconSize = HEX_SIZE * (symbol.kind === "resource" ? 0.95 : 0.85);
+          overlays.push(
+            <image
+              className="fieldSymbolModule"
+              data-symbol-kind={symbol.kind}
+              height={iconSize}
+              href={assetUrl(symbol.image)}
+              key={`${spaceId}-field-symbol`}
+              preserveAspectRatio="xMidYMid meet"
+              style={{ pointerEvents: "none" }}
+              width={iconSize}
+              x={x - iconSize / 2}
+              y={y - iconSize * (symbol.kind === "mine" ? 0.15 : 0.05)}
+            />
+          );
+          if (symbol.amount != null && symbol.amount > 0) {
+            overlays.push(
+              <text
+                className="hexProduction"
+                key={`${spaceId}-field-symbol-amt`}
+                textAnchor="middle"
+                x={x}
+                y={y + HEX_SIZE * 0.62}
+              >
+                {`↻${symbol.amount}`}
+              </text>
+            );
+          }
+          if (symbol.difficulty && guarded) {
+            overlays.push(
+              <text
+                className="hexDifficulty"
+                key={`${spaceId}-field-symbol-diff`}
+                textAnchor="middle"
+                x={x}
+                y={y - HEX_SIZE * 0.48}
+              >
+                {ROMAN[symbol.difficulty]}
+              </text>
+            );
+          }
+        }
       }
       // Designed guards on map-object hexes (teleport tokens / gates / gate
       // halves) are NOT printed on the tile scan, so their numeral shows even

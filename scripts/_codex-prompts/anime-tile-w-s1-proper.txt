@@ -1,0 +1,45 @@
+Use your IMAGE GENERATION / IMAGE EDIT tools only (not SVG scripts).
+
+ONE tile only: Azure Breeze Sect (wuxia) starting map tile W-S1.
+
+Why this exists: the Fuyuki A-S1 tile is CORRECT (proper HoMM3 7-hex flower, cream borders, baked board icons). The current W-S1 is WRONG (ornate separate scenery panels + sticker icons). Make W-S1 match A-S1 quality.
+
+ATTACHED (in order):
+1) Image 1 = Rampart S4 starting tile — CORRECT board-game STRUCTURE (7-hex flower, cream borders, field symbols in place). Structural master.
+2) Image 2 = Azure Breeze Sect panorama — wuxia/xianxia mountain sect (jade roofs, clouds, sword pavilion). Atmosphere + town identity.
+3) Image 3 = finished Fuyuki A-S1 tile — quality TARGET (what "correct" looks like: continuous terrain, cream borders, embossed cream icons, night/painted board feel). Match this craft, but wuxia palette not Japanese city.
+
+GOAL: Transform Image 1 into the Azure Breeze starting tile at Image 3's quality level.
+
+FROM IMAGE 1 — KEEP EXACTLY (pixel-aligned):
+- Exact 7-hex FLOWER silhouette (center + 6 ring hexes). NEVER separate floating panels.
+- Cream parchment outer borders and yellow outer-impassable arcs (like Image 1 and Image 3 — NOT ornate gold jade frames).
+- Dotted internal hex division lines.
+- EVERY field symbol in the SAME positions as Image 1:
+  • NE: campfire + crossed pick/shovel (cream embossed free resource)
+  • E: rocky blocked mountains
+  • SE: open empty field
+  • SW: treasure cart/chest + Roman "I"
+  • W: mine + loop "↻2" + stone pile + Roman "I"
+  • NW: open empty field
+- Transparent/black outside the flower.
+- Same framing/resolution as Image 1 (~1024×985).
+
+FROM IMAGE 2 — FULL RETHEME (not stickers on old art):
+- Retheme ALL terrain to wuxia mountain sanctuary: celadon jade roofs, pale stone, cloud sea, pines, waterfalls, soft dawn light, restrained vermilion accents.
+- Centre hex = Azure Breeze sword pavilion / sect citadel from Image 2, board-game top-down footprint matching Image 1's town.
+- Ring fields keep their ROLES but painted as continuous wuxia landscape (not seven disconnected dioramas).
+- Icons stay cream/ivory embossed board-game glyphs like Image 1 / Image 3 — NOT photoreal tools, NOT floating UI stickers.
+
+DO NOT:
+- Keep the old multi-panel ornate gold-border wuxia collage look
+- Output separate hex "windows" with thick decorative frames
+- Move or delete field symbols
+- Use daytime European green grass as the main look
+- Add "S4"/"W-S1" text, UI, watermarks, characters
+
+SAVE:
+1) out/anime-tiles/w-s1.png
+2) public/assets/anime/tiles/w-s1.webp  (WebP WITH alpha; sharp OK; match Image 1 size if possible)
+
+Verify w-s1.webp > 100KB with alpha. Reply with paths and byte sizes only.
