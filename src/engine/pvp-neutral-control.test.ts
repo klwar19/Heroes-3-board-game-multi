@@ -330,6 +330,10 @@ describe("PvP Neutral Control — the next player drives the guards", () => {
       const twin = structuredClone(guard);
       twin.id = `${guard.id}_twin`;
       twin.position = 6;
+      // Keep the tie a real choice: fully identical clones now auto-pick for
+      // AI-driven guards (the Imp Cache order fix), and this test pins WHO gets
+      // the prompt — so the twin carries a Stack Token to stay distinguishable.
+      twin.stackToken = "attack";
       state.combat!.units[twin.id] = twin;
       const [prey, spare] = playerUnitsOf(state, "p1");
       reshape(prey, { grade: "bronze", position: 13, initiative: 99 });

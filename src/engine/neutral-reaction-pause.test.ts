@@ -301,7 +301,11 @@ describe("neutral combat — tied-speed activation order", () => {
     const guard2: CombatUnitState = {
       ...structuredClone(guard1),
       id: `${guard1.id}__clone`,
-      position: freePosition
+      position: freePosition,
+      // A Stack Token keeps the pair distinguishable: fully identical clones
+      // now auto-pick instead of prompting (the Imp Cache order fix) — this
+      // test pins the PROMPT pause, so the tie must stay a real choice.
+      stackToken: "attack"
     };
     combat.units[guard2.id] = guard2;
     const neutralIds = Object.values(combat.units)
