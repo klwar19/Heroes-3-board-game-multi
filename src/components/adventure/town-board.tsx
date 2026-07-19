@@ -884,12 +884,24 @@ export function TownBoardView({
                   </div>
                 )
               ) : !isScan ? (
-                // Designed empty bar: the printed-style plates.
-                <div className="tbEmptyBar">
+                // Designed empty bar: a faintly BLURRED + dimmed preview of this
+                // bar's built-town slice sits behind the printed-style plates and
+                // a "not built" plaque — the same "blur + not built" cue the scan
+                // boards get, now for EVERY designed board (bulwark, the anime /
+                // wuxia towns, and any future designed town). Keyed off the board
+                // spec's built art, never the faction/theme, so it is generic.
+                <div className={`tbEmptyBar ${anyBuildable ? "buildable" : ""}`}>
+                  {spec.barTileImages?.[index] ? (
+                    <LoadedImg className="tbEmptyPreview" src={spec.barTileImages[index]} />
+                  ) : null}
                   {bar.map((buildingId) => {
                     const building = coreBuildingDefinitions[buildingId];
                     return building ? <DesignedPlate building={building} key={buildingId} /> : null;
                   })}
+                  <span className="tbUnbuiltPlaque">
+                    <Hammer aria-hidden="true" size={12} />
+                    not built{anyBuildable ? " · buildable" : ""}
+                  </span>
                 </div>
               ) : (
                 // Scan board, nothing built in this bar: the base town scan shows
