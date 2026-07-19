@@ -211,6 +211,54 @@ describe("TownBoardView — cove & conflux English printed scan boards", () => {
   });
 });
 
+describe("TownBoardView — designed-board blur/not-built (anime, wuxia, future towns)", () => {
+  it.each([
+    ["fuyuki", "bin"],
+    ["azure_breeze", "qingyun"]
+  ] as const)("%s (a DESIGNED board) blurs every unbuilt bar and labels it 'not built'", (factionId, heroId) => {
+    const state = modTownState(factionId, heroId);
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+    const { container } = render(viewFor(state));
+
+    // It renders as a DESIGNED board (no empty-scan), so it USED to fall through
+    // to plain plates with no blur/not-built cue — the gap this fixes.
+    expect(container.querySelector(".tbBoard.designed"), `${factionId} designed board`).toBeTruthy();
+    expect(container.querySelector(".tbBoard.scan"), `${factionId} is not a scan board`).toBeNull();
+    // Scan-board blur (`.tbScanUnbuilt`) never applies to a designed board.
+    expect(container.querySelectorAll(".tbScanUnbuilt")).toHaveLength(0);
+
+    // Every unbuilt designed bar now carries the blurred built-slice PREVIEW and
+    // the explicit "not built" plaque — the "blur + not built" cue.
+    const emptyBars = container.querySelectorAll(".tbEmptyBar");
+    expect(emptyBars.length, "a fresh town has ≥1 unbuilt bar").toBeGreaterThanOrEqual(1);
+    emptyBars.forEach((bar) => {
+      expect(bar.querySelector(".tbEmptyPreview"), "blurred built-slice preview").toBeTruthy();
+      expect(bar.querySelector(".tbUnbuiltPlaque")?.textContent).toMatch(/not built/i);
+    });
+    // The preview is the bar's OWN built slice art (so it reads as a preview of
+    // what will go up, not a generic placeholder).
+    const preview = emptyBars[0].querySelector(".tbEmptyPreview") as HTMLImageElement;
+    expect(preview.src).toMatch(new RegExp(`${factionId.replace("_", "-")}-bar-\\d`));
+
+    // CONTROL: build a bar's building and it sheds the empty-bar blur for the
+    // crisp built slice — proving the preview is tied to build state, not decor.
+    town.buildings.push(`${factionId}.city_hall`);
+    cleanup();
+    const { container: after } = render(viewFor(state));
+    // One fewer empty bar than before (the City Hall bar now shows built art).
+    expect(after.querySelectorAll(".tbEmptyBar").length).toBeLessThan(emptyBars.length);
+    expect(after.querySelector(".tbBarTileArt"), "the built bar shows its crisp slice").toBeTruthy();
+  });
+
+  it("CONTROL: a SCAN board (Castle) keeps the scan blur and grows NO designed preview", () => {
+    const { container } = render(viewFor(freshState()));
+    // Scan boards use `.tbScanUnbuilt` (backdrop blur of the empty scan), never
+    // the designed-board `.tbEmptyBar`/`.tbEmptyPreview` path.
+    expect(container.querySelectorAll(".tbScanUnbuilt").length).toBeGreaterThan(0);
+    expect(container.querySelector(".tbEmptyPreview")).toBeNull();
+  });
+});
+
 describe("TownBoardView — resource-gain markers", () => {
   it("places one marker per track at the production value and moves with it", () => {
     const state = freshState();

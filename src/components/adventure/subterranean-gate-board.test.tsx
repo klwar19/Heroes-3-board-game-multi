@@ -597,17 +597,43 @@ describe("Subterranean Gate — pick-on-reveal placement renders as a real choic
     expect(labels.every((label) => /Gate on the (NE|E|SE|SW|W|NW) edge/.test(label))).toBe(true);
     expect(labels.some((label) => /hex\s*-?\d+\s*,\s*-?\d+/.test(label))).toBe(false);
 
-    // Selecting another candidate then Confirm carves that hex.
+    // Every alternate candidate glows too (amber gateExitCandidate), so the
+    // whole choice is visible on the map — not just one option behind a float.
     const alternate = hexes.find((spaceId) => spaceId !== selected) ?? selected!;
+    expect(
+      hex(container, alternate).classList.contains("gateExitCandidate") ||
+        hex(container, alternate).classList.contains("mapChoiceTarget"),
+      "the alternate exit glows as clickable",
+    ).toBe(true);
+    // The robust "visual way": clicking a glowing candidate hex places the gate
+    // exit THERE directly — no cycle-float Confirm needed (the float can vanish).
     fireEvent.click(hex(container, alternate));
-    const confirm = [...container.querySelectorAll(".gateExitFloat .commandButton")].find((button) =>
-      /Confirm/i.test(button.textContent ?? "")
-    );
-    expect(confirm).toBeTruthy();
-    fireEvent.click(confirm as unknown as HTMLElement);
     const chosen = latest().adventure!.fields[alternate];
-    expect(chosen?.location, "the selected hex became the gate").toBe("subterranean_gate");
+    expect(chosen?.location, "the clicked hex became the gate").toBe("subterranean_gate");
     expect(chosen?.gateToTileId, "the gate points at the cavern").toBe(cavern.id);
+    // …and the placement choice is resolved (no lingering prompt to disappear).
+    const resolved = latest().pendingChoice;
+    expect(
+      resolved?.type === "OPTION_CHOICE" && resolved.context === "subterranean-gate-placement",
+    ).toBe(false);
+  });
+
+  it("clicking a path-up candidate hex places the exit there directly (no float/Confirm needed)", () => {
+    const { state, surface } = pathUpChoiceState();
+    const { hexes } = gateChoice(state);
+    expect(hexes.length, "≥2 candidate entrance hexes").toBeGreaterThanOrEqual(2);
+    const { container, latest } = renderLiveBoard(state);
+
+    // Pick a NON-highlighted candidate and click its hex — it must carve there,
+    // proving the map click alone resolves the choice (the float is optional).
+    const selected = hexes.find((spaceId) => hex(container, spaceId).classList.contains("mapChoiceTarget"));
+    const target = hexes.find((spaceId) => spaceId !== selected) ?? selected!;
+    expect(hex(container, target).classList.contains("gateExitCandidate")).toBe(true);
+    fireEvent.click(hex(container, target));
+    const chosen = latest().adventure!.fields[target];
+    expect(chosen?.location, "the clicked hex became the path-up entrance").toBe("subterranean_gate");
+    expect(chosen?.gateToTileId, "the entrance points back at the surface").toBe(surface.id);
+    expect(chosen?.gateLinkSpaceId, "the crossing is linked").toBeTruthy();
   });
 
   it("MULTIPLAYER: another player's board shows NO gate-choice glow, float, or click while it is p1's choice", () => {
