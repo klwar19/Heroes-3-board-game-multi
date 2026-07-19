@@ -4712,6 +4712,7 @@ button.battleCell {
 }
 
 .hbPortrait {
+  position: relative;
   display: flex;
   padding: 0.7cqw;
   border-radius: 1.6cqw;
@@ -4728,6 +4729,24 @@ button.battleCell {
   object-fit: cover;
   border-radius: 1cqw;
   background: #0d0a06;
+}
+
+/* Public Grail-carrier badge (map-designer dig → carry). */
+.hbGrailMarker {
+  position: absolute;
+  right: 0.4cqw;
+  bottom: 0.4cqw;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 3.6cqw;
+  height: 3.6cqw;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe9a0, #c9a227 55%, #6a4e0a);
+  border: 0.25cqw solid #fff3c0;
+  box-shadow: 0 0.3cqw 0.8cqw rgba(0, 0, 0, 0.55);
+  font-size: 2cqw;
+  line-height: 1;
 }
 
 /* The whole right half is one framed panel, as printed. */

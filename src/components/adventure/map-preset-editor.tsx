@@ -156,6 +156,10 @@ export function MapPresetEditor({
     mode?: "all" | "choose";
     guard?: CustomGuardSpec | undefined;
     guardSet?: boolean;
+    breakField?: boolean;
+    persistentGuard?: boolean;
+    unlimitedRounds?: boolean;
+    breakSet?: boolean;
   }) => {
     const role = parts.role ?? obeliskRole;
     if (role === "classic") {
@@ -163,8 +167,16 @@ export function MapPresetEditor({
       return;
     }
     const guard = parts.guardSet ? parts.guard : obeliskGuard;
+    const breakField = parts.breakSet ? parts.breakField : obeliskConfig?.breakField;
+    const persistentGuard = parts.breakSet ? parts.persistentGuard : obeliskConfig?.persistentGuard;
+    const unlimitedRounds = parts.breakSet ? parts.unlimitedRounds : obeliskConfig?.unlimitedRounds;
+    const breakFlags = {
+      ...(breakField ? { breakField: true as const } : {}),
+      ...(persistentGuard ? { persistentGuard: true as const } : {}),
+      ...(unlimitedRounds ? { unlimitedRounds: true as const } : {})
+    };
     if (role !== "bonus") {
-      patch({ obelisks: { role, ...(guard ? { guard } : {}) } });
+      patch({ obelisks: { role, ...(guard ? { guard } : {}), ...breakFlags } });
       return;
     }
     const list = parts.bonuses ?? obeliskBonuses;
@@ -174,7 +186,8 @@ export function MapPresetEditor({
         role: "bonus",
         bonuses: list,
         ...(mode === "choose" && list.length > 1 ? { bonusMode: "choose" as const } : {}),
-        ...(guard ? { guard } : {})
+        ...(guard ? { guard } : {}),
+        ...breakFlags
       }
     });
   };
@@ -339,7 +352,11 @@ export function MapPresetEditor({
       (value.customWinConditions?.length ?? 0) +
       // The Grail / Dragon-Utopia objective tuning now lives in this group.
       (value.objectives ? describeObjectivesConfig(value.objectives).length : 0),
-    mapLocations: (value.obelisks ? 1 : 0) + (value.settlements ? 1 : 0),
+    mapLocations:
+      (value.obelisks ? 1 : 0) +
+      (value.settlements ? 1 : 0) +
+      (value.mines ? 1 : 0) +
+      (value.randomTowns ? 1 : 0),
     timedEvents: timed.length,
     designerNote: value.notes ? 1 : 0
   };
@@ -746,8 +763,176 @@ export function MapPresetEditor({
               ))}
             </div>
           </div>
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Grail dig movement cost">
+            <span className="mapPresetObjectiveLabel">Dig cost (MP)</span>
+            <div className="mapPresetChipRow">
+              {([undefined, 0, 1, 2] as const).map((cost) => (
+                <button
+                  aria-pressed={(objectives.grailDigCost ?? 1) === (cost ?? 1) && (cost === undefined ? objectives.grailDigCost === undefined : objectives.grailDigCost === cost)}
+                  className={`mapPresetChip${
+                    cost === undefined
+                      ? objectives.grailDigCost === undefined
+                        ? " active"
+                        : ""
+                      : objectives.grailDigCost === cost
+                        ? " active"
+                        : ""
+                  }`}
+                  key={String(cost)}
+                  onClick={() => {
+                    const next = { ...objectives };
+                    if (cost === undefined) delete next.grailDigCost;
+                    else next.grailDigCost = cost;
+                    patchObjectives(next);
+                  }}
+                  title={cost === undefined ? "Classic dig costs 1 MP." : `Dig costs ${cost} movement point(s).`}
+                  type="button"
+                >
+                  {cost === undefined ? "Default (1)" : cost === 0 ? "Free (0)" : String(cost)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Grail as Utopia">
+            <span className="mapPresetObjectiveLabel">Grail as Utopia</span>
+            <div className="mapPresetChipRow">
+              {(
+                [
+                  { id: undefined, label: "Off" },
+                  { id: "always" as const, label: "Always" },
+                  { id: "after-dig-utopia" as const, label: "After dig → Utopia" },
+                  { id: "after-dig-empty" as const, label: "After dig → empty" }
+                ] as const
+              ).map((opt) => (
+                <button
+                  aria-pressed={objectives.grailAsUtopia === opt.id}
+                  className={`mapPresetChip${objectives.grailAsUtopia === opt.id ? " active" : ""}`}
+                  key={String(opt.id)}
+                  onClick={() => {
+                    const next = { ...objectives };
+                    if (opt.id === undefined) delete next.grailAsUtopia;
+                    else next.grailAsUtopia = opt.id;
+                    patchObjectives(next);
+                  }}
+                  type="button"
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Grail dig reward gold">
+            <span className="mapPresetObjectiveLabel">Dig reward gold</span>
+            <input
+              aria-label="Grail dig reward gold"
+              className="mapPresetNumber"
+              max={50}
+              min={0}
+              onChange={(e) => {
+                const next = { ...objectives };
+                const gold = Math.max(0, Math.min(50, Number(e.target.value) || 0));
+                const reward = { ...(next.grailDigReward ?? {}), gold };
+                if (!reward.gold && !reward.buildingMaterials && !reward.valuables) {
+                  delete next.grailDigReward;
+                } else {
+                  next.grailDigReward = reward;
+                }
+                patchObjectives(next);
+              }}
+              type="number"
+              value={objectives.grailDigReward?.gold ?? 0}
+            />
+            <span className="mapPresetObjectiveLabel">valuables</span>
+            <input
+              aria-label="Grail dig reward valuables"
+              className="mapPresetNumber"
+              max={30}
+              min={0}
+              onChange={(e) => {
+                const next = { ...objectives };
+                const valuables = Math.max(0, Math.min(30, Number(e.target.value) || 0));
+                const reward = { ...(next.grailDigReward ?? {}), valuables };
+                if (!reward.gold && !reward.buildingMaterials && !reward.valuables) {
+                  delete next.grailDigReward;
+                } else {
+                  next.grailDigReward = reward;
+                }
+                patchObjectives(next);
+              }}
+              type="number"
+              value={objectives.grailDigReward?.valuables ?? 0}
+            />
+            <span className="mapPresetObjectiveLabel">stone</span>
+            <input
+              aria-label="Grail dig reward materials"
+              className="mapPresetNumber"
+              max={30}
+              min={0}
+              onChange={(e) => {
+                const next = { ...objectives };
+                const buildingMaterials = Math.max(0, Math.min(30, Number(e.target.value) || 0));
+                const reward = { ...(next.grailDigReward ?? {}), buildingMaterials };
+                if (!reward.gold && !reward.buildingMaterials && !reward.valuables) {
+                  delete next.grailDigReward;
+                } else {
+                  next.grailDigReward = reward;
+                }
+                patchObjectives(next);
+              }}
+              type="number"
+              value={objectives.grailDigReward?.buildingMaterials ?? 0}
+            />
+          </div>
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Grail possession VP">
+            <span className="mapPresetObjectiveLabel">Possession VP at scoring</span>
+            <input
+              aria-label="Grail possession VP"
+              className="mapPresetNumber"
+              max={20}
+              min={0}
+              onChange={(e) => {
+                const next = { ...objectives };
+                const vp = Math.max(0, Math.min(20, Number(e.target.value) || 0));
+                if (vp > 0) next.grailPossessionVp = vp;
+                else delete next.grailPossessionVp;
+                patchObjectives(next);
+              }}
+              type="number"
+              value={objectives.grailPossessionVp ?? 0}
+            />
+          </div>
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Build Grail at">
+            <span className="mapPresetObjectiveLabel">Build Grail at</span>
+            <div className="mapPresetChipRow">
+              {(
+                [
+                  { id: undefined, label: "Off" },
+                  { id: "town" as const, label: "Town" },
+                  { id: "settlement" as const, label: "Settlement" },
+                  { id: "both" as const, label: "Both" },
+                  { id: "starting-town" as const, label: "Starting town" }
+                ] as const
+              ).map((opt) => (
+                <button
+                  aria-pressed={objectives.grailBuildAt === opt.id}
+                  className={`mapPresetChip${objectives.grailBuildAt === opt.id ? " active" : ""}`}
+                  key={String(opt.id)}
+                  onClick={() => {
+                    const next = { ...objectives };
+                    if (opt.id === undefined) delete next.grailBuildAt;
+                    else next.grailBuildAt = opt.id;
+                    patchObjectives(next);
+                  }}
+                  type="button"
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <small className="mapPresetHint">
-            Place the Grail dig site on the map via a centre tile&apos;s Ⅶ field in the tile popover.
+            Place the Grail dig site on the map via a centre tile&apos;s Ⅶ field in the tile popover. A hero carrying
+            the Grail shows a marker; build puts the Grail on that location for possession VP.
           </small>
         </section>
       ) : null}
@@ -1039,12 +1224,64 @@ export function MapPresetEditor({
           ))}
         </div>
         {obeliskRole !== "classic" ? (
-          <GuardLevelChips
-            ariaLabel="Obelisk guard"
-            guard={obeliskGuard}
-            label="Guard (fought on first visit)"
-            onChange={setObeliskGuard}
-          />
+          <>
+            <GuardLevelChips
+              ariaLabel="Obelisk guard"
+              guard={obeliskGuard}
+              label="Guard (fought on first visit)"
+              onChange={setObeliskGuard}
+            />
+            <div className="mapPresetChipRow" role="group" aria-label="Obelisk break options">
+              <button
+                aria-pressed={Boolean(obeliskConfig?.breakField)}
+                className={`mapPresetChip${obeliskConfig?.breakField ? " active" : ""}`}
+                onClick={() =>
+                  commitObelisk({
+                    breakSet: true,
+                    breakField: !obeliskConfig?.breakField,
+                    persistentGuard: obeliskConfig?.persistentGuard,
+                    unlimitedRounds: obeliskConfig?.unlimitedRounds
+                  })
+                }
+                title="Break field: Pathfinding cannot walk through — must fight to enter."
+                type="button"
+              >
+                Break field
+              </button>
+              <button
+                aria-pressed={Boolean(obeliskConfig?.persistentGuard)}
+                className={`mapPresetChip${obeliskConfig?.persistentGuard ? " active" : ""}`}
+                onClick={() =>
+                  commitObelisk({
+                    breakSet: true,
+                    breakField: obeliskConfig?.breakField,
+                    persistentGuard: !obeliskConfig?.persistentGuard,
+                    unlimitedRounds: obeliskConfig?.unlimitedRounds
+                  })
+                }
+                title="On lose/retreat, living guards stay for a re-fight (dead stay dead)."
+                type="button"
+              >
+                Persistent army
+              </button>
+              <button
+                aria-pressed={Boolean(obeliskConfig?.unlimitedRounds)}
+                className={`mapPresetChip${obeliskConfig?.unlimitedRounds ? " active" : ""}`}
+                onClick={() =>
+                  commitObelisk({
+                    breakSet: true,
+                    breakField: obeliskConfig?.breakField,
+                    persistentGuard: obeliskConfig?.persistentGuard,
+                    unlimitedRounds: !obeliskConfig?.unlimitedRounds
+                  })
+                }
+                title="Fight has no Round limit (bank-style)."
+                type="button"
+              >
+                Unlimited rounds
+              </button>
+            </div>
+          </>
         ) : null}
         {obeliskRole === "bonus" ? (
           <div className="mapPresetObeliskAwards">
@@ -1110,6 +1347,125 @@ export function MapPresetEditor({
             ) : null}
           </div>
         ) : null}
+      </section>
+
+      <section className="mapPresetSection" aria-label="Mines">
+        <div className="mapPresetSectionLabel">Mines (map-wide break)</div>
+        <small className="mapPresetHint">
+          Optional guard and PC-style break options on every Mine. Persistent army leaves survivors after a
+          lost or retreated fight.
+        </small>
+        <GuardLevelChips
+          ariaLabel="Mine guard"
+          guard={value.mines?.guard}
+          label="Guard"
+          onChange={(guard) => {
+            const next = { ...(value.mines ?? {}) };
+            if (guard) next.guard = guard;
+            else delete next.guard;
+            patch({
+              mines:
+                next.guard || next.breakField || next.persistentGuard || next.unlimitedRounds
+                  ? next
+                  : undefined
+            });
+          }}
+        />
+        <div className="mapPresetChipRow" role="group" aria-label="Mine break options">
+          {(
+            [
+              ["breakField", "Break field"],
+              ["persistentGuard", "Persistent army"],
+              ["unlimitedRounds", "Unlimited rounds"]
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              aria-pressed={Boolean(value.mines?.[key])}
+              className={`mapPresetChip${value.mines?.[key] ? " active" : ""}`}
+              key={key}
+              onClick={() => {
+                const next = { ...(value.mines ?? {}) };
+                if (next[key]) delete next[key];
+                else next[key] = true;
+                patch({
+                  mines:
+                    next.guard || next.breakField || next.persistentGuard || next.unlimitedRounds
+                      ? next
+                      : undefined
+                });
+              }}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="mapPresetSection" aria-label="Random Town">
+        <div className="mapPresetSectionLabel">Random Town (map-wide)</div>
+        <small className="mapPresetHint">
+          Override the rolled faction guard army, capture reward, and gold income (default 10).
+        </small>
+        <GuardLevelChips
+          ariaLabel="Random Town guard"
+          guard={value.randomTowns?.guard}
+          label="Guard (replaces default faction Packs when set)"
+          onChange={(guard) => {
+            const next = { ...(value.randomTowns ?? {}) };
+            if (guard) next.guard = guard;
+            else delete next.guard;
+            patch({
+              randomTowns:
+                next.guard || next.captureReward || next.incomeGold !== undefined ? next : undefined
+            });
+          }}
+        />
+        <div className="mapPresetObjectiveRow" role="group" aria-label="Random Town income">
+          <span className="mapPresetObjectiveLabel">Gold income</span>
+          <input
+            aria-label="Random Town gold income"
+            className="mapPresetNumber"
+            max={50}
+            min={0}
+            onChange={(e) => {
+              const next = { ...(value.randomTowns ?? {}) };
+              const income = Math.max(0, Math.min(50, Number(e.target.value) || 0));
+              if (income === 10 && !next.guard && !next.captureReward) {
+                patch({ randomTowns: undefined });
+                return;
+              }
+              next.incomeGold = income;
+              patch({ randomTowns: next });
+            }}
+            type="number"
+            value={value.randomTowns?.incomeGold ?? 10}
+          />
+          <span className="mapPresetObjectiveLabel">Capture gold</span>
+          <input
+            aria-label="Random Town capture gold"
+            className="mapPresetNumber"
+            max={50}
+            min={0}
+            onChange={(e) => {
+              const next = { ...(value.randomTowns ?? {}) };
+              const gold = Math.max(0, Math.min(50, Number(e.target.value) || 0));
+              if (gold > 0) next.captureReward = { ...(next.captureReward ?? {}), gold };
+              else if (next.captureReward) {
+                delete next.captureReward.gold;
+                if (!next.captureReward.buildingMaterials && !next.captureReward.valuables) {
+                  delete next.captureReward;
+                }
+              }
+              patch({
+                randomTowns:
+                  next.guard || next.captureReward || next.incomeGold !== undefined ? next : undefined
+              });
+            }}
+            type="number"
+            value={value.randomTowns?.captureReward?.gold ?? 0}
+          />
+        </div>
       </section>
 
       <section className="mapPresetSection" aria-label="Settlements">
@@ -1749,6 +2105,11 @@ function GuardLevelChips({
 }) {
   const hasArmy = Boolean(guard?.units && guard.units.length > 0);
   const level = hasArmy ? undefined : guard?.level;
+  const units = guard?.units ?? [];
+  const addRandom = (slot: string) => {
+    if (units.length >= 6) return;
+    onChange({ units: [...units, slot] });
+  };
   return (
     <div className="mapPresetObjectiveRow" role="group" aria-label={ariaLabel}>
       <span className="mapPresetObjectiveLabel">⚔ {label}</span>
@@ -1775,10 +2136,48 @@ function GuardLevelChips({
           </button>
         ))}
       </div>
+      <div className="mapPresetChipRow" role="group" aria-label={`${ariaLabel} random units`}>
+        {(
+          [
+            ["random:bronze", "+Brown"],
+            ["random:silver", "+Silver"],
+            ["random:gold", "+Gold"],
+            ["random:azure", "+Azure"]
+          ] as const
+        ).map(([slot, labelText]) => (
+          <button
+            className="mapPresetChip"
+            key={slot}
+            onClick={() => addRandom(slot)}
+            title={`Add a random ${labelText.slice(1).toLowerCase()} unit to a certain army (rolled at fight time).`}
+            type="button"
+          >
+            {labelText}
+          </button>
+        ))}
+      </div>
       {hasArmy ? (
-        <small className="mapPresetHint">
-          A custom army guard ({guard?.units?.length} units) is set — pick a level to replace it.
-        </small>
+        <div className="mapPresetChipRow" role="list" aria-label="Certain army units">
+          {units.map((id, index) => (
+            <button
+              className="mapPresetChip active"
+              key={`${id}-${index}`}
+              onClick={() => {
+                const next = units.filter((_, i) => i !== index);
+                onChange(next.length > 0 ? { units: next } : undefined);
+              }}
+              title="Remove this unit"
+              type="button"
+            >
+              {id.startsWith("random:")
+                ? id.replace("random:", "Rnd ")
+                : id.startsWith("pack:")
+                  ? id.slice(5)
+                  : id.replace(/^neutral\./, "")}{" "}
+              ✕
+            </button>
+          ))}
+        </div>
       ) : null}
     </div>
   );
@@ -1883,6 +2282,9 @@ function ObeliskBonusFields({
         />
       </div>
     );
+  }
+  if (bonus.kind === "ability_token") {
+    return <small className="mapPresetHint">Each visitor Searches (1) the Ability deck (Ability token).</small>;
   }
   // morale: a fixed single positive token — nothing to configure.
   return <small className="mapPresetHint">Each visitor gains a single positive morale token.</small>;
@@ -1997,6 +2399,8 @@ function obeliskBonusGlyph(kind: CustomMapObeliskBonus["kind"]): string {
     case "morale":
       return REWARD_GLYPH_ICONS.moralePositive;
     case "search":
+      return REWARD_GLYPH_ICONS.treasure;
+    case "ability_token":
       return REWARD_GLYPH_ICONS.treasure;
     case "resources":
       return REWARD_GLYPH_ICONS.gold;

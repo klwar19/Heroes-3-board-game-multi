@@ -1,0 +1,285 @@
+/**
+ * Map-designer combat / tile-choice helpers (break fields, random-tier guards,
+ * player resource/VII picks, grail dig knobs, random-town income).
+ *
+ * Pure helpers only — wiring lives in adventure.ts / adventure-reducer.ts /
+ * map-preset.ts / materialize paths. Default-off / absent ⇒ byte-identical.
+ */
+
+import { coreUnitDefinitions } from "@/data/factions/units";
+import type {
+  CustomGuardSpec,
+  CustomMapObjectivesConfig,
+  CustomMapPreset,
+  GameState,
+  MapFieldState
+} from "./state";
+import { MAX_CUSTOM_GUARD_UNITS } from "./state";
+
+/** Tier a random certain-army slot may roll. */
+export type RandomGuardTier = "bronze" | "silver" | "gold" | "azure";
+
+/** Fight-time neutral/faction guard draw (mirrors adventure.NeutralDraw). */
+export type ResolvedGuardDraw = {
+  unitDefId: string;
+  tier: "bronze" | "silver" | "gold" | "azure";
+  bankGuard?: boolean;
+  factionPack?: boolean;
+};
+
+/** Prefix for a "random unit of this tier" certain-army slot. */
+export const RANDOM_GUARD_PREFIX = "random:" as const;
+/** Prefix for a faction Pack certain-army slot (Random Town custom guards). */
+export const PACK_GUARD_PREFIX = "pack:" as const;
+
+export const RANDOM_GUARD_TIERS: readonly RandomGuardTier[] = ["bronze", "silver", "gold", "azure"];
+
+export function isRandomGuardTier(value: unknown): value is RandomGuardTier {
+  return value === "bronze" || value === "silver" || value === "gold" || value === "azure";
+}
+
+/** True when `id` is a `random:<tier>` certain-army slot. */
+export function isRandomGuardSlot(id: unknown): id is `random:${RandomGuardTier}` {
+  if (typeof id !== "string" || !id.startsWith(RANDOM_GUARD_PREFIX)) {
+    return false;
+  }
+  return isRandomGuardTier(id.slice(RANDOM_GUARD_PREFIX.length));
+}
+
+/** True when `id` is a `pack:<unitDefId>` certain-army slot (faction Pack). */
+export function isPackGuardSlot(id: unknown): id is `pack:${string}` {
+  if (typeof id !== "string" || !id.startsWith(PACK_GUARD_PREFIX)) {
+    return false;
+  }
+  const unitDefId = id.slice(PACK_GUARD_PREFIX.length);
+  return Boolean(coreUnitDefinitions[unitDefId]?.pack);
+}
+
+/** True when `id` names a unit with a Neutral side (classic certain-army entry). */
+export function isNeutralGuardUnit(id: unknown): id is string {
+  return typeof id === "string" && Boolean(coreUnitDefinitions[id]?.neutral);
+}
+
+/**
+ * A certain-army entry is legal when it is a neutral unit, a random-tier slot,
+ * or a faction Pack slot. Shared by the sanitiser and the GuardSpecEditor.
+ */
+export function isCustomGuardUnitEntry(id: unknown): id is string {
+  return isNeutralGuardUnit(id) || isRandomGuardSlot(id) || isPackGuardSlot(id);
+}
+
+export function randomGuardTierOf(id: string): RandomGuardTier | null {
+  if (!isRandomGuardSlot(id)) {
+    return null;
+  }
+  return id.slice(RANDOM_GUARD_PREFIX.length) as RandomGuardTier;
+}
+
+export function packGuardUnitDefId(id: string): string | null {
+  if (!isPackGuardSlot(id)) {
+    return null;
+  }
+  return id.slice(PACK_GUARD_PREFIX.length);
+}
+
+/** Display label for one certain-army entry (editor chips + previews). */
+export function guardUnitEntryLabel(id: string): string {
+  if (isRandomGuardSlot(id)) {
+    const tier = randomGuardTierOf(id)!;
+    const labels: Record<RandomGuardTier, string> = {
+      bronze: "Random brown",
+      silver: "Random silver",
+      gold: "Random gold",
+      azure: "Random azure"
+    };
+    return labels[tier];
+  }
+  if (isPackGuardSlot(id)) {
+    const unitDefId = packGuardUnitDefId(id)!;
+    const def = coreUnitDefinitions[unitDefId];
+    return def ? `Pack of ${def.name}` : id;
+  }
+  return coreUnitDefinitions[id]?.name ?? id;
+}
+
+/**
+ * Difficulty contribution of one certain-army entry for the map Roman numeral /
+ * experience (random tier slots use the tier's point value; packs use the
+ * unit's tier). Azure body ⇒ Ⅶ overall when ANY entry is azure-tier.
+ */
+export function guardUnitEntryPoints(id: string): { points: number; azure: boolean } {
+  if (isRandomGuardSlot(id)) {
+    const tier = randomGuardTierOf(id)!;
+    if (tier === "azure") return { points: 0, azure: true };
+    return { points: tier === "gold" ? 3 : tier === "silver" ? 2 : 1, azure: false };
+  }
+  const unitDefId = isPackGuardSlot(id) ? packGuardUnitDefId(id)! : id;
+  const tier = coreUnitDefinitions[unitDefId]?.tier;
+  if (tier === "azure") return { points: 0, azure: true };
+  return {
+    points: tier === "gold" ? 3 : tier === "silver" ? 2 : tier === "bronze" ? 1 : 0,
+    azure: false
+  };
+}
+
+/**
+ * Field Difficulty a certain army COUNTS AS — same ladder as
+ * `customGuardArmyDifficulty`, but understands random-tier / pack slots.
+ */
+export function customGuardArmyDifficultyFromEntries(units: string[]): number {
+  let points = 0;
+  for (const unit of units) {
+    const { points: p, azure } = guardUnitEntryPoints(unit);
+    if (azure) return 7;
+    points += p;
+  }
+  if (points <= 1) return 1;
+  if (points <= 3) return 2;
+  if (points === 4) return 3;
+  if (points <= 7) return 4;
+  if (points <= 10) return 5;
+  return 6;
+}
+
+/**
+ * Resolve design-time certain-army entries into fight-time Neutral draws.
+ * Random-tier slots pick a random unit that has a Neutral side of that tier
+ * (seeded via `rng`); pack slots mint faction Pack sides (bankGuard so they
+ * never recycle into the Neutral decks).
+ */
+export function resolveCustomGuardDraws(
+  units: string[],
+  rng: { nextInt: (min: number, max: number) => number }
+): ResolvedGuardDraw[] {
+  const draws: ResolvedGuardDraw[] = [];
+  for (const entry of units.slice(0, MAX_CUSTOM_GUARD_UNITS)) {
+    if (isRandomGuardSlot(entry)) {
+      const tier = randomGuardTierOf(entry)!;
+      const pool = Object.keys(coreUnitDefinitions).filter(
+        (id) => coreUnitDefinitions[id]?.tier === tier && coreUnitDefinitions[id]?.neutral
+      );
+      if (pool.length === 0) continue;
+      const unitDefId = pool[rng.nextInt(0, pool.length - 1)];
+      draws.push({ unitDefId, tier, bankGuard: true });
+      continue;
+    }
+    if (isPackGuardSlot(entry)) {
+      const unitDefId = packGuardUnitDefId(entry)!;
+      const def = coreUnitDefinitions[unitDefId];
+      if (!def?.pack) continue;
+      draws.push({
+        unitDefId,
+        tier: def.tier as "bronze" | "silver" | "gold" | "azure",
+        factionPack: true,
+        bankGuard: true
+      });
+      continue;
+    }
+    const def = coreUnitDefinitions[entry];
+    if (!def?.neutral) continue;
+    draws.push({
+      unitDefId: entry,
+      tier: def.tier as "bronze" | "silver" | "gold" | "azure",
+      bankGuard: true
+    });
+  }
+  return draws;
+}
+
+/**
+ * After a lost / retreated break-field fight, collapse the living neutral
+ * units into a fresh certain-army list (unitDefIds, full health on re-fight).
+ * Pack survivors keep the `pack:` prefix so they re-mint as faction Packs.
+ */
+export function survivorsToCustomGuardUnits(
+  living: Array<{ unitDefId?: string; factionPack?: boolean; bankGuard?: boolean }>
+): string[] {
+  const units: string[] = [];
+  for (const unit of living) {
+    if (!unit.unitDefId) continue;
+    if (unit.factionPack) {
+      units.push(`${PACK_GUARD_PREFIX}${unit.unitDefId}`);
+    } else {
+      units.push(unit.unitDefId);
+    }
+  }
+  return units.slice(0, MAX_CUSTOM_GUARD_UNITS);
+}
+
+/** Stamp break / persistent / unlimited combat flags onto a field (optional). */
+export function applyBreakFieldOptions(
+  field: MapFieldState,
+  options:
+    | {
+        breakField?: boolean;
+        persistentGuard?: boolean;
+        unlimitedRounds?: boolean;
+      }
+    | undefined
+): void {
+  if (!options) return;
+  if (options.breakField) field.breakField = true;
+  else delete field.breakField;
+  if (options.persistentGuard) field.persistentGuard = true;
+  else delete field.persistentGuard;
+  if (options.unlimitedRounds) field.unlimitedCombatRounds = true;
+  else delete field.unlimitedCombatRounds;
+}
+
+/** Grail dig MP cost (0 / 1 / 2). Absent preset ⇒ classic 1. */
+export function grailDigMovementCost(state: GameState): 0 | 1 | 2 {
+  const cost = state.adventure?.mapPreset?.objectives?.grailDigCost;
+  return cost === 0 || cost === 1 || cost === 2 ? cost : 1;
+}
+
+/** End-game VP for possessing / controlling the Grail (0 when unset). */
+export function grailPossessionVp(state: GameState): number {
+  return state.adventure?.mapPreset?.objectives?.grailPossessionVp ?? 0;
+}
+
+/** How a second / Grail dig site may convert after dig (or always-as-utopia). */
+export function grailAsUtopiaMode(
+  state: GameState
+): NonNullable<CustomMapObjectivesConfig["grailAsUtopia"]> | undefined {
+  return state.adventure?.mapPreset?.objectives?.grailAsUtopia;
+}
+
+/** Random-town gold income (map-maker override; default 10). */
+export function randomTownIncomeGold(state: GameState): number {
+  const income = state.adventure?.mapPreset?.randomTowns?.incomeGold;
+  return typeof income === "number" && Number.isFinite(income) && income >= 0
+    ? Math.min(50, Math.floor(income))
+    : 10;
+}
+
+/** Capture-time resource reward for a Random Town (first capture only when set). */
+export function randomTownCaptureReward(
+  state: GameState
+): { gold?: number; buildingMaterials?: number; valuables?: number } | undefined {
+  return state.adventure?.mapPreset?.randomTowns?.captureReward;
+}
+
+/** Map-wide custom Random Town guard, if the designer set one. */
+export function randomTownCustomGuard(state: GameState): CustomGuardSpec | undefined {
+  return state.adventure?.mapPreset?.randomTowns?.guard;
+}
+
+/** Map-wide mine options (guard / break) from the preset. */
+export function minePresetOptions(state: GameState): CustomMapPreset["mines"] | undefined {
+  return state.adventure?.mapPreset?.mines;
+}
+
+/** Map-wide obelisk break options (beyond role/guard/bonus). */
+export function obeliskBreakOptions(state: GameState): Pick<
+  NonNullable<CustomMapPreset["obelisks"]>,
+  "breakField" | "persistentGuard" | "unlimitedRounds"
+> | undefined {
+  const o = state.adventure?.mapPreset?.obelisks;
+  if (!o) return undefined;
+  if (!o.breakField && !o.persistentGuard && !o.unlimitedRounds) return undefined;
+  return {
+    ...(o.breakField ? { breakField: true } : {}),
+    ...(o.persistentGuard ? { persistentGuard: true } : {}),
+    ...(o.unlimitedRounds ? { unlimitedRounds: true } : {})
+  };
+}

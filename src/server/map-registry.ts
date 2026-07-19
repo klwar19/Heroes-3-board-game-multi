@@ -244,6 +244,21 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     candidate.group === "center" && isViiFieldDesignation(candidate.viiField)
       ? candidate.viiField
       : undefined;
+  // Multi-select Ⅶ designations (Town / Utopia / Grail) — center only.
+  const viiFields =
+    candidate.group === "center" && Array.isArray(candidate.viiFields)
+      ? [...new Set(candidate.viiFields.filter(isViiFieldDesignation))]
+      : [];
+  const playerViiPick =
+    candidate.group === "center" &&
+    Boolean(candidate.faceDown) &&
+    candidate.playerViiPick === true &&
+    viiFields.length > 1;
+  // Player gold/valuables pick before reveal — face-down far/near only.
+  const playerResourcePick =
+    Boolean(candidate.faceDown) &&
+    (candidate.group === "far" || candidate.group === "near") &&
+    candidate.playerResourcePick === true;
   const legacy = candidate as { viiFieldReward?: unknown; viiFieldVp?: unknown };
   const centerHex =
     candidate.group === "center"
@@ -271,6 +286,9 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     // only a known designation survives so garbage can't set it. The center-hex
     // customization (guard / reward / VP) is independent of the designation.
     ...(viiField ? { viiField } : {}),
+    ...(viiFields.length > 0 ? { viiFields } : {}),
+    ...(playerViiPick ? { playerViiPick: true as const } : {}),
+    ...(playerResourcePick ? { playerResourcePick: true as const } : {}),
     ...(centerHex ? { centerHex } : {}),
     ...(settlement ? { settlement } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),

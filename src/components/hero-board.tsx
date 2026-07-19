@@ -285,6 +285,11 @@ export function HeroBoard({
     { label: "Knowledge", value: heroDef.startingStats.knowledge, icon: <StatIcon stat="knowledge" /> }
   ];
 
+  // Grail marker: public when this hero is carrying the dug Grail token.
+  const carriesGrail =
+    state.adventure?.grail?.status === "carried" &&
+    state.adventure.grail.carrierHeroId === hero.id;
+
   return (
     <div className={`hbWrap theme-${lexicon.register}`}>
       <section
@@ -295,6 +300,15 @@ export function HeroBoard({
         <div className="hbTop">
           <div className="hbPortrait">
             {heroDef.portrait ? <img alt={`${heroDef.name} portrait`} src={assetUrl(heroDef.portrait)} /> : null}
+            {carriesGrail ? (
+              <span
+                aria-label="Carrying the Grail"
+                className="hbGrailMarker"
+                title="Carrying the Grail"
+              >
+                🏆
+              </span>
+            ) : null}
           </div>
           <div className="hbRight">
             <button
