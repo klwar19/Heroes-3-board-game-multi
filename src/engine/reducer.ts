@@ -8121,12 +8121,18 @@ function advanceActiveUnit(state: GameState): void {
   setActiveUnit(state, step?.candidates[0]?.id ?? null);
 }
 
-/** True when every candidate is the same card type (e.g. four Imp Cache Familiars). */
+/**
+ * True when every candidate is the same card on the same side with the same
+ * Stack Token (e.g. four unstacked Imp Cache Familiars). A Few next to a Pack
+ * of the same card, or a Stacked guard next to an unstacked one, prints
+ * different stats/abilities — that tie stays a real order choice.
+ */
 function activationOrderCandidatesAreIndistinguishable(candidates: CombatUnitState[]): boolean {
   if (candidates.length < 2) {
     return true;
   }
-  const keyOf = (unit: CombatUnitState) => unit.unitDefId ?? unit.name;
+  const keyOf = (unit: CombatUnitState) =>
+    `${unit.unitDefId ?? unit.name}|${unit.variant}|${unit.stackToken ?? "none"}|${unit.armyStacks ?? 0}`;
   const first = keyOf(candidates[0]!);
   return candidates.every((unit) => keyOf(unit) === first);
 }
