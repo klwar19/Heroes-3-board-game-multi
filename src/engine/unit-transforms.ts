@@ -1,7 +1,7 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { CREATURE_BANK_UNIT_SIDES, stackTokenDelta } from "@/data/map/creature-banks";
 import { applyUnitSideRules, specialtyTransformHealth } from "./ruleset";
-import { combatUnitRankFold, withEliteAbility } from "./unit-experience";
+import { combatUnitRankFold, withRankAbilities } from "./unit-experience";
 import type { CombatUnitState, EffectDefinition, GameRuleset, UnitTransformState } from "./state";
 
 /**
@@ -179,7 +179,7 @@ export function applyUnitCurrentSide(
   unit.defense = side.defense + rankFold.defense;
   unit.maxHealth = side.health + (unit.permanentHealthBonus ?? 0) + rankFold.health;
   unit.initiative = side.initiative + rankFold.initiative;
-  unit.abilities = withEliteAbility(side.abilities, rankFold);
+  unit.abilities = withRankAbilities(side.abilities, rankFold);
   if (rankFold.rank > 0) {
     unit.unitRank = rankFold.rank;
   } else {

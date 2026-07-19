@@ -1276,12 +1276,12 @@ describe("BattlefieldBoard Polish army Stack badge", () => {
     expect(document.querySelectorAll(".stackTokenBadge")).toHaveLength(0);
   });
 
-  it("renders the Unit Experience veteran-rank badge (carets, Elite sword) from the mirrored rank", () => {
+  it("renders the Unit Experience veteran-rank badge (carets / Elite sword / art) from the mirrored rank", () => {
     const state = createInitialGameState("unit-rank-badge");
     state.combat!.units.unit_p1_griffins.unitRank = 2;
-    state.combat!.units.unit_p1_griffins.unitExperience = 5;
+    state.combat!.units.unit_p1_griffins.unitExperience = 6;
     state.combat!.units.unit_p2_skeletons.unitRank = 3;
-    state.combat!.units.unit_p2_skeletons.unitExperience = 9;
+    state.combat!.units.unit_p2_skeletons.unitExperience = 10;
     render(
       <CardZoomProvider>
         <BattlefieldBoard
@@ -1294,8 +1294,17 @@ describe("BattlefieldBoard Polish army Stack badge", () => {
         />
       </CardZoomProvider>
     );
-    expect(document.querySelector(".unitRankBadge.combat.rank-2")?.textContent).toBe("^^");
-    expect(document.querySelector(".unitRankBadge.combat.rank-3")?.textContent).toBe("⚔");
+    const rank2 = document.querySelector(".unitRankBadge.combat.rank-2");
+    const rank3 = document.querySelector(".unitRankBadge.combat.rank-3");
+    expect(rank2).toBeTruthy();
+    expect(rank3).toBeTruthy();
+    // Glyph fallback when badge art is absent; otherwise an <img> art chip.
+    if (!rank2?.querySelector("img.unitRankBadgeArt")) {
+      expect(rank2?.textContent).toBe("^^");
+    }
+    if (!rank3?.querySelector("img.unitRankBadgeArt")) {
+      expect(rank3?.textContent).toBe("⚔");
+    }
     // CONTROL: units without a mirrored rank draw no badge.
     expect(document.querySelectorAll(".unitRankBadge").length).toBe(2);
   });

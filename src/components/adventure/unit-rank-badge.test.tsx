@@ -24,46 +24,36 @@ function makeState(unitExperience: boolean, seed: string): GameState {
     ruleset: "legacy",
     ...(unitExperience ? { unitExperience: true } : {})
   } as Parameters<typeof createAdventureGameState>[0]);
-  state.players.p1.army = [{ id: "vets", unitDefId: "castle.marksmen", side: "few", experience: 9 }];
+  // Halberdiers standard path: R3 = 2 stats steps (+Def +Atk), R2 ability
+  state.players.p1.army = [{ id: "vets", unitDefId: "castle.halberdiers", side: "few", experience: 10 }];
   return state;
 }
 
-/**
- * Unit Experience (optional rule): the army panel shows a WoG-style rank badge
- * (carets / an Elite sword) and the RANK-FOLDED stats the engine fights with.
- * With the rule off the identical card renders no badge and printed stats —
- * the desktop-unchanged CONTROL.
- */
 describe("ArmyPanel veteran rank badge (unit experience)", () => {
-  it("shows the Elite sword badge and rank-folded stats for a rank-3 bronze card", () => {
+  it("shows rank badge and schedule-folded stats for a rank-3 standard-path unit", () => {
     renderArmy(makeState(true, "rank-badge-on"));
     const badge = document.querySelector(".unitRankBadge.rank-3");
-    expect(badge?.textContent).toBe("⚔");
-    expect(badge?.getAttribute("title")).toContain("Elite");
-    // Bronze rank 3 = +1 Attack / +1 Defense / +1 Health / +1 Initiative over print.
-    const printed = coreUnitDefinitions["castle.marksmen"]!.few!;
+    expect(badge).toBeTruthy();
+    const printed = coreUnitDefinitions["castle.halberdiers"]!.few!;
     const stats = document.querySelector(".armyUnitRow small")?.textContent ?? "";
+    // R1 stats +1 Def, R3 stats +1 Atk (R2 is ability)
     expect(stats).toContain(`A${printed.attack + 1}`);
     expect(stats).toContain(`D${printed.defense + 1}`);
-    expect(stats).toContain(`HP${printed.health + 1}`);
-    expect(stats).toContain(`I${printed.initiative + 1}`);
   });
 
   it("CONTROL — with the rule off the same card shows printed stats and no badge", () => {
     renderArmy(makeState(false, "rank-badge-off"));
     expect(document.querySelector(".unitRankBadge")).toBeNull();
     expect(document.querySelector(".armyExperienceBoard")).toBeNull();
-    const printed = coreUnitDefinitions["castle.marksmen"]!.few!;
+    const printed = coreUnitDefinitions["castle.halberdiers"]!.few!;
     const stats = document.querySelector(".armyUnitRow small")?.textContent ?? "";
     expect(stats).toContain(`A${printed.attack}`);
     expect(stats).toContain(`D${printed.defense}`);
   });
 
-  it("opens the Unit Experience Board pop-up with per-rank stat changes, elite text and a live Drill", () => {
+  it("opens the Unit Experience Board with STATS/ABILITY pills, unique path, and Drill", () => {
     const state = makeState(true, "rank-badge-action");
     state.players.p1.army[0].experience = 1;
-    // A second card with a registered ELITE ability: its name + rules text must
-    // read in the window even while locked (rank below 3).
     state.players.p1.army.push({ id: "champs", unitDefId: "castle.champions", side: "few", experience: 0 });
     const dispatched: unknown[] = [];
     render(
@@ -76,36 +66,23 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
         />
       </CardZoomProvider>
     );
-    // The roster keeps the inline per-card XP track…
     expect(document.querySelector(".armyXpTrack")).toBeTruthy();
-    // …and the board itself is a BUTTON that opens a pop-up window (like the
-    // Hero Grade / Hero Equipment windows).
     const boardButton = document.querySelector("button.armyExperienceBoard") as HTMLButtonElement;
     expect(boardButton?.textContent).toContain("Unit Experience Board");
     fireEvent.click(boardButton);
     const dialog = document.querySelector(".heroSystemModal.unitXpWindow") as HTMLElement;
     expect(dialog).toBeTruthy();
     const text = dialog.textContent ?? "";
-    // XP sources are spelled out…
-    expect(text).toContain("Cards earn XP");
-    // …the marksmen's BRONZE ladder shows every rank's threshold and stat
-    // delta (bronze: 2/5/9 XP; Elite adds the bronze-only +1 Initiative), and
-    // the champions' GOLD ladder shows its slower 4/9/15 thresholds…
+    expect(text).toContain("either stats or one ability");
     expect(text).toContain("1 · Seasoned");
     expect(text).toContain("2 · Veteran");
     expect(text).toContain("3 · Elite");
-    expect(text).toContain("at 2 XP");
-    expect(text).toContain("at 5 XP");
-    expect(text).toContain("at 9 XP");
-    expect(text).toContain("at 15 XP");
-    expect(text).toContain("+1 Defense");
-    expect(text).toContain("+1 Attack");
-    expect(text).toContain("+1 Health · +1 Initiative");
-    // …and the champions' registered elite ability appears with its FULL rules
-    // text while still locked.
+    expect(text).toContain("4 · Legend");
+    expect(text).toContain("STATS");
+    expect(text).toContain("ABILITY");
+    expect(text).toContain("at 3 XP");
     expect(text).toContain("No Retaliation");
     expect(text).toContain("never provoke a Retaliation");
-    // The window's Drill button dispatches the engine-offered action verbatim.
     fireEvent.click(dialog.querySelector(".armyUnitActions button") as Element);
     expect(dispatched[0]).toEqual({ type: "DRILL_UNIT", playerId: "p1", armyUnitId: "vets" });
   });

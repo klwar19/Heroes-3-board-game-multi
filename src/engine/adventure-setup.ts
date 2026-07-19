@@ -2250,6 +2250,19 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // Anime content requires BINH; flip so pins are not silently stripped.
     anime = { ...resolveAnimeOptions(setupOptions.anime), enabled: true, mapObjects: true };
   }
+  // Anime towns ship faction commanders (Astral Regent / Sword Saint) on the
+  // shared WOG Commanders machinery. When either anime-town module is on — or
+  // a seated player is already an anime faction — force Commanders on so the
+  // dock is never empty for Fuyuki / Azure Breeze. BINH-only (legacy forces
+  // wog.enabled false above unless flipped elsewhere).
+  const playerConfigsForCommander =
+    (options.players?.length ? options.players : DEFAULT_PLAYERS).map((p) => p.factionId);
+  const animeTownsOn =
+    Boolean(anime.enabled && (anime.isekaiTowns || anime.xianxiaTowns)) ||
+    playerConfigsForCommander.some((id) => id === "fuyuki" || id === "azure_breeze");
+  if (animeTownsOn && ruleset === "binh") {
+    wog = { ...wog, enabled: true, commanders: true };
+  }
   // A map-objects content module (WOG New Objects / Anime map objects) forces
   // the global Field Override mechanism ON — read the RESOLVED `wog`/`anime`
   // above (designer pins already folded in) so this backstop mirrors the

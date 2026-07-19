@@ -1,0 +1,30 @@
+Use IMAGE GENERATION tools only. Overwrite ONE file.
+
+THIS IS A UI BADGE ICON for a Heroes of Might and Magic III board-game app: unit veteran rank 4 "Legend".
+
+MANDATORY SUBJECT (exactly this, nothing else):
+- ONE five-pointed STAR (legendary unit rank mark)
+- Small radiant gold metal pin badge, square, centered
+- PURE BLACK background #000000
+
+MANDATORY COLOR PALETTE:
+- Star fill: #ffd766 (bright legend gold)
+- Edge highlight: #fff8d6
+- Core glow: #f0d48a
+- Shadow: #704208
+- Background: pure black #000000
+
+FORBIDDEN:
+- NO text, letters, numbers
+- NO full creature / hero body
+- NO sword (that is Elite rank)
+- NO multiple stars
+- NO ornate baroque frame
+- NO white background
+
+Style: clean premium HoMM3 board-game UI glyph, HD, simple silhouette, readable at 24–32px.
+
+SAVE OVERWRITE:
+public/assets/ui/unit-rank-legend.webp
+
+Convert with node sharp if needed. Verify > 8KB. Reply path + bytes only.

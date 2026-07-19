@@ -8022,6 +8022,27 @@ button.hbSlot:disabled { cursor: default; }
   box-shadow: inset 0 1px 0 rgb(255 226 144 / 30%), 0 0 10px rgb(231 183 60 / 55%);
 }
 
+.unitRankBadge.rank-4 {
+  border-color: #f0d48a;
+  background: linear-gradient(180deg, rgb(140 92 14 / 98%), rgb(70 42 8 / 98%));
+  color: #fff8d6;
+  text-shadow: 0 0 6px rgb(255 220 120 / 85%);
+  box-shadow: inset 0 1px 0 rgb(255 236 170 / 40%), 0 0 12px rgb(255 200 70 / 65%);
+}
+
+.unitRankBadgeArt {
+  display: block;
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+.unitRankBadge.combat .unitRankBadgeArt {
+  width: 12px;
+  height: 12px;
+}
+
 .unitRankBadge.combat {
   position: absolute;
   top: 6px;
@@ -8029,6 +8050,8 @@ button.hbSlot:disabled { cursor: default; }
   z-index: 6;
   font-size: 9px;
 }
+
+
 
 /* Berserk: a red chip flagging that this unit is forced to attack the nearest
    unit (friend or foe) on its next activation. Berserk is an active effect, not
@@ -28246,7 +28269,10 @@ button.armyExperienceBoard > small { color: #9b917d; font-size: 8px; text-transf
 .unitXpStats { display: flex; flex-wrap: wrap; gap: 5px 14px; color: #b3a88f; font-size: 12px; }
 .unitXpStats .boosted { color: var(--mod-accent); font-weight: 700; }
 
-.unitXpRanks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.unitXpRanks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 900px) {
+  .unitXpRanks { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 
 .unitXpRank {
   display: grid;
@@ -28267,11 +28293,103 @@ button.armyExperienceBoard > small { color: #9b917d; font-size: 8px; text-transf
 .unitXpRank.next { border-color: rgb(255 255 255 / 22%); }
 .unitXpRank.locked { opacity: 0.62; filter: saturate(0.4); }
 
-.unitXpElite { grid-column: 1 / -1; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 2px 5px; margin-top: 5px; padding-top: 5px; border-top: 1px dashed rgb(255 255 255 / 14%); font-size: 10px; }
+/* Ability row: icon + name + status, then full rules text. */
+.unitXpElite {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 2px 6px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dashed rgb(255 255 255 / 14%);
+  font-size: 10px;
+  align-items: start;
+}
+.unitXpElite > img.unitXpAbilityIcon {
+  grid-row: 1 / 2;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 50%);
+}
 .unitXpElite > svg { grid-row: 1 / 3; align-self: start; margin-top: 1px; }
-.unitXpElite > small { grid-column: 1 / -1; line-height: 1.4; }
+.unitXpElite > b { color: inherit; }
+.unitXpElite > small { grid-column: 1 / -1; line-height: 1.4; opacity: 0.9; }
 .unitXpElite.active { color: var(--mod-accent); }
 .unitXpElite.locked { color: #746d61; }
+.unitXpElite.signature {
+  border-top-color: rgb(231 183 60 / 55%);
+  background: linear-gradient(180deg, rgb(80 55 12 / 35%), transparent);
+  padding: 5px 4px 2px;
+  border-radius: 0 0 6px 6px;
+}
+.unitXpTrackTag,
+.unitXpBudgetTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgb(198 147 65 / 55%);
+  background: rgb(40 28 12 / 70%);
+  color: #f0d48a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.unitXpBudgetTag {
+  border-color: rgb(120 160 200 / 50%);
+  color: #b8d4f0;
+  background: rgb(20 32 48 / 70%);
+}
+.unitXpKindPill {
+  display: inline-flex;
+  justify-self: start;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+.unitXpKindPill.kind-stats {
+  background: rgb(60 100 60 / 45%);
+  color: #b8e0b0;
+}
+.unitXpKindPill.kind-ability {
+  background: rgb(90 70 30 / 55%);
+  color: #f0d48a;
+}
+.unitXpRank.kind-stats.reached {
+  border-color: rgb(100 160 100 / 70%);
+}
+.unitXpRank.kind-ability.reached {
+  border-color: var(--mod-accent);
+}
+.unitXpActiveAbilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+.unitXpActiveChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  border: 1px solid rgb(231 183 60 / 50%);
+  background: rgb(50 36 10 / 55%);
+  color: #f0d48a;
+  font-size: 11px;
+}
+.unitXpActiveChip img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: 2px;
+}
+
 
 @media (max-width: 720px) {
   .unitXpEntry { grid-template-columns: 64px minmax(0, 1fr); }

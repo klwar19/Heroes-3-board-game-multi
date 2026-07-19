@@ -5,7 +5,7 @@
 import { ChevronDown, ChevronUp, Crown, Hourglass, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
-import { UNIT_RANK_NAMES } from "@/data/units/experience";
+import { UNIT_RANK_NAMES, unitRankBadgeImage } from "@/data/units/experience";
 import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -1373,9 +1373,22 @@ export function BattlefieldBoard({
                   className={`unitRankBadge combat rank-${unit!.unitRank}`}
                   title={`Veteran rank ${unit!.unitRank} (${
                     UNIT_RANK_NAMES[unit!.unitRank!] ?? ""
-                  }) — ${unit!.unitExperience ?? 0} XP. Rank stat bonuses are already folded into this unit's stats.`}
+                  }) — ${unit!.unitExperience ?? 0} XP. Rank stat and ability bonuses are already folded into this unit.`}
                 >
-                  {unit!.unitRank! >= 3 ? "⚔" : "^".repeat(unit!.unitRank!)}
+                  {unitRankBadgeImage(unit!.unitRank!) ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="unitRankBadgeArt"
+                      src={assetUrl(unitRankBadgeImage(unit!.unitRank!)!)}
+                    />
+                  ) : unit!.unitRank! >= 4 ? (
+                    "★"
+                  ) : unit!.unitRank! >= 3 ? (
+                    "⚔"
+                  ) : (
+                    "^".repeat(unit!.unitRank!)
+                  )}
                 </span>
               ) : null}
               {retaliationSpent ? (

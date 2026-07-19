@@ -303,8 +303,14 @@ export { makeCombatUnitFromArmy } from "./adventure";
 export {
   armyUnitRankInfo,
   unitExperienceActive,
+  unitRankAbilityGainsAt,
+  unitRankAbilityIds,
   unitRankForExperience,
-  unitRankStatBonuses
+  unitRankStatBonuses,
+  unitRankStatBonusesFor,
+  unitRankStatGainsAt,
+  unitRankStep,
+  withRankAbilities
 } from "./unit-experience";
 export { createInitialGameState } from "./setup";
 export {

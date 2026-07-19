@@ -1,0 +1,45 @@
+Use your IMAGE GENERATION / IMAGE EDIT tools only (not SVG scripts, not procedural drawing).
+
+TASK: precise IMAGE EDIT of a finished Heroes of Might & Magic III board-game starting map tile.
+
+ATTACHED IMAGES (in order):
+- Image 1 = Rampart starting tile S4 (the finished hexagonal map TILE from the board game — 7-hex flower).
+- Image 2 = Fuyuki City town panorama reference (anime-fantasy Japanese riverside citadel).
+
+EDIT Image 1 into the Fuyuki City starting tile (id A-S1). This is a precise local edit of Image 1, NOT a regeneration from scratch.
+
+KEEP 100% identical and pixel-aligned from Image 1:
+- The exact 7-hex FLOWER silhouette (one centre hex + six surrounding hexes). NEVER a single large hex with arbitrary subdivisions.
+- Cream / parchment outer hex borders and the yellow outer-impassable arcs.
+- Dotted internal hex division lines between fields.
+- EVERY field symbol in its exact position and style:
+  - NE: campfire + crossed pick/shovel tools (resource symbol)
+  - E: rocky blocked mountain field with the impassable border treatment
+  - SE: open grassy empty field
+  - SW: treasure chest + cart + Roman "I" guard marker (treasure symbol difficulty 1)
+  - W: materials mine building with loop "↻2" stone/materials icon + Roman "I" guard
+  - NW: open grassy empty field
+- Black / transparent corners outside the flower (the art must stay flower-shaped, not a filled rectangle).
+- Overall late-90s board-game print lighting, soft painterly terrain, readable icon scale.
+
+CHANGE ONLY:
+- The CENTRAL town hex: replace the Rampart wooden/stone town with the Fuyuki City citadel from Image 2.
+  Keep Fuyuki identity (moonlit Japanese anime-fantasy citadel, indigo roofs, magical blue accents, cherry blossoms if they fit) but REPAINT it to sit naturally inside Image 1: match the tile's top-down board-game perspective, scale, lighting, and grass setting. Fit the SAME footprint the Rampart town occupied. No characters. No giant moon dominating the sky.
+
+DO NOT:
+- Redraw the whole tile
+- Change the hex flower into one big hex
+- Move, restyle, remove, or invent field symbols
+- Add UI, text labels, watermarks, card frames, or the letters "A-S1" / "S4"
+- Make photoreal / cyberpunk / plastic 3D
+
+OUTPUT:
+- Square or same aspect as Image 1, print-quality, crisp.
+- SAVE the final image to exactly:
+  out/anime-tiles/a-s1.png
+- If you produce another path first, copy/convert it there.
+- Then convert to WebP WITH ALPHA (transparent corners outside the flower) at:
+  public/assets/anime/tiles/a-s1.webp
+  Use sharp/node if needed. Must be real WebP with alpha (VP8X or VP8L), not opaque VP8. Prefer ~1024×985 like the source tile, or 1024×1024 flower-cropped with transparent outside.
+- Verify public/assets/anime/tiles/a-s1.webp exists and is > 80KB.
+- Reply with only: output paths and byte sizes.

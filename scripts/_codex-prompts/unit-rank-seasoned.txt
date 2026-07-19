@@ -1,0 +1,28 @@
+Use IMAGE GENERATION tools only. Overwrite ONE file.
+
+THIS IS A UI BADGE ICON for a Heroes of Might and Magic III board-game app: unit veteran rank 1 "Seasoned".
+
+MANDATORY SUBJECT (exactly this, nothing else):
+- ONE clean upward caret / chevron mark ^ (like a military service chevron)
+- Small bronze-gold metal pin badge, square, centered
+- PURE BLACK background #000000
+
+MANDATORY COLOR PALETTE:
+- Chevron fill: #c9a24a (warm board-game gold)
+- Edge highlight: #f0d48a
+- Shadow: #6b4a12
+- Background: pure black #000000
+
+FORBIDDEN:
+- NO text, letters, numbers, roman numerals
+- NO full creature / unit / hero body
+- NO ornate baroque frame
+- NO multiple chevrons
+- NO white background
+
+Style: clean premium HoMM3 board-game UI glyph, HD, simple silhouette, readable at 24–32px.
+
+SAVE OVERWRITE:
+public/assets/ui/unit-rank-seasoned.webp
+
+Convert with node sharp if needed. Verify > 8KB. Reply path + bytes only.
