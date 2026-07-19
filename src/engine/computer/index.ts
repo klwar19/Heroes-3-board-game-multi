@@ -31,6 +31,8 @@ export {
   canBeatGuardedField,
   collectMapObjectives,
   distanceFromHeroTo,
+  freeSeizuresWithinReach,
+  isFreeSeizeObjective,
   MAP_OBJECTIVE_PRIORITY,
   objectiveDistanceField,
   ownTownSpaceId,
