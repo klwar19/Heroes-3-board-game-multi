@@ -4,7 +4,8 @@
  * Always-on hero ITEMS, distinct from Artifact cards: an item sits in one of a
  * MAIN hero's four slots (weapon/armor/accessory/mount) and its effect runs while
  * equipped — never in hand, never cast. Bought at two outfitter Field Overrides;
- * buying into an occupied slot REPLACES the previous item (no refund). SHARED by
+ * buying into an occupied slot moves the previous item into the hero's equipment
+ * bag. SHARED by
  * both packages and every hero; independent of Hero Grades (§3.11) and
  * Cultivation (§5.6) — all three tracks coexist.
  *
@@ -89,6 +90,22 @@ export function heroEquipmentSlot(state: GameState, playerId: PlayerId, slot: An
 export function playerHasEquipment(state: GameState, playerId: PlayerId, equipmentId: string): boolean {
   const equipment = heroEquipmentOf(state, playerId);
   return Object.values(equipment).includes(equipmentId);
+}
+
+/** Equipment currently owned in the hero's bag, ready for an actual slot action. */
+export function heroEquipmentInventoryOf(state: GameState, playerId: PlayerId): readonly string[] {
+  if (!equipmentEnabled(state)) {
+    return [];
+  }
+  return mainHeroOf(state, playerId)?.equipmentInventory ?? [];
+}
+
+/** Whether an item is owned either in a body slot or in the equipment bag. */
+export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipmentId: string): boolean {
+  return (
+    playerHasEquipment(state, playerId, equipmentId) ||
+    heroEquipmentInventoryOf(state, playerId).includes(equipmentId)
+  );
 }
 
 // --- Always-on economy / caster grants (each gated by the item equipped) ----
@@ -311,8 +328,9 @@ export function markEquipmentAttackResolved(
 // ===========================================================================
 
 /**
- * Equip `equipmentId` onto the player's MAIN hero, REPLACING whatever sat in its
- * slot (no refund). Stamps `hero.equipment` lazily. Returns the replaced item id
+ * Equip `equipmentId` onto the player's MAIN hero. Whatever sat in its slot is
+ * moved to the equipment bag, and the newly equipped item is removed from that
+ * bag. Stamps both stores lazily. Returns the replaced item id
  * (or null). Gold is charged and the feed line emitted by the BUY_EQUIPMENT
  * visit-step handler; this is the pure slot mutation.
  */
@@ -324,7 +342,12 @@ export function equipEquipment(state: GameState, playerId: PlayerId, equipmentId
   }
   const current = hero.equipment ?? {};
   const replaced = current[def.slot] ?? null;
+  const inventory = (hero.equipmentInventory ?? []).filter((id) => id !== equipmentId);
+  if (replaced && replaced !== equipmentId && !inventory.includes(replaced)) {
+    inventory.push(replaced);
+  }
   hero.equipment = { ...current, [def.slot]: equipmentId };
+  hero.equipmentInventory = inventory;
   appendEvent(state, {
     type: "EQUIPMENT_EQUIPPED",
     playerId,

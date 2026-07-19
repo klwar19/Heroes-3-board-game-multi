@@ -223,7 +223,7 @@ export type AnimeModOptions = {
   /**
    * Equipment (shared spine, §3.13): always-on hero ITEMS (weapon/armor/
    * accessory) bought at outfitter Field Overrides — distinct from Artifact
-   * cards (no hand, no cast, one per slot, replace-on-buy). Shared by BOTH
+   * cards (no hand, no cast, one per slot, swap-to-bag on buy). Shared by BOTH
    * packages and ALL heroes; independent of Hero Grades / Cultivation.
    * Default OFF ⇒ byte-identical (no shops in the pool, no state stamped).
    */
@@ -252,7 +252,7 @@ export type AnimeModOptions = {
  * Anime Equipment (§3.13): the hero equipment slots, as a SINGLE ordered
  * source-of-truth constant every consumer iterates (hero-board chips, the slot
  * glyph registry, catalog/data tests). An item occupies one slot; buying into an
- * occupied slot REPLACES the previous item (no refund). "mount" is the 4th slot
+ * occupied slot moves the previous item into the equipment bag (no refund). "mount" is the 4th slot
  * (new equipment types) — legacy 3-slot snapshots load fine (absent === empty).
  * Add a slot here and TypeScript forces every Record<AnimeEquipmentSlot, …> to
  * cover it.
@@ -3034,6 +3034,23 @@ export type GameAction =
     }
   | {
       /**
+       * Hero Equipment: move an owned inventory item onto its catalog-defined
+       * body slot. If that slot is occupied the two items swap. This is the
+       * engine action used by both drag/drop and the accessible Equip button.
+       */
+      type: "EQUIP_HERO_ITEM";
+      playerId: PlayerId;
+      equipmentId: string;
+      slot: AnimeEquipmentSlot;
+    }
+  | {
+      /** Move the item in one body slot back into the hero's equipment bag. */
+      type: "UNEQUIP_HERO_ITEM";
+      playerId: PlayerId;
+      slot: AnimeEquipmentSlot;
+    }
+  | {
+      /**
        * Anime Hero Grades: use a "skill" tree node's ACTIVE — Forced March on the
        * map (+1 movement, once per round) or War Cry during your own unit's combat
        * activation (+1 Attack this activation, once per combat). `unitId` is the
@@ -5149,8 +5166,8 @@ export type GameEvent =
   | {
       /**
        * Anime Equipment (§3.13): the hero equipped an item into a slot at an
-       * outfitter shop. `replacedId` is the item overwritten (null on an empty
-       * slot). Public feed line — no hidden information.
+       * outfitter shop. `replacedId` is the item moved back to the bag (null on
+       * an empty slot). Public feed line — no hidden information.
        */
       id: string;
       type: "EQUIPMENT_EQUIPPED";
@@ -5159,6 +5176,15 @@ export type GameEvent =
       equipmentId: string;
       slot: AnimeEquipmentSlot;
       replacedId: string | null;
+    }
+  | {
+      /** Hero Equipment: an equipped item was returned to the equipment bag. */
+      id: string;
+      type: "EQUIPMENT_UNEQUIPPED";
+      playerId: PlayerId;
+      heroId: HeroId;
+      equipmentId: string;
+      slot: AnimeEquipmentSlot;
     }
   | {
       /** Anime Hero Grades (§3.11): a "skill" node's active/reaction was used. */
@@ -9279,7 +9305,7 @@ export type VisitStep =
       /**
        * Anime Equipment (§3.13): buy one always-on item at an outfitter Field
        * Override. Resolving deducts the item's gold cost and sets it into the
-       * MAIN hero's matching slot, REPLACING whatever was there (no refund).
+       * MAIN hero's matching slot, moving prior gear to the bag (no refund).
        * Offered only for an item the hero does not already own, and only when
        * affordable (gated in legal-actions + a reducer backstop, like PAY_TO).
        */
@@ -11224,9 +11250,16 @@ export type HeroState = {
    * lazily stamped (absent === nothing equipped), so a module-off table and every
    * legacy snapshot (incl. 3-slot heroes with no mount) never carry it. PUBLIC
    * (player-view never strips it). Buying into an occupied slot overwrites
-   * (replace, no refund).
+   * (swap prior gear to the bag, no refund).
    */
   equipment?: Partial<Record<AnimeEquipmentSlot, string>>;
+  /**
+   * Owned but currently unequipped items. Bought gear is never a decorative
+   * catalog entry: replacing or removing a slotted item moves it here, and the
+   * equipment window can equip it again through an engine-validated action.
+   * Optional/lazy for compatibility with every existing snapshot.
+   */
+  equipmentInventory?: string[];
 };
 
 export type AttackRollCandidate = {

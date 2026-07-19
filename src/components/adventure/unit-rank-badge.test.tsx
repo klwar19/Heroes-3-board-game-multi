@@ -52,6 +52,7 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
   it("CONTROL — with the rule off the same card shows printed stats and no badge", () => {
     renderArmy(makeState(false, "rank-badge-off"));
     expect(document.querySelector(".unitRankBadge")).toBeNull();
+    expect(document.querySelector(".armyExperienceBoard")).toBeNull();
     const printed = coreUnitDefinitions["castle.marksmen"]!.few!;
     const stats = document.querySelector(".armyUnitRow small")?.textContent ?? "";
     expect(stats).toContain(`A${printed.attack}`);
@@ -72,6 +73,8 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
         />
       </CardZoomProvider>
     );
+    expect(document.querySelector(".armyExperienceBoard")?.textContent).toContain("Unit Experience Board");
+    expect(document.querySelector(".armyExperienceBoard")?.textContent).toContain("surviving deployed units");
     expect(document.querySelector(".armyXpTrack")).toBeTruthy();
     fireEvent.click(document.querySelector(".armyUnitActions button") as Element);
     expect((dispatched[0] as { type: string }).type).toBe("DRILL_UNIT");

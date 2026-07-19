@@ -100,6 +100,8 @@ import {
   heroTrain,
   drillUnit,
   heroGradePick,
+  equipHeroItem,
+  unequipHeroItem,
   resolveCommanderFirstAid,
   commanderSetStance,
   spellBookAction,
@@ -19414,6 +19416,8 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "COMMANDER_SET_STANCE",
   "HERO_TRAIN",
   "HERO_GRADE_PICK",
+  "EQUIP_HERO_ITEM",
+  "UNEQUIP_HERO_ITEM",
   // Unit Experience Drill: fully self-validated (rule on, own turn, own Town,
   // gold, once-per-turn, own army card) and touches only the actor's state.
   "DRILL_UNIT",
@@ -19900,6 +19904,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "HERO_GRADE_PICK":
         heroGradePick(nextState, action);
+        break;
+      case "EQUIP_HERO_ITEM":
+        equipHeroItem(nextState, action);
+        break;
+      case "UNEQUIP_HERO_ITEM":
+        unequipHeroItem(nextState, action);
         break;
       case "DRILL_UNIT":
         drillUnit(nextState, action);

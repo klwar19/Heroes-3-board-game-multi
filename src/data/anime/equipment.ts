@@ -4,8 +4,8 @@
  *
  * Equipment is ALWAYS ON: an item sits in one of three hero slots
  * (weapon / armor / accessory) and its effect runs while equipped — it is never
- * in hand, never cast, never discarded. Buying into an occupied slot REPLACES
- * the previous item (no refund). Items are bought at two outfitter Field
+ * in hand, never cast, never discarded. Buying into an occupied slot moves the
+ * previous item into the equipment bag (no refund). Items are bought at two outfitter Field
  * Overrides (Rèn Binh Các / Adventurer Outfitter); they never join a deck.
  *
  * Every `summary` states EXACTLY the wired behaviour (CLAUDE.md §2) — no

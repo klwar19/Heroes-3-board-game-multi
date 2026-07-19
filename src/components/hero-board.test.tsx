@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { HeroBoard } from "./hero-board";
 import { CardZoomProvider } from "./table/zoom";
 import { cardLibrary } from "@/data/cards/library";
-import { createAdventureGameState, getMainHero, type GameState, type PlayerId } from "@/engine";
+import { createAdventureGameState, getMainHero, type GameAction, type GameState, type PlayerId } from "@/engine";
 
 afterEach(cleanup);
 
@@ -229,6 +229,30 @@ describe("HeroBoard — anime Equipment chips (§3.13)", () => {
     const dialog = screen.getByRole("dialog", { name: "Hero Equipment" });
     expect(dialog.querySelectorAll(".equipmentSlot")).toHaveLength(4);
     expect(dialog.querySelector(".equipmentSilhouette")).toBeTruthy();
+    expect(dialog.querySelector(".equipmentSilhouette img")).toBeTruthy();
+  });
+
+  it("dispatches real equip and unequip actions from the paper-doll controls", () => {
+    const state = equipmentAdventure();
+    const hero = getMainHero(state, "p1")!;
+    hero.equipment = { armor: "anime.equip.black_tortoise_mail" };
+    hero.equipmentInventory = ["anime.equip.iron_blood_sword"];
+    const dispatched: GameAction[] = [];
+    render(
+      <CardZoomProvider>
+        <HeroBoard state={state} playerId="p1" onAction={(action) => dispatched.push(action)} />
+      </CardZoomProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Hero Equipment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Equip$/i }));
+    expect(dispatched[0]).toEqual({
+      type: "EQUIP_HERO_ITEM",
+      playerId: "p1",
+      equipmentId: "anime.equip.iron_blood_sword",
+      slot: "weapon"
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Unequip" }));
+    expect(dispatched[1]).toEqual({ type: "UNEQUIP_HERO_ITEM", playerId: "p1", slot: "armor" });
   });
 
   it("shows a chip (item icon + EN/VI name) for each equipped item when the module is on", () => {

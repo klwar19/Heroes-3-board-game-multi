@@ -72,6 +72,13 @@ export type TownBoardSpec = {
   fullImage?: string;
   /** Designed boards: fully-built PC townscape drawn behind the bars. */
   panoramaImage?: string;
+  /**
+   * Seven pre-sliced construction tiles cut from one continuous fully-built
+   * panorama.  Each image is the exact left-to-right counterpart of the same
+   * strip in `panoramaImage`, so any mixture of built and unbuilt bars still
+   * reads as one town instead of seven unrelated illustrations.
+   */
+  barTileImages?: readonly string[];
   /** Designed boards: the authentic printed tracks/tokens panel (a crop of the
    *  Stronghold fan scan) pasted at `geometry.panel` instead of CSS cells. */
   panelImage?: string;
@@ -466,7 +473,9 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   fuyuki: {
     factionId: "fuyuki",
-    panoramaImage: "/assets/anime/towns/fuyuki-city.png",
+    panoramaImage: "/assets/anime/towns/fuyuki-city-empty-v2.webp",
+    fullImage: "/assets/anime/towns/fuyuki-city-full.webp",
+    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/town-board/fuyuki-bar-${index + 1}.webp`),
     panelImage: DESIGNED_PANEL_IMAGE,
     bars: [
       ["fuyuki.city_hall"],
@@ -481,7 +490,9 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   azure_breeze: {
     factionId: "azure_breeze",
-    panoramaImage: "/assets/anime/towns/azure-breeze-sect.png",
+    panoramaImage: "/assets/anime/towns/azure-breeze-sect-empty-v2.webp",
+    fullImage: "/assets/anime/towns/azure-breeze-sect-full.webp",
+    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/town-board/azure-breeze-bar-${index + 1}.webp`),
     panelImage: DESIGNED_PANEL_IMAGE,
     bars: [
       ["azure_breeze.dwelling_bronze"],

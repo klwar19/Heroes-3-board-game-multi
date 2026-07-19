@@ -684,6 +684,8 @@ export {
   heroEquipmentOf,
   heroEquipmentSlot,
   playerHasEquipment,
+  playerOwnsEquipment,
+  heroEquipmentInventoryOf,
   equipmentSpellPowerBonus,
   equipmentHandLimitBonus,
   equipmentWinGold,
