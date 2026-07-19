@@ -8,6 +8,8 @@ import {
   planIsUnderground,
   sanitizeCenterHexPlan,
   sanitizeCustomMapPreset,
+  sanitizeFieldReward,
+  sanitizeObjectPlans,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
   scenarioDefinitions,
@@ -244,6 +246,21 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     candidate.group === "center" && isViiFieldDesignation(candidate.viiField)
       ? candidate.viiField
       : undefined;
+  // Multi-select Ⅶ designations (Town / Utopia / Grail) — center only.
+  const viiFields =
+    candidate.group === "center" && Array.isArray(candidate.viiFields)
+      ? [...new Set(candidate.viiFields.filter(isViiFieldDesignation))]
+      : [];
+  const playerViiPick =
+    candidate.group === "center" &&
+    Boolean(candidate.faceDown) &&
+    candidate.playerViiPick === true &&
+    viiFields.length > 1;
+  // Player gold/valuables pick before reveal — face-down far/near only.
+  const playerResourcePick =
+    Boolean(candidate.faceDown) &&
+    (candidate.group === "far" || candidate.group === "near") &&
+    candidate.playerResourcePick === true;
   const legacy = candidate as { viiFieldReward?: unknown; viiFieldVp?: unknown };
   const centerHex =
     candidate.group === "center"
@@ -251,6 +268,9 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
       : undefined;
   // Per-tile settlement customization (guard / VP / hold-to-win) — any group.
   const settlement = sanitizeSettlementFieldPlan(candidate.settlement);
+  // SPECIFIC (per-tile) object plans (obelisk / mine) — any group that can host
+  // them; a plan on a tile with no such location stays inert (settlement twin).
+  const objectPlans = sanitizeObjectPlans(candidate.objectPlans);
 
   return {
     row: candidate.row as number,
@@ -271,8 +291,12 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     // only a known designation survives so garbage can't set it. The center-hex
     // customization (guard / reward / VP) is independent of the designation.
     ...(viiField ? { viiField } : {}),
+    ...(viiFields.length > 0 ? { viiFields } : {}),
+    ...(playerViiPick ? { playerViiPick: true as const } : {}),
+    ...(playerResourcePick ? { playerResourcePick: true as const } : {}),
     ...(centerHex ? { centerHex } : {}),
     ...(settlement ? { settlement } : {}),
+    ...(objectPlans ? { objectPlans } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
     // The UNDERGROUND layer override (far/near/center/sea only), kept as true.
@@ -325,6 +349,8 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
     pair?: unknown;
     slot?: unknown;
     guard?: unknown;
+    reward?: unknown;
+    vp?: unknown;
     exitMode?: unknown;
     alwaysPickable?: unknown;
   };
@@ -345,6 +371,13 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
   // one-way EXIT is never guarded.
   const guardSpec = raw.kind === "oneway_exit" ? undefined : sanitizeObjectGuard(raw.guard);
   const guard = guardSpec ? { guard: guardSpec } : {};
+  // First-clear reward / VP (optional on every token kind including exits).
+  const rewardSpec = sanitizeFieldReward(raw.reward);
+  const reward = rewardSpec ? { reward: rewardSpec } : {};
+  const vp =
+    typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0
+      ? { vp: Math.min(10, Math.floor(raw.vp)) }
+      : {};
   if (raw.kind === "gate" || raw.kind === "oneway_entrance" || raw.kind === "oneway_exit") {
     if (raw.pair !== 1 && raw.pair !== 2 && raw.pair !== 3 && raw.pair !== 4) {
       return undefined;
@@ -360,7 +393,7 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
       (raw.kind === "oneway_exit" || raw.kind === "gate") && raw.alwaysPickable === true
         ? { alwaysPickable: true }
         : {};
-    return { kind: raw.kind, pair: raw.pair, ...slot, ...guard, ...exitMode, ...alwaysPickable };
+    return { kind: raw.kind, pair: raw.pair, ...slot, ...guard, ...reward, ...vp, ...exitMode, ...alwaysPickable };
   }
   // Monolith / Whirlpool: never carry a pair. Monoliths share the two-way exit modes.
   const monolithExit =
@@ -369,7 +402,7 @@ function sanitizeTileToken(input: unknown): CustomMapTilePlan["token"] | undefin
       : {};
   const monolithAlways =
     raw.kind === "monolith" && raw.alwaysPickable === true ? { alwaysPickable: true as const } : {};
-  return { kind: raw.kind, ...slot, ...guard, ...monolithExit, ...monolithAlways };
+  return { kind: raw.kind, ...slot, ...guard, ...reward, ...vp, ...monolithExit, ...monolithAlways };
 }
 
 /**

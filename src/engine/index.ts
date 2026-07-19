@@ -382,6 +382,7 @@ export {
   MAX_CENTER_HEX_DICE,
   MAX_CENTER_HEX_RESOURCE,
   MAX_CENTER_HEX_SEARCH,
+  MAX_CENTER_HEX_SEARCH_TIMES,
   MAX_CENTER_HEX_VP,
   MAX_CUSTOM_MAP_OBJECTS,
   MAX_CUSTOM_WIN_CONDITIONS,
@@ -404,12 +405,21 @@ export {
   objectGuardSpec,
   ONEWAY_EXIT_MODES,
   OUTPOST_OBJECT_KINDS,
+  describeFieldReward,
+  describeHexEvent,
+  MAX_HEX_EVENT_MESSAGE,
+  OBJECT_PLAN_KINDS,
   sanitizeCenterHexPlan,
   sanitizeCenterHexReward,
+  sanitizeFieldReward,
   sanitizeCustomGuardSpec,
   sanitizeCustomMapObject,
   sanitizeCustomMapPreset,
   sanitizeCustomWinConditions,
+  sanitizeHexEvent,
+  sanitizeHexEvents,
+  sanitizeObjectFieldPlan,
+  sanitizeObjectPlans,
   sanitizeObjectGuard,
   secretFeatureDemandWarnings,
   tileMatchesSecretFeature,
@@ -419,6 +429,19 @@ export {
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS
 } from "./map-preset";
+export {
+  describeGuardArmyGrouped,
+  expandGuardUnitGroups,
+  groupGuardUnitEntries,
+  guardUnitEntryLabel,
+  isCustomGuardUnitEntry,
+  isPackGuardSlot,
+  isRandomGuardSlot,
+  PACK_GUARD_PREFIX,
+  RANDOM_GUARD_PREFIX,
+  RANDOM_GUARD_TIERS
+} from "./map-design-features";
+export type { RandomGuardTier } from "./map-design-features";
 export {
   computeVictoryPoints,
   controlledSettlementCount,
@@ -443,6 +466,7 @@ export type {
   CustomMapStartingBonus,
   CustomMapTimedEffect,
   CustomMapTimedEvent,
+  ObjectPlanKind,
   PresetForcedOptionKey,
   TimedEffectKind
 } from "./map-preset";
@@ -513,6 +537,7 @@ export {
   clearCustomGuard,
   customGuardArmyDifficulty,
   designedGuardPreview,
+  stampDesignerFieldReward,
   gatePairColor,
   isBankStyleGuardLocation,
   isTeleportObjectGuardLocation,
@@ -658,7 +683,7 @@ export {
 export { describePermanentEffect } from "./effects";
 export { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
-export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, MAX_CUSTOM_GUARD_UNITS, NEUTRAL_PLAYER_ID } from "./state";
+export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, MAX_CUSTOM_GUARD_UNITS, MAX_HEX_EVENTS, NEUTRAL_PLAYER_ID } from "./state";
 export { DEFAULT_ANIME_OPTIONS, animeEnabled, animeModuleEnabled } from "./anime";
 export {
   CULTIVATION_REALMS,
@@ -888,8 +913,12 @@ export type {
   ViiFieldReward,
   CustomCenterHexPlan,
   CustomCenterHexReward,
+  CustomFieldReward,
   CustomGuardSpec,
+  CustomHexEvent,
   CustomMapTileToken,
+  CustomObjectFieldPlan,
+  HexEventState,
   OnewayExitMode,
   VictoryPointObjective,
   VisitStep,

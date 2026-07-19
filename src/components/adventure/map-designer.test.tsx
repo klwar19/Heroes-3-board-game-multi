@@ -313,7 +313,7 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       onChange
     );
     const popover = openTilePopover(container, 1); // plan 1 = the center tile
-    const picker = popover.querySelector(".popoverViiField");
+    const picker = popover.querySelector(".popoverCenterHex");
     expect(picker, "Ⅶ-field picker shown for a center tile").toBeTruthy();
 
     fireEvent.click(within(picker as HTMLElement).getByRole("button", { name: "Grail" }));
@@ -328,7 +328,8 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       { row: 9, col: 4, group: "far", faceDown: true }
     ]);
     const popover = openTilePopover(container, 1);
-    expect(popover.querySelector(".popoverViiField")).toBeNull();
+    // Settlement customization may still appear; the center Ⅶ block must not.
+    expect(popover.querySelector(".popoverCenterHex")).toBeNull();
   });
 
   it("a pinned Field Override with NO art draws its fallback glyph on the map", () => {
@@ -370,13 +371,15 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
 
     // The editor is visible WITHOUT any objective designation (the old build
     // hid it behind one — "click on tile VI-VII … BUT NOTHING THERE").
-    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex Gold/i), { target: { value: "7" } });
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex reward Gold/i), {
+      target: { value: "7" }
+    });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.arrayContaining([expect.objectContaining({ centerHex: { reward: { gold: 7 } } })])
     );
 
     // A flexible reward kind (Treasure dice) rides the same reward object…
-    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex Treasure dice/i), {
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex reward Treasure dice/i), {
       target: { value: "2" }
     });
     expect(onChange).toHaveBeenLastCalledWith(
@@ -384,7 +387,9 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     );
 
     // …and a Victory-Points value writes centerHex.vp.
-    fireEvent.change(within(popover as HTMLElement).getByLabelText(/victory points/i), { target: { value: "4" } });
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex reward victory points/i), {
+      target: { value: "4" }
+    });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.arrayContaining([expect.objectContaining({ centerHex: { vp: 4 } })])
     );
@@ -400,9 +405,10 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       onChange
     );
     const popover = openTilePopover(container, 1);
+    const centerBlock = popover.querySelector(".popoverCenterHex") as HTMLElement;
 
-    // A level chip writes a level guard.
-    fireEvent.click(within(popover as HTMLElement).getByRole("button", { name: "Ⅲ" }));
+    // A level chip writes a level guard (scoped to the center block — settlement has its own).
+    fireEvent.click(within(centerBlock).getByRole("button", { name: "Ⅲ" }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { level: 3 } } })])
     );
@@ -416,11 +422,81 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       onChange
     );
     const armyPopover = openTilePopover(armed, 1);
-    fireEvent.change(within(armyPopover as HTMLElement).getByLabelText(/Add a guard unit/i), {
+    fireEvent.change(within(armyPopover as HTMLElement).getByLabelText(/Add a named guard unit/i), {
       target: { value: "neutral.cyclopes" }
     });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { units: ["neutral.cyclopes"] } } })])
+    );
+
+    // Quick +Gold appends a random-tier slot (controlled re-render for each add).
+    let armyUnits: string[] = [];
+    const addGold = () => {
+      const mixed = renderDesigner(
+        [
+          { row: 8, col: 2, group: "starting", faceDown: false },
+          {
+            row: 9,
+            col: 4,
+            group: "center",
+            faceDown: true,
+            centerHex: { guard: { units: [...armyUnits] } }
+          }
+        ],
+        onChange
+      );
+      const mixedPopover = openTilePopover(mixed, 1);
+      fireEvent.click(within(mixedPopover as HTMLElement).getByRole("button", { name: "+ Gold" }));
+      const last = onChange.mock.calls.at(-1)![0] as { centerHex?: { guard?: { units?: string[] } } }[];
+      armyUnits = last.find((p) => p.centerHex)?.centerHex?.guard?.units ?? [];
+    };
+    addGold();
+    addGold();
+    addGold();
+    expect(armyUnits).toEqual(["random:gold", "random:gold", "random:gold"]);
+  });
+
+  it("center-hex reward Times × Search(X) writes search size and times", () => {
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1);
+    fireEvent.change(within(popover as HTMLElement).getByLabelText(/Center hex reward Artifacts Search size/i), {
+      target: { value: "5" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ centerHex: { reward: { searchArtifact: 5 } } })])
+    );
+
+    // Controlled re-render with size already set so Times is enabled.
+    const withSize = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        {
+          row: 9,
+          col: 4,
+          group: "center",
+          faceDown: true,
+          centerHex: { reward: { searchArtifact: 5 } }
+        }
+      ],
+      onChange
+    );
+    const sizedPopover = openTilePopover(withSize, 1);
+    fireEvent.change(within(sizedPopover as HTMLElement).getByLabelText(/Center hex reward Artifacts Search times/i), {
+      target: { value: "2" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          centerHex: { reward: { searchArtifact: 5, searchArtifactTimes: 2 } }
+        })
+      ])
     );
   });
 
@@ -2311,7 +2387,7 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     // Re-render with the armed army mode and add a unit through the picker.
     const rerendered = renderWithObjects(faceUpMap, latest, onObjectsChange);
     fireEvent.click(rerendered.querySelector(".designerObjectToken.standalone")!);
-    fireEvent.change(within(rerendered).getByLabelText(/Add a guard unit/i), {
+    fireEvent.change(within(rerendered).getByLabelText(/Add a named guard unit/i), {
       target: { value: "neutral.cyclopes" }
     });
     expect(latest[0].guard).toEqual({ units: ["neutral.cyclopes"] });
@@ -3902,5 +3978,172 @@ describe("MapDesigner — canonical teleporter conversions (token ⇄ standalone
     const gate = container.querySelector(".designerObjectToken.gate")!;
     expect(gate.querySelector('image[href*="tokens/teleport-gate-violet"]'), "violet portal art").toBeTruthy();
     expect(gate.querySelector(".designerObjectPair")?.textContent).toBe("4");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPECIFIC per-tile object plans + pick mode + hex-event markers (2026-07).
+// ---------------------------------------------------------------------------
+describe("MapDesigner — specific object plans & hex events", () => {
+  // N15 prints BOTH an obelisk and a mine (near tile).
+  const town = { row: 8, col: 2 };
+  const n15 = { row: 12, col: 6 };
+
+  it("the popover shows the Mine/Obelisk sections ONLY for an eligible tile, and the winCondition tick writes objectPlans", () => {
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: n15.row, col: n15.col, group: "near", faceDown: false, tileDefId: "N15" }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1);
+    expect(within(popover).getByLabelText("Special mine (this tile)")).toBeTruthy();
+    expect(within(popover).getByLabelText("Special obelisk (this tile)")).toBeTruthy();
+
+    fireEvent.click(within(popover).getByLabelText("First clear of this mine wins the game"));
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ group: "starting" }),
+      expect.objectContaining({
+        tileDefId: "N15",
+        objectPlans: { mine: { winCondition: true } }
+      })
+    ]);
+  });
+
+  it("CONTROL: a tile whose def has no mine/obelisk shows neither section", () => {
+    // F1 is a far tile without an obelisk (far pool never carries one).
+    const farNoObelisk = Object.values(allTileDefinitions).find(
+      (def) =>
+        def.group === "far" &&
+        !def.fields.some((field) => field.location === "obelisk") &&
+        !def.fields.some((field) => field.location === "mine")
+    );
+    if (!farNoObelisk) {
+      // Every far tile carries a mine — the mine section may show; obelisk must not.
+      const anyFar = Object.values(allTileDefinitions).find(
+        (def) => def.group === "far" && !def.fields.some((field) => field.location === "obelisk")
+      )!;
+      const container = renderDesigner([
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: n15.row, col: n15.col, group: "far", faceDown: false, tileDefId: anyFar.id }
+      ]);
+      const popover = openTilePopover(container, 1);
+      expect(within(popover).queryByLabelText("Special obelisk (this tile)")).toBeNull();
+      return;
+    }
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      { row: n15.row, col: n15.col, group: "far", faceDown: false, tileDefId: farNoObelisk.id }
+    ]);
+    const popover = openTilePopover(container, 1);
+    expect(within(popover).queryByLabelText("Special mine (this tile)")).toBeNull();
+    expect(within(popover).queryByLabelText("Special obelisk (this tile)")).toBeNull();
+  });
+
+  it("pick mode highlights eligible tiles, resolves on an eligible click, and ignores ineligible tiles", () => {
+    const onPickResolved = vi.fn();
+    const { container } = render(
+      <MapDesigner
+        customMap={[
+          { row: town.row, col: town.col, group: "starting", faceDown: false },
+          { row: n15.row, col: n15.col, group: "near", faceDown: false, tileDefId: "N15" }
+        ]}
+        onChange={() => {}}
+        onPickResolved={onPickResolved}
+        pickRequest={{ kind: "object-plan", objectKind: "mine" }}
+        scenarioId="skirmish"
+      />
+    );
+    // The banner + highlight classes render.
+    expect(container.querySelector(".designerPickBanner")).toBeTruthy();
+    expect(container.querySelector(".designerFlowerOutline.pickEligible")).toBeTruthy();
+    expect(container.querySelector(".designerFlowerOutline.pickDim")).toBeTruthy();
+
+    // Clicking the INELIGIBLE starting tile does nothing.
+    const hexes = container.querySelectorAll(".designerHexPlan");
+    fireEvent.pointerDown(hexes[0], { button: 0, pointerId: 1, clientX: 40, clientY: 40 });
+    fireEvent.pointerUp(hexes[0], { button: 0, pointerId: 1, clientX: 40, clientY: 40 });
+    expect(onPickResolved).not.toHaveBeenCalled();
+
+    // Clicking the ELIGIBLE N15 tile resolves the pick and opens its popover.
+    fireEvent.pointerDown(hexes[7], { button: 0, pointerId: 2, clientX: 40, clientY: 40 });
+    fireEvent.pointerUp(hexes[7], { button: 0, pointerId: 2, clientX: 40, clientY: 40 });
+    expect(onPickResolved).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".designerPopover")).toBeTruthy();
+  });
+
+  it("a tile with a specific plan wears the ⚔ badge (🏁⚔ when a win condition is set)", () => {
+    const container = renderDesigner([
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: n15.row,
+        col: n15.col,
+        group: "near",
+        faceDown: false,
+        tileDefId: "N15",
+        objectPlans: { mine: { guard: { level: 5 }, winCondition: true } }
+      }
+    ]);
+    const badge = container.querySelector(".designerSpecificBadge");
+    expect(badge).toBeTruthy();
+    expect(badge!.textContent).toContain("🏁⚔");
+    expect(badge!.querySelector("title")!.textContent).toContain("mine");
+    expect(badge!.querySelector("title")!.textContent).toContain("WIN on clear");
+  });
+
+  it("hex events render a designer-only ⚡ marker with the full tooltip", () => {
+    const { container } = render(
+      <MapDesigner
+        customMap={[{ row: town.row, col: town.col, group: "starting", faceDown: false }]}
+        hexEvents={[
+          {
+            id: "e1",
+            placement: { row: town.row, col: town.col },
+            message: "Boo!",
+            reward: { gold: 3 }
+          }
+        ]}
+        onChange={() => {}}
+        scenarioId="skirmish"
+      />
+    );
+    const mark = container.querySelector(".designerHexEventMark");
+    expect(mark).toBeTruthy();
+    expect(mark!.querySelector("title")!.textContent).toContain("Hidden event");
+    expect(mark!.querySelector("title")!.textContent).toContain("3 gold");
+  });
+
+  it("hex-event pick mode drops an event on the clicked hex (jsdom identity CTM)", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const onHexEventsChange = vi.fn();
+      const onPickResolved = vi.fn();
+      const { container } = render(
+        <MapDesigner
+          customMap={[{ row: town.row, col: town.col, group: "starting", faceDown: false }]}
+          hexEvents={[]}
+          onChange={() => {}}
+          onHexEventsChange={onHexEventsChange}
+          onPickResolved={onPickResolved}
+          pickRequest={{ kind: "hex-event" }}
+          scenarioId="skirmish"
+        />
+      );
+      const target = container.querySelector(".designerHexPlan")!;
+      // The designer board renders at DESIGN_HEX = 24; identity CTM makes
+      // client coords equal board coords, so aim at the town's centre hex.
+      const pixel = hexToPixel(town, 24);
+      fireEvent.pointerDown(target, { button: 0, pointerId: 1, clientX: pixel.x, clientY: pixel.y });
+      fireEvent.pointerUp(target, { button: 0, pointerId: 1, clientX: pixel.x, clientY: pixel.y });
+      expect(onHexEventsChange).toHaveBeenCalledTimes(1);
+      const events = onHexEventsChange.mock.calls[0][0];
+      expect(events).toHaveLength(1);
+      expect(events[0].placement).toEqual({ row: town.row, col: town.col });
+      expect(onPickResolved).toHaveBeenCalledTimes(1);
+    } finally {
+      restore();
+    }
   });
 });

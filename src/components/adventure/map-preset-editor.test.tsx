@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MapPresetEditor } from "./map-preset-editor";
-import { MAX_TIMED_EVENTS, type CustomMapPreset } from "@/engine";
+import { MAX_TIMED_EVENTS, type CustomMapPreset, type CustomMapTilePlan } from "@/engine";
 import { STORY_SCENE_IDS } from "@/data/story/scenes";
 
 afterEach(cleanup);
@@ -592,16 +592,25 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     const onChange = vi.fn();
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
 
-    // Add a condition → the default control-towns condition.
+    // Add a condition → the first OFFERED kind's default (the object-scoped
+    // kinds — control-towns / flag-mines / obelisks / defeat-dragon-utopia —
+    // moved to Map objects as per-object win ticks and are no longer offered).
     fireEvent.click(screen.getByRole("button", { name: "Add win condition" }));
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ customWinConditions: [{ kind: "control-towns", count: 3 }] })
+      expect.objectContaining({ customWinConditions: [{ kind: "hero-level", level: 5 }] })
     );
 
-    // Retype the kind → the new kind's default params.
+    // Retype the kind → the new kind's default params. A LEGACY object-scoped
+    // condition still renders (its own kind joins the select) — retyping works.
     rerender(
       <MapPresetEditor preset={{ customWinConditions: [{ kind: "control-towns", count: 3 }] }} onChange={onChange} />
     );
+    expect(
+      Array.from((screen.getByLabelText("Condition 1 kind") as HTMLSelectElement).options).some(
+        (option) => option.value === "control-towns"
+      ),
+      "the legacy row's own kind stays selectable"
+    ).toBe(true);
     fireEvent.change(screen.getByLabelText("Condition 1 kind"), { target: { value: "gold" } });
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ customWinConditions: [{ kind: "gold", amount: 100 }] })
@@ -647,7 +656,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(screen.getByText("Custom win: control 3 Towns")).toBeTruthy();
   });
 
-  it("Custom win conditions: the new buildings + obelisks kinds render their param band", () => {
+  it("Custom win conditions: the buildings kind renders its param band; legacy obelisks still renders but is not OFFERED", () => {
     const onChange = vi.fn();
     const { rerender } = render(
       <MapPresetEditor preset={{ customWinConditions: [{ kind: "buildings", count: 10 }] }} onChange={onChange} />
@@ -660,13 +669,17 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(buildingsInput.max).toBe("15");
     expect(buildingsInput.value).toBe("10");
 
-    // Retype buildings → obelisks yields the obelisks default (count 2).
-    fireEvent.change(screen.getByLabelText("Condition 1 kind"), { target: { value: "obelisks" } });
-    expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ customWinConditions: [{ kind: "obelisks", count: 2 }] })
-    );
+    // The object-scoped kinds moved to Map objects — a fresh row's select does
+    // NOT offer obelisks/control-towns/flag-mines/defeat-dragon-utopia.
+    const freshSelect = screen.getByLabelText("Condition 1 kind");
+    for (const gone of ["obelisks", "control-towns", "flag-mines", "defeat-dragon-utopia"]) {
+      expect(
+        Array.from((freshSelect as HTMLSelectElement).options).some((option) => option.value === gone),
+        `${gone} not offered`
+      ).toBe(false);
+    }
 
-    // obelisks → count param clamped to the grail-knob 1-4 band.
+    // A LEGACY obelisks condition (saved map) still renders its 1-4 band.
     rerender(
       <MapPresetEditor preset={{ customWinConditions: [{ kind: "obelisks", count: 2 }] }} onChange={onChange} />
     );
@@ -676,6 +689,9 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(obeliskInput.min).toBe("1");
     expect(obeliskInput.max).toBe("4");
     expect(obeliskInput.value).toBe("2");
+    // Its own kind joins the select so the row is editable, not stuck.
+    const legacySelect = screen.getByLabelText("Condition 1 kind") as HTMLSelectElement;
+    expect(Array.from(legacySelect.options).some((option) => option.value === "obelisks")).toBe(true);
   });
 
   it("Map settings: a difficulty chip writes the preset difficulty; re-clicking it clears back to undefined", () => {
@@ -735,7 +751,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
       "Match setup",
       "Starting position",
       "Victory & scoring",
-      "Map locations",
+      "Map objects",
       "Timed events",
       "Designer note"
     ]);
@@ -755,7 +771,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(within(groupByTitle("Match setup")).getByText("1 active")).toBeTruthy();
     expect(within(groupByTitle("Timed events")).getByText("1 active")).toBeTruthy();
     // The four groups with nothing set carry NO count badge (absent, not "0").
-    for (const title of ["Starting position", "Victory & scoring", "Map locations", "Designer note"]) {
+    for (const title of ["Starting position", "Victory & scoring", "Map objects", "Designer note"]) {
       expect(groupByTitle(title).querySelector(".mapPresetGroupCount")).toBeNull();
     }
   });
@@ -786,5 +802,118 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
         startingBonuses: [{ kind: "resources", gold: 5, buildingMaterials: 0, valuables: 0 }]
       })
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Map objects — Global | Specific tabs, specific lists, hex events (2026-07).
+// ---------------------------------------------------------------------------
+describe("MapPresetEditor — Global | Specific object modes", () => {
+  const tilesWithMine: CustomMapTilePlan[] = [
+    { row: 8, col: 2, group: "starting", faceDown: false },
+    { row: 12, col: 6, group: "near", faceDown: false, tileDefId: "N15" }
+  ];
+
+  it("shows the mode tabs only when tiles + onPickOnMap are wired (standalone editor stays global-only)", () => {
+    render(<MapPresetEditor preset={undefined} onChange={() => {}} />);
+    expect(screen.queryAllByRole("group", { name: "Global or specific" })).toHaveLength(0);
+    cleanup();
+    render(
+      <MapPresetEditor
+        onChange={() => {}}
+        onPickOnMap={() => {}}
+        preset={undefined}
+        tiles={tilesWithMine}
+      />
+    );
+    expect(screen.getAllByRole("group", { name: "Global or specific" }).length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("Specific mode lists per-tile plans, arms the on-map pick, and warns when no tile is eligible", () => {
+    const onPickOnMap = vi.fn();
+    render(
+      <MapPresetEditor
+        onChange={() => {}}
+        onPickOnMap={onPickOnMap}
+        preset={undefined}
+        tiles={[
+          ...tilesWithMine,
+          {
+            row: 14,
+            col: 9,
+            group: "near",
+            faceDown: false,
+            tileDefId: "N15",
+            objectPlans: { mine: { guard: { level: 4 }, winCondition: true } }
+          }
+        ]}
+      />
+    );
+    const minesSection = screen.getByRole("region", { name: "Mines" });
+    fireEvent.click(within(minesSection).getByRole("button", { name: /Specific/ }));
+    // The list shows the tile + a plain-words summary.
+    expect(within(minesSection).getByText(/@14,9/)).toBeTruthy();
+    expect(within(minesSection).getByText(/guard level 4/)).toBeTruthy();
+    expect(within(minesSection).getByText(/first clear WINS/)).toBeTruthy();
+    // The pick button arms the on-map flow.
+    fireEvent.click(within(minesSection).getByRole("button", { name: /Pick a tile on the map/ }));
+    expect(onPickOnMap).toHaveBeenCalledWith({ kind: "object-plan", objectKind: "mine" });
+
+    cleanup();
+    // CONTROL: with NO eligible tile the pick button is replaced by a warning.
+    render(
+      <MapPresetEditor
+        onChange={() => {}}
+        onPickOnMap={onPickOnMap}
+        preset={undefined}
+        tiles={[{ row: 8, col: 2, group: "starting", faceDown: false }]}
+      />
+    );
+    const bare = screen.getByRole("region", { name: "Mines" });
+    fireEvent.click(within(bare).getByRole("button", { name: /Specific/ }));
+    expect(within(bare).queryByRole("button", { name: /Pick a tile on the map/ })).toBeNull();
+    expect(within(bare).getByText(/No placed tile carries a Mine yet/)).toBeTruthy();
+  });
+
+  it("hex events: the section lists events, edits write the preset, and the place button arms the pick", () => {
+    const onChange = vi.fn();
+    const onPickOnMap = vi.fn();
+    render(
+      <MapPresetEditor
+        onChange={onChange}
+        onPickOnMap={onPickOnMap}
+        preset={{
+          hexEvents: [{ id: "e1", placement: { row: 9, col: 4 }, message: "Boo!", reward: { gold: 3 } }]
+        }}
+        tiles={tilesWithMine}
+      />
+    );
+    const section = screen.getByRole("region", { name: "Hidden hex events" });
+    expect(within(section).getByText(/@9,4/)).toBeTruthy();
+
+    // Editing the message writes the preset through onChange.
+    fireEvent.change(within(section).getByLabelText("Event message 1"), { target: { value: "Surprise!" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        hexEvents: [expect.objectContaining({ id: "e1", message: "Surprise!" })]
+      })
+    );
+
+    // The replace-visit chip toggles the flag.
+    fireEvent.click(within(section).getByRole("button", { name: "Replace the hex's visit" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        hexEvents: [expect.objectContaining({ id: "e1", replaceVisit: true })]
+      })
+    );
+
+    // Removing the only event collapses hexEvents away.
+    fireEvent.click(within(section).getByRole("button", { name: "Remove event at 9,4" }));
+    const last = onChange.mock.calls.at(-1)?.[0] as CustomMapPreset | undefined;
+    expect(last?.hexEvents).toBeUndefined();
+
+    // The place button arms the on-map pick.
+    fireEvent.click(within(section).getByRole("button", { name: /Place an event on the map/ }));
+    expect(onPickOnMap).toHaveBeenCalledWith({ kind: "hex-event" });
   });
 });

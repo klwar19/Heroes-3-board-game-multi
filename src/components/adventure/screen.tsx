@@ -60,6 +60,7 @@ import {
   tournamentRulesAllOn,
   getTileBorderSegments,
   gatePairColor,
+  describeFieldReward,
   designedGuardPreview,
   isFieldGuarded,
   hasOpenAdventureTurn,
@@ -397,6 +398,9 @@ export function HexMapBoard({
   // at that hex — a gentle reminder, never a stacked or repeating toast (a fresh
   // tap just re-anchors the one note and restarts its timer).
   const [drawReminderAt, setDrawReminderAt] = useState<MapSpaceId | null>(null);
+  // Click-to-inspect a designer-altered object: which hex's guard/reward info
+  // float is open (click again / elsewhere closes it).
+  const [inspectGuardAt, setInspectGuardAt] = useState<MapSpaceId | null>(null);
   const drawReminderTimer = useRef<number | null>(null);
   const remindToDraw = (spaceId: MapSpaceId) => {
     setDrawReminderAt(spaceId);
@@ -1471,6 +1475,27 @@ export function HexMapBoard({
           ? ` — ALTERED by the map designer: ${alteredGuardPreview.units.join(", ")}`
           : " — ALTERED by the map designer"
         : "";
+      // Designer first-clear reward (center / object / token / settlement) —
+      // public once revealed; hide after the once-only latch fires.
+      const designerRewardClaimed = Boolean(
+        field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed
+      );
+      const designerRewardSummary = !designerRewardClaimed
+        ? describeFieldReward({
+            ...(field.viiReward ?? {}),
+            ...(field.centerHexReward ?? {}),
+            ...(field.designerReward ?? {})
+          })
+        : "";
+      const designerVp = !designerRewardClaimed
+        ? (field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0)
+        : 0;
+      const designerRewardTip =
+        designerRewardSummary || designerVp > 0
+          ? ` — Reward: ${[designerRewardSummary, designerVp > 0 ? `+${designerVp} VP` : ""]
+              .filter(Boolean)
+              .join(" · ")}`
+          : "";
       // Field Override kinds without hex art yet fall back to their registered
       // glyph so an art-less carve is a visible hex in icon mode (art wins once
       // it ships — fieldOverrideGlyph returns undefined then).
@@ -1558,7 +1583,17 @@ export function HexMapBoard({
                         }
                         remindToDraw(spaceId);
                       }
-                    : undefined
+                    : alteredGuardPreview || designerRewardTip
+                      ? () => {
+                          // Inspect a designer-altered object: click toggles a
+                          // float listing the exact guard army / reward — the
+                          // hover tooltip's touch-friendly, readable twin.
+                          if (suppressClickRef.current) {
+                            return;
+                          }
+                          setInspectGuardAt((current) => (current === spaceId ? null : spaceId));
+                        }
+                      : undefined
           }
           points={hexCorners(x, y, HEX_SIZE - 1.2)}
         >
@@ -1567,7 +1602,7 @@ export function HexMapBoard({
               field.location === "creature_bank" && field.bankId
                 ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
                 : (location?.name ?? field.location)
-            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${alteredGuardTip}${
+            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${alteredGuardTip}${designerRewardTip}${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${
               field.location === "subterranean_gate"
@@ -1675,18 +1710,20 @@ export function HexMapBoard({
       // the player sees every legal exit while rotating between them.
       if (gatePlacementChoice?.allHexes.has(spaceId)) {
         const isSelected = gatePlacementChoice.selectedHex === spaceId;
+        // Short cue at the hex bottom — keeps the cave-mouth / path art fully
+        // visible; the map float carries the full "sacrifices …" detail.
         overlays.push(
           <text
             className={`hexGateChoiceCue${isSelected ? " selected" : " dim"}`}
             key={`${spaceId}-gate-choice-cue`}
             textAnchor="middle"
             x={x}
-            y={y + HEX_SIZE * 0.92}
+            y={y + HEX_SIZE * 0.88}
           >
             {isSelected
               ? gatePlacementChoice.role === "gate"
-                ? "🕳 gate here"
-                : "🕳 path up here"
+                ? "🕳 gate"
+                : "🕳 path up"
               : "·"}
           </text>
         );
@@ -1853,6 +1890,21 @@ export function HexMapBoard({
             y={y - HEX_SIZE * 0.4}
           >
             ⚙
+          </text>
+        );
+      }
+      // A gift mark for an unclaimed designer first-clear reward.
+      if (designerRewardTip) {
+        overlays.push(
+          <text
+            className="hexDesignerReward"
+            data-designer-reward="true"
+            key={`${spaceId}-designer-reward`}
+            textAnchor="middle"
+            x={x + HEX_SIZE * 0.52}
+            y={y + HEX_SIZE * (alteredGuardPreview ? 0.05 : -0.4)}
+          >
+            ★
           </text>
         );
       }
@@ -2448,6 +2500,74 @@ export function HexMapBoard({
   };
   const mapFloats: MapFloat[] = [];
 
+  // Click-to-inspect a designer-altered object: the exact guard army / reward
+  // in a readable card (the hover tooltip's touch-friendly twin). Closes on a
+  // second click, the ✕, or when the field stops being altered (guard beaten).
+  if (inspectGuardAt) {
+    const coord = parseHexSpaceId(inspectGuardAt);
+    const field = adventure?.fields[inspectGuardAt];
+    const preview = designedGuardPreview(field);
+    const inspectClaimed = Boolean(
+      field && (field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed)
+    );
+    const rewardSummary =
+      field && !inspectClaimed
+        ? describeFieldReward({
+            ...(field.viiReward ?? {}),
+            ...(field.centerHexReward ?? {}),
+            ...(field.designerReward ?? {})
+          })
+        : "";
+    const rewardVp =
+      field && !inspectClaimed ? (field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0) : 0;
+    if (coord && field && (preview || rewardSummary || rewardVp > 0)) {
+      mapFloats.push({
+        key: "designed-guard-inspect-float",
+        mapPoint: hexToPixel(coord, HEX_SIZE),
+        cardWidth: 250,
+        cardHeight: 96 + (preview?.units.length ? Math.min(3, preview.units.length) * 14 : 0),
+        gap: HEX_SIZE * 0.62,
+        render: () => (
+          <div
+            aria-label="Designer object details"
+            className="mapFloatCard designedGuardInspectFloat"
+            data-inspect-guard={inspectGuardAt}
+            onPointerDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <span className="mapFloatTitle">
+              <span aria-hidden="true">⚔</span>{" "}
+              {locationDefinitions[field.location]?.name ?? field.location} — altered by the map designer
+            </span>
+            {preview ? (
+              <span className="designedGuardInspectUnits">
+                {preview.units.length > 0
+                  ? `Guard: ${preview.units.join(", ")}`
+                  : `Guard level ${ROMAN[preview.difficulty] ?? preview.difficulty}`}
+                {preview.units.length > 0 && preview.difficulty
+                  ? ` (counts as ${ROMAN[preview.difficulty] ?? preview.difficulty})`
+                  : ""}
+              </span>
+            ) : null}
+            {rewardSummary || rewardVp > 0 ? (
+              <span className="designedGuardInspectReward">
+                <span aria-hidden="true">★</span> First-clear reward:{" "}
+                {[rewardSummary, rewardVp > 0 ? `+${rewardVp} VP` : ""].filter(Boolean).join(" · ")}
+              </span>
+            ) : null}
+            <button
+              className="commandButton ghost"
+              onClick={() => setInspectGuardAt(null)}
+              type="button"
+            >
+              Close
+            </button>
+          </div>
+        )
+      });
+    }
+  }
+
   if (selectedTarget && myHero && !readOnly) {
     const coord = parseHexSpaceId(selectedTarget.spaceId);
     if (coord) {
@@ -2577,8 +2697,10 @@ export function HexMapBoard({
       mapFloats.push({
         key: "gate-exit-float",
         mapPoint: hexToPixel(coord, HEX_SIZE),
-        cardWidth: 280,
-        cardHeight: 128,
+        // Wider + taller so the multi-line "sacrifices …" label wraps cleanly
+        // without clipping (mapFloatLabel is nowrap by default elsewhere).
+        cardWidth: 300,
+        cardHeight: 148,
         gap: HEX_SIZE * 0.72,
         render: () => (
           <div
@@ -5023,6 +5145,16 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" && choice.context === "rule-111" && choice.playerId === viewerPlayerId
       ? (state.combat?.pendingNeutralDraws ?? []).filter((draw) => draw.tier === "bronze" && !draw.bankGuard)
       : null;
+  // Polish Bank Sizes: A/B choice of rolled banks — each option shows the bank's
+  // field art above the name + size so the pick is visual, not text-only.
+  const polishBankCandidates =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "place-creature-bank" &&
+    choice.playerId === viewerPlayerId &&
+    choice.creatureBank?.candidates &&
+    choice.creatureBank.candidates.length > 1
+      ? choice.creatureBank.candidates
+      : null;
   // Scenario starting bonus (rulebook p.10): its options carry no card id, so
   // give each kind a representative glyph (artifact / resource die) — scoped to
   // the "Starting bonus" prompt so no other resource-dice / Search prompt changes.
@@ -5082,7 +5214,30 @@ export function PromptTray({
                 : null;
               return { legal, art };
             })
-          : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
+          : polishBankCandidates
+            ? body.map((legal) => {
+                const optionIndex =
+                  legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                    ? legal.action.optionIndex
+                    : undefined;
+                const candidate =
+                  optionIndex !== undefined ? polishBankCandidates[optionIndex] : undefined;
+                if (!candidate) {
+                  return { legal, art: null as VisitRewardArt | null };
+                }
+                const bank = CREATURE_BANKS[candidate.bankId as CreatureBankId];
+                const letter = String.fromCharCode(65 + (optionIndex ?? 0));
+                const sizeRoman = ROMAN[candidate.size] ?? String(candidate.size);
+                return {
+                  legal,
+                  art: {
+                    name: bank?.name ?? "Creature Bank",
+                    image: creatureBankFieldImage(candidate.bankId),
+                    caption: `${letter} · size ${sizeRoman}`
+                  } as VisitRewardArt
+                };
+              })
+            : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
   const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
   const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
 
@@ -5183,6 +5338,73 @@ export function PromptTray({
               <small>{art?.label ?? legal.label}</small>
             </button>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Polish Bank Sizes A/B pick: field art ABOVE the name + size coin so the
+  // choice is intuitive (which bank am I taking on?). Text labels alone used to
+  // force a memory match against the map preview.
+  if (polishBankCandidates) {
+    return (
+      <div className="promptTray withPolishBankCards" role="dialog" aria-label={title}>
+        <strong>{title}</strong>
+        <span className="promptTeleportHint">Pick a bank — art and size show above the name.</span>
+        <div className="promptOptions polishBankCards">
+          {body.map((legal) => {
+            const optionIndex =
+              legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                ? legal.action.optionIndex
+                : undefined;
+            const candidate =
+              optionIndex !== undefined ? polishBankCandidates[optionIndex] : undefined;
+            const bank = candidate
+              ? CREATURE_BANKS[candidate.bankId as CreatureBankId]
+              : undefined;
+            const letter =
+              optionIndex !== undefined ? String.fromCharCode(65 + optionIndex) : "?";
+            const size = candidate?.size;
+            const sizeRoman = size ? (ROMAN[size] ?? String(size)) : "";
+            return (
+              <button
+                aria-label={legal.label}
+                className="polishBankOptionCard"
+                key={actionKey(legal.action)}
+                onClick={() => onAction(legal.action)}
+                title={legal.label}
+                type="button"
+              >
+                <span className="polishBankOptionArt">
+                  {candidate ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      draggable={false}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      src={assetUrl(creatureBankFieldImage(candidate.bankId))}
+                    />
+                  ) : (
+                    <span className="marketCardFallback">🏦</span>
+                  )}
+                  {size ? (
+                    <span
+                      aria-label={`Size ${sizeRoman}`}
+                      className={`polishBankSizeCoin size-${size}`}
+                    >
+                      {size}
+                    </span>
+                  ) : null}
+                </span>
+                <strong className="polishBankOptionLetter">{letter}</strong>
+                <small className="polishBankOptionName">{bank?.name ?? "Creature Bank"}</small>
+                {sizeRoman ? (
+                  <small className="polishBankOptionSize">size {sizeRoman}</small>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       </div>
     );

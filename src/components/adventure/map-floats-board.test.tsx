@@ -229,3 +229,68 @@ describe("map floating cards — designer altered-guard preview + confirm", () =
     expect(within(float).getByRole("button", { name: /Move there/i })).toBeTruthy();
   });
 });
+
+describe("map floating cards — click-to-inspect a designer-altered object", () => {
+  it("clicking an altered hex OUT of movement reach opens the guard-details float; a second click closes it", () => {
+    // Reuse the altered-guard neighbour but drain the hero's movement so the
+    // hex is NOT a move target (no move-confirm float competes) — the click
+    // falls through to the inspect handler.
+    let state = createAdventureGameState({ seed: "inspect-altered", rollFirstPlayer: false });
+    state.activePlayerId = "p1";
+    if (state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.heroes.hero_p1!.movementPoints = 0;
+    const heroSpace = state.heroes.hero_p1!.spaceId as string;
+    const spaceId = getAdjacentSpaceIds(heroSpace).find((id) => state.adventure!.fields[id]);
+    expect(spaceId, "an adjacent field").toBeTruthy();
+    const field = state.adventure!.fields[spaceId!];
+    field.location = "mine";
+    field.difficulty = 4;
+    field.blackCube = false;
+    field.flagOwnerId = null;
+    field.everFlagged = false;
+    field.designedGuard = true;
+    field.customGuardUnits = ["neutral.cyclopes", "neutral.troglodytes"];
+    field.designerReward = { gold: 7 };
+    field.designerRewardVp = 2;
+
+    const { container } = renderBoard(state);
+    const hex = container.querySelector(`.hexCell[data-space-id="${spaceId}"]`) as HTMLElement;
+    expect(hex).toBeTruthy();
+    fireEvent.click(hex);
+
+    const float = container.querySelector(".designedGuardInspectFloat") as HTMLElement;
+    expect(float, "the inspect float").toBeTruthy();
+    expect(float.textContent).toContain("altered by the map designer");
+    expect(float.textContent).toContain("Cyclopes");
+    expect(float.textContent).toContain("Troglodytes");
+    expect(float.textContent).toContain("7 gold");
+    expect(float.textContent).toContain("+2 VP");
+
+    // A second click on the same hex closes it.
+    fireEvent.click(hex);
+    expect(container.querySelector(".designedGuardInspectFloat")).toBeNull();
+  });
+
+  it("CONTROL: a plain printed field out of reach opens nothing on click", () => {
+    let state = createAdventureGameState({ seed: "inspect-plain", rollFirstPlayer: false });
+    state.activePlayerId = "p1";
+    if (state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.heroes.hero_p1!.movementPoints = 0;
+    const heroSpace = state.heroes.hero_p1!.spaceId as string;
+    const spaceId = getAdjacentSpaceIds(heroSpace).find((id) => state.adventure!.fields[id]);
+    const field = state.adventure!.fields[spaceId!];
+    field.location = "mine";
+    field.difficulty = 4;
+    delete field.designedGuard;
+    delete field.customGuardUnits;
+
+    const { container } = renderBoard(state);
+    const hex = container.querySelector(`.hexCell[data-space-id="${spaceId}"]`) as HTMLElement;
+    fireEvent.click(hex);
+    expect(container.querySelector(".designedGuardInspectFloat")).toBeNull();
+  });
+});

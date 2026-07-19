@@ -51,18 +51,16 @@ import {
   validateCustomMapObjects,
   victoryDesignConflicts,
   customGuardArmyDifficulty,
-  MAX_CENTER_HEX_DICE,
-  MAX_CENTER_HEX_RESOURCE,
-  MAX_CENTER_HEX_SEARCH,
-  MAX_CENTER_HEX_VP,
-  MAX_CUSTOM_GUARD_UNITS,
+  describeGuardArmyGrouped,
+  describeHexEvent,
   MAX_SETTLEMENT_HOLD_ROUNDS,
   MAX_SETTLEMENT_VP,
   type CustomCenterHexPlan,
-  type CustomCenterHexReward,
   type CustomGuardSpec,
   type CustomMapGateLink,
+  type CustomHexEvent,
   type CustomMapSettlementFieldPlan,
+  type CustomObjectFieldPlan,
   type CustomMapTileToken,
   type CustomMapObject,
   type CustomMapObjectKind,
@@ -77,7 +75,8 @@ import {
   type SecretTileFeature,
   type VictoryMode
 } from "@/engine";
-import { coreUnitDefinitions } from "@/data/factions/units";
+import { GuardSpecEditor } from "./guard-spec-editor";
+import { FieldRewardEditor } from "./field-reward-editor";
 import {
   fieldOverrideGlyph,
   fieldOverrideImage,
@@ -330,36 +329,6 @@ const VII_FIELD_OPTIONS: { id: CustomMapTilePlan["viiField"]; label: string; hin
   { id: "town", label: "Town", hint: "Force a neutral conquerable Random Town on this slot's Ⅶ field." }
 ];
 
-/** The center-hex first-clear reward kinds, in picker order (label + clamp). */
-const CENTER_REWARD_FIELDS: { key: keyof CustomCenterHexReward; label: string; max: number }[] = [
-  { key: "gold", label: "Gold", max: MAX_CENTER_HEX_RESOURCE },
-  { key: "buildingMaterials", label: "Materials", max: MAX_CENTER_HEX_RESOURCE },
-  { key: "valuables", label: "Valuables", max: MAX_CENTER_HEX_RESOURCE },
-  { key: "treasureDice", label: "Treasure dice", max: MAX_CENTER_HEX_DICE },
-  { key: "searchSpell", label: "Spell Search", max: MAX_CENTER_HEX_SEARCH },
-  { key: "searchAbility", label: "Ability Search", max: MAX_CENTER_HEX_SEARCH },
-  { key: "searchArtifact", label: "Artifact Search", max: MAX_CENTER_HEX_SEARCH }
-];
-
-/**
- * Fold one amount into a center-hex reward, returning the next reward (or
- * `undefined` when it empties). Pure so the input handlers stay one-liners and
- * the "clears when zeroed" rule lives in one place.
- */
-function nextCenterReward(
-  current: CustomCenterHexReward | undefined,
-  key: keyof CustomCenterHexReward,
-  amount: number
-): CustomCenterHexReward | undefined {
-  const next: CustomCenterHexReward = { ...(current ?? {}) };
-  if (amount > 0) {
-    next[key] = amount;
-  } else {
-    delete next[key];
-  }
-  return Object.keys(next).length > 0 ? next : undefined;
-}
-
 /**
  * Fold a partial patch into a plan's center-hex customization, dropping empty
  * arms so an all-cleared editor stores `undefined` (nothing serialized).
@@ -378,6 +347,9 @@ function nextCenterHex(
   if (!next.vp) {
     delete next.vp;
   }
+  if (!next.winCondition) {
+    delete next.winCondition;
+  }
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
@@ -390,160 +362,151 @@ function nextSettlementPlan(
   if (!next.guard) {
     delete next.guard;
   }
+  if (!next.reward) {
+    delete next.reward;
+  }
   if (!next.vp) {
     delete next.vp;
   }
   if (!next.holdRoundsToWin) {
     delete next.holdRoundsToWin;
   }
+  if (!next.winCondition) {
+    delete next.winCondition;
+  }
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
-/** Tier display order + label for the guard unit picker. */
-const GUARD_TIER_ORDER = ["bronze", "silver", "gold", "azure"] as const;
-const GUARD_TIER_LABELS: Record<(typeof GUARD_TIER_ORDER)[number], string> = {
-  bronze: "Bronze",
-  silver: "Silver",
-  gold: "Gold",
-  azure: "Azure"
-};
-
-/**
- * Every unit a designer may field in a "certain army" guard (it has a Neutral
- * side), grouped by tier for the picker. Computed once at module load.
- */
-const GUARD_UNIT_OPTIONS: { tier: (typeof GUARD_TIER_ORDER)[number]; units: { id: string; label: string }[] }[] =
-  GUARD_TIER_ORDER.map((tier) => ({
-    tier,
-    units: Object.values(coreUnitDefinitions)
-      .filter((def) => def.neutral && def.tier === tier)
-      .map((def) => ({ id: def.id, label: def.name }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  })).filter((group) => group.units.length > 0);
-
-/** Short display name for a guard-army unit chip. */
-function guardUnitLabel(unitDefId: string): string {
-  return coreUnitDefinitions[unitDefId]?.name ?? unitDefId;
+/** Fold a partial patch into a tile's SPECIFIC object plan (obelisk / mine). */
+function nextObjectPlan(
+  current: CustomObjectFieldPlan | undefined,
+  patch: Partial<CustomObjectFieldPlan>
+): CustomObjectFieldPlan | undefined {
+  const next: CustomObjectFieldPlan = { ...(current ?? {}), ...patch };
+  for (const key of [
+    "guard",
+    "reward",
+    "vp",
+    "breakField",
+    "persistentGuard",
+    "unlimitedRounds",
+    "winCondition"
+  ] as const) {
+    if (!next[key]) {
+      delete next[key];
+    }
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
 }
 
-/** Roman numeral for a guard level chip / badge. */
-const GUARD_LEVELS = [1, 2, 3, 4, 5, 6, 7] as const;
+/** Fold one kind's plan into a tile's objectPlans record (empty → undefined). */
+function nextObjectPlans(
+  current: CustomMapTilePlan["objectPlans"],
+  kind: "obelisk" | "mine",
+  plan: CustomObjectFieldPlan | undefined
+): CustomMapTilePlan["objectPlans"] {
+  const next = { ...(current ?? {}) };
+  if (plan) {
+    next[kind] = plan;
+  } else {
+    delete next[kind];
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/** Does this plan's pinned def carry the location (face-up eligibility)? */
+function planDefHasLocation(plan: CustomMapTilePlan, location: "obelisk" | "mine"): boolean {
+  const def = plan.tileDefId ? allTileDefinitions[plan.tileDefId] : undefined;
+  return Boolean(def?.fields.some((field) => field.location === location));
+}
 
 /**
- * Designer guard editor — shared by the center-hex section and (via the same
- * component) any single-hex guard editing. Three modes: none ("Printed" /
- * "None"), a level Ⅰ–Ⅶ, or a certain army built unit by unit.
+ * SPECIFIC-mode eligibility: which plans may carry a per-tile plan for this
+ * object kind. Face-up pinned tiles must PRINT the location; a face-down tile
+ * qualifies when a secret landmark guarantees a matching draw (mines), else it
+ * is skipped (random content — the plan could land inert).
  */
-function GuardSpecEditor({
-  guard,
-  noneLabel,
-  onChange
-}: {
-  guard: CustomGuardSpec | undefined;
-  /** Label of the "no designed guard" chip — "Printed" where a printed guard exists, else "None". */
-  noneLabel: string;
-  onChange: (guard: CustomGuardSpec | undefined) => void;
-}) {
-  const armyMode = Boolean(guard?.units);
-  const units = guard?.units ?? [];
-  return (
-    <div className="popoverGuardEditor">
-      <div className="popoverGuardRow" role="group" aria-label="Guard">
-        <button
-          aria-pressed={!guard}
-          className={`popoverGuardChip${!guard ? " active" : ""}`}
-          onClick={() => onChange(undefined)}
-          title="Keep the printed guard (no designed guard)."
-          type="button"
-        >
-          {noneLabel}
-        </button>
-        {GUARD_LEVELS.map((level) => {
-          const active = !armyMode && guard?.level === level;
-          return (
-            <button
-              aria-pressed={active}
-              className={`popoverGuardChip${active ? " active" : ""}`}
-              key={level}
-              onClick={() => onChange({ level })}
-              title={`Neutral guard of Field Difficulty ${ROMAN_NUMERALS[level]}.`}
-              type="button"
-            >
-              {ROMAN_NUMERALS[level]}
-            </button>
-          );
-        })}
-        <button
-          aria-pressed={armyMode}
-          className={`popoverGuardChip popoverGuardArmyChip${armyMode ? " active" : ""}`}
-          onClick={() => {
-            if (!armyMode) {
-              onChange({ units: [] });
-            }
-          }}
-          title="Field an exact army: pick the specific Neutral unit cards that guard this hex."
-          type="button"
-        >
-          Exact army
-        </button>
-      </div>
-      {armyMode ? (
-        <div className="popoverGuardArmy">
-          {units.length > 0 ? (
-            <div className="popoverGuardArmyChips">
-              {units.map((unitDefId, index) => (
-                <button
-                  className="popoverGuardUnitChip"
-                  key={`${unitDefId}-${index}`}
-                  onClick={() => {
-                    const next = units.filter((_, i) => i !== index);
-                    onChange(next.length > 0 ? { units: next } : { units: [] });
-                  }}
-                  title="Remove this unit from the guard army."
-                  type="button"
-                >
-                  {guardUnitLabel(unitDefId)} ✕
-                </button>
-              ))}
-            </div>
-          ) : (
-            <small className="popoverHint">No units yet — add up to {MAX_CUSTOM_GUARD_UNITS} below.</small>
-          )}
-          {units.length < MAX_CUSTOM_GUARD_UNITS ? (
-            <select
-              aria-label="Add a guard unit"
-              className="popoverSelect popoverGuardUnitSelect"
-              onChange={(event) => {
-                const unitId = event.target.value;
-                if (unitId) {
-                  onChange({ units: [...units, unitId] });
-                }
-                event.target.value = "";
-              }}
-              value=""
-            >
-              <option value="">+ Add unit…</option>
-              {GUARD_UNIT_OPTIONS.map((group) => (
-                <optgroup key={group.tier} label={GUARD_TIER_LABELS[group.tier]}>
-                  {group.units.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          ) : null}
-          {units.length > 0 ? (
-            <small className="popoverHint popoverGuardArmyNote">
-              Counts as difficulty {ROMAN_NUMERALS[customGuardArmyDifficulty(units)]} (experience); Quick Combat
-              never skips an exact army.
-            </small>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
+function planEligibleForObjectKind(plan: CustomMapTilePlan, kind: "obelisk" | "mine"): boolean {
+  if (plan.group === "starting") {
+    return false;
+  }
+  if (!plan.faceDown) {
+    return planDefHasLocation(plan, kind);
+  }
+  if (plan.tileDefId) {
+    return planDefHasLocation(plan, kind);
+  }
+  const secrets = [
+    ...(plan.secretFeatures ?? []),
+    ...(plan.secretFeature ? [plan.secretFeature] : [])
+  ];
+  if (kind === "mine") {
+    return secrets.some(
+      (feature) =>
+        feature === "gold_mine" ||
+        feature === "valuables_mine" ||
+        feature === "materials_mine" ||
+        feature === "any_mine"
+    );
+  }
+  return secrets.includes("obelisk");
+}
+
+/** The object kinds the SPECIFIC pick flow may target on a tile. */
+export type SpecificPickKind = "obelisk" | "mine" | "settlement" | "center";
+
+/**
+ * SPECIFIC-mode pick eligibility, all kinds: obelisk/mine need the printed (or
+ * secret-guaranteed) location; "settlement" any tile whose popover shows the
+ * settlement plan (non-sea/center/starting); "center" any Ⅵ–Ⅶ center slot (its
+ * centerHex editor customizes the printed OR designated objective).
+ */
+export function planEligibleForPick(plan: CustomMapTilePlan, kind: SpecificPickKind): boolean {
+  if (kind === "obelisk" || kind === "mine") {
+    return planEligibleForObjectKind(plan, kind);
+  }
+  if (kind === "settlement") {
+    return plan.group !== "sea" && plan.group !== "center" && plan.group !== "starting";
+  }
+  return plan.group === "center";
+}
+
+/** Plain-words summary of one tile's SPECIFIC settings for `kind` ("" = none). */
+export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: SpecificPickKind): string {
+  const bits: string[] = [];
+  const fold = (
+    p:
+      | {
+          guard?: CustomGuardSpec;
+          reward?: unknown;
+          vp?: number;
+          winCondition?: boolean;
+          holdRoundsToWin?: number;
+        }
+      | undefined
+  ) => {
+    if (!p) return;
+    if (p.guard) {
+      bits.push(
+        p.guard.units?.length
+          ? `guard: ${describeGuardArmyGrouped(p.guard.units)}`
+          : `guard level ${p.guard.level}`
+      );
+    }
+    if (p.reward) bits.push("reward");
+    if (p.vp) bits.push(`+${p.vp} VP`);
+    if (p.holdRoundsToWin) bits.push(`hold ${p.holdRoundsToWin}r wins`);
+    if (p.winCondition) bits.push("first clear WINS");
+  };
+  if (kind === "obelisk" || kind === "mine") {
+    fold(plan.objectPlans?.[kind]);
+  } else if (kind === "settlement") {
+    fold(plan.settlement);
+  } else {
+    fold(plan.centerHex);
+    if (plan.viiField) bits.push(`forced ${plan.viiField.replace("_", " ")}`);
+  }
+  return bits.join(" · ");
 }
 
 /**
@@ -612,10 +575,12 @@ function tileTokenValue(
   pair: 1 | 2 | 3 | 4 | undefined,
   slot: number | undefined,
   guard?: CustomGuardSpec,
-  carry?: Pick<CustomMapTileToken, "exitMode" | "alwaysPickable">
+  carry?: Pick<CustomMapTileToken, "exitMode" | "alwaysPickable" | "reward" | "vp">
 ): NonNullable<CustomMapTilePlan["token"]> {
   const slotPart = slot !== undefined ? { slot } : {};
   const guardPart = guard ? { guard } : {};
+  const rewardPart = carry?.reward ? { reward: carry.reward } : {};
+  const vpPart = carry?.vp && carry.vp > 0 ? { vp: carry.vp } : {};
   const pairPart =
     kind === "gate" || kind === "oneway_entrance" || kind === "oneway_exit" ? { pair } : {};
   // Exit-mode vocabulary is shared by one-way entrances AND two-way gates/monoliths.
@@ -625,7 +590,7 @@ function tileTokenValue(
     ...(carriesExitMode && carry?.exitMode ? { exitMode: carry.exitMode } : {}),
     ...(carriesAlwaysPickable && carry?.alwaysPickable ? { alwaysPickable: true } : {})
   };
-  return { kind, ...pairPart, ...slotPart, ...guardPart, ...carryPart };
+  return { kind, ...pairPart, ...slotPart, ...guardPart, ...rewardPart, ...vpPart, ...carryPart };
 }
 
 /** A resolved drop target for a teleporter placement: an ON-tile token, or an OFF-tile standalone hex. */
@@ -1074,6 +1039,7 @@ type DesignDrag =
 
 /** Stable empty default so the `objects` prop never re-mounts on every render. */
 const EMPTY_OBJECTS: CustomMapObject[] = [];
+const EMPTY_HEX_EVENTS: CustomHexEvent[] = [];
 
 /** The four Teleport-Gate pairs offered in the Objects palette (1 = red … 4 = violet). */
 const GATE_PAIRS: (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
@@ -1128,7 +1094,11 @@ export function MapDesigner({
   objects = EMPTY_OBJECTS,
   onObjectsChange,
   victoryMode,
-  hexSize = DESIGN_HEX
+  hexSize = DESIGN_HEX,
+  pickRequest = null,
+  onPickResolved,
+  hexEvents = EMPTY_HEX_EVENTS,
+  onHexEventsChange
 }: {
   scenarioId: string;
   customMap: CustomMapTilePlan[];
@@ -1140,6 +1110,20 @@ export function MapDesigner({
   /** The map's victory mode (from the preset) — drives the win-condition conflict warning. */
   victoryMode?: VictoryMode;
   hexSize?: number;
+  /**
+   * SPECIFIC-mode pick armed from the objects panel: eligible tiles highlight,
+   * clicking one attaches the per-tile setting (object-plan → opens the tile's
+   * options; hex-event → places an event on the exact clicked hex). Escape or
+   * a resolving click clears it via {@link onPickResolved}.
+   */
+  pickRequest?:
+    | { kind: "object-plan"; objectKind: SpecificPickKind }
+    | { kind: "hex-event" }
+    | null;
+  onPickResolved?: () => void;
+  /** Designer hex events (invisible in game; markers here only). */
+  hexEvents?: CustomHexEvent[];
+  onHexEventsChange?: (next: CustomHexEvent[]) => void;
 }) {
   const scenario = scenarioDefinitions[scenarioId];
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -1579,11 +1563,23 @@ export function MapDesigner({
           if (changes.viiField === undefined && "viiField" in changes) {
             delete next.viiField;
           }
+          if (changes.viiFields === undefined && "viiFields" in changes) {
+            delete next.viiFields;
+          }
+          if (changes.playerViiPick === undefined && "playerViiPick" in changes) {
+            delete next.playerViiPick;
+          }
+          if (changes.playerResourcePick === undefined && "playerResourcePick" in changes) {
+            delete next.playerResourcePick;
+          }
           if (changes.centerHex === undefined && "centerHex" in changes) {
             delete next.centerHex;
           }
           if (changes.settlement === undefined && "settlement" in changes) {
             delete next.settlement;
+          }
+          if (changes.objectPlans === undefined && "objectPlans" in changes) {
+            delete next.objectPlans;
           }
           return next;
         })
@@ -1710,6 +1706,21 @@ export function MapDesigner({
       window.removeEventListener("keydown", onKey);
     };
   }, [borderPaint]);
+
+  // SPECIFIC-mode pick: Escape cancels the armed pick (same convention as the
+  // border-paint stroke discard above).
+  useEffect(() => {
+    if (!pickRequest || !onPickResolved) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onPickResolved();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pickRequest, onPickResolved]);
 
   /**
    * Arm / disarm the on-board border paint tool. Only one interaction mode runs
@@ -2002,6 +2013,29 @@ export function MapDesigner({
     },
     [objects, onObjectsChange]
   );
+
+  const patchObject = useCallback(
+    (index: number, patch: Partial<Pick<CustomMapObject, "reward" | "vp">>) => {
+      onObjectsChange?.(
+        objects.map((object, i) => {
+          if (i !== index) {
+            return object;
+          }
+          const next: CustomMapObject = { ...object };
+          if ("reward" in patch) {
+            if (patch.reward) next.reward = patch.reward;
+            else delete next.reward;
+          }
+          if ("vp" in patch) {
+            if (patch.vp && patch.vp > 0) next.vp = patch.vp;
+            else delete next.vp;
+          }
+          return next;
+        })
+      );
+    },
+    [objects, onObjectsChange]
+  );
   const removeObject = useCallback(
     (index: number) => {
       onObjectsChange?.(objects.filter((_, i) => i !== index));
@@ -2129,7 +2163,7 @@ export function MapDesigner({
       if (!source || !dragged || dragged.kind === "whirlpool") {
         return;
       }
-      const { kind, pair, guard, exitMode, alwaysPickable } = dragged;
+      const { kind, pair, guard, reward, vp, exitMode, alwaysPickable } = dragged;
       onChange(
         customMap.map((plan, planIndex) => {
           if (planIndex !== sourceIndex) {
@@ -2147,6 +2181,8 @@ export function MapDesigner({
         ...((kind === "gate" || kind === "oneway_entrance" || kind === "oneway_exit") && pair ? { pair } : {}),
         placement: { type: "standalone", row, col },
         ...(guard ? { guard } : {}),
+        ...(reward ? { reward } : {}),
+        ...(vp && vp > 0 ? { vp } : {}),
         // Exit-pick extras survive the conversion — one-way AND two-way
         // (gate/monolith) alike, mirroring tileTokenValue's carry rules.
         ...((kind === "oneway_entrance" || kind === "gate" || kind === "monolith") && exitMode
@@ -3267,9 +3303,17 @@ export function MapDesigner({
               : `${plan.tileDefId ?? "?"} rotated ${(plan.rotation ?? 0) * 60}°. Drag to move, click for options.`
     );
 
+    // SPECIFIC-mode pick: eligible tiles pulse, the rest dim, so "click a tile
+    // with a mine" reads at a glance.
+    const pickState =
+      pickRequest?.kind === "object-plan"
+        ? planEligibleForPick(plan, pickRequest.objectKind)
+          ? "pickEligible"
+          : "pickDim"
+        : "";
     outlineLayer.push(
       <path
-        className={`designerFlowerOutline ${isSelected ? "selected" : ""} ${secretPin ? "secret" : ""}`}
+        className={`designerFlowerOutline ${isSelected ? "selected" : ""} ${secretPin ? "secret" : ""} ${pickState}`}
         d={flowerOutline(center, size)}
         data-band-group={plan.group}
         data-underground={planIsUnderground(plan) ? "true" : undefined}
@@ -3333,6 +3377,58 @@ export function MapDesigner({
           {viiBadge}
         </text>
       );
+    }
+
+    // SPECIFIC per-tile settings badge — the designer must SEE where custom
+    // guards / rewards / win conditions live without opening every tile.
+    {
+      const specificBits: string[] = [];
+      const planFor = (kind: "obelisk" | "mine") => plan.objectPlans?.[kind];
+      for (const kind of ["obelisk", "mine"] as const) {
+        const objectPlan = planFor(kind);
+        if (objectPlan) {
+          const bits: string[] = [];
+          if (objectPlan.guard) {
+            bits.push(
+              objectPlan.guard.units?.length
+                ? `guard ${describeGuardArmyGrouped(objectPlan.guard.units)}`
+                : `guard Ⅰ-Ⅶ level ${objectPlan.guard.level}`
+            );
+          }
+          if (objectPlan.reward) bits.push("reward");
+          if (objectPlan.vp) bits.push(`+${objectPlan.vp} VP`);
+          if (objectPlan.winCondition) bits.push("WIN on clear");
+          specificBits.push(`${kind}: ${bits.join(", ") || "custom"}`);
+        }
+      }
+      if (plan.settlement) {
+        const bits: string[] = [];
+        if (plan.settlement.guard) bits.push("guard");
+        if (plan.settlement.reward) bits.push("reward");
+        if (plan.settlement.vp) bits.push(`+${plan.settlement.vp} VP`);
+        if (plan.settlement.holdRoundsToWin) bits.push(`hold ${plan.settlement.holdRoundsToWin}r to win`);
+        if (plan.settlement.winCondition) bits.push("WIN on flag");
+        specificBits.push(`settlement: ${bits.join(", ") || "custom"}`);
+      }
+      if (plan.centerHex?.winCondition) {
+        specificBits.push("center: WIN on clear");
+      }
+      if (specificBits.length > 0) {
+        const hasWin = specificBits.some((bit) => bit.includes("WIN"));
+        labelLayer.push(
+          <text
+            className="designerSpecificBadge"
+            data-specific-badge="true"
+            key={`plan-specific-${index}`}
+            textAnchor="middle"
+            x={centerPixel.x - size * 0.9}
+            y={centerPixel.y - size * 1.15}
+          >
+            <title>{`Specific settings — ${specificBits.join(" · ")}`}</title>
+            {hasWin ? "🏁⚔" : "⚔"}
+          </text>
+        );
+      }
     }
 
     // "One of these tiles" random set — a 🎲 badge with the count, so the
@@ -3989,6 +4085,22 @@ export function MapDesigner({
     );
   }
 
+  // --- Designer HEX EVENTS (⚡, DESIGNER-ONLY markers) ------------------------
+  // Invisible in the real game; here each event hex wears a lightning mark with
+  // a full plain-words tooltip. Clicks fall through to the tile underneath.
+  for (const event of hexEvents) {
+    const { x, y } = hexToPixel({ row: event.placement.row, col: event.placement.col }, size);
+    objectLayer.push(
+      <g key={`hex-event-${event.id}`} style={{ pointerEvents: "none" }}>
+        <circle className="designerHexEventRing" cx={x} cy={y} fill="none" r={size * 0.5} />
+        <text className="designerHexEventMark" data-hex-event={event.id} textAnchor="middle" x={x} y={y + size * 0.22}>
+          <title>{`Hidden event (designer-only) — ${describeHexEvent(event)}`}</title>
+          ⚡
+        </text>
+      </g>
+    );
+  }
+
   // --- Designer yellow-border paint zones (per physical edge) -----------------
   // While the paint tool is armed (and no tile is being dragged), every placed
   // plan's footprint contributes one THIN clickable strip per hex edge — 30 for a
@@ -4411,8 +4523,31 @@ export function MapDesigner({
       </section>
 
       <div className="designerBoardWrap" ref={wrapRef}>
+        {pickRequest ? (
+          <div className="designerPickBanner" role="status" aria-label="Pick a tile on the map">
+            <span aria-hidden="true">📍</span>
+            <strong>
+              {pickRequest.kind === "hex-event"
+                ? "Click any hex of a placed tile to drop a hidden event there."
+                : pickRequest.objectKind === "obelisk"
+                  ? "Click a highlighted tile with an Obelisk to set its specific options."
+                  : pickRequest.objectKind === "mine"
+                    ? "Click a highlighted tile with a Mine to set its specific options."
+                    : pickRequest.objectKind === "settlement"
+                      ? "Click a highlighted tile to set its specific Settlement options."
+                      : "Click a highlighted Ⅵ–Ⅶ center tile to set its objective's specific options."}
+            </strong>
+            <button
+              className="commandButton ghost"
+              onClick={() => onPickResolved?.()}
+              type="button"
+            >
+              Cancel (Esc)
+            </button>
+          </div>
+        ) : null}
         <svg
-          className={`designerSvg ${drag ? "dragging" : ""}`}
+          className={`designerSvg ${drag ? "dragging" : ""}${pickRequest ? " picking" : ""}`}
           ref={svgRef}
           onPointerCancel={(event) => {
             pointersRef.current.delete(event.pointerId);
@@ -4539,6 +4674,44 @@ export function MapDesigner({
             const press = pressRef.current;
             if (press && press.pointerId === event.pointerId && !press.promoted) {
               pressRef.current = null;
+              // SPECIFIC-mode pick: a hex-event click drops an event on the
+              // exact hex under the pointer; an object-plan click on an
+              // ELIGIBLE tile selects it and opens its options (scrolled to
+              // the object section). Ineligible tiles ignore the click.
+              if (pickRequest?.kind === "hex-event") {
+                const local = clientToLocal(event.clientX, event.clientY);
+                const hex = local ? pixelToHex(local.x, local.y, hexSize) : null;
+                if (hex && occupiedTileHexes.has(hexSpaceId(hex)) && onHexEventsChange) {
+                  const taken = hexEvents.some(
+                    (candidate) =>
+                      candidate.placement.row === hex.row && candidate.placement.col === hex.col
+                  );
+                  if (!taken) {
+                    onHexEventsChange([
+                      ...hexEvents,
+                      {
+                        // One event per hex, so the hex IS a stable unique id.
+                        id: `hexev_${hex.row}_${hex.col}`,
+                        placement: { row: hex.row, col: hex.col },
+                        message: "Something stirs here…"
+                      }
+                    ]);
+                    onPickResolved?.();
+                  }
+                }
+                return;
+              }
+              if (pickRequest?.kind === "object-plan") {
+                const plan = customMap[press.index];
+                if (plan && planEligibleForPick(plan, pickRequest.objectKind)) {
+                  closeAllPanels();
+                  setSelectedIndex(press.index);
+                  setTilePickFilter("all");
+                  setPopoverAt({ x: event.clientX, y: event.clientY });
+                  onPickResolved?.();
+                }
+                return;
+              }
               // Opening the docked tile panel closes any open object / token panel
               // so at most one of the three is ever shown (mutual exclusivity).
               closeAllPanels();
@@ -4783,6 +4956,21 @@ export function MapDesigner({
                         </div>
                       </div>
                     ) : null}
+                    {selected.faceDown && (selected.group === "far" || selected.group === "near") ? (
+                      <button
+                        aria-pressed={Boolean(selected.playerResourcePick)}
+                        className={`popoverFilterChip${selected.playerResourcePick ? " active" : ""}`}
+                        onClick={() =>
+                          updateTile(selectedIndex as number, {
+                            playerResourcePick: selected.playerResourcePick ? undefined : true
+                          })
+                        }
+                        title="Before reveal the discovering player chooses Gold or Valuables mine; the game draws a matching tile from the pool."
+                        type="button"
+                      >
+                        Player picks Gold / Valuables on reveal
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -4915,25 +5103,57 @@ export function MapDesigner({
                 {selected.group === "center" ? (
                   <div className="popoverViiField popoverSection popoverCenterHex">
                     <div className="popoverSectionLabel">Center (Ⅶ) hex</div>
-                    <div className="popoverSubLabel">Objective</div>
+                    <div className="popoverSubLabel">Objective (multi-select)</div>
                     <small className="popoverHint">
-                      Default keeps whatever the drawn / chosen tile prints; the others force this slot&apos;s
-                      difficulty-7 field, whatever tile lands here.
+                      Default keeps the printed objective. Toggle Town / Utopia / Grail to allow any of those —
+                      with several selected the engine picks randomly (or the discovering player, when
+                      &quot;Player picks&quot; is on).
                     </small>
                     <div className="popoverModeRow" role="group" aria-label="Center Ⅶ field">
                       {VII_FIELD_OPTIONS.map((option) => {
-                        const active = (selected.viiField ?? undefined) === option.id;
+                        const multi = selected.viiFields ?? [];
+                        const active =
+                          option.id === undefined
+                            ? !selected.viiField && multi.length === 0
+                            : multi.includes(option.id) || selected.viiField === option.id;
                         return (
                           <button
                             aria-pressed={active}
                             className={`popoverFilterChip${active ? " active" : ""}`}
                             key={String(option.id)}
-                            onClick={() =>
-                              updateTile(
-                                selectedIndex as number,
-                                option.id === undefined ? { viiField: undefined } : { viiField: option.id }
-                              )
-                            }
+                            onClick={() => {
+                              if (option.id === undefined) {
+                                updateTile(selectedIndex as number, {
+                                  viiField: undefined,
+                                  viiFields: undefined,
+                                  playerViiPick: undefined
+                                });
+                                return;
+                              }
+                              const current = new Set(selected.viiFields ?? (selected.viiField ? [selected.viiField] : []));
+                              if (current.has(option.id)) current.delete(option.id);
+                              else current.add(option.id);
+                              const next = [...current] as Array<"town" | "dragon_utopia" | "grail">;
+                              if (next.length === 0) {
+                                updateTile(selectedIndex as number, {
+                                  viiField: undefined,
+                                  viiFields: undefined,
+                                  playerViiPick: undefined
+                                });
+                              } else if (next.length === 1) {
+                                updateTile(selectedIndex as number, {
+                                  viiField: next[0],
+                                  viiFields: undefined,
+                                  playerViiPick: undefined
+                                });
+                              } else {
+                                updateTile(selectedIndex as number, {
+                                  viiField: undefined,
+                                  viiFields: next,
+                                  playerViiPick: selected.playerViiPick
+                                });
+                              }
+                            }}
                             title={option.hint}
                             type="button"
                           >
@@ -4942,6 +5162,21 @@ export function MapDesigner({
                         );
                       })}
                     </div>
+                    {(selected.viiFields?.length ?? 0) > 1 && selected.faceDown ? (
+                      <button
+                        aria-pressed={Boolean(selected.playerViiPick)}
+                        className={`popoverFilterChip${selected.playerViiPick ? " active" : ""}`}
+                        onClick={() =>
+                          updateTile(selectedIndex as number, {
+                            playerViiPick: selected.playerViiPick ? undefined : true
+                          })
+                        }
+                        title="Discovering player chooses which Ⅶ objective this tile becomes."
+                        type="button"
+                      >
+                        Player picks on reveal
+                      </button>
+                    ) : null}
 
                     <div className="popoverSubLabel">Guard (monster)</div>
                     <small className="popoverHint">
@@ -4960,52 +5195,39 @@ export function MapDesigner({
                     <div className="popoverSubLabel">First-clear reward &amp; Victory Points</div>
                     <small className="popoverHint">
                       A one-time bonus for the player who first clears this objective, on top of its printed
-                      reward. Victory Points count when Victory-Points scoring is on.
+                      reward. Searches are Times × Search(X) — e.g. 2× Search(5) Artifacts. Victory Points
+                      count when Victory-Points scoring is on.
                     </small>
-                    <div className="popoverViiRewardRow" role="group" aria-label="Center hex reward">
-                      {CENTER_REWARD_FIELDS.map((field) => (
-                        <label className="popoverViiField_num" key={field.key}>
-                          <span>{field.label}</span>
-                          <input
-                            aria-label={`Center hex ${field.label}`}
-                            max={field.max}
-                            min={0}
-                            onChange={(event) => {
-                              const amount = Math.max(
-                                0,
-                                Math.min(field.max, Math.floor(Number(event.target.value) || 0))
-                              );
-                              updateTile(selectedIndex as number, {
-                                centerHex: nextCenterHex(selected.centerHex, {
-                                  reward: nextCenterReward(selected.centerHex?.reward, field.key, amount)
-                                })
-                              });
-                            }}
-                            type="number"
-                            value={selected.centerHex?.reward?.[field.key] ?? ""}
-                          />
-                        </label>
-                      ))}
-                      <label className="popoverViiField_num popoverViiVp">
-                        <span>Victory Pts</span>
-                        <input
-                          aria-label="Ⅶ victory points"
-                          max={MAX_CENTER_HEX_VP}
-                          min={0}
-                          onChange={(event) => {
-                            const vp = Math.max(
-                              0,
-                              Math.min(MAX_CENTER_HEX_VP, Math.floor(Number(event.target.value) || 0))
-                            );
-                            updateTile(selectedIndex as number, {
-                              centerHex: nextCenterHex(selected.centerHex, { vp: vp > 0 ? vp : undefined })
-                            });
-                          }}
-                          type="number"
-                          value={selected.centerHex?.vp ?? ""}
-                        />
-                      </label>
-                    </div>
+                    <FieldRewardEditor
+                      ariaLabel="Center hex reward"
+                      reward={selected.centerHex?.reward}
+                      onChange={(reward) =>
+                        updateTile(selectedIndex as number, {
+                          centerHex: nextCenterHex(selected.centerHex, { reward })
+                        })
+                      }
+                      vp={selected.centerHex?.vp}
+                      onVpChange={(vp) =>
+                        updateTile(selectedIndex as number, {
+                          centerHex: nextCenterHex(selected.centerHex, { vp })
+                        })
+                      }
+                    />
+                    <label className="popoverCheckRow" title="The first player to clear / capture THIS objective wins the game immediately (in Victory-Points mode the completion scores the table instead).">
+                      <input
+                        aria-label="First clear of this center hex wins the game"
+                        checked={Boolean(selected.centerHex?.winCondition)}
+                        onChange={(event) =>
+                          updateTile(selectedIndex as number, {
+                            centerHex: nextCenterHex(selected.centerHex, {
+                              winCondition: event.target.checked || undefined
+                            })
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      <span>🏁 First clear wins the game</span>
+                    </label>
                   </div>
                 ) : null}
 
@@ -5030,6 +5252,17 @@ export function MapDesigner({
                           settlement: nextSettlementPlan(selected.settlement, { guard })
                         })
                       }
+                    />
+                    <div className="popoverSubLabel">First-flag reward</div>
+                    <FieldRewardEditor
+                      ariaLabel="Settlement first-flag reward"
+                      reward={selected.settlement?.reward}
+                      onChange={(reward) =>
+                        updateTile(selectedIndex as number, {
+                          settlement: nextSettlementPlan(selected.settlement, { reward })
+                        })
+                      }
+                      showVp={false}
                     />
                     <div className="popoverViiRewardRow" role="group" aria-label="Settlement VP and hold">
                       <label className="popoverViiField_num popoverViiVp">
@@ -5078,6 +5311,21 @@ export function MapDesigner({
                         />
                       </label>
                     </div>
+                    <label className="popoverCheckRow" title="The first player to flag THIS settlement wins the game immediately (the instant twin of hold-to-win).">
+                      <input
+                        aria-label="First flag of this settlement wins the game"
+                        checked={Boolean(selected.settlement?.winCondition)}
+                        onChange={(event) =>
+                          updateTile(selectedIndex as number, {
+                            settlement: nextSettlementPlan(selected.settlement, {
+                              winCondition: event.target.checked || undefined
+                            })
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      <span>🏁 First flag wins the game</span>
+                    </label>
                     {selected.settlement ? (
                       <button
                         className="popoverIconButton"
@@ -5091,6 +5339,130 @@ export function MapDesigner({
                     ) : null}
                   </div>
                 ) : null}
+
+                {/* SPECIFIC (per-tile) object plans — obelisk / mine on THIS tile.
+                    Shown only when the tile can actually host the object (a
+                    face-up def printing it, or a face-down secret landmark
+                    guaranteeing a mine), so the popover never bloats with inert
+                    sections. A set field OVERRIDES the map-wide config; unset
+                    fields fall back to it. */}
+                {(["obelisk", "mine"] as const).map((objectKind) =>
+                  planEligibleForObjectKind(selected, objectKind) ? (
+                    <div
+                      className="popoverObjectPlan popoverSection"
+                      aria-label={`Special ${objectKind} (this tile)`}
+                      data-object-plan={objectKind}
+                      key={objectKind}
+                    >
+                      <div className="popoverSectionLabel">
+                        {objectKind === "obelisk" ? "⚱ Obelisk (this tile)" : "⛏ Mine (this tile)"}
+                      </div>
+                      <small className="popoverHint">
+                        Overrides the map-wide {objectKind} setting for THIS tile only — a field you leave
+                        unset falls back to the map-wide value.
+                      </small>
+                      <div className="popoverSubLabel">Guard</div>
+                      <GuardSpecEditor
+                        guard={selected.objectPlans?.[objectKind]?.guard}
+                        noneLabel="Map-wide / printed"
+                        onChange={(guard) =>
+                          updateTile(selectedIndex as number, {
+                            objectPlans: nextObjectPlans(
+                              selected.objectPlans,
+                              objectKind,
+                              nextObjectPlan(selected.objectPlans?.[objectKind], { guard })
+                            )
+                          })
+                        }
+                      />
+                      <div className="popoverSubLabel">First-clear reward</div>
+                      <FieldRewardEditor
+                        ariaLabel={`${objectKind} first-clear reward`}
+                        reward={selected.objectPlans?.[objectKind]?.reward}
+                        onChange={(reward) =>
+                          updateTile(selectedIndex as number, {
+                            objectPlans: nextObjectPlans(
+                              selected.objectPlans,
+                              objectKind,
+                              nextObjectPlan(selected.objectPlans?.[objectKind], { reward })
+                            )
+                          })
+                        }
+                        vp={selected.objectPlans?.[objectKind]?.vp}
+                        onVpChange={(vp) =>
+                          updateTile(selectedIndex as number, {
+                            objectPlans: nextObjectPlans(
+                              selected.objectPlans,
+                              objectKind,
+                              nextObjectPlan(selected.objectPlans?.[objectKind], { vp })
+                            )
+                          })
+                        }
+                      />
+                      <div className="popoverGuardRow" role="group" aria-label={`${objectKind} break options`}>
+                        {(
+                          [
+                            { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through — must fight to enter." },
+                            { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves the living guards for a re-fight." },
+                            { key: "unlimitedRounds", label: "No round limit", hint: "The fight has no Round limit (bank-style rounds)." }
+                          ] as const
+                        ).map((flag) => (
+                          <label className="popoverCheckRow popoverCheckChip" key={flag.key} title={flag.hint}>
+                            <input
+                              aria-label={`${objectKind} ${flag.label}`}
+                              checked={Boolean(selected.objectPlans?.[objectKind]?.[flag.key])}
+                              onChange={(event) =>
+                                updateTile(selectedIndex as number, {
+                                  objectPlans: nextObjectPlans(
+                                    selected.objectPlans,
+                                    objectKind,
+                                    nextObjectPlan(selected.objectPlans?.[objectKind], {
+                                      [flag.key]: event.target.checked || undefined
+                                    })
+                                  )
+                                })
+                              }
+                              type="checkbox"
+                            />
+                            <span>{flag.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <label className="popoverCheckRow" title={`The first player to clear / flag THIS ${objectKind} wins the game immediately.`}>
+                        <input
+                          aria-label={`First clear of this ${objectKind} wins the game`}
+                          checked={Boolean(selected.objectPlans?.[objectKind]?.winCondition)}
+                          onChange={(event) =>
+                            updateTile(selectedIndex as number, {
+                              objectPlans: nextObjectPlans(
+                                selected.objectPlans,
+                                objectKind,
+                                nextObjectPlan(selected.objectPlans?.[objectKind], {
+                                  winCondition: event.target.checked || undefined
+                                })
+                              )
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        <span>🏁 First clear wins the game</span>
+                      </label>
+                      {selected.objectPlans?.[objectKind] ? (
+                        <button
+                          className="popoverIconButton"
+                          onClick={() =>
+                            updateTile(selectedIndex as number, {
+                              objectPlans: nextObjectPlans(selected.objectPlans, objectKind, undefined)
+                            })
+                          }
+                          type="button"
+                        >
+                          Clear special {objectKind}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null
+                )}
 
                 {/* Monolith/Whirlpool/colored-Gate Location Token on this tile. */}
                 {selectedToken ? (
@@ -5506,6 +5878,21 @@ export function MapDesigner({
                   : "An exit monolith is never guarded — only entrances fight."}
               </small>
             )}
+            {selectedObject.kind !== "barrier" ? (
+              <>
+                <div className="popoverSectionLabel">First-clear reward</div>
+                <small className="popoverHint">
+                  One-time bonus when a hero first successfully visits this hex (after any guard is cleared).
+                </small>
+                <FieldRewardEditor
+                  ariaLabel="Object first-clear reward"
+                  reward={selectedObject.reward}
+                  onChange={(reward) => patchObject(selectedObjectIndex as number, { reward })}
+                  vp={selectedObject.vp}
+                  onVpChange={(vp) => patchObject(selectedObjectIndex as number, { vp })}
+                />
+              </>
+            ) : null}
             <button className="popoverRemove" onClick={() => removeObject(selectedObjectIndex as number)} type="button">
               <Trash2 size={13} /> Remove
             </button>
@@ -5711,6 +6098,47 @@ export function MapDesigner({
             ) : (
               <small className="popoverHint">An exit monolith is never guarded — only entrances fight.</small>
             )}
+            <div className="popoverSectionLabel">First-clear reward</div>
+            <small className="popoverHint">
+              One-time bonus when a hero first successfully visits this token hex (after any guard is cleared).
+            </small>
+            <FieldRewardEditor
+              ariaLabel="Token first-clear reward"
+              reward={tokenPanelToken.reward}
+              onChange={(reward) =>
+                updateTile(selectedTokenIndex as number, {
+                  tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                    i === tokenPanelPin
+                      ? tileTokenValue(
+                          tokenPanelToken.kind,
+                          tokenPanelToken.pair,
+                          tokenPanelToken.slot,
+                          tokenPanelToken.kind === "oneway_exit" ? undefined : tokenPanelToken.guard,
+                          { ...tokenPanelToken, reward }
+                        )
+                      : token
+                  ),
+                  token: undefined
+                })
+              }
+              vp={tokenPanelToken.vp}
+              onVpChange={(vp) =>
+                updateTile(selectedTokenIndex as number, {
+                  tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) =>
+                    i === tokenPanelPin
+                      ? tileTokenValue(
+                          tokenPanelToken.kind,
+                          tokenPanelToken.pair,
+                          tokenPanelToken.slot,
+                          tokenPanelToken.kind === "oneway_exit" ? undefined : tokenPanelToken.guard,
+                          { ...tokenPanelToken, vp }
+                        )
+                      : token
+                  ),
+                  token: undefined
+                })
+              }
+            />
             <button
               className="popoverRemove"
               onClick={() => {

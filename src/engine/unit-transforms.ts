@@ -177,7 +177,14 @@ export function applyUnitCurrentSide(
   const rankFold = combatUnitRankFold(unit);
   unit.attack = side.attack + (unit.permanentAttackBonus ?? 0) + armyStackAttack + rankFold.attack;
   unit.defense = side.defense + rankFold.defense;
-  unit.maxHealth = side.health + (unit.permanentHealthBonus ?? 0) + rankFold.health;
+  // combatMaxHealthBonus: ADD_UNIT_MAX_HEALTH (Valeska, Vial, Ivor VI…). Must
+  // re-fold here so a Pack→Few flip or a Polish Stack layer loss keeps the
+  // same +HP on the new health bar (stack / pack / few all share the bonus).
+  unit.maxHealth =
+    side.health +
+    (unit.permanentHealthBonus ?? 0) +
+    (unit.combatMaxHealthBonus ?? 0) +
+    rankFold.health;
   unit.initiative = side.initiative + rankFold.initiative;
   unit.abilities = withRankAbilities(side.abilities, rankFold);
   if (rankFold.rank > 0) {
