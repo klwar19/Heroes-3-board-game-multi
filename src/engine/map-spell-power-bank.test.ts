@@ -39,9 +39,24 @@ function plays(state: GameState, cardId: string): Extract<GameAction, { type: "P
     .filter((a): a is Extract<GameAction, { type: "PLAY_CARD" }> => a.type === "PLAY_CARD" && a.cardId === cardId);
 }
 
-/** The View Air tier at `optionIndex` if it is currently a legal play. */
-function viewAirTier(state: GameState, optionIndex: number) {
-  return plays(state, "spell.view_air").find((a) => a.optionIndex === optionIndex);
+function castViewAir(state: GameState): GameState {
+  const play = plays(state, "spell.view_air")[0];
+  expect(play, "View Air is offered as a single cast").toBeDefined();
+  return applyOk(state, play);
+}
+
+function resolveMapSpellBoost(state: GameState): GameState {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "map-spell-boost") {
+    return state; // auto-resolved
+  }
+  // Trailing option = resolve now.
+  return applyOk(state, {
+    type: "CHOOSE_OPTION",
+    playerId: "p1",
+    choiceId: choice.id,
+    optionIndex: choice.mapSpellBoost?.offers.length ?? choice.options.length - 1
+  });
 }
 
 describe("Map spell-power bank — Sorcery / Scales on the map", () => {
@@ -55,28 +70,27 @@ describe("Map spell-power bank — Sorcery / Scales on the map", () => {
     expect(state.players.p1.discard).toContain("ability.sorcery");
   });
 
-  it("the banked Power pays a map Spell tier — a Power-1 View Air resolves with NO power cards, then the bank is spent", () => {
+  it("the banked Power is starting Power on a map cast — Power-1 View Air with NO power cards in hand", () => {
     let state = mapHand(["spell.view_air"]);
     state.players.p1.mapSpellPowerBank = 1; // a Sorcery / Scales bank from earlier this turn
     const materialsBefore = state.players.p1.resources.buildingMaterials;
 
-    // The Power-1 tier ("Gain 2 Building Materials, pay 1 Power") is now offered
-    // with NO power cards in hand — the bank pays it.
-    const tier = viewAirTier(state, 1);
-    expect(tier, "the Power-1 tier is affordable from the bank alone").toBeDefined();
-
-    state = applyOk(state, { ...tier!, costCardIds: [] });
-
-    // The tier RESOLVED (materials rose by 2) and the bank was consumed.
+    // Cast View Air alone: bank becomes starting Power 1, no boost sources left →
+    // auto-resolves at Power 1 (2 Building Materials).
+    state = castViewAir(state);
     expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
     expect(state.players.p1.mapSpellPowerBank ?? 0, "one Spell, one boost — the bank is spent").toBe(0);
   });
 
-  it("CONTROL: with no bank and no power card, the Power-1 tier is not castable (only the free base tier is)", () => {
-    const state = mapHand(["spell.view_air"]);
+  it("CONTROL: with no bank and no power card, cast resolves at Power 0 (3 gold), never the materials tier", () => {
+    let state = mapHand(["spell.view_air"]);
     expect(state.players.p1.mapSpellPowerBank ?? 0).toBe(0);
-    expect(viewAirTier(state, 1), "no bank, no power source → the Power tier is withheld").toBeUndefined();
-    expect(viewAirTier(state, 0), "the free base tier is still offered").toBeDefined();
+    const goldBefore = state.players.p1.resources.gold;
+    const materialsBefore = state.players.p1.resources.buildingMaterials;
+    state = castViewAir(state);
+    // Auto-resolves at Power 0 — gold, not materials.
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 3);
+    expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore);
   });
 
   it("the bank clears when the hero moves — the saved Power goes away after you move", () => {
@@ -108,21 +122,33 @@ describe("Map spell-power bank — Sorcery / Scales on the map", () => {
 });
 
 describe("Polish 'Cast a Spell' is never a Power source (Dimension Door / View Air crash fix)", () => {
-  it("a Cast-a-Spell cannot fund a map Spell's Power tier (CONTROL: a real Power card does)", () => {
-    // Cast a Spell is a physical Spell card, but must contribute NO Power: it
-    // previously let the hand reach a tier it could not really pay, then crashed.
-    const withEnabler = mapHand(["spell.cast_a_spell", "spell.view_air"]);
-    expect(viewAirTier(withEnabler, 1), "Cast a Spell does not fund the Power-1 tier").toBeUndefined();
+  it("a Cast-a-Spell is not offered as a map-spell-boost source (CONTROL: a real Power card is)", () => {
+    // Cast a Spell is a physical Spell card, but must contribute NO Power.
+    const withEnabler = castViewAir(mapHand(["spell.cast_a_spell", "spell.view_air"]));
+    const enablerChoice = withEnabler.pendingChoice;
+    if (enablerChoice?.type === "OPTION_CHOICE" && enablerChoice.mapSpellBoost) {
+      expect(
+        enablerChoice.mapSpellBoost.offers.some(
+          (offer) => offer.kind === "card" && offer.cardId === "spell.cast_a_spell"
+        ),
+        "Cast a Spell is not a boost source"
+      ).toBe(false);
+    } else {
+      // No boost window at all (Power 0 auto-resolve) is also correct.
+      expect(withEnabler.players.p1.resources.gold).toBeGreaterThan(0);
+    }
 
-    // CONTROL: a genuine Power source funds the very same tier.
-    const withPower = mapHand(["stat.power", "spell.view_air"]);
-    expect(viewAirTier(withPower, 1), "a real Power card DOES fund it").toBeDefined();
-  });
-
-  it("rejects paying a map Spell tier with a Cast-a-Spell as the cost card", () => {
-    const state = mapHand(["spell.cast_a_spell", "stat.power", "spell.view_air"]);
-    const tier = viewAirTier(state, 1)!; // affordable via stat.power
-    const result = applyAction(state, { ...tier, costCardIds: ["spell.cast_a_spell"] });
-    expect(result.errors.length, "Cast a Spell is not an eligible power-source cost card").toBeGreaterThan(0);
+    // CONTROL: a genuine Power source is offered on the boost window.
+    const withPower = castViewAir(mapHand(["stat.power", "spell.view_air"]));
+    expect(withPower.pendingChoice?.type === "OPTION_CHOICE" && withPower.pendingChoice.context).toBe(
+      "map-spell-boost"
+    );
+    if (withPower.pendingChoice?.type === "OPTION_CHOICE" && withPower.pendingChoice.mapSpellBoost) {
+      expect(
+        withPower.pendingChoice.mapSpellBoost.offers.some(
+          (offer) => offer.kind === "card" && offer.cardId === "stat.power"
+        )
+      ).toBe(true);
+    }
   });
 });
