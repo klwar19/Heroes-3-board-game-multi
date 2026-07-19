@@ -73,6 +73,13 @@ export type TileDefinition = {
   };
   assets?: {
     tileImage?: string;
+    /**
+     * Atmosphere art has no baked HoMM3 field icons (resource tools, treasure
+     * chest, mine ↻N, Roman guard I). When true the map attaches the shared
+     * symbol modules on top of the art (see screen.tsx) — originals stay
+     * baked-in and leave this flag off so icons never double.
+     */
+    attachFieldSymbols?: boolean;
   };
 };
 

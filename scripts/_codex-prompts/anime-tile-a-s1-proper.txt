@@ -1,0 +1,42 @@
+Use your IMAGE GENERATION / IMAGE EDIT tools only (not SVG scripts).
+
+ONE tile only: Fuyuki City starting map tile A-S1.
+
+ATTACHED (in order):
+1) Image 1 = Rampart S4 starting tile — the CORRECT board-game layout (7-hex flower). This is the structural master.
+2) Image 2 = Fuyuki City panorama — moonlit anime-fantasy Japanese city (atmosphere + town identity).
+
+GOAL: Transform Image 1 into the Fuyuki starting tile. Output must still be a real HoMM3 board-game starting tile.
+
+FROM IMAGE 1 — KEEP EXACTLY (pixel-aligned layout):
+- Exact 7-hex FLOWER silhouette (center + 6 ring hexes). NEVER one big hex with random panels.
+- Cream parchment outer borders and yellow outer-impassable arcs.
+- Dotted internal hex lines between fields.
+- EVERY field symbol in the SAME hex positions as Image 1:
+  • NE: campfire + crossed pick/shovel (free resource)
+  • E: rocky blocked field (impassable mountains)
+  • SE: open empty field (no bonus icon)
+  • SW: treasure cart/chest + Roman "I"
+  • W: mine shed + loop "↻2" + stone pile + Roman "I"
+  • NW: open empty field
+- Transparent/black outside the flower.
+- Same print resolution / crop framing as Image 1.
+
+FROM IMAGE 2 — APPLY AS FULL RETHEME (not just the center building):
+- Retheme ALL terrain and architecture to Fuyuki moonlit anime-fantasy: deep indigo night, warm amber windows, cherry blossoms, blue magical accents, Japanese roofs, riverside feel.
+- Centre hex = Fuyuki citadel from Image 2, fitted to the same footprint as Image 1's town, top-down board-game perspective.
+- Ring fields keep their ROLES (resource / blocked / empty / treasure / mine) but painted in the Fuyuki night palette (not bright European day grass).
+- Symbols stay cream/ivory embossed board-game icons like Image 1 — readable, not lost in the dark.
+
+DO NOT:
+- Keep daytime green Rampart grass as the main look
+- Change the flower into a single large hex
+- Move or delete any field symbols
+- Add text "S4" / "A-S1", UI, watermarks, characters, giant moon covering the tile
+- Output a panorama or rectangular city view
+
+SAVE:
+1) out/anime-tiles/a-s1.png
+2) public/assets/anime/tiles/a-s1.webp  (WebP WITH alpha, flower corners transparent; use sharp if needed; prefer ~1024×985 like Image 1 or 1024–1254 square with alpha outside the flower)
+
+Verify a-s1.webp exists and is > 100KB with alpha. Reply with paths and byte sizes only.

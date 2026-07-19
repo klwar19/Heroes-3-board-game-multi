@@ -25,20 +25,31 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     id: "A-S1",
     group: "starting",
     content: "regular_stretch_goals",
+    // EXACT Rampart S4 hex map (art is an S4 retheme). Slot order = NE,E,SE,SW,W,NW:
+    //   0 center town (fuyuki)
+    //   1 NE  resource_symbol     (campfire + cream tools)
+    //   2 E   blocked_field       (rock wall; full yellow ring)
+    //   3 SE  empty_field
+    //   4 SW  treasure_symbol I   (cart + chest)
+    //   5 W   mine materials ↻2 I
+    //   6 NW  empty_field
+    // outerImpassable [NE,E,SE,SW,W,NW] = open, sealed, open, sealed, sealed, sealed
+    // (blocked E + three starting-seat outer arcs) — identical to S4.
     terrain: "highlands",
     fields: [
       { location: "town", faction: "fuyuki" },
       { location: "resource_symbol" },
-      { location: "empty_field" },
       { location: "blocked_field" },
+      { location: "empty_field" },
       { location: "treasure_symbol", difficulty: 1 },
       { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
       { location: "empty_field" }
     ],
-    outerImpassable: [false, false, true, true, false, false],
+    outerImpassable: [false, true, false, true, true, true],
     source: {
       product: "Anime Realms module",
-      credit: "Original Fuyuki City starting tile authored for this digital module."
+      credit:
+        "Fuyuki City starting tile. Hex roles and yellow outer borders copy Rampart S4; art is the board image."
     },
     assets: { tileImage: "/assets/anime/tiles/a-s1.webp" }
   },
@@ -46,20 +57,22 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     id: "W-S1",
     group: "starting",
     content: "regular_stretch_goals",
+    // EXACT same S4 hex map as A-S1 (art is an S4 retheme to wuxia). See A-S1.
     terrain: "highlands",
     fields: [
       { location: "town", faction: "azure_breeze" },
-      { location: "learning_stone" },
-      { location: "empty_field" },
       { location: "resource_symbol" },
       { location: "blocked_field" },
+      { location: "empty_field" },
       { location: "treasure_symbol", difficulty: 1 },
-      { location: "mine", difficulty: 1, resource: "valuables", amount: 1 }
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "empty_field" }
     ],
-    outerImpassable: [false, true, true, false, false, false],
+    outerImpassable: [false, true, false, true, true, true],
     source: {
       product: "Anime Realms module",
-      credit: "Original Azure Breeze Sect starting tile authored for this digital module."
+      credit:
+        "Azure Breeze Sect starting tile. Hex roles and yellow outer borders copy Rampart S4; art is the board image."
     },
     assets: { tileImage: "/assets/anime/tiles/w-s1.webp" }
   },
