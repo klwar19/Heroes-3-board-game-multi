@@ -11476,6 +11476,7 @@ export type PendingChoice =
         | "view-earth"
         | "learning-level-up"
         | "fortune-boost"
+        | "map-spell-boost"
         | "visions-boost"
         | "visions-deck"
         | "visions-scry"
@@ -11487,6 +11488,7 @@ export type PendingChoice =
         | "morale-positive-limit"
         | "morale-repeat-search"
         | "pendant-repeat-search"
+        | "spell-discard-top"
         | "place-creature-bank"
         | "place-map-token"
         | "place-field-override"
@@ -11620,8 +11622,28 @@ export type PendingChoice =
         schoolFetch?: SpellSchool[];
         /** Whether a "take the top discard" option is offered (index 1). */
         hasDiscardTop?: boolean;
+        /**
+         * When set (Spell searches): each id is an acquirable card currently in
+         * the discard pile the searcher may TAKE — not just the face-up top.
+         * Option indices 1..N map onto this list in order; school-fetch options
+         * follow. Absent = classic single top-only take (non-spell decks).
+         */
+        discardPickCardIds?: CardId[];
         /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege into the reveal. */
         allowRemove?: boolean;
+      };
+      /**
+       * After a Spell deck Search leaves 2+ unkept cards in discard: pick which
+       * one sits FACE-UP on top (the rest stay under it in their prior order).
+       * `baseCount` + `keptCardId` carry the Search's identity so the morale
+       * repeat-search / Pendant-of-Courage post-Search offers still open AFTER
+       * the pick resolves (the pick interposes, it never swallows them).
+       */
+      spellDiscardTopPick?: {
+        deckId: DeckId;
+        cardIds: CardId[];
+        baseCount?: number;
+        keptCardId?: CardId;
       };
       /**
        * scouting-prompt: a held Scouting card may be played before a Search. The
@@ -11765,6 +11787,44 @@ export type PendingChoice =
        * rerollsByPower maps the boost to the final reroll budget.
        */
       fortuneBoost?: { boost: number; spellCardIds: CardId[]; cardId: CardId };
+      /**
+       * map-spell-boost: after casting a Power-tiered map spell (View Air, Fly,
+       * Dimension Door, …). Power is added one source at a time (like combat) —
+       * hand/Book power cards, School-of-Magic expert discard, Basic X Magic
+       * expert +3 — then the trailing option resolves at the current Power.
+       * `offers` is index-aligned with the leading options.
+       */
+      mapSpellBoost?: {
+        spellCardId: CardId;
+        power: number;
+        offers: Array<
+          | {
+              kind: "card";
+              cardId: CardId;
+              mode: "basic" | "expert";
+              value: number;
+              fromBook?: boolean;
+            }
+          | {
+              /** School of Magic permanent: discard for expert (+3 instead of basic +1). */
+              kind: "school-permanent-expert";
+              permanentCardId: CardId;
+              value: number;
+            }
+          | {
+              /** Basic X Magic permanent: crown for +3, permanent stays (once per cast). */
+              kind: "school-fetch-expert";
+              school: "air" | "earth" | "fire" | "water";
+              value: number;
+            }
+        >;
+        /** Basic Magic expert already spent on this cast (once per cast, like combat). */
+        schoolFetchExpertUsed?: boolean;
+        /** School permanent already experted on this cast. */
+        schoolPermanentExpertUsed?: boolean;
+        fromSpellBook?: boolean;
+        castEnablerCardId?: CardId;
+      };
       /**
        * visions-deck: the Neutral tier decks Visions may scry (index-aligned with
        * the options) and how many cards the chosen power level draws.

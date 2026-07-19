@@ -57,8 +57,10 @@ import {
   hillFortCost,
   inCombatPrep,
   isDefendingOwnFactionTown,
+  isMapPowerTierSpell,
   canHeroDiscoverAdjacentTile,
   isTileRotationConnected,
+  TILE_ROTATION_SEAL_GATE_ENABLED,
   observatoryPlacementCenters,
   observatoryRevealTargets,
   removableHandCards
@@ -3008,6 +3010,39 @@ function addOptionPlays(
     return;
   }
 
+  // Map Power-tier spells (View Air, Fly, Dimension Door, …): ONE cast action —
+  // Power is added after play, like combat. Never list the per-tier options.
+  if (context === "map" && isMapPowerTierSpell(card)) {
+    // Dimension Door / Town Portal / View Earth need a reachable destination at
+    // SOME tier — gate on any option being playable (higher Power can open more
+    // cells than the free tier alone).
+    const anyPlayable = card.effect.options.some((option) =>
+      isOptionEffectPlayable(state, playerId, option.effect, "map", cardId)
+    );
+    if (!anyPlayable) {
+      return;
+    }
+    actions.push({
+      label: `Cast ${card.name}`,
+      action: {
+        type: "PLAY_CARD",
+        playerId,
+        cardId,
+        mode: "basic",
+        target: { type: "none" },
+        ...(fromSpellBook
+          ? {
+              fromSpellBook: true as const,
+              ...(polishSpellBookEnabled(state)
+                ? { castEnablerCardId: CAST_A_SPELL_CARD_ID }
+                : {})
+            }
+          : {})
+      }
+    });
+    return;
+  }
+
   for (const [optionIndex, option] of card.effect.options.entries()) {
     if (option.trigger) {
       continue;
@@ -4448,7 +4483,7 @@ function addControlledNeutralUnitActions(
   const waitMustAttack = Boolean(combat.waitPhase && activeUnit.waitPending);
   const mustAttack =
     waitMustAttack ||
-    neutralControlMustAttack(state) ||
+    neutralControlMustAttack(state, combat) ||
     (state.round % 2 === 0 && getAstrologersRoundFrenzy(activeUnit) > 0 && !alreadyAttacked);
 
   // Attacks the guard can make from where it stands (any enemy, engine-legal).
@@ -9213,13 +9248,19 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   if (tileChoice) {
     const tile = adventure.tiles[tileChoice.tileInstanceId];
     if (tileChoice.playerId === playerId && tile) {
-      const anyConnected = [0, 1, 2, 3, 4, 5].some((rotation) => isTileRotationConnected(state, tile, rotation));
+      // When the seal gate is OFF every rotation is offered (Confirm always
+      // works). When ON, filter to connected / hero-reachable rotations only
+      // (matches setTileRotation).
+      const anyConnected =
+        TILE_ROTATION_SEAL_GATE_ENABLED &&
+        [0, 1, 2, 3, 4, 5].some((rotation) => isTileRotationConnected(state, tile, rotation));
       // On-foot Far placements also require a rotation the placing hero can cross
       // onto (matches setTileRotation). Redwood Observatory openings carry no
       // heroId — they only need to connect to the map, no hero-access gate.
       const placingHero = tileChoice.heroId ? state.heroes[tileChoice.heroId] : null;
       const center = { row: tile.centerRow, col: tile.centerCol };
       const anyReachable =
+        TILE_ROTATION_SEAL_GATE_ENABLED &&
         placingHero != null &&
         [0, 1, 2, 3, 4, 5].some((rotation) =>
           canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)
@@ -9229,6 +9270,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
           continue;
         }
         if (
+          TILE_ROTATION_SEAL_GATE_ENABLED &&
           placingHero &&
           anyReachable &&
           !canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)

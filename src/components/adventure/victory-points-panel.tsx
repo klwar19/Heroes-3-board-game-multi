@@ -157,6 +157,9 @@ export function VictoryPointsDock({
           </li>
         ))}
       </ol>
+      <small className="vpDockSurrenderNote" title="When an enemy hero surrenders to you, you gain 1 VP (not the full 3 VP main-hero defeat).">
+        Surrender → opponent gains 1 VP
+      </small>
       {open ? (
         <VictoryPointsStandingsModal onClose={() => setOpen(false)} state={state} viewerPlayerId={viewerPlayerId} />
       ) : null}
@@ -168,6 +171,7 @@ export function VictoryPointsDock({
  * Game-over Victory-Points scoring overlay — reads the `VP_SCORING` event and
  * shows the final per-player breakdown (winner first) with the winner crowned.
  * Rendered alongside the winner overlay at game end. Returns null with no event.
+ * Offers Close (dismiss overlay) and Go to main menu.
  */
 export function VictoryPointsScoringOverlay({
   state,
@@ -192,6 +196,16 @@ export function VictoryPointsScoringOverlay({
             <strong>{winnerName} wins on Victory Points</strong>
             <small>Scored because {scoring.reason}.</small>
           </div>
+          {onDismiss ? (
+            <button
+              aria-label="Close scoring window"
+              className="vpScoringClose"
+              onClick={onDismiss}
+              type="button"
+            >
+              <X size={16} />
+            </button>
+          ) : null}
         </header>
         <div className="vpBreakdownList">
           {scoring.breakdown.map((row) => (
@@ -204,11 +218,16 @@ export function VictoryPointsScoringOverlay({
             />
           ))}
         </div>
-        {onDismiss ? (
-          <button className="commandButton" onClick={onDismiss} type="button">
-            Continue
-          </button>
-        ) : null}
+        <div className="vpScoringActions">
+          {onDismiss ? (
+            <button className="commandButton" onClick={onDismiss} type="button">
+              Close
+            </button>
+          ) : null}
+          <a className="commandButton primary" href="/menu">
+            Go to main menu
+          </a>
+        </div>
       </div>
     </div>
   );

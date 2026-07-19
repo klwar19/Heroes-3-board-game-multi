@@ -141,13 +141,19 @@ describe("expansion tile data", () => {
       ]
     });
     // Remaining far pool + every face-down far already on the layout together
-    // must be exactly the full far catalog (no expansion tile dropped).
+    // must be exactly the full far catalog MINUS the Obelisk-bearing far tiles
+    // (house rule: the Ⅱ–Ⅲ Far supply never springs an Obelisk — Obelisks live
+    // on Ⅳ–Ⅴ Near; see far-pool-no-obelisk.test.ts). No other tile is dropped.
     const onMapFar = Object.values(state.adventure!.tiles)
       .map((tile) => tile.tileDefId)
       .filter((id) => allTileDefinitions[id]?.group === "far");
     const remainingFar = state.adventure!.farTilePool ?? [];
     const farInPlay = new Set([...onMapFar, ...remainingFar]);
-    const allFar = new Set(tilePoolIds("far", DEFAULT_TILE_CONTENT));
+    const allFar = new Set(
+      tilePoolIds("far", DEFAULT_TILE_CONTENT).filter(
+        (id) => !allTileDefinitions[id]?.fields.some((field) => field.location === "obelisk")
+      )
+    );
     expect(farInPlay).toEqual(allFar);
 
     const allNear = new Set(tilePoolIds("near", DEFAULT_TILE_CONTENT));

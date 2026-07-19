@@ -879,13 +879,17 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   if (guard) {
     object.guard = guard;
   }
-  // One-way extras: an ENTRANCE may pick its exit mode; an EXIT may be flagged
-  // always-pickable ("mix" mode). Anything else never carries either.
+  // Exit-pick extras: a one-way ENTRANCE picks its exit mode; a one-way EXIT
+  // may be flagged always-pickable ("mix" mode). Two-way GATES and MONOLITHS
+  // share the whole vocabulary (they are both the origin AND a destination) —
+  // matching the tile-token sanitizer. Anything else never carries either.
   const rawOneway = input as { exitMode?: unknown; alwaysPickable?: unknown };
-  if (kind === "oneway_entrance" && ONEWAY_EXIT_MODES.includes(rawOneway.exitMode as never)) {
+  const carriesExitMode = kind === "oneway_entrance" || kind === "gate" || kind === "monolith";
+  const carriesAlwaysPickable = kind === "oneway_exit" || kind === "gate" || kind === "monolith";
+  if (carriesExitMode && ONEWAY_EXIT_MODES.includes(rawOneway.exitMode as never)) {
     object.exitMode = rawOneway.exitMode as CustomMapObject["exitMode"];
   }
-  if (kind === "oneway_exit" && rawOneway.alwaysPickable === true) {
+  if (carriesAlwaysPickable && rawOneway.alwaysPickable === true) {
     object.alwaysPickable = true;
   }
   // Designer yellow border edges on the object hex (absolute dirs 0-5).

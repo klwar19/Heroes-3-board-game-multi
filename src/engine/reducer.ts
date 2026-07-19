@@ -64,11 +64,13 @@ import {
   openViewEarthChoice,
   openMarket,
   openSharedDeckSearch,
-  maybeOpenPendantRepeatOffer,
+  maybeOpenPostSearchOffers,
   clearPolishArtifactAccess,
   beginSharedDeckSearchNow,
   removableHandCards,
   openFortuneBoostStep,
+  openMapSpellBoost,
+  isMapPowerTierSpell,
   hireSecondaryHero,
   placeCombatUnit,
   swapCombatUnits,
@@ -230,6 +232,7 @@ import {
   discardPickAllowedInCombat,
   estatesGold,
   getRuleset,
+  isSpellDeck,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
@@ -13632,6 +13635,50 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     return;
   }
 
+  // Map Power-tier spells (View Air, Fly, Dimension Door, Water Walk, Town
+  // Portal, View Earth): cast first, then add Power interactively — same
+  // intuition as combat and as Visions/Fortune. The printed CHOOSE_ONE tiers
+  // stay as the effect table; the player no longer picks a tier up front.
+  if (!state.combat && isMapPowerTierSpell(card)) {
+    const moveError = action.fromSpellBook
+      ? consumeSpellBookCast(
+          state,
+          action.playerId,
+          action.cardId,
+          action.castEnablerCardId,
+          "discard"
+        )
+      : moveCardFromHandToDiscard(state, action.playerId, action.cardId, "discard");
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: action.playerId,
+      cardId: action.cardId,
+      timing: card.timing,
+      mode: action.mode ?? "basic"
+    });
+    // Starting Power = same standing sources as combat (School basic, Astrologers,
+    // Pandora, cultivation/grade/equipment, specialty school auras via
+    // getSchoolPowerBonus) + the map Sorcery/Scales bank. Expert School / Basic
+    // Magic are offered in the boost window (like combat's cast-time options).
+    const player = state.players[action.playerId];
+    const mapBank = mapSpellPowerBankAvailable(state, action.playerId);
+    const startingPower =
+      standingSpellPower(state, action.playerId, card) +
+      getSchoolPowerBonus(state, action.playerId, card) +
+      mapBank;
+    if (player && mapBank > 0) {
+      player.mapSpellPowerBank = 0;
+    }
+    openMapSpellBoost(state, action.playerId, action.cardId, startingPower, {
+      ...(action.fromSpellBook ? { fromSpellBook: true as const } : {}),
+      ...(action.castEnablerCardId ? { castEnablerCardId: action.castEnablerCardId } : {})
+    });
+    return;
+  }
+
   const effect = getEffectiveCardEffect(card, action.optionIndex);
   if (!effect) {
     throw new Error(`${card.name} needs a chosen option.`);
@@ -18640,7 +18687,14 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   // the whole "Remove from the game" — it never reaches the discard pile below.
   const keptIndex = action.pick.index;
   const discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
-  deck.discardPile.push(...discardedCardIds);
+  // Spell deck Search (all modes): when 2+ unkept cards hit the discard, the
+  // searcher PICKS which one sits face-up on top — not a random last-pushed
+  // order. The pick choice opens after this resolution (below).
+  const openSpellDiscardTopPick =
+    isSpellDeck(choice.deckId) && discardedCardIds.length >= 2 && !removePicked;
+  if (!openSpellDiscardTopPick) {
+    deck.discardPile.push(...discardedCardIds);
+  }
 
   appendEvent(state, {
     type: "DECK_SEARCH_RESOLVED",
@@ -18659,28 +18713,25 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     clearPolishArtifactAccess(state);
   }
 
-  // Positive Morale "discard the cards gained from Search (X) to perform the
-  // Search (X) again": right after a Search resolves into a kept card, its
-  // holder may resolve the card — the offer opens as its own choice, and the
-  // Pendant repeat below waits behind it (offered when the morale card declines).
-  if (
-    !removePicked &&
-    moraleCardsRuleEnabled(state) &&
-    choice.baseCount !== undefined &&
-    playerHoldsMoraleCard(state, action.playerId, MORALE_CARD_IDS.repeatSearch)
-  ) {
-    const keptName = cardLibrary[keptCardId]?.name ?? keptCardId;
+  // Spell discard face-up pick: park the unkept cards, then open the choice
+  // BEFORE the morale/pendant post-Search offers — the pick handler re-opens
+  // them (maybeOpenPostSearchOffers) once the cards are placed.
+  if (openSpellDiscardTopPick) {
     state.pendingChoice = {
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId: action.playerId,
-      prompt: `Positive Morale: discard ${keptName} to perform the Search (${choice.baseCount}) again?`,
-      options: [
-        { label: `Discard ${keptName} — repeat the Search (${choice.baseCount})` },
-        { label: `Keep ${keptName} (save the morale card)` }
-      ],
-      context: "morale-repeat-search",
-      moraleRepeatSearch: { deckId: choice.deckId, count: choice.baseCount, cardId: keptCardId },
+      prompt: "Which unkept spell sits face-up on the discard pile?",
+      options: discardedCardIds.map((cardId) => ({
+        label: `Face-up: ${cardLibrary[cardId]?.name ?? cardId}`
+      })),
+      context: "spell-discard-top",
+      spellDiscardTopPick: {
+        deckId: choice.deckId,
+        cardIds: discardedCardIds,
+        ...(choice.baseCount !== undefined ? { baseCount: choice.baseCount } : {}),
+        ...(removePicked ? {} : { keptCardId })
+      },
       returnPhase: choice.returnPhase
     };
     state.phase = "choice";
@@ -18688,12 +18739,17 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     return;
   }
 
-  // Pendant of Courage: "Play immediately after you perform a Search action and
-  // perform that action again." Offered as a post-Search CHOICE (not a hand
-  // pre-activation): its holder may discard the Pendant to re-run this Search.
-  if (choice.baseCount !== undefined) {
-    maybeOpenPendantRepeatOffer(state, action.playerId, choice.deckId, choice.baseCount, choice.returnPhase);
-  }
+  // Positive Morale "discard the cards gained from Search (X) to perform the
+  // Search (X) again", else the Pendant of Courage repeat — the shared
+  // post-Search seam (also re-run after a Spell discard face-up pick).
+  maybeOpenPostSearchOffers(
+    state,
+    action.playerId,
+    choice.deckId,
+    choice.baseCount,
+    removePicked ? undefined : keptCardId,
+    choice.returnPhase
+  );
 }
 
 function moveHero(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO" }>): void {
