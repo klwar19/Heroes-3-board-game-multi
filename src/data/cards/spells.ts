@@ -1272,14 +1272,11 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("visions")
   },
-  // View Air (Basic Air, Map; Tower Expansion): a pure economy spell — pick a
-  // resource tier and gain it. There is no Hero Power statistic on the map, so
-  // the higher tiers are paid the board-game way (discard power-source cards via
-  // each option's cost): Power 0 -> 3 gold (free), Power 1 -> 2 Building
-  // Materials (discard 1 Spell/Power), Power 2 -> 1 Valuables (discard 2). The
-  // universal "OR Instant: +1 Power" side is the generic power-source discard
-  // (any Spell), so it needs no dedicated option. Reuses the already-wired
-  // GAIN_RESOURCES map effect; no new engine code beyond this definition.
+  // View Air (Basic Air, Map; Tower Expansion): a pure economy spell. Cast first,
+  // then add Power (map-spell-boost — same intuition as combat / Visions); the
+  // CHOOSE_ONE tiers are the effect table only: Power 0 -> 3 gold, Power 1 -> 2
+  // Building Materials, Power 2 -> 1 Valuables. Power is paid by discarding
+  // power-source cards after the cast (value-based; Expert Power + crown ok).
   "spell.view_air": {
     id: "spell.view_air",
     name: "View Air",

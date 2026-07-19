@@ -57,6 +57,7 @@ import {
   hillFortCost,
   inCombatPrep,
   isDefendingOwnFactionTown,
+  isMapPowerTierSpell,
   canHeroDiscoverAdjacentTile,
   isTileRotationConnected,
   TILE_ROTATION_SEAL_GATE_ENABLED,
@@ -3006,6 +3007,39 @@ function addOptionPlays(
 
   // Spell "OR" cards (Prayer) still respect the combat spell limit.
   if (card.kind === "spell" && state.combat && player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
+    return;
+  }
+
+  // Map Power-tier spells (View Air, Fly, Dimension Door, …): ONE cast action —
+  // Power is added after play, like combat. Never list the per-tier options.
+  if (context === "map" && isMapPowerTierSpell(card)) {
+    // Dimension Door / Town Portal / View Earth need a reachable destination at
+    // SOME tier — gate on any option being playable (higher Power can open more
+    // cells than the free tier alone).
+    const anyPlayable = card.effect.options.some((option) =>
+      isOptionEffectPlayable(state, playerId, option.effect, "map", cardId)
+    );
+    if (!anyPlayable) {
+      return;
+    }
+    actions.push({
+      label: `Cast ${card.name}`,
+      action: {
+        type: "PLAY_CARD",
+        playerId,
+        cardId,
+        mode: "basic",
+        target: { type: "none" },
+        ...(fromSpellBook
+          ? {
+              fromSpellBook: true as const,
+              ...(polishSpellBookEnabled(state)
+                ? { castEnablerCardId: CAST_A_SPELL_CARD_ID }
+                : {})
+            }
+          : {})
+      }
+    });
     return;
   }
 

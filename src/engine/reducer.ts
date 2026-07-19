@@ -69,6 +69,8 @@ import {
   beginSharedDeckSearchNow,
   removableHandCards,
   openFortuneBoostStep,
+  openMapSpellBoost,
+  isMapPowerTierSpell,
   hireSecondaryHero,
   placeCombatUnit,
   swapCombatUnits,
@@ -13628,6 +13630,50 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       state.phase = "combat";
     }
     state.priorityPlayerId = null;
+    return;
+  }
+
+  // Map Power-tier spells (View Air, Fly, Dimension Door, Water Walk, Town
+  // Portal, View Earth): cast first, then add Power interactively — same
+  // intuition as combat and as Visions/Fortune. The printed CHOOSE_ONE tiers
+  // stay as the effect table; the player no longer picks a tier up front.
+  if (!state.combat && isMapPowerTierSpell(card)) {
+    const moveError = action.fromSpellBook
+      ? consumeSpellBookCast(
+          state,
+          action.playerId,
+          action.cardId,
+          action.castEnablerCardId,
+          "discard"
+        )
+      : moveCardFromHandToDiscard(state, action.playerId, action.cardId, "discard");
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: action.playerId,
+      cardId: action.cardId,
+      timing: card.timing,
+      mode: action.mode ?? "basic"
+    });
+    // Starting Power = same standing sources as combat (School basic, Astrologers,
+    // Pandora, cultivation/grade/equipment, specialty school auras via
+    // getSchoolPowerBonus) + the map Sorcery/Scales bank. Expert School / Basic
+    // Magic are offered in the boost window (like combat's cast-time options).
+    const player = state.players[action.playerId];
+    const mapBank = mapSpellPowerBankAvailable(state, action.playerId);
+    const startingPower =
+      standingSpellPower(state, action.playerId, card) +
+      getSchoolPowerBonus(state, action.playerId, card) +
+      mapBank;
+    if (player && mapBank > 0) {
+      player.mapSpellPowerBank = 0;
+    }
+    openMapSpellBoost(state, action.playerId, action.cardId, startingPower, {
+      ...(action.fromSpellBook ? { fromSpellBook: true as const } : {}),
+      ...(action.castEnablerCardId ? { castEnablerCardId: action.castEnablerCardId } : {})
+    });
     return;
   }
 
