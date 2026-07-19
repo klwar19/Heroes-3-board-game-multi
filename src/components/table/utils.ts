@@ -963,13 +963,41 @@ function resourceRewardIcon(resource: ResourceKind): string {
   return (RESOURCE_ICONS as Record<string, string>)[resource] ?? RESOURCE_ICONS.gold;
 }
 
+/** Treasure-die face → chip icon + short label (the rolled GET image). */
+const TREASURE_FACE_NOTICE: Record<
+  "experience" | "artifact-search" | "resource-die" | "double-resource-die",
+  { icon: string; label: string; title: string }
+> = {
+  experience: {
+    icon: REWARD_GLYPH_ICONS.experience,
+    label: "XP",
+    title: "Treasure die: Gain 1 experience"
+  },
+  "artifact-search": {
+    icon: REWARD_GLYPH_ICONS.artifact,
+    label: "Art",
+    title: "Treasure die: Search (2) the Artifact deck"
+  },
+  "resource-die": {
+    icon: REWARD_GLYPH_ICONS.resourceDie,
+    label: "1×",
+    title: "Treasure die: Roll 1 Resource die"
+  },
+  "double-resource-die": {
+    icon: "/assets/glyphs/2_treasure_die.svg",
+    label: "2×",
+    title: "Treasure die: Roll 2 Resource dice, choose one"
+  }
+};
+
 /**
  * Derive the reward chips (and, for a mine, a resource icon for the notice) from
  * a visit's follow-on outcome events. Covers the material results — resources
- * gained, mine income (production), experience and morale — which is exactly
- * what a treasure chest or mine visit produces. Events with no material chip
- * (e.g. an Artifact Search) leave the chip list empty so the caller can fall
- * back to its text summary.
+ * gained, mine income (production), experience and morale — AND the structured
+ * dice GETs (treasure / resource faces) so a treasure-chest notice shows the
+ * rolled die images, not only the paid-out gold/XP. Events with no material
+ * chip (e.g. an Artifact Search open) leave the chip list empty so the caller
+ * can fall back to its text summary.
  */
 export function noticeRewardsFromEvents(
   events: GameEvent[],
@@ -979,6 +1007,42 @@ export function noticeRewardsFromEvents(
   let iconImage: string | undefined;
   for (const event of events) {
     switch (event.type) {
+      case "ADVENTURE_DICE_ROLLED": {
+        // Dice GET images — the face(s) the player rolled, shown as chips so a
+        // treasure-chest notice is not just "+3 gold" text without the die.
+        if (event.dice === "treasure" && event.treasureRolls?.length) {
+          for (const face of event.treasureRolls) {
+            const art = TREASURE_FACE_NOTICE[face];
+            if (art) {
+              rewards.push({
+                icon: art.icon,
+                label: art.label,
+                title: art.title,
+                tone: "neutral"
+              });
+            }
+          }
+        } else if (event.dice === "resource" && event.resourceRolls?.length) {
+          for (const roll of event.resourceRolls) {
+            rewards.push({
+              icon: resourceRewardIcon(roll.resource),
+              label: `+${roll.amount}`,
+              title: `Resource die: +${roll.amount} ${formatResourceName(roll.resource)}`,
+              tone: "gain"
+            });
+          }
+        } else if (event.dice === "attack" && event.attackRolls?.length) {
+          for (const face of event.attackRolls) {
+            rewards.push({
+              glyph: face > 0 ? `+${face}` : String(face),
+              label: face > 0 ? `+${face}` : String(face),
+              title: `Attack die: ${face > 0 ? "+" : ""}${face}`,
+              tone: face >= 0 ? "gain" : "loss"
+            });
+          }
+        }
+        break;
+      }
       case "RESOURCES_GAINED": {
         const parts: [number | undefined, ResourceKind][] = [
           [event.gold, "gold"],

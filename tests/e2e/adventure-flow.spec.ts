@@ -273,16 +273,10 @@ test("discovering a face-down tile opens the rotation card on the tile", async (
   await discoverable.click();
 
   // The rotation card opens anchored on the tile (an HTML overlay over the SVG)
-  // with rotate buttons and a confirm. Rotations that border lines seal off disable the
-  // confirm — keep turning until legal.
+  // with rotate buttons and a confirm. The border-seal gate is OFF — Confirm is
+  // always enabled (any orientation).
   await expect(page.locator(".rotateFloat")).toBeVisible();
   const confirm = page.getByRole("button", { name: /Confirm/ });
-  for (let turn = 0; turn < 6; turn += 1) {
-    if (await confirm.isEnabled()) {
-      break;
-    }
-    await page.getByTitle("Rotate clockwise").click();
-  }
   await expect(confirm).toBeEnabled();
   await confirm.click();
   await expect(page.locator(".rotateFloat")).toHaveCount(0);

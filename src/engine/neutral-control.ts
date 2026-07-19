@@ -57,14 +57,15 @@ export function pvpNeutralControllerId(state: GameState, combat: CombatState): P
 /**
  * Manual guard control (`GameSetupOptions.manualGuardControl`, default OFF —
  * a Game-options toggle like Undo moves): the FIGHTER of a Neutral combat
- * commands the guards themselves through the exact PvP-Neutral-Control unit
- * menu (same must-attack discipline; under polish-wait a guard may WAIT, and
- * its Waited re-activation must attack), or delegates single activations back
- * to the AI via AUTO_NEUTRAL_ACTIVATION. Null when the mode is off, the fight
- * is not Neutral, PvP Neutral Control already assigns a human opponent
- * (checked by the caller — pvp wins in neutralCombatControllerId), or the
- * fighter is a COMPUTER seat (the AI would otherwise have to drive the guards
- * through the human-facing menu and could stall).
+ * commands the guards themselves with FULL free control (move, attack, Defend,
+ * Wait, hold, tokens — never the must-attack AI menu; that sub-toggle only
+ * binds a PvP Neutral Control opponent). They may still delegate single
+ * activations back to the AI via AUTO_NEUTRAL_ACTIVATION. Null when the mode
+ * is off, the fight is not Neutral, PvP Neutral Control already assigns a
+ * human opponent (checked by the caller — pvp wins in
+ * neutralCombatControllerId), or the fighter is a COMPUTER seat (the AI would
+ * otherwise have to drive the guards through the human-facing menu and could
+ * stall).
  */
 export function manualGuardControllerId(state: GameState, combat: CombatState): PlayerId | null {
   if (combat.context.kind !== "neutral" || !state.adventure?.manualGuardControl) {
@@ -81,9 +82,19 @@ export function manualGuardControllerId(state: GameState, combat: CombatState): 
  * The "must attack" sub-toggle of PvP Neutral Control (default ON): a
  * controlled guard must attack whenever it can, may not Defend, and may only
  * approach when no attack is reachable. OFF lets the controller play the
- * guards entirely freely. Only meaningful while a controller exists.
+ * guards entirely freely.
+ *
+ * Manual guard control alone is ALWAYS free play — the fighter may Wait,
+ * Defend, hold, move anywhere legal, and choose whether to attack. Only a
+ * real PvP Neutral Control seat (a human OPPONENT playing the guards) is
+ * bound by `pvpNeutralControlMustAttack`. Polish-wait re-activation and
+ * Astrologers frenzy still force attack on their own paths.
  */
 export function neutralControlMustAttack(state: GameState): boolean {
+  // Manual-only (no PvP Neutral Control): full free control of the guards.
+  if (!state.adventure?.pvpNeutralControl) {
+    return false;
+  }
   return state.adventure?.pvpNeutralControlMustAttack ?? true;
 }
 

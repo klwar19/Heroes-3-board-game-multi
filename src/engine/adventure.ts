@@ -8082,6 +8082,58 @@ function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTo
     return;
   }
 
+  // Two-way Monolith exit mode (same as colored Gates / one-way): when not a
+  // forced 3-whirlpool die, respect the origin's exitMode (default certain).
+  if (kind === "monolith" && destinations.length > 1) {
+    const mode: OnewayExitMode = field.onewayExitMode ?? "certain";
+    if (mode === "random") {
+      const random = adventureRandom(state, "monolith-exit");
+      const destination = destinations[random.nextInt(0, destinations.length - 1)];
+      eventNote(
+        state,
+        `${eventPlayerName(state, visit.playerId)} rolls for the Monolith exit — emerges at ${destination.label}.`,
+        visit.playerId
+      );
+      visit.steps.unshift(...mapTokenTravelSteps(visit, kind, destination));
+      return;
+    }
+    if (mode === "mix") {
+      const always = destinations.filter((destination) => {
+        const destField = destination.spaceId ? adventure.fields[destination.spaceId] : undefined;
+        return Boolean(destField?.onewayAlwaysPickable);
+      });
+      const randomPool = destinations.filter((destination) => !always.includes(destination));
+      if (always.length === 0) {
+        const random = adventureRandom(state, "monolith-exit-mix");
+        const destination = destinations[random.nextInt(0, destinations.length - 1)];
+        visit.steps.unshift(...mapTokenTravelSteps(visit, kind, destination));
+        return;
+      }
+      if (randomPool.length === 0) {
+        // all always-pickable → certain
+      } else {
+        const random = adventureRandom(state, "monolith-exit-mix-roll");
+        const rolled = randomPool[random.nextInt(0, randomPool.length - 1)];
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `${label} — pick an exit, or roll`,
+          teleport: { kind },
+          options: [
+            ...always.map((destination) => ({
+              label: `${destination.label} (always pickable)`,
+              steps: mapTokenTravelSteps(visit, kind, destination)
+            })),
+            {
+              label: `Roll the die — random among ${randomPool.length}`,
+              steps: mapTokenTravelSteps(visit, kind, rolled)
+            }
+          ]
+        });
+        return;
+      }
+    }
+  }
+
   // "If there are 3 Whirlpools, roll an Attack Die to determine where your
   // Hero goes, and reroll any Die that shows the number of the Whirlpool your
   // Hero is moving from." The printed tokens carry the die faces -1/0/+1 as
@@ -8280,8 +8332,69 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
     visit.steps.unshift(...coloredGateTravelSteps(visit, pair, destinations[0]));
     return;
   }
-  // Two or more free same-color destinations → the traveller picks (the same
-  // visit-step CHOOSE_ONE the Monolith network picker opens).
+  // Two-way gate exit mode (same options as one-way): certain (pick), random
+  // (seeded), mix (always-pickable destinations + roll among the rest). Default
+  // certain matches the classic "traveller picks" behaviour.
+  const mode: OnewayExitMode = field.onewayExitMode ?? "certain";
+  if (mode === "random") {
+    const random = adventureRandom(state, "gate-exit");
+    const destination = destinations[random.nextInt(0, destinations.length - 1)];
+    eventNote(
+      state,
+      `${eventPlayerName(state, visit.playerId)} rolls for the ${color} Gate exit — emerges at ${destination.label}.`,
+      visit.playerId
+    );
+    visit.steps.unshift(...coloredGateTravelSteps(visit, pair, destination));
+    return;
+  }
+  if (mode === "mix") {
+    const always = destinations.filter((destination) => {
+      const destField = destination.spaceId ? adventure.fields[destination.spaceId] : undefined;
+      return Boolean(destField?.onewayAlwaysPickable);
+    });
+    const randomPool = destinations.filter((destination) => !always.includes(destination));
+    // Degenerate: none always-pickable → full random; all always → certain pick.
+    if (always.length === 0) {
+      const random = adventureRandom(state, "gate-exit-mix");
+      const destination = destinations[random.nextInt(0, destinations.length - 1)];
+      visit.steps.unshift(...coloredGateTravelSteps(visit, pair, destination));
+      return;
+    }
+    if (randomPool.length === 0) {
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} Gate — choose where to travel`,
+        teleport: { kind: "gate", pair },
+        options: always.map((destination) => ({
+          label: destination.label,
+          steps: coloredGateTravelSteps(visit, pair, destination)
+        }))
+      });
+      return;
+    }
+    // Always-pickable exits offered up front; "Roll" picks among the rest NOW
+    // (seeded) and stores the travel steps — choosing that option is choosing
+    // the rolled destination (one roll per visit open, same as a physical die).
+    const random = adventureRandom(state, "gate-exit-mix-roll");
+    const rolled = randomPool[random.nextInt(0, randomPool.length - 1)];
+    visit.steps.unshift({
+      type: "CHOOSE_ONE",
+      prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} Gate — pick an exit, or roll`,
+      teleport: { kind: "gate", pair },
+      options: [
+        ...always.map((destination) => ({
+          label: `${destination.label} (always pickable)`,
+          steps: coloredGateTravelSteps(visit, pair, destination)
+        })),
+        {
+          label: `Roll the die — random among ${randomPool.length}`,
+          steps: coloredGateTravelSteps(visit, pair, rolled)
+        }
+      ]
+    });
+    return;
+  }
+  // certain (default): the traveller picks.
   visit.steps.unshift({
     type: "CHOOSE_ONE",
     prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} Gate — choose where to travel`,
@@ -8299,7 +8412,8 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
 export function carveColoredGateField(
   adventure: AdventureState,
   spaceId: MapSpaceId,
-  pair: 1 | 2 | 3 | 4
+  pair: 1 | 2 | 3 | 4,
+  extras?: { exitMode?: OnewayExitMode; alwaysPickable?: boolean }
 ): MapFieldState | null {
   const field = adventure.fields[spaceId];
   if (!field) {
@@ -8310,6 +8424,15 @@ export function carveColoredGateField(
   // the caller AFTER this carve.
   field.location = "gate";
   field.gatePair = pair;
+  // Two-way exit pick mode (same vocabulary as one-way): stored on the gate you
+  // LEAVE from; alwaysPickable marks this gate as a mix-mode free pick when
+  // travelling FROM another gate of the same color.
+  if (extras?.exitMode) {
+    field.onewayExitMode = extras.exitMode;
+  }
+  if (extras?.alwaysPickable) {
+    field.onewayAlwaysPickable = true;
+  }
   delete field.difficulty;
   delete field.resource;
   delete field.amount;

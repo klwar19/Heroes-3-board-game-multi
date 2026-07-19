@@ -347,8 +347,16 @@ function applyCustomMapTokens(
           ...((isGate || isOneway) && token.pair !== undefined ? { pair: token.pair } : {}),
           ...(preferredSpaceId ? { preferredSpaceId } : {}),
           ...(guard ? { guard } : {}),
-          ...(token.kind === "oneway_entrance" && token.exitMode ? { exitMode: token.exitMode } : {}),
-          ...(token.kind === "oneway_exit" && token.alwaysPickable ? { alwaysPickable: true } : {})
+          // Two-way gates/monoliths share the one-way exit-mode vocabulary
+          // (certain / random / mix + always-pickable destinations).
+          ...((token.kind === "oneway_entrance" || token.kind === "gate" || token.kind === "monolith") &&
+          token.exitMode
+            ? { exitMode: token.exitMode }
+            : {}),
+          ...((token.kind === "oneway_exit" || token.kind === "gate" || token.kind === "monolith") &&
+          token.alwaysPickable
+            ? { alwaysPickable: true }
+            : {})
         });
         continue;
       }
@@ -376,7 +384,10 @@ function applyCustomMapTokens(
         continue;
       }
       if (isGate && token.pair !== undefined) {
-        carveColoredGateField(adventure, spaceId, token.pair);
+        carveColoredGateField(adventure, spaceId, token.pair, {
+          exitMode: token.exitMode,
+          alwaysPickable: token.alwaysPickable
+        });
       } else if (isOneway && token.pair !== undefined) {
         carveOnewayField(adventure, spaceId, token.kind as "oneway_entrance" | "oneway_exit", token.pair, {
           exitMode: token.exitMode,
@@ -385,6 +396,15 @@ function applyCustomMapTokens(
       } else if (token.kind === "monolith" || token.kind === "whirlpool") {
         const number = token.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolsApplied++] : undefined;
         carveMapTokenField(adventure, spaceId, token.kind, number);
+        const carvedToken = adventure.fields[spaceId];
+        if (carvedToken && token.kind === "monolith") {
+          if (token.exitMode) {
+            carvedToken.onewayExitMode = token.exitMode;
+          }
+          if (token.alwaysPickable) {
+            carvedToken.onewayAlwaysPickable = true;
+          }
+        }
       }
       const carved = adventure.fields[spaceId];
       if (carved) {
@@ -1852,23 +1872,25 @@ function countGuaranteedObelisks(plans: CustomMapTilePlan[] | undefined): number
 }
 
 /**
- * Holy Grail: pull up to `count` remaining Obelisk-bearing tiles from the given
- * pools (near preferred, then far). Used after designer presets are counted so
- * the map always has at least 2 Obelisks to discover.
+ * Holy Grail: pull up to `count` remaining Obelisk-bearing tiles from the NEAR
+ * pool only (Ⅱ–Ⅲ Far never hosts Obelisks — see farPool filter). Used after
+ * designer presets are counted so the map always has at least 2 Obelisks to
+ * discover.
  */
 function takeObeliskTiles(pools: { near?: string[]; far?: string[] }, count: number): string[] {
   const taken: string[] = [];
-  for (const pool of [pools.near, pools.far]) {
-    if (!pool || taken.length >= count) {
+  // Prefer near; far is deliberately unused (house rule: no Obelisk on II–III).
+  void pools.far;
+  const pool = pools.near;
+  if (!pool) {
+    return taken;
+  }
+  while (taken.length < count) {
+    const tile = takeTileWith(pool, "obelisk");
+    if (!tile) {
       break;
     }
-    while (taken.length < count) {
-      const tile = takeTileWith(pool, "obelisk");
-      if (!tile) {
-        break;
-      }
-      taken.push(tile);
-    }
+    taken.push(tile);
   }
   return taken;
 }
@@ -2321,7 +2343,14 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const tileContent = options.tileContent ?? DEFAULT_TILE_CONTENT;
   const nearPool = shuffleCards(tilePoolIds("near", tileContent), `${seed}#pool#near`);
   const centerPool = shuffleCards(tilePoolIds("center", tileContent), `${seed}#pool#center`);
-  const farPool = shuffleCards(tilePoolIds("far", tileContent), `${seed}#pool#far`);
+  // Ⅱ–Ⅲ Far pool never carries an Obelisk-bearing tile (house rule: Obelisks
+  // live on Ⅳ–Ⅴ Near tiles). Factory &F1 and any future far+obelisk tile is
+  // stripped here so random draws / the supply never spring an Obelisk on a
+  // Far ring. Designer exact pins of such a tile still work (they bypass the pool).
+  const farPool = shuffleCards(tilePoolIds("far", tileContent), `${seed}#pool#far`).filter((tileDefId) => {
+    const def = allTileDefinitions[tileDefId];
+    return !def?.fields.some((field) => field.location === "obelisk");
+  });
   // Sea / Subterranean also respect the active content filter (default = all).
   const seaPool = shuffleCards(tilePoolIds("sea", tileContent), `${seed}#pool#sea`);
   const subterraneanPool = shuffleCards(

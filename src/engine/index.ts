@@ -560,6 +560,7 @@ export {
   inCombatPrep,
   isTileAdjacentToSpace,
   isTileRotationConnected,
+  TILE_ROTATION_SEAL_GATE_ENABLED,
   observatoryPlacementCenters,
   observatoryRevealTargets,
   placementCellsFor,

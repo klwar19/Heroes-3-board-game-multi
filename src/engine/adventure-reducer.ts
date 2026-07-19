@@ -1887,10 +1887,24 @@ function openPolishBankChoiceBeforeRotation(state: GameState, tile: MapTileState
 }
 
 /**
+ * Master switch for the tile-rotation "Border lines seal the tile off — keep
+ * rotating" gate. When OFF, every rotation of a revealed/placed tile is legal
+ * to confirm — yellow outer arcs still seal MOVEMENT later, but they no longer
+ * block Confirm or filter the rotate UI. Flip to `true` to restore the
+ * rulebook-style connectivity + hero-doorway checks in
+ * {@link setTileRotation} / legal-actions.
+ */
+export const TILE_ROTATION_SEAL_GATE_ENABLED = false;
+
+/**
  * Whether `rotation` leaves at least one crossable doorway between the tile
  * and the already-materialized fields around it — the practical reading of
  * "New Tiles must be positioned so that there is a valid path that
  * eventually connects them with all other Tiles" for border-lined tiles.
+ *
+ * Pure geometry helper: still used by AI scoring and by the gate when
+ * {@link TILE_ROTATION_SEAL_GATE_ENABLED} is on. It never throws — callers
+ * decide whether a false result is a hard reject.
  */
 export function isTileRotationConnected(state: GameState, tile: MapTileState, rotation: number): boolean {
   const adventure = state.adventure;
@@ -1981,22 +1995,27 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
   }
 
   const rotation = ((action.rotation % 6) + 6) % 6;
-  const anyConnected = [0, 1, 2, 3, 4, 5].some((candidate) => isTileRotationConnected(state, tile, candidate));
-  if (anyConnected && !isTileRotationConnected(state, tile, rotation)) {
-    throw new Error("Rotate the tile so a path connects it to the rest of the map (border lines cannot seal it off).");
-  }
+  // Optional "border lines seal the tile off" gate — OFF by default so Confirm
+  // always accepts. When re-armed, both the map-connectivity and the
+  // placing-hero doorway checks apply (see TILE_ROTATION_SEAL_GATE_ENABLED).
+  if (TILE_ROTATION_SEAL_GATE_ENABLED) {
+    const anyConnected = [0, 1, 2, 3, 4, 5].some((candidate) => isTileRotationConnected(state, tile, candidate));
+    if (anyConnected && !isTileRotationConnected(state, tile, rotation)) {
+      throw new Error("Rotate the tile so a path connects it to the rest of the map (border lines cannot seal it off).");
+    }
 
-  // A placed Far tile — or a tile opened through a Redwood Observatory — must
-  // keep a doorway the opening hero can cross onto, in whatever rotation the
-  // player settles on. Plain on-foot discoveries carry no heroId and skip this.
-  const placingHero = pending.heroId ? state.heroes[pending.heroId] : null;
-  if (placingHero) {
-    const center = { row: tile.centerRow, col: tile.centerCol };
-    const anyReachable = [0, 1, 2, 3, 4, 5].some((candidate) =>
-      canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, candidate)
-    );
-    if (!anyReachable || !canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)) {
-      throw new Error("Rotate the tile so your hero can cross onto it (a border line is sealing it off).");
+    // A placed Far tile — or a tile opened through a Redwood Observatory — must
+    // keep a doorway the opening hero can cross onto, in whatever rotation the
+    // player settles on. Plain on-foot discoveries carry no heroId and skip this.
+    const placingHero = pending.heroId ? state.heroes[pending.heroId] : null;
+    if (placingHero) {
+      const center = { row: tile.centerRow, col: tile.centerCol };
+      const anyReachable = [0, 1, 2, 3, 4, 5].some((candidate) =>
+        canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, candidate)
+      );
+      if (!anyReachable || !canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)) {
+        throw new Error("Rotate the tile so your hero can cross onto it (a border line is sealing it off).");
+      }
     }
   }
 
@@ -10333,6 +10352,34 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "spell-discard-top") {
+    const pick = choice.spellDiscardTopPick;
+    if (!pick) {
+      throw new Error("That discard face-up pick cannot be resolved.");
+    }
+    const deck = state.decks[pick.deckId];
+    const faceUpId = pick.cardIds[action.optionIndex];
+    if (!deck || !faceUpId || !pick.cardIds.includes(faceUpId)) {
+      throw new Error("That discarded spell is not available.");
+    }
+    // Push non-chosen unkept cards first, then the chosen face-up on top.
+    for (const cardId of pick.cardIds) {
+      if (cardId !== faceUpId) {
+        deck.discardPile.push(cardId);
+      }
+    }
+    deck.discardPile.push(faceUpId);
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId: action.playerId,
+      message: `${state.players[action.playerId]?.name ?? action.playerId} sets ${cardLibrary[faceUpId]?.name ?? faceUpId} face-up on the Spell discard pile.`
+    });
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    return;
+  }
+
   if (choice.context === "deck-search-mode") {
     const mode = choice.deckSearchMode;
     const player = state.players[action.playerId];
@@ -10350,14 +10397,29 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
 
     const hasDiscardTop = mode.hasDiscardTop ?? false;
+    const discardPickCardIds = mode.discardPickCardIds ?? [];
+    const discardOptionCount = discardPickCardIds.length > 0 ? discardPickCardIds.length : hasDiscardTop ? 1 : 0;
     const fetchSchools = mode.schoolFetch ?? [];
 
-    // The remaining options take a card with no reveal: the discard top (when
-    // offered, at index 1), then one "draw from a School of Magic" per school.
-    if (hasDiscardTop && action.optionIndex === 1) {
+    // The remaining options take a card with no reveal: discard takes (one or
+    // many for Spell decks), then one "draw from a School of Magic" per school.
+    if (hasDiscardTop && action.optionIndex >= 1 && action.optionIndex <= discardOptionCount) {
       const deck = state.decks[mode.deckId];
-      const takenCardId = deck?.discardPile.pop();
-      if (!deck || !takenCardId) {
+      if (!deck) {
+        throw new Error("The discard pile is empty.");
+      }
+      let takenCardId: string | undefined;
+      if (discardPickCardIds.length > 0) {
+        const wantId = discardPickCardIds[action.optionIndex - 1];
+        const at = deck.discardPile.lastIndexOf(wantId);
+        if (at < 0) {
+          throw new Error("That discarded card is no longer available.");
+        }
+        takenCardId = deck.discardPile.splice(at, 1)[0];
+      } else {
+        takenCardId = deck.discardPile.pop();
+      }
+      if (!takenCardId) {
         throw new Error("The discard pile is empty.");
       }
       gainOwnedCard(state, action.playerId, takenCardId);
@@ -10379,7 +10441,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     } else {
       // Basic X Magic: draw the first spell of the chosen School straight into
       // hand — you keep whatever you get (the deck reshuffles in performSchoolFetch).
-      const school = fetchSchools[action.optionIndex - (hasDiscardTop ? 2 : 1)];
+      const school = fetchSchools[action.optionIndex - (1 + discardOptionCount)];
       if (!school) {
         throw new Error("That search option is not available.");
       }
@@ -11651,19 +11713,39 @@ export function openSharedDeckSearch(
   // Magic spell…". The draw is an alternative TO searching, decided up front —
   // before any card is revealed — never alongside the revealed cards.
   const schoolFetch = isSpellDeck(deckId) ? activeSchoolFetches(state, playerId) : [];
-  // The "take the top discard" branch is only offered when the hero may actually
-  // take that card — taking it skips no redraw, so a duplicate / Necromancy /
-  // starting-only top would dodge the acquisition rules. When the top is off
-  // limits the player just searches the deck (which redraws past such cards).
-  const discardTop = deck.discardPile.length > 0 ? deck.discardPile[deck.discardPile.length - 1] : null;
-  const discardTopId = discardTop && canAcquireSharedDeckCard(state, playerId, deckId, discardTop) ? discardTop : null;
+  // The "take from discard" branch is only offered for cards the hero may
+  // actually take — taking skips no redraw, so a duplicate / Necromancy /
+  // starting-only card would dodge the acquisition rules. When nothing is
+  // acquirable the player just searches the deck (which redraws past such cards).
+  //
+  // Spell decks (all modes): every acquirable card in the discard pile is
+  // offered — not only the face-up top — so the searcher picks which discarded
+  // spell to take. Other decks keep the classic single top-only offer.
+  const acquirableDiscard = deck.discardPile.filter((cardId) =>
+    canAcquireSharedDeckCard(state, playerId, deckId, cardId)
+  );
+  const spellDiscardPicks = isSpellDeck(deckId) ? [...new Set(acquirableDiscard)] : [];
+  const discardTop =
+    deck.discardPile.length > 0 ? deck.discardPile[deck.discardPile.length - 1] : null;
+  const discardTopId =
+    !isSpellDeck(deckId) && discardTop && canAcquireSharedDeckCard(state, playerId, deckId, discardTop)
+      ? discardTop
+      : null;
+  const hasDiscardTake = spellDiscardPicks.length > 0 || Boolean(discardTopId);
 
-  if (discardTopId || schoolFetch.length > 0) {
+  if (hasDiscardTake || schoolFetch.length > 0) {
     // Show the base search size in the label only — the real count override
     // (Scouting) is consumed when the player actually reveals, not here, so an
     // up-front discard/fetch leaves any override intact for a later search.
     const options: { label: string }[] = [{ label: `Search (${baseCount}) — look at the top cards and keep one` }];
-    if (discardTopId) {
+    if (spellDiscardPicks.length > 0) {
+      for (const cardId of spellDiscardPicks) {
+        const isTop = cardId === discardTop;
+        options.push({
+          label: `Take discarded ${cardLibrary[cardId]?.name ?? cardId}${isTop ? " (face-up top)" : ""}`
+        });
+      }
+    } else if (discardTopId) {
       options.push({ label: `Take the top discard (${cardLibrary[discardTopId]?.name ?? discardTopId})` });
     }
     for (const school of schoolFetch) {
@@ -11678,14 +11760,17 @@ export function openSharedDeckSearch(
       prompt:
         schoolFetch.length > 0
           ? `Search the ${deckId} deck, or draw from a School of Magic instead?`
-          : `Search the ${deckId} deck, or take its top discard?`,
+          : spellDiscardPicks.length > 1
+            ? `Search the Spell deck, or take a discarded spell (pick which one)?`
+            : `Search the ${deckId} deck, or take its top discard?`,
       options,
       context: "deck-search-mode",
       deckSearchMode: {
         deckId,
         count: baseCount,
         ...(schoolFetch.length > 0 ? { schoolFetch } : {}),
-        hasDiscardTop: Boolean(discardTopId),
+        hasDiscardTop: hasDiscardTake,
+        ...(spellDiscardPicks.length > 0 ? { discardPickCardIds: spellDiscardPicks } : {}),
         ...(allowRemove ? { allowRemove: true } : {})
       },
       returnPhase: state.combat ? "combat" : "player-turn"
