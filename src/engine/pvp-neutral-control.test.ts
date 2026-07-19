@@ -474,7 +474,9 @@ describe("PvP Neutral Control — ability follow-ups go to the controlling playe
     // Mode ON: p2 (the controller) drives the guard's shot, and the fireball
     // splash pick it opens is THEIRS — re-stamped off the neutral seat by the
     // pump — not the fighter p1's.
-    let { state, guardId, targetId, flankAId, flankBId } = magogSplashScene("pnc-splash-on", true);
+    const scene = magogSplashScene("pnc-splash-on", true);
+    const { guardId, targetId, flankAId, flankBId } = scene;
+    let state = scene.state;
     state = driveTo(state, guardSlotOpen);
     expect(guardSlotOpen(state)).toBe(true);
     state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: guardId, defenderId: targetId });
