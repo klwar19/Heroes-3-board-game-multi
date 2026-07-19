@@ -3931,7 +3931,7 @@ export function chooseFaction(state: GameState, action: Extract<GameAction, { ty
   if (!faction) {
     throw new Error("Unknown faction.");
   }
-  if (!isPlayableFaction(action.factionId)) {
+  if (!isPlayableFaction(action.factionId, lobby.options.anime)) {
     throw new Error("That faction is not playable yet.");
   }
 
@@ -4209,7 +4209,7 @@ export function rollTownOptions(state: GameState, action: Extract<GameAction, { 
   const taken = reservedTownIdsForOtherSeats(lobby, action.playerId);
   const candidates = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
-    .filter((id) => !taken.has(id) && isPlayableFaction(id));
+    .filter((id) => !taken.has(id) && isPlayableFaction(id, lobby.options.anime));
   if (candidates.length === 0) {
     throw new Error("No town is available to roll.");
   }
@@ -4255,7 +4255,7 @@ export function chooseTown(state: GameState, action: Extract<GameAction, { type:
   if (!faction) {
     throw new Error("Unknown faction.");
   }
-  if (!isPlayableFaction(action.factionId)) {
+  if (!isPlayableFaction(action.factionId, lobby.options.anime)) {
     throw new Error("That faction is not playable yet.");
   }
   const taken = reservedTownIdsForOtherSeats(lobby, action.playerId).has(action.factionId);
@@ -4473,7 +4473,7 @@ export function randomAssignSeat(state: GameState, action: Extract<GameAction, {
   } else {
     const candidateFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
       .map((faction) => faction.id)
-      .filter((id) => !takenFactions.has(id) && isPlayableFaction(id) && selectableHeroes(id).length > 0);
+      .filter((id) => !takenFactions.has(id) && isPlayableFaction(id, lobby.options.anime) && selectableHeroes(id).length > 0);
     if (candidateFactions.length === 0) {
       throw new Error("No town is available to roll.");
     }
@@ -4586,7 +4586,7 @@ export function setComputerSeatFaction(
     const random = createSeededRandom(`${state.seed}#computer-seat#${action.seatPlayerId}#${eventSeedNumber(state)}`);
     const candidateFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
       .map((faction) => faction.id)
-      .filter((id) => !takenFactions.has(id) && isPlayableFaction(id) && coreFactionDefinitions[id].heroes.length > 0);
+      .filter((id) => !takenFactions.has(id) && isPlayableFaction(id, lobby.options.anime) && coreFactionDefinitions[id].heroes.length > 0);
     if (candidateFactions.length === 0) {
       throw new Error("No town is available to roll for this computer.");
     }
@@ -4603,7 +4603,7 @@ export function setComputerSeatFaction(
     if (!faction) {
       throw new Error("Unknown faction.");
     }
-    if (!isPlayableFaction(factionId)) {
+    if (!isPlayableFaction(factionId, lobby.options.anime)) {
       throw new Error("That faction is not playable yet.");
     }
     if (!faction.heroes.includes(heroDefId)) {

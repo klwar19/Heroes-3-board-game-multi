@@ -26,7 +26,9 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   astral_spirit: "spell.counterstrike", // Counterstrike
   corsair: "spell.slow", // Slow
   factory: "spell.cure", // Field Repair (mends → the Cure shimmer)
-  bulwark: "spell.sacrifice" // Rune Mend (sound-only, like the Sacrifice spell)
+  bulwark: "spell.sacrifice", // Rune Mend (sound-only, like the Sacrifice spell)
+  ruler: "spell.bloodlust", // Command Seal
+  sword_saint: "spell.precision" // Sword Intent
 };
 
 /**

@@ -109,7 +109,10 @@ export const ELITE_UNIT_RANK_ABILITIES: Record<string, string> = {
   "bulwark.jotunns": "reduce-spell-damage-1",
   // The perfected machine cannot be stopped (no CREXPBON row; UES-style
   // high-rank immunity).
-  "factory.dreadnoughts": "ignore-paralysis"
+  "factory.dreadnoughts": "ignore-paralysis",
+  // Anime/Wuxia signature champions perfect a second decisive strike.
+  "fuyuki.sabers": "double-attack",
+  "azure_breeze.true_inheritors": "double-attack"
 };
 
 /** XP a winner's surviving deployed units gain from a won PvP battle. */

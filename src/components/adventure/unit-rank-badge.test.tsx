@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { ArmyPanel } from "./screen";
 import { CardZoomProvider } from "@/components/table/zoom";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -56,5 +56,24 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     const stats = document.querySelector(".armyUnitRow small")?.textContent ?? "";
     expect(stats).toContain(`A${printed.attack}`);
     expect(stats).toContain(`D${printed.defense}`);
+  });
+
+  it("shows the XP board and dispatches an engine-offered Drill action", () => {
+    const state = makeState(true, "rank-badge-action");
+    state.players.p1.army[0].experience = 1;
+    const dispatched: unknown[] = [];
+    render(
+      <CardZoomProvider>
+        <ArmyPanel
+          state={state}
+          playerId="p1"
+          legalActions={[{ label: "Drill", action: { type: "DRILL_UNIT", playerId: "p1", armyUnitId: "vets" } }]}
+          onAction={(action) => dispatched.push(action)}
+        />
+      </CardZoomProvider>
+    );
+    expect(document.querySelector(".armyXpTrack")).toBeTruthy();
+    fireEvent.click(document.querySelector(".armyUnitActions button") as Element);
+    expect((dispatched[0] as { type: string }).type).toBe("DRILL_UNIT");
   });
 });

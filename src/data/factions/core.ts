@@ -1,5 +1,10 @@
 import { TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
 import { townBoardSpecs } from "@/data/towns/boards";
+import {
+  animeTownBuildingDefinitions,
+  animeTownFactionDefinitions,
+  animeTownHeroDefinitions,
+} from "@/data/anime/towns";
 import type { FactionDefinition, FactionId, HeroDefinition, TownBuildingDefinition } from "./types";
 import { coreUnitDefinitions } from "./units";
 
@@ -162,6 +167,7 @@ function coveHeroSource(slug: string) {
  * Mage Guild spell prices, and the two faction buildings differ.
  */
 export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
+  ...animeTownBuildingDefinitions,
   // ---- Castle ----------------------------------------------------------
   "castle.city_hall": {
     id: "castle.city_hall",
@@ -1317,6 +1323,7 @@ for (const spec of Object.values(townBoardSpecs)) {
 }
 
 export const coreHeroDefinitions: Record<string, HeroDefinition> = {
+  ...animeTownHeroDefinitions,
   catherine: {
     id: "catherine",
     name: "Catherine",
@@ -2685,6 +2692,7 @@ function buildingsOfFaction(faction: string): string[] {
 }
 
 export const coreFactionDefinitions: Record<string, FactionDefinition> = {
+  ...animeTownFactionDefinitions,
   castle: {
     id: "castle",
     name: "Castle",
@@ -2931,8 +2939,15 @@ export const startingTileByFaction: Record<string, string> = Object.fromEntries(
  * starting tile — is currently playable; the flag is the guard for any future
  * art-only stub.)
  */
-export function isPlayableFaction(id: string): boolean {
-  return coreFactionDefinitions[id as FactionId]?.playable !== false;
+export function isPlayableFaction(
+  id: string,
+  anime?: { enabled?: boolean; isekaiTowns?: boolean; xianxiaTowns?: boolean }
+): boolean {
+  const faction = coreFactionDefinitions[id as FactionId];
+  if (!faction || faction.playable === false) return false;
+  if (id === "fuyuki") return Boolean(anime?.enabled && anime.isekaiTowns);
+  if (id === "azure_breeze") return Boolean(anime?.enabled && anime.xianxiaTowns);
+  return true;
 }
 
 /**

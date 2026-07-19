@@ -3,11 +3,16 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
+import { Check, Lock, PackageOpen, Sparkles, X } from "lucide-react";
 
 import { HERO_INFO_STAT_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
+import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
+import { ANIME_EQUIPMENT_DEFINITIONS } from "@/data/anime/equipment";
+import { factionUiLexicon } from "@/data/faction-theme";
 import {
   ABILITY_SEARCH_LEVELS,
   ANIME_EQUIPMENT_SLOTS,
@@ -32,6 +37,7 @@ import {
   heroGradePickableNodes,
   heroGradePointsOf,
   heroGradeProgressOf,
+  heroGradeNodesOf,
   heroGradesEnabled,
   type AnimeEquipmentSlot,
   type GameAction,
@@ -52,7 +58,9 @@ const BOARD_THEMES: Record<string, { banner: string; edge: string }> = {
   inferno: { banner: "linear-gradient(180deg, #ab2a1c 0%, #6e150b 100%)", edge: "#b03a26" },
   necropolis: { banner: "linear-gradient(180deg, #27796b 0%, #154c44 100%)", edge: "#2e7a6e" },
   dungeon: { banner: "linear-gradient(180deg, #6b48b8 0%, #3d2769 100%)", edge: "#7a55c0" },
-  stronghold: { banner: "linear-gradient(180deg, #a9642a 0%, #5e3219 100%)", edge: "#b97835" }
+  stronghold: { banner: "linear-gradient(180deg, #a9642a 0%, #5e3219 100%)", edge: "#b97835" },
+  fuyuki: { banner: "linear-gradient(180deg, #164e8c 0%, #631f42 52%, #1a1838 100%)", edge: "#e15b7d" },
+  azure_breeze: { banner: "linear-gradient(180deg, #4a9a8d 0%, #176477 50%, #173c54 100%)", edge: "#74d2b6" }
 };
 
 // ---------------------------------------------------------------------------
@@ -208,6 +216,7 @@ export function HeroBoard({
   onAction?: (action: GameAction) => void;
 }) {
   const { zoomCard, zoomContent } = useCardZoom();
+  const [systemsOpen, setSystemsOpen] = useState<"grade" | "equipment" | null>(null);
   const player = state.players[playerId];
   const hero = getMainHero(state, playerId);
   const heroDef = player?.heroDefId ? coreHeroDefinitions[player.heroDefId] : undefined;
@@ -217,6 +226,7 @@ export function HeroBoard({
 
   const faction = coreFactionDefinitions[heroDef.faction];
   const theme = BOARD_THEMES[heroDef.faction] ?? BOARD_THEMES.castle;
+  const lexicon = factionUiLexicon(heroDef.faction);
   const ability = cardLibrary[heroDef.startingAbilityCardId];
   const gainedSpecialtyLevels = SPECIALTY_TRACK_LEVELS.filter((level) => hero.level >= level);
   const currentSpecialtyLevel = gainedSpecialtyLevels.at(-1) ?? 1;
@@ -235,6 +245,8 @@ export function HeroBoard({
   const nextThreshold = gradeValue < HERO_GRADE_MAX ? HERO_GRADE_MERIT_THRESHOLDS[gradeValue] : null;
   const gradePoints = heroGradePointsOf(state, playerId);
   const pickableGradeNodes = heroGradePickableNodes(state, playerId);
+  const ownedGradeNodes = new Set(heroGradeNodesOf(state, playerId));
+  const pickableNodeIds = new Set(pickableGradeNodes.map((node) => node.id));
   // Anime Equipment (§3.13): always-on item chips (slot glyph + EN/VI name).
   // Renders only with the module on AND something equipped (CONTROL: off = null).
   const showEquip = equipmentEnabled(state);
@@ -256,7 +268,7 @@ export function HeroBoard({
   ];
 
   return (
-    <div className="hbWrap">
+    <div className={`hbWrap theme-${lexicon.register}`}>
       <section
         aria-label={`${heroDef.name} hero board`}
         className="hb"
@@ -456,8 +468,29 @@ export function HeroBoard({
           </span>
         </footer>
 
+        {showGrade || showEquip ? (
+          <div className="heroSystemButtons" aria-label="Hero systems">
+            {showGrade ? (
+              <button
+                className={`heroSystemButton grade${gradePoints > 0 ? " attention" : ""}`}
+                onClick={() => setSystemsOpen("grade")}
+                type="button"
+              >
+                <Sparkles aria-hidden="true" size={18} />
+                <span><strong>{lexicon.grade}</strong><small>{grade.en} · {gradePoints} point{gradePoints === 1 ? "" : "s"}</small></span>
+              </button>
+            ) : null}
+            {showEquip ? (
+              <button className="heroSystemButton equipment" onClick={() => setSystemsOpen("equipment")} type="button">
+                <PackageOpen aria-hidden="true" size={18} />
+                <span><strong>{lexicon.equipment}</strong><small>{equippedItems.length}/{ANIME_EQUIPMENT_SLOTS.length} slots filled</small></span>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         {showGrade && gradePoints > 0 ? (
-          <div className="hbGradePicker">
+          <div className="hbGradePicker hbGradePickerLegacy" aria-hidden="true">
             <strong>Spend a grade point ({gradePoints}):</strong>
             <ul>
               {pickableGradeNodes.map((node) => (
@@ -484,6 +517,102 @@ export function HeroBoard({
           </div>
         ) : null}
       </section>
+      {systemsOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className={`heroSystemBackdrop theme-${lexicon.register}`} onMouseDown={() => setSystemsOpen(null)}>
+              <section
+                aria-label={systemsOpen === "grade" ? lexicon.grade : lexicon.equipment}
+                aria-modal="true"
+                className={`heroSystemModal ${systemsOpen}`}
+                onMouseDown={(event) => event.stopPropagation()}
+                role="dialog"
+              >
+                <header>
+                  <div>
+                    <small>{faction?.name} · {heroDef.name}</small>
+                    <h2>{systemsOpen === "grade" ? lexicon.grade : lexicon.equipment}</h2>
+                  </div>
+                  <button aria-label="Close" className="heroSystemClose" onClick={() => setSystemsOpen(null)} type="button">
+                    <X size={20} />
+                  </button>
+                </header>
+                {systemsOpen === "grade" ? (
+                  <>
+                    <div className="gradeWindowSummary">
+                      <span><b>{grade.en}</b><small>{grade.vi}</small></span>
+                      <span><b>{merit}{nextThreshold ? ` / ${nextThreshold}` : ""}</b><small>Merit</small></span>
+                      <span className={gradePoints > 0 ? "ready" : ""}><b>{gradePoints}</b><small>Points available</small></span>
+                    </div>
+                    <div className="heroGradeTree" aria-label="Skill and passive tree">
+                      {[1, 2, 3].map((tier) => (
+                        <div className="heroGradeTier" key={tier}>
+                          <h3>Tier {tier}</h3>
+                          {Object.values(HERO_GRADE_NODES).filter((node) => node.tier === tier).map((node) => {
+                            const owned = ownedGradeNodes.has(node.id);
+                            const available = pickableNodeIds.has(node.id) && Boolean(onAction);
+                            return (
+                              <button
+                                className={`heroGradeNode ${owned ? "owned" : available ? "available" : "locked"}`}
+                                disabled={!available}
+                                key={node.id}
+                                onClick={() => onAction?.({ type: "HERO_GRADE_PICK", playerId, nodeId: node.id })}
+                                type="button"
+                              >
+                                <span className="heroGradeNodeIcon">
+                                  {owned ? <Check size={18} /> : available ? <Sparkles size={18} /> : <Lock size={16} />}
+                                </span>
+                                <span><strong>{node.name.en}</strong><small>{node.kind === "passive" ? "Passive" : "Skill"} · {node.name.vi}</small></span>
+                                <p>{node.summary}</p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="equipmentWindowBody">
+                    <div className="equipmentPaperdoll" aria-label="Equipped items">
+                      <div className="equipmentSilhouette" aria-hidden="true">
+                        <span className="head" /><span className="body" /><span className="arms" /><span className="legs" />
+                      </div>
+                      {ANIME_EQUIPMENT_SLOTS.map((slot) => {
+                        const itemId = heroEquipmentOf(state, playerId)[slot];
+                        const def = itemId ? getEquipmentDefinition(itemId) : undefined;
+                        const icon = def ? equipmentImage(def.id) : undefined;
+                        return (
+                          <div className={`equipmentSlot slot-${slot} ${def ? "filled" : "empty"}`} key={slot}>
+                            <small>{slot}</small>
+                            {icon ? <img alt="" src={assetUrl(icon)} /> : <span>{EQUIPMENT_SLOT_GLYPH[slot]}</span>}
+                            <strong>{def?.name.en ?? "Empty"}</strong>
+                            {def ? <p>{def.summary}</p> : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <aside className="equipmentCatalog">
+                      <h3>Equipment catalog</h3>
+                      <p>Buy equipment at an outfitter. New items replace the item in the same slot; every shown effect is live.</p>
+                      {Object.values(ANIME_EQUIPMENT_DEFINITIONS)
+                        .sort((a, b) => a.slot.localeCompare(b.slot) || a.cost - b.cost)
+                        .map((def) => {
+                          const equipped = heroEquipmentOf(state, playerId)[def.slot] === def.id;
+                          const icon = equipmentImage(def.id);
+                          return (
+                            <div className={`equipmentCatalogItem ${equipped ? "equipped" : ""}`} key={def.id}>
+                              {icon ? <img alt="" src={assetUrl(icon)} /> : <span>{EQUIPMENT_SLOT_GLYPH[def.slot]}</span>}
+                              <span><strong>{def.name.en}</strong><small>{def.slot} · {def.cost} gold{equipped ? " · Equipped" : ""}</small></span>
+                            </div>
+                          );
+                        })}
+                    </aside>
+                  </div>
+                )}
+              </section>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

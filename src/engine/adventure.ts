@@ -11203,7 +11203,11 @@ export function grantCreatureBankReward(
 // list. Art-only stub factions (Factory: no starting tile, stub units) are
 // excluded via `isPlayableFaction` so the defender pool never draws them.
 export const PLAYABLE_FACTIONS: string[] = Object.values(coreFactionDefinitions)
-  .filter((faction) => faction.units.length > 0 && isPlayableFaction(faction.id))
+  .filter(
+    (faction) =>
+      faction.units.length > 0 &&
+      isPlayableFaction(faction.id, { enabled: true, isekaiTowns: true, xianxiaTowns: true })
+  )
   .map((faction) => faction.id);
 
 /**
@@ -11221,10 +11225,13 @@ function ensureRandomTownFaction(state: GameState, field: MapFieldState): string
       used.add(player.factionId);
     }
   }
-  const unused = PLAYABLE_FACTIONS.filter(
+  // Package factions remain in the static integrity list, but can enter an
+  // actual table only when their Anime town module is enabled.
+  const enabledFactions = PLAYABLE_FACTIONS.filter((faction) => isPlayableFaction(faction, state.anime));
+  const unused = enabledFactions.filter(
     (faction) => !used.has(faction) && (coreFactionDefinitions[faction]?.units.length ?? 0) > 0
   );
-  const pool = unused.length > 0 ? unused : [...PLAYABLE_FACTIONS];
+  const pool = unused.length > 0 ? unused : enabledFactions;
   const random = adventureRandom(state, `random-town-${field.spaceId}`);
   const faction = pool[random.nextInt(0, pool.length - 1)];
   field.faction = faction;

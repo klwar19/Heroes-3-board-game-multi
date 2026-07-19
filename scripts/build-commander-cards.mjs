@@ -143,6 +143,20 @@ const COMMANDERS = [
       "Frostborn: chills enemies, lowering Speed.  [provisional]",
       "Stone Skin: may cast Stone Skin."
     ]
+  },
+  {
+    slug: "ruler", name: "Astral Regent", faction: "Fuyuki City",
+    abilities: [
+      "Unbroken Contract: +1 Attack on the front line.",
+      "Command Seal: empowers an allied melee Servant."
+    ]
+  },
+  {
+    slug: "sword_saint", name: "Sword Saint", faction: "Azure Breeze Sect",
+    abilities: [
+      "One With the Blade: adopts an Attack or Defense stance.",
+      "Sword Intent: empowers an allied ranged disciple."
+    ]
   }
 ];
 

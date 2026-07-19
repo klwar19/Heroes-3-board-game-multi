@@ -146,6 +146,22 @@ const creatureVoices: Record<string, string> = {
   gunslingers: "sharpshooter",
   couatls: "wyvern",
   dreadnoughts: "behemoth",
+  // Anime Realms: thematic reuse of complete Heroes III voice sets until a
+  // dedicated voiced package is produced. Every mapping covers all actions.
+  assassins: "rogue",
+  riders: "goblin-wolf-rider",
+  lancers: "champion",
+  archers: "sharpshooter",
+  casters: "mage",
+  sabers: "swordsman",
+  berserkers: "ogre",
+  outer_disciples: "swordsman",
+  inner_swordsmen: "crusader",
+  spirit_crane: "pegasus",
+  sect_protectors: "monk",
+  true_inheritors: "swordsman",
+  core_master: "mage",
+  mountain_guardian: "dendroid-soldier",
   // Wake of Gods adaptation: requested H3 voice reuse.
   ghost: "wraith",
   air_messenger: "stone-golem",
@@ -203,7 +219,10 @@ const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
   // Factory — the Cove level-2 unit (Seamen = Crew Mate voice).
   factory: { attack: "crew-mate", move: "crew-mate", defend: "crew-mate", hurt: "crew-mate", death: "crew-mate" },
   // Bulwark — the Bulwark level-7 unit (Jotunns = Titan voice).
-  bulwark: { attack: "titan", move: "titan", defend: "titan", hurt: "titan", death: "titan" }
+  bulwark: { attack: "titan", move: "titan", defend: "titan", hurt: "titan", death: "titan" },
+  // Anime Realms — sword-bearing leaders with fully converted voice sets.
+  ruler: { attack: "swordsman", move: "swordsman", defend: "swordsman", hurt: "swordsman", death: "swordsman" },
+  sword_saint: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" }
 };
 
 /** The voice id the table uses for a commander combat unit ("commander:<slug>"). */

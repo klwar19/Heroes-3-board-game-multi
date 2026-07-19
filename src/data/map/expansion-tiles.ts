@@ -21,6 +21,48 @@ import type { TileDefinition } from "./types";
  * their content set.
  */
 export const expansionTileDefinitions: Record<string, TileDefinition> = {
+  "A-S1": {
+    id: "A-S1",
+    group: "starting",
+    content: "regular_stretch_goals",
+    terrain: "highlands",
+    fields: [
+      { location: "town", faction: "fuyuki" },
+      { location: "resource_symbol" },
+      { location: "empty_field" },
+      { location: "blocked_field" },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "empty_field" }
+    ],
+    outerImpassable: [false, false, true, true, false, false],
+    source: {
+      product: "Anime Realms module",
+      credit: "Original Fuyuki City starting tile authored for this digital module."
+    },
+    assets: { tileImage: "/assets/anime/tiles/a-s1.webp" }
+  },
+  "W-S1": {
+    id: "W-S1",
+    group: "starting",
+    content: "regular_stretch_goals",
+    terrain: "highlands",
+    fields: [
+      { location: "town", faction: "azure_breeze" },
+      { location: "learning_stone" },
+      { location: "empty_field" },
+      { location: "resource_symbol" },
+      { location: "blocked_field" },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "mine", difficulty: 1, resource: "valuables", amount: 1 }
+    ],
+    outerImpassable: [false, true, true, false, false, false],
+    source: {
+      product: "Anime Realms module",
+      credit: "Original Azure Breeze Sect starting tile authored for this digital module."
+    },
+    assets: { tileImage: "/assets/anime/tiles/w-s1.webp" }
+  },
   S7: {
     id: "S7",
     group: "starting",
