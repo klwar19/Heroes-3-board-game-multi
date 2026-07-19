@@ -14601,19 +14601,73 @@ img.cardBack {
   pointer-events: all;
   cursor: help;
 }
-.designerHexEventRing {
+/* A placed hidden event — a subtle violet hex + glyph the designer can click
+   (edit) or drag (move). Deliberately quiet: the event is invisible in game. */
+.designerHexEventToken {
+  cursor: grab;
+}
+.designerHexEventToken.dragging {
+  cursor: grabbing;
+  opacity: 0.8;
+}
+.designerHexEventHex {
+  fill: rgba(126, 84, 190, 0.18);
   stroke: #c99cff;
   stroke-dasharray: 3 3;
-  stroke-width: 2;
-  filter: drop-shadow(0 0 4px rgba(201, 156, 255, 0.6));
+  stroke-width: 1.6px;
 }
-.designerHexEventMark {
-  font-size: 14px;
-  paint-order: stroke;
-  stroke: rgba(30, 12, 50, 0.85);
+.designerHexEventToken:hover .designerHexEventHex {
+  fill: rgba(126, 84, 190, 0.34);
+  filter: drop-shadow(0 0 4px rgba(201, 156, 255, 0.65));
+}
+.designerHexEventToken.selected .designerHexEventHex {
+  stroke: #ffe9a8;
+  stroke-dasharray: none;
+  stroke-width: 2.2px;
+  filter: drop-shadow(0 0 5px rgba(255, 233, 168, 0.7));
+}
+.designerHexEventImage {
+  opacity: 0.9;
+  pointer-events: none;
+}
+/* Candidate cells while the ⚡ button / pick / marker drag is live. */
+.designerHexEventSlot {
+  fill: rgba(160, 110, 230, 0.18);
+  stroke: rgba(201, 156, 255, 0.85);
+  stroke-dasharray: 3 2;
+  stroke-width: 1.4px;
+  cursor: copy;
+}
+.designerHexEventSlot:hover {
+  fill: rgba(160, 110, 230, 0.4);
+}
+.designerHexEventSlot.hover {
+  fill: rgba(160, 110, 230, 0.55);
   stroke-width: 2.4px;
-  pointer-events: all;
-  cursor: help;
+  filter: drop-shadow(0 0 5px rgba(201, 156, 255, 0.85));
+}
+.designerTokenDropReticle.hexEvent polygon {
+  fill: rgba(160, 110, 230, 0.2);
+  stroke: #dcc4ff;
+  filter: drop-shadow(0 0 7px rgba(201, 156, 255, 0.9));
+}
+.designerTokenDropReticle.hexEvent text {
+  fill: #e7d6ff;
+}
+/* The hidden-event editor's message input (docked-popover text field). */
+.designerHexEventPopover .popoverTextInput {
+  background: rgba(24, 18, 10, 0.6);
+  border: 1px solid rgba(201, 162, 75, 0.5);
+  border-radius: 6px;
+  color: #f3e7c8;
+  font-size: 11.5px;
+  padding: 5px 7px;
+  width: 100%;
+}
+/* Palette glyph on the Hidden event button. */
+.designerObjectGlyphIcon {
+  height: 16px;
+  width: 16px;
 }
 
 /* Global | Specific mode tabs + the specific panel in the objects sections. */

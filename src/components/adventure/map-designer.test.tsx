@@ -19,6 +19,7 @@ import {
   tileFootprint,
   tileFootprintsTouch,
   tileLatticeNeighbors,
+  type CustomHexEvent,
   type CustomMapObject,
   type CustomMapTilePlan,
   type HexCoord
@@ -4093,7 +4094,7 @@ describe("MapDesigner — specific object plans & hex events", () => {
     expect(badge!.querySelector("title")!.textContent).toContain("WIN on clear");
   });
 
-  it("hex events render a designer-only ⚡ marker with the full tooltip", () => {
+  it("hex events render a designer-only image-hex marker with the full hover tooltip", () => {
     const { container } = render(
       <MapDesigner
         customMap={[{ row: town.row, col: town.col, group: "starting", faceDown: false }]}
@@ -4109,10 +4110,20 @@ describe("MapDesigner — specific object plans & hex events", () => {
         scenarioId="skirmish"
       />
     );
-    const mark = container.querySelector(".designerHexEventMark");
-    expect(mark).toBeTruthy();
-    expect(mark!.querySelector("title")!.textContent).toContain("Hidden event");
-    expect(mark!.querySelector("title")!.textContent).toContain("3 gold");
+    const token = container.querySelector(".designerHexEventToken");
+    expect(token).toBeTruthy();
+    // Rich hover explanation: what it is, that players never see it, how to use it.
+    const title = token!.querySelector("title")!.textContent!;
+    expect(title).toContain("Hidden event");
+    expect(title).toContain("invisible in the real game");
+    expect(title).toContain("3 gold");
+    expect(title).toContain("Click to edit");
+    expect(title).toContain("drag to move");
+    // The marker wears the event glyph image on a subtle hex outline.
+    expect(token!.querySelector("image.designerHexEventImage")?.getAttribute("href")).toContain(
+      "hex-event"
+    );
+    expect(token!.querySelector("polygon.designerHexEventHex")).toBeTruthy();
   });
 
   it("hex-event pick mode drops an event on the clicked hex (jsdom identity CTM)", () => {
@@ -4142,6 +4153,120 @@ describe("MapDesigner — specific object plans & hex events", () => {
       expect(events).toHaveLength(1);
       expect(events[0].placement).toEqual({ row: town.row, col: town.col });
       expect(onPickResolved).toHaveBeenCalledTimes(1);
+    } finally {
+      restore();
+    }
+  });
+
+  /**
+   * Stateful harness with LIVE hex events (and optional standalone objects), so
+   * placing / editing / dragging re-renders like production. `get()` reads the
+   * live event list.
+   */
+  function renderHexEventDesigner(
+    customMap: CustomMapTilePlan[],
+    initialEvents: CustomHexEvent[],
+    objects: CustomMapObject[] = []
+  ): { container: HTMLElement; get: () => CustomHexEvent[] } {
+    const box: { current: CustomHexEvent[] } = { current: initialEvents };
+    function Harness() {
+      const [events, setEvents] = useState(initialEvents);
+      box.current = events;
+      return (
+        <MapDesigner
+          scenarioId="skirmish"
+          customMap={customMap}
+          onChange={() => {}}
+          objects={objects}
+          onObjectsChange={() => {}}
+          hexEvents={events}
+          onHexEventsChange={(next) => {
+            box.current = next;
+            setEvents(next);
+          }}
+        />
+      );
+    }
+    const { container } = render(<Harness />);
+    return { container, get: () => box.current };
+  }
+
+  it("the palette 'Hidden event' button arms placement; candidate cells cover tile hexes AND a standalone object hex, and a click places + opens the editor", () => {
+    // A tile (7 candidate hexes) plus a standalone garrison off the tile — the
+    // event may sit on ANY of them (it is invisible in game, so it stacks on
+    // whatever the hex prints).
+    const garrisonHex = { row: town.row, col: town.col + 4 };
+    const { container, get } = renderHexEventDesigner(
+      [{ row: town.row, col: town.col, group: "starting", faceDown: false }],
+      [],
+      [{ kind: "garrison", placement: { type: "standalone", row: garrisonHex.row, col: garrisonHex.col } }]
+    );
+    const button = within(container).getByRole("button", { name: /Hidden event/ });
+    // Hover explanation on the palette button itself.
+    expect(button.getAttribute("title")).toContain("INVISIBLE");
+    expect(button.getAttribute("title")).toContain("never shows in the real game");
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    const slots = container.querySelectorAll(".designerHexEventSlot");
+    // 7 tile-footprint hexes + the garrison's standalone hex.
+    expect(slots.length).toBe(8);
+    // Set-insertion order puts the standalone object hex LAST (tiles first).
+    fireEvent.click(slots[slots.length - 1]);
+    const events = get();
+    expect(events).toHaveLength(1);
+    expect(events[0].placement).toEqual({ row: garrisonHex.row, col: garrisonHex.col });
+    // Placement disarms and opens the new event's docked editor right away.
+    const popover = container.querySelector(".designerHexEventPopover");
+    expect(popover).toBeTruthy();
+    expect(
+      (within(popover as HTMLElement).getByLabelText("Hidden event message") as HTMLInputElement).value
+    ).toContain("Something stirs");
+  });
+
+  it("clicking a placed marker opens the editor: message edits, option chips and Remove all write through", () => {
+    const { container, get } = renderHexEventDesigner(
+      [{ row: town.row, col: town.col, group: "starting", faceDown: false }],
+      [{ id: "e1", placement: { row: town.row, col: town.col }, message: "Boo!", reward: { gold: 3 } }]
+    );
+    fireEvent.click(container.querySelector(".designerHexEventToken")!);
+    const popover = container.querySelector(".designerHexEventPopover");
+    expect(popover).toBeTruthy();
+    // Edit the message.
+    const input = within(popover as HTMLElement).getByLabelText("Hidden event message");
+    fireEvent.change(input, { target: { value: "An ancient trap!" } });
+    expect(get()[0].message).toBe("An ancient trap!");
+    // Flip to every-player mode via the chip.
+    fireEvent.click(within(container.querySelector(".designerHexEventPopover") as HTMLElement).getByRole("button", { name: "Every player once" }));
+    expect(get()[0].mode).toBe("each-player");
+    // Remove deletes the event and closes the editor.
+    fireEvent.click(within(container.querySelector(".designerHexEventPopover") as HTMLElement).getByRole("button", { name: /Remove event/ }));
+    expect(get()).toHaveLength(0);
+    expect(container.querySelector(".designerHexEventPopover")).toBeNull();
+  });
+
+  it("dragging a marker moves the event to another hex (id + settings preserved); the trailing click never opens the editor", () => {
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const target = tileFootprint(town, 0)[3];
+      const { container, get } = renderHexEventDesigner(
+        [{ row: town.row, col: town.col, group: "starting", faceDown: false }],
+        [{ id: "e1", placement: { row: town.row, col: town.col }, message: "Boo!", vp: 2 }]
+      );
+      const token = container.querySelector(".designerHexEventToken")!;
+      const from = hexToPixel(town, 24);
+      const to = hexToPixel(target, 24);
+      fireEvent.pointerDown(token, { button: 0, pointerId: 5, clientX: from.x, clientY: from.y });
+      fireEvent.pointerMove(window, { pointerId: 5, clientX: to.x, clientY: to.y });
+      fireEvent.pointerUp(window, { pointerId: 5 });
+      expect(get()).toEqual([
+        { id: "e1", placement: { row: target.row, col: target.col }, message: "Boo!", vp: 2 }
+      ]);
+      // The release's trailing click is suppressed — no editor pops open.
+      fireEvent.click(container.querySelector(".designerHexEventToken")!);
+      expect(container.querySelector(".designerHexEventPopover")).toBeNull();
+      // A REAL click afterwards still opens it.
+      fireEvent.click(container.querySelector(".designerHexEventToken")!);
+      expect(container.querySelector(".designerHexEventPopover")).toBeTruthy();
     } finally {
       restore();
     }

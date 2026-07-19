@@ -2273,7 +2273,22 @@ What runs (each behaviour has a failing-if-removed test):
   Esc/banner-cancel disarms, an eligible click opens the tile popover (which
   gained "Special obelisk/mine (this tile)" sections — shown ONLY on eligible
   tiles — plus 🏁 win ticks on settlement/center sections). Tiles with specific
-  settings wear a ⚔ (🏁⚔ with a win) badge; hex events a designer-only ⚡ mark.
+  settings wear a ⚔ (🏁⚔ with a win) badge. HEX EVENTS are additionally a
+  first-class palette object (2026-07): a "Hidden event" button in the board's
+  Objects palette (glyph `DESIGNER_UI_ICONS.hexEvent`) arms placement — every
+  placed-tile hex AND every standalone object hex glows (the event is invisible
+  in game, so it SHARES its hex with whatever is printed there; only another
+  event blocks a cell, one per hex) — a click places, disarms, and opens the
+  event's own docked editor (message / ambush / reward+VP / mode chips /
+  replaceVisit / remove — the preset-editor card's twin). A placed marker is a
+  subtle violet image hex with a full hover tooltip: click opens the editor,
+  drag moves it to any other legal hex (object-drag lifecycle: 6px promote,
+  hover preview + PLACE reticle, Escape aborts, trailing click suppressed).
+  The preset editor's pick flow still works and now shares the same placement
+  path (same candidates, dedupe, editor-on-place). Pinned in
+  `map-designer.test.tsx` ("specific object plans & hex events": marker +
+  tooltip, palette arm/place incl. a standalone object hex, editor
+  edit/remove, drag move).
 - **Guard visibility in game**: clicking a designer-altered object that is NOT
   a move target opens the `designedGuardInspectFloat` — exact army (grouped
   labels), level, unclaimed first-clear reward/VP — the move-confirm warning's

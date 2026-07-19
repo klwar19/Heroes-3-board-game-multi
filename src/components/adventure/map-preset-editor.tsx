@@ -1782,8 +1782,10 @@ export function MapPresetEditor({
           <div className="mapPresetSectionLabel">⚡ Hidden hex events</div>
           <small className="mapPresetHint">
             Invisible triggers on exact hexes (never shown to players): stepping on one springs an
-            optional ambush guard, then a message, reward and Victory Points. Place one on the map,
-            then tune it here. {hexEvents.length}/{MAX_HEX_EVENTS}.
+            optional ambush guard, then a message, reward and Victory Points. Place one from the
+            board&apos;s Objects palette (the &quot;Hidden event&quot; button, next to the teleporters)
+            or with the pick button below — then tune it here or by clicking its marker on the map.
+            Markers drag like any object. {hexEvents.length}/{MAX_HEX_EVENTS}.
           </small>
           {hexEvents.map((event, index) => (
             <div className="mapPresetTimedCard mapPresetHexEventCard" key={event.id}>
