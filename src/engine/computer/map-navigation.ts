@@ -373,6 +373,19 @@ export function canBeatGuardedField(
   // from the moment the Pack core stood until Far economy opened, flatlining
   // hero levels at 2-3 for the whole mid-game.
   if (hero.kind === "main" && guaranteedQuickWin) return true;
+  // Easy neutrals the hero level already covers (difficulty ≤ 1): ALWAYS take.
+  // Older gates parked the army for several turns "waiting for 3 Packs / Far
+  // economy" before walking into a free/equal difficulty-1 fight — that felt
+  // like the AI was frozen, then suddenly moved. Harder (difficulty ≥ 2) side
+  // neutrals still respect the core-build / bronze-rush refuse gates below.
+  const heroBattleLevel = neutralBattleLevel(state, hero);
+  const easyLevelCovered =
+    fieldDifficulty > 0 &&
+    fieldDifficulty <= 1 &&
+    heroBattleLevel >= fieldDifficulty;
+  if (hero.kind === "main" && easyLevelCovered) return true;
+  // establish-core: only refuse difficulty-2+ fair/hard neutrals (equal or
+  // under-level). Difficulty-1 is handled above.
   const rebuildingCoreCannotRiskNeutral =
     hero.kind === "main" &&
     !field.flagOwnerId &&
@@ -380,7 +393,8 @@ export function canBeatGuardedField(
     !homeOpeningGuard &&
     (state.round ?? 0) >= 2 &&
     rushProfile.phase === "establish-core" &&
-    neutralBattleLevel(state, hero) <= fieldDifficulty;
+    fieldDifficulty >= 2 &&
+    heroBattleLevel <= fieldDifficulty;
   if (rebuildingCoreCannotRiskNeutral) return false;
   // Bronze-only Pack core skips non-premium difficulty-2+ neutrals, but
   // premium economy is difficulty-calibrated (hard: 3 Packs alone take lv3).
@@ -388,7 +402,7 @@ export function canBeatGuardedField(
     hero.kind === "main" &&
     !field.flagOwnerId &&
     fieldDifficulty >= 2 &&
-    neutralBattleLevel(state, hero) <= fieldDifficulty &&
+    heroBattleLevel <= fieldDifficulty &&
     rushProfile.bronzePacks >= 3 &&
     rushProfile.silverUnits === 0 &&
     rushProfile.goldUnits === 0 &&
@@ -402,11 +416,15 @@ export function canBeatGuardedField(
     rushProfile.totalUnits >= 3 &&
     rushProfile.bronzePacks >= 3 &&
     !hasOpenedFarEconomy(state, hero.controllerId);
+  // Bronze-rush: refuse difficulty-2+ side neutrals that would bleed the army
+  // before Far economy — never park multi-turn over a difficulty-1 the level
+  // already covers (handled above via easyLevelCovered).
   if (
     hero.kind === "main" &&
     !field.flagOwnerId &&
     !premiumEconomy &&
     !homeOpeningGuard &&
+    fieldDifficulty >= 2 &&
     adventureVictoryMode(state) === "conquest" &&
     (shouldLaunchBronzeRush(state, hero.controllerId) ||
       preservingNextRoundRush)
@@ -902,16 +920,33 @@ function objectiveStrategicValue(
       break;
     case "guard": {
       const difficulty = field?.difficulty ?? 0;
+      const battleLevel = neutralBattleLevel(state, hero);
       const guaranteedQuickWin =
-        difficulty > 0 && neutralBattleLevel(state, hero) > difficulty;
+        difficulty > 0 && battleLevel > difficulty;
       // Home-tile opening sweep lifts the not-ready penalty for a level-
       // coverable difficulty-1/2 guard (the income mine / the guarded treasure
       // are opening plays, not fair fights to postpone for army development).
+      // Same band for ANY difficulty-1 the level covers — do not park multi-
+      // turn waiting for Packs before a free/equal easy fight off-home.
       const homeGuardTakeable =
         homeSweep &&
         difficulty > 0 &&
         difficulty <= HOME_TILE_SWEEP_MAX_DIFFICULTY;
-      value = guaranteedQuickWin ? 800 : ready || homeGuardTakeable ? 710 : 410;
+      // Off-home difficulty-1 the level covers: engage (canBeat) with a mid
+      // band so a NEARBY easy fight outranks a doorway, but a distant one does
+      // not yank the hero off expansion for several dead turns.
+      const easyLevelCovered =
+        !homeGuardTakeable &&
+        difficulty > 0 &&
+        difficulty <= 1 &&
+        battleLevel >= difficulty;
+      value = guaranteedQuickWin
+        ? 800
+        : ready || homeGuardTakeable
+          ? 710
+          : easyLevelCovered
+            ? 560
+            : 410;
       // Premium Far economy (settlement / gold / valuables): hit ASAP once the
       // army can cover it for this scenario difficulty. Worth multi-turn
       // marches and unit losses — before round 6 a 3-turn prep path must
@@ -1013,6 +1048,111 @@ function objectiveStrategicValue(
   return value - distance * 18;
 }
 
+/**
+ * Free map seizures: unguarded mines/settlements, unvisited symbols, free towns.
+ * These are NOT fights — paths are full of them and the AI must scoop them up
+ * instead of tunnel-visioning a distant battle or parking for "readiness".
+ */
+const FREE_SEIZE_KINDS: ReadonlySet<MapObjectiveKind> = new Set([
+  "flaggable",
+  "visitable",
+  "town",
+]);
+
+export function isFreeSeizeObjective(objective: MapObjective): boolean {
+  return FREE_SEIZE_KINDS.has(objective.kind);
+}
+
+/**
+ * Free pickups the hero can still walk onto THIS turn (distance ≤ remaining MP).
+ * Public-state reachability only.
+ */
+export function freeSeizuresWithinReach(
+  state: GameState,
+  hero: HeroState,
+  objectives: ReadonlyArray<MapObjective>,
+): MapObjective[] {
+  const mp = Math.max(0, hero.movementPoints ?? 0);
+  return objectives.filter((objective) => {
+    if (!isFreeSeizeObjective(objective)) return false;
+    const distance = distanceFromHeroTo(state, hero, objective.spaceId);
+    return distance !== undefined && distance <= mp;
+  });
+}
+
+/**
+ * Whether a fight keeps primary over a free seizure THIS turn.
+ * - Premium Far economy commits multi-turn (free pickups on the walk are still
+ *   scooped via multi-source marchTargets in moveScore).
+ * - A strictly closer Quick-Combat freebie may divert.
+ * Fair/equal side neutrals do NOT outrank free loot — seize free first.
+ */
+function fightOutranksFreeSeize(
+  state: GameState,
+  hero: HeroState,
+  fight: MapObjective,
+  freeDistance: number,
+): boolean {
+  if (fight.kind !== "guard" && fight.kind !== "enemy-hero") return false;
+  const fightDistance = distanceFromHeroTo(state, hero, fight.spaceId);
+  if (fightDistance === undefined) return false;
+  if (fight.kind === "enemy-hero") {
+    return (
+      armyReadyForContestedFight(state, hero.controllerId) &&
+      fightDistance < freeDistance
+    );
+  }
+  const field = state.adventure?.fields[fight.spaceId];
+  if (!field) return false;
+  // Premium settlement / gold / valuables: keep the multi-turn economy commit.
+  if (isPremiumEconomyField(field)) return true;
+  const difficulty = field.difficulty ?? 0;
+  // Strictly closer Quick Combat (level > difficulty) may divert.
+  if (
+    difficulty > 0 &&
+    neutralBattleLevel(state, hero) > difficulty &&
+    fightDistance < freeDistance
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function bestObjectiveOf(
+  state: GameState,
+  hero: HeroState,
+  candidates: ReadonlyArray<MapObjective>,
+  fightAvailable: boolean,
+): MapObjective | null {
+  let best: MapObjective | null = null;
+  let bestValue = Number.NEGATIVE_INFINITY;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const objective of candidates) {
+    const distance = distanceFromHeroTo(state, hero, objective.spaceId);
+    if (distance === undefined) continue;
+    const value = objectiveStrategicValue(
+      state,
+      hero,
+      objective,
+      distance,
+      fightAvailable,
+    );
+    if (
+      !best ||
+      value > bestValue ||
+      (value === bestValue && distance < bestDistance) ||
+      (value === bestValue &&
+        distance === bestDistance &&
+        objective.spaceId.localeCompare(best.spaceId) < 0)
+    ) {
+      best = objective;
+      bestValue = value;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
 export function primaryMapObjective(
   state: GameState,
   hero: HeroState,
@@ -1037,6 +1177,31 @@ export function primaryMapObjective(
     (objective) => objective.kind === "guard" || objective.kind === "enemy-hero",
   );
 
+  // FREE SEIZE THIS TURN: scoop unguarded mines / symbols / settlements before
+  // locking a fight sticky or trekking to a fair battle. Map is full of free
+  // paths — taking them is the intelligent play, not "wait then fight".
+  if (homeRemaining.length === 0) {
+    const freeNow = freeSeizuresWithinReach(state, hero, pool);
+    if (freeNow.length > 0) {
+      const stickyIsFree =
+        Boolean(stickySpaceId) &&
+        freeNow.some((objective) => objective.spaceId === stickySpaceId);
+      if (!stickyIsFree) {
+        const bestFree = bestObjectiveOf(state, hero, freeNow, fightAvailable);
+        if (bestFree) {
+          const freeDistance =
+            distanceFromHeroTo(state, hero, bestFree.spaceId) ?? 0;
+          const divertingFight = pool.find((objective) =>
+            fightOutranksFreeSeize(state, hero, objective, freeDistance),
+          );
+          if (!divertingFight) {
+            return bestFree;
+          }
+        }
+      }
+    }
+  }
+
   // Sticky only applies once the home tile is drained — a sticky Far/victory
   // target must not yank the hero off tile Ⅰ mid-sweep.
   if (stickySpaceId && homeRemaining.length === 0) {
@@ -1045,7 +1210,8 @@ export function primaryMapObjective(
       // Change plans only for a materially better reachable objective; small
       // value fluctuations keep the existing march stable across turns.
       // Premium economy fights break sticky early (unit-loss trades are fine;
-      // missing the pre-round-6 window is not).
+      // missing the pre-round-6 window is not). Free seizures within reach
+      // also break a fight sticky (low bar — scoop free value on the way).
       const stickyField = state.adventure?.fields[sticky.spaceId];
       const stickyDistance = distanceFromHeroTo(state, hero, sticky.spaceId);
       const stickyValue = stickyDistance === undefined
@@ -1072,7 +1238,15 @@ export function primaryMapObjective(
             isPremiumEconomyField(stickyField) &&
             sticky.kind === "guard"
           );
-        return value > stickyValue + (premiumBreak ? 40 : 90);
+        const freeSeizeBreak =
+          isFreeSeizeObjective(objective) &&
+          (sticky.kind === "guard" ||
+            sticky.kind === "enemy-hero" ||
+            sticky.kind === "explore") &&
+          distance <= Math.max(0, hero.movementPoints ?? 0);
+        return (
+          value > stickyValue + (premiumBreak || freeSeizeBreak ? 40 : 90)
+        );
       });
       // Unreachable sticky (e.g. explore doorway sealed behind a yellow border
       // the hero cannot cross without Pathfinding, or a fight we can no longer

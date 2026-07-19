@@ -37,6 +37,7 @@ import {
   canBeatGuardedField,
   collectMapObjectives,
   distanceFromHeroTo,
+  freeSeizuresWithinReach,
   objectiveDistanceField,
   primaryMapObjective,
 } from "./map-navigation";
@@ -282,44 +283,43 @@ describe("Far-tile opening and Bronze-rush tempo", () => {
     state.adventure!.farSettlementOpenedByPlayer = undefined;
   });
 
-  it("does not bleed the three-Pack rush into a side neutral", () => {
+  it("does not bleed the three-Pack rush into a hard side neutral (diff ≥ 2)", () => {
     const state = game();
     const hero = p2Hero(state);
     establishP2PackCore(state);
-    // Level 1 vs difficulty 1: an EVEN fight (no Quick Combat), the kind the
-    // rush preservation exists for. A strict level advantage is exercised in
-    // the quick-win case further down.
     hero.level = 1;
     state.round = 2;
-    // Off home tile — tile-Ⅰ difficulty-1 guards stay engageable during the
-    // sweep; this CONTROL is a non-premium materials mine elsewhere.
+    // Off home tile — a non-premium materials mine elsewhere.
     const offHome = state.adventure!.fields[EMPTY];
     offHome.tileInstanceId = "tile_off_home_side";
     offHome.flagOwnerId = null;
-    offHome.difficulty = 1;
+    offHome.difficulty = 2;
     offHome.location = "mine";
     offHome.resource = "buildingMaterials";
     hero.spaceId = EMPTY;
-    // No Far economy opened yet → the bronze rush refuses the side neutral.
+    // No Far economy yet → bronze rush refuses difficulty-2+ side neutrals
+    // (army-bleed risk). Difficulty-1 level-covered fights are taken (no park).
     expect(canBeatGuardedField(state, hero, offHome)).toBe(false);
 
+    // Easy difficulty-1 the level covers: take it mid-rush (no multi-turn wait).
+    offHome.difficulty = 1;
+    expect(canBeatGuardedField(state, hero, offHome)).toBe(true);
+
     // A strict level advantage resolves as QUICK COMBAT before a battle opens
-    // — no army ever bleeds — so the main hero takes the free XP/loot even
-    // mid-rush (measured pre-fix: skipping every free cleanup flatlined hero
-    // levels at 2-3 for the whole mid-game).
+    // — free XP/loot even mid-rush on harder fields too.
+    offHome.difficulty = 2;
     hero.level = 3;
     expect(canBeatGuardedField(state, hero, offHome)).toBe(true);
     hero.level = 1;
 
-    // Once THIS player has opened its own Far (II-III) economy (the scenario's
-    // guaranteed Far Settlement), it is no longer in desperation-rush mode and
-    // will take a coverable difficulty-1 field.
+    // Once THIS player has opened its own Far (II-III) economy, equal fights
+    // the level covers on difficulty-2 become engageable again (if army covers).
     state.adventure!.farSettlementOpenedByPlayer = { p2: true };
-    expect(canBeatGuardedField(state, hero, offHome)).toBe(true);
+    // Level 1 does not cover difficulty 2 → still false via level/army gates.
+    expect(canBeatGuardedField(state, hero, offHome)).toBe(false);
 
     // CONTROL (finding #1): a RIVAL (p1) opening Far economy must NOT lift p2's
-    // rush refusal — the previous global field scan wrongly counted any player's
-    // Far economy as our own.
+    // rush refusal on hard side neutrals.
     state.adventure!.farSettlementOpenedByPlayer = { p1: true };
     expect(canBeatGuardedField(state, hero, offHome)).toBe(false);
 
@@ -1312,6 +1312,35 @@ describe("sticky primary + explore objectives", () => {
 });
 
 describe("opening home-tile sweep — development gate scoped to tile Ⅰ", () => {
+  /** Drain home payoffs, face-down explore, and free map loot so a test can isolate one prize. */
+  function neutralizeMapPayoffs(state: GameState): void {
+    const fields = state.adventure!.fields;
+    for (const id of [MINE, TREASURE]) {
+      fields[id].flagOwnerId = "p2";
+      fields[id].everFlagged = true;
+      delete fields[id].difficulty;
+    }
+    fields[RESOURCE].blackCube = true;
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      tile.faceDown = false;
+    }
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    for (const field of Object.values(fields)) {
+      const cat = locationDefinitions[field.location]?.category;
+      if (cat === "flaggable" && field.flagOwnerId !== "p2") {
+        field.flagOwnerId = "p2";
+        field.everFlagged = true;
+        delete field.difficulty;
+      }
+      if (cat === "visitable" && !field.blackCube) {
+        field.blackCube = true;
+      }
+    }
+  }
+
   /** A walkable ghost arm on its OWN tile (never the hero's home tile). */
   function buildGhostArm(state: GameState, length: number): MapSpaceId[] {
     const fields = state.adventure!.fields;
@@ -1374,28 +1403,109 @@ describe("opening home-tile sweep — development gate scoped to tile Ⅰ", () =
     expect([MINE, TREASURE]).toContain(primary?.spaceId);
   });
 
-  it("CONTROL: the same difficulty-1 guard OFF the home tile still waits (gate holds)", () => {
+  it("takes a level-covered difficulty-1 off the home tile (no multi-turn park)", () => {
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
-    // Move the hero out onto a different tile: the readiness gate applies again,
-    // so a weak army prefers a safe visitable over the equally-close fair fight
-    // — the exemption is the HOME tile, not "any difficulty-1 guard".
+    // Off home, weak Few army: difficulty-1 the level covers must still engage.
+    // Parking several turns for Packs was the "stands still waiting" bug.
+    const fields = state.adventure!.fields;
+    neutralizeMapPayoffs(state);
     const arm = buildGhostArm(state, 3);
-    // Hero in the middle of the ghost arm: a visitable and a difficulty-1 guard
-    // sit one step out on either side (a guard is a march "stop", so keeping
-    // both a single hop from the hero keeps both genuinely reachable).
     hero.spaceId = arm[1];
-    state.adventure!.fields[arm[0]].location = "windmill"; // visitable, 1 step
-    state.adventure!.fields[arm[2]].difficulty = 1; // guard, 1 step
+    fields[arm[2]].difficulty = 1; // guard, 1 step
+    expect(canBeatGuardedField(state, hero, fields[arm[2]])).toBe(true);
+    const objectives = collectMapObjectives(state, hero);
+    expect(objectives.some((o) => o.spaceId === arm[2] && o.kind === "guard")).toBe(
+      true,
+    );
+    // Forced list: only this fight (no free-seize noise from the rest of the map).
+    const primary = primaryMapObjective(state, hero, [
+      { spaceId: arm[2], kind: "guard" },
+    ]);
+    expect(primary?.spaceId).toBe(arm[2]);
+    // With the map neutralized, moveScore's live objective list is just this fight.
+    expect(moveScoreTo(state, hero, arm[2])).toBeGreaterThan(300);
+  });
+
+  it("CONTROL: difficulty-2 off-home still waits while the core is thin", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.round = 2;
+    const arm = buildGhostArm(state, 3);
+    hero.spaceId = arm[1];
+    state.adventure!.fields[arm[0]].location = "windmill";
+    state.adventure!.fields[arm[2]].difficulty = 2;
+    // Level 1 does not cover difficulty 2; establish-core refuses the fair fight.
+    expect(
+      canBeatGuardedField(state, hero, state.adventure!.fields[arm[2]]),
+    ).toBe(false);
     const primary = primaryMapObjective(state, hero, [
       { spaceId: arm[2], kind: "guard" },
       { spaceId: arm[0], kind: "visitable" },
     ]);
-    // At EQUAL distance the safe visitable wins — off the home tile the
-    // weak-army guard keeps its 410 (not the 710 the home sweep would grant).
+    // Safe visitable wins when the hard guard is not engageable.
     expect(primary?.spaceId).toBe(arm[0]);
-    expect(primary?.kind).toBe("visitable");
+  });
+
+  it("seizes free objects this turn before trekking to a fair fight", () => {
+    // Map is full of free paths: an unguarded mine within MP must outrank a
+    // farther fair fight. Tunnel-visioning the fight while walking past free
+    // loot was the dumb "only fight / stand still" loop.
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    hero.movementPoints = 3;
+    establishP2PackCore(state);
+    state.adventure!.victoryMode = "dragon-hunt";
+    neutralizeMapPayoffs(state);
+    const fields = state.adventure!.fields;
+    // Corridor: fair fight at the end. Free mine on a SIDE branch so it does
+    // not seal the corridor (flaggable is a "stop" hex).
+    const arm = buildGhostArm(state, 4);
+    hero.spaceId = arm[0];
+    const farFight = arm[3];
+    fields[farFight].difficulty = 1;
+    fields[farFight].location = "mine";
+    fields[farFight].resource = "buildingMaterials";
+    fields[farFight].flagOwnerId = null;
+    const freeSide = getAdjacentSpaceIds(arm[0]).find(
+      (id) => id !== arm[1] && !fields[id],
+    );
+    expect(freeSide, "need a side cell for free seize").toBeDefined();
+    const freeMine = freeSide!;
+    fields[freeMine] = {
+      ...fields[arm[0]],
+      spaceId: freeMine,
+      location: "mine",
+      resource: "buildingMaterials",
+      tileInstanceId: "tile_ghost_ctrl_arm",
+      flagOwnerId: null,
+      blackCube: false,
+    };
+    delete fields[freeMine].difficulty;
+    expect(distanceFromHeroTo(state, hero, freeMine)).toBe(1);
+    expect(distanceFromHeroTo(state, hero, farFight)).toBeGreaterThan(1);
+    expect(canBeatGuardedField(state, hero, fields[farFight])).toBe(true);
+
+    const freeNow = freeSeizuresWithinReach(
+      state,
+      hero,
+      collectMapObjectives(state, hero),
+    );
+    expect(freeNow.some((o) => o.spaceId === freeMine)).toBe(true);
+
+    // Sticky fight commit still yields to free seize this turn.
+    const primary = primaryMapObjective(
+      state,
+      hero,
+      collectMapObjectives(state, hero),
+      farFight,
+    );
+    expect(primary?.spaceId).toBe(freeMine);
+    expect(primary?.kind).toBe("flaggable");
+    expect(moveScoreTo(state, hero, freeMine)).toBeGreaterThan(300);
   });
 
   it("values a Settlement distinctly above a generic flaggable (economy rush)", () => {
@@ -1469,7 +1579,9 @@ describe("opening home-tile sweep — development gate scoped to tile Ⅰ", () =
     fields[goldMine].location = "mine";
     fields[goldMine].resource = "gold";
     fields[goldMine].difficulty = 3;
-    // Near leftover on a SIDE branch off the hero cell — not on the path.
+    // Near leftover fight on a SIDE branch — guarded materials, not free seize.
+    // Premium gold must still win primary (free multi-source scoops free loot
+    // without dropping the economy commit).
     const nearOpen = getAdjacentSpaceIds(arm[0]).find(
       (id) => id !== arm[1] && !fields[id],
     );
@@ -1485,6 +1597,26 @@ describe("opening home-tile sweep — development gate scoped to tile Ⅰ", () =
       blackCube: false,
       difficulty: 1,
     };
+    // Flag any other free map flaggables so they cannot steal primary.
+    for (const field of Object.values(fields)) {
+      if (
+        field.spaceId !== goldMine &&
+        field.spaceId !== nearLeftover &&
+        locationDefinitions[field.location]?.category === "flaggable" &&
+        !field.flagOwnerId
+      ) {
+        field.flagOwnerId = "p2";
+        field.everFlagged = true;
+      }
+      if (
+        field.spaceId !== goldMine &&
+        field.spaceId !== nearLeftover &&
+        locationDefinitions[field.location]?.category === "visitable" &&
+        !field.blackCube
+      ) {
+        field.blackCube = true;
+      }
+    }
 
     expect(distanceFromHeroTo(state, hero, goldMine)).toBe(3);
     expect(distanceFromHeroTo(state, hero, nearLeftover)).toBe(1);
