@@ -1,0 +1,32 @@
+Use IMAGE GENERATION tools only. Overwrite ONE file.
+
+THIS IS A UI ICON for a Heroes of Might and Magic III board game app house rule "Rule 111" = swap one bronze guard for another.
+
+MANDATORY SUBJECT (exactly this, nothing else):
+- TWO five-pointed STARS side by side
+- A clean gold swap / exchange double-arrow BETWEEN them (curved circular arrows or left-right swap mark)
+- PURE BLACK background, square, centered
+- The stars mean BRONZE UNIT TIER (board game recruit grade stars)
+
+MANDATORY COLOR PALETTE (match the app's bronze tier exactly — do NOT invent your own muddy palette):
+- Star fill: #b46f33 (true bronze / copper-brown) — same as the game's .tierStar.bronze
+- Star edge highlight: #d4a05a (lighter bronze edge)
+- Star shadow: #6b3f18 (deep bronze shadow)
+- Swap arrows: #e8c56a / #f0d48a (bright board-game gold, thin and clean)
+- Background: pure black #000000
+
+FORBIDDEN (ugly previous versions):
+- NO full-body knight / minotaur / miniature statues
+- NO baroque gold medallion frame
+- NO white casino dice
+- NO muddy chocolate-brown statue bronze
+- NO cracked stone plate
+- NO ornate filigree
+- NO text, letters, numbers
+
+Style: clean premium board-game UI glyph — like a polished recruit grade star badge, HD, simple silhouette, readable at 32–48px.
+
+SAVE OVERWRITE:
+public/assets/ui/rule-111-icon.webp
+
+Convert with node sharp if needed. Verify > 20KB. Reply path + bytes only.

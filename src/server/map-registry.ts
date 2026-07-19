@@ -8,6 +8,7 @@ import {
   planIsUnderground,
   sanitizeCenterHexPlan,
   sanitizeCustomMapPreset,
+  sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
   scenarioDefinitions,
   MAX_DESIGNED_GATE_LINKS,
@@ -248,6 +249,8 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     candidate.group === "center"
       ? foldLegacyViiBonus(sanitizeCenterHexPlan(candidate.centerHex), legacy.viiFieldReward, legacy.viiFieldVp)
       : undefined;
+  // Per-tile settlement customization (guard / VP / hold-to-win) — any group.
+  const settlement = sanitizeSettlementFieldPlan(candidate.settlement);
 
   return {
     row: candidate.row as number,
@@ -269,6 +272,7 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     // customization (guard / reward / VP) is independent of the designation.
     ...(viiField ? { viiField } : {}),
     ...(centerHex ? { centerHex } : {}),
+    ...(settlement ? { settlement } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
     // The UNDERGROUND layer override (far/near/center/sea only), kept as true.

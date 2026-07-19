@@ -320,6 +320,24 @@ export const REWARD_GLYPH_ICONS = {
 } as const;
 
 /**
+ * Polished HD UI icons (origin-faithful Homm3BG silhouettes / board tools art).
+ * Prefer these over the raw SVG glyphs for trays, notices and house-rule chips.
+ */
+export const UI_REWARD_ICONS = {
+  /** Scenario starting-bonus "Resource dice" option (normal + reduced modes). */
+  startingBonusResource: "/assets/ui/starting-bonus-resource.webp",
+  /** Scenario starting-bonus "Artifact" option (normal + reduced modes). */
+  startingBonusArtifact: "/assets/ui/starting-bonus-artifact.webp",
+  /** Polish Rule 111 house-rule / tray medallion (bronze guard swap). */
+  rule111: "/assets/ui/rule-111-icon.webp",
+  /** Treasure-die face chips on map-visit notices. */
+  treasureFaceExperience: "/assets/ui/treasure-face-experience.webp",
+  treasureFaceArtifact: "/assets/ui/treasure-face-artifact.webp",
+  treasureFaceResourceDie: "/assets/ui/treasure-face-resource-die.webp",
+  treasureFaceDoubleResource: "/assets/ui/treasure-face-double-resource.webp"
+} as const;
+
+/**
  * Morale birds, the classic Heroes III IMRL42 sprite set (one frame per track
  * step, −3 … +3): the gold bird soaring with wings spread for high morale down
  * through the tarnished, grounded bird for low morale, with the stone bird at

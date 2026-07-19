@@ -1,0 +1,25 @@
+Use IMAGE GENERATION tools only (Codex image gen). Overwrite ONE file.
+
+CRITICAL STYLE — match the ATTACHED style references (starting-bonus-resource tools + crossed swords):
+- Heroes of Might and Magic III PHYSICAL BOARD GAME prop look
+- Single clear object cluster on PURE BLACK background
+- Same lighting/material language as the shovel+pickaxe icon: painted miniatures / wood+metal props, NOT a fantasy MMO medallion
+- Flat UI-readable silhouette, square composition
+- NO ornate circular baroque frame, NO gothic filigree ring, NO dark cracked stone plate
+- NO photoreal white modern dice cube, NO 3D embossed knight relief medallion
+
+SUBJECT = Polish house rule "Rule 111" (once per game: swap one bronze neutral guard unit for another random bronze):
+Composition (simple, like board glyphs):
+1. Left: a small bronze-painted miniature / unit token (bronze faction cube style or simple soldier miniature base)
+2. Right: a DIFFERENT bronze miniature / unit token
+3. Between them: a clean gold curved double-arrow swap (board-game icon style, thin elegant)
+Optional: a small HoMM-style ATTACK DIE (six-sided wooden/bone game die with +1 / 0 / −1 style faces if possible, not a white casino die)
+
+Keep it as clean as the crossed shovel+pickaxe art. Premium HD but still board-game prop.
+
+SAVE OVERWRITE:
+public/assets/ui/rule-111-icon.webp
+
+If PNG first, convert with node sharp to that exact webp path.
+Verify exists and size > 50KB. Reply path + bytes only.
+NO text, letters, or words on the image.

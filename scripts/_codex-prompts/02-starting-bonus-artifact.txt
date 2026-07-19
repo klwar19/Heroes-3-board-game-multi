@@ -1,0 +1,17 @@
+Use your IMAGE GENERATION tools only (not SVG scripts, not Grok).
+
+Generate ONE premium HD Heroes of Might and Magic III board-game style UI icon:
+- Ornate gold artifact pendant / ankh-like relic on a ring, jeweled
+- Square, transparent or pure black background
+- Close to the attached reference silhouette, but nicer and more HD
+
+SAVE OVERWRITE exactly to:
+public/assets/ui/starting-bonus-artifact.webp
+
+If png first, convert with node sharp to webp.
+Also copy same file to:
+public/assets/ui/icon-artifact-pendant.webp
+public/assets/ui/treasure-face-artifact.webp
+
+Verify each file exists and is > 8KB. Reply with paths and byte sizes only.
+No stock photos. No text letters.

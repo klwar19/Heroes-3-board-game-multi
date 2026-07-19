@@ -346,6 +346,22 @@ function buildBreakdown(
   if (settlementVpEach > 0) {
     add("Settlement bonus VP", settlementVpEach * controlledSettlementCount(state, playerId));
   }
+  // Per-TILE settlement bonus VP (CustomMapTilePlan.settlement.vp on specific
+  // fields) — scored only for the settlements that player currently controls.
+  let specialSettlementVp = 0;
+  for (const field of Object.values(state.adventure?.fields ?? {})) {
+    if (
+      field.location === "settlement" &&
+      field.flagOwnerId === playerId &&
+      field.settlementBonusVp &&
+      field.settlementBonusVp > 0
+    ) {
+      specialSettlementVp += field.settlementBonusVp;
+    }
+  }
+  if (specialSettlementVp > 0) {
+    add("Special settlement VP", specialSettlementVp);
+  }
   add("Artifacts (1 VP per 2)", Math.floor(artifactCountOf(state.players[playerId]) / 2));
 
   for (const objective of config?.objectives ?? []) {

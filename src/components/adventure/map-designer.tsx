@@ -56,10 +56,13 @@ import {
   MAX_CENTER_HEX_SEARCH,
   MAX_CENTER_HEX_VP,
   MAX_CUSTOM_GUARD_UNITS,
+  MAX_SETTLEMENT_HOLD_ROUNDS,
+  MAX_SETTLEMENT_VP,
   type CustomCenterHexPlan,
   type CustomCenterHexReward,
   type CustomGuardSpec,
   type CustomMapGateLink,
+  type CustomMapSettlementFieldPlan,
   type CustomMapTileToken,
   type CustomMapObject,
   type CustomMapObjectKind,
@@ -374,6 +377,24 @@ function nextCenterHex(
   }
   if (!next.vp) {
     delete next.vp;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/** Fold a partial patch into a plan's per-tile settlement customization. */
+function nextSettlementPlan(
+  current: CustomMapSettlementFieldPlan | undefined,
+  patch: Partial<CustomMapSettlementFieldPlan>
+): CustomMapSettlementFieldPlan | undefined {
+  const next: CustomMapSettlementFieldPlan = { ...(current ?? {}), ...patch };
+  if (!next.guard) {
+    delete next.guard;
+  }
+  if (!next.vp) {
+    delete next.vp;
+  }
+  if (!next.holdRoundsToWin) {
+    delete next.holdRoundsToWin;
   }
   return Object.keys(next).length > 0 ? next : undefined;
 }
@@ -1560,6 +1581,9 @@ export function MapDesigner({
           }
           if (changes.centerHex === undefined && "centerHex" in changes) {
             delete next.centerHex;
+          }
+          if (changes.settlement === undefined && "settlement" in changes) {
+            delete next.settlement;
           }
           return next;
         })
@@ -4982,6 +5006,87 @@ export function MapDesigner({
                         />
                       </label>
                     </div>
+                  </div>
+                ) : null}
+
+                {/* Per-tile settlement: stronger guard / extra VP / hold-to-win.
+                    Complements the map-wide Settlements section in the preset editor. */}
+                {selected.group !== "starting" && selected.group !== "sea" ? (
+                  <div className="popoverViiField popoverSection" aria-label="Special settlement">
+                    <div className="popoverSectionLabel">Special settlement (this tile)</div>
+                    <small className="popoverHint">
+                      Make THIS tile&apos;s settlement matter: a stronger first-flag guard, extra Victory Points,
+                      and/or win by holding it for N consecutive rounds. Overrides the map-wide settlement guard for
+                      this tile only. Leave blank if the tile has no settlement (the plan stays inert).
+                    </small>
+                    <div className="popoverSubLabel">Guard (first flag)</div>
+                    <GuardSpecEditor
+                      guard={selected.settlement?.guard}
+                      noneLabel="Map-wide / none"
+                      onChange={(guard) =>
+                        updateTile(selectedIndex as number, {
+                          settlement: nextSettlementPlan(selected.settlement, { guard })
+                        })
+                      }
+                    />
+                    <div className="popoverViiRewardRow" role="group" aria-label="Settlement VP and hold">
+                      <label className="popoverViiField_num popoverViiVp">
+                        <span>Bonus VP</span>
+                        <input
+                          aria-label="Settlement bonus victory points"
+                          max={MAX_SETTLEMENT_VP}
+                          min={0}
+                          onChange={(event) => {
+                            const vp = Math.max(
+                              0,
+                              Math.min(MAX_SETTLEMENT_VP, Math.floor(Number(event.target.value) || 0))
+                            );
+                            updateTile(selectedIndex as number, {
+                              settlement: nextSettlementPlan(selected.settlement, {
+                                vp: vp > 0 ? vp : undefined
+                              })
+                            });
+                          }}
+                          type="number"
+                          value={selected.settlement?.vp ?? ""}
+                        />
+                      </label>
+                      <label className="popoverViiField_num popoverViiVp">
+                        <span>Hold rounds to win</span>
+                        <input
+                          aria-label="Hold settlement rounds to win"
+                          max={MAX_SETTLEMENT_HOLD_ROUNDS}
+                          min={0}
+                          onChange={(event) => {
+                            const rounds = Math.max(
+                              0,
+                              Math.min(
+                                MAX_SETTLEMENT_HOLD_ROUNDS,
+                                Math.floor(Number(event.target.value) || 0)
+                              )
+                            );
+                            updateTile(selectedIndex as number, {
+                              settlement: nextSettlementPlan(selected.settlement, {
+                                holdRoundsToWin: rounds > 0 ? rounds : undefined
+                              })
+                            });
+                          }}
+                          type="number"
+                          value={selected.settlement?.holdRoundsToWin ?? ""}
+                        />
+                      </label>
+                    </div>
+                    {selected.settlement ? (
+                      <button
+                        className="popoverIconButton"
+                        onClick={() =>
+                          updateTile(selectedIndex as number, { settlement: undefined })
+                        }
+                        type="button"
+                      >
+                        Clear special settlement
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
 

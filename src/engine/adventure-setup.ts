@@ -94,6 +94,7 @@ import {
   objectGuardSpec,
   OUTPOST_OBJECT_KINDS,
   sanitizeCenterHexPlan,
+  sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
   type CustomMapPreset,
   type PresetForcedOptionKey
@@ -1362,6 +1363,27 @@ export function validateCustomMapPlan(
     accepted[index] = next;
   }
 
+  // Per-tile settlement customization: re-clamp guard / VP / hold-to-win on every
+  // plan so garbage never lands in the built adventure. Starting tiles rarely
+  // host settlements; we still keep a valid plan (inert if no settlement field).
+  for (let index = 0; index < accepted.length; index += 1) {
+    const plan = accepted[index];
+    if (plan.settlement === undefined) {
+      continue;
+    }
+    const settlement = sanitizeSettlementFieldPlan(plan.settlement);
+    if (settlement === plan.settlement) {
+      continue;
+    }
+    const next = { ...plan };
+    if (settlement) {
+      next.settlement = settlement;
+    } else {
+      delete next.settlement;
+    }
+    accepted[index] = next;
+  }
+
   return { accepted, problems };
 }
 
@@ -1817,6 +1839,28 @@ function applyDesignedViiField(
     tile.centerHex = centerHex;
   }
   if (!tile.faceDown) {
+    materializeTileFields(adventure, tile);
+  }
+}
+
+/**
+ * Per-tile settlement customization (plan → instance): store guard / bonus VP /
+ * hold-to-win on the placed tile so materialize stamps them onto settlement
+ * field(s). Re-materializes face-up tiles so an already-carved settlement picks
+ * up the design immediately.
+ */
+function applyDesignedSettlement(
+  adventure: AdventureState,
+  tile: MapTileState,
+  plan: CustomMapTilePlan
+): void {
+  const settlement = sanitizeSettlementFieldPlan(plan.settlement);
+  if (settlement) {
+    tile.settlement = settlement;
+  } else {
+    delete tile.settlement;
+  }
+  if (settlement && !tile.faceDown) {
     materializeTileFields(adventure, tile);
   }
 }
@@ -2712,6 +2756,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           applyDesignedBorders(tile, plan);
           applyDesignedUnderground(tile, plan);
           applyDesignedViiField(adventure, tile, plan);
+          applyDesignedSettlement(adventure, tile, plan);
           if (planTokens(plan).length > 0) {
             plannedTokens.push({ plan, tile });
           }
@@ -2727,6 +2772,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           applyDesignedBorders(tile, plan);
           applyDesignedUnderground(tile, plan);
           applyDesignedViiField(adventure, tile, plan);
+          applyDesignedSettlement(adventure, tile, plan);
           if (planTokens(plan).length > 0) {
             plannedTokens.push({ plan, tile });
           }

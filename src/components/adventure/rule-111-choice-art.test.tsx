@@ -86,9 +86,9 @@ describe("Rule 111 choice tray — replace on the left, accept the guard on the 
     const guardImg = container.querySelector(".rule111Accept img.rule111GuardImage");
     expect(guardImg?.getAttribute("src")).toContain(firstImage!);
 
-    // The swap button carries the intuitive Rule-111 wording and NO card art.
+    // The swap button carries the Rule-111 medallion (not a unit card face).
     const replace = screen.getByRole("button", { name: /replace the Guard/i });
-    expect(replace.querySelector("img")).toBeNull();
+    expect(replace.querySelector("img.rule111Icon")?.getAttribute("src")).toContain("rule-111-icon");
 
     // Clicking the swap dispatches the option resolve (optionIndex 1).
     fireEvent.click(replace);

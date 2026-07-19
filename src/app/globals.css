@@ -6079,6 +6079,18 @@ button.hbSlot:disabled { cursor: default; }
   align-self: stretch;
   white-space: normal;
   line-height: 1.25;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.rule111Icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
 }
 
 .rule111GuardArt {
@@ -21854,6 +21866,20 @@ img.cardBack {
 .houseRuleToggle:disabled:hover {
   border-color: rgba(140, 110, 65, 0.45);
   transform: none;
+}
+
+.houseRuleLabelRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.houseRuleToggleIcon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
 }
 
 .houseRuleCheck {
