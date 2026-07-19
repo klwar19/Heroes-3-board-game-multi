@@ -44,13 +44,13 @@ export default function MapDesignerPage() {
   const [scenarioId, setScenarioId] = useState("skirmish");
   const [tiles, setTiles] = useState<CustomMapTilePlan[]>([]);
   const [preset, setPreset] = useState<CustomMapPreset | undefined>(undefined);
-  // SPECIFIC-mode / hex-event "pick on the map" armed from the objects panel;
-  // the MapDesigner highlights eligible tiles and resolves it.
-  const [pickRequest, setPickRequest] = useState<
-    | { kind: "object-plan"; objectKind: "obelisk" | "mine" | "settlement" | "center" }
-    | { kind: "hex-event" }
-    | null
-  >(null);
+  // SPECIFIC-mode "pick a tile on the map" armed from the objects panel; the
+  // MapDesigner highlights eligible tiles and resolves it. (Hidden hex events
+  // are placed straight from the board's own Objects palette — no pick flow.)
+  const [pickRequest, setPickRequest] = useState<{
+    kind: "object-plan";
+    objectKind: "obelisk" | "mine" | "settlement" | "center";
+  } | null>(null);
   const [name, setName] = useState("My map");
   const [players, setPlayers] = useState(2);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -364,13 +364,7 @@ export default function MapDesignerPage() {
               // Arm the on-map pick and bring the board into view ("jump to
               // the map"); a second press on the same button disarms.
               setPickRequest((current) =>
-                current &&
-                ((current.kind === "hex-event" && request.kind === "hex-event") ||
-                  (current.kind === "object-plan" &&
-                    request.kind === "object-plan" &&
-                    current.objectKind === request.objectKind))
-                  ? null
-                  : request
+                current && current.objectKind === request.objectKind ? null : request
               );
               document.querySelector(".designerBoardWrap")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
             }}

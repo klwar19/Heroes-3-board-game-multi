@@ -30,12 +30,8 @@ import {
   TIMED_EFFECT_KIND_LABELS,
   TIMED_EFFECT_KINDS,
   VICTORY_POINT_OBJECTIVE_OPTIONS,
-  describeHexEvent,
   MAX_HEX_EVENTS,
-  MAX_HEX_EVENT_MESSAGE,
-  MAX_CENTER_HEX_VP,
   type CustomGuardSpec,
-  type CustomHexEvent,
   type CustomMapObeliskBonus,
   type CustomMapObeliskConfig,
   type CustomMapSettlementConfig,
@@ -52,7 +48,6 @@ import {
   type VictoryPointObjective
 } from "@/engine";
 import { GuardSpecEditor } from "./guard-spec-editor";
-import { FieldRewardEditor } from "./field-reward-editor";
 import {
   describeTileSpecificPlan,
   planEligibleForPick,
@@ -199,13 +194,13 @@ export function MapPresetEditor({
   /** The designed tiles — lets the object sections list/offer SPECIFIC (per-tile) settings. */
   tiles?: CustomMapTilePlan[];
   /**
-   * Arm a "pick on the map" flow (SPECIFIC mode / hex events): the page passes
-   * this to the MapDesigner, which highlights eligible tiles and resolves the
-   * pick. Absent = the specific controls hide (editor used standalone).
+   * Arm a "pick on the map" flow (SPECIFIC mode): the page passes this to the
+   * MapDesigner, which highlights eligible tiles and resolves the pick.
+   * Absent = the specific controls hide (editor used standalone).
    */
-  onPickOnMap?: (request: { kind: "object-plan"; objectKind: SpecificPickKind } | { kind: "hex-event" }) => void;
+  onPickOnMap?: (request: { kind: "object-plan"; objectKind: SpecificPickKind }) => void;
   /** The currently armed pick, so the arming button shows its active state. */
-  pickArmed?: { kind: "object-plan"; objectKind: SpecificPickKind } | { kind: "hex-event" } | null;
+  pickArmed?: { kind: "object-plan"; objectKind: SpecificPickKind } | null;
 }) {
   const value = preset ?? {};
   const summary = describeCustomMapPresetEntries(value);
@@ -252,24 +247,10 @@ export function MapPresetEditor({
     ) : null;
 
   // Hidden hex events live on the preset; placement happens via the on-map pick.
+  // Hidden hex events are placed AND edited on the board (the Objects palette's
+  // "Hidden event" button + the marker's docked editor) — the editor here only
+  // reports the count, so the panel stays lean.
   const hexEvents = value.hexEvents ?? [];
-  const setHexEvents = (next: CustomHexEvent[]) =>
-    patch({ hexEvents: next.length > 0 ? next : undefined });
-  const patchHexEvent = (id: string, changes: Partial<CustomHexEvent>) =>
-    setHexEvents(
-      hexEvents.map((event) => {
-        if (event.id !== id) {
-          return event;
-        }
-        const next: CustomHexEvent = { ...event, ...changes };
-        for (const key of ["message", "reward", "vp", "guard", "mode", "replaceVisit"] as const) {
-          if (next[key] === undefined) {
-            delete next[key];
-          }
-        }
-        return next;
-      })
-    );
 
   const patch = (partial: Partial<CustomMapPreset> | null) => {
     if (partial === null) {
@@ -289,9 +270,6 @@ export function MapPresetEditor({
     }
     if (partial.timedEvents && partial.timedEvents.length === 0) {
       delete next.timedEvents;
-    }
-    if ("hexEvents" in partial && (partial.hexEvents === undefined || partial.hexEvents.length === 0)) {
-      delete next.hexEvents;
     }
     if (partial.notes === "") {
       delete next.notes;
@@ -1777,102 +1755,14 @@ export function MapPresetEditor({
         </div>
       </section>
 
-      {specificEnabled ? (
-        <section className="mapPresetSection" aria-label="Hidden hex events">
-          <div className="mapPresetSectionLabel">⚡ Hidden hex events</div>
-          <small className="mapPresetHint">
-            Invisible triggers on exact hexes (never shown to players): stepping on one springs an
-            optional ambush guard, then a message, reward and Victory Points. Place one from the
-            board&apos;s Objects palette (the &quot;Hidden event&quot; button, next to the teleporters)
-            or with the pick button below — then tune it here or by clicking its marker on the map.
-            Markers drag like any object. {hexEvents.length}/{MAX_HEX_EVENTS}.
-          </small>
-          {hexEvents.map((event, index) => (
-            <div className="mapPresetTimedCard mapPresetHexEventCard" key={event.id}>
-              <div className="mapPresetTimedCardHead">
-                <strong>
-                  ⚡ @{event.placement.row},{event.placement.col}
-                </strong>
-                <small className="mapPresetHint">{describeHexEvent(event)}</small>
-                <button
-                  aria-label={`Remove event at ${event.placement.row},${event.placement.col}`}
-                  className="mapPresetTimedRemove"
-                  onClick={() => setHexEvents(hexEvents.filter((candidate) => candidate.id !== event.id))}
-                  type="button"
-                >
-                  <Trash2 aria-hidden="true" size={13} />
-                </button>
-              </div>
-              <label className="mapPresetHexEventMessage">
-                <span>Message</span>
-                <input
-                  aria-label={`Event message ${index + 1}`}
-                  maxLength={MAX_HEX_EVENT_MESSAGE}
-                  onChange={(e) =>
-                    patchHexEvent(event.id, { message: e.target.value.length > 0 ? e.target.value : undefined })
-                  }
-                  value={event.message ?? ""}
-                />
-              </label>
-              <div className="mapPresetSubLabel">Ambush guard (fought on the spot — never Quick-Combat skipped)</div>
-              <GuardSpecEditor
-                compact
-                guard={event.guard}
-                noneLabel="None"
-                onChange={(guard) => patchHexEvent(event.id, { guard })}
-              />
-              <div className="mapPresetSubLabel">Reward &amp; Victory Points</div>
-              <FieldRewardEditor
-                ariaLabel={`Event reward ${index + 1}`}
-                onChange={(reward) => patchHexEvent(event.id, { reward })}
-                onVpChange={(vp) => patchHexEvent(event.id, { vp })}
-                reward={event.reward}
-                vp={event.vp}
-              />
-              <div className="mapPresetChipRow" role="group" aria-label={`Event options ${index + 1}`}>
-                <button
-                  aria-pressed={(event.mode ?? "first") === "first"}
-                  className={`mapPresetChip${(event.mode ?? "first") === "first" ? " active" : ""}`}
-                  onClick={() => patchHexEvent(event.id, { mode: undefined })}
-                  title="Fires once, for the first player to step on the hex."
-                  type="button"
-                >
-                  First player only
-                </button>
-                <button
-                  aria-pressed={event.mode === "each-player"}
-                  className={`mapPresetChip${event.mode === "each-player" ? " active" : ""}`}
-                  onClick={() => patchHexEvent(event.id, { mode: "each-player" })}
-                  title="Message / reward / VP pay once per player (the ambush is still beaten once)."
-                  type="button"
-                >
-                  Every player once
-                </button>
-                <button
-                  aria-pressed={Boolean(event.replaceVisit)}
-                  className={`mapPresetChip${event.replaceVisit ? " active" : ""}`}
-                  onClick={() => patchHexEvent(event.id, { replaceVisit: event.replaceVisit ? undefined : true })}
-                  title="The hex's own content is skipped on the entry that springs the event (later entries behave normally)."
-                  type="button"
-                >
-                  Replace the hex&apos;s visit
-                </button>
-              </div>
-            </div>
-          ))}
-          {hexEvents.length < MAX_HEX_EVENTS ? (
-            <button
-              aria-pressed={pickArmed?.kind === "hex-event"}
-              className={`mapPresetChip mapPresetPickChip${pickArmed?.kind === "hex-event" ? " active" : ""}`}
-              onClick={() => onPickOnMap?.({ kind: "hex-event" })}
-              title="Click any hex of a placed tile on the map above to drop the event there."
-              type="button"
-            >
-              📍 {pickArmed?.kind === "hex-event" ? "Placing… (click a hex on the map)" : "Place an event on the map"}
-            </button>
-          ) : null}
-        </section>
-      ) : null}
+      <small
+        aria-label="Hidden hex events note"
+        className="mapPresetHint mapPresetHexEventNote"
+        title="Invisible triggers players never see: stepping on one springs an optional ambush fight, then a message, reward and Victory Points."
+      >
+        ⚡ Hidden hex events ({hexEvents.length}/{MAX_HEX_EVENTS}) live on the board: place them with the
+        Objects palette&apos;s &quot;Hidden event&quot; button, click a marker to edit, drag it to move.
+      </small>
 
       </MapPresetGroup>
 

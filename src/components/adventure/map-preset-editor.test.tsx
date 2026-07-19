@@ -875,7 +875,7 @@ describe("MapPresetEditor — Global | Specific object modes", () => {
     expect(within(bare).getByText(/No placed tile carries a Mine yet/)).toBeTruthy();
   });
 
-  it("hex events: the section lists events, edits write the preset, and the place button arms the pick", () => {
+  it("hex events: the editor carries only a count note pointing at the board palette (no cards, no pick button)", () => {
     const onChange = vi.fn();
     const onPickOnMap = vi.fn();
     render(
@@ -888,32 +888,13 @@ describe("MapPresetEditor — Global | Specific object modes", () => {
         tiles={tilesWithMine}
       />
     );
-    const section = screen.getByRole("region", { name: "Hidden hex events" });
-    expect(within(section).getByText(/@9,4/)).toBeTruthy();
-
-    // Editing the message writes the preset through onChange.
-    fireEvent.change(within(section).getByLabelText("Event message 1"), { target: { value: "Surprise!" } });
-    expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        hexEvents: [expect.objectContaining({ id: "e1", message: "Surprise!" })]
-      })
-    );
-
-    // The replace-visit chip toggles the flag.
-    fireEvent.click(within(section).getByRole("button", { name: "Replace the hex's visit" }));
-    expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        hexEvents: [expect.objectContaining({ id: "e1", replaceVisit: true })]
-      })
-    );
-
-    // Removing the only event collapses hexEvents away.
-    fireEvent.click(within(section).getByRole("button", { name: "Remove event at 9,4" }));
-    const last = onChange.mock.calls.at(-1)?.[0] as CustomMapPreset | undefined;
-    expect(last?.hexEvents).toBeUndefined();
-
-    // The place button arms the on-map pick.
-    fireEvent.click(within(section).getByRole("button", { name: /Place an event on the map/ }));
-    expect(onPickOnMap).toHaveBeenCalledWith({ kind: "hex-event" });
+    // The old per-event editing section is REMOVED — the board (Objects palette
+    // + marker editor) is the single surface. Only the lean count note remains.
+    expect(screen.queryByRole("region", { name: "Hidden hex events" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Place an event on the map/ })).toBeNull();
+    const note = screen.getByLabelText("Hidden hex events note");
+    expect(note.textContent).toContain("1/24");
+    expect(note.textContent).toContain("Hidden event");
+    expect(note.textContent).toContain("board");
   });
 });
