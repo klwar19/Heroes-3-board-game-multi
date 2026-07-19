@@ -384,13 +384,14 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     name: "Shipwreck",
     tier: "far",
     units: ["neutral.wraiths", "neutral.wraiths", "neutral.wraiths", "neutral.wraiths"],
-    // Wiki: "<morale_positive> and 5 gold." — a POSITIVE morale token, not a penalty.
-    rewardText: "+1 morale and 5 gold. Extra: +2X gold and Search (X) the Artifact Deck.",
+    // Sea banks are haunted wrecks: winning still pays gold/search, but the
+    // crew's curse leaves NEGATIVE morale (house reading; not a morale boost).
+    rewardText: "−1 morale and 5 gold. Extra: +2X gold and Search (X) the Artifact Deck.",
     rewardStatus: "implemented",
     buildReward: (x) => ({
       type: "SEQUENCE",
       interactions: [
-        { type: "GAIN_MORALE", amount: 1 },
+        { type: "GAIN_MORALE", amount: -1 },
         { type: "GAIN_RESOURCES", gold: 5 + 2 * x },
         search("artifacts", x)
       ]
@@ -407,13 +408,13 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
       "neutral.water_elementals",
       "neutral.water_elementals"
     ],
-    // Wiki: "<morale_positive> and 7 gold." — a POSITIVE morale token, not a penalty.
-    rewardText: "+1 morale and 7 gold. Extra: +2X gold and Search (X) the Spell Deck.",
+    // Same sea-bank curse as the Shipwreck — NEGATIVE morale on the win.
+    rewardText: "−1 morale and 7 gold. Extra: +2X gold and Search (X) the Spell Deck.",
     rewardStatus: "implemented",
     buildReward: (x) => ({
       type: "SEQUENCE",
       interactions: [
-        { type: "GAIN_MORALE", amount: 1 },
+        { type: "GAIN_MORALE", amount: -1 },
         { type: "GAIN_RESOURCES", gold: 7 + 2 * x },
         search("spells", x)
       ]

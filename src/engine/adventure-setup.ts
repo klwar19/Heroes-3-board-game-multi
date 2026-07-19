@@ -5009,7 +5009,9 @@ function buildAdventureFromLobby(state: GameState): void {
     pvpNeutralControl: lobby.options.pvpNeutralControl,
     pvpNeutralControlMustAttack: lobby.options.pvpNeutralControlMustAttack,
     manualGuardControl: lobby.options.manualGuardControl,
-    startingHandMulligan: lobby.options.startingHandMulligan,
+    // Default ON when the lobby never touched the toggle (undefined → true).
+    // Explicit false still freezes OFF for hosts who opted out.
+    startingHandMulligan: lobby.options.startingHandMulligan !== false,
     houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
     undoMoves: lobby.options.undoMoves,

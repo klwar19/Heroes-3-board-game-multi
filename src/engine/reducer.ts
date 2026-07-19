@@ -241,8 +241,9 @@ import {
   SPELL_DECK_BASIC,
   SPELL_DECK_EXPERT
 } from "./ruleset";
-import { houseRuleEnabled } from "./house-rules";
+import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import { nextWaitTokenNumber } from "./polish-house-rules";
+import { polishArmyUnitCanBuyStack, polishUnitStackCap } from "./polish-unit-stacks";
 import {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
@@ -16433,6 +16434,56 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
       abilityId: ability.id,
       targetUnitId: summoned.id,
       message: `${unit.cardName} summons ${summoned.cardName} at ${getBattlefieldLabel(position)}.`
+    });
+  } else if (action.mode === "stack") {
+    // Polish / Anime Unit Stacks: add one free Stack layer to a living Pack of
+    // Demons (below cap). Same free Stack pattern as Necromancy / City Hall
+    // free-bronze, but mid-combat via Pit Lords after a friendly was removed.
+    if (!armyUnitStacksActive(state)) {
+      throw new Error("Unit Stacks are not enabled for this game.");
+    }
+    const targetUnit = action.targetUnitId ? combat.units[action.targetUnitId] : undefined;
+    if (
+      !targetUnit ||
+      targetUnit.controllerId !== action.playerId ||
+      !isUnitAlive(targetUnit) ||
+      targetUnit.unitDefId !== demonDefId ||
+      targetUnit.variant !== "pack"
+    ) {
+      throw new Error("Only a friendly Pack of Demons can gain a Stack from Summon Demons.");
+    }
+    const armyUnit = player.army.find((candidate) => candidate.id === targetUnit.armyUnitId);
+    if (armyUnit) {
+      if (!polishArmyUnitCanBuyStack(armyUnit)) {
+        throw new Error("Those Demons are already at their Stack cap.");
+      }
+      armyUnit.stacks = (armyUnit.stacks ?? 0) + 1;
+      diluteUnitExperienceForUpgrade(state, action.playerId, armyUnit, "stack");
+      if (armyUnit.experience) {
+        targetUnit.unitExperience = armyUnit.experience;
+      } else {
+        delete targetUnit.unitExperience;
+      }
+      targetUnit.armyStacks = armyUnit.stacks;
+    } else {
+      // Combat-only body (shouldn't happen for real Demons, but keep the fight
+      // progressing): respect the tier cap off the combat unit alone.
+      const cap = polishUnitStackCap(demonDefId, "pack");
+      if ((targetUnit.armyStacks ?? 0) >= cap) {
+        throw new Error("Those Demons are already at their Stack cap.");
+      }
+      targetUnit.armyStacks = (targetUnit.armyStacks ?? 0) + 1;
+    }
+    applyUnitCurrentSide(targetUnit, ruleset, unitSideRuleOverrides(state));
+
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: ability.id,
+      targetUnitId: targetUnit.id,
+      message: `${unit.cardName} stacks ${targetUnit.cardName} (${targetUnit.armyStacks ?? 0} Stack${
+        (targetUnit.armyStacks ?? 0) === 1 ? "" : "s"
+      }).`
     });
   } else {
     const targetUnit = action.targetUnitId ? combat.units[action.targetUnitId] : undefined;
