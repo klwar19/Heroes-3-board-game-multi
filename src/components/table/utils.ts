@@ -819,7 +819,14 @@ export function cardSelectionKey(action: CardBoardAction): string {
     optionIndex: "optionIndex" in action ? action.optionIndex : undefined,
     // The "discard a School of Magic for +3" cast is a distinct selection from
     // the plain cast of the same spell at the same target.
-    useSchoolExpert: action.type === "CAST_SPELL" ? Boolean(action.useSchoolExpert) : false
+    useSchoolExpert: action.type === "CAST_SPELL" ? Boolean(action.useSchoolExpert) : false,
+    // Polish Spell Book + scrolls: the same card id can be cast from hand,
+    // Book, or a Scroll. Board targeting must keep those sources distinct so a
+    // Book pick never resolves as a hand cast (or drops castEnablerCardId).
+    fromSpellBook: Boolean(action.fromSpellBook),
+    fromScroll: "fromScroll" in action && action.fromScroll ? action.fromScroll : undefined,
+    castEnablerCardId:
+      "castEnablerCardId" in action && action.castEnablerCardId ? action.castEnablerCardId : undefined
   });
 }
 

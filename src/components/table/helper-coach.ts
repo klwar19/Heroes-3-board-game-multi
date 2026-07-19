@@ -6,11 +6,13 @@ import { cardLibrary } from "@/data/cards/library";
 import {
   hasOpenAdventureTurn,
   inCombatPrep,
+  isCastASpellCard,
   isParallelActor,
   isRoundStartEventBarrierActive,
   NEUTRAL_PLAYER_ID,
   parallelTurnsActive,
   playerSpellCastsIgnoreLimit,
+  polishSpellBookEnabled,
   remainingParallelPlayerIds,
   type GameState,
   type LegalAction,
@@ -504,6 +506,30 @@ export function cardUnplayableReason(
     !ignoreSpellLimit && (player.combatStats.spellsCastThisRound ?? 0) >= spellLimit;
 
   if (card.kind === "spell") {
+    // Polish "Cast a Spell" is an enabler, not a real cast — its combat menu
+    // opens the Book / lists refreshed Spells. Never claim it needs an Instant
+    // reaction window (its printed timing is "instant" for the +1 Power arm).
+    if (polishSpellBookEnabled(state) && isCastASpellCard(cardId)) {
+      if (spellLimitReached) {
+        return `Spell limit reached (${spellLimit} per combat round) — no Book cast this round`;
+      }
+      const activeUnit = state.combat.activeUnitId
+        ? state.combat.units[state.combat.activeUnitId]
+        : undefined;
+      const ownActivationOpen = Boolean(
+        activeUnit &&
+          activeUnit.controllerId === viewerPlayerId &&
+          !activeUnit.activatedThisRound &&
+          !activeUnit.attackedThisActivation
+      );
+      if (!ownActivationOpen) {
+        return "Open Spell Book / List spells during your own unit's activation, before it attacks (or after your next unit starts)";
+      }
+      if ((player.spellBook ?? []).length === 0) {
+        return "No refreshed Spells in the Spell Book";
+      }
+      return "No Book Spell is castable right now (wrong targets, map-only spell, or Instant waiting for its window)";
+    }
     if (spellLimitReached) {
       return `Spell limit reached (${spellLimit} per combat round)`;
     }

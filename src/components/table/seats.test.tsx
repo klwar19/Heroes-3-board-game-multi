@@ -624,6 +624,22 @@ describe("HandFan — Polish Cast a Spell offers Open Spell Book / List the spel
       })
     );
   });
+
+  it("marks Cast a Spell playable (glow) when a Book Spell is castable on this activation", () => {
+    renderHand(polishCastState(), {});
+    const card = screen.getByRole("button", { name: /Cast a Spell card/i });
+    expect(card.className, "Cast a Spell must glow while a Book cast is legal").toMatch(/playable/);
+  });
+
+  it("CONTROL: Cast a Spell is not playable while the enemy unit is active (no combat-timing cast)", () => {
+    const state = polishCastState();
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    renderHand(state, {});
+    const card = screen.getByRole("button", { name: /Cast a Spell card/i });
+    expect(card.className, "no glow off your activation for combat-timing Book spells").not.toMatch(
+      /\bplayable\b/
+    );
+  });
 });
 
 describe("HandFan — every immediate card play is cancellable (no accidental commit)", () => {
