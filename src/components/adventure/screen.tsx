@@ -3042,6 +3042,7 @@ export function TownHeroDock({
   const [armyOpen, setArmyOpen] = useState(false);
   const [commanderOpen, setCommanderOpen] = useState(false);
   const [commanderEquipmentOpen, setCommanderEquipmentOpen] = useState(false);
+  const [draggedCommanderArtifactId, setDraggedCommanderArtifactId] = useState<string | null>(null);
   const player = state.players[viewerPlayerId];
   const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
 
@@ -3367,8 +3368,30 @@ export function TownHeroDock({
                 {(["weapon", "armor", "trinket"] as const).map((slot) => {
                   const cardId = commander.artifacts?.[slot];
                   const spec = cardId ? COMMANDER_ARTIFACT_SPECS[cardId] : undefined;
+                  const draggedSpec = draggedCommanderArtifactId
+                    ? COMMANDER_ARTIFACT_SPECS[draggedCommanderArtifactId]
+                    : undefined;
+                  const dropAction = draggedCommanderArtifactId
+                    ? legalActions.find(
+                        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === draggedCommanderArtifactId
+                      )
+                    : undefined;
+                  const acceptsDrop = Boolean(!spec && draggedSpec?.slot === slot && dropAction && onAction);
                   return (
-                    <div className={`commanderArtifactSlot slot-${slot} ${spec ? "filled" : "empty"}`} key={slot}>
+                    <div
+                      aria-label={`${slot} commander artifact slot${spec ? `: ${spec.name}` : ": empty"}`}
+                      className={`commanderArtifactSlot slot-${slot} ${spec ? "filled" : "empty"}${acceptsDrop ? " dropReady" : ""}`}
+                      key={slot}
+                      onDragOver={(event) => {
+                        if (acceptsDrop) event.preventDefault();
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        if (!acceptsDrop || !dropAction || !onAction) return;
+                        onAction(dropAction.action);
+                        setDraggedCommanderArtifactId(null);
+                      }}
+                    >
                       <small>{slot}</small>
                       {spec ? <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} /> : <Shield aria-hidden="true" size={25} />}
                       <strong>{spec?.name ?? "Empty slot"}</strong>
@@ -3392,7 +3415,18 @@ export function TownHeroDock({
                     );
                     const occupied = Boolean(commander.artifacts?.[spec.slot]);
                     return (
-                      <article className={`commanderInventoryCard ${occupied ? "blocked" : ""}`} key={cardId}>
+                      <article
+                        className={`commanderInventoryCard ${occupied ? "blocked" : ""}`}
+                        draggable={Boolean(action && !occupied && onAction)}
+                        key={cardId}
+                        onDragEnd={() => setDraggedCommanderArtifactId(null)}
+                        onDragStart={(event) => {
+                          if (!action || occupied || !onAction) return;
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", cardId);
+                          setDraggedCommanderArtifactId(cardId);
+                        }}
+                      >
                         {cardLibrary[cardId]?.assets?.cardImage ? (
                           <img alt={`${spec.name} card`} src={assetUrl(cardLibrary[cardId].assets!.cardImage!)} />
                         ) : null}
@@ -3595,6 +3629,7 @@ export function ArmyPanel({
   }
 
   const ruleset = getRuleset(state);
+  const experienceActive = unitExperienceActive(state);
   // Honour the individual Griffin/Marksman toggles so the roster shows the same
   // live stats the engine will fight with (not just the bundled mode default).
   const sideOverrides = unitSideRuleOverrides(state);
@@ -3602,6 +3637,22 @@ export function ArmyPanel({
   return (
     <section className={`armyPanel theme-${lexicon.register}`} aria-label={lexicon.army}>
       <h3>{lexicon.army} ({player.army.length})</h3>
+      {experienceActive ? (
+        <section className="armyExperienceBoard" aria-label="Unit Experience Board">
+          <header>
+            <span><Crown aria-hidden="true" size={18} /><strong>Unit Experience Board</strong></span>
+            <small>Live army-card veterancy</small>
+          </header>
+          <div className="armyExperienceRanks">
+            <span><Shield aria-hidden="true" size={17} /><b>1 · Seasoned</b><small>Low tiers +1 Defense · high tiers +1 Attack</small></span>
+            <span><Swords aria-hidden="true" size={17} /><b>2 · Veteran</b><small>Both Attack and Defense bonuses active</small></span>
+            <span><Sparkles aria-hidden="true" size={17} /><b>3 · Elite</b><small>+1 Health · Bronze +1 Initiative · signature ability</small></span>
+          </div>
+          <p>
+            Win with surviving deployed units: guard difficulty XP, bank stacks (minimum 2), or 2 XP in PvP. Drill at Town: 2 gold → 1 XP once per turn. Reinforce halves XP; each added Stack costs 1 XP.
+          </p>
+        </section>
+      ) : null}
       <ul>
         {player.army.map((unit) => {
           const def = coreUnitDefinitions[unit.unitDefId];
@@ -3718,8 +3769,9 @@ export function ArmyPanel({
                   <div className="armyXpDetails">
                     <span>Bonus: A+{rankBonus.attack} D+{rankBonus.defense} HP+{rankBonus.health} I+{rankBonus.initiative}</span>
                     {elitePreview ? (
-                      <span className={rankInfo.eliteActive ? "eliteAbility active" : "eliteAbility locked"}>
+                      <span className={rankInfo.eliteActive ? "eliteAbilityCard active" : "eliteAbilityCard locked"}>
                         <Sparkles aria-hidden="true" size={12} /> Elite: {elitePreview.name}{rankInfo.eliteActive ? " · active" : " · unlocks at rank 3"}
+                        <small>{elitePreview.text}</small>
                       </span>
                     ) : null}
                   </div>

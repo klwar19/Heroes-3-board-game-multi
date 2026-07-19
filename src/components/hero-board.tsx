@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Lock, PackageOpen, Sparkles, X } from "lucide-react";
+import { Check, GripVertical, Lock, PackageOpen, Sparkles, X } from "lucide-react";
 
 import { HERO_INFO_STAT_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
@@ -31,6 +31,7 @@ import {
   equipmentImage,
   getEquipmentDefinition,
   getMainHero,
+  heroEquipmentInventoryOf,
   heroEquipmentOf,
   heroGradeLabel,
   heroGradeOf,
@@ -217,6 +218,7 @@ export function HeroBoard({
 }) {
   const { zoomCard, zoomContent } = useCardZoom();
   const [systemsOpen, setSystemsOpen] = useState<"grade" | "equipment" | null>(null);
+  const [draggedEquipmentId, setDraggedEquipmentId] = useState<string | null>(null);
   const player = state.players[playerId];
   const hero = getMainHero(state, playerId);
   const heroDef = player?.heroDefId ? coreHeroDefinitions[player.heroDefId] : undefined;
@@ -250,6 +252,9 @@ export function HeroBoard({
   // Anime Equipment (§3.13): always-on item chips (slot glyph + EN/VI name).
   // Renders only with the module on AND something equipped (CONTROL: off = null).
   const showEquip = equipmentEnabled(state);
+  const equipmentInventory = heroEquipmentInventoryOf(state, playerId);
+  const inventoryEquipmentIds = new Set(equipmentInventory);
+  const equippedEquipmentIds = new Set(Object.values(heroEquipmentOf(state, playerId)));
   const equippedItems = showEquip
     ? ANIME_EQUIPMENT_SLOTS
         .map((slot) => {
@@ -574,35 +579,84 @@ export function HeroBoard({
                   <div className="equipmentWindowBody">
                     <div className="equipmentPaperdoll" aria-label="Equipped items">
                       <div className="equipmentSilhouette" aria-hidden="true">
-                        <span className="head" /><span className="body" /><span className="arms" /><span className="legs" />
+                        <img alt="" src={assetUrl(heroDef.portrait)} />
                       </div>
                       {ANIME_EQUIPMENT_SLOTS.map((slot) => {
                         const itemId = heroEquipmentOf(state, playerId)[slot];
                         const def = itemId ? getEquipmentDefinition(itemId) : undefined;
                         const icon = def ? equipmentImage(def.id) : undefined;
+                        const draggedDef = draggedEquipmentId ? getEquipmentDefinition(draggedEquipmentId) : undefined;
+                        const acceptsDrop = Boolean(onAction && draggedDef?.slot === slot && !state.combat);
                         return (
-                          <div className={`equipmentSlot slot-${slot} ${def ? "filled" : "empty"}`} key={slot}>
+                          <div
+                            aria-label={`${slot} slot${def ? `: ${def.name.en}` : ": empty"}`}
+                            className={`equipmentSlot slot-${slot} ${def ? "filled" : "empty"}${acceptsDrop ? " dropReady" : ""}`}
+                            key={slot}
+                            onDragOver={(event) => {
+                              if (acceptsDrop) event.preventDefault();
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              if (!acceptsDrop || !draggedDef || !onAction) return;
+                              onAction({ type: "EQUIP_HERO_ITEM", playerId, equipmentId: draggedDef.id, slot });
+                              setDraggedEquipmentId(null);
+                            }}
+                          >
                             <small>{slot}</small>
                             {icon ? <img alt="" src={assetUrl(icon)} /> : <span>{EQUIPMENT_SLOT_GLYPH[slot]}</span>}
                             <strong>{def?.name.en ?? "Empty"}</strong>
                             {def ? <p>{def.summary}</p> : null}
+                            {def && onAction && !state.combat ? (
+                              <button
+                                className="equipmentUnequipButton"
+                                onClick={() => onAction({ type: "UNEQUIP_HERO_ITEM", playerId, slot })}
+                                type="button"
+                              >
+                                Unequip
+                              </button>
+                            ) : null}
                           </div>
                         );
                       })}
                     </div>
                     <aside className="equipmentCatalog">
-                      <h3>Equipment catalog</h3>
-                      <p>Buy equipment at an outfitter. New items replace the item in the same slot; every shown effect is live.</p>
+                      <h3>Equipment bag &amp; catalog</h3>
+                      <p>Drag an owned item onto its matching body slot, or use Equip. Replaced gear returns here; every listed effect is live.</p>
                       {Object.values(ANIME_EQUIPMENT_DEFINITIONS)
                         .sort((a, b) => a.slot.localeCompare(b.slot) || a.cost - b.cost)
                         .map((def) => {
-                          const equipped = heroEquipmentOf(state, playerId)[def.slot] === def.id;
+                          const equipped = equippedEquipmentIds.has(def.id);
+                          const inBag = inventoryEquipmentIds.has(def.id);
+                          const canEquip = Boolean(inBag && onAction && !state.combat);
                           const icon = equipmentImage(def.id);
                           return (
-                            <div className={`equipmentCatalogItem ${equipped ? "equipped" : ""}`} key={def.id}>
+                            <article
+                              aria-label={`${def.name.en}: ${equipped ? "equipped" : inBag ? "in equipment bag" : "not owned"}`}
+                              className={`equipmentCatalogItem ${equipped ? "equipped" : inBag ? "owned" : "unowned"}`}
+                              draggable={canEquip}
+                              key={def.id}
+                              onDragEnd={() => setDraggedEquipmentId(null)}
+                              onDragStart={(event) => {
+                                if (!canEquip) return;
+                                event.dataTransfer.effectAllowed = "move";
+                                event.dataTransfer.setData("text/plain", def.id);
+                                setDraggedEquipmentId(def.id);
+                              }}
+                            >
                               {icon ? <img alt="" src={assetUrl(icon)} /> : <span>{EQUIPMENT_SLOT_GLYPH[def.slot]}</span>}
                               <span><strong>{def.name.en}</strong><small>{def.slot} · {def.cost} gold{equipped ? " · Equipped" : ""}</small></span>
-                            </div>
+                              <small className="equipmentOwnership">
+                                {equipped ? "Equipped" : inBag ? "Owned / draggable" : "Buy at outfitter"}
+                              </small>
+                              {canEquip ? (
+                                <button
+                                  onClick={() => onAction?.({ type: "EQUIP_HERO_ITEM", playerId, equipmentId: def.id, slot: def.slot })}
+                                  type="button"
+                                >
+                                  <GripVertical aria-hidden="true" size={13} /> Equip
+                                </button>
+                              ) : null}
+                            </article>
                           );
                         })}
                     </aside>

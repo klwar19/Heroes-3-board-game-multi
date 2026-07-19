@@ -203,7 +203,13 @@ import {
   HERO_TRAIN_MERIT,
   HERO_TRAIN_MOVEMENT_COST
 } from "./anime-hero-grades";
-import { equipmentWinGold, playerHasEquipment } from "./anime-equipment";
+import {
+  equipmentEnabled,
+  equipmentWinGold,
+  equipEquipment,
+  heroEquipmentInventoryOf,
+  playerOwnsEquipment
+} from "./anime-equipment";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import {
   consumeHeldMoraleCard,
@@ -3006,7 +3012,7 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
         if (!def || !buyer) {
           throw new Error("That equipment cannot be bought.");
         }
-        if (playerHasEquipment(state, action.playerId, buyStep.equipmentId)) {
+        if (playerOwnsEquipment(state, action.playerId, buyStep.equipmentId)) {
           throw new Error("Your hero already carries that item.");
         }
         if (!hasResources(buyer, { gold: def.cost })) {
@@ -8311,6 +8317,67 @@ export function heroGradePick(state: GameState, action: Extract<GameAction, { ty
     heroId: hero.id,
     nodeId: node.id,
     message: `Grade node picked: ${node.name.en} (${node.name.vi}).`
+  });
+}
+
+/** Move one genuinely owned bag item into its catalog-defined paper-doll slot. */
+export function equipHeroItem(state: GameState, action: Extract<GameAction, { type: "EQUIP_HERO_ITEM" }>): void {
+  if (!state.players[action.playerId]) {
+    throw new Error("Unknown player.");
+  }
+  if (state.combat) {
+    throw new Error("Hero equipment is changed outside of combat.");
+  }
+  if (!equipmentEnabled(state)) {
+    throw new Error("Hero Equipment is off for this game.");
+  }
+  const hero = getMainHero(state, action.playerId);
+  if (!hero) {
+    throw new Error("You have no main hero.");
+  }
+  const def = getEquipmentDefinition(action.equipmentId);
+  if (!def || def.slot !== action.slot) {
+    throw new Error("That item does not fit this equipment slot.");
+  }
+  if (!heroEquipmentInventoryOf(state, action.playerId).includes(action.equipmentId)) {
+    throw new Error("That item is not in your equipment bag.");
+  }
+  equipEquipment(state, action.playerId, action.equipmentId);
+}
+
+/** Return one slotted item to the bag so it can be equipped again later. */
+export function unequipHeroItem(
+  state: GameState,
+  action: Extract<GameAction, { type: "UNEQUIP_HERO_ITEM" }>
+): void {
+  if (!state.players[action.playerId]) {
+    throw new Error("Unknown player.");
+  }
+  if (state.combat) {
+    throw new Error("Hero equipment is changed outside of combat.");
+  }
+  if (!equipmentEnabled(state)) {
+    throw new Error("Hero Equipment is off for this game.");
+  }
+  const hero = getMainHero(state, action.playerId);
+  const equipmentId = hero?.equipment?.[action.slot];
+  if (!hero || !equipmentId) {
+    throw new Error("That equipment slot is already empty.");
+  }
+  const inventory = [...(hero.equipmentInventory ?? [])];
+  if (!inventory.includes(equipmentId)) {
+    inventory.push(equipmentId);
+  }
+  const equipment = { ...(hero.equipment ?? {}) };
+  delete equipment[action.slot];
+  hero.equipment = equipment;
+  hero.equipmentInventory = inventory;
+  appendEvent(state, {
+    type: "EQUIPMENT_UNEQUIPPED",
+    playerId: action.playerId,
+    heroId: hero.id,
+    equipmentId,
+    slot: action.slot
   });
 }
 

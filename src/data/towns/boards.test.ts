@@ -70,6 +70,21 @@ describe("town board manifest", () => {
     }
   });
 
+  it("anime and wuxia towns ship paired empty/full panoramas plus seven real contiguous bar slices", () => {
+    for (const factionId of ["fuyuki", "azure_breeze"] as const) {
+      const spec = townBoardSpecs[factionId];
+      expect(spec.panoramaImage, `${factionId} empty panorama`).toBeTruthy();
+      expect(spec.fullImage, `${factionId} full panorama`).toBeTruthy();
+      expect(spec.barTileImages, `${factionId} bar slices`).toHaveLength(7);
+      expect(new Set(spec.barTileImages).size, `${factionId} slices must be unique`).toBe(7);
+      assertRealArt(spec.panoramaImage!, 100_000);
+      assertRealArt(spec.fullImage!, 100_000);
+      for (const slice of spec.barTileImages!) {
+        assertRealArt(slice, 10_000);
+      }
+    }
+  });
+
   it("designed boards carry the authentic tracks/tokens panel at a rectangle that covers their printed geometry", () => {
     for (const spec of Object.values(townBoardSpecs)) {
       if (spec.emptyImage) {

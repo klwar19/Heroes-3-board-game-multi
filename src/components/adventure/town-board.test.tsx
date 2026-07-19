@@ -55,6 +55,23 @@ function strongholdState(): GameState {
   return state;
 }
 
+function modTownState(factionId: "fuyuki" | "azure_breeze", heroDefId: "bin" | "qingyun"): GameState {
+  return createAdventureGameState({
+    seed: `town-board-${factionId}-strips`,
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    anime: {
+      enabled: true,
+      isekaiTowns: factionId === "fuyuki",
+      xianxiaTowns: factionId === "azure_breeze"
+    },
+    players: [
+      { id: "p1", name: "P1", factionId, heroDefId },
+      { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+}
+
 const viewFor = (state: GameState) => (
   <TownBoardView legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
 );
@@ -123,6 +140,20 @@ describe("TownBoardView — bars", () => {
 });
 
 describe("TownBoardView — cove & conflux English printed scan boards", () => {
+  it.each([
+    ["fuyuki", "bin", "fuyuki.city_hall", "fuyuki-city-empty-v2.webp", "fuyuki-bar-1.webp"],
+    ["azure_breeze", "qingyun", "azure_breeze.dwelling_bronze", "azure-breeze-sect-empty-v2.webp", "azure-breeze-bar-1.webp"]
+  ] as const)("%s reveals the correct contiguous strip over its matching empty panorama", (factionId, heroId, buildingId, emptyArt, stripArt) => {
+    const state = modTownState(factionId, heroId);
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+    town.buildings.push(buildingId);
+    const { container } = render(viewFor(state));
+    expect((container.querySelector(".tbDesignedWindow img") as HTMLImageElement).src).toContain(emptyArt);
+    const strip = container.querySelector(".tbBarTileArt") as HTMLImageElement;
+    expect(strip).toBeTruthy();
+    expect(strip.src).toContain(stripArt);
+  });
+
   function scanState(factionId: "cove" | "conflux", heroDefId: string): GameState {
     const state = createAdventureGameState({
       seed: `town-board-${factionId}`,

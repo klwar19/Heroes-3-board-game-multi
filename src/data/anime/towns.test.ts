@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
-import { coreFactionDefinitions, coreHeroDefinitions, isPlayableFaction } from "@/data/factions/core";
+import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions, isPlayableFaction } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { townBoardSpecs } from "@/data/towns/boards";
@@ -41,6 +41,19 @@ describe("playable Anime Realms towns", () => {
           expect(unitAbilities[abilityId]?.implementationStatus, `${unitId}/${abilityId}`).toBe("implemented");
         }
       }
+    }
+
+    for (const buildingId of faction.buildings) {
+      const building = coreBuildingDefinitions[buildingId];
+      expect(building?.implementationStatus, `${buildingId} must be wired`).toBe("implemented");
+      const stripPrefix = factionId === "azure_breeze" ? "azure-breeze" : factionId;
+      expect(building?.assets?.image, `${buildingId} needs real strip art`).toMatch(
+        new RegExp(`/assets/town-board/${stripPrefix}-bar-[1-7]\\.webp$`)
+      );
+      expect(
+        existsSync(join(process.cwd(), "public", building.assets!.image!.replace(/^\//, ""))),
+        `${buildingId} art must exist`
+      ).toBe(true);
     }
   });
 

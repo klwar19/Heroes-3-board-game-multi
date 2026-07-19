@@ -537,6 +537,11 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       const replacedNote = replaced ? `, replacing ${replaced.name.en}` : "";
       return `${playerName(state, event.playerId)}'s hero equips ${name}${replacedNote}.`;
     }
+    case "EQUIPMENT_UNEQUIPPED": {
+      const def = getEquipmentDefinition(event.equipmentId);
+      const name = def ? `${def.name.en} (${def.name.vi})` : event.equipmentId;
+      return `${playerName(state, event.playerId)}'s hero returns ${name} from ${event.slot} to the equipment bag.`;
+    }
     case "HERO_SKILL_USED":
       return event.message;
     case "COMMANDER_CAST_USED":

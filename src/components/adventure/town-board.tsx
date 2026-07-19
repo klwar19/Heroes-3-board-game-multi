@@ -6,6 +6,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Check, Hammer, Info, X } from "lucide-react";
 
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
+import { factionVisualRegister } from "@/data/faction-theme";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import {
   TOWN_TOKEN_ICONS,
@@ -159,17 +160,20 @@ function DesignedTile({
   spec,
   barIndex,
   factionColor,
-  compact
+  compact,
+  barArt
 }: {
   building: TownBuildingDefinition;
   spec: TownBoardSpec;
   barIndex: number;
   factionColor: string;
   compact: boolean;
+  /** The outer bar already carries its panorama-aligned construction slice. */
+  barArt?: boolean;
 }) {
-  const revealSlice = spec.fullImage;
+  const revealSlice = barArt ? undefined : spec.fullImage;
   return (
-    <div className={`tbDesignedTile ${compact ? "compact" : ""}`} style={{ "--tb-faction": factionColor } as CSSProperties}>
+    <div className={`tbDesignedTile ${compact ? "compact" : ""} ${barArt ? "barArt" : ""}`} style={{ "--tb-faction": factionColor } as CSSProperties}>
       {revealSlice ? (
         // The bar's slice of the built town: an image sized to the whole window
         // (7 bars wide) shifted left by the bar index — cropped and shown at
@@ -183,12 +187,12 @@ function DesignedTile({
           style={{ width: "700%", left: `${-barIndex * 100}%` }}
         />
       ) : null}
-      {!revealSlice && building.assets?.image ? (
+      {!barArt && !revealSlice && building.assets?.image ? (
         <LoadedImg className="tbTilePcArt" src={building.assets.image} />
       ) : null}
       {/* The real printed tile, on top of whatever backdrop the board has —
           unmounts harmlessly where no file exists (conflux/cove/bulwark). */}
-      <LoadedImg className="tbTileArt" src={townBoardTileArt(building.id)} />
+      {!barArt ? <LoadedImg className="tbTileArt" src={townBoardTileArt(building.id)} /> : null}
       <span className="tbTilePlaque">
         <Check aria-hidden="true" size={compact ? 10 : 12} />
         {building.name}
@@ -736,7 +740,7 @@ export function TownBoardView({
   // ---- board ----------------------------------------------------------------
 
   return (
-    <section className="tbRoot" aria-label={`${faction.name} town board`}>
+    <section className={`tbRoot theme-${factionVisualRegister(faction.id)}`} aria-label={`${faction.name} town board`}>
       <div
         className={`tbBoard ${isScan ? "scan" : "designed"}`}
         style={{ aspectRatio: `${geometry.aspect[0]} / ${geometry.aspect[1]}`, "--tb-faction": faction.color } as CSSProperties}
@@ -850,6 +854,9 @@ export function TownBoardView({
                   // built" socket — so a two-in-one tile's state is never
                   // ambiguous.
                   <div className={`tbFill designed ${partial ? "partial" : ""}`}>
+                    {spec.barTileImages?.[index] ? (
+                      <LoadedImg className="tbBarTileArt" src={spec.barTileImages[index]} />
+                    ) : null}
                     {bar.map((buildingId) => {
                       const building = coreBuildingDefinitions[buildingId];
                       if (!building) {
@@ -863,6 +870,7 @@ export function TownBoardView({
                           factionColor={faction.color}
                           key={buildingId}
                           spec={spec}
+                          barArt={Boolean(spec.barTileImages?.[index])}
                         />
                       ) : (
                         <DesignedTileUnbuilt
@@ -1178,7 +1186,7 @@ export function TownWindow({
 
   return (
     <div aria-label={`${faction.name} town`} aria-modal="true" className="modalBackdrop townWindowBackdrop" onClick={onClose} role="dialog">
-      <div className="townWindow" onClick={(event) => event.stopPropagation()}>
+      <div className={`townWindow theme-${factionVisualRegister(faction.id)}`} onClick={(event) => event.stopPropagation()}>
         <header className="townWindowHeader">
           <LoadedImg className="townWindowIcon" src={townIconUrl(faction.id)} />
           <strong>{faction.name} town</strong>

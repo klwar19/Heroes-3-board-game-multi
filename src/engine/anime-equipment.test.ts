@@ -11,9 +11,11 @@ import {
   DEFAULT_ANIME_OPTIONS,
   EQUIPMENT_IDS,
   equipmentEnabled,
+  heroEquipmentInventoryOf,
   heroEquipmentOf,
   heroEquipmentSlot,
   playerHasEquipment,
+  playerOwnsEquipment,
   type GameAction,
   type GameEvent,
   type GameState,
@@ -227,7 +229,7 @@ describe("anime.equipment — outfitter buy flow", () => {
     expect(playerHasEquipment(bought, "p1", EQUIP_ID_SWORD)).toBe(true);
   });
 
-  it("buying into an occupied slot REPLACES (no refund) and emits the equipped event", () => {
+  it("buying into an occupied slot swaps the old item into the bag (no refund)", () => {
     const state = openBlacksmith(20);
     equip(state, "p1", "weapon", EQUIP_ID_SWORD); // already holds a weapon
     // Re-open so the menu re-derives (the sword is now owned so it drops out).
@@ -241,8 +243,43 @@ describe("anime.equipment — outfitter buy flow", () => {
     // The accessory slot is overwritten — Cosmos gone, Satchel in, gold −5, no refund.
     expect(heroEquipmentOf(bought, "p1").accessory).toBe(EQUIP_ID_SATCHEL);
     expect(playerHasEquipment(bought, "p1", EQUIP_ID_COSMOS)).toBe(false);
+    expect(heroEquipmentInventoryOf(bought, "p1")).toContain(EQUIP_ID_COSMOS);
+    expect(playerOwnsEquipment(bought, "p1", EQUIP_ID_COSMOS)).toBe(true);
     expect(bought.players.p1.resources.gold).toBe(15); // 20 − 5, no refund for Cosmos
     expect(bought.eventLog.some((event) => event.type === "EQUIPMENT_EQUIPPED")).toBe(true);
+  });
+
+  it("equips and unequips real bag items through reducer-validated actions", () => {
+    const state = adventure("eq-paperdoll-actions");
+    const hero = getMainHero(state, "p1")!;
+    hero.equipment = { weapon: EQUIP_ID_SWORD };
+    hero.equipmentInventory = [EQUIP_ID_BLADE];
+
+    const equipped = applyOk(state, {
+      type: "EQUIP_HERO_ITEM",
+      playerId: "p1",
+      equipmentId: EQUIP_ID_BLADE,
+      slot: "weapon"
+    });
+    expect(heroEquipmentSlot(equipped, "p1", "weapon")).toBe(EQUIP_ID_BLADE);
+    expect(heroEquipmentInventoryOf(equipped, "p1")).toContain(EQUIP_ID_SWORD);
+    expect(heroEquipmentInventoryOf(equipped, "p1")).not.toContain(EQUIP_ID_BLADE);
+
+    const unequipped = applyOk(equipped, { type: "UNEQUIP_HERO_ITEM", playerId: "p1", slot: "weapon" });
+    expect(heroEquipmentSlot(unequipped, "p1", "weapon")).toBeUndefined();
+    expect(heroEquipmentInventoryOf(unequipped, "p1")).toContain(EQUIP_ID_BLADE);
+    expect(unequipped.eventLog.some((event) => event.type === "EQUIPMENT_UNEQUIPPED")).toBe(true);
+  });
+
+  it("rejects forged unowned and wrong-slot equipment actions", () => {
+    const state = adventure("eq-paperdoll-forged");
+    getMainHero(state, "p1")!.equipmentInventory = [EQUIP_ID_BLADE];
+    expect(
+      applyAction(state, { type: "EQUIP_HERO_ITEM", playerId: "p1", equipmentId: EQUIP_ID_BLADE, slot: "armor" }).errors
+    ).not.toHaveLength(0);
+    expect(
+      applyAction(state, { type: "EQUIP_HERO_ITEM", playerId: "p1", equipmentId: EQUIP_ID_SWORD, slot: "weapon" }).errors
+    ).not.toHaveLength(0);
   });
 
   it("an already-owned item is ABSENT from the menu (option not built)", () => {

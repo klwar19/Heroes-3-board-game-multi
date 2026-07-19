@@ -105,6 +105,26 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   }
 };
 
+/** The seven contiguous panorama strips also serve as the real building-card art. */
+const animeTownBuildingBar: Record<string, number> = {
+  "fuyuki.city_hall": 1,
+  "fuyuki.dwelling_bronze": 2,
+  "fuyuki.summoning_circle": 3,
+  "fuyuki.dwelling_silver": 4,
+  "fuyuki.mystic_outfitter": 4,
+  "fuyuki.mage_guild": 5,
+  "fuyuki.citadel": 6,
+  "fuyuki.dwelling_gold": 7,
+  "azure_breeze.dwelling_bronze": 1,
+  "azure_breeze.sword_pavilion": 2,
+  "azure_breeze.dwelling_silver": 3,
+  "azure_breeze.mage_guild": 4,
+  "azure_breeze.alchemy_pavilion": 4,
+  "azure_breeze.city_hall": 5,
+  "azure_breeze.citadel": 6,
+  "azure_breeze.dwelling_gold": 7
+};
+
 const building = (
   id: string,
   name: string,
@@ -113,7 +133,17 @@ const building = (
   effect: NonNullable<TownBuildingDefinition["effect"]>,
   prerequisites?: string[]
 ): TownBuildingDefinition => ({
-  id, name, faction, cost, effect, prerequisites, implementationStatus: "implemented", source
+  id,
+  name,
+  faction,
+  cost,
+  effect,
+  prerequisites,
+  implementationStatus: "implemented",
+  assets: {
+    image: `/assets/town-board/${faction === "azure_breeze" ? "azure-breeze" : faction}-bar-${animeTownBuildingBar[id]}.webp`
+  },
+  source
 });
 
 export const animeTownBuildingDefinitions: Record<string, TownBuildingDefinition> = {
@@ -173,13 +203,13 @@ export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
     heroes: ["bin", "aoko"],
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "fuyuki").map((item) => item.id),
     units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "fuyuki").map((item) => item.id),
-    townImage: "/assets/anime/towns/fuyuki-city.png", source
+    townImage: "/assets/anime/towns/fuyuki-city-empty-v2.webp", source
   },
   azure_breeze: {
     id: "azure_breeze", name: "Azure Breeze Sect", color: "#27a9a0", startingTileId: "W-S1",
     heroes: ["qingyun", "lingxi"],
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "azure_breeze").map((item) => item.id),
     units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "azure_breeze").map((item) => item.id),
-    townImage: "/assets/anime/towns/azure-breeze-sect.png", source
+    townImage: "/assets/anime/towns/azure-breeze-sect-empty-v2.webp", source
   }
 };

@@ -57,7 +57,7 @@ import {
   equipmentMovementBonus,
   equipmentResourceRoundGold,
   equipmentResourceRoundMaterials,
-  playerHasEquipment
+  playerOwnsEquipment
 } from "./anime-equipment";
 import { EQUIPMENT_SHOP_SALES, getEquipmentDefinition } from "@/data/anime/equipment";
 import {
@@ -4956,7 +4956,7 @@ function buildEquipmentShopStep(state: GameState, playerId: PlayerId, locationId
     return null;
   }
   const options = sales
-    .filter((equipmentId) => !playerHasEquipment(state, playerId, equipmentId))
+    .filter((equipmentId) => !playerOwnsEquipment(state, playerId, equipmentId))
     // Anime Equipment (§3.13): a context-gated item (Marshal's War Horn / Spirit
     // Crane Mount → WOG Commanders; Veteran's Standard → Unit Experience) is
     // HIDDEN while its context is off — its effect would be inert, so it is never
