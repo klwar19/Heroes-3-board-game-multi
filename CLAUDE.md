@@ -2913,14 +2913,26 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   (`KNOWLEDGE_RECALL_MAP_SPELL` with a `mode`). Pinned in
   `map-movement-spells.test.ts` (basic no-crown / expert crown+limit / zero-crown
   basic) and `view-spells.test.ts` (Knowledge retakes View Air).
-- **Map pay-N-Power tiers use a Power VALUE, not a card count.** The View Air /
-  View Earth / Dimension Door / Fly / Water Walk / Town Portal "pay N Power"
-  tiers now carry `cost.powerCost` (was `discardCards`), so they are paid by the
-  standing spell Power plus the printed Power VALUE of the discarded power-source
-  cards — a single Expert Power (+2) can pay a Power-2 tier by spending a crown
-  (`costCardModes: ["expert"]`). Fixes the old bug where View Air's Power tiers
-  could never use a crown. Pinned in `view-spells.test.ts` (Power 2 paid with one
-  Expert Power + crown; a no-crown CONTROL rejects the expert payment).
+- **Map Power-tier spells cast then add Power (like combat / Visions).** View
+  Air, View Earth, Dimension Door, Fly, Water Walk and Town Portal are a single
+  **Cast** action — no up-front tier pick / cost picker. The spell is spent,
+  then a `map-spell-boost` window offers the same Power sources combat uses:
+  hand/Book power-source discards (printed value; Expert Power + crown),
+  **School of Magic expert** (discard the permanent for +2 over the free basic
+  +1, needs crown), and **Basic X Magic expert** (+3, permanent stays, once per
+  cast, needs crown) — or "Resolve now". Highest printed tier with
+  `minPower ≤ final Power` resolves (Orb doubling applied at resolve). Starting
+  Power = standingSpellPower (school basic, Astrologers, Pandora, cultivation /
+  grade / equipment) + specialty school auras + map Sorcery/Scales bank.
+  Printed CHOOSE_ONE tiers stay as the effect table only. Pinned in
+  `map-spell-cast.test.ts` (School expert, Basic Magic expert, wrong-school
+  CONTROL) + `view-spells.test.ts` + `map-movement-spells.test.ts`.
+  **Both Spell Books:** old stash Book may burn one Book Spell for +1 Power
+  (once/turn) and Knowledge can return a Book-cast map Spell to the Book;
+  Polish Book needs Cast a Spell to cast, never burns Book Spells for Power
+  (spare Cast a Spell may still +1), Knowledge returns only Cast a Spell (spell
+  stays used), lasting Fly stays used not ongoing — pinned in
+  `map-spell-book-parity.test.ts` (each system + CONTROLs).
 - **Expert Power payment (crown) works for combat reactions too.** The same
   value-based `powerCost` costs paid in combat — Sorrow's silver/gold skip,
   Alamar's / Jeddite's lethal-save Resurrection, any future one — accept
@@ -2940,36 +2952,20 @@ Five additions; each engine rule fails a named test if its wiring is removed.
 Five additions; each engine claim fails a named test if its wiring is removed.
 
 - **Map spell-power bank (Sorcery / Scales on the MAP).** The combat "+Power,
-  then draw" bank (`combatStats.pendingDrawRiderSpellPower`) now has a MAP twin:
+  then draw" bank (`combatStats.pendingDrawRiderSpellPower`) has a MAP twin:
   playing an `ADD_SPELL_POWER` draw-rider on the map banks its +Power onto
-  `player.mapSpellPowerBank` and draws a card (reducer draw-rider handler, the
-  `!state.combat` else-branch). The banked Power counts toward a map Spell's
-  `powerCost` exactly like standing Power — folded in `payCardCost` and
-  `canAffordCardCost` via `mapSpellPowerBankAvailable` (zero in combat, so it can
-  never leak into a combat cast) — so a hero banks Power, draws, then casts the
-  drawn Spell (View Air / Dimension Door / Fly / …) with the bank paying part of
-  the tier. Consumed by the next map Spell that pays a Power cost (one Spell, one
-  boost); cleared when the hero **moves** (`performHeroStep` — "the saved Power
-  goes away after you move") and at the owner's next turn (`startAdventureTurn`).
-  The CHOOSE_ONE draw-rider ARTIFACTS (Scales of the Greater Basilisk, Tunic of
-  the Cyclops King, Armor of Wonder) are now map-playable draw-only too
-  (`addTurnCardActions` CHOOSE_ONE branch, mirroring the combat draw-only offer,
-  bypassing their reaction/combat phaseLimit). The picker shows the banked Power
-  (`mapPowerBank` folded into `pendingPowerTotal`, a "+N banked" note). Pinned in
-  `map-spell-power-bank.test.ts` (bank + draw, the bank pays a Power-1 View Air
-  with NO power cards, clear-on-move, Scales' map draw-rider, each with a
-  no-bank / base-tier CONTROL). LIMIT: only the printed map-Spell `powerCost`
-  tiers consume the bank (a bare `CAST_SPELL` map cast does not).
-- **Polish "Cast a Spell" is NEVER a Power source (crash fix).** The generic
-  `spell.cast_a_spell` enabler is a physical Spell card but no longer counts as
-  +1 Power for a spell-power COST — it let a 3-Power hand reach a Power-4
-  Dimension Door tier and then crashed the cast. Excluded in `cardCanBoostPower`
-  and `spellPowerValueOfCard` (`effects.ts`), so it is dropped from every
-  cost-filter power source (map tiers, Sorrow, Alamar, Magi's Power Drain). Its
-  combat "+1 Power" printed alternative (the `asPowerBoost` discard, filtered by
-  `kind === "spell"` directly) is a SEPARATE mechanic and deliberately kept.
-  Pinned in `map-spell-power-bank.test.ts` (a Cast-a-Spell cannot fund a map tier
-  / a real Power card does; paying with one throws).
+  `player.mapSpellPowerBank` and draws a card. That bank is the **starting
+  Power** of the next map Power-tier cast (cast-then-boost window above) — a
+  banked +1 alone auto-resolves View Air at the materials tier with no power
+  cards in hand. Zero in combat (`mapSpellPowerBankAvailable`); consumed when the
+  cast opens; cleared on hero **move** and the owner's next turn. CHOOSE_ONE
+  draw-rider artifacts (Scales / Tunic / Armor of Wonder) stay map-playable
+  draw-only. Pinned in `map-spell-power-bank.test.ts` (bank + cast, clear-on-move,
+  Scales, no-bank CONTROL).
+- **Polish "Cast a Spell" is NEVER a Power source (crash fix).** The enabler is
+  excluded from `cardCanBoostPower` / `spellPowerValueOfCard`, so it never appears
+  as a map-spell-boost discard (or a combat Power cost). Its combat `asPowerBoost`
+  discard stays. Pinned in `map-spell-power-bank.test.ts`.
 - **A teleport-gateway guard fights BANK-style (no Quick Combat, no XP).** A
   designer guard on a single-hex Monolith / Teleport Gate / Whirlpool
   (`isTeleportObjectGuardLocation`) must be truly fought to pass — a high-level
