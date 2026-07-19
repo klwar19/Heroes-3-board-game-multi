@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
 import { bestMapSpellTier, isMapPowerTierSpell, mapSpellPowerTiers } from "./map-spell-cast";
-import { applyAction, createAdventureGameState, getLegalActions, type GameAction, type GameState } from "./index";
+import { applyAction, createAdventureGameState, getLegalActions, getPlayerView, type GameAction, type GameState } from "./index";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -260,5 +260,34 @@ describe("Map cast — School of Magic expert + Basic Magic expert (combat parit
     expect(state.players.p1.permanents).toEqual(
       expect.arrayContaining(["ability.fire_magic", "ability.basic_fire_magic"])
     );
+  });
+});
+
+describe("map-spell-boost — hidden-info safety", () => {
+  it("other viewers never learn the caster's hand power cards from the boost window (owner keeps real labels)", () => {
+    let state = mapHand(["spell.view_air", "spell.haste"]);
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.view_air",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("map-spell-boost");
+
+    // The OWNER sees the real offer naming the hand card.
+    const own = getPlayerView(state, "p1").pendingChoice;
+    if (own?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the owner's choice");
+    }
+    expect(own.options.some((option) => /Haste/i.test(option.label))).toBe(true);
+
+    // ANOTHER viewer sees only that the decision is open — no card names, no ids.
+    const other = getPlayerView(state, "p2").pendingChoice;
+    if (other?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the masked choice");
+    }
+    expect(other.options.every((option) => option.label === "Hidden option")).toBe(true);
+    expect(JSON.stringify(other)).not.toContain("spell.haste");
   });
 });

@@ -312,7 +312,7 @@ describe("Fly spell", () => {
         throw new Error("expected map-spell-boost");
       }
       const index = choice.mapSpellBoost.offers.findIndex(
-        (offer) => offer.cardId === powerId && offer.mode === "basic"
+        (offer) => offer.kind === "card" && offer.cardId === powerId && offer.mode === "basic"
       );
       expect(index).toBeGreaterThanOrEqual(0);
       state = applyOk(state, {

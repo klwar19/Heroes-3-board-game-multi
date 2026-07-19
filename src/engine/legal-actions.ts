@@ -4483,7 +4483,7 @@ function addControlledNeutralUnitActions(
   const waitMustAttack = Boolean(combat.waitPhase && activeUnit.waitPending);
   const mustAttack =
     waitMustAttack ||
-    neutralControlMustAttack(state) ||
+    neutralControlMustAttack(state, combat) ||
     (state.round % 2 === 0 && getAstrologersRoundFrenzy(activeUnit) > 0 && !alreadyAttacked);
 
   // Attacks the guard can make from where it stands (any enemy, engine-legal).

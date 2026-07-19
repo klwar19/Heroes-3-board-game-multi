@@ -14,7 +14,7 @@ import type { CardDefinition, EffectDefinition } from "./state";
 /** A non-CHOOSE_ONE effect — same shape as the reducer's local ConcreteEffect. */
 export type MapSpellTierEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 
-export type MapSpellPowerTier = {
+export type MapSpellPowerTiers = {
   tiers: Array<{
     optionIndex: number;
     minPower: number;

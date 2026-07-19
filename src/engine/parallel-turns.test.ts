@@ -409,13 +409,23 @@ describe("parallel turns — PvP stops the mode with a table-wide warning", () =
     paintField(state, mine, "mine", { resource: "gold", amount: 1, flagOwnerId: "p2", everFlagged: true });
     state.players.p1.hand.push("spell.view_earth");
 
+    // Cast-then-boost: one Cast action, then the Power window (resolve at 0).
     state = apply(state, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "spell.view_earth",
       target: { type: "none" },
-      optionIndex: 0
+      mode: "basic"
     });
+    const boost = state.pendingChoice;
+    if (boost?.type === "OPTION_CHOICE" && boost.context === "map-spell-boost") {
+      state = apply(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: boost.id,
+        optionIndex: boost.options.length - 1
+      });
+    }
     const choice = state.pendingChoice;
     expect(choice?.type === "OPTION_CHOICE" ? choice.context : null).toBe("view-earth");
     state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: 0 });

@@ -1640,13 +1640,26 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
         continue;
       }
       if (object.kind === "gate" && object.pair !== undefined) {
-        carveColoredGateField(adventure, spaceId, object.pair);
+        carveColoredGateField(adventure, spaceId, object.pair, {
+          exitMode: object.exitMode,
+          alwaysPickable: object.alwaysPickable
+        });
       } else if (object.kind === "monolith" || object.kind === "whirlpool") {
         // Continue the +1/0/-1 numbering across every whirlpool already carved
         // (the legacy `token` carve runs first).
         const whirlpoolCount = Object.values(adventure.fields).filter((f) => f.location === "whirlpool").length;
         const number = object.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolCount] : undefined;
         carveMapTokenField(adventure, spaceId, object.kind, number);
+        // Two-way exit-pick extras ride a Monolith exactly like a gate's.
+        const carvedToken = adventure.fields[spaceId];
+        if (carvedToken && object.kind === "monolith") {
+          if (object.exitMode) {
+            carvedToken.onewayExitMode = object.exitMode;
+          }
+          if (object.alwaysPickable) {
+            carvedToken.onewayAlwaysPickable = true;
+          }
+        }
       }
       const carved = adventure.fields[spaceId];
       if (carved) {
@@ -1689,10 +1702,19 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
     ) {
       field.gatePair = object.pair;
     }
-    if (object.kind === "oneway_entrance" && object.exitMode) {
+    // Exit-pick extras: one-way ENTRANCE mode / EXIT always-pickable, and the
+    // shared two-way vocabulary on standalone GATES and MONOLITHS (they are
+    // both an origin and a destination) — token parity.
+    if (
+      (object.kind === "oneway_entrance" || object.kind === "gate" || object.kind === "monolith") &&
+      object.exitMode
+    ) {
       field.onewayExitMode = object.exitMode;
     }
-    if (object.kind === "oneway_exit" && object.alwaysPickable) {
+    if (
+      (object.kind === "oneway_exit" || object.kind === "gate" || object.kind === "monolith") &&
+      object.alwaysPickable
+    ) {
       field.onewayAlwaysPickable = true;
     }
     applyCustomGuardToField(field, objectGuardSpec(object));

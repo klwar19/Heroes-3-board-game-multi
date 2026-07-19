@@ -11453,6 +11453,7 @@ export type PendingChoice =
         | "morale-positive-limit"
         | "morale-repeat-search"
         | "pendant-repeat-search"
+        | "spell-discard-top"
         | "place-creature-bank"
         | "place-map-token"
         | "place-field-override"
@@ -11599,10 +11600,15 @@ export type PendingChoice =
       /**
        * After a Spell deck Search leaves 2+ unkept cards in discard: pick which
        * one sits FACE-UP on top (the rest stay under it in their prior order).
+       * `baseCount` + `keptCardId` carry the Search's identity so the morale
+       * repeat-search / Pendant-of-Courage post-Search offers still open AFTER
+       * the pick resolves (the pick interposes, it never swallows them).
        */
       spellDiscardTopPick?: {
         deckId: DeckId;
         cardIds: CardId[];
+        baseCount?: number;
+        keptCardId?: CardId;
       };
       /**
        * scouting-prompt: a held Scouting card may be played before a Search. The

@@ -89,10 +89,19 @@ export function manualGuardControllerId(state: GameState, combat: CombatState): 
  * real PvP Neutral Control seat (a human OPPONENT playing the guards) is
  * bound by `pvpNeutralControlMustAttack`. Polish-wait re-activation and
  * Astrologers frenzy still force attack on their own paths.
+ *
+ * Pass `combat` where available: with the PvP option ON but NO live opponent
+ * derivable for THIS fight (pvpNeutralControllerId null — eliminations left
+ * nobody, so the manual fighter or the AI drives), the sub-toggle binds
+ * nobody and free play applies.
  */
-export function neutralControlMustAttack(state: GameState): boolean {
+export function neutralControlMustAttack(state: GameState, combat?: CombatState): boolean {
   // Manual-only (no PvP Neutral Control): full free control of the guards.
   if (!state.adventure?.pvpNeutralControl) {
+    return false;
+  }
+  // PvP option on, but this fight's controller is not a PvP opponent.
+  if (combat && pvpNeutralControllerId(state, combat) === null) {
     return false;
   }
   return state.adventure?.pvpNeutralControlMustAttack ?? true;

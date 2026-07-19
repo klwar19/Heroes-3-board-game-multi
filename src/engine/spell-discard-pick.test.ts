@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, type GameAction, type GameState } from "./index";
+import { applyAction, createAdventureGameState, eliminatePlayer, type GameAction, type GameState } from "./index";
 import { openSharedDeckSearch } from "./adventure-reducer";
+import { MORALE_CARD_IDS } from "@/data/cards/morale";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -95,5 +96,76 @@ describe("Spell search — pick which discarded spell to take (not only top)", (
     const discard = state.decks[spellDeckId]!.discardPile;
     expect(discard[discard.length - 1], "chosen card is face-up on top").toBe(faceUpId);
     expect(discard).toHaveLength(2);
+  });
+
+  it("the face-up pick INTERPOSES before the morale repeat-search offer — the offer still opens after the pick resolves", () => {
+    let state = createAdventureGameState({
+      seed: "spell-discard-top-morale",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      moraleCards: true
+    });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.players.p1.hand = state.players.p1.hand.filter((id) => id !== "ability.scouting");
+    state.players.p1.moraleCards = { positive: [MORALE_CARD_IDS.repeatSearch], negative: [] };
+    const spellDeckId = state.decks["spells-basic"] ? "spells-basic" : "spells";
+    const deck = state.decks[spellDeckId]!;
+    deck.discardPile = [];
+    deck.drawPile = ["spell.bless", "spell.haste", "spell.curse"];
+
+    openSharedDeckSearch(state, "p1", spellDeckId, 3);
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+    state = applyOk(state, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      pick: { kind: "revealed", index: 0 }
+    });
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("spell-discard-top");
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: 0
+    });
+    // The morale "repeat the Search" offer opens AFTER the pick — never swallowed.
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe(
+      "morale-repeat-search"
+    );
+  });
+
+  it("eliminating the picker mid-face-up-pick destroys NO shared-deck cards (they return to the discard pile)", () => {
+    let state = createAdventureGameState({ seed: "spell-discard-top-elim", difficulty: "normal", rollFirstPlayer: false });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.players.p1.hand = state.players.p1.hand.filter((id) => id !== "ability.scouting");
+    const spellDeckId = state.decks["spells-basic"] ? "spells-basic" : "spells";
+    const deck = state.decks[spellDeckId]!;
+    deck.discardPile = [];
+    deck.drawPile = ["spell.bless", "spell.haste", "spell.curse"];
+
+    openSharedDeckSearch(state, "p1", spellDeckId, 3);
+    state = applyOk(state, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      pick: { kind: "revealed", index: 0 }
+    });
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("spell-discard-top");
+    const parked =
+      state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.spellDiscardTopPick?.cardIds ?? [] : [];
+    expect(parked).toHaveLength(2);
+
+    eliminatePlayer(state, "p1", "conceded", true);
+
+    // The two parked spells are back in the shared discard — nothing destroyed.
+    const after = state.decks[spellDeckId]!;
+    for (const cardId of parked) {
+      expect(after.discardPile, `${cardId} returned to the shared discard`).toContain(cardId);
+    }
+    expect(state.pendingChoice).toBeNull();
   });
 });

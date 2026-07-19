@@ -218,6 +218,7 @@ import {
   discardHeldMoraleCardByIndex,
   moraleCardsRuleEnabled,
   openMoralePositiveLimitChoiceIfNeeded,
+  playerHoldsMoraleCard,
   returnHeldMoraleCardToDeckBottom
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
@@ -249,7 +250,7 @@ import {
   resolveWarMachineOption,
   startWarMachineRound
 } from "./permanents";
-import { getSchoolPowerBonus, getSchoolPowerMultiplier } from "./active-effects";
+import { getSchoolPowerMultiplier } from "./active-effects";
 import { seedRunesForCombat } from "./runes";
 import {
   activeSchoolFetches,
@@ -4617,14 +4618,9 @@ type MapSpellBoostFlags = {
 
 function mapSpellCrownsLeft(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId];
-  if (!player) {
-    return 0;
-  }
-  return (
-    player.limits.expertUses +
-    (player.combatStats.expertUseBonusThisRound ?? 0) -
-    player.combatStats.expertUsesSpentThisRound
-  );
+  // The map crown pool IS the round's Expert-use budget — the one canonical
+  // helper, never a re-derivation that could drift from it.
+  return player ? expertUsesAvailable(player) : 0;
 }
 
 function listMapSpellBoostOffers(
@@ -11057,6 +11053,16 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
+    // The pick INTERPOSED before the post-Search repeat offers (morale
+    // repeat-search / Pendant of Courage) — open them now the cards are placed.
+    maybeOpenPostSearchOffers(
+      state,
+      action.playerId,
+      pick.deckId,
+      pick.baseCount,
+      pick.keptCardId,
+      choice.returnPhase
+    );
     return;
   }
 
@@ -12798,6 +12804,52 @@ export function maybeOpenPendantRepeatOffer(
   state.phase = "choice";
   state.priorityPlayerId = playerId;
   return true;
+}
+
+/**
+ * The post-Search repeat offers, in printed order: the positive-morale
+ * "repeat the Search" card first (when the rule is on and the searcher holds
+ * it), else the Pendant of Courage. ONE shared seam — called at the tail of
+ * resolveDeckSearch AND after the Spell discard face-up pick resolves, so the
+ * pick interposes without swallowing either offer. `keptCardId` is required
+ * for the morale offer (it names the card that would be discarded); with only
+ * a Pendant in hand the offer opens regardless.
+ */
+export function maybeOpenPostSearchOffers(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: DeckId,
+  baseCount: number | undefined,
+  keptCardId: CardId | undefined,
+  returnPhase: GamePhase
+): void {
+  if (baseCount === undefined) {
+    return;
+  }
+  if (
+    keptCardId &&
+    moraleCardsRuleEnabled(state) &&
+    playerHoldsMoraleCard(state, playerId, MORALE_CARD_IDS.repeatSearch)
+  ) {
+    const keptName = cardLibrary[keptCardId]?.name ?? keptCardId;
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: `Positive Morale: discard ${keptName} to perform the Search (${baseCount}) again?`,
+      options: [
+        { label: `Discard ${keptName} — repeat the Search (${baseCount})` },
+        { label: `Keep ${keptName} (save the morale card)` }
+      ],
+      context: "morale-repeat-search",
+      moraleRepeatSearch: { deckId, count: baseCount, cardId: keptCardId },
+      returnPhase
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+    return;
+  }
+  maybeOpenPendantRepeatOffer(state, playerId, deckId, baseCount, returnPhase);
 }
 
 // ---------------------------------------------------------------------------
