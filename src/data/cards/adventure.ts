@@ -4968,6 +4968,10 @@ adventureCards["specialty.aoko.1"] = rethemedSpecialty(adventureCards["specialty
 adventureCards["specialty.aoko.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "aoko", 4, "Leyline Mending");
 adventureCards["specialty.aoko.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "aoko", 6, "Leyline Mending");
 // Lingxi (Azure Breeze, magic): Gem's generic First Aid set (Tent + heals).
+// Art-less on purpose — the native SpecialtyCard draws her portrait + the
+// dedicated specialty-card medallion (`icon-first_aid.webp`), not Gem's baked
+// First Aid scan. Engine wiring is identical to Gem (tests on gem cover the
+// effect; lingxi is pinned for art/identity in specialty-card.test.tsx).
 adventureCards["specialty.lingxi.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "lingxi", 1, "Healing Arts");
 adventureCards["specialty.lingxi.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "lingxi", 4, "Healing Arts");
 adventureCards["specialty.lingxi.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "lingxi", 6, "Healing Arts");

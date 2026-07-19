@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { canRenderSpecialtyCard, specialtyIconSrc } from "@/components/specialty-card-data";
 import { cardLibrary } from "@/data/cards/library";
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions, isPlayableFaction } from "@/data/factions/core";
@@ -107,5 +108,38 @@ describe("playable Anime Realms towns", () => {
     expect(commander).toBeDefined();
     expect(existsSync(join(process.cwd(), "public", commander.cardImage.replace(/^\//, "")))).toBe(true);
     expect(unitAbilities[commander.cast.abilityId]?.implementationStatus).toBe("implemented");
+  });
+
+  it("Azure Breeze roster is exactly 3 bronze / 2 silver / 2 gold (not 2/2/3)", () => {
+    const units = Object.values(coreUnitDefinitions).filter((unit) => unit.faction === "azure_breeze");
+    expect(units).toHaveLength(7);
+    const byTier = { bronze: 0, silver: 0, gold: 0, azure: 0 };
+    for (const unit of units) {
+      byTier[unit.tier] += 1;
+    }
+    expect(byTier).toEqual({ bronze: 3, silver: 2, gold: 2, azure: 0 });
+    // Gold: True Inheritors + Mountain Guardian (never demote the mountain tank).
+    expect(coreUnitDefinitions["azure_breeze.true_inheritors"]?.tier).toBe("gold");
+    expect(coreUnitDefinitions["azure_breeze.mountain_guardian"]?.tier).toBe("gold");
+    // Bronze early flyer; silver formation support.
+    expect(coreUnitDefinitions["azure_breeze.spirit_crane"]?.tier).toBe("bronze");
+    expect(coreUnitDefinitions["azure_breeze.core_master"]?.tier).toBe("silver");
+  });
+
+  it("Lingxi specialties are art-less native cards with the dedicated First-Aid medallion (not Gem's scan)", () => {
+    for (const level of [1, 4, 6] as const) {
+      const id = `specialty.lingxi.${level}`;
+      const card = cardLibrary[id];
+      expect(card?.name).toMatch(/^Healing Arts /);
+      expect(card?.assets?.cardImage, id).toBeUndefined();
+      expect(canRenderSpecialtyCard(id), id).toBe(true);
+      const icon = specialtyIconSrc(id);
+      expect(icon).toBe("/assets/specialty-card/icon-first_aid.webp");
+      expect(existsSync(join(process.cwd(), "public", icon!.replace(/^\//, "")))).toBe(true);
+    }
+    // Portrait used by the native specialty frame is the hero's own art.
+    const portrait = coreHeroDefinitions.lingxi?.portrait;
+    expect(portrait).toBe("/assets/anime/heroes/lingxi.png");
+    expect(existsSync(join(process.cwd(), "public", portrait!.replace(/^\//, "")))).toBe(true);
   });
 });
