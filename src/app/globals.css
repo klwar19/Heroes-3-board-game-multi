@@ -4360,15 +4360,31 @@ button.battleCell {
 }
 
 /* "gate here / path up here" label on each candidate hex while the pick-on-reveal
-   Subterranean Gate placement choice is open. */
+   Subterranean Gate placement choice is open. Short words + thick halo so the
+   cue stays legible over busy tile art without covering the cave-mouth graphic. */
 .hexGateChoiceCue {
   fill: #9be7ff;
-  font-size: 8.5px;
+  font-size: 8px;
   font-weight: 800;
   paint-order: stroke;
-  stroke: rgba(10, 24, 40, 0.92);
-  stroke-width: 2.6px;
+  stroke: rgba(10, 24, 40, 0.95);
+  stroke-width: 3px;
   pointer-events: none;
+}
+
+.hexGateChoiceCue.selected {
+  fill: #e8fff8;
+  font-size: 8.5px;
+  stroke: rgba(6, 28, 22, 0.96);
+  stroke-width: 3.2px;
+  filter: drop-shadow(0 0 3px rgba(94, 255, 192, 0.85));
+}
+
+.hexGateChoiceCue.dim {
+  fill: rgba(155, 231, 255, 0.55);
+  font-size: 7px;
+  stroke-width: 2.2px;
+  stroke-opacity: 0.85;
 }
 
 .hexGlyph {
@@ -4405,6 +4421,14 @@ button.battleCell {
   font-size: 9px;
   paint-order: stroke;
   stroke: rgba(20, 12, 4, 0.92);
+  stroke-width: 2.2;
+  pointer-events: none;
+}
+.hexDesignerReward {
+  fill: #9dffb0;
+  font-size: 9px;
+  paint-order: stroke;
+  stroke: rgba(8, 20, 10, 0.92);
   stroke-width: 2.2;
   pointer-events: none;
 }
@@ -4712,6 +4736,7 @@ button.battleCell {
 }
 
 .hbPortrait {
+  position: relative;
   display: flex;
   padding: 0.7cqw;
   border-radius: 1.6cqw;
@@ -4728,6 +4753,24 @@ button.battleCell {
   object-fit: cover;
   border-radius: 1cqw;
   background: #0d0a06;
+}
+
+/* Public Grail-carrier badge (map-designer dig → carry). */
+.hbGrailMarker {
+  position: absolute;
+  right: 0.4cqw;
+  bottom: 0.4cqw;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 3.6cqw;
+  height: 3.6cqw;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe9a0, #c9a227 55%, #6a4e0a);
+  border: 0.25cqw solid #fff3c0;
+  box-shadow: 0 0.3cqw 0.8cqw rgba(0, 0, 0, 0.55);
+  font-size: 2cqw;
+  line-height: 1;
 }
 
 /* The whole right half is one framed panel, as printed. */
@@ -6197,6 +6240,114 @@ button.hbSlot:disabled { cursor: default; }
   line-height: 1.25;
   text-align: center;
   color: #ecd7ab;
+}
+
+/* ---- Polish Bank Sizes A/B picker (art above name + size) ---- */
+.promptTray.withPolishBankCards {
+  max-width: min(560px, 96vw);
+  border-color: rgba(231, 183, 60, 0.55);
+}
+
+.promptOptions.polishBankCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.polishBankOptionCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 148px;
+  padding: 8px 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgb(214 178 104 / 50%);
+  background: linear-gradient(180deg, rgb(48 36 21 / 96%), rgb(18 12 6 / 98%));
+  color: #f0dcb8;
+  cursor: pointer;
+  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.polishBankOptionCard:hover {
+  border-color: rgb(247 207 110 / 80%);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgb(0 0 0 / 48%);
+}
+
+.polishBankOptionArt {
+  position: relative;
+  display: block;
+  width: 128px;
+  height: 88px;
+  overflow: hidden;
+  border-radius: 7px;
+  border: 1px solid rgb(214 178 104 / 35%);
+  background: rgb(12 10 6 / 70%);
+}
+
+.polishBankOptionArt img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+.polishBankSizeCoin {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: #170d05;
+  border: 1.5px solid #1b1008;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 70%);
+}
+
+.polishBankSizeCoin.size-1 {
+  background: linear-gradient(160deg, #52525a, #22222a);
+  color: #f2f2f5;
+}
+
+.polishBankSizeCoin.size-2 {
+  background: linear-gradient(160deg, #cf7a40, #91461f);
+}
+
+.polishBankSizeCoin.size-3 {
+  background: linear-gradient(160deg, #dde4e8, #8d98a3);
+}
+
+.polishBankSizeCoin.size-4 {
+  background: linear-gradient(160deg, #e9c84f, #aa7c10);
+}
+
+.polishBankOptionLetter {
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffd76a;
+  letter-spacing: 0.04em;
+}
+
+.polishBankOptionName {
+  font-size: 11.5px;
+  line-height: 1.25;
+  text-align: center;
+  color: #f0dcb8;
+  font-weight: 700;
+}
+
+.polishBankOptionSize {
+  font-size: 10.5px;
+  color: #d6bd92;
 }
 
 /* ---- Teleport destination picker (Monolith / Whirlpool / colored Gate) ---- */
@@ -8558,6 +8709,22 @@ button.hbSlot:disabled { cursor: default; }
   font-weight: 700;
   text-align: center;
   white-space: normal;
+}
+
+/* Gate-exit cycle float: labels name the compass edge + sacrificed field and
+   were nowrap-clipped into unreadable overflow ("Path up on the NE edge —
+   sacrifices the Gold Mine"). Wrap + a slightly taller card so the art under
+   the float stays fully visible and the text is fully readable. */
+.mapFloatCard.gateExitFloat {
+  min-width: 0;
+}
+
+.mapFloatCard.gateExitFloat .mapFloatLabel {
+  white-space: normal;
+  line-height: 1.3;
+  font-size: 11.5px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .mapFloatButtons {
@@ -14998,6 +15165,126 @@ img.cardBack {
 }
 .popoverGuardArmyNote {
   color: #d9c9a1;
+}
+.popoverGuardQuickRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.popoverGuardQuickChip {
+  font-size: 10px;
+  padding: 2px 7px;
+}
+.popoverGuardQuickChip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.popoverGuardCapHint {
+  margin-left: auto;
+  font-size: 10px;
+  color: #c9b88a;
+  opacity: 0.85;
+}
+.popoverGuardArmyGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.popoverGuardArmyGroup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(40, 28, 12, 0.45);
+  border: 1px solid rgba(201, 162, 75, 0.28);
+}
+.popoverGuardArmyGroupLabel {
+  font-size: 11px;
+  color: #f3e7c8;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.popoverGuardArmyCount {
+  font-weight: 700;
+  color: #ffe9a8;
+  margin-right: 2px;
+}
+.popoverGuardArmySteppers {
+  display: inline-flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.popoverGuardStepBtn {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid rgba(201, 162, 75, 0.45);
+  border-radius: 4px;
+  background: rgba(24, 18, 10, 0.65);
+  color: #f3e7c8;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.popoverGuardStepBtn:hover:not(:disabled) {
+  border-color: #ffe9a8;
+  color: #ffe9b8;
+}
+.popoverGuardStepBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.popoverGuardRemoveAll {
+  color: #ffb4a8;
+}
+.popoverGuardEditorCompact .popoverGuardArmy {
+  padding: 4px;
+}
+.fieldRewardEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+.fieldRewardResourceRow {
+  flex-wrap: wrap;
+}
+.fieldRewardSearchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px;
+}
+.fieldRewardSearchCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid rgba(201, 162, 75, 0.35);
+  border-radius: 8px;
+  background: rgba(14, 10, 6, 0.4);
+}
+.fieldRewardSearchTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffe9a8;
+  letter-spacing: 0.02em;
+}
+.fieldRewardSearchPreview {
+  font-size: 10px;
+  color: #d9c9a1;
+}
+.fieldRewardSearchPreview.muted {
+  opacity: 0.55;
+}
+.fieldRewardSummary {
+  font-size: 11px;
+  color: #ffe9b8;
+  font-weight: 600;
 }
 .popoverColorChip {
   display: inline-flex;

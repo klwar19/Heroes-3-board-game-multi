@@ -433,6 +433,16 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Combat-long max Health (Valeska / Vial of Lifeblood / Ivor VI…). The
+       * amount is ALSO folded into `CombatUnitState.combatMaxHealthBonus` so
+       * Pack→Few and stack-layer recomputes keep the HP; this modifier is the
+       * ongoing-effect entry for the combat effects panel / dispel paths.
+       */
+      type: "HEALTH_BONUS";
+      amount: number;
+    }
+  | {
+      /**
        * Merist's Stone Skin VI: a player-scoped, combat-duration flag. While the
        * controller has it, their units' Defense tokens grant the +1 Defense on a
        * "0" OR a "+1" Defense-die roll (instead of only on a "+1"). Carries no
@@ -3300,6 +3310,12 @@ export type GameAction =
       cardId: CardId;
     }
   | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
+  /**
+   * Build a carried Grail at the hero's current Town/Settlement (map-maker
+   * `objectives.grailBuildAt`). Moves grail status to "built", grants the
+   * optional build reward, and the location's controller scores possession VP.
+   */
+  | { type: "BUILD_GRAIL"; playerId: PlayerId; heroId: HeroId }
   | {
       /**
        * Open the Trading Post / War Machine Factory panel for a hero parked on
@@ -7190,6 +7206,15 @@ export type CombatUnitState = {
   /** WOG Ghost: persistent Soul Harvest Health mirrored from its army card. */
   permanentHealthBonus?: number;
   /**
+   * Combat-only max Health from ADD_UNIT_MAX_HEALTH (Valeska Marksmen, Vial of
+   * Lifeblood, Ivor VI, …). Folded into maxHealth on every printed-side
+   * recompute (applyUnitCurrentSide) so Pack→Few flips and Polish Unit Stack
+   * layer losses KEEP the bonus on every health bar (stack / pack / few). Not
+   * mirrored to the army card — combat-scoped only. Absent (= 0) until a
+   * +HP-this-combat effect lands.
+   */
+  combatMaxHealthBonus?: number;
+  /**
    * Polish Unit Stacks mirrored from the backing Pack army card. Each remaining
    * layer absorbs one full Pack health bar; deliberately separate from the
    * Creature Bank defender's `stackToken`.
@@ -7764,6 +7789,10 @@ export type MapTileState = {
     preferredSpaceId?: MapSpaceId;
     /** Designer guard placed with the token (level or exact army). */
     guard?: CustomGuardSpec;
+    /** Designer first-clear reward, carried to the carved field. */
+    reward?: CustomFieldReward;
+    /** Designer first-clear VP, carried to the carved field. */
+    vp?: number;
     /** One-way entrance/exit extras, carried to the carved field. */
     exitMode?: OnewayExitMode;
     alwaysPickable?: boolean;
@@ -7798,6 +7827,10 @@ export type MapTileState = {
     preferredSpaceId?: MapSpaceId;
     /** Designer guard placed with the token (level or exact army). */
     guard?: CustomGuardSpec;
+    /** Designer first-clear reward, carried to the carved field. */
+    reward?: CustomFieldReward;
+    /** Designer first-clear VP, carried to the carved field. */
+    vp?: number;
     /** One-way entrance/exit extras, carried to the carved field. */
     exitMode?: OnewayExitMode;
     alwaysPickable?: boolean;
@@ -7848,6 +7881,19 @@ export type MapTileState = {
    * hidden slot's objective is not leaked before discovery (see player-view.ts).
    */
   viiField?: "town" | "dragon_utopia" | "grail";
+  /**
+   * Multi-select of allowed Ⅶ designations carried from
+   * {@link CustomMapTilePlan.viiFields}. Resolved to a single {@link viiField}
+   * at materialize (random or player pick). Masked while face-down.
+   */
+  viiFields?: Array<"town" | "dragon_utopia" | "grail">;
+  /** Player picks among {@link viiFields} on reveal (from the plan). */
+  playerViiPick?: boolean;
+  /**
+   * Player picks Gold vs Valuables mine before this face-down tile reveals
+   * (from {@link CustomMapTilePlan.playerResourcePick}).
+   */
+  playerResourcePick?: boolean;
   /**
    * Designer center-hex customization (guard / first-clear reward / VP) carried
    * from {@link CustomMapTilePlan.centerHex} onto the placed instance and folded
@@ -7932,10 +7978,24 @@ export type MapFieldState = {
    * player who FIRST clears / captures the objective — `centerHexClaimed`
    * latches so a re-capture never re-pays it. Public once the tile is revealed
    * (a visible objective, like a mine's resource).
+   *
+   * Also used as the unified stamp for object/token/settlement designer
+   * rewards (same shape, same grant path). Prefer reading via the grant helper
+   * which folds {@link designerReward} for newer stamps.
    */
   centerHexReward?: CustomCenterHexReward;
   centerHexVp?: number;
   centerHexClaimed?: boolean;
+  /**
+   * Unified designer first-clear reward stamped from a standalone object, tile
+   * token or settlement plan. The grant path merges this with
+   * {@link centerHexReward} (either may be set). Same once-only latch as
+   * centerHexClaimed / designerRewardClaimed / viiBonusClaimed.
+   */
+  designerReward?: CustomFieldReward;
+  designerRewardVp?: number;
+  /** Shared once-only latch for any designer field reward (aliases centerHexClaimed). */
+  designerRewardClaimed?: boolean;
   /**
    * Per-settlement bonus Victory Points for THIS field only (from a tile's
    * {@link CustomMapTilePlan.settlement}.vp). Scored while the player controls
@@ -8018,6 +8078,23 @@ export type MapFieldState = {
    * guards and legacy snapshots.
    */
   designedGuard?: boolean;
+  /**
+   * Break field (PC-style): Pathfinding may NOT walk through this guarded hex
+   * — the hero must fight to enter / clear it. Set from the map-designer mine /
+   * obelisk / center-hex break options. Absent = classic Pathfinding pass-through.
+   */
+  breakField?: boolean;
+  /**
+   * Persistent certain army: on a lost / retreated neutral fight the living
+   * guards stay as `customGuardUnits` for a later re-fight (dead units do not
+   * return). Absent = classic full-army re-draw on every entry.
+   */
+  persistentGuard?: boolean;
+  /**
+   * This field's neutral fight has no Round limit (bank-style rounds, no
+   * continue-or-retreat window). Absent = normal Round limit + MP-to-extend.
+   */
+  unlimitedCombatRounds?: boolean;
   /**
    * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
    * sacrificed hex's `location` becomes "subterranean_gate" and these point at
@@ -9737,6 +9814,15 @@ export type AdventureState = {
    */
   farTilePool?: string[];
   /**
+   * Leftover Ⅳ–Ⅴ (Near) tile pool after setup's face-down Near draws. Used by
+   * the map-designer `playerResourcePick` on Near tiles so a gold/valuables
+   * preference can pull from a LIVE near pool (mirroring {@link farTilePool}),
+   * not by swapping two face-down Near tiles. Redacted in the player-view.
+   * Absent on pre-feature saves (near resource pick falls back to face-down
+   * swap when the pool is missing/empty).
+   */
+  nearTilePool?: string[];
+  /**
    * Blind Ⅱ–Ⅲ tile choice (GameSetupOptions.farTileBlindChoice, default OFF):
    * a supply opening first asks the player for a blind gold/valuables/no-
    * preference pick that filters the random draw. Absent/false = the draw is
@@ -9998,9 +10084,14 @@ export type AdventureState = {
    * (tracked per player in `obelisksVisited`).
    */
   grail?: {
-    status: "uncollected" | "carried" | "delivered";
+    status: "uncollected" | "carried" | "delivered" | "built";
     /** Hero physically carrying the dug Grail back toward their town. */
     carrierHeroId?: HeroId;
+    /**
+     * When status is "built": the Town/Settlement field the Grail was built
+     * on. The location's controller scores possession VP at end of game.
+     */
+    builtFieldId?: MapSpaceId;
     /**
      * Distinct Obelisk field ids each player has visited (flagged). Dig is
      * locked until a player has {@link GRAIL_OBELISKS_REQUIRED} entries.
@@ -10437,6 +10528,46 @@ export type CustomMapPreset = {
      * their own first-visit guard. Absent = unguarded (classic behaviour).
      */
     guard?: CustomGuardSpec;
+    /**
+     * Break-field options (PC "Jebus Cross" style). When set, Pathfinding may
+     * NOT walk through the guarded Obelisk — it must be fought to enter. With
+     * `persistentGuard`, a lost/retreated fight leaves the living units on the
+     * field for a later re-fight (dead units stay dead). With
+     * `unlimitedRounds` the fight has no Round limit (bank-style rounds).
+     * Absent = classic guarded-or-not behaviour.
+     */
+    breakField?: boolean;
+    persistentGuard?: boolean;
+    unlimitedRounds?: boolean;
+  };
+  /**
+   * MAP-WIDE mine options — make mines matter like PC "break" sites. Absent =
+   * classic mines (printed difficulty only, no designer guard).
+   *   - guard: level Ⅰ–Ⅶ or certain army (incl. random-tier slots)
+   *   - breakField / persistentGuard / unlimitedRounds: same semantics as
+   *     {@link CustomMapPreset.obelisks}
+   */
+  mines?: {
+    guard?: CustomGuardSpec;
+    breakField?: boolean;
+    persistentGuard?: boolean;
+    unlimitedRounds?: boolean;
+  };
+  /**
+   * MAP-WIDE Random Town customization. Absent = classic Random Town (rolled
+   * faction Packs 1 bronze + 2 silver + 2 gold, +10 gold income, +10 gold on
+   * first capture).
+   *   - guard: certain army (neutral units, `random:<tier>` slots, and/or
+   *     `pack:<unitDefId>` faction Packs) OR a level — replaces the default
+   *     rolled-faction party when set.
+   *   - captureReward: resources granted on FIRST capture (replaces the default
+   *     10 gold when set; when absent the classic 10 gold still pays).
+   *   - incomeGold: production income while controlling the town (default 10).
+   */
+  randomTowns?: {
+    guard?: CustomGuardSpec;
+    captureReward?: { gold?: number; buildingMaterials?: number; valuables?: number };
+    incomeGold?: number;
   };
   /**
    * MAP-WIDE settlement options — to make settlements matter on a scenario.
@@ -10481,6 +10612,41 @@ export type CustomMapPreset = {
     grailObelisksRequired?: 1 | 2 | 3 | 4;
     utopiaGuards?: DragonUtopiaGuards;
     utopiaBonusSearch?: 1 | 2 | 3;
+    /**
+     * How a Grail dig site may ALSO act as (or convert into) a Dragon Utopia:
+     *   - "always": every Grail field fights Utopia dragons (and still digs).
+     *   - "after-dig-utopia": after the Grail is dug, OTHER undug Grail fields
+     *     become Dragon Utopia (when Utopia is in the victory mode / map).
+     *   - "after-dig-empty": after the Grail is dug, OTHER undug Grail fields
+     *     become empty (map-maker "no second dig site").
+     * Absent = classic (Grail is dig-only; second Grail stays a dig site).
+     */
+    grailAsUtopia?: "always" | "after-dig-utopia" | "after-dig-empty";
+    /** Movement points to dig the Grail (0 free / 1 classic / 2 costly). */
+    grailDigCost?: 0 | 1 | 2;
+    /** One-shot resources granted when the Grail is successfully dug. */
+    grailDigReward?: { gold?: number; buildingMaterials?: number; valuables?: number };
+    /**
+     * Victory Points for possessing the Grail at scoring time (carrier OR the
+     * owner of the Town/Settlement where it was built). 0 / absent = no bonus.
+     */
+    grailPossessionVp?: number;
+    /**
+     * Where a carried Grail may be BUILT (instead of / in addition to delivering
+     * for the Holy-Grail win). Built Grail stays on that location; its
+     * controller scores {@link grailPossessionVp}. Absent = build disabled
+     * (classic carry-home only).
+     */
+    grailBuildAt?: "town" | "settlement" | "both" | "starting-town";
+    /** Reward granted when a player builds the Grail at a legal site. */
+    grailBuildReward?: {
+      gold?: number;
+      buildingMaterials?: number;
+      valuables?: number;
+      vp?: number;
+      /** Grant one free Building construction in the Town (player picks). */
+      freeBuilding?: boolean;
+    };
   };
   /**
    * Victory Points mode (rulebook scenario scoring). Absent = OFF (today's
@@ -10661,6 +10827,15 @@ export type CustomMapObject = {
   placement: CustomMapObjectPlacement;
   guard?: number | CustomGuardSpec;
   /**
+   * One-time first-clear reward on the object's hex (resources / dice /
+   * Times×Search(X)). Stamped onto the carved field at setup; granted once via
+   * the shared designer-reward latch when the visitor first successfully
+   * visits (after any guard is cleared). Barriers never keep a reward.
+   */
+  reward?: CustomFieldReward;
+  /** Optional first-clear Victory Points (VP mode only). */
+  vp?: number;
+  /**
    * Designer yellow border lines on THIS one-hex object — ABSOLUTE directions
    * 0-5 (NE,E,SE,SW,W,NW), each sealing that single hex edge exactly like a
    * tile's per-edge border: movement, discovery and the AI refuse the crossing
@@ -10684,10 +10859,21 @@ export type CustomMapSettlementConfig = NonNullable<CustomMapPreset["settlements
 /** The Grail / Dragon Utopia options block of a {@link CustomMapPreset}. */
 export type CustomMapObjectivesConfig = NonNullable<CustomMapPreset["objectives"]>;
 
+/** The MAP-WIDE mine options block of a {@link CustomMapPreset}. */
+export type CustomMapMinesConfig = NonNullable<CustomMapPreset["mines"]>;
+
+/** The MAP-WIDE Random Town options block of a {@link CustomMapPreset}. */
+export type CustomMapRandomTownsConfig = NonNullable<CustomMapPreset["randomTowns"]>;
+
 /** One designer-chosen Obelisk visit bonus (role "bonus"). */
 export type CustomMapObeliskBonus =
   | { kind: "morale"; amount: 1 }
   | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
+  /**
+   * Ability token — Search (1) the Ability deck (a clearer designer-facing
+   * alias of `search` with deck "abilities"; engine grants the same step).
+   */
+  | { kind: "ability_token" }
   | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
   | { kind: "movement"; amount: number }
   | { kind: "experience"; amount: number }
@@ -10910,6 +11096,29 @@ export type CustomMapTilePlan = {
    */
   viiField?: "town" | "dragon_utopia" | "grail";
   /**
+   * Center (Ⅵ–Ⅶ) multi-select of allowed objective kinds (Town / Utopia /
+   * Grail). When set with 2+ entries the slot draws a random matching
+   * designation (or, with {@link playerViiPick}, the discovering player
+   * chooses which). A single entry behaves like {@link viiField}. When both
+   * are set, `viiFields` wins. Absent = classic single {@link viiField} or
+   * the printed objective.
+   */
+  viiFields?: Array<"town" | "dragon_utopia" | "grail">;
+  /**
+   * When true on a center face-down slot with {@link viiFields} of length ≥ 2,
+   * the discovering player picks which objective kind the tile becomes before
+   * it materializes. Absent = engine picks randomly among the allowed set.
+   */
+  playerViiPick?: boolean;
+  /**
+   * Face-down Far (Ⅱ–Ⅲ) / Near (Ⅳ–Ⅴ) slots: BEFORE the tile is revealed the
+   * discovering player chooses Gold mine vs Valuables mine; the engine then
+   * draws a random remaining tile from that slot's pool that carries the
+   * chosen landmark. Distinct from {@link secretFeatures} (designer-fixed at
+   * setup). Absent = no player choice (classic random / secretFeatures draw).
+   */
+  playerResourcePick?: boolean;
+  /**
    * Center (Ⅵ–Ⅶ) slots ONLY: customize this slot's difficulty-7 CENTER HEX —
    * its guard (monster), a one-time first-clear reward, and Victory Points —
    * independently of (and combinable with) the {@link viiField} objective
@@ -10945,6 +11154,12 @@ export type CustomMapTilePlan = {
  */
 export type CustomMapSettlementFieldPlan = {
   guard?: CustomGuardSpec;
+  /**
+   * One-time first-flag reward (same shape as a center-hex first-clear bonus:
+   * resources / dice / Times×Search(X)). Paid once when the settlement is
+   * first successfully flagged.
+   */
+  reward?: CustomFieldReward;
   vp?: number;
   holdRoundsToWin?: number;
 };
@@ -10955,11 +11170,16 @@ export type CustomMapSettlementFieldPlan = {
  *   - `level` (1-7): a normal Field-Difficulty guard — the neutral army is
  *     drawn from the tier table exactly like a printed guard of that level
  *     (Quick Combat and experience follow the level as usual).
- *   - `units`: a CERTAIN ARMY — the exact Neutral unit cards (unit definition
- *     ids that carry a `neutral` side), MINTED for the fight like Creature-Bank
- *     guards (never drawn from nor recycled to the tier decks). Quick Combat
- *     and Diplomacy never bypass a certain army — the fight is always real; its
- *     experience uses the field's difficulty, derived from the army's tiers.
+ *   - `units`: a CERTAIN ARMY — up to {@link MAX_CUSTOM_GUARD_UNITS} entries,
+ *     each one of:
+ *       • a Neutral unit def id (classic certain army),
+ *       • `random:bronze|silver|gold|azure` — roll a random Neutral of that
+ *         tier at fight time (seeded),
+ *       • `pack:<unitDefId>` — a faction Pack side (Random Town custom armies).
+ *     Minted for the fight like Creature-Bank guards (never drawn from nor
+ *     recycled to the tier decks). Quick Combat and Diplomacy never bypass a
+ *     certain army — the fight is always real; its experience uses the field's
+ *     difficulty, derived from the army's tiers.
  * Sanitisers keep exactly one arm (`units` wins) and clamp both.
  */
 export type CustomGuardSpec = {
@@ -10986,6 +11206,14 @@ export type CustomMapTileToken = {
   pair?: 1 | 2 | 3 | 4;
   slot?: number;
   guard?: CustomGuardSpec;
+  /**
+   * One-time first-clear reward on the carved token hex (same shape as a
+   * center-hex reward). Granted once after the guard is cleared / on a peaceful
+   * visit; latched on the field so it never re-pays.
+   */
+  reward?: CustomFieldReward;
+  /** Optional first-clear Victory Points (VP mode only). */
+  vp?: number;
   /** One-way ENTRANCE token only: how the exit is picked (default "certain"). */
   exitMode?: OnewayExitMode;
   /** One-way EXIT token only ("mix" mode): freely choosable BEFORE the roll. */
@@ -10993,25 +11221,43 @@ export type CustomMapTileToken = {
 };
 
 /**
- * A designer-set one-time reward on a customized center hex
- * ({@link CustomCenterHexPlan.reward}), granted to the player who FIRST clears
- * the objective. Resources are granted inline; Treasure dice and deck Searches
- * resolve through the normal visit-step pipeline. Amounts are clamped by the
- * sanitiser ({@link sanitizeCenterHexPlan}).
+ * A designer-set one-time field reward — used on center hexes, standalone map
+ * objects, tile tokens and per-tile settlements. Granted to the player who
+ * FIRST clears / successfully visits the hex. Resources are granted inline;
+ * Treasure dice and deck Searches resolve through the visit-step pipeline.
+ *
+ * Search rewards are **Times × Search(X)**: `searchArtifact: 5` with
+ * `searchArtifactTimes: 2` queues two separate Search(5) Artifact steps.
+ * Absent times (or times 1) is byte-identical to a single Search of size X.
+ * Amounts are clamped by the sanitiser ({@link sanitizeCenterHexPlan} /
+ * {@link sanitizeFieldReward}).
  */
-export type CustomCenterHexReward = {
+export type CustomFieldReward = {
   gold?: number;
   buildingMaterials?: number;
   valuables?: number;
   /** Roll N Treasure dice (1-3). */
   treasureDice?: number;
-  /** Search (N) of the shared Spell deck (1-5). */
+  /** Search (X) of the shared Spell deck (1-5). */
   searchSpell?: number;
-  /** Search (N) of the shared Ability deck (1-5). */
+  /** Search (X) of the shared Ability deck (1-5). */
   searchAbility?: number;
-  /** Search (N) of the shared Artifact deck (1-5). */
+  /** Search (X) of the shared Artifact deck (1-5). */
   searchArtifact?: number;
+  /**
+   * How many separate Search(X) steps for that deck (1–5). Only kept when the
+   * matching search* size is set; absent / 1 = one Search (legacy default).
+   */
+  searchSpellTimes?: number;
+  searchAbilityTimes?: number;
+  searchArtifactTimes?: number;
 };
+
+/**
+ * @deprecated Alias of {@link CustomFieldReward} — kept so existing imports and
+ * center-hex field names stay stable.
+ */
+export type CustomCenterHexReward = CustomFieldReward;
 
 /**
  * A center (Ⅵ–Ⅶ) slot's designer customization ({@link CustomMapTilePlan.centerHex}):
@@ -11024,7 +11270,7 @@ export type CustomCenterHexPlan = {
   /** Replace the printed difficulty-7 guard with a level or a certain army. */
   guard?: CustomGuardSpec;
   /** One-time bonus for whoever first clears / captures the objective. */
-  reward?: CustomCenterHexReward;
+  reward?: CustomFieldReward;
   /** Victory Points for the first clearer (scored in VP mode; 1-10). */
   vp?: number;
 };
@@ -11549,9 +11795,19 @@ export type PendingChoice =
         | "judge-dread"
         | "rule-111"
         | "far-tile-flip"
+        | "player-resource-pick"
+        | "player-vii-pick"
+        | "grail-free-building"
         | "combat-remove-then-search"
         | "combat-remove-another"
         | "polish-spell-or-cast";
+      /**
+       * grail-free-building: one free Town building after BUILD_GRAIL when
+       * `grailBuildReward.freeBuilding` is set. `buildingIds` is index-aligned
+       * with `options` (a trailing "Skip" option has no id). Building is free
+       * (no gold/materials, does not spend the Build token).
+       */
+      grailFreeBuilding?: { townId: TownId; buildingIds: BuildingId[] };
       /**
        * city-hall: the income options for the City Hall (Resource-round) choice
        * under resolution, index-aligned with `options`. Stored here in game
@@ -11765,6 +12021,15 @@ export type PendingChoice =
       removeObstacle?: {
         items: { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }[];
         remaining: number;
+      };
+      /**
+       * player-resource-pick / player-vii-pick: map-designer tile reveal choices.
+       * `tileInstanceId` is the face-down tile being revealed; `viiFields` is the
+       * multi-select set for the Ⅶ pick (index-aligned with options).
+       */
+      playerTilePick?: {
+        tileInstanceId: string;
+        viiFields?: Array<"town" | "dragon_utopia" | "grail">;
       };
       /** skeleton-reinforce: the bronze Few army units that may be flipped free. */
       skeletonReinforce?: { armyUnitIds: string[] };

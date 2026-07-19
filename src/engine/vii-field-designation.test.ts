@@ -600,6 +600,33 @@ describe("center hex — designer guard, reward + Victory Points", () => {
     expect(control.adventure!.rewardQueue.some((reward) => reward.kind === "visit-steps")).toBe(false);
   });
 
+  it("expands Times × Search(X) into multiple Search steps (CONTROL: times absent = one)", () => {
+    const state = centerHexGame({
+      reward: { searchArtifact: 5, searchArtifactTimes: 2, searchSpell: 3 }
+    });
+    const field = objectiveField(state)!;
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = field.spaceId;
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+    const queued = state.adventure!.rewardQueue.find((reward) => reward.kind === "visit-steps");
+    expect(queued && queued.kind === "visit-steps" ? queued.steps : []).toEqual([
+      { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 3 },
+      { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 },
+      { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 }
+    ]);
+
+    // CONTROL: no times field → still exactly one Search of that size.
+    const single = centerHexGame({ reward: { searchArtifact: 5 } }, "vii-search-times-ctl");
+    const sField = objectiveField(single)!;
+    const sHero = getMainHero(single, "p1")!;
+    sHero.spaceId = sField.spaceId;
+    beginFieldVisit(single, sHero.id, sField.spaceId, false);
+    const sQueued = single.adventure!.rewardQueue.find((reward) => reward.kind === "visit-steps");
+    expect(sQueued && sQueued.kind === "visit-steps" ? sQueued.steps : []).toEqual([
+      { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 }
+    ]);
+  });
+
   it("grants the bonus ONCE — a re-visit never re-pays it (the claim latch)", () => {
     const state = centerHexGame({ reward: { valuables: 4 }, vp: 5 });
     const field = objectiveField(state)!;
