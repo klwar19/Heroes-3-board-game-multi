@@ -554,7 +554,13 @@ function makeChoiceGame(): GameState {
     seed: "designed-gate-reveal",
     difficulty: "normal",
     rollFirstPlayer: false,
-    chooseSubterraneanGate: true
+    chooseSubterraneanGate: true,
+    // Isolate the designed-gate reveal/choice: the reveal chain is now
+    // bank-then-gate, so a Blocked-Field tile would open a Creature Bank prompt
+    // ahead of the gate step. Banks are irrelevant to designed-link carving
+    // (the bank↔gate ordering is covered in subterranean-gate-choice.test.ts),
+    // so turn them off to reach the gate step directly.
+    creatureBanks: false
   });
   state.activePlayerId = "p1";
   if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {

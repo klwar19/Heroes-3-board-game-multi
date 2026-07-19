@@ -356,7 +356,7 @@ describe("HeroBoard — Unit Experience Board system button", () => {
     expect(dialog.classList.contains("unitXpWindow")).toBe(true);
     // Per-unit detail is inside: rank ladder + live XP readout.
     expect(dialog.textContent).toContain("Few Marksmen");
-    expect(dialog.textContent).toContain("5 / 9 XP");
+    expect(dialog.textContent).toContain("5 / 14 XP");
     expect(dialog.textContent).toContain("2 · Veteran");
   });
 

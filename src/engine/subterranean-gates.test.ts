@@ -51,7 +51,13 @@ function makeGame(): GameState {
     seed: "subt-gates",
     difficulty: "normal",
     rollFirstPlayer: false,
-    chooseSubterraneanGate: false
+    chooseSubterraneanGate: false,
+    // Isolate the gate crossing/linking mechanic: with the reveal chain now
+    // bank-then-gate, a Blocked-Field tile would open a Creature Bank prompt
+    // ahead of the gate step. Banks are irrelevant here (the bank↔gate ordering
+    // is covered in subterranean-gate-choice.test.ts via revealPastBank), so
+    // turn them off to pin the deterministic nearest-hex gate carve.
+    creatureBanks: false
   });
 }
 

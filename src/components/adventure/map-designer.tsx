@@ -5010,9 +5010,11 @@ export function MapDesigner({
                 ) : null}
 
                 {/* Per-tile settlement: stronger guard / extra VP / hold-to-win.
-                    Complements the map-wide Settlements section in the preset editor. */}
-                {selected.group !== "starting" && selected.group !== "sea" ? (
-                  <div className="popoverViiField popoverSection" aria-label="Special settlement">
+                    Complements the map-wide Settlements section in the preset editor.
+                    Excludes center tiles — their own hex is customized by the
+                    center-hex editor above, whose guard/VP would otherwise clash. */}
+                {selected.group !== "sea" && selected.group !== "center" ? (
+                  <div className="popoverSettlementPlan popoverSection" aria-label="Special settlement">
                     <div className="popoverSectionLabel">Special settlement (this tile)</div>
                     <small className="popoverHint">
                       Make THIS tile&apos;s settlement matter: a stronger first-flag guard, extra Victory Points,

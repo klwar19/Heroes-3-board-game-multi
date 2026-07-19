@@ -15047,7 +15047,8 @@ img.cardBack {
 }
 
 /* Popover: center Ⅶ objective-field picker. */
-.popoverViiField {
+.popoverViiField,
+.popoverSettlementPlan {
   display: flex;
   flex-direction: column;
   gap: 4px;
