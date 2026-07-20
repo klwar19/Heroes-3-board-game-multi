@@ -716,6 +716,9 @@ describe("Banner + describe", () => {
     expect(describeCustomWinCondition({ kind: "obelisks", count: 1 })).toBe("visit 1 Obelisk");
     expect(describeCustomWinCondition({ kind: "defeat-heroes", count: 2 })).toBe("defeat 2 enemy Heroes");
     expect(describeCustomWinCondition({ kind: "defeat-dragon-utopia" })).toBe("defeat the Dragon Utopia");
+    expect(
+      describeCustomWinCondition({ kind: "hold-with-grail", rounds: 3, target: "starting-town" })
+    ).toBe("control Starting Town with the Grail for 3 rounds");
   });
 
   it("MAX_CUSTOM_WIN_CONDITIONS is 4 (the shared cap)", () => {

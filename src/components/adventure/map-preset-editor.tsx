@@ -1088,10 +1088,16 @@ export function MapPresetEditor({
                 else delete next.grailPossessionVp;
                 patchObjectives(next);
               }}
+              title="VP only while a hero carries the Grail or it is built at a Town/Settlement you control. Digging or conquering the dig site alone does NOT award this."
               type="number"
               value={objectives.grailPossessionVp ?? 0}
             />
           </div>
+          <small className="mapPresetHint">
+            Possession VP is for holding the Grail (carried by a hero, or built at a Town/Settlement) —
+            not for conquering or digging the site. Set Victory Condition VP to 0 if dig-to-win should
+            not also score completion VP.
+          </small>
           <div className="mapPresetObjectiveRow" role="group" aria-label="Build Grail at">
             <span className="mapPresetObjectiveLabel">Build Grail at</span>
             <div className="mapPresetChipRow">
@@ -1371,9 +1377,11 @@ export function MapPresetEditor({
                 ? condition.level
                 : condition.kind === "gold"
                   ? condition.amount
-                  : "count" in condition
-                    ? condition.count
-                    : null;
+                  : condition.kind === "hold-with-grail"
+                    ? condition.rounds
+                    : "count" in condition
+                      ? condition.count
+                      : null;
             // Object-scoped kinds moved to Map objects (per-object win ticks);
             // legacy conditions of those kinds still render + edit, the select
             // just stops OFFERING them for new rows.
@@ -1410,6 +1418,55 @@ export function MapPresetEditor({
                       const clamped = Math.max(option.param!.min, Math.min(option.param!.max, n ?? option.param!.min));
                       updateWinCondition(index, { ...condition, [option.param!.field]: clamped } as CustomWinCondition);
                     }}
+                  />
+                ) : null}
+                {condition.kind === "hold-with-grail" ? (
+                  <select
+                    aria-label={`Condition ${index + 1} hold target`}
+                    className="mapPresetSelect"
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const target =
+                        value === "starting-town" ||
+                        value === "settlement" ||
+                        value === "random-town" ||
+                        value === "random-settlement"
+                          ? value
+                          : { spaceId: value };
+                      updateWinCondition(index, { ...condition, target });
+                    }}
+                    title="Where the player must hold while possessing the Grail. Specific hex: type a board space id (e.g. 0,0) under Other, or stamp hold+Requires Grail on a settlement/center in the tile popover."
+                    value={
+                      typeof condition.target === "string"
+                        ? condition.target
+                        : condition.target.spaceId
+                    }
+                  >
+                    <option value="starting-town">Starting Town</option>
+                    <option value="settlement">Any Settlement</option>
+                    <option value="random-town">Random Town</option>
+                    <option value="random-settlement">Random Settlement (Ⅶ)</option>
+                    {typeof condition.target === "object" ? (
+                      <option value={condition.target.spaceId}>
+                        Specific field ({condition.target.spaceId})
+                      </option>
+                    ) : (
+                      <option value="0,0">Specific field (edit space id…)</option>
+                    )}
+                  </select>
+                ) : null}
+                {condition.kind === "hold-with-grail" && typeof condition.target === "object" ? (
+                  <input
+                    aria-label={`Condition ${index + 1} specific field space id`}
+                    className="mapPresetNumber"
+                    onChange={(e) => {
+                      const spaceId = e.target.value.trim() || "0,0";
+                      updateWinCondition(index, { ...condition, target: { spaceId } });
+                    }}
+                    placeholder="row,col"
+                    title="Board hex id (spaceId) of the specific Town/Settlement to hold."
+                    type="text"
+                    value={condition.target.spaceId}
                   />
                 ) : null}
                 <button
@@ -1674,7 +1731,9 @@ export function MapPresetEditor({
             else delete next.guard;
             patch({
               randomTowns:
-                next.guard || next.captureReward || next.incomeGold !== undefined ? next : undefined
+                next.guard || next.captureReward || next.incomeGold !== undefined || next.vp
+                  ? next
+                  : undefined
             });
           }}
         />
@@ -1688,7 +1747,7 @@ export function MapPresetEditor({
             onChange={(e) => {
               const next = { ...(value.randomTowns ?? {}) };
               const income = Math.max(0, Math.min(50, Number(e.target.value) || 0));
-              if (income === 10 && !next.guard && !next.captureReward) {
+              if (income === 10 && !next.guard && !next.captureReward && !next.vp) {
                 patch({ randomTowns: undefined });
                 return;
               }
@@ -1716,11 +1775,35 @@ export function MapPresetEditor({
               }
               patch({
                 randomTowns:
-                  next.guard || next.captureReward || next.incomeGold !== undefined ? next : undefined
+                  next.guard || next.captureReward || next.incomeGold !== undefined || next.vp
+                    ? next
+                    : undefined
               });
             }}
             type="number"
             value={value.randomTowns?.captureReward?.gold ?? 0}
+          />
+          <span className="mapPresetObjectiveLabel">Control VP each</span>
+          <input
+            aria-label="Random Town control VP"
+            className="mapPresetNumber"
+            max={10}
+            min={0}
+            onChange={(e) => {
+              const next = { ...(value.randomTowns ?? {}) };
+              const vp = Math.max(0, Math.min(10, Number(e.target.value) || 0));
+              if (vp > 0) next.vp = vp;
+              else delete next.vp;
+              patch({
+                randomTowns:
+                  next.guard || next.captureReward || next.incomeGold !== undefined || next.vp
+                    ? next
+                    : undefined
+              });
+            }}
+            title="Extra Victory Points per Random Town controlled (VP mode)."
+            type="number"
+            value={value.randomTowns?.vp ?? 0}
           />
         </div>
         </div>
@@ -2644,6 +2727,8 @@ function winConditionGlyph(kind: CustomWinCondition["kind"]): string {
     case "defeat-heroes":
     case "defeat-dragon-utopia":
       return REWARD_GLYPH_ICONS.attack;
+    case "hold-with-grail":
+      return REWARD_GLYPH_ICONS.experience;
   }
 }
 

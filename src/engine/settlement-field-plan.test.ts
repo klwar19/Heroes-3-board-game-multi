@@ -116,7 +116,7 @@ describe("per-tile settlement guard / VP", () => {
     };
     const row = computeVictoryPoints(state).breakdown.find((b) => b.playerId === "p1")!;
     const mapWide = row.rows.find((r) => r.label === "Settlement bonus VP");
-    const special = row.rows.find((r) => r.label === "Special settlement VP");
+    const special = row.rows.find((r) => r.label === "Special control VP");
     expect(mapWide?.vp, "map-wide still counts both").toBe(2);
     expect(special?.vp, "only the special field's VP").toBe(4);
   });

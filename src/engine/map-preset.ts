@@ -51,6 +51,7 @@ import type {
   CustomObjectFieldPlan,
   CustomStartingUnit,
   CustomWinCondition,
+  HoldWithGrailTarget,
   DragonUtopiaGuards,
   FactionId,
   GameDifficulty,
@@ -182,6 +183,7 @@ export function tilePassesSecretFilters(
 /** The three legal center-tile Ⅶ-field designations (allow-list for sanitize). */
 export const VII_FIELD_DESIGNATIONS = new Set<NonNullable<CustomMapTilePlan["viiField"]>>([
   "town",
+  "settlement",
   "dragon_utopia",
   "grail"
 ]);
@@ -369,6 +371,24 @@ export function sanitizeCenterHexPlan(input: unknown): CustomCenterHexPlan | und
   if (vp > 0) {
     centerHex.vp = vp;
   }
+  // controlVp / holdRounds use non-positive-as-absent (clampInt would lift 0 → 1).
+  if (typeof raw.controlVp === "number" && Number.isFinite(raw.controlVp) && raw.controlVp > 0) {
+    centerHex.controlVp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.controlVp));
+  }
+  if (
+    typeof raw.holdRoundsToWin === "number" &&
+    Number.isFinite(raw.holdRoundsToWin) &&
+    raw.holdRoundsToWin > 0
+  ) {
+    centerHex.holdRoundsToWin = Math.min(MAX_SETTLEMENT_HOLD_ROUNDS, Math.floor(raw.holdRoundsToWin));
+  }
+  if (raw.holdRequiresGrail === true) {
+    centerHex.holdRequiresGrail = true;
+  }
+  // holdRequiresGrail alone is meaningless without a hold threshold.
+  if (!centerHex.holdRoundsToWin) {
+    delete centerHex.holdRequiresGrail;
+  }
   if (raw.winCondition === true) {
     centerHex.winCondition = true;
   }
@@ -477,7 +497,8 @@ const CUSTOM_WIN_CONDITION_KINDS = new Set<CustomWinCondition["kind"]>([
   "buildings",
   "obelisks",
   "defeat-heroes",
-  "defeat-dragon-utopia"
+  "defeat-dragon-utopia",
+  "hold-with-grail"
 ]);
 
 /** Max custom win conditions on one map/game (preset + lobby MERGED — sanitisation cap). */
@@ -749,6 +770,12 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
   ) {
     plan.holdRoundsToWin = Math.min(MAX_SETTLEMENT_HOLD_ROUNDS, Math.floor(raw.holdRoundsToWin));
   }
+  if (raw.holdRequiresGrail === true) {
+    plan.holdRequiresGrail = true;
+  }
+  if (!plan.holdRoundsToWin) {
+    delete plan.holdRequiresGrail;
+  }
   if (raw.winCondition === true) {
     plan.winCondition = true;
   }
@@ -920,6 +947,7 @@ function sanitizeRandomTownsConfig(input: unknown): CustomMapRandomTownsConfig |
     guard?: unknown;
     captureReward?: unknown;
     incomeGold?: unknown;
+    vp?: unknown;
   };
   const config: CustomMapRandomTownsConfig = {};
   const guard = sanitizeCustomGuardSpec(raw.guard);
@@ -940,7 +968,12 @@ function sanitizeRandomTownsConfig(input: unknown): CustomMapRandomTownsConfig |
   if (typeof raw.incomeGold === "number" && Number.isFinite(raw.incomeGold) && raw.incomeGold >= 0) {
     config.incomeGold = Math.min(50, Math.floor(raw.incomeGold));
   }
-  return config.guard || config.captureReward || config.incomeGold !== undefined ? config : undefined;
+  if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+    config.vp = Math.min(MAX_SETTLEMENT_VP, Math.floor(raw.vp));
+  }
+  return config.guard || config.captureReward || config.incomeGold !== undefined || config.vp
+    ? config
+    : undefined;
 }
 
 /**
@@ -1123,11 +1156,31 @@ function sanitizeVictoryPoints(input: unknown): CustomMapPreset["victoryPoints"]
  * game on the first action (the designer's responsibility). Returns null for an
  * unusable input so the array filter removes it.
  */
+function sanitizeHoldWithGrailTarget(input: unknown): HoldWithGrailTarget | null {
+  if (input === "starting-town" || input === "settlement" || input === "random-town" || input === "random-settlement") {
+    return input;
+  }
+  if (input && typeof input === "object" && typeof (input as { spaceId?: unknown }).spaceId === "string") {
+    const spaceId = (input as { spaceId: string }).spaceId.trim();
+    if (spaceId.length > 0 && spaceId.length <= 32) {
+      return { spaceId };
+    }
+  }
+  return null;
+}
+
 function sanitizeCustomWinCondition(input: unknown): CustomWinCondition | null {
   if (!input || typeof input !== "object") {
     return null;
   }
-  const raw = input as { kind?: unknown; count?: unknown; level?: unknown; amount?: unknown };
+  const raw = input as {
+    kind?: unknown;
+    count?: unknown;
+    level?: unknown;
+    amount?: unknown;
+    rounds?: unknown;
+    target?: unknown;
+  };
   if (
     typeof raw.kind !== "string" ||
     !CUSTOM_WIN_CONDITION_KINDS.has(raw.kind as CustomWinCondition["kind"])
@@ -1160,6 +1213,17 @@ function sanitizeCustomWinCondition(input: unknown): CustomWinCondition | null {
       return { kind: "defeat-heroes", count: clampInt(raw.count, 1, 6, 1) };
     case "defeat-dragon-utopia":
       return { kind: "defeat-dragon-utopia" };
+    case "hold-with-grail": {
+      const target = sanitizeHoldWithGrailTarget(raw.target);
+      if (!target) {
+        return null;
+      }
+      return {
+        kind: "hold-with-grail",
+        rounds: clampInt(raw.rounds, 1, MAX_SETTLEMENT_HOLD_ROUNDS, 3),
+        target
+      };
+    }
   }
 }
 
@@ -2216,6 +2280,9 @@ export function describeCustomMapPresetEntries(
     if (preset.randomTowns.captureReward) {
       parts.push(`capture +${formatPresetResources(preset.randomTowns.captureReward)}`);
     }
+    if (preset.randomTowns.vp) {
+      parts.push(`+${preset.randomTowns.vp} VP each (control)`);
+    }
     entries.push({ icon: "🏰", text: `Random Town: ${parts.join(", ") || "custom"}` });
   }
   if (preset.objectives) {
@@ -2742,7 +2809,7 @@ export function defaultVictoryPointObjective(kind: VictoryPointObjective["kind"]
 export const CUSTOM_WIN_CONDITION_OPTIONS: {
   id: CustomWinCondition["kind"];
   label: string;
-  param: { field: "count" | "level" | "amount"; label: string; min: number; max: number } | null;
+  param: { field: "count" | "level" | "amount" | "rounds"; label: string; min: number; max: number } | null;
 }[] = [
   { id: "control-towns", label: "Control N Towns", param: { field: "count", label: "Towns", min: 2, max: 8 } },
   { id: "flag-mines", label: "Flag N Mines / Settlements", param: { field: "count", label: "Mines", min: 2, max: 12 } },
@@ -2752,7 +2819,12 @@ export const CUSTOM_WIN_CONDITION_OPTIONS: {
   { id: "buildings", label: "Build N Buildings", param: { field: "count", label: "Buildings", min: 8, max: 15 } },
   { id: "obelisks", label: "Visit N Obelisks (grail maps)", param: { field: "count", label: "Obelisks", min: 1, max: 4 } },
   { id: "defeat-heroes", label: "Defeat N enemy Heroes", param: { field: "count", label: "Heroes", min: 1, max: 6 } },
-  { id: "defeat-dragon-utopia", label: "Defeat the Dragon Utopia", param: null }
+  { id: "defeat-dragon-utopia", label: "Defeat the Dragon Utopia", param: null },
+  {
+    id: "hold-with-grail",
+    label: "Control place + Grail for N rounds",
+    param: { field: "rounds", label: "Rounds", min: 1, max: 10 }
+  }
 ];
 
 /** Fresh default custom win condition when one is added / its kind is switched. */
@@ -2776,5 +2848,7 @@ export function defaultCustomWinCondition(kind: CustomWinCondition["kind"]): Cus
       return { kind: "defeat-heroes", count: 1 };
     case "defeat-dragon-utopia":
       return { kind: "defeat-dragon-utopia" };
+    case "hold-with-grail":
+      return { kind: "hold-with-grail", rounds: 3, target: "starting-town" };
   }
 }
