@@ -8197,7 +8197,7 @@ function GameOptionsPanel({
 
             <div className="optionRow startingHandMulliganRow">
               <OptionRowLabel
-                hint="Default ON: in round 1 you may discard and redraw during your start-of-turn hand step (current normal play). Turn OFF to lock the opening hand — draw only, no discards in round 1."
+                hint="Default ON: after you fill your hand to the limit (keeping or ditching a difficulty-bonus artifact), you may discard 0–N cards to your deck and redraw that many. OFF: only the fill step — ditch bonus artifact(s) or keep them, then draw to 4; no full-hand Mulligan."
                 iconClassName="optionRowIcon crest"
                 iconSrc="/assets/spell-icons/view-air.png"
                 title="First-round hand Mulligan"
@@ -8218,8 +8218,8 @@ function GameOptionsPanel({
               </div>
               <small className="optionHint">
                 {startingHandMulliganOn
-                  ? "On (default): in round 1 you may discard cards during your start-of-turn hand step and draw back up — discarded cards return to the bottom of your deck."
-                  : "Off: in round 1 you cannot discard at the start of your turn — keep the dealt opening hand (draw only if under the limit). Later rounds discard normally."}
+                  ? "On (default): fill to hand limit first (you may ditch a difficulty-bonus artifact), then Mulligan — discard 0–N cards to the bottom of your deck and draw that many."
+                  : "Off: fill to hand limit only — keep or ditch difficulty-bonus card(s), then draw up to 4. No second full-hand Mulligan. Later rounds discard normally."}
               </small>
             </div>
 

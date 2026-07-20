@@ -41,7 +41,14 @@ describe("First-round hand discard returns to the deck (bottom), not the discard
     player.deck = ["ability.luck"]; // the only card on top of the draw pile
     player.discard = [];
 
-    const state = apply(opened, { type: "REFRESH_HAND", playerId: active, discardCardIds: ["stat.attack"] });
+    // Full hand: fill step is empty-discard only; the dump is OPENING_HAND_MULLIGAN.
+    let state = apply(opened, { type: "REFRESH_HAND", playerId: active, discardCardIds: [] });
+    expect(state.players[active]!.canOpeningMulligan).toBe(true);
+    state = apply(state, {
+      type: "OPENING_HAND_MULLIGAN",
+      playerId: active,
+      discardCardIds: ["stat.attack"]
+    });
 
     // Drew the fresh top card, NOT the just-discarded stat.attack…
     expect(state.players[active]!.hand).toEqual(["stat.defense", "stat.power", "stat.knowledge", "ability.luck"]);

@@ -552,19 +552,17 @@ function designerTokenImage(kind: CustomMapObjectKind, number?: -1 | 0 | 1, pair
 }
 
 /**
- * The pending (face-down) shape of a tile token. The physical `slot` is kept so
- * the designer's token stays on the exact hex they picked; setup turns it into
- * an absolute preferred hex before the tile can be rotated on discovery. A
- * colored Gate also preserves its `pair`.
+ * The pending / unknown-layout shape of a tile token (face-down pool OR face-up
+ * "one of N"). The physical `slot` is kept so the designer's token stays on the
+ * exact hex they picked; setup turns it into an absolute preferred hex before
+ * the tile can be rotated on discovery. Pair, guard, reward, VP and exit-mode
+ * extras are ALL preserved (a mode flip must never strip a designer guard).
  */
 function faceDownTokenOf(token: CustomMapTilePlan["token"]): CustomMapTilePlan["token"] {
   if (!token) {
     return undefined;
   }
-  const slotPart = token.slot !== undefined ? { slot: token.slot } : {};
-  return token.kind === "gate"
-    ? { kind: "gate", pair: token.pair, ...slotPart }
-    : { kind: token.kind, ...slotPart };
+  return tileTokenValue(token.kind, token.pair, token.slot, token.guard, token);
 }
 
 /**
@@ -604,10 +602,14 @@ type TokenDropTarget =
  * The tiles a token of `kind` may land on — the CANONICAL on-tile targets shared
  * by armed placement, the placed-object drag (convert → token) and the tile-token
  * drag (move). One token per tile (a tile already carrying a token is off-limits,
- * except the drag's own source). Two target shapes:
- *  - FACE-UP tile with a def → each legal printed slot for the kind (`slot` set);
+ * except the drag's own source). Target shapes:
+ *  - FACE-UP tile with a pinned def → each legal printed slot for the kind;
+ *  - FACE-UP "one of N" / no pinned def → all free physical flower slots when
+ *    the group accepts the kind (printed layout is unknown until setup — same
+ *    model as face-down). A prior early-return here blocked Teleport Gates on
+ *    🎲 1-of-N pool tiles;
  *  - FACE-DOWN tile whose group accepts the kind (`faceDownTokenKinds`) → all
- *    seven physical flower slots. The selected slot becomes the preferred
+ *    free physical flower slots. The selected slot becomes the preferred
  *    absolute in-game hex; if the random tile makes it illegal after reveal,
  *    the normal legal-field picker remains the safe fallback.
  * A Gate reuses the Monolith land legality (`tokenLegalityKind`).
@@ -632,36 +634,36 @@ function computeTileTokenTargets(
         occupied.delete(draggedSlot);
       }
     }
-    if (!plan.faceDown) {
-      if (!plan.tileDefId) {
+    // Unknown printed layout (face-down pool OR face-up "one of N"): pin a
+    // physical flower hex. Known face-up pin uses the printed-field legality.
+    const unknownPrintedLayout = plan.faceDown || !plan.tileDefId;
+    if (unknownPrintedLayout) {
+      if (!faceDownTokenKinds(plan.group).includes(kind)) {
         return;
       }
-      const def = allTileDefinitions[plan.tileDefId];
-      if (!def) {
-        return;
-      }
-      for (const slot of legalTokenSlotsForTileDef(def, legalityKind)) {
+      for (const [slot, hex] of tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0).entries()) {
         if (occupied.has(slot)) {
           continue;
         }
-        out.push({
-          planIndex,
-          slot,
-          hex: tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)[slot],
-          row: plan.row,
-          col: plan.col
-        });
+        out.push({ planIndex, slot, hex, row: plan.row, col: plan.col });
       }
       return;
     }
-    if (!faceDownTokenKinds(plan.group).includes(kind)) {
+    const def = allTileDefinitions[plan.tileDefId!];
+    if (!def) {
       return;
     }
-    for (const [slot, hex] of tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0).entries()) {
+    for (const slot of legalTokenSlotsForTileDef(def, legalityKind)) {
       if (occupied.has(slot)) {
         continue;
       }
-      out.push({ planIndex, slot, hex, row: plan.row, col: plan.col });
+      out.push({
+        planIndex,
+        slot,
+        hex: tileFootprint({ row: plan.row, col: plan.col }, plan.rotation ?? 0)[slot],
+        row: plan.row,
+        col: plan.col
+      });
     }
   });
   return out;
@@ -2995,10 +2997,13 @@ export function MapDesigner({
     }
     const currentRotation = selected.rotation ?? 0;
     const rotation = (((currentRotation + steps) % 6) + 6) % 6;
-    // A face-down token / Field Override pin is pinned to a BOARD hex, not to
-    // unknown printed art. Counter-rotate EVERY pinned slot index so rotating
-    // the hidden tile preview never moves a reserved hex under the cursor.
-    if (selected.faceDown) {
+    // A physical-hex pin (face-down pool OR face-up "one of N" without a pinned
+    // def) is locked to a BOARD hex, not to unknown printed art. Counter-rotate
+    // EVERY pinned slot index so rotating the preview never moves a reserved
+    // hex under the cursor. Face-up exact pins keep the tile-def slot index
+    // (rotation remaps the printed field via the footprint).
+    const physicalHexPins = selected.faceDown || !selected.tileDefId;
+    if (physicalHexPins) {
       const counterRotate = (slot: number | undefined): number | undefined => {
         if (slot === undefined) {
           return undefined;
@@ -3010,7 +3015,7 @@ export function MapDesigner({
         return nextSlot >= 0 ? nextSlot : slot;
       };
       const tokens = planTokens(selected).map((token) =>
-        tileTokenValue(token.kind, token.pair, counterRotate(token.slot))
+        tileTokenValue(token.kind, token.pair, counterRotate(token.slot), token.guard, token)
       );
       const fieldOverrides = planFieldOverrides(selected).map((pin) => {
         const slot = counterRotate(pin.slot);

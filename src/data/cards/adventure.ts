@@ -1268,15 +1268,13 @@ export const adventureCards: CardLibrary = {
   // Combat too (`allowInCombat`): the reducer opens the discard-pick choice
   // immediately mid-fight instead of queuing it on the parked adventure reward
   // queue, and legal-actions offers it in the combat context. Expert is still
-  // map-only: "Remove up to 2 Statistic cards from your hand
-  // or discard pile, take up to 2 different Empowered Statistic cards on top of
-  // your discard pile, then Remove the Scholar." The expert spends one expert
-  // use and removes this card (cost.removeSelf). The swap is interactive
-  // (SCHOLAR_EMPOWER_PICK / SCHOLAR_EMPOWER_GIVE visit steps in adventure.ts):
-  // each removed Statistic is replaced by its OWN-type Empowered version
-  // (distinct types only). It does NOT model removing one type to gain a
-  // different Empowered type — a conscious simplification of the printed text.
-  // Empowered Statistic cards live in src/data/cards/sample.ts.
+  // map-only and matches the printed card: "Remove up to 2 Statistic cards from
+  // your hand or discard pile. Take up to 2 different Empowered Statistic cards
+  // and put them on top of your discard pile. Remove the Scholar." The expert
+  // spends one expert use and removes this card (cost.removeSelf). The two
+  // "up to" phases are INDEPENDENT (remove Attack, take Empowered Power is
+  // legal) — SCHOLAR_EMPOWER_PICK then SCHOLAR_EMPOWER_TAKE visit steps in
+  // adventure.ts. Empowered Statistic cards live in src/data/cards/sample.ts.
   "ability.scholar": {
     id: "ability.scholar",
     name: "Scholar",
@@ -1298,7 +1296,8 @@ export const adventureCards: CardLibrary = {
           effect: { type: "TAKE_FROM_DISCARD", count: 1, allowInCombat: true }
         },
         {
-          label: "Swap up to 2 Statistic cards for their Empowered versions (on top of your discard); Remove this card",
+          label:
+            "Remove up to 2 Statistic cards from hand or discard; take up to 2 different Empowered Statistic cards on top of discard; Remove this card",
           mapOnly: true,
           expertOnly: true,
           cost: { removeSelf: true },

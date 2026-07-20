@@ -77,6 +77,7 @@ import {
   startPlayerTurn,
   tileLayer,
   tokenMayCoverFieldDef,
+  legalTokenSlotsForTileDef,
   victoryModeCountsHeroDefeats
 } from "./adventure";
 import { describeCustomWinCondition } from "./victory-points";
@@ -375,10 +376,19 @@ function applyCustomMapTokens(
       }
 
       const def = allTileDefinitions[tile.tileDefId];
-      const slot = token.slot;
-      if (!def || slot === undefined || !tokenMayCoverFieldDef(def, slot, legalityKind)) {
+      if (!def) {
         continue;
       }
+      // Preferred designer slot when still legal; otherwise first legal printed
+      // field. Face-up "one of N" resolves to a concrete tile here — the
+      // preferred physical pin can land on an illegal printed field for that
+      // roll, and must NOT silently drop the gate (guards + pair ride with it).
+      const legal = legalTokenSlotsForTileDef(def, legalityKind);
+      if (legal.length === 0) {
+        continue;
+      }
+      const slot =
+        token.slot !== undefined && legal.includes(token.slot) ? token.slot : legal[0];
       const spaceId = getTileFootprintSpaceIds(tile)[slot];
       if (!spaceId || adventure.fields[spaceId]?.tileInstanceId !== tile.id) {
         continue;
@@ -672,8 +682,8 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     pvpNeutralControl: false,
     pvpNeutralControlMustAttack: true,
     manualGuardControl: false,
-    // Default ON: round-1 start-of-turn hand discards stay legal (current normal
-    // play). Turn OFF to lock the opening hand — no discard at the start of round 1.
+    // Default ON: after R1 fill-to-limit, arm OPENING_HAND_MULLIGAN (discard 0–N
+    // to deck, draw same). OFF: only fill (ditch bonus artifact or keep, draw to 4).
     startingHandMulligan: true,
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
@@ -2486,9 +2496,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // checks one plain boolean. Available in solo/single-player too (the
     // computer-fighter gate lives in manualGuardControllerId).
     ...(setupOptions.manualGuardControl ? { manualGuardControl: true } : {}),
-    // First-round hand Mulligan (default ON): whether round-1 start-of-turn
-    // discards are allowed. Frozen so every R1 REFRESH_HAND read is a plain
-    // boolean (absent/undefined is treated as ON for legacy snapshots).
+    // First-round opening Mulligan (default ON): after R1 fill-to-limit, arm
+    // optional OPENING_HAND_MULLIGAN (discard 0–N / redraw). OFF = fill only
+    // (ditch under-limit bonus artifact(s), draw to 4). Absent = ON for legacy.
     startingHandMulligan: setupOptions.startingHandMulligan !== false,
     // OPTIONAL Undo mode (debug/testing): frozen here so the SERVER action
     // transaction (both backends) can read it and keep a bounded per-room undo

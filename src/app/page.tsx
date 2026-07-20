@@ -689,7 +689,7 @@ function makeSpellDiceCue(
 }
 
 /** How the hand rail is currently being used. */
-type HandMode = null | "mulligan" | "morale-redraw";
+type HandMode = null | "mulligan" | "opening-mulligan" | "morale-redraw";
 
 export default function Home() {
   const [state, setState] = useState<GameState | null>(null);
@@ -5201,9 +5201,19 @@ export default function Home() {
     // forget it.
     const canDraw =
       Boolean(viewer?.canMulligan) && hasOpenAdventureTurn(state, viewerPlayerId) && !forcedDiscard;
-    // First-round hand Mulligan (default ON): when OFF, the R1 start-of-turn
-    // step is draw-only — no "Discard and draw new".
-    const firstRoundDiscardsAllowed = state.adventure?.startingHandMulligan !== false;
+    // Round-1 fill-to-limit: may only ditch UNDER-limit cards (difficulty bonus
+    // artifact). A full hand on R1 uses "Draw new" only; the full 0–N redraw is
+    // the separate opening-mulligan step when the lobby option is ON.
+    const r1UnderLimitFill =
+      state.round === 1 && canDraw && handCards.length > 0 && handCards.length < handLimit;
+    const r1FullHandNoFillDiscard = state.round === 1 && canDraw && handCards.length >= handLimit;
+    // First-round opening Mulligan (default ON): after fill-to-limit, discard
+    // 0–N to the deck and draw the same number (or keep).
+    const canOpeningMulligan =
+      Boolean(viewer?.canOpeningMulligan) &&
+      hasOpenAdventureTurn(state, viewerPlayerId) &&
+      !forcedDiscard &&
+      !canDraw;
     const hasMorale = (viewer?.morale ?? 0) > 0;
     const moraleRedrawCardAvailable = legalActions.some(
       (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "redraw"
@@ -5219,7 +5229,7 @@ export default function Home() {
     );
     const moraleOverflow = viewer?.moraleOverflow ?? 0;
     const overLimit = viewer ? handCards.length - handDiscards.length - handLimit : 0;
-    const selecting = handMode !== null || forcedDiscard;
+    const selecting = handMode !== null || forcedDiscard || (canOpeningMulligan && handMode === "opening-mulligan");
     // Parallel turns: a bystander (open parallel turn, NOT fighting) keeps the
     // map interactive while someone else's battle runs — they may flip to the
     // map tab and keep taking their quiet moves. Everyone else gets the classic
@@ -5242,11 +5252,16 @@ export default function Home() {
       // selection made the new card look lost. Clearing optimistically is safe:
       // an error leaves the start-of-turn gate armed, so the player can reopen
       // the picker and retry without any card-state mutation.
+      const mode = handMode;
       setHandMode(null);
       setHandDiscards([]);
       setOpenHandIndex(null);
-      if (handMode === "morale-redraw") {
+      if (mode === "morale-redraw") {
         void submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "redraw", discardCardIds });
+        return;
+      }
+      if (mode === "opening-mulligan") {
+        void submitAction({ type: "OPENING_HAND_MULLIGAN", playerId: viewerPlayerId, discardCardIds });
         return;
       }
       void submitAction({ type: "REFRESH_HAND", playerId: viewerPlayerId, discardCardIds });
@@ -5791,19 +5806,30 @@ export default function Home() {
                     actions until the draw is taken. */}
                 {canDraw && handMode === null ? (
                   <span className="handWarning drawWarning">
-                    ⚠ Take your start-of-turn draw first — you must draw (or discard and draw) before moving or using a card.
+                    ⚠ Take your start-of-turn draw first — you must draw (or discard under-limit cards and draw) before moving or using a card.
                   </span>
                 ) : null}
-                {/* Round-1 lock when First-round hand Mulligan is off. */}
-                {canDraw && state.round === 1 && !firstRoundDiscardsAllowed && handMode === null ? (
+                {canOpeningMulligan && handMode === null ? (
                   <span className="handHint mulliganHint">
-                    First-round hand Mulligan is off — keep your opening hand (draw only).
+                    Opening Mulligan available — keep your hand, or discard cards to your deck and redraw that many.
                   </span>
                 ) : null}
-                {/* The mandatory start-of-turn draw: one either/or — draw new, OR
-                    discard and draw new. Required every turn (including the first)
-                    before moving or using a card. When First-round hand Mulligan
-                    is off, round 1 is draw-only. */}
+                {r1FullHandNoFillDiscard && handMode === null ? (
+                  <span className="handHint mulliganHint">
+                    Round 1: draw to fill only. After your hand is full
+                    {state.adventure?.startingHandMulligan !== false
+                      ? ", you may Mulligan cards."
+                      : " (opening Mulligan is off — keep the hand)."}
+                  </span>
+                ) : null}
+                {r1UnderLimitFill && handMode === null ? (
+                  <span className="handHint mulliganHint">
+                    Round 1: you may discard your difficulty-bonus card(s), then draw up to {handLimit}.
+                  </span>
+                ) : null}
+                {/* The mandatory start-of-turn draw: fill to hand limit. Round 1
+                    only allows ditching under-limit cards (bonus artifact). Later
+                    rounds may discard freely then draw up. */}
                 {!forcedDiscard && handMode === null ? (
                   <div className="handButtons">
                     {canDraw ? (
@@ -5818,10 +5844,38 @@ export default function Home() {
                         >
                           Draw new (up to {handLimit})
                         </button>
-                        {handCards.length > 0 &&
-                        (state.round !== 1 || firstRoundDiscardsAllowed) ? (
+                        {handCards.length > 0 && (state.round !== 1 || r1UnderLimitFill) ? (
                           <button className="commandButton" onClick={() => setHandMode("mulligan")} type="button">
-                            Discard and draw new
+                            {state.round === 1
+                              ? "Discard bonus card(s) & draw up"
+                              : "Discard and draw new"}
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {canOpeningMulligan ? (
+                      <>
+                        <span className="handHint">Opening Mulligan:</span>
+                        <button
+                          className="commandButton primary"
+                          onClick={() =>
+                            submitAction({
+                              type: "OPENING_HAND_MULLIGAN",
+                              playerId: viewerPlayerId,
+                              discardCardIds: []
+                            })
+                          }
+                          type="button"
+                        >
+                          Keep hand
+                        </button>
+                        {handCards.length > 0 ? (
+                          <button
+                            className="commandButton"
+                            onClick={() => setHandMode("opening-mulligan")}
+                            type="button"
+                          >
+                            Discard &amp; redraw
                           </button>
                         ) : null}
                       </>
@@ -5861,9 +5915,11 @@ export default function Home() {
                     <span>
                       {handMode === "morale-redraw"
                         ? `Spend morale: discard ${handDiscards.length || "some"} and draw that many.`
-                        : forcedDiscard
-                          ? `Discard at least ${Math.max(0, handCards.length - handLimit)}, then draw up to ${handLimit}.`
-                          : `Discard ${handDiscards.length} card${handDiscards.length === 1 ? "" : "s"}, then draw up to ${handLimit}.`}
+                        : handMode === "opening-mulligan"
+                          ? `Discard ${handDiscards.length} card${handDiscards.length === 1 ? "" : "s"} to your deck and draw that many.`
+                          : forcedDiscard
+                            ? `Discard at least ${Math.max(0, handCards.length - handLimit)}, then draw up to ${handLimit}.`
+                            : `Discard ${handDiscards.length} card${handDiscards.length === 1 ? "" : "s"}, then draw up to ${handLimit}.`}
                     </span>
                     <button
                       className="commandButton primary"
@@ -5875,7 +5931,11 @@ export default function Home() {
                     >
                       {handMode === "morale-redraw"
                         ? `Redraw ${handDiscards.length}`
-                        : `Discard ${handDiscards.length} & draw`}
+                        : handMode === "opening-mulligan"
+                          ? handDiscards.length === 0
+                            ? "Keep hand"
+                            : `Discard ${handDiscards.length} & redraw`
+                          : `Discard ${handDiscards.length} & draw`}
                     </button>
                     {!forcedDiscard ? (
                       <button

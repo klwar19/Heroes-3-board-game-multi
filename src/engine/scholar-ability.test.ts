@@ -12,11 +12,12 @@ import { resolveVisitStep } from "./adventure-reducer";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import type { PlayerId, VisitStep } from "./state";
 
-// Scholar is a CHOOSE_ONE. Basic (map): take 1 card from the discard pile into
-// hand. Expert (map): "Remove up to 2 Statistic cards from your hand or discard
-// pile, take up to 2 different Empowered Statistic cards on top of your discard
-// pile, then Remove the Scholar." The engine swaps each removed Statistic for
-// its own-type Empowered version (distinct types only).
+// Scholar is a CHOOSE_ONE. Basic (map + combat house rule): take 1 card from
+// the discard pile into hand. Expert (map): printed card —
+// "Remove up to 2 Statistic cards from your hand or discard pile. Take up to 2
+// different Empowered Statistic cards and put them on top of your discard pile.
+// Remove the Scholar." The two "up to" phases are independent (remove type ≠
+// take type is legal).
 
 function makeGame(): GameState {
   return createAdventureGameState({ seed: "scholar", difficulty: "normal", rollFirstPlayer: false });
@@ -58,16 +59,21 @@ function chooseStep(state: GameState, playerId: PlayerId, match: (label: string)
   resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId, optionIndex });
 }
 
+function withExpert(state: GameState): GameState {
+  state.players.p1.limits.expertUses = 2;
+  state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+  return state;
+}
+
 // ===========================================================================
 // Card definition — the truth about what runs (CLAUDE.md rule #2)
 // ===========================================================================
 
 describe("Scholar card definition", () => {
-  it("is an implemented CHOOSE_ONE: basic discard-pick + expert Empowered-Statistic swap", () => {
+  it("is an implemented CHOOSE_ONE: basic discard-pick + expert remove-then-take", () => {
     const card = cardLibrary["ability.scholar"];
     expect(card.implementationStatus).toBe("implemented");
     expect(card.tags).not.toContain("needs-implementation");
-    // The old honest stub note must be gone now that the swap actually runs.
     expect(card.tags.join(" ")).not.toContain("not implemented");
     expect(card.effect.type).toBe("CHOOSE_ONE");
     if (card.effect.type !== "CHOOSE_ONE") {
@@ -201,19 +207,26 @@ describe("Scholar basic — usable during Combat", () => {
 });
 
 // ===========================================================================
-// Expert side — swap Statistic cards for their Empowered versions
+// Expert side — remove Statistics, then take different Empowered ones
 // ===========================================================================
 
-describe("Scholar expert — Empowered-Statistic swap", () => {
-  it("swaps a hand and a discard Statistic for Empowered ones on top of discard, and removes the Scholar", () => {
-    let state = ready();
+/** Labels of the current CHOOSE_ONE options (throws if none). */
+function optionLabels(state: GameState): string[] {
+  const step = state.adventure!.pendingVisit?.steps[0] as Extract<VisitStep, { type: "CHOOSE_ONE" }> | undefined;
+  if (step?.type !== "CHOOSE_ONE") {
+    throw new Error(`Expected a CHOOSE_ONE visit step, got ${step?.type ?? "none"}`);
+  }
+  return step.options.map((option) => option.label);
+}
+
+describe("Scholar expert — remove Statistics then take Empowered", () => {
+  it("removes stats, then sequential take-any (and removes the Scholar)", () => {
+    let state = withExpert(ready());
     state.players.p1.hand = ["ability.scholar", "stat.attack"];
     state.players.p1.discard = ["stat.defense"];
-    state.players.p1.limits.expertUses = 2;
-    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
 
     const play = scholarPlay(state, 1);
-    expect(play, "the expert swap should be offered with a Statistic card and a free crown").toBeTruthy();
+    expect(play, "the expert should be offered with a free crown").toBeTruthy();
     expect(play!.action.type === "PLAY_CARD" && play!.action.mode).toBe("expert");
 
     state = apply(state, play!.action);
@@ -224,73 +237,97 @@ describe("Scholar expert — Empowered-Statistic swap", () => {
     expect(state.players.p1.discard).not.toContain("ability.scholar");
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
 
-    // First swap: empower the hand Attack card.
-    chooseStep(state, "p1", (label) => label === "Empower Attack (from hand)");
+    // Phase 1: remove up to 2 Statistic cards.
+    chooseStep(state, "p1", (label) => label === "Remove Attack (from hand)");
     expect(state.players.p1.hand).not.toContain("stat.attack");
     expect(state.players.p1.removed).toContain("stat.attack");
 
-    // Second swap: empower the discard Defense card.
-    chooseStep(state, "p1", (label) => label === "Empower Defense (from discard)");
-
-    // Both Empowered cards sit on top of the discard pile; originals are gone.
-    expect(state.players.p1.discard).toContain("stat.attack.empowered");
-    expect(state.players.p1.discard).toContain("stat.defense.empowered");
+    chooseStep(state, "p1", (label) => label === "Remove Defense (from discard)");
     expect(state.players.p1.discard).not.toContain("stat.defense");
     expect(state.players.p1.removed).toContain("stat.defense");
-    // The swap is finished (no lingering visit).
+
+    // Phase 2 pick 1: ANY of the four Empowered types (including the same types
+    // as just removed — "different" only constrains the two takes vs each other).
+    expect(optionLabels(state)).toEqual(
+      expect.arrayContaining([
+        "Empowered Attack",
+        "Empowered Defense",
+        "Empowered Power",
+        "Empowered Knowledge",
+        "Done"
+      ])
+    );
+    chooseStep(state, "p1", (label) => label === "Empowered Attack");
+    expect(state.players.p1.discard).toContain("stat.attack.empowered");
+
+    // Phase 2 pick 2: any of the other three — not Attack again.
+    const second = optionLabels(state);
+    expect(second).not.toContain("Empowered Attack");
+    expect(second).toEqual(
+      expect.arrayContaining(["Empowered Defense", "Empowered Power", "Empowered Knowledge", "Done"])
+    );
+    chooseStep(state, "p1", (label) => label === "Empowered Power");
+
+    expect(state.players.p1.discard).toContain("stat.attack.empowered");
+    expect(state.players.p1.discard).toContain("stat.power.empowered");
     expect(state.adventure!.pendingVisit).toBeNull();
   });
 
-  it("stops after one swap when the player chooses Done", () => {
-    let state = ready();
+  it("phase 2: first take any Empowered, second any except the first type", () => {
+    let state = withExpert(ready());
+    state.players.p1.hand = ["ability.scholar"];
+    state.players.p1.discard = [];
+
+    state = apply(state, scholarPlay(state, 1)!.action);
+    // No stats to remove → remove phase skips; take opens immediately.
+    const first = optionLabels(state);
+    expect(first.filter((label) => label.startsWith("Empowered "))).toHaveLength(4);
+
+    chooseStep(state, "p1", (label) => label === "Empowered Knowledge");
+
+    const second = optionLabels(state);
+    const empowered = second.filter((label) => label.startsWith("Empowered "));
+    expect(empowered).toHaveLength(3);
+    expect(empowered).not.toContain("Empowered Knowledge");
+    // Any remaining combination is fine — e.g. Defense after Knowledge.
+    chooseStep(state, "p1", (label) => label === "Empowered Defense");
+
+    expect(state.players.p1.discard).toEqual(
+      expect.arrayContaining(["stat.knowledge.empowered", "stat.defense.empowered"])
+    );
+    expect(state.players.p1.discard.filter((id) => id.endsWith(".empowered"))).toHaveLength(2);
+    expect(state.adventure!.pendingVisit).toBeNull();
+  });
+
+  it("allows Done on remove, then still offers the take phase (and Done after one take)", () => {
+    let state = withExpert(ready());
     state.players.p1.hand = ["ability.scholar", "stat.power", "stat.knowledge"];
     state.players.p1.discard = [];
-    state.players.p1.limits.expertUses = 2;
-    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
 
     state = apply(state, scholarPlay(state, 1)!.action);
-    chooseStep(state, "p1", (label) => label === "Empower Power (from hand)");
-    // A second swap is offered (Knowledge); decline it.
+    // Decline every removal.
     chooseStep(state, "p1", (label) => label === "Done");
 
-    expect(state.players.p1.discard).toContain("stat.power.empowered");
-    expect(state.players.p1.discard).not.toContain("stat.knowledge.empowered");
-    expect(state.players.p1.hand).toContain("stat.knowledge"); // untouched
+    // Both stats stay; take phase still opens with all four.
+    expect(state.players.p1.hand).toContain("stat.power");
+    expect(state.players.p1.hand).toContain("stat.knowledge");
+    expect(optionLabels(state).filter((label) => label.startsWith("Empowered "))).toHaveLength(4);
+    chooseStep(state, "p1", (label) => label === "Empowered Attack");
+    chooseStep(state, "p1", (label) => label === "Done");
+
+    expect(state.players.p1.discard).toContain("stat.attack.empowered");
+    expect(state.players.p1.discard).not.toContain("stat.defense.empowered");
     expect(state.adventure!.pendingVisit).toBeNull();
   });
 
-  it("never grants two of the same Empowered type (up to 2 DIFFERENT)", () => {
-    let state = ready();
-    state.players.p1.hand = ["ability.scholar", "stat.attack", "stat.attack"];
+  it("is offered with no Statistic cards (take phase alone is enough)", () => {
+    const state = withExpert(ready());
+    state.players.p1.hand = ["ability.scholar"];
     state.players.p1.discard = [];
-    state.players.p1.limits.expertUses = 2;
-    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
-
-    state = apply(state, scholarPlay(state, 1)!.action);
-    // Only one "Empower Attack" option despite two Attack cards.
-    const step = state.adventure!.pendingVisit?.steps[0] as Extract<VisitStep, { type: "CHOOSE_ONE" }>;
-    const attackOptions = step.options.filter((option) => option.label.startsWith("Empower Attack"));
-    expect(attackOptions).toHaveLength(1);
-
-    chooseStep(state, "p1", (label) => label === "Empower Attack (from hand)");
-
-    // Taking Empowered Attack closes the swap — the second Attack cannot be
-    // turned into a duplicate Empowered Attack, so no further choice is offered.
-    expect(state.adventure!.pendingVisit).toBeNull();
-    expect(state.players.p1.discard.filter((id) => id === "stat.attack.empowered")).toHaveLength(1);
-    expect(state.players.p1.hand).toContain("stat.attack"); // the second copy stays
+    expect(scholarPlay(state, 1), "expert needs only a crown — remove is optional").toBeTruthy();
   });
 
-  it("does not offer the expert swap without a Statistic card to trade in", () => {
-    const state = ready();
-    state.players.p1.hand = ["ability.scholar"]; // no statistic cards
-    state.players.p1.discard = [];
-    state.players.p1.limits.expertUses = 2;
-    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
-    expect(scholarPlay(state, 1)).toBeFalsy();
-  });
-
-  it("does not offer the expert swap with no expert use available (but the basic stays)", () => {
+  it("does not offer the expert with no expert use available (but the basic stays)", () => {
     const state = ready();
     state.players.p1.hand = ["ability.scholar", "stat.attack"];
     state.players.p1.discard = ["spell.magic_arrow"]; // something to take with the basic
