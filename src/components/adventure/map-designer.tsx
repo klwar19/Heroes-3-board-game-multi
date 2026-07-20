@@ -5305,6 +5305,41 @@ export function MapDesigner({
                         : "Face-up: click a tile below. Everyone sees it from the start of the game."}
                 </small>
 
+                {/* Ⅵ–Ⅶ center: after pinning an exact tile, a one-click flip
+                    between "always visible" (face-up) and "hidden until
+                    discovered" (face-down secret pin) without re-picking modes. */}
+                {selected.group === "center" && selected.tileDefId && selectedMode !== "one-of" ? (
+                  <button
+                    aria-pressed={!selected.faceDown}
+                    className={`popoverFilterChip${!selected.faceDown ? " active" : ""}`}
+                    data-testid="center-always-visible"
+                    onClick={() => {
+                      const nextFaceDown = !selected.faceDown;
+                      updateTile(selectedIndex as number, {
+                        faceDown: nextFaceDown,
+                        oneOfTileDefIds: undefined,
+                        secretFeature: undefined,
+                        secretFeatures: undefined,
+                        ...(nextFaceDown
+                          ? tokensPatch(selected, (token) =>
+                              faceDownTokenKinds(selected.group).includes(token.kind)
+                                ? faceDownTokenOf(token)
+                                : undefined
+                            )
+                          : retargetTokensForDef(selected, selected.tileDefId))
+                      });
+                    }}
+                    title={
+                      selected.faceDown
+                        ? "Show this Ⅵ–Ⅶ tile face-up from game start — everyone can see it."
+                        : "Hide this Ⅵ–Ⅶ tile face-down until a hero discovers it."
+                    }
+                    type="button"
+                  >
+                    {selected.faceDown ? "Always visible: OFF (hidden until discovered)" : "Always visible: ON (face-up from start)"}
+                  </button>
+                ) : null}
+
                 {/* Step 2a — Secret: pick one or more landmark features (primary). */}
                 {selectedMode === "secret" && PICKABLE_GROUPS.has(selected.group) ? (
                   <div className="popoverFeaturePicker">
@@ -6276,14 +6311,17 @@ export function MapDesigner({
             )}
 
             {/* Designer yellow borders — deliberate impassable edges, drawn
-                edge-by-edge on the board with the 🖌 tool (legal on any group).
-                The panel just reports the count and offers a one-click Clear. */}
+                edge-by-edge on the board with the 🖌 tool (legal on ANY group,
+                including starting Ⅰ Town tiles). They copy onto the live map
+                at setup and render + seal in game. The panel reports the count
+                and offers a one-click Clear. */}
             <div className="popoverBorders">
               <div className="popoverSectionLabel">Yellow borders (impassable edges)</div>
               <small className="popoverHint">
                 Arm the <strong>🖌 Yellow border</strong> tool and draw on the board, edge by edge — click an edge to seal
-                it, click again to remove, or drag to paint several. Sealed edges block crossing, discovery and placement
-                (only Expert Pathfinding passes) and stay put when the tile is rotated or a face-down slot draws its tile.
+                it, click again to remove, or drag to paint several. Works on every tile including starting Ⅰ Towns.
+                Sealed edges appear in game, block crossing / discovery / placement (only Expert Pathfinding passes),
+                and stay put when the tile is rotated or a face-down slot draws its tile.
               </small>
               <div className="popoverBorderSummary" aria-label="Tile yellow border edges">
                 <span>

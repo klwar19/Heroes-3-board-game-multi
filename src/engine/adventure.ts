@@ -1515,14 +1515,15 @@ export function isTileSlotOuterSealed(tileDefId: string, slot: number): boolean 
 
 /**
  * Master switch for DESIGNER-drawn yellow borders (`extraBorders` / `borderEdges`)
- * SEALING the map — the movement / discovery / placement "lock". Turned OFF for
- * now (the designer tool, its data and the map-registry round-trip are all
- * untouched — this only stops the drawn lines from walling tiles off, and the
- * setup wiring stops copying them onto the live map so no inert wall renders).
- * Flip back to `true` to restore the full sealing feature. Printed tile borders
- * (`outerImpassable`, internal lines) are unaffected either way.
+ * SEALING the map — the movement / discovery / placement "lock". When ON (the
+ * shipped default), setup copies the plan's borders onto live tiles so they
+ * RENDER in game AND wall movement/discovery/placement (Expert Pathfinding still
+ * passes). Applies to every group, including starting Ⅰ Town tiles. When OFF
+ * the designer tool + save round-trip keep the data, but the live map neither
+ * draws nor seals those lines. Printed tile borders (`outerImpassable`, internal
+ * lines) are unaffected either way.
  */
-export const DESIGNER_BORDER_SEALING_ENABLED = false;
+export const DESIGNER_BORDER_SEALING_ENABLED = true;
 
 /** A designer `extraBorders` list holds at most this many entries (one per board direction). */
 export const MAX_DESIGNED_BORDERS = 6;
