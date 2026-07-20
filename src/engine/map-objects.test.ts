@@ -1328,8 +1328,8 @@ describe("object-hex yellow borders", () => {
     );
   }
 
-  // The designer-border sealing "lock" is disabled for now — see
-  // DESIGNER_BORDER_SEALING_ENABLED. This spec runs only when it is re-armed.
+  // Object yellow borders seal only while DESIGNER_BORDER_SEALING_ENABLED is on
+  // (the shipped default). The off-path CONTROL below covers the lock-removed case.
   (DESIGNER_BORDER_SEALING_ENABLED ? it : it.skip)(
     "a sealed object edge blocks the crossing BOTH ways (CONTROL: other edges / no border stay open)",
     () => {

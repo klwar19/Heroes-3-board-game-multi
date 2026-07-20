@@ -528,6 +528,58 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     expect(badge!.textContent).toMatch(/Utopia/);
   });
 
+  it("a pinned Ⅵ–Ⅶ tile can flip Always visible (face-up) ↔ hidden-until-discovered", () => {
+    // After picking an exact center tile, the designer can decide whether that
+    // Ⅶ tile is always face-up or stays secret until discovered — without
+    // re-picking the tile id.
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true, tileDefId: "C1" }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1);
+    const toggle = within(popover as HTMLElement).getByTestId("center-always-visible");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.textContent).toMatch(/OFF/i);
+
+    fireEvent.click(toggle);
+    const afterOn = onChange.mock.calls.at(-1)![0] as CustomMapTilePlan[];
+    const centerOn = afterOn.find((plan) => plan.group === "center")!;
+    expect(centerOn.faceDown, "Always visible ON ⇒ face-up").toBe(false);
+    expect(centerOn.tileDefId).toBe("C1");
+
+    // CONTROL: without a pinned tile the toggle is absent (modes alone decide).
+    cleanup();
+    const bare = renderDesigner([
+      { row: 8, col: 2, group: "starting", faceDown: false },
+      { row: 9, col: 4, group: "center", faceDown: true }
+    ]);
+    const barePopover = openTilePopover(bare, 1);
+    expect(within(barePopover as HTMLElement).queryByTestId("center-always-visible")).toBeNull();
+
+    // From a face-up pin, the toggle turns Always visible OFF → face-down secret.
+    cleanup();
+    const onChange2 = vi.fn();
+    const faceUp = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: false, tileDefId: "C1" }
+      ],
+      onChange2
+    );
+    const faceUpPopover = openTilePopover(faceUp, 1);
+    const onToggle = within(faceUpPopover as HTMLElement).getByTestId("center-always-visible");
+    expect(onToggle.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(onToggle);
+    const afterOff = onChange2.mock.calls.at(-1)![0] as CustomMapTilePlan[];
+    const centerOff = afterOff.find((plan) => plan.group === "center")!;
+    expect(centerOff.faceDown, "Always visible OFF ⇒ face-down secret pin").toBe(true);
+    expect(centerOff.tileDefId).toBe("C1");
+  });
+
   it("renders a win-condition conflict warning when the design fights the victory mode", () => {
     // Grail victory + a centre slot designated away from a Grail, no Near/Far
     // overflow → no Grail dig capacity → the same message the start will BLOCK.
