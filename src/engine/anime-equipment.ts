@@ -111,8 +111,13 @@ export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipm
 // --- Always-on economy / caster grants (each gated by the item equipped) ----
 
 /**
- * Cosmos Pendant (accessory, Grade II) AND Spirit Focus (accessory, Grade II):
- * +1 spell Power each. Folded at the standing chokepoint; both may stack.
+ * Cosmos Pendant (xianxia) AND Spirit Focus (isekai): +1 spell Power each,
+ * folded at the standing chokepoint. Both are the ACCESSORY slot, so at most
+ * ONE is ever worn — each is checked independently only so whichever the hero
+ * carries contributes (they are package-flavoured twins, NOT a +2 stack; the
+ * accessory-slot cap is pinned in anime-equipment.test.ts). The equipment
+ * spell-power fold therefore tops out at +1; further Power comes from the
+ * separate Cultivation / Hero-Grade seams.
  */
 export function equipmentSpellPowerBonus(state: GameState, playerId: PlayerId): number {
   let bonus = 0;
@@ -186,8 +191,12 @@ export function applyEquipmentStageCostumeDefenseToken(
 }
 
 /**
- * Guild-Issue Mail (armor I) / Twin-Tail Ribbon (accessory I) / Eternal Sash
- * (accessory III): +1 hand limit each. Folded at effectiveHandLimit.
+ * Guild-Issue Mail (armor) / Twin-Tail Ribbon (accessory) / Eternal Sash
+ * (accessory): +1 hand limit each. Folded at effectiveHandLimit. Twin-Tail and
+ * Eternal Sash share the ACCESSORY slot (only one is worn), so equipment tops
+ * out at +2 — Guild-Issue Mail (armor) plus one accessory. Each item is checked
+ * independently so whichever pair the hero wears is counted (accessory-slot cap
+ * pinned in anime-equipment.test.ts).
  */
 export function equipmentHandLimitBonus(state: GameState, playerId: PlayerId): number {
   let bonus = 0;

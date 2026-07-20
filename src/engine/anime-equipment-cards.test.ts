@@ -105,6 +105,13 @@ describe("anime equipment CARDS — deck join + play", () => {
       expect(onIds).toContain(id);
       expect(offIds).not.toContain(id);
     }
+    // Invariant: each equipment card joins its matching tier deck EXACTLY ONCE
+    // (grade partitions the ids, so no double-join across tiers) and NONE join
+    // when off. onIds spans both piles of all three decks, so 18 present / 0
+    // absent proves the count is conserved, not just membership.
+    const equipSet = new Set(animeEquipmentCardIds);
+    expect(onIds.filter((id) => equipSet.has(id))).toHaveLength(18);
+    expect(offIds.filter((id) => equipSet.has(id))).toHaveLength(0);
   });
 
   it("playing an equipment card equips it, removes the card, and grants a same-grade REGULAR Artifact", () => {
@@ -137,6 +144,58 @@ describe("anime equipment CARDS — deck join + play", () => {
         (e) =>
           e.type === "EVENT_NOTE" &&
           /receives .* \(minor Artifact\) for using equipment/i.test((e as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+  });
+
+  it("the same-grade grant RESPECTS artifact uniqueness (skips one already held by another seat)", () => {
+    const state = openMap(adventure("eq-grant-unique"));
+    const CARD = EQUIPMENT_IDS.ironBloodSword; // Grade I → minor
+    const minor = state.decks["artifacts-minor"]!;
+    // Two REGULAR (core) minor artifacts already in the pile.
+    const regularMinors = minor.drawPile.filter(
+      (id) => id.startsWith("artifact.") && cardLibrary[id]?.artifactTier === "minor"
+    );
+    const HELD = regularMinors[0];
+    const FREE = regularMinors[1];
+    expect(HELD, "need two regular minor artifacts").toBeTruthy();
+    expect(FREE).toBeTruthy();
+    // Stack so HELD is drawn first (pop = last) then FREE. HELD is globally
+    // unique and now held by p2, so the grant must skip it and take FREE.
+    minor.drawPile = [...minor.drawPile.filter((id) => id !== HELD && id !== FREE), FREE, HELD];
+    state.players.p2.hand = [...state.players.p2.hand, HELD];
+    state.players.p1.hand = [CARD];
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === CARD
+    )?.action;
+    const after = apply(state, play!);
+    expect(after.players.p1.hand).toContain(FREE);
+    expect(after.players.p1.hand).not.toContain(HELD);
+    // Skipped unique card is tucked back under the deck, never destroyed/duplicated.
+    expect(after.decks["artifacts-minor"]!.drawPile).toContain(HELD);
+  });
+
+  it("grants NOTHING (feed note, no crash) when no acquirable regular Artifact of the grade remains", () => {
+    const state = openMap(adventure("eq-grant-empty"));
+    const CARD = EQUIPMENT_IDS.ironBloodSword; // Grade I → minor
+    const minor = state.decks["artifacts-minor"]!;
+    minor.drawPile = [];
+    minor.discardPile = [];
+    state.players.p1.hand = [CARD];
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === CARD
+    )?.action;
+    const after = apply(state, play!);
+    // Still equipped + card removed, but the hand gains NO artifact (deck empty).
+    expect(heroEquipmentOf(after, "p1").weapon).toBe(CARD);
+    expect(after.players.p1.hand).toHaveLength(0);
+    expect(
+      after.eventLog.some(
+        (e) =>
+          e.type === "EVENT_NOTE" &&
+          /finds no minor Artifact left to claim/i.test((e as { message?: string }).message ?? "")
       )
     ).toBe(true);
   });
