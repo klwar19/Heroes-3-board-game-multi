@@ -90,7 +90,9 @@ import {
   sanitizeCustomMapPreset,
   sanitizeCustomWinConditions,
   planAllowedSecretFeatures,
+  planExcludedSecretFeatures,
   tileMatchesAnySecretFeature,
+  tilePassesSecretFilters,
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS,
   objectGuardSpec,
@@ -1154,6 +1156,16 @@ export function validateCustomMapPlan(
         return false;
       }
     }
+    if (plan.excludeFeatures !== undefined) {
+      if (!Array.isArray(plan.excludeFeatures) || !plan.excludeFeatures.every(isSecretTileFeature)) {
+        problems.push(`Tile ${index + 1}: invalid exclude-landmark set.`);
+        return false;
+      }
+      if (!plan.faceDown || plan.group === "starting") {
+        problems.push(`Tile ${index + 1}: landmark bans only apply to a face-down non-starting slot.`);
+        return false;
+      }
+    }
     return true;
   });
 
@@ -2100,21 +2112,25 @@ function takeRemainingGrailTiles(centerPool: string[], max: number): string[] {
 }
 
 /**
- * Pops a tile matching a designer Secret feature from a shuffled pool.
- * Walks from the top of the remaining supply (end of the array) so the draw
- * is seed-deterministic after the pool was shuffled. Optional sea/sub band
- * filters keep the pick inside the slot's guard band.
+ * Pops a tile from a shuffled pool that passes the slot's include + exclude
+ * landmark filters. Walks from the top of the remaining supply (end of the
+ * array) so the draw is seed-deterministic after the pool was shuffled.
+ * Optional sea/sub band filters keep the pick inside the slot's guard band.
+ *
+ * Exclude is REAL: a tile carrying any banned landmark is never chosen on the
+ * first pass. Callers that need a soft fallback (empty after filter) pop
+ * unfiltered themselves and emit a note.
  */
-function popTileMatchingFeature(
+function popTileMatchingFilters(
   pool: string[],
-  feature: SecretTileFeature | SecretTileFeature[],
+  allowed: SecretTileFeature[],
+  excluded: SecretTileFeature[],
   options?: {
     group?: CustomMapTilePlan["group"];
     seaBand?: CustomMapTilePlan["seaBand"];
     subBand?: CustomMapTilePlan["subBand"];
   }
 ): string | undefined {
-  const features = Array.isArray(feature) ? feature : [feature];
   for (let index = pool.length - 1; index >= 0; index -= 1) {
     const tileDefId = pool[index];
     const def = allTileDefinitions[tileDefId];
@@ -2134,11 +2150,25 @@ function popTileMatchingFeature(
     ) {
       continue;
     }
-    if (tileMatchesAnySecretFeature(def, features)) {
+    if (tilePassesSecretFilters(def, allowed, excluded)) {
       return pool.splice(index, 1)[0];
     }
   }
   return undefined;
+}
+
+/** @deprecated Prefer {@link popTileMatchingFilters} — kept for any external callers. */
+function popTileMatchingFeature(
+  pool: string[],
+  feature: SecretTileFeature | SecretTileFeature[],
+  options?: {
+    group?: CustomMapTilePlan["group"];
+    seaBand?: CustomMapTilePlan["seaBand"];
+    subBand?: CustomMapTilePlan["subBand"];
+  }
+): string | undefined {
+  const features = Array.isArray(feature) ? feature : [feature];
+  return popTileMatchingFilters(pool, features, [], options);
 }
 
 /**
@@ -2828,29 +2858,31 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         continue;
       }
       const center = { row: plan.row, col: plan.col };
-      // Folded allowed-landmark set (multi-value `secretFeatures` + the legacy
-      // single `secretFeature`). Empty = a pure-random draw.
+      // Folded allowed-landmark set (multi-value `secretFeatures` + legacy
+      // single `secretFeature`) and exclude bans (`excludeFeatures`). Empty
+      // allowed = pure-random (still honouring excludes). Exact pins ignore both.
       const allowedFeatures = planAllowedSecretFeatures(plan);
+      const excludedFeatures = planExcludedSecretFeatures(plan);
       if (plan.faceDown) {
         let tileDefId: string | undefined;
-        // Exact pin (or a resolved "one of" pick) wins over a feature filter.
+        // Exact pin (or a resolved "one of" pick) wins over include/exclude.
         const pinnedId = effectiveExactTileDefId(plan);
         if (pinnedId && allTileDefinitions[pinnedId]) {
           tileDefId = pinnedId;
-        } else if (allowedFeatures.length > 0) {
-          // Feature secret: random remaining tile that has ANY allowed landmark
-          // (e.g. valuables OR gold). Prefer the slot's own pool; fall back to an
-          // unfiltered draw so a starved pool never leaves an empty hole on the
-          // board — and note the table so players know the guarantee soft-failed.
+        } else if (allowedFeatures.length > 0 || excludedFeatures.length > 0) {
+          // Include and/or exclude: pop the first pool tile that matches the
+          // include OR-set (if any) AND none of the banned landmarks. Exclude
+          // is real — "no Obelisk" never lands an obelisk tile on the first try.
           const pool = pools[plan.group];
           if (pool) {
-            tileDefId = popTileMatchingFeature(pool, allowedFeatures, {
+            tileDefId = popTileMatchingFilters(pool, allowedFeatures, excludedFeatures, {
               group: plan.group,
               seaBand: plan.seaBand,
               subBand: plan.subBand
             });
           }
           if (!tileDefId) {
+            // Soft fallback only when the filtered pool is empty.
             if (plan.group === "sea") {
               tileDefId = popSeaTile(plan.seaBand);
             } else if (plan.group === "subterranean") {
@@ -2859,11 +2891,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
               tileDefId = pools[plan.group]?.pop();
             }
             if (tileDefId) {
+              const label =
+                allowedFeatures.length > 0
+                  ? `Secret “${allowedFeatures.map(secretFeatureFullLabel).join(" / ")}”`
+                  : `Exclude “${excludedFeatures.map(secretFeatureFullLabel).join(" / ")}”`;
               appendEvent(state, {
                 type: "MAP_SECRET_FEATURE_FALLBACK",
-                feature: allowedFeatures[0],
+                feature: allowedFeatures[0] ?? excludedFeatures[0],
                 group: plan.group,
-                message: `Secret “${allowedFeatures.map(secretFeatureFullLabel).join(" / ")}” could not be fulfilled on a ${plan.group} slot — no matching tile left in the pool. Drew a random tile instead.`
+                message: `${label} could not be fulfilled on a ${plan.group} slot — no matching tile left in the pool. Drew a random tile instead.`
               });
             }
           }
@@ -2893,6 +2929,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           applyDesignedUnderground(tile, plan);
           applyDesignedViiField(adventure, tile, plan);
           applyDesignedSettlement(adventure, tile, plan);
+          if (excludedFeatures.length > 0) {
+            tile.excludeFeatures = [...excludedFeatures];
+          }
           if (planTokens(plan).length > 0) {
             plannedTokens.push({ plan, tile });
           }

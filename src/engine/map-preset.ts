@@ -24,7 +24,12 @@ import {
   describeCustomWinCondition,
   describeVictoryPointObjective
 } from "./victory-points";
-import { describeGuardArmyGrouped, isCustomGuardUnitEntry } from "./map-design-features";
+import {
+  describeGuardArmyGrouped,
+  isCustomGuardUnitEntry,
+  isPackGuardSlot,
+  packGuardUnitDefId
+} from "./map-design-features";
 import type {
   CustomCenterHexPlan,
   CustomCenterHexReward,
@@ -47,6 +52,7 @@ import type {
   CustomStartingUnit,
   CustomWinCondition,
   DragonUtopiaGuards,
+  FactionId,
   GameDifficulty,
   GameSetupOptions,
   SecretTileFeature,
@@ -128,12 +134,49 @@ export function planAllowedSecretFeatures(
   return [...new Set(list.filter(isSecretTileFeatureId))];
 }
 
+/**
+ * Landmark bans on a face-down plan (`excludeFeatures`). Empty = no ban.
+ * Shared by setup draw, designer counts, and demand warnings.
+ */
+export function planExcludedSecretFeatures(
+  plan: Pick<CustomMapTilePlan, "excludeFeatures">
+): SecretTileFeature[] {
+  const list = plan.excludeFeatures ?? [];
+  return [...new Set(list.filter(isSecretTileFeatureId))];
+}
+
 /** Whether a tile definition matches ANY of the allowed secret landmarks. */
 export function tileMatchesAnySecretFeature(
   def: TileDefinition,
   features: SecretTileFeature[]
 ): boolean {
   return features.some((feature) => tileMatchesSecretFeature(def, feature));
+}
+
+/** Whether a tile definition matches ANY banned landmark. */
+export function tileMatchesAnyExcludedFeature(
+  def: TileDefinition,
+  features: SecretTileFeature[]
+): boolean {
+  return features.length > 0 && features.some((feature) => tileMatchesSecretFeature(def, feature));
+}
+
+/**
+ * Pool-draw predicate: include OR-list (empty = any) AND NOT any exclude.
+ * Exact pins / one-of do not use this — the designer already named the tile.
+ */
+export function tilePassesSecretFilters(
+  def: TileDefinition,
+  allowed: SecretTileFeature[],
+  excluded: SecretTileFeature[]
+): boolean {
+  if (allowed.length > 0 && !tileMatchesAnySecretFeature(def, allowed)) {
+    return false;
+  }
+  if (tileMatchesAnyExcludedFeature(def, excluded)) {
+    return false;
+  }
+  return true;
 }
 
 /** The three legal center-tile Ⅶ-field designations (allow-list for sanitize). */
@@ -171,32 +214,71 @@ const CENTER_HEX_SEARCH_SPECS = [
 
 /**
  * True when `unitDefId` is a legal certain-army entry: a Neutral unit, a
- * `random:<tier>` slot, or a `pack:<unitDefId>` faction Pack slot.
+ * `random:<tier>` Neutral slot, a `random-pack:<tier>` Pack slot, or a
+ * `pack:<unitDefId>` named Pack.
  */
 export function isCustomGuardUnit(unitDefId: unknown): unitDefId is string {
   return isCustomGuardUnitEntry(unitDefId);
+}
+
+/** Known faction ids that may appear on packFaction (from unit defs). */
+const PACK_FACTION_IDS = new Set(
+  Object.values(coreUnitDefinitions)
+    .filter((d) => d.pack)
+    .map((d) => d.faction as string)
+);
+
+function sanitizePackFaction(value: unknown): FactionId | "random" | undefined {
+  if (value === "random") return "random";
+  if (typeof value === "string" && PACK_FACTION_IDS.has(value)) {
+    return value as FactionId;
+  }
+  return undefined;
 }
 
 /**
  * Clamp a designer guard ({@link CustomGuardSpec}) to exactly one clean arm:
  * a certain army of known entries (capped, unknown ids dropped) or a level
  * 1-7; `undefined` when nothing valid remains. `units` wins when both are
- * present. Shared by the persistence sanitiser, setup validation and the
- * designer UI so the clamp can never drift.
+ * present. Keeps `levelArmy: "packs"` and `packFaction` when valid.
+ * Shared by the persistence sanitiser, setup validation and the designer UI.
  */
 export function sanitizeCustomGuardSpec(input: unknown): CustomGuardSpec | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
   }
   const raw = input as Record<string, unknown>;
-  const units = Array.isArray(raw.units)
+  let units = Array.isArray(raw.units)
     ? raw.units.filter(isCustomGuardUnit).slice(0, MAX_CUSTOM_GUARD_UNITS)
     : [];
+  const packFaction = sanitizePackFaction(raw.packFaction);
+
   if (units.length > 0) {
-    return { units };
+    // Drop named packs that contradict a concrete faction lock.
+    if (packFaction && packFaction !== "random") {
+      units = units.filter((id) => {
+        if (!isPackGuardSlot(id)) return true;
+        const unitDefId = packGuardUnitDefId(id);
+        return unitDefId ? coreUnitDefinitions[unitDefId]?.faction === packFaction : false;
+      });
+    }
+    if (units.length === 0) {
+      // Empty after faction strip — fall through to level if present.
+    } else {
+      return {
+        units,
+        ...(packFaction ? { packFaction } : {})
+      };
+    }
   }
   const level = clampInt(raw.level, 1, 7, 0);
-  return level > 0 ? { level } : undefined;
+  if (level <= 0) return undefined;
+  const levelArmy = raw.levelArmy === "packs" ? ("packs" as const) : undefined;
+  return {
+    level,
+    ...(levelArmy ? { levelArmy } : {}),
+    ...(packFaction && levelArmy === "packs" ? { packFaction } : {})
+  };
 }
 
 /**
@@ -1894,9 +1976,22 @@ export function describeVictoryPointsConfig(
 export function describeGuardSpec(guard: CustomGuardSpec): string {
   if (guard.units && guard.units.length > 0) {
     const grouped = describeGuardArmyGrouped(guard.units);
-    return grouped || `${guard.units.length}-unit army`;
+    const base = grouped || `${guard.units.length}-unit army`;
+    if (guard.packFaction === "random") return `${base} · random faction packs`;
+    if (guard.packFaction) return `${base} · ${guard.packFaction} packs`;
+    return base;
   }
-  return guard.level ? `level ${guard.level}` : "none";
+  if (!guard.level) return "none";
+  if (guard.levelArmy === "packs") {
+    const fac =
+      guard.packFaction === "random"
+        ? " · random faction"
+        : guard.packFaction
+          ? ` · ${guard.packFaction}`
+          : "";
+    return `level ${guard.level} packs${fac}`;
+  }
+  return `level ${guard.level}`;
 }
 
 /** Plain-words description of the awards a "bonus" Obelisk grants. */
@@ -2356,7 +2451,8 @@ export function secretFeatureDemandWarnings(plans: CustomMapTilePlan[]): string[
   const demand = new Map<
     string,
     {
-      feature: SecretTileFeature;
+      features: SecretTileFeature[];
+      excluded: SecretTileFeature[];
       group: CustomMapTilePlan["group"];
       seaBand?: CustomMapTilePlan["seaBand"];
       subBand?: CustomMapTilePlan["subBand"];
@@ -2364,12 +2460,18 @@ export function secretFeatureDemandWarnings(plans: CustomMapTilePlan[]): string[
     }
   >();
   for (const plan of plans) {
-    if (!plan.faceDown || !plan.secretFeature || plan.tileDefId) {
+    if (!plan.faceDown || plan.tileDefId) {
       continue;
     }
-    const key = `${plan.group}:${plan.secretFeature}:${plan.seaBand ?? ""}:${plan.subBand ?? ""}`;
+    const features = planAllowedSecretFeatures(plan);
+    const excluded = planExcludedSecretFeatures(plan);
+    if (features.length === 0 && excluded.length === 0) {
+      continue;
+    }
+    const key = `${plan.group}:${features.join(",")}:${excluded.join(",")}:${plan.seaBand ?? ""}:${plan.subBand ?? ""}`;
     const current = demand.get(key) ?? {
-      feature: plan.secretFeature,
+      features,
+      excluded,
       group: plan.group,
       seaBand: plan.seaBand,
       subBand: plan.subBand,
@@ -2380,18 +2482,31 @@ export function secretFeatureDemandWarnings(plans: CustomMapTilePlan[]): string[
   }
   const warnings: string[] = [];
   for (const entry of demand.values()) {
-    const supply = countPoolTilesMatchingFeature(entry.group, entry.feature, {
-      seaBand: entry.seaBand,
-      subBand: entry.subBand,
-      excludeTileIds: pinnedIds
-    });
+    // Count tiles that pass include AND exclude (not just the first include).
+    const supply = Object.values(allTileDefinitions).filter((def) => {
+      if (def.group !== entry.group) return false;
+      if (pinnedIds.has(def.id)) return false;
+      if (entry.group === "sea" && entry.seaBand && seaTileBand(def) !== entry.seaBand) return false;
+      if (entry.group === "subterranean" && entry.subBand && subterraneanTileBand(def) !== entry.subBand) {
+        return false;
+      }
+      return tilePassesSecretFilters(def, entry.features, entry.excluded);
+    }).length;
+    const includeLabel =
+      entry.features.length > 0
+        ? entry.features.map((f) => FEATURE_LABELS[f] ?? f).join(" / ")
+        : "any";
+    const excludeLabel =
+      entry.excluded.length > 0
+        ? ` excluding ${entry.excluded.map((f) => FEATURE_LABELS[f] ?? f).join(" / ")}`
+        : "";
     if (supply === 0) {
       warnings.push(
-        `Secret “${FEATURE_LABELS[entry.feature] ?? entry.feature}” on ${entry.group}: no tiles in that pool have it — in game the slot becomes pure random.`
+        `Filter “${includeLabel}”${excludeLabel} on ${entry.group}: no tiles in that pool match — in game the slot falls back to pure random.`
       );
     } else if (entry.count > supply) {
       warnings.push(
-        `Secret “${FEATURE_LABELS[entry.feature] ?? entry.feature}” on ${entry.group}: ${entry.count} slots need it but only ${supply} matching tiles exist — extras fall back to random.`
+        `Filter “${includeLabel}”${excludeLabel} on ${entry.group}: ${entry.count} slots need it but only ${supply} matching tiles exist — extras fall back to random.`
       );
     }
   }

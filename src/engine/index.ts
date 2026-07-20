@@ -394,7 +394,10 @@ export {
   MAX_VICTORY_POINT_OBJECTIVES,
   mergeCustomWinConditions,
   planAllowedSecretFeatures,
+  planExcludedSecretFeatures,
   tileMatchesAnySecretFeature,
+  tileMatchesAnyExcludedFeature,
+  tilePassesSecretFilters,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_DIFFICULTY_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
@@ -435,13 +438,20 @@ export {
   groupGuardUnitEntries,
   guardUnitEntryLabel,
   isCustomGuardUnitEntry,
+  isAnyPackGuardSlot,
   isPackGuardSlot,
   isRandomGuardSlot,
+  isRandomPackGuardSlot,
+  isLevelPackGuard,
+  packUnitPoolForTier,
+  resolveCustomGuardDraws,
+  resolveLevelPackGuardDraws,
   PACK_GUARD_PREFIX,
   RANDOM_GUARD_PREFIX,
+  RANDOM_PACK_GUARD_PREFIX,
   RANDOM_GUARD_TIERS
 } from "./map-design-features";
-export type { RandomGuardTier } from "./map-design-features";
+export type { RandomGuardTier, ResolveCustomGuardOptions } from "./map-design-features";
 export {
   computeVictoryPoints,
   controlledSettlementCount,

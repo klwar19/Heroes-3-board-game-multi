@@ -7925,6 +7925,12 @@ export type MapTileState = {
    */
   playerResourcePick?: boolean;
   /**
+   * Landmark bans from {@link CustomMapTilePlan.excludeFeatures}, carried onto
+   * the face-down instance so resource-pick reassignment still refuses banned
+   * landmarks (e.g. no Obelisk). Public designer intent.
+   */
+  excludeFeatures?: SecretTileFeature[];
+  /**
    * Designer center-hex customization (guard / first-clear reward / VP) carried
    * from {@link CustomMapTilePlan.centerHex} onto the placed instance and folded
    * onto the difficulty-7 field when it materializes. SECRET like `viiField`:
@@ -8109,13 +8115,28 @@ export type MapFieldState = {
    */
   customGuardUnits?: string[];
   /**
+   * Stamped from {@link CustomGuardSpec.packFaction} for certain-army and
+   * level-as-packs guards. Fight-time resolve locks every Pack draw to this
+   * faction (`"random"` rolls once per fight). Absent = free mix. Cleared with
+   * the guard.
+   */
+  customGuardPackFaction?: FactionId | "random";
+  /**
    * Designer guard LEVEL on a bank-style object field (Garrison / Keymaster's
    * Tent / one-way monolith entrance): the neutral army is drawn at this level
    * while the FIGHT itself stays bank-style (no Quick Combat, no experience,
    * no Round limit). Plain guarded objects (teleport tokens, center hexes) do
    * NOT use this — their `difficulty` alone drives a normal guard fight.
+   * Also set for map-wide level guards so bank-style objects keep the designed
+   * level when combat difficulty is forced to 0.
    */
   customGuardLevel?: number;
+  /**
+   * How a designer LEVEL guard mints bodies: `"packs"` = real Pack units from
+   * the Field Difficulty table counts; absent / `"neutral"` = classic Neutral
+   * deck draws. Stamped from {@link CustomGuardSpec.levelArmy}.
+   */
+  customGuardLevelArmy?: "neutral" | "packs";
   /**
    * Whether this field's guard was set by the MAP DESIGNER (a {@link CustomGuardSpec}
    * — exact army OR level — a map-wide settlement/obelisk guard, or a center-hex
@@ -11104,6 +11125,14 @@ export type CustomMapTilePlan = {
    * Cleared for face-up and pure-random slots.
    */
   secretFeatures?: SecretTileFeature[];
+  /**
+   * Face-down pool filter: the drawn tile must NOT carry ANY of these landmarks
+   * (e.g. `["obelisk"]` = "no Obelisk"). Composes with {@link secretFeatures}
+   * (include AND NOT exclude). Exact pins / one-of lists ignore this — the
+   * designer already named the tile. Absent = no ban (legacy / pure random).
+   * Cleared for face-up slots.
+   */
+  excludeFeatures?: SecretTileFeature[];
   /** Clockwise 60° steps (0-5, default 0). Honoured face-up and face-down. */
   rotation?: number;
   /**
@@ -11331,24 +11360,32 @@ export type CustomMapSettlementFieldPlan = {
 /**
  * A designer guard on a single hex — the "monster" of a customized center hex,
  * map object or Location Token. Exactly one arm is meaningful:
- *   - `level` (1-7): a normal Field-Difficulty guard — the neutral army is
- *     drawn from the tier table exactly like a printed guard of that level
- *     (Quick Combat and experience follow the level as usual).
+ *   - `level` (1-7): Field-Difficulty composition from {@link NEUTRAL_ARMY_TABLE}.
+ *     Quick Combat / experience follow the level as usual.
+ *     {@link levelArmy} chooses HOW those bodies mint:
+ *       • `"neutral"` / absent — classic Neutral deck draws (legacy)
+ *       • `"packs"` — real faction Pack units of those tiers (level guard as units)
  *   - `units`: a CERTAIN ARMY — up to {@link MAX_CUSTOM_GUARD_UNITS} entries,
  *     each one of:
  *       • a Neutral unit def id (classic certain army),
  *       • `random:bronze|silver|gold|azure` — roll a random Neutral of that
  *         tier at fight time (seeded),
- *       • `pack:<unitDefId>` — a faction Pack side (Random Town custom armies).
- *     Minted for the fight like Creature-Bank guards (never drawn from nor
- *     recycled to the tier decks). Quick Combat and Diplomacy never bypass a
- *     certain army — the fight is always real; its experience uses the field's
- *     difficulty, derived from the army's tiers.
+ *       • `random-pack:bronze|silver|gold|azure` — roll a random faction Pack
+ *         of that tier at fight time (seeded),
+ *       • `pack:<unitDefId>` — a named faction Pack side (Random Town armies).
+ *     Minted Creature-Bank style (never deck-drawn). Never Quick-Combat skipped;
+ *     experience uses difficulty derived from the army's tiers.
+ *   - `packFaction`: every Pack / random-pack / level-as-packs body shares one
+ *     faction — a concrete {@link FactionId}, or `"random"` (roll once per fight).
+ *     Neutral / `random:` slots ignore it. Absent = free mix (legacy).
  * Sanitisers keep exactly one arm (`units` wins) and clamp both.
  */
 export type CustomGuardSpec = {
   level?: number;
+  /** How a level arm mints bodies. Absent = `"neutral"` (legacy). */
+  levelArmy?: "neutral" | "packs";
   units?: string[];
+  packFaction?: FactionId | "random";
 };
 
 /** How many exact units a {@link CustomGuardSpec.units} army may field. */

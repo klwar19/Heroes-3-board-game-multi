@@ -39,6 +39,8 @@ import {
   secretFeatureFullLabel,
   secretFeatureLabel,
   planAllowedSecretFeatures,
+  planExcludedSecretFeatures,
+  tilePassesSecretFilters,
   SECRET_TILE_FEATURES,
   subterraneanTileBand,
   TILE_GROUP_BAND_LABELS,
@@ -2794,12 +2796,31 @@ export function MapDesigner({
       .filter((plan, index) => plan.tileDefId && index !== selectedIndex)
       .map((plan) => plan.tileDefId as string)
   );
-  const availableSecretFeatures = SECRET_TILE_FEATURES.map((feature) => ({
-    ...feature,
-    matchCount: pickableTiles.filter(
-      (tile) => !pinnedElsewhere.has(tile.id) && tileMatchesSecretFeature(tile, feature.id)
-    ).length
-  })).filter((feature) => feature.matchCount > 0);
+  const selectedExcludeSet =
+    selected && selected.group !== "starting" ? planExcludedSecretFeatures(selected) : [];
+  const selectedIncludeSet =
+    selected && selected.group !== "starting" ? planAllowedSecretFeatures(selected) : [];
+
+  const availableSecretFeatures = SECRET_TILE_FEATURES.map((feature) => {
+    // Count tiles that match this include feature AND pass current excludes.
+    const matchCount = pickableTiles.filter((tile) => {
+      if (pinnedElsewhere.has(tile.id)) return false;
+      return tilePassesSecretFilters(tile, [feature.id], selectedExcludeSet);
+    }).length;
+    return { ...feature, matchCount };
+  }).filter((feature) => feature.matchCount > 0 || selectedIncludeSet.includes(feature.id));
+
+  /** Ban chips: every landmark; count = how many pool tiles would still pass if this ban is on. */
+  const availableExcludeFeatures = SECRET_TILE_FEATURES.map((feature) => {
+    const nextExcluded = selectedExcludeSet.includes(feature.id)
+      ? selectedExcludeSet
+      : [...selectedExcludeSet, feature.id];
+    const matchCount = pickableTiles.filter((tile) => {
+      if (pinnedElsewhere.has(tile.id)) return false;
+      return tilePassesSecretFilters(tile, selectedIncludeSet, nextExcluded);
+    }).length;
+    return { ...feature, matchCount };
+  });
 
   /** Apply Random / Secret / Face-up in one click. */
   const setSelectedSlotMode = (mode: TileSlotMode) => {
@@ -2815,6 +2836,11 @@ export function MapDesigner({
     const faceDownTokens = tokensPatch(selected, (token) =>
       faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
     );
+    // Keep landmark bans when staying face-down; clear on face-up / one-of.
+    const keepExcludes =
+      selected.excludeFeatures && selected.excludeFeatures.length > 0
+        ? { excludeFeatures: selected.excludeFeatures }
+        : { excludeFeatures: undefined };
 
     if (mode === "random") {
       updateTile(selectedIndex, {
@@ -2823,6 +2849,7 @@ export function MapDesigner({
         oneOfTileDefIds: undefined,
         secretFeature: undefined,
         secretFeatures: undefined,
+        ...keepExcludes,
         ...faceDownTokens
       });
       return;
@@ -2841,6 +2868,7 @@ export function MapDesigner({
         oneOfTileDefIds: undefined,
         secretFeature: undefined,
         secretFeatures: features.length > 0 ? features : undefined,
+        ...keepExcludes,
         ...faceDownTokens
       });
       return;
@@ -2868,6 +2896,7 @@ export function MapDesigner({
         oneOfTileDefIds: seedList,
         secretFeature: undefined,
         secretFeatures: undefined,
+        excludeFeatures: undefined,
         ...tokensPatch(selected, (token) =>
           faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
         )
@@ -2884,6 +2913,7 @@ export function MapDesigner({
       oneOfTileDefIds: undefined,
       secretFeature: undefined,
       secretFeatures: undefined,
+      excludeFeatures: undefined,
       ...retargetTokensForDef(selected, fallbackId)
     });
   };
@@ -2907,6 +2937,31 @@ export function MapDesigner({
       oneOfTileDefIds: undefined,
       secretFeature: undefined,
       secretFeatures: nextSet.length > 0 ? nextSet : undefined,
+      ...tokensPatch(selected, (token) =>
+        faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
+      )
+    });
+  };
+
+  /**
+   * Random / Secret: TOGGLE a banned landmark. The drawn tile must NOT carry
+   * any banned feature (e.g. "no Obelisk"). Real pool filter at setup.
+   */
+  const pickExcludeFeature = (feature: SecretTileFeature) => {
+    if (selectedIndex === null || !selected || selected.group === "starting") {
+      return;
+    }
+    const current = planExcludedSecretFeatures(selected);
+    const nextSet = current.includes(feature)
+      ? current.filter((id) => id !== feature)
+      : [...current, feature];
+    // Bans only apply to face-down pool draws — drop an exact pin so the filter
+    // can actually choose among remaining tiles (same spirit as secret include).
+    updateTile(selectedIndex, {
+      faceDown: true,
+      tileDefId: undefined,
+      oneOfTileDefIds: undefined,
+      excludeFeatures: nextSet.length > 0 ? nextSet : undefined,
       ...tokensPatch(selected, (token) =>
         faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
       )
@@ -5289,6 +5344,83 @@ export function MapDesigner({
                       </div>
                     ) : null}
                     {selected.faceDown && (selected.group === "far" || selected.group === "near") ? (
+                      <button
+                        aria-pressed={Boolean(selected.playerResourcePick)}
+                        className={`popoverFilterChip${selected.playerResourcePick ? " active" : ""}`}
+                        onClick={() =>
+                          updateTile(selectedIndex as number, {
+                            playerResourcePick: selected.playerResourcePick ? undefined : true
+                          })
+                        }
+                        title="Before reveal the discovering player chooses Gold or Valuables mine; the game draws a matching tile from the pool."
+                        type="button"
+                      >
+                        Player picks Gold / Valuables on reveal
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {/* Step 2a′ — Ban landmarks (Random AND Secret face-down pool draws). Real exclude filter. */}
+                {(selectedMode === "random" || selectedMode === "secret") &&
+                PICKABLE_GROUPS.has(selected.group) ? (
+                  <div className="popoverFeaturePicker">
+                    <div className="popoverSectionLabel">Ban these landmarks (optional)</div>
+                    <small className="popoverHint">
+                      The drawn tile will never carry a banned landmark — e.g. <strong>No Obelisk</strong>. Real pool
+                      filter at game start (not decorative).
+                      {selected.group === "far" ? " Far pool already never places Obelisks globally." : ""}
+                    </small>
+                    <div
+                      className="popoverFeatureGrid"
+                      role="listbox"
+                      aria-label="Banned landmarks"
+                      aria-multiselectable="true"
+                    >
+                      {availableExcludeFeatures.map((feature) => {
+                        const isBanned = selectedExcludeSet.includes(feature.id);
+                        return (
+                          <button
+                            aria-selected={isBanned}
+                            className={`popoverFeatureCard${isBanned ? " selected" : ""}`}
+                            key={`ban-${feature.id}`}
+                            onClick={() => pickExcludeFeature(feature.id)}
+                            role="option"
+                            title={`Ban tiles with ${feature.label}. Remaining pool if banned: ${feature.matchCount}.`}
+                            type="button"
+                            style={
+                              isBanned
+                                ? { outline: "2px solid #c44", background: "rgba(180,40,40,0.15)" }
+                                : undefined
+                            }
+                          >
+                            <span className="popoverFeatureIcon" aria-hidden="true">
+                              <DesignerGlyph className="popoverFeatureGlyph" src={feature.iconSrc} />
+                            </span>
+                            <span className="popoverFeatureTitle">No {feature.label}</span>
+                            <span className="popoverFeatureCount">
+                              {feature.matchCount} tile{feature.matchCount === 1 ? "" : "s"} left
+                            </span>
+                            {isBanned ? <span className="popoverFeatureBadge">Banned</span> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {selectedExcludeSet.length > 0 ? (
+                      <div className="popoverSecretSummary" role="status">
+                        <div>
+                          <strong>In game:</strong> never draws a tile with{" "}
+                          <em>{selectedExcludeSet.map(secretFeatureFullLabel).join(" / ")}</em>
+                          {selectedSecretSet.length > 0
+                            ? ` (still matching ${selectedSecretSet.map(secretFeatureFullLabel).join(" OR ")})`
+                            : ""}
+                          .
+                        </div>
+                      </div>
+                    ) : null}
+                    {selectedMode === "random" &&
+                    selected.faceDown &&
+                    (selected.group === "far" || selected.group === "near") ? (
                       <button
                         aria-pressed={Boolean(selected.playerResourcePick)}
                         className={`popoverFilterChip${selected.playerResourcePick ? " active" : ""}`}
