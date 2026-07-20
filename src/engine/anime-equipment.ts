@@ -108,6 +108,55 @@ export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipm
   );
 }
 
+// ---------------------------------------------------------------------------
+// Per-seam item inventories. Each existing fold reads its own list, so a NEW
+// item that reuses a seam only appends its id here — the fold site is
+// untouched (CLAUDE.md extensibility). Same-slot items can never both be worn,
+// so a summed fold (win-gold) still caps at the number of DISTINCT slots that
+// carry the seam, and a boolean fold stays a single grant.
+//   - `crusadersPoleaxe` twins Iron-Blood Sword (weapon, first-attack)
+//   - `coinwardTalisman` / `hornOfPlenty` add accessory win-gold sources
+//   - `hornOfPlenty` also adds an accessory materials source
+//   - `ironbarkCuirass` twins Stage Costume (armor, defense token)
+//   - `coursersBarding` twins Windrider Saddle (mount, +1 MP refresh)
+//   - `wardensAegis` (armor relic) combines incoming −1 AND a defense token
+// ---------------------------------------------------------------------------
+const FIRST_ATTACK_ITEMS = [EQUIPMENT_IDS.ironBloodSword, EQUIPMENT_IDS.crusadersPoleaxe] as const;
+const INCOMING_PENALTY_ITEMS = [EQUIPMENT_IDS.blackTortoiseMail, EQUIPMENT_IDS.wardensAegis] as const;
+const DEFENSE_TOKEN_ITEMS = [
+  EQUIPMENT_IDS.stageCostume,
+  EQUIPMENT_IDS.ironbarkCuirass,
+  EQUIPMENT_IDS.wardensAegis
+] as const;
+const ROUND1_ATTACK_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial] as const;
+const FIRST_SPELL_POWER_ITEMS = [EQUIPMENT_IDS.neonMicrophone] as const;
+const SPELL_POWER_ITEMS = [EQUIPMENT_IDS.cosmosPendant, EQUIPMENT_IDS.spiritFocus] as const;
+const HAND_LIMIT_ITEMS = [
+  EQUIPMENT_IDS.guildIssueMail,
+  EQUIPMENT_IDS.twinTailRibbon,
+  EQUIPMENT_IDS.eternalSash
+] as const;
+const WIN_GOLD_ITEMS = [
+  EQUIPMENT_IDS.adventurersBlade,
+  EQUIPMENT_IDS.luckyCoin,
+  EQUIPMENT_IDS.alchemistsSatchel,
+  EQUIPMENT_IDS.coinwardTalisman,
+  EQUIPMENT_IDS.hornOfPlenty
+] as const;
+const RESOURCE_MATERIALS_ITEMS = [EQUIPMENT_IDS.supplySatchel, EQUIPMENT_IDS.hornOfPlenty] as const;
+const RESOURCE_GOLD_ITEMS = [EQUIPMENT_IDS.alchemistsSatchel] as const;
+const MOVEMENT_ITEMS = [EQUIPMENT_IDS.windriderSaddle, EQUIPMENT_IDS.coursersBarding] as const;
+
+/** Whether the player's main hero wears ANY of the given equipment ids. */
+function playerHasAnyEquipment(state: GameState, playerId: PlayerId, ids: readonly string[]): boolean {
+  return ids.some((id) => playerHasEquipment(state, playerId, id));
+}
+
+/** How many of the given equipment ids the player's main hero wears (≤ slots). */
+function countEquipment(state: GameState, playerId: PlayerId, ids: readonly string[]): number {
+  return ids.reduce((sum, id) => sum + (playerHasEquipment(state, playerId, id) ? 1 : 0), 0);
+}
+
 // --- Always-on economy / caster grants (each gated by the item equipped) ----
 
 /**
@@ -120,14 +169,7 @@ export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipm
  * separate Cultivation / Hero-Grade seams.
  */
 export function equipmentSpellPowerBonus(state: GameState, playerId: PlayerId): number {
-  let bonus = 0;
-  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.cosmosPendant)) {
-    bonus += 1;
-  }
-  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.spiritFocus)) {
-    bonus += 1;
-  }
-  return bonus;
+  return countEquipment(state, playerId, SPELL_POWER_ITEMS);
 }
 
 /**
@@ -139,7 +181,7 @@ export function equipmentFirstSpellPowerBonus(state: GameState, playerId: Player
   if (!equipmentEnabled(state)) {
     return 0;
   }
-  if (!playerHasEquipment(state, playerId, EQUIPMENT_IDS.neonMicrophone)) {
+  if (!playerHasAnyEquipment(state, playerId, FIRST_SPELL_POWER_ITEMS)) {
     return 0;
   }
   if (!playerMainHeroInCombat(state, playerId)) {
@@ -173,7 +215,7 @@ export function applyEquipmentStageCostumeDefenseToken(
   if (!equipmentEnabled(state)) {
     return;
   }
-  if (!playerHasEquipment(state, defender.controllerId, EQUIPMENT_IDS.stageCostume)) {
+  if (!playerHasAnyEquipment(state, defender.controllerId, DEFENSE_TOKEN_ITEMS)) {
     return;
   }
   if (!playerMainHeroInCombat(state, defender.controllerId)) {
@@ -199,17 +241,7 @@ export function applyEquipmentStageCostumeDefenseToken(
  * pinned in anime-equipment.test.ts).
  */
 export function equipmentHandLimitBonus(state: GameState, playerId: PlayerId): number {
-  let bonus = 0;
-  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.guildIssueMail)) {
-    bonus += 1;
-  }
-  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.twinTailRibbon)) {
-    bonus += 1;
-  }
-  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.eternalSash)) {
-    bonus += 1;
-  }
-  return bonus;
+  return countEquipment(state, playerId, HAND_LIMIT_ITEMS);
 }
 
 /**
@@ -219,27 +251,23 @@ export function equipmentHandLimitBonus(state: GameState, playerId: PlayerId): n
  * at finalizeAdventureCombat.
  */
 export function equipmentWinGold(state: GameState, playerId: PlayerId): number {
-  let gold = 0;
-  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.adventurersBlade)) {
-    gold += 1;
-  }
-  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.luckyCoin)) {
-    gold += 1;
-  }
-  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.alchemistsSatchel)) {
-    gold += 1;
-  }
-  return gold;
+  // Adventurer's Blade (weapon), Alchemist's Satchel (armor), and one accessory
+  // (Lucky Coin / Coinward Talisman / Horn of Plenty — same slot, one worn) →
+  // caps at +3; the accessory sources never double-count.
+  return countEquipment(state, playerId, WIN_GOLD_ITEMS);
 }
 
-/** Supply Satchel (accessory): +1 building materials each Resources round. */
+/**
+ * Supply Satchel / Horn of Plenty (both accessory): +1 building materials each
+ * Resources round. Same slot ⇒ at most one is worn, so the grant tops out at +1.
+ */
 export function equipmentResourceRoundMaterials(state: GameState, playerId: PlayerId): number {
-  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.supplySatchel) ? 1 : 0;
+  return playerHasAnyEquipment(state, playerId, RESOURCE_MATERIALS_ITEMS) ? 1 : 0;
 }
 
 /** Alchemist's Satchel (armor): +1 gold each Resources round (its income half). */
 export function equipmentResourceRoundGold(state: GameState, playerId: PlayerId): number {
-  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.alchemistsSatchel) ? 1 : 0;
+  return playerHasAnyEquipment(state, playerId, RESOURCE_GOLD_ITEMS) ? 1 : 0;
 }
 
 /**
@@ -251,7 +279,8 @@ export function equipmentResourceRoundGold(state: GameState, playerId: PlayerId)
  * module is off / no saddle.
  */
 export function equipmentMovementBonus(state: GameState, playerId: PlayerId): number {
-  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.windriderSaddle) ? 1 : 0;
+  // Windrider Saddle / Courser's Barding (both mount, one worn) → +1 MP.
+  return playerHasAnyEquipment(state, playerId, MOVEMENT_ITEMS) ? 1 : 0;
 }
 
 /**
@@ -318,21 +347,21 @@ function playerMainHeroInCombat(state: GameState, playerId: PlayerId): boolean {
   return false;
 }
 
-/** Whether `playerId`'s Iron-Blood Sword first-attack charge is still available. */
+/** Whether `playerId`'s first-declared-attack charge (Sword / Poleaxe) is available. */
 function swordAvailable(state: GameState, playerId: PlayerId): boolean {
   return (
     equipmentEnabled(state) &&
-    playerHasEquipment(state, playerId, EQUIPMENT_IDS.ironBloodSword) &&
+    playerHasAnyEquipment(state, playerId, FIRST_ATTACK_ITEMS) &&
     playerMainHeroInCombat(state, playerId) &&
     !state.players[playerId]?.combatStats.equipmentFirstAttackUsed
   );
 }
 
-/** Whether `playerId`'s Black Tortoise Mail first-incoming charge is still available. */
+/** Whether `playerId`'s first-incoming-attack charge (Mail / Aegis) is available. */
 function mailAvailable(state: GameState, playerId: PlayerId): boolean {
   return (
     equipmentEnabled(state) &&
-    playerHasEquipment(state, playerId, EQUIPMENT_IDS.blackTortoiseMail) &&
+    playerHasAnyEquipment(state, playerId, INCOMING_PENALTY_ITEMS) &&
     playerMainHeroInCombat(state, playerId) &&
     !state.players[playerId]?.combatStats.equipmentIncomingAttackUsed
   );
@@ -382,7 +411,7 @@ export function equipmentRound1AttackBonus(state: GameState, attacker: CombatUni
   if ((state.combat?.round ?? 1) !== 1) {
     return 0;
   }
-  if (!playerHasEquipment(state, attacker.controllerId, EQUIPMENT_IDS.bladeOfTheTrial)) {
+  if (!playerHasAnyEquipment(state, attacker.controllerId, ROUND1_ATTACK_ITEMS)) {
     return 0;
   }
   return playerMainHeroInCombat(state, attacker.controllerId) ? 1 : 0;

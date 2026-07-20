@@ -10,8 +10,11 @@ import {
   EQUIPMENT_IDS,
   EQUIPMENT_SHOP_SALES,
   EQUIPMENT_SLOT_GLYPH,
+  EQUIPMENT_PACKAGE_LABEL,
   equipmentArtPath,
   equipmentImage,
+  equipmentPackagesForFaction,
+  equipmentRegisterLineFor,
   getEquipmentDefinition,
   listEquipmentDefinitions,
   type EquipmentGrade
@@ -37,8 +40,8 @@ const equipmentArtOnDisk = (id: string) =>
 describe("anime equipment catalog integrity", () => {
   it("ships every item with a grade I/II/III, cost locked to grade, and package", () => {
     const items = listEquipmentDefinitions();
-    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) = 18.
-    expect(items).toHaveLength(18);
+    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) + classic line (6) = 24.
+    expect(items).toHaveLength(24);
     const bySlug = (id: string) => getEquipmentDefinition(id)!;
 
     for (const def of items) {
@@ -88,6 +91,21 @@ describe("anime equipment catalog integrity", () => {
     });
     expect(bySlug(EQUIPMENT_IDS.alchemistsSatchel)).toMatchObject({ slot: "armor", grade: "III", cost: 8, package: "shared" });
     expect(bySlug(EQUIPMENT_IDS.eternalSash)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "shared" });
+
+    // Classic register line (2 per grade, spread across weapon/armor/accessory/mount).
+    expect(bySlug(EQUIPMENT_IDS.crusadersPoleaxe)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.coinwardTalisman)).toMatchObject({ slot: "accessory", grade: "I", cost: 4, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.ironbarkCuirass)).toMatchObject({ slot: "armor", grade: "II", cost: 6, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.coursersBarding)).toMatchObject({ slot: "mount", grade: "II", cost: 6, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.hornOfPlenty)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.wardensAegis)).toMatchObject({ slot: "armor", grade: "III", cost: 8, package: "classic" });
+    // The classic line covers all four slots and both grades of each item pair.
+    const classic = items.filter((def) => def.package === "classic");
+    expect(classic).toHaveLength(6);
+    expect(new Set(classic.map((def) => def.slot))).toEqual(new Set(["weapon", "armor", "accessory", "mount"]));
+    expect(classic.filter((def) => def.grade === "I")).toHaveLength(2);
+    expect(classic.filter((def) => def.grade === "II")).toHaveLength(2);
+    expect(classic.filter((def) => def.grade === "III")).toHaveLength(2);
   });
 
   it("covers all three grades with multiple items each", () => {
@@ -181,5 +199,41 @@ describe("anime equipment catalog integrity", () => {
     for (const [key, def] of Object.entries(ANIME_EQUIPMENT_DEFINITIONS)) {
       expect(def.id).toBe(key);
     }
+  });
+
+  it("maps each faction's visual register to its equipment package line (register-aware shops)", () => {
+    // Classic-chrome factions → the classic line; azure_breeze (wuxia) → xianxia;
+    // fuyuki (anime) → isekai. Keyed purely off the visual register, so ANY
+    // classic faction resolves the classic line.
+    expect(equipmentPackagesForFaction("castle")).toEqual(["classic"]);
+    expect(equipmentPackagesForFaction("necropolis")).toEqual(["classic"]);
+    expect(equipmentPackagesForFaction(undefined)).toEqual(["classic"]);
+    expect(equipmentPackagesForFaction("azure_breeze")).toEqual(["anime-xianxia"]);
+    expect(equipmentPackagesForFaction("fuyuki")).toEqual(["anime-isekai"]);
+
+    // The register LINE is the ids of every item in that package.
+    const classicLine = equipmentRegisterLineFor("castle");
+    expect(classicLine).toContain(EQUIPMENT_IDS.crusadersPoleaxe);
+    expect(classicLine).toContain(EQUIPMENT_IDS.wardensAegis);
+    expect(classicLine).toHaveLength(6);
+    // CONTROL: a classic visitor's line carries NO xianxia/isekai exclusives.
+    expect(classicLine).not.toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia
+    expect(classicLine).not.toContain(EQUIPMENT_IDS.adventurersBlade); // isekai
+
+    const wuxiaLine = equipmentRegisterLineFor("azure_breeze");
+    expect(wuxiaLine).toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia exclusive
+    expect(wuxiaLine).not.toContain(EQUIPMENT_IDS.adventurersBlade); // NOT isekai
+    expect(wuxiaLine).not.toContain(EQUIPMENT_IDS.crusadersPoleaxe); // NOT classic
+
+    const isekaiLine = equipmentRegisterLineFor("fuyuki");
+    expect(isekaiLine).toContain(EQUIPMENT_IDS.adventurersBlade); // isekai exclusive
+    expect(isekaiLine).not.toContain(EQUIPMENT_IDS.ironBloodSword); // NOT xianxia
+  });
+
+  it("every package has a short UI flavour label", () => {
+    for (const def of listEquipmentDefinitions()) {
+      expect(EQUIPMENT_PACKAGE_LABEL[def.package], def.id).toBeTruthy();
+    }
+    expect(EQUIPMENT_PACKAGE_LABEL.classic).toBe("classic");
   });
 });

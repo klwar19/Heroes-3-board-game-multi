@@ -30,6 +30,7 @@ import {
   type CommanderStatKey
 } from "@/data/commanders";
 import { COMMANDER_ARTIFACT_SPECS } from "@/data/wog/commander-artifacts";
+import { EquipGradeChip, tierToGrade } from "@/components/equip-grade-chip";
 import type { CommanderArtifactSlot } from "@/engine/state";
 
 // ---------------------------------------------------------------------------
@@ -709,6 +710,8 @@ function CommanderArtifactSlots({ artifacts }: { artifacts?: Partial<Record<Comm
                 <b style={{ color: spec ? GOLD : DIM, textTransform: "capitalize" }}>{slot}</b>
                 {spec ? (
                   <>
+                    {" "}
+                    <EquipGradeChip grade={tierToGrade(spec.tier)} title={`${spec.tier} · Grade ${tierToGrade(spec.tier)}`} />
                     {" · "}
                     <b style={{ color: PALE }}>{spec.name}</b>
                     <br />

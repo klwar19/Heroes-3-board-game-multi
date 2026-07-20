@@ -11,8 +11,14 @@ import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
-import { ANIME_EQUIPMENT_DEFINITIONS } from "@/data/anime/equipment";
+import {
+  ANIME_EQUIPMENT_DEFINITIONS,
+  EQUIPMENT_PACKAGE_LABEL,
+  type EquipmentDefinition,
+  type EquipmentGrade
+} from "@/data/anime/equipment";
 import { factionUiLexicon } from "@/data/faction-theme";
+import { EquipGradeChip } from "@/components/equip-grade-chip";
 import { UnitExperienceWindow } from "@/components/adventure/unit-experience-window";
 import {
   ABILITY_SEARCH_LEVELS,
@@ -55,6 +61,9 @@ import { specialtyIconSrc } from "@/components/specialty-card-data";
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
 /** Specialty cards sit at Ⅰ (starting deck), Ⅳ and Ⅵ — the laurelled numerals. */
 const SPECIALTY_TRACK_LEVELS = [1, ...SPECIALTY_LEVELS] as number[];
+
+/** Equipment grade order (I < II < III) for the "upgrade waiting in bag" hint. */
+const EQUIPMENT_GRADE_RANK: Record<EquipmentGrade, number> = { I: 1, II: 2, III: 3 };
 
 /** Faction palettes sampled from the printed hero board scans. */
 const BOARD_THEMES: Record<string, { banner: string; edge: string }> = {
@@ -635,6 +644,19 @@ export function HeroBoard({
                         const icon = def ? equipmentImage(def.id) : undefined;
                         const draggedDef = draggedEquipmentId ? getEquipmentDefinition(draggedEquipmentId) : undefined;
                         const acceptsDrop = Boolean(onAction && draggedDef?.slot === slot && !state.combat);
+                        // Upgrade hint: an owned BAG item of the same slot at a
+                        // higher grade than what is worn (pure presentation).
+                        const upgrade = def
+                          ? equipmentInventory
+                              .map((id) => getEquipmentDefinition(id))
+                              .filter(
+                                (candidate): candidate is EquipmentDefinition =>
+                                  Boolean(candidate) &&
+                                  candidate!.slot === slot &&
+                                  EQUIPMENT_GRADE_RANK[candidate!.grade] > EQUIPMENT_GRADE_RANK[def.grade]
+                              )
+                              .sort((a, b) => EQUIPMENT_GRADE_RANK[b.grade] - EQUIPMENT_GRADE_RANK[a.grade])[0]
+                          : undefined;
                         return (
                           <div
                             aria-label={`${slot} slot${def ? `: ${def.name.en}` : ": empty"}`}
@@ -650,7 +672,10 @@ export function HeroBoard({
                               setDraggedEquipmentId(null);
                             }}
                           >
-                            <small>{slot}{def ? ` · ${def.grade}` : ""}</small>
+                            <div className="equipmentSlotHead">
+                              <small>{slot}</small>
+                              {def ? <EquipGradeChip grade={def.grade} /> : null}
+                            </div>
                             {icon ? <img alt="" src={assetUrl(icon)} /> : <span>{EQUIPMENT_SLOT_GLYPH[slot]}</span>}
                             <strong>{def?.name.en ?? "Empty"}</strong>
                             {def ? <p>{def.summary}</p> : null}
@@ -663,50 +688,84 @@ export function HeroBoard({
                                 Unequip
                               </button>
                             ) : null}
+                            {upgrade ? (
+                              <div
+                                className="equipmentUpgradeHint"
+                                title={`${upgrade.name.en} (Grade ${upgrade.grade}) sits in your bag`}
+                              >
+                                <EquipGradeChip grade={upgrade.grade} />
+                                <span>
+                                  Upgrade waiting: <strong>{upgrade.name.en}</strong> in your bag
+                                </span>
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })}
                     </div>
                     <aside className="equipmentCatalog">
                       <h3>Equipment bag &amp; catalog</h3>
-                      <p>Drag an owned item onto its matching body slot, or use Equip. Replaced gear returns here; every listed effect is live.</p>
-                      {Object.values(ANIME_EQUIPMENT_DEFINITIONS)
-                        .sort((a, b) => a.slot.localeCompare(b.slot) || a.cost - b.cost)
-                        .map((def) => {
-                          const equipped = equippedEquipmentIds.has(def.id);
-                          const inBag = inventoryEquipmentIds.has(def.id);
-                          const canEquip = Boolean(inBag && onAction && !state.combat);
-                          const icon = equipmentImage(def.id);
-                          return (
-                            <article
-                              aria-label={`${def.name.en}: ${equipped ? "equipped" : inBag ? "in equipment bag" : "not owned"}`}
-                              className={`equipmentCatalogItem ${equipped ? "equipped" : inBag ? "owned" : "unowned"}`}
-                              draggable={canEquip}
-                              key={def.id}
-                              onDragEnd={() => setDraggedEquipmentId(null)}
-                              onDragStart={(event) => {
-                                if (!canEquip) return;
-                                event.dataTransfer.effectAllowed = "move";
-                                event.dataTransfer.setData("text/plain", def.id);
-                                setDraggedEquipmentId(def.id);
-                              }}
-                            >
-                              {icon ? <img alt="" src={assetUrl(icon)} /> : <span>{EQUIPMENT_SLOT_GLYPH[def.slot]}</span>}
-                              <span><strong>{def.name.en}</strong><small>{def.slot} · Grade {def.grade} · {def.cost} gold{equipped ? " · Equipped" : ""}</small></span>
-                              <small className="equipmentOwnership">
-                                {equipped ? "Equipped" : inBag ? "Owned / draggable" : "Buy at outfitter"}
-                              </small>
-                              {canEquip ? (
-                                <button
-                                  onClick={() => onAction?.({ type: "EQUIP_HERO_ITEM", playerId, equipmentId: def.id, slot: def.slot })}
-                                  type="button"
+                      <p>Grouped by slot. Drag an owned item onto its matching body slot, or use Equip. Replaced gear returns here; every listed effect is live.</p>
+                      {ANIME_EQUIPMENT_SLOTS.map((slot) => {
+                        const slotItems = Object.values(ANIME_EQUIPMENT_DEFINITIONS)
+                          .filter((def) => def.slot === slot)
+                          .sort((a, b) => EQUIPMENT_GRADE_RANK[a.grade] - EQUIPMENT_GRADE_RANK[b.grade] || a.cost - b.cost);
+                        const ownedInSlot = slotItems.filter(
+                          (def) => equippedEquipmentIds.has(def.id) || inventoryEquipmentIds.has(def.id)
+                        ).length;
+                        return (
+                          <div className="equipmentCatalogGroup" key={slot}>
+                            <div className="equipmentCatalogGroupHead">
+                              <span className="slotGlyph" aria-hidden="true">{EQUIPMENT_SLOT_GLYPH[slot]}</span>
+                              <span>{slot}</span>
+                              <span className="slotCount">{ownedInSlot} owned</span>
+                            </div>
+                            {slotItems.map((def) => {
+                              const equipped = equippedEquipmentIds.has(def.id);
+                              const inBag = inventoryEquipmentIds.has(def.id);
+                              const canEquip = Boolean(inBag && onAction && !state.combat);
+                              const icon = equipmentImage(def.id);
+                              const pkg = EQUIPMENT_PACKAGE_LABEL[def.package];
+                              return (
+                                <article
+                                  aria-label={`${def.name.en}: ${equipped ? "equipped" : inBag ? "in equipment bag" : "not owned"}`}
+                                  className={`equipmentCatalogItem ${equipped ? "equipped" : inBag ? "owned" : "unowned"}`}
+                                  draggable={canEquip}
+                                  key={def.id}
+                                  onDragEnd={() => setDraggedEquipmentId(null)}
+                                  onDragStart={(event) => {
+                                    if (!canEquip) return;
+                                    event.dataTransfer.effectAllowed = "move";
+                                    event.dataTransfer.setData("text/plain", def.id);
+                                    setDraggedEquipmentId(def.id);
+                                  }}
                                 >
-                                  <GripVertical aria-hidden="true" size={13} /> Equip
-                                </button>
-                              ) : null}
-                            </article>
-                          );
-                        })}
+                                  {icon ? <img alt="" src={assetUrl(icon)} /> : <span>{EQUIPMENT_SLOT_GLYPH[def.slot]}</span>}
+                                  <span className="equipmentCatalogItemBody">
+                                    <strong>{def.name.en}</strong>
+                                    <span className="equipmentItemMeta">
+                                      <EquipGradeChip grade={def.grade} />
+                                      <span className={`equipmentPkgTag pkg-${pkg}`}>{pkg}</span>
+                                      <small>{def.cost} gold{equipped ? " · Equipped" : ""}</small>
+                                    </span>
+                                  </span>
+                                  <small className="equipmentOwnership">
+                                    {equipped ? "Equipped" : inBag ? "Owned / draggable" : "Buy at outfitter"}
+                                  </small>
+                                  {canEquip ? (
+                                    <button
+                                      onClick={() => onAction?.({ type: "EQUIP_HERO_ITEM", playerId, equipmentId: def.id, slot: def.slot })}
+                                      type="button"
+                                    >
+                                      <GripVertical aria-hidden="true" size={13} /> Equip
+                                    </button>
+                                  ) : null}
+                                </article>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
                     </aside>
                   </div>
                 )}

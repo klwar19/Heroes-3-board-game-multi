@@ -62,6 +62,7 @@ import {
 import {
   EQUIPMENT_GRADE_TO_ARTIFACT_TIER,
   EQUIPMENT_SHOP_SALES,
+  equipmentRegisterLineFor,
   getEquipmentDefinition
 } from "@/data/anime/equipment";
 import {
@@ -5684,7 +5685,15 @@ function buildEquipmentShopStep(state: GameState, playerId: PlayerId, locationId
   if (!sales) {
     return null;
   }
-  const options = sales
+  // Anime Equipment (§3.13) REGISTER-AWARE SHOPS: on top of this shop's own
+  // exclusives + shared gear, offer the VISITING hero's register line too — a
+  // classic-faction visitor sees the classic items at either outfitter, an
+  // azure_breeze (wuxia) visitor the xianxia line, a fuyuki visitor the isekai
+  // line (`equipmentRegisterLineFor`). Deduped so a shop already selling that
+  // line (e.g. a wuxia visitor at the xianxia Blacksmith) is unchanged.
+  const registerLine = equipmentRegisterLineFor(state.players[playerId]?.factionId);
+  const offered = [...new Set([...sales, ...registerLine])];
+  const options = offered
     .filter((equipmentId) => !playerOwnsEquipment(state, playerId, equipmentId))
     // Anime Equipment (§3.13): a context-gated item (Marshal's War Horn / Spirit
     // Crane Mount → WOG Commanders; Veteran's Standard → Unit Experience) is
@@ -5697,7 +5706,7 @@ function buildEquipmentShopStep(state: GameState, playerId: PlayerId, locationId
     .map((equipmentId) => {
       const def = getEquipmentDefinition(equipmentId)!;
       return {
-        label: `Buy ${def.name.en} (${def.name.vi}) — ${def.cost} gold · ${def.slot}`,
+        label: `Buy ${def.name.en} (${def.name.vi}) — ${def.cost} gold · ${def.slot} · Grade ${def.grade}`,
         steps: [{ type: "BUY_EQUIPMENT" as const, equipmentId }]
       };
     });

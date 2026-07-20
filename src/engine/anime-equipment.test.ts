@@ -1098,3 +1098,198 @@ describe("anime.equipment — Eternal Sash (accessory, grade-fill)", () => {
     expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
   });
 });
+
+// ===========================================================================
+// Classic register line — 6 items reusing proven seams (each fails if its fold
+// is removed) + the register-aware shop matrix.
+// ===========================================================================
+
+const EQUIP_ID_POLEAXE = EQUIPMENT_IDS.crusadersPoleaxe;
+const EQUIP_ID_COINWARD = EQUIPMENT_IDS.coinwardTalisman;
+const EQUIP_ID_IRONBARK = EQUIPMENT_IDS.ironbarkCuirass;
+const EQUIP_ID_BARDING = EQUIPMENT_IDS.coursersBarding;
+const EQUIP_ID_HORN = EQUIPMENT_IDS.hornOfPlenty;
+const EQUIP_ID_AEGIS = EQUIPMENT_IDS.wardensAegis;
+
+describe("anime.equipment — Crusader's Poleaxe (classic weapon)", () => {
+  it("+1 Attack on the FIRST declared attack (Iron-Blood Sword seam; CONTROL: bare)", () => {
+    function firstAttackValue(withItem: boolean): number {
+      let state = combat(`eq-poleaxe-${withItem}`);
+      if (withItem) equip(state, "p1", "weapon", EQUIP_ID_POLEAXE);
+      state = resolveReactions(
+        applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+      );
+      return initiatingAttackValues(state)[0];
+    }
+    // The Poleaxe rides the SAME first-attack fold as the Iron-Blood Sword.
+    expect(firstAttackValue(true)).toBe(firstAttackValue(false) + 1);
+  });
+});
+
+describe("anime.equipment — Coinward Talisman (classic accessory)", () => {
+  it("+1 gold after a won combat (win-gold seam; CONTROL: none)", () => {
+    const none = runWonGuardCombat("eq-coinward-win", EQUIP_ON, []).goldGained;
+    expect(runWonGuardCombat("eq-coinward-win", EQUIP_ON, [["accessory", EQUIP_ID_COINWARD]]).goldGained).toBe(none + 1);
+  });
+});
+
+describe("anime.equipment — Ironbark Cuirass (classic armor)", () => {
+  it("grants a Defense token once (Stage Costume seam; CONTROL: no item → no token)", () => {
+    const withItem = combat("eq-ironbark");
+    equip(withItem, "p1", "armor", EQUIP_ID_IRONBARK);
+    const defender = withItem.combat!.units.unit_p1_griffins;
+    defender.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(withItem, defender);
+    expect(defender.defenseToken).toBe(true);
+
+    // CONTROL: a bare armor slot grants nothing.
+    const bare = combat("eq-ironbark-bare");
+    bare.combat!.units.unit_p1_griffins.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(bare, bare.combat!.units.unit_p1_griffins);
+    expect(bare.combat!.units.unit_p1_griffins.defenseToken).toBe(false);
+  });
+});
+
+describe("anime.equipment — Courser's Barding (classic mount)", () => {
+  it("+1 movement at turn refresh (Windrider Saddle seam; CONTROL: no item → no rise)", () => {
+    function refreshedMovement(withItem: boolean): number {
+      const state = adventure(`eq-barding-${withItem}`);
+      const hero = getMainHero(state, "p1")!;
+      if (withItem) equip(state, "p1", "mount", EQUIP_ID_BARDING);
+      hero.movementPoints = 0;
+      refreshRoundTokens(state);
+      return hero.movementPoints;
+    }
+    expect(refreshedMovement(true)).toBe(refreshedMovement(false) + 1);
+  });
+});
+
+describe("anime.equipment — Horn of Plenty (classic accessory relic — combines two seams)", () => {
+  it("+1 gold after a won combat (win-gold seam)", () => {
+    const none = runWonGuardCombat("eq-horn-win", EQUIP_ON, []).goldGained;
+    expect(runWonGuardCombat("eq-horn-win", EQUIP_ON, [["accessory", EQUIP_ID_HORN]]).goldGained).toBe(none + 1);
+  });
+
+  it("+1 building materials at a Resources round (materials seam; CONTROL: unequipped)", () => {
+    function roundMaterials(withItem: boolean): number {
+      const state = adventure(`eq-horn-mat-${withItem}`);
+      if (withItem) equip(state, "p1", "accessory", EQUIP_ID_HORN);
+      const before = state.players.p1.resources.buildingMaterials;
+      state.round = 3;
+      startAdventureRound(state);
+      return state.players.p1.resources.buildingMaterials - before;
+    }
+    expect(roundMaterials(true)).toBe(roundMaterials(false) + 1);
+  });
+
+  it("shares the accessory slot with Supply Satchel — materials never stacks to +2 (same slot)", () => {
+    function roundMaterials(ids: string[]): number {
+      const state = adventure("eq-horn-satchel");
+      // Both target the accessory slot; the last equip wins (single slot).
+      for (const id of ids) equip(state, "p1", "accessory", id);
+      const before = state.players.p1.resources.buildingMaterials;
+      state.round = 3;
+      startAdventureRound(state);
+      return state.players.p1.resources.buildingMaterials - before;
+    }
+    const bare = roundMaterials([]);
+    // Horn alone = +1 over the bare round income.
+    expect(roundMaterials([EQUIP_ID_HORN])).toBe(bare + 1);
+    // "Wearing both" leaves ONE accessory worn (single slot) → still +1, never +2.
+    expect(roundMaterials([EQUIP_ID_SATCHEL, EQUIP_ID_HORN])).toBe(bare + 1);
+  });
+});
+
+describe("anime.equipment — Warden's Aegis (classic armor relic — combines two seams)", () => {
+  function firstIncomingDamage(seed: string, withItem: boolean): number {
+    const state = combat(seed);
+    if (withItem) equip(state, "p1", "armor", EQUIP_ID_AEGIS);
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.attack = 10;
+    skeletons.defense = 2;
+    state.combat!.units.unit_p1_griffins.defense = 2;
+    state.combat!.units.unit_p1_griffins.maxHealth = 200;
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.activePlayerId = "p2";
+    const before = state.combat!.units.unit_p1_griffins.damage;
+    const after = resolveReactions(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: "unit_p2_skeletons", defenderId: "unit_p1_griffins" })
+    );
+    return after.combat!.units.unit_p1_griffins.damage - before;
+  }
+
+  it("the FIRST incoming attack lands at −1 Attack (incoming-penalty seam; CONTROL: bare)", () => {
+    expect(firstIncomingDamage("eq-aegis-in-on", true)).toBe(firstIncomingDamage("eq-aegis-in-off", false) - 1);
+  });
+
+  it("ALSO grants the attacked unit a Defense token (defense-token seam)", () => {
+    const withItem = combat("eq-aegis-token");
+    equip(withItem, "p1", "armor", EQUIP_ID_AEGIS);
+    const defender = withItem.combat!.units.unit_p1_griffins;
+    defender.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(withItem, defender);
+    expect(defender.defenseToken).toBe(true);
+  });
+});
+
+describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
+  // Directly stamp the visiting hero's faction, then read the outfitter menu.
+  function shopLabels(shopLocation: string, factionId: string): string[] {
+    const state = adventure(`eq-reg-${factionId}-${shopLocation.replace(/\W/g, "")}`);
+    state.players.p1.factionId = factionId as never;
+    state.players.p1.resources.gold = 60;
+    injectField(state, shopLocation);
+    visitShop(state);
+    return getLegalActions(state, "p1")
+      .filter((entry) => entry.action.type === "RESOLVE_VISIT_STEP")
+      .map((entry) => entry.label);
+  }
+  const has = (labels: string[], name: string) => labels.some((label) => label.includes(name));
+
+  it("a CLASSIC visitor (castle) sees the classic line at BOTH shops", () => {
+    const black = shopLabels("anime.ren_binh_cac", "castle");
+    const outfit = shopLabels("anime.adventurer_outfitter", "castle");
+    expect(has(black, "Crusader's Poleaxe")).toBe(true);
+    expect(has(black, "Warden's Aegis")).toBe(true);
+    expect(has(outfit, "Crusader's Poleaxe")).toBe(true);
+    // The shop's OWN exclusives still show: xianxia at the Blacksmith, isekai at the Outfitter.
+    expect(has(black, "Iron-Blood Sword")).toBe(true); // xianxia exclusive of ren_binh_cac
+    expect(has(outfit, "Adventurer's Blade")).toBe(true); // isekai exclusive of the outfitter
+    // CONTROL: a classic visitor does NOT get the OTHER shop's package as a line —
+    // the Blacksmith shows no isekai-exclusive, the Outfitter no xianxia-exclusive.
+    expect(has(black, "Adventurer's Blade")).toBe(false);
+    expect(has(outfit, "Iron-Blood Sword")).toBe(false);
+  });
+
+  it("a WUXIA visitor (azure_breeze) sees the XIANXIA line, never classic, and isekai ONLY where the shop sells it", () => {
+    const black = shopLabels("anime.ren_binh_cac", "azure_breeze");
+    const outfit = shopLabels("anime.adventurer_outfitter", "azure_breeze");
+    // Xianxia line at both (already the Blacksmith's own exclusive; ADDED at the Outfitter).
+    expect(has(black, "Iron-Blood Sword")).toBe(true);
+    expect(has(outfit, "Iron-Blood Sword")).toBe(true);
+    // No classic items for a wuxia visitor anywhere.
+    expect(has(black, "Crusader's Poleaxe")).toBe(false);
+    expect(has(outfit, "Crusader's Poleaxe")).toBe(false);
+    // Isekai-exclusive shows ONLY at the shop that sells it (the Outfitter), never
+    // at the Blacksmith (the wuxia register line is xianxia, not isekai).
+    expect(has(outfit, "Adventurer's Blade")).toBe(true); // the Outfitter sells it
+    expect(has(black, "Adventurer's Blade")).toBe(false); // not added by the xianxia line
+  });
+
+  it("an ANIME visitor (fuyuki) sees the ISEKAI line, never classic", () => {
+    const black = shopLabels("anime.ren_binh_cac", "fuyuki");
+    const outfit = shopLabels("anime.adventurer_outfitter", "fuyuki");
+    // Isekai line at both (ADDED at the Blacksmith; already the Outfitter's own).
+    expect(has(black, "Adventurer's Blade")).toBe(true);
+    expect(has(outfit, "Adventurer's Blade")).toBe(true);
+    // No classic items for an anime visitor.
+    expect(has(black, "Crusader's Poleaxe")).toBe(false);
+    expect(has(outfit, "Crusader's Poleaxe")).toBe(false);
+  });
+
+  it("every offered buy label names the item's grade (grade-tinted shop rows)", () => {
+    const black = shopLabels("anime.ren_binh_cac", "castle");
+    const poleaxe = black.find((label) => label.includes("Crusader's Poleaxe"));
+    expect(poleaxe).toContain("Grade I");
+  });
+});

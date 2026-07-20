@@ -137,6 +137,7 @@ import { fieldOverrideGlyph, fieldOverrideImage } from "@/data/map/field-overrid
 import "@/data/anime/field-overrides";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { CommanderCard, CommanderLevelUpOverlay } from "@/components/commander-card";
+import { EquipGradeChip, tierToGrade } from "@/components/equip-grade-chip";
 import { commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@/data/commanders";
 import { COMMANDER_ARTIFACT_SPECS, COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/wog/commander-artifacts";
 import { UNIT_RANK_THRESHOLDS, unitRankBadgeImage } from "@/data/units/experience";
@@ -3793,7 +3794,10 @@ export function TownHeroDock({
                         )}
                       </div>
                       <div className="commanderArtifactSlotMeta">
-                        <small>{slot}</small>
+                        <small>
+                          {slot}
+                          {spec ? <EquipGradeChip grade={tierToGrade(spec.tier)} title={`${spec.tier} · Grade ${tierToGrade(spec.tier)}`} /> : null}
+                        </small>
                         <strong>{spec?.name ?? "Empty"}</strong>
                         <span>{spec?.effectText ?? "Drag a matching artifact from the bag"}</span>
                       </div>
@@ -3839,7 +3843,10 @@ export function TownHeroDock({
                           <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} />
                         )}
                         <div>
-                          <span className="commanderArtifactMeta">{spec.slot} · {spec.tier}</span>
+                          <span className="commanderArtifactMeta">
+                            <EquipGradeChip grade={tierToGrade(spec.tier)} title={`${spec.tier} · Grade ${tierToGrade(spec.tier)}`} />
+                            {spec.slot} · {spec.tier}
+                          </span>
                           <strong>{spec.name}</strong>
                           <p>{spec.effectText}</p>
                           <button

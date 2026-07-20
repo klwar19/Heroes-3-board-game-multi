@@ -2592,7 +2592,15 @@ Leading with what does NOT run / deliberate limits:
   semantics in `src/engine/anime-equipment-cards.test.ts` (each claim
   mutation-checked) + the catalog in `src/data/anime/equipment.test.ts` + the
   hero-board chips (`hero-board.test.tsx`). Leading with what does NOT run / limits:
-  **same-slot twins do NOT stack** — Cosmos Pendant + Spirit Focus (both accessory,
+  **the 6 CLASSIC-line items (2026-07) ship PROCEDURAL PLACEHOLDER art, not
+  hand-drawn illustrations** — grade-tinted monogram inventory icons (synthesised
+  by `scripts/build-equipment-cards.mjs` when a hand-drawn master is missing) under
+  the ornate Artifact-card frame with the full rules text; the 18 anime items keep
+  their Codex art. `ANIME_EQUIPMENT_ART_PLACEHOLDERS` stays EMPTY (the placeholders
+  are real files on disk, not glyph fallbacks). **The AI never buys equipment** (it
+  declines the optional outfitter shop by policy — a documented limit, unchanged;
+  register-aware shops added no AI heuristic). **same-slot twins do NOT stack** —
+  Cosmos Pendant + Spirit Focus (both accessory,
   +1 spell Power) and Twin-Tail Ribbon + Eternal Sash (both accessory, +1 hand
   limit) share the ONE accessory slot, so only one is ever worn (the earlier
   summaries wrongly claimed the cross-stack; corrected + pinned). The equipment
@@ -2602,15 +2610,25 @@ Leading with what does NOT run / deliberate limits:
   outfitter Field Overrides; the hero board is a read-only chip display for items.
   (The other hero map actives — HERO_TRAIN / Forced March (§3.11) and the Heavenly
   Tribulation (§5.6) — DO now have a human button via the map `HeroActionsDock`;
-  only equipment purchase does not.) **Art (2026-07): all 18 items ship real
-  512×512 transparent inventory icons** (`public/assets/anime/equipment/`, drawn on
-  the hero-board chip — `.hbEquipIcon`, art wins over the slot glyph;
-  `ANIME_EQUIPMENT_ART_PLACEHOLDERS` is now EMPTY, a future art-less item must
-  be declared there for the glyph fallback) **plus a framed Artifact-CARD face
-  each** (`public/assets/anime/equipment/cards/<slug>.webp`); **no
-  designer pin for the outfitters** (pool-placed only); **combat items are the
+  only equipment purchase does not.) **Art (2026-07): all 24 items ship 512×512
+  inventory icons** (`public/assets/anime/equipment/`, drawn on the hero-board chip
+  — `.hbEquipIcon`, art wins over the slot glyph; the 18 anime items are Codex art,
+  the 6 classic items PROCEDURAL placeholders — above; `ANIME_EQUIPMENT_ART_PLACEHOLDERS`
+  is EMPTY, a future art-less item must be declared there for the glyph fallback)
+  **plus a framed Artifact-CARD face each** (`public/assets/anime/equipment/cards/<slug>.webp`);
+  **no designer pin for the outfitters** (pool-placed only); **combat items are the
   MAIN hero's fights only** (commander-scope; a garrison fight gets neither —
-  CONTROL). What runs (18 items, each a proven-seam reuse pegged to a core
+  CONTROL). **UI POLISH (§3.13, 2026-07):** a shared grade chip family
+  (`.equipGradeChip.gradeI/II/III`, tinted with the app's EXISTING bronze/silver/gold
+  `.tierDot` hues — no new colours; component `src/components/equip-grade-chip.tsx`)
+  renders on the hero paper-doll slots + bag rows, the outfitter shop rows (the buy
+  label now names the grade), and the WOG commander-artifact window / stats panel
+  (grade = the artifact's tier, minor→I/major→II/relic→III). The paper-doll bag is
+  GROUPED by slot with a package flavour tag (classic/xianxia/isekai/shared) per
+  item and an "upgrade waiting" hint when a higher-grade bag item exists for a
+  filled slot (pure presentation; no new engine action). The hero + commander
+  windows already carry the faction `theme-<register>` class (verified). What runs
+  (24 items, each a proven-seam reuse pegged to a core
   magnitude): Iron-Blood Sword = your units' FIRST declared attack each combat +1
   Attack (a per-combat one-shot folded UNCLAMPED in `getAttackStackDetails` beside
   the combat-script delta, consumed at `finishResolvedAttack` when the attack
@@ -2629,15 +2647,35 @@ Leading with what does NOT run / deliberate limits:
   Alchemist's Satchel (+1 gold/round AND +1 win gold); Miku: Neon Microphone (+1
   first-Spell Power), Stage Costume (first-hit Defense token), Twin-Tail Ribbon
   (+1 hand limit); grade-fill: Lucky Coin (+1 win gold), Spirit Focus (+1 spell
-  Power), Eternal Sash (+1 hand limit). The three WIN-GOLD items span DISTINCT
-  slots (Adventurer's Blade weapon / Alchemist's Satchel armor / Lucky Coin
-  accessory) so all stack → +3; the spell-Power and hand-limit accessory twins do
-  NOT (same slot, above). MARKETS: two single-hex Field Overrides — Rèn
-  Binh Các (Blacksmith, xianxia, ⚒) + Adventurer Outfitter (isekai, 🎒), both
-  selling the shared Satchel; the shop menu is a dynamic `CHOOSE_ONE` of
-  `BUY_EQUIPMENT` options built in `beginFieldVisit` (owned item ⇒ absent;
-  affordability gold-gated like PAY_TO in legal-actions + a reducer backstop; the
-  leaf deducts gold + equips). GATING: `FieldOverrideDefinition.requiresModule`
+  Power), Eternal Sash (+1 hand limit). CLASSIC LINE (2026-07, package `classic`,
+  6 items, 2 per grade, all four slots — each a PURE seam reuse; relics COMBINE two
+  seams like Alchemist's Satchel): Crusader's Poleaxe (weapon I, first-attack +1 —
+  Iron-Blood Sword seam), Coinward Talisman (accessory I, +1 win gold), Ironbark
+  Cuirass (armor II, first-hit Defense token — Stage Costume seam), Courser's
+  Barding (mount II, +1 MP refresh — Windrider seam), Horn of Plenty (accessory III,
+  +1 win gold AND +1 materials/round), Warden's Aegis (armor III, first-incoming −1
+  AND a Defense token). No new engine effect kinds — each fold's item-id list in
+  `src/engine/anime-equipment.ts` gained the new id; behaviour pinned per item in
+  `anime-equipment.test.ts` (each fails if its fold id is removed). WIN-GOLD still
+  caps at +3 (weapon Adventurer's Blade + armor Alchemist's Satchel + ONE accessory
+  — Lucky Coin / Coinward Talisman / Horn of Plenty share the accessory slot); the
+  spell-Power and hand-limit accessory twins do NOT stack (same slot, above).
+  MARKETS: two single-hex Field Overrides — Rèn Binh Các (Blacksmith, xianxia, ⚒) +
+  Adventurer Outfitter (isekai, 🎒), both selling the shared Satchel; the shop menu
+  is a dynamic `CHOOSE_ONE` of `BUY_EQUIPMENT` options built in `beginFieldVisit`
+  (owned item ⇒ absent; affordability gold-gated like PAY_TO in legal-actions + a
+  reducer backstop; the leaf deducts gold + equips). REGISTER-AWARE SHOPS (2026-07):
+  on top of a shop's own exclusives + shared gear, EITHER outfitter ALSO offers the
+  VISITING hero's register line (`equipmentRegisterLineFor` off `factionVisualRegister`,
+  deduped) — a classic faction sees the classic line at both shops, azure_breeze
+  (wuxia) the xianxia line, fuyuki (anime) the isekai line. So a wuxia visitor sees
+  isekai-exclusive gear ONLY at the shop that sells it (never as a register line),
+  and classic items appear ONLY for classic visitors. Matrix + grade-in-label pinned
+  in `anime-equipment.test.ts` ("register-aware shops (§3.13 matrix)"). FUTURE-TOWN
+  RECIPE: a new town only needs a `factionVisualRegister` entry to light up an
+  existing register line at every outfitter (no shop edit); for bespoke gear, add
+  items in a new package + return it from `equipmentPackagesForFaction`. GATING:
+  `FieldOverrideDefinition.requiresModule`
   (new) + a `moduleEnabled` predicate on `listFieldOverrideDefinitions` — with
   `anime.equipment` off the two outfitters appear in NO pool/listing
   (CONTROL-pinned); the 11 existing kinds carry no `requiresModule` and are
