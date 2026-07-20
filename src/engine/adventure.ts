@@ -59,7 +59,11 @@ import {
   equipmentResourceRoundMaterials,
   playerOwnsEquipment
 } from "./anime-equipment";
-import { EQUIPMENT_SHOP_SALES, getEquipmentDefinition } from "@/data/anime/equipment";
+import {
+  EQUIPMENT_GRADE_TO_ARTIFACT_TIER,
+  EQUIPMENT_SHOP_SALES,
+  getEquipmentDefinition
+} from "@/data/anime/equipment";
 import {
   applyMoraleCardGain,
   consumeHeldMoraleCard,
@@ -202,7 +206,12 @@ import type { CustomMapObeliskBonus, CustomMapObeliskConfig } from "./state";
 import { awardCommanderGradePoints, commandersModuleEnabled, wogNewObjectsEnabled } from "./commanders";
 import { WOG_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/wog/field-overrides";
 import { ANIME_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/anime/field-overrides";
-import { COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/wog/commander-artifacts";
+import {
+  COMMANDER_ARTIFACT_SPEC_LIST,
+  COMMANDER_ARTIFACT_SPECS,
+  wogCommanderArtifactCardIds
+} from "@/data/wog/commander-artifacts";
+import { animeEquipmentCardIds } from "@/data/anime/equipment-cards";
 import {
   applyBreakFieldOptions,
   customGuardArmyDifficultyFromEntries,
@@ -5206,6 +5215,82 @@ function grantCommanderArtifactReward(state: GameState, playerId: PlayerId): voi
     `${eventPlayerName(state, playerId)} claims ${cardLibrary[cardId]?.name ?? cardId}, a commander artifact, and may bind it to their commander.`,
     playerId
   );
+}
+
+const COMMANDER_ARTIFACT_ID_SET = new Set<string>(wogCommanderArtifactCardIds);
+const EQUIPMENT_CARD_ID_SET = new Set<string>(animeEquipmentCardIds);
+
+/**
+ * When an EQUIPMENT CARD is used (hero equipment play OR commander-artifact
+ * bind — the card already left the game via removeSelf), auto-grant one REGULAR
+ * Artifact card of the SAME grade (minor/major/relic) into hand.
+ *
+ * Skips: other commander-artifact cards, anime equipment cards (never
+ * re-grants equipment). No-op (with a feed note) when no acquirable regular
+ * artifact of that tier remains in the matching shared deck(s).
+ *
+ * `sourceCardId` may be a commander-artifact id OR an equipment id — the tier
+ * is resolved from COMMANDER_ARTIFACT_SPECS / equipment grade / card metadata.
+ */
+export function grantRegularArtifactOfSameGrade(
+  state: GameState,
+  playerId: PlayerId,
+  sourceCardId: string
+): string | null {
+  const player = state.players[playerId];
+  if (!player) {
+    return null;
+  }
+  const equipDef = getEquipmentDefinition(sourceCardId);
+  const tier =
+    COMMANDER_ARTIFACT_SPECS[sourceCardId]?.tier ??
+    (equipDef ? EQUIPMENT_GRADE_TO_ARTIFACT_TIER[equipDef.grade] : undefined) ??
+    cardLibrary[sourceCardId]?.artifactTier ??
+    "minor";
+  // Split decks (BINH): draw from the matching tier pile. Legacy single deck:
+  // redraw past wrong-tier / commander / equipment cards.
+  const deckId = state.decks["artifacts"]
+    ? "artifacts"
+    : state.decks[`artifacts-${tier}`]
+      ? `artifacts-${tier}`
+      : null;
+  if (!deckId) {
+    eventNote(
+      state,
+      `${eventPlayerName(state, playerId)} uses equipment but no Artifact deck is available for a ${tier} reward.`,
+      playerId
+    );
+    return null;
+  }
+  const drawn = drawTopOfSharedDeck(state, deckId, playerId, (cardId) => {
+    if (COMMANDER_ARTIFACT_ID_SET.has(cardId) || EQUIPMENT_CARD_ID_SET.has(cardId)) {
+      return false;
+    }
+    const card = cardLibrary[cardId];
+    if (!card || card.kind !== "artifact") {
+      return false;
+    }
+    // On the legacy combined pile, keep only the matching grade.
+    if (deckId === "artifacts") {
+      return (card.artifactTier ?? "minor") === tier;
+    }
+    return true;
+  });
+  if (!drawn) {
+    eventNote(
+      state,
+      `${eventPlayerName(state, playerId)} uses equipment but finds no ${tier} Artifact left to claim.`,
+      playerId
+    );
+    return null;
+  }
+  player.hand.push(drawn);
+  eventNote(
+    state,
+    `${eventPlayerName(state, playerId)} receives ${cardLibrary[drawn]?.name ?? drawn} (${tier} Artifact) for using equipment.`,
+    playerId
+  );
+  return drawn;
 }
 
 /**

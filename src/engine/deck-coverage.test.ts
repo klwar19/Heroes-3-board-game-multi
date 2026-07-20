@@ -10,6 +10,7 @@ import { STARTING_ONLY_SPELLS, spellDeckBinhBasic, spellDeckBinhExpert, spellDec
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import { moraleCardPolarity } from "@/data/cards/morale";
 import { animeXianxiaArtifactCardIds } from "@/data/anime/artifacts";
+import { animeEquipmentCardIds } from "@/data/anime/equipment-cards";
 import { animeNeverDeckedCardIds } from "@/data/anime/hero-grades";
 import { wogArtifactCardIds } from "@/data/wog/artifacts";
 import { wogCommanderArtifactCardIds } from "@/data/wog/commander-artifacts";
@@ -56,6 +57,7 @@ describe("deck coverage", () => {
   // so it is reachable through the shop only — see `animeNeverDeckedCardIds`.
   const moduleGated = new Set<string>([
     ...animeXianxiaArtifactCardIds,
+    ...animeEquipmentCardIds,
     ...wogArtifactCardIds,
     ...wogCommanderArtifactCardIds,
     ...animeNeverDeckedCardIds

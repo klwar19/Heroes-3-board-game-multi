@@ -1276,10 +1276,21 @@ export type EffectDefinition =
        * own turn; legal only when the WOG Commanders module is on, the player has
        * a commander, and the slot is EMPTY. The per-slot wired effect lives in
        * COMMANDER_ARTIFACT_SPECS (src/data/wog/commander-artifacts.ts), keyed by
-       * the card id — this effect only names which slot to fill.
+       * the card id — this effect only names which slot to fill. Binding also
+       * grants one REGULAR Artifact of the same grade (see grantRegularArtifactOfSameGrade).
        */
       type: "BIND_COMMANDER_ARTIFACT";
       slot: CommanderArtifactSlot;
+    }
+  | {
+      /**
+       * Anime hero EQUIPMENT card (`anime.equipment`): equip the named item onto
+       * the main hero permanently (occupied slot → bag). The card has already
+       * left the game via removeSelf. Also grants one REGULAR Artifact of the
+       * same grade (I→minor / II→major / III→relic). Map-only; module must be on.
+       */
+      type: "EQUIP_HERO_EQUIPMENT";
+      equipmentId: string;
     }
   | {
       /**

@@ -128,7 +128,11 @@ import {
   heroTrainAvailable,
   playerMainHeroInCombat
 } from "./anime-hero-grades";
-import { equipmentFirstSpellPowerBonus, equipmentSpellPowerBonus } from "./anime-equipment";
+import {
+  equipmentEnabled,
+  equipmentFirstSpellPowerBonus,
+  equipmentSpellPowerBonus
+} from "./anime-equipment";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
@@ -2583,6 +2587,18 @@ function isOptionEffectPlayable(
       return (
         commandersModuleEnabled(state) && Boolean(commander) && !commander?.artifacts?.[effect.slot]
       );
+    }
+    case "EQUIP_HERO_EQUIPMENT": {
+      // Anime equipment card: map-only, module on, main hero present. Occupied
+      // slots are fine (old item goes to the bag). Already-owning the same item
+      // is still legal (equip is idempotent for that id).
+      if (context !== "map" || !state.adventure) {
+        return false;
+      }
+      if (!equipmentEnabled(state)) {
+        return false;
+      }
+      return Boolean(getMainHero(state, playerId));
     }
     case "ENTER_PLAY":
       // The permanent-income side of a hybrid artifact (Eversmoking Ring of
