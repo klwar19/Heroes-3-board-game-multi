@@ -395,6 +395,7 @@ import {
   getMightDiceCount,
   mightDiceAttackBonus,
   getDamageCapPerAttack,
+  getDamageCapPerSpell,
   getOnKillResourceGain,
   getAttackDieDamageFollowUps,
   getAttackDieResultBonus,
@@ -2277,10 +2278,14 @@ function reducedSpellDamage(
   amount: number,
   schools: readonly SpellSchool[] = []
 ): number {
-  return Math.max(
+  const reduced = Math.max(
     0,
     amount - totalSpellDamageReduction(state, target) - getSpellSchoolDamageReduction(target, schools)
   );
+  // Fuyuki Casters (and any CAP_DAMAGE_PER_ATTACK with includeSpells): each
+  // single spell-damage hit is hard-capped after reduction.
+  const cap = getDamageCapPerSpell(target);
+  return cap ? Math.min(reduced, cap.amount) : reduced;
 }
 
 /**
@@ -2463,7 +2468,15 @@ function reducedCardDamage(
           totalSpellDamageReduction(state, unit) +
           getSpellSchoolDamageReduction(unit, card.spellSchools ?? [])
         : 0;
-  return Math.max(0, amount - reduction);
+  const reduced = Math.max(0, amount - reduction);
+  // Spell cards (not specialty blasts) honour includeSpells damage caps.
+  if (card?.kind === "spell") {
+    const cap = getDamageCapPerSpell(unit);
+    if (cap) {
+      return Math.min(reduced, cap.amount);
+    }
+  }
+  return reduced;
 }
 
 // (finishCombatIfNeeded lives in combat-units.ts.)

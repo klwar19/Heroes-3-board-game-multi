@@ -44,8 +44,31 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   },
   "fuyuki.casters": {
     id: "fuyuki.casters", name: "Casters", faction: "fuyuki", tier: "silver", type: "ranged",
-    few: { attack: 2, defense: 2, health: 3, initiative: 4, cost: { gold: 7 }, abilities: ["magi-power-boost"], abilityText: "Leycraft — on activation, the first Spell this round gains +1 Power.", cardImage: fuyukiCard("silver", "casters", "few") },
-    pack: { attack: 3, defense: 2, health: 3, initiative: 5, cost: { gold: 11 }, abilities: ["magi-power-boost", "reduce-spell-damage-1"], abilityText: "Leycraft — first Spell +1 Power; takes 1 less Spell damage.", cardImage: fuyukiCard("silver", "casters", "pack") },
+    // engine: elemental-damage + casters-damage-cap (≤1 from each attack OR Spell)
+    // + magi-power-boost. Pack no longer uses reduce-spell-damage-1 — the hard
+    // cap is strictly stronger and covers attacks too.
+    few: {
+      attack: 2,
+      defense: 2,
+      health: 3,
+      initiative: 4,
+      cost: { gold: 7 },
+      abilities: ["elemental-damage", "casters-damage-cap", "magi-power-boost"],
+      abilityText:
+        "Leycraft — deals elemental damage; cannot take more than 1 damage from a single attack or Spell; first Spell this round +1 Power.",
+      cardImage: fuyukiCard("silver", "casters", "few")
+    },
+    pack: {
+      attack: 3,
+      defense: 2,
+      health: 3,
+      initiative: 5,
+      cost: { gold: 11 },
+      abilities: ["elemental-damage", "casters-damage-cap", "magi-power-boost"],
+      abilityText:
+        "Leycraft — deals elemental damage; cannot take more than 1 damage from a single attack or Spell; first Spell this round +1 Power.",
+      cardImage: fuyukiCard("silver", "casters", "pack")
+    },
     source
   },
   "fuyuki.sabers": {

@@ -56,3 +56,25 @@ Use case: production game asset. Asset type: square top-down map tile illustrati
 
 - Generated source: `C:\Users\klwar\.codex\generated_images\019f76eb-a1e8-7a83-9f8b-f75d3702e53b\exec-83fa9e04-f6ac-4ebd-ba08-77a4185df406.png`
 - Processed transparent game asset: `public/assets/anime/tiles/w-s1.webp`
+
+## Bin hero portrait (replace gold-unit reuse)
+
+Generation mode: Codex CLI built-in `image_gen` via `scripts/codex-gen-art.ps1`.
+
+- Generated source: `tmp/imagegen/bin-hero-portrait.png`
+- Game asset: `public/assets/anime/heroes/bin.png`
+- Note: must NOT match Sabers gold unit; specialty icon may still use `fuyuki-sabers.webp` (unit specialist).
+
+## Astral Regent commander (replace gold-unit reuse)
+
+- Generated source: `tmp/imagegen/astral-regent-commander.png`
+- Art window: `scripts/commander-art/ruler.png`
+- Built card: `public/assets/units-commander-ruler.webp` (`node scripts/build-commander-cards.mjs ruler`)
+
+## Commander equipment paperdolls (anime / wuxia)
+
+Classic keeps `public/assets/ui/commander-paperdoll-body.webp` + card bust.
+Anime/wuxia hide the card bust and use themed bodies only:
+
+- Anime: `tmp/imagegen/paperdoll-anime.png` → `public/assets/ui/commander-paperdoll-body-anime.webp`
+- Wuxia: `tmp/imagegen/paperdoll-wuxia.png` → `public/assets/ui/commander-paperdoll-body-wuxia.webp`

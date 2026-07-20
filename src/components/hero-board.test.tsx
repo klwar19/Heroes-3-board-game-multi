@@ -354,8 +354,10 @@ describe("HeroBoard — Unit Experience Board system button", () => {
     fireEvent.click(button);
     const dialog = screen.getByRole("dialog", { name: "Unit Experience Board" });
     expect(dialog.classList.contains("unitXpWindow")).toBe(true);
-    // Per-unit detail is inside: rank ladder + live XP readout.
+    // Picker first — click the unit to open the large detail panel.
     expect(dialog.textContent).toContain("Few Marksmen");
+    fireEvent.click(screen.getByRole("button", { name: /Open Few Marksmen experience board/i }));
+    expect(dialog.classList.contains("unitXpDetailOpen")).toBe(true);
     expect(dialog.textContent).toContain("5 / 14 XP");
     expect(dialog.textContent).toContain("2 · Veteran");
   });
