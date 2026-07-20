@@ -299,6 +299,76 @@ describe("HeroBoard — anime Equipment chips (§3.13)", () => {
   });
 });
 
+describe("HeroBoard — equipment window grade chips, grouping & upgrade hint (§3.13)", () => {
+  function equipmentAdventure(): GameState {
+    return createAdventureGameState({
+      seed: "hero-board-equip-window",
+      rollFirstPlayer: false,
+      anime: { enabled: true, equipment: true },
+      players: [
+        { id: "p1", name: "chen", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+  }
+
+  function openWindow(state: GameState): HTMLElement {
+    render(
+      <CardZoomProvider>
+        <HeroBoard state={state} playerId="p1" onAction={() => {}} />
+      </CardZoomProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Hero Equipment/i }));
+    return screen.getByRole("dialog", { name: "Hero Equipment" });
+  }
+
+  it("renders a grade chip on the equipped slot AND for every catalog item, tinted by grade", () => {
+    const state = equipmentAdventure();
+    getMainHero(state, "p1")!.equipment = { weapon: "anime.equip.iron_blood_sword" }; // Grade I
+    const dialog = openWindow(state);
+    // The filled weapon slot shows a Grade I chip (bronze tint class).
+    const slotChip = dialog.querySelector(".equipmentSlot.slot-weapon .equipGradeChip");
+    expect(slotChip?.classList.contains("gradeI")).toBe(true);
+    expect(slotChip?.textContent).toBe("I");
+    // The catalog carries chips of all three grades (bronze / silver / gold).
+    expect(dialog.querySelector(".equipGradeChip.gradeI")).toBeTruthy();
+    expect(dialog.querySelector(".equipGradeChip.gradeII")).toBeTruthy();
+    expect(dialog.querySelector(".equipGradeChip.gradeIII")).toBeTruthy();
+  });
+
+  it("groups the bag by slot (one group per slot) with a package flavour tag per item", () => {
+    const dialog = openWindow(equipmentAdventure());
+    // One group per equipment slot: weapon / armor / accessory / mount.
+    expect(dialog.querySelectorAll(".equipmentCatalogGroup")).toHaveLength(4);
+    expect(dialog.querySelectorAll(".equipmentCatalogGroupHead")).toHaveLength(4);
+    // Package flavour tags cover the classic line, the shared gear and an anime line.
+    const tagClasses = Array.from(dialog.querySelectorAll(".equipmentPkgTag")).map((tag) => tag.className);
+    expect(tagClasses.some((cls) => cls.includes("pkg-classic"))).toBe(true);
+    expect(tagClasses.some((cls) => cls.includes("pkg-shared"))).toBe(true);
+    expect(tagClasses.some((cls) => cls.includes("pkg-xianxia"))).toBe(true);
+  });
+
+  it("shows an upgrade hint when a HIGHER-grade bag item exists for a filled slot", () => {
+    const state = equipmentAdventure();
+    const hero = getMainHero(state, "p1")!;
+    hero.equipment = { weapon: "anime.equip.iron_blood_sword" }; // Grade I worn
+    hero.equipmentInventory = ["anime.equip.blade_of_the_trial"]; // Grade II weapon in bag
+    const dialog = openWindow(state);
+    const hint = dialog.querySelector(".equipmentUpgradeHint");
+    expect(hint).toBeTruthy();
+    expect(hint?.textContent).toContain("Blade of the Trial");
+  });
+
+  it("CONTROL — no upgrade hint when the bag holds only a LOWER-grade item for the slot", () => {
+    const state = equipmentAdventure();
+    const hero = getMainHero(state, "p1")!;
+    hero.equipment = { weapon: "anime.equip.blade_of_the_trial" }; // Grade II worn
+    hero.equipmentInventory = ["anime.equip.iron_blood_sword"]; // Grade I (lower) in bag
+    const dialog = openWindow(state);
+    expect(dialog.querySelector(".equipmentUpgradeHint")).toBeNull();
+  });
+});
+
 describe("HeroBoard — Feature B: the kept level-up Ability at levels 2/3/5/7", () => {
   it("renders the kept Ability card in the level slot when a pick is recorded", () => {
     const state = bulwarkAdventure("eikthurn");

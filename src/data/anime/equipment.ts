@@ -24,6 +24,7 @@
  */
 
 import { ANIME_EQUIPMENT_SLOTS, type AnimeEquipmentSlot, type ArtifactTier } from "@/engine/state";
+import { factionVisualRegister } from "@/data/faction-theme";
 
 export { ANIME_EQUIPMENT_SLOTS };
 export type { AnimeEquipmentSlot };
@@ -52,8 +53,21 @@ export const EQUIPMENT_GRADE_LABEL: Record<EquipmentGrade, { en: string; short: 
   III: { en: "Grade III (Relic)", short: "III" }
 };
 
-/** Which content family an equipment item belongs to (shop gating + naming). */
-export type EquipmentPackage = "anime-xianxia" | "anime-isekai" | "shared";
+/**
+ * Which content family an equipment item belongs to (shop gating + naming).
+ * `classic` is the register line for the classic-chrome factions (Castle,
+ * Rampart, …); `anime-xianxia` / `anime-isekai` are the two anime-town lines;
+ * `shared` items are sold at every outfitter.
+ */
+export type EquipmentPackage = "anime-xianxia" | "anime-isekai" | "shared" | "classic";
+
+/** Short flavour tag per package, for UI chips (paper-doll bag rows etc.). */
+export const EQUIPMENT_PACKAGE_LABEL: Record<EquipmentPackage, string> = {
+  "anime-xianxia": "xianxia",
+  "anime-isekai": "isekai",
+  shared: "shared",
+  classic: "classic"
+};
 
 /**
  * A CONTEXT another module must provide for an item to be worth buying. The
@@ -106,7 +120,17 @@ export const EQUIPMENT_IDS = {
   // --- Grade fill-out wave (3 grades proper) --------------------------------
   luckyCoin: "anime.equip.lucky_coin",
   spiritFocus: "anime.equip.spirit_focus",
-  eternalSash: "anime.equip.eternal_sash"
+  eternalSash: "anime.equip.eternal_sash",
+  // --- Classic register line (2026-07): 6 items for classic-chrome factions.
+  //     Every effect is a PURE reuse of an already-wired equipment seam (see
+  //     src/engine/anime-equipment.ts); the two relics COMBINE two seams like
+  //     Alchemist's Satchel. 2 per grade, spread across all four slots. --------
+  crusadersPoleaxe: "anime.equip.crusaders_poleaxe",
+  coinwardTalisman: "anime.equip.coinward_talisman",
+  ironbarkCuirass: "anime.equip.ironbark_cuirass",
+  coursersBarding: "anime.equip.coursers_barding",
+  hornOfPlenty: "anime.equip.horn_of_plenty",
+  wardensAegis: "anime.equip.wardens_aegis"
 } as const;
 
 function equip(
@@ -278,6 +302,74 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "shared",
     summary:
       "Accessory · Grade III: +1 hand limit (stacks with Guild-Issue Mail (armor) / Cultivation Foundation / Deep Pockets; shares the accessory slot with Twin-Tail Ribbon — only one is worn)."
+  }),
+
+  // ==== Classic register line (2026-07) ====================================
+  // Balanced twins/combos of proven seams, flavoured for classic factions.
+  // ---- Grade I (minor, 4g) ------------------------------------------------
+  [EQUIPMENT_IDS.crusadersPoleaxe]: equip({
+    id: EQUIPMENT_IDS.crusadersPoleaxe,
+    slot: "weapon",
+    grade: "I",
+    name: { en: "Crusader's Poleaxe", vi: "Đại Kích Thánh Chiến" },
+    package: "classic",
+    // Seam: equipmentFirstAttackBonus (the Iron-Blood Sword fold).
+    summary:
+      "Weapon · Grade I: your units' FIRST declared attack each combat gets +1 Attack (your main hero's fights; not on retaliations; shares the weapon slot with Iron-Blood Sword — only one is worn)."
+  }),
+  [EQUIPMENT_IDS.coinwardTalisman]: equip({
+    id: EQUIPMENT_IDS.coinwardTalisman,
+    slot: "accessory",
+    grade: "I",
+    name: { en: "Coinward Talisman", vi: "Bùa Chiêu Tài" },
+    package: "classic",
+    // Seam: equipmentWinGold (the Lucky Coin fold).
+    summary:
+      "Accessory · Grade I: gain +1 gold after each combat you win (stacks with Adventurer's Blade (weapon) / Alchemist's Satchel (armor); shares the accessory slot with Lucky Coin / Horn of Plenty — only one is worn)."
+  }),
+
+  // ---- Grade II (major, 6g) -----------------------------------------------
+  [EQUIPMENT_IDS.ironbarkCuirass]: equip({
+    id: EQUIPMENT_IDS.ironbarkCuirass,
+    slot: "armor",
+    grade: "II",
+    name: { en: "Ironbark Cuirass", vi: "Giáp Thiết Mộc" },
+    package: "classic",
+    // Seam: applyEquipmentStageCostumeDefenseToken (the Stage Costume fold).
+    summary:
+      "Armor · Grade II: the FIRST time one of your units is attacked each combat, that unit gains a Defense token after the attack resolves (your main hero's fights; shares the armor slot with Stage Costume / Warden's Aegis — only one is worn)."
+  }),
+  [EQUIPMENT_IDS.coursersBarding]: equip({
+    id: EQUIPMENT_IDS.coursersBarding,
+    slot: "mount",
+    grade: "II",
+    name: { en: "Courser's Barding", vi: "Giáp Chiến Mã" },
+    package: "classic",
+    // Seam: equipmentMovementBonus (the Windrider Saddle fold).
+    summary:
+      "Mount · Grade II: +1 movement point to your main hero at each turn refresh (folded into the per-turn movement max; shares the mount slot with Windrider Saddle — only one is worn)."
+  }),
+
+  // ---- Grade III (relic, 8g) — each COMBINES two proven seams -------------
+  [EQUIPMENT_IDS.hornOfPlenty]: equip({
+    id: EQUIPMENT_IDS.hornOfPlenty,
+    slot: "accessory",
+    grade: "III",
+    name: { en: "Horn of Plenty", vi: "Tù Và Sung Túc" },
+    package: "classic",
+    // Seams: equipmentWinGold + equipmentResourceRoundMaterials.
+    summary:
+      "Accessory · Grade III: +1 gold after each combat you win AND +1 building materials at the start of each Resources round (win-gold stacks with Adventurer's Blade (weapon) / Alchemist's Satchel (armor); shares the accessory slot with Supply Satchel / Coinward Talisman / Lucky Coin — only one is worn)."
+  }),
+  [EQUIPMENT_IDS.wardensAegis]: equip({
+    id: EQUIPMENT_IDS.wardensAegis,
+    slot: "armor",
+    grade: "III",
+    name: { en: "Warden's Aegis", vi: "Thuẫn Hộ Vệ" },
+    package: "classic",
+    // Seams: equipmentIncomingAttackPenalty + applyEquipmentStageCostumeDefenseToken.
+    summary:
+      "Armor · Grade III: the FIRST enemy attack against your units each combat resolves at −1 Attack, and that unit gains a Defense token after the hit (your main hero's fights; not vs retaliations; shares the armor slot with Black Tortoise Mail / Stage Costume — only one is worn)."
   })
 };
 
@@ -358,3 +450,39 @@ export const EQUIPMENT_SHOP_SALES: Record<string, readonly string[]> = {
 
 /** The outfitter location ids (used by the shop-append seam gate). */
 export const EQUIPMENT_SHOP_LOCATION_IDS: ReadonlySet<string> = new Set(Object.keys(EQUIPMENT_SHOP_SALES));
+
+/**
+ * REGISTER-AWARE SHOPS (§3.13): the equipment package LINE a visiting hero's
+ * faction is ALSO offered at EITHER outfitter, on top of that shop's own
+ * exclusives + shared gear (`EQUIPMENT_SHOP_SALES`). Keyed purely off the
+ * faction's VISUAL REGISTER (`factionVisualRegister`, `src/data/faction-theme.ts`):
+ *   - classic-chrome factions (Castle, Rampart, …) → the "classic" line,
+ *   - a wuxia faction (azure_breeze)               → the "anime-xianxia" line,
+ *   - an anime faction (fuyuki)                    → the "anime-isekai" line.
+ * So a classic visitor sees the classic items at both shops; a wuxia visitor
+ * sees the xianxia items (already the Blacksmith's exclusives) at BOTH shops;
+ * an anime visitor sees the isekai items (the Outfitter's exclusives) at BOTH.
+ *
+ * FUTURE-TOWN RECIPE: a new town only needs a `factionVisualRegister` entry to
+ * light up an existing register line at every outfitter — no shop edit. To give
+ * it BESPOKE gear, add items in a new package and return that package here (and
+ * teach `factionVisualRegister` the new register). No engine change is needed.
+ */
+export function equipmentPackagesForFaction(factionId: string | undefined): EquipmentPackage[] {
+  switch (factionVisualRegister(factionId)) {
+    case "anime":
+      return ["anime-isekai"];
+    case "wuxia":
+      return ["anime-xianxia"];
+    default:
+      return ["classic"];
+  }
+}
+
+/** The item ids of a visiting faction's register line (register-aware shops). */
+export function equipmentRegisterLineFor(factionId: string | undefined): string[] {
+  const packages = new Set(equipmentPackagesForFaction(factionId));
+  return listEquipmentDefinitions()
+    .filter((def) => packages.has(def.package))
+    .map((def) => def.id);
+}

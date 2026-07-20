@@ -28526,6 +28526,92 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 .equipmentCatalogItem small { color: #8e8676; font-size: 10px; text-transform: capitalize; }
 .equipmentCatalogItem.equipped { background: var(--mod-accent-soft); border-color: var(--mod-line); }
 .equipmentCatalogItem.equipped strong { color: var(--mod-accent); }
+.equipmentCatalogItem.owned { background: rgb(120 200 255 / 8%); }
+.equipmentCatalogItem.owned strong { color: #d3e6f4; }
+
+/* --- Grade chip (§3.13 UI polish) — one shared family for the hero paper-doll,
+   the outfitter shop rows AND the WOG commander-artifact window. Reuses the
+   app's EXISTING tier hues (bronze / silver / gold = the .tierDot palette); no
+   new colours. Roman numeral I/II/III = Artifact minor/major/relic. ---------- */
+.equipGradeChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid currentcolor;
+  font: 700 10px/1 Georgia, "Times New Roman", serif;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  flex: none;
+}
+.equipGradeChip.gradeI { color: #dc9c5f; background: rgb(180 111 51 / 22%); border-color: rgb(180 111 51 / 78%); }
+.equipGradeChip.gradeII { color: #dee3ed; background: rgb(199 204 214 / 18%); border-color: rgb(199 204 214 / 68%); }
+.equipGradeChip.gradeIII { color: #efcb66; background: rgb(231 183 60 / 22%); border-color: rgb(231 183 60 / 80%); }
+
+/* Paper-doll slot header: slot label + grade chip on one baseline. */
+.equipmentSlotHead { display: flex; align-items: center; gap: 6px; grid-column: 2; }
+.equipmentSlotHead small { color: var(--mod-accent); text-transform: uppercase; letter-spacing: 0.12em; }
+
+/* Bag grouped by slot: a small header per slot section. */
+.equipmentCatalogGroup { margin-top: 13px; }
+.equipmentCatalogGroup:first-of-type { margin-top: 2px; }
+.equipmentCatalogGroupHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 3px;
+  padding: 3px 2px 4px;
+  border-bottom: 1px solid var(--mod-line);
+  color: var(--mod-accent);
+  font: 700 11px Georgia, serif;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.equipmentCatalogGroupHead .slotGlyph { font-size: 15px; }
+.equipmentCatalogGroupHead .slotCount { margin-left: auto; color: #8e8676; font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+/* Per-item meta: a package flavour tag next to the grade chip. */
+.equipmentCatalogItemBody { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.equipmentItemMeta { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 1px; }
+.equipmentItemMeta small { color: #8e8676; font-size: 10px; text-transform: capitalize; }
+.equipmentPkgTag {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 8%);
+  color: #b6ac97;
+  font: 600 9px/1.5 Georgia, serif;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.equipmentPkgTag.pkg-classic { color: #e0c07a; }
+.equipmentPkgTag.pkg-xianxia { color: #86dfc0; }
+.equipmentPkgTag.pkg-isekai { color: #77d5ff; }
+.equipmentPkgTag.pkg-shared { color: #b6ac97; }
+
+/* "A better item is waiting in the bag" nudge under a filled slot. */
+.equipmentUpgradeHint {
+  grid-column: 1 / 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  padding: 5px 7px;
+  border: 1px solid rgb(231 183 60 / 48%);
+  border-radius: 7px;
+  background: rgb(231 183 60 / 12%);
+  color: #f0cd6a;
+  font-size: 10px;
+  line-height: 1.3;
+}
+.equipmentUpgradeHint strong { color: #ffe9a6; }
+
+/* Commander-artifact slot / inventory grade chip alignment. */
+.commanderArtifactSlotMeta small,
+.commanderArtifactMeta { display: inline-flex; align-items: center; gap: 5px; }
 
 /* Commander equipment launcher and full equipment window. */
 .commanderEquipButton {
