@@ -57,19 +57,16 @@ const PATHFINDING: HeroMovementCapabilities = {
 // internal border — a clean canvas so any seal seen is the DESIGNED one.
 const OPEN_TILE = "F23";
 
-// The designer-border SEALING "lock" is disabled for now
-// (DESIGNER_BORDER_SEALING_ENABLED === false). The suites that assert a designed
-// border WALLS movement / discovery / placement off are the spec for when it is
-// re-enabled, so they run only while the flag is on; the pure rendering +
-// normalizer suites (unaffected by the lock) always run. A dedicated suite below
-// pins the current, disabled behavior (borders no longer seal).
+// Designer yellow borders are ON by default (DESIGNER_BORDER_SEALING_ENABLED).
+// Suites that assert a designed border WALLS movement / discovery / placement
+// run while the flag is on; pure rendering + normalizer suites always run.
+// The "lock removed" suite below is the CONTROL for the off path (skipped when
+// the flag is on).
 const sealingDescribe = DESIGNER_BORDER_SEALING_ENABLED ? describe : describe.skip;
 
-// Pins the CURRENT shipped behavior: the designer-border "lock" is removed, so a
-// designed border neither seals movement nor gets copied onto the live map. If
-// someone re-arms the wiring without flipping DESIGNER_BORDER_SEALING_ENABLED,
-// these fail. (When the flag is flipped back on, the sealing suites above cover
-// it and these become the CONTROL that no longer applies — hence gated off.)
+// CONTROL for the off path: when sealing is disabled a designed border neither
+// seals movement nor is copied onto the live map. Skipped while the flag is on
+// (the sealing suites above are the live spec).
 const lockRemovedDescribe = DESIGNER_BORDER_SEALING_ENABLED ? describe.skip : describe;
 
 lockRemovedDescribe("designer-border sealing DISABLED (lock removed)", () => {

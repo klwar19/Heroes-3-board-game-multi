@@ -1863,10 +1863,9 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
  * the plan's provenance.
  */
 function applyDesignedBorders(tile: MapTileState, plan: CustomMapTilePlan): void {
-  // The designer-border sealing "lock" is disabled for now: leave the plan's
-  // border data untouched (so the designer + save round-trip keep it), but do
-  // NOT copy it onto the live tile — so it neither seals movement nor renders as
-  // an inert in-game wall. Flip DESIGNER_BORDER_SEALING_ENABLED to restore it.
+  // When sealing is off the plan keeps its border data (designer + save
+  // round-trip) but the live tile is left clean — no draw, no wall. With the
+  // flag ON (default) the plan's edges land on every group including starting Ⅰ.
   if (!DESIGNER_BORDER_SEALING_ENABLED) {
     return;
   }
