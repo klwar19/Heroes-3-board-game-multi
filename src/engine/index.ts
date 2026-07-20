@@ -283,6 +283,18 @@ export {
 } from "./polish-spell-book";
 
 export {
+  POLISH_QUICK_COMBAT_DIFFICULTY_X,
+  POLISH_QUICK_COMBAT_STACK_LAYER_STRENGTH,
+  POLISH_QUICK_COMBAT_TIER_STRENGTH,
+  POLISH_QUICK_COMBAT_UNIT_COUNT,
+  polishQuickCombatArmyStrength,
+  polishQuickCombatEnabled,
+  polishQuickCombatFieldStrength,
+  polishQuickCombatUnitStrength,
+  polishQuickCombatXpPossible
+} from "./polish-quick-combat";
+
+export {
   POLISH_UNIT_STACK_RULES,
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCap,

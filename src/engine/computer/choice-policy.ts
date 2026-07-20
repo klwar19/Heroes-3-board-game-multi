@@ -405,6 +405,14 @@ function scorePositionOption(
     return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 
+  if (context === "polish-quick-combat" && choice.polishQuickCombat) {
+    // Polish strength-based Quick Combat: option 0 is the certain unfought win
+    // (no XP), option 1 the real dice fight for XP. Prefer the certain win —
+    // the AI cannot judge the dice risk here, and the guaranteed claim keeps
+    // its march moving.
+    return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+  }
+
   if (context === "deck-search-mode" && choice.deckSearchMode) {
     // Prefer searching the deck (more options) over a single discard-top when
     // count > 1; otherwise take discard-top as a free known card.
