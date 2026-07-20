@@ -959,6 +959,10 @@ describe("anime.equipment — public state & legacy snapshots", () => {
 const EQUIP_ID_MIC = EQUIPMENT_IDS.neonMicrophone;
 const EQUIP_ID_COSTUME = EQUIPMENT_IDS.stageCostume;
 const EQUIP_ID_RIBBON = EQUIPMENT_IDS.twinTailRibbon;
+// Grade-fill wave (all accessory except via distinct-slot combos).
+const EQUIP_ID_LUCKY = EQUIPMENT_IDS.luckyCoin;
+const EQUIP_ID_FOCUS = EQUIPMENT_IDS.spiritFocus;
+const EQUIP_ID_SASH = EQUIPMENT_IDS.eternalSash;
 
 describe("anime.equipment — Neon Microphone (weapon)", () => {
   it("+1 Power on the first spell cast preview, CONTROL: no mic → baseline", () => {
@@ -1023,5 +1027,74 @@ describe("anime.equipment — Twin-Tail Ribbon (accessory)", () => {
     // Weapon/armor free — put guild mail on armor too.
     equip(state, "p1", "armor", EQUIP_ID_GUILD);
     expect(effectiveHandLimit(state, "p1")).toBe(base + 2);
+  });
+});
+
+// ===========================================================================
+// Grade-fill wave — Lucky Coin, Spirit Focus, Eternal Sash (+ slot-cap pins)
+// ===========================================================================
+
+describe("anime.equipment — Lucky Coin (accessory, grade-fill)", () => {
+  it("+1 gold after a won combat, STACKING to +3 with Adventurer's Blade + Alchemist's Satchel (CONTROL: none)", () => {
+    const none = runWonGuardCombat("eq-lucky-win", EQUIP_ON, []).goldGained;
+    expect(runWonGuardCombat("eq-lucky-win", EQUIP_ON, [["accessory", EQUIP_ID_LUCKY]]).goldGained).toBe(none + 1);
+    // The three win-gold items sit in THREE distinct slots (weapon / armor /
+    // accessory), so all are worn together and the fold reaches +3 — the stack
+    // the Lucky Coin summary promises (Bounty Hunter's Eye adds more, separate seam).
+    expect(
+      runWonGuardCombat("eq-lucky-win", EQUIP_ON, [
+        ["accessory", EQUIP_ID_LUCKY],
+        ["weapon", EQUIP_ID_BLADE],
+        ["armor", EQUIP_ID_ALCHEMIST]
+      ]).goldGained
+    ).toBe(none + 3);
+  });
+});
+
+describe("anime.equipment — Spirit Focus (accessory, grade-fill)", () => {
+  it("+1 spell Power alone, STACKING to +2 with Cultivation (a different seam) — CONTROL: no focus → baseline", () => {
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const base = createInitialGameState("eq-focus-base");
+    base.anime = { ...EQUIP_ON };
+    const baseline = standingSpellPower(base, "p1", arrow);
+
+    const focus = createInitialGameState("eq-focus");
+    focus.anime = { ...EQUIP_ON, cultivation: true };
+    equip(focus, "p1", "accessory", EQUIP_ID_FOCUS);
+    expect(standingSpellPower(focus, "p1", arrow)).toBe(baseline + 1);
+    // Cultivation Nascent Soul (realm 3, +1) is a SEPARATE seam → +2 total.
+    getMainHero(focus, "p1")!.cultivationRealm = 3;
+    expect(standingSpellPower(focus, "p1", arrow)).toBe(baseline + 2);
+  });
+
+  it("shares the accessory slot with Cosmos Pendant — wearing both yields +1, NOT +2 (same-slot twins)", () => {
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const state = createInitialGameState("eq-focus-excl");
+    state.anime = { ...EQUIP_ON };
+    const baseline = standingSpellPower(state, "p1", arrow);
+    equip(state, "p1", "accessory", EQUIP_ID_COSMOS);
+    equip(state, "p1", "accessory", EQUIP_ID_FOCUS); // overwrites the single accessory slot
+    // Only one accessory is worn, so equipment spell-power tops out at +1 —
+    // the corrected summaries drop the impossible Cosmos↔Spirit same-slot stack.
+    expect(standingSpellPower(state, "p1", arrow)).toBe(baseline + 1);
+  });
+});
+
+describe("anime.equipment — Eternal Sash (accessory, grade-fill)", () => {
+  it("+1 hand limit alone, STACKING to +2 with Guild-Issue Mail (armor, different slot) — CONTROL: base", () => {
+    const state = adventure("eq-sash");
+    const base = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_SASH);
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
+    equip(state, "p1", "armor", EQUIP_ID_GUILD); // armor is a distinct slot → stacks
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 2);
+  });
+
+  it("shares the accessory slot with Twin-Tail Ribbon — wearing both yields +1, NOT +2 (same-slot twins)", () => {
+    const state = adventure("eq-sash-excl");
+    const base = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_RIBBON);
+    equip(state, "p1", "accessory", EQUIP_ID_SASH); // overwrites the single accessory slot
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
   });
 });

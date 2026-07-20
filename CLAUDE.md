@@ -1045,11 +1045,18 @@ pinned in `src/engine/wog-commanders.test.ts` + `wog-commander-casts.test.ts`
 + `wog-commander-combos.test.ts` (observable outcomes with CONTROLs; each
 fails if its wiring is removed).
 
-### Commander Artifacts (`wog.artifacts` + `wog.commanders`) — 8 slot items
+### Commander Artifacts (`wog.artifacts` + `wog.commanders`) — 10 slot items
 
-Eight authentic WoG commander artifacts (items worn by the COMMANDER, not the
-hero) acquired from the shared Artifact decks and bound PERMANENTLY into three
-slots — weapon / armor / trinket. Data + the SINGLE-SOURCE registry are in
+Ten commander artifacts (8 authentic WoG + 2 grade-fill weapons — every slot now
+spans minor/major/relic) worn by the COMMANDER, not the hero, acquired from the
+shared Artifact decks and bound PERMANENTLY into three slots — weapon / armor /
+trinket. Binding ALSO grants one REGULAR (non-commander, non-equipment) Artifact
+of the same grade (minor/major/relic) into hand — a FIXED-grade compensation for
+the removed card via `grantRegularArtifactOfSameGrade` (adventure.ts): it honours
+artifact uniqueness (skips one any seat already holds) but DELIBERATELY sits
+outside the BINH tier-progression gate AND the Polish Random Artifacts roll (it is
+a forced grant, not a player Search); a null grant leaves a feed note. Data + the
+SINGLE-SOURCE registry are in
 `src/data/wog/commander-artifacts.ts` (`COMMANDER_ARTIFACT_SPECS`, keyed by card
 id — carries the slot AND the wired effect; the card definitions are generated
 from it); state on `CommanderPlayerState.artifacts` (public, no player-view
@@ -1072,8 +1079,10 @@ LEAD with the adaptations / deliberate limits:
 - **Commander-scope is unchanged** — the artifacts affect only the MAIN hero's
   commander in the fights the commander already joins.
 
-The 8 artifacts (each `tags` states EXACTLY the wired effect, CLAUDE.md §2):
+The 10 artifacts (each `tags` states EXACTLY the wired effect, CLAUDE.md §2):
+- weapon `iron_cudgel` (minor) — +1 Attack (flat fold; grade-fill).
 - weapon `axe_of_smashing` (major) — +2 Attack (flat fold).
+- weapon `doomsday_blade` (relic) — +3 Attack (flat fold; grade-fill).
 - weapon `sword_of_sharpness` (major) — +1 Might attack die (appends
   `commander-might-1`, riding the Damage-grade Might-dice machinery — so both the
   real roll AND the lethal-save preview read it).
@@ -1094,7 +1103,8 @@ Bind flow: the card's only play is a map-only, own-turn `BIND_COMMANDER_ARTIFACT
 option (`cost.removeSelf`) legal only with the Commanders module on, a commander
 present (a DEAD commander binds for later) and the slot EMPTY; resolving removes
 the card FROM THE GAME (never the discard), sets the slot, and emits
-`COMMANDER_ARTIFACT_BOUND`. THREE-WAY DECK GATE: the eight cards join the shared
+`COMMANDER_ARTIFACT_BOUND`, then grants the same-grade regular Artifact (above).
+THREE-WAY DECK GATE: the ten cards join the shared
 Artifact deck(s) ONLY when `wog.enabled && wog.artifacts && wog.commanders` are
 all on (dead cards without a commander) — id lists `wogCommanderArtifact*Ids`
 joined in `makeSharedDecks` beside the Task-1 hero-artifact join (split tiers +
@@ -2562,26 +2572,45 @@ Leading with what does NOT run / deliberate limits:
   threshold + nodes + one entry per register (§3.11 recipe). Magnitudes pegged to
   existing precedents (Brute gold, Cart/artifact income, Pandora hand/Power,
   commander reaction buffs, Boots movement).
-- **Also shipped: `anime.equipment`** (Equipment — always-on hero ITEMS in three
-  slots weapon/armor/accessory, DISTINCT from Artifact cards: never in hand,
-  never cast, one per slot, buying into an occupied slot REPLACES with no refund;
-  §3.13). Default OFF ⇒ byte-identical. Read-layer `src/engine/anime-equipment.ts`,
-  data `src/data/anime/equipment.ts`, behaviour pinned in
-  `src/engine/anime-equipment.test.ts` (each claim mutation-checked) + the catalog
-  in `src/data/anime/equipment.test.ts` + the hero-board chips
-  (`hero-board.test.tsx`). Leading with what does NOT run / limits: **NO
+- **Also shipped: `anime.equipment`** (Equipment — always-on hero ITEMS in four
+  slots weapon/armor/accessory/mount, one per slot, buying into an occupied slot
+  REPLACES with no refund; §3.13). 18 items across three GRADES I/II/III
+  (minor/major/relic), cost 4/6/8 gold DERIVED from grade
+  (`EQUIPMENT_GRADE_COST`). Each item is BOTH an always-on slot item AND an
+  Artifact-deck CARD (`src/data/anime/equipment-cards.ts`, generated from the
+  catalog): the cards join the shared Artifact deck(s) — split per-tier AND legacy
+  single — ONLY when `anime.enabled && anime.equipment` (`makeSharedDecks`); playing
+  one is a mapOnly `EQUIP_HERO_EQUIPMENT` (`cost.removeSelf`) that equips
+  permanently, REMOVES the card from the game, and grants one REGULAR (non-equipment,
+  non-commander) Artifact of the SAME grade into hand via the shared
+  `grantRegularArtifactOfSameGrade` (uniqueness-respecting, null→feed note; sits
+  OUTSIDE the BINH tier-progression gate and the Polish Random Artifacts roll on
+  purpose — a fixed-grade compensation, not a Search). Default OFF ⇒ byte-identical
+  (no shop in the pool, no cards in the deck). Read-layer
+  `src/engine/anime-equipment.ts`, data `src/data/anime/equipment.ts`, behaviour
+  pinned in `src/engine/anime-equipment.test.ts` + the deck-join/play + grant
+  semantics in `src/engine/anime-equipment-cards.test.ts` (each claim
+  mutation-checked) + the catalog in `src/data/anime/equipment.test.ts` + the
+  hero-board chips (`hero-board.test.tsx`). Leading with what does NOT run / limits:
+  **same-slot twins do NOT stack** — Cosmos Pendant + Spirit Focus (both accessory,
+  +1 spell Power) and Twin-Tail Ribbon + Eternal Sash (both accessory, +1 hand
+  limit) share the ONE accessory slot, so only one is ever worn (the earlier
+  summaries wrongly claimed the cross-stack; corrected + pinned). The equipment
+  spell-power fold therefore tops out at +1 and the hand-limit fold at +2
+  (Guild-Issue Mail is armor). **NO
   map-action button for EQUIPMENT in this slice** — buying is only through the two
   outfitter Field Overrides; the hero board is a read-only chip display for items.
   (The other hero map actives — HERO_TRAIN / Forced March (§3.11) and the Heavenly
   Tribulation (§5.6) — DO now have a human button via the map `HeroActionsDock`;
-  only equipment purchase does not.) **Art (2026-07): all 6 items ship real
-  512×512 transparent icons** (`public/assets/anime/equipment/`, drawn on the
-  hero-board chip — `.hbEquipIcon`, art wins over the slot glyph;
+  only equipment purchase does not.) **Art (2026-07): all 18 items ship real
+  512×512 transparent inventory icons** (`public/assets/anime/equipment/`, drawn on
+  the hero-board chip — `.hbEquipIcon`, art wins over the slot glyph;
   `ANIME_EQUIPMENT_ART_PLACEHOLDERS` is now EMPTY, a future art-less item must
-  be declared there for the glyph fallback); **no
+  be declared there for the glyph fallback) **plus a framed Artifact-CARD face
+  each** (`public/assets/anime/equipment/cards/<slug>.webp`); **no
   designer pin for the outfitters** (pool-placed only); **combat items are the
   MAIN hero's fights only** (commander-scope; a garrison fight gets neither —
-  CONTROL). What runs (6 items, each a proven-seam reuse pegged to a core
+  CONTROL). What runs (18 items, each a proven-seam reuse pegged to a core
   magnitude): Iron-Blood Sword = your units' FIRST declared attack each combat +1
   Attack (a per-combat one-shot folded UNCLAMPED in `getAttackStackDetails` beside
   the combat-script delta, consumed at `finishResolvedAttack` when the attack
@@ -2592,7 +2621,18 @@ Leading with what does NOT run / deliberate limits:
   Bounty-Hunter's-Eye hook, stacks to +2 with the grade node); Guild-Issue Mail =
   +1 hand limit (`effectiveHandLimit`, stacks with Foundation + Deep Pockets →
   +3); Supply Satchel = +1 building materials each Resources round (the
-  `resourceRoundGain` income loop). MARKETS: two single-hex Field Overrides — Rèn
+  `resourceRoundGain` income loop). The other 12 reuse the same seams — wave-2:
+  Marshal's War Horn (commander pre-combat SORT, `wog.commanders`-gated),
+  Veteran's Standard (+1 EXTRA Unit-XP/win, `unitExperience`-gated), Windrider
+  Saddle (+1 MP each turn refresh), Spirit Crane Mount (free commander revive,
+  `wog.commanders`-gated), Blade of the Trial (+1 Attack in combat round 1),
+  Alchemist's Satchel (+1 gold/round AND +1 win gold); Miku: Neon Microphone (+1
+  first-Spell Power), Stage Costume (first-hit Defense token), Twin-Tail Ribbon
+  (+1 hand limit); grade-fill: Lucky Coin (+1 win gold), Spirit Focus (+1 spell
+  Power), Eternal Sash (+1 hand limit). The three WIN-GOLD items span DISTINCT
+  slots (Adventurer's Blade weapon / Alchemist's Satchel armor / Lucky Coin
+  accessory) so all stack → +3; the spell-Power and hand-limit accessory twins do
+  NOT (same slot, above). MARKETS: two single-hex Field Overrides — Rèn
   Binh Các (Blacksmith, xianxia, ⚒) + Adventurer Outfitter (isekai, 🎒), both
   selling the shared Satchel; the shop menu is a dynamic `CHOOSE_ONE` of
   `BUY_EQUIPMENT` options built in `beginFieldVisit` (owned item ⇒ absent;

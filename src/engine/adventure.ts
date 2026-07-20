@@ -5231,6 +5231,18 @@ const EQUIPMENT_CARD_ID_SET = new Set<string>(animeEquipmentCardIds);
  *
  * `sourceCardId` may be a commander-artifact id OR an equipment id — the tier
  * is resolved from COMMANDER_ARTIFACT_SPECS / equipment grade / card metadata.
+ *
+ * DELIBERATE readings (a FIXED-grade compensation for the removed card, not a
+ * player-chosen Search — so it sits OUTSIDE two chokepoints on purpose):
+ *   - Uniqueness IS honoured: drawTopOfSharedDeck passes `playerId`, so
+ *     canAcquireSharedDeckCard skips any globally-unique artifact already held
+ *     (and any Necromancy/starting-only ineligible card).
+ *   - It does NOT consult the BINH tier-progression gate (a low-level hero can
+ *     receive a relic grant): the grade is fixed by the card the player already
+ *     acquired + played, so a same-grade regular artifact back is symmetric.
+ *   - It does NOT trigger the Polish Random Artifacts die-roll access override
+ *     (which gates Search/dig/black-market/event ACQUISITIONS, not a forced
+ *     grant); the grant reads no live override and sets none.
  */
 export function grantRegularArtifactOfSameGrade(
   state: GameState,

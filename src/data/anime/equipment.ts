@@ -158,7 +158,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "I",
     name: { en: "Twin-Tail Ribbon", vi: "Ruy Băng Đôi" },
     package: "anime-isekai",
-    summary: "Accessory · Grade I: +1 hand limit (stacks with Cultivation Foundation / Deep Pockets / Guild-Issue Mail / Eternal Sash)."
+    summary: "Accessory · Grade I: +1 hand limit (stacks with Cultivation Foundation / Deep Pockets / Guild-Issue Mail (armor); shares the accessory slot with Eternal Sash — only one is worn)."
   }),
   [EQUIPMENT_IDS.luckyCoin]: equip({
     id: EQUIPMENT_IDS.luckyCoin,
@@ -176,7 +176,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "II",
     name: { en: "Cosmos Pendant", vi: "Càn Khôn Bội" },
     package: "anime-xianxia",
-    summary: "Accessory · Grade II: +1 spell Power on your casts (stacks with Cultivation / Hero-Grade / Spirit Focus Power)."
+    summary: "Accessory · Grade II: +1 spell Power on your casts (stacks with Cultivation / Hero-Grade Power; the isekai Spirit Focus is its same-slot accessory twin — only one is worn)."
   }),
   [EQUIPMENT_IDS.supplySatchel]: equip({
     id: EQUIPMENT_IDS.supplySatchel,
@@ -237,7 +237,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "II",
     name: { en: "Spirit Focus", vi: "Tụ Linh Châu" },
     package: "anime-isekai",
-    summary: "Accessory · Grade II: +1 spell Power on your casts (stacks with Cosmos Pendant / Cultivation / Hero-Grade Power)."
+    summary: "Accessory · Grade II: +1 spell Power on your casts (stacks with Cultivation / Hero-Grade Power; the xianxia Cosmos Pendant is its same-slot accessory twin — only one is worn)."
   }),
 
   // ---- Grade III (relic, 8g) ----------------------------------------------
@@ -277,7 +277,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     name: { en: "Eternal Sash", vi: "Đới Trường Sinh" },
     package: "shared",
     summary:
-      "Accessory · Grade III: +1 hand limit (stacks with Guild-Issue Mail / Twin-Tail Ribbon / Cultivation Foundation / Deep Pockets)."
+      "Accessory · Grade III: +1 hand limit (stacks with Guild-Issue Mail (armor) / Cultivation Foundation / Deep Pockets; shares the accessory slot with Twin-Tail Ribbon — only one is worn)."
   })
 };
 
