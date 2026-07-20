@@ -17,6 +17,7 @@ import {
   isCreatureBankCombat,
   makeArrowTowerUnit,
   makeCommanderCombatUnit,
+  NEUTRAL_PLAYER_ID,
   SHIP_BATTLE_OBSTACLES,
   weightedCombatBoardArtIds,
   type ActiveEffectModifier,
@@ -1325,6 +1326,34 @@ describe("BattlefieldBoard Polish army Stack badge", () => {
     }
     // CONTROL: units without a mirrored rank draw no badge.
     expect(document.querySelectorAll(".unitRankBadge").length).toBe(2);
+  });
+
+  it("Neutral Rank-Up: shows the SAME veteran badge on a ranked NEUTRAL guard, with a module-off CONTROL", () => {
+    const state = createInitialGameState("neutral-rank-badge");
+    // A ranked neutral guard (as the Neutral Rank-Up module mints it) — the badge
+    // reads the mirrored rank uniformly, so the player SEES it before engaging.
+    const guard = state.combat!.units.unit_p2_skeletons;
+    guard.controllerId = NEUTRAL_PLAYER_ID;
+    guard.unitRank = 2;
+    guard.unitExperience = 6;
+    // CONTROL: another neutral unit with the module OFF carries no rank → no badge.
+    const bare = state.combat!.units.unit_p1_griffins;
+    bare.controllerId = NEUTRAL_PLAYER_ID;
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(document.querySelector(".unitRankBadge.combat.rank-2")).toBeTruthy();
+    // Exactly ONE badge — the ranked neutral guard; the bare neutral unit has none.
+    expect(document.querySelectorAll(".unitRankBadge").length).toBe(1);
   });
 
   it("shows the standard Stack Token badge on a Stacked bank defender (Polish size uses normal tokens)", () => {

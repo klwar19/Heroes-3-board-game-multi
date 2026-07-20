@@ -37,7 +37,8 @@ export const DEFAULT_ANIME_OPTIONS: AnimeModOptions = {
   equipment: false,
   // Opt-in only (=== true, no legacy semantics — new mechanics).
   unitStacks: false,
-  unitExperience: false
+  unitExperience: false,
+  neutralRankUp: false
 };
 
 /** Master crest / skin gate. */
