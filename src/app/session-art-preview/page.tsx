@@ -9,6 +9,16 @@ import { assetUrl } from "@/lib/asset-url";
  */
 const HERO_ASSETS = [
   {
+    title: "Bin hero portrait",
+    path: "/assets/anime/heroes/bin.png",
+    wired: "MUST NOT match Sabers gold unit"
+  },
+  {
+    title: "Astral Regent commander",
+    path: "/assets/units-commander-ruler.webp",
+    wired: "MUST NOT match Sabers gold unit"
+  },
+  {
     title: "Lingxi hero portrait",
     path: "/assets/anime/heroes/lingxi.png",
     wired: "hero board + specialty portrait strip"
@@ -24,9 +34,19 @@ const HERO_ASSETS = [
     wired: "MUST NOT match True Inheritors unit art"
   },
   {
-    title: "Commander equip paperdoll",
+    title: "Classic commander equip paperdoll",
     path: "/assets/ui/commander-paperdoll-body.webp",
-    wired: "Diablo-style body in equip popup"
+    wired: "classic equip popup body (+ card bust)"
+  },
+  {
+    title: "Anime commander equip paperdoll",
+    path: "/assets/ui/commander-paperdoll-body-anime.webp",
+    wired: "Fuyuki equip popup — themed body, no card"
+  },
+  {
+    title: "Wuxia commander equip paperdoll",
+    path: "/assets/ui/commander-paperdoll-body-wuxia.webp",
+    wired: "Azure Breeze equip popup — themed body, no card"
   }
 ] as const;
 
