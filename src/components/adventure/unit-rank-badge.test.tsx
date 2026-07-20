@@ -51,7 +51,7 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(stats).toContain(`D${printed.defense}`);
   });
 
-  it("opens the Unit Experience Board with STATS/ABILITY pills, unique path, and Drill", () => {
+  it("opens the Unit Experience Board picker, then a per-unit detail with STATS/ABILITY and Drill", () => {
     const state = makeState(true, "rank-badge-action");
     state.players.p1.army[0].experience = 1;
     state.players.p1.army.push({ id: "champs", unitDefId: "castle.champions", side: "few", experience: 0 });
@@ -72,8 +72,16 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     fireEvent.click(boardButton);
     const dialog = document.querySelector(".heroSystemModal.unitXpWindow") as HTMLElement;
     expect(dialog).toBeTruthy();
+    expect(dialog.textContent).toContain("Click a unit");
+    expect(dialog.textContent).toContain("either stats or one ability");
+    // Picker lists army cards — click one to open the large detail panel.
+    const pickHalberdiers = dialog.querySelector(
+      'button[aria-label="Open Few Halberdiers experience board"]'
+    ) as HTMLButtonElement;
+    expect(pickHalberdiers).toBeTruthy();
+    fireEvent.click(pickHalberdiers);
+    expect(dialog.classList.contains("unitXpDetailOpen")).toBe(true);
     const text = dialog.textContent ?? "";
-    expect(text).toContain("either stats or one ability");
     expect(text).toContain("1 · Seasoned");
     expect(text).toContain("2 · Veteran");
     expect(text).toContain("3 · Elite");
@@ -81,8 +89,9 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(text).toContain("STATS");
     expect(text).toContain("ABILITY");
     expect(text).toContain("at 3 XP");
-    expect(text).toContain("No Retaliation");
-    expect(text).toContain("never provoke a Retaliation");
+    // Halberdiers standard path ability rank (R2) — name + full rules text.
+    expect(text).toContain("Thick Hide");
+    expect(text).toContain("+1 Defense while this unit is defending");
     fireEvent.click(dialog.querySelector(".armyUnitActions button") as Element);
     expect(dispatched[0]).toEqual({ type: "DRILL_UNIT", playerId: "p1", armyUnitId: "vets" });
   });

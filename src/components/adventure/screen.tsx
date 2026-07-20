@@ -3740,16 +3740,24 @@ export function TownHeroDock({
             </header>
             <div className="commanderEquipmentBody">
               <div className="commanderPaperdoll" aria-label="Commander paperdoll slots">
-                {/* Diablo-style empty body silhouette; commander art as a bust overlay. */}
+                {/* Classic: body + card bust. Anime/wuxia: themed body only (no card face). */}
                 <img
                   alt=""
                   aria-hidden="true"
                   className="commanderPaperdollBody"
-                  src={assetUrl("/assets/ui/commander-paperdoll-body.webp")}
+                  src={assetUrl(
+                    lexicon.register === "anime"
+                      ? "/assets/ui/commander-paperdoll-body-anime.webp"
+                      : lexicon.register === "wuxia"
+                        ? "/assets/ui/commander-paperdoll-body-wuxia.webp"
+                        : "/assets/ui/commander-paperdoll-body.webp"
+                  )}
                 />
-                <div className="commanderPaperdollBust">
-                  <img alt="" className="commanderPaperdollPortrait" src={assetUrl(commanderDef.cardImage)} />
-                </div>
+                {lexicon.register === "classic" ? (
+                  <div className="commanderPaperdollBust">
+                    <img alt="" className="commanderPaperdollPortrait" src={assetUrl(commanderDef.cardImage)} />
+                  </div>
+                ) : null}
                 {(["weapon", "armor", "trinket"] as const).map((slot) => {
                   const cardId = commander.artifacts?.[slot];
                   const spec = cardId ? COMMANDER_ARTIFACT_SPECS[cardId] : undefined;
@@ -4018,6 +4026,7 @@ export function ArmyPanel({
 }) {
   const { zoomContent } = useCardZoom();
   const [xpBoardOpen, setXpBoardOpen] = useState(false);
+  const [xpBoardUnitId, setXpBoardUnitId] = useState<string | null>(null);
   const player = state.players[playerId];
   const lexicon = factionUiLexicon(player?.factionId);
   if (!player || player.army.length === 0) {
@@ -4045,14 +4054,17 @@ export function ArmyPanel({
         <button
           aria-haspopup="dialog"
           className="armyExperienceBoard"
-          onClick={() => setXpBoardOpen(true)}
+          onClick={() => {
+            setXpBoardUnitId(null);
+            setXpBoardOpen(true);
+          }}
           type="button"
         >
           <span className="armyXpBoardTitle">
             <Crown aria-hidden="true" size={18} />
             <strong>{lexicon.experienceBoard}</strong>
           </span>
-          <small>XP · rank-by-rank stat changes · elite abilities — open the board</small>
+          <small>Click a unit below, or open the full picker</small>
         </button>
       ) : null}
       <ul>
@@ -4175,7 +4187,15 @@ export function ArmyPanel({
                 ) : null}
               </button>
               {rankInfo ? (
-                <div className="armyXpPanel" aria-label={`${def?.name ?? unit.unitDefId} experience`}>
+                <button
+                  className="armyXpPanel"
+                  aria-label={`Open ${def?.name ?? unit.unitDefId} experience board`}
+                  onClick={() => {
+                    setXpBoardUnitId(unit.id);
+                    setXpBoardOpen(true);
+                  }}
+                  type="button"
+                >
                   <div className="armyXpHead">
                     <span><img alt="" src={assetUrl("/assets/spell-icons/slayer.png")} /><strong>{rankInfo.rankName || "Recruit"}</strong></span>
                     <b>{rankInfo.experience} / {maxXp} XP</b>
@@ -4206,7 +4226,7 @@ export function ArmyPanel({
                       </span>
                     ) : null}
                   </div>
-                </div>
+                </button>
               ) : null}
               {onAction && (drillAction || reinforceAction || stackAction) ? (
                 <div className="armyUnitActions" aria-label={`${def?.name ?? unit.unitDefId} actions`}>
@@ -4222,9 +4242,13 @@ export function ArmyPanel({
       {xpBoardOpen && typeof document !== "undefined"
         ? createPortal(
             <UnitExperienceWindow
+              initialArmyUnitId={xpBoardUnitId}
               legalActions={legalActions}
               onAction={onAction}
-              onClose={() => setXpBoardOpen(false)}
+              onClose={() => {
+                setXpBoardOpen(false);
+                setXpBoardUnitId(null);
+              }}
               playerId={playerId}
               state={state}
             />,

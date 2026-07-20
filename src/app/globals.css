@@ -5225,10 +5225,10 @@ button.hbSlot:disabled { cursor: default; }
 
 /* Equipment chip item icon (art wins over the slot glyph) */
 .hbEquipIcon {
-  width: 1.15em;
-  height: 1.15em;
+  width: 1.55em;
+  height: 1.55em;
   object-fit: contain;
-  vertical-align: -0.2em;
+  vertical-align: -0.35em;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
 }
 
@@ -8232,15 +8232,26 @@ button.hbSlot:disabled { cursor: default; }
 
 .unitRankBadgeArt {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
   image-rendering: auto;
 }
 
+.unitRankBadgeArt.large {
+  width: 28px;
+  height: 28px;
+}
+
+.unitRankBadge.large {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 3px 8px;
+}
+
 .unitRankBadge.combat .unitRankBadgeArt {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
 }
 
 .unitRankBadge.combat {
@@ -28507,7 +28518,8 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     radial-gradient(circle at 50% 100%, rgb(0 0 0 / 55%), transparent 48%),
     linear-gradient(180deg, #12151b 0%, #07090d 100%);
 }
-/* Diablo-style empty paperdoll body (Codex art). Falls back invisibly if missing. */
+/* Diablo-style empty paperdoll body (Codex art). Classic keeps the card bust
+   overlay; anime/wuxia use themed body art only (no full card on the body). */
 .commanderPaperdollBody {
   position: absolute;
   left: 50%;
@@ -28520,6 +28532,15 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   filter: drop-shadow(0 0 28px var(--mod-accent-soft)) drop-shadow(0 18px 30px rgb(0 0 0 / 70%));
   pointer-events: none;
   user-select: none;
+}
+.theme-anime .commanderPaperdollBody,
+.theme-wuxia .commanderPaperdollBody {
+  width: min(380px, 72%);
+  opacity: 0.98;
+  filter:
+    drop-shadow(0 0 34px var(--mod-accent-soft))
+    drop-shadow(0 18px 34px rgb(0 0 0 / 72%))
+    saturate(1.08);
 }
 .commanderPaperdollBust {
   position: absolute;
@@ -28534,6 +28555,11 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   box-shadow: 0 0 22px var(--mod-accent-soft), inset 0 0 18px rgb(0 0 0 / 55%);
   pointer-events: none;
   z-index: 2;
+}
+/* Anime/wuxia: hide the card-face bust — the themed body art is the figure. */
+.theme-anime .commanderPaperdollBust,
+.theme-wuxia .commanderPaperdollBust {
+  display: none;
 }
 .commanderPaperdollPortrait {
   width: 100%;
@@ -28572,10 +28598,22 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 }
 .commanderArtifactSlotWell img,
 .commanderArtifactSlotWell svg {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   color: var(--mod-accent, #e4bd68);
+}
+.theme-anime .commanderArtifactSlotWell,
+.theme-wuxia .commanderArtifactSlotWell {
+  width: 72px;
+  height: 72px;
+}
+.theme-anime .commanderArtifactSlotWell img,
+.theme-anime .commanderArtifactSlotWell svg,
+.theme-wuxia .commanderArtifactSlotWell img,
+.theme-wuxia .commanderArtifactSlotWell svg {
+  width: 52px;
+  height: 52px;
 }
 .commanderArtifactSlotMeta {
   display: flex;
@@ -28691,7 +28729,25 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 .armyPanel li { flex-direction: column; align-items: stretch; gap: 0; padding: 5px; border: 1px solid rgb(255 255 255 / 6%); border-radius: 9px; background: rgb(0 0 0 / 15%); }
 .armyUnitRow { padding: 4px; border-radius: 7px; }
 .armyUnitRow:hover { background: var(--mod-accent-soft, rgb(228 189 104 / 10%)); }
-.armyXpPanel { margin: 3px 5px 7px 36px; padding: 7px 9px 9px; border: 1px solid var(--mod-line, rgb(228 189 104 / 28%)); border-radius: 8px; background: rgb(0 0 0 / 22%); }
+.armyXpPanel {
+  display: block;
+  width: calc(100% - 41px);
+  margin: 3px 5px 7px 36px;
+  padding: 7px 9px 9px;
+  border: 1px solid var(--mod-line, rgb(228 189 104 / 28%));
+  border-radius: 8px;
+  background: rgb(0 0 0 / 22%);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+button.armyXpPanel:hover,
+button.armyXpPanel:focus-visible {
+  border-color: var(--mod-accent, #e4bd68);
+  box-shadow: 0 0 14px var(--mod-accent-soft, rgb(228 189 104 / 28%));
+  outline: none;
+}
 .armyXpHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #c9b891; font-size: 9px; }
 .armyXpHead > span { display: inline-flex; align-items: center; gap: 5px; }
 .armyXpHead img { width: 15px; height: 15px; object-fit: contain; }
@@ -28894,54 +28950,162 @@ button.armyExperienceBoard:focus-visible {
 .armyXpBoardTitle strong { color: #f4e8cf; font: 700 13px var(--mod-heading, Georgia, serif); }
 button.armyExperienceBoard > small { color: #9b917d; font-size: 8px; text-transform: uppercase; letter-spacing: 0.11em; }
 
-/* Unit Experience Board window: per-unit XP, rank-by-rank stat changes and the
-   elite ability's full rules text. Shares the heroSystemModal themed shell. */
+/* Unit Experience Board window: pick a unit card, then open a large detail panel.
+   Shares the heroSystemModal themed shell. */
 .heroSystemModal.unitXpWindow { width: min(1180px, 96vw); }
-.unitXpSources { margin: 14px 28px 0; color: #a99e8a; font-size: 11px; line-height: 1.55; }
-.unitXpList { display: flex; flex-direction: column; gap: 14px; padding: 18px 28px 28px; }
-.unitXpEmpty { margin: 10px 0 30px; padding: 18px; border: 1px dashed var(--mod-line); border-radius: 12px; color: #aaa08e; text-align: center; }
-
-.unitXpEntry {
+.heroSystemModal.unitXpWindow.unitXpDetailOpen { width: min(1280px, 98vw); max-height: min(920px, 96vh); }
+.unitXpSources { margin: 14px 28px 0; color: #a99e8a; font-size: 12px; line-height: 1.55; }
+.unitXpHeaderActions { display: flex; align-items: center; gap: 10px; }
+.unitXpBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--mod-line);
+  background: rgb(0 0 0 / 35%);
+  color: #f0e6d0;
+  font: 700 12px var(--mod-heading, Georgia, serif);
+  cursor: pointer;
+}
+.unitXpBack:hover { border-color: var(--mod-accent); color: var(--mod-accent); }
+.unitXpPicker {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  gap: 10px 14px;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 16px;
+  padding: 18px 28px 28px;
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
+.unitXpPickerCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 12px;
   border: 1px solid var(--mod-line);
-  border-radius: 13px;
-  background: linear-gradient(150deg, rgb(255 255 255 / 4%), rgb(0 0 0 / 30%));
+  border-radius: 16px;
+  background: linear-gradient(165deg, rgb(30 24 16 / 88%), rgb(8 10 14 / 92%));
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+.unitXpPickerCard:hover,
+.unitXpPickerCard:focus-visible {
+  border-color: var(--mod-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 0 22px var(--mod-accent-soft), 0 12px 24px rgb(0 0 0 / 45%);
+  outline: none;
+}
+.unitXpPickerArt {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  background: rgb(0 0 0 / 35%);
+}
+.unitXpPickerArt.fallback { display: block; min-height: 180px; }
+.unitXpPickerMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.unitXpPickerMeta strong {
+  flex: 1 1 100%;
+  color: #f1e7d2;
+  font: 700 14px var(--mod-heading, Georgia, serif);
+}
+.unitXpPickerMeta em {
+  color: var(--mod-accent);
+  font-style: normal;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.unitXpPickerMeta > b {
+  margin-left: auto;
+  color: #eee1c6;
+  font-size: 12px;
+}
+.unitXpEmpty {
+  margin: 10px 0 30px;
+  padding: 18px;
+  border: 1px dashed var(--mod-line);
+  border-radius: 12px;
+  color: #aaa08e;
+  text-align: center;
+  grid-column: 1 / -1;
 }
 
-.unitXpThumb { width: 92px; height: 128px; object-fit: cover; border-radius: 7px; align-self: start; }
-.unitXpThumb.fallback { display: block; background: rgb(0 0 0 / 35%); border: 1px solid var(--mod-line); }
-.unitXpBody { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.unitXpDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 28px 28px;
+  min-height: 0;
+  overflow: auto;
+}
+.unitXpDetailHero {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 20px 24px;
+  align-items: start;
+}
+.unitXpDetailArt {
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 1px solid var(--mod-line);
+  box-shadow: 0 16px 36px rgb(0 0 0 / 45%);
+  background: rgb(0 0 0 / 35%);
+}
+.unitXpDetailArt.fallback { display: block; min-height: 320px; }
+.unitXpDetailSummary { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
-.unitXpHeadRow { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
-.unitXpHeadRow strong { color: #f1e7d2; font: 700 14px var(--mod-heading, Georgia, serif); }
-.unitXpHeadRow em { color: var(--mod-accent); font-style: normal; font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; }
-.unitXpHeadRow > b { margin-left: auto; color: #eee1c6; font-size: 12px; }
+.unitXpHeadRow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.unitXpHeadRow strong { color: #f1e7d2; font: 700 18px var(--mod-heading, Georgia, serif); }
+.unitXpHeadRow em { color: var(--mod-accent); font-style: normal; font-size: 12px; text-transform: uppercase; letter-spacing: 0.09em; }
+.unitXpHeadRow > b { margin-left: auto; color: #eee1c6; font-size: 14px; }
 
 .unitXpStats { display: flex; flex-wrap: wrap; gap: 5px 14px; color: #b3a88f; font-size: 12px; }
+.unitXpStats.large { gap: 8px 18px; font-size: 15px; }
 .unitXpStats .boosted { color: var(--mod-accent); font-weight: 700; }
 
+.armyXpTrack.large { height: 18px; margin-top: 4px; }
+.armyXpTrack.large .armyXpMilestone i { font-size: 11px; }
+
 .unitXpRanks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.unitXpRanks.large { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 @media (min-width: 900px) {
   .unitXpRanks { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .unitXpRanks.large { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1100px) {
+  .unitXpRanks.large { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .unitXpDetailHero { grid-template-columns: 1fr; }
+  .unitXpDetailArt { max-width: 220px; margin: 0 auto; }
 }
 
 .unitXpRank {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 2px 6px;
-  padding: 8px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 3px 8px;
+  padding: 12px;
   border: 1px solid rgb(255 255 255 / 9%);
-  border-radius: 9px;
+  border-radius: 12px;
   background: rgb(0 0 0 / 24%);
 }
 
 .unitXpRank .unitXpRankIcon { grid-row: 1 / 3; display: grid; place-items: center; align-self: start; margin-top: 2px; color: var(--mod-accent); }
-.unitXpRank b { color: #e8dcc4; font-size: 11px; }
-.unitXpRank small { grid-column: 2; color: #9d927e; font-size: 9px; line-height: 1.3; }
-.unitXpRank .unitXpRankGains { grid-column: 1 / -1; margin-top: 3px; color: #cabfa4; font-size: 10px; }
+.unitXpRank b { color: #e8dcc4; font-size: 13px; }
+.unitXpRank small { grid-column: 2; color: #9d927e; font-size: 11px; line-height: 1.35; }
+.unitXpRank .unitXpRankGains { grid-column: 1 / -1; margin-top: 4px; color: #cabfa4; font-size: 12px; }
 .unitXpRank.reached { border-color: var(--mod-accent); box-shadow: inset 0 0 16px var(--mod-accent-soft); }
 .unitXpRank.reached .unitXpRankGains { color: var(--mod-accent); }
 .unitXpRank.next { border-color: rgb(255 255 255 / 22%); }
@@ -28951,20 +29115,20 @@ button.armyExperienceBoard > small { color: #9b917d; font-size: 8px; text-transf
 .unitXpElite {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  gap: 2px 6px;
-  margin-top: 5px;
-  padding-top: 5px;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  margin-top: 6px;
+  padding-top: 8px;
   border-top: 1px dashed rgb(255 255 255 / 14%);
-  font-size: 10px;
+  font-size: 12px;
   align-items: start;
 }
 .unitXpElite > img.unitXpAbilityIcon {
   grid-row: 1 / 2;
-  width: 18px;
-  height: 18px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
-  border-radius: 3px;
+  border-radius: 6px;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 50%);
 }
 .unitXpElite > svg { grid-row: 1 / 3; align-self: start; margin-top: 1px; }
@@ -29038,10 +29202,19 @@ button.armyExperienceBoard > small { color: #9b917d; font-size: 8px; text-transf
   font-size: 11px;
 }
 .unitXpActiveChip img {
-  width: 16px;
-  height: 16px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
-  border-radius: 2px;
+  border-radius: 4px;
+}
+.unitXpActiveChip.large {
+  gap: 8px;
+  padding: 4px 12px 4px 6px;
+  font-size: 13px;
+}
+.unitXpActiveChip.large img {
+  width: 32px;
+  height: 32px;
 }
 
 
