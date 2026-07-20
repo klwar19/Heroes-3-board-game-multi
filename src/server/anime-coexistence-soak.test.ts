@@ -47,6 +47,10 @@ const ALL_ANIME: AnimeModOptions = {
   // the OR seam composes); Unit Experience is a pure auto-grant.
   unitStacks: true,
   unitExperience: true,
+  // Neutral Rank-Up: neutral guards + Stacked bank defenders fight ranked. A
+  // pure combat-stat fold — harder fights, no new AI window — so all-on stays
+  // stall-free (the guaranteed-win smoothing still carries the AI's opening).
+  neutralRankUp: true,
 };
 
 function allOnSetup(seed: string, extra: Partial<AdventureSetupOptions>): AdventureSetupOptions {

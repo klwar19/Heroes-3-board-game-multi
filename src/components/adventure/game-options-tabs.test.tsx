@@ -520,6 +520,29 @@ describe("Game options — tabbed layout", () => {
     );
   });
 
+  it("the WOG mod window lists a Neutral rank-up module row and toggling it dispatches wog.neutralRankUp", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+    const row = within(dialog).getByRole("button", { name: /NEUTRAL guards toughen as the game ages/i });
+    expect(row.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(row);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SET_GAME_OPTIONS",
+        playerId: "p1",
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ enabled: true, neutralRankUp: true })
+        })
+      })
+    );
+  });
+
   it("Legacy preset turns house rules off without locking them (notice + free toggle)", () => {
     const onAction = openOptions();
     fireEvent.click(within(screen.getByRole("group", { name: /Game mode presets/i })).getByRole("button", { name: /Legacy/i }));

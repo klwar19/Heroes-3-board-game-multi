@@ -164,6 +164,14 @@ export type WogModOptions = {
    * (stat bonuses + elite abilities). See src/engine/unit-experience.ts.
    */
   unitExperience?: boolean;
+  /**
+   * Neutral Rank-Up (optional module): NEUTRAL guard units gain the shared
+   * veteran ranks as the game ages — every non-bank guard folds to the rank its
+   * tier reaches by the current round (capped at Veteran), and a Creature-Bank
+   * defender carrying a Stack Token fights one rank up. Balance guardrails and
+   * scope in src/engine/unit-experience.ts. Default OFF ⇒ byte-identical.
+   */
+  neutralRankUp?: boolean;
 };
 
 export const DEFAULT_WOG_OPTIONS: WogModOptions = {
@@ -172,7 +180,8 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
   newObjects: false,
   newCreatures: true,
   artifacts: false,
-  unitExperience: false
+  unitExperience: false,
+  neutralRankUp: false
 };
 
 /**
@@ -253,6 +262,13 @@ export type AnimeModOptions = {
    * lives on the army card (`ArmyUnitState.experience`), folded at combat build.
    */
   unitExperience?: boolean;
+  /**
+   * Neutral Rank-Up (anime-mod surface of the shared optional module): NEUTRAL
+   * guards gain veteran ranks as the game ages (rounds) and Stacked Creature-Bank
+   * defenders fight one rank up. Same engine as the WOG toggle — either activates
+   * it. Types + resolution only (no anime lobby UI). See unit-experience.ts.
+   */
+  neutralRankUp?: boolean;
   /** Calamity wave cadence when monsterWaves is on. */
   waveCadence?: 3 | 4 | 5;
 };
@@ -10239,6 +10255,13 @@ export type AdventureState = {
    * no rank folds, DRILL_UNIT rejected. See src/engine/unit-experience.ts.
    */
   unitExperience?: boolean;
+  /**
+   * Neutral Rank-Up (optional module): frozen at setup when either surface
+   * enabled it (`wog.neutralRankUp` / `anime.neutralRankUp`). Absent/false = OFF:
+   * neutral guards never rank up (byte-identical). See src/engine/unit-experience.ts
+   * (`neutralRankUpActive`, `applyNeutralRoundsRank`, `neutralStackRankFold`).
+   */
+  neutralRankUp?: boolean;
   /**
    * Individual BINH house-rule toggles, resolved to concrete booleans at setup
    * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older

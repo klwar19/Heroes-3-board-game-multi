@@ -253,6 +253,119 @@ export function withRankAbilities(abilities: string[], fold: UnitRankFold): stri
 /** @deprecated Use `withRankAbilities`. Alias kept for any lingering imports. */
 export const withEliteAbility = withRankAbilities;
 
+// ---------------------------------------------------------------------------
+// Neutral Rank-Up (OPTIONAL module: wog.neutralRankUp / anime.neutralRankUp)
+// ---------------------------------------------------------------------------
+//
+// NEUTRAL guard units gain the SAME veteran ranks a player army earns —
+// reusing unitRankFold / combatUnitRankFold / withRankAbilities VERBATIM (no
+// parallel stat table) — via two independent halves, each frozen behind
+// `adventure.neutralRankUp`:
+//
+//  • ROUNDS: every NON-bank neutral guard (plain neutral cards, Random-Town
+//    faction packs, designer level/exact armies) fights at the rank its tier
+//    reaches with VIRTUAL XP = max(0, round - 1) run through the REAL
+//    tier-scaled UNIT_RANK_THRESHOLDS, CAPPED at NEUTRAL_ROUNDS_RANK_CAP
+//    (Veteran) — a gentle mid-game ramp: bronze Seasoned r4 / Veteran r7,
+//    silver r5/r9, gold+azure r6/r11. Rounds 1-3 are untouched (below every
+//    tier's first threshold). Banks are EXCLUDED here (they carry STACKS).
+//  • STACKS: a Creature-Bank defender CARRYING a Stack Token fights at a fixed
+//    NEUTRAL_STACK_RANK (Seasoned) — one rank, ON TOP of the token, gated on
+//    the LIVE token so absorbing it reverts the defender to a plain bank card.
+//
+// Default OFF ⇒ byte-identical: neither half is ever reached and no fold runs.
+
+/** Rounds half never ranks a guard past this rank (Veteran). */
+export const NEUTRAL_ROUNDS_RANK_CAP = 2;
+/** Stacks half: a Stacked bank defender fights exactly this rank up (Seasoned). */
+export const NEUTRAL_STACK_RANK = 1;
+
+/** Whether the optional Neutral Rank-Up module is frozen on for this game. */
+export function neutralRankUpActive(state: GameState): boolean {
+  return Boolean(state.adventure?.neutralRankUp);
+}
+
+/** Virtual XP a NON-bank neutral guard has "earned" by the current game round. */
+export function neutralRoundsVirtualXp(round: number): number {
+  return Math.max(0, Math.trunc(round) - 1);
+}
+
+/** The (capped) rounds-mode rank a `tier` guard reaches by `round`. */
+export function neutralRoundsRank(tier: UnitTier, round: number): number {
+  return Math.min(NEUTRAL_ROUNDS_RANK_CAP, unitRankForExperience(tier, neutralRoundsVirtualXp(round)));
+}
+
+/**
+ * The XP to MIRROR onto a rounds-ranked neutral guard so a mid-combat printed-
+ * side recompute (a Random-Town Pack→Few flip through applyUnitCurrentSide →
+ * combatUnitRankFold) reproduces the EXACT SAME capped rank: the virtual XP
+ * clamped just below the tier's rank-(cap+1) threshold, so the shared,
+ * uncapped combatUnitRankFold can never return more than NEUTRAL_ROUNDS_RANK_CAP.
+ */
+export function neutralRoundsMirrorXp(tier: UnitTier, round: number): number {
+  const thresholds = UNIT_RANK_THRESHOLDS[tier] ?? UNIT_RANK_THRESHOLDS.gold;
+  // thresholds is 0-indexed [r1, r2, r3, r4]; thresholds[cap] is the rank-(cap+1)
+  // threshold — clamp one below it so the rank can never exceed the cap.
+  const rankAboveCapThreshold = thresholds[NEUTRAL_ROUNDS_RANK_CAP];
+  return Math.min(neutralRoundsVirtualXp(round), rankAboveCapThreshold - 1);
+}
+
+/**
+ * Rank fold for an EXPLICIT target rank (no XP table) — the stacks half. Reuses
+ * the shared stat-step + schedule-ability machinery, so the rank a stacked bank
+ * defender gains is identical to the one a player army card of the same tier
+ * would earn.
+ */
+function explicitRankFold(unitDefId: string, tier: UnitTier, rank: number): UnitRankFold {
+  const capped = Math.max(0, Math.min(MAX_UNIT_RANK, Math.trunc(rank)));
+  if (capped <= 0) return ZERO_RANK_FOLD;
+  const abilityIds = unitRankAbilityIds(unitDefId, capped);
+  return {
+    ...unitRankStatBonusesFor(unitDefId, tier, capped),
+    rank: capped,
+    abilityIds,
+    abilityId: abilityIds[0] ?? null
+  };
+}
+
+/**
+ * Stacks half: the fixed NEUTRAL_STACK_RANK fold for a Creature-Bank defender,
+ * keyed off the UNDERLYING unit definition's tier + schedule (bank draws mint
+ * `tier: "bronze"` and carry no meaningful grade, so the card's own grade is
+ * ignored — read the real def). ZERO when the def is unknown.
+ */
+export function neutralStackRankFold(unitDefId: string): UnitRankFold {
+  const def = coreUnitDefinitions[unitDefId];
+  if (!def) return ZERO_RANK_FOLD;
+  return explicitRankFold(unitDefId, def.tier, NEUTRAL_STACK_RANK);
+}
+
+/**
+ * Rounds half: fold the virtual veteran rank onto a freshly-minted NON-bank
+ * neutral guard IN PLACE, reusing combatUnitRankFold (the identical machinery
+ * player veterancy uses). Mirrors the CAPPED virtual XP so a Random-Town
+ * Pack→Few recompute reproduces the same capped rank. No-op at rank 0, on a
+ * bank unit, or an unknown def — so rounds 1-3 and every off game are untouched.
+ */
+export function applyNeutralRoundsRank(unit: CombatUnitState, round: number): void {
+  if (unit.bankUnit || !unit.unitDefId) return;
+  const def = coreUnitDefinitions[unit.unitDefId];
+  if (!def) return;
+  if (neutralRoundsRank(def.tier, round) <= 0) return;
+  unit.unitExperience = neutralRoundsMirrorXp(def.tier, round);
+  const fold = combatUnitRankFold(unit);
+  if (fold.rank <= 0) {
+    delete unit.unitExperience;
+    return;
+  }
+  unit.attack += fold.attack;
+  unit.defense += fold.defense;
+  unit.maxHealth += fold.health;
+  unit.initiative += fold.initiative;
+  unit.abilities = withRankAbilities(unit.abilities, fold);
+  unit.unitRank = fold.rank;
+}
+
 export type ArmyUnitRankInfo = {
   experience: number;
   rank: number;

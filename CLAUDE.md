@@ -1561,6 +1561,84 @@ What runs (each with a failing-if-removed test):
   `experience`, so every fold is an exact no-op and no award/dilution/Drill
   runs (off-CONTROLs pinned; legacy snapshots unaffected).
 
+## Neutral Rank-Up (OPTIONAL, WOG/anime flag) — what runs vs. limits
+
+An OPTIONAL module where NEUTRAL guard units gain the EXISTING Unit-Experience
+veteran ranks as the game ages, and Creature-Bank Stacked defenders fight one
+rank up. ONE boolean, two module surfaces resolving to ONE frozen adventure
+field (mirroring the `unitExperience` precedent):
+`WogModOptions.neutralRankUp` (active when `wog.enabled && wog.neutralRankUp`)
+and `AnimeModOptions.neutralRankUp` (active when `anime.enabled &&
+anime.neutralRankUp`; types + resolution only, no anime lobby UI), frozen onto
+`adventure.neutralRankUp` at setup (`neutralRankUpOn` in `adventure-setup.ts`;
+absent/undefined = OFF for legacy snapshots). Lobby: ONE row in the WOG Mod
+options window (`screen.tsx`). It REUSES the veterancy machinery verbatim (no
+parallel rank table): `unitRankFold` / `combatUnitRankFold` / `withRankAbilities`
++ the tier-scaled `UNIT_RANK_THRESHOLDS` + `UNIT_STAT_STEPS` + per-unit
+schedules. Read layer + constants in ONE place: `src/engine/unit-experience.ts`
+(`NEUTRAL_ROUNDS_RANK_CAP` = 2, `NEUTRAL_STACK_RANK` = 1, `neutralRankUpActive`,
+`neutralRoundsRank`, `neutralRoundsMirrorXp`, `applyNeutralRoundsRank`,
+`neutralStackRankFold`). Behaviour pinned in `src/engine/neutral-rank-up.test.ts`
+(every claim mutation-checked; both folds independently mutation-verified) +
+the badge in `src/components/table/board.test.tsx` + the lobby row in
+`src/components/adventure/game-options-tabs.test.tsx`.
+
+Leading with what does NOT run / deliberate limits:
+- **Quick Combat and the polish-quick-combat strength read DELIBERATELY ignore
+  ranks** — a level auto-win / a strength-covered Quick Combat still resolves
+  before any guard acts, exactly like the existing "veteran ranks ignored" line.
+  The module makes a FOUGHT-OUT fight harder, never a skipped one.
+- **The AI engagement heuristics ignore ranks** — the map policy still reasons
+  by field difficulty / level, so a computer hero may walk into a now-harder
+  fight; it just fights it (no bespoke rank-aware avoidance).
+- **XP/reward for beating a ranked guard is UNCHANGED** — rewards are
+  difficulty-based; the fold raises guard STATS only and never touches
+  `combat.context.difficulty` (pinned: "reward driver is UNTOUCHED").
+- **Banks are EXCLUDED from the ROUNDS half** — a Creature-Bank defender never
+  round-ranks (their own-stats balance is separate); `applyNeutralRoundsRank`
+  no-ops on any `bankUnit` (pinned at round 12). Banks carry only the STACKS
+  half, and the two never stack.
+- **Rounds 1-3 are COMPLETELY unchanged even with the module ON** — virtual XP
+  = `round - 1` is below every tier's first threshold, so `applyNeutralRoundsRank`
+  is a no-op (round-1 CONTROL identical to off).
+- **No map-side preview beyond the combat badge** — the ranked guard's veteran
+  badge renders on its COMBAT card (the same `unit.unitRank` badge player armies
+  use, in `board.tsx`) so the player sees it at placement; there is no new
+  map-hex rank marker. The lobby row's description is the discovery surface.
+- **Sandbox / PvP / summons untouched**; the computer guaranteed-win smoothing
+  still auto-wins its two eligible fights (the win wipes the ranked guards at
+  combat-start regardless — pinned). Under PvP-Neutral-Control the controlled
+  guards DO fight ranked (emergent — the controller simply drives stronger
+  guards).
+
+What runs (each with a failing-if-removed test):
+- **ROUNDS half** (mid-game ramp): at the ONE non-bank mint seam
+  (`revealNeutralArmy` in `adventure-reducer.ts` — plain neutral cards,
+  Random-Town faction packs AND designer level/exact armies all funnel through
+  it) every guard is folded to `min(NEUTRAL_ROUNDS_RANK_CAP, rankForXp(tier,
+  round-1))` via `applyNeutralRoundsRank`. Tier-scaled: bronze Seasoned r4 /
+  Veteran r7, silver r5/r9, gold+azure r6/r11. The stat/ability delta is the
+  SAME player veterancy grants (observable: a round-7 bronze guard's Defense
+  rises by the Veteran fold and the rank ability is appended). It CAPS at
+  Veteran (round-30 bronze is still rank 2, Attack unchanged — no Elite/Legend
+  leak) by mirroring a CAPPED virtual XP onto `unit.unitExperience`
+  (`neutralRoundsMirrorXp` clamps below the rank-3 threshold), so a mid-combat
+  Random-Town Pack→Few recompute (`applyUnitCurrentSide` → `combatUnitRankFold`)
+  reproduces the exact capped rank.
+- **STACKS half**: a Creature-Bank defender CARRYING a Stack Token fights at
+  `NEUTRAL_STACK_RANK` (Seasoned), folded in the bank-recompute branch of
+  `applyUnitCurrentSide` (`unit-transforms.ts`) keyed off the UNDERLYING unit
+  def's tier/schedule (`neutralStackRankFold` — bank draws mint `tier:
+  "bronze"`, so the card's own grade is ignored). The `neutralRankUp` flag is
+  threaded there via `unitSideRuleOverrides` (`ruleset.ts`); the fold is gated
+  on the LIVE token, so absorbing it (`markUnitRemovedIfNeeded`, stackToken →
+  null) reverts the defender to a plain bank card. The Stack-Token +1 stat and
+  the lethal-blow absorb are UNCHANGED (the rank is on top). Threads through the
+  real `buildCreatureBankCombatUnits` (pinned with Polish size 4 = all-Stacked).
+- **Default OFF ⇒ byte-identical**: neither half is reached (the freeze leaves
+  `adventure.neutralRankUp` absent, `neutralRankUpActive` false, the bank
+  override false), so no fold runs — an exact-equality CONTROL.
+
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
 A separate system from the Astrologers Proclaim deck (do not confuse the two).

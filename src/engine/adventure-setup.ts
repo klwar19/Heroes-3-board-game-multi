@@ -2467,6 +2467,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     Boolean(setupOptions.unitExperience) ||
     Boolean(wog.enabled && wog.unitExperience) ||
     Boolean(anime.enabled && anime.unitExperience);
+  // Neutral Rank-Up (optional module): TWO module surfaces — the WOG toggle and
+  // the anime flag — activate ONE shared engine flag, frozen onto adventure
+  // state below. Default OFF ⇒ byte-identical.
+  const neutralRankUpOn =
+    Boolean(wog.enabled && wog.neutralRankUp) || Boolean(anime.enabled && anime.neutralRankUp);
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
@@ -2577,6 +2582,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // Unit Experience (optional rule): frozen so every engine read (XP awards,
     // rank folds, DRILL_UNIT) checks one plain boolean. Default OFF.
     ...(unitExperienceOn ? { unitExperience: true } : {}),
+    // Neutral Rank-Up (optional module): frozen so every engine read
+    // (neutralRankUpActive, the mint-seam ROUNDS fold, the bank STACKS fold)
+    // checks one plain boolean. Default OFF.
+    ...(neutralRankUpOn ? { neutralRankUp: true } : {}),
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
@@ -3657,7 +3666,8 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       newObjects: Boolean(next.wog.newObjects),
       newCreatures: Boolean(next.wog.newCreatures),
       artifacts: Boolean(next.wog.artifacts),
-      unitExperience: Boolean(next.wog.unitExperience)
+      unitExperience: Boolean(next.wog.unitExperience),
+      neutralRankUp: Boolean(next.wog.neutralRankUp)
     };
     // WOG is a BINH-family module. Enabling it while still on Legacy flips the
     // table to BINH so the module can actually load.

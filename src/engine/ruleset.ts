@@ -124,13 +124,19 @@ export function applyUnitSideRules(
  */
 export function unitSideRuleOverrides(
   state: Pick<GameState, "ruleset" | "adventure" | "anime">
-): { griffinBuff: boolean; marksmanBuff: boolean; polishUnitStacks: boolean } {
+): { griffinBuff: boolean; marksmanBuff: boolean; polishUnitStacks: boolean; neutralRankUp: boolean } {
   return {
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
     marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
     // Army Stack layers: the Polish house rule OR the anime `unitStacks` module
     // (one machinery — see armyUnitStacksActive).
-    polishUnitStacks: armyUnitStacksActive(state)
+    polishUnitStacks: armyUnitStacksActive(state),
+    // Neutral Rank-Up (optional module) — STACKS half: a flag IS threaded here so
+    // applyUnitCurrentSide can rank a Stacked bank defender up (Seasoned) off the
+    // LIVE Stack Token, which the bank stat-recompute branch owns. The ROUNDS
+    // half instead mirrors capped XP straight onto the guard (see
+    // unit-experience.ts), like player veterancy — no flag needed there.
+    neutralRankUp: Boolean(state.adventure?.neutralRankUp)
     // Unit Experience is NOT threaded through these overrides: the shared
     // veterancy machinery folds the rank bonus straight off `armyUnit.experience`
     // / the mirrored `unit.unitExperience` (see unit-experience.ts), which a card

@@ -1,7 +1,7 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { CREATURE_BANK_UNIT_SIDES, stackTokenDelta } from "@/data/map/creature-banks";
 import { applyUnitSideRules, specialtyTransformHealth } from "./ruleset";
-import { combatUnitRankFold, withRankAbilities } from "./unit-experience";
+import { combatUnitRankFold, neutralStackRankFold, withRankAbilities } from "./unit-experience";
 import type { CombatUnitState, EffectDefinition, GameRuleset, UnitTransformState } from "./state";
 
 /**
@@ -106,6 +106,8 @@ export function applyUnitCurrentSide(
     griffinBuff?: boolean;
     marksmanBuff?: boolean;
     polishUnitStacks?: boolean;
+    /** Neutral Rank-Up (optional module): a Stacked bank defender fights one rank up. */
+    neutralRankUp?: boolean;
   }
 ): void {
   const top = topTransform(unit);
@@ -132,11 +134,23 @@ export function applyUnitCurrentSide(
     }
     const bonus = (stat: "attack" | "defense" | "health" | "initiative") =>
       unit.stackToken === stat ? stackTokenDelta(stat) : 0;
-    unit.attack = bankSide.attack + bonus("attack");
-    unit.defense = bankSide.defense + bonus("defense");
-    unit.maxHealth = bankSide.health + bonus("health");
-    unit.initiative = bankSide.initiative + bonus("initiative");
-    unit.abilities = bankSide.abilities;
+    // Neutral Rank-Up (optional module) — STACKS half: a Stacked bank defender
+    // fights one veteran rank up (Seasoned), on TOP of the Stack Token, folded
+    // through the shared rank machinery keyed off the underlying unit def. Gated
+    // on the LIVE token, so absorbing it (stackToken → null) reverts to a plain
+    // bank card on the recompute. No-op (rankFold null) while the module is off.
+    const rankFold =
+      overrides?.neutralRankUp && unit.stackToken ? neutralStackRankFold(unit.unitDefId) : null;
+    unit.attack = bankSide.attack + bonus("attack") + (rankFold?.attack ?? 0);
+    unit.defense = bankSide.defense + bonus("defense") + (rankFold?.defense ?? 0);
+    unit.maxHealth = bankSide.health + bonus("health") + (rankFold?.health ?? 0);
+    unit.initiative = bankSide.initiative + bonus("initiative") + (rankFold?.initiative ?? 0);
+    unit.abilities = rankFold ? withRankAbilities(bankSide.abilities, rankFold) : bankSide.abilities;
+    if (rankFold && rankFold.rank > 0) {
+      unit.unitRank = rankFold.rank;
+    } else {
+      delete unit.unitRank;
+    }
     return;
   }
 

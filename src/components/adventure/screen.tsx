@@ -8295,7 +8295,8 @@ function GameOptionsPanel({
                 ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
                 ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
                 ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
-                ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and a Drill action at your Towns."]
+                ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and a Drill action at your Towns."],
+                ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
                 return (

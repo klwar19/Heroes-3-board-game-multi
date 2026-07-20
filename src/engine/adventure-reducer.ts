@@ -1,9 +1,11 @@
 import { cardLibrary } from "@/data/cards/library";
 import { DRILL_UNIT_GOLD_COST, DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
 import {
+  applyNeutralRoundsRank,
   awardUnitExperienceAfterCombat,
   diluteUnitExperienceForUpgrade,
   grantArmyUnitExperience,
+  neutralRankUpActive,
   unitExperienceActive,
   unitRankForExperience
 } from "./unit-experience";
@@ -6496,6 +6498,19 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
     })
   );
   const neutralUnits = [...drawnUnits, ...extraGuards];
+
+  // Neutral Rank-Up (optional module) — ROUNDS half: fold the (capped) veteran
+  // rank this game round has reached onto every non-bank guard here (plain
+  // neutral cards, Random-Town faction packs, designer level/exact armies —
+  // all funnel through this ONE mint seam), via the same machinery player
+  // veterancy uses. No-op while the module is off (byte-identical) and on
+  // rounds 1-3 (below every tier's first threshold). Applied before placement
+  // so the ranked Initiative orders the guards.
+  if (neutralRankUpActive(state)) {
+    for (const unit of neutralUnits) {
+      applyNeutralRoundsRank(unit, state.round);
+    }
+  }
 
   if (neutralUnits.length === 0) {
     // The tier decks ran dry: the guards never show up and the field falls.
