@@ -76,12 +76,16 @@ import {
   describeCustomWinCondition,
   flaggedMineSettlementCount,
   mainHeroOf,
+  playerPossessesGrail,
   recordVpUtopiaDefeat,
   recordVpViiCenter,
   townsControlledBy,
   victoryPointsConfig,
   victoryPointsModeActive
 } from "./victory-points";
+// Re-exported so existing `./adventure` / `./index` imports keep resolving; the
+// definition lives beside the possession-VP row it must stay in lockstep with.
+export { playerPossessesGrail } from "./victory-points";
 import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./permanents";
 import {
   applyUnitSideRules,
@@ -3505,41 +3509,6 @@ function playerMeetsCustomWinCondition(
   }
 }
 
-/**
- * Whether a player currently possesses the Grail for scoring / hold-with-grail:
- * carried by one of their heroes, OR built on a field they control.
- * Digging alone does NOT count until the Grail is carried; conquering a dig site
- * without digging does NOT count. (Possession VP deliberately skips dig/capture.)
- */
-export function playerPossessesGrail(state: GameState, playerId: PlayerId): boolean {
-  const grail = state.adventure?.grail;
-  if (!grail) {
-    return false;
-  }
-  if (grail.status === "carried" && grail.carrierHeroId) {
-    return state.heroes[grail.carrierHeroId]?.controllerId === playerId;
-  }
-  if (grail.status === "built" && grail.builtFieldId) {
-    const field = state.adventure?.fields[grail.builtFieldId];
-    if (!field) {
-      return false;
-    }
-    if (field.flagOwnerId === playerId) {
-      return true;
-    }
-    // Unflagged home Town still belongs to its controller.
-    if (
-      !field.flagOwnerId &&
-      Object.values(state.towns).some(
-        (town) => town.fieldId === field.spaceId && town.controllerId === playerId
-      )
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /** Stable key for abstract hold-with-grail progress (one counter per condition). */
 function holdWithGrailKey(condition: Extract<CustomWinCondition, { kind: "hold-with-grail" }>): string {
   const target =
@@ -3560,8 +3529,8 @@ function playerControlsHoldWithGrailTarget(
   if (!adventure) {
     return false;
   }
-  if (typeof target === "object" && target.spaceId) {
-    const field = adventure.fields[target.spaceId];
+  if (typeof target === "object") {
+    const field = target.spaceId ? adventure.fields[target.spaceId] : undefined;
     return field ? playerControlsField(state, playerId, field) : false;
   }
   switch (target) {
@@ -11880,7 +11849,10 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
   const levelForDraw = field?.customGuardLevel;
   if (levelForDraw) {
     if (field?.customGuardLevelArmy === "packs") {
-      const scenarioDifficulty = state.adventure?.difficulty ?? "normal";
+      // Same table row drawNeutralArmy would use — including the Astrologers
+      // "Rulebook" difficulty easing, so a "packs" level guard is never harder
+      // than its Neutral twin while the proclamation is face up.
+      const scenarioDifficulty = neutralArmyDifficulty(state);
       const composition =
         NEUTRAL_ARMY_TABLE[scenarioDifficulty]?.[levelForDraw] ??
         NEUTRAL_ARMY_TABLE.normal[levelForDraw] ??

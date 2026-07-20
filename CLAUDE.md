@@ -3625,3 +3625,77 @@ Deliberate LIMITS (documented, not bugs):
   being an instant win, but a designed second town could still trip it).
 - **Never ends mid-battle** (the combat-deferred reading above) — a crossing
   during combat waits for the next map-side action, by design.
+
+## Map designer 2026-07b: landmark bans, Pack guards, Random Settlement Ⅶ, hold-with-Grail (+ audit) — what runs vs. limits
+
+Three merged branches (exclude-and-level-packs; Random-Settlement-Ⅶ / control-VP
+/ hold-with-Grail; yellow-border re-enable — see the borders bullet in the "Map
+designer upgrade" section, now ON by default incl. starting Ⅰ tiles, with the
+pinned-center "Always visible" face-up/face-down flip in `map-designer.tsx`),
+audited together. Behaviour pinned in `tile-exclude-and-level-packs.test.ts`,
+`random-settlement-hold-grail.test.ts` and `map-designer.test.tsx` (each claim
+mutation-checked; audit fixes noted inline).
+
+Leading with what does NOT run / deliberate limits:
+- **Landmark bans are best-effort at setup**, exactly like the include-Secret:
+  an exhausted filtered pool falls back to an unfiltered draw with the
+  `MAP_SECRET_FEATURE_FALLBACK` table note (never an empty board hole). Exact
+  pins and one-of lists ignore bans (the designer already named the tile), and
+  a ban lives only on a face-down non-starting slot — the validator REJECTS a
+  face-up plan carrying one, so the designer UI clears bans on every face-up
+  transition (exact face-up pin, mode switch, the center "Always visible" flip
+  — audit fix: the flip used to leave a stale ban that hard-blocked the lobby).
+- **No azure Pack exists in the unit data** (azure is Neutral-only): the guard
+  editor offers "+ Pack I–III" only (data-driven — the chip returns by itself
+  if an azure Pack ever ships), and ANY Pack slot that cannot mint a Pack — an
+  azure slot in a hand-edited save, a locked faction lacking the tier, a
+  table row's azure bodies under a "packs" level guard — mints a same-tier
+  NEUTRAL instead (audit fix; pre-fix a normal-difficulty level-Ⅶ "packs"
+  guard fielded ZERO bodies, and a `random-pack:azure` slot pushed the derived
+  difficulty to Ⅶ while minting nothing).
+- **A faction-locked NAMED pack of the wrong faction converts** at fight time
+  to a random Pack of the SAME tier in the locked faction (audit fix — it was
+  silently dropped, shrinking the fought army below the difficulty/XP its
+  entries derived; the concrete-lock sanitiser still strips contradicting
+  names at save time, so this arm mostly serves `packFaction: "random"`).
+- **`customGuardLevel` is now stamped for EVERY designer level guard** (not
+  just bank-style objects), so `drawGuardArmy` draws the DESIGNED level even
+  where the fight difficulty is forced (bank-style 0). CONSEQUENCE (designer
+  guard wins, deliberate): a designed LEVEL guard on a Random Town draws a
+  level army instead of the classic rolled-faction party, and on a
+  grail-as-utopia "always" dig site instead of the Utopia dragons.
+- **A "packs" level guard reads the SAME eased table row as its Neutral twin**
+  (`neutralArmyDifficulty` — audit fix: it read the raw scenario difficulty,
+  ignoring the Astrologers "Rulebook" easing every other neutral draw honours).
+- **Random Settlement Ⅶ is printed-style machinery, not a new flow**: the
+  designation forces `{ location: "settlement", difficulty: 7 }` — guarded
+  settlements are already printed content (F1 prints a difficulty-3 one), so
+  the fight→`SETTLEMENT_CHOICE` (resource pick)→flag→income path is the
+  existing one; `field.randomSettlement` only tags it so the hold-with-grail
+  `random-settlement` target can tell it from printed settlements.
+- **hold-with-grail control reads are flag-based** (`playerControlsField`:
+  flag, or the unflagged field of an own TownState); "starting-town" means a
+  Town whose `TownState.controllerId` is the player AND whose field they still
+  control — a captured home town stops counting via the flag.
+- **Grail possession is ONE shared read** — `playerPossessesGrail` in
+  `victory-points.ts` (audit de-dup; adventure.ts re-exports it): carried by
+  an own hero, or built on a field the player controls. Digging alone,
+  conquering a dig site, and "delivered" never count (delivery is the grail
+  win path; completion VP covers the completer). Feeds BOTH the
+  `grailPossessionVp` scoring row and every hold-with-grail tick — never
+  re-implement this read.
+- **Abstract hold-with-grail progress** (`adventure.holdWithGrailProgress`,
+  keyed per condition) ticks at round start inside `tickSettlementHoldControl`;
+  at most ONE seat holds a counter (possessing the Grail is exclusive), a
+  round where nobody qualifies DELETES the entry (no stale progress), and the
+  win is declared by the reducer-tail `checkCustomWinConditions` (so it obeys
+  the never-mid-battle deferral). Field-stamped holds (`holdRoundsToWin` +
+  `holdRequiresGrail` on settlements / Random Towns / center objectives) keep
+  their own per-field counter and reset it any round possession lapses.
+- **Control VP rows**: per-field `settlementBonusVp` (tile settlement plan OR
+  `centerHex.controlVp` on a Ⅶ Settlement / Random Town) scores while flagged;
+  map-wide `randomTowns.vp` stacks ON TOP per controlled Random Town. Both are
+  VP-mode-only presentation of already-public state.
+- **Landmark bans survive onto the placed tile** (`MapTileState.excludeFeatures`)
+  so the Gold/valuables resource-pick tile reassignment also refuses a banned
+  landmark when swapping the tile def.

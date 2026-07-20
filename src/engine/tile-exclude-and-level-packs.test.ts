@@ -90,23 +90,24 @@ describe("tile excludeFeatures — real pool filter", () => {
       expect(tile.excludeFeatures).toEqual(["obelisk"]);
     }
 
-    // CONTROL: same layout without exclude can draw an obelisk (pool has them).
+    // CONTROL (mutation check): the SAME layout without the ban DOES draw
+    // obelisk tiles on this seed — so the filter above, not pool luck, is what
+    // kept them out. If the exclude wiring is removed, the filtered run above
+    // draws like this one and its no-obelisk assertion fails.
     const controlTiles: CustomMapTilePlan[] = tiles.map((t) => {
       if (t.group !== "near") return t;
-      const { excludeFeatures: _, ...rest } = t;
+      const rest = { ...t };
+      delete rest.excludeFeatures;
       return rest;
     });
     const control = makeCustomMapGame(controlTiles, "with-obelisk-near-control");
     const controlNear = Object.values(control.adventure!.tiles).filter((t) => t.group === "near" && t.faceDown);
+    expect(controlNear.length).toBeGreaterThan(0);
     const anyObelisk = controlNear.some((t) => {
       const def = allTileDefinitions[t.tileDefId];
       return def && tileMatchesSecretFeature(def, "obelisk");
     });
-    // Not guaranteed every seed, but with 8 slots and a non-empty obelisk pool
-    // the control seed that places freely should hit at least one on most seeds.
-    // Use a known-good assertion path: at least the pool still CONTAINS obelisks.
-    expect(nearObeliskIds.some((id) => (control.adventure!.nearTilePool ?? []).includes(id) || controlNear.some((t) => t.tileDefId === id) || true)).toBe(true);
-    void anyObelisk;
+    expect(anyObelisk, "control seed must draw at least one obelisk tile unfiltered").toBe(true);
   });
 
   it("setup: secret gold_mine + exclude settlement never places a settlement-only mismatch", () => {
@@ -217,6 +218,117 @@ describe("level packs + random-pack + packFaction", () => {
     for (const d of draws) {
       expect(coreUnitDefinitions[d.unitDefId]?.faction).toBe("necropolis");
     }
+  });
+
+  it("a Pack slot that cannot mint a Pack falls back to a same-tier NEUTRAL (never a missing body)", () => {
+    // No faction ships an azure Pack — a random-pack:azure slot must still
+    // field a body (an azure Neutral), because the slot's azure flag already
+    // drove the derived difficulty to Ⅶ. A silent skip would make the player
+    // fight a smaller army than the difficulty (and experience) advertise.
+    let i = 0;
+    const rng = { nextInt: (_min: number, max: number) => i++ % (max + 1) };
+    const draws = resolveCustomGuardDraws(["random-pack:azure", "random-pack:bronze"], rng);
+    expect(draws).toHaveLength(2);
+    expect(draws[0].tier).toBe("azure");
+    expect(draws[0].factionPack).toBeFalsy();
+    expect(coreUnitDefinitions[draws[0].unitDefId]?.neutral, "azure fallback is a Neutral side").toBeTruthy();
+    // CONTROL: the bronze slot (a Pack pool exists) still mints a real Pack.
+    expect(draws[1].tier).toBe("bronze");
+    expect(draws[1].factionPack).toBe(true);
+  });
+
+  it("a faction-locked NAMED pack of the wrong faction converts to the locked faction's Pack of that tier", () => {
+    const castleBronzePack = Object.values(coreUnitDefinitions).find(
+      (def) => def.pack && def.faction === "castle" && def.tier === "bronze"
+    );
+    expect(castleBronzePack).toBeTruthy();
+    let i = 0;
+    const rng = { nextInt: (_min: number, max: number) => i++ % (max + 1) };
+    const draws = resolveCustomGuardDraws([`pack:${castleBronzePack!.id}`], rng, {
+      packFaction: "necropolis"
+    });
+    // The body is NOT dropped: same tier, still a Pack, in the locked faction.
+    expect(draws).toHaveLength(1);
+    expect(draws[0].tier).toBe("bronze");
+    expect(draws[0].factionPack).toBe(true);
+    expect(coreUnitDefinitions[draws[0].unitDefId]?.faction).toBe("necropolis");
+    // CONTROL: with a matching lock the named pack itself is kept.
+    let j = 0;
+    const rng2 = { nextInt: (_min: number, max: number) => j++ % (max + 1) };
+    const kept = resolveCustomGuardDraws([`pack:${castleBronzePack!.id}`], rng2, {
+      packFaction: "castle"
+    });
+    expect(kept).toHaveLength(1);
+    expect(kept[0].unitDefId).toBe(castleBronzePack!.id);
+  });
+
+  it("level-7 packs guard fields the FULL table row — azure bodies mint as azure Neutrals", () => {
+    // normal[7] = 2 azure only. Pre-fallback this minted ZERO bodies (an empty
+    // guard army). The azure bodies must come through as azure Neutrals.
+    const composition = NEUTRAL_ARMY_TABLE.normal[7];
+    expect(composition).toEqual({ bronze: 0, silver: 0, gold: 0, azure: 2 });
+    let i = 0;
+    const rng = { nextInt: (_min: number, max: number) => i++ % (max + 1) };
+    const draws = resolveLevelPackGuardDraws(composition, rng, { packFaction: "castle" });
+    expect(draws).toHaveLength(2);
+    for (const d of draws) {
+      expect(d.tier).toBe("azure");
+      expect(coreUnitDefinitions[d.unitDefId]?.neutral).toBeTruthy();
+    }
+  });
+
+  it("a packs level guard honours the Astrologers Rulebook difficulty easing like its Neutral twin", () => {
+    // Hard[3] = {bronze:2, silver:1} eased to Normal... hard[3] vs normal[3]
+    // differ in body count, so the eased row is observable in the army size.
+    const makeField = (spaceId: string): MapFieldState => ({
+      spaceId,
+      tileInstanceId: "t",
+      slot: 0,
+      location: "settlement",
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    });
+    // hard[2] = 3 bronze, normal[2] = 2 bronze — the eased row is one body
+    // smaller, so the easing is observable in the minted army size.
+    expect(NEUTRAL_ARMY_TABLE.hard[2]).toEqual({ bronze: 3, silver: 0, gold: 0, azure: 0 });
+    expect(NEUTRAL_ARMY_TABLE.normal[2]).toEqual({ bronze: 2, silver: 0, gold: 0, azure: 0 });
+
+    const eased = createAdventureGameState({
+      seed: "packs-eased",
+      difficulty: "hard",
+      rollFirstPlayer: false,
+      victoryMode: "conquest"
+    });
+    eased.adventure!.astrologers = {
+      activeCardId: "astrologers.rulebook",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+    const field = makeField("97,97");
+    eased.adventure!.fields[field.spaceId] = field;
+    applyCustomGuardToField(field, { level: 2, levelArmy: "packs" });
+    expect(drawGuardArmy(eased, field, 2)).toHaveLength(2);
+
+    // CONTROL: another face-up card leaves the hard row in force.
+    const plain = createAdventureGameState({
+      seed: "packs-eased",
+      difficulty: "hard",
+      rollFirstPlayer: false,
+      victoryMode: "conquest"
+    });
+    plain.adventure!.astrologers = {
+      activeCardId: "astrologers.dead_silence",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+    const field2 = makeField("96,96");
+    plain.adventure!.fields[field2.spaceId] = field2;
+    applyCustomGuardToField(field2, { level: 2, levelArmy: "packs" });
+    expect(drawGuardArmy(plain, field2, 2)).toHaveLength(3);
   });
 
   it("applyCustomGuardToField stamps level packs; drawGuardArmy mints Pack units", () => {

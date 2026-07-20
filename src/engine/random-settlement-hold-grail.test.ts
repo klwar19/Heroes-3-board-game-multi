@@ -116,16 +116,11 @@ describe("Random Town / Settlement control VP", () => {
     const state = faceUpCenterGame("town", { controlVp: 5 }, {
       victoryPoints: { enabled: true }
     });
-    // Rebuild with VP on — createAdventure may need the preset at build.
-    state.adventure!.mapPreset = {
-      ...(state.adventure!.mapPreset ?? {}),
-      victoryPoints: { enabled: true }
-    };
     const field = objectiveField(state);
-    // Ensure stamp even if setup path differed
-    if (!field.settlementBonusVp) {
-      field.settlementBonusVp = 5;
-    }
+    // The materialize stamp itself is under test — a broken stamp must FAIL
+    // here, never be papered over by the test writing the field by hand.
+    expect(field.location).toBe("random_town");
+    expect(field.settlementBonusVp, "centerHex.controlVp stamped on the Random Town").toBe(5);
     field.flagOwnerId = "p1";
     const row = computeVictoryPoints(state).breakdown.find((b) => b.playerId === "p1")!;
     expect(row.rows.find((r) => r.label === "Special control VP")?.vp).toBe(5);

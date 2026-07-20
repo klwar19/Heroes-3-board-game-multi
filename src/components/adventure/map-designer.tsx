@@ -48,7 +48,6 @@ import {
   tileFootprint,
   tileFootprintsTouch,
   tileLatticeNeighbors,
-  tileMatchesSecretFeature,
   unreachableUndergroundCenters,
   validateCustomMapObjects,
   victoryDesignConflicts,
@@ -3003,6 +3002,9 @@ export function MapDesigner({
       oneOfTileDefIds: undefined,
       secretFeature: undefined,
       secretFeatures: undefined,
+      // A face-up pin must drop landmark bans (they are face-down pool filters
+      // only — a stale set would fail plan validation and block the lobby).
+      ...(nextFaceDown ? {} : { excludeFeatures: undefined }),
       ...(nextFaceDown
         ? tokensPatch(selected, (token) =>
             faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
@@ -5320,6 +5322,9 @@ export function MapDesigner({
                         oneOfTileDefIds: undefined,
                         secretFeature: undefined,
                         secretFeatures: undefined,
+                        // Landmark bans are face-down pool filters; an exact pin
+                        // ignores them and a face-up plan may not carry them.
+                        excludeFeatures: undefined,
                         ...(nextFaceDown
                           ? tokensPatch(selected, (token) =>
                               faceDownTokenKinds(selected.group).includes(token.kind)

@@ -246,6 +246,44 @@ export function artifactCountOf(player: PlayerState | undefined): number {
   return count;
 }
 
+/**
+ * Whether a player currently POSSESSES the Grail: carried by one of their
+ * heroes, OR built on a field they control (flag, or the unflagged field of
+ * their own home Town). Digging alone does NOT count until the Grail is
+ * carried; conquering a dig site without digging does NOT count; "delivered"
+ * is the grail win path (completion VP covers the completer) and counts for
+ * nobody. THE single source for the possession-VP row AND the hold-with-grail
+ * win conditions in adventure.ts — never re-implement this read.
+ */
+export function playerPossessesGrail(state: GameState, playerId: PlayerId): boolean {
+  const grail = state.adventure?.grail;
+  if (!grail) {
+    return false;
+  }
+  if (grail.status === "carried" && grail.carrierHeroId) {
+    return state.heroes[grail.carrierHeroId]?.controllerId === playerId;
+  }
+  if (grail.status === "built" && grail.builtFieldId) {
+    const field = state.adventure?.fields[grail.builtFieldId];
+    if (!field) {
+      return false;
+    }
+    if (field.flagOwnerId === playerId) {
+      return true;
+    }
+    // Unflagged home Town still belongs to its controller.
+    if (
+      !field.flagOwnerId &&
+      Object.values(state.towns).some(
+        (town) => town.fieldId === field.spaceId && town.controllerId === playerId
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Plain-words label for one objective (designer summary + scoring rows). */
 export function describeVictoryPointObjective(objective: VictoryPointObjective): string {
   switch (objective.kind) {
@@ -391,31 +429,11 @@ function buildBreakdown(
   // Map-maker Grail possession VP: carrier OR controller of the built field.
   // Deliberately NOT awarded for digging alone or for conquering a dig site —
   // only while the Grail is carried by a hero or built at a Town/Settlement.
+  // ("delivered" = the grail win path; possession after delivery is the
+  // completer — completion VP covers it, playerPossessesGrail returns false.)
   const grailVp = state.adventure?.mapPreset?.objectives?.grailPossessionVp ?? 0;
-  if (grailVp > 0) {
-    const grail = state.adventure?.grail;
-    let possesses = false;
-    if (grail?.status === "carried" && grail.carrierHeroId) {
-      const carrier = state.heroes[grail.carrierHeroId];
-      possesses = carrier?.controllerId === playerId;
-    } else if (grail?.status === "built" && grail.builtFieldId) {
-      const field = state.adventure?.fields[grail.builtFieldId];
-      possesses =
-        field?.flagOwnerId === playerId ||
-        Boolean(
-          field &&
-            !field.flagOwnerId &&
-            Object.values(state.towns).some(
-              (town) => town.fieldId === field.spaceId && town.controllerId === playerId
-            )
-        );
-    } else if (grail?.status === "delivered") {
-      // Delivered = grail win path; possession after delivery is the completer;
-      // skip here (completion VP covers it when victoryConditionVp > 0).
-    }
-    if (possesses) {
-      add("Possessing the Grail", grailVp);
-    }
+  if (grailVp > 0 && playerPossessesGrail(state, playerId)) {
+    add("Possessing the Grail", grailVp);
   }
   add("Artifacts (1 VP per 2)", Math.floor(artifactCountOf(state.players[playerId]) / 2));
 

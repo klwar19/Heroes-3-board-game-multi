@@ -748,6 +748,7 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
     reward?: unknown;
     vp?: unknown;
     holdRoundsToWin?: unknown;
+    holdRequiresGrail?: unknown;
     winCondition?: unknown;
   };
   const plan: CustomMapSettlementFieldPlan = {};

@@ -50,12 +50,15 @@ const RANDOM_NEUTRAL_QUICK: { tier: RandomGuardTier; slot: string; label: string
   { tier: "azure", slot: "random:azure", label: "+ Neutral IV" }
 ];
 
+// Only tiers that actually HAVE Pack units are offered (no faction ships an
+// azure Pack today, so "+ Pack IV" would mint a Neutral-fallback body — if a
+// future azure Pack appears in the unit data the chip returns by itself).
 const RANDOM_PACK_QUICK: { tier: RandomGuardTier; slot: string; label: string }[] = [
-  { tier: "bronze", slot: "random-pack:bronze", label: "+ Pack I" },
-  { tier: "silver", slot: "random-pack:silver", label: "+ Pack II" },
-  { tier: "gold", slot: "random-pack:gold", label: "+ Pack III" },
-  { tier: "azure", slot: "random-pack:azure", label: "+ Pack IV" }
-];
+  { tier: "bronze" as const, slot: "random-pack:bronze", label: "+ Pack I" },
+  { tier: "silver" as const, slot: "random-pack:silver", label: "+ Pack II" },
+  { tier: "gold" as const, slot: "random-pack:gold", label: "+ Pack III" },
+  { tier: "azure" as const, slot: "random-pack:azure", label: "+ Pack IV" }
+].filter(({ tier }) => Object.values(coreUnitDefinitions).some((def) => def.pack && def.tier === tier));
 
 /** Every Neutral-side unit a designer may field, grouped by tier. */
 const GUARD_UNIT_OPTIONS: {

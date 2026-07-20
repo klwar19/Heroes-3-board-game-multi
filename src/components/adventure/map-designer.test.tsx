@@ -430,7 +430,9 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { units: ["neutral.cyclopes"] } } })])
     );
 
-    // Quick +Gold appends a random-tier slot (controlled re-render for each add).
+    // Quick "+ Neutral III" appends a random-gold-Neutral slot (controlled
+    // re-render for each add; label renamed from "+ Gold" when the Pack-of-tier
+    // quick row joined the editor).
     let armyUnits: string[] = [];
     const addGold = () => {
       const mixed = renderDesigner(
@@ -447,7 +449,7 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
         onChange
       );
       const mixedPopover = openTilePopover(mixed, 1);
-      fireEvent.click(within(mixedPopover as HTMLElement).getByRole("button", { name: "+ Gold" }));
+      fireEvent.click(within(mixedPopover as HTMLElement).getByRole("button", { name: "+ Neutral III" }));
       const last = onChange.mock.calls.at(-1)![0] as { centerHex?: { guard?: { units?: string[] } } }[];
       armyUnits = last.find((p) => p.centerHex)?.centerHex?.guard?.units ?? [];
     };
@@ -578,6 +580,52 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     const centerOff = afterOff.find((plan) => plan.group === "center")!;
     expect(centerOff.faceDown, "Always visible OFF ⇒ face-down secret pin").toBe(true);
     expect(centerOff.tileDefId).toBe("C1");
+  });
+
+  it("ban chips write excludeFeatures; the Always-visible flip CLEARS a stale ban", () => {
+    // Toggling a "No <landmark>" chip on a face-down slot writes the ban.
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        { row: 9, col: 4, group: "center", faceDown: true }
+      ],
+      onChange
+    );
+    const popover = openTilePopover(container, 1);
+    const banGrid = within(popover as HTMLElement).getByRole("listbox", { name: "Banned landmarks" });
+    const firstBan = within(banGrid).getAllByRole("option")[0]!;
+    fireEvent.click(firstBan);
+    const withBan = onChange.mock.calls.at(-1)![0] as CustomMapTilePlan[];
+    const banned = withBan.find((plan) => plan.group === "center")!;
+    expect(banned.excludeFeatures?.length, "ban chip writes excludeFeatures").toBe(1);
+    expect(banned.faceDown).toBe(true);
+
+    // A face-down exact pin may keep its ban — but flipping the pin face-up
+    // via Always visible MUST drop it: a face-up plan carrying excludeFeatures
+    // fails plan validation and blocks the whole map in the lobby.
+    cleanup();
+    const onChange2 = vi.fn();
+    const pinned = renderDesigner(
+      [
+        { row: 8, col: 2, group: "starting", faceDown: false },
+        {
+          row: 9,
+          col: 4,
+          group: "center",
+          faceDown: true,
+          tileDefId: "C1",
+          excludeFeatures: ["obelisk"]
+        }
+      ],
+      onChange2
+    );
+    const pinnedPopover = openTilePopover(pinned, 1);
+    fireEvent.click(within(pinnedPopover as HTMLElement).getByTestId("center-always-visible"));
+    const flipped = onChange2.mock.calls.at(-1)![0] as CustomMapTilePlan[];
+    const centerFlipped = flipped.find((plan) => plan.group === "center")!;
+    expect(centerFlipped.faceDown).toBe(false);
+    expect(centerFlipped.excludeFeatures, "face-up flip clears the stale ban").toBeUndefined();
   });
 
   it("renders a win-condition conflict warning when the design fights the victory mode", () => {
