@@ -163,6 +163,11 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
     // immune + elemental). The recruitable CONFLUX faction elementals
     // (Storm/Ice/Energy/Magma/Magic Few & Pack) do NOT deal elemental damage —
     // only their separate neutral guard card does — so no conflux.* id appears.
+    // The ONE non-neutral exception is the anime Fuyuki Casters (an ORIGINAL
+    // unit, not a wiki transcription): their printed card text says "deals
+    // elemental damage" on both sides, and the per-side die-proof cases below
+    // cover them like any elemental. They carry NO school immunity (that stays
+    // pinned to the hard-coded neutral list further down).
     const ids = new Set(elementalSides.map((entry) => entry.unitId));
     expect(ids).toEqual(
       new Set([
@@ -174,11 +179,13 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
         "neutral.energy_elementals",
         "neutral.fire_elementals",
         "neutral.magma_elementals",
-        "neutral.magic_elementals"
+        "neutral.magic_elementals",
+        "fuyuki.casters"
       ])
     );
-    expect([...ids].every((id) => id.startsWith("neutral."))).toBe(true);
-    expect(elementalSides.length).toBe(17);
+    expect([...ids].every((id) => id.startsWith("neutral.") || id === "fuyuki.casters")).toBe(true);
+    // 17 neutral sides + the Fuyuki Casters Few & Pack.
+    expect(elementalSides.length).toBe(19);
   });
 
   for (const { unitId, sideKey, printedAttack, abilities } of elementalSides) {

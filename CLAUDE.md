@@ -767,6 +767,23 @@ Leading with what does NOT run (deliberate limits):
   the eight fixed seeds build the Gold dwelling BEFORE round 9 (R7/R7/R8) and
   7/8 by R11 — floors 2 and 5; the map's premium-economy placement decides the
   per-seed ceiling, so an every-seed-before-R9 floor would be dishonest.
+- **Free seizures & anti-parking (2026-07 sp-ai pass)** — each claim
+  mutation-checked in `map-navigation.test.ts` (behavioural floors in
+  `single-player-premium-rush.test.ts`): a level-covered difficulty-1 neutral
+  is ALWAYS engageable (the establish-core / bronze-rush refusals now gate
+  difficulty ≥ 2 only — no multi-turn park before an easy fight); unguarded
+  mines / symbols / free towns within this turn's MP outrank a fair fight as
+  primary (`freeSeizuresWithinReach`; premium-economy commits and strictly
+  closer Quick-Combat freebies still divert — `fightOutranksFreeSeize`);
+  the multi-source march scoops free pickups ONLY along the committed path
+  (a pickup no farther from the primary than the hero — a nearer pickup in
+  the OPPOSITE direction must never reverse the march); the keep-clear move
+  penalty applies to LIVE guards only (`isFieldGuarded` — a black-cubed /
+  own-flagged difficulty field is an ordinary corridor cell, not a wall);
+  and an idle SECONDARY hero parked one cell ahead of the main inside a
+  one-lane corridor sidesteps out (`ALLY_UNBLOCK_SCORE` — single-step moves
+  can never end on an allied hero, so the blockade would otherwise deadlock
+  the march for the rest of the game).
 - **Computer battles resolve IMMEDIATELY and off-screen; movement is REPLAYED
   behind an accept-gate, with a battle recap.**
   The whole computer turn (movement AND its neutral/bank combats) settles inside
@@ -2738,7 +2755,12 @@ byte-identical; `isPlayableFaction(id, animeOptions)` gates every pick surface �
 lobby grids, draft rolls, computer seats, Random-Town defenders): **Fuyuki City**
 (`fuyuki`, isekai) and **Azure Breeze Sect** (`azure_breeze`, wuxia). Each ships a
 7-unit roster (every ability tag a REUSE of an already-implemented engine
-ability — pinned per-side in `src/data/anime/towns.test.ts`), 8 buildings on the
+ability — pinned per-side in `src/data/anime/towns.test.ts`; the ONE dedicated
+new ability is the Fuyuki Casters' `casters-damage-cap`, a ≤1-damage-per-single
+attack OR Spell hard cap via `CAP_DAMAGE_PER_ATTACK.includeSpells` — both
+Casters sides also carry `elemental-damage`, so they join the die-proof
+inventory in `elemental-fixed-damage.test.ts`; behaviour + Nix
+spells-stay-uncapped CONTROLs in `fuyuki-casters.test.ts`), 8 buildings on the
 SHARED building-effect archetypes (City-Hall choice, dwellings, Mage Guild,
 Portal Summon, Artifact Smith, Hall of Valhalla, resource die — nothing bespoke),
 2 heroes each with REAL portraits, a starting tile (`A-S1` / `W-S1`), a designed

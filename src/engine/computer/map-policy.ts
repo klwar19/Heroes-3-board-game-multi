@@ -596,6 +596,11 @@ const NO_PROGRESS_SCORE = 260;
 // ping-pong. Only allowed when the sticky target IS the town or we are
 // already closer via that cell for the primary objective.
 const OWN_TOWN_DETOUR_SCORE = 240;
+// A secondary hero stepping OUT of the main hero's march lane (see the
+// ally-blockade sidestep in moveScore): above END_TURN and the development
+// noise so the blocker actually moves, below a real march/enter step so a
+// secondary with an objective of its own never abandons it to shuffle around.
+const ALLY_UNBLOCK_SCORE = 620;
 
 function moveScore(
   observation: ComputerObservation,
@@ -615,17 +620,43 @@ function moveScore(
     objectives,
     memory.stickyObjectiveSpaceId,
   );
-  // March toward the sticky primary, but ALSO every free seizure still in this
-  // turn's walking reach (unguarded mines / symbols / settlements). Multi-source
-  // BFS lets the hero scoop free objects along the way instead of tunnel-vision
-  // a single fight and walking past open loot.
+  // March toward the sticky primary, but ALSO free seizures still in this
+  // turn's walking reach (unguarded mines / symbols / settlements) that lie
+  // ALONG the march: a pickup no farther from the primary than the hero is
+  // now. Multi-source BFS then scoops free objects on the way without letting
+  // a nearer pickup in the OPPOSITE direction reverse a committed march
+  // (measured on the Impossible premium-rush seeds: an unfiltered scoop pulled
+  // the hero west off the eastern settlement commit, and the premium fight
+  // never happened).
   const freeThisTurn = freeSeizuresWithinReach(state, hero, objectives);
   const marchTargets: MapObjective[] = [];
   const seen = new Set<string>();
-  for (const objective of primary ? [primary, ...freeThisTurn] : objectives) {
-    if (seen.has(objective.spaceId)) continue;
-    seen.add(objective.spaceId);
-    marchTargets.push(objective);
+  if (primary) {
+    marchTargets.push(primary);
+    seen.add(primary.spaceId);
+    const scoopable = freeThisTurn.filter(
+      (objective) => !seen.has(objective.spaceId),
+    );
+    if (scoopable.length > 0) {
+      const towardPrimary = objectiveDistanceField(state, hero, [primary]);
+      const heroToPrimary = hero.spaceId
+        ? towardPrimary.get(hero.spaceId) ?? Infinity
+        : Infinity;
+      for (const objective of scoopable) {
+        const freeToPrimary =
+          towardPrimary.get(objective.spaceId) ?? Infinity;
+        if (freeToPrimary <= heroToPrimary) {
+          seen.add(objective.spaceId);
+          marchTargets.push(objective);
+        }
+      }
+    }
+  } else {
+    for (const objective of objectives) {
+      if (seen.has(objective.spaceId)) continue;
+      seen.add(objective.spaceId);
+      marchTargets.push(objective);
+    }
   }
   const distance = objectiveDistanceField(state, hero, marchTargets);
   const here = hero.spaceId ? distance.get(hero.spaceId) ?? Infinity : Infinity;
@@ -667,8 +698,57 @@ function moveScore(
       return 200;
     }
   }
-  if ((field.difficulty ?? 0) > 0 || field.location === "creature_bank") {
+  // LIVE guards only (isFieldGuarded folds in blackCube / everFlagged): a
+  // difficulty-stamped field the hero already cleared (its own flagged mine, a
+  // used treasure symbol) is an ordinary corridor cell. The old raw-difficulty
+  // read walled the hero off behind its OWN beaten guards — measured on the
+  // Impossible premium-rush seeds as a multi-round park at h:10:7 while the
+  // beatable settlement sat 4 cells away behind two cleared guard fields.
+  if (isFieldGuarded(field)) {
     return 250;
+  }
+
+  // Ally-blockade sidestep: a single-step move can never END on an allied
+  // hero, so an idle secondary parked one cell ahead of the main hero inside a
+  // one-lane corridor deadlocks the main's march for the rest of the game
+  // (measured on the Impossible premium-rush seeds: the secondary sat on the
+  // scholar doorway for nine straight rounds while the beatable settlement sat
+  // two cells beyond it). When THIS hero stands adjacent to the seat's main
+  // hero on a cell that strictly advances the main's march, any step that
+  // leaves that lane scores high enough to beat idle parking — the freed cell
+  // then unblocks the main within the same turn.
+  if (hero.kind !== "main" && hero.spaceId) {
+    const main = Object.values(state.heroes).find(
+      (candidate) =>
+        candidate.controllerId === observation.playerId &&
+        candidate.kind === "main" &&
+        candidate.id !== hero.id &&
+        candidate.spaceId,
+    );
+    if (
+      main?.spaceId &&
+      getAdjacentSpaceIds(main.spaceId).includes(hero.spaceId)
+    ) {
+      const mainObjectives = collectMapObjectives(state, main);
+      const mainPrimary = primaryMapObjective(
+        state,
+        main,
+        mainObjectives,
+        memory.stickyObjectiveSpaceId,
+      );
+      if (mainPrimary && mainPrimary.spaceId !== hero.spaceId) {
+        const towardMain = objectiveDistanceField(state, main, [mainPrimary]);
+        const mainHere = towardMain.get(main.spaceId) ?? Infinity;
+        const blockerHere = towardMain.get(hero.spaceId) ?? Infinity;
+        const stepTo = towardMain.get(action.to) ?? Infinity;
+        // Any step that does not land STRICTLY closer to the main's target
+        // frees the lane: the freed cell is the one the main needs, and a
+        // same-ring sidestep leaves the shortest path open.
+        if (blockerHere < mainHere && stepTo >= blockerHere) {
+          return ALLY_UNBLOCK_SCORE;
+        }
+      }
+    }
   }
 
   // Already walked this field this turn — never thrash back and forth.

@@ -1631,6 +1631,118 @@ describe("opening home-tile sweep — development gate scoped to tile Ⅰ", () =
     expect(primaryMapObjective(state, hero)?.spaceId).toBe(goldMine);
   });
 
+  it("marches THROUGH its own cleared guard fields (keep-clear is LIVE guards only)", () => {
+    // The corridor to an objective is often paved with fields the hero already
+    // cleared (own flagged mine, black-cubed treasure) that KEEP their printed
+    // difficulty stamp. A raw-difficulty keep-clear walled the hero off behind
+    // its own beaten guards — measured as a multi-round park on the Impossible
+    // premium-rush seeds.
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    neutralizeMapPayoffs(state);
+    const fields = state.adventure!.fields;
+    const arm = buildGhostArm(state, 3);
+    hero.spaceId = arm[0];
+    fields[arm[2]].difficulty = 1; // the easy objective at the corridor's end
+    // Corridor cell: a guard field ALREADY cleared (black cube), stamp kept.
+    fields[arm[1]].location = "treasure_symbol";
+    fields[arm[1]].difficulty = 5;
+    fields[arm[1]].blackCube = true;
+    const primary = primaryMapObjective(state, hero, [
+      { spaceId: arm[2], kind: "guard" },
+    ]);
+    expect(primary?.spaceId).toBe(arm[2]);
+    // The cleared field is an ordinary corridor cell — the march step scores.
+    expect(moveScoreTo(state, hero, arm[1])).toBeGreaterThan(300);
+    // CONTROL: the SAME field with a LIVE guard keeps the keep-clear penalty.
+    fields[arm[1]].blackCube = false;
+    expect(moveScoreTo(state, hero, arm[1])).toBe(250);
+  });
+
+  it("an idle secondary parked in the main's one-lane corridor sidesteps out", () => {
+    // Single-step moves can never END on an allied hero, so a secondary parked
+    // one cell ahead of the main inside a one-lane corridor deadlocks the march
+    // for good (measured: nine straight parked rounds on the premium-rush
+    // seeds). The blocker's step OFF the lane must outrank idle parking.
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    neutralizeMapPayoffs(state);
+    const fields = state.adventure!.fields;
+    const arm = buildGhostArm(state, 3);
+    hero.spaceId = arm[0];
+    fields[arm[2]].difficulty = 1; // the main's easy objective, 2 steps out
+    const secondary: HeroState = {
+      ...hero,
+      id: "sec_block",
+      kind: "secondary",
+      spaceId: arm[1],
+      movementPoints: 3,
+    };
+    state.heroes[secondary.id] = secondary;
+    // A side cell off the lane for the sidestep.
+    const side = getAdjacentSpaceIds(arm[1]).find((id) => !fields[id]);
+    expect(side, "need a side cell for the sidestep").toBeDefined();
+    fields[side!] = {
+      ...fields[arm[1]],
+      spaceId: side!,
+      location: "empty_field",
+      tileInstanceId: "tile_ghost_ctrl_arm",
+      flagOwnerId: null,
+      blackCube: false,
+    };
+    delete fields[side!].difficulty;
+    // The blocker's sidestep off the lane beats END_TURN and the dev noise…
+    expect(moveScoreTo(state, secondary, side!)).toBeGreaterThanOrEqual(600);
+    // …but stays below a real march/enter step of its own.
+    expect(moveScoreTo(state, secondary, side!)).toBeLessThan(700);
+    // CONTROL: with the main hero elsewhere (no blockade) the same step is
+    // ordinary idle wandering.
+    hero.spaceId = TOWN;
+    expect(moveScoreTo(state, secondary, side!)).toBeLessThan(300);
+  });
+
+  it("a free pickup BEHIND the hero never reverses a committed premium march", () => {
+    // The multi-source scoop must only add pickups ALONG the march. A nearer
+    // free mine in the OPPOSITE direction used to dominate the BFS gradient and
+    // reverse the premium commit (measured: the settlement was never fought).
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    hero.movementPoints = 3;
+    establishP2PackCore(state);
+    state.adventure!.victoryMode = "dragon-hunt";
+    neutralizeMapPayoffs(state);
+    const fields = state.adventure!.fields;
+    const arm = buildGhostArm(state, 4);
+    hero.spaceId = arm[1];
+    const premium = arm[3];
+    fields[premium].difficulty = 3;
+    fields[premium].location = "mine";
+    fields[premium].resource = "gold";
+    fields[premium].flagOwnerId = null;
+    // Free mine directly BEHIND the hero (opposite the march).
+    const behind = arm[0];
+    fields[behind].location = "mine";
+    fields[behind].resource = "buildingMaterials";
+    fields[behind].flagOwnerId = null;
+    delete fields[behind].difficulty;
+    expect(canBeatGuardedField(state, hero, fields[premium])).toBe(true);
+    // The premium keeps primary (free seize defers to the economy commit)…
+    const primary = primaryMapObjective(
+      state,
+      hero,
+      collectMapObjectives(state, hero),
+      premium,
+    );
+    expect(primary?.spaceId).toBe(premium);
+    // …and the MARCH itself never bends backward: the step toward the premium
+    // progresses, the step back onto the free mine does not.
+    expect(moveScoreTo(state, hero, arm[2])).toBeGreaterThan(300);
+    expect(moveScoreTo(state, hero, behind)).toBeLessThan(300);
+  });
+
   it("HARD INVARIANT: the map policy never reads the guaranteed-win house rule", () => {
     // The AI must justify a fight ONLY by the level-vs-difficulty reference, so
     // the map objective/scoring layer must never read state.computerGuaranteedWins
