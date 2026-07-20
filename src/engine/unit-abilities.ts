@@ -1366,10 +1366,10 @@ export function getDeckDiscardTakeSpell(
 }
 
 /**
- * Cove Nix (Pack): the most restrictive per-attack damage cap this unit carries,
- * or `null` when it has none. The caller clamps each individual attack's damage
- * to `amount` (attacks only — Spell/ability damage is never capped) and uses the
- * ability id/name to log the cap when it actually bites.
+ * The most restrictive per-attack damage cap this unit carries, or `null` when
+ * it has none. Every CAP_DAMAGE_PER_ATTACK ability counts (Nix attacks-only AND
+ * Casters' attack+spell barrier). Callers clamp each individual attack's
+ * damage to `amount` and use the ability id/name to log when the cap bites.
  */
 export function getDamageCapPerAttack(
   unit: CombatUnitState
@@ -1377,6 +1377,25 @@ export function getDamageCapPerAttack(
   let cap: { amount: number; abilityId: string; abilityName: string } | null = null;
   for (const ability of getAbilitiesWithEffect(unit, "CAP_DAMAGE_PER_ATTACK")) {
     if (ability.effect?.type === "CAP_DAMAGE_PER_ATTACK") {
+      if (cap === null || ability.effect.amount < cap.amount) {
+        cap = { amount: ability.effect.amount, abilityId: ability.id, abilityName: ability.name };
+      }
+    }
+  }
+  return cap;
+}
+
+/**
+ * Per-Spell-hit damage cap (only abilities with `includeSpells: true`, e.g.
+ * Fuyuki Casters). Nix Hardened Shell deliberately does NOT enter this list —
+ * its printed text leaves Spell damage uncapped.
+ */
+export function getDamageCapPerSpell(
+  unit: CombatUnitState
+): { amount: number; abilityId: string; abilityName: string } | null {
+  let cap: { amount: number; abilityId: string; abilityName: string } | null = null;
+  for (const ability of getAbilitiesWithEffect(unit, "CAP_DAMAGE_PER_ATTACK")) {
+    if (ability.effect?.type === "CAP_DAMAGE_PER_ATTACK" && ability.effect.includeSpells) {
       if (cap === null || ability.effect.amount < cap.amount) {
         cap = { amount: ability.effect.amount, abilityId: ability.id, abilityName: ability.name };
       }
