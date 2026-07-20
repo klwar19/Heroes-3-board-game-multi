@@ -299,10 +299,36 @@ export function resolvePackFactionForFight(
 }
 
 /**
+ * Mint one Pack body of `tier`, honouring an optional faction lock. When no
+ * Pack exists for the pool — azure has NO Pack sides anywhere, and a locked
+ * faction may lack a tier — fall back to a same-tier NEUTRAL body instead of
+ * silently minting nothing: the fight-time army must keep the body COUNT and
+ * tier mix the design derived its difficulty (and experience) from.
+ */
+function packDrawWithNeutralFallback(
+  tier: RandomGuardTier,
+  lockedFaction: string | null,
+  rng: { nextInt: (min: number, max: number) => number }
+): ResolvedGuardDraw | null {
+  const packId = pickRandomFromPool(packUnitPoolForTier(tier, lockedFaction), rng);
+  if (packId) {
+    return { unitDefId: packId, tier, factionPack: true, bankGuard: true };
+  }
+  const neutralId = pickRandomFromPool(neutralUnitPoolForTier(tier), rng);
+  if (neutralId) {
+    return { unitDefId: neutralId, tier, bankGuard: true };
+  }
+  return null;
+}
+
+/**
  * Resolve design-time certain-army entries into fight-time draws.
  * - `random:<tier>` → random Neutral of that tier
- * - `random-pack:<tier>` → random Pack of that tier (optional faction lock)
- * - `pack:<id>` → named Pack (skipped if faction-locked and wrong faction)
+ * - `random-pack:<tier>` → random Pack of that tier (optional faction lock;
+ *   no Pack available for the pool → same-tier Neutral, never a missing body)
+ * - `pack:<id>` → named Pack; under a faction lock a mismatching name converts
+ *   to a random Pack of the SAME tier in the locked faction (the lock promises
+ *   one shared faction, the entry promises a body of that tier — keep both)
  * - plain id → named Neutral
  * When packFaction is "random", one faction is rolled for the whole army.
  */
@@ -331,22 +357,19 @@ export function resolveCustomGuardDraws(
     }
     if (isRandomPackGuardSlot(entry)) {
       const tier = randomPackGuardTierOf(entry)!;
-      const unitDefId = pickRandomFromPool(packUnitPoolForTier(tier, lockedFaction), rng);
-      if (!unitDefId) continue;
-      const def = coreUnitDefinitions[unitDefId]!;
-      draws.push({
-        unitDefId,
-        tier: def.tier as RandomGuardTier,
-        factionPack: true,
-        bankGuard: true
-      });
+      const draw = packDrawWithNeutralFallback(tier, lockedFaction, rng);
+      if (draw) draws.push(draw);
       continue;
     }
     if (isPackGuardSlot(entry)) {
       const unitDefId = packGuardUnitDefId(entry)!;
       const def = coreUnitDefinitions[unitDefId];
       if (!def?.pack) continue;
-      if (lockedFaction && def.faction !== lockedFaction) continue;
+      if (lockedFaction && def.faction !== lockedFaction) {
+        const draw = packDrawWithNeutralFallback(def.tier as RandomGuardTier, lockedFaction, rng);
+        if (draw) draws.push(draw);
+        continue;
+      }
       draws.push({
         unitDefId,
         tier: def.tier as RandomGuardTier,
@@ -369,7 +392,10 @@ export function resolveCustomGuardDraws(
 /**
  * Expand a Field Difficulty table row into fight-time Pack draws (level guard
  * as real units). Counts come from NEUTRAL_ARMY_TABLE[difficulty][level]; each
- * body is a random Pack of that tier, optionally locked to one faction.
+ * body is a random Pack of that tier, optionally locked to one faction. A tier
+ * with no Pack pool (azure — no faction ships azure Packs) mints a same-tier
+ * NEUTRAL instead, so a high-level "packs" guard never fields fewer bodies
+ * than the table row it advertises.
  */
 export function resolveLevelPackGuardDraws(
   composition: { bronze: number; silver: number; gold: number; azure: number },
@@ -384,15 +410,8 @@ export function resolveLevelPackGuardDraws(
   const draws: ResolvedGuardDraw[] = [];
   const pushTier = (tier: RandomGuardTier, count: number) => {
     for (let i = 0; i < count; i += 1) {
-      const unitDefId = pickRandomFromPool(packUnitPoolForTier(tier, lockedFaction), rng);
-      if (!unitDefId) continue;
-      const def = coreUnitDefinitions[unitDefId]!;
-      draws.push({
-        unitDefId,
-        tier: def.tier as RandomGuardTier,
-        factionPack: true,
-        bankGuard: true
-      });
+      const draw = packDrawWithNeutralFallback(tier, lockedFaction, rng);
+      if (draw) draws.push(draw);
     }
   };
   pushTier("bronze", composition.bronze);
