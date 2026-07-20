@@ -16,9 +16,16 @@ import type { CombatState, CombatUnitState, PlayerId, UnitGrade } from "../state
  * worst a slightly sub-optimal (but still legal) target choice.
  */
 
-/** Remaining health of a combat unit: max health minus accumulated wounds. */
+/**
+ * Remaining health of a combat unit: current bar plus every Polish army-stack
+ * layer as a full extra health bar (matches `markUnitRemovedIfNeeded` peel).
+ * Bank `stackToken` is a separate one-shot absorb and is intentionally not
+ * folded here (its post-peel maxHealth may change).
+ */
 export function unitRemainingHealth(unit: CombatUnitState): number {
-  return Math.max(0, unit.maxHealth - unit.damage);
+  const currentBar = Math.max(0, unit.maxHealth - unit.damage);
+  const stackLayers = Math.max(0, unit.armyStacks ?? 0);
+  return currentBar + stackLayers * unit.maxHealth;
 }
 
 /**

@@ -4063,7 +4063,12 @@ export function ArmyPanel({
           const printed = armyUnitPrintedSide(def, unit.side);
           // BINH stat tweaks (Griffins, Marksmen) show live values.
           const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides) : printed;
-          const stackAttack = sideOverrides.polishUnitStacks && unit.side === "pack" && (unit.stacks ?? 0) > 0 ? 1 : 0;
+          const stackAttack =
+            sideOverrides.polishUnitStacks &&
+            (unit.side === "pack" || unit.side === "neutral") &&
+            (unit.stacks ?? 0) > 0
+              ? 1
+              : 0;
           // Unit Experience (optional rule): show the same rank-folded stats
           // the engine fights with, plus a WoG-style caret/sword rank badge.
           const rankInfo = unitExperienceActive(state) ? armyUnitRankInfo(unit) : null;

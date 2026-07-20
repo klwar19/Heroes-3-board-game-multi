@@ -47,10 +47,12 @@ import {
 import {
   canBeatGuardedField,
   collectMapObjectives,
+  freeSeizuresWithinReach,
   objectiveDistanceField,
   ownTownSpaceId,
   premiumEconomyResourceBonus,
   primaryMapObjective,
+  type MapObjective,
   type MapObjectiveKind,
 } from "./map-navigation";
 import {
@@ -613,9 +615,18 @@ function moveScore(
     objectives,
     memory.stickyObjectiveSpaceId,
   );
-  // March toward ONE sticky target so mid-turn objective drop-outs do not reverse
-  // the hero through home town toward a different nearby prize.
-  const marchTargets = primary ? [primary] : objectives;
+  // March toward the sticky primary, but ALSO every free seizure still in this
+  // turn's walking reach (unguarded mines / symbols / settlements). Multi-source
+  // BFS lets the hero scoop free objects along the way instead of tunnel-vision
+  // a single fight and walking past open loot.
+  const freeThisTurn = freeSeizuresWithinReach(state, hero, objectives);
+  const marchTargets: MapObjective[] = [];
+  const seen = new Set<string>();
+  for (const objective of primary ? [primary, ...freeThisTurn] : objectives) {
+    if (seen.has(objective.spaceId)) continue;
+    seen.add(objective.spaceId);
+    marchTargets.push(objective);
+  }
   const distance = objectiveDistanceField(state, hero, marchTargets);
   const here = hero.spaceId ? distance.get(hero.spaceId) ?? Infinity : Infinity;
   const to = distance.get(action.to) ?? Infinity;

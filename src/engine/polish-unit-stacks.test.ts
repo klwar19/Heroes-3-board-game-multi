@@ -13,6 +13,8 @@ import {
   unitSideRuleOverrides
 } from "./index";
 import { finalizeAdventureCombat } from "./adventure-reducer";
+import { processPendingVisit } from "./adventure";
+import { attackIsLethal, unitRemainingHealth } from "./computer/score";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
 import type { CombatState, GameAction, GameState } from "./state";
 
@@ -459,5 +461,86 @@ describe("Polish Unit Stacks — post-combat persistence", () => {
     unit.damage = unit.maxHealth;
     finishLostNeutralCombat(state, unit);
     expect(state.players.p1.army.some((entry) => entry.id === griffin.id)).toBe(false);
+  });
+});
+
+describe("Polish Unit Stacks — co-composition fixes", () => {
+  it("AI remaining-health counts army-stack layers so a layered Pack is not 'lethal' for one bar", () => {
+    const state = makeState(true, "polish-stacks-ai-health");
+    const unit = makeCombatUnitFromArmy(
+      { ...griffin, stacks: 1 },
+      "p1",
+      "combat_ai",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state)
+    )!;
+    // One full bar of damage would kill an unstacked Pack but not a 1-stack Pack.
+    expect(unitRemainingHealth(unit)).toBe(unit.maxHealth * 2);
+    const attacker = {
+      ...unit,
+      id: "attacker",
+      attack: unit.maxHealth,
+      defense: 0
+    };
+    // Expected damage = max(0, attack - defense) = maxHealth — lethal without stacks.
+    unit.armyStacks = 0;
+    expect(attackIsLethal(attacker, unit)).toBe(true);
+    unit.armyStacks = 1;
+    expect(attackIsLethal(attacker, unit)).toBe(false);
+  });
+
+  it("RECRUIT_FREE.stacks is ignored when polish-unit-stacks is OFF (latent grant gate)", () => {
+    const state = makeState(false, "polish-stacks-recruit-free-off");
+    state.players.p1.army = [];
+    const fieldId = Object.keys(state.adventure!.fields)[0];
+    const heroId = Object.keys(state.heroes).find((id) => state.heroes[id]?.controllerId === "p1") ?? "hero_p1";
+    state.adventure!.pendingVisit = {
+      playerId: "p1",
+      heroId,
+      fieldId,
+      steps: [{ type: "RECRUIT_FREE", unitDefId: "castle.griffins", side: "pack", stacks: 2 }]
+    };
+    processPendingVisit(state);
+    expect(state.players.p1.army).toHaveLength(1);
+    expect(state.players.p1.army[0].stacks).toBeUndefined();
+  });
+
+  it("RECRUIT_FREE.stacks clamps to the tier cap when the rule is ON", () => {
+    const state = makeState(true, "polish-stacks-recruit-free-on");
+    state.players.p1.army = [];
+    const fieldId = Object.keys(state.adventure!.fields)[0];
+    const heroId = Object.keys(state.heroes).find((id) => state.heroes[id]?.controllerId === "p1") ?? "hero_p1";
+    // Bronze cap is 3 — request 99, get 3.
+    state.adventure!.pendingVisit = {
+      playerId: "p1",
+      heroId,
+      fieldId,
+      steps: [{ type: "RECRUIT_FREE", unitDefId: "castle.griffins", side: "pack", stacks: 99 }]
+    };
+    processPendingVisit(state);
+    expect(state.players.p1.army[0].stacks).toBe(3);
+  });
+
+  it("Neutral stack Attack fold matches Pack (+1 while stacked)", () => {
+    const state = makeState(true, "polish-stacks-neutral-atk-ui");
+    const neutral = { id: "n_griff", unitDefId: "neutral.griffins", side: "neutral" as const, stacks: 1 };
+    const combat = makeCombatUnitFromArmy(
+      neutral,
+      "p1",
+      "combat_n",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state)
+    )!;
+    const unstacked = makeCombatUnitFromArmy(
+      { ...neutral, stacks: 0 },
+      "p1",
+      "combat_n0",
+      0,
+      "legacy",
+      unitSideRuleOverrides(state)
+    )!;
+    expect(combat.attack).toBe(unstacked.attack + 1);
   });
 });
