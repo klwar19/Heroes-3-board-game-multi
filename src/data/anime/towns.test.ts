@@ -20,7 +20,14 @@ describe("playable Anime Realms towns", () => {
     expect(faction).toBeDefined();
     expect(faction.units).toHaveLength(7);
     expect(faction.buildings).toHaveLength(8);
-    expect(faction.heroes).toHaveLength(2);
+    // Fuyuki ships Bin + Aoko + Miku (3); Azure Breeze ships Qingyun + Lingxi (2).
+    expect(faction.heroes.length).toBeGreaterThanOrEqual(2);
+    if (factionId === "fuyuki") {
+      expect(faction.heroes).toEqual(expect.arrayContaining(["bin", "aoko", "miku"]));
+      expect(faction.heroes).toHaveLength(3);
+    } else {
+      expect(faction.heroes).toHaveLength(2);
+    }
     expect(allTileDefinitions[faction.startingTileId]?.fields[0]).toMatchObject({
       location: "town",
       faction: factionId

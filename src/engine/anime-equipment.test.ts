@@ -11,6 +11,8 @@ import {
   DEFAULT_ANIME_OPTIONS,
   EQUIPMENT_IDS,
   equipmentEnabled,
+  equipmentFirstSpellPowerBonus,
+  applyEquipmentStageCostumeDefenseToken,
   heroEquipmentInventoryOf,
   heroEquipmentOf,
   heroEquipmentSlot,
@@ -947,5 +949,79 @@ describe("anime.equipment — public state & legacy snapshots", () => {
     delete hero.equipment;
     expect(heroEquipmentOf(state, "p1")).toEqual({});
     expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
+  });
+});
+
+// ===========================================================================
+// Miku / idol isekai wave — Neon Microphone, Stage Costume, Twin-Tail Ribbon
+// ===========================================================================
+
+const EQUIP_ID_MIC = EQUIPMENT_IDS.neonMicrophone;
+const EQUIP_ID_COSTUME = EQUIPMENT_IDS.stageCostume;
+const EQUIP_ID_RIBBON = EQUIPMENT_IDS.twinTailRibbon;
+
+describe("anime.equipment — Neon Microphone (weapon)", () => {
+  it("+1 Power on the first spell cast preview, CONTROL: no mic → baseline", () => {
+    const base = combat("eq-mic-base");
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const baseline = standingSpellPower(base, "p1", arrow);
+
+    const withMic = combat("eq-mic-on");
+    equip(withMic, "p1", "weapon", EQUIP_ID_MIC);
+    expect(standingSpellPower(withMic, "p1", arrow)).toBe(baseline + 1);
+
+    // After the charge is spent, standing Power drops back.
+    withMic.players.p1.combatStats.equipmentFirstSpellPowerUsed = true;
+    expect(standingSpellPower(withMic, "p1", arrow)).toBe(baseline);
+  });
+
+  it("module OFF / not equipped → no first-spell bonus (CONTROL)", () => {
+    const off = combat("eq-mic-off");
+    off.anime = { ...DEFAULT_ANIME_OPTIONS };
+    equip(off, "p1", "weapon", EQUIP_ID_MIC);
+    const arrow = cardLibrary["spell.magic_arrow"];
+    // Module off: equip record may exist but grants must not fire.
+    const on = combat("eq-mic-on2");
+    equip(on, "p1", "weapon", EQUIP_ID_MIC);
+    expect(standingSpellPower(on, "p1", arrow)).toBeGreaterThan(
+      standingSpellPower(off, "p1", arrow)
+    );
+  });
+});
+
+describe("anime.equipment — Stage Costume (armor)", () => {
+  it("grants a Defense token once on the owner's unit (CONTROL: no costume → no token)", () => {
+    const withCostume = combat("eq-costume");
+    equip(withCostume, "p1", "armor", EQUIP_ID_COSTUME);
+    const defender = withCostume.combat!.units.unit_p1_griffins;
+    defender.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(withCostume, defender);
+    expect(defender.defenseToken).toBe(true);
+    expect(withCostume.players.p1.combatStats.equipmentStageCostumeUsed).toBe(true);
+
+    // Second call never re-grants (charge spent).
+    defender.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(withCostume, defender);
+    expect(defender.defenseToken).toBe(false);
+
+    // CONTROL: unequipped / module path does nothing.
+    const bare = combat("eq-costume-bare");
+    bare.combat!.units.unit_p1_griffins.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(bare, bare.combat!.units.unit_p1_griffins);
+    expect(bare.combat!.units.unit_p1_griffins.defenseToken).toBe(false);
+    expect(bare.players.p1.combatStats.equipmentStageCostumeUsed ?? false).toBe(false);
+  });
+});
+
+describe("anime.equipment — Twin-Tail Ribbon (accessory)", () => {
+  it("+1 hand limit, STACKS with Guild-Issue Mail", () => {
+    const state = adventure("eq-ribbon");
+    const base = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_RIBBON);
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
+
+    // Weapon/armor free — put guild mail on armor too.
+    equip(state, "p1", "armor", EQUIP_ID_GUILD);
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 2);
   });
 });

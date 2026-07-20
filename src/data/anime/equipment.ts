@@ -77,7 +77,11 @@ export const EQUIPMENT_IDS = {
   windriderSaddle: "anime.equip.windrider_saddle",
   spiritCraneMount: "anime.equip.spirit_crane_mount",
   bladeOfTheTrial: "anime.equip.blade_of_the_trial",
-  alchemistsSatchel: "anime.equip.alchemists_satchel"
+  alchemistsSatchel: "anime.equip.alchemists_satchel",
+  // --- Miku / idol-themed isekai wave ----------------------------------------
+  neonMicrophone: "anime.equip.neon_microphone",
+  stageCostume: "anime.equip.stage_costume",
+  twinTailRibbon: "anime.equip.twin_tail_ribbon"
 } as const;
 
 /** The catalog — 12 items, one effect each, every effect a proven-seam reuse. */
@@ -194,6 +198,34 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "shared",
     summary:
       "Armor: +1 gold at the start of each Resources round AND +1 gold after each combat you win (stacks with Adventurer's Blade / Bounty Hunter's Eye)."
+  },
+
+  // ---- Miku / Virtual Diva (isekai outfitter) ------------------------------
+  [EQUIPMENT_IDS.neonMicrophone]: {
+    id: EQUIPMENT_IDS.neonMicrophone,
+    slot: "weapon",
+    name: { en: "Neon Microphone", vi: "Micro Neon" },
+    cost: 5,
+    package: "anime-isekai",
+    summary:
+      "Weapon: your FIRST Spell each combat is cast at +1 Power (your main hero's fights; one charge per combat)."
+  },
+  [EQUIPMENT_IDS.stageCostume]: {
+    id: EQUIPMENT_IDS.stageCostume,
+    slot: "armor",
+    name: { en: "Stage Costume", vi: "Trang Phục Sân Khấu" },
+    cost: 5,
+    package: "anime-isekai",
+    summary:
+      "Armor: the FIRST time one of your units is attacked each combat, that unit gains a Defense token after the attack resolves (your main hero's fights)."
+  },
+  [EQUIPMENT_IDS.twinTailRibbon]: {
+    id: EQUIPMENT_IDS.twinTailRibbon,
+    slot: "accessory",
+    name: { en: "Twin-Tail Ribbon", vi: "Ruy Băng Đôi" },
+    cost: 4,
+    package: "anime-isekai",
+    summary: "Accessory: +1 hand limit (stacks with Cultivation Foundation / Deep Pockets / Guild-Issue Mail)."
   }
 };
 
@@ -205,9 +237,9 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
  * and remove the id here (the UI then draws it instead of the glyph fallback).
  */
 export const ANIME_EQUIPMENT_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
-  // 2026-07: EMPTY — all 12 items ship real 512×512 transparent icons under
-  // public/assets/anime/equipment/. A FUTURE art-less item must be declared
-  // here (the UI then falls back to its slot glyph).
+  // EMPTY — all catalog items ship real 512×512 transparent webp icons under
+  // public/assets/anime/equipment/ (incl. Miku-wave neon mic / stage costume /
+  // twin-tail ribbon). A FUTURE art-less item must be declared here.
 ]);
 
 /** Slot → emoji glyph (UI fallback while an item has no art). */
@@ -264,6 +296,9 @@ export const EQUIPMENT_SHOP_SALES: Record<string, readonly string[]> = {
     EQUIPMENT_IDS.adventurersBlade,
     EQUIPMENT_IDS.guildIssueMail,
     EQUIPMENT_IDS.supplySatchel,
+    EQUIPMENT_IDS.neonMicrophone,
+    EQUIPMENT_IDS.stageCostume,
+    EQUIPMENT_IDS.twinTailRibbon,
     ...WAVE_2_SHARED
   ]
 };

@@ -389,10 +389,10 @@ describe("anime.heroGrades — tree pick gating", () => {
     hero.grade = 1;
     hero.gradePoints = 1;
 
-    // Only tier-1 nodes are pickable at grade 1.
+    // Only tier-1 nodes are pickable at grade 1 (3 classic + Encore).
     const pickable = heroGradePickableNodes(state, "p1");
     expect(pickable.every((node) => node.tier === 1)).toBe(true);
-    expect(pickable.length).toBe(3);
+    expect(pickable.length).toBe(4);
 
     // A tier-2 node (deep-pockets) is refused at grade 1.
     const lockedTier = applyAction(state, { type: "HERO_GRADE_PICK", playerId: "p1", nodeId: HERO_GRADE_NODE_IDS.deepPockets });

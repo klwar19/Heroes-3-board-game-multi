@@ -226,6 +226,11 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.septienna.1": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
   "specialty.septienna.4": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
   "specialty.septienna.6": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
+  // Miku Voice of Angel — I slows the army (slow sheet), IV is ongoing heal
+  // (cure/regeneration fire from DAMAGE_HEALED triggers), VI song-burst damage.
+  "specialty.miku.1": { affect: [{ key: "slow" }], sound: "spells/slow" },
+  "specialty.miku.4": { affect: [{ key: "cure" }], sound: "spells/prayer" },
+  "specialty.miku.6": { affect: [{ key: "mirth" }, { key: "prayer", delayMs: 180 }], sound: "spells/mirth" },
   "specialty.melodia.1": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "specialty.melodia.4": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "specialty.melodia.6": { affect: [{ key: "fortune" }], sound: "spells/fortune" },

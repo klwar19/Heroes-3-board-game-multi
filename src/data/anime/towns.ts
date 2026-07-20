@@ -219,6 +219,18 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.aoko.1", 4: "specialty.aoko.4", 6: "specialty.aoko.6" },
     portrait: "/assets/anime/heroes/aoko.png", source
   },
+  miku: {
+    id: "miku",
+    name: "Miku",
+    faction: "fuyuki",
+    class: "Virtual Diva",
+    type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.interference",
+    specialtyCardIds: { 1: "specialty.miku.1", 4: "specialty.miku.4", 6: "specialty.miku.6" },
+    portrait: "/assets/anime/heroes/miku.png",
+    source
+  },
   qingyun: {
     id: "qingyun", name: "Qingyun", faction: "azure_breeze", class: "Sword Cultivator", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
@@ -249,7 +261,7 @@ export const AZURE_BREEZE_UNIT_ORDER = [
 export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
   fuyuki: {
     id: "fuyuki", name: "Fuyuki City", color: "#7256d8", startingTileId: "A-S1",
-    heroes: ["bin", "aoko"],
+    heroes: ["bin", "aoko", "miku"],
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "fuyuki").map((item) => item.id),
     units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "fuyuki").map((item) => item.id),
     townImage: "/assets/anime/towns/fuyuki-city-empty-v2.webp", source

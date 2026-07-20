@@ -575,6 +575,15 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Miku Voice of Angel IV: while this player-scoped effect lasts, after any
+       * of the owner's units is attacked (and still living with damage), heal
+       * this many damage points on that defender (DAMAGE_HEALED event).
+       */
+      type: "HEAL_AFTER_ATTACKED";
+      amount: number;
+    }
+  | {
+      /**
        * Cyra's Haste VI: the unit gains this much Defense, but only against
        * attacks made by a unit with strictly lower (effective) Initiative.
        */
@@ -1892,6 +1901,40 @@ export type EffectDefinition =
        */
       type: "DAMAGE_ENEMY_UNITS_BY_GRADE";
       grades: UnitGrade[];
+      amount: number;
+    }
+  | {
+      /**
+       * Miku Voice of Angel VI: deal `amount` damage to EVERY living enemy combat
+       * unit. Targetless combat/instant play; per-unit spell-damage reduction
+       * applies through dealAreaCardDamage (same path as Death Ripple).
+       */
+      type: "DAMAGE_ALL_ENEMY_UNITS";
+      amount: number;
+    }
+  | {
+      /**
+       * Miku Voice of Angel I: ongoing combat play — every living enemy unit
+       * gains a combat-duration INITIATIVE_BONUS of `initiative` (negative) and
+       * optional MOVEMENT_BONUS (combat-move-initiative house rule). Stamped
+       * unit-by-unit at play time (summons that enter later are not retroactively
+       * slowed — deliberate, same class as multi-target Slow). Ongoing-immunity
+       * (Titans etc.) is honoured at read via effectAppliesToUnit.
+       */
+      type: "SLOW_ALL_ENEMIES";
+      name: string;
+      initiative: number;
+      movementBonus?: number;
+    }
+  | {
+      /**
+       * Miku Voice of Angel IV: ongoing combat play — create a player-scoped
+       * combat-duration HEAL_AFTER_ATTACKED modifier. After any of the owner's
+       * units is attacked (declared attack or retaliation that was not cancelled),
+       * heal `amount` damage on that defender if it still lives and has damage.
+       */
+      type: "CREATE_HEAL_ON_ATTACKED";
+      name: string;
       amount: number;
     }
   | {
@@ -6904,6 +6947,14 @@ export type PlayerState = {
      * not yet spent (so the first qualifying attack still gets +1).
      */
     equipmentFirstAttackUsed?: boolean;
+    /**
+     * Neon Microphone: first Spell this combat already spent its +1 Power charge.
+     */
+    equipmentFirstSpellPowerUsed?: boolean;
+    /**
+     * Stage Costume: first post-attack Defense-token grant this combat already fired.
+     */
+    equipmentStageCostumeUsed?: boolean;
     /**
      * Anime Equipment (§3.13): true once this player's Black Tortoise Mail has
      * spent its "first incoming declared attack −1 Attack" charge THIS COMBAT.
