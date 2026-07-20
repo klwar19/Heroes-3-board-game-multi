@@ -23,7 +23,8 @@ import {
   openPandoraSilverRefresh,
   queueLegionDiscountChoice,
   queueNecromancyReinforce,
-  recordLevelUpAbilityPick
+  recordLevelUpAbilityPick,
+  grantRegularArtifactOfSameGrade
 } from "./adventure";
 import { diluteUnitExperienceForUpgrade } from "./unit-experience";
 import {
@@ -215,12 +216,15 @@ import {
 } from "./anime-hero-grades";
 import {
   applyEquipmentStageCostumeDefenseToken,
+  equipEquipment,
+  equipmentEnabled,
   equipmentFirstAttackBonus,
   equipmentIncomingAttackPenalty,
   equipmentRound1AttackBonus,
   markEquipmentAttackResolved,
   markEquipmentFirstSpellCast
 } from "./anime-equipment";
+import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { createSeededRandom, setActiveEntropy } from "./random";
 import {
   combatHasHumanParticipant,
@@ -14015,6 +14019,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       throw new Error(`Your commander's ${effect.slot} slot is already filled.`);
     }
   }
+  if (effect.type === "EQUIP_HERO_EQUIPMENT") {
+    if (!equipmentEnabled(state)) {
+      throw new Error("Hero equipment cards need the Anime Equipment module.");
+    }
+    if (!getMainHero(state, action.playerId)) {
+      throw new Error("You need a main hero to equip this.");
+    }
+    if (!getEquipmentDefinition(effect.equipmentId)) {
+      throw new Error(`Unknown equipment: ${effect.equipmentId}`);
+    }
+  }
   // An Empowered ability may always use its Expert side without a crown.
   if (
     mode === "expert" &&
@@ -14782,6 +14797,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // by option.cost.removeSelf above; bind it PERMANENTLY into its slot on the
     // commander (legality was validated pre-move). The commander's next combat
     // unit reads the slot for its wired stat/ability effect. Never unbound.
+    // SAME-GRADE ARTIFACT GRANT: binding a commander-equipment card also draws
+    // one REGULAR (non-commander) Artifact of the same grade into hand — so
+    // removing the card is not a pure loss of deck value.
     const commander = state.players[action.playerId]?.commander;
     if (commander) {
       const artifacts = commander.artifacts ?? {};
@@ -14795,7 +14813,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         slot: effect.slot,
         message: `binds ${card.name} to their commander's ${effect.slot} slot.`
       });
+      grantRegularArtifactOfSameGrade(state, action.playerId, action.cardId);
     }
+  }
+
+  if (effect.type === "EQUIP_HERO_EQUIPMENT") {
+    // Anime equipment card: already removed via removeSelf. Equip onto the main
+    // hero (bag swap if the slot is full), then grant a REGULAR Artifact of the
+    // same grade (I→minor / II→major / III→relic) — never another equipment or
+    // commander-artifact card.
+    equipEquipment(state, action.playerId, effect.equipmentId);
+    grantRegularArtifactOfSameGrade(state, action.playerId, effect.equipmentId);
   }
 
   if (effect.type === "GAIN_HERO_MOVEMENT") {

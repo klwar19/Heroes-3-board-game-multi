@@ -247,7 +247,7 @@ describe("anime.equipment — outfitter buy flow", () => {
     expect(playerHasEquipment(bought, "p1", EQUIP_ID_COSMOS)).toBe(false);
     expect(heroEquipmentInventoryOf(bought, "p1")).toContain(EQUIP_ID_COSMOS);
     expect(playerOwnsEquipment(bought, "p1", EQUIP_ID_COSMOS)).toBe(true);
-    expect(bought.players.p1.resources.gold).toBe(15); // 20 − 5, no refund for Cosmos
+    expect(bought.players.p1.resources.gold).toBe(14); // 20 − 6 (Grade II), no refund for Cosmos
     expect(bought.eventLog.some((event) => event.type === "EQUIPMENT_EQUIPPED")).toBe(true);
   });
 
@@ -296,9 +296,9 @@ describe("anime.equipment — outfitter buy flow", () => {
   });
 
   it("a poor hero's unaffordable item is ABSENT from legal actions AND refused if forced", () => {
-    const state = openBlacksmith(4); // sword/mail cost 4; cosmos/satchel cost 5
+    const state = openBlacksmith(4); // Grade I sword/mail cost 4; Grade II cosmos/satchel cost 6
     expect(buyLabelFor(state, EQUIP_ID_SWORD)).toBeTruthy(); // 4 gold — affordable
-    expect(buyLabelFor(state, EQUIP_ID_COSMOS)).toBeUndefined(); // 5 gold — absent
+    expect(buyLabelFor(state, EQUIP_ID_COSMOS)).toBeUndefined(); // 6 gold — absent
     // Forcing the unaffordable Cosmos option (it IS in step.options) is refused.
     const cosmosIndex = (state.adventure!.pendingVisit!.steps[0] as { type: "CHOOSE_ONE"; options: { steps: { type: string; equipmentId?: string }[] }[] }).options.findIndex(
       (opt) => opt.steps.some((s) => s.type === "BUY_EQUIPMENT" && s.equipmentId === EQUIP_ID_COSMOS)
@@ -653,7 +653,7 @@ describe("anime.equipment — mount slot (the 4th slot)", () => {
     expect(buy, "the Windrider Saddle mount is offered").toBeTruthy();
     const bought = applyOk(state, buy!.action);
     expect(heroEquipmentOf(bought, "p1").mount).toBe(EQUIP_ID_WINDRIDER);
-    expect(bought.players.p1.resources.gold).toBe(15); // 20 − 5
+    expect(bought.players.p1.resources.gold).toBe(14); // 20 − 6 (Grade II mount)
   });
 });
 

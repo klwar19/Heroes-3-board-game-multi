@@ -1,5 +1,6 @@
 import type { CardLibrary } from "@/engine/state";
 import { animeArtifactCards } from "@/data/anime/artifacts";
+import { animeEquipmentCards } from "@/data/anime/equipment-cards";
 import { animeHeroGradeCards } from "@/data/anime/hero-grades";
 import { wogArtifactCards } from "@/data/wog/artifacts";
 import { wogCommanderArtifactCards } from "@/data/wog/commander-artifacts";
@@ -27,6 +28,7 @@ export const cardLibrary: CardLibrary = {
   ...spellCards,
   ...artifactCards,
   ...animeArtifactCards,
+  ...animeEquipmentCards,
   ...wogArtifactCards,
   ...wogCommanderArtifactCards,
   ...animeHeroGradeCards,

@@ -650,7 +650,7 @@ export function HeroBoard({
                               setDraggedEquipmentId(null);
                             }}
                           >
-                            <small>{slot}</small>
+                            <small>{slot}{def ? ` · ${def.grade}` : ""}</small>
                             {icon ? <img alt="" src={assetUrl(icon)} /> : <span>{EQUIPMENT_SLOT_GLYPH[slot]}</span>}
                             <strong>{def?.name.en ?? "Empty"}</strong>
                             {def ? <p>{def.summary}</p> : null}
@@ -692,7 +692,7 @@ export function HeroBoard({
                               }}
                             >
                               {icon ? <img alt="" src={assetUrl(icon)} /> : <span>{EQUIPMENT_SLOT_GLYPH[def.slot]}</span>}
-                              <span><strong>{def.name.en}</strong><small>{def.slot} · {def.cost} gold{equipped ? " · Equipped" : ""}</small></span>
+                              <span><strong>{def.name.en}</strong><small>{def.slot} · Grade {def.grade} · {def.cost} gold{equipped ? " · Equipped" : ""}</small></span>
                               <small className="equipmentOwnership">
                                 {equipped ? "Equipped" : inBag ? "Owned / draggable" : "Buy at outfitter"}
                               </small>

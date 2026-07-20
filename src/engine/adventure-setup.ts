@@ -14,6 +14,12 @@ import {
   animeXianxiaArtifactRelicIds
 } from "@/data/anime/artifacts";
 import {
+  animeEquipmentCardIds,
+  animeEquipmentMajorIds,
+  animeEquipmentMinorIds,
+  animeEquipmentRelicIds
+} from "@/data/anime/equipment-cards";
+import {
   wogArtifactCardIds,
   wogArtifactMajorIds,
   wogArtifactMinorIds,
@@ -789,7 +795,8 @@ function makeSharedDecks(
   polishSpellBook = false,
   xianxiaArtifacts = false,
   wogArtifacts = false,
-  wogCommanderArtifacts = false
+  wogCommanderArtifacts = false,
+  animeEquipment = false
 ): Record<string, DeckState> {
   const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
     ban ? cardIds.filter((id) => id !== removeId) : cardIds;
@@ -800,6 +807,12 @@ function makeSharedDecks(
   // artifacts, so every downstream tier/uniqueness gate applies unchanged.
   const withAnime = (base: string[], animeIds: readonly string[]): string[] =>
     xianxiaArtifacts ? [...base, ...animeIds] : base;
+
+  // Anime EQUIPMENT cards join when `anime.equipment` is on — same per-tier
+  // contract. Playing one equips + removes the card + grants a same-grade
+  // regular Artifact.
+  const withEquipment = (base: string[], equipIds: readonly string[]): string[] =>
+    animeEquipment ? [...base, ...equipIds] : base;
 
   // WOG (Wake of Gods) artifacts join the shared Artifact deck(s) ONLY when
   // `wog.enabled && wog.artifacts` is on; default OFF ⇒ byte-identical decks.
@@ -841,10 +854,29 @@ function makeSharedDecks(
       ),
       "artifacts-minor": make(
         "artifacts-minor",
-        without(withWogCommander(withWog(withAnime(artifactDeckBinhMinor, animeXianxiaArtifactMinorIds), wogArtifactMinorIds), wogCommanderArtifactMinorIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
+        without(
+          withEquipment(
+            withWogCommander(withWog(withAnime(artifactDeckBinhMinor, animeXianxiaArtifactMinorIds), wogArtifactMinorIds), wogCommanderArtifactMinorIds),
+            animeEquipmentMinorIds
+          ),
+          TOURNAMENT_REMOVED_ARTIFACT_ID,
+          tournament.banHourglass
+        )
       ),
-      "artifacts-major": make("artifacts-major", withWogCommander(withWog(withAnime(artifactDeckBinhMajor, animeXianxiaArtifactMajorIds), wogArtifactMajorIds), wogCommanderArtifactMajorIds)),
-      "artifacts-relic": make("artifacts-relic", withWogCommander(withWog(withAnime(artifactDeckBinhRelic, animeXianxiaArtifactRelicIds), wogArtifactRelicIds), wogCommanderArtifactRelicIds))
+      "artifacts-major": make(
+        "artifacts-major",
+        withEquipment(
+          withWogCommander(withWog(withAnime(artifactDeckBinhMajor, animeXianxiaArtifactMajorIds), wogArtifactMajorIds), wogCommanderArtifactMajorIds),
+          animeEquipmentMajorIds
+        )
+      ),
+      "artifacts-relic": make(
+        "artifacts-relic",
+        withEquipment(
+          withWogCommander(withWog(withAnime(artifactDeckBinhRelic, animeXianxiaArtifactRelicIds), wogArtifactRelicIds), wogCommanderArtifactRelicIds),
+          animeEquipmentRelicIds
+        )
+      )
     };
   }
 
@@ -856,7 +888,14 @@ function makeSharedDecks(
     ),
     artifacts: make(
       "artifacts",
-      without(withWogCommander(withWog(withAnime(artifactDeckLegacy, animeXianxiaArtifactCardIds), wogArtifactCardIds), wogCommanderArtifactCardIds), TOURNAMENT_REMOVED_ARTIFACT_ID, tournament.banHourglass)
+      without(
+        withEquipment(
+          withWogCommander(withWog(withAnime(artifactDeckLegacy, animeXianxiaArtifactCardIds), wogArtifactCardIds), wogCommanderArtifactCardIds),
+          animeEquipmentCardIds
+        ),
+        TOURNAMENT_REMOVED_ARTIFACT_ID,
+        tournament.banHourglass
+      )
     )
   };
 }
@@ -2594,7 +2633,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         polishSpellBookOn,
         animeModuleEnabled({ anime }, "xianxiaArtifacts"),
         wog.enabled && wog.artifacts,
-        wog.enabled && wog.artifacts && wog.commanders
+        wog.enabled && wog.artifacts && wog.commanders,
+        animeModuleEnabled({ anime }, "equipment")
       ),
       ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),

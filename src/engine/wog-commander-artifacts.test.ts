@@ -444,6 +444,63 @@ describe("WOG Commander Artifacts — bind flow", () => {
     expect(after.eventLog.some((event) => event.type === "COMMANDER_ARTIFACT_BOUND")).toBe(true);
   });
 
+  it("binding removes the equipment card and auto-grants a REGULAR Artifact of the SAME grade", () => {
+    const state = openMapTurn(adventureWithArtifacts("bind-same-grade-grant"));
+    // AXE is major-tier commander equipment. Seed a known major regular artifact
+    // on top of the major draw pile so the grant is deterministic.
+    const MAJOR_REGULAR = "artifact.surcoat_of_counterpoise";
+    const majorDeck = state.decks["artifacts-major"];
+    expect(majorDeck, "BINH split major deck").toBeTruthy();
+    expect(cardLibrary[MAJOR_REGULAR]?.artifactTier).toBe("major");
+    // Ensure the seed card is acquirable and NOT a commander artifact.
+    expect(wogCommanderArtifactCardIds).not.toContain(MAJOR_REGULAR);
+    majorDeck!.drawPile = [...majorDeck!.drawPile.filter((id) => id !== MAJOR_REGULAR), MAJOR_REGULAR];
+    state.players.p1.hand = [AXE];
+    const handBefore = [...state.players.p1.hand];
+
+    const after = apply(state, findBindPlay(state, AXE)!);
+    // Card equipment is gone (removed, not discard).
+    expect(after.players.p1.removed).toContain(AXE);
+    expect(after.players.p1.hand).not.toContain(AXE);
+    // Same-grade REGULAR artifact lands in hand.
+    expect(after.players.p1.hand).toContain(MAJOR_REGULAR);
+    expect(cardLibrary[MAJOR_REGULAR]?.artifactTier).toBe("major");
+    expect(wogCommanderArtifactCardIds).not.toContain(MAJOR_REGULAR);
+    // The bound slot still holds the commander equipment.
+    expect(after.players.p1.commander?.artifacts?.weapon).toBe(AXE);
+    // Feed note announces the grant.
+    expect(
+      after.eventLog.some(
+        (e) =>
+          e.type === "EVENT_NOTE" &&
+          /receives .* \(major Artifact\) for using equipment/i.test((e as { message?: string }).message ?? "")
+      )
+    ).toBe(true);
+    // CONTROL shape: net hand change is −1 commander card +1 regular (size can
+    // vary if the seed was already held — here hand started as [AXE] only).
+    expect(handBefore).toEqual([AXE]);
+    expect(after.players.p1.hand).toContain(MAJOR_REGULAR);
+  });
+
+  it("CONTROL: the same-grade grant skips other commander-artifact cards", () => {
+    const state = openMapTurn(adventureWithArtifacts("bind-skip-commander"));
+    const majorDeck = state.decks["artifacts-major"]!;
+    // drawPile.pop takes LAST. Stack [regular, commander] ⇒ commander drawn first
+    // and must be skipped; regular taken next.
+    const REGULAR = "artifact.surcoat_of_counterpoise";
+    majorDeck.drawPile = majorDeck.drawPile.filter(
+      (id) => id !== REGULAR && id !== SWORD && !wogCommanderArtifactCardIds.includes(id)
+    );
+    majorDeck.drawPile.push(REGULAR, SWORD);
+    state.players.p1.hand = [AXE];
+
+    const after = apply(state, findBindPlay(state, AXE)!);
+    expect(after.players.p1.hand).toContain(REGULAR);
+    expect(after.players.p1.hand).not.toContain(SWORD);
+    // Skipped commander card is tucked under the deck (not destroyed).
+    expect(after.decks["artifacts-major"]!.drawPile.includes(SWORD)).toBe(true);
+  });
+
   it("an OCCUPIED slot is not offered and a forged play is rejected", () => {
     const state = openMapTurn(adventureWithArtifacts("bind-occupied"));
     state.players.p1.commander!.artifacts = { weapon: SWORD }; // weapon slot already filled
@@ -589,6 +646,30 @@ describe("WOG Commander Artifacts — deck join (three-way gate)", () => {
         expect(countOf(ids, id), `${id} (wog commander) in ${deckId}`).toBe(1);
       }
     }
+  });
+
+  it("divides commander equipment into 3 grades properly (every slot has minor+major+relic)", () => {
+    const bySlot: Record<string, Set<string>> = { weapon: new Set(), armor: new Set(), trinket: new Set() };
+    for (const id of wogCommanderArtifactCardIds) {
+      const card = cardLibrary[id]!;
+      const specTier = card.artifactTier!;
+      // Parse slot from tags / effect
+      const effect = card.effect;
+      expect(effect.type).toBe("CHOOSE_ONE");
+      if (effect.type !== "CHOOSE_ONE") return;
+      const bind = effect.options[0]?.effect;
+      expect(bind?.type).toBe("BIND_COMMANDER_ARTIFACT");
+      if (bind?.type !== "BIND_COMMANDER_ARTIFACT") return;
+      bySlot[bind.slot].add(specTier);
+    }
+    for (const slot of ["weapon", "armor", "trinket"] as const) {
+      expect(bySlot[slot].has("minor"), `${slot} needs minor`).toBe(true);
+      expect(bySlot[slot].has("major"), `${slot} needs major`).toBe(true);
+      expect(bySlot[slot].has("relic"), `${slot} needs relic`).toBe(true);
+    }
+    // Grade-fill weapons
+    expect(wogCommanderArtifactMinorIds).toContain("wog.artifact.iron_cudgel");
+    expect(wogCommanderArtifactRelicIds).toContain("wog.artifact.doomsday_blade");
   });
 
   it("every commander-artifact id resolves in the card library (lookup path), even module-off", () => {
