@@ -1,12 +1,14 @@
 /**
  * Wake of Gods COMMANDER ARTIFACTS (`wog.artifacts` + `wog.commanders`, Task 2).
  *
- * Eight authentic WoG "commander artifacts" — items worn by the commander, not
- * the hero — adapted to the board game as PERMANENT slot bindings. Each artifact
- * prints its slot ("weapon" | "armor" | "trinket"); a card is acquired from the
- * shared Artifact decks like any other and then BOUND onto the player's commander
+ * Ten WoG "commander artifacts" (8 authentic + 2 grade-fill weapons) — items
+ * worn by the commander, not the hero — adapted to the board game as PERMANENT
+ * slot bindings. Each artifact prints its slot ("weapon" | "armor" | "trinket")
+ * and a grade (minor/major/relic); a card is acquired from the shared Artifact
+ * decks like any other and then BOUND onto the player's commander
  * (BIND_COMMANDER_ARTIFACT). Binding is permanent — no unbind, no swap — and
- * survives the commander's death and revival. One artifact per slot.
+ * survives the commander's death and revival. One artifact per slot. Binding
+ * also grants one REGULAR (non-commander) Artifact of the same grade into hand.
  *
  * SINGLE SOURCE OF TRUTH: `COMMANDER_ARTIFACT_SPECS` (keyed by card id) carries
  * the slot AND the exact wired combat effect. The card definitions below are
@@ -31,8 +33,9 @@
  * see `wogCommanderArtifact*Ids` consumed by `makeSharedDecks`. The definitions
  * live in the card library ALWAYS so lookups resolve.
  *
- * ART: all eight ship with real card faces (`public/assets/wog/artifacts/<slug>.webp`)
+ * ART: all ten ship with real card faces (`public/assets/wog/artifacts/<slug>.webp`)
  * and slot icons (`public/assets/wog/artifacts/icons/<slug>.webp`).
+ * New grade-fill weapons (Iron Cudgel / Doomsday Blade) are Codex-generated.
  */
 
 import type { CardLibrary, CardDefinition, CommanderArtifactSlot } from "@/engine/state";
@@ -73,7 +76,16 @@ export interface CommanderArtifactSpec {
 }
 
 export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
-  // ---- Weapon ------------------------------------------------------------
+  // ---- Weapon (all 3 grades) ---------------------------------------------
+  "wog.artifact.iron_cudgel": {
+    cardId: "wog.artifact.iron_cudgel",
+    slug: "iron_cudgel",
+    name: "Iron Cudgel",
+    slot: "weapon",
+    tier: "minor",
+    effectText: "+1 Attack.",
+    attack: 1
+  },
   "wog.artifact.axe_of_smashing": {
     cardId: "wog.artifact.axe_of_smashing",
     slug: "axe_of_smashing",
@@ -93,6 +105,15 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     // (a "+1" raises the attack, at most one "−1" lowers it) on every attack.
     effectText: 'rolls +1 Might attack die on every attack (a "+1" raises the Attack).',
     abilityIds: ["commander-might-1"]
+  },
+  "wog.artifact.doomsday_blade": {
+    cardId: "wog.artifact.doomsday_blade",
+    slug: "doomsday_blade",
+    name: "Doomsday Blade",
+    slot: "weapon",
+    tier: "relic",
+    effectText: "+3 Attack.",
+    attack: 3
   },
   // ---- Armor -------------------------------------------------------------
   "wog.artifact.hardened_shield": {
@@ -176,13 +197,13 @@ function buildCommanderArtifactCard(spec: CommanderArtifactSpec): CardDefinition
       "artifact",
       spec.tier,
       "wog",
-      `Commander artifact — ${slotLabel[spec.slot]}. Bind permanently to your commander: ${spec.effectText} Binding removes this card from the game.`
+      `Commander artifact — ${slotLabel[spec.slot]} · ${spec.tier}. Bind permanently to your commander: ${spec.effectText} Binding removes this card from the game and grants you 1 regular (non-commander) Artifact of the same grade (${spec.tier}).`
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: `Bind to your commander — ${slotLabel[spec.slot]} slot`,
+          label: `Bind to your commander — ${slotLabel[spec.slot]} slot (remove this card; gain 1 ${spec.tier} Artifact)`,
           mapOnly: true,
           cost: { removeSelf: true },
           effect: { type: "BIND_COMMANDER_ARTIFACT", slot: spec.slot }
