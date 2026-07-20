@@ -71,6 +71,11 @@ describe("Astrologers — Explorers (empower per 3 discarded)", () => {
       swiftWeaselUsedBy: []
     };
     state.activePlayerId = "p1";
+    // Astrologers proclamations are drawn on round 2+ (never round 1), so the
+    // empower-per-discard fires on a normal start-of-turn refresh — NOT the
+    // round-1 fill-then-opening-mulligan step. Run in round 2 so the refresh
+    // discard is the real Explorers path (round 1 would trip the opening-hand gate).
+    state.round = 2;
     const p1 = state.players.p1;
     p1.canMulligan = true;
     p1.needsHandRefresh = false;

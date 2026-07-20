@@ -146,12 +146,12 @@ describe("playable Anime Realms towns", () => {
       const unit = coreUnitDefinitions[id];
       expect(unit, id).toBeDefined();
       expect(unit.tier, id).toBe(expected[i].tier);
-      expect(unit.few.cardImage, id).toContain(expected[i].art);
-      expect(unit.pack.cardImage, id).toContain(expected[i].art);
-      expect(existsSync(join(process.cwd(), "public", unit.few.cardImage!.replace(/^\//, ""))), unit.few.cardImage).toBe(
+      expect(unit.few!.cardImage, id).toContain(expected[i].art);
+      expect(unit.pack!.cardImage, id).toContain(expected[i].art);
+      expect(existsSync(join(process.cwd(), "public", unit.few!.cardImage!.replace(/^\//, ""))), unit.few!.cardImage).toBe(
         true
       );
-      expect(existsSync(join(process.cwd(), "public", unit.pack.cardImage!.replace(/^\//, ""))), unit.pack.cardImage).toBe(
+      expect(existsSync(join(process.cwd(), "public", unit.pack!.cardImage!.replace(/^\//, ""))), unit.pack!.cardImage).toBe(
         true
       );
     }
@@ -167,8 +167,8 @@ describe("playable Anime Realms towns", () => {
     expect(coreBuildingDefinitions["azure_breeze.dwelling_gold"]?.name).toBe("Golden Core Summit");
 
     // LV5 silver must not outstat LV6 gold (few side raw A+D+H budget).
-    const lv5 = coreUnitDefinitions["azure_breeze.true_inheritors"]!.few;
-    const lv6 = coreUnitDefinitions["azure_breeze.core_master"]!.few;
+    const lv5 = coreUnitDefinitions["azure_breeze.true_inheritors"]!.few!;
+    const lv6 = coreUnitDefinitions["azure_breeze.core_master"]!.few!;
     const budget = (s: { attack: number; defense: number; health: number }) => s.attack + s.defense + s.health;
     expect(budget(lv5), "LV5 few A+D+H").toBeLessThan(budget(lv6));
     expect(lv5.attack, "LV5 attack").toBeLessThan(lv6.attack);

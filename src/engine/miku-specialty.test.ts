@@ -103,94 +103,74 @@ describe("Voice of Angel I — SLOW_ALL_ENEMIES", () => {
 });
 
 describe("Voice of Angel IV — heal after own unit is attacked", () => {
-  it("heals 1 on the attacked friendly unit after a resolved hit", () => {
-    const state = createInitialGameState("miku-iv-heal");
-    state.players.p1.hand = ["specialty.miku.4"];
-    const play = findPlay(state, "specialty.miku.4");
-    expect(play).toBeTruthy();
-    let next = applyOk(state, play!.action);
-    expect(
-      next.activeEffects.some((effect) =>
-        effect.modifiers.some((mod) => mod.type === "HEAL_AFTER_ATTACKED" && mod.amount === 1)
-      ),
-      "ongoing HEAL_AFTER_ATTACKED is recorded"
-    ).toBe(true);
+  // Skeletons (p2) strike Miku's pre-damaged Griffins (p1) in melee. After the
+  // hit resolves, the specialty must heal 1 on the attacked Griffins. A CONTROL
+  // that skips the specialty proves the heal is the specialty's doing — the pair
+  // fails if EITHER the CREATE_HEAL_ON_ATTACKED wiring OR the
+  // applyHealAfterAttacked consumer is removed.
+  const ATTACKER: UnitId = "unit_p2_skeletons";
+  const DEFENDER: UnitId = "unit_p1_griffins";
 
-    const defenderId = Object.keys(next.combat!.units).find(
-      (id) => next.combat!.units[id].controllerId === "p1"
-    )!;
-    const attackerId = Object.keys(next.combat!.units).find(
-      (id) => next.combat!.units[id].controllerId === "p2"
-    )!;
-    next.combat!.units[defenderId].damage = 2;
-    next.combat!.activeUnitId = attackerId;
-    next.combat!.units[attackerId].attackedThisActivation = false;
-    next.combat!.units[attackerId].retaliatedThisRound = false;
-
-    // Force a simple attack: declare via legal action if available, else
-    // APPLY a damage via a second combat with the specialty already on.
-    const attack = getLegalActions(next, "p2").find(
-      (legal) =>
-        legal.action.type === "ATTACK_UNIT" &&
-        legal.action.attackerUnitId === attackerId &&
-        legal.action.defenderUnitId === defenderId
-    );
-    if (!attack) {
-      // Fallback path: re-open a clean combat shell and re-play specialty,
-      // then use ATTACK if the board layout allows.
-      const fresh = createInitialGameState("miku-iv-heal-b");
-      fresh.players.p1.hand = ["specialty.miku.4"];
-      next = applyOk(fresh, findPlay(fresh, "specialty.miku.4")!.action);
-      const def = Object.values(next.combat!.units).find((u) => u.controllerId === "p1")!;
-      def.damage = 2;
-      // Directly exercise the heal arm through a synthetic second damage path
-      // by playing a damage specialty is not available — assert the ongoing
-      // effect exists and that a CONTROL without the effect does not heal.
-      const control = createInitialGameState("miku-iv-control");
-      const controlDef = Object.values(control.combat!.units).find((u) => u.controllerId === "p1")!;
-      controlDef.damage = 2;
-      expect(controlDef.damage).toBe(2);
-      expect(def.damage).toBe(2);
+  function runIncomingMelee(seed: string, withSpecialty: boolean): GameState {
+    let state = createInitialGameState(seed);
+    if (withSpecialty) {
+      state.players.p1.hand = ["specialty.miku.4"];
+      const play = findPlay(state, "specialty.miku.4");
+      expect(play, "IV is offered as a combat play").toBeTruthy();
+      state = applyOk(state, play!.action);
       expect(
-        next.activeEffects.some((e) => e.modifiers.some((m) => m.type === "HEAL_AFTER_ATTACKED"))
+        state.activeEffects.some((effect) =>
+          effect.modifiers.some((mod) => mod.type === "HEAL_AFTER_ATTACKED" && mod.amount === 1)
+        ),
+        "ongoing HEAL_AFTER_ATTACKED is recorded"
       ).toBe(true);
-      expect(
-        control.activeEffects.some((e) => e.modifiers.some((m) => m.type === "HEAL_AFTER_ATTACKED"))
-      ).toBe(false);
-      return;
     }
+    const combat = state.combat!;
+    combat.units[ATTACKER].position = 9;
+    combat.units[DEFENDER].position = 13; // adjacent to 9
+    combat.units[DEFENDER].maxHealth = 50;
+    combat.units[DEFENDER].damage = 3; // pre-damaged so a heal is observable
+    combat.units[ATTACKER].attackedThisActivation = false;
+    combat.units[ATTACKER].retaliatedThisRound = false;
+    combat.activeUnitId = ATTACKER;
+    combat.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+    combat.dice.rollCount = 0;
+    state.activePlayerId = "p2";
+    state.players.p2.hand = [];
+    state = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: ATTACKER,
+      defenderId: DEFENDER
+    });
+    return passAllReactions(state);
+  }
 
-    next = applyOk(next, attack.action);
-    next = passAllReactions(next);
-    // Resolve attack roll if needed
-    let safety = 20;
-    while (next.stack.length > 0 && safety > 0) {
-      safety -= 1;
-      const resolve = getLegalActions(next, "p2").find(
-        (legal) => legal.action.type === "RESOLVE_STACK" || legal.action.type === "CHOOSE_PENDING_ROLL"
-      );
-      if (!resolve) {
-        break;
-      }
-      next = applyOk(next, resolve.action);
-      next = passAllReactions(next);
-    }
-
-    const healed = next.combat!.units[defenderId];
-    // Healed at least once if still damaged from the hit — damage after heal
-    // must be strictly less than 2 + incoming without the specialty would be.
-    // Observable: DAMAGE_HEALED event fired for the defender.
+  it("heals 1 on the attacked friendly unit after a resolved hit", () => {
+    const next = runIncomingMelee("miku-iv-heal", true);
+    expect(next.combat!.units[DEFENDER]).toBeDefined();
     expect(
       next.eventLog.some(
         (event) =>
           event.type === "DAMAGE_HEALED" &&
           event.target.type === "unit" &&
-          event.target.unitId === defenderId &&
+          event.target.unitId === DEFENDER &&
           event.amount >= 1
       ),
       "DAMAGE_HEALED fires on the attacked friendly unit"
     ).toBe(true);
-    expect(healed.damage).toBeLessThan(2 + 10); // sanity
+  });
+
+  it("CONTROL: without the specialty, the attacked unit is not healed", () => {
+    const next = runIncomingMelee("miku-iv-control", false);
+    expect(
+      next.eventLog.some(
+        (event) =>
+          event.type === "DAMAGE_HEALED" &&
+          event.target.type === "unit" &&
+          event.target.unitId === DEFENDER
+      )
+    ).toBe(false);
   });
 });
 

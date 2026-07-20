@@ -715,17 +715,34 @@ describe("designed map tokens at setup", () => {
     expect([...numbers].sort((a, b) => (a ?? 9) - (b ?? 9))).toEqual([-1, 0, 1]);
   });
 
-  it("drops a face-up token on an illegal slot (hand-edited save) instead of carving it", () => {
+  it("relocates a face-up token off an illegal slot to a legal one (never silently drops the pin)", () => {
     const state = createAdventureGameState({
       seed: "designed-token-illegal",
       creatureBanks: false,
       customMap: [
-        // Slot 5 of F1 is the Blocked Field — never a legal token host.
+        // Slot 5 of F1 is the Blocked Field — never a legal token host. A
+        // hand-edited illegal pin is RELOCATED to a legal printed slot (its
+        // guard/pair ride with it), NOT silently dropped — the "one of N tiles"
+        // designer rule: a preferred pin illegal for the rolled tile must land
+        // on a legal field instead of vanishing.
         { row: 24, col: 12, group: "far", faceDown: false, tileDefId: "F1", rotation: 0, token: { kind: "monolith", slot: 5 } }
       ]
     });
 
-    expect(Object.values(state.adventure!.fields).some((field) => field.location === "monolith")).toBe(false);
+    const tile = Object.values(state.adventure!.tiles).find((t) => t.tileDefId === "F1");
+    expect(tile).toBeTruthy();
+    const footprint = getTileFootprintSpaceIds(tile!);
+    const legalSlots = legalTokenSlotsForTileDef(allTileDefinitions["F1"], "monolith");
+    expect(legalSlots).not.toContain(5); // slot 5 IS the illegal Blocked Field
+
+    const monolithSpaceIds = Object.entries(state.adventure!.fields)
+      .filter(([, field]) => field.location === "monolith")
+      .map(([spaceId]) => spaceId);
+    // Carved exactly once (relocated, not dropped), and NEVER on the Blocked slot.
+    expect(monolithSpaceIds).toHaveLength(1);
+    expect(monolithSpaceIds[0]).not.toBe(footprint[5]);
+    // It landed on a LEGAL printed slot of F1.
+    expect(legalSlots).toContain(footprint.findIndex((sid) => sid === monolithSpaceIds[0]));
   });
 });
 

@@ -40,6 +40,7 @@ import {
   factionGradeRegister,
   type HeroGradeNode
 } from "@/data/anime/hero-grades";
+import { heroGradeWinGold } from "./anime-hero-grades";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -461,6 +462,26 @@ describe("anime.heroGrades — passive node effects", () => {
     expect(winGold(true)).toBe(winGold(false) + 1);
   });
 
+  it("Standing Ovation: +1 gold after a won combat, and STACKS with Bounty Hunter's Eye (+2)", () => {
+    // heroGradeWinGold is the exact function finalizeAdventureCombat pays out
+    // (proven end-to-end by the Bounty Hunter's Eye combat above); here we pin
+    // the Standing Ovation branch and that the two idol/hunter nodes stack.
+    const state = createInitialGameState("hg-ovation");
+    state.anime = { ...GRADES_ON };
+    expect(heroGradeWinGold(state, "p1")).toBe(0); // CONTROL: no node
+
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.standingOvation], 3);
+    expect(heroGradeWinGold(state, "p1")).toBe(1);
+
+    grantNodes(
+      state,
+      "p1",
+      [HERO_GRADE_NODE_IDS.standingOvation, HERO_GRADE_NODE_IDS.bountyHuntersEye],
+      3
+    );
+    expect(heroGradeWinGold(state, "p1")).toBe(2);
+  });
+
   it("Provisioner: +1 building materials at a Resources round (CONTROL: no node)", () => {
     function roundMaterials(withNode: boolean): number {
       const state = adventure(`hg-prov-${withNode}`);
@@ -669,6 +690,91 @@ describe("anime.heroGrades — skill node effects", () => {
       return initiatingAttackRolled(current).defenseValue;
     }
     expect(ironWillDefenseValue(true)).toBe(ironWillDefenseValue(false) + 1);
+  });
+
+  it("Encore (active): heals 1 damage on the active unit (CONTROL: no node → no offer, no heal)", () => {
+    function afterEncore(withNode: boolean): { before: number; after: number } {
+      const state = combatState(`hg-encore-${withNode}`, withNode ? [HERO_GRADE_NODE_IDS.encore] : []);
+      const unit = state.combat!.units.unit_p1_griffins;
+      unit.maxHealth = 50;
+      unit.damage = 3;
+      const before = unit.damage;
+      const offer = getLegalActions(state, "p1").find(
+        (entry) =>
+          entry.action.type === "USE_HERO_SKILL" && entry.action.nodeId === HERO_GRADE_NODE_IDS.encore
+      );
+      if (withNode) {
+        expect(offer, "Encore should be offered during the unit's activation").toBeTruthy();
+        const next = applyOk(state, offer!.action);
+        return { before, after: next.combat!.units.unit_p1_griffins.damage };
+      }
+      expect(offer).toBeFalsy();
+      return { before, after: unit.damage };
+    }
+    const healed = afterEncore(true);
+    expect(healed.after).toBe(healed.before - 1); // 3 → 2
+    const control = afterEncore(false);
+    expect(control.after).toBe(control.before); // no heal without the node
+  });
+
+  it("Harmony Ward (reaction): the granted Defense token soaks 1 off the incoming hit (CONTROL: no node)", () => {
+    // p2 attacks p1's Griffins. WITH the node p1 plays the reaction, the Griffins
+    // gain a Defense token and roll the Defend die (scripted "+1" → +1 Defense),
+    // so they take exactly 1 LESS damage than the CONTROL run without the node.
+    // Observing the damage delta (not the token flag) survives the fact that the
+    // token is spent the instant the Griffins' own activation opens next.
+    function damageTaken(use: boolean): number {
+      const state = createInitialGameState(`hg-harmony-${use}`);
+      state.anime = { ...GRADES_ON };
+      grantNodes(state, "p1", use ? [HERO_GRADE_NODE_IDS.harmonyWard] : [], 3);
+      state.players.p1.hand = [];
+      state.players.p2.hand = [];
+      state.players.p1.morale = 0;
+      state.players.p2.morale = 0;
+      const attacker = state.combat!.units.unit_p2_skeletons;
+      attacker.abilities = [];
+      const defender = state.combat!.units.unit_p1_griffins;
+      defender.position = 9; // adjacent to the skeletons' cell (mirror of Iron Will)
+      defender.abilities = [];
+      defender.maxHealth = 80;
+      defender.damage = 0;
+      defender.defense = 0; // the raw hit always lands, so the shield's −1 is visible
+      defender.defenseToken = false;
+      state.combat!.activeUnitId = "unit_p2_skeletons";
+      state.activePlayerId = "p2";
+      // Every die shows "+1": the attack die (both runs) and, WITH the node, the
+      // extra Defend die (+1 Defense) — so the only difference is the token.
+      state.combat!.dice.scriptedRolls = [1, 1, 1, 1, 1, 1, 1, 1];
+      let current = applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p2",
+        attackerId: "unit_p2_skeletons",
+        defenderId: "unit_p1_griffins"
+      });
+      let guard = 30;
+      let used = false;
+      while (current.reactionWindow && guard > 0) {
+        guard -= 1;
+        const priority = current.reactionWindow.priorityPlayerId;
+        const offer =
+          use && priority === "p1"
+            ? getLegalActions(current, "p1").find(
+                (entry) => entry.action.type === "USE_HERO_SKILL_REACTION"
+              )
+            : undefined;
+        if (offer && !used) {
+          used = true;
+          current = applyOk(current, offer.action);
+        } else {
+          current = applyOk(current, { type: "PASS_REACTION", playerId: priority });
+        }
+      }
+      if (use) expect(used).toBe(true);
+      return current.combat!.units.unit_p1_griffins.damage;
+    }
+    const control = damageTaken(false);
+    expect(control).toBeGreaterThan(0); // the raw hit lands
+    expect(damageTaken(true)).toBe(control - 1); // the Defense token's Defend die soaked 1
   });
 
   it("Forced March (map active): +1 movement, once per round (CONTROL fresh next round)", () => {
