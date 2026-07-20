@@ -127,7 +127,7 @@ describe("map-design-features — certain army slots", () => {
       { id: "neutral.storm_elementals", count: 1 }
     ]);
     expect(describeGuardArmyGrouped(["random:gold", "random:gold", "random:gold", "neutral.storm_elementals"])).toBe(
-      "3× Random gold, Storm Elementals"
+      "3× Random gold Neutral, Storm Elementals"
     );
     expect(
       expandGuardUnitGroups([

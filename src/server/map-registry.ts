@@ -206,6 +206,10 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   const secretFeatures = Array.isArray(candidate.secretFeatures)
     ? [...new Set(candidate.secretFeatures.filter(isSecretTileFeature))]
     : [];
+  // Landmark bans (face-down only): "no Obelisk" / exclude certain features.
+  const excludeFeatures = Array.isArray(candidate.excludeFeatures)
+    ? [...new Set(candidate.excludeFeatures.filter(isSecretTileFeature))]
+    : [];
   // "One of these tiles" random list (map designer): keep the unique string ids
   // (never on a starting seat), capped so untrusted input can't balloon. Tile-id
   // validity + group-pool membership is enforced by the setup validator; here we
@@ -281,6 +285,7 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(oneOfTileDefIds.length > 0 ? { oneOfTileDefIds } : {}),
     ...(secretFeature && Boolean(candidate.faceDown) ? { secretFeature } : {}),
     ...(secretFeatures.length > 0 && Boolean(candidate.faceDown) ? { secretFeatures } : {}),
+    ...(excludeFeatures.length > 0 && Boolean(candidate.faceDown) ? { excludeFeatures } : {}),
     ...(Number.isInteger(candidate.rotation) ? { rotation: (((candidate.rotation as number) % 6) + 6) % 6 } : {}),
     // `lockRotation` fixes a starting seat's home-tile orientation (no opening
     // rotation). Meaningful only on a starting plan — kept there, dropped on any

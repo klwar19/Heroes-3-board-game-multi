@@ -288,6 +288,19 @@ export function describeCustomWinCondition(condition: CustomWinCondition): strin
       return `defeat ${condition.count} enemy Hero${condition.count === 1 ? "" : "es"}`;
     case "defeat-dragon-utopia":
       return "defeat the Dragon Utopia";
+    case "hold-with-grail": {
+      const target =
+        condition.target === "starting-town"
+          ? "Starting Town"
+          : condition.target === "settlement"
+            ? "a Settlement"
+            : condition.target === "random-town"
+              ? "a Random Town"
+              : condition.target === "random-settlement"
+                ? "a Random Settlement"
+                : `field ${condition.target.spaceId}`;
+      return `control ${target} with the Grail for ${condition.rounds} round${condition.rounds === 1 ? "" : "s"}`;
+    }
   }
 }
 
@@ -346,23 +359,38 @@ function buildBreakdown(
   if (settlementVpEach > 0) {
     add("Settlement bonus VP", settlementVpEach * controlledSettlementCount(state, playerId));
   }
-  // Per-TILE settlement bonus VP (CustomMapTilePlan.settlement.vp on specific
-  // fields) — scored only for the settlements that player currently controls.
-  let specialSettlementVp = 0;
+  // Per-field control bonus VP (CustomMapTilePlan.settlement.vp or centerHex.controlVp
+  // on Random Town / Random Settlement / special settlements) — while controlled.
+  let specialControlVp = 0;
   for (const field of Object.values(state.adventure?.fields ?? {})) {
     if (
-      field.location === "settlement" &&
+      (field.location === "settlement" || field.location === "random_town") &&
       field.flagOwnerId === playerId &&
       field.settlementBonusVp &&
       field.settlementBonusVp > 0
     ) {
-      specialSettlementVp += field.settlementBonusVp;
+      specialControlVp += field.settlementBonusVp;
     }
   }
-  if (specialSettlementVp > 0) {
-    add("Special settlement VP", specialSettlementVp);
+  if (specialControlVp > 0) {
+    add("Special control VP", specialControlVp);
+  }
+  // MAP-WIDE Random Town control VP (on top of any per-center controlVp).
+  const randomTownVpEach = state.adventure?.mapPreset?.randomTowns?.vp ?? 0;
+  if (randomTownVpEach > 0) {
+    let count = 0;
+    for (const field of Object.values(state.adventure?.fields ?? {})) {
+      if (field.location === "random_town" && field.flagOwnerId === playerId) {
+        count += 1;
+      }
+    }
+    if (count > 0) {
+      add("Random Town control VP", randomTownVpEach * count);
+    }
   }
   // Map-maker Grail possession VP: carrier OR controller of the built field.
+  // Deliberately NOT awarded for digging alone or for conquering a dig site —
+  // only while the Grail is carried by a hero or built at a Town/Settlement.
   const grailVp = state.adventure?.mapPreset?.objectives?.grailPossessionVp ?? 0;
   if (grailVp > 0) {
     const grail = state.adventure?.grail;
@@ -372,10 +400,18 @@ function buildBreakdown(
       possesses = carrier?.controllerId === playerId;
     } else if (grail?.status === "built" && grail.builtFieldId) {
       const field = state.adventure?.fields[grail.builtFieldId];
-      possesses = field?.flagOwnerId === playerId;
+      possesses =
+        field?.flagOwnerId === playerId ||
+        Boolean(
+          field &&
+            !field.flagOwnerId &&
+            Object.values(state.towns).some(
+              (town) => town.fieldId === field.spaceId && town.controllerId === playerId
+            )
+        );
     } else if (grail?.status === "delivered") {
-      // Delivered = grail win path; still counts for the deliverer if scored.
-      // Possession after delivery is the completer; skip here (completion VP covers it).
+      // Delivered = grail win path; possession after delivery is the completer;
+      // skip here (completion VP covers it when victoryConditionVp > 0).
     }
     if (possesses) {
       add("Possessing the Grail", grailVp);
