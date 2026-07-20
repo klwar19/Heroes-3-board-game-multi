@@ -64,7 +64,10 @@ const RESOLVING_ACTION_TYPES = new Set<GameAction["type"]>([
   "RESOLVE_VISIT_STEP",
   "SET_TILE_ROTATION",
   "SKIP_NECROMANCY",
-  "REFRESH_HAND"
+  "REFRESH_HAND",
+  // First-round opening Mulligan (option ON): keep the filled hand (empty
+  // discardCardIds is the legal-actions template offer).
+  "OPENING_HAND_MULLIGAN"
 ]);
 
 /** Prefer the do-nothing option so the drop changes as little as possible. */

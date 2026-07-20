@@ -7177,11 +7177,10 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "SCHOLAR_EMPOWER_PICK": {
-        // Scholar (expert): offer one swap of a non-empowered Statistic card
-        // (hand or discard) for its Empowered version, dropped on top of the
-        // discard pile. Only types not yet taken this play are offered (so the
-        // gained Empowered cards are all different); duplicate (source, type)
-        // candidates collapse to one option.
+        // Scholar (expert) phase 1: remove up to `remaining` Statistic cards
+        // from hand or discard (any Statistic, including already-Empowered).
+        // Independent of which Empowered types are taken next. Done / empty
+        // piles end the phase early and fall through to SCHOLAR_EMPOWER_TAKE.
         const player = state.players[visit.playerId];
         if (!player || step.remaining <= 0) {
           break;
@@ -7191,31 +7190,21 @@ export function processPendingVisit(state: GameState): void {
         for (const source of ["hand", "discard"] as const) {
           for (const cardId of player[source]) {
             const card = cardLibrary[cardId];
-            const stat = card?.statisticType;
-            if (
-              card?.kind !== "statistic" ||
-              !stat ||
-              cardId.endsWith(".empowered") ||
-              step.takenTypes.includes(stat) ||
-              seen.has(`${source}:${stat}`)
-            ) {
+            if (card?.kind !== "statistic") {
               continue;
             }
-            seen.add(`${source}:${stat}`);
+            const key = `${source}:${cardId}`;
+            if (seen.has(key)) {
+              continue;
+            }
+            seen.add(key);
+            const steps: VisitStep[] = [{ type: "REMOVE_CARD_FROM_PILE", cardId, source }];
+            if (step.remaining - 1 > 0) {
+              steps.push({ type: "SCHOLAR_EMPOWER_PICK", remaining: step.remaining - 1 });
+            }
             options.push({
-              label: `Empower ${card.name ?? cardId} (from ${source})`,
-              steps: [
-                { type: "SCHOLAR_EMPOWER_GIVE", source, cardId } as VisitStep,
-                ...(step.remaining - 1 > 0
-                  ? [
-                      {
-                        type: "SCHOLAR_EMPOWER_PICK",
-                        remaining: step.remaining - 1,
-                        takenTypes: [...step.takenTypes, stat]
-                      } as VisitStep
-                    ]
-                  : [])
-              ]
+              label: `Remove ${card.name ?? cardId} (from ${source})`,
+              steps
             });
           }
         }
@@ -7225,23 +7214,67 @@ export function processPendingVisit(state: GameState): void {
         options.push({ label: "Done", steps: [] });
         visit.steps.unshift({
           type: "CHOOSE_ONE",
-          prompt: "Empower a Statistic card (Scholar expert)",
+          prompt: `Scholar expert: Remove up to ${step.remaining} Statistic card(s) from hand or discard`,
           options
         });
         break;
       }
-      case "SCHOLAR_EMPOWER_GIVE": {
-        const player = state.players[visit.playerId];
-        const pile = step.source === "hand" ? player?.hand : player?.discard;
-        const stat = cardLibrary[step.cardId]?.statisticType;
-        const index = pile?.indexOf(step.cardId) ?? -1;
-        if (!player || !pile || !stat || index === -1) {
+      case "SCHOLAR_EMPOWER_TAKE": {
+        // Scholar (expert) phase 2: ONE Empowered Statistic at a time onto the
+        // top of discard. "Up to 2 different" = at most two picks, and the
+        // second may not repeat the first's type — any other combination is
+        // fine (including the same type as a card removed in phase 1). Minted
+        // from the Empowered set (same free-mint model as Star Axis).
+        if (step.remaining <= 0) {
           break;
         }
-        pile.splice(index, 1);
-        player.removed.push(step.cardId);
-        // The Empowered version goes on top of the discard pile (push = top).
-        player.discard.push(`stat.${stat}.empowered`);
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (const cardId of SCHOLAR_EMPOWERED_STAT_CARDS) {
+          const card = cardLibrary[cardId];
+          const stat = card?.statisticType;
+          // Only filter: already taken this play (so pick 2 ≠ pick 1).
+          if (!stat || step.takenTypes.includes(stat)) {
+            continue;
+          }
+          const steps: VisitStep[] = [{ type: "SCHOLAR_EMPOWER_BANK", cardId }];
+          if (step.remaining - 1 > 0) {
+            steps.push({
+              type: "SCHOLAR_EMPOWER_TAKE",
+              remaining: step.remaining - 1,
+              takenTypes: [...step.takenTypes, stat]
+            });
+          }
+          options.push({
+            label: card?.name ?? cardId,
+            steps
+          });
+        }
+        if (options.length === 0) {
+          break;
+        }
+        options.push({ label: "Done", steps: [] });
+        // Sequential single picks — first any, then (if remaining) another that
+        // is not the same type as the first.
+        const prompt =
+          step.takenTypes.length === 0
+            ? "Scholar expert: Take 1 Empowered Statistic card (on top of discard)"
+            : `Scholar expert: Take 1 more Empowered Statistic card (different from ${step.takenTypes
+                .map((t) => cardLibrary[`stat.${t}.empowered`]?.name ?? t)
+                .join(", ")})`;
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt,
+          options
+        });
+        break;
+      }
+      case "SCHOLAR_EMPOWER_BANK": {
+        const player = state.players[visit.playerId];
+        if (!player || !cardLibrary[step.cardId]) {
+          break;
+        }
+        // Empowered card goes on top of the discard pile (push = top).
+        player.discard.push(step.cardId);
         break;
       }
       case "REMOVE_ONE_FROM_HAND_OR_DISCARD": {
@@ -10830,6 +10863,14 @@ function rollScholar(state: GameState, visit: PendingVisit): void {
 /** Statistic card ids by scholar choice order. */
 export const SCHOLAR_STAT_CARDS = ["stat.attack", "stat.defense", "stat.power", "stat.knowledge"];
 
+/** Empowered Statistic ids the Scholar expert may put on top of discard. */
+export const SCHOLAR_EMPOWERED_STAT_CARDS = [
+  "stat.attack.empowered",
+  "stat.defense.empowered",
+  "stat.power.empowered",
+  "stat.knowledge.empowered"
+] as const;
+
 // ---------------------------------------------------------------------------
 // Neutral armies
 // ---------------------------------------------------------------------------
@@ -13362,6 +13403,7 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // once every earlier phase has resolved (see "start-turn-hand").
   player.canMulligan = false;
   player.needsHandRefresh = false;
+  player.canOpeningMulligan = false;
   // Army map abilities reset for the new turn (Nomads' step, Rogues' scout, Satyrs' roll).
   player.nomadStepDoneThisTurn = false;
   player.rogueScoutUsedThisTurn = false;
@@ -13478,10 +13520,10 @@ export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): v
   }
   player.canMulligan = true;
   player.needsHandRefresh = player.hand.length > effectiveHandLimit(state, playerId);
-  // The post-draw one-at-a-time MULLIGAN_CARD budget is retired: the lobby
-  // "First-round hand Mulligan" option now only gates whether round-1
-  // start-of-turn discards are allowed (default ON = current normal play).
-  // Keep the field at 0 so legacy MULLIGAN_CARD offers never reappear.
+  // Opening Mulligan arms only AFTER fill-to-limit (refreshHand). Never here.
+  player.canOpeningMulligan = false;
+  // Legacy one-at-a-time MULLIGAN_CARD budget stays 0 (OPENING_HAND_MULLIGAN
+  // is the real second pass when the lobby option is ON).
   player.firstRoundMulligansLeft = 0;
 }
 

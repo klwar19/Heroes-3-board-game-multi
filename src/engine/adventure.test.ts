@@ -50,11 +50,16 @@ function apply(state: GameState, action: GameAction): GameState {
 
 function refreshP1(state: GameState): GameState {
   // Resolve the mandatory start-of-turn draw (every turn, including the first):
-  // it must be taken before moving or using a card.
-  if (!state.players.p1.needsHandRefresh && !state.players.p1.canMulligan) {
-    return state;
+  // it must be taken before moving or using a card. When First-round Mulligan
+  // is ON, fill-to-limit also arms OPENING_HAND_MULLIGAN — keep the hand so
+  // tests can move on without an extra UI step.
+  if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
   }
-  return apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+  if (state.players.p1.canOpeningMulligan) {
+    state = apply(state, { type: "OPENING_HAND_MULLIGAN", playerId: "p1", discardCardIds: [] });
+  }
+  return state;
 }
 
 /**
@@ -368,7 +373,18 @@ describe("turns and movement", () => {
   // round-2 wrap raises no choice.
   function toP1SecondTurn(state: GameState): GameState {
     state.decks.astrologers.drawPile.push("astrologers.dead_silence");
+    // Clear the R1 hand gate (fill + optional opening Mulligan) so END_TURN is
+    // never blocked by canOpeningMulligan.
+    state = refreshP1(state);
     state = apply(state, { type: "END_TURN", playerId: "p1" });
+    if (state.players.p2.canMulligan || state.players.p2.canOpeningMulligan) {
+      if (state.players.p2.canMulligan) {
+        state = apply(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
+      }
+      if (state.players.p2.canOpeningMulligan) {
+        state = apply(state, { type: "OPENING_HAND_MULLIGAN", playerId: "p2", discardCardIds: [] });
+      }
+    }
     state = apply(state, { type: "END_TURN", playerId: "p2" });
     return state;
   }
@@ -398,16 +414,22 @@ describe("turns and movement", () => {
     let state = makeGame();
     expect(state.players.p1.canMulligan).toBe(true);
 
-    // First turn: the player MAY discard a card and draw back up to the limit.
+    // Round 1 full hand: fill first, then OPENING_HAND_MULLIGAN dumps cards.
     const tossed = state.players.p1.hand[0];
-    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [tossed] });
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(state.players.p1.canOpeningMulligan).toBe(true);
+    state = apply(state, {
+      type: "OPENING_HAND_MULLIGAN",
+      playerId: "p1",
+      discardCardIds: [tossed]
+    });
     expect(state.players.p1.hand).toHaveLength(4);
     expect(state.players.p1.hand).not.toContain(tossed);
     // First-round rule: the discarded card returns to the player's own deck (its
     // bottom), NOT to the discard pile.
     expect(state.players.p1.discard).toEqual([]);
     expect(state.players.p1.deck).toContain(tossed);
-    // The draw is once per turn — a second one is rejected.
+    // The draw is once per turn — a second fill is rejected.
     expect(state.players.p1.canMulligan).toBe(false);
     const again = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     expect(again.errors).toHaveLength(1);
@@ -420,9 +442,10 @@ describe("turns and movement", () => {
     const blocked = applyAction(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
     expect(blocked.errors.length).toBeGreaterThan(0);
     expect(blocked.state.heroes.hero_p1.spaceId).not.toBe("h:8:3");
-    // Take the mandatory draw, and the move goes through.
-    state = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    // Take the mandatory fill + keep opening Mulligan, and the move goes through.
+    state = refreshP1(state);
     expect(state.players.p1.canMulligan).toBe(false);
+    expect(state.players.p1.canOpeningMulligan).toBeFalsy();
     state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:8:3" });
     expect(state.heroes.hero_p1.spaceId).toBe("h:8:3");
   });
@@ -435,7 +458,13 @@ describe("turns and movement", () => {
     expect(state.activePlayerId).toBe("p2");
     expect(state.players.p2.canMulligan).toBe(true);
     const tossed = state.players.p2.hand[0];
-    state = apply(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [tossed] });
+    state = apply(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
+    expect(state.players.p2.canOpeningMulligan).toBe(true);
+    state = apply(state, {
+      type: "OPENING_HAND_MULLIGAN",
+      playerId: "p2",
+      discardCardIds: [tossed]
+    });
     // First-round rule: the discard returns to the player's own deck, not the pile.
     expect(state.players.p2.discard).toEqual([]);
     expect(state.players.p2.deck).toContain(tossed);

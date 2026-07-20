@@ -87,6 +87,7 @@ import {
   giveUpCombat,
   refreshHand,
   mulliganCard,
+  openingHandMulligan,
   resolveVisitStep,
   retreatFromCombat,
   surrenderFromCombat,
@@ -14832,13 +14833,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
-  // Scholar (expert): open the interactive Empowered-Statistic swap (up to
-  // `count` removals). The Scholar card was already removed by cost.removeSelf.
+  // Scholar (expert): two independent phases — remove up to `count` Statistic
+  // cards, then take up to `count` different Empowered Statistics onto discard.
+  // The Scholar card was already removed by cost.removeSelf.
   if (effect.type === "SCHOLAR_EMPOWER_SWAP") {
     state.adventure?.rewardQueue.unshift({
       playerId: action.playerId,
       kind: "visit-steps",
-      steps: [{ type: "SCHOLAR_EMPOWER_PICK", remaining: effect.count, takenTypes: [] }]
+      steps: [
+        { type: "SCHOLAR_EMPOWER_PICK", remaining: effect.count },
+        { type: "SCHOLAR_EMPOWER_TAKE", remaining: effect.count, takenTypes: [] }
+      ]
     });
   }
 
@@ -19654,6 +19659,7 @@ function asNeutralSeatCommand<
 const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REFRESH_HAND",
   "MULLIGAN_CARD",
+  "OPENING_HAND_MULLIGAN",
   "ASTROLOGERS_HERO_EMPOWER",
   "REVISIT_FIELD",
   "BUILD_GRAIL",
@@ -20061,6 +20067,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "MULLIGAN_CARD":
         mulliganCard(nextState, action);
+        break;
+      case "OPENING_HAND_MULLIGAN":
+        openingHandMulligan(nextState, action);
         break;
       case "ASTROLOGERS_HERO_EMPOWER":
         astrologersHeroEmpower(nextState, action);

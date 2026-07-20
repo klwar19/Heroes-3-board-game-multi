@@ -2633,19 +2633,10 @@ function isOptionEffectPlayable(
       });
     }
     case "SCHOLAR_EMPOWER_SWAP": {
-      // Scholar's expert swap: map-only, and only with a non-empowered Statistic
-      // card in hand or discard to trade in.
-      if (context !== "map" || !state.adventure) {
-        return false;
-      }
-      const player = state.players[playerId];
-      if (!player) {
-        return false;
-      }
-      return [...player.hand, ...player.discard].some((cardId) => {
-        const card = cardLibrary[cardId];
-        return card?.kind === "statistic" && Boolean(card.statisticType) && !cardId.endsWith(".empowered");
-      });
+      // Scholar expert: map-only. Both phases are "up to N" (including zero), so
+      // there is no Statistic-in-hand gate — you may remove nothing and still
+      // take Empowered cards, or remove without taking.
+      return context === "map" && Boolean(state.adventure) && Boolean(state.players[playerId]);
     }
     case "CARD_DECK_SEARCH":
     case "EAGLE_EYE_DIG":
@@ -8983,6 +8974,14 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
     return actions;
   }
 
+  // First-round opening Mulligan (option ON) — optional, non-blocking.
+  if (player.canOpeningMulligan) {
+    actions.push({
+      label: "Opening Mulligan — discard 0 or more cards to your deck and draw that many (or keep your hand)",
+      action: { type: "OPENING_HAND_MULLIGAN", playerId, discardCardIds: [] }
+    });
+  }
+
   // Quiet movement: getHeroMoveDestinations self-filters to trigger-free
   // ("open") fields while the table's interaction slot is busy.
   for (const hero of Object.values(state.heroes)) {
@@ -9428,6 +9427,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // no movement, exploration, market or card play. (The engine backstops this in
   // assertHandRefreshed / assertStartOfTurnDrawTaken for handler-validated map
   // actions that skip this legal-action check.)
+  // Round 1: only under-limit cards may be discarded here (bonus artifact);
+  // a full hand is draw-only, then OPENING_HAND_MULLIGAN when the option is ON.
   if (player.canMulligan) {
     actions.push({
       label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
@@ -9440,10 +9441,18 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // First-round starting-hand Mulligan (optional mode): after the mandatory
-  // start-of-turn draw, replace up to FIRST_ROUND_MULLIGAN_LIMIT cards one at a
-  // time, in round 1 only. Optional and non-blocking — offered alongside normal
-  // play until the budget runs out.
+  // First-round opening-hand Mulligan (option ON): after fill-to-limit, optional
+  // discard 0–N to the deck bottom and draw the same number. Non-blocking —
+  // offered alongside normal map play until used or the turn ends.
+  if (player.canOpeningMulligan) {
+    actions.push({
+      label: "Opening Mulligan — discard 0 or more cards to your deck and draw that many (or keep your hand)",
+      action: { type: "OPENING_HAND_MULLIGAN", playerId, discardCardIds: [] }
+    });
+  }
+
+  // Legacy one-at-a-time MULLIGAN_CARD (firstRoundMulligansLeft) — only if a
+  // snapshot still carries a budget; normal games seed 0.
   if (canMulliganStartingHand(state, playerId)) {
     for (const cardId of new Set(player.hand)) {
       actions.push({

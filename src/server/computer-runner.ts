@@ -122,7 +122,7 @@ export function progressFingerprint(state: GameState, playerId: PlayerId): strin
       // Visit step identity must count: auction bids / event choices that only
       // mutate the visit queue still advance progress. The FULL step tree is
       // fingerprinted (not just steps[0].type + length): a nested CHOOSE_ONE
-      // that resolves one branch — e.g. the Scholar "Empower a Statistic" loop,
+      // that resolves one branch — e.g. the Scholar expert remove/take loop,
       // which drops the picked option and re-prompts with fewer — keeps the same
       // outer type and length, so a coarse read misses the progress and the
       // no-progress guard falsely stalls the paced pump. The step list is

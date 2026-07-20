@@ -3128,6 +3128,60 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
     }
   });
 
+  it("drags a guarded Teleport Gate onto a face-up 🎲 one-of-N pool tile (preserves pair + guard)", () => {
+    // Regression: face-up slots with oneOfTileDefIds and no tileDefId used to be
+    // skipped by computeTileTokenTargets (only exact pins and face-down pools
+    // were targets) — a red gate with guards could not move onto "1 of 15".
+    const restore = installIdentitySvgPolyfills();
+    try {
+      const farPool = Object.values(allTileDefinitions)
+        .filter((def) => def.group === "far")
+        .map((def) => def.id)
+        .slice(0, 15);
+      expect(farPool.length, "need a real 1-of-N pool").toBeGreaterThanOrEqual(2);
+
+      let latest: CustomMapTilePlan[] = [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        {
+          row: spots[0].row,
+          col: spots[0].col,
+          group: "far",
+          faceDown: false,
+          tileDefId: "F1",
+          tokens: [{ kind: "gate", pair: 1, slot: 0, guard: { level: 3 } }]
+        },
+        {
+          row: spots[3].row,
+          col: spots[3].col,
+          group: "far",
+          faceDown: false,
+          oneOfTileDefIds: farPool
+        }
+      ];
+      const onChange = vi.fn((next: CustomMapTilePlan[]) => {
+        latest = next;
+      });
+      const { container } = render(
+        <MapDesigner scenarioId="skirmish" hexSize={HEX} onChange={onChange} customMap={latest} />
+      );
+
+      dragTokenCentre(container, spots[0], spots[3], 19);
+
+      expect(onChange, "drop onto one-of-N must commit").toHaveBeenCalled();
+      expect(latest[1].tokens ?? latest[1].token, "source cleared").toBeFalsy();
+      const landed = latest[2].tokens ?? (latest[2].token ? [latest[2].token] : []);
+      expect(landed).toHaveLength(1);
+      expect(landed[0]).toMatchObject({
+        kind: "gate",
+        pair: 1,
+        guard: { level: 3 }
+      });
+      expect(typeof landed[0].slot, "physical preferred slot reserved").toBe("number");
+    } finally {
+      restore();
+    }
+  });
+
   it("a live drag highlights the whole footprint of every face-down candidate tile, cleared on release", () => {
     const restore = installIdentitySvgPolyfills();
     try {

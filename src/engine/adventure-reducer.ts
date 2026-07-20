@@ -760,6 +760,8 @@ function assertHandRefreshed(state: GameState, playerId: PlayerId): void {
   if (player?.canMulligan) {
     throw new Error("Take your start-of-turn draw first (draw new, or discard and draw new).");
   }
+  // Opening Mulligan (canOpeningMulligan) is OPTIONAL — "you can discard 0–N".
+  // It does not gate map play; the offer stays until used or the turn ends.
 }
 
 // ---------------------------------------------------------------------------
@@ -800,17 +802,25 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
     handCounts.set(cardId, left - 1);
   }
 
-  // First-round hand Mulligan (default ON): when the option is OFF, players may
-  // not discard during the round-1 start-of-turn hand step — the opening hand
-  // is kept (draw-up only if under the limit). Forced over-limit discards
+  const limit = effectiveHandLimit(state, action.playerId);
+
+  // Round-1 start-of-turn fill (BOTH ON and OFF): only ditch cards that already
+  // sit UNDER the hand limit — typically the difficulty starting-bonus
+  // artifact(s) — then draw up to the limit. A full opening hand (pre-dealt 4
+  // with no bonus) may not dump cards here; the full 0–N redraw is the separate
+  // OPENING_HAND_MULLIGAN step when the option is ON. Forced over-limit discards
   // (needsHandRefresh) still run so a hand effect cannot trap the seat.
   if (
     state.round === 1 &&
-    state.adventure?.startingHandMulligan === false &&
     action.discardCardIds.length > 0 &&
-    !player.needsHandRefresh
+    !player.needsHandRefresh &&
+    player.hand.length >= limit
   ) {
-    throw new Error("First-round hand discards are off for this game — keep your opening hand.");
+    throw new Error(
+      state.adventure?.startingHandMulligan === false
+        ? "First-round Mulligan is off — keep your full opening hand (draw only)."
+        : "Fill your hand first (draw up to the limit). Then you may Mulligan cards from the full hand."
+    );
   }
 
   // First-round rule: a card discarded during the opening round goes back to the
@@ -830,7 +840,6 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
     }
   }
 
-  const limit = effectiveHandLimit(state, action.playerId);
   if (player.hand.length > limit) {
     throw new Error(`Discard down to your hand limit of ${limit} first.`);
   }
@@ -843,6 +852,19 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   player.needsHandRefresh = false;
   // The once-per-turn start-of-turn draw is now spent.
   player.canMulligan = false;
+
+  // Option ON + round 1: after the fill-to-limit, arm the second pass (discard
+  // 0–N from the full hand, draw the same number). Humans only — computer seats
+  // keep the filled hand so the AI never freezes on an optional window.
+  if (
+    state.round === 1 &&
+    state.adventure?.startingHandMulligan !== false &&
+    state.controllers?.[action.playerId]?.kind !== "computer"
+  ) {
+    player.canOpeningMulligan = true;
+  } else {
+    player.canOpeningMulligan = false;
+  }
 
   appendEvent(state, {
     type: "HAND_REFRESHED",
@@ -858,6 +880,74 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   const explorers = getActiveAstrologersCard(state)?.effect;
   if (explorers?.type === "EMPOWER_PER_DISCARD" && explorers.per > 0) {
     queueExplorersEmpower(state, action.playerId, Math.floor(action.discardCardIds.length / explorers.per));
+  }
+}
+
+/**
+ * First-round opening-hand Mulligan (option ON): after fill-to-limit, discard
+ * 0–N cards to the bottom of your own deck and draw the same number. Empty
+ * discard = keep the full opening hand. Optional while `canOpeningMulligan`
+ * is set (does not block map play).
+ */
+export function openingHandMulligan(
+  state: GameState,
+  action: Extract<GameAction, { type: "OPENING_HAND_MULLIGAN" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  assertActiveTurn(state, action.playerId);
+  if (state.adventure?.startingHandMulligan === false) {
+    throw new Error("Opening hand Mulligan is off for this game.");
+  }
+  if (state.round !== 1) {
+    throw new Error("The opening hand Mulligan is only available in the first round.");
+  }
+  if (!player.canOpeningMulligan) {
+    throw new Error("The opening hand Mulligan is not available right now.");
+  }
+  if (player.needsHandRefresh || player.canMulligan) {
+    throw new Error("Take your start-of-turn draw first.");
+  }
+
+  const handCounts = new Map<string, number>();
+  for (const cardId of player.hand) {
+    handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
+  }
+  for (const cardId of action.discardCardIds) {
+    const left = handCounts.get(cardId) ?? 0;
+    if (left <= 0) {
+      throw new Error("Cannot discard a card that is not in hand.");
+    }
+    handCounts.set(cardId, left - 1);
+  }
+
+  // Round-1 rule: discarded cards go to the BOTTOM of your own deck, then draw
+  // the same count from the top (never the just-discarded cards).
+  for (const cardId of action.discardCardIds) {
+    const index = player.hand.indexOf(cardId);
+    player.hand.splice(index, 1);
+    player.deck.unshift(cardId);
+  }
+  const drawn =
+    action.discardCardIds.length > 0
+      ? drawCardsForPlayer(state, action.playerId, action.discardCardIds.length)
+      : 0;
+  player.canOpeningMulligan = false;
+
+  appendEvent(state, {
+    type: "HAND_MULLIGAN",
+    playerId: action.playerId,
+    remaining: 0
+  });
+  if (action.discardCardIds.length > 0) {
+    appendEvent(state, {
+      type: "HAND_REFRESHED",
+      playerId: action.playerId,
+      discarded: action.discardCardIds.length,
+      drawn
+    });
   }
 }
 
@@ -3541,8 +3631,11 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       }
       visit.steps.shift();
       visit.steps.unshift(...option.steps);
-      // Scholar's +1 result grants a Statistic card of the player's choice.
-      if (option.steps.length === 0 && step.prompt.startsWith("Scholar")) {
+      // Map-location Scholar (+1 Attack die): the four "Gain an X card" options
+      // carry empty steps and mint via optionIndex → SCHOLAR_STAT_CARDS. Scope
+      // is the exact gain prompt only — never "Scholar expert: …" (Done would
+      // otherwise hand out a free Statistic).
+      if (option.steps.length === 0 && step.prompt === "Scholar: gain a Statistic card") {
         const cardId = SCHOLAR_STAT_CARDS[action.optionIndex ?? 0];
         if (cardId) {
           state.players[action.playerId]?.hand.push(cardId);

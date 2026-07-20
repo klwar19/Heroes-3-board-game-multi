@@ -1306,12 +1306,12 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Scholar (expert): remove up to `count` Statistic cards from hand or
-       * discard, gaining each one's Empowered version on top of the discard pile
-       * (distinct Empowered types only — "up to N different"). Opens an
-       * interactive swap via the SCHOLAR_EMPOWER_PICK / SCHOLAR_EMPOWER_GIVE
-       * visit steps (queued as a "visit-steps" reward). The Scholar card itself
-       * is removed by the option's cost.removeSelf, matching "Remove the Scholar".
+       * Scholar (expert): two independent "up to N" phases matching the printed
+       * card — (1) remove up to `count` Statistic cards from hand or discard,
+       * (2) take up to `count` different Empowered Statistic cards onto the top
+       * of the discard pile. Visit steps: SCHOLAR_EMPOWER_PICK (remove) then
+       * SCHOLAR_EMPOWER_TAKE (take). The Scholar itself is removed by the
+       * option's cost.removeSelf ("Remove the Scholar").
        */
       type: "SCHOLAR_EMPOWER_SWAP";
       count: number;
@@ -3286,10 +3286,24 @@ export type GameAction =
        * draw, replace ONE hand card — discard it to the BOTTOM of your own deck
        * and draw one — consuming one of the player's FIRST_ROUND_MULLIGAN_LIMIT
        * replacements. Repeatable (one card at a time) until the budget runs out.
+       * RETIRED in favour of {@link OPENING_HAND_MULLIGAN}; kept for legacy
+       * snapshots that still carry firstRoundMulligansLeft.
        */
       type: "MULLIGAN_CARD";
       playerId: PlayerId;
       cardId: CardId;
+    }
+  | {
+      /**
+       * First-round opening-hand Mulligan (OPTIONAL, default ON): after the
+       * mandatory start-of-turn fill-to-limit (REFRESH_HAND), discard 0–N hand
+       * cards to the BOTTOM of your own deck and draw the SAME number. Armed
+       * only while `player.canOpeningMulligan` is set (round 1, option ON).
+       * Empty discardCardIds = keep the full opening hand.
+       */
+      type: "OPENING_HAND_MULLIGAN";
+      playerId: PlayerId;
+      discardCardIds: CardId[];
     }
   | {
       /**
@@ -6722,14 +6736,19 @@ export type PlayerState = {
    */
   canMulligan?: boolean;
   /**
-   * First-round starting-hand Mulligan mode (OPTIONAL, `GameSetupOptions
-   * .startingHandMulligan`, default OFF): the number of single-card starting-hand
-   * replacements this player still has THIS GAME. Seeded to
-   * {@link FIRST_ROUND_MULLIGAN_LIMIT} at the start of a round-1 turn once the
-   * mode is on; each MULLIGAN_CARD (discard one hand card to the BOTTOM of your
-   * own deck, draw one) decrements it. Only usable in round 1 after the mandatory
-   * start-of-turn draw; absent/0 = no replacements (every non-round-1 turn, and
-   * every game with the mode off).
+   * First-round opening-hand Mulligan (OPTIONAL, `GameSetupOptions
+   * .startingHandMulligan`, default ON): after the mandatory start-of-turn
+   * fill-to-limit, the player may discard 0–N cards to the deck bottom and draw
+   * the same number (`OPENING_HAND_MULLIGAN`). Armed only on round 1 when the
+   * option is on; non-blocking (map play stays open); cleared when resolved or
+   * on the next turn start. Absent/false = no second pass (OFF, later rounds,
+   * computer seats).
+   */
+  canOpeningMulligan?: boolean;
+  /**
+   * @deprecated Legacy one-at-a-time MULLIGAN_CARD budget. Always seeded 0;
+   * kept so old snapshots still deserialize. The real opening mulligan is
+   * {@link canOpeningMulligan} + OPENING_HAND_MULLIGAN.
    */
   firstRoundMulligansLeft?: number;
   /**
@@ -8674,20 +8693,27 @@ export type VisitStep =
   | { type: "SCHOLAR" }
   | {
       /**
-       * Scholar ability card (expert): offer to remove one non-empowered
-       * Statistic card from hand or discard and gain its Empowered version on
-       * top of the discard pile. Recurses up to `remaining` times; `takenTypes`
-       * lists the Empowered statistic types already taken this play, which may
-       * not be taken again ("up to N different Empowered Statistic cards").
+       * Scholar (expert) phase 1: remove up to `remaining` Statistic cards
+       * (hand or discard). Optional Done / empty piles end the phase early and
+       * fall through to SCHOLAR_EMPOWER_TAKE.
        */
       type: "SCHOLAR_EMPOWER_PICK";
+      remaining: number;
+    }
+  | {
+      /**
+       * Scholar (expert) phase 2: take ONE Empowered Statistic onto the discard
+       * top, then recurse while `remaining` > 0. `takenTypes` is only the types
+       * already taken this play — the next pick may be any other type ("up to 2
+       * different" = no duplicate type, any combination otherwise).
+       */
+      type: "SCHOLAR_EMPOWER_TAKE";
       remaining: number;
       takenTypes: string[];
     }
   | {
-      /** Scholar (expert): remove the chosen Statistic card, bank its Empowered form. */
-      type: "SCHOLAR_EMPOWER_GIVE";
-      source: "hand" | "discard";
+      /** Scholar (expert): put one Empowered Statistic card on top of discard. */
+      type: "SCHOLAR_EMPOWER_BANK";
       cardId: string;
     }
   | {
@@ -10079,11 +10105,13 @@ export type AdventureState = {
    */
   manualGuardControl?: boolean;
   /**
-   * First-round hand Mulligan (default ON). Frozen from
-   * GameSetupOptions.startingHandMulligan at setup: when true/absent, round-1
-   * start-of-turn discards are allowed (current normal play); when explicitly
-   * false, round-1 REFRESH_HAND rejects non-empty discards (draw-only opening
-   * hand). See refreshHand in adventure-reducer.ts.
+   * First-round opening-hand Mulligan (default ON). Frozen from
+   * GameSetupOptions.startingHandMulligan at setup:
+   *  - OFF: start-of-turn may only ditch under-limit cards (difficulty bonus
+   *    artifact(s)) then draw to hand limit — no second full-hand mulligan.
+   *  - ON: same fill-to-limit first, then OPENING_HAND_MULLIGAN (discard 0–N
+   *    to deck bottom, draw the same number).
+   * See refreshHand / openingHandMulligan in adventure-reducer.ts.
    */
   startingHandMulligan?: boolean;
   /**
