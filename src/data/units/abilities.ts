@@ -364,11 +364,14 @@ export type UnitAbilityEffectDefinition =
        * Cove Nix (Pack): "This unit cannot take more than N damage from a single
        * attack." A defensive cap applied to every individual attack against this
        * unit (the primary attack, each follow-up attack, and every Retaliation
-       * Attack count as separate attacks). Only attacks are capped — Spell and
-       * ability damage are unaffected.
+       * Attack count as separate attacks). By default only attacks are capped —
+       * Spell damage is unaffected unless `includeSpells` is true (Fuyuki
+       * Casters: attack AND spell hits each cap at N).
        */
       type: "CAP_DAMAGE_PER_ATTACK";
       amount: number;
+      /** When true, also cap a single Spell-card / spell-damage hit at `amount`. */
+      includeSpells?: boolean;
     }
   | {
       /**
@@ -2453,6 +2456,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Hardened Shell",
     text: "[unit_passive] This unit cannot take more than 5 damage from a single attack (Spell and ability damage are not capped).",
     effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 5 },
+    implementationStatus: "implemented"
+  },
+  // Fuyuki Casters (Few/Pack): hard cap of 1 damage from each single attack OR
+  // Spell hit (stronger than the old Pack-only reduce-spell-damage-1).
+  "casters-damage-cap": {
+    id: "casters-damage-cap",
+    name: "Leyline Barrier",
+    text: "[unit_passive] This unit cannot take more than 1 damage from a single attack or Spell.",
+    effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 1, includeSpells: true },
     implementationStatus: "implemented"
   },
   // Cove Haspids (Few): +2 Attack once it has been knocked down from its Pack side this combat.
