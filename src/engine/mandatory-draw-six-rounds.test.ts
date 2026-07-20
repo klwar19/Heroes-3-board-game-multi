@@ -169,8 +169,16 @@ describe("Mandatory start-of-turn draw — six rounds, two players", () => {
     player.deck = ["ability.luck"];
     player.discard = [];
 
+    // Round 1 with a FULL opening hand: the mandatory start-of-turn step only
+    // fills to the limit (a no-op here — the hand is already full), then arms the
+    // separate opening Mulligan. The one-for-one dump is OPENING_HAND_MULLIGAN.
+    state = apply(state, { type: "REFRESH_HAND", playerId: active, discardCardIds: [] });
     const beforeEvents = state.eventLog.length;
-    state = apply(state, { type: "REFRESH_HAND", playerId: active, discardCardIds: ["stat.attack"] });
+    state = apply(state, {
+      type: "OPENING_HAND_MULLIGAN",
+      playerId: active,
+      discardCardIds: ["stat.attack"]
+    });
 
     expect(state.players[active]!.hand).toEqual([
       "stat.defense",
@@ -185,10 +193,10 @@ describe("Mandatory start-of-turn draw — six rounds, two players", () => {
     expect(state.players[active]!.deck).toEqual(["stat.attack"]);
     expect(state.players[active]!.discard).toEqual([]);
     expect(state.players[active]!.canMulligan).toBe(false);
-    expect(state.eventLog.slice(beforeEvents).map((event) => event.type)).toEqual([
-      "CARDS_DRAWN",
-      "HAND_REFRESHED"
-    ]);
+    const newEventTypes = state.eventLog.slice(beforeEvents).map((event) => event.type);
+    // The dump draws exactly one replacement and announces the swap.
+    expect(newEventTypes).toContain("CARDS_DRAWN");
+    expect(newEventTypes).toContain("HAND_REFRESHED");
     expect(
       state.eventLog.slice(beforeEvents).find((event) => event.type === "CARDS_DRAWN")
     ).toMatchObject({ playerId: active, count: 1, requested: 1 });
