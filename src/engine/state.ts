@@ -134,6 +134,15 @@ export type HouseRuleId =
   // their activation; waited units re-activate after everyone else, highest
   // Wait-token number first (reverse order).
   | "polish-wait"
+  // Polish house rule: strength-based Quick Combat. Availability compares the
+  // army's 5 strongest unit cards (bronze 1 / silver 2 / gold 3 / azure 4;
+  // Pack ×2; +0.5 per Unit-Stack layer) against 2×Field-Difficulty + X
+  // (easy 1 / normal 2 / hard 3 / impossible 4; +1 when playing with Unit
+  // Stacks) — VI–VII fields included. Covered + no Experience possible →
+  // MANDATORY Quick Combat; covered + Experience possible → the player chooses
+  // fight vs Quick Combat; not covered → the fight is mandatory (the classic
+  // level > difficulty auto-win no longer applies).
+  | "polish-quick-combat"
   // Pit Lords' Summon Demons: while ON, a Pit Lords may summon a new Few even
   // when Demons are already on the field (multiple Demon units). Off (official):
   // only ONE Demons unit may stand on the field (Few or Pack) — summon is
@@ -11987,6 +11996,7 @@ export type PendingChoice =
         | "shackles-of-war"
         | "wayfarer-paralysis"
         | "diplomacy-skip"
+        | "polish-quick-combat"
         | "diplomacy-recruit"
         | "dimension-door"
         | "view-earth"
@@ -12288,6 +12298,13 @@ export type PendingChoice =
        * uses the card (claim the field, no XP); option 1 fights normally.
        */
       diplomacySkip?: { heroId: HeroId; fieldId: MapSpaceId; difficulty: number };
+      /**
+       * polish-quick-combat: a covered neutral fight the Polish strength-based
+       * Quick Combat rule lets the player resolve unfought. Option 0 resolves
+       * the Quick Combat (win, no Experience); option 1 fights normally (Cyra's
+       * Diplomacy is still offered afterwards at a matching level).
+       */
+      polishQuickCombat?: { heroId: HeroId; fieldId: MapSpaceId; difficulty: number };
       /**
        * diplomacy-recruit: the Neutral Unit cards drawn (one per Dwelling) and
        * the affordable subset offered as recruit options, in option order. The

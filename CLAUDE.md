@@ -1699,7 +1699,8 @@ is NOT done:
 - **Polish house-rules rollout — current limit:** `polish-bank-sizes`,
   `polish-unit-stacks`, `polish-spell-book`, plus the newer variants
   `polish-reduced-starting-bonus`, `polish-rule-111`, `polish-reduced-surrender`,
-  `polish-random-artifacts`, `polish-pandora-search`, and `polish-wait` are
+  `polish-random-artifacts`, `polish-pandora-search`, `polish-wait`, and
+  `polish-quick-combat` are
   implemented and default OFF in both BINH and Legacy. The existing stash-style
   Spell Book and Polish Spell Book are mutually exclusive; enabling Polish
   forces the old toggle off. The multi-round all-rules computer soak and Polish
@@ -1733,6 +1734,34 @@ is NOT done:
   still skip pending waiters (test mode, deliberate); the reduced starting
   bonus's Minor-Artifact draw returns skipped non-minors under the pile without
   a reshuffle.
+- **Polish strength-based Quick Combat (`polish-quick-combat`, default OFF;
+  tournament community sheet).** With it ON, Quick Combat at an ordinary guard
+  FIELD (VI–VII now eligible) keys off the ARMY, not hero level: the 5
+  strongest cards (bronze 1 / silver 2 / gold 3 / azure 4; faction Pack ×2;
+  +0.5 per `polish-unit-stacks` layer; a recruited NEUTRAL card counts 1× its
+  tier — a single group, and azure exists only as Neutrals, matching the
+  sheet's flat "azure 4") must reach `2×FieldDifficulty + X` (easy 1 / normal
+  2 / hard 3 / impossible 4; +1 whenever the Unit-Stacks machinery
+  `armyUnitStacksActive` is on), equal-or-higher qualifying. Covered + no
+  Experience possible (level above the field; a level-7 hero at Ⅶ; Secondary
+  Heroes never gain XP) → MANDATORY auto-resolved Quick Combat (same
+  QUICK_COMBAT_WON path — Freelancer's Guild bounty, field visit, no XP, no
+  Necromancy). Covered + Experience possible → a `polish-quick-combat`
+  pendingChoice (fight or quick; "Fight" still offers Cyra's Diplomacy at a
+  matching level). NOT covered → the fight is mandatory even for a hero whose
+  level beats the field (the classic level auto-win is replaced). Deliberate
+  limits: Banks, bank-style outpost/teleport guards and designer EXACT armies
+  keep their own no-Quick-Combat rules; the threshold reads the PLAIN scenario
+  difficulty (no Astrologers easing); the strength read uses printed tiers
+  (Sandro-cloak covers / veteran ranks ignored) and the CURRENT army (an
+  emptied army reads 0 even though placement would restore the starting army);
+  the AI answers the optional choice by preferring the certain Quick Combat
+  (pinned in `choice-policy.test.ts`), and its map-policy engagement heuristics still reason
+  by level (it may walk into a real fight it expected to skip — it just fights
+  it). Engine in `src/engine/polish-quick-combat.ts`, wiring in
+  `startNeutralEncounter`; every claim mutation-checked with rule-off /
+  below-threshold CONTROLs in `polish-quick-combat.test.ts` (the sheet's
+  worked examples 2×3+2+1=9 and 2×5+3=13 included).
 - **Tournament Morale "Search again" (Tournament Book p.54)**: on a table with
   ANY tournament flag frozen onto adventure state (master mode or a granular
   rule) and Morale CARDS off, a player looking at their own revealed Search

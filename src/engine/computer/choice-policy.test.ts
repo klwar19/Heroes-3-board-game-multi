@@ -11,6 +11,7 @@ import type {
 import { createAdventureGameState } from "../adventure-setup";
 import { cardKeepValue } from "./card-policy";
 import { chooseComputerAction } from "./policy";
+import { scoreChoiceAction } from "./choice-policy";
 import type { ComputerObservation } from "./types";
 
 function unit(
@@ -564,5 +565,45 @@ describe("choice policy — far-tile flip prefers the Settlement arm", () => {
     // gamble away a real economy tile when no Settlement is on offer.
     expect((decision?.action as { optionIndex: number }).optionIndex).toBe(0);
     expect(decision?.policy).toBe("choice.far-tile-flip");
+  });
+});
+
+describe("choice policy — polish-quick-combat (strength-based Quick Combat)", () => {
+  it("prefers the certain Quick Combat over fighting, by a real margin (not the generic fallback)", () => {
+    const choice: PendingChoice = {
+      id: "pqc1",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "Quick Combat: your army strength 12 covers the level 2 field (needs 6).",
+      options: [
+        { label: "Resolve Quick Combat: win now, no Experience" },
+        { label: "Fight the Neutral Units (Experience possible)" },
+      ],
+      context: "polish-quick-combat",
+      polishQuickCombat: { heroId: "hero_p2", fieldId: "f1", difficulty: 2 },
+      returnPhase: "map",
+    };
+    const actions: LegalAction[] = [0, 1].map((optionIndex) => ({
+      label: choice.type === "OPTION_CHOICE" ? choice.options[optionIndex]!.label : "",
+      action: {
+        type: "CHOOSE_OPTION",
+        playerId: "p2",
+        choiceId: "pqc1",
+        optionIndex,
+      } as GameAction,
+    }));
+    const obs = observation(choice, actions);
+
+    const decision = chooseComputerAction(obs);
+    expect(decision?.action.type).toBe("CHOOSE_OPTION");
+    expect((decision?.action as { optionIndex: number }).optionIndex).toBe(0);
+    expect(decision?.policy).toBe("choice.polish-quick-combat");
+
+    // MUTATION CHECK: the dedicated branch scores the guaranteed win far above
+    // the dice fight. The generic label fallback separates the two options by
+    // only 1 point, so removing the branch fails this margin.
+    const quick = scoreChoiceAction(obs, actions[0]!.action)!.score;
+    const fight = scoreChoiceAction(obs, actions[1]!.action)!.score;
+    expect(quick - fight).toBeGreaterThanOrEqual(25);
   });
 });

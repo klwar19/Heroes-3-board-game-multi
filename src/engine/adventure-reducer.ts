@@ -14,6 +14,12 @@ import {
   factoryGoldUnitConflict
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import {
+  polishQuickCombatArmyStrength,
+  polishQuickCombatEnabled,
+  polishQuickCombatFieldStrength,
+  polishQuickCombatXpPossible
+} from "./polish-quick-combat";
 import { unitAbilities } from "@/data/units/abilities";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
@@ -4515,27 +4521,25 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
     return;
   }
 
-  // Quick Combat: a hero whose level beats the field difficulty wins outright.
-  if (level > difficulty) {
-    appendEvent(state, {
-      type: "QUICK_COMBAT_WON",
-      playerId,
-      heroId: hero.id,
-      fieldId: field.spaceId,
-      difficulty
-    });
-
-    // Quick Combat is still a win against Neutral Units: the Freelancer's
-    // Guild bounty fires. The rulebook only withholds the Combat's own
-    // rewards (experience) and — per the card — the Necromancy window.
-    const guildId = findTownBuildingWithEffect(state, playerId, "FREELANCERS_GUILD");
-    const guild = guildId ? coreBuildingDefinitions[guildId] : null;
-    if (guild?.effect?.type === "FREELANCERS_GUILD") {
-      gainResources(state, playerId, { gold: guild.effect.winGold }, "Freelancer's Guild bounty");
+  // Polish strength-based Quick Combat (house rule `polish-quick-combat`):
+  // availability depends on the ARMY — the 5 strongest cards must cover the
+  // field strength 2×difficulty + X (+1 with Unit Stacks) — with VI–VII fields
+  // now eligible. Covered + no Experience possible → the Quick Combat is
+  // MANDATORY; covered + Experience possible → the player chooses fight vs
+  // Quick Combat; not covered → the fight is mandatory, so the classic
+  // level > difficulty auto-win below deliberately does NOT apply.
+  if (polishQuickCombatEnabled(state)) {
+    if (polishQuickCombatArmyStrength(state, playerId) >= polishQuickCombatFieldStrength(state, difficulty)) {
+      if (!polishQuickCombatXpPossible(hero, difficulty)) {
+        resolveQuickCombatWin(state, hero, field, difficulty);
+        return;
+      }
+      openPolishQuickCombatChoice(state, hero, field, difficulty);
+      return;
     }
-
-    field.everFlagged = field.everFlagged || false;
-    beginFieldVisit(state, hero.id, field.spaceId, false);
+  } else if (level > difficulty) {
+    // Quick Combat: a hero whose level beats the field difficulty wins outright.
+    resolveQuickCombatWin(state, hero, field, difficulty);
     return;
   }
 
@@ -4549,6 +4553,107 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
   }
 
   beginNeutralCombatPlacement(state, hero, field, difficulty);
+}
+
+/**
+ * Shared Quick-Combat victory: the guards fall unfought — QUICK_COMBAT_WON
+ * event, the Freelancer's Guild bounty (a Quick Combat is still a win against
+ * Neutral Units; the rulebook only withholds the Combat's own rewards —
+ * experience — and, per the card, the Necromancy window), then the field is
+ * visited/claimed. Used by the classic level-based Quick Combat AND the Polish
+ * strength-based rule (both its mandatory and chosen resolutions).
+ */
+function resolveQuickCombatWin(state: GameState, hero: HeroState, field: MapFieldState, difficulty: number): void {
+  const playerId = hero.controllerId;
+  appendEvent(state, {
+    type: "QUICK_COMBAT_WON",
+    playerId,
+    heroId: hero.id,
+    fieldId: field.spaceId,
+    difficulty
+  });
+
+  const guildId = findTownBuildingWithEffect(state, playerId, "FREELANCERS_GUILD");
+  const guild = guildId ? coreBuildingDefinitions[guildId] : null;
+  if (guild?.effect?.type === "FREELANCERS_GUILD") {
+    gainResources(state, playerId, { gold: guild.effect.winGold }, "Freelancer's Guild bounty");
+  }
+
+  field.everFlagged = field.everFlagged || false;
+  beginFieldVisit(state, hero.id, field.spaceId, false);
+}
+
+/**
+ * Opens the Polish strength-based Quick Combat fight-or-quick pop-up: the army
+ * covers the field strength AND the fought battle could still pay Experience,
+ * so the player decides (the sheet's "he may decide to fight or to resolve
+ * quick combat"). The no-Experience case never reaches here — it resolves as a
+ * mandatory Quick Combat in startNeutralEncounter.
+ */
+function openPolishQuickCombatChoice(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+  difficulty: number
+): void {
+  const strength = polishQuickCombatArmyStrength(state, hero.controllerId);
+  const required = polishQuickCombatFieldStrength(state, difficulty);
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: hero.controllerId,
+    prompt: `Quick Combat: your army strength ${strength} covers the level ${difficulty} field (needs ${required}). Resolve as a Quick Combat, or fight for Experience?`,
+    options: [
+      { label: "Resolve Quick Combat: win now, no Experience" },
+      { label: "Fight the Neutral Units (Experience possible)" }
+    ],
+    context: "polish-quick-combat",
+    polishQuickCombat: { heroId: hero.id, fieldId: field.spaceId, difficulty },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = hero.controllerId;
+}
+
+/** Resolves the Polish fight-or-quick choice (CHOOSE_OPTION "polish-quick-combat"). */
+export function resolvePolishQuickCombatChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "polish-quick-combat" ||
+    !choice.polishQuickCombat ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Quick Combat decision to make.");
+  }
+  const decision = choice.polishQuickCombat;
+
+  const hero = state.heroes[decision.heroId];
+  const field = state.adventure?.fields[decision.fieldId];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+
+  if (!hero || !field) {
+    return;
+  }
+
+  // Option 0 ("Resolve Quick Combat"): win unfought, no Experience.
+  if (optionIndex === 0) {
+    resolveQuickCombatWin(state, hero, field, decision.difficulty);
+    return;
+  }
+
+  // Option 1 ("Fight"): proceed exactly like the classic flow after the level
+  // shortcut — Cyra's Diplomacy still gets its matching-level skip offer, then
+  // the normal guard Combat Setup.
+  const level = neutralBattleLevel(state, hero);
+  if (level === decision.difficulty && state.players[playerId]?.hand.includes("ability.diplomacy")) {
+    openDiplomacySkipChoice(state, hero, field, decision.difficulty);
+    return;
+  }
+  beginNeutralCombatPlacement(state, hero, field, decision.difficulty);
 }
 
 /**
@@ -12141,6 +12246,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "diplomacy-skip") {
     resolveDiplomacySkipChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "polish-quick-combat") {
+    resolvePolishQuickCombatChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

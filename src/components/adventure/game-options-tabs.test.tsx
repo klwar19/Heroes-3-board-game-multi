@@ -370,7 +370,8 @@ describe("Game options — tabbed layout", () => {
       "polish-reduced-surrender": true,
       "polish-random-artifacts": true,
       "polish-pandora-search": true,
-      "polish-wait": true
+      "polish-wait": true,
+      "polish-quick-combat": true
     };
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
