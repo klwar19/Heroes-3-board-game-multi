@@ -1,8 +1,9 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { canRenderSpecialtyCard, specialtyIconSrc } from "@/components/specialty-card-data";
+import { AZURE_BREEZE_UNIT_ORDER } from "@/data/anime/towns";
 import { cardLibrary } from "@/data/cards/library";
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions, isPlayableFaction } from "@/data/factions/core";
@@ -110,20 +111,79 @@ describe("playable Anime Realms towns", () => {
     expect(unitAbilities[commander.cast.abilityId]?.implementationStatus).toBe("implemented");
   });
 
-  it("Azure Breeze roster is exactly 3 bronze / 2 silver / 2 gold (not 2/2/3)", () => {
-    const units = Object.values(coreUnitDefinitions).filter((unit) => unit.faction === "azure_breeze");
-    expect(units).toHaveLength(7);
+  it("Azure Breeze unit order is fixed LV1→LV7 with correct tiers and art paths", () => {
+    const faction = coreFactionDefinitions.azure_breeze;
+    expect(faction.units).toEqual([...AZURE_BREEZE_UNIT_ORDER]);
+    expect(AZURE_BREEZE_UNIT_ORDER).toEqual([
+      "azure_breeze.outer_disciples",
+      "azure_breeze.inner_swordsmen",
+      "azure_breeze.spirit_crane",
+      "azure_breeze.sect_protectors",
+      "azure_breeze.true_inheritors",
+      "azure_breeze.core_master",
+      "azure_breeze.mountain_guardian"
+    ]);
+
+    const expected: Array<{ tier: "bronze" | "silver" | "gold"; art: string }> = [
+      { tier: "bronze", art: "bronze-outer-sect-disciples" }, // LV1
+      { tier: "bronze", art: "bronze-inner-sect-swordsmen" }, // LV2
+      { tier: "bronze", art: "bronze-spirit-crane" }, // LV3
+      { tier: "silver", art: "silver-sect-protectors" }, // LV4
+      { tier: "silver", art: "silver-true-inheritors" }, // LV5
+      { tier: "gold", art: "golden-core-formation-master" }, // LV6
+      { tier: "gold", art: "golden-mountain-guardian" } // LV7
+    ];
+
+    for (let i = 0; i < AZURE_BREEZE_UNIT_ORDER.length; i++) {
+      const id = AZURE_BREEZE_UNIT_ORDER[i];
+      const unit = coreUnitDefinitions[id];
+      expect(unit, id).toBeDefined();
+      expect(unit.tier, id).toBe(expected[i].tier);
+      expect(unit.few.cardImage, id).toContain(expected[i].art);
+      expect(unit.pack.cardImage, id).toContain(expected[i].art);
+      expect(existsSync(join(process.cwd(), "public", unit.few.cardImage!.replace(/^\//, ""))), unit.few.cardImage).toBe(
+        true
+      );
+      expect(existsSync(join(process.cwd(), "public", unit.pack.cardImage!.replace(/^\//, ""))), unit.pack.cardImage).toBe(
+        true
+      );
+    }
+
     const byTier = { bronze: 0, silver: 0, gold: 0, azure: 0 };
-    for (const unit of units) {
-      byTier[unit.tier] += 1;
+    for (const id of AZURE_BREEZE_UNIT_ORDER) {
+      byTier[coreUnitDefinitions[id].tier] += 1;
     }
     expect(byTier).toEqual({ bronze: 3, silver: 2, gold: 2, azure: 0 });
-    // Gold: True Inheritors + Mountain Guardian (never demote the mountain tank).
-    expect(coreUnitDefinitions["azure_breeze.true_inheritors"]?.tier).toBe("gold");
-    expect(coreUnitDefinitions["azure_breeze.mountain_guardian"]?.tier).toBe("gold");
-    // Bronze early flyer; silver formation support.
-    expect(coreUnitDefinitions["azure_breeze.spirit_crane"]?.tier).toBe("bronze");
-    expect(coreUnitDefinitions["azure_breeze.core_master"]?.tier).toBe("silver");
+
+    // Silver dwelling name must not claim the bronze crane.
+    expect(coreBuildingDefinitions["azure_breeze.dwelling_silver"]?.name).toBe("Inheritance Pavilion");
+    expect(coreBuildingDefinitions["azure_breeze.dwelling_gold"]?.name).toBe("Golden Core Summit");
+  });
+
+  it("Azure Breeze engine art paths exist for printed LV tiers", () => {
+    // LV3 bronze crane · LV5 silver True Inheritors · LV6 gold Core Formation Master.
+    // A bad copy once put swordsmen into bronze Spirit Crane — real crane art
+    // must stay on the bronze path the engine uses.
+    const publicRoot = join(process.cwd(), "public");
+    const azure = join(publicRoot, "assets/anime/units/azure-breeze");
+    for (const side of ["few", "pack"] as const) {
+      const bronze = readFileSync(join(azure, `units-azure-breeze-bronze-spirit-crane-${side}.webp`));
+      const silverCrane = readFileSync(join(azure, `units-azure-breeze-silver-spirit-crane-${side}.webp`));
+      expect(bronze.equals(silverCrane), `bronze Spirit Crane ${side} must be the real crane art`).toBe(true);
+      expect(bronze.byteLength).toBeLessThan(250_000);
+      expect(bronze.byteLength).toBeGreaterThan(50_000);
+      expect(existsSync(join(azure, `units-azure-breeze-silver-true-inheritors-${side}.webp`))).toBe(true);
+      expect(existsSync(join(azure, `units-azure-breeze-golden-core-formation-master-${side}.webp`))).toBe(true);
+    }
+
+    // Qingyun must not be a byte-copy of Core Formation Master OR True Inheritors.
+    const qingyun = readFileSync(join(publicRoot, "assets/anime/heroes/qingyun.png"));
+    const formationMaster = readFileSync(join(azure, "units-azure-breeze-golden-core-formation-master-few.webp"));
+    const trueInheritors = readFileSync(join(azure, "units-azure-breeze-silver-true-inheritors-few.webp"));
+    expect(qingyun.equals(formationMaster)).toBe(false);
+    expect(qingyun.equals(trueInheritors)).toBe(false);
+    expect(coreHeroDefinitions.qingyun?.portrait).toBe("/assets/anime/heroes/qingyun.png");
+    expect(qingyun.byteLength).toBeGreaterThan(100_000);
   });
 
   it("Lingxi specialties are art-less native cards with the dedicated First-Aid medallion (not Gem's scan)", () => {
