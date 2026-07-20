@@ -204,6 +204,7 @@ import {
   customGuardArmyDifficultyFromEntries,
   describeGuardArmyGrouped,
   resolveCustomGuardDraws,
+  resolveLevelPackGuardDraws,
   randomTownCaptureReward,
   randomTownIncomeGold,
   grailDigMovementCost,
@@ -290,8 +291,9 @@ export function customGuardArmyDifficulty(units: string[]): number {
  * LEVEL becomes the field's normal Field Difficulty (Quick Combat / experience
  * follow it); an EXACT ARMY additionally pins `customGuardUnits` (minted at
  * fight time; never Quick-Combat/Diplomacy skipped) with the difficulty
- * derived from its tiers. The shared stamp for tile tokens, standalone map
- * objects and subterranean gate halves — one code path, one behaviour.
+ * derived from its tiers. Level + `levelArmy: "packs"` stamps pack minting so
+ * the level composition becomes real Pack units at fight time. The shared
+ * stamp for tile tokens, standalone map objects and subterranean gate halves.
  */
 export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuardSpec | undefined): void {
   if (!guard) {
@@ -301,9 +303,31 @@ export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuard
     field.customGuardUnits = [...guard.units];
     field.difficulty = customGuardArmyDifficulty(guard.units);
     field.designedGuard = true;
+    if (guard.packFaction) {
+      field.customGuardPackFaction = guard.packFaction;
+    } else {
+      delete field.customGuardPackFaction;
+    }
+    delete field.customGuardLevel;
+    delete field.customGuardLevelArmy;
   } else if (guard.level) {
     field.difficulty = guard.level;
     field.designedGuard = true;
+    // Keep level on the field so bank-style fights (difficulty forced to 0)
+    // still draw the designed composition, and so packs can re-mint from the table.
+    field.customGuardLevel = guard.level;
+    if (guard.levelArmy === "packs") {
+      field.customGuardLevelArmy = "packs";
+      if (guard.packFaction) {
+        field.customGuardPackFaction = guard.packFaction;
+      } else {
+        delete field.customGuardPackFaction;
+      }
+    } else {
+      delete field.customGuardLevelArmy;
+      delete field.customGuardPackFaction;
+    }
+    delete field.customGuardUnits;
   }
 }
 
@@ -312,6 +336,8 @@ export function clearCustomGuard(field: MapFieldState): void {
   delete field.difficulty;
   delete field.customGuardUnits;
   delete field.customGuardLevel;
+  delete field.customGuardLevelArmy;
+  delete field.customGuardPackFaction;
   delete field.designedGuard;
   delete field.breakField;
   delete field.persistentGuard;
@@ -11619,23 +11645,39 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
  * Every other field draws normally from the Field Difficulty Level Table.
  */
 export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
-  // Designer "certain army" guard: mint the exact Neutral cards, Creature-Bank
-  // style — never drawn from nor recycled to the tier decks. It REPLACES every
-  // printed/location draw below (a customized Ⅶ objective fights the designed
-  // army, not the printed one). Unknown / non-neutral ids are skipped
-  // defensively (the sanitiser already drops them).
+  // Designer "certain army" guard: mint the exact cards, Creature-Bank style —
+  // never drawn from nor recycled to the tier decks. It REPLACES every
+  // printed/location draw below. Unknown ids are skipped defensively.
   if (field?.customGuardUnits && field.customGuardUnits.length > 0) {
-    // Certain army: resolves `random:<tier>` / `pack:<id>` slots at fight time
-    // (seeded) and mints every entry bankGuard-style.
+    // Certain army: resolves random / random-pack / pack slots at fight time
+    // (seeded), honouring packFaction when set.
     const random = adventureRandom(state, `custom-guard-${field.spaceId}`);
-    return resolveCustomGuardDraws(field.customGuardUnits, random) as NeutralDraw[];
+    const playable = PLAYABLE_FACTIONS.filter((faction) => isPlayableFaction(faction, state.anime));
+    return resolveCustomGuardDraws(field.customGuardUnits, random, {
+      packFaction: field.customGuardPackFaction,
+      playableFactions: playable
+    }) as NeutralDraw[];
   }
 
-  // Designer guard LEVEL on a bank-style object (Garrison / Keymaster's Tent /
-  // one-way monolith entrance): the army is drawn at the designed level even
-  // though the FIGHT runs bank-style (combat difficulty 0 — no experience).
-  if (field?.customGuardLevel) {
-    return drawNeutralArmy(state, field.customGuardLevel);
+  // Designer guard LEVEL: table composition at the designed level. When
+  // `customGuardLevelArmy === "packs"`, mint real Pack units of those tiers
+  // (level guard as units) instead of Neutral deck draws.
+  const levelForDraw = field?.customGuardLevel;
+  if (levelForDraw) {
+    if (field?.customGuardLevelArmy === "packs") {
+      const scenarioDifficulty = state.adventure?.difficulty ?? "normal";
+      const composition =
+        NEUTRAL_ARMY_TABLE[scenarioDifficulty]?.[levelForDraw] ??
+        NEUTRAL_ARMY_TABLE.normal[levelForDraw] ??
+        NEUTRAL_ARMY_TABLE.normal[1];
+      const random = adventureRandom(state, `custom-guard-packs-${field.spaceId}`);
+      const playable = PLAYABLE_FACTIONS.filter((faction) => isPlayableFaction(faction, state.anime));
+      return resolveLevelPackGuardDraws(composition, random, {
+        packFaction: field.customGuardPackFaction,
+        playableFactions: playable
+      }) as NeutralDraw[];
+    }
+    return drawNeutralArmy(state, levelForDraw);
   }
 
   // Grail dig site with "always as Utopia": fight Utopia dragons (still digs after).

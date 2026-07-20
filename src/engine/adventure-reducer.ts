@@ -19,6 +19,7 @@ import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { recordVpHeroDefeat, recordVpSurrender, recordVpUtopiaDefeat } from "./victory-points";
 import { grailDigMovementCost, survivorsToCustomGuardUnits } from "./map-design-features";
+import { planExcludedSecretFeatures, tilePassesSecretFilters } from "./map-preset";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   addArmyUnit,
@@ -3355,10 +3356,22 @@ function reassignTileDefForResource(
     return;
   }
 
+  // Landmark bans from the slot plan (carried on the tile at setup) — a Gold
+  // reassignment must still refuse e.g. "no Obelisk" / "no Settlement".
+  const excluded = planExcludedSecretFeatures({
+    excludeFeatures: tile.excludeFeatures
+  });
+  const preferFeature = prefer === "gold" ? ("gold_mine" as const) : ("valuables_mine" as const);
+
   const tryLivePool = (pool: string[], seedTag: string): boolean => {
     const matching = pool
       .map((id, index) => ({ id, index }))
-      .filter((entry) => tileDefHasResourceMine(entry.id, prefer));
+      .filter((entry) => {
+        if (!tileDefHasResourceMine(entry.id, prefer)) return false;
+        if (excluded.length === 0) return true;
+        const def = allTileDefinitions[entry.id];
+        return def ? tilePassesSecretFilters(def, [preferFeature], excluded) : false;
+      });
     if (matching.length === 0) {
       return false;
     }
