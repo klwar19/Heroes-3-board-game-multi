@@ -1,5 +1,6 @@
 import { SpecialtyCard } from "@/components/specialty-card";
 import { CommanderCard } from "@/components/commander-card";
+import { AZURE_BREEZE_UNIT_ORDER } from "@/data/anime/towns";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { assetUrl } from "@/lib/asset-url";
 
@@ -17,6 +18,11 @@ const HERO_ASSETS = [
     title: "Astral Regent commander",
     path: "/assets/units-commander-ruler.webp",
     wired: "MUST NOT match Sabers gold unit"
+  },
+  {
+    title: "Qingyun hero portrait",
+    path: "/assets/anime/heroes/qingyun.png",
+    wired: "MUST NOT match Core Formation Master unit (sword cultivator, not sage)"
   },
   {
     title: "Lingxi hero portrait",
@@ -50,18 +56,9 @@ const HERO_ASSETS = [
   }
 ] as const;
 
-const AZURE_ORDER = [
-  "azure_breeze.outer_disciples",
-  "azure_breeze.inner_swordsmen",
-  "azure_breeze.spirit_crane",
-  "azure_breeze.sect_protectors",
-  "azure_breeze.core_master",
-  "azure_breeze.true_inheritors",
-  "azure_breeze.mountain_guardian"
-] as const;
-
 export default function SessionArtPreviewPage() {
-  const azureUnits = AZURE_ORDER.map((id) => coreUnitDefinitions[id]).filter(Boolean);
+  // Same LV1→LV7 order as the faction recruit list (never reorder ad-hoc).
+  const azureUnits = AZURE_BREEZE_UNIT_ORDER.map((id) => coreUnitDefinitions[id]).filter(Boolean);
   const tierCounts = { bronze: 0, silver: 0, gold: 0 };
   for (const unit of azureUnits) {
     if (unit.tier === "bronze" || unit.tier === "silver" || unit.tier === "gold") {
@@ -82,8 +79,8 @@ export default function SessionArtPreviewPage() {
         gold {tierCounts.gold}
         <br />
         <span style={{ fontSize: 13, opacity: 0.9 }}>
-          GOLD = True Inheritors + Mountain Guardian only. Bronze flyer = Spirit Crane. Silver mage = Core Formation
-          Master.
+          LV3 Spirit Crane = bronze · LV5 True Inheritors = silver · LV6 Core Formation Master = gold · LV7 Mountain
+          Guardian = gold.
         </span>
       </p>
 

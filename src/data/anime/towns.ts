@@ -84,10 +84,12 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     source
   },
 
-  // Azure Breeze: classic 3 bronze / 2 silver / 2 gold. Gold stays True Inheritors
-  // + Mountain Guardian (never demote the mountain tank). Spirit Crane is early flyer
-  // (bronze); Core Formation Master is mid-tier formation support (silver).
-  // --- BRONZE (3) ----------------------------------------------------------
+  // Azure Breeze printed levels (3 bronze / 2 silver / 2 gold) — CANONICAL order:
+  // LV1 Outer · LV2 Inner · LV3 Spirit Crane (bronze) ·
+  // LV4 Sect Protectors · LV5 True Inheritors (silver) ·
+  // LV6 Core Formation Master · LV7 Mountain Guardian (gold).
+  // Keep this object key order = recruit order. Do not reorder casually.
+  // --- BRONZE (3) — LV 1–3 -------------------------------------------------
   "azure_breeze.outer_disciples": {
     id: "azure_breeze.outer_disciples", name: "Outer Sect Disciples", faction: "azure_breeze", tier: "bronze", type: "ground",
     few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 2 }, abilities: [], cardImage: azureCard("bronze", "outer-sect-disciples", "few") },
@@ -100,34 +102,36 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     pack: { attack: 3, defense: 1, health: 2, initiative: 9, cost: { gold: 5 }, abilities: ["ignore-all-combat-penalties"], abilityText: "Flowing Step — ignores all Combat penalties.", cardImage: azureCard("bronze", "inner-sect-swordsmen", "pack") },
     source
   },
-  // Early spirit flyer (bronze) — was silver when the roster had 3 golds.
+  // LV 3 bronze flyer.
   "azure_breeze.spirit_crane": {
     id: "azure_breeze.spirit_crane", name: "Spirit Crane", faction: "azure_breeze", tier: "bronze", type: "flying",
     few: { attack: 2, defense: 1, health: 2, initiative: 9, cost: { gold: 4 }, abilities: [], cardImage: azureCard("bronze", "spirit-crane", "few") },
     pack: { attack: 3, defense: 1, health: 3, initiative: 10, cost: { gold: 6 }, abilities: ["ignores-retaliation"], abilityText: "Wingbeat — attacks do not provoke Retaliation.", cardImage: azureCard("bronze", "spirit-crane", "pack") },
     source
   },
-  // --- SILVER (2) ----------------------------------------------------------
+  // --- SILVER (2) — LV 4–5 -------------------------------------------------
   "azure_breeze.sect_protectors": {
     id: "azure_breeze.sect_protectors", name: "Sect Protectors", faction: "azure_breeze", tier: "silver", type: "ground",
     few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "Iron Ward — always rolls the Defend die when attacked.", cardImage: azureCard("silver", "sect-protectors", "few") },
     pack: { attack: 4, defense: 2, health: 5, initiative: 4, cost: { gold: 12 }, abilities: ["unlimited-retaliation"], abilityText: "Unbroken Guard — may Retaliate any number of times each round.", cardImage: azureCard("silver", "sect-protectors", "pack") },
     source
   },
-  // Mid-tier formation mage (was gold; demoted so Mountain Guardian can stay gold).
-  "azure_breeze.core_master": {
-    id: "azure_breeze.core_master", name: "Core Formation Master", faction: "azure_breeze", tier: "silver", type: "ranged",
-    few: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 9 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("silver", "core-formation-master", "few") },
-    pack: { attack: 4, defense: 2, health: 5, initiative: 5, cost: { gold: 13 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("silver", "core-formation-master", "pack") },
-    source
-  },
-  // --- GOLD (2) — True Inheritors (Qingyun specialty) + Mountain Guardian tank
+  // LV 5 silver — Qingyun specialty unit (not gold).
   "azure_breeze.true_inheritors": {
-    id: "azure_breeze.true_inheritors", name: "True Inheritors", faction: "azure_breeze", tier: "gold", type: "ground",
-    few: { attack: 5, defense: 2, health: 6, initiative: 7, cost: { gold: 13, valuables: 1 }, abilities: ["commander-charge"], abilityText: "Charge — +1 Attack after moving.", cardImage: azureCard("golden", "true-inheritors", "few") },
-    pack: { attack: 6, defense: 2, health: 7, initiative: 8, cost: { gold: 20, valuables: 2 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Peerless Form — Charge; ignores Retaliation.", cardImage: azureCard("golden", "true-inheritors", "pack") },
+    id: "azure_breeze.true_inheritors", name: "True Inheritors", faction: "azure_breeze", tier: "silver", type: "ground",
+    few: { attack: 4, defense: 2, health: 5, initiative: 6, cost: { gold: 10 }, abilities: ["commander-charge"], abilityText: "Charge — +1 Attack after moving.", cardImage: azureCard("silver", "true-inheritors", "few") },
+    pack: { attack: 5, defense: 2, health: 6, initiative: 7, cost: { gold: 15 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Peerless Form — Charge; ignores Retaliation.", cardImage: azureCard("silver", "true-inheritors", "pack") },
     source
   },
+  // --- GOLD (2) — LV 6–7 ---------------------------------------------------
+  // LV 6 gold formation mage.
+  "azure_breeze.core_master": {
+    id: "azure_breeze.core_master", name: "Core Formation Master", faction: "azure_breeze", tier: "gold", type: "ranged",
+    few: { attack: 4, defense: 2, health: 5, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("golden", "core-formation-master", "few") },
+    pack: { attack: 5, defense: 3, health: 6, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("golden", "core-formation-master", "pack") },
+    source
+  },
+  // LV 7 gold mountain tank.
   "azure_breeze.mountain_guardian": {
     id: "azure_breeze.mountain_guardian", name: "Mountain Guardian", faction: "azure_breeze", tier: "gold", type: "ground",
     few: { attack: 5, defense: 3, health: 8, initiative: 3, cost: { gold: 15, valuables: 1 }, abilities: ["wraith-heal-1"], abilityText: "Verdant Pulse — on activation, heal 1 damage.", cardImage: azureCard("golden", "mountain-guardian", "few") },
@@ -191,7 +195,9 @@ export const animeTownBuildingDefinitions: Record<string, TownBuildingDefinition
   "azure_breeze.citadel": building("azure_breeze.citadel", "Sect Protection Array", "azure_breeze", { gold: 8, buildingMaterials: 5, valuables: 1 }, { type: "UNLOCK_REINFORCE" }),
   "azure_breeze.mage_guild": { ...building("azure_breeze.mage_guild", "Scripture Pavilion", "azure_breeze", { gold: 4, buildingMaterials: 2, valuables: 1 }, { type: "MAGE_GUILD" }), spellBookCost: 5 },
   "azure_breeze.dwelling_bronze": building("azure_breeze.dwelling_bronze", "Outer Court", "azure_breeze", { gold: 5, buildingMaterials: 3, valuables: 1 }, { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" }),
-  "azure_breeze.dwelling_silver": building("azure_breeze.dwelling_silver", "Spirit Crane Peak", "azure_breeze", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["azure_breeze.dwelling_bronze"]),
+  // Silver dwelling unlocks LV4 Sect Protectors + LV5 True Inheritors (not the LV3 crane).
+  "azure_breeze.dwelling_silver": building("azure_breeze.dwelling_silver", "Inheritance Pavilion", "azure_breeze", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["azure_breeze.dwelling_bronze"]),
+  // Gold dwelling unlocks LV6 Core Formation Master + LV7 Mountain Guardian.
   "azure_breeze.dwelling_gold": building("azure_breeze.dwelling_gold", "Golden Core Summit", "azure_breeze", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["azure_breeze.dwelling_silver"]),
   "azure_breeze.alchemy_pavilion": building("azure_breeze.alchemy_pavilion", "Alchemy Pavilion", "azure_breeze", { gold: 7, buildingMaterials: 4 }, { type: "RESOURCE_ROUND_RESOURCE_DIE" }),
   "azure_breeze.sword_pavilion": building("azure_breeze.sword_pavilion", "Sword Pavilion", "azure_breeze", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 })
@@ -228,6 +234,17 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
   }
 };
 
+/** Fixed LV1→LV7 recruit order. Never derive this from ad-hoc Object.values. */
+export const AZURE_BREEZE_UNIT_ORDER = [
+  "azure_breeze.outer_disciples", // LV1 bronze
+  "azure_breeze.inner_swordsmen", // LV2 bronze
+  "azure_breeze.spirit_crane", // LV3 bronze
+  "azure_breeze.sect_protectors", // LV4 silver
+  "azure_breeze.true_inheritors", // LV5 silver (Qingyun specialty)
+  "azure_breeze.core_master", // LV6 gold
+  "azure_breeze.mountain_guardian" // LV7 gold
+] as const;
+
 export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
   fuyuki: {
     id: "fuyuki", name: "Fuyuki City", color: "#7256d8", startingTileId: "A-S1",
@@ -240,7 +257,7 @@ export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
     id: "azure_breeze", name: "Azure Breeze Sect", color: "#27a9a0", startingTileId: "W-S1",
     heroes: ["qingyun", "lingxi"],
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "azure_breeze").map((item) => item.id),
-    units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "azure_breeze").map((item) => item.id),
+    units: [...AZURE_BREEZE_UNIT_ORDER],
     townImage: "/assets/anime/towns/azure-breeze-sect-empty-v2.webp", source
   }
 };
