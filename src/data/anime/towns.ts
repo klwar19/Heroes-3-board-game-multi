@@ -116,19 +116,20 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     pack: { attack: 4, defense: 2, health: 5, initiative: 4, cost: { gold: 12 }, abilities: ["unlimited-retaliation"], abilityText: "Unbroken Guard — may Retaliate any number of times each round.", cardImage: azureCard("silver", "sect-protectors", "pack") },
     source
   },
-  // LV 5 silver — Qingyun specialty unit (not gold).
+  // LV 5 silver — Qingyun specialty. Must sit ABOVE LV4 protectors and BELOW LV6 gold
+  // (never reuse the old gold TI numbers 5/2/6/7 — those beat LV6).
   "azure_breeze.true_inheritors": {
     id: "azure_breeze.true_inheritors", name: "True Inheritors", faction: "azure_breeze", tier: "silver", type: "ground",
-    few: { attack: 4, defense: 2, health: 5, initiative: 6, cost: { gold: 10 }, abilities: ["commander-charge"], abilityText: "Charge — +1 Attack after moving.", cardImage: azureCard("silver", "true-inheritors", "few") },
-    pack: { attack: 5, defense: 2, health: 6, initiative: 7, cost: { gold: 15 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Peerless Form — Charge; ignores Retaliation.", cardImage: azureCard("silver", "true-inheritors", "pack") },
+    few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 9 }, abilities: ["commander-charge"], abilityText: "Charge — +1 Attack after moving.", cardImage: azureCard("silver", "true-inheritors", "few") },
+    pack: { attack: 4, defense: 2, health: 5, initiative: 7, cost: { gold: 13 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Peerless Form — Charge; ignores Retaliation.", cardImage: azureCard("silver", "true-inheritors", "pack") },
     source
   },
   // --- GOLD (2) — LV 6–7 ---------------------------------------------------
-  // LV 6 gold formation mage.
+  // LV 6 gold formation mage — clearly above silver LV5 on raw stats + valuables cost.
   "azure_breeze.core_master": {
     id: "azure_breeze.core_master", name: "Core Formation Master", faction: "azure_breeze", tier: "gold", type: "ranged",
-    few: { attack: 4, defense: 2, health: 5, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("golden", "core-formation-master", "few") },
-    pack: { attack: 5, defense: 3, health: 6, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("golden", "core-formation-master", "pack") },
+    few: { attack: 5, defense: 3, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("golden", "core-formation-master", "few") },
+    pack: { attack: 6, defense: 3, health: 7, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("golden", "core-formation-master", "pack") },
     source
   },
   // LV 7 gold mountain tank.
