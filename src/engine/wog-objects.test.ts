@@ -793,7 +793,7 @@ describe("Commander-artifact bonus on reward locations", () => {
     const player = state.players.p1;
     player.hand = [];
     player.resources.gold = 20;
-    // Park all 8 commander-artifact ids somewhere "in play" (p2's removed pile).
+    // Park every commander-artifact id somewhere "in play" (p2's removed pile).
     state.players.p2.removed = [...state.players.p2.removed, ...Object.keys(COMMANDER_ARTIFACT_SPECS)];
 
     carveAt(state, "emerald_tower");

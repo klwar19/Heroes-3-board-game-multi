@@ -2,36 +2,55 @@
  * Anime EQUIPMENT catalog (`anime.equipment`, plan §3.13 — a SHARED-spine
  * system for every hero, distinct from Artifact cards).
  *
- * Equipment is ALWAYS ON: an item sits in one of three hero slots
- * (weapon / armor / accessory) and its effect runs while equipped — it is never
- * in hand, never cast, never discarded. Buying into an occupied slot moves the
- * previous item into the equipment bag (no refund). Items are bought at two outfitter Field
- * Overrides (Rèn Binh Các / Adventurer Outfitter); they never join a deck.
+ * Equipment is ALWAYS ON: an item sits in one of three/four hero slots
+ * (weapon / armor / accessory / mount) and its effect runs while equipped — it
+ * is never in hand, never cast, never discarded. Buying into an occupied slot
+ * moves the previous item into the equipment bag (no refund). Items are bought
+ * at two outfitter Field Overrides (Rèn Binh Các / Adventurer Outfitter); they
+ * never join a deck.
+ *
+ * GRADES (3 tiers, matching Artifact minor/major/relic):
+ *   I   (minor)  — cost 4 gold, light standing bonuses
+ *   II  (major)  — cost 6 gold, mid combat / economy
+ *   III (relic)  — cost 8 gold, rare module-gated or dual-payoff items
+ * Cost is derived from grade so shops and UI stay consistent.
  *
  * Every `summary` states EXACTLY the wired behaviour (CLAUDE.md §2) — no
  * display-only clauses. The engine reads each id in
  * `src/engine/anime-equipment.ts` and its consumers.
  *
- * Magnitudes are pegged to existing precedents (ONE power scale):
- *   • first-attack +1 Attack        → a single Bless/Bloodlust tier, one-shot
- *   • first-incoming −1 Attack       → the negative-morale attack-roll penalty
- *   • +1 spell Power                 → Pandora / Cultivation Nascent Soul / grade
- *   • +1 gold after a won combat     → grade Bounty Hunter's Eye (stacks to +2)
- *   • +1 hand limit                  → Pandora / Cultivation Foundation / grade
- *   • +1 building materials income   → Inexhaustible Cart of Ore / Pháp Bảo
- *
- * ART: all 12 items ship real icons (2026-07 wave 2) — square 512×512 webp,
- * transparent chroma-keyed background, painted HoMM3 artifact-icon style, under
- * `public/assets/anime/equipment/<slug>.webp`.
- * A future art-less item must be declared in `ANIME_EQUIPMENT_ART_PLACEHOLDERS`
- * (slot-glyph fallback). Pipeline: `scripts/place-anime-assets.mjs`; shopping
- * list history: `scripts/anime-art/ART-TODO.md`.
+ * ART: icons under `public/assets/anime/equipment/<slug>.webp` (512×512 webp).
+ * A future art-less item must be declared in `ANIME_EQUIPMENT_ART_PLACEHOLDERS`.
  */
 
-import { ANIME_EQUIPMENT_SLOTS, type AnimeEquipmentSlot } from "@/engine/state";
+import { ANIME_EQUIPMENT_SLOTS, type AnimeEquipmentSlot, type ArtifactTier } from "@/engine/state";
 
 export { ANIME_EQUIPMENT_SLOTS };
 export type { AnimeEquipmentSlot };
+
+/** Three equipment grades — same ladder as Artifact tiers (I=minor … III=relic). */
+export type EquipmentGrade = "I" | "II" | "III";
+
+/** Grade → Artifact-tier (for same-grade grant pairings / UI labels). */
+export const EQUIPMENT_GRADE_TO_ARTIFACT_TIER: Record<EquipmentGrade, ArtifactTier> = {
+  I: "minor",
+  II: "major",
+  III: "relic"
+};
+
+/** Canonical shop gold cost by grade. */
+export const EQUIPMENT_GRADE_COST: Record<EquipmentGrade, number> = {
+  I: 4,
+  II: 6,
+  III: 8
+};
+
+/** Roman / short labels for UI chips. */
+export const EQUIPMENT_GRADE_LABEL: Record<EquipmentGrade, { en: string; short: string }> = {
+  I: { en: "Grade I (Minor)", short: "I" },
+  II: { en: "Grade II (Major)", short: "II" },
+  III: { en: "Grade III (Relic)", short: "III" }
+};
 
 /** Which content family an equipment item belongs to (shop gating + naming). */
 export type EquipmentPackage = "anime-xianxia" | "anime-isekai" | "shared";
@@ -48,8 +67,10 @@ export type EquipmentContextRequirement = "wog.commanders" | "anime.unitExperien
 export type EquipmentDefinition = {
   id: string;
   slot: AnimeEquipmentSlot;
+  /** One of three grades (I/II/III = minor/major/relic Artifact ladder). */
+  grade: EquipmentGrade;
   name: { en: string; vi: string };
-  /** Gold cost at an outfitter shop. */
+  /** Gold cost at an outfitter shop — always `EQUIPMENT_GRADE_COST[grade]`. */
   cost: number;
   package: EquipmentPackage;
   /** Exactly the wired behaviour (no flavour the engine does not run). */
@@ -81,152 +102,183 @@ export const EQUIPMENT_IDS = {
   // --- Miku / idol-themed isekai wave ----------------------------------------
   neonMicrophone: "anime.equip.neon_microphone",
   stageCostume: "anime.equip.stage_costume",
-  twinTailRibbon: "anime.equip.twin_tail_ribbon"
+  twinTailRibbon: "anime.equip.twin_tail_ribbon",
+  // --- Grade fill-out wave (3 grades proper) --------------------------------
+  luckyCoin: "anime.equip.lucky_coin",
+  spiritFocus: "anime.equip.spirit_focus",
+  eternalSash: "anime.equip.eternal_sash"
 } as const;
 
-/** The catalog — 12 items, one effect each, every effect a proven-seam reuse. */
+function equip(
+  partial: Omit<EquipmentDefinition, "cost"> & { grade: EquipmentGrade }
+): EquipmentDefinition {
+  return { ...partial, cost: EQUIPMENT_GRADE_COST[partial.grade] };
+}
+
+/** The catalog — every effect a proven-seam reuse; every item has a grade. */
 export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = {
-  // ---- Xianxia (Rèn Binh Các / Blacksmith) --------------------------------
-  [EQUIPMENT_IDS.ironBloodSword]: {
+  // ---- Grade I (minor, 4g) ------------------------------------------------
+  [EQUIPMENT_IDS.ironBloodSword]: equip({
     id: EQUIPMENT_IDS.ironBloodSword,
     slot: "weapon",
+    grade: "I",
     name: { en: "Iron-Blood Sword", vi: "Thiết Huyết Kiếm" },
-    cost: 4,
     package: "anime-xianxia",
     summary:
-      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (your main hero's fights; not on retaliations)."
-  },
-  [EQUIPMENT_IDS.blackTortoiseMail]: {
+      "Weapon · Grade I: your units' FIRST declared attack each combat gets +1 Attack (your main hero's fights; not on retaliations)."
+  }),
+  [EQUIPMENT_IDS.blackTortoiseMail]: equip({
     id: EQUIPMENT_IDS.blackTortoiseMail,
     slot: "armor",
+    grade: "I",
     name: { en: "Black Tortoise Mail", vi: "Huyền Vũ Giáp" },
-    cost: 4,
     package: "anime-xianxia",
     summary:
-      "Armor: the FIRST enemy attack declared against your units each combat resolves at −1 Attack (your main hero's fights; not vs retaliations)."
-  },
-  [EQUIPMENT_IDS.cosmosPendant]: {
-    id: EQUIPMENT_IDS.cosmosPendant,
-    slot: "accessory",
-    name: { en: "Cosmos Pendant", vi: "Càn Khôn Bội" },
-    cost: 5,
-    package: "anime-xianxia",
-    summary: "Accessory: +1 spell Power on your casts (stacks with Cultivation / Hero-Grade Power)."
-  },
-
-  // ---- Isekai (Adventurer Outfitter) --------------------------------------
-  [EQUIPMENT_IDS.adventurersBlade]: {
+      "Armor · Grade I: the FIRST enemy attack declared against your units each combat resolves at −1 Attack (your main hero's fights; not vs retaliations)."
+  }),
+  [EQUIPMENT_IDS.adventurersBlade]: equip({
     id: EQUIPMENT_IDS.adventurersBlade,
     slot: "weapon",
+    grade: "I",
     name: { en: "Adventurer's Blade", vi: "Kiếm Mạo Hiểm Giả" },
-    cost: 4,
     package: "anime-isekai",
-    summary: "Weapon: gain +1 gold after each combat you win (stacks with Bounty Hunter's Eye)."
-  },
-  [EQUIPMENT_IDS.guildIssueMail]: {
+    summary: "Weapon · Grade I: gain +1 gold after each combat you win (stacks with Bounty Hunter's Eye / Lucky Coin)."
+  }),
+  [EQUIPMENT_IDS.guildIssueMail]: equip({
     id: EQUIPMENT_IDS.guildIssueMail,
     slot: "armor",
+    grade: "I",
     name: { en: "Guild-Issue Mail", vi: "Giáp Công Hội" },
-    cost: 4,
     package: "anime-isekai",
-    summary: "Armor: +1 hand limit (stacks with Cultivation Foundation and Deep Pockets)."
-  },
+    summary: "Armor · Grade I: +1 hand limit (stacks with Cultivation Foundation, Deep Pockets, Twin-Tail Ribbon, Eternal Sash)."
+  }),
+  [EQUIPMENT_IDS.twinTailRibbon]: equip({
+    id: EQUIPMENT_IDS.twinTailRibbon,
+    slot: "accessory",
+    grade: "I",
+    name: { en: "Twin-Tail Ribbon", vi: "Ruy Băng Đôi" },
+    package: "anime-isekai",
+    summary: "Accessory · Grade I: +1 hand limit (stacks with Cultivation Foundation / Deep Pockets / Guild-Issue Mail / Eternal Sash)."
+  }),
+  [EQUIPMENT_IDS.luckyCoin]: equip({
+    id: EQUIPMENT_IDS.luckyCoin,
+    slot: "accessory",
+    grade: "I",
+    name: { en: "Lucky Coin", vi: "Đồng Xu May Mắn" },
+    package: "shared",
+    summary: "Accessory · Grade I: gain +1 gold after each combat you win (stacks with Adventurer's Blade / Alchemist's Satchel / Bounty Hunter's Eye)."
+  }),
 
-  // ---- Shared (both shops) -------------------------------------------------
-  [EQUIPMENT_IDS.supplySatchel]: {
+  // ---- Grade II (major, 6g) -----------------------------------------------
+  [EQUIPMENT_IDS.cosmosPendant]: equip({
+    id: EQUIPMENT_IDS.cosmosPendant,
+    slot: "accessory",
+    grade: "II",
+    name: { en: "Cosmos Pendant", vi: "Càn Khôn Bội" },
+    package: "anime-xianxia",
+    summary: "Accessory · Grade II: +1 spell Power on your casts (stacks with Cultivation / Hero-Grade / Spirit Focus Power)."
+  }),
+  [EQUIPMENT_IDS.supplySatchel]: equip({
     id: EQUIPMENT_IDS.supplySatchel,
     slot: "accessory",
+    grade: "II",
     name: { en: "Supply Satchel", vi: "Túi Tiếp Tế" },
-    cost: 5,
     package: "shared",
-    summary: "Accessory: +1 building materials at the start of each Resources round."
-  },
-
-  // ---- Wave 2 (shared — sold at BOTH outfitters) --------------------------
-  [EQUIPMENT_IDS.marshalsWarHorn]: {
-    id: EQUIPMENT_IDS.marshalsWarHorn,
-    slot: "accessory",
-    name: { en: "Marshal's War Horn", vi: "Chiến Hào Nguyên Soái" },
-    cost: 6,
+    summary: "Accessory · Grade II: +1 building materials at the start of each Resources round."
+  }),
+  [EQUIPMENT_IDS.windriderSaddle]: equip({
+    id: EQUIPMENT_IDS.windriderSaddle,
+    slot: "mount",
+    grade: "II",
+    name: { en: "Windrider Saddle", vi: "Yên Ngự Phong" },
     package: "shared",
-    requiresContext: "wog.commanders",
+    summary: "Mount · Grade II: +1 movement point to your main hero at each turn refresh (folded into the per-turn movement max)."
+  }),
+  [EQUIPMENT_IDS.bladeOfTheTrial]: equip({
+    id: EQUIPMENT_IDS.bladeOfTheTrial,
+    slot: "weapon",
+    grade: "II",
+    name: { en: "Blade of the Trial", vi: "Thí Luyện Kiếm" },
+    package: "shared",
     summary:
-      "Accessory: your Commander gains the pre-combat SORT window (reposition it in your deployment zone before round 1). Needs the WOG Commanders module + a commander in the fight; hidden at shops while Commanders is off."
-  },
-  [EQUIPMENT_IDS.veteransStandard]: {
+      "Weapon · Grade II: +1 Attack on your units' declared attacks during combat ROUND 1 only (your main hero's fights; not on retaliations, gone from round 2)."
+  }),
+  [EQUIPMENT_IDS.veteransStandard]: equip({
     id: EQUIPMENT_IDS.veteransStandard,
     slot: "accessory",
+    grade: "II",
     name: { en: "Veteran's Standard", vi: "Quân Kỳ Lão Binh" },
-    cost: 5,
     package: "shared",
     requiresContext: "anime.unitExperience",
     summary:
-      "Accessory: your surviving units gain +1 EXTRA Unit-Experience XP per won combat (2 total). Needs the Unit Experience module; hidden at shops while it is off."
-  },
-  [EQUIPMENT_IDS.windriderSaddle]: {
-    id: EQUIPMENT_IDS.windriderSaddle,
-    slot: "mount",
-    name: { en: "Windrider Saddle", vi: "Yên Ngự Phong" },
-    cost: 5,
-    package: "shared",
-    summary: "Mount: +1 movement point to your main hero at each turn refresh (folded into the per-turn movement max)."
-  },
-  [EQUIPMENT_IDS.spiritCraneMount]: {
-    id: EQUIPMENT_IDS.spiritCraneMount,
-    slot: "mount",
-    name: { en: "Spirit Crane Mount", vi: "Tiên Hạc Kỵ" },
-    cost: 6,
+      "Accessory · Grade II: your surviving units gain +1 EXTRA Unit-Experience XP per won combat (2 total). Needs the Unit Experience module; hidden at shops while it is off."
+  }),
+  [EQUIPMENT_IDS.neonMicrophone]: equip({
+    id: EQUIPMENT_IDS.neonMicrophone,
+    slot: "weapon",
+    grade: "II",
+    name: { en: "Neon Microphone", vi: "Micro Neon" },
+    package: "anime-isekai",
+    summary:
+      "Weapon · Grade II: your FIRST Spell each combat is cast at +1 Power (your main hero's fights; one charge per combat)."
+  }),
+  [EQUIPMENT_IDS.stageCostume]: equip({
+    id: EQUIPMENT_IDS.stageCostume,
+    slot: "armor",
+    grade: "II",
+    name: { en: "Stage Costume", vi: "Trang Phục Sân Khấu" },
+    package: "anime-isekai",
+    summary:
+      "Armor · Grade II: the FIRST time one of your units is attacked each combat, that unit gains a Defense token after the attack resolves (your main hero's fights)."
+  }),
+  [EQUIPMENT_IDS.spiritFocus]: equip({
+    id: EQUIPMENT_IDS.spiritFocus,
+    slot: "accessory",
+    grade: "II",
+    name: { en: "Spirit Focus", vi: "Tụ Linh Châu" },
+    package: "anime-isekai",
+    summary: "Accessory · Grade II: +1 spell Power on your casts (stacks with Cosmos Pendant / Cultivation / Hero-Grade Power)."
+  }),
+
+  // ---- Grade III (relic, 8g) ----------------------------------------------
+  [EQUIPMENT_IDS.marshalsWarHorn]: equip({
+    id: EQUIPMENT_IDS.marshalsWarHorn,
+    slot: "accessory",
+    grade: "III",
+    name: { en: "Marshal's War Horn", vi: "Chiến Hào Nguyên Soái" },
     package: "shared",
     requiresContext: "wog.commanders",
     summary:
-      "Mount: if your Commander dies in a fight, it REVIVES FREE at combat end (no death, no revive gold) — same free-revive branch as the Helm of Immortality. Needs the WOG Commanders module; hidden at shops while Commanders is off."
-  },
-  [EQUIPMENT_IDS.bladeOfTheTrial]: {
-    id: EQUIPMENT_IDS.bladeOfTheTrial,
-    slot: "weapon",
-    name: { en: "Blade of the Trial", vi: "Thí Luyện Kiếm" },
-    cost: 5,
+      "Accessory · Grade III: your Commander gains the pre-combat SORT window (reposition it in your deployment zone before round 1). Needs the WOG Commanders module + a commander in the fight; hidden at shops while Commanders is off."
+  }),
+  [EQUIPMENT_IDS.spiritCraneMount]: equip({
+    id: EQUIPMENT_IDS.spiritCraneMount,
+    slot: "mount",
+    grade: "III",
+    name: { en: "Spirit Crane Mount", vi: "Tiên Hạc Kỵ" },
     package: "shared",
+    requiresContext: "wog.commanders",
     summary:
-      "Weapon: +1 Attack on your units' declared attacks during combat ROUND 1 only (your main hero's fights; not on retaliations, gone from round 2)."
-  },
-  [EQUIPMENT_IDS.alchemistsSatchel]: {
+      "Mount · Grade III: if your Commander dies in a fight, it REVIVES FREE at combat end (no death, no revive gold) — same free-revive branch as the Helm of Immortality. Needs the WOG Commanders module; hidden at shops while Commanders is off."
+  }),
+  [EQUIPMENT_IDS.alchemistsSatchel]: equip({
     id: EQUIPMENT_IDS.alchemistsSatchel,
     slot: "armor",
+    grade: "III",
     name: { en: "Alchemist's Satchel", vi: "Túi Luyện Kim" },
-    cost: 6,
     package: "shared",
     summary:
-      "Armor: +1 gold at the start of each Resources round AND +1 gold after each combat you win (stacks with Adventurer's Blade / Bounty Hunter's Eye)."
-  },
-
-  // ---- Miku / Virtual Diva (isekai outfitter) ------------------------------
-  [EQUIPMENT_IDS.neonMicrophone]: {
-    id: EQUIPMENT_IDS.neonMicrophone,
-    slot: "weapon",
-    name: { en: "Neon Microphone", vi: "Micro Neon" },
-    cost: 5,
-    package: "anime-isekai",
-    summary:
-      "Weapon: your FIRST Spell each combat is cast at +1 Power (your main hero's fights; one charge per combat)."
-  },
-  [EQUIPMENT_IDS.stageCostume]: {
-    id: EQUIPMENT_IDS.stageCostume,
-    slot: "armor",
-    name: { en: "Stage Costume", vi: "Trang Phục Sân Khấu" },
-    cost: 5,
-    package: "anime-isekai",
-    summary:
-      "Armor: the FIRST time one of your units is attacked each combat, that unit gains a Defense token after the attack resolves (your main hero's fights)."
-  },
-  [EQUIPMENT_IDS.twinTailRibbon]: {
-    id: EQUIPMENT_IDS.twinTailRibbon,
+      "Armor · Grade III: +1 gold at the start of each Resources round AND +1 gold after each combat you win (stacks with Adventurer's Blade / Lucky Coin / Bounty Hunter's Eye)."
+  }),
+  [EQUIPMENT_IDS.eternalSash]: equip({
+    id: EQUIPMENT_IDS.eternalSash,
     slot: "accessory",
-    name: { en: "Twin-Tail Ribbon", vi: "Ruy Băng Đôi" },
-    cost: 4,
-    package: "anime-isekai",
-    summary: "Accessory: +1 hand limit (stacks with Cultivation Foundation / Deep Pockets / Guild-Issue Mail)."
-  }
+    grade: "III",
+    name: { en: "Eternal Sash", vi: "Đới Trường Sinh" },
+    package: "shared",
+    summary:
+      "Accessory · Grade III: +1 hand limit (stacks with Guild-Issue Mail / Twin-Tail Ribbon / Cultivation Foundation / Deep Pockets)."
+  })
 };
 
 /**
@@ -237,9 +289,8 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
  * and remove the id here (the UI then draws it instead of the glyph fallback).
  */
 export const ANIME_EQUIPMENT_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
-  // EMPTY — all catalog items ship real 512×512 transparent webp icons under
-  // public/assets/anime/equipment/ (incl. Miku-wave neon mic / stage costume /
-  // twin-tail ribbon). A FUTURE art-less item must be declared here.
+  // EMPTY while Codex grade-fill wave art is on disk (lucky_coin / spirit_focus /
+  // eternal_sash). A FUTURE art-less item must be declared here.
 ]);
 
 /** Slot → emoji glyph (UI fallback while an item has no art). */
@@ -275,7 +326,10 @@ export function listEquipmentDefinitions(): EquipmentDefinition[] {
  * (`beginFieldVisit`) and the AI policy. Runtime-gated on `anime.equipment` so a
  * module-off visit is byte-identical.
  */
-const WAVE_2_SHARED = [
+const SHARED_BOTH_SHOPS = [
+  EQUIPMENT_IDS.supplySatchel,
+  EQUIPMENT_IDS.luckyCoin,
+  EQUIPMENT_IDS.eternalSash,
   EQUIPMENT_IDS.marshalsWarHorn,
   EQUIPMENT_IDS.veteransStandard,
   EQUIPMENT_IDS.windriderSaddle,
@@ -289,17 +343,16 @@ export const EQUIPMENT_SHOP_SALES: Record<string, readonly string[]> = {
     EQUIPMENT_IDS.ironBloodSword,
     EQUIPMENT_IDS.blackTortoiseMail,
     EQUIPMENT_IDS.cosmosPendant,
-    EQUIPMENT_IDS.supplySatchel,
-    ...WAVE_2_SHARED
+    ...SHARED_BOTH_SHOPS
   ],
   "anime.adventurer_outfitter": [
     EQUIPMENT_IDS.adventurersBlade,
     EQUIPMENT_IDS.guildIssueMail,
-    EQUIPMENT_IDS.supplySatchel,
     EQUIPMENT_IDS.neonMicrophone,
     EQUIPMENT_IDS.stageCostume,
     EQUIPMENT_IDS.twinTailRibbon,
-    ...WAVE_2_SHARED
+    EQUIPMENT_IDS.spiritFocus,
+    ...SHARED_BOTH_SHOPS
   ]
 };
 

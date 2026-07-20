@@ -110,9 +110,19 @@ export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipm
 
 // --- Always-on economy / caster grants (each gated by the item equipped) ----
 
-/** Cosmos Pendant (accessory): +1 spell Power. Folded at the standing chokepoint. */
+/**
+ * Cosmos Pendant (accessory, Grade II) AND Spirit Focus (accessory, Grade II):
+ * +1 spell Power each. Folded at the standing chokepoint; both may stack.
+ */
 export function equipmentSpellPowerBonus(state: GameState, playerId: PlayerId): number {
-  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.cosmosPendant) ? 1 : 0;
+  let bonus = 0;
+  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.cosmosPendant)) {
+    bonus += 1;
+  }
+  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.spiritFocus)) {
+    bonus += 1;
+  }
+  return bonus;
 }
 
 /**
@@ -175,7 +185,10 @@ export function applyEquipmentStageCostumeDefenseToken(
   }
 }
 
-/** Guild-Issue Mail (armor) OR Twin-Tail Ribbon (accessory): +1 hand limit each. */
+/**
+ * Guild-Issue Mail (armor I) / Twin-Tail Ribbon (accessory I) / Eternal Sash
+ * (accessory III): +1 hand limit each. Folded at effectiveHandLimit.
+ */
 export function equipmentHandLimitBonus(state: GameState, playerId: PlayerId): number {
   let bonus = 0;
   if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.guildIssueMail)) {
@@ -184,17 +197,24 @@ export function equipmentHandLimitBonus(state: GameState, playerId: PlayerId): n
   if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.twinTailRibbon)) {
     bonus += 1;
   }
+  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.eternalSash)) {
+    bonus += 1;
+  }
   return bonus;
 }
 
 /**
- * Post-combat WIN gold from equipment: Adventurer's Blade (+1) AND Alchemist's
- * Satchel (+1) each grant, so a hero carrying both stacks to +2 (on top of the
- * Hero-Grade Bounty Hunter's Eye, a separate seam). Folded at finalizeAdventureCombat.
+ * Post-combat WIN gold from equipment: Adventurer's Blade (+1), Lucky Coin (+1),
+ * and Alchemist's Satchel (+1) each grant, so a hero carrying all three stacks
+ * to +3 (on top of the Hero-Grade Bounty Hunter's Eye, a separate seam). Folded
+ * at finalizeAdventureCombat.
  */
 export function equipmentWinGold(state: GameState, playerId: PlayerId): number {
   let gold = 0;
   if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.adventurersBlade)) {
+    gold += 1;
+  }
+  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.luckyCoin)) {
     gold += 1;
   }
   if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.alchemistsSatchel)) {

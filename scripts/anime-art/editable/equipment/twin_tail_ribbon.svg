@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="743" height="1040" viewBox="0 0 743 1040">
+  <title>Twin-Tail Ribbon — equipment card face</title>
+  <metadata data-layout="equipment-card-v1" data-slug="twin_tail_ribbon" data-grade="I" data-slot="accessory" data-source="src/data/anime/equipment.ts"/>
+  <defs>
+    <filter id="textShadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="2"/><feOffset dy="2"/><feComponentTransfer><feFuncA type="linear" slope=".8"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <clipPath id="artClip"><rect x="58" y="127" width="627" height="445"/></clipPath>
+    <style>
+      .titleText { fill: #f2dfa4; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+      .gradeText { font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 20px; font-weight: 700; letter-spacing: 3px; text-anchor: middle; filter: url(#textShadow); }
+      .slotText { fill: #a89868; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 18px; font-weight: 700; letter-spacing: 5px; text-anchor: middle; filter: url(#textShadow); }
+      .enText { fill: #cfc6a6; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 22px; font-style: italic; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+      .ruleText { fill: #efe3c2; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 24px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+    </style>
+  </defs>
+
+  <g inkscape:groupmode="layer" inkscape:label="01 Illustration" id="layer-art" clip-path="url(#artClip)">
+    <rect x="58" y="127" width="627" height="445" fill="#151b16"/>
+    <image id="linked-master" x="58" y="127" width="627" height="445" preserveAspectRatio="xMidYMid slice" href="../../raw/artifacts/equipment-masters/twin_tail_ribbon-master.png" xlink:href="../../raw/artifacts/equipment-masters/twin_tail_ribbon-master.png"/>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="02 Keyed ornate frame" id="layer-frame">
+    <image id="linked-frame" x="0" y="0" width="743" height="1040" preserveAspectRatio="none" href="../../raw/artifacts/frame-artifact-keyed.png" xlink:href="../../raw/artifacts/frame-artifact-keyed.png"/>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="03 Editable typography" id="layer-type">
+    <text x="371" y="93" class="titleText" font-size="36">Twin-Tail Ribbon</text>
+    <text x="371" y="624" class="gradeText" fill="#c7ccd6">GRADE I  ·  MINOR EQUIPMENT</text>
+    <text x="371" y="654" class="slotText">ACCESSORY</text>
+    <text x="371" y="688" class="enText">Ruy Băng Đôi</text>
+    <g id="editable-rules"><text x="371" y="794" class="ruleText">Accessory: +1 hand limit.</text><line x1="120" y1="831" x2="623" y2="831" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="837" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="868" class="ruleText">the game. Gain 1 Minor Artifact.</text></g>
+  </g>
+</svg>
