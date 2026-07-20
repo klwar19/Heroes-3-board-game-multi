@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowLeft, ChevronsUp, Crown, Layers, Lock, Sparkles, Swords, X } from "lucide-react";
 
 import { assetUrl } from "@/lib/asset-url";
@@ -99,15 +99,18 @@ export function UnitExperienceWindow({
   const player = state.players[playerId];
   const lexicon = factionUiLexicon(player?.factionId);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(initialArmyUnitId);
-
-  useEffect(() => {
+  // Re-anchor on a NEW initial unit (render-phase adjustment — no effect needed:
+  // the parent remounts the window per open, so this only fires on a real change).
+  const [lastInitialUnitId, setLastInitialUnitId] = useState(initialArmyUnitId);
+  if (lastInitialUnitId !== initialArmyUnitId) {
+    setLastInitialUnitId(initialArmyUnitId);
     setSelectedUnitId(initialArmyUnitId);
-  }, [initialArmyUnitId]);
+  }
 
   const ruleset = getRuleset(state);
   const sideOverrides = unitSideRuleOverrides(state);
   const rankSteps = Array.from({ length: MAX_UNIT_RANK }, (_, i) => i + 1);
-  const army = player?.army ?? [];
+  const army = useMemo(() => player?.army ?? [], [player]);
 
   const selectedUnit = useMemo(
     () => (selectedUnitId ? army.find((unit) => unit.id === selectedUnitId) ?? null : null),

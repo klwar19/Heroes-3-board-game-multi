@@ -7425,14 +7425,8 @@ export function processPendingVisit(state: GameState): void {
           if (polishSpellBookEnabled(state) && cardId === CAST_A_SPELL_CARD_ID) {
             return;
           }
-          // Under Polish, personal-discard Spells are a leak; Book is the real zone.
-          if (
-            polishSpellBookEnabled(state) &&
-            isOwnedSpellCard(cardId) &&
-            (source === "hand" || source === "discard")
-          ) {
-            // Still allow removing a leaked hand/discard Spell so it is not stuck.
-          }
+          // Under Polish, an owned Spell sitting in hand/discard is a leak; it
+          // stays removable here so it is never stuck.
           const key = `${source}:${cardId}`;
           if (seen.has(key)) {
             return;
