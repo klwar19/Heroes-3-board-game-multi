@@ -1938,8 +1938,8 @@ function applyDesignedViiField(
   // Multi-select of allowed Ⅶ designations. When playerViiPick is on and 2+
   // options remain, store the set for the reveal choice; otherwise resolve now.
   const multi = (plan.viiFields ?? []).filter(
-    (v): v is "town" | "dragon_utopia" | "grail" =>
-      v === "town" || v === "dragon_utopia" || v === "grail"
+    (v): v is "town" | "settlement" | "dragon_utopia" | "grail" =>
+      v === "town" || v === "settlement" || v === "dragon_utopia" || v === "grail"
   );
   if (multi.length > 1) {
     if (plan.playerViiPick && plan.faceDown) {

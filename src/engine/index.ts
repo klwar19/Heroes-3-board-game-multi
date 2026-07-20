@@ -270,9 +270,11 @@ export {
   currentSurrenderGoldCost,
   flagField,
   materializeTileFields,
+  playerPossessesGrail,
   startAdventureRound,
   tickSettlementHoldControl,
-  tournamentMoraleSearchAgainEnabled
+  tournamentMoraleSearchAgainEnabled,
+  VII_FIELD_LOCATION
 } from "./adventure";
 export {
   CAST_A_SPELL_CARD_ID,

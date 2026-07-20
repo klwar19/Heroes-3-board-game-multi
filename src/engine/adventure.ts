@@ -771,11 +771,16 @@ export function instantiateTile(
 /**
  * The map location a designer {@link MapTileState.viiField} designation forces
  * onto a center tile's difficulty-7 objective field. "town" resolves to the
- * printed `random_town` field (the neutral conquerable town); the other two map
- * one-to-one. Single source of truth for the override in `materializeTileFields`.
+ * printed `random_town` field (the neutral conquerable town); "settlement" to a
+ * difficulty-7 Settlement (Random Settlement); the others map one-to-one.
+ * Single source of truth for the override in `materializeTileFields`.
  */
-export const VII_FIELD_LOCATION: Record<"town" | "dragon_utopia" | "grail", string> = {
+export const VII_FIELD_LOCATION: Record<
+  import("./state").ViiFieldDesignation,
+  string
+> = {
   town: "random_town",
+  settlement: "settlement",
   dragon_utopia: "dragon_utopia",
   grail: "grail"
 };
@@ -790,11 +795,11 @@ export const VII_FIELD_LOCATION: Record<"town" | "dragon_utopia" | "grail", stri
  *
  * A center-tile {@link MapTileState.viiField} designation FORCES the tile's
  * difficulty-7 objective field to the designated location (Grail / Dragon Utopia
- * / Random Town), whatever the printed tile carries there — the difficulty-7
- * guard is kept and every other property (resource / faction / amount) of the
- * original objective is dropped, since a Grail/Utopia/town field has none. A
- * designation that already matches the printed field is a no-op (the field is
- * left untouched, so a CONTROL deep-equals the undesignated field).
+ * / Random Town / Random Settlement), whatever the printed tile carries there —
+ * the difficulty-7 guard is kept and every other property (resource / faction /
+ * amount) of the original objective is dropped, since a Grail/Utopia/town field
+ * has none. A designation that already matches the printed field is a no-op
+ * (the field is left untouched, so a CONTROL deep-equals the undesignated field).
  */
 export function materializeTileFields(
   adventure: AdventureState,
@@ -927,29 +932,65 @@ export function materializeTileFields(
       }
     } else if (field.location === "settlement") {
       const perTile = tile.settlement;
-      applyCustomGuardToField(field, perTile?.guard ?? adventure.mapPreset?.settlements?.guard);
+      const centerHex = fieldDef.difficulty === 7 ? tile.centerHex : undefined;
+      // Ⅶ Random Settlement designation: tag so hold-with-grail can target it
+      // separately from printed settlements, and prefer center-hex customization.
+      if (tile.viiField === "settlement" && fieldDef.difficulty === 7) {
+        field.randomSettlement = true;
+      }
+      applyCustomGuardToField(
+        field,
+        centerHex?.guard ?? perTile?.guard ?? adventure.mapPreset?.settlements?.guard
+      );
       if (perTile?.reward) {
         stampDesignerFieldReward(field, perTile.reward);
       }
-      if (perTile?.vp && perTile.vp > 0) {
-        field.settlementBonusVp = perTile.vp;
+      // Control VP: per-tile settlement plan, else center-hex controlVp on a Ⅶ settlement.
+      const controlVp = perTile?.vp ?? centerHex?.controlVp;
+      if (controlVp && controlVp > 0) {
+        field.settlementBonusVp = controlVp;
       } else {
         delete field.settlementBonusVp;
       }
-      if (perTile?.holdRoundsToWin && perTile.holdRoundsToWin > 0) {
-        field.holdRoundsToWin = perTile.holdRoundsToWin;
+      const holdRounds = perTile?.holdRoundsToWin ?? centerHex?.holdRoundsToWin;
+      if (holdRounds && holdRounds > 0) {
+        field.holdRoundsToWin = holdRounds;
+        if (perTile?.holdRequiresGrail || centerHex?.holdRequiresGrail) {
+          field.holdRequiresGrail = true;
+        } else {
+          delete field.holdRequiresGrail;
+        }
       } else {
         delete field.holdRoundsToWin;
+        delete field.holdRequiresGrail;
         delete field.holdControlOwnerId;
         delete field.holdControlRounds;
       }
-      if (perTile?.winCondition) {
+      if (perTile?.winCondition || centerHex?.winCondition) {
         field.designerWinCondition = true;
       }
     } else if (field.location === "random_town") {
       const rtGuard = adventure.mapPreset?.randomTowns?.guard;
-      if (rtGuard) {
+      const centerHex = tile.centerHex;
+      if (centerHex?.guard) {
+        applyCustomGuardToField(field, centerHex.guard);
+      } else if (rtGuard) {
         applyCustomGuardToField(field, rtGuard);
+      }
+      // Continuous control VP on THIS Random Town (center-hex controlVp).
+      if (centerHex?.controlVp && centerHex.controlVp > 0) {
+        field.settlementBonusVp = centerHex.controlVp;
+      }
+      if (centerHex?.holdRoundsToWin && centerHex.holdRoundsToWin > 0) {
+        field.holdRoundsToWin = centerHex.holdRoundsToWin;
+        if (centerHex.holdRequiresGrail) {
+          field.holdRequiresGrail = true;
+        } else {
+          delete field.holdRequiresGrail;
+        }
+      }
+      if (centerHex?.winCondition) {
+        field.designerWinCondition = true;
       }
     }
     adventure.fields[spaceId] = field;
@@ -3454,7 +3495,122 @@ function playerMeetsCustomWinCondition(
     }
     case "defeat-dragon-utopia":
       return state.adventure?.vpLedger?.[playerId]?.utopiaDefeated === true;
+    case "hold-with-grail": {
+      // Progress is ticked at round start; meeting = continuous hold already reached N.
+      const key = holdWithGrailKey(condition);
+      const progress = state.adventure?.holdWithGrailProgress?.[key];
+      return progress?.playerId === playerId && progress.rounds >= condition.rounds;
+    }
   }
+}
+
+/**
+ * Whether a player currently possesses the Grail for scoring / hold-with-grail:
+ * carried by one of their heroes, OR built on a field they control.
+ * Digging alone does NOT count until the Grail is carried; conquering a dig site
+ * without digging does NOT count. (Possession VP deliberately skips dig/capture.)
+ */
+export function playerPossessesGrail(state: GameState, playerId: PlayerId): boolean {
+  const grail = state.adventure?.grail;
+  if (!grail) {
+    return false;
+  }
+  if (grail.status === "carried" && grail.carrierHeroId) {
+    return state.heroes[grail.carrierHeroId]?.controllerId === playerId;
+  }
+  if (grail.status === "built" && grail.builtFieldId) {
+    const field = state.adventure?.fields[grail.builtFieldId];
+    if (!field) {
+      return false;
+    }
+    if (field.flagOwnerId === playerId) {
+      return true;
+    }
+    // Unflagged home Town still belongs to its controller.
+    if (
+      !field.flagOwnerId &&
+      Object.values(state.towns).some(
+        (town) => town.fieldId === field.spaceId && town.controllerId === playerId
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Stable key for abstract hold-with-grail progress (one counter per condition). */
+function holdWithGrailKey(condition: Extract<CustomWinCondition, { kind: "hold-with-grail" }>): string {
+  const target =
+    typeof condition.target === "string" ? condition.target : `field:${condition.target.spaceId}`;
+  return `hold-with-grail:${target}:${condition.rounds}`;
+}
+
+/**
+ * Whether the player currently controls a field matching a hold-with-grail target.
+ * Used when ticking continuous hold progress at round start.
+ */
+function playerControlsHoldWithGrailTarget(
+  state: GameState,
+  playerId: PlayerId,
+  target: import("./state").HoldWithGrailTarget
+): boolean {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return false;
+  }
+  if (typeof target === "object" && target.spaceId) {
+    const field = adventure.fields[target.spaceId];
+    return field ? playerControlsField(state, playerId, field) : false;
+  }
+  switch (target) {
+    case "starting-town": {
+      // The player's home Town (town.controllerId never flips on flag; control
+      // is field-flag-aware via playerControlsField).
+      for (const town of Object.values(state.towns)) {
+        if (town.controllerId !== playerId || !town.fieldId) {
+          continue;
+        }
+        const field = adventure.fields[town.fieldId];
+        if (field && playerControlsField(state, playerId, field)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    case "settlement":
+      return Object.values(adventure.fields).some(
+        (field) => field.location === "settlement" && !field.randomSettlement && playerControlsField(state, playerId, field)
+      );
+    case "random-settlement":
+      return Object.values(adventure.fields).some(
+        (field) =>
+          field.location === "settlement" &&
+          field.randomSettlement &&
+          playerControlsField(state, playerId, field)
+      );
+    case "random-town":
+      return Object.values(adventure.fields).some(
+        (field) => field.location === "random_town" && playerControlsField(state, playerId, field)
+      );
+  }
+}
+
+/** True when the player currently controls this map field (flag or unflagged home town). */
+function playerControlsField(state: GameState, playerId: PlayerId, field: MapFieldState): boolean {
+  if (field.flagOwnerId === playerId) {
+    return true;
+  }
+  if (
+    !field.flagOwnerId &&
+    locationDefinitions[field.location]?.category === "town" &&
+    Object.values(state.towns).some(
+      (town) => town.fieldId === field.spaceId && town.controllerId === playerId
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -3513,10 +3669,11 @@ export function checkCustomWinConditions(state: GameState): void {
 }
 
 /**
- * Tick continuous hold counters on designer hold-to-win settlements and declare
- * a winner when any reaches its threshold. Called from startAdventureRound (after
- * the round number advances) so each full round of continuous control counts once.
- * Safe no-op when no field carries holdRoundsToWin.
+ * Tick continuous hold counters on designer hold-to-win fields (settlements /
+ * Random Towns / center objectives) AND abstract hold-with-grail custom win
+ * conditions. Called from startAdventureRound (after the round number advances)
+ * so each full round of continuous control counts once.
+ * Safe no-op when nothing is tracking holds.
  */
 export function tickSettlementHoldControl(state: GameState): void {
   const adventure = state.adventure;
@@ -3529,23 +3686,75 @@ export function tickSettlementHoldControl(state: GameState): void {
       continue;
     }
     any = true;
-    if (!field.flagOwnerId || field.flagOwnerId === NEUTRAL_PLAYER_ID) {
+    const owner = field.flagOwnerId;
+    if (!owner || owner === NEUTRAL_PLAYER_ID) {
       delete field.holdControlOwnerId;
       delete field.holdControlRounds;
       continue;
     }
-    if (field.holdControlOwnerId !== field.flagOwnerId) {
-      field.holdControlOwnerId = field.flagOwnerId;
+    // holdRequiresGrail: only count rounds while the controller possesses the Grail
+    // (carried or built). Losing the Grail (or control) resets the counter.
+    if (field.holdRequiresGrail && !playerPossessesGrail(state, owner)) {
+      field.holdControlOwnerId = owner;
+      field.holdControlRounds = 0;
+      continue;
+    }
+    if (field.holdControlOwnerId !== owner) {
+      field.holdControlOwnerId = owner;
       field.holdControlRounds = 0;
     }
     field.holdControlRounds = (field.holdControlRounds ?? 0) + 1;
   }
+  // Abstract hold-with-grail custom win conditions (Starting Town / any settlement /
+  // Random Town / Random Settlement / specific field).
+  tickHoldWithGrailProgress(state);
   if (any) {
     checkSettlementHoldWins(state);
   }
 }
 
-/** Declare a winner if any hold-to-win settlement has reached its round threshold. */
+/** Advance abstract hold-with-grail counters; declare a winner if any reaches N. */
+function tickHoldWithGrailProgress(state: GameState): void {
+  const adventure = state.adventure;
+  if (!adventure || adventure.winnerPlayerId) {
+    return;
+  }
+  const conditions = adventure.mapPreset?.customWinConditions ?? [];
+  const holdConditions = conditions.filter(
+    (c): c is Extract<CustomWinCondition, { kind: "hold-with-grail" }> => c.kind === "hold-with-grail"
+  );
+  if (holdConditions.length === 0) {
+    return;
+  }
+  const progress = adventure.holdWithGrailProgress ?? (adventure.holdWithGrailProgress = {});
+  for (const condition of holdConditions) {
+    const key = holdWithGrailKey(condition);
+    let advanced = false;
+    for (const playerId of state.turnOrder) {
+      if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId] || state.players[playerId]?.eliminated) {
+        continue;
+      }
+      if (
+        playerControlsHoldWithGrailTarget(state, playerId, condition.target) &&
+        playerPossessesGrail(state, playerId)
+      ) {
+        const prev = progress[key];
+        if (prev?.playerId === playerId) {
+          prev.rounds += 1;
+        } else {
+          progress[key] = { playerId, rounds: 1 };
+        }
+        advanced = true;
+        break; // first live seat in turn order that qualifies holds the counter
+      }
+    }
+    if (!advanced) {
+      delete progress[key];
+    }
+  }
+}
+
+/** Declare a winner if any hold-to-win field has reached its round threshold. */
 function checkSettlementHoldWins(state: GameState): boolean {
   const adventure = state.adventure;
   if (!adventure || adventure.winnerPlayerId) {
@@ -3561,10 +3770,15 @@ function checkSettlementHoldWins(state: GameState): boolean {
       continue;
     }
     if (field.holdControlOwnerId === owner && (field.holdControlRounds ?? 0) >= needed) {
+      // If holdRequiresGrail is set, possession must still hold at the moment of win.
+      if (field.holdRequiresGrail && !playerPossessesGrail(state, owner)) {
+        continue;
+      }
+      const withGrail = field.holdRequiresGrail ? " with the Grail" : "";
       declareAdventureWinner(
         state,
         owner,
-        `held a settlement for ${needed} consecutive round${needed === 1 ? "" : "s"}`,
+        `held ${locationDefinitionName(field.location)}${withGrail} for ${needed} consecutive round${needed === 1 ? "" : "s"}`,
         { viaVictoryCondition: true }
       );
       return true;

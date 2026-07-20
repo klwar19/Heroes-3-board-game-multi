@@ -330,7 +330,12 @@ const VII_FIELD_OPTIONS: { id: CustomMapTilePlan["viiField"]; label: string; hin
   { id: undefined, label: "Default", hint: "Keep whatever objective the drawn / chosen tile prints." },
   { id: "grail", label: "Grail", hint: "Force the Grail dig site on this slot's Ⅶ field." },
   { id: "dragon_utopia", label: "Dragon Utopia", hint: "Force the Dragon Utopia on this slot's Ⅶ field." },
-  { id: "town", label: "Town", hint: "Force a neutral conquerable Random Town on this slot's Ⅶ field." }
+  { id: "town", label: "Random Town", hint: "Force a neutral conquerable Random Town on this slot's Ⅶ field." },
+  {
+    id: "settlement",
+    label: "Random Settlement",
+    hint: "Force a difficulty-7 Settlement (same visit flow as a printed settlement)."
+  }
 ];
 
 /**
@@ -350,6 +355,15 @@ function nextCenterHex(
   }
   if (!next.vp) {
     delete next.vp;
+  }
+  if (!next.controlVp) {
+    delete next.controlVp;
+  }
+  if (!next.holdRoundsToWin) {
+    delete next.holdRoundsToWin;
+  }
+  if (!next.holdRoundsToWin || !next.holdRequiresGrail) {
+    delete next.holdRequiresGrail;
   }
   if (!next.winCondition) {
     delete next.winCondition;
@@ -374,6 +388,9 @@ function nextSettlementPlan(
   }
   if (!next.holdRoundsToWin) {
     delete next.holdRoundsToWin;
+  }
+  if (!next.holdRoundsToWin || !next.holdRequiresGrail) {
+    delete next.holdRequiresGrail;
   }
   if (!next.winCondition) {
     delete next.winCondition;
@@ -5597,7 +5614,7 @@ export function MapDesigner({
                               const current = new Set(selected.viiFields ?? (selected.viiField ? [selected.viiField] : []));
                               if (current.has(option.id)) current.delete(option.id);
                               else current.add(option.id);
-                              const next = [...current] as Array<"town" | "dragon_utopia" | "grail">;
+                              const next = [...current] as NonNullable<CustomMapTilePlan["viiFields"]>;
                               if (next.length === 0) {
                                 updateTile(selectedIndex as number, {
                                   viiField: undefined,
@@ -5659,8 +5676,10 @@ export function MapDesigner({
                     <div className="popoverSubLabel">First-clear reward &amp; Victory Points</div>
                     <small className="popoverHint">
                       A one-time bonus for the player who first clears this objective, on top of its printed
-                      reward. Searches are Times × Search(X) — e.g. 2× Search(5) Artifacts. Victory Points
-                      count when Victory-Points scoring is on.
+                      reward. Searches are Times × Search(X) — e.g. 2× Search(5) Artifacts. First-clear VP
+                      is paid once on capture (not continuous control). For Grail dig sites, prefer
+                      Possession VP under Victory &amp; scoring — dig/conquer alone does not score
+                      possession.
                     </small>
                     <FieldRewardEditor
                       ariaLabel="Center hex reward"
@@ -5677,6 +5696,74 @@ export function MapDesigner({
                         })
                       }
                     />
+                    <div className="popoverViiRewardRow" role="group" aria-label="Control VP and hold">
+                      <label className="popoverViiField_num popoverViiVp">
+                        <span>Control VP</span>
+                        <input
+                          aria-label="Center hex continuous control victory points"
+                          max={MAX_SETTLEMENT_VP}
+                          min={0}
+                          onChange={(event) => {
+                            const vp = Math.max(
+                              0,
+                              Math.min(MAX_SETTLEMENT_VP, Math.floor(Number(event.target.value) || 0))
+                            );
+                            updateTile(selectedIndex as number, {
+                              centerHex: nextCenterHex(selected.centerHex, {
+                                controlVp: vp > 0 ? vp : undefined
+                              })
+                            });
+                          }}
+                          title="VP while you control this Random Town / Random Settlement (VP mode)."
+                          type="number"
+                          value={selected.centerHex?.controlVp ?? ""}
+                        />
+                      </label>
+                      <label className="popoverViiField_num popoverViiVp">
+                        <span>Hold rounds to win</span>
+                        <input
+                          aria-label="Hold center hex rounds to win"
+                          max={MAX_SETTLEMENT_HOLD_ROUNDS}
+                          min={0}
+                          onChange={(event) => {
+                            const rounds = Math.max(
+                              0,
+                              Math.min(
+                                MAX_SETTLEMENT_HOLD_ROUNDS,
+                                Math.floor(Number(event.target.value) || 0)
+                              )
+                            );
+                            updateTile(selectedIndex as number, {
+                              centerHex: nextCenterHex(selected.centerHex, {
+                                holdRoundsToWin: rounds > 0 ? rounds : undefined
+                              })
+                            });
+                          }}
+                          type="number"
+                          value={selected.centerHex?.holdRoundsToWin ?? ""}
+                        />
+                      </label>
+                    </div>
+                    {selected.centerHex?.holdRoundsToWin ? (
+                      <label
+                        className="popoverCheckRow"
+                        title="Only count hold rounds while the controller also possesses the Grail (carried or built)."
+                      >
+                        <input
+                          aria-label="Hold requires Grail possession"
+                          checked={Boolean(selected.centerHex?.holdRequiresGrail)}
+                          onChange={(event) =>
+                            updateTile(selectedIndex as number, {
+                              centerHex: nextCenterHex(selected.centerHex, {
+                                holdRequiresGrail: event.target.checked || undefined
+                              })
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        <span>Requires Grail possession</span>
+                      </label>
+                    ) : null}
                     <label className="popoverCheckRow" title="The first player to clear / capture THIS objective wins the game immediately (in Victory-Points mode the completion scores the table instead).">
                       <input
                         aria-label="First clear of this center hex wins the game"
@@ -5775,6 +5862,26 @@ export function MapDesigner({
                         />
                       </label>
                     </div>
+                    {selected.settlement?.holdRoundsToWin ? (
+                      <label
+                        className="popoverCheckRow"
+                        title="Only count hold rounds while the controller also possesses the Grail (carried or built at a Town/Settlement)."
+                      >
+                        <input
+                          aria-label="Settlement hold requires Grail possession"
+                          checked={Boolean(selected.settlement?.holdRequiresGrail)}
+                          onChange={(event) =>
+                            updateTile(selectedIndex as number, {
+                              settlement: nextSettlementPlan(selected.settlement, {
+                                holdRequiresGrail: event.target.checked || undefined
+                              })
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        <span>Requires Grail possession</span>
+                      </label>
+                    ) : null}
                     <label className="popoverCheckRow" title="The first player to flag THIS settlement wins the game immediately (the instant twin of hold-to-win).">
                       <input
                         aria-label="First flag of this settlement wins the game"

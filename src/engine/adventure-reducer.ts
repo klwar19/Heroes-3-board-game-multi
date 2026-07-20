@@ -3266,8 +3266,9 @@ function openPlayerResourcePick(state: GameState, playerId: PlayerId, tile: MapT
 }
 
 function openPlayerViiPick(state: GameState, playerId: PlayerId, tile: MapTileState): void {
-  const labels: Record<"town" | "dragon_utopia" | "grail", string> = {
+  const labels: Record<"town" | "settlement" | "dragon_utopia" | "grail", string> = {
     town: "Random Town",
+    settlement: "Random Settlement",
     dragon_utopia: "Dragon Utopia",
     grail: "Grail"
   };
