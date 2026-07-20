@@ -292,6 +292,15 @@ export type FieldOverridePlacementMode = "random" | "manual" | "manual-or-refuse
  */
 export type VictoryMode = "conquest" | "grail" | "dragon-hunt" | "dragon-conqueror";
 
+/**
+ * Center-tile Ⅶ objective designation ({@link CustomMapTilePlan.viiField}).
+ *   - "town" → Random Town (`random_town`)
+ *   - "settlement" → Random Settlement (a difficulty-7 Settlement)
+ *   - "dragon_utopia" → Dragon Utopia
+ *   - "grail" → Holy Grail dig site
+ */
+export type ViiFieldDesignation = "town" | "settlement" | "dragon_utopia" | "grail";
+
 /** Holy Grail: distinct Obelisks a player must visit before they may dig. */
 export const GRAIL_OBELISKS_REQUIRED = 2;
 
@@ -7963,20 +7972,21 @@ export type MapTileState = {
   /**
    * Center-tile Ⅶ-field designation carried onto this PLACED instance (from
    * {@link CustomMapTilePlan.viiField}) — FORCE this tile's difficulty-7 objective
-   * field to the Grail dig site ("grail"), the Dragon Utopia ("dragon_utopia") or
-   * the neutral Random Town ("town" → the printed `random_town` field), whatever
-   * center tile actually landed here. Applied when the tile's fields materialize
+   * field to the Grail dig site ("grail"), the Dragon Utopia ("dragon_utopia"),
+   * the neutral Random Town ("town" → `random_town`), or a Random Settlement
+   * ("settlement" → difficulty-7 Settlement), whatever center tile actually
+   * landed here. Applied when the tile's fields materialize
    * (`materializeTileFields`), so a face-down center slot picks it up on reveal.
    * SECRET like `tileDefId`: player views MASK it while the tile is face-down so a
    * hidden slot's objective is not leaked before discovery (see player-view.ts).
    */
-  viiField?: "town" | "dragon_utopia" | "grail";
+  viiField?: ViiFieldDesignation;
   /**
    * Multi-select of allowed Ⅶ designations carried from
    * {@link CustomMapTilePlan.viiFields}. Resolved to a single {@link viiField}
    * at materialize (random or player pick). Masked while face-down.
    */
-  viiFields?: Array<"town" | "dragon_utopia" | "grail">;
+  viiFields?: ViiFieldDesignation[];
   /** Player picks among {@link viiFields} on reveal (from the plan). */
   playerViiPick?: boolean;
   /**
@@ -7984,6 +7994,12 @@ export type MapTileState = {
    * (from {@link CustomMapTilePlan.playerResourcePick}).
    */
   playerResourcePick?: boolean;
+  /**
+   * Landmark bans from {@link CustomMapTilePlan.excludeFeatures}, carried onto
+   * the face-down instance so resource-pick reassignment still refuses banned
+   * landmarks (e.g. no Obelisk). Public designer intent.
+   */
+  excludeFeatures?: SecretTileFeature[];
   /**
    * Designer center-hex customization (guard / first-clear reward / VP) carried
    * from {@link CustomMapTilePlan.centerHex} onto the placed instance and folded
@@ -8105,18 +8121,34 @@ export type MapFieldState = {
    */
   designerWinCondition?: boolean;
   /**
-   * Per-settlement bonus Victory Points for THIS field only (from a tile's
-   * {@link CustomMapTilePlan.settlement}.vp). Scored while the player controls
-   * the settlement, ON TOP of the map-wide {@link CustomMapPreset.settlements}.vp
-   * and the flat 1 VP every flagged mine/settlement already scores. Absent = 0.
+   * Per-settlement / per-Random-Town bonus Victory Points for THIS field only
+   * (from a tile's {@link CustomMapTilePlan.settlement}.vp or
+   * {@link CustomCenterHexPlan.controlVp}). Scored while the player controls
+   * the field, ON TOP of map-wide settlement / Random Town VP and the flat 1 VP
+   * every flagged mine/settlement already scores. Absent = 0.
    */
   settlementBonusVp?: number;
   /**
+   * True when this Settlement was created by a designer Ⅶ Random Settlement
+   * designation (`viiField: "settlement"`). Used by the hold-with-grail target
+   * "random-settlement" so printed settlements are not confused with it.
+   */
+  randomSettlement?: boolean;
+  /**
    * Hold-to-win: consecutive full rounds of continuous control needed on THIS
-   * settlement to end the game (from {@link CustomMapTilePlan.settlement}.holdRoundsToWin).
-   * Absent = no hold condition on this field.
+   * field (settlement / Random Town / Town) to end the game (from
+   * {@link CustomMapTilePlan.settlement}.holdRoundsToWin or
+   * {@link CustomCenterHexPlan.holdRoundsToWin}). Absent = no hold condition.
    */
   holdRoundsToWin?: number;
+  /**
+   * When true with {@link holdRoundsToWin}, the continuous-hold counter only
+   * advances while the controller ALSO possesses the Grail (carried by their
+   * hero, or built on a field they control — typically this one). From
+   * {@link CustomMapSettlementFieldPlan.holdRequiresGrail} /
+   * {@link CustomCenterHexPlan.holdRequiresGrail}.
+   */
+  holdRequiresGrail?: boolean;
   /** Owner currently counting toward {@link holdRoundsToWin} (reset on recapture). */
   holdControlOwnerId?: PlayerId;
   /**
@@ -8169,13 +8201,28 @@ export type MapFieldState = {
    */
   customGuardUnits?: string[];
   /**
+   * Stamped from {@link CustomGuardSpec.packFaction} for certain-army and
+   * level-as-packs guards. Fight-time resolve locks every Pack draw to this
+   * faction (`"random"` rolls once per fight). Absent = free mix. Cleared with
+   * the guard.
+   */
+  customGuardPackFaction?: FactionId | "random";
+  /**
    * Designer guard LEVEL on a bank-style object field (Garrison / Keymaster's
    * Tent / one-way monolith entrance): the neutral army is drawn at this level
    * while the FIGHT itself stays bank-style (no Quick Combat, no experience,
    * no Round limit). Plain guarded objects (teleport tokens, center hexes) do
    * NOT use this — their `difficulty` alone drives a normal guard fight.
+   * Also set for map-wide level guards so bank-style objects keep the designed
+   * level when combat difficulty is forced to 0.
    */
   customGuardLevel?: number;
+  /**
+   * How a designer LEVEL guard mints bodies: `"packs"` = real Pack units from
+   * the Field Difficulty table counts; absent / `"neutral"` = classic Neutral
+   * deck draws. Stamped from {@link CustomGuardSpec.levelArmy}.
+   */
+  customGuardLevelArmy?: "neutral" | "packs";
   /**
    * Whether this field's guard was set by the MAP DESIGNER (a {@link CustomGuardSpec}
    * — exact army OR level — a map-wide settlement/obelisk guard, or a center-hex
@@ -10239,6 +10286,13 @@ export type AdventureState = {
    * scored). Absent on legacy snapshots (treated as empty).
    */
   vpLedger?: Record<PlayerId, VpLedgerEntry>;
+  /**
+   * Progress toward abstract {@link CustomWinCondition} `hold-with-grail` rows
+   * (keyed by a stable condition fingerprint). Reset when control or Grail
+   * possession breaks. Field-stamped holds use {@link MapFieldState.holdControlRounds}
+   * instead.
+   */
+  holdWithGrailProgress?: Record<string, { playerId: PlayerId; rounds: number }>;
   /** Tile awaiting its rotation choice after a reveal or placement. */
   pendingTileChoice?: PendingTileChoice | null;
   /** Astrologers Proclaim deck state (even rounds). */
@@ -10697,6 +10751,11 @@ export type CustomMapPreset = {
     guard?: CustomGuardSpec;
     captureReward?: { gold?: number; buildingMaterials?: number; valuables?: number };
     incomeGold?: number;
+    /**
+     * Extra Victory Points per Random Town a player controls (VP mode only),
+     * ON TOP of any per-center {@link CustomCenterHexPlan.controlVp}.
+     */
+    vp?: number;
   };
   /**
    * Designer HEX EVENTS — invisible triggers on chosen board hexes (the PC
@@ -10843,6 +10902,22 @@ export type CustomMapPreset = {
  * grail map (where it short-circuits the dig+deliver) and is a silent no-op on
  * any other victory mode.
  */
+/**
+ * Target for {@link CustomWinCondition} `hold-with-grail`: control this place
+ * while possessing the Grail for N consecutive full rounds.
+ *   - "starting-town": the player's own starting Town
+ *   - "settlement": any Settlement they flag
+ *   - "random-town": any Random Town they flag
+ *   - "random-settlement": a designer Random Settlement (Ⅶ settlement) they flag
+ *   - `{ spaceId }`: one specific field the designer picked on the map
+ */
+export type HoldWithGrailTarget =
+  | "starting-town"
+  | "settlement"
+  | "random-town"
+  | "random-settlement"
+  | { spaceId: string };
+
 export type CustomWinCondition =
   | { kind: "control-towns"; count: number }
   | { kind: "flag-mines"; count: number }
@@ -10852,7 +10927,13 @@ export type CustomWinCondition =
   | { kind: "buildings"; count: number }
   | { kind: "obelisks"; count: number }
   | { kind: "defeat-heroes"; count: number }
-  | { kind: "defeat-dragon-utopia" };
+  | { kind: "defeat-dragon-utopia" }
+  | {
+      kind: "hold-with-grail";
+      /** Consecutive full rounds of continuous control + Grail possession (1–10). */
+      rounds: number;
+      target: HoldWithGrailTarget;
+    };
 
 /**
  * One extra Victory-Points scenario objective ({@link CustomMapPreset.victoryPoints}).
@@ -11164,6 +11245,14 @@ export type CustomMapTilePlan = {
    * Cleared for face-up and pure-random slots.
    */
   secretFeatures?: SecretTileFeature[];
+  /**
+   * Face-down pool filter: the drawn tile must NOT carry ANY of these landmarks
+   * (e.g. `["obelisk"]` = "no Obelisk"). Composes with {@link secretFeatures}
+   * (include AND NOT exclude). Exact pins / one-of lists ignore this — the
+   * designer already named the tile. Absent = no ban (legacy / pure random).
+   * Cleared for face-up slots.
+   */
+  excludeFeatures?: SecretTileFeature[];
   /** Clockwise 60° steps (0-5, default 0). Honoured face-up and face-down. */
   rotation?: number;
   /**
@@ -11277,22 +11366,24 @@ export type CustomMapTilePlan = {
    *   - "dragon_utopia": the Dragon Utopia (guards + reward identical to printed).
    *   - "town": the neutral conquerable Random Town (the printed `random_town`
    *     field; the defending faction is assigned at the fight).
+   *   - "settlement": a Random Settlement — a difficulty-7 Settlement that
+   *     fights then opens the normal settlement resource/unit choice.
    * The difficulty-7 guard is preserved. If the drawn/pinned tile's printed Ⅶ
    * field ALREADY matches the designation it is a no-op. Every center tile has a
    * difficulty-7 field, so a center designation always applies (invariant pinned
    * in vii-field-designation.test.ts). SECRET on a face-down slot: masked in
    * player views until reveal (see the {@link MapTileState.viiField} it seeds).
    */
-  viiField?: "town" | "dragon_utopia" | "grail";
+  viiField?: ViiFieldDesignation;
   /**
-   * Center (Ⅵ–Ⅶ) multi-select of allowed objective kinds (Town / Utopia /
-   * Grail). When set with 2+ entries the slot draws a random matching
+   * Center (Ⅵ–Ⅶ) multi-select of allowed objective kinds (Town / Settlement /
+   * Utopia / Grail). When set with 2+ entries the slot draws a random matching
    * designation (or, with {@link playerViiPick}, the discovering player
    * chooses which). A single entry behaves like {@link viiField}. When both
    * are set, `viiFields` wins. Absent = classic single {@link viiField} or
    * the printed objective.
    */
-  viiFields?: Array<"town" | "dragon_utopia" | "grail">;
+  viiFields?: ViiFieldDesignation[];
   /**
    * When true on a center face-down slot with {@link viiFields} of length ≥ 2,
    * the discovering player picks which objective kind the tile becomes before
@@ -11385,30 +11476,44 @@ export type CustomMapSettlementFieldPlan = {
   reward?: CustomFieldReward;
   vp?: number;
   holdRoundsToWin?: number;
+  /**
+   * With {@link holdRoundsToWin}: only count continuous hold rounds while the
+   * controller possesses the Grail (carried by a hero of theirs, or built on a
+   * field they control). Shortens Grail scenarios without auto-winning on dig.
+   */
+  holdRequiresGrail?: boolean;
   winCondition?: boolean;
 };
 
 /**
  * A designer guard on a single hex — the "monster" of a customized center hex,
  * map object or Location Token. Exactly one arm is meaningful:
- *   - `level` (1-7): a normal Field-Difficulty guard — the neutral army is
- *     drawn from the tier table exactly like a printed guard of that level
- *     (Quick Combat and experience follow the level as usual).
+ *   - `level` (1-7): Field-Difficulty composition from {@link NEUTRAL_ARMY_TABLE}.
+ *     Quick Combat / experience follow the level as usual.
+ *     {@link levelArmy} chooses HOW those bodies mint:
+ *       • `"neutral"` / absent — classic Neutral deck draws (legacy)
+ *       • `"packs"` — real faction Pack units of those tiers (level guard as units)
  *   - `units`: a CERTAIN ARMY — up to {@link MAX_CUSTOM_GUARD_UNITS} entries,
  *     each one of:
  *       • a Neutral unit def id (classic certain army),
  *       • `random:bronze|silver|gold|azure` — roll a random Neutral of that
  *         tier at fight time (seeded),
- *       • `pack:<unitDefId>` — a faction Pack side (Random Town custom armies).
- *     Minted for the fight like Creature-Bank guards (never drawn from nor
- *     recycled to the tier decks). Quick Combat and Diplomacy never bypass a
- *     certain army — the fight is always real; its experience uses the field's
- *     difficulty, derived from the army's tiers.
+ *       • `random-pack:bronze|silver|gold|azure` — roll a random faction Pack
+ *         of that tier at fight time (seeded),
+ *       • `pack:<unitDefId>` — a named faction Pack side (Random Town armies).
+ *     Minted Creature-Bank style (never deck-drawn). Never Quick-Combat skipped;
+ *     experience uses difficulty derived from the army's tiers.
+ *   - `packFaction`: every Pack / random-pack / level-as-packs body shares one
+ *     faction — a concrete {@link FactionId}, or `"random"` (roll once per fight).
+ *     Neutral / `random:` slots ignore it. Absent = free mix (legacy).
  * Sanitisers keep exactly one arm (`units` wins) and clamp both.
  */
 export type CustomGuardSpec = {
   level?: number;
+  /** How a level arm mints bodies. Absent = `"neutral"` (legacy). */
+  levelArmy?: "neutral" | "packs";
   units?: string[];
+  packFaction?: FactionId | "random";
 };
 
 /** How many exact units a {@link CustomGuardSpec.units} army may field. */
@@ -11497,6 +11602,20 @@ export type CustomCenterHexPlan = {
   reward?: CustomFieldReward;
   /** Victory Points for the first clearer (scored in VP mode; 1-10). */
   vp?: number;
+  /**
+   * Continuous control Victory Points while the player holds THIS Random Town /
+   * Random Settlement (or any center objective that ends up flaggable). Scored
+   * in VP mode ON TOP of first-clear {@link vp}. 1–10.
+   */
+  controlVp?: number;
+  /**
+   * Hold THIS objective continuously for N full rounds (1–10) to win immediately
+   * (works for Random Town / Random Settlement centers). Optional
+   * {@link holdRequiresGrail} gates the tick on Grail possession.
+   */
+  holdRoundsToWin?: number;
+  /** With {@link holdRoundsToWin}: only count rounds while possessing the Grail. */
+  holdRequiresGrail?: boolean;
   /** First player to clear / capture THIS objective wins the game immediately. */
   winCondition?: boolean;
 };
@@ -12256,7 +12375,7 @@ export type PendingChoice =
        */
       playerTilePick?: {
         tileInstanceId: string;
-        viiFields?: Array<"town" | "dragon_utopia" | "grail">;
+        viiFields?: ViiFieldDesignation[];
       };
       /** skeleton-reinforce: the bronze Few army units that may be flipped free. */
       skeletonReinforce?: { armyUnitIds: string[] };

@@ -39,6 +39,8 @@ import {
   secretFeatureFullLabel,
   secretFeatureLabel,
   planAllowedSecretFeatures,
+  planExcludedSecretFeatures,
+  tilePassesSecretFilters,
   SECRET_TILE_FEATURES,
   subterraneanTileBand,
   TILE_GROUP_BAND_LABELS,
@@ -328,7 +330,12 @@ const VII_FIELD_OPTIONS: { id: CustomMapTilePlan["viiField"]; label: string; hin
   { id: undefined, label: "Default", hint: "Keep whatever objective the drawn / chosen tile prints." },
   { id: "grail", label: "Grail", hint: "Force the Grail dig site on this slot's Ⅶ field." },
   { id: "dragon_utopia", label: "Dragon Utopia", hint: "Force the Dragon Utopia on this slot's Ⅶ field." },
-  { id: "town", label: "Town", hint: "Force a neutral conquerable Random Town on this slot's Ⅶ field." }
+  { id: "town", label: "Random Town", hint: "Force a neutral conquerable Random Town on this slot's Ⅶ field." },
+  {
+    id: "settlement",
+    label: "Random Settlement",
+    hint: "Force a difficulty-7 Settlement (same visit flow as a printed settlement)."
+  }
 ];
 
 /**
@@ -348,6 +355,15 @@ function nextCenterHex(
   }
   if (!next.vp) {
     delete next.vp;
+  }
+  if (!next.controlVp) {
+    delete next.controlVp;
+  }
+  if (!next.holdRoundsToWin) {
+    delete next.holdRoundsToWin;
+  }
+  if (!next.holdRoundsToWin || !next.holdRequiresGrail) {
+    delete next.holdRequiresGrail;
   }
   if (!next.winCondition) {
     delete next.winCondition;
@@ -372,6 +388,9 @@ function nextSettlementPlan(
   }
   if (!next.holdRoundsToWin) {
     delete next.holdRoundsToWin;
+  }
+  if (!next.holdRoundsToWin || !next.holdRequiresGrail) {
+    delete next.holdRequiresGrail;
   }
   if (!next.winCondition) {
     delete next.winCondition;
@@ -2794,12 +2813,31 @@ export function MapDesigner({
       .filter((plan, index) => plan.tileDefId && index !== selectedIndex)
       .map((plan) => plan.tileDefId as string)
   );
-  const availableSecretFeatures = SECRET_TILE_FEATURES.map((feature) => ({
-    ...feature,
-    matchCount: pickableTiles.filter(
-      (tile) => !pinnedElsewhere.has(tile.id) && tileMatchesSecretFeature(tile, feature.id)
-    ).length
-  })).filter((feature) => feature.matchCount > 0);
+  const selectedExcludeSet =
+    selected && selected.group !== "starting" ? planExcludedSecretFeatures(selected) : [];
+  const selectedIncludeSet =
+    selected && selected.group !== "starting" ? planAllowedSecretFeatures(selected) : [];
+
+  const availableSecretFeatures = SECRET_TILE_FEATURES.map((feature) => {
+    // Count tiles that match this include feature AND pass current excludes.
+    const matchCount = pickableTiles.filter((tile) => {
+      if (pinnedElsewhere.has(tile.id)) return false;
+      return tilePassesSecretFilters(tile, [feature.id], selectedExcludeSet);
+    }).length;
+    return { ...feature, matchCount };
+  }).filter((feature) => feature.matchCount > 0 || selectedIncludeSet.includes(feature.id));
+
+  /** Ban chips: every landmark; count = how many pool tiles would still pass if this ban is on. */
+  const availableExcludeFeatures = SECRET_TILE_FEATURES.map((feature) => {
+    const nextExcluded = selectedExcludeSet.includes(feature.id)
+      ? selectedExcludeSet
+      : [...selectedExcludeSet, feature.id];
+    const matchCount = pickableTiles.filter((tile) => {
+      if (pinnedElsewhere.has(tile.id)) return false;
+      return tilePassesSecretFilters(tile, selectedIncludeSet, nextExcluded);
+    }).length;
+    return { ...feature, matchCount };
+  });
 
   /** Apply Random / Secret / Face-up in one click. */
   const setSelectedSlotMode = (mode: TileSlotMode) => {
@@ -2815,6 +2853,11 @@ export function MapDesigner({
     const faceDownTokens = tokensPatch(selected, (token) =>
       faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
     );
+    // Keep landmark bans when staying face-down; clear on face-up / one-of.
+    const keepExcludes =
+      selected.excludeFeatures && selected.excludeFeatures.length > 0
+        ? { excludeFeatures: selected.excludeFeatures }
+        : { excludeFeatures: undefined };
 
     if (mode === "random") {
       updateTile(selectedIndex, {
@@ -2823,6 +2866,7 @@ export function MapDesigner({
         oneOfTileDefIds: undefined,
         secretFeature: undefined,
         secretFeatures: undefined,
+        ...keepExcludes,
         ...faceDownTokens
       });
       return;
@@ -2841,6 +2885,7 @@ export function MapDesigner({
         oneOfTileDefIds: undefined,
         secretFeature: undefined,
         secretFeatures: features.length > 0 ? features : undefined,
+        ...keepExcludes,
         ...faceDownTokens
       });
       return;
@@ -2868,6 +2913,7 @@ export function MapDesigner({
         oneOfTileDefIds: seedList,
         secretFeature: undefined,
         secretFeatures: undefined,
+        excludeFeatures: undefined,
         ...tokensPatch(selected, (token) =>
           faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
         )
@@ -2884,6 +2930,7 @@ export function MapDesigner({
       oneOfTileDefIds: undefined,
       secretFeature: undefined,
       secretFeatures: undefined,
+      excludeFeatures: undefined,
       ...retargetTokensForDef(selected, fallbackId)
     });
   };
@@ -2907,6 +2954,31 @@ export function MapDesigner({
       oneOfTileDefIds: undefined,
       secretFeature: undefined,
       secretFeatures: nextSet.length > 0 ? nextSet : undefined,
+      ...tokensPatch(selected, (token) =>
+        faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
+      )
+    });
+  };
+
+  /**
+   * Random / Secret: TOGGLE a banned landmark. The drawn tile must NOT carry
+   * any banned feature (e.g. "no Obelisk"). Real pool filter at setup.
+   */
+  const pickExcludeFeature = (feature: SecretTileFeature) => {
+    if (selectedIndex === null || !selected || selected.group === "starting") {
+      return;
+    }
+    const current = planExcludedSecretFeatures(selected);
+    const nextSet = current.includes(feature)
+      ? current.filter((id) => id !== feature)
+      : [...current, feature];
+    // Bans only apply to face-down pool draws — drop an exact pin so the filter
+    // can actually choose among remaining tiles (same spirit as secret include).
+    updateTile(selectedIndex, {
+      faceDown: true,
+      tileDefId: undefined,
+      oneOfTileDefIds: undefined,
+      excludeFeatures: nextSet.length > 0 ? nextSet : undefined,
       ...tokensPatch(selected, (token) =>
         faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
       )
@@ -5306,6 +5378,83 @@ export function MapDesigner({
                   </div>
                 ) : null}
 
+                {/* Step 2a′ — Ban landmarks (Random AND Secret face-down pool draws). Real exclude filter. */}
+                {(selectedMode === "random" || selectedMode === "secret") &&
+                PICKABLE_GROUPS.has(selected.group) ? (
+                  <div className="popoverFeaturePicker">
+                    <div className="popoverSectionLabel">Ban these landmarks (optional)</div>
+                    <small className="popoverHint">
+                      The drawn tile will never carry a banned landmark — e.g. <strong>No Obelisk</strong>. Real pool
+                      filter at game start (not decorative).
+                      {selected.group === "far" ? " Far pool already never places Obelisks globally." : ""}
+                    </small>
+                    <div
+                      className="popoverFeatureGrid"
+                      role="listbox"
+                      aria-label="Banned landmarks"
+                      aria-multiselectable="true"
+                    >
+                      {availableExcludeFeatures.map((feature) => {
+                        const isBanned = selectedExcludeSet.includes(feature.id);
+                        return (
+                          <button
+                            aria-selected={isBanned}
+                            className={`popoverFeatureCard${isBanned ? " selected" : ""}`}
+                            key={`ban-${feature.id}`}
+                            onClick={() => pickExcludeFeature(feature.id)}
+                            role="option"
+                            title={`Ban tiles with ${feature.label}. Remaining pool if banned: ${feature.matchCount}.`}
+                            type="button"
+                            style={
+                              isBanned
+                                ? { outline: "2px solid #c44", background: "rgba(180,40,40,0.15)" }
+                                : undefined
+                            }
+                          >
+                            <span className="popoverFeatureIcon" aria-hidden="true">
+                              <DesignerGlyph className="popoverFeatureGlyph" src={feature.iconSrc} />
+                            </span>
+                            <span className="popoverFeatureTitle">No {feature.label}</span>
+                            <span className="popoverFeatureCount">
+                              {feature.matchCount} tile{feature.matchCount === 1 ? "" : "s"} left
+                            </span>
+                            {isBanned ? <span className="popoverFeatureBadge">Banned</span> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {selectedExcludeSet.length > 0 ? (
+                      <div className="popoverSecretSummary" role="status">
+                        <div>
+                          <strong>In game:</strong> never draws a tile with{" "}
+                          <em>{selectedExcludeSet.map(secretFeatureFullLabel).join(" / ")}</em>
+                          {selectedSecretSet.length > 0
+                            ? ` (still matching ${selectedSecretSet.map(secretFeatureFullLabel).join(" OR ")})`
+                            : ""}
+                          .
+                        </div>
+                      </div>
+                    ) : null}
+                    {selectedMode === "random" &&
+                    selected.faceDown &&
+                    (selected.group === "far" || selected.group === "near") ? (
+                      <button
+                        aria-pressed={Boolean(selected.playerResourcePick)}
+                        className={`popoverFilterChip${selected.playerResourcePick ? " active" : ""}`}
+                        onClick={() =>
+                          updateTile(selectedIndex as number, {
+                            playerResourcePick: selected.playerResourcePick ? undefined : true
+                          })
+                        }
+                        title="Before reveal the discovering player chooses Gold or Valuables mine; the game draws a matching tile from the pool."
+                        type="button"
+                      >
+                        Player picks Gold / Valuables on reveal
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {/* Step 2b — Face-up tile grid, or advanced exact secret pin under Secret/Random. */}
                 {PICKABLE_GROUPS.has(selected.group) &&
                 (selectedMode === "faceup" ||
@@ -5465,7 +5614,7 @@ export function MapDesigner({
                               const current = new Set(selected.viiFields ?? (selected.viiField ? [selected.viiField] : []));
                               if (current.has(option.id)) current.delete(option.id);
                               else current.add(option.id);
-                              const next = [...current] as Array<"town" | "dragon_utopia" | "grail">;
+                              const next = [...current] as NonNullable<CustomMapTilePlan["viiFields"]>;
                               if (next.length === 0) {
                                 updateTile(selectedIndex as number, {
                                   viiField: undefined,
@@ -5527,8 +5676,10 @@ export function MapDesigner({
                     <div className="popoverSubLabel">First-clear reward &amp; Victory Points</div>
                     <small className="popoverHint">
                       A one-time bonus for the player who first clears this objective, on top of its printed
-                      reward. Searches are Times × Search(X) — e.g. 2× Search(5) Artifacts. Victory Points
-                      count when Victory-Points scoring is on.
+                      reward. Searches are Times × Search(X) — e.g. 2× Search(5) Artifacts. First-clear VP
+                      is paid once on capture (not continuous control). For Grail dig sites, prefer
+                      Possession VP under Victory &amp; scoring — dig/conquer alone does not score
+                      possession.
                     </small>
                     <FieldRewardEditor
                       ariaLabel="Center hex reward"
@@ -5545,6 +5696,74 @@ export function MapDesigner({
                         })
                       }
                     />
+                    <div className="popoverViiRewardRow" role="group" aria-label="Control VP and hold">
+                      <label className="popoverViiField_num popoverViiVp">
+                        <span>Control VP</span>
+                        <input
+                          aria-label="Center hex continuous control victory points"
+                          max={MAX_SETTLEMENT_VP}
+                          min={0}
+                          onChange={(event) => {
+                            const vp = Math.max(
+                              0,
+                              Math.min(MAX_SETTLEMENT_VP, Math.floor(Number(event.target.value) || 0))
+                            );
+                            updateTile(selectedIndex as number, {
+                              centerHex: nextCenterHex(selected.centerHex, {
+                                controlVp: vp > 0 ? vp : undefined
+                              })
+                            });
+                          }}
+                          title="VP while you control this Random Town / Random Settlement (VP mode)."
+                          type="number"
+                          value={selected.centerHex?.controlVp ?? ""}
+                        />
+                      </label>
+                      <label className="popoverViiField_num popoverViiVp">
+                        <span>Hold rounds to win</span>
+                        <input
+                          aria-label="Hold center hex rounds to win"
+                          max={MAX_SETTLEMENT_HOLD_ROUNDS}
+                          min={0}
+                          onChange={(event) => {
+                            const rounds = Math.max(
+                              0,
+                              Math.min(
+                                MAX_SETTLEMENT_HOLD_ROUNDS,
+                                Math.floor(Number(event.target.value) || 0)
+                              )
+                            );
+                            updateTile(selectedIndex as number, {
+                              centerHex: nextCenterHex(selected.centerHex, {
+                                holdRoundsToWin: rounds > 0 ? rounds : undefined
+                              })
+                            });
+                          }}
+                          type="number"
+                          value={selected.centerHex?.holdRoundsToWin ?? ""}
+                        />
+                      </label>
+                    </div>
+                    {selected.centerHex?.holdRoundsToWin ? (
+                      <label
+                        className="popoverCheckRow"
+                        title="Only count hold rounds while the controller also possesses the Grail (carried or built)."
+                      >
+                        <input
+                          aria-label="Hold requires Grail possession"
+                          checked={Boolean(selected.centerHex?.holdRequiresGrail)}
+                          onChange={(event) =>
+                            updateTile(selectedIndex as number, {
+                              centerHex: nextCenterHex(selected.centerHex, {
+                                holdRequiresGrail: event.target.checked || undefined
+                              })
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        <span>Requires Grail possession</span>
+                      </label>
+                    ) : null}
                     <label className="popoverCheckRow" title="The first player to clear / capture THIS objective wins the game immediately (in Victory-Points mode the completion scores the table instead).">
                       <input
                         aria-label="First clear of this center hex wins the game"
@@ -5643,6 +5862,26 @@ export function MapDesigner({
                         />
                       </label>
                     </div>
+                    {selected.settlement?.holdRoundsToWin ? (
+                      <label
+                        className="popoverCheckRow"
+                        title="Only count hold rounds while the controller also possesses the Grail (carried or built at a Town/Settlement)."
+                      >
+                        <input
+                          aria-label="Settlement hold requires Grail possession"
+                          checked={Boolean(selected.settlement?.holdRequiresGrail)}
+                          onChange={(event) =>
+                            updateTile(selectedIndex as number, {
+                              settlement: nextSettlementPlan(selected.settlement, {
+                                holdRequiresGrail: event.target.checked || undefined
+                              })
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        <span>Requires Grail possession</span>
+                      </label>
+                    ) : null}
                     <label className="popoverCheckRow" title="The first player to flag THIS settlement wins the game immediately (the instant twin of hold-to-win).">
                       <input
                         aria-label="First flag of this settlement wins the game"
