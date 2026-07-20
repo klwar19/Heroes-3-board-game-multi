@@ -1416,6 +1416,71 @@ export const adventureCards: CardLibrary = {
   "specialty.qingyun.1": withoutArt(mightSpecialtyOne("qingyun", "True Inheritors", "True Inheritors")),
   "specialty.qingyun.4": withoutArt(unitHealthSpecialty("qingyun", "True Inheritors", 4, 1, "True Inheritors")),
   "specialty.qingyun.6": withoutArt(unitInitiativeSpecialty("qingyun", "True Inheritors", 6, 1, "True Inheritors")),
+  // Miku (Fuyuki Virtual Diva) — Voice of Angel. NEW engine arms:
+  // I SLOW_ALL_ENEMIES, IV CREATE_HEAL_ON_ATTACKED (friendly), VI DAMAGE_ALL_ENEMY_UNITS.
+  "specialty.miku.1": withoutArt({
+    id: "specialty.miku.1",
+    name: "Voice of Angel I",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "miku",
+      "voice-of-angel",
+      "Ongoing (combat): every enemy unit gets −1 Initiative and −1 Combat movement for this Combat."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "SLOW_ALL_ENEMIES",
+      name: "Voice of Angel",
+      initiative: -1,
+      movementBonus: -1
+    },
+    implementationStatus: "implemented",
+    source: heroSource("miku")
+  }),
+  "specialty.miku.4": withoutArt({
+    id: "specialty.miku.4",
+    name: "Voice of Angel IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "miku",
+      "voice-of-angel",
+      "Ongoing (combat): after any of YOUR units is attacked (including Retaliation), heal 1 damage on that attacked unit if it still lives."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_HEAL_ON_ATTACKED",
+      name: "Voice of Angel",
+      amount: 1
+    },
+    implementationStatus: "implemented",
+    source: heroSource("miku")
+  }),
+  "specialty.miku.6": withoutArt({
+    id: "specialty.miku.6",
+    name: "Voice of Angel VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "miku",
+      "voice-of-angel",
+      "Instant: every enemy unit suffers 1 damage."
+    ],
+    target: { type: "none" },
+    effect: { type: "DAMAGE_ALL_ENEMY_UNITS", amount: 1 },
+    implementationStatus: "implemented",
+    source: heroSource("miku")
+  }),
   "specialty.rion.1": {
     id: "specialty.rion.1",
     name: "Battlefield Medic I",

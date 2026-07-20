@@ -187,7 +187,14 @@ export function heroGradeSpellPowerBonus(state: GameState, playerId: PlayerId): 
 
 /** Bounty Hunter's Eye (tier 1): +1 gold after each won combat. */
 export function heroGradeWinGold(state: GameState, playerId: PlayerId): number {
-  return heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.bountyHuntersEye) ? 1 : 0;
+  let gold = 0;
+  if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.bountyHuntersEye)) {
+    gold += 1;
+  }
+  if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.standingOvation)) {
+    gold += 1;
+  }
+  return gold;
 }
 
 /** Provisioner (tier 1): +1 building materials at each Resources round. */

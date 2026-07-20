@@ -83,6 +83,8 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // Aoko's Leyline Mending IS a heal/cleanse set (the generic medic wiring), so
   // she shares the Cure SPELL icon like Astra.
   aoko: "/assets/specialty-card/icon-cure.webp",
+  // Miku's Voice of Angel — teal mic + wings + song notes (Codex imagegen).
+  miku: "/assets/specialty-card/icon-voice_of_angel.webp",
   // Lingxi's Healing Arts set grants/doubles the First Aid Tent — dedicated
   // specialty-card medallion icon (not the full First Aid ability card scan,
   // which is unreadable in the specialty icon well).

@@ -128,7 +128,7 @@ import {
   heroTrainAvailable,
   playerMainHeroInCombat
 } from "./anime-hero-grades";
-import { equipmentSpellPowerBonus } from "./anime-equipment";
+import { equipmentFirstSpellPowerBonus, equipmentSpellPowerBonus } from "./anime-equipment";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
@@ -362,6 +362,10 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
   // standing chokepoint so it STACKS observably with Cultivation Nascent Soul
   // and the Arcane Insight grade (a caster with all three casts three tiers up).
   bonus += equipmentSpellPowerBonus(state, playerId);
+  // Neon Microphone: first Spell each combat +1 Power (spell cards only).
+  if (card.kind === "spell") {
+    bonus += equipmentFirstSpellPowerBonus(state, playerId);
+  }
   return bonus;
 }
 
@@ -2735,6 +2739,11 @@ function isOptionEffectPlayable(
     // Septienna's Death Ripple: a targetless combat activation that sweeps every
     // enemy unit of a grade.
     case "DAMAGE_ENEMY_UNITS_BY_GRADE":
+    // Miku Voice of Angel VI: targetless damage to every living enemy.
+    case "DAMAGE_ALL_ENEMY_UNITS":
+    // Miku Voice of Angel I/IV: targetless ongoing combat plays.
+    case "SLOW_ALL_ENEMIES":
+    case "CREATE_HEAL_ON_ATTACKED":
     // Oidana VI: a targetless combat activation that auras every neutral unit
     // the caster controls with +1 Attack for the whole battle.
     case "CREATE_VARIANT_ATTACK_BUFF":

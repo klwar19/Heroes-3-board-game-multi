@@ -29,9 +29,10 @@ const equipmentArtOnDisk = (id: string) =>
   existsSync(fileURLToPath(new URL(`../../../public${equipmentArtPath(id)}`, import.meta.url)));
 
 describe("anime equipment catalog integrity", () => {
-  it("ships exactly the 12 items with the specced slot / cost / package / context", () => {
+  it("ships the catalog items with the specced slot / cost / package / context", () => {
     const items = listEquipmentDefinitions();
-    expect(items).toHaveLength(12);
+    // V1 (6) + wave 2 (6) + Miku/idol isekai wave (3) = 15.
+    expect(items).toHaveLength(15);
     const bySlug = (id: string) => getEquipmentDefinition(id)!;
     // V1 (6).
     expect(bySlug(EQUIPMENT_IDS.ironBloodSword)).toMatchObject({ slot: "weapon", cost: 4, package: "anime-xianxia" });
@@ -47,6 +48,10 @@ describe("anime equipment catalog integrity", () => {
     expect(bySlug(EQUIPMENT_IDS.spiritCraneMount)).toMatchObject({ slot: "mount", cost: 6, package: "shared", requiresContext: "wog.commanders" });
     expect(bySlug(EQUIPMENT_IDS.bladeOfTheTrial)).toMatchObject({ slot: "weapon", cost: 5, package: "shared" });
     expect(bySlug(EQUIPMENT_IDS.alchemistsSatchel)).toMatchObject({ slot: "armor", cost: 6, package: "shared" });
+    // Miku / idol isekai wave (3).
+    expect(bySlug(EQUIPMENT_IDS.neonMicrophone)).toMatchObject({ slot: "weapon", cost: 5, package: "anime-isekai" });
+    expect(bySlug(EQUIPMENT_IDS.stageCostume)).toMatchObject({ slot: "armor", cost: 5, package: "anime-isekai" });
+    expect(bySlug(EQUIPMENT_IDS.twinTailRibbon)).toMatchObject({ slot: "accessory", cost: 4, package: "anime-isekai" });
     // Ungated V1 + wave-2 mount/weapon/armor carry NO context requirement.
     expect(bySlug(EQUIPMENT_IDS.windriderSaddle).requiresContext).toBeUndefined();
     expect(bySlug(EQUIPMENT_IDS.ironBloodSword).requiresContext).toBeUndefined();
@@ -123,6 +128,9 @@ describe("anime equipment catalog integrity", () => {
       EQUIPMENT_IDS.adventurersBlade,
       EQUIPMENT_IDS.guildIssueMail,
       EQUIPMENT_IDS.supplySatchel,
+      EQUIPMENT_IDS.neonMicrophone,
+      EQUIPMENT_IDS.stageCostume,
+      EQUIPMENT_IDS.twinTailRibbon,
       ...WAVE_2_SHARED
     ]);
     // Both include the shared Satchel + every wave-2 item; neither crosses into

@@ -4410,6 +4410,8 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       // one-shot charges refresh per COMBAT — clear the spent flags here.
       player.combatStats.equipmentFirstAttackUsed = false;
       player.combatStats.equipmentIncomingAttackUsed = false;
+      player.combatStats.equipmentFirstSpellPowerUsed = false;
+      player.combatStats.equipmentStageCostumeUsed = false;
     }
   }
 

@@ -729,6 +729,8 @@ export {
   playerOwnsEquipment,
   heroEquipmentInventoryOf,
   equipmentSpellPowerBonus,
+  equipmentFirstSpellPowerBonus,
+  applyEquipmentStageCostumeDefenseToken,
   equipmentHandLimitBonus,
   equipmentWinGold,
   equipmentResourceRoundMaterials,

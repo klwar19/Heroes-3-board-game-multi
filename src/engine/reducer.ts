@@ -214,10 +214,12 @@ import {
   playerMainHeroInCombat
 } from "./anime-hero-grades";
 import {
+  applyEquipmentStageCostumeDefenseToken,
   equipmentFirstAttackBonus,
   equipmentIncomingAttackPenalty,
   equipmentRound1AttackBonus,
-  markEquipmentAttackResolved
+  markEquipmentAttackResolved,
+  markEquipmentFirstSpellCast
 } from "./anime-equipment";
 import { createSeededRandom, setActiveEntropy } from "./random";
 import {
@@ -1864,6 +1866,8 @@ function stripCombatHealthBonusFromRemovedEffects(
  * draw N cards" effects (Zydar's Sorcery VI).
  */
 function noteSpellCast(state: GameState, player: PlayerState, countsTowardLimit = true): void {
+  // Neon Microphone: consume the first-spell +1 Power charge on any real spell cast.
+  markEquipmentFirstSpellCast(state, player.id);
   // Free bonus casts (Helm of the Alabaster Unicorn Spell-deck cast, Spell Scroll
   // cast/instant, Tarnum VI over-limit) pass countsTowardLimit=false: they do not
   // consume the one-Spell-per-combat-round limit (spellsCastThisRound), so a later
@@ -2213,6 +2217,28 @@ function healUnitDamage(
     target,
     amount: healedAmount
   });
+}
+
+/**
+ * Voice of Angel IV arm: after a unit is attacked (and still living with damage),
+ * every applicable HEAL_AFTER_ATTACKED effect on the defender heals it. Player-
+ * scoped effects only match the specialty owner's own units (effectAppliesToUnit).
+ */
+function applyHealAfterAttacked(state: GameState, defender: CombatUnitState): void {
+  if (!state.combat || !isUnitAlive(defender) || defender.damage <= 0) {
+    return;
+  }
+  for (const effect of state.activeEffects) {
+    if (!effectAppliesToUnit(effect, defender)) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type !== "HEAL_AFTER_ATTACKED" || modifier.amount <= 0) {
+        continue;
+      }
+      healUnitDamage(state, effect.source, { type: "unit", unitId: defender.id }, modifier.amount);
+    }
+  }
 }
 
 /**
@@ -4680,6 +4706,12 @@ function finishResolvedAttack(
   }
 
   applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
+  // Miku Voice of Angel IV (and any future HEAL_AFTER_ATTACKED sources): after a
+  // resolved attack (not cancelled), heal the defender if the owner's ongoing
+  // effect is active. Runs for declared attacks AND retaliations.
+  applyHealAfterAttacked(state, details.defender);
+  // Stage Costume: first attack against the owner's unit this combat → Defense token.
+  applyEquipmentStageCostumeDefenseToken(state, details.defender);
   // Great Shamans' Freezing Shot: their attack also slows the target next round.
   applyOnAttackInitiativeDebuff(state, details.attacker, details.defender, details.isRetaliation);
   applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
@@ -13118,25 +13150,41 @@ function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { ty
     return;
   }
 
-  // War Cry: combat active during your own unit's activation.
+  // War Cry / Encore: combat active during your own unit's activation.
   const combat = state.combat;
   if (!combat || node.skill.mode !== "combat-active") {
-    throw new Error("War Cry is used during your unit's combat activation.");
+    throw new Error("That combat skill is used during your unit's combat activation.");
   }
   const unit = action.unitId ? combat.units[action.unitId] : undefined;
   if (!unit || unit.controllerId !== action.playerId) {
     throw new Error("Pick your own unit.");
   }
   if (combat.activeUnitId !== unit.id) {
-    throw new Error("War Cry is used during that unit's activation.");
+    throw new Error("That skill is used during that unit's activation.");
   }
   if (!playerMainHeroInCombat(state, action.playerId)) {
     throw new Error("Hero Grade combat skills only aid your main hero's battles.");
   }
   if (!heroSkillAvailableThisCombat(state, action.playerId, node.id)) {
-    throw new Error("War Cry has already been used this combat.");
+    throw new Error("That skill has already been used this combat.");
   }
-  applyHeroSkillStatBuff(state, action.playerId, unit, node.skill.stat, node.skill.amount, "current-activation", `War Cry (${node.name.en})`);
+  if (node.skill.stat === "heal") {
+    healUnitDamage(
+      state,
+      { type: "system" },
+      { type: "unit", unitId: unit.id },
+      node.skill.amount
+    );
+    markHeroSkillUsedThisCombat(state, action.playerId, node.id);
+    appendEvent(state, {
+      type: "HERO_SKILL_USED",
+      playerId: action.playerId,
+      nodeId: node.id,
+      message: `${node.name.en}: ${unit.cardName} heals ${node.skill.amount} damage.`
+    });
+    return;
+  }
+  applyHeroSkillStatBuff(state, action.playerId, unit, "attack", node.skill.amount, "current-activation", `War Cry (${node.name.en})`);
   markHeroSkillUsedThisCombat(state, action.playerId, node.id);
   appendEvent(state, {
     type: "HERO_SKILL_USED",
@@ -13189,7 +13237,27 @@ function applyHeroSkillReaction(
   if (!heroSkillAvailableThisCombat(state, action.playerId, node.id)) {
     throw new Error("That skill has already been used this combat.");
   }
-  applyHeroSkillStatBuff(state, action.playerId, unit, node.skill.stat, node.skill.amount, "current-combat-round", `${node.name.en} (Hero Grade)`);
+  if (node.skill.stat === "defense-token") {
+    unit.defenseToken = true;
+    markHeroSkillUsedThisCombat(state, action.playerId, node.id);
+    appendEvent(state, {
+      type: "HERO_SKILL_USED",
+      playerId: action.playerId,
+      nodeId: node.id,
+      message: `${node.name.en}: ${unit.cardName} gains a Defense token.`
+    });
+    advanceReactionWindowAfterPlay(state, action.playerId, cards);
+    return;
+  }
+  applyHeroSkillStatBuff(
+    state,
+    action.playerId,
+    unit,
+    node.skill.stat,
+    node.skill.amount,
+    "current-combat-round",
+    `${node.name.en} (Hero Grade)`
+  );
   markHeroSkillUsedThisCombat(state, action.playerId, node.id);
   appendEvent(state, {
     type: "HERO_SKILL_USED",
@@ -14341,6 +14409,61 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       }
     }
     finishCombatIfNeeded(state);
+  }
+
+  // Miku Voice of Angel VI: every living enemy unit suffers `amount` damage.
+  if (effect.type === "DAMAGE_ALL_ENEMY_UNITS" && state.combat) {
+    for (const unit of Object.values(state.combat.units)) {
+      if (unit.controllerId !== action.playerId && isUnitAlive(unit)) {
+        dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
+      }
+    }
+    finishCombatIfNeeded(state);
+  }
+
+  // Miku Voice of Angel I: stamp −Initiative / −movement on every living enemy.
+  if (effect.type === "SLOW_ALL_ENEMIES" && state.combat) {
+    for (const unit of Object.values(state.combat.units)) {
+      if (unit.controllerId === action.playerId || !isUnitAlive(unit)) {
+        continue;
+      }
+      createActiveEffect(
+        state,
+        {
+          name: effect.name,
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "negative",
+          removable: true,
+          modifiers: [
+            { type: "INITIATIVE_BONUS", amount: effect.initiative },
+            ...(effect.movementBonus !== undefined
+              ? [{ type: "MOVEMENT_BONUS" as const, amount: effect.movementBonus }]
+              : [])
+          ]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId,
+        { type: "unit", unitId: unit.id }
+      );
+    }
+  }
+
+  // Miku Voice of Angel IV: player-scoped heal-after-attacked for the owner's army.
+  if (effect.type === "CREATE_HEAL_ON_ATTACKED" && state.combat) {
+    createActiveEffect(
+      state,
+      {
+        name: effect.name,
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "HEAL_AFTER_ATTACKED", amount: effect.amount }]
+      },
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      action.playerId
+    );
   }
 
   // Oidana VI (ongoing): "+1 Attack to all your neutral (Diplomacy-recruited)

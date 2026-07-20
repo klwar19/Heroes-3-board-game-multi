@@ -133,7 +133,9 @@ export const FACTION_GRADE_REGISTER: Record<string, GradeRegisterKey> = {
   conflux: "core",
   factory: "core",
   cove: "core",
-  bulwark: "core"
+  bulwark: "core",
+  fuyuki: "isekai",
+  azure_breeze: "xianxia"
 };
 
 /** The register family for a faction (defaults to core when unmapped). */
@@ -154,20 +156,24 @@ export type HeroGradeSkillSpec =
       amount: number;
     }
   | {
-      /** War Cry: during your unit's combat activation, +N Attack this activation. */
+      /**
+       * War Cry: during your unit's combat activation, +N Attack this activation.
+       * Encore: heal N damage on the active unit this activation.
+       */
       mode: "combat-active";
-      stat: "attack";
+      stat: "attack" | "heal";
       amount: number;
     }
   | {
       /**
        * Battle Focus (attacker/attack) / Iron Will (defender/defense): an instant
        * reaction inside an open attack window on your own unit, +N to the stat
-       * for that attack. Once per combat.
+       * for that attack. Harmony Ward: grant a Defense token on the defender.
+       * Once per combat.
        */
       mode: "reaction";
       role: "attacker" | "defender";
-      stat: "attack" | "defense";
+      stat: "attack" | "defense" | "defense-token";
       amount: number;
     };
 
@@ -194,7 +200,11 @@ export const HERO_GRADE_NODE_IDS = {
   forcedMarch: "forced-march",
   arcaneInsight: "arcane-insight",
   warCry: "war-cry",
-  tactician: "tactician"
+  tactician: "tactician",
+  // Idol / song-themed creative nodes (shared tree — any hero may pick)
+  encore: "encore",
+  harmonyWard: "harmony-ward",
+  standingOvation: "standing-ovation"
 } as const;
 
 /** The tree nodes, keyed by id. The `tier` field groups them (see HERO_GRADE_TREE). */
@@ -270,6 +280,33 @@ export const HERO_GRADE_NODES: Record<string, HeroGradeNode> = {
     kind: "passive",
     name: { en: "Tactician", vi: "Chiến Thuật Gia" },
     summary: "Passive: gain +2 gold at the start of each Resources round."
+  },
+
+  // ---- Idol / song-themed creative nodes -----------------------------------
+  [HERO_GRADE_NODE_IDS.encore]: {
+    id: HERO_GRADE_NODE_IDS.encore,
+    tier: 1,
+    kind: "skill",
+    name: { en: "Encore", vi: "Điệp Khúc" },
+    summary:
+      "Skill (active, during your unit's activation): heal 1 damage on that unit. Once per combat.",
+    skill: { mode: "combat-active", stat: "heal", amount: 1 }
+  },
+  [HERO_GRADE_NODE_IDS.harmonyWard]: {
+    id: HERO_GRADE_NODE_IDS.harmonyWard,
+    tier: 2,
+    kind: "skill",
+    name: { en: "Harmony Ward", vi: "Hộ Ca" },
+    summary:
+      "Skill (reaction): when your unit is attacked, it gains a Defense token after the attack resolves. Once per combat.",
+    skill: { mode: "reaction", role: "defender", stat: "defense-token", amount: 1 }
+  },
+  [HERO_GRADE_NODE_IDS.standingOvation]: {
+    id: HERO_GRADE_NODE_IDS.standingOvation,
+    tier: 3,
+    kind: "passive",
+    name: { en: "Standing Ovation", vi: "Vỗ Tay Đứng" },
+    summary: "Passive: gain +1 gold after each combat you win (stacks with Bounty Hunter's Eye / equipment)."
   }
 };
 

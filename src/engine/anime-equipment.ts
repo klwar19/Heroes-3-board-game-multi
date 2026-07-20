@@ -115,9 +115,76 @@ export function equipmentSpellPowerBonus(state: GameState, playerId: PlayerId): 
   return playerHasEquipment(state, playerId, EQUIPMENT_IDS.cosmosPendant) ? 1 : 0;
 }
 
-/** Guild-Issue Mail (armor): +1 hand limit. Folded at effectiveHandLimit. */
+/**
+ * Neon Microphone (weapon): +1 Power on the owner's FIRST Spell each combat.
+ * Folded at standingSpellPower for spells only; the charge is consumed when a
+ * spell cast resolves (`markEquipmentFirstSpellCast`).
+ */
+export function equipmentFirstSpellPowerBonus(state: GameState, playerId: PlayerId): number {
+  if (!equipmentEnabled(state)) {
+    return 0;
+  }
+  if (!playerHasEquipment(state, playerId, EQUIPMENT_IDS.neonMicrophone)) {
+    return 0;
+  }
+  if (!playerMainHeroInCombat(state, playerId)) {
+    return 0;
+  }
+  if (state.players[playerId]?.combatStats.equipmentFirstSpellPowerUsed) {
+    return 0;
+  }
+  return 1;
+}
+
+/** Consume the Neon Microphone first-spell charge after a spell cast lands. */
+export function markEquipmentFirstSpellCast(state: GameState, playerId: PlayerId): void {
+  if (equipmentFirstSpellPowerBonus(state, playerId) <= 0) {
+    return;
+  }
+  const stats = state.players[playerId]?.combatStats;
+  if (stats) {
+    stats.equipmentFirstSpellPowerUsed = true;
+  }
+}
+
+/**
+ * Stage Costume (armor): after the first attack against one of the owner's
+ * units this combat resolves, grant that defender a Defense token (once).
+ */
+export function applyEquipmentStageCostumeDefenseToken(
+  state: GameState,
+  defender: { controllerId: PlayerId; id: string; defenseToken?: boolean }
+): void {
+  if (!equipmentEnabled(state)) {
+    return;
+  }
+  if (!playerHasEquipment(state, defender.controllerId, EQUIPMENT_IDS.stageCostume)) {
+    return;
+  }
+  if (!playerMainHeroInCombat(state, defender.controllerId)) {
+    return;
+  }
+  const stats = state.players[defender.controllerId]?.combatStats;
+  if (!stats || stats.equipmentStageCostumeUsed) {
+    return;
+  }
+  stats.equipmentStageCostumeUsed = true;
+  // Defense token: the Defend-die shield. No-op if already held.
+  if (!defender.defenseToken) {
+    (defender as { defenseToken?: boolean }).defenseToken = true;
+  }
+}
+
+/** Guild-Issue Mail (armor) OR Twin-Tail Ribbon (accessory): +1 hand limit each. */
 export function equipmentHandLimitBonus(state: GameState, playerId: PlayerId): number {
-  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.guildIssueMail) ? 1 : 0;
+  let bonus = 0;
+  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.guildIssueMail)) {
+    bonus += 1;
+  }
+  if (playerHasEquipment(state, playerId, EQUIPMENT_IDS.twinTailRibbon)) {
+    bonus += 1;
+  }
+  return bonus;
 }
 
 /**
