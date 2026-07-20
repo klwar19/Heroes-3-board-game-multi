@@ -158,6 +158,15 @@ describe("playable Anime Realms towns", () => {
     // Silver dwelling name must not claim the bronze crane.
     expect(coreBuildingDefinitions["azure_breeze.dwelling_silver"]?.name).toBe("Inheritance Pavilion");
     expect(coreBuildingDefinitions["azure_breeze.dwelling_gold"]?.name).toBe("Golden Core Summit");
+
+    // LV5 silver must not outstat LV6 gold (few side raw A+D+H budget).
+    const lv5 = coreUnitDefinitions["azure_breeze.true_inheritors"]!.few;
+    const lv6 = coreUnitDefinitions["azure_breeze.core_master"]!.few;
+    const budget = (s: { attack: number; defense: number; health: number }) => s.attack + s.defense + s.health;
+    expect(budget(lv5), "LV5 few A+D+H").toBeLessThan(budget(lv6));
+    expect(lv5.attack, "LV5 attack").toBeLessThan(lv6.attack);
+    expect(lv6.cost.valuables ?? 0, "LV6 gold costs valuables").toBeGreaterThan(0);
+    expect(lv5.cost.valuables ?? 0, "LV5 silver no valuables").toBe(0);
   });
 
   it("Azure Breeze engine art paths exist for printed LV tiers", () => {
