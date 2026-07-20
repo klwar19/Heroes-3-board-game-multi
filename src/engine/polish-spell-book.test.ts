@@ -16,8 +16,9 @@ import {
   openSharedDeckSearch,
   pumpAdventureQueues
 } from "./adventure-reducer";
-import { gainExperience, startAdventureRound } from "./adventure";
+import { gainExperience, processPendingVisit, startAdventureRound } from "./adventure";
 import { CAST_A_SPELL_CARD_ID } from "./polish-spell-book";
+import { MORALE_CARD_IDS } from "@/data/cards/morale";
 
 function ownedCount(player: ReturnType<typeof createAdventureGameState>["players"][string], cardId: string): number {
   return [...player.deck, ...player.hand, ...player.discard].filter((candidate) => candidate === cardId).length;
@@ -965,5 +966,173 @@ describe("Polish Spell Book — discard-recovery artifacts", () => {
     // Classic behaviour: the discard Spell itself is the pick (no "Refresh" wording).
     expect(state.pendingChoice.options.some((option) => option.label.includes("spell.haste") || option.label.includes("Haste"))).toBe(true);
     expect(state.pendingChoice.options.every((option) => !option.label.startsWith("Refresh"))).toBe(true);
+  });
+});
+
+describe("Polish Spell Book — co-composition fixes", () => {
+  function polishAdventure(seed: string): GameState {
+    return createAdventureGameState({
+      seed,
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true },
+      moraleCards: true
+    });
+  }
+
+  it("morale repeat_search returns a Book Spell to the shared Spell discard, never personal discard", () => {
+    // Seed: player held a Book Spell from a Search; accepting repeat_search must
+    // uninscribe it to the SHARED discard (mutation control: personal discard).
+    let state = polishAdventure("polish-morale-repeat-book");
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.spellBook = ["spell.haste"];
+    state.players.p1.spellBookUsed = [];
+    state.players.p1.discard = [];
+    // Inject a held Positive Morale repeat_search card.
+    state.players.p1.moraleCards = { positive: [MORALE_CARD_IDS.repeatSearch], negative: [] };
+    // Open the morale-repeat-search choice as if a Search just kept Haste into Book.
+    state.pendingChoice = {
+      id: "choice_morale_repeat",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Discard the gained card to Search again?",
+      options: [{ label: "Discard Haste and Search again" }, { label: "Keep Haste" }],
+      context: "morale-repeat-search",
+      moraleRepeatSearch: { cardId: "spell.haste", deckId: "spells", count: 2 },
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+
+    const sharedBefore = state.decks.spells?.discardPile.length ?? 0;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: "choice_morale_repeat",
+      optionIndex: 0
+    });
+
+    expect(state.players.p1.spellBook).not.toContain("spell.haste");
+    expect(state.players.p1.discard).not.toContain("spell.haste");
+    expect(state.decks.spells?.discardPile).toContain("spell.haste");
+    expect((state.decks.spells?.discardPile.length ?? 0)).toBe(sharedBefore + 1);
+  });
+
+  it("Event remove-for-search offers Book Spells and never Cast a Spell", () => {
+    const state = polishAdventure("polish-event-remove-book");
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "stat.attack"];
+    state.players.p1.spellBook = ["spell.haste", "spell.magic_arrow"];
+    state.players.p1.spellBookUsed = ["spell.slow"];
+    state.players.p1.removed = [];
+    // Need a real field id on the map for pendingVisit.
+    const fieldId = Object.keys(state.adventure!.fields)[0];
+    const heroId = Object.keys(state.heroes).find((id) => state.heroes[id]?.controllerId === "p1") ?? "hero_p1";
+    state.adventure!.pendingVisit = {
+      playerId: "p1",
+      heroId,
+      fieldId,
+      steps: [
+        {
+          type: "EVENT_REMOVE_FOR_SEARCH",
+          filter: "spell",
+          removed: 0,
+          per: 2,
+          searchCount: 3,
+          searchDecks: ["artifacts"],
+          single: true,
+          minRemoved: 2,
+          mustRemove: 1
+        }
+      ]
+    };
+    processPendingVisit(state);
+    expect(state.adventure?.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
+    const step = state.adventure!.pendingVisit!.steps[0];
+    if (step.type !== "CHOOSE_ONE") {
+      throw new Error("expected remove menu");
+    }
+    const labels = step.options.map((option) => option.label);
+    expect(labels.some((label) => /haste/i.test(label))).toBe(true);
+    expect(labels.some((label) => /slow/i.test(label))).toBe(true);
+    // Cast a Spell must NOT be offered as an owned Spell.
+    expect(labels.every((label) => !/cast a spell/i.test(label))).toBe(true);
+    // Removing a Book Spell lands it in removed.
+    const hasteOpt = step.options.find((option) => /haste/i.test(option.label));
+    expect(hasteOpt).toBeTruthy();
+    state.adventure!.pendingVisit!.steps = [
+      ...(hasteOpt!.steps ?? []),
+      ...state.adventure!.pendingVisit!.steps.slice(1)
+    ];
+    processPendingVisit(state);
+    expect(state.players.p1.spellBook).not.toContain("spell.haste");
+    expect(state.players.p1.removed).toContain("spell.haste");
+  });
+
+  it("own-deck dig keep routes a leaked Spell into the Book, not hand", () => {
+    let state = polishAdventure("polish-dig-keep-book");
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.hand = [];
+    state.players.p1.spellBook = [];
+    // Simulate own-deck-pick of a Spell that somehow sat in the M&M deck.
+    state.pendingChoice = {
+      id: "choice_dig",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Keep one",
+      options: [{ label: "Keep Haste" }, { label: "Keep Attack" }],
+      context: "own-deck-pick",
+      ownDeckPick: { cardIds: ["spell.haste", "stat.attack"] },
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: "choice_dig",
+      optionIndex: 0
+    });
+    expect(state.players.p1.spellBook).toContain("spell.haste");
+    expect(state.players.p1.hand).not.toContain("spell.haste");
+    expect(state.players.p1.discard).toContain("stat.attack");
+  });
+
+  it("CONTROL: with the rule OFF, morale repeat_search still uses personal discard", () => {
+    let state = createAdventureGameState({
+      seed: "polish-morale-repeat-off",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": false },
+      moraleCards: true
+    });
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.hand = ["spell.haste"];
+    state.players.p1.discard = [];
+    state.players.p1.moraleCards = { positive: [MORALE_CARD_IDS.repeatSearch], negative: [] };
+    state.pendingChoice = {
+      id: "choice_morale_repeat_off",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Discard the gained card to Search again?",
+      options: [{ label: "Discard Haste and Search again" }, { label: "Keep Haste" }],
+      context: "morale-repeat-search",
+      moraleRepeatSearch: { cardId: "spell.haste", deckId: "spells", count: 2 },
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: "choice_morale_repeat_off",
+      optionIndex: 0
+    });
+    expect(state.players.p1.hand).not.toContain("spell.haste");
+    expect(state.players.p1.discard).toContain("spell.haste");
   });
 });

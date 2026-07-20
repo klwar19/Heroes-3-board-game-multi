@@ -290,7 +290,9 @@ import {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
   isCastASpellCard,
-  polishSpellBookEnabled
+  isOwnedSpellCard,
+  polishSpellBookEnabled,
+  returnOwnedSpellToSharedDiscard
 } from "./polish-spell-book";
 import {
   clearPolishArtifactAccess,
@@ -11224,8 +11226,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
 
-    // Option 0 resolves the card: the gained card is discarded from hand and
-    // the same Search (X) runs again. Any other option keeps both cards.
+    // Option 0 resolves the card: the gained card is discarded and the same
+    // Search (X) runs again. Any other option keeps both cards.
+    // Polish Spell Book: a kept Spell lives in the Book — uninscribe it to the
+    // SHARED Spell discard (never personal discard: under Polish that zone is
+    // uncastable / un-refreshable and would strand the card).
     if (action.optionIndex === 0) {
       const handIndex = player.hand.indexOf(data.cardId);
       const bookIndex = player.spellBook.indexOf(data.cardId);
@@ -11235,12 +11240,15 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       if (!consumeHeldMoraleCard(state, action.playerId, MORALE_CARD_IDS.repeatSearch)) {
         throw new Error("That Positive Morale card is no longer held.");
       }
-      if (handIndex !== -1) {
+      if (bookIndex !== -1 && polishSpellBookEnabled(state) && isOwnedSpellCard(data.cardId)) {
+        returnOwnedSpellToSharedDiscard(state, player, data.cardId, "spellBook");
+      } else if (handIndex !== -1) {
         player.hand.splice(handIndex, 1);
+        player.discard.push(data.cardId);
       } else {
         player.spellBook.splice(bookIndex, 1);
+        player.discard.push(data.cardId);
       }
-      player.discard.push(data.cardId);
       if (state.adventure) {
         state.adventure.rewardQueue.unshift({
           playerId: action.playerId,
@@ -11913,7 +11921,8 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       throw new Error("Pick one of the revealed cards.");
     }
 
-    player.hand.push(cardId);
+    // Polish Spell Book: owned Spells must enter the Book, never hand.
+    gainOwnedCard(state, action.playerId, cardId);
     player.discard.push(...pick.cardIds.filter((_, index) => index !== action.optionIndex));
 
     // Adrienne's Fire Magic IV: after the Search(3) pick, shuffle the whole
@@ -13071,7 +13080,8 @@ export function openSharedDeckSearch(
     }
     for (const school of schoolFetch) {
       const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
-      options.push({ label: `Draw the first ${schoolName} Magic spell — take it into hand` });
+      const dest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
+      options.push({ label: `Draw the first ${schoolName} Magic spell — take it into ${dest}` });
     }
 
     state.pendingChoice = {
