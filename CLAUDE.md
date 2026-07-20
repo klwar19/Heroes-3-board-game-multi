@@ -3439,20 +3439,14 @@ What runs (each pinned by a test that fails if the wiring is removed):
   `subterranean-gate-planning.test.ts` (preview == engine, incl. the five-surface
   and double-gate cases and `unreachableUndergroundCenters`),
   `map-designer.test.tsx`, `map-registry.test.ts`.
-- **2. Yellow borders — PER EDGE.** ⚠️ **SEALING DISABLED for now** (`DESIGNER_BORDER_SEALING_ENABLED
-  = false` in `adventure.ts`): the designer 🖌 tool, its `borderEdges`/`extraBorders`
-  data and the save round-trip are all UNTOUCHED, but a drawn border no longer
-  walls anything off — the engine predicates (`isDesignedEdgeSealedBetween`,
-  `isTileSlotDesignedSealed`, `tileEdgeDesignedSealed`, the per-edge branch of
-  `heroCanDiscoverTileAcrossBorders`) short-circuit while the flag is off, AND
-  `applyDesignedBorders` / the object-border copy skip stamping the data onto the
-  live map so no inert in-game "wall" renders either. Flip the flag back to `true`
-  to restore everything below. The sealing suites in `designed-borders.test.ts` /
-  `map-objects.test.ts` / `computer/map-navigation.test.ts` are gated on the flag
-  (skipped while off) with a dedicated "lock removed" pin asserting the disabled
-  behaviour; PRINTED tile borders (`outerImpassable`, internal lines) are
-  unaffected either way. The rest of this bullet describes the feature as it works
-  when re-enabled:
+- **2. Yellow borders — PER EDGE (ON by default).** `DESIGNER_BORDER_SEALING_ENABLED
+  = true` in `adventure.ts`: setup copies plan borders onto live tiles so they
+  RENDER in game AND seal movement / discovery / placement. Legal on ANY group
+  including starting Ⅰ Town tiles (`applyDesignedBorders` on the home-tile path).
+  Flip the flag to `false` to keep designer data but stop live sealing/draw
+  (gated suites in `designed-borders.test.ts` / `map-objects.test.ts` /
+  `computer/map-navigation.test.ts` switch with it). Printed tile borders
+  (`outerImpassable`, internal lines) are unaffected either way.
   (`CustomMapTilePlan.borderEdges`, canonical
   edge codes `footprintIndex*6 + absoluteDirection` in the rotation-0 board
   frame; 30 distinct edges per 7-hex flower, inner edges included): drawn freely

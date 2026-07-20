@@ -2830,7 +2830,7 @@ describe("navigation across sea / underground, teleport routing, Spell-Book stas
 });
 
 // The designer-border sealing "lock" is disabled for now
-// (DESIGNER_BORDER_SEALING_ENABLED === false), so a designed border no longer
+// (DESIGNER_BORDER_SEALING_ENABLED), so a designed border no longer
 // severs the AI's pathing — this spec runs only when the lock is re-armed.
 (DESIGNER_BORDER_SEALING_ENABLED ? describe : describe.skip)("computer pathing respects designer-placed yellow borders", () => {
   // The march / distance field walks via canCrossEdge, so a designed border it
