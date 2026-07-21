@@ -7,6 +7,7 @@ import {
   createAdventureLobbyState,
   createInitialGameState,
   getLegalActions,
+  getMainHero,
   standardComputerController,
   type ComputerDecision,
   type GameAction,
@@ -1354,5 +1355,79 @@ describe("computer Events / exclusive visits (no freeze)", () => {
     expect(optionIndex).toBeDefined();
     expect(optionIndex!).toBeLessThanOrEqual(4);
     expect(run.state.adventure?.pendingVisit).toBeFalsy();
+  });
+});
+
+// The user's furious repeat report ("no proposal of using necromancy … even by
+// lag") includes a server-side suspect: a single-player pump auto-answering the
+// HUMAN's after-combat Necromancy window before they see it. It cannot — the
+// runner only drives a seat `computerDecisionOwner` returns, and a human-owned
+// exclusive interaction (pendingNecromancy) makes it return null so every bot
+// WAITS. These pin that guarantee (removing the human-owned check would flip
+// the CONTROL/human assertions).
+describe("computer runner — NEVER auto-answers a human's after-combat Necromancy window", () => {
+  function spGameWithNecroWindow(windowOwner: "p1" | "p2"): GameState {
+    const state = createAdventureGameState({
+      seed: `sp-necro-window-${windowOwner}`,
+      ruleset: "binh",
+      difficulty: "normal",
+      sessionMode: "single-player",
+      players: [
+        { id: "p1", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" },
+        { id: "p2", name: "Vidomina", factionId: "necropolis", heroDefId: "vidomina" },
+      ],
+      rollFirstPlayer: false,
+    });
+    // p1 human, p2 the single computer opponent.
+    state.controllers = { p2: standardComputerController() };
+    state.sessionMode = "single-player";
+    for (const pl of Object.values(state.players)) {
+      pl.canMulligan = false;
+      pl.needsHandRefresh = false;
+    }
+    // Both hold Necromancy so the window is genuinely playable for whoever owns
+    // it (the interesting case — a real decision the pump could resolve).
+    state.players.p1!.hand = ["ability.necromancy"];
+    state.players.p2!.hand = ["ability.necromancy"];
+    state.adventure!.pendingNecromancy = {
+      playerId: windowOwner,
+      heroId: getMainHero(state, windowOwner)!.id,
+    };
+    return state;
+  }
+
+  it("computerDecisionOwner WAITS (null) on a human-owned pendingNecromancy", () => {
+    expect(computerDecisionOwner(spGameWithNecroWindow("p1"))).toBeNull();
+  });
+
+  it("CONTROL: a COMPUTER-owned pendingNecromancy IS the runner's to drive", () => {
+    expect(computerDecisionOwner(spGameWithNecroWindow("p2"))).toBe("p2");
+  });
+
+  it("driveComputerPlayers leaves the human's window intact — no SKIP_NECROMANCY, no play, issued for it", () => {
+    const applied: GameAction[] = [];
+    const run = driveComputerPlayers(spGameWithNecroWindow("p1"), (s, action, playerId) => {
+      applied.push(action);
+      return applyAction(s, action, { computerActorPlayerId: playerId });
+    });
+    // The window is STILL the human's and the pump touched nothing.
+    expect(run.state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+    expect(applied.some((a) => a.type === "SKIP_NECROMANCY")).toBe(false);
+    expect(applied).toEqual([]);
+    // The human's own legal actions still include play/skip — the decision is theirs.
+    const humanOffers = getLegalActions(run.state, "p1");
+    expect(humanOffers.some((l) => l.action.type === "SKIP_NECROMANCY")).toBe(true);
+    expect(
+      humanOffers.some(
+        (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy",
+      ),
+    ).toBe(true);
+  });
+
+  it("CONTROL: the runner DOES resolve a computer seat's own Necromancy window (proving it can, just not the human's)", () => {
+    const run = driveComputerPlayers(spGameWithNecroWindow("p2"));
+    // The computer's window is resolved (played or skipped) — it does not linger.
+    expect(run.stalled, run.reason).toBe(false);
+    expect(run.state.adventure?.pendingNecromancy?.playerId).not.toBe("p2");
   });
 });

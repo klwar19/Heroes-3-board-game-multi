@@ -149,14 +149,17 @@ describe("voluntary mulligan — Necropolis digs for its Necromancy engine", () 
     expect(discards).toEqual([]);
   });
 
-  it("a shared-Ability-deck copy is unplayable (house rule) — the hunt continues past it", () => {
+  it("a shared-Ability-deck Necromancy copy IS playable (Necropolis, wiki p.24) — the hunt ends past it", () => {
+    // A Necropolis hero may play a deck-drawn Necromancy, so holding one is the
+    // faction engine in hand: the AI stops digging for it (and never discards
+    // it). Re-adding the deck-drawn exclusion makes the hunt cycle stat.attack.
     const discards = refreshDiscards({
       factionId: "necropolis",
       hand: ["stat.attack", "ability.necromancy", "artifact.dragon_scale_armor"],
       deckCount: 6,
       deckDrawnAbilityCardIds: ["ability.necromancy"],
     });
-    expect(discards).toEqual(["stat.attack"]);
+    expect(discards).toEqual([]);
   });
 
   it("a Vidomina specialty counts as the held engine too", () => {

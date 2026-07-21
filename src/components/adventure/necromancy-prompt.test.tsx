@@ -41,7 +41,9 @@ function necromancyWindowState(seed: string): GameState {
     p.needsHandRefresh = false;
   }
 
-  // Hold Necromancy in hand (not a deck-drawn copy) so the after-combat window opens.
+  // Hold Necromancy in hand so the after-combat window opens (a Necropolis hero
+  // may play any copy, deck-drawn or not — wiki p.24; the empty list is a neutral
+  // baseline, not a gate).
   state.players.p1.hand = [NECROMANCY_ABILITY_ID];
   state.players.p1.deckDrawnAbilityCardIds = [];
 
