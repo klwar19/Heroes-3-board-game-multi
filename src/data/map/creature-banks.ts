@@ -365,20 +365,20 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     tier: "far",
     units: ["neutral.dragon_flies", "neutral.dragon_flies", "neutral.dragon_flies", "neutral.dragon_flies"],
     rewardText:
-      "Gain 1 Dragon Flies (Stacked if there were at least 2 Stacked defenders), then Empower one ability you own (HOUSE RULE).",
+      "Gain 1 Dragon Flies (Stacked if there were at least 2 Stacked defenders), then gain 1 Ability Empower token (HOUSE RULE).",
     rewardStatus: "implemented",
     // Gain the recruitable Dragon Flies card: ALWAYS the Few card, but carrying a
     // rulebook Stack Token (the actual game "Stacked" unit) when 2+ defenders were
     // Stacked. It is NEVER a Pack and NEVER a Polish Unit-Stack layer, even with
     // polish-unit-stacks on. (The wiki notes the Stacked version needs at least
     // Normal difficulty — Easy rolls a single token, so X can never reach 2.)
-    // HOUSE RULE bonus: also Empower one ability you own (its Expert side then
-    // costs no crown for the rest of the game).
+    // HOUSE RULE bonus: Ability Empower token (max 1; spend anytime to Empower
+    // one Ability in hand — Expert then costs no crown).
     buildReward: (x) => ({
       type: "SEQUENCE",
       interactions: [
         { type: "GAIN_UNIT", unitDefId: "fortress.dragon_flies", side: "few", stacked: x >= 2 },
-        { type: "EMPOWER_ABILITY" }
+        { type: "GAIN_ABILITY_EMPOWER_TOKEN" }
       ]
     })
   },
@@ -451,17 +451,18 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     tier: "near",
     units: ["neutral.griffins", "neutral.griffins", "neutral.griffins", "neutral.griffins"],
     rewardText:
-      "Gain 1 Griffins (Stacked if there were at least 2 Stacked defenders), then Empower one ability you own (HOUSE RULE).",
+      "Gain 1 Griffins (Stacked if there were at least 2 Stacked defenders), then gain 1 Ability Empower token (HOUSE RULE).",
     rewardStatus: "implemented",
     // Gain the recruitable Griffins card: ALWAYS the Few card, carrying a rulebook
     // Stack Token (the actual game "Stacked" unit) when 2+ defenders were Stacked —
-    // never a Pack, never a Polish Unit-Stack layer. HOUSE RULE bonus: also Empower
-    // one ability you own (its Expert side then costs no crown for the rest of the game).
+    // never a Pack, never a Polish Unit-Stack layer. HOUSE RULE bonus: Ability
+    // Empower token (max 1; spend anytime to Empower one Ability in hand — Expert
+    // then costs no crown).
     buildReward: (x) => ({
       type: "SEQUENCE",
       interactions: [
         { type: "GAIN_UNIT", unitDefId: "castle.griffins", side: "few", stacked: x >= 2 },
-        { type: "EMPOWER_ABILITY" }
+        { type: "GAIN_ABILITY_EMPOWER_TOKEN" }
       ]
     })
   },

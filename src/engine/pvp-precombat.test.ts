@@ -28,7 +28,7 @@ const offersAccept = (state: GameState, playerId: PlayerId) =>
 describe("PvP Retreat / Surrender — only before any unit acts", () => {
   /** A round-1 PvP combat already past deployment (phase "combat"). */
   function pvpFight(seed: string): GameState {
-    const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ startingBuildings: [], seed, difficulty: "normal", rollFirstPlayer: false });
     state.combat = createInitialGameState(seed).combat;
     state.combat!.context = {
       kind: "player",
@@ -102,7 +102,7 @@ describe("PvP Retreat / Surrender — only before any unit acts", () => {
 describe("PvP pre-battle preparation window (both sides)", () => {
   /** Triggers a hero-vs-hero PvP combat with p1 attacking p2. */
   function attack(seed: string, prep: (state: GameState) => void = () => {}): GameState {
-    const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ startingBuildings: [], seed, difficulty: "normal", rollFirstPlayer: false });
     // Give both sides fresh town actions and resources to spend in prep.
     for (const id of ["p1", "p2"] as const) {
       state.players[id].townTokens = { build: true, population: true, spellBook: true };

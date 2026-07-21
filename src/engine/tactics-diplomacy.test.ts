@@ -523,6 +523,74 @@ describe("Diplomacy — Map recruit", () => {
     const afterBronze = state.decks[NEUTRAL_DECK_IDS.bronze];
     expect(afterBronze.drawPile.length + afterBronze.discardPile.length).toBe(drawPileBefore + discardBefore);
   });
+
+  it("opens a recruit choice even when nothing is affordable (no silent no-op)", () => {
+    let state = withBronzeDwelling();
+    // Broke — every Neutral unit costs gold.
+    state.players.p1.resources.gold = 0;
+    state.players.p1.resources.buildingMaterials = 0;
+    state.players.p1.resources.valuables = 0;
+
+    const play = getLegalActions(state, "p1").find(
+      (a) => a.action.type === "PLAY_CARD" && a.action.cardId === "ability.diplomacy"
+    );
+    expect(play, "Diplomacy still offered with a Dwelling even when broke").toBeTruthy();
+    state = apply(state, play!.action);
+
+    // Card spent, draw logged, choice open — not a silent fizzle.
+    expect(state.players.p1.hand).not.toContain("ability.diplomacy");
+    expect(state.eventLog.some((event) => event.type === "DIPLOMACY_NEUTRALS_DRAWN")).toBe(true);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect(
+      state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context
+    ).toBe("diplomacy-recruit");
+    const options =
+      state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.options.map((o) => o.label) : [];
+    expect(options.some((label) => /none|Done/i.test(label))).toBe(true);
+    expect(options.every((label) => !/^Recruit /i.test(label) || /none/i.test(label))).toBe(true);
+  });
+
+  it("refunds the card when Neutral decks are empty (no silent spend)", () => {
+    let state = withBronzeDwelling();
+    state.decks[NEUTRAL_DECK_IDS.bronze]!.drawPile = [];
+    state.decks[NEUTRAL_DECK_IDS.bronze]!.discardPile = [];
+
+    const play = getLegalActions(state, "p1").find(
+      (a) => a.action.type === "PLAY_CARD" && a.action.cardId === "ability.diplomacy"
+    );
+    expect(play).toBeTruthy();
+    state = apply(state, play!.action);
+
+    // Diplomacy is returned to hand — basic side never silently eats the card.
+    expect(state.players.p1.hand).toContain("ability.diplomacy");
+    expect(state.pendingChoice).toBeNull();
+    const emptyDraw = state.eventLog.find((event) => event.type === "DIPLOMACY_NEUTRALS_DRAWN");
+    expect(emptyDraw?.type === "DIPLOMACY_NEUTRALS_DRAWN" && emptyDraw.unitDefIds).toEqual([]);
+  });
+
+  it("offers Diplomacy when a Dwelling stands only on a second town (not just the first)", () => {
+    let state = refreshP1(makeGame());
+    state.players.p1.hand = ["ability.diplomacy"];
+    state.players.p1.resources.gold = 50;
+    // Town #1 (first in Object.values order can vary) — strip dwellings from
+    // the home town and plant a bronze Dwelling only on a second controlled town.
+    const home = getTownOfPlayer(state, "p1")!;
+    home.buildings = home.buildings.filter((id) => !id.includes("dwelling"));
+    state.towns.town_p1_extra = {
+      id: "town_p1_extra",
+      controllerId: "p1",
+      buildings: ["castle.dwelling_bronze"],
+      factionId: "castle",
+      fieldId: home.fieldId
+    };
+
+    expect(
+      getLegalActions(state, "p1").some(
+        (a) => a.action.type === "PLAY_CARD" && a.action.cardId === "ability.diplomacy"
+      ),
+      "second-town Dwelling must unlock the Map recruit"
+    ).toBe(true);
+  });
 });
 
 // ===========================================================================

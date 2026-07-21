@@ -33,7 +33,7 @@ afterEach(cleanup);
 
 /** A fresh adventure: p1 = Castle (scan board; shared bar = Towers + Blacksmith). */
 function freshState(): GameState {
-  const state = createAdventureGameState({ seed: "town-board-ui", difficulty: "normal", rollFirstPlayer: false });
+  const state = createAdventureGameState({ startingBuildings: [], seed: "town-board-ui", difficulty: "normal", rollFirstPlayer: false });
   state.players.p1.resources = { ...state.players.p1.resources, gold: 100, buildingMaterials: 50, valuables: 50 };
   return state;
 }
@@ -42,7 +42,7 @@ function freshState(): GameState {
  *  overlaid on built bars, and the shared bar drawn as a single printed
  *  double-sided tile (one-built / both-built face), not two half-slots. */
 function strongholdState(): GameState {
-  const state = createAdventureGameState({
+  const state = createAdventureGameState({ startingBuildings: [],
     seed: "town-board-stronghold",
     difficulty: "normal",
     rollFirstPlayer: false,
@@ -56,7 +56,7 @@ function strongholdState(): GameState {
 }
 
 function modTownState(factionId: "fuyuki" | "azure_breeze", heroDefId: "bin" | "qingyun"): GameState {
-  return createAdventureGameState({
+  return createAdventureGameState({ startingBuildings: [],
     seed: `town-board-${factionId}-strips`,
     difficulty: "normal",
     rollFirstPlayer: false,
@@ -155,7 +155,7 @@ describe("TownBoardView — cove & conflux English printed scan boards", () => {
   });
 
   function scanState(factionId: "cove" | "conflux", heroDefId: string): GameState {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: `town-board-${factionId}`,
       difficulty: "normal",
       rollFirstPlayer: false,
@@ -651,7 +651,7 @@ describe("Designed board — tile art, shared-bar clarity, modal panels", () => 
 /** A factory town: a designed board WITH a built-town reveal image AND real
  *  per-building printed tiles, plus the pasted authentic tracks panel. */
 function factoryState(): GameState {
-  const state = createAdventureGameState({
+  const state = createAdventureGameState({ startingBuildings: [],
     seed: "town-board-factory",
     difficulty: "normal",
     rollFirstPlayer: false,

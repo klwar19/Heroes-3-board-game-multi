@@ -995,7 +995,7 @@ describe("Creature Bank combat lifecycle", () => {
     expect(searched || choosing).toBe(true);
   });
 
-  it("Dragon Fly Hive: a win gains the unit AND lets the player Empower an ability (house rule)", () => {
+  it("Dragon Fly Hive: a win gains the unit AND an Ability Empower token (house rule)", () => {
     let state = createAdventureGameState({ seed: "bank-hive-empower", difficulty: "normal", rollFirstPlayer: false });
     state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
@@ -1008,9 +1008,10 @@ describe("Creature Bank combat lifecycle", () => {
     state = apply(state, place!.action);
     state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
 
-    // Give the hero an ability to Empower, and make sure it is not already empowered.
+    // Give the hero an ability to Empower later with the token.
     state.players.p1.hand = ["ability.archery"];
     state.players.p1.empoweredAbilities = [];
+    state.players.p1.abilityEmpowerToken = 0;
     const armyIdsBefore = new Set(state.players.p1.army.map((unit) => unit.id));
 
     for (const unit of Object.values(state.combat!.units)) {
@@ -1029,20 +1030,24 @@ describe("Creature Bank combat lifecycle", () => {
     expect(gained).toHaveLength(1);
     expect(gained[0].unitDefId).toBe("fortress.dragon_flies");
 
-    // ...then the Empower bonus opened a menu offering the owned ability.
-    expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
-    const actions = getLegalActions(state, "p1");
-    const empowerOption = actions.find((legal) => legal.label.includes("Empower Archery"));
-    expect(empowerOption, "Archery should be offered for empowering").toBeTruthy();
+    // ...then the house-rule bonus grants an Ability Empower token (not an
+    // immediate empower pick). Spend anytime on a hand Ability.
+    expect(state.players.p1.abilityEmpowerToken).toBe(1);
+    expect(state.eventLog.some((event) => event.type === "ABILITY_EMPOWER_TOKEN_GAINED")).toBe(true);
+    expect(state.players.p1.empoweredAbilities ?? []).not.toContain("ability.archery");
 
-    state = apply(state, empowerOption!.action);
-
-    // Archery is now permanently Empowered for this player.
+    const tokenOffer = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" && legal.action.cardId === "ability.archery"
+    );
+    expect(tokenOffer, "token spend offered for Archery in hand").toBeTruthy();
+    state = apply(state, tokenOffer!.action);
+    expect(state.players.p1.abilityEmpowerToken ?? 0).toBe(0);
     expect(state.players.p1.empoweredAbilities).toContain("ability.archery");
     expect(state.eventLog.some((event) => event.type === "ABILITY_EMPOWERED")).toBe(true);
   });
 
-  it("OFF (house rule 'bank-empower-ability'): the win gains the unit but offers NO Empower", () => {
+  it("OFF (house rule 'bank-empower-ability'): the win gains the unit but NO Ability Empower token", () => {
     let state = createAdventureGameState({
       seed: "bank-hive-empower-off",
       difficulty: "normal",
@@ -1062,6 +1067,7 @@ describe("Creature Bank combat lifecycle", () => {
 
     state.players.p1.hand = ["ability.archery"];
     state.players.p1.empoweredAbilities = [];
+    state.players.p1.abilityEmpowerToken = 0;
     const armyIdsBefore = new Set(state.players.p1.army.map((unit) => unit.id));
 
     for (const unit of Object.values(state.combat!.units)) {
@@ -1078,9 +1084,11 @@ describe("Creature Bank combat lifecycle", () => {
     expect(gained).toHaveLength(1);
     expect(gained[0].unitDefId).toBe("fortress.dragon_flies");
 
-    // …but the Empower bonus is gated off: no menu, nothing empowered, no event.
-    const empowerActions = getLegalActions(state, "p1").filter((legal) => legal.label.includes("Empower"));
-    expect(empowerActions, "no Empower option offered without the rule").toHaveLength(0);
+    // …but the token bonus is gated off.
+    expect(state.players.p1.abilityEmpowerToken ?? 0, "no token without the rule").toBe(0);
+    expect(state.eventLog.some((event) => event.type === "ABILITY_EMPOWER_TOKEN_GAINED"), "no token event").toBe(
+      false
+    );
     expect(state.players.p1.empoweredAbilities ?? [], "nothing was empowered").toHaveLength(0);
     expect(state.eventLog.some((event) => event.type === "ABILITY_EMPOWERED"), "no empower event").toBe(false);
   });

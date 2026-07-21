@@ -175,13 +175,19 @@ export type LocationInteraction =
     }
   | {
       /**
-       * Dragon Fly Hive / Griffin Conservatory (Creature Bank) bonus reward
-       * (HOUSE RULE): choose one Ability card you own (hand or discard) and
-       * Empower it permanently — its Expert side may then be played without
-       * spending a crown for the rest of the game. No-op if you own no
-       * non-Empowered ability.
+       * Legacy direct-empower (hand only). Prefer GAIN_ABILITY_EMPOWER_TOKEN.
        */
       type: "EMPOWER_ABILITY";
+    }
+  | {
+      /**
+       * Dragon Fly Hive / Griffin Conservatory (Creature Bank) bonus reward
+       * (HOUSE RULE): gain one Ability Empower token (max storage 1). Spend
+       * anytime to Empower one Ability card in hand — Expert then costs no
+       * crown. Surplus while already holding 1 auto-uses on a hand ability
+       * then leaves you with 1.
+       */
+      type: "GAIN_ABILITY_EMPOWER_TOKEN";
     }
   | {
       /** Hill Fort: reinforce one Few unit, cost reduced by 3 gold (min 0). */

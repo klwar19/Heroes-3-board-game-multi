@@ -120,6 +120,7 @@ import {
   HERO_INFO_STAT_ICONS,
   mapTokenImage,
   monolithTokenImage,
+  ABILITY_EMPOWER_TOKEN_ICON,
   moraleIcon,
   onewayMonolithImage,
   outpostObjectImage,
@@ -320,6 +321,104 @@ function playerColor(state: GameState, playerId: PlayerId | null): string {
   }
   const factionId = state.players[playerId]?.factionId;
   return (factionId && coreFactionDefinitions[factionId]?.color) || "#b08d2f";
+}
+
+/**
+ * HUD chip for the Ability Empower token (max 1), displayed like morale.
+ * Click opens a picker of legal hand-Ability spends when the engine offers them.
+ */
+function AbilityEmpowerTokenChip({
+  player,
+  legalActions,
+  onAction,
+  readOnly
+}: {
+  player: { abilityEmpowerToken?: number; id: string };
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+  readOnly?: boolean;
+}) {
+  const [picking, setPicking] = useState(false);
+  const held = (player.abilityEmpowerToken ?? 0) >= 1;
+  const offers = legalActions.filter(
+    (legal) =>
+      legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" && legal.action.playerId === player.id
+  );
+  const canSpend = !readOnly && held && offers.length > 0;
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`statChip abilityEmpowerTokenChip${held ? " hasToken" : ""}${canSpend ? " canSpend" : ""}`}
+        disabled={!canSpend}
+        title={
+          held
+            ? canSpend
+              ? "Ability Empower token: click to Empower one Ability in your hand (Expert free forever)."
+              : "Ability Empower token held (max 1). Spend when you have a non-Empowered Ability in hand."
+            : "No Ability Empower token. Win a Dragon Fly Hive or Griffin Conservatory (house rule) to gain one."
+        }
+        aria-label={
+          held
+            ? canSpend
+              ? "Spend Ability Empower token"
+              : "Ability Empower token held"
+            : "No Ability Empower token"
+        }
+        onClick={() => {
+          if (!canSpend) {
+            return;
+          }
+          if (offers.length === 1) {
+            onAction(offers[0].action);
+            return;
+          }
+          setPicking(true);
+        }}
+      >
+        <img
+          alt=""
+          className="abilityEmpowerTokenIcon"
+          referrerPolicy="no-referrer"
+          src={assetUrl(ABILITY_EMPOWER_TOKEN_ICON)}
+        />
+        <b>{held ? 1 : 0}</b>
+        <small>empower</small>
+      </button>
+      {picking ? (
+        <div
+          className="moraleOverflowBackdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Empower an ability with token"
+        >
+          <div className="moraleOverflowPopup abilityEmpowerTokenPopup">
+            <strong>Spend Ability Empower token</strong>
+            <p>Empower one Ability in your hand. Its Expert side then costs no crown for the rest of the game. Token max is 1.</p>
+            <div className="handButtons abilityEmpowerTokenChoices">
+              {offers.map((legal) => (
+                <button
+                  key={legal.label}
+                  className="commandButton primary"
+                  type="button"
+                  onClick={() => {
+                    onAction(legal.action);
+                    setPicking(false);
+                  }}
+                >
+                  {legal.label.replace(/^Ability token: /, "")}
+                </button>
+              ))}
+              <button className="commandButton ghost" type="button" onClick={() => setPicking(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 export type TilePlacementSelection = { supplyIndex: number } | null;
@@ -3216,7 +3315,7 @@ export function AdventureHud({
         </div>
       ) : null}
       {hero ? (
-        <div className="advHudCell moveMoraleCell" aria-label="Movement, morale and crowns">
+        <div className="advHudCell moveMoraleCell" aria-label="Movement, morale, ability token and crowns">
           <span
             className="statChip"
             title={`${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}
@@ -3247,6 +3346,9 @@ export function AdventureHud({
             </b>
             <small>{(player?.morale ?? 0) <= -2 ? "fix or dump" : "morale"}</small>
           </span>
+          {player ? (
+            <AbilityEmpowerTokenChip legalActions={legalActions} onAction={onAction} player={player} />
+          ) : null}
           {player ? (
             <span
               className="statChip crownChip"
@@ -5221,14 +5323,15 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" && choice.context === "rule-111" && choice.playerId === viewerPlayerId
       ? (state.combat?.pendingNeutralDraws ?? []).filter((draw) => draw.tier === "bronze" && !draw.bankGuard)
       : null;
-  // Polish Bank Sizes: A/B choice of rolled banks — each option shows the bank's
-  // field art above the name + size so the pick is visual, not text-only.
+  // Polish Bank Sizes: rolled bank candidates (+ optional Leave-it-blocked).
+  // Each bank option shows the bank's field art above the name + size; Leave
+  // blocked is a dedicated X card (not an empty bank face).
   const polishBankCandidates =
     choice?.type === "OPTION_CHOICE" &&
     choice.context === "place-creature-bank" &&
     choice.playerId === viewerPlayerId &&
     choice.creatureBank?.candidates &&
-    choice.creatureBank.candidates.length > 1
+    choice.creatureBank.candidates.length >= 1
       ? choice.creatureBank.candidates
       : null;
   // Scenario starting bonus (rulebook p.10): its options carry no card id, so
@@ -5421,12 +5524,15 @@ export function PromptTray({
 
   // Polish Bank Sizes A/B pick: field art ABOVE the name + size coin so the
   // choice is intuitive (which bank am I taking on?). Text labels alone used to
-  // force a memory match against the map preview.
+  // force a memory match against the map preview. "Leave it blocked" is a real
+  // third option with a clear X mark (not an empty bank card).
   if (polishBankCandidates) {
     return (
       <div className="promptTray withPolishBankCards" role="dialog" aria-label={title}>
         <strong>{title}</strong>
-        <span className="promptTeleportHint">Pick a bank — art and size show above the name.</span>
+        <span className="promptTeleportHint">
+          Pick a bank — art and size show above the name — or leave the field blocked (X).
+        </span>
         <div className="promptOptions polishBankCards">
           {body.map((legal) => {
             const optionIndex =
@@ -5435,23 +5541,29 @@ export function PromptTray({
                 : undefined;
             const candidate =
               optionIndex !== undefined ? polishBankCandidates[optionIndex] : undefined;
+            const isLeaveBlocked = !candidate;
             const bank = candidate
               ? CREATURE_BANKS[candidate.bankId as CreatureBankId]
               : undefined;
             const letter =
-              optionIndex !== undefined ? String.fromCharCode(65 + optionIndex) : "?";
+              optionIndex !== undefined
+                ? isLeaveBlocked
+                  ? "X"
+                  : String.fromCharCode(65 + optionIndex)
+                : "?";
             const size = candidate?.size;
             const sizeRoman = size ? (ROMAN[size] ?? String(size)) : "";
             return (
               <button
                 aria-label={legal.label}
-                className="polishBankOptionCard"
+                className={`polishBankOptionCard${isLeaveBlocked ? " leaveBlocked" : ""}`}
+                data-testid={isLeaveBlocked ? "leave-bank-blocked" : undefined}
                 key={actionKey(legal.action)}
                 onClick={() => onAction(legal.action)}
                 title={legal.label}
                 type="button"
               >
-                <span className="polishBankOptionArt">
+                <span className={`polishBankOptionArt${isLeaveBlocked ? " leaveBlockedArt" : ""}`}>
                   {candidate ? (
                     <img
                       alt=""
@@ -5462,7 +5574,9 @@ export function PromptTray({
                       src={assetUrl(creatureBankFieldImage(candidate.bankId))}
                     />
                   ) : (
-                    <span className="marketCardFallback">🏦</span>
+                    <span aria-hidden="true" className="polishBankLeaveX">
+                      ✕
+                    </span>
                   )}
                   {size ? (
                     <span
@@ -5474,9 +5588,13 @@ export function PromptTray({
                   ) : null}
                 </span>
                 <strong className="polishBankOptionLetter">{letter}</strong>
-                <small className="polishBankOptionName">{bank?.name ?? "Creature Bank"}</small>
+                <small className="polishBankOptionName">
+                  {isLeaveBlocked ? "Leave it blocked" : (bank?.name ?? "Creature Bank")}
+                </small>
                 {sizeRoman ? (
                   <small className="polishBankOptionSize">size {sizeRoman}</small>
+                ) : isLeaveBlocked ? (
+                  <small className="polishBankOptionSize">no bank</small>
                 ) : null}
               </button>
             );

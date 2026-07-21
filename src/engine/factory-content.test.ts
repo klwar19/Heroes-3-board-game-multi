@@ -197,7 +197,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
   });
 
   it("can start an adventure as Factory — the &S1 town and hero deck resolve", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "factory-playable",
       rollFirstPlayer: false,
       players: [
@@ -414,7 +414,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     // Effect-level guard (not just data): the engine actually builds Remote
     // Settlement (bronze) and Industrialized Catacombs (silver), and refuses the
     // silver dwelling until the bronze stands — the UNLOCK_RECRUIT_TIER chain.
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "factory-build",
       rollFirstPlayer: false,
       players: [

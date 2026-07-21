@@ -1647,12 +1647,16 @@ export function isDesignedEdgeSealedBetween(
   }
   const fromTile = adventure.tiles[fromField.tileInstanceId];
   const toTile = adventure.tiles[toField.tileInstanceId];
-  const fromHas = Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
-  const toHas = Boolean(toTile?.borderEdges && toTile.borderEdges.length > 0);
+  // Creature Banks never wear borders (printed OR designer): ignore every
+  // border contribution from a bank field so the bank cannot seal movement.
+  const fromIsBank = fromField.location === "creature_bank";
+  const toIsBank = toField.location === "creature_bank";
+  const fromHas = !fromIsBank && Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
+  const toHas = !toIsBank && Boolean(toTile?.borderEdges && toTile.borderEdges.length > 0);
   // Field-level borders: a STANDALONE object hex carries its own edge list
-  // (it has no backing tile). Same seal, same both-direction rule.
-  const fromFieldHas = Boolean(fromField.borderEdges && fromField.borderEdges.length > 0);
-  const toFieldHas = Boolean(toField.borderEdges && toField.borderEdges.length > 0);
+  // (it has no backing tile). Same seal, same both-direction rule — never a bank.
+  const fromFieldHas = !fromIsBank && Boolean(fromField.borderEdges && fromField.borderEdges.length > 0);
+  const toFieldHas = !toIsBank && Boolean(toField.borderEdges && toField.borderEdges.length > 0);
   if (!fromHas && !toHas && !fromFieldHas && !toFieldHas) {
     return false;
   }
@@ -1739,9 +1743,12 @@ export function heroFieldSealedForDiscovery(adventure: AdventureState, field: Ma
  *    border-free Creature Bank the hero stands on is open), AND
  *  - the per-EDGE designed borders (`borderEdges`): at least ONE shared hex edge
  *    from the hero's field into the tile's footprint must be un-sealed on either
- *    side. A designed EDGE seals even from a bank field (explicit designer intent
- *    — the whole-arc bank exception above does NOT extend to a line the designer
- *    drew deliberately on that edge), unlike the whole-arc rule.
+ *    side.
+ *
+ * A Creature Bank NEVER contributes borders: standing on a bank, the hero's
+ * side of every shared edge is open (field-level and tile-slot designed edges
+ * on the bank hex are ignored). Only the TARGET tile's own designed edges can
+ * still seal a doorway. Banks do not obstruct opening/discovering tiles.
  *
  * Adjacency is the caller's job (`isTileAdjacentToSpace`); this only answers the
  * border question. Shared by the discovery OFFER (`canHeroDiscoverAdjacentTile`)
@@ -1761,17 +1768,19 @@ export function heroCanDiscoverTileAcrossBorders(
   if (!DESIGNER_BORDER_SEALING_ENABLED) {
     return true;
   }
-  const heroTile = adventure.tiles[heroField.tileInstanceId];
+  const onBank = heroField.location === "creature_bank";
+  const heroTile = onBank ? undefined : adventure.tiles[heroField.tileInstanceId];
   const tileEdges = tile.borderEdges;
-  // A standalone object hex carries its own field-level edge list.
-  const heroFieldEdges = heroField.borderEdges;
+  // A standalone object hex carries its own field-level edge list — never a bank.
+  const heroFieldEdges = onBank ? undefined : heroField.borderEdges;
   const heroHasEdges = Boolean(
     (heroTile?.borderEdges && heroTile.borderEdges.length > 0) || (heroFieldEdges && heroFieldEdges.length > 0)
   );
   const tileHasEdges = Boolean(tileEdges && tileEdges.length > 0);
   if (!heroHasEdges && !tileHasEdges) {
     // No per-edge borders anywhere: the whole-arc rule (already passed) decides,
-    // exactly as before per-edge borders existed.
+    // exactly as before per-edge borders existed. A bank with no tile-side
+    // edges always reaches here → discovery is open.
     return true;
   }
   const heroCoord = parseHexSpaceId(heroSpaceId);
@@ -1787,9 +1796,11 @@ export function heroCanDiscoverTileAcrossBorders(
       continue; // not an edge into this tile
     }
     sharedEdge = true;
+    // Bank side is always open; only non-bank hero edges can seal.
     const heroSideSealed =
-      (heroHasEdges && heroTile ? tileEdgeDesignedSealed(heroTile, heroField.slot, direction) : false) ||
-      Boolean(heroFieldEdges && heroFieldEdges.includes(direction));
+      !onBank &&
+      ((heroHasEdges && heroTile ? tileEdgeDesignedSealed(heroTile, heroField.slot, direction) : false) ||
+        Boolean(heroFieldEdges && heroFieldEdges.includes(direction)));
     const tileSideSealed =
       tileHasEdges &&
       Boolean(tileEdges) &&
@@ -2442,6 +2453,48 @@ export function spendResources(state: GameState, playerId: PlayerId, cost: Resou
 }
 
 /**
+ * Hand Ability cards that are not already Empowered (token spend targets).
+ * Deduped by card id; order follows hand order.
+ */
+export function handAbilityEmpowerCandidates(player: PlayerState): CardId[] {
+  const seen = new Set<CardId>();
+  const out: CardId[] = [];
+  for (const cardId of player.hand) {
+    if (seen.has(cardId) || cardLibrary[cardId]?.kind !== "ability") {
+      continue;
+    }
+    if (player.empoweredAbilities?.includes(cardId)) {
+      continue;
+    }
+    seen.add(cardId);
+    out.push(cardId);
+  }
+  return out;
+}
+
+/** CHOOSE_ONE arms for empowering a hand ability (MARK_ABILITY_EMPOWERED leaf). */
+export function buildHandAbilityEmpowerOptions(
+  player: PlayerState
+): { label: string; steps: VisitStep[] }[] {
+  return handAbilityEmpowerCandidates(player).map((cardId) => ({
+    label: `Empower ${cardLibrary[cardId]?.name ?? cardId} (use basic or expert with no crown)`,
+    steps: [{ type: "MARK_ABILITY_EMPOWERED", cardId }]
+  }));
+}
+
+/** Permanent mark — no-op if already empowered. Returns whether newly marked. */
+export function markAbilityEmpowered(player: PlayerState, cardId: CardId): boolean {
+  if (!player.empoweredAbilities) {
+    player.empoweredAbilities = [];
+  }
+  if (player.empoweredAbilities.includes(cardId)) {
+    return false;
+  }
+  player.empoweredAbilities.push(cardId);
+  return true;
+}
+
+/**
  * Morale (token mode, morale-cards rule OFF):
  * - Range is −2 … +1. Positive caps at +1 (further gains → moraleOverflow spend).
  * - Negative floors at −2 (a second negative lands as −2; it does NOT reset to 0
@@ -3011,6 +3064,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
         : [];
     case "EMPOWER_ABILITY":
       return [{ type: "EMPOWER_ABILITY" }];
+    case "GAIN_ABILITY_EMPOWER_TOKEN":
+      return [{ type: "GAIN_ABILITY_EMPOWER_TOKEN" }];
     case "HILL_FORT":
       return [{ type: "HILL_FORT" }];
     case "SUBTERRANEAN_GATE":
@@ -4291,8 +4346,9 @@ function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, field
  */
 /**
  * Grant any designer first-clear field reward (center hex, object, token,
- * settlement). Resources inline; Treasure dice + deck Searches as visit-steps.
- * Search rewards expand Times×Search(X): `searchArtifact: 5` with
+ * settlement). Resources inline; Treasure dice, deck Searches, morale, Ability
+ * Empower token, Statistic empower, XP, movement and Resource dice as
+ * visit-steps. Search rewards expand Times×Search(X): `searchArtifact: 5` with
  * `searchArtifactTimes: 2` queues two separate Search(5) Artifact steps.
  * Once-only via the shared latch (centerHexClaimed / designerRewardClaimed /
  * viiBonusClaimed all set together).
@@ -4314,9 +4370,10 @@ function grantCenterHexBonus(state: GameState, playerId: PlayerId, field: MapFie
 }
 
 /**
- * Pay one designer reward package (resources inline; Treasure dice + deck
- * Searches queued as a `visit-steps` reward; VP recorded — it scores only in
- * VP mode). Shared by the field first-clear bonus and the hex-event trigger.
+ * Pay one designer reward package (resources inline; Treasure dice, deck
+ * Searches, morale, Ability Empower token, Statistic empower, XP, movement and
+ * Resource dice queued as a `visit-steps` reward; VP recorded — it scores only
+ * in VP mode). Shared by the field first-clear bonus and the hex-event trigger.
  * Returns false when the package is empty (the caller must NOT latch then).
  */
 function payDesignerFieldReward(
@@ -4348,6 +4405,32 @@ function payDesignerFieldReward(
         steps.push({ type: "SEARCH_SHARED_DECK", deckId, count: size });
       }
     }
+  }
+  // Special arms — same VisitStep leaves locations / banks / timed events use,
+  // so AI, AFK defaults and the processPendingVisit pipeline all apply.
+  if (reward.morale === 1 || reward.morale === -1) {
+    steps.push({ type: "GAIN_MORALE", amount: reward.morale });
+  }
+  if (reward.abilityEmpowerToken) {
+    // force: designer always grants the token (bank house rule is bank-only).
+    steps.push({ type: "GAIN_ABILITY_EMPOWER_TOKEN", force: true });
+  }
+  if (reward.empowerStatistic) {
+    steps.push({
+      type: "STAT_EMPOWER_OFFER",
+      sources: ["hand", "discard"],
+      remaining: 1,
+      prompt: "Empower one Statistic card — remove it, gain its Empowered form"
+    });
+  }
+  if ((reward.experience ?? 0) > 0) {
+    steps.push({ type: "GAIN_EXPERIENCE", amount: reward.experience as number });
+  }
+  if ((reward.movement ?? 0) > 0) {
+    steps.push({ type: "GAIN_MOVEMENT", amount: reward.movement as number });
+  }
+  if ((reward.resourceDice ?? 0) > 0) {
+    steps.push({ type: "ROLL_RESOURCE_DICE", count: reward.resourceDice as number });
   }
   if (Object.keys(resources).length === 0 && steps.length === 0 && vp <= 0) {
     return false;
@@ -7916,12 +7999,8 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "EMPOWER_ABILITY": {
-        // Dragon Fly Hive / Griffin Conservatory bonus (house rule
-        // "bank-empower-ability"): offer to Empower one of the player's own
-        // Ability cards (hand or discard) that is not already Empowered.
-        // Empowering is by card id, so a card owned in either pile qualifies
-        // once. No-op when the player owns no eligible ability — or when the
-        // house rule is off (those banks then grant only the unit, as printed).
+        // Legacy direct-empower (hand only). Banks now grant a token via
+        // GAIN_ABILITY_EMPOWER_TOKEN; this path remains for any residual step.
         if (!houseRuleEnabled(state, "bank-empower-ability")) {
           break;
         }
@@ -7929,28 +8008,64 @@ export function processPendingVisit(state: GameState): void {
         if (!player) {
           break;
         }
-        const seen = new Set<CardId>();
-        const options: { label: string; steps: VisitStep[] }[] = [];
-        for (const cardId of [...player.hand, ...player.discard]) {
-          if (seen.has(cardId) || cardLibrary[cardId]?.kind !== "ability") {
-            continue;
-          }
-          if (player.empoweredAbilities?.includes(cardId)) {
-            continue;
-          }
-          seen.add(cardId);
-          options.push({
-            label: `Empower ${cardLibrary[cardId]?.name ?? cardId} (use basic or expert with no crown)`,
-            steps: [{ type: "MARK_ABILITY_EMPOWERED", cardId }]
-          });
-        }
+        const options = buildHandAbilityEmpowerOptions(player);
         if (options.length === 0) {
           break;
         }
         options.push({ label: "Skip empowering an ability", steps: [] });
         visit.steps.unshift({
           type: "CHOOSE_ONE",
-          prompt: "Empower one ability you own — its Expert side then costs no crown",
+          prompt: "Empower one ability in hand — its Expert side then costs no crown",
+          options
+        });
+        break;
+      }
+      case "GAIN_ABILITY_EMPOWER_TOKEN": {
+        // Dragon Fly Hive / Griffin Conservatory (house rule "bank-empower-ability"):
+        // grant one Ability Empower token (max 1). Spend anytime to Empower a
+        // hand Ability. Surplus while already holding 1 forces auto-use on a
+        // hand ability (if any), then leaves the count at 1.
+        // Designer field rewards set force:true so the map author can grant the
+        // token even when the bank house rule is off.
+        if (!step.force && !houseRuleEnabled(state, "bank-empower-ability")) {
+          break;
+        }
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        const held = player.abilityEmpowerToken ?? 0;
+        if (held < 1) {
+          player.abilityEmpowerToken = 1;
+          appendEvent(state, {
+            type: "ABILITY_EMPOWER_TOKEN_GAINED",
+            playerId: visit.playerId,
+            total: 1
+          });
+          break;
+        }
+        // Surplus: auto-use one (empower a hand ability) and keep 1.
+        const options = buildHandAbilityEmpowerOptions(player);
+        if (options.length === 0) {
+          // No eligible hand ability — surplus cannot be used; stay at 1.
+          appendEvent(state, {
+            type: "ABILITY_EMPOWER_TOKEN_GAINED",
+            playerId: visit.playerId,
+            total: 1,
+            surplus: true
+          });
+          break;
+        }
+        appendEvent(state, {
+          type: "ABILITY_EMPOWER_TOKEN_GAINED",
+          playerId: visit.playerId,
+          total: 1,
+          surplus: true
+        });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt:
+            "Ability Empower token is full (max 1). Empower one ability in hand to spend the surplus — you keep 1 token.",
           options
         });
         break;
@@ -7960,17 +8075,12 @@ export function processPendingVisit(state: GameState): void {
         if (!player) {
           break;
         }
-        if (!player.empoweredAbilities) {
-          player.empoweredAbilities = [];
-        }
-        if (!player.empoweredAbilities.includes(step.cardId)) {
-          player.empoweredAbilities.push(step.cardId);
-          appendEvent(state, {
-            type: "ABILITY_EMPOWERED",
-            playerId: visit.playerId,
-            cardId: step.cardId
-          });
-        }
+        markAbilityEmpowered(player, step.cardId);
+        appendEvent(state, {
+          type: "ABILITY_EMPOWERED",
+          playerId: visit.playerId,
+          cardId: step.cardId
+        });
         break;
       }
       case "WAR_MACHINE_GRANT_OFFER": {
@@ -8522,23 +8632,24 @@ function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
     return;
   }
 
-  // A face-down Ⅱ–Ⅲ surface tile flipped across the Gate obeys the same
-  // settlement / material-mine keep/reroll/pick rules as any other on-map
-  // discovery. The flip lives in the reducer, so it is reached via the injected
-  // hook; it may open an OPTION_CHOICE, so the (now-complete, single-step) gate
-  // visit is cleared first — the gate step has already been shifted off — to
-  // avoid leaving an empty pending visit behind it. Anything richer than a bare
-  // gate visit, or a non-Far tile, falls back to the plain inline reveal below.
-  if (onMapTileRevealHook && farTile.group === "far" && visit.steps.length === 0) {
+  // ALWAYS go through the full reveal hook when available — including
+  // Subterranean / Near / Center tiles. The old inline flip skipped
+  // beginTileRotation, so Creature Banks were never reserved before rotation
+  // (polish sizes + leave-blocked opened only AFTER the tile was rotated).
+  // The hook owns Far keep/reroll/pick, bank reservation, polish pre-rotation
+  // bank choice, then rotation. Clear a bare completed gate visit first so an
+  // empty pending visit is not left behind an OPTION_CHOICE the hook may open.
+  if (onMapTileRevealHook && visit.steps.length === 0) {
     adventure.pendingVisit = null;
     onMapTileRevealHook(state, visit.playerId, farTile);
     return;
   }
 
-  // Flip the far tile up for free and hand its rotation to the entering player.
-  // This mirrors the "reveal" branch of beginTileRotation (which lives in the
-  // reducer and is not importable here without a cycle); SET_TILE_ROTATION then
-  // materializes it and carves the entrance via recomputeSubterraneanGates.
+  // Fallback when the hook is not registered (unit tests that never load the
+  // reducer): flip the far tile up and hand its rotation to the entering player.
+  // SET_TILE_ROTATION then materializes it and carves the entrance via
+  // recomputeSubterraneanGates. Bank reservation is skipped here — callers that
+  // need the full chain must register the hook.
   farTile.faceDown = false;
   farTile.awaitingRotation = true;
   adventure.pendingTileChoice = {
@@ -8600,6 +8711,13 @@ export function placementTokenLabel(token: {
   }
   if (token.kind === "oneway_exit") {
     return `${gatePairColor(token.pair ?? 1)} one-way monolith (exit)`;
+  }
+  if (token.kind === "creature_bank") {
+    const bankId = (token as { bankId?: string }).bankId;
+    if (bankId && isCreatureBankId(bankId)) {
+      return CREATURE_BANKS[bankId].name;
+    }
+    return "Creature Bank";
   }
   return mapTokenLabel(token.kind);
 }
@@ -12173,6 +12291,8 @@ export function placeCreatureBank(
   delete field.amount;
   delete field.faction;
   delete field.terrain;
+  // Banks never wear borders (movement + discovery always open on the bank side).
+  delete field.borderEdges;
   field.blackCube = false;
   field.flagOwnerId = null;
   delete field.extraFlagOwnerIds;
@@ -12519,20 +12639,11 @@ export function townHasBuildingEffect(
 }
 
 export function unlockedRecruitTiers(state: GameState, playerId: PlayerId): Set<string> {
-  const town = getTownOfPlayer(state, playerId);
-  const tiers = new Set<string>();
-  if (!town) {
-    return tiers;
-  }
-
-  for (const buildingId of town.buildings) {
-    const effect = coreBuildingDefinitions[buildingId]?.effect;
-    if (effect?.type === "UNLOCK_RECRUIT_TIER") {
-      tiers.add(effect.tier);
-    }
-  }
-
-  return tiers;
+  // Scan EVERY controlled town (not only getTownOfPlayer's first match). A seat
+  // that holds a Dwelling only on a second town used to see Diplomacy as a
+  // permanent no-op: the offer gate looked at town #1 (empty) while the draw
+  // path already walked every town via playerDwellingTiers.
+  return new Set(playerDwellingTiers(state, playerId));
 }
 
 /**

@@ -13,6 +13,7 @@
 
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
+import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TileDefinition } from "@/data/map/types";
 import { getStoryScene, isStoryScene, STORY_SCENE_IDS } from "@/data/story/scenes";
@@ -205,6 +206,12 @@ export const MAX_CENTER_HEX_DICE = 3;
 export const MAX_CENTER_HEX_SEARCH = 5;
 /** How many separate Search(X) steps a designer reward may queue per deck. */
 export const MAX_CENTER_HEX_SEARCH_TIMES = 5;
+/** Main-hero XP from a designer field reward (1–5). */
+export const MAX_FIELD_REWARD_EXPERIENCE = 5;
+/** Movement points from a designer field reward (1–3). */
+export const MAX_FIELD_REWARD_MOVEMENT = 3;
+/** Resource dice from a designer field reward (1–3). */
+export const MAX_FIELD_REWARD_RESOURCE_DICE = 3;
 /** The three adventure resources a center-hex reward may carry. */
 const CENTER_HEX_RESOURCES = ["gold", "buildingMaterials", "valuables"] as const;
 /** Search size keys paired with their optional Times multipliers. */
@@ -285,10 +292,12 @@ export function sanitizeCustomGuardSpec(input: unknown): CustomGuardSpec | undef
 
 /**
  * Clamp a designer field reward ({@link CustomFieldReward} /
- * {@link CustomCenterHexReward}) to clean positive integers, or `undefined`
- * when nothing valid remains. Search rewards are Times×Search(X): a size of N
- * with times T queues T separate Search(N) steps. Times is only kept when the
- * matching size is set; absent / 1 is the legacy single-Search default.
+ * {@link CustomCenterHexReward}) to clean positive integers / known flags, or
+ * `undefined` when nothing valid remains. Search rewards are Times×Search(X):
+ * a size of N with times T queues T separate Search(N) steps. Times is only
+ * kept when the matching size is set; absent / 1 is the legacy single-Search
+ * default. Special arms (morale, Ability Empower token, Statistic empower, XP,
+ * movement, Resource dice) are optional and additive.
  */
 export function sanitizeFieldReward(input: unknown): CustomFieldReward | undefined {
   if (!input || typeof input !== "object") {
@@ -317,6 +326,32 @@ export function sanitizeFieldReward(input: unknown): CustomFieldReward | undefin
       }
     }
   }
+  // Morale: only ±1 (matches timed events / starting bonuses). Anything else drops.
+  if (raw.morale === 1 || raw.morale === -1) {
+    reward.morale = raw.morale;
+  } else if (typeof raw.morale === "number") {
+    const m = Math.trunc(raw.morale);
+    if (m >= 1) reward.morale = 1;
+    else if (m <= -1) reward.morale = -1;
+  }
+  if (raw.abilityEmpowerToken === true) {
+    reward.abilityEmpowerToken = true;
+  }
+  if (raw.empowerStatistic === true) {
+    reward.empowerStatistic = true;
+  }
+  const experience = clampInt(raw.experience, 1, MAX_FIELD_REWARD_EXPERIENCE, 0);
+  if (experience > 0) {
+    reward.experience = experience;
+  }
+  const movement = clampInt(raw.movement, 1, MAX_FIELD_REWARD_MOVEMENT, 0);
+  if (movement > 0) {
+    reward.movement = movement;
+  }
+  const resourceDice = clampInt(raw.resourceDice, 1, MAX_FIELD_REWARD_RESOURCE_DICE, 0);
+  if (resourceDice > 0) {
+    reward.resourceDice = resourceDice;
+  }
   return Object.keys(reward).length > 0 ? reward : undefined;
 }
 
@@ -327,7 +362,8 @@ export function sanitizeCenterHexReward(input: unknown): CustomCenterHexReward |
 
 /**
  * Plain-words summary of a designer field reward, e.g.
- * "7 gold · 2× Search(5) Artifacts · 2 Treasure dice". Empty → "".
+ * "7 gold · 2× Search(5) Artifacts · Ability Empower token · +1 morale".
+ * Empty → "".
  */
 export function describeFieldReward(reward: CustomFieldReward | undefined | null): string {
   if (!reward) return "";
@@ -345,6 +381,21 @@ export function describeFieldReward(reward: CustomFieldReward | undefined | null
     if (searchSize <= 0) continue;
     const t = reward[times] ?? 1;
     parts.push(t > 1 ? `${t}× Search(${searchSize}) ${label}` : `Search(${searchSize}) ${label}`);
+  }
+  if (reward.morale === 1) parts.push("+1 morale");
+  if (reward.morale === -1) parts.push("−1 morale");
+  if (reward.abilityEmpowerToken) parts.push("Ability Empower token");
+  if (reward.empowerStatistic) parts.push("Empower a Statistic");
+  if ((reward.experience ?? 0) > 0) {
+    parts.push(reward.experience === 1 ? "+1 experience" : `+${reward.experience} experience`);
+  }
+  if ((reward.movement ?? 0) > 0) {
+    parts.push(reward.movement === 1 ? "+1 movement" : `+${reward.movement} movement`);
+  }
+  if ((reward.resourceDice ?? 0) > 0) {
+    parts.push(
+      reward.resourceDice === 1 ? "1 Resource die" : `${reward.resourceDice} Resource dice`
+    );
   }
   return parts.join(" · ");
 }
@@ -529,7 +580,8 @@ const CUSTOM_MAP_OBJECT_KINDS = new Set<CustomMapObjectKind>([
   "keymaster_tent",
   "barrier",
   "oneway_entrance",
-  "oneway_exit"
+  "oneway_exit",
+  "creature_bank"
 ]);
 
 /** The three one-way exit-pick modes (allow-list for sanitize + the editor). */
@@ -537,6 +589,17 @@ export const ONEWAY_EXIT_MODES = ["random", "certain", "mix"] as const;
 
 /** The outpost kinds — STANDALONE-only one-hex objects out of every tile. */
 export const OUTPOST_OBJECT_KINDS = new Set<CustomMapObjectKind>(["garrison", "keymaster_tent", "barrier"]);
+
+/**
+ * Object kinds that may ONLY sit as a standalone hex (never a tile-slot form).
+ * Outposts + the designer Creature Bank pin. Teleporters may be either form.
+ */
+export const STANDALONE_ONLY_OBJECT_KINDS = new Set<CustomMapObjectKind>([
+  "garrison",
+  "keymaster_tent",
+  "barrier",
+  "creature_bank"
+]);
 
 /** Designer effect kinds (order = editor dropdown order). */
 export const TIMED_EFFECT_KINDS = [
@@ -1292,6 +1355,8 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
     reward?: unknown;
     vp?: unknown;
     placement?: unknown;
+    bankId?: unknown;
+    bankSize?: unknown;
   };
   if (typeof raw.kind !== "string" || !CUSTOM_MAP_OBJECT_KINDS.has(raw.kind as CustomMapObjectKind)) {
     return null;
@@ -1308,6 +1373,12 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   const col = placementRaw.col as number;
   let placement: CustomMapObjectPlacement;
   if (placementRaw.type === "tile-slot") {
+    // Creature Bank pins are STANDALONE-only (a tile-slot form is dropped).
+    // Outposts are also standalone-only in the designer, but a legacy tile-slot
+    // outpost still sanitises so validateCustomMapObjects can surface the problem.
+    if (kind === "creature_bank") {
+      return null;
+    }
     const slot = placementRaw.slot;
     if (!Number.isInteger(slot) || (slot as number) < 0 || (slot as number) > 6) {
       return null;
@@ -1332,6 +1403,20 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
       return null;
     }
     object.pair = raw.pair;
+  }
+  // Creature Bank pin: bankId REQUIRED (one of the 12 published banks); optional
+  // fixed Polish size 1–4. Never carries a designer guard / first-clear reward /
+  // yellow borders (a bank is always border-free — same as an on-tile bank token;
+  // seals for a break-out choke go on neighbouring tiles, not the bank hex).
+  if (kind === "creature_bank") {
+    if (typeof raw.bankId !== "string" || !(raw.bankId in CREATURE_BANKS)) {
+      return null;
+    }
+    object.bankId = raw.bankId as CreatureBankId;
+    if (raw.bankSize === 1 || raw.bankSize === 2 || raw.bankSize === 3 || raw.bankSize === 4) {
+      object.bankSize = raw.bankSize;
+    }
+    return object;
   }
   // A designer guard (optional): the LEGACY plain number is a level 1-7; the
   // spec form adds "certain army" guards. Both normalise to a clean spec. A
@@ -1829,6 +1914,7 @@ export function describeMapObjects(objects: CustomMapObject[]): string {
   const gatePairs = new Set<number>();
   let monoliths = 0;
   let whirlpools = 0;
+  let banks = 0;
   let guarded = 0;
   for (const object of objects) {
     if (object.guard) {
@@ -1840,6 +1926,8 @@ export function describeMapObjects(objects: CustomMapObject[]): string {
       monoliths += 1;
     } else if (object.kind === "whirlpool") {
       whirlpools += 1;
+    } else if (object.kind === "creature_bank") {
+      banks += 1;
     }
   }
   const parts: string[] = [];
@@ -1851,6 +1939,9 @@ export function describeMapObjects(objects: CustomMapObject[]): string {
   }
   if (whirlpools > 0) {
     parts.push(`${whirlpools} whirlpool${whirlpools === 1 ? "" : "s"}`);
+  }
+  if (banks > 0) {
+    parts.push(`${banks} creature bank${banks === 1 ? "" : "s"}`);
   }
   if (guarded > 0) {
     parts.push(`${guarded} guarded`);

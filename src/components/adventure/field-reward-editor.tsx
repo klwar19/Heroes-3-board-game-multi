@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Shared designer first-clear reward editor: resources, Treasure dice, and
- * Times × Search(X) per deck (two parameters). Used on center hexes, tokens,
- * objects and per-tile settlements.
+ * Shared designer first-clear reward editor: resources, Treasure dice,
+ * Times × Search(X) per deck, plus special arms (morale, Ability Empower token,
+ * Statistic empower, experience, movement, Resource dice). Used on center
+ * hexes, tokens, objects, per-tile settlements and hex events.
  */
 
 import {
@@ -13,6 +14,9 @@ import {
   MAX_CENTER_HEX_SEARCH,
   MAX_CENTER_HEX_SEARCH_TIMES,
   MAX_CENTER_HEX_VP,
+  MAX_FIELD_REWARD_EXPERIENCE,
+  MAX_FIELD_REWARD_MOVEMENT,
+  MAX_FIELD_REWARD_RESOURCE_DICE,
   type CustomFieldReward
 } from "@/engine";
 
@@ -61,6 +65,35 @@ export function nextFieldReward(
     amount <= 1
   ) {
     delete (next as Record<string, number | undefined>)[key];
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/** Set or clear a boolean special arm (Ability Empower token / Statistic empower). */
+export function nextFieldRewardFlag(
+  current: CustomFieldReward | undefined,
+  key: "abilityEmpowerToken" | "empowerStatistic",
+  on: boolean
+): CustomFieldReward | undefined {
+  const next: CustomFieldReward = { ...(current ?? {}) };
+  if (on) {
+    next[key] = true;
+  } else {
+    delete next[key];
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/** Set morale to +1 / −1 / off. */
+export function nextFieldRewardMorale(
+  current: CustomFieldReward | undefined,
+  value: 1 | -1 | 0
+): CustomFieldReward | undefined {
+  const next: CustomFieldReward = { ...(current ?? {}) };
+  if (value === 1 || value === -1) {
+    next.morale = value;
+  } else {
+    delete next.morale;
   }
   return Object.keys(next).length > 0 ? next : undefined;
 }
@@ -195,12 +228,119 @@ export function FieldRewardEditor({
         })}
       </div>
 
+      <div className="fieldRewardSpecialSection" role="group" aria-label={`${ariaLabel} special rewards`}>
+        <div className="fieldRewardSpecialTitle">Special rewards</div>
+        <div className="fieldRewardSpecialGrid">
+          <label className="fieldRewardSpecialSelect">
+            <span>Morale</span>
+            <select
+              aria-label={`${ariaLabel} morale`}
+              onChange={(event) => {
+                const v = event.target.value;
+                onChange(nextFieldRewardMorale(reward, v === "1" ? 1 : v === "-1" ? -1 : 0));
+              }}
+              value={reward?.morale === 1 ? "1" : reward?.morale === -1 ? "-1" : "0"}
+            >
+              <option value="0">None</option>
+              <option value="1">+1 morale</option>
+              <option value="-1">−1 morale</option>
+            </select>
+          </label>
+
+          <label className="fieldRewardSpecialToggle">
+            <input
+              aria-label={`${ariaLabel} Ability Empower token`}
+              checked={Boolean(reward?.abilityEmpowerToken)}
+              onChange={(event) =>
+                onChange(nextFieldRewardFlag(reward, "abilityEmpowerToken", event.target.checked))
+              }
+              type="checkbox"
+            />
+            <span>
+              Ability Empower token
+              <small>Max 1 · spend anytime on a hand Ability</small>
+            </span>
+          </label>
+
+          <label className="fieldRewardSpecialToggle">
+            <input
+              aria-label={`${ariaLabel} Empower a Statistic`}
+              checked={Boolean(reward?.empowerStatistic)}
+              onChange={(event) =>
+                onChange(nextFieldRewardFlag(reward, "empowerStatistic", event.target.checked))
+              }
+              type="checkbox"
+            />
+            <span>
+              Empower a Statistic
+              <small>Free menu: hand or discard → Empowered form</small>
+            </span>
+          </label>
+
+          <label className="popoverViiField_num">
+            <span>Experience</span>
+            <input
+              aria-label={`${ariaLabel} experience`}
+              max={MAX_FIELD_REWARD_EXPERIENCE}
+              min={0}
+              onChange={(event) => {
+                const amount = Math.max(
+                  0,
+                  Math.min(MAX_FIELD_REWARD_EXPERIENCE, Math.floor(Number(event.target.value) || 0))
+                );
+                onChange(nextFieldReward(reward, "experience", amount));
+              }}
+              type="number"
+              value={reward?.experience ?? ""}
+            />
+          </label>
+
+          <label className="popoverViiField_num">
+            <span>Movement</span>
+            <input
+              aria-label={`${ariaLabel} movement`}
+              max={MAX_FIELD_REWARD_MOVEMENT}
+              min={0}
+              onChange={(event) => {
+                const amount = Math.max(
+                  0,
+                  Math.min(MAX_FIELD_REWARD_MOVEMENT, Math.floor(Number(event.target.value) || 0))
+                );
+                onChange(nextFieldReward(reward, "movement", amount));
+              }}
+              type="number"
+              value={reward?.movement ?? ""}
+            />
+          </label>
+
+          <label className="popoverViiField_num">
+            <span>Resource dice</span>
+            <input
+              aria-label={`${ariaLabel} Resource dice`}
+              max={MAX_FIELD_REWARD_RESOURCE_DICE}
+              min={0}
+              onChange={(event) => {
+                const amount = Math.max(
+                  0,
+                  Math.min(MAX_FIELD_REWARD_RESOURCE_DICE, Math.floor(Number(event.target.value) || 0))
+                );
+                onChange(nextFieldReward(reward, "resourceDice", amount));
+              }}
+              type="number"
+              value={reward?.resourceDice ?? ""}
+            />
+          </label>
+        </div>
+      </div>
+
       {fullSummary ? (
         <small className="fieldRewardSummary" aria-live="polite">
           {fullSummary}
         </small>
       ) : (
-        <small className="popoverHint">No first-clear bonus yet — set resources, dice, or a Search above.</small>
+        <small className="popoverHint">
+          No first-clear bonus yet — set resources, a Search, or a special reward above.
+        </small>
       )}
     </div>
   );

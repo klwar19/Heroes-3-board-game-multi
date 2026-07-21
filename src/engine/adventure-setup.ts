@@ -103,6 +103,7 @@ import {
   VII_FIELD_DESIGNATIONS,
   objectGuardSpec,
   OUTPOST_OBJECT_KINDS,
+  STANDALONE_ONLY_OBJECT_KINDS,
   sanitizeCenterHexPlan,
   sanitizeFieldReward,
   sanitizeHexEvents,
@@ -1584,11 +1585,17 @@ export function validateCustomMapObjects(
 
   objects.forEach((object, index) => {
     const label = `Object ${index + 1}`;
+    // Creature Bank pin must name a real bank id (sanitize already drops junk;
+    // re-check so a hand-edited preset never carves a blank bank).
+    if (object.kind === "creature_bank" && (!object.bankId || !(object.bankId in CREATURE_BANKS))) {
+      problems.push(`${label}: a Creature Bank object must name a known bankId.`);
+      return;
+    }
     if (object.placement.type === "tile-slot") {
-      // Outposts (Garrison / Keymaster's Tent / Barrier) are STANDALONE-only —
-      // "a separate hex out of the map"; a tile-slot placement is dropped.
-      if (OUTPOST_OBJECT_KINDS.has(object.kind)) {
-        problems.push(`${label}: a ${object.kind.replace("_", " ")} must be a standalone hex, never on a tile.`);
+      // Outposts + Creature Bank are STANDALONE-only — "a separate hex out of
+      // the map"; a tile-slot placement is dropped.
+      if (STANDALONE_ONLY_OBJECT_KINDS.has(object.kind)) {
+        problems.push(`${label}: a ${object.kind.replace(/_/g, " ")} must be a standalone hex, never on a tile.`);
         return;
       }
       const { row, col, slot } = object.placement;
@@ -1838,6 +1845,33 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
     const spaceId = hexSpaceId({ row: object.placement.row, col: object.placement.col });
     if (adventure.fields[spaceId]) {
       continue; // never clobber an existing field (validation guards this)
+    }
+    // Designer Creature Bank: carve a real bank hex (army + reward from
+    // bankId). No designer guard / first-clear reward / yellow borders — the
+    // bank fight IS the content and a bank is always border-free (never seals
+    // movement or tile discovery). Optional bankSize pins Polish Stacked count
+    // when that rule is on.
+    if (object.kind === "creature_bank") {
+      const bankId = object.bankId;
+      if (!bankId || !(bankId in CREATURE_BANKS)) {
+        continue;
+      }
+      const field: MapFieldState = {
+        spaceId,
+        tileInstanceId: `${STANDALONE_OBJECT_TILE_PREFIX}${spaceId}`,
+        slot: 0,
+        location: "creature_bank",
+        bankId,
+        ...(object.bankSize !== undefined ? { bankSize: object.bankSize } : {}),
+        blackCube: false,
+        flagOwnerId: null,
+        everFlagged: false,
+        settlementResource: null,
+        standalone: true,
+        standaloneLayer: standaloneLayerFromLiveState(adventure, spaceId)
+      };
+      adventure.fields[spaceId] = field;
+      continue;
     }
     const field: MapFieldState = {
       spaceId,
@@ -2374,6 +2408,17 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       sanitizeCustomMapPreset(setupOptions.customMapPreset),
       explicit
     );
+  }
+  // Same default the lobby applies: when the scenario (and caller) left
+  // startingBuildings empty, stand Citadel + Mage Guild + Bronze Dwelling so
+  // Diplomacy's basic recruit and town recruitment are not a silent no-op.
+  // An explicit empty array from the caller still wins (options.startingBuildings
+  // lands in setupOptions and is not overwritten).
+  if (
+    options.startingBuildings === undefined &&
+    (!setupOptions.startingBuildings || setupOptions.startingBuildings.length === 0)
+  ) {
+    setupOptions.startingBuildings = [...DEFAULT_SETUP_STARTING_BUILDINGS];
   }
   const difficulty = setupOptions.difficulty;
   // Naval Battles Creature Banks default ON: discovering a Far/Near tile with a

@@ -448,6 +448,28 @@ describe("PermanentSlot — the permanent effect is shown clearly (map card tray
     );
     expect(container.firstChild).toBeNull();
   });
+
+  it("shows Spell Scrolls in the permanent tray (not only on the hand shelf)", () => {
+    const state = createInitialGameState("permanent-scroll-tray");
+    state.players.p1.permanents = [];
+    state.players.p1.permanent = undefined;
+    state.players.p1.scrolls = [
+      { id: "scroll_1", spellCardIds: ["spell.magic_arrow", "spell.curse"] },
+    ];
+
+    const { container } = render(
+      <CardZoomProvider>
+        <PermanentSlot state={state} playerId="p1" viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+
+    expect(container.firstChild).not.toBeNull();
+    expect(container.textContent).toMatch(/spell scroll/i);
+    expect(container.textContent).toContain("Spell Scroll");
+    // Both held spells are named so the tray is the map-side home for scrolls.
+    expect(container.textContent).toMatch(/Magic Arrow/i);
+    expect(container.textContent).toMatch(/Curse/i);
+  });
 });
 
 describe("HandFan — Spell Book window (house rule)", () => {

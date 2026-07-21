@@ -44,7 +44,7 @@ function passAll(state: GameState): GameState {
 
 function polishCombat(seed: string): GameState {
   const state = createInitialGameState(seed);
-  const adventure = createAdventureGameState({
+  const adventure = createAdventureGameState({ startingBuildings: [],
     seed: `${seed}-rules`,
     ruleset: "binh",
     rollFirstPlayer: false,
@@ -81,7 +81,7 @@ function castAtSkeletons(state: GameState, cardId: string): LegalAction {
 
 describe("Polish Spell Book setup", () => {
   it("gives Might 1 and Magic 2 Cast-a-Spell cards while seeding the matching Magic Arrows in Book", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-starting",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -103,7 +103,7 @@ describe("Polish Spell Book setup", () => {
   });
 
   it("forces one Spell deck while retaining split Artifact decks", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-merged-spells",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -116,7 +116,7 @@ describe("Polish Spell Book setup", () => {
   });
 
   it("supersedes the existing stash-style Spell Book when both flags are submitted", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-mutual-exclusion",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -135,7 +135,7 @@ describe("Polish Spell Book setup", () => {
   });
 
   it("CONTROL: rule off keeps starting Magic Arrows in the M&M deck", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-off",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -290,7 +290,7 @@ describe("Polish Spell Book lifecycle", () => {
   });
 
   it("routes a searched Spell straight into the refreshed Book", () => {
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-search-gain",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -316,7 +316,7 @@ describe("Polish Spell Book lifecycle", () => {
   });
 
   it("adapts discard-recovery cards to refresh used Book spells", () => {
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-recovery",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -346,7 +346,7 @@ describe("Polish Spell Book lifecycle", () => {
   });
 
   it("names the Spell Book (not the discard pile) when every recover option is a Book refresh, and refreshes exactly the picked Spell", () => {
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-refresh-prompt",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -383,7 +383,7 @@ describe("Polish Spell Book lifecycle", () => {
   });
 
   it("names BOTH the discard pile and the Spell Book when the recover pick mixes them", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-refresh-mixed",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -404,7 +404,7 @@ describe("Polish Spell Book lifecycle", () => {
   });
 
   it("lets Ciele I refresh a used Magic Arrow and Ciele IV cast a refreshed one for free", () => {
-    let map = createAdventureGameState({
+    let map = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-ciele-i",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -475,7 +475,7 @@ describe("Polish Spell Book lifecycle", () => {
   });
 
   it("Crown of Dragontooth removes a refreshed or used Book Spell before Search 2", () => {
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-crown",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -520,7 +520,7 @@ describe("Polish Spell Book lifecycle", () => {
     // Cast a Spell (Discard→Hand). Refresh spell (1)" recover arm the four
     // discard-recovery artifacts carry. Option A (TAKE_FROM_DISCARD, filter
     // "spell") routes through the shared openDiscardPickChoice Polish path.
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-crown-recover",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -570,7 +570,7 @@ describe("Polish Spell Book lifecycle", () => {
   });
 
   it("CONTROL: with the rule OFF, Crown option A takes 2 Spells from discard to hand and ignores Cast a Spell", () => {
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-crown-recover-off",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -602,7 +602,7 @@ describe("Polish Spell Book lifecycle", () => {
 
 describe("Polish Mage Guild", () => {
   it("offers Search 3 or one Cast-a-Spell purchase and enforces one token purchase", () => {
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-guild-buy",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -632,7 +632,7 @@ describe("Polish Mage Guild", () => {
   });
 
   it("Rolling Spells costs 3 gold, returns one owned Spell, and queues Search 2 once per turn", () => {
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-guild-roll",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -666,7 +666,7 @@ describe("Polish Mage Guild", () => {
   });
 
   it("a newly built Guild offers two Search-3-or-Cast rewards", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-guild-build",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -693,7 +693,7 @@ describe("Polish Mage Guild", () => {
   });
 
   it("grants free Cast-a-Spell cards at levels V and VII only with a Mage Guild", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-guild-level-grants",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -712,7 +712,7 @@ describe("Polish Mage Guild", () => {
   });
 
   it("does not grant the level-V Cast-a-Spell card without a built Mage Guild", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-guild-level-no-guild",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -876,7 +876,7 @@ describe("Polish Spell Book — discard-recovery artifacts", () => {
   });
 
   function playRecoveryArtifact(seed: string, artifactId: string, extraDiscard: string[]): GameState {
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed,
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -942,7 +942,7 @@ describe("Polish Spell Book — discard-recovery artifacts", () => {
   });
 
   it("CONTROL: with the rule OFF, the recover arm takes a Spell from discard and never touches Cast a Spell", () => {
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-recovery-off",
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -971,7 +971,7 @@ describe("Polish Spell Book — discard-recovery artifacts", () => {
 
 describe("Polish Spell Book — co-composition fixes", () => {
   function polishAdventure(seed: string): GameState {
-    return createAdventureGameState({
+    return createAdventureGameState({ startingBuildings: [],
       seed,
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -1102,7 +1102,7 @@ describe("Polish Spell Book — co-composition fixes", () => {
   });
 
   it("CONTROL: with the rule OFF, morale repeat_search still uses personal discard", () => {
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-morale-repeat-off",
       ruleset: "binh",
       rollFirstPlayer: false,
