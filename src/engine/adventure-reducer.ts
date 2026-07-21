@@ -8915,10 +8915,15 @@ export function giveUpCombat(state: GameState, action: Extract<GameAction, { typ
 }
 
 /**
- * Can this player play a Necromancy ability at this very instant? True only for
- * a Necropolis hero holding a printed Necromancy / Vidomina specialty in hand;
- * a copy drawn from the Ability deck on level-up is kept but never playable
- * (house rule). Drives the after-combat now-or-never window — it opens only for
+ * Can this player play a Necromancy ability at this very instant? True for a
+ * Necropolis hero holding ANY Necromancy / Vidomina specialty in hand — the
+ * printed board copy OR one searched/drawn from the shared Ability deck. Per the
+ * printed card (wiki p.24) the "keep it without being able to play it" clause is
+ * for NON-Necropolis heroes ONLY; a Necropolis hero may play every copy it
+ * holds. (The earlier `deckDrawnAbilityCardIds` exclusion — an undocumented
+ * house rule with no printed or user basis — wrongly blocked a Necropolis hero's
+ * deck-drawn copy, silently killing the after-combat window on EVERY win; it has
+ * been removed.) Drives the after-combat now-or-never window — it opens only for
  * a winner who could actually use it the moment the fight ends.
  */
 function playerCanPlayNecromancy(state: GameState, playerId: PlayerId): boolean {
@@ -8926,11 +8931,34 @@ function playerCanPlayNecromancy(state: GameState, playerId: PlayerId): boolean 
   if (!player || player.factionId !== "necropolis") {
     return false;
   }
-  return player.hand.some((cardId) => {
-    const card = cardLibrary[cardId];
-    return (
-      card?.effect.type === "NECROMANCY_REINFORCE" && !(player.deckDrawnAbilityCardIds?.includes(cardId) ?? false)
-    );
+  return player.hand.some((cardId) => cardLibrary[cardId]?.effect.type === "NECROMANCY_REINFORCE");
+}
+
+/**
+ * Safety trace for the after-combat Necromancy window. When a combat WINNER
+ * holds a Necromancy copy in hand but `playerCanPlayNecromancy` withholds the
+ * now-or-never window, leave an explicit feed note naming the reason — so a
+ * withheld window can never again read as a silent, random "missing prompt" bug
+ * (the repeatedly-reported symptom). After the Necropolis deck-drawn fix above
+ * the only remaining withheld case is a NON-Necropolis holder (printed rule:
+ * only a Necropolis hero may play Necromancy). Self-gating: a no-op unless a
+ * copy is held AND the window is not opening.
+ */
+function noteWithheldNecromancyWindow(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  const holdsNecromancy = player.hand.some(
+    (cardId) => cardLibrary[cardId]?.effect.type === "NECROMANCY_REINFORCE"
+  );
+  if (!holdsNecromancy || playerCanPlayNecromancy(state, playerId)) {
+    return;
+  }
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: "Necromancy stays in hand — only a Necropolis hero may play it after a combat win."
   });
 }
 
@@ -9365,6 +9393,8 @@ export function finalizeAdventureCombat(state: GameState): void {
         // legal-actions sits behind it.
         if (playerCanPlayNecromancy(state, playerId)) {
           adventure.pendingNecromancy = { playerId, heroId: hero.id };
+        } else {
+          noteWithheldNecromancyWindow(state, playerId);
         }
       } else if (playerCanPlayNecromancy(state, playerId)) {
         // BINH house rule: Necromancy is a now-or-never decision made BEFORE the
@@ -9374,6 +9404,7 @@ export function finalizeAdventureCombat(state: GameState): void {
         adventure.pendingNecromancy = { playerId, heroId: hero.id, fieldId: context.fieldId };
       } else {
         beginFieldVisit(state, hero.id, context.fieldId, false);
+        noteWithheldNecromancyWindow(state, playerId);
       }
     }
 
@@ -9577,6 +9608,7 @@ export function finalizeAdventureCombat(state: GameState): void {
       adventure.pendingNecromancy = { playerId: winnerPid, heroId: winnerHero.id, fieldId: context.fieldId };
     } else {
       beginFieldVisit(state, winnerHero.id, context.fieldId, false);
+      noteWithheldNecromancyWindow(state, winnerPid);
     }
   }
 }

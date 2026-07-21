@@ -18909,9 +18909,10 @@ function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARC
 }
 
 /**
- * Mark an ability card the player just drew out of the shared Ability deck.
- * A Necromancy obtained this way (the level-up "Search the Ability deck"
- * reward) is kept but never playable — see the Necromancy legality check.
+ * Record an ability card the player just drew out of the shared Ability deck
+ * (a historical public log; see `PlayerState.deckDrawnAbilityCardIds`). It does
+ * NOT gate play — a Necropolis hero may play a Necromancy obtained this way,
+ * per the printed card (wiki p.24). Kept for the level-up board record below.
  */
 function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: CardId): void {
   if (deckId !== "abilities") {

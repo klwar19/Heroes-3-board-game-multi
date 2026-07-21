@@ -172,14 +172,13 @@ function holdsPlayableNecromancy(
 ): boolean {
   const player = observation.state.players[observation.playerId];
   if (!player) return false;
-  return player.hand.some((cardId) => {
-    if (cardLibrary[cardId]?.effect.type !== "NECROMANCY_REINFORCE") {
-      return false;
-    }
-    // A copy drawn from the shared Ability deck is kept but never playable
-    // (house rule mirrored from addNecromancyPlays) — keep hunting past it.
-    return !player.deckDrawnAbilityCardIds?.includes(cardId);
-  });
+  // A Necropolis hero may play ANY Necromancy copy in hand — the printed board
+  // card OR one searched/drawn from the shared Ability deck (wiki p.24; only a
+  // NON-Necropolis holder keeps an unplayable copy). Holding any counts as the
+  // faction engine being in hand, so the mulligan hunt ends.
+  return player.hand.some(
+    (cardId) => cardLibrary[cardId]?.effect.type === "NECROMANCY_REINFORCE",
+  );
 }
 
 function voluntaryCycleThreshold(observation: ComputerObservation): number {

@@ -3577,11 +3577,12 @@ function addSpellBookStashActions(actions: LegalAction[], state: GameState, play
 }
 
 /**
- * The after-combat Necromancy plays for a Necropolis player who holds one. A
- * copy drawn from the Ability deck on level-up is kept but never playable (house
- * rule). Vidomina's specialties pin the tier (no expert crown); the printed
- * ability may be played basic, or expert when a crown use is spare. Used only
- * inside the pendingNecromancy now-or-never gate.
+ * The after-combat Necromancy plays for a Necropolis player who holds one —
+ * EVERY copy in hand, printed board card OR one searched/drawn from the shared
+ * Ability deck (wiki p.24: the "keep it without being able to play it" clause is
+ * for NON-Necropolis heroes only). Vidomina's specialties pin the tier (no
+ * expert crown); the printed ability may be played basic, or expert when a crown
+ * use is spare. Used only inside the pendingNecromancy now-or-never gate.
  */
 /**
  * WOG Commanders — map-turn actions on the player's own turn:
@@ -3644,9 +3645,10 @@ function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: 
     if (!card || card.effect.type !== "NECROMANCY_REINFORCE") {
       continue;
     }
-    if (player.deckDrawnAbilityCardIds?.includes(cardId)) {
-      continue;
-    }
+    // A Necropolis hero may play EVERY Necromancy copy it holds, including one
+    // searched/drawn from the shared Ability deck — the printed "keep it without
+    // being able to play it" clause is for NON-Necropolis heroes only (wiki
+    // p.24). No deck-drawn exclusion here (see playerCanPlayNecromancy).
 
     if (card.effect.forceMode) {
       actions.push({

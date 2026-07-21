@@ -168,19 +168,21 @@ describe("Necromancy ability — after-combat window", () => {
     expect(during.length).toBeGreaterThan(0);
   });
 
-  it("cannot be played when it was drawn from the Ability deck on level-up", () => {
+  it("CAN be played even when the copy was drawn from the shared Ability deck (Necropolis hero — wiki p.24)", () => {
     const state = startSandroGame();
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.necromancyWindow = true;
     state.adventure!.pendingNecromancy = { playerId: "p1" };
-    // Same Necropolis hero, same open window — but this copy came out of the
-    // level-up Ability-deck search, so it is kept yet unplayable.
+    // This copy came out of the shared Ability-deck search (a level-up Ability
+    // Search). The printed "keep it without being able to play it" clause is for
+    // NON-Necropolis heroes ONLY, so a Necropolis hero (Sandro) may still play a
+    // deck-drawn copy. (Re-adding the old exclusion makes this offer 0 again.)
     state.players.p1.deckDrawnAbilityCardIds = ["ability.necromancy"];
 
     const plays = getLegalActions(state, "p1").filter(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
     );
-    expect(plays).toHaveLength(0);
+    expect(plays.length).toBeGreaterThan(0);
   });
 
   it("is Necropolis-only — a Castle hero who holds it can never play it", () => {
@@ -758,6 +760,35 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     expect(legal.some((l) => l.action.type === "MOVE_HERO" || l.action.type === "END_TURN")).toBe(false);
   });
 
+  it("opens the window for a Necropolis winner whose Necromancy copy was drawn from the shared Ability deck (the repeated-report bug)", () => {
+    const state = startGame("bank-necro-deckdrawn");
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 0;
+    // The hand copy was searched/drawn out of the shared Ability deck (a level-up
+    // Ability Search — the common Necropolis play). The removed house-rule
+    // exclusion silently killed the after-combat window on EVERY win for such a
+    // copy; the printed "kept but unplayable" clause is for NON-Necropolis heroes
+    // only (wiki p.24), so Sandro may still play it.
+    state.players.p1.deckDrawnAbilityCardIds = ["ability.necromancy"];
+    stageBankWin(state, "p1");
+
+    finalizeAdventureCombat(state);
+
+    // The now-or-never window opens for the deck-drawn copy (re-adding the
+    // exclusion leaves pendingNecromancy null again).
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+    expect(
+      getLegalActions(state, "p1").some(
+        (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
+      )
+    ).toBe(true);
+    // A real, playable window — NOT the withheld-note fallback.
+    expect(
+      state.eventLog.some((e) => e.type === "EVENT_NOTE" && /only a Necropolis hero/.test(e.message))
+    ).toBe(false);
+  });
+
   it("lets the bank winner actually reinforce — Few → Pack — and spends the card", () => {
     const state = startGame("bank-necro-reinforce");
     state.players.p1.hand = ["ability.necromancy"];
@@ -803,6 +834,13 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
         (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
       )
     ).toBe(false);
+    // Visibility: the withheld window is no longer silent — a feed note names the
+    // reason (only a Necropolis hero may play Necromancy) so a held-back copy can
+    // never again read as a random "missing prompt" bug. (Removing the
+    // noteWithheldNecromancyWindow call fails this.)
+    expect(
+      state.eventLog.some((e) => e.type === "EVENT_NOTE" && /only a Necropolis hero/.test(e.message))
+    ).toBe(true);
   });
 
   it("CONTROL: a Necropolis bank winner holding NO Necromancy card opens no window", () => {

@@ -7081,11 +7081,13 @@ export type PlayerState = {
    */
   runeEmpoweredNextCombats?: number;
   /**
-   * Ability cards this player acquired by drawing them out of the shared
-   * Ability deck (the level-up "Search (2) the Ability deck" reward). A
-   * Necromancy gained this way may be kept but never played — it is only a
-   * real, playable ability when it comes from a hero's printed board, not
-   * from a level-up draw (house rule).
+   * PUBLIC record of Ability cards this player acquired by drawing them out of
+   * the shared Ability deck (the level-up "Search (2) the Ability deck" reward).
+   * A historical log (like `levelUpAbilityPicks`); it no longer gates play. A
+   * Necropolis hero may play EVERY Necromancy copy it holds — printed board card
+   * OR a deck-drawn one — per the printed card (wiki p.24: only a NON-Necropolis
+   * hero keeps a drawn copy without being able to play it, and non-Necropolis
+   * heroes are already blocked by faction, never by this record).
    */
   deckDrawnAbilityCardIds?: CardId[];
   /**
