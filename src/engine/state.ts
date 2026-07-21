@@ -358,7 +358,8 @@ export type FactionId =
   | "factory"
   | "fuyuki"
   | "azure_breeze"
-  | "hidden_leaf";
+  | "hidden_leaf"
+  | "azur_lane";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }

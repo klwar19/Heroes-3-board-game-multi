@@ -171,6 +171,16 @@ const creatureVoices: Record<string, string> = {
   giant_toad: "behemoth", // huge summoned beast → the Behemoth's roar
   jinchuriki: "demon", // feral tailed-beast chakra → the Demon set
   susanoo: "titan", // colossal armored avatar → the Titan set
+  // Azur Lane Naval Base — thematic reuse of complete Heroes III voice sets.
+  // Honolulu is the only RANGED shipgirl, so her set resolves a real shoot clip
+  // (sea-witch-shoot exists in the manifest).
+  laffey: "rogue", // nimble "White Demon" destroyer → the stealthy Rogue set
+  javelin: "pirate", // Royal Navy destroyer → the Cove Sea Dog's Pirate set
+  honolulu: "sea-witch", // ranged cruiser gunner → the Sorceress/Sea Witch set (has shoot)
+  unicorn: "enchanter", // the repair-fairy carrier medic → the Enchanter healer voice
+  yukikaze: "crew-mate", // the lucky destroyer → the Cove Seamen set
+  prinz_eugen: "titan", // the unsinkable armored heavy cruiser → the Titan set
+  i19: "behemoth", // the lurking "Silent Hunter" submarine → the Behemoth's roar
   // Wake of Gods adaptation: requested H3 voice reuse.
   ghost: "wraith",
   air_messenger: "stone-golem",
@@ -233,7 +243,10 @@ const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
   ruler: { attack: "swordsman", move: "swordsman", defend: "swordsman", hurt: "swordsman", death: "swordsman" },
   sword_saint: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" },
   // Hidden Leaf — Might Guy is a bare-fisted taijutsu master → the Monk voice.
-  might_guy: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" }
+  might_guy: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" },
+  // Azur Lane — Belfast is a poised Royal Navy maid-commander → the Sea Witch
+  // voice (the temple_guardian precedent proves the full set resolves).
+  belfast: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" }
 };
 
 /** The voice id the table uses for a commander combat unit ("commander:<slug>"). */

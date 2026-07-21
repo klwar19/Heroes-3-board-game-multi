@@ -98,9 +98,9 @@ describe("expansion tile data", () => {
     }
     // 41 boxed tiles + 66 wiki expansion tiles + the Bulwark S10 and Factory &S1
     // starting tiles + the full Factory "&" set: &N1/&N2 near, &F1/&F2/&F3 far,
-    // &C1 center (transcribed from the physical tile scans) + the 3 anime starting
-    // tiles A-S1 (Fuyuki) / W-S1 (Azure Breeze) / L-S1 (Hidden Leaf).
-    expect(Object.keys(allTileDefinitions)).toHaveLength(118);
+    // &C1 center (transcribed from the physical tile scans) + the 4 anime starting
+    // tiles A-S1 (Fuyuki) / W-S1 (Azure Breeze) / L-S1 (Hidden Leaf) / P-S1 (Azur Lane).
+    expect(Object.keys(allTileDefinitions)).toHaveLength(119);
   });
 
   it("default pools include every tile of that group (all content sets + Random Town)", () => {
@@ -190,7 +190,7 @@ describe("expansion tile data", () => {
     // #N4-#N7, #C2/#C3) were cropped from the community subterranean map scans.
     const withArt = Object.values(allTileDefinitions).filter((tile) => tile.assets?.tileImage);
     expect(withArt).toHaveLength(Object.keys(allTileDefinitions).length);
-    expect(withArt).toHaveLength(118);
+    expect(withArt).toHaveLength(119);
   });
 });
 

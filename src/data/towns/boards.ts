@@ -525,6 +525,27 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
       ["hidden_leaf.dwelling_gold"]
     ],
     geometry: DESIGNED_GEOMETRY
+  },
+  azur_lane: {
+    factionId: "azur_lane",
+    panoramaImage: "/assets/anime/towns/azur-lane-base-empty.webp",
+    fullImage: "/assets/anime/towns/azur-lane-base-full.webp",
+    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/town-board/azur-lane-bar-${index + 1}.webp`),
+    panelImage: DESIGNED_PANEL_IMAGE,
+    // 8 buildings on 7 bars, exactly ONE two-building bar (mirrors Fuyuki):
+    // the Munitions Workshop shares the LV4 dwelling bar. Bar assignment MUST
+    // agree with animeTownBuildingBar in src/data/anime/towns.ts so each
+    // building's strip art matches its bar.
+    bars: [
+      ["azur_lane.city_hall"],
+      ["azur_lane.dwelling_bronze"],
+      ["azur_lane.munitions_workshop"],
+      ["azur_lane.dwelling_silver", "azur_lane.exercise_waters"],
+      ["azur_lane.mage_guild"],
+      ["azur_lane.citadel"],
+      ["azur_lane.dwelling_gold"]
+    ],
+    geometry: DESIGNED_GEOMETRY
   }
 };
 

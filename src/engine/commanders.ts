@@ -380,6 +380,21 @@ function commanderHasSuperiorCombat(commander: CommanderPlayerState): boolean {
   return commanderDefinitionOf(commander)?.specialty.id === "superior-combat";
 }
 
+/** The First Aid post-combat restoration specialty (Rampart Hierophant, Azur Lane Belfast). */
+function commanderHasFirstAid(commander: CommanderPlayerState): boolean {
+  return commanderDefinitionOf(commander)?.specialty.id === "first-aid";
+}
+
+/**
+ * Whether `playerId` has a LIVING commander that carries the First Aid specialty
+ * (SPECIALTY-keyed, not slug-keyed — so any future First-Aid commander opens the
+ * post-combat restoration window, not only the Hierophant).
+ */
+export function playerHasLivingFirstAidCommander(state: GameState, playerId: PlayerId): boolean {
+  const commander = livingCommanderOf(state.players[playerId]);
+  return commander ? commanderHasFirstAid(commander) : false;
+}
+
 /**
  * GENERIC pre-combat SORT capability. True when the Commanders module is on, the
  * player's commander is present + alive in THIS combat, AND some source grants

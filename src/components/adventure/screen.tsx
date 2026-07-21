@@ -8490,7 +8490,7 @@ function GameOptionsPanel({
             </small>
             <div className="wogModuleList">
               {([
-                ["isekaiTowns", "Fuyuki City + Hidden Leaf Village", "Adds two complete anime towns: Fuyuki City (7-unit Servant roster) and Hidden Leaf Village (7-unit shinobi swarm) — each with original heroes, its town board, buildings, starting tile, commander, and anime-themed system vocabulary."],
+                ["isekaiTowns", "Fuyuki City + Hidden Leaf Village + Azur Lane Naval Base", "Adds three complete anime towns: Fuyuki City (7-unit Servant roster), Hidden Leaf Village (7-unit shinobi swarm) and Azur Lane Naval Base (7-ship kansen fleet) — each with original heroes, its town board, buildings, starting tile, commander, and anime-themed system vocabulary."],
                 ["xianxiaTowns", "Azure Breeze Sect", "Adds the complete wuxia sect: 7-unit cultivation roster, two original heroes, its mountain town board, buildings, starting tile, and wuxia-themed system vocabulary."],
                 ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool. Turns Field Overrides on."],
                 ["combatEvents", "Forced battle events", "Scripted combat events on anime fields (the Bí Cảnh spirit-mist / earthvein-surge). Fully automatic — no new prompts."],

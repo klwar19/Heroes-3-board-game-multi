@@ -188,6 +188,7 @@ import {
   finalizeCommandersAfterCombat,
   injectCommanderIntoCombat,
   playerHasLivingCommander,
+  playerHasLivingFirstAidCommander,
   type CommanderFirstAidOption
 } from "./commanders";
 import { isComputerPlayer } from "./computer/control";
@@ -9175,7 +9176,7 @@ export function finalizeAdventureCombat(state: GameState): void {
       if (
         playerId !== NEUTRAL_PLAYER_ID &&
         commanderSurvivors.has(playerId) &&
-        playerHasLivingCommander(state, playerId, "hierophant") &&
+        playerHasLivingFirstAidCommander(state, playerId) &&
         !(giveUpKeepsTroops && playerId === giveUpLoserId)
       ) {
         const options = collectFirstAidCandidates(state, playerId);

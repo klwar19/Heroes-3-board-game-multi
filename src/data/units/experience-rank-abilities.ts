@@ -589,6 +589,42 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   "hidden_leaf.susanoo": buildScheduleFromTemplate("strong", [
     ["bulwark-air-shield", "reduce-spell-damage-1"],
     ["wog-fire-shield-1", "ignore-paralysis"]
+  ]),
+
+  // ── Anime Azur Lane ──────────────────────────────────────────────────────
+  // Fleet veterancy: bronze standard (1 ability), silver/gold strong (2). Every
+  // choice is an already-implemented, non-Stacked ability NOT already printed on
+  // that shipgirl's sides, drawn from the same pools the Fuyuki/Azure/Hidden-Leaf
+  // schedules use.
+  "azur_lane.laffey": buildScheduleFromTemplate("standard", [
+    ["bulwark-thick-hide", "wog-no-negative-attack-roll"]
+  ]),
+  "azur_lane.javelin": buildScheduleFromTemplate("standard", [
+    ["wog-no-negative-attack-roll", "bulwark-air-shield"]
+  ]),
+  // LV3 bronze ranged cruiser gunner.
+  "azur_lane.honolulu": buildScheduleFromTemplate("standard", [
+    ["ranged-extra-shot-on-low-roll", "bulwark-air-shield"]
+  ]),
+  // LV4 silver carrier medic.
+  "azur_lane.unicorn": buildScheduleFromTemplate("strong", [
+    ["bulwark-thick-hide", "commander-defense-token"],
+    ["reduce-spell-damage-1", "bulwark-air-shield"]
+  ]),
+  // LV5 silver lucky destroyer.
+  "azur_lane.yukikaze": buildScheduleFromTemplate("strong", [
+    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
+    ["commander-charge", "commander-max-damage"]
+  ]),
+  // LV6 gold unsinkable heavy cruiser.
+  "azur_lane.prinz_eugen": buildScheduleFromTemplate("strong", [
+    ["bulwark-thick-hide", "reduce-spell-damage-1"],
+    ["commander-defense-token", "ignore-paralysis"]
+  ]),
+  // LV7 gold glass-cannon submarine.
+  "azur_lane.i19": buildScheduleFromTemplate("strong", [
+    ["bulwark-thick-hide", "commander-charge"],
+    ["commander-max-damage", "wog-nightmare-fear"]
   ])
 };
 

@@ -47,7 +47,7 @@
 export const COMMANDER_SLUGS = [
   "paladin", "hierophant", "temple_guardian", "succubus", "brute",
   "soul_eater", "ogre_leader", "shaman", "astral_spirit",
-  "corsair", "factory", "bulwark", "ruler", "sword_saint", "might_guy"
+  "corsair", "factory", "bulwark", "ruler", "sword_saint", "might_guy", "belfast"
 ] as const;
 
 export type CommanderSlug = (typeof COMMANDER_SLUGS)[number];
@@ -850,6 +850,33 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       text: "Choose +1 Attack or +1 Defense before combat; the stance lasts through rounds 1–2."
     },
     cardImage: "/assets/units-commander-might_guy.webp"
+  },
+  belfast: {
+    slug: "belfast", name: "Belfast", faction: "Azur Lane Naval Base", original: true,
+    // Cast: REUSE the Tower Temple Guardian's Precision arm verbatim
+    // (commander-cast-temple_guardian, precision) — the sword_saint precedent.
+    // Reusing a cast abilityId across commanders is established.
+    cast: {
+      abilityId: "commander-cast-temple_guardian",
+      name: "Fire Support",
+      icon: "/assets/spell-icons/precision.png",
+      targeting: { side: "friendly", unitType: "ranged", adjacentBelowPower: 1, canTargetSelf: false },
+      effect: { kind: "precision", amountByPower: [1, 1, 2] },
+      tierText: [
+        "A nearby allied warship gains +1 Attack and ignores ranged penalties this round.",
+        "An allied warship anywhere gains +1 Attack and ignores ranged penalties this round.",
+        "An allied warship anywhere gains +2 Attack and ignores ranged penalties this round."
+      ]
+    },
+    // Specialty: REUSE `first-aid` (post-combat restoration) — the SAME id the
+    // Rampart Hierophant carries, so the first-aid window (keyed off the
+    // specialty id, not the slug) opens for Belfast too.
+    specialty: {
+      id: "first-aid",
+      name: "Impeccable Service",
+      text: "After a combat: one of your bronze/silver units that died or flipped from Pack to Few may be restored (choose 1)."
+    },
+    cardImage: "/assets/units-commander-belfast.webp"
   }
 };
 
@@ -869,7 +896,8 @@ export const COMMANDER_SLUG_BY_FACTION: Record<string, CommanderSlug> = {
   bulwark: "bulwark",
   fuyuki: "ruler",
   azure_breeze: "sword_saint",
-  hidden_leaf: "might_guy"
+  hidden_leaf: "might_guy",
+  azur_lane: "belfast"
 };
 
 export function commanderCastTierIndex(power: number): 0 | 1 | 2 {
