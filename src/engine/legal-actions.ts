@@ -5614,6 +5614,7 @@ function getLegalActionsCore(
     // A positive morale token may be spent mid-combat for its draw / discard-
     // redraw here (the reroll use is offered by the attack-die reroll choice).
     addMoraleActions(actions, state, playerId);
+    addAbilityEmpowerTokenActions(actions, state, playerId);
   }
 
   return actions;
@@ -8685,6 +8686,33 @@ function addGiveUpCombatActions(actions: LegalAction[], state: GameState, player
   });
 }
 
+/**
+ * Ability Empower token: spend anytime (map or combat participant) to Empower
+ * one non-Empowered Ability currently in hand. Max storage 1; surplus auto-use
+ * is handled at gain time, not here.
+ */
+function addAbilityEmpowerTokenActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player || (player.abilityEmpowerToken ?? 0) < 1) {
+    return;
+  }
+  const seen = new Set<string>();
+  for (const cardId of player.hand) {
+    if (seen.has(cardId) || cardLibrary[cardId]?.kind !== "ability") {
+      continue;
+    }
+    if (player.empoweredAbilities?.includes(cardId)) {
+      continue;
+    }
+    seen.add(cardId);
+    const name = cardLibrary[cardId]?.name ?? cardId;
+    actions.push({
+      label: `Ability token: Empower ${name}`,
+      action: { type: "USE_ABILITY_EMPOWER_TOKEN", playerId, cardId }
+    });
+  }
+}
+
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   if (moraleCardsRuleEnabled(state)) {
@@ -8987,6 +9015,7 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
   if (!state.combat) {
     addTownActions(actions, state, playerId);
     addMoraleActions(actions, state, playerId);
+    addAbilityEmpowerTokenActions(actions, state, playerId);
   }
 
   // The mandatory start-of-turn draw may be taken while others resolve their
@@ -9262,6 +9291,7 @@ function getCombatInteractionActions(
       // be spent for its draw / discard-redraw here; the reroll use is offered
       // by the attack-die reroll choice instead.
       addMoraleActions(actions, state, playerId);
+      addAbilityEmpowerTokenActions(actions, state, playerId);
       addPvpEscapeActions(actions, state, playerId);
       // Give up (concede) is available throughout the fight, not just the
       // start-of-combat escape window.
@@ -9400,8 +9430,10 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
 
   // Town and morale actions may happen during any player's turn. The morale
   // token's draw / discard-redraw is spendable anywhere, not only at a Town.
+  // Ability Empower tokens are spendable the same way (hand Ability only).
   addTownActions(actions, state, playerId);
   addMoraleActions(actions, state, playerId);
+  addAbilityEmpowerTokenActions(actions, state, playerId);
 
   // Concede the whole game OFF-TURN: a player may give up while another player
   // is active, as long as the table is quiet (no combat or pending interaction

@@ -2379,6 +2379,48 @@ export function spendResources(state: GameState, playerId: PlayerId, cost: Resou
 }
 
 /**
+ * Hand Ability cards that are not already Empowered (token spend targets).
+ * Deduped by card id; order follows hand order.
+ */
+export function handAbilityEmpowerCandidates(player: PlayerState): CardId[] {
+  const seen = new Set<CardId>();
+  const out: CardId[] = [];
+  for (const cardId of player.hand) {
+    if (seen.has(cardId) || cardLibrary[cardId]?.kind !== "ability") {
+      continue;
+    }
+    if (player.empoweredAbilities?.includes(cardId)) {
+      continue;
+    }
+    seen.add(cardId);
+    out.push(cardId);
+  }
+  return out;
+}
+
+/** CHOOSE_ONE arms for empowering a hand ability (MARK_ABILITY_EMPOWERED leaf). */
+export function buildHandAbilityEmpowerOptions(
+  player: PlayerState
+): { label: string; steps: VisitStep[] }[] {
+  return handAbilityEmpowerCandidates(player).map((cardId) => ({
+    label: `Empower ${cardLibrary[cardId]?.name ?? cardId} (use basic or expert with no crown)`,
+    steps: [{ type: "MARK_ABILITY_EMPOWERED", cardId }]
+  }));
+}
+
+/** Permanent mark — no-op if already empowered. Returns whether newly marked. */
+export function markAbilityEmpowered(player: PlayerState, cardId: CardId): boolean {
+  if (!player.empoweredAbilities) {
+    player.empoweredAbilities = [];
+  }
+  if (player.empoweredAbilities.includes(cardId)) {
+    return false;
+  }
+  player.empoweredAbilities.push(cardId);
+  return true;
+}
+
+/**
  * Morale (token mode, morale-cards rule OFF):
  * - Range is −2 … +1. Positive caps at +1 (further gains → moraleOverflow spend).
  * - Negative floors at −2 (a second negative lands as −2; it does NOT reset to 0
@@ -2947,6 +2989,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
         : [];
     case "EMPOWER_ABILITY":
       return [{ type: "EMPOWER_ABILITY" }];
+    case "GAIN_ABILITY_EMPOWER_TOKEN":
+      return [{ type: "GAIN_ABILITY_EMPOWER_TOKEN" }];
     case "HILL_FORT":
       return [{ type: "HILL_FORT" }];
     case "SUBTERRANEAN_GATE":
@@ -7683,12 +7727,8 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "EMPOWER_ABILITY": {
-        // Dragon Fly Hive / Griffin Conservatory bonus (house rule
-        // "bank-empower-ability"): offer to Empower one of the player's own
-        // Ability cards (hand or discard) that is not already Empowered.
-        // Empowering is by card id, so a card owned in either pile qualifies
-        // once. No-op when the player owns no eligible ability — or when the
-        // house rule is off (those banks then grant only the unit, as printed).
+        // Legacy direct-empower (hand only). Banks now grant a token via
+        // GAIN_ABILITY_EMPOWER_TOKEN; this path remains for any residual step.
         if (!houseRuleEnabled(state, "bank-empower-ability")) {
           break;
         }
@@ -7696,28 +7736,62 @@ export function processPendingVisit(state: GameState): void {
         if (!player) {
           break;
         }
-        const seen = new Set<CardId>();
-        const options: { label: string; steps: VisitStep[] }[] = [];
-        for (const cardId of [...player.hand, ...player.discard]) {
-          if (seen.has(cardId) || cardLibrary[cardId]?.kind !== "ability") {
-            continue;
-          }
-          if (player.empoweredAbilities?.includes(cardId)) {
-            continue;
-          }
-          seen.add(cardId);
-          options.push({
-            label: `Empower ${cardLibrary[cardId]?.name ?? cardId} (use basic or expert with no crown)`,
-            steps: [{ type: "MARK_ABILITY_EMPOWERED", cardId }]
-          });
-        }
+        const options = buildHandAbilityEmpowerOptions(player);
         if (options.length === 0) {
           break;
         }
         options.push({ label: "Skip empowering an ability", steps: [] });
         visit.steps.unshift({
           type: "CHOOSE_ONE",
-          prompt: "Empower one ability you own — its Expert side then costs no crown",
+          prompt: "Empower one ability in hand — its Expert side then costs no crown",
+          options
+        });
+        break;
+      }
+      case "GAIN_ABILITY_EMPOWER_TOKEN": {
+        // Dragon Fly Hive / Griffin Conservatory (house rule "bank-empower-ability"):
+        // grant one Ability Empower token (max 1). Spend anytime to Empower a
+        // hand Ability. Surplus while already holding 1 forces auto-use on a
+        // hand ability (if any), then leaves the count at 1.
+        if (!houseRuleEnabled(state, "bank-empower-ability")) {
+          break;
+        }
+        const player = state.players[visit.playerId];
+        if (!player) {
+          break;
+        }
+        const held = player.abilityEmpowerToken ?? 0;
+        if (held < 1) {
+          player.abilityEmpowerToken = 1;
+          appendEvent(state, {
+            type: "ABILITY_EMPOWER_TOKEN_GAINED",
+            playerId: visit.playerId,
+            total: 1
+          });
+          break;
+        }
+        // Surplus: auto-use one (empower a hand ability) and keep 1.
+        const options = buildHandAbilityEmpowerOptions(player);
+        if (options.length === 0) {
+          // No eligible hand ability — surplus cannot be used; stay at 1.
+          appendEvent(state, {
+            type: "ABILITY_EMPOWER_TOKEN_GAINED",
+            playerId: visit.playerId,
+            total: 1,
+            surplus: true
+          });
+          break;
+        }
+        appendEvent(state, {
+          type: "ABILITY_EMPOWER_TOKEN_GAINED",
+          playerId: visit.playerId,
+          total: 1,
+          surplus: true
+        });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt:
+            "Ability Empower token is full (max 1). Empower one ability in hand to spend the surplus — you keep 1 token.",
           options
         });
         break;
@@ -7727,17 +7801,12 @@ export function processPendingVisit(state: GameState): void {
         if (!player) {
           break;
         }
-        if (!player.empoweredAbilities) {
-          player.empoweredAbilities = [];
-        }
-        if (!player.empoweredAbilities.includes(step.cardId)) {
-          player.empoweredAbilities.push(step.cardId);
-          appendEvent(state, {
-            type: "ABILITY_EMPOWERED",
-            playerId: visit.playerId,
-            cardId: step.cardId
-          });
-        }
+        markAbilityEmpowered(player, step.cardId);
+        appendEvent(state, {
+          type: "ABILITY_EMPOWERED",
+          playerId: visit.playerId,
+          cardId: step.cardId
+        });
         break;
       }
       case "WAR_MACHINE_GRANT_OFFER": {

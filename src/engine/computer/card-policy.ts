@@ -1122,6 +1122,9 @@ export function scoreCardAction(
       // "draw" — free card, good on map.
       return { score: 600, policy: "card.spend-morale-draw" };
     }
+    case "USE_ABILITY_EMPOWER_TOKEN":
+      // Permanent free Expert on a hand Ability — always worth taking.
+      return { score: 720, policy: "card.use-ability-empower-token" };
     case "USE_UNIT_RESURRECTION":
       // Archangel-style lethal save ability — always take over PASS.
       return { score: 1_170, policy: "card.unit-resurrection" };

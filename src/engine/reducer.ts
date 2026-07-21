@@ -111,6 +111,7 @@ import {
   commanderSetStance,
   spellBookAction,
   spendMorale,
+  useAbilityEmpowerToken,
   spendTownCube,
   activateTownBuilding,
   astrologersHeroEmpower,
@@ -19847,6 +19848,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "THIEVES_GUILD_ACTION",
   "BLACKSMITH_ACTION",
   "SPEND_MORALE",
+  "USE_ABILITY_EMPOWER_TOKEN",
   "CHOOSE_OPTION",
   "CHOOSE_ABILITY_TARGET",
   "CHOOSE_FACTION",
@@ -20490,6 +20492,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         // window open; re-derive its offers so the just-spent card drops out
         // (no-op when no reaction window is open).
         refreshReactionWindowLegalReactions(nextState, cards);
+        break;
+      case "USE_ABILITY_EMPOWER_TOKEN":
+        useAbilityEmpowerToken(nextState, action);
         break;
       case "CHOOSE_OPTION":
         // The combat-only option choices (Harpy fly-back, Genies' Wish spell

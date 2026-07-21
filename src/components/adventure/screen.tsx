@@ -120,6 +120,7 @@ import {
   HERO_INFO_STAT_ICONS,
   mapTokenImage,
   monolithTokenImage,
+  ABILITY_EMPOWER_TOKEN_ICON,
   moraleIcon,
   onewayMonolithImage,
   outpostObjectImage,
@@ -319,6 +320,104 @@ function playerColor(state: GameState, playerId: PlayerId | null): string {
   }
   const factionId = state.players[playerId]?.factionId;
   return (factionId && coreFactionDefinitions[factionId]?.color) || "#b08d2f";
+}
+
+/**
+ * HUD chip for the Ability Empower token (max 1), displayed like morale.
+ * Click opens a picker of legal hand-Ability spends when the engine offers them.
+ */
+function AbilityEmpowerTokenChip({
+  player,
+  legalActions,
+  onAction,
+  readOnly
+}: {
+  player: { abilityEmpowerToken?: number; id: string };
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+  readOnly?: boolean;
+}) {
+  const [picking, setPicking] = useState(false);
+  const held = (player.abilityEmpowerToken ?? 0) >= 1;
+  const offers = legalActions.filter(
+    (legal) =>
+      legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" && legal.action.playerId === player.id
+  );
+  const canSpend = !readOnly && held && offers.length > 0;
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`statChip abilityEmpowerTokenChip${held ? " hasToken" : ""}${canSpend ? " canSpend" : ""}`}
+        disabled={!canSpend}
+        title={
+          held
+            ? canSpend
+              ? "Ability Empower token: click to Empower one Ability in your hand (Expert free forever)."
+              : "Ability Empower token held (max 1). Spend when you have a non-Empowered Ability in hand."
+            : "No Ability Empower token. Win a Dragon Fly Hive or Griffin Conservatory (house rule) to gain one."
+        }
+        aria-label={
+          held
+            ? canSpend
+              ? "Spend Ability Empower token"
+              : "Ability Empower token held"
+            : "No Ability Empower token"
+        }
+        onClick={() => {
+          if (!canSpend) {
+            return;
+          }
+          if (offers.length === 1) {
+            onAction(offers[0].action);
+            return;
+          }
+          setPicking(true);
+        }}
+      >
+        <img
+          alt=""
+          className="abilityEmpowerTokenIcon"
+          referrerPolicy="no-referrer"
+          src={assetUrl(ABILITY_EMPOWER_TOKEN_ICON)}
+        />
+        <b>{held ? 1 : 0}</b>
+        <small>empower</small>
+      </button>
+      {picking ? (
+        <div
+          className="moraleOverflowBackdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Empower an ability with token"
+        >
+          <div className="moraleOverflowPopup abilityEmpowerTokenPopup">
+            <strong>Spend Ability Empower token</strong>
+            <p>Empower one Ability in your hand. Its Expert side then costs no crown for the rest of the game. Token max is 1.</p>
+            <div className="handButtons abilityEmpowerTokenChoices">
+              {offers.map((legal) => (
+                <button
+                  key={legal.label}
+                  className="commandButton primary"
+                  type="button"
+                  onClick={() => {
+                    onAction(legal.action);
+                    setPicking(false);
+                  }}
+                >
+                  {legal.label.replace(/^Ability token: /, "")}
+                </button>
+              ))}
+              <button className="commandButton ghost" type="button" onClick={() => setPicking(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 export type TilePlacementSelection = { supplyIndex: number } | null;
@@ -3215,7 +3314,7 @@ export function AdventureHud({
         </div>
       ) : null}
       {hero ? (
-        <div className="advHudCell moveMoraleCell" aria-label="Movement, morale and crowns">
+        <div className="advHudCell moveMoraleCell" aria-label="Movement, morale, ability token and crowns">
           <span
             className="statChip"
             title={`${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}
@@ -3246,6 +3345,9 @@ export function AdventureHud({
             </b>
             <small>{(player?.morale ?? 0) <= -2 ? "fix or dump" : "morale"}</small>
           </span>
+          {player ? (
+            <AbilityEmpowerTokenChip legalActions={legalActions} onAction={onAction} player={player} />
+          ) : null}
           {player ? (
             <span
               className="statChip crownChip"

@@ -1,7 +1,13 @@
 import { cardLibrary } from "@/data/cards/library";
 import { astrologersCardDefinitions } from "@/data/cards/astrologers";
 import { eventCardDefinitions } from "@/data/cards/events";
-import { RESOURCE_ICONS, REWARD_GLYPH_ICONS, UI_REWARD_ICONS, moraleIcon } from "@/data/assets/homm-assets";
+import {
+  ABILITY_EMPOWER_TOKEN_ICON,
+  RESOURCE_ICONS,
+  REWARD_GLYPH_ICONS,
+  UI_REWARD_ICONS,
+  moraleIcon
+} from "@/data/assets/homm-assets";
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { UNIT_RANK_NAMES } from "@/data/units/experience";
@@ -596,6 +602,14 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} empowers ${cardName(
         event.cardId
       )} — its expert side now costs no crown.`;
+    case "ABILITY_EMPOWER_TOKEN_GAINED":
+      return event.surplus
+        ? `${playerName(state, event.playerId)} gains an Ability Empower token (already full — surplus must empower a hand ability; keeps 1).`
+        : `${playerName(state, event.playerId)} gains an Ability Empower token (now ${event.total}).`;
+    case "ABILITY_EMPOWER_TOKEN_SPENT":
+      return `${playerName(state, event.playerId)} spends an Ability Empower token on ${cardName(
+        event.cardId
+      )}.`;
     case "STACK_TOKEN_DISCARDED":
       return `${event.unitName} discards a Stack Token and survives the blow${
         event.excessDamage > 0 ? ` (${event.excessDamage} damage carries over)` : ""
@@ -1116,6 +1130,17 @@ export function noticeRewardsFromEvents(
           icon: REWARD_GLYPH_ICONS.experience,
           label: `+${event.amount}`,
           title: `+${event.amount} experience`,
+          tone: "gain"
+        });
+        break;
+      }
+      case "ABILITY_EMPOWER_TOKEN_GAINED": {
+        rewards.push({
+          icon: ABILITY_EMPOWER_TOKEN_ICON,
+          label: event.surplus ? "token (full)" : "+1 token",
+          title: event.surplus
+            ? "Ability Empower token (already full — surplus auto-use)"
+            : "Ability Empower token",
           tone: "gain"
         });
         break;
