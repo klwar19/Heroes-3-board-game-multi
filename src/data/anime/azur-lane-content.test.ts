@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { cardLibrary } from "@/data/cards/library";
+import { factionUiLexicon, factionVisualRegister } from "@/data/faction-theme";
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
 import { coreFactionDefinitions, coreHeroDefinitions, isPlayableFaction } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -369,5 +370,38 @@ describe("Azur Lane Naval Base — behavioural: Prinz Eugen's real abilities cap
     const fewAbilities = coreUnitDefinitions["azur_lane.i19"].few!.abilities;
     expect(fewAbilities).toContain("teleport-move");
     expect(unitAbilities["teleport-move"]?.implementationStatus).toBe("implemented");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Themed UI lexicon: Azur Lane wears bespoke NAVAL words over the shared "anime"
+// VISUAL register (so its CSS theme class stays theme-anime). Names only — this
+// pins the words + a fuyuki CONTROL proving the generic anime lexicon is the
+// fall-through (removing the azur_lane special-case makes these assertions read
+// Fuyuki's "Spirit Rank"/"Servant roster" and fail).
+// ---------------------------------------------------------------------------
+
+describe("Azur Lane Naval Base — themed UI lexicon (naval words, anime visual register)", () => {
+  it("gives azur_lane its own naval lexicon while KEEPING the anime visual register", () => {
+    const lexicon = factionUiLexicon(FACTION);
+    expect(lexicon.grade).toBe("Fleet Rating");
+    expect(lexicon.equipment).toBe("Rigging & Gear");
+    expect(lexicon.commanderEquipment).toBe("Flagship Regalia");
+    expect(lexicon.army).toBe("Fleet roster");
+    expect(lexicon.train).toBe("Tactical drill");
+    expect(lexicon.experienceBoard).toBe("Fleet Training Board");
+    // The VISUAL register is unchanged — the CSS theme class stays theme-anime.
+    expect(lexicon.register).toBe("anime");
+    expect(factionVisualRegister(FACTION)).toBe("anime");
+  });
+
+  it("CONTROL: fuyuki (same anime register) keeps the GENERIC anime lexicon", () => {
+    const fuyuki = factionUiLexicon("fuyuki");
+    expect(fuyuki.register).toBe("anime");
+    expect(fuyuki.grade).toBe("Spirit Rank");
+    expect(fuyuki.army).toBe("Servant roster");
+    expect(fuyuki.equipment).toBe("Mystic Loadout");
+    // Proves the two anime-register factions genuinely diverge in words.
+    expect(fuyuki.grade).not.toBe(factionUiLexicon(FACTION).grade);
   });
 });

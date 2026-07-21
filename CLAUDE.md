@@ -2687,9 +2687,18 @@ Leading with what does NOT run / deliberate limits:
   non-card SKILLS with cooldowns (Battle Focus/Iron Will reactions, War Cry
   active — combat once/combat; Forced March map active once/round) reusing the
   commander cast buff machinery. Grade NAMES wear per-family REGISTERS
-  (core/xianxia/isekai) resolved by the §2 rule (exactly-one-package → that
-  register table-wide, else per-faction family), but mechanics/state never change
-  with the label. EXTENSIBILITY: no literal tier count in engine logic (all
+  (core/xianxia/isekai, plus the bespoke `kansen` ship-rarity register —
+  Common/Rare/Elite/Super Rare — for **azur_lane**) resolved by the §2 rule
+  (exactly-one-package → that register table-wide, else per-faction family), but
+  mechanics/state never change with the label. A faction sharing a package with
+  another (Azur Lane shares the isekai package + the "anime" visual register with
+  Fuyuki/Hidden Leaf) needs a BESPOKE branch checked AHEAD of the package switch —
+  `BESPOKE_FACTION_GRADE_REGISTERS` in `heroGradeRegisterKey`, the exact §3.13
+  equipment worked-example precedent (`equipmentPackagesForFaction` special-cases
+  hidden_leaf/azur_lane before its register switch) — else an isekai-only game
+  would mislabel an Azur Lane hero "Rank F…S". Pinned in
+  `anime-hero-grades.test.ts` (azur_lane→kansen in an isekai-only game, with a
+  hidden_leaf→isekai CONTROL proving the branch is faction-scoped). EXTENSIBILITY: no literal tier count in engine logic (all
   derives from the threshold array length); pure helpers `gradeForMerit` /
   `pickableNodesFrom` are tested with a 4-tier fixture; "add a tier" = append a
   threshold + nodes + one entry per register (§3.11 recipe). Magnitudes pegged to
@@ -3173,6 +3182,16 @@ and is offered as Azur Lane's register line at BOTH outfitters via the §3.13
 special-case (`equipmentPackagesForFaction` returns `["kansen"]` for azur_lane
 AHEAD of the register switch — the same bespoke branch as hidden_leaf's `shinobi`,
 since both share the `anime` register with Fuyuki — see the Equipment section).
+Azur Lane ALSO wears a bespoke `kansen` HERO-GRADE name register
+(Common/Rare/Elite/Super Rare — `Thường/Hiếm/Tinh Nhuệ/Siêu Hiếm`, via
+`BESPOKE_FACTION_GRADE_REGISTERS` checked ahead of the package switch, same
+shared-package precedent) and a naval UI LEXICON (Fleet Rating / Rigging & Gear /
+Flagship Regalia / Fleet roster / Tactical drill / Fleet Training Board,
+`factionUiLexicon`) over the SAME "anime" VISUAL register it keeps (CSS theme
+unchanged) — NAMES only, mechanics/state untouched; pinned in
+`anime-hero-grades.test.ts` (the kansen register, isekai-only + both-packages,
+with a hidden_leaf→isekai CONTROL) and `azur-lane-content.test.ts` (the lexicon
+words + a fuyuki generic-anime CONTROL).
 Live-play coverage: `src/server/azur-lane-live.test.ts` drives a fixed-seed
 single-player game with BOTH seats on azur_lane to round 5 with no stall / no
 negative resource, soft-asserting its units are recruited and Belfast is on the

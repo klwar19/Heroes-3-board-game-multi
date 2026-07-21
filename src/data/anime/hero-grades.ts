@@ -56,7 +56,7 @@ export const HERO_GRADE_PICKS_PER_TIER = 1;
 // ===========================================================================
 
 export type GradeLabel = { en: string; vi: string };
-export type GradeRegisterKey = "core" | "xianxia" | "isekai";
+export type GradeRegisterKey = "core" | "xianxia" | "isekai" | "kansen";
 
 /**
  * The bilingual grade-name registers, indexed by grade 0..N (length =
@@ -85,6 +85,16 @@ export const HERO_GRADE_REGISTERS: Record<GradeRegisterKey, readonly GradeLabel[
     { en: "Rank C", vi: "Hạng C" },
     { en: "Rank A", vi: "Hạng A" },
     { en: "Rank S", vi: "Hạng S" }
+  ],
+  // Azur Lane Naval Base (kansen) — the bespoke ship-rarity ladder. A NAMES-only
+  // register: the mechanics/state are identical to every other family (this
+  // faction shares the "anime" VISUAL register with Fuyuki — see
+  // BESPOKE_FACTION_GRADE_REGISTERS below and factionVisualRegister).
+  kansen: [
+    { en: "Common", vi: "Thường" },
+    { en: "Rare", vi: "Hiếm" },
+    { en: "Elite", vi: "Tinh Nhuệ" },
+    { en: "Super Rare", vi: "Siêu Hiếm" }
   ]
 };
 
@@ -137,7 +147,30 @@ export const FACTION_GRADE_REGISTER: Record<string, GradeRegisterKey> = {
   fuyuki: "isekai",
   azure_breeze: "xianxia",
   hidden_leaf: "isekai",
-  azur_lane: "isekai"
+  // Azur Lane uses its OWN bespoke ship-rarity register (see
+  // BESPOKE_FACTION_GRADE_REGISTERS) — mapped here too so the "both / neither
+  // package" family fallback agrees with the bespoke override.
+  azur_lane: "kansen"
+};
+
+/**
+ * BESPOKE per-faction grade-name registers, resolved AHEAD of the package
+ * switch in `heroGradeRegisterKey` (`src/engine/anime-hero-grades.ts`).
+ *
+ * WHY this exists: the package switch labels every hero by which anime PACKAGE
+ * (xianxia vs isekai) is active table-wide. But Azur Lane shares the ISEKAI
+ * package (and the "anime" visual register) with Fuyuki / Hidden Leaf, so the
+ * package switch alone can NEVER give it a distinct naval register — an
+ * isekai-only game would otherwise label an Azur Lane hero "Rank F…S". This map
+ * is the exact same fix the §3.13 Equipment system uses for its bespoke gear
+ * lines (`equipmentPackagesForFaction` special-cases hidden_leaf/azur_lane
+ * AHEAD of its register switch — `src/data/anime/equipment.ts`).
+ *
+ * A faction NOT listed here falls through to the package/family resolution. The
+ * bespoke register is NAMES-only: it never changes mechanics/state.
+ */
+export const BESPOKE_FACTION_GRADE_REGISTERS: Record<string, GradeRegisterKey> = {
+  azur_lane: "kansen"
 };
 
 /** The register family for a faction (defaults to core when unmapped). */
