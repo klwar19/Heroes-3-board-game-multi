@@ -870,6 +870,53 @@ describe("anime.heroGrades — grade-name registers", () => {
     expect(heroGradeRegisterKey(neither, "p1")).toBe("core");
   });
 
+  it("azur_lane wears the bespoke kansen register even in an isekai-only game (hidden_leaf CONTROL stays isekai)", () => {
+    // An ISEKAI-ONLY table (isekaiTowns is an isekai module flag) seating BOTH
+    // isekai anime towns. Azur Lane shares the isekai package with Hidden Leaf,
+    // so the package switch ALONE could never tell them apart — the bespoke
+    // faction branch (checked first) must. If that branch is removed, azur_lane
+    // falls through to the isekai package register and this fails.
+    const isekaiOnly = adventure(
+      "hg-reg-kansen",
+      { ...GRADES_ON, isekaiTowns: true },
+      {
+        players: [
+          { id: "p1", name: "AL", factionId: "azur_lane", heroDefId: "enterprise" },
+          { id: "p2", name: "HL", factionId: "hidden_leaf", heroDefId: "naruto" }
+        ]
+      }
+    );
+    // (a) azur_lane → kansen; grade-3 label is the top ship-rarity "Super Rare".
+    expect(heroGradeRegisterKey(isekaiOnly, "p1")).toBe("kansen");
+    expect(heroGradeLabel(isekaiOnly, "p1", 3).en).toBe("Super Rare");
+    expect(heroGradeLabel(isekaiOnly, "p1", 3).vi).toBe("Siêu Hiếm");
+    // (b) CONTROL: hidden_leaf in the SAME game still resolves the isekai
+    // register — the bespoke branch is faction-scoped, not table-wide.
+    expect(heroGradeRegisterKey(isekaiOnly, "p2")).toBe("isekai");
+    expect(heroGradeLabel(isekaiOnly, "p2", 3).en).toBe("Rank S");
+  });
+
+  it("azur_lane stays kansen in a both-packages game (bespoke override + family map agree)", () => {
+    // Both packages active (cultivation = xianxia, isekaiTowns = isekai) → the
+    // package switch falls through to the per-faction family fallback. The
+    // bespoke branch returns "kansen" first AND the family map now agrees, so
+    // reverting FACTION_GRADE_REGISTER.azur_lane to "isekai" would break this.
+    const both = adventure(
+      "hg-reg-kansen-both",
+      { ...GRADES_ON, cultivation: true, isekaiTowns: true },
+      {
+        players: [
+          { id: "p1", name: "AL", factionId: "azur_lane", heroDefId: "enterprise" },
+          { id: "p2", name: "Two", factionId: "necropolis", heroDefId: "sandro" }
+        ]
+      }
+    );
+    expect(heroGradeRegisterKey(both, "p1")).toBe("kansen");
+    expect(factionGradeRegister("azur_lane")).toBe("kansen");
+    // CONTROL: a core faction in the same both-packages game still falls to core.
+    expect(heroGradeRegisterKey(both, "p2")).toBe("core");
+  });
+
   it("every register is bilingually complete and its length equals the tier count + 1", () => {
     for (const [key, register] of Object.entries(HERO_GRADE_REGISTERS)) {
       expect(register.length, `${key} register length`).toBe(HERO_GRADE_TIER_COUNT + 1);

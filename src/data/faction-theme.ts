@@ -44,6 +44,24 @@ const WUXIA: FactionUiLexicon = {
   experienceBoard: "Retinue Cultivation Board"
 };
 
+/**
+ * Azur Lane Naval Base — a bespoke NAVAL lexicon over the shared "anime" VISUAL
+ * register (so its CSS theme stays `theme-anime`, keeping `factionVisualRegister`
+ * unchanged). Only the WORDS are naval-flavored; nothing here changes mechanics.
+ * Special-cased in `factionUiLexicon` ahead of the register switch because it
+ * shares the "anime" register with Fuyuki / Hidden Leaf, exactly like the §3.13
+ * equipment lines and the bespoke "kansen" hero-grade register.
+ */
+const AZUR_LANE: FactionUiLexicon = {
+  register: "anime",
+  grade: "Fleet Rating",
+  equipment: "Rigging & Gear",
+  commanderEquipment: "Flagship Regalia",
+  army: "Fleet roster",
+  train: "Tactical drill",
+  experienceBoard: "Fleet Training Board"
+};
+
 export function factionVisualRegister(factionId: string | undefined): FactionVisualRegister {
   if (factionId === "fuyuki" || factionId === "hidden_leaf" || factionId === "azur_lane") {
     return "anime";
@@ -55,6 +73,12 @@ export function factionVisualRegister(factionId: string | undefined): FactionVis
 }
 
 export function factionUiLexicon(factionId: FactionId | string | undefined): FactionUiLexicon {
+  // Bespoke faction lexicon FIRST: Azur Lane keeps the "anime" visual register
+  // but wears naval words (mirrors the bespoke "kansen" grade register). A
+  // faction not special-cased here falls through to its register's lexicon.
+  if (factionId === "azur_lane") {
+    return AZUR_LANE;
+  }
   const register = factionVisualRegister(factionId);
   return register === "anime" ? ANIME : register === "wuxia" ? WUXIA : CLASSIC;
 }

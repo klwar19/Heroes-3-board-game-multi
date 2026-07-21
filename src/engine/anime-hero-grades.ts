@@ -24,6 +24,7 @@
 import { appendEvent } from "./events";
 import { animeModuleEnabled } from "./anime";
 import {
+  BESPOKE_FACTION_GRADE_REGISTERS,
   HERO_GRADE_MAX,
   HERO_GRADE_MERIT_THRESHOLDS,
   HERO_GRADE_NODES,
@@ -112,6 +113,15 @@ export function pickableNodesFrom(
  * Mechanics/state never read this — labels are presentation only.
  */
 export function heroGradeRegisterKey(state: GameState, playerId: PlayerId): GradeRegisterKey {
+  const factionId = state.players[playerId]?.factionId;
+  // BESPOKE faction override FIRST: a faction sharing a package (e.g. Azur Lane
+  // shares the isekai package with Fuyuki/Hidden Leaf) still needs its OWN naval
+  // register, which the package switch below could never distinguish. Mirrors the
+  // §3.13 equipment `equipmentPackagesForFaction` special-case. Names-only.
+  const bespoke = factionId ? BESPOKE_FACTION_GRADE_REGISTERS[factionId] : undefined;
+  if (bespoke) {
+    return bespoke;
+  }
   const anime = state.anime;
   const on = Boolean(anime?.enabled);
   const xianxia = on && XIANXIA_MODULE_FLAGS.some((flag) => Boolean(anime?.[flag]));
@@ -123,7 +133,7 @@ export function heroGradeRegisterKey(state: GameState, playerId: PlayerId): Grad
     return "isekai";
   }
   // Both, or neither: per-faction family (data-mapped; defaults to core).
-  return factionGradeRegister(state.players[playerId]?.factionId);
+  return factionGradeRegister(factionId);
 }
 
 /** The bilingual label for a grade in the player's resolved register. */
