@@ -136,7 +136,7 @@ both are on.
 | `anime.elixirPills` | 九 | OFF | **Elixir Pills** consumable mini-deck — Alchemy Pavilion, Secret Realms, quests (§5.9). Morale-cards data pattern. |
 | `anime.cultivation` | 九 | OFF | Per-hero **Cultivation Realm track** + **Heavenly Tribulation** breakthrough gauntlet (§5.6). |
 | `anime.destiny` | 九 | OFF | **Destiny & Karma**: the shared karma/fate substrate (§3.4) + **Mandate of Heaven** / **Demon Emperor** titles (§5.7). |
-| `anime.isekaiTowns` | 門 | OFF | Adds the isekai factions: **Fuyuki City** and the **Hidden Leaf Village** — both SHIPPED as full BINH towns (§6.1–6.2) — plus the **Azur Lane Naval Base** (stretch, §6.3). **Bin** (Fuyuki) and **Naruto/Sasuke/Tsunade** (Hidden Leaf) ship as heroes, playable on any table — single-player included. |
+| `anime.isekaiTowns` | 門 | OFF | Adds the isekai factions: **Fuyuki City**, the **Hidden Leaf Village** and the **Azur Lane Naval Base** — all THREE now SHIPPED as full BINH towns (§6.1–6.3). **Bin** (Fuyuki), **Naruto/Sasuke/Tsunade** (Hidden Leaf) and **Enterprise/Bismarck/Nagato/Akashi/Sirius** (Azur Lane) ship as heroes, playable on any table — single-player included. |
 | `anime.isekaiNeutrals` | 門 | OFF | ~15 isekai neutral cards (the goblin family, slimes, **Titans**, **Hollows**, **Pacifista** — §6.8) + 4 isekai **Creature Banks** (bank half requires `creatureBanks`). |
 | `anime.guild` | 門 | OFF | The **Adventurers' Guild**: global commission board, per-player ranks F→S with perks, rank-A **Party Member** unique neutrals (§6.4). Map-independent. |
 | `anime.monsterWaves` | 門 | OFF | **Calamity Waves**: scheduled monster invasions; every live seat fights a themed wave army; loss = pillage (§6.6). Cadence select (3rd/4th/5th round). Works in single-player. |
@@ -1375,7 +1375,51 @@ summon economy).
 
 Navy / white-steel. Ranged superiority, escort formations, sea synergy with
 Cove content and the Abyss Kraken boss. Ships LAST; listed so its shared
-arms are planned once. The docx roster, engine-shaped:
+arms are planned once.
+
+> **SHIPPED (2026-07).** A full BINH town gated on `anime.isekaiTowns` (shared
+> with Fuyuki / Hidden Leaf — NO new flag/lobby row). Roster / 5 heroes /
+> commander (Belfast) / tile / board pinned in
+> `src/data/anime/azur-lane-content.test.ts`; the commander First-Aid REFACTOR +
+> Belfast block in `src/engine/wog-commanders.test.ts`; the bespoke `kansen`
+> equipment line in `anime-equipment.test.ts` (§3.13); live AI play in
+> `src/server/azur-lane-live.test.ts`. **Adaptations / deferred vs. the docx spec
+> below** (each engine-enforced or documented, never a decorative stub):
+> - **The SHIPPED 7-unit roster is a REVISED shipgirl set, not the docx table
+>   below** — Laffey / Javelin / Honolulu / Unicorn / Yukikaze / Prinz Eugen /
+>   I-19 (the docx's Honolulu & Yukikaze HEROES became units; the docx's Sirius &
+>   Nagato UNITS became heroes; Noshiro / Amagi / Akagi were dropped). Every unit
+>   tag is an already-implemented REUSE — the faction adds NO new engine ability.
+> - **ALL art is REAL wiki character art** (one shipgirl per unit card),
+>   composited offline by `scripts/fetch-azur-lane-art.mjs` +
+>   `scripts/build-azur-lane-art.mjs`; the downloaded refs are GITIGNORED
+>   (`scripts/anime-art/refs/`), so only the built webp faces ship — UNLIKE Hidden
+>   Leaf's procedural placeholders.
+> - **5 heroes (Enterprise / Bismarck / Nagato might; Akashi / Sirius magic), not
+>   the docx's six** — the three might specialists double a shipgirl the faction
+>   actually FIELDS (Laffey / Prinz Eugen / Yukikaze); Akashi + Sirius are
+>   faction-agnostic medic clones (`rethemedSpecialty` of Gem / Rion), no unit
+>   doubling.
+> - **Belfast = the Tower Temple Guardian's Precision cast "Fire Support"
+>   (`commander-cast-temple_guardian`) + the Hierophant's `first-aid` "Impeccable
+>   Service"** — the ONE engine change is a REFACTOR: the First-Aid post-combat
+>   window is now keyed off the `first-aid` SPECIALTY id
+>   (`playerHasLivingFirstAidCommander`), not the "hierophant" slug, so Belfast
+>   opens it too; the Rampart Hierophant is UNCHANGED (mutation-checked with a
+>   superior-combat CONTROL). NO bespoke commander machinery.
+> - **The Wisdom Cube Laboratory (docx `PAY_DRAW_FILTER`) is NOT shipped** — the
+>   8 buildings all ride SHARED archetypes (Naval Command HQ City-Hall / dwellings /
+>   Fortified Anchorage reinforce / Naval Research Academy Mage Guild / Munitions
+>   Workshop Artifact Smith / Combat Exercise Waters Hall-of-Valhalla), zero new
+>   TownBuildingEffect types.
+> - **The bespoke `kansen` equipment line (Oxygen Torpedo / Repair Toolkit / SG
+>   Radar) ships with REAL vector naval icons** — the second worked example of the
+>   §3.13 bespoke-register branch (special-cased ahead of the register switch like
+>   `shinobi`).
+> - **The Battle-Test combat sandbox still excludes every anime faction**
+>   (inherited behaviour, not changed by this town).
+
+The docx roster, engine-shaped:
 
 | Line (tier, type) | Ability (docx → engine) | Mechanism |
 | --- | --- | --- |
@@ -2428,7 +2472,7 @@ user can reorder tracks without re-planning (§22 Q2).
 | **P13** | **Story system** + campaign hub + **Bin chapters 1–3** + the System/cheat shell | scene-asset integrity; ch-1 boot-to-victory smoke; cheat-pick effect tests; reconnect cue test |
 | **P14** | **Bin chapters 4–7** (routes) + **Chen Fan chapters 1–3** | fixed-seed completion per Bin route |
 | **P15** | **Chen Fan chapters 4–7** (routes) + skin/phone polish + full both-package soak | fixed-seed completion per Chen Fan route; nightly soak green |
-| **P16** (stretch) | **Azur Lane Naval Base** (+ Vestal, Enterprise/Belfast/Akagi/Bismarck, the Dwarf Shaman & Lizard Priest party pair) + Abyss Kraken sea spawn + **The Two Continents** convergence arc + the Destiny-draft variant | content test; sea-boss spawn test; co-op scenario smoke |
+| **P16** — Azur Lane SHIPPED (town core) | **Azur Lane Naval Base** SHIPPED (7 shipgirls / 5 heroes / Belfast / P-S1 / board / `kansen` equipment — see the §6.3 SHIPPED note) + Abyss Kraken sea spawn + **The Two Continents** convergence arc + the Destiny-draft variant (pending) | content test (`azur-lane-content.test.ts`); commander First-Aid refactor + Belfast (`wog-commanders.test.ts`); live AI play (`azur-lane-live.test.ts`); sea-boss spawn test; co-op scenario smoke |
 
 Art rule per phase: no undeclared placeholders (the Factory "fake
 portraits" lesson — declared in a registry, then replaced).
