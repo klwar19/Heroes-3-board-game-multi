@@ -9661,15 +9661,25 @@ function resolveTokenTeleportReveal(
     destTileInstanceId: tile.id
   };
 
-  // A face-down Ⅱ–Ⅲ tile flipped by the travel obeys the same keep/reroll/pick
-  // flip as any other discovery (the hook lives in the reducer, like the
-  // Subterranean Gate's). The travel visit is complete, so clear it first.
-  if (onMapTileRevealHook && tile.group === "far" && visit.steps.length === 0) {
+  // ALWAYS go through the full reveal hook when available — including Near /
+  // Subterranean / Center destinations, exactly like the Subterranean Gate's
+  // reveal. The old far-only gate meant a token travel into a face-down NEAR or
+  // cavern tile took the inline flip below, which skips beginTileRotation — so
+  // its Creature Bank was never reserved before rotation (Polish sizes + the
+  // leave-blocked choice opened only AFTER the tile was rotated). The hook owns
+  // the Far keep/reroll/pick, bank reservation, the Polish pre-rotation bank
+  // choice, then rotation; the parked pendingTokenTeleport completes the travel
+  // after the token is placed. The travel visit is complete, so clear it first.
+  if (onMapTileRevealHook && visit.steps.length === 0) {
     adventure.pendingVisit = null;
     onMapTileRevealHook(state, visit.playerId, tile);
     return;
   }
 
+  // Fallback when the hook is not registered (unit tests that never load the
+  // reducer): flip the tile up and hand its rotation to the traveller. Bank
+  // reservation is skipped here — callers that need the full chain must
+  // register the hook.
   tile.faceDown = false;
   tile.awaitingRotation = true;
   adventure.pendingTileChoice = {
