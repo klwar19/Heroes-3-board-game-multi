@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { adventureCards } from "@/data/cards/adventure";
-import { applyAction, createInitialGameState, getLegalActions, getUnitMoveRange } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  getLegalActions,
+  getUnitMoveRange
+} from "./index";
 import { effectiveInitiative } from "./active-effects";
 import type { GameAction, GameState, UnitId } from "./state";
 
@@ -80,10 +86,13 @@ describe("Initiative-only specialties are now CHOOSE_ONE buff-or-draw (structure
       const [buff, draw] = card.effect.options;
       expect(buff.effect.type, `${id} option A is the initiative buff`).toBe("CREATE_INITIATIVE_BUFF");
       if (buff.effect.type === "CREATE_INITIATIVE_BUFF") {
-        // The house-rule rider: the buff also raises Combat movement by 1.
+        // The house-rule rider: the buff also raises Combat movement by 1
+        // (inert when "combat-move-initiative" is off — getUnitMoveRange gates it).
         expect(buff.effect.movementBonus, `${id} option A grants +1 movement`).toBe(1);
         expect(buff.effect.polarity, `${id} option A is a positive buff`).toBe("positive");
       }
+      // Display must not claim movement as the basic-game wiki rule alone.
+      expect(card.tags.join(" "), `${id} tags mention house rule for movement`).toMatch(/House rule/i);
       expect(draw.effect, `${id} option B draws 1 card`).toMatchObject({ type: "DRAW_CARDS", amount: 1 });
     }
   });
@@ -143,6 +152,40 @@ describe("Initiative specialty option A — buff lands AND raises movement", () 
 });
 
 describe("Initiative specialty option B — draw a card instead of buffing", () => {
+  it("is also offered on the adventure map (not combat-only)", () => {
+    let state = createAdventureGameState({
+      seed: "init-hr-map-draw",
+      difficulty: "normal",
+      rollFirstPlayer: false
+    });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.players.p1.hand = ["specialty.cyra.1", "specialty.catherine.6"];
+    state.players.p1.deck = ["spell.bless", "spell.haste"];
+    for (const cardId of ["specialty.cyra.1", "specialty.catherine.6"] as const) {
+      const drawPlay = getLegalActions(state, "p1").find(
+        (legal) =>
+          legal.action.type === "PLAY_CARD" &&
+          legal.action.cardId === cardId &&
+          legal.action.optionIndex === 1
+      );
+      expect(drawPlay, `${cardId} draw arm offered on the map`).toBeTruthy();
+    }
+    // Playing Cyra's draw arm on the map actually draws.
+    const before = state.players.p1.deck.length;
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.cyra.1" &&
+        legal.action.optionIndex === 1
+    )!;
+    state = applyOk(state, play.action);
+    expect(state.players.p1.hand).not.toContain("specialty.cyra.1");
+    expect(before - state.players.p1.deck.length).toBe(1);
+    expect(state.players.p1.hand).toContain("spell.haste");
+  });
+
   it("draws exactly one card (deck shrinks by 1, the top card lands in hand) and lands NO buff", () => {
     const state = createInitialGameState("init-hr-draw");
     state.players.p1.hand = ["specialty.catherine.6"];

@@ -673,9 +673,11 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         event.mode === "expert" ? " (expert)" : ""
       } to switch ${unitName(state, event.unitIdA)} and ${unitName(state, event.unitIdB)}.`;
     case "DIPLOMACY_NEUTRALS_DRAWN":
-      return `${playerName(state, event.playerId)} uses Diplomacy and draws ${event.unitDefIds
-        .map((unitDefId) => unitDefId.split(".")[1] ?? unitDefId)
-        .join(", ")}.`;
+      return event.unitDefIds.length === 0
+        ? `${playerName(state, event.playerId)} uses Diplomacy but finds no Neutral Unit cards to draw (empty decks) — the card is returned.`
+        : `${playerName(state, event.playerId)} uses Diplomacy and draws ${event.unitDefIds
+            .map((unitDefId) => unitDefId.split(".")[1] ?? unitDefId)
+            .join(", ")}.`;
     case "DIPLOMACY_COMBAT_SKIPPED":
       return `${playerName(state, event.playerId)} uses Diplomacy to skip the level ${event.difficulty} Neutral Units and claim the field (no experience).`;
     case "UNIT_RECRUITED":

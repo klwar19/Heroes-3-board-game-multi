@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction } from "./reducer";
-import { createAdventureLobbyState } from "./adventure-setup";
+import { createAdventureGameState, createAdventureLobbyState } from "./adventure-setup";
 import { unlockedRecruitTiers } from "./adventure";
 import type { GameAction, GameState } from "./state";
 import { DEFAULT_SETUP_STARTING_BUILDINGS } from "@/data/map/scenarios";
@@ -75,5 +75,13 @@ describe("map-setup default pre-built buildings", () => {
         ).toBeDefined();
       }
     }
+  });
+
+  it("direct createAdventureGameState also stands the default buildings (Diplomacy recruit works)", () => {
+    // Without this, a direct build (tests / quick starts) left towns empty and
+    // Diplomacy's basic Map recruit was never offered — a silent "does nothing".
+    const state = createAdventureGameState({ seed: "default-buildings-direct", difficulty: "normal" });
+    expect(state.towns.town_p1.buildings).toContain("castle.dwelling_bronze");
+    expect(unlockedRecruitTiers(state, "p1").has("bronze")).toBe(true);
   });
 });

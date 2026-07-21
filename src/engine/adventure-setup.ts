@@ -2379,6 +2379,17 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       explicit
     );
   }
+  // Same default the lobby applies: when the scenario (and caller) left
+  // startingBuildings empty, stand Citadel + Mage Guild + Bronze Dwelling so
+  // Diplomacy's basic recruit and town recruitment are not a silent no-op.
+  // An explicit empty array from the caller still wins (options.startingBuildings
+  // lands in setupOptions and is not overwritten).
+  if (
+    options.startingBuildings === undefined &&
+    (!setupOptions.startingBuildings || setupOptions.startingBuildings.length === 0)
+  ) {
+    setupOptions.startingBuildings = [...DEFAULT_SETUP_STARTING_BUILDINGS];
+  }
   const difficulty = setupOptions.difficulty;
   // Naval Battles Creature Banks default ON: discovering a Far/Near tile with a
   // Blocked Field offers the discovering player a bank token from the matching

@@ -68,7 +68,10 @@ export const spellCards: CardLibrary = {
       "spell",
       "basic",
       "air",
-      "Ongoing: Until the end of the Combat, the selected unit gains: Power 0: +1 initiative; Power 1: +2 initiative; Power 2: +3 initiative."
+      // Wiki / basic (small battlefield): Initiative only — does NOT raise Combat
+      // movement. House rule ("combat-move-initiative" / Battlefield Expansion):
+      // also +1 Combat movement (gated in getUnitMoveRange).
+      "Ongoing: Until the end of the Combat, the selected unit gains: Power 0: +1 initiative; Power 1: +2 initiative; Power 2: +3 initiative. (House rule: also +1 Combat movement.)"
     ],
     power: 0,
     target: { type: "friendly-unit" },
@@ -79,7 +82,7 @@ export const spellCards: CardLibrary = {
       duration: { type: "combat" },
       polarity: "positive",
       removable: true,
-      // House rule (BINH): Haste also gives +1 Combat movement (3 → 4).
+      // House rule: +1 Combat movement when "combat-move-initiative" is ON.
       movementBonus: 1
     },
     assets: {
@@ -101,7 +104,8 @@ export const spellCards: CardLibrary = {
       "spell",
       "basic",
       "earth",
-      "Ongoing: Until the end of the Combat, the selected unit suffers: Power 0: -1 initiative; Power 1: -2 initiative; Power 2: -3 initiative."
+      // Wiki / basic: Initiative only. House rule: also −1 Combat movement.
+      "Ongoing: Until the end of the Combat, the selected unit suffers: Power 0: -1 initiative; Power 1: -2 initiative; Power 2: -3 initiative. (House rule: also −1 Combat movement.)"
     ],
     power: 0,
     target: { type: "enemy-unit" },
@@ -112,7 +116,7 @@ export const spellCards: CardLibrary = {
       duration: { type: "combat" },
       polarity: "negative",
       removable: true,
-      // House rule (BINH): Slow also reduces Combat movement by 1 (3 → 2).
+      // House rule: −1 Combat movement when "combat-move-initiative" is ON.
       movementBonus: -1
     },
     assets: {

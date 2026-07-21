@@ -12365,20 +12365,11 @@ export function townHasBuildingEffect(
 }
 
 export function unlockedRecruitTiers(state: GameState, playerId: PlayerId): Set<string> {
-  const town = getTownOfPlayer(state, playerId);
-  const tiers = new Set<string>();
-  if (!town) {
-    return tiers;
-  }
-
-  for (const buildingId of town.buildings) {
-    const effect = coreBuildingDefinitions[buildingId]?.effect;
-    if (effect?.type === "UNLOCK_RECRUIT_TIER") {
-      tiers.add(effect.tier);
-    }
-  }
-
-  return tiers;
+  // Scan EVERY controlled town (not only getTownOfPlayer's first match). A seat
+  // that holds a Dwelling only on a second town used to see Diplomacy as a
+  // permanent no-op: the offer gate looked at town #1 (empty) while the draw
+  // path already walked every town via playerDwellingTiers.
+  return new Set(playerDwellingTiers(state, playerId));
 }
 
 /**
