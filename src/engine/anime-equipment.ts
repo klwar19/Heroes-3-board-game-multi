@@ -120,8 +120,19 @@ export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipm
 //   - `ironbarkCuirass` twins Stage Costume (armor, defense token)
 //   - `coursersBarding` twins Windrider Saddle (mount, +1 MP refresh)
 //   - `wardensAegis` (armor relic) combines incoming −1 AND a defense token
+//   Hidden Leaf "shinobi" line (§3.13), each a pure seam reuse:
+//   - `shinobiKunaiPouch` twins Iron-Blood Sword (weapon, first-attack)
+//   - `bodyFlickerTabi` twins Windrider Saddle (mount, +1 MP refresh)
+//   - `sageChakraCharm` (accessory relic) combines +1 spell Power AND +1 hand
+//     limit — both accessory-slot seams, so it can never lift either cap (all
+//     spell-power items are accessories ⇒ +1; hand limit stays +2 = armor + one
+//     accessory).
 // ---------------------------------------------------------------------------
-const FIRST_ATTACK_ITEMS = [EQUIPMENT_IDS.ironBloodSword, EQUIPMENT_IDS.crusadersPoleaxe] as const;
+const FIRST_ATTACK_ITEMS = [
+  EQUIPMENT_IDS.ironBloodSword,
+  EQUIPMENT_IDS.crusadersPoleaxe,
+  EQUIPMENT_IDS.shinobiKunaiPouch
+] as const;
 const INCOMING_PENALTY_ITEMS = [EQUIPMENT_IDS.blackTortoiseMail, EQUIPMENT_IDS.wardensAegis] as const;
 const DEFENSE_TOKEN_ITEMS = [
   EQUIPMENT_IDS.stageCostume,
@@ -130,11 +141,16 @@ const DEFENSE_TOKEN_ITEMS = [
 ] as const;
 const ROUND1_ATTACK_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial] as const;
 const FIRST_SPELL_POWER_ITEMS = [EQUIPMENT_IDS.neonMicrophone] as const;
-const SPELL_POWER_ITEMS = [EQUIPMENT_IDS.cosmosPendant, EQUIPMENT_IDS.spiritFocus] as const;
+const SPELL_POWER_ITEMS = [
+  EQUIPMENT_IDS.cosmosPendant,
+  EQUIPMENT_IDS.spiritFocus,
+  EQUIPMENT_IDS.sageChakraCharm
+] as const;
 const HAND_LIMIT_ITEMS = [
   EQUIPMENT_IDS.guildIssueMail,
   EQUIPMENT_IDS.twinTailRibbon,
-  EQUIPMENT_IDS.eternalSash
+  EQUIPMENT_IDS.eternalSash,
+  EQUIPMENT_IDS.sageChakraCharm
 ] as const;
 const WIN_GOLD_ITEMS = [
   EQUIPMENT_IDS.adventurersBlade,
@@ -145,7 +161,11 @@ const WIN_GOLD_ITEMS = [
 ] as const;
 const RESOURCE_MATERIALS_ITEMS = [EQUIPMENT_IDS.supplySatchel, EQUIPMENT_IDS.hornOfPlenty] as const;
 const RESOURCE_GOLD_ITEMS = [EQUIPMENT_IDS.alchemistsSatchel] as const;
-const MOVEMENT_ITEMS = [EQUIPMENT_IDS.windriderSaddle, EQUIPMENT_IDS.coursersBarding] as const;
+const MOVEMENT_ITEMS = [
+  EQUIPMENT_IDS.windriderSaddle,
+  EQUIPMENT_IDS.coursersBarding,
+  EQUIPMENT_IDS.bodyFlickerTabi
+] as const;
 
 /** Whether the player's main hero wears ANY of the given equipment ids. */
 function playerHasAnyEquipment(state: GameState, playerId: PlayerId, ids: readonly string[]): boolean {
@@ -160,13 +180,13 @@ function countEquipment(state: GameState, playerId: PlayerId, ids: readonly stri
 // --- Always-on economy / caster grants (each gated by the item equipped) ----
 
 /**
- * Cosmos Pendant (xianxia) AND Spirit Focus (isekai): +1 spell Power each,
- * folded at the standing chokepoint. Both are the ACCESSORY slot, so at most
- * ONE is ever worn — each is checked independently only so whichever the hero
- * carries contributes (they are package-flavoured twins, NOT a +2 stack; the
- * accessory-slot cap is pinned in anime-equipment.test.ts). The equipment
- * spell-power fold therefore tops out at +1; further Power comes from the
- * separate Cultivation / Hero-Grade seams.
+ * Cosmos Pendant (xianxia), Spirit Focus (isekai) AND Sage Chakra Charm
+ * (shinobi): +1 spell Power each, folded at the standing chokepoint. ALL are the
+ * ACCESSORY slot, so at most ONE is ever worn — each is checked independently
+ * only so whichever the hero carries contributes (they are package-flavoured
+ * twins, NOT a +2/+3 stack; the accessory-slot cap is pinned in
+ * anime-equipment.test.ts). The equipment spell-power fold therefore still tops
+ * out at +1; further Power comes from the separate Cultivation / Hero-Grade seams.
  */
 export function equipmentSpellPowerBonus(state: GameState, playerId: PlayerId): number {
   return countEquipment(state, playerId, SPELL_POWER_ITEMS);
@@ -234,9 +254,10 @@ export function applyEquipmentStageCostumeDefenseToken(
 
 /**
  * Guild-Issue Mail (armor) / Twin-Tail Ribbon (accessory) / Eternal Sash
- * (accessory): +1 hand limit each. Folded at effectiveHandLimit. Twin-Tail and
- * Eternal Sash share the ACCESSORY slot (only one is worn), so equipment tops
- * out at +2 — Guild-Issue Mail (armor) plus one accessory. Each item is checked
+ * (accessory) / Sage Chakra Charm (accessory): +1 hand limit each. Folded at
+ * effectiveHandLimit. Twin-Tail, Eternal Sash and Sage Chakra Charm all share
+ * the ACCESSORY slot (only one is worn), so equipment still tops out at +2 —
+ * Guild-Issue Mail (armor) plus one accessory. Each item is checked
  * independently so whichever pair the hero wears is counted (accessory-slot cap
  * pinned in anime-equipment.test.ts).
  */
@@ -279,7 +300,8 @@ export function equipmentResourceRoundGold(state: GameState, playerId: PlayerId)
  * module is off / no saddle.
  */
 export function equipmentMovementBonus(state: GameState, playerId: PlayerId): number {
-  // Windrider Saddle / Courser's Barding (both mount, one worn) → +1 MP.
+  // Windrider Saddle / Courser's Barding / Body-Flicker Tabi (all mount, one
+  // worn) → +1 MP.
   return playerHasAnyEquipment(state, playerId, MOVEMENT_ITEMS) ? 1 : 0;
 }
 
