@@ -136,7 +136,7 @@ both are on.
 | `anime.elixirPills` | 九 | OFF | **Elixir Pills** consumable mini-deck — Alchemy Pavilion, Secret Realms, quests (§5.9). Morale-cards data pattern. |
 | `anime.cultivation` | 九 | OFF | Per-hero **Cultivation Realm track** + **Heavenly Tribulation** breakthrough gauntlet (§5.6). |
 | `anime.destiny` | 九 | OFF | **Destiny & Karma**: the shared karma/fate substrate (§3.4) + **Mandate of Heaven** / **Demon Emperor** titles (§5.7). |
-| `anime.isekaiTowns` | 門 | OFF | Adds the isekai factions: **Fuyuki City** and the **Hidden Leaf Village** (V1), the **Azur Lane Naval Base** (stretch) (§6.1–6.3). **Bin** ships as a Fuyuki City hero, playable on any table — single-player included. |
+| `anime.isekaiTowns` | 門 | OFF | Adds the isekai factions: **Fuyuki City** and the **Hidden Leaf Village** — both SHIPPED as full BINH towns (§6.1–6.2) — plus the **Azur Lane Naval Base** (stretch, §6.3). **Bin** (Fuyuki) and **Naruto/Sasuke/Tsunade** (Hidden Leaf) ship as heroes, playable on any table — single-player included. |
 | `anime.isekaiNeutrals` | 門 | OFF | ~15 isekai neutral cards (the goblin family, slimes, **Titans**, **Hollows**, **Pacifista** — §6.8) + 4 isekai **Creature Banks** (bank half requires `creatureBanks`). |
 | `anime.guild` | 門 | OFF | The **Adventurers' Guild**: global commission board, per-player ranks F→S with perks, rank-A **Party Member** unique neutrals (§6.4). Map-independent. |
 | `anime.monsterWaves` | 門 | OFF | **Calamity Waves**: scheduled monster invasions; every live seat fights a themed wave army; loss = pillage (§6.6). Cadence select (3rd/4th/5th round). Works in single-player. |
@@ -1312,6 +1312,38 @@ Leaf green / slate. Swarm tempo, mobility, battlefield control, trap
 synergy. Lean into masks, scarves, headbands, hand-sign sigils, forest
 canopy; avoid samurai plate.
 
+> **SHIPPED (2026-07).** A full BINH town gated on `anime.isekaiTowns` (shared
+> with Fuyuki — NO new flag/lobby row). Roster / heroes / commander / tile / board
+> pinned in `src/data/anime/hidden-leaf-content.test.ts`; the ONE new engine arm in
+> `src/engine/after-attack-splash.test.ts`; the bespoke `shinobi` equipment line in
+> `anime-equipment.test.ts` (§3.13); live AI play in
+> `src/server/hidden-leaf-live.test.ts`. **Adaptations / deferred vs. the spec
+> below** (each engine-enforced or documented, never a decorative stub):
+> - **Art is PROCEDURAL PLACEHOLDER** on disk — 14 unit faces, 3 hero portraits,
+>   panorama/full, 7 bars, the L-S1 tile, the town icon, the Might Guy card, all
+>   from `scripts/build-hidden-leaf-placeholder-art.mjs`; real art replaces them at
+>   the same paths later.
+> - **3 heroes (Naruto / Sasuke / Tsunade), not the 6 listed below** — the other
+>   three deferred exactly like the other towns' extra heroes.
+> - **Genin's "Swarm" ships as the flat own-attack `wog-attack-when-attacking-1`
+>   arm** (the azure Outer Disciples Pack twin), NOT the adjacent-to-TARGET
+>   `ATTACK_BONUS_ADJACENT_ALLY` variant (a NEW-lite param, deferred).
+> - **Medical-Nin's token-removal pick is NOT shipped** — its Pack is the plain
+>   `enchanter-heal-or-buff` [activation] heal/buff choice.
+> - **Susanoo's "Armored" is the real `nix-damage-cap` ≤2-per-single-attack arm**
+>   (Cove Nix seam), so a Spell still bypasses it; Pack adds `titan-ignore-ongoing`.
+> - **Jinchuriki's `AFTER_ATTACK_SPLASH` fires on OWN declared attacks ONLY** (never
+>   on a retaliation) and, being EFFECT damage not an attack, is NOT capped by the
+>   nix/casters damage caps (CONTROL-pinned).
+> - **Chunin Exam Arena ships on the shared `HALL_OF_VALHALLA` archetype**, NOT a
+>   bespoke pay-2-gold Search(2)-Ability building (zero new TownBuildingEffect
+>   types, per the §5.0 checklist).
+> - **Might Guy = the shaman-Haste cast "Body Flicker" (`commander-cast-shaman`) +
+>   `superior-combat` "Eight Gates" stance** — NO bespoke `substitution` /
+>   phoenix-rebirth machinery (the §7 table's substitution specialty is deferred).
+> - **The Battle-Test combat sandbox still excludes every anime faction**
+>   (inherited behaviour, not changed by this town).
+
 | Line (tier, type) | Few | Pack | Mechanism |
 | --- | --- | --- | --- |
 | **Genin Squad** — bronze, ground | — | Swarm (docx): +1 Attack while another friendly Genin Squad is adjacent to the TARGET | SHARED `ATTACK_BONUS_ADJACENT_ALLY` (`adjacentTo: "target"` — the param the docx motivates) |
@@ -2389,7 +2421,7 @@ user can reorder tracks without re-planning (§22 Q2).
 | **P6** | **Azure Breeze Sect** + Sword Saint + Alchemy Pavilion (+ its NEW unit/building arms) | content test; push-space occupied/free outcomes; Talisman Aura die-face controls; Verdant Pulse self/adjacent/non-adjacent outcomes; ELIXIR_SHOP fallback (pills off) test |
 | **P7** | **Elixir Pills** + **Secret Realms** (6 banks, grade rows, realm-grade skin) + **xianxia neutrals** | pills morale-seam tests; bank grades vs polish on/off; Deity-Transformation ships-or-registers rule |
 | **P8** | **Quest Guard** object + **Traps** + xianxia map locations + Guild sites (the designer wave) | designer round-trip/sanitize; every quest kind + reward effect-tested; trap view-masking per player view; AFK/elimination/parallel CONTROLs; AI plays a quest+trap map |
-| **P9** | **Hidden Leaf Village** + **Yaoguai Valley** (+ Might Guy, Fox Sage, Chunin Exam Arena, Transformation Pill Hall) | content tests; `AFTER_ATTACK_SPLASH` + damage-cap CONTROLs; `armyUnitStacksActive` third-activator tests |
+| **P9** — Hidden Leaf SHIPPED | **Hidden Leaf Village** SHIPPED (units / 3 heroes / Might Guy / Chunin Exam Arena / L-S1 / board / `shinobi` equipment — see the §6.2 SHIPPED note) + **Yaoguai Valley** (pending) | content tests (`hidden-leaf-content.test.ts`); `AFTER_ATTACK_SPLASH` (`after-attack-splash.test.ts`) + damage-cap CONTROLs; live AI play (`hidden-leaf-live.test.ts`); `armyUnitStacksActive` third-activator tests |
 | **P10** | **Blood Demon Cult** + **Outer Court** (+ Demon Patriarch, Void Envoy, Blood Altar, Spatial Gate, over-limit specialties) | content tests; karma hooks land dormant (fire only when substrate on); Book-on over-limit tests (§10) |
 | **P11** | The divinity layer: **Destiny substrate + titles**, **Cultivation + Tribulation**, **Gods & Blessings**, and the §8 synergy pass (commission entries, wave themes, western boss, shop pills, realm-gate union) | every source/spend with mode-off CONTROLs; both-titles-on-one-axis test; each §8 item with a one-side-off CONTROL; all-on soak |
 | **P12** | **The Dungeon** (+ floor bosses) | floor progression/reward ladder; per-player floors across snapshot; AI delves in soak |
