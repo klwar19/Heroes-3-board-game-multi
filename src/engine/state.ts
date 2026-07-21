@@ -5792,6 +5792,13 @@ export type GameEvent =
        * the player sees when a Gelu-recruited Sharpshooters joins the army.
        */
       attackBuff?: number;
+      /**
+       * Creature Bank Stacked reward (Dragon Fly Hive / Griffin Conservatory,
+       * X ≥ 2): the Few card joined the army carrying this rulebook Stack Token
+       * (+1 Attack/Defense/Health or +2 Initiative). Drives the "Stacked" feed
+       * note so the token grant is never silent.
+       */
+      stackToken?: StackTokenStat;
     }
   | {
       id: string;
@@ -6599,6 +6606,21 @@ export type ArmyUnitState = {
    * in games where the rule is off.
    */
   stacks?: number;
+  /**
+   * Rulebook Stack Token (Naval Battles p.67) riding this army card between
+   * combats — the ACTUAL game "Stacked" version of a Dragon Fly Hive / Griffin
+   * Conservatory reward unit (source: those two banks' `stacked` GAIN_UNIT
+   * reward). One random stat bonus (+1 Attack/Defense/Health or +2 Initiative)
+   * is folded into the card every combat (makeCombatUnitFromArmy /
+   * applyUnitCurrentSide) and mirrored onto `CombatUnitState.stackToken`, so the
+   * EXISTING absorb path (markUnitRemovedIfNeeded) discards it — FOREVER — to
+   * soak one lethal blow; the survivor's token syncs back at combat end. Survives
+   * Few→Pack reinforce and Pack→Few flips. DELIBERATELY separate from the Polish
+   * `stacks` layers above: a different mechanism (this is NOT a Polish layer),
+   * never granted by these banks even with polish-unit-stacks on, and a card may
+   * carry neither, either, or both. Absent otherwise.
+   */
+  stackToken?: StackTokenStat;
   /**
    * Unit Experience (optional rule, WoG UES board adaptation): total experience
    * this unit card has earned from combats won alongside the hero (survivors
@@ -8769,15 +8791,16 @@ export type VisitStep =
   | {
       /**
        * Add a unit of `unitDefId` to the army for free. `side` defaults to "few"
-       * (Garden of Life, Conflux); a Creature Bank "gain a Stacked unit" reward
-       * passes "pack" for the bigger version. Optional `stacks` grants Polish
-       * Unit Stack layers on a Pack (Dragon Fly Hive / Griffin Conservatory
-       * under polish-bank-sizes).
+       * (Garden of Life, Conflux). Optional `stacks` grants Polish Unit Stack
+       * layers on a Pack. `stacked` (Dragon Fly Hive / Griffin Conservatory,
+       * X ≥ 2) instead grants the FEW card a rulebook Stack Token — the actual
+       * game "Stacked" unit — NEVER a Polish layer (independent mechanisms).
        */
       type: "RECRUIT_FREE";
       unitDefId: string;
       side?: "few" | "pack";
       stacks?: number;
+      stacked?: boolean;
     }
   | {
       /**

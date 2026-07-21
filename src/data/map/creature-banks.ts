@@ -1,4 +1,5 @@
 import type { UnitSideDefinition } from "@/data/factions/types";
+import type { SeededRandom } from "@/engine/random";
 import type { StackTokenStat } from "@/engine/state";
 import type { LocationInteraction } from "./types";
 
@@ -364,17 +365,19 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     tier: "far",
     units: ["neutral.dragon_flies", "neutral.dragon_flies", "neutral.dragon_flies", "neutral.dragon_flies"],
     rewardText:
-      "Gain 1 Dragon Flies (a Stacked Pack if there were at least 2 Stacked defenders), then Empower one ability you own (HOUSE RULE).",
+      "Gain 1 Dragon Flies (Stacked if there were at least 2 Stacked defenders), then Empower one ability you own (HOUSE RULE).",
     rewardStatus: "implemented",
-    // Gain the recruitable Dragon Flies card: a Pack ("Stacked") when 2+ defenders
-    // were Stacked, otherwise a Few. (The wiki notes the Stacked version needs at
-    // least Normal difficulty — Easy rolls a single token, so X can never reach 2.)
+    // Gain the recruitable Dragon Flies card: ALWAYS the Few card, but carrying a
+    // rulebook Stack Token (the actual game "Stacked" unit) when 2+ defenders were
+    // Stacked. It is NEVER a Pack and NEVER a Polish Unit-Stack layer, even with
+    // polish-unit-stacks on. (The wiki notes the Stacked version needs at least
+    // Normal difficulty — Easy rolls a single token, so X can never reach 2.)
     // HOUSE RULE bonus: also Empower one ability you own (its Expert side then
     // costs no crown for the rest of the game).
     buildReward: (x) => ({
       type: "SEQUENCE",
       interactions: [
-        { type: "GAIN_UNIT", unitDefId: "fortress.dragon_flies", side: x >= 2 ? "pack" : "few" },
+        { type: "GAIN_UNIT", unitDefId: "fortress.dragon_flies", side: "few", stacked: x >= 2 },
         { type: "EMPOWER_ABILITY" }
       ]
     })
@@ -448,15 +451,16 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     tier: "near",
     units: ["neutral.griffins", "neutral.griffins", "neutral.griffins", "neutral.griffins"],
     rewardText:
-      "Gain 1 Griffins (a Stacked Pack if there were at least 2 Stacked defenders), then Empower one ability you own (HOUSE RULE).",
+      "Gain 1 Griffins (Stacked if there were at least 2 Stacked defenders), then Empower one ability you own (HOUSE RULE).",
     rewardStatus: "implemented",
-    // Gain the recruitable Griffins card: a Pack ("Stacked") when 2+ defenders were
-    // Stacked, otherwise a Few. HOUSE RULE bonus: also Empower one ability you own
-    // (its Expert side then costs no crown for the rest of the game).
+    // Gain the recruitable Griffins card: ALWAYS the Few card, carrying a rulebook
+    // Stack Token (the actual game "Stacked" unit) when 2+ defenders were Stacked —
+    // never a Pack, never a Polish Unit-Stack layer. HOUSE RULE bonus: also Empower
+    // one ability you own (its Expert side then costs no crown for the rest of the game).
     buildReward: (x) => ({
       type: "SEQUENCE",
       interactions: [
-        { type: "GAIN_UNIT", unitDefId: "castle.griffins", side: x >= 2 ? "pack" : "few" },
+        { type: "GAIN_UNIT", unitDefId: "castle.griffins", side: "few", stacked: x >= 2 },
         { type: "EMPOWER_ABILITY" }
       ]
     })
@@ -533,6 +537,17 @@ export const STACK_TOKEN_STATS: readonly StackTokenStat[] = ["attack", "defense"
 /** +1 to attack/defense/health, +2 to initiative. */
 export function stackTokenDelta(stat: StackTokenStat): number {
   return stat === "initiative" ? 2 : 1;
+}
+
+/**
+ * Rolls one of the four Stack Tokens uniformly at random. The single source of
+ * the token-stat roll — shared by the bank-defender placement at combat reveal
+ * (buildCreatureBankCombatUnits) AND the Dragon Fly Hive / Griffin Conservatory
+ * Stacked reward (RECRUIT_FREE), so a rewarded card carries a token drawn from
+ * the exact same distribution as a defender's.
+ */
+export function rollStackTokenStat(random: SeededRandom): StackTokenStat {
+  return STACK_TOKEN_STATS[random.nextInt(0, STACK_TOKEN_STATS.length - 1)]!;
 }
 
 export function getCreatureBankUnitSide(unitDefId: string): UnitSideDefinition | undefined {

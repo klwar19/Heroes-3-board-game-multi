@@ -8146,6 +8146,24 @@ button.hbSlot:disabled { cursor: default; }
   opacity: 0.62;
 }
 
+/* Rulebook Stack Token on a Dragon Fly Hive / Griffin Conservatory reward card.
+   Distinct from the Polish layer coin badge above — a gold "+1 stat" pill. */
+.armyStackTokenBadge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid rgb(247 206 102 / 85%);
+  border-radius: 999px;
+  background: rgb(120 84 8 / 94%);
+  color: #ffe9b0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  box-shadow: 0 0 6px rgb(247 206 102 / 45%);
+}
+
 /* Anime Unit Experience veterancy rank badge (Veteran / Elite / Legend). Mirrors
    the stack badge pill, coloured by rank tier. */
 .unitRankBadge {
