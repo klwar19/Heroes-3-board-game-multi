@@ -15506,6 +15506,68 @@ img.cardBack {
 .fieldRewardSearchPreview.muted {
   opacity: 0.55;
 }
+.fieldRewardSpecialSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(140, 180, 220, 0.35);
+  border-radius: 8px;
+  background: rgba(30, 48, 72, 0.45);
+}
+.fieldRewardSpecialTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b8d8ff;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.fieldRewardSpecialGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px 10px;
+  align-items: start;
+}
+.fieldRewardSpecialSelect {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: #d9c9a1;
+}
+.fieldRewardSpecialSelect select {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(201, 162, 75, 0.45);
+  background: rgba(12, 18, 28, 0.85);
+  color: #ffe9b8;
+}
+.fieldRewardSpecialToggle {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: #ffe9b8;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+.fieldRewardSpecialToggle input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.fieldRewardSpecialToggle span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.25;
+}
+.fieldRewardSpecialToggle small {
+  font-size: 10px;
+  color: #9ab0c8;
+  font-weight: 400;
+}
 .fieldRewardSummary {
   font-size: 11px;
   color: #ffe9b8;

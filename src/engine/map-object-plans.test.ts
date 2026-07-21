@@ -146,6 +146,33 @@ describe("sanitizeObjectPlans", () => {
       mode: "each-player",
       replaceVisit: true
     });
+    // Special reward arms (Ability Empower token, morale, Statistic empower…)
+    // ride the same CustomFieldReward sanitiser through hex events.
+    expect(
+      sanitizeHexEvent({
+        id: "special",
+        placement: { row: 2, col: 3 },
+        reward: {
+          morale: 1,
+          abilityEmpowerToken: true,
+          empowerStatistic: true,
+          experience: 2,
+          movement: 1,
+          resourceDice: 1
+        }
+      })
+    ).toEqual({
+      id: "special",
+      placement: { row: 2, col: 3 },
+      reward: {
+        morale: 1,
+        abilityEmpowerToken: true,
+        empowerStatistic: true,
+        experience: 2,
+        movement: 1,
+        resourceDice: 1
+      }
+    });
     expect(sanitizeHexEvents("garbage" as never)).toEqual([]);
   });
 });
