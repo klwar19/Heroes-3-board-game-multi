@@ -4136,9 +4136,11 @@ export function eliminatePlayer(
       clearPolishArtifactAccess(state);
     }
     if (choice.type === "OPTION_CHOICE" && choice.context === "spell-discard-top" && choice.spellDiscardTopPick) {
-      // The Spell face-up pick had lifted the unkept Search cards OUT of the
+      // LEGACY in-flight only (this choice is no longer opened — see state.ts):
+      // the Spell face-up pick had lifted the unkept Search cards OUT of the
       // shared deck (they sit only on the choice while it is open) — return
-      // them to the discard pile so eliminating the picker destroys nothing.
+      // them to the discard pile so eliminating a picker mid-legacy-choice
+      // destroys nothing.
       state.decks[choice.spellDiscardTopPick.deckId]?.discardPile.push(...choice.spellDiscardTopPick.cardIds);
     }
     if (choice.type === "OPTION_CHOICE" && choice.visionsScry) {

@@ -241,7 +241,6 @@ import {
   estatesGold,
   matchingSchoolFetchForCast,
   getRuleset,
-  isSpellDeck,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
@@ -19105,14 +19104,7 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   // the whole "Remove from the game" — it never reaches the discard pile below.
   const keptIndex = action.pick.index;
   const discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
-  // Spell deck Search (all modes): when 2+ unkept cards hit the discard, the
-  // searcher PICKS which one sits face-up on top — not a random last-pushed
-  // order. The pick choice opens after this resolution (below).
-  const openSpellDiscardTopPick =
-    isSpellDeck(choice.deckId) && discardedCardIds.length >= 2 && !removePicked;
-  if (!openSpellDiscardTopPick) {
-    deck.discardPile.push(...discardedCardIds);
-  }
+  deck.discardPile.push(...discardedCardIds);
 
   appendEvent(state, {
     type: "DECK_SEARCH_RESOLVED",
@@ -19129,32 +19121,6 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   // Polish Random Artifacts: the roll only covers this one acquisition.
   if (String(choice.deckId).startsWith("artifacts")) {
     clearPolishArtifactAccess(state);
-  }
-
-  // Spell discard face-up pick: park the unkept cards, then open the choice
-  // BEFORE the morale/pendant post-Search offers — the pick handler re-opens
-  // them (maybeOpenPostSearchOffers) once the cards are placed.
-  if (openSpellDiscardTopPick) {
-    state.pendingChoice = {
-      id: `choice_${nextEventNumber(state)}`,
-      type: "OPTION_CHOICE",
-      playerId: action.playerId,
-      prompt: "Which unkept spell sits face-up on the discard pile?",
-      options: discardedCardIds.map((cardId) => ({
-        label: `Face-up: ${cardLibrary[cardId]?.name ?? cardId}`
-      })),
-      context: "spell-discard-top",
-      spellDiscardTopPick: {
-        deckId: choice.deckId,
-        cardIds: discardedCardIds,
-        ...(choice.baseCount !== undefined ? { baseCount: choice.baseCount } : {}),
-        ...(removePicked ? {} : { keptCardId })
-      },
-      returnPhase: choice.returnPhase
-    };
-    state.phase = "choice";
-    state.priorityPlayerId = action.playerId;
-    return;
   }
 
   // Positive Morale "discard the cards gained from Search (X) to perform the
