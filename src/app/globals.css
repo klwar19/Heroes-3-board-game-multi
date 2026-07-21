@@ -6350,6 +6350,38 @@ button.hbSlot:disabled { cursor: default; }
   background: linear-gradient(160deg, #e9c84f, #aa7c10);
 }
 
+.polishBankOptionCard.leaveBlocked {
+  border-color: rgb(160 80 80 / 55%);
+  background: linear-gradient(180deg, rgb(42 22 22 / 96%), rgb(14 8 8 / 98%));
+}
+
+.polishBankOptionCard.leaveBlocked:hover {
+  border-color: rgb(220 100 100 / 75%);
+}
+
+.polishBankOptionArt.leaveBlockedArt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-color: rgb(160 80 80 / 45%);
+  background:
+    linear-gradient(135deg, transparent 46%, rgb(190 70 70 / 85%) 46%, rgb(190 70 70 / 85%) 54%, transparent 54%),
+    linear-gradient(45deg, transparent 46%, rgb(190 70 70 / 85%) 46%, rgb(190 70 70 / 85%) 54%, transparent 54%),
+    rgb(28 12 12 / 85%);
+}
+
+.polishBankLeaveX {
+  font-size: 42px;
+  font-weight: 900;
+  line-height: 1;
+  color: #f0a0a0;
+  text-shadow: 0 2px 6px rgb(0 0 0 / 70%);
+}
+
+.polishBankOptionCard.leaveBlocked .polishBankOptionLetter {
+  color: #f0a0a0;
+}
+
 .polishBankOptionLetter {
   font-size: 13px;
   font-weight: 800;
@@ -13570,6 +13602,77 @@ span.recruitThumb {
   background: rgba(43, 76, 105, 0.6);
   border-color: rgba(126, 178, 221, 0.6);
   color: #bcdaf0;
+}
+
+/* Spell Scrolls in the permanent tray (not hand cards) */
+.permanentSlot.scrollSlot {
+  border-color: rgba(150, 120, 220, 0.5);
+  background: linear-gradient(180deg, rgba(36, 28, 52, 0.94), rgba(22, 16, 34, 0.94));
+}
+
+.permanentSlot.scrollSlot .permanentCardButton {
+  position: relative;
+}
+
+.permanentScrollGlyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 74px;
+  height: 104px;
+  border-radius: 6px;
+  border: 1px solid rgba(180, 150, 240, 0.4);
+  background: rgba(20, 14, 32, 0.9);
+  font-size: 32px;
+}
+
+.permanentSlot.compact .permanentScrollGlyph {
+  width: 44px;
+  height: 62px;
+  font-size: 20px;
+}
+
+.permanentScrollCount {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(90, 60, 160, 0.95);
+  border: 1px solid rgba(210, 190, 255, 0.7);
+  color: #f2eaff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+
+.permanentBadge.scrollBadge {
+  background: rgba(90, 60, 160, 0.45);
+  border-color: rgba(180, 150, 240, 0.65);
+  color: #d8c8ff;
+}
+
+.permanentScrollSpellChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 2px 6px 2px 2px;
+  border-radius: 6px;
+  border: 1px solid rgba(180, 150, 240, 0.35);
+  background: rgba(20, 14, 32, 0.75);
+  color: #e8dcff;
+  font-size: 0.7rem;
+  cursor: zoom-in;
+}
+
+.permanentScrollSpellChipArt {
+  width: 28px;
+  border-radius: 3px;
+  display: block;
 }
 
 /* ---------------------------------------------------------------------------
