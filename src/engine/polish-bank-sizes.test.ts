@@ -146,9 +146,11 @@ describe("Polish Creature Bank offer", () => {
     const candidates = choice.creatureBank?.candidates ?? [];
     expect(candidates).toHaveLength(2);
     expect(choice.creatureBank?.preRotation).toBe(true);
-    expect(choice.options).toHaveLength(2);
+    // A / B / Leave it blocked
+    expect(choice.options).toHaveLength(3);
     expect(choice.options[0].label).toMatch(/^A · .+ · size I{1,3}V?$/);
     expect(choice.options[1].label).toMatch(/^B · .+ · size I{1,3}V?$/);
+    expect(choice.options[2].label).toBe("Leave it blocked");
 
     const selected = candidates[1];
     const unchosen = candidates[0];
@@ -169,11 +171,45 @@ describe("Polish Creature Bank offer", () => {
     expect(state.adventure!.creatureBankTokensFar).toContain(unchosen.bankId);
   });
 
-  it("has no decline option; a one-token pile reserves that sole bank automatically", () => {
-    expect(bankChoice(placeFarTileAwaitingRotation()).options).toHaveLength(2);
+  it("offers Leave it blocked before rotation; declining leaves the field blocked and the pile intact", () => {
+    let state = placeFarTileAwaitingRotation();
+    const pileBefore = [...state.adventure!.creatureBankTokensFar!];
+    const choice = bankChoice(state);
+    expect(choice.creatureBank?.preRotation).toBe(true);
+    const leaveIndex = choice.options.length - 1;
+    expect(choice.options[leaveIndex].label).toBe("Leave it blocked");
 
+    state = choosePolishBank(state, leaveIndex);
+    const rotatingTile = state.adventure!.tiles[state.adventure!.pendingTileChoice!.tileInstanceId];
+    expect(rotatingTile.reservedBankDeclined).toBe(true);
+    expect(rotatingTile.reservedBankId).toBeUndefined();
+    expect(rotatingTile.reservedBankOptions).toBeUndefined();
+    expect(state.adventure!.creatureBankTokensFar).toEqual(pileBefore);
+
+    state = finishRotation(state);
+    expect(
+      Object.values(state.adventure!.fields).some(
+        (field) => field.tileInstanceId === rotatingTile.id && field.location === "creature_bank",
+      ),
+    ).toBe(false);
+    expect(
+      Object.values(state.adventure!.fields).some(
+        (field) => field.tileInstanceId === rotatingTile.id && field.location === "blocked_field",
+      ),
+    ).toBe(true);
+    expect(state.adventure!.creatureBankTokensFar).toEqual(pileBefore);
+  });
+
+  it("a one-token pile offers Place / Leave before rotation (not auto-place)", () => {
     let state = placeFarTileAwaitingRotation({ pile: ["crypt"] });
-    expect(state.pendingChoice).toBeNull();
+    const choice = bankChoice(state);
+    expect(choice.creatureBank?.preRotation).toBe(true);
+    expect(choice.creatureBank?.candidates).toEqual([expect.objectContaining({ bankId: "crypt" })]);
+    expect(choice.options).toHaveLength(2);
+    expect(choice.options[0].label).toMatch(/^A · Crypt · size /);
+    expect(choice.options[1].label).toBe("Leave it blocked");
+
+    state = choosePolishBank(state, 0);
     const tile = state.adventure!.tiles[state.adventure!.pendingTileChoice!.tileInstanceId];
     expect(tile.reservedBankOptions).toEqual([expect.objectContaining({ bankId: "crypt" })]);
     state = finishRotation(state);

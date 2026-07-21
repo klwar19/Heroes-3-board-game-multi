@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyAction,
   createAdventureGameState,
+  getLegalActions,
   getTileFootprintSpaceIds,
   tileLatticeNeighbors,
   type GameAction,
@@ -9,7 +10,7 @@ import {
   type MapFieldState,
   type MapTileState
 } from "./index";
-import { instantiateTile, recomputeSubterraneanGates } from "./adventure";
+import { beginFieldVisit, instantiateTile, recomputeSubterraneanGates } from "./adventure";
 import type { AdventureState } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -395,5 +396,74 @@ describe("subterranean Creature Banks (house rule)", () => {
         afterGate.pendingChoice.context === "place-creature-bank",
       "bank is not re-offered after the gate"
     ).toBe(false);
+  });
+
+  it("via Subterranean Gate: Polish bank (type+size) is chosen BEFORE rotation, with Leave blocked", () => {
+    // Real gate visit (not the test helper that skips beginTileRotation): the
+    // cavern must reserve + offer banks before SET_TILE_ROTATION is legal.
+    let state = createAdventureGameState({
+      seed: "subt-gate-polish-bank-first",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      chooseSubterraneanGate: false,
+      creatureBanks: true,
+      houseRules: { "polish-bank-sizes": true },
+    });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    const surfaceCenter = { row: 24, col: 12 };
+    const cavernCenter = tileLatticeNeighbors(surfaceCenter)[0];
+    const surface = instantiateTile(adv(state), "F1", surfaceCenter, 0, false);
+    const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true);
+    setAllEmpty(state, surface);
+    recomputeSubterraneanGates(adv(state));
+    const gate = Object.values(adv(state).fields).find(
+      (field) => field.location === "subterranean_gate" && field.gateToTileId === cavern.id
+    );
+    expect(gate, "surface gate toward the cavern").toBeTruthy();
+
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = gate!.spaceId;
+    hero.movementPoints = 3;
+    // Real gate visit path (same as stepping onto the subterranean_gate field).
+    beginFieldVisit(state, hero.id, gate!.spaceId, false);
+
+    expect(adv(state).tiles[cavern.id].faceDown).toBe(false);
+    expect(adv(state).tiles[cavern.id].awaitingRotation).toBe(true);
+    // Bank choice is open BEFORE rotation — Polish candidates + Leave blocked.
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context === "place-creature-bank").toBe(true);
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-creature-bank") {
+      throw new Error("expected pre-rotation bank choice");
+    }
+    expect(choice.creatureBank?.preRotation).toBe(true);
+    expect(choice.creatureBank?.tier).toBe("near");
+    expect((choice.creatureBank?.candidates?.length ?? 0) >= 1).toBe(true);
+    expect(choice.options[choice.options.length - 1]?.label).toBe("Leave it blocked");
+    // Rotation is NOT legal while the bank choice is open.
+    expect(
+      getLegalActions(state, "p1").some((legal) => legal.action.type === "SET_TILE_ROTATION")
+    ).toBe(false);
+
+    // Leave blocked, then rotate — field stays blocked, pile intact.
+    const nearBefore = [...(adv(state).creatureBankTokensNear ?? [])];
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: choice.options.length - 1,
+    });
+    expect(adv(state).tiles[cavern.id].reservedBankDeclined).toBe(true);
+    state = applyOk(state, {
+      type: "SET_TILE_ROTATION",
+      playerId: "p1",
+      tileInstanceId: cavern.id,
+      rotation: 0,
+    });
+    expect(
+      getTileFootprintSpaceIds(cavern).some((id) => adv(state).fields[id]?.location === "creature_bank")
+    ).toBe(false);
+    expect(adv(state).creatureBankTokensNear).toEqual(nearBefore);
   });
 });

@@ -5,7 +5,7 @@
 import { Anchor, Crown, Hourglass, Layers, Search, Sparkles } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { playSpellBookOpen } from "@/lib/sound";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
 import {
@@ -123,6 +123,10 @@ export function CardFrame({
  * play" button when the engine offers it. (A School of Magic's discard-for-+3
  * is decided when casting — see the spell's "+ School of Magic" cast option —
  * not from here.)
+ *
+ * Spell Scrolls also live here: they are not hand cards, so the permanent tray
+ * is the map-side home for them (each held Spell is shown; cast actions stay on
+ * the combat hand shelf / map cast offers).
  */
 export function PermanentSlot({
   state,
@@ -144,7 +148,9 @@ export function PermanentSlot({
   // Ongoing cards held in play: they reach the discard pile (or a recalled
   // spell the hand) only after their effect ends.
   const ongoingCards = state.players[playerId]?.ongoingCards ?? [];
-  if (cardIds.length === 0 && ongoingCards.length === 0) {
+  // Spell Scrolls: map-side permanent tray (not hand). Public; opponents see them.
+  const scrolls = state.players[playerId]?.scrolls ?? [];
+  if (cardIds.length === 0 && ongoingCards.length === 0 && scrolls.length === 0) {
     return null;
   }
 
@@ -163,6 +169,26 @@ export function PermanentSlot({
           (legal) => legal.action.type === "CRACK_PERMANENT" && legal.action.cardId === cardId
         )
       : undefined;
+  const sellScrollActionFor = (scrollId: string, cardId: string) =>
+    ownView
+      ? legalActions?.find(
+          (legal) =>
+            legal.action.type === "SELL_SCROLL_SPELL" &&
+            legal.action.scrollId === scrollId &&
+            legal.action.cardId === cardId
+        )
+      : undefined;
+  // Map/combat cast of a scroll spell (CAST_SPELL with fromScroll). Offered when
+  // the engine has a concrete cast; click dispatches the first legal target.
+  const scrollCastActionsFor = (scrollId: string, cardId: string) =>
+    ownView
+      ? (legalActions ?? []).filter(
+          (legal) =>
+            legal.action.type === "CAST_SPELL" &&
+            legal.action.cardId === cardId &&
+            legal.action.fromScroll === scrollId
+        )
+      : [];
 
   return (
     <div
@@ -238,6 +264,102 @@ export function PermanentSlot({
                   Until the effect ends, then → {held.returnTo === "hand" ? "hand (recalled)" : "discard"}
                 </small>
               ) : null}
+            </div>
+          </div>
+        );
+      })}
+      {scrolls.map((scroll) => {
+        const spellIds = scroll.spellCardIds.filter((id) => id && id !== "hidden");
+        const faceId = spellIds[0];
+        const faceCard = faceId ? cardLibrary[faceId] : undefined;
+        const spellNames = spellIds.map((id) => cardLibrary[id]?.name ?? id);
+        const title =
+          spellNames.length > 0
+            ? `Spell Scroll — ${spellNames.join(" · ")} (cast in combat at power 0; sell at market for 2 gold each)`
+            : "Spell Scroll (empty — will be discarded)";
+        return (
+          <div className={`permanentSlot scrollSlot ${compact ? "compact" : ""}`} key={`scroll-${scroll.id}`}>
+            <button
+              className="permanentCardButton"
+              onClick={() => (faceId ? zoomCard(faceId) : undefined)}
+              title={title}
+              type="button"
+            >
+              {faceId ? (
+                <CardFrame cardId={faceId} className="permanentCardImage" />
+              ) : (
+                <span aria-hidden="true" className="permanentScrollGlyph">
+                  📜
+                </span>
+              )}
+              {spellIds.length > 1 ? (
+                <span className="permanentScrollCount" title={`${spellIds.length} spells on this scroll`}>
+                  {spellIds.length}
+                </span>
+              ) : null}
+            </button>
+            <div className="permanentMeta">
+              <span className="permanentBadge scrollBadge">
+                <Sparkles aria-hidden="true" size={11} /> spell scroll
+              </span>
+              {!compact ? <strong>Spell Scroll</strong> : null}
+              {!compact ? (
+                <small>
+                  {spellNames.length > 0
+                    ? spellNames.join(" · ")
+                    : "No spells left"}
+                  {" — cast at power 0 in combat"}
+                </small>
+              ) : null}
+              {!compact && spellIds.length > 1
+                ? spellIds.slice(1).map((spellId) => {
+                    const spell = cardLibrary[spellId];
+                    return (
+                      <button
+                        className="permanentScrollSpellChip"
+                        key={`${scroll.id}-${spellId}`}
+                        onClick={() => zoomCard(spellId)}
+                        title={spell?.name ?? spellId}
+                        type="button"
+                      >
+                        <CardFrame cardId={spellId} className="permanentScrollSpellChipArt" />
+                        <span>{spell?.name ?? spellId}</span>
+                      </button>
+                    );
+                  })
+                : null}
+              {spellIds.flatMap((spellId) => {
+                const casts = scrollCastActionsFor(scroll.id, spellId);
+                const sell = sellScrollActionFor(scroll.id, spellId);
+                const buttons: ReactNode[] = [];
+                if (casts.length > 0) {
+                  buttons.push(
+                    <button
+                      className="commandButton"
+                      key={`cast-${scroll.id}-${spellId}`}
+                      onClick={() => onAction?.(casts[0]!.action)}
+                      title={casts[0]!.label}
+                      type="button"
+                    >
+                      Cast {cardLibrary[spellId]?.name ?? "Spell"}
+                    </button>
+                  );
+                }
+                if (sell) {
+                  buttons.push(
+                    <button
+                      className="commandButton ghost"
+                      key={`sell-${scroll.id}-${spellId}`}
+                      onClick={() => onAction?.(sell.action)}
+                      title={sell.label}
+                      type="button"
+                    >
+                      Sell for 2 gold
+                    </button>
+                  );
+                }
+                return buttons;
+              })}
             </div>
           </div>
         );

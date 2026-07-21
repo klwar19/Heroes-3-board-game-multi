@@ -8056,6 +8056,12 @@ export type MapTileState = {
    * with old rotation-preview readers and pre-feature snapshots.
    */
   reservedBankOptions?: ReservedBankOption[];
+  /**
+   * Pre-rotation "Leave it blocked" was chosen for this tile's Creature Bank
+   * offer. After rotation the bank placement step is skipped entirely (the pile
+   * was only peeked). Cleared once the reveal chain consumes it.
+   */
+  reservedBankDeclined?: boolean;
 };
 
 export type MapFieldState = {

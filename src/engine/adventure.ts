@@ -8388,23 +8388,24 @@ function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
     return;
   }
 
-  // A face-down Ⅱ–Ⅲ surface tile flipped across the Gate obeys the same
-  // settlement / material-mine keep/reroll/pick rules as any other on-map
-  // discovery. The flip lives in the reducer, so it is reached via the injected
-  // hook; it may open an OPTION_CHOICE, so the (now-complete, single-step) gate
-  // visit is cleared first — the gate step has already been shifted off — to
-  // avoid leaving an empty pending visit behind it. Anything richer than a bare
-  // gate visit, or a non-Far tile, falls back to the plain inline reveal below.
-  if (onMapTileRevealHook && farTile.group === "far" && visit.steps.length === 0) {
+  // ALWAYS go through the full reveal hook when available — including
+  // Subterranean / Near / Center tiles. The old inline flip skipped
+  // beginTileRotation, so Creature Banks were never reserved before rotation
+  // (polish sizes + leave-blocked opened only AFTER the tile was rotated).
+  // The hook owns Far keep/reroll/pick, bank reservation, polish pre-rotation
+  // bank choice, then rotation. Clear a bare completed gate visit first so an
+  // empty pending visit is not left behind an OPTION_CHOICE the hook may open.
+  if (onMapTileRevealHook && visit.steps.length === 0) {
     adventure.pendingVisit = null;
     onMapTileRevealHook(state, visit.playerId, farTile);
     return;
   }
 
-  // Flip the far tile up for free and hand its rotation to the entering player.
-  // This mirrors the "reveal" branch of beginTileRotation (which lives in the
-  // reducer and is not importable here without a cycle); SET_TILE_ROTATION then
-  // materializes it and carves the entrance via recomputeSubterraneanGates.
+  // Fallback when the hook is not registered (unit tests that never load the
+  // reducer): flip the far tile up and hand its rotation to the entering player.
+  // SET_TILE_ROTATION then materializes it and carves the entrance via
+  // recomputeSubterraneanGates. Bank reservation is skipped here — callers that
+  // need the full chain must register the hook.
   farTile.faceDown = false;
   farTile.awaitingRotation = true;
   adventure.pendingTileChoice = {

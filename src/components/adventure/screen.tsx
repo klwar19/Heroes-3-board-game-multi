@@ -5300,14 +5300,15 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" && choice.context === "rule-111" && choice.playerId === viewerPlayerId
       ? (state.combat?.pendingNeutralDraws ?? []).filter((draw) => draw.tier === "bronze" && !draw.bankGuard)
       : null;
-  // Polish Bank Sizes: A/B choice of rolled banks — each option shows the bank's
-  // field art above the name + size so the pick is visual, not text-only.
+  // Polish Bank Sizes: rolled bank candidates (+ optional Leave-it-blocked).
+  // Each bank option shows the bank's field art above the name + size; Leave
+  // blocked is a dedicated X card (not an empty bank face).
   const polishBankCandidates =
     choice?.type === "OPTION_CHOICE" &&
     choice.context === "place-creature-bank" &&
     choice.playerId === viewerPlayerId &&
     choice.creatureBank?.candidates &&
-    choice.creatureBank.candidates.length > 1
+    choice.creatureBank.candidates.length >= 1
       ? choice.creatureBank.candidates
       : null;
   // Scenario starting bonus (rulebook p.10): its options carry no card id, so
@@ -5500,12 +5501,15 @@ export function PromptTray({
 
   // Polish Bank Sizes A/B pick: field art ABOVE the name + size coin so the
   // choice is intuitive (which bank am I taking on?). Text labels alone used to
-  // force a memory match against the map preview.
+  // force a memory match against the map preview. "Leave it blocked" is a real
+  // third option with a clear X mark (not an empty bank card).
   if (polishBankCandidates) {
     return (
       <div className="promptTray withPolishBankCards" role="dialog" aria-label={title}>
         <strong>{title}</strong>
-        <span className="promptTeleportHint">Pick a bank — art and size show above the name.</span>
+        <span className="promptTeleportHint">
+          Pick a bank — art and size show above the name — or leave the field blocked (X).
+        </span>
         <div className="promptOptions polishBankCards">
           {body.map((legal) => {
             const optionIndex =
@@ -5514,23 +5518,29 @@ export function PromptTray({
                 : undefined;
             const candidate =
               optionIndex !== undefined ? polishBankCandidates[optionIndex] : undefined;
+            const isLeaveBlocked = !candidate;
             const bank = candidate
               ? CREATURE_BANKS[candidate.bankId as CreatureBankId]
               : undefined;
             const letter =
-              optionIndex !== undefined ? String.fromCharCode(65 + optionIndex) : "?";
+              optionIndex !== undefined
+                ? isLeaveBlocked
+                  ? "X"
+                  : String.fromCharCode(65 + optionIndex)
+                : "?";
             const size = candidate?.size;
             const sizeRoman = size ? (ROMAN[size] ?? String(size)) : "";
             return (
               <button
                 aria-label={legal.label}
-                className="polishBankOptionCard"
+                className={`polishBankOptionCard${isLeaveBlocked ? " leaveBlocked" : ""}`}
+                data-testid={isLeaveBlocked ? "leave-bank-blocked" : undefined}
                 key={actionKey(legal.action)}
                 onClick={() => onAction(legal.action)}
                 title={legal.label}
                 type="button"
               >
-                <span className="polishBankOptionArt">
+                <span className={`polishBankOptionArt${isLeaveBlocked ? " leaveBlockedArt" : ""}`}>
                   {candidate ? (
                     <img
                       alt=""
@@ -5541,7 +5551,9 @@ export function PromptTray({
                       src={assetUrl(creatureBankFieldImage(candidate.bankId))}
                     />
                   ) : (
-                    <span className="marketCardFallback">🏦</span>
+                    <span aria-hidden="true" className="polishBankLeaveX">
+                      ✕
+                    </span>
                   )}
                   {size ? (
                     <span
@@ -5553,9 +5565,13 @@ export function PromptTray({
                   ) : null}
                 </span>
                 <strong className="polishBankOptionLetter">{letter}</strong>
-                <small className="polishBankOptionName">{bank?.name ?? "Creature Bank"}</small>
+                <small className="polishBankOptionName">
+                  {isLeaveBlocked ? "Leave it blocked" : (bank?.name ?? "Creature Bank")}
+                </small>
                 {sizeRoman ? (
                   <small className="polishBankOptionSize">size {sizeRoman}</small>
+                ) : isLeaveBlocked ? (
+                  <small className="polishBankOptionSize">no bank</small>
                 ) : null}
               </button>
             );

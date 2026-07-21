@@ -5774,7 +5774,7 @@ export default function Home() {
 
               {/* RIGHT column: permanents box on top, hand box below. */}
               <div className="handMain">
-              <div className="permanentEffectsPanel" aria-label="Permanents and ongoing effects">
+              <div className="permanentEffectsPanel" aria-label="Permanents, ongoing effects, and Spell Scrolls">
                 <div className="trayBoxHeader">
                   <strong>Permanents &amp; Ongoing</strong>
                 </div>
@@ -5786,8 +5786,9 @@ export default function Home() {
                   viewerPlayerId={viewerPlayerId}
                 />
                 {getPermanentCardIds(uiState ?? state, viewerPlayerId).length === 0 &&
-                ((uiState ?? state).players[viewerPlayerId]?.ongoingCards?.length ?? 0) === 0 ? (
-                  <small className="trayBoxEmpty">No permanent or ongoing effects in play.</small>
+                ((uiState ?? state).players[viewerPlayerId]?.ongoingCards?.length ?? 0) === 0 &&
+                ((uiState ?? state).players[viewerPlayerId]?.scrolls?.length ?? 0) === 0 ? (
+                  <small className="trayBoxEmpty">No permanent, ongoing, or Spell Scroll effects in play.</small>
                 ) : null}
               </div>
               <div className="handArea" aria-label="Your hand">
