@@ -19,7 +19,7 @@ import { getUnitAbilityDefinitions } from "./unit-abilities";
 import type { CombatState, GameAction, GameState } from "./state";
 
 function makeState(enabled = true, seed = "polish-unit-stacks"): GameState {
-  let state = createAdventureGameState({
+  let state = createAdventureGameState({ startingBuildings: [],
     seed,
     difficulty: "normal",
     rollFirstPlayer: false,
@@ -212,7 +212,7 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     // (a plain Pack), so with ONLY polish-bank-sizes on a Pack card that happens
     // to carry `stacks` gets NO +1 Attack and NO layer peel, and the Citadel
     // offers no Stack purchase.
-    let state = createAdventureGameState({
+    let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-bank-only-no-army-stacks",
       difficulty: "normal",
       rollFirstPlayer: false,
@@ -268,7 +268,7 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
 
     // CONTROL: with polish-unit-stacks ON the SAME card's layers are live —
     // +1 Attack over the stack-less twin, and a lethal hit peels one layer.
-    const on = createAdventureGameState({
+    const on = createAdventureGameState({ startingBuildings: [],
       seed: "polish-unit-stacks-live",
       difficulty: "normal",
       rollFirstPlayer: false,

@@ -50,6 +50,7 @@ import {
   creatureBankTierForGroup,
   applyRecruitGoldDiscount,
   changeMorale,
+  markAbilityEmpowered,
   classifyHeroStep,
   commitPopulationOnMove,
   consumeRecruitVoucherFor,
@@ -2244,18 +2245,25 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState, player
 }
 
 /**
- * Polish ordering from the v1.2 sheet: after both face-up banks have had their
- * sizes rolled, choose one BEFORE any rotation is offered. The chosen token is
- * only reserved here (not consumed); after rotation/gate carving it is placed
- * on the surviving Blocked Field and removed from the pile. With one token left
- * there is no meaningful choice, so it is reserved automatically.
+ * Bank choice BEFORE rotation: the discovering player sees the rolled bank(s)
+ * (type + Polish sizes when on), picks one OR leaves the field blocked, THEN
+ * rotates the tile. The chosen token is only reserved here (not consumed);
+ * after rotation/gate carving it is placed on the surviving Blocked Field and
+ * removed from the pile. "Leave it blocked" clears the reservation so the post-
+ * rotation step is a no-op.
+ *
+ * Polish with 2 candidates → A / B / Leave blocked.
+ * Polish with 1 candidate → Place (name · size) / Leave blocked.
+ * Rule off (single reserved bank) → no pre-rotation prompt (player still sees
+ * the reserved bank art while rotating; place/leave opens after rotation —
+ * byte-identical to the classic flow for non-Polish tables).
  */
 function openPolishBankChoiceBeforeRotation(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   if (!houseRuleEnabled(state, "polish-bank-sizes")) {
     return;
   }
   const candidates = tile.reservedBankOptions ?? [];
-  if (candidates.length <= 1) {
+  if (candidates.length === 0) {
     return;
   }
   const tier = creatureBankTierForGroup(tile.group);
@@ -2263,14 +2271,21 @@ function openPolishBankChoiceBeforeRotation(state: GameState, tile: MapTileState
     return;
   }
 
+  const tierLabel = tile.group === "subterranean" ? "cavern" : tier === "far" ? "Far tile" : "Near tile";
+  const bankOptions = candidates.map((candidate, index) => ({
+    label: `${String.fromCharCode(65 + index)} · ${CREATURE_BANKS[candidate.bankId as CreatureBankId]?.name ?? "Creature Bank"} · size ${BANK_SIZE_ROMAN[candidate.size]}`
+  }));
+  const prompt =
+    candidates.length > 1
+      ? `This ${tierLabel} has a Blocked Field — choose a rolled Creature Bank, or leave it blocked. Then rotate the tile.`
+      : `This ${tierLabel} has a Blocked Field — place the rolled Creature Bank, or leave it blocked. Then rotate the tile.`;
+
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: "Choose one of the two rolled Creature Banks. After choosing, rotate the tile.",
-    options: candidates.map((candidate, index) => ({
-      label: `${String.fromCharCode(65 + index)} · ${CREATURE_BANKS[candidate.bankId as CreatureBankId]?.name ?? "Creature Bank"} · size ${BANK_SIZE_ROMAN[candidate.size]}`
-    })),
+    prompt,
+    options: [...bankOptions, { label: "Leave it blocked" }],
     context: "place-creature-bank",
     creatureBank: {
       // Fields do not materialize until rotation. The reducer ignores this
@@ -2625,6 +2640,13 @@ function openSubterraneanGatePlacementChoice(
 function offerCreatureBankPlacement(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
   if (!adventure) {
+    return;
+  }
+  // Pre-rotation "Leave it blocked" — skip placement entirely; pile was only peeked.
+  if (tile.reservedBankDeclined) {
+    tile.reservedBankDeclined = undefined;
+    tile.reservedBankId = undefined;
+    tile.reservedBankOptions = undefined;
     return;
   }
   const tier = creatureBankTierForGroup(tile.group);
@@ -4905,7 +4927,9 @@ export function openDiplomacyRecruit(
   state: GameState,
   playerId: PlayerId,
   maxDraws?: number,
-  goldReduction?: number
+  goldReduction?: number,
+  /** Card just spent into the discard — refunded when nothing can be drawn. */
+  spentCardId?: string
 ): void {
   const draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] = [];
   for (const tier of diplomacyDwellingDrawTiers(state, playerId)) {
@@ -4920,7 +4944,26 @@ export function openDiplomacyRecruit(
     }
   }
 
+  // Empty Neutral decks: the card was already spent (playCard discards before
+  // effects). Put it back so the basic side never silently fizzles — the player
+  // keeps Diplomacy / the specialty and can try again when a deck has cards.
   if (draws.length === 0) {
+    const player = state.players[playerId];
+    const refundId = spentCardId ?? "ability.diplomacy";
+    if (player) {
+      const spent = player.discard.lastIndexOf(refundId);
+      if (spent >= 0) {
+        player.discard.splice(spent, 1);
+        player.hand.push(refundId);
+      }
+    }
+    // Log an empty draw so the feed / tests can see the attempt was not a silent
+    // no-op; the card refund above is the real player-facing recovery.
+    appendEvent(state, {
+      type: "DIPLOMACY_NEUTRALS_DRAWN",
+      playerId,
+      unitDefIds: []
+    });
     return;
   }
 
@@ -4936,21 +4979,21 @@ export function openDiplomacyRecruit(
       hasRecruitResources(state, playerId, reduceGoldCost(neutral?.cost ?? {}, goldReduction));
   });
 
-  // Nothing affordable to recruit: the drawn cards simply return to their decks.
-  if (recruitable.length === 0) {
-    for (const draw of draws) {
-      state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
-    }
-    return;
-  }
-
+  // Always open a choice when something was drawn — even when nothing is
+  // affordable. The old silent "return cards and leave" made Diplomacy's basic
+  // side look broken (card spent, no UI, no recruit). The player still sees the
+  // drawn unit names and can only pick "Recruit none" when broke.
+  const drawnNames = draws
+    .map((draw) => coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId)
+    .join(", ");
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `Diplomacy: recruit one of the drawn Neutral Units — ${draws
-      .map((draw) => coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId)
-      .join(", ")}?`,
+    prompt:
+      recruitable.length === 0
+        ? `Diplomacy drew ${drawnNames}, but you cannot afford any of them. Recruit none?`
+        : `Diplomacy: recruit one of the drawn Neutral Units — ${drawnNames}?`,
     options: [
       ...recruitable.map((draw) => {
         const def = coreUnitDefinitions[draw.unitDefId];
@@ -4958,7 +5001,7 @@ export function openDiplomacyRecruit(
           label: `Recruit ${def?.name ?? draw.unitDefId} (${recruitCostLabel(reduceGoldCost(def?.neutral?.cost ?? {}, goldReduction))})`
         };
       }),
-      { label: "Recruit none" }
+      { label: recruitable.length === 0 ? "Done — return drawn cards" : "Recruit none" }
     ],
     context: "diplomacy-recruit",
     diplomacyRecruit: { draws, recruitable, goldReduction },
@@ -11066,6 +11109,45 @@ export function hallOfValhallaBoost(
  * "Discard any number of cards, then draw that many cards" — at any time.
  * (The third option, rerolling a die, is offered inside the dice flows.)
  */
+/**
+ * Spend the Ability Empower token (max 1) to permanently Empower one Ability
+ * currently in hand. Expert then costs no crown for the rest of the game.
+ */
+export function useAbilityEmpowerToken(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_ABILITY_EMPOWER_TOKEN" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if ((player.abilityEmpowerToken ?? 0) < 1) {
+    throw new Error("You have no Ability Empower token to spend.");
+  }
+  if (!player.hand.includes(action.cardId)) {
+    throw new Error("That Ability must be in your hand to Empower with the token.");
+  }
+  if (cardLibrary[action.cardId]?.kind !== "ability") {
+    throw new Error("Only Ability cards can be Empowered with this token.");
+  }
+  if (player.empoweredAbilities?.includes(action.cardId)) {
+    throw new Error("That Ability is already Empowered.");
+  }
+  markAbilityEmpowered(player, action.cardId);
+  player.abilityEmpowerToken = 0;
+  appendEvent(state, {
+    type: "ABILITY_EMPOWERED",
+    playerId: action.playerId,
+    cardId: action.cardId
+  });
+  appendEvent(state, {
+    type: "ABILITY_EMPOWER_TOKEN_SPENT",
+    playerId: action.playerId,
+    cardId: action.cardId,
+    total: 0
+  });
+}
+
 export function spendMorale(state: GameState, action: Extract<GameAction, { type: "SPEND_MORALE" }>): void {
   const player = state.players[action.playerId];
   if (!player) {
@@ -11607,16 +11689,30 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       : undefined;
     const sizedCandidates = data?.candidates ?? [];
     if (data?.preRotation) {
-      const selected = sizedCandidates[action.optionIndex];
-      const pile = data.tier === "far" ? adventure?.creatureBankTokensFar : adventure?.creatureBankTokensNear;
-      if (!selected || !bankTile || !pile?.includes(selected.bankId) || !isCreatureBankId(selected.bankId)) {
-        throw new Error("Choose one of the two rolled Creature Banks.");
+      if (!bankTile) {
+        throw new Error("That Creature Bank tile is no longer available.");
       }
-      // Keep only the chosen bank on the rotating tile. Consumption waits for
-      // final placement, so a gate that destroys the Blocked Field cannot lose
-      // a physical token from the pile.
-      bankTile.reservedBankId = selected.bankId;
-      bankTile.reservedBankOptions = [selected];
+      const pile = data.tier === "far" ? adventure?.creatureBankTokensFar : adventure?.creatureBankTokensNear;
+      const selected = sizedCandidates[action.optionIndex];
+      if (selected) {
+        if (!pile?.includes(selected.bankId) || !isCreatureBankId(selected.bankId)) {
+          throw new Error("Choose one of the rolled Creature Banks or leave the field blocked.");
+        }
+        // Keep only the chosen bank on the rotating tile. Consumption waits for
+        // final placement, so a gate that destroys the Blocked Field cannot lose
+        // a physical token from the pile.
+        bankTile.reservedBankId = selected.bankId;
+        bankTile.reservedBankOptions = [selected];
+        bankTile.reservedBankDeclined = undefined;
+      } else if (action.optionIndex === sizedCandidates.length) {
+        // Leave it blocked — clear the peek so rotation does not auto-place, and
+        // mark declined so the post-rotation step does not re-offer.
+        bankTile.reservedBankId = undefined;
+        bankTile.reservedBankOptions = undefined;
+        bankTile.reservedBankDeclined = true;
+      } else {
+        throw new Error("Choose one of the rolled Creature Banks or leave the field blocked.");
+      }
       state.pendingChoice = null;
       state.phase = choice.returnPhase;
       state.priorityPlayerId = null;

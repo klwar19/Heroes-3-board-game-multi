@@ -340,6 +340,13 @@ export const UI_REWARD_ICONS = {
 } as const;
 
 /**
+ * Ability Empower token (rulebook: dark disc + gold crown). Max storage 1;
+ * spend anytime to Empower one Ability in hand. Cropped/cleaned from the
+ * printed Empowered Ability Tokens plate via Codex image_gen.
+ */
+export const ABILITY_EMPOWER_TOKEN_ICON = "/assets/icons/ability-empower-token.webp";
+
+/**
  * Morale birds, the classic Heroes III IMRL42 sprite set (one frame per track
  * step, −3 … +3): the gold bird soaring with wings spread for high morale down
  * through the tarnished, grounded bird for low morale, with the stone bird at

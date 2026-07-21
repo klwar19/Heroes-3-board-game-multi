@@ -22,7 +22,7 @@ import {
 // ---------------------------------------------------------------------------
 
 function makeGame(): GameState {
-  const state = createAdventureGameState({ seed: "mandatory-draw-6r", difficulty: "normal", rollFirstPlayer: false, events: false });
+  const state = createAdventureGameState({ startingBuildings: [], seed: "mandatory-draw-6r", difficulty: "normal", rollFirstPlayer: false, events: false });
   // Benign Astrologers Proclaims for the even rounds (2, 4, 6) so the round-start
   // phase never leaves a pending choice dangling between turns.
   state.decks.astrologers!.drawPile.push(
@@ -114,7 +114,7 @@ describe("Mandatory start-of-turn draw — six rounds, two players", () => {
     // home-tile rotation (rollFirstPlayer omitted). After that rotation, turn 1
     // must still arm the mandatory draw, withhold movement, and keep reachable
     // paths to show as locked targets + the on-tap reminder.
-    let state = createAdventureGameState({ seed: "turn1-gate", difficulty: "normal" });
+    let state = createAdventureGameState({ startingBuildings: [], seed: "turn1-gate", difficulty: "normal" });
     const active = state.activePlayerId;
     expect(state.round).toBe(1);
 
@@ -151,7 +151,7 @@ describe("Mandatory start-of-turn draw — six rounds, two players", () => {
   });
 
   it("turn 1: discarding exactly one card draws exactly one replacement and never loses it", () => {
-    let state = createAdventureGameState({ seed: "turn1-discard-one", difficulty: "normal" });
+    let state = createAdventureGameState({ startingBuildings: [], seed: "turn1-discard-one", difficulty: "normal" });
     const active = state.activePlayerId;
     const pendingTile = state.adventure!.pendingTileChoice;
     expect(pendingTile?.kind).toBe("starting");

@@ -39,7 +39,7 @@ import {
 function makeGame(): GameState {
   // The lobby defaults to "impossible"; these fixtures pin "normal" so the
   // guard armies stay small and deterministic.
-  return createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false, events: false });
+  return createAdventureGameState({ startingBuildings: [], seed: "test-seed", difficulty: "normal", rollFirstPlayer: false, events: false });
 }
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -343,7 +343,7 @@ describe("adventure setup", () => {
   it("gives every player no Ⅱ–Ⅲ supply when Far-tile opening is off, but two when on", () => {
     // Off: the supply stays empty so there is nothing for players to open
     // (use it when the map already includes its Ⅱ–Ⅲ tiles).
-    const off = createAdventureGameState({
+    const off = createAdventureGameState({ startingBuildings: [],
       seed: "test-seed",
       difficulty: "normal",
       rollFirstPlayer: false,
@@ -354,13 +354,13 @@ describe("adventure setup", () => {
     }
 
     // On (explicit) and the default both draft the usual two tiles per player.
-    const on = createAdventureGameState({
+    const on = createAdventureGameState({ startingBuildings: [],
       seed: "test-seed",
       difficulty: "normal",
       rollFirstPlayer: false,
       farTileOpening: true
     });
-    const byDefault = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+    const byDefault = createAdventureGameState({ startingBuildings: [], seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
     for (const playerId of ["p1", "p2"]) {
       expect(on.adventure?.playerFarTiles[playerId]).toHaveLength(2);
       expect(byDefault.adventure?.playerFarTiles[playerId]).toHaveLength(2);
@@ -1297,7 +1297,7 @@ describe("neutral combat", () => {
 
   it("draws the impossible-difficulty column by default and sorts the guards by the rulebook", () => {
     // Default lobby difficulty: Impossible (3 bronze guards on a level I field).
-    let state = createAdventureGameState({ seed: "test-seed", rollFirstPlayer: false });
+    let state = createAdventureGameState({ startingBuildings: [], seed: "test-seed", rollFirstPlayer: false });
     expect(state.adventure?.difficulty).toBe("impossible");
     state = refreshP1(state);
     state = moveOntoGuardedMine(state);

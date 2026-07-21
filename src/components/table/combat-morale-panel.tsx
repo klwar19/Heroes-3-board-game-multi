@@ -66,6 +66,7 @@ export function CombatMoralePanel({
 }) {
   const [picking, setPicking] = useState(false);
   const [picks, setPicks] = useState<number[]>([]);
+  const [abilityPicking, setAbilityPicking] = useState(false);
 
   // Adventure keeps the Morale Cards rule on the map state; Battle Test keeps it
   // on `sandboxRules` after Begin (there is no adventure object in a sandbox), so
@@ -77,8 +78,13 @@ export function CombatMoralePanel({
   const redrawAction = legalActions.find(
     (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "redraw"
   );
+  const abilityTokenOffers = legalActions.filter(
+    (legal) =>
+      legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" && legal.action.playerId === viewerPlayerId
+  );
+  const holdsAbilityToken = (state.players[viewerPlayerId]?.abilityEmpowerToken ?? 0) >= 1;
 
-  if (!moraleCardsOn && !drawAction && !redrawAction) {
+  if (!moraleCardsOn && !drawAction && !redrawAction && abilityTokenOffers.length === 0 && !holdsAbilityToken) {
     return null;
   }
 
@@ -138,10 +144,63 @@ export function CombatMoralePanel({
     </div>
   ) : null;
 
+  const abilityTokenButtons =
+    abilityTokenOffers.length > 0 ? (
+      <div className="handButtons" aria-label="Ability Empower token">
+        {abilityTokenOffers.length === 1 ? (
+          <button
+            className="commandButton"
+            onClick={() => onAction(abilityTokenOffers[0].action)}
+            type="button"
+          >
+            👑 Ability token: {abilityTokenOffers[0].label.replace(/^Ability token: /, "")}
+          </button>
+        ) : (
+          <button className="commandButton" onClick={() => setAbilityPicking(true)} type="button">
+            👑 Ability token: Empower a hand Ability…
+          </button>
+        )}
+      </div>
+    ) : holdsAbilityToken ? (
+      <div className="handButtons" aria-label="Ability Empower token">
+        <span className="combatMoraleHint">👑 Ability token held — put a non-Empowered Ability in hand to spend it.</span>
+      </div>
+    ) : null;
+
+  const abilityPickerModal = abilityPicking ? (
+    <div className="moraleOverflowBackdrop" role="dialog" aria-modal="true" aria-label="Empower an ability with token">
+      <div className="moraleOverflowPopup abilityEmpowerTokenPopup">
+        <strong>Spend Ability Empower token</strong>
+        <p>Empower one Ability in your hand. Expert then costs no crown forever. Max 1 token.</p>
+        <div className="handButtons abilityEmpowerTokenChoices">
+          {abilityTokenOffers.map((legal) => (
+            <button
+              key={legal.label}
+              className="commandButton primary"
+              type="button"
+              onClick={() => {
+                onAction(legal.action);
+                setAbilityPicking(false);
+              }}
+            >
+              {legal.label.replace(/^Ability token: /, "")}
+            </button>
+          ))}
+          <button className="commandButton ghost" type="button" onClick={() => setAbilityPicking(false)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // ---- Rule off: spend the +1 morale token (draw 1 / discard & redraw). ----
   if (!moraleCardsOn) {
+    if (!drawAction && !redrawAction && !abilityTokenButtons) {
+      return null;
+    }
     return (
-      <div className="combatMorale" aria-label="Spend morale">
+      <div className="combatMorale" aria-label="Spend morale and ability token">
         <div className="handButtons">
           {drawAction ? (
             <button className="commandButton" onClick={() => onAction(drawAction.action)} type="button">
@@ -154,7 +213,9 @@ export function CombatMoralePanel({
             </button>
           ) : null}
         </div>
+        {abilityTokenButtons}
         {pickerModal}
+        {abilityPickerModal}
       </div>
     );
   }
@@ -183,7 +244,9 @@ export function CombatMoralePanel({
     })
     .filter((entry) => entry.cards.length > 0);
 
-  if (heldPositive.length === 0 && heldNegative.length === 0 && others.length === 0) {
+  const hasMoraleCards =
+    heldPositive.length > 0 || heldNegative.length > 0 || others.length > 0;
+  if (!hasMoraleCards && !abilityTokenButtons) {
     return null;
   }
 
@@ -215,8 +278,8 @@ export function CombatMoralePanel({
   };
 
   return (
-    <div className="combatMoraleCards" aria-label="Morale cards in this combat">
-      <header>🎺 Morale cards</header>
+    <div className="combatMoraleCards" aria-label="Morale cards and ability token in this combat">
+      {hasMoraleCards ? <header>🎺 Morale cards</header> : null}
       {heldPositive.map((cardId, index) => {
         const buttons = offerButtonsFor(cardId);
         return (
@@ -256,7 +319,9 @@ export function CombatMoralePanel({
           ))}
         </div>
       ))}
+      {abilityTokenButtons}
       {pickerModal}
+      {abilityPickerModal}
     </div>
   );
 }

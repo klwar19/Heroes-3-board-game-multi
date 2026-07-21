@@ -219,18 +219,20 @@ function unitInitiativeSpecialty(
     id: `specialty.${heroSlug}.${level}`,
     name: `${specialtyName} ${towerRoman(level)}`,
     kind: "hero-specialty",
-    timing: "combat",
+    // Instant so the house-rule "Draw 1 card" arm is playable on the adventure
+    // map (Offense/Armorer map-draw pattern). The buff arm stays combat-only
+    // via isOptionEffectPlayable(CREATE_INITIATIVE_BUFF) + unit targets.
+    timing: "instant",
     phaseLimit: ["combat"],
     tags: [
       "hero-specialty",
       "combat",
       heroSlug,
       "initiative",
-      // House rule (BINH): every "initiative only" specialty now ALSO grants +1
-      // Combat movement range with the buff, and offers an alternative of drawing
-      // a card instead. The Initiative number is still doubled for the signature
-      // unit; the +1 movement is a flat bonus (never doubled).
-      `Combat: give a friendly unit +${amount} Initiative AND +1 Combat movement range this combat — Initiative doubled (+${amount * 2}) for ${doubledUnit}. — OR — Draw 1 card.`
+      // Wiki / basic battlefield: Initiative only (doubled on the signature unit).
+      // House rule ("combat-move-initiative"): ALSO +1 Combat movement (flat, never
+      // doubled). House rule alternative: draw 1 card instead of the buff (map or combat).
+      `Combat: give a friendly unit +${amount} Initiative this combat — doubled (+${amount * 2}) for ${doubledUnit}. (House rule: also +1 Combat movement.) — OR — Draw 1 card (map or combat).`
     ],
     // Option A targets a friendly unit (it inherits this card-level target);
     // option B (draw a card) needs no target.
@@ -239,7 +241,9 @@ function unitInitiativeSpecialty(
       type: "CHOOSE_ONE",
       options: [
         {
-          label: `+${amount} Initiative & +1 movement (Initiative x2 for ${doubledUnit})`,
+          // Label lists the wiki Initiative effect; +1 move only applies while
+          // the "combat-move-initiative" house rule is ON (getUnitMoveRange).
+          label: `+${amount} Initiative (x2 for ${doubledUnit}; house rule: +1 move)`,
           effect: {
             type: "CREATE_INITIATIVE_BUFF",
             name: `${specialtyName} Specialty`,
@@ -249,6 +253,7 @@ function unitInitiativeSpecialty(
             removable: false,
             doubleForUnitName: doubledUnit,
             // House rule (BINH): the buff also raises Combat movement by 1.
+            // Gated at read time in getUnitMoveRange — inert when the rule is off.
             movementBonus: 1
           }
         },
@@ -2434,23 +2439,26 @@ export const adventureCards: CardLibrary = {
     source: heroSource("dracon")
   },
   "specialty.dracon.6": unitInitiativeSpecialty("dracon", "Enchanters", 6, 2, "Magi and Enchanters"),
-  // Cyra (Wizard): the Haste specialist. I = +3 initiative for the combat;
-  // IV/VI add the initiative-comparison conditionals (faster foe doubles the
-  // attack bonus; slower foe meets +1 defense).
+  // Cyra (Wizard): the Haste specialist. Wiki I = +3 initiative for the combat
+  // only (basic/small battlefield does NOT raise Combat movement). IV/VI add
+  // the initiative-comparison conditionals. House rule ("combat-move-initiative"):
+  // also +1 Combat movement; house-rule alternative: draw 1 card instead.
   "specialty.cyra.1": {
     id: "specialty.cyra.1",
     name: "Haste I",
     kind: "hero-specialty",
-    timing: "combat",
+    // Instant so the house-rule "Draw 1 card" arm is playable on the adventure
+    // map; the buff arm stays combat-only (CREATE_INITIATIVE_BUFF + unit target).
+    timing: "instant",
     phaseLimit: ["combat"],
     tags: [
       "hero-specialty",
       "combat",
       "cyra",
       "haste",
-      // House rule (BINH): Haste also gives +1 Combat movement, and may instead
-      // be spent to draw a card.
-      "For this Combat, your selected unit's Initiative is increased by 3 AND its Combat movement range by 1. — OR — Draw 1 card."
+      // Wiki / basic: Initiative only. House rule adds +1 Combat movement (gated
+      // in getUnitMoveRange) and the draw alternative (map or combat).
+      "For this Combat, your selected unit's Initiative is increased by 3. (House rule: also +1 Combat movement.) — OR — Draw 1 card (map or combat)."
     ],
     // Option A targets the friendly unit (inherited); option B (draw) needs none.
     target: { type: "friendly-unit" },
@@ -2458,7 +2466,7 @@ export const adventureCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "+3 Initiative & +1 movement",
+          label: "+3 Initiative (house rule: +1 move)",
           effect: {
             type: "CREATE_INITIATIVE_BUFF",
             name: "Haste",
@@ -2466,7 +2474,7 @@ export const adventureCards: CardLibrary = {
             duration: { type: "combat" },
             polarity: "positive",
             removable: false,
-            // House rule (BINH): Cyra's Haste also gives +1 Combat movement (3 → 4).
+            // House rule: also +1 Combat movement when "combat-move-initiative" is ON.
             movementBonus: 1
           }
         },
@@ -2499,7 +2507,8 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("cyra")
   },
-  // VI: +3 initiative this combat plus +1 defense against slower attackers.
+  // VI: wiki = +3 initiative this combat plus +1 defense against slower attackers.
+  // House rule: also +1 Combat movement (gated in getUnitMoveRange).
   "specialty.cyra.6": {
     id: "specialty.cyra.6",
     name: "Haste VI",
@@ -2511,7 +2520,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "cyra",
       "haste",
-      "For this Combat, your selected unit's initiative is increased by 3. This unit gains +1 defense against attacks made by units with lower initiative."
+      "For this Combat, your selected unit's initiative is increased by 3. This unit gains +1 defense against attacks made by units with lower initiative. (House rule: also +1 Combat movement.)"
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -2525,7 +2534,7 @@ export const adventureCards: CardLibrary = {
         modifiers: [
           { type: "INITIATIVE_BONUS", amount: 3 },
           { type: "DEFENSE_VS_LOWER_INITIATIVE", amount: 1 },
-          // House rule (BINH): Cyra's Haste also gives +1 Combat movement.
+          // House rule: +1 Combat movement when "combat-move-initiative" is ON.
           { type: "MOVEMENT_BONUS", amount: 1 }
         ]
       }

@@ -68,7 +68,7 @@ const RESOURCE: MapSpaceId = "h:10:8"; // visitable, no guard
 const EMPTY: MapSpaceId = "h:9:7"; // empty field beside the town
 
 function game(): GameState {
-  return createAdventureGameState({
+  return createAdventureGameState({ startingBuildings: [],
     seed: "nav-map",
     difficulty: "normal",
     rollFirstPlayer: false,
@@ -2846,7 +2846,7 @@ describe("navigation across sea / underground, teleport routing, Spell-Book stas
     to: MapFieldState;
     a: ReturnType<typeof instantiateTile>;
   } {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "nav-designed-border",
       difficulty: "normal",
       rollFirstPlayer: false,
@@ -2938,7 +2938,7 @@ describe("computer pathing respects the UNDERGROUND layer divide", () => {
     hero: HeroState;
     to: MapFieldState;
   } {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "nav-underground-divide",
       difficulty: "normal",
       rollFirstPlayer: false,

@@ -13,7 +13,7 @@ import type { GameAction, GameState } from "./state";
 // ---------------------------------------------------------------------------
 
 function makeGame(): GameState {
-  return createAdventureGameState({ seed: "build-order", difficulty: "normal", rollFirstPlayer: false });
+  return createAdventureGameState({ startingBuildings: [], seed: "build-order", difficulty: "normal", rollFirstPlayer: false });
 }
 
 function apply(state: GameState, action: GameAction): GameState {

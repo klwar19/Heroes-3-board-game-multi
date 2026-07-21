@@ -242,11 +242,11 @@ describe("Creature Bank rewards", () => {
   });
 
   // Pulls the GAIN_UNIT out of a unit bank's reward sequence (which now also
-  // carries the HOUSE-RULE EMPOWER_ABILITY bonus as its second interaction).
+  // carries the HOUSE-RULE Ability Empower token as its second interaction).
   function unitGain(reward: ReturnType<(typeof CREATURE_BANKS)["dragon_fly_hive"]["buildReward"]>) {
     expect(reward.type).toBe("SEQUENCE");
     if (reward.type !== "SEQUENCE") return undefined;
-    expect(reward.interactions[1]).toEqual({ type: "EMPOWER_ABILITY" });
+    expect(reward.interactions[1]).toEqual({ type: "GAIN_ABILITY_EMPOWER_TOKEN" });
     return reward.interactions[0];
   }
 
@@ -290,12 +290,13 @@ describe("Creature Bank rewards", () => {
     });
   });
 
-  it("also Empowers an ability (HOUSE RULE) alongside the unit gain at both unit banks", () => {
+  it("also grants an Ability Empower token (HOUSE RULE) alongside the unit gain at both unit banks", () => {
     for (const id of ["dragon_fly_hive", "griffin_conservatory"] as const) {
       const reward = CREATURE_BANKS[id].buildReward(1);
       expect(reward.type).toBe("SEQUENCE");
       if (reward.type !== "SEQUENCE") continue;
-      expect(reward.interactions.some((step) => step.type === "EMPOWER_ABILITY")).toBe(true);
+      expect(reward.interactions.some((step) => step.type === "GAIN_ABILITY_EMPOWER_TOKEN")).toBe(true);
+      expect(reward.interactions.some((step) => step.type === "EMPOWER_ABILITY")).toBe(false);
     }
   });
 

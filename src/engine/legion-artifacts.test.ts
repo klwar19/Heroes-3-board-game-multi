@@ -45,7 +45,7 @@ const LEGION_DISCOUNTS: { cardId: string; tier: "minor" | "major"; amount: numbe
 ];
 
 function makeGame(): GameState {
-  return createAdventureGameState({ seed: "legion-seed", difficulty: "normal", rollFirstPlayer: false });
+  return createAdventureGameState({ startingBuildings: [], seed: "legion-seed", difficulty: "normal", rollFirstPlayer: false });
 }
 
 function apply(state: GameState, action: GameAction): GameState {

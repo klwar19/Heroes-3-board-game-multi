@@ -64,9 +64,9 @@ export type HouseRuleId =
   // shift a unit's Combat movement by ±1 (the "Battlefield Expansion" reading).
   // Off: they change only Initiative, never movement (the standard/wiki rule).
   | "combat-move-initiative"
-  // Winning the Dragon Fly Hive / Griffin Conservatory bank ALSO lets the winner
-  // Empower one owned Ability (its Expert side then costs no crown). Off: those
-  // banks grant only the unit, as printed.
+  // Winning the Dragon Fly Hive / Griffin Conservatory bank ALSO grants an
+  // Ability Empower token (max 1; spend anytime to Empower one hand Ability —
+  // Expert then costs no crown). Off: those banks grant only the unit, as printed.
   | "bank-empower-ability"
   // A Creature-Bank fight obeys the one-Round time limit and the spend-1-move-
   // point-to-extend rule, like an ordinary neutral fight. Off: a bank has no
@@ -3837,6 +3837,16 @@ export type GameAction =
       unitId?: UnitId;
       tokenKind?: "weakness" | "corrosion" | "paralysis";
     }
+  | {
+      /**
+       * Spend the Ability Empower token (max 1) to permanently Empower one
+       * Ability card currently in hand. Expert side then costs no crown.
+       * Handler-validated (self-validating).
+       */
+      type: "USE_ABILITY_EMPOWER_TOKEN";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
   | { type: "CHOOSE_OPTION"; playerId: PlayerId; choiceId: string; optionIndex: number }
   | {
       /**
@@ -5538,13 +5548,30 @@ export type GameEvent =
     }
   | {
       /**
-       * A player Empowered an ability (Dragon Fly Hive / Griffin Conservatory
-       * bonus): its Expert side may henceforth be played without a crown.
+       * A player Empowered an ability (Ability Empower token, bank surplus
+       * auto-use, …): its Expert side may henceforth be played without a crown.
        */
       id: string;
       type: "ABILITY_EMPOWERED";
       playerId: PlayerId;
       cardId: CardId;
+    }
+  | {
+      /** Player gained an Ability Empower token (cap 1). */
+      id: string;
+      type: "ABILITY_EMPOWER_TOKEN_GAINED";
+      playerId: PlayerId;
+      total: number;
+      /** True when already at cap and the surplus forced an auto-use menu. */
+      surplus?: boolean;
+    }
+  | {
+      /** Player spent an Ability Empower token to empower a hand ability. */
+      id: string;
+      type: "ABILITY_EMPOWER_TOKEN_SPENT";
+      playerId: PlayerId;
+      cardId: CardId;
+      total: number;
     }
   | {
       /**
@@ -6767,14 +6794,22 @@ export type PlayerState = {
   /** Cards removed from the game entirely (the "remove" keyword). */
   removed: CardId[];
   /**
-   * Ability card ids this player has had "empowered" (e.g. the Dragon Fly Hive /
-   * Griffin Conservatory Creature Bank bonus). An empowered ability may be played
-   * on its Expert side without spending an Expert use (a crown) — the holder may
-   * always use either the basic or the expert function for free. Permanent for
-   * the rest of the game. Matched by card id, so it follows the card between
-   * hand and discard.
+   * Ability card ids this player has had "empowered" (e.g. spent an Ability
+   * Empower token from the Dragon Fly Hive / Griffin Conservatory). An empowered
+   * ability may be played on its Expert side without spending an Expert use (a
+   * crown) — the holder may always use either the basic or the expert function
+   * for free. Permanent for the rest of the game. Matched by card id, so it
+   * follows the card between hand and discard.
    */
   empoweredAbilities?: CardId[];
+  /**
+   * Empowered Ability Token on the hero (rulebook token; max storage 1). Spend
+   * anytime to permanently Empower ONE Ability card currently in hand. Banks
+   * (Dragon Fly Hive / Griffin Conservatory house rule) grant these instead of
+   * an immediate empower pick. A surplus gain while already holding 1 forces an
+   * auto-use (empower a hand ability) then leaves the count at 1.
+   */
+  abilityEmpowerToken?: number;
   /**
    * Factory — Frederick's specialty ("further enhances the Automaton's
    * explosion"): the extra damage each of this player's Automatons adds to its
@@ -8096,6 +8131,12 @@ export type MapTileState = {
    * with old rotation-preview readers and pre-feature snapshots.
    */
   reservedBankOptions?: ReservedBankOption[];
+  /**
+   * Pre-rotation "Leave it blocked" was chosen for this tile's Creature Bank
+   * offer. After rotation the bank placement step is skipped entirely (the pile
+   * was only peeked). Cleared once the reveal chain consumes it.
+   */
+  reservedBankDeclined?: boolean;
 };
 
 export type MapFieldState = {
@@ -9061,11 +9102,22 @@ export type VisitStep =
     }
   | {
       /**
-       * Dragon Fly Hive / Griffin Conservatory bonus: build a menu of the
-       * player's own non-Empowered Ability cards (hand + discard); picking one
-       * Empowers it (a MARK_ABILITY_EMPOWERED leaf). No-op when none are owned.
+       * Legacy direct-empower menu (hand only). Prefer GAIN_ABILITY_EMPOWER_TOKEN
+       * + the token spend path for bank rewards. Builds a menu of non-Empowered
+       * Ability cards in hand; picking one Empowers it. No-op when none.
        */
       type: "EMPOWER_ABILITY";
+    }
+  | {
+      /**
+       * Grant one Ability Empower token (cap 1). Surplus while already holding
+       * one forces an auto-use pick on a hand ability, then leaves the count at 1.
+       * Without `force`, gated by the bank house rule (`bank-empower-ability`).
+       * Designer field rewards set `force: true` so a map author can always grant
+       * the token even when that house rule is off.
+       */
+      type: "GAIN_ABILITY_EMPOWER_TOKEN";
+      force?: true;
     }
   | {
       /** Adds `cardId` to the player's permanent empoweredAbilities list. */
@@ -11078,7 +11130,19 @@ export type CustomMapObjectKind =
    *   `alwaysPickable` marks it freely choosable in "mix" mode.
    */
   | "oneway_entrance"
-  | "oneway_exit";
+  | "oneway_exit"
+  /**
+   * Creature Bank as a designer single-hex object (STANDALONE only).
+   * Requires {@link CustomMapObject.bankId} (one of the 12 Naval Battles banks).
+   * Carves a real `creature_bank` field with that bank's army/reward — the
+   * fight is the printed bank combat (no Field Difficulty, no XP, black cube
+   * on win). Optional {@link CustomMapObject.bankSize} (1–4) pins Polish Bank
+   * Sizes Stacked count when that house rule is on. Never carries a designer
+   * `guard` or yellow `borderEdges` (a bank is always border-free — does not
+   * seal movement or obstruct tile discovery). Break-out seals go on
+   * neighbouring tile edges, not the bank hex.
+   */
+  | "creature_bank";
 
 /** How a one-way entrance picks its same-color exit. */
 export type OnewayExitMode = "random" | "certain" | "mix";
@@ -11118,10 +11182,26 @@ export type CustomMapObject = {
   placement: CustomMapObjectPlacement;
   guard?: number | CustomGuardSpec;
   /**
+   * Creature Bank object ONLY — which of the 12 banks this hex hosts
+   * (`imp_cache`, `crypt`, …). Required for `kind: "creature_bank"`; stripped
+   * from every other kind at sanitize. The engine carves a real bank field
+   * with this id (army + reward from {@link CREATURE_BANKS}).
+   */
+  bankId?: string;
+  /**
+   * Creature Bank object ONLY — optional fixed Polish Bank Size (1–4 = Ⅰ–Ⅳ).
+   * When set AND the `polish-bank-sizes` house rule is on, the bank opens with
+   * exactly that many Stacked defenders (normal reward scale). Absent = the
+   * ordinary Scenario-Difficulty Stack Token rolls.
+   */
+  bankSize?: 1 | 2 | 3 | 4;
+  /**
    * One-time first-clear reward on the object's hex (resources / dice /
    * Times×Search(X)). Stamped onto the carved field at setup; granted once via
    * the shared designer-reward latch when the visitor first successfully
    * visits (after any guard is cleared). Barriers never keep a reward.
+   * Creature Bank objects also skip this (the bank's printed win reward is
+   * the only payout — a designer extra would double-pay).
    */
   reward?: CustomFieldReward;
   /** Optional first-clear Victory Points (VP mode only). */
@@ -11620,15 +11700,24 @@ export type CustomMapTileToken = {
 
 /**
  * A designer-set one-time field reward — used on center hexes, standalone map
- * objects, tile tokens and per-tile settlements. Granted to the player who
- * FIRST clears / successfully visits the hex. Resources are granted inline;
- * Treasure dice and deck Searches resolve through the visit-step pipeline.
+ * objects, tile tokens, per-tile settlements, and hex events. Granted to the
+ * player who FIRST clears / successfully visits the hex (hex-event mode may
+ * pay each player once). Resources are granted inline; dice, deck Searches,
+ * morale, movement, XP, Ability Empower tokens and Statistic empower menus
+ * resolve through the visit-step pipeline.
  *
  * Search rewards are **Times × Search(X)**: `searchArtifact: 5` with
  * `searchArtifactTimes: 2` queues two separate Search(5) Artifact steps.
  * Absent times (or times 1) is byte-identical to a single Search of size X.
  * Amounts are clamped by the sanitiser ({@link sanitizeCenterHexPlan} /
  * {@link sanitizeFieldReward}).
+ *
+ * Special arms (all optional, additive with resources/searches):
+ *  - `morale` ±1 — same GAIN_MORALE pipeline as Temples / timed events
+ *  - `abilityEmpowerToken` — grant one Ability Empower token (max 1; designer
+ *    always grants, even when the bank house rule is off)
+ *  - `empowerStatistic` — free one-shot Statistic empower menu (hand+discard)
+ *  - `experience` / `movement` / `resourceDice` — XP, MP, Resource-die rolls
  */
 export type CustomFieldReward = {
   gold?: number;
@@ -11649,6 +11738,24 @@ export type CustomFieldReward = {
   searchSpellTimes?: number;
   searchAbilityTimes?: number;
   searchArtifactTimes?: number;
+  /** ±1 morale (token mode or Morale Cards). */
+  morale?: 1 | -1;
+  /**
+   * Grant one Ability Empower token (cap 1; surplus auto-uses on a hand Ability
+   * when already holding one). Designer grants ignore the bank house rule.
+   */
+  abilityEmpowerToken?: true;
+  /**
+   * Open a free Statistic-empower menu once (hand + discard): remove a plain
+   * Statistic, gain its Empowered form into hand (Astrologers Dancing Imp arm).
+   */
+  empowerStatistic?: true;
+  /** Main-hero experience (1–5). */
+  experience?: number;
+  /** Movement points on the visiting / main hero (1–3). */
+  movement?: number;
+  /** Roll N Resource dice (1–3). */
+  resourceDice?: number;
 };
 
 /**

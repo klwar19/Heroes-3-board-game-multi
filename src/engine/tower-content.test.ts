@@ -22,7 +22,7 @@ function applyOk(state: GameState, action: GameAction): GameState {
 
 /** A fresh adventure state with Dracon active, holding his level-IV specialty. */
 function draconIvState(seed: string): GameState {
-  const state = createAdventureGameState({
+  const state = createAdventureGameState({ startingBuildings: [],
     seed,
     rollFirstPlayer: false,
     players: [
@@ -153,7 +153,7 @@ describe("Tower content", () => {
   });
 
   it("places the Tower starting tile and town for a seated Tower player", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "tower-setup",
       rollFirstPlayer: false,
       players: [
@@ -171,7 +171,7 @@ describe("Tower content", () => {
 
   it("offers the Wall of Knowledge stat-recovery only when a Knowledge/Power Statistic is in the discard", () => {
     function towerAstrologersState(discard: string[]): GameState {
-      const state = createAdventureGameState({
+      const state = createAdventureGameState({ startingBuildings: [],
         seed: "tower-wok",
         rollFirstPlayer: false,
         players: [
@@ -231,7 +231,7 @@ describe("Tower content", () => {
   });
 
   it("lets Dracon trade a Pack of Magi for the unique Enchanters card (specialty IV)", () => {
-    const state = createAdventureGameState({
+    const state = createAdventureGameState({ startingBuildings: [],
       seed: "dracon-iv",
       rollFirstPlayer: false,
       players: [
