@@ -2381,6 +2381,46 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(latest[0]).toMatchObject({ kind: "keymaster_tent", pair: 1 });
   });
 
+  it("Creature Bank: places standalone-only with a specific bankId; panel rewrites bank + size", () => {
+    let latest: CustomMapObject[] = [];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, [], onObjectsChange);
+
+    const bankButton = [...container.querySelectorAll(".designerObjectButton")].find((btn) =>
+      /Creature Bank/i.test(btn.textContent ?? "")
+    );
+    expect(bankButton, "Creature Bank palette button").toBeTruthy();
+    fireEvent.click(bankButton!);
+    // Standalone-only — never a tile-slot candidate (same as outposts).
+    expect(container.querySelectorAll(".designerObjectSlot.tileSlot").length).toBe(0);
+    const standalone = container.querySelector(".designerObjectSlot.standalone");
+    expect(standalone, "off-tile candidates offered").toBeTruthy();
+    fireEvent.click(standalone!);
+    expect(latest[0]).toMatchObject({
+      kind: "creature_bank",
+      bankId: "crypt",
+      placement: { type: "standalone" }
+    });
+
+    // Panel: pick Imp Cache + size Ⅲ.
+    const placed = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(placed.querySelector(".designerObjectToken.standalone")!);
+    const panel = placed.querySelector(".designerObjectPopover") as HTMLElement;
+    expect(panel, "bank object panel").toBeTruthy();
+    expect(panel.textContent).toMatch(/Which bank/i);
+    expect(within(panel).queryByRole("button", { name: "Exact army" }), "no guard editor on a bank").toBeNull();
+    fireEvent.change(within(panel).getByLabelText(/Creature Bank id/i), {
+      target: { value: "imp_cache" }
+    });
+    expect(latest[0].bankId).toBe("imp_cache");
+    fireEvent.change(within(panel).getByLabelText(/Creature Bank size/i), {
+      target: { value: "3" }
+    });
+    expect(latest[0].bankSize).toBe(3);
+  });
+
   it("the outpost panel: a Tent's COLOR chips rewrite its pair; a Barrier offers NO guard editor", () => {
     let latest: CustomMapObject[] = [
       { kind: "keymaster_tent", pair: 1, placement: { type: "standalone", row: far.row + 2, col: far.col + 2 } }

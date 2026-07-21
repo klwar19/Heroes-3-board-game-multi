@@ -6,6 +6,7 @@ import { Layers, Lock, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import {
+  creatureBankFieldImage,
   DESIGNER_UI_ICONS,
   mapTokenImage,
   onewayMonolithImage,
@@ -16,6 +17,7 @@ import {
   tileBackImage,
   subterraneanGateTokenImage
 } from "@/data/assets/homm-assets";
+import { CREATURE_BANK_IDS, CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import type { TileDefinition } from "@/data/map/types";
 import {
   canonicalTileEdgeCode,
@@ -73,7 +75,7 @@ import {
   type TokenPlacementKind,
   type PlannedSubterraneanGate,
   objectGuardSpec,
-  OUTPOST_OBJECT_KINDS,
+  STANDALONE_ONLY_OBJECT_KINDS,
   type SecretTileFeature,
   type VictoryMode
 } from "@/engine";
@@ -537,7 +539,15 @@ function tokenLegalityKind(kind: PlanTokenKind): MapTokenKind {
  * Designer token art: a colored Gate renders as the MONOLITH image (tinted by a
  * color ring at the render site); Monolith/Whirlpool use their own scans.
  */
-function designerTokenImage(kind: CustomMapObjectKind, number?: -1 | 0 | 1, pair?: 1 | 2 | 3 | 4): string {
+function designerTokenImage(
+  kind: CustomMapObjectKind,
+  number?: -1 | 0 | 1,
+  pair?: 1 | 2 | 3 | 4,
+  bankId?: string
+): string {
+  if (kind === "creature_bank") {
+    return creatureBankFieldImage(bankId);
+  }
   const outpost = outpostObjectImage(kind);
   if (outpost) {
     return outpost;
@@ -550,6 +560,9 @@ function designerTokenImage(kind: CustomMapObjectKind, number?: -1 | 0 | 1, pair
   }
   return mapTokenImage(kind as "monolith" | "whirlpool", number);
 }
+
+/** Default bank when arming a new Creature Bank object. */
+const DEFAULT_DESIGNER_BANK_ID: CreatureBankId = "crypt";
 
 /**
  * The pending / unknown-layout shape of a tile token (face-down pool OR face-up
@@ -1183,7 +1196,11 @@ export function MapDesigner({
   // Click-to-arm placement: arm a kind from the Objects palette, then click a
   // legal candidate cell (a face-up tile slot → tile-slot object, an off-tile
   // empty hex → standalone). A placed object opens its own popover (guard/delete).
-  const [armedObject, setArmedObject] = useState<{ kind: CustomMapObjectKind; pair?: 1 | 2 | 3 | 4 } | null>(null);
+  const [armedObject, setArmedObject] = useState<{
+    kind: CustomMapObjectKind;
+    pair?: 1 | 2 | 3 | 4;
+    bankId?: CreatureBankId;
+  } | null>(null);
   const [selectedObjectIndex, setSelectedObjectIndex] = useState<number | null>(null);
   const [objectPopoverAt, setObjectPopoverAt] = useState<{ x: number; y: number } | null>(null);
   // A live drag of an ALREADY-PLACED object (a Gate half / standalone or
@@ -1672,6 +1689,11 @@ export function MapDesigner({
         if (objectOwner) {
           onObjectsChange?.(
             objects.map((object, index) => {
+              // Creature Banks never wear borders — refuse the paint (seals go
+              // on neighbouring tile edges for a break-out choke, not the bank).
+              if (object.kind === "creature_bank") {
+                return object;
+              }
               if (index !== objectOwner.objectIndex || object.borderEdges?.includes(objectOwner.direction)) {
                 return object;
               }
@@ -1683,13 +1705,25 @@ export function MapDesigner({
       }
       // ERASE always sweeps the OBJECT side too — a shared tile↔object edge may
       // be sealed from either side, and one erase must clear the whole edge.
+      // Also strips any legacy bank borders if a save still carries them.
       if (mode === "erase" && zone.objectIncidences.length > 0) {
         onObjectsChange?.(
           objects.map((object, index) => {
             const directions = zone.objectIncidences
               .filter((incidence) => incidence.objectIndex === index)
               .map((incidence) => incidence.direction);
-            if (directions.length === 0 || !object.borderEdges?.some((dir) => directions.includes(dir))) {
+            if (directions.length === 0) {
+              return object;
+            }
+            if (object.kind === "creature_bank") {
+              if (!object.borderEdges?.length) {
+                return object;
+              }
+              const next = { ...object };
+              delete next.borderEdges;
+              return next;
+            }
+            if (!object.borderEdges?.some((dir) => directions.includes(dir))) {
               return object;
             }
             const edges = object.borderEdges.filter((dir) => !directions.includes(dir));
@@ -1884,8 +1918,8 @@ export function MapDesigner({
    * face-up slot is dropped when another object already sits on that hex.
    */
   const tileTokenTargets = useMemo(() => {
-    // Outposts (Garrison / Tent / Barrier) are standalone-only — never on a tile.
-    if (!placementKind || OUTPOST_OBJECT_KINDS.has(placementKind)) {
+    // Outposts + Creature Bank are standalone-only — never on a tile.
+    if (!placementKind || STANDALONE_ONLY_OBJECT_KINDS.has(placementKind)) {
       return [] as ReturnType<typeof computeTileTokenTargets>;
     }
     return computeTileTokenTargets(customMap, placementKind as TokenPlacementKind, null).filter(
@@ -1988,21 +2022,30 @@ export function MapDesigner({
     [tokenTileTargets, standaloneCandidates]
   );
 
-  const armObject = useCallback((kind: CustomMapObjectKind, pair?: 1 | 2 | 3 | 4) => {
+  const armObject = useCallback((kind: CustomMapObjectKind, pair?: 1 | 2 | 3 | 4, bankId?: CreatureBankId) => {
     setSelectedObjectIndex(null);
     setObjectPopoverAt(null);
     // One armed mode at a time: arming an object disarms border paint + events.
     setBorderPaint(false);
     setArmedHexEvent(false);
-    setArmedObject((current) => (current && current.kind === kind && current.pair === pair ? null : { kind, pair }));
+    setArmedObject((current) => {
+      if (kind === "creature_bank") {
+        const nextBank = bankId ?? DEFAULT_DESIGNER_BANK_ID;
+        if (current?.kind === "creature_bank" && current.bankId === nextBank) {
+          return null;
+        }
+        return { kind, bankId: nextBank };
+      }
+      return current && current.kind === kind && current.pair === pair ? null : { kind, pair };
+    });
   }, []);
   // Armed placement writers (canonical forms). A TILE target writes `plan.token`
   // (on-tile teleporter); a STANDALONE target appends an object (off-tile,
   // monolith/gate only — Whirlpools never stand alone).
   const placeArmedTileToken = useCallback(
     (target: { planIndex: number; slot?: number }) => {
-      // Outposts are standalone-only (no tile targets ever light up for them).
-      if (!armedObject || OUTPOST_OBJECT_KINDS.has(armedObject.kind)) {
+      // Outposts + Creature Bank are standalone-only (no tile targets light up).
+      if (!armedObject || STANDALONE_ONLY_OBJECT_KINDS.has(armedObject.kind)) {
         return;
       }
       const plan = customMap[target.planIndex];
@@ -2031,6 +2074,16 @@ export function MapDesigner({
   const placeArmedStandalone = useCallback(
     (row: number, col: number) => {
       if (!armedObject || armedObject.kind === "whirlpool") {
+        return;
+      }
+      if (armedObject.kind === "creature_bank") {
+        const bankId = armedObject.bankId ?? DEFAULT_DESIGNER_BANK_ID;
+        const object: CustomMapObject = {
+          kind: "creature_bank",
+          bankId,
+          placement: { type: "standalone", row, col }
+        };
+        onObjectsChange?.([...objects, object]);
         return;
       }
       const needsPair =
@@ -2277,9 +2330,9 @@ export function MapDesigner({
     (objectIndex: number, target: { planIndex: number; slot?: number }) => {
       const object = objects[objectIndex];
       const plan = customMap[target.planIndex];
-      // Outposts are standalone-only — they never convert onto a tile (their
-      // drags offer no tile targets, this is the write-side backstop).
-      if (!object || !plan || OUTPOST_OBJECT_KINDS.has(object.kind)) {
+      // Outposts + Creature Bank are standalone-only — they never convert onto
+      // a tile (their drags offer no tile targets, this is the write-side backstop).
+      if (!object || !plan || STANDALONE_ONLY_OBJECT_KINDS.has(object.kind)) {
         return;
       }
       // Never stack on an occupied slot; fall back to the first free hex.
@@ -4265,11 +4318,15 @@ export function MapDesigner({
     const isColored = isGate || object.kind === "keymaster_tent" || object.kind === "barrier";
     const color = isColored && object.pair ? GATE_PAIR_CSS[object.pair] : object.kind === "garrison" ? "#4fc3f7" : "#c9a24b";
     // Designer yellow borders on the object hex — the field-level twin of a
-    // tile's per-edge lines, drawn with the same bold casing+core.
-    for (const direction of object.borderEdges ?? []) {
-      const coords = hexEdgePoints(x, y, size - 0.8, direction);
-      borderLayer.push(<line className="designerBorderCasing" key={`obj-border-casing-${index}-${direction}`} {...coords} />);
-      borderLayer.push(<line className="designerBorderLine" key={`obj-border-${index}-${direction}`} {...coords} />);
+    // tile's per-edge lines. Creature Banks never wear borders (always open).
+    if (object.kind !== "creature_bank") {
+      for (const direction of object.borderEdges ?? []) {
+        const coords = hexEdgePoints(x, y, size - 0.8, direction);
+        borderLayer.push(
+          <line className="designerBorderCasing" key={`obj-border-casing-${index}-${direction}`} {...coords} />
+        );
+        borderLayer.push(<line className="designerBorderLine" key={`obj-border-${index}-${direction}`} {...coords} />);
+      }
     }
     objectLayer.push(
       <g
@@ -4301,17 +4358,36 @@ export function MapDesigner({
         {isGate ? <circle cx={x} cy={y} fill={color} opacity={0.32} r={size * 0.5} style={{ pointerEvents: "none" }} /> : null}
         <image
           height={size}
-          href={assetUrl(designerTokenImage(object.kind, object.kind === "whirlpool" ? 0 : undefined, object.pair))}
+          href={assetUrl(
+            designerTokenImage(
+              object.kind,
+              object.kind === "whirlpool" ? 0 : undefined,
+              object.pair,
+              object.bankId
+            )
+          )}
           preserveAspectRatio="xMidYMid meet"
           style={{ pointerEvents: "none" }}
           width={size}
           x={x - size * 0.5}
           y={y - size * 0.5}
         />
-        <circle className="designerObjectRing" cx={x} cy={y} fill="none" r={size * 0.62} stroke={color} />
+        <circle
+          className="designerObjectRing"
+          cx={x}
+          cy={y}
+          fill="none"
+          r={size * 0.62}
+          stroke={object.kind === "creature_bank" ? "#c9a24b" : color}
+        />
         {isColored ? (
           <text className="designerObjectPair" fill={color} textAnchor="middle" x={x} y={y + size * 0.66}>
             {object.pair}
+          </text>
+        ) : null}
+        {object.kind === "creature_bank" && object.bankSize ? (
+          <text className="designerObjectGuard" textAnchor="middle" x={x} y={y - size * 0.6}>
+            {["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ"][object.bankSize] ?? object.bankSize}
           </text>
         ) : null}
         {guardBadgeNumeral(objectGuardDisplay(object)) ? (
@@ -4472,9 +4548,10 @@ export function MapDesigner({
     }
     // Standalone object hexes paint too: each contributes its six edges. An edge
     // shared with a tile joins THAT zone (the tile side owns the write; erase
-    // sweeps both); an off-tile edge gets its own object-owned zone.
+    // sweeps both); an off-tile edge gets its own object-owned zone. Creature
+    // Banks never wear borders — skip them entirely (no paint zones on the bank).
     for (const [objectIndex, object] of objects.entries()) {
-      if (object.placement.type !== "standalone") {
+      if (object.placement.type !== "standalone" || object.kind === "creature_bank") {
         continue;
       }
       const cell = { row: object.placement.row, col: object.placement.col };
@@ -4668,6 +4745,16 @@ export function MapDesigner({
             type="button"
           >
             ⛔ Barrier
+          </button>
+          <span className="designerObjectGroupLabel">Creature Bank</span>
+          <button
+            aria-pressed={armedObject?.kind === "creature_bank"}
+            className={`designerObjectButton${armedObject?.kind === "creature_bank" ? " armed" : ""}`}
+            onClick={() => armObject("creature_bank", undefined, DEFAULT_DESIGNER_BANK_ID)}
+            title="Creature Bank — a standalone hex hosting a SPECIFIC bank (Crypt, Imp Cache, …). Always border-free (never seals movement or blocks opening tiles). Entering starts that bank's real fight and win reward. Seal neighbouring tile edges for a break-out choke; pick which bank after placing."
+            type="button"
+          >
+            🏦 Creature Bank
           </button>
           {onHexEventsChange ? (
             <>
@@ -6126,6 +6213,73 @@ export function MapDesigner({
                 ✕
               </button>
             </header>
+            {selectedObject.kind === "creature_bank" ? (
+              <>
+                <div className="popoverSectionLabel">Which bank</div>
+                <small className="popoverHint">
+                  The hex hosts this exact Creature Bank (army + printed win reward). Always border-free — seal
+                  neighbouring tile edges if you need a breakout choke; the bank itself never draws or seals a border.
+                </small>
+                <select
+                  aria-label="Creature Bank id"
+                  className="popoverSelect"
+                  onChange={(event) =>
+                    onObjectsChange?.(
+                      objects.map((object, i) =>
+                        i === (selectedObjectIndex as number)
+                          ? { ...object, bankId: event.target.value as CreatureBankId }
+                          : object
+                      )
+                    )
+                  }
+                  value={
+                    selectedObject.bankId && selectedObject.bankId in CREATURE_BANKS
+                      ? selectedObject.bankId
+                      : DEFAULT_DESIGNER_BANK_ID
+                  }
+                >
+                  {CREATURE_BANK_IDS.map((id) => (
+                    <option key={id} value={id}>
+                      {CREATURE_BANKS[id].name}
+                      {CREATURE_BANKS[id].tier === "far" ? " (Far Ⅱ–Ⅲ)" : " (Near Ⅳ–Ⅴ)"}
+                    </option>
+                  ))}
+                </select>
+                <div className="popoverSectionLabel">Polish size (optional)</div>
+                <small className="popoverHint">
+                  Only used when the Polish Bank Sizes house rule is on — fixes the Stacked-defender count (Ⅰ–Ⅳ).
+                  Leave blank for normal Scenario-Difficulty Stack rolls.
+                </small>
+                <select
+                  aria-label="Creature Bank size"
+                  className="popoverSelect"
+                  onChange={(event) =>
+                    onObjectsChange?.(
+                      objects.map((object, i) => {
+                        if (i !== (selectedObjectIndex as number)) {
+                          return object;
+                        }
+                        const next = { ...object };
+                        const raw = event.target.value;
+                        if (raw === "") {
+                          delete next.bankSize;
+                        } else {
+                          next.bankSize = Number(raw) as 1 | 2 | 3 | 4;
+                        }
+                        return next;
+                      })
+                    )
+                  }
+                  value={selectedObject.bankSize ?? ""}
+                >
+                  <option value="">Default (Scenario Difficulty stacks)</option>
+                  <option value={1}>Ⅰ — 1 Stacked</option>
+                  <option value={2}>Ⅱ — 2 Stacked</option>
+                  <option value={3}>Ⅲ — 3 Stacked</option>
+                  <option value={4}>Ⅳ — 4 Stacked</option>
+                </select>
+              </>
+            ) : null}
             {selectedObject.kind === "keymaster_tent" ||
             selectedObject.kind === "barrier" ||
             selectedObject.kind === "oneway_entrance" ||
@@ -6225,7 +6379,12 @@ export function MapDesigner({
                 </span>
               </label>
             ) : null}
-            {selectedObject.kind !== "barrier" && selectedObject.kind !== "oneway_exit" ? (
+            {selectedObject.kind === "creature_bank" ? (
+              <small className="popoverHint">
+                No designer guard, first-clear reward, or yellow borders — the bank&apos;s fight and printed win reward
+                are the content, and the hex is always open (does not obstruct tile discovery).
+              </small>
+            ) : selectedObject.kind !== "barrier" && selectedObject.kind !== "oneway_exit" ? (
               <>
                 <div className="popoverSectionLabel">Guard (monster)</div>
                 <small className="popoverHint">
@@ -6248,7 +6407,7 @@ export function MapDesigner({
                   : "An exit monolith is never guarded — only entrances fight."}
               </small>
             )}
-            {selectedObject.kind !== "barrier" ? (
+            {selectedObject.kind !== "barrier" && selectedObject.kind !== "creature_bank" ? (
               <>
                 <div className="popoverSectionLabel">First-clear reward</div>
                 <small className="popoverHint">

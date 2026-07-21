@@ -405,6 +405,7 @@ export {
   objectGuardSpec,
   ONEWAY_EXIT_MODES,
   OUTPOST_OBJECT_KINDS,
+  STANDALONE_ONLY_OBJECT_KINDS,
   describeFieldReward,
   describeHexEvent,
   MAX_HEX_EVENT_MESSAGE,

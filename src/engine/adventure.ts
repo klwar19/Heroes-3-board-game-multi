@@ -1573,12 +1573,16 @@ export function isDesignedEdgeSealedBetween(
   }
   const fromTile = adventure.tiles[fromField.tileInstanceId];
   const toTile = adventure.tiles[toField.tileInstanceId];
-  const fromHas = Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
-  const toHas = Boolean(toTile?.borderEdges && toTile.borderEdges.length > 0);
+  // Creature Banks never wear borders (printed OR designer): ignore every
+  // border contribution from a bank field so the bank cannot seal movement.
+  const fromIsBank = fromField.location === "creature_bank";
+  const toIsBank = toField.location === "creature_bank";
+  const fromHas = !fromIsBank && Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
+  const toHas = !toIsBank && Boolean(toTile?.borderEdges && toTile.borderEdges.length > 0);
   // Field-level borders: a STANDALONE object hex carries its own edge list
-  // (it has no backing tile). Same seal, same both-direction rule.
-  const fromFieldHas = Boolean(fromField.borderEdges && fromField.borderEdges.length > 0);
-  const toFieldHas = Boolean(toField.borderEdges && toField.borderEdges.length > 0);
+  // (it has no backing tile). Same seal, same both-direction rule — never a bank.
+  const fromFieldHas = !fromIsBank && Boolean(fromField.borderEdges && fromField.borderEdges.length > 0);
+  const toFieldHas = !toIsBank && Boolean(toField.borderEdges && toField.borderEdges.length > 0);
   if (!fromHas && !toHas && !fromFieldHas && !toFieldHas) {
     return false;
   }
@@ -1665,9 +1669,12 @@ export function heroFieldSealedForDiscovery(adventure: AdventureState, field: Ma
  *    border-free Creature Bank the hero stands on is open), AND
  *  - the per-EDGE designed borders (`borderEdges`): at least ONE shared hex edge
  *    from the hero's field into the tile's footprint must be un-sealed on either
- *    side. A designed EDGE seals even from a bank field (explicit designer intent
- *    — the whole-arc bank exception above does NOT extend to a line the designer
- *    drew deliberately on that edge), unlike the whole-arc rule.
+ *    side.
+ *
+ * A Creature Bank NEVER contributes borders: standing on a bank, the hero's
+ * side of every shared edge is open (field-level and tile-slot designed edges
+ * on the bank hex are ignored). Only the TARGET tile's own designed edges can
+ * still seal a doorway. Banks do not obstruct opening/discovering tiles.
  *
  * Adjacency is the caller's job (`isTileAdjacentToSpace`); this only answers the
  * border question. Shared by the discovery OFFER (`canHeroDiscoverAdjacentTile`)
@@ -1687,17 +1694,19 @@ export function heroCanDiscoverTileAcrossBorders(
   if (!DESIGNER_BORDER_SEALING_ENABLED) {
     return true;
   }
-  const heroTile = adventure.tiles[heroField.tileInstanceId];
+  const onBank = heroField.location === "creature_bank";
+  const heroTile = onBank ? undefined : adventure.tiles[heroField.tileInstanceId];
   const tileEdges = tile.borderEdges;
-  // A standalone object hex carries its own field-level edge list.
-  const heroFieldEdges = heroField.borderEdges;
+  // A standalone object hex carries its own field-level edge list — never a bank.
+  const heroFieldEdges = onBank ? undefined : heroField.borderEdges;
   const heroHasEdges = Boolean(
     (heroTile?.borderEdges && heroTile.borderEdges.length > 0) || (heroFieldEdges && heroFieldEdges.length > 0)
   );
   const tileHasEdges = Boolean(tileEdges && tileEdges.length > 0);
   if (!heroHasEdges && !tileHasEdges) {
     // No per-edge borders anywhere: the whole-arc rule (already passed) decides,
-    // exactly as before per-edge borders existed.
+    // exactly as before per-edge borders existed. A bank with no tile-side
+    // edges always reaches here → discovery is open.
     return true;
   }
   const heroCoord = parseHexSpaceId(heroSpaceId);
@@ -1713,9 +1722,11 @@ export function heroCanDiscoverTileAcrossBorders(
       continue; // not an edge into this tile
     }
     sharedEdge = true;
+    // Bank side is always open; only non-bank hero edges can seal.
     const heroSideSealed =
-      (heroHasEdges && heroTile ? tileEdgeDesignedSealed(heroTile, heroField.slot, direction) : false) ||
-      Boolean(heroFieldEdges && heroFieldEdges.includes(direction));
+      !onBank &&
+      ((heroHasEdges && heroTile ? tileEdgeDesignedSealed(heroTile, heroField.slot, direction) : false) ||
+        Boolean(heroFieldEdges && heroFieldEdges.includes(direction)));
     const tileSideSealed =
       tileHasEdges &&
       Boolean(tileEdges) &&
@@ -8357,6 +8368,13 @@ export function placementTokenLabel(token: {
   if (token.kind === "oneway_exit") {
     return `${gatePairColor(token.pair ?? 1)} one-way monolith (exit)`;
   }
+  if (token.kind === "creature_bank") {
+    const bankId = (token as { bankId?: string }).bankId;
+    if (bankId && isCreatureBankId(bankId)) {
+      return CREATURE_BANKS[bankId].name;
+    }
+    return "Creature Bank";
+  }
   return mapTokenLabel(token.kind);
 }
 
@@ -11910,6 +11928,8 @@ export function placeCreatureBank(
   delete field.amount;
   delete field.faction;
   delete field.terrain;
+  // Banks never wear borders (movement + discovery always open on the bank side).
+  delete field.borderEdges;
   field.blackCube = false;
   field.flagOwnerId = null;
   delete field.extraFlagOwnerIds;
