@@ -161,6 +161,12 @@ export const MAX_CENTER_HEX_DICE = 3;
 export const MAX_CENTER_HEX_SEARCH = 5;
 /** How many separate Search(X) steps a designer reward may queue per deck. */
 export const MAX_CENTER_HEX_SEARCH_TIMES = 5;
+/** Main-hero XP from a designer field reward (1–5). */
+export const MAX_FIELD_REWARD_EXPERIENCE = 5;
+/** Movement points from a designer field reward (1–3). */
+export const MAX_FIELD_REWARD_MOVEMENT = 3;
+/** Resource dice from a designer field reward (1–3). */
+export const MAX_FIELD_REWARD_RESOURCE_DICE = 3;
 /** The three adventure resources a center-hex reward may carry. */
 const CENTER_HEX_RESOURCES = ["gold", "buildingMaterials", "valuables"] as const;
 /** Search size keys paired with their optional Times multipliers. */
@@ -202,10 +208,12 @@ export function sanitizeCustomGuardSpec(input: unknown): CustomGuardSpec | undef
 
 /**
  * Clamp a designer field reward ({@link CustomFieldReward} /
- * {@link CustomCenterHexReward}) to clean positive integers, or `undefined`
- * when nothing valid remains. Search rewards are Times×Search(X): a size of N
- * with times T queues T separate Search(N) steps. Times is only kept when the
- * matching size is set; absent / 1 is the legacy single-Search default.
+ * {@link CustomCenterHexReward}) to clean positive integers / known flags, or
+ * `undefined` when nothing valid remains. Search rewards are Times×Search(X):
+ * a size of N with times T queues T separate Search(N) steps. Times is only
+ * kept when the matching size is set; absent / 1 is the legacy single-Search
+ * default. Special arms (morale, Ability Empower token, Statistic empower, XP,
+ * movement, Resource dice) are optional and additive.
  */
 export function sanitizeFieldReward(input: unknown): CustomFieldReward | undefined {
   if (!input || typeof input !== "object") {
@@ -234,6 +242,32 @@ export function sanitizeFieldReward(input: unknown): CustomFieldReward | undefin
       }
     }
   }
+  // Morale: only ±1 (matches timed events / starting bonuses). Anything else drops.
+  if (raw.morale === 1 || raw.morale === -1) {
+    reward.morale = raw.morale;
+  } else if (typeof raw.morale === "number") {
+    const m = Math.trunc(raw.morale);
+    if (m >= 1) reward.morale = 1;
+    else if (m <= -1) reward.morale = -1;
+  }
+  if (raw.abilityEmpowerToken === true) {
+    reward.abilityEmpowerToken = true;
+  }
+  if (raw.empowerStatistic === true) {
+    reward.empowerStatistic = true;
+  }
+  const experience = clampInt(raw.experience, 1, MAX_FIELD_REWARD_EXPERIENCE, 0);
+  if (experience > 0) {
+    reward.experience = experience;
+  }
+  const movement = clampInt(raw.movement, 1, MAX_FIELD_REWARD_MOVEMENT, 0);
+  if (movement > 0) {
+    reward.movement = movement;
+  }
+  const resourceDice = clampInt(raw.resourceDice, 1, MAX_FIELD_REWARD_RESOURCE_DICE, 0);
+  if (resourceDice > 0) {
+    reward.resourceDice = resourceDice;
+  }
   return Object.keys(reward).length > 0 ? reward : undefined;
 }
 
@@ -244,7 +278,8 @@ export function sanitizeCenterHexReward(input: unknown): CustomCenterHexReward |
 
 /**
  * Plain-words summary of a designer field reward, e.g.
- * "7 gold · 2× Search(5) Artifacts · 2 Treasure dice". Empty → "".
+ * "7 gold · 2× Search(5) Artifacts · Ability Empower token · +1 morale".
+ * Empty → "".
  */
 export function describeFieldReward(reward: CustomFieldReward | undefined | null): string {
   if (!reward) return "";
@@ -262,6 +297,21 @@ export function describeFieldReward(reward: CustomFieldReward | undefined | null
     if (searchSize <= 0) continue;
     const t = reward[times] ?? 1;
     parts.push(t > 1 ? `${t}× Search(${searchSize}) ${label}` : `Search(${searchSize}) ${label}`);
+  }
+  if (reward.morale === 1) parts.push("+1 morale");
+  if (reward.morale === -1) parts.push("−1 morale");
+  if (reward.abilityEmpowerToken) parts.push("Ability Empower token");
+  if (reward.empowerStatistic) parts.push("Empower a Statistic");
+  if ((reward.experience ?? 0) > 0) {
+    parts.push(reward.experience === 1 ? "+1 experience" : `+${reward.experience} experience`);
+  }
+  if ((reward.movement ?? 0) > 0) {
+    parts.push(reward.movement === 1 ? "+1 movement" : `+${reward.movement} movement`);
+  }
+  if ((reward.resourceDice ?? 0) > 0) {
+    parts.push(
+      reward.resourceDice === 1 ? "1 Resource die" : `${reward.resourceDice} Resource dice`
+    );
   }
   return parts.join(" · ");
 }

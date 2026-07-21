@@ -4131,8 +4131,9 @@ function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, field
  */
 /**
  * Grant any designer first-clear field reward (center hex, object, token,
- * settlement). Resources inline; Treasure dice + deck Searches as visit-steps.
- * Search rewards expand Times×Search(X): `searchArtifact: 5` with
+ * settlement). Resources inline; Treasure dice, deck Searches, morale, Ability
+ * Empower token, Statistic empower, XP, movement and Resource dice as
+ * visit-steps. Search rewards expand Times×Search(X): `searchArtifact: 5` with
  * `searchArtifactTimes: 2` queues two separate Search(5) Artifact steps.
  * Once-only via the shared latch (centerHexClaimed / designerRewardClaimed /
  * viiBonusClaimed all set together).
@@ -4154,9 +4155,10 @@ function grantCenterHexBonus(state: GameState, playerId: PlayerId, field: MapFie
 }
 
 /**
- * Pay one designer reward package (resources inline; Treasure dice + deck
- * Searches queued as a `visit-steps` reward; VP recorded — it scores only in
- * VP mode). Shared by the field first-clear bonus and the hex-event trigger.
+ * Pay one designer reward package (resources inline; Treasure dice, deck
+ * Searches, morale, Ability Empower token, Statistic empower, XP, movement and
+ * Resource dice queued as a `visit-steps` reward; VP recorded — it scores only
+ * in VP mode). Shared by the field first-clear bonus and the hex-event trigger.
  * Returns false when the package is empty (the caller must NOT latch then).
  */
 function payDesignerFieldReward(
@@ -4188,6 +4190,32 @@ function payDesignerFieldReward(
         steps.push({ type: "SEARCH_SHARED_DECK", deckId, count: size });
       }
     }
+  }
+  // Special arms — same VisitStep leaves locations / banks / timed events use,
+  // so AI, AFK defaults and the processPendingVisit pipeline all apply.
+  if (reward.morale === 1 || reward.morale === -1) {
+    steps.push({ type: "GAIN_MORALE", amount: reward.morale });
+  }
+  if (reward.abilityEmpowerToken) {
+    // force: designer always grants the token (bank house rule is bank-only).
+    steps.push({ type: "GAIN_ABILITY_EMPOWER_TOKEN", force: true });
+  }
+  if (reward.empowerStatistic) {
+    steps.push({
+      type: "STAT_EMPOWER_OFFER",
+      sources: ["hand", "discard"],
+      remaining: 1,
+      prompt: "Empower one Statistic card — remove it, gain its Empowered form"
+    });
+  }
+  if ((reward.experience ?? 0) > 0) {
+    steps.push({ type: "GAIN_EXPERIENCE", amount: reward.experience as number });
+  }
+  if ((reward.movement ?? 0) > 0) {
+    steps.push({ type: "GAIN_MOVEMENT", amount: reward.movement as number });
+  }
+  if ((reward.resourceDice ?? 0) > 0) {
+    steps.push({ type: "ROLL_RESOURCE_DICE", count: reward.resourceDice as number });
   }
   if (Object.keys(resources).length === 0 && steps.length === 0 && vp <= 0) {
     return false;
@@ -7753,7 +7781,9 @@ export function processPendingVisit(state: GameState): void {
         // grant one Ability Empower token (max 1). Spend anytime to Empower a
         // hand Ability. Surplus while already holding 1 forces auto-use on a
         // hand ability (if any), then leaves the count at 1.
-        if (!houseRuleEnabled(state, "bank-empower-ability")) {
+        // Designer field rewards set force:true so the map author can grant the
+        // token even when the bank house rule is off.
+        if (!step.force && !houseRuleEnabled(state, "bank-empower-ability")) {
           break;
         }
         const player = state.players[visit.playerId];

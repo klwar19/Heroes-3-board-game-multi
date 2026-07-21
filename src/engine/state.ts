@@ -8999,8 +8999,12 @@ export type VisitStep =
       /**
        * Grant one Ability Empower token (cap 1). Surplus while already holding
        * one forces an auto-use pick on a hand ability, then leaves the count at 1.
+       * Without `force`, gated by the bank house rule (`bank-empower-ability`).
+       * Designer field rewards set `force: true` so a map author can always grant
+       * the token even when that house rule is off.
        */
       type: "GAIN_ABILITY_EMPOWER_TOKEN";
+      force?: true;
     }
   | {
       /** Adds `cardId` to the player's permanent empoweredAbilities list. */
@@ -11518,15 +11522,24 @@ export type CustomMapTileToken = {
 
 /**
  * A designer-set one-time field reward — used on center hexes, standalone map
- * objects, tile tokens and per-tile settlements. Granted to the player who
- * FIRST clears / successfully visits the hex. Resources are granted inline;
- * Treasure dice and deck Searches resolve through the visit-step pipeline.
+ * objects, tile tokens, per-tile settlements, and hex events. Granted to the
+ * player who FIRST clears / successfully visits the hex (hex-event mode may
+ * pay each player once). Resources are granted inline; dice, deck Searches,
+ * morale, movement, XP, Ability Empower tokens and Statistic empower menus
+ * resolve through the visit-step pipeline.
  *
  * Search rewards are **Times × Search(X)**: `searchArtifact: 5` with
  * `searchArtifactTimes: 2` queues two separate Search(5) Artifact steps.
  * Absent times (or times 1) is byte-identical to a single Search of size X.
  * Amounts are clamped by the sanitiser ({@link sanitizeCenterHexPlan} /
  * {@link sanitizeFieldReward}).
+ *
+ * Special arms (all optional, additive with resources/searches):
+ *  - `morale` ±1 — same GAIN_MORALE pipeline as Temples / timed events
+ *  - `abilityEmpowerToken` — grant one Ability Empower token (max 1; designer
+ *    always grants, even when the bank house rule is off)
+ *  - `empowerStatistic` — free one-shot Statistic empower menu (hand+discard)
+ *  - `experience` / `movement` / `resourceDice` — XP, MP, Resource-die rolls
  */
 export type CustomFieldReward = {
   gold?: number;
@@ -11547,6 +11560,24 @@ export type CustomFieldReward = {
   searchSpellTimes?: number;
   searchAbilityTimes?: number;
   searchArtifactTimes?: number;
+  /** ±1 morale (token mode or Morale Cards). */
+  morale?: 1 | -1;
+  /**
+   * Grant one Ability Empower token (cap 1; surplus auto-uses on a hand Ability
+   * when already holding one). Designer grants ignore the bank house rule.
+   */
+  abilityEmpowerToken?: true;
+  /**
+   * Open a free Statistic-empower menu once (hand + discard): remove a plain
+   * Statistic, gain its Empowered form into hand (Astrologers Dancing Imp arm).
+   */
+  empowerStatistic?: true;
+  /** Main-hero experience (1–5). */
+  experience?: number;
+  /** Movement points on the visiting / main hero (1–3). */
+  movement?: number;
+  /** Roll N Resource dice (1–3). */
+  resourceDice?: number;
 };
 
 /**
