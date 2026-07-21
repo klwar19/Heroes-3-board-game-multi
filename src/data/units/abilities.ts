@@ -202,6 +202,24 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Hidden Leaf Jinchuriki "Chakra Burst" (plan §6.2 "Frenzy"): immediately
+       * after an attack made by this unit resolves, deal `amount` EFFECT damage
+       * to EVERY OTHER unit adjacent to this unit — friend AND foe. Effect
+       * damage is NOT an attack: it provokes no Retaliation, is not reduced by
+       * the target's Defense, and is not subject to per-attack damage caps
+       * (Nix / Casters' CAP_DAMAGE_PER_ATTACK); a lethal splash routes through
+       * the normal removal path (applyFlatAbilityDamage → markUnitRemovedIfNeeded,
+       * so rebirth / Stack tokens / Pack→Few all fire). Fires on the unit's OWN
+       * declared attacks ONLY — never on a Retaliation Attack, and never once
+       * per follow-up of the multi-attack queue — so it triggers at most once
+       * per declared attack, before the parked Retaliation (the same timing as
+       * the Magog splash and every other post-attack follow-up).
+       */
+      type: "AFTER_ATTACK_SPLASH";
+      amount: number;
+    }
+  | {
+      /**
        * Liches (pack/neutral): "Choose a unit adjacent to the target and
        * attack it. For the purpose of this attack, your attack is 2." A full
        * separate attack — instant windows open for both sides, the attack
@@ -1518,6 +1536,18 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Attack All Adjacent Enemies",
     text: "[unit_attack] After its attack, this unit makes a full separate attack against every other enemy unit adjacent to it. None of these follow-ups retaliates or chains.",
     effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF" },
+    implementationStatus: "implemented"
+  },
+  // Hidden Leaf Jinchuriki (Few) "Chakra Burst" — the town's one new engine arm,
+  // shipped a step AHEAD of the faction, so no unit references it yet (like the
+  // retained `cerberi-attack-all` and the commander/bank-only arms). Wired in
+  // reducer.ts (applyAfterAttackSplash, called from finishResolvedAttack on the
+  // primary declared attack) and pinned in after-attack-splash.test.ts.
+  "jinchuriki-chakra-burst": {
+    id: "jinchuriki-chakra-burst",
+    name: "Chakra Burst",
+    text: "[unit_attack] After an attack made by this unit resolves, deal 1 damage to every other unit adjacent to this unit — friend AND foe. This damage is not an attack: no Retaliation, not reduced by Defense, not subject to per-attack damage caps. Does not fire on a Retaliation Attack.",
+    effect: { type: "AFTER_ATTACK_SPLASH", amount: 1 },
     implementationStatus: "implemented"
   },
   "lich-death-cloud": {

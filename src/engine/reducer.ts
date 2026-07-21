@@ -4872,6 +4872,16 @@ function finishResolvedAttack(
     return;
   }
 
+  // Jinchuriki "Chakra Burst": this is the PRIMARY declared attack (the
+  // isRetaliation and abilityAttack branches returned above), so splash 1
+  // effect damage to every adjacent unit now — friend AND foe — before the
+  // follow-up table and the parked Retaliation resolve, exactly like the other
+  // post-attack follow-ups. A lethal splash may end the combat.
+  applyAfterAttackSplash(state, details.attacker);
+  if (finishCombatIfNeeded(state)) {
+    return;
+  }
+
   const combat = state.combat;
   if (combat) {
     combat.attackSequence = {
@@ -6036,6 +6046,44 @@ function applyFlatAbilityDamage(
     damageKind: "effect"
   });
   markUnitRemovedIfNeeded(state, target);
+}
+
+/**
+ * Hidden Leaf Jinchuriki "Chakra Burst" (AFTER_ATTACK_SPLASH): immediately after
+ * this unit's OWN attack resolves, splash flat EFFECT damage to EVERY OTHER unit
+ * adjacent to it — friend AND foe. Effect damage is not an attack, so it reuses
+ * applyFlatAbilityDamage (adds damage, provokes no Retaliation, ignores Defense,
+ * bypasses the per-attack damage caps that clamp only real attacks/Spells) and
+ * a lethal hit routes through the normal removal path (markUnitRemovedIfNeeded →
+ * rebirth / Stack tokens / Pack→Few). Called from finishResolvedAttack on the
+ * primary declared-attack path only (after the isRetaliation and abilityAttack
+ * branches have returned), so it never fires on a Retaliation Attack nor once
+ * per follow-up of the multi-attack queue — at most once per declared attack.
+ */
+function applyAfterAttackSplash(state: GameState, attacker: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker)) {
+    return;
+  }
+
+  const ability = getUnitAbilityDefinitions(attacker).find(
+    (candidate) =>
+      candidate.implementationStatus === "implemented" && candidate.effect?.type === "AFTER_ATTACK_SPLASH"
+  );
+  if (!ability || ability.effect?.type !== "AFTER_ATTACK_SPLASH") {
+    return;
+  }
+  const amount = ability.effect.amount;
+
+  // Snapshot the adjacent units first: applyFlatAbilityDamage may remove one
+  // (a lethal splash), and a chained removal (e.g. an adjacent Automaton's
+  // detonate) could otherwise mutate the map mid-iteration.
+  const targetIds = Object.values(combat.units)
+    .filter((unit) => unit.id !== attacker.id && isUnitAlive(unit) && isAdjacent(unit.position, attacker.position))
+    .map((unit) => unit.id);
+  for (const targetId of targetIds) {
+    applyFlatAbilityDamage(state, attacker, targetId, ability.id, ability.name, amount);
+  }
 }
 
 /**
