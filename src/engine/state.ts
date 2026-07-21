@@ -10930,7 +10930,19 @@ export type CustomMapObjectKind =
    *   `alwaysPickable` marks it freely choosable in "mix" mode.
    */
   | "oneway_entrance"
-  | "oneway_exit";
+  | "oneway_exit"
+  /**
+   * Creature Bank as a designer single-hex object (STANDALONE only).
+   * Requires {@link CustomMapObject.bankId} (one of the 12 Naval Battles banks).
+   * Carves a real `creature_bank` field with that bank's army/reward — the
+   * fight is the printed bank combat (no Field Difficulty, no XP, black cube
+   * on win). Optional {@link CustomMapObject.bankSize} (1–4) pins Polish Bank
+   * Sizes Stacked count when that house rule is on. Never carries a designer
+   * `guard` or yellow `borderEdges` (a bank is always border-free — does not
+   * seal movement or obstruct tile discovery). Break-out seals go on
+   * neighbouring tile edges, not the bank hex.
+   */
+  | "creature_bank";
 
 /** How a one-way entrance picks its same-color exit. */
 export type OnewayExitMode = "random" | "certain" | "mix";
@@ -10970,10 +10982,26 @@ export type CustomMapObject = {
   placement: CustomMapObjectPlacement;
   guard?: number | CustomGuardSpec;
   /**
+   * Creature Bank object ONLY — which of the 12 banks this hex hosts
+   * (`imp_cache`, `crypt`, …). Required for `kind: "creature_bank"`; stripped
+   * from every other kind at sanitize. The engine carves a real bank field
+   * with this id (army + reward from {@link CREATURE_BANKS}).
+   */
+  bankId?: string;
+  /**
+   * Creature Bank object ONLY — optional fixed Polish Bank Size (1–4 = Ⅰ–Ⅳ).
+   * When set AND the `polish-bank-sizes` house rule is on, the bank opens with
+   * exactly that many Stacked defenders (normal reward scale). Absent = the
+   * ordinary Scenario-Difficulty Stack Token rolls.
+   */
+  bankSize?: 1 | 2 | 3 | 4;
+  /**
    * One-time first-clear reward on the object's hex (resources / dice /
    * Times×Search(X)). Stamped onto the carved field at setup; granted once via
    * the shared designer-reward latch when the visitor first successfully
    * visits (after any guard is cleared). Barriers never keep a reward.
+   * Creature Bank objects also skip this (the bank's printed win reward is
+   * the only payout — a designer extra would double-pay).
    */
   reward?: CustomFieldReward;
   /** Optional first-clear Victory Points (VP mode only). */

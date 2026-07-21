@@ -13,6 +13,7 @@
 
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
+import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TileDefinition } from "@/data/map/types";
 import { getStoryScene, isStoryScene, STORY_SCENE_IDS } from "@/data/story/scenes";
@@ -426,7 +427,8 @@ const CUSTOM_MAP_OBJECT_KINDS = new Set<CustomMapObjectKind>([
   "keymaster_tent",
   "barrier",
   "oneway_entrance",
-  "oneway_exit"
+  "oneway_exit",
+  "creature_bank"
 ]);
 
 /** The three one-way exit-pick modes (allow-list for sanitize + the editor). */
@@ -434,6 +436,17 @@ export const ONEWAY_EXIT_MODES = ["random", "certain", "mix"] as const;
 
 /** The outpost kinds — STANDALONE-only one-hex objects out of every tile. */
 export const OUTPOST_OBJECT_KINDS = new Set<CustomMapObjectKind>(["garrison", "keymaster_tent", "barrier"]);
+
+/**
+ * Object kinds that may ONLY sit as a standalone hex (never a tile-slot form).
+ * Outposts + the designer Creature Bank pin. Teleporters may be either form.
+ */
+export const STANDALONE_ONLY_OBJECT_KINDS = new Set<CustomMapObjectKind>([
+  "garrison",
+  "keymaster_tent",
+  "barrier",
+  "creature_bank"
+]);
 
 /** Designer effect kinds (order = editor dropdown order). */
 export const TIMED_EFFECT_KINDS = [
@@ -1145,6 +1158,8 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
     reward?: unknown;
     vp?: unknown;
     placement?: unknown;
+    bankId?: unknown;
+    bankSize?: unknown;
   };
   if (typeof raw.kind !== "string" || !CUSTOM_MAP_OBJECT_KINDS.has(raw.kind as CustomMapObjectKind)) {
     return null;
@@ -1161,6 +1176,12 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   const col = placementRaw.col as number;
   let placement: CustomMapObjectPlacement;
   if (placementRaw.type === "tile-slot") {
+    // Creature Bank pins are STANDALONE-only (a tile-slot form is dropped).
+    // Outposts are also standalone-only in the designer, but a legacy tile-slot
+    // outpost still sanitises so validateCustomMapObjects can surface the problem.
+    if (kind === "creature_bank") {
+      return null;
+    }
     const slot = placementRaw.slot;
     if (!Number.isInteger(slot) || (slot as number) < 0 || (slot as number) > 6) {
       return null;
@@ -1185,6 +1206,20 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
       return null;
     }
     object.pair = raw.pair;
+  }
+  // Creature Bank pin: bankId REQUIRED (one of the 12 published banks); optional
+  // fixed Polish size 1–4. Never carries a designer guard / first-clear reward /
+  // yellow borders (a bank is always border-free — same as an on-tile bank token;
+  // seals for a break-out choke go on neighbouring tiles, not the bank hex).
+  if (kind === "creature_bank") {
+    if (typeof raw.bankId !== "string" || !(raw.bankId in CREATURE_BANKS)) {
+      return null;
+    }
+    object.bankId = raw.bankId as CreatureBankId;
+    if (raw.bankSize === 1 || raw.bankSize === 2 || raw.bankSize === 3 || raw.bankSize === 4) {
+      object.bankSize = raw.bankSize;
+    }
+    return object;
   }
   // A designer guard (optional): the LEGACY plain number is a level 1-7; the
   // spec form adds "certain army" guards. Both normalise to a clean spec. A
@@ -1682,6 +1717,7 @@ export function describeMapObjects(objects: CustomMapObject[]): string {
   const gatePairs = new Set<number>();
   let monoliths = 0;
   let whirlpools = 0;
+  let banks = 0;
   let guarded = 0;
   for (const object of objects) {
     if (object.guard) {
@@ -1693,6 +1729,8 @@ export function describeMapObjects(objects: CustomMapObject[]): string {
       monoliths += 1;
     } else if (object.kind === "whirlpool") {
       whirlpools += 1;
+    } else if (object.kind === "creature_bank") {
+      banks += 1;
     }
   }
   const parts: string[] = [];
@@ -1704,6 +1742,9 @@ export function describeMapObjects(objects: CustomMapObject[]): string {
   }
   if (whirlpools > 0) {
     parts.push(`${whirlpools} whirlpool${whirlpools === 1 ? "" : "s"}`);
+  }
+  if (banks > 0) {
+    parts.push(`${banks} creature bank${banks === 1 ? "" : "s"}`);
   }
   if (guarded > 0) {
     parts.push(`${guarded} guarded`);
