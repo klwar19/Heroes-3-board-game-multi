@@ -548,6 +548,15 @@ export function ReactionTray({
     (legal) => legal.action.type === "USE_HERO_SKILL_REACTION"
   );
 
+  // Basic X Magic (the in-play spell-fetch permanent): its +3 Power expert is a
+  // standalone USE_SCHOOL_FETCH_EXPERT action (the permanent stays in play — it
+  // is not discarded like the Tower School-of-Magic expert), so no PLAY_REACTION
+  // card tile ever surfaces it. Without this the +3 expert was engine-offered but
+  // had no button in the instant window ("cannot play the expert effect").
+  const schoolFetchExpertReactions = legalActions.filter(
+    (legal) => legal.action.type === "USE_SCHOOL_FETCH_EXPERT"
+  );
+
   if (!window) {
     return null;
   }
@@ -1002,9 +1011,29 @@ export function ReactionTray({
         spellBookReactions.length === 0 &&
         resurrectionActions.length === 0 &&
         heroSkillReactions.length === 0 &&
+        schoolFetchExpertReactions.length === 0 &&
         firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
+        {schoolFetchExpertReactions.map((legal) => {
+          const cardId =
+            legal.action.type === "USE_SCHOOL_FETCH_EXPERT"
+              ? (`ability.basic_${legal.action.school}_magic` as const)
+              : "";
+          return (
+            <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+              {cardId ? <CardFrame cardId={cardId} className="trayCardImage" /> : null}
+              <div className="trayTileBody">
+                <strong>
+                  <Plus aria-hidden="true" size={15} /> Basic Magic
+                </strong>
+                <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                  {legal.label}
+                </button>
+              </div>
+            </div>
+          );
+        })}
         {heroSkillReactions.map((legal) => (
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">

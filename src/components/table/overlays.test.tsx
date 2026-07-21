@@ -478,6 +478,75 @@ describe("ReactionTray — in-progress selection survives only until the hand ch
   });
 });
 
+describe("ReactionTray — Basic X Magic in-play +3 expert has a button", () => {
+  // User bug ("cannot play the expert effect (+3 sp)"): the in-play Basic X
+  // Magic fetch permanent's +3 is a standalone USE_SCHOOL_FETCH_EXPERT action
+  // (the permanent is NOT discarded), so no PLAY_REACTION card tile surfaces it.
+  // Without a dedicated tray tile it was engine-offered but had no button.
+  function arrowCastState(seed: string, crowns: number): GameState {
+    const state = createInitialGameState(seed);
+    // Keep a spare Spell in hand: as a "+1 Power" discard it holds the reaction
+    // window open even in the no-crown CONTROL, so the tray genuinely renders
+    // (and the +3 button's absence there is a real gate, not a closed window).
+    state.players.p1.hand = ["spell.magic_arrow", "spell.haste"];
+    state.players.p2.hand = [];
+    state.players.p1.permanents = ["ability.basic_fire_magic"];
+    state.players.p1.limits.expertUses = crowns;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.abilities = [];
+    target.maxHealth = 40;
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    const result = applyAction(state, cast!.action);
+    expect(result.errors).toEqual([]);
+    return result.state;
+  }
+
+  function tray(state: GameState, onAction: (action: GameAction) => void) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("renders the +3 button and dispatches USE_SCHOOL_FETCH_EXPERT when clicked", () => {
+    const state = arrowCastState("tray-fetch-expert", 1);
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    const onAction = vi.fn();
+    render(tray(state, onAction));
+
+    const button = screen.getByRole("button", { name: /Basic Fire Magic.*\+3 Power/i });
+    act(() => {
+      fireEvent.click(button);
+    });
+    expect(onAction).toHaveBeenCalledWith({ type: "USE_SCHOOL_FETCH_EXPERT", playerId: "p1", school: "fire" });
+  });
+
+  it("CONTROL: with no crown the tray is open (Power discard) but shows no +3 button", () => {
+    const state = arrowCastState("tray-fetch-nocrown", 0);
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    render(tray(state, vi.fn()));
+    // The window is genuinely open (the spare Spell's +1 Power tile renders)...
+    expect(screen.queryByText(/No playable instants/i)).toBeNull();
+    // ...but the crown-gated +3 expert has no button.
+    expect(screen.queryByRole("button", { name: /Basic Fire Magic.*\+3 Power/i })).toBeNull();
+  });
+});
+
 describe("ReactionTray — Power can still be added after Slayer arms the attack", () => {
   function tray(state: GameState) {
     return (
