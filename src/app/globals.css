@@ -17886,6 +17886,60 @@ img.cardBack {
   object-fit: contain;
 }
 
+/* Ability Empower token (max 1) — same row as morale; click to spend on a hand Ability. */
+button.statChip.abilityEmpowerTokenChip {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: default;
+  opacity: 0.45;
+}
+button.statChip.abilityEmpowerTokenChip.hasToken {
+  opacity: 1;
+}
+button.statChip.abilityEmpowerTokenChip.canSpend {
+  cursor: pointer;
+}
+button.statChip.abilityEmpowerTokenChip.canSpend:hover {
+  filter: brightness(1.12);
+}
+button.statChip.abilityEmpowerTokenChip.canSpend:focus-visible {
+  outline: 2px solid #f0c85a;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.statChip .abilityEmpowerTokenIcon {
+  width: 18px;
+  height: 18px;
+  align-self: center;
+  object-fit: contain;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(240, 200, 90, 0.35);
+}
+button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
+  box-shadow: 0 0 0 1px rgba(240, 200, 90, 0.65), 0 0 8px rgba(240, 200, 90, 0.25);
+}
+.abilityEmpowerTokenPopup p {
+  margin: 0.4rem 0 0.75rem;
+  color: #d8c9a8;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+.abilityEmpowerTokenChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.combatMoraleHint {
+  font-size: 0.85rem;
+  color: #c9b088;
+  align-self: center;
+}
+
 /* Crowns (expert-use budget) chip: the same golden crown the "spend a crown"
    overlays use, sized to sit beside the move/morale glyphs. */
 .statChip .crownChipIcon {

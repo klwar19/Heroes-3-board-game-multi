@@ -41,6 +41,7 @@ import {
   creatureBankTierForGroup,
   applyRecruitGoldDiscount,
   changeMorale,
+  markAbilityEmpowered,
   classifyHeroStep,
   commitPopulationOnMove,
   consumeRecruitVoucherFor,
@@ -10886,6 +10887,45 @@ export function hallOfValhallaBoost(
  * "Discard any number of cards, then draw that many cards" — at any time.
  * (The third option, rerolling a die, is offered inside the dice flows.)
  */
+/**
+ * Spend the Ability Empower token (max 1) to permanently Empower one Ability
+ * currently in hand. Expert then costs no crown for the rest of the game.
+ */
+export function useAbilityEmpowerToken(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_ABILITY_EMPOWER_TOKEN" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  if ((player.abilityEmpowerToken ?? 0) < 1) {
+    throw new Error("You have no Ability Empower token to spend.");
+  }
+  if (!player.hand.includes(action.cardId)) {
+    throw new Error("That Ability must be in your hand to Empower with the token.");
+  }
+  if (cardLibrary[action.cardId]?.kind !== "ability") {
+    throw new Error("Only Ability cards can be Empowered with this token.");
+  }
+  if (player.empoweredAbilities?.includes(action.cardId)) {
+    throw new Error("That Ability is already Empowered.");
+  }
+  markAbilityEmpowered(player, action.cardId);
+  player.abilityEmpowerToken = 0;
+  appendEvent(state, {
+    type: "ABILITY_EMPOWERED",
+    playerId: action.playerId,
+    cardId: action.cardId
+  });
+  appendEvent(state, {
+    type: "ABILITY_EMPOWER_TOKEN_SPENT",
+    playerId: action.playerId,
+    cardId: action.cardId,
+    total: 0
+  });
+}
+
 export function spendMorale(state: GameState, action: Extract<GameAction, { type: "SPEND_MORALE" }>): void {
   const player = state.players[action.playerId];
   if (!player) {

@@ -64,9 +64,9 @@ export type HouseRuleId =
   // shift a unit's Combat movement by ±1 (the "Battlefield Expansion" reading).
   // Off: they change only Initiative, never movement (the standard/wiki rule).
   | "combat-move-initiative"
-  // Winning the Dragon Fly Hive / Griffin Conservatory bank ALSO lets the winner
-  // Empower one owned Ability (its Expert side then costs no crown). Off: those
-  // banks grant only the unit, as printed.
+  // Winning the Dragon Fly Hive / Griffin Conservatory bank ALSO grants an
+  // Ability Empower token (max 1; spend anytime to Empower one hand Ability —
+  // Expert then costs no crown). Off: those banks grant only the unit, as printed.
   | "bank-empower-ability"
   // A Creature-Bank fight obeys the one-Round time limit and the spend-1-move-
   // point-to-extend rule, like an ordinary neutral fight. Off: a bank has no
@@ -3793,6 +3793,16 @@ export type GameAction =
       unitId?: UnitId;
       tokenKind?: "weakness" | "corrosion" | "paralysis";
     }
+  | {
+      /**
+       * Spend the Ability Empower token (max 1) to permanently Empower one
+       * Ability card currently in hand. Expert side then costs no crown.
+       * Handler-validated (self-validating).
+       */
+      type: "USE_ABILITY_EMPOWER_TOKEN";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
   | { type: "CHOOSE_OPTION"; playerId: PlayerId; choiceId: string; optionIndex: number }
   | {
       /**
@@ -5494,13 +5504,30 @@ export type GameEvent =
     }
   | {
       /**
-       * A player Empowered an ability (Dragon Fly Hive / Griffin Conservatory
-       * bonus): its Expert side may henceforth be played without a crown.
+       * A player Empowered an ability (Ability Empower token, bank surplus
+       * auto-use, …): its Expert side may henceforth be played without a crown.
        */
       id: string;
       type: "ABILITY_EMPOWERED";
       playerId: PlayerId;
       cardId: CardId;
+    }
+  | {
+      /** Player gained an Ability Empower token (cap 1). */
+      id: string;
+      type: "ABILITY_EMPOWER_TOKEN_GAINED";
+      playerId: PlayerId;
+      total: number;
+      /** True when already at cap and the surplus forced an auto-use menu. */
+      surplus?: boolean;
+    }
+  | {
+      /** Player spent an Ability Empower token to empower a hand ability. */
+      id: string;
+      type: "ABILITY_EMPOWER_TOKEN_SPENT";
+      playerId: PlayerId;
+      cardId: CardId;
+      total: number;
     }
   | {
       /**
@@ -6701,14 +6728,22 @@ export type PlayerState = {
   /** Cards removed from the game entirely (the "remove" keyword). */
   removed: CardId[];
   /**
-   * Ability card ids this player has had "empowered" (e.g. the Dragon Fly Hive /
-   * Griffin Conservatory Creature Bank bonus). An empowered ability may be played
-   * on its Expert side without spending an Expert use (a crown) — the holder may
-   * always use either the basic or the expert function for free. Permanent for
-   * the rest of the game. Matched by card id, so it follows the card between
-   * hand and discard.
+   * Ability card ids this player has had "empowered" (e.g. spent an Ability
+   * Empower token from the Dragon Fly Hive / Griffin Conservatory). An empowered
+   * ability may be played on its Expert side without spending an Expert use (a
+   * crown) — the holder may always use either the basic or the expert function
+   * for free. Permanent for the rest of the game. Matched by card id, so it
+   * follows the card between hand and discard.
    */
   empoweredAbilities?: CardId[];
+  /**
+   * Empowered Ability Token on the hero (rulebook token; max storage 1). Spend
+   * anytime to permanently Empower ONE Ability card currently in hand. Banks
+   * (Dragon Fly Hive / Griffin Conservatory house rule) grant these instead of
+   * an immediate empower pick. A surplus gain while already holding 1 forces an
+   * auto-use (empower a hand ability) then leaves the count at 1.
+   */
+  abilityEmpowerToken?: number;
   /**
    * Factory — Frederick's specialty ("further enhances the Automaton's
    * explosion"): the extra damage each of this player's Automatons adds to its
@@ -8954,11 +8989,18 @@ export type VisitStep =
     }
   | {
       /**
-       * Dragon Fly Hive / Griffin Conservatory bonus: build a menu of the
-       * player's own non-Empowered Ability cards (hand + discard); picking one
-       * Empowers it (a MARK_ABILITY_EMPOWERED leaf). No-op when none are owned.
+       * Legacy direct-empower menu (hand only). Prefer GAIN_ABILITY_EMPOWER_TOKEN
+       * + the token spend path for bank rewards. Builds a menu of non-Empowered
+       * Ability cards in hand; picking one Empowers it. No-op when none.
        */
       type: "EMPOWER_ABILITY";
+    }
+  | {
+      /**
+       * Grant one Ability Empower token (cap 1). Surplus while already holding
+       * one forces an auto-use pick on a hand ability, then leaves the count at 1.
+       */
+      type: "GAIN_ABILITY_EMPOWER_TOKEN";
     }
   | {
       /** Adds `cardId` to the player's permanent empoweredAbilities list. */
