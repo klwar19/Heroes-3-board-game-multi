@@ -40,8 +40,8 @@ const equipmentArtOnDisk = (id: string) =>
 describe("anime equipment catalog integrity", () => {
   it("ships every item with a grade I/II/III, cost locked to grade, and package", () => {
     const items = listEquipmentDefinitions();
-    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) + classic line (6) + shinobi (3) + kansen (3) = 30.
-    expect(items).toHaveLength(30);
+    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) + classic line (6) + shinobi (3) + kansen (6) = 33.
+    expect(items).toHaveLength(33);
     const bySlug = (id: string) => getEquipmentDefinition(id)!;
 
     for (const def of items) {
@@ -118,16 +118,23 @@ describe("anime equipment catalog integrity", () => {
     expect(new Set(shinobi.map((def) => def.grade))).toEqual(new Set(["I", "II", "III"]));
     expect(new Set(shinobi.map((def) => def.slot))).toEqual(new Set(["weapon", "mount", "accessory"]));
 
-    // Azur Lane Naval Base bespoke "kansen" line (§3.13): one per grade, spread
-    // across weapon / armor / accessory (Oxygen Torpedo I, Repair Toolkit II,
-    // SG Radar III).
+    // Azur Lane Naval Base bespoke "kansen" line (§3.13): 2 per grade, spread
+    // across all four slots (Oxygen Torpedo I / Manjuu Piggy Bank I,
+    // Repair Toolkit II / Beaver Squad Tag II, SG Radar III / Retrofit Blueprint III).
     expect(bySlug(EQUIPMENT_IDS.oxygenTorpedo)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.manjuuPiggyBank)).toMatchObject({ slot: "accessory", grade: "I", cost: 4, package: "kansen" });
     expect(bySlug(EQUIPMENT_IDS.repairToolkit)).toMatchObject({ slot: "armor", grade: "II", cost: 6, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.beaverSquadTag)).toMatchObject({ slot: "mount", grade: "II", cost: 6, package: "kansen" });
     expect(bySlug(EQUIPMENT_IDS.sgRadar)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.retrofitBlueprint)).toMatchObject({ slot: "weapon", grade: "III", cost: 8, package: "kansen" });
     const kansen = items.filter((def) => def.package === "kansen");
-    expect(kansen).toHaveLength(3);
+    expect(kansen).toHaveLength(6);
     expect(new Set(kansen.map((def) => def.grade))).toEqual(new Set(["I", "II", "III"]));
-    expect(new Set(kansen.map((def) => def.slot))).toEqual(new Set(["weapon", "armor", "accessory"]));
+    expect(kansen.filter((def) => def.grade === "I")).toHaveLength(2);
+    expect(kansen.filter((def) => def.grade === "II")).toHaveLength(2);
+    expect(kansen.filter((def) => def.grade === "III")).toHaveLength(2);
+    // The kansen line covers all four slots.
+    expect(new Set(kansen.map((def) => def.slot))).toEqual(new Set(["weapon", "armor", "accessory", "mount"]));
     // Real naval icons ship on disk (never a glyph placeholder).
     for (const def of kansen) {
       expect(ANIME_EQUIPMENT_ART_PLACEHOLDERS.has(def.id), `${def.id} must not be an art placeholder`).toBe(false);
@@ -278,10 +285,18 @@ describe("anime equipment catalog integrity", () => {
     expect(shinobiLine).not.toContain(EQUIPMENT_IDS.crusadersPoleaxe); // classic
     expect(shinobiLine).not.toContain(EQUIPMENT_IDS.oxygenTorpedo); // kansen
 
-    // The kansen line is EXACTLY the three Azur Lane items and nothing else.
+    // The kansen line is EXACTLY the six Azur Lane items and nothing else.
     const kansenLine = equipmentRegisterLineFor("azur_lane");
+    expect(kansenLine).toHaveLength(6);
     expect(new Set(kansenLine)).toEqual(
-      new Set([EQUIPMENT_IDS.oxygenTorpedo, EQUIPMENT_IDS.repairToolkit, EQUIPMENT_IDS.sgRadar])
+      new Set([
+        EQUIPMENT_IDS.oxygenTorpedo,
+        EQUIPMENT_IDS.repairToolkit,
+        EQUIPMENT_IDS.sgRadar,
+        EQUIPMENT_IDS.manjuuPiggyBank,
+        EQUIPMENT_IDS.beaverSquadTag,
+        EQUIPMENT_IDS.retrofitBlueprint
+      ])
     );
     // CONTROL: azur_lane's line carries none of the other registers' exclusives —
     // including shinobi's, though both share the "anime" visual register.
