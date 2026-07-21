@@ -1136,3 +1136,54 @@ describe("Polish Spell Book — co-composition fixes", () => {
     expect(state.players.p1.discard).toContain("spell.haste");
   });
 });
+
+/**
+ * User demand surface #4: the Basic X Magic +3 expert must be offered AS PART OF
+ * a Polish Spell Book cast (Cast a Spell + a refreshed Book Spell) exactly like a
+ * hand cast — the up-front `useSchoolFetchExpert` CAST_SPELL variant flows through
+ * the same performSpellCast chokepoint, so the crown-spend / +3 fold is shared.
+ */
+describe("Basic X Magic +3 up-front cast — Polish Spell Book surface", () => {
+  it("offers the fetch-expert Book cast (Cast a Spell + Magic Arrow) and resolves at damage 3", () => {
+    const state = polishCombat("polish-book-fetch-expert");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+    state.players.p1.spellBook = ["spell.magic_arrow"];
+    state.players.p1.spellBookUsed = [];
+    state.players.p1.permanents = ["ability.basic_fire_magic"];
+    state.players.p1.limits.expertUses = 1;
+
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.fromSpellBook &&
+        legal.action.useSchoolFetchExpert === true &&
+        legal.action.castEnablerCardId === CAST_A_SPELL_CARD_ID &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    expect(cast, "the up-front +3 fetch-expert Book cast should be offered").toBeTruthy();
+
+    const s = passAll(applyOk(state, cast!.action));
+    expect(s.combat!.units.unit_p2_skeletons.damage).toBe(3); // Power 0 → 3 (+3)
+    expect(s.players.p1.permanents).toEqual(["ability.basic_fire_magic"]); // permanent stays
+    expect(s.players.p1.spellBookUsed).toContain("spell.magic_arrow"); // Book spell spent
+    expect(s.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("CONTROL: with no crown the fetch-expert Book variant is withheld (the plain Book cast is not)", () => {
+    const state = polishCombat("polish-book-fetch-nocrown");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+    state.players.p1.spellBook = ["spell.magic_arrow"];
+    state.players.p1.spellBookUsed = [];
+    state.players.p1.permanents = ["ability.basic_fire_magic"];
+    state.players.p1.limits.expertUses = 0;
+
+    const fetchExpert = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.useSchoolFetchExpert === true
+    );
+    expect(fetchExpert, "no crown → no up-front +3 Book cast").toBeFalsy();
+    // The plain Book cast is still available.
+    expect(castAtSkeletons(state, "spell.magic_arrow")).toBeTruthy();
+  });
+});

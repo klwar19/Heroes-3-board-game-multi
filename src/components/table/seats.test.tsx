@@ -68,6 +68,56 @@ describe("HandFan — Schools of Magic offer the expert as a cast-time choice", 
   });
 });
 
+describe("HandFan — Basic X Magic (fetch permanent) offers its +3 as a cast-time choice", () => {
+  /** Combat where p1 can cast Magic Arrow with Basic Earth Magic (fetch) in play. */
+  function fetchCastState(): GameState {
+    const state = createInitialGameState("hand-cast-fetch-expert");
+    state.players.p1.hand = ["spell.magic_arrow"];
+    state.players.p1.permanents = ["ability.basic_earth_magic"];
+    state.players.p1.limits.expertUses = 1;
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    return state;
+  }
+
+  it("shows a plain cast and a '+ Basic Magic (+3)' cast, the latter carrying useSchoolFetchExpert", () => {
+    const state = fetchCastState();
+    const onSelectCardAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={onSelectCardAction}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Magic Arrow card/i }));
+
+    // The plain cast targeting AND the cast-time Basic Magic +3 are both offered.
+    const picks = screen.getAllByRole("button", { name: /^Pick target/i });
+    expect(picks.length).toBeGreaterThanOrEqual(2);
+    const fetchPick = screen.getByRole("button", { name: /Pick target \+ Basic Magic \(\+3\)/i });
+    fireEvent.click(fetchPick);
+
+    expect(onSelectCardAction).toHaveBeenCalledTimes(1);
+    expect(onSelectCardAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "CAST_SPELL",
+        cardId: "spell.magic_arrow",
+        useSchoolFetchExpert: true
+      })
+    );
+  });
+});
+
 describe("HandFan — a single-target Spell arms targeting on click (clear click-to-target, no text popover)", () => {
   function lightningState(): GameState {
     const state = createInitialGameState("hand-single-target");

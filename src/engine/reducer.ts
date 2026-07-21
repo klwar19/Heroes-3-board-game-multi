@@ -239,6 +239,7 @@ import {
   canAcquireSharedDeckCard,
   discardPickAllowedInCombat,
   estatesGold,
+  matchingSchoolFetchForCast,
   getRuleset,
   isSpellDeck,
   spellBookPowerAvailable,
@@ -11029,6 +11030,22 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   }
 
   state.stack.push(stackItem);
+
+  // Basic X Magic (Conflux fetch permanent) +3 Power, folded up front as part of
+  // the cast (the caster picked the `useSchoolFetchExpert` cast variant) instead
+  // of playing the standalone USE_SCHOOL_FETCH_EXPERT reaction after the cast. The
+  // permanent STAYS in play; one crown is spent. applySchoolFetchExpert re-derives
+  // and validates everything (fetch present, school match, not a scroll, a crown
+  // left, once per stack), so a forged flag can only fail cleanly — never boost
+  // for free. Folded before SPELL_CAST_STARTED so reactions (Resistance) see the
+  // final Power, and marking `schoolFetchExpertUsedBy` blocks a second dip.
+  if (action.useSchoolFetchExpert) {
+    const school = matchingSchoolFetchForCast(state, action.playerId, card.spellSchools ?? []);
+    if (!school) {
+      throw new Error("No Basic Magic of a matching school is in play for this cast.");
+    }
+    applySchoolFetchExpert(state, { type: "USE_SCHOOL_FETCH_EXPERT", playerId: action.playerId, school });
+  }
 
   const spellStarted = appendEvent(state, {
     type: "SPELL_CAST_STARTED",

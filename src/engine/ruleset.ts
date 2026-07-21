@@ -13,6 +13,7 @@ import type {
   HeroState,
   PlayerId,
   PlayerState,
+  SpellSchool,
   VictoryMode
 } from "./state";
 
@@ -599,6 +600,26 @@ export function activeSchoolFetches(state: GameState, playerId: PlayerId): ("air
     }
   }
   return [...schools];
+}
+
+/**
+ * The Basic X Magic (fetch permanent) school whose +3 expert can empower a cast
+ * of `spellSchools` for `playerId`: the first in-play fetch school the spell
+ * matches (a fixed-school match, or ANY fetch for a school-"any" spell like Magic
+ * Arrow), else null. Shared by the up-front CAST_SPELL variant (legal-actions)
+ * and its cast-time application (reducer) so both read one rule.
+ */
+export function matchingSchoolFetchForCast(
+  state: GameState,
+  playerId: PlayerId,
+  spellSchools: readonly SpellSchool[]
+): "air" | "earth" | "fire" | "water" | null {
+  for (const school of activeSchoolFetches(state, playerId)) {
+    if (spellSchools.includes(school) || spellSchools.includes("any")) {
+      return school;
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

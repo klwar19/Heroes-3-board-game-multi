@@ -828,6 +828,9 @@ export function cardSelectionKey(action: CardBoardAction): string {
     // The "discard a School of Magic for +3" cast is a distinct selection from
     // the plain cast of the same spell at the same target.
     useSchoolExpert: action.type === "CAST_SPELL" ? Boolean(action.useSchoolExpert) : false,
+    // Likewise the Basic X Magic (fetch permanent) "+3 Power" cast is a distinct
+    // selection from the plain cast at the same target.
+    useSchoolFetchExpert: action.type === "CAST_SPELL" ? Boolean(action.useSchoolFetchExpert) : false,
     // Polish Spell Book + scrolls: the same card id can be cast from hand,
     // Book, or a Scroll. Board targeting must keep those sources distinct so a
     // Book pick never resolves as a hand cast (or drops castEnablerCardId).
