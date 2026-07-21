@@ -357,7 +357,8 @@ export type FactionId =
   | "bulwark"
   | "factory"
   | "fuyuki"
-  | "azure_breeze";
+  | "azure_breeze"
+  | "hidden_leaf";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }

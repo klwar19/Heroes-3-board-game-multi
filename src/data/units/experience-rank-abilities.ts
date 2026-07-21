@@ -554,6 +554,41 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   "azure_breeze.mountain_guardian": buildScheduleFromTemplate("strong", [
     ["bulwark-thick-hide", "commander-defense-token"],
     ["commander-defense-token", "reduce-spell-damage-1"]
+  ]),
+
+  // ── Anime Hidden Leaf ────────────────────────────────────────────────────
+  // Swarm veterancy: bronze standard (1 ability), silver/gold strong (2). Every
+  // choice is an already-implemented, non-Stacked ability drawn from the same
+  // pools the Fuyuki/Azure schedules use.
+  "hidden_leaf.genin_squad": buildScheduleFromTemplate("standard", [
+    ["bulwark-thick-hide", "wog-no-negative-attack-roll"]
+  ]),
+  "hidden_leaf.medical_nin": buildScheduleFromTemplate("standard", [
+    ["reduce-spell-damage-1", "bulwark-air-shield"]
+  ]),
+  // LV3 bronze ranged skirmisher.
+  "hidden_leaf.anbu": buildScheduleFromTemplate("standard", [
+    ["bulwark-air-shield", "ranged-extra-shot-on-low-roll"]
+  ]),
+  // LV4 silver ranged elite.
+  "hidden_leaf.jonin": buildScheduleFromTemplate("strong", [
+    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
+    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
+  ]),
+  // LV5 silver ground tank.
+  "hidden_leaf.giant_toad": buildScheduleFromTemplate("strong", [
+    ["bulwark-thick-hide", "commander-defense-token"],
+    ["commander-defense-token", "reduce-spell-damage-1"]
+  ]),
+  // LV6 gold AoE beast.
+  "hidden_leaf.jinchuriki": buildScheduleFromTemplate("strong", [
+    ["bulwark-thick-hide", "commander-charge"],
+    ["commander-max-damage", "wog-nightmare-fear"]
+  ]),
+  // LV7 gold armored avatar.
+  "hidden_leaf.susanoo": buildScheduleFromTemplate("strong", [
+    ["bulwark-air-shield", "reduce-spell-damage-1"],
+    ["wog-fire-shield-1", "ignore-paralysis"]
   ])
 };
 

@@ -2946,6 +2946,7 @@ export function isPlayableFaction(
   const faction = coreFactionDefinitions[id as FactionId];
   if (!faction || faction.playable === false) return false;
   if (id === "fuyuki") return Boolean(anime?.enabled && anime.isekaiTowns);
+  if (id === "hidden_leaf") return Boolean(anime?.enabled && anime.isekaiTowns);
   if (id === "azure_breeze") return Boolean(anime?.enabled && anime.xianxiaTowns);
   return true;
 }
