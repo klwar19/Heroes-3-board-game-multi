@@ -1114,6 +1114,10 @@ const EQUIP_ID_AEGIS = EQUIPMENT_IDS.wardensAegis;
 const EQUIP_ID_KUNAI = EQUIPMENT_IDS.shinobiKunaiPouch;
 const EQUIP_ID_TABI = EQUIPMENT_IDS.bodyFlickerTabi;
 const EQUIP_ID_CHARM = EQUIPMENT_IDS.sageChakraCharm;
+// Azur Lane Naval Base bespoke "kansen" line (§3.13).
+const EQUIP_ID_TORPEDO = EQUIPMENT_IDS.oxygenTorpedo;
+const EQUIP_ID_TOOLKIT = EQUIPMENT_IDS.repairToolkit;
+const EQUIP_ID_RADAR = EQUIPMENT_IDS.sgRadar;
 
 describe("anime.equipment — Crusader's Poleaxe (classic weapon)", () => {
   it("+1 Attack on the FIRST declared attack (Iron-Blood Sword seam; CONTROL: bare)", () => {
@@ -1346,6 +1350,126 @@ describe("anime.equipment — Sage Chakra Charm (shinobi accessory relic — com
   });
 });
 
+// ===========================================================================
+// Azur Lane Naval Base bespoke "kansen" line — 3 items reusing proven seams
+// (each fails if its fold id is removed) + the register-aware shop CONTROLs.
+// ===========================================================================
+
+describe("anime.equipment — Oxygen Torpedo (kansen weapon)", () => {
+  it("+1 Attack on the FIRST declared attack (Iron-Blood Sword seam; CONTROL: bare)", () => {
+    function firstAttackValue(withItem: boolean): number {
+      let state = combat(`eq-torpedo-${withItem}`);
+      if (withItem) equip(state, "p1", "weapon", EQUIP_ID_TORPEDO);
+      state = resolveReactions(
+        applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+      );
+      return initiatingAttackValues(state)[0];
+    }
+    // The Oxygen Torpedo rides the SAME first-attack fold as the Iron-Blood Sword.
+    expect(firstAttackValue(true)).toBe(firstAttackValue(false) + 1);
+  });
+
+  it("fires once per combat — the second declared attack is at full Attack (charge spent), never on retaliation", () => {
+    let state = combat("eq-torpedo-once");
+    equip(state, "p1", "weapon", EQUIP_ID_TORPEDO);
+    state = resolveReactions(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+    );
+    expect(state.players.p1.combatStats.equipmentFirstAttackUsed).toBe(true);
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.attackedThisActivation = false;
+    griffins.attacksThisActivation = 0;
+    griffins.retaliatedThisRound = false;
+    griffins.movedThisActivation = false;
+    griffins.activatedThisRound = false;
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.activePlayerId = "p1";
+    state.combat!.attackSequence = null;
+    state = resolveReactions(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+    );
+    const values = initiatingAttackValues(state);
+    // First got +1, second is the bare griffins attack (10) — charge is one-shot.
+    expect(values[0]).toBe(values[1] + 1);
+  });
+});
+
+describe("anime.equipment — Repair Toolkit (kansen armor)", () => {
+  it("grants a Defense token once on the owner's unit (Stage Costume seam; CONTROL: no item → no token)", () => {
+    const withItem = combat("eq-toolkit");
+    equip(withItem, "p1", "armor", EQUIP_ID_TOOLKIT);
+    const defender = withItem.combat!.units.unit_p1_griffins;
+    defender.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(withItem, defender);
+    expect(defender.defenseToken).toBe(true);
+    expect(withItem.players.p1.combatStats.equipmentStageCostumeUsed).toBe(true);
+
+    // Second call never re-grants (charge spent).
+    defender.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(withItem, defender);
+    expect(defender.defenseToken).toBe(false);
+
+    // CONTROL: unequipped path grants nothing.
+    const bare = combat("eq-toolkit-bare");
+    bare.combat!.units.unit_p1_griffins.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(bare, bare.combat!.units.unit_p1_griffins);
+    expect(bare.combat!.units.unit_p1_griffins.defenseToken).toBe(false);
+    expect(bare.players.p1.combatStats.equipmentStageCostumeUsed ?? false).toBe(false);
+  });
+});
+
+describe("anime.equipment — SG Radar (kansen accessory relic — combines two seams)", () => {
+  it("+1 spell Power on your casts (spell-power seam; CONTROL: no radar → baseline)", () => {
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const base = createInitialGameState("eq-radar-power-base");
+    base.anime = { ...EQUIP_ON };
+    const baseline = standingSpellPower(base, "p1", arrow);
+
+    const radar = createInitialGameState("eq-radar-power");
+    radar.anime = { ...EQUIP_ON };
+    equip(radar, "p1", "accessory", EQUIP_ID_RADAR);
+    expect(standingSpellPower(radar, "p1", arrow)).toBe(baseline + 1);
+  });
+
+  it("+1 hand limit, STACKING to +2 with Guild-Issue Mail (armor, distinct slot) — CONTROL: base", () => {
+    const state = adventure("eq-radar-hand");
+    const base = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_RADAR);
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
+    equip(state, "p1", "armor", EQUIP_ID_GUILD); // armor is a distinct slot → stacks
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 2);
+  });
+
+  it("grants BOTH seams at once: +1 spell Power AND +1 hand limit from the single relic", () => {
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const state = adventure("eq-radar-both");
+    const basePower = standingSpellPower(state, "p1", arrow);
+    const baseHand = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_RADAR);
+    expect(standingSpellPower(state, "p1", arrow)).toBe(basePower + 1);
+    expect(effectiveHandLimit(state, "p1")).toBe(baseHand + 1);
+  });
+
+  it("shares the ONE accessory slot with Cosmos Pendant — spell Power never stacks to +2 (same-slot twins)", () => {
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const state = createInitialGameState("eq-radar-excl");
+    state.anime = { ...EQUIP_ON };
+    const baseline = standingSpellPower(state, "p1", arrow);
+    equip(state, "p1", "accessory", EQUIP_ID_COSMOS);
+    equip(state, "p1", "accessory", EQUIP_ID_RADAR); // overwrites the single accessory slot
+    // Only one accessory is worn, so equipment spell-power tops out at +1.
+    expect(standingSpellPower(state, "p1", arrow)).toBe(baseline + 1);
+  });
+
+  it("shares the ONE accessory slot with Sage Chakra Charm — hand limit never stacks to +2 (same-slot twins)", () => {
+    const state = adventure("eq-radar-charm-excl");
+    const base = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_CHARM);
+    equip(state, "p1", "accessory", EQUIP_ID_RADAR); // overwrites the single accessory slot
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
+  });
+});
+
 describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
   // Directly stamp the visiting hero's faction, then read the outfitter menu.
   function shopLabels(shopLocation: string, factionId: string): string[] {
@@ -1376,6 +1500,9 @@ describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
     // CONTROL: the shinobi line is Hidden Leaf's bespoke line — never a classic visitor's.
     expect(has(black, "Kunai Pouch")).toBe(false);
     expect(has(outfit, "Kunai Pouch")).toBe(false);
+    // CONTROL: the kansen line is Azur Lane's bespoke line — never a classic visitor's.
+    expect(has(black, "Oxygen Torpedo")).toBe(false);
+    expect(has(outfit, "Oxygen Torpedo")).toBe(false);
   });
 
   it("a WUXIA visitor (azure_breeze) sees the XIANXIA line, never classic, and isekai ONLY where the shop sells it", () => {
@@ -1394,6 +1521,9 @@ describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
     // CONTROL: no shinobi items for a wuxia visitor anywhere.
     expect(has(black, "Kunai Pouch")).toBe(false);
     expect(has(outfit, "Kunai Pouch")).toBe(false);
+    // CONTROL: no kansen items for a wuxia visitor anywhere.
+    expect(has(black, "Oxygen Torpedo")).toBe(false);
+    expect(has(outfit, "Oxygen Torpedo")).toBe(false);
   });
 
   it("an ANIME visitor (fuyuki) sees the ISEKAI line, never classic", () => {
@@ -1405,12 +1535,16 @@ describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
     // No classic items for an anime visitor.
     expect(has(black, "Crusader's Poleaxe")).toBe(false);
     expect(has(outfit, "Crusader's Poleaxe")).toBe(false);
-    // CONTROL: fuyuki shares the "anime" register with Hidden Leaf but keeps the
-    // isekai line — the shinobi bespoke line is hidden_leaf ONLY, never fuyuki's.
+    // CONTROL: fuyuki shares the "anime" register with Hidden Leaf AND Azur Lane
+    // but keeps the isekai line — the bespoke shinobi / kansen lines belong to
+    // hidden_leaf / azur_lane ONLY, never fuyuki's.
     expect(has(black, "Kunai Pouch")).toBe(false);
     expect(has(outfit, "Kunai Pouch")).toBe(false);
     expect(has(black, "Sage Chakra Charm")).toBe(false);
     expect(has(outfit, "Body-Flicker Tabi")).toBe(false);
+    expect(has(black, "Oxygen Torpedo")).toBe(false);
+    expect(has(outfit, "SG Radar")).toBe(false);
+    expect(has(black, "Repair Toolkit")).toBe(false);
   });
 
   it("a HIDDEN LEAF visitor sees the bespoke SHINOBI line at BOTH shops, never other registers", () => {
@@ -1431,6 +1565,32 @@ describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
     expect(has(outfit, "Crusader's Poleaxe")).toBe(false);
     expect(has(black, "Adventurer's Blade")).toBe(false); // isekai not added by the shinobi line
     expect(has(outfit, "Iron-Blood Sword")).toBe(false); // xianxia not added by the shinobi line
+    // CONTROL: hidden_leaf and azur_lane share the "anime" register, but the
+    // kansen line is azur_lane's bespoke line ONLY — never on a hidden_leaf menu.
+    expect(has(black, "Oxygen Torpedo")).toBe(false);
+    expect(has(outfit, "SG Radar")).toBe(false);
+  });
+
+  it("an AZUR LANE visitor sees the bespoke KANSEN line at BOTH shops, never other registers", () => {
+    const black = shopLabels("anime.ren_binh_cac", "azur_lane");
+    const outfit = shopLabels("anime.adventurer_outfitter", "azur_lane");
+    // All three kansen items at BOTH outfitters (azur_lane's register line).
+    for (const name of ["Oxygen Torpedo", "Repair Toolkit", "SG Radar"]) {
+      expect(has(black, name), `${name} @ blacksmith`).toBe(true);
+      expect(has(outfit, name), `${name} @ outfitter`).toBe(true);
+    }
+    // The shop's OWN exclusives still show (xianxia @ Blacksmith, isekai @ Outfitter).
+    expect(has(black, "Iron-Blood Sword")).toBe(true); // Blacksmith's own xianxia exclusive
+    expect(has(outfit, "Adventurer's Blade")).toBe(true); // Outfitter's own isekai exclusive
+    // CONTROL: azur_lane's register line is kansen ONLY — no classic anywhere,
+    // and the OTHER package's exclusive is NOT ADDED as a line (isekai stays off
+    // the Blacksmith, xianxia off the Outfitter), and never the shinobi line.
+    expect(has(black, "Crusader's Poleaxe")).toBe(false); // classic never
+    expect(has(outfit, "Crusader's Poleaxe")).toBe(false);
+    expect(has(black, "Adventurer's Blade")).toBe(false); // isekai not added by the kansen line
+    expect(has(outfit, "Iron-Blood Sword")).toBe(false); // xianxia not added by the kansen line
+    expect(has(black, "Kunai Pouch")).toBe(false); // shinobi is hidden_leaf's, never azur_lane's
+    expect(has(outfit, "Kunai Pouch")).toBe(false);
   });
 
   it("every offered buy label names the item's grade (grade-tinted shop rows)", () => {

@@ -57,10 +57,11 @@ export const EQUIPMENT_GRADE_LABEL: Record<EquipmentGrade, { en: string; short: 
  * Which content family an equipment item belongs to (shop gating + naming).
  * `classic` is the register line for the classic-chrome factions (Castle,
  * Rampart, …); `anime-xianxia` / `anime-isekai` are the two anime-town lines;
- * `shinobi` is Hidden Leaf Village's BESPOKE line (§3.13 FUTURE-TOWN RECIPE);
- * `shared` items are sold at every outfitter.
+ * `shinobi` is Hidden Leaf Village's BESPOKE line and `kansen` is Azur Lane
+ * Naval Base's BESPOKE line (both §3.13 FUTURE-TOWN RECIPE); `shared` items are
+ * sold at every outfitter.
  */
-export type EquipmentPackage = "anime-xianxia" | "anime-isekai" | "shared" | "classic" | "shinobi";
+export type EquipmentPackage = "anime-xianxia" | "anime-isekai" | "shared" | "classic" | "shinobi" | "kansen";
 
 /** Short flavour tag per package, for UI chips (paper-doll bag rows etc.). */
 export const EQUIPMENT_PACKAGE_LABEL: Record<EquipmentPackage, string> = {
@@ -68,7 +69,8 @@ export const EQUIPMENT_PACKAGE_LABEL: Record<EquipmentPackage, string> = {
   "anime-isekai": "isekai",
   shared: "shared",
   classic: "classic",
-  shinobi: "shinobi"
+  shinobi: "shinobi",
+  kansen: "kansen"
 };
 
 /**
@@ -139,7 +141,14 @@ export const EQUIPMENT_IDS = {
   //     outfitters via `equipmentPackagesForFaction`; never in EQUIPMENT_SHOP_SALES.
   shinobiKunaiPouch: "anime.equip.shinobi_kunai_pouch",
   bodyFlickerTabi: "anime.equip.body_flicker_tabi",
-  sageChakraCharm: "anime.equip.sage_chakra_charm"
+  sageChakraCharm: "anime.equip.sage_chakra_charm",
+  // --- Azur Lane Naval Base bespoke "kansen" register line (§3.13 FUTURE-TOWN
+  //     RECIPE): 3 items, each a PURE reuse of an already-wired equipment seam
+  //     (src/engine/anime-equipment.ts). azur_lane's register line at BOTH
+  //     outfitters via `equipmentPackagesForFaction`; never in EQUIPMENT_SHOP_SALES.
+  oxygenTorpedo: "anime.equip.oxygen_torpedo",
+  repairToolkit: "anime.equip.repair_toolkit",
+  sgRadar: "anime.equip.sg_radar"
 } as const;
 
 function equip(
@@ -420,6 +429,48 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     // Seams: equipmentSpellPowerBonus + equipmentHandLimitBonus (both accessory).
     summary:
       "Accessory · Grade III: +1 spell Power on your casts AND +1 hand limit (spell Power stacks with Cultivation / Hero-Grade Power; hand limit stacks with Guild-Issue Mail (armor); shares the ONE accessory slot with the other spell-power / hand-limit accessories (Cosmos Pendant / Spirit Focus / Twin-Tail Ribbon / Eternal Sash) — only one accessory is worn, so same-slot twins never stack)."
+  }),
+
+  // ==== Azur Lane Naval Base bespoke "kansen" register line (§3.13) =========
+  // Azur Lane's own 3-item shipgirl line (torpedo / repair / radar), each a PURE
+  // reuse of an already-wired equipment seam — the relic COMBINES two seams like
+  // Sage Chakra Charm's spell-Power + hand-limit pair. Offered as azur_lane's
+  // register line at BOTH outfitters (`equipmentPackagesForFaction`).
+  // ---- Grade I (minor, 4g) ------------------------------------------------
+  [EQUIPMENT_IDS.oxygenTorpedo]: equip({
+    id: EQUIPMENT_IDS.oxygenTorpedo,
+    slot: "weapon",
+    grade: "I",
+    name: { en: "Oxygen Torpedo", vi: "Ngư Lôi Dưỡng Khí" },
+    package: "kansen",
+    // Seam: equipmentFirstAttackBonus (the Iron-Blood Sword fold).
+    summary:
+      "Weapon · Grade I: your units' FIRST declared attack each combat gets +1 Attack (your main hero's fights; not on retaliations; shares the weapon slot with Iron-Blood Sword / Crusader's Poleaxe / Kunai Pouch — only one is worn)."
+  }),
+
+  // ---- Grade II (major, 6g) -----------------------------------------------
+  [EQUIPMENT_IDS.repairToolkit]: equip({
+    id: EQUIPMENT_IDS.repairToolkit,
+    slot: "armor",
+    grade: "II",
+    name: { en: "Repair Toolkit", vi: "Bộ Dụng Cụ Sửa Chữa" },
+    package: "kansen",
+    // Seam: applyEquipmentStageCostumeDefenseToken (the Stage Costume / Ironbark
+    // Cuirass first-incoming-hit Defense-token fold).
+    summary:
+      "Armor · Grade II: the FIRST time one of your units is attacked each combat, that unit gains a Defense token after the attack resolves (your main hero's fights; shares the armor slot with Black Tortoise Mail / Stage Costume / Ironbark Cuirass / Guild-Issue Mail / Warden's Aegis — only one is worn)."
+  }),
+
+  // ---- Grade III (relic, 8g) — COMBINES two proven seams ------------------
+  [EQUIPMENT_IDS.sgRadar]: equip({
+    id: EQUIPMENT_IDS.sgRadar,
+    slot: "accessory",
+    grade: "III",
+    name: { en: "SG Radar", vi: "Ra-đa SG" },
+    package: "kansen",
+    // Seams: equipmentSpellPowerBonus + equipmentHandLimitBonus (both accessory).
+    summary:
+      "Accessory · Grade III: +1 spell Power on your casts AND +1 hand limit (spell Power stacks with Cultivation / Hero-Grade Power; hand limit stacks with Guild-Issue Mail (armor); shares the ONE accessory slot with the other spell-power / hand-limit accessories (Cosmos Pendant / Spirit Focus / Twin-Tail Ribbon / Eternal Sash / Sage Chakra Charm) — only one accessory is worn, so same-slot twins never stack)."
   })
 };
 
@@ -518,14 +569,18 @@ export const EQUIPMENT_SHOP_LOCATION_IDS: ReadonlySet<string> = new Set(Object.k
  * it BESPOKE gear, add items in a new package and return that package here (and
  * teach `factionVisualRegister` the new register). No engine change is needed.
  *
- * Hidden Leaf Village is the worked example of the BESPOKE branch: it shares the
- * "anime" visual register with Fuyuki, so it is special-cased AHEAD of the
- * register switch to return its own "shinobi" line — without this, it would fall
- * through to the anime register's default isekai line (which Fuyuki keeps).
+ * Hidden Leaf Village and Azur Lane Naval Base are the two worked examples of
+ * the BESPOKE branch: both share the "anime" visual register with Fuyuki, so
+ * each is special-cased AHEAD of the register switch to return its own line
+ * ("shinobi" / "kansen") — without this, either would fall through to the anime
+ * register's default isekai line (which Fuyuki keeps).
  */
 export function equipmentPackagesForFaction(factionId: string | undefined): EquipmentPackage[] {
   if (factionId === "hidden_leaf") {
     return ["shinobi"];
+  }
+  if (factionId === "azur_lane") {
+    return ["kansen"];
   }
   switch (factionVisualRegister(factionId)) {
     case "anime":
