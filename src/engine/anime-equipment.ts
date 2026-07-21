@@ -127,30 +127,41 @@ export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipm
 //     limit — both accessory-slot seams, so it can never lift either cap (all
 //     spell-power items are accessories ⇒ +1; hand limit stays +2 = armor + one
 //     accessory).
+//   Azur Lane "kansen" line (§3.13), each a pure seam reuse:
+//   - `oxygenTorpedo` twins Iron-Blood Sword (weapon, first-attack)
+//   - `repairToolkit` twins Stage Costume (armor, first-incoming defense token)
+//   - `sgRadar` (accessory relic) combines +1 spell Power AND +1 hand limit —
+//     same accessory-slot pair as Sage Chakra Charm, so it can never lift either
+//     cap (spell-power items are all accessories ⇒ +1; hand limit stays +2 =
+//     armor + one accessory).
 // ---------------------------------------------------------------------------
 const FIRST_ATTACK_ITEMS = [
   EQUIPMENT_IDS.ironBloodSword,
   EQUIPMENT_IDS.crusadersPoleaxe,
-  EQUIPMENT_IDS.shinobiKunaiPouch
+  EQUIPMENT_IDS.shinobiKunaiPouch,
+  EQUIPMENT_IDS.oxygenTorpedo
 ] as const;
 const INCOMING_PENALTY_ITEMS = [EQUIPMENT_IDS.blackTortoiseMail, EQUIPMENT_IDS.wardensAegis] as const;
 const DEFENSE_TOKEN_ITEMS = [
   EQUIPMENT_IDS.stageCostume,
   EQUIPMENT_IDS.ironbarkCuirass,
-  EQUIPMENT_IDS.wardensAegis
+  EQUIPMENT_IDS.wardensAegis,
+  EQUIPMENT_IDS.repairToolkit
 ] as const;
 const ROUND1_ATTACK_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial] as const;
 const FIRST_SPELL_POWER_ITEMS = [EQUIPMENT_IDS.neonMicrophone] as const;
 const SPELL_POWER_ITEMS = [
   EQUIPMENT_IDS.cosmosPendant,
   EQUIPMENT_IDS.spiritFocus,
-  EQUIPMENT_IDS.sageChakraCharm
+  EQUIPMENT_IDS.sageChakraCharm,
+  EQUIPMENT_IDS.sgRadar
 ] as const;
 const HAND_LIMIT_ITEMS = [
   EQUIPMENT_IDS.guildIssueMail,
   EQUIPMENT_IDS.twinTailRibbon,
   EQUIPMENT_IDS.eternalSash,
-  EQUIPMENT_IDS.sageChakraCharm
+  EQUIPMENT_IDS.sageChakraCharm,
+  EQUIPMENT_IDS.sgRadar
 ] as const;
 const WIN_GOLD_ITEMS = [
   EQUIPMENT_IDS.adventurersBlade,
@@ -180,13 +191,14 @@ function countEquipment(state: GameState, playerId: PlayerId, ids: readonly stri
 // --- Always-on economy / caster grants (each gated by the item equipped) ----
 
 /**
- * Cosmos Pendant (xianxia), Spirit Focus (isekai) AND Sage Chakra Charm
- * (shinobi): +1 spell Power each, folded at the standing chokepoint. ALL are the
- * ACCESSORY slot, so at most ONE is ever worn — each is checked independently
- * only so whichever the hero carries contributes (they are package-flavoured
- * twins, NOT a +2/+3 stack; the accessory-slot cap is pinned in
- * anime-equipment.test.ts). The equipment spell-power fold therefore still tops
- * out at +1; further Power comes from the separate Cultivation / Hero-Grade seams.
+ * Cosmos Pendant (xianxia), Spirit Focus (isekai), Sage Chakra Charm (shinobi)
+ * AND SG Radar (kansen): +1 spell Power each, folded at the standing chokepoint.
+ * ALL are the ACCESSORY slot, so at most ONE is ever worn — each is checked
+ * independently only so whichever the hero carries contributes (they are
+ * package-flavoured twins, NOT a +2/+3/+4 stack; the accessory-slot cap is
+ * pinned in anime-equipment.test.ts). The equipment spell-power fold therefore
+ * still tops out at +1; further Power comes from the separate Cultivation /
+ * Hero-Grade seams.
  */
 export function equipmentSpellPowerBonus(state: GameState, playerId: PlayerId): number {
   return countEquipment(state, playerId, SPELL_POWER_ITEMS);
@@ -225,8 +237,10 @@ export function markEquipmentFirstSpellCast(state: GameState, playerId: PlayerId
 }
 
 /**
- * Stage Costume (armor): after the first attack against one of the owner's
- * units this combat resolves, grant that defender a Defense token (once).
+ * Stage Costume / Ironbark Cuirass / Warden's Aegis / Repair Toolkit (all
+ * armor): after the first attack against one of the owner's units this combat
+ * resolves, grant that defender a Defense token (once). Same armor slot ⇒ at
+ * most one is worn, so the one-charge-per-combat grant never doubles.
  */
 export function applyEquipmentStageCostumeDefenseToken(
   state: GameState,
@@ -254,12 +268,12 @@ export function applyEquipmentStageCostumeDefenseToken(
 
 /**
  * Guild-Issue Mail (armor) / Twin-Tail Ribbon (accessory) / Eternal Sash
- * (accessory) / Sage Chakra Charm (accessory): +1 hand limit each. Folded at
- * effectiveHandLimit. Twin-Tail, Eternal Sash and Sage Chakra Charm all share
- * the ACCESSORY slot (only one is worn), so equipment still tops out at +2 —
- * Guild-Issue Mail (armor) plus one accessory. Each item is checked
- * independently so whichever pair the hero wears is counted (accessory-slot cap
- * pinned in anime-equipment.test.ts).
+ * (accessory) / Sage Chakra Charm (accessory) / SG Radar (accessory): +1 hand
+ * limit each. Folded at effectiveHandLimit. Twin-Tail, Eternal Sash, Sage Chakra
+ * Charm and SG Radar all share the ACCESSORY slot (only one is worn), so
+ * equipment still tops out at +2 — Guild-Issue Mail (armor) plus one accessory.
+ * Each item is checked independently so whichever pair the hero wears is counted
+ * (accessory-slot cap pinned in anime-equipment.test.ts).
  */
 export function equipmentHandLimitBonus(state: GameState, playerId: PlayerId): number {
   return countEquipment(state, playerId, HAND_LIMIT_ITEMS);

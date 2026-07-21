@@ -368,6 +368,44 @@ const CARDS = [
       "Accessory: +1 spell Power on your casts AND +1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
+  },
+  // ==== Azur Lane Naval Base bespoke "kansen" line (§3.13) — 3 items =========
+  // NOT placeholders: real hand-drawn naval inventory icons ship at
+  // public/assets/anime/equipment/<slug>.webp (built by
+  // scripts/build-kansen-equipment-icons.mjs — run it FIRST). The pipeline picks
+  // them up from ICON_DIR as masters automatically; no monogram is synthesised.
+  {
+    slug: "oxygen_torpedo",
+    en: "Oxygen Torpedo",
+    vi: "Ngư Lôi Dưỡng Khí",
+    grade: "I",
+    slot: "weapon",
+    rules: [
+      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (main-hero fights; not retaliations).",
+      "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
+    ]
+  },
+  {
+    slug: "repair_toolkit",
+    en: "Repair Toolkit",
+    vi: "Bộ Dụng Cụ Sửa Chữa",
+    grade: "II",
+    slot: "armor",
+    rules: [
+      "Armor: the first time one of your units is attacked each combat, it gains a Defense token after the hit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
+    ]
+  },
+  {
+    slug: "sg_radar",
+    en: "SG Radar",
+    vi: "Ra-đa SG",
+    grade: "III",
+    slot: "accessory",
+    rules: [
+      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
+    ]
   }
 ];
 

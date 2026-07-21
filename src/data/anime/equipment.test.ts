@@ -40,8 +40,8 @@ const equipmentArtOnDisk = (id: string) =>
 describe("anime equipment catalog integrity", () => {
   it("ships every item with a grade I/II/III, cost locked to grade, and package", () => {
     const items = listEquipmentDefinitions();
-    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) + classic line (6) + shinobi (3) = 27.
-    expect(items).toHaveLength(27);
+    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) + classic line (6) + shinobi (3) + kansen (3) = 30.
+    expect(items).toHaveLength(30);
     const bySlug = (id: string) => getEquipmentDefinition(id)!;
 
     for (const def of items) {
@@ -117,6 +117,22 @@ describe("anime equipment catalog integrity", () => {
     expect(shinobi).toHaveLength(3);
     expect(new Set(shinobi.map((def) => def.grade))).toEqual(new Set(["I", "II", "III"]));
     expect(new Set(shinobi.map((def) => def.slot))).toEqual(new Set(["weapon", "mount", "accessory"]));
+
+    // Azur Lane Naval Base bespoke "kansen" line (§3.13): one per grade, spread
+    // across weapon / armor / accessory (Oxygen Torpedo I, Repair Toolkit II,
+    // SG Radar III).
+    expect(bySlug(EQUIPMENT_IDS.oxygenTorpedo)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.repairToolkit)).toMatchObject({ slot: "armor", grade: "II", cost: 6, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.sgRadar)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "kansen" });
+    const kansen = items.filter((def) => def.package === "kansen");
+    expect(kansen).toHaveLength(3);
+    expect(new Set(kansen.map((def) => def.grade))).toEqual(new Set(["I", "II", "III"]));
+    expect(new Set(kansen.map((def) => def.slot))).toEqual(new Set(["weapon", "armor", "accessory"]));
+    // Real naval icons ship on disk (never a glyph placeholder).
+    for (const def of kansen) {
+      expect(ANIME_EQUIPMENT_ART_PLACEHOLDERS.has(def.id), `${def.id} must not be an art placeholder`).toBe(false);
+      expect(equipmentArtOnDisk(def.id), `${def.id} icon missing at ${equipmentArtPath(def.id)}`).toBe(true);
+    }
   });
 
   it("covers all three grades with multiple items each", () => {
@@ -221,19 +237,22 @@ describe("anime equipment catalog integrity", () => {
     expect(equipmentPackagesForFaction(undefined)).toEqual(["classic"]);
     expect(equipmentPackagesForFaction("azure_breeze")).toEqual(["anime-xianxia"]);
     expect(equipmentPackagesForFaction("fuyuki")).toEqual(["anime-isekai"]);
-    // Hidden Leaf Village is BESPOKE — special-cased ahead of the register switch
-    // to its own shinobi line, NOT the anime-register default isekai (fuyuki keeps).
+    // Hidden Leaf Village AND Azur Lane are BESPOKE — each special-cased ahead of
+    // the register switch to its own line, NOT the anime-register default isekai
+    // (which fuyuki keeps).
     expect(equipmentPackagesForFaction("hidden_leaf")).toEqual(["shinobi"]);
+    expect(equipmentPackagesForFaction("azur_lane")).toEqual(["kansen"]);
 
     // The register LINE is the ids of every item in that package.
     const classicLine = equipmentRegisterLineFor("castle");
     expect(classicLine).toContain(EQUIPMENT_IDS.crusadersPoleaxe);
     expect(classicLine).toContain(EQUIPMENT_IDS.wardensAegis);
     expect(classicLine).toHaveLength(6);
-    // CONTROL: a classic visitor's line carries NO xianxia/isekai/shinobi exclusives.
+    // CONTROL: a classic visitor's line carries NO xianxia/isekai/shinobi/kansen exclusives.
     expect(classicLine).not.toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia
     expect(classicLine).not.toContain(EQUIPMENT_IDS.adventurersBlade); // isekai
     expect(classicLine).not.toContain(EQUIPMENT_IDS.shinobiKunaiPouch); // shinobi
+    expect(classicLine).not.toContain(EQUIPMENT_IDS.oxygenTorpedo); // kansen
 
     const wuxiaLine = equipmentRegisterLineFor("azure_breeze");
     expect(wuxiaLine).toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia exclusive
@@ -257,6 +276,19 @@ describe("anime equipment catalog integrity", () => {
     expect(shinobiLine).not.toContain(EQUIPMENT_IDS.adventurersBlade); // isekai
     expect(shinobiLine).not.toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia
     expect(shinobiLine).not.toContain(EQUIPMENT_IDS.crusadersPoleaxe); // classic
+    expect(shinobiLine).not.toContain(EQUIPMENT_IDS.oxygenTorpedo); // kansen
+
+    // The kansen line is EXACTLY the three Azur Lane items and nothing else.
+    const kansenLine = equipmentRegisterLineFor("azur_lane");
+    expect(new Set(kansenLine)).toEqual(
+      new Set([EQUIPMENT_IDS.oxygenTorpedo, EQUIPMENT_IDS.repairToolkit, EQUIPMENT_IDS.sgRadar])
+    );
+    // CONTROL: azur_lane's line carries none of the other registers' exclusives —
+    // including shinobi's, though both share the "anime" visual register.
+    expect(kansenLine).not.toContain(EQUIPMENT_IDS.adventurersBlade); // isekai
+    expect(kansenLine).not.toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia
+    expect(kansenLine).not.toContain(EQUIPMENT_IDS.crusadersPoleaxe); // classic
+    expect(kansenLine).not.toContain(EQUIPMENT_IDS.shinobiKunaiPouch); // shinobi
   });
 
   it("every package has a short UI flavour label", () => {
@@ -265,5 +297,6 @@ describe("anime equipment catalog integrity", () => {
     }
     expect(EQUIPMENT_PACKAGE_LABEL.classic).toBe("classic");
     expect(EQUIPMENT_PACKAGE_LABEL.shinobi).toBe("shinobi");
+    expect(EQUIPMENT_PACKAGE_LABEL.kansen).toBe("kansen");
   });
 });
