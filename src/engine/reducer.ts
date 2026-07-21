@@ -14921,7 +14921,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "DIPLOMACY_RECRUIT") {
-    openDiplomacyRecruit(state, action.playerId, effect.maxDraws, effect.goldReduction);
+    openDiplomacyRecruit(
+      state,
+      action.playerId,
+      effect.maxDraws,
+      effect.goldReduction,
+      action.cardId
+    );
   }
 
   // Pandora's Gift: Recruits — draw N Neutral units, offer one at half cost.

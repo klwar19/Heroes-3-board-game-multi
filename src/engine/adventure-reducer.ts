@@ -4785,7 +4785,9 @@ export function openDiplomacyRecruit(
   state: GameState,
   playerId: PlayerId,
   maxDraws?: number,
-  goldReduction?: number
+  goldReduction?: number,
+  /** Card just spent into the discard — refunded when nothing can be drawn. */
+  spentCardId?: string
 ): void {
   const draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] = [];
   for (const tier of diplomacyDwellingDrawTiers(state, playerId)) {
@@ -4800,7 +4802,26 @@ export function openDiplomacyRecruit(
     }
   }
 
+  // Empty Neutral decks: the card was already spent (playCard discards before
+  // effects). Put it back so the basic side never silently fizzles — the player
+  // keeps Diplomacy / the specialty and can try again when a deck has cards.
   if (draws.length === 0) {
+    const player = state.players[playerId];
+    const refundId = spentCardId ?? "ability.diplomacy";
+    if (player) {
+      const spent = player.discard.lastIndexOf(refundId);
+      if (spent >= 0) {
+        player.discard.splice(spent, 1);
+        player.hand.push(refundId);
+      }
+    }
+    // Log an empty draw so the feed / tests can see the attempt was not a silent
+    // no-op; the card refund above is the real player-facing recovery.
+    appendEvent(state, {
+      type: "DIPLOMACY_NEUTRALS_DRAWN",
+      playerId,
+      unitDefIds: []
+    });
     return;
   }
 
@@ -4816,21 +4837,21 @@ export function openDiplomacyRecruit(
       hasRecruitResources(state, playerId, reduceGoldCost(neutral?.cost ?? {}, goldReduction));
   });
 
-  // Nothing affordable to recruit: the drawn cards simply return to their decks.
-  if (recruitable.length === 0) {
-    for (const draw of draws) {
-      state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
-    }
-    return;
-  }
-
+  // Always open a choice when something was drawn — even when nothing is
+  // affordable. The old silent "return cards and leave" made Diplomacy's basic
+  // side look broken (card spent, no UI, no recruit). The player still sees the
+  // drawn unit names and can only pick "Recruit none" when broke.
+  const drawnNames = draws
+    .map((draw) => coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId)
+    .join(", ");
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `Diplomacy: recruit one of the drawn Neutral Units — ${draws
-      .map((draw) => coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId)
-      .join(", ")}?`,
+    prompt:
+      recruitable.length === 0
+        ? `Diplomacy drew ${drawnNames}, but you cannot afford any of them. Recruit none?`
+        : `Diplomacy: recruit one of the drawn Neutral Units — ${drawnNames}?`,
     options: [
       ...recruitable.map((draw) => {
         const def = coreUnitDefinitions[draw.unitDefId];
@@ -4838,7 +4859,7 @@ export function openDiplomacyRecruit(
           label: `Recruit ${def?.name ?? draw.unitDefId} (${recruitCostLabel(reduceGoldCost(def?.neutral?.cost ?? {}, goldReduction))})`
         };
       }),
-      { label: "Recruit none" }
+      { label: recruitable.length === 0 ? "Done — return drawn cards" : "Recruit none" }
     ],
     context: "diplomacy-recruit",
     diplomacyRecruit: { draws, recruitable, goldReduction },
