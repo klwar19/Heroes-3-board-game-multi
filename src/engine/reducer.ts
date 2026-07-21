@@ -7618,7 +7618,16 @@ function refundInsufficientCloneCast(
 
   // The refunded cast no longer counts as a Spell this round/turn, so it neither
   // burns the one-Spell limit nor the "first spell" Power bonuses.
-  if (player) {
+  //
+  // A Spell Scroll cast is EXEMPT (like the card/Power returns above): it never
+  // incremented spellsCastThisRound in the first place (noteSpellCast(…, false)),
+  // and its spell was already removed from the game. Rolling the counters back
+  // for it would refund a DIFFERENT hand Spell's count this round — a one-Spell-
+  // per-round limit evasion (cast a hand Spell, then a fizzling scroll Clone, and
+  // cast a second hand Spell "for free") — and un-count a scroll cast that DID
+  // happen (a scroll still counts as a Spell cast this turn). So the scroll cast
+  // simply fizzles: the scroll is spent, the counters are untouched.
+  if (player && !stackItem.modifiers.scrollLocked) {
     player.combatStats.spellsCastThisRound = Math.max(0, player.combatStats.spellsCastThisRound - 1);
     player.combatStats.spellsCastThisTurn = Math.max(0, (player.combatStats.spellsCastThisTurn ?? 0) - 1);
   }
@@ -10216,6 +10225,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
+      // A hand cast is returned to hand (nothing lost); a one-use Spell Scroll
+      // cast is already removed from the game, so it is spent (not returned) —
+      // keep the notice honest for each source.
+      const cloneRefundTail = stackItem.modifiers.scrollLocked
+        ? "the Spell Scroll was spent."
+        : "the spell was returned to your hand.";
       if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
         // Grade reached: if the unit somehow has no adjacent empty space left,
         // refund too (nothing was placed) rather than swallow the cast.
@@ -10224,7 +10239,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
             state,
             stackItem,
             target,
-            `${target.cardName} has no adjacent empty space to place a Clone — the spell was returned to your hand.`
+            `${target.cardName} has no adjacent empty space to place a Clone — ${cloneRefundTail}`
           );
           return;
         }
@@ -10235,7 +10250,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
           state,
           stackItem,
           target,
-          `Not enough Power to Clone ${target.cardName} (a ${target.grade} unit needs ${need}, you paid Power ${power}) — the spell was returned to your hand.`
+          `Not enough Power to Clone ${target.cardName} (a ${target.grade} unit needs ${need}, you paid Power ${power}) — ${cloneRefundTail}`
         );
         return;
       }
@@ -12744,10 +12759,11 @@ function applyReactionPlayCore(
     // Mysticism expert: the OTHER cards this player played into the attack come
     // back too. Snapshot them now (so cards played after the recall are not
     // swept) and defer their return alongside the spell — a Book-sourced support
-    // card routes back to the Book. The spell itself and the Knowledge/Mysticism
-    // card just played are excluded from the sweep (the spell rides its own
-    // deferred entry; the played Mysticism card returns via `expertRecallPlayedCards`
-    // below only when it is not the recalled spell).
+    // card routes back to the Book. Only the SPELL is excluded from this sweep:
+    // it rides its own deferred entry above, and is removed from `remainingDiscard`
+    // below so it is never returned twice. Every OTHER card played into the attack
+    // — INCLUDING the Mysticism/Knowledge card itself — DOES return via this sweep
+    // (pinned by `knowledge-recall-instants.test.ts`).
     if (mode === "expert" && effect.expertRecallPlayedCards) {
       const bookPlayed = stackItem.modifiers.bookPlayedCardIds ?? [];
       const remainingDiscard = [...caster.discard];

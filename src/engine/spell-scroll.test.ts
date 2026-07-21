@@ -321,3 +321,93 @@ describe("Spell Scroll — selling at the market", () => {
     expect(sell).toBeTruthy();
   });
 });
+
+describe("Spell Scroll — a fizzled scroll Clone does not evade the one-Spell limit", () => {
+  const ALLY = "unit_p1_marksmen";
+
+  /** A hand Magic Arrow at the enemy, offered only when NOT already spent. */
+  function handArrowCast(state: GameState) {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        !legal.action.fromScroll &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === TARGET
+    );
+  }
+
+  it("keeps the round's Spell limit spent — a scroll Clone at Power 0 fizzles, it does not refund a hand cast", () => {
+    // A scroll Clone is always Power 0, and Clone needs Power ≥ 1, so it can
+    // never place a copy — it always hits the insufficient-Power refund. That
+    // refund must NOT roll back spellsCastThisRound (a scroll never incremented
+    // it), or a player could cast a hand Spell, then a scroll Clone, then a
+    // SECOND hand Spell "for free" in a one-Spell-per-round window.
+    let state = scrollCombatState(["spell.clone"]);
+    state.players.p1.hand = ["spell.magic_arrow"];
+
+    // Spend the one-Spell-per-round limit with a hand Magic Arrow.
+    const hand = handArrowCast(state);
+    expect(hand, "hand Magic Arrow should be castable").toBeTruthy();
+    state = passAllReactions(applyOk(state, hand!.action));
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
+
+    // CONTROL: a second hand Spell is blocked at the limit BEFORE the scroll cast.
+    state.players.p1.hand = ["spell.magic_arrow"];
+    expect(handArrowCast(state), "second hand Spell blocked at the limit").toBeUndefined();
+
+    // Now cast the fizzling scroll Clone at a friendly unit (use the engine's own
+    // offered action so the target is whatever it deems legal — at Power 0 any
+    // friendly target hits the insufficient-Power refund).
+    const scrollClone = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.clone" &&
+        legal.action.fromScroll === "scroll_1"
+    );
+    expect(scrollClone, "scroll Clone should be offered").toBeTruthy();
+    state = passAllReactions(applyOk(state, scrollClone!.action));
+
+    // The scroll spell is spent (one-use), never duplicated into the discard.
+    expect(findEvent(state, "SPELL_CAST_REFUNDED")).toBeTruthy();
+    expect(state.players.p1.scrolls ?? []).toHaveLength(0);
+    expect(state.players.p1.removed).toContain("spell.clone");
+    expect(state.players.p1.discard).not.toContain("spell.clone");
+
+    // THE FIX: the limit is still spent. Counter AND the observable outcome —
+    // a second hand Spell is STILL blocked (no evasion). Reverting the
+    // `!scrollLocked` guard rolls spellsCastThisRound back to 0, which re-offers
+    // the hand Magic Arrow — this assertion then fails.
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
+    state.players.p1.hand = ["spell.magic_arrow"];
+    expect(
+      handArrowCast(state),
+      "a fizzled scroll Clone must not re-open the spent Spell limit"
+    ).toBeUndefined();
+  });
+
+  it("CONTROL: a HAND Clone underpay DOES refund — card back to hand, its own count rolled back", () => {
+    // The divergence proof: a hand Clone that fizzles returns to hand and rolls
+    // back the count it just spent (a normal refund), whereas the scroll cast
+    // above does neither (it is spent and the count is untouched).
+    let state = scrollCombatState(["spell.clone"]);
+    state.players.p1.scrolls = [];
+    state.players.p1.hand = ["spell.clone"];
+    state.players.p1.combatStats.spellsCastThisRound = 0;
+
+    state = passAllReactions(
+      applyOk(state, {
+        type: "CAST_SPELL",
+        playerId: "p1",
+        cardId: "spell.clone",
+        target: { type: "unit", unitId: ALLY }
+      })
+    );
+
+    expect(findEvent(state, "SPELL_CAST_REFUNDED")).toBeTruthy();
+    // Hand cast: the card returns to hand and its own count is rolled back to 0.
+    expect(state.players.p1.hand).toContain("spell.clone");
+    expect(state.players.p1.removed).not.toContain("spell.clone");
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(0);
+  });
+});
