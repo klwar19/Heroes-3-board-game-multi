@@ -3346,8 +3346,11 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   then a `map-spell-boost` window offers the same Power sources combat uses:
   hand/Book power-source discards (printed value; Expert Power + crown),
   **School of Magic expert** (discard the permanent for +2 over the free basic
-  +1, needs crown), and **Basic X Magic expert** (+3, permanent stays, once per
-  cast, needs crown) — or "Resolve now". Highest printed tier with
+  +1, needs crown), and **Basic X Magic expert** (+3, once per cast, needs a
+  crown — offered from BOTH the in-play fetch permanent AND a Basic X Magic card
+  held in hand; using it CONSUMES that source: the permanent is discarded, the
+  hand card is played to the discard — mirroring the School-of-Magic expert and
+  the combat `USE_SCHOOL_FETCH_EXPERT`) — or "Resolve now". Highest printed tier with
   `minPower ≤ final Power` resolves (Orb doubling applied at resolve). Starting
   Power = standingSpellPower (school basic, Astrologers, Pandora, cultivation /
   grade / equipment) + specialty school auras + map Sorcery/Scales bank.

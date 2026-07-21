@@ -262,6 +262,7 @@ import {
 } from "./parallel-turns";
 import {
   applyPermanentCombatEffects,
+  discardPermanentFromPlay,
   discardSchoolPermanentForExpert,
   getPermanentCardIds,
   getPermanentSchoolBonus,
@@ -5411,9 +5412,15 @@ type MapSpellBoostOffer =
       kind: "school-fetch-expert";
       school: "air" | "earth" | "fire" | "water";
       value: number;
+      /**
+       * When set, the +3 comes from a Basic X Magic card held IN HAND (its printed
+       * expert side) — resolving discards this card. When absent, it comes from the
+       * in-play fetch permanent — resolving discards that permanent.
+       */
+      fromHandCardId?: CardId;
     };
 
-/** Basic X Magic expert: +3 Power, permanent stays (mirrors combat USE_SCHOOL_FETCH_EXPERT). */
+/** Basic X Magic expert: +3 Power, consumes its source (mirrors combat USE_SCHOOL_FETCH_EXPERT). */
 const MAP_SCHOOL_FETCH_EXPERT_POWER = 3;
 
 type MapSpellBoostFlags = {
@@ -5457,6 +5464,13 @@ function listMapSpellBoostOffers(
     }
     const card = cardLibrary[cardId];
     if (!cardCanBoostPower(card)) {
+      return;
+    }
+    // A Basic X Magic card's only Power side is its `expertOnly` +3 — never a
+    // crown-free "basic" source. It is offered separately as a crown-gated
+    // fetch-expert (from hand, below), so keep it out of the generic path here
+    // (otherwise `spellPowerValueOfCard` reads its +3 as a no-crown basic boost).
+    if (card?.permanentEffect?.schoolFetch) {
       return;
     }
     const basic = spellPowerValueOfCard(card, schools, "basic");
@@ -5516,18 +5530,39 @@ function listMapSpellBoostOffers(
     }
   }
 
-  // Basic X Magic permanent expert: +3 with a crown, permanent stays. Once per
-  // cast (combat: USE_SCHOOL_FETCH_EXPERT). Matching school only.
+  // Basic X Magic +3 expert (once per cast; needs a crown; matching school only),
+  // offered from BOTH sources it can come from — the in-play fetch permanent AND a
+  // Basic X Magic card held in hand. Using it consumes that source: the permanent
+  // is discarded (combat parity: USE_SCHOOL_FETCH_EXPERT), the hand card is played
+  // to the discard. One offer per source (first matching), like one expert use.
   if (!flags.schoolFetchExpertUsed && crowns > 0) {
     const spellSchools = spell.spellSchools ?? [];
+    const matchesSpell = (school: "air" | "earth" | "fire" | "water") =>
+      spellSchools.includes(school) || spellSchools.includes("any");
+
+    // From the in-play fetch permanent.
     for (const school of activeSchoolFetches(state, playerId)) {
-      if (spellSchools.includes(school) || spellSchools.includes("any")) {
+      if (matchesSpell(school)) {
         offers.push({
           kind: "school-fetch-expert",
           school,
           value: MAP_SCHOOL_FETCH_EXPERT_POWER
         });
-        break; // one Basic Magic school offer (first matching), like one expert use
+        break;
+      }
+    }
+
+    // From a Basic X Magic card held in hand (its printed expert side).
+    for (const cardId of player.hand) {
+      const fetch = cardLibrary[cardId]?.permanentEffect?.schoolFetch;
+      if (fetch && matchesSpell(fetch)) {
+        offers.push({
+          kind: "school-fetch-expert",
+          school: fetch,
+          value: MAP_SCHOOL_FETCH_EXPERT_POWER,
+          fromHandCardId: cardId
+        });
+        break;
       }
     }
   }
@@ -5553,7 +5588,9 @@ function mapSpellBoostOfferLabel(
     return `Discard ${name} expert (+${offer.value} more Power, school to +3) → ${tierHint}`;
   }
   const schoolName = offer.school.charAt(0).toUpperCase() + offer.school.slice(1);
-  return `Basic ${schoolName} Magic expert (+${offer.value} Power) → ${tierHint}`;
+  // Both consume their source; the label names which (hand card vs the permanent).
+  const source = offer.fromHandCardId ? " from hand" : " (discards permanent)";
+  return `Basic ${schoolName} Magic expert${source} (+${offer.value} Power) → ${tierHint}`;
 }
 
 /**
@@ -5665,8 +5702,20 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     if (mapSpellCrownsLeft(state, playerId) <= 0) {
       throw new Error("No crown left for Basic Magic expert Power.");
     }
-    if (!activeSchoolFetches(state, playerId).includes(offer.school)) {
-      throw new Error("No Basic Magic of that school is in play.");
+    if (offer.fromHandCardId) {
+      // From a Basic X Magic card held in hand: play its expert side — discard it.
+      const handIndex = player.hand.indexOf(offer.fromHandCardId);
+      if (handIndex === -1) {
+        throw new Error("The Basic Magic card is no longer in hand.");
+      }
+      player.hand.splice(handIndex, 1);
+      player.discard.push(offer.fromHandCardId);
+    } else {
+      // From the in-play fetch permanent: consume (discard) the permanent.
+      if (!activeSchoolFetches(state, playerId).includes(offer.school)) {
+        throw new Error("No Basic Magic of that school is in play.");
+      }
+      discardPermanentFromPlay(state, playerId, `ability.basic_${offer.school}_magic` as CardId);
     }
     player.combatStats.expertUsesSpentThisRound += 1;
     appendEvent(state, {

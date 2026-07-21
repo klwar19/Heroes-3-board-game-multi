@@ -237,7 +237,7 @@ describe("AUDIT Basic X Magic permanent (fetch + expert +3)", () => {
     });
   }
 
-  it("Basic Earth Magic expert +3 empowers Implosion (damage 4)", () => {
+  it("Basic Earth Magic expert +3 empowers Implosion (damage 4) and discards the permanent", () => {
     const state = combatReady("basic-exp-earth", ["spell.implosion"]);
     state.players.p1.permanents = ["ability.basic_earth_magic"];
     const cast = getLegalActions(state, "p1").find(
@@ -252,7 +252,9 @@ describe("AUDIT Basic X Magic permanent (fetch + expert +3)", () => {
     expect(expert, "Basic Earth expert should be offered").toBeTruthy();
     s = passAll(applyOk(s, expert!.action));
     expect(s.combat!.units.unit_p2_skeletons.damage).toBe(4);
-    expect(s.players.p1.permanents).toEqual(["ability.basic_earth_magic"]);
+    // The +3 consumes the fetch permanent (like the School-of-Magic expert above).
+    expect(s.players.p1.permanents).toEqual([]);
+    expect(s.players.p1.discard).toContain("ability.basic_earth_magic");
   });
 
   it("Basic Fire Magic expert is NOT offered for Air Lightning Bolt — CONTROL", () => {

@@ -11034,7 +11034,7 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // Basic X Magic (Conflux fetch permanent) +3 Power, folded up front as part of
   // the cast (the caster picked the `useSchoolFetchExpert` cast variant) instead
   // of playing the standalone USE_SCHOOL_FETCH_EXPERT reaction after the cast. The
-  // permanent STAYS in play; one crown is spent. applySchoolFetchExpert re-derives
+  // permanent is DISCARDED (consumed); one crown is spent. applySchoolFetchExpert re-derives
   // and validates everything (fetch present, school match, not a scroll, a crown
   // left, once per stack), so a forged flag can only fail cleanly — never boost
   // for free. Folded before SPELL_CAST_STARTED so reactions (Resistance) see the
@@ -12860,8 +12860,9 @@ const SCHOOL_FETCH_EXPERT_POWER = 3;
  * Basic X Magic (the in-play spell-fetch permanent): spend an expert use to add
  * +3 Power to a matching-school spell you are casting now — a normal cast (into
  * the cast's School power) or an instant played into an attack (into your own
- * attack-window Power pool, re-derived like any other paid Power). The fetch
- * permanent stays in play; nothing is discarded. Once per stack per player.
+ * attack-window Power pool, re-derived like any other paid Power). Using the +3
+ * CONSUMES the fetch permanent (mirroring the Tower School-of-Magic expert): the
+ * matching Basic X Magic card is discarded from play. Once per stack per player.
  */
 function applySchoolFetchExpert(
   state: GameState,
@@ -12915,6 +12916,11 @@ function applySchoolFetchExpert(
 
   usedBy.push(action.playerId);
   player.combatStats.expertUsesSpentThisRound += 1;
+  // BINH rule: the +3 CONSUMES the fetch permanent, so discard the matching Basic
+  // X Magic card from play (like the School-of-Magic expert). A legacy
+  // SPELL_SCHOOL_FETCH active-effect fetch carries no card — this is then a no-op,
+  // and the once-per-stack `usedBy` guard still blocks a second dip on this cast.
+  discardPermanentFromPlay(state, action.playerId, `ability.basic_${action.school}_magic` as CardId);
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId: action.playerId,

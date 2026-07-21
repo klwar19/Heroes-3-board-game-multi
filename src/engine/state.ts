@@ -12654,10 +12654,15 @@ export type PendingChoice =
               value: number;
             }
           | {
-              /** Basic X Magic permanent: crown for +3, permanent stays (once per cast). */
+              /**
+               * Basic X Magic +3: crown for +3, once per cast. Consumes its source —
+               * the in-play fetch permanent by default, or the hand card named by
+               * `fromHandCardId` when the +3 comes from a Basic X Magic held in hand.
+               */
               kind: "school-fetch-expert";
               school: "air" | "earth" | "fire" | "water";
               value: number;
+              fromHandCardId?: CardId;
             }
         >;
         /** Basic Magic expert already spent on this cast (once per cast, like combat). */
