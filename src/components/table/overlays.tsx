@@ -1946,6 +1946,64 @@ export function DeckSearchModeModal({
   const discardPickIds = mode.discardPickCardIds ?? [];
   const discardOptionCount = discardPickIds.length > 0 ? discardPickIds.length : mode.hasDiscardTop ? 1 : 0;
 
+  // Group the look-alike tiles into labeled sections so they no longer read as a
+  // wall of near-identical cards — the Search first, then the discard takes, then
+  // the School-of-Magic fetch. This is PRESENTATION only: the option ORDER and
+  // each tile's `optionIndex` (which drive CHOOSE_OPTION resolution) are untouched;
+  // we just partition the SAME actions by index into headed rows.
+  const renderOption = (legal: (typeof optionActions)[number]) => {
+    const optionIndex = legal.action.optionIndex;
+    const isSearch = optionIndex === 0;
+    const isDiscard =
+      Boolean(mode.hasDiscardTop) && optionIndex >= 1 && optionIndex <= discardOptionCount;
+    // Multi-pick spell takes show EACH pick's own card face; the classic single
+    // take keeps the pile top.
+    const discardId = isDiscard
+      ? discardPickIds.length > 0
+        ? discardPickIds[optionIndex - 1] ?? null
+        : discardTopId
+      : null;
+    return (
+      <div className="searchCardWrap" key={optionIndex}>
+        <button
+          className={`searchCard${isDiscard ? " discardPick" : ""}`}
+          onClick={() => onAction(legal.action)}
+          type="button"
+        >
+          {isSearch ? (
+            <CardBack className="searchCardImage" deckId={mode.deckId} />
+          ) : discardId ? (
+            <CardFrame cardId={discardId} className="searchCardImage" />
+          ) : (
+            <CardBack className="searchCardImage" deckId={mode.deckId} />
+          )}
+          <span>{legal.label}</span>
+        </button>
+        {discardId ? (
+          <ZoomButton label={`Read ${cardName(discardId)}`} onZoom={() => zoomCard(discardId)} />
+        ) : null}
+      </div>
+    );
+  };
+
+  const searchOptions = optionActions.filter((legal) => legal.action.optionIndex === 0);
+  const discardOptions = optionActions.filter(
+    (legal) =>
+      Boolean(mode.hasDiscardTop) &&
+      legal.action.optionIndex >= 1 &&
+      legal.action.optionIndex <= discardOptionCount
+  );
+  const fetchOptions = optionActions.filter((legal) => legal.action.optionIndex > discardOptionCount);
+  const sections: { key: string; heading: string; options: typeof optionActions }[] = [
+    { key: "search", heading: "Search the deck", options: searchOptions },
+    {
+      key: "discard",
+      heading: mode.deckId === "spells" ? "…or take a discarded spell" : "…or take the top discard",
+      options: discardOptions
+    },
+    { key: "fetch", heading: "…or draw from your School of Magic instead", options: fetchOptions }
+  ];
+
   return (
     <div className="modalBackdrop" role="dialog" aria-label={choice.prompt}>
       <div className="searchModal deckSearchModeModal">
@@ -1953,41 +2011,15 @@ export function DeckSearchModeModal({
           <strong>{choice.prompt}</strong>
           <span>Search reveals the top cards and you keep one. Taking the discard skips the search.</span>
         </header>
-        <div className="searchCards">
-          {optionActions.map((legal) => {
-            const optionIndex = legal.action.optionIndex;
-            const isSearch = optionIndex === 0;
-            const isDiscard =
-              Boolean(mode.hasDiscardTop) && optionIndex >= 1 && optionIndex <= discardOptionCount;
-            // Multi-pick spell takes show EACH pick's own card face; the
-            // classic single take keeps the pile top.
-            const discardId = isDiscard
-              ? discardPickIds.length > 0
-                ? discardPickIds[optionIndex - 1] ?? null
-                : discardTopId
-              : null;
-            return (
-              <div className="searchCardWrap" key={optionIndex}>
-                <button
-                  className={`searchCard${isDiscard ? " discardPick" : ""}`}
-                  onClick={() => onAction(legal.action)}
-                  type="button"
-                >
-                  {isSearch ? (
-                    <CardBack className="searchCardImage" deckId={mode.deckId} />
-                  ) : discardId ? (
-                    <CardFrame cardId={discardId} className="searchCardImage" />
-                  ) : (
-                    <CardBack className="searchCardImage" deckId={mode.deckId} />
-                  )}
-                  <span>{legal.label}</span>
-                </button>
-                {discardId ? (
-                  <ZoomButton label={`Read ${cardName(discardId)}`} onZoom={() => zoomCard(discardId)} />
-                ) : null}
-              </div>
-            );
-          })}
+        <div className="searchCards deckSearchSections">
+          {sections.map((section) =>
+            section.options.length > 0 ? (
+              <section className="deckSearchSection" key={section.key}>
+                <span className="deckSearchSectionLabel">{section.heading}</span>
+                <div className="deckSearchSectionRow">{section.options.map(renderOption)}</div>
+              </section>
+            ) : null
+          )}
         </div>
       </div>
     </div>

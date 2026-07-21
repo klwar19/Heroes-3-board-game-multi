@@ -13312,10 +13312,16 @@ export function openSharedDeckSearch(
   const hasDiscardTake = spellDiscardPicks.length > 0 || Boolean(discardTopId);
 
   if (hasDiscardTake || schoolFetch.length > 0) {
-    // Show the base search size in the label only — the real count override
-    // (Scouting) is consumed when the player actually reveals, not here, so an
-    // up-front discard/fetch leaves any override intact for a later search.
-    const options: { label: string }[] = [{ label: `Search (${baseCount}) — look at the top cards and keep one` }];
+    // Label the Search HONESTLY. A standing SEARCH_COUNT_OVERRIDE (a pre-played
+    // Scouting) is consumed only when the player actually reveals, not here — so
+    // an up-front discard/fetch still leaves it intact for a later search — but
+    // the menu must show the count a Search would ACTUALLY reveal, naming its
+    // source, so "Search (2)" never silently peeks 3 cards (the reported bug).
+    const widen = searchCountOverrideLabel(state, playerId, baseCount);
+    const searchLabel = widen
+      ? `Search (${widen.count}) — ${widen.source} override (base ${baseCount})`
+      : `Search (${baseCount}) — look at the top cards and keep one`;
+    const options: { label: string }[] = [{ label: searchLabel }];
     if (spellDiscardPicks.length > 0) {
       for (const cardId of spellDiscardPicks) {
         const isTop = cardId === discardTop;
@@ -13418,6 +13424,38 @@ function hasSearchCountOverride(state: GameState, playerId: PlayerId): boolean {
       effect.controllerId === playerId &&
       effect.modifiers.some((modifier) => modifier.type === "SEARCH_COUNT_OVERRIDE")
   );
+}
+
+/**
+ * When a standing SEARCH_COUNT_OVERRIDE (a pre-played Scouting) would widen this
+ * Search beyond `baseCount`, the effective reveal count and the override's name;
+ * otherwise null. The override is consumed only at reveal (applySearchCountEffects),
+ * so an up-front discard/fetch menu leaves it intact for a later search — but the
+ * menu's "Search (N)" label must still show what a Search would ACTUALLY reveal, or
+ * it disagrees with the reveal (a "Search (2)" label that then peeks 3 cards, the
+ * reported bug). Mirrors applySearchCountEffects' first-effect/max read exactly so
+ * label == reveal.
+ */
+function searchCountOverrideLabel(
+  state: GameState,
+  playerId: PlayerId,
+  baseCount: number
+): { count: number; source: string } | null {
+  const effect = state.activeEffects.find(
+    (candidate) =>
+      candidate.controllerId === playerId &&
+      candidate.modifiers.some((modifier) => modifier.type === "SEARCH_COUNT_OVERRIDE")
+  );
+  if (!effect) {
+    return null;
+  }
+  let count = baseCount;
+  for (const modifier of effect.modifiers) {
+    if (modifier.type === "SEARCH_COUNT_OVERRIDE") {
+      count = Math.max(count, modifier.count);
+    }
+  }
+  return count > baseCount ? { count, source: effect.name } : null;
 }
 
 /**

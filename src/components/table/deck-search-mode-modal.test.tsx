@@ -151,6 +151,66 @@ describe("DeckSearchModeModal — search back + discard face", () => {
     expect(hasteBtn.className).toMatch(/discardPick/);
   });
 
+  it("groups the look-alike tiles under section headings WITHOUT reordering the option indices", () => {
+    const state = createAdventureGameState({ seed: "deck-search-mode-sections", rollFirstPlayer: false });
+    state.activePlayerId = "p1";
+    state.decks.spells.discardPile = ["spell.bless", "spell.haste"];
+    state.pendingChoice = {
+      id: "choice_search_sections",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Search the spells deck, or draw from a School of Magic instead?",
+      options: [
+        { label: "Search (2) — look at the top cards and keep one" },
+        { label: "Take discarded Bless" },
+        { label: "Take discarded Haste (face-up top)" },
+        { label: "Draw the first Fire Magic spell — take it into hand" }
+      ],
+      context: "deck-search-mode",
+      deckSearchMode: {
+        deckId: "spells",
+        count: 2,
+        hasDiscardTop: true,
+        discardPickCardIds: ["spell.bless", "spell.haste"],
+        schoolFetch: ["fire"]
+      },
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+
+    const onAction = vi.fn();
+    wrap(
+      <DeckSearchModeModal
+        legalActions={getLegalActions(state, "p1")}
+        onAction={onAction}
+        state={state}
+        view={getPlayerView(state, "p1")}
+        viewerPlayerId="p1"
+      />
+    );
+
+    // The three grouping headings read as distinct sections, not one wall of cards.
+    expect(screen.getByText(/^Search the deck$/i)).toBeTruthy();
+    expect(screen.getByText(/take a discarded spell/i)).toBeTruthy();
+    expect(screen.getByText(/draw from your School of Magic/i)).toBeTruthy();
+
+    // Indices are UNCHANGED (grouping is visual only): the Fire fetch is option 3,
+    // the discard takes are 1 & 2, the Search is 0.
+    fireEvent.click(screen.getByRole("button", { name: /Draw the first Fire Magic spell/i }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "CHOOSE_OPTION", optionIndex: 3, choiceId: "choice_search_sections" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Take discarded Haste/i }));
+    expect(onAction).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: "CHOOSE_OPTION", optionIndex: 2, choiceId: "choice_search_sections" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Search \(2\)/i }));
+    expect(onAction).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: "CHOOSE_OPTION", optionIndex: 0, choiceId: "choice_search_sections" })
+    );
+  });
+
   it("renders nothing for a non-owner (waiting strip only, no modal)", () => {
     const state = openDeckSearchMode("ability.attack");
     const view = getPlayerView(state, "p2");

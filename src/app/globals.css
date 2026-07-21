@@ -2959,6 +2959,36 @@ button.battleCell {
   width: min(640px, 94vw);
 }
 
+/* Group the look-alike option tiles under small headings (Search / take-discard /
+   School fetch) so they read as distinct choices, not one wall of cards. Stacks
+   the sections in a column; each section's own tiles keep the flex-wrap row. */
+.searchCards.deckSearchSections {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.deckSearchSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deckSearchSectionLabel {
+  color: var(--muted, rgb(243 239 228 / 62%));
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.deckSearchSectionRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
 /* Tournament Morale token — "discard all revealed, Search (X) again" row. */
 .searchRepeatRow {
   display: flex;
