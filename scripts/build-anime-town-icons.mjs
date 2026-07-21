@@ -21,7 +21,9 @@ const towns = [
   // Fuyuki City: the central citadel/summoning court sits mid-frame.
   { faction: "fuyuki", source: "anime/towns/fuyuki-city-full.webp", left: 240 },
   // Azure Breeze Sect: the golden-core tower cluster right of centre.
-  { faction: "azure_breeze", source: "anime/towns/azure-breeze-sect-full.webp", left: 320 }
+  { faction: "azure_breeze", source: "anime/towns/azure-breeze-sect-full.webp", left: 320 },
+  // Hidden Leaf Village: central gate / village core.
+  { faction: "hidden_leaf", source: "anime/towns/hidden-leaf-village-full.webp", left: 260 }
 ];
 
 for (const town of towns) {
@@ -49,6 +51,14 @@ const portraits = [
   [
     "anime/units/azure-breeze/units-azure-breeze-golden-true-inheritors-few.webp",
     "anime/units/portraits/azure-breeze-true-inheritors.webp"
+  ],
+  [
+    "anime/units/hidden-leaf/units-hidden-leaf-golden-jinchuriki-few.webp",
+    "anime/units/portraits/hidden-leaf-jinchuriki.webp"
+  ],
+  [
+    "anime/units/hidden-leaf/units-hidden-leaf-silver-jonin-few.webp",
+    "anime/units/portraits/hidden-leaf-jonin.webp"
   ]
 ];
 

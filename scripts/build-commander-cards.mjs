@@ -157,6 +157,13 @@ const COMMANDERS = [
       "One With the Blade: adopts an Attack or Defense stance.",
       "Sword Intent: empowers an allied ranged disciple."
     ]
+  },
+  {
+    slug: "might_guy", name: "Might Guy", faction: "Hidden Leaf Village",
+    abilities: [
+      "Eight Gates: chooses +1 Attack or +1 Defense before combat.",
+      "Body Flicker: may cast Haste (initiative-shift)."
+    ]
   }
 ];
 
