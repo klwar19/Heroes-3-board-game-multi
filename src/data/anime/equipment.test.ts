@@ -40,8 +40,8 @@ const equipmentArtOnDisk = (id: string) =>
 describe("anime equipment catalog integrity", () => {
   it("ships every item with a grade I/II/III, cost locked to grade, and package", () => {
     const items = listEquipmentDefinitions();
-    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) + classic line (6) = 24.
-    expect(items).toHaveLength(24);
+    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) + classic line (6) + shinobi (3) = 27.
+    expect(items).toHaveLength(27);
     const bySlug = (id: string) => getEquipmentDefinition(id)!;
 
     for (const def of items) {
@@ -106,6 +106,17 @@ describe("anime equipment catalog integrity", () => {
     expect(classic.filter((def) => def.grade === "I")).toHaveLength(2);
     expect(classic.filter((def) => def.grade === "II")).toHaveLength(2);
     expect(classic.filter((def) => def.grade === "III")).toHaveLength(2);
+
+    // Hidden Leaf Village bespoke "shinobi" line (§3.13): one per grade, spread
+    // across weapon / mount / accessory (Kunai Pouch I, Body-Flicker Tabi II,
+    // Sage Chakra Charm III).
+    expect(bySlug(EQUIPMENT_IDS.shinobiKunaiPouch)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "shinobi" });
+    expect(bySlug(EQUIPMENT_IDS.bodyFlickerTabi)).toMatchObject({ slot: "mount", grade: "II", cost: 6, package: "shinobi" });
+    expect(bySlug(EQUIPMENT_IDS.sageChakraCharm)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "shinobi" });
+    const shinobi = items.filter((def) => def.package === "shinobi");
+    expect(shinobi).toHaveLength(3);
+    expect(new Set(shinobi.map((def) => def.grade))).toEqual(new Set(["I", "II", "III"]));
+    expect(new Set(shinobi.map((def) => def.slot))).toEqual(new Set(["weapon", "mount", "accessory"]));
   });
 
   it("covers all three grades with multiple items each", () => {
@@ -210,24 +221,42 @@ describe("anime equipment catalog integrity", () => {
     expect(equipmentPackagesForFaction(undefined)).toEqual(["classic"]);
     expect(equipmentPackagesForFaction("azure_breeze")).toEqual(["anime-xianxia"]);
     expect(equipmentPackagesForFaction("fuyuki")).toEqual(["anime-isekai"]);
+    // Hidden Leaf Village is BESPOKE — special-cased ahead of the register switch
+    // to its own shinobi line, NOT the anime-register default isekai (fuyuki keeps).
+    expect(equipmentPackagesForFaction("hidden_leaf")).toEqual(["shinobi"]);
 
     // The register LINE is the ids of every item in that package.
     const classicLine = equipmentRegisterLineFor("castle");
     expect(classicLine).toContain(EQUIPMENT_IDS.crusadersPoleaxe);
     expect(classicLine).toContain(EQUIPMENT_IDS.wardensAegis);
     expect(classicLine).toHaveLength(6);
-    // CONTROL: a classic visitor's line carries NO xianxia/isekai exclusives.
+    // CONTROL: a classic visitor's line carries NO xianxia/isekai/shinobi exclusives.
     expect(classicLine).not.toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia
     expect(classicLine).not.toContain(EQUIPMENT_IDS.adventurersBlade); // isekai
+    expect(classicLine).not.toContain(EQUIPMENT_IDS.shinobiKunaiPouch); // shinobi
 
     const wuxiaLine = equipmentRegisterLineFor("azure_breeze");
     expect(wuxiaLine).toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia exclusive
     expect(wuxiaLine).not.toContain(EQUIPMENT_IDS.adventurersBlade); // NOT isekai
     expect(wuxiaLine).not.toContain(EQUIPMENT_IDS.crusadersPoleaxe); // NOT classic
+    expect(wuxiaLine).not.toContain(EQUIPMENT_IDS.shinobiKunaiPouch); // NOT shinobi
 
     const isekaiLine = equipmentRegisterLineFor("fuyuki");
     expect(isekaiLine).toContain(EQUIPMENT_IDS.adventurersBlade); // isekai exclusive
     expect(isekaiLine).not.toContain(EQUIPMENT_IDS.ironBloodSword); // NOT xianxia
+    // CONTROL: fuyuki keeps the isekai line — shinobi never leaks to the shared
+    // "anime" register (that special-case is hidden_leaf only).
+    expect(isekaiLine).not.toContain(EQUIPMENT_IDS.shinobiKunaiPouch);
+
+    // The shinobi line is EXACTLY the three Hidden Leaf items and nothing else.
+    const shinobiLine = equipmentRegisterLineFor("hidden_leaf");
+    expect(new Set(shinobiLine)).toEqual(
+      new Set([EQUIPMENT_IDS.shinobiKunaiPouch, EQUIPMENT_IDS.bodyFlickerTabi, EQUIPMENT_IDS.sageChakraCharm])
+    );
+    // CONTROL: hidden_leaf's line carries none of the other registers' exclusives.
+    expect(shinobiLine).not.toContain(EQUIPMENT_IDS.adventurersBlade); // isekai
+    expect(shinobiLine).not.toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia
+    expect(shinobiLine).not.toContain(EQUIPMENT_IDS.crusadersPoleaxe); // classic
   });
 
   it("every package has a short UI flavour label", () => {
@@ -235,5 +264,6 @@ describe("anime equipment catalog integrity", () => {
       expect(EQUIPMENT_PACKAGE_LABEL[def.package], def.id).toBeTruthy();
     }
     expect(EQUIPMENT_PACKAGE_LABEL.classic).toBe("classic");
+    expect(EQUIPMENT_PACKAGE_LABEL.shinobi).toBe("shinobi");
   });
 });

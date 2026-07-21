@@ -15,6 +15,8 @@ const fuyukiCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "f
   `/assets/anime/units/fuyuki/units-fuyuki-${tier}-${slug}-${side}.webp`;
 const azureCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "few" | "pack") =>
   `/assets/anime/units/azure-breeze/units-azure-breeze-${tier}-${slug}-${side}.webp`;
+const hiddenLeafCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "few" | "pack") =>
+  `/assets/anime/units/hidden-leaf/units-hidden-leaf-${tier}-${slug}-${side}.webp`;
 
 /** Two complete seven-line faction rosters: one anime/isekai, one wuxia. */
 export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
@@ -138,6 +140,67 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     few: { attack: 5, defense: 3, health: 8, initiative: 3, cost: { gold: 15, valuables: 1 }, abilities: ["wraith-heal-1"], abilityText: "Verdant Pulse — on activation, heal 1 damage.", cardImage: azureCard("golden", "mountain-guardian", "few") },
     pack: { attack: 6, defense: 3, health: 9, initiative: 3, cost: { gold: 23, valuables: 2 }, abilities: ["wraith-heal-2", "unlimited-retaliation"], abilityText: "Returning Earth — heal 2 on activation; unlimited Retaliation.", cardImage: azureCard("golden", "mountain-guardian", "pack") },
     source
+  },
+
+  // Hidden Leaf Village printed levels (3 bronze / 2 silver / 2 gold) — CANONICAL
+  // recruit order = object key order (the faction derives `units` from this order
+  // via a filter, exactly like Fuyuki). Swarm identity: fast + frail + cheap on
+  // the bronze line, control/tank on silver, AoE/armored on gold. Every ability
+  // tag resolves to an IMPLEMENTED unitAbilities entry; abilityText restates ONLY
+  // what that arm runs, shinobi-flavored. A Few side listed [] carries no ability
+  // and (per CLAUDE.md §2) no abilityText.
+  // --- BRONZE (3) ----------------------------------------------------------
+  "hidden_leaf.genin_squad": {
+    id: "hidden_leaf.genin_squad", name: "Genin Squad", faction: "hidden_leaf", tier: "bronze", type: "ground",
+    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 2 }, abilities: [], cardImage: hiddenLeafCard("bronze", "genin-squad", "few") },
+    // Genin Pack reuses the EXACT id Azure's Outer Sect Disciples Pack carries
+    // (wog-attack-when-attacking-1 = OWN_ATTACK_FLAT_BONUS +1, own attacks only).
+    pack: { attack: 2, defense: 1, health: 2, initiative: 8, cost: { gold: 3 }, abilities: ["wog-attack-when-attacking-1"], abilityText: "Teamwork Formation — this unit gains +1 Attack on its own attacks (never on a Retaliation Attack).", cardImage: hiddenLeafCard("bronze", "genin-squad", "pack") },
+    source
+  },
+  "hidden_leaf.medical_nin": {
+    id: "hidden_leaf.medical_nin", name: "Medical-Nin", faction: "hidden_leaf", tier: "bronze", type: "ground",
+    few: { attack: 1, defense: 1, health: 2, initiative: 6, cost: { gold: 2 }, abilities: [], cardImage: hiddenLeafCard("bronze", "medical-nin", "few") },
+    pack: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["enchanter-heal-or-buff"], abilityText: "Mystical Palm — [activation] remove up to 2 damage from a chosen friendly unit; only if no friendly unit can be healed, instead gain +1 Attack for the combat round. It can not heal itself, and this does not end the activation.", cardImage: hiddenLeafCard("bronze", "medical-nin", "pack") },
+    source
+  },
+  // LV3 bronze RANGED skirmisher.
+  "hidden_leaf.anbu": {
+    id: "hidden_leaf.anbu", name: "Anbu Black Ops", faction: "hidden_leaf", tier: "bronze", type: "ranged",
+    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 4 }, abilities: ["ignore-combat-penalties"], abilityText: "Shadow Step — ignores the Combat penalty for attacking an adjacent unit (the long-range / behind-wall penalty still applies).", cardImage: hiddenLeafCard("bronze", "anbu", "few") },
+    pack: { attack: 3, defense: 1, health: 2, initiative: 8, cost: { gold: 5 }, abilities: ["ignore-combat-penalties", "teleport-move"], abilityText: "Body Flicker — ignores the adjacent-unit Combat penalty; as a regular move, may move to any empty space.", cardImage: hiddenLeafCard("bronze", "anbu", "pack") },
+    source
+  },
+  // --- SILVER (2) ----------------------------------------------------------
+  // LV4 silver RANGED elite.
+  "hidden_leaf.jonin": {
+    id: "hidden_leaf.jonin", name: "Jonin", faction: "hidden_leaf", tier: "silver", type: "ranged",
+    few: { attack: 3, defense: 2, health: 3, initiative: 6, cost: { gold: 7 }, abilities: ["ignore-combat-penalties"], abilityText: "Kunai Barrage — ignores the Combat penalty for attacking an adjacent unit (the long-range / behind-wall penalty still applies).", cardImage: hiddenLeafCard("silver", "jonin", "few") },
+    pack: { attack: 4, defense: 2, health: 4, initiative: 7, cost: { gold: 10 }, abilities: ["ignore-all-combat-penalties", "ignores-retaliation"], abilityText: "Jonin Mastery — ignores all ranged Combat penalties; its attacks never provoke a Retaliation Attack.", cardImage: hiddenLeafCard("silver", "jonin", "pack") },
+    source
+  },
+  // LV5 silver ground TANK.
+  "hidden_leaf.giant_toad": {
+    id: "hidden_leaf.giant_toad", name: "Giant Toad", faction: "hidden_leaf", tier: "silver", type: "ground",
+    few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "Toad Hide — always treated as if it had a Defense token: it rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).", cardImage: hiddenLeafCard("silver", "giant-toad", "few") },
+    pack: { attack: 4, defense: 3, health: 5, initiative: 4, cost: { gold: 11 }, abilities: ["commander-defense-token", "automaton-detonate-1"], abilityText: "Toad Hide — always rolls the Defend die when attacked; Smoke Burst — when this unit is defeated, deal 1 damage to each adjacent unit.", cardImage: hiddenLeafCard("silver", "giant-toad", "pack") },
+    source
+  },
+  // --- GOLD (2) ------------------------------------------------------------
+  // LV6 gold AoE beast — Few splashes (Chakra Burst), Pack second-attacks all
+  // adjacent enemies (the Few→Pack ability swap is the mutation control).
+  "hidden_leaf.jinchuriki": {
+    id: "hidden_leaf.jinchuriki", name: "Jinchuriki", faction: "hidden_leaf", tier: "gold", type: "ground",
+    few: { attack: 5, defense: 2, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["jinchuriki-chakra-burst"], abilityText: "Chakra Burst — after an attack made by this unit resolves, deal 1 damage to every other unit adjacent to it — friend AND foe. Not an attack: no Retaliation, not reduced by Defense, not subject to per-attack damage caps. Does not fire on a Retaliation Attack.", cardImage: hiddenLeafCard("golden", "jinchuriki", "few") },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 7, cost: { gold: 20, valuables: 2 }, abilities: ["magic-elemental-attack-all-enemies"], abilityText: "Tailed-Beast Cloak — after its attack, this unit makes a full separate attack against every other enemy unit adjacent to it. None of these follow-ups retaliates or chains.", cardImage: hiddenLeafCard("golden", "jinchuriki", "pack") },
+    source
+  },
+  // LV7 gold armored avatar.
+  "hidden_leaf.susanoo": {
+    id: "hidden_leaf.susanoo", name: "Susanoo Avatar", faction: "hidden_leaf", tier: "gold", type: "ground",
+    few: { attack: 5, defense: 3, health: 6, initiative: 4, cost: { gold: 15, valuables: 1 }, abilities: ["nix-damage-cap"], abilityText: "Ethereal Armor — this unit cannot take more than 4 damage from a single attack (Spell and ability damage are not capped).", cardImage: hiddenLeafCard("golden", "susanoo", "few") },
+    pack: { attack: 6, defense: 3, health: 7, initiative: 4, cost: { gold: 22, valuables: 2 }, abilities: ["nix-damage-cap", "titan-ignore-ongoing"], abilityText: "Ethereal Armor — cannot take more than 4 damage from a single attack; Unbreakable Will — ignore any ongoing effects on this unit.", cardImage: hiddenLeafCard("golden", "susanoo", "pack") },
+    source
   }
 };
 
@@ -158,13 +221,27 @@ const animeTownBuildingBar: Record<string, number> = {
   "azure_breeze.alchemy_pavilion": 4,
   "azure_breeze.city_hall": 5,
   "azure_breeze.citadel": 6,
-  "azure_breeze.dwelling_gold": 7
+  "azure_breeze.dwelling_gold": 7,
+  // Hidden Leaf — mirrors Fuyuki's layout: the "extra" building (Chunin Arena)
+  // shares the LV4 (dwelling_silver) bar; every other bar is a single building.
+  "hidden_leaf.city_hall": 1,
+  "hidden_leaf.dwelling_bronze": 2,
+  "hidden_leaf.summoning_shrine": 3,
+  "hidden_leaf.dwelling_silver": 4,
+  "hidden_leaf.chunin_arena": 4,
+  "hidden_leaf.mage_guild": 5,
+  "hidden_leaf.citadel": 6,
+  "hidden_leaf.dwelling_gold": 7
 };
+
+/** The dashed art-file prefix for a faction's bar slices (id keeps the underscore). */
+const barArtPrefix = (faction: "fuyuki" | "azure_breeze" | "hidden_leaf"): string =>
+  faction === "azure_breeze" ? "azure-breeze" : faction === "hidden_leaf" ? "hidden-leaf" : faction;
 
 const building = (
   id: string,
   name: string,
-  faction: "fuyuki" | "azure_breeze",
+  faction: "fuyuki" | "azure_breeze" | "hidden_leaf",
   cost: TownBuildingDefinition["cost"],
   effect: NonNullable<TownBuildingDefinition["effect"]>,
   prerequisites?: string[]
@@ -177,7 +254,7 @@ const building = (
   prerequisites,
   implementationStatus: "implemented",
   assets: {
-    image: `/assets/town-board/${faction === "azure_breeze" ? "azure-breeze" : faction}-bar-${animeTownBuildingBar[id]}.webp`
+    image: `/assets/town-board/${barArtPrefix(faction)}-bar-${animeTownBuildingBar[id]}.webp`
   },
   source
 });
@@ -201,7 +278,18 @@ export const animeTownBuildingDefinitions: Record<string, TownBuildingDefinition
   // Gold dwelling unlocks LV6 Core Formation Master + LV7 Mountain Guardian.
   "azure_breeze.dwelling_gold": building("azure_breeze.dwelling_gold", "Golden Core Summit", "azure_breeze", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["azure_breeze.dwelling_silver"]),
   "azure_breeze.alchemy_pavilion": building("azure_breeze.alchemy_pavilion", "Alchemy Pavilion", "azure_breeze", { gold: 7, buildingMaterials: 4 }, { type: "RESOURCE_ROUND_RESOURCE_DIE" }),
-  "azure_breeze.sword_pavilion": building("azure_breeze.sword_pavilion", "Sword Pavilion", "azure_breeze", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 })
+  "azure_breeze.sword_pavilion": building("azure_breeze.sword_pavilion", "Sword Pavilion", "azure_breeze", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 }),
+
+  // Hidden Leaf — shared archetypes only (ZERO new TownBuildingEffect types),
+  // costs mirroring the Fuyuki/Azure twins per archetype.
+  "hidden_leaf.city_hall": building("hidden_leaf.city_hall", "Mission Board", "hidden_leaf", { gold: 10, buildingMaterials: 4 }, { type: "RESOURCE_ROUND_CHOICE", options: [{ label: "Gain 3 gold", gold: 3 }, { label: "Gain 1 valuables", valuables: 1 }] }),
+  "hidden_leaf.citadel": building("hidden_leaf.citadel", "Village Walls", "hidden_leaf", { gold: 8, buildingMaterials: 5, valuables: 1 }, { type: "UNLOCK_REINFORCE" }),
+  "hidden_leaf.mage_guild": { ...building("hidden_leaf.mage_guild", "Scroll Vault", "hidden_leaf", { gold: 4, buildingMaterials: 2, valuables: 1 }, { type: "MAGE_GUILD" }), spellBookCost: 5 },
+  "hidden_leaf.dwelling_bronze": building("hidden_leaf.dwelling_bronze", "Ninja Academy", "hidden_leaf", { gold: 5, buildingMaterials: 3, valuables: 1 }, { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" }),
+  "hidden_leaf.dwelling_silver": building("hidden_leaf.dwelling_silver", "Forest of Death", "hidden_leaf", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["hidden_leaf.dwelling_bronze"]),
+  "hidden_leaf.dwelling_gold": building("hidden_leaf.dwelling_gold", "Sanctum of the Tailed Beast", "hidden_leaf", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["hidden_leaf.dwelling_silver"]),
+  "hidden_leaf.chunin_arena": building("hidden_leaf.chunin_arena", "Chunin Exam Arena", "hidden_leaf", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 }),
+  "hidden_leaf.summoning_shrine": building("hidden_leaf.summoning_shrine", "Summoning Pact Shrine", "hidden_leaf", { gold: 7, buildingMaterials: 4, valuables: 1 }, { type: "TURN_START_PORTAL_SUMMON" })
 };
 
 export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
@@ -244,6 +332,27 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     startingAbilityCardId: "ability.wisdom",
     specialtyCardIds: { 1: "specialty.lingxi.1", 4: "specialty.lingxi.4", 6: "specialty.lingxi.6" },
     portrait: "/assets/anime/heroes/lingxi.png", source
+  },
+  naruto: {
+    id: "naruto", name: "Naruto Uzumaki", faction: "hidden_leaf", class: "Jinchuriki", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    specialtyCardIds: { 1: "specialty.naruto.1", 4: "specialty.naruto.4", 6: "specialty.naruto.6" },
+    portrait: "/assets/anime/heroes/naruto.png", source
+  },
+  sasuke: {
+    id: "sasuke", name: "Sasuke Uchiha", faction: "hidden_leaf", class: "Uchiha Avenger", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: { 1: "specialty.sasuke.1", 4: "specialty.sasuke.4", 6: "specialty.sasuke.6" },
+    portrait: "/assets/anime/heroes/sasuke.png", source
+  },
+  tsunade: {
+    id: "tsunade", name: "Tsunade", faction: "hidden_leaf", class: "Legendary Medic", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.tsunade.1", 4: "specialty.tsunade.4", 6: "specialty.tsunade.6" },
+    portrait: "/assets/anime/heroes/tsunade.png", source
   }
 };
 
@@ -272,5 +381,14 @@ export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "azure_breeze").map((item) => item.id),
     units: [...AZURE_BREEZE_UNIT_ORDER],
     townImage: "/assets/anime/towns/azure-breeze-sect-empty-v2.webp", source
+  },
+  hidden_leaf: {
+    id: "hidden_leaf", name: "Hidden Leaf Village", color: "#4f9d45", startingTileId: "L-S1",
+    heroes: ["naruto", "sasuke", "tsunade"],
+    // `units` derives from the animeTownUnitDefinitions insertion order (bronze →
+    // gold), exactly like Fuyuki — no explicit order array (nothing consumes one).
+    buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "hidden_leaf").map((item) => item.id),
+    units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "hidden_leaf").map((item) => item.id),
+    townImage: "/assets/anime/towns/hidden-leaf-village-empty.webp", source
   }
 };

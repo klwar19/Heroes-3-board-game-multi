@@ -162,6 +162,15 @@ const creatureVoices: Record<string, string> = {
   true_inheritors: "swordsman",
   core_master: "mage",
   mountain_guardian: "dendroid-soldier",
+  // Hidden Leaf Village — thematic reuse of complete Heroes III voice sets.
+  // anbu/jonin are RANGED, so their sets resolve a real shoot clip.
+  genin_squad: "rogue", // nimble young shinobi (shares the Assassin's Rogue set)
+  medical_nin: "enchanter", // the support healer — literally the Enchanter voice
+  anbu: "sharpshooter", // elite ranged assassins → precise Sharpshooter (has shoot)
+  jonin: "mage", // ranged ninjutsu casters (has shoot)
+  giant_toad: "behemoth", // huge summoned beast → the Behemoth's roar
+  jinchuriki: "demon", // feral tailed-beast chakra → the Demon set
+  susanoo: "titan", // colossal armored avatar → the Titan set
   // Wake of Gods adaptation: requested H3 voice reuse.
   ghost: "wraith",
   air_messenger: "stone-golem",
@@ -222,7 +231,9 @@ const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
   bulwark: { attack: "titan", move: "titan", defend: "titan", hurt: "titan", death: "titan" },
   // Anime Realms — sword-bearing leaders with fully converted voice sets.
   ruler: { attack: "swordsman", move: "swordsman", defend: "swordsman", hurt: "swordsman", death: "swordsman" },
-  sword_saint: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" }
+  sword_saint: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" },
+  // Hidden Leaf — Might Guy is a bare-fisted taijutsu master → the Monk voice.
+  might_guy: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" }
 };
 
 /** The voice id the table uses for a commander combat unit ("commander:<slug>"). */

@@ -328,6 +328,46 @@ const CARDS = [
       "Armor: the first enemy attack against your units each combat resolves at −1 Attack, and that unit gains a Defense token after the hit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
+  },
+  // ==== Hidden Leaf Village bespoke "shinobi" line (§3.13) — 3 items =========
+  // `placeholder: true` ⇒ no hand-drawn inventory icon yet; the pipeline
+  // synthesises a grade-tinted monogram master so the ornate card FACE (with the
+  // full rules text) still builds. Swap in real icons + drop the flag later.
+  {
+    slug: "shinobi_kunai_pouch",
+    en: "Kunai Pouch",
+    vi: "Túi Ám Khí",
+    grade: "I",
+    slot: "weapon",
+    placeholder: true,
+    rules: [
+      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (main-hero fights; not retaliations).",
+      "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
+    ]
+  },
+  {
+    slug: "body_flicker_tabi",
+    en: "Body-Flicker Tabi",
+    vi: "Hài Súc Địa",
+    grade: "II",
+    slot: "mount",
+    placeholder: true,
+    rules: [
+      "Mount: +1 movement point to your main hero at each turn refresh.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
+    ]
+  },
+  {
+    slug: "sage_chakra_charm",
+    en: "Sage Chakra Charm",
+    vi: "Linh Phù Tiên Nhân",
+    grade: "III",
+    slot: "accessory",
+    placeholder: true,
+    rules: [
+      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
+    ]
   }
 ];
 

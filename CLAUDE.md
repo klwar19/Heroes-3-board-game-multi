@@ -2733,10 +2733,10 @@ Leading with what does NOT run / deliberate limits:
   outfitter Field Overrides; the hero board is a read-only chip display for items.
   (The other hero map actives — HERO_TRAIN / Forced March (§3.11) and the Heavenly
   Tribulation (§5.6) — DO now have a human button via the map `HeroActionsDock`;
-  only equipment purchase does not.) **Art (2026-07): all 24 items ship 512×512
+  only equipment purchase does not.) **Art (2026-07): all 27 items ship 512×512
   inventory icons** (`public/assets/anime/equipment/`, drawn on the hero-board chip
   — `.hbEquipIcon`, art wins over the slot glyph; the 18 anime items are Codex art,
-  the 6 classic items PROCEDURAL placeholders — above; `ANIME_EQUIPMENT_ART_PLACEHOLDERS`
+  the 6 classic + 3 shinobi items PROCEDURAL placeholders — above; `ANIME_EQUIPMENT_ART_PLACEHOLDERS`
   is EMPTY, a future art-less item must be declared there for the glyph fallback)
   **plus a framed Artifact-CARD face each** (`public/assets/anime/equipment/cards/<slug>.webp`);
   **no designer pin for the outfitters** (pool-placed only); **combat items are the
@@ -2751,7 +2751,7 @@ Leading with what does NOT run / deliberate limits:
   item and an "upgrade waiting" hint when a higher-grade bag item exists for a
   filled slot (pure presentation; no new engine action). The hero + commander
   windows already carry the faction `theme-<register>` class (verified). What runs
-  (24 items, each a proven-seam reuse pegged to a core
+  (27 items, each a proven-seam reuse pegged to a core
   magnitude): Iron-Blood Sword = your units' FIRST declared attack each combat +1
   Attack (a per-combat one-shot folded UNCLAMPED in `getAttackStackDetails` beside
   the combat-script delta, consumed at `finishResolvedAttack` when the attack
@@ -2783,6 +2783,17 @@ Leading with what does NOT run / deliberate limits:
   caps at +3 (weapon Adventurer's Blade + armor Alchemist's Satchel + ONE accessory
   — Lucky Coin / Coinward Talisman / Horn of Plenty share the accessory slot); the
   spell-Power and hand-limit accessory twins do NOT stack (same slot, above).
+  SHINOBI LINE (2026-07, package `shinobi`, Hidden Leaf Village's BESPOKE 3-item
+  register line — swarm/mobility/control, each a PURE seam reuse; the relic COMBINES
+  two seams): Kunai Pouch (weapon I, first-declared-attack +1 — Iron-Blood Sword
+  seam, shares the weapon slot), Body-Flicker Tabi (mount II, +1 MP each turn refresh
+  — Windrider Saddle seam, shares the mount slot), Sage Chakra Charm (accessory III,
+  +1 spell Power AND +1 hand limit — the accessory spell-Power + hand-limit folds,
+  and so shares the ONE accessory slot with the other spell-power / hand-limit
+  accessories — same-slot twins still don't stack). No new fold kinds — each id
+  joined an existing fold's item-id list; behaviour pinned per item in
+  `anime-equipment.test.ts`, the catalog count (27) + register matrix in
+  `equipment.test.ts`.
   MARKETS: two single-hex Field Overrides — Rèn Binh Các (Blacksmith, xianxia, ⚒) +
   Adventurer Outfitter (isekai, 🎒), both selling the shared Satchel; the shop menu
   is a dynamic `CHOOSE_ONE` of `BUY_EQUIPMENT` options built in `beginFieldVisit`
@@ -2791,13 +2802,19 @@ Leading with what does NOT run / deliberate limits:
   on top of a shop's own exclusives + shared gear, EITHER outfitter ALSO offers the
   VISITING hero's register line (`equipmentRegisterLineFor` off `factionVisualRegister`,
   deduped) — a classic faction sees the classic line at both shops, azure_breeze
-  (wuxia) the xianxia line, fuyuki (anime) the isekai line. So a wuxia visitor sees
+  (wuxia) the xianxia line, fuyuki (anime) the isekai line, and hidden_leaf its OWN
+  bespoke shinobi line (Kunai Pouch / Body-Flicker Tabi / Sage Chakra Charm). Hidden
+  Leaf SHARES the `anime` visual register with Fuyuki, so the register switch alone
+  cannot tell them apart: `equipmentPackagesForFaction` special-cases hidden_leaf
+  AHEAD of the switch to return `["shinobi"]`, or it would fall through to Fuyuki's
+  isekai line. So a wuxia visitor sees
   isekai-exclusive gear ONLY at the shop that sells it (never as a register line),
   and classic items appear ONLY for classic visitors. Matrix + grade-in-label pinned
   in `anime-equipment.test.ts` ("register-aware shops (§3.13 matrix)"). FUTURE-TOWN
   RECIPE: a new town only needs a `factionVisualRegister` entry to light up an
   existing register line at every outfitter (no shop edit); for bespoke gear, add
-  items in a new package + return it from `equipmentPackagesForFaction`. GATING:
+  items in a new package + return it from `equipmentPackagesForFaction` (Hidden Leaf
+  is the worked example of the bespoke branch). GATING:
   `FieldOverrideDefinition.requiresModule`
   (new) + a `moduleEnabled` predicate on `listFieldOverrideDefinitions` — with
   `anime.equipment` off the two outfitters appear in NO pool/listing
@@ -2980,26 +2997,101 @@ Leading with what does NOT run / deliberate limits:
 
 ## Anime Towns (`anime.isekaiTowns` / `anime.xianxiaTowns`) & themed mod UI — what runs vs. limits
 
-Two COMPLETE playable factions behind their own anime module flags (default OFF ⇒
-byte-identical; `isPlayableFaction(id, animeOptions)` gates every pick surface —
-lobby grids, draft rolls, computer seats, Random-Town defenders): **Fuyuki City**
-(`fuyuki`, isekai) and **Azure Breeze Sect** (`azure_breeze`, wuxia). Each ships a
+THREE COMPLETE playable factions behind the two anime town module flags (default
+OFF ⇒ byte-identical; `isPlayableFaction(id, animeOptions)` gates every pick
+surface — lobby grids, draft rolls, computer seats, Random-Town defenders):
+**Fuyuki City** (`fuyuki`, isekai) and **Hidden Leaf Village** (`hidden_leaf`,
+isekai) both behind `anime.isekaiTowns`, plus **Azure Breeze Sect**
+(`azure_breeze`, wuxia) behind `anime.xianxiaTowns`. Each ships a
 7-unit roster (every ability tag a REUSE of an already-implemented engine
-ability — pinned per-side in `src/data/anime/towns.test.ts`; the ONE dedicated
-new ability is the Fuyuki Casters' `casters-damage-cap`, a ≤1-damage-per-single
+ability — pinned per-side in `src/data/anime/towns.test.ts` and, for Hidden Leaf,
+`src/data/anime/hidden-leaf-content.test.ts`; the TWO dedicated new abilities are
+the Fuyuki Casters' `casters-damage-cap`, a ≤1-damage-per-single
 attack OR Spell hard cap via `CAP_DAMAGE_PER_ATTACK.includeSpells` — both
 Casters sides also carry `elemental-damage`, so they join the die-proof
 inventory in `elemental-fixed-damage.test.ts`; behaviour + Nix
-spells-stay-uncapped CONTROLs in `fuyuki-casters.test.ts`), 8 buildings on the
+spells-stay-uncapped CONTROLs in `fuyuki-casters.test.ts` — and Hidden Leaf's
+`jinchuriki-chakra-burst`, an `AFTER_ATTACK_SPLASH` arm pinned in
+`src/engine/after-attack-splash.test.ts`, detailed in the Hidden Leaf paragraph
+below), 8 buildings on the
 SHARED building-effect archetypes (City-Hall choice, dwellings, Mage Guild,
 Portal Summon, Artifact Smith, Hall of Valhalla, resource die — nothing bespoke),
-2 heroes each with REAL portraits, a starting tile (`A-S1` / `W-S1`), a designed
+2–3 heroes each with portraits on disk (Fuyuki/Azure real, Hidden Leaf procedural
+placeholders — below), a starting tile (`A-S1` / `W-S1` / `L-S1`), a designed
 town board whose bars are seven real contiguous panorama slices (empty↔full
 pairs, `townBoardSpecs.barTileImages`), a capitol icon on the same
 `town-icon-<faction>.webp` convention as every classic faction
 (`scripts/build-anime-town-icons.mjs`), and a WOG commander (Astral Regent /
-Sword Saint) reusing the Brute / Temple-Guardian cast arms and the
-`vanguard-marshal` / `superior-combat` specialty machinery verbatim.
+Sword Saint / Might Guy) reusing the Brute / Temple-Guardian / shaman-Haste cast
+arms and the `vanguard-marshal` / `superior-combat` specialty machinery verbatim
+(Might Guy triple-reuses `superior-combat` as "Eight Gates").
+
+**Hidden Leaf Village (`hidden_leaf`, isekai — the third town).** Shares
+`anime.isekaiTowns` with Fuyuki (NO new `AnimeModOptions` field, NO new lobby
+row — the isekaiTowns row description names both). Leading with what does NOT run
+/ deliberate limits:
+- **All Hidden Leaf art is PROCEDURAL PLACEHOLDER on disk, pending real art** —
+  the 14 unit faces, 3 hero portraits, town empty/full panorama, 7 board bars,
+  the L-S1 tile, the `town-icon-hidden_leaf.webp` icon and the Might Guy
+  commander card are generated by `scripts/build-hidden-leaf-placeholder-art.mjs`
+  (real art replaces them at the same paths later). The content test only asserts
+  the files EXIST at the right dimensions, never that they are final.
+- **3 heroes, not the plan's 6** (§6.2 lists six; the other three are deferred
+  exactly like the other two towns' rosters).
+- **Susanoo's "Armored" is the real `nix-damage-cap` ≤2-per-single-attack arm,
+  not a flavor "cap 2 damage" narrative** — the Nix damage-cap seam, so a Spell
+  still bypasses it (Susanoo Pack layers `titan-ignore-ongoing` on top).
+- **Genin's "Teamwork Formation" ships as the flat own-attack
+  `wog-attack-when-attacking-1` arm** (the azure Outer Disciples Pack twin), NOT
+  the plan's adjacent-to-TARGET variant (a NEW-lite param, deferred; abilityText
+  states only what runs).
+- **Medical-Nin's token-removal variant is NOT shipped** — its Pack is the plain
+  `enchanter-heal-or-buff` [activation] Enchanter heal/buff pick.
+- **No bespoke commander substitution machinery** (the plan's phoenix-rebirth
+  twin) — Might Guy ships the `superior-combat` owner-picked stance ("Eight
+  Gates") instead, a triple-reuse (Fortress Shaman → Sword Saint → Might Guy).
+- **The Battle-Test combat sandbox still excludes every anime faction**
+  (inherited — its `isPlayableFaction` call passes no anime options).
+
+What runs (each pinned in `src/data/anime/hidden-leaf-content.test.ts`, plus the
+named behaviour test): the 7-unit roster (3 bronze / 2 silver / 2 gold, every tag
+already-implemented) — Genin Squad (bronze) Few `[]` / Pack
+`wog-attack-when-attacking-1`; Medical-Nin (bronze) Few `[]` / Pack
+`enchanter-heal-or-buff`; Anbu Black Ops (bronze RANGED) Few
+`ignore-combat-penalties` / Pack `ignore-combat-penalties` + `teleport-move`;
+Jonin (silver RANGED) Few `ignore-combat-penalties` / Pack
+`ignore-all-combat-penalties` + `ignores-retaliation`; Giant Toad (silver) Few
+`commander-defense-token` / Pack `commander-defense-token` + `automaton-detonate-1`;
+Jinchuriki (gold) Few `jinchuriki-chakra-burst` / Pack
+`magic-elemental-attack-all-enemies`; Susanoo Avatar (gold) Few `nix-damage-cap`
+/ Pack `nix-damage-cap` + `titan-ignore-ongoing`. The ONE new engine arm is
+`jinchuriki-chakra-burst` (`AFTER_ATTACK_SPLASH`, amount 1): after this unit's
+OWN declared attack resolves, deal 1 EFFECT damage to EVERY other adjacent unit —
+friend AND foe — with NO retaliation, unreduced by Defense, routed through the
+normal effect-damage/removal path; it fires on OWN attacks ONLY (never on a
+retaliation) and, being effect damage not an attack, is NOT capped by
+nix/casters damage caps (CONTROL-pinned in `src/engine/after-attack-splash.test.ts`).
+8 buildings on the SHARED archetypes (Mission Board City-Hall choice; Ninja
+Academy / Forest of Death / Sanctum of the Tailed Beast dwellings; Village Walls
+reinforce; Scroll Vault Mage Guild; Chunin Exam Arena Hall-of-Valhalla; Summoning
+Pact Shrine Portal-Summon — zero new TownBuildingEffect types), a 7-bar board
+(`townBoardSpecs.hidden_leaf`, one two-building bar). 3 heroes with own-portrait
+specialties I/IV/VI: Naruto (might, doubles on its OWN "Jinchuriki"), Sasuke
+(might, doubles on "Jonin"), Tsunade (magic, "Hundred Healings" — a
+faction-agnostic medic clone via `rethemedSpecialty`, no unit doubling). Might Guy
+commander (`might_guy`, `COMMANDER_SLUG_BY_FACTION.hidden_leaf`) = the shaman-Haste
+cast ("Body Flicker", `commander-cast-shaman`) + `superior-combat` ("Eight
+Gates"), Monk voice. Starting tile L-S1 (mirrors A-S1). Its BESPOKE `shinobi`
+equipment line (3 items — Kunai Pouch / Body-Flicker Tabi / Sage Chakra Charm) is
+`anime.equipment`-gated, joins the shared Artifact deck like every equipment item,
+and is offered as Hidden Leaf's register line at BOTH outfitters via the §3.13
+special-case (`equipmentPackagesForFaction` returns `["shinobi"]` for hidden_leaf
+AHEAD of the register switch, since it shares the `anime` register with Fuyuki —
+see the Equipment section). Live-play coverage:
+`src/server/hidden-leaf-live.test.ts` drives a fixed-seed single-player game with
+BOTH seats on hidden_leaf to round 5 with no stall / no negative resource, soft-
+asserting its units are recruited and Might Guy is on the field; the all-on
+`anime-coexistence-soak.test.ts` now also runs with both town flags available.
 
 Leading with what does NOT run / deliberate limits:
 - **The combat sandbox never offers the anime factions** (its
@@ -3017,8 +3109,8 @@ Leading with what does NOT run / deliberate limits:
   faction"). All face-less (native specialty renderer, hero's own portrait).
 
 **Themed mod UI (visual registers).** `src/data/faction-theme.ts` maps a faction
-to a register — `classic` / `anime` (fuyuki) / `wuxia` (azure_breeze) — with a
-per-register lexicon (Hero Grade/Spirit Rank/Martial Path, Unit deck/Servant
+to a register — `classic` / `anime` (fuyuki, hidden_leaf) / `wuxia`
+(azure_breeze) — with a per-register lexicon (Hero Grade/Spirit Rank/Martial Path, Unit deck/Servant
 roster/Sect retinue, Drill/Field training/Cultivate, …). The register stamps
 `theme-<register>` + `--mod-*` CSS vars on the hero board, town window/board,
 army panel and every mod-system window, so the three registers genuinely look

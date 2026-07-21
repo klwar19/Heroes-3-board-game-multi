@@ -47,7 +47,7 @@
 export const COMMANDER_SLUGS = [
   "paladin", "hierophant", "temple_guardian", "succubus", "brute",
   "soul_eater", "ogre_leader", "shaman", "astral_spirit",
-  "corsair", "factory", "bulwark", "ruler", "sword_saint"
+  "corsair", "factory", "bulwark", "ruler", "sword_saint", "might_guy"
 ] as const;
 
 export type CommanderSlug = (typeof COMMANDER_SLUGS)[number];
@@ -824,6 +824,32 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       text: "Choose +1 Attack or +1 Defense before combat; the stance lasts through rounds 1–2."
     },
     cardImage: "/assets/units-commander-sword_saint.webp"
+  },
+  might_guy: {
+    slug: "might_guy", name: "Might Guy", faction: "Hidden Leaf Village", original: true,
+    // Cast: REUSE the Fortress Shaman's Haste arm verbatim (commander-cast-shaman,
+    // initiative-shift). Reusing a cast abilityId across commanders is established
+    // (ruler → commander-cast-brute, sword_saint → commander-cast-temple_guardian).
+    cast: {
+      abilityId: "commander-cast-shaman",
+      name: "Body Flicker",
+      icon: "/assets/spell-icons/haste.png",
+      targeting: { side: "friendly", canTargetSelf: false },
+      effect: { kind: "initiative-shift", amountByPower: [2, 3, 4], attackVs: "slower", attackAmount: 1 },
+      tierText: [
+        "A friendly unit gains +2 Initiative and +1 Attack against slower units this round.",
+        "A friendly unit gains +3 Initiative and +1 Attack against slower units this round.",
+        "A friendly unit gains +4 Initiative and +1 Attack against slower units this round."
+      ]
+    },
+    // Specialty: REUSE `superior-combat` (owner-picked stance) — the sword_saint /
+    // shaman precedent proves the id need not be unique per slug.
+    specialty: {
+      id: "superior-combat",
+      name: "Eight Gates",
+      text: "Choose +1 Attack or +1 Defense before combat; the stance lasts through rounds 1–2."
+    },
+    cardImage: "/assets/units-commander-might_guy.webp"
   }
 };
 
@@ -842,7 +868,8 @@ export const COMMANDER_SLUG_BY_FACTION: Record<string, CommanderSlug> = {
   factory: "factory",
   bulwark: "bulwark",
   fuyuki: "ruler",
-  azure_breeze: "sword_saint"
+  azure_breeze: "sword_saint",
+  hidden_leaf: "might_guy"
 };
 
 export function commanderCastTierIndex(power: number): 0 | 1 | 2 {

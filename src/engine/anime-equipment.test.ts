@@ -1110,6 +1110,10 @@ const EQUIP_ID_IRONBARK = EQUIPMENT_IDS.ironbarkCuirass;
 const EQUIP_ID_BARDING = EQUIPMENT_IDS.coursersBarding;
 const EQUIP_ID_HORN = EQUIPMENT_IDS.hornOfPlenty;
 const EQUIP_ID_AEGIS = EQUIPMENT_IDS.wardensAegis;
+// Hidden Leaf Village bespoke "shinobi" line (§3.13).
+const EQUIP_ID_KUNAI = EQUIPMENT_IDS.shinobiKunaiPouch;
+const EQUIP_ID_TABI = EQUIPMENT_IDS.bodyFlickerTabi;
+const EQUIP_ID_CHARM = EQUIPMENT_IDS.sageChakraCharm;
 
 describe("anime.equipment — Crusader's Poleaxe (classic weapon)", () => {
   it("+1 Attack on the FIRST declared attack (Iron-Blood Sword seam; CONTROL: bare)", () => {
@@ -1232,6 +1236,116 @@ describe("anime.equipment — Warden's Aegis (classic armor relic — combines t
   });
 });
 
+// ===========================================================================
+// Hidden Leaf Village bespoke "shinobi" line — 3 items reusing proven seams
+// (each fails if its fold id is removed) + the register-aware shop CONTROLs.
+// ===========================================================================
+
+describe("anime.equipment — Kunai Pouch (shinobi weapon)", () => {
+  it("+1 Attack on the FIRST declared attack (Iron-Blood Sword seam; CONTROL: bare)", () => {
+    function firstAttackValue(withItem: boolean): number {
+      let state = combat(`eq-kunai-${withItem}`);
+      if (withItem) equip(state, "p1", "weapon", EQUIP_ID_KUNAI);
+      state = resolveReactions(
+        applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+      );
+      return initiatingAttackValues(state)[0];
+    }
+    // The Kunai Pouch rides the SAME first-attack fold as the Iron-Blood Sword.
+    expect(firstAttackValue(true)).toBe(firstAttackValue(false) + 1);
+  });
+
+  it("fires once per combat — the second declared attack is at full Attack (charge spent)", () => {
+    let state = combat("eq-kunai-once");
+    equip(state, "p1", "weapon", EQUIP_ID_KUNAI);
+    state = resolveReactions(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+    );
+    expect(state.players.p1.combatStats.equipmentFirstAttackUsed).toBe(true);
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.attackedThisActivation = false;
+    griffins.attacksThisActivation = 0;
+    griffins.retaliatedThisRound = false;
+    griffins.movedThisActivation = false;
+    griffins.activatedThisRound = false;
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.activePlayerId = "p1";
+    state.combat!.attackSequence = null;
+    state = resolveReactions(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+    );
+    const values = initiatingAttackValues(state);
+    // First got +1, second is the bare griffins attack (10) — charge is one-shot.
+    expect(values[0]).toBe(values[1] + 1);
+  });
+});
+
+describe("anime.equipment — Body-Flicker Tabi (shinobi mount)", () => {
+  it("+1 movement at turn refresh (Windrider Saddle seam; CONTROL: no item → no rise)", () => {
+    function refreshedMovement(withItem: boolean): number {
+      const state = adventure(`eq-tabi-${withItem}`);
+      const hero = getMainHero(state, "p1")!;
+      if (withItem) equip(state, "p1", "mount", EQUIP_ID_TABI);
+      hero.movementPoints = 0;
+      refreshRoundTokens(state);
+      return hero.movementPoints;
+    }
+    expect(refreshedMovement(true)).toBe(refreshedMovement(false) + 1);
+  });
+});
+
+describe("anime.equipment — Sage Chakra Charm (shinobi accessory relic — combines two seams)", () => {
+  it("+1 spell Power on your casts (spell-power seam; CONTROL: no charm → baseline)", () => {
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const base = createInitialGameState("eq-charm-power-base");
+    base.anime = { ...EQUIP_ON };
+    const baseline = standingSpellPower(base, "p1", arrow);
+
+    const charm = createInitialGameState("eq-charm-power");
+    charm.anime = { ...EQUIP_ON };
+    equip(charm, "p1", "accessory", EQUIP_ID_CHARM);
+    expect(standingSpellPower(charm, "p1", arrow)).toBe(baseline + 1);
+  });
+
+  it("+1 hand limit, STACKING to +2 with Guild-Issue Mail (armor, distinct slot) — CONTROL: base", () => {
+    const state = adventure("eq-charm-hand");
+    const base = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_CHARM);
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
+    equip(state, "p1", "armor", EQUIP_ID_GUILD); // armor is a distinct slot → stacks
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 2);
+  });
+
+  it("grants BOTH seams at once: +1 spell Power AND +1 hand limit from the single relic", () => {
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const state = adventure("eq-charm-both");
+    const basePower = standingSpellPower(state, "p1", arrow);
+    const baseHand = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_CHARM);
+    expect(standingSpellPower(state, "p1", arrow)).toBe(basePower + 1);
+    expect(effectiveHandLimit(state, "p1")).toBe(baseHand + 1);
+  });
+
+  it("shares the ONE accessory slot with Cosmos Pendant — spell Power never stacks to +2 (same-slot twins)", () => {
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const state = createInitialGameState("eq-charm-excl");
+    state.anime = { ...EQUIP_ON };
+    const baseline = standingSpellPower(state, "p1", arrow);
+    equip(state, "p1", "accessory", EQUIP_ID_COSMOS);
+    equip(state, "p1", "accessory", EQUIP_ID_CHARM); // overwrites the single accessory slot
+    // Only one accessory is worn, so equipment spell-power tops out at +1.
+    expect(standingSpellPower(state, "p1", arrow)).toBe(baseline + 1);
+  });
+
+  it("shares the ONE accessory slot with Eternal Sash — hand limit never stacks to +2 (same-slot twins)", () => {
+    const state = adventure("eq-charm-sash-excl");
+    const base = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_SASH);
+    equip(state, "p1", "accessory", EQUIP_ID_CHARM); // overwrites the single accessory slot
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
+  });
+});
+
 describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
   // Directly stamp the visiting hero's faction, then read the outfitter menu.
   function shopLabels(shopLocation: string, factionId: string): string[] {
@@ -1259,6 +1373,9 @@ describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
     // the Blacksmith shows no isekai-exclusive, the Outfitter no xianxia-exclusive.
     expect(has(black, "Adventurer's Blade")).toBe(false);
     expect(has(outfit, "Iron-Blood Sword")).toBe(false);
+    // CONTROL: the shinobi line is Hidden Leaf's bespoke line — never a classic visitor's.
+    expect(has(black, "Kunai Pouch")).toBe(false);
+    expect(has(outfit, "Kunai Pouch")).toBe(false);
   });
 
   it("a WUXIA visitor (azure_breeze) sees the XIANXIA line, never classic, and isekai ONLY where the shop sells it", () => {
@@ -1274,6 +1391,9 @@ describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
     // at the Blacksmith (the wuxia register line is xianxia, not isekai).
     expect(has(outfit, "Adventurer's Blade")).toBe(true); // the Outfitter sells it
     expect(has(black, "Adventurer's Blade")).toBe(false); // not added by the xianxia line
+    // CONTROL: no shinobi items for a wuxia visitor anywhere.
+    expect(has(black, "Kunai Pouch")).toBe(false);
+    expect(has(outfit, "Kunai Pouch")).toBe(false);
   });
 
   it("an ANIME visitor (fuyuki) sees the ISEKAI line, never classic", () => {
@@ -1285,6 +1405,32 @@ describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
     // No classic items for an anime visitor.
     expect(has(black, "Crusader's Poleaxe")).toBe(false);
     expect(has(outfit, "Crusader's Poleaxe")).toBe(false);
+    // CONTROL: fuyuki shares the "anime" register with Hidden Leaf but keeps the
+    // isekai line — the shinobi bespoke line is hidden_leaf ONLY, never fuyuki's.
+    expect(has(black, "Kunai Pouch")).toBe(false);
+    expect(has(outfit, "Kunai Pouch")).toBe(false);
+    expect(has(black, "Sage Chakra Charm")).toBe(false);
+    expect(has(outfit, "Body-Flicker Tabi")).toBe(false);
+  });
+
+  it("a HIDDEN LEAF visitor sees the bespoke SHINOBI line at BOTH shops, never other registers", () => {
+    const black = shopLabels("anime.ren_binh_cac", "hidden_leaf");
+    const outfit = shopLabels("anime.adventurer_outfitter", "hidden_leaf");
+    // All three shinobi items at BOTH outfitters (hidden_leaf's register line).
+    for (const name of ["Kunai Pouch", "Body-Flicker Tabi", "Sage Chakra Charm"]) {
+      expect(has(black, name), `${name} @ blacksmith`).toBe(true);
+      expect(has(outfit, name), `${name} @ outfitter`).toBe(true);
+    }
+    // The shop's OWN exclusives still show (xianxia @ Blacksmith, isekai @ Outfitter).
+    expect(has(black, "Iron-Blood Sword")).toBe(true); // Blacksmith's own xianxia exclusive
+    expect(has(outfit, "Adventurer's Blade")).toBe(true); // Outfitter's own isekai exclusive
+    // CONTROL: hidden_leaf's register line is shinobi ONLY — no classic anywhere,
+    // and the OTHER package's exclusive is NOT ADDED as a line (isekai stays off
+    // the Blacksmith, xianxia off the Outfitter).
+    expect(has(black, "Crusader's Poleaxe")).toBe(false); // classic never
+    expect(has(outfit, "Crusader's Poleaxe")).toBe(false);
+    expect(has(black, "Adventurer's Blade")).toBe(false); // isekai not added by the shinobi line
+    expect(has(outfit, "Iron-Blood Sword")).toBe(false); // xianxia not added by the shinobi line
   });
 
   it("every offered buy label names the item's grade (grade-tinted shop rows)", () => {
