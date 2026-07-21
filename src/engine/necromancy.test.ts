@@ -805,6 +805,25 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     ).toBe(false);
   });
 
+  it("CONTROL: a Necropolis bank winner holding NO Necromancy card opens no window", () => {
+    const state = startGame("bank-necro-nocard");
+    // Sandro (Necropolis) but the Necromancy card is NOT in hand — the window is
+    // gated on actually holding a playable card, so a bank win must NOT open it.
+    state.players.p1.hand = ["ability.attack"];
+    const goldBefore = state.players.p1.resources.gold;
+    const { fieldId } = stageBankWin(state, "p1");
+
+    finalizeAdventureCombat(state);
+
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 6); // bank reward still paid
+    expect(state.adventure?.fields[fieldId].blackCube).toBe(true);
+    expect(state.adventure?.pendingNecromancy ?? null).toBeNull();
+    // The turn is not frozen behind a phantom window — normal map play resumes.
+    expect(
+      getLegalActions(state, "p1").some((l) => l.action.type === "SKIP_NECROMANCY")
+    ).toBe(false);
+  });
+
   /**
    * Stages a just-won Medusa Stores fight with ONE Stacked defender: its reward
    * is a SEQUENCE ending in a "+3 gold OR +1 valuables" CHOICE, so after finalize
@@ -879,6 +898,102 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
 
     // ...and the reinforce actually upgrades the Skeletons (the real outcome).
     next = apply(next, play!.action);
+    const reinforce = getLegalActions(next, "p1").find(
+      (l) => l.action.type === "RESOLVE_VISIT_STEP" && /Skeletons/.test(l.label)
+    );
+    expect(reinforce, "the bank window must offer a real Skeleton reinforce").toBeTruthy();
+    next = apply(next, reinforce!.action);
+    expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
+  });
+
+  /**
+   * The USER-REPORTED shape (2026-07-20): a Derelict Ship (near sea bank) under
+   * Polish Bank Sizes. Its reward "−1 morale, 7 gold, +2X gold, Search (X) the
+   * Spell Deck" resolves the Search NOT as a pendingVisit CHOOSE_ONE (like Medusa
+   * above) but as a top-level `state.pendingChoice` (DECK_SEARCH) queued through
+   * the reward QUEUE and opened by the real pump (`pumpAdventureQueues`). That is
+   * the code path the Crypt (flat) and Medusa (pendingVisit) tests never exercise.
+   * This drives the REAL post-combat pump and proves the now-or-never Necromancy
+   * window still surfaces once the Search is answered — the reward lands first
+   * (banks sit outside the field-reward deferral), then Necromancy.
+   */
+  function stageDerelictShipWin(state: GameState, stackCount: number): { fieldId: string } {
+    const hero = getMainHero(state, "p1")!;
+    hero.level = 7; // able to Search the Spell deck (so a real DECK_SEARCH opens)
+    const fieldId = "bank,derelict";
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "test-tile",
+      slot: 0,
+      location: "creature_bank",
+      bankId: "derelict_ship",
+      bankSize: stackCount, // Polish Bank Sizes: X = the rolled size
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } as MapFieldState;
+    hero.spaceId = fieldId;
+    state.activePlayerId = "p1";
+    state.combat = {
+      context: {
+        kind: "neutral",
+        heroId: hero.id,
+        fieldId,
+        difficulty: 1,
+        hasAzure: false,
+        bankId: "derelict_ship",
+        bankStackCount: stackCount
+      },
+      outcome: { winnerPlayerId: "p1", defeatedPlayerId: "neutral", reason: "all-enemy-units-defeated" },
+      units: {}
+    } as unknown as CombatState;
+    return { fieldId };
+  }
+
+  it("a bank whose reward opens a Spell-deck SEARCH (Derelict Ship + Polish Bank Sizes) still opens Necromancy once the Search resolves", () => {
+    const state = startGame("bank-necro-derelict-search");
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 20;
+    stageDerelictShipWin(state, 2);
+
+    finalizeAdventureCombat(state);
+    // The bank reward's Spell Search is deferred to the reward QUEUE — the real
+    // pump opens it as a top-level pendingChoice (NOT a pendingVisit).
+    pumpAdventureQueues(state);
+
+    // Reward-first: the Search pendingChoice is open, and the Necromancy window is
+    // armed BEHIND it (banks land their reward immediately, then Necromancy).
+    expect(state.pendingChoice, "the Spell Search pendingChoice must be open").toBeTruthy();
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+
+    // Answer the reward Search exactly as a human would — pick a deck, choose to
+    // search, keep a card — always taking the first offered pick, until it clears.
+    let cur = state;
+    for (let guard = 0; guard < 12 && cur.pendingChoice; guard += 1) {
+      const pick = getLegalActions(cur, "p1").find(
+        (l) => l.action.type === "CHOOSE_OPTION" || l.action.type === "RESOLVE_DECK_SEARCH"
+      );
+      if (!pick) break;
+      cur = apply(cur, pick.action);
+    }
+
+    // Now — and ONLY now — the now-or-never Necromancy window surfaces (the exact
+    // "no proposal of using necromancy after a bank fight" the user reported).
+    expect(cur.pendingChoice ?? null).toBeNull();
+    expect(cur.adventure?.pendingNecromancy?.playerId).toBe("p1");
+    const legal = getLegalActions(cur, "p1");
+    const play = legal.find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
+    );
+    expect(play, "Necromancy must be playable once the reward Search is resolved").toBeTruthy();
+    expect(legal.some((l) => l.action.type === "SKIP_NECROMANCY")).toBe(true);
+
+    // ...and playing it opens the real reinforce choice and upgrades the unit.
+    let next = apply(cur, play!.action);
     const reinforce = getLegalActions(next, "p1").find(
       (l) => l.action.type === "RESOLVE_VISIT_STEP" && /Skeletons/.test(l.label)
     );
