@@ -33,47 +33,36 @@ const UA = "Mozilla/5.0 (Windows NT 10.0) Chrome/126.0";
 const API = "https://blhx.fandom.com/api.php";
 
 // ref key -> candidate wiki "File:" names, in priority order (first that exists
-// wins). `optional:true` targets may miss entirely — the build then derives that
-// unit's PACK side from its FEW art (horizontal flip + a faded "squadron" echo),
-// so all 14 unit files stay byte-distinct and visually distinguishable.
+// wins). `optional:true` targets may miss entirely (cached-only extras / icons).
 const TARGETS = [
   // Heroes + commander (full-body standing art).
   { ref: "enterprise", candidates: ["Enterprise.png"] },
   { ref: "bismarck", candidates: ["Bismarck.png"] },
   { ref: "akashi", candidates: ["Akashi.png"] },
   { ref: "belfast", candidates: ["Belfast.png"] },
+  // New hero portraits: Nagato ("Big Seven Flagship"), Sirius ("Royal Maid Gunner").
+  { ref: "nagato", candidates: ["Nagato.png"] },
+  { ref: "sirius", candidates: ["Sirius.png"] },
 
-  // bronze destroyer-flotilla — FEW Laffey; PACK a two-ship flotilla: Javelin
-  // (dominant, her crisp Retrofit full-body) + Yukikaze composited behind.
-  { ref: "destroyer-flotilla-few", candidates: ["Laffey.png"] },
-  { ref: "destroyer-pack-javelin", candidates: ["JavelinRetrofit.png", "JavelinWedding.png", "JavelinSummer.png", "Javelin.png"] },
-  { ref: "destroyer-pack-yukikaze", candidates: ["Yukikaze.png"] },
-
-  // bronze support-carrier — Unicorn (the Royal Navy light carrier / healer).
-  // FEW base skin; PACK the Casual alt skin (distinct full-body art).
-  { ref: "support-carrier-few", candidates: ["Unicorn.png"] },
-  { ref: "support-carrier-pack", candidates: ["UnicornCasual.png", "UnicornWedding.png"] },
-
-  // bronze light-cruisers — Honolulu (FEW) + Sirius, the RN maid CL (PACK).
-  { ref: "light-cruisers-few", candidates: ["Honolulu.png"] },
-  { ref: "light-cruisers-pack", candidates: ["Sirius.png"] },
-
-  // silver heavy-cruisers — Prinz Eugen base (FEW; the live title carries a
-  // SPACE) + a distinct alt skin (PACK).
-  { ref: "heavy-cruisers-few", candidates: ["Prinz Eugen.png", "Prinz_Eugen.png"] },
-  { ref: "heavy-cruisers-pack", candidates: ["Prinz EugenWedding.png", "Prinz EugenParty.png", "Prinz EugenSummer.png"] },
-
-  // silver submarine-wolfpack — I-19 base (FEW) + her School alt (PACK).
-  { ref: "submarine-wolfpack-few", candidates: ["I-19.png", "I19.png"] },
-  { ref: "submarine-wolfpack-pack", candidates: ["I-19 School.png", "I-19_School.png", "I-19Bunny.png"] },
-
-  // golden battleship-division — Nagato (FEW) + Hood (PACK): a mixed-navy division.
-  { ref: "battleship-division-few", candidates: ["Nagato.png"] },
-  { ref: "battleship-division-pack", candidates: ["Hood.png", "Warspite.png"] },
-
-  // golden carrier-strike-fleet — Akagi (FEW) + Kaga (PACK): the iconic duo.
-  { ref: "carrier-strike-fleet-few", candidates: ["Akagi.png"] },
-  { ref: "carrier-strike-fleet-pack", candidates: ["Kaga.png"] },
+  // Named-shipgirl unit cards — ONE girl per card: FEW = base art, PACK = a
+  // distinct alt/retrofit skin of the SAME girl.
+  { ref: "laffey-few", candidates: ["Laffey.png"] },
+  { ref: "laffey-pack", candidates: ["LaffeyRetrofit.png"] },
+  // Javelin: base Javelin.png is too low-res, so FEW uses her Retrofit full-body;
+  // PACK uses her Idol alt (distinct, high-res).
+  { ref: "javelin-few", candidates: ["JavelinRetrofit.png", "JavelinWedding.png", "Javelin.png"] },
+  { ref: "javelin-pack", candidates: ["JavelinIdol.png", "JavelinWedding.png", "JavelinSummer.png"] },
+  { ref: "honolulu-few", candidates: ["Honolulu.png"] },
+  { ref: "honolulu-pack", candidates: ["HonoluluSummer.png", "HonoluluChristmas.png", "HonoluluFestival.png"] },
+  { ref: "unicorn-few", candidates: ["Unicorn.png"] },
+  { ref: "unicorn-pack", candidates: ["UnicornCasual.png", "UnicornWedding.png"] },
+  { ref: "yukikaze-few", candidates: ["Yukikaze.png"] },
+  { ref: "yukikaze-pack", candidates: ["YukikazeOath.png", "YukikazeSpring.png", "YukikazeEvent.png"] },
+  // Prinz Eugen: the live base title carries a SPACE; PACK is her Wedding alt.
+  { ref: "prinz-eugen-few", candidates: ["Prinz Eugen.png", "Prinz_Eugen.png"] },
+  { ref: "prinz-eugen-pack", candidates: ["Prinz EugenWedding.png", "Prinz EugenParty.png"] },
+  { ref: "i-19-few", candidates: ["I-19.png"] },
+  { ref: "i-19-pack", candidates: ["I-19 School.png", "I-19_School.png"] },
 
   // OPTIONAL per-character square icons (<Name>Icon.png, ~116px) — cached in refs
   // for possible later use. The town icon itself stays a panorama crop (repo
