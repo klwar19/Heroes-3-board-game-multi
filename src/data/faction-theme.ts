@@ -45,7 +45,7 @@ const WUXIA: FactionUiLexicon = {
 };
 
 export function factionVisualRegister(factionId: string | undefined): FactionVisualRegister {
-  if (factionId === "fuyuki" || factionId === "hidden_leaf") {
+  if (factionId === "fuyuki" || factionId === "hidden_leaf" || factionId === "azur_lane") {
     return "anime";
   }
   if (factionId === "azure_breeze") {

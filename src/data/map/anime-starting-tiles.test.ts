@@ -34,24 +34,27 @@ function assertRealArt(assetPath: string, minBytes = 50_000) {
   expect(statSync(file).size).toBeGreaterThan(minBytes);
 }
 
-describe("anime starting tiles A-S1 / W-S1 / L-S1 — hex + border assignment", () => {
+describe("anime starting tiles A-S1 / W-S1 / L-S1 / P-S1 — hex + border assignment", () => {
   const s4 = allTileDefinitions.S4;
   const a = allTileDefinitions["A-S1"];
   const w = allTileDefinitions["W-S1"];
   const l = allTileDefinitions["L-S1"];
+  const p = allTileDefinitions["P-S1"];
 
-  it("all three seats mirror S4 field roles (only town faction differs)", () => {
+  it("all four seats mirror S4 field roles (only town faction differs)", () => {
     expect(s4.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
     expect(a.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
     expect(w.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
     expect(l.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
+    expect(p.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
 
     expect(a.fields[0].faction).toBe("fuyuki");
     expect(w.fields[0].faction).toBe("azure_breeze");
     expect(l.fields[0].faction).toBe("hidden_leaf");
+    expect(p.fields[0].faction).toBe("azur_lane");
     expect(s4.fields[0].faction).toBe("rampart");
 
-    for (const def of [s4, a, w, l]) {
+    for (const def of [s4, a, w, l, p]) {
       const treasure = def.fields[4];
       const mine = def.fields[5];
       expect(treasure.location).toBe("treasure_symbol");
@@ -63,11 +66,12 @@ describe("anime starting tiles A-S1 / W-S1 / L-S1 — hex + border assignment", 
     }
   });
 
-  it("all three seats mirror S4 outerImpassable (yellow outer arcs)", () => {
+  it("all four seats mirror S4 outerImpassable (yellow outer arcs)", () => {
     expect(s4.outerImpassable).toEqual([...S4_OUTER]);
     expect(a.outerImpassable).toEqual([...S4_OUTER]);
     expect(w.outerImpassable).toEqual([...S4_OUTER]);
     expect(l.outerImpassable).toEqual([...S4_OUTER]);
+    expect(p.outerImpassable).toEqual([...S4_OUTER]);
   });
 
   it("border segments are identical to S4 (blocked ring + outer arcs)", () => {
@@ -80,6 +84,7 @@ describe("anime starting tiles A-S1 / W-S1 / L-S1 — hex + border assignment", 
     expect(key(getTileBorderSegments(a))).toBe(s4Key);
     expect(key(getTileBorderSegments(w))).toBe(s4Key);
     expect(key(getTileBorderSegments(l))).toBe(s4Key);
+    expect(key(getTileBorderSegments(p))).toBe(s4Key);
 
     // Blocked is on slot 2 (E) — its full ring is present.
     const blockedEdges = getTileBorderSegments(a)
@@ -89,16 +94,19 @@ describe("anime starting tiles A-S1 / W-S1 / L-S1 — hex + border assignment", 
     expect(blockedEdges.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("ships real flower tile art with alpha for all three seats", () => {
+  it("ships real flower tile art with alpha for all four seats", () => {
     assertRealArt(a.assets!.tileImage!);
     assertRealArt(w.assets!.tileImage!);
     // L-S1 currently ships the smaller procedural placeholder (real art lands
     // later at the same path); assert it exists with a modest floor so the
     // check stays forward-compatible with the full-size replacement.
     assertRealArt(l.assets!.tileImage!, 10_000);
+    // P-S1 ships the full-size board image.
+    assertRealArt(p.assets!.tileImage!);
     // No runtime symbol overlay — icons are baked into the webp.
     expect(a.assets?.attachFieldSymbols).toBeFalsy();
     expect(w.assets?.attachFieldSymbols).toBeFalsy();
     expect(l.assets?.attachFieldSymbols).toBeFalsy();
+    expect(p.assets?.attachFieldSymbols).toBeFalsy();
   });
 });

@@ -1430,6 +1430,19 @@ export const adventureCards: CardLibrary = {
   "specialty.sasuke.1": withoutArt(mightSpecialtyOne("sasuke", "Lightning Blade", "Jonin")),
   "specialty.sasuke.4": withoutArt(unitHealthSpecialty("sasuke", "Lightning Blade", 4, 1, "Jonin")),
   "specialty.sasuke.6": withoutArt(unitInitiativeSpecialty("sasuke", "Lightning Blade", 6, 1, "Jonin")),
+  // Azur Lane might heroes (src/data/anime/towns.ts) — unit specialists doubling
+  // on their OWN faction's shipgirls (Enterprise → Laffey, Bismarck → Prinz
+  // Eugen, Nagato → Yukikaze). Same proven generic I/IV/VI shape as
+  // Bin/Qingyun/Naruto; face-less (native renderer).
+  "specialty.enterprise.1": withoutArt(mightSpecialtyOne("enterprise", "Grey Ghost", "Laffey")),
+  "specialty.enterprise.4": withoutArt(unitHealthSpecialty("enterprise", "Grey Ghost", 4, 1, "Laffey")),
+  "specialty.enterprise.6": withoutArt(unitInitiativeSpecialty("enterprise", "Grey Ghost", 6, 1, "Laffey")),
+  "specialty.bismarck.1": withoutArt(mightSpecialtyOne("bismarck", "Iron Blood Oath", "Prinz Eugen")),
+  "specialty.bismarck.4": withoutArt(unitHealthSpecialty("bismarck", "Iron Blood Oath", 4, 1, "Prinz Eugen")),
+  "specialty.bismarck.6": withoutArt(unitInitiativeSpecialty("bismarck", "Iron Blood Oath", 6, 1, "Prinz Eugen")),
+  "specialty.nagato.1": withoutArt(mightSpecialtyOne("nagato", "Big Seven Resolve", "Yukikaze")),
+  "specialty.nagato.4": withoutArt(unitHealthSpecialty("nagato", "Big Seven Resolve", 4, 1, "Yukikaze")),
+  "specialty.nagato.6": withoutArt(unitInitiativeSpecialty("nagato", "Big Seven Resolve", 6, 1, "Yukikaze")),
   // Miku (Fuyuki Virtual Diva) — Voice of Angel. NEW engine arms:
   // I SLOW_ALL_ENEMIES, IV CREATE_HEAL_ON_ATTACKED (friendly), VI DAMAGE_ALL_ENEMY_UNITS.
   "specialty.miku.1": withoutArt({
@@ -5064,3 +5077,18 @@ adventureCards["specialty.lingxi.6"] = rethemedSpecialty(adventureCards["special
 adventureCards["specialty.tsunade.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "tsunade", 1, "Hundred Healings");
 adventureCards["specialty.tsunade.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "tsunade", 4, "Hundred Healings");
 adventureCards["specialty.tsunade.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "tsunade", 6, "Hundred Healings");
+// Akashi (Azur Lane, magic): Gem's generic First Aid set (Tent + heals), the
+// faction-agnostic medic — no unit doubling that could go dead. Distinct id +
+// name ("Emergency Repairs") from Lingxi's / Tsunade's gem clones, so no
+// collision. Art-less: the native SpecialtyCard draws her portrait + the
+// First-Aid medallion.
+adventureCards["specialty.akashi.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "akashi", 1, "Emergency Repairs");
+adventureCards["specialty.akashi.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "akashi", 4, "Emergency Repairs");
+adventureCards["specialty.akashi.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "akashi", 6, "Emergency Repairs");
+// Sirius (Azur Lane, magic): Rion's generic heal/cleanse-draw set (the aoko
+// precedent — a faction-agnostic medic with no unit doubling that could go
+// dead). Distinct id + name ("Flawless Service") from Aoko's rion clone, so no
+// collision. Art-less: the native SpecialtyCard draws her portrait + medallion.
+adventureCards["specialty.sirius.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "sirius", 1, "Flawless Service");
+adventureCards["specialty.sirius.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "sirius", 4, "Flawless Service");
+adventureCards["specialty.sirius.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "sirius", 6, "Flawless Service");

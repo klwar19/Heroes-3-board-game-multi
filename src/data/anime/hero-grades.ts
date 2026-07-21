@@ -136,7 +136,8 @@ export const FACTION_GRADE_REGISTER: Record<string, GradeRegisterKey> = {
   bulwark: "core",
   fuyuki: "isekai",
   azure_breeze: "xianxia",
-  hidden_leaf: "isekai"
+  hidden_leaf: "isekai",
+  azur_lane: "isekai"
 };
 
 /** The register family for a faction (defaults to core when unmapped). */

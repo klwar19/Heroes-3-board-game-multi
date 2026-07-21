@@ -12,7 +12,7 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import { townBoardSpecs, townIconUrl } from "@/data/towns/boards";
 import { unitAbilities } from "@/data/units/abilities";
 
-const MOD_FACTIONS = ["fuyuki", "azure_breeze", "hidden_leaf"] as const;
+const MOD_FACTIONS = ["fuyuki", "azure_breeze", "hidden_leaf", "azur_lane"] as const;
 
 describe("playable Anime Realms towns", () => {
   it.each(MOD_FACTIONS)("registers a complete playable %s faction", (factionId) => {
@@ -28,6 +28,11 @@ describe("playable Anime Realms towns", () => {
     } else if (factionId === "hidden_leaf") {
       expect(faction.heroes).toEqual(expect.arrayContaining(["naruto", "sasuke", "tsunade"]));
       expect(faction.heroes).toHaveLength(3);
+    } else if (factionId === "azur_lane") {
+      expect(faction.heroes).toEqual(
+        expect.arrayContaining(["enterprise", "bismarck", "nagato", "akashi", "sirius"])
+      );
+      expect(faction.heroes).toHaveLength(5);
     } else {
       expect(faction.heroes).toHaveLength(2);
     }
@@ -72,7 +77,13 @@ describe("playable Anime Realms towns", () => {
       const building = coreBuildingDefinitions[buildingId];
       expect(building?.implementationStatus, `${buildingId} must be wired`).toBe("implemented");
       const stripPrefix =
-        factionId === "azure_breeze" ? "azure-breeze" : factionId === "hidden_leaf" ? "hidden-leaf" : factionId;
+        factionId === "azure_breeze"
+          ? "azure-breeze"
+          : factionId === "hidden_leaf"
+            ? "hidden-leaf"
+            : factionId === "azur_lane"
+              ? "azur-lane"
+              : factionId;
       expect(building?.assets?.image, `${buildingId} needs real strip art`).toMatch(
         new RegExp(`/assets/town-board/${stripPrefix}-bar-[1-7]\\.webp$`)
       );
@@ -98,6 +109,13 @@ describe("playable Anime Realms towns", () => {
     expect(isPlayableFaction("hidden_leaf", { enabled: true, isekaiTowns: true })).toBe(true);
     // CONTROL: the xianxia flag alone never unlocks an isekai town.
     expect(isPlayableFaction("hidden_leaf", { enabled: true, xianxiaTowns: true })).toBe(false);
+    // Azur Lane gates on the SAME isekaiTowns flag as Fuyuki / Hidden Leaf.
+    expect(isPlayableFaction("azur_lane")).toBe(false);
+    expect(isPlayableFaction("azur_lane", { enabled: false, isekaiTowns: true })).toBe(false);
+    expect(isPlayableFaction("azur_lane", { enabled: true, isekaiTowns: false })).toBe(false);
+    expect(isPlayableFaction("azur_lane", { enabled: true, isekaiTowns: true })).toBe(true);
+    // CONTROL: the xianxia flag alone never unlocks an isekai town.
+    expect(isPlayableFaction("azur_lane", { enabled: true, xianxiaTowns: true })).toBe(false);
     expect(isPlayableFaction("castle", { enabled: false })).toBe(true);
   });
 
@@ -106,7 +124,10 @@ describe("playable Anime Realms towns", () => {
       ["bin", "fuyuki"],
       ["qingyun", "azure_breeze"],
       ["naruto", "hidden_leaf"],
-      ["sasuke", "hidden_leaf"]
+      ["sasuke", "hidden_leaf"],
+      ["enterprise", "azur_lane"],
+      ["bismarck", "azur_lane"],
+      ["nagato", "azur_lane"]
     ] as const) {
       const card = cardLibrary[`specialty.${heroId}.1`];
       const effect = card?.effect;

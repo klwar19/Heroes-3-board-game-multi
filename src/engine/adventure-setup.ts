@@ -2493,7 +2493,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     (options.players?.length ? options.players : DEFAULT_PLAYERS).map((p) => p.factionId);
   const animeTownsOn =
     Boolean(anime.enabled && (anime.isekaiTowns || anime.xianxiaTowns)) ||
-    playerConfigsForCommander.some((id) => id === "fuyuki" || id === "azure_breeze" || id === "hidden_leaf");
+    playerConfigsForCommander.some(
+      (id) => id === "fuyuki" || id === "azure_breeze" || id === "hidden_leaf" || id === "azur_lane"
+    );
   if (animeTownsOn && ruleset === "binh") {
     wog = { ...wog, enabled: true, commanders: true };
   }

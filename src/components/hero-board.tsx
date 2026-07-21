@@ -75,7 +75,8 @@ const BOARD_THEMES: Record<string, { banner: string; edge: string }> = {
   stronghold: { banner: "linear-gradient(180deg, #a9642a 0%, #5e3219 100%)", edge: "#b97835" },
   fuyuki: { banner: "linear-gradient(180deg, #164e8c 0%, #631f42 52%, #1a1838 100%)", edge: "#e15b7d" },
   azure_breeze: { banner: "linear-gradient(180deg, #4a9a8d 0%, #176477 50%, #173c54 100%)", edge: "#74d2b6" },
-  hidden_leaf: { banner: "linear-gradient(180deg, #4f9d45 0%, #2f6b34 52%, #17361f 100%)", edge: "#79c76a" }
+  hidden_leaf: { banner: "linear-gradient(180deg, #4f9d45 0%, #2f6b34 52%, #17361f 100%)", edge: "#79c76a" },
+  azur_lane: { banner: "linear-gradient(180deg, #1d5db4 0%, #123a6b 52%, #0a1c33 100%)", edge: "#6fb3e8" }
 };
 
 // ---------------------------------------------------------------------------

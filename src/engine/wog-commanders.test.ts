@@ -124,9 +124,9 @@ function sandboxWithCommander(
 // ===========================================================================
 
 describe("WOG commanders — content integrity", () => {
-  it("all 15 factions map to a commander and back", () => {
-    expect(Object.keys(COMMANDER_SLUG_BY_FACTION)).toHaveLength(15);
-    expect(new Set(Object.values(COMMANDER_SLUG_BY_FACTION)).size).toBe(15);
+  it("all 16 factions map to a commander and back", () => {
+    expect(Object.keys(COMMANDER_SLUG_BY_FACTION)).toHaveLength(16);
+    expect(new Set(Object.values(COMMANDER_SLUG_BY_FACTION)).size).toBe(16);
     for (const slug of COMMANDER_SLUGS) {
       expect(commanderDefinitions[slug], slug).toBeTruthy();
     }
@@ -1624,5 +1624,62 @@ describe("WOG commanders — Hierophant First Aid window", () => {
     lost!.damage = lost!.maxHealth;
     winFight(paladin);
     expect(paladin.adventure!.pendingCommanderFirstAid).toBeFalsy();
+  });
+});
+
+// ===========================================================================
+// Belfast (Azur Lane) — the SECOND First Aid commander. The post-combat window
+// is keyed off the specialty id "first-aid" (not the "hierophant" slug), so
+// Belfast opens it too. This suite FAILS if the reducer predicate is reverted
+// to slug-keying (`playerHasLivingCommander(state, playerId, "hierophant")`).
+// ===========================================================================
+
+describe("WOG commanders — Belfast First Aid (specialty-keyed, not slug-keyed)", () => {
+  function winFight(state: GameState): GameState {
+    state.combat!.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    finalizeAdventureCombat(state);
+    return state;
+  }
+
+  function killABronzeSilverCasualty(fight: GameState): void {
+    const fallen = Object.values(fight.combat!.units).find(
+      (unit) =>
+        unit.controllerId === "p1" && !unit.commanderSlug && (unit.grade === "bronze" || unit.grade === "silver")
+    );
+    expect(fallen, "a bronze/silver army unit in the fight").toBeTruthy();
+    fallen!.damage = fallen!.maxHealth;
+  }
+
+  it("Belfast (Azur Lane) opens the First Aid window after a WON combat with a bronze/silver casualty", () => {
+    const fight = intoNeutralFight(adventureWithCommanders("belfast-firstaid", "azur_lane", "enterprise"));
+    // The azur_lane seat's commander is Belfast (the mapping under test).
+    expect(fight.players.p1.commander?.slug).toBe("belfast");
+    killABronzeSilverCasualty(fight);
+    winFight(fight);
+
+    const pending = fight.adventure!.pendingCommanderFirstAid;
+    expect(pending?.playerId).toBe("p1");
+    expect(pending!.options.some((option) => option.kind === "revive")).toBe(true);
+  });
+
+  it("CONTROL: Might Guy (superior-combat) opens NO window; the Hierophant (first-aid) still DOES", () => {
+    // Might Guy — a non-first-aid commander — gets no window with the same casualty.
+    const guy = intoNeutralFight(adventureWithCommanders("belfast-firstaid-ctrl-guy", "hidden_leaf", "naruto"));
+    expect(guy.players.p1.commander?.slug).toBe("might_guy");
+    killABronzeSilverCasualty(guy);
+    winFight(guy);
+    expect(guy.adventure!.pendingCommanderFirstAid).toBeFalsy();
+
+    // Hierophant — the ORIGINAL first-aid commander — still opens the window, so
+    // the re-key generalised the trigger without regressing the Rampart owner.
+    const hiero = intoNeutralFight(adventureWithCommanders("belfast-firstaid-ctrl-hiero", "rampart", undefined));
+    expect(hiero.players.p1.commander?.slug).toBe("hierophant");
+    killABronzeSilverCasualty(hiero);
+    winFight(hiero);
+    expect(hiero.adventure!.pendingCommanderFirstAid?.playerId).toBe("p1");
   });
 });

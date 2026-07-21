@@ -69,6 +69,17 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   sasuke: "/assets/specialty-card/icon-haste.webp",
   // Tsunade's Hundred Healings IS the First Aid medic set (Gem clone), like Lingxi.
   tsunade: "/assets/specialty-card/icon-first_aid.webp",
+  // Azur Lane might specialists — no dedicated signature-unit portrait shipped
+  // yet, so a thematic Homm3BG emblem: Enterprise's Grey Ghost carrier fury →
+  // the Bloodlust rage icon, Bismarck's Iron Blood armor → the Stone Skin icon,
+  // Nagato's Big Seven speed (doubles the fast Yukikaze) → the Haste icon.
+  enterprise: "/assets/specialty-card/icon-bloodlust.webp",
+  bismarck: "/assets/specialty-card/icon-stone_skin.webp",
+  nagato: "/assets/specialty-card/icon-haste.webp",
+  // Akashi's Emergency Repairs & Sirius's Flawless Service ARE medic sets (Gem /
+  // Rion clones), like Tsunade / Aoko — the healer medallion / Cure spell icon.
+  akashi: "/assets/specialty-card/icon-first_aid.webp",
+  sirius: "/assets/specialty-card/icon-cure.webp",
   // --- Spell / emblem specialists -----------------------------------------
   oidana: "/assets/specialty-card/icon-diplomacy.webp", // Diplomacy dove
   glacius: "/assets/specialty-card/icon-frost_ring.webp", // Homm3BG symbols
@@ -152,7 +163,8 @@ export const FACTION_ACCENT: Record<string, string> = {
   // Anime Realms towns — match faction.color so native specialty cards wear
   // the same town tint as the hero board / commander chrome.
   fuyuki: "#7256d8",
-  azure_breeze: "#27a9a0"
+  azure_breeze: "#27a9a0",
+  azur_lane: "#2f6fc1"
 };
 
 /** Parse `specialty.<slug>.<level>` → its hero slug and I/IV/VI level. */

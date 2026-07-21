@@ -29,7 +29,8 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   bulwark: "spell.sacrifice", // Rune Mend (sound-only, like the Sacrifice spell)
   ruler: "spell.bloodlust", // Command Seal
   sword_saint: "spell.precision", // Sword Intent
-  might_guy: "spell.haste" // Body Flicker (reuses the Shaman's Haste cast + fx)
+  might_guy: "spell.haste", // Body Flicker (reuses the Shaman's Haste cast + fx)
+  belfast: "spell.precision" // Fire Support (reuses the Temple Guardian's Precision cast + fx)
 };
 
 /**

@@ -17,6 +17,8 @@ const azureCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "fe
   `/assets/anime/units/azure-breeze/units-azure-breeze-${tier}-${slug}-${side}.webp`;
 const hiddenLeafCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "few" | "pack") =>
   `/assets/anime/units/hidden-leaf/units-hidden-leaf-${tier}-${slug}-${side}.webp`;
+const azurCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "few" | "pack") =>
+  `/assets/anime/units/azur-lane/units-azur-lane-${tier}-${slug}-${side}.webp`;
 
 /** Two complete seven-line faction rosters: one anime/isekai, one wuxia. */
 export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
@@ -201,6 +203,78 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     few: { attack: 5, defense: 3, health: 6, initiative: 4, cost: { gold: 15, valuables: 1 }, abilities: ["nix-damage-cap"], abilityText: "Ethereal Armor — this unit cannot take more than 4 damage from a single attack (Spell and ability damage are not capped).", cardImage: hiddenLeafCard("golden", "susanoo", "few") },
     pack: { attack: 6, defense: 3, health: 7, initiative: 4, cost: { gold: 22, valuables: 2 }, abilities: ["nix-damage-cap", "titan-ignore-ongoing"], abilityText: "Ethereal Armor — cannot take more than 4 damage from a single attack; Unbreakable Will — ignore any ongoing effects on this unit.", cardImage: hiddenLeafCard("golden", "susanoo", "pack") },
     source
+  },
+
+  // Azur Lane Naval Base printed levels (3 bronze / 2 silver / 2 gold) — one
+  // NAMED shipgirl per unit. CANONICAL recruit order = object key order (the
+  // faction derives `units` from this order via a filter, exactly like Fuyuki /
+  // Hidden Leaf). Fleet identity: fast destroyer openers + a ranged light
+  // cruiser on bronze; a carrier medic + a lucky destroyer on silver; an
+  // unsinkable heavy cruiser + a glass-cannon submarine on gold. Every ability
+  // tag resolves to an IMPLEMENTED unitAbilities entry; abilityText restates
+  // ONLY what that arm runs, kansen-flavored. A Few side listed [] carries no
+  // ability and (per CLAUDE.md §2) no abilityText.
+  // --- BRONZE (3) ----------------------------------------------------------
+  "azur_lane.laffey": {
+    id: "azur_lane.laffey", name: "Laffey", faction: "azur_lane", tier: "bronze", type: "ground",
+    few: { attack: 2, defense: 1, health: 2, initiative: 8, cost: { gold: 2 }, abilities: [], cardImage: azurCard("bronze", "laffey", "few") },
+    // ignores-retaliation = its attacks never provoke a Retaliation Attack.
+    pack: { attack: 3, defense: 1, health: 2, initiative: 9, cost: { gold: 4 }, abilities: ["ignores-retaliation"], abilityText: "White Demon of Solomon — attacks do not provoke a Retaliation Attack.", cardImage: azurCard("bronze", "laffey", "pack") },
+    source
+  },
+  "azur_lane.javelin": {
+    id: "azur_lane.javelin", name: "Javelin", faction: "azur_lane", tier: "bronze", type: "ground",
+    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 2 }, abilities: [], cardImage: azurCard("bronze", "javelin", "few") },
+    // commander-charge = +1 Attack when it attacks after moving this activation.
+    pack: { attack: 3, defense: 1, health: 2, initiative: 8, cost: { gold: 4 }, abilities: ["commander-charge"], abilityText: "Javelin Spiral — +1 Attack on its attack after this unit moves.", cardImage: azurCard("bronze", "javelin", "pack") },
+    source
+  },
+  // LV3 bronze RANGED cruiser gunner.
+  "azur_lane.honolulu": {
+    id: "azur_lane.honolulu", name: "Honolulu", faction: "azur_lane", tier: "bronze", type: "ranged",
+    few: { attack: 2, defense: 1, health: 2, initiative: 6, cost: { gold: 4 }, abilities: ["ignore-combat-penalties"], abilityText: "Rapid Fire — ignores the Combat penalty for attacking an adjacent unit (the long-range / behind-wall penalty still applies).", cardImage: azurCard("bronze", "honolulu", "few") },
+    // wog-attack-when-attacking-1 = +1 Attack on its own attacks (proven on the
+    // WoG Lava Sharpshooter, a RANGED unit).
+    pack: { attack: 3, defense: 1, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "wog-attack-when-attacking-1"], abilityText: "Rapid Fire — ignores the adjacent-unit Combat penalty; +1 Attack on its own attacks (never on a Retaliation Attack).", cardImage: azurCard("bronze", "honolulu", "pack") },
+    source
+  },
+  // --- SILVER (2) ----------------------------------------------------------
+  // LV4 silver ground carrier MEDIC.
+  "azur_lane.unicorn": {
+    id: "azur_lane.unicorn", name: "Unicorn", faction: "azur_lane", tier: "silver", type: "ground",
+    few: { attack: 3, defense: 2, health: 4, initiative: 5, cost: { gold: 7 }, abilities: ["enchanter-heal-or-buff"], abilityText: "Fairy Lullaby — [activation] remove up to 2 damage from a chosen friendly unit; only if no friendly unit can be healed, instead gain +1 Attack for the combat round. It can not heal itself, and this does not end the activation.", cardImage: azurCard("silver", "unicorn", "few") },
+    // unicorn-spell-ward-aura = reduce spell damage to this + adjacent friendlies
+    // by 1 (the azure_breeze.core_master Pack arm; the War-Unicorn aura on the
+    // shipgirl Unicorn is deliberate).
+    pack: { attack: 4, defense: 2, health: 5, initiative: 6, cost: { gold: 11 }, abilities: ["enchanter-heal-or-buff", "unicorn-spell-ward-aura"], abilityText: "Fairy Lullaby — [activation] remove up to 2 damage from a chosen friendly unit; only if no friendly unit can be healed, instead gain +1 Attack for the combat round. It can not heal itself, and this does not end the activation. Fairy Ward — protects this and adjacent allies from Spell damage (reduce spell damage by 1, min 0).", cardImage: azurCard("silver", "unicorn", "pack") },
+    source
+  },
+  // LV5 silver ground lucky destroyer (fast).
+  "azur_lane.yukikaze": {
+    id: "azur_lane.yukikaze", name: "Yukikaze", faction: "azur_lane", tier: "silver", type: "ground",
+    few: { attack: 3, defense: 2, health: 3, initiative: 7, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "The Great Yukikaze — luck of the invincible ship: always rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).", cardImage: azurCard("silver", "yukikaze", "few") },
+    pack: { attack: 4, defense: 2, health: 4, initiative: 8, cost: { gold: 11 }, abilities: ["commander-defense-token", "ignores-retaliation"], abilityText: "The Great Yukikaze — always rolls the Defend die when attacked; Torpedo Run — its attacks do not provoke a Retaliation Attack.", cardImage: azurCard("silver", "yukikaze", "pack") },
+    source
+  },
+  // --- GOLD (2) ------------------------------------------------------------
+  // LV6 gold ground unsinkable heavy cruiser.
+  "azur_lane.prinz_eugen": {
+    id: "azur_lane.prinz_eugen", name: "Prinz Eugen", faction: "azur_lane", tier: "gold", type: "ground",
+    few: { attack: 5, defense: 3, health: 7, initiative: 4, cost: { gold: 14, valuables: 1 }, abilities: ["nix-damage-cap"], abilityText: "Unsinkable — this unit cannot take more than 4 damage from a single attack (Spell and ability damage are not capped).", cardImage: azurCard("golden", "prinz-eugen", "few") },
+    pack: { attack: 6, defense: 3, health: 8, initiative: 4, cost: { gold: 21, valuables: 2 }, abilities: ["nix-damage-cap", "unlimited-retaliation"], abilityText: "Unsinkable — cannot take more than 4 damage from a single attack; may Retaliate any number of times each round.", cardImage: azurCard("golden", "prinz-eugen", "pack") },
+    source
+  },
+  // LV7 gold ground glass-cannon submarine (the Few→Pack ability ADD — the extra
+  // strike arm — is the mutation control).
+  "azur_lane.i19": {
+    id: "azur_lane.i19", name: "I-19", faction: "azur_lane", tier: "gold", type: "ground",
+    few: { attack: 6, defense: 2, health: 5, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignores-retaliation", "teleport-move"], abilityText: "Silent Hunter — attacks do not provoke Retaliation; as a regular move, may surface on any empty space.", cardImage: azurCard("golden", "i-19", "few") },
+    // sandworm-strike-again = SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION — after
+    // its first attack resolves it strikes the same target again (fires on
+    // attacksThisActivation === 1, NOT gated on an actual retaliation, so it is a
+    // live combo with ignores-retaliation, never a dead clause).
+    pack: { attack: 7, defense: 2, health: 6, initiative: 7, cost: { gold: 21, valuables: 2 }, abilities: ["ignores-retaliation", "teleport-move", "sandworm-strike-again"], abilityText: "Silent Hunter — attacks do not provoke Retaliation; as a regular move, may surface on any empty space. Oxygen Torpedo Spread — after its attack resolves, it attacks that same target again (this second strike provokes no Retaliation).", cardImage: azurCard("golden", "i-19", "pack") },
+    source
   }
 };
 
@@ -231,17 +305,34 @@ const animeTownBuildingBar: Record<string, number> = {
   "hidden_leaf.chunin_arena": 4,
   "hidden_leaf.mage_guild": 5,
   "hidden_leaf.citadel": 6,
-  "hidden_leaf.dwelling_gold": 7
+  "hidden_leaf.dwelling_gold": 7,
+  // Azur Lane — mirrors Fuyuki's layout: the "extra" building (Munitions
+  // Workshop) shares the LV4 (dwelling_silver) bar; every other bar is a single
+  // building.
+  "azur_lane.city_hall": 1,
+  "azur_lane.dwelling_bronze": 2,
+  "azur_lane.munitions_workshop": 3,
+  "azur_lane.dwelling_silver": 4,
+  "azur_lane.exercise_waters": 4,
+  "azur_lane.mage_guild": 5,
+  "azur_lane.citadel": 6,
+  "azur_lane.dwelling_gold": 7
 };
 
 /** The dashed art-file prefix for a faction's bar slices (id keeps the underscore). */
-const barArtPrefix = (faction: "fuyuki" | "azure_breeze" | "hidden_leaf"): string =>
-  faction === "azure_breeze" ? "azure-breeze" : faction === "hidden_leaf" ? "hidden-leaf" : faction;
+const barArtPrefix = (faction: "fuyuki" | "azure_breeze" | "hidden_leaf" | "azur_lane"): string =>
+  faction === "azure_breeze"
+    ? "azure-breeze"
+    : faction === "hidden_leaf"
+      ? "hidden-leaf"
+      : faction === "azur_lane"
+        ? "azur-lane"
+        : faction;
 
 const building = (
   id: string,
   name: string,
-  faction: "fuyuki" | "azure_breeze" | "hidden_leaf",
+  faction: "fuyuki" | "azure_breeze" | "hidden_leaf" | "azur_lane",
   cost: TownBuildingDefinition["cost"],
   effect: NonNullable<TownBuildingDefinition["effect"]>,
   prerequisites?: string[]
@@ -289,7 +380,18 @@ export const animeTownBuildingDefinitions: Record<string, TownBuildingDefinition
   "hidden_leaf.dwelling_silver": building("hidden_leaf.dwelling_silver", "Forest of Death", "hidden_leaf", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["hidden_leaf.dwelling_bronze"]),
   "hidden_leaf.dwelling_gold": building("hidden_leaf.dwelling_gold", "Sanctum of the Tailed Beast", "hidden_leaf", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["hidden_leaf.dwelling_silver"]),
   "hidden_leaf.chunin_arena": building("hidden_leaf.chunin_arena", "Chunin Exam Arena", "hidden_leaf", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 }),
-  "hidden_leaf.summoning_shrine": building("hidden_leaf.summoning_shrine", "Summoning Pact Shrine", "hidden_leaf", { gold: 7, buildingMaterials: 4, valuables: 1 }, { type: "TURN_START_PORTAL_SUMMON" })
+  "hidden_leaf.summoning_shrine": building("hidden_leaf.summoning_shrine", "Summoning Pact Shrine", "hidden_leaf", { gold: 7, buildingMaterials: 4, valuables: 1 }, { type: "TURN_START_PORTAL_SUMMON" }),
+
+  // Azur Lane — shared archetypes only (ZERO new TownBuildingEffect types),
+  // costs mirroring the Fuyuki/Azure/Hidden-Leaf twins per archetype.
+  "azur_lane.city_hall": building("azur_lane.city_hall", "Naval Command HQ", "azur_lane", { gold: 10, buildingMaterials: 4 }, { type: "RESOURCE_ROUND_CHOICE", options: [{ label: "Gain 5 gold", gold: 5 }, { label: "Gain 1 valuables", valuables: 1 }] }),
+  "azur_lane.citadel": building("azur_lane.citadel", "Fortified Anchorage", "azur_lane", { gold: 8, buildingMaterials: 5, valuables: 1 }, { type: "UNLOCK_REINFORCE" }),
+  "azur_lane.mage_guild": { ...building("azur_lane.mage_guild", "Naval Research Academy", "azur_lane", { gold: 4, buildingMaterials: 2, valuables: 1 }, { type: "MAGE_GUILD" }), spellBookCost: 5 },
+  "azur_lane.dwelling_bronze": building("azur_lane.dwelling_bronze", "Escort Docks", "azur_lane", { gold: 5, buildingMaterials: 3, valuables: 1 }, { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" }),
+  "azur_lane.dwelling_silver": building("azur_lane.dwelling_silver", "Cruiser Shipyard", "azur_lane", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["azur_lane.dwelling_bronze"]),
+  "azur_lane.dwelling_gold": building("azur_lane.dwelling_gold", "Capital Ship Berth", "azur_lane", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["azur_lane.dwelling_silver"]),
+  "azur_lane.munitions_workshop": building("azur_lane.munitions_workshop", "Munitions Workshop", "azur_lane", { gold: 6, buildingMaterials: 4 }, { type: "ARTIFACT_SMITH", searchCost: 5, sellGold: 3 }),
+  "azur_lane.exercise_waters": building("azur_lane.exercise_waters", "Combat Exercise Waters", "azur_lane", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 })
 };
 
 export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
@@ -353,6 +455,41 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     startingAbilityCardId: "ability.wisdom",
     specialtyCardIds: { 1: "specialty.tsunade.1", 4: "specialty.tsunade.4", 6: "specialty.tsunade.6" },
     portrait: "/assets/anime/heroes/tsunade.png", source
+  },
+  enterprise: {
+    id: "enterprise", name: "Enterprise", faction: "azur_lane", class: "Grey Ghost", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    specialtyCardIds: { 1: "specialty.enterprise.1", 4: "specialty.enterprise.4", 6: "specialty.enterprise.6" },
+    portrait: "/assets/anime/heroes/enterprise.png", source
+  },
+  bismarck: {
+    id: "bismarck", name: "Bismarck", faction: "azur_lane", class: "Iron Blood Flagship", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: { 1: "specialty.bismarck.1", 4: "specialty.bismarck.4", 6: "specialty.bismarck.6" },
+    portrait: "/assets/anime/heroes/bismarck.png", source
+  },
+  nagato: {
+    id: "nagato", name: "Nagato", faction: "azur_lane", class: "Big Seven Flagship", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: { 1: "specialty.nagato.1", 4: "specialty.nagato.4", 6: "specialty.nagato.6" },
+    portrait: "/assets/anime/heroes/nagato.png", source
+  },
+  akashi: {
+    id: "akashi", name: "Akashi", faction: "azur_lane", class: "Chief Shipwright", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.akashi.1", 4: "specialty.akashi.4", 6: "specialty.akashi.6" },
+    portrait: "/assets/anime/heroes/akashi.png", source
+  },
+  sirius: {
+    id: "sirius", name: "Sirius", faction: "azur_lane", class: "Royal Maid Gunner", type: "magic",
+    startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: { 1: "specialty.sirius.1", 4: "specialty.sirius.4", 6: "specialty.sirius.6" },
+    portrait: "/assets/anime/heroes/sirius.png", source
   }
 };
 
@@ -390,5 +527,14 @@ export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "hidden_leaf").map((item) => item.id),
     units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "hidden_leaf").map((item) => item.id),
     townImage: "/assets/anime/towns/hidden-leaf-village-empty.webp", source
+  },
+  azur_lane: {
+    id: "azur_lane", name: "Azur Lane Naval Base", color: "#2f6fc1", startingTileId: "P-S1",
+    heroes: ["enterprise", "bismarck", "nagato", "akashi", "sirius"],
+    // `units` derives from the animeTownUnitDefinitions insertion order (bronze →
+    // gold), exactly like Fuyuki / Hidden Leaf — no explicit order array.
+    buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "azur_lane").map((item) => item.id),
+    units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "azur_lane").map((item) => item.id),
+    townImage: "/assets/anime/towns/azur-lane-base-empty.webp", source
   }
 };
