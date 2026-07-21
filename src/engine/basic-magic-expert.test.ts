@@ -250,7 +250,8 @@ describe("Basic X Magic expert (+3) FROM HAND on the owner's own cast", () => {
  * a first-class CAST_SPELL variant (`useSchoolFetchExpert`) while the fetch
  * permanent is IN PLAY — mirroring the Tower `useSchoolExpert` variant, instead of
  * only surfacing as the standalone USE_SCHOOL_FETCH_EXPERT reaction after the
- * cast. The permanent STAYS in play; a crown is spent; the +3 is folded up front.
+ * cast. Using the +3 DISCARDS the fetch permanent (consumes it, like the Tower
+ * School-of-Magic expert); a crown is spent; the +3 is folded up front.
  */
 describe("Basic X Magic expert as an UP-FRONT cast variant (useSchoolFetchExpert)", () => {
   function upfrontCombat(seed: string, hand: string[], permanent: string, crowns = 1): GameState {
@@ -291,7 +292,7 @@ describe("Basic X Magic expert as an UP-FRONT cast variant (useSchoolFetchExpert
     );
   }
 
-  it("offers the +3 cast variant with a crown; Magic Arrow (any) resolves at damage 3, permanent stays", () => {
+  it("offers the +3 cast variant with a crown; Magic Arrow (any) resolves at damage 3, permanent discarded", () => {
     const state = upfrontCombat("upfront-arrow", ["spell.magic_arrow"], "ability.basic_fire_magic", 1);
     const cast = upfrontCast(state, "spell.magic_arrow");
     expect(cast, "the up-front +3 cast variant should be offered for Magic Arrow").toBeTruthy();
@@ -299,7 +300,8 @@ describe("Basic X Magic expert as an UP-FRONT cast variant (useSchoolFetchExpert
     const s = passAll(applyOk(state, cast!.action));
     expect(s.combat!.units.unit_p2_skeletons.damage).toBe(3); // Power 0 → 3 (+3)
     expect(s.players.p1.combatStats.expertUsesSpentThisRound).toBe(spentBefore + 1);
-    expect(s.players.p1.permanents).toEqual(["ability.basic_fire_magic"]); // never discarded
+    expect(s.players.p1.permanents).toEqual([]); // consumed by the +3
+    expect(s.players.p1.discard).toContain("ability.basic_fire_magic");
   });
 
   it("empowers a FIRE-school spell (Fireball) up front — exact-school match, not just 'any'", () => {
@@ -318,7 +320,8 @@ describe("Basic X Magic expert as an UP-FRONT cast variant (useSchoolFetchExpert
     const s = passAll(applyOk(state, cast!.action));
     // Power 3 → the minPower-2 tier = 2 damage (up from 1): the +3 moved it.
     expect(s.combat!.units.unit_p2_skeletons.damage).toBe(2);
-    expect(s.players.p1.permanents).toEqual(["ability.basic_fire_magic"]);
+    expect(s.players.p1.permanents).toEqual([]); // consumed by the +3
+    expect(s.players.p1.discard).toContain("ability.basic_fire_magic");
   });
 
   it("CONTROL: with no crown the up-front variant is absent (the plain cast still is)", () => {
@@ -334,15 +337,17 @@ describe("Basic X Magic expert as an UP-FRONT cast variant (useSchoolFetchExpert
   });
 
   it("is once per cast: after the up-front +3 the reaction is not re-offered and damage is +3, not +6", () => {
-    // Two crowns so the once-per-cast GUARD (not a spent-crown side-effect) is what
-    // withholds the reaction; Magic Arrow in hand keeps the power window open.
+    // Two crowns so a spent crown alone cannot be what withholds the reaction;
+    // Magic Arrow in hand keeps the power window open. The +3 consumed (discarded)
+    // the permanent, so there is no fetch left to dip a second time.
     const state = upfrontCombat("upfront-once", ["spell.implosion", "spell.magic_arrow"], "ability.basic_earth_magic", 2);
     const cast = upfrontCast(state, "spell.implosion");
     expect(cast, "the up-front variant is offered for Implosion (earth)").toBeTruthy();
     let s = applyOk(state, cast!.action);
     // The window stays open (p1 may still discard Magic Arrow for +1 Power) with a
-    // crown to spare, yet the fetch +3 reaction is already spent for this cast.
+    // crown to spare, yet the fetch permanent is already consumed for this cast.
     expect(s.reactionWindow, "a power window is open").toBeTruthy();
+    expect(s.players.p1.permanents, "the fetch permanent was discarded by the +3").toEqual([]);
     expect(fetchExpert(s, "p1"), "the +3 is spent once — no second dip").toBeFalsy();
     s = passAll(s);
     // Implosion {0:0, 1:2, 3:4, 5:6}: Power 3 = 4 (NOT Power 6 = 6 → applied once).

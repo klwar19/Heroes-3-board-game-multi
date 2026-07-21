@@ -1166,7 +1166,8 @@ describe("Basic X Magic +3 up-front cast — Polish Spell Book surface", () => {
 
     const s = passAll(applyOk(state, cast!.action));
     expect(s.combat!.units.unit_p2_skeletons.damage).toBe(3); // Power 0 → 3 (+3)
-    expect(s.players.p1.permanents).toEqual(["ability.basic_fire_magic"]); // permanent stays
+    expect(s.players.p1.permanents).toEqual([]); // the +3 consumes the fetch permanent
+    expect(s.players.p1.discard).toContain("ability.basic_fire_magic");
     expect(s.players.p1.spellBookUsed).toContain("spell.magic_arrow"); // Book spell spent
     expect(s.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
   });

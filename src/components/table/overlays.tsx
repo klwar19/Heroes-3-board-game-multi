@@ -549,10 +549,10 @@ export function ReactionTray({
   );
 
   // Basic X Magic (the in-play spell-fetch permanent): its +3 Power expert is a
-  // standalone USE_SCHOOL_FETCH_EXPERT action (the permanent stays in play — it
-  // is not discarded like the Tower School-of-Magic expert), so no PLAY_REACTION
-  // card tile ever surfaces it. Without this the +3 expert was engine-offered but
-  // had no button in the instant window ("cannot play the expert effect").
+  // standalone USE_SCHOOL_FETCH_EXPERT action (using it discards the permanent,
+  // like the Tower School-of-Magic expert), so no PLAY_REACTION card tile ever
+  // surfaces it. Without this the +3 expert was engine-offered but had no button
+  // in the instant window ("cannot play the expert effect").
   const schoolFetchExpertReactions = legalActions.filter(
     (legal) => legal.action.type === "USE_SCHOOL_FETCH_EXPERT"
   );

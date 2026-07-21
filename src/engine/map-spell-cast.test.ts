@@ -207,7 +207,7 @@ describe("Map cast — School of Magic expert + Basic Magic expert (combat parit
     expect(casted.pendingChoice).toBeNull();
   });
 
-  it("Basic Air Magic expert offers +3 Power (permanent stays)", () => {
+  it("Basic Air Magic expert offers +3 Power (from the in-play permanent, which is discarded)", () => {
     let state = mapHand(["spell.view_air"]);
     state.players.p1.permanents = ["ability.basic_air_magic"];
     state.players.p1.limits.expertUses = 1;
@@ -221,15 +221,17 @@ describe("Map cast — School of Magic expert + Basic Magic expert (combat parit
       target: { type: "none" }
     });
     // Basic Magic has no standing +1 (only schoolFetch) — starting Power 0.
-    // Expert offer +3 → valuables.
+    // Expert offer +3 → valuables. The permanent-source offer carries no
+    // fromHandCardId (the hand offer, if any, would).
     const choice = state.pendingChoice!;
     const fetchIndex =
       choice.type === "OPTION_CHOICE" && choice.mapSpellBoost
         ? choice.mapSpellBoost.offers.findIndex(
-            (offer) => offer.kind === "school-fetch-expert" && offer.school === "air"
+            (offer) =>
+              offer.kind === "school-fetch-expert" && offer.school === "air" && !offer.fromHandCardId
           )
         : -1;
-    expect(fetchIndex, "Basic Air Magic expert is offered").toBeGreaterThanOrEqual(0);
+    expect(fetchIndex, "Basic Air Magic expert (from the permanent) is offered").toBeGreaterThanOrEqual(0);
 
     state = applyOk(state, {
       type: "CHOOSE_OPTION",
@@ -238,8 +240,68 @@ describe("Map cast — School of Magic expert + Basic Magic expert (combat parit
       optionIndex: fetchIndex
     });
     expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
-    expect(state.players.p1.permanents).toContain("ability.basic_air_magic"); // stays
+    // The +3 consumes the fetch permanent (combat parity: USE_SCHOOL_FETCH_EXPERT).
+    expect(state.players.p1.permanents ?? []).not.toContain("ability.basic_air_magic");
+    expect(state.players.p1.discard).toContain("ability.basic_air_magic");
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("Basic Air Magic +3 is ALSO offered from a card held in HAND (crown-gated) — discards the card", () => {
+    let state = mapHand(["spell.view_air", "ability.basic_air_magic"]);
+    state.players.p1.limits.expertUses = 1;
+    const valuablesBefore = state.players.p1.resources.valuables;
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.view_air",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    const choice = state.pendingChoice!;
+    const handIndex =
+      choice.type === "OPTION_CHOICE" && choice.mapSpellBoost
+        ? choice.mapSpellBoost.offers.findIndex(
+            (offer) =>
+              offer.kind === "school-fetch-expert" &&
+              offer.school === "air" &&
+              offer.fromHandCardId === "ability.basic_air_magic"
+          )
+        : -1;
+    expect(handIndex, "the hand Basic Air Magic +3 is offered").toBeGreaterThanOrEqual(0);
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: handIndex
+    });
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1); // Power 0 → 3 → valuables
+    expect(state.players.p1.hand).not.toContain("ability.basic_air_magic");
+    expect(state.players.p1.discard).toContain("ability.basic_air_magic");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("CONTROL: a hand Basic X Magic +3 is WITHHELD without a crown (no more crown-free +3 on the map)", () => {
+    let state = mapHand(["spell.view_air", "ability.basic_air_magic"]);
+    state.players.p1.limits.expertUses = 0;
+    const goldBefore = state.players.p1.resources.gold;
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.view_air",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    // Power 0 with no crown and no other power source → auto-resolves to the gold tier.
+    const fetchOffered =
+      state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.mapSpellBoost
+        ? state.pendingChoice.mapSpellBoost.offers.some((offer) => offer.kind === "school-fetch-expert")
+        : false;
+    expect(fetchOffered, "no crown → no Basic X Magic +3 offer (hand or permanent)").toBe(false);
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 3);
+    expect(state.players.p1.hand).toContain("ability.basic_air_magic"); // card kept, not burned
   });
 
   it("CONTROL: Fire Magic does not boost View Air (Air school); Basic Fire expert is withheld", () => {
