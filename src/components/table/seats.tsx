@@ -535,7 +535,12 @@ export function HandFan({
                         : action.target?.type === "space"
                           ? " → space"
                           : "";
-                    const expert = action.type === "CAST_SPELL" && action.useSchoolExpert ? " + School of Magic" : "";
+                    const expert =
+                      action.type === "CAST_SPELL" && action.useSchoolExpert
+                        ? " + School of Magic"
+                        : action.type === "CAST_SPELL" && action.useSchoolFetchExpert
+                          ? " + Basic Magic (+3)"
+                          : "";
                     return `Cast${expert}${targetLabel}`;
                   }}
                   emptyHint={(spellId) => timingHint(spellId)}
@@ -711,6 +716,8 @@ export function HandFan({
                           ? "Cancel targeting"
                           : `Pick target${"mode" in action && action.mode === "expert" ? " (expert)" : ""}${
                               action.type === "CAST_SPELL" && action.useSchoolExpert ? " + School of Magic (+3)" : ""
+                            }${
+                              action.type === "CAST_SPELL" && action.useSchoolFetchExpert ? " + Basic Magic (+3)" : ""
                             }`}
                       </button>
                     ))}
@@ -719,6 +726,8 @@ export function HandFan({
                       const label =
                         action.type === "CAST_SPELL" && action.useSchoolExpert
                           ? "Cast + School of Magic (+3)"
+                          : action.type === "CAST_SPELL" && action.useSchoolFetchExpert
+                          ? "Cast + Basic Magic (+3)"
                           : action.type === "PLAY_CARD" && action.optionIndex !== undefined && card?.effect.type === "CHOOSE_ONE"
                             ? card.effect.options[action.optionIndex]?.label
                             : action.type === "PLAY_CARD" && action.mode === "expert"

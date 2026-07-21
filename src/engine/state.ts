@@ -2964,6 +2964,16 @@ export type GameAction =
        * never popping an extra expert prompt.
        */
       useSchoolExpert?: boolean;
+      /**
+       * Basic X Magic (Conflux fetch permanent) in play: the caster may decide AS
+       * PART OF the cast to spend one expert use for its +3 Power on a matching-
+       * school spell. Unlike `useSchoolExpert` the permanent is NOT discarded — it
+       * stays in play. Decided up front so the +3 is folded before the cast
+       * resolves, mirroring the standalone USE_SCHOOL_FETCH_EXPERT reaction. The
+       * reducer re-validates (permanent present, school match, crown) — never
+       * trusts the flag.
+       */
+      useSchoolFetchExpert?: boolean;
     }
   | {
       type: "PLAY_CARD";

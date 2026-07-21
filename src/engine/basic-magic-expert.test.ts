@@ -244,3 +244,108 @@ describe("Basic X Magic expert (+3) FROM HAND on the owner's own cast", () => {
     expect(handExpert(s), "no crown → no +3 expert").toBeFalsy();
   });
 });
+
+/**
+ * User demand: the Basic X Magic +3 expert must be offered AS PART OF the cast —
+ * a first-class CAST_SPELL variant (`useSchoolFetchExpert`) while the fetch
+ * permanent is IN PLAY — mirroring the Tower `useSchoolExpert` variant, instead of
+ * only surfacing as the standalone USE_SCHOOL_FETCH_EXPERT reaction after the
+ * cast. The permanent STAYS in play; a crown is spent; the +3 is folded up front.
+ */
+describe("Basic X Magic expert as an UP-FRONT cast variant (useSchoolFetchExpert)", () => {
+  function upfrontCombat(seed: string, hand: string[], permanent: string, crowns = 1): GameState {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = hand;
+    state.players.p2.hand = [];
+    state.players.p1.permanents = [permanent];
+    state.players.p1.limits.expertUses = crowns;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.abilities = [];
+    target.maxHealth = 40;
+    target.damage = 0;
+    return state;
+  }
+
+  function upfrontCast(state: GameState, cardId: string, unitId = "unit_p2_skeletons") {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === cardId &&
+        legal.action.useSchoolFetchExpert === true &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === unitId
+    );
+  }
+
+  function plainCast(state: GameState, cardId: string, unitId = "unit_p2_skeletons") {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === cardId &&
+        !legal.action.useSchoolFetchExpert &&
+        !legal.action.useSchoolExpert &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === unitId
+    );
+  }
+
+  it("offers the +3 cast variant with a crown; Magic Arrow (any) resolves at damage 3, permanent stays", () => {
+    const state = upfrontCombat("upfront-arrow", ["spell.magic_arrow"], "ability.basic_fire_magic", 1);
+    const cast = upfrontCast(state, "spell.magic_arrow");
+    expect(cast, "the up-front +3 cast variant should be offered for Magic Arrow").toBeTruthy();
+    const spentBefore = state.players.p1.combatStats.expertUsesSpentThisRound;
+    const s = passAll(applyOk(state, cast!.action));
+    expect(s.combat!.units.unit_p2_skeletons.damage).toBe(3); // Power 0 → 3 (+3)
+    expect(s.players.p1.combatStats.expertUsesSpentThisRound).toBe(spentBefore + 1);
+    expect(s.players.p1.permanents).toEqual(["ability.basic_fire_magic"]); // never discarded
+  });
+
+  it("empowers a FIRE-school spell (Fireball) up front — exact-school match, not just 'any'", () => {
+    // Move the vampires off the skeleton's neighbour cell so Fireball's splash
+    // opens no adjacent-target choice — the primary damage is the clean signal.
+    const base = upfrontCombat("upfront-fb-base", ["spell.fireball"], "ability.basic_fire_magic", 1);
+    base.combat!.units.unit_p2_vampires.position = 3;
+    const plain = passAll(applyOk(base, plainCast(base, "spell.fireball")!.action));
+    // Fireball ladder {0:1, 2:2, 4:3}: Power 0 → 1 damage.
+    expect(plain.combat!.units.unit_p2_skeletons.damage).toBe(1);
+
+    const state = upfrontCombat("upfront-fb", ["spell.fireball"], "ability.basic_fire_magic", 1);
+    state.combat!.units.unit_p2_vampires.position = 3;
+    const cast = upfrontCast(state, "spell.fireball");
+    expect(cast, "Fireball (fire) should be offered the up-front fetch expert").toBeTruthy();
+    const s = passAll(applyOk(state, cast!.action));
+    // Power 3 → the minPower-2 tier = 2 damage (up from 1): the +3 moved it.
+    expect(s.combat!.units.unit_p2_skeletons.damage).toBe(2);
+    expect(s.players.p1.permanents).toEqual(["ability.basic_fire_magic"]);
+  });
+
+  it("CONTROL: with no crown the up-front variant is absent (the plain cast still is)", () => {
+    const state = upfrontCombat("upfront-nocrown", ["spell.magic_arrow"], "ability.basic_fire_magic", 0);
+    expect(upfrontCast(state, "spell.magic_arrow"), "no crown → no up-front +3").toBeFalsy();
+    expect(plainCast(state, "spell.magic_arrow"), "the plain cast is unaffected").toBeTruthy();
+  });
+
+  it("CONTROL: a Water fetch permanent does NOT offer the up-front variant for a Fire spell", () => {
+    const state = upfrontCombat("upfront-wrongschool", ["spell.fireball"], "ability.basic_water_magic", 1);
+    expect(upfrontCast(state, "spell.fireball"), "a Water fetch must not empower Fireball (fire)").toBeFalsy();
+    expect(plainCast(state, "spell.fireball"), "the plain Fireball cast is still offered").toBeTruthy();
+  });
+
+  it("is once per cast: after the up-front +3 the reaction is not re-offered and damage is +3, not +6", () => {
+    // Two crowns so the once-per-cast GUARD (not a spent-crown side-effect) is what
+    // withholds the reaction; Magic Arrow in hand keeps the power window open.
+    const state = upfrontCombat("upfront-once", ["spell.implosion", "spell.magic_arrow"], "ability.basic_earth_magic", 2);
+    const cast = upfrontCast(state, "spell.implosion");
+    expect(cast, "the up-front variant is offered for Implosion (earth)").toBeTruthy();
+    let s = applyOk(state, cast!.action);
+    // The window stays open (p1 may still discard Magic Arrow for +1 Power) with a
+    // crown to spare, yet the fetch +3 reaction is already spent for this cast.
+    expect(s.reactionWindow, "a power window is open").toBeTruthy();
+    expect(fetchExpert(s, "p1"), "the +3 is spent once — no second dip").toBeFalsy();
+    s = passAll(s);
+    // Implosion {0:0, 1:2, 3:4, 5:6}: Power 3 = 4 (NOT Power 6 = 6 → applied once).
+    expect(s.combat!.units.unit_p2_skeletons.damage).toBe(4);
+  });
+});

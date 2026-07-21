@@ -173,6 +173,7 @@ import {
   deckDisplayName,
   discardPickAllowedInCombat,
   instantSideAllowedInCombat,
+  matchingSchoolFetchForCast,
   expertUsesAvailable,
   getRuleset,
   spellBookPowerAvailable,
@@ -2160,6 +2161,17 @@ function addSpellActions(
         ? getPermanentSchoolBonus(state, playerId, card)
         : null;
 
+    // Basic X Magic (Conflux fetch permanent) in play matching this spell, with an
+    // expert use to spend: the caster may fold its +3 Power AS PART OF the cast
+    // (up front, like the Tower schoolExpert above) instead of playing the
+    // standalone USE_SCHOOL_FETCH_EXPERT reaction after the cast. Unlike the Tower
+    // discard the permanent STAYS in play — only a crown is spent. Same
+    // scroll/Spell-deck/Tarnum exclusions; a Book cast keeps its flag.
+    const fetchExpertSchool =
+      !fromScroll && !fromSpellDeck && !tarnumReturn && expertUsesAvailable(player) > 0
+        ? matchingSchoolFetchForCast(state, playerId, card.spellSchools ?? [])
+        : null;
+
     for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
       actions.push({
         label: fromScroll
@@ -2197,6 +2209,24 @@ function addSpellActions(
             cardId,
             target,
             useSchoolExpert: true,
+            ...(fromSpellBook ? { fromSpellBook: true } : {})
+          }
+        });
+      }
+
+      if (fetchExpertSchool) {
+        const schoolName = `${fetchExpertSchool.charAt(0).toUpperCase()}${fetchExpertSchool.slice(1)}`;
+        actions.push({
+          label: `Cast ${card.name} with +3 Power — Basic ${schoolName} Magic expert (crown)${
+            fromSpellBook ? " (Spell Book)" : ""
+          }`,
+          action: {
+            type: "CAST_SPELL",
+            playerId,
+            cardId,
+            target,
+            useSchoolFetchExpert: true,
+            ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}),
             ...(fromSpellBook ? { fromSpellBook: true } : {})
           }
         });
