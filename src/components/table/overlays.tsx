@@ -1941,10 +1941,8 @@ export function DeckSearchModeModal({
     mode.hasDiscardTop && deckState && deckState.discardPile.length > 0
       ? deckState.discardPile[deckState.discardPile.length - 1]
       : null;
-  // Spell searches offer EVERY acquirable discarded spell (indices 1..N map
-  // onto discardPickCardIds); other decks keep the single top-only take.
-  const discardPickIds = mode.discardPickCardIds ?? [];
-  const discardOptionCount = discardPickIds.length > 0 ? discardPickIds.length : mode.hasDiscardTop ? 1 : 0;
+  // Every deck offers only the single top-only take (index 1).
+  const discardOptionCount = mode.hasDiscardTop ? 1 : 0;
 
   // Group the look-alike tiles into labeled sections so they no longer read as a
   // wall of near-identical cards — the Search first, then the discard takes, then
@@ -1956,13 +1954,8 @@ export function DeckSearchModeModal({
     const isSearch = optionIndex === 0;
     const isDiscard =
       Boolean(mode.hasDiscardTop) && optionIndex >= 1 && optionIndex <= discardOptionCount;
-    // Multi-pick spell takes show EACH pick's own card face; the classic single
-    // take keeps the pile top.
-    const discardId = isDiscard
-      ? discardPickIds.length > 0
-        ? discardPickIds[optionIndex - 1] ?? null
-        : discardTopId
-      : null;
+    // The single take shows the pile top's card face.
+    const discardId = isDiscard ? discardTopId : null;
     return (
       <div className="searchCardWrap" key={optionIndex}>
         <button
@@ -1996,11 +1989,7 @@ export function DeckSearchModeModal({
   const fetchOptions = optionActions.filter((legal) => legal.action.optionIndex > discardOptionCount);
   const sections: { key: string; heading: string; options: typeof optionActions }[] = [
     { key: "search", heading: "Search the deck", options: searchOptions },
-    {
-      key: "discard",
-      heading: mode.deckId === "spells" ? "…or take a discarded spell" : "…or take the top discard",
-      options: discardOptions
-    },
+    { key: "discard", heading: "…or take the top discard", options: discardOptions },
     { key: "fetch", heading: "…or draw from your School of Magic instead", options: fetchOptions }
   ];
 

@@ -3409,21 +3409,23 @@ FIX). Each engine claim fails a named test if its wiring is removed.
   scoring, and flipping the flag back to `true` restores both gates. Pinned in
   `adventure.test.ts` ("offers every far-tile rotation …") and the e2e rotate
   flow.
-- **Spell searches take ANY acquirable discarded spell** (other decks keep the
-  classic top-only take): `openSharedDeckSearch` offers one take per acquirable
-  card in the Spell discard (`deckSearchMode.discardPickCardIds`, options 1..N,
-  school-fetch offers after). After a Spell Search leaves 2+ unkept cards, the
-  searcher PICKS which sits face-up on top (`spell-discard-top` choice).
-  (AUDIT FIX ×3): the pick INTERPOSES but never swallows the post-Search
-  offers — the morale repeat-search / Pendant of Courage offers re-open after it
-  through the ONE shared seam `maybeOpenPostSearchOffers` (adventure-reducer,
-  also the tail of `resolveDeckSearch`); `eliminatePlayer` returns the parked
-  unkept cards to the shared discard (they sit only on the open choice — a
-  mid-pick elimination destroys nothing); and the `DeckSearchModeModal` renders
-  EACH pick's own card face (it used to show the pile top's face on option 1
-  and blank backs on the rest). Pinned in `spell-discard-pick.test.ts` (offer /
-  face-up pick / morale-after-pick / elimination) and
-  `deck-search-mode-modal.test.tsx` (per-pick faces).
+- **Spell searches take only the face-up TOP discard, like every other deck**
+  (REVERTED per the explicit 2026-07-21 user demand — the ef3b0ac "take ANY
+  acquirable discarded spell + pick the face-up top" invention was never
+  requested and is gone). `openSharedDeckSearch` offers at most ONE discard take,
+  the `discardTopId` path (still `canAcquireSharedDeckCard`-filtered), for Spell
+  decks exactly as for Abilities/Artifacts — no `discardPickCardIds`, no per-card
+  menu. `resolveDeckSearch` pushes ALL unkept revealed cards straight back to the
+  discard (no `spell-discard-top` face-up pick is ever opened). LEGACY-RESOLUTION
+  SAFETY (a live room could still hold an in-flight `spell-discard-top` choice
+  when the server updates): the `chooseOption` handler, the `eliminatePlayer`
+  parked-card return, and the `spellDiscardTopPick` type are KEPT so such a
+  choice still resolves — but it is never CREATED again. The morale
+  repeat-search / Pendant-of-Courage post-Search offers (`maybeOpenPostSearchOffers`)
+  predate ef3b0ac and are unchanged. Pinned in `spell-discard-pick.test.ts`
+  (single top-only take, a buried acquirable spell NOT offered = the user's
+  CONTROL, the take, the school-fetch-still-after-it, and the legacy in-flight
+  resolution) and `deck-search-mode-modal.test.tsx` (top-discard face + grouping).
 - **The deck-search menu's "Search (N)" tile is HONEST about a standing
   Scouting override.** A `SEARCH_COUNT_OVERRIDE` (a pre-played Scouting) is
   consumed only at REVEAL (`applySearchCountEffects`), never when the up-front
@@ -3440,7 +3442,7 @@ FIX). Each engine claim fails a named test if its wiring is removed.
   `deck-search-label-honesty.test.ts` (bank X→reveal, override label + reveal,
   Astrologers control, school-fetch controller scoping). Presentation: the
   `DeckSearchModeModal` now GROUPS the look-alike tiles under headings (Search
-  the deck / take a discarded spell / draw from your School of Magic) — visual
+  the deck / take the top discard / draw from your School of Magic) — visual
   only, option indices unchanged — pinned in `deck-search-mode-modal.test.tsx`.
 - **Manual guard control is FREE play.** `neutralControlMustAttack` returns
   false without PvP Neutral Control — the manual fighter may move, attack,
@@ -3489,10 +3491,10 @@ FIX). Each engine claim fails a named test if its wiring is removed.
   (`placement-panel.test.tsx`), and face-down tiles render EVERY pending token
   (multi-token tiles, whirlpools included — public designer info) instead of
   only the legacy first entry (`screen.tsx`).
-- **LIMIT (AI):** computer seats answer the new `spell-discard-top` and
-  `map-spell-boost` choices through the GENERIC option scorer (bounded — each
-  boost pick shrinks the offer list — but greedy: no bespoke tier-value
-  policy), and the AI never sets designer exit modes.
+- **LIMIT (AI):** computer seats answer the new `map-spell-boost` choice
+  through the GENERIC option scorer (bounded — each boost pick shrinks the offer
+  list — but greedy: no bespoke tier-value policy), and the AI never sets
+  designer exit modes.
 
 ## Map settings defaults (designer → lobby, seed-at-pick) — what runs vs. limits
 

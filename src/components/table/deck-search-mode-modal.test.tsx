@@ -104,56 +104,11 @@ describe("DeckSearchModeModal — search back + discard face", () => {
     );
   });
 
-  it("multi-pick Spell takes render EACH pick's OWN card face — not the pile top for every option", () => {
-    // Two acquirable discarded spells; the pile TOP is Haste, but option 1 maps
-    // onto discardPickCardIds[0] = Bless (pile order, bottom first).
-    const state = createAdventureGameState({ seed: "deck-search-mode-multi", rollFirstPlayer: false });
-    state.activePlayerId = "p1";
-    state.decks.spells.discardPile = ["spell.bless", "spell.haste"];
-    state.pendingChoice = {
-      id: "choice_search_mode_multi",
-      type: "OPTION_CHOICE",
-      playerId: "p1",
-      prompt: "Search the Spell deck, or take a discarded spell (pick which one)?",
-      options: [
-        { label: "Search (2) — look at the top cards and keep one" },
-        { label: "Take discarded Bless" },
-        { label: "Take discarded Haste (face-up top)" }
-      ],
-      context: "deck-search-mode",
-      deckSearchMode: {
-        deckId: "spells",
-        count: 2,
-        hasDiscardTop: true,
-        discardPickCardIds: ["spell.bless", "spell.haste"]
-      },
-      returnPhase: "player-turn"
-    };
-    state.phase = "choice";
-    state.priorityPlayerId = "p1";
-
-    wrap(
-      <DeckSearchModeModal
-        legalActions={getLegalActions(state, "p1")}
-        onAction={vi.fn()}
-        state={state}
-        view={getPlayerView(state, "p1")}
-        viewerPlayerId="p1"
-      />
-    );
-
-    const blessBtn = screen.getByRole("button", { name: /Take discarded Bless/i });
-    const hasteBtn = screen.getByRole("button", { name: /Take discarded Haste/i });
-    // Each take renders ITS pick's face (alt names the card), styled as a discard pick.
-    expect(blessBtn.querySelector("img")?.getAttribute("alt") ?? "").toMatch(/Bless/i);
-    expect(hasteBtn.querySelector("img")?.getAttribute("alt") ?? "").toMatch(/Haste/i);
-    expect(blessBtn.className).toMatch(/discardPick/);
-    expect(hasteBtn.className).toMatch(/discardPick/);
-  });
-
   it("groups the look-alike tiles under section headings WITHOUT reordering the option indices", () => {
     const state = createAdventureGameState({ seed: "deck-search-mode-sections", rollFirstPlayer: false });
     state.activePlayerId = "p1";
+    // A single acquirable top discard (Haste) + a School-of-Magic fetch — the
+    // classic single top-only take, no per-card menu.
     state.decks.spells.discardPile = ["spell.bless", "spell.haste"];
     state.pendingChoice = {
       id: "choice_search_sections",
@@ -162,8 +117,7 @@ describe("DeckSearchModeModal — search back + discard face", () => {
       prompt: "Search the spells deck, or draw from a School of Magic instead?",
       options: [
         { label: "Search (2) — look at the top cards and keep one" },
-        { label: "Take discarded Bless" },
-        { label: "Take discarded Haste (face-up top)" },
+        { label: "Take the top discard (Haste)" },
         { label: "Draw the first Fire Magic spell — take it into hand" }
       ],
       context: "deck-search-mode",
@@ -171,7 +125,6 @@ describe("DeckSearchModeModal — search back + discard face", () => {
         deckId: "spells",
         count: 2,
         hasDiscardTop: true,
-        discardPickCardIds: ["spell.bless", "spell.haste"],
         schoolFetch: ["fire"]
       },
       returnPhase: "player-turn"
@@ -191,19 +144,20 @@ describe("DeckSearchModeModal — search back + discard face", () => {
     );
 
     // The three grouping headings read as distinct sections, not one wall of cards.
+    // (Anchor the discard heading so it matches the SECTION label, not the button.)
     expect(screen.getByText(/^Search the deck$/i)).toBeTruthy();
-    expect(screen.getByText(/take a discarded spell/i)).toBeTruthy();
+    expect(screen.getByText("…or take the top discard")).toBeTruthy();
     expect(screen.getByText(/draw from your School of Magic/i)).toBeTruthy();
 
-    // Indices are UNCHANGED (grouping is visual only): the Fire fetch is option 3,
-    // the discard takes are 1 & 2, the Search is 0.
+    // Indices are UNCHANGED (grouping is visual only): the Fire fetch is option 2,
+    // the single top-discard take is 1, the Search is 0.
     fireEvent.click(screen.getByRole("button", { name: /Draw the first Fire Magic spell/i }));
     expect(onAction).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "CHOOSE_OPTION", optionIndex: 3, choiceId: "choice_search_sections" })
-    );
-    fireEvent.click(screen.getByRole("button", { name: /Take discarded Haste/i }));
-    expect(onAction).toHaveBeenLastCalledWith(
       expect.objectContaining({ type: "CHOOSE_OPTION", optionIndex: 2, choiceId: "choice_search_sections" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Take the top discard \(Haste\)/i }));
+    expect(onAction).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: "CHOOSE_OPTION", optionIndex: 1, choiceId: "choice_search_sections" })
     );
     fireEvent.click(screen.getByRole("button", { name: /Search \(2\)/i }));
     expect(onAction).toHaveBeenLastCalledWith(

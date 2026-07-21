@@ -171,16 +171,6 @@ describe("Conflux content", () => {
     const keep = getLegalActions(next, "p1").find((legal) => legal.action.type === "RESOLVE_DECK_SEARCH");
     expect(keep, "a revealed Spell to keep").toBeTruthy();
     next = applyOk(next, keep!.action);
-    // The Spell Search left 2 unkept cards → the searcher picks the face-up top.
-    const facePick = next.pendingChoice;
-    if (facePick?.type === "OPTION_CHOICE" && facePick.context === "spell-discard-top") {
-      next = applyOk(next, {
-        type: "CHOOSE_OPTION",
-        playerId: "p1",
-        choiceId: facePick.id,
-        optionIndex: 0
-      });
-    }
     expect(next.players.p1.hand.length).toBe(limit + 1);
 
     // At p1's turn the over-limit hand forces a discard before they can act

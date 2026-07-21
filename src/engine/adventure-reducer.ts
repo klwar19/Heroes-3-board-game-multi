@@ -11941,6 +11941,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  // LEGACY RESOLUTION ONLY: the "pick which unkept spell sits face-up" choice is
+  // no longer OPENED (the invented any-discard-take feature was reverted per the
+  // 2026-07-21 user demand), but a live room mid-choice when the server updates
+  // could still hold one — this handler resolves it so it never strands.
   if (choice.context === "spell-discard-top") {
     const pick = choice.spellDiscardTopPick;
     if (!pick) {
@@ -11996,28 +12000,17 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
 
     const hasDiscardTop = mode.hasDiscardTop ?? false;
-    const discardPickCardIds = mode.discardPickCardIds ?? [];
-    const discardOptionCount = discardPickCardIds.length > 0 ? discardPickCardIds.length : hasDiscardTop ? 1 : 0;
+    const discardOptionCount = hasDiscardTop ? 1 : 0;
     const fetchSchools = mode.schoolFetch ?? [];
 
-    // The remaining options take a card with no reveal: discard takes (one or
-    // many for Spell decks), then one "draw from a School of Magic" per school.
+    // The remaining options take a card with no reveal: the top discard (index
+    // 1), then one "draw from a School of Magic" per school.
     if (hasDiscardTop && action.optionIndex >= 1 && action.optionIndex <= discardOptionCount) {
       const deck = state.decks[mode.deckId];
       if (!deck) {
         throw new Error("The discard pile is empty.");
       }
-      let takenCardId: string | undefined;
-      if (discardPickCardIds.length > 0) {
-        const wantId = discardPickCardIds[action.optionIndex - 1];
-        const at = deck.discardPile.lastIndexOf(wantId);
-        if (at < 0) {
-          throw new Error("That discarded card is no longer available.");
-        }
-        takenCardId = deck.discardPile.splice(at, 1)[0];
-      } else {
-        takenCardId = deck.discardPile.pop();
-      }
+      const takenCardId = deck.discardPile.pop();
       if (!takenCardId) {
         throw new Error("The discard pile is empty.");
       }
@@ -13327,21 +13320,13 @@ export function openSharedDeckSearch(
   // actually take — taking skips no redraw, so a duplicate / Necromancy /
   // starting-only card would dodge the acquisition rules. When nothing is
   // acquirable the player just searches the deck (which redraws past such cards).
-  //
-  // Spell decks (all modes): every acquirable card in the discard pile is
-  // offered — not only the face-up top — so the searcher picks which discarded
-  // spell to take. Other decks keep the classic single top-only offer.
-  const acquirableDiscard = deck.discardPile.filter((cardId) =>
-    canAcquireSharedDeckCard(state, playerId, deckId, cardId)
-  );
-  const spellDiscardPicks = isSpellDeck(deckId) ? [...new Set(acquirableDiscard)] : [];
+  // EVERY deck (Spell decks included) offers only the face-up TOP discard — the
+  // classic rulebook single top-only take.
   const discardTop =
     deck.discardPile.length > 0 ? deck.discardPile[deck.discardPile.length - 1] : null;
   const discardTopId =
-    !isSpellDeck(deckId) && discardTop && canAcquireSharedDeckCard(state, playerId, deckId, discardTop)
-      ? discardTop
-      : null;
-  const hasDiscardTake = spellDiscardPicks.length > 0 || Boolean(discardTopId);
+    discardTop && canAcquireSharedDeckCard(state, playerId, deckId, discardTop) ? discardTop : null;
+  const hasDiscardTake = Boolean(discardTopId);
 
   if (hasDiscardTake || schoolFetch.length > 0) {
     // Label the Search HONESTLY. A standing SEARCH_COUNT_OVERRIDE (a pre-played
@@ -13354,14 +13339,7 @@ export function openSharedDeckSearch(
       ? `Search (${widen.count}) — ${widen.source} override (base ${baseCount})`
       : `Search (${baseCount}) — look at the top cards and keep one`;
     const options: { label: string }[] = [{ label: searchLabel }];
-    if (spellDiscardPicks.length > 0) {
-      for (const cardId of spellDiscardPicks) {
-        const isTop = cardId === discardTop;
-        options.push({
-          label: `Take discarded ${cardLibrary[cardId]?.name ?? cardId}${isTop ? " (face-up top)" : ""}`
-        });
-      }
-    } else if (discardTopId) {
+    if (discardTopId) {
       options.push({ label: `Take the top discard (${cardLibrary[discardTopId]?.name ?? discardTopId})` });
     }
     for (const school of schoolFetch) {
@@ -13377,9 +13355,7 @@ export function openSharedDeckSearch(
       prompt:
         schoolFetch.length > 0
           ? `Search the ${deckId} deck, or draw from a School of Magic instead?`
-          : spellDiscardPicks.length > 1
-            ? `Search the Spell deck, or take a discarded spell (pick which one)?`
-            : `Search the ${deckId} deck, or take its top discard?`,
+          : `Search the ${deckId} deck, or take its top discard?`,
       options,
       context: "deck-search-mode",
       deckSearchMode: {
@@ -13387,7 +13363,6 @@ export function openSharedDeckSearch(
         count: baseCount,
         ...(schoolFetch.length > 0 ? { schoolFetch } : {}),
         hasDiscardTop: hasDiscardTake,
-        ...(spellDiscardPicks.length > 0 ? { discardPickCardIds: spellDiscardPicks } : {}),
         ...(allowRemove ? { allowRemove: true } : {})
       },
       returnPhase: state.combat ? "combat" : "player-turn"

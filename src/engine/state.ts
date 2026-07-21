@@ -12346,22 +12346,17 @@ export type PendingChoice =
         schoolFetch?: SpellSchool[];
         /** Whether a "take the top discard" option is offered (index 1). */
         hasDiscardTop?: boolean;
-        /**
-         * When set (Spell searches): each id is an acquirable card currently in
-         * the discard pile the searcher may TAKE — not just the face-up top.
-         * Option indices 1..N map onto this list in order; school-fetch options
-         * follow. Absent = classic single top-only take (non-spell decks).
-         */
-        discardPickCardIds?: CardId[];
         /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege into the reveal. */
         allowRemove?: boolean;
       };
       /**
-       * After a Spell deck Search leaves 2+ unkept cards in discard: pick which
-       * one sits FACE-UP on top (the rest stay under it in their prior order).
-       * `baseCount` + `keptCardId` carry the Search's identity so the morale
-       * repeat-search / Pendant-of-Courage post-Search offers still open AFTER
-       * the pick resolves (the pick interposes, it never swallows them).
+       * LEGACY ONLY — no longer created (the "take any discarded spell / pick
+       * the face-up top" feature was reverted per the 2026-07-21 user demand;
+       * Spell decks now take only the face-up top like every other deck). Kept
+       * so a live room holding an in-flight `spell-discard-top` choice when the
+       * server updates can still resolve it. `baseCount` + `keptCardId` carried
+       * the Search's identity so the morale repeat-search / Pendant-of-Courage
+       * post-Search offers still open after the legacy pick resolves.
        */
       spellDiscardTopPick?: {
         deckId: DeckId;
