@@ -3,9 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { PromptTray } from "./screen";
 import { applyAction, createAdventureGameState, getLegalActions, getMainHero } from "@/engine";
-import { startNeutralEncounter } from "@/engine/adventure-reducer";
+import { finalizeAdventureCombat, pumpAdventureQueues, startNeutralEncounter } from "@/engine/adventure-reducer";
 import { NECROMANCY_ABILITY_ID } from "@/engine/ruleset";
 import { NEUTRAL_PLAYER_ID } from "@/engine/state";
+import type { CombatState, MapFieldState } from "@/engine/state";
 import type { GameAction, GameState } from "@/engine";
 
 afterEach(cleanup);
@@ -119,5 +120,93 @@ describe("Necropolis — post-combat Necromancy window renders on the map", () =
     fireEvent.click(skip);
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls[0][0]).toMatchObject({ type: "SKIP_NECROMANCY", playerId: "p1" });
+  });
+
+  /**
+   * The USER-REPORTED shape: after a Creature Bank fight (Derelict Ship under
+   * Polish Bank Sizes) whose reward opens a Spell-deck Search (a top-level
+   * `pendingChoice`), the map screen must still render the Necromancy window once
+   * that Search is answered. Combat is already cleared (state.combat === null), so
+   * this is the SAME map surface (PromptTray) the guard-win test above exercises —
+   * this pins that a bank whose reward PROMPTS (the case the engine bank tests
+   * cover only for the pendingVisit shape) reaches the same rendered window.
+   */
+  function derelictBankNecromancyState(seed: string): GameState {
+    const state = createAdventureGameState({
+      seed,
+      ruleset: "binh",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "One", factionId: "necropolis" as never, heroDefId: "sandro" },
+        { id: "p2", name: "Two", factionId: "castle" as never }
+      ]
+    });
+    for (const p of Object.values(state.players)) {
+      p.canMulligan = false;
+      p.needsHandRefresh = false;
+    }
+    state.players.p1.hand = [NECROMANCY_ABILITY_ID];
+    state.players.p1.deckDrawnAbilityCardIds = [];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    state.players.p1.resources.gold = 20;
+
+    const hero = getMainHero(state, "p1")!;
+    hero.level = 7;
+    hero.spaceId = "bank-field";
+    state.adventure!.fields["bank-field"] = {
+      spaceId: "bank-field",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "creature_bank",
+      bankId: "derelict_ship",
+      bankSize: 2,
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } as MapFieldState;
+    state.activePlayerId = "p1";
+    state.combat = {
+      context: {
+        kind: "neutral",
+        heroId: hero.id,
+        fieldId: "bank-field",
+        difficulty: 1,
+        hasAzure: false,
+        bankId: "derelict_ship",
+        bankStackCount: 2
+      },
+      outcome: { winnerPlayerId: "p1", defeatedPlayerId: NEUTRAL_PLAYER_ID, reason: "all-enemy-units-defeated" },
+      units: {}
+    } as unknown as CombatState;
+
+    finalizeAdventureCombat(state);
+    pumpAdventureQueues(state);
+    // Answer the bank reward's Spell Search the way a human would.
+    let cur = state;
+    for (let guard = 0; guard < 12 && cur.pendingChoice; guard += 1) {
+      const pick = getLegalActions(cur, "p1").find(
+        (l) => l.action.type === "CHOOSE_OPTION" || l.action.type === "RESOLVE_DECK_SEARCH"
+      );
+      if (!pick) break;
+      cur = apply(cur, pick.action);
+    }
+    return cur;
+  }
+
+  it("renders the Necromancy window on the map after a bank fight whose reward opened a Spell Search", () => {
+    const state = derelictBankNecromancyState("bank-search-render");
+    // The engine reached the now-or-never window with combat cleared (map surface).
+    expect(state.combat ?? null).toBeNull();
+    expect(state.pendingChoice ?? null).toBeNull();
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+
+    render(
+      <PromptTray legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+    );
+    expect(screen.getByRole("button", { name: /skip necromancy/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /play necromancy/i })).toBeTruthy();
   });
 });
