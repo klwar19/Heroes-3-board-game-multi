@@ -411,6 +411,33 @@ describe("Game options — tabbed layout", () => {
     expect(screen.queryByText("Blind Ⅱ–Ⅲ tile choice")).toBeNull();
   });
 
+  it("Map & Setup wires the Creature Banks toggle, default On, and reflects a stored Off", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    const row = screen.getByText("Creature Banks").closest(".optionRow");
+    expect(row).toBeTruthy();
+    // Default (option unset) pre-highlights On.
+    expect(within(row as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    // Clicking Off dispatches the exact SET_GAME_OPTIONS the engine now reads.
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Off" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { creatureBanks: false }
+    });
+
+    // A stored creatureBanks:false is reflected as Off pressed (the button sticks).
+    cleanup();
+    openOptions(vi.fn(), { creatureBanks: false });
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    const offRow = screen.getByText("Creature Banks").closest(".optionRow");
+    expect(within(offRow as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+  });
+
   it("Mode & Rules wires Event deck, Morale Cards, and Ban Diplomacy", () => {
     const onAction = openOptions();
 

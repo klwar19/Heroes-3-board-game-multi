@@ -3808,6 +3808,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     changes.push(`Morale Cards ${next.moraleCards ? "on" : "off"}`);
   }
 
+  if (next.creatureBanks !== undefined) {
+    lobby.options.creatureBanks = Boolean(next.creatureBanks);
+    changes.push(`Creature Banks ${next.creatureBanks ? "on" : "off"}`);
+  }
+
   if (next.tournamentMode !== undefined) {
     const on = Boolean(next.tournamentMode);
     lobby.options.tournamentMode = on;
@@ -5210,6 +5215,11 @@ function buildAdventureFromLobby(state: GameState): void {
     victoryMode: lobby.options.victoryMode,
     pvpTroopLoss: lobby.options.pvpTroopLoss,
     dragonUtopiaGuards: lobby.options.dragonUtopiaGuards,
+    // Naval Battles Creature Banks toggle (Map tab). Set on the lobby by the
+    // setGameOptions `creatureBanks` branch; must be carried into the built game
+    // or the host's Off choice is silently dropped. Defaults ON (undefined) so a
+    // plain lobby is byte-identical.
+    creatureBanks: lobby.options.creatureBanks,
     events: lobby.options.events,
     victoryPoints: lobby.options.victoryPoints,
     victoryPointsRoundLimit: lobby.options.victoryPointsRoundLimit,
