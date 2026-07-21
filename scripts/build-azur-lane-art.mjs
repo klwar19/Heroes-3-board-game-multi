@@ -297,55 +297,58 @@ const AZURE_UNIT_BY_TIER = {
 // slug + tier + label; each side names its primary ref (dominant character) and
 // optional secondary ref (a different shipgirl composited behind). 3 bronze /
 // 2 silver / 2 gold (mirrors hidden-leaf). Every side has real distinct art.
+// ONE named shipgirl per card: FEW = base art, PACK = a distinct alt/retrofit
+// skin of the SAME girl. slug is the girl; label is her name (name band, caps).
+// 3 bronze / 2 silver / 2 gold (mirrors the azure-breeze tier spread).
 const UNITS = [
   {
-    slug: "destroyer-flotilla",
+    slug: "laffey",
     tier: "bronze",
-    label: "DESTROYER FLOTILLA",
-    few: { primary: "destroyer-flotilla-few" }, // Laffey
-    pack: { primary: "destroyer-pack-javelin", secondary: "destroyer-pack-yukikaze" } // Javelin + Yukikaze
+    label: "LAFFEY",
+    few: { primary: "laffey-few" }, // Laffey (base)
+    pack: { primary: "laffey-pack" } // Laffey (Retrofit)
   },
   {
-    slug: "support-carrier",
+    slug: "javelin",
     tier: "bronze",
-    label: "SUPPORT CARRIER",
-    few: { primary: "support-carrier-few" }, // Unicorn
-    pack: { primary: "support-carrier-pack" } // Unicorn (Casual)
+    label: "JAVELIN",
+    few: { primary: "javelin-few" }, // Javelin (Retrofit full-body — base art too low-res)
+    pack: { primary: "javelin-pack" } // Javelin (Idol alt)
   },
   {
-    slug: "light-cruisers",
+    slug: "honolulu",
     tier: "bronze",
-    label: "LIGHT CRUISERS",
-    few: { primary: "light-cruisers-few" }, // Honolulu
-    pack: { primary: "light-cruisers-pack" } // Sirius
+    label: "HONOLULU",
+    few: { primary: "honolulu-few" }, // Honolulu (base)
+    pack: { primary: "honolulu-pack" } // Honolulu (Summer alt)
   },
   {
-    slug: "heavy-cruisers",
+    slug: "unicorn",
     tier: "silver",
-    label: "HEAVY CRUISERS",
-    few: { primary: "heavy-cruisers-few" }, // Prinz Eugen
-    pack: { primary: "heavy-cruisers-pack" } // Prinz Eugen (alt skin)
+    label: "UNICORN",
+    few: { primary: "unicorn-few" }, // Unicorn (base)
+    pack: { primary: "unicorn-pack" } // Unicorn (Casual alt)
   },
   {
-    slug: "submarine-wolfpack",
+    slug: "yukikaze",
     tier: "silver",
-    label: "SUBMARINE WOLFPACK",
-    few: { primary: "submarine-wolfpack-few" }, // I-19
-    pack: { primary: "submarine-wolfpack-pack" } // I-19 (School alt)
+    label: "YUKIKAZE",
+    few: { primary: "yukikaze-few" }, // Yukikaze (base)
+    pack: { primary: "yukikaze-pack" } // Yukikaze (Oath alt)
   },
   {
-    slug: "battleship-division",
+    slug: "prinz-eugen",
     tier: "golden",
-    label: "BATTLESHIP DIVISION",
-    few: { primary: "battleship-division-few" }, // Nagato
-    pack: { primary: "battleship-division-pack" } // Hood
+    label: "PRINZ EUGEN",
+    few: { primary: "prinz-eugen-few" }, // Prinz Eugen (base)
+    pack: { primary: "prinz-eugen-pack" } // Prinz Eugen (Wedding alt)
   },
   {
-    slug: "carrier-strike-fleet",
+    slug: "i-19",
     tier: "golden",
-    label: "CARRIER STRIKE FLEET",
-    few: { primary: "carrier-strike-fleet-few" }, // Akagi
-    pack: { primary: "carrier-strike-fleet-pack" } // Kaga
+    label: "I-19",
+    few: { primary: "i-19-few" }, // I-19 (base)
+    pack: { primary: "i-19-pack" } // I-19 (School alt)
   }
 ];
 
@@ -451,10 +454,19 @@ async function renderUnitCard(u, side) {
 // hero portraits (plain art over a naval gradient + thin frame; no name)
 // ---------------------------------------------------------------------------
 
-const HEROES = [
+// Might heroes mirror the fuyuki might portrait (bin), the magic hero the fuyuki
+// magic portrait (aoko) — both 1086x1448.
+const EXISTING_HEROES = [
   { id: "enterprise", ref: "enterprise", mirror: "anime/heroes/bin.png" },
   { id: "bismarck", ref: "bismarck", mirror: "anime/heroes/bin.png" },
   { id: "akashi", ref: "akashi", mirror: "anime/heroes/aoko.png" }
+];
+
+// Nagato ("Big Seven Flagship") + Sirius ("Royal Maid Gunner") — new hero
+// portraits promoted from the cancelled class cards; mirror the might portrait.
+const NEW_HEROES = [
+  { id: "nagato", ref: "nagato", mirror: "anime/heroes/bin.png" },
+  { id: "sirius", ref: "sirius", mirror: "anime/heroes/bin.png" }
 ];
 
 function heroBgSvg(W, H) {
@@ -1058,17 +1070,33 @@ async function buildIcon(fullBuf) {
 
 // ---------------------------------------------------------------------------
 
+// Sections let a run touch only part of the suite (a parallel job reads these
+// exact paths, so we avoid rewriting untouched outputs). No args = full build
+// (the script is the source of truth for the whole suite):
+//   units        the 14 named-shipgirl unit cards
+//   heroes       the 3 existing hero portraits (enterprise/bismarck/akashi)
+//   heroes-new   the 2 new hero portraits (nagato/sirius)
+//   commander    the Belfast commander card
+//   scenery      panoramas + board bars + tile + town icon
 async function main() {
-  for (const u of UNITS) {
-    for (const side of ["few", "pack"]) await renderUnitCard(u, side);
-  }
-  for (const hero of HEROES) await renderHero(hero);
-  await renderCommander();
+  const args = process.argv.slice(2);
+  const runAll = args.length === 0;
+  const want = (name) => runAll || args.includes(name);
 
-  const { fullBuf, emptyBuf } = await buildPanoramas();
-  await buildBars(fullBuf);
-  await buildTile(emptyBuf);
-  await buildIcon(fullBuf);
+  if (want("units")) {
+    for (const u of UNITS) {
+      for (const side of ["few", "pack"]) await renderUnitCard(u, side);
+    }
+  }
+  if (want("heroes")) for (const hero of EXISTING_HEROES) await renderHero(hero);
+  if (want("heroes-new")) for (const hero of NEW_HEROES) await renderHero(hero);
+  if (want("commander")) await renderCommander();
+  if (want("scenery")) {
+    const { fullBuf, emptyBuf } = await buildPanoramas();
+    await buildBars(fullBuf);
+    await buildTile(emptyBuf);
+    await buildIcon(fullBuf);
+  }
 
   console.log("\nGenerated Azur Lane art:");
   console.log("  " + "path".padEnd(62) + "dims".padEnd(12) + "bytes");
