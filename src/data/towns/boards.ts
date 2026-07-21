@@ -504,6 +504,27 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
       ["azure_breeze.dwelling_gold"]
     ],
     geometry: DESIGNED_GEOMETRY
+  },
+  hidden_leaf: {
+    factionId: "hidden_leaf",
+    panoramaImage: "/assets/anime/towns/hidden-leaf-village-empty.webp",
+    fullImage: "/assets/anime/towns/hidden-leaf-village-full.webp",
+    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/town-board/hidden-leaf-bar-${index + 1}.webp`),
+    panelImage: DESIGNED_PANEL_IMAGE,
+    // 8 buildings on 7 bars, exactly ONE two-building bar (mirrors Fuyuki):
+    // the Chunin Exam Arena shares the LV4 dwelling bar. Bar assignment MUST
+    // agree with animeTownBuildingBar in src/data/anime/towns.ts so each
+    // building's strip art matches its bar.
+    bars: [
+      ["hidden_leaf.city_hall"],
+      ["hidden_leaf.dwelling_bronze"],
+      ["hidden_leaf.summoning_shrine"],
+      ["hidden_leaf.dwelling_silver", "hidden_leaf.chunin_arena"],
+      ["hidden_leaf.mage_guild"],
+      ["hidden_leaf.citadel"],
+      ["hidden_leaf.dwelling_gold"]
+    ],
+    geometry: DESIGNED_GEOMETRY
   }
 };
 
