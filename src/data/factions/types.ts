@@ -14,7 +14,8 @@ export type FactionId =
   | "bulwark"
   | "factory"
   | "fuyuki"
-  | "azure_breeze";
+  | "azure_breeze"
+  | "hidden_leaf";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {

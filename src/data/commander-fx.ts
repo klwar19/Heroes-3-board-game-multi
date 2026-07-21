@@ -28,7 +28,8 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   factory: "spell.cure", // Field Repair (mends → the Cure shimmer)
   bulwark: "spell.sacrifice", // Rune Mend (sound-only, like the Sacrifice spell)
   ruler: "spell.bloodlust", // Command Seal
-  sword_saint: "spell.precision" // Sword Intent
+  sword_saint: "spell.precision", // Sword Intent
+  might_guy: "spell.haste" // Body Flicker (reuses the Shaman's Haste cast + fx)
 };
 
 /**

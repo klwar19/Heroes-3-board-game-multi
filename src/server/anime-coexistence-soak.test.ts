@@ -43,6 +43,12 @@ const ALL_ANIME: AnimeModOptions = {
   cultivation: true,
   heroGrades: true,
   equipment: true,
+  // Both playable-town modules on: the human seats stay castle/necropolis, but
+  // with the town flags a Random-Town neutral defender may now roll an anime
+  // faction (Fuyuki / Azure Breeze / Hidden Leaf) — exactly the all-on coverage
+  // we want (their units/abilities must resolve as a fought guard army).
+  isekaiTowns: true,
+  xianxiaTowns: true,
   // Unit Stacks shares the Polish machinery (also on in the soak — one pricing,
   // the OR seam composes); Unit Experience is a pure auto-grant.
   unitStacks: true,

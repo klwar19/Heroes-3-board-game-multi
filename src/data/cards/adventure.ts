@@ -1421,6 +1421,15 @@ export const adventureCards: CardLibrary = {
   "specialty.qingyun.1": withoutArt(mightSpecialtyOne("qingyun", "True Inheritors", "True Inheritors")),
   "specialty.qingyun.4": withoutArt(unitHealthSpecialty("qingyun", "True Inheritors", 4, 1, "True Inheritors")),
   "specialty.qingyun.6": withoutArt(unitInitiativeSpecialty("qingyun", "True Inheritors", 6, 1, "True Inheritors")),
+  // Hidden Leaf might heroes (src/data/anime/towns.ts) — unit specialists doubling
+  // on their OWN faction's units (Naruto → Jinchuriki, Sasuke → Jonin). Same
+  // proven generic I/IV/VI shape as Bin/Qingyun; face-less (native renderer).
+  "specialty.naruto.1": withoutArt(mightSpecialtyOne("naruto", "Nine-Tails Chakra", "Jinchuriki")),
+  "specialty.naruto.4": withoutArt(unitHealthSpecialty("naruto", "Nine-Tails Chakra", 4, 1, "Jinchuriki")),
+  "specialty.naruto.6": withoutArt(unitInitiativeSpecialty("naruto", "Nine-Tails Chakra", 6, 1, "Jinchuriki")),
+  "specialty.sasuke.1": withoutArt(mightSpecialtyOne("sasuke", "Lightning Blade", "Jonin")),
+  "specialty.sasuke.4": withoutArt(unitHealthSpecialty("sasuke", "Lightning Blade", 4, 1, "Jonin")),
+  "specialty.sasuke.6": withoutArt(unitInitiativeSpecialty("sasuke", "Lightning Blade", 6, 1, "Jonin")),
   // Miku (Fuyuki Virtual Diva) — Voice of Angel. NEW engine arms:
   // I SLOW_ALL_ENEMIES, IV CREATE_HEAL_ON_ATTACKED (friendly), VI DAMAGE_ALL_ENEMY_UNITS.
   "specialty.miku.1": withoutArt({
@@ -5048,3 +5057,10 @@ adventureCards["specialty.aoko.6"] = rethemedSpecialty(adventureCards["specialty
 adventureCards["specialty.lingxi.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "lingxi", 1, "Healing Arts");
 adventureCards["specialty.lingxi.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "lingxi", 4, "Healing Arts");
 adventureCards["specialty.lingxi.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "lingxi", 6, "Healing Arts");
+// Tsunade (Hidden Leaf, magic): Gem's generic First Aid set (Tent + heals), the
+// faction-agnostic medic — no unit doubling that could go dead. Distinct id +
+// name ("Hundred Healings") from Lingxi's gem clone, so no collision. Art-less:
+// the native SpecialtyCard draws her portrait + the First-Aid medallion.
+adventureCards["specialty.tsunade.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "tsunade", 1, "Hundred Healings");
+adventureCards["specialty.tsunade.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "tsunade", 4, "Hundred Healings");
+adventureCards["specialty.tsunade.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "tsunade", 6, "Hundred Healings");

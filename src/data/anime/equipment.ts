@@ -57,16 +57,18 @@ export const EQUIPMENT_GRADE_LABEL: Record<EquipmentGrade, { en: string; short: 
  * Which content family an equipment item belongs to (shop gating + naming).
  * `classic` is the register line for the classic-chrome factions (Castle,
  * Rampart, …); `anime-xianxia` / `anime-isekai` are the two anime-town lines;
+ * `shinobi` is Hidden Leaf Village's BESPOKE line (§3.13 FUTURE-TOWN RECIPE);
  * `shared` items are sold at every outfitter.
  */
-export type EquipmentPackage = "anime-xianxia" | "anime-isekai" | "shared" | "classic";
+export type EquipmentPackage = "anime-xianxia" | "anime-isekai" | "shared" | "classic" | "shinobi";
 
 /** Short flavour tag per package, for UI chips (paper-doll bag rows etc.). */
 export const EQUIPMENT_PACKAGE_LABEL: Record<EquipmentPackage, string> = {
   "anime-xianxia": "xianxia",
   "anime-isekai": "isekai",
   shared: "shared",
-  classic: "classic"
+  classic: "classic",
+  shinobi: "shinobi"
 };
 
 /**
@@ -130,7 +132,14 @@ export const EQUIPMENT_IDS = {
   ironbarkCuirass: "anime.equip.ironbark_cuirass",
   coursersBarding: "anime.equip.coursers_barding",
   hornOfPlenty: "anime.equip.horn_of_plenty",
-  wardensAegis: "anime.equip.wardens_aegis"
+  wardensAegis: "anime.equip.wardens_aegis",
+  // --- Hidden Leaf Village bespoke "shinobi" register line (§3.13 FUTURE-TOWN
+  //     RECIPE): 3 items, each a PURE reuse of an already-wired equipment seam
+  //     (src/engine/anime-equipment.ts). hidden_leaf's register line at BOTH
+  //     outfitters via `equipmentPackagesForFaction`; never in EQUIPMENT_SHOP_SALES.
+  shinobiKunaiPouch: "anime.equip.shinobi_kunai_pouch",
+  bodyFlickerTabi: "anime.equip.body_flicker_tabi",
+  sageChakraCharm: "anime.equip.sage_chakra_charm"
 } as const;
 
 function equip(
@@ -370,6 +379,47 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     // Seams: equipmentIncomingAttackPenalty + applyEquipmentStageCostumeDefenseToken.
     summary:
       "Armor · Grade III: the FIRST enemy attack against your units each combat resolves at −1 Attack, and that unit gains a Defense token after the hit (your main hero's fights; not vs retaliations; shares the armor slot with Black Tortoise Mail / Stage Costume — only one is worn)."
+  }),
+
+  // ==== Hidden Leaf Village bespoke "shinobi" register line (§3.13) =========
+  // Hidden Leaf's own 3-item line (swarm/mobility/control), each a PURE reuse
+  // of an already-wired equipment seam — the relic COMBINES two seams like
+  // Sage Chakra Charm's spell-Power + hand-limit pair. Offered as hidden_leaf's
+  // register line at BOTH outfitters (`equipmentPackagesForFaction`).
+  // ---- Grade I (minor, 4g) ------------------------------------------------
+  [EQUIPMENT_IDS.shinobiKunaiPouch]: equip({
+    id: EQUIPMENT_IDS.shinobiKunaiPouch,
+    slot: "weapon",
+    grade: "I",
+    name: { en: "Kunai Pouch", vi: "Túi Ám Khí" },
+    package: "shinobi",
+    // Seam: equipmentFirstAttackBonus (the Iron-Blood Sword fold).
+    summary:
+      "Weapon · Grade I: your units' FIRST declared attack each combat gets +1 Attack (your main hero's fights; not on retaliations; shares the weapon slot with Iron-Blood Sword / Crusader's Poleaxe — only one is worn)."
+  }),
+
+  // ---- Grade II (major, 6g) -----------------------------------------------
+  [EQUIPMENT_IDS.bodyFlickerTabi]: equip({
+    id: EQUIPMENT_IDS.bodyFlickerTabi,
+    slot: "mount",
+    grade: "II",
+    name: { en: "Body-Flicker Tabi", vi: "Hài Súc Địa" },
+    package: "shinobi",
+    // Seam: equipmentMovementBonus (the Windrider Saddle fold).
+    summary:
+      "Mount · Grade II: +1 movement point to your main hero at each turn refresh (folded into the per-turn movement max; shares the mount slot with Windrider Saddle / Courser's Barding — only one is worn)."
+  }),
+
+  // ---- Grade III (relic, 8g) — COMBINES two proven seams ------------------
+  [EQUIPMENT_IDS.sageChakraCharm]: equip({
+    id: EQUIPMENT_IDS.sageChakraCharm,
+    slot: "accessory",
+    grade: "III",
+    name: { en: "Sage Chakra Charm", vi: "Linh Phù Tiên Nhân" },
+    package: "shinobi",
+    // Seams: equipmentSpellPowerBonus + equipmentHandLimitBonus (both accessory).
+    summary:
+      "Accessory · Grade III: +1 spell Power on your casts AND +1 hand limit (spell Power stacks with Cultivation / Hero-Grade Power; hand limit stacks with Guild-Issue Mail (armor); shares the ONE accessory slot with the other spell-power / hand-limit accessories (Cosmos Pendant / Spirit Focus / Twin-Tail Ribbon / Eternal Sash) — only one accessory is worn, so same-slot twins never stack)."
   })
 };
 
@@ -467,8 +517,16 @@ export const EQUIPMENT_SHOP_LOCATION_IDS: ReadonlySet<string> = new Set(Object.k
  * light up an existing register line at every outfitter — no shop edit. To give
  * it BESPOKE gear, add items in a new package and return that package here (and
  * teach `factionVisualRegister` the new register). No engine change is needed.
+ *
+ * Hidden Leaf Village is the worked example of the BESPOKE branch: it shares the
+ * "anime" visual register with Fuyuki, so it is special-cased AHEAD of the
+ * register switch to return its own "shinobi" line — without this, it would fall
+ * through to the anime register's default isekai line (which Fuyuki keeps).
  */
 export function equipmentPackagesForFaction(factionId: string | undefined): EquipmentPackage[] {
+  if (factionId === "hidden_leaf") {
+    return ["shinobi"];
+  }
   switch (factionVisualRegister(factionId)) {
     case "anime":
       return ["anime-isekai"];
