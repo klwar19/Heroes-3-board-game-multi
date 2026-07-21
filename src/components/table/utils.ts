@@ -26,6 +26,14 @@ import {
 
 type SwapAction = Extract<GameAction, { type: "SWAP_COMBAT_UNITS" }>;
 
+/** Feed label for a rulebook Stack Token carried by a Stacked bank-reward unit. */
+const STACK_TOKEN_FEED_LABELS = {
+  attack: "+1 Attack",
+  defense: "+1 Defense",
+  health: "+1 Health",
+  initiative: "+2 Initiative"
+} as const;
+
 /** All Tactics swap actions offered this snapshot (start-of-combat or expert). */
 export function getTacticsSwapActions(legalActions: LegalAction[]): SwapAction[] {
   return legalActions
@@ -665,7 +673,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "DIPLOMACY_COMBAT_SKIPPED":
       return `${playerName(state, event.playerId)} uses Diplomacy to skip the level ${event.difficulty} Neutral Units and claim the field (no experience).`;
     case "UNIT_RECRUITED":
-      return `${playerName(state, event.playerId)} ${event.kind === "recruit" ? "recruits" : "reinforces"} ${event.unitDefId.split(".")[1] ?? event.unitDefId} for ${formatCost(event.cost)}.${event.attackBuff ? ` BUFF: +${event.attackBuff} Attack in every combat.` : ""}`;
+      return `${playerName(state, event.playerId)} ${event.kind === "recruit" ? "recruits" : "reinforces"} ${event.unitDefId.split(".")[1] ?? event.unitDefId} for ${formatCost(event.cost)}.${event.attackBuff ? ` BUFF: +${event.attackBuff} Attack in every combat.` : ""}${event.stackToken ? ` STACKED: carries a ${STACK_TOKEN_FEED_LABELS[event.stackToken]} Stack Token.` : ""}`;
     case "SPELLS_PURCHASED":
       return `${playerName(state, event.playerId)} buys spells for ${formatCost(event.cost)}.`;
     case "TRADE_EXECUTED":

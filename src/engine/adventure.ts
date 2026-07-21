@@ -18,8 +18,9 @@ import {
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
   STACK_TOKEN_PLACEMENT_PERCENT,
-  STACK_TOKEN_STATS,
   STACK_TOKENS_BY_DIFFICULTY,
+  rollStackTokenStat,
+  stackTokenDelta,
   type CreatureBankId
 } from "@/data/map/creature-banks";
 import { isFieldOverrideLocation } from "@/data/map/field-overrides";
@@ -195,6 +196,7 @@ import type {
   ResourceKind,
   SpellSchool,
   DragonUtopiaGuards,
+  StackTokenStat,
   TownState,
   UnitId,
   UnitTransformState,
@@ -2926,7 +2928,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
           type: "RECRUIT_FREE",
           unitDefId: interaction.unitDefId,
           side: interaction.side,
-          ...(interaction.stacks && interaction.stacks > 0 ? { stacks: interaction.stacks } : {})
+          ...(interaction.stacks && interaction.stacks > 0 ? { stacks: interaction.stacks } : {}),
+          ...(interaction.stacked ? { stacked: true } : {})
         }
       ];
     case "ROLL_RESOURCE_DICE":
@@ -6694,12 +6697,21 @@ export function processPendingVisit(state: GameState): void {
               added.stacks = layers;
             }
           }
+          // Dragon Fly Hive / Griffin Conservatory Stacked reward (X ≥ 2): the
+          // Few card carries a rulebook Stack Token — the actual game "Stacked"
+          // unit. Rolled from the SAME distribution the bank defenders use
+          // (rollStackTokenStat) and INDEPENDENT of any Polish layer above.
+          const stackToken = step.stacked ? rollStackTokenStat(adventureRandom(state, "bank-reward-stack-token")) : undefined;
+          if (stackToken) {
+            added.stackToken = stackToken;
+          }
           appendEvent(state, {
             type: "UNIT_RECRUITED",
             playerId: visit.playerId,
             unitDefId: step.unitDefId,
             kind: "recruit",
-            cost: {}
+            cost: {},
+            ...(stackToken ? { stackToken } : {})
           });
         }
         break;
@@ -12120,7 +12132,7 @@ export function buildCreatureBankCombatUnits(
       continue;
     }
     const unit = units[order[i]];
-    unit.stackToken = STACK_TOKEN_STATS[random.nextInt(0, STACK_TOKEN_STATS.length - 1)];
+    unit.stackToken = rollStackTokenStat(random);
     // Re-derive the fighting statistics so the token's bonus is baked in.
     applyUnitCurrentSide(unit, ruleset, sideOverrides);
     stackedCount += 1;
@@ -12358,6 +12370,7 @@ export function makeCombatUnitFromArmy(
     permanentAttackBonus?: number;
     permanentHealthBonus?: number;
     stacks?: number;
+    stackToken?: StackTokenStat;
     experience?: number;
   },
   controllerId: PlayerId,
@@ -12392,6 +12405,14 @@ export function makeCombatUnitFromArmy(
   // off no card ever carries `experience`, so this is an exact no-op.
   const unitExperience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
   const rankFold = unitRankFold(armyUnit.unitDefId, def.tier, unitExperience);
+  // Creature Bank Stacked reward (Dragon Fly Hive / Griffin Conservatory): a
+  // rulebook Stack Token baked onto this army card folds one stat bonus (+1
+  // Attack/Defense/Health or +2 Initiative) into the printed side, like
+  // permanentAttackBonus. Mirrored onto the combat unit so the EXISTING absorb
+  // path (markUnitRemovedIfNeeded) and the applyUnitCurrentSide recompute read
+  // it. Absent on every normally-recruited card.
+  const stackToken = armyUnit.stackToken ?? null;
+  const tokenBonus = (stat: StackTokenStat) => (stackToken === stat ? stackTokenDelta(stat) : 0);
 
   const unit: CombatUnitState = {
     id: unitId,
@@ -12401,11 +12422,11 @@ export function makeCombatUnitFromArmy(
     variant: armyUnit.side,
     grade: def.tier,
     type: side.type ?? def.type,
-    attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0) + rankFold.attack,
-    defense: side.defense + rankFold.defense,
-    maxHealth: side.health + permanentHealthBonus + rankFold.health,
+    attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0) + rankFold.attack + tokenBonus("attack"),
+    defense: side.defense + rankFold.defense + tokenBonus("defense"),
+    maxHealth: side.health + permanentHealthBonus + rankFold.health + tokenBonus("health"),
     damage: 0,
-    initiative: side.initiative + rankFold.initiative,
+    initiative: side.initiative + rankFold.initiative + tokenBonus("initiative"),
     position,
     activatedThisRound: false,
     movedThisActivation: false,
@@ -12417,6 +12438,7 @@ export function makeCombatUnitFromArmy(
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
     ...(permanentHealthBonus ? { permanentHealthBonus } : {}),
     ...(armyStacks ? { armyStacks } : {}),
+    ...(stackToken ? { stackToken } : {}),
     ...(unitExperience ? { unitExperience } : {}),
     ...(rankFold.rank ? { unitRank: rankFold.rank } : {}),
     assets: {

@@ -250,36 +250,43 @@ describe("Creature Bank rewards", () => {
     return reward.interactions[0];
   }
 
-  it("gains a Few normally and a Stacked Pack (2+ Stacked defenders) from the unit banks", () => {
-    // Dragon Fly Hive → Dragon Flies; Griffin Conservatory → Griffins. A Pack is
-    // the game's "Stacked" version, gained only when at least 2 defenders Stacked.
+  it("always gains the FEW card, Stacked (rulebook Stack Token) when 2+ defenders Stacked — NEVER a Pack", () => {
+    // Dragon Fly Hive → Dragon Flies; Griffin Conservatory → Griffins. The reward
+    // is ALWAYS the Few card; the "Stacked" version is that Few carrying a rulebook
+    // Stack Token (the `stacked` flag), granted only when at least 2 defenders
+    // Stacked. It is NEVER the Pack side (the old house-rule reading, now retired).
     expect(CREATURE_BANKS.dragon_fly_hive.rewardStatus).toBe("implemented");
     expect(unitGain(CREATURE_BANKS.dragon_fly_hive.buildReward(0))).toEqual({
       type: "GAIN_UNIT",
       unitDefId: "fortress.dragon_flies",
-      side: "few"
+      side: "few",
+      stacked: false
     });
     expect(unitGain(CREATURE_BANKS.dragon_fly_hive.buildReward(1))).toEqual({
       type: "GAIN_UNIT",
       unitDefId: "fortress.dragon_flies",
-      side: "few"
+      side: "few",
+      stacked: false
     });
     expect(unitGain(CREATURE_BANKS.dragon_fly_hive.buildReward(2))).toEqual({
       type: "GAIN_UNIT",
       unitDefId: "fortress.dragon_flies",
-      side: "pack"
+      side: "few",
+      stacked: true
     });
 
     expect(CREATURE_BANKS.griffin_conservatory.rewardStatus).toBe("implemented");
     expect(unitGain(CREATURE_BANKS.griffin_conservatory.buildReward(1))).toEqual({
       type: "GAIN_UNIT",
       unitDefId: "castle.griffins",
-      side: "few"
+      side: "few",
+      stacked: false
     });
     expect(unitGain(CREATURE_BANKS.griffin_conservatory.buildReward(3))).toEqual({
       type: "GAIN_UNIT",
       unitDefId: "castle.griffins",
-      side: "pack"
+      side: "few",
+      stacked: true
     });
   });
 

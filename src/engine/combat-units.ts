@@ -126,14 +126,15 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     return;
   }
 
-  // Creature Bank Stacked defenders (Rebirth already spent or absent): a Stack
-  // Token absorbs the lethal blow — before any Pack→Few flip. "When it takes
-  // damage equal to or greater than its Health, instead of removing the unit,
-  // discard the Stack Token from it and deal any leftover damage, deducting it
-  // from the new Health." (rulebook p.67). The token is discarded (reverting its
-  // stat bonus via applyUnitCurrentSide) and the excess carries to the now-lower
-  // Health.
-  if (unit.bankUnit && unit.stackToken) {
+  // Stack Token absorb (Rebirth already spent or absent): a Stack Token absorbs
+  // the lethal blow — before any Pack→Few flip. "When it takes damage equal to or
+  // greater than its Health, instead of removing the unit, discard the Stack Token
+  // from it and deal any leftover damage, deducting it from the new Health."
+  // (rulebook p.67). The token is discarded (reverting its stat bonus via
+  // applyUnitCurrentSide) and the excess carries to the now-lower Health. Keyed on
+  // the token alone (NOT on bankUnit) so it also protects a PLAYER army card
+  // carrying the Dragon Fly Hive / Griffin Conservatory Stacked reward token.
+  if (unit.stackToken) {
     const excess = unit.damage - unit.maxHealth;
     unit.stackToken = null;
     unit.damage = 0;

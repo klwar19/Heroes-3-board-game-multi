@@ -4020,6 +4020,14 @@ function implementedAbilityLines(abilityIds: readonly string[] | undefined): str
     .map((ability) => `✦ ${ability.name}: ${ability.text}`);
 }
 
+/** Short army-card label for a rulebook Stack Token (+1 stat, +2 initiative). */
+const ARMY_STACK_TOKEN_LABELS = {
+  attack: "+1 ATK",
+  defense: "+1 DEF",
+  health: "+1 HP",
+  initiative: "+2 INI"
+} as const;
+
 export function ArmyPanel({
   state,
   playerId,
@@ -4190,6 +4198,14 @@ export function ArmyPanel({
                   >
                     <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
                     ×{unit.stacks}
+                  </span>
+                ) : null}
+                {unit.stackToken ? (
+                  <span
+                    className="armyStackTokenBadge"
+                    title={`Stacked: a rulebook Stack Token (${ARMY_STACK_TOKEN_LABELS[unit.stackToken]}) rides this card. It absorbs one lethal blow in combat — the token is discarded (gone forever) instead of the unit being removed.`}
+                  >
+                    {ARMY_STACK_TOKEN_LABELS[unit.stackToken]}
                   </span>
                 ) : null}
                 {side ? (

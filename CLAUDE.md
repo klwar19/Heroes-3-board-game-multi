@@ -1941,10 +1941,13 @@ is NOT done:
   bank reward** (`bank.buildReward(X)` with X = the Stacked count = size): the
   same per-bank payout the rulebook scales by X — size Ⅳ simply means all four
   defenders were Stacked. The two unit banks (Dragon Fly Hive / Griffin
-  Conservatory) grant the Few normally and a plain Pack (X ≥ 2) + the Empower
-  pick, exactly like an ordinary bank win — no army-stack layers are granted, so
-  `armyUnitStacksActive` is `polish-unit-stacks` ONLY (Polish Bank Sizes no
-  longer activates the army-stack machinery). The size marker's coin is coloured
+  Conservatory) grant the FEW card either way — plain, or (X ≥ 2) carrying a real
+  rulebook Stack Token (`ArmyUnitState.stackToken`, the actual game "Stacked"
+  unit) — plus the Empower pick, exactly like an ordinary bank win. NEVER the
+  Pack side, and NEVER an army-stack layer, so `armyUnitStacksActive` is
+  `polish-unit-stacks` ONLY (Polish Bank Sizes no longer activates the army-stack
+  machinery) and the reward token stays independent of Polish layers even with
+  both rules on. The size marker's coin is coloured
   by size (Ⅰ black / Ⅱ brown / Ⅲ silver / Ⅳ gold, the v1.2 sheet colours) and
   shows the size number; each Stacked defender shows the normal stat Stack Token
   badge. Covered by `polish-bank-sizes.test.ts` (guaranteed-count with a rule-off
@@ -1978,10 +1981,23 @@ is NOT done:
   `creature-bank-combat.test.ts` ("exempt from tier-specific spells") with a
   graded CONTROL.
 - "Gain a unit" rewards: the Dragon Fly Hive (Dragon Flies) and Griffin
-  Conservatory (Griffins) add the recruitable card to the army for free — a Few
-  normally, a Stacked Pack when X ≥ 2 (the `GAIN_UNIT` interaction → `RECRUIT_FREE`
-  step with a `side`). Tested in `creature-banks.test.ts` and end-to-end in
-  `creature-bank-combat.test.ts` ("adds the gained Dragon Flies card to the army").
+  Conservatory (Griffins) add the recruitable card to the army for free — ALWAYS
+  the FEW card, but carrying a REAL rulebook Stack Token (the actual game
+  "Stacked" unit — `ArmyUnitState.stackToken`) when X ≥ 2. NEVER the Pack side,
+  and NEVER a Polish Unit-Stack layer even with `polish-unit-stacks` on (a
+  DIFFERENT mechanism). The `GAIN_UNIT` interaction carries `side:"few"` +
+  `stacked:x>=2` → the `RECRUIT_FREE` step's `stacked` flag → the token stat is
+  rolled from the SAME `rollStackTokenStat` helper the bank defenders use and set
+  on the added army card. In combat the token folds one stat (+1 Attack/Defense/
+  Health or +2 Initiative) into the card (`makeCombatUnitFromArmy` /
+  `applyUnitCurrentSide`, mirrored onto `CombatUnitState.stackToken`); the SHARED
+  absorb path (`markUnitRemovedIfNeeded`, keyed on `stackToken` alone, no longer
+  gated on `bankUnit`) discards it FOREVER to soak one lethal blow, then it syncs
+  back to the army card at combat end. Tested in `creature-banks.test.ts`,
+  `polish-bank-sizes.test.ts` (the don't-confuse-Polish CONTROL) and end-to-end in
+  `creature-bank-combat.test.ts` ("adds the gained Dragon Flies card to the army"
+  + "the Few card carries a real Stack Token": fold, absorb, and the survivor
+  sync-back with an un-absorbed CONTROL).
   HOUSE-RULE bonus: each of these two banks ALSO Empowers one ability the winner
   owns (the `EMPOWER_ABILITY` interaction, additive in the reward `SEQUENCE`).
   Empowering an ability adds its card id to `player.empoweredAbilities`, which
@@ -2076,9 +2092,10 @@ and `creature-bank-combat.test.ts` "Pyramid: a Stacked win …" end-to-end).
   display, but it never grants them a tier in play: the gradeless TARGETING/AI
   rules above treat a bank card as no-tier ("grade 0") on BOTH axes — its guard
   targets the nearest, and as a target it is hit LAST — and tier gates exempt it
-  via `gradeRankOfUnit`. The "gain a Stacked unit" reward is modelled as gaining
-  the recruitable card's Pack side — a HOUSE-RULE reading of "Stacked", since
-  army cards carry no Stack Token of their own.
+  via `gradeRankOfUnit`. (The "gain a Stacked unit" reward is NO LONGER a deferred
+  house reading: army cards now carry a real rulebook Stack Token via
+  `ArmyUnitState.stackToken` — the Few card is granted Stacked, never a Pack. See
+  the "Gain a unit" rewards bullet above.)
 
 ## Monolith & Whirlpool Tokens (Conflux/Cove, map-designer content) — what runs vs. readings
 

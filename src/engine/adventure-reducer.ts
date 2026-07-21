@@ -9135,6 +9135,20 @@ export function finalizeAdventureCombat(state: GameState): void {
         delete armyUnit.transforms;
       }
     }
+
+    // Creature Bank Stacked reward token (Dragon Fly Hive / Griffin Conservatory):
+    // sync it back onto the SURVIVING army card exactly like the Polish layers
+    // above — kept if the unit still carries it, GONE FOREVER if it was absorbed
+    // mid-combat (markUnitRemovedIfNeeded set unit.stackToken = null). A defeated
+    // card already left the army in the branch above, so this only touches
+    // survivors.
+    if (unit.damage < unit.maxHealth) {
+      if (unit.stackToken) {
+        armyUnit.stackToken = unit.stackToken;
+      } else {
+        delete armyUnit.stackToken;
+      }
+    }
   }
 
   // Keep-troops Give up: the conceding hero loses no unit but discards its whole

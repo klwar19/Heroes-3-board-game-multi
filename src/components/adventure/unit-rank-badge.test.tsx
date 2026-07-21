@@ -51,6 +51,26 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(stats).toContain(`D${printed.defense}`);
   });
 
+  it("shows the rulebook Stack Token badge on a Stacked bank-reward Few card", () => {
+    const state = createAdventureGameState({ seed: "army-stack-token", difficulty: "normal", rollFirstPlayer: false });
+    // A Dragon Fly Hive / Griffin Conservatory Stacked reward: the Few card carries
+    // a rulebook Stack Token (the actual game "Stacked" unit).
+    state.players.p1.army = [{ id: "reward", unitDefId: "fortress.dragon_flies", side: "few", stackToken: "initiative" }];
+    renderArmy(state);
+    const badge = document.querySelector(".armyStackTokenBadge");
+    expect(badge).toBeTruthy();
+    expect(badge?.textContent).toBe("+2 INI");
+    // It is NOT a Polish layer coin badge.
+    expect(document.querySelector(".armyStackBadge")).toBeNull();
+  });
+
+  it("CONTROL — a plain Few card shows no Stack Token badge", () => {
+    const state = createAdventureGameState({ seed: "army-no-stack-token", difficulty: "normal", rollFirstPlayer: false });
+    state.players.p1.army = [{ id: "plain", unitDefId: "fortress.dragon_flies", side: "few" }];
+    renderArmy(state);
+    expect(document.querySelector(".armyStackTokenBadge")).toBeNull();
+  });
+
   it("opens the Unit Experience Board picker, then a per-unit detail with STATS/ABILITY and Drill", () => {
     const state = makeState(true, "rank-badge-action");
     state.players.p1.army[0].experience = 1;
