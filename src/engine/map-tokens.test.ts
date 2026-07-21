@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyAction,
   createAdventureGameState,
+  getLegalActions,
   getPlayerView,
   getTileFootprintSpaceIds,
   legalTokenSlotsForTileDef,
@@ -545,6 +546,85 @@ describe("token placement on discovery", () => {
     expect(adv(state).fields[pickedHex]?.location).toBe("monolith");
     expect(state.heroes.hero_p1.spaceId).toBe(pickedHex);
     expect(adv(state).pendingTokenTeleport ?? null).toBeNull();
+  });
+
+  it("travelling into a face-down NEAR tile reserves its Creature Bank BEFORE rotation (Polish type/size + Leave blocked)", () => {
+    // Same bug class the Subterranean Gate reveal fixed: a token travel into a
+    // face-down non-Far tile must run the FULL reveal chain (bank reservation +
+    // the Polish pre-rotation type/size choice), not the inline flip that only
+    // offers the bank after the tile is already rotated. Fails if the reveal
+    // hook is gated back to `tile.group === "far"`.
+    let state = createAdventureGameState({
+      seed: "token-travel-near-bank-first",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      creatureBanks: true,
+      houseRules: { "polish-bank-sizes": true }
+    });
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    const tileA = instantiateTile(adv(state), "F1", { row: 24, col: 12 }, 0, false);
+    setAllEmpty(state, tileA);
+    const entry = carveToken(state, tileA, 1, "monolith");
+    const hidden = instantiateTile(adv(state), "N1", { row: 30, col: 18 }, 0, true);
+    adv(state).tiles[hidden.id].pendingToken = { kind: "monolith" };
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+
+    // The face-down NEAR tile flipped, rotation handed to the traveller, the
+    // in-flight travel parked…
+    expect(adv(state).tiles[hidden.id].faceDown).toBe(false);
+    expect(adv(state).tiles[hidden.id].awaitingRotation).toBe(true);
+    expect(adv(state).pendingTokenTeleport?.destTileInstanceId).toBe(hidden.id);
+    // …and the bank choice is open BEFORE rotation — Polish candidates + Leave blocked.
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-creature-bank") {
+      throw new Error("expected the pre-rotation Creature Bank choice");
+    }
+    expect(choice.creatureBank?.preRotation).toBe(true);
+    expect(choice.creatureBank?.tier).toBe("near");
+    expect((choice.creatureBank?.candidates?.length ?? 0) >= 1).toBe(true);
+    expect(choice.options[choice.options.length - 1]?.label).toBe("Leave it blocked");
+    // Rotation is NOT legal while the bank choice is open.
+    expect(
+      getLegalActions(state, "p1").some((legal) => legal.action.type === "SET_TILE_ROTATION")
+    ).toBe(false);
+
+    // Leave blocked, rotate, place the destination token — the parked travel
+    // still completes on the placed Monolith and the near pile is untouched.
+    const nearBefore = [...(adv(state).creatureBankTokensNear ?? [])];
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: choice.options.length - 1
+    });
+    expect(adv(state).tiles[hidden.id].reservedBankDeclined).toBe(true);
+    for (const rotation of [0, 1, 2, 3, 4, 5]) {
+      const result = applyAction(state, { type: "SET_TILE_ROTATION", playerId: "p1", tileInstanceId: hidden.id, rotation });
+      if (result.errors.length === 0) {
+        state = result.state;
+        break;
+      }
+    }
+    const place = state.pendingChoice;
+    if (place?.type !== "OPTION_CHOICE" || place.context !== "place-map-token" || !place.mapToken) {
+      throw new Error("no token placement choice after the reveal");
+    }
+    const pickedHex = place.mapToken.candidates[0];
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: place.id, optionIndex: 0 });
+    expect(adv(state).fields[pickedHex]?.location).toBe("monolith");
+    expect(state.heroes.hero_p1.spaceId).toBe(pickedHex);
+    expect(adv(state).pendingTokenTeleport ?? null).toBeNull();
+    expect(
+      getTileFootprintSpaceIds(adv(state).tiles[hidden.id]).some(
+        (id) => adv(state).fields[id]?.location === "creature_bank"
+      )
+    ).toBe(false);
+    expect(adv(state).creatureBankTokensNear).toEqual(nearBefore);
   });
 
   it("a token still riding a face-down tile counts toward 'at least 2' (the lone-token CONTROL diverges)", () => {

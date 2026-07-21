@@ -1925,8 +1925,16 @@ is NOT done:
   UI tests.
 - With `polish-bank-sizes` ON, a bank-eligible reveal peeks the top TWO tokens
   (or one when the pile has one), rolls each candidate's size with seeded Attack
-  dice (the sheet table: −1→Ⅰ, 0→Ⅱ, +1→Ⅲ, −2 OR +2→Ⅳ), requires the player to
-  choose A or B, and only then offers tile rotation.
+  dice (the sheet table: −1→Ⅰ, 0→Ⅱ, +1→Ⅲ, −2 OR +2→Ⅳ), and opens a MANDATORY
+  pre-rotation choice — A / B / **Leave it blocked** (a single candidate offers
+  Place / Leave it blocked) — and only then offers tile rotation. Declining sets
+  `tile.reservedBankDeclined`, so the post-rotation placement step is skipped
+  and the pile stays intact (it was only peeked). The full bank-before-rotate
+  chain also runs when the reveal comes through a Subterranean Gate entry OR a
+  Monolith/Teleport-Gate token travel into a face-down tile (both routed through
+  the same `onMapTileRevealHook` → `beginTileRotation`; pinned in
+  `subterranean-gate-choice.test.ts` and `map-tokens.test.ts` "reserves its
+  Creature Bank BEFORE rotation").
   The seat's FIRST Ⅱ–Ⅲ (Far) opening rolls ONE die per candidate (a single die
   only reaches Ⅰ–Ⅲ); every later Far opening and every Near bank rolls two.
   Only the chosen token is removed by id after rotation; the unchosen peek
@@ -1998,16 +2006,28 @@ is NOT done:
   `creature-bank-combat.test.ts` ("adds the gained Dragon Flies card to the army"
   + "the Few card carries a real Stack Token": fold, absorb, and the survivor
   sync-back with an un-absorbed CONTROL).
-  HOUSE-RULE bonus: each of these two banks ALSO Empowers one ability the winner
-  owns (the `EMPOWER_ABILITY` interaction, additive in the reward `SEQUENCE`).
-  Empowering an ability adds its card id to `player.empoweredAbilities`, which
-  lets its Expert side be played WITHOUT spending a crown for the rest of the
-  game — `abilityExpertIsCrownFree` / `canPlayExpertMode` (`ruleset.ts`) are
-  honoured at every Expert-use gate (legal-actions offers + reducer guards/spends
-  for reactions, map plays, Tactics, Wisdom and Learning). Tested in
-  `empowered-ability.test.ts` (the crown-free Expert play, with a graded CONTROL)
-  and `creature-bank-combat.test.ts` ("a win gains the unit AND lets the player
-  Empower an ability").
+  HOUSE-RULE bonus: each of these two banks ALSO grants an **Ability Empower
+  token** (the `GAIN_ABILITY_EMPOWER_TOKEN` interaction, additive in the reward
+  `SEQUENCE`; `player.abilityEmpowerToken`, max storage 1 — a surplus gain while
+  already holding 1 forces an auto-use pick on a hand Ability, or is wasted with
+  no eligible hand Ability). The token is spent ANYTIME (map, combat participant,
+  parallel bystander) via the handler-validated `USE_ABILITY_EMPOWER_TOKEN` on
+  one non-Empowered Ability currently IN HAND (hand-only — a discard-pile
+  ability is not a target; the old instant `EMPOWER_ABILITY` hand+discard pick
+  is a legacy path kept for residual steps). Spending adds the card id to
+  `player.empoweredAbilities`, which lets its Expert side be played WITHOUT
+  spending a crown for the rest of the game — `abilityExpertIsCrownFree` /
+  `canPlayExpertMode` (`ruleset.ts`) are honoured at every Expert-use gate
+  (legal-actions offers + reducer guards/spends for reactions, map plays,
+  Tactics, Wisdom and Learning). Map HUD chip + combat panel buttons ride the
+  engine's legal-action offers only. Designer field rewards can also grant the
+  token (`CustomFieldReward.abilityEmpowerToken`, `force: true` — works even
+  with the bank house rule off). Tested in `ability-empower-token.test.ts`
+  (spend → crown-free Expert, hand-only CONTROL, forged-spend CONTROL, both
+  surplus flows), `empowered-ability.test.ts` (the crown-free Expert play, with
+  a graded CONTROL), `creature-bank-combat.test.ts` ("a win gains the unit AND
+  an Ability Empower token") and `designer-field-rewards.test.ts` (the designer
+  grant with a bank-rule-OFF CONTROL).
 - Stack Tokens: the Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
   Impossible 4) sets the number of token ROLLS, NOT a guaranteed count. Each roll
   targets a distinct candidate card and lands only `STACK_TOKEN_PLACEMENT_PERCENT`
@@ -2291,7 +2311,15 @@ What runs (each pinned by a test that fails if the wiring is removed):
   (Town/Grail/Utopia). GUARD = level Ⅰ–Ⅶ or an exact army (up to
   `MAX_CUSTOM_GUARD_UNITS` = 6 neutral-deck unit cards, shared
   `GuardSpecEditor`); REWARD = gold/materials/valuables (≤50 each), Treasure
-  dice (≤3), Spell/Ability/Artifact deck Searches (≤5 each); VP ≤10.
+  dice (≤3), Spell/Ability/Artifact deck Searches (≤5 each, with an optional
+  Times×Search multiplier), plus the SPECIAL arms (all `CustomFieldReward`
+  surfaces — center hexes, objects, tokens, settlements, hex events): ±1
+  morale, an Ability Empower token (`force` — granted even with the bank house
+  rule off), a free one-shot Statistic-empower menu (hand+discard), main-hero
+  XP (≤5), movement (≤3) and Resource dice (≤3) — every special arm a REUSE of
+  an existing auto-resolving/menu VisitStep, so AI seats and AFK defaults
+  resolve them (`designer-field-rewards.test.ts`, each arm with a CONTROL);
+  VP ≤10.
   `materializeTileFields` stamps it on the difficulty-7 field;
   `grantCenterHexBonus` (ONE seam, top of `beginFieldVisit` — reached only
   after the guards are dealt with) pays resources inline and queues dice/
@@ -3675,7 +3703,16 @@ What runs (each pinned by a test that fails if the wiring is removed):
   (legacy) and 4 colored Teleport-Gate NETWORKS (each color its own teleport
   network, separate from Monoliths; up to `MAX_GATES_PER_PAIR` = 8 of a color
   across plan tokens + objects), plus — 2026-07 — one-way monolith halves and
-  the three outposts (Garrison / Keymaster's Tent / Barrier). Optional guards
+  the three outposts (Garrison / Keymaster's Tent / Barrier), and — with the
+  empower-token batch — a **pinned Creature Bank** (`kind: "creature_bank"`,
+  STANDALONE-only like the outposts): a REQUIRED `bankId` (one of the 12
+  published banks) carves a real bank fight at that hex (normal bank combat +
+  reward; optional `bankSize` pins the Polish Stacked count when that rule is
+  on). A bank pin never carries a designer guard / first-clear reward / yellow
+  borders — a bank is ALWAYS border-free, so it never seals movement or tile
+  discovery (stale smuggled edges are stripped at carve;
+  `creature-bank-objects.test.ts`, with a garrison-keeps-borders CONTROL).
+  Optional guards
   (level 1-7 OR an exact army) run the real neutral-battle flow on teleporters
   (a level>difficulty Quick-Combat win teleports + clears; a loss/retreat
   leaves the guard) and BANK-style (no XP, unlimited rounds) on outposts /
