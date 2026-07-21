@@ -3424,6 +3424,24 @@ FIX). Each engine claim fails a named test if its wiring is removed.
   and blank backs on the rest). Pinned in `spell-discard-pick.test.ts` (offer /
   face-up pick / morale-after-pick / elimination) and
   `deck-search-mode-modal.test.tsx` (per-pick faces).
+- **The deck-search menu's "Search (N)" tile is HONEST about a standing
+  Scouting override.** A `SEARCH_COUNT_OVERRIDE` (a pre-played Scouting) is
+  consumed only at REVEAL (`applySearchCountEffects`), never when the up-front
+  discard/fetch menu is built — so a lingering override left the tile reading
+  "Search (2)" while the Search then peeked 3 (the reported Derelict Ship bug).
+  `openSharedDeckSearch` now labels the Search tile with the EFFECTIVE reveal
+  count and names its source — "Search (3) — Scouting override (base 2)" —
+  via `searchCountOverrideLabel` (mirrors `applySearchCountEffects` exactly so
+  label == reveal); the override is still NOT consumed by the label read, so an
+  up-front discard/fetch keeps it intact for a later search. The Astrologers
+  `SPELL_SEARCH_WIDEN` path bumps `baseCount` itself, so it stays the plain
+  "Search (4)" phrasing (label == reveal, no "override" note). The bank Search
+  COUNT itself is honest end-to-end (X = Stacked defenders = size). Pinned in
+  `deck-search-label-honesty.test.ts` (bank X→reveal, override label + reveal,
+  Astrologers control, school-fetch controller scoping). Presentation: the
+  `DeckSearchModeModal` now GROUPS the look-alike tiles under headings (Search
+  the deck / take a discarded spell / draw from your School of Magic) — visual
+  only, option indices unchanged — pinned in `deck-search-mode-modal.test.tsx`.
 - **Manual guard control is FREE play.** `neutralControlMustAttack` returns
   false without PvP Neutral Control — the manual fighter may move, attack,
   Defend, Wait (polish-wait), hold or use tokens; only a REAL PvP Neutral
