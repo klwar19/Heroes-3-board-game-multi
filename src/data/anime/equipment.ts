@@ -143,12 +143,16 @@ export const EQUIPMENT_IDS = {
   bodyFlickerTabi: "anime.equip.body_flicker_tabi",
   sageChakraCharm: "anime.equip.sage_chakra_charm",
   // --- Azur Lane Naval Base bespoke "kansen" register line (§3.13 FUTURE-TOWN
-  //     RECIPE): 3 items, each a PURE reuse of an already-wired equipment seam
-  //     (src/engine/anime-equipment.ts). azur_lane's register line at BOTH
-  //     outfitters via `equipmentPackagesForFaction`; never in EQUIPMENT_SHOP_SALES.
+  //     RECIPE): 6 items (2 per grade, all four slots), each a PURE reuse of an
+  //     already-wired equipment seam (src/engine/anime-equipment.ts). azur_lane's
+  //     register line at BOTH outfitters via `equipmentPackagesForFaction`; never
+  //     in EQUIPMENT_SHOP_SALES.
   oxygenTorpedo: "anime.equip.oxygen_torpedo",
   repairToolkit: "anime.equip.repair_toolkit",
-  sgRadar: "anime.equip.sg_radar"
+  sgRadar: "anime.equip.sg_radar",
+  manjuuPiggyBank: "anime.equip.manjuu_piggy_bank",
+  beaverSquadTag: "anime.equip.beaver_squad_tag",
+  retrofitBlueprint: "anime.equip.retrofit_blueprint"
 } as const;
 
 function equip(
@@ -432,9 +436,9 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
   }),
 
   // ==== Azur Lane Naval Base bespoke "kansen" register line (§3.13) =========
-  // Azur Lane's own 3-item shipgirl line (torpedo / repair / radar), each a PURE
-  // reuse of an already-wired equipment seam — the relic COMBINES two seams like
-  // Sage Chakra Charm's spell-Power + hand-limit pair. Offered as azur_lane's
+  // Azur Lane's own 6-item shipgirl line (2 per grade, all four slots), each a
+  // PURE reuse of an already-wired equipment seam — the relics COMBINE two seams
+  // like Sage Chakra Charm's spell-Power + hand-limit pair. Offered as azur_lane's
   // register line at BOTH outfitters (`equipmentPackagesForFaction`).
   // ---- Grade I (minor, 4g) ------------------------------------------------
   [EQUIPMENT_IDS.oxygenTorpedo]: equip({
@@ -471,6 +475,44 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     // Seams: equipmentSpellPowerBonus + equipmentHandLimitBonus (both accessory).
     summary:
       "Accessory · Grade III: +1 spell Power on your casts AND +1 hand limit (spell Power stacks with Cultivation / Hero-Grade Power; hand limit stacks with Guild-Issue Mail (armor); shares the ONE accessory slot with the other spell-power / hand-limit accessories (Cosmos Pendant / Spirit Focus / Twin-Tail Ribbon / Eternal Sash / Sage Chakra Charm) — only one accessory is worn, so same-slot twins never stack)."
+  }),
+
+  // ---- Grade I (minor, 4g) — accessory win-gold twin ----------------------
+  [EQUIPMENT_IDS.manjuuPiggyBank]: equip({
+    id: EQUIPMENT_IDS.manjuuPiggyBank,
+    slot: "accessory",
+    grade: "I",
+    name: { en: "Manjuu Piggy Bank", vi: "Heo Đất Manjuu" },
+    package: "kansen",
+    // Seam: equipmentWinGold (the Lucky Coin fold).
+    summary:
+      "Accessory · Grade I: gain +1 gold after each combat you win (stacks with Adventurer's Blade (weapon) / Alchemist's Satchel (armor) to the +3 win-gold cap = weapon + armor + ONE accessory; shares the accessory slot with Lucky Coin / Coinward Talisman / Horn of Plenty / SG Radar / the spell-power+hand-limit accessories — only one accessory is worn, so the win-gold cap stays +3)."
+  }),
+
+  // ---- Grade II (major, 6g) — mount movement twin -------------------------
+  [EQUIPMENT_IDS.beaverSquadTag]: equip({
+    id: EQUIPMENT_IDS.beaverSquadTag,
+    slot: "mount",
+    grade: "II",
+    name: { en: "Beaver Squad Tag", vi: "Thẻ Đội Hải Ly" },
+    package: "kansen",
+    // Seam: equipmentMovementBonus (the Windrider Saddle fold).
+    summary:
+      "Mount · Grade II: +1 movement point to your main hero at each turn refresh (folded into the per-turn movement max; shares the mount slot with Windrider Saddle / Courser's Barding / Body-Flicker Tabi / Spirit Crane Mount — only one mount is worn)."
+  }),
+
+  // ---- Grade III (relic, 8g) — weapon relic COMBINING two attack seams ----
+  [EQUIPMENT_IDS.retrofitBlueprint]: equip({
+    id: EQUIPMENT_IDS.retrofitBlueprint,
+    slot: "weapon",
+    grade: "III",
+    name: { en: "Retrofit Blueprint", vi: "Bản Vẽ Cải Tạo" },
+    package: "kansen",
+    // Seams: equipmentFirstAttackBonus (Iron-Blood Sword) + equipmentRound1AttackBonus
+    // (Blade of the Trial). Both weapon-slot folds, so the FIRST attack in round 1
+    // stacks BOTH → +2; a same-slot weapon can never double either half.
+    summary:
+      "Weapon · Grade III: your units' FIRST declared attack each combat gets +1 Attack AND your units' declared attacks during combat ROUND 1 get +1 Attack — so the FIRST attack in round 1 is +2 total (your main hero's fights; not on retaliations, the round-1 half is gone from round 2; shares the weapon slot with Iron-Blood Sword / Crusader's Poleaxe / Kunai Pouch / Oxygen Torpedo / Blade of the Trial — only one weapon is worn)."
   })
 };
 

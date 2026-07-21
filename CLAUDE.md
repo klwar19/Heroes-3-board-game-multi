@@ -2742,10 +2742,10 @@ Leading with what does NOT run / deliberate limits:
   outfitter Field Overrides; the hero board is a read-only chip display for items.
   (The other hero map actives — HERO_TRAIN / Forced March (§3.11) and the Heavenly
   Tribulation (§5.6) — DO now have a human button via the map `HeroActionsDock`;
-  only equipment purchase does not.) **Art (2026-07): all 30 items ship 512×512
+  only equipment purchase does not.) **Art (2026-07): all 33 items ship 512×512
   inventory icons** (`public/assets/anime/equipment/`, drawn on the hero-board chip
   — `.hbEquipIcon`, art wins over the slot glyph; the 18 anime items are Codex art,
-  the 6 classic + 3 shinobi items PROCEDURAL placeholders while the 3 kansen items
+  the 6 classic + 3 shinobi items PROCEDURAL placeholders while the 6 kansen items
   ship REAL deterministic vector naval icons (`scripts/build-kansen-equipment-icons.mjs`)
   — above; `ANIME_EQUIPMENT_ART_PLACEHOLDERS`
   is EMPTY, a future art-less item must be declared there for the glyph fallback)
@@ -2762,7 +2762,7 @@ Leading with what does NOT run / deliberate limits:
   item and an "upgrade waiting" hint when a higher-grade bag item exists for a
   filled slot (pure presentation; no new engine action). The hero + commander
   windows already carry the faction `theme-<register>` class (verified). What runs
-  (30 items, each a proven-seam reuse pegged to a core
+  (33 items, each a proven-seam reuse pegged to a core
   magnitude): Iron-Blood Sword = your units' FIRST declared attack each combat +1
   Attack (a per-combat one-shot folded UNCLAMPED in `getAttackStackDetails` beside
   the combat-script delta, consumed at `finishResolvedAttack` when the attack
@@ -2803,20 +2803,26 @@ Leading with what does NOT run / deliberate limits:
   and so shares the ONE accessory slot with the other spell-power / hand-limit
   accessories — same-slot twins still don't stack). No new fold kinds — each id
   joined an existing fold's item-id list; behaviour pinned per item in
-  `anime-equipment.test.ts`, the catalog count (30) + register matrix in
+  `anime-equipment.test.ts`, the catalog count (33) + register matrix in
   `equipment.test.ts`.
-  KANSEN LINE (2026-07, package `kansen`, Azur Lane Naval Base's BESPOKE 3-item
-  register line — torpedo/repair/radar, each a PURE seam reuse; the relic COMBINES
-  two seams): Oxygen Torpedo (weapon I, first-declared-attack +1 — Iron-Blood Sword
-  seam, shares the weapon slot), Repair Toolkit (armor II, first-incoming-hit
-  Defense token — Stage Costume seam, shares the armor slot), SG Radar (accessory
-  III, +1 spell Power AND +1 hand limit — the Sage Chakra Charm relic pair, shares
-  the ONE accessory slot; same-slot twins still don't stack). No new fold kinds —
-  each id joined an existing fold's item-id list; UNLIKE the classic/shinobi
-  procedural placeholders these ship REAL vector naval icons + card faces
-  (`ANIME_EQUIPMENT_ART_PLACEHOLDERS` stays EMPTY). Behaviour pinned per item in
-  `anime-equipment.test.ts`, the catalog count (30) + register matrix in
-  `equipment.test.ts`.
+  KANSEN LINE (2026-07, package `kansen`, Azur Lane Naval Base's BESPOKE 6-item
+  register line — 2 per grade across all four slots, each a PURE seam reuse; the
+  two relics COMBINE two seams): Oxygen Torpedo (weapon I, first-declared-attack
+  +1 — Iron-Blood Sword seam), Manjuu Piggy Bank (accessory I, +1 win gold —
+  Lucky Coin seam; the win-gold cap stays +3 = weapon + armor + ONE accessory),
+  Repair Toolkit (armor II, first-incoming-hit Defense token — Stage Costume
+  seam), Beaver Squad Tag (mount II, +1 MP each turn refresh — Windrider Saddle
+  seam, shares the mount slot), SG Radar (accessory III, +1 spell Power AND +1
+  hand limit — the Sage Chakra Charm relic pair, shares the ONE accessory slot;
+  same-slot twins still don't stack), Retrofit Blueprint (weapon III relic,
+  first-declared-attack +1 AND round-1 attacks +1 — the Iron-Blood Sword + Blade
+  of the Trial seams combined, so the FIRST attack in round 1 is +2; not on
+  retaliations, the round-1 half gone from round 2, shares the weapon slot). No
+  new fold kinds — each id joined an existing fold's item-id list; UNLIKE the
+  classic/shinobi procedural placeholders these ship REAL vector naval icons +
+  card faces (`ANIME_EQUIPMENT_ART_PLACEHOLDERS` stays EMPTY). Behaviour pinned
+  per item in `anime-equipment.test.ts`, the catalog count (33) + register matrix
+  in `equipment.test.ts`.
   MARKETS: two single-hex Field Overrides — Rèn Binh Các (Blacksmith, xianxia, ⚒) +
   Adventurer Outfitter (isekai, 🎒), both selling the shared Satchel; the shop menu
   is a dynamic `CHOOSE_ONE` of `BUY_EQUIPMENT` options built in `beginFieldVisit`
@@ -2828,7 +2834,8 @@ Leading with what does NOT run / deliberate limits:
   (wuxia) the xianxia line, fuyuki (anime) the isekai line, hidden_leaf its OWN
   bespoke shinobi line (Kunai Pouch / Body-Flicker Tabi / Sage Chakra Charm) and
   azur_lane its OWN bespoke kansen line (Oxygen Torpedo / Repair Toolkit / SG
-  Radar). Hidden Leaf AND Azur Lane both SHARE the `anime` visual register with
+  Radar / Manjuu Piggy Bank / Beaver Squad Tag / Retrofit Blueprint). Hidden Leaf
+  AND Azur Lane both SHARE the `anime` visual register with
   Fuyuki, so the register switch alone cannot tell them apart:
   `equipmentPackagesForFaction` special-cases hidden_leaf → `["shinobi"]` and
   azur_lane → `["kansen"]` AHEAD of the switch, or either would fall through to
@@ -3175,9 +3182,11 @@ First-Aid clone) and Sirius ("Flawless Service", a Rion medic clone). Belfast
 commander (`belfast`, `COMMANDER_SLUG_BY_FACTION.azur_lane`) = the Temple-Guardian
 Precision cast ("Fire Support", `commander-cast-temple_guardian`) + `first-aid`
 ("Impeccable Service"), Sea Witch voice. Starting tile P-S1 (an S4-layout clone,
-mirrors A-S1). Its BESPOKE `kansen` equipment line (3 items — Oxygen Torpedo /
-Repair Toolkit / SG Radar) is `anime.equipment`-gated, joins the shared Artifact
-deck like every equipment item, ships REAL vector naval icons (not placeholders),
+mirrors A-S1). Its BESPOKE `kansen` equipment line (6 items, 2 per grade across
+all four slots — Oxygen Torpedo / Manjuu Piggy Bank / Repair Toolkit / Beaver
+Squad Tag / SG Radar / Retrofit Blueprint) is `anime.equipment`-gated, joins the
+shared Artifact deck like every equipment item, ships REAL vector naval icons (not
+placeholders),
 and is offered as Azur Lane's register line at BOTH outfitters via the §3.13
 special-case (`equipmentPackagesForFaction` returns `["kansen"]` for azur_lane
 AHEAD of the register switch — the same bespoke branch as hidden_leaf's `shinobi`,

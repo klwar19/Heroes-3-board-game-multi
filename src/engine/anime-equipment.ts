@@ -127,19 +127,27 @@ export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipm
 //     limit — both accessory-slot seams, so it can never lift either cap (all
 //     spell-power items are accessories ⇒ +1; hand limit stays +2 = armor + one
 //     accessory).
-//   Azur Lane "kansen" line (§3.13), each a pure seam reuse:
+//   Azur Lane "kansen" line (§3.13), 6 items (2 per grade, all four slots),
+//   each a pure seam reuse:
 //   - `oxygenTorpedo` twins Iron-Blood Sword (weapon, first-attack)
 //   - `repairToolkit` twins Stage Costume (armor, first-incoming defense token)
 //   - `sgRadar` (accessory relic) combines +1 spell Power AND +1 hand limit —
 //     same accessory-slot pair as Sage Chakra Charm, so it can never lift either
 //     cap (spell-power items are all accessories ⇒ +1; hand limit stays +2 =
 //     armor + one accessory).
+//   - `manjuuPiggyBank` twins Lucky Coin (accessory, win-gold — the win-gold cap
+//     stays +3 = weapon + armor + one accessory)
+//   - `beaverSquadTag` twins Windrider Saddle (mount, +1 MP refresh)
+//   - `retrofitBlueprint` (weapon relic) combines first-attack AND round-1 attack
+//     — both weapon-slot folds, so a same-slot weapon never doubles either half;
+//     the FIRST attack in round 1 stacks BOTH → +2.
 // ---------------------------------------------------------------------------
 const FIRST_ATTACK_ITEMS = [
   EQUIPMENT_IDS.ironBloodSword,
   EQUIPMENT_IDS.crusadersPoleaxe,
   EQUIPMENT_IDS.shinobiKunaiPouch,
-  EQUIPMENT_IDS.oxygenTorpedo
+  EQUIPMENT_IDS.oxygenTorpedo,
+  EQUIPMENT_IDS.retrofitBlueprint
 ] as const;
 const INCOMING_PENALTY_ITEMS = [EQUIPMENT_IDS.blackTortoiseMail, EQUIPMENT_IDS.wardensAegis] as const;
 const DEFENSE_TOKEN_ITEMS = [
@@ -148,7 +156,7 @@ const DEFENSE_TOKEN_ITEMS = [
   EQUIPMENT_IDS.wardensAegis,
   EQUIPMENT_IDS.repairToolkit
 ] as const;
-const ROUND1_ATTACK_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial] as const;
+const ROUND1_ATTACK_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial, EQUIPMENT_IDS.retrofitBlueprint] as const;
 const FIRST_SPELL_POWER_ITEMS = [EQUIPMENT_IDS.neonMicrophone] as const;
 const SPELL_POWER_ITEMS = [
   EQUIPMENT_IDS.cosmosPendant,
@@ -168,14 +176,16 @@ const WIN_GOLD_ITEMS = [
   EQUIPMENT_IDS.luckyCoin,
   EQUIPMENT_IDS.alchemistsSatchel,
   EQUIPMENT_IDS.coinwardTalisman,
-  EQUIPMENT_IDS.hornOfPlenty
+  EQUIPMENT_IDS.hornOfPlenty,
+  EQUIPMENT_IDS.manjuuPiggyBank
 ] as const;
 const RESOURCE_MATERIALS_ITEMS = [EQUIPMENT_IDS.supplySatchel, EQUIPMENT_IDS.hornOfPlenty] as const;
 const RESOURCE_GOLD_ITEMS = [EQUIPMENT_IDS.alchemistsSatchel] as const;
 const MOVEMENT_ITEMS = [
   EQUIPMENT_IDS.windriderSaddle,
   EQUIPMENT_IDS.coursersBarding,
-  EQUIPMENT_IDS.bodyFlickerTabi
+  EQUIPMENT_IDS.bodyFlickerTabi,
+  EQUIPMENT_IDS.beaverSquadTag
 ] as const;
 
 /** Whether the player's main hero wears ANY of the given equipment ids. */
@@ -287,8 +297,8 @@ export function equipmentHandLimitBonus(state: GameState, playerId: PlayerId): n
  */
 export function equipmentWinGold(state: GameState, playerId: PlayerId): number {
   // Adventurer's Blade (weapon), Alchemist's Satchel (armor), and one accessory
-  // (Lucky Coin / Coinward Talisman / Horn of Plenty — same slot, one worn) →
-  // caps at +3; the accessory sources never double-count.
+  // (Lucky Coin / Coinward Talisman / Horn of Plenty / Manjuu Piggy Bank — same
+  // slot, one worn) → caps at +3; the accessory sources never double-count.
   return countEquipment(state, playerId, WIN_GOLD_ITEMS);
 }
 
@@ -314,8 +324,8 @@ export function equipmentResourceRoundGold(state: GameState, playerId: PlayerId)
  * module is off / no saddle.
  */
 export function equipmentMovementBonus(state: GameState, playerId: PlayerId): number {
-  // Windrider Saddle / Courser's Barding / Body-Flicker Tabi (all mount, one
-  // worn) → +1 MP.
+  // Windrider Saddle / Courser's Barding / Body-Flicker Tabi / Beaver Squad Tag
+  // (all mount, one worn) → +1 MP.
   return playerHasAnyEquipment(state, playerId, MOVEMENT_ITEMS) ? 1 : 0;
 }
 

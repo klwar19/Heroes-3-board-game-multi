@@ -406,6 +406,39 @@ const CARDS = [
       "Accessory: +1 spell Power on your casts AND +1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
+  },
+  {
+    slug: "manjuu_piggy_bank",
+    en: "Manjuu Piggy Bank",
+    vi: "Heo Đất Manjuu",
+    grade: "I",
+    slot: "accessory",
+    rules: [
+      "Accessory: gain +1 gold after each combat you win.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
+    ]
+  },
+  {
+    slug: "beaver_squad_tag",
+    en: "Beaver Squad Tag",
+    vi: "Thẻ Đội Hải Ly",
+    grade: "II",
+    slot: "mount",
+    rules: [
+      "Mount: +1 movement point to your main hero at each turn refresh.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
+    ]
+  },
+  {
+    slug: "retrofit_blueprint",
+    en: "Retrofit Blueprint",
+    vi: "Bản Vẽ Cải Tạo",
+    grade: "III",
+    slot: "weapon",
+    rules: [
+      "Weapon: your units' FIRST declared attack each combat +1 Attack AND all declared attacks in combat ROUND 1 +1 Attack (first attack in round 1 = +2; not retaliations).",
+      "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
+    ]
   }
 ];
 

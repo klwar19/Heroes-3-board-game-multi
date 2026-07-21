@@ -1118,6 +1118,9 @@ const EQUIP_ID_CHARM = EQUIPMENT_IDS.sageChakraCharm;
 const EQUIP_ID_TORPEDO = EQUIPMENT_IDS.oxygenTorpedo;
 const EQUIP_ID_TOOLKIT = EQUIPMENT_IDS.repairToolkit;
 const EQUIP_ID_RADAR = EQUIPMENT_IDS.sgRadar;
+const EQUIP_ID_MANJUU = EQUIPMENT_IDS.manjuuPiggyBank;
+const EQUIP_ID_BEAVER = EQUIPMENT_IDS.beaverSquadTag;
+const EQUIP_ID_RETROFIT = EQUIPMENT_IDS.retrofitBlueprint;
 
 describe("anime.equipment — Crusader's Poleaxe (classic weapon)", () => {
   it("+1 Attack on the FIRST declared attack (Iron-Blood Sword seam; CONTROL: bare)", () => {
@@ -1470,6 +1473,122 @@ describe("anime.equipment — SG Radar (kansen accessory relic — combines two 
   });
 });
 
+describe("anime.equipment — Manjuu Piggy Bank (kansen accessory)", () => {
+  it("+1 gold after a won combat (win-gold seam; CONTROL: not equipped)", () => {
+    const none = runWonGuardCombat("eq-manjuu-win", EQUIP_ON, []).goldGained;
+    expect(runWonGuardCombat("eq-manjuu-win", EQUIP_ON, [["accessory", EQUIP_ID_MANJUU]]).goldGained).toBe(none + 1);
+  });
+
+  it("shares the accessory slot with the other win-gold accessories — win gold still caps at +3", () => {
+    const none = runWonGuardCombat("eq-manjuu-cap", EQUIP_ON, []).goldGained;
+    // Blade (weapon) + Alchemist's Satchel (armor) + Manjuu (accessory) = the +3
+    // cap (weapon + armor + ONE accessory). Adding Lucky Coin can't stack a 2nd
+    // accessory (single slot) — the last equip wins — so it stays +3, never +4.
+    expect(
+      runWonGuardCombat("eq-manjuu-cap", EQUIP_ON, [
+        ["weapon", EQUIP_ID_BLADE],
+        ["armor", EQUIP_ID_ALCHEMIST],
+        ["accessory", EQUIP_ID_MANJUU]
+      ]).goldGained
+    ).toBe(none + 3);
+    expect(
+      runWonGuardCombat("eq-manjuu-cap", EQUIP_ON, [
+        ["weapon", EQUIP_ID_BLADE],
+        ["armor", EQUIP_ID_ALCHEMIST],
+        ["accessory", EQUIP_ID_LUCKY],
+        ["accessory", EQUIP_ID_MANJUU]
+      ]).goldGained
+    ).toBe(none + 3);
+  });
+});
+
+describe("anime.equipment — Beaver Squad Tag (kansen mount)", () => {
+  it("+1 movement at turn refresh (Windrider Saddle seam; CONTROL: no item → no rise)", () => {
+    function refreshedMovement(withItem: boolean): number {
+      const state = adventure(`eq-beaver-${withItem}`);
+      const hero = getMainHero(state, "p1")!;
+      if (withItem) equip(state, "p1", "mount", EQUIP_ID_BEAVER);
+      hero.movementPoints = 0;
+      refreshRoundTokens(state);
+      return hero.movementPoints;
+    }
+    expect(refreshedMovement(true)).toBe(refreshedMovement(false) + 1);
+  });
+});
+
+describe("anime.equipment — Retrofit Blueprint (kansen weapon relic — combines two attack seams)", () => {
+  // Perform `attacks` declared attacks by the same unit in one round, returning
+  // the non-retaliation attack values in order (the first-attack CHARGE spends on
+  // the 1st, so a 2nd attack isolates the LIVE round-1 fold).
+  function attackValues(seed: string, round: number, attacks: number, withItem: boolean): number[] {
+    let state = combat(seed);
+    state.combat!.round = round;
+    if (withItem) equip(state, "p1", "weapon", EQUIP_ID_RETROFIT);
+    for (let i = 0; i < attacks; i += 1) {
+      const griffins = state.combat!.units.unit_p1_griffins;
+      griffins.attackedThisActivation = false;
+      griffins.attacksThisActivation = 0;
+      griffins.retaliatedThisRound = false;
+      griffins.movedThisActivation = false;
+      griffins.activatedThisRound = false;
+      state.combat!.activeUnitId = "unit_p1_griffins";
+      state.activePlayerId = "p1";
+      state.combat!.attackSequence = null;
+      state = resolveReactions(
+        applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+      );
+    }
+    return initiatingAttackValues(state);
+  }
+
+  it("the FIRST attack rides the first-attack seam +1, ISOLATED in round 2 (CONTROL: bare)", () => {
+    // Round 2 → the round-1 fold is off, so only the one-shot first-attack charge
+    // applies. Removing retrofit from FIRST_ATTACK_ITEMS drops this to +0.
+    const bare = attackValues("eq-retrofit-fa-off", 2, 1, false)[0];
+    expect(attackValues("eq-retrofit-fa-on", 2, 1, true)[0]).toBe(bare + 1);
+  });
+
+  it("round-1 declared attacks ride the round-1 seam +1, ISOLATED as the 2nd attack (charge spent; CONTROL: bare)", () => {
+    // Second attack in round 1: the first-attack charge is spent on the 1st, so
+    // only the LIVE round-1 fold remains → +1. Removing retrofit from
+    // ROUND1_ATTACK_ITEMS drops this to +0.
+    const bare = attackValues("eq-retrofit-r1-off", 1, 2, false)[1];
+    expect(attackValues("eq-retrofit-r1-on", 1, 2, true)[1]).toBe(bare + 1);
+  });
+
+  it("the FIRST attack in ROUND 1 stacks BOTH folds → +2 total (CONTROL: bare)", () => {
+    const bare = attackValues("eq-retrofit-both-off", 1, 1, false)[0];
+    expect(attackValues("eq-retrofit-both-on", 1, 1, true)[0]).toBe(bare + 2);
+  });
+
+  it("a round-2 NON-first attack gets +0 — charge spent AND past round 1 (CONTROL: equals bare)", () => {
+    const withItem = attackValues("eq-retrofit-none-on", 2, 2, true);
+    const bare = attackValues("eq-retrofit-none-off", 2, 2, false);
+    // Second attack in round 2: first-attack charge spent AND round-1 fold gone.
+    expect(withItem[1]).toBe(bare[1]);
+  });
+
+  it("does NOT fire on a retaliation (declared attacks only, both halves)", () => {
+    function retaliationValue(withItem: boolean): number {
+      let state = combat(`eq-retrofit-retal-${withItem}`);
+      state.combat!.round = 1;
+      if (withItem) equip(state, "p1", "weapon", EQUIP_ID_RETROFIT);
+      const skeletons = state.combat!.units.unit_p2_skeletons;
+      skeletons.attack = 6;
+      state.combat!.activeUnitId = "unit_p2_skeletons";
+      state.activePlayerId = "p2";
+      state = resolveReactions(
+        applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: "unit_p2_skeletons", defenderId: "unit_p1_griffins" })
+      );
+      const retaliation = state.eventLog.find(
+        (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED" && event.isRetaliation
+      );
+      return retaliation!.attackValue;
+    }
+    expect(retaliationValue(true)).toBe(retaliationValue(false)); // no +1 on the griffins' retaliation
+  });
+});
+
 describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
   // Directly stamp the visiting hero's faction, then read the outfitter menu.
   function shopLabels(shopLocation: string, factionId: string): string[] {
@@ -1574,8 +1693,8 @@ describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
   it("an AZUR LANE visitor sees the bespoke KANSEN line at BOTH shops, never other registers", () => {
     const black = shopLabels("anime.ren_binh_cac", "azur_lane");
     const outfit = shopLabels("anime.adventurer_outfitter", "azur_lane");
-    // All three kansen items at BOTH outfitters (azur_lane's register line).
-    for (const name of ["Oxygen Torpedo", "Repair Toolkit", "SG Radar"]) {
+    // All six kansen items at BOTH outfitters (azur_lane's register line).
+    for (const name of ["Oxygen Torpedo", "Repair Toolkit", "SG Radar", "Manjuu Piggy Bank", "Beaver Squad Tag", "Retrofit Blueprint"]) {
       expect(has(black, name), `${name} @ blacksmith`).toBe(true);
       expect(has(outfit, name), `${name} @ outfitter`).toBe(true);
     }

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Build the 3 Azur Lane Naval Base "kansen" equipment INVENTORY ICONS
- * (512×512 webp) — the register line for the `azur_lane` faction (§3.13).
+ * Build the 6 Azur Lane Naval Base "kansen" equipment INVENTORY ICONS
+ * (512×512 webp) — the register line for the `azur_lane` faction (§3.13),
+ * 2 items per grade across all four slots.
  *
  * DETERMINISTIC + idempotent: pure vector SVG composition via sharp, no RNG,
  * so re-running overwrites byte-identical outputs. Each icon is real NAVAL
@@ -10,15 +11,22 @@
  * the outer stroke to match GRADE_STYLE in build-equipment-cards.mjs:
  *   I  silver  #c7ccd6   ·   II  gold  #e7b73c   ·   III  relic-blue  #6fa8ff
  *
- *   oxygen_torpedo (weapon I)  — a sleek purple-black torpedo at a dynamic
- *                                angle with wake lines + rising oxygen bubbles.
- *   repair_toolkit (armor II)  — an open steel toolkit with a crossed wrench +
- *                                spanner and a small gold anchor badge.
- *   sg_radar       (accessory III) — a radar dish with a luminous sweep arc and
- *                                blips over concentric range rings.
+ *   oxygen_torpedo   (weapon I)     — a sleek purple-black torpedo at a dynamic
+ *                                     angle with wake lines + rising oxygen bubbles.
+ *   manjuu_piggy_bank(accessory I)  — a plump yellow Manjuu bird as a piggy bank
+ *                                     with a coin slot on its back + a falling coin.
+ *   repair_toolkit   (armor II)     — an open steel toolkit with a crossed wrench +
+ *                                     spanner and a small gold anchor badge.
+ *   beaver_squad_tag (mount II)     — a navy squadron dog-tag on a chain bearing a
+ *                                     stylized beaver-tail emblem + a small torpedo.
+ *   sg_radar         (accessory III)— a radar dish with a luminous sweep arc and
+ *                                     blips over concentric range rings.
+ *   retrofit_blueprint(weapon III)  — an unrolled cyan blueprint scroll with white
+ *                                     ship-hull schematic linework + an upgrade arrow.
  *
  * Outputs (masters the card-face build picks up automatically from ICON_DIR):
- *   public/assets/anime/equipment/{oxygen_torpedo,repair_toolkit,sg_radar}.webp
+ *   public/assets/anime/equipment/{oxygen_torpedo,manjuu_piggy_bank,repair_toolkit,
+ *     beaver_squad_tag,sg_radar,retrofit_blueprint}.webp
  *
  * Run: node scripts/build-kansen-equipment-icons.mjs
  * Then: node scripts/build-equipment-cards.mjs   (builds the ornate card faces)
@@ -256,10 +264,171 @@ function radarMotif() {
   return { defs, motif: `${rings}${grat}${sweep}${blips}${dish}` };
 }
 
+/** A plump yellow Manjuu bird as a piggy bank: coin slot on its back + falling coin. */
+function piggyBankMotif() {
+  const g = `<g>
+    <!-- coin-slot shadow behind the back -->
+    <rect x="228" y="150" width="58" height="14" rx="7" fill="#3a2c0a" opacity="0.75" transform="rotate(-6 257 157)"/>
+    <!-- round body -->
+    <ellipse cx="256" cy="288" rx="150" ry="132" fill="url(#manjuuBody)" stroke="#c99a1e" stroke-width="4"/>
+    <ellipse cx="228" cy="252" rx="72" ry="58" fill="#fff2b0" opacity="0.5"/>
+    <!-- little wings -->
+    <ellipse cx="122" cy="302" rx="34" ry="52" fill="#f5cf4a" stroke="#c99a1e" stroke-width="3" transform="rotate(20 122 302)"/>
+    <ellipse cx="390" cy="302" rx="34" ry="52" fill="#f5cf4a" stroke="#c99a1e" stroke-width="3" transform="rotate(-20 390 302)"/>
+    <!-- coin slot rim on the back -->
+    <rect x="226" y="163" width="62" height="16" rx="8" fill="#2a2008" stroke="#c99a1e" stroke-width="2.5" transform="rotate(-6 257 171)"/>
+    <!-- eyes + highlights -->
+    <circle cx="214" cy="268" r="12" fill="#241a06"/>
+    <circle cx="298" cy="268" r="12" fill="#241a06"/>
+    <circle cx="218" cy="264" r="4" fill="#fff"/>
+    <circle cx="302" cy="264" r="4" fill="#fff"/>
+    <!-- blush -->
+    <ellipse cx="182" cy="302" rx="18" ry="11" fill="#ff9d7a" opacity="0.55"/>
+    <ellipse cx="330" cy="302" rx="18" ry="11" fill="#ff9d7a" opacity="0.55"/>
+    <!-- beak -->
+    <path d="M 244 294 L 268 294 L 256 314 Z" fill="#e8862a" stroke="#b5641a" stroke-width="2"/>
+    <!-- stubby feet -->
+    <path d="M 214 412 q -6 20 8 26 q 14 4 16 -14" fill="none" stroke="#e8862a" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 298 412 q 6 20 -8 26 q -14 4 -16 -14" fill="none" stroke="#e8862a" stroke-width="8" stroke-linecap="round"/>
+    <!-- falling gold coin above the slot -->
+    <g transform="translate(302 112) rotate(18)">
+      <ellipse cx="0" cy="0" rx="30" ry="30" fill="url(#coinFace)" stroke="#8a6410" stroke-width="3"/>
+      <ellipse cx="0" cy="0" rx="21" ry="21" fill="none" stroke="#8a6410" stroke-width="2" opacity="0.6"/>
+      <path d="M 0 -12 L 4 -3 L 13 0 L 4 3 L 0 12 L -4 3 L -13 0 L -4 -3 Z" fill="#fff3c2"/>
+    </g>
+    <!-- sparkles by the coin -->
+    <g fill="#ffe9a6">
+      <circle cx="352" cy="94" r="4" opacity="0.8"/>
+      <circle cx="340" cy="130" r="3" opacity="0.6"/>
+      <circle cx="366" cy="138" r="2.6" opacity="0.5"/>
+    </g>
+  </g>`;
+  const defs = `<defs>
+    <radialGradient id="manjuuBody" cx="42%" cy="36%" r="70%">
+      <stop offset="0" stop-color="#ffe27a"/>
+      <stop offset="60%" stop-color="#f6c93f"/>
+      <stop offset="100%" stop-color="#d69f1c"/>
+    </radialGradient>
+    <radialGradient id="coinFace" cx="40%" cy="36%" r="70%">
+      <stop offset="0" stop-color="#ffe9a0"/>
+      <stop offset="60%" stop-color="#f0c24a"/>
+      <stop offset="100%" stop-color="#b7841c"/>
+    </radialGradient>
+  </defs>`;
+  return { defs, motif: g };
+}
+
+/** A navy squadron dog-tag on a chain: beaver-tail emblem + a small torpedo. */
+function dogTagMotif() {
+  // shallow arc of chain links across the top
+  let chain = "";
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20;
+    const x = 96 + t * 320;
+    const y = 148 - Math.sin(t * Math.PI) * 64;
+    chain += `<circle cx="${f1(x)}" cy="${f1(y)}" r="6.5" fill="none" stroke="#cfd6e2" stroke-width="3"/>`;
+  }
+  const g = `<g>
+    ${chain}
+    <g transform="translate(256 302) rotate(-8)">
+      <!-- the dog tag -->
+      <rect x="-104" y="-118" width="208" height="252" rx="54" fill="url(#tagFace)" stroke="#0c1626" stroke-width="5"/>
+      <rect x="-104" y="-118" width="208" height="252" rx="54" fill="none" stroke="#eef4ff" stroke-width="2" opacity="0.5"/>
+      <circle cx="0" cy="-96" r="15" fill="#0b1a2c" stroke="#cfd6e2" stroke-width="3"/>
+      <text x="0" y="-56" text-anchor="middle" font-family="'Times New Roman',Georgia,serif" font-size="24" font-weight="700" letter-spacing="4" fill="#0b1a2c" opacity="0.78">SQ-07</text>
+      <!-- engraved beaver-tail emblem (a cross-hatched paddle) -->
+      <g transform="translate(0 -6)">
+        <ellipse cx="0" cy="0" rx="52" ry="64" fill="#22405f" stroke="#eaf3ff" stroke-width="3.5"/>
+        <g stroke="#8fb6dd" stroke-width="2.4" opacity="0.85">
+          <line x1="-30" y1="-30" x2="30" y2="-30"/>
+          <line x1="-36" y1="-10" x2="36" y2="-10"/>
+          <line x1="-36" y1="10" x2="36" y2="10"/>
+          <line x1="-30" y1="30" x2="30" y2="30"/>
+          <line x1="0" y1="-56" x2="0" y2="56"/>
+        </g>
+      </g>
+      <!-- small torpedo silhouette below -->
+      <g transform="translate(-8 92)">
+        <rect x="-52" y="-9" width="92" height="18" rx="9" fill="#0f2135"/>
+        <path d="M 40 -9 Q 66 0 40 9 Z" fill="#0f2135"/>
+        <polygon points="-52,-8 -70,-20 -46,-12" fill="#0f2135"/>
+        <polygon points="-52,8 -70,20 -46,12" fill="#0f2135"/>
+        <circle cx="30" cy="0" r="5" fill="#f2c85a"/>
+      </g>
+    </g>
+  </g>`;
+  const defs = `<defs>
+    <linearGradient id="tagFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#dfe7f2"/>
+      <stop offset="45%" stop-color="#aab4c4"/>
+      <stop offset="100%" stop-color="#6c7686"/>
+    </linearGradient>
+  </defs>`;
+  return { defs, motif: g };
+}
+
+/** An unrolled cyan blueprint scroll: ship-hull schematic + an upgrade arrow. */
+function blueprintMotif() {
+  let grid = "";
+  for (let x = 140; x < 392; x += 24) grid += `<line x1="${x}" y1="152" x2="${x}" y2="400"/>`;
+  for (let y = 168; y < 400; y += 24) grid += `<line x1="122" y1="${y}" x2="390" y2="${y}"/>`;
+  const g = `<g>
+    <!-- unrolled sheet -->
+    <rect x="120" y="150" width="272" height="252" rx="8" fill="url(#blueSheet)" stroke="#0a2740" stroke-width="3"/>
+    <g stroke="#bfe6ff" stroke-width="1" opacity="0.26">${grid}</g>
+    <!-- ship hull side profile in white schematic linework -->
+    <g fill="none" stroke="#eafaff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M 150 302 L 344 302 L 322 342 L 176 342 Z"/>
+      <rect x="212" y="268" width="40" height="34"/>
+      <rect x="258" y="280" width="26" height="22"/>
+      <path d="M 224 268 L 228 248 L 244 248 L 240 268 Z"/>
+      <line x1="196" y1="288" x2="150" y2="280"/>
+      <line x1="196" y1="294" x2="150" y2="288"/>
+      <line x1="150" y1="354" x2="344" y2="354" stroke-dasharray="8 7" opacity="0.8"/>
+    </g>
+    <!-- dimension line -->
+    <g stroke="#bfe6ff" stroke-width="2" opacity="0.85">
+      <line x1="150" y1="374" x2="344" y2="374"/>
+      <line x1="150" y1="368" x2="150" y2="380"/>
+      <line x1="344" y1="368" x2="344" y2="380"/>
+    </g>
+    <!-- bold upgrade (retrofit) arrow -->
+    <g transform="translate(342 246)">
+      <path d="M 0 44 L 0 -6 M -22 16 L 0 -14 L 22 16" fill="none" stroke="#7cf2c0" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="0" cy="0" r="46" fill="none" stroke="#7cf2c0" stroke-width="3" opacity="0.4"/>
+    </g>
+    <!-- rolled ends of the scroll -->
+    <g>
+      <rect x="100" y="140" width="30" height="272" rx="15" fill="url(#rollGrad)" stroke="#0a2740" stroke-width="3"/>
+      <ellipse cx="115" cy="140" rx="15" ry="9" fill="#12405f"/>
+      <ellipse cx="115" cy="412" rx="15" ry="9" fill="#0a2b42"/>
+      <rect x="382" y="140" width="30" height="272" rx="15" fill="url(#rollGrad)" stroke="#0a2740" stroke-width="3"/>
+      <ellipse cx="397" cy="140" rx="15" ry="9" fill="#12405f"/>
+      <ellipse cx="397" cy="412" rx="15" ry="9" fill="#0a2b42"/>
+    </g>
+  </g>`;
+  const defs = `<defs>
+    <linearGradient id="blueSheet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#12557f"/>
+      <stop offset="55%" stop-color="#0c3f63"/>
+      <stop offset="100%" stop-color="#082c47"/>
+    </linearGradient>
+    <linearGradient id="rollGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0a2b42"/>
+      <stop offset="50%" stop-color="#16597f"/>
+      <stop offset="1" stop-color="#0a2b42"/>
+    </linearGradient>
+  </defs>`;
+  return { defs, motif: g };
+}
+
 const ICONS = [
   { slug: "oxygen_torpedo", grade: "I", label: "TORPEDO", build: torpedoMotif },
+  { slug: "manjuu_piggy_bank", grade: "I", label: "COFFER", build: piggyBankMotif },
   { slug: "repair_toolkit", grade: "II", label: "REPAIR", build: toolkitMotif },
-  { slug: "sg_radar", grade: "III", label: "RADAR", build: radarMotif }
+  { slug: "beaver_squad_tag", grade: "II", label: "SQUAD", build: dogTagMotif },
+  { slug: "sg_radar", grade: "III", label: "RADAR", build: radarMotif },
+  { slug: "retrofit_blueprint", grade: "III", label: "REFIT", build: blueprintMotif }
 ];
 
 async function main() {
@@ -285,7 +454,7 @@ async function main() {
     rows.push({ slug: icon.slug, grade: icon.grade, dims: `${meta.width}x${meta.height}`, bytes });
     console.log(`icon  ${icon.grade.padEnd(3)} ${icon.slug.padEnd(16)} ${meta.width}x${meta.height}  ${bytes} bytes`);
   }
-  console.log(`DONE ${rows.length}/3 kansen equipment icons → public/assets/anime/equipment/`);
+  console.log(`DONE ${rows.length}/${ICONS.length} kansen equipment icons → public/assets/anime/equipment/`);
 }
 
 await main();
