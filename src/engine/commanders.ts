@@ -578,8 +578,12 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState)
   const power = commanderCastPower(state, unit);
   const tierIndex = commanderCastTierIndex(power);
   const targeting = cast.targeting;
+  // Heals and Belfast's Royal Salvo are INSTANT (damage/heal now, no lingering
+  // effect), so ongoing-effect immunity never makes them a dead choice.
   const ongoingCast =
-    cast.effect.kind !== "heal" && cast.effect.kind !== "heal-cleanse";
+    cast.effect.kind !== "heal" &&
+    cast.effect.kind !== "heal-cleanse" &&
+    cast.effect.kind !== "enemy-damage";
 
   return Object.values(combat.units).filter((target) => {
     if (target.damage >= target.maxHealth || target.position < 0) {

@@ -596,15 +596,17 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   // choice is an already-implemented, non-Stacked ability NOT already printed on
   // that shipgirl's sides. Each schedule is keyed to the shipgirl's LORE (the
   // FIRST choice per slot is the signature; the second is a safer alternative):
-  //   laffey  — "Solomon's Wardog", impossible rate of fire → sandworm-strike-again
-  //     (a full melee second strike; NOT double-attack — that arm is ranged-gated
-  //     and would be inert on a ground unit, so the intent's melee fallback is moot).
+  //   laffey  — "Solomon's Wardog", impossible rate of fire → the bespoke
+  //     kansen-full-barrage (around-target salvo; 2026-07 upgrade), with the
+  //     full second strike (sandworm-strike-again) as the safer alternative
+  //     (NOT double-attack — that arm is ranged-gated and inert on a ground unit).
   //   javelin — torpedo-salvo destroyer → commander-max-damage (own die always
   //     counts +1 → a reliable full-power salvo; again NOT the ranged-only
   //     double-attack, which is dead on this ground unit).
   //   honolulu— ranged cruiser gunner → ranged-extra-shot-on-low-roll (a real
   //     ranged arm on the faction's one shooter).
-  //   unicorn — carrier MEDIC → wraith-heal-1 (self-repair) then a spell-ward.
+  //   unicorn — carrier MEDIC → wraith-heal-1 (self-repair) then the bespoke
+  //     kansen-fleet-formation escort aura (2026-07 upgrade; air-shield alt).
   //   yukikaze— "Miracle Yukikaze", luckiest ship → attack-roll-advantage-passive
   //     (roll two Attack dice, keep the higher) then a damage burst.
   //   prinz_eugen— UNSINKABLE cruiser → zombie-resilience (+1 Defense vs a 0/+1
@@ -613,8 +615,11 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   //     cannon after surfacing) then wog-nightmare-fear (terror from below). Its
   //     ranged double-attack alternative is likewise inert on this ground body, so
   //     the safer pick is wog-no-negative-attack-roll (torpedoes never misfire).
+  // laffey signature UPGRADED (2026-07): kansen-full-barrage — the bespoke
+  // around-target salvo arm — is her "impossible rate of fire"; the old full
+  // second strike stays as the alternative.
   "azur_lane.laffey": buildScheduleFromTemplate("standard", [
-    ["sandworm-strike-again", "wog-no-negative-attack-roll"]
+    ["kansen-full-barrage", "sandworm-strike-again"]
   ]),
   "azur_lane.javelin": buildScheduleFromTemplate("standard", [
     ["commander-max-damage", "bulwark-air-shield"]
@@ -623,10 +628,12 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   "azur_lane.honolulu": buildScheduleFromTemplate("standard", [
     ["ranged-extra-shot-on-low-roll", "bulwark-air-shield"]
   ]),
-  // LV4 silver carrier medic — heal itself, then a spell-ward.
+  // LV4 silver carrier medic — heal itself, then (2026-07 upgrade) the bespoke
+  // kansen-fleet-formation escort aura: adjacent allies +1 Attack on their own
+  // attacks — the carrier escorting her fleet. Spell-ward stays the alternative.
   "azur_lane.unicorn": buildScheduleFromTemplate("strong", [
     ["wraith-heal-1", "commander-defense-token"],
-    ["reduce-spell-damage-1", "bulwark-air-shield"]
+    ["kansen-fleet-formation", "bulwark-air-shield"]
   ]),
   // LV5 silver lucky destroyer — twin Attack dice (keep higher), then a burst.
   "azur_lane.yukikaze": buildScheduleFromTemplate("strong", [
@@ -907,6 +914,9 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "double-attack": "/assets/ui/rank-ability/double-strike.webp",
   "double-attack-low-roll": "/assets/ui/rank-ability/double-strike.webp",
   "sandworm-strike-again": "/assets/ui/rank-ability/double-strike.webp",
+  // Azur Lane bespoke arms (2026-07 upgrade) — Codex-painted naval icons.
+  "kansen-full-barrage": "/assets/ui/rank-ability/full-barrage.webp",
+  "kansen-fleet-formation": "/assets/ui/rank-ability/fleet-formation.webp",
   "zombie-resilience-weak": "/assets/ui/rank-ability/resilience.webp",
   "zombie-resilience": "/assets/ui/rank-ability/resilience.webp",
   "wraith-heal-1": "/assets/spell-icons/animate_dead.png",

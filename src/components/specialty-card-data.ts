@@ -72,9 +72,12 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // yet, so a thematic Homm3BG emblem: Enterprise's Grey Ghost carrier fury →
   // the Bloodlust rage icon, Bismarck's Iron Blood armor → the Stone Skin icon,
   // Nagato's Big Seven speed (doubles the fast Yukikaze) → the Haste icon.
-  enterprise: "/assets/specialty-card/icon-bloodlust.webp",
-  bismarck: "/assets/specialty-card/icon-stone_skin.webp",
-  nagato: "/assets/specialty-card/icon-haste.webp",
+  // Enterprise's specialty IS the "Lucky E" dice luck (2026-07) — the Fortune die emblem.
+  enterprise: "/assets/specialty-card/icon-fortune.webp",
+  // Bismarck / Nagato are unit specialists — their signature shipgirl's own
+  // portrait cropped from the commissioned unit cards (build-azur-lane-unit-cards.mjs).
+  bismarck: "/assets/anime/units/portraits/azur-lane-prinz-eugen.webp",
+  nagato: "/assets/anime/units/portraits/azur-lane-yukikaze.webp",
   // Akashi's Emergency Repairs & Sirius's Flawless Service ARE medic sets (Gem /
   // Rion clones), like Tsunade / Aoko — the healer medallion / Cure spell icon.
   akashi: "/assets/specialty-card/icon-first_aid.webp",

@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
 import { cardLibrary } from "@/data/cards/library";
 import { factionUiLexicon, factionVisualRegister } from "@/data/faction-theme";
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
@@ -46,7 +47,9 @@ const EXPECTED_ABILITIES: Record<string, { few: string[]; pack: string[] }> = {
   "azur_lane.javelin": { few: [], pack: ["commander-charge"] },
   "azur_lane.honolulu": {
     few: ["ignore-combat-penalties"],
-    pack: ["ignore-combat-penalties", "wog-attack-when-attacking-1"]
+    // 2026-07 upgrade: her Pack prints the town's bespoke around-target salvo
+    // arm (kansen-full-barrage) instead of the generic flat +1.
+    pack: ["ignore-combat-penalties", "kansen-full-barrage"]
   },
   "azur_lane.unicorn": {
     few: ["enchanter-heal-or-buff"],
@@ -181,13 +184,18 @@ describe("Azur Lane Naval Base — module gate (isekaiTowns), same flag as Fuyuk
 });
 
 describe("Azur Lane Naval Base — commander (Belfast)", () => {
-  it("maps azur_lane → belfast with an implemented cast + First Aid specialty + a resolving voice", () => {
+  it("maps azur_lane → belfast with the bespoke Royal Salvo cast + First Aid specialty + a resolving voice", () => {
     const commander = commanderDefinitions.belfast;
     expect(commander).toBeDefined();
     expect(commander.faction).toBe("Azur Lane Naval Base");
     expect(commander.original).toBe(true);
-    expect(commander.cast.name).toBe("Fire Support");
-    expect(commander.cast.abilityId).toBe("commander-cast-temple_guardian");
+    // 2026-07 upgrade: the module's first OFFENSIVE command — enemy-targeted
+    // effect damage (kind "enemy-damage"), behaviour pinned in
+    // kansen-abilities.test.ts.
+    expect(commander.cast.name).toBe("Royal Salvo");
+    expect(commander.cast.abilityId).toBe("commander-cast-belfast");
+    expect(commander.cast.targeting.side).toBe("enemy");
+    expect(commander.cast.effect).toEqual({ kind: "enemy-damage", damageByPower: [1, 1, 2] });
     expect(unitAbilities[commander.cast.abilityId]?.implementationStatus).toBe("implemented");
     expect(commander.cast.tierText).toHaveLength(3);
     // Belfast is the SECOND First-Aid commander (specialty-keyed window, not slug).
@@ -215,10 +223,39 @@ describe("Azur Lane Naval Base — heroes & specialties", () => {
     }
   });
 
-  it("might specialists (Enterprise/Bismarck/Nagato) double on shipgirls the faction actually FIELDS", () => {
+  it("Enterprise carries the bespoke Lucky E dice specialty (proactive half + held die half)", () => {
+    // The proactive halves are real CHOOSE_ONE stat options; the die half is the
+    // engine's LUCKY_E_SPECIALTY_SOURCES contract (behaviour pinned in
+    // kansen-abilities.test.ts). I = defense-only, IV/VI = attack+defense picks.
+    for (const [level, optionCount] of [
+      [1, 1],
+      [4, 2],
+      [6, 2]
+    ] as const) {
+      const card = cardLibrary[`specialty.enterprise.${level}`];
+      expect(card?.name).toMatch(/^Lucky E /);
+      expect(card?.implementationStatus).toBe("implemented");
+      expect(card?.effect?.type).toBe("CHOOSE_ONE");
+      if (card?.effect?.type === "CHOOSE_ONE") {
+        expect(card.effect.options).toHaveLength(optionCount);
+      }
+    }
+    expect(LUCKY_E_SPECIALTY_SOURCES.map((spec) => spec.cardId)).toEqual([
+      "specialty.enterprise.1",
+      "specialty.enterprise.4",
+      "specialty.enterprise.6"
+    ]);
+    // I rerolls, IV sets the die, VI offers both halves.
+    expect(LUCKY_E_SPECIALTY_SOURCES.map((spec) => [spec.reroll, spec.setDie])).toEqual([
+      [true, false],
+      [false, true],
+      [true, true]
+    ]);
+  });
+
+  it("might specialists (Bismarck/Nagato) double on shipgirls the faction actually FIELDS", () => {
     const factionUnitNames = coreFactionDefinitions[FACTION].units.map((id) => coreUnitDefinitions[id]?.name);
     for (const [heroId, unitName] of [
-      ["enterprise", "Laffey"],
       ["bismarck", "Prinz Eugen"],
       ["nagato", "Yukikaze"]
     ] as const) {
@@ -437,12 +474,12 @@ const EXPECTED_SCHEDULES: Record<
   string,
   { template: "standard" | "strong"; slots: readonly (readonly string[])[] }
 > = {
-  "azur_lane.laffey": { template: "standard", slots: [["sandworm-strike-again", "wog-no-negative-attack-roll"]] },
+  "azur_lane.laffey": { template: "standard", slots: [["kansen-full-barrage", "sandworm-strike-again"]] },
   "azur_lane.javelin": { template: "standard", slots: [["commander-max-damage", "bulwark-air-shield"]] },
   "azur_lane.honolulu": { template: "standard", slots: [["ranged-extra-shot-on-low-roll", "bulwark-air-shield"]] },
   "azur_lane.unicorn": {
     template: "strong",
-    slots: [["wraith-heal-1", "commander-defense-token"], ["reduce-spell-damage-1", "bulwark-air-shield"]]
+    slots: [["wraith-heal-1", "commander-defense-token"], ["kansen-fleet-formation", "bulwark-air-shield"]]
   },
   "azur_lane.yukikaze": {
     template: "strong",

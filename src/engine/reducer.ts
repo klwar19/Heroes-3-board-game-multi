@@ -1,5 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
+import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
 import { sampleBuildings } from "@/data/towns/buildings";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
@@ -3554,6 +3555,11 @@ function getAttackStackDetails(
   // flat innate bonus on the unit's OWN attack only — never its Retaliation
   // Attack (added unclamped, like Hatred/the Stacked bonus).
   const ownAttackFlatBonus = isRetaliation ? 0 : getOwnAttackFlatBonus(attacker);
+  // Azur Lane "Fleet Formation" (kansen-fleet-formation): +1 Attack on the
+  // unit's OWN declared attack per living friendly aura carrier it stands
+  // adjacent to RIGHT NOW (live positional read, the commanderLiveAttackBonus
+  // precedent). Innate ability bonus — added unclamped; never on a retaliation.
+  const fleetFormationAttackBonus = isRetaliation ? 0 : getFleetFormationAuraBonus(combat, attacker);
   const astrologersRoundAttackBonus = state.round % 2 === 0 ? getAstrologersRoundFrenzy(attacker) : 0;
 
   // Crag Hack (Astrologers): the round's first combat grants every GROUND-type
@@ -3603,6 +3609,7 @@ function getAttackStackDetails(
       commanderPositionalAttackBonus +
       stackedAttackBonus +
       ownAttackFlatBonus +
+      fleetFormationAttackBonus +
       astrologersRoundAttackBonus +
       // Forced Battle Events (Anime mod, §3.12): a fought field's environment-stat
       // script (e.g. Spirit Mist "ranged −1 Attack"). An environmental modifier,
@@ -3774,6 +3781,14 @@ function buildRerollSources(
       ? [{ name: "Core Formation reroll", cultivation: true, remaining: 1, used: 0 }]
       : [];
 
+  // Enterprise "Lucky E" (Azur Lane specialty): each HELD level joins the
+  // window like the reroll artifacts — I/VI a reroll, IV/VI a set-die-to-"+1".
+  // Taking a half plays/discards the card; VI's two halves share the card, so
+  // spending either retires the other (the shared-cardId retire in
+  // rerollPendingChoice). Hand-locked combats block them like the artifacts.
+  const luckyESources: AttackRerollSource[] =
+    player && !isHandLockedInCombat(state, attacker.controllerId) ? buildLuckyESources(player) : [];
+
   return [
     ...abilitySources,
     ...ammoCartSources,
@@ -3784,10 +3799,33 @@ function buildRerollSources(
       used: 0
     })),
     ...artifactSources,
+    ...luckyESources,
     ...moraleSources,
     ...moraleSetSources,
     ...cultivationSources
   ].filter((source) => source.remaining > 0);
+}
+
+/**
+ * Enterprise "Lucky E" die-window halves for every held specialty level
+ * (LUCKY_E_SPECIALTY_SOURCES): a reroll source per held I/VI copy, a
+ * set-die-to-"+1" source per held IV/VI copy. Shared by the attack window AND
+ * the post-attack ability-roll window (the Diplomat's-Ring scope).
+ */
+function buildLuckyESources(player: PlayerState): AttackRerollSource[] {
+  const sources: AttackRerollSource[] = [];
+  for (const spec of LUCKY_E_SPECIALTY_SOURCES) {
+    if (!player.hand.includes(spec.cardId)) {
+      continue;
+    }
+    if (spec.reroll) {
+      sources.push({ name: spec.name, cardId: spec.cardId, remaining: 1, used: 0 });
+    }
+    if (spec.setDie) {
+      sources.push({ name: spec.name, cardId: spec.cardId, setDieFace: 1, remaining: 1, used: 0 });
+    }
+  }
+  return sources;
 }
 
 /** Rerolls left to offer, given the roll currently showing. */
@@ -3953,11 +3991,19 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
       }))
     : [];
 
+  // Enterprise "Lucky E" — held-card halves ride the ability-roll window too,
+  // exactly like the reroll artifacts (same hand-lock gate).
+  const luckyESources: AttackRerollSource[] = !isHandLockedInCombat(state, roller.controllerId)
+    ? buildLuckyESources(player)
+    : [];
+
   // NOTE: the anime Cultivation Core Formation reroll (§5.6) is deliberately
   // scoped to ATTACK-die rolls (buildRerollSources) and is NOT added here — like
   // the unit reroll abilities / Ammo Cart / Luck-Fortune-Mirth pools, it stays
   // OFF ability rolls (Death Stare & co.). A documented, tested limit.
-  return [...artifactSources, ...moraleSources, ...moraleSetSources].filter((source) => source.remaining > 0);
+  return [...artifactSources, ...luckyESources, ...moraleSources, ...moraleSetSources].filter(
+    (source) => source.remaining > 0
+  );
 }
 
 /**
@@ -4877,7 +4923,7 @@ function finishResolvedAttack(
   // effect damage to every adjacent unit now — friend AND foe — before the
   // follow-up table and the parked Retaliation resolve, exactly like the other
   // post-attack follow-ups. A lethal splash may end the combat.
-  applyAfterAttackSplash(state, details.attacker);
+  applyAfterAttackSplash(state, details.attacker, details.defender);
   if (finishCombatIfNeeded(state)) {
     return;
   }
@@ -6060,29 +6106,72 @@ function applyFlatAbilityDamage(
  * branches have returned), so it never fires on a Retaliation Attack nor once
  * per follow-up of the multi-attack queue — at most once per declared attack.
  */
-function applyAfterAttackSplash(state: GameState, attacker: CombatUnitState): void {
+/**
+ * Azur Lane "Fleet Formation" (ADJACENT_ALLY_ATTACK_AURA): the summed Attack
+ * bonus an attacker receives from LIVING friendly aura carriers it currently
+ * stands adjacent to. The carrier never buffs itself; two adjacent carriers
+ * stack. Callers gate on `!isRetaliation` (own declared attacks only — the
+ * wog-attack-when-attacking convention).
+ */
+function getFleetFormationAuraBonus(combat: CombatState, attacker: CombatUnitState): number {
+  let total = 0;
+  for (const unit of Object.values(combat.units)) {
+    if (unit.id === attacker.id || unit.controllerId !== attacker.controllerId) {
+      continue;
+    }
+    if (!isUnitAlive(unit) || !isAdjacent(unit.position, attacker.position)) {
+      continue;
+    }
+    for (const ability of getUnitAbilityDefinitions(unit)) {
+      if (ability.implementationStatus === "implemented" && ability.effect?.type === "ADJACENT_ALLY_ATTACK_AURA") {
+        total += ability.effect.amount;
+      }
+    }
+  }
+  return total;
+}
+
+function applyAfterAttackSplash(state: GameState, attacker: CombatUnitState, defender: CombatUnitState): void {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker)) {
     return;
   }
 
-  const ability = getUnitAbilityDefinitions(attacker).find(
+  // Every implemented splash arm fires (Chakra Burst around self; the Azur Lane
+  // Full Barrage around the TARGET, enemies only) — a unit carrying both (e.g.
+  // via veterancy) resolves each on its own anchor/filter.
+  const abilities = getUnitAbilityDefinitions(attacker).filter(
     (candidate) =>
       candidate.implementationStatus === "implemented" && candidate.effect?.type === "AFTER_ATTACK_SPLASH"
   );
-  if (!ability || ability.effect?.type !== "AFTER_ATTACK_SPLASH") {
-    return;
-  }
-  const amount = ability.effect.amount;
-
-  // Snapshot the adjacent units first: applyFlatAbilityDamage may remove one
-  // (a lethal splash), and a chained removal (e.g. an adjacent Automaton's
-  // detonate) could otherwise mutate the map mid-iteration.
-  const targetIds = Object.values(combat.units)
-    .filter((unit) => unit.id !== attacker.id && isUnitAlive(unit) && isAdjacent(unit.position, attacker.position))
-    .map((unit) => unit.id);
-  for (const targetId of targetIds) {
-    applyFlatAbilityDamage(state, attacker, targetId, ability.id, ability.name, amount);
+  for (const ability of abilities) {
+    if (ability.effect?.type !== "AFTER_ATTACK_SPLASH") {
+      continue;
+    }
+    const { amount, around, enemiesOnly } = ability.effect;
+    // Full Barrage anchors on the struck unit's cell; the anchor position stays
+    // valid even when the attack just destroyed it (removal never clears
+    // `position`). The target itself is excluded — it already took the attack.
+    const anchor = around === "target" ? defender : attacker;
+    // Snapshot the adjacent units first: applyFlatAbilityDamage may remove one
+    // (a lethal splash), and a chained removal (e.g. an adjacent Automaton's
+    // detonate) could otherwise mutate the map mid-iteration.
+    const targetIds = Object.values(combat.units)
+      .filter(
+        (unit) =>
+          unit.id !== attacker.id &&
+          // Around-self (Chakra Burst) deliberately splashes an adjacent melee
+          // TARGET too ("every other unit adjacent to this unit"); only the
+          // around-target Full Barrage excludes it (it is the anchor).
+          (around !== "target" || unit.id !== defender.id) &&
+          isUnitAlive(unit) &&
+          (!enemiesOnly || unit.controllerId !== attacker.controllerId) &&
+          isAdjacent(unit.position, anchor.position)
+      )
+      .map((unit) => unit.id);
+    for (const targetId of targetIds) {
+      applyFlatAbilityDamage(state, attacker, targetId, ability.id, ability.name, amount);
+    }
   }
 }
 
@@ -17144,7 +17233,12 @@ function rerollPendingChoice(
             // adjustments still describe these dice — carry them forward.
             modifierNotes: [
               ...(latest.modifierNotes ?? []),
-              { source: "Positive Morale", text: `one die is set to the "${face > 0 ? `+${face}` : face}" side` }
+              {
+                // Morale set-die cards keep their pinned "Positive Morale"
+                // label; a card-based set source (Lucky E IV/VI) names itself.
+                source: source.cardId ? source.name : "Positive Morale",
+                text: `one die is set to the "${face > 0 ? `+${face}` : face}" side`
+              }
             ]
           } satisfies AttackRollCandidate;
         })()
@@ -17199,7 +17293,10 @@ function rerollPendingChoice(
     }
   }
 
-  // Diplomat's Ring / Ambassador's Sash: playing the reroll discards the artifact.
+  // Diplomat's Ring / Ambassador's Sash / Lucky E: playing the die half
+  // discards the card. A card offering BOTH halves (Lucky E VI: reroll AND
+  // set-die) is one physical card — spending either half retires the sibling
+  // source so the discarded card can never be spent twice.
   if (source.cardId && source.used === 1) {
     const player = state.players[action.playerId];
     const handIndex = player?.hand.indexOf(source.cardId) ?? -1;
@@ -17212,9 +17309,15 @@ function rerollPendingChoice(
         cardId: source.cardId,
         timing: cardLibrary[source.cardId]?.timing ?? "instant",
         mode: "basic",
-        optionLabel: "Reroll a die"
+        optionLabel: source.setDieFace !== undefined ? 'Set a die to the "+1" side' : "Reroll a die"
       });
     }
+    for (const sibling of choice.rerollSources) {
+      if (sibling !== source && sibling.cardId === source.cardId) {
+        sibling.remaining = 0;
+      }
+    }
+    choice.remainingRerolls = countAvailableRerolls(choice.rerollSources, candidate.roll);
   }
 
   appendEvent(state, {
@@ -17404,6 +17507,14 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
   switch (effect.kind) {
     case "heal":
       healUnitDamage(state, source, targetRef, effect.healByPower[tier]);
+      break;
+    // Belfast "Royal Salvo" (Azur Lane): flat EFFECT damage to the chosen enemy
+    // — the shared ability-damage path (no Retaliation, ignores Defense and the
+    // per-attack caps, spell wards don't apply), lethal routes through the
+    // normal removal path. The commander-cast chooser runs finishCombatIfNeeded
+    // after this resolves, so a killing salvo ends the combat cleanly.
+    case "enemy-damage":
+      applyFlatAbilityDamage(state, caster, target.id, cast.abilityId, cast.name, effect.damageByPower[tier]);
       break;
     case "heal-cleanse": {
       healUnitDamage(state, source, targetRef, effect.healByPower[tier]);
