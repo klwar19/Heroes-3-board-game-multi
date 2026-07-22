@@ -232,8 +232,14 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.miku.4": { affect: [{ key: "cure" }], sound: "spells/prayer" },
   "specialty.miku.6": { affect: [{ key: "mirth" }, { key: "prayer", delayMs: 180 }], sound: "spells/mirth" },
   // Enterprise's Lucky E is a die-control specialty with no board target. Its
-  // original Japanese Skill Activation line plays whenever any held level is
-  // spent, while the normal card-flight presentation remains unchanged.
+  // original Japanese Skill Activation line plays off the CARD_PLAYED cue —
+  // page.tsx plays spellFxPlans[event.cardId].sound for any non-"+N Power"
+  // play. BOTH spend paths emit that CARD_PLAYED for specialty.enterprise.<lvl>
+  // and so voice: the proactive stat half (a plain reaction play) AND the
+  // held die-window half (reroll / set-die), which emits CARD_PLAYED from
+  // rerollPendingChoice in reducer.ts (optionLabel "Reroll a die" / "Set a die
+  // to the +1 side" — neither is a Power-boost, so the FX loop never skips it).
+  // The die-window voice seam is pinned in kansen-abilities.test.ts.
   "specialty.enterprise.1": { sound: "azur-lane/voices/enterprise/ability" },
   "specialty.enterprise.4": { sound: "azur-lane/voices/enterprise/ability" },
   "specialty.enterprise.6": { sound: "azur-lane/voices/enterprise/ability" },

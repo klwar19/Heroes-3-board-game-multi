@@ -10,8 +10,13 @@ characters currently implemented by this project. They were selected from the
   Defeat line is used)
 - `death.ogg`: Defeat
 - `move.ogg`: Start Mission
-- `victory.ogg`: MVP (retained for a future victory hook)
 - `enterprise/ability.ogg`: Enterprise Skill Activation, used by Lucky E I/IV/VI
+
+There is no `victory.ogg`: the game has no per-unit victory / combat-won sound
+seam (`UnitSoundAction` is attack/shoot/defend/hurt/death/move only, and
+`COMBAT_EVENT_SOUNDS` is keyed by event type, not by unit), so an MVP clip would
+be dead weight. The 8 MVP files that shipped with the first import were removed.
+Add them back only alongside a real per-unit victory seam that plays them.
 
 The original recordings remain copyrighted Azur Lane game assets. The source
 dataset declares its license as `other`; inclusion here does not grant a license
