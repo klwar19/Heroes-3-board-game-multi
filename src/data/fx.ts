@@ -231,6 +231,12 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.miku.1": { affect: [{ key: "slow" }], sound: "spells/slow" },
   "specialty.miku.4": { affect: [{ key: "cure" }], sound: "spells/prayer" },
   "specialty.miku.6": { affect: [{ key: "mirth" }, { key: "prayer", delayMs: 180 }], sound: "spells/mirth" },
+  // Enterprise's Lucky E is a die-control specialty with no board target. Its
+  // original Japanese Skill Activation line plays whenever any held level is
+  // spent, while the normal card-flight presentation remains unchanged.
+  "specialty.enterprise.1": { sound: "azur-lane/voices/enterprise/ability" },
+  "specialty.enterprise.4": { sound: "azur-lane/voices/enterprise/ability" },
+  "specialty.enterprise.6": { sound: "azur-lane/voices/enterprise/ability" },
   "specialty.melodia.1": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "specialty.melodia.4": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "specialty.melodia.6": { affect: [{ key: "fortune" }], sound: "spells/fortune" },

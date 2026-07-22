@@ -137,6 +137,30 @@ describe("unit combat voices", () => {
     expect(unitSoundKey("commander:soul_eater", "move")).toBe("units/zombie-lord-move");
   });
 
+  it("uses the bespoke Japanese voices for every Azur Lane shipgirl and Belfast", () => {
+    for (const slug of ["laffey", "javelin", "honolulu", "unicorn", "yukikaze", "prinz_eugen", "i19"]) {
+      expect(unitSoundKey(`azur_lane.${slug}`, "attack")).toBe(`azur-lane/voices/${slug}/attack`);
+      expect(unitSoundKey(`azur_lane.${slug}`, "shoot")).toBe(`azur-lane/voices/${slug}/attack`);
+      expect(unitSoundKey(`azur_lane.${slug}`, "defend")).toBe(`azur-lane/voices/${slug}/hurt`);
+      expect(unitSoundKey(`azur_lane.${slug}`, "hurt")).toBe(`azur-lane/voices/${slug}/hurt`);
+      expect(unitSoundKey(`azur_lane.${slug}`, "death")).toBe(`azur-lane/voices/${slug}/death`);
+      expect(unitSoundKey(`azur_lane.${slug}`, "move")).toBe(`azur-lane/voices/${slug}/move`);
+    }
+    expect(commanderSoundKey("belfast", "attack")).toBe("azur-lane/voices/belfast/attack");
+    expect(commanderSoundKey("belfast", "shoot")).toBe("azur-lane/voices/belfast/attack");
+    expect(commanderSoundKey("belfast", "defend")).toBe("azur-lane/voices/belfast/hurt");
+    expect(commanderSoundKey("belfast", "death")).toBe("azur-lane/voices/belfast/death");
+  });
+
+  it("layers naval combat SFX under Azur Lane attacks", () => {
+    for (const slug of ["laffey", "javelin", "honolulu", "yukikaze", "prinz_eugen"]) {
+      expect(unitAttackFlourish(`azur_lane.${slug}`)).toBe("units/cannon-shoot");
+    }
+    expect(unitAttackFlourish("azur_lane.i19")).toBe("spells/scuttle-boat");
+    expect(unitAttackFlourish("azur_lane.unicorn")).toBe("units/ballista-shoot");
+    expect(unitAttackFlourish(commanderVoiceId("belfast"))).toBe("units/cannon-shoot");
+  });
+
   it("maps each faction commander to the user-specified creature voice(s)", () => {
     // Castle → Swordsman (not Crusader); Rampart → Monk (not Zealot).
     expect(commanderSoundKey("paladin", "attack")).toBe("units/swordsman-attack");
