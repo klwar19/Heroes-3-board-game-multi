@@ -85,6 +85,47 @@ describe("town board manifest", () => {
     }
   });
 
+  it("every anime/wuxia town lays its 8 buildings on 7 bars whose strip art matches the bar slot", () => {
+    // The board `bars` layout (this file) and the `animeTownBuildingBar`-driven
+    // strip art (src/data/anime/towns.ts, encoded in each building's
+    // `assets.image` as `<prefix>-bar-N.webp`) are TWO sources that MUST agree,
+    // or a building renders the wrong panorama slice in its slot (e.g. bar-1 art
+    // shown in the 4th bar). One invariant family guards all four anime factions
+    // — azur_lane is read-only here (it conforms), owned by another session.
+    const ANIME_FACTIONS: ReadonlyArray<readonly [faction: string, stripPrefix: string]> = [
+      ["fuyuki", "fuyuki"],
+      ["azure_breeze", "azure-breeze"],
+      ["hidden_leaf", "hidden-leaf"],
+      ["azur_lane", "azur-lane"]
+    ];
+    for (const [factionId, stripPrefix] of ANIME_FACTIONS) {
+      const spec = townBoardSpecs[factionId];
+      const faction = coreFactionDefinitions[factionId];
+      expect(spec, `${factionId} board spec`).toBeTruthy();
+      expect(faction, `${factionId} faction`).toBeTruthy();
+      // 8 buildings on 7 bars, exactly one two-building (shared) bar — the same
+      // divide every classic faction obeys, restated for the anime designed boards.
+      expect(faction.buildings, `${factionId} 8 buildings`).toHaveLength(8);
+      expect(spec.bars, `${factionId} 7 bars`).toHaveLength(7);
+      expect([...spec.bars.flat()].sort(), `${factionId} bars carry its buildings once each`).toEqual(
+        [...faction.buildings].sort()
+      );
+      expect(spec.bars.filter((bar) => bar.length === 2), `${factionId} one shared bar`).toHaveLength(1);
+      expect(spec.bars.every((bar) => bar.length === 1 || bar.length === 2)).toBe(true);
+      // Bar/art agreement: the board bar a building sits in (0-based) + 1 equals
+      // the bar number its strip-art filename encodes.
+      for (const buildingId of faction.buildings) {
+        const image = coreBuildingDefinitions[buildingId]?.assets?.image ?? "";
+        const match = new RegExp(`/assets/town-board/${stripPrefix}-bar-([1-7])\\.webp$`).exec(image);
+        expect(match, `${buildingId} strip art "${image}" follows the ${stripPrefix}-bar-N convention`).toBeTruthy();
+        expect(
+          townBoardBarIndex(spec, buildingId) + 1,
+          `${buildingId}: board bar slot must match strip-art bar ${match?.[1]}`
+        ).toBe(Number(match![1]));
+      }
+    }
+  });
+
   it("designed boards carry the authentic tracks/tokens panel at a rectangle that covers their printed geometry", () => {
     for (const spec of Object.values(townBoardSpecs)) {
       if (spec.emptyImage) {
