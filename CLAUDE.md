@@ -3069,7 +3069,7 @@ SHARED building-effect archetypes (City-Hall choice, dwellings, Mage Guild,
 Portal Summon, Artifact Smith, Hall of Valhalla, resource die — nothing bespoke),
 2–5 heroes each with portraits on disk (all five factions real — the last
 Hidden Leaf placeholders were replaced 2026-07, below), a starting tile
-(`A-S1` / `W-S1` / `L-S1` / `P-S1`), a designed
+(`A-S1` / `W-S1` / `L-S1` / `P-S1` / `D-S1`), a designed
 town board whose bars are seven real contiguous panorama slices (empty↔full
 pairs, `townBoardSpecs.barTileImages`), a capitol icon on the same
 `town-icon-<faction>.webp` convention as every classic faction
