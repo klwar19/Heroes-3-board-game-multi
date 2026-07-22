@@ -62,11 +62,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // from its commissioned card art (scripts/build-anime-town-icons.mjs).
   bin: "/assets/anime/units/portraits/fuyuki-sabers.webp", // Sabers (Fuyuki)
   qingyun: "/assets/anime/units/portraits/azure-breeze-true-inheritors.webp", // True Inheritors (Azure Breeze)
-  // Hidden Leaf might specialists — no dedicated signature-unit portrait shipped
-  // yet, so a thematic Homm3BG emblem: Naruto's Nine-Tails Chakra fury → the
-  // Bloodlust rage icon, Sasuke's Lightning Blade speed → the Haste icon.
-  naruto: "/assets/specialty-card/icon-bloodlust.webp",
-  sasuke: "/assets/specialty-card/icon-haste.webp",
+  // Hidden Leaf might specialists — signature unit portraits cropped from the
+  // commissioned unit cards (scripts/build-hidden-leaf-unit-cards.mjs).
+  naruto: "/assets/anime/units/portraits/hidden-leaf-jinchuriki.webp", // Jinchuriki
+  sasuke: "/assets/anime/units/portraits/hidden-leaf-jonin.webp", // Jonin
   // Tsunade's Hundred Healings IS the First Aid medic set (Gem clone), like Lingxi.
   tsunade: "/assets/specialty-card/icon-first_aid.webp",
   // Azur Lane might specialists — no dedicated signature-unit portrait shipped
