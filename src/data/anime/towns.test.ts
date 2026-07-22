@@ -227,12 +227,12 @@ describe("playable Anime Realms towns", () => {
     }
 
     // Qingyun must not be a byte-copy of Core Formation Master OR True Inheritors.
-    const qingyun = readFileSync(join(publicRoot, "assets/anime/heroes/qingyun.png"));
+    const qingyun = readFileSync(join(publicRoot, "assets/anime/heroes/qingyun.webp"));
     const formationMaster = readFileSync(join(azure, "units-azure-breeze-golden-core-formation-master-few.webp"));
     const trueInheritors = readFileSync(join(azure, "units-azure-breeze-silver-true-inheritors-few.webp"));
     expect(qingyun.equals(formationMaster)).toBe(false);
     expect(qingyun.equals(trueInheritors)).toBe(false);
-    expect(coreHeroDefinitions.qingyun?.portrait).toBe("/assets/anime/heroes/qingyun.png");
+    expect(coreHeroDefinitions.qingyun?.portrait).toBe("/assets/anime/heroes/qingyun.webp");
     expect(qingyun.byteLength).toBeGreaterThan(100_000);
   });
 
@@ -249,7 +249,7 @@ describe("playable Anime Realms towns", () => {
     }
     // Portrait used by the native specialty frame is the hero's own art.
     const portrait = coreHeroDefinitions.lingxi?.portrait;
-    expect(portrait).toBe("/assets/anime/heroes/lingxi.png");
+    expect(portrait).toBe("/assets/anime/heroes/lingxi.webp");
     expect(existsSync(join(process.cwd(), "public", portrait!.replace(/^\//, "")))).toBe(true);
   });
 });

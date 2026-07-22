@@ -59,8 +59,8 @@ describe("Miku hero registration", () => {
       4: "specialty.miku.4",
       6: "specialty.miku.6"
     });
-    expect(hero.portrait).toBe("/assets/anime/heroes/miku.png");
-    expect(existsSync(join(process.cwd(), "public", "assets", "anime", "heroes", "miku.png"))).toBe(
+    expect(hero.portrait).toBe("/assets/anime/heroes/miku.webp");
+    expect(existsSync(join(process.cwd(), "public", "assets", "anime", "heroes", "miku.webp"))).toBe(
       true
     );
     for (const level of [1, 4, 6] as const) {
