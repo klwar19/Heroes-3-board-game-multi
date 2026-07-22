@@ -442,6 +442,7 @@ import {
   getIgnoreTargetCardDefenseAbility,
   getKnockbackAbility,
   getLethalSaveUnitAbility,
+  getBloodSiphonSelfHeal,
   getLineAttackAbility,
   getOnAttackDieDraw,
   getOnAttackDieTokens,
@@ -4532,6 +4533,43 @@ function applyOnAttackSelfHeal(state: GameState, attacker: CombatUnitState, isRe
   });
 }
 
+/**
+ * Heavenly Demon Palace "Blood Siphon" (HEAL_SELF_ON_DAMAGE_DEALT): after this
+ * unit's OWN attack DEALS damage (`damageDealt > 0`), remove up to `amount`
+ * damage from it. Unlike the Vampire self-heal above, an attack fully soaked to
+ * 0 heals NOTHING — the heal is conditioned on the blow connecting. Never fires
+ * on a Retaliation Attack; a dead attacker (felled by Fire Shield during its own
+ * strike) does not heal (the isUnitAlive guard, mirroring the Vampire path).
+ */
+function applyBloodSiphonSelfHeal(
+  state: GameState,
+  attacker: CombatUnitState,
+  isRetaliation: boolean,
+  damageDealt: number
+): void {
+  if (isRetaliation || damageDealt <= 0) {
+    return;
+  }
+  const siphon = getBloodSiphonSelfHeal(attacker);
+  if (!siphon || attacker.damage <= 0 || !isUnitAlive(attacker)) {
+    return;
+  }
+  const healed = Math.min(siphon.amount, attacker.damage);
+  attacker.damage = Math.max(0, attacker.damage - siphon.amount);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: siphon.abilityId,
+    message: `${attacker.cardName} siphons blood and heals ${healed} damage.`
+  });
+  appendEvent(state, {
+    type: "DAMAGE_HEALED",
+    source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+    target: { type: "unit", unitId: attacker.id },
+    amount: healed
+  });
+}
+
 function finishResolvedAttack(
   state: GameState,
   stackItem: ResolutionStackItem,
@@ -4801,6 +4839,10 @@ function finishResolvedAttack(
   applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind, details.isRetaliation);
   // Vampires: drain life back to themselves after their own attack.
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
+  // Heavenly Demon Palace "Blood Siphon": heal 1 after its OWN attack DEALS
+  // damage (a fully-soaked 0-damage attack heals nothing — the distinction from
+  // the Vampire above). Never on a Retaliation Attack.
+  applyBloodSiphonSelfHeal(state, details.attacker, details.isRetaliation, attackResult.damage);
   // Rune Keeper commander: +1 Rune the first time it is attacked this combat.
   applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
 

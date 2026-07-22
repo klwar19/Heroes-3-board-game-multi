@@ -96,7 +96,8 @@ describe("town board manifest", () => {
       ["fuyuki", "fuyuki"],
       ["azure_breeze", "azure-breeze"],
       ["hidden_leaf", "hidden-leaf"],
-      ["azur_lane", "azur-lane"]
+      ["azur_lane", "azur-lane"],
+      ["heavenly_demon", "heavenly-demon"]
     ];
     for (const [factionId, stripPrefix] of ANIME_FACTIONS) {
       const spec = townBoardSpecs[factionId];

@@ -19,6 +19,8 @@ const hiddenLeafCard = (tier: "bronze" | "silver" | "golden", slug: string, side
   `/assets/anime/units/hidden-leaf/units-hidden-leaf-${tier}-${slug}-${side}.webp`;
 const azurCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "few" | "pack") =>
   `/assets/anime/units/azur-lane/units-azur-lane-${tier}-${slug}-${side}.webp`;
+const demonCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "few" | "pack") =>
+  `/assets/anime/units/heavenly-demon/units-heavenly-demon-${tier}-${slug}-${side}.webp`;
 
 /** Two complete seven-line faction rosters: one anime/isekai, one wuxia. */
 export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
@@ -276,6 +278,73 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     // live combo with ignores-retaliation, never a dead clause).
     pack: { attack: 7, defense: 2, health: 6, initiative: 7, cost: { gold: 21, valuables: 2 }, abilities: ["ignores-retaliation", "teleport-move", "sandworm-strike-again"], abilityText: "Silent Hunter — attacks do not provoke Retaliation; as a regular move, may surface on any empty space. Oxygen Torpedo Spread — after its attack resolves, it attacks that same target again (this second strike provokes no Retaliation).", cardImage: azurCard("golden", "i-19", "pack") },
     source
+  },
+
+  // Heavenly Demon Palace (Thiên Ma Cung) printed levels (3 bronze / 2 silver /
+  // 2 gold) — the EVIL demonic-path sect: blood cultists, gu sorcery, ghosts,
+  // corpse puppets. CANONICAL recruit order = object key order (the faction
+  // derives `units` from this order via a filter, exactly like Fuyuki / Hidden
+  // Leaf). Identity: blood-hungry bronze bodies (one RANGED Gu Witch), an
+  // undead-tank silver line, and gold ghosts/avatars. Every ability tag resolves
+  // to an IMPLEMENTED unitAbilities entry; abilityText restates ONLY what that arm
+  // runs. TWO of the tags are the faction's dedicated NEW engine arms —
+  // `heavenly-demon-blood-siphon` (Blood Disciples Pack) and `heavenly-demon-reap`
+  // (Heavenly Demon Avatar both sides). A Few side listed [] carries no ability
+  // and (per CLAUDE.md §2) no abilityText.
+  // --- BRONZE (3) ----------------------------------------------------------
+  "heavenly_demon.blood_disciples": {
+    id: "heavenly_demon.blood_disciples", name: "Blood Disciples", faction: "heavenly_demon", tier: "bronze", type: "ground",
+    few: { attack: 2, defense: 1, health: 2, initiative: 6, cost: { gold: 2 }, abilities: [], cardImage: demonCard("bronze", "blood-disciples", "few") },
+    // NEW #1 — Blood Siphon: heal 1 after an OWN attack that DEALS damage.
+    pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 4 }, abilities: ["heavenly-demon-blood-siphon"], abilityText: "Blood Siphon — after this unit's attack deals damage, remove 1 damage from it (a fully-soaked 0-damage attack heals nothing). Never on a Retaliation Attack.", cardImage: demonCard("bronze", "blood-disciples", "pack") },
+    source
+  },
+  // LV2 bronze RANGED gu sorceress.
+  "heavenly_demon.gu_witches": {
+    id: "heavenly_demon.gu_witches", name: "Gu Witches", faction: "heavenly_demon", tier: "bronze", type: "ranged",
+    few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 4 }, abilities: ["ignore-combat-penalties"], abilityText: "Hex Darts — ignores the Combat penalty for attacking an adjacent unit (the long-range / behind-wall penalty still applies).", cardImage: demonCard("bronze", "gu-witches", "few") },
+    pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "basilisk-paralysis"], abilityText: "Hex Darts — ignores the adjacent-unit Combat penalty; Gu Curse — after attacking, roll a die; on 0 the target is Paralyzed.", cardImage: demonCard("bronze", "gu-witches", "pack") },
+    source
+  },
+  // LV3 bronze ground shadow assassin.
+  "heavenly_demon.shadow_wraiths": {
+    id: "heavenly_demon.shadow_wraiths", name: "Shadow Wraiths", faction: "heavenly_demon", tier: "bronze", type: "ground",
+    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, abilities: [], cardImage: demonCard("bronze", "shadow-wraiths", "few") },
+    pack: { attack: 3, defense: 1, health: 2, initiative: 8, cost: { gold: 5 }, abilities: ["ignores-retaliation"], abilityText: "Umbral Step — attacks do not provoke a Retaliation Attack.", cardImage: demonCard("bronze", "shadow-wraiths", "pack") },
+    source
+  },
+  // --- SILVER (2) ----------------------------------------------------------
+  // LV4 silver ground undead tank.
+  "heavenly_demon.corpse_puppets": {
+    id: "heavenly_demon.corpse_puppets", name: "Corpse Puppets", faction: "heavenly_demon", tier: "silver", type: "ground",
+    few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "Grave Ward — always treated as if it had a Defense token: it rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).", cardImage: demonCard("silver", "corpse-puppets", "few") },
+    pack: { attack: 4, defense: 3, health: 5, initiative: 4, cost: { gold: 11 }, abilities: ["commander-defense-token", "automaton-detonate-1"], abilityText: "Grave Ward — always rolls the Defend die when attacked; Corpse Burst — when this unit is defeated, deal 1 damage to each adjacent unit.", cardImage: demonCard("silver", "corpse-puppets", "pack") },
+    source
+  },
+  // LV5 silver ground bone raider (fast striker).
+  "heavenly_demon.bone_reavers": {
+    id: "heavenly_demon.bone_reavers", name: "Bone Reavers", faction: "heavenly_demon", tier: "silver", type: "ground",
+    few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 9 }, abilities: ["commander-charge"], abilityText: "Reaping Charge — +1 Attack on its attack after this unit moves.", cardImage: demonCard("silver", "bone-reavers", "few") },
+    pack: { attack: 4, defense: 2, health: 5, initiative: 7, cost: { gold: 13 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Reaping Charge — +1 Attack after moving; Ghost Blades — its attacks do not provoke a Retaliation Attack.", cardImage: demonCard("silver", "bone-reavers", "pack") },
+    source
+  },
+  // --- GOLD (2) ------------------------------------------------------------
+  // LV6 gold ground spectral regenerator.
+  "heavenly_demon.ghost_king": {
+    id: "heavenly_demon.ghost_king", name: "Ghost King", faction: "heavenly_demon", tier: "gold", type: "ground",
+    few: { attack: 5, defense: 3, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["wraith-heal-1"], abilityText: "Spectral Mending — on activation, remove 1 damage from this unit.", cardImage: demonCard("golden", "ghost-king", "few") },
+    pack: { attack: 6, defense: 3, health: 7, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["wraith-heal-2", "unlimited-retaliation"], abilityText: "Spectral Mending — remove 2 damage on activation; Vengeful Court — may Retaliate any number of times each round.", cardImage: demonCard("golden", "ghost-king", "pack") },
+    source
+  },
+  // LV7 gold ground avatar — carries the faction's second NEW arm on BOTH sides;
+  // the Pack ADDS ongoing-immunity ON TOP (the Few→Pack ADD is the mutation
+  // control, mirroring Susanoo).
+  "heavenly_demon.demon_avatar": {
+    id: "heavenly_demon.demon_avatar", name: "Heavenly Demon Avatar", faction: "heavenly_demon", tier: "gold", type: "ground",
+    // NEW #2 — Reap the Fallen: +1 Attack for the combat whenever an adjacent unit is removed.
+    few: { attack: 5, defense: 3, health: 7, initiative: 4, cost: { gold: 15, valuables: 1 }, abilities: ["heavenly-demon-reap"], abilityText: "Reap the Fallen — whenever a unit adjacent to this unit is removed from Combat (any source), this unit gains +1 Attack for the rest of the Combat (this stacks with each nearby death).", cardImage: demonCard("golden", "demon-avatar", "few") },
+    pack: { attack: 6, defense: 3, health: 8, initiative: 4, cost: { gold: 23, valuables: 2 }, abilities: ["heavenly-demon-reap", "titan-ignore-ongoing"], abilityText: "Reap the Fallen — gains +1 Attack whenever an adjacent unit is removed; Immortal Will — ignore any ongoing effects on this unit.", cardImage: demonCard("golden", "demon-avatar", "pack") },
+    source
   }
 };
 
@@ -317,23 +386,39 @@ const animeTownBuildingBar: Record<string, number> = {
   "azur_lane.exercise_waters": 4,
   "azur_lane.mage_guild": 5,
   "azur_lane.citadel": 6,
-  "azur_lane.dwelling_gold": 7
+  "azur_lane.dwelling_gold": 7,
+  // Heavenly Demon Palace — a DISTINCT bar order (shared bar in slot 3, not
+  // slot 4 like the others): the Blood Summoning Altar (Portal Summon) shares the
+  // bronze dwelling bar. Bar assignment MUST agree with townBoardSpecs.heavenly_demon
+  // (src/data/towns/boards.ts) so each building's strip art matches its bar.
+  "heavenly_demon.city_hall": 1,
+  "heavenly_demon.citadel": 2,
+  "heavenly_demon.dwelling_bronze": 3,
+  "heavenly_demon.summoning_altar": 3,
+  "heavenly_demon.dwelling_silver": 4,
+  "heavenly_demon.mage_guild": 5,
+  "heavenly_demon.demon_arena": 6,
+  "heavenly_demon.dwelling_gold": 7
 };
 
+type AnimeTownFactionId = "fuyuki" | "azure_breeze" | "hidden_leaf" | "azur_lane" | "heavenly_demon";
+
 /** The dashed art-file prefix for a faction's bar slices (id keeps the underscore). */
-const barArtPrefix = (faction: "fuyuki" | "azure_breeze" | "hidden_leaf" | "azur_lane"): string =>
+const barArtPrefix = (faction: AnimeTownFactionId): string =>
   faction === "azure_breeze"
     ? "azure-breeze"
     : faction === "hidden_leaf"
       ? "hidden-leaf"
       : faction === "azur_lane"
         ? "azur-lane"
-        : faction;
+        : faction === "heavenly_demon"
+          ? "heavenly-demon"
+          : faction;
 
 const building = (
   id: string,
   name: string,
-  faction: "fuyuki" | "azure_breeze" | "hidden_leaf" | "azur_lane",
+  faction: AnimeTownFactionId,
   cost: TownBuildingDefinition["cost"],
   effect: NonNullable<TownBuildingDefinition["effect"]>,
   prerequisites?: string[]
@@ -392,7 +477,21 @@ export const animeTownBuildingDefinitions: Record<string, TownBuildingDefinition
   "azur_lane.dwelling_silver": building("azur_lane.dwelling_silver", "Cruiser Shipyard", "azur_lane", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["azur_lane.dwelling_bronze"]),
   "azur_lane.dwelling_gold": building("azur_lane.dwelling_gold", "Capital Ship Berth", "azur_lane", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["azur_lane.dwelling_silver"]),
   "azur_lane.munitions_workshop": building("azur_lane.munitions_workshop", "Munitions Workshop", "azur_lane", { gold: 6, buildingMaterials: 4 }, { type: "ARTIFACT_SMITH", searchCost: 5, sellGold: 3 }),
-  "azur_lane.exercise_waters": building("azur_lane.exercise_waters", "Combat Exercise Waters", "azur_lane", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 })
+  "azur_lane.exercise_waters": building("azur_lane.exercise_waters", "Combat Exercise Waters", "azur_lane", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 }),
+
+  // Heavenly Demon Palace — shared archetypes only (ZERO new TownBuildingEffect
+  // types), costs mirroring the Fuyuki/Azure/Hidden-Leaf/Azur twins per archetype.
+  // The two SPECIAL buildings are Portal-Summon (Blood Summoning Altar) +
+  // Hall-of-Valhalla (Arena of Ten Thousand Demons) — a different specials pair
+  // than Azure Breeze's (Hall-of-Valhalla + resource-die).
+  "heavenly_demon.city_hall": building("heavenly_demon.city_hall", "Throne of the Heavenly Demon", "heavenly_demon", { gold: 10, buildingMaterials: 4 }, { type: "RESOURCE_ROUND_CHOICE", options: [{ label: "Gain 5 gold", gold: 5 }, { label: "Reinforce 1 bronze unit for free", reinforceBronzeFree: true }] }),
+  "heavenly_demon.citadel": building("heavenly_demon.citadel", "Obsidian Ramparts", "heavenly_demon", { gold: 8, buildingMaterials: 5, valuables: 1 }, { type: "UNLOCK_REINFORCE" }),
+  "heavenly_demon.mage_guild": { ...building("heavenly_demon.mage_guild", "Grimoire Sanctum", "heavenly_demon", { gold: 4, buildingMaterials: 2, valuables: 1 }, { type: "MAGE_GUILD" }), spellBookCost: 5 },
+  "heavenly_demon.dwelling_bronze": building("heavenly_demon.dwelling_bronze", "Blood Disciple Cloister", "heavenly_demon", { gold: 5, buildingMaterials: 3, valuables: 1 }, { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" }),
+  "heavenly_demon.dwelling_silver": building("heavenly_demon.dwelling_silver", "Corpse Puppet Workshop", "heavenly_demon", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["heavenly_demon.dwelling_bronze"]),
+  "heavenly_demon.dwelling_gold": building("heavenly_demon.dwelling_gold", "Abyssal Throne Hall", "heavenly_demon", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["heavenly_demon.dwelling_silver"]),
+  "heavenly_demon.summoning_altar": building("heavenly_demon.summoning_altar", "Blood Summoning Altar", "heavenly_demon", { gold: 7, buildingMaterials: 4, valuables: 1 }, { type: "TURN_START_PORTAL_SUMMON" }),
+  "heavenly_demon.demon_arena": building("heavenly_demon.demon_arena", "Arena of Ten Thousand Demons", "heavenly_demon", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 })
 };
 
 export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
@@ -491,6 +590,18 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     startingAbilityCardId: "ability.sorcery",
     specialtyCardIds: { 1: "specialty.sirius.1", 4: "specialty.sirius.4", 6: "specialty.sirius.6" },
     portrait: "/assets/anime/heroes/sirius.webp", source
+  },
+  // Heavenly Demon Palace — ONE minimal MIGHT hero so the faction is pickable
+  // (the full roster + commander is a LATER task). A unit specialist doubling the
+  // faction's own gold Heavenly Demon Avatar, on the proven generic I/IV/VI shape
+  // (mightSpecialtyOne / unitHealthSpecialty / unitInitiativeSpecialty). Face-less
+  // (native specialty renderer, hero's own portrait).
+  xuedao: {
+    id: "xuedao", name: "Xuedao", faction: "heavenly_demon", class: "Blood Path Patriarch", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: { 1: "specialty.xuedao.1", 4: "specialty.xuedao.4", 6: "specialty.xuedao.6" },
+    portrait: "/assets/anime/heroes/xuedao.png", source
   }
 };
 
@@ -537,5 +648,15 @@ export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "azur_lane").map((item) => item.id),
     units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "azur_lane").map((item) => item.id),
     townImage: "/assets/anime/towns/azur-lane-base-empty.webp", source
+  },
+  heavenly_demon: {
+    id: "heavenly_demon", name: "Heavenly Demon Palace", color: "#8b1a2b", startingTileId: "D-S1",
+    // ONE minimal hero for now (the full roster + commander is a LATER task).
+    heroes: ["xuedao"],
+    // `units` derives from the animeTownUnitDefinitions insertion order (bronze →
+    // gold), exactly like Fuyuki / Hidden Leaf / Azur Lane — no explicit order array.
+    buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "heavenly_demon").map((item) => item.id),
+    units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "heavenly_demon").map((item) => item.id),
+    townImage: "/assets/anime/towns/heavenly-demon-palace-empty.webp", source
   }
 };
