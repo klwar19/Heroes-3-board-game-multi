@@ -3143,61 +3143,104 @@ BOTH seats on hidden_leaf to round 5 with no stall / no negative resource, soft-
 asserting its units are recruited and Might Guy is on the field; the all-on
 `anime-coexistence-soak.test.ts` now also runs with both town flags available.
 
-**Azur Lane Naval Base (`azur_lane`, isekai — the fourth town).** Shares
-`anime.isekaiTowns` with Fuyuki / Hidden Leaf (NO new `AnimeModOptions` field, NO
-new lobby row — the isekaiTowns row description names all three isekai towns). Its
-seven units are NAMED shipgirls. Leading with what does NOT run / deliberate
+**Azur Lane Naval Base (`azur_lane`, isekai — the fourth town; 2026-07 UPGRADED).**
+Shares `anime.isekaiTowns` with Fuyuki / Hidden Leaf (NO new `AnimeModOptions`
+field, NO new lobby row — the isekaiTowns row description names all three isekai
+towns). Its seven units are NAMED shipgirls. The 2026-07 upgrade replaced the
+original all-reuse rollout with FOUR bespoke engine mechanics + an all-new
+Codex-painted production art suite. Leading with what does NOT run / deliberate
 limits:
-- **NO new engine ability** — every one of the seven units' tags is an
-  already-implemented reuse (unlike Fuyuki's `casters-damage-cap` and Hidden
-  Leaf's `jinchuriki-chakra-burst`); the roster is pure recombination, so the
-  faction adds ZERO to the "dedicated new abilities" count.
-- **The ONE engine change of this rollout is a REFACTOR, not a new rule** — the
-  WOG commander First Aid post-combat window is now keyed off the `first-aid`
-  SPECIALTY id (`playerHasLivingFirstAidCommander` in `commanders.ts`) instead of
-  the "hierophant" slug, so Belfast opens it too. The Rampart Hierophant is
-  UNCHANGED (still opens the same window); mutation-checked in
-  `wog-commanders.test.ts` with a superior-combat (Might Guy) CONTROL that opens
-  NO window and a Hierophant CONTROL that still DOES.
-- **Belfast's Fire Support cast is the Tower Temple Guardian's Precision arm
-  verbatim** (`commander-cast-temple_guardian`) — no bespoke cast; its "Impeccable
-  Service" specialty is the Hierophant's `first-aid` (above), not new machinery.
+- **The First-Aid window refactor stands** — the WOG commander First Aid
+  post-combat window is keyed off the `first-aid` SPECIALTY id
+  (`playerHasLivingFirstAidCommander` in `commanders.ts`), so Belfast opens it
+  too; the Rampart Hierophant is unchanged (mutation-checked in
+  `wog-commanders.test.ts`).
+- **`kansen-fleet-formation` is veterancy-only** (Unicorn's rank signature) — no
+  printed side carries the aura; and the aura buffs OWN declared attacks only
+  (never a Retaliation Attack), the carrier never buffs itself.
+- **Lucky E's die halves are HELD-card offers, not normal plays** — the
+  specialty's reroll/set-die halves live in the Attack-die reroll window
+  (`LUCKY_E_SPECIALTY_SOURCES`, the Diplomat's-Ring pattern; hand-locked combats
+  block them); only the proactive stat halves are ordinary reaction plays. VI's
+  two halves share ONE card — spending either retires the other.
+- **Royal Salvo is effect damage, not a Spell** — no Retaliation, ignores
+  Defense, per-attack caps AND spell wards; ongoing-effect immunity never blocks
+  it (it is instant). Adjacent-only below Power 1; 2 damage at Power 2.
 - **The Battle-Test combat sandbox still excludes every anime faction**
   (inherited — its `isPlayableFaction` call passes no anime options).
 
-What runs (each pinned in `src/data/anime/azur-lane-content.test.ts`, the commander
-refactor + Belfast block in `src/engine/wog-commanders.test.ts`, and live AI play
-in `src/server/azur-lane-live.test.ts`): ALL
-Azur Lane art is REAL wiki character art composited by
-`scripts/fetch-azur-lane-art.mjs` + `scripts/build-azur-lane-art.mjs` (the
-downloaded refs are GITIGNORED under `scripts/anime-art/refs/`; only the built
-webp faces ship — one shipgirl per unit card). The 7-unit roster (3 bronze /
-2 silver / 2 gold, every tag already-implemented) — Laffey (bronze) Few `[]` /
+What runs (data pins in `src/data/anime/azur-lane-content.test.ts`, the FOUR new
+mechanics behaviourally in `src/engine/kansen-abilities.test.ts` — each with
+CONTROLs, mutation-checked — the commander refactor in
+`src/engine/wog-commanders.test.ts`, live AI play in
+`src/server/azur-lane-live.test.ts`):
+- **`kansen-full-barrage`** (NEW engine arm): the AFTER_ATTACK_SPLASH machinery
+  extended with `around: "target"` + `enemiesOnly` — after the unit's own
+  declared attack resolves, 1 effect damage to every OTHER enemy adjacent to the
+  ATTACKED unit (the target itself takes only the attack; never on a
+  Retaliation Attack). Printed on Honolulu's Pack; Laffey's veterancy signature.
+  The Chakra Burst around-self read is the anchor CONTROL and is unchanged.
+- **`kansen-fleet-formation`** (NEW engine arm): `ADJACENT_ALLY_ATTACK_AURA` —
+  friendly units adjacent to the carrier get +1 Attack on their own declared
+  attacks (live positional read in `getAttackStackDetails`; two carriers stack).
+- **Belfast "Royal Salvo"** (NEW commander-cast kind `enemy-damage`,
+  `commander-cast-belfast`): the module's first OFFENSIVE command — 1/1/2 effect
+  damage to an enemy unit by Power, through the shared ability-damage path.
+- **Enterprise "Lucky E"** (NEW specialty): I/IV/VI hand instants whose die
+  halves join the owner's Attack-die reroll window AND the post-attack
+  ability-roll window — I/VI a reroll, IV/VI a set-die-to-"+1"; taking a half
+  plays/discards the card. Proactive halves are plain ADD_COMBAT_STAT picks
+  (I defense-only, IV/VI attack+defense). Enterprise is NO LONGER a
+  unit-doubling might specialist (Bismarck/Nagato remain).
+The 7-unit roster (3 bronze / 2 silver / 2 gold) — Laffey (bronze) Few `[]` /
 Pack `ignores-retaliation`; Javelin (bronze) Few `[]` / Pack `commander-charge`;
 Honolulu (bronze RANGED) Few `ignore-combat-penalties` / Pack +
-`wog-attack-when-attacking-1`; Unicorn (silver) Few `enchanter-heal-or-buff` /
-Pack + `unicorn-spell-ward-aura`; Yukikaze (silver) Few `commander-defense-token` /
-Pack + `ignores-retaliation`; Prinz Eugen (gold) Few `nix-damage-cap` / Pack +
-`unlimited-retaliation`; I-19 (gold) Few `ignores-retaliation` + `teleport-move` /
-Pack + `sandworm-strike-again`. 8 buildings on the SHARED archetypes (Naval Command
+`kansen-full-barrage` (2026-07, was the flat +1); Unicorn (silver) Few
+`enchanter-heal-or-buff` / Pack + `unicorn-spell-ward-aura`; Yukikaze (silver)
+Few `commander-defense-token` / Pack + `ignores-retaliation`; Prinz Eugen (gold)
+Few `nix-damage-cap` / Pack + `unlimited-retaliation`; I-19 (gold) Few
+`ignores-retaliation` + `teleport-move` / Pack + `sandworm-strike-again`.
+ART (2026-07): the whole suite is Codex-PAINTED production art — masters live in
+`scripts/anime-art/raw/azur-lane/**` (generated with the desktop Codex CLI's
+image_gen; the official wiki refs from the GITIGNORED
+`scripts/anime-art/refs/azur-lane/` are fed via `-i` so every shipgirl keeps her
+exact identity). `scripts/build-azur-lane-unit-cards.mjs` renders the 14 unit
+faces in the full BOARD-GAME hierarchy (title + anchor seal + tier medallion ·
+left painted stat rail · art window + type chip · Few dual-cost band / # PACK ·
+rules panel; navy/ivory/brass "white-glove Royal Navy" chrome; per-SIDE masters —
+Few = base skin, Pack = an alt/retrofit skin of the SAME girl) plus the
+Bismarck/Nagato specialty portrait crops
+(`/assets/anime/units/portraits/azur-lane-{prinz-eugen,yukikaze}.webp`;
+Enterprise wears the Fortune die emblem for Lucky E).
+`scripts/build-azur-lane-art.mjs` is now a masters COMPOSITOR (the old
+procedural-SVG suite is retired): panorama pair = ONE painted dawn-harbor scene
+in two states (empty graded lots → the SAME scene fully built, the full version
+generated by feeding the empty PNG back through image_gen `-i`), sliced into the
+7 board bars; the P-S1 tile = a painted aerial naval-island night scene masked
+into the hex flower with the printed S4 field symbols overlaid; town icon crop;
+5 painted hero portraits; the Belfast commander card; the 6 kansen equipment
+icons (painted, keyed); and the new rank-ability icons
+(`/assets/ui/rank-ability/{full-barrage,fleet-formation}.webp` + the Royal Salvo
+cast icon). 8 buildings on the SHARED archetypes (Naval Command
 HQ City-Hall choice; Escort Docks / Cruiser Shipyard / Capital Ship Berth
 dwellings; Fortified Anchorage reinforce; Naval Research Academy Mage Guild;
 Munitions Workshop Artifact Smith; Combat Exercise Waters Hall-of-Valhalla — zero
 new TownBuildingEffect types), a 7-bar board (`townBoardSpecs.azur_lane`, one
-two-building bar). 5 heroes with own-portrait specialties I/IV/VI: three MIGHT
-specialists doubling shipgirls the faction actually FIELDS — Enterprise ("Grey
-Ghost", doubles Laffey), Bismarck ("Iron Blood Oath", doubles Prinz Eugen), Nagato
-("Big Seven Resolve", doubles Yukikaze) — plus two MAGIC medic/support clones
-(`rethemedSpecialty`, no unit doubling): Akashi ("Emergency Repairs", a Gem
-First-Aid clone) and Sirius ("Flawless Service", a Rion medic clone). Belfast
-commander (`belfast`, `COMMANDER_SLUG_BY_FACTION.azur_lane`) = the Temple-Guardian
-Precision cast ("Fire Support", `commander-cast-temple_guardian`) + `first-aid`
-("Impeccable Service"), Sea Witch voice. Starting tile P-S1 (an S4-layout clone,
-mirrors A-S1). Its BESPOKE `kansen` equipment line (6 items, 2 per grade across
-all four slots — Oxygen Torpedo / Manjuu Piggy Bank / Repair Toolkit / Beaver
-Squad Tag / SG Radar / Retrofit Blueprint) is `anime.equipment`-gated, joins the
-shared Artifact deck like every equipment item, ships REAL vector naval icons (not
-placeholders),
+two-building bar). 5 heroes with own-portrait specialties I/IV/VI: Enterprise
+carries the bespoke "Lucky E" dice specialty (above); Bismarck ("Iron Blood
+Oath", doubles Prinz Eugen) and Nagato ("Big Seven Resolve", doubles Yukikaze)
+are MIGHT specialists doubling shipgirls the faction actually FIELDS; plus two
+MAGIC medic/support clones (`rethemedSpecialty`, no unit doubling): Akashi
+("Emergency Repairs", a Gem First-Aid clone) and Sirius ("Flawless Service", a
+Rion medic clone). Belfast commander (`belfast`,
+`COMMANDER_SLUG_BY_FACTION.azur_lane`) = the bespoke "Royal Salvo" enemy-damage
+cast (above) + `first-aid` ("Impeccable Service"), Sea Witch voice, Magic-Arrow
+cast fx. Starting tile P-S1 (an S4-layout clone, mirrors A-S1). Its BESPOKE
+`kansen` equipment line (6 items, 2 per grade across all four slots — Oxygen
+Torpedo / Manjuu Piggy Bank / Repair Toolkit / Beaver Squad Tag / SG Radar /
+Retrofit Blueprint) is `anime.equipment`-gated, joins the shared Artifact deck
+like every equipment item, ships Codex-painted icons (2026-07, replacing the
+vector set),
 and is offered as Azur Lane's register line at BOTH outfitters via the §3.13
 special-case (`equipmentPackagesForFaction` returns `["kansen"]` for azur_lane
 AHEAD of the register switch — the same bespoke branch as hidden_leaf's `shinobi`,
@@ -3216,10 +3259,13 @@ With the Unit-Experience rule on, the seven shipgirls carry BESPOKE fleet-lore
 veterancy rank schedules (`UNIT_RANK_SCHEDULES` in
 `src/data/units/experience-rank-abilities.ts`; bronze `standard`, silver/gold
 `strong` — the faction-peer shape) instead of generic defensive fillers:
-signatures are Laffey → `sandworm-strike-again` (a melee "strike again" for her
-rate of fire), Yukikaze → `attack-roll-advantage-passive` (twin Attack dice, keep
+signatures are Laffey → `kansen-full-barrage` (2026-07; the bespoke
+around-target salvo — her impossible rate of fire; `sandworm-strike-again`
+stays the alternative), Unicorn → `kansen-fleet-formation` at slot 2 (2026-07;
+the carrier escort aura) after `wraith-heal-1` (self-repair), Yukikaze →
+`attack-roll-advantage-passive` (twin Attack dice, keep
 the higher — the luckiest ship), Prinz Eugen → `zombie-resilience` (die-roll soak
-= unsinkable), Unicorn → `wraith-heal-1` (a carrier medic's self-repair). DELIBERATE
+= unsinkable). DELIBERATE
 deviation from the raw intent: the ranged-only `DOUBLE_ATTACK` arm is INERT on a
 melee `ground` body, so Javelin/I-19 take `commander-max-damage` /
 `wog-no-negative-attack-roll` (functional) rather than `double-attack-low-roll`

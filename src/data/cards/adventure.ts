@@ -65,6 +65,82 @@ function specialtyCardImage(heroSlug: string, level: 1 | 4 | 6): string {
   return `/assets/hero_specialties-${heroSlug}-${level}.webp`;
 }
 
+/**
+ * Enterprise "Lucky E" (Azur Lane, 2026-07 upgrade) — a dice-luck specialty.
+ * Each level is a hand instant with TWO halves:
+ *  - a proactive stat half (the CHOOSE_ONE below — the normal reaction play);
+ *  - an ENGINE half offered while the card is HELD: it joins the owner's
+ *    Attack-die reroll window (attack rolls AND the post-attack ability-roll
+ *    window, exactly like the Diplomat's-Ring family) — I/VI offer a REROLL,
+ *    IV/VI offer "SET one die to the +1 side" (the Positive-Morale set-die
+ *    machinery). Taking the die half plays/discards the card; VI's two halves
+ *    share one card, so spending either retires the other
+ *    (LUCKY_E_SPECIALTY_SOURCES → buildRerollSources / buildAbilityRerollSources
+ *    in reducer.ts; pinned in kansen-abilities.test.ts).
+ */
+function luckyESpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const numeral = level === 1 ? "I" : level === 4 ? "IV" : "VI";
+  const amount = level === 6 ? 2 : 1;
+  const dieHalf =
+    level === 1
+      ? "While in hand: reroll one of your Attack/ability dice (offered in the die window; playing it discards this card)."
+      : level === 4
+        ? "While in hand: set one of your Attack/ability dice to the \"+1\" side (offered in the die window; playing it discards this card)."
+        : "While in hand: reroll one of your Attack/ability dice OR set one to the \"+1\" side (offered in the die window; either play discards this card).";
+  const attackOption = {
+    label: `+${amount} attack`,
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount }
+  } as const;
+  const defenseOption = {
+    label: `+${amount} defense`,
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount }
+  } as const;
+  return {
+    id: `specialty.enterprise.${level}`,
+    name: `Lucky E ${numeral}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "enterprise",
+      // engine: the die half is a HELD-card offer in the Attack-die reroll
+      // window (LUCKY_E_SPECIALTY_SOURCES), not a CHOOSE_ONE option here.
+      `${dieHalf}`
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: level === 1 ? [defenseOption] : [attackOption, defenseOption]
+    },
+    assets: {
+      cardImage: specialtyCardImage("enterprise", level),
+      imageAlt: `Lucky E level ${numeral} specialty card`
+    },
+    implementationStatus: "implemented",
+    source: heroSource("enterprise")
+  };
+}
+
+/**
+ * The engine half of "Lucky E": which held Enterprise specialty levels join the
+ * die windows, and as what. Consumed by buildRerollSources /
+ * buildAbilityRerollSources (reducer.ts) — the same held-card pattern as
+ * REROLL_REACTION_ARTIFACT_IDS.
+ */
+export const LUCKY_E_SPECIALTY_SOURCES: readonly {
+  cardId: string;
+  name: string;
+  reroll: boolean;
+  setDie: boolean;
+}[] = [
+  { cardId: "specialty.enterprise.1", name: "Lucky E I", reroll: true, setDie: false },
+  { cardId: "specialty.enterprise.4", name: "Lucky E IV", reroll: false, setDie: true },
+  { cardId: "specialty.enterprise.6", name: "Lucky E VI", reroll: true, setDie: true }
+];
+
 function offenseSpecialtyOne(heroSlug: string): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.1`,
@@ -1430,13 +1506,14 @@ export const adventureCards: CardLibrary = {
   "specialty.sasuke.1": withoutArt(mightSpecialtyOne("sasuke", "Lightning Blade", "Jonin")),
   "specialty.sasuke.4": withoutArt(unitHealthSpecialty("sasuke", "Lightning Blade", 4, 1, "Jonin")),
   "specialty.sasuke.6": withoutArt(unitInitiativeSpecialty("sasuke", "Lightning Blade", 6, 1, "Jonin")),
-  // Azur Lane might heroes (src/data/anime/towns.ts) — unit specialists doubling
-  // on their OWN faction's shipgirls (Enterprise → Laffey, Bismarck → Prinz
-  // Eugen, Nagato → Yukikaze). Same proven generic I/IV/VI shape as
-  // Bin/Qingyun/Naruto; face-less (native renderer).
-  "specialty.enterprise.1": withoutArt(mightSpecialtyOne("enterprise", "Grey Ghost", "Laffey")),
-  "specialty.enterprise.4": withoutArt(unitHealthSpecialty("enterprise", "Grey Ghost", 4, 1, "Laffey")),
-  "specialty.enterprise.6": withoutArt(unitInitiativeSpecialty("enterprise", "Grey Ghost", 6, 1, "Laffey")),
+  // Azur Lane might heroes (src/data/anime/towns.ts). Enterprise carries the
+  // BESPOKE "Lucky E" dice specialty (2026-07 upgrade — proactive stat half +
+  // a held-card die half in the reroll window, see luckyESpecialty); Bismarck /
+  // Nagato stay unit specialists doubling on their OWN faction's shipgirls
+  // (Bismarck → Prinz Eugen, Nagato → Yukikaze). Face-less (native renderer).
+  "specialty.enterprise.1": withoutArt(luckyESpecialty(1)),
+  "specialty.enterprise.4": withoutArt(luckyESpecialty(4)),
+  "specialty.enterprise.6": withoutArt(luckyESpecialty(6)),
   "specialty.bismarck.1": withoutArt(mightSpecialtyOne("bismarck", "Iron Blood Oath", "Prinz Eugen")),
   "specialty.bismarck.4": withoutArt(unitHealthSpecialty("bismarck", "Iron Blood Oath", 4, 1, "Prinz Eugen")),
   "specialty.bismarck.6": withoutArt(unitInitiativeSpecialty("bismarck", "Iron Blood Oath", 6, 1, "Prinz Eugen")),

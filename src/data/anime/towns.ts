@@ -233,9 +233,10 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "azur_lane.honolulu": {
     id: "azur_lane.honolulu", name: "Honolulu", faction: "azur_lane", tier: "bronze", type: "ranged",
     few: { attack: 2, defense: 1, health: 2, initiative: 6, cost: { gold: 4 }, abilities: ["ignore-combat-penalties"], abilityText: "Rapid Fire — ignores the Combat penalty for attacking an adjacent unit (the long-range / behind-wall penalty still applies).", cardImage: azurCard("bronze", "honolulu", "few") },
-    // wog-attack-when-attacking-1 = +1 Attack on its own attacks (proven on the
-    // WoG Lava Sharpshooter, a RANGED unit).
-    pack: { attack: 3, defense: 1, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "wog-attack-when-attacking-1"], abilityText: "Rapid Fire — ignores the adjacent-unit Combat penalty; +1 Attack on its own attacks (never on a Retaliation Attack).", cardImage: azurCard("bronze", "honolulu", "pack") },
+    // kansen-full-barrage = the town's bespoke around-TARGET splash arm (2026-07
+    // upgrade; was wog-attack-when-attacking-1): after her own attack resolves,
+    // 1 effect damage to every OTHER enemy adjacent to the struck unit.
+    pack: { attack: 3, defense: 1, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "kansen-full-barrage"], abilityText: "Rapid Fire — ignores the adjacent-unit Combat penalty. Full Barrage — after an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (not an attack: no Retaliation, not reduced by Defense, no damage caps; never on a Retaliation Attack).", cardImage: azurCard("bronze", "honolulu", "pack") },
     source
   },
   // --- SILVER (2) ----------------------------------------------------------

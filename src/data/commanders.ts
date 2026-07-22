@@ -443,7 +443,19 @@ export type CommanderCastEffect =
       attackVs: "slower" | "faster";
       attackAmount: number;
     }
-  | { kind: "unlimited-retaliation" };
+  | { kind: "unlimited-retaliation" }
+  | {
+      /**
+       * Belfast "Royal Salvo" (2026-07 Azur Lane upgrade): flat EFFECT damage
+       * to an ENEMY unit — the module's first offensive command. Effect damage
+       * is not an attack or a Spell: no Retaliation, not reduced by Defense,
+       * not subject to per-attack damage caps, and NOT reduced by spell wards;
+       * a lethal salvo routes through the normal removal path. Instant (not an
+       * ongoing effect), so ongoing-effect immunity never blocks it.
+       */
+      kind: "enemy-damage";
+      damageByPower: readonly [number, number, number];
+    };
 
 export interface CommanderCastDefinition {
   /** Unit ability id carried by the commander's combat unit. */
@@ -853,19 +865,21 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
   },
   belfast: {
     slug: "belfast", name: "Belfast", faction: "Azur Lane Naval Base", original: true,
-    // Cast: REUSE the Tower Temple Guardian's Precision arm verbatim
-    // (commander-cast-temple_guardian, precision) — the sword_saint precedent.
-    // Reusing a cast abilityId across commanders is established.
+    // Cast: "Royal Salvo" — the module's BESPOKE offensive command (2026-07
+    // upgrade; was a Precision reuse). The new `enemy-damage` kind deals flat
+    // EFFECT damage to an enemy unit (adjacent below Power 1, anywhere from
+    // Power 1, 2 damage at Power 2) — resolveCommanderCast's enemy-damage
+    // branch, pinned in wog-commander-casts.test.ts ("Royal Salvo").
     cast: {
-      abilityId: "commander-cast-temple_guardian",
-      name: "Fire Support",
-      icon: "/assets/spell-icons/precision.png",
-      targeting: { side: "friendly", unitType: "ranged", adjacentBelowPower: 1, canTargetSelf: false },
-      effect: { kind: "precision", amountByPower: [1, 1, 2] },
+      abilityId: "commander-cast-belfast",
+      name: "Royal Salvo",
+      icon: "/assets/anime/icons/azur-lane/skill-royal-salvo.webp",
+      targeting: { side: "enemy", adjacentBelowPower: 1, canTargetSelf: false },
+      effect: { kind: "enemy-damage", damageByPower: [1, 1, 2] },
       tierText: [
-        "A nearby allied warship gains +1 Attack and ignores ranged penalties this round.",
-        "An allied warship anywhere gains +1 Attack and ignores ranged penalties this round.",
-        "An allied warship anywhere gains +2 Attack and ignores ranged penalties this round."
+        "Deal 1 damage to an enemy unit adjacent to the commander (no Retaliation, ignores Defense).",
+        "Deal 1 damage to an enemy unit anywhere (no Retaliation, ignores Defense).",
+        "Deal 2 damage to an enemy unit anywhere (no Retaliation, ignores Defense)."
       ]
     },
     // Specialty: REUSE `first-aid` (post-combat restoration) — the SAME id the

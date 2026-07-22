@@ -120,12 +120,14 @@ describe("playable Anime Realms towns", () => {
   });
 
   it("might specialists double on a unit of their OWN faction (mutation control: the borrowed sets never could)", () => {
+    // Enterprise left this list in the 2026-07 upgrade: she now carries the
+    // bespoke "Lucky E" dice specialty (pinned in azur-lane-content.test.ts +
+    // kansen-abilities.test.ts), not a unit-specialist set.
     for (const [heroId, factionId] of [
       ["bin", "fuyuki"],
       ["qingyun", "azure_breeze"],
       ["naruto", "hidden_leaf"],
       ["sasuke", "hidden_leaf"],
-      ["enterprise", "azur_lane"],
       ["bismarck", "azur_lane"],
       ["nagato", "azur_lane"]
     ] as const) {

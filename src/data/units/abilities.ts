@@ -217,6 +217,29 @@ export type UnitAbilityEffectDefinition =
        */
       type: "AFTER_ATTACK_SPLASH";
       amount: number;
+      /**
+       * Azur Lane "Full Barrage" variant: anchor the splash on the attack's
+       * TARGET instead of the attacker — every other unit adjacent to the
+       * struck unit takes the effect damage (the target itself never does; it
+       * already took the attack). Omitted = the Chakra-Burst around-self read.
+       */
+      around?: "target";
+      /** Splash ENEMY units only (the Chakra Burst hits friend AND foe). */
+      enemiesOnly?: boolean;
+    }
+  | {
+      /**
+       * Azur Lane "Fleet Formation" (kansen veterancy): friendly units
+       * ADJACENT to this unit gain `amount` Attack on their OWN declared
+       * attacks (never on a Retaliation Attack — the wog-attack-when-attacking
+       * convention). A LIVE positional aura read at attack resolution (the
+       * commanderLiveAttackBonus precedent): the bonus applies only while the
+       * attacker actually stands next to the living carrier, never the carrier
+       * itself. Two adjacent carriers stack. Innate ability bonus — added
+       * UNCLAMPED like Hatred, so an elemental attacker still receives it.
+       */
+      type: "ADJACENT_ALLY_ATTACK_AURA";
+      amount: number;
     }
   | {
       /**
@@ -1550,6 +1573,32 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "AFTER_ATTACK_SPLASH", amount: 1 },
     implementationStatus: "implemented"
   },
+  // Azur Lane Naval Base — the town's two bespoke engine arms (2026-07 upgrade).
+  // "Full Barrage": the AFTER_ATTACK_SPLASH machinery anchored on the attack's
+  // TARGET, enemies only — a gun-line salvo that rakes the struck ship's escorts.
+  // Printed on Honolulu's Pack side and offered as a kansen veterancy signature;
+  // wired in reducer.ts (applyAfterAttackSplash, around:"target" branch) and
+  // pinned in kansen-abilities.test.ts (with the Chakra Burst as the
+  // around-self / friendly-fire CONTROL).
+  "kansen-full-barrage": {
+    id: "kansen-full-barrage",
+    name: "Full Barrage",
+    text: "[unit_attack] After an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (the target itself takes only the attack). This damage is not an attack: no Retaliation, not reduced by Defense, not subject to per-attack damage caps. Does not fire on a Retaliation Attack.",
+    effect: { type: "AFTER_ATTACK_SPLASH", amount: 1, around: "target", enemiesOnly: true },
+    implementationStatus: "implemented"
+  },
+  // "Fleet Formation": a positional escort aura — friendly units attacking while
+  // adjacent to the carrier strike harder. Live position read at resolution
+  // (never on a Retaliation Attack); the carrier itself gains nothing. Wired in
+  // reducer.ts (getFleetFormationAuraBonus inside getAttackStackDetails) and
+  // pinned in kansen-abilities.test.ts.
+  "kansen-fleet-formation": {
+    id: "kansen-fleet-formation",
+    name: "Fleet Formation",
+    text: "[unit_passive] Friendly units gain +1 Attack on their own attacks (never on a Retaliation Attack) while they are adjacent to this unit.",
+    effect: { type: "ADJACENT_ALLY_ATTACK_AURA", amount: 1 },
+    implementationStatus: "implemented"
+  },
   "lich-death-cloud": {
     id: "lich-death-cloud",
     name: "Death Cloud",
@@ -2833,6 +2882,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     id: "commander-cast-astral_spirit",
     name: "Counterstrike",
     text: "[activation] Once per combat round: a friendly bronze unit (Power 1: or silver; Power 2: any tier) may retaliate any number of times this round. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-belfast": {
+    id: "commander-cast-belfast",
+    name: "Royal Salvo",
+    text: "[activation] Once per combat round: deal 1 damage (Power 2: 2 damage) to an enemy unit — adjacent to the commander at Power 0, anywhere from Power 1. Effect damage: no Retaliation, not reduced by Defense, no per-attack damage caps. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
