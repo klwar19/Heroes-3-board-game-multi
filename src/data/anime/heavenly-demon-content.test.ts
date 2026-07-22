@@ -11,7 +11,17 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import { townBoardSpecs, townIconUrl } from "@/data/towns/boards";
 import { commanderSoundKey, unitSoundKey } from "@/data/unit-sounds";
 import { unitAbilities } from "@/data/units/abilities";
-import { applyAction, createInitialGameState } from "@/engine";
+import {
+  UNIT_RANK_ABILITY_ICONS,
+  UNIT_RANK_SCHEDULES,
+  hasUniqueRankSchedule,
+  rankScheduleFor,
+  scheduleTemplateId,
+  unitRankAbilityIcon
+} from "@/data/units/experience";
+import type { RankSchedule } from "@/data/units/experience";
+import { applyAction, createInitialGameState, makeCombatUnitFromArmy } from "@/engine";
+import { unitRankAbilityIds } from "@/engine/unit-experience";
 import type { CombatUnitState, GameAction, GameState, PlayerId } from "@/engine/state";
 
 /**
@@ -403,5 +413,173 @@ describe("Heavenly Demon Palace — behavioural: the Blood Disciples Pack's real
     expect(packAbilities).toContain("heavenly-demon-blood-siphon"); // rides the real data
     expect(attackerDamageAfter(packAbilities, "hd-blood-siphon-live")).toBe(2); // 3 → 2
     expect(attackerDamageAfter([], "hd-blood-siphon-live-control")).toBe(3); // no heal
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Demon-path veterancy — bespoke rank schedules (Unit Experience system).
+// Each unit's rank-ability CHOICES are keyed to its demonic lore (signature
+// FIRST, safer alternative second). The ground bodies avoid the ranged-gated
+// DOUBLE_ATTACK arm (inert on a melee unit — the Azur Lane fleet-lore
+// precedent), reaching for functional demonic arms instead. Mirrors
+// src/data/anime/azur-lane-content.test.ts "Fleet veterancy".
+// ---------------------------------------------------------------------------
+
+/**
+ * The EXACT ability-rank choice arrays per unit (signature id FIRST). This table
+ * is the mutation control: revert any schedule to a generic filler and the
+ * deep-equal below fails. `template` is the pinned shape (bronze=standard 1
+ * ability, silver/gold=strong 2).
+ */
+const EXPECTED_SCHEDULES: Record<
+  string,
+  { template: "standard" | "strong"; slots: readonly (readonly string[])[] }
+> = {
+  "heavenly_demon.blood_disciples": {
+    template: "standard",
+    slots: [["wraith-heal-1", "zombie-resilience-weak"]]
+  },
+  "heavenly_demon.gu_witches": {
+    template: "standard",
+    slots: [["unicorn-paralyze-retaliation", "ranged-extra-shot-on-low-roll"]]
+  },
+  "heavenly_demon.shadow_wraiths": {
+    template: "standard",
+    slots: [["wog-nightmare-fear", "bulwark-air-shield"]]
+  },
+  "heavenly_demon.corpse_puppets": {
+    template: "strong",
+    slots: [["zombie-resilience", "bulwark-thick-hide"], ["ignore-paralysis", "wog-nightmare-fear"]]
+  },
+  "heavenly_demon.bone_reavers": {
+    template: "strong",
+    slots: [["commander-max-damage", "wog-no-negative-attack-roll"], ["wog-nightmare-fear", "commander-defense-token"]]
+  },
+  "heavenly_demon.ghost_king": {
+    template: "strong",
+    slots: [["teleport-move", "bulwark-air-shield"], ["wog-nightmare-fear", "commander-max-damage"]]
+  },
+  "heavenly_demon.demon_avatar": {
+    template: "strong",
+    slots: [["wog-fire-shield-1", "reduce-spell-damage-1"], ["commander-max-damage", "ignore-paralysis"]]
+  }
+};
+
+/** Pull the ability steps' choice arrays out of a schedule, in rank order. */
+function abilityChoicesOf(schedule: RankSchedule): string[][] {
+  const slots: string[][] = [];
+  for (const rank of [1, 2, 3, 4] as const) {
+    const step = schedule[rank];
+    if (step.kind === "ability") slots.push([...step.choices]);
+  }
+  return slots;
+}
+
+describe("Heavenly Demon Palace — Demon-path veterancy: bespoke rank schedules", () => {
+  it("all seven ship a UNIQUE schedule; bronzes are 'standard', silver/gold 'strong'", () => {
+    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
+      expect(hasUniqueRankSchedule(unitId), unitId).toBe(true);
+      expect(scheduleTemplateId(UNIT_RANK_SCHEDULES[unitId]!), unitId).toBe(expected.template);
+    }
+    // Tier ↔ template: the three bronze bodies are 'standard', the two silver +
+    // two gold are 'strong' (the faction-peer / Azur Lane shape).
+    for (const unitId of coreFactionDefinitions[FACTION].units) {
+      const tier = coreUnitDefinitions[unitId].tier;
+      expect(scheduleTemplateId(rankScheduleFor(unitId)), `${unitId} (${tier})`).toBe(
+        tier === "bronze" ? "standard" : "strong"
+      );
+    }
+  });
+
+  it("SIGNATURE pins: the exact lore-keyed choice arrays (fails if a schedule reverts to fillers)", () => {
+    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
+      expect(abilityChoicesOf(rankScheduleFor(unitId)), unitId).toEqual(
+        expected.slots.map((slot) => [...slot])
+      );
+    }
+    // Spot the headline signatures explicitly so the intent is legible.
+    expect(abilityChoicesOf(rankScheduleFor("heavenly_demon.ghost_king"))[0]).toContain("teleport-move");
+    expect(abilityChoicesOf(rankScheduleFor("heavenly_demon.blood_disciples"))[0]).toContain("wraith-heal-1");
+    expect(abilityChoicesOf(rankScheduleFor("heavenly_demon.gu_witches"))[0]).toContain(
+      "unicorn-paralyze-retaliation"
+    );
+    expect(abilityChoicesOf(rankScheduleFor("heavenly_demon.corpse_puppets"))[0]).toContain("zombie-resilience");
+  });
+
+  it("HYGIENE (heavenly_demon-scoped): every choice implemented, non-Stacked, NOT printed on either side; no wasted rank", () => {
+    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
+      const unit = coreUnitDefinitions[unitId];
+      const printed = new Set<string>([...unit.few!.abilities, ...unit.pack!.abilities]);
+      for (const slot of expected.slots) {
+        for (const choiceId of slot) {
+          const ability = unitAbilities[choiceId];
+          expect(ability, `${unitId} → ${choiceId}`).toBeTruthy();
+          expect(ability.implementationStatus, `${unitId} → ${choiceId}`).toBe("implemented");
+          expect(ability.requiresStacked, `${unitId} → ${choiceId}`).not.toBe(true);
+          // No-wasted-rank invariant: a choice printed on the unit would be
+          // deduped away by withRankAbilities, making the rank inert.
+          expect(printed.has(choiceId), `${unitId} prints ${choiceId} (would waste the rank)`).toBe(false);
+        }
+      }
+      // The real resolver grants EXACTLY one ability per ability-rank (never a
+      // dup collapse): a 'standard' unit ends at 1 rank ability, 'strong' at 2.
+      expect(unitRankAbilityIds(unitId, 4), unitId).toHaveLength(expected.slots.length);
+    }
+  });
+
+  it("ART: every choice id has an EXPLICIT icon entry resolving to a file on disk", () => {
+    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
+      for (const slot of expected.slots) {
+        for (const choiceId of slot) {
+          expect(
+            UNIT_RANK_ABILITY_ICONS[choiceId],
+            `${unitId} → ${choiceId} needs an explicit icon`
+          ).toBeTruthy();
+          const icon = unitRankAbilityIcon(choiceId);
+          expect(icon.startsWith("/assets/"), choiceId).toBe(true);
+          expect(
+            existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))),
+            `${choiceId} → ${icon} missing on disk`
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  // BEHAVIOURAL (effect-level): the Ghost King's schedule actually FOLDS in
+  // combat — a stats rank moves a real stat and an ability rank grants the
+  // signature id. Fails if withRankAbilities / the schedule wiring is removed, OR
+  // if the schedule reverts to a generic filler (R2 would carry a different id).
+  it("Ghost King folds in combat: R1 stats (+1 Attack), R2 grants Spectral Walk (teleport-move) — below-threshold CONTROL grants neither", () => {
+    const build = (experience?: number): CombatUnitState =>
+      makeCombatUnitFromArmy(
+        { id: "gk_army", unitDefId: "heavenly_demon.ghost_king", side: "few", ...(experience ? { experience } : {}) },
+        "p1",
+        "unit_p1_gk",
+        0,
+        "legacy"
+      )!;
+
+    // gold thresholds 5/10/16/22 → R1 at 5 XP (stats), R2 at 10 XP (ability slot1).
+    const plain = build();
+    const r1 = build(5);
+    const r2 = build(10);
+
+    expect(r1.unitRank).toBe(1);
+    expect(r2.unitRank).toBe(2);
+
+    // Stats-rank fold: gold step 0 is +1 Attack — an OBSERVABLE stat delta.
+    expect(plain.attack).toBe(coreUnitDefinitions["heavenly_demon.ghost_king"].few!.attack);
+    expect(r1.attack).toBe(plain.attack + 1);
+    expect(r2.attack).toBe(plain.attack + 1); // R2 is an ability rank → no further stat step
+
+    // Ability-rank grant: R2 carries the lore signature (Spectral Walk).
+    expect(r2.abilities).toContain("teleport-move");
+
+    // CONTROLs: below the R2 ability threshold there is NO grant; the plain card
+    // (no XP) carries neither the grant nor the stat bump (base stats).
+    expect(r1.abilities).not.toContain("teleport-move");
+    expect(plain.abilities).not.toContain("teleport-move");
+    expect(plain.unitRank ?? 0).toBe(0);
   });
 });

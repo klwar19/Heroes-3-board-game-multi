@@ -439,6 +439,46 @@ const CARDS = [
       "Weapon: your units' FIRST declared attack each combat +1 Attack AND all declared attacks in combat ROUND 1 +1 Attack (first attack in round 1 = +2; not retaliations).",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
+  },
+  // ==== Heavenly Demon Palace bespoke "modao" line (§3.13) — 3 items =========
+  // `placeholder: true` ⇒ no hand-drawn inventory icon yet; the pipeline
+  // synthesises a grade-tinted monogram master so the ornate card FACE (with the
+  // full rules text) still builds. Swap in real icons + drop the flag later.
+  {
+    slug: "demon_blood_saber",
+    en: "Blood Demon Saber",
+    vi: "Huyết Ma Đao",
+    grade: "I",
+    slot: "weapon",
+    placeholder: true,
+    rules: [
+      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (main-hero fights; not retaliations).",
+      "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
+    ]
+  },
+  {
+    slug: "bonefiend_plate",
+    en: "Bonefiend Plate",
+    vi: "Cốt Ma Giáp",
+    grade: "II",
+    slot: "armor",
+    placeholder: true,
+    rules: [
+      "Armor: the first time one of your units is attacked each combat, it gains a Defense token after the hit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
+    ]
+  },
+  {
+    slug: "demon_heart",
+    en: "Demon Heart",
+    vi: "Ma Tâm",
+    grade: "III",
+    slot: "accessory",
+    placeholder: true,
+    rules: [
+      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
+    ]
   }
 ];
 

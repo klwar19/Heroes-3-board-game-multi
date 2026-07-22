@@ -56,7 +56,7 @@ export const HERO_GRADE_PICKS_PER_TIER = 1;
 // ===========================================================================
 
 export type GradeLabel = { en: string; vi: string };
-export type GradeRegisterKey = "core" | "xianxia" | "isekai" | "kansen";
+export type GradeRegisterKey = "core" | "xianxia" | "isekai" | "kansen" | "modao";
 
 /**
  * The bilingual grade-name registers, indexed by grade 0..N (length =
@@ -95,6 +95,18 @@ export const HERO_GRADE_REGISTERS: Record<GradeRegisterKey, readonly GradeLabel[
     { en: "Rare", vi: "Hiếm" },
     { en: "Elite", vi: "Tinh Nhuệ" },
     { en: "Super Rare", vi: "Siêu Hiếm" }
+  ],
+  // Heavenly Demon Palace (modao / Ma Đạo) — the bespoke demonic-path ladder. A
+  // NAMES-only register: mechanics/state are identical to every other family.
+  // This faction SHARES the "wuxia" VISUAL register with Azure Breeze Sect, so —
+  // exactly like Azur Lane vs Fuyuki in the isekai package — the package switch
+  // alone (both resolve "xianxia") could never give it distinct titles; the
+  // BESPOKE_FACTION_GRADE_REGISTERS branch below is what pins it.
+  modao: [
+    { en: "Blood Adept", vi: "Huyết Đồ" },
+    { en: "Demon General", vi: "Ma Tướng" },
+    { en: "Demon King", vi: "Ma Vương" },
+    { en: "Heavenly Demon", vi: "Thiên Ma" }
   ]
 };
 
@@ -150,7 +162,12 @@ export const FACTION_GRADE_REGISTER: Record<string, GradeRegisterKey> = {
   // Azur Lane uses its OWN bespoke ship-rarity register (see
   // BESPOKE_FACTION_GRADE_REGISTERS) — mapped here too so the "both / neither
   // package" family fallback agrees with the bespoke override.
-  azur_lane: "kansen"
+  azur_lane: "kansen",
+  // Heavenly Demon Palace uses its OWN bespoke demonic register (see
+  // BESPOKE_FACTION_GRADE_REGISTERS) — mapped here too so the "both / neither
+  // package" family fallback agrees with the bespoke override (it shares the
+  // wuxia visual register with Azure Breeze, which keeps the plain xianxia one).
+  heavenly_demon: "modao"
 };
 
 /**
@@ -170,7 +187,13 @@ export const FACTION_GRADE_REGISTER: Record<string, GradeRegisterKey> = {
  * bespoke register is NAMES-only: it never changes mechanics/state.
  */
 export const BESPOKE_FACTION_GRADE_REGISTERS: Record<string, GradeRegisterKey> = {
-  azur_lane: "kansen"
+  azur_lane: "kansen",
+  // Heavenly Demon Palace shares the "wuxia" visual register with Azure Breeze
+  // Sect (both `factionVisualRegister` → "wuxia"), so a xianxia-only game would
+  // resolve BOTH to the plain "xianxia" register via the package switch. This
+  // bespoke branch (checked first) gives it the demonic "modao" ladder, exactly
+  // as Azur Lane's "kansen" branch does inside the isekai package.
+  heavenly_demon: "modao"
 };
 
 /** The register family for a faction (defaults to core when unmapped). */

@@ -141,20 +141,30 @@ export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipm
 //   - `retrofitBlueprint` (weapon relic) combines first-attack AND round-1 attack
 //     — both weapon-slot folds, so a same-slot weapon never doubles either half;
 //     the FIRST attack in round 1 stacks BOTH → +2.
+//   Heavenly Demon Palace "modao" line (§3.13), 3 items (one per grade, distinct
+//   slots weapon/armor/accessory), each a pure seam reuse:
+//   - `demonBloodSaber` twins Iron-Blood Sword (weapon, first-attack)
+//   - `bonefiendPlate` twins Stage Costume (armor, first-incoming defense token)
+//   - `demonHeartRelic` (accessory relic) combines +1 spell Power AND +1 hand
+//     limit — same accessory-slot pair as Sage Chakra Charm / SG Radar, so it can
+//     never lift either cap (spell-power items are all accessories ⇒ +1; hand
+//     limit stays +2 = armor + one accessory).
 // ---------------------------------------------------------------------------
 const FIRST_ATTACK_ITEMS = [
   EQUIPMENT_IDS.ironBloodSword,
   EQUIPMENT_IDS.crusadersPoleaxe,
   EQUIPMENT_IDS.shinobiKunaiPouch,
   EQUIPMENT_IDS.oxygenTorpedo,
-  EQUIPMENT_IDS.retrofitBlueprint
+  EQUIPMENT_IDS.retrofitBlueprint,
+  EQUIPMENT_IDS.demonBloodSaber
 ] as const;
 const INCOMING_PENALTY_ITEMS = [EQUIPMENT_IDS.blackTortoiseMail, EQUIPMENT_IDS.wardensAegis] as const;
 const DEFENSE_TOKEN_ITEMS = [
   EQUIPMENT_IDS.stageCostume,
   EQUIPMENT_IDS.ironbarkCuirass,
   EQUIPMENT_IDS.wardensAegis,
-  EQUIPMENT_IDS.repairToolkit
+  EQUIPMENT_IDS.repairToolkit,
+  EQUIPMENT_IDS.bonefiendPlate
 ] as const;
 const ROUND1_ATTACK_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial, EQUIPMENT_IDS.retrofitBlueprint] as const;
 const FIRST_SPELL_POWER_ITEMS = [EQUIPMENT_IDS.neonMicrophone] as const;
@@ -162,14 +172,16 @@ const SPELL_POWER_ITEMS = [
   EQUIPMENT_IDS.cosmosPendant,
   EQUIPMENT_IDS.spiritFocus,
   EQUIPMENT_IDS.sageChakraCharm,
-  EQUIPMENT_IDS.sgRadar
+  EQUIPMENT_IDS.sgRadar,
+  EQUIPMENT_IDS.demonHeartRelic
 ] as const;
 const HAND_LIMIT_ITEMS = [
   EQUIPMENT_IDS.guildIssueMail,
   EQUIPMENT_IDS.twinTailRibbon,
   EQUIPMENT_IDS.eternalSash,
   EQUIPMENT_IDS.sageChakraCharm,
-  EQUIPMENT_IDS.sgRadar
+  EQUIPMENT_IDS.sgRadar,
+  EQUIPMENT_IDS.demonHeartRelic
 ] as const;
 const WIN_GOLD_ITEMS = [
   EQUIPMENT_IDS.adventurersBlade,

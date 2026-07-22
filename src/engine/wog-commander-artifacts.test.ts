@@ -397,6 +397,140 @@ describe("WOG Commander Artifacts — Helm of Immortality (free revive)", () => 
 });
 
 // ===========================================================================
+// Heavenly Demon Palace bespoke commander artifacts — each a PURE reuse of an
+// existing fold seam (no new engine arm), pinned by an OBSERVABLE combat outcome
+// + a bare CONTROL.
+// ===========================================================================
+
+const SABER = "wog.artifact.blood_patriarch_saber"; // weapon major, +2 Attack (flat fold)
+const TALISMAN = "wog.artifact.demon_heart_talisman"; // trinket relic, +1 cast Power AND +1 Initiative
+
+describe("WOG Commander Artifacts — Heavenly Demon bespoke items", () => {
+  /** The commander (paladin) melees the p2 skeletons; returns resolved damage. */
+  function commanderMelee(
+    artifacts: Partial<Record<CommanderArtifactSlot, string>> | undefined,
+    scripted: number[] = [0, 0, 0, 0],
+    grades: Partial<CommanderPlayerState["grades"]> = {}
+  ): GameState {
+    const state = sandboxWithCommander("paladin", grades, 9, artifacts);
+    const commander = state.combat!.units[commanderUnitId("p1")];
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = [];
+    defender.position = 10;
+    defender.defense = 0;
+    defender.maxHealth = 20;
+    defender.damage = 0;
+    defender.retaliatedThisRound = true;
+    state.combat!.activeUnitId = commander.id;
+    state.activePlayerId = "p1";
+    state.combat!.dice.scriptedRolls = scripted;
+    state.combat!.dice.rollCount = 0;
+    return settle(
+      apply(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: commander.id, defenderId: defender.id })
+    );
+  }
+
+  it("Blood Patriarch's Saber (+2 Attack): the commander's hit lands 2 more damage (CONTROL: bare)", () => {
+    // CONTROL: base Attack 2 + die 0 − defense 0 = 2 damage.
+    expect(commanderMelee(undefined).combat!.units.unit_p2_skeletons.damage).toBe(2);
+    // Saber bound: the flat +2 folds into the unit's Attack → 4 damage.
+    expect(commanderMelee({ weapon: SABER }).combat!.units.unit_p2_skeletons.damage).toBe(4);
+  });
+
+  it("Demon Heart Talisman (+1 Initiative): flips the activation order against a same-speed enemy (CONTROL: bare)", () => {
+    function firstToAct(artifacts?: Partial<Record<CommanderArtifactSlot, string>>): string | undefined {
+      const state = sandboxWithCommander("paladin", {}, 9, artifacts);
+      const commander = state.combat!.units[commanderUnitId("p1")];
+      const enemy = state.combat!.units.unit_p2_skeletons;
+      for (const unit of Object.values(state.combat!.units)) {
+        if (unit.id === commander.id || unit.id === enemy.id) {
+          continue;
+        }
+        unit.activatedThisRound = true;
+        unit.initiative = 1;
+      }
+      enemy.activatedThisRound = false;
+      enemy.initiative = 6; // one FASTER than the base commander (Speed grade 0 = 5)
+      enemy.position = 15;
+      state.combat!.attackerPlayerId = "p1";
+      state.combat!.defenderPlayerId = "p2";
+      return getNextUnitToActivate(state.combat!, state.activeEffects)?.id;
+    }
+    // CONTROL: Initiative 5 < enemy 6 → the enemy acts first.
+    expect(firstToAct(undefined)).toBe("unit_p2_skeletons");
+    // Talisman bound: Initiative 6 ties the enemy, and the attacker (the commander)
+    // wins the tie → the commander now acts first (the Boots-of-Haste seam).
+    expect(firstToAct({ trinket: TALISMAN })).toBe(commanderUnitId("p1"));
+  });
+
+  it("Demon Heart Talisman (+1 cast Power): resolves the command cast one Power tier higher (CONTROL: bare)", () => {
+    // Brute's Bloodlust ladder is +1/+1/+2 by Power tier (0/1/2). At Magic grade 2
+    // the commander is Power 1 (+1); the Talisman lifts it to Power 2 (+2) — the
+    // Pendant-of-Sorcery cast-Power seam.
+    function castThenStrike(artifacts?: Partial<Record<CommanderArtifactSlot, string>>): number {
+      let state = sandboxWithCommander("brute", { magic: 2 }, 9, artifacts);
+      const crusaders = state.combat!.units.unit_p1_crusaders;
+      crusaders.abilities = [];
+      crusaders.attack = 2;
+      crusaders.position = 6; // melee, adjacent to the skeletons at 10
+      const skeletons = state.combat!.units.unit_p2_skeletons;
+      skeletons.abilities = [];
+      skeletons.position = 10;
+      skeletons.defense = 0;
+      skeletons.maxHealth = 20;
+      skeletons.damage = 0;
+      skeletons.retaliatedThisRound = true;
+      const commander = state.combat!.units[commanderUnitId("p1")];
+      state.combat!.activeUnitId = commander.id;
+      state.activePlayerId = "p1";
+      state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+      state.combat!.dice.rollCount = 0;
+
+      const offer = getLegalActions(state, "p1").find(
+        (legal) =>
+          legal.action.type === "USE_UNIT_ABILITY" &&
+          legal.action.abilityId === commanderDefinitions.brute.cast.abilityId
+      );
+      expect(offer, "Bloodlust cast offered").toBeTruthy();
+      const opened = apply(state, offer!.action);
+      const choice = opened.pendingChoice;
+      if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+        throw new Error("expected the commander-cast target choice");
+      }
+      state = apply(opened, {
+        type: "CHOOSE_ABILITY_TARGET",
+        playerId: "p1",
+        choiceId: choice.id,
+        targetUnitId: "unit_p1_crusaders"
+      });
+
+      state.combat!.activeUnitId = "unit_p1_crusaders";
+      state.activePlayerId = "p1";
+      state.combat!.dice.scriptedRolls = [0, 0];
+      state.combat!.dice.rollCount = 0;
+      const after = settle(
+        apply(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_crusaders", defenderId: "unit_p2_skeletons" })
+      );
+      return after.combat!.units.unit_p2_skeletons.damage;
+    }
+    // CONTROL: Power 1 Bloodlust → +1 → 2 + 1 = 3 damage.
+    expect(castThenStrike(undefined)).toBe(3);
+    // Talisman bound: Power 2 Bloodlust → +2 → 2 + 2 = 4 damage (one tier higher).
+    expect(castThenStrike({ trinket: TALISMAN })).toBe(4);
+  });
+
+  it("both bespoke ids join the shared Artifact decks with the other commander artifacts (three-way gate)", () => {
+    // The deck-join lists are GENERATED from the specs, so the two new ids ride
+    // the same enabled && artifacts && commanders gate. Pin membership by tier.
+    expect(wogCommanderArtifactMajorIds).toContain(SABER); // weapon, major
+    expect(wogCommanderArtifactRelicIds).toContain(TALISMAN); // trinket, relic
+    expect(wogCommanderArtifactCardIds).toEqual(expect.arrayContaining([SABER, TALISMAN]));
+    expect(cardLibrary[SABER]?.kind).toBe("artifact");
+    expect(cardLibrary[TALISMAN]?.kind).toBe("artifact");
+  });
+});
+
+// ===========================================================================
 // Bind flow — the map play, its legality, and permanence across death/revive.
 // ===========================================================================
 

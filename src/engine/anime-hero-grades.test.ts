@@ -917,6 +917,51 @@ describe("anime.heroGrades — grade-name registers", () => {
     expect(heroGradeRegisterKey(both, "p2")).toBe("core");
   });
 
+  it("heavenly_demon wears the bespoke modao register in a xianxia-only game (azure_breeze CONTROL stays xianxia)", () => {
+    // A XIANXIA-ONLY table (xianxiaTowns is a xianxia module flag) seating BOTH
+    // wuxia towns. Heavenly Demon Palace shares the "wuxia" visual register with
+    // Azure Breeze Sect, so the package switch ALONE resolves BOTH to "xianxia" —
+    // the bespoke faction branch (checked first) must give heavenly_demon its
+    // demonic ladder. If that branch is removed, heavenly_demon falls through to
+    // the xianxia package register and this fails.
+    const xianxiaOnly = adventure(
+      "hg-reg-modao",
+      { ...GRADES_ON, xianxiaTowns: true },
+      {
+        players: [
+          { id: "p1", name: "HD", factionId: "heavenly_demon", heroDefId: "xuedao" },
+          { id: "p2", name: "AB", factionId: "azure_breeze", heroDefId: "qingyun" }
+        ]
+      }
+    );
+    // (a) heavenly_demon → modao; grade-3 label is the top demonic title.
+    expect(heroGradeRegisterKey(xianxiaOnly, "p1")).toBe("modao");
+    expect(heroGradeLabel(xianxiaOnly, "p1", 0).en).toBe("Blood Adept");
+    expect(heroGradeLabel(xianxiaOnly, "p1", 3).en).toBe("Heavenly Demon");
+    expect(heroGradeLabel(xianxiaOnly, "p1", 3).vi).toBe("Thiên Ma");
+    // (b) CONTROL: azure_breeze in the SAME game keeps the PLAIN xianxia register —
+    // the bespoke branch is faction-scoped, not table-wide.
+    expect(heroGradeRegisterKey(xianxiaOnly, "p2")).toBe("xianxia");
+    expect(heroGradeLabel(xianxiaOnly, "p2", 1).vi).toBe("Cao Thủ");
+  });
+
+  it("heavenly_demon stays modao in a both-packages game (bespoke override + family map agree)", () => {
+    const both = adventure(
+      "hg-reg-modao-both",
+      { ...GRADES_ON, xianxiaTowns: true, isekaiTowns: true },
+      {
+        players: [
+          { id: "p1", name: "HD", factionId: "heavenly_demon", heroDefId: "xuedao" },
+          { id: "p2", name: "Two", factionId: "necropolis", heroDefId: "sandro" }
+        ]
+      }
+    );
+    expect(heroGradeRegisterKey(both, "p1")).toBe("modao");
+    expect(factionGradeRegister("heavenly_demon")).toBe("modao");
+    // CONTROL: a core faction in the same both-packages game still falls to core.
+    expect(heroGradeRegisterKey(both, "p2")).toBe("core");
+  });
+
   it("every register is bilingually complete and its length equals the tier count + 1", () => {
     for (const [key, register] of Object.entries(HERO_GRADE_REGISTERS)) {
       expect(register.length, `${key} register length`).toBe(HERO_GRADE_TIER_COUNT + 1);
