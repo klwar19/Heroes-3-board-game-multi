@@ -181,6 +181,16 @@ const creatureVoices: Record<string, string> = {
   yukikaze: "crew-mate", // the lucky destroyer → the Cove Seamen set
   prinz_eugen: "titan", // the unsinkable armored heavy cruiser → the Titan set
   i19: "behemoth", // the lurking "Silent Hunter" submarine → the Behemoth's roar
+  // Heavenly Demon Palace — thematic reuse of complete Heroes III demonic/undead
+  // voice sets. Gu Witches are the only RANGED unit, so their set resolves a real
+  // shoot clip (magog-shoot exists in the manifest).
+  blood_disciples: "vampire", // blood cultists that drain life → the Vampire set
+  gu_witches: "magog", // ranged gu/curse sorceresses → the Magog set (has shoot)
+  shadow_wraiths: "wraith", // shadow-step assassins → the Wraith set
+  corpse_puppets: "zombie-lord", // reanimated puppet tanks → the Zombie/Walking Dead set
+  bone_reavers: "dread-knight", // armored bone raiders → the Dread Knight set
+  ghost_king: "ghost-dragon", // spectral regenerating gold ghost → the Ghost Dragon set
+  demon_avatar: "demon", // the Heavenly Demon Avatar → the Demon set
   // Wake of Gods adaptation: requested H3 voice reuse.
   ghost: "wraith",
   air_messenger: "stone-golem",

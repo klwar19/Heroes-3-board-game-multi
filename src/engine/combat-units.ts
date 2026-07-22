@@ -4,7 +4,13 @@ import { appendEvent } from "./events";
 import { armyUnitStacksActive } from "./house-rules";
 import { getRuleset, unitSideRuleOverrides } from "./ruleset";
 import { isArrowTowerUnit } from "./siege";
-import { getOnRemovalDetonation, getSelfRebirthAbility, getUnitsAdjacentTo, isUnitDamageImmune } from "./unit-abilities";
+import {
+  getOnRemovalDetonation,
+  getReapOnAdjacentRemoval,
+  getSelfRebirthAbility,
+  getUnitsAdjacentTo,
+  isUnitDamageImmune
+} from "./unit-abilities";
 import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId, UnitId } from "./state";
@@ -225,6 +231,42 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   // that removes another adjacent Automaton recurses back through this function,
   // chain-detonating down a line.
   applyOnRemovalDetonation(state, unit);
+
+  // Heavenly Demon Palace "Reap the Fallen": every LIVING unit adjacent to the
+  // just-removed unit that carries the trait grows +1 Attack for the rest of the
+  // combat. Runs AFTER detonation so a chained detonation's own removals each
+  // feed their neighbours' reapers via this same chokepoint.
+  applyReapTheFallenOnRemoval(state, unit);
+}
+
+/**
+ * Heavenly Demon Palace "Reap the Fallen" (ATTACK_BUFF_ON_ADJACENT_REMOVAL): when
+ * `removed` leaves the Combat Board, every LIVING unit adjacent to it carrying the
+ * trait gains its `amount` Attack for the rest of the combat. The bonus is baked
+ * onto the reaper's combat `permanentAttackBonus` (so it survives a Pack→Few flip,
+ * like the Gelu buff) and mirrored onto `attack` for immediate reads; it is NOT
+ * written to the army card, so it is strictly combat-scoped. Buffing Attack causes
+ * no further removals, so this never recurses.
+ */
+function applyReapTheFallenOnRemoval(state: GameState, removed: CombatUnitState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  for (const neighbour of getUnitsAdjacentTo(combat, removed)) {
+    const reap = getReapOnAdjacentRemoval(neighbour);
+    if (!reap || reap.amount <= 0) {
+      continue;
+    }
+    neighbour.permanentAttackBonus = (neighbour.permanentAttackBonus ?? 0) + reap.amount;
+    neighbour.attack += reap.amount;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: neighbour.id,
+      abilityId: reap.abilityId,
+      message: `${neighbour.cardName} reaps ${removed.cardName} and gains +${reap.amount} Attack for the rest of the combat.`
+    });
+  }
 }
 
 /**

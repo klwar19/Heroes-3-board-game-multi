@@ -66,7 +66,7 @@ export function factionVisualRegister(factionId: string | undefined): FactionVis
   if (factionId === "fuyuki" || factionId === "hidden_leaf" || factionId === "azur_lane") {
     return "anime";
   }
-  if (factionId === "azure_breeze") {
+  if (factionId === "azure_breeze" || factionId === "heavenly_demon") {
     return "wuxia";
   }
   return "classic";

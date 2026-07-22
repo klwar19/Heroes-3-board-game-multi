@@ -82,6 +82,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // Rion clones), like Tsunade / Aoko — the healer medallion / Cure spell icon.
   akashi: "/assets/specialty-card/icon-first_aid.webp",
   sirius: "/assets/specialty-card/icon-cure.webp",
+  // Heavenly Demon Palace might specialist — no dedicated signature-unit portrait
+  // shipped yet, so a thematic Homm3BG emblem: Xuedao's Blood Path fury → the
+  // Bloodlust rage icon.
+  xuedao: "/assets/specialty-card/icon-bloodlust.webp",
   // --- Spell / emblem specialists -----------------------------------------
   oidana: "/assets/specialty-card/icon-diplomacy.webp", // Diplomacy dove
   glacius: "/assets/specialty-card/icon-frost_ring.webp", // Homm3BG symbols

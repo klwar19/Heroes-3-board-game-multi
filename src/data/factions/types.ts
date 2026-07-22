@@ -16,7 +16,8 @@ export type FactionId =
   | "fuyuki"
   | "azure_breeze"
   | "hidden_leaf"
-  | "azur_lane";
+  | "azur_lane"
+  | "heavenly_demon";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {

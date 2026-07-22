@@ -1520,6 +1520,12 @@ export const adventureCards: CardLibrary = {
   "specialty.nagato.1": withoutArt(mightSpecialtyOne("nagato", "Big Seven Resolve", "Yukikaze")),
   "specialty.nagato.4": withoutArt(unitHealthSpecialty("nagato", "Big Seven Resolve", 4, 1, "Yukikaze")),
   "specialty.nagato.6": withoutArt(unitInitiativeSpecialty("nagato", "Big Seven Resolve", 6, 1, "Yukikaze")),
+  // Heavenly Demon Palace might hero (src/data/anime/towns.ts) — unit specialist
+  // doubling on its OWN faction's gold Heavenly Demon Avatar. Same proven generic
+  // I/IV/VI shape as Bin/Qingyun/Naruto; face-less (native renderer).
+  "specialty.xuedao.1": withoutArt(mightSpecialtyOne("xuedao", "Demon Sovereign", "Heavenly Demon Avatar")),
+  "specialty.xuedao.4": withoutArt(unitHealthSpecialty("xuedao", "Demon Sovereign", 4, 1, "Heavenly Demon Avatar")),
+  "specialty.xuedao.6": withoutArt(unitInitiativeSpecialty("xuedao", "Demon Sovereign", 6, 1, "Heavenly Demon Avatar")),
   // Miku (Fuyuki Virtual Diva) — Voice of Angel. NEW engine arms:
   // I SLOW_ALL_ENEMIES, IV CREATE_HEAL_ON_ATTACKED (friendly), VI DAMAGE_ALL_ENEMY_UNITS.
   "specialty.miku.1": withoutArt({
