@@ -97,10 +97,9 @@ describe("anime starting tiles A-S1 / W-S1 / L-S1 / P-S1 — hex + border assign
   it("ships real flower tile art with alpha for all four seats", () => {
     assertRealArt(a.assets!.tileImage!);
     assertRealArt(w.assets!.tileImage!);
-    // L-S1 currently ships the smaller procedural placeholder (real art lands
-    // later at the same path); assert it exists with a modest floor so the
-    // check stays forward-compatible with the full-size replacement.
-    assertRealArt(l.assets!.tileImage!, 10_000);
+    // L-S1 now ships the full-size real board image too (2026-07) — hold it to
+    // the same floor as the other seats so a placeholder can never regress in.
+    assertRealArt(l.assets!.tileImage!);
     // P-S1 ships the full-size board image.
     assertRealArt(p.assets!.tileImage!);
     // No runtime symbol overlay — icons are baked into the webp.

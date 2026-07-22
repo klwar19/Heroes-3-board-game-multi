@@ -4,7 +4,7 @@
 // Step 1 (art only — no game code references these files yet). Reads the REAL
 // character refs fetched by fetch-azur-lane-art.mjs (run that FIRST) and builds
 // every public/assets output the eventual data wiring will consume, mirroring
-// the Hidden Leaf precedent (scripts/build-hidden-leaf-placeholder-art.mjs):
+// the (since-retired) Hidden Leaf placeholder generator's dimension discipline:
 // every output's pixel dimensions are read LIVE from its azure_breeze / anime
 // twin with sharp.metadata() and reused verbatim, then re-asserted after write.
 //
