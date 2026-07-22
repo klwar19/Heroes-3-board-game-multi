@@ -1,0 +1,7 @@
+Using the provided input image as the exact base scene, generate a single 1536x1024 wide landscape illustration of the SAME Heavenly Demon Palace location — same volcanic obsidian mountain, same camera angle, same blood-crimson stormy sky, same jade-green mist and lava channels — but now FULLY BUILT UP.
+
+Fill the empty stone platforms and graded terraces with a completed evil demonic-path cultivation palace: towering black obsidian pagodas and halls with blood-crimson tiled roofs, jagged demon-horn spires, crimson banners, glowing jade-green ghost-lanterns and braziers of red flame lining the courtyards, a great demonic gate, statues of demons brought to life with lit eyes. Keep every existing landscape element in place; only ADD the built palace structures onto the bare foundations. Ominous, imposing, thriving evil stronghold.
+
+Late-1990s painted fantasy game box-art style. Deep obsidian blacks, blood-crimson reds, sickly jade-green ghost-light accents. No text, no border, no UI.
+
+Do not run any shell commands; just generate the image and finish.

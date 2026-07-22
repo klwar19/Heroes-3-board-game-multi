@@ -1,0 +1,7 @@
+Generate a single 1024x1536 portrait illustration of a single dark-fantasy hero for a game portrait.
+
+Subject: Guiyan, the "Ghost Flame Sovereign" — a male ghost-master lord of the Heavenly Demon Palace. A pale gaunt sorcerer in dark crimson-black robes hung with ghost-talismans, jade-green ghost-flames dancing over his hands and a spectral skull-lantern at his side, hollow glowing eyes. Eerie, undead-summoner menace.
+
+Single imposing figure, three-quarter to full body, centered, dramatic hero portrait. Plain dark atmospheric background (obsidian mist / faint crimson glow). Art direction: late-1990s painted fantasy game box-art meets Chinese ink-wash horror. Deep obsidian blacks, blood-crimson reds, sickly jade-green ghost-light accents. Dramatic rim lighting, painterly brushwork, ominous cultist atmosphere. No text, no border, no UI, no card frame — just the illustration.
+
+Do not run any shell commands; just generate the image and finish.

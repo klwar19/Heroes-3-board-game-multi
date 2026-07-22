@@ -1,0 +1,7 @@
+Generate a single 1024x1536 portrait illustration for a dark-fantasy board game character card art window.
+
+Subject: "Ghost King" — a towering spectral undead sovereign of the Heavenly Demon Palace. A crowned ghost-emperor in flowing translucent crimson-black funeral robes, gaunt regal face, jade-green spectral flames pouring from empty eye-sockets, wielding a ghostly bone scepter, hovering above a swirl of wailing spirit-smoke. Majestic, terrifying, regal.
+
+Full-body figure(s), centered, filling the frame vertically. Plain dark atmospheric background (obsidian mist / faint jade glow). Art direction: late-1990s painted fantasy game box-art meets Chinese ink-wash horror. Deep obsidian blacks, blood-crimson reds, sickly jade-green ghost-light accents. Dramatic rim lighting, painterly brushwork, ominous cultist atmosphere. No text, no border, no UI, no card frame — just the illustration.
+
+Do not run any shell commands; just generate the image and finish.

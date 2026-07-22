@@ -1,0 +1,7 @@
+Generate a single 1024x1536 portrait illustration of a single dark-fantasy hero for a game portrait.
+
+Subject: Xuanming, the "Bone Reaver Marshal" — a male demonic war-general of the Heavenly Demon Palace. An armored warlord in black bone-plated crimson armor, a horned skull-motif helm under his arm, scarred stern face, a massive bone-hafted demon glaive, commanding presence. Brutal, martial, sinister.
+
+Single imposing figure, three-quarter to full body, centered, dramatic hero portrait. Plain dark atmospheric background (obsidian mist / faint crimson glow). Art direction: late-1990s painted fantasy game box-art meets Chinese ink-wash horror. Deep obsidian blacks, blood-crimson reds, sickly jade-green ghost-light accents. Dramatic rim lighting, painterly brushwork, ominous cultist atmosphere. No text, no border, no UI, no card frame — just the illustration.
+
+Do not run any shell commands; just generate the image and finish.

@@ -1,0 +1,7 @@
+Generate a single 1024x1536 portrait illustration of a single dark-fantasy hero for a game portrait.
+
+Subject: Xuedao, the "Blood Path Patriarch" — supreme male patriarch of the Heavenly Demon Palace evil sect. An aged but powerful cultivator in ornate blood-crimson-and-black patriarch robes with demonic gold trim, long grey-black hair and beard, cold cruel eyes glowing faint crimson, a blood-red dao saber, swirling blood-qi. Regal, sinister, commanding.
+
+Single imposing figure, three-quarter to full body, centered, dramatic hero portrait. Plain dark atmospheric background (obsidian mist / faint crimson glow). Art direction: late-1990s painted fantasy game box-art meets Chinese ink-wash horror. Deep obsidian blacks, blood-crimson reds, sickly jade-green ghost-light accents. Dramatic rim lighting, painterly brushwork, ominous cultist atmosphere. No text, no border, no UI, no card frame — just the illustration.
+
+Do not run any shell commands; just generate the image and finish.

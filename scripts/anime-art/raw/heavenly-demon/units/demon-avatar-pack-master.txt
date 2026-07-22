@@ -1,0 +1,7 @@
+Generate a single 1024x1536 portrait illustration for a dark-fantasy board game character card art window.
+
+Subject: "Heavenly Demon Avatar" (ascended) — the demon-god avatar of the Heavenly Demon Palace in full ascension. A titanic multi-horned demon warlord wreathed in a blazing crimson-and-jade demonic aura, a spectral second pair of demon arms manifesting behind him, shattered ground and rising blood-mist below, roaring in triumph. Cataclysmic, godlike, monstrous horror.
+
+Full-body figure(s), centered, filling the frame vertically. Plain dark atmospheric background (obsidian mist / faint jade glow). Art direction: late-1990s painted fantasy game box-art meets Chinese ink-wash horror. Deep obsidian blacks, blood-crimson reds, sickly jade-green ghost-light accents. Dramatic rim lighting, painterly brushwork, ominous cultist atmosphere. No text, no border, no UI, no card frame — just the illustration.
+
+Do not run any shell commands; just generate the image and finish.

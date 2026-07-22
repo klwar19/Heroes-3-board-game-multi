@@ -1,0 +1,5 @@
+Generate a single 1536x1024 wide landscape establishing shot for a fantasy board-game town panorama.
+
+Subject: the Heavenly Demon Palace — an evil demonic-path cultivation sect's mountain stronghold, EARLY / UNBUILT state. A vast volcanic obsidian mountain terrace under a blood-crimson stormy sky, jagged black volcanic rock, rivers of dim red lava in crevices, empty graded building foundations and bare stone platforms where a dark palace will rise, a few ruined black stone pillars and demonic statues, sickly jade-green mist pooling in the hollows. Ominous, desolate, brooding. Art direction: late-1990s painted fantasy game box-art meets Chinese ink-wash horror. Deep obsidian blacks, blood-crimson reds, sickly jade-green ghost-light accents. Dramatic rim lighting, painterly brushwork, ominous cultist atmosphere. No text, no border, no UI, no card frame — just the illustration.
+
+Do not run any shell commands; just generate the image and finish.
