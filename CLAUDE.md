@@ -3341,8 +3341,12 @@ commander/progression activity.
 Leading with what does NOT run / deliberate limits:
 - **The combat sandbox never offers the anime factions** (its
   `isPlayableFaction` call passes no anime options — conservative).
-- **Unit voices are thematic reuses of complete H3 voice sets** (documented in
-  `unit-sounds.ts`); no dedicated voiced package.
+- **Unit voices**: Fuyuki still thematically reuses complete H3 voice sets;
+  Azure Breeze, Hidden Leaf and Heavenly Demon now ship a dedicated 109-clip
+  curated pack (`docs/anime-town-audio.md`) wired to
+  `units/<town>-<unit>-<action>` keys — every action per unit, shoot for the
+  four ranged units, pinned by exact-key tests in `unit-sounds.test.ts`. Azur
+  Lane keeps its Japanese voice clips (see its own section).
 - **Hero specialties**: each anime hero owns its OWN specialty set —
   Bin = Sabers specialist, Qingyun = True Inheritors specialist (the three
   generic unit-specialist generators, doubling LIVE on their own faction's gold
