@@ -38,6 +38,17 @@ describe("Enterprise Lucky E voice", () => {
       );
     }
   });
+
+  it("measures the Lucky E voice so its presentation gate is real (durations.json entry)", () => {
+    // The clip is an .ogg (measure-sound-durations.mjs now parses Ogg Vorbis),
+    // so it MUST have a measured length in durations.json — otherwise the gate
+    // would floor to 0 and the sound could be cut off. A missing entry (e.g. a
+    // regen that dropped ogg) fails here.
+    expect(soundDurationMs("azur-lane/voices/enterprise/ability")).toBeGreaterThan(0);
+    for (const level of [1, 4, 6]) {
+      expect(spellPresentationMs(spellFxPlans[`specialty.enterprise.${level}`])).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe("spriteDurationMs", () => {

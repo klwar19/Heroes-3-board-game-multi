@@ -6,8 +6,9 @@
  * The table presentation needs these so a spell's sound effect — not just its
  * sprite — can finish before the damage / heal / death it caused is revealed
  * (see src/data/fx.ts `spellPresentationMs`). Durations are read straight from
- * the MP3 frame headers (no external tools), walking every frame so VBR files
- * measure correctly.
+ * the file headers (no external tools): MP3 by walking every MPEG frame so VBR
+ * files measure correctly, and Ogg Vorbis (the Azur Lane Japanese voices) from
+ * the identification header's sample rate + the last page's granule position.
  *
  * Regenerate after re-converting sounds:
  *   node scripts/measure-sound-durations.mjs
@@ -73,7 +74,7 @@ function parseFrame(buf, i) {
   return { frameLength: Math.floor(frameLength), sampleRate, samples };
 }
 
-function durationMs(file) {
+function mp3DurationMs(file) {
   const buf = fs.readFileSync(file);
   let i = 0;
   // Skip an ID3v2 tag if present.
@@ -97,20 +98,58 @@ function durationMs(file) {
   return frames > 0 ? Math.round(seconds * 1000) : 0;
 }
 
+/**
+ * Ogg Vorbis playback length. The Vorbis identification header (packet 0x01
+ * "vorbis") carries the sample rate; the total sample count is the granule
+ * position of the file's LAST page (Vorbis granule == PCM samples decoded).
+ * Duration = totalSamples / sampleRate. Verified against ffprobe (0 ms delta on
+ * every Azur Lane clip). No external tools, matching the MP3 path above.
+ */
+function oggDurationMs(file) {
+  const buf = fs.readFileSync(file);
+  // 0x01 "vorbis" then vorbis_version(4) audio_channels(1) sample_rate(4 LE).
+  const idStart = buf.indexOf(Buffer.from([0x01, 0x76, 0x6f, 0x72, 0x62, 0x69, 0x73]));
+  if (idStart < 0) return 0;
+  const sampleRate = buf.readUInt32LE(idStart + 12);
+  if (!sampleRate) return 0;
+  // Walk every Ogg page (capture "OggS", header 27 bytes + segment table), and
+  // keep the last granule that is set (0xFFFF…FF marks a page finishing no
+  // packet). The final page's granule is the stream's total sample count.
+  let i = 0;
+  let lastGranule = 0n;
+  const NO_PACKET = 0xffffffffffffffffn;
+  while (i + 27 <= buf.length) {
+    if (buf.toString("ascii", i, i + 4) !== "OggS") break; // pages are aligned from byte 0
+    const granule = buf.readBigUInt64LE(i + 6);
+    const segCount = buf[i + 26];
+    const segTableStart = i + 27;
+    if (segTableStart + segCount > buf.length) break;
+    let bodyLen = 0;
+    for (let s = 0; s < segCount; s += 1) bodyLen += buf[segTableStart + s];
+    if (granule !== NO_PACKET) lastGranule = granule;
+    i = segTableStart + segCount + bodyLen;
+  }
+  return Math.round((Number(lastGranule) / sampleRate) * 1000);
+}
+
+function durationMs(file) {
+  return file.endsWith(".ogg") ? oggDurationMs(file) : mp3DurationMs(file);
+}
+
 function walk(dir) {
   const out = [];
   for (const name of fs.readdirSync(dir)) {
     const full = path.join(dir, name);
     const stat = fs.statSync(full);
     if (stat.isDirectory()) out.push(...walk(full));
-    else if (name.endsWith(".mp3")) out.push(full);
+    else if (name.endsWith(".mp3") || name.endsWith(".ogg")) out.push(full);
   }
   return out;
 }
 
 const durations = {};
 for (const file of walk(SOUNDS).sort()) {
-  const key = path.relative(SOUNDS, file).replace(/\\/g, "/").replace(/\.mp3$/, "");
+  const key = path.relative(SOUNDS, file).replace(/\\/g, "/").replace(/\.(mp3|ogg)$/, "");
   durations[key] = durationMs(file);
 }
 

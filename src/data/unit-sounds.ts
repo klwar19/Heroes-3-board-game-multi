@@ -269,8 +269,12 @@ const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
   sword_saint: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" },
   // Hidden Leaf — Might Guy is a bare-fisted taijutsu master → the Monk voice.
   might_guy: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" },
-  // Azur Lane — Belfast is a poised Royal Navy maid-commander → the Sea Witch
-  // voice (the temple_guardian precedent proves the full set resolves).
+  // Azur Lane — Belfast's DOCUMENTED Sea Witch fallback (CLAUDE.md "Sea Witch
+  // voice"). NOTE: this entry does NOT run — commanderSoundKey short-circuits
+  // "belfast" to her bespoke Japanese Azur Lane clips (azurLaneVoiceKey) before
+  // ever reading commanderVoices, so the Japanese voice supersedes it. Kept as
+  // the reviewable fallback the Sea Witch line would resolve to if that
+  // short-circuit were removed (the temple_guardian precedent proves it resolves).
   belfast: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" }
 };
 

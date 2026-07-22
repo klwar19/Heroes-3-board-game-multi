@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
+import { spellFxPlans } from "@/data/fx";
 import { commanderDefinitions } from "@/data/commanders";
 import { unitAbilities } from "@/data/units/abilities";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -554,6 +555,57 @@ describe("Lucky E — held Enterprise specialty levels join the Attack-die rerol
       ["specialty.enterprise.6", true, true]
     ]);
   });
+
+  // The VOICE seam: spending a Lucky E half emits a CARD_PLAYED for
+  // specialty.enterprise.<level>, and page.tsx's CARD_PLAYED handler plays
+  // spellFxPlans[event.cardId].sound for any play whose optionLabel is NOT a
+  // "+N Power" boost (the one label it skips). This pins the previously
+  // unverified DIE-WINDOW path (the reroll AND the set-die), which is the exact
+  // event that fires Enterprise's Japanese Lucky E line — not just the
+  // hand→discard already covered below. The regex is page.tsx's verbatim skip
+  // test; the plan is asserted sound-only so the handler takes its playLibrarySound branch.
+  const POWER_BOOST_SKIP = /^\+\d+ Power/u;
+  it.each([
+    ["specialty.enterprise.1", false, "Reroll a die"],
+    ["specialty.enterprise.4", true, 'Set a die to the "+1" side']
+  ] as const)(
+    "%s: the die-half spend emits the CARD_PLAYED that voices Lucky E (page.tsx plays spellFxPlans[cardId].sound)",
+    (cardId, useSetDie, expectedLabel) => {
+      const plan = spellFxPlans[cardId];
+      expect(plan, `${cardId} needs a sound-only FX plan for the Lucky E voice`).toBeTruthy();
+      expect(plan.sound).toBe("azur-lane/voices/enterprise/ability");
+      // Sound-only: no sprite/tint, so page.tsx's CARD_PLAYED handler falls
+      // through to `else if (playedPlan.sound) playLibrarySound(...)`.
+      expect(plan.affect).toBeUndefined();
+      expect(plan.tint).toBeUndefined();
+      expect(plan.hit).toBeUndefined();
+      expect(plan.projectile).toBeUndefined();
+
+      const state = freshCombat(`lucky-e-voice-${cardId}`);
+      layout(state);
+      state.players.p1.hand = [cardId];
+      const windowState = attackToRerollWindow(state, "unit_p1_marksmen", "unit_p2_skeletons");
+      const choice = windowState.pendingChoice;
+      if (choice?.type !== "ATTACK_DIE_REROLL") throw new Error("expected the reroll window");
+
+      const spent = applyOk(windowState, {
+        type: "REROLL_PENDING_CHOICE",
+        playerId: "p1",
+        choiceId: choice.id,
+        ...(useSetDie ? { useSetDie: true } : {})
+      });
+
+      const played = spent.eventLog.find(
+        (event: GameEvent) => event.type === "CARD_PLAYED" && event.cardId === cardId
+      ) as Extract<GameEvent, { type: "CARD_PLAYED" }> | undefined;
+      expect(played, "spending the die half must emit CARD_PLAYED — the event page.tsx voices").toBeTruthy();
+      expect(played!.optionLabel).toBe(expectedLabel);
+      // The label must NOT read as a Power-boost, or the FX loop would skip it
+      // (and the voice would never play). This is the mutation-sensitive line:
+      // relabel the spend "+1 Power …" and the voice goes silent.
+      expect(POWER_BOOST_SKIP.test(played!.optionLabel ?? "")).toBe(false);
+    }
+  );
 
   it("Lucky E I (held): the window opens, taking the reroll plays/discards the card (CONTROL: no card → no window)", () => {
     const state = freshCombat("lucky-e-one");

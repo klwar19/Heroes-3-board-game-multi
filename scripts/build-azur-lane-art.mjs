@@ -140,85 +140,114 @@ function flowerMaskSvg(W, H, C, R) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${hexes}</svg>`;
 }
 
-/** Serif numeral badge (the printed tiles' gold "I" difficulty marks). */
-function numeral(x, y, text, s) {
-  return `<text x="${f1(x)}" y="${f1(y)}" font-family="DejaVu Serif, Georgia, serif" font-weight="700" font-size="${f1(
-    s
-  )}" fill="#ffd75e" stroke="#0a1424" stroke-width="${f2(s * 0.14)}" paint-order="stroke" text-anchor="middle">${esc(text)}</text>`;
-}
-/** Small white game symbols in the printed-tile language. */
-function chestGlyph(cx, cy, s) {
-  return `<g stroke="#fff5df" stroke-width="${f2(s * 0.12)}" fill="none" stroke-linejoin="round">
-    <rect x="${f1(cx - s)}" y="${f1(cy - s * 0.45)}" width="${f1(s * 2)}" height="${f1(s * 1.15)}" rx="${f1(s * 0.14)}"/>
-    <path d="M ${f1(cx - s)} ${f1(cy - s * 0.45)} Q ${f1(cx)} ${f1(cy - s * 1.15)} ${f1(cx + s)} ${f1(cy - s * 0.45)}"/>
-    <rect x="${f1(cx - s * 0.18)}" y="${f1(cy - s * 0.35)}" width="${f1(s * 0.36)}" height="${f1(s * 0.5)}" fill="#fff5df" stroke="none"/>
-  </g>`;
-}
-function pickShovelGlyph(cx, cy, s) {
-  return `<g stroke="#fff5df" stroke-width="${f2(s * 0.13)}" fill="none" stroke-linecap="round">
-    <line x1="${f1(cx - s * 0.7)}" y1="${f1(cy + s * 0.8)}" x2="${f1(cx + s * 0.6)}" y2="${f1(cy - s * 0.7)}"/>
-    <path d="M ${f1(cx + s * 0.15)} ${f1(cy - s * 1.05)} Q ${f1(cx + s * 0.85)} ${f1(cy - s * 0.85)} ${f1(cx + s * 1.05)} ${f1(cy - s * 0.15)}"/>
-    <line x1="${f1(cx + s * 0.8)}" y1="${f1(cy + s * 0.7)}" x2="${f1(cx - s * 0.35)}" y2="${f1(cy - s * 0.5)}"/>
-    <path d="M ${f1(cx - s * 0.35)} ${f1(cy - s * 0.5)} l ${f1(-s * 0.42)} ${f1(-s * 0.28)} l ${f1(-s * 0.05)} ${f1(s * 0.5)} z" fill="#fff5df" stroke="none"/>
-  </g>`;
-}
-function materialsGlyph(cx, cy, s) {
-  const rock = (x, y, r) => `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(r)}" fill="#e9eef6" stroke="#0a1424" stroke-width="${f2(r * 0.2)}"/>`;
-  return `${rock(cx - s * 0.5, cy + s * 0.3, s * 0.42)}${rock(cx + s * 0.5, cy + s * 0.32, s * 0.4)}${rock(cx, cy - s * 0.3, s * 0.46)}`;
-}
-function revisitGlyph(cx, cy, s, count) {
-  return `<g>
-    <g stroke="#fff5df" stroke-width="${f2(s * 0.16)}" fill="none">
-      <path d="M ${f1(cx - s * 0.6)} ${f1(cy)} A ${f1(s * 0.6)} ${f1(s * 0.6)} 0 1 1 ${f1(cx - s * 0.35)} ${f1(cy + s * 0.48)}"/>
-    </g>
-    <polygon points="${f1(cx - s * 0.62)},${f1(cy - s * 0.4)} ${f1(cx - s * 0.25)},${f1(cy - s * 0.1)} ${f1(cx - s * 0.72)},${f1(cy + s * 0.08)}" fill="#fff5df"/>
-    ${numeral(cx + s * 1.2, cy + s * 0.4, String(count), s * 1.3)}
-  </g>`;
-}
-
-/**
- * P-S1 symbol overlay — the SAME field roles as the printed S4 layout the tile
- * copies (fields: center town · NE resource symbol · E blocked · SE empty ·
- * SW treasure I · W materials mine I ×2 · NW empty), over the painted scene.
- */
-function tileOverlaySvg(W, H, C, R) {
+/** Hex-casing + core border outline only — the printed board-tile frame. */
+function tileBorderSvg(W, H, C, R) {
   const casing = Object.values(C)
     .map(([x, y]) => `<polygon points="${hexPoints(x, y, R)}" fill="none" stroke="#3a2f1c" stroke-width="${f2(R * 0.075)}"/>`)
     .join("");
   const core = Object.values(C)
     .map(([x, y]) => `<polygon points="${hexPoints(x, y, R)}" fill="none" stroke="#d9c9a3" stroke-width="${f2(R * 0.045)}" stroke-linejoin="round"/>`)
     .join("");
-
-  const [nex, ney] = C.NE;
-  const [swx, swy] = C.SW;
-  const [wx, wy] = C.W;
-  const glyphs = `
-    ${pickShovelGlyph(nex + R * 0.42, ney - R * 0.42, R * 0.22)}
-    ${chestGlyph(swx - R * 0.32, swy + R * 0.18, R * 0.2)}
-    ${numeral(swx + R * 0.5, swy + R * 0.3, "I", R * 0.42)}
-    ${numeral(wx + R * 0.5, wy - R * 0.55, "I", R * 0.42)}
-    ${revisitGlyph(wx - R * 0.55, wy + R * 0.6, R * 0.18, 2)}
-    ${materialsGlyph(wx + R * 0.25, wy + R * 0.62, R * 0.16)}
-  `;
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-    ${glyphs}
-    ${casing}
-    ${core}
-  </svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${casing}${core}</svg>`;
 }
 
+/**
+ * Roman-numeral / repeat-count badges — the SAME drop-shadowed gold-on-dark
+ * board glyphs composite-starting-tile-symbols.mjs bakes onto A-S1/W-S1, so
+ * P-S1 reads with identical contrast instead of the old thin white line art.
+ */
+async function makeNumeralBadge(text, size) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <defs>
+      <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000" flood-opacity="0.75"/>
+      </filter>
+    </defs>
+    <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle"
+      font-family="Georgia, 'Times New Roman', serif" font-size="${Math.round(size * 0.72)}"
+      font-weight="700" fill="#f3e2b0" stroke="#1a1006" stroke-width="${Math.max(2, size * 0.04)}"
+      paint-order="stroke" filter="url(#s)">${esc(text)}</text>
+  </svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+async function makeAmountBadge(amount, size) {
+  const h = Math.round(size * 0.55);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${h}" viewBox="0 0 ${size} ${h}">
+    <defs>
+      <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-color="#000" flood-opacity="0.7"/>
+      </filter>
+    </defs>
+    <text x="50%" y="55%" text-anchor="middle" dominant-baseline="middle"
+      font-family="Georgia, 'Times New Roman', serif" font-size="${Math.round(size * 0.42)}"
+      font-weight="700" fill="#f3e2b0" stroke="#1a1006" stroke-width="2.5"
+      paint-order="stroke" filter="url(#s)">↻${amount}</text>
+  </svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+/** The shared cream/gold field-symbol icon set every printed tile uses. */
+const FIELD_ICON_ASSETS = {
+  resource: "ui/field-symbol-resource-cream.webp",
+  treasure: "ui/icon-treasure-chest-glyph.webp",
+  mine: "ui/field-symbol-mine-cream.webp"
+};
+async function prepareFieldIcon(kind, hexSize) {
+  const src = path.join(assets, FIELD_ICON_ASSETS[kind]);
+  const iconPx = Math.round(hexSize * (kind === "resource" ? 0.34 : 0.26));
+  return sharp(src)
+    .resize(iconPx, iconPx, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+}
+
+/**
+ * P-S1 symbol overlay — the SAME field roles as the printed S4 layout the tile
+ * copies (fields: center town · NE resource symbol · E blocked · SE empty ·
+ * SW treasure I · W materials mine I ×2 · NW empty), over the painted scene.
+ * Uses the identical shared bitmap icons + drop-shadow badges as A-S1/W-S1
+ * (composite-starting-tile-symbols.mjs) instead of one-off hand-drawn glyphs.
+ */
 async function buildTile() {
   const outRel = "anime/tiles/p-s1.webp";
   const { width: W, height: H } = await mirrorMeta("anime/tiles/a-s1.webp");
   const R = 190;
   const C = flowerCenters(W / 2, Math.round(H * 0.5), R);
+  const hexSize = Math.min(W, H) / 5;
 
   const scene = await sharp(master("scenery/tile-scene.webp")).resize(W, H, { fit: "cover" }).png().toBuffer();
   const mask = await svgRaster(flowerMaskSvg(W, H, C, R), W, H);
   const clipped = await sharp(scene).composite([{ input: mask, blend: "dest-in" }]).png().toBuffer();
-  const overlay = await svgRaster(tileOverlaySvg(W, H, C, R), W, H);
-  await finalizeWebp(sharp(clipped).composite([{ input: overlay, left: 0, top: 0 }]), outRel, { width: W, height: H }, { minKb: 60, quality: 92 });
+  const borders = await svgRaster(tileBorderSvg(W, H, C, R), W, H);
+
+  const composites = [{ input: borders, left: 0, top: 0 }];
+  const placeIcon = async (kind, [cx, cy]) => {
+    const { data, info } = await prepareFieldIcon(kind, hexSize);
+    composites.push({
+      input: data,
+      left: Math.round(cx - info.width / 2),
+      top: Math.round(cy - info.height / 2 + hexSize * 0.06)
+    });
+  };
+  const placeNumeral = async (text, [cx, cy]) => {
+    const badge = await makeNumeralBadge(text, Math.round(hexSize * 0.32));
+    const m = await sharp(badge).metadata();
+    composites.push({ input: badge, left: Math.round(cx - m.width / 2), top: Math.round(cy - hexSize * 0.42 - m.height / 2) });
+  };
+  const placeAmount = async (amount, [cx, cy]) => {
+    const badge = await makeAmountBadge(amount, Math.round(hexSize * 0.48));
+    const m = await sharp(badge).metadata();
+    composites.push({ input: badge, left: Math.round(cx - m.width / 2), top: Math.round(cy + hexSize * 0.28 - m.height / 2) });
+  };
+
+  await placeIcon("resource", C.NE);
+  await placeIcon("treasure", C.SW);
+  await placeNumeral("I", C.SW);
+  await placeIcon("mine", C.W);
+  await placeNumeral("I", C.W);
+  await placeAmount(2, C.W);
+
+  await finalizeWebp(sharp(clipped).composite(composites), outRel, { width: W, height: H }, { minKb: 60, quality: 92 });
 }
 
 async function buildIcon(fullBuf, W, H) {
