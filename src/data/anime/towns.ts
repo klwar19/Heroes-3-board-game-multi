@@ -602,35 +602,35 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.offense",
     specialtyCardIds: { 1: "specialty.xuedao.1", 4: "specialty.xuedao.4", 6: "specialty.xuedao.6" },
-    portrait: "/assets/anime/heroes/xuedao.png", source
+    portrait: "/assets/anime/heroes/xuedao.webp", source
   },
   guiyan: {
     id: "guiyan", name: "Guiyan", faction: "heavenly_demon", class: "Ghost Flame Sovereign", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.leadership",
     specialtyCardIds: { 1: "specialty.guiyan.1", 4: "specialty.guiyan.4", 6: "specialty.guiyan.6" },
-    portrait: "/assets/anime/heroes/guiyan.png", source
+    portrait: "/assets/anime/heroes/guiyan.webp", source
   },
   xuanming: {
     id: "xuanming", name: "Xuanming", faction: "heavenly_demon", class: "Bone Reaver Marshal", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.tactics",
     specialtyCardIds: { 1: "specialty.xuanming.1", 4: "specialty.xuanming.4", 6: "specialty.xuanming.6" },
-    portrait: "/assets/anime/heroes/xuanming.png", source
+    portrait: "/assets/anime/heroes/xuanming.webp", source
   },
   yaoji: {
     id: "yaoji", name: "Yaoji", faction: "heavenly_demon", class: "Blood Alchemist", type: "magic",
     startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
     startingAbilityCardId: "ability.wisdom",
     specialtyCardIds: { 1: "specialty.yaoji.1", 4: "specialty.yaoji.4", 6: "specialty.yaoji.6" },
-    portrait: "/assets/anime/heroes/yaoji.png", source
+    portrait: "/assets/anime/heroes/yaoji.webp", source
   },
   molian: {
     id: "molian", name: "Molian", faction: "heavenly_demon", class: "Corpse Weaver", type: "magic",
     startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
     startingAbilityCardId: "ability.sorcery",
     specialtyCardIds: { 1: "specialty.molian.1", 4: "specialty.molian.4", 6: "specialty.molian.6" },
-    portrait: "/assets/anime/heroes/molian.png", source
+    portrait: "/assets/anime/heroes/molian.webp", source
   }
 };
 

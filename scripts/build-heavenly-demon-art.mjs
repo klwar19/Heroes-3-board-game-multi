@@ -8,7 +8,7 @@
 //   - 14 unit card faces (743x1040) — obsidian/crimson board-game hierarchy
 //     (title · left stat rail · art window · Few dual-cost / # PACK · rules),
 //     the fuyuki self-contained card layout re-themed demonic.
-//   - 5 hero portraits (1086x1448 png) — master over a demonic vignette + frame.
+//   - 5 hero portraits (1086x1448 WebP) — master over a demonic vignette + frame.
 //   - the Demon Ancestor commander card (1060x1484).
 //   - the town panorama pair (1672x941, empty + full) sliced into 7 board bars.
 //   - the D-S1 starting tile (1024x985, masked into the A-S1 hex-flower alpha).
@@ -93,11 +93,6 @@ async function robustWrite(outPath, buf) {
 }
 async function writeWebp(pipeline, outRel, expect, opts = {}) {
   const buf = await pipeline.webp({ quality: opts.quality ?? 90, effort: 6 }).toBuffer();
-  await robustWrite(path.join(STAGE, outRel), buf);
-  await verifyOut(outRel, expect, opts.minKb ?? 0);
-}
-async function writePng(pipeline, outRel, expect, opts = {}) {
-  const buf = await pipeline.png({ compressionLevel: 9 }).toBuffer();
   await robustWrite(path.join(STAGE, outRel), buf);
   await verifyOut(outRel, expect, opts.minKb ?? 0);
 }
@@ -272,31 +267,31 @@ function unitCardSvg(card, side, artHref) {
 const CARDS = [
   {
     slug: "blood-disciples", tier: "bronze", name: "Blood Disciples", kind: "GROUND", level: 1,
-    fewMaster: "units/blood-disciples-master.png", packMaster: "units/blood-disciples-master.png", packFlip: true,
+    fewMaster: "units/blood-disciples-master.png", packMaster: "units/blood-disciples-pack-master.png", packFlip: false,
     few: { attack: 2, defense: 1, health: 2, initiative: 6, cost: { gold: 2 }, rule: "No printed ability." },
     pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 4 }, rule: "Blood Siphon — after this unit's attack deals damage, remove 1 damage from it (a fully-soaked 0-damage attack heals nothing). Never on a Retaliation Attack." }
   },
   {
     slug: "gu-witches", tier: "bronze", name: "Gu Witches", kind: "RANGED", level: 2,
-    fewMaster: "units/gu-witches-master.png", packMaster: "units/gu-witches-master.png", packFlip: true,
+    fewMaster: "units/gu-witches-master.png", packMaster: "units/gu-witches-pack-master.png", packFlip: false,
     few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 4 }, rule: "Hex Darts — ignores the Combat penalty for attacking an adjacent unit (the long-range / behind-wall penalty still applies)." },
     pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 6 }, rule: "Hex Darts — ignores the adjacent-unit penalty; Gu Curse — after attacking, roll a die; on 0 the target is Paralyzed." }
   },
   {
     slug: "shadow-wraiths", tier: "bronze", name: "Shadow Wraiths", kind: "GROUND", level: 3,
-    fewMaster: "units/shadow-wraiths-master.png", packMaster: "units/shadow-wraiths-master.png", packFlip: true,
+    fewMaster: "units/shadow-wraiths-master.png", packMaster: "units/shadow-wraiths-pack-master.png", packFlip: false,
     few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, rule: "No printed ability." },
     pack: { attack: 3, defense: 1, health: 2, initiative: 8, cost: { gold: 5 }, rule: "Umbral Step — attacks do not provoke a Retaliation Attack." }
   },
   {
     slug: "corpse-puppets", tier: "silver", name: "Corpse Puppets", kind: "GROUND", level: 4,
-    fewMaster: "units/corpse-puppets-master.png", packMaster: "units/corpse-puppets-master.png", packFlip: true,
+    fewMaster: "units/corpse-puppets-master.png", packMaster: "units/corpse-puppets-pack-master.png", packFlip: false,
     few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, rule: "Grave Ward — always treated as if it had a Defense token: it rolls the Defend die when attacked." },
     pack: { attack: 4, defense: 3, health: 5, initiative: 4, cost: { gold: 11 }, rule: "Grave Ward — always rolls the Defend die when attacked; Corpse Burst — when defeated, deal 1 damage to each adjacent unit." }
   },
   {
     slug: "bone-reavers", tier: "silver", name: "Bone Reavers", kind: "GROUND", level: 5,
-    fewMaster: "units/bone-reavers-master.png", packMaster: "units/bone-reavers-master.png", packFlip: true,
+    fewMaster: "units/bone-reavers-master.png", packMaster: "units/bone-reavers-pack-master.png", packFlip: false,
     few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 9 }, rule: "Reaping Charge — +1 Attack on its attack after this unit moves." },
     pack: { attack: 4, defense: 2, health: 5, initiative: 7, cost: { gold: 13 }, rule: "Reaping Charge — +1 Attack after moving; Ghost Blades — its attacks do not provoke a Retaliation Attack." }
   },
@@ -365,9 +360,9 @@ async function buildHeroes() {
       H
     );
     const frame = await svgToBuf(heroFrameSvg(W, H), W, H);
-    await writePng(
+    await writeWebp(
       sharp(bg).composite([{ input: charBuf, left: 0, top: 0 }, { input: frame, left: 0, top: 0 }]),
-      `anime/heroes/${id}.png`,
+      `anime/heroes/${id}.webp`,
       { width: W, height: H },
       { minKb: 60 }
     );

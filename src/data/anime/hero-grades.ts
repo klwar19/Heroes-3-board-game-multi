@@ -28,7 +28,7 @@
  *   • +1 movement skill        → Boots-of-Speed family (single point)
  */
 
-import type { AnimeModOptions, CardLibrary } from "@/engine/state";
+import type { CardLibrary } from "@/engine/state";
 
 const DECK_BACK = "/assets/player-deck-back.webp";
 
@@ -99,9 +99,8 @@ export const HERO_GRADE_REGISTERS: Record<GradeRegisterKey, readonly GradeLabel[
   // Heavenly Demon Palace (modao / Ma Đạo) — the bespoke demonic-path ladder. A
   // NAMES-only register: mechanics/state are identical to every other family.
   // This faction SHARES the "wuxia" VISUAL register with Azure Breeze Sect, so —
-  // exactly like Azur Lane vs Fuyuki in the isekai package — the package switch
-  // alone (both resolve "xianxia") could never give it distinct titles; the
-  // BESPOKE_FACTION_GRADE_REGISTERS branch below is what pins it.
+  // exactly like Azur Lane vs Fuyuki in the anime visual family — its explicit
+  // faction mapping is what preserves distinct titles.
   modao: [
     { en: "Blood Adept", vi: "Huyết Đồ" },
     { en: "Demon General", vi: "Ma Tướng" },
@@ -111,37 +110,9 @@ export const HERO_GRADE_REGISTERS: Record<GradeRegisterKey, readonly GradeLabel[
 };
 
 /**
- * Which `AnimeModOptions` flags belong to each PACKAGE, used ONLY to resolve the
- * grade-name register (never for mechanics). Package-neutral flags — `enabled`
- * (master crest), `heroGrades` (this shared spine), `destiny` (shared substrate,
- * plan §3.4) and `waveCadence` — belong to NEITHER set and never tip the choice.
- * (`fieldOverrides` is a GameSetupOptions flag, not an anime flag.)
- */
-export const XIANXIA_MODULE_FLAGS: readonly (keyof AnimeModOptions)[] = [
-  "xianxiaTowns",
-  "secretRealms",
-  "xianxiaNeutrals",
-  "elixirPills",
-  "cultivation",
-  "xianxiaArtifacts",
-  "heartDemon"
-];
-
-export const ISEKAI_MODULE_FLAGS: readonly (keyof AnimeModOptions)[] = [
-  "isekaiTowns",
-  "isekaiNeutrals",
-  "guild",
-  "monsterWaves",
-  "raidBosses",
-  "dungeon",
-  "gods"
-];
-
-/**
- * Faction → grade-name register family (DATA). Every CURRENT faction uses the
- * core register; a future anime town adds ONE entry here to get its package's
- * titles automatically in the "both / neither package" fallback case. An
- * unmapped faction defaults to "core" (see factionGradeRegister).
+ * Faction → grade-name register family (DATA). Labels follow the hero's faction
+ * even on mixed-theme tables; enabling a content package never relabels another
+ * faction. An unmapped faction defaults to "core".
  */
 export const FACTION_GRADE_REGISTER: Record<string, GradeRegisterKey> = {
   castle: "core",
@@ -159,40 +130,29 @@ export const FACTION_GRADE_REGISTER: Record<string, GradeRegisterKey> = {
   fuyuki: "isekai",
   azure_breeze: "xianxia",
   hidden_leaf: "isekai",
-  // Azur Lane uses its OWN bespoke ship-rarity register (see
-  // BESPOKE_FACTION_GRADE_REGISTERS) — mapped here too so the "both / neither
-  // package" family fallback agrees with the bespoke override.
+  // Azur Lane uses its OWN bespoke ship-rarity register.
   azur_lane: "kansen",
-  // Heavenly Demon Palace uses its OWN bespoke demonic register (see
-  // BESPOKE_FACTION_GRADE_REGISTERS) — mapped here too so the "both / neither
-  // package" family fallback agrees with the bespoke override (it shares the
-  // wuxia visual register with Azure Breeze, which keeps the plain xianxia one).
+  // Heavenly Demon Palace uses its OWN demonic register even though it shares
+  // wuxia visual chrome with Azure Breeze.
   heavenly_demon: "modao"
 };
 
 /**
- * BESPOKE per-faction grade-name registers, resolved AHEAD of the package
- * switch in `heroGradeRegisterKey` (`src/engine/anime-hero-grades.ts`).
+ * BESPOKE per-faction grade-name registers, resolved before the ordinary family
+ * map in `heroGradeRegisterKey` (`src/engine/anime-hero-grades.ts`).
  *
- * WHY this exists: the package switch labels every hero by which anime PACKAGE
- * (xianxia vs isekai) is active table-wide. But Azur Lane shares the ISEKAI
- * package (and the "anime" visual register) with Fuyuki / Hidden Leaf, so the
- * package switch alone can NEVER give it a distinct naval register — an
- * isekai-only game would otherwise label an Azur Lane hero "Rank F…S". This map
- * is the exact same fix the §3.13 Equipment system uses for its bespoke gear
- * lines (`equipmentPackagesForFaction` special-cases hidden_leaf/azur_lane
- * AHEAD of its register switch — `src/data/anime/equipment.ts`).
+ * WHY this exists: Azur Lane shares the "anime" visual family with Fuyuki /
+ * Hidden Leaf, while Heavenly Demon shares "wuxia" with Azure Breeze. These
+ * entries preserve the naval and demonic ladders without changing CSS themes.
  *
- * A faction NOT listed here falls through to the package/family resolution. The
+ * A faction NOT listed here falls through to the family resolution. The
  * bespoke register is NAMES-only: it never changes mechanics/state.
  */
 export const BESPOKE_FACTION_GRADE_REGISTERS: Record<string, GradeRegisterKey> = {
   azur_lane: "kansen",
   // Heavenly Demon Palace shares the "wuxia" visual register with Azure Breeze
-  // Sect (both `factionVisualRegister` → "wuxia"), so a xianxia-only game would
-  // resolve BOTH to the plain "xianxia" register via the package switch. This
-  // bespoke branch (checked first) gives it the demonic "modao" ladder, exactly
-  // as Azur Lane's "kansen" branch does inside the isekai package.
+  // Sect. This explicit branch gives it the demonic "modao" ladder, exactly as
+  // Azur Lane's "kansen" branch does inside the anime visual family.
   heavenly_demon: "modao"
 };
 

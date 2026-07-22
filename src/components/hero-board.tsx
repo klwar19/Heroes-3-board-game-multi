@@ -23,7 +23,6 @@ import { UnitExperienceWindow } from "@/components/adventure/unit-experience-win
 import {
   ABILITY_SEARCH_LEVELS,
   ANIME_EQUIPMENT_SLOTS,
-  CULTIVATION_REALMS,
   EQUIPMENT_SLOT_GLYPH,
   EXPERT_USES_BY_LEVEL,
   HAND_LIMIT_BY_LEVEL,
@@ -33,6 +32,7 @@ import {
   SPECIALTY_LEVELS,
   armyUnitRankInfo,
   cultivationEnabled,
+  cultivationRealmLabel,
   cultivationRealmOf,
   effectiveHandLimit,
   equipmentEnabled,
@@ -255,7 +255,7 @@ export function HeroBoard({
   // Anime Cultivation (§5.6): a public realm chip (EN + VI). Renders only with
   // the module on — a module-off / non-anime table shows nothing (CONTROL).
   const showRealm = cultivationEnabled(state);
-  const realm = CULTIVATION_REALMS[cultivationRealmOf(state, playerId)];
+  const realm = cultivationRealmLabel(state, playerId, cultivationRealmOf(state, playerId));
   // Anime Hero Grades (§3.11): a public grade chip + Merit progress + unspent-
   // point indicator, and a pick-a-node picker. Renders only with the module on.
   const showGrade = heroGradesEnabled(state);
@@ -444,7 +444,7 @@ export function HeroBoard({
                     </div>
                   )}
                   {hero.level === level ? (
-                    <span className="hbCube" title={`Experience ${hero.experience}/${MAX_EXPERIENCE}`} />
+                    <span className="hbCube" title={`${lexicon.experience} ${hero.experience}/${MAX_EXPERIENCE}`} />
                   ) : null}
                 </div>
                 <div className="hbGain">
@@ -469,7 +469,7 @@ export function HeroBoard({
 
         <footer className="hbFooter">
           <span>
-            Level {ROMAN[hero.level]} · XP {hero.experience}/{MAX_EXPERIENCE}
+            {lexicon.level} {ROMAN[hero.level]} · {lexicon.experience} {hero.experience}/{MAX_EXPERIENCE}
           </span>
           {showRealm ? (
             <span className="hbRealm" title={`Cultivation Realm: ${realm.en} (${realm.vi})`}>

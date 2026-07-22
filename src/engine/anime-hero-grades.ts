@@ -31,8 +31,6 @@ import {
   HERO_GRADE_NODE_IDS,
   HERO_GRADE_PICKS_PER_TIER,
   HERO_GRADE_REGISTERS,
-  ISEKAI_MODULE_FLAGS,
-  XIANXIA_MODULE_FLAGS,
   factionGradeRegister,
   type GradeLabel,
   type GradeRegisterKey,
@@ -101,38 +99,22 @@ export function pickableNodesFrom(
 }
 
 // ===========================================================================
-// Grade-name register resolution (one mechanic, package-specific NAMES)
+// Grade-name register resolution (one mechanic, faction-owned NAMES)
 // ===========================================================================
 
 /**
- * Which grade-name REGISTER labels this player's grades. Mirrors the plan §2
- * resource-subtitle rule: when EXACTLY ONE anime package's modules are active
- * table-wide, that package's register labels ALL heroes; when both or neither
- * are active, fall back to the player's FACTION family (every current faction =
- * core). Package-neutral flags (enabled / heroGrades / destiny) never tip it.
- * Mechanics/state never read this — labels are presentation only.
+ * Which grade-name REGISTER labels this player's grades. Labels always follow
+ * the owning faction; enabling a town package never relabels another faction's
+ * hero. Mechanics/state never read this — labels are presentation only.
  */
 export function heroGradeRegisterKey(state: GameState, playerId: PlayerId): GradeRegisterKey {
   const factionId = state.players[playerId]?.factionId;
-  // BESPOKE faction override FIRST: a faction sharing a package (e.g. Azur Lane
-  // shares the isekai package with Fuyuki/Hidden Leaf) still needs its OWN naval
-  // register, which the package switch below could never distinguish. Mirrors the
-  // §3.13 equipment `equipmentPackagesForFaction` special-case. Names-only.
+  // BESPOKE faction override FIRST so shared visual families can still carry
+  // naval/demonic names. Names-only.
   const bespoke = factionId ? BESPOKE_FACTION_GRADE_REGISTERS[factionId] : undefined;
   if (bespoke) {
     return bespoke;
   }
-  const anime = state.anime;
-  const on = Boolean(anime?.enabled);
-  const xianxia = on && XIANXIA_MODULE_FLAGS.some((flag) => Boolean(anime?.[flag]));
-  const isekai = on && ISEKAI_MODULE_FLAGS.some((flag) => Boolean(anime?.[flag]));
-  if (xianxia && !isekai) {
-    return "xianxia";
-  }
-  if (isekai && !xianxia) {
-    return "isekai";
-  }
-  // Both, or neither: per-faction family (data-mapped; defaults to core).
   return factionGradeRegister(factionId);
 }
 

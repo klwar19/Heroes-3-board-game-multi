@@ -1,0 +1,4 @@
+Generator: built-in imagegen
+Mode: brand-new raster generation
+
+Upgraded Pack-side unit art: Corpse Puppets. Three towering reanimated armored guardians marching from a sealed tomb, ancient black-iron and oxidized-bronze lamellar, cracked funerary masks, pale blue spirit flame in the eye slits, crimson-gold control talismans and magical puppet cords. Controlled empty guardians, not decomposing bodies. Premium hand-painted East Asian dark-xianxia board-game art. Portrait 3:4, central front guardian and two behind, safe margins. No readable writing, text, logo, UI, border, watermark, signature, photorealism, flesh, or gore.

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Compose PROPER commander-artifact card faces for the grade-fill weapons
- * (Iron Cudgel / Doomsday Blade) using the same ornate artifact frame layout
- * as equipment / Pháp Bảo cards — not naked image dumps.
+ * Compose commander-artifact card faces using the same ornate artifact frame
+ * layout as equipment / Pháp Bảo cards — not naked image dumps.
  *
  * Sources:
- *   public/assets/wog/artifacts/<slug>.webp  — Codex illustration (used as master)
- *   scripts/anime-art/raw/artifacts/frame-*  — shared ornate frame
+ *   scripts/anime-art/editable/commander-weapons/*-master.png — grade-fill masters
+ *   scripts/anime-art/raw/artifacts/commander-masters/*.png    — bespoke masters
+ *   scripts/anime-art/raw/artifacts/frame-*                    — shared ornate frame
  *
  * Output overwrites:
  *   public/assets/wog/artifacts/<slug>.webp
@@ -14,7 +14,8 @@
  * Run: node scripts/build-commander-weapon-cards.mjs
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
@@ -47,6 +48,31 @@ const CARDS = [
     tierColor: "#6fa8ff",
     rules: [
       "Commander weapon: +3 Attack.",
+      "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."
+    ]
+  },
+  {
+    slug: "blood_patriarch_saber",
+    en: "Blood Patriarch's Saber",
+    tier: "major",
+    tierLabel: "MAJOR  ·  COMMANDER WEAPON",
+    tierColor: "#e7b73c",
+    rawMaster: "blood_patriarch_saber-master.png",
+    rules: [
+      "Commander weapon: +2 Attack.",
+      "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."
+    ]
+  },
+  {
+    slug: "demon_heart_talisman",
+    en: "Demon Heart Talisman",
+    tier: "relic",
+    tierLabel: "RELIC  ·  COMMANDER TRINKET",
+    tierColor: "#6fa8ff",
+    slotLabel: "TRINKET",
+    rawMaster: "demon_heart_talisman-master.png",
+    rules: [
+      "Commander trinket: command cast Power +1 AND +1 Initiative.",
       "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."
     ]
   }
@@ -174,7 +200,7 @@ function cardSvg(card, artHref, frameHref, windowRect) {
   <image x="0" y="0" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" preserveAspectRatio="none" href="${xml(frameHref)}" xlink:href="${xml(frameHref)}"/>
   <text x="371" y="93" class="titleText">${xml(card.en)}</text>
   <text x="371" y="${tierY}" class="tierText" fill="${card.tierColor}">${xml(card.tierLabel)}</text>
-  <text x="371" y="${enY}" class="slotText">WEAPON</text>
+  <text x="371" y="${enY}" class="slotText">${xml(card.slotLabel ?? "WEAPON")}</text>
   <g>${ruleMarkup}</g>
 </svg>`;
 }
@@ -200,22 +226,38 @@ async function main() {
   const frameUri = await dataUri(keyedPath, "image/png");
 
   for (const card of CARDS) {
-    const srcPath = path.join(OUT, `${card.slug}.webp`);
-    // Crop/fit the Codex illustration into a portrait master for the art window.
     const masterPng = path.join(EDITABLE, `${card.slug}-master.png`);
-    await sharp(srcPath)
-      .resize(windowRect.w * 2, windowRect.h * 2, { fit: "cover", position: "centre" })
-      .png()
-      .toFile(masterPng);
+    if (card.rawMaster) {
+      const sourcePath = path.join(RAW, "commander-masters", card.rawMaster);
+      if (!existsSync(sourcePath)) {
+        throw new Error(`Missing painted master: ${path.relative(ROOT, sourcePath)}`);
+      }
+      await sharp(sourcePath)
+        .resize(windowRect.w * 2, windowRect.h * 2, { fit: "cover", position: "centre" })
+        .png()
+        .toFile(masterPng);
+      await sharp(sourcePath)
+        .resize(128, 128, { fit: "cover", position: "centre" })
+        .webp(WEBP)
+        .toFile(path.join(OUT, "icons", `${card.slug}.webp`));
+    } else if (!existsSync(masterPng)) {
+      throw new Error(`Missing editable master: ${path.relative(ROOT, masterPng)}`);
+    }
 
-    const svg = cardSvg(card, await dataUri(masterPng, "image/png"), frameUri, windowRect);
-    await writeFile(path.join(EDITABLE, `${card.slug}.svg`), svg, "utf8");
+    const editableSvg = cardSvg(
+      card,
+      `${card.slug}-master.png`,
+      "../../raw/artifacts/frame-artifact-keyed.png",
+      windowRect
+    );
+    await writeFile(path.join(EDITABLE, `${card.slug}.svg`), editableSvg, "utf8");
+    const renderSvg = cardSvg(card, await dataUri(masterPng, "image/png"), frameUri, windowRect);
     // Write via tmp dir + shell copy (Windows often locks public/ assets).
     const tmpDir = path.join(ROOT, "tmp", "commander-weapon-cards");
     await mkdir(tmpDir, { recursive: true });
     const tmp = path.join(tmpDir, `${card.slug}.webp`);
-    await sharp(Buffer.from(svg)).resize(CARD_WIDTH, CARD_HEIGHT, { fit: "fill" }).webp(WEBP).toFile(tmp);
-    const { copyFile } = await import("node:fs/promises");
+    await sharp(Buffer.from(renderSvg)).resize(CARD_WIDTH, CARD_HEIGHT, { fit: "fill" }).webp(WEBP).toFile(tmp);
+    const srcPath = path.join(OUT, `${card.slug}.webp`);
     await copyFile(tmp, srcPath);
     console.log(`face  ${card.slug}.webp`);
   }

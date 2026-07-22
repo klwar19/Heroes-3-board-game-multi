@@ -13,7 +13,7 @@ import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { UNIT_RANK_NAMES } from "@/data/units/experience";
 import {
   cardCanBoostPower,
-  CULTIVATION_REALMS,
+  cultivationRealmLabel,
   heroGradeLabel,
   getBattlefieldLabel,
   heroMoveStartsBattle,
@@ -517,7 +517,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "HERO_LEVEL_UP":
       return `${playerName(state, event.playerId)} reaches level ${event.level}${event.effects.length ? `: ${event.effects.join(", ")}` : ""}.`;
     case "CULTIVATION_REALM_ADVANCED": {
-      const realm = CULTIVATION_REALMS[event.realm];
+      const realm = cultivationRealmLabel(state, event.playerId, event.realm);
       return `${playerName(state, event.playerId)}'s hero breaks through to ${realm.en} (${realm.vi})${
         event.viaTribulation ? " — the Heavenly Tribulation is survived!" : ""
       }.`;
