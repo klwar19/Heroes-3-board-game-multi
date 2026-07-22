@@ -29,3 +29,10 @@ scripts/redeploy-vercel.mjs
 # Private/source visual references are research inputs only. Generated masters
 # live under scripts/anime-art/raw; downloaded official references never ship.
 scripts/anime-art/refs/
+# Hidden Leaf follows the newest (Azur Lane) precedent: ship only the BUILT
+# webp faces under public/. The multi-MB illustration masters, per-card review
+# renders and the commander source PNG are regenerable build inputs — keep them
+# out of git (they bloat clones and the Vercel function trace).
+scripts/anime-art/raw/hidden-leaf/
+scripts/anime-art/previews/hidden-leaf/
+scripts/commander-art/might_guy.png
