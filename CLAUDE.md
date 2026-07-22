@@ -3201,6 +3201,24 @@ unchanged) — NAMES only, mechanics/state untouched; pinned in
 `anime-hero-grades.test.ts` (the kansen register, isekai-only + both-packages,
 with a hidden_leaf→isekai CONTROL) and `azur-lane-content.test.ts` (the lexicon
 words + a fuyuki generic-anime CONTROL).
+With the Unit-Experience rule on, the seven shipgirls carry BESPOKE fleet-lore
+veterancy rank schedules (`UNIT_RANK_SCHEDULES` in
+`src/data/units/experience-rank-abilities.ts`; bronze `standard`, silver/gold
+`strong` — the faction-peer shape) instead of generic defensive fillers:
+signatures are Laffey → `sandworm-strike-again` (a melee "strike again" for her
+rate of fire), Yukikaze → `attack-roll-advantage-passive` (twin Attack dice, keep
+the higher — the luckiest ship), Prinz Eugen → `zombie-resilience` (die-roll soak
+= unsinkable), Unicorn → `wraith-heal-1` (a carrier medic's self-repair). DELIBERATE
+deviation from the raw intent: the ranged-only `DOUBLE_ATTACK` arm is INERT on a
+melee `ground` body, so Javelin/I-19 take `commander-max-damage` /
+`wog-no-negative-attack-roll` (functional) rather than `double-attack-low-roll`
+(which would never fire). Pinned in `azur-lane-content.test.ts` ("Fleet veterancy
+— bespoke rank schedules"): exact per-unit choice arrays (mutation control — a
+revert to fillers fails), an azur_lane-scoped hygiene loop (implemented,
+non-Stacked, not printed on either side = no wasted rank), every choice id has an
+explicit `UNIT_RANK_ABILITY_ICONS` entry resolving to a file on disk, and a
+BEHAVIOURAL fold (Yukikaze R1 +1 Defense, R2 grants Twin Attack Dice, with a
+below-threshold CONTROL that grants neither).
 Live-play coverage: `src/server/azur-lane-live.test.ts` drives a fixed-seed
 single-player game with BOTH seats on azur_lane to round 5 with no stall / no
 negative resource, soft-asserting its units are recruited and Belfast is on the
