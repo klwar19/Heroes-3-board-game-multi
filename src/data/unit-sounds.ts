@@ -146,8 +146,9 @@ const creatureVoices: Record<string, string> = {
   gunslingers: "sharpshooter",
   couatls: "wyvern",
   dreadnoughts: "behemoth",
-  // Anime Realms: thematic reuse of complete Heroes III voice sets until a
-  // dedicated voiced package is produced. Every mapping covers all actions.
+  // Fuyuki City (Anime Realms, isekai) still thematically reuses complete
+  // Heroes III voice sets — no dedicated voiced package. Every mapping covers
+  // all actions (archers is ranged and reuses the Sharpshooter's shoot clip).
   assassins: "rogue",
   riders: "goblin-wolf-rider",
   lancers: "champion",
@@ -155,22 +156,26 @@ const creatureVoices: Record<string, string> = {
   casters: "mage",
   sabers: "swordsman",
   berserkers: "ogre",
-  outer_disciples: "swordsman",
-  inner_swordsmen: "crusader",
-  spirit_crane: "pegasus",
-  sect_protectors: "monk",
-  true_inheritors: "swordsman",
-  core_master: "mage",
-  mountain_guardian: "dendroid-soldier",
-  // Hidden Leaf Village — thematic reuse of complete Heroes III voice sets.
-  // anbu/jonin are RANGED, so their sets resolve a real shoot clip.
-  genin_squad: "rogue", // nimble young shinobi (shares the Assassin's Rogue set)
-  medical_nin: "enchanter", // the support healer — literally the Enchanter voice
-  anbu: "sharpshooter", // elite ranged assassins → precise Sharpshooter (has shoot)
-  jonin: "mage", // ranged ninjutsu casters (has shoot)
-  giant_toad: "behemoth", // huge summoned beast → the Behemoth's roar
-  jinchuriki: "demon", // feral tailed-beast chakra → the Demon set
-  susanoo: "titan", // colossal armored avatar → the Titan set
+  // Azure Breeze Sect: dedicated curated combat mixes (docs/anime-town-audio.md),
+  // one clip per unit and action; the rendered assets retain fitting H3 creature
+  // voices as baked-in layers. Pinned by exact-key tests in unit-sounds.test.ts.
+  outer_disciples: "azure-breeze-outer-disciples",
+  inner_swordsmen: "azure-breeze-inner-swordsmen",
+  spirit_crane: "azure-breeze-spirit-crane",
+  sect_protectors: "azure-breeze-sect-protectors",
+  true_inheritors: "azure-breeze-true-inheritors",
+  core_master: "azure-breeze-core-master", // ranged — dedicated shoot clip
+  mountain_guardian: "azure-breeze-mountain-guardian",
+  // Hidden Leaf Village: dedicated curated combat mixes (docs/anime-town-audio.md),
+  // one clip per unit and action; rendered assets retain fitting H3 creature
+  // voices as baked-in layers. Pinned by exact-key tests in unit-sounds.test.ts.
+  genin_squad: "hidden-leaf-genin-squad",
+  medical_nin: "hidden-leaf-medical-nin",
+  anbu: "hidden-leaf-anbu", // ranged — dedicated shoot clip
+  jonin: "hidden-leaf-jonin", // ranged — dedicated shoot clip
+  giant_toad: "hidden-leaf-giant-toad",
+  jinchuriki: "hidden-leaf-jinchuriki",
+  susanoo: "hidden-leaf-susanoo",
   // Azur Lane Naval Base — thematic reuse of complete Heroes III voice sets.
   // Honolulu is the only RANGED shipgirl, so her set resolves a real shoot clip
   // (sea-witch-shoot exists in the manifest).
@@ -181,16 +186,16 @@ const creatureVoices: Record<string, string> = {
   yukikaze: "crew-mate", // the lucky destroyer → the Cove Seamen set
   prinz_eugen: "titan", // the unsinkable armored heavy cruiser → the Titan set
   i19: "behemoth", // the lurking "Silent Hunter" submarine → the Behemoth's roar
-  // Heavenly Demon Palace — thematic reuse of complete Heroes III demonic/undead
-  // voice sets. Gu Witches are the only RANGED unit, so their set resolves a real
-  // shoot clip (magog-shoot exists in the manifest).
-  blood_disciples: "vampire", // blood cultists that drain life → the Vampire set
-  gu_witches: "magog", // ranged gu/curse sorceresses → the Magog set (has shoot)
-  shadow_wraiths: "wraith", // shadow-step assassins → the Wraith set
-  corpse_puppets: "zombie-lord", // reanimated puppet tanks → the Zombie/Walking Dead set
-  bone_reavers: "dread-knight", // armored bone raiders → the Dread Knight set
-  ghost_king: "ghost-dragon", // spectral regenerating gold ghost → the Ghost Dragon set
-  demon_avatar: "demon", // the Heavenly Demon Avatar → the Demon set
+  // Heavenly Demon Palace: dedicated curated combat mixes (docs/anime-town-audio.md),
+  // one clip per unit and action; rendered assets retain fitting H3 demonic/undead
+  // voices as baked-in layers. Pinned by exact-key tests in unit-sounds.test.ts.
+  blood_disciples: "heavenly-demon-blood-disciples",
+  gu_witches: "heavenly-demon-gu-witches", // ranged — dedicated shoot clip
+  shadow_wraiths: "heavenly-demon-shadow-wraiths",
+  corpse_puppets: "heavenly-demon-corpse-puppets",
+  bone_reavers: "heavenly-demon-bone-reavers",
+  ghost_king: "heavenly-demon-ghost-king",
+  demon_avatar: "heavenly-demon-avatar",
   // Wake of Gods adaptation: requested H3 voice reuse.
   ghost: "wraith",
   air_messenger: "stone-golem",
@@ -208,33 +213,6 @@ const creatureVoices: Record<string, string> = {
   santa_gremlin: "gremlin",
   dracolich: "ghost-dragon"
 };
-
-// The three newest towns use complete, unit-specific combat mixes. These
-// intentionally replace the provisional H3-only entries above while retaining
-// suitable H3 creature voices as layers inside the rendered assets.
-Object.assign(creatureVoices, {
-  outer_disciples: "azure-breeze-outer-disciples",
-  inner_swordsmen: "azure-breeze-inner-swordsmen",
-  spirit_crane: "azure-breeze-spirit-crane",
-  sect_protectors: "azure-breeze-sect-protectors",
-  true_inheritors: "azure-breeze-true-inheritors",
-  core_master: "azure-breeze-core-master",
-  mountain_guardian: "azure-breeze-mountain-guardian",
-  genin_squad: "hidden-leaf-genin-squad",
-  medical_nin: "hidden-leaf-medical-nin",
-  anbu: "hidden-leaf-anbu",
-  jonin: "hidden-leaf-jonin",
-  giant_toad: "hidden-leaf-giant-toad",
-  jinchuriki: "hidden-leaf-jinchuriki",
-  susanoo: "hidden-leaf-susanoo",
-  blood_disciples: "heavenly-demon-blood-disciples",
-  gu_witches: "heavenly-demon-gu-witches",
-  shadow_wraiths: "heavenly-demon-shadow-wraiths",
-  corpse_puppets: "heavenly-demon-corpse-puppets",
-  bone_reavers: "heavenly-demon-bone-reavers",
-  ghost_king: "heavenly-demon-ghost-king",
-  demon_avatar: "heavenly-demon-avatar"
-});
 
 /**
  * Azur Lane's bespoke Japanese combat voices. The source game exposes one
