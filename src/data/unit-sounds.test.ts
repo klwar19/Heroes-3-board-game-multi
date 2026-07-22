@@ -9,6 +9,29 @@ import { commanderSoundKey, commanderVoiceId, unitAttackFlourish, unitSoundKey, 
 const soundLibrary = soundManifest as Record<string, { src?: string; sequence?: string[] }>;
 const roster = Object.values(coreUnitDefinitions);
 const coreActions: UnitSoundAction[] = ["attack", "defend", "hurt", "death", "move"];
+const curatedAnimeTownVoices = [
+  ["azure_breeze.outer_disciples", "azure-breeze-outer-disciples"],
+  ["azure_breeze.inner_swordsmen", "azure-breeze-inner-swordsmen"],
+  ["azure_breeze.spirit_crane", "azure-breeze-spirit-crane"],
+  ["azure_breeze.sect_protectors", "azure-breeze-sect-protectors"],
+  ["azure_breeze.true_inheritors", "azure-breeze-true-inheritors"],
+  ["azure_breeze.core_master", "azure-breeze-core-master"],
+  ["azure_breeze.mountain_guardian", "azure-breeze-mountain-guardian"],
+  ["hidden_leaf.genin_squad", "hidden-leaf-genin-squad"],
+  ["hidden_leaf.medical_nin", "hidden-leaf-medical-nin"],
+  ["hidden_leaf.anbu", "hidden-leaf-anbu"],
+  ["hidden_leaf.jonin", "hidden-leaf-jonin"],
+  ["hidden_leaf.giant_toad", "hidden-leaf-giant-toad"],
+  ["hidden_leaf.jinchuriki", "hidden-leaf-jinchuriki"],
+  ["hidden_leaf.susanoo", "hidden-leaf-susanoo"],
+  ["heavenly_demon.blood_disciples", "heavenly-demon-blood-disciples"],
+  ["heavenly_demon.gu_witches", "heavenly-demon-gu-witches"],
+  ["heavenly_demon.shadow_wraiths", "heavenly-demon-shadow-wraiths"],
+  ["heavenly_demon.corpse_puppets", "heavenly-demon-corpse-puppets"],
+  ["heavenly_demon.bone_reavers", "heavenly-demon-bone-reavers"],
+  ["heavenly_demon.ghost_king", "heavenly-demon-ghost-king"],
+  ["heavenly_demon.demon_avatar", "heavenly-demon-avatar"]
+] as const;
 
 /**
  * The concrete clip `src`s a manifest key resolves to: a plain clip is its own
@@ -64,6 +87,19 @@ describe("unit combat voices", () => {
       }
     }
     expect([...lost]).toEqual([]);
+  });
+
+  it("uses complete dedicated action sets for both cultivation towns and Hidden Leaf", () => {
+    for (const [unitId, voice] of curatedAnimeTownVoices) {
+      const unit = coreUnitDefinitions[unitId];
+      expect(unit, `${unitId} should be in the roster`).toBeTruthy();
+      const actions: UnitSoundAction[] = unit.type === "ranged" ? [...coreActions, "shoot"] : coreActions;
+      for (const action of actions) {
+        const key = unitSoundKey(unitId, action);
+        expect(key, `${unitId}: ${action}`).toBe(`units/${voice}-${action}`);
+        expect(clipSrcs(key), `${key} should resolve to one file`).toEqual([`/sounds/${key}.mp3`]);
+      }
+    }
   });
 
   it("uses the documented shared-audio pairings", () => {
