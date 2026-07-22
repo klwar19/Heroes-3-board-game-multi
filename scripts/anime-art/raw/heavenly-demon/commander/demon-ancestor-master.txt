@@ -1,0 +1,7 @@
+Generate a single 1024x1536 portrait illustration of a single dark-fantasy hero for a game portrait.
+
+Subject: The "Demon Ancestor" (Thiên Ma Tổ Sư) — the ancient founding demon-god ancestor of the Heavenly Demon Palace, an undying demonic patriarch. A colossal ancient demonic overlord seated/looming in imperial obsidian-and-crimson demon-emperor robes and horned crown, immense age and power, jade-green and crimson demon-qi radiating, skeletal demonic hands, four glowing eyes. The undying founder of the evil sect. Godlike, ancient, terrifying.
+
+Single imposing figure, three-quarter to full body, centered, dramatic hero portrait. Plain dark atmospheric background (obsidian mist / faint crimson glow). Art direction: late-1990s painted fantasy game box-art meets Chinese ink-wash horror. Deep obsidian blacks, blood-crimson reds, sickly jade-green ghost-light accents. Dramatic rim lighting, painterly brushwork, ominous cultist atmosphere. No text, no border, no UI, no card frame — just the illustration.
+
+Do not run any shell commands; just generate the image and finish.
