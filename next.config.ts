@@ -25,14 +25,30 @@ const nextConfig: NextConfig = {
   // with runtime fs reads/writes against a dynamic path (HOMM3BG_ROOM_DIR env var,
   // falling back to the OS temp dir). Next.js's file tracer cannot statically resolve
   // that path, so it conservatively traces the WHOLE project and bundles every file
-  // under public/ (~320MB of board art, sounds and hero images) into each serverless
-  // function — pushing api/rooms/[roomId]/actions past Vercel's 300MB function limit.
+  // that is NOT excluded here into each serverless function — pushing
+  // api/rooms/[roomId]/actions past Vercel's uncompressed function-size limit.
   //
-  // Files under public/ are always served from Vercel's static CDN and are never read
-  // from inside a function, so exclude them from every function's trace. This drops the
-  // function bundle from ~330MB to single-digit MB without changing runtime behaviour.
+  // Everything listed below is either served from Vercel's static CDN (public/**)
+  // or is BUILD-TIME-ONLY tooling that a running function never reads: the art
+  // pipeline sources (raw illustration masters, editable SVGs, preview/session-art
+  // renders — hundreds of MB across every faction), design docs, tests and the
+  // e2e suite. Excluding them keeps every function bundle to single-digit MB
+  // regardless of how much art source the repo carries, with zero runtime change.
+  // (The engine reads its data from imported TS modules under src/**, never from
+  // these paths, so none of them can be a runtime dependency.)
   outputFileTracingExcludes: {
-    "*": ["public/**"]
+    "*": [
+      "public/**",
+      "scripts/**",
+      "generated-session-art/**",
+      "assets-to-translate/**",
+      "sounds-incoming/**",
+      "supabase/**",
+      "docs/**",
+      "tests/**",
+      "coverage/**",
+      ".github/**"
+    ]
   },
   // `next dev` (Next 16) blocks cross-origin access to its dev-only resources
   // (HMR socket, /_next/static chunks) unless the requesting host is allow-listed.
