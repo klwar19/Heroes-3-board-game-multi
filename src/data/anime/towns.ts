@@ -400,14 +400,14 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.leadership",
     specialtyCardIds: { 1: "specialty.bin.1", 4: "specialty.bin.4", 6: "specialty.bin.6" },
-    portrait: "/assets/anime/heroes/bin.png", source
+    portrait: "/assets/anime/heroes/bin.webp", source
   },
   aoko: {
     id: "aoko", name: "Aoko", faction: "fuyuki", class: "Leyline Magus", type: "magic",
     startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
     startingAbilityCardId: "ability.sorcery",
     specialtyCardIds: { 1: "specialty.aoko.1", 4: "specialty.aoko.4", 6: "specialty.aoko.6" },
-    portrait: "/assets/anime/heroes/aoko.png", source
+    portrait: "/assets/anime/heroes/aoko.webp", source
   },
   miku: {
     id: "miku",
@@ -418,7 +418,7 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
     startingAbilityCardId: "ability.interference",
     specialtyCardIds: { 1: "specialty.miku.1", 4: "specialty.miku.4", 6: "specialty.miku.6" },
-    portrait: "/assets/anime/heroes/miku.png",
+    portrait: "/assets/anime/heroes/miku.webp",
     source
   },
   qingyun: {
@@ -426,70 +426,70 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.offense",
     specialtyCardIds: { 1: "specialty.qingyun.1", 4: "specialty.qingyun.4", 6: "specialty.qingyun.6" },
-    portrait: "/assets/anime/heroes/qingyun.png", source
+    portrait: "/assets/anime/heroes/qingyun.webp", source
   },
   lingxi: {
     id: "lingxi", name: "Lingxi", faction: "azure_breeze", class: "Formation Sage", type: "magic",
     startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
     startingAbilityCardId: "ability.wisdom",
     specialtyCardIds: { 1: "specialty.lingxi.1", 4: "specialty.lingxi.4", 6: "specialty.lingxi.6" },
-    portrait: "/assets/anime/heroes/lingxi.png", source
+    portrait: "/assets/anime/heroes/lingxi.webp", source
   },
   naruto: {
     id: "naruto", name: "Naruto Uzumaki", faction: "hidden_leaf", class: "Jinchuriki", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.leadership",
     specialtyCardIds: { 1: "specialty.naruto.1", 4: "specialty.naruto.4", 6: "specialty.naruto.6" },
-    portrait: "/assets/anime/heroes/naruto.png", source
+    portrait: "/assets/anime/heroes/naruto.webp", source
   },
   sasuke: {
     id: "sasuke", name: "Sasuke Uchiha", faction: "hidden_leaf", class: "Uchiha Avenger", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.offense",
     specialtyCardIds: { 1: "specialty.sasuke.1", 4: "specialty.sasuke.4", 6: "specialty.sasuke.6" },
-    portrait: "/assets/anime/heroes/sasuke.png", source
+    portrait: "/assets/anime/heroes/sasuke.webp", source
   },
   tsunade: {
     id: "tsunade", name: "Tsunade", faction: "hidden_leaf", class: "Legendary Medic", type: "magic",
     startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
     startingAbilityCardId: "ability.wisdom",
     specialtyCardIds: { 1: "specialty.tsunade.1", 4: "specialty.tsunade.4", 6: "specialty.tsunade.6" },
-    portrait: "/assets/anime/heroes/tsunade.png", source
+    portrait: "/assets/anime/heroes/tsunade.webp", source
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", faction: "azur_lane", class: "Grey Ghost", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.leadership",
     specialtyCardIds: { 1: "specialty.enterprise.1", 4: "specialty.enterprise.4", 6: "specialty.enterprise.6" },
-    portrait: "/assets/anime/heroes/enterprise.png", source
+    portrait: "/assets/anime/heroes/enterprise.webp", source
   },
   bismarck: {
     id: "bismarck", name: "Bismarck", faction: "azur_lane", class: "Iron Blood Flagship", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.offense",
     specialtyCardIds: { 1: "specialty.bismarck.1", 4: "specialty.bismarck.4", 6: "specialty.bismarck.6" },
-    portrait: "/assets/anime/heroes/bismarck.png", source
+    portrait: "/assets/anime/heroes/bismarck.webp", source
   },
   nagato: {
     id: "nagato", name: "Nagato", faction: "azur_lane", class: "Big Seven Flagship", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.tactics",
     specialtyCardIds: { 1: "specialty.nagato.1", 4: "specialty.nagato.4", 6: "specialty.nagato.6" },
-    portrait: "/assets/anime/heroes/nagato.png", source
+    portrait: "/assets/anime/heroes/nagato.webp", source
   },
   akashi: {
     id: "akashi", name: "Akashi", faction: "azur_lane", class: "Chief Shipwright", type: "magic",
     startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
     startingAbilityCardId: "ability.wisdom",
     specialtyCardIds: { 1: "specialty.akashi.1", 4: "specialty.akashi.4", 6: "specialty.akashi.6" },
-    portrait: "/assets/anime/heroes/akashi.png", source
+    portrait: "/assets/anime/heroes/akashi.webp", source
   },
   sirius: {
     id: "sirius", name: "Sirius", faction: "azur_lane", class: "Royal Maid Gunner", type: "magic",
     startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
     startingAbilityCardId: "ability.sorcery",
     specialtyCardIds: { 1: "specialty.sirius.1", 4: "specialty.sirius.4", 6: "specialty.sirius.6" },
-    portrait: "/assets/anime/heroes/sirius.png", source
+    portrait: "/assets/anime/heroes/sirius.webp", source
   }
 };
 

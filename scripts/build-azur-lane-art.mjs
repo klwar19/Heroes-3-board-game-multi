@@ -261,12 +261,6 @@ async function finalizeWebp(pipeline, outRel, expect, { minKb = 0, quality = 90 
   await pipeline.webp({ quality, effort: 6 }).toFile(outPath);
   return verifyOut(outRel, expect, minKb);
 }
-async function finalizePng(pipeline, outRel, expect, { minKb = 0 } = {}) {
-  const outPath = path.join(assets, outRel);
-  await mkdir(path.dirname(outPath), { recursive: true });
-  await pipeline.png({ compressionLevel: 9 }).toFile(outPath);
-  return verifyOut(outRel, expect, minKb);
-}
 async function verifyOut(outRel, expect, minKb) {
   const outPath = path.join(assets, outRel);
   const m = await sharp(outPath).metadata();
@@ -457,16 +451,16 @@ async function renderUnitCard(u, side) {
 // Might heroes mirror the fuyuki might portrait (bin), the magic hero the fuyuki
 // magic portrait (aoko) — both 1086x1448.
 const EXISTING_HEROES = [
-  { id: "enterprise", ref: "enterprise", mirror: "anime/heroes/bin.png" },
-  { id: "bismarck", ref: "bismarck", mirror: "anime/heroes/bin.png" },
-  { id: "akashi", ref: "akashi", mirror: "anime/heroes/aoko.png" }
+  { id: "enterprise", ref: "enterprise", mirror: "anime/heroes/bin.webp" },
+  { id: "bismarck", ref: "bismarck", mirror: "anime/heroes/bin.webp" },
+  { id: "akashi", ref: "akashi", mirror: "anime/heroes/aoko.webp" }
 ];
 
 // Nagato ("Big Seven Flagship") + Sirius ("Royal Maid Gunner") — new hero
 // portraits promoted from the cancelled class cards; mirror the might portrait.
 const NEW_HEROES = [
-  { id: "nagato", ref: "nagato", mirror: "anime/heroes/bin.png" },
-  { id: "sirius", ref: "sirius", mirror: "anime/heroes/bin.png" }
+  { id: "nagato", ref: "nagato", mirror: "anime/heroes/bin.webp" },
+  { id: "sirius", ref: "sirius", mirror: "anime/heroes/bin.webp" }
 ];
 
 function heroBgSvg(W, H) {
@@ -506,7 +500,7 @@ function heroFrameSvg(W, H) {
 }
 
 async function renderHero(hero) {
-  const outRel = `anime/heroes/${hero.id}.png`;
+  const outRel = `anime/heroes/${hero.id}.webp`;
   const { width: W, height: H } = await mirrorMeta(hero.mirror);
   const bg = await svgRaster(heroBgSvg(W, H), W, H);
   const chars = await characterLayers(W, H, {
@@ -514,7 +508,7 @@ async function renderHero(hero) {
     box: { bottom: 0.985, heightFrac: 0.93, maxWidthFrac: 1.15, hardMaxWidthFrac: 0.95 }
   });
   const frame = await svgRaster(heroFrameSvg(W, H), W, H);
-  await finalizePng(sharp(bg).composite([...chars, { input: frame, left: 0, top: 0 }]), outRel, { width: W, height: H });
+  await finalizeWebp(sharp(bg).composite([...chars, { input: frame, left: 0, top: 0 }]), outRel, { width: W, height: H }, { minKb: 60 });
 }
 
 // ---------------------------------------------------------------------------

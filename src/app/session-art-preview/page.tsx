@@ -11,7 +11,7 @@ import { assetUrl } from "@/lib/asset-url";
 const HERO_ASSETS = [
   {
     title: "Bin hero portrait",
-    path: "/assets/anime/heroes/bin.png",
+    path: "/assets/anime/heroes/bin.webp",
     wired: "MUST NOT match Sabers gold unit"
   },
   {
@@ -21,12 +21,12 @@ const HERO_ASSETS = [
   },
   {
     title: "Qingyun hero portrait",
-    path: "/assets/anime/heroes/qingyun.png",
+    path: "/assets/anime/heroes/qingyun.webp",
     wired: "MUST NOT match Core Formation Master unit (sword cultivator, not sage)"
   },
   {
     title: "Lingxi hero portrait",
-    path: "/assets/anime/heroes/lingxi.png",
+    path: "/assets/anime/heroes/lingxi.webp",
     wired: "hero board + specialty portrait strip"
   },
   {

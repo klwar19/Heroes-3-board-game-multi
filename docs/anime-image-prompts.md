@@ -62,7 +62,7 @@ Use case: production game asset. Asset type: square top-down map tile illustrati
 Generation mode: Codex CLI built-in `image_gen` via `scripts/codex-gen-art.ps1`.
 
 - Generated source: `tmp/imagegen/bin-hero-portrait.png`
-- Game asset: `public/assets/anime/heroes/bin.png`
+- Game asset: `public/assets/anime/heroes/bin.webp`
 - Note: must NOT match Sabers gold unit; specialty icon may still use `fuyuki-sabers.webp` (unit specialist).
 
 ## Astral Regent commander (replace gold-unit reuse)
