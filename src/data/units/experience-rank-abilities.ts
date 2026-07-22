@@ -594,37 +594,54 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   // ── Anime Azur Lane ──────────────────────────────────────────────────────
   // Fleet veterancy: bronze standard (1 ability), silver/gold strong (2). Every
   // choice is an already-implemented, non-Stacked ability NOT already printed on
-  // that shipgirl's sides, drawn from the same pools the Fuyuki/Azure/Hidden-Leaf
-  // schedules use.
+  // that shipgirl's sides. Each schedule is keyed to the shipgirl's LORE (the
+  // FIRST choice per slot is the signature; the second is a safer alternative):
+  //   laffey  — "Solomon's Wardog", impossible rate of fire → sandworm-strike-again
+  //     (a full melee second strike; NOT double-attack — that arm is ranged-gated
+  //     and would be inert on a ground unit, so the intent's melee fallback is moot).
+  //   javelin — torpedo-salvo destroyer → commander-max-damage (own die always
+  //     counts +1 → a reliable full-power salvo; again NOT the ranged-only
+  //     double-attack, which is dead on this ground unit).
+  //   honolulu— ranged cruiser gunner → ranged-extra-shot-on-low-roll (a real
+  //     ranged arm on the faction's one shooter).
+  //   unicorn — carrier MEDIC → wraith-heal-1 (self-repair) then a spell-ward.
+  //   yukikaze— "Miracle Yukikaze", luckiest ship → attack-roll-advantage-passive
+  //     (roll two Attack dice, keep the higher) then a damage burst.
+  //   prinz_eugen— UNSINKABLE cruiser → zombie-resilience (+1 Defense vs a 0/+1
+  //     die = hard to sink) then wog-fire-shield-1 (flak barrage — reflect damage).
+  //   i19     — ambush submarine → commander-max-damage / commander-charge (glass
+  //     cannon after surfacing) then wog-nightmare-fear (terror from below). Its
+  //     ranged double-attack alternative is likewise inert on this ground body, so
+  //     the safer pick is wog-no-negative-attack-roll (torpedoes never misfire).
   "azur_lane.laffey": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"]
+    ["sandworm-strike-again", "wog-no-negative-attack-roll"]
   ]),
   "azur_lane.javelin": buildScheduleFromTemplate("standard", [
-    ["wog-no-negative-attack-roll", "bulwark-air-shield"]
+    ["commander-max-damage", "bulwark-air-shield"]
   ]),
   // LV3 bronze ranged cruiser gunner.
   "azur_lane.honolulu": buildScheduleFromTemplate("standard", [
     ["ranged-extra-shot-on-low-roll", "bulwark-air-shield"]
   ]),
-  // LV4 silver carrier medic.
+  // LV4 silver carrier medic — heal itself, then a spell-ward.
   "azur_lane.unicorn": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-defense-token"],
+    ["wraith-heal-1", "commander-defense-token"],
     ["reduce-spell-damage-1", "bulwark-air-shield"]
   ]),
-  // LV5 silver lucky destroyer.
+  // LV5 silver lucky destroyer — twin Attack dice (keep higher), then a burst.
   "azur_lane.yukikaze": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
+    ["attack-roll-advantage-passive", "wog-no-negative-attack-roll"],
     ["commander-charge", "commander-max-damage"]
   ]),
-  // LV6 gold unsinkable heavy cruiser.
+  // LV6 gold unsinkable heavy cruiser — die-roll soak, then a flak barrage.
   "azur_lane.prinz_eugen": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "reduce-spell-damage-1"],
-    ["commander-defense-token", "ignore-paralysis"]
+    ["zombie-resilience", "reduce-spell-damage-1"],
+    ["wog-fire-shield-1", "ignore-paralysis"]
   ]),
-  // LV7 gold glass-cannon submarine.
+  // LV7 gold glass-cannon submarine — max-damage ambush, then Fear from below.
   "azur_lane.i19": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-charge"],
-    ["commander-max-damage", "wog-nightmare-fear"]
+    ["commander-max-damage", "commander-charge"],
+    ["wog-nightmare-fear", "wog-no-negative-attack-roll"]
   ])
 };
 
@@ -889,6 +906,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "unlimited-retaliation": "/assets/spell-icons/counterstrike.png",
   "double-attack": "/assets/ui/rank-ability/double-strike.webp",
   "double-attack-low-roll": "/assets/ui/rank-ability/double-strike.webp",
+  "sandworm-strike-again": "/assets/ui/rank-ability/double-strike.webp",
   "zombie-resilience-weak": "/assets/ui/rank-ability/resilience.webp",
   "zombie-resilience": "/assets/ui/rank-ability/resilience.webp",
   "wraith-heal-1": "/assets/spell-icons/animate_dead.png",

@@ -11,7 +11,17 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import { townBoardSpecs } from "@/data/towns/boards";
 import { commanderSoundKey } from "@/data/unit-sounds";
 import { unitAbilities } from "@/data/units/abilities";
-import { applyAction, createInitialGameState } from "@/engine";
+import {
+  UNIT_RANK_ABILITY_ICONS,
+  UNIT_RANK_SCHEDULES,
+  hasUniqueRankSchedule,
+  rankScheduleFor,
+  scheduleTemplateId,
+  unitRankAbilityIcon
+} from "@/data/units/experience";
+import type { RankSchedule } from "@/data/units/experience";
+import { applyAction, createInitialGameState, makeCombatUnitFromArmy } from "@/engine";
+import { unitRankAbilityIds } from "@/engine/unit-experience";
 import type { CombatUnitState, GameAction, GameState, PlayerId } from "@/engine/state";
 
 /**
@@ -403,5 +413,164 @@ describe("Azur Lane Naval Base — themed UI lexicon (naval words, anime visual 
     expect(fuyuki.equipment).toBe("Mystic Loadout");
     // Proves the two anime-register factions genuinely diverge in words.
     expect(fuyuki.grade).not.toBe(factionUiLexicon(FACTION).grade);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fleet veterancy — bespoke rank schedules (Unit Experience system).
+// Each shipgirl's rank-ability CHOICES are keyed to her lore (signature FIRST,
+// safer alternative second). Two picks diverge from the raw design intent and
+// the divergence is DELIBERATE + documented at the schedule: DOUBLE_ATTACK
+// (double-attack / double-attack-low-roll) only fires on a RANGED attack
+// (engine reducer gates it on attackKind === "ranged"), so it is INERT on the
+// melee `ground` shipgirls — javelin takes commander-max-damage (a functional
+// salvo) and i19 takes wog-no-negative-attack-roll instead of that dead arm.
+// ---------------------------------------------------------------------------
+
+/**
+ * The EXACT ability-rank choice arrays per shipgirl (signature id FIRST). This
+ * table is the mutation control: revert any schedule to a generic filler and the
+ * deep-equal below fails. `template` is the pinned shape (bronze=standard 1
+ * ability, silver/gold=strong 2).
+ */
+const EXPECTED_SCHEDULES: Record<
+  string,
+  { template: "standard" | "strong"; slots: readonly (readonly string[])[] }
+> = {
+  "azur_lane.laffey": { template: "standard", slots: [["sandworm-strike-again", "wog-no-negative-attack-roll"]] },
+  "azur_lane.javelin": { template: "standard", slots: [["commander-max-damage", "bulwark-air-shield"]] },
+  "azur_lane.honolulu": { template: "standard", slots: [["ranged-extra-shot-on-low-roll", "bulwark-air-shield"]] },
+  "azur_lane.unicorn": {
+    template: "strong",
+    slots: [["wraith-heal-1", "commander-defense-token"], ["reduce-spell-damage-1", "bulwark-air-shield"]]
+  },
+  "azur_lane.yukikaze": {
+    template: "strong",
+    slots: [["attack-roll-advantage-passive", "wog-no-negative-attack-roll"], ["commander-charge", "commander-max-damage"]]
+  },
+  "azur_lane.prinz_eugen": {
+    template: "strong",
+    slots: [["zombie-resilience", "reduce-spell-damage-1"], ["wog-fire-shield-1", "ignore-paralysis"]]
+  },
+  "azur_lane.i19": {
+    template: "strong",
+    slots: [["commander-max-damage", "commander-charge"], ["wog-nightmare-fear", "wog-no-negative-attack-roll"]]
+  }
+};
+
+/** Pull the ability steps' choice arrays out of a schedule, in rank order. */
+function abilityChoicesOf(schedule: RankSchedule): string[][] {
+  const slots: string[][] = [];
+  for (const rank of [1, 2, 3, 4] as const) {
+    const step = schedule[rank];
+    if (step.kind === "ability") slots.push([...step.choices]);
+  }
+  return slots;
+}
+
+describe("Azur Lane Naval Base — Fleet veterancy: bespoke rank schedules", () => {
+  it("all seven ship a UNIQUE schedule; bronzes are 'standard', silver/gold 'strong'", () => {
+    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
+      expect(hasUniqueRankSchedule(unitId), unitId).toBe(true);
+      expect(scheduleTemplateId(UNIT_RANK_SCHEDULES[unitId]!), unitId).toBe(expected.template);
+    }
+    // Tier ↔ template: the three bronze bodies are 'standard', the two silver +
+    // two gold are 'strong' (matches the faction-peer / "gold ≤ bronze count" ethos).
+    for (const unitId of coreFactionDefinitions[FACTION].units) {
+      const tier = coreUnitDefinitions[unitId].tier;
+      expect(scheduleTemplateId(rankScheduleFor(unitId)), `${unitId} (${tier})`).toBe(
+        tier === "bronze" ? "standard" : "strong"
+      );
+    }
+  });
+
+  it("SIGNATURE pins: the exact lore-keyed choice arrays (fails if a schedule reverts to fillers)", () => {
+    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
+      expect(abilityChoicesOf(rankScheduleFor(unitId)), unitId).toEqual(
+        expected.slots.map((slot) => [...slot])
+      );
+    }
+    // Spot the two headline signatures explicitly so the intent is legible.
+    expect(abilityChoicesOf(rankScheduleFor("azur_lane.yukikaze"))[0]).toContain(
+      "attack-roll-advantage-passive"
+    );
+    expect(abilityChoicesOf(rankScheduleFor("azur_lane.laffey"))[0]).toContain("sandworm-strike-again");
+    expect(abilityChoicesOf(rankScheduleFor("azur_lane.unicorn"))[0]).toContain("wraith-heal-1");
+  });
+
+  it("HYGIENE (azur_lane-scoped): every choice implemented, non-Stacked, NOT printed on either side; no wasted rank", () => {
+    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
+      const unit = coreUnitDefinitions[unitId];
+      const printed = new Set<string>([...unit.few!.abilities, ...unit.pack!.abilities]);
+      for (const slot of expected.slots) {
+        for (const choiceId of slot) {
+          const ability = unitAbilities[choiceId];
+          expect(ability, `${unitId} → ${choiceId}`).toBeTruthy();
+          expect(ability.implementationStatus, `${unitId} → ${choiceId}`).toBe("implemented");
+          expect(ability.requiresStacked, `${unitId} → ${choiceId}`).not.toBe(true);
+          // No-wasted-rank invariant: a choice printed on the unit would be
+          // deduped away by withRankAbilities, making the rank inert.
+          expect(printed.has(choiceId), `${unitId} prints ${choiceId} (would waste the rank)`).toBe(false);
+        }
+      }
+      // The real resolver grants EXACTLY one ability per ability-rank (never a
+      // dup collapse): a 'standard' unit ends at 1 rank ability, 'strong' at 2.
+      expect(unitRankAbilityIds(unitId, 4), unitId).toHaveLength(expected.slots.length);
+    }
+  });
+
+  it("ART: every choice id has an EXPLICIT icon entry resolving to a file on disk", () => {
+    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
+      for (const slot of expected.slots) {
+        for (const choiceId of slot) {
+          // Prefer an explicit mapping for all (the fallback exists too, but an
+          // explicit entry is the pinned contract).
+          expect(UNIT_RANK_ABILITY_ICONS[choiceId], `${unitId} → ${choiceId} needs an explicit icon`).toBeTruthy();
+          const icon = unitRankAbilityIcon(choiceId);
+          expect(icon.startsWith("/assets/"), choiceId).toBe(true);
+          expect(
+            existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))),
+            `${choiceId} → ${icon} missing on disk`
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  // BEHAVIOURAL (effect-level): Yukikaze's schedule actually FOLDS in combat —
+  // a stats rank moves a real stat and an ability rank grants the signature id.
+  // Fails if withRankAbilities / the schedule wiring is removed, OR if the
+  // schedule reverts to a generic filler (r2 would carry a different id).
+  it("Yukikaze folds in combat: R1 stats (+1 Def), R2 grants Twin Attack Dice — below-threshold CONTROL grants neither the ability nor the stat", () => {
+    const build = (experience?: number): CombatUnitState =>
+      makeCombatUnitFromArmy(
+        { id: "yk_army", unitDefId: "azur_lane.yukikaze", side: "few", ...(experience ? { experience } : {}) },
+        "p1",
+        "unit_p1_yk",
+        0,
+        "legacy"
+      )!;
+
+    // silver thresholds 4/8/13/18 → R1 at 4 XP (stats), R2 at 8 XP (ability slot1).
+    const plain = build();
+    const r1 = build(4);
+    const r2 = build(8);
+
+    expect(r1.unitRank).toBe(1);
+    expect(r2.unitRank).toBe(2);
+
+    // Stats-rank fold: silver step 0 is +1 Defense — an OBSERVABLE stat delta.
+    expect(plain.defense).toBe(coreUnitDefinitions["azur_lane.yukikaze"].few!.defense);
+    expect(r1.defense).toBe(plain.defense + 1);
+    expect(r2.defense).toBe(plain.defense + 1); // R2 is an ability rank → no further stat step
+
+    // Ability-rank grant: R2 carries the lore signature (Twin Attack Dice).
+    expect(r2.abilities).toContain("attack-roll-advantage-passive");
+
+    // CONTROLs: below the R2 ability threshold there is NO grant; the plain card
+    // (no XP) carries neither the grant nor the stat bump (base stats).
+    expect(r1.abilities).not.toContain("attack-roll-advantage-passive");
+    expect(plain.abilities).not.toContain("attack-roll-advantage-passive");
+    expect(plain.unitRank ?? 0).toBe(0);
   });
 });
