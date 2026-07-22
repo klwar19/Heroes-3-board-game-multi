@@ -649,6 +649,60 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   "azur_lane.i19": buildScheduleFromTemplate("strong", [
     ["commander-max-damage", "commander-charge"],
     ["wog-nightmare-fear", "wog-no-negative-attack-roll"]
+  ]),
+
+  // ── Anime Heavenly Demon Palace ───────────────────────────────────────────
+  // Demonic-path veterancy: bronze standard (1 ability), silver/gold strong (2).
+  // Every choice is an already-implemented, non-Stacked ability NOT already
+  // printed on that unit's sides. Each schedule is keyed to the unit's demonic
+  // LORE (the FIRST choice per slot is the signature; the second a safer
+  // alternative). The ground bodies avoid the ranged-gated `double-attack` arm
+  // (inert on a melee unit — the same deviation the Azur Lane schedules document),
+  // reaching for functional demonic arms (blood regeneration, terror, hellfire).
+  //   blood_disciples — vampiric blood cultivators → wraith-heal-1 (regenerate
+  //     each activation — the blood-drinker's self-heal on top of the printed
+  //     siphon) then undying resilience.
+  //   gu_witches      — poison-hex shooters → unicorn-paralyze-retaliation
+  //     (a hex/curse that Paralyzes an attacker who engages the witch) then an
+  //     extra poisoned volley.
+  //   shadow_wraiths  — incorporeal terror → wog-nightmare-fear (spectral dread)
+  //     then air-shield evasion (hard to pin an incorporeal wraith).
+  //   corpse_puppets  — reanimated puppets → zombie-resilience (die-roll soak =
+  //     unkillable corpse) then unshackled (a corpse ignores Paralysis) + terror.
+  //   bone_reavers    — bone-crushing demon cavalry → commander-max-damage (the
+  //     reliable full-power charge) then bone terror.
+  //   ghost_king      — sovereign of the dead → teleport-move (spectral walk —
+  //     phase across the battlefield) then a soul-reaping terror / devastation.
+  //   demon_avatar    — apex demon incarnate → wog-fire-shield-1 (a hellfire aura
+  //     that burns attackers) then devastating demonic blows.
+  "heavenly_demon.blood_disciples": buildScheduleFromTemplate("standard", [
+    ["wraith-heal-1", "zombie-resilience-weak"]
+  ]),
+  "heavenly_demon.gu_witches": buildScheduleFromTemplate("standard", [
+    ["unicorn-paralyze-retaliation", "ranged-extra-shot-on-low-roll"]
+  ]),
+  "heavenly_demon.shadow_wraiths": buildScheduleFromTemplate("standard", [
+    ["wog-nightmare-fear", "bulwark-air-shield"]
+  ]),
+  // LV5 silver reanimated tank.
+  "heavenly_demon.corpse_puppets": buildScheduleFromTemplate("strong", [
+    ["zombie-resilience", "bulwark-thick-hide"],
+    ["ignore-paralysis", "wog-nightmare-fear"]
+  ]),
+  // LV4/5 silver demon cavalry.
+  "heavenly_demon.bone_reavers": buildScheduleFromTemplate("strong", [
+    ["commander-max-damage", "wog-no-negative-attack-roll"],
+    ["wog-nightmare-fear", "commander-defense-token"]
+  ]),
+  // LV6 gold spectral sovereign.
+  "heavenly_demon.ghost_king": buildScheduleFromTemplate("strong", [
+    ["teleport-move", "bulwark-air-shield"],
+    ["wog-nightmare-fear", "commander-max-damage"]
+  ]),
+  // LV7 gold apex demon.
+  "heavenly_demon.demon_avatar": buildScheduleFromTemplate("strong", [
+    ["wog-fire-shield-1", "reduce-spell-damage-1"],
+    ["commander-max-damage", "ignore-paralysis"]
   ])
 };
 
@@ -921,7 +975,8 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "zombie-resilience": "/assets/ui/rank-ability/resilience.webp",
   "wraith-heal-1": "/assets/spell-icons/animate_dead.png",
   "wog-nightmare-fear": "/assets/ui/rank-ability/fear.webp",
-  "unicorn-paralyze-retaliation": "/assets/spell-icons/blind.png"
+  "unicorn-paralyze-retaliation": "/assets/spell-icons/blind.png",
+  "teleport-move": "/assets/spell-icons/teleport.png"
 };
 
 const RANK_ABILITY_ICON_FALLBACK = "/assets/spell-icons/slayer.png";
