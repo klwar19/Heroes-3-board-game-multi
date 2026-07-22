@@ -22,15 +22,52 @@
 
 import { appendEvent } from "./events";
 import { animeModuleEnabled } from "./anime";
+import { factionVisualRegister, type FactionVisualRegister } from "@/data/faction-theme";
 import type { GameState, HeroState, PlayerId } from "./state";
 
-/** Realm names, EN + VI (Hán-Việt), indexed by realm number. */
-export const CULTIVATION_REALMS: Record<0 | 1 | 2 | 3, { en: string; vi: string }> = {
-  0: { en: "Qi Refinement", vi: "Luyện khí" },
-  1: { en: "Foundation", vi: "Trúc cơ" },
-  2: { en: "Core Formation", vi: "Kim đan" },
-  3: { en: "Nascent Soul", vi: "Nguyên anh" }
+export type CultivationRealm = 0 | 1 | 2 | 3;
+export type CultivationRealmLabel = { en: string; vi: string };
+export type CultivationRealmRegisterKey = FactionVisualRegister | "modao";
+
+/** Presentation-only realm names by faction family; mechanics still read 0–3. */
+export const CULTIVATION_REALM_REGISTERS: Record<CultivationRealmRegisterKey, Record<CultivationRealm, CultivationRealmLabel>> = {
+  classic: {
+    0: { en: "Novice", vi: "Tập Sự" },
+    1: { en: "Adept", vi: "Thành Thạo" },
+    2: { en: "Master", vi: "Bậc Thầy" },
+    3: { en: "Archmage", vi: "Đại Pháp Sư" }
+  },
+  anime: {
+    0: { en: "Awakened", vi: "Thức Tỉnh" },
+    1: { en: "Adept", vi: "Tinh Anh" },
+    2: { en: "Ascendant", vi: "Thăng Hoa" },
+    3: { en: "Transcendent", vi: "Siêu Việt" }
+  },
+  wuxia: {
+    0: { en: "Qi Refinement", vi: "Luyện Khí" },
+    1: { en: "Foundation", vi: "Trúc Cơ" },
+    2: { en: "Core Formation", vi: "Kim Đan" },
+    3: { en: "Nascent Soul", vi: "Nguyên Anh" }
+  },
+  modao: {
+    0: { en: "Blood Refinement", vi: "Luyện Huyết" },
+    1: { en: "Demon Foundation", vi: "Ma Cơ" },
+    2: { en: "Demon Core", vi: "Ma Đan" },
+    3: { en: "Devil Soul", vi: "Ma Anh" }
+  }
 };
+
+/** Backwards-compatible wuxia ladder for callers that do not own faction context. */
+export const CULTIVATION_REALMS = CULTIVATION_REALM_REGISTERS.wuxia;
+
+export function cultivationRealmRegisterKey(factionId: string | undefined): CultivationRealmRegisterKey {
+  return factionId === "heavenly_demon" ? "modao" : factionVisualRegister(factionId);
+}
+
+export function cultivationRealmLabel(state: GameState, playerId: PlayerId, realm: CultivationRealm): CultivationRealmLabel {
+  const register = cultivationRealmRegisterKey(state.players[playerId]?.factionId);
+  return CULTIVATION_REALM_REGISTERS[register][realm];
+}
 
 /** Hero level that automatically reaches Foundation (realm 1). */
 export const FOUNDATION_LEVEL = 3;
@@ -62,7 +99,7 @@ function mainHeroOf(state: GameState, playerId: PlayerId): HeroState | null {
  * limit, spell Power, combat reroll) keys off this, consistent with how the
  * per-player permanents are read.
  */
-export function cultivationRealmOf(state: GameState, playerId: PlayerId): 0 | 1 | 2 | 3 {
+export function cultivationRealmOf(state: GameState, playerId: PlayerId): CultivationRealm {
   if (!cultivationEnabled(state)) {
     return 0;
   }

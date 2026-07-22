@@ -5,7 +5,8 @@
 # targets against node's writeFile/rename (errno -4094/-4048); shell `cp` is
 # reliable. Retries each file. Run AFTER: node scripts/build-heavenly-demon-art.mjs
 set -u
-ROOT="C:/Users/klwar/Heroes-3-board-game-multi/.claude/worktrees/xianxia-town"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 STAGE="$ROOT/scripts/anime-art/raw/heavenly-demon/_staged"
 DEST="$ROOT/public/assets"
 fail=0

@@ -68,8 +68,8 @@ describe("anime coexistence display — HeroBoard shows realm + grade + equipmen
     // The Cultivation realm chip.
     const realm = container.querySelector(".hbRealm");
     expect(realm, "realm chip renders").toBeTruthy();
-    expect(realm?.textContent).toContain("Core Formation");
-    // The Hero Grade chip (xianxia register — cultivation is a xianxia module).
+    expect(realm?.textContent).toContain("Master");
+    // The Hero Grade chip (classic register — labels follow Catherine's faction).
     const grade = container.querySelector(".hbGrade");
     expect(grade, "grade chip renders").toBeTruthy();
     expect(grade?.textContent).toContain("Merit 4");

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { HeroBoard } from "./hero-board";
 import { CardZoomProvider } from "./table/zoom";
 import { cardLibrary } from "@/data/cards/library";
+import type { FactionId } from "@/data/factions/types";
 import { createAdventureGameState, getMainHero, type GameAction, type GameState, type PlayerId } from "@/engine";
 
 afterEach(cleanup);
@@ -118,13 +119,13 @@ describe("HeroBoard — anime Cultivation realm chip (§5.6)", () => {
     const { container } = renderBoardState(state);
     const chip = container.querySelector(".hbRealm");
     expect(chip).toBeTruthy();
-    expect(chip?.textContent).toContain("Core Formation");
-    expect(chip?.textContent).toContain("Kim đan");
+    expect(chip?.textContent).toContain("Master");
+    expect(chip?.textContent).toContain("Bậc Thầy");
   });
 
-  it("reads realm 0 (Qi Refinement) when the hero has no stamped realm", () => {
+  it("reads the classic realm 0 name when the hero has no stamped realm", () => {
     const { container } = renderBoardState(cultivationAdventure());
-    expect(container.querySelector(".hbRealm")?.textContent).toContain("Qi Refinement");
+    expect(container.querySelector(".hbRealm")?.textContent).toContain("Novice");
   });
 
   it("CONTROL — with the module OFF, no realm chip renders", () => {
@@ -132,6 +133,38 @@ describe("HeroBoard — anime Cultivation realm chip (§5.6)", () => {
     const { container } = renderHeroBoard("eikthurn");
     expect(container.querySelector(".hbRealm")).toBeNull();
   });
+});
+
+describe("HeroBoard — progression wording follows the rendered hero's faction", () => {
+  function progressionAdventure(factionId: FactionId, heroDefId: string): GameState {
+    return createAdventureGameState({
+      seed: `hero-board-progression-${factionId}`,
+      rollFirstPlayer: false,
+      anime: { enabled: true, cultivation: true, heroGrades: true, xianxiaTowns: true, isekaiTowns: true },
+      players: [
+        { id: "p1", name: factionId, factionId, heroDefId },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+  }
+
+  const cases: Array<{ factionId: FactionId; heroDefId: string; progress: string; realm: string; grade: string }> = [
+    { factionId: "castle", heroDefId: "catherine", progress: "Level Ⅰ · XP 0/12", realm: "Novice · Tập Sự", grade: "Recruit · Tân Binh" },
+    { factionId: "fuyuki", heroDefId: "bin", progress: "Lv Ⅰ · EXP 0/12", realm: "Awakened · Thức Tỉnh", grade: "Rank F · Hạng F" },
+    { factionId: "azure_breeze", heroDefId: "qingyun", progress: "Stage Ⅰ · Cultivation 0/12", realm: "Qi Refinement · Luyện Khí", grade: "Martial Artist · Võ Giả" },
+    { factionId: "heavenly_demon", heroDefId: "xuedao", progress: "Stage Ⅰ · Cultivation 0/12", realm: "Blood Refinement · Luyện Huyết", grade: "Blood Adept · Huyết Đồ" },
+    { factionId: "azur_lane", heroDefId: "enterprise", progress: "Lv Ⅰ · EXP 0/12", realm: "Awakened · Thức Tỉnh", grade: "Common · Thường" }
+  ];
+
+  for (const { factionId, heroDefId, progress, realm, grade } of cases) {
+    it(`${factionId} renders its own level, realm and grade vocabulary`, () => {
+      const { container, unmount } = renderBoardState(progressionAdventure(factionId, heroDefId));
+      expect(container.querySelector(".hbFooter > span")?.textContent?.trim()).toBe(progress);
+      expect(container.querySelector(".hbRealm")?.textContent).toContain(realm);
+      expect(container.querySelector(".hbGrade")?.textContent).toContain(grade);
+      unmount();
+    });
+  }
 });
 
 describe("HeroBoard — anime Hero Grades chip + picker (§3.11)", () => {
@@ -160,11 +193,12 @@ describe("HeroBoard — anime Hero Grades chip + picker (§3.11)", () => {
     expect(chip?.textContent).toContain("Merit 4");
   });
 
-  it("uses the XIANXIA register when only a xianxia module is on (martial title)", () => {
+  it("keeps a Castle hero on the classic register when a xianxia module is on", () => {
     const state = gradesAdventure({ enabled: true, heroGrades: true, cultivation: true });
     getMainHero(state, "p1")!.grade = 1;
     const { container } = renderBoardState(state);
-    expect(container.querySelector(".hbGrade")?.textContent).toContain("Expert");
+    expect(container.querySelector(".hbGrade")?.textContent).toContain("Veteran");
+    expect(container.querySelector(".hbGrade")?.textContent).not.toContain("Expert");
   });
 
   it("renders a node picker with unspent points and dispatches HERO_GRADE_PICK on click", () => {

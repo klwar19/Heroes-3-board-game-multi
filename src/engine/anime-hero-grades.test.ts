@@ -847,35 +847,45 @@ describe("anime.heroGrades — cross-mod seams", () => {
 });
 
 // ===========================================================================
-// Grade-name REGISTERS (one mechanic, package-specific names)
+// Grade-name REGISTERS (one mechanic, faction-owned names)
 // ===========================================================================
 
 describe("anime.heroGrades — grade-name registers", () => {
-  it("xianxia-only shows the martial title; isekai-only shows the rank; both/neither fall back to core", () => {
+  it("grade names follow the hero's faction and ignore table-wide package flags", () => {
     const xianxia = adventure("hg-reg-x", { ...GRADES_ON, cultivation: true });
-    expect(heroGradeRegisterKey(xianxia, "p1")).toBe("xianxia");
-    expect(heroGradeLabel(xianxia, "p1", 1).vi).toBe("Cao Thủ");
+    expect(heroGradeRegisterKey(xianxia, "p1")).toBe("core");
+    expect(heroGradeLabel(xianxia, "p1", 1).en).toBe("Veteran");
 
     const isekai = adventure("hg-reg-i", { ...GRADES_ON, guild: true });
-    expect(heroGradeRegisterKey(isekai, "p1")).toBe("isekai");
-    expect(heroGradeLabel(isekai, "p1", 1).en).toBe("Rank C");
+    expect(heroGradeRegisterKey(isekai, "p1")).toBe("core");
+    expect(heroGradeLabel(isekai, "p1", 1).en).toBe("Veteran");
 
-    // BOTH packages active → coexistence CONTROL → core (per-faction, all core).
+    // BOTH packages active → the Castle owner remains core.
     const both = adventure("hg-reg-both", { ...GRADES_ON, cultivation: true, guild: true });
     expect(heroGradeRegisterKey(both, "p1")).toBe("core");
     expect(heroGradeLabel(both, "p1", 1).en).toBe("Veteran");
 
-    // NEITHER package (heroGrades alone) → per-faction fallback → core.
+    // NEITHER package (heroGrades alone) → the Castle owner remains core.
     const neither = adventure("hg-reg-none");
     expect(heroGradeRegisterKey(neither, "p1")).toBe("core");
+
+    const mixed = adventure(
+      "hg-reg-factions",
+      { ...GRADES_ON, cultivation: true, guild: true },
+      { players: [
+        { id: "p1", name: "Fuyuki", factionId: "fuyuki", heroDefId: "bin" },
+        { id: "p2", name: "Azure", factionId: "azure_breeze", heroDefId: "qingyun" }
+      ] }
+    );
+    expect(heroGradeRegisterKey(mixed, "p1")).toBe("isekai");
+    expect(heroGradeLabel(mixed, "p1", 1).en).toBe("Rank C");
+    expect(heroGradeRegisterKey(mixed, "p2")).toBe("xianxia");
+    expect(heroGradeLabel(mixed, "p2", 1).vi).toBe("Cao Thủ");
   });
 
   it("azur_lane wears the bespoke kansen register even in an isekai-only game (hidden_leaf CONTROL stays isekai)", () => {
-    // An ISEKAI-ONLY table (isekaiTowns is an isekai module flag) seating BOTH
-    // isekai anime towns. Azur Lane shares the isekai package with Hidden Leaf,
-    // so the package switch ALONE could never tell them apart — the bespoke
-    // faction branch (checked first) must. If that branch is removed, azur_lane
-    // falls through to the isekai package register and this fails.
+    // An ISEKAI-ONLY table seating two anime-visual factions. Their owning
+    // faction ids—not the shared package—must distinguish the registers.
     const isekaiOnly = adventure(
       "hg-reg-kansen",
       { ...GRADES_ON, isekaiTowns: true },
@@ -897,9 +907,8 @@ describe("anime.heroGrades — grade-name registers", () => {
   });
 
   it("azur_lane stays kansen in a both-packages game (bespoke override + family map agree)", () => {
-    // Both packages active (cultivation = xianxia, isekaiTowns = isekai) → the
-    // package switch falls through to the per-faction family fallback. The
-    // bespoke branch returns "kansen" first AND the family map now agrees, so
+    // Both packages active: the bespoke branch returns "kansen" first AND the
+    // faction map agrees, so
     // reverting FACTION_GRADE_REGISTER.azur_lane to "isekai" would break this.
     const both = adventure(
       "hg-reg-kansen-both",
@@ -918,12 +927,9 @@ describe("anime.heroGrades — grade-name registers", () => {
   });
 
   it("heavenly_demon wears the bespoke modao register in a xianxia-only game (azure_breeze CONTROL stays xianxia)", () => {
-    // A XIANXIA-ONLY table (xianxiaTowns is a xianxia module flag) seating BOTH
-    // wuxia towns. Heavenly Demon Palace shares the "wuxia" visual register with
-    // Azure Breeze Sect, so the package switch ALONE resolves BOTH to "xianxia" —
-    // the bespoke faction branch (checked first) must give heavenly_demon its
-    // demonic ladder. If that branch is removed, heavenly_demon falls through to
-    // the xianxia package register and this fails.
+    // A XIANXIA-ONLY table seating both wuxia-visual towns. The explicit owning
+    // faction must distinguish Heavenly Demon's demonic ladder from Azure
+    // Breeze's normal cultivation ladder.
     const xianxiaOnly = adventure(
       "hg-reg-modao",
       { ...GRADES_ON, xianxiaTowns: true },

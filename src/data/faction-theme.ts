@@ -5,6 +5,10 @@ export type FactionVisualRegister = "classic" | "anime" | "wuxia";
 
 export type FactionUiLexicon = {
   register: FactionVisualRegister;
+  /** Short noun rendered before the hero's Roman-numeral progression tier. */
+  level: string;
+  /** Short noun rendered before the hero's current/max progression points. */
+  experience: string;
   grade: string;
   equipment: string;
   commanderEquipment: string;
@@ -16,6 +20,8 @@ export type FactionUiLexicon = {
 
 const CLASSIC: FactionUiLexicon = {
   register: "classic",
+  level: "Level",
+  experience: "XP",
   grade: "Hero Grade",
   equipment: "Hero Equipment",
   commanderEquipment: "Commander Artifacts",
@@ -26,6 +32,8 @@ const CLASSIC: FactionUiLexicon = {
 
 const ANIME: FactionUiLexicon = {
   register: "anime",
+  level: "Lv",
+  experience: "EXP",
   grade: "Spirit Rank",
   equipment: "Mystic Loadout",
   commanderEquipment: "Command Relics",
@@ -36,6 +44,8 @@ const ANIME: FactionUiLexicon = {
 
 const WUXIA: FactionUiLexicon = {
   register: "wuxia",
+  level: "Stage",
+  experience: "Cultivation",
   grade: "Martial Path",
   equipment: "Spirit Arsenal",
   commanderEquipment: "Sacred Treasures",
@@ -53,7 +63,7 @@ const WUXIA: FactionUiLexicon = {
  * equipment lines and the bespoke "kansen" hero-grade register.
  */
 const AZUR_LANE: FactionUiLexicon = {
-  register: "anime",
+  ...ANIME,
   grade: "Fleet Rating",
   equipment: "Rigging & Gear",
   commanderEquipment: "Flagship Regalia",

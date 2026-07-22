@@ -36,9 +36,9 @@
  *
  * ART: all twelve ship with card faces (`public/assets/wog/artifacts/<slug>.webp`)
  * and slot icons (`public/assets/wog/artifacts/icons/<slug>.webp`).
- * New grade-fill weapons (Iron Cudgel / Doomsday Blade) are Codex-generated;
- * the two Heavenly Demon bespoke items (Blood Patriarch's Saber / Demon Heart
- * Talisman) ship placeholder faces derived from their same-slot siblings.
+ * New grade-fill weapons (Iron Cudgel / Doomsday Blade) and the two Heavenly
+ * Demon bespoke items (Blood Patriarch's Saber / Demon Heart Talisman) ship
+ * dedicated illustrated faces and slot icons.
  */
 
 import type { CardLibrary, CardDefinition, CommanderArtifactSlot } from "@/engine/state";
