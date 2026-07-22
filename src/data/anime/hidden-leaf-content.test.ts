@@ -235,7 +235,7 @@ describe("Hidden Leaf Village — starting tile & town board", () => {
     // The bars carry the 8 buildings, exactly one two-building bar.
     expect([...spec.bars.flat()].sort()).toEqual([...faction.buildings].sort());
     expect(spec.bars.filter((bar) => bar.length === 2)).toHaveLength(1);
-    // Panorama + all seven bar slices exist on disk (real placeholder art) and
+    // Panorama + all seven bar slices exist on disk (real art) and
     // every bar file follows the dashed hidden-leaf naming.
     expect(fileExists(spec.panoramaImage!)).toBe(true);
     expect(fileExists(spec.fullImage!)).toBe(true);

@@ -1319,11 +1319,13 @@ canopy; avoid samurai plate.
 > `anime-equipment.test.ts` (§3.13); live AI play in
 > `src/server/hidden-leaf-live.test.ts`. **Adaptations / deferred vs. the spec
 > below** (each engine-enforced or documented, never a decorative stub):
-> - **Unit cards: REAL anime shinobi art** (`build-hidden-leaf-unit-cards.mjs` —
->   board-game hierarchy, dual Few/Pack costs, painted kunai/shield/leaf/speed
->   icons). **Still PROCEDURAL PLACEHOLDER** (same paths later): 3 hero portraits,
->   town empty/full, 7 bars, L-S1 tile, town icon, Might Guy commander — from
->   `scripts/build-hidden-leaf-placeholder-art.mjs`.
+> - **ALL art is REAL anime shinobi** — unit cards from
+>   `build-hidden-leaf-unit-cards.mjs` (board-game hierarchy, dual Few/Pack
+>   costs, painted kunai/shield/leaf/speed icons); the 3 hero portraits, town
+>   empty/full, 7 bars, L-S1 tile, town icon and Might Guy commander card are
+>   Codex art normalized by `build-hidden-leaf-art-post.mjs` (+
+>   `build-commander-cards.mjs`). The placeholder generator is DELETED; only the
+>   3 `shinobi` equipment icons remain procedural monograms (§3.13).
 > - **3 heroes (Naruto / Sasuke / Tsunade), not the 6 listed below** — the other
 >   three deferred exactly like the other towns' extra heroes.
 > - **Genin's "Swarm" ships as the flat own-attack `wog-attack-when-attacking-1`
@@ -1394,8 +1396,7 @@ arms are planned once.
 > - **ALL art is REAL wiki character art** (one shipgirl per unit card),
 >   composited offline by `scripts/fetch-azur-lane-art.mjs` +
 >   `scripts/build-azur-lane-art.mjs`; the downloaded refs are GITIGNORED
->   (`scripts/anime-art/refs/`), so only the built webp faces ship — UNLIKE Hidden
->   Leaf's procedural placeholders.
+>   (`scripts/anime-art/refs/`), so only the built webp faces ship.
 > - **5 heroes (Enterprise / Bismarck / Nagato might; Akashi / Sirius magic), not
 >   the docx's six** — the three might specialists double a shipgirl the faction
 >   actually FIELDS (Laffey / Prinz Eugen / Yukikaze); Akashi + Sirius are

@@ -21,7 +21,7 @@
  * Run: node scripts/build-hidden-leaf-unit-cards.mjs [slug ...]
  */
 
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";

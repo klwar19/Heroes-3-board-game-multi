@@ -3052,9 +3052,9 @@ spells-stay-uncapped CONTROLs in `fuyuki-casters.test.ts` — and Hidden Leaf's
 below), 8 buildings on the
 SHARED building-effect archetypes (City-Hall choice, dwellings, Mage Guild,
 Portal Summon, Artifact Smith, Hall of Valhalla, resource die — nothing bespoke),
-2–5 heroes each with portraits on disk (Fuyuki/Azure/Azur Lane real, Hidden Leaf
-procedural placeholders — below), a starting tile (`A-S1` / `W-S1` / `L-S1` /
-`P-S1`), a designed
+2–5 heroes each with portraits on disk (all four factions real — the last
+Hidden Leaf placeholders were replaced 2026-07, below), a starting tile
+(`A-S1` / `W-S1` / `L-S1` / `P-S1`), a designed
 town board whose bars are seven real contiguous panorama slices (empty↔full
 pairs, `townBoardSpecs.barTileImages`), a capitol icon on the same
 `town-icon-<faction>.webp` convention as every classic faction
@@ -3069,15 +3069,23 @@ Hierophant's `first-aid` post-combat window — see the Azur Lane paragraph belo
 `anime.isekaiTowns` with Fuyuki (NO new `AnimeModOptions` field, NO new lobby
 row — the isekaiTowns row description names both). Leading with what does NOT run
 / deliberate limits:
-- **Unit card art is REAL (anime shinobi)** — 14 Few/Pack faces built by
-  `scripts/build-hidden-leaf-unit-cards.mjs` from frame-free masters under
-  `scripts/anime-art/raw/hidden-leaf/units/` + painted stat icons (kunai /
-  shield / leaf / ninja-move). Board-game hierarchy (title · left stats · art ·
-  dual Few/Pack costs on the Few face · `# PACK` only on Pack · rules); leaf-
-  green chrome. Specialty portraits for Naruto/Sasuke crop Jinchuriki/Jonin.
-  **Still PROCEDURAL PLACEHOLDER** (via `scripts/build-hidden-leaf-placeholder-art.mjs`):
-  3 hero portraits, town empty/full, 7 board bars, L-S1 tile, town icon, Might
-  Guy commander — content tests only assert those files EXIST at the right size.
+- **ALL Hidden Leaf art is now REAL (anime shinobi) — the placeholder era is
+  over.** 14 Few/Pack unit faces built by `scripts/build-hidden-leaf-unit-cards.mjs`
+  from frame-free masters under `scripts/anime-art/raw/hidden-leaf/units/` +
+  painted stat icons (kunai / shield / leaf / ninja-move); its `CARDS` table
+  (stats / dual Few-Pack costs / rules) is kept in LOCKSTEP with
+  `src/data/anime/towns.ts` — re-verify on any stat change. Board-game hierarchy
+  (title · left stats · art · dual Few/Pack costs on the Few face · `# PACK`
+  only on Pack · rules); leaf-green chrome. The 3 hero portraits, town
+  empty/full panoramas, 7 board bars, L-S1 tile, town icon and the Might Guy
+  commander card are real Codex art normalized/sliced by
+  `scripts/build-hidden-leaf-art-post.mjs` (+ `build-commander-cards.mjs`
+  `might_guy`); specialty portraits for Naruto/Sasuke crop Jinchuriki/Jonin.
+  `scripts/build-hidden-leaf-placeholder-art.mjs` is DELETED (it would clobber
+  the real art). ONE placeholder set remains: the 3 `shinobi` equipment
+  inventory icons are still procedural monograms (see the Equipment section).
+  Content tests only assert the files EXIST at the right size, never that they
+  are final.
 - **3 heroes, not the plan's 6** (§6.2 lists six; the other three are deferred
   exactly like the other two towns' rosters).
 - **Susanoo's "Armored" is the real `nix-damage-cap` ≤2-per-single-attack arm,
@@ -3159,7 +3167,7 @@ limits:
 
 What runs (each pinned in `src/data/anime/azur-lane-content.test.ts`, the commander
 refactor + Belfast block in `src/engine/wog-commanders.test.ts`, and live AI play
-in `src/server/azur-lane-live.test.ts`): UNLIKE Hidden Leaf's procedural set, ALL
+in `src/server/azur-lane-live.test.ts`): ALL
 Azur Lane art is REAL wiki character art composited by
 `scripts/fetch-azur-lane-art.mjs` + `scripts/build-azur-lane-art.mjs` (the
 downloaded refs are GITIGNORED under `scripts/anime-art/refs/`; only the built
