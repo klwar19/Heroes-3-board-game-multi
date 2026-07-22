@@ -6,7 +6,7 @@
  *  3. Build town icon from full panorama
  *  4. Crop specialty portraits for Naruto (Jinchuriki) and Sasuke (Jonin)
  *  5. Ensure unit cards are 743×1040 webp
- *  6. Ensure hero portraits are 1086×1448 png
+ *  6. Ensure hero portraits ship as 1086×1448 webp (fresh Codex png auto-converted)
  *  7. Ensure L-S1 tile is 1024×985 (match A-S1) with transparent-friendly margin
  *
  * Run after: powershell -File scripts/_codex-prompts/hidden-leaf-art-batch.ps1
@@ -136,14 +136,57 @@ async function normalizeUnits() {
 }
 
 async function normalizeHeroes() {
+  // Portraits SHIP as webp (~10x smaller than the Codex PNG output). A fresh
+  // Codex drop lands as <id>.png beside the webp: convert + remove it; else
+  // just re-assert the shipped webp's dimensions.
+  const { rm } = await import("node:fs/promises");
+  const { existsSync } = await import("node:fs");
   for (const id of ["naruto", "sasuke", "tsunade"]) {
-    await ensureSize(`anime/heroes/${id}.png`, 1086, 1448, { format: "png", cover: true });
+    const pngPath = path.join(ASSETS, `anime/heroes/${id}.png`);
+    const webpRel = `anime/heroes/${id}.webp`;
+    if (existsSync(pngPath)) {
+      await sharp(pngPath)
+        .resize(1086, 1448, { fit: "cover", position: "centre" })
+        .webp(WEBP)
+        .toFile(path.join(ASSETS, webpRel));
+      await rm(pngPath);
+      console.log(`HERO png → webp\t${webpRel}`);
+    }
+    await ensureSize(webpRel, 1086, 1448, { cover: true });
   }
 }
 
 async function normalizeTile() {
   // Match A-S1 dimensions.
   await ensureSize("anime/tiles/l-s1.webp", 1024, 985, { cover: true });
+  // The board blends tiles by their flower-shaped alpha silhouette
+  // (tile-art-transparency.test.ts). A freshly generated master is an opaque
+  // rectangle, so graft A-S1's exact flower alpha onto L-S1 (same geometry).
+  const tilePath = path.join(ASSETS, "anime/tiles/l-s1.webp");
+  if (!(await sharp(tilePath).metadata()).hasAlpha) {
+    const { data: mask, info: mi } = await sharp(path.join(ASSETS, "anime/tiles/a-s1.webp"))
+      .ensureAlpha()
+      .extractChannel("alpha")
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const { data: rgb, info: bi } = await sharp(tilePath).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    if (bi.width !== mi.width || bi.height !== mi.height) {
+      throw new Error(`l-s1/a-s1 dimension mismatch: ${bi.width}x${bi.height} vs ${mi.width}x${mi.height}`);
+    }
+    const rgba = Buffer.alloc(bi.width * bi.height * 4);
+    for (let i = 0; i < bi.width * bi.height; i++) {
+      rgba[i * 4] = rgb[i * 3];
+      rgba[i * 4 + 1] = rgb[i * 3 + 1];
+      rgba[i * 4 + 2] = rgb[i * 3 + 2];
+      rgba[i * 4 + 3] = mask[i];
+    }
+    await sharp(rgba, { raw: { width: bi.width, height: bi.height, channels: 4 } })
+      .webp(WEBP)
+      .toFile(tilePath + ".tmp");
+    const { rename } = await import("node:fs/promises");
+    await rename(tilePath + ".tmp", tilePath);
+    console.log("ALPHA grafted A-S1 flower silhouette onto anime/tiles/l-s1.webp");
+  }
 }
 
 async function normalizeEquipIcons() {
