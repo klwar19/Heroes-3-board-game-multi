@@ -4481,5 +4481,441 @@
       "adventure/pickup-07"
     ],
     "note": "play one member at random"
+  },
+  "units/azure-breeze-outer-disciples-attack": {
+    "src": "/sounds/units/azure-breeze-outer-disciples-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-outer-disciples-defend": {
+    "src": "/sounds/units/azure-breeze-outer-disciples-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-outer-disciples-hurt": {
+    "src": "/sounds/units/azure-breeze-outer-disciples-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-outer-disciples-death": {
+    "src": "/sounds/units/azure-breeze-outer-disciples-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-outer-disciples-move": {
+    "src": "/sounds/units/azure-breeze-outer-disciples-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-inner-swordsmen-attack": {
+    "src": "/sounds/units/azure-breeze-inner-swordsmen-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-inner-swordsmen-defend": {
+    "src": "/sounds/units/azure-breeze-inner-swordsmen-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-inner-swordsmen-hurt": {
+    "src": "/sounds/units/azure-breeze-inner-swordsmen-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-inner-swordsmen-death": {
+    "src": "/sounds/units/azure-breeze-inner-swordsmen-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-inner-swordsmen-move": {
+    "src": "/sounds/units/azure-breeze-inner-swordsmen-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-spirit-crane-attack": {
+    "src": "/sounds/units/azure-breeze-spirit-crane-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-spirit-crane-defend": {
+    "src": "/sounds/units/azure-breeze-spirit-crane-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-spirit-crane-hurt": {
+    "src": "/sounds/units/azure-breeze-spirit-crane-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-spirit-crane-death": {
+    "src": "/sounds/units/azure-breeze-spirit-crane-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-spirit-crane-move": {
+    "src": "/sounds/units/azure-breeze-spirit-crane-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-sect-protectors-attack": {
+    "src": "/sounds/units/azure-breeze-sect-protectors-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-sect-protectors-defend": {
+    "src": "/sounds/units/azure-breeze-sect-protectors-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-sect-protectors-hurt": {
+    "src": "/sounds/units/azure-breeze-sect-protectors-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-sect-protectors-death": {
+    "src": "/sounds/units/azure-breeze-sect-protectors-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-sect-protectors-move": {
+    "src": "/sounds/units/azure-breeze-sect-protectors-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-true-inheritors-attack": {
+    "src": "/sounds/units/azure-breeze-true-inheritors-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-true-inheritors-defend": {
+    "src": "/sounds/units/azure-breeze-true-inheritors-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-true-inheritors-hurt": {
+    "src": "/sounds/units/azure-breeze-true-inheritors-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-true-inheritors-death": {
+    "src": "/sounds/units/azure-breeze-true-inheritors-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-true-inheritors-move": {
+    "src": "/sounds/units/azure-breeze-true-inheritors-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-core-master-attack": {
+    "src": "/sounds/units/azure-breeze-core-master-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-core-master-shoot": {
+    "src": "/sounds/units/azure-breeze-core-master-shoot.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-core-master-defend": {
+    "src": "/sounds/units/azure-breeze-core-master-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-core-master-hurt": {
+    "src": "/sounds/units/azure-breeze-core-master-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-core-master-death": {
+    "src": "/sounds/units/azure-breeze-core-master-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-core-master-move": {
+    "src": "/sounds/units/azure-breeze-core-master-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-mountain-guardian-attack": {
+    "src": "/sounds/units/azure-breeze-mountain-guardian-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-mountain-guardian-defend": {
+    "src": "/sounds/units/azure-breeze-mountain-guardian-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-mountain-guardian-hurt": {
+    "src": "/sounds/units/azure-breeze-mountain-guardian-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-mountain-guardian-death": {
+    "src": "/sounds/units/azure-breeze-mountain-guardian-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/azure-breeze-mountain-guardian-move": {
+    "src": "/sounds/units/azure-breeze-mountain-guardian-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-genin-squad-attack": {
+    "src": "/sounds/units/hidden-leaf-genin-squad-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-genin-squad-defend": {
+    "src": "/sounds/units/hidden-leaf-genin-squad-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-genin-squad-hurt": {
+    "src": "/sounds/units/hidden-leaf-genin-squad-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-genin-squad-death": {
+    "src": "/sounds/units/hidden-leaf-genin-squad-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-genin-squad-move": {
+    "src": "/sounds/units/hidden-leaf-genin-squad-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-medical-nin-attack": {
+    "src": "/sounds/units/hidden-leaf-medical-nin-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-medical-nin-defend": {
+    "src": "/sounds/units/hidden-leaf-medical-nin-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-medical-nin-hurt": {
+    "src": "/sounds/units/hidden-leaf-medical-nin-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-medical-nin-death": {
+    "src": "/sounds/units/hidden-leaf-medical-nin-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-medical-nin-move": {
+    "src": "/sounds/units/hidden-leaf-medical-nin-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-anbu-attack": {
+    "src": "/sounds/units/hidden-leaf-anbu-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-anbu-shoot": {
+    "src": "/sounds/units/hidden-leaf-anbu-shoot.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-anbu-defend": {
+    "src": "/sounds/units/hidden-leaf-anbu-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-anbu-hurt": {
+    "src": "/sounds/units/hidden-leaf-anbu-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-anbu-death": {
+    "src": "/sounds/units/hidden-leaf-anbu-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-anbu-move": {
+    "src": "/sounds/units/hidden-leaf-anbu-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jonin-attack": {
+    "src": "/sounds/units/hidden-leaf-jonin-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jonin-shoot": {
+    "src": "/sounds/units/hidden-leaf-jonin-shoot.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jonin-defend": {
+    "src": "/sounds/units/hidden-leaf-jonin-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jonin-hurt": {
+    "src": "/sounds/units/hidden-leaf-jonin-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jonin-death": {
+    "src": "/sounds/units/hidden-leaf-jonin-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jonin-move": {
+    "src": "/sounds/units/hidden-leaf-jonin-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-giant-toad-attack": {
+    "src": "/sounds/units/hidden-leaf-giant-toad-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-giant-toad-defend": {
+    "src": "/sounds/units/hidden-leaf-giant-toad-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-giant-toad-hurt": {
+    "src": "/sounds/units/hidden-leaf-giant-toad-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-giant-toad-death": {
+    "src": "/sounds/units/hidden-leaf-giant-toad-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-giant-toad-move": {
+    "src": "/sounds/units/hidden-leaf-giant-toad-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jinchuriki-attack": {
+    "src": "/sounds/units/hidden-leaf-jinchuriki-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jinchuriki-defend": {
+    "src": "/sounds/units/hidden-leaf-jinchuriki-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jinchuriki-hurt": {
+    "src": "/sounds/units/hidden-leaf-jinchuriki-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jinchuriki-death": {
+    "src": "/sounds/units/hidden-leaf-jinchuriki-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-jinchuriki-move": {
+    "src": "/sounds/units/hidden-leaf-jinchuriki-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-susanoo-attack": {
+    "src": "/sounds/units/hidden-leaf-susanoo-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-susanoo-defend": {
+    "src": "/sounds/units/hidden-leaf-susanoo-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-susanoo-hurt": {
+    "src": "/sounds/units/hidden-leaf-susanoo-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-susanoo-death": {
+    "src": "/sounds/units/hidden-leaf-susanoo-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-susanoo-move": {
+    "src": "/sounds/units/hidden-leaf-susanoo-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-blood-disciples-attack": {
+    "src": "/sounds/units/heavenly-demon-blood-disciples-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-blood-disciples-defend": {
+    "src": "/sounds/units/heavenly-demon-blood-disciples-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-blood-disciples-hurt": {
+    "src": "/sounds/units/heavenly-demon-blood-disciples-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-blood-disciples-death": {
+    "src": "/sounds/units/heavenly-demon-blood-disciples-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-blood-disciples-move": {
+    "src": "/sounds/units/heavenly-demon-blood-disciples-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-gu-witches-attack": {
+    "src": "/sounds/units/heavenly-demon-gu-witches-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-gu-witches-shoot": {
+    "src": "/sounds/units/heavenly-demon-gu-witches-shoot.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-gu-witches-defend": {
+    "src": "/sounds/units/heavenly-demon-gu-witches-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-gu-witches-hurt": {
+    "src": "/sounds/units/heavenly-demon-gu-witches-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-gu-witches-death": {
+    "src": "/sounds/units/heavenly-demon-gu-witches-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-gu-witches-move": {
+    "src": "/sounds/units/heavenly-demon-gu-witches-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-shadow-wraiths-attack": {
+    "src": "/sounds/units/heavenly-demon-shadow-wraiths-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-shadow-wraiths-defend": {
+    "src": "/sounds/units/heavenly-demon-shadow-wraiths-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-shadow-wraiths-hurt": {
+    "src": "/sounds/units/heavenly-demon-shadow-wraiths-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-shadow-wraiths-death": {
+    "src": "/sounds/units/heavenly-demon-shadow-wraiths-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-shadow-wraiths-move": {
+    "src": "/sounds/units/heavenly-demon-shadow-wraiths-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-corpse-puppets-attack": {
+    "src": "/sounds/units/heavenly-demon-corpse-puppets-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-corpse-puppets-defend": {
+    "src": "/sounds/units/heavenly-demon-corpse-puppets-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-corpse-puppets-hurt": {
+    "src": "/sounds/units/heavenly-demon-corpse-puppets-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-corpse-puppets-death": {
+    "src": "/sounds/units/heavenly-demon-corpse-puppets-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-corpse-puppets-move": {
+    "src": "/sounds/units/heavenly-demon-corpse-puppets-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-bone-reavers-attack": {
+    "src": "/sounds/units/heavenly-demon-bone-reavers-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-bone-reavers-defend": {
+    "src": "/sounds/units/heavenly-demon-bone-reavers-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-bone-reavers-hurt": {
+    "src": "/sounds/units/heavenly-demon-bone-reavers-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-bone-reavers-death": {
+    "src": "/sounds/units/heavenly-demon-bone-reavers-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-bone-reavers-move": {
+    "src": "/sounds/units/heavenly-demon-bone-reavers-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-ghost-king-attack": {
+    "src": "/sounds/units/heavenly-demon-ghost-king-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-ghost-king-defend": {
+    "src": "/sounds/units/heavenly-demon-ghost-king-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-ghost-king-hurt": {
+    "src": "/sounds/units/heavenly-demon-ghost-king-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-ghost-king-death": {
+    "src": "/sounds/units/heavenly-demon-ghost-king-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-ghost-king-move": {
+    "src": "/sounds/units/heavenly-demon-ghost-king-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-avatar-attack": {
+    "src": "/sounds/units/heavenly-demon-avatar-attack.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-avatar-defend": {
+    "src": "/sounds/units/heavenly-demon-avatar-defend.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-avatar-hurt": {
+    "src": "/sounds/units/heavenly-demon-avatar-hurt.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-avatar-death": {
+    "src": "/sounds/units/heavenly-demon-avatar-death.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  },
+  "units/heavenly-demon-avatar-move": {
+    "src": "/sounds/units/heavenly-demon-avatar-move.mp3",
+    "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
   }
 }

@@ -209,6 +209,33 @@ const creatureVoices: Record<string, string> = {
   dracolich: "ghost-dragon"
 };
 
+// The three newest towns use complete, unit-specific combat mixes. These
+// intentionally replace the provisional H3-only entries above while retaining
+// suitable H3 creature voices as layers inside the rendered assets.
+Object.assign(creatureVoices, {
+  outer_disciples: "azure-breeze-outer-disciples",
+  inner_swordsmen: "azure-breeze-inner-swordsmen",
+  spirit_crane: "azure-breeze-spirit-crane",
+  sect_protectors: "azure-breeze-sect-protectors",
+  true_inheritors: "azure-breeze-true-inheritors",
+  core_master: "azure-breeze-core-master",
+  mountain_guardian: "azure-breeze-mountain-guardian",
+  genin_squad: "hidden-leaf-genin-squad",
+  medical_nin: "hidden-leaf-medical-nin",
+  anbu: "hidden-leaf-anbu",
+  jonin: "hidden-leaf-jonin",
+  giant_toad: "hidden-leaf-giant-toad",
+  jinchuriki: "hidden-leaf-jinchuriki",
+  susanoo: "hidden-leaf-susanoo",
+  blood_disciples: "heavenly-demon-blood-disciples",
+  gu_witches: "heavenly-demon-gu-witches",
+  shadow_wraiths: "heavenly-demon-shadow-wraiths",
+  corpse_puppets: "heavenly-demon-corpse-puppets",
+  bone_reavers: "heavenly-demon-bone-reavers",
+  ghost_king: "heavenly-demon-ghost-king",
+  demon_avatar: "heavenly-demon-avatar"
+});
+
 /**
  * Azur Lane's bespoke Japanese combat voices. The source game exposes one
  * short line per combat event rather than separate melee/ranged/defend clips,
