@@ -37,6 +37,30 @@ ley-line light. Each class keeps its canonical silhouette and signature weapon:
 - Sabers: blonde braided bun, blue dress, silver plate, wind-veiled sword.
 - Berserkers: monumental ancient hero, stone axe-sword, winter estate grounds.
 
+## Hidden Leaf Village register
+
+Palette: forest leaf-green, slate, charcoal, parchment cream, lantern amber, soft
+cyan chakra, tier metal (bronze / silver / gold). **Anime shinobi** (modern
+ninja jackets, flak vests, headbands with blank plates, kunai, animal masks) —
+**not** wuxia/xianxia robes, jian, jade qi, or Chinese mountain-sect dress.
+
+**Unit card structure = board-game hierarchy** (title · left 4 stats · art · type
+· `# FEW`/`# PACK` · rules · cost) — same rules surface as every other unit
+card. **Theme only** is Hidden Leaf (leaf-green leather chrome). Not Fuyuki
+violet, not Azure jade frame art, not raw classic blank, not a custom
+horizontal-stat layout. Built by `scripts/build-hidden-leaf-unit-cards.mjs`.
+Few/Pack share one master art; stats/cost/rules differ. Masters frame-free under
+`scripts/anime-art/raw/hidden-leaf/units/`.
+
+Roster art anchors (anime ninja, not wuxia):
+- Genin Squad — academy trainees, green jackets, practice kunai.
+- Medical-Nin — cream/leaf medic gear, green healing chakra palm.
+- Anbu Black Ops — slate ops gear, animal mask, night branch.
+- Jonin — flak vest elite, kunai barrage.
+- Giant Toad — cart-sized summon beast.
+- Jinchuriki — orange chakra cloak beast-host.
+- Susanoo Avatar — indigo spectral armor colossus.
+
 ## Azure Breeze Sect register
 
 Palette: celadon and deep jade, cloud white, charcoal ink, weathered granite,

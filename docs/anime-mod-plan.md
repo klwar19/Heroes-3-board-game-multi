@@ -1319,10 +1319,11 @@ canopy; avoid samurai plate.
 > `anime-equipment.test.ts` (§3.13); live AI play in
 > `src/server/hidden-leaf-live.test.ts`. **Adaptations / deferred vs. the spec
 > below** (each engine-enforced or documented, never a decorative stub):
-> - **Art is PROCEDURAL PLACEHOLDER** on disk — 14 unit faces, 3 hero portraits,
->   panorama/full, 7 bars, the L-S1 tile, the town icon, the Might Guy card, all
->   from `scripts/build-hidden-leaf-placeholder-art.mjs`; real art replaces them at
->   the same paths later.
+> - **Unit cards: REAL anime shinobi art** (`build-hidden-leaf-unit-cards.mjs` —
+>   board-game hierarchy, dual Few/Pack costs, painted kunai/shield/leaf/speed
+>   icons). **Still PROCEDURAL PLACEHOLDER** (same paths later): 3 hero portraits,
+>   town empty/full, 7 bars, L-S1 tile, town icon, Might Guy commander — from
+>   `scripts/build-hidden-leaf-placeholder-art.mjs`.
 > - **3 heroes (Naruto / Sasuke / Tsunade), not the 6 listed below** — the other
 >   three deferred exactly like the other towns' extra heroes.
 > - **Genin's "Swarm" ships as the flat own-attack `wog-attack-when-attacking-1`
