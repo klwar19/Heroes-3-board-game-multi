@@ -192,13 +192,12 @@ const FIELD_ICON_ASSETS = {
   treasure: "ui/icon-treasure-chest-glyph.webp",
   mine: "ui/field-symbol-mine-cream.webp"
 };
-async function prepareFieldIcon(kind, hexSize) {
+async function prepareFieldIcon(kind, hexSize, { scale = 1, rotate = 0 } = {}) {
   const src = path.join(assets, FIELD_ICON_ASSETS[kind]);
-  const iconPx = Math.round(hexSize * (kind === "resource" ? 0.34 : 0.26));
-  return sharp(src)
-    .resize(iconPx, iconPx, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .png()
-    .toBuffer({ resolveWithObject: true });
+  const iconPx = Math.round(hexSize * (kind === "resource" ? 0.34 : 0.26) * scale);
+  let pipeline = sharp(src).resize(iconPx, iconPx, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } });
+  if (rotate) pipeline = pipeline.rotate(rotate, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
+  return pipeline.png().toBuffer({ resolveWithObject: true });
 }
 
 /**
@@ -221,8 +220,8 @@ async function buildTile() {
   const borders = await svgRaster(tileBorderSvg(W, H, C, R), W, H);
 
   const composites = [{ input: borders, left: 0, top: 0 }];
-  const placeIcon = async (kind, [cx, cy]) => {
-    const { data, info } = await prepareFieldIcon(kind, hexSize);
+  const placeIcon = async (kind, [cx, cy], opts) => {
+    const { data, info } = await prepareFieldIcon(kind, hexSize, opts);
     composites.push({
       input: data,
       left: Math.round(cx - info.width / 2),
@@ -240,7 +239,7 @@ async function buildTile() {
     composites.push({ input: badge, left: Math.round(cx - m.width / 2), top: Math.round(cy + hexSize * 0.28 - m.height / 2) });
   };
 
-  await placeIcon("resource", C.NE);
+  await placeIcon("resource", C.NE, { scale: 1.3, rotate: 15 });
   await placeIcon("treasure", C.SW);
   await placeNumeral("I", C.SW);
   await placeIcon("mine", C.W);
