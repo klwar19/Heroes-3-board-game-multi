@@ -200,6 +200,31 @@ const creatureVoices: Record<string, string> = {
 };
 
 /**
+ * Azur Lane's bespoke Japanese combat voices. The source game exposes one
+ * short line per combat event rather than separate melee/ranged/defend clips,
+ * so attack+shoot share Skill Activation and defend+hurt share Low HP.
+ */
+const azurLaneUnitVoices: Record<string, string> = {
+  laffey: "laffey",
+  javelin: "javelin",
+  honolulu: "honolulu",
+  unicorn: "unicorn",
+  yukikaze: "yukikaze",
+  prinz_eugen: "prinz_eugen",
+  i19: "i19"
+};
+
+function azurLaneVoiceKey(slug: string, action: UnitSoundAction): string | undefined {
+  const clip = action === "attack" || action === "shoot"
+    ? "attack"
+    : action === "defend" || action === "hurt"
+      ? "hurt"
+      : action;
+  const key = `azur-lane/voices/${slug}/${clip}`;
+  return soundLibrary[key] ? key : undefined;
+}
+
+/**
  * WOG commanders have no unit definition (they are tierless, army-card-less
  * champions), so their battlefield voices are keyed by commander slug (== the
  * faction) with a per-action creature-voice mapping, exactly as the user
@@ -291,6 +316,9 @@ const actionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundActio
  * unknown slug / missing clip so callers degrade to silence.
  */
 export function commanderSoundKey(slug: string, action: UnitSoundAction): string | undefined {
+  if (slug === "belfast") {
+    return azurLaneVoiceKey("belfast", action);
+  }
   const voices = commanderVoices[slug];
   if (!voices) {
     return undefined;
@@ -316,6 +344,10 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
     return commanderSoundKey(unitDefId.slice(COMMANDER_VOICE_PREFIX.length), action);
   }
   const bareName = unitDefId.split(".")[1] ?? unitDefId;
+  const azurLaneSlug = azurLaneUnitVoices[bareName];
+  if (azurLaneSlug) {
+    return azurLaneVoiceKey(azurLaneSlug, action);
+  }
   const voice = creatureVoices[bareName];
   if (!voice) {
     return undefined;
@@ -353,6 +385,16 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
  */
 const attackFlourishes: Record<string, string> = {
   magic_elementals: "spells/magic-arrow",
+  // Layer naval weapon impacts beneath the spoken Azur Lane activation line.
+  // Destroyers/cruisers use the converted cannon shot; I-19 gets the watery
+  // scuttle impact and carrier Unicorn gets the ballista launch snap.
+  laffey: "units/cannon-shoot",
+  javelin: "units/cannon-shoot",
+  honolulu: "units/cannon-shoot",
+  unicorn: "units/ballista-shoot",
+  yukikaze: "units/cannon-shoot",
+  prinz_eugen: "units/cannon-shoot",
+  i19: "spells/scuttle-boat",
   // The Hell Steed is a NORMAL melee attacker (no Magic Arrow), so its blow no
   // longer layers a magic-arrow zap — it just plays its war-unicorn strike voice.
   santa_gremlin: "spells/ice-bolt"
@@ -367,7 +409,12 @@ export function unitAttackFlourish(unitDefId: string | undefined): string | unde
   if (!unitDefId) {
     return undefined;
   }
-  const bareName = unitDefId.split(".")[1] ?? unitDefId;
+  const bareName = unitDefId === `${COMMANDER_VOICE_PREFIX}belfast`
+    ? "belfast"
+    : unitDefId.split(".")[1] ?? unitDefId;
+  if (bareName === "belfast") {
+    return soundLibrary["units/cannon-shoot"] ? "units/cannon-shoot" : undefined;
+  }
   const key = attackFlourishes[bareName];
   return key && soundLibrary[key] ? key : undefined;
 }

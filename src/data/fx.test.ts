@@ -30,6 +30,16 @@ describe("soundDurationMs", () => {
   });
 });
 
+describe("Enterprise Lucky E voice", () => {
+  it("plays Enterprise's Japanese ability line at every specialty level", () => {
+    for (const level of [1, 4, 6]) {
+      expect(spellFxPlans[`specialty.enterprise.${level}`]?.sound).toBe(
+        "azur-lane/voices/enterprise/ability"
+      );
+    }
+  });
+});
+
 describe("spriteDurationMs", () => {
   it("derives duration from the sheet's frame count and fps", () => {
     // fireball: 13 frames at 15 fps ≈ 867ms.
