@@ -1520,12 +1520,21 @@ export const adventureCards: CardLibrary = {
   "specialty.nagato.1": withoutArt(mightSpecialtyOne("nagato", "Big Seven Resolve", "Yukikaze")),
   "specialty.nagato.4": withoutArt(unitHealthSpecialty("nagato", "Big Seven Resolve", 4, 1, "Yukikaze")),
   "specialty.nagato.6": withoutArt(unitInitiativeSpecialty("nagato", "Big Seven Resolve", 6, 1, "Yukikaze")),
-  // Heavenly Demon Palace might hero (src/data/anime/towns.ts) — unit specialist
-  // doubling on its OWN faction's gold Heavenly Demon Avatar. Same proven generic
-  // I/IV/VI shape as Bin/Qingyun/Naruto; face-less (native renderer).
+  // Heavenly Demon Palace might heroes (src/data/anime/towns.ts) — unit specialists
+  // doubling on units their OWN faction actually FIELDS (Xuedao → Heavenly Demon
+  // Avatar, Guiyan → Ghost King, Xuanming → Bone Reavers). Same proven generic
+  // I/IV/VI shape as Bin/Qingyun/Naruto; face-less (native renderer). Their two
+  // MAGIC medic siblings (Yaoji / Molian) are rethemedSpecialty clones defined
+  // below beside the other anime medic clones.
   "specialty.xuedao.1": withoutArt(mightSpecialtyOne("xuedao", "Demon Sovereign", "Heavenly Demon Avatar")),
   "specialty.xuedao.4": withoutArt(unitHealthSpecialty("xuedao", "Demon Sovereign", 4, 1, "Heavenly Demon Avatar")),
   "specialty.xuedao.6": withoutArt(unitInitiativeSpecialty("xuedao", "Demon Sovereign", 6, 1, "Heavenly Demon Avatar")),
+  "specialty.guiyan.1": withoutArt(mightSpecialtyOne("guiyan", "Ghost Sovereign", "Ghost King")),
+  "specialty.guiyan.4": withoutArt(unitHealthSpecialty("guiyan", "Ghost Sovereign", 4, 1, "Ghost King")),
+  "specialty.guiyan.6": withoutArt(unitInitiativeSpecialty("guiyan", "Ghost Sovereign", 6, 1, "Ghost King")),
+  "specialty.xuanming.1": withoutArt(mightSpecialtyOne("xuanming", "Marrow Legion", "Bone Reavers")),
+  "specialty.xuanming.4": withoutArt(unitHealthSpecialty("xuanming", "Marrow Legion", 4, 1, "Bone Reavers")),
+  "specialty.xuanming.6": withoutArt(unitInitiativeSpecialty("xuanming", "Marrow Legion", 6, 1, "Bone Reavers")),
   // Miku (Fuyuki Virtual Diva) — Voice of Angel. NEW engine arms:
   // I SLOW_ALL_ENEMIES, IV CREATE_HEAL_ON_ATTACKED (friendly), VI DAMAGE_ALL_ENEMY_UNITS.
   "specialty.miku.1": withoutArt({
@@ -5175,3 +5184,17 @@ adventureCards["specialty.akashi.6"] = rethemedSpecialty(adventureCards["special
 adventureCards["specialty.sirius.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "sirius", 1, "Flawless Service");
 adventureCards["specialty.sirius.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "sirius", 4, "Flawless Service");
 adventureCards["specialty.sirius.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "sirius", 6, "Flawless Service");
+// Yaoji (Heavenly Demon, magic): Gem's generic First Aid set (Tent + heals), the
+// faction-agnostic medic — no unit doubling that could go dead. Distinct id +
+// name ("Blood Renewal") from every other gem clone, so no collision. Art-less:
+// the native SpecialtyCard draws her portrait + the First-Aid medallion.
+adventureCards["specialty.yaoji.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "yaoji", 1, "Blood Renewal");
+adventureCards["specialty.yaoji.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "yaoji", 4, "Blood Renewal");
+adventureCards["specialty.yaoji.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "yaoji", 6, "Blood Renewal");
+// Molian (Heavenly Demon, magic): Rion's generic heal/cleanse-draw set (the aoko /
+// sirius precedent — a faction-agnostic medic with no unit doubling that could go
+// dead). Distinct id + name ("Corpse Suture") from every other rion clone, so no
+// collision. Art-less: the native SpecialtyCard draws her portrait + medallion.
+adventureCards["specialty.molian.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "molian", 1, "Corpse Suture");
+adventureCards["specialty.molian.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "molian", 4, "Corpse Suture");
+adventureCards["specialty.molian.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "molian", 6, "Corpse Suture");

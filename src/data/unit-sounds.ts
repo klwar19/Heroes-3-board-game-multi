@@ -256,7 +256,11 @@ const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
   might_guy: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" },
   // Azur Lane — Belfast is a poised Royal Navy maid-commander → the Sea Witch
   // voice (the temple_guardian precedent proves the full set resolves).
-  belfast: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" }
+  belfast: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" },
+  // Heavenly Demon Palace — the Demon Ancestor is a bestial blood-cultivation
+  // fiend → the Dungeon Minotaur voice (the brute precedent proves the full set
+  // resolves, and it ties to the reused Bloodlust cast).
+  demon_ancestor: { attack: "minotaur", move: "minotaur", defend: "minotaur", hurt: "minotaur", death: "minotaur" }
 };
 
 /** The voice id the table uses for a commander combat unit ("commander:<slug>"). */

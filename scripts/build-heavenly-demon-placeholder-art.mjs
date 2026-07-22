@@ -197,8 +197,15 @@ const UNITS = [
   { slug: "demon-avatar", tier: "golden", label: "HEAVENLY DEMON AVATAR" }
 ];
 
-// One MIGHT hero for now — mirror bin (fuyuki might portrait, 1086x1448).
-const HEROES = [{ id: "xuedao", label: "XUEDAO", mirror: "anime/heroes/bin.png" }];
+// Five heroes — three MIGHT (mirror bin, the fuyuki might portrait, 1086x1448)
+// + two MAGIC (mirror aoko, the fuyuki magic portrait, same dimensions).
+const HEROES = [
+  { id: "xuedao", label: "XUEDAO", mirror: "anime/heroes/bin.png" },
+  { id: "guiyan", label: "GUIYAN", mirror: "anime/heroes/bin.png" },
+  { id: "xuanming", label: "XUANMING", mirror: "anime/heroes/bin.png" },
+  { id: "yaoji", label: "YAOJI", mirror: "anime/heroes/aoko.png" },
+  { id: "molian", label: "MOLIAN", mirror: "anime/heroes/aoko.png" }
+];
 
 async function main() {
   const generated = [];
@@ -257,6 +264,11 @@ async function main() {
 
   // Town icon (raw id in the filename, per townIconUrl)
   generated.push(await render("town-icon-heavenly_demon.webp", "town-icon-azure_breeze.webp", "HD"));
+
+  // WOG commander card — mirror the azure_breeze commander (Sword Saint) card.
+  generated.push(
+    await render("units-commander-demon_ancestor.webp", "units-commander-sword_saint.webp", "DEMON ANCESTOR — COMMANDER")
+  );
 
   console.log(`\nGenerated ${generated.length} placeholder art files.`);
 }

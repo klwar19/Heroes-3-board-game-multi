@@ -3,13 +3,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { cardLibrary } from "@/data/cards/library";
-import { COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
+import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
 import { factionUiLexicon, factionVisualRegister } from "@/data/faction-theme";
 import { coreFactionDefinitions, coreHeroDefinitions, isPlayableFaction } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { townBoardSpecs, townIconUrl } from "@/data/towns/boards";
-import { unitSoundKey } from "@/data/unit-sounds";
+import { commanderSoundKey, unitSoundKey } from "@/data/unit-sounds";
 import { unitAbilities } from "@/data/units/abilities";
 import { applyAction, createInitialGameState } from "@/engine";
 import type { CombatUnitState, GameAction, GameState, PlayerId } from "@/engine/state";
@@ -19,13 +19,14 @@ import type { CombatUnitState, GameAction, GameState, PlayerId } from "@/engine/
  * xianxia town, the EVIL demonic-path sect. Gated on the SAME
  * `anime.enabled && anime.xianxiaTowns` flag as Azure Breeze Sect.
  *
- * This file pins the town like hidden-leaf-content: the EXACT per-side ability
- * ids of all seven units (the Few/Pack divergence is the mutation control), the
- * module gate truth table, the ONE minimal hero's specialty, the starting tile,
- * the board spec + bar art, the wuxia visual register, the unit voices, the two
- * dedicated NEW abilities' registration — and one BEHAVIOURAL combat spot-check
- * proving a roster arm executes in play. The full hero roster + a commander are a
- * LATER task; this town deliberately ships WITHOUT a commander (see the test).
+ * This file pins the town like hidden-leaf-content / azur-lane-content: the EXACT
+ * per-side ability ids of all seven units (the Few/Pack divergence is the mutation
+ * control), the module gate truth table, the commander (Demon Ancestor) wiring,
+ * all FIVE heroes' specialties, the starting tile, the board spec + bar art, the
+ * wuxia visual register, the unit voices, the two dedicated NEW abilities'
+ * registration — and one BEHAVIOURAL combat spot-check proving a roster arm
+ * executes in play. The commander's own cast/specialty behaviour is pinned in
+ * src/engine/wog-commanders.test.ts (the "Demon Ancestor" block).
  */
 
 const FACTION = "heavenly_demon";
@@ -75,14 +76,14 @@ function fileExists(assetPath: string, minBytes = 1000): boolean {
 }
 
 describe("Heavenly Demon Palace — registration & roster shape", () => {
-  it("registers a complete faction: 7 units (3/2/2), 8 buildings, 1 hero, demon tile", () => {
+  it("registers a complete faction: 7 units (3/2/2), 8 buildings, 5 heroes, demon tile + commander", () => {
     const faction = coreFactionDefinitions[FACTION];
     expect(faction).toBeDefined();
     expect(faction.name).toBe("Heavenly Demon Palace");
     expect(faction.startingTileId).toBe("D-S1");
     expect(faction.units).toHaveLength(7);
     expect(faction.buildings).toHaveLength(8);
-    expect(faction.heroes).toEqual(["xuedao"]);
+    expect(faction.heroes).toEqual(["xuedao", "guiyan", "xuanming", "yaoji", "molian"]);
 
     const byTier = { bronze: 0, silver: 0, gold: 0, azure: 0 };
     for (const id of faction.units) byTier[coreUnitDefinitions[id].tier] += 1;
@@ -90,13 +91,28 @@ describe("Heavenly Demon Palace — registration & roster shape", () => {
 
     // Every rostered unit is pinned in EXPECTED_ABILITIES (no unit escapes the pin).
     expect([...faction.units].sort()).toEqual(Object.keys(EXPECTED_ABILITIES).sort());
+    expect(COMMANDER_SLUG_BY_FACTION[FACTION]).toBe("demon_ancestor");
   });
 
-  it("ships WITHOUT a commander (the full roster + commander is a LATER task)", () => {
-    // Deliberate limit: heavenly_demon is not in the commander registry yet, so a
-    // WOG-commanders game never mints one for it. (The other anime towns do have
-    // one; this town's is deferred.)
-    expect(COMMANDER_SLUG_BY_FACTION[FACTION]).toBeUndefined();
+  it("maps heavenly_demon → demon_ancestor with an implemented cast + Undead specialty + a resolving voice", () => {
+    const commander = commanderDefinitions.demon_ancestor;
+    expect(commander).toBeDefined();
+    expect(commander.faction).toBe("Heavenly Demon Palace");
+    expect(commander.original).toBe(true);
+    // Cast: REUSE the Dungeon Brute's Bloodlust arm (the Fuyuki Regent precedent).
+    expect(commander.cast.name).toBe("Blood Frenzy");
+    expect(commander.cast.abilityId).toBe("commander-cast-brute");
+    expect(unitAbilities[commander.cast.abilityId]?.implementationStatus).toBe("implemented");
+    expect(commander.cast.tierText).toHaveLength(3);
+    // Specialty: REUSE the Soul Eater's `undead` id (specialty-keyed paralysis
+    // immunity, the Belfast first-aid precedent).
+    expect(commander.specialty.id).toBe("undead");
+    expect(commander.specialty.name).toBe("Undying Demon Body");
+    expect(fileExists(commander.cardImage)).toBe(true);
+    // Every action resolves to a real clip (Dungeon Minotaur voice).
+    for (const action of ["attack", "move", "defend", "hurt", "death"] as const) {
+      expect(commanderSoundKey("demon_ancestor", action), action).toBeTruthy();
+    }
   });
 
   it("uses the wuxia visual register (same as Azure Breeze) with the Martial-Path lexicon", () => {
@@ -198,28 +214,60 @@ describe("Heavenly Demon Palace — module gate (xianxiaTowns), same flag as Azu
   });
 });
 
-describe("Heavenly Demon Palace — hero & specialty", () => {
-  it("Xuedao carries implemented, own-portrait specialties I/IV/VI doubling a fielded unit", () => {
-    const hero = coreHeroDefinitions.xuedao;
-    expect(hero?.faction).toBe(FACTION);
-    expect(hero?.type).toBe("might");
-    expect(fileExists(hero!.portrait!, 50_000)).toBe(true);
-    for (const level of [1, 4, 6] as const) {
-      const cardId = hero!.specialtyCardIds![level];
-      expect(cardId).toBe(`specialty.xuedao.${level}`);
-      expect(cardLibrary[cardId]?.implementationStatus, cardId).toBe("implemented");
+describe("Heavenly Demon Palace — heroes & specialties", () => {
+  it("all five heroes carry implemented, own-portrait specialties I/IV/VI", () => {
+    for (const [heroId, type] of [
+      ["xuedao", "might"],
+      ["guiyan", "might"],
+      ["xuanming", "might"],
+      ["yaoji", "magic"],
+      ["molian", "magic"]
+    ] as const) {
+      const hero = coreHeroDefinitions[heroId];
+      expect(hero?.faction).toBe(FACTION);
+      expect(hero?.type).toBe(type);
+      expect(fileExists(hero!.portrait!, 50_000), `${heroId} portrait`).toBe(true);
+      for (const level of [1, 4, 6] as const) {
+        const cardId = hero!.specialtyCardIds![level];
+        expect(cardId).toBe(`specialty.${heroId}.${level}`);
+        expect(cardLibrary[cardId]?.implementationStatus, cardId).toBe("implemented");
+      }
     }
+  });
 
-    // The I specialty doubles on a unit the faction actually FIELDS.
-    const effect = cardLibrary["specialty.xuedao.1"]?.effect;
-    expect(effect?.type).toBe("CHOOSE_ONE");
-    const doubled =
-      effect?.type === "CHOOSE_ONE" &&
-      effect.options[0]?.effect?.type === "ADD_COMBAT_STAT" &&
-      effect.options[0].effect.doubleForUnitName;
-    expect(doubled).toBe("Heavenly Demon Avatar");
+  it("might specialists (Xuedao/Guiyan/Xuanming) double on units the faction actually FIELDS", () => {
     const factionUnitNames = coreFactionDefinitions[FACTION].units.map((id) => coreUnitDefinitions[id]?.name);
-    expect(factionUnitNames).toContain(doubled);
+    for (const [heroId, unitName] of [
+      ["xuedao", "Heavenly Demon Avatar"],
+      ["guiyan", "Ghost King"],
+      ["xuanming", "Bone Reavers"]
+    ] as const) {
+      const effect = cardLibrary[`specialty.${heroId}.1`]?.effect;
+      expect(effect?.type).toBe("CHOOSE_ONE");
+      const doubled =
+        effect?.type === "CHOOSE_ONE" &&
+        effect.options[0]?.effect?.type === "ADD_COMBAT_STAT" &&
+        effect.options[0].effect.doubleForUnitName;
+      expect(doubled, heroId).toBe(unitName);
+      // Mutation control: the doubled unit is one the faction can recruit.
+      expect(factionUnitNames, `${heroId} doubles a fielded unit`).toContain(doubled);
+    }
+  });
+
+  it("Yaoji (Blood Renewal) & Molian (Corpse Suture) are faction-agnostic medic clones, no unit doubling", () => {
+    for (const [heroId, name] of [
+      ["yaoji", "Blood Renewal"],
+      ["molian", "Corpse Suture"]
+    ] as const) {
+      for (const level of [1, 4, 6] as const) {
+        const card = cardLibrary[`specialty.${heroId}.${level}`];
+        expect(card?.name).toMatch(new RegExp(`^${name} `));
+        expect(card?.implementationStatus).toBe("implemented");
+        // A medic clone carries NO unit-doubling clause (the dead-clause trap) —
+        // its whole serialized card never names a `doubleForUnitName`.
+        expect(JSON.stringify(card), `${heroId} L${level}`).not.toContain("doubleForUnitName");
+      }
+    }
   });
 });
 
