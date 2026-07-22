@@ -182,7 +182,7 @@ export function findCommanderUnit(state: GameState, playerId: PlayerId): CombatU
  *  - Damage grade 1/2/3: +1/+2/+3 bonus damage on its attacks;
  *  - every unlocked combination skill (one stat of the pair at grade 3, the
  *    other at 2+) — Sharpshooter has no ability id (it is the type flip);
- *  - the Soul Eater's Undead paralysis immunity;
+ *  - the "Undead" specialty's paralysis immunity (Soul Eater, Demon Ancestor);
  *  - the commander's command ability (the once-per-round cast).
  */
 export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
@@ -231,8 +231,11 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
     }
   }
 
-  // Specialty-borne combat passive.
-  if (commander.slug === "soul_eater") {
+  // Specialty-borne combat passive. The "Undead" Paralysis-token immunity is
+  // keyed off the SPECIALTY id (not the "soul_eater" slug), the Belfast
+  // first-aid precedent — so any future Undead commander (the Heavenly Demon
+  // "Undying Demon Body") gets it too.
+  if (definition?.specialty.id === "undead") {
     ids.push("ignore-paralysis");
   }
 

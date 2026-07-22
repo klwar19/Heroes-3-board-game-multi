@@ -1589,6 +1589,104 @@ describe("anime.equipment — Retrofit Blueprint (kansen weapon relic — combin
   });
 });
 
+// ===========================================================================
+// Heavenly Demon Palace bespoke "modao" line — 3 items reusing proven seams
+// (each fails if its fold id is removed) + the register-aware shop CONTROLs.
+// ===========================================================================
+
+const EQUIP_ID_SABER = EQUIPMENT_IDS.demonBloodSaber;
+const EQUIP_ID_BONEFIEND = EQUIPMENT_IDS.bonefiendPlate;
+const EQUIP_ID_DEMONHEART = EQUIPMENT_IDS.demonHeartRelic;
+
+describe("anime.equipment — Blood Demon Saber (modao weapon)", () => {
+  it("+1 Attack on the FIRST declared attack (Iron-Blood Sword seam; CONTROL: bare)", () => {
+    function firstAttackValue(withItem: boolean): number {
+      let state = combat(`eq-saber-${withItem}`);
+      if (withItem) equip(state, "p1", "weapon", EQUIP_ID_SABER);
+      state = resolveReactions(
+        applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+      );
+      return initiatingAttackValues(state)[0];
+    }
+    // The Blood Demon Saber rides the SAME first-attack fold as the Iron-Blood Sword.
+    expect(firstAttackValue(true)).toBe(firstAttackValue(false) + 1);
+  });
+
+  it("does NOT fire on a retaliation (declared attacks only)", () => {
+    function retaliationValue(withItem: boolean): number {
+      let state = combat(`eq-saber-retal-${withItem}`);
+      if (withItem) equip(state, "p1", "weapon", EQUIP_ID_SABER);
+      const skeletons = state.combat!.units.unit_p2_skeletons;
+      skeletons.attack = 6;
+      state.combat!.activeUnitId = "unit_p2_skeletons";
+      state.activePlayerId = "p2";
+      state = resolveReactions(
+        applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: "unit_p2_skeletons", defenderId: "unit_p1_griffins" })
+      );
+      const retaliation = state.eventLog.find(
+        (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED" && event.isRetaliation
+      );
+      return retaliation!.attackValue;
+    }
+    expect(retaliationValue(true)).toBe(retaliationValue(false)); // no +1 on the griffins' retaliation
+  });
+});
+
+describe("anime.equipment — Bonefiend Plate (modao armor)", () => {
+  it("grants a Defense token once on the owner's unit (Stage Costume seam; CONTROL: no item → no token)", () => {
+    const withItem = combat("eq-bonefiend");
+    equip(withItem, "p1", "armor", EQUIP_ID_BONEFIEND);
+    const defender = withItem.combat!.units.unit_p1_griffins;
+    defender.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(withItem, defender);
+    expect(defender.defenseToken).toBe(true);
+    expect(withItem.players.p1.combatStats.equipmentStageCostumeUsed).toBe(true);
+
+    // Second call never re-grants (charge spent).
+    defender.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(withItem, defender);
+    expect(defender.defenseToken).toBe(false);
+
+    // CONTROL: unequipped path grants nothing.
+    const bare = combat("eq-bonefiend-bare");
+    bare.combat!.units.unit_p1_griffins.defenseToken = false;
+    applyEquipmentStageCostumeDefenseToken(bare, bare.combat!.units.unit_p1_griffins);
+    expect(bare.combat!.units.unit_p1_griffins.defenseToken).toBe(false);
+    expect(bare.players.p1.combatStats.equipmentStageCostumeUsed ?? false).toBe(false);
+  });
+});
+
+describe("anime.equipment — Demon Heart (modao accessory relic — combines two seams)", () => {
+  it("grants BOTH seams at once: +1 spell Power AND +1 hand limit from the single relic (CONTROL: bare)", () => {
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const state = adventure("eq-demonheart-both");
+    const basePower = standingSpellPower(state, "p1", arrow);
+    const baseHand = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_DEMONHEART);
+    expect(standingSpellPower(state, "p1", arrow)).toBe(basePower + 1);
+    expect(effectiveHandLimit(state, "p1")).toBe(baseHand + 1);
+  });
+
+  it("+1 hand limit STACKS to +2 with Guild-Issue Mail (armor, distinct slot)", () => {
+    const state = adventure("eq-demonheart-hand");
+    const base = effectiveHandLimit(state, "p1");
+    equip(state, "p1", "accessory", EQUIP_ID_DEMONHEART);
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
+    equip(state, "p1", "armor", EQUIP_ID_GUILD); // armor is a distinct slot → stacks
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 2);
+  });
+
+  it("shares the ONE accessory slot with Cosmos Pendant — spell Power never stacks to +2 (same-slot twins)", () => {
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const state = createInitialGameState("eq-demonheart-excl");
+    state.anime = { ...EQUIP_ON };
+    const baseline = standingSpellPower(state, "p1", arrow);
+    equip(state, "p1", "accessory", EQUIP_ID_COSMOS);
+    equip(state, "p1", "accessory", EQUIP_ID_DEMONHEART); // overwrites the single accessory slot
+    expect(standingSpellPower(state, "p1", arrow)).toBe(baseline + 1);
+  });
+});
+
 describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
   // Directly stamp the visiting hero's faction, then read the outfitter menu.
   function shopLabels(shopLocation: string, factionId: string): string[] {
@@ -1710,6 +1808,43 @@ describe("anime.equipment — register-aware shops (§3.13 matrix)", () => {
     expect(has(outfit, "Iron-Blood Sword")).toBe(false); // xianxia not added by the kansen line
     expect(has(black, "Kunai Pouch")).toBe(false); // shinobi is hidden_leaf's, never azur_lane's
     expect(has(outfit, "Kunai Pouch")).toBe(false);
+  });
+
+  it("a HEAVENLY DEMON visitor sees the bespoke MODAO line at BOTH shops, never other registers", () => {
+    const black = shopLabels("anime.ren_binh_cac", "heavenly_demon");
+    const outfit = shopLabels("anime.adventurer_outfitter", "heavenly_demon");
+    // All three modao items at BOTH outfitters (heavenly_demon's register line).
+    for (const name of ["Blood Demon Saber", "Bonefiend Plate", "Demon Heart"]) {
+      expect(has(black, name), `${name} @ blacksmith`).toBe(true);
+      expect(has(outfit, name), `${name} @ outfitter`).toBe(true);
+    }
+    // The shop's OWN exclusives still show (xianxia @ Blacksmith, isekai @ Outfitter).
+    expect(has(black, "Iron-Blood Sword")).toBe(true); // Blacksmith's own xianxia exclusive
+    expect(has(outfit, "Adventurer's Blade")).toBe(true); // Outfitter's own isekai exclusive
+    // CONTROL: heavenly_demon's register line is modao ONLY — no classic anywhere,
+    // and the OTHER package's exclusive is NOT ADDED as a line (isekai stays off
+    // the Blacksmith, and — crucially — the wuxia xianxia line it SHARES with
+    // Azure Breeze is NOT added either, since the bespoke branch replaces it).
+    expect(has(black, "Crusader's Poleaxe")).toBe(false); // classic never
+    expect(has(outfit, "Crusader's Poleaxe")).toBe(false);
+    expect(has(outfit, "Iron-Blood Sword")).toBe(false); // xianxia NOT added by the modao line
+    expect(has(black, "Adventurer's Blade")).toBe(false); // isekai NOT added by the modao line
+    // CONTROL: the shinobi / kansen lines are their own factions' bespoke lines.
+    expect(has(black, "Kunai Pouch")).toBe(false);
+    expect(has(outfit, "Oxygen Torpedo")).toBe(false);
+  });
+
+  it("CONTROL: an AZURE BREEZE (wuxia) visitor still gets the XIANXIA line, never modao", () => {
+    // The wuxia sibling of Heavenly Demon keeps the plain xianxia register line —
+    // the modao special-case is heavenly_demon ONLY, faction-scoped not register-wide.
+    const black = shopLabels("anime.ren_binh_cac", "azure_breeze");
+    const outfit = shopLabels("anime.adventurer_outfitter", "azure_breeze");
+    expect(has(black, "Iron-Blood Sword")).toBe(true); // xianxia line
+    expect(has(outfit, "Iron-Blood Sword")).toBe(true);
+    // No modao items for an azure_breeze visitor anywhere.
+    expect(has(black, "Blood Demon Saber")).toBe(false);
+    expect(has(outfit, "Bonefiend Plate")).toBe(false);
+    expect(has(black, "Demon Heart")).toBe(false);
   });
 
   it("every offered buy label names the item's grade (grade-tinted shop rows)", () => {

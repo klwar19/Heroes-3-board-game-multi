@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   applyAction,
+  CULTIVATION_REALM_REGISTERS,
   createAdventureGameState,
   createInitialGameState,
+  cultivationRealmLabel,
   cultivationRealmOf,
+  cultivationRealmRegisterKey,
   effectiveHandLimit,
   gainExperience,
   getLegalActions,
@@ -40,6 +43,37 @@ const CULTIVATION_ON = { ...DEFAULT_ANIME_OPTIONS, enabled: true, cultivation: t
 function adventure(seed: string, anime = CULTIVATION_ON, extra: Record<string, unknown> = {}): GameState {
   return createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, anime, ...extra });
 }
+
+describe("anime.cultivation — faction-themed presentation registers", () => {
+  it("maps classic, anime, wuxia and Heavenly Demon's bespoke modao family", () => {
+    expect(cultivationRealmRegisterKey("castle")).toBe("classic");
+    expect(cultivationRealmRegisterKey("fuyuki")).toBe("anime");
+    expect(cultivationRealmRegisterKey("azure_breeze")).toBe("wuxia");
+    expect(cultivationRealmRegisterKey("heavenly_demon")).toBe("modao");
+  });
+
+  it("keeps every four-step ladder bilingually complete", () => {
+    for (const [key, ladder] of Object.entries(CULTIVATION_REALM_REGISTERS)) {
+      expect(Object.keys(ladder), `${key} ladder`).toHaveLength(4);
+      for (const label of Object.values(ladder)) {
+        expect(label.en.length, `${key} English label`).toBeGreaterThan(0);
+        expect(label.vi.length, `${key} Vietnamese label`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("resolves the event/board label from the owning player's faction", () => {
+    const state = adventure("cult-themed-labels");
+    state.players.p1.factionId = "castle";
+    expect(cultivationRealmLabel(state, "p1", 2)).toEqual({ en: "Master", vi: "Bậc Thầy" });
+    state.players.p1.factionId = "fuyuki";
+    expect(cultivationRealmLabel(state, "p1", 2)).toEqual({ en: "Ascendant", vi: "Thăng Hoa" });
+    state.players.p1.factionId = "azure_breeze";
+    expect(cultivationRealmLabel(state, "p1", 2)).toEqual({ en: "Core Formation", vi: "Kim Đan" });
+    state.players.p1.factionId = "heavenly_demon";
+    expect(cultivationRealmLabel(state, "p1", 2)).toEqual({ en: "Demon Core", vi: "Ma Đan" });
+  });
+});
 
 /** Clear the mandatory start-of-turn hand step so the turn body is reachable. */
 function startTurn(state: GameState, playerId: PlayerId = "p1"): GameState {

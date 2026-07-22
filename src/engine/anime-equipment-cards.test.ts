@@ -50,7 +50,7 @@ function openMap(state: GameState): GameState {
 
 describe("anime equipment CARDS — deck join + play", () => {
   it("every equipment id is a registered implemented artifact card with matching grade tier", () => {
-    expect(animeEquipmentCardIds.length).toBe(33);
+    expect(animeEquipmentCardIds.length).toBe(36);
     for (const id of animeEquipmentCardIds) {
       const card = cardLibrary[id];
       const def = getEquipmentDefinition(id)!;
@@ -107,10 +107,10 @@ describe("anime equipment CARDS — deck join + play", () => {
     }
     // Invariant: each equipment card joins its matching tier deck EXACTLY ONCE
     // (grade partitions the ids, so no double-join across tiers) and NONE join
-    // when off. onIds spans both piles of all three decks, so 33 present / 0
+    // when off. onIds spans both piles of all three decks, so 36 present / 0
     // absent proves the count is conserved, not just membership.
     const equipSet = new Set(animeEquipmentCardIds);
-    expect(onIds.filter((id) => equipSet.has(id))).toHaveLength(33);
+    expect(onIds.filter((id) => equipSet.has(id))).toHaveLength(36);
     expect(offIds.filter((id) => equipSet.has(id))).toHaveLength(0);
   });
 

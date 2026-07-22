@@ -274,24 +274,26 @@ describe("anime coexistence — gate (c): isekai content present does not pertur
     expect(heroGradeProgressOf(withIsekaiContent, "p1")).toBe(heroGradeProgressOf(xianxiaOnly, "p1"));
   });
 
-  it("the grade-name register keys off MODULE flags, not carved content (mutation control)", () => {
-    // xianxia modules only ⇒ the xianxia register labels every hero.
+  it("the grade-name register keys off the hero faction, not module flags or carved content", () => {
+    // Package flags never relabel a classic hero.
     const xianxiaOnly = xianxiaGame("coexist-register-seed");
-    expect(heroGradeRegisterKey(xianxiaOnly, "p1")).toBe("xianxia");
+    expect(heroGradeRegisterKey(xianxiaOnly, "p1")).toBe("core");
 
-    // Isekai CONTENT present but no isekai MODULE flag ⇒ still xianxia (no cross-talk).
+    // Carved isekai content also cannot relabel the owning classic faction.
     const withIsekaiContent = xianxiaGame("coexist-register-seed");
     carveFieldOverride(
       withIsekaiContent.adventure!,
       Object.keys(withIsekaiContent.adventure!.fields)[0],
       "capsule_lab",
     );
-    expect(heroGradeRegisterKey(withIsekaiContent, "p1")).toBe("xianxia");
+    expect(heroGradeRegisterKey(withIsekaiContent, "p1")).toBe("core");
 
-    // CONTROL that the register is genuinely flag-sensitive: turning an isekai
-    // MODULE flag on makes both packages active ⇒ the per-faction fallback
-    // ("core"), proving the "xianxia" answer above is not a constant.
+    // Enabling the other package still leaves the classic register unchanged.
     const bothPackages = xianxiaGame("coexist-register-seed", { isekaiTowns: true });
     expect(heroGradeRegisterKey(bothPackages, "p1")).toBe("core");
+
+    // Mutation control: identical flags, different owning faction, different labels.
+    bothPackages.players.p1.factionId = "azure_breeze";
+    expect(heroGradeRegisterKey(bothPackages, "p1")).toBe("xianxia");
   });
 });

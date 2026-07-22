@@ -129,7 +129,10 @@ describe("playable Anime Realms towns", () => {
       ["naruto", "hidden_leaf"],
       ["sasuke", "hidden_leaf"],
       ["bismarck", "azur_lane"],
-      ["nagato", "azur_lane"]
+      ["nagato", "azur_lane"],
+      ["xuedao", "heavenly_demon"],
+      ["guiyan", "heavenly_demon"],
+      ["xuanming", "heavenly_demon"]
     ] as const) {
       const card = cardLibrary[`specialty.${heroId}.1`];
       const effect = card?.effect;

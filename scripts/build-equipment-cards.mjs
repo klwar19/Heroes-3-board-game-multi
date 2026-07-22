@@ -8,7 +8,8 @@
  *   3. Editable typography: title · grade band · slot · wired rules · play line
  *
  * Sources:
- *   public/assets/anime/equipment/<slug>.webp          — inventory icons (masters)
+ *   public/assets/anime/equipment/<slug>.webp          — inventory icons
+ *   scripts/anime-art/raw/artifacts/equipment-masters  — painted masters when supplied
  *   scripts/anime-art/raw/artifacts/frame-artifact-*   — ornate frame
  *
  * Outputs:
@@ -18,6 +19,7 @@
  * Run: node scripts/build-equipment-cards.mjs
  */
 
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -254,9 +256,8 @@ const CARDS = [
     ]
   },
   // ==== Classic register line (2026-07) — 6 items for classic factions ======
-  // `placeholder: true` ⇒ no hand-drawn inventory icon yet; the pipeline
-  // synthesises a grade-tinted monogram master so the ornate card FACE (with
-  // the full rules text) still builds. Swap in real icons + drop the flag later.
+  // `placeholder: true` marks legacy committed monogram icons. Replace each
+  // icon with painted art and drop the flag when that register gets an art pass.
   {
     slug: "crusaders_poleaxe",
     en: "Crusader's Poleaxe",
@@ -330,9 +331,8 @@ const CARDS = [
     ]
   },
   // ==== Hidden Leaf Village bespoke "shinobi" line (§3.13) — 3 items =========
-  // `placeholder: true` ⇒ no hand-drawn inventory icon yet; the pipeline
-  // synthesises a grade-tinted monogram master so the ornate card FACE (with the
-  // full rules text) still builds. Swap in real icons + drop the flag later.
+  // Dedicated painted inventory icons provide the art masters for these ornate
+  // card faces; a missing icon is a build error.
   {
     slug: "shinobi_kunai_pouch",
     en: "Kunai Pouch",
@@ -439,52 +439,47 @@ const CARDS = [
       "Weapon: your units' FIRST declared attack each combat +1 Attack AND all declared attacks in combat ROUND 1 +1 Attack (first attack in round 1 = +2; not retaliations).",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
+  },
+  // ==== Heavenly Demon Palace bespoke "modao" line (§3.13) — 3 items =========
+  // Dedicated painted masters derive both the inventory icons and ornate card
+  // faces, so a rebuild never falls back to procedural monograms.
+  {
+    slug: "demon_blood_saber",
+    en: "Blood Demon Saber",
+    vi: "Huyết Ma Đao",
+    grade: "I",
+    slot: "weapon",
+    paintedMaster: true,
+    rules: [
+      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (main-hero fights; not retaliations).",
+      "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
+    ]
+  },
+  {
+    slug: "bonefiend_plate",
+    en: "Bonefiend Plate",
+    vi: "Cốt Ma Giáp",
+    grade: "II",
+    slot: "armor",
+    paintedMaster: true,
+    rules: [
+      "Armor: the first time one of your units is attacked each combat, it gains a Defense token after the hit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
+    ]
+  },
+  {
+    slug: "demon_heart",
+    en: "Demon Heart",
+    vi: "Ma Tâm",
+    grade: "III",
+    slot: "accessory",
+    paintedMaster: true,
+    rules: [
+      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
+    ]
   }
 ];
-
-/** Grade → tier tint for synthesised placeholder icons (the .tierDot palette). */
-const GRADE_TINT = { I: "#b46f33", II: "#c7ccd6", III: "#e7b73c" };
-const GRADE_ROMAN = { I: "I", II: "II", III: "III" };
-
-/** Item initials for the placeholder monogram (e.g. "Crusader's Poleaxe" → "CP"). */
-function monogram(en) {
-  return en
-    .replace(/[^A-Za-z ]/g, "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => word[0])
-    .join("")
-    .slice(0, 3)
-    .toUpperCase();
-}
-
-/**
- * Synthesise a 512×512 PROCEDURAL placeholder inventory icon (grade-tinted plate
- * + monogram + slot label + grade numeral) for an item that has no hand-drawn
- * icon yet, so the card-face build (and the in-game slot art) has a master.
- * Honest declaration: this is placeholder art, not an illustration.
- */
-async function synthPlaceholderIcon(card, outPath) {
-  const S = 512;
-  const tint = GRADE_TINT[card.grade] ?? "#b46f33";
-  const mono = monogram(card.en);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}">
-    <defs>
-      <radialGradient id="bg" cx="50%" cy="42%" r="62%">
-        <stop offset="0%" stop-color="#20262b"/>
-        <stop offset="60%" stop-color="#12161a"/>
-        <stop offset="100%" stop-color="#080a0c"/>
-      </radialGradient>
-    </defs>
-    <rect width="${S}" height="${S}" rx="46" fill="url(#bg)"/>
-    <rect x="16" y="16" width="${S - 32}" height="${S - 32}" rx="34" fill="none" stroke="${tint}" stroke-width="6" opacity="0.85"/>
-    <circle cx="${S / 2}" cy="228" r="132" fill="none" stroke="${tint}" stroke-width="5" opacity="0.6"/>
-    <text x="${S / 2}" y="270" text-anchor="middle" font-family="'Times New Roman','Liberation Serif',Georgia,serif" font-size="150" font-weight="700" fill="${tint}" opacity="0.95">${xml(mono)}</text>
-    <text x="${S / 2}" y="398" text-anchor="middle" font-family="'Times New Roman','Liberation Serif',Georgia,serif" font-size="40" font-weight="700" letter-spacing="6" fill="#d8ceb4">${xml((card.slot || "").toUpperCase())}</text>
-    <text x="${S / 2}" y="454" text-anchor="middle" font-family="'Times New Roman','Liberation Serif',Georgia,serif" font-size="34" font-weight="700" letter-spacing="4" fill="${tint}">GRADE ${GRADE_ROMAN[card.grade] ?? card.grade}</text>
-  </svg>`;
-  await sharp(Buffer.from(svg)).resize(S, S).webp(WEBP).toFile(outPath);
-}
 
 const xml = (value) =>
   String(value)
@@ -706,26 +701,31 @@ async function main() {
 
   const frameUri = await dataUri(keyedPath);
   const icons = new Set(await readdir(ICON_DIR));
+  const requestedSlug = process.argv[2];
+  const cards = requestedSlug ? CARDS.filter((card) => card.slug === requestedSlug) : CARDS;
+  if (requestedSlug && cards.length === 0) throw new Error(`Unknown equipment slug: ${requestedSlug}`);
   let built = 0;
-  for (const card of CARDS) {
+  for (const card of cards) {
     const iconName = `${card.slug}.webp`;
     const iconPath = path.join(ICON_DIR, iconName);
-    if (!icons.has(iconName)) {
-      // A placeholder item (no hand-drawn icon yet) synthesises a grade-tinted
-      // monogram master so its ornate card FACE still builds; a NON-placeholder
-      // missing icon is a real error.
-      if (card.placeholder) {
-        await synthPlaceholderIcon(card, iconPath);
-        icons.add(iconName);
-        console.log(`icon  PLACEHOLDER  ${card.slug}.webp (synthesised)`);
-      } else {
+    const masterPath = path.join(RAW, "equipment-masters", `${card.slug}-master.png`);
+    if (card.paintedMaster) {
+      if (!existsSync(masterPath)) {
+        console.error(`MISSING PAINTED MASTER ${path.relative(ROOT, masterPath)}`);
+        process.exitCode = 1;
+        continue;
+      }
+      await sharp(masterPath).resize(512, 512, { fit: "cover", position: "centre" }).webp(WEBP).toFile(iconPath);
+      icons.add(iconName);
+      console.log(`icon  PAINTED      ${card.slug}.webp`);
+    } else {
+      if (!icons.has(iconName)) {
         console.error(`MISSING ICON ${iconName}`);
         process.exitCode = 1;
         continue;
       }
+      await buildArtMaster(iconPath, masterPath, windowRect.w * 2, windowRect.h * 2);
     }
-    const masterPath = path.join(RAW, "equipment-masters", `${card.slug}-master.png`);
-    await buildArtMaster(iconPath, masterPath, windowRect.w * 2, windowRect.h * 2);
 
     const editableSvg = cardSvg(
       card,
@@ -741,8 +741,8 @@ async function main() {
     console.log(`face  ${card.grade.padEnd(3)} ${card.slot.padEnd(10)} ${card.slug}.webp`);
     built += 1;
   }
-  console.log(`DONE ${built}/${CARDS.length} equipment card faces → public/assets/anime/equipment/cards/`);
-  if (built !== CARDS.length) process.exit(1);
+  console.log(`DONE ${built}/${cards.length} equipment card faces → public/assets/anime/equipment/cards/`);
+  if (built !== cards.length) process.exit(1);
 }
 
 await main();

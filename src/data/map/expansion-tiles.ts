@@ -124,6 +124,30 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     },
     assets: { tileImage: "/assets/anime/tiles/p-s1.webp" }
   },
+  "D-S1": {
+    id: "D-S1",
+    group: "starting",
+    content: "regular_stretch_goals",
+    // EXACT same S4 hex map as A-S1 (art is an S4 retheme to the Heavenly Demon
+    // Palace). See A-S1.
+    terrain: "highlands",
+    fields: [
+      { location: "town", faction: "heavenly_demon" },
+      { location: "resource_symbol" },
+      { location: "blocked_field" },
+      { location: "empty_field" },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "empty_field" }
+    ],
+    outerImpassable: [false, true, false, true, true, true],
+    source: {
+      product: "Anime Realms module",
+      credit:
+        "Heavenly Demon Palace starting tile. Hex roles and yellow outer borders copy Rampart S4; art is the board image."
+    },
+    assets: { tileImage: "/assets/anime/tiles/d-s1.webp" }
+  },
   S7: {
     id: "S7",
     group: "starting",

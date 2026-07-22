@@ -1,0 +1,4 @@
+Generator: built-in imagegen
+Mode: brand-new raster generation
+
+Upgraded Pack-side unit art: Bone Reavers. Three adult bone-armored reavers charging across a haunted bridge, black martial armor reinforced with carved ivory ribs and horned masks, paired crescent ghost blades, pale spectral afterimages and crimson qi sparks. Bone is armor ornament, not anatomy. Premium hand-painted East Asian dark-xianxia board-game art. Portrait 3:4, vertical centered charge with distinguishable figures and safe margins. No text, logo, UI, border, watermark, signature, photorealism, children, exposed anatomy, or gore.
