@@ -591,17 +591,46 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.sirius.1", 4: "specialty.sirius.4", 6: "specialty.sirius.6" },
     portrait: "/assets/anime/heroes/sirius.webp", source
   },
-  // Heavenly Demon Palace — ONE minimal MIGHT hero so the faction is pickable
-  // (the full roster + commander is a LATER task). A unit specialist doubling the
-  // faction's own gold Heavenly Demon Avatar, on the proven generic I/IV/VI shape
-  // (mightSpecialtyOne / unitHealthSpecialty / unitInitiativeSpecialty). Face-less
-  // (native specialty renderer, hero's own portrait).
+  // Heavenly Demon Palace — five heroes (the azur_lane shape): three MIGHT unit
+  // specialists doubling units the faction actually FIELDS (Xuedao → Heavenly
+  // Demon Avatar, Guiyan → Ghost King, Xuanming → Bone Reavers) on the proven
+  // generic I/IV/VI shape, plus two MAGIC medic clones (rethemedSpecialty of the
+  // fully generic Gem / Rion sets — no unit doubling that could go dead). All
+  // face-less (native specialty renderer, hero's own portrait).
   xuedao: {
     id: "xuedao", name: "Xuedao", faction: "heavenly_demon", class: "Blood Path Patriarch", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.offense",
     specialtyCardIds: { 1: "specialty.xuedao.1", 4: "specialty.xuedao.4", 6: "specialty.xuedao.6" },
     portrait: "/assets/anime/heroes/xuedao.png", source
+  },
+  guiyan: {
+    id: "guiyan", name: "Guiyan", faction: "heavenly_demon", class: "Ghost Flame Sovereign", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    specialtyCardIds: { 1: "specialty.guiyan.1", 4: "specialty.guiyan.4", 6: "specialty.guiyan.6" },
+    portrait: "/assets/anime/heroes/guiyan.png", source
+  },
+  xuanming: {
+    id: "xuanming", name: "Xuanming", faction: "heavenly_demon", class: "Bone Reaver Marshal", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: { 1: "specialty.xuanming.1", 4: "specialty.xuanming.4", 6: "specialty.xuanming.6" },
+    portrait: "/assets/anime/heroes/xuanming.png", source
+  },
+  yaoji: {
+    id: "yaoji", name: "Yaoji", faction: "heavenly_demon", class: "Blood Alchemist", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.yaoji.1", 4: "specialty.yaoji.4", 6: "specialty.yaoji.6" },
+    portrait: "/assets/anime/heroes/yaoji.png", source
+  },
+  molian: {
+    id: "molian", name: "Molian", faction: "heavenly_demon", class: "Corpse Weaver", type: "magic",
+    startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: { 1: "specialty.molian.1", 4: "specialty.molian.4", 6: "specialty.molian.6" },
+    portrait: "/assets/anime/heroes/molian.png", source
   }
 };
 
@@ -651,8 +680,9 @@ export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
   },
   heavenly_demon: {
     id: "heavenly_demon", name: "Heavenly Demon Palace", color: "#8b1a2b", startingTileId: "D-S1",
-    // ONE minimal hero for now (the full roster + commander is a LATER task).
-    heroes: ["xuedao"],
+    // Five heroes (three MIGHT unit specialists + two MAGIC medic clones), the
+    // azur_lane roster shape.
+    heroes: ["xuedao", "guiyan", "xuanming", "yaoji", "molian"],
     // `units` derives from the animeTownUnitDefinitions insertion order (bronze →
     // gold), exactly like Fuyuki / Hidden Leaf / Azur Lane — no explicit order array.
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "heavenly_demon").map((item) => item.id),
