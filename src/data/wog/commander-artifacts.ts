@@ -1,9 +1,10 @@
 /**
  * Wake of Gods COMMANDER ARTIFACTS (`wog.artifacts` + `wog.commanders`, Task 2).
  *
- * Ten WoG "commander artifacts" (8 authentic + 2 grade-fill weapons) — items
- * worn by the commander, not the hero — adapted to the board game as PERMANENT
- * slot bindings. Each artifact prints its slot ("weapon" | "armor" | "trinket")
+ * Twelve WoG "commander artifacts" (8 authentic + 2 grade-fill weapons + 2
+ * Heavenly Demon Palace bespoke items) — items worn by the commander, not the
+ * hero — adapted to the board game as PERMANENT slot bindings. Each artifact
+ * prints its slot ("weapon" | "armor" | "trinket")
  * and a grade (minor/major/relic); a card is acquired from the shared Artifact
  * decks like any other and then BOUND onto the player's commander
  * (BIND_COMMANDER_ARTIFACT). Binding is permanent — no unbind, no swap — and
@@ -33,9 +34,11 @@
  * see `wogCommanderArtifact*Ids` consumed by `makeSharedDecks`. The definitions
  * live in the card library ALWAYS so lookups resolve.
  *
- * ART: all ten ship with real card faces (`public/assets/wog/artifacts/<slug>.webp`)
+ * ART: all twelve ship with card faces (`public/assets/wog/artifacts/<slug>.webp`)
  * and slot icons (`public/assets/wog/artifacts/icons/<slug>.webp`).
- * New grade-fill weapons (Iron Cudgel / Doomsday Blade) are Codex-generated.
+ * New grade-fill weapons (Iron Cudgel / Doomsday Blade) and the two Heavenly
+ * Demon bespoke items (Blood Patriarch's Saber / Demon Heart Talisman) ship
+ * dedicated illustrated faces and slot icons.
  */
 
 import type { CardLibrary, CardDefinition, CommanderArtifactSlot } from "@/engine/state";
@@ -115,6 +118,17 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     effectText: "+3 Attack.",
     attack: 3
   },
+  // Heavenly Demon Palace bespoke weapon — a flat-Attack fold (the Iron Cudgel /
+  // Axe / Doomsday Blade family), demonic-flavoured. No new engine arm.
+  "wog.artifact.blood_patriarch_saber": {
+    cardId: "wog.artifact.blood_patriarch_saber",
+    slug: "blood_patriarch_saber",
+    name: "Blood Patriarch's Saber",
+    slot: "weapon",
+    tier: "major",
+    effectText: "+2 Attack.",
+    attack: 2
+  },
   // ---- Armor -------------------------------------------------------------
   "wog.artifact.hardened_shield": {
     cardId: "wog.artifact.hardened_shield",
@@ -173,6 +187,19 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     // attack at attack 3 strikes the unit directly behind the target.
     effectText: "the commander's attacks also strike the space directly behind the target (a separate attack 3 hit that never provokes retaliation).",
     abilityIds: ["dragon-line-attack-3"]
+  },
+  // Heavenly Demon Palace bespoke trinket — a relic COMBINING two flat folds the
+  // engine already sums in `aggregateCommanderArtifactBonuses`: the Pendant of
+  // Sorcery cast-Power fold + the Boots of Haste Initiative fold. No new engine arm.
+  "wog.artifact.demon_heart_talisman": {
+    cardId: "wog.artifact.demon_heart_talisman",
+    slug: "demon_heart_talisman",
+    name: "Demon Heart Talisman",
+    slot: "trinket",
+    tier: "relic",
+    effectText: "command cast Power +1 AND +1 Initiative.",
+    castPowerBonus: 1,
+    initiative: 1
   }
 };
 

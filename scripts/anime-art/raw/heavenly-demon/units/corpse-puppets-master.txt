@@ -1,0 +1,7 @@
+Generate a single 1024x1536 portrait illustration for a dark-fantasy board game character card art window.
+
+Subject: "Corpse Puppets" — reanimated undead-tank warriors of the Heavenly Demon Palace. Two hulking stitched corpse-soldiers in rotting crimson-black lacquered armor, grey mottled dead flesh, jade-green talisman seals pasted on their foreheads, dragging huge cleaver-blades. Slow, heavy, gruesome corpse-sorcery puppets.
+
+Full-body figure(s), centered, filling the frame vertically. Plain dark atmospheric background (obsidian mist / faint jade glow). Art direction: late-1990s painted fantasy game box-art meets Chinese ink-wash horror. Deep obsidian blacks, blood-crimson reds, sickly jade-green ghost-light accents. Dramatic rim lighting, painterly brushwork, ominous cultist atmosphere. No text, no border, no UI, no card frame — just the illustration.
+
+Do not run any shell commands; just generate the image and finish.

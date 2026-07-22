@@ -1024,6 +1024,38 @@ export function getOnAttackSelfHeal(
   return null;
 }
 
+/**
+ * Heavenly Demon Palace "Blood Siphon": the self-heal taken after this unit's own
+ * attack DEALS damage (never a retaliation). Distinct from getOnAttackSelfHeal —
+ * the caller only fires it when the resolved attack's damage was > 0.
+ */
+export function getBloodSiphonSelfHeal(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "HEAL_SELF_ON_DAMAGE_DEALT")) {
+    if (ability.effect?.type === "HEAL_SELF_ON_DAMAGE_DEALT") {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  return null;
+}
+
+/**
+ * Heavenly Demon Palace "Reap the Fallen": the +Attack this unit gains whenever an
+ * adjacent unit is removed from Combat. Returns the amount and ability identity,
+ * or null for any unit without the trait.
+ */
+export function getReapOnAdjacentRemoval(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ATTACK_BUFF_ON_ADJACENT_REMOVAL")) {
+    if (ability.effect?.type === "ATTACK_BUFF_ON_ADJACENT_REMOVAL") {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  return null;
+}
+
 /** Phoenixes: the once-per-combat self-rebirth that survives a killing blow at 1 Health. */
 export function getSelfRebirthAbility(
   unit: CombatUnitState

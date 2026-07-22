@@ -82,6 +82,18 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // Rion clones), like Tsunade / Aoko — the healer medallion / Cure spell icon.
   akashi: "/assets/specialty-card/icon-first_aid.webp",
   sirius: "/assets/specialty-card/icon-cure.webp",
+  // Heavenly Demon Palace might specialists — no dedicated signature-unit portrait
+  // shipped yet, so a thematic Homm3BG emblem: Xuedao's Blood Path fury & Guiyan's
+  // Ghost Flame → the Bloodlust rage icon; Xuanming's Bone Reaver command → the
+  // Stone Skin (bone-armor) icon.
+  xuedao: "/assets/specialty-card/icon-bloodlust.webp",
+  guiyan: "/assets/specialty-card/icon-bloodlust.webp",
+  xuanming: "/assets/specialty-card/icon-stone_skin.webp",
+  // Heavenly Demon Palace magic medics — Yaoji's Blood Renewal (Gem First Aid
+  // clone) shows the First-Aid medallion; Molian's Corpse Suture (Rion heal/
+  // cleanse clone, like Aoko) shows the Cure spell icon.
+  yaoji: "/assets/specialty-card/icon-first_aid.webp",
+  molian: "/assets/specialty-card/icon-cure.webp",
   // --- Spell / emblem specialists -----------------------------------------
   oidana: "/assets/specialty-card/icon-diplomacy.webp", // Diplomacy dove
   glacius: "/assets/specialty-card/icon-frost_ring.webp", // Homm3BG symbols

@@ -1,0 +1,5 @@
+Generate a single 1024x1024 top-down aerial illustration for a fantasy board-game map tile.
+
+Subject: an aerial bird's-eye view of the Heavenly Demon Palace stronghold on a volcanic obsidian island — a sprawling black demonic palace complex with crimson-tiled pagoda roofs, blood-red courtyards, glowing lava channels and jade-green ghost-lantern lights, jagged black rock, surrounded by dark misty terrain. Nighttime, ominous, painted top-down map style. Art direction: late-1990s painted fantasy game box-art meets Chinese ink-wash horror. Deep obsidian blacks, blood-crimson reds, sickly jade-green ghost-light accents. Dramatic rim lighting, painterly brushwork, ominous cultist atmosphere. No text, no border, no UI, no card frame — just the illustration.
+
+Do not run any shell commands; just generate the image and finish.

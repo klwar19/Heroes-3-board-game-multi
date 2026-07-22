@@ -57,11 +57,18 @@ export const EQUIPMENT_GRADE_LABEL: Record<EquipmentGrade, { en: string; short: 
  * Which content family an equipment item belongs to (shop gating + naming).
  * `classic` is the register line for the classic-chrome factions (Castle,
  * Rampart, …); `anime-xianxia` / `anime-isekai` are the two anime-town lines;
- * `shinobi` is Hidden Leaf Village's BESPOKE line and `kansen` is Azur Lane
- * Naval Base's BESPOKE line (both §3.13 FUTURE-TOWN RECIPE); `shared` items are
- * sold at every outfitter.
+ * `shinobi` is Hidden Leaf Village's BESPOKE line, `kansen` is Azur Lane Naval
+ * Base's BESPOKE line and `modao` is Heavenly Demon Palace's BESPOKE line (all
+ * §3.13 FUTURE-TOWN RECIPE); `shared` items are sold at every outfitter.
  */
-export type EquipmentPackage = "anime-xianxia" | "anime-isekai" | "shared" | "classic" | "shinobi" | "kansen";
+export type EquipmentPackage =
+  | "anime-xianxia"
+  | "anime-isekai"
+  | "shared"
+  | "classic"
+  | "shinobi"
+  | "kansen"
+  | "modao";
 
 /** Short flavour tag per package, for UI chips (paper-doll bag rows etc.). */
 export const EQUIPMENT_PACKAGE_LABEL: Record<EquipmentPackage, string> = {
@@ -70,7 +77,8 @@ export const EQUIPMENT_PACKAGE_LABEL: Record<EquipmentPackage, string> = {
   shared: "shared",
   classic: "classic",
   shinobi: "shinobi",
-  kansen: "kansen"
+  kansen: "kansen",
+  modao: "modao"
 };
 
 /**
@@ -152,7 +160,15 @@ export const EQUIPMENT_IDS = {
   sgRadar: "anime.equip.sg_radar",
   manjuuPiggyBank: "anime.equip.manjuu_piggy_bank",
   beaverSquadTag: "anime.equip.beaver_squad_tag",
-  retrofitBlueprint: "anime.equip.retrofit_blueprint"
+  retrofitBlueprint: "anime.equip.retrofit_blueprint",
+  // --- Heavenly Demon Palace bespoke "modao" register line (§3.13 FUTURE-TOWN
+  //     RECIPE): 3 items (one per grade, distinct slots), each a PURE reuse of an
+  //     already-wired equipment seam (src/engine/anime-equipment.ts). heavenly_demon's
+  //     register line at BOTH outfitters via `equipmentPackagesForFaction`; never
+  //     in EQUIPMENT_SHOP_SALES.
+  demonBloodSaber: "anime.equip.demon_blood_saber",
+  bonefiendPlate: "anime.equip.bonefiend_plate",
+  demonHeartRelic: "anime.equip.demon_heart"
 } as const;
 
 function equip(
@@ -513,6 +529,49 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     // stacks BOTH → +2; a same-slot weapon can never double either half.
     summary:
       "Weapon · Grade III: your units' FIRST declared attack each combat gets +1 Attack AND your units' declared attacks during combat ROUND 1 get +1 Attack — so the FIRST attack in round 1 is +2 total (your main hero's fights; not on retaliations, the round-1 half is gone from round 2; shares the weapon slot with Iron-Blood Sword / Crusader's Poleaxe / Kunai Pouch / Oxygen Torpedo / Blade of the Trial — only one weapon is worn)."
+  }),
+
+  // ==== Heavenly Demon Palace bespoke "modao" register line (§3.13) =========
+  // Heavenly Demon's own 3-item demonic-path line (one per grade, distinct slots
+  // weapon / armor / accessory), each a PURE reuse of an already-wired equipment
+  // seam — the relic COMBINES two seams like Sage Chakra Charm's spell-Power +
+  // hand-limit pair. Offered as heavenly_demon's register line at BOTH outfitters
+  // (`equipmentPackagesForFaction`).
+  // ---- Grade I (minor, 4g) ------------------------------------------------
+  [EQUIPMENT_IDS.demonBloodSaber]: equip({
+    id: EQUIPMENT_IDS.demonBloodSaber,
+    slot: "weapon",
+    grade: "I",
+    name: { en: "Blood Demon Saber", vi: "Huyết Ma Đao" },
+    package: "modao",
+    // Seam: equipmentFirstAttackBonus (the Iron-Blood Sword fold).
+    summary:
+      "Weapon · Grade I: your units' FIRST declared attack each combat gets +1 Attack (your main hero's fights; not on retaliations; shares the weapon slot with Iron-Blood Sword / Crusader's Poleaxe / Kunai Pouch / Oxygen Torpedo — only one is worn)."
+  }),
+
+  // ---- Grade II (major, 6g) -----------------------------------------------
+  [EQUIPMENT_IDS.bonefiendPlate]: equip({
+    id: EQUIPMENT_IDS.bonefiendPlate,
+    slot: "armor",
+    grade: "II",
+    name: { en: "Bonefiend Plate", vi: "Cốt Ma Giáp" },
+    package: "modao",
+    // Seam: applyEquipmentStageCostumeDefenseToken (the Stage Costume / Ironbark
+    // Cuirass / Repair Toolkit first-incoming-hit Defense-token fold).
+    summary:
+      "Armor · Grade II: the FIRST time one of your units is attacked each combat, that unit gains a Defense token after the attack resolves (your main hero's fights; shares the armor slot with Black Tortoise Mail / Stage Costume / Ironbark Cuirass / Repair Toolkit / Warden's Aegis — only one is worn)."
+  }),
+
+  // ---- Grade III (relic, 8g) — COMBINES two proven seams ------------------
+  [EQUIPMENT_IDS.demonHeartRelic]: equip({
+    id: EQUIPMENT_IDS.demonHeartRelic,
+    slot: "accessory",
+    grade: "III",
+    name: { en: "Demon Heart", vi: "Ma Tâm" },
+    package: "modao",
+    // Seams: equipmentSpellPowerBonus + equipmentHandLimitBonus (both accessory).
+    summary:
+      "Accessory · Grade III: +1 spell Power on your casts AND +1 hand limit (spell Power stacks with Cultivation / Hero-Grade Power; hand limit stacks with Guild-Issue Mail (armor); shares the ONE accessory slot with the other spell-power / hand-limit accessories (Cosmos Pendant / Spirit Focus / Twin-Tail Ribbon / Eternal Sash / Sage Chakra Charm / SG Radar) — only one accessory is worn, so same-slot twins never stack)."
   })
 };
 
@@ -611,11 +670,14 @@ export const EQUIPMENT_SHOP_LOCATION_IDS: ReadonlySet<string> = new Set(Object.k
  * it BESPOKE gear, add items in a new package and return that package here (and
  * teach `factionVisualRegister` the new register). No engine change is needed.
  *
- * Hidden Leaf Village and Azur Lane Naval Base are the two worked examples of
- * the BESPOKE branch: both share the "anime" visual register with Fuyuki, so
- * each is special-cased AHEAD of the register switch to return its own line
- * ("shinobi" / "kansen") — without this, either would fall through to the anime
- * register's default isekai line (which Fuyuki keeps).
+ * Hidden Leaf Village, Azur Lane Naval Base and Heavenly Demon Palace are the
+ * worked examples of the BESPOKE branch: Hidden Leaf / Azur Lane share the
+ * "anime" visual register with Fuyuki, and Heavenly Demon shares the "wuxia"
+ * visual register with Azure Breeze, so each is special-cased AHEAD of the
+ * register switch to return its own line ("shinobi" / "kansen" / "modao") —
+ * without this, each would fall through to its register's default line (the
+ * anime register's isekai line, or the wuxia register's xianxia line) which the
+ * sibling faction keeps.
  */
 export function equipmentPackagesForFaction(factionId: string | undefined): EquipmentPackage[] {
   if (factionId === "hidden_leaf") {
@@ -623,6 +685,9 @@ export function equipmentPackagesForFaction(factionId: string | undefined): Equi
   }
   if (factionId === "azur_lane") {
     return ["kansen"];
+  }
+  if (factionId === "heavenly_demon") {
+    return ["modao"];
   }
   switch (factionVisualRegister(factionId)) {
     case "anime":

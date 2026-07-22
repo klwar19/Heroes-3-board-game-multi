@@ -47,7 +47,8 @@
 export const COMMANDER_SLUGS = [
   "paladin", "hierophant", "temple_guardian", "succubus", "brute",
   "soul_eater", "ogre_leader", "shaman", "astral_spirit",
-  "corsair", "factory", "bulwark", "ruler", "sword_saint", "might_guy", "belfast"
+  "corsair", "factory", "bulwark", "ruler", "sword_saint", "might_guy", "belfast",
+  "demon_ancestor"
 ] as const;
 
 export type CommanderSlug = (typeof COMMANDER_SLUGS)[number];
@@ -891,6 +892,35 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       text: "After a combat: one of your bronze/silver units that died or flipped from Pack to Few may be restored (choose 1)."
     },
     cardImage: "/assets/units-commander-belfast.webp"
+  },
+  demon_ancestor: {
+    slug: "demon_ancestor", name: "Demon Ancestor", faction: "Heavenly Demon Palace", original: true,
+    // Cast: REUSE the Dungeon Brute's Bloodlust arm verbatim (commander-cast-brute,
+    // attack-buff melee) — the SAME abilityId the Fuyuki Regent (ruler) already
+    // reuses, so reusing a cast abilityId across commanders is established.
+    cast: {
+      abilityId: "commander-cast-brute",
+      name: "Blood Frenzy",
+      icon: "/assets/spell-icons/bloodlust.png",
+      targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
+      effect: { kind: "attack-buff", amountByPower: [1, 1, 2] },
+      tierText: [
+        "A nearby allied melee demon-cultivator gains +1 Attack this round.",
+        "An allied melee demon-cultivator anywhere gains +1 Attack this round.",
+        "An allied melee demon-cultivator anywhere gains +2 Attack this round."
+      ]
+    },
+    // Specialty: REUSE `undead` (Paralysis-token immunity) — the SAME id the
+    // Necropolis Soul Eater carries. The engine gate keys off the specialty id
+    // (not the "soul_eater" slug), the Belfast first-aid precedent — so the
+    // paralysis immunity applies to the Demon Ancestor too. Thematically the
+    // demon-blood body cannot be petrified.
+    specialty: {
+      id: "undead",
+      name: "Undying Demon Body",
+      text: "The commander's demon-forged corpse is beyond fear: it can never gain a Paralysis token."
+    },
+    cardImage: "/assets/units-commander-demon_ancestor.webp"
   }
 };
 
@@ -911,7 +941,8 @@ export const COMMANDER_SLUG_BY_FACTION: Record<string, CommanderSlug> = {
   fuyuki: "ruler",
   azure_breeze: "sword_saint",
   hidden_leaf: "might_guy",
-  azur_lane: "belfast"
+  azur_lane: "belfast",
+  heavenly_demon: "demon_ancestor"
 };
 
 export function commanderCastTierIndex(power: number): 0 | 1 | 2 {

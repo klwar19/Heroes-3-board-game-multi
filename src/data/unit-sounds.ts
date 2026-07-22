@@ -181,6 +181,16 @@ const creatureVoices: Record<string, string> = {
   yukikaze: "crew-mate", // the lucky destroyer → the Cove Seamen set
   prinz_eugen: "titan", // the unsinkable armored heavy cruiser → the Titan set
   i19: "behemoth", // the lurking "Silent Hunter" submarine → the Behemoth's roar
+  // Heavenly Demon Palace — thematic reuse of complete Heroes III demonic/undead
+  // voice sets. Gu Witches are the only RANGED unit, so their set resolves a real
+  // shoot clip (magog-shoot exists in the manifest).
+  blood_disciples: "vampire", // blood cultists that drain life → the Vampire set
+  gu_witches: "magog", // ranged gu/curse sorceresses → the Magog set (has shoot)
+  shadow_wraiths: "wraith", // shadow-step assassins → the Wraith set
+  corpse_puppets: "zombie-lord", // reanimated puppet tanks → the Zombie/Walking Dead set
+  bone_reavers: "dread-knight", // armored bone raiders → the Dread Knight set
+  ghost_king: "ghost-dragon", // spectral regenerating gold ghost → the Ghost Dragon set
+  demon_avatar: "demon", // the Heavenly Demon Avatar → the Demon set
   // Wake of Gods adaptation: requested H3 voice reuse.
   ghost: "wraith",
   air_messenger: "stone-golem",
@@ -275,7 +285,11 @@ const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
   // ever reading commanderVoices, so the Japanese voice supersedes it. Kept as
   // the reviewable fallback the Sea Witch line would resolve to if that
   // short-circuit were removed (the temple_guardian precedent proves it resolves).
-  belfast: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" }
+  belfast: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" },
+  // Heavenly Demon Palace — the Demon Ancestor is a bestial blood-cultivation
+  // fiend → the Dungeon Minotaur voice (the brute precedent proves the full set
+  // resolves, and it ties to the reused Bloodlust cast).
+  demon_ancestor: { attack: "minotaur", move: "minotaur", defend: "minotaur", hurt: "minotaur", death: "minotaur" }
 };
 
 /** The voice id the table uses for a commander combat unit ("commander:<slug>"). */

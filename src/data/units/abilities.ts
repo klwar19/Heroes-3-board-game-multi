@@ -243,6 +243,36 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Heavenly Demon Palace "Blood Siphon" (NEW engine arm for this faction):
+       * after an attack made by this unit RESOLVES AND DEALS DAMAGE (> 0), remove
+       * `amount` damage from this unit. Distinct from the Vampire's
+       * `ON_ATTACK_HEAL_SELF`, which heals unconditionally after any own attack —
+       * Blood Siphon heals ONLY when the blow actually connects (a fully-soaked
+       * 0-damage attack heals nothing). Fires on the unit's OWN attacks only,
+       * never on a Retaliation Attack; capped at the damage currently on the unit.
+       * Wired in reducer.ts (applyBloodSiphonSelfHeal in finishResolvedAttack),
+       * pinned in heavenly-demon-abilities.test.ts.
+       */
+      type: "HEAL_SELF_ON_DAMAGE_DEALT";
+      amount: number;
+    }
+  | {
+      /**
+       * Heavenly Demon Palace "Reap the Fallen" (NEW engine arm for this faction):
+       * whenever ANY unit ADJACENT to this unit is removed from Combat (by any
+       * source — an attack, a splash, a Spell, a detonation), this unit gains
+       * `amount` Attack for the rest of the Combat. The bonus is baked onto the
+       * combat unit's `permanentAttackBonus` so it survives a Pack→Few flip
+       * (exactly like the Gelu buff) but is combat-scoped (never mirrored to the
+       * army card). It escalates: every nearby death adds another `amount`. Wired
+       * at the removal chokepoint in combat-units.ts (applyReapTheFallenOnRemoval
+       * in markUnitRemovedIfNeeded), pinned in heavenly-demon-abilities.test.ts.
+       */
+      type: "ATTACK_BUFF_ON_ADJACENT_REMOVAL";
+      amount: number;
+    }
+  | {
+      /**
        * Liches (pack/neutral): "Choose a unit adjacent to the target and
        * attack it. For the purpose of this attack, your attack is 2." A full
        * separate attack — instant windows open for both sides, the attack
@@ -1597,6 +1627,31 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Fleet Formation",
     text: "[unit_passive] Friendly units gain +1 Attack on their own attacks (never on a Retaliation Attack) while they are adjacent to this unit.",
     effect: { type: "ADJACENT_ALLY_ATTACK_AURA", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Heavenly Demon Palace — the town's TWO new engine arms (shipped with the
+  // faction; both are referenced by its units below). Wired + mutation-tested in
+  // src/engine/heavenly-demon-abilities.test.ts.
+  //
+  // (1) Blood Siphon: heal 1 after this unit's OWN attack that DEALS damage —
+  // distinct from the Vampire's unconditional ON_ATTACK_HEAL_SELF (a soaked
+  // 0-damage attack heals nothing here). Never on a Retaliation Attack.
+  "heavenly-demon-blood-siphon": {
+    id: "heavenly-demon-blood-siphon",
+    name: "Blood Siphon",
+    text: "[unit_attack] After this unit's attack DEALS damage, remove 1 damage from it (an attack fully soaked to 0 heals nothing). Never on a Retaliation Attack.",
+    effect: { type: "HEAL_SELF_ON_DAMAGE_DEALT", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // (2) Reap the Fallen: whenever an ADJACENT unit is removed (any source), this
+  // unit gains +1 Attack for the rest of the combat — escalating, and surviving a
+  // Pack→Few flip (baked onto the combat unit's permanentAttackBonus, never
+  // mirrored to the army card).
+  "heavenly-demon-reap": {
+    id: "heavenly-demon-reap",
+    name: "Reap the Fallen",
+    text: "[unit_passive] Whenever a unit adjacent to this unit is removed from Combat (any source), this unit gains +1 Attack for the rest of the Combat (this stacks with each nearby death).",
+    effect: { type: "ATTACK_BUFF_ON_ADJACENT_REMOVAL", amount: 1 },
     implementationStatus: "implemented"
   },
   "lich-death-cloud": {

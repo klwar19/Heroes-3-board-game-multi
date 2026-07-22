@@ -124,9 +124,9 @@ function sandboxWithCommander(
 // ===========================================================================
 
 describe("WOG commanders — content integrity", () => {
-  it("all 16 factions map to a commander and back", () => {
-    expect(Object.keys(COMMANDER_SLUG_BY_FACTION)).toHaveLength(16);
-    expect(new Set(Object.values(COMMANDER_SLUG_BY_FACTION)).size).toBe(16);
+  it("all 17 factions map to a commander and back", () => {
+    expect(Object.keys(COMMANDER_SLUG_BY_FACTION)).toHaveLength(17);
+    expect(new Set(Object.values(COMMANDER_SLUG_BY_FACTION)).size).toBe(17);
     for (const slug of COMMANDER_SLUGS) {
       expect(commanderDefinitions[slug], slug).toBeTruthy();
     }
@@ -1681,5 +1681,123 @@ describe("WOG commanders — Belfast First Aid (specialty-keyed, not slug-keyed)
     killABronzeSilverCasualty(hiero);
     winFight(hiero);
     expect(hiero.adventure!.pendingCommanderFirstAid?.playerId).toBe("p1");
+  });
+});
+
+// ===========================================================================
+// Demon Ancestor (Heavenly Demon Palace) — the SECOND Undead commander AND a
+// Bloodlust-cast reuser. Its `undead` Paralysis immunity is keyed off the
+// SPECIALTY id (not the "soul_eater" slug), so this suite FAILS if that engine
+// gate is reverted to `commander.slug === "soul_eater"`. Its cast is the Dungeon
+// Brute's Bloodlust arm verbatim (commander-cast-brute), proven to fire below.
+// ===========================================================================
+
+describe("WOG commanders — Demon Ancestor (Heavenly Demon Palace)", () => {
+  it("maps heavenly_demon → demon_ancestor and reuses the Brute Bloodlust cast + Undead specialty", () => {
+    const state = adventureWithCommanders("demon-ancestor-map", "heavenly_demon", "xuedao");
+    expect(state.players.p1.commander?.slug).toBe("demon_ancestor");
+    expect(commanderDefinitions.demon_ancestor.cast.abilityId).toBe("commander-cast-brute");
+    expect(commanderDefinitions.demon_ancestor.specialty.id).toBe("undead");
+    // The Undead specialty grants ignore-paralysis in the commander's ability ids
+    // (specialty-keyed). CONTROL: the Paladin (a non-Undead commander) does not.
+    expect(commanderAbilityIds(freshCommander("demon_ancestor"))).toContain("ignore-paralysis");
+    expect(commanderAbilityIds(freshCommander("paladin"))).not.toContain("ignore-paralysis");
+  });
+
+  it("Undying Demon Body (Undead): a petrifying attack can never Paralyze the commander (CONTROL: Paladin IS paralyzed)", () => {
+    // A Stacked Medusa-style attacker (Petrifying Gaze) melees the commander.
+    function petrify(slug: "demon_ancestor" | "paladin"): GameState {
+      let state = sandboxWithCommander(slug, {}, 9);
+      const medusa = state.combat!.units.unit_p2_skeletons;
+      medusa.abilities = ["bank-medusa-paralyze-stacked"];
+      medusa.bankUnit = true;
+      medusa.stackToken = "attack";
+      medusa.position = 10;
+      state.combat!.units[commanderUnitId("p1")].maxHealth = 9; // survive the hit
+      state.combat!.activeUnitId = medusa.id;
+      state.activePlayerId = "p2";
+      state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+      state.combat!.dice.rollCount = 0;
+      state = settle(
+        apply(state, {
+          type: "ATTACK_UNIT",
+          playerId: "p2",
+          attackerId: medusa.id,
+          defenderId: commanderUnitId("p1")
+        })
+      );
+      return state;
+    }
+
+    // The Demon Ancestor's demon-forged body is never petrified (specialty-keyed).
+    const undead = petrify("demon_ancestor");
+    expect(
+      undead.combat!.units[commanderUnitId("p1")].tokens?.some((token) => token.kind === "paralysis") ?? false
+    ).toBe(false);
+
+    // CONTROL: the same gaze Paralyzes a non-Undead commander — so the immunity is
+    // the specialty, not a general commander trait. If the gate reverts to the
+    // "soul_eater" slug, demon_ancestor would land here too and the assert above fails.
+    const paladin = petrify("paladin");
+    expect(
+      paladin.combat!.units[commanderUnitId("p1")].tokens?.some((token) => token.kind === "paralysis")
+    ).toBe(true);
+  });
+
+  it("Blood Frenzy (Brute Bloodlust reuse) buffs a melee ally's strike +1 at Pow 1 (CONTROL: no cast → base 2)", () => {
+    function strike(cast: boolean): number {
+      // demon_ancestor at magic grade 2 = Power 1, so Bloodlust reaches anywhere.
+      let state = sandboxWithCommander("demon_ancestor", { magic: 2 }, 9);
+      const crusaders = state.combat!.units.unit_p1_crusaders;
+      crusaders.abilities = [];
+      crusaders.attack = 2;
+      crusaders.position = 6; // adjacent to the skeletons at 10
+      const skeletons = state.combat!.units.unit_p2_skeletons;
+      skeletons.abilities = [];
+      skeletons.position = 10;
+      skeletons.defense = 0;
+      skeletons.maxHealth = 20;
+      skeletons.damage = 0;
+
+      if (cast) {
+        // The cast is a USE_UNIT_ABILITY during the commander's OWN activation.
+        state.combat!.activeUnitId = commanderUnitId("p1");
+        state.activePlayerId = "p1";
+        const offer = getLegalActions(state, "p1").find(
+          (legal) =>
+            legal.action.type === "USE_UNIT_ABILITY" && legal.action.abilityId === "commander-cast-brute"
+        );
+        expect(offer, "Blood Frenzy cast offered").toBeTruthy();
+        const opened = apply(state, offer!.action);
+        const choice = opened.pendingChoice;
+        if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+          throw new Error("expected the commander-cast target choice");
+        }
+        expect(choice.kind).toBe("commander-cast");
+        state = apply(opened, {
+          type: "CHOOSE_ABILITY_TARGET",
+          playerId: "p1",
+          choiceId: choice.id,
+          targetUnitId: "unit_p1_crusaders"
+        });
+      }
+
+      state.combat!.activeUnitId = "unit_p1_crusaders";
+      state.activePlayerId = "p1";
+      state.combat!.dice.scriptedRolls = [0, 0];
+      state.combat!.dice.rollCount = 0;
+      const next = settle(
+        apply(state, {
+          type: "ATTACK_UNIT",
+          playerId: "p1",
+          attackerId: "unit_p1_crusaders",
+          defenderId: "unit_p2_skeletons"
+        })
+      );
+      return next.combat!.units.unit_p2_skeletons.damage;
+    }
+
+    expect(strike(false)).toBe(2); // base attack 2 + die 0
+    expect(strike(true)).toBe(3); // Blood Frenzy Pow 1: +1 → 3
   });
 });

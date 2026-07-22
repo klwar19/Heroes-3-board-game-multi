@@ -40,8 +40,8 @@ const equipmentArtOnDisk = (id: string) =>
 describe("anime equipment catalog integrity", () => {
   it("ships every item with a grade I/II/III, cost locked to grade, and package", () => {
     const items = listEquipmentDefinitions();
-    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) + classic line (6) + shinobi (3) + kansen (6) = 33.
-    expect(items).toHaveLength(33);
+    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) + classic line (6) + shinobi (3) + kansen (6) + modao (3) = 36.
+    expect(items).toHaveLength(36);
     const bySlug = (id: string) => getEquipmentDefinition(id)!;
 
     for (const def of items) {
@@ -137,6 +137,22 @@ describe("anime equipment catalog integrity", () => {
     expect(new Set(kansen.map((def) => def.slot))).toEqual(new Set(["weapon", "armor", "accessory", "mount"]));
     // Real naval icons ship on disk (never a glyph placeholder).
     for (const def of kansen) {
+      expect(ANIME_EQUIPMENT_ART_PLACEHOLDERS.has(def.id), `${def.id} must not be an art placeholder`).toBe(false);
+      expect(equipmentArtOnDisk(def.id), `${def.id} icon missing at ${equipmentArtPath(def.id)}`).toBe(true);
+    }
+
+    // Heavenly Demon Palace bespoke "modao" line (§3.13): one per grade, spread
+    // across weapon / armor / accessory (Blood Demon Saber I / Bonefiend Plate II /
+    // Demon Heart III).
+    expect(bySlug(EQUIPMENT_IDS.demonBloodSaber)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "modao" });
+    expect(bySlug(EQUIPMENT_IDS.bonefiendPlate)).toMatchObject({ slot: "armor", grade: "II", cost: 6, package: "modao" });
+    expect(bySlug(EQUIPMENT_IDS.demonHeartRelic)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "modao" });
+    const modao = items.filter((def) => def.package === "modao");
+    expect(modao).toHaveLength(3);
+    expect(new Set(modao.map((def) => def.grade))).toEqual(new Set(["I", "II", "III"]));
+    expect(new Set(modao.map((def) => def.slot))).toEqual(new Set(["weapon", "armor", "accessory"]));
+    // Icons ship on disk (never a glyph placeholder).
+    for (const def of modao) {
       expect(ANIME_EQUIPMENT_ART_PLACEHOLDERS.has(def.id), `${def.id} must not be an art placeholder`).toBe(false);
       expect(equipmentArtOnDisk(def.id), `${def.id} icon missing at ${equipmentArtPath(def.id)}`).toBe(true);
     }
@@ -249,6 +265,10 @@ describe("anime equipment catalog integrity", () => {
     // (which fuyuki keeps).
     expect(equipmentPackagesForFaction("hidden_leaf")).toEqual(["shinobi"]);
     expect(equipmentPackagesForFaction("azur_lane")).toEqual(["kansen"]);
+    // Heavenly Demon Palace is BESPOKE too — special-cased ahead of the register
+    // switch to its "modao" line, NOT the wuxia-register default xianxia line
+    // (which azure_breeze keeps).
+    expect(equipmentPackagesForFaction("heavenly_demon")).toEqual(["modao"]);
 
     // The register LINE is the ids of every item in that package.
     const classicLine = equipmentRegisterLineFor("castle");
@@ -266,6 +286,7 @@ describe("anime equipment catalog integrity", () => {
     expect(wuxiaLine).not.toContain(EQUIPMENT_IDS.adventurersBlade); // NOT isekai
     expect(wuxiaLine).not.toContain(EQUIPMENT_IDS.crusadersPoleaxe); // NOT classic
     expect(wuxiaLine).not.toContain(EQUIPMENT_IDS.shinobiKunaiPouch); // NOT shinobi
+    expect(wuxiaLine).not.toContain(EQUIPMENT_IDS.demonBloodSaber); // NOT modao (heavenly_demon's bespoke line)
 
     const isekaiLine = equipmentRegisterLineFor("fuyuki");
     expect(isekaiLine).toContain(EQUIPMENT_IDS.adventurersBlade); // isekai exclusive
@@ -304,6 +325,21 @@ describe("anime equipment catalog integrity", () => {
     expect(kansenLine).not.toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia
     expect(kansenLine).not.toContain(EQUIPMENT_IDS.crusadersPoleaxe); // classic
     expect(kansenLine).not.toContain(EQUIPMENT_IDS.shinobiKunaiPouch); // shinobi
+
+    // The modao line is EXACTLY the three Heavenly Demon items and nothing else.
+    const modaoLine = equipmentRegisterLineFor("heavenly_demon");
+    expect(modaoLine).toHaveLength(3);
+    expect(new Set(modaoLine)).toEqual(
+      new Set([EQUIPMENT_IDS.demonBloodSaber, EQUIPMENT_IDS.bonefiendPlate, EQUIPMENT_IDS.demonHeartRelic])
+    );
+    // CONTROL: heavenly_demon shares the "wuxia" visual register with azure_breeze,
+    // but the modao line is its bespoke line ONLY — carrying none of the other
+    // registers' exclusives, and azure_breeze never gets a modao item.
+    expect(modaoLine).not.toContain(EQUIPMENT_IDS.ironBloodSword); // xianxia (azure_breeze's line)
+    expect(modaoLine).not.toContain(EQUIPMENT_IDS.adventurersBlade); // isekai
+    expect(modaoLine).not.toContain(EQUIPMENT_IDS.crusadersPoleaxe); // classic
+    expect(modaoLine).not.toContain(EQUIPMENT_IDS.oxygenTorpedo); // kansen
+    expect(equipmentRegisterLineFor("azure_breeze")).not.toContain(EQUIPMENT_IDS.demonBloodSaber);
   });
 
   it("every package has a short UI flavour label", () => {
@@ -313,5 +349,6 @@ describe("anime equipment catalog integrity", () => {
     expect(EQUIPMENT_PACKAGE_LABEL.classic).toBe("classic");
     expect(EQUIPMENT_PACKAGE_LABEL.shinobi).toBe("shinobi");
     expect(EQUIPMENT_PACKAGE_LABEL.kansen).toBe("kansen");
+    expect(EQUIPMENT_PACKAGE_LABEL.modao).toBe("modao");
   });
 });

@@ -2659,6 +2659,11 @@ Leading with what does NOT run / deliberate limits:
   Grant magnitudes are pegged to existing precedents (Pandora hand/Power bonuses,
   the morale reroll source) so xianxia content shares ONE power scale with core /
   WOG / isekai.
+  Realm NAMES are presentation-only and faction-owned: classic heroes use
+  Novice/Adept/Master/Archmage, anime heroes Awakened/Adept/Ascendant/
+  Transcendent, Azure Breeze uses the cultivation ladder, and Heavenly Demon
+  uses its bespoke Blood Refinement/Demon Foundation/Demon Core/Devil Soul
+  (`cultivationRealmLabel`). The numeric realm and every grant above are shared.
 - **Also shipped: `anime.heroGrades`** (Hero Grades — a per-hero Merit→grade 0-3
   track + a 3-tier × 3-node passive/skill tree; SHARED by every hero, independent
   of Cultivation). Default OFF ⇒ byte-identical. Read-layer
@@ -2686,19 +2691,16 @@ Leading with what does NOT run / deliberate limits:
   Cultivation Foundation, Arcane Insight +1 Power, Tactician +2 gold) and
   non-card SKILLS with cooldowns (Battle Focus/Iron Will reactions, War Cry
   active — combat once/combat; Forced March map active once/round) reusing the
-  commander cast buff machinery. Grade NAMES wear per-family REGISTERS
-  (core/xianxia/isekai, plus the bespoke `kansen` ship-rarity register —
-  Common/Rare/Elite/Super Rare — for **azur_lane**) resolved by the §2 rule
-  (exactly-one-package → that register table-wide, else per-faction family), but
-  mechanics/state never change with the label. A faction sharing a package with
-  another (Azur Lane shares the isekai package + the "anime" visual register with
-  Fuyuki/Hidden Leaf) needs a BESPOKE branch checked AHEAD of the package switch —
-  `BESPOKE_FACTION_GRADE_REGISTERS` in `heroGradeRegisterKey`, the exact §3.13
-  equipment worked-example precedent (`equipmentPackagesForFaction` special-cases
-  hidden_leaf/azur_lane before its register switch) — else an isekai-only game
-  would mislabel an Azur Lane hero "Rank F…S". Pinned in
-  `anime-hero-grades.test.ts` (azur_lane→kansen in an isekai-only game, with a
-  hidden_leaf→isekai CONTROL proving the branch is faction-scoped). EXTENSIBILITY: no literal tier count in engine logic (all
+  commander cast buff machinery. Grade NAMES wear faction-owned REGISTERS
+  (core/xianxia/isekai, plus bespoke `kansen` ship rarity for **azur_lane** and
+  `modao` demonic titles for **heavenly_demon**), while mechanics/state never
+  change with the label. Enabled town-package flags NEVER relabel another
+  faction's hero: Castle remains Recruit/Veteran/Champion/Legend even in a
+  xianxia-only game; mixed tables resolve each seat independently through
+  `heroGradeRegisterKey`. Bespoke faction branches are checked first, then
+  `factionGradeRegister` supplies the normal family. Pinned in
+  `anime-hero-grades.test.ts` and the hero-board table tests, including classic,
+  Fuyuki, Azure Breeze, Azur Lane, and Heavenly Demon controls. EXTENSIBILITY: no literal tier count in engine logic (all
   derives from the threshold array length); pure helpers `gradeForMerit` /
   `pickableNodesFrom` are tested with a 4-tier fixture; "add a tier" = append a
   threshold + nodes + one entry per register (§3.11 recipe). Magnitudes pegged to
@@ -2706,7 +2708,7 @@ Leading with what does NOT run / deliberate limits:
   commander reaction buffs, Boots movement).
 - **Also shipped: `anime.equipment`** (Equipment — always-on hero ITEMS in four
   slots weapon/armor/accessory/mount, one per slot, buying into an occupied slot
-  REPLACES with no refund; §3.13). 18 items across three GRADES I/II/III
+  REPLACES with no refund; §3.13). 36 items across three GRADES I/II/III
   (minor/major/relic), cost 4/6/8 gold DERIVED from grade
   (`EQUIPMENT_GRADE_COST`). Each item is BOTH an always-on slot item AND an
   Artifact-deck CARD (`src/data/anime/equipment-cards.ts`, generated from the
@@ -2724,11 +2726,12 @@ Leading with what does NOT run / deliberate limits:
   semantics in `src/engine/anime-equipment-cards.test.ts` (each claim
   mutation-checked) + the catalog in `src/data/anime/equipment.test.ts` + the
   hero-board chips (`hero-board.test.tsx`). Leading with what does NOT run / limits:
-  **the 6 CLASSIC-line items (2026-07) ship PROCEDURAL PLACEHOLDER art, not
-  hand-drawn illustrations** — grade-tinted monogram inventory icons (synthesised
-  by `scripts/build-equipment-cards.mjs` when a hand-drawn master is missing) under
-  the ornate Artifact-card frame with the full rules text; the 18 anime items keep
-  their Codex art. `ANIME_EQUIPMENT_ART_PLACEHOLDERS` stays EMPTY (the placeholders
+  **the 6 CLASSIC-line and 3 SHINOBI-line items (2026-07) ship PROCEDURAL
+  PLACEHOLDER art, not hand-drawn illustrations** — committed grade-tinted
+  monogram inventory icons under the ornate Artifact-card frame with the full
+  rules text; the other 27 items have painted/vector art. Heavenly Demon's three
+  former monograms were replaced by painted masters and are no longer in this
+  limitation. `ANIME_EQUIPMENT_ART_PLACEHOLDERS` stays EMPTY (the placeholders
   are real files on disk, not glyph fallbacks). **The AI never buys equipment** (it
   declines the optional outfitter shop by policy — a documented limit, unchanged;
   register-aware shops added no AI heuristic). **same-slot twins do NOT stack** —
@@ -2742,12 +2745,12 @@ Leading with what does NOT run / deliberate limits:
   outfitter Field Overrides; the hero board is a read-only chip display for items.
   (The other hero map actives — HERO_TRAIN / Forced March (§3.11) and the Heavenly
   Tribulation (§5.6) — DO now have a human button via the map `HeroActionsDock`;
-  only equipment purchase does not.) **Art (2026-07): all 33 items ship 512×512
+  only equipment purchase does not.) **Art (2026-07): all 36 items ship 512×512
   inventory icons** (`public/assets/anime/equipment/`, drawn on the hero-board chip
-  — `.hbEquipIcon`, art wins over the slot glyph; the 18 anime items are Codex art,
-  the 6 classic + 3 shinobi items PROCEDURAL placeholders while the 6 kansen items
-  ship REAL deterministic vector naval icons (`scripts/build-kansen-equipment-icons.mjs`)
-  — above; `ANIME_EQUIPMENT_ART_PLACEHOLDERS`
+  — `.hbEquipIcon`, art wins over the slot glyph; the 18 base/shared anime items,
+  6 kansen items, and 3 modao items have real art, while the 6 classic + 3 shinobi
+  items remain PROCEDURAL placeholders; `scripts/build-kansen-equipment-icons.mjs`
+  owns the naval vector set. `ANIME_EQUIPMENT_ART_PLACEHOLDERS`
   is EMPTY, a future art-less item must be declared there for the glyph fallback)
   **plus a framed Artifact-CARD face each** (`public/assets/anime/equipment/cards/<slug>.webp`);
   **no designer pin for the outfitters** (pool-placed only); **combat items are the
@@ -2762,7 +2765,7 @@ Leading with what does NOT run / deliberate limits:
   item and an "upgrade waiting" hint when a higher-grade bag item exists for a
   filled slot (pure presentation; no new engine action). The hero + commander
   windows already carry the faction `theme-<register>` class (verified). What runs
-  (33 items, each a proven-seam reuse pegged to a core
+  (36 items, each a proven-seam reuse pegged to a core
   magnitude): Iron-Blood Sword = your units' FIRST declared attack each combat +1
   Attack (a per-combat one-shot folded UNCLAMPED in `getAttackStackDetails` beside
   the combat-script delta, consumed at `finishResolvedAttack` when the attack
@@ -2803,7 +2806,7 @@ Leading with what does NOT run / deliberate limits:
   and so shares the ONE accessory slot with the other spell-power / hand-limit
   accessories — same-slot twins still don't stack). No new fold kinds — each id
   joined an existing fold's item-id list; behaviour pinned per item in
-  `anime-equipment.test.ts`, the catalog count (33) + register matrix in
+  `anime-equipment.test.ts`, the catalog count (36) + register matrix in
   `equipment.test.ts`.
   KANSEN LINE (2026-07, package `kansen`, Azur Lane Naval Base's BESPOKE 6-item
   register line — 2 per grade across all four slots, each a PURE seam reuse; the
@@ -2821,8 +2824,17 @@ Leading with what does NOT run / deliberate limits:
   new fold kinds — each id joined an existing fold's item-id list; UNLIKE the
   classic/shinobi procedural placeholders these ship REAL vector naval icons +
   card faces (`ANIME_EQUIPMENT_ART_PLACEHOLDERS` stays EMPTY). Behaviour pinned
-  per item in `anime-equipment.test.ts`, the catalog count (33) + register matrix
+  per item in `anime-equipment.test.ts`, the catalog count (36) + register matrix
   in `equipment.test.ts`.
+  MODAO LINE (2026-07, package `modao`, Heavenly Demon Palace's BESPOKE 3-item
+  register line — one item per grade, each a PURE seam reuse): Blood Demon Saber
+  (weapon I, first-declared-attack +1), Bonefiend Plate (armor II, first-incoming
+  hit grants a Defense token), and Demon Heart (accessory III, +1 spell Power AND
+  +1 hand limit). All three use dedicated painted masters under
+  `scripts/anime-art/raw/artifacts/equipment-masters/`; the equipment-card builder
+  can target an individual slug and derives both the 512×512 icon and framed face
+  from that master. No new fold kinds; behavior and the faction-only shop line are
+  pinned in `anime-equipment.test.ts` / `equipment.test.ts`.
   MARKETS: two single-hex Field Overrides — Rèn Binh Các (Blacksmith, xianxia, ⚒) +
   Adventurer Outfitter (isekai, 🎒), both selling the shared Satchel; the shop menu
   is a dynamic `CHOOSE_ONE` of `BUY_EQUIPMENT` options built in `beginFieldVisit`
@@ -2834,19 +2846,22 @@ Leading with what does NOT run / deliberate limits:
   (wuxia) the xianxia line, fuyuki (anime) the isekai line, hidden_leaf its OWN
   bespoke shinobi line (Kunai Pouch / Body-Flicker Tabi / Sage Chakra Charm) and
   azur_lane its OWN bespoke kansen line (Oxygen Torpedo / Repair Toolkit / SG
-  Radar / Manjuu Piggy Bank / Beaver Squad Tag / Retrofit Blueprint). Hidden Leaf
+  Radar / Manjuu Piggy Bank / Beaver Squad Tag / Retrofit Blueprint), while
+  heavenly_demon gets Blood Demon Saber / Bonefiend Plate / Demon Heart. Hidden Leaf
   AND Azur Lane both SHARE the `anime` visual register with
   Fuyuki, so the register switch alone cannot tell them apart:
   `equipmentPackagesForFaction` special-cases hidden_leaf → `["shinobi"]` and
   azur_lane → `["kansen"]` AHEAD of the switch, or either would fall through to
-  Fuyuki's isekai line. So a wuxia visitor sees
+  Fuyuki's isekai line. Heavenly Demon is likewise special-cased to `modao`
+  AHEAD of the shared wuxia register, while Azure Breeze stays `anime-xianxia`.
+  So a wuxia visitor sees
   isekai-exclusive gear ONLY at the shop that sells it (never as a register line),
   and classic items appear ONLY for classic visitors. Matrix + grade-in-label pinned
   in `anime-equipment.test.ts` ("register-aware shops (§3.13 matrix)"). FUTURE-TOWN
   RECIPE: a new town only needs a `factionVisualRegister` entry to light up an
   existing register line at every outfitter (no shop edit); for bespoke gear, add
   items in a new package + return it from `equipmentPackagesForFaction` (Hidden Leaf's
-  `shinobi` and Azur Lane's `kansen` are the two worked examples of the bespoke
+  `shinobi`, Azur Lane's `kansen`, and Heavenly Demon's `modao` are the worked examples of the bespoke
   branch). GATING:
   `FieldOverrideDefinition.requiresModule`
   (new) + a `moduleEnabled` predicate on `listFieldOverrideDefinitions` — with
@@ -2881,9 +2896,8 @@ Leading with what does NOT run / deliberate limits:
   - **(c) mixed-package no-cross-talk CONTROL** (`src/engine/anime-coexistence.test.ts`):
     carving an ISEKAI field-override kind (content present) leaves the xianxia
     Cultivation/Grade event sequence byte-identical to a xianxia-only run, and the
-    grade-name register keys off MODULE FLAGS not carved CONTENT (turning an
-    isekai module flag on is the mutation control that flips the register to the
-    both-packages "core" fallback).
+    grade-name register keys off the owning FACTION, not module flags or carved
+    content (the same flags with an Azure Breeze owner are the mutation control).
   - **(d) display coexistence** (`src/components/anime-coexistence-display.test.tsx`):
     a hero board renders realm + grade + all-three equipment chips simultaneously
     with no collision; the map-designer Field Override palette lists a xianxia AND
@@ -3030,12 +3044,13 @@ Leading with what does NOT run / deliberate limits:
 
 ## Anime Towns (`anime.isekaiTowns` / `anime.xianxiaTowns`) & themed mod UI — what runs vs. limits
 
-FOUR COMPLETE playable factions behind the two anime town module flags (default
+FIVE COMPLETE playable factions behind the two anime town module flags (default
 OFF ⇒ byte-identical; `isPlayableFaction(id, animeOptions)` gates every pick
 surface — lobby grids, draft rolls, computer seats, Random-Town defenders):
 **Fuyuki City** (`fuyuki`, isekai), **Hidden Leaf Village** (`hidden_leaf`,
 isekai) and **Azur Lane Naval Base** (`azur_lane`, isekai) all behind
-`anime.isekaiTowns`, plus **Azure Breeze Sect** (`azure_breeze`, wuxia) behind
+`anime.isekaiTowns`, plus **Azure Breeze Sect** (`azure_breeze`, wuxia) and
+**Heavenly Demon Palace** (`heavenly_demon`, modao) behind
 `anime.xianxiaTowns`. Each ships a
 7-unit roster (every ability tag a REUSE of an already-implemented engine
 ability — pinned per-side in `src/data/anime/towns.test.ts` and, for Hidden Leaf /
@@ -3052,14 +3067,14 @@ spells-stay-uncapped CONTROLs in `fuyuki-casters.test.ts` — and Hidden Leaf's
 below), 8 buildings on the
 SHARED building-effect archetypes (City-Hall choice, dwellings, Mage Guild,
 Portal Summon, Artifact Smith, Hall of Valhalla, resource die — nothing bespoke),
-2–5 heroes each with portraits on disk (all four factions real — the last
+2–5 heroes each with portraits on disk (all five factions real — the last
 Hidden Leaf placeholders were replaced 2026-07, below), a starting tile
 (`A-S1` / `W-S1` / `L-S1` / `P-S1`), a designed
 town board whose bars are seven real contiguous panorama slices (empty↔full
 pairs, `townBoardSpecs.barTileImages`), a capitol icon on the same
 `town-icon-<faction>.webp` convention as every classic faction
 (`scripts/build-anime-town-icons.mjs`), and a WOG commander (Astral Regent /
-Sword Saint / Might Guy / Belfast) reusing the Brute / Temple-Guardian /
+Sword Saint / Might Guy / Belfast / Demon Ancestor) reusing the Brute / Temple-Guardian /
 shaman-Haste cast arms and the `vanguard-marshal` / `superior-combat` / `first-aid`
 specialty machinery verbatim (Might Guy triple-reuses `superior-combat` as "Eight
 Gates"; Belfast reuses the Tower Temple Guardian's Precision cast AND the Rampart
@@ -3243,11 +3258,11 @@ like every equipment item, ships Codex-painted icons (2026-07, replacing the
 vector set),
 and is offered as Azur Lane's register line at BOTH outfitters via the §3.13
 special-case (`equipmentPackagesForFaction` returns `["kansen"]` for azur_lane
-AHEAD of the register switch — the same bespoke branch as hidden_leaf's `shinobi`,
+AHEAD of the visual-family fallback — the same bespoke branch as hidden_leaf's `shinobi`,
 since both share the `anime` register with Fuyuki — see the Equipment section).
 Azur Lane ALSO wears a bespoke `kansen` HERO-GRADE name register
 (Common/Rare/Elite/Super Rare — `Thường/Hiếm/Tinh Nhuệ/Siêu Hiếm`, via
-`BESPOKE_FACTION_GRADE_REGISTERS` checked ahead of the package switch, same
+`BESPOKE_FACTION_GRADE_REGISTERS` checked ahead of the normal faction map, same
 shared-package precedent) and a naval UI LEXICON (Fleet Rating / Rigging & Gear /
 Flagship Regalia / Fleet roster / Tactical drill / Fleet Training Board,
 `factionUiLexicon`) over the SAME "anime" VISUAL register it keeps (CSS theme
@@ -3282,6 +3297,47 @@ negative resource, soft-asserting its units are recruited and Belfast is on the
 field (its `first-aid` fires in play); the all-on `anime-coexistence-soak.test.ts`
 runs with both town flags available.
 
+**Heavenly Demon Palace (`heavenly_demon`, modao — the fifth town / second
+xianxia town).** Shares `anime.xianxiaTowns` with Azure Breeze (no new option or
+lobby row) and ships as a complete evil cultivation faction: 7 units (3 bronze /
+2 silver / 2 gold), 8 shared-archetype buildings, five heroes, D-S1, a contiguous
+seven-bar palace board, and Demon Ancestor. Exact content and asset wiring are
+pinned in `src/data/anime/heavenly-demon-content.test.ts`.
+
+The roster reuses proven abilities except for two focused engine arms, each with
+behavioral controls in `src/engine/heavenly-demon-abilities.test.ts`:
+`heavenly-demon-blood-siphon` heals Blood Disciples after their own attack
+actually deals damage (never on retaliation or a fully soaked hit), and
+`heavenly-demon-reap` gives the Demon Avatar a stacking combat Attack bonus when
+an adjacent unit is removed. Gu Witches, Shadow Wraiths, Corpse Puppets, Bone
+Reavers and Ghost King otherwise compose existing penalty-ignore, paralysis,
+no-retaliation, defense-token, detonation, charge, regeneration and unlimited-
+retaliation seams. Five heroes are Xuedao / Guiyan / Xuanming (own-faction unit
+specialists) plus Yaoji / Molian (magic support clones). Demon Ancestor reuses
+the Brute Bloodlust cast as Blood Frenzy and the implemented `undead` specialty;
+its cast/specialty behavior is pinned in `wog-commanders.test.ts`.
+
+The faction shares wuxia visual chrome and Stage/Cultivation progress words, but
+its realm/grade names are bespoke `modao`: Blood Refinement → Devil Soul and
+Blood Adept → Heavenly Demon. Its equipment register is likewise faction-only:
+Blood Demon Saber / Bonefiend Plate / Demon Heart at both outfitters. Two WOG
+commander artifacts add Blood Patriarch's Saber (+2 Attack) and Demon Heart
+Talisman (+1 command-cast Power and +1 Initiative); these remain gated by the
+normal `wog.enabled && wog.artifacts && wog.commanders` deck join.
+
+ART: `scripts/build-heavenly-demon-art.mjs` composes the 14 unit faces, five
+1086×1448 WebP hero portraits, commander card, palace panoramas/bars, tile and
+icon from masters under `scripts/anime-art/raw/heavenly-demon/`. Every Few/Pack
+unit face now has a distinct master; the former five mirrored lower-tier Pack
+faces were replaced by dedicated formation scenes. `scripts/build-equipment-cards.mjs`
+derives the three modao icons/faces from painted masters, and
+`scripts/build-commander-weapon-cards.mjs` does the same for the two demonic WOG
+artifacts. Prompt provenance sits beside every new master. Live-play coverage in
+`src/server/heavenly-demon-live.test.ts` runs three fixed seeds with both seats
+on the faction and cultivation/grades/equipment enabled, reaching round 5 with
+no stalls or invariant violations while asserting real roster and
+commander/progression activity.
+
 Leading with what does NOT run / deliberate limits:
 - **The combat sandbox never offers the anime factions** (its
   `isPlayableFaction` call passes no anime options — conservative).
@@ -3299,11 +3355,15 @@ Leading with what does NOT run / deliberate limits:
 
 **Themed mod UI (visual registers).** `src/data/faction-theme.ts` maps a faction
 to a register — `classic` / `anime` (fuyuki, hidden_leaf, azur_lane) / `wuxia`
-(azure_breeze) — with a per-register lexicon (Hero Grade/Spirit Rank/Martial Path, Unit deck/Servant
+(azure_breeze, heavenly_demon) — with a per-register lexicon (Hero Grade/Spirit Rank/Martial Path, Unit deck/Servant
 roster/Sect retinue, Drill/Field training/Cultivate, …). The register stamps
 `theme-<register>` + `--mod-*` CSS vars on the hero board, town window/board,
 army panel and every mod-system window, so the three registers genuinely look
 different (leather ridge / astral glass / jade double borders + register art).
+The hero footer's Level/XP words, realm name and grade title resolve from the
+owning faction, never from whichever package flags happen to be enabled.
+Heavenly Demon deliberately shares the wuxia visual chrome and Stage/Cultivation
+words, but uses bespoke `modao` realm and grade-name registries.
 The hero-systems row on the hero board opens POP-UP WINDOWS (portal, shared
 `heroSystemModal` shell): the Hero-Grade skill tree, the Hero-Equipment
 paper-doll (drag-drop + accessible Equip/Unequip buttons over the REAL

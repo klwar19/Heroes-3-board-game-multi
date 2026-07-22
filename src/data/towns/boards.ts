@@ -546,6 +546,28 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
       ["azur_lane.dwelling_gold"]
     ],
     geometry: DESIGNED_GEOMETRY
+  },
+  heavenly_demon: {
+    factionId: "heavenly_demon",
+    panoramaImage: "/assets/anime/towns/heavenly-demon-palace-empty.webp",
+    fullImage: "/assets/anime/towns/heavenly-demon-palace-full.webp",
+    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/town-board/heavenly-demon-bar-${index + 1}.webp`),
+    panelImage: DESIGNED_PANEL_IMAGE,
+    // 8 buildings on 7 bars, exactly ONE two-building bar — a DISTINCT order from
+    // the other anime boards (the shared bar sits at slot 3, not 4): the Blood
+    // Summoning Altar shares the bronze dwelling bar. Bar assignment MUST agree
+    // with animeTownBuildingBar in src/data/anime/towns.ts so each building's
+    // strip art matches its bar.
+    bars: [
+      ["heavenly_demon.city_hall"],
+      ["heavenly_demon.citadel"],
+      ["heavenly_demon.dwelling_bronze", "heavenly_demon.summoning_altar"],
+      ["heavenly_demon.dwelling_silver"],
+      ["heavenly_demon.mage_guild"],
+      ["heavenly_demon.demon_arena"],
+      ["heavenly_demon.dwelling_gold"]
+    ],
+    geometry: DESIGNED_GEOMETRY
   }
 };
 

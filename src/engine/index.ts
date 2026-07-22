@@ -715,14 +715,18 @@ export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, MAX_CUSTOM_GUARD_UNITS, MAX
 export { DEFAULT_ANIME_OPTIONS, animeEnabled, animeModuleEnabled } from "./anime";
 export {
   CULTIVATION_REALMS,
+  CULTIVATION_REALM_REGISTERS,
   cultivationEnabled,
+  cultivationRealmLabel,
   cultivationRealmOf,
+  cultivationRealmRegisterKey,
   cultivationHandLimitBonus,
   cultivationSpellPowerBonus,
   cultivationCombatRerollBonus,
   maybeAdvanceCultivationRealm,
   tribulationAvailable
 } from "./anime-cultivation";
+export type { CultivationRealm, CultivationRealmLabel, CultivationRealmRegisterKey } from "./anime-cultivation";
 export {
   heroGradesEnabled,
   heroGradeOf,
