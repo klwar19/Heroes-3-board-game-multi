@@ -44,7 +44,7 @@ const FACTION = "azur_lane";
 /** The COMPLETE, literal per-side wired ability list for every unit (CLAUDE.md §2). */
 const EXPECTED_ABILITIES: Record<string, { few: string[]; pack: string[] }> = {
   "azur_lane.laffey": { few: [], pack: ["ignores-retaliation"] },
-  "azur_lane.javelin": { few: [], pack: ["commander-charge"] },
+  "azur_lane.javelin": { few: [], pack: ["kansen-best-friends"] },
   "azur_lane.honolulu": {
     few: ["ignore-combat-penalties"],
     // 2026-07 upgrade: her Pack prints the town's bespoke around-target salvo
@@ -57,12 +57,12 @@ const EXPECTED_ABILITIES: Record<string, { few: string[]; pack: string[] }> = {
   },
   "azur_lane.yukikaze": {
     few: ["commander-defense-token"],
-    pack: ["commander-defense-token", "ignores-retaliation"]
+    pack: ["commander-defense-token", "yukikaze-torpedo-run"]
   },
   "azur_lane.prinz_eugen": { few: ["nix-damage-cap"], pack: ["nix-damage-cap", "unlimited-retaliation"] },
   "azur_lane.i19": {
     few: ["ignores-retaliation", "teleport-move"],
-    pack: ["ignores-retaliation", "teleport-move", "sandworm-strike-again"]
+    pack: ["ignores-retaliation", "teleport-move", "i19-oxygen-torpedo-spread"]
   }
 };
 
@@ -71,7 +71,7 @@ const ENVELOPES: Record<
   "bronze" | "silver" | "gold",
   { attack: [number, number]; defense: [number, number]; health: [number, number]; initiative: [number, number]; gold: [number, number]; valuables: [number, number] }
 > = {
-  bronze: { attack: [1, 3], defense: [1, 2], health: [2, 3], initiative: [6, 9], gold: [2, 6], valuables: [0, 0] },
+  bronze: { attack: [1, 3], defense: [0, 2], health: [2, 4], initiative: [6, 12], gold: [2, 6], valuables: [0, 0] },
   silver: { attack: [3, 4], defense: [2, 3], health: [3, 5], initiative: [5, 8], gold: [7, 13], valuables: [0, 0] },
   gold: { attack: [5, 7], defense: [2, 3], health: [5, 8], initiative: [4, 7], gold: [14, 23], valuables: [1, 2] }
 };
@@ -126,14 +126,14 @@ describe("Azur Lane Naval Base — EXACT per-side ability ids (Few/Pack divergen
     });
   }
 
-  it("I-19 Pack ADDS the extra-strike arm (sandworm-strike-again) ON TOP of the Few's kit", () => {
+  it("I-19 Pack ADDS the fixed Attack-4 extra-strike arm ON TOP of the Few's kit", () => {
     const few = coreUnitDefinitions["azur_lane.i19"].few!.abilities;
     const pack = coreUnitDefinitions["azur_lane.i19"].pack!.abilities;
     expect(few).toEqual(["ignores-retaliation", "teleport-move"]);
-    expect(pack).toContain("sandworm-strike-again");
+    expect(pack).toContain("i19-oxygen-torpedo-spread");
     expect(pack).toContain("ignores-retaliation");
     expect(pack).toContain("teleport-move");
-    expect(few).not.toContain("sandworm-strike-again");
+    expect(few).not.toContain("i19-oxygen-torpedo-spread");
   });
 
   it("Prinz Eugen Pack adds unlimited-retaliation ON TOP of the cap the Few already has", () => {
@@ -147,6 +147,16 @@ describe("Azur Lane Naval Base — EXACT per-side ability ids (Few/Pack divergen
 });
 
 describe("Azur Lane Naval Base — balance envelopes & Few→Pack progression", () => {
+  it("pins the requested shipgirl stat updates", () => {
+    const laffey = coreUnitDefinitions["azur_lane.laffey"];
+    expect(laffey.few).toMatchObject({ attack: 2, defense: 0, health: 3, initiative: 12 });
+    expect(laffey.pack).toMatchObject({ attack: 3, defense: 0, health: 4, initiative: 12 });
+
+    expect(coreUnitDefinitions["azur_lane.javelin"].pack).toMatchObject({ attack: 2 });
+    expect(coreUnitDefinitions["azur_lane.prinz_eugen"].few).toMatchObject({ initiative: 5 });
+    expect(coreUnitDefinitions["azur_lane.prinz_eugen"].pack).toMatchObject({ initiative: 6 });
+  });
+
   it("every side sits inside its tier envelope; Few→Pack never lowers a stat", () => {
     for (const unitId of coreFactionDefinitions[FACTION].units) {
       const unit = coreUnitDefinitions[unitId];

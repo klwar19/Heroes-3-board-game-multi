@@ -242,6 +242,12 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /** Azur Lane Javelin: gains Attack while a friendly named ally is alive in Combat. */
+      type: "ALLY_NAME_ATTACK_BONUS";
+      allyName: string;
+      amount: number;
+    }
+  | {
       /**
        * Heavenly Demon Palace "Blood Siphon" (NEW engine arm for this faction):
        * after an attack made by this unit RESOLVES AND DEALS DAMAGE (> 0), remove
@@ -307,6 +313,8 @@ export type UnitAbilityEffectDefinition =
        * retaliation.
        */
       type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION";
+      /** Fixed Attack value for the follow-up; omitted uses the attacker's live Attack. */
+      baseAttack?: number;
     }
   | {
       /**
@@ -1622,6 +1630,27 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   // (never on a Retaliation Attack); the carrier itself gains nothing. Wired in
   // reducer.ts (getFleetFormationAuraBonus inside getAttackStackDetails) and
   // pinned in kansen-abilities.test.ts.
+  "kansen-best-friends": {
+    id: "kansen-best-friends",
+    name: "Best Friends",
+    text: "[unit_passive] This unit gains +1 Attack while a friendly Laffey is in the battlefield.",
+    effect: { type: "ALLY_NAME_ATTACK_BONUS", allyName: "Laffey", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "yukikaze-torpedo-run": {
+    id: "yukikaze-torpedo-run",
+    name: "Torpedo Run",
+    text: '[unit_attack] May reroll any "-1" result on this unit\'s Attack die.',
+    effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  "i19-oxygen-torpedo-spread": {
+    id: "i19-oxygen-torpedo-spread",
+    name: "Oxygen Torpedo Spread",
+    text: "[unit_attack] After the target retaliates, if possible, attack that same target again with Attack 4. The second attack does not provoke another retaliation.",
+    effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION", baseAttack: 4 },
+    implementationStatus: "implemented"
+  },
   "kansen-fleet-formation": {
     id: "kansen-fleet-formation",
     name: "Fleet Formation",

@@ -7623,6 +7623,8 @@ export type AttackSequenceState = {
     abilityId: string;
     abilityName: string;
     targetUnitId: UnitId;
+    /** Optional fixed Attack value for the printed follow-up strike. */
+    baseAttack?: number;
   };
 };
 

@@ -219,16 +219,16 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   // --- BRONZE (3) ----------------------------------------------------------
   "azur_lane.laffey": {
     id: "azur_lane.laffey", name: "Laffey", faction: "azur_lane", tier: "bronze", type: "ground",
-    few: { attack: 2, defense: 1, health: 2, initiative: 8, cost: { gold: 2 }, abilities: [], cardImage: azurCard("bronze", "laffey", "few") },
+    few: { attack: 2, defense: 0, health: 3, initiative: 12, cost: { gold: 2 }, abilities: [], cardImage: azurCard("bronze", "laffey", "few") },
     // ignores-retaliation = its attacks never provoke a Retaliation Attack.
-    pack: { attack: 3, defense: 1, health: 2, initiative: 9, cost: { gold: 4 }, abilities: ["ignores-retaliation"], abilityText: "White Demon of Solomon — attacks do not provoke a Retaliation Attack.", cardImage: azurCard("bronze", "laffey", "pack") },
+    pack: { attack: 3, defense: 0, health: 4, initiative: 12, cost: { gold: 4 }, abilities: ["ignores-retaliation"], abilityText: "White Demon of Solomon — attacks do not provoke a Retaliation Attack.", cardImage: azurCard("bronze", "laffey", "pack") },
     source
   },
   "azur_lane.javelin": {
     id: "azur_lane.javelin", name: "Javelin", faction: "azur_lane", tier: "bronze", type: "ground",
     few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 2 }, abilities: [], cardImage: azurCard("bronze", "javelin", "few") },
     // commander-charge = +1 Attack when it attacks after moving this activation.
-    pack: { attack: 3, defense: 1, health: 2, initiative: 8, cost: { gold: 4 }, abilities: ["commander-charge"], abilityText: "Javelin Spiral — +1 Attack on its attack after this unit moves.", cardImage: azurCard("bronze", "javelin", "pack") },
+    pack: { attack: 2, defense: 1, health: 2, initiative: 8, cost: { gold: 4 }, abilities: ["kansen-best-friends"], abilityText: "Best Friends — +1 Attack when Laffey is in the battlefield.", cardImage: azurCard("bronze", "javelin", "pack") },
     source
   },
   // LV3 bronze RANGED cruiser gunner.
@@ -256,15 +256,15 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "azur_lane.yukikaze": {
     id: "azur_lane.yukikaze", name: "Yukikaze", faction: "azur_lane", tier: "silver", type: "ground",
     few: { attack: 3, defense: 2, health: 3, initiative: 7, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "The Great Yukikaze — luck of the invincible ship: always rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).", cardImage: azurCard("silver", "yukikaze", "few") },
-    pack: { attack: 4, defense: 2, health: 4, initiative: 8, cost: { gold: 11 }, abilities: ["commander-defense-token", "ignores-retaliation"], abilityText: "The Great Yukikaze — always rolls the Defend die when attacked; Torpedo Run — its attacks do not provoke a Retaliation Attack.", cardImage: azurCard("silver", "yukikaze", "pack") },
+    pack: { attack: 4, defense: 2, health: 4, initiative: 8, cost: { gold: 11 }, abilities: ["commander-defense-token", "yukikaze-torpedo-run"], abilityText: "The Great Yukikaze — always rolls the Defend die when attacked; Torpedo Run — can reroll any \"-1\" on this unit's Attack die.", cardImage: azurCard("silver", "yukikaze", "pack") },
     source
   },
   // --- GOLD (2) ------------------------------------------------------------
   // LV6 gold ground unsinkable heavy cruiser.
   "azur_lane.prinz_eugen": {
     id: "azur_lane.prinz_eugen", name: "Prinz Eugen", faction: "azur_lane", tier: "gold", type: "ground",
-    few: { attack: 5, defense: 3, health: 7, initiative: 4, cost: { gold: 14, valuables: 1 }, abilities: ["nix-damage-cap"], abilityText: "Unsinkable — this unit cannot take more than 4 damage from a single attack (Spell and ability damage are not capped).", cardImage: azurCard("golden", "prinz-eugen", "few") },
-    pack: { attack: 6, defense: 3, health: 8, initiative: 4, cost: { gold: 21, valuables: 2 }, abilities: ["nix-damage-cap", "unlimited-retaliation"], abilityText: "Unsinkable — cannot take more than 4 damage from a single attack; may Retaliate any number of times each round.", cardImage: azurCard("golden", "prinz-eugen", "pack") },
+    few: { attack: 5, defense: 3, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, abilities: ["nix-damage-cap"], abilityText: "Unsinkable — this unit cannot take more than 4 damage from a single attack (Spell and ability damage are not capped).", cardImage: azurCard("golden", "prinz-eugen", "few") },
+    pack: { attack: 6, defense: 3, health: 8, initiative: 6, cost: { gold: 21, valuables: 2 }, abilities: ["nix-damage-cap", "unlimited-retaliation"], abilityText: "Unsinkable — cannot take more than 4 damage from a single attack; may Retaliate any number of times each round.", cardImage: azurCard("golden", "prinz-eugen", "pack") },
     source
   },
   // LV7 gold ground glass-cannon submarine (the Few→Pack ability ADD — the extra
@@ -273,10 +273,10 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     id: "azur_lane.i19", name: "I-19", faction: "azur_lane", tier: "gold", type: "ground",
     few: { attack: 6, defense: 2, health: 5, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignores-retaliation", "teleport-move"], abilityText: "Silent Hunter — attacks do not provoke Retaliation; as a regular move, may surface on any empty space.", cardImage: azurCard("golden", "i-19", "few") },
     // sandworm-strike-again = SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION — after
-    // its first attack resolves it strikes the same target again (fires on
-    // attacksThisActivation === 1, NOT gated on an actual retaliation, so it is a
-    // live combo with ignores-retaliation, never a dead clause).
-    pack: { attack: 7, defense: 2, health: 6, initiative: 7, cost: { gold: 21, valuables: 2 }, abilities: ["ignores-retaliation", "teleport-move", "sandworm-strike-again"], abilityText: "Silent Hunter — attacks do not provoke Retaliation; as a regular move, may surface on any empty space. Oxygen Torpedo Spread — after its attack resolves, it attacks that same target again (this second strike provokes no Retaliation).", cardImage: azurCard("golden", "i-19", "pack") },
+    // its first attack resolves it can strike the same target again at the
+    // printed fixed Attack 4. The follow-up uses the existing same-target
+    // after-retaliation sequence and does not provoke another retaliation.
+    pack: { attack: 7, defense: 2, health: 6, initiative: 7, cost: { gold: 21, valuables: 2 }, abilities: ["ignores-retaliation", "teleport-move", "i19-oxygen-torpedo-spread"], abilityText: "Silent Hunter — attacks do not provoke Retaliation; as a regular move, may surface on any empty space. Oxygen Torpedo Spread — after its attack resolves, it can attack the same target again with Attack 4.", cardImage: azurCard("golden", "i-19", "pack") },
     source
   },
 
