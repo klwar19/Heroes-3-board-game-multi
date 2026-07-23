@@ -908,3 +908,110 @@ describe("PvP Neutral Control — parallel turns, clock and forced resolution", 
     expect(state.pendingChoice?.playerId).toBe("p3");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Neutral Harpy "Strike and Return" — under PvP Neutral Control the fly-back is
+// the CONTROLLER's choice in FREE mode; MUST-ATTACK mode keeps the printed
+// auto-return. An eliminated controller's open reposition choice hands back to
+// the neutral seat. Each claim is mutation-checked with the opposite-mode
+// CONTROL.
+// ---------------------------------------------------------------------------
+
+describe("PvP Neutral Control — neutral Harpy fly-back", () => {
+  const isReposition = (state: GameState): boolean =>
+    state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "combat-reposition";
+
+  /**
+   * One flying guard with the Harpy "Strike and Return" ability at A2 (space 4)
+   * and a lone p1 prey at B1 (space 1). The guard must MOVE (A2 → B2 / space 5,
+   * adjacent to the prey) to strike, so a fly-back origin exists. Driven to the
+   * guard's open slot for the controller (p2).
+   */
+  function harpyScene(seed: string, options: { mustAttack: boolean }): {
+    state: GameState;
+    guardId: string;
+    preyId: string;
+  } {
+    let state = fightWithGuards(seed, { mustAttack: options.mustAttack });
+    const [guard] = guardsOf(state);
+    reshape(guard, { grade: "bronze", type: "flying", position: 4, initiative: 1, attack: 0 });
+    guard.name = "Harpies";
+    guard.cardName = "Harpies";
+    guard.abilities = ["harpy-return"];
+    const [prey] = playerUnitsOf(state, "p1");
+    reshape(prey, { grade: "bronze", position: 1, initiative: 99, attack: 0 });
+    onlyUnits(state, [guard, prey]);
+    state = driveTo(state, guardSlotOpen);
+    return { state, guardId: guard.id, preyId: prey.id };
+  }
+
+  it("FREE mode: the CONTROLLER (p2) chooses fly-back or stay after a moved-then-struck guard", () => {
+    const { state, guardId, preyId } = harpyScene("pnc-harpy-free", { mustAttack: false });
+    expect(state.priorityPlayerId).toBe("p2");
+
+    // p2 drives the guard: fly A2(4) → B2(5), then strike the prey at B1.
+    const moved = applyOk(state, { type: "MOVE_UNIT", playerId: "p2", unitId: guardId, destination: 5 });
+    let struck = applyOk(moved, { type: "ATTACK_UNIT", playerId: "p2", attackerId: guardId, defenderId: preyId });
+    struck = driveTo(struck, isReposition);
+
+    const choice = struck.pendingChoice;
+    expect(isReposition(struck)).toBe(true);
+    // Opened NEUTRAL-owned, re-stamped to the CONTROLLER (p2) — not the fighter.
+    expect(choice?.playerId).toBe("p2");
+    expect(struck.combat!.units[guardId].position).toBe(5);
+
+    // The FIGHTER (p1) may not answer the guards' choice.
+    const usurped = applyAction(struck, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: 0
+    });
+    expect(usurped.errors.length).toBeGreaterThan(0);
+
+    // "Stay" (option 1): the guard keeps the attack square (B2 / 5).
+    const stayed = applyOk(struck, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice!.id, optionIndex: 1 });
+    expect(stayed.combat!.units[guardId].position).toBe(5);
+    // "Fly back" (option 0): the guard returns to its origin (A2 / 4).
+    const flew = applyOk(struck, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice!.id, optionIndex: 0 });
+    expect(flew.combat!.units[guardId].position).toBe(4);
+  });
+
+  it("CONTROL: MUST-ATTACK mode keeps the printed AUTO-return — no fly-back choice opens", () => {
+    const { state, guardId, preyId } = harpyScene("pnc-harpy-must", { mustAttack: true });
+    // Must-attack offers a move to the strike cell (B2 / 5) then the mandatory strike.
+    const moved = applyOk(state, { type: "MOVE_UNIT", playerId: "p2", unitId: guardId, destination: 5 });
+    let struck = applyOk(moved, { type: "ATTACK_UNIT", playerId: "p2", attackerId: guardId, defenderId: preyId });
+    struck = driveTo(struck, (s) => Boolean(s.combat?.units[guardId]?.activatedThisRound) || isReposition(s));
+    expect(isReposition(struck)).toBe(false); // rulebook auto-return, no choice
+    expect(struck.combat!.units[guardId].position).toBe(4); // returned to its origin
+    expect(struck.combat!.units[guardId].activatedThisRound).toBe(true);
+  });
+
+  it("hands an eliminated controller's open reposition choice to the NEXT live seat", () => {
+    // Three-player fight so a live seat remains after the controller drops.
+    let state = fightWithGuards("pnc-harpy-eliminate", { players: 3, mustAttack: false });
+    const [guard] = guardsOf(state);
+    reshape(guard, { grade: "bronze", type: "flying", position: 4, initiative: 1, attack: 0 });
+    guard.abilities = ["harpy-return"];
+    const [prey] = playerUnitsOf(state, "p1");
+    reshape(prey, { grade: "bronze", position: 1, initiative: 99, attack: 0 });
+    onlyUnits(state, [guard, prey]);
+    state = driveTo(state, guardSlotOpen);
+    expect(state.priorityPlayerId).toBe("p2"); // p1's fight → p2 controls
+
+    const moved = applyOk(state, { type: "MOVE_UNIT", playerId: "p2", unitId: guard.id, destination: 5 });
+    let struck = applyOk(moved, { type: "ATTACK_UNIT", playerId: "p2", attackerId: guard.id, defenderId: prey.id });
+    struck = driveTo(struck, isReposition);
+    expect(struck.pendingChoice?.playerId).toBe("p2");
+
+    // p2 dies mid-choice: the reposition choice (a neutral-side decision) goes
+    // back to the neutral seat instead of stranding the paused activation…
+    eliminatePlayer(struck, "p2", "kicked mid-choice", false);
+    expect(struck.pendingChoice?.playerId).toBe(NEUTRAL_PLAYER_ID);
+    // …and the next action's pump re-stamps it to p3 (the new next-clockwise seat).
+    struck = applyOk(struck, { type: "JOIN_ROOM", clientId: "test-client", name: "Observer" });
+    expect(isReposition(struck)).toBe(true);
+    expect(struck.pendingChoice?.playerId).toBe("p3");
+  });
+});
