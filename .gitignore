@@ -36,3 +36,8 @@ scripts/anime-art/refs/
 scripts/anime-art/raw/hidden-leaf/
 scripts/anime-art/previews/hidden-leaf/
 scripts/commander-art/might_guy.png
+
+# Machine-local Claude Code session files. The repo intentionally TRACKS
+# .claude/commands/ — ignore only these per-machine session artifacts.
+.claude/launch.json
+.claude/scheduled_tasks.lock
