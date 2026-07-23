@@ -141,8 +141,9 @@ describe("Teleport destination picker — adventure board", () => {
     }
     const optionIndexByHex = new Map<string, number>();
     step.options.forEach((option, index) => {
+      // The trailing "Stay here" option (2026-07-24 rule) has empty steps.
       const inner = option.steps[0];
-      if (inner.type === "TELEPORT_HERO") {
+      if (inner?.type === "TELEPORT_HERO") {
         optionIndexByHex.set(inner.spaceId, index);
       }
     });
@@ -220,15 +221,17 @@ describe("Teleport destination picker — prompt tray", () => {
       <PromptTray legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
     );
 
-    // Dedicated teleport cards (one per destination), each carrying token art…
+    // Dedicated teleport cards: one per destination (each with token art), PLUS
+    // the "Stay here" option card (2026-07-24 rule — a decline, no token art).
     const cards = container.querySelectorAll("button.teleportOptionCard");
-    expect(cards.length).toBe(2);
+    expect(cards.length).toBe(3);
     expect(container.querySelectorAll("button.teleportOptionCard .teleportOptionArt img").length).toBe(2);
-    // …a human "where" label (never a raw h:row:col id)…
+    // …a human "where" label (never a raw h:row:col id) + a Stay option…
     const text = Array.from(cards)
       .map((card) => card.textContent ?? "")
       .join(" | ");
     expect(text).toMatch(/Monolith/);
+    expect(text).toMatch(/Stay/);
     expect(text).not.toMatch(/h:-?\d+:-?\d+/);
     // …and the map hint. No plain commandButton option list is used for teleport.
     expect(container.querySelector(".promptTeleportHint")).toBeTruthy();

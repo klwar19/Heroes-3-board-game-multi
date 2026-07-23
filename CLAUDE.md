@@ -2342,11 +2342,13 @@ network partitioned by `gatePair` — FULL parity, face-down tiles included:
 `resolveGateTeleport` offers every OTHER same-color gate — carved FIELDS (minus
 hero-occupied ones) AND same-color gate tokens still riding FACE-DOWN tiles
 (`coloredGateDestinations` / `countColoredGates`, the Monolith
-`mapTokenDestinations` / `countMapTokens` mirror). 1 free → automatic, 2+ free →
-the traveller PICKS via the same CHOOSE_ONE visit-step the Monolith picker uses,
-<2 same-color gates → inert note, all occupied → fizzle; arrival never
-re-triggers. A guarded gate fights first and only a WIN resolves the network
-travel. On the board EVERY teleport-object field (tile-carved or standalone) —
+`mapTokenDestinations` / `countMapTokens` mirror). Since the 2026-07-24 rule
+every entry opens a travel-vs-stay offer (see rule 3a below): 1 free → [Travel,
+Stay], 2+ free → the destinations + "Stay here", <2 same-color gates → inert
+note, all-own-occupied → fizzle; arrival never re-triggers. A guarded gate
+fought ON ENTRY still gates the travel; a guarded gate reached by ARRIVAL is now
+FOUGHT bank-style (rule 3 — no longer auto-swept), and an enemy-hero destination
+starts a PvP battle. On the board EVERY teleport-object field (tile-carved or standalone) —
 Teleport Gate, Monolith, Whirlpool AND one-way Monolith halves — draws the SAME
 designer-parity mark the map editor uses (user request 2026-07): the object's
 own UNDISTORTED token art (`teleportGateImage` — 1 red / 2 blue / 3 green /
@@ -2372,15 +2374,21 @@ Leading with what does NOT run / deliberate readings:
   (the Monolith network, the "monolith" Obelisk role and the anime
   `tran_phap_truyen_tong` override are untouched); the whirlpool-only ADD
   picker and the retired palette button are pinned in `map-designer.test.tsx`.
-  With 3+ monoliths the TRAVELLER PICKS the destination; with exactly 2 the
-  travel is automatic.
+  With 3+ monoliths the offer lists every destination + "Stay here"; with
+  exactly 2 it is [Travel, Stay] (the 2026-07-24 rule replaced the old automatic
+  travel — see rule 3a in the "Designer guards, outposts & one-way monoliths"
+  section).
 - **"Lose 1 unit from your unit Deck" is the traveller's pick** of one army
   card (the card names no unit); a Neutral-side card recycles to its tier
   discard pile like a combat casualty. An empty army loses nothing (noted).
-- **Occupied destinations are skipped** (the p.83 "skip the movement if you
-  would be stepping onto an allied Hero" note, read for ANY hero): a token a
-  hero stands on is not offered, the 3-whirlpool die rerolls its number, and
-  with no free destination the travel fizzles with a note.
+- **Own-hero destinations are skipped, ENEMY-hero destinations are OFFERED**
+  (2026-07-24 rule; the p.83 "skip the movement if you would be stepping onto an
+  ALLIED Hero"): a token the traveller's OWN hero stands on is not offered and
+  the 3-whirlpool die rerolls its number; a token an ENEMY hero stands on IS
+  offered (travelling there starts a PvP battle on arrival, rule 3). With no
+  free/enemy destination the travel fizzles with a note. The AI's known-teleport
+  read (`listKnownTeleportDestinations`, no traveller context) still blocks ANY
+  occupied hex — conservative, so it never plans a jump onto an occupied cell.
 - **Guarded fields refuse a token placement** (engine safety reading — the
   printed rule bans only Location Tokens/Blocked Fields/victory Locations, but
   overwriting a guard would erase it for free). Towns, Settlements, Mines,
@@ -2525,13 +2533,37 @@ What runs (each pinned by a test that fails if the wiring is removed):
   the link rows) and the center hex — one shared stamp
   (`applyCustomGuardToField`). A hero must FIGHT to enter; a WIN clears the
   guard for good (`clearCustomGuard`), a loss/retreat leaves it.
-- **3. Teleport ARRIVAL auto-wins the exit's guard** (user rule "auto win when
-  get out"): every teleport arrival — Monolith, Teleport Gate, whirlpool,
-  one-way, AND stepping OUT through a linked subterranean gate — sweeps a
-  still-standing guard on the destination for free
-  (`TELEPORT_HERO.sweepGuard` → `autoWinArrivalGuard`: guard cleared, feed
-  note, no fight, no XP, no reward). Walking onto the same hex normally still
-  fights it.
+- **3. Teleport ARRIVAL now FIGHTS the exit's guard / starts a PvP battle**
+  (2026-07-24 user rule — REPLACES the earlier 2026-07 "auto-win the exit's
+  guard" reading): a hero teleporting through a teleport-network exit
+  (Monolith, Teleport Gate, Whirlpool, one-way monolith, obelisk-as-monolith)
+  onto a hex with a LIVE designed guard must FIGHT it — bank-style, no
+  auto-sweep (`RESOLVE_TELEPORT_ARRIVAL` → `setTeleportArrivalHook` →
+  `startNeutralEncounter(..., { teleportArrival: true })`: difficulty 0, no
+  Quick Combat, no XP, unlimited rounds). A WIN clears the guard but does NOT
+  re-open the teleport (arrival never re-triggers — no ping-pong); a RETREAT
+  bounces the hero back to the ORIGIN teleporter (`lastVisitedField`); a defeat
+  homes them like any lost fight; the guard stays intact on a non-win. A
+  destination now occupied by an ENEMY hero is OFFERED and travelling there
+  starts a normal PvP battle (the walk-onto-enemy flow — parallel stop, defense
+  prompts); an OWN-hero destination stays skipped. **Scope guard:** stepping OUT
+  through a linked SUBTERRANEAN GATE keeps the old auto-win sweep
+  (`autoWinArrivalGuard` in `performHeroStep` — that is walking, not the
+  network). Pinned in `teleport-arrival-rule.test.ts` (guarded-arrival fight +
+  win-clears + retreat-bounces + PvP + own-hero-skip, each with a CONTROL) and
+  the updated `map-objects.test.ts` / `map-tokens.test.ts` / `obelisk-roles.test.ts`.
+- **3a. Every teleport travel offers "Stay here"** (2026-07-24 rule): entering
+  or Revisiting a teleporter opens a travel-vs-stay offer (even the formerly
+  AUTOMATIC single-destination / 2-Monolith / Whirlpool-die / random / mix
+  cases) — the LAST option is always "Stay here" (empty steps → the AI scorer
+  reads it as leave/cancel). A random/mix roll resolves ONLY when travel is
+  chosen (the deferred-roll shapes wrap the roll behind a `committed` re-entry
+  of the same `TOKEN_TELEPORT`/`GATE_TELEPORT`/`ONEWAY_TELEPORT` step, so a Stay
+  never consumes/leaks the die). A hero that Stays (or arrives) on a teleporter
+  may Revisit (1 MP) on a later turn to re-open the offer — works for all three
+  canonical forms (tile tokens, carved fields, standalone objects). Pinned in
+  `teleport-arrival-rule.test.ts` ("Stay here + Revisit") and the updated token
+  travel suites.
 - **4. Yellow border edges on standalone object hexes**
   (`CustomMapObject.borderEdges`, absolute dirs 0-5 →
   `MapFieldState.borderEdges`): the 🖌 border tool paints object-hex edges
@@ -2554,11 +2586,13 @@ What runs (each pinned by a test that fails if the wiring is removed):
   picks, default), **mix** (exits flagged `alwaysPickable` are offered up
   front + one "Roll the die" option over the rest; degenerates gracefully —
   all-always = certain, none-always = random, resolved at CHOICE time via
-  `ONEWAY_RANDOM_EXIT` so the pick leaks nothing). Occupied exits are skipped;
-  no exit on the map / all occupied = inert note. Arrival never re-triggers
-  and (rule 3) sweeps any hand-edited exit guard. Exits are one-way: standing
-  ON an exit offers no travel. `map-objects.test.ts` ("one-way monolith"
-  suites).
+  `ONEWAY_RANDOM_EXIT` so the pick leaks nothing). Own-hero exits are skipped,
+  an ENEMY-occupied exit is OFFERED (PvP on arrival, rule 3); no exit on the
+  map / all-own-occupied = inert note. Every exit offer also carries "Stay here"
+  (rule 3a). Arrival never re-triggers, and a still-standing exit guard is now
+  FOUGHT bank-style on arrival (rule 3 — no longer swept). Exits are one-way:
+  standing ON an exit offers no travel. `map-objects.test.ts` ("one-way
+  monolith" suites).
 - **7. Teleport Gate reskin** (was "Colored Gate"): per-color PORTAL art on
   the board, the palette and tokens (`teleportGateImage`, 1 red / 2 blue /
   3 green / 4 violet — pair 4 renamed from yellow, `gatePairColor`); the
@@ -3955,7 +3989,10 @@ Five additions; each engine claim fails a named test if its wiring is removed.
   still draws the real designed guards. Pinned in `map-objects.test.ts` (a
   guarded Gate / Monolith opens a difficulty-0 bank-style fight, exact-army AND
   level, the no-QUICK_COMBAT assertion as the mutation control, and the
-  "rolls straight into round 2" unlimited-rounds case).
+  "rolls straight into round 2" unlimited-rounds case). 2026-07-24: a guard
+  reached by teleport ARRIVAL (not just entry) is now fought the SAME bank-style
+  way via the `teleportArrival` context branch — see rule 3 in the "Designer
+  guards, outposts & one-way monoliths" section.
 - **Map-visit notice = reward chips, not a "mass of text".** A treasure-chest /
   mine / resource visit's outcome is shown as a compact row of icon chips
   (resource token / experience / morale glyph + a short "+N" or "+N/turn" income
@@ -4057,8 +4094,11 @@ FIX). Each engine claim fails a named test if its wiring is removed.
   certain / random / mix + always-pickable destinations, default certain =
   classic traveller-picks): stored on the origin field
   (`onewayExitMode`/`onewayAlwaysPickable`), read in `resolveGateTeleport` /
-  `resolveTokenTeleport`. The 3-whirlpool die and the 2-monolith auto-travel
-  are unchanged; mix rolls its random pick ONCE per visit open. (AUDIT FIX ×3):
+  `resolveTokenTeleport`. Since the 2026-07-24 rule the 3-whirlpool die, the
+  2-monolith travel, and the random/mix roll are all wrapped behind a
+  travel-vs-stay offer first (rule 3a — the roll resolves only when travel is
+  chosen, never leaked on a Stay); mix still rolls its random pick ONCE per
+  committed travel. (AUDIT FIX ×3):
   a face-down designed token KEEPS its mode when the reveal places it
   (`placeMapToken` now carries the extras for gate + monolith, like one-way); a
   "mix" always-pickable destination that is still a PENDING token on a

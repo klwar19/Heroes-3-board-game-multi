@@ -96,6 +96,8 @@ import {
   applyMineFlag,
   applySettlementResource,
   autoWinArrivalGuard,
+  clearCustomGuard,
+  setTeleportArrivalHook,
   flagField,
   gateFieldsLinked,
   heroHasFreeGateStep,
@@ -3565,6 +3567,27 @@ setDungeonEncounterHook((state, heroId, floor) => {
   });
 });
 
+// Teleport ARRIVAL resolver (2026-07-24 user rule), registered across the import
+// cycle. On arriving at a teleport-network destination the hero: (a) attacks an
+// ENEMY hero standing there — the normal walk-onto-enemy PvP flow (parallel stop,
+// defense prompts); (b) FIGHTS a live designed guard bank-style (no auto-sweep) —
+// the fight is flagged `teleportArrival` so a WIN clears the guard WITHOUT
+// re-opening the teleport, and a retreat bounces the hero back to the ORIGIN
+// teleporter (lastVisitedField); or (c) stands on an empty exit (arrival never
+// re-triggers — Revisit to go again). Own-hero destinations were never offered.
+setTeleportArrivalHook((state, hero, field, originSpaceId) => {
+  const playerId = hero.controllerId;
+  const enemyHero = heroAtSpace(state, field.spaceId, hero.id);
+  if (enemyHero && enemyHero.controllerId !== playerId) {
+    startPlayerCombat(state, hero, enemyHero, field.spaceId);
+    return;
+  }
+  if (isFieldGuarded(field) && field.flagOwnerId !== playerId) {
+    state.adventure!.lastVisitedField[hero.id] = originSpaceId;
+    startNeutralEncounter(state, hero, field, { teleportArrival: true });
+  }
+});
+
 /** Resolves a keep / reroll / pick decision on the Ⅱ–Ⅲ flip in progress. */
 export function resolveFarTileFlip(state: GameState, optionIndex: number): void {
   const adventure = requireAdventure(state);
@@ -4584,7 +4607,12 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
   return shell;
 }
 
-export function startNeutralEncounter(state: GameState, hero: HeroState, field: MapFieldState): void {
+export function startNeutralEncounter(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+  options?: { teleportArrival?: boolean }
+): void {
   requireAdventure(state);
   const playerId = hero.controllerId;
   const difficulty = field.difficulty ?? 1;
@@ -4592,6 +4620,20 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
   // Hero's level (neutralBattleLevel), so it skips / Quick-Combat-wins the same
   // low-level guards instead of being forced to fight at level 1.
   const level = neutralBattleLevel(state, hero);
+
+  // Teleport ARRIVAL onto a guarded destination (2026-07-24 rule): fight
+  // bank-style (no Quick Combat, no XP, unlimited rounds) whatever the gateway
+  // kind — including an obelisk-as-monolith exit, which `isTeleportObjectGuard-
+  // Location` does not cover. `teleportArrival` flags the fight so the WIN clears
+  // the guard WITHOUT re-opening the travel (no ping-pong). Pin the army level for
+  // the difficulty-0 draw (an EXACT army uses `customGuardUnits` directly).
+  if (options?.teleportArrival) {
+    if (!field.customGuardUnits?.length && !field.customGuardLevel && field.difficulty) {
+      field.customGuardLevel = field.difficulty;
+    }
+    beginNeutralCombatPlacement(state, hero, field, 0, { unlimitedRounds: true, teleportArrival: true });
+    return;
+  }
 
   // Creature Banks have no Field Difficulty, so they skip Quick Combat and the
   // Diplomacy shortcut entirely (rulebook p.66): you always fight the bank.
@@ -4841,6 +4883,8 @@ function beginNeutralCombatPlacement(
     raidBossId?: string;
     /** Dungeon floor delve (§6.7.3): real difficulty, ladder reward on the win. */
     dungeonFloor?: number;
+    /** Teleport ARRIVAL guard fight (2026-07-24): win clears guard, no re-teleport. */
+    teleportArrival?: boolean;
   }
 ): void {
   const playerId = hero.controllerId;
@@ -4866,7 +4910,8 @@ function beginNeutralCombatPlacement(
     ...(options?.unlimitedRounds ? { unlimitedRounds: true } : {}),
     ...(options?.waveAssault ? { waveAssault: options.waveAssault } : {}),
     ...(options?.raidBossId ? { raidBossId: options.raidBossId } : {}),
-    ...(options?.dungeonFloor !== undefined ? { dungeonFloor: options.dungeonFloor } : {})
+    ...(options?.dungeonFloor !== undefined ? { dungeonFloor: options.dungeonFloor } : {}),
+    ...(options?.teleportArrival ? { teleportArrival: true } : {})
   };
   assignCombatBoardArt(state, combat);
   combat.setup = {
@@ -9821,6 +9866,23 @@ export function finalizeAdventureCombat(state: GameState): void {
         } else if (context.dungeonFloor !== undefined) {
           resolveDungeonFloorVictory(state, playerId, context.dungeonFloor);
         }
+        if (playerCanPlayNecromancy(state, playerId)) {
+          adventure.pendingNecromancy = { playerId, heroId: hero.id };
+        } else {
+          noteWithheldNecromancyWindow(state, playerId);
+        }
+        state.phase = "player-turn";
+        return;
+      }
+
+      // Teleport ARRIVAL guard win (2026-07-24 rule): the hero teleported onto a
+      // guarded gateway and fought the guard. CLEAR the beaten guard (the field
+      // takes no black cube) but do NOT re-open the teleport travel — arrival
+      // never re-triggers (no ping-pong); the hero may Revisit (1 MP) to go again.
+      // The Necromancy window still opens (no deferred fieldId — the bank
+      // precedent). A retreat/defeat left this branch (winnerPlayerId !== playerId).
+      if (context.teleportArrival) {
+        clearCustomGuard(field);
         if (playerCanPlayNecromancy(state, playerId)) {
           adventure.pendingNecromancy = { playerId, heroId: hero.id };
         } else {

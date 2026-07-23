@@ -26,7 +26,7 @@ import {
   type MapSpaceId,
   type MapTileState
 } from "./index";
-import { beginFieldVisit, carveColoredGateField, carveOnewayField, drawGuardArmy, eliminatePlayer, instantiateTile } from "./adventure";
+import { beginFieldVisit, carveColoredGateField, carveOnewayField, createSecondaryHero, drawGuardArmy, eliminatePlayer, instantiateTile } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
 import { canBeatGuardedField } from "./computer/map-navigation";
 import { hexNeighbor, hexNeighbors, hexSpaceId, parseHexSpaceId, slotDirection, tileFootprint, type HexCoord } from "./hex";
@@ -127,6 +127,18 @@ function moveHero(state: GameState, to: MapSpaceId): GameState {
   return applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to });
 }
 
+/**
+ * 2026-07-24 user rule: entering a teleporter first offers "travel vs stay".
+ * Commit to travel by choosing option 0 (the first travel option, always before
+ * "Stay here"). A no-op when no offer is open (an inert/fizzled travel).
+ */
+function commitTravel(state: GameState, playerId = "p1"): GameState {
+  if (adv(state).pendingVisit?.steps[0]?.type !== "CHOOSE_ONE") {
+    return state;
+  }
+  return applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 });
+}
+
 const lastNote = (state: GameState): string =>
   [...state.eventLog].reverse().find((event) => event.type === "EVENT_NOTE")?.message ?? "";
 
@@ -153,8 +165,10 @@ describe("Colored Gate pair routing", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, redEntry);
+    // 2026-07-24 rule: the Gate first offers travel-vs-stay; commit to travel.
+    state = commitTravel(state);
 
-    // Straight to the OTHER red Gate — exactly its partner, no choice offered.
+    // Straight to the OTHER red Gate — exactly its partner.
     expect(state.heroes.hero_p1.spaceId).toBe(redExit);
     expect(state.pendingChoice).toBeNull();
     expect(adv(state).pendingVisit).toBeNull();
@@ -180,29 +194,33 @@ describe("Colored Gate pair routing", () => {
     const exit = carveGate(state, tileB, 1, 3);
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
     state = moveHero(state, entry);
+    state = commitTravel(state);
     expect(state.heroes.hero_p1.spaceId).toBe(exit);
     const movementBefore = state.heroes.hero_p1.movementPoints;
 
     state = applyOk(state, { type: "REVISIT_FIELD", playerId: "p1", heroId: "hero_p1" });
+    state = commitTravel(state);
 
     expect(state.heroes.hero_p1.spaceId).toBe(entry);
     expect(state.heroes.hero_p1.movementPoints).toBe(movementBefore - 1);
   });
 
-  it("a Gate whose pair partner is occupied by a hero fizzles with a note", () => {
+  it("a Gate whose pair partner is occupied by the traveller's OWN hero fizzles with a note (CONTROL)", () => {
     let state = makeGame("gate-occupied");
     const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
     const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
     state = b;
     const entry = carveGate(state, tileA, 1, 1);
     const exit = carveGate(state, tileB, 1, 1);
-    state.heroes.hero_p2.spaceId = exit; // the other seat squats on the partner
+    // 2026-07-24 rule: only an OWN hero is skipped (an enemy would be OFFERED).
+    createSecondaryHero(state, "p1", exit);
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
 
     expect(state.heroes.hero_p1.spaceId).toBe(entry);
-    expect(lastNote(state)).toContain("occupied");
+    expect(adv(state).pendingVisit).toBeNull();
+    expect(lastNote(state).toLowerCase()).toContain("friendly hero");
   });
 
   it("a lone Gate (only one of its pair placed) is inert with a note", () => {
@@ -239,7 +257,9 @@ describe("Colored Gate pair routing", () => {
     if (step?.type !== "CHOOSE_ONE") {
       throw new Error("no gate destination choice");
     }
-    expect(step.options).toHaveLength(2);
+    // The two free same-color partners PLUS a "Stay here" option (2026-07-24 rule).
+    expect(step.options).toHaveLength(3);
+    expect(step.options[step.options.length - 1].label).toContain("Stay");
     // The picker is tagged for the board — kind "gate" AND the travelling color
     // pair (1 = red) — so each destination becomes a colored clickable exit hex;
     // dropping the tag fails here (mutation control).
@@ -256,7 +276,7 @@ describe("Colored Gate pair routing", () => {
     expect(exitB).not.toBe(exitC);
   });
 
-  it("an occupied same-color partner is skipped — travel goes automatically to the one free gate", () => {
+  it("a same-color partner occupied by the traveller's OWN hero is skipped — travel to the one free gate", () => {
     let state = makeGame("gate-three-occupied");
     const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
     const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
@@ -265,11 +285,12 @@ describe("Colored Gate pair routing", () => {
     const entry = carveGate(state, tileA, 1, 1);
     const exitB = carveGate(state, tileB, 1, 1);
     const exitC = carveGate(state, tileC, 1, 1);
-    // Squat on exitB → only exitC is free → automatic travel there (occupied
-    // skipped, no pick opened). All-occupied → fizzle is the existing 2-gate CONTROL.
-    state.heroes.hero_p2.spaceId = exitB;
+    // The traveller's OWN secondary hero squats on exitB → only exitC is free →
+    // travelling (over Stay) lands there. (An enemy on exitB would be OFFERED.)
+    createSecondaryHero(state, "p1", exitB);
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
     state = moveHero(state, entry);
+    state = commitTravel(state);
     expect(state.heroes.hero_p1.spaceId).toBe(exitC);
     expect(state.pendingChoice).toBeNull();
     expect(adv(state).pendingVisit).toBeNull();
@@ -302,9 +323,10 @@ describe("Colored Gate pair routing", () => {
     if (step?.type !== "CHOOSE_ONE") {
       throw new Error("no gate destination choice");
     }
-    // EXACTLY the two other free RED gates — dropping the pair filter would offer
-    // 4 gates (red+blue) or route to a Monolith, failing this length assertion.
-    expect(step.options).toHaveLength(2);
+    // EXACTLY the two other free RED gates plus "Stay here" — dropping the pair
+    // filter would offer 4 gates (red+blue) or route to a Monolith, failing this.
+    expect(step.options).toHaveLength(3);
+    expect(step.options[step.options.length - 1].label).toContain("Stay");
     for (const optionIndex of [0, 1]) {
       const branch = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex });
       expect([red2, red3]).toContain(branch.heroes.hero_p1.spaceId);
@@ -326,6 +348,7 @@ describe("Colored Gate pair routing", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, monoEntry);
+    state = commitTravel(state);
 
     // Two Monoliths → straight to the OTHER Monolith, never a red gate.
     expect(state.heroes.hero_p1.spaceId).toBe(monoExit);
@@ -388,8 +411,10 @@ describe("Colored Gate travel into a face-down (pending) gate tile", () => {
     if (step?.type !== "CHOOSE_ONE") {
       throw new Error("no gate destination pick");
     }
-    expect(step.options).toHaveLength(2);
-    // Exactly ONE option is the face-down pending gate; the other is the carved
+    // The carved partner + the face-down pending gate PLUS "Stay here" (2026-07-24).
+    expect(step.options).toHaveLength(3);
+    expect(step.options[step.options.length - 1].label).toContain("Stay");
+    // Exactly ONE option is the face-down pending gate; another is the carved
     // partner (a plain teleport).
     expect(step.options.filter((option) => option.label.includes("face-down"))).toHaveLength(1);
     const pendingIndex = step.options.findIndex((option) => option.label.includes("face-down"));
@@ -426,7 +451,7 @@ describe("Colored Gate travel into a face-down (pending) gate tile", () => {
     expect(state.heroes.hero_p1.spaceId).not.toBe(carvedRed);
   });
 
-  it("a lone carved gate plus a same-color pending token is a size-2 network — automatic travel (no picker) arms the reveal flow and completes on the placed gate", () => {
+  it("a lone carved gate plus a same-color pending token is a size-2 network — committing travel arms the reveal flow and completes on the placed gate", () => {
     let state = makeGame("gate-facedown-lone-pair");
     const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
     state = a;
@@ -438,10 +463,10 @@ describe("Colored Gate travel into a face-down (pending) gate tile", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
+    // Exactly ONE destination (the pending tile): committing to travel (over Stay)
+    // reveals straight through, arming the flip.
+    state = commitTravel(state);
 
-    // Exactly ONE destination (the pending tile) → automatic, no picker (the
-    // MONOLITH convention: a lone pending member reveals straight through). The
-    // immediate flip PROVES no picker was interposed.
     expect(adv(state).tiles[hidden.id].faceDown).toBe(false);
     expect(adv(state).pendingTileChoice?.tileInstanceId).toBe(hidden.id);
     expect(adv(state).pendingTokenTeleport?.destTileInstanceId).toBe(hidden.id);
@@ -463,7 +488,7 @@ describe("Colored Gate travel into a face-down (pending) gate tile", () => {
     expect(adv(state).pendingTokenTeleport ?? null).toBeNull();
   });
 
-  it("isolation: a red gate never offers a pending BLUE gate or a pending Monolith — travel is automatic to the carved red partner, the foreign tiles stay face-down", () => {
+  it("isolation: a red gate never offers a pending BLUE gate or a pending Monolith — travel goes to the carved red partner, the foreign tiles stay face-down", () => {
     let state = makeGame("gate-facedown-isolation");
     const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
     const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
@@ -479,10 +504,11 @@ describe("Colored Gate travel into a face-down (pending) gate tile", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
+    state = commitTravel(state);
 
-    // ONE red destination only (the carved partner) → automatic travel there, no
-    // picker. If the blue-gate or monolith pending tile leaked into the red set a
-    // 2+ pick would open and the hero would stay on the entry hex.
+    // ONE red destination only (the carved partner) → travel lands there. If the
+    // blue-gate or monolith pending tile leaked into the red set a 2+ pick would
+    // list them; the isolation keeps the offer to the single red partner.
     expect(state.heroes.hero_p1.spaceId).toBe(redPartner);
     expect(state.pendingChoice).toBeNull();
     expect(adv(state).pendingVisit).toBeNull();
@@ -508,6 +534,7 @@ describe("Colored Gate travel into a face-down (pending) gate tile", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, monoEntry);
+    state = commitTravel(state);
 
     // Straight to the OTHER Monolith (a size-2 network), never the pending gate.
     expect(state.heroes.hero_p1.spaceId).toBe(monoExit);
@@ -525,7 +552,8 @@ describe("Colored Gate travel into a face-down (pending) gate tile", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
-    // The travel armed and revealed; the placement choice is now open for p1.
+    // Commit to travel; the reveal-travel then arms and reveals the tile.
+    state = commitTravel(state);
     expect(adv(state).pendingTokenTeleport?.destTileInstanceId).toBe(hidden.id);
     state = revealTile(state, hidden.id);
     const choice = state.pendingChoice;
@@ -643,14 +671,16 @@ describe("guarded Gate — the battle gates the teleport", () => {
     expect(isFieldGuarded(adv(state).fields[entry]!)).toBe(true);
   });
 
-  it("CONTROL: an UNGUARDED Gate teleports immediately with no battle", () => {
+  it("CONTROL: an UNGUARDED Gate opens the travel offer with no battle; committing teleports", () => {
     const { state: start, entry, exit } = guardedPair("gate-unguarded", 0, 1); // guard 0 = none
     let state = start;
     expect(isFieldGuarded(adv(state).fields[entry]!)).toBe(false);
 
     state = moveHero(state, entry);
-
+    // No guard → no fight; the travel-vs-stay offer opens instead.
     expect(state.combat).toBeNull();
+    state = commitTravel(state);
+
     expect(state.heroes.hero_p1.spaceId).toBe(exit);
   });
 
@@ -668,17 +698,17 @@ describe("guarded Gate — the battle gates the teleport", () => {
 
     state = moveHero(state, entry);
 
-    // With two same-color partners free, the gate network opens its pick.
+    // With two same-color partners free, the gate network opens its pick — the
+    // two destinations plus "Stay here" (2026-07-24 rule).
     const step = adv(state).pendingVisit?.steps[0];
     expect(step?.type).toBe("CHOOSE_ONE");
     if (step?.type !== "CHOOSE_ONE") {
       throw new Error("no gate pick after the win");
     }
-    expect(step.options).toHaveLength(2);
+    expect(step.options).toHaveLength(3);
+    expect(step.options[step.options.length - 1].label).toContain("Stay");
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
-    // The beaten guard is cleared on the entry field.
-    expect(adv(state).fields[entry]?.difficulty).toBeUndefined();
   });
 });
 
@@ -1184,34 +1214,46 @@ describe("designer guards on single hexes — exact armies + arrival auto-win", 
     }
   });
 
-  it("a teleport ARRIVAL onto a still-guarded partner AUTO-WINS: guard cleared, no battle, hero arrives (CONTROL: walking on fights)", () => {
-    let state = makeGame("arrival-auto-win");
+  it("a teleport ARRIVAL onto a still-guarded partner now FIGHTS the guard bank-style — no auto-sweep (2026-07-24 rule)", () => {
+    let state = makeGame("arrival-fight");
     const [a, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
     const [b, tileB] = placeEmptyTile(a, "F3", { row: 30, col: 18 });
     state = b;
     const entry = carveGate(state, tileA, 1, 1); // unguarded entry
     const exit = carveGate(state, tileB, 1, 1, 4); // guarded destination (level Ⅳ)
-    state.heroes.hero_p1.level = 1;
+    state.heroes.hero_p1.level = 7; // far above the guard — still NO Quick Combat
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
+    state = commitTravel(state);
 
-    // The travel resolved: the hero ARRIVED on the guarded partner, the guard
-    // was swept aside (auto-win) with NO battle and NO experience, and the note
-    // says so.
-    expect(state.heroes.hero_p1.spaceId).toBe(exit);
-    expect(state.combat).toBeNull();
-    expect(adv(state).fields[exit]?.difficulty).toBeUndefined();
-    expect(isFieldGuarded(adv(state).fields[exit]!)).toBe(false);
-    expect(state.heroes.hero_p1.level).toBe(1);
+    // 2026-07-24 rule: the hero ARRIVED on the guarded partner and a REAL fight
+    // opened (bank-style — difficulty 0, unlimited rounds, no Quick Combat). The
+    // OLD auto-sweep is reverted: `state.combat` being truthy is the mutation
+    // control (a revert leaves it null with a "swept aside" note). The guard
+    // still stands until it is beaten, and no XP is at stake.
+    expect(state.combat, "arrival opened a real fight (no auto-sweep)").toBeTruthy();
+    expect(state.combat!.context.kind).toBe("neutral");
+    if (state.combat!.context.kind === "neutral") {
+      expect(state.combat!.context.fieldId).toBe(exit);
+      expect(state.combat!.context.difficulty, "bank-style: no experience").toBe(0);
+      expect(state.combat!.context.unlimitedRounds).toBe(true);
+      expect(state.combat!.context.teleportArrival).toBe(true);
+    }
+    expect(state.heroes.hero_p1.spaceId).toBe(exit); // teleported in
+    expect(isFieldGuarded(adv(state).fields[exit]!)).toBe(true);
+    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(false);
     expect(
       state.eventLog.some(
         (event) => event.type === "EVENT_NOTE" && /swept aside/i.test((event as { message?: string }).message ?? "")
-      )
-    ).toBe(true);
+      ),
+      "no auto-sweep note"
+    ).toBe(false);
+    // A retreat from the arrival fight bounces the hero back to the ORIGIN gate.
+    expect(adv(state).lastVisitedField.hero_p1).toBe(entry);
 
-    // CONTROL: WALKING onto the same guarded gate from the map opens the battle.
-    let walk = makeGame("arrival-auto-win-ctl");
+    // CONTROL: WALKING onto the same guarded gate from the map opens the battle too.
+    let walk = makeGame("arrival-fight-ctl");
     const [wa, wTileA] = placeEmptyTile(walk, "F1", { row: 24, col: 12 });
     walk = wa;
     const guarded = carveGate(walk, wTileA, 1, 1, 4);
@@ -1438,7 +1480,7 @@ describe("one-way monoliths — entrance → same-color exits, random/certain/mi
     expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
   });
 
-  it("mode RANDOM: a seeded roll sends the hero to one of the exits with a table note (no picker)", () => {
+  it("mode RANDOM: committing travel rolls (only when travel is chosen) to one of the exits with a table note", () => {
     const { state: start, tiles } = threeTileGame("oneway-random");
     let state = start;
     const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1, { exitMode: "random" });
@@ -1447,8 +1489,14 @@ describe("one-way monoliths — entrance → same-color exits, random/certain/mi
     putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
 
     state = moveHero(state, entry);
+    // 2026-07-24 rule: a random roll must resolve ONLY when travel is chosen, so
+    // entering first offers travel-vs-stay; the hero has NOT rolled or moved yet.
+    expect(adv(state).pendingVisit?.steps?.[0]?.type).toBe("CHOOSE_ONE");
+    expect(state.heroes.hero_p1.spaceId).toBe(entry);
+    expect(state.eventLog.some((event) => event.type === "EVENT_NOTE" && /rolls for the one-way exit/i.test((event as { message?: string }).message ?? ""))).toBe(false);
 
-    expect(adv(state).pendingVisit?.steps?.[0]?.type ?? "none").not.toBe("CHOOSE_ONE");
+    // Committing runs the roll and travels (no destination picker beyond the gate).
+    state = commitTravel(state);
     expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
     expect(
       state.eventLog.some(
@@ -1466,12 +1514,15 @@ describe("one-way monoliths — entrance → same-color exits, random/certain/mi
     putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
 
     state = moveHero(state, entry);
+    // 2026-07-24 rule: mix defers its roll behind travel-vs-stay; commit to travel.
+    state = commitTravel(state);
     const step = adv(state).pendingVisit?.steps[0];
     if (step?.type !== "CHOOSE_ONE") {
       throw new Error("no mix choice");
     }
-    // One direct always-exit option + one roll option.
-    expect(step.options).toHaveLength(2);
+    // One direct always-exit option + one roll option + "Stay here".
+    expect(step.options).toHaveLength(3);
+    expect(step.options[step.options.length - 1].label).toContain("Stay");
     const direct = step.options[0];
     expect(direct.steps[0]?.type === "TELEPORT_HERO" && direct.steps[0].spaceId).toBe(alwaysExit);
     expect(step.options[1].label).toMatch(/roll/i);
@@ -1481,13 +1532,14 @@ describe("one-way monoliths — entrance → same-color exits, random/certain/mi
     expect(state.heroes.hero_p1.spaceId).toBe(randomExit);
   });
 
-  it("a single free exit travels automatically; NO exit is inert; all-occupied fizzles", () => {
+  it("a single free exit offers travel-vs-stay then travels; NO exit is inert; all-own-occupied fizzles", () => {
     const { state: start, tiles } = threeTileGame("oneway-single");
     let state = start;
     const entry = carveOneway(state, tiles[0], 1, "oneway_entrance", 1);
     const exitB = carveOneway(state, tiles[1], 1, "oneway_exit", 1);
     putHero(state, getTileFootprintSpaceIds(tiles[0])[0]);
     state = moveHero(state, entry);
+    state = commitTravel(state);
     expect(state.heroes.hero_p1.spaceId).toBe(exitB);
 
     // NO exit anywhere: the entrance notes and the hero stays.
@@ -1503,12 +1555,13 @@ describe("one-way monoliths — entrance → same-color exits, random/certain/mi
       )
     ).toBe(true);
 
-    // All exits OCCUPIED: fizzle note, hero stays.
+    // The only exit occupied by the traveller's OWN hero: fizzle note, hero stays.
+    // (An ENEMY on the exit would instead be OFFERED — a PvP battle on arrival.)
     const { state: occStart, tiles: occTiles } = threeTileGame("oneway-occupied");
     let occ = occStart;
     const occEntry = carveOneway(occ, occTiles[0], 1, "oneway_entrance", 1);
     const occExit = carveOneway(occ, occTiles[1], 1, "oneway_exit", 1);
-    occ.heroes.hero_p2.spaceId = occExit; // the enemy hero squats the only exit
+    createSecondaryHero(occ, "p1", occExit); // the traveller's own hero squats it
     putHero(occ, getTileFootprintSpaceIds(occTiles[0])[0]);
     occ = moveHero(occ, occEntry);
     expect(occ.heroes.hero_p1.spaceId).toBe(occEntry);
@@ -1532,14 +1585,17 @@ describe("one-way monoliths — entrance → same-color exits, random/certain/mi
     expect(state.combat?.context.kind === "neutral" && state.combat.context.difficulty).toBe(0);
     expect(state.combat?.context.kind === "neutral" && state.combat.context.unlimitedRounds).toBe(true);
 
-    // The WIN seam (beginFieldVisit runs only on a win): guard cleared, travel resolves.
+    // The WIN seam (beginFieldVisit runs only on a win): guard cleared, then the
+    // travel-vs-stay offer opens; committing travels to the exit.
     const { state: winStart, tiles: winTiles } = threeTileGame("oneway-win");
-    const win = winStart;
+    let win = winStart;
     const winEntry = carveOneway(win, winTiles[0], 1, "oneway_entrance", 1, { guard: 2 });
     const winExit = carveOneway(win, winTiles[1], 1, "oneway_exit", 1);
     win.heroes.hero_p1.spaceId = winEntry;
+    win.heroes.hero_p1.movementPoints = 3;
     beginFieldVisit(win, "hero_p1", winEntry, false);
     expect(adv(win).fields[winEntry]?.difficulty).toBeUndefined();
+    win = commitTravel(win);
     expect(win.heroes.hero_p1.spaceId).toBe(winExit);
     expect(winExit).not.toBe(winEntry);
   });
