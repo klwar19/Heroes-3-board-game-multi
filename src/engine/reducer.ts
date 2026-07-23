@@ -11275,8 +11275,8 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
 
   // Basic X Magic (Conflux fetch permanent) +3 Power, folded up front as part of
   // the cast (the caster picked the `useSchoolFetchExpert` cast variant) instead
-  // of playing the standalone USE_SCHOOL_FETCH_EXPERT reaction after the cast. One
-  // crown is spent; the permanent STAYS in play. applySchoolFetchExpert re-derives
+  // of playing the standalone USE_SCHOOL_FETCH_EXPERT reaction after the cast. The
+  // permanent is DISCARDED (consumed); one crown is spent. applySchoolFetchExpert re-derives
   // and validates everything (fetch present, school match, not a scroll, a crown
   // left, once per stack), so a forged flag can only fail cleanly — never boost
   // for free. Folded before SPELL_CAST_STARTED so reactions (Resistance) see the
@@ -13103,13 +13103,14 @@ const SCHOOL_FETCH_EXPERT_POWER = 3;
  * Basic X Magic (the in-play spell-fetch permanent): spend an expert use to add
  * +3 Power to a matching-school spell you are casting now — a normal cast (into
  * the cast's School power) or an instant played into an attack (into your own
- * attack-window Power pool, re-derived like any other paid Power). The permanent
- * STAYS IN PLAY: unlike the Tower School-of-Magic card, whose printed expert side
- * says "you can discard this card, then gain +3", the Basic X Magic card prints
- * only "+3 Power for a <School> Magic spell" behind the crown — the crown IS the
- * whole cost (user regression report: consuming the permanent here silently
- * killed the card's BASIC fetch effect for the rest of the game). Once per stack
- * per player.
+ * attack-window Power pool, re-derived like any other paid Power). USER RULING
+ * (2026-07-23, "if use expert, must discard, on hand or on permanent"): using
+ * the +3 CONSUMES its source — the in-play Basic X Magic card is discarded from
+ * play to the owner's DISCARD PILE (it recycles into their deck, so the card
+ * can be redrawn and its BASIC fetch replayed later — never removed from the
+ * game). The consumption is announced (offer labels + the CARD_PLAYED feed
+ * line) so the fetch permanent never vanishes silently. Once per stack per
+ * player.
  */
 function applySchoolFetchExpert(
   state: GameState,
@@ -13163,16 +13164,21 @@ function applySchoolFetchExpert(
 
   usedBy.push(action.playerId);
   player.combatStats.expertUsesSpentThisRound += 1;
-  // The permanent is NOT discarded — the printed card has no discard clause (see
-  // the function doc). The once-per-stack `usedBy` guard is what blocks a second
-  // dip on this cast, and the crown spend above is the printed cost.
+  // The +3 CONSUMES the fetch permanent (user ruling — see the function doc):
+  // the card goes to the owner's discard pile, never out of the game. A legacy
+  // SPELL_SCHOOL_FETCH active-effect fetch carries no card — this is then a
+  // no-op, and the once-per-stack `usedBy` guard still blocks a second dip.
+  const consumed = discardPermanentFromPlay(state, action.playerId, `ability.basic_${action.school}_magic` as CardId);
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId: action.playerId,
     cardId: `ability.basic_${action.school}_magic` as CardId,
     timing: "instant",
     mode: "expert",
-    effectAmount: SCHOOL_FETCH_EXPERT_POWER
+    effectAmount: SCHOOL_FETCH_EXPERT_POWER,
+    // Say OUT LOUD that the permanent left play — a silent consumption reads as
+    // "my Basic Magic stopped working" (the original user bug report).
+    ...(consumed ? { optionLabel: "+3 Power — the permanent is discarded" } : {})
   });
 }
 
