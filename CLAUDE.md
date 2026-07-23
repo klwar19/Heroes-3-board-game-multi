@@ -2346,10 +2346,17 @@ hero-occupied ones) AND same-color gate tokens still riding FACE-DOWN tiles
 the traveller PICKS via the same CHOOSE_ONE visit-step the Monolith picker uses,
 <2 same-color gates → inert note, all occupied → fizzle; arrival never
 re-triggers. A guarded gate fights first and only a WIN resolves the network
-travel. On the board a gate FIELD (tile-carved or standalone) and a designer gate
-TOKEN/palette draw the gate's OWN per-color portal art (`teleportGateImage` —
-1 red / 2 blue / 3 green / 4 violet, renamed from yellow) with the colored ring
-+ pair badge (`gateHexMark` / `designerTokenImage`); gates are labeled
+travel. On the board EVERY teleport-object field (tile-carved or standalone) —
+Teleport Gate, Monolith, Whirlpool AND one-way Monolith halves — draws the SAME
+designer-parity mark the map editor uses (user request 2026-07): the object's
+own UNDISTORTED token art (`teleportGateImage` — 1 red / 2 blue / 3 green /
+4 violet, renamed from yellow — / `monolithTokenImage` / `whirlpoolTokenImage` /
+`onewayMonolithImage`) inside an identifying ring (pair-colored, gold for
+Monolith/Whirlpool) + a pair-number badge on the colored networks, and a
+designer guard's level numeral stays visible on the hex even in art mode
+(`teleportHexMark` in screen.tsx, the `gateHexMark` generalisation — the old
+full-hex `preserveAspectRatio="none"` stretch is retired; pinned in
+`gate-object-board.test.tsx` "designer-parity marks"); gates are labeled
 "Teleport Gate" in the UI. LIMIT (updated 2026-07): a tile may host multiple
 tokens on DISTINCT slots; gate TOKENS (like every single-hex placement) may now
 carry a designer guard (see the "Designer guards, outposts & one-way monoliths"
@@ -3881,14 +3888,15 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   **School of Magic expert** (discard the permanent for +2 over the free basic
   +1, needs crown), and **Basic X Magic expert** (+3, once per cast, needs a
   crown — offered from BOTH the in-play fetch permanent AND a Basic X Magic card
-  held in hand; the hand card is played to the discard, but the in-play
-  permanent STAYS in play: unlike the Tower School-of-Magic card, whose printed
-  expert says "discard this card, then gain +3", the Basic X Magic card prints
-  no discard clause — the crown IS the whole cost. A 2026-07 regression made the
-  +3 consume the permanent, silently killing the card's BASIC fetch effect —
-  fixed and pinned in `basic-magic-expert.test.ts` "BASIC fetch still works
-  after the +3 expert", mirroring combat `USE_SCHOOL_FETCH_EXPERT`) — or
-  "Resolve now". Highest printed tier with
+  held in hand; USER RULING 2026-07-23 "if use expert, must discard, on hand or
+  on permanent": using it CONSUMES that source — the permanent is discarded, the
+  hand card is played to the discard, both to the owner's DISCARD pile (recycles
+  into their deck, never removed from the game), and every surface SAYS so (the
+  offer labels + the CARD_PLAYED feed line) because a silent consumption reads
+  as "my Basic Magic stopped working". The full lifecycle — basic fetch works →
+  expert consumes → redraw + replay restores the fetch — is pinned in
+  `basic-magic-expert.test.ts` "lifecycle"; combat parity via
+  `USE_SCHOOL_FETCH_EXPERT`) — or "Resolve now". Highest printed tier with
   `minPower ≤ final Power` resolves (Orb doubling applied at resolve). Starting
   Power = standingSpellPower (school basic, Astrologers, Pandora, cultivation /
   grade / equipment) + specialty school auras + map Sorcery/Scales bank.
@@ -3998,6 +4006,26 @@ FIX). Each engine claim fails a named test if its wiring is removed.
   (single top-only take, a buried acquirable spell NOT offered = the user's
   CONTROL, the take, the school-fetch-still-after-it, and the legacy in-flight
   resolution) and `deck-search-mode-modal.test.tsx` (top-discard face + grouping).
+- **The SPLIT-deck spells family search is a ONE-STEP up-front decision** (USER
+  DEMAND 2026-07: "choose discard, search or school of magic" BEFORE any card is
+  revealed — never "choose search spell, then the draw school of magic appear
+  with that"). `beginSharedDeckSearchNow`'s deck-pick for the `"spells"` family
+  is ENRICHED (`deckPick.upFront` + `discardTops` + `fetchSchools`): its options
+  run [Search (N) Basic Spells | Search (N) Expert Spells | Take the top discard
+  (per acquirable deck top) | Draw the first <School> Magic spell (per Basic X
+  Magic in play)]. Committing to a Search reveals DIRECTLY (a held Scouting
+  still prompts in between; `openSharedDeckSearch`'s `modeResolved` skips the
+  old second "Search or draw from a School?" step, carried through the Scouting
+  prompt); the school draw scans Basic THEN Expert (`performSchoolFetchFromDecks`)
+  and a no-match draw leaves an EVENT_NOTE instead of failing silently. A LEGACY
+  in-flight deck-pick (no `upFront`) still resolves the old two-step way; the
+  single-eligible-deck flow and the artifacts family keep their existing shape.
+  The enriched pick renders in `DeckSearchModeModal` (deck backs / discard faces
+  / the Basic X Magic card face), routed there like `deck-search-mode`. Pinned
+  in `basic-magic-fetch.test.ts` ("One-step spells deck-pick": the single
+  up-front offer, the straight-to-reveal CONTROL = the reported bug, the
+  Basic→Expert scan, the empty-note, Scouting, the discard take, the Polish-Book
+  destination, and the legacy resolution).
 - **The deck-search menu's "Search (N)" tile is HONEST about a standing
   Scouting override.** A `SEARCH_COUNT_OVERRIDE` (a pre-played Scouting) is
   consumed only at REVEAL (`applySearchCountEffects`), never when the up-front
