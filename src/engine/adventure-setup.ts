@@ -5,7 +5,8 @@ import {
   artifactDeckBinhMajor,
   artifactDeckBinhMinor,
   artifactDeckBinhRelic,
-  artifactDeckLegacy
+  artifactDeckLegacy,
+  TORSO_OF_LEGION_ID
 } from "@/data/cards/artifacts";
 import {
   animeXianxiaArtifactCardIds,
@@ -799,10 +800,22 @@ function makeSharedDecks(
   xianxiaArtifacts = false,
   wogArtifacts = false,
   wogCommanderArtifacts = false,
-  animeEquipment = false
+  animeEquipment = false,
+  torsoOfLegionMajor = true
 ): Record<string, DeckState> {
   const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
     ban ? cardIds.filter((id) => id !== removeId) : cardIds;
+
+  // Torso of Legion re-tier (house rule `torso-of-legion-major`, default ON):
+  // the lists statically place Torso in the BINH Major deck. With the rule OFF
+  // it joins the Minor deck instead — its PRINTED tier. Default ON ⇒ the lists
+  // are untouched (byte-identical). The legacy single Artifact deck is one pile,
+  // so its membership never changes — only the per-card tier READ (via
+  // `effectiveArtifactTier`) does, which is handled at each read site.
+  const binhMinor = torsoOfLegionMajor ? artifactDeckBinhMinor : [...artifactDeckBinhMinor, TORSO_OF_LEGION_ID];
+  const binhMajor = torsoOfLegionMajor
+    ? artifactDeckBinhMajor
+    : artifactDeckBinhMajor.filter((id) => id !== TORSO_OF_LEGION_ID);
 
   // Anime Pháp Bảo artifacts (§5.10) join the shared Artifact deck(s) ONLY when
   // the module is on; default OFF ⇒ these arrays are empty and the decks are
@@ -859,7 +872,7 @@ function makeSharedDecks(
         "artifacts-minor",
         without(
           withEquipment(
-            withWogCommander(withWog(withAnime(artifactDeckBinhMinor, animeXianxiaArtifactMinorIds), wogArtifactMinorIds), wogCommanderArtifactMinorIds),
+            withWogCommander(withWog(withAnime(binhMinor, animeXianxiaArtifactMinorIds), wogArtifactMinorIds), wogCommanderArtifactMinorIds),
             animeEquipmentMinorIds
           ),
           TOURNAMENT_REMOVED_ARTIFACT_ID,
@@ -869,7 +882,7 @@ function makeSharedDecks(
       "artifacts-major": make(
         "artifacts-major",
         withEquipment(
-          withWogCommander(withWog(withAnime(artifactDeckBinhMajor, animeXianxiaArtifactMajorIds), wogArtifactMajorIds), wogCommanderArtifactMajorIds),
+          withWogCommander(withWog(withAnime(binhMajor, animeXianxiaArtifactMajorIds), wogArtifactMajorIds), wogCommanderArtifactMajorIds),
           animeEquipmentMajorIds
         )
       ),
@@ -2749,7 +2762,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         animeModuleEnabled({ anime }, "xianxiaArtifacts"),
         wog.enabled && wog.artifacts,
         wog.enabled && wog.artifacts && wog.commanders,
-        animeModuleEnabled({ anime }, "equipment")
+        animeModuleEnabled({ anime }, "equipment"),
+        houseRules["torso-of-legion-major"]
       ),
       ...makeNeutralDecks(seed, wog),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),

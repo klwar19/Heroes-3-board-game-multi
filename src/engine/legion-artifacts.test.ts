@@ -181,6 +181,15 @@ describe("Legion artifact definitions", () => {
       expect(binhDeck).toContain(cardId);
     }
   });
+
+  it("Torso of Legion's STATIC list placement is Major (the default, rule-ON reading)", () => {
+    // The static lists encode the house-rule-ON default. Torso sits in the BINH
+    // MAJOR deck and NOT the MINOR deck; the `torso-of-legion-major` OFF path
+    // (which moves it to the Minor deck at build time) is pinned in
+    // torso-of-legion-tier.test.ts.
+    expect(artifactDeckBinhMajor).toContain("artifact.torso_of_legion");
+    expect(artifactDeckBinhMinor).not.toContain("artifact.torso_of_legion");
+  });
 });
 
 describe("Playing a Legion discount side opens a unit-selection window (no immediate bank)", () => {

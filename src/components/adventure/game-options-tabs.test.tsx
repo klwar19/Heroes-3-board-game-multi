@@ -242,6 +242,19 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  it("renders the Torso-of-Legion re-tier row ON by default; unticking dispatches just that flag", () => {
+    const onAction = openOptions();
+    expandBinhHouseRules();
+    const toggle = screen.getByRole("button", { name: /Torso of Legion plays as Major/i });
+    expect(toggle.getAttribute("aria-pressed"), "the re-tier is ON by default").toBe("true");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "torso-of-legion-major": false } }
+    });
+  });
+
   it("wires the opt-in Polish bank-size variant through the shared registry UI", () => {
     const onAction = openOptions();
     expandPolishHouseRules();

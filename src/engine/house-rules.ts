@@ -46,6 +46,18 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true
   },
   {
+    id: "torso-of-legion-major",
+    label: "Torso of Legion plays as Major",
+    description:
+      "BINH house rule: Torso of Legion (printed Minor) is sorted and priced as a Major artifact. Untick to sort it as its printed Minor tier — Minor deck, Minor prices, takeable at any level.",
+    category: "decks",
+    // ON in BOTH modes: the re-tier predates this toggle, so every existing binh
+    // AND legacy game already treats Torso as Major. Defaulting it OFF in Legacy
+    // would silently change those games (Minor prices), so it stays ON there too.
+    default: true,
+    legacyDefault: true
+  },
+  {
     id: "griffin-buff",
     label: "Griffin buff",
     description: "Few Griffins fight at 3 Attack (printed 2) and Pack Griffins at 1 Defense (printed 0).",

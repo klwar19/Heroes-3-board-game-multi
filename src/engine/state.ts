@@ -153,7 +153,15 @@ export type HouseRuleId =
   // the printed Few Rebirth ("once per Combat, lethal → 1 HP") so a Pack
   // Phoenix clings to life at its Pack side. Off (wiki/printed Pack): Pack has
   // only the line attack + Fire immunity — Rebirth is Few-only (and Neutral).
-  | "phoenix-pack-rebirth";
+  | "phoenix-pack-rebirth"
+  // Torso of Legion re-tier (BINH house rule): Torso of Legion is PRINTED Minor
+  // but BINH plays/sorts it as a MAJOR artifact. Default ON in BOTH modes (it
+  // predates this toggle — every existing binh AND legacy game already treats it
+  // as Major, so byte-identical preservation forces the legacy default ON too).
+  // Off: the engine reads Torso as its printed MINOR tier at every tier
+  // chokepoint (deck placement, black-market/junk/event prices, Polish tier
+  // gates, deck return). See `effectiveArtifactTier` (ruleset.ts).
+  | "torso-of-legion-major";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {

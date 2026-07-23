@@ -96,6 +96,7 @@ import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./perman
 import {
   applyUnitSideRules,
   canAcquireSharedDeckCard,
+  effectiveArtifactTier,
   expertUsesAvailable,
   getRuleset,
   unitSideRuleOverrides,
@@ -5235,7 +5236,7 @@ export function blackMarketOffers(state: GameState): { cardId: CardId; deckId: s
         continue;
       }
       const cardId = pile.cards[index];
-      const tier = cardLibrary[cardId]?.artifactTier ?? "minor";
+      const tier = effectiveArtifactTier(state, cardId) ?? "minor";
       offers.push({ cardId, deckId: pile.id, price: BLACK_MARKET_PRICE[tier] });
       added = true;
       if (offers.length >= 4) {
@@ -5456,9 +5457,11 @@ export function grantRegularArtifactOfSameGrade(
     if (!card || card.kind !== "artifact") {
       return false;
     }
-    // On the legacy combined pile, keep only the matching grade.
+    // On the legacy combined pile, keep only the matching grade (effective tier —
+    // so with the Torso re-tier OFF, Torso is claimable by a Minor grant, not a
+    // Major one; split decks already draw from the matching tier pile).
     if (deckId === "artifacts") {
-      return (card.artifactTier ?? "minor") === tier;
+      return (effectiveArtifactTier(state, cardId) ?? "minor") === tier;
     }
     return true;
   });
@@ -5699,7 +5702,7 @@ function buildWogFieldVisitStep(
       if (card?.kind !== "artifact") {
         continue;
       }
-      const tier = card.artifactTier ?? "minor";
+      const tier = effectiveArtifactTier(state, cardId) ?? "minor";
       const gold = tier === "relic" ? 4 : tier === "major" ? 3 : 2;
       options.push({
         label: `Sell ${card.name} (${tier}): gain ${gold} gold`,
@@ -8488,7 +8491,7 @@ export function processPendingVisit(state: GameState): void {
           .filter(
             (offer) =>
               hasResources(player, { gold: offer.price }) &&
-              polishArtifactTierAllowed(state, cardLibrary[offer.cardId]?.artifactTier)
+              polishArtifactTierAllowed(state, effectiveArtifactTier(state, offer.cardId))
           )
           .map((offer) => ({
             label: `Buy ${cardLibrary[offer.cardId]?.name ?? offer.cardId} (${offer.price} gold)`,
@@ -12260,7 +12263,7 @@ export function openDrawChooseMinorArtifacts(
   while (drawn.length < drawCount && deck.drawPile.length > 0) {
     const cardId = deck.drawPile.pop() as CardId;
     const card = cardLibrary[cardId];
-    const isMinor = card?.kind === "artifact" && (card.artifactTier ?? "minor") === "minor";
+    const isMinor = card?.kind === "artifact" && (effectiveArtifactTier(state, cardId) ?? "minor") === "minor";
     if (isMinor && canAcquireSharedDeckCard(state, visit.playerId, deckId, cardId)) {
       drawn.push(cardId);
     } else {
@@ -12352,7 +12355,7 @@ export function revealUntilMinorArtifact(state: GameState, playerId: PlayerId): 
     while (deck.drawPile.length > 0) {
       const cardId = deck.drawPile.pop() as CardId;
       const card = cardLibrary[cardId];
-      const isMinor = card?.kind === "artifact" && (card.artifactTier ?? "minor") === "minor";
+      const isMinor = card?.kind === "artifact" && (effectiveArtifactTier(state, cardId) ?? "minor") === "minor";
       if (isMinor && canAcquireSharedDeckCard(state, playerId, deckId, cardId)) {
         player.hand.push(cardId);
         appendEvent(state, {
@@ -17282,7 +17285,7 @@ function drawEventFamilyCard(
         if (relicLocked && cardLibrary[candidate]?.artifactTier === "relic") {
           return false;
         }
-        if (family === "artifacts" && !polishArtifactTierAllowed(state, cardLibrary[candidate]?.artifactTier)) {
+        if (family === "artifacts" && !polishArtifactTierAllowed(state, effectiveArtifactTier(state, candidate))) {
           return false;
         }
         return true;
@@ -17304,7 +17307,9 @@ function drawEventFamilyCard(
 function sharedDeckIdForCard(state: GameState, cardId: CardId): string {
   const card = cardLibrary[cardId];
   if (card?.kind === "artifact") {
-    return state.decks["artifacts"] ? "artifacts" : `artifacts-${card.artifactTier ?? "minor"}`;
+    // Return to the tier pile it was DEALT from (effective tier), so a Torso
+    // dealt into the Minor deck (rule OFF) goes back Minor, never Major.
+    return state.decks["artifacts"] ? "artifacts" : `artifacts-${effectiveArtifactTier(state, cardId) ?? "minor"}`;
   }
   if (card?.kind === "spell") {
     return state.decks["spells-expert"] && spellDeckBinhExpert.includes(cardId) ? "spells-expert" : "spells";
@@ -17984,7 +17989,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       }
       const options: { label: string; steps: VisitStep[] }[] = [];
       for (const draw of drawn) {
-        const tier = cardLibrary[draw.cardId]?.artifactTier ?? "minor";
+        const tier = effectiveArtifactTier(state, draw.cardId) ?? "minor";
         const price = EVENT_ARTIFACT_PRICES[tier];
         if (!hasResources(player, { gold: price })) {
           continue;
@@ -18639,7 +18644,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
           continue;
         }
         seen.add(entry.cardId);
-        const tier = cardLibrary[entry.cardId]?.artifactTier ?? "minor";
+        const tier = effectiveArtifactTier(state, entry.cardId) ?? "minor";
         if (!polishArtifactTierAllowed(state, tier)) {
           continue;
         }
@@ -18670,7 +18675,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
           if (!top) {
             continue;
           }
-          const tier = cardLibrary[top]?.artifactTier ?? "minor";
+          const tier = effectiveArtifactTier(state, top) ?? "minor";
           // The early-game Relic lock covers the discard-top offer too.
           if (tier === "relic" && eventRelicsLocked(state)) {
             continue;

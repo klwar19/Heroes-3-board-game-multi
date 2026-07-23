@@ -1,5 +1,6 @@
 import type { UnitSideDefinition } from "@/data/factions/types";
 import { cardLibrary } from "@/data/cards/library";
+import { TORSO_OF_LEGION_ID } from "@/data/cards/artifacts";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import type {
@@ -374,6 +375,29 @@ function playerHeldCardIds(state: GameState, playerId: PlayerId): Set<CardId> {
 /** Artifact card ids are the globally-unique cards (one of each in the game). */
 function isArtifactCard(cardId: CardId): boolean {
   return cardId.startsWith("artifact.");
+}
+
+/**
+ * The artifact tier the engine treats `cardId` as in THIS game — the ONE seam
+ * every tier-read chokepoint routes through. Identical to the card's static
+ * `artifactTier` for every artifact EXCEPT Torso of Legion, which BINH plays as
+ * a MAJOR artifact by default (house rule `torso-of-legion-major`, default ON in
+ * both modes). With that rule OFF the engine reads Torso as its PRINTED Minor
+ * tier — Minor deck placement, Minor black-market/junk/event prices, Minor
+ * Polish tier gates, Minor deck-return. Every other card returns its own tier
+ * unchanged, so keying a chokepoint off this helper is byte-identical while the
+ * rule is ON (or absent — the mode default is ON). Returns `undefined` for a
+ * non-artifact card, exactly like a raw `card.artifactTier` read (callers keep
+ * their `?? "minor"`).
+ */
+export function effectiveArtifactTier(
+  state: Pick<GameState, "ruleset" | "adventure">,
+  cardId: CardId
+): "minor" | "major" | "relic" | undefined {
+  if (cardId === TORSO_OF_LEGION_ID && !houseRuleEnabled(state, "torso-of-legion-major")) {
+    return "minor";
+  }
+  return cardLibrary[cardId]?.artifactTier;
 }
 
 /**
