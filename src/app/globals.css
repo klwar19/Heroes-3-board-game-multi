@@ -22566,6 +22566,17 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   color: #a8894f;
 }
 
+/* Optional group-header glyph (e.g. the Global map-rules map icon). The
+   print-and-play glyph SVGs are currentColor black, so lighten them to read on
+   the dark panel exactly like the VP breakdown glyphs. */
+.houseRuleGroupIcon {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  filter: invert(0.82) brightness(1.05);
+}
+
 .houseRuleGroupToggleAll {
   flex: none;
   font-size: 9.5px;

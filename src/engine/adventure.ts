@@ -12468,7 +12468,42 @@ export function drawWaveArmy(state: GameState, wave: number): NeutralDraw[] {
   return drawNeutralArmy(state, waveArmyLevel(wave));
 }
 
+/**
+ * Mine-guard reinforcement (house rule `mine-guard-reinforcement`, default OFF):
+ * every fought-out neutral guard fight on a MINE field (all resource types —
+ * gold / valuables / materials share `location === "mine"`) fields ONE EXTRA
+ * random neutral BRONZE creature on top of the normal guard army. Returns [] when
+ * the rule is off or the field is not a mine.
+ *
+ * The extra bronze is a PLAIN deck draw (`{ tier: "bronze" }`, no bankGuard), so
+ * it recycles to the bronze discard at combat end via the shared guard-recycle
+ * seam like every other drawn guard. It is appended AFTER the base guard army in
+ * drawGuardArmy — which the reveal seam only reaches for real guard-field fights
+ * (waves / raid bosses / dungeon floors / Creature Banks never call drawGuardArmy)
+ * and AFTER combat difficulty is fixed — so the fight's difficulty / XP / reward
+ * are untouched (the extra bronze only makes the fought army bigger). It applies
+ * to level-drawn armies AND designer exact / custom / level guards on a mine, and
+ * to re-fights of a re-guarded mine (each funnels through drawGuardArmy).
+ */
+function mineGuardReinforcementDraws(state: GameState, field: MapFieldState | undefined): NeutralDraw[] {
+  if (field?.location !== "mine" || !houseRuleEnabled(state, "mine-guard-reinforcement")) {
+    return [];
+  }
+  const unitDefId = drawFromNeutralDeck(state, "bronze");
+  return unitDefId ? [{ unitDefId, tier: "bronze" }] : [];
+}
+
 export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
+  // Global "mine guards +1 bronze" house rule composes with EVERY base branch
+  // below (level draw, designer exact / level, Random Town, etc.) — it appends
+  // one extra bronze on a mine field, or nothing when the rule is off / the field
+  // is not a mine. Placement caps gracefully: the 8-cell defender zone seats a
+  // legit mine army (≤ 6 designer units + 1); an over-full hand-edited map leaves
+  // the surplus at its default cell (placeNeutralUnits) — no crash, no stall.
+  return [...drawGuardArmyBase(state, field, difficulty), ...mineGuardReinforcementDraws(state, field)];
+}
+
+function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
   // Designer "certain army" guard: mint the exact cards, Creature-Bank style —
   // never drawn from nor recycled to the tier decks. It REPLACES every
   // printed/location draw below. Unknown ids are skipped defensively.

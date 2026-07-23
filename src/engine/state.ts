@@ -161,7 +161,15 @@ export type HouseRuleId =
   // Off: the engine reads Torso as its printed MINOR tier at every tier
   // chokepoint (deck placement, black-market/junk/event prices, Polish tier
   // gates, deck return). See `effectiveArtifactTier` (ruleset.ts).
-  | "torso-of-legion-major";
+  | "torso-of-legion-major"
+  // Global map rule (default OFF in BOTH modes): every fought-out neutral guard
+  // fight on a MINE field (all resource types) fields ONE EXTRA random neutral
+  // BRONZE creature on top of the normal guard army. The extra bronze is a plain
+  // deck draw (recycles to the bronze discard at combat end like any guard); it
+  // never touches combat difficulty / XP / reward — only the fought army grows.
+  // Quick Combat / level auto-wins (resolved before the army deploys) are
+  // unaffected. See `mineGuardReinforcementDraws` / drawGuardArmy (adventure.ts).
+  | "mine-guard-reinforcement";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
