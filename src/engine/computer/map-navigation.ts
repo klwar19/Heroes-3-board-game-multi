@@ -14,9 +14,13 @@ import {
   getHeroMovementCapabilities,
   heroAtSpace,
   isFieldGuarded,
+  listKnownTeleportDestinations,
   neutralBattleLevel,
   playerHasPlaceableFarTile,
+  playerHoldsTentFlag,
 } from "../adventure";
+import { ANIME_EQUIPMENT_SLOTS } from "@/data/anime/equipment";
+import { equipmentEnabled, heroEquipmentSlot } from "../anime-equipment";
 import { canHeroDiscoverAdjacentTile } from "../adventure-reducer";
 import type {
   GameState,
@@ -186,6 +190,18 @@ export const VISITABLE_LOCATION_VALUE: Record<string, number> = {
   market_of_time: 0, // remove a hand card
   warlock_lab: 0,
   faerie_ring: 0,
+  // Designer / mod single-hex objects (conditional boosts may stack on top).
+  "anime.ren_binh_cac": 55, // equipment shop — boosted further when surplus + empty slot
+  "anime.adventurer_outfitter": 55,
+  "wog.emerald_tower": 50, // commander points / XP pay menu
+  "wog.mirror_home_way": 40, // pay-2-gold Town teleport
+  "wog.junk_merchant": 35, // sell artifacts + paid Artifact Search
+  "wog.living_skull": 40, // Listen = Ability Search
+  "wog.adventure_cave": 45, // escalating fight ladder
+  "wog.altar_of_gods": 45, // pay valuables for morale/XP/commander points
+  "wog.fishing_well": 15, // cheap Attack-die gamble
+  keymaster_tent: 50, // color key that opens barriers
+  garrison: 40, // flaggable outpost
 };
 
 /**
@@ -586,7 +602,70 @@ function objectiveKind(
   ) {
     return "visitable";
   }
+
+  // Anime equipment outfitters: march when module on, gold surplus, empty slot.
+  if (
+    (field.location === "anime.ren_binh_cac" ||
+      field.location === "anime.adventurer_outfitter") &&
+    equipmentEnabled(state) &&
+    wantsEquipmentShop(state, playerId)
+  ) {
+    return "visitable";
+  }
+
+  // WOG field overrides / designer payoffs: treat unvisited ones as visitables
+  // when their module content is on the board (location present ⇒ package active).
+  if (
+    !field.blackCube &&
+    (field.location === "wog.emerald_tower" ||
+      field.location === "wog.mirror_home_way" ||
+      field.location === "wog.junk_merchant" ||
+      field.location === "wog.living_skull" ||
+      field.location === "wog.adventure_cave" ||
+      field.location === "wog.altar_of_gods" ||
+      field.location === "wog.fishing_well")
+  ) {
+    return "visitable";
+  }
+
+  // Keymaster tents: always worth flagging when not yet held (opens barriers).
+  if (field.location === "keymaster_tent" && !ownedByUs) {
+    return "flaggable";
+  }
+
+  // Barriers are walls, not visit targets — never objectives.
+  // Teleport connectors (monolith/gate/whirlpool/oneway): not visit objectives
+  // when unguarded (pathfinding reverse edges already route through them).
+
   return null;
+}
+
+/**
+ * True when the seat should detour to an equipment outfitter: anime equipment
+ * module on, at least one empty body slot, and gold covers the cheapest grade
+ * (I = 4) plus a small cushion so the shop leave path stays clean.
+ */
+export function wantsEquipmentShop(state: GameState, playerId: PlayerId): boolean {
+  if (!equipmentEnabled(state)) return false;
+  const gold = state.players[playerId]?.resources.gold ?? 0;
+  if (gold < 4 + 6) return false;
+  return ANIME_EQUIPMENT_SLOTS.some((slot) => !heroEquipmentSlot(state, playerId, slot));
+}
+
+/**
+ * Same-color Keymaster tent the hero should seek because a barrier of that
+ * color still blocks map connectivity and the seat does not hold the key.
+ * Pure public-state heuristic for objectiveStrategicValue boosts.
+ */
+export function tentKeysStillNeeded(state: GameState, playerId: PlayerId): Set<1 | 2 | 3 | 4> {
+  const needed = new Set<1 | 2 | 3 | 4>();
+  for (const field of Object.values(state.adventure?.fields ?? {})) {
+    if (field.location !== "barrier" || field.gatePair === undefined) continue;
+    if (!playerHoldsTentFlag(state, playerId, field.gatePair)) {
+      needed.add(field.gatePair);
+    }
+  }
+  return needed;
 }
 
 /**
@@ -719,12 +798,50 @@ export function collectMapObjectives(
 }
 
 /**
+ * Reverse teleport edges for multi-source BFS-from-objectives: for each portal
+ * P that can jump to a known field D, the reverse edge is D → P (cost 1). Only
+ * portals the hero can ENTER (unguarded, or a beatable guard) are included —
+ * an unbeatable guarded portal is never a corridor. Face-down landings are
+ * omitted (listKnownTeleportDestinations). Built once per distance-field call.
+ */
+function buildReverseTeleportEdges(
+  state: GameState,
+  hero: HeroState,
+): Map<MapSpaceId, MapSpaceId[]> {
+  const reverse = new Map<MapSpaceId, MapSpaceId[]>();
+  const fields = state.adventure?.fields ?? {};
+  for (const spaceId of Object.keys(fields)) {
+    const field = fields[spaceId];
+    if (!field) continue;
+    // Must be able to walk onto the portal to use it.
+    if (isFieldGuarded(field) && !canBeatGuardedField(state, hero, field)) {
+      continue;
+    }
+    const destinations = listKnownTeleportDestinations(state, spaceId);
+    if (destinations.length === 0) continue;
+    for (const dest of destinations) {
+      const list = reverse.get(dest);
+      if (list) {
+        list.push(spaceId);
+      } else {
+        reverse.set(dest, [spaceId]);
+      }
+    }
+  }
+  return reverse;
+}
+
+/**
  * Multi-source BFS distance (in hero steps) from every cell to its NEAREST
- * objective, across the graph the hero can actually walk. An objective cell is a
- * source at distance 0. Expansion follows a real hero step `neighbour -> node`
- * (so `canCrossEdge` is asked in that direction) and never routes THROUGH a
- * field the hero cannot pass (a "stop" field is a valid endpoint but not a
- * corridor). Cells with no objective reachable are simply absent from the map.
+ * objective, across the graph the hero can actually walk PLUS teleport-network
+ * jumps (Monolith / Whirlpool / colored Gate / one-way entrance→exit). An
+ * objective cell is a source at distance 0. Expansion follows a real hero step
+ * `neighbour -> node` (so `canCrossEdge` is asked in that direction) and never
+ * routes THROUGH a field the hero cannot pass (a "stop" field is a valid
+ * endpoint but not a walk corridor). Teleports are reverse edges landing →
+ * portal ({@link buildReverseTeleportEdges}): a stop landing still fires those
+ * edges without becoming a walk corridor. Cells with no objective reachable
+ * are simply absent from the map.
  */
 export function objectiveDistanceField(
   state: GameState,
@@ -734,7 +851,25 @@ export function objectiveDistanceField(
   const distance = new Map<MapSpaceId, number>();
   const fields = state.adventure?.fields ?? {};
   const movement = getHeroMovementCapabilities(state, hero);
+  const reverseTeleports = buildReverseTeleportEdges(state, hero);
   const queue: MapSpaceId[] = [];
+
+  /**
+   * Reverse teleport relax: landings mark every portal that can jump here.
+   * Portals are always queued so walk approaches to the portal keep expanding
+   * (the portal itself is typically a stop and would not be walk-queued).
+   */
+  const relaxReverseTeleports = (landing: MapSpaceId, landingDistance: number) => {
+    for (const portal of reverseTeleports.get(landing) ?? []) {
+      if (!fields[portal]) continue;
+      const next = landingDistance + 1;
+      const prior = distance.get(portal);
+      if (prior !== undefined && prior <= next) continue;
+      distance.set(portal, next);
+      queue.push(portal);
+    }
+  };
+
   for (const objective of objectives) {
     if (!distance.has(objective.spaceId)) {
       distance.set(objective.spaceId, 0);
@@ -747,8 +882,9 @@ export function objectiveDistanceField(
     const node = queue[head];
     head += 1;
     const nodeDistance = distance.get(node) ?? 0;
+
     for (const neighbor of getAdjacentSpaceIds(node)) {
-      if (distance.has(neighbor) || !fields[neighbor]) {
+      if (!fields[neighbor]) {
         continue;
       }
       // The real hero step is neighbour -> node: ask the edge in that direction
@@ -760,13 +896,24 @@ export function objectiveDistanceField(
       if (kind === "block") {
         continue;
       }
-      distance.set(neighbor, nodeDistance + 1);
-      // Only "open"/passable cells may be walked THROUGH to reach something
-      // further out; a "stop" cell is reachable but is a dead end as a corridor.
+      const next = nodeDistance + 1;
+      const prior = distance.get(neighbor);
+      if (prior !== undefined && prior <= next) {
+        continue;
+      }
+      distance.set(neighbor, next);
+      // Only "open"/passable cells may be walked THROUGH; a "stop" cell is a
+      // reachable endpoint but not a walk corridor. Stop landings still fire
+      // reverse teleport edges so a portal-pair shortens the field.
       if (kind !== "stop") {
         queue.push(neighbor);
+      } else {
+        relaxReverseTeleports(neighbor, next);
       }
     }
+
+    // Reverse teleports from this node as a landing (open cells + portals).
+    relaxReverseTeleports(node, nodeDistance);
   }
 
   return distance;
@@ -987,10 +1134,28 @@ function objectiveStrategicValue(
       ) {
         value =
           640 + premiumEconomyResourceBonus(state, hero.controllerId, field);
+      } else if (
+        field?.location === "keymaster_tent" &&
+        field.gatePair !== undefined &&
+        tentKeysStillNeeded(state, hero.controllerId).has(field.gatePair)
+      ) {
+        // Color key that opens a still-blocking barrier — high priority.
+        value = 670;
+      } else if (field?.location === "keymaster_tent" || field?.location === "garrison") {
+        value = 635;
       } else value = 625;
       break;
     case "visitable":
       value = 600 + (VISITABLE_LOCATION_VALUE[field?.location ?? ""] ?? 0);
+      // Equipment shops: extra pull when surplus + empty slot (else the base
+      // value alone rarely wins over economy flaggables — intentional).
+      if (
+        (field?.location === "anime.ren_binh_cac" ||
+          field?.location === "anime.adventurer_outfitter") &&
+        wantsEquipmentShop(state, hero.controllerId)
+      ) {
+        value += 40;
+      }
       break;
     case "explore":
     default:
