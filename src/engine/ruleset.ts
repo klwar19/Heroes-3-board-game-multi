@@ -157,8 +157,17 @@ export function unitSideRuleOverrides(
     // half instead mirrors capped XP straight onto the guard (see
     // unit-experience.ts), like player veterancy — no flag needed there.
     neutralRankUp: Boolean(state.adventure?.neutralRankUp),
-    // Pack of Phoenixes Rebirth (BINH house rule, default ON).
-    phoenixPackRebirth: houseRuleEnabled(state, "phoenix-pack-rebirth")
+    // Pack of Phoenixes Rebirth: ON by default in BOTH modes. The Pack carried
+    // `phoenix-rebirth` in its printed DATA until commit 1006074e made it a
+    // toggle, so a Legacy game must NOT silently lose it (that was the regression).
+    // In BINH the `phoenix-pack-rebirth` house rule opts OUT (registry default ON);
+    // Legacy keeps the historical always-on Pack rebirth — the rule is registry-OFF
+    // in Legacy like EVERY rule (the house-rule invariant), so it cannot express
+    // "on" there and the injection defaults it on instead.
+    phoenixPackRebirth:
+      getRuleset(state) === "binh"
+        ? houseRuleEnabled(state, "phoenix-pack-rebirth")
+        : true
     // Unit Experience is NOT threaded through these overrides: the shared
     // veterancy machinery folds the rank bonus straight off `armyUnit.experience`
     // / the mirrored `unit.unitExperience` (see unit-experience.ts), which a card
