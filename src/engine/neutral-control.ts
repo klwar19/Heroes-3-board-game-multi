@@ -113,6 +113,8 @@ export function neutralControlMustAttack(state: GameState, combat?: CombatState)
  * controlling player rather than a bystander:
  *  - the guards' activation-order tie (side NEUTRAL_PLAYER_ID);
  *  - the AI-mode fighter picks (neutral-target tie, neutral-destination);
+ *  - a neutral harpy's fly-back-or-stay reposition (combat-reposition whose
+ *    unit is neutral — opened for the controller under free-play control);
  *  - a neutral unit's ability follow-up (ABILITY_TARGET_CHOICE whose source
  *    unit is neutral: splash targets, Magic Mirror redirect, activation
  *    choices) or its attack-die reroll window (ATTACK_DIE_REROLL whose
@@ -138,10 +140,16 @@ export function isNeutralSideCombatChoice(combat: CombatState, choice: PendingCh
     return combat.units[choice.attackerId]?.controllerId === NEUTRAL_PLAYER_ID;
   }
   if (choice.type === "OPTION_CHOICE") {
-    return (
-      choice.context === "neutral-destination" ||
-      (choice.context === "combat-activation-order" && choice.activationOrder?.side === NEUTRAL_PLAYER_ID)
-    );
+    if (choice.context === "neutral-destination") {
+      return true;
+    }
+    if (choice.context === "combat-activation-order" && choice.activationOrder?.side === NEUTRAL_PLAYER_ID) {
+      return true;
+    }
+    if (choice.context === "combat-reposition" && choice.reposition) {
+      return combat.units[choice.reposition.unitId]?.controllerId === NEUTRAL_PLAYER_ID;
+    }
+    return false;
   }
   return false;
 }

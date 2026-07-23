@@ -181,6 +181,7 @@ import {
   isNeutralSplashVictimChoice,
   manualGuardControllerId,
   neutralCombatControllerId,
+  neutralControlMustAttack,
   pvpNeutralControllerId
 } from "./neutral-control";
 import {
@@ -4229,11 +4230,24 @@ function concludeAttackerActivation(state: GameState, attacker: CombatUnitState)
 
   // Harpies' "Strike and Return": once the attack (and the enemy's Retaliation
   // Attack, if any) has resolved, the harpy may fly back to the space it moved
-  // from. A neutral always returns; a player is asked to return or stay.
+  // from. A player always chooses (return or stay). A neutral normally auto-
+  // returns (the printed "always returns" reading) — EXCEPT when a HUMAN drives
+  // the guards with FREE control: Manual guard control, or PvP Neutral Control
+  // with the must-attack sub-toggle OFF. Then the fly-back becomes the
+  // CONTROLLING seat's choice, exactly like a player harpy's — the choice is
+  // opened NEUTRAL-owned (openHarpyReturnChoice keeps unit.controllerId) and the
+  // adventure pump re-stamps it to the controller like every other neutral
+  // follow-up. In PvP Neutral Control MUST-ATTACK mode (rulebook spirit) the
+  // guard still auto-returns (deliberate — no "stay" is offered).
   if (combat) {
     const origin = harpyReturnOrigin(combat, attacker);
     if (origin !== null) {
       if (isNeutralUnit(attacker)) {
+        const controller = neutralCombatControllerId(state, combat);
+        if (controller && !neutralControlMustAttack(state, combat)) {
+          openHarpyReturnChoice(state, attacker, origin);
+          return;
+        }
         moveUnitToOrigin(state, attacker, origin);
         // fall through to end the activation
       } else {

@@ -461,3 +461,138 @@ describe("Manual guard control — must-attack binds only a REAL PvP opponent", 
     expect(pvpOffers.some((action) => action.type === "DEFEND_UNIT" && action.unitId === pvpGuard.id)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Neutral Harpy "Strike and Return" — under FREE manual control the fly-back
+// becomes the FIGHTER's choice (a neutral guard normally auto-returns, the
+// printed "always returns" reading). Each claim fails if the wiring is removed;
+// the mode-off and computer-fighter CONTROLs prove the auto-return is
+// byte-identical when no human drives the guards.
+// ---------------------------------------------------------------------------
+
+describe("Manual guard control — neutral Harpy fly-back is the fighter's choice", () => {
+  const isReposition = (state: GameState): boolean =>
+    state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "combat-reposition";
+
+  /**
+   * Drives an AI-played guard fight to the harpy's activation end, answering the
+   * fighter's "pick the AI guard's landing cell" prompt (the neutral-destination
+   * BINH house rule) along the way — but NOT a combat-reposition choice, so a
+   * mode-off regression that opened one would leave the guard un-activated and
+   * fail the CONTROL.
+   */
+  function driveAiHarpy(state: GameState, guardId: string): GameState {
+    let safety = 40;
+    while (safety > 0) {
+      safety -= 1;
+      if (state.combat?.units[guardId]?.activatedThisRound) {
+        return state;
+      }
+      if (state.reactionWindow) {
+        state = applyOk(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
+        continue;
+      }
+      const pause = state.combat?.pendingNeutralStep;
+      if (pause) {
+        state = applyOk(state, {
+          type: "CONTINUE_NEUTRAL_STEP",
+          playerId: pause.reactingPlayerId ?? state.combat!.attackerPlayerId
+        });
+        continue;
+      }
+      const choice = state.pendingChoice;
+      if (choice?.type === "OPTION_CHOICE" && choice.context === "neutral-destination") {
+        state = applyOk(state, { type: "CHOOSE_OPTION", playerId: choice.playerId, choiceId: choice.id, optionIndex: 0 });
+        continue;
+      }
+      const active = state.combat?.activeUnitId ? state.combat.units[state.combat.activeUnitId] : null;
+      if (active && active.controllerId !== NEUTRAL_PLAYER_ID && !state.pendingChoice) {
+        state = applyOk(state, { type: "DEFEND_UNIT", playerId: active.controllerId, unitId: active.id });
+        continue;
+      }
+      break;
+    }
+    return state;
+  }
+
+  /**
+   * One flying guard with the Harpy "Strike and Return" ability at A2 (space 4)
+   * and a lone prey at B1 (space 1). The guard must MOVE (A2 → B2 / space 5,
+   * adjacent to the prey) to strike, so a fly-back origin exists. Optionally
+   * driven to the guard's open slot for the human path.
+   */
+  function harpyScene(
+    seed: string,
+    options: { manualGuardControl?: boolean; drive?: boolean } = {}
+  ): { state: GameState; guardId: string; preyId: string } {
+    let state = fightWithGuards(seed, { manualGuardControl: options.manualGuardControl ?? true });
+    const [guard] = guardsOf(state);
+    reshape(guard, { grade: "bronze", type: "flying", position: 4, initiative: 1, attack: 0 });
+    guard.name = "Harpies";
+    guard.cardName = "Harpies";
+    guard.abilities = ["harpy-return"];
+    const [prey] = playerUnitsOf(state, "p1");
+    reshape(prey, { grade: "bronze", position: 1, initiative: 99, attack: 0 });
+    onlyUnits(state, [guard, prey]);
+    if (options.drive ?? true) {
+      state = driveTo(state, guardSlotOpen);
+    }
+    return { state, guardId: guard.id, preyId: prey.id };
+  }
+
+  it("opens the fly-back/stay choice for the FIGHTER; 'stay' keeps the attack square, 'fly back' returns to origin", () => {
+    const { state, guardId, preyId } = harpyScene("mgc-harpy");
+    expect(guardSlotOpen(state)).toBe(true);
+
+    // The fighter drives the guard: fly A2(4) → B2(5) (adjacent to the prey at
+    // B1), then strike — MOVE keeps the guard active for the follow-up ATTACK.
+    const moved = applyOk(state, { type: "MOVE_UNIT", playerId: "p1", unitId: guardId, destination: 5 });
+    expect(moved.combat!.units[guardId].position).toBe(5);
+    let struck = applyOk(moved, { type: "ATTACK_UNIT", playerId: "p1", attackerId: guardId, defenderId: preyId });
+    struck = driveTo(struck, isReposition);
+
+    const choice = struck.pendingChoice;
+    expect(isReposition(struck)).toBe(true);
+    // Opened NEUTRAL-owned, then re-stamped to the controlling FIGHTER.
+    expect(choice?.playerId).toBe("p1");
+    // The guard is still standing where it attacked while the choice is open.
+    expect(struck.combat!.units[guardId].position).toBe(5);
+
+    // "Stay" (option 1): the guard keeps the attack square (B2 / 5).
+    const stayed = applyOk(struck, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: 1 });
+    expect(stayed.combat!.units[guardId].position).toBe(5);
+    expect(stayed.combat!.units[guardId].activatedThisRound).toBe(true);
+    expect(stayed.pendingChoice).toBeNull();
+
+    // "Fly back" (option 0): the guard returns to its origin (A2 / 4).
+    const flewBack = applyOk(struck, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: 0 });
+    expect(flewBack.combat!.units[guardId].position).toBe(4);
+    expect(flewBack.combat!.units[guardId].activatedThisRound).toBe(true);
+    expect(flewBack.pendingChoice).toBeNull();
+  });
+
+  it("CONTROL: with the mode OFF the neutral Harpy AUTO-returns to its origin — no choice ever opens", () => {
+    const { state, guardId } = harpyScene("mgc-harpy-off", { manualGuardControl: false, drive: false });
+    // Mode off = no human driver; the plain AI plays the guard (the fighter only
+    // picks its landing cell), and the harpy auto-returns.
+    const done = driveAiHarpy(state, guardId);
+    const guard = done.combat!.units[guardId];
+    expect(guard.activatedThisRound).toBe(true);
+    expect(guard.movedThisActivation).toBe(true); // it really flew in…
+    expect(guard.attackedThisActivation).toBe(true); // …and struck…
+    expect(guard.position).toBe(4); // …then auto-returned to its origin.
+    expect(isReposition(done)).toBe(false); // never a fly-back choice
+  });
+
+  it("CONTROL: a COMPUTER fighter auto-returns too — the reposition choice never opens, so the SP runner cannot stall", () => {
+    const { state, guardId } = harpyScene("mgc-harpy-ai", { manualGuardControl: true, drive: false });
+    state.controllers = { p1: { kind: "computer", difficulty: "standard", policyVersion: 1 } };
+    // manualGuardControllerId is null for a computer fighter → the plain AI
+    // drives the guard; the harpy auto-returns and NO reposition choice opens.
+    expect(manualGuardControllerId(state, state.combat!)).toBeNull();
+    const done = driveAiHarpy(state, guardId);
+    expect(done.combat!.units[guardId].activatedThisRound).toBe(true);
+    expect(done.combat!.units[guardId].position).toBe(4);
+    expect(isReposition(done)).toBe(false);
+  });
+});

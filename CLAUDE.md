@@ -896,6 +896,21 @@ Leading with what does NOT run / deliberate limits:
   (`placeCreatureBankGuards`), so no sort window opens.
 - **Berserk and the Astrologers Werewolf frenzy override both toggle modes**
   (the spell/frenzy menu binds a controlled guard exactly like a player unit).
+- **A neutral Harpy's "Strike and Return" fly-back is the CONTROLLER's choice in
+  FREE mode** (`pvpNeutralControlMustAttack` OFF, and under Manual guard control,
+  which is always free play): after a moved-then-struck guard with the
+  `harpy-return` ability, the fly-back-or-stay `combat-reposition` OPTION_CHOICE
+  is opened NEUTRAL-owned and re-stamped to the controller like every other
+  neutral follow-up — an eliminated controller hands it back to the neutral seat
+  (`isNeutralSideCombatChoice` covers a neutral `combat-reposition`), the AFK
+  driver default-answers it (plain `CHOOSE_OPTION`), and a computer controller
+  scores it through the generic OPTION_CHOICE policy (never a stall). In
+  MUST-ATTACK mode (rulebook spirit) the guard still AUTO-returns — no "stay" is
+  offered (deliberate, wired at `concludeAttackerActivation`). With no human
+  driver (plain AI / computer fighter / mode off) the auto-return is
+  byte-identical. Pinned in `pvp-neutral-control.test.ts` (free vs must-attack,
+  eliminated-controller hand-back) and `manual-guard-control.test.ts` (the
+  fighter's choice + mode-off / computer-fighter CONTROLs).
 - The continue-or-retreat window, the pre-activation reaction pause (which no
   longer previews an intent under this mode — a human hasn't decided yet; the
   pause can coexist with the controller's open choice, each resolving
