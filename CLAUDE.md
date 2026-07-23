@@ -1929,10 +1929,18 @@ is NOT done:
   Magic heroes two. Every owned Spell acquisition goes to the Book, while
   temporary Tarnum casts and Scrolls retain their normal zones. Casting consumes
   one Cast a Spell from hand and moves only the chosen Spell refreshed→used;
-  the whole used side refreshes at the beginning of each game round. Knowledge
-  returns the Cast card but not the Spell, Mysticism refreshes the cast Spell,
-  and discard-recovery artifacts refresh used Book Spells. Ciele I/IV, Genie
-  Wish and both Crown of Dragontooth options have Book-specific paths. The Mage
+  the whole used side refreshes at the beginning of each game round. EXCEPTION
+  (user rule 2026-07): while an Intelligence effect is held (combat-long), the
+  holder selects and casts a refreshed Book Spell directly — no Cast a Spell
+  needed or consumed (the offer strips `castEnablerCardId`; the free path lives
+  in `consumePolishSpellBookCast`; limit unchanged: basic 1/round, expert +1).
+  Knowledge returns the Cast card but not the Spell, Mysticism refreshes the
+  cast Spell, and discard-recovery artifacts refresh used Book Spells. Ciele
+  I/IV, Genie Wish and both Crown of Dragontooth options have Book-specific
+  paths — Genie Wish (2026-07 fix): offered off a USED Book Spell existing
+  (deck-independent), refreshes it; with nothing used the Few's offer is hidden
+  and the Pack's on-attack trigger skips the printed dig entirely (no pointless
+  deck burn). The Mage
   Guild searches 3, may grant/buy Cast cards, grants Cast at levels V/VII when
   built, and offers once-per-round 3-gold Rolling Spells (return one owned Spell,
   Search 2). The Spell deck remains merged even when Artifact decks split. The
@@ -3760,17 +3768,20 @@ Five additions; each engine claim fails a named test if its wiring is removed.
   excluded from `cardCanBoostPower` / `spellPowerValueOfCard`, so it never appears
   as a map-spell-boost discard (or a combat Power cost). Its combat `asPowerBoost`
   discard stays. Pinned in `map-spell-power-bank.test.ts`.
-- **A teleport-gateway guard fights BANK-style (no Quick Combat, no XP).** A
-  designer guard on a single-hex Monolith / Teleport Gate / Whirlpool
-  (`isTeleportObjectGuardLocation`) must be truly fought to pass — a high-level
-  hero can no longer Quick-Combat past it — and the fight grants no experience
-  (combat difficulty 0), like a Creature-Bank guard. Unlike a designer OUTPOST it
-  keeps the normal Round limit and the continue-or-retreat window (only Quick
-  Combat and XP are dropped). The dedicated branch in `startNeutralEncounter`
-  pins `customGuardLevel` so the difficulty-0 fight still draws the real designed
-  guards. Pinned in `map-objects.test.ts` (a guarded Gate / Monolith opens a
-  difficulty-0 bank-style fight, exact-army AND level, with the no-QUICK_COMBAT
-  assertion as the mutation control).
+- **A teleport-gateway guard fights BANK-style (no Quick Combat, no XP, no
+  Round limit).** A designer guard on a single-hex Monolith / Teleport Gate /
+  Whirlpool (`isTeleportObjectGuardLocation`) must be truly fought to pass — a
+  high-level hero can no longer Quick-Combat past it — and the fight grants no
+  experience (combat difficulty 0), like a Creature-Bank guard. Since 2026-07
+  (user rule "Monoliths with guards should have no limit combat rounds, as
+  default") it ALSO carries `CombatContext.unlimitedRounds` like a designer
+  OUTPOST: the round-limit / continue-or-retreat window never opens, no
+  MP-to-extend — the fight runs until one side falls. The dedicated branch in
+  `startNeutralEncounter` pins `customGuardLevel` so the difficulty-0 fight
+  still draws the real designed guards. Pinned in `map-objects.test.ts` (a
+  guarded Gate / Monolith opens a difficulty-0 bank-style fight, exact-army AND
+  level, the no-QUICK_COMBAT assertion as the mutation control, and the
+  "rolls straight into round 2" unlimited-rounds case).
 - **Map-visit notice = reward chips, not a "mass of text".** A treasure-chest /
   mine / resource visit's outcome is shown as a compact row of icon chips
   (resource token / experience / morale glyph + a short "+N" or "+N/turn" income

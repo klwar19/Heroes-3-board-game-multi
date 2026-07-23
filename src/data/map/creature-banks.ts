@@ -130,14 +130,13 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
     type: "ranged",
     cost: {},
     cardImage: "/assets/units-creature-bank-medusas.webp",
-    // engine: ignore-retaliation always; while Stacked, an ADJACENT (melee)
-    // attack also Paralyzes — a ranged shot at a distant foe never does (the
-    // adjacency gate is in applyOnAttackParalysis). The "If Stacked" half is the
-    // printed wiki card; the "adjacent only" half is the engine's reading of it
-    // (a Medusa's gaze petrifies at melee range, not down-range).
+    // engine: ignore-retaliation always; while Stacked, EVERY attack this unit
+    // makes also Paralyzes — melee AND ranged (user rule 2026-07: "Medusa stack
+    // in Bank should also paralyse from distance too when she attacks"; the old
+    // adjacent-only gate in applyOnAttackParalysis is removed).
     abilities: ["ignores-retaliation", "bank-medusa-paralyze-stacked"],
     abilityText:
-      "[unit_attack] Ignore the Retaliation Attack. If this unit is Stacked, an adjacent target gains [paralysis] (a ranged shot does not Paralyze)."
+      "[unit_attack] Ignore the Retaliation Attack. If this unit is Stacked, the attacked target gains [paralysis] (melee or ranged)."
   },
   // --- Dragon Fly Hive ----------------------------------------------------
   "neutral.dragon_flies": {

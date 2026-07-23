@@ -4314,10 +4314,19 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
     ) {
       const player = state.players[playerId];
       const hasDeckCards = (player?.deck.length ?? 0) + (player?.discard.length ?? 0) > 0;
-      const hasPolishRefresh = !polishSpellBookEnabled(state) || (player?.spellBookUsed?.length ?? 0) > 0;
-      if (hasDeckCards && hasPolishRefresh) {
+      // Polish Spell Book: the Wish's payoff is refreshing a used Book Spell,
+      // which does not depend on what the dig turns up — so the offer keys off
+      // a used Spell existing (an empty deck digs 0 and still refreshes).
+      // Outside the Polish rule the printed dig is the whole ability, so it
+      // needs cards to dig.
+      const usable = polishSpellBookEnabled(state)
+        ? (player?.spellBookUsed?.length ?? 0) > 0
+        : hasDeckCards;
+      if (usable) {
         actions.push({
-          label: `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, take a Spell)`,
+          label: polishSpellBookEnabled(state)
+            ? `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, refresh a used Book Spell)`
+            : `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, take a Spell)`,
           action: { type: "USE_GENIE_DECK_DRAW", playerId, unitId: activeUnit.id }
         });
       }
@@ -5181,6 +5190,11 @@ function applyPolishSpellBookActionGate(
 ): LegalAction[] {
   const player = state.players[playerId];
   const hasEnabler = Boolean(player?.hand.includes(CAST_A_SPELL_CARD_ID));
+  // Intelligence (combat-long): the ability stands in for the Cast a Spell
+  // enabler — Book Spells are selected and cast directly, nothing consumed
+  // from hand. The action is offered WITHOUT `castEnablerCardId`, which is the
+  // marker the resolution's free path keys off (consumePolishSpellBookCast).
+  const intelligenceFreedom = playerHasSpellTimingFreedom(state, playerId);
   const gated: LegalAction[] = [];
 
   for (const legal of actions) {
@@ -5211,7 +5225,22 @@ function applyPolishSpellBookActionGate(
       (action.type === "CAST_SPELL" || action.type === "PLAY_CARD" || action.type === "PLAY_REACTION") &&
       action.fromSpellBook
     ) {
-      if (!hasEnabler || (action.type === "PLAY_REACTION" && action.asPowerBoost)) {
+      if (action.type === "PLAY_REACTION" && action.asPowerBoost) {
+        continue;
+      }
+      if (intelligenceFreedom) {
+        // Free cast via Intelligence: strip any eagerly-stamped enabler so the
+        // resolution takes the no-enabler path (nothing leaves the hand).
+        const freeAction = { ...action };
+        delete (freeAction as { castEnablerCardId?: string }).castEnablerCardId;
+        gated.push({
+          ...legal,
+          label: `${legal.label.replace(" (Spell Book)", "")} (Spell Book · Intelligence)`,
+          action: freeAction
+        });
+        continue;
+      }
+      if (!hasEnabler) {
         continue;
       }
       gated.push({

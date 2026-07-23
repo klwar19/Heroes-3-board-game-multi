@@ -474,6 +474,97 @@ describe("Polish Spell Book lifecycle", () => {
     expect(resolved.combat!.units[genie.id].activatedThisRound).toBe(true);
   });
 
+  it("offers the Few's Wish off the used Book Spell alone — even with an empty deck", () => {
+    // The Polish payoff (refresh 1 used Book Spell) does not depend on the dig,
+    // so an empty deck+discard must not hide the ability (it used to, reading
+    // as "Genie ability not working" whenever the M&M deck was in hand).
+    const state = polishCombat("polish-book-genie-empty-deck");
+    const genie = state.combat!.units.unit_p1_griffins;
+    genie.abilities = ["genie-spell-draw-few"];
+    state.combat!.activeUnitId = genie.id;
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+
+    const wish = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_GENIE_DECK_DRAW" && legal.action.unitId === genie.id
+    );
+    expect(wish, "Wish offered with a used Book Spell and no deck to dig").toBeTruthy();
+    const resolved = applyOk(state, wish!.action);
+    expect(resolved.players.p1.spellBook).toContain("spell.haste");
+    expect(resolved.players.p1.spellBookUsed).not.toContain("spell.haste");
+  });
+
+  it("CONTROL: the Few's Wish is not offered with nothing used in the Book", () => {
+    const state = polishCombat("polish-book-genie-nothing-used");
+    const genie = state.combat!.units.unit_p1_griffins;
+    genie.abilities = ["genie-spell-draw-few"];
+    state.combat!.activeUnitId = genie.id;
+    state.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"];
+    state.players.p1.spellBookUsed = [];
+
+    const wish = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_GENIE_DECK_DRAW" && legal.action.unitId === genie.id
+    );
+    expect(wish, "nothing to refresh — the whole-activation Wish would be a blank").toBeFalsy();
+  });
+
+  it("the Pack's on-attack Wish skips the dig entirely when nothing is used (no pointless deck burn)", () => {
+    const state = polishCombat("polish-book-genie-pack-skip");
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    attacker.abilities = ["genie-spell-draw-pack"];
+    attacker.position = 1;
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.position = 13; // non-adjacent → ranged, no retaliation
+    state.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"];
+    state.players.p1.spellBookUsed = [];
+    state.combat!.dice.scriptedRolls = [0];
+
+    const next = passAll(
+      applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: attacker.id,
+        defenderId: target.id
+      })
+    );
+    // The attack resolved, but the Wish neither dug the deck nor logged a dig.
+    expect(next.players.p1.deck).toEqual(["stat.attack", "stat.defense", "stat.power"]);
+    expect(next.players.p1.discard).toEqual([]);
+    expect(
+      next.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "genie-spell-draw-pack"
+      )
+    ).toBe(false);
+  });
+
+  it("the Pack's on-attack Wish still digs and refreshes when a used Book Spell exists", () => {
+    const state = polishCombat("polish-book-genie-pack-refresh");
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    attacker.abilities = ["genie-spell-draw-pack"];
+    attacker.position = 1;
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.position = 13;
+    state.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    state.combat!.dice.scriptedRolls = [0];
+
+    const next = passAll(
+      applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: attacker.id,
+        defenderId: target.id
+      })
+    );
+    expect(next.players.p1.deck).toEqual([]);
+    expect(next.players.p1.discard).toEqual(
+      expect.arrayContaining(["stat.attack", "stat.defense", "stat.power"])
+    );
+    expect(next.players.p1.spellBook).toContain("spell.haste");
+    expect(next.players.p1.spellBookUsed).not.toContain("spell.haste");
+  });
+
   it("Crown of Dragontooth removes a refreshed or used Book Spell before Search 2", () => {
     let state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-book-crown",
@@ -799,8 +890,9 @@ describe("Polish Spell Book — casting a Book Spell as a reaction requires Cast
 // ---------------------------------------------------------------------------
 // Intelligence (reference sheet): basic = "Start of Combat: Cast a Spell" (the
 // SPELL_CAST_ANYTIME freedom, limit 1); expert adds "+1 Limit" (limit rises to
-// 2 — NOT the base game's unlimited). In Book mode either still needs a Cast a
-// Spell card to actually cast (the shared gate).
+// 2 — NOT the base game's unlimited). USER RULE (2026-07): while the effect is
+// held, a Book Spell is selected and cast DIRECTLY — no Cast a Spell card
+// needed or consumed ("as if you used cast a spell card").
 // ---------------------------------------------------------------------------
 
 describe("Polish Intelligence", () => {
@@ -826,6 +918,65 @@ describe("Polish Intelligence", () => {
   it("basic Intelligence grants the cast freedom but no extra limit (still 1)", () => {
     const after = playIntelligence(polishCombat("polish-intelligence-basic"), "basic");
     expect(spellLimitFor(after, after.players.p1)).toBe(1);
+  });
+
+  it("USER RULE: with Intelligence held, a Book Spell casts directly — no Cast a Spell needed or consumed", () => {
+    const state = playIntelligence(polishCombat("polish-intelligence-free-cast"), "basic");
+    state.players.p1.spellBook = ["spell.magic_arrow"];
+    state.players.p1.hand = [];
+
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        Boolean(legal.action.fromSpellBook) &&
+        legal.action.castEnablerCardId === undefined &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    expect(cast, "the Book cast is offered with NO enabler in hand").toBeTruthy();
+    expect(cast!.label).toContain("Intelligence");
+
+    const resolved = passAll(applyOk(state, cast!.action));
+    expect(resolved.players.p1.spellBook).not.toContain("spell.magic_arrow");
+    expect(resolved.players.p1.spellBookUsed).toContain("spell.magic_arrow");
+    expect(resolved.players.p1.combatStats.spellsCastThisRound).toBe(1);
+  });
+
+  it("with Intelligence AND an enabler in hand, the cast is free and Cast a Spell stays in hand", () => {
+    const state = playIntelligence(polishCombat("polish-intelligence-keeps-enabler"), "basic");
+    state.players.p1.spellBook = ["spell.magic_arrow"];
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+
+    const cast = castAtSkeletons(state, "spell.magic_arrow");
+    expect(
+      cast.action.type === "CAST_SPELL" ? cast.action.castEnablerCardId : "wrong-type"
+    ).toBeUndefined();
+
+    const resolved = passAll(applyOk(state, cast.action));
+    expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(resolved.players.p1.spellBookUsed).toContain("spell.magic_arrow");
+  });
+
+  it("CONTROL: without Intelligence a Book cast still needs the Cast a Spell enabler", () => {
+    const state = polishCombat("polish-intelligence-enabler-control");
+    state.players.p1.spellBook = ["spell.magic_arrow"];
+    state.players.p1.hand = [];
+
+    const offered = getLegalActions(state, "p1").some(
+      (legal) => legal.action.type === "CAST_SPELL" && Boolean(legal.action.fromSpellBook)
+    );
+    expect(offered, "no enabler + no Intelligence → no Book cast").toBe(false);
+
+    const forced = applyAction(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.magic_arrow",
+      fromSpellBook: true,
+      target: { type: "unit", unitId: "unit_p2_skeletons" }
+    } as GameAction);
+    expect(forced.errors.length, "a forged enabler-less cast is rejected").toBeGreaterThan(0);
+    expect(forced.state.players.p1.spellBook).toContain("spell.magic_arrow");
   });
 
   it("CONTROL: with the rule OFF, Expert Intelligence lifts the limit entirely", () => {
