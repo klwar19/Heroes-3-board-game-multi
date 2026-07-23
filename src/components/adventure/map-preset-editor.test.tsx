@@ -36,6 +36,83 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(container.querySelectorAll(".mapPresetEntryIcon").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("Waves & Raid bosses: the cadence chip, a wave-army override, and a custom boss all dispatch through onChange", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+
+    // Cadence chip writes monsterWaves.cadence.
+    fireEvent.click(within(section("Wave cadence (map)")).getByRole("button", { name: "Every 5th round" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ monsterWaves: expect.objectContaining({ cadence: 5 }) })
+    );
+
+    // Adding a wave-army override seeds wave 1 with a level guard spec.
+    fireEvent.click(screen.getByRole("button", { name: /Override a wave's army/i }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        monsterWaves: expect.objectContaining({ waves: { 1: { level: 2 } } })
+      })
+    );
+
+    // Adding a custom boss seeds the full editable statline.
+    fireEvent.click(screen.getByRole("button", { name: /Add a custom boss/i }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        raidBosses: expect.objectContaining({
+          bosses: [
+            expect.objectContaining({
+              id: "custom_boss_1",
+              name: "Custom Boss 1",
+              layers: 3,
+              abilities: ["boss-enrage"]
+            })
+          ]
+        })
+      })
+    );
+  });
+
+  it("Waves & Raid bosses: a rendered boss card edits stats and toggles whitelist abilities", () => {
+    const onChange = vi.fn();
+    const preset: CustomMapPreset = {
+      raidBosses: {
+        bosses: [
+          {
+            id: "custom_boss_1",
+            name: "Gloomfang",
+            attack: 5,
+            defense: 1,
+            health: 3,
+            initiative: 6,
+            layers: 3,
+            abilities: ["boss-enrage"]
+          }
+        ]
+      }
+    };
+    render(<MapPresetEditor preset={preset} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText("Boss Gloomfang Attack"), { target: { value: "99" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        raidBosses: expect.objectContaining({
+          bosses: [expect.objectContaining({ attack: 15 })] // clamped to the rail
+        })
+      })
+    );
+
+    // Toggling a whitelist ability chip adds it beside Enrage.
+    const abilityRow = section("Boss Gloomfang abilities");
+    fireEvent.click(within(abilityRow).getByRole("button", { name: "Devour" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        raidBosses: expect.objectContaining({
+          bosses: [expect.objectContaining({ abilities: ["boss-enrage", "boss-devour"] })]
+        })
+      })
+    );
+  });
+
   it("a victory chip toggles the preset through onChange; Clear all resets to undefined", () => {
     const onChange = vi.fn();
     render(
@@ -740,10 +817,10 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     return el as HTMLDetailsElement;
   };
 
-  it("groups the conditions into six ordered, separated collapsible groups", () => {
+  it("groups the conditions into seven ordered, separated collapsible groups", () => {
     render(<MapPresetEditor preset={undefined} onChange={() => {}} />);
     const groups = Array.from(document.querySelectorAll("details.mapPresetGroup"));
-    expect(groups.length).toBe(6);
+    expect(groups.length).toBe(7);
     const order = groups.map(
       (g) => (g.querySelector(".mapPresetGroupTitle") as HTMLElement).textContent
     );
@@ -753,6 +830,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
       "Victory & scoring",
       "Map objects",
       "Timed events",
+      "Waves & Raid bosses",
       "Designer note"
     ]);
   });

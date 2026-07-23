@@ -1834,6 +1834,14 @@ export function HexMapBoard({
       // halves are distinct: the skull cave-mouth GATE on a Surface tile, the
       // lighter passage ENTRANCE on a Subterranean tile.
       const overrideArt = fieldOverrideImage(field.location);
+      // Raid Bosses / the Dungeon: carved module fields wear their own hex art
+      // (procedural placeholders — see docs/raid-dungeon-art.md for upgrades).
+      const moduleFieldArt =
+        field.location === "rift_lair"
+          ? "/assets/bosses/rift_lair_field.webp"
+          : field.location === "dungeon_gate"
+            ? "/assets/bosses/dungeon_gate_field.webp"
+            : null;
       const tokenImage =
         field.location === "subterranean_gate"
           ? subterraneanGateTokenImage(undergroundTile ? "subterranean" : "surface")
@@ -1848,10 +1856,10 @@ export function HexMapBoard({
                       field.location === "oneway_entrance" ? "entrance" : "exit",
                       field.gatePair ?? 1
                     )
-                  : overrideArt;
+                  : (moduleFieldArt ?? overrideArt);
       if (tokenImage) {
         // Clip landscape/field art to the hex (Creature Banks + Field Override objects).
-        if (field.location === "creature_bank" || Boolean(overrideArt)) {
+        if (field.location === "creature_bank" || Boolean(overrideArt) || Boolean(moduleFieldArt)) {
           // The bank's field-tile scan is landscape; clip it to the hex and use
           // "slice" (cover) so the structure fills the cell centred and
           // undistorted — the old "none" stretched it into the tall hex box,
@@ -8430,7 +8438,10 @@ function GameOptionsPanel({
                 ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
                 ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
                 ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and a Drill action at your Towns."],
-                ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."]
+                ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."],
+                ["monsterWaves", "Monster waves", "Calamity Waves: every Nth round (cadence below), EVERY live player fights a wave army at round start — the table pauses while the assaults resolve in seat order. Win: 2 gold + 1 hero XP (+ a Treasure die from wave 3 on). Loss or retreat: pillage — lose 3 gold and your mine/settlement nearest home is overrun by a difficulty-Ⅰ guard. Never razes buildings, never eliminates."],
+                ["raidBosses", "Raid bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead). Its wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
+                ["dungeon", "The Dungeon", "One repeatable delve site per map, carved onto a Near-tile Blocked Field (needs Creature Banks ON). Per-player floors 1–10, once per turn: pick a room (treasure vault, shrine, whispering wall…), then fight the floor guards for normal XP and a reward ladder. Floors 5 and 10 hold layered floor bosses; floor 10 pays a relic search + the Dungeon Conqueror title."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
                 return (
@@ -8449,6 +8460,22 @@ function GameOptionsPanel({
                   </button>
                 );
               })}
+              {wog.monsterWaves ? (
+                <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
+                  <strong>Wave cadence</strong>
+                  {([3, 4, 5] as const).map((cadence) => (
+                    <button
+                      aria-pressed={(wog.waveCadence ?? 4) === cadence}
+                      className={`waveCadenceChip ${(wog.waveCadence ?? 4) === cadence ? "selected" : ""}`}
+                      key={cadence}
+                      onClick={() => send({ wog: { ...wog, waveCadence: cadence } })}
+                      type="button"
+                    >
+                      Every {cadence === 3 ? "3rd" : `${cadence}th`} round
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <div className="wogRosterPreview" aria-label="WOG neutral creature roster">
               <strong>Neutral roster</strong>
@@ -8499,7 +8526,10 @@ function GameOptionsPanel({
                 ["heroGrades", "Hero Grades", "A per-hero Merit → grade track that unlocks a small passive / skill tree (shared by every hero)."],
                 ["equipment", "Hero Equipment", "Always-on hero items in 4 slots (weapon / armor / accessory / mount), bought at outfitter map locations."],
                 ["unitStacks", "Unit Stacks", "Pack / Neutral cards buy persistent Stack layers at the Citadel (+1 Attack, each layer soaks a lethal blow). The Polish Unit Stacks machinery — one pricing, coexists with the house rule."],
-                ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Town Drill training."]
+                ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Town Drill training."],
+                ["monsterWaves", "Calamity Waves", "Every Nth round (cadence below), EVERY live player fights a Gate-invasion wave army at round start — assaults resolve in seat order behind the round-start pause. Win: 2 gold + 1 hero XP (+ a Treasure die from wave 3 on). Loss or retreat: pillage — lose 3 gold and your mine/settlement nearest home is overrun by a difficulty-Ⅰ guard."],
+                ["raidBosses", "Raid Bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead — \"the sky cracks\"). Wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
+                ["dungeon", "The Dungeon (Meikyū)", "One repeatable delve site per map, carved onto a Near-tile Blocked Field (needs Creature Banks ON). Per-player floors 1–10, once per turn: pick a room (treasure vault, shrine, whispering wall…), then fight the floor guards for normal XP and a reward ladder. Floors 5 and 10 hold layered floor bosses; floor 10 pays a relic search + the Dungeon Conqueror title."]
               ] as const).map(([key, label, description]) => {
                 const active = anime[key];
                 return (
@@ -8519,6 +8549,23 @@ function GameOptionsPanel({
                   </button>
                 );
               })}
+              {anime.monsterWaves ? (
+                <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
+                  <strong>Wave cadence</strong>
+                  {([3, 4, 5] as const).map((cadence) => (
+                    <button
+                      aria-pressed={(anime.waveCadence ?? 4) === cadence}
+                      className={`waveCadenceChip ${(anime.waveCadence ?? 4) === cadence ? "selected" : ""}`}
+                      data-testid={`anime-wave-cadence-${cadence}`}
+                      key={cadence}
+                      onClick={() => send({ anime: { ...anime, waveCadence: cadence } })}
+                      type="button"
+                    >
+                      Every {cadence === 3 ? "3rd" : `${cadence}th`} round
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <footer>
               <button className="selected" onClick={() => setAnimeOptionsOpen(false)} type="button">Done</button>

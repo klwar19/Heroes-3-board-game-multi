@@ -1487,6 +1487,23 @@ function visitStepsUtility(
       case "GAIN_COMMANDER_POINTS":
         utility += 28;
         break;
+      case "RAID_BOSS_FIGHT": {
+        // Raid Bosses (§6.5, §17 "engage… risk, never suicidal"): challenge
+        // only behind a real army — chip layers for the payouts when solid,
+        // otherwise Withdraw outranks the pick (its penalty sinks the option
+        // below the empty-steps Leave band).
+        const strength = playerArmyStrength(state, playerId);
+        utility += strength >= 8 ? 30 + Math.min(20, strength - 8) : -160;
+        break;
+      }
+      case "DUNGEON_FLOOR_FIGHT":
+        // The Dungeon (§6.7.3): the grind site — normal XP + the floor ladder.
+        // Delve when standing at the gate unless the army is truly gutted.
+        utility += playerArmyStrength(state, playerId) >= 4 ? 26 : -160;
+        break;
+      case "PLAY_STORY_SCENE":
+        utility += 2;
+        break;
       case "SELL_HAND_ARTIFACT": {
         // Prefer selling junk (low keep value); keep high-value relics.
         const cardId = step.cardId;

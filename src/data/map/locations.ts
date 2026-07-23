@@ -815,6 +815,37 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     implementationStatus: "implemented",
     source: source("cyclops_stockpile")
   },
+  rift_lair: {
+    id: "rift_lair",
+    name: "Rift Lair",
+    // Raid Bosses (optional module, anime-mod plan §6.5): a persistent
+    // multi-layer world boss lairs here. The confirm-and-fight menu is built
+    // at visit time in beginFieldVisit (handleRiftLairVisit); wounds persist
+    // between attempts, so "revisitable" lets a standing hero retry for 1 MP.
+    // The kill clears the lair (black cube, empty field).
+    category: "revisitable",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes 3 BG — Raid Bosses module (docs/anime-mod-plan.md §6.5)",
+      credit: "BINH house content"
+    }
+  },
+  dungeon_gate: {
+    id: "dungeon_gate",
+    name: "The Dungeon",
+    // The Dungeon (optional module, anime-mod plan §6.7.3): the one-per-map
+    // delve site carved onto a Blocked Field. The per-player floor menu is
+    // built at visit time in beginFieldVisit (handleDungeonGateVisit);
+    // revisitable so a standing hero may delve again next turn for 1 MP.
+    category: "revisitable",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes 3 BG — Dungeon module (docs/anime-mod-plan.md §6.7.3)",
+      credit: "BINH house content"
+    }
+  },
   monolith: {
     id: "monolith",
     name: "Two-Way Monolith",

@@ -241,6 +241,7 @@ import {
   hasSpellCastLock,
   hasSpellCastPowerTax,
   hasUnitAbilityEffect,
+  moraleLockedForPlayer,
   unitHasAttackRollAdvantage,
   unitImmuneToSpellSchools
 } from "./unit-abilities";
@@ -6762,7 +6763,13 @@ export function getLegalReactionsForTrigger(
     // (a negated buff would be misleading; +Defense is never negated). The used
     // card returns to its deck, and the window refreshes (reducer) so it is not
     // re-offered. "+1 Combat Power" is Battlefield-mode only (inert here).
-    if (triggerEvent.type === "UNIT_ATTACK_DECLARED" && moraleCardsRuleEnabled(state)) {
+    if (
+      triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+      moraleCardsRuleEnabled(state) &&
+      // Raid-boss Fear (§6.8): a living enemy Fear unit locks every morale USE
+      // — the reaction-window combat bonus included.
+      !moraleLockedForPlayer(state.combat, player.id)
+    ) {
       const held = player.moraleCards?.positive ?? [];
       if (held.includes(MORALE_CARD_IDS.combatBonus)) {
         const attacker = state.combat?.units[triggerEvent.attackerId];
@@ -8796,6 +8803,12 @@ function addAbilityEmpowerTokenActions(actions: LegalAction[], state: GameState,
 
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
+  // Raid-boss Fear (§6.8): while a living enemy Fear unit stands in the
+  // player's open combat, NO morale use is offered (token or cards alike);
+  // morale gains and morale-card draws still happen normally.
+  if (moraleLockedForPlayer(state.combat, playerId)) {
+    return;
+  }
   if (moraleCardsRuleEnabled(state)) {
     const held = player?.moraleCards?.positive ?? [];
     if (held.includes("morale.positive.redraw_hand") && (player?.hand.length ?? 0) > 0) {
