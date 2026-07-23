@@ -250,11 +250,15 @@ describe("AUDIT Basic X Magic permanent (fetch + expert +3)", () => {
     let s = applyOk(state, cast!.action);
     const expert = getLegalActions(s, "p1").find((l) => l.action.type === "USE_SCHOOL_FETCH_EXPERT");
     expect(expert, "Basic Earth expert should be offered").toBeTruthy();
+    // The offer names the consumption (never a silent discard).
+    expect(expert!.label).toMatch(/discards the permanent/i);
     s = passAll(applyOk(s, expert!.action));
     expect(s.combat!.units.unit_p2_skeletons.damage).toBe(4);
-    // The +3 consumes the fetch permanent (like the School-of-Magic expert above).
+    // USER RULING: the +3 consumes the fetch permanent (like the School-of-Magic
+    // expert) — to the owner's DISCARD pile, never out of the game.
     expect(s.players.p1.permanents).toEqual([]);
     expect(s.players.p1.discard).toContain("ability.basic_earth_magic");
+    expect(s.players.p1.removed ?? []).not.toContain("ability.basic_earth_magic");
   });
 
   it("Basic Fire Magic expert is NOT offered for Air Lightning Bolt — CONTROL", () => {

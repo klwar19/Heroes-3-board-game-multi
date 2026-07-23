@@ -12750,8 +12750,27 @@ export type PendingChoice =
        * answering player.
        */
       activationOrder?: { unitIds: UnitId[]; side: PlayerId };
-      /** deck-pick: the shared-deck search waiting on the deck choice. */
-      deckPick?: { deckIds: DeckId[]; count: number; allowRemove?: boolean };
+      /**
+       * deck-pick: the shared-deck search waiting on the deck choice. For the
+       * SPELLS family this is the ONE up-front decision (user demand: "choose
+       * discard, search or school of magic" BEFORE anything is revealed): the
+       * options run [search deck 0..n] then [take a discard top per entry of
+       * `discardTops`] then [one Basic X Magic school draw per entry of
+       * `fetchSchools`]. Picking a Search then reveals DIRECTLY — the old
+       * second "Search or draw from a School?" step never re-opens. A legacy
+       * in-flight pick (no `upFront`) resolves the old two-step way.
+       */
+      deckPick?: {
+        deckIds: DeckId[];
+        count: number;
+        allowRemove?: boolean;
+        /** The enriched one-step form (options beyond the deck picks exist). */
+        upFront?: boolean;
+        /** Acquirable face-up discard tops offered up front, in option order. */
+        discardTops?: { deckId: DeckId; cardId: CardId }[];
+        /** Basic X Magic fetch schools offered up front, in option order. */
+        fetchSchools?: ("air" | "earth" | "fire" | "water")[];
+      };
       /**
        * combat-remove-then-search: Spellbinder's Hat (option A) played
        * mid-combat — the removable hand cards, index-aligned with the options
@@ -12810,6 +12829,12 @@ export type PendingChoice =
         offerExpert: boolean;
         /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege through the Scouting prompt. */
         allowRemove?: boolean;
+        /**
+         * The up-front discard/fetch alternatives were already offered (the
+         * one-step spells deck-pick) — after Scouting resolves, the Search goes
+         * straight to the reveal instead of re-opening the mode choice.
+         */
+        modeResolved?: boolean;
       };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
       ownDeckPick?: {
@@ -12980,10 +13005,11 @@ export type PendingChoice =
             }
           | {
               /**
-               * Basic X Magic +3: crown for +3, once per cast. From the in-play
-               * fetch permanent by default (which STAYS in play — the printed card
-               * has no discard clause), or from the hand card named by
-               * `fromHandCardId` (played to the discard like any hand ability).
+               * Basic X Magic +3: crown for +3, once per cast. Consumes its source
+               * (user ruling: "if use expert, must discard, on hand or on
+               * permanent") — the in-play fetch permanent by default, or the hand
+               * card named by `fromHandCardId`; either lands in the owner's
+               * discard pile (recycles into their deck, never out of the game).
                */
               kind: "school-fetch-expert";
               school: "air" | "earth" | "fire" | "water";

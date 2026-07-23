@@ -284,6 +284,7 @@ import {
 } from "./parallel-turns";
 import {
   applyPermanentCombatEffects,
+  discardPermanentFromPlay,
   discardSchoolPermanentForExpert,
   getPermanentCardIds,
   getPermanentSchoolBonus,
@@ -5514,15 +5515,15 @@ type MapSpellBoostOffer =
       value: number;
       /**
        * When set, the +3 comes from a Basic X Magic card held IN HAND (its printed
-       * expert side) — resolving plays that card to the discard, like any hand
-       * ability. When absent, it comes from the in-play fetch permanent, which
-       * STAYS in play: the printed card has no discard clause (the crown is the
-       * whole cost), unlike the Tower School-of-Magic expert.
+       * expert side) — resolving discards this card. When absent, it comes from the
+       * in-play fetch permanent — resolving discards that permanent (USER RULING:
+       * "if use expert, must discard, on hand or on permanent"; the card lands in
+       * the owner's discard pile and recycles, never out of the game).
        */
       fromHandCardId?: CardId;
     };
 
-/** Basic X Magic expert: +3 Power for a crown (mirrors combat USE_SCHOOL_FETCH_EXPERT). */
+/** Basic X Magic expert: +3 Power, consumes its source (mirrors combat USE_SCHOOL_FETCH_EXPERT). */
 const MAP_SCHOOL_FETCH_EXPERT_POWER = 3;
 
 type MapSpellBoostFlags = {
@@ -5634,10 +5635,9 @@ function listMapSpellBoostOffers(
 
   // Basic X Magic +3 expert (once per cast; needs a crown; matching school only),
   // offered from BOTH sources it can come from — the in-play fetch permanent AND a
-  // Basic X Magic card held in hand. The in-play permanent STAYS in play (the
-  // printed card has no discard clause — combat parity: USE_SCHOOL_FETCH_EXPERT);
-  // the hand card is played to the discard like any hand ability. One offer per
-  // source (first matching), like one expert use.
+  // Basic X Magic card held in hand. Using it consumes that source: the permanent
+  // is discarded (combat parity: USE_SCHOOL_FETCH_EXPERT), the hand card is played
+  // to the discard. One offer per source (first matching), like one expert use.
   if (!flags.schoolFetchExpertUsed && crowns > 0) {
     const spellSchools = spell.spellSchools ?? [];
     const matchesSpell = (school: "air" | "earth" | "fire" | "water") =>
@@ -5691,8 +5691,9 @@ function mapSpellBoostOfferLabel(
     return `Discard ${name} expert (+${offer.value} more Power, school to +3) → ${tierHint}`;
   }
   const schoolName = offer.school.charAt(0).toUpperCase() + offer.school.slice(1);
-  // The hand card is played (discarded); the in-play permanent stays in play.
-  const source = offer.fromHandCardId ? " from hand (discards the card)" : " (permanent stays)";
+  // Both consume their source; the label SAYS so (a silent consumption reads as
+  // "my Basic Magic stopped working" — the original user bug report).
+  const source = offer.fromHandCardId ? " from hand (discards the card)" : " (discards the permanent)";
   return `Basic ${schoolName} Magic expert${source} (+${offer.value} Power) → ${tierHint}`;
 }
 
@@ -5814,11 +5815,13 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       player.hand.splice(handIndex, 1);
       player.discard.push(offer.fromHandCardId);
     } else {
-      // From the in-play fetch permanent: the permanent STAYS in play (the
-      // printed card has no discard clause — the crown below is the whole cost).
+      // From the in-play fetch permanent: consume (discard) the permanent — it
+      // lands in the owner's discard pile and recycles into their deck, so the
+      // BASIC fetch can return once the card is redrawn and replayed.
       if (!activeSchoolFetches(state, playerId).includes(offer.school)) {
         throw new Error("No Basic Magic of that school is in play.");
       }
+      discardPermanentFromPlay(state, playerId, `ability.basic_${offer.school}_magic` as CardId);
     }
     player.combatStats.expertUsesSpentThisRound += 1;
     appendEvent(state, {
@@ -5828,7 +5831,8 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       timing: "instant",
       mode: "expert",
       effectAmount: offer.value,
-      optionLabel: `+${offer.value} Power (${spell.name})`
+      // Announce the consumption — the fetch source never vanishes silently.
+      optionLabel: `+${offer.value} Power (${spell.name}) — ${offer.fromHandCardId ? "played from hand" : "the permanent is discarded"}`
     });
     nextPower = power + offer.value;
     nextFlags = { ...nextFlags, schoolFetchExpertUsed: true };
@@ -12343,20 +12347,87 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   }
 
   if (choice.context === "deck-pick") {
-    const deckId = choice.deckPick?.deckIds[action.optionIndex];
-    if (!deckId) {
+    const pick = choice.deckPick;
+    if (!pick) {
+      throw new Error("Pick one of the offered decks.");
+    }
+
+    // A Search commit: reveal that deck. An up-front pick already offered the
+    // discard/fetch alternatives HERE, so the Search goes straight to the
+    // reveal (never re-opening the old second "Search or draw from a School?"
+    // step — the user-reported bug); a legacy in-flight pick (no `upFront`)
+    // keeps the old two-step resolution.
+    if (action.optionIndex < pick.deckIds.length) {
+      const deckId = pick.deckIds[action.optionIndex];
+      if (!deckId) {
+        throw new Error("Pick one of the offered decks.");
+      }
+      state.pendingChoice = null;
+      state.phase = choice.returnPhase;
+      openSharedDeckSearch(
+        state,
+        action.playerId,
+        deckId,
+        pick.count ?? 2,
+        false,
+        Boolean(pick.allowRemove),
+        Boolean(pick.upFront)
+      );
+      return;
+    }
+
+    const player = state.players[action.playerId];
+    if (!player) {
+      throw new Error("That search cannot be resolved.");
+    }
+
+    // Take one of the face-up discard tops (offered up front, per deck).
+    const discardTops = pick.discardTops ?? [];
+    const discardIndex = action.optionIndex - pick.deckIds.length;
+    if (discardIndex < discardTops.length) {
+      const top = discardTops[discardIndex]!;
+      const deck = state.decks[top.deckId];
+      const currentTop = deck && deck.discardPile.length > 0 ? deck.discardPile[deck.discardPile.length - 1] : null;
+      if (!deck || currentTop !== top.cardId || !canAcquireSharedDeckCard(state, action.playerId, top.deckId, top.cardId)) {
+        throw new Error("That discard top is no longer available.");
+      }
+      state.pendingChoice = null;
+      state.phase = choice.returnPhase;
+      state.priorityPlayerId = null;
+      deck.discardPile.pop();
+      gainOwnedCard(state, action.playerId, top.cardId);
+      appendEvent(state, {
+        type: "DECK_SEARCH_RESOLVED",
+        playerId: action.playerId,
+        deckId: top.deckId,
+        choiceId: choice.id,
+        pick: "discard-top",
+        discardedCardIds: []
+      });
+      // The Pendant repeat re-runs the whole family Search action.
+      maybeOpenPendantRepeatOffer(state, action.playerId, "spells", pick.count, choice.returnPhase);
+      return;
+    }
+
+    // Basic X Magic: draw the first spell of the chosen School — scanning the
+    // family's decks in order (basic first, then expert), no reveal.
+    const school = (pick.fetchSchools ?? [])[discardIndex - discardTops.length];
+    if (!school) {
       throw new Error("Pick one of the offered decks.");
     }
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
-    openSharedDeckSearch(
-      state,
-      action.playerId,
-      deckId,
-      choice.deckPick?.count ?? 2,
-      false,
-      Boolean(choice.deckPick?.allowRemove)
-    );
+    state.priorityPlayerId = null;
+    performSchoolFetchFromDecks(state, action.playerId, pick.deckIds, school);
+    appendEvent(state, {
+      type: "DECK_SEARCH_RESOLVED",
+      playerId: action.playerId,
+      deckId: pick.deckIds[0]!,
+      choiceId: choice.id,
+      pick: "revealed",
+      discardedCardIds: []
+    });
+    maybeOpenPendantRepeatOffer(state, action.playerId, "spells", pick.count, choice.returnPhase);
     return;
   }
 
@@ -12464,7 +12535,15 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
 
     // Resume the Search (the override, if any, is consumed on the reveal).
-    openSharedDeckSearch(state, action.playerId, prompt.deckId, prompt.baseCount, true, Boolean(prompt.allowRemove));
+    openSharedDeckSearch(
+      state,
+      action.playerId,
+      prompt.deckId,
+      prompt.baseCount,
+      true,
+      Boolean(prompt.allowRemove),
+      Boolean(prompt.modeResolved)
+    );
     return;
   }
 
@@ -13716,16 +13795,66 @@ export function beginSharedDeckSearchNow(
 
   if (candidates.length > 1) {
     const choiceId = `choice_${nextEventNumber(state)}`;
+
+    // SPELLS family: this pick is the ONE up-front decision (user demand:
+    // "choose discard, search or school of magic" BEFORE any card is revealed
+    // — never "choose search, then the School-of-Magic draw appears after").
+    // The take-a-discard-top and Basic X Magic school-draw alternatives join
+    // the deck picks HERE; committing to a Search then reveals directly.
+    const spellsFamily = deckId === "spells";
+    const discardTops = spellsFamily
+      ? candidates.flatMap((candidateId) => {
+          const deck = state.decks[candidateId];
+          const top = deck && deck.discardPile.length > 0 ? deck.discardPile[deck.discardPile.length - 1] : null;
+          return top && canAcquireSharedDeckCard(state, playerId, candidateId, top)
+            ? [{ deckId: candidateId, cardId: top }]
+            : [];
+        })
+      : [];
+    const fetchSchools = spellsFamily ? activeSchoolFetches(state, playerId) : [];
+    const upFront = discardTops.length > 0 || fetchSchools.length > 0;
+
+    // Label the Search count HONESTLY (Astrologers widen + a standing Scouting
+    // override), mirroring the openSharedDeckSearch mode labels.
+    const spellWiden = getActiveAstrologersCard(state)?.effect;
+    const widenedCount =
+      spellsFamily && spellWiden?.type === "SPELL_SEARCH_WIDEN" ? Math.max(count, spellWiden.count) : count;
+    const widen = searchCountOverrideLabel(state, playerId, widenedCount);
+    const effectiveCount = widen ? widen.count : widenedCount;
+
+    const options: { label: string }[] = [
+      ...candidates.map((candidateId) => ({
+        label: `${upFront ? `Search (${effectiveCount}) ` : ""}${deckDisplayName(state, candidateId)} (${(state.decks[candidateId]?.drawPile.length ?? 0) + (state.decks[candidateId]?.discardPile.length ?? 0)} cards)`
+      })),
+      ...discardTops.map((top) => ({
+        label: `Take the top discard (${cardLibrary[top.cardId]?.name ?? top.cardId}) — ${deckDisplayName(state, top.deckId)}`
+      })),
+      ...fetchSchools.map((school) => {
+        const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
+        const dest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
+        return { label: `Draw the first ${schoolName} Magic spell — take it into ${dest}` };
+      })
+    ];
+
     state.pendingChoice = {
       id: choiceId,
       type: "OPTION_CHOICE",
       playerId,
-      prompt: `Search which deck? (Search ${count})`,
-      options: candidates.map((candidateId) => ({
-        label: `${deckDisplayName(state, candidateId)} (${(state.decks[candidateId]?.drawPile.length ?? 0) + (state.decks[candidateId]?.discardPile.length ?? 0)} cards)`
-      })),
+      prompt: upFront
+        ? fetchSchools.length > 0
+          ? `Search (${effectiveCount}) the Spell deck, take a top discard, or draw from your School of Magic?`
+          : `Search (${effectiveCount}) the Spell deck, or take a top discard?`
+        : `Search which deck? (Search ${count})`,
+      options,
       context: "deck-pick",
-      deckPick: { deckIds: candidates, count, ...(allowRemove ? { allowRemove: true } : {}) },
+      deckPick: {
+        deckIds: candidates,
+        count,
+        ...(allowRemove ? { allowRemove: true } : {}),
+        ...(upFront ? { upFront: true } : {}),
+        ...(discardTops.length > 0 ? { discardTops } : {}),
+        ...(fetchSchools.length > 0 ? { fetchSchools } : {})
+      },
       returnPhase: state.combat ? "combat" : "player-turn"
     };
     state.phase = "choice";
@@ -13794,7 +13923,12 @@ export function openSharedDeckSearch(
   deckId: string,
   baseCount: number,
   scoutingResolved = false,
-  allowRemove = false
+  allowRemove = false,
+  // The up-front discard/fetch alternatives were ALREADY offered (the one-step
+  // spells deck-pick): go straight to the reveal — never re-open the mode
+  // choice AFTER the player committed to searching (the user-reported bug:
+  // "choose search spell, then the draw school of magic appears with that").
+  modeResolved = false
 ): void {
   const deck = state.decks[deckId];
   if (!deck) {
@@ -13834,9 +13968,16 @@ export function openSharedDeckSearch(
   if (!scoutingResolved) {
     const offer = scoutingPromptFor(state, playerId, baseCount);
     if (offer) {
-      openScoutingPrompt(state, playerId, deckId, baseCount, offer, allowRemove);
+      openScoutingPrompt(state, playerId, deckId, baseCount, offer, allowRemove, modeResolved);
       return;
     }
+  }
+
+  // The one-step spells deck-pick already resolved the discard/fetch
+  // alternatives up front — reveal directly.
+  if (modeResolved) {
+    revealSharedDeckSearch(state, playerId, deckId, baseCount, allowRemove);
+    return;
   }
 
   // Basic X Magic: "Instead of Searching the Spell deck, find the first <School>
@@ -13909,32 +14050,63 @@ export function openSharedDeckSearch(
  * matching spell. No cards are revealed — this replaces the Search entirely.
  */
 function performSchoolFetch(state: GameState, playerId: PlayerId, deckId: string, school: SpellSchool): CardId | null {
-  const deck = state.decks[deckId];
+  return performSchoolFetchFromDecks(state, playerId, [deckId], school);
+}
+
+/**
+ * The one-step spells deck-pick form of the fetch: scan each candidate Spell
+ * deck IN ORDER (basic first, then expert) until a takeable matching spell is
+ * found; every scanned deck reshuffles (looking through it is the scan). One
+ * feed note when NOTHING matched anywhere — a silent no-op reads as "the basic
+ * effect did not work" (the user bug report).
+ */
+function performSchoolFetchFromDecks(
+  state: GameState,
+  playerId: PlayerId,
+  deckIds: string[],
+  school: SpellSchool
+): CardId | null {
   const player = state.players[playerId];
-  if (!deck || !player) {
+  if (!player) {
     return null;
   }
 
   let fetchedCardId: CardId | null = null;
-  for (let index = deck.drawPile.length - 1; index >= 0; index -= 1) {
-    const candidateId = deck.drawPile[index];
-    // Skip any spell of the school the hero cannot take (already owns it, or it
-    // is starting-only) — the fetch redraws to the next matching spell.
-    if (!canAcquireSharedDeckCard(state, playerId, deckId, candidateId)) {
+  for (const deckId of deckIds) {
+    const deck = state.decks[deckId];
+    if (!deck) {
       continue;
     }
-    const schools = cardLibrary[candidateId]?.spellSchools ?? [];
-    if (schools.includes(school) || schools.includes("any")) {
-      fetchedCardId = candidateId;
-      deck.drawPile.splice(index, 1);
+    for (let index = deck.drawPile.length - 1; index >= 0; index -= 1) {
+      const candidateId = deck.drawPile[index];
+      // Skip any spell of the school the hero cannot take (already owns it, or it
+      // is starting-only) — the fetch redraws to the next matching spell.
+      if (!canAcquireSharedDeckCard(state, playerId, deckId, candidateId)) {
+        continue;
+      }
+      const schools = cardLibrary[candidateId]?.spellSchools ?? [];
+      if (schools.includes(school) || schools.includes("any")) {
+        fetchedCardId = candidateId;
+        deck.drawPile.splice(index, 1);
+        break;
+      }
+    }
+    deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
+    if (fetchedCardId) {
       break;
     }
   }
 
   if (fetchedCardId) {
     gainOwnedCard(state, playerId, fetchedCardId);
+  } else {
+    const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: `${state.players[playerId]?.name ?? playerId} found no takeable ${schoolName} Magic spell — the Spell deck was reshuffled.`
+    });
   }
-  deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
   return fetchedCardId;
 }
 
@@ -14031,7 +14203,8 @@ function openScoutingPrompt(
   deckId: string,
   baseCount: number,
   offer: { offerBasic: boolean; offerExpert: boolean },
-  allowRemove = false
+  allowRemove = false,
+  modeResolved = false
 ): void {
   const options: { label: string }[] = [{ label: `Search (${baseCount}) — don't use Scouting` }];
   if (offer.offerBasic) {
@@ -14052,7 +14225,8 @@ function openScoutingPrompt(
       baseCount,
       offerBasic: offer.offerBasic,
       offerExpert: offer.offerExpert,
-      ...(allowRemove ? { allowRemove: true } : {})
+      ...(allowRemove ? { allowRemove: true } : {}),
+      ...(modeResolved ? { modeResolved: true } : {})
     },
     returnPhase: state.combat ? "combat" : "player-turn"
   };
