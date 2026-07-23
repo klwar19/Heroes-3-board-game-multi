@@ -397,6 +397,7 @@ import {
   getActivationSpellPowerBoost,
   getAfterRetaliationAttackAbility,
   getAttackBonusAfterMove,
+  getAttackBonusWhenAllyNamePresent,
   getAttackBonusIfFlipped,
   getAttackBonusOnAttackDie,
   getAttackBonusVsDefenderName,
@@ -3613,6 +3614,7 @@ function getAttackStackDetails(
   // adjacent to RIGHT NOW (live positional read, the commanderLiveAttackBonus
   // precedent). Innate ability bonus — added unclamped; never on a retaliation.
   const fleetFormationAttackBonus = isRetaliation ? 0 : getFleetFormationAuraBonus(combat, attacker);
+  const bestFriendsAttackBonus = getAttackBonusWhenAllyNamePresent(combat, attacker);
   const astrologersRoundAttackBonus = state.round % 2 === 0 ? getAstrologersRoundFrenzy(attacker) : 0;
 
   // Crag Hack (Astrologers): the round's first combat grants every GROUND-type
@@ -3663,6 +3665,7 @@ function getAttackStackDetails(
       stackedAttackBonus +
       ownAttackFlatBonus +
       fleetFormationAttackBonus +
+      bestFriendsAttackBonus +
       astrologersRoundAttackBonus +
       // Forced Battle Events (Anime mod, §3.12): a fought field's environment-stat
       // script (e.g. Spirit Mist "ranged −1 Attack"). An environmental modifier,
@@ -4440,7 +4443,7 @@ function maybeDeclareDoubleAttack(
 function getAfterRetaliationAttack(
   attacker: CombatUnitState,
   defender: CombatUnitState
-): { abilityId: string; abilityName: string; targetUnitId: UnitId } | undefined {
+): { abilityId: string; abilityName: string; targetUnitId: UnitId; baseAttack?: number } | undefined {
   if ((attacker.attacksThisActivation ?? 0) !== 1 || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
     return undefined;
   }
@@ -5899,7 +5902,11 @@ function declareAfterRetaliationAbilityAttack(state: GameState, cards: CardLibra
     state,
     attacker,
     target.id,
-    { abilityId: followUp.abilityId, abilityName: followUp.abilityName, baseAttack: attacker.attack },
+    {
+      abilityId: followUp.abilityId,
+      abilityName: followUp.abilityName,
+      baseAttack: followUp.baseAttack ?? attacker.attack
+    },
     cards
   );
   return true;

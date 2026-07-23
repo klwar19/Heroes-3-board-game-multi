@@ -184,14 +184,35 @@ export function getSecondAttackAbility(
 /** Wolf Raiders: a same-target second attack after retaliation has resolved. */
 export function getAfterRetaliationAttackAbility(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string } | null {
+): { abilityId: string; abilityName: string; baseAttack?: number } | null {
   for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION")) {
     if (ability.effect?.type === "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION") {
-      return { abilityId: ability.id, abilityName: ability.name };
+      return { abilityId: ability.id, abilityName: ability.name, baseAttack: ability.effect.baseAttack };
     }
   }
 
   return null;
+}
+
+/** Azur Lane Best Friends: a live friendly-name check across the battlefield. */
+export function getAttackBonusWhenAllyNamePresent(combat: CombatState, attacker: CombatUnitState): number {
+  return getAbilitiesWithEffect(attacker, "ALLY_NAME_ATTACK_BONUS").reduce(
+    (total, ability) => {
+      const effect = ability.effect;
+      if (!effect || effect.type !== "ALLY_NAME_ATTACK_BONUS") {
+        return total;
+      }
+      const allyPresent = Object.values(combat.units).some(
+        (candidate) =>
+          candidate.id !== attacker.id &&
+          candidate.controllerId === attacker.controllerId &&
+          isAlive(candidate) &&
+          candidate.name === effect.allyName
+      );
+      return total + (allyPresent ? effect.amount : 0);
+    },
+    0
+  );
 }
 
 export type AttackDieDamageFollowUp = {
