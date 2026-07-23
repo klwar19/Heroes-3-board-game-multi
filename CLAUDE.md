@@ -3585,8 +3585,11 @@ commander/progression activity.
 Leading with what does NOT run / deliberate limits:
 - **The combat sandbox never offers the anime factions** (its
   `isPlayableFaction` call passes no anime options — conservative).
-- **Unit voices**: Fuyuki still thematically reuses complete H3 voice sets;
-  Azure Breeze, Hidden Leaf and Heavenly Demon now ship a dedicated 109-clip
+- **Unit voices**: Fuyuki now ships 37 normalized Fate/unlimited codes clips
+  (five core actions for all seven lines, plus Archer/Caster shoot lines;
+  `public/sounds/fuyuki/README.md` documents the exact source map), with its
+  former H3 assignments retained only as missing-asset fallbacks. Azure Breeze,
+  Hidden Leaf and Heavenly Demon ship a dedicated 109-clip
   curated pack (`docs/anime-town-audio.md`) wired to
   `units/<town>-<unit>-<action>` keys — every action per unit, shoot for the
   four ranged units, pinned by exact-key tests in `unit-sounds.test.ts`. Azur
