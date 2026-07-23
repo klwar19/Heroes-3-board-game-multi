@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { getAttackRollMode } from "./legal-actions";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 /**
@@ -142,12 +143,20 @@ describe("PvP — First Aid Tent (heal 1 once per round)", () => {
 // ===========================================================================
 
 describe("PvP — Ammo Cart (+2 ranged initiative, penalty waiver)", () => {
-  it("playing it raises the owner's ranged unit initiative by 2 and seeds the waiver", () => {
+  it("playing it raises the owner's ranged unit initiative by 2 and waives the ranged penalty", () => {
     let state = pvpCombat("pvp-ammo-cart");
     state.players.p1.hand = ["war_machine.ammo_cart"];
     const ranged = state.combat!.units.unit_p1_marksmen;
     expect(ranged.type).toBe("ranged");
     const initiativeBefore = ranged.initiative;
+
+    // The Marksmen sit at position 1; put an enemy at the adjacent 2 so the shot
+    // carries the ranged "close combat" penalty. OBSERVABLE CONTROL — before the
+    // cart is played, that adjacent shot rolls at disadvantage.
+    ranged.position = 1;
+    const enemy = state.combat!.units.unit_p2_skeletons;
+    enemy.position = 2;
+    expect(getAttackRollMode(ranged, enemy, state)).toBe("disadvantage");
 
     const play = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "war_machine.ammo_cart"
@@ -164,6 +173,11 @@ describe("PvP — Ammo Cart (+2 ranged initiative, penalty waiver)", () => {
         effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_ALL_PENALTIES")
     );
     expect(waiver, "the ranged penalty waiver should be in play").toBeTruthy();
+    // OBSERVABLE OUTCOME: with the cart in play the SAME adjacent shot now rolls
+    // normally — the penalty is waived end-to-end through the public play path.
+    expect(
+      getAttackRollMode(state.combat!.units.unit_p1_marksmen, state.combat!.units.unit_p2_skeletons, state)
+    ).toBe("normal");
   });
 });
 
