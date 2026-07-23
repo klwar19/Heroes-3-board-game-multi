@@ -5439,7 +5439,12 @@ export function PromptTray({
             optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
               ? chooseOneOptions[optionIndex]
               : undefined;
-          return { legal, art: option ? teleportOptionArt(state, teleport, option) : null };
+          // The trailing "Stay here" option (2026-07-24 rule) has empty steps —
+          // it is a DECLINE, not a destination, so it carries no token art (a
+          // plain ⇄ fallback card), keeping the destination cards distinct.
+          const innerType = option?.steps[0]?.type;
+          const isTravel = innerType === "TELEPORT_HERO" || innerType === "TOKEN_TELEPORT_REVEAL";
+          return { legal, art: option && isTravel ? teleportOptionArt(state, teleport, option) : null };
         })
       : null;
 

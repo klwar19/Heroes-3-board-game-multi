@@ -93,6 +93,17 @@ function diceRolls(state: GameState, dice: "treasure" | "resource"): number {
 const lastNote = (state: GameState): string =>
   [...state.eventLog].reverse().find((e) => e.type === "EVENT_NOTE")?.message ?? "";
 
+/**
+ * 2026-07-24 rule: an Obelisk-as-Monolith teleport first offers travel-vs-stay.
+ * Commit to travel by resolving option 0 (the "Travel …" option). A no-op when
+ * no offer is open (an inert lone Obelisk).
+ */
+function commitTravel(state: GameState, playerId: PlayerId = "p1"): void {
+  if (state.adventure!.pendingVisit?.steps[0]?.type === "CHOOSE_ONE") {
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 });
+  }
+}
+
 /** Resolve any "choose a die result" prompts inside a pending visit. */
 function driveVisit(state: GameState, playerId: PlayerId): void {
   let guard = 0;
@@ -140,6 +151,7 @@ describe("Obelisk role — monolith", () => {
     const armyBefore = state.players.p1.army.length;
 
     beginFieldVisit(state, hero.id, O1, false);
+    commitTravel(state);
 
     // The observable outcome: the hero stands on the OTHER Obelisk…
     expect(hero.spaceId).toBe(O2);
@@ -161,6 +173,7 @@ describe("Obelisk role — monolith", () => {
     const hero = parkHero(state, "p1", O1);
 
     beginFieldVisit(state, hero.id, O1, false);
+    commitTravel(state);
 
     // Entering the Obelisk teleports to the Monolith token — shared network.
     expect(hero.spaceId).toBe(M1);
@@ -185,6 +198,7 @@ describe("Obelisk role — monolith", () => {
     injectField(state, O2, "obelisk");
     const hero = parkHero(state, "p1", O1);
     beginFieldVisit(state, hero.id, O1, false);
+    commitTravel(state);
     expect(hero.spaceId).toBe(O2);
 
     // Standing on the destination Obelisk, a Revisit is offered and travels back.
@@ -195,6 +209,7 @@ describe("Obelisk role — monolith", () => {
 
     const before = hero.movementPoints;
     revisitField(state, { type: "REVISIT_FIELD", playerId: "p1", heroId: hero.id });
+    commitTravel(state);
     expect(hero.spaceId).toBe(O1);
     expect(hero.movementPoints).toBe(before - 1);
   });
@@ -523,11 +538,12 @@ describe("Obelisk role — Holy-Grail invariant (dig progress is role-independen
     const hero = getMainHero(state, "p1")!;
 
     parkHero(state, "p1", O1);
-    beginFieldVisit(state, hero.id, O1, false); // credit O1, then teleport to O2
+    beginFieldVisit(state, hero.id, O1, false); // credit O1, then offer the travel
     expect(grailObelisksVisitedCount(state, "p1")).toBe(1);
+    commitTravel(state); // travel to O2
     expect(hero.spaceId).toBe(O2);
 
-    beginFieldVisit(state, hero.id, O2, false); // now on O2 — credit O2, teleport away
+    beginFieldVisit(state, hero.id, O2, false); // now on O2 — credit O2, offer travel
     expect(grailObelisksVisitedCount(state, "p1")).toBe(GRAIL_OBELISKS_REQUIRED);
     expect(canDigGrail(state, "p1")).toBe(true);
   });

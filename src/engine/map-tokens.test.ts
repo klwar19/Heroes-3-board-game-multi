@@ -12,7 +12,7 @@ import {
   type MapTileState
 } from "./index";
 import { ALL_TILE_CONTENT, allTileDefinitions } from "@/data/map/tiles";
-import { carveMapTokenField, instantiateTile, placeMapToken } from "./adventure";
+import { carveMapTokenField, createSecondaryHero, instantiateTile, placeMapToken } from "./adventure";
 import type { AdventureState } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -123,13 +123,24 @@ function moveHero(state: GameState, to: MapSpaceId): GameState {
   return applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to });
 }
 
+/**
+ * 2026-07-24 user rule: entering a teleporter first offers "travel vs stay".
+ * Commit to travel by choosing option 0 (the "Travel …" / first-destination
+ * option, always listed before "Stay here").
+ */
+function commitTravel(state: GameState, playerId = "p1"): GameState {
+  const step = adv(state).pendingVisit?.steps[0];
+  expect(step?.type, "expected a travel-vs-stay offer").toBe("CHOOSE_ONE");
+  return applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 });
+}
+
 const lastNote = (state: GameState): string =>
   [...state.eventLog].reverse().find((event) => event.type === "EVENT_NOTE")?.message ?? "";
 
 // --- Monolith travel --------------------------------------------------------
 
 describe("Monolith travel", () => {
-  it("entering one of two Monoliths teleports the hero to the other", () => {
+  it("entering one of two Monoliths offers travel-vs-stay, then teleports to the other", () => {
     let state = makeGame("monolith-pair");
     const [afterA, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
     const [afterB, tileB] = placeEmptyTile(afterA, "F3", { row: 30, col: 18 });
@@ -140,8 +151,19 @@ describe("Monolith travel", () => {
 
     state = moveHero(state, entry);
 
-    // The observable outcome: the hero stands on the OTHER Monolith, having
-    // paid only the 1 MP step onto the entry token.
+    // 2026-07-24 rule: even an automatic 2-Monolith travel first offers a choice —
+    // a [Travel, Stay here] picker — instead of teleporting outright. The hero has
+    // NOT moved yet; it still stands on the entry token.
+    const offer = adv(state).pendingVisit?.steps[0];
+    expect(offer?.type).toBe("CHOOSE_ONE");
+    if (offer?.type !== "CHOOSE_ONE") throw new Error("no travel-vs-stay offer");
+    expect(offer.options).toHaveLength(2);
+    expect(offer.options[offer.options.length - 1].label).toContain("Stay");
+    expect(state.heroes.hero_p1.spaceId).toBe(entry);
+
+    // Committing to travel lands the hero on the OTHER Monolith, having paid only
+    // the 1 MP step onto the entry token.
+    state = commitTravel(state);
     expect(state.heroes.hero_p1.spaceId).toBe(exit);
     expect(state.heroes.hero_p1.movementPoints).toBe(2);
     // Arrival must NOT re-trigger the destination token (no ping-pong): the
@@ -183,14 +205,16 @@ describe("Monolith travel", () => {
 
     state = moveHero(state, entry);
 
-    // A destination choice is open (a CHOOSE_ONE visit step owned by p1).
+    // A destination choice is open (a CHOOSE_ONE visit step owned by p1): the two
+    // other Monoliths PLUS a "Stay here" option (2026-07-24 rule).
     const step = adv(state).pendingVisit?.steps[0];
     expect(step?.type).toBe("CHOOSE_ONE");
     if (step?.type !== "CHOOSE_ONE") {
       throw new Error("no destination choice");
     }
-    expect(step.options).toHaveLength(2);
-    // Picking the second option lands the hero on that exact Monolith.
+    expect(step.options).toHaveLength(3);
+    expect(step.options[step.options.length - 1].label).toContain("Stay");
+    // Picking the second destination lands the hero on that exact Monolith.
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 1 });
     expect([exitB, exitC]).toContain(state.heroes.hero_p1.spaceId);
     // Option order mirrors the destination list; the second is tile C's exit.
@@ -218,14 +242,16 @@ describe("Monolith travel", () => {
     // The picker is tagged so the board can offer each destination as a glowing,
     // clickable exit hex; dropping the tag fails here (mutation control).
     expect(step.teleport).toEqual({ kind: "monolith" });
-    // Every option's first step teleports the hero to a REAL destination hex the
-    // board can highlight — exactly the two other Monoliths, no raw ids invented.
-    const optionHexes = step.options.map((option) =>
-      option.steps[0]?.type === "TELEPORT_HERO" ? option.steps[0].spaceId : null
-    );
+    // Every travel option's first step teleports the hero to a REAL destination
+    // hex the board can highlight — exactly the two other Monoliths, no raw ids
+    // invented. The trailing "Stay here" option carries no destination hex.
+    const optionHexes = step.options
+      .map((option) => (option.steps[0]?.type === "TELEPORT_HERO" ? option.steps[0].spaceId : null))
+      .filter((hex): hex is MapSpaceId => hex !== null);
     expect(optionHexes).toHaveLength(2);
     expect(optionHexes).toContain(exitB);
     expect(optionHexes).toContain(exitC);
+    expect(step.options[step.options.length - 1].label).toContain("Stay");
 
     // Masking CONTROL: the OTHER seat's view carries NO visit steps at all — so
     // neither the teleport tag nor any destination hex leaks to a non-traveller.
@@ -245,32 +271,62 @@ describe("Monolith travel", () => {
     const exit = carveToken(state, tileB, 4, "monolith");
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
     state = moveHero(state, entry);
+    state = commitTravel(state);
     expect(state.heroes.hero_p1.spaceId).toBe(exit);
     const movementBefore = state.heroes.hero_p1.movementPoints;
 
+    // Revisit (1 MP) re-opens the travel offer; committing travels again.
     state = applyOk(state, { type: "REVISIT_FIELD", playerId: "p1", heroId: "hero_p1" });
+    state = commitTravel(state);
 
     // The revisit re-runs the travel: back to the first Monolith, 1 MP spent.
     expect(state.heroes.hero_p1.spaceId).toBe(entry);
     expect(state.heroes.hero_p1.movementPoints).toBe(movementBefore - 1);
   });
 
-  it("a Monolith occupied by a hero is not a travel destination", () => {
-    let state = makeGame("monolith-occupied");
+  it("a Monolith occupied by the traveller's OWN hero is NOT a destination (2026-07-24 CONTROL)", () => {
+    let state = makeGame("monolith-own-occupied");
     const [afterA, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
     const [afterB, tileB] = placeEmptyTile(afterA, "F3", { row: 30, col: 18 });
     state = afterB;
     const entry = carveToken(state, tileA, 1, "monolith");
     const exit = carveToken(state, tileB, 4, "monolith");
-    // The OTHER player's hero squats on the destination.
+    // The traveller's OWN secondary hero squats on the only other Monolith.
+    createSecondaryHero(state, "p1", exit);
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+
+    state = moveHero(state, entry);
+
+    // Own-hero destinations are skipped: no travel is possible, the hero stays,
+    // and no travel-vs-stay offer opens (nowhere to go — inert note).
+    expect(state.heroes.hero_p1.spaceId).toBe(entry);
+    expect(adv(state).pendingVisit).toBeNull();
+    expect(lastNote(state)).toContain("friendly hero");
+  });
+
+  it("a Monolith occupied by an ENEMY hero IS offered, and travelling starts a PvP battle (2026-07-24 rule)", () => {
+    let state = makeGame("monolith-enemy-pvp");
+    const [afterA, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [afterB, tileB] = placeEmptyTile(afterA, "F3", { row: 30, col: 18 });
+    state = afterB;
+    const entry = carveToken(state, tileA, 1, "monolith");
+    const exit = carveToken(state, tileB, 4, "monolith");
+    // Ensure the defender has an army body so the PvP combat opens a real fight.
     state.heroes.hero_p2.spaceId = exit;
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
 
-    // No destination is reachable: the hero stays (and the note explains).
-    expect(state.heroes.hero_p1.spaceId).toBe(entry);
-    expect(lastNote(state)).toContain("occupied");
+    // The enemy-occupied destination IS offered (labelled a battle) alongside Stay.
+    const offer = adv(state).pendingVisit?.steps[0];
+    expect(offer?.type).toBe("CHOOSE_ONE");
+    if (offer?.type !== "CHOOSE_ONE") throw new Error("no travel-vs-stay offer");
+    expect(offer.options[0].label.toLowerCase()).toContain("enemy hero");
+
+    // Committing to travel teleports onto the enemy hex and starts a PvP battle.
+    state = commitTravel(state);
+    expect(state.heroes.hero_p1.spaceId).toBe(exit);
+    expect(state.combat?.context.kind).toBe("player");
   });
 });
 
@@ -298,6 +354,9 @@ describe("Whirlpool travel", () => {
     const entryHex = Object.values(adv(state).fields).find((field) => field.location === "whirlpool" && field.whirlpoolNumber === 1)!.spaceId;
 
     state = moveHero(state, entryHex);
+    // 2026-07-24 rule: the Whirlpool first offers travel-vs-stay; committing runs
+    // the existing die/number + unit-toll mechanics unchanged.
+    state = commitTravel(state);
 
     // The hero surfaced at the other Whirlpool…
     expect(state.heroes.hero_p1.spaceId).toBe(exit);
@@ -326,6 +385,7 @@ describe("Whirlpool travel", () => {
     const entryHex = Object.values(adv(state).fields).find((field) => field.location === "whirlpool" && field.whirlpoolNumber === 1)!.spaceId;
 
     state = moveHero(state, entryHex);
+    state = commitTravel(state);
 
     expect(state.players.p1.army).toHaveLength(0);
     expect(state.decks["neutral-bronze"]?.discardPile.length ?? 0).toBe(bronzeDiscardBefore + 1);
@@ -343,6 +403,7 @@ describe("Whirlpool travel", () => {
     const armyBefore = state.players.p1.army.length;
 
     state = moveHero(state, entry);
+    state = commitTravel(state);
 
     expect(adv(state).pendingVisit).toBeNull();
     expect(state.players.p1.army).toHaveLength(armyBefore);
@@ -360,12 +421,15 @@ describe("Whirlpool travel", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
+    // 2026-07-24 rule: commit to travel first; the die then decides the exit.
+    state = commitTravel(state);
     // Resolve the unit toll if it opened as a pick.
     if (adv(state).pendingVisit?.steps[0]?.type === "CHOOSE_ONE") {
       state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     }
 
-    // The die decided — no destination choice was ever offered to the player…
+    // The die decided which exit (no destination pick was offered — only the
+    // travel-vs-stay gate)…
     expect(state.eventLog.some((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "attack")).toBe(true);
     const rollEvent = [...state.eventLog].reverse().find((event) => event.type === "ADVENTURE_DICE_ROLLED");
     const finalRoll = rollEvent?.type === "ADVENTURE_DICE_ROLLED" ? rollEvent.attackRolls?.at(-1) : undefined;
@@ -488,6 +552,8 @@ describe("token placement on discovery", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
+    // 2026-07-24 rule: commit to travel (over "Stay here") to start the reveal.
+    state = commitTravel(state);
 
     // The face-down tile flipped for free, rotation handed to the TRAVELLER.
     expect(adv(state).tiles[hidden.id].faceDown).toBe(false);
@@ -516,6 +582,7 @@ describe("token placement on discovery", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
+    state = commitTravel(state);
 
     // Any keep/reroll offers resolve by KEEPING (option 0) until the rotation
     // choice opens; the flip may retarget the same instance to another def.
@@ -573,6 +640,7 @@ describe("token placement on discovery", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
+    state = commitTravel(state);
 
     // The face-down NEAR tile flipped, rotation handed to the traveller, the
     // in-flight travel parked…
@@ -637,6 +705,7 @@ describe("token placement on discovery", () => {
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
+    state = commitTravel(state);
 
     // The travel STARTED (tile flipped) — the pending partner counted.
     expect(adv(state).tiles[hidden.id].faceDown).toBe(false);

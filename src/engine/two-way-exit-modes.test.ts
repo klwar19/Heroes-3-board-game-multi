@@ -107,6 +107,14 @@ function moveHero(state: GameState, to: MapSpaceId): GameState {
   return applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to });
 }
 
+/** 2026-07-24 rule: commit to travel over "Stay here" (option 0 of the offer). */
+function commitTravel(state: GameState, playerId = "p1"): GameState {
+  if (adv(state).pendingVisit?.steps[0]?.type !== "CHOOSE_ONE") {
+    return state;
+  }
+  return applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 });
+}
+
 describe("face-down reveal keeps a designed token's two-way exit mode (placeMapToken parity)", () => {
   it("a pending GATE token's exitMode + alwaysPickable land on the carved field (CONTROL: a plain pending gate carves neither)", () => {
     let state = makeGame("exit-mode-facedown-gate");
@@ -171,6 +179,8 @@ describe("mix-mode always-pickable covers PENDING (face-down) destinations", () 
     putHero(state, getTileFootprintSpaceIds(tileA)[0]);
 
     state = moveHero(state, entry);
+    // 2026-07-24 rule: mix defers its roll behind travel-vs-stay; commit to travel.
+    state = commitTravel(state);
 
     const step = adv(state).pendingVisit?.steps[0];
     expect(step?.type).toBe("CHOOSE_ONE");
@@ -196,6 +206,9 @@ describe("mix-mode always-pickable covers PENDING (face-down) destinations", () 
     adv(control).tiles[controlHidden.id].pendingToken = { kind: "gate", pair: 1 };
     putHero(control, getTileFootprintSpaceIds(controlA)[0]);
     control = moveHero(control, controlEntry);
+    // The travel-vs-stay wrapper opens first (deferred roll); committing then
+    // resolves the DEGENERATE random (no always-pickable) with no mix picker.
+    control = commitTravel(control);
     const controlStep = adv(control).pendingVisit?.steps[0];
     expect(controlStep?.type === "CHOOSE_ONE").toBe(false);
   });

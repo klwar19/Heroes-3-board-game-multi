@@ -7749,6 +7749,16 @@ export type CombatContext =
        * field visit is replaced by the floor ladder reward.
        */
       dungeonFloor?: number;
+      /**
+       * Teleport ARRIVAL guard fight (2026-07-24 user rule): the hero teleported
+       * onto a guarded destination (Monolith / Teleport Gate / Whirlpool /
+       * obelisk-as-monolith network exit) and must fight the guard instead of the
+       * old auto-sweep. Set with `difficulty: 0` + `unlimitedRounds` (bank-style —
+       * no Quick Combat, no XP). On the WIN the guard is cleared but the teleport
+       * travel is NOT re-opened (arrival never re-triggers — no ping-pong); on a
+       * retreat the hero bounces back to the origin teleporter (lastVisitedField).
+       */
+      teleportArrival?: boolean;
     }
   | {
       kind: "player";
@@ -9405,6 +9415,12 @@ export type VisitStep =
        */
       type: "TOKEN_TELEPORT";
       token: "monolith" | "whirlpool";
+      /**
+       * The traveller already chose "Travel" over "Stay here" (2026-07-24 rule):
+       * skip the travel-vs-stay wrapper and run the roll / mix mechanics directly
+       * (so a random/mix roll resolves only when travel is actually chosen).
+       */
+      committed?: boolean;
     }
   | {
       /**
@@ -9416,6 +9432,8 @@ export type VisitStep =
        * the tile first) — a deliberate limit, unlike the Monolith network.
        */
       type: "ONEWAY_TELEPORT";
+      /** The traveller chose "Travel" over "Stay here" — run the exit resolution. */
+      committed?: boolean;
     }
   | {
       /**
@@ -9436,6 +9454,8 @@ export type VisitStep =
        * note. The pair is read from the origin field's {@link MapFieldState.gatePair}.
        */
       type: "GATE_TELEPORT";
+      /** The traveller chose "Travel" over "Stay here" — run the gate resolution. */
+      committed?: boolean;
     }
   | {
       /**
@@ -9473,15 +9493,25 @@ export type VisitStep =
       spaceId: MapSpaceId;
       /** Whether arriving resolves the field like a normal visit. */
       visit?: boolean;
-      /**
-       * Teleport-NETWORK travel only (Monolith / colored Gate steps): a designed
-       * guard still standing on the destination is swept aside on arrival — an
-       * automatic win, no fight, no experience. Never set by Town Portal /
-       * Logistics placements.
-       */
-      sweepGuard?: boolean;
       /** Town Portal Power 2/4: movement granted to the hero on arrival. */
       movementBonus?: number;
+    }
+  | {
+      /**
+       * Teleport-NETWORK arrival resolution (2026-07-24 user rule): the hero has
+       * just teleported (Monolith / Teleport Gate / Whirlpool / obelisk-as-
+       * monolith / one-way exit) onto `spaceId`. Runs AFTER any Whirlpool unit
+       * toll and resolves the destination like a normal arrival — an enemy hero
+       * there starts a PvP battle, a live designed guard is FOUGHT (bank-style, no
+       * auto-sweep), and an unguarded/unoccupied exit simply leaves the hero
+       * standing (arrival never re-triggers the travel). `originSpaceId` is the
+       * teleporter the hero left, so a retreat from the arrival fight bounces back
+       * there.
+       */
+      type: "RESOLVE_TELEPORT_ARRIVAL";
+      heroId: HeroId;
+      spaceId: MapSpaceId;
+      originSpaceId: MapSpaceId;
     }
   | {
       /**
