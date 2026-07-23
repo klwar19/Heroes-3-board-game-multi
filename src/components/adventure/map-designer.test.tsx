@@ -985,6 +985,81 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(latest[1]?.tileDefId, "still no exact pin in a 2-tile set").toBeUndefined();
   });
 
+  it("One of works FACE-DOWN too: an Always-visible flip toggles faceDown while KEEPING the list; the board reads secret", () => {
+    const nearIds = Object.keys(allTileDefinitions).filter((id) => allTileDefinitions[id].group === "near");
+    const choices = nearIds.slice(0, 2);
+
+    // A FACE-UP one-of slot: classified as one-of, NOT secret on the board, and
+    // the flip reads Always-visible ON.
+    const onChange = vi.fn();
+    const container = renderDesigner(
+      [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: spots[0].row, col: spots[0].col, group: "near", faceDown: false, oneOfTileDefIds: choices }
+      ],
+      onChange
+    );
+    expect(container.querySelector(".designerFlowerOutline.secret"), "a face-UP one-of is NOT secret").toBeNull();
+    const popover = openTilePopover(container, 1);
+    expect(popover.querySelector(".popoverModeCard.active")?.textContent).toMatch(/One of/i);
+    const flip = within(popover as HTMLElement).getByTestId("one-of-always-visible");
+    expect(flip.getAttribute("aria-pressed"), "face-up ⇒ Always visible ON").toBe("true");
+    fireEvent.click(flip);
+    const afterHide = onChange.mock.calls.at(-1)![0] as CustomMapTilePlan[];
+    const hidden = afterHide.find((plan) => plan.group === "near")!;
+    expect(hidden.faceDown, "Always visible OFF ⇒ hidden until discovered").toBe(true);
+    expect(hidden.oneOfTileDefIds, "the list survives the flip").toEqual(choices);
+    expect(hidden.tileDefId, "no exact pin appears").toBeUndefined();
+
+    // A FACE-DOWN one-of slot: still classified & EDITABLE as one-of, the flip
+    // reads OFF, and the board flower reads as a secret (blue halo + 🔒 badge).
+    cleanup();
+    const onChange2 = vi.fn();
+    const container2 = renderDesigner(
+      [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: spots[0].row, col: spots[0].col, group: "near", faceDown: true, oneOfTileDefIds: choices }
+      ],
+      onChange2
+    );
+    expect(container2.querySelector(".designerFlowerOutline.secret"), "face-down one-of reads as secret").toBeTruthy();
+    expect(
+      [...container2.querySelectorAll("text.designerViiBadge")].some((node) => /🔒/.test(node.textContent ?? "")),
+      "a 🔒 '1 of N' badge marks the hidden one-of"
+    ).toBe(true);
+    const popover2 = openTilePopover(container2, 1);
+    expect(popover2.querySelector(".popoverModeCard.active")?.textContent).toMatch(/One of/i);
+    const flip2 = within(popover2 as HTMLElement).getByTestId("one-of-always-visible");
+    expect(flip2.getAttribute("aria-pressed"), "hidden ⇒ Always visible OFF").toBe("false");
+    // The tile grid stays editable while hidden; a new tile joins the list and
+    // the slot STAYS face-down (the list-edit must not un-hide it).
+    const cards = [...popover2.querySelectorAll(".popoverTileCard")] as HTMLButtonElement[];
+    const another = cards.find((card) => !card.disabled && !card.className.includes("selected"));
+    expect(another, "an editable tile card exists in a face-down one-of").toBeTruthy();
+    fireEvent.click(another!);
+    const afterAdd = onChange2.mock.calls.at(-1)![0] as CustomMapTilePlan[];
+    const stillHidden = afterAdd.find((plan) => plan.group === "near")!;
+    expect(stillHidden.faceDown, "editing the list keeps it hidden").toBe(true);
+    expect(stillHidden.oneOfTileDefIds?.length, "the added tile joins the list").toBe(3);
+
+    // Flip back to visible → list preserved, face-up again (no stranded state).
+    cleanup();
+    const onChange3 = vi.fn();
+    const container3 = renderDesigner(
+      [
+        { row: town.row, col: town.col, group: "starting", faceDown: false },
+        { row: spots[0].row, col: spots[0].col, group: "near", faceDown: true, oneOfTileDefIds: choices }
+      ],
+      onChange3
+    );
+    const popover3 = openTilePopover(container3, 1);
+    fireEvent.click(within(popover3 as HTMLElement).getByTestId("one-of-always-visible"));
+    const afterShow = onChange3.mock.calls.at(-1)![0] as CustomMapTilePlan[];
+    const shown = afterShow.find((plan) => plan.group === "near")!;
+    expect(shown.faceDown, "flip back ⇒ visible").toBe(false);
+    expect(shown.oneOfTileDefIds, "the list survives the round-trip").toEqual(choices);
+  });
+
   it("Secret mode multi-selects landmarks (valuables OR gold), and re-tapping removes one", () => {
     let latest: CustomMapTilePlan[] = [
       { row: town.row, col: town.col, group: "starting", faceDown: false },

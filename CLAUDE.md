@@ -4507,6 +4507,23 @@ Leading with what does NOT run / deliberate limits:
   face-up plan carrying one, so the designer UI clears bans on every face-up
   transition (exact face-up pin, mode switch, the center "Always visible" flip
   — audit fix: the flip used to leave a stale ban that hard-blocked the lobby).
+- **"One of these tiles" works FACE-DOWN (secret) as well as face-up** (2026-07):
+  the designer's "One of" mode now carries an "Always visible ON/OFF" flip
+  (mirroring the center exact-pin flip) — ON places a random tile from the list
+  revealed, OFF places one HIDDEN until discovery (even the designer can't tell
+  which). `tileSlotMode` classifies a face-down `oneOfTileDefIds` plan (no
+  exact `tileDefId`) as one-of so the list stays editable, and the board flower
+  reads as a secret (blue halo + 🔒 "1 of N" badge). This is the ONLY way to put
+  an Obelisk on a Ⅱ–Ⅲ Far slot as a secret — the random Far pool strips Obelisks
+  (the far-pool house rule), but a one-of/exact pin bypasses the pool. Engine /
+  validator / sanitizers already honoured a face-down one-of (only the designer
+  UI surfaced it face-up); the redacted-while-face-down id + obelisk-Far case are
+  pinned in `custom-setup.test.ts` (CONTROL: a plain random Far slot never draws
+  an Obelisk), the sanitizer keep in `map-registry.test.ts`, and the flip /
+  classification / editability / secret badge in `map-designer.test.tsx`. The
+  candidate LIST stays readable in `adventure.mapPreset` (unchanged — the
+  existing design for designer secrets, like `secretFeatures`); only the
+  RESOLVED live-tile id is redacted in player views.
 - **No azure Pack exists in the unit data** (azure is Neutral-only): the guard
   editor offers "+ Pack I–III" only (data-driven — the chip returns by itself
   if an azure Pack ever ships), and ANY Pack slot that cannot mint a Pack — an

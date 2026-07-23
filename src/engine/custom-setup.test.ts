@@ -1589,6 +1589,90 @@ describe("map designer — \"one of these tiles\" random tile choice", () => {
     ).toHaveLength(0);
   });
 
+  it("a FACE-DOWN one-of list of Obelisk-bearing Far tiles places an Obelisk despite the Far-pool strip (the user's ask); reveals + redacts normally", () => {
+    // The user's exact scenario: Obelisks are stripped from the random Far pool
+    // (a Ⅱ–Ⅲ house rule — see far-pool-no-obelisk.test.ts), so the ONLY way to
+    // land an Obelisk on a Far slot is an explicit pin / one-of list — and it
+    // must work FACE-DOWN (a secret "random tile with an obelisk").
+    const obeliskFar = Object.values(allTileDefinitions)
+      .filter((def) => def.group === "far" && def.fields.some((field) => field.location === "obelisk"))
+      .map((def) => def.id);
+    // CONTROL: the data genuinely ships a far+obelisk tile (Factory &F1) that the
+    // pool strips — otherwise this whole scenario would be vacuous.
+    expect(obeliskFar.length, "data has ≥1 far tile with an Obelisk").toBeGreaterThan(0);
+    expect(obeliskFar).toContain("&F1");
+
+    const state = createAdventureGameState({
+      seed: "one-of-secret-obelisk",
+      victoryMode: "conquest", // never grail, so nothing FORCES an obelisk anywhere
+      customMap: [
+        { row: 9, col: 4, group: "far", faceDown: true, oneOfTileDefIds: obeliskFar },
+        // CONTROL: a pure-random Far slot can NEVER draw an Obelisk (the pool
+        // strips them). So an Obelisk on the one-of slot proves the LIST (an
+        // explicit pin) bypassed the strip — not a lucky pool draw.
+        { row: 11, col: 2, group: "far", faceDown: true }
+      ]
+    });
+
+    const slot = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.centerRow === 9 && tile.centerCol === 4
+    )!;
+    expect(slot, "the secret one-of slot was placed").toBeDefined();
+    expect(slot.faceDown).toBe(true);
+    expect(obeliskFar).toContain(slot.tileDefId);
+    expect(
+      allTileDefinitions[slot.tileDefId].fields.some((field) => field.location === "obelisk"),
+      "the placed FACE-DOWN one-of tile carries an Obelisk (impossible from the stripped pool)"
+    ).toBe(true);
+    // Still face-down: no fields until discovery.
+    expect(
+      Object.values(state.adventure!.fields).filter((field) => field.tileInstanceId === slot.id)
+    ).toHaveLength(0);
+
+    // CONTROL: the pure-random Far slot never carries an Obelisk.
+    const randomFar = Object.values(state.adventure!.tiles).find(
+      (tile) => tile.centerRow === 11 && tile.centerCol === 2
+    )!;
+    expect(
+      allTileDefinitions[randomFar.tileDefId]?.fields.some((field) => field.location === "obelisk") ?? false,
+      "a plain random Far slot never draws an Obelisk"
+    ).toBe(false);
+
+    // Player views redact the resolved id while face-down (only the band back
+    // shows) — exactly like an exact secret pin.
+    const view = getPlayerView(state, "p1");
+    const viewed = view.adventure!.tiles[slot.id];
+    expect(viewed.faceDown).toBe(true);
+    expect(viewed.tileDefId).toBe("hidden");
+
+    // Reveal on discovery → the Obelisk field materializes through the normal path.
+    slot.faceDown = false;
+    materializeTileFields(state.adventure!, slot);
+    const fields = Object.values(state.adventure!.fields).filter((field) => field.tileInstanceId === slot.id);
+    expect(fields).toHaveLength(7);
+    expect(fields.some((field) => field.location === "obelisk")).toBe(true);
+  });
+
+  it("validator accepts a valid FACE-DOWN one-of list (the secret variant)", () => {
+    const scenario = getScenario("skirmish");
+    const choices = farTileIds.slice(0, 3);
+    const { accepted, problems } = validateCustomMapPlan(
+      [{ row: 9, col: 4, group: "far", faceDown: true, oneOfTileDefIds: choices }],
+      scenario
+    );
+    expect(problems, "a valid face-down list raises no problems").toHaveLength(0);
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0].faceDown).toBe(true);
+    expect(accepted[0].oneOfTileDefIds).toEqual(choices);
+    // CONTROL: an unknown id in the face-down list is still rejected.
+    expect(
+      validateCustomMapPlan(
+        [{ row: 9, col: 4, group: "far", faceDown: true, oneOfTileDefIds: ["NOPE_TILE"] }],
+        scenario
+      ).accepted
+    ).toHaveLength(0);
+  });
+
   it("validator accepts a valid face-up list and rejects empty / unknown / wrong-group / starting", () => {
     const scenario = getScenario("skirmish");
     const nearId = Object.keys(allTileDefinitions).find((id) => allTileDefinitions[id].group === "near")!;
