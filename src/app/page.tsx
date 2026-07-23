@@ -44,7 +44,7 @@ import {
   InspectPanel,
   LogDrawer
 } from "@/components/table/board";
-import { CardFrame, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
+import { CardFrame, CombatOwnPiles, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
 import { assetUrl } from "@/lib/asset-url";
 import { maybeClaimFinishedMatch } from "@/lib/match-claim-client";
 import { HeroBoard } from "@/components/hero-board";
@@ -6576,7 +6576,12 @@ export default function Home() {
           {isSeated ? <OpponentBar state={state} view={playerView} viewerPlayerId={viewerPlayerId} /> : null}
           {isSeated ? (
             <div className="tableSeatRow">
-              <PlayerDock state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
+              <PlayerDock
+                onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+                state={state}
+                view={playerView}
+                viewerPlayerId={viewerPlayerId}
+              />
               <PermanentSlot
                 legalActions={legalActions}
                 onAction={submitAction}
@@ -6588,7 +6593,7 @@ export default function Home() {
                 {/* The combat "View hand" pile-browser button was removed to
                     declutter the top strip: the HandFan below already shows every
                     hand card, and each card is click/hover-zoomable for a full-size
-                    read. */}
+                    read. Discard is browsable from PlayerDock and the bottom bar. */}
                 <HandFan
                   hiddenTailCount={hiddenHandTail}
                   inFlightCardIds={inFlightCardIds}
@@ -6760,6 +6765,17 @@ export default function Home() {
           ) : null}
         </div>
       </div>
+
+      {/* Bottom combat deck/discard rail — map-mode parity: full discard browse. */}
+      {isSeated ? (
+        <div className="combatDecksBottom">
+          <CombatOwnPiles
+            onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+            view={playerView}
+            viewerPlayerId={viewerPlayerId}
+          />
+        </div>
+      ) : null}
 
       <LogDrawer state={state} />
 

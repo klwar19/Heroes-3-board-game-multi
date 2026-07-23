@@ -27,7 +27,9 @@ import {
 } from "./victory-points";
 import {
   describeGuardArmyGrouped,
+  fewGuardUnitDefId,
   isCustomGuardUnitEntry,
+  isFewGuardSlot,
   isPackGuardSlot,
   packGuardUnitDefId
 } from "./map-design-features";
@@ -263,12 +265,18 @@ export function sanitizeCustomGuardSpec(input: unknown): CustomGuardSpec | undef
   const packFaction = sanitizePackFaction(raw.packFaction);
 
   if (units.length > 0) {
-    // Drop named packs that contradict a concrete faction lock.
+    // Drop named packs/fews that contradict a concrete faction lock.
     if (packFaction && packFaction !== "random") {
       units = units.filter((id) => {
-        if (!isPackGuardSlot(id)) return true;
-        const unitDefId = packGuardUnitDefId(id);
-        return unitDefId ? coreUnitDefinitions[unitDefId]?.faction === packFaction : false;
+        if (isPackGuardSlot(id)) {
+          const unitDefId = packGuardUnitDefId(id);
+          return unitDefId ? coreUnitDefinitions[unitDefId]?.faction === packFaction : false;
+        }
+        if (isFewGuardSlot(id)) {
+          const unitDefId = fewGuardUnitDefId(id);
+          return unitDefId ? coreUnitDefinitions[unitDefId]?.faction === packFaction : false;
+        }
+        return true;
       });
     }
     if (units.length === 0) {

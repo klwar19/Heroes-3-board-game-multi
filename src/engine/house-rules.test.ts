@@ -160,6 +160,30 @@ describe("griffin-buff toggle", () => {
   });
 });
 
+describe("phoenix-pack-rebirth toggle", () => {
+  const packPhoenix = { id: "ph", unitDefId: "conflux.phoenixes", side: "pack" as const };
+  const fewPhoenix = { id: "phf", unitDefId: "conflux.phoenixes", side: "few" as const };
+
+  it("ON: Pack Phoenixes carry phoenix-rebirth (house rule)", () => {
+    const state = binhWith({ "phoenix-pack-rebirth": true });
+    const unit = makeCombatUnitFromArmy(packPhoenix, "p1", "u1", 0, "binh", unitSideRuleOverrides(state))!;
+    expect(unit.abilities).toContain("phoenix-rebirth");
+  });
+
+  it("OFF: Pack Phoenixes have NO rebirth — only line attack + fire immunity (control)", () => {
+    const state = binhWith({ "phoenix-pack-rebirth": false });
+    const unit = makeCombatUnitFromArmy(packPhoenix, "p1", "u1", 0, "binh", unitSideRuleOverrides(state))!;
+    expect(unit.abilities).not.toContain("phoenix-rebirth");
+    expect(unit.abilities).toEqual(["dragon-line-attack-2", "phoenix-fire-immunity"]);
+  });
+
+  it("Few Phoenixes always have Rebirth regardless of the Pack toggle", () => {
+    const off = binhWith({ "phoenix-pack-rebirth": false });
+    const few = makeCombatUnitFromArmy(fewPhoenix, "p1", "u1", 0, "binh", unitSideRuleOverrides(off))!;
+    expect(few.abilities).toContain("phoenix-rebirth");
+  });
+});
+
 describe("marksman-buff toggle", () => {
   const packMarksmen = { id: "m", unitDefId: "castle.marksmen", side: "pack" as const };
 

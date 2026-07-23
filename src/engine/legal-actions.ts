@@ -82,6 +82,7 @@ import {
   cardCanBoostPower,
   getEffectiveCardEffect,
   heroMovementGrantOption,
+  spellMinUsefulPower,
   spellPowerValueOfCard
 } from "./effects";
 import { commanderReviveCost } from "@/data/commanders";
@@ -7189,7 +7190,12 @@ function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
  *    proclamation + Pandora's flat bonus)
  *   × the matching Elemental-Orb multiplier − the enemy Pegasi reduction,
  *   floored at 0.
- * A Spell Scroll cast is locked to Power 0 and ignores every source.
+ * A Spell Scroll cast ignores standing/school/equipment Power and Orb
+ * doubling: only Power paid into THIS cast window (`spellPowerBonus` from
+ * Power cards / "+1 Power" discards) counts, and only up to the spell's
+ * lowest useful tier (`spellMinUsefulPower`) — so you may fuel Implosion to
+ * Power 1 for its first damage rung, but never climb a higher ladder. Spells
+ * whose lowest useful tier is 0 (Magic Arrow, Lightning Bolt…) stay at 0.
  *
  * Previously the readout/gate counted only the stack-item modifier terms and
  * silently dropped the Orb doubling, the school/flat bonuses and the Pegasi
@@ -7202,10 +7208,19 @@ export function resolvedSpellPowerForStackItem(
   stackItem: ResolutionStackItem | undefined,
   cards: CardLibrary = cardLibrary
 ): number {
-  if (!stackItem || stackItem.action.type !== "CAST_SPELL" || stackItem.modifiers.scrollLocked) {
+  if (!stackItem || stackItem.action.type !== "CAST_SPELL") {
     return 0;
   }
   const card = cards[stackItem.action.cardId];
+  if (stackItem.modifiers.scrollLocked) {
+    // Scroll: paid Power into this window only, capped at the lowest useful tier.
+    const minUseful = spellMinUsefulPower(card);
+    const paid = Math.max(0, stackItem.modifiers.spellPowerBonus);
+    if (minUseful <= 0) {
+      return 0;
+    }
+    return Math.min(paid, minUseful);
+  }
   const playerId = stackItem.action.playerId;
   const base =
     (card?.power ?? 0) +

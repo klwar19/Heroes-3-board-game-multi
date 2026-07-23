@@ -942,11 +942,14 @@ export function ReactionTray({
   const livePower = getPendingReactionPower(state);
   const castTotalPower = livePower?.kind === "spell" ? livePower.totalPower : 0;
   const scrollLocked = Boolean(pendingCast?.modifiers.scrollLocked);
+  // Scroll casts may still need the floor (Implosion etc.): paid Power is the
+  // only fuel, capped at minUseful — so under-min still blocks Pass.
   const underMinPower =
     isSpellCaster &&
-    !scrollLocked &&
     castPowerBounds.minUseful > 0 &&
     castTotalPower < castPowerBounds.minUseful;
+  // Scrolls cannot climb past the lowest useful tier; skip the "over max" warn
+  // (extra Power is already capped in the engine).
   const overMaxPower =
     isSpellCaster &&
     !scrollLocked &&

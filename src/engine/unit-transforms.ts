@@ -101,13 +101,15 @@ export function printedCardName(side: "few" | "pack" | "neutral", unitName: stri
 export function applyUnitCurrentSide(
   unit: CombatUnitState,
   ruleset: GameRuleset,
-  /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
+  /** Unit house-rule overrides; falls back to the bundled mode default. */
   overrides?: {
     griffinBuff?: boolean;
     marksmanBuff?: boolean;
     polishUnitStacks?: boolean;
     /** Neutral Rank-Up (optional module): a Stacked bank defender fights one rank up. */
     neutralRankUp?: boolean;
+    /** Phoenix Pack Rebirth (BINH house rule). */
+    phoenixPackRebirth?: boolean;
   }
 ): void {
   const top = topTransform(unit);

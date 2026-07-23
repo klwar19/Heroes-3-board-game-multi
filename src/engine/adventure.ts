@@ -11391,6 +11391,8 @@ export type NeutralDraw = {
   bankGuard?: boolean;
   /** Random Town defender: fight this unit on its faction Pack side. */
   factionPack?: boolean;
+  /** Designer few-slot guard: fight this unit on its faction Few side. */
+  factionFew?: boolean;
   /**
    * Naval Battles Creature Bank defender: fight from the unit's Creature Bank
    * card (its own stats/abilities, no tier) rather than the Few/Pack/Neutral
@@ -12493,16 +12495,30 @@ export function makeCombatUnitFromNeutral(
   unitId: UnitId,
   position: number,
   ruleset: GameRuleset = "legacy",
-  /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
+  /** Unit house-rule overrides; falls back to the bundled mode default. */
+  overrides?: {
+    griffinBuff?: boolean;
+    marksmanBuff?: boolean;
+    phoenixPackRebirth?: boolean;
+  }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[draw.unitDefId];
-  // Creature Bank defenders fight from their own bank card; Random Town
-  // defenders fight on their faction's Pack side; every other guard uses the
-  // single-sided Neutral card.
+  // Creature Bank defenders fight from their own bank card; Random Town /
+  // designer Pack slots fight on the faction Pack side; designer Few slots on
+  // the Few side; every other guard uses the single-sided Neutral card.
   const bankSide = draw.bankUnit ? getBankSide(draw.unitDefId) : undefined;
-  const variant: "neutral" | "pack" = draw.factionPack ? "pack" : "neutral";
-  const printed = draw.bankUnit ? bankSide : draw.factionPack ? def?.pack : def?.neutral;
+  const variant: "neutral" | "pack" | "few" = draw.factionPack
+    ? "pack"
+    : draw.factionFew
+      ? "few"
+      : "neutral";
+  const printed = draw.bankUnit
+    ? bankSide
+    : draw.factionPack
+      ? def?.pack
+      : draw.factionFew
+        ? def?.few
+        : def?.neutral;
   if (!def || !printed) {
     return null;
   }
@@ -12512,7 +12528,7 @@ export function makeCombatUnitFromNeutral(
   const side = draw.bankUnit ? printed : applyUnitSideRules(ruleset, draw.unitDefId, variant, printed, overrides);
   const cardName = draw.bankUnit
     ? `${def.name} (Creature Bank)`
-    : `${draw.factionPack ? "Pack of" : "Neutral"} ${def.name}`;
+    : `${draw.factionPack ? "Pack of" : draw.factionFew ? "Few of" : "Neutral"} ${def.name}`;
 
   return {
     id: unitId,
@@ -12520,6 +12536,8 @@ export function makeCombatUnitFromNeutral(
     name: def.name,
     cardName,
     variant,
+    // Designer few-slot: survive a retreat as Few (not re-promoted to Pack).
+    ...(draw.factionFew ? { factionFew: true as const } : {}),
     grade: def.tier,
     type: side.type ?? def.type,
     attack: side.attack,
@@ -12560,11 +12578,12 @@ export function makeCombatUnitFromArmy(
   unitId: UnitId,
   position: number,
   ruleset: GameRuleset = "legacy",
-  /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
+  /** Unit house-rule overrides; falls back to the bundled mode default. */
   overrides?: {
     griffinBuff?: boolean;
     marksmanBuff?: boolean;
     polishUnitStacks?: boolean;
+    phoenixPackRebirth?: boolean;
   }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];

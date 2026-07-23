@@ -148,7 +148,12 @@ export type HouseRuleId =
   // only ONE Demons unit may stand on the field (Few or Pack) — summon is
   // blocked while any living Demons of the controller are already present;
   // reinforce Few→Pack stays legal.
-  | "multi-demon-summon";
+  | "multi-demon-summon"
+  // Phoenix Pack Rebirth (BINH house rule): the Pack of Phoenixes also carries
+  // the printed Few Rebirth ("once per Combat, lethal → 1 HP") so a Pack
+  // Phoenix clings to life at its Pack side. Off (wiki/printed Pack): Pack has
+  // only the line attack + Fire immunity — Rebirth is Few-only (and Neutral).
+  | "phoenix-pack-rebirth";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
@@ -6109,9 +6114,10 @@ export type ResolutionStackItem = {
     /** Brimstone Stormclouds: faction cubes spent on this cast (max 1). */
     townCubePowerBonus?: number;
     /**
-     * Spell Scroll cast: the spell resolves at power 0 and no Power source
-     * (Power cards, +1 discards, School of Magic, town cubes, Astrologers) may
-     * raise it — getCurrentSpellPower returns 0 while this is set.
+     * Spell Scroll cast: standing/school/equipment Power and Orb doubling never
+     * apply. Only Power paid into this window (`spellPowerBonus` from Power
+     * cards / "+1 Power" discards) counts, and only up to the spell's lowest
+     * useful tier — higher ladder rungs are unreachable.
      */
     scrollLocked?: boolean;
     /**
@@ -7235,6 +7241,12 @@ export type CombatUnitState = {
   name: string;
   cardName: string;
   variant: "few" | "pack" | "neutral";
+  /**
+   * Designer `few:` / `random-few:` guard: minted as a faction Few. Distinguishes
+   * a designed Few from a Pack that flipped mid-fight, so retreat survivors keep
+   * the Few slot instead of being re-promoted to Pack.
+   */
+  factionFew?: boolean;
   grade: UnitGrade;
   type: UnitType;
   attack: number;
