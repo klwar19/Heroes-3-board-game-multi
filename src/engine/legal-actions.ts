@@ -4126,6 +4126,24 @@ export function preHitHealReactions(
   ];
 }
 
+/**
+ * Human-readable command label for a `PLACE_TOKEN_ACTION` "[activation]" other
+ * action (Ogres' Bloodlust, Sorceresses' Weakness). Names the ability AND what
+ * it does — "place it on <side> unit (<±amount>)" — so the command reads like a
+ * proper instruction, not a bare "Bloodlust Token (+1)". Shared by the player
+ * offer (addUnitAbilityActions) and the PvP-Neutral-Control offer
+ * (addControlledNeutralTokenActions) so both stay in lockstep.
+ */
+function placeTokenCommandLabel(
+  unitName: string,
+  abilityName: string,
+  targets: "any" | "friendly" | "enemy",
+  amount: number
+): string {
+  const sideWord = targets === "enemy" ? "an enemy" : targets === "friendly" ? "a friendly" : "a";
+  return `${unitName}: ${abilityName} — place it on ${sideWord} unit (${amount >= 0 ? "+" : ""}${amount})`;
+}
+
 function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerId: PlayerId, activeUnit: CombatUnitState): void {
   const combat = state.combat;
   if (!combat || activeUnit.movedThisActivation) {
@@ -4276,7 +4294,7 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
       });
       if (hasCandidate) {
         actions.push({
-          label: `${activeUnit.name}: ${ability.name} (${effect.amount >= 0 ? "+" : ""}${effect.amount})`,
+          label: placeTokenCommandLabel(activeUnit.name, ability.name, effect.targets, effect.amount),
           action: {
             type: "USE_UNIT_ABILITY",
             playerId,
@@ -4542,7 +4560,7 @@ function addControlledNeutralTokenActions(
       continue;
     }
     actions.push({
-      label: `${activeUnit.name}: ${ability.name} (${effect.amount >= 0 ? "+" : ""}${effect.amount})`,
+      label: placeTokenCommandLabel(activeUnit.name, ability.name, effect.targets, effect.amount),
       action: {
         type: "USE_UNIT_ABILITY",
         playerId,
