@@ -8,7 +8,14 @@ Azur Lane Naval Base is NOT part of this pack: its shipgirls (and the Belfast
 commander) speak their own Japanese combat lines under
 `public/sounds/azur-lane/voices/` — see `public/sounds/azur-lane/README.md`
 for the event mapping (attack+shoot share Skill Activation, defend+hurt share
-Low HP) and licensing caveats. Fuyuki City still reuses Heroes III voice sets.
+Low HP) and licensing caveats.
+
+Fuyuki City is also separate from this curated pack. Its seven Servant lines
+use 37 normalized clips from Fate/unlimited codes under
+`public/sounds/fuyuki/voices/`: five distinct core actions per line, plus named
+ranged attacks for EMIYA/Archers and Medea/Casters. See
+`public/sounds/fuyuki/README.md` for the exact character and source-file map.
+The former Heroes III assignments remain only as missing-asset fallbacks.
 
 ## Sound design
 

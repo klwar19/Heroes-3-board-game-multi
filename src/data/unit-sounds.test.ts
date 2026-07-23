@@ -190,6 +190,23 @@ describe("unit combat voices", () => {
     expect(commanderSoundKey("belfast", "move")).toBe("azur-lane/voices/belfast/move");
   });
 
+  it("uses Fate/unlimited codes audio for every Fuyuki Servant line", () => {
+    const meleeSlugs = ["assassins", "riders", "lancers", "sabers", "berserkers"];
+    const rangedSlugs = ["archers", "casters"];
+
+    for (const slug of [...meleeSlugs, ...rangedSlugs]) {
+      for (const action of coreActions) {
+        expect(unitSoundKey(`fuyuki.${slug}`, action)).toBe(`fuyuki/voices/${slug}/${action}`);
+      }
+    }
+    for (const slug of meleeSlugs) {
+      expect(unitSoundKey(`fuyuki.${slug}`, "shoot")).toBe(`fuyuki/voices/${slug}/attack`);
+    }
+    for (const slug of rangedSlugs) {
+      expect(unitSoundKey(`fuyuki.${slug}`, "shoot")).toBe(`fuyuki/voices/${slug}/shoot`);
+    }
+  });
+
   it("layers naval combat SFX under Azur Lane attacks", () => {
     for (const slug of ["laffey", "javelin", "honolulu", "yukikaze", "prinz_eugen"]) {
       expect(unitAttackFlourish(`azur_lane.${slug}`)).toBe("units/cannon-shoot");
