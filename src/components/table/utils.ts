@@ -652,6 +652,21 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     case "STORY_SCENE_TRIGGERED":
       return event.message;
+    // Calamity Waves / Raid Bosses / the Dungeon: every module event carries
+    // its full feed line (module texts stay single-sourced at the wiring).
+    case "MONSTER_WAVE_ANNOUNCED":
+    case "MONSTER_WAVE_STARTED":
+    case "MONSTER_WAVE_REPELLED":
+    case "MONSTER_WAVE_PILLAGED":
+    case "RAID_BOSS_ANNOUNCED":
+    case "RAID_BOSS_SPAWNED":
+    case "RAID_BOSS_LAYER_BROKEN":
+    case "RAID_BOSS_ESCALATED":
+    case "RAID_BOSS_SLAIN":
+    case "DUNGEON_PLACED":
+    case "DUNGEON_FLOOR_CLEARED":
+    case "DUNGEON_CONQUERED":
+      return event.message;
     case "MAP_SECRET_FEATURE_FALLBACK":
       return event.message;
     case "START_TILE_ORIENTATION_FIXED":

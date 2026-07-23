@@ -56,8 +56,13 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
     return computer(state, state.reactionWindow.priorityPlayerId);
   }
   // Round-start Event/Astrologers barrier: the resolver is the ONLY seat that
-  // may act at the whole table until the barrier lifts.
-  if (isRoundStartEventBarrierActive(state)) {
+  // may act at the whole table until the barrier lifts. A Calamity Wave
+  // assault (§6.6) is the one barrier interaction that is a COMBAT — there is
+  // no single "resolver" then (reaction windows / PvP-Neutral-Control may
+  // involve other seats), so an OPEN combat falls through to the combat block
+  // below instead. Without this, a computer seat's wave fight was never
+  // driven (the resolver read null → owner null → the whole table hung).
+  if (!state.combat && isRoundStartEventBarrierActive(state)) {
     return computer(state, roundStartEventResolver(state));
   }
 

@@ -711,6 +711,23 @@ export type UnitAbilityEffectDefinition =
       type: "DEATH_STARE_ON_DICE";
       diceCount: number;
       onRoll: number;
+      /**
+       * Raid-boss Devour: the stare only threatens target sides of at most
+       * this tier (gradeless targets — bank cards, commanders, summons,
+       * bosses — are never threatened). Absent = any target (classic Gorgon).
+       */
+      targetGradeAtMost?: "bronze" | "silver" | "gold" | "azure";
+    }
+  | {
+      /**
+       * Raid-boss Fear (§6.8): while a living ENEMY unit carries this, the
+       * player cannot USE morale — the +1 morale token and held Positive
+       * Morale cards cannot be spent (reroll / set-die sources, redraw,
+       * combat bonus, token removal, the reaction-window bonus). Morale is
+       * still GAINED and morale-card draws still happen; only the use is
+       * locked (moraleLockedForPlayer in unit-abilities.ts).
+       */
+      type: "MORALE_LOCK";
     }
   | {
       /**
@@ -1212,6 +1229,14 @@ export type UnitAbilityDefinition = {
    * effect (and only it) switches off the instant the token is discarded.
    */
   requiresStacked?: boolean;
+  /**
+   * Raid-boss phase gate (§6.5.2): the ability is active only while the unit
+   * has at most this many health LAYERS remaining (layers = armyStacks + 1 —
+   * a plain unlayered unit counts 1). `getUnitAbilityDefinitions` hides it for
+   * every read while more layers remain, so e.g. Enrage switches on live the
+   * moment the boss drops to its last bar. Absent = always active.
+   */
+  requiresLayersAtMost?: number;
   implementationStatus: "implemented" | "not-implemented";
 };
 
@@ -2173,6 +2198,32 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     // Fortress Mighty Gorgons (Pack) trigger on a double "0" instead of "-1".
     text: 'After the attack, roll 2 Attack dice; on a double "0", reduce the target\'s Health to 0.',
     effect: { type: "DEATH_STARE_ON_DICE", diceCount: 2, onRoll: 0 },
+    implementationStatus: "implemented"
+  },
+  // ——— Raid-boss arms (§6.5/§6.8; carried by src/data/anime/bosses.ts and
+  // designer custom bosses — never printed on a deck unit side) ———
+  "boss-devour": {
+    id: "boss-devour",
+    name: "Devour",
+    text:
+      'After this unit\'s own attack against a BRONZE unit, roll 1 Attack die; on a "+1" the target side is removed outright (a Pack flips to its Few side). Silver and higher — and tierless targets — are never devoured.',
+    effect: { type: "DEATH_STARE_ON_DICE", diceCount: 1, onRoll: 1, targetGradeAtMost: "bronze" },
+    implementationStatus: "implemented"
+  },
+  "boss-fear": {
+    id: "boss-fear",
+    name: "Fear",
+    text:
+      "While this unit lives, the enemy cannot USE morale: the +1 morale token and held Positive Morale cards cannot be spent (no reroll or set-die source, no redraw, no combat bonus, no token removal). Morale is still gained and morale cards are still drawn — only using them is locked.",
+    effect: { type: "MORALE_LOCK" },
+    implementationStatus: "implemented"
+  },
+  "boss-enrage": {
+    id: "boss-enrage",
+    name: "Enrage",
+    text: "While this boss is on its LAST health layer, its Attack gains +2 (attacks and Retaliation Attacks).",
+    effect: { type: "FLAT_ATTACK_BONUS", amount: 2 },
+    requiresLayersAtMost: 1,
     implementationStatus: "implemented"
   },
   "archangel-lethal-save": {

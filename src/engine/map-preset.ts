@@ -17,7 +17,9 @@ import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TileDefinition } from "@/data/map/types";
 import { getStoryScene, isStoryScene, STORY_SCENE_IDS } from "@/data/story/scenes";
+import { RAID_BOSS_ABILITY_CHOICES } from "@/data/anime/bosses";
 import { seaTileBand, subterraneanTileBand, TILE_GROUP_BAND_LABELS, VII_FIELD_LOCATION } from "./adventure";
+import { CUSTOM_BOSS_LIMITS, MAX_CUSTOM_RAID_BOSSES } from "./raid-bosses";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS, MAX_FAR_TILES_PER_PLAYER } from "./state";
 import {
@@ -52,6 +54,7 @@ import type {
   CustomMapPreset,
   CustomMapTilePlan,
   CustomObjectFieldPlan,
+  CustomRaidBossDef,
   CustomStartingUnit,
   CustomWinCondition,
   HoldWithGrailTarget,
@@ -1727,6 +1730,119 @@ function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
 }
 
 /** Sanitize untrusted preset input (HTTP body / storage). Returns undefined if empty. */
+/** Designer wave overrides: at most this many exact-wave army entries. */
+export const MAX_CUSTOM_WAVE_OVERRIDES = 8;
+/** Wave numbers a designer may override (wave 10 ≈ round 30 at cadence 3). */
+const MAX_CUSTOM_WAVE_NUMBER = 10;
+
+/**
+ * Calamity Waves designer block (module `monsterWaves`): cadence kept only as
+ * a literal 3|4|5; per-wave exact armies ride the shared CustomGuardSpec
+ * sanitizer (unknown slots dropped, MAX_CUSTOM_GUARD_UNITS cap), keyed by an
+ * integer wave number 1..10, capped at MAX_CUSTOM_WAVE_OVERRIDES entries.
+ * Empty block ⇒ dropped (byte-identical legacy presets).
+ */
+function sanitizeMonsterWavesPreset(input: unknown): CustomMapPreset["monsterWaves"] | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { cadence?: unknown; waves?: unknown };
+  const cadence =
+    raw.cadence === 3 || raw.cadence === 4 || raw.cadence === 5 ? raw.cadence : undefined;
+  let waves: Record<number, CustomGuardSpec> | undefined;
+  if (raw.waves && typeof raw.waves === "object") {
+    const entries = Object.entries(raw.waves as Record<string, unknown>)
+      .map(([key, value]) => [Number(key), sanitizeCustomGuardSpec(value)] as const)
+      .filter(
+        (entry): entry is readonly [number, CustomGuardSpec] =>
+          Number.isInteger(entry[0]) &&
+          entry[0] >= 1 &&
+          entry[0] <= MAX_CUSTOM_WAVE_NUMBER &&
+          entry[1] !== undefined
+      )
+      .slice(0, MAX_CUSTOM_WAVE_OVERRIDES);
+    if (entries.length > 0) {
+      waves = Object.fromEntries(entries);
+    }
+  }
+  if (cadence === undefined && !waves) {
+    return undefined;
+  }
+  return { ...(cadence !== undefined ? { cadence } : {}), ...(waves ? { waves } : {}) };
+}
+
+/**
+ * One designer custom boss: non-empty id/name (trimmed, bounded), stats
+ * clamped to CUSTOM_BOSS_LIMITS, type kept only as a real UnitType, abilities
+ * filtered against the curated implemented whitelist
+ * (RAID_BOSS_ABILITY_CHOICES) and deduped. Null = unusable entry, dropped.
+ */
+function sanitizeCustomRaidBoss(input: unknown): CustomRaidBossDef | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const raw = input as Partial<CustomRaidBossDef>;
+  const id = typeof raw.id === "string" ? raw.id.trim().slice(0, 40) : "";
+  const name = typeof raw.name === "string" ? raw.name.trim().slice(0, 60) : "";
+  if (!id || !name) {
+    return null;
+  }
+  const abilities = Array.isArray(raw.abilities)
+    ? [...new Set(raw.abilities.filter((entry): entry is string => typeof entry === "string" && RAID_BOSS_ABILITY_CHOICES.includes(entry)))].slice(0, 5)
+    : [];
+  const type = raw.type === "ranged" || raw.type === "flying" || raw.type === "ground" ? raw.type : undefined;
+  return {
+    id,
+    name,
+    attack: clampInt(raw.attack, CUSTOM_BOSS_LIMITS.attack.min, CUSTOM_BOSS_LIMITS.attack.max, 4),
+    defense: clampInt(raw.defense, CUSTOM_BOSS_LIMITS.defense.min, CUSTOM_BOSS_LIMITS.defense.max, 1),
+    health: clampInt(raw.health, CUSTOM_BOSS_LIMITS.health.min, CUSTOM_BOSS_LIMITS.health.max, 3),
+    initiative: clampInt(
+      raw.initiative,
+      CUSTOM_BOSS_LIMITS.initiative.min,
+      CUSTOM_BOSS_LIMITS.initiative.max,
+      6
+    ),
+    layers: clampInt(raw.layers, CUSTOM_BOSS_LIMITS.layers.min, CUSTOM_BOSS_LIMITS.layers.max, 3),
+    ...(type ? { type } : {}),
+    ...(abilities.length > 0 ? { abilities } : {})
+  };
+}
+
+/**
+ * Raid Bosses designer block (module `raidBosses`): the optional spawn-round
+ * override (2..30) and the custom boss list (cap MAX_CUSTOM_RAID_BOSSES, ids
+ * deduped keep-first). Empty block ⇒ dropped.
+ */
+function sanitizeRaidBossesPreset(input: unknown): CustomMapPreset["raidBosses"] | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { spawnRound?: unknown; bosses?: unknown };
+  const spawnRound = clampInt(raw.spawnRound, 2, 30, 0);
+  let bosses: CustomRaidBossDef[] | undefined;
+  if (Array.isArray(raw.bosses)) {
+    const seen = new Set<string>();
+    const list = raw.bosses
+      .map(sanitizeCustomRaidBoss)
+      .filter((boss): boss is CustomRaidBossDef => {
+        if (!boss || seen.has(boss.id)) {
+          return false;
+        }
+        seen.add(boss.id);
+        return true;
+      })
+      .slice(0, MAX_CUSTOM_RAID_BOSSES);
+    if (list.length > 0) {
+      bosses = list;
+    }
+  }
+  if (spawnRound <= 0 && !bosses) {
+    return undefined;
+  }
+  return { ...(spawnRound > 0 ? { spawnRound } : {}), ...(bosses ? { bosses } : {}) };
+}
+
 export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
@@ -1782,6 +1898,14 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
     if (bonuses.length > 0) {
       preset.startingBonuses = bonuses;
     }
+  }
+  const monsterWaves = sanitizeMonsterWavesPreset(raw.monsterWaves);
+  if (monsterWaves) {
+    preset.monsterWaves = monsterWaves;
+  }
+  const raidBosses = sanitizeRaidBossesPreset(raw.raidBosses);
+  if (raidBosses) {
+    preset.raidBosses = raidBosses;
   }
   if (Array.isArray(raw.timedEvents)) {
     const events: CustomMapTimedEvent[] = [];
@@ -1908,7 +2032,9 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       Boolean(preset.objectives) ||
       Boolean(preset.victoryPoints?.enabled) ||
       (preset.customWinConditions && preset.customWinConditions.length > 0) ||
-      (preset.hexEvents && preset.hexEvents.length > 0)
+      (preset.hexEvents && preset.hexEvents.length > 0) ||
+      Boolean(preset.monsterWaves) ||
+      Boolean(preset.raidBosses)
   );
 }
 
