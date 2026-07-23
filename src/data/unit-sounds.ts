@@ -146,9 +146,9 @@ const creatureVoices: Record<string, string> = {
   gunslingers: "sharpshooter",
   couatls: "wyvern",
   dreadnoughts: "behemoth",
-  // Fuyuki City (Anime Realms, isekai) still thematically reuses complete
-  // Heroes III voice sets — no dedicated voiced package. Every mapping covers
-  // all actions (archers is ranged and reuses the Sharpshooter's shoot clip).
+  // Fuyuki City fallbacks. unitSoundKey short-circuits fuyuki.* to the
+  // Fate/unlimited codes package below; these complete H3 sets remain as a
+  // defensive fallback if a bespoke manifest entry is ever absent.
   assassins: "rogue",
   riders: "goblin-wolf-rider",
   lancers: "champion",
@@ -217,6 +217,35 @@ const creatureVoices: Record<string, string> = {
   santa_gremlin: "gremlin",
   dracolich: "ghost-dragon"
 };
+
+/**
+ * Fate/unlimited codes voices and character sounds for Fuyuki City. Each unit
+ * has its own five core actions; EMIYA and Medea also have a named ranged line.
+ */
+const fuyukiUnitVoices: Record<string, string> = {
+  assassins: "assassins",
+  riders: "riders",
+  lancers: "lancers",
+  archers: "archers",
+  casters: "casters",
+  sabers: "sabers",
+  berserkers: "berserkers"
+};
+
+function fuyukiVoiceKey(slug: string, action: UnitSoundAction): string | undefined {
+  const directKey = `fuyuki/voices/${slug}/${action}`;
+  if (soundLibrary[directKey]) {
+    return directKey;
+  }
+
+  // A melee unit can still be forced through a shoot-shaped combat event by
+  // an ability. Borrow its attack clip rather than requesting a missing file.
+  if (action === "shoot") {
+    const attackKey = `fuyuki/voices/${slug}/attack`;
+    return soundLibrary[attackKey] ? attackKey : undefined;
+  }
+  return undefined;
+}
 
 /**
  * Azur Lane's bespoke Japanese combat voices. The source game exposes one
@@ -371,6 +400,13 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
     return commanderSoundKey(unitDefId.slice(COMMANDER_VOICE_PREFIX.length), action);
   }
   const bareName = unitDefId.split(".")[1] ?? unitDefId;
+  if (unitDefId.startsWith("fuyuki.")) {
+    const fuyukiSlug = fuyukiUnitVoices[bareName];
+    const key = fuyukiSlug ? fuyukiVoiceKey(fuyukiSlug, action) : undefined;
+    if (key) {
+      return key;
+    }
+  }
   const azurLaneSlug = azurLaneUnitVoices[bareName];
   if (azurLaneSlug) {
     return azurLaneVoiceKey(azurLaneSlug, action);
