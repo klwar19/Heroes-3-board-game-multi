@@ -23,7 +23,7 @@ import type { GameRuleset, GameState, GameSetupOptions, HouseRuleId } from "./st
  */
 export type { HouseRuleId };
 
-export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat" | "polish";
+export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat" | "global" | "polish";
 
 export type HouseRuleDef = {
   id: HouseRuleId;
@@ -276,6 +276,16 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "On (BINH house rule): the Pack of Phoenixes also has Rebirth (once per Combat, lethal damage leaves it at 1 Health on its Pack side). Off (printed/wiki): only the Few (and Neutral) Phoenixes have Rebirth — the Pack has the line attack and Fire immunity only.",
     category: "units",
     default: true
+  },
+  {
+    id: "mine-guard-reinforcement",
+    label: "Mine guards: +1 bronze",
+    description:
+      "Global map rule: every fought-out neutral guard fight on a Mine (all resource types — gold / valuables / materials) fields one EXTRA random neutral bronze creature on top of the normal guard army. It only makes the fought army bigger — the fight's difficulty, experience and reward are unchanged, and Quick Combat / level auto-wins (won before the army deploys) are unaffected. Creature Banks are not mines.",
+    category: "global",
+    // Opt-in difficulty tweak, OFF in both modes (not an existing core default).
+    default: false,
+    legacyDefault: false
   }
 ];
 

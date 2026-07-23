@@ -1970,6 +1970,44 @@ the wiring site):
   Shrine of the Magic Thought's leftovers go to the Spell discard pile and
   Messenger's declined pair to the Artifact discard pile, as printed.
 
+## Mine-guard reinforcement (OPTIONAL "Global" house rule, default OFF) — what runs vs. limits
+
+House rule `mine-guard-reinforcement` (registry `src/engine/house-rules.ts`,
+category `"global"` — a NEW house-rule group whose lobby header carries the map
+glyph `REWARD_GLYPH_ICONS.map`). Default OFF in BOTH binh AND legacy (an opt-in
+difficulty tweak). Engine: `mineGuardReinforcementDraws` folded into `drawGuardArmy`
+(`src/engine/adventure.ts`). Behaviour pinned in
+`src/engine/mine-guard-reinforcement.test.ts` (each claim mutation-checked with a
+rule-OFF / non-mine CONTROL) + the lobby row in
+`src/components/adventure/game-options-tabs.test.tsx`.
+
+When ON, every fought-out neutral guard fight on a **Mine field** (all resource
+types — gold / valuables / materials share `location === "mine"`) fields ONE
+EXTRA random neutral BRONZE creature drawn from the bronze Neutral deck, on top of
+the normal guard army. It composes with EVERY base guard branch (level draw AND
+designer exact / custom / level armies) and with a RE-fight of a re-guarded mine
+(all funnel through `drawGuardArmy`). The extra bronze is a plain non-bankGuard
+draw, so it recycles to the bronze discard at combat end via the shared
+guard-recycle seam (`finalizeAdventureCombat`) like every other guard.
+
+Leading with what does NOT run / deliberate limits:
+- **Reward / XP / difficulty are UNTOUCHED** — the extra is appended AFTER
+  `combat.context.difficulty` is fixed and only makes the fought army bigger; the
+  fight's difficulty-based reward is byte-identical (pinned "reward unchanged").
+- **Quick Combat / level auto-wins are unaffected** — they resolve BEFORE the army
+  deploys (the rule makes a FOUGHT-OUT fight harder, never a skipped one), same as
+  the Neutral Rank-Up reading.
+- **Creature Banks are NOT mines** — banks reveal via `buildCreatureBankDraws`, a
+  separate mint the rule never reaches (waves / raid bosses / dungeon floors never
+  call `drawGuardArmy` either); only real guard-field fights on a mine qualify.
+- **The AI ignores it** — the map policy still reasons by field difficulty / level,
+  so a computer hero just fights the (harder) mine.
+- **Flagged-mine free re-flags (no fight) are untouched**, and PvP-Neutral-Control /
+  manual guard control compose automatically (the extra body is just another guard).
+- **Placement caps gracefully**: the 8-cell defender zone seats a legit mine army
+  (≤ 6 designer units + 1); an over-full hand-edited map leaves the surplus at its
+  default cell (`placeNeutralUnits`) — no crash, no stall.
+
 ## Creature Banks (Naval Battles optional rule) — what runs vs. what is deferred
 
 Added in `src/data/map/creature-banks.ts` (data, tested in

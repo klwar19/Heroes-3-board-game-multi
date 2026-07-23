@@ -7301,10 +7301,16 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   units: "Unit buffs",
   abilities: "Abilities & heroes",
   combat: "Combat & map rules",
+  global: "Global map rules",
   polish: "Polish house rule type 1"
 };
 
-const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat"] as const;
+/** Optional crest/icon for a house-rule GROUP header (paths under public/). */
+const HOUSE_RULE_CATEGORY_ICONS: Record<string, string | undefined> = {
+  global: REWARD_GLYPH_ICONS.map
+};
+
+const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat", "global"] as const;
 
 function houseRuleToggleDisabled(
   ruleId: HouseRuleId,
@@ -7319,7 +7325,8 @@ function houseRuleToggleDisabled(
 
 /** Optional crest/icon for individual house-rule toggles (paths under public/). */
 const HOUSE_RULE_ICONS: Partial<Record<(typeof HOUSE_RULES)[number]["id"], string>> = {
-  "polish-rule-111": UI_REWARD_ICONS.rule111
+  "polish-rule-111": UI_REWARD_ICONS.rule111,
+  "mine-guard-reinforcement": REWARD_GLYPH_ICONS.treasure
 };
 
 function HouseRuleToggleButton({
@@ -7622,10 +7629,22 @@ function HouseRulesSection({
           if (rules.length === 0) {
             return null;
           }
+          const groupIconSrc = HOUSE_RULE_CATEGORY_ICONS[category];
           return (
             <div className="houseRuleGroup" key={category}>
               <div className="houseRuleGroupHeader">
-                <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+                <span className="houseRuleGroupLabel">
+                  {groupIconSrc ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="houseRuleGroupIcon"
+                      draggable={false}
+                      src={assetUrl(groupIconSrc)}
+                    />
+                  ) : null}
+                  {HOUSE_RULE_CATEGORY_LABELS[category]}
+                </span>
                 <GroupToggleAllButton
                   creatureBanksEnabled={creatureBanksEnabled}
                   groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}

@@ -242,6 +242,25 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  it("renders the Global map-rules group (with its map icon) and wires the Mine-guard reinforcement toggle", () => {
+    const onAction = openOptions();
+    expandBinhHouseRules();
+    // The new Global group header carries its map glyph (other groups have none).
+    const groupIcon = document.querySelector(".houseRuleGroupIcon") as HTMLImageElement | null;
+    expect(groupIcon, "the Global group header shows an icon").toBeTruthy();
+    expect(groupIcon!.getAttribute("src")).toContain("map.svg");
+    // The rule is OFF by default (an opt-in tweak) and toggling it dispatches
+    // only its own flag through the shared registry UI.
+    const toggle = screen.getByRole("button", { name: /Mine guards: \+1 bronze/i });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "mine-guard-reinforcement": true } }
+    });
+  });
+
   it("renders the Torso-of-Legion re-tier row ON by default; unticking dispatches just that flag", () => {
     const onAction = openOptions();
     expandBinhHouseRules();
