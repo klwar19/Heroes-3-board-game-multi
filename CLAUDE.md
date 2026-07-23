@@ -1326,6 +1326,23 @@ Leading with what does NOT run / deliberate readings:
   carries the extra dice as `mightRolls` so the combat UI can show them.
 - The commander COUNTS for win/loss (`livingControllerIds`): an army can fight
   on through its commander, and killing a side needs the commander dead too.
+- **Empty unit deck vs the commander (2026-07 fix, house rule)**: the BINH
+  "empty unit deck is replaced with the starting units" restock is WITHHELD
+  while a commander that stood in the fight SURVIVED it — the commander must
+  fall too (`restoreStartingArmyIfEmpty`'s `commanderStandsIn` option, fed by
+  `finalizeCommandersAfterCombat`'s survivor set at both combat-END seams and
+  by `commanderMarchesWithHero` at the combat-START seams). A main hero with an
+  EMPTY deck therefore fights commander-only: combat setup offers "Ready for
+  battle (commander only)" with zero placed units
+  (`commanderStandsInCurrentCombat` relaxes `finishCombatPlacement` + the
+  legal-actions offer). This also fixed the First Aid duplication bug: the
+  restock plus the Hierophant/Belfast revive used to put TWO copies of the same
+  casualty into the deck. DELIBERATE LIMIT: a fight the commander cannot join
+  (secondary-hero fights, garrison defenses) keeps the classic combat-start
+  restock — setup needs a placeable body there. Pinned in
+  `wog-commanders.test.ts` ("empty unit deck restock requires the commander to
+  fall too" + "commander-only combat start"), each claim with a CONTROL,
+  mutation-checked.
 - `COMMANDER_GRADE_UP` / `REVIVE_COMMANDER` / `COMMANDER_FIRST_AID` are
   handler-validated actions (self-validating; usable outside combat without a
   legal-actions membership match). While `pendingCommanderFirstAid` is open,

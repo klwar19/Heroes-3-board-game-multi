@@ -37,8 +37,16 @@ import { finalizeCommandersAfterCombat } from "./commanders";
 import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
 import { warMachinesForSale } from "./permanents";
 import { hasBallistaChooseTarget, effectiveInitiative } from "./active-effects";
+import { ATTACK_DIE_FACES } from "./battlefield";
 import { NEUTRAL_PLAYER_ID } from "./state";
-import type { CommanderPlayerState, GameAction, GameState } from "./state";
+import type {
+  CombatState,
+  CombatUnitState,
+  CommanderPlayerState,
+  GameAction,
+  GameState,
+  PlayerId
+} from "./state";
 
 function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -1681,6 +1689,252 @@ describe("WOG commanders — Belfast First Aid (specialty-keyed, not slug-keyed)
     killABronzeSilverCasualty(hiero);
     winFight(hiero);
     expect(hiero.adventure!.pendingCommanderFirstAid?.playerId).toBe("p1");
+  });
+});
+
+// ===========================================================================
+// Empty unit deck vs the commander (house rule): the starting-army restock is
+// withheld while a commander that stood in the fight SURVIVED it — the
+// commander must fall too. Also kills the First Aid duplication: pre-fix, a
+// full wipe restocked the deck AND First Aid revived the same casualty, so
+// the player ended up with two copies of one starting unit.
+// ===========================================================================
+
+describe("WOG commanders — empty unit deck restock requires the commander to fall too", () => {
+  /** Shrink p1's unit deck to ONE card so the fight's casualty empties it. */
+  function withOneCardArmy(state: GameState): GameState {
+    state.players.p1.army = state.players.p1.army.slice(0, 1);
+    return state;
+  }
+
+  function winFight(state: GameState): GameState {
+    state.combat!.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    finalizeAdventureCombat(state);
+    return state;
+  }
+
+  /** p1's lone deployed (non-commander) unit; killed = the whole deck is gone. */
+  function killLoneArmyUnit(fight: GameState): CombatUnitState {
+    const fallen = Object.values(fight.combat!.units).find(
+      (unit) => unit.controllerId === "p1" && !unit.commanderSlug
+    )!;
+    expect(fallen, "the lone deployed army unit").toBeTruthy();
+    fallen.damage = fallen.maxHealth;
+    return fallen;
+  }
+
+  it("a full wipe with the commander SURVIVING keeps the deck empty — and First Aid revives exactly ONE copy (no duplicate)", () => {
+    const fight = intoNeutralFight(withOneCardArmy(adventureWithCommanders("cmd-wipe-survive", "rampart", undefined)));
+    const fallen = killLoneArmyUnit(fight);
+    expect(["bronze", "silver"]).toContain(fallen.grade);
+    winFight(fight);
+
+    // The commander survived: NO starting-army restock (the reported bug —
+    // pre-fix the whole starting army came back here).
+    expect(fight.players.p1.army).toHaveLength(0);
+    expect(fight.players.p1.commander!.dead ?? false).toBe(false);
+
+    // The Hierophant's First Aid window is open; reviving the casualty puts
+    // exactly ONE copy in the deck — pre-fix this was the second, duplicate
+    // copy on top of the restocked starting army.
+    const pending = fight.adventure!.pendingCommanderFirstAid;
+    expect(pending?.playerId).toBe("p1");
+    const reviveIndex = pending!.options.findIndex((option) => option.kind === "revive");
+    expect(reviveIndex).toBeGreaterThanOrEqual(0);
+    const revived = apply(fight, { type: "COMMANDER_FIRST_AID", playerId: "p1", optionIndex: reviveIndex });
+    expect(revived.players.p1.army).toHaveLength(1);
+    expect(revived.players.p1.army.filter((unit) => unit.unitDefId === fallen.unitDefId)).toHaveLength(1);
+  });
+
+  it("Belfast (Azur Lane): the same wipe never duplicates the revived shipgirl", () => {
+    const fight = intoNeutralFight(
+      withOneCardArmy(adventureWithCommanders("cmd-wipe-belfast", "azur_lane", "enterprise"))
+    );
+    const fallen = killLoneArmyUnit(fight);
+    winFight(fight);
+
+    expect(fight.players.p1.army).toHaveLength(0);
+    const pending = fight.adventure!.pendingCommanderFirstAid;
+    expect(pending?.playerId).toBe("p1");
+    const reviveIndex = pending!.options.findIndex((option) => option.kind === "revive");
+    const revived = apply(fight, { type: "COMMANDER_FIRST_AID", playerId: "p1", optionIndex: reviveIndex });
+    expect(revived.players.p1.army).toHaveLength(1);
+    expect(revived.players.p1.army.filter((unit) => unit.unitDefId === fallen.unitDefId)).toHaveLength(1);
+  });
+
+  it("CONTROL: the commander falling TOO restocks the starting army (and opens no First Aid window)", () => {
+    const state = withOneCardArmy(adventureWithCommanders("cmd-wipe-both", "rampart", undefined));
+    const startingCount = state.players.p1.startingArmy.length;
+    expect(startingCount).toBeGreaterThan(1);
+    const fight = intoNeutralFight(state);
+    killLoneArmyUnit(fight);
+    const commander = fight.combat!.units[commanderUnitId("p1")];
+    commander.damage = commander.maxHealth;
+    winFight(fight);
+
+    expect(fight.players.p1.commander!.dead).toBe(true);
+    expect(fight.players.p1.army).toHaveLength(startingCount);
+    expect(fight.adventure!.pendingCommanderFirstAid).toBeFalsy();
+  });
+
+  it("CONTROL: module off — the classic restock is untouched", () => {
+    const state = withOneCardArmy(
+      createAdventureGameState({
+        seed: "cmd-wipe-off",
+        ruleset: "binh",
+        wog: { ...WOG_ON, commanders: false },
+        rollFirstPlayer: false
+      })
+    );
+    const startingCount = state.players.p1.startingArmy.length;
+    const fight = intoNeutralFight(state);
+    killLoneArmyUnit(fight);
+    winFight(fight);
+    expect(fight.players.p1.army).toHaveLength(startingCount);
+  });
+
+  it("CONTROL: a fight the commander did NOT stand in restocks as before (living commander elsewhere)", () => {
+    // Simulate a fight without the commander on the board (a secondary-hero
+    // fight's shape): remove the injected commander unit pre-outcome. The
+    // commander is still alive on the player state, but it never stood in
+    // THIS combat, so the classic empty-deck restock applies.
+    const state = withOneCardArmy(adventureWithCommanders("cmd-wipe-elsewhere", "rampart", undefined));
+    const startingCount = state.players.p1.startingArmy.length;
+    const fight = intoNeutralFight(state);
+    delete fight.combat!.units[commanderUnitId("p1")];
+    killLoneArmyUnit(fight);
+    winFight(fight);
+
+    expect(fight.players.p1.commander!.dead ?? false).toBe(false);
+    expect(fight.players.p1.army).toHaveLength(startingCount);
+  });
+
+  it("PvP end: the surviving commander withholds the winner's restock (loser without one restocks)", () => {
+    const state = adventureWithCommanders("cmd-wipe-pvp");
+    const attacker = getMainHero(state, "p1")!;
+    const defender = getMainHero(state, "p2")!;
+    state.players.p1.army = [{ id: "a1", unitDefId: "castle.pikemen", side: "few" }];
+    state.players.p2.army = [{ id: "b1", unitDefId: "castle.pikemen", side: "few" }];
+    const p2StartingCount = state.players.p2.startingArmy.length;
+
+    const baseUnit = (over: Partial<CombatUnitState> & { id: string; controllerId: PlayerId; armyUnitId: string }): CombatUnitState =>
+      ({
+        name: "Pikemen",
+        cardName: "Few Pikemen",
+        variant: "few",
+        grade: "bronze",
+        type: "ground",
+        attack: 1,
+        defense: 1,
+        maxHealth: 2,
+        damage: 0,
+        initiative: 1,
+        position: 0,
+        activatedThisRound: false,
+        movedThisActivation: false,
+        retaliatedThisRound: false,
+        defenseToken: false,
+        abilities: [],
+        unitDefId: "castle.pikemen",
+        assets: { cardImage: "", imageAlt: "" },
+        ...over
+      }) as CombatUnitState;
+    const p1Commander = makeCommanderCombatUnit(state.players.p1, 13)!;
+
+    state.combat = {
+      id: "c1",
+      round: 1,
+      attackerPlayerId: "p1",
+      defenderPlayerId: "p2",
+      activeUnitId: null,
+      // Fought on the ATTACKER's field so the loser's own-town elimination
+      // rule stays out of this test's way.
+      context: { kind: "player", attackerHeroId: attacker.id, defenderHeroId: defender.id, fieldId: attacker.spaceId! },
+      setup: null,
+      awaitingContinue: false,
+      // p1 wins THROUGH its commander: every p1 army card died, p2 was wiped.
+      outcome: { winnerPlayerId: "p1", defeatedPlayerId: "p2", reason: "all-enemy-units-defeated" },
+      dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 },
+      units: {
+        a1: baseUnit({ id: "a1", controllerId: "p1", armyUnitId: "a1", damage: 2, position: 12 }),
+        [p1Commander.id]: p1Commander,
+        b1: baseUnit({ id: "b1", controllerId: "p2", armyUnitId: "b1", damage: 2, position: 4 })
+      }
+    } as CombatState;
+
+    finalizeAdventureCombat(state);
+
+    // The winner's commander stood in the fight and survived: no restock.
+    expect(state.players.p1.army).toHaveLength(0);
+    // The loser's commander did NOT stand in this fight: classic restock.
+    expect(state.players.p2.army).toHaveLength(p2StartingCount);
+  });
+});
+
+// ===========================================================================
+// Commander-only deployment: with the deck empty (no restock while the
+// commander lives) the main hero fights THROUGH the commander — combat start
+// skips the restock, and placement may finish with ZERO placed units.
+// ===========================================================================
+
+describe("WOG commanders — commander-only combat start with an empty unit deck", () => {
+  function readyEmptyArmyFight(state: GameState): GameState {
+    let current = state;
+    if (current.players.p1.needsHandRefresh || current.players.p1.canMulligan) {
+      current = apply(current, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    current.players.p1.army = [];
+    const hero = getMainHero(current, "p1")!;
+    const field = current.adventure!.fields[hero.spaceId!];
+    field.difficulty = 2;
+    startNeutralEncounter(current, hero, field);
+    return current;
+  }
+
+  it("starts a neutral fight with ZERO units: no restock, 'Ready (commander only)' offered, the commander fights", () => {
+    const state = readyEmptyArmyFight(adventureWithCommanders("cmd-empty-start", "rampart", undefined));
+
+    // The living commander withholds the combat-start restock too.
+    expect(state.players.p1.army).toHaveLength(0);
+
+    const offers = getLegalActions(state, "p1");
+    expect(offers.some((legal) => legal.action.type === "PLACE_COMBAT_UNIT")).toBe(false);
+    const ready = offers.find((legal) => legal.action.type === "FINISH_COMBAT_PLACEMENT");
+    expect(ready, "Ready for battle offered with zero units").toBeTruthy();
+    expect(ready!.label).toContain("commander only");
+
+    const started = apply(state, ready!.action);
+    expect(started.combat!.units[commanderUnitId("p1")], "the commander stands in the fight").toBeTruthy();
+    expect(started.phase).toBe("combat");
+  });
+
+  it("CONTROL: a DEAD commander still gets the combat-start safety restock", () => {
+    const state = adventureWithCommanders("cmd-empty-start-dead", "rampart", undefined);
+    state.players.p1.commander!.dead = true;
+    const fight = readyEmptyArmyFight(state);
+
+    expect(fight.players.p1.army.length).toBe(fight.players.p1.startingArmy.length);
+    expect(getLegalActions(fight, "p1").some((legal) => legal.action.type === "PLACE_COMBAT_UNIT")).toBe(true);
+  });
+
+  it("CONTROL: a player who still HAS unit cards must place at least one", () => {
+    const state = adventureWithCommanders("cmd-place-required", "rampart", undefined);
+    let current = state;
+    if (current.players.p1.needsHandRefresh || current.players.p1.canMulligan) {
+      current = apply(current, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    const hero = getMainHero(current, "p1")!;
+    const field = current.adventure!.fields[hero.spaceId!];
+    field.difficulty = 2;
+    startNeutralEncounter(current, hero, field);
+
+    // No zero-unit Ready offer, and forcing the action is rejected.
+    expect(getLegalActions(current, "p1").some((legal) => legal.action.type === "FINISH_COMBAT_PLACEMENT")).toBe(false);
+    applyError(current, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
   });
 });
 
