@@ -21,6 +21,7 @@ export const DEFAULT_ANIME_OPTIONS: AnimeModOptions = {
   xianxiaTowns: false,
   secretRealms: false,
   xianxiaNeutrals: false,
+  doomNeutrals: false,
   elixirPills: false,
   cultivation: false,
   destiny: false,

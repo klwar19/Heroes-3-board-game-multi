@@ -1,5 +1,6 @@
 import type { UnitDefinition } from "./types";
 import { wogUnitDefinitions } from "@/data/wog";
+import { doomUnitDefinitions } from "@/data/doom";
 import { animeTownUnitDefinitions } from "@/data/anime/towns";
 
 /**
@@ -11,6 +12,7 @@ import { animeTownUnitDefinitions } from "@/data/anime/towns";
  */
 export const coreUnitDefinitions: Record<string, UnitDefinition> = {
   ...wogUnitDefinitions,
+  ...doomUnitDefinitions,
   ...animeTownUnitDefinitions,
   "castle.halberdiers": {
     id: "castle.halberdiers",

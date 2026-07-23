@@ -108,6 +108,23 @@ const creatureVoices: Record<string, string> = {
   energy_elementals: "energy-elemental",
   fire_elementals: "fire-elemental",
   magma_elementals: "magma-elemental",
+  // Doom neutral slice: reuse complete H3 clips until dedicated Doom audio exists.
+  demon: "behemoth",
+  former_human: "archer",
+  former_human_sergeant: "sharpshooter",
+  imp: "gog",
+  lost_soul: "wraith",
+  cacodemon: "gog",
+  hell_knight: "behemoth",
+  arachnotron: "titan",
+  baron_of_hell: "behemoth",
+  former_commando: "titan",
+  revenant: "wraith",
+  mancubus: "behemoth",
+  pain_elemental: "hydra",
+  arch_vile: "lich",
+  spider_mastermind: "hydra",
+  cyberdemon: "titan",
   // Gold / azure neutral guards. (gold_dragons already maps above, shared with
   // the Rampart Gold Dragons — the neutral twin reuses that voice.)
   nagas: "naga",

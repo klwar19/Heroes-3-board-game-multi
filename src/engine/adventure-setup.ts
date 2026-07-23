@@ -43,6 +43,7 @@ import {
   startingTileByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { DOOM_UNIT_IDS_BY_TIER } from "@/data/doom";
 import { WOG_UNIT_IDS_BY_TIER } from "@/data/wog";
 import { allTileDefinitions, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
 import { CREATURE_BANK_IDS, CREATURE_BANKS } from "@/data/map/creature-banks";
@@ -719,13 +720,20 @@ export function getScenario(scenarioId?: string): ScenarioDefinition {
   return scenarioDefinitions[scenarioId ?? DEFAULT_SCENARIO_ID] ?? scenarioDefinitions[DEFAULT_SCENARIO_ID];
 }
 
-function makeNeutralDecks(seed: string, wog: WogModOptions): Record<string, DeckState> {
+function makeNeutralDecks(seed: string, wog: WogModOptions, anime: AnimeModOptions): Record<string, DeckState> {
   const decks: Record<string, DeckState> = {};
+  const wogCreaturesOn = Boolean(wog.enabled && wog.newCreatures);
+  const doomCreaturesOn = Boolean(
+    wogCreaturesOn ||
+      animeModuleEnabled({ anime }, "doomNeutrals")
+  );
   for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
     const deckId = NEUTRAL_DECK_IDS[tier];
-    const unitIds = wog.enabled && wog.newCreatures
-      ? [...neutralUnitIdsByTier[tier], ...WOG_UNIT_IDS_BY_TIER[tier]]
-      : neutralUnitIdsByTier[tier];
+    const unitIds = [
+      ...neutralUnitIdsByTier[tier],
+      ...(wogCreaturesOn ? WOG_UNIT_IDS_BY_TIER[tier] : []),
+      ...(doomCreaturesOn ? DOOM_UNIT_IDS_BY_TIER[tier] : [])
+    ];
     decks[deckId] = {
       id: deckId,
       drawPile: shuffleCards(unitIds, `${seed}#neutral#${tier}`),
@@ -2722,7 +2730,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         wog.enabled && wog.artifacts && wog.commanders,
         animeModuleEnabled({ anime }, "equipment")
       ),
-      ...makeNeutralDecks(seed, wog),
+      ...makeNeutralDecks(seed, wog, anime),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
       ...(moraleCardsOn ? makeMoraleDecks(seed) : {}),
       // The Event deck exists only when the optional rule is on AND the table
