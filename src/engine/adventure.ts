@@ -12806,10 +12806,28 @@ export function healLegacyPlayerFields(state: GameState): boolean {
   return changed;
 }
 
-/** Replaces an empty unit deck with the scenario starting units. */
-export function restoreStartingArmyIfEmpty(state: GameState, playerId: PlayerId): void {
+/**
+ * Replaces an empty unit deck with the scenario starting units.
+ *
+ * WOG Commanders (house rule): the free army reset is withheld while the
+ * player's LIVING commander stands in for the army — the commander must fall
+ * too before the unit deck is replaced. Callers pass `commanderStandsIn` from
+ * the seam they own: combat END passes "the commander stood in this fight and
+ * survived it" (finalizeCommandersAfterCombat's survivor set), combat START
+ * passes "the commander will join the imminent fight" (main-hero fights only —
+ * a fight the commander cannot join still restores, since combat setup needs
+ * at least one placeable body there).
+ */
+export function restoreStartingArmyIfEmpty(
+  state: GameState,
+  playerId: PlayerId,
+  options?: { commanderStandsIn?: boolean }
+): void {
   const player = state.players[playerId];
   if (!player || player.army.length > 0) {
+    return;
+  }
+  if (options?.commanderStandsIn) {
     return;
   }
   for (const unit of player.startingArmy) {

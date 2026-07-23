@@ -93,6 +93,7 @@ import {
   commanderCastRuneCost,
   commanderDefenseReactionUnit,
   commanderGradeUpChoices,
+  commanderStandsInCurrentCombat,
   commanderUnitId
 } from "./commanders";
 import { RUNE_MAX } from "./runes";
@@ -8050,9 +8051,13 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
     });
   }
 
-  if (placed.length > 0) {
+  // WOG Commanders: an EMPTY unit deck (no free restock while the commander
+  // lives) may deploy commander-only — the commander is auto-placed at combat
+  // start, so "Ready" with zero placed units is legal for that player.
+  const commanderOnly = player.army.length === 0 && commanderStandsInCurrentCombat(state, playerId);
+  if (placed.length > 0 || commanderOnly) {
     actions.push({
-      label: "Ready for battle",
+      label: commanderOnly && placed.length === 0 ? "Ready for battle (commander only)" : "Ready for battle",
       action: { type: "FINISH_COMBAT_PLACEMENT", playerId }
     });
   }

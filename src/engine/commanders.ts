@@ -34,6 +34,8 @@ import type {
   CommanderPlayerState,
   CommanderStatKey,
   GameState,
+  HeroId,
+  HeroState,
   PlayerId,
   PlayerState,
   UnitId
@@ -110,6 +112,54 @@ export function livingCommanderOf(player: PlayerState | undefined): CommanderPla
 export function playerHasLivingCommander(state: GameState, playerId: PlayerId, slug: CommanderSlug): boolean {
   const commander = livingCommanderOf(state.players[playerId]);
   return commander?.slug === slug;
+}
+
+/**
+ * Whether a fight brought by `hero` would field its owner's LIVING commander —
+ * the commander marches with the MAIN hero only (garrison defenses and
+ * secondary-hero fights get none; mirrors injectCombatCommanders' hero gate).
+ * The combat-start army-restore seams key off this: with the commander as a
+ * body, an empty unit deck is NOT replaced with the starting units (house
+ * rule — the commander must fall too before the free army reset).
+ */
+export function commanderMarchesWithHero(state: GameState, hero: HeroState | null | undefined): boolean {
+  if (!hero || hero.kind !== "main" || !commandersModuleEnabled(state)) {
+    return false;
+  }
+  return Boolean(livingCommanderOf(state.players[hero.controllerId]));
+}
+
+/**
+ * Whether `playerId`'s LIVING commander stands (or will stand, once
+ * finalizeCombatStart injects it) in the CURRENT combat. Used by the
+ * deployment window: a player whose unit deck is empty may finish placement
+ * with ZERO units when the commander is the army's remaining body.
+ */
+export function commanderStandsInCurrentCombat(state: GameState, playerId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat || !commandersModuleEnabled(state)) {
+    return false;
+  }
+  const injected = combat.units[commanderUnitId(playerId)];
+  if (injected) {
+    return injected.damage < injected.maxHealth;
+  }
+  if (!livingCommanderOf(state.players[playerId])) {
+    return false;
+  }
+  const heroIsOwnMain = (heroId: HeroId | null | undefined): boolean => {
+    const hero = heroId ? state.heroes[heroId] : null;
+    return Boolean(hero && hero.kind === "main" && hero.controllerId === playerId);
+  };
+  const context = combat.context;
+  if (context.kind === "neutral") {
+    return heroIsOwnMain(context.heroId);
+  }
+  if (context.kind === "player") {
+    return heroIsOwnMain(context.attackerHeroId) || heroIsOwnMain(context.defenderHeroId);
+  }
+  // Battle Test sandbox: both seats bring main heroes, so both get theirs.
+  return context.kind === "sandbox" && (playerId === combat.attackerPlayerId || playerId === combat.defenderPlayerId);
 }
 
 /**

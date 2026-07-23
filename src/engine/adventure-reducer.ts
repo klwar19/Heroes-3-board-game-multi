@@ -182,8 +182,10 @@ import {
   applyCommanderCombatStart,
   collectFirstAidCandidates,
   commanderGradesOf,
+  commanderMarchesWithHero,
   commanderPreCombatSortAvailable,
   commandersModuleEnabled,
+  commanderStandsInCurrentCombat,
   commanderUnitId,
   finalizeCommandersAfterCombat,
   injectCommanderIntoCombat,
@@ -4752,7 +4754,12 @@ function beginNeutralCombatPlacement(
   options?: { unlimitedRounds?: boolean }
 ): void {
   const playerId = hero.controllerId;
-  restoreStartingArmyIfEmpty(state, playerId);
+  // A main hero whose living commander joins this fight keeps its EMPTY unit
+  // deck (the commander is the army's remaining body — commander-only fight);
+  // any other fighter gets the starting-army restock so placement has a body.
+  restoreStartingArmyIfEmpty(state, playerId, {
+    commanderStandsIn: commanderMarchesWithHero(state, hero)
+  });
 
   // Rulebook Combat Setup order: the player places up to 5 units first (4 when
   // the WOG Commanders module reserves the fifth slot for the commander); the
@@ -7438,8 +7445,14 @@ export function startPlayerCombat(
     `against ${state.players[defenderPlayerId]?.name ?? defenderPlayerId}`
   );
 
-  restoreStartingArmyIfEmpty(state, attacker.controllerId);
-  restoreStartingArmyIfEmpty(state, defenderPlayerId);
+  // Each side keeps an EMPTY unit deck when its living commander joins this
+  // fight (main heroes only — a garrison/secondary defender still restocks).
+  restoreStartingArmyIfEmpty(state, attacker.controllerId, {
+    commanderStandsIn: commanderMarchesWithHero(state, attacker)
+  });
+  restoreStartingArmyIfEmpty(state, defenderPlayerId, {
+    commanderStandsIn: commanderMarchesWithHero(state, defender)
+  });
 
   // Siege: the combat happens on the defender's own faction town field and
   // the town has a Citadel — walls, gate and the arrow tower join the board.
@@ -7938,7 +7951,15 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
   }
 
   if ((setup.placedUnitIds[action.playerId] ?? []).length === 0) {
-    throw new Error("Place at least one unit before starting the combat.");
+    // WOG Commanders: a player whose unit deck is EMPTY (no free restock while
+    // the commander lives) fights commander-only — the commander is auto-placed
+    // at combat start, so zero placed units is a legal deployment for them.
+    const commanderOnly =
+      (state.players[action.playerId]?.army.length ?? 0) === 0 &&
+      commanderStandsInCurrentCombat(state, action.playerId);
+    if (!commanderOnly) {
+      throw new Error("Place at least one unit before starting the combat.");
+    }
   }
 
   appendEvent(state, { type: "COMBAT_PLACEMENT_FINISHED", playerId: action.playerId });
@@ -9441,7 +9462,13 @@ export function finalizeAdventureCombat(state: GameState): void {
         moveDefeatedHeroHome(state, hero, true);
       }
 
-      restoreStartingArmyIfEmpty(state, playerId);
+      // House rule: a commander that stood in this fight and SURVIVED it holds
+      // the army together — the emptied unit deck is NOT replaced until the
+      // commander falls too (also keeps First Aid from duplicating a casualty
+      // the restock already brought back).
+      restoreStartingArmyIfEmpty(state, playerId, {
+        commanderStandsIn: commanderSurvivors.has(playerId)
+      });
     }
 
     state.combat = null;
@@ -9627,7 +9654,11 @@ export function finalizeAdventureCombat(state: GameState): void {
 
   for (const playerId of [winnerId, loserId]) {
     if (playerId !== NEUTRAL_PLAYER_ID) {
-      restoreStartingArmyIfEmpty(state, playerId);
+      // Same house rule as the neutral branch above: a surviving commander
+      // that stood in this fight withholds the starting-army restock.
+      restoreStartingArmyIfEmpty(state, playerId, {
+        commanderStandsIn: commanderSurvivors.has(playerId)
+      });
     }
   }
 
