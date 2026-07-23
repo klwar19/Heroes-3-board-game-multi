@@ -1988,7 +1988,11 @@ export function EffectsRail({
   );
 }
 
-const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
+// Exported so `activated-ability-commands.test.tsx` can assert — statically,
+// against the REAL dock set — that every engine-offered activated-unit-ability
+// action renders a command button. A new activated ability whose offer action
+// type is missing here is exactly the "engine offer with no UI surface" bug.
+export const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "DEFEND_UNIT",
   // Polish Wait (house rule): offered at the start of the active unit's
   // activation; the unit re-activates after all other units, highest token
