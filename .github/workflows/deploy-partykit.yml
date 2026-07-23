@@ -59,7 +59,22 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      # Install deps. Prefer a strict, reproducible clean install — but NEVER let
+      # the PartyKit deploy be blocked by a cross-platform lockfile quirk in an
+      # OPTIONAL native dep. sharp's wasm32 fallback (@img/sharp-wasm32) pulls
+      # @emnapi/* transitive deps that float on a caret range (^1.7.0); the
+      # package-lock.json committed from a Windows dev box lags the version the
+      # Linux runner's `npm ci` recomputes (e.g. lock has 1.11.0, registry now
+      # ships 1.11.2), so `npm ci` rejects the lockfile as "out of sync" and dies
+      # before the deploy. Meanwhile Vercel installs the frontend leniently and
+      # keeps shipping — that asymmetry is exactly what drifts the room server
+      # behind the UI (the recurring "room server out of date" banner). Every new
+      # upstream patch re-triggers it, hence "keeps happening". The fallback
+      # repairs the tree (same lenient resolve Vercel does) for this and any
+      # FUTURE optional-dep drift, so both halves always deploy in lockstep. The
+      # repair is ephemeral (not committed); the tests below still gate the deploy.
+      - name: Install dependencies (resilient to optional-dep lockfile drift)
+        run: npm ci || (echo "::warning::npm ci rejected the lockfile (likely cross-platform optional-dep drift) — repairing with npm install" && npm install --no-audit --no-fund)
       # Gate the deploy on a green engine: never ship a room server that fails
       # the rules tests or typecheck.
       - run: npm test
