@@ -256,6 +256,14 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "On (house rule): Pit Lords may summon a new Few of Demons even when Demons are already on the field (multiple Demon units, still once per Pit Lords per combat). Off (official): only ONE Demons unit may stand on the field — either a Few or a Pack. With Demons already present you may only Reinforce a Few up to a Pack, never summon a second stack.",
     category: "combat",
     default: true
+  },
+  {
+    id: "phoenix-pack-rebirth",
+    label: "Phoenix Pack Rebirth",
+    description:
+      "On (BINH house rule): the Pack of Phoenixes also has Rebirth (once per Combat, lethal damage leaves it at 1 Health on its Pack side). Off (printed/wiki): only the Few (and Neutral) Phoenixes have Rebirth — the Pack has the line attack and Fire immunity only.",
+    category: "units",
+    default: true
   }
 ];
 

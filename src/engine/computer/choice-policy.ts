@@ -375,23 +375,19 @@ function scorePositionOption(
       context === "fortune-boost") &&
     (choice.mapSpellBoost || choice.visionsBoost || choice.fortuneBoost)
   ) {
-    const boost =
-      choice.mapSpellBoost ?? choice.visionsBoost ?? choice.fortuneBoost;
-    if (!boost) {
-      return CHOICE_BASE + 10;
-    }
-    const offers = boost.offers ?? [];
-    const resolveIndex = offers.length; // trailing "Resolve now"
-    if (optionIndex === resolveIndex) {
-      // Resolve is always a safe exit; slightly preferred when no offer left.
-      return offers.length === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 18;
-    }
-    const offer = offers[optionIndex];
-    if (!offer) {
-      return CHOICE_BASE;
+    // The three boost choices carry different pending-data shapes (only
+    // mapSpellBoost lists `offers`); the OPTION_CHOICE options are the uniform
+    // surface here, and the trailing option is always "Resolve now".
+    const optionCount =
+      choice.type === "OPTION_CHOICE" ? choice.options.length : 0;
+    const label = (optionLabel(choice, optionIndex) ?? "").toLowerCase();
+    const isResolve =
+      label.includes("resolve") || optionIndex === optionCount - 1;
+    if (isResolve) {
+      // Resolve is a safe exit; preferred when it is the only option left.
+      return optionCount <= 1 ? CHOICE_BASE + 40 : CHOICE_BASE + 18;
     }
     // Prefer free / permanent / school boosts over discarding high-keep hand cards.
-    const label = optionLabel(choice, optionIndex).toLowerCase();
     let score = CHOICE_BASE + 28;
     if (
       label.includes("school") ||
@@ -403,9 +399,6 @@ function scorePositionOption(
       // Soft penalty — still above resolve when a tier step matters; hand junk
       // discards stay competitive via the generic keep table elsewhere.
       score -= 6;
-    }
-    if (label.includes("resolve")) {
-      score = CHOICE_BASE + 18;
     }
     return score;
   }

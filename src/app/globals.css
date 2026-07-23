@@ -1870,6 +1870,95 @@ button.battleCell {
   background: linear-gradient(180deg, rgb(34 28 20 / 92%), rgb(20 18 14 / 94%));
 }
 
+/* Clickable discard in the combat player dock (opens the full pile browser). */
+button.combatDiscardSpot {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+button.combatDiscardSpot:disabled {
+  cursor: default;
+}
+button.combatDiscardSpot:not(:disabled):hover .pileCard.faceUp {
+  outline: 2px solid rgb(213 168 79 / 70%);
+  outline-offset: 1px;
+}
+
+/* Bottom combat deck + discard rail (map-mode own-deck parity). */
+.combatDecksBottom {
+  display: flex;
+  justify-content: flex-start;
+  padding: 6px 10px 8px;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, rgb(18 16 12 / 88%), rgb(12 11 9 / 96%));
+}
+.combatOwnPiles {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+.combatOwnPile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 72px;
+}
+button.combatOwnPile {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+.combatOwnPileCard {
+  width: 72px;
+  aspect-ratio: 5 / 7;
+  border-radius: 6px;
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 45%);
+}
+.combatOwnPileCard.faceUp {
+  border: 1px solid rgb(243 239 228 / 28%);
+}
+.combatOwnPileCount,
+.combatOwnDiscardBadge {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  border: 1px solid rgb(213 168 79 / 60%);
+  color: var(--ink);
+  background: var(--gold);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  line-height: 1.3;
+}
+.combatOwnPile small {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+button.combatOwnDiscard:hover .combatOwnPileCard {
+  outline: 2px solid rgb(213 168 79 / 75%);
+  outline-offset: 2px;
+}
+button.combatOwnDiscard.hasCard .combatOwnPileCard {
+  box-shadow:
+    0 4px 12px rgb(0 0 0 / 45%),
+    0 0 0 1px rgb(213 168 79 / 25%);
+}
+
 .dockMetrics {
   display: grid;
   gap: 4px;

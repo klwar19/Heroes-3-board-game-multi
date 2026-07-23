@@ -100,10 +100,11 @@ export function applyUnitSideRules(
    * existing caller keeps its old behaviour; live callers pass the resolved
    * `griffin-buff` / `marksman-buff` flags so a table can flip either alone.
    */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean; phoenixPackRebirth?: boolean }
 ): UnitSideDefinition {
   const griffinBuff = overrides?.griffinBuff ?? ruleset === "binh";
   const marksmanBuff = overrides?.marksmanBuff ?? ruleset === "binh";
+  const phoenixPackRebirth = overrides?.phoenixPackRebirth ?? ruleset === "binh";
 
   if (griffinBuff && unitDefId === "castle.griffins" && side === "few") {
     return { ...definition, attack: 3 };
@@ -113,6 +114,18 @@ export function applyUnitSideRules(
   }
   if (marksmanBuff && unitDefId === "castle.marksmen" && side === "pack") {
     return { ...definition, health: 3 };
+  }
+  // BINH house rule: Pack Phoenixes also get Rebirth (Few always has it on data).
+  if (
+    phoenixPackRebirth &&
+    unitDefId === "conflux.phoenixes" &&
+    side === "pack" &&
+    !definition.abilities.includes("phoenix-rebirth")
+  ) {
+    return {
+      ...definition,
+      abilities: [...definition.abilities, "phoenix-rebirth"]
+    };
   }
 
   return definition;
@@ -125,7 +138,13 @@ export function applyUnitSideRules(
  */
 export function unitSideRuleOverrides(
   state: Pick<GameState, "ruleset" | "adventure" | "anime">
-): { griffinBuff: boolean; marksmanBuff: boolean; polishUnitStacks: boolean; neutralRankUp: boolean } {
+): {
+  griffinBuff: boolean;
+  marksmanBuff: boolean;
+  polishUnitStacks: boolean;
+  neutralRankUp: boolean;
+  phoenixPackRebirth: boolean;
+} {
   return {
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
     marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
@@ -137,7 +156,9 @@ export function unitSideRuleOverrides(
     // LIVE Stack Token, which the bank stat-recompute branch owns. The ROUNDS
     // half instead mirrors capped XP straight onto the guard (see
     // unit-experience.ts), like player veterancy — no flag needed there.
-    neutralRankUp: Boolean(state.adventure?.neutralRankUp)
+    neutralRankUp: Boolean(state.adventure?.neutralRankUp),
+    // Pack of Phoenixes Rebirth (BINH house rule, default ON).
+    phoenixPackRebirth: houseRuleEnabled(state, "phoenix-pack-rebirth")
     // Unit Experience is NOT threaded through these overrides: the shared
     // veterancy machinery folds the rank bonus straight off `armyUnit.experience`
     // / the mirrored `unit.unitExperience` (see unit-experience.ts), which a card

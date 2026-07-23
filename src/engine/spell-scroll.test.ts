@@ -220,7 +220,7 @@ describe("Spell Scroll — casting in combat", () => {
     expect(state.combat!.units[TARGET].damage).toBe(2);
   });
 
-  it("cannot be buffed by Power — a power play during the cast does nothing", () => {
+  it("cannot climb past the lowest useful tier — Power on Magic Arrow stays at 0", () => {
     let state = scrollCombatState(["spell.magic_arrow"]);
     state.players.p1.hand = ["stat.power"];
 
@@ -235,8 +235,49 @@ describe("Spell Scroll — casting in combat", () => {
     state = applyOk(state, powerPlay!.action);
     state = passAllReactions(state);
 
-    // Still 1 damage: the scroll spell is locked to power 0 despite the Power.
+    // Magic Arrow's lowest useful tier is Power 0 (1 damage). Paid Power cannot
+    // raise a Scroll cast past that floor — still 1 damage, not the Power-1 rung.
     expect(state.combat!.units[TARGET].damage).toBe(1);
+    const resolved = findEvent(state, "SPELL_CAST_RESOLVED");
+    expect(resolved && resolved.type === "SPELL_CAST_RESOLVED" ? resolved.power : -1).toBe(0);
+  });
+
+  it("can pay Power to reach the lowest useful tier of a floor-gated spell (Implosion)", () => {
+    // Implosion amountByPower {0:0, 1:2, …}: at Power 0 it deals nothing; the
+    // lowest useful tier is Power 1 → 2 damage. A Scroll may fuel that floor
+    // with a paid Power source, but never climb higher.
+    let state = scrollCombatState(["spell.implosion"]);
+    state.players.p1.hand = ["stat.power"];
+    // Target needs enough HP to observe the 2 damage.
+    state.combat!.units[TARGET].maxHealth = 9;
+    state.combat!.units[TARGET].damage = 0;
+
+    const cast = scrollCastAt(state, TARGET);
+    expect(cast, "Implosion scroll cast offered").toBeTruthy();
+    state = applyOk(state, cast!.action);
+
+    const powerPlay = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+    );
+    expect(powerPlay, "Power must be offerable to fuel the Implosion floor").toBeTruthy();
+    state = applyOk(state, powerPlay!.action);
+    state = passAllReactions(state);
+
+    expect(state.combat!.units[TARGET].damage).toBe(2);
+    const resolved = findEvent(state, "SPELL_CAST_RESOLVED");
+    expect(resolved && resolved.type === "SPELL_CAST_RESOLVED" ? resolved.power : -1).toBe(1);
+  });
+
+  it("CONTROL: without paying Power, a scroll Implosion fizzles at Power 0", () => {
+    let state = scrollCombatState(["spell.implosion"]);
+    state.players.p1.hand = []; // nothing to fuel with — may pass under floor
+    state.combat!.units[TARGET].maxHealth = 9;
+    state.combat!.units[TARGET].damage = 0;
+
+    const cast = scrollCastAt(state, TARGET);
+    state = passAllReactions(applyOk(state, cast!.action));
+
+    expect(state.combat!.units[TARGET].damage).toBe(0);
     const resolved = findEvent(state, "SPELL_CAST_RESOLVED");
     expect(resolved && resolved.type === "SPELL_CAST_RESOLVED" ? resolved.power : -1).toBe(0);
   });

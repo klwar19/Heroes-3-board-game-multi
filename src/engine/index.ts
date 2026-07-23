@@ -457,16 +457,22 @@ export {
   guardUnitEntryLabel,
   isCustomGuardUnitEntry,
   isAnyPackGuardSlot,
+  isAnyFewGuardSlot,
   isPackGuardSlot,
+  isFewGuardSlot,
   isRandomGuardSlot,
   isRandomPackGuardSlot,
+  isRandomFewGuardSlot,
   isLevelPackGuard,
   packUnitPoolForTier,
+  fewUnitPoolForTier,
   resolveCustomGuardDraws,
   resolveLevelPackGuardDraws,
   PACK_GUARD_PREFIX,
+  FEW_GUARD_PREFIX,
   RANDOM_GUARD_PREFIX,
   RANDOM_PACK_GUARD_PREFIX,
+  RANDOM_FEW_GUARD_PREFIX,
   RANDOM_GUARD_TIERS
 } from "./map-design-features";
 export type { RandomGuardTier, ResolveCustomGuardOptions } from "./map-design-features";

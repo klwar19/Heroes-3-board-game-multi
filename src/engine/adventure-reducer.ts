@@ -4718,14 +4718,16 @@ function persistLivingGuardsOnField(
         unit.damage < unit.maxHealth &&
         Boolean(unit.unitDefId)
     )
-    // CombatUnitState carries no factionPack flag — derive pack-ness from the
-    // minted variant ("pack", or "few" after a mid-fight flip; plain neutral
-    // guards are variant "neutral"), so a `pack:` slot survivor re-persists as
-    // a faction Pack instead of silently vanishing from the re-fight. A Few
-    // survivor re-fights as a full Pack ("full health on the re-fight").
+    // Derive pack/few-ness from the minted variant + designer flag:
+    // - variant "pack" → re-persist as Pack
+    // - variant "few" without factionFew (Pack→Few flip mid-fight) → re-persist
+    //   as Pack ("full health on the re-fight")
+    // - designer few-slot (factionFew) → re-persist as Few
+    // - plain neutral → neutral id
     .map((unit) => ({
       unitDefId: unit.unitDefId,
-      factionPack: unit.variant === "pack" || unit.variant === "few"
+      factionPack: unit.variant === "pack" || (unit.variant === "few" && !unit.factionFew),
+      factionFew: Boolean(unit.factionFew && unit.variant === "few")
     }));
   const survivors = survivorsToCustomGuardUnits(living);
   if (survivors.length === 0) {

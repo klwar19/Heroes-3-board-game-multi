@@ -11194,8 +11194,9 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     }
   }
 
-  // Scroll spells are locked to power 0 and cannot be boosted by any Power
-  // source — skip every power-granting hook below and flag the stack item.
+  // Scroll spells ignore standing/school/equipment Power (skip those hooks) but
+  // allow paid Power cards into the cast window up to the lowest useful tier
+  // (see resolvedSpellPowerForStackItem). Flag the stack item as scroll-locked.
   if (action.fromScroll) {
     stackItem.modifiers.scrollLocked = true;
   } else {
@@ -11331,7 +11332,8 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   // spell is still below its useful Power floor AND they can still fuel it
   // (Implosion needs ≥1, etc.). Prevents a silent 0-damage resolve. Escape
   // hatch: if they have nothing left to fuel with, pass is allowed (spell
-  // fizzles) so the table cannot soft-lock. Scroll-locked casts stay free at 0.
+  // fizzles) so the table cannot soft-lock. Scroll casts ALSO honour this floor
+  // — paid Power is the only way to reach it (standing bonuses never apply).
   //
   // A FORCED-resolution pass (the passing seat is being AFK-dropped or turn-
   // timed-out) always goes through: those drivers hard-code PASS_REACTION and
@@ -11345,8 +11347,7 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   if (
     !forcedResolutionPass &&
     pending?.action.type === "CAST_SPELL" &&
-    pending.action.playerId === action.playerId &&
-    !pending.modifiers.scrollLocked
+    pending.action.playerId === action.playerId
   ) {
     const spell = cards[pending.action.cardId];
     const minUseful = spellMinUsefulPower(spell);
