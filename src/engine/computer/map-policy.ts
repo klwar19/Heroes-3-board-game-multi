@@ -1618,10 +1618,11 @@ function teleportDestinationScore(
  */
 /**
  * Anime Equipment (§3.13): score a BUY_EQUIPMENT outfitter option. Buy into an
- * EMPTY slot from genuine surplus (gold ≥ cost + 6). Upgrade-replace only when
- * the shop item's grade is STRICTLY higher than the equipped one and surplus
- * still covers the cost + cushion. Below that scores under Leave (1_050) so
- * the runner always has a clean exit (no stall, no over-spend).
+ * EMPTY slot from genuine surplus (gold ≥ cost + 6) — the AI NEVER auto-replaces
+ * an already-equipped item (even a higher-grade shop item): a filled slot scores
+ * under Leave (1_050) so the runner exits the shop cleanly (no stall, no
+ * over-spend). Pinned by anime-equipment.test.ts "never auto-replaces a filled
+ * one (CONTROL)".
  */
 function equipmentBuyScore(state: GameState, playerId: string, equipmentId: string): number {
   const def = getEquipmentDefinition(equipmentId);
@@ -1638,16 +1639,10 @@ function equipmentBuyScore(state: GameState, playerId: string, equipmentId: stri
     const gradeNudge = def.grade === "III" ? 12 : def.grade === "II" ? 6 : 0;
     return 1_120 + gradeNudge;
   }
-  // Upgrade replace: only when the new grade is strictly better.
-  const equipped = getEquipmentDefinition(equippedId);
-  const gradeRank = { I: 1, II: 2, III: 3 } as const;
-  if (
-    equipped &&
-    gradeRank[def.grade] > gradeRank[equipped.grade]
-  ) {
-    return 1_110 + (gradeRank[def.grade] - gradeRank[equipped.grade]) * 4;
-  }
-  // Same/worse grade in an occupied slot → leave instead of auto-replace.
+  // Slot already filled → NEVER auto-replace, even with a higher-grade shop item
+  // (the map policy has no way to reclaim the sunk cost of the worn item, and the
+  // authoritative anime-equipment.test.ts CONTROL pins "never auto-replaces a
+  // filled one"). Score under Leave (1_050) so the runner exits the shop cleanly.
   return 1_000;
 }
 
