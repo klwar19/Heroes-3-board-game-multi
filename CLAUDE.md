@@ -3249,8 +3249,10 @@ MAGIC medic/support clones (`rethemedSpecialty`, no unit doubling): Akashi
 ("Emergency Repairs", a Gem First-Aid clone) and Sirius ("Flawless Service", a
 Rion medic clone). Belfast commander (`belfast`,
 `COMMANDER_SLUG_BY_FACTION.azur_lane`) = the bespoke "Royal Salvo" enemy-damage
-cast (above) + `first-aid` ("Impeccable Service"), Sea Witch voice, Magic-Arrow
-cast fx. Starting tile P-S1 (an S4-layout clone, mirrors A-S1). Its BESPOKE
+cast (above) + `first-aid` ("Impeccable Service"), her bespoke Japanese Azur
+Lane voice clips (the Sea Witch set is only the dead documented fallback in
+`commanderVoices` — `commanderSoundKey` short-circuits "belfast" to
+`azur-lane/voices/belfast/*` first), Magic-Arrow cast fx. Starting tile P-S1 (an S4-layout clone, mirrors A-S1). Its BESPOKE
 `kansen` equipment line (6 items, 2 per grade across all four slots — Oxygen
 Torpedo / Manjuu Piggy Bank / Repair Toolkit / Beaver Squad Tag / SG Radar /
 Retrofit Blueprint) is `anime.equipment`-gated, joins the shared Artifact deck

@@ -176,9 +176,13 @@ const creatureVoices: Record<string, string> = {
   giant_toad: "hidden-leaf-giant-toad",
   jinchuriki: "hidden-leaf-jinchuriki",
   susanoo: "hidden-leaf-susanoo",
-  // Azur Lane Naval Base — thematic reuse of complete Heroes III voice sets.
-  // Honolulu is the only RANGED shipgirl, so her set resolves a real shoot clip
-  // (sea-witch-shoot exists in the manifest).
+  // Azur Lane Naval Base — NOTE: these H3 entries do NOT run. unitSoundKey
+  // short-circuits every shipgirl to her bespoke Japanese clips
+  // (azurLaneUnitVoices below) before ever reading creatureVoices — the same
+  // pattern as the documented Belfast commander fallback. Kept as the
+  // reviewable H3 voice each girl would resolve to if that short-circuit were
+  // removed (Honolulu, the one RANGED shipgirl, maps to a set with a real
+  // shoot clip: sea-witch-shoot exists in the manifest).
   laffey: "rogue", // nimble "White Demon" destroyer → the stealthy Rogue set
   javelin: "pirate", // Royal Navy destroyer → the Cove Sea Dog's Pirate set
   honolulu: "sea-witch", // ranged cruiser gunner → the Sorceress/Sea Witch set (has shoot)

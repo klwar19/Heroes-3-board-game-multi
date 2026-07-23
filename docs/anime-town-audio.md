@@ -4,6 +4,12 @@ This pack gives every unit in Azure Breeze, Hidden Leaf Village, and Heavenly
 Demon Palace a complete action set. That is 109 files: attack, defend, hurt,
 death, and move for all 21 units, plus shoot for the four ranged units.
 
+Azur Lane Naval Base is NOT part of this pack: its shipgirls (and the Belfast
+commander) speak their own Japanese combat lines under
+`public/sounds/azur-lane/voices/` — see `public/sounds/azur-lane/README.md`
+for the event mapping (attack+shoot share Skill Activation, defend+hurt share
+Low HP) and licensing caveats. Fuyuki City still reuses Heroes III voice sets.
+
 ## Sound design
 
 - Azure Breeze uses clean sword attacks and blocks for the martial units,

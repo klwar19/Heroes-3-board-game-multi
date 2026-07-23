@@ -185,7 +185,9 @@ describe("unit combat voices", () => {
     expect(commanderSoundKey("belfast", "attack")).toBe("azur-lane/voices/belfast/attack");
     expect(commanderSoundKey("belfast", "shoot")).toBe("azur-lane/voices/belfast/attack");
     expect(commanderSoundKey("belfast", "defend")).toBe("azur-lane/voices/belfast/hurt");
+    expect(commanderSoundKey("belfast", "hurt")).toBe("azur-lane/voices/belfast/hurt");
     expect(commanderSoundKey("belfast", "death")).toBe("azur-lane/voices/belfast/death");
+    expect(commanderSoundKey("belfast", "move")).toBe("azur-lane/voices/belfast/move");
   });
 
   it("layers naval combat SFX under Azur Lane attacks", () => {
