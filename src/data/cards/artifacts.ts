@@ -353,7 +353,15 @@ export const artifactCards: CardLibrary = {
     name: "Torso of Legion",
     kind: "artifact",
     timing: "instant",
-    // House rule: Torso of Legion is played as a Major artifact (not Minor).
+    // House rule `torso-of-legion-major` (default ON): Torso of Legion is PRINTED
+    // Minor but BINH plays/sorts it as a MAJOR artifact. This static tier IS the
+    // default (rule-ON) reading; with the rule OFF the engine treats it as Minor
+    // via `effectiveArtifactTier` (ruleset.ts) at every tier chokepoint. Keeping
+    // the base "major" here guarantees the default is byte-identical everywhere,
+    // including the reads NOT routed through the helper (the AI card valuation and
+    // the `getCardMetaLabels` tier chip). PRESENTATION LIMIT: those two, the tags
+    // array below and the card face art (artifactAssets("major", …)) stay
+    // Major-styled even with the rule OFF — only the engine tier reading flips.
     artifactTier: "major",
     tags: [
       "artifact",
@@ -3117,6 +3125,15 @@ export const artifactDeckLegacy: string[] = [
 ];
 
 /** BINH Minor Artifact deck (adds the BINH-extra minors). */
+/**
+ * Torso of Legion is PRINTED Minor but BINH plays it as a MAJOR artifact (house
+ * rule `torso-of-legion-major`, default ON). This id is the single seam the
+ * effective-tier helper + the shared-deck builder key off when the rule is OFF:
+ * `effectiveArtifactTier` (ruleset.ts) reads it Minor, and `makeSharedDecks`
+ * (adventure-setup.ts) moves it from the Major deck to the Minor deck.
+ */
+export const TORSO_OF_LEGION_ID = "artifact.torso_of_legion";
+
 export const artifactDeckBinhMinor: string[] = [
   "artifact.armor_of_wonder",
   "artifact.breastplate_of_petrified_wood",
