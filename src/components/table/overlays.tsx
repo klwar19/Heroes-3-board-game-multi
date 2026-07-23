@@ -549,10 +549,11 @@ export function ReactionTray({
   );
 
   // Basic X Magic (the in-play spell-fetch permanent): its +3 Power expert is a
-  // standalone USE_SCHOOL_FETCH_EXPERT action (using it discards the permanent,
-  // like the Tower School-of-Magic expert), so no PLAY_REACTION card tile ever
-  // surfaces it. Without this the +3 expert was engine-offered but had no button
-  // in the instant window ("cannot play the expert effect").
+  // standalone USE_SCHOOL_FETCH_EXPERT action (using it discards the permanent —
+  // user ruling: the expert consumes its source, hand or permanent), so no
+  // PLAY_REACTION card tile ever surfaces it. Without this the +3 expert was
+  // engine-offered but had no button in the instant window ("cannot play the
+  // expert effect").
   const schoolFetchExpertReactions = legalActions.filter(
     (legal) => legal.action.type === "USE_SCHOOL_FETCH_EXPERT"
   );
@@ -1894,7 +1895,11 @@ export function SearchModal({
 /**
  * Up-front Search-or-take-discard (and Basic X Magic school-fetch) choice.
  * Same search-modal vibe as SearchModal: Search shows the deck's card back,
- * take-discard shows the face-up top of that discard pile.
+ * take-discard shows the face-up top of that discard pile, the school draw the
+ * Basic X Magic card face. Renders BOTH up-front surfaces: the single-deck
+ * "deck-search-mode" choice AND the one-step SPELLS deck-pick (`deckPick.upFront`
+ * — user demand: "choose discard, search or school of magic" in ONE decision,
+ * never "choose search, then the School-of-Magic draw appears after").
  */
 export function DeckSearchModeModal({
   state,
@@ -1911,7 +1916,9 @@ export function DeckSearchModeModal({
 }) {
   const { zoomCard } = useCardZoom();
   const choice = state.pendingChoice;
-  if (choice?.type !== "OPTION_CHOICE" || choice.context !== "deck-search-mode") {
+  const isMode = choice?.type === "OPTION_CHOICE" && choice.context === "deck-search-mode" && Boolean(choice.deckSearchMode);
+  const isUpFrontPick = choice?.type === "OPTION_CHOICE" && choice.context === "deck-pick" && Boolean(choice.deckPick?.upFront);
+  if (choice?.type !== "OPTION_CHOICE" || (!isMode && !isUpFrontPick)) {
     return null;
   }
 
@@ -1926,11 +1933,6 @@ export function DeckSearchModeModal({
     );
   }
 
-  const mode = choice.deckSearchMode;
-  if (!mode) {
-    return null;
-  }
-
   const optionActions = legalActions.filter(
     (legal): legal is LegalAction & { action: Extract<GameAction, { type: "CHOOSE_OPTION" }> } =>
       legal.action.type === "CHOOSE_OPTION" && legal.action.choiceId === choice.id
@@ -1939,26 +1941,56 @@ export function DeckSearchModeModal({
     return null;
   }
 
-  const deckState = view.decks[mode.deckId];
-  const discardTopId =
-    mode.hasDiscardTop && deckState && deckState.discardPile.length > 0
-      ? deckState.discardPile[deckState.discardPile.length - 1]
-      : null;
-  // Every deck offers only the single top-only take (index 1).
-  const discardOptionCount = mode.hasDiscardTop ? 1 : 0;
+  // Which section an option belongs to and what art its tile wears — derived
+  // from the option INDEX layout of whichever choice is open. This is
+  // PRESENTATION only: the option ORDER and each tile's `optionIndex` (which
+  // drive CHOOSE_OPTION resolution) are untouched; we just partition the SAME
+  // actions by index into headed rows.
+  const visualFor = (
+    optionIndex: number
+  ): { section: "search" | "discard" | "fetch"; faceCardId?: string; backDeckId: string } => {
+    if (choice.context === "deck-pick" && choice.deckPick) {
+      const pick = choice.deckPick;
+      if (optionIndex < pick.deckIds.length) {
+        return { section: "search", backDeckId: pick.deckIds[optionIndex]! };
+      }
+      const tops = pick.discardTops ?? [];
+      const extraIndex = optionIndex - pick.deckIds.length;
+      if (extraIndex < tops.length) {
+        return { section: "discard", faceCardId: tops[extraIndex]!.cardId, backDeckId: pick.deckIds[0]! };
+      }
+      const school = (pick.fetchSchools ?? [])[extraIndex - tops.length];
+      return {
+        section: "fetch",
+        ...(school ? { faceCardId: `ability.basic_${school}_magic` } : {}),
+        backDeckId: pick.deckIds[0]!
+      };
+    }
+    const mode = choice.deckSearchMode!;
+    const discardOptionCount = mode.hasDiscardTop ? 1 : 0;
+    if (optionIndex === 0) {
+      return { section: "search", backDeckId: mode.deckId };
+    }
+    if (mode.hasDiscardTop && optionIndex <= discardOptionCount) {
+      const deckState = view.decks[mode.deckId];
+      const discardTopId =
+        deckState && deckState.discardPile.length > 0
+          ? deckState.discardPile[deckState.discardPile.length - 1]
+          : null;
+      return { section: "discard", ...(discardTopId ? { faceCardId: discardTopId } : {}), backDeckId: mode.deckId };
+    }
+    const school = (mode.schoolFetch ?? [])[optionIndex - 1 - discardOptionCount];
+    return {
+      section: "fetch",
+      ...(school ? { faceCardId: `ability.basic_${school}_magic` } : {}),
+      backDeckId: mode.deckId
+    };
+  };
 
-  // Group the look-alike tiles into labeled sections so they no longer read as a
-  // wall of near-identical cards — the Search first, then the discard takes, then
-  // the School-of-Magic fetch. This is PRESENTATION only: the option ORDER and
-  // each tile's `optionIndex` (which drive CHOOSE_OPTION resolution) are untouched;
-  // we just partition the SAME actions by index into headed rows.
   const renderOption = (legal: (typeof optionActions)[number]) => {
     const optionIndex = legal.action.optionIndex;
-    const isSearch = optionIndex === 0;
-    const isDiscard =
-      Boolean(mode.hasDiscardTop) && optionIndex >= 1 && optionIndex <= discardOptionCount;
-    // The single take shows the pile top's card face.
-    const discardId = isDiscard ? discardTopId : null;
+    const visual = visualFor(optionIndex);
+    const isDiscard = visual.section === "discard";
     return (
       <div className="searchCardWrap" key={optionIndex}>
         <button
@@ -1966,34 +1998,26 @@ export function DeckSearchModeModal({
           onClick={() => onAction(legal.action)}
           type="button"
         >
-          {isSearch ? (
-            <CardBack className="searchCardImage" deckId={mode.deckId} />
-          ) : discardId ? (
-            <CardFrame cardId={discardId} className="searchCardImage" />
+          {visual.faceCardId ? (
+            <CardFrame cardId={visual.faceCardId} className="searchCardImage" />
           ) : (
-            <CardBack className="searchCardImage" deckId={mode.deckId} />
+            <CardBack className="searchCardImage" deckId={visual.backDeckId} />
           )}
           <span>{legal.label}</span>
         </button>
-        {discardId ? (
-          <ZoomButton label={`Read ${cardName(discardId)}`} onZoom={() => zoomCard(discardId)} />
+        {visual.faceCardId ? (
+          <ZoomButton label={`Read ${cardName(visual.faceCardId)}`} onZoom={() => zoomCard(visual.faceCardId!)} />
         ) : null}
       </div>
     );
   };
 
-  const searchOptions = optionActions.filter((legal) => legal.action.optionIndex === 0);
-  const discardOptions = optionActions.filter(
-    (legal) =>
-      Boolean(mode.hasDiscardTop) &&
-      legal.action.optionIndex >= 1 &&
-      legal.action.optionIndex <= discardOptionCount
-  );
-  const fetchOptions = optionActions.filter((legal) => legal.action.optionIndex > discardOptionCount);
+  const bySection = (section: "search" | "discard" | "fetch") =>
+    optionActions.filter((legal) => visualFor(legal.action.optionIndex).section === section);
   const sections: { key: string; heading: string; options: typeof optionActions }[] = [
-    { key: "search", heading: "Search the deck", options: searchOptions },
-    { key: "discard", heading: "…or take the top discard", options: discardOptions },
-    { key: "fetch", heading: "…or draw from your School of Magic instead", options: fetchOptions }
+    { key: "search", heading: "Search the deck", options: bySection("search") },
+    { key: "discard", heading: "…or take the top discard", options: bySection("discard") },
+    { key: "fetch", heading: "…or draw from your School of Magic instead", options: bySection("fetch") }
   ];
 
   return (

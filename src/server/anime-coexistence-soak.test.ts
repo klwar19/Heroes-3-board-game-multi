@@ -58,6 +58,14 @@ const ALL_ANIME: AnimeModOptions = {
   // pure combat-stat fold — harder fights, no new AI window — so all-on stays
   // stall-free (the guaranteed-win smoothing still carries the AI's opening).
   neutralRankUp: true,
+  // Calamity Waves + Raid Bosses + the Dungeon: the three PvE-pressure modules
+  // all-on — waves assault every AI seat behind the round-start barrier, the
+  // round-5 Rift Lair spawns, and the Dungeon site carves onto a Near Blocked
+  // Field — proving none of them can stall a full-AI table.
+  monsterWaves: true,
+  raidBosses: true,
+  dungeon: true,
+  waveCadence: 3,
 };
 
 function allOnSetup(seed: string, extra: Partial<AdventureSetupOptions>): AdventureSetupOptions {

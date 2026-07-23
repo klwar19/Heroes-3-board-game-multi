@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, getLegalActions } from "./index";
+import { applyAction, createAdventureGameState, getLegalActions } from "./index";
 import { createInitialGameState } from "./setup";
+import { pumpAdventureQueues } from "./adventure-reducer";
 import { cardLibrary } from "@/data/cards/library";
 import { EXPERT_SPELL_KEY_CARDS } from "./ruleset";
 import type { ActiveEffectState, GameAction, GameState, PlayerId, SpellSchool } from "./state";
@@ -120,5 +121,176 @@ describe("Basic X Magic — draw from a School of Magic instead of Searching", (
     const searched = applyOk(state, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
     // No fetch and no discard top: nothing to choose up front, so it reveals.
     expect(searched.pendingChoice?.type).toBe("DECK_SEARCH");
+  });
+});
+
+/**
+ * USER DEMAND (2026-07): with SPLIT Spell decks, "choose discard, search or
+ * school of magic" must be ONE up-front decision — never "choose search spell,
+ * then the draw school of magic appear with that". The family deck-pick IS that
+ * decision: it lists the deck searches, every acquirable discard top AND the
+ * Basic X Magic school draw together, and committing to a Search reveals
+ * DIRECTLY (the old second "Search or draw from a School?" step never opens).
+ */
+describe("One-step spells deck-pick — discard, search or School of Magic, up front", () => {
+  function adventureWithFetch(seed: string, options: Record<string, unknown> = {}): GameState {
+    let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, ...options });
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.players.p1.permanents = ["ability.basic_fire_magic"];
+    return state;
+  }
+
+  function queueSpellsFamilySearch(state: GameState, count = 3): GameState {
+    state.adventure!.rewardQueue.push({ playerId: "p1", kind: "shared-deck-search", deckId: "spells", count });
+    pumpAdventureQueues(state);
+    return state;
+  }
+
+  function chooseOptions(state: GameState) {
+    return getLegalActions(state, "p1").filter((legal) => legal.action.type === "CHOOSE_OPTION");
+  }
+
+  it("ONE choice offers the deck searches, the discard tops AND the school draw; the draw resolves with no reveal", () => {
+    let state = adventureWithFetch("one-step-offer");
+    state = queueSpellsFamilySearch(state);
+
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.context : "").toBe("deck-pick");
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.deckPick?.upFront : false).toBe(true);
+
+    const labels = chooseOptions(state).map((legal) => legal.label);
+    expect(labels.some((label) => /^Search \(\d+\) Basic Spells/.test(label)), labels.join(" | ")).toBe(true);
+    expect(labels.some((label) => /^Search \(\d+\) Expert Spells/.test(label)), labels.join(" | ")).toBe(true);
+    // Both shared Spell decks seed a face-up discard top at setup — both takes
+    // are offered up front, per deck.
+    expect(labels.filter((label) => /^Take the top discard/.test(label)).length).toBeGreaterThanOrEqual(1);
+    const draw = chooseOptions(state).find((legal) => /Draw the first Fire Magic spell/i.test(legal.label));
+    expect(draw, "the school draw is offered IN the first decision").toBeTruthy();
+
+    const handBefore = state.players.p1.hand.length;
+    state = applyOk(state, draw!.action);
+    // The draw took a Fire (or "any") spell straight into hand — no reveal step.
+    expect(state.players.p1.hand.length).toBe(handBefore + 1);
+    const gained = state.players.p1.hand[state.players.p1.hand.length - 1]!;
+    const schools = cardLibrary[gained]?.spellSchools ?? [];
+    expect(schools.includes("fire") || schools.includes("any"), `${gained} is a Fire/any spell`).toBe(true);
+    expect(state.pendingChoice?.type ?? null).not.toBe("DECK_SEARCH");
+  });
+
+  it("CONTROL (the reported bug): committing to a Search goes STRAIGHT to the reveal — the draw never re-appears after", () => {
+    let state = adventureWithFetch("one-step-search");
+    state = queueSpellsFamilySearch(state);
+
+    const search = chooseOptions(state).find((legal) => /^Search \(\d+\) Basic Spells/.test(legal.label));
+    expect(search, "the Basic Spells search commit is offered").toBeTruthy();
+    state = applyOk(state, search!.action);
+    // Straight to the reveal: NOT a second up-front choice carrying the fetch.
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+  });
+
+  it("the school draw scans Basic first, then the Expert deck (a Fire spell only in Expert is still found)", () => {
+    let state = adventureWithFetch("one-step-expert-scan");
+    // Strip every Fire/any spell from the BASIC deck; leave the Expert deck's.
+    const basic = state.decks["spells"];
+    basic.drawPile = basic.drawPile.filter((id) => {
+      const schools = cardLibrary[id]?.spellSchools ?? [];
+      return !schools.includes("fire") && !schools.includes("any");
+    });
+    basic.discardPile = [];
+    state.decks["spells-expert"].discardPile = [];
+    state = queueSpellsFamilySearch(state);
+
+    const draw = chooseOptions(state).find((legal) => /Draw the first Fire Magic spell/i.test(legal.label));
+    expect(draw).toBeTruthy();
+    const handBefore = state.players.p1.hand.length;
+    state = applyOk(state, draw!.action);
+    expect(state.players.p1.hand.length).toBe(handBefore + 1);
+    const gained = state.players.p1.hand[state.players.p1.hand.length - 1]!;
+    const schools = cardLibrary[gained]?.spellSchools ?? [];
+    expect(schools.includes("fire") || schools.includes("any"), `${gained} came from the Expert deck scan`).toBe(true);
+  });
+
+  it("a draw that finds nothing anywhere says so in the feed instead of failing silently", () => {
+    let state = adventureWithFetch("one-step-empty");
+    for (const deckId of ["spells", "spells-expert"]) {
+      const deck = state.decks[deckId];
+      deck.drawPile = deck.drawPile.filter((id) => {
+        const schools = cardLibrary[id]?.spellSchools ?? [];
+        return !schools.includes("fire") && !schools.includes("any");
+      });
+      deck.discardPile = [];
+    }
+    state = queueSpellsFamilySearch(state);
+    const draw = chooseOptions(state).find((legal) => /Draw the first Fire Magic spell/i.test(legal.label));
+    expect(draw).toBeTruthy();
+    const handBefore = state.players.p1.hand.length;
+    state = applyOk(state, draw!.action);
+    expect(state.players.p1.hand.length).toBe(handBefore);
+    const note = [...state.eventLog].reverse().find((event) => event.type === "EVENT_NOTE");
+    expect(note && note.type === "EVENT_NOTE" ? note.message : "").toMatch(/no takeable Fire Magic spell/i);
+  });
+
+  it("a held Scouting still prompts AFTER the Search commit, then reveals directly (no mode step)", () => {
+    let state = adventureWithFetch("one-step-scouting");
+    state.players.p1.hand = ["ability.scouting"];
+    state = queueSpellsFamilySearch(state, 2);
+
+    const search = chooseOptions(state).find((legal) => /^Search \(\d+\) Basic Spells/.test(legal.label));
+    state = applyOk(state, search!.action);
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.context : "").toBe("scouting-prompt");
+    const decline = chooseOptions(state).find((legal) => /don't use Scouting/i.test(legal.label));
+    state = applyOk(state, decline!.action);
+    // Straight to the reveal — never back to a "Search or draw?" step.
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+  });
+
+  it("a discard-top take from the one-step pick delivers that deck's face-up card", () => {
+    let state = adventureWithFetch("one-step-discard");
+    state = queueSpellsFamilySearch(state);
+    const pick = state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.deckPick : undefined;
+    const firstTop = pick?.discardTops?.[0];
+    expect(firstTop, "at least one acquirable discard top is offered up front").toBeTruthy();
+    const take = chooseOptions(state).find((legal) => /^Take the top discard/.test(legal.label));
+    state = applyOk(state, take!.action);
+    // The taken card is now owned (hand — the state has no Book rule on).
+    expect(state.players.p1.hand).toContain(firstTop!.cardId);
+    expect(state.decks[firstTop!.deckId].discardPile).not.toContain(firstTop!.cardId);
+  });
+
+  it("POLISH SPELL BOOK: the one-step draw inscribes the spell into the Book (label says so)", () => {
+    let state = adventureWithFetch("one-step-polish", { houseRules: { "polish-spell-book": true } });
+    state = queueSpellsFamilySearch(state);
+    const draw = chooseOptions(state).find((legal) => /Draw the first Fire Magic spell — take it into Spell Book/i.test(legal.label));
+    expect(draw, "the Book destination is named in the offer").toBeTruthy();
+    const bookBefore = state.players.p1.spellBook.length;
+    state = applyOk(state, draw!.action);
+    expect(state.players.p1.spellBook.length).toBe(bookBefore + 1);
+  });
+
+  it("LEGACY in-flight deck-pick (no upFront) still resolves the old two-step way", () => {
+    // A room mid-choice when the server updates: the stored pick has no
+    // `upFront`, so picking a deck re-opens the old mode choice (which still
+    // carries the fetch) instead of jumping to the reveal.
+    let state = adventureWithFetch("one-step-legacy");
+    state.pendingChoice = {
+      id: "choice_legacy_pick",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Search which deck? (Search 2)",
+      options: [{ label: "Basic Spells" }, { label: "Expert Spells" }],
+      context: "deck-pick",
+      deckPick: { deckIds: ["spells", "spells-expert"], count: 2 },
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: "choice_legacy_pick", optionIndex: 0 });
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.context : "").toBe("deck-search-mode");
+    const draw = chooseOptions(state).find((legal) => /Draw the first Fire Magic spell/i.test(legal.label));
+    expect(draw, "the legacy second step still offers the fetch").toBeTruthy();
   });
 });

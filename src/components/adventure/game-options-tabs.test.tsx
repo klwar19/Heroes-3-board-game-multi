@@ -189,7 +189,10 @@ describe("Game options — tabbed layout", () => {
       ["anime-module-heroGrades", "heroGrades"],
       ["anime-module-equipment", "equipment"],
       ["anime-module-unitStacks", "unitStacks"],
-      ["anime-module-unitExperience", "unitExperience"]
+      ["anime-module-unitExperience", "unitExperience"],
+      ["anime-module-monsterWaves", "monsterWaves"],
+      ["anime-module-raidBosses", "raidBosses"],
+      ["anime-module-dungeon", "dungeon"]
     ];
     for (const [testid, flag] of modules) {
       onAction.mockClear();
@@ -565,6 +568,74 @@ describe("Game options — tabbed layout", () => {
         playerId: "p1",
         options: expect.objectContaining({
           wog: expect.objectContaining({ enabled: true, neutralRankUp: true })
+        })
+      })
+    );
+  });
+
+  it("the WOG mod window lists Monster waves / Raid bosses / Dungeon rows, each dispatching its wog flag", () => {
+    const rows: Array<[RegExp, string]> = [
+      [/Calamity Waves: every Nth round/i, "monsterWaves"],
+      [/persistent multi-layer world boss/i, "raidBosses"],
+      [/One repeatable delve site per map/i, "dungeon"]
+    ];
+    for (const [labelPattern, flag] of rows) {
+      cleanup();
+      const onAction = openOptionsWith((state) => {
+        state.setupLobby!.options.wog = {
+          ...state.setupLobby!.options.wog!,
+          enabled: true
+        };
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+      const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+      const row = within(dialog).getByRole("button", { name: labelPattern });
+      expect(row.getAttribute("aria-pressed")).toBe("false");
+      fireEvent.click(row);
+      expect(onAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "SET_GAME_OPTIONS",
+          playerId: "p1",
+          options: expect.objectContaining({
+            wog: expect.objectContaining({ enabled: true, [flag]: true })
+          })
+        })
+      );
+    }
+  });
+
+  it("the wave-cadence chips render only while Monster waves is ticked and dispatch the cadence", () => {
+    // WOG window: monsterWaves off → no cadence row.
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    let dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+    expect(within(dialog).queryByRole("group", { name: /Wave cadence/i })).toBeNull();
+    cleanup();
+
+    // WOG window with monsterWaves ON → chips render, default 4th pressed, and
+    // clicking "Every 5th round" dispatches wog.waveCadence 5.
+    const onAction2 = openOptionsWith((state) => {
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true,
+        monsterWaves: true
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+    const cadenceRow = within(dialog).getByRole("group", { name: /Wave cadence/i });
+    expect(within(cadenceRow).getByRole("button", { name: /Every 4th round/i }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(cadenceRow).getByRole("button", { name: /Every 5th round/i }));
+    expect(onAction2).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SET_GAME_OPTIONS",
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ waveCadence: 5 })
         })
       })
     );

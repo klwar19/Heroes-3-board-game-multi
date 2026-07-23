@@ -749,7 +749,56 @@ const CH1_SCENES: StoryScene[] = [
   }
 ];
 
-const ALL_SCENES: StoryScene[] = [...DEMO_SCENES, ...CH1_SCENES];
+/**
+ * The Dungeon's whispering-wall rooms (§6.7.3 door rooms): tiny bilingual
+ * narrator vignettes fired mid-delve by the PLAY_STORY_SCENE visit step.
+ * Deliberately art-less (no background/sprite refs — the overlay's theme
+ * gradient + narrator layout carry them), so they add no asset obligations.
+ */
+const DUNGEON_SCENES: StoryScene[] = [
+  {
+    id: "dungeon_whispers_first",
+    theme: "classic",
+    lines: [
+      {
+        speaker: "narrator",
+        text: {
+          en: "The wall is warm under your palm. Words seep out of the stone like ground-water: \"...delvers before you counted their steps aloud, so the dark would not swallow the number...\"",
+          vi: "Bức tường ấm dưới lòng bàn tay. Những lời rỉ ra từ đá như nước ngầm: \"...những kẻ xuống hầm trước ngươi đã đếm to từng bước chân, để bóng tối không nuốt mất con số...\""
+        }
+      },
+      {
+        speaker: "narrator",
+        text: {
+          en: "\"...the floors go down farther than the mountain is tall. Take what the rooms offer. The Dungeon deals fair — it only ever takes what you bring.\"",
+          vi: "\"...các tầng sâu hơn cả chiều cao ngọn núi. Hãy nhận những gì các căn phòng trao. Hầm Ngục luôn sòng phẳng — nó chỉ lấy những gì ngươi mang theo.\""
+        }
+      }
+    ]
+  },
+  {
+    id: "dungeon_whispers_deep",
+    theme: "classic",
+    lines: [
+      {
+        speaker: "narrator",
+        text: {
+          en: "Deeper now. The whispers overlap — a hundred voices reading a ledger: \"...floor five keeps a horned warden... floor ten keeps the Wyrm, and under the Wyrm, nothing. It is the bottom. It is the prize.\"",
+          vi: "Sâu hơn rồi. Những lời thì thầm chồng lên nhau — trăm giọng nói đọc một cuốn sổ: \"...tầng năm có gã cai ngục mang sừng... tầng mười có Cự Long, và dưới Cự Long là hư không. Đó là đáy. Đó là phần thưởng.\""
+        }
+      },
+      {
+        speaker: "narrator",
+        text: {
+          en: "One voice, closer than the rest: \"Conqueror. We will remember the one who reaches the bottom and walks back up.\"",
+          vi: "Một giọng nói, gần hơn tất cả: \"Kẻ Chinh Phục. Chúng ta sẽ nhớ kẻ chạm tới đáy và tự bước lên lại.\""
+        }
+      }
+    ]
+  }
+];
+
+const ALL_SCENES: StoryScene[] = [...DEMO_SCENES, ...CH1_SCENES, ...DUNGEON_SCENES];
 
 export const storySceneRegistry: Record<string, StoryScene> = Object.fromEntries(
   ALL_SCENES.map((scene) => [scene.id, scene])

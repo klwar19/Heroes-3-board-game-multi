@@ -66,6 +66,12 @@ export function combatQualifiesForComputerGuaranteedWin(
   if (context.bankId !== undefined) {
     return false;
   }
+  // Calamity Waves / Raid Bosses / Dungeon floors never qualify: the modules'
+  // printed rewards (pillage stakes, layer payouts, the floor ladder) assume
+  // the fight is actually FOUGHT — a free win would break their economies.
+  if (context.waveAssault || context.raidBossId !== undefined || context.dungeonFloor !== undefined) {
+    return false;
+  }
   const attackerId = combat.attackerPlayerId;
   if (!isComputerPlayer(state, attackerId)) {
     return false;
