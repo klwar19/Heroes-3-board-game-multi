@@ -757,6 +757,21 @@ function scoreEffect(
     return 580;
   }
 
+  // Permanent gear packages (WOG commander artifacts / anime equipment / Merit
+  // training manuals): legal-actions already gates slot empty / module on, so
+  // a legal play is a free permanent combat package — take it above END_TURN
+  // and residual map junk, below recruit/build (~850+).
+  if (effect.type === "BIND_COMMANDER_ARTIFACT") {
+    return 810 + modeBonus(mode);
+  }
+  if (effect.type === "EQUIP_HERO_EQUIPMENT") {
+    return 790 + modeBonus(mode);
+  }
+  if (effect.type === "GAIN_GRADE_PROGRESS") {
+    const amount = typeof effect.amount === "number" ? effect.amount : 1;
+    return 740 + Math.min(40, amount * 8) + modeBonus(mode);
+  }
+
   // Unknown / residual implemented effects: mild positive on the map so they
   // can still fire when nothing better is available — but NEVER auto-play an
   // unrecognised reaction over PASS (1_050). Only the save/stat families above
@@ -1112,12 +1127,62 @@ export function scoreCardAction(
       return { score, policy: "card.use-active-effect-smart-target" };
     }
     case "SPEND_MORALE": {
-      // Combat morale spends (bonus / remove-token) beat PASS; redraw is map/soft.
-      if (action.benefit === "combat-bonus" || action.benefit === "remove-token") {
-        return { score: 1_085, policy: "card.spend-morale-combat" };
+      // Combat morale spends beat PASS. Prefer +Defense when a living ally is
+      // under lethal pressure; +Attack / generic combat-bonus still high; token
+      // cleanse when any own unit carries a negative combat token.
+      if (action.benefit === "remove-token") {
+        const combat = observation.state.combat;
+        const allyHasNegative = combat
+          ? Object.values(combat.units).some(
+              (unit) =>
+                unit.controllerId === observation.playerId &&
+                unitRemainingHealth(unit) > 0 &&
+                (unit.tokens ?? []).some((token) =>
+                  token.kind === "weakness" ||
+                  token.kind === "corrosion" ||
+                  token.kind === "paralysis",
+                ),
+            )
+          : false;
+        return {
+          score: allyHasNegative ? 1_100 : 1_070,
+          policy: "card.spend-morale-remove-token",
+        };
+      }
+      if (action.benefit === "combat-bonus") {
+        const combat = observation.state.combat;
+        let underFire = false;
+        if (combat) {
+          for (const unit of Object.values(combat.units)) {
+            if (
+              unit.controllerId !== observation.playerId ||
+              unitRemainingHealth(unit) <= 0
+            ) {
+              continue;
+            }
+            const incoming = pendingIncomingDamage(
+              combat,
+              observation.playerId,
+              unit,
+            );
+            if (incoming >= unitRemainingHealth(unit)) {
+              underFire = true;
+              break;
+            }
+          }
+        }
+        // Prefer spend when an ally is under lethal pressure; still always beat PASS.
+        return {
+          score: underFire ? 1_105 : 1_085,
+          policy: "card.spend-morale-combat-bonus",
+        };
       }
       if (action.benefit === "redraw") {
         return { score: 560, policy: "card.spend-morale-redraw" };
+      }
+      if (action.benefit === "repeat-search") {
+        // Discard a junk Search reveal and re-run — strong when offered.
+        return { score: 1_150, policy: "card.spend-morale-repeat-search" };
       }
       // "draw" — free card, good on map.
       return { score: 600, policy: "card.spend-morale-draw" };

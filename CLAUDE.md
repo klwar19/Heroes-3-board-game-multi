@@ -656,6 +656,17 @@ Leading with what does NOT run (deliberate limits):
   swaps, focus-fire), and a fixed-seed multi-round soak + reconnect suite
   (`single-player-soak.test.ts`) are wired. STILL deferred: hide multiplayer-
   only invite/share affordances on the SP table page; optional nightly long soak.
+- **Teleport networks, mod FO, equipment, permanents (2026-07 AI upgrade).** The
+  march BFS adds reverse edges for Monolith / Whirlpool / colored Gate / one-way
+  entrance→exit (known fields only; `listKnownTeleportDestinations` +
+  `objectiveDistanceField`; tests in `map-navigation.test.ts`). Visit menus
+  still pick the landing nearest the primary. Equipment outfitters and WOG FO
+  hexes are conditional visitables; Keymaster tents that open still-blocking
+  Barriers are elevated. `BIND_COMMANDER_ARTIFACT` / `EQUIP_HERO_EQUIPMENT` /
+  `GAIN_GRADE_PROGRESS` score as permanent packages (~740–810). Polish Wait,
+  smarter `SPEND_MORALE`, and map-spell-boost option ranking are wired. V1
+  limits: no face-down portal landings in the BFS, no whirlpool unit-toll EV,
+  no full Neutral Rank-Up engagement rewrite.
 - **Expansion tempo, dwelling-first economy, crown & Power discipline,
   high-value combat trades** — all score-layer heuristics over already-legal
   actions (the engine rules are untouched, so nothing here can produce an
@@ -1528,9 +1539,9 @@ Leading with what does NOT run / deliberate limits:
 - **The Hierophant First Aid flip-up never dilutes** — it restores THIS
   battle's own casualties, not fresh recruits (the one reinforce-shaped
   exception, pinned with the reinforce halving as its control).
-- **The AI has no bespoke veterancy strategy**: it drills only as an idle-time
-  luxury from surplus gold (`map-policy.ts` DRILL_UNIT, score 325 when gold ≥
-  10) and otherwise just benefits from the folds like a human.
+- **The AI drills from surplus gold** (`map-policy.ts` DRILL_UNIT, score ~325+
+  when gold ≥ 10) and prefers silver/gold bodies; it is still not a full
+  veterancy planner (no multi-round XP dilution strategy).
 - **Badge art now ships as real webp icons**: per-rank badges
   (`/assets/ui/unit-rank-{seasoned,veteran,elite,legend}.webp`,
   `unitRankBadgeImage`) and per-ability icons (`/assets/ui/rank-ability/*.webp`,
@@ -2293,9 +2304,6 @@ designer UI in `map-designer.tsx` (shared `GuardSpecEditor`). Pinned in
 (each behaviour mutation-checked, CONTROLs included).
 
 Leading with what does NOT run / deliberate limits:
-- **The map AI treats every new object hex as an ordinary (guarded) field** —
-  it never plans a path through a one-way link, never seeks a Tent flag to open
-  a Barrier, and scores an outpost fight like any guard fight.
 - **Outposts (Garrison / Keymaster's Tent / Barrier) are STANDALONE-only**
   (`OUTPOST_OBJECT_KINDS`): a tile-slot/token form is rejected by the
   sanitizer + `validateCustomMapObjects` — they live out of every tile by
@@ -2700,9 +2708,9 @@ Leading with what does NOT run / deliberate limits:
   `HeroActionsDock` under the hero board (with the Cultivation Tribulation), each
   shown only while `getLegalActions` offers it and dispatching the exact payload
   (`hero-actions-dock.test.tsx`); the grade PICKER + combat command dock remain
-  the surfaces for grade-ups and combat/reaction skills; **the AI does not shop
-  for the Training Manual** (it declines the optional 2-gold PAY_TO by default —
-  buying it is a human play); **per-package fancy grade-label art/fonts are deferred** (the
+  the surfaces for grade-ups and combat/reaction skills; **the AI will accept a
+  Training Manual PAY_TO when gold allows and play `GAIN_GRADE_PROGRESS` cards
+  promptly** (score ~740+); **per-package fancy grade-label art/fonts are deferred** (the
   register text is bilingual plain text); **combat skills are the MAIN hero's
   fights only** (garrison/secondary offer none — commander-scope). What runs: five
   Merit sources funnel through ONE arm (`gainGradeProgress`) — +1/level-up, the
@@ -2757,9 +2765,10 @@ Leading with what does NOT run / deliberate limits:
   rules text; the other 27 items have painted/vector art. Heavenly Demon's three
   former monograms were replaced by painted masters and are no longer in this
   limitation. `ANIME_EQUIPMENT_ART_PLACEHOLDERS` stays EMPTY (the placeholders
-  are real files on disk, not glyph fallbacks). **The AI never buys equipment** (it
-  declines the optional outfitter shop by policy — a documented limit, unchanged;
-  register-aware shops added no AI heuristic). **same-slot twins do NOT stack** —
+  are real files on disk, not glyph fallbacks). **The AI buys equipment** when the
+  outfitter menu is open (empty slot or upgrade-grade, gold ≥ cost+6) and **marches
+  to outfitters** when surplus + an empty slot (`wantsEquipmentShop`); it still
+  never auto-replaces same/worse grade. **same-slot twins do NOT stack** —
   Cosmos Pendant + Spirit Focus (both accessory,
   +1 spell Power) and Twin-Tail Ribbon + Eternal Sash (both accessory, +1 hand
   limit) share the ONE accessory slot, so only one is ever worn (the earlier
@@ -2915,9 +2924,9 @@ Leading with what does NOT run / deliberate limits:
     reaches round 6 with ZERO stalls / negative resources (a shorter round-4
     variant swaps in the mutually-exclusive Polish Spell Book; a 3-opponent run
     for breadth). Soft-asserts anime systems are LIVE (overrides carved, Merit/
-    grade/realm progression fires). HONEST LIMIT: the AI never buys Equipment (it
-    declines the optional outfitter shop by policy), so `EQUIPMENT_EQUIPPED` stays
-    0 in the soak — a documented AI-policy limit, not a coexistence failure.
+    grade/realm progression fires). Soft note: equipment equips only when a seat
+    both reaches an outfitter and has surplus gold — the soak may still see 0
+    equips on unlucky maps (pathing + gold), not a coexistence failure.
   - **(c) mixed-package no-cross-talk CONTROL** (`src/engine/anime-coexistence.test.ts`):
     carving an ISEKAI field-override kind (content present) leaves the xianxia
     Cultivation/Grade event sequence byte-identical to a xianxia-only run, and the
@@ -3979,11 +3988,13 @@ Leading with what does NOT run / deliberate limits:
   saved preset still carves exactly as before (`applyCustomMapObjects`), and a
   face-down / forbidden-slot tile-slot object is dropped with a problem
   (`map-objects.test.ts`).
-- **The map AI never routes THROUGH a teleport** (Monolith / Gate / monolith-role
-  Obelisk): it treats a teleport/guarded object hex as an ordinary field — it can
-  walk onto and fight a guarded Gate, but never plans a path across the link
-  (`map-objects.test.ts` "computer AI treats object hexes as ordinary guarded
-  fields" runs a whole SP turn with a guarded Gate + Monolith, no stall/crash).
+- **The map AI DOES route through teleport networks** (Monolith / Whirlpool /
+  colored Gate / one-way entrance→exit / obelisk-monolith-role / anime
+  `tran_phap`): `objectiveDistanceField` adds reverse edges from
+  `listKnownTeleportDestinations` (known fields only — face-down pending landings
+  excluded in V1; no whirlpool unit-toll EV). Destination menus still pick the
+  landing nearest the primary objective. Safety: a full SP turn over Gate +
+  Monolith hexes must not stall (`map-objects.test.ts`).
 - **Obelisk role is MAP-WIDE, never per-Obelisk** (face-down tiles hide which is
   which); every role still credits the Holy-Grail dig identically
   (`obelisk-roles.test.ts` "dig progress is role-independent").

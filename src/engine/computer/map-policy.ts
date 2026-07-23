@@ -1480,6 +1480,24 @@ function visitStepsUtility(
         // Prefer the cheapest cost option that leaves reserve gold.
         utility += 10;
         break;
+      case "BUY_EQUIPMENT":
+        // Ranked further in resolveVisitStepScore; mild positive here for nests.
+        utility += 22;
+        break;
+      case "GAIN_COMMANDER_POINTS":
+        utility += 28;
+        break;
+      case "SELL_HAND_ARTIFACT": {
+        // Prefer selling junk (low keep value); keep high-value relics.
+        const cardId = step.cardId;
+        const keep = cardId ? cardKeepValue(cardId, { state, playerId }) : 50;
+        utility += keep < 35 ? 24 : keep < 55 ? 8 : -10;
+        break;
+      }
+      case "SMASH_WOG_SKULL":
+        // +2 gold then permanent latch — only when gold is tight.
+        utility += res.gold < GOLD_RESERVE + 4 ? 18 : 4;
+        break;
       default:
         // Unknown auto-resolve steps are mildly positive (progress, not stall).
         utility += 6;
@@ -1599,25 +1617,38 @@ function teleportDestinationScore(
  * every other open visit always has a scored pick so the runner never freezes.
  */
 /**
- * Anime Equipment (§3.13): score a BUY_EQUIPMENT outfitter option. Buy only into
- * an EMPTY slot and only from genuine surplus (gold ≥ cost + 6) — the AI never
- * auto-replaces an equipped item. Below that it scores under the shop's Leave
- * option (1_050) so the runner always has a clean exit (no stall, no over-spend).
+ * Anime Equipment (§3.13): score a BUY_EQUIPMENT outfitter option. Buy into an
+ * EMPTY slot from genuine surplus (gold ≥ cost + 6). Upgrade-replace only when
+ * the shop item's grade is STRICTLY higher than the equipped one and surplus
+ * still covers the cost + cushion. Below that scores under Leave (1_050) so
+ * the runner always has a clean exit (no stall, no over-spend).
  */
 function equipmentBuyScore(state: GameState, playerId: string, equipmentId: string): number {
   const def = getEquipmentDefinition(equipmentId);
   if (!def) {
     return 1_000;
   }
-  // Slot already filled → do not auto-replace; leave instead.
-  if (heroEquipmentSlot(state, playerId, def.slot)) {
-    return 1_000;
-  }
   const gold = playerGold(state, playerId);
   if (gold < def.cost + 6) {
     return 1_000;
   }
-  return 1_120;
+  const equippedId = heroEquipmentSlot(state, playerId, def.slot);
+  if (!equippedId) {
+    // Prefer higher grades slightly when several empty-slot buys compete.
+    const gradeNudge = def.grade === "III" ? 12 : def.grade === "II" ? 6 : 0;
+    return 1_120 + gradeNudge;
+  }
+  // Upgrade replace: only when the new grade is strictly better.
+  const equipped = getEquipmentDefinition(equippedId);
+  const gradeRank = { I: 1, II: 2, III: 3 } as const;
+  if (
+    equipped &&
+    gradeRank[def.grade] > gradeRank[equipped.grade]
+  ) {
+    return 1_110 + (gradeRank[def.grade] - gradeRank[equipped.grade]) * 4;
+  }
+  // Same/worse grade in an occupied slot → leave instead of auto-replace.
+  return 1_000;
 }
 
 function resolveVisitStepScore(
@@ -2138,15 +2169,17 @@ export function scoreMapAction(
       return { score: 1_120, policy: "map.skip-necromancy" };
     case "HEAVEN_TRIBULATION": {
       // Anime Cultivation (§5.6): brave the Tribulation ONLY with an army buffer
-      // (≥ 3 cards) so the toll gamble cannot strand the seat — otherwise skip
-      // (null → foundation 0, below END_TURN, never taken). Scored just above
-      // END_TURN so a well-stocked seat attempts it when nothing more productive
-      // (moves/recruits/builds, all ≥ 590) is on the table.
+      // so the toll gamble cannot strand the seat — otherwise skip (null →
+      // foundation 0, below END_TURN). A larger army (realm-3 Power is real)
+      // raises priority into the low map-play band so it is not forever idle.
       const army = state.players[observation.playerId]?.army.length ?? 0;
       if (army < 3) {
         return null;
       }
-      return { score: 360, policy: "map.heaven-tribulation" };
+      return {
+        score: army >= 4 ? 480 : 360,
+        policy: "map.heaven-tribulation",
+      };
     }
     case "HERO_GRADE_PICK": {
       // Anime Hero Grades (§3.11): spending a grade point is free and beneficial,
@@ -2164,14 +2197,24 @@ export function scoreMapAction(
       // objective always outscores it — i.e. only when the seat would otherwise
       // end the turn with the 2 MP unspent. Legal only with ≥2 MP (heroTrainAvailable).
       return { score: 330, policy: "map.hero-train" };
-    case "DRILL_UNIT":
-      // Unit Experience Drill: an idle-time luxury like HERO_TRAIN, but it
-      // costs gold — only worth it from surplus (never eat the dwelling fund).
-      // Below HERO_TRAIN so a free Merit is drilled first when both are legal.
+    case "DRILL_UNIT": {
+      // Unit Experience Drill: surplus-gold only; prefer silver/gold bodies and
+      // cards close to the next rank when unit experience is on.
+      const gold = playerGold(state, observation.playerId);
+      if (gold < 10) {
+        return { score: 5, policy: "map.drill-unit-broke" };
+      }
+      const unit = state.players[observation.playerId]?.army.find(
+        (candidate) => candidate.id === action.armyUnitId,
+      );
+      const tier = unit ? coreUnitDefinitions[unit.unitDefId]?.tier : undefined;
+      const tierNudge =
+        tier === "gold" || tier === "azure" ? 18 : tier === "silver" ? 12 : 4;
       return {
-        score: playerGold(state, observation.playerId) >= 10 ? 325 : 5,
-        policy: "map.drill-unit"
+        score: 325 + tierNudge,
+        policy: "map.drill-unit",
       };
+    }
     case "USE_HERO_SKILL":
       // On the map this is Forced March (+1 movement, once per round). Combat
       // War Cry is claimed earlier by combat-policy, so a USE_HERO_SKILL reaching

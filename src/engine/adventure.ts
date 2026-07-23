@@ -9452,6 +9452,57 @@ function onewayExitFields(state: GameState, pair: 1 | 2 | 3 | 4, fromSpaceId: Ma
   );
 }
 
+/**
+ * Known carved-field destinations a hero standing on `fromSpaceId` can teleport
+ * to (Monolith / Whirlpool / Obelisk-as-monolith / anime `tran_phap_truyen_tong`,
+ * colored Gate, one-way entrance→exit). Face-down pending-tile landings are
+ * EXCLUDED — pathfinding consumers (the computer AI distance field) only plan
+ * over known cells. Occupied destinations are excluded (same p.83 skip as the
+ * live travel menus). Empty when the origin is not a network member, or the
+ * network has fewer than 2 members (inert portal).
+ *
+ * Pure public-state read; the destination lists reuse the same private helpers
+ * the visit menus use so AI planning cannot diverge from real travel.
+ */
+export function listKnownTeleportDestinations(
+  state: GameState,
+  fromSpaceId: MapSpaceId,
+): MapSpaceId[] {
+  const field = state.adventure?.fields[fromSpaceId];
+  if (!field) {
+    return [];
+  }
+  const fieldOnly = (destinations: ReadonlyArray<MapTokenDestination>): MapSpaceId[] =>
+    destinations
+      .filter((destination): destination is Extract<MapTokenDestination, { type: "field" }> =>
+        destination.type === "field",
+      )
+      .map((destination) => destination.spaceId);
+
+  if (fieldIsTokenNetworkMember(state, field, "whirlpool")) {
+    if (countMapTokens(state, "whirlpool") < 2) {
+      return [];
+    }
+    return fieldOnly(mapTokenDestinations(state, "whirlpool", fromSpaceId));
+  }
+  if (fieldIsTokenNetworkMember(state, field, "monolith")) {
+    if (countMapTokens(state, "monolith") < 2) {
+      return [];
+    }
+    return fieldOnly(mapTokenDestinations(state, "monolith", fromSpaceId));
+  }
+  if (field.location === "gate" && field.gatePair !== undefined) {
+    if (countColoredGates(state, field.gatePair) < 2) {
+      return [];
+    }
+    return fieldOnly(coloredGateDestinations(state, field.gatePair, fromSpaceId));
+  }
+  if (field.location === "oneway_entrance" && field.gatePair !== undefined) {
+    return onewayExitFields(state, field.gatePair, fromSpaceId).map((exit) => exit.spaceId);
+  }
+  return [];
+}
+
 /** The travel steps to one one-way exit (arrival sweeps any hand-edited guard). */
 function onewayTravelSteps(visit: PendingVisit, exit: MapFieldState): VisitStep[] {
   return [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: exit.spaceId, sweepGuard: true }];

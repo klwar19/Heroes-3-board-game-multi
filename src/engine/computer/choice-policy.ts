@@ -366,6 +366,50 @@ function scorePositionOption(
     return CHOICE_BASE + 40;
   }
 
+  // Map Power-tier spells (View Air / Dimension Door / …) and the visions /
+  // fortune boost twins: prefer a boost that still moves the printed tier;
+  // "Resolve now" when already at a useful tier or only junk sources remain.
+  if (
+    (context === "map-spell-boost" ||
+      context === "visions-boost" ||
+      context === "fortune-boost") &&
+    (choice.mapSpellBoost || choice.visionsBoost || choice.fortuneBoost)
+  ) {
+    const boost =
+      choice.mapSpellBoost ?? choice.visionsBoost ?? choice.fortuneBoost;
+    if (!boost) {
+      return CHOICE_BASE + 10;
+    }
+    const offers = boost.offers ?? [];
+    const resolveIndex = offers.length; // trailing "Resolve now"
+    if (optionIndex === resolveIndex) {
+      // Resolve is always a safe exit; slightly preferred when no offer left.
+      return offers.length === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 18;
+    }
+    const offer = offers[optionIndex];
+    if (!offer) {
+      return CHOICE_BASE;
+    }
+    // Prefer free / permanent / school boosts over discarding high-keep hand cards.
+    const label = optionLabel(choice, optionIndex).toLowerCase();
+    let score = CHOICE_BASE + 28;
+    if (
+      label.includes("school") ||
+      (label.includes("basic") && label.includes("magic"))
+    ) {
+      score += 12;
+    }
+    if (label.includes("discard")) {
+      // Soft penalty — still above resolve when a tier step matters; hand junk
+      // discards stay competitive via the generic keep table elsewhere.
+      score -= 6;
+    }
+    if (label.includes("resolve")) {
+      score = CHOICE_BASE + 18;
+    }
+    return score;
+  }
+
   if (context === "neutral-destination" && choice.neutralDestination) {
     const pos = choice.neutralDestination.positions[optionIndex];
     if (pos === undefined) return CHOICE_BASE;
