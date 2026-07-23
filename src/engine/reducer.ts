@@ -308,6 +308,7 @@ import {
   hasActiveRetaliationDisadvantage,
   getSchoolPowerBonus,
   makeActiveEffect,
+  playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
   spellNullifiedByRestriction,
   syncAbilitySuppression,
@@ -926,7 +927,34 @@ function consumePolishSpellBookCast(
   castEnablerCardId?: CardId
 ): RulesError | null {
   const player = state.players[playerId];
-  if (!player || castEnablerCardId !== CAST_A_SPELL_CARD_ID) {
+  if (!player) {
+    return {
+      code: "CARD_NOT_IN_HAND",
+      message: "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
+      path: `players.${playerId}.hand`
+    };
+  }
+
+  // Intelligence (SPELL_CAST_ANYTIME, combat-long): the ability itself stands
+  // in for the Cast a Spell enabler — the holder selects a refreshed Book
+  // Spell directly, consuming nothing from hand. The offer side strips
+  // `castEnablerCardId` while the freedom is held (applyPolishSpellBookActionGate),
+  // so a cast that names the enabler still pays it via the normal path below.
+  if (castEnablerCardId === undefined && playerHasSpellTimingFreedom(state, playerId)) {
+    const spellIndex = player.spellBook.indexOf(spellCardId);
+    if (spellIndex === -1) {
+      return {
+        code: "CARD_NOT_IN_SPELL_BOOK",
+        message: "That Spell is not refreshed in the Polish Spell Book.",
+        path: `players.${playerId}.spellBook`
+      };
+    }
+    player.spellBook.splice(spellIndex, 1);
+    (player.spellBookUsed ??= []).push(spellCardId);
+    return null;
+  }
+
+  if (castEnablerCardId !== CAST_A_SPELL_CARD_ID) {
     return {
       code: "CARD_NOT_IN_HAND",
       message: "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
@@ -965,6 +993,30 @@ function consumePolishSpellBookCast(
     optionLabel: `Cast ${cardLibrary[spellCardId]?.name ?? spellCardId} from the Spell Book`
   });
   return null;
+}
+
+/**
+ * Polish Book cast pre-guard, shared by castSpell and performSpellCast: the
+ * cast needs a Cast a Spell enabler in hand — or the Intelligence combat
+ * freedom, which stands in for it (no card consumed) — plus the named Spell
+ * refreshed in the Book.
+ */
+function assertPolishBookCastEnabled(
+  state: GameState,
+  action: { playerId: PlayerId; cardId: CardId; castEnablerCardId?: CardId }
+): void {
+  const caster = state.players[action.playerId];
+  const viaIntelligence =
+    action.castEnablerCardId === undefined && playerHasSpellTimingFreedom(state, action.playerId);
+  const enablerOk =
+    viaIntelligence ||
+    (action.castEnablerCardId === CAST_A_SPELL_CARD_ID &&
+      Boolean(caster?.hand.includes(CAST_A_SPELL_CARD_ID)));
+  if (!enablerOk || !caster?.spellBook.includes(action.cardId)) {
+    throw new Error(
+      "Casting from the Polish Spell Book needs a Cast a Spell card (or Intelligence) and a refreshed Book Spell."
+    );
+  }
 }
 
 /** Keep the original stash-style Book lifecycle outside the Polish mode. */
@@ -5277,13 +5329,12 @@ function openWraithDiscardPrompt(
 }
 
 /**
- * Creature Bank Medusa Stores Medusas (while Stacked): the Petrifying Gaze only
- * turns a foe to stone at melee range — "paralyze ONLY when attacking adjacent".
- * Fires after the Medusas' own attack (never a Retaliation Attack) on a target
- * that is adjacent, still alive and not immune to Paralysis. A ranged shot at a
- * distant target deals its damage but does NOT paralyze. The Stacked gate lives
- * in the ability chokepoint, so this only triggers while the card keeps its
- * Stack Token; the adjacency gate here keeps a distance shot from petrifying.
+ * Creature Bank Medusa Stores Medusas (while Stacked): the Petrifying Gaze
+ * fires after the Medusas' own attack (never a Retaliation Attack) on a target
+ * that is still alive and not immune to Paralysis — at ANY range: a melee blow
+ * and a ranged shot at a distant foe both petrify (user rule 2026-07; the old
+ * adjacent-only gate is removed). The Stacked gate lives in the ability
+ * chokepoint, so this only triggers while the card keeps its Stack Token.
  */
 function applyOnAttackParalysis(
   state: GameState,
@@ -5296,13 +5347,6 @@ function applyOnAttackParalysis(
   }
   const ability = getOnAttackParalysis(attacker);
   if (!ability) {
-    return;
-  }
-  // "Only paralyze when attacking adjacent": a ranged Medusa shooting a foe it
-  // is not next to inflicts no Paralysis (getAttackKind treats a ranged unit
-  // attacking a non-adjacent target as a "ranged" shot — every other attack is
-  // adjacent/melee).
-  if (!isAdjacent(attacker.position, defender.position)) {
     return;
   }
   if (unitImmuneToParalysis(state, defender)) {
@@ -10882,14 +10926,7 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     throw new Error(`Card ${action.cardId} is not a spell.`);
   }
   if (action.fromSpellBook && polishSpellBookEnabled(state)) {
-    const caster = state.players[action.playerId];
-    if (
-      action.castEnablerCardId !== CAST_A_SPELL_CARD_ID ||
-      !caster?.hand.includes(CAST_A_SPELL_CARD_ID) ||
-      !caster.spellBook.includes(action.cardId)
-    ) {
-      throw new Error("Casting from the Polish Spell Book needs a Cast a Spell card and a refreshed Book Spell.");
-    }
+    assertPolishBookCastEnabled(state, action);
   }
 
   // Tarnum (Conflux) VI: a free over-limit cast is only legal for a card the
@@ -11047,14 +11084,7 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     throw new Error("Owned Spells must be cast from the Polish Spell Book with Cast a Spell.");
   }
   if (action.fromSpellBook && polishSpellBookEnabled(state)) {
-    const caster = state.players[action.playerId];
-    if (
-      action.castEnablerCardId !== CAST_A_SPELL_CARD_ID ||
-      !caster?.hand.includes(CAST_A_SPELL_CARD_ID) ||
-      !caster.spellBook.includes(action.cardId)
-    ) {
-      throw new Error("Casting from the Polish Spell Book needs a Cast a Spell card and a refreshed Book Spell.");
-    }
+    assertPolishBookCastEnabled(state, action);
   }
   if (isCastASpellCard(action.cardId)) {
     throw new Error("Cast a Spell enables a refreshed Spell Book card; it is not itself cast as a Spell.");
@@ -16741,8 +16771,16 @@ function runGenieDeckDraw(
     return false;
   }
 
-  const dug = discardFromDeckTop(state, unit.controllerId, ability.count);
   const polishBook = polishSpellBookEnabled(state);
+  if (polishBook && (player.spellBookUsed?.length ?? 0) === 0) {
+    // Polish Spell Book: with no used Book Spell there is nothing the Wish can
+    // refresh, so the whole ability is skipped — including the printed deck
+    // discard, which would otherwise burn 3 deck cards for zero benefit (the
+    // Pack's on-attack trigger used to do exactly that and read as broken).
+    return false;
+  }
+
+  const dug = discardFromDeckTop(state, unit.controllerId, ability.count);
   const spells = polishBook
     ? [...(player.spellBookUsed ?? [])]
     : dug.filter((cardId) => cardLibrary[cardId]?.kind === "spell" && !isCastASpellCard(cardId));
@@ -16758,9 +16796,6 @@ function runGenieDeckDraw(
     // The M&M deck contains Cast-a-Spell cards, not owned Spells. Wish keeps
     // its printed deck discard, then refreshes one actually used Book Spell.
     player.discard.push(...dug);
-    if (spells.length === 0) {
-      return false;
-    }
     if (spells.length === 1) {
       refreshPolishUsedSpell(state, unit.controllerId, spells[0]);
       return false;

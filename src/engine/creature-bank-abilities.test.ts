@@ -313,14 +313,14 @@ describe("Medusa Stores Medusas: paralyze on attack (while Stacked)", () => {
     expect(abilityEventIds(next)).toContain("bank-medusa-paralyze-stacked");
   });
 
-  it("a Stacked Medusa's RANGED shot at a distant target deals damage but does NOT paralyze", () => {
+  it("a Stacked Medusa's RANGED shot at a distant target ALSO paralyzes (user rule 2026-07)", () => {
     const next = attackAndCheck({ stacked: true, adjacent: false });
     const target = next.combat!.units.unit_p2_skeletons;
     // The shot landed (the attack resolved)…
     expect(target.damage).toBeGreaterThan(0);
-    // …but a down-range shot petrifies nobody (the adjacency gate).
-    expect(hasToken(target, "paralysis")).toBe(false);
-    expect(abilityEventIds(next)).not.toContain("bank-medusa-paralyze-stacked");
+    // …and the gaze petrifies down-range too — the old adjacent-only gate is gone.
+    expect(hasToken(target, "paralysis")).toBe(true);
+    expect(abilityEventIds(next)).toContain("bank-medusa-paralyze-stacked");
   });
 
   it("an un-Stacked Medusa does NOT paralyze even attacking adjacent", () => {

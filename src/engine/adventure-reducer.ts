@@ -4533,16 +4533,18 @@ export function startNeutralEncounter(state: GameState, hero: HeroState, field: 
 
   // A guard on a single-hex TELEPORT gateway (Monolith / Teleport Gate /
   // Whirlpool) is fought like a Creature-Bank guard: NO Quick Combat (a
-  // high-level hero cannot skip past a guarded gateway) and NO experience
-  // (combat difficulty 0). Unlike an outpost it keeps the normal Round limit and
-  // the continue-or-retreat window. Pin the army level so the difficulty-0 fight
-  // still draws the real designed guards — a plain LEVEL guard carries no
-  // `customGuardLevel` (an EXACT army uses `customGuardUnits` directly).
+  // high-level hero cannot skip past a guarded gateway), NO experience (combat
+  // difficulty 0) and — like a designer outpost — NO Round limit (user rule
+  // 2026-07: "Monoliths with guards should have no limit combat rounds, as
+  // default"; the fight runs until one side falls, no MP-to-extend window).
+  // Pin the army level so the difficulty-0 fight still draws the real designed
+  // guards — a plain LEVEL guard carries no `customGuardLevel` (an EXACT army
+  // uses `customGuardUnits` directly).
   if (isTeleportObjectGuardLocation(field.location)) {
     if (!field.customGuardUnits?.length && !field.customGuardLevel && field.difficulty) {
       field.customGuardLevel = field.difficulty;
     }
-    beginNeutralCombatPlacement(state, hero, field, 0);
+    beginNeutralCombatPlacement(state, hero, field, 0, { unlimitedRounds: true });
     return;
   }
 

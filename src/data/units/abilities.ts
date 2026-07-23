@@ -1916,9 +1916,10 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "bank-medusa-paralyze-stacked": {
     id: "bank-medusa-paralyze-stacked",
     name: "Petrifying Gaze",
-    // engine: only an ADJACENT (melee) attack petrifies — a ranged shot at a
-    // distant foe deals damage but never Paralyzes (gated in applyOnAttackParalysis).
-    text: "While Stacked, this unit's attack on an adjacent unit also Paralyzes the target (it skips its next activation; any damage clears it). A ranged shot at a distant unit does not Paralyze.",
+    // engine: EVERY attack this unit makes petrifies — melee AND a ranged shot
+    // at a distant foe (user rule 2026-07; applyOnAttackParalysis carries no
+    // adjacency gate any more). Retaliation Attacks still never trigger it.
+    text: "While Stacked, this unit's attack also Paralyzes the target — melee or ranged (it skips its next activation; any damage clears it).",
     effect: { type: "PARALYZE_TARGET_ON_ATTACK" },
     requiresStacked: true,
     implementationStatus: "implemented"
