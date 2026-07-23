@@ -69,7 +69,6 @@ import {
   hexToPixel,
   inCombatPrep,
   isMapObjectLocation,
-  isMapTokenLocation,
   isParallelActor,
   isRoundStartEventBarrierActive,
   MAX_CUSTOM_WIN_CONDITIONS,
@@ -109,6 +108,7 @@ import {
   type HeroPathTarget,
   type HeroState,
   type LegalAction,
+  type MapFieldState,
   type MapSpaceId,
   type MapTileState,
   type PlayerId,
@@ -237,42 +237,78 @@ const GATE_PAIR_COLORS: Record<number, string> = {
   4: "#b04fd6"
 };
 
+/** Teleport-object locations the unified {@link teleportHexMark} renders. */
+function isTeleportMarkLocation(locationId: string): boolean {
+  return (
+    locationId === "gate" ||
+    locationId === "monolith" ||
+    locationId === "whirlpool" ||
+    locationId === "oneway_entrance" ||
+    locationId === "oneway_exit"
+  );
+}
+
 /**
- * A colored Gate hex mark: the MONOLITH artwork (a colored Gate is "a Monolith
- * with a color") tinted by a colored disc + ring, with a small readable
- * pair-number badge. Used for BOTH tile-carved and standalone gate fields.
+ * Unified teleport-object hex mark — the SAME iconography the map designer
+ * draws (user request: the game map should reuse the editor's teleport icons):
+ * the object's own UNDISTORTED token art (never stretched into the hex box),
+ * an identifying ring, and — for the colored networks — a readable pair-number
+ * badge (colour-blind-safe). Teleport Gates and one-way Monoliths ring in
+ * their pair colour; Monoliths and Whirlpools wear the designer's gold ring.
+ * Used for BOTH tile-carved and standalone fields.
  */
-function gateHexMark(spaceId: string, x: number, y: number, pair: number): ReactNode {
-  const color = GATE_PAIR_COLORS[pair] ?? "#c9a24b";
-  // A touch smaller than the monolith so the portal icon sits neatly inside its
-  // hex (the ring + pair badge below keep it identifiable at the reduced size).
+function teleportHexMark(
+  spaceId: string,
+  x: number,
+  y: number,
+  field: Pick<MapFieldState, "location" | "gatePair" | "whirlpoolNumber">
+): ReactNode {
+  const pair = (field.gatePair ?? 1) as 1 | 2 | 3 | 4;
+  // Gates and one-way halves belong to a colored network; the plain Monolith /
+  // Whirlpool networks are identified by the designer's gold ring instead.
+  const colored = field.location !== "monolith" && field.location !== "whirlpool";
+  const color = colored ? GATE_PAIR_COLORS[pair] ?? "#c9a24b" : "#c9a24b";
+  const image =
+    field.location === "gate"
+      ? teleportGateImage(pair)
+      : field.location === "monolith"
+        ? monolithTokenImage()
+        : field.location === "whirlpool"
+          ? whirlpoolTokenImage(field.whirlpoolNumber)
+          : onewayMonolithImage(field.location === "oneway_entrance" ? "entrance" : "exit", pair);
+  // A touch smaller than the hex so the token icon sits neatly inside it
+  // (the ring + badge keep it identifiable at the reduced size).
   const art = HEX_SIZE * 1.28;
   return (
     <g className="hexGateMark" key={`${spaceId}-gate-mark`} style={{ pointerEvents: "none" }}>
-      {/* The Teleport Gate's own per-color portal artwork. */}
+      {/* The object's own token artwork, undistorted (designer parity). */}
       <image
         className="hexGateMonolith"
         height={art * 1.4}
-        href={assetUrl(teleportGateImage((pair as 1 | 2 | 3 | 4) ?? 1))}
+        href={assetUrl(image)}
         preserveAspectRatio="xMidYMid meet"
         width={art}
         x={x - art / 2}
         y={y - art * 0.72}
       />
-      {/* Colored ring identifying the pair colour (colour-blind-safe with the badge). */}
+      {/* Ring identifying the network (pair colour, or the designer gold). */}
       <circle cx={x} cy={y} fill="none" r={HEX_SIZE * 0.62} stroke={color} strokeWidth={3} />
-      {/* Small pair-number badge (top-right). */}
-      <circle cx={x + HEX_SIZE * 0.46} cy={y - HEX_SIZE * 0.46} fill="rgba(12,8,4,0.85)" r={HEX_SIZE * 0.3} stroke={color} strokeWidth={2} />
-      <text
-        fill={color}
-        fontSize={HEX_SIZE * 0.44}
-        fontWeight={700}
-        textAnchor="middle"
-        x={x + HEX_SIZE * 0.46}
-        y={y - HEX_SIZE * 0.3}
-      >
-        {pair}
-      </text>
+      {colored ? (
+        <>
+          {/* Small pair-number badge (top-right). */}
+          <circle cx={x + HEX_SIZE * 0.46} cy={y - HEX_SIZE * 0.46} fill="rgba(12,8,4,0.85)" r={HEX_SIZE * 0.3} stroke={color} strokeWidth={2} />
+          <text
+            fill={color}
+            fontSize={HEX_SIZE * 0.44}
+            fontWeight={700}
+            textAnchor="middle"
+            x={x + HEX_SIZE * 0.46}
+            y={y - HEX_SIZE * 0.3}
+          >
+            {pair}
+          </text>
+        </>
+      ) : null}
     </g>
   );
 }
@@ -1761,10 +1797,11 @@ export function HexMapBoard({
           </text>
         );
       }
-      // A colored Gate hex: a tinted ring + its pair number (colour-blind-safe),
-      // so the hex is visibly a gate of its pair (tile-slot gates render here).
-      if (field.location === "gate" && field.gatePair) {
-        overlays.push(gateHexMark(spaceId, x, y, field.gatePair));
+      // A teleport-object hex (Gate / Monolith / Whirlpool / one-way Monolith):
+      // the unified designer-parity mark — token art + ring (+ pair badge for
+      // the colored networks). Tile-slot placements render here.
+      if (isTeleportMarkLocation(field.location)) {
+        overlays.push(teleportHexMark(spaceId, x, y, field));
       }
 
       // Pick-a-field Monolith/Whirlpool token placement: label each candidate
@@ -1842,21 +1879,15 @@ export function HexMapBoard({
           : field.location === "dungeon_gate"
             ? "/assets/bosses/dungeon_gate_field.webp"
             : null;
+      // Monolith / Whirlpool / one-way hexes are NOT in this chain any more —
+      // they render through the designer-parity teleportHexMark above (their
+      // old full-hex stretch distorted the token art).
       const tokenImage =
         field.location === "subterranean_gate"
           ? subterraneanGateTokenImage(undergroundTile ? "subterranean" : "surface")
           : field.location === "creature_bank"
             ? creatureBankFieldImage(field.bankId)
-            : field.location === "monolith"
-              ? monolithTokenImage()
-              : field.location === "whirlpool"
-                ? whirlpoolTokenImage(field.whirlpoolNumber)
-                : field.location === "oneway_entrance" || field.location === "oneway_exit"
-                  ? onewayMonolithImage(
-                      field.location === "oneway_entrance" ? "entrance" : "exit",
-                      field.gatePair ?? 1
-                    )
-                  : (moduleFieldArt ?? overrideArt);
+            : (moduleFieldArt ?? overrideArt);
       if (tokenImage) {
         // Clip landscape/field art to the hex (Creature Banks + Field Override objects).
         if (field.location === "creature_bank" || Boolean(overrideArt) || Boolean(moduleFieldArt)) {
@@ -1919,7 +1950,7 @@ export function HexMapBoard({
           </g>
         );
       }
-      if (!artShown && glyph && field.location !== "empty_field" && !tokenImage) {
+      if (!artShown && glyph && field.location !== "empty_field" && !tokenImage && !isTeleportMarkLocation(field.location)) {
         overlays.push(
           <text className="hexGlyph" key={`${spaceId}-glyph`} textAnchor="middle" x={x} y={y + 6}>
             {glyph}
@@ -1975,10 +2006,16 @@ export function HexMapBoard({
           }
         }
       }
-      // Designed guards on map-object hexes (teleport tokens / gates / gate
+      // Designed guards on map-object hexes (teleport tokens / gates / one-way
       // halves) are NOT printed on the tile scan, so their numeral shows even
-      // in art mode — otherwise a designed guard would be invisible.
-      const designedGuardHex = isMapObjectLocation(field.location) || field.location === "subterranean_gate";
+      // in art mode — otherwise a designed guard would be invisible. The
+      // teleport-mark set covers the one-way Monolith halves isMapObjectLocation
+      // does not (a guarded tile-carved one-way entrance was numeral-less in
+      // art mode).
+      const designedGuardHex =
+        isMapObjectLocation(field.location) ||
+        isTeleportMarkLocation(field.location) ||
+        field.location === "subterranean_gate";
       if ((!artShown || designedGuardHex) && field.difficulty && guarded) {
         overlays.push(
           <text className="hexDifficulty" key={`${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
@@ -2226,57 +2263,11 @@ export function HexMapBoard({
         </title>
       </polygon>
     );
-    if (field.location === "gate" && field.gatePair) {
-      overlays.push(gateHexMark(spaceId, x, y, field.gatePair));
-    } else if (field.location === "monolith") {
-      overlays.push(
-        <image
-          className="locationToken"
-          height={2 * HEX_SIZE}
-          href={assetUrl(monolithTokenImage())}
-          key={`standalone-${spaceId}-mono`}
-          preserveAspectRatio="none"
-          style={{ pointerEvents: "none" }}
-          width={HEX_WIDTH}
-          x={x - HEX_WIDTH / 2}
-          y={y - HEX_SIZE}
-        />
-      );
-    } else if (field.location === "oneway_entrance" || field.location === "oneway_exit") {
-      // One-way monolith halves: per-color art + a small pair badge.
-      overlays.push(
-        <image
-          className="locationToken"
-          height={2 * HEX_SIZE}
-          href={assetUrl(
-            onewayMonolithImage(field.location === "oneway_entrance" ? "entrance" : "exit", field.gatePair ?? 1)
-          )}
-          key={`standalone-${spaceId}-oneway`}
-          preserveAspectRatio="none"
-          style={{ pointerEvents: "none" }}
-          width={HEX_WIDTH}
-          x={x - HEX_WIDTH / 2}
-          y={y - HEX_SIZE}
-        />
-      );
-      if (field.gatePair) {
-        const color = GATE_PAIR_COLORS[field.gatePair];
-        overlays.push(
-          <g className="hexGateMark" key={`standalone-${spaceId}-oneway-badge`} style={{ pointerEvents: "none" }}>
-            <circle cx={x + HEX_SIZE * 0.52} cy={y - HEX_SIZE * 0.56} fill={color} r={7} stroke="#160f06" strokeWidth={1} />
-            <text
-              fill="#fff"
-              fontSize={9}
-              fontWeight={700}
-              textAnchor="middle"
-              x={x + HEX_SIZE * 0.52}
-              y={y - HEX_SIZE * 0.56 + 3}
-            >
-              {field.gatePair}
-            </text>
-          </g>
-        );
-      }
+    if (isTeleportMarkLocation(field.location)) {
+      // Teleport objects (Gate / Monolith / one-way halves): the unified
+      // designer-parity mark — same undistorted art + ring + pair badge the
+      // map editor draws.
+      overlays.push(teleportHexMark(spaceId, x, y, field));
     } else if (outpostObjectImage(field.location)) {
       // Designer outposts: the printed hex scan (Garrison / Keymaster's Tent /
       // Barrier). Tents and Barriers add a colored ring + number (their color
@@ -5112,7 +5103,9 @@ export function PromptTray({
   const waitingOn =
     choice && choice.playerId !== viewerPlayerId
       ? choice.type === "OPTION_CHOICE" &&
-        (choice.context === "learning-level-up" || choice.context === "deck-search-mode")
+        (choice.context === "learning-level-up" ||
+          choice.context === "deck-search-mode" ||
+          (choice.context === "deck-pick" && Boolean(choice.deckPick?.upFront)))
         ? null
         : { ownerId: choice.playerId, doing: "is deciding…" }
       : !choice && visit && visit.playerId !== viewerPlayerId
@@ -5169,9 +5162,11 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" &&
     choice.playerId === viewerPlayerId &&
     // The Learning level-up offer has its own card-showing modal (LearningOfferModal).
-    // The Search-or-take-discard prompt has DeckSearchModeModal (card back / discard face).
+    // The Search-or-take-discard prompt AND the one-step spells deck-pick have
+    // DeckSearchModeModal (card backs / discard faces / school card faces).
     choice.context !== "learning-level-up" &&
-    choice.context !== "deck-search-mode"
+    choice.context !== "deck-search-mode" &&
+    !(choice.context === "deck-pick" && choice.deckPick?.upFront)
   ) {
     title = choice.prompt;
     body = optionActions;
@@ -5303,7 +5298,9 @@ export function PromptTray({
       choice.type === "DECK_SEARCH" ||
       choice.type === "ATTACK_DIE_REROLL" ||
       (choice.type === "OPTION_CHOICE" &&
-        (choice.context === "learning-level-up" || choice.context === "deck-search-mode"));
+        (choice.context === "learning-level-up" ||
+          choice.context === "deck-search-mode" ||
+          (choice.context === "deck-pick" && Boolean(choice.deckPick?.upFront))));
     if (!ownedElsewhere && legalActions.length > 0) {
       title = choice.type === "OPTION_CHOICE" ? choice.prompt : "Choose how to resolve this";
       body = legalActions;
