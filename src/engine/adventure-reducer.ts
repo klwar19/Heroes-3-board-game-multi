@@ -62,6 +62,13 @@ import {
   declareAdventureWinner,
   drawFromNeutralDeck,
   drawGuardArmy,
+  drawNeutralArmy,
+  drawWaveArmy,
+  grantWaveVictoryRewards,
+  applyWavePillage,
+  placeDungeonSite,
+  setRaidBossEncounterHook,
+  setDungeonEncounterHook,
   effectiveHandLimit,
   FIRST_ROUND_MULLIGAN_LIMIT,
   fieldCreatureBankId,
@@ -214,7 +221,19 @@ import {
   SIEGE_ROW_POSITIONS
 } from "./siege";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
-import { getCombatStartDraws, getCombatStartMark } from "./unit-abilities";
+import { getCombatStartDraws, getCombatStartMark, moraleLockedForPlayer } from "./unit-abilities";
+import {
+  bossLayersRemaining,
+  makeRaidBossCombatUnit,
+  RAID_BOSS_KILL_GOLD,
+  resolveBossDefinition
+} from "./raid-bosses";
+import {
+  DUNGEON_BOSS_FLOORS,
+  DUNGEON_FLOOR_CAP,
+  dungeonFloorDifficulty,
+  dungeonFloorRewardSteps
+} from "./dungeon";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { maybeAdvanceCultivationRealm, tribulationAvailable } from "./anime-cultivation";
 import {
@@ -265,7 +284,6 @@ import {
 } from "./parallel-turns";
 import {
   applyPermanentCombatEffects,
-  discardPermanentFromPlay,
   discardSchoolPermanentForExpert,
   getPermanentCardIds,
   getPermanentSchoolBonus,
@@ -2184,6 +2202,11 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState, player
   if (!adventure) {
     return;
   }
+  // The Dungeon (§6.7.3): the pending delve site will claim this tile's
+  // Blocked Field after rotation — no bank is peeked or offered for it.
+  if (dungeonClaimsTile(state, tile)) {
+    return;
+  }
   const tier = creatureBankTierForGroup(tile.group);
   if (!tier) {
     return;
@@ -2644,6 +2667,25 @@ function openSubterraneanGatePlacementChoice(
 function offerCreatureBankPlacement(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
   if (!adventure) {
+    return;
+  }
+  // The Dungeon (§6.7.3): the FIRST Near-band Blocked Field materialized
+  // claims the one-per-map delve site INSTEAD of a Creature Bank (the bank
+  // reservation was skipped at reveal; nothing was consumed). Forced content —
+  // no place/decline prompt.
+  if (dungeonClaimsTile(state, tile)) {
+    const blockedSpaceId = getTileFootprintSpaceIds(tile).find(
+      (spaceId) => adventure.fields[spaceId]?.location === "blocked_field"
+    );
+    tile.reservedBankId = undefined;
+    tile.reservedBankOptions = undefined;
+    tile.reservedBankDeclined = undefined;
+    if (blockedSpaceId) {
+      placeDungeonSite(state, blockedSpaceId);
+      return;
+    }
+    // The Blocked Field was lost (e.g. carved into a Subterranean Gate): the
+    // site stays pending for the next Near-band Blocked Field.
     return;
   }
   // Pre-rotation "Leave it blocked" — skip placement entirely; pile was only peeked.
@@ -3484,6 +3526,41 @@ setOnMapTileRevealHook(revealOnMapTile);
 setHexEventEncounterHook((state, hero, field) => {
   beginNeutralCombatPlacement(state, hero, field, field.difficulty ?? 1, {
     unlimitedRounds: Boolean(field.unlimitedCombatRounds)
+  });
+});
+
+// Raid Bosses (§6.5): the lair fight opener, registered across the import
+// cycle (the RAID_BOSS_FIGHT visit step calls it). Difficulty 0 — the bank
+// precedent: no level XP, the boss pays per layer broken and on the kill.
+// Normal round-limit rules: retreating and returning IS the raid loop
+// (wounds persist via the finalize write-back).
+setRaidBossEncounterHook((state, heroId, bossInstanceId) => {
+  const adventure = state.adventure;
+  const hero = state.heroes[heroId];
+  const boss = adventure?.raidBosses?.[bossInstanceId];
+  const field = boss ? adventure?.fields[boss.fieldId] : undefined;
+  if (!adventure || !hero || !boss || !field || boss.slainBy || boss.layersLeft <= 0) {
+    return;
+  }
+  beginNeutralCombatPlacement(state, hero, field, 0, { raidBossId: bossInstanceId });
+});
+
+// The Dungeon (§6.7.3): the floor-fight opener (the DUNGEON_FLOOR_FIGHT visit
+// step calls it). REAL difficulty min(floor+1, 7) — the grind site pays normal
+// hero/unit XP — but never Quick Combat (the fight opens directly, bypassing
+// startNeutralEncounter). Opening the fight consumes the once-per-turn delve.
+setDungeonEncounterHook((state, heroId, floor) => {
+  const adventure = state.adventure;
+  const hero = state.heroes[heroId];
+  const player = hero ? state.players[hero.controllerId] : undefined;
+  const fieldId = adventure?.dungeonSite?.fieldId;
+  const field = fieldId ? adventure?.fields[fieldId] : undefined;
+  if (!adventure || !hero || !player || !field) {
+    return;
+  }
+  player.dungeonDelveRound = state.round;
+  beginNeutralCombatPlacement(state, hero, field, dungeonFloorDifficulty(floor), {
+    dungeonFloor: floor
   });
 });
 
@@ -4755,7 +4832,15 @@ function beginNeutralCombatPlacement(
   hero: HeroState,
   field: MapFieldState,
   difficulty: number,
-  options?: { unlimitedRounds?: boolean }
+  options?: {
+    unlimitedRounds?: boolean;
+    /** Calamity Wave assault (§6.6): difficulty 0, unlimited rounds, no visit. */
+    waveAssault?: { wave: number };
+    /** Raid Boss attempt (§6.5): rebuilt from remaining layers, wounds persist. */
+    raidBossId?: string;
+    /** Dungeon floor delve (§6.7.3): real difficulty, ladder reward on the win. */
+    dungeonFloor?: number;
+  }
 ): void {
   const playerId = hero.controllerId;
   // A main hero whose living commander joins this fight keeps its EMPTY unit
@@ -4777,7 +4862,10 @@ function beginNeutralCombatPlacement(
     difficulty,
     hasAzure: false,
     ...(bankId ? { bankId } : {}),
-    ...(options?.unlimitedRounds ? { unlimitedRounds: true } : {})
+    ...(options?.unlimitedRounds ? { unlimitedRounds: true } : {}),
+    ...(options?.waveAssault ? { waveAssault: options.waveAssault } : {}),
+    ...(options?.raidBossId ? { raidBossId: options.raidBossId } : {}),
+    ...(options?.dungeonFloor !== undefined ? { dungeonFloor: options.dungeonFloor } : {})
   };
   assignCombatBoardArt(state, combat);
   combat.setup = {
@@ -5426,13 +5514,15 @@ type MapSpellBoostOffer =
       value: number;
       /**
        * When set, the +3 comes from a Basic X Magic card held IN HAND (its printed
-       * expert side) — resolving discards this card. When absent, it comes from the
-       * in-play fetch permanent — resolving discards that permanent.
+       * expert side) — resolving plays that card to the discard, like any hand
+       * ability. When absent, it comes from the in-play fetch permanent, which
+       * STAYS in play: the printed card has no discard clause (the crown is the
+       * whole cost), unlike the Tower School-of-Magic expert.
        */
       fromHandCardId?: CardId;
     };
 
-/** Basic X Magic expert: +3 Power, consumes its source (mirrors combat USE_SCHOOL_FETCH_EXPERT). */
+/** Basic X Magic expert: +3 Power for a crown (mirrors combat USE_SCHOOL_FETCH_EXPERT). */
 const MAP_SCHOOL_FETCH_EXPERT_POWER = 3;
 
 type MapSpellBoostFlags = {
@@ -5544,9 +5634,10 @@ function listMapSpellBoostOffers(
 
   // Basic X Magic +3 expert (once per cast; needs a crown; matching school only),
   // offered from BOTH sources it can come from — the in-play fetch permanent AND a
-  // Basic X Magic card held in hand. Using it consumes that source: the permanent
-  // is discarded (combat parity: USE_SCHOOL_FETCH_EXPERT), the hand card is played
-  // to the discard. One offer per source (first matching), like one expert use.
+  // Basic X Magic card held in hand. The in-play permanent STAYS in play (the
+  // printed card has no discard clause — combat parity: USE_SCHOOL_FETCH_EXPERT);
+  // the hand card is played to the discard like any hand ability. One offer per
+  // source (first matching), like one expert use.
   if (!flags.schoolFetchExpertUsed && crowns > 0) {
     const spellSchools = spell.spellSchools ?? [];
     const matchesSpell = (school: "air" | "earth" | "fire" | "water") =>
@@ -5600,8 +5691,8 @@ function mapSpellBoostOfferLabel(
     return `Discard ${name} expert (+${offer.value} more Power, school to +3) → ${tierHint}`;
   }
   const schoolName = offer.school.charAt(0).toUpperCase() + offer.school.slice(1);
-  // Both consume their source; the label names which (hand card vs the permanent).
-  const source = offer.fromHandCardId ? " from hand" : " (discards permanent)";
+  // The hand card is played (discarded); the in-play permanent stays in play.
+  const source = offer.fromHandCardId ? " from hand (discards the card)" : " (permanent stays)";
   return `Basic ${schoolName} Magic expert${source} (+${offer.value} Power) → ${tierHint}`;
 }
 
@@ -5723,11 +5814,11 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       player.hand.splice(handIndex, 1);
       player.discard.push(offer.fromHandCardId);
     } else {
-      // From the in-play fetch permanent: consume (discard) the permanent.
+      // From the in-play fetch permanent: the permanent STAYS in play (the
+      // printed card has no discard clause — the crown below is the whole cost).
       if (!activeSchoolFetches(state, playerId).includes(offer.school)) {
         throw new Error("No Basic Magic of that school is in play.");
       }
-      discardPermanentFromPlay(state, playerId, `ability.basic_${offer.school}_magic` as CardId);
     }
     player.combatStats.expertUsesSpentThisRound += 1;
     appendEvent(state, {
@@ -6564,7 +6655,16 @@ function neutralUnitAbilityEffects(unitDefId: string | undefined) {
     .filter((effect): effect is NonNullable<typeof effect> => Boolean(effect));
 }
 
-export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void {
+export function revealNeutralArmy(
+  state: GameState,
+  draws: NeutralDraw[],
+  /**
+   * Pre-minted extra bodies (raid/dungeon bosses): they keep their pinned
+   * cell (back-center) instead of the initiative auto-placement; a drawn
+   * guard auto-placed onto that cell moves to the next free defender cell.
+   */
+  extraUnits: CombatUnitState[] = []
+): void {
   const combat = state.combat;
   if (!combat || combat.context.kind !== "neutral") {
     return;
@@ -6616,7 +6716,7 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
     }
   }
 
-  if (neutralUnits.length === 0) {
+  if (neutralUnits.length === 0 && extraUnits.length === 0) {
     // The tier decks ran dry: the guards never show up and the field falls.
     combat.setup = null;
     combat.outcome = {
@@ -6630,7 +6730,20 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
   }
 
   placeNeutralUnits(neutralUnits, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
-  for (const unit of neutralUnits) {
+  // A pre-minted extra (a boss) keeps its pinned back-center cell: any drawn
+  // guard the auto-placement dropped there steps aside to the next free
+  // defender cell.
+  for (const extra of extraUnits) {
+    const collided = neutralUnits.find((unit) => unit.position === extra.position);
+    if (collided) {
+      const taken = new Set([...neutralUnits.map((unit) => unit.position), extra.position]);
+      const free = [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE].find((cell) => !taken.has(cell));
+      if (free !== undefined) {
+        collided.position = free;
+      }
+    }
+  }
+  for (const unit of [...neutralUnits, ...extraUnits]) {
     combat.units[unit.id] = unit;
   }
 
@@ -6654,6 +6767,88 @@ export function revealNeutralArmy(state: GameState, draws: NeutralDraw[]): void 
     return;
   }
   finalizeCombatStart(state);
+}
+
+/**
+ * The Dungeon (§6.7.3): whether this just-revealed tile's Blocked Field is
+ * claimed by the still-unplaced delve site — Near-band tiles only ("placed
+ * like a Creature Bank on a Near tile's Blocked Field"), one per map.
+ */
+function dungeonClaimsTile(state: GameState, tile: MapTileState): boolean {
+  const site = state.adventure?.dungeonSite;
+  if (!site || site.fieldId !== null) {
+    return false;
+  }
+  if (tile.group !== "near") {
+    return false;
+  }
+  const def = allTileDefinitions[tile.tileDefId];
+  return Boolean(def?.fields.some((field) => field.location === "blocked_field"));
+}
+
+/**
+ * Calamity Waves (§6.6.3): open one seat's wave assault — a normal neutral
+ * combat where the MAIN hero stands ("the hero rushes to the defense"),
+ * difficulty 0 (the wave pays its own printed reward, never level XP),
+ * unlimited rounds (the assault is fought out; an emptied army = pillage at
+ * finalize). A seat with no main hero on the map (defensive corner) is
+ * pillaged directly — the wave found no defender.
+ */
+function openMonsterWaveAssault(state: GameState, playerId: PlayerId, wave: number): void {
+  const adventure = state.adventure;
+  const hero = Object.values(state.heroes).find(
+    (candidate) => candidate?.controllerId === playerId && candidate.kind === "main"
+  );
+  const field = hero?.spaceId ? adventure?.fields[hero.spaceId] : undefined;
+  if (!adventure || !hero || !field) {
+    applyWavePillage(state, playerId, wave);
+    return;
+  }
+  beginNeutralCombatPlacement(state, hero, field, 0, {
+    unlimitedRounds: true,
+    waveAssault: { wave }
+  });
+}
+
+/**
+ * Raid Bosses (§6.5.2): reveal the layered boss — rebuilt from its REMAINING
+ * layers (wounds persist between attempts) — pinned to the back-center cell,
+ * with its minion escort drawn from the neutral decks.
+ */
+function revealRaidBossArmy(state: GameState, bossInstanceId: string): void {
+  const adventure = state.adventure;
+  const boss = adventure?.raidBosses?.[bossInstanceId];
+  const def = boss ? resolveBossDefinition(state, boss.defId) : null;
+  if (!adventure || !boss || !def) {
+    revealNeutralArmy(state, []);
+    return;
+  }
+  const bossUnit = makeRaidBossCombatUnit(def, boss.layersLeft, `boss_${def.id}`, DEFENDER_BACKLINE[1]);
+  const minions = drawNeutralArmy(state, Math.max(1, Math.min(7, def.minionLevel))).slice(
+    0,
+    Math.max(0, def.minionCount)
+  );
+  revealNeutralArmy(state, minions, [bossUnit]);
+}
+
+/**
+ * The Dungeon (§6.7.3): reveal the floor party — a level min(floor+1, 7) draw;
+ * floors 5/10 field the floor boss (fresh at full layers each attempt — the
+ * Dungeon deals fair, no wound bookkeeping) with its own smaller escort.
+ */
+function revealDungeonFloorArmy(state: GameState, floor: number): void {
+  const bossId = DUNGEON_BOSS_FLOORS[floor];
+  const def = bossId ? resolveBossDefinition(state, bossId) : null;
+  if (def) {
+    const bossUnit = makeRaidBossCombatUnit(def, def.layers, `boss_${def.id}`, DEFENDER_BACKLINE[1]);
+    const minions = drawNeutralArmy(state, Math.max(1, Math.min(7, def.minionLevel))).slice(
+      0,
+      Math.max(0, def.minionCount)
+    );
+    revealNeutralArmy(state, minions, [bossUnit]);
+    return;
+  }
+  revealNeutralArmy(state, drawNeutralArmy(state, dungeonFloorDifficulty(floor)));
 }
 
 /**
@@ -7978,6 +8173,24 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
   // rulebook Combat Setup: place your units, then check the Difficulty
   // Table and draw the corresponding neutral cards.
   if (combat.context.kind === "neutral") {
+    // Calamity Wave (§6.6): the wave-table draw (designer override honoured).
+    // No pre-battle swap windows on a surprise assault — Judge Dread / Satyr /
+    // Visions / Rule 111 stay ordinary-guard offers.
+    if (combat.context.waveAssault) {
+      revealNeutralArmy(state, drawWaveArmy(state, combat.context.waveAssault.wave));
+      return;
+    }
+    // Raid Boss (§6.5): the layered boss (rebuilt from its REMAINING layers —
+    // wounds persist) + its minion draws. No swap windows on a boss.
+    if (combat.context.raidBossId) {
+      revealRaidBossArmy(state, combat.context.raidBossId);
+      return;
+    }
+    // Dungeon floor (§6.7.3): the floor party; floors 5/10 add the floor boss.
+    if (combat.context.dungeonFloor !== undefined) {
+      revealDungeonFloorArmy(state, combat.context.dungeonFloor);
+      return;
+    }
     // Creature Bank: a fixed party of bank cards with Stack Tokens, not a
     // Field-Difficulty draw. The Groovy Satyr never swaps bank defenders.
     if (isCreatureBankId(combat.context.bankId)) {
@@ -9137,6 +9350,80 @@ function queuePiratesResourceDie(state: GameState, winnerId: PlayerId): void {
   });
 }
 
+/**
+ * Raid Bosses (§6.5.3) — the KILL: mark the slayer, pay the printed reward
+ * (gold at once + a relic-tier Artifact search unshifted to the queue front)
+ * and clear the lair (the field is black-cubed empty; a later visit is inert).
+ * Layer-break payouts already happened LIVE during the fight.
+ */
+function resolveRaidBossVictory(state: GameState, playerId: PlayerId, bossInstanceId: string): void {
+  const adventure = state.adventure;
+  const boss = adventure?.raidBosses?.[bossInstanceId];
+  if (!adventure || !boss) {
+    return;
+  }
+  const def = resolveBossDefinition(state, boss.defId);
+  boss.layersLeft = 0;
+  boss.slainBy = playerId;
+  const field = adventure.fields[boss.fieldId];
+  if (field) {
+    delete field.riftLair;
+    field.blackCube = true;
+  }
+  gainResources(state, playerId, { gold: RAID_BOSS_KILL_GOLD }, `slew ${def?.name ?? "the rift boss"}`);
+  const relicDeck = state.decks["artifacts-relic"] ? "artifacts-relic" : "artifacts";
+  adventure.rewardQueue.unshift({
+    playerId,
+    kind: "shared-deck-search",
+    deckId: relicDeck,
+    count: 1
+  });
+  appendEvent(state, {
+    type: "RAID_BOSS_SLAIN",
+    bossInstanceId,
+    playerId,
+    bossName: def?.name ?? boss.defId,
+    message: `${state.players[playerId]?.name ?? playerId} slew ${def?.name ?? "the rift boss"}! +${RAID_BOSS_KILL_GOLD} gold and a relic-tier Artifact search; the Rift closes.`
+  });
+}
+
+/**
+ * The Dungeon (§6.7.3) — a floor CLEARED: pay the ladder reward (unshifted to
+ * the queue front), advance the delver's floor (capped at 10 — the conquered
+ * bottom floor stays repeatable for the fallback reward) and, the first time
+ * floor 10 falls, the Dungeon Conqueror title.
+ */
+function resolveDungeonFloorVictory(state: GameState, playerId: PlayerId, floor: number): void {
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (!adventure || !player) {
+    return;
+  }
+  const repeat = floor >= DUNGEON_FLOOR_CAP && Boolean(player.dungeonConquered);
+  adventure.rewardQueue.unshift({
+    playerId,
+    kind: "visit-steps",
+    steps: dungeonFloorRewardSteps(state, floor, { repeat })
+  });
+  player.dungeonFloor = Math.min(DUNGEON_FLOOR_CAP, floor + 1);
+  appendEvent(state, {
+    type: "DUNGEON_FLOOR_CLEARED",
+    playerId,
+    floor,
+    message: `${state.players[playerId]?.name ?? playerId} cleared Dungeon floor ${floor}${
+      repeat ? " (again)" : ""
+    }.`
+  });
+  if (floor >= DUNGEON_FLOOR_CAP && !player.dungeonConquered) {
+    player.dungeonConquered = true;
+    appendEvent(state, {
+      type: "DUNGEON_CONQUERED",
+      playerId,
+      message: `${state.players[playerId]?.name ?? playerId} has CONQUERED the Dungeon — floor 10 has fallen! (Dungeon Conqueror)`
+    });
+  }
+}
+
 export function finalizeAdventureCombat(state: GameState): void {
   const combat = state.combat;
   const adventure = state.adventure;
@@ -9445,7 +9732,12 @@ export function finalizeAdventureCombat(state: GameState): void {
         if (field?.persistentGuard) {
           persistLivingGuardsOnField(state, field, combat);
         }
-        const returnTo = adventure.lastVisitedField[hero.id];
+        // A wave assault happens WHERE the hero stands and a Dungeon delve on
+        // the (revisitable) gate — neither retreat bounces the hero anywhere.
+        const returnTo =
+          context.waveAssault || context.dungeonFloor !== undefined
+            ? null
+            : adventure.lastVisitedField[hero.id];
         if (returnTo) {
           hero.spaceId = returnTo;
         }
@@ -9460,10 +9752,34 @@ export function finalizeAdventureCombat(state: GameState): void {
         if (field?.persistentGuard) {
           persistLivingGuardsOnField(state, field, combat);
         }
-        // Defeat: the hero falls back to a friendly town or settlement. The
-        // fighter is always the turn-owner, so offer the town-or-settlement
-        // retreat CHOICE (interactive) when they own more than one.
-        moveDefeatedHeroHome(state, hero, true);
+        if (context.waveAssault || context.dungeonFloor !== undefined) {
+          // The assault came TO the hero / the Dungeon deals fair (§6.7.3
+          // "nothing lost but the wounds"): the hero stays where they stand.
+        } else {
+          // Defeat: the hero falls back to a friendly town or settlement. The
+          // fighter is always the turn-owner, so offer the town-or-settlement
+          // retreat CHOICE (interactive) when they own more than one.
+          moveDefeatedHeroHome(state, hero, true);
+        }
+      }
+
+      // Calamity Waves (§6.6.3): any non-win outcome — defeat, retreat, an
+      // emptied army — is PILLAGE (gold + the nearest holding overrun).
+      if (context.waveAssault && outcome.winnerPlayerId !== playerId) {
+        applyWavePillage(state, playerId, context.waveAssault.wave);
+      }
+
+      // Raid Bosses (§6.5.3): wounds persist WHATEVER the outcome — write the
+      // boss unit's remaining layers back to the lair record (0 when it fell;
+      // the win branch below then marks the kill).
+      if (context.raidBossId) {
+        const bossRecord = adventure.raidBosses?.[context.raidBossId];
+        const bossUnit = Object.values(combat.units).find(
+          (unit) => unit.bossUnit && unit.controllerId === NEUTRAL_PLAYER_ID
+        );
+        if (bossRecord && bossUnit) {
+          bossRecord.layersLeft = bossLayersRemaining(bossUnit);
+        }
       }
 
       // House rule: a commander that stood in this fight and SURVIVED it holds
@@ -9487,6 +9803,28 @@ export function finalizeAdventureCombat(state: GameState): void {
       // WADED onto the guard (a land→sea step) stays halted by that step itself
       // (haltAfterSeaStep, set during the move), so the coastline rule is intact —
       // only the extra post-sea-combat halt is dropped.
+
+      // Calamity Wave / Raid Boss / Dungeon floor wins pay their OWN printed
+      // reward and never the field visit (the hero merely stands there / the
+      // lair clears / the gate stays). The fought neutral win still opens the
+      // Necromancy window — with no deferred fieldId, nothing is withheld
+      // behind it (the bank precedent).
+      if (context.waveAssault || context.raidBossId || context.dungeonFloor !== undefined) {
+        if (context.waveAssault) {
+          grantWaveVictoryRewards(state, playerId, context.waveAssault.wave);
+        } else if (context.raidBossId) {
+          resolveRaidBossVictory(state, playerId, context.raidBossId);
+        } else if (context.dungeonFloor !== undefined) {
+          resolveDungeonFloorVictory(state, playerId, context.dungeonFloor);
+        }
+        if (playerCanPlayNecromancy(state, playerId)) {
+          adventure.pendingNecromancy = { playerId, heroId: hero.id };
+        } else {
+          noteWithheldNecromancyWindow(state, playerId);
+        }
+        state.phase = "player-turn";
+        return;
+      }
 
       // Dragon Hunt: defeating the Utopia wins the Scenario IMMEDIATELY — never
       // defer behind Necromancy / First Aid / field-reward timing. (The visit
@@ -11237,6 +11575,14 @@ export function spendMorale(state: GameState, action: Extract<GameAction, { type
   const player = state.players[action.playerId];
   if (!player) {
     throw new Error("No positive morale token to spend.");
+  }
+
+  // Raid-boss Fear (§6.8): while a living enemy Fear unit stands in the
+  // player's open combat, every morale USE is refused — the offers are already
+  // withheld in legal-actions; this backstop rejects a forged spend. Morale
+  // GAINS and morale-card draws stay untouched.
+  if (moraleLockedForPlayer(state.combat, action.playerId)) {
+    throw new Error("Fear grips your army — morale cannot be used while the Fear unit lives.");
   }
 
   if (moraleCardsRuleEnabled(state)) {
@@ -14192,6 +14538,19 @@ export function pumpAdventureQueues(state: GameState): void {
         continue;
       }
       adventure.rewardQueue.shift();
+      continue;
+    }
+
+    // Calamity Wave assault (§6.6): open this seat's wave combat. The next
+    // seat's assault waits behind the open fight (the pump gate returns while
+    // a combat is active); the barrier sentinel after the last assault lifts
+    // the whole-table freeze.
+    if (reward.kind === "wave-assault") {
+      adventure.rewardQueue.shift();
+      openMonsterWaveAssault(state, reward.playerId, reward.wave);
+      if (state.combat) {
+        return;
+      }
       continue;
     }
 

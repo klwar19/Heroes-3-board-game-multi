@@ -3,6 +3,7 @@ import { getUnitSide } from "./adventure";
 import { appendEvent } from "./events";
 import { armyUnitStacksActive } from "./house-rules";
 import { getRuleset, unitSideRuleOverrides } from "./ruleset";
+import { RAID_BOSS_LAYER_BREAK_GOLD } from "./raid-bosses";
 import { isArrowTowerUnit } from "./siege";
 import {
   getOnRemovalDetonation,
@@ -107,8 +108,12 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   // large hit may consume several layers. Recomputing the side after each loss
   // drops the flat +1 Attack when the final Stack is gone. Neutrals have no
   // Pack→Few flip — once stacks and the body die, the card is removed as usual.
+  // Raid bosses (§6.5.2) ride the SAME layer machinery unconditionally: their
+  // armyStacks ARE the printed health bars, so a boss sheds layers even on a
+  // table without the Polish/anime Unit-Stacks rule (the bankUnit branch of
+  // applyUnitCurrentSide no-ops for their synthetic def, keeping minted stats).
   while (
-    armyUnitStacksActive(state) &&
+    (armyUnitStacksActive(state) || unit.bossUnit) &&
     (unit.variant === "pack" || unit.variant === "neutral") &&
     (unit.armyStacks ?? 0) > 0 &&
     unit.damage >= unit.maxHealth
@@ -126,6 +131,31 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
       remainingStacks: unit.armyStacks,
       excessDamage: excess
     });
+
+    // Raid Bosses (§6.5.3): every layer broken pays the FIGHTER 2 gold at
+    // once and lands on the per-player payout ledger ("soften it so I can
+    // finish it" is a real play). Only the raid LAIR pays — a dungeon floor
+    // boss settles through the floor ladder instead.
+    const raidContext = state.combat?.context;
+    if (unit.bossUnit && raidContext?.kind === "neutral" && raidContext.raidBossId) {
+      const bossRecord = state.adventure?.raidBosses?.[raidContext.raidBossId];
+      const breakerId = state.combat?.attackerPlayerId;
+      const breaker = breakerId ? state.players[breakerId] : undefined;
+      if (bossRecord && breaker && breakerId) {
+        bossRecord.layerBreaks[breakerId] = (bossRecord.layerBreaks[breakerId] ?? 0) + 1;
+        breaker.resources.gold += RAID_BOSS_LAYER_BREAK_GOLD;
+        appendEvent(state, {
+          type: "RAID_BOSS_LAYER_BROKEN",
+          bossInstanceId: raidContext.raidBossId,
+          playerId: breakerId,
+          layersLeft: (unit.armyStacks ?? 0) + 1,
+          gold: RAID_BOSS_LAYER_BREAK_GOLD,
+          message: `${breaker.name} broke a health layer off ${unit.name} — +${RAID_BOSS_LAYER_BREAK_GOLD} gold at once (${
+            (unit.armyStacks ?? 0) + 1
+          } bar${(unit.armyStacks ?? 0) + 1 === 1 ? "" : "s"} left).`
+        });
+      }
+    }
   }
 
   if (unit.damage < unit.maxHealth) {

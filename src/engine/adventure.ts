@@ -150,6 +150,30 @@ import {
   type HexCoord
 } from "./hex";
 import { createSeededRandom } from "./random";
+import {
+  designedWaveSpec,
+  waveArmyLevel,
+  waveNumberForRound,
+  WAVE_PILLAGE_GOLD,
+  WAVE_TREASURE_DIE_FROM_WAVE,
+  WAVE_OVERRUN_GUARD_LEVEL,
+  WAVE_WIN_GOLD,
+  WAVE_WIN_XP
+} from "./monster-waves";
+import {
+  RAID_BOSS_ESCALATION_INTERVAL,
+  RAID_BOSS_KILL_GOLD,
+  RAID_BOSS_LAYER_BREAK_GOLD,
+  RAID_BOSS_SPAWN_ROUND,
+  resolveBossDefinition,
+  scheduledBossPool
+} from "./raid-bosses";
+import {
+  DUNGEON_BOSS_FLOORS,
+  dungeonDoorsForFloor,
+  dungeonFloorDifficulty,
+  dungeonFloorOf
+} from "./dungeon";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
   diluteUnitExperienceForUpgrade,
@@ -4489,6 +4513,28 @@ export function setHexEventEncounterHook(
 }
 
 /**
+ * Raid Bosses (§6.5): the lair fight is opened by adventure-reducer.ts on the
+ * far side of the import cycle — same registered-hook pattern as
+ * {@link setHexEventEncounterHook}. Until registered, the RAID_BOSS_FIGHT
+ * visit step is a safe no-op (the lair simply stays; the next visit retries).
+ */
+let raidBossEncounterHook: ((state: GameState, heroId: HeroId, bossInstanceId: string) => void) | null =
+  null;
+export function setRaidBossEncounterHook(
+  hook: ((state: GameState, heroId: HeroId, bossInstanceId: string) => void) | null
+): void {
+  raidBossEncounterHook = hook;
+}
+
+/** The Dungeon (§6.7.3): the floor fight's reducer-side opener (same pattern). */
+let dungeonEncounterHook: ((state: GameState, heroId: HeroId, floor: number) => void) | null = null;
+export function setDungeonEncounterHook(
+  hook: ((state: GameState, heroId: HeroId, floor: number) => void) | null
+): void {
+  dungeonEncounterHook = hook;
+}
+
+/**
  * Spring the designer hex event on this field, if one is armed for this
  * player. Called from the beginFieldVisit seam (before the field's own
  * designer bonus), so a WON ambush re-enters here with the guard beaten.
@@ -5907,6 +5953,17 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     handleAnimeTrialTowerVisit(state, playerId, heroId, field);
     return;
   }
+  // Raid Bosses (§6.5): a Rift Lair field opens the confirm-and-challenge
+  // menu (the boss fight is rebuilt from its REMAINING layers each attempt).
+  if (location.id === "rift_lair") {
+    handleRiftLairVisit(state, playerId, heroId, field);
+    return;
+  }
+  // The Dungeon (§6.7.3): the delve site's per-player floor menu.
+  if (location.id === "dungeon_gate") {
+    handleDungeonGateVisit(state, playerId, heroId, field);
+    return;
+  }
 
   // A DESIGNED guard on a map-object teleport field (Monolith / Whirlpool /
   // Gate), a Subterranean Gate half or an outpost (Garrison / Keymaster's
@@ -6318,6 +6375,35 @@ export function processPendingVisit(state: GameState): void {
         break;
       case "RESUME_FIELD_VISIT":
         beginFieldVisit(state, step.heroId, step.fieldId, step.revisit);
+        break;
+      case "RAID_BOSS_FIGHT": {
+        // The combat opener lives across the import cycle; the visit is done
+        // (this is always an option's last step) — clear it BEFORE the combat
+        // opens so no stale empty visit lingers under the fight.
+        const bossInstanceId = step.bossInstanceId;
+        const heroId = visit.heroId;
+        if (adventure.pendingVisit === visit && visit.steps.length === 0) {
+          adventure.pendingVisit = null;
+        }
+        raidBossEncounterHook?.(state, heroId, bossInstanceId);
+        return;
+      }
+      case "DUNGEON_FLOOR_FIGHT": {
+        const floor = step.floor;
+        const heroId = visit.heroId;
+        if (adventure.pendingVisit === visit && visit.steps.length === 0) {
+          adventure.pendingVisit = null;
+        }
+        dungeonEncounterHook?.(state, heroId, floor);
+        return;
+      }
+      case "PLAY_STORY_SCENE":
+        appendEvent(state, {
+          type: "STORY_SCENE_TRIGGERED",
+          round: state.round,
+          sceneId: step.sceneId,
+          message: "Whispers in the dark — a story unfolds."
+        });
         break;
       case "ROLL_TREASURE_DICE":
         rollTreasureDice(state, visit, step.count);
@@ -12129,6 +12215,41 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
  *    Neutral Army (the rulebook override).
  * Every other field draws normally from the Field Difficulty Level Table.
  */
+/**
+ * Calamity Waves (§6.6.3): the wave army for wave N — a designer exact-army /
+ * level override when the map pins one (the CustomGuardSpec vocabulary,
+ * mirroring drawGuardArmy's designer branches), else the level table at
+ * waveArmyLevel(N). Deck draws recycle at combat end like any guard army.
+ */
+export function drawWaveArmy(state: GameState, wave: number): NeutralDraw[] {
+  const spec = designedWaveSpec(state, wave);
+  if (spec?.units && spec.units.length > 0) {
+    const random = adventureRandom(state, `wave-army-${wave}`);
+    const playable = PLAYABLE_FACTIONS.filter((faction) => isPlayableFaction(faction, state.anime));
+    return resolveCustomGuardDraws(spec.units, random, {
+      packFaction: spec.packFaction,
+      playableFactions: playable
+    }) as NeutralDraw[];
+  }
+  if (spec?.level) {
+    if (spec.levelArmy === "packs") {
+      const scenarioDifficulty = neutralArmyDifficulty(state);
+      const composition =
+        NEUTRAL_ARMY_TABLE[scenarioDifficulty]?.[spec.level] ??
+        NEUTRAL_ARMY_TABLE.normal[spec.level] ??
+        NEUTRAL_ARMY_TABLE.normal[1];
+      const random = adventureRandom(state, `wave-army-packs-${wave}`);
+      const playable = PLAYABLE_FACTIONS.filter((faction) => isPlayableFaction(faction, state.anime));
+      return resolveLevelPackGuardDraws(composition, random, {
+        packFaction: spec.packFaction,
+        playableFactions: playable
+      }) as NeutralDraw[];
+    }
+    return drawNeutralArmy(state, spec.level);
+  }
+  return drawNeutralArmy(state, waveArmyLevel(wave));
+}
+
 export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
   // Designer "certain army" guard: mint the exact cards, Creature-Bank style —
   // never drawn from nor recycled to the tier decks. It REPLACES every
@@ -12970,6 +13091,482 @@ function beginRoundStartEventBarrier(state: GameState): void {
 }
 
 /**
+ * Calamity Waves (§6.6) — the round-start hook, called from BOTH round-kind
+ * branches of startAdventureRound right after the Event/Astrologers block:
+ *  - the round BEFORE a wave, announce it ("the Gate groans") so players can
+ *    position;
+ *  - on the wave round, queue one `wave-assault` reward per LIVE seat (seat
+ *    order) and raise the round-start barrier over them. ONE barrier spans the
+ *    Event AND the waves: an already-queued trailing sentinel is lifted and
+ *    re-appended after the assault steps, so the whole table stays frozen
+ *    until the last assault resolves (plan order: income → Event → waves →
+ *    City Halls → turns).
+ */
+function applyCalamityWaveRoundStart(state: GameState): void {
+  const adventure = state.adventure;
+  const config = adventure?.monsterWaves;
+  if (!adventure || !config) {
+    return;
+  }
+  const nextWave = waveNumberForRound(config.cadence, state.round + 1);
+  if (nextWave) {
+    appendEvent(state, {
+      type: "MONSTER_WAVE_ANNOUNCED",
+      round: state.round,
+      wave: nextWave,
+      message: `The Gate groans — monster wave ${nextWave} strikes every army at the start of round ${
+        state.round + 1
+      }. Position your defenses!`
+    });
+  }
+  const wave = waveNumberForRound(config.cadence, state.round);
+  if (!wave) {
+    return;
+  }
+  const seats = liveEventPlayers(state);
+  if (seats.length === 0) {
+    return;
+  }
+  const last = adventure.rewardQueue[adventure.rewardQueue.length - 1];
+  if (last?.kind === "round-start-events-resolved") {
+    adventure.rewardQueue.pop();
+  }
+  for (const playerId of seats) {
+    adventure.rewardQueue.push({ playerId, kind: "wave-assault", wave });
+  }
+  appendEvent(state, {
+    type: "MONSTER_WAVE_STARTED",
+    round: state.round,
+    wave,
+    level: waveArmyLevel(wave),
+    message: `Monster wave ${wave} pours through — every player fights a level-${waveArmyLevel(
+      wave
+    )} war party at round start, in seat order.`
+  });
+  beginRoundStartEventBarrier(state);
+}
+
+/**
+ * Calamity Waves — a repelled assault's printed reward (§6.6.3): +2 gold,
+ * +1 main-hero XP, and from wave 3 on one Treasure-die roll (unshifted to the
+ * queue FRONT so the winner rolls before the next seat's assault opens).
+ * Called from finalizeAdventureCombat's wave branch; the difficulty-0 context
+ * already paid no level XP, and the post-win field visit is skipped there.
+ */
+export function grantWaveVictoryRewards(state: GameState, playerId: PlayerId, wave: number): void {
+  gainResources(state, playerId, { gold: WAVE_WIN_GOLD }, `repelled monster wave ${wave}`);
+  gainExperience(state, playerId, WAVE_WIN_XP);
+  if (wave >= WAVE_TREASURE_DIE_FROM_WAVE) {
+    state.adventure?.rewardQueue.unshift({
+      playerId,
+      kind: "visit-steps",
+      steps: [{ type: "ROLL_TREASURE_DICE", count: 1 }]
+    });
+  }
+  appendEvent(state, {
+    type: "MONSTER_WAVE_REPELLED",
+    playerId,
+    wave,
+    gold: WAVE_WIN_GOLD,
+    message: `${state.players[playerId]?.name ?? playerId} repelled monster wave ${wave}: +${WAVE_WIN_GOLD} gold, +${WAVE_WIN_XP} hero experience${
+      wave >= WAVE_TREASURE_DIE_FROM_WAVE ? ", and a Treasure-die roll" : ""
+    }.`
+  });
+}
+
+/**
+ * Calamity Waves — pillage on a LOST (or retreated/emptied) assault (§6.6.3):
+ * lose 3 gold (floored at 0), and the player's mine/settlement NEAREST their
+ * home town is OVERRUN — flag removed, `everFlagged`/`blackCube` reset and a
+ * difficulty-Ⅰ guard re-seeded, so the field must be re-fought and re-flagged
+ * (re-earning its first-flag reward — the clear-cubes re-open precedent).
+ * Never razes a building, never eliminates. No holding = gold loss only.
+ */
+export function applyWavePillage(state: GameState, playerId: PlayerId, wave: number): void {
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (!adventure || !player) {
+    return;
+  }
+  const goldLost = Math.min(WAVE_PILLAGE_GOLD, player.resources.gold);
+  if (goldLost > 0) {
+    player.resources.gold -= goldLost;
+  }
+
+  const homeFieldId = getTownOfPlayer(state, playerId)?.fieldId ?? null;
+  const homeCoord = homeFieldId ? parseHexSpaceId(homeFieldId) : null;
+  const holdings = Object.values(adventure.fields)
+    .filter(
+      (field) =>
+        field.flagOwnerId === playerId && (field.location === "mine" || field.location === "settlement")
+    )
+    .sort((left, right) => {
+      const leftCoord = parseHexSpaceId(left.spaceId);
+      const rightCoord = parseHexSpaceId(right.spaceId);
+      const leftDistance = homeCoord && leftCoord ? hexDistance(homeCoord, leftCoord) : 0;
+      const rightDistance = homeCoord && rightCoord ? hexDistance(homeCoord, rightCoord) : 0;
+      if (leftDistance !== rightDistance) {
+        return leftDistance - rightDistance;
+      }
+      return left.spaceId.localeCompare(right.spaceId);
+    });
+  const overrun = holdings[0] ?? null;
+  if (overrun) {
+    overrun.flagOwnerId = null;
+    overrun.blackCube = false;
+    overrun.everFlagged = false;
+    if (overrun.location === "settlement") {
+      overrun.settlementResource = null;
+    }
+    overrun.difficulty = WAVE_OVERRUN_GUARD_LEVEL;
+    overrun.customGuardLevel = WAVE_OVERRUN_GUARD_LEVEL;
+  }
+
+  appendEvent(state, {
+    type: "MONSTER_WAVE_PILLAGED",
+    playerId,
+    wave,
+    goldLost,
+    overrunFieldId: overrun?.spaceId ?? null,
+    message: `Monster wave ${wave} broke through ${state.players[playerId]?.name ?? playerId}'s defense: ${
+      goldLost > 0 ? `${goldLost} gold plundered` : "nothing left to plunder"
+    }${overrun ? `, and the ${overrun.location === "mine" ? "mine" : "settlement"} nearest home is overrun (a level-Ⅰ guard moves in)` : ""}.`
+  });
+}
+
+/**
+ * Raid Bosses (§6.5.3) — the round-start hook beside the waves': announce the
+ * scheduled Rift Lair one round ahead ("the sky cracks"), place it on the
+ * spawn round (retrying every round until a candidate field is revealed), and
+ * regrow an ignored boss +1 layer (to its printed cap) every 4th round.
+ */
+function applyRaidBossRoundStart(state: GameState): void {
+  const adventure = state.adventure;
+  const bosses = adventure?.raidBosses;
+  if (!adventure || !bosses) {
+    return;
+  }
+
+  const spawnRound = Math.max(
+    2,
+    Math.min(30, adventure.mapPreset?.raidBosses?.spawnRound ?? RAID_BOSS_SPAWN_ROUND)
+  );
+  const scheduledSpawned = Object.values(bosses).some((boss) => boss.scheduled);
+
+  if (!scheduledSpawned && state.round === spawnRound - 1) {
+    appendEvent(state, {
+      type: "RAID_BOSS_ANNOUNCED",
+      round: state.round,
+      message: `The sky cracks — a Rift Lair tears open at the start of round ${spawnRound}. Something colossal is coming through.`
+    });
+  }
+
+  if (!scheduledSpawned && state.round >= spawnRound) {
+    spawnScheduledRaidBoss(state);
+  }
+
+  // Escalation — an unslain boss festers: +1 layer every 4th round after its
+  // spawn, capped at the printed layer count.
+  for (const [instanceId, boss] of Object.entries(bosses)) {
+    if (boss.slainBy || boss.layersLeft <= 0) {
+      continue;
+    }
+    const age = state.round - boss.spawnedRound;
+    if (age <= 0 || age % RAID_BOSS_ESCALATION_INTERVAL !== 0) {
+      continue;
+    }
+    const def = resolveBossDefinition(state, boss.defId);
+    const cap = def?.layers ?? boss.layersLeft;
+    if (boss.layersLeft >= cap) {
+      continue;
+    }
+    boss.layersLeft += 1;
+    appendEvent(state, {
+      type: "RAID_BOSS_ESCALATED",
+      bossInstanceId: instanceId,
+      layersLeft: boss.layersLeft,
+      message: `${def?.name ?? "The rift boss"} festers unslain — it regrows a health layer (${boss.layersLeft} bars now).`
+    });
+  }
+}
+
+/**
+ * The scheduled spawn's field pick: the highest-difficulty REVEALED plain
+ * guard field, preferring the map center bands, skipping objectives (towns,
+ * settlements, mines, obelisks, victory fields, banks, outposts, teleports),
+ * flagged fields and any hex a hero stands on. No candidate revealed yet =
+ * no spawn (the round-start hook retries next round).
+ */
+function spawnScheduledRaidBoss(state: GameState): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  const excludedLocations = new Set([
+    "town",
+    "random_town",
+    "settlement",
+    "mine",
+    "obelisk",
+    "star_axis",
+    "grail",
+    "dragon_utopia",
+    "creature_bank",
+    "rift_lair",
+    "dungeon_gate"
+  ]);
+  const bandRank: Record<string, number> = { center: 0, near: 1, far: 2 };
+  const heroSpaces = new Set(
+    Object.values(state.heroes).flatMap((hero) => (hero?.spaceId ? [hero.spaceId] : []))
+  );
+  const candidates = Object.values(adventure.fields)
+    .filter(
+      (field) =>
+        (field.difficulty ?? 0) >= 1 &&
+        !field.flagOwnerId &&
+        !field.bankId &&
+        !field.riftLair &&
+        !field.dungeonSite &&
+        !excludedLocations.has(field.location) &&
+        !isBankStyleGuardLocation(field.location) &&
+        !isTeleportObjectGuardLocation(field.location) &&
+        !heroSpaces.has(field.spaceId)
+    )
+    .sort((left, right) => {
+      const difficultyOrder = (right.difficulty ?? 0) - (left.difficulty ?? 0);
+      if (difficultyOrder !== 0) {
+        return difficultyOrder;
+      }
+      const leftBand = bandRank[adventure.tiles[left.tileInstanceId]?.group ?? ""] ?? 3;
+      const rightBand = bandRank[adventure.tiles[right.tileInstanceId]?.group ?? ""] ?? 3;
+      if (leftBand !== rightBand) {
+        return leftBand - rightBand;
+      }
+      return left.spaceId.localeCompare(right.spaceId);
+    });
+  const field = candidates[0];
+  if (!field) {
+    return;
+  }
+  const pool = scheduledBossPool(state);
+  if (pool.length === 0) {
+    return;
+  }
+  const random = adventureRandom(state, `raid-boss-spawn-${state.round}`);
+  const defId = pool[random.nextInt(0, pool.length - 1)] ?? pool[0];
+  const def = resolveBossDefinition(state, defId);
+  if (!def) {
+    return;
+  }
+  spawnRaidBossOnField(state, field, def.id, { scheduled: true });
+}
+
+/**
+ * Convert a field into a Rift Lair holding `defId` at full printed layers.
+ * The printed guard/visit content is REPLACED (the boss IS the guard):
+ * designer guard remnants and the black cube are cleared, `location` becomes
+ * "rift_lair" and the instance is recorded on `adventure.raidBosses`. Also
+ * the designer `boss_lair`-style entry point (preset spawns reuse it).
+ */
+export function spawnRaidBossOnField(
+  state: GameState,
+  field: MapFieldState,
+  defId: string,
+  options?: { scheduled?: true }
+): void {
+  const adventure = state.adventure;
+  const def = resolveBossDefinition(state, defId);
+  if (!adventure || !def) {
+    return;
+  }
+  if (!adventure.raidBosses) {
+    adventure.raidBosses = {};
+  }
+  const instanceId = `raid_${def.id}_${field.spaceId}`;
+  clearCustomGuard(field);
+  delete field.difficulty;
+  field.blackCube = false;
+  field.location = "rift_lair";
+  field.riftLair = instanceId;
+  adventure.raidBosses[instanceId] = {
+    defId: def.id,
+    fieldId: field.spaceId,
+    layersLeft: def.layers,
+    layerBreaks: {},
+    spawnedRound: state.round,
+    ...(options?.scheduled ? { scheduled: true as const } : {})
+  };
+  appendEvent(state, {
+    type: "RAID_BOSS_SPAWNED",
+    bossInstanceId: instanceId,
+    defId: def.id,
+    bossName: def.name,
+    fieldId: field.spaceId,
+    layers: def.layers,
+    message: `${def.name} (${def.layers} health bars) now lairs in a Rift on the map. Every layer broken pays 2 gold at once; the kill pays ${RAID_BOSS_KILL_GOLD} gold + a relic-tier Artifact search. Ignored, it regrows a layer every ${RAID_BOSS_ESCALATION_INTERVAL}th round.`
+  });
+}
+
+/**
+ * The Dungeon (§6.7.3): carve the one-per-map delve site onto a (former
+ * Blocked) Field — the placeCreatureBank sibling. Latches
+ * `adventure.dungeonSite.fieldId`; per-player floors live on PlayerState.
+ */
+export function placeDungeonSite(state: GameState, spaceId: MapSpaceId): MapFieldState | null {
+  const adventure = state.adventure;
+  const field = adventure?.fields[spaceId];
+  if (!adventure || !adventure.dungeonSite || !field) {
+    return null;
+  }
+  field.location = "dungeon_gate";
+  field.dungeonSite = true;
+  delete field.difficulty;
+  delete field.resource;
+  delete field.amount;
+  delete field.faction;
+  delete field.terrain;
+  delete field.borderEdges;
+  field.blackCube = false;
+  field.flagOwnerId = null;
+  delete field.extraFlagOwnerIds;
+  field.everFlagged = false;
+  field.settlementResource = null;
+  delete field.grailDiggable;
+  adventure.dungeonSite.fieldId = spaceId;
+  appendEvent(state, {
+    type: "DUNGEON_PLACED",
+    fieldId: spaceId,
+    message:
+      "The Dungeon's gate stands open — a repeatable delve, one floor per turn (floors 1–10, floor bosses at 5 and 10, a relic and the Conqueror title at the bottom)."
+  });
+  return field;
+}
+
+/**
+ * The Dungeon gate visit (§6.7.3 + door rooms): once per turn, delve YOUR
+ * current floor — pick one of two revealed rooms (treasure / shrine /
+ * whispering-wall dialogue / camp), resolve it, then the floor den fight
+ * opens. Floors 5 and 10 skip the doors and face the floor boss directly.
+ * Loss/retreat costs nothing; a win advances the floor and pays the ladder.
+ */
+function handleDungeonGateVisit(
+  state: GameState,
+  playerId: PlayerId,
+  heroId: HeroId,
+  field: MapFieldState
+): void {
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (!adventure || !adventure.dungeonSite || !player) {
+    return;
+  }
+  if (player.dungeonDelveRound === state.round) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: "The Dungeon admits each delver once per turn — return next turn."
+    });
+    return;
+  }
+  const floor = dungeonFloorOf(state, playerId);
+  const bossId = DUNGEON_BOSS_FLOORS[floor];
+  const repeat = Boolean(player.dungeonConquered);
+  const fightStep: VisitStep = { type: "DUNGEON_FLOOR_FIGHT", floor };
+
+  if (bossId) {
+    const boss = resolveBossDefinition(state, bossId);
+    adventure.pendingVisit = {
+      heroId,
+      playerId,
+      fieldId: field.spaceId,
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: `Floor ${floor}: ${boss?.name ?? "the floor warden"} bars the way (${
+            boss?.layers ?? 2
+          } health bars, with its retinue). Face it?${repeat ? " (Already conquered — the repeat pays a Treasure die + 3 gold.)" : ""}`,
+          options: [
+            { label: `Face ${boss?.name ?? "the floor boss"}`, steps: [fightStep] },
+            { label: "Withdraw", steps: [] }
+          ]
+        }
+      ]
+    };
+    processPendingVisit(state);
+    return;
+  }
+
+  const rng = adventureRandom(state, `dungeon-doors-${playerId}-${floor}`);
+  const [left, right] = dungeonDoorsForFloor(rng, floor);
+  adventure.pendingVisit = {
+    heroId,
+    playerId,
+    fieldId: field.spaceId,
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `Floor ${floor} of the Dungeon — two doors stand ajar. Behind either, the floor's den (a level-${dungeonFloorDifficulty(
+          floor
+        )} war party) waits. Which way?`,
+        options: [
+          { label: `Left door: ${left.label}`, steps: [...left.steps, fightStep] },
+          { label: `Right door: ${right.label}`, steps: [...right.steps, fightStep] },
+          { label: "Leave the Dungeon", steps: [] }
+        ]
+      }
+    ]
+  };
+  processPendingVisit(state);
+}
+
+/**
+ * Rift Lair visit (§6.5.3): "entering the lair = a normal neutral-combat entry
+ * behind a confirm prompt". Challenge opens the boss fight (rebuilt from its
+ * REMAINING layers — wounds persist); Withdraw steps the hero back where they
+ * came from. A dead/cleared lair visit is inert (the kill already black-cubed
+ * the field).
+ */
+function handleRiftLairVisit(state: GameState, playerId: PlayerId, heroId: HeroId, field: MapFieldState): void {
+  const adventure = state.adventure;
+  if (!adventure || !field.riftLair) {
+    return;
+  }
+  const boss = adventure.raidBosses?.[field.riftLair];
+  const def = boss ? resolveBossDefinition(state, boss.defId) : null;
+  if (!boss || !def || boss.slainBy || boss.layersLeft <= 0) {
+    return;
+  }
+  adventure.pendingVisit = {
+    heroId,
+    playerId,
+    fieldId: field.spaceId,
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `${def.name} lairs here — ${boss.layersLeft} health bar${boss.layersLeft === 1 ? "" : "s"} remain${
+          boss.layersLeft === 1 ? "s" : ""
+        }. Challenge it? (Wounds persist; every layer broken pays ${RAID_BOSS_LAYER_BREAK_GOLD} gold, the kill ${RAID_BOSS_KILL_GOLD} gold + a relic search.)`,
+        options: [
+          {
+            label: `Challenge ${def.name}`,
+            steps: [{ type: "RAID_BOSS_FIGHT", bossInstanceId: field.riftLair }]
+          },
+          {
+            // The lair is revisitable: withdrawing means standing at its mouth
+            // (Revisit for 1 MP to reconsider). No forced step-back — the
+            // visit already re-stamped lastVisitedField, so a synthetic
+            // teleport would only ever bounce the hero onto itself.
+            label: "Withdraw",
+            steps: []
+          }
+        ]
+      }
+    ]
+  };
+  processPendingVisit(state);
+}
+
+/**
  * Starts an adventure round (rulebook round structure): refresh tokens, MP
  * and expert effects; then even rounds draw an Astrologers Proclaim card and
  * odd rounds after the first pay Resource Round income.
@@ -13049,6 +13646,11 @@ export function startAdventureRound(state: GameState): void {
     if ((state.adventure?.rewardQueue.length ?? 0) > astroQueueBefore) {
       beginRoundStartEventBarrier(state);
     }
+    // Calamity Waves: announce/queue this round's wave assaults right behind
+    // the proclamation, under ONE shared barrier (waves resolve before any
+    // building trigger or turn). Raid Bosses ride the same round-start hook.
+    applyCalamityWaveRoundStart(state);
+    applyRaidBossRoundStart(state);
     // Map timed events queue behind the proclamation (and its barrier
     // sentinel), so the table finishes the Astrologers card first.
     applyCustomMapTimedEvents(state);
@@ -13211,6 +13813,12 @@ export function startAdventureRound(state: GameState): void {
   if ((state.adventure?.rewardQueue.length ?? 0) > eventQueueBefore) {
     beginRoundStartEventBarrier(state);
   }
+
+  // Calamity Waves + Raid Bosses: the shared round-start hook (plan order:
+  // income → Event → wave assaults → City Halls → turns; one barrier spans
+  // the Event and the waves).
+  applyCalamityWaveRoundStart(state);
+  applyRaidBossRoundStart(state);
 
   for (const playerId of state.turnOrder) {
     const player = state.players[playerId];

@@ -11513,6 +11513,34 @@ span.recruitThumb {
   background: rgba(74, 32, 88, 0.66);
 }
 
+/* Calamity Waves cadence picker (both mod windows) — a compact chip row shown
+   only while the monsterWaves module is ticked. */
+.waveCadenceRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed rgba(154, 104, 174, 0.45);
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.waveCadenceChip {
+  padding: 4px 10px;
+  border: 1px solid rgba(154, 104, 174, 0.45);
+  border-radius: 999px;
+  background: rgba(24, 14, 29, 0.8);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.waveCadenceChip.selected {
+  border-color: rgba(225, 168, 248, 0.9);
+  background: rgba(74, 32, 88, 0.75);
+}
+
 .wogModuleCheck {
   display: inline-grid;
   place-items: center;
