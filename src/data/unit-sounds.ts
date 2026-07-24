@@ -381,8 +381,8 @@ const actionCandidates: Record<UnitSoundAction, string[]> = {
  */
 const doomActionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundAction, string>>>> = {
   demon: {
-    attack: "doom/demon-attack",
-    shoot: "doom/demon-attack",
+    attack: "units/doom-demon-attack",
+    shoot: "units/doom-demon-attack",
     defend: "doom/dsdmact",
     hurt: "doom/dsdmpain",
     death: "doom/dssgtdth"

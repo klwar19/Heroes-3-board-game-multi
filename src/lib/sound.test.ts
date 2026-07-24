@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
-import { isTableUiClickTarget, playLibrarySound, playTableUiClickSound, playUnitSound, setSoundMuted } from "./sound";
+import { isTableUiClickTarget, playLibrarySound, playLibrarySoundThen, playTableUiClickSound, playUnitSound, setSoundMuted } from "./sound";
 
 /**
  * Records every <audio> the foley layer creates so a test asserts real
@@ -209,5 +209,81 @@ describe("creature movement sound repeats", () => {
     expect(audio.playCount).toBe(2);
     audio.fireEnded();
     expect(audio.playCount).toBe(2);
+  });
+});
+
+describe("sequenceDelayMs (paced virtual sequences)", () => {
+  // The Doom monsters introduced `sequenceDelayMs`: a pause between the members
+  // of a virtual `sequence`. These drive it through the real playback chain so
+  // the timing is proven, not just present.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("waits sequenceDelayMs before starting the next member, and still honours a member's repeat", () => {
+    // doom-demon-move = ["doom/dssgtsit", "doom/dsdmact-move"] with a 90ms gap;
+    // the second member (dsdmact-move) itself has repeat:2.
+    playLibrarySound("units/doom-demon-move");
+    expect(FakeAudio.instances).toHaveLength(1);
+    const sight = FakeAudio.instances[0];
+    expect(sight.src).toContain("/sounds/doom/dssgtsit.wav");
+    expect(sight.playCount).toBe(1);
+
+    // The first member ends: the next must NOT start until the 90ms gap elapses.
+    sight.fireEnded();
+    expect(FakeAudio.instances).toHaveLength(1);
+    vi.advanceTimersByTime(89);
+    expect(FakeAudio.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(FakeAudio.instances).toHaveLength(2);
+
+    const walk = FakeAudio.instances[1];
+    expect(walk.src).toContain("/sounds/doom/dsdmact.wav");
+    expect(walk.playCount).toBe(1);
+    // repeat:2 replays on the same element (the gap is BETWEEN members, not
+    // between a member's own repeats).
+    walk.fireEnded();
+    expect(FakeAudio.instances).toHaveLength(2);
+    expect(walk.playCount).toBe(2);
+    walk.fireEnded();
+    expect(walk.playCount).toBe(2);
+  });
+
+  it("advances a delay-less sequence synchronously (default 0 = byte-identical old timing)", () => {
+    // The Arch Devil teleport has no sequenceDelayMs: even with fake timers
+    // pending, the second member starts the instant the first ends — no
+    // setTimeout is scheduled, so old callers are unaffected.
+    playLibrarySound("units/arch-devil-teleport");
+    expect(FakeAudio.instances).toHaveLength(1);
+    FakeAudio.instances[0].fireEnded();
+    expect(FakeAudio.instances).toHaveLength(2);
+    expect(FakeAudio.instances[1].src).toContain("/sounds/units/arch-devil-special-2.mp3");
+    // Nothing was queued behind a timer.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("playLibrarySoundThen carries the delay and fires onDone after the whole sequence", () => {
+    const onDone = vi.fn();
+    playLibrarySoundThen("units/doom-demon-move", 0.5, onDone);
+    expect(FakeAudio.instances).toHaveLength(1);
+
+    FakeAudio.instances[0].fireEnded();
+    // Still waiting out the gap: the second member has not started and onDone
+    // must not have fired.
+    expect(FakeAudio.instances).toHaveLength(1);
+    expect(onDone).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(90);
+    expect(FakeAudio.instances).toHaveLength(2);
+    expect(onDone).not.toHaveBeenCalled();
+
+    // Exhaust the second member's repeat:2, then let any trailing gap elapse.
+    FakeAudio.instances[1].fireEnded();
+    FakeAudio.instances[1].fireEnded();
+    vi.runAllTimers();
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 });
