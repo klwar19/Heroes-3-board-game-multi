@@ -3006,21 +3006,19 @@ export function MoraleCardOverlay({ cue, onDone }: { cue: MoraleCardCue; onDone:
  * End-of-combat notice: combat no longer drops back to the map by itself.
  * The battlefield stays up behind this popup until a participant clicks
  * "Return to the adventure map" (ACKNOWLEDGE_COMBAT_END); the battle
- * simulator offers a table reset instead. "Keep looking" hides the popup so
- * the final board can be inspected — the dock keeps the return button.
+ * simulator keeps the result visible until the player uses the top-level new
+ * game control. "Keep looking" hides the popup so the final board can be inspected.
  */
 export function CombatResultModal({
   state,
   viewerPlayerId,
   legalActions,
-  onAction,
-  onReset
+  onAction
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
-  onReset?: () => void;
 }) {
   const [dismissed, setDismissed] = useState(false);
   const combat = state.combat;
@@ -3092,11 +3090,6 @@ export function CombatResultModal({
           {acknowledge ? (
             <button className="commandButton primary" onClick={() => onAction(acknowledge.action)} type="button">
               {acknowledge.label}
-            </button>
-          ) : null}
-          {isSandbox && onReset ? (
-            <button className="commandButton primary" onClick={onReset} type="button">
-              Reset the table
             </button>
           ) : null}
           <button className="commandButton ghost" onClick={() => setDismissed(true)} type="button">

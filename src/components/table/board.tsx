@@ -2223,14 +2223,12 @@ export function CommandDock({
   state,
   viewerPlayerId,
   legalActions,
-  onAction,
-  onReset
+  onAction
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
-  onReset: () => void;
 }) {
   // Tactics swaps are ALWAYS driven on the board (click a unit, then another) —
   // Basic in the start-of-combat window, Expert via the board's opt-in control.
@@ -2345,9 +2343,6 @@ export function CommandDock({
       {state.combat?.context.kind === "sandbox" ? (
         <SandboxCardPicker onAction={onAction} viewerPlayerId={viewerPlayerId} />
       ) : null}
-      <button className="commandButton ghost" onClick={onReset} title="Reset this room" type="button">
-        Reset table
-      </button>
     </div>
   );
 }

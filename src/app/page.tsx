@@ -81,6 +81,7 @@ import {
   type MapEventCue
 } from "@/components/table/overlays";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
+import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import { campaignSceneToFire, campaignSetupActions } from "@/lib/campaign-triggers";
 import { getCampaignChapter } from "@/data/story/campaigns";
 import {
@@ -5026,6 +5027,9 @@ export default function Home() {
           )}
         </button>
       </div>
+      {state.sessionMode === "single-player" ? (
+        <SinglePlayerSavePanel roomId={roomId} roomVersion={roomVersion} state={state} compact />
+      ) : null}
     </div>
   );
 
@@ -6759,7 +6763,6 @@ export default function Home() {
             <CommandDock
               legalActions={legalActions}
               onAction={submitAction}
-              onReset={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
@@ -6821,7 +6824,6 @@ export default function Home() {
           key={`result-${state.combat?.id ?? "none"}`}
           legalActions={legalActions}
           onAction={submitAction}
-          onReset={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
           state={state}
           viewerPlayerId={viewerPlayerId}
         />
