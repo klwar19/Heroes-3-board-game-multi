@@ -874,7 +874,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-belfast",
       name: "Royal Salvo",
-      icon: "/assets/anime/icons/azur-lane/skill-royal-salvo.webp",
+      icon: "/assets/anime/icons/azur-lane/commander-royal-salvo.webp",
       targeting: { side: "enemy", adjacentBelowPower: 1, canTargetSelf: false },
       effect: { kind: "enemy-damage", damageByPower: [1, 1, 2] },
       tierText: [

@@ -326,7 +326,7 @@ export function UnitExperienceWindow({
                       if (!ability) return null;
                       return (
                         <span className="unitXpActiveChip large" key={id}>
-                          <img alt="" src={assetUrl(unitRankAbilityIcon(id))} />
+                          <img alt="" src={assetUrl(unitRankAbilityIcon(id, detail.unit.unitDefId))} />
                           <b>{ability.name}</b>
                         </span>
                       );
@@ -407,7 +407,7 @@ export function UnitExperienceWindow({
                               alt=""
                               aria-hidden="true"
                               className="unitXpAbilityIcon"
-                              src={assetUrl(unitRankAbilityIcon(abilityId))}
+                              src={assetUrl(unitRankAbilityIcon(abilityId, detail.unit.unitDefId))}
                             />
                             <b>{ability.name}</b>
                             {reached ? " · ACTIVE" : " · locked"}
