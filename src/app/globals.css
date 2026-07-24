@@ -5109,11 +5109,12 @@ button.hbBanner {
     #2a1b0c;
 }
 
-/* ---- Level track Ⅰ–Ⅶ ---- */
+/* ---- Experience track: the full printed 13-box zig-zag (Ⅰ…Ⅶ) ---- */
 .hbTrack {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  padding: 1.6cqw 2.6cqw 1.4cqw;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9cqw;
+  padding: 1.4cqw 2.6cqw 1.8cqw;
   border-radius: 1.8cqw;
   background:
     linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.035) 43%, transparent 46%),
@@ -5122,27 +5123,18 @@ button.hbBanner {
   box-shadow: inset 0 0.6cqw 1.8cqw rgba(0, 0, 0, 0.65);
 }
 
-.hbLevel {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.9cqw;
-}
-
-.hbSpear {
-  position: absolute;
-  left: -1.6cqw;
-  bottom: 2cqw;
-  width: 3.2cqw;
-  height: 3.2cqw;
-  color: #9a7a45;
-  opacity: 0.9;
+/* Numerals Ⅰ…Ⅶ, aligned above their TOP boxes on a shared 14-column grid. */
+.hbNumerals {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  justify-items: center;
+  align-items: end;
 }
 
 .hbNumeral {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5cqw;
   font-family: Georgia, serif;
   font-weight: 700;
@@ -5153,10 +5145,9 @@ button.hbBanner {
 
 .hbNumeral.gold { color: var(--hb-gold); }
 .hbNumeral.silver { color: #c8cdd6; }
+.hbNumeral:not(.reached) { opacity: 0.62; }
 
-.hbLevel:not(.reached) .hbNumeral { opacity: 0.62; }
-
-.hbLevel.current .hbNumeral {
+.hbNumeral.current {
   text-shadow: 0 0 1.8cqw rgba(232, 201, 106, 0.95), 0 0.25cqw 0.5cqw rgba(0, 0, 0, 0.9);
 }
 
@@ -5168,9 +5159,87 @@ button.hbBanner {
 
 .hbNumeral .hbLaurel:last-child { transform: scaleX(-1); }
 
-.hbSlotCell {
+/* The box field: 7 TOP boxes (row 1) + a middle icon band (row 2) + 6 offset
+   BOTTOM boxes (row 3), all on a 14-column grid so the two rows interleave. A
+   single sliding marker (.hbCube) is positioned by xp index over the field. */
+.hbField {
+  --hb-box: 11cqw;
+  --hb-mid: 6.4cqw;
   position: relative;
-  width: 74%;
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  grid-template-rows: var(--hb-box) var(--hb-mid) var(--hb-box);
+  align-items: center;
+  justify-items: center;
+}
+
+/* One die-cut box. Square, centered in its 2-column span so its centre lands
+   at (index+1)/14 of the field — the exact fraction the marker reads. */
+.hbXpBox {
+  position: relative;
+  width: var(--hb-box);
+  height: var(--hb-box);
+  border-radius: 1.1cqw;
+  background: #0b0c0e;
+  border: 0.25cqw solid #2c2f36;
+  box-shadow:
+    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.95),
+    0 0.25cqw 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+/* PASSED boxes (the cube has already sat here): faint faction-tinted emboss. */
+.hbXpBox.passed {
+  background:
+    radial-gradient(120% 120% at 50% 30%, color-mix(in srgb, var(--hb-cube, #2f6fd0) 30%, transparent), transparent 72%),
+    #14161b;
+  border-color: color-mix(in srgb, var(--hb-cube, #2f6fd0) 45%, #2c2f36);
+}
+
+/* FUTURE boxes stay empty / dim. */
+.hbXpBoxBottom.future { opacity: 0.72; }
+
+/* CURRENT box: a bright glowing "you are here" frame. */
+.hbXpBox.current {
+  border-color: var(--hb-gold);
+  box-shadow:
+    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.7),
+    0 0 1.6cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 65%, #e8c96a);
+}
+
+/* TOP boxes are transparent wrappers — the inner .hbSlot IS the frame (it may
+   carry a specialty card). This reset wins in every state (equal specificity,
+   later), so a top box never double-frames its slot. */
+.hbXpBox.hbXpBoxTop {
+  background: none;
+  border: none;
+  box-shadow: none;
+  overflow: visible;
+}
+
+/* Engraved value labels: bold on the empty bottom boxes, a faint corner mark on
+   the card-bearing top boxes (the numeral above is their primary label). */
+.hbBoxValue {
+  font-family: Georgia, serif;
+  font-weight: 700;
+  text-shadow: 0 0.15cqw 0.4cqw rgba(0, 0, 0, 0.9);
+}
+
+.hbXpBoxBottom .hbBoxValue {
+  font-size: 3cqw;
+  color: #aeb6c4;
+}
+
+.hbXpBoxBottom.passed .hbBoxValue { color: #eaf0f8; }
+
+.hbBoxValueTop {
+  position: absolute;
+  right: 0.5cqw;
+  bottom: 0.3cqw;
+  z-index: 3;
+  font-size: 2cqw;
+  color: rgba(240, 232, 210, 0.72);
+  pointer-events: none;
 }
 
 .hbSlot {
@@ -5178,7 +5247,7 @@ button.hbBanner {
   align-items: center;
   justify-content: center;
   width: 100%;
-  aspect-ratio: 0.94;
+  height: 100%;
   border-radius: 1.1cqw;
   background: #0b0c0e;
   border: 0.25cqw solid #2c2f36;
@@ -5197,7 +5266,15 @@ button.hbSlot:disabled { cursor: default; }
   color: #34373f;
 }
 
-.reached .hbSlotSearch .hbIcon { color: #97a1b3; }
+.hbXpBoxTop.reached .hbSlotSearch .hbIcon { color: #97a1b3; }
+
+/* CURRENT top box: the glow lands on its slot (the wrapper is transparent). */
+.hbXpBoxTop.current .hbSlot {
+  border-color: var(--hb-gold);
+  box-shadow:
+    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.7),
+    0 0 1.6cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 65%, #e8c96a);
+}
 
 .hbSlotSpecialty .hbArt {
   width: 100%;
@@ -5249,31 +5326,39 @@ button.hbSlot:disabled { cursor: default; }
   transform: translate(-25%, -8%);
 }
 
-.hbCube {
-  position: absolute;
-  right: -1.1cqw;
-  top: -1.1cqw;
-  width: 3cqw;
-  height: 3cqw;
-  background: var(--hb-cube, #2f6fd0);
-  border: 0.3cqw solid #0a0805;
-  border-radius: 0.6cqw;
-  box-shadow:
-    0 0.4cqw 0.9cqw rgba(0, 0, 0, 0.7),
-    inset 0.3cqw 0.3cqw 0 rgba(255, 255, 255, 0.35);
-  z-index: 3;
+/* Middle icon band — hand-limit cards under Ⅰ/Ⅲ/Ⅴ/Ⅶ, crowns under Ⅱ/Ⅳ/Ⅵ,
+   blue spear dividers at the gaps — on the SAME 14-column grid. */
+.hbMidBand {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  align-items: center;
+  justify-self: stretch;
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
 }
 
-.hbGain {
-  min-height: 6.4cqw;
+.hbMidCell {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0.3cqw;
+  justify-content: center;
+  gap: 0.2cqw;
 }
 
-.hbLevel:not(.reached) .hbGain { opacity: 0.55; }
+.hbMidCell:not(.reached) { opacity: 0.55; }
+
+.hbSpear {
+  position: absolute;
+  left: -1.6cqw;
+  top: 50%;
+  margin-top: -1.6cqw;
+  width: 3.2cqw;
+  height: 3.2cqw;
+  color: #6f8fc0;
+  opacity: 0.9;
+}
 
 .hbHandGain {
   display: flex;
@@ -5297,10 +5382,9 @@ button.hbSlot:disabled { cursor: default; }
 
 .hbCrowns {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.15cqw;
-  padding-top: 0.5cqw;
+  justify-content: center;
+  gap: 0.3cqw;
 }
 
 .hbCrowns3 {
@@ -5313,9 +5397,54 @@ button.hbSlot:disabled { cursor: default; }
 .hbCrowns3 .hbIcon:first-child { grid-column: 1 / -1; }
 
 .hbCrowns .hbIcon {
-  width: 3.5cqw;
-  height: 3.5cqw;
+  width: 3.3cqw;
+  height: 3.3cqw;
   color: var(--hb-gold);
+}
+
+/* The single sliding XP marker (a glowing faction-coloured gem). Its centre is
+   left:(index+1)/14 of the field and top: the box-row centre for its parity, so
+   a state change slides it between boxes (CSS transition) rather than jumping. */
+.hbCube {
+  position: absolute;
+  z-index: 4;
+  left: calc((var(--xp-index) + 1) / 14 * 100%);
+  top: calc(var(--hb-box) / 2 + var(--xp-row) * (var(--hb-box) + var(--hb-mid)));
+  width: 4.4cqw;
+  height: 4.4cqw;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border-radius: 1cqw;
+  background:
+    radial-gradient(125% 125% at 32% 26%, #fff 0%, var(--hb-cube, #2f6fd0) 46%, color-mix(in srgb, var(--hb-cube, #2f6fd0) 52%, #000) 100%);
+  border: 0.3cqw solid rgba(255, 244, 214, 0.92);
+  box-shadow:
+    0 0.4cqw 1cqw rgba(0, 0, 0, 0.7),
+    0 0 2.4cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 75%, transparent);
+  transition:
+    left 520ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 520ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: hbCubePulse 2.4s ease-in-out infinite;
+}
+
+@keyframes hbCubePulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0.4cqw 1cqw rgba(0, 0, 0, 0.7),
+      0 0 1.8cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 55%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0.4cqw 1cqw rgba(0, 0, 0, 0.7),
+      0 0 3.6cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 95%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hbCube {
+    transition: none;
+    animation: none;
+  }
 }
 
 .hbFooter {

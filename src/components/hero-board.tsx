@@ -62,6 +62,48 @@ const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
 /** Specialty cards sit at Ⅰ (starting deck), Ⅳ and Ⅵ — the laurelled numerals. */
 const SPECIALTY_TRACK_LEVELS = [1, ...SPECIALTY_LEVELS] as number[];
 
+/** One die-cut box on the printed experience track. */
+type XpBox = {
+  /** 0…MAX_EXPERIENCE — equals the `hero.experience` value that lands here. */
+  index: number;
+  /** The engraved value: 1, 1.5, 2, 2.5, … 7. */
+  value: number;
+  /** Even xp = a level box on the TOP row, odd xp = a half-step box below. */
+  row: "top" | "bottom";
+  /** The level this box belongs to (a top box) or advances from (a bottom box). */
+  level: number;
+  /** Display label ("1", "1.5", … "7"). */
+  label: string;
+};
+
+/**
+ * The printed hero mat's experience track is 13 die-cut boxes in a zig-zag:
+ * 7 numbered level boxes on the TOP row (Ⅰ…Ⅶ, the even xp values 0,2,…,12) and
+ * 6 half-step boxes on the BOTTOM row offset between them (1.5…6.5, the odd xp
+ * values 1,3,…,11). The XP cube advances exactly one box per experience point,
+ * so **box index === `hero.experience`** — no off-by-one, no rounding. This
+ * derives every box's descriptor once; `levelOfExperience` (engine) stays the
+ * single source of the level, this only lays the boxes out.
+ *
+ * Marker geometry follows from the same index: a box's horizontal centre is at
+ * `(index + 1) / (MAX_EXPERIENCE + 2)` of the track width for BOTH rows
+ * (even: `(i/2 + 0.5)/7`; odd: `((i-1)/2 + 1)/7` — both simplify to
+ * `(i+1)/14`), which is what the sliding `.hbCube` reads from `--xp-index`.
+ */
+function xpTrackBoxes(): XpBox[] {
+  return Array.from({ length: MAX_EXPERIENCE + 1 }, (_, index) => {
+    const value = 1 + index / 2;
+    const row: "top" | "bottom" = index % 2 === 0 ? "top" : "bottom";
+    return {
+      index,
+      value,
+      row,
+      level: Math.floor(index / 2) + 1,
+      label: Number.isInteger(value) ? String(value) : value.toFixed(1)
+    };
+  });
+}
+
 /** Equipment grade order (I < II < III) for the "upgrade waiting in bag" hint. */
 const EQUIPMENT_GRADE_RANK: Record<EquipmentGrade, number> = { I: 1, II: 2, III: 3 };
 
@@ -76,7 +118,11 @@ const BOARD_THEMES: Record<string, { banner: string; edge: string }> = {
   fuyuki: { banner: "linear-gradient(180deg, #164e8c 0%, #631f42 52%, #1a1838 100%)", edge: "#e15b7d" },
   azure_breeze: { banner: "linear-gradient(180deg, #4a9a8d 0%, #176477 50%, #173c54 100%)", edge: "#74d2b6" },
   hidden_leaf: { banner: "linear-gradient(180deg, #4f9d45 0%, #2f6b34 52%, #17361f 100%)", edge: "#79c76a" },
-  azur_lane: { banner: "linear-gradient(180deg, #1d5db4 0%, #123a6b 52%, #0a1c33 100%)", edge: "#6fb3e8" }
+  azur_lane: { banner: "linear-gradient(180deg, #1d5db4 0%, #123a6b 52%, #0a1c33 100%)", edge: "#6fb3e8" },
+  // Heavenly Demon Palace (modao): a dark blood-crimson banner + demonic edge,
+  // consistent with the faction's wuxia/modao chrome (was silently falling back
+  // to the Castle blue).
+  heavenly_demon: { banner: "linear-gradient(180deg, #7a1524 0%, #3f0a14 52%, #17060a 100%)", edge: "#b23a4e" }
 };
 
 // ---------------------------------------------------------------------------
@@ -393,79 +439,175 @@ export function HeroBoard({
           </div>
         </div>
 
-        <div aria-label={`Level track: level ${hero.level}, ${hero.experience}/${MAX_EXPERIENCE} experience`} className="hbTrack">
-          {[1, 2, 3, 4, 5, 6, 7].map((level) => {
-            const reached = hero.level >= level;
-            const specialty = SPECIALTY_TRACK_LEVELS.includes(level);
-            const specialtyCardId = specialty ? heroDef.specialtyCardIds?.[level as 1 | 4 | 6] : undefined;
-            // Ability-search levels (2/3/5/7): the card the player KEPT from that
-            // level-up Search, if any is recorded (public info, opponents too).
-            const keptAbilityId = ABILITY_SEARCH_LEVELS.includes(level) ? player.levelUpAbilityPicks?.[level] : undefined;
-            const handGain = HAND_LIMIT_BY_LEVEL[level] !== HAND_LIMIT_BY_LEVEL[level - 1] || level === 1;
-            const crowns = EXPERT_USES_BY_LEVEL[level] - (EXPERT_USES_BY_LEVEL[level - 1] ?? 0) > 0 ? EXPERT_USES_BY_LEVEL[level] : 0;
-
-            return (
-              <div className={`hbLevel ${reached ? "reached" : ""} ${hero.level === level ? "current" : ""}`} key={level}>
-                {level > 1 ? <SpearIcon flip={level % 2 === 0} /> : null}
-                <span className={`hbNumeral ${specialty ? "gold" : "silver"}`}>
-                  {specialty ? <LaurelIcon /> : null}
-                  {ROMAN[level]}
-                  {specialty ? <LaurelIcon /> : null}
-                </span>
-                <div className="hbSlotCell">
-                  {specialty && specialtyCardId ? (
-                    // The specialty card is visible from the very beginning:
-                    // EARNED (hero level ≥ Ⅰ/Ⅳ/Ⅵ) wears the golden frame,
-                    // unearned stays a dimmed preview — click zooms either way.
-                    <button
-                      className={`hbSlot hbSlotSpecialty ${reached ? "gained" : "preview"}`}
-                      onClick={() => zoomCard(specialtyCardId)}
-                      title={
-                        reached
-                          ? `${specialtyDisplayName(specialtyCardId)} (level ${ROMAN[level]} specialty)`
-                          : `${specialtyDisplayName(specialtyCardId)} — specialty card gained at level ${ROMAN[level]}`
-                      }
-                      type="button"
+        {(() => {
+          // The full printed experience track: 13 die-cut boxes in a zig-zag.
+          // Box index === hero.experience (see xpTrackBoxes), so the marker just
+          // reads the xp value — no rounding. Boxes render in xp ORDER (top and
+          // bottom interleaved 1, 1.5, 2, 2.5, …) and are grid-placed onto their
+          // row so document order matches the labelled sequence.
+          const boxes = xpTrackBoxes();
+          const currentXp = Math.max(0, Math.min(MAX_EXPERIENCE, hero.experience));
+          const topLevels = [1, 2, 3, 4, 5, 6, 7];
+          return (
+            <div
+              aria-label={`Level track: level ${hero.level}, ${hero.experience}/${MAX_EXPERIENCE} experience`}
+              className="hbTrack"
+            >
+              <div className="hbNumerals" aria-hidden="true">
+                {topLevels.map((level) => {
+                  const specialty = SPECIALTY_TRACK_LEVELS.includes(level);
+                  const reached = hero.level >= level;
+                  return (
+                    <span
+                      className={`hbNumeral ${specialty ? "gold" : "silver"} ${reached ? "reached" : ""} ${
+                        hero.level === level ? "current" : ""
+                      }`}
+                      key={level}
+                      style={{ gridColumn: `${level * 2 - 1} / span 2` }}
                     >
-                      <CardArt cardId={specialtyCardId} kind="specialty" />
-                    </button>
-                  ) : keptAbilityId ? (
-                    <button
-                      className="hbSlot hbSlotSearch hbSlotAbilityPick"
-                      onClick={() => zoomCard(keptAbilityId)}
-                      title={`Level ${ROMAN[level]}: kept ${cardLibrary[keptAbilityId]?.name ?? keptAbilityId} from the Ability Search`}
-                      type="button"
-                    >
-                      <CardArt cardId={keptAbilityId} kind="ability" />
-                    </button>
-                  ) : (
-                    <div className="hbSlot hbSlotSearch" title={`Level ${ROMAN[level]}: Search (2) the Ability deck`}>
-                      <SearchGlyph />
-                    </div>
-                  )}
-                  {hero.level === level ? (
-                    <span className="hbCube" title={`${lexicon.experience} ${hero.experience}/${MAX_EXPERIENCE}`} />
-                  ) : null}
-                </div>
-                <div className="hbGain">
-                  {handGain ? (
-                    <span className="hbHandGain">
-                      <HandCardsIcon />
-                      <b>{HAND_LIMIT_BY_LEVEL[level]}</b>
+                      {specialty ? <LaurelIcon /> : null}
+                      {ROMAN[level]}
+                      {specialty ? <LaurelIcon /> : null}
                     </span>
-                  ) : null}
-                  {crowns > 0 ? (
-                    <span className={`hbCrowns hbCrowns${crowns}`}>
-                      {Array.from({ length: crowns }, (_, i) => (
-                        <CrownIcon key={i} />
-                      ))}
-                    </span>
-                  ) : null}
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
+
+              <div className="hbField">
+                {boxes.map((box) => {
+                  const passed = currentXp >= box.index;
+                  const isCurrent = currentXp === box.index;
+                  const gridColumn = `${box.index + 1} / span 2`;
+                  if (box.row === "top") {
+                    const level = box.level;
+                    const reached = hero.level >= level;
+                    const specialty = SPECIALTY_TRACK_LEVELS.includes(level);
+                    const specialtyCardId = specialty ? heroDef.specialtyCardIds?.[level as 1 | 4 | 6] : undefined;
+                    // Ability-search levels (2/3/5/7): the card the player KEPT
+                    // from that level-up Search, if any is recorded (public info).
+                    const keptAbilityId = ABILITY_SEARCH_LEVELS.includes(level)
+                      ? player.levelUpAbilityPicks?.[level]
+                      : undefined;
+                    return (
+                      <div
+                        aria-current={isCurrent ? "step" : undefined}
+                        className={`hbXpBox hbXpBoxTop ${reached ? "reached" : ""} ${passed ? "passed" : "future"} ${
+                          isCurrent ? "current" : ""
+                        }`}
+                        data-current={isCurrent ? "true" : undefined}
+                        data-xp-index={box.index}
+                        data-xp-row="top"
+                        data-xp-value={box.label}
+                        key={box.index}
+                        style={{ gridColumn, gridRow: 1 }}
+                      >
+                        {specialty && specialtyCardId ? (
+                          // The specialty card is visible from the very
+                          // beginning: EARNED (hero level ≥ Ⅰ/Ⅳ/Ⅵ) wears the
+                          // golden frame, unearned stays a dimmed preview — click
+                          // zooms either way.
+                          <button
+                            className={`hbSlot hbSlotSpecialty ${reached ? "gained" : "preview"}`}
+                            onClick={() => zoomCard(specialtyCardId)}
+                            title={
+                              reached
+                                ? `${specialtyDisplayName(specialtyCardId)} (level ${ROMAN[level]} specialty)`
+                                : `${specialtyDisplayName(specialtyCardId)} — specialty card gained at level ${ROMAN[level]}`
+                            }
+                            type="button"
+                          >
+                            <CardArt cardId={specialtyCardId} kind="specialty" />
+                          </button>
+                        ) : keptAbilityId ? (
+                          <button
+                            className="hbSlot hbSlotSearch hbSlotAbilityPick"
+                            onClick={() => zoomCard(keptAbilityId)}
+                            title={`Level ${ROMAN[level]}: kept ${
+                              cardLibrary[keptAbilityId]?.name ?? keptAbilityId
+                            } from the Ability Search`}
+                            type="button"
+                          >
+                            <CardArt cardId={keptAbilityId} kind="ability" />
+                          </button>
+                        ) : (
+                          <div className="hbSlot hbSlotSearch" title={`Level ${ROMAN[level]}: Search (2) the Ability deck`}>
+                            <SearchGlyph />
+                          </div>
+                        )}
+                        <span className="hbBoxValue hbBoxValueTop" aria-hidden="true">
+                          {box.label}
+                        </span>
+                      </div>
+                    );
+                  }
+                  // Bottom row: a plain half-step box (no card, no numeral).
+                  return (
+                    <div
+                      aria-current={isCurrent ? "step" : undefined}
+                      className={`hbXpBox hbXpBoxBottom ${passed ? "passed" : "future"} ${isCurrent ? "current" : ""}`}
+                      data-current={isCurrent ? "true" : undefined}
+                      data-xp-index={box.index}
+                      data-xp-row="bottom"
+                      data-xp-value={box.label}
+                      key={box.index}
+                      style={{ gridColumn, gridRow: 3 }}
+                    >
+                      <span className="hbBoxValue" aria-hidden="true">
+                        {box.label}
+                      </span>
+                    </div>
+                  );
+                })}
+
+                <div className="hbMidBand" aria-hidden="true" style={{ gridColumn: "1 / -1", gridRow: 2 }}>
+                  {topLevels.map((level) => {
+                    const handGain = HAND_LIMIT_BY_LEVEL[level] !== HAND_LIMIT_BY_LEVEL[level - 1] || level === 1;
+                    const crowns =
+                      EXPERT_USES_BY_LEVEL[level] - (EXPERT_USES_BY_LEVEL[level - 1] ?? 0) > 0
+                        ? EXPERT_USES_BY_LEVEL[level]
+                        : 0;
+                    const reached = hero.level >= level;
+                    return (
+                      <div
+                        className={`hbMidCell ${reached ? "reached" : ""}`}
+                        key={level}
+                        style={{ gridColumn: `${level * 2 - 1} / span 2` }}
+                      >
+                        {level > 1 ? <SpearIcon flip={level % 2 === 0} /> : null}
+                        {handGain ? (
+                          <span className="hbHandGain">
+                            <HandCardsIcon />
+                            <b>{HAND_LIMIT_BY_LEVEL[level]}</b>
+                          </span>
+                        ) : null}
+                        {crowns > 0 ? (
+                          <span className={`hbCrowns hbCrowns${crowns}`}>
+                            {Array.from({ length: crowns }, (_, i) => (
+                              <CrownIcon key={i} />
+                            ))}
+                          </span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* One sliding XP marker: its position derives from the xp index
+                    (left) and parity (row), so a re-render slides it between
+                    boxes instead of teleporting (CSS transition on left/top). */}
+                <span
+                  aria-hidden="true"
+                  className="hbCube"
+                  data-xp-index={currentXp}
+                  style={
+                    { "--xp-index": currentXp, "--xp-row": currentXp % 2 === 0 ? 0 : 1 } as React.CSSProperties
+                  }
+                  title={`${lexicon.experience} ${hero.experience}/${MAX_EXPERIENCE}`}
+                />
+              </div>
+            </div>
+          );
+        })()}
 
         <footer className="hbFooter">
           <span>
