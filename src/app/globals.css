@@ -5127,137 +5127,37 @@ button.hbBanner {
     #2a1b0c;
 }
 
-/* ---- Experience track: the full printed 13-box zig-zag (Ⅰ…Ⅶ) ---- */
+/* ---- Experience track: the AUTHENTIC printed mat art ----
+   The green marble strip — with the laurelled Ⅰ–Ⅶ numerals, the blue connector
+   arrows and the hand-limit / crown icons — is the real printed scan
+   (xp-track.webp; identical on every hero mat, so one shared crop). The 13
+   die-cut boxes are TRANSPARENT holes in that art; each .hbXpBox is positioned
+   exactly over its hole (inline % from HOLE_RECTS) so the specialty / ability
+   card shows THROUGH it, like a card slid behind the printed board. The current
+   XP box wears a glowing gold frame + a subtle cube in its corner — the only
+   markers, and neither covers the card art. */
 .hbTrack {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9cqw;
-  padding: 1.4cqw 2.6cqw 1.8cqw;
-  border-radius: 1.8cqw;
-  background:
-    linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.035) 43%, transparent 46%),
-    linear-gradient(180deg, #25272c, #18191d 65%, #141518);
-  border: 0.25cqw solid rgba(168, 124, 65, 0.45);
-  box-shadow: inset 0 0.6cqw 1.8cqw rgba(0, 0, 0, 0.65);
-}
-
-/* Numerals Ⅰ…Ⅶ, aligned above their TOP boxes on a shared 14-column grid. */
-.hbNumerals {
-  display: grid;
-  grid-template-columns: repeat(14, 1fr);
-  justify-items: center;
-  align-items: end;
-}
-
-.hbNumeral {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5cqw;
-  font-family: Georgia, serif;
-  font-weight: 700;
-  font-size: 3.7cqw;
-  letter-spacing: 0.08em;
-  text-shadow: 0 0.25cqw 0.5cqw rgba(0, 0, 0, 0.9);
-}
-
-.hbNumeral.gold { color: var(--hb-gold); }
-.hbNumeral.silver { color: #c8cdd6; }
-.hbNumeral:not(.reached) { opacity: 0.62; }
-
-.hbNumeral.current {
-  text-shadow: 0 0 1.8cqw rgba(232, 201, 106, 0.95), 0 0.25cqw 0.5cqw rgba(0, 0, 0, 0.9);
-}
-
-.hbLaurel {
-  width: 1.5cqw;
-  height: 2.7cqw;
-  flex: none;
-}
-
-.hbNumeral .hbLaurel:last-child { transform: scaleX(-1); }
-
-/* The box field: 7 TOP boxes (row 1) + a middle icon band (row 2) + 6 offset
-   BOTTOM boxes (row 3), all on a 14-column grid so the two rows interleave. A
-   single sliding marker (.hbCube) is positioned by xp index over the field. */
-.hbField {
-  --hb-box: 11cqw;
-  --hb-mid: 6.4cqw;
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(14, 1fr);
-  grid-template-rows: var(--hb-box) var(--hb-mid) var(--hb-box);
-  align-items: center;
-  justify-items: center;
+  border-radius: 1.4cqw;
 }
 
-/* One die-cut box. Square, centered in its 2-column span so its centre lands
-   at (index+1)/14 of the field — the exact fraction the marker reads. */
+.hbTrackArt {
+  position: relative;
+  width: 100%;
+  border-radius: 1.2cqw;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  /* aspect-ratio is set inline (XP_TRACK_ASPECT) so the % hole coords hold. */
+}
+
+/* One die-cut hole: a transparent window laid exactly over the art's punched
+   box (left/top/width/height come inline from HOLE_RECTS). It has no fill of
+   its own — the card in it (top row) or the dark table beneath (empty holes)
+   shows through the transparent art. */
 .hbXpBox {
-  position: relative;
-  width: var(--hb-box);
-  height: var(--hb-box);
-  border-radius: 1.1cqw;
-  background: #0b0c0e;
-  border: 0.25cqw solid #2c2f36;
-  box-shadow:
-    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.95),
-    0 0.25cqw 0 rgba(255, 255, 255, 0.05);
-  overflow: hidden;
-}
-
-/* PASSED boxes (the cube has already sat here): faint faction-tinted emboss. */
-.hbXpBox.passed {
-  background:
-    radial-gradient(120% 120% at 50% 30%, color-mix(in srgb, var(--hb-cube, #2f6fd0) 30%, transparent), transparent 72%),
-    #14161b;
-  border-color: color-mix(in srgb, var(--hb-cube, #2f6fd0) 45%, #2c2f36);
-}
-
-/* FUTURE boxes stay empty / dim. */
-.hbXpBoxBottom.future { opacity: 0.72; }
-
-/* CURRENT box: a bright glowing "you are here" frame. */
-.hbXpBox.current {
-  border-color: var(--hb-gold);
-  box-shadow:
-    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.7),
-    0 0 1.6cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 65%, #e8c96a);
-}
-
-/* TOP boxes are transparent wrappers — the inner .hbSlot IS the frame (it may
-   carry a specialty card). This reset wins in every state (equal specificity,
-   later), so a top box never double-frames its slot. */
-.hbXpBox.hbXpBoxTop {
-  background: none;
-  border: none;
-  box-shadow: none;
-  overflow: visible;
-}
-
-/* Engraved value labels: bold on the empty bottom boxes, a faint corner mark on
-   the card-bearing top boxes (the numeral above is their primary label). */
-.hbBoxValue {
-  font-family: Georgia, serif;
-  font-weight: 700;
-  text-shadow: 0 0.15cqw 0.4cqw rgba(0, 0, 0, 0.9);
-}
-
-.hbXpBoxBottom .hbBoxValue {
-  font-size: 3cqw;
-  color: #aeb6c4;
-}
-
-.hbXpBoxBottom.passed .hbBoxValue { color: #eaf0f8; }
-
-.hbBoxValueTop {
   position: absolute;
-  right: 0.5cqw;
-  bottom: 0.3cqw;
-  z-index: 3;
-  font-size: 2cqw;
-  color: rgba(240, 232, 210, 0.72);
-  pointer-events: none;
+  border-radius: 0.9cqw;
 }
 
 .hbSlot {
@@ -5266,69 +5166,17 @@ button.hbBanner {
   justify-content: center;
   width: 100%;
   height: 100%;
-  border-radius: 1.1cqw;
-  background: #0b0c0e;
-  border: 0.25cqw solid #2c2f36;
-  box-shadow:
-    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.95),
-    0 0.25cqw 0 rgba(255, 255, 255, 0.05);
+  border-radius: 0.7cqw;
   overflow: hidden;
 }
 
 button.hbSlot { cursor: zoom-in; }
 button.hbSlot:disabled { cursor: default; }
 
-.hbSlotSearch .hbIcon {
-  width: 46%;
-  height: 46%;
-  color: #34373f;
-}
-
-.hbXpBoxTop.reached .hbSlotSearch .hbIcon { color: #97a1b3; }
-
-/* CURRENT top box: the glow lands on its slot (the wrapper is transparent). */
-.hbXpBoxTop.current .hbSlot {
-  border-color: var(--hb-gold);
-  box-shadow:
-    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.7),
-    0 0 1.6cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 65%, #e8c96a);
-}
-
-.hbSlotSpecialty .hbArt {
-  width: 100%;
-  height: 100%;
-  border-radius: 0;
-  filter: none;
-}
-
-.hbSlotSpecialty .hbArt img {
-  width: 286%;
-  transform: translate(-32.5%, -10.5%);
-}
-
-/* Earned specialty (hero level ≥ Ⅰ/Ⅳ/Ⅵ): a bright GOLDEN wrap + glow. */
-.hbSlotSpecialty.gained {
-  border-color: var(--hb-gold);
-  box-shadow:
-    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.95),
-    0 0 1.4cqw rgba(232, 201, 106, 0.55);
-}
-
-/* Not yet earned: the card still shows from the beginning, dimmed as a preview. */
-.hbSlotSpecialty.preview {
-  border-color: #2c2f36;
-}
-
-.hbSlotSpecialty.preview .hbArt {
-  filter: grayscale(0.65) brightness(0.6);
-}
-
-/* Ability-search level (2/3/5/7) whose kept card is on record: the ability art
-   fills the slot in place of the search glyph, framed like a gained specialty. */
-.hbSlotAbilityPick {
-  border-color: rgba(151, 161, 179, 0.7);
-}
-
+/* Specialty / kept-ability card art fills its hole exactly (the card shows
+   through the die-cut window — no frame of its own; the art's hole is the
+   frame). */
+.hbSlotSpecialty .hbArt,
 .hbSlotAbilityPick .hbArt {
   width: 100%;
   height: 100%;
@@ -5337,6 +5185,12 @@ button.hbSlot:disabled { cursor: default; }
   border: none;
   border-radius: 0;
   filter: none;
+  background: none;
+}
+
+.hbSlotSpecialty .hbArt img {
+  width: 286%;
+  transform: translate(-32.5%, -10.5%);
 }
 
 .hbSlotAbilityPick .hbArt-ability img {
@@ -5344,123 +5198,61 @@ button.hbSlot:disabled { cursor: default; }
   transform: translate(-25%, -8%);
 }
 
-/* Middle icon band — hand-limit cards under Ⅰ/Ⅲ/Ⅴ/Ⅶ, crowns under Ⅱ/Ⅳ/Ⅵ,
-   blue spear dividers at the gaps — on the SAME 14-column grid. */
-.hbMidBand {
-  display: grid;
-  grid-template-columns: repeat(14, 1fr);
-  align-items: center;
-  justify-self: stretch;
-  align-self: stretch;
-  width: 100%;
-  height: 100%;
+/* Not yet earned: the specialty card still shows through its hole, dimmed as a
+   preview. */
+.hbSlotSpecialty.preview .hbArt {
+  filter: grayscale(0.6) brightness(0.62);
 }
 
-.hbMidCell {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.2cqw;
+/* CURRENT box: the level marker — a glowing gold frame hugging the hole. It
+   sits OUTSIDE the hole (box-shadow spread), so the card art is never covered. */
+.hbXpBox.current {
+  box-shadow:
+    0 0 0 0.35cqw rgba(255, 238, 182, 0.95),
+    0 0 2.4cqw rgba(232, 201, 106, 0.95),
+    inset 0 0 1.2cqw rgba(232, 201, 106, 0.5);
+  animation: hbCurrentGlow 2.4s ease-in-out infinite;
 }
 
-.hbMidCell:not(.reached) { opacity: 0.55; }
-
-.hbSpear {
-  position: absolute;
-  left: -1.6cqw;
-  top: 50%;
-  margin-top: -1.6cqw;
-  width: 3.2cqw;
-  height: 3.2cqw;
-  color: #6f8fc0;
-  opacity: 0.9;
-}
-
-.hbHandGain {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.1cqw;
-}
-
-.hbHandGain .hbIcon {
-  width: 3.4cqw;
-  height: 3.4cqw;
-  color: #cfc5a6;
-}
-
-.hbHandGain b {
-  font-family: Georgia, serif;
-  font-size: 3cqw;
-  color: var(--hb-gold);
-  text-shadow: 0 0.25cqw 0.45cqw rgba(0, 0, 0, 0.9);
-}
-
-.hbCrowns {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.3cqw;
-}
-
-.hbCrowns3 {
-  display: grid;
-  grid-template-columns: repeat(2, auto);
-  justify-items: center;
-  column-gap: 0.3cqw;
-}
-
-.hbCrowns3 .hbIcon:first-child { grid-column: 1 / -1; }
-
-.hbCrowns .hbIcon {
-  width: 3.3cqw;
-  height: 3.3cqw;
-  color: var(--hb-gold);
-}
-
-/* The single sliding XP marker (a glowing faction-coloured gem). Its centre is
-   left:(index+1)/14 of the field and top: the box-row centre for its parity, so
-   a state change slides it between boxes (CSS transition) rather than jumping. */
+/* The subtle progress cube — a small faction-coloured gem tucked into the
+   current box's top-right corner. Marks exactly which box (half-step included)
+   you are on, without blocking the specialty / ability art. */
 .hbCube {
   position: absolute;
-  z-index: 4;
-  left: calc((var(--xp-index) + 1) / 14 * 100%);
-  top: calc(var(--hb-box) / 2 + var(--xp-row) * (var(--hb-box) + var(--hb-mid)));
-  width: 4.4cqw;
-  height: 4.4cqw;
-  transform: translate(-50%, -50%) rotate(45deg);
-  border-radius: 1cqw;
+  top: -0.9cqw;
+  right: -0.9cqw;
+  width: 2.7cqw;
+  height: 2.7cqw;
+  transform: rotate(45deg);
+  border-radius: 0.5cqw;
   background:
     radial-gradient(125% 125% at 32% 26%, #fff 0%, var(--hb-cube, #2f6fd0) 46%, color-mix(in srgb, var(--hb-cube, #2f6fd0) 52%, #000) 100%);
-  border: 0.3cqw solid rgba(255, 244, 214, 0.92);
+  border: 0.25cqw solid rgba(255, 244, 214, 0.95);
   box-shadow:
-    0 0.4cqw 1cqw rgba(0, 0, 0, 0.7),
-    0 0 2.4cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 75%, transparent);
-  transition:
-    left 520ms cubic-bezier(0.22, 1, 0.36, 1),
-    top 520ms cubic-bezier(0.22, 1, 0.36, 1);
-  animation: hbCubePulse 2.4s ease-in-out infinite;
+    0 0.3cqw 0.7cqw rgba(0, 0, 0, 0.7),
+    0 0 1.2cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 80%, transparent);
+  z-index: 3;
+  pointer-events: none;
 }
 
-@keyframes hbCubePulse {
+@keyframes hbCurrentGlow {
   0%,
   100% {
     box-shadow:
-      0 0.4cqw 1cqw rgba(0, 0, 0, 0.7),
-      0 0 1.8cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 55%, transparent);
+      0 0 0 0.3cqw rgba(255, 238, 182, 0.85),
+      0 0 1.6cqw rgba(232, 201, 106, 0.7),
+      inset 0 0 1cqw rgba(232, 201, 106, 0.42);
   }
   50% {
     box-shadow:
-      0 0.4cqw 1cqw rgba(0, 0, 0, 0.7),
-      0 0 3.6cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 95%, transparent);
+      0 0 0 0.42cqw rgba(255, 246, 206, 1),
+      0 0 3.4cqw rgba(232, 201, 106, 1),
+      inset 0 0 1.4cqw rgba(232, 201, 106, 0.68);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hbCube {
-    transition: none;
+  .hbXpBox.current {
     animation: none;
   }
 }

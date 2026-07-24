@@ -100,13 +100,29 @@ describe("HeroBoard — the Ⅰ/Ⅳ/Ⅵ specialty cards live in the LEVEL-TRACK 
   });
 });
 
-// jsdom cannot compute CSS, so the sliding LOOK / glow is not asserted here (it
-// is CSS-only — see globals.css .hbCube left/top from --xp-index/--xp-row and
-// the transition). These pin the WIRING the browser paints over: the 13-box
-// zig-zag structure, the labels/rows, and — crucially — that the xp→box mapping
-// has no off-by-one (marker index === experience, current box === that box).
+// jsdom cannot compute CSS, so the glowing-frame LOOK is not asserted here (it
+// is CSS-only — see globals.css .hbXpBox.current + .hbCube). These pin the
+// WIRING the browser paints over: the 13 die-cut hole overlays laid on the
+// AUTHENTIC printed-mat art (xp-track.webp — the laurelled Ⅰ–Ⅶ numerals, blue
+// arrows and hand/crown icons are IN the scan, not drawn in CSS), and — crucially
+// — that the xp→box mapping has no off-by-one (current box index === experience,
+// carrying exactly one corner cube). The mat has no engraved 1/1.5/…/7 values or
+// spear dividers, so none render.
 describe("HeroBoard — the full printed 13-box experience zig-zag", () => {
   const EXPECTED_LABELS = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5", "5.5", "6", "6.5", "7"];
+
+  it("lays 13 hole overlays over the real printed-mat track art (numerals/arrows/icons are the scan)", () => {
+    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
+    // The track is the authentic scan, not a CSS reconstruction.
+    const art = container.querySelector(".hbTrack .hbTrackArt") as HTMLElement | null;
+    expect(art).toBeTruthy();
+    expect(art!.style.backgroundImage).toContain("xp-track.webp");
+    // …so the old CSS-drawn numerals / hand-limit / crown / spear layers are gone.
+    expect(container.querySelector(".hbNumerals")).toBeNull();
+    expect(container.querySelector(".hbMidBand")).toBeNull();
+    expect(container.querySelector(".hbSpear")).toBeNull();
+    expect(container.querySelector(".hbBoxValue")).toBeNull();
+  });
 
   it("renders exactly 13 XP boxes in order (1, 1.5, … 7); even xp on the TOP row, odd on the BOTTOM", () => {
     const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
@@ -121,6 +137,9 @@ describe("HeroBoard — the full printed 13-box experience zig-zag", () => {
     for (const box of boxes) {
       const idx = Number(box.getAttribute("data-xp-index"));
       expect(box.getAttribute("data-xp-row")).toBe(idx % 2 === 0 ? "top" : "bottom");
+      // Each hole is absolutely positioned over its measured spot in the art.
+      expect((box as HTMLElement).style.left).toMatch(/%$/);
+      expect((box as HTMLElement).style.width).toMatch(/%$/);
     }
   });
 
@@ -128,51 +147,28 @@ describe("HeroBoard — the full printed 13-box experience zig-zag", () => {
     { xp: 0, value: "1", row: "top" },
     { xp: 3, value: "2.5", row: "bottom" },
     { xp: 12, value: "7", row: "top" }
-  ])("puts the marker on the box for experience $xp (label $value) — no off-by-one", ({ xp, value, row }) => {
+  ])("marks experience $xp (label $value) with the glow + a single corner cube — no off-by-one", ({ xp, value, row }) => {
     const state = bulwarkAdventure("eikthurn");
     const hero = getMainHero(state, "p1")!;
     hero.experience = xp;
     hero.level = Math.min(7, 1 + Math.floor(xp / 2));
     const { container } = renderBoardState(state);
-    // The sliding marker reads the xp index straight off experience.
-    expect(container.querySelector(".hbCube")?.getAttribute("data-xp-index")).toBe(String(xp));
     // Exactly one box is flagged current, and it is the correct label + row.
     const current = container.querySelectorAll('.hbXpBox[data-current="true"]');
     expect(current).toHaveLength(1);
     expect(current[0].getAttribute("data-xp-value")).toBe(value);
     expect(current[0].getAttribute("data-xp-row")).toBe(row);
     expect(current[0].getAttribute("aria-current")).toBe("step");
+    // Exactly one subtle progress cube, and it lives INSIDE the current box's
+    // corner (never a separate marker floating over a box's centre).
+    const cubes = container.querySelectorAll(".hbCube");
+    expect(cubes).toHaveLength(1);
+    expect(current[0].contains(cubes[0])).toBe(true);
   });
 
-  it("labels the numerals Ⅰ/Ⅳ/Ⅵ gold + laurelled and Ⅱ/Ⅲ/Ⅴ/Ⅶ silver", () => {
-    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
-    expect(container.querySelectorAll(".hbNumerals .hbNumeral.gold")).toHaveLength(3);
-    expect(container.querySelectorAll(".hbNumerals .hbNumeral.silver")).toHaveLength(4);
-    // Each gold numeral wears a pair of laurels; the silver ones wear none.
-    expect(container.querySelectorAll(".hbNumeral.gold .hbLaurel")).toHaveLength(6);
-    expect(container.querySelectorAll(".hbNumeral.silver .hbLaurel")).toHaveLength(0);
-  });
-
-  it("shows the hand-limit numbers 4/5/6/7 and the expert crowns (1/2/3) at Ⅱ/Ⅳ/Ⅵ", () => {
-    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
-    // Hand-limit cards at levels Ⅰ/Ⅲ/Ⅴ/Ⅶ.
-    expect(Array.from(container.querySelectorAll(".hbHandGain b")).map((b) => b.textContent)).toEqual([
-      "4",
-      "5",
-      "6",
-      "7"
-    ]);
-    // Three crown clusters (Ⅱ/Ⅳ/Ⅵ) totalling 1+2+3 = 6 crown icons.
-    expect(container.querySelectorAll(".hbCrowns")).toHaveLength(3);
-    expect(container.querySelectorAll(".hbCrowns .hbIcon")).toHaveLength(6);
-    // The Ⅵ cluster carries all three crowns.
-    expect(container.querySelector(".hbCrowns3")?.querySelectorAll(".hbIcon")).toHaveLength(3);
-  });
-
-  it("keeps the specialty cards in TOP boxes and the Ability-search glyph inside the track", () => {
+  it("shows the specialty cards THROUGH the top-row holes; the aria-label carries level + xp", () => {
     const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
     expect(container.querySelectorAll(".hbTrack .hbXpBoxTop .hbSlotSpecialty")).toHaveLength(3);
-    expect(container.querySelector(".hbTrack .hbSlotSearch .hbIcon")).toBeTruthy();
     // The track keeps its level+xp aria-label.
     expect(container.querySelector('.hbTrack[aria-label*="experience"]')).toBeTruthy();
   });
@@ -522,13 +518,16 @@ describe("HeroBoard — Feature B: the kept level-up Ability at levels 2/3/5/7",
     expect(screen.getByTitle(new RegExp(`kept ${offenseName}`))).toBeTruthy();
   });
 
-  it("CONTROL — with no pick recorded, the level shows the bare Search marker (no pick tile)", () => {
+  it("CONTROL — with no pick recorded, the Ability-search hole stays an empty die-cut window", () => {
     const state = bulwarkAdventure("eikthurn");
     getMainHero(state, "p1")!.level = 3;
     const { container } = renderBoardState(state); // no levelUpAbilityPicks
     expect(container.querySelectorAll(".hbSlotAbilityPick")).toHaveLength(0);
-    // The plain Search-glyph slot is still drawn.
-    expect(container.querySelector(".hbSlotSearch .hbIcon")).toBeTruthy();
+    // No pick tile and no card art fills the level-2 hole — it stays a bare
+    // transparent window in the printed art (the mat shows an empty box there).
+    const lvl2 = container.querySelector('.hbXpBox[data-xp-index="2"]');
+    expect(lvl2).toBeTruthy();
+    expect(lvl2!.querySelector(".hbSlot")).toBeNull();
   });
 
   it("renders an OPPONENT's board from the same component (opponent-info modal path)", () => {
