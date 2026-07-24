@@ -22242,7 +22242,7 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 
 @media (min-width: 560px) {
   .modePresetGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -29922,4 +29922,162 @@ button.armyExperienceBoard > small { color: #9b917d; font-size: 8px; text-transf
   .commanderArtifactSlot.slot-trinket { top: 378px; bottom: auto; }
   .commanderInventoryCard { grid-template-columns: 70px 1fr; }
   .commanderInventoryCard > img { width: 70px; height: 98px; }
+}
+
+/* ---------- private custom setups / solo save slots ---------- */
+
+.personalCustomSettings,
+.singlePlayerSavePanel {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgb(217 178 90 / 28%);
+  border-radius: 8px;
+  background: rgb(12 9 6 / 42%);
+}
+
+.personalCustomSettings > .mapPickerGroupLabel,
+.singlePlayerSaveHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.personalCustomSettings > .mapPickerGroupLabel small,
+.singlePlayerSaveHead small,
+.singlePlayerSaveHint,
+.singlePlayerSaveEmpty,
+.singlePlayerSaveNotice {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.personalCustomSaveRow,
+.singlePlayerSaveCreate {
+  display: flex;
+  gap: 6px;
+}
+
+.personalCustomSaveRow input,
+.singlePlayerSaveCreate input {
+  min-width: 0;
+  flex: 1;
+}
+
+.personalCustomSettingsList,
+.singlePlayerSaveList {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.personalCustomSettingsList li,
+.singlePlayerSaveList li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px solid rgb(217 178 90 / 16%);
+  border-radius: 5px;
+}
+
+.personalCustomSettingsList li > span,
+.singlePlayerSaveList li > span {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+
+.personalCustomSettingsList li small,
+.singlePlayerSaveList li small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.personalCustomSettings button,
+.singlePlayerSavePanel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid rgb(217 178 90 / 42%);
+  border-radius: 5px;
+  padding: 4px 7px;
+  color: #f0dcb8;
+  background: rgb(48 33 15 / 72%);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.personalCustomSettings button:hover,
+.singlePlayerSavePanel button:hover {
+  border-color: rgb(255 224 154 / 78%);
+}
+
+.personalCustomSettings button.ghost,
+.singlePlayerSavePanel button.ghost {
+  color: var(--muted);
+  background: transparent;
+}
+
+.singlePlayerSaveHead > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.singlePlayerSavePanel.compact {
+  max-width: 360px;
+  margin: 8px 0 0 auto;
+}
+
+.singlePlayerHistory .historyFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px 0;
+}
+
+.singlePlayerHistory .historyFilters button {
+  padding: 3px 7px;
+  border: 1px solid rgb(217 178 90 / 32%);
+  border-radius: 4px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.singlePlayerHistory .historyFilters button.selected {
+  color: #211507;
+  background: #e6bc62;
+}
+
+.singlePlayerHistory .historyFilters small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.singlePlayerHistory .logEventMeta {
+  white-space: nowrap;
+}
+
+.pileModalHint {
+  display: block;
+  margin: 4px 0 8px;
+  color: var(--muted);
+}
+
+@media (max-width: 620px) {
+  .singlePlayerSavePanel.compact {
+    max-width: none;
+    margin-left: 0;
+  }
 }

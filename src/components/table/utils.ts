@@ -280,6 +280,13 @@ function formatBuildingEffect(effect: BuildingEffectDefinition): string {
   return "building effect";
 }
 
+function formatLoggedCards(cardIds: string[] | undefined): string {
+  if (!cardIds || cardIds.length === 0) {
+    return "";
+  }
+  return cardIds.map((cardId) => (cardId === "hidden" ? "hidden card" : cardName(cardId))).join(", ");
+}
+
 export function formatEvent(event: GameEvent, state: GameState): string {
   switch (event.type) {
     case "GAME_CREATED":
@@ -383,13 +390,17 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "CARD_PLAYED":
       return `${playerName(state, event.playerId)} plays ${cardName(event.cardId)}${event.optionLabel ? ` (${event.optionLabel})` : ""}${event.mode === "expert" ? " as expert" : ""}${event.effectAmount ? ` for ${event.effectAmount}` : ""}.`;
     case "CARDS_DRAWN":
-      return `${playerName(state, event.playerId)} draws ${event.count} card${event.count === 1 ? "" : "s"}${event.reshuffledDiscard ? " after reshuffling the discard" : ""}.`;
+      return `${playerName(state, event.playerId)} draws ${event.count} card${event.count === 1 ? "" : "s"}${
+        formatLoggedCards(event.cardIds) ? `: ${formatLoggedCards(event.cardIds)}` : ""
+      }${event.reshuffledDiscard ? " after reshuffling the discard" : ""}.`;
     case "SPELL_MOVED_TO_SPELL_BOOK":
       return event.message;
     case "DECK_SEARCH_STARTED":
       return `${playerName(state, event.playerId)} searches the ${event.deckId} deck (${event.revealedCount} revealed).`;
     case "DECK_SEARCH_RESOLVED":
-      return `${playerName(state, event.playerId)} keeps a ${event.deckId} card${event.pick === "discard-top" ? " from the discard" : ""}; ${event.discardedCardIds.length} discarded.`;
+      return `${playerName(state, event.playerId)} keeps a ${event.deckId} card${event.pick === "discard-top" ? " from the discard" : ""}; ${event.discardedCardIds.length} discarded${
+        formatLoggedCards(event.discardedCardIds) ? `: ${formatLoggedCards(event.discardedCardIds)}` : ""
+      }.`;
     case "HERO_MOVED":
       return `${playerName(state, event.playerId)} moves their hero ${event.from} -> ${event.to} (${event.movementLeft} movement left).`;
     case "HERO_GAINED":
@@ -483,13 +494,15 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       if (event.reason === "morale-double-negative") {
         return `${playerName(state, event.playerId)} discards their hand of ${event.discarded} card${
           event.discarded === 1 ? "" : "s"
-        } (double negative morale).`;
+        }${formatLoggedCards(event.discardedCardIds) ? `: ${formatLoggedCards(event.discardedCardIds)}` : ""} (double negative morale).`;
       }
-      return `${playerName(state, event.playerId)} refreshes their hand (discarded ${event.discarded}, drew ${event.drawn}).`;
+      return `${playerName(state, event.playerId)} refreshes their hand (discarded ${event.discarded}${
+        formatLoggedCards(event.discardedCardIds) ? `: ${formatLoggedCards(event.discardedCardIds)}` : ""
+      }, drew ${event.drawn}).`;
     case "HAND_MULLIGAN":
       return `${playerName(state, event.playerId)} replaces a starting-hand card (${event.remaining} replacement${
         event.remaining === 1 ? "" : "s"
-      } left).`;
+      } left${formatLoggedCards(event.discardedCardIds) ? `: ${formatLoggedCards(event.discardedCardIds)}` : ""}).`;
     case "TILE_REVEALED":
       return `${playerName(state, event.playerId)} discovers map tile ${event.tileDefId}.`;
     case "TILE_PLACED":
@@ -769,6 +782,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)} sets ${event.tileDefId} to ${event.rotation * 60}°.`;
     case "ASTROLOGERS_DRAWN":
       return `Astrologers proclaim: ${event.name} — ${event.text}`;
+    case "ASTROLOGERS_DISCARDED":
+      return `Astrologers discard: ${event.name} (round ${event.round}).`;
     case "EVENT_CARD_DRAWN":
       return `Event (drawn by ${playerName(state, event.drawerId)}): ${event.name} — ${event.text}`;
     case "EVENT_AUCTION_BID_PLACED":

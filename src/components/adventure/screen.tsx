@@ -163,6 +163,13 @@ import {
   activeBuildingActions
 } from "@/components/adventure/town-sections";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
+import {
+  deletePersonalCustomSetting,
+  loadPersonalCustomSettings,
+  savePersonalCustomSetting,
+  type PersonalCustomSetting
+} from "@/lib/personal-custom-settings";
+import { getIdentity } from "@/lib/identity";
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
@@ -6421,6 +6428,7 @@ export function AdventureDecksPanel({
               <button
                 className={`advDiscard${topId ? " hasCard" : ""}`}
                 onClick={() => onShowPile("Astrologers Proclaim — past rounds", astrologers.discardPile, "astrologers")}
+                aria-label={`Open Astrologers discard pile (${astrologers.discardPile.length} cards)`}
                 title={topCard ? `Last proclamation: ${topCard.name}` : "Past Astrologers proclamations"}
                 type="button"
               >
@@ -6547,6 +6555,11 @@ export function PileModal({
           </button>
         </header>
         {cardIds.length === 0 ? <small>Empty.</small> : null}
+        {kind === "astrologers" && cardIds.length > 0 ? (
+          <small className="pileModalHint">
+            Discarded proclamations are shown newest first. The top card is the last resolved Astrologers event.
+          </small>
+        ) : null}
         <PileModalCards cardIds={cardIds} kind={kind} />
       </div>
     </div>
@@ -7206,7 +7219,7 @@ function MapPicker({
                 // Picking a scenario sheet uses its own face-down layout and
                 // drops any designed map (sent together so the engine never
                 // leaves a stale map attached to a different scenario).
-                onClick={() => send({ scenarioId: scenario.id, customMap: null, customMapName: null })}
+                onClick={() => send({ scenarioId: scenario.id, customMode: false, customMap: null, customMapName: null })}
                 title={scenario.description}
                 type="button"
               >
@@ -7248,6 +7261,7 @@ function MapPicker({
                     send({
                       ...(record.scenarioId !== options.scenarioId ? { scenarioId: record.scenarioId } : {}),
                       playerCount: record.players,
+                      customMode: true,
                       customMap: record.tiles,
                       customMapName: record.name,
                       customMapPreset: record.preset ?? null
@@ -7313,6 +7327,7 @@ function MapPicker({
           ) : null}
         </div>
       ) : null}
+      <PersonalCustomSettingsPanel options={options} send={send} />
       <small className="optionHint designerLink">
         <Link href="/designer" target="_blank">
           <Hammer aria-hidden="true" size={11} /> Open the map designer
@@ -7320,6 +7335,88 @@ function MapPicker({
         to create, edit and save your own maps (shared with everyone), then pick one above. Picking a designed map opens
         the seat count it was designed for.
       </small>
+    </div>
+  );
+}
+
+function PersonalCustomSettingsPanel({
+  options,
+  send
+}: {
+  options: GameSetupOptions;
+  send: (next: Partial<GameSetupOptions>) => void;
+}) {
+  const [settings, setSettings] = useState<PersonalCustomSetting[]>([]);
+  const [name, setName] = useState("");
+  const [ownerLabel, setOwnerLabel] = useState("this player");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const identity = getIdentity();
+      setOwnerLabel(identity.userId ? "your account" : "this browser tab");
+      setSettings(loadPersonalCustomSettings());
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const saveCurrent = () => {
+    const existing = settings.find((setting) => setting.name === name.trim());
+    savePersonalCustomSetting(name, { ...options, customMode: true }, existing?.id);
+    setName("");
+    setSettings(loadPersonalCustomSettings());
+    // Keep the selected card visibly in Custom mode even when a preset was
+    // saved while the rules tab was active.
+    send({ customMode: true });
+  };
+
+  return (
+    <div className="personalCustomSettings" aria-label="Personal custom settings">
+      <div className="mapPickerGroupLabel">
+        <strong>Personal custom settings</strong>
+        <small>Save/load private map and rules sets for {ownerLabel}.</small>
+      </div>
+      <div className="personalCustomSaveRow">
+        <input
+          aria-label="Custom setting name"
+          maxLength={48}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              saveCurrent();
+            }
+          }}
+          placeholder="Setting name"
+          value={name}
+        />
+        <button onClick={saveCurrent} type="button">Save current</button>
+      </div>
+      {settings.length > 0 ? (
+        <ul className="personalCustomSettingsList">
+          {settings.map((setting) => (
+            <li key={setting.id}>
+              <span>
+                <strong>{setting.name}</strong>
+                <small>{new Date(setting.savedAt).toLocaleDateString()}</small>
+              </span>
+              <button onClick={() => send({ ...setting.options, customMode: true })} type="button">Load</button>
+              <button
+                aria-label={`Delete ${setting.name}`}
+                className="ghost"
+                onClick={() => {
+                  deletePersonalCustomSetting(setting.id);
+                  setSettings(loadPersonalCustomSettings());
+                }}
+                type="button"
+              >
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <small className="optionHint">No personal presets saved yet.</small>
+      )}
+      <small className="optionHint">Shared designer maps remain available above; these presets are only for you.</small>
     </div>
   );
 }
@@ -7789,7 +7886,7 @@ function HouseRulesSection({
 }
 
 /** High-level setup modes shown as a card row on the Mode & Rules tab. */
-type SetupModeId = "legacy" | "binh" | "tournament";
+type SetupModeId = "legacy" | "binh" | "tournament" | "custom";
 
 const SETUP_MODE_CARDS: {
   id: SetupModeId;
@@ -7821,6 +7918,12 @@ const SETUP_MODE_CARDS: {
     blurb: "Competitive preset",
     hint: "House rules off, tournament bans on, Hard difficulty, human-controlled Neutrals, Diplomacy banned.",
     iconSrc: "/assets/ui/mode-tournament-crest-clear.webp"
+  },
+  {
+    id: "custom",
+    label: "Custom",
+    blurb: "Your saved setup",
+    hint: "Use a personal map and rules preset, saved privately for this player."
   }
 ];
 
@@ -7886,6 +7989,9 @@ function GameOptionsPanel({
 
   /** Which big mode card is highlighted from the current options. */
   const activeSetupMode: SetupModeId = (() => {
+    if (options.customMode) {
+      return "custom";
+    }
     if (tournamentAllOn && options.ruleset === "legacy" && options.difficulty === "hard") {
       return "tournament";
     }
@@ -7896,8 +8002,15 @@ function GameOptionsPanel({
   })();
 
   const applySetupMode = (mode: SetupModeId) => {
+    if (mode === "custom") {
+      send({ customMode: true });
+      setTab("map");
+      setModeNotice("Custom mode selected: save or load a personal map and rules setup in Map & Setup.");
+      return;
+    }
     if (mode === "legacy") {
       send({
+        customMode: false,
         ruleset: "legacy",
         wog: { ...wog, enabled: false },
         anime: { ...anime, enabled: false },
@@ -7917,6 +8030,7 @@ function GameOptionsPanel({
     if (mode === "binh") {
       // BINH does not force WOG off — the Mod row is independent.
       send({
+        customMode: false,
         ruleset: "binh",
         spellBook: true,
         tournamentMode: false,
@@ -7930,6 +8044,7 @@ function GameOptionsPanel({
     // Tournament competitive preset — turns WOG + Anime off with the competitive
     // package. Neutrals default to human control (next player clockwise).
     send({
+      customMode: false,
       ruleset: "legacy",
       wog: { ...wog, enabled: false },
       anime: { ...anime, enabled: false },
@@ -8006,7 +8121,9 @@ function GameOptionsPanel({
           ))}
         </div>
         <small className="optionHint">
-          {activeSetupMode === "legacy"
+          {activeSetupMode === "custom"
+            ? "Personal custom setup: use Map & Setup to load or save your private map and rules preset."
+            : activeSetupMode === "legacy"
             ? RULESET_DESCRIPTIONS.legacy
             : activeSetupMode === "tournament"
             ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + human-controlled Neutrals."

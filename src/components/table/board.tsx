@@ -2347,27 +2347,109 @@ export function CommandDock({
   );
 }
 
-export function LogDrawer({ state }: { state: GameState }) {
-  const [open, setOpen] = useState(false);
-  const events = state.eventLog.slice(-30).reverse();
-  const latest = events[0];
+export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerPlayerId?: PlayerId }) {
+  const singlePlayer = state.sessionMode === "single-player";
+  const [open, setOpen] = useState(singlePlayer);
+  const [filter, setFilter] = useState<"all" | "dice" | "cards" | "events">("all");
+  const logState = useMemo(() => {
+    if (singlePlayer || !viewerPlayerId) {
+      return state;
+    }
+    // Open multiplayer tables carry the shared state to the browser. Keep the
+    // new exact draw/discard details private there too; hosted rooms are
+    // already redacted by the server, but this protects the open-table path.
+    return {
+      ...state,
+      eventLog: state.eventLog.map((event) => {
+        if (event.type === "CARDS_DRAWN" && event.cardIds) {
+          return { ...event, cardIds: event.cardIds.map(() => "hidden" as const) };
+        }
+        if (event.type === "DECK_SEARCH_RESOLVED") {
+          return { ...event, discardedCardIds: event.discardedCardIds.map(() => "hidden" as const) };
+        }
+        if (
+          (event.type === "HAND_REFRESHED" || event.type === "HAND_MULLIGAN") &&
+          event.discardedCardIds
+        ) {
+          return { ...event, discardedCardIds: event.discardedCardIds.map(() => "hidden" as const) };
+        }
+        return event;
+      })
+    };
+  }, [singlePlayer, state, viewerPlayerId]);
+  const events = useMemo(() => {
+    const source = singlePlayer ? logState.eventLog : logState.eventLog.slice(-30);
+    const reversed = [...source].reverse();
+    if (filter === "all") {
+      return reversed;
+    }
+    const groups: Record<Exclude<typeof filter, "all">, Set<string>> = {
+      dice: new Set([
+        "ADVENTURE_DICE_ROLLED",
+        "ATTACK_ROLLED",
+        "ATTACK_REROLLED",
+        "ATTACK_DIE_SETTLED",
+        "SPELL_DICE_ROLLED",
+        "FIRST_PLAYER_ROLLED",
+        "CULTIVATION_TRIBULATION_ROLLED"
+      ]),
+      cards: new Set([
+        "CARDS_DRAWN",
+        "DECK_SEARCH_RESOLVED",
+        "HAND_REFRESHED",
+        "HAND_MULLIGAN",
+        "CARD_PLAYED",
+        "PERMANENT_PLAYED",
+        "PERMANENT_DISCARDED",
+        "SPELL_MOVED_TO_SPELL_BOOK",
+        "ASTROLOGERS_DRAWN",
+        "ASTROLOGERS_DISCARDED",
+        "EVENT_CARD_DRAWN",
+        "EVENT_AUCTION_RESOLVED",
+        "ARTIFACT_DUG"
+      ]),
+      events: new Set(["EVENT_CARD_DRAWN", "EVENT_AUCTION_BID_PLACED", "EVENT_AUCTION_RESOLVED", "EVENT_NOTE", "ASTROLOGERS_DRAWN", "ASTROLOGERS_DISCARDED"]),
+    };
+    return reversed.filter((event) => groups[filter].has(event.type));
+  }, [filter, logState.eventLog, singlePlayer]);
+  const latest = [...logState.eventLog].at(-1);
 
   return (
-    <section className={`logDrawer ${open ? "open" : ""}`} aria-label="Game log">
+    <section className={`logDrawer ${open ? "open" : ""}${singlePlayer ? " singlePlayerHistory" : ""}`} aria-label={singlePlayer ? "Single-player history" : "Game log"}>
       <button className="logToggle" onClick={() => setOpen(!open)} type="button">
         <ScrollText aria-hidden="true" size={14} />
-        <span>{latest ? formatEvent(latest, state) : "Game log"}</span>
+        <span>{latest ? formatEvent(latest, logState) : "Game log"}</span>
         {open ? <ChevronDown aria-hidden="true" size={14} /> : <ChevronUp aria-hidden="true" size={14} />}
       </button>
       {open ? (
-        <ol>
-          {events.map((event) => (
-            <li key={event.id}>
-              <span>{event.id}</span>
-              {formatEvent(event, state)}
-            </li>
-          ))}
-        </ol>
+        <>
+          {singlePlayer ? (
+            <div className="historyFilters" role="group" aria-label="History filters">
+              {(["all", "dice", "cards", "events"] as const).map((entry) => (
+                <button
+                  aria-pressed={filter === entry}
+                  className={filter === entry ? "selected" : ""}
+                  key={entry}
+                  onClick={() => setFilter(entry)}
+                  type="button"
+                >
+                  {entry === "all" ? "All" : entry === "dice" ? "Dice" : entry === "cards" ? "Draws & discards" : "Events"}
+                </button>
+              ))}
+              <small>{events.length} entr{events.length === 1 ? "y" : "ies"}</small>
+            </div>
+          ) : null}
+          <ol>
+            {events.map((event) => (
+              <li key={event.id}>
+                <span className="logEventMeta">
+                  {event.id}{"round" in event && typeof event.round === "number" ? ` · R${event.round}` : ""}
+                </span>
+                {formatEvent(event, logState)}
+              </li>
+            ))}
+          </ol>
+        </>
       ) : null}
     </section>
   );
