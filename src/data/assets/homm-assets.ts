@@ -184,7 +184,7 @@ export const TOWN_BUILDING_IMAGES: Record<string, Record<string, string>> = {
  */
 export const RESOURCE_ICONS = {
   gold: "/assets/icons/resource-gold.webp",
-  buildingMaterials: "/assets/icons/resource-building_materials.webp",
+  buildingMaterials: "/assets/glyphs/building_materials.svg",
   valuables: "/assets/icons/resource-valuables.webp",
   wood: "/assets/icons/wood_leather.gif",
   gems: "/assets/icons/gem_leather.gif",

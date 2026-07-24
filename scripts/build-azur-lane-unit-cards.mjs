@@ -74,8 +74,8 @@ const CARDS = [
     name: "Laffey",
     tier: "bronze",
     kind: "GROUND",
-    stats: { attack: 2, defense: 1, health: 2, initiative: 8 },
-    packStats: { attack: 3, initiative: 9 },
+    stats: { attack: 2, defense: 0, health: 3, initiative: 12 },
+    packStats: { attack: 3, defense: 0, health: 4, initiative: 12 },
     cost: { gold: 2 },
     packCost: { gold: 4 },
     few: "No printed ability.",
@@ -87,11 +87,11 @@ const CARDS = [
     tier: "bronze",
     kind: "GROUND",
     stats: { attack: 2, defense: 1, health: 2, initiative: 7 },
-    packStats: { attack: 3, initiative: 8 },
+    packStats: { attack: 2, initiative: 8 },
     cost: { gold: 2 },
     packCost: { gold: 4 },
     few: "No printed ability.",
-    pack: "Javelin Spiral — +1 Attack on its attack after this unit moves."
+    pack: "Best Friends — +1 Attack when Laffey is in the battlefield."
   },
   {
     slug: "honolulu",
@@ -123,12 +123,13 @@ const CARDS = [
     tier: "silver",
     kind: "GROUND",
     portraitCrop: "azur-lane-yukikaze",
+    packArtPosition: "top",
     stats: { attack: 3, defense: 2, health: 3, initiative: 7 },
     packStats: { attack: 4, health: 4, initiative: 8 },
     cost: { gold: 8 },
     packCost: { gold: 11 },
     few: "The Great Yukikaze — always rolls the Defend die when attacked.",
-    pack: "The Great Yukikaze — Defend die when attacked; Torpedo Run — no Retaliation against her attacks."
+    pack: "The Great Yukikaze — Defend die when attacked; Torpedo Run — can reroll any \"-1\" on this unit's Attack die."
   },
   {
     slug: "prinz-eugen",
@@ -136,8 +137,9 @@ const CARDS = [
     tier: "golden",
     kind: "GROUND",
     portraitCrop: "azur-lane-prinz-eugen",
-    stats: { attack: 5, defense: 3, health: 7, initiative: 4 },
-    packStats: { attack: 6, health: 8 },
+    packArtPosition: "top",
+    stats: { attack: 5, defense: 3, health: 7, initiative: 5 },
+    packStats: { attack: 6, health: 8, initiative: 6 },
     cost: { gold: 14, valuables: 1 },
     packCost: { gold: 21, valuables: 2 },
     few: "Unsinkable — at most 4 damage from a single attack (Spells uncapped).",
@@ -153,7 +155,7 @@ const CARDS = [
     cost: { gold: 14, valuables: 1 },
     packCost: { gold: 21, valuables: 2 },
     few: "Silent Hunter — no Retaliation; as a move, may surface on any empty space.",
-    pack: "Silent Hunter — no Retaliation, surface anywhere; Oxygen Torpedo Spread — then strike the same target again."
+    pack: "Silent Hunter — no Retaliation, surface anywhere; Oxygen Torpedo Spread — then strike the same target again with Attack 4."
   }
 ];
 
@@ -291,6 +293,7 @@ function anchorSeal(cx, cy, r = 18, color = "#7fb6e8") {
 function boardGameNavalSvg(card, variant, artHref) {
   const tier = TIER[card.tier];
   const isPack = variant === "pack";
+  const artPosition = isPack && card.packArtPosition === "top" ? "xMidYMin" : "xMidYMid";
   const variantLabel = variant.toUpperCase();
   // Pack = warm gold; Few = signal cyan (type chip accent only)
   const accent = isPack ? "#ffd45e" : "#6ec8ff";
@@ -388,7 +391,7 @@ function boardGameNavalSvg(card, variant, artHref) {
   <rect x="${ART.x - 2}" y="${ART.y - 2}" width="${ART.w + 4}" height="${ART.h + 4}" rx="8" fill="#0a1424" stroke="url(#metal)" stroke-width="4"/>
   <g clip-path="url(#artClip)">
     <rect x="${ART.x}" y="${ART.y}" width="${ART.w}" height="${ART.h}" fill="#0e1c2e"/>
-    <image x="${ART.x}" y="${ART.y}" width="${ART.w}" height="${ART.h}" preserveAspectRatio="xMidYMid slice" href="${xml(artHref)}" xlink:href="${xml(artHref)}"/>
+    <image x="${ART.x}" y="${ART.y}" width="${ART.w}" height="${ART.h}" preserveAspectRatio="${artPosition} slice" href="${xml(artHref)}" xlink:href="${xml(artHref)}"/>
   </g>
   <!-- Type chip -->
   <g id="type">
@@ -413,8 +416,13 @@ function masterPathFor(card, variant) {
 async function buildCard(card, variant) {
   const masterPath = masterPathFor(card, variant);
   const fileBase = `units-azur-lane-${card.tier}-${card.slug}-${variant}`;
-  const svgPath = path.join(EDITABLE, `${fileBase}.svg`);
-  const previewPath = path.join(PREVIEWS, `${fileBase}.webp`);
+  // A caller can use a suffix to write a fresh editable/preview pair when a
+  // desktop image viewer has the normal preview file open on Windows. Public
+  // and session outputs retain their stable names.
+  const buildSuffix = process.env.AZUR_LANE_BUILD_SUFFIX ?? "";
+  const renderBase = `${fileBase}${buildSuffix}`;
+  const svgPath = path.join(EDITABLE, `${renderBase}.svg`);
+  const previewPath = path.join(PREVIEWS, `${renderBase}.webp`);
   const publicPath = path.join(PUBLIC, `${fileBase}.webp`);
   const sessionPath = path.join(SESSION, `${fileBase}.webp`);
 
@@ -422,7 +430,7 @@ async function buildCard(card, variant) {
   await writeFile(svgPath, boardGameNavalSvg(card, variant, relHref), "utf8");
 
   const artBuf = await sharp(masterPath)
-    .resize(ART.w, ART.h, { fit: "cover", position: "attention" })
+    .resize(ART.w, ART.h, { fit: "cover", position: variant === "pack" && card.packArtPosition === "top" ? "top" : "attention" })
     .png()
     .toBuffer();
   const dataHref = `data:image/png;base64,${artBuf.toString("base64")}`;

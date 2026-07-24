@@ -2,6 +2,7 @@ import type { CombatTokenKind, EffectDurationDefinition, SpellSchool, UnitType }
 
 export type UnitAbilityEffectDefinition =
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
+  | { type: "RETALIATION_ATTACK_BONUS"; amount: number }
   | { type: "IGNORE_RETALIATION" }
   // Ranged combat-penalty waivers. A ranged attack rolls at disadvantage in two
   // distinct cases: (1) striking an ADJACENT unit (the "combat penalty against
@@ -242,6 +243,12 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /** Azur Lane Javelin: gains Attack while a friendly named ally is alive in Combat. */
+      type: "ALLY_NAME_ATTACK_BONUS";
+      allyName: string;
+      amount: number;
+    }
+  | {
       /**
        * Heavenly Demon Palace "Blood Siphon" (NEW engine arm for this faction):
        * after an attack made by this unit RESOLVES AND DEALS DAMAGE (> 0), remove
@@ -282,6 +289,8 @@ export type UnitAbilityEffectDefinition =
        */
       type: "SECOND_ATTACK_ADJACENT_TO_TARGET";
       baseAttack: number;
+      /** Optional die face that gates the follow-up (Spider Mastermind: -1). */
+      onRoll?: number;
     }
   | {
       /**
@@ -307,6 +316,13 @@ export type UnitAbilityEffectDefinition =
        * retaliation.
        */
       type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION";
+      /** Fixed Attack value for the follow-up; omitted uses the attacker's live Attack. */
+      baseAttack?: number;
+    }
+  | {
+      /** Doom Arachnotron: three attacks against the same target at fixed values. */
+      type: "SEQUENCE_ATTACK_SAME_TARGET";
+      followUpAttacks: number[];
     }
   | {
       /**
@@ -360,6 +376,8 @@ export type UnitAbilityEffectDefinition =
        */
       type: "ATTACK_ROLL_ADVANTAGE";
       ownAttackOnly?: boolean;
+      /** Optional retaliation-only variant (Doom Mancubus). */
+      retaliationOnly?: boolean;
     }
   | {
       /**
@@ -605,6 +623,11 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /** Doom Revenant: damage the chosen target immediately before the attack. */
+      type: "ON_ATTACK_PRE_DAMAGE";
+      amount: number;
+    }
+  | {
       /**
        * Harpies: "[unit_attack] After the enemy's Retaliation Attack, this
        * unit can return to the space from which it moved to attack." Once the
@@ -839,6 +862,8 @@ export type UnitAbilityEffectDefinition =
        * Defend die and any morale-reduced single die, not just this 2-dice roll.
        */
       type: "ROLL_TWO_DICE_APPLY_BOTH";
+      /** The Doom Sergeant also applies the two-dice roll while retaliating. */
+      retaliationAlso?: boolean;
     }
   | {
       /**
@@ -898,6 +923,18 @@ export type UnitAbilityEffectDefinition =
        */
       type: "ON_ATTACK_POISON_CUBES";
       count: number;
+    }
+  | {
+      /** Doom Cacodemon: place poison cubes only on matching own attack rolls. */
+      type: "ON_ATTACK_DIE_POISON_CUBES";
+      minRoll: number;
+      maxRoll?: number;
+      count: number;
+    }
+  | {
+      /** Doom Pain Elemental: summon a neutral unit after each own attack. */
+      type: "SUMMON_UNIT_ON_ATTACK";
+      unitDefId: string;
     }
   | {
       /**
@@ -1241,6 +1278,72 @@ export type UnitAbilityDefinition = {
 };
 
 export const unitAbilities: Record<string, UnitAbilityDefinition> = {
+  "doom-demon-retaliation-attack": {
+    id: "doom-demon-retaliation-attack",
+    name: "Savage Retaliation",
+    text: "[unit_retaliation] This unit gains +1 Attack when retaliating.",
+    effect: { type: "RETALIATION_ATTACK_BONUS", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "doom-arachnotron-triple-strike": {
+    id: "doom-arachnotron-triple-strike",
+    name: "Triple Plasma",
+    text: "[unit_attack] Attack the same target three times with Attack 3, then Attack 2, then Attack 1.",
+    effect: { type: "SEQUENCE_ATTACK_SAME_TARGET", followUpAttacks: [2, 1] },
+    implementationStatus: "implemented"
+  },
+  "doom-cacodemon-poison": {
+    id: "doom-cacodemon-poison",
+    name: "Burning Poison",
+    text: '[unit_attack] On a "-1" or "0" Attack die, place 1 poison cube on the target; it deals 1 damage at activation.',
+    effect: { type: "ON_ATTACK_DIE_POISON_CUBES", minRoll: -1, maxRoll: 0, count: 1 },
+    implementationStatus: "implemented"
+  },
+  "doom-baron-damage-cap": {
+    id: "doom-baron-damage-cap",
+    name: "Hellborn Hide",
+    text: "[unit_passive] This unit cannot take more than 4 damage from a single attack.",
+    effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 4 },
+    implementationStatus: "implemented"
+  },
+  "doom-former-human-sergeant-double-roll": {
+    id: "doom-former-human-sergeant-double-roll",
+    name: "Shotgun Assault",
+    // [unit_passive] wording (the Crusaders convention): `retaliationAlso`
+    // makes the two-dice roll fire on Retaliation Attacks too, so an
+    // own-attack-only [unit_attack] icon would misstate what runs.
+    text: "[unit_passive] During any attack — own attacks and Retaliation Attacks alike — roll 2 Attack dice and resolve both results.",
+    effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", retaliationAlso: true },
+    implementationStatus: "implemented"
+  },
+  "doom-mancubus-retaliation-advantage": {
+    id: "doom-mancubus-retaliation-advantage",
+    name: "Retaliation Volley",
+    text: "[unit_retaliation] Roll 2 Attack dice and resolve the higher outcome.",
+    effect: { type: "ATTACK_ROLL_ADVANTAGE", retaliationOnly: true },
+    implementationStatus: "implemented"
+  },
+  "doom-pain-elemental-summon-lost-soul": {
+    id: "doom-pain-elemental-summon-lost-soul",
+    name: "Lost Soul Burst",
+    text: "[unit_attack] After an attack, randomly summon a Lost Soul onto an empty battlefield space.",
+    effect: { type: "SUMMON_UNIT_ON_ATTACK", unitDefId: "doom.lost_soul" },
+    implementationStatus: "implemented"
+  },
+  "doom-revenant-pre-attack-damage": {
+    id: "doom-revenant-pre-attack-damage",
+    name: "Death Mark",
+    text: "[activation] Deal 1 damage to the target this unit is going to attack.",
+    effect: { type: "ON_ATTACK_PRE_DAMAGE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "doom-spider-mastermind-adjacent-strike": {
+    id: "doom-spider-mastermind-adjacent-strike",
+    name: "Mastermind Assault",
+    text: '[unit_attack] If the Attack die is "-1", also attack another unit adjacent to the target.',
+    effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 7, onRoll: -1 },
+    implementationStatus: "implemented"
+  },
   "unlimited-retaliation": {
     id: "unlimited-retaliation",
     name: "Unlimited Retaliation",
@@ -1647,6 +1750,27 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   // (never on a Retaliation Attack); the carrier itself gains nothing. Wired in
   // reducer.ts (getFleetFormationAuraBonus inside getAttackStackDetails) and
   // pinned in kansen-abilities.test.ts.
+  "kansen-best-friends": {
+    id: "kansen-best-friends",
+    name: "Best Friends",
+    text: "[unit_passive] This unit gains +1 Attack while a friendly Laffey is in the battlefield.",
+    effect: { type: "ALLY_NAME_ATTACK_BONUS", allyName: "Laffey", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "yukikaze-torpedo-run": {
+    id: "yukikaze-torpedo-run",
+    name: "Torpedo Run",
+    text: '[unit_attack] May reroll any "-1" result on this unit\'s Attack die.',
+    effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  "i19-oxygen-torpedo-spread": {
+    id: "i19-oxygen-torpedo-spread",
+    name: "Oxygen Torpedo Spread",
+    text: "[unit_attack] After the target retaliates, if possible, attack that same target again with Attack 4. The second attack does not provoke another retaliation.",
+    effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION", baseAttack: 4 },
+    implementationStatus: "implemented"
+  },
   "kansen-fleet-formation": {
     id: "kansen-fleet-formation",
     name: "Fleet Formation",

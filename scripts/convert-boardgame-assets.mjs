@@ -52,7 +52,6 @@ const written = [];
 
 // 1) Resource icons (gold / building materials / valuables) -------------------
 written.push(await icon("images/gold.png", "icons/resource-gold.webp"));
-written.push(await icon("images/building_materials.png", "icons/resource-building_materials.webp"));
 written.push(await icon("images/valuables.png", "icons/resource-valuables.webp"));
 
 // 2) Combat tokens -------------------------------------------------------------

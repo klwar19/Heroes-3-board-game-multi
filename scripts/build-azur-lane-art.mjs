@@ -188,9 +188,9 @@ async function makeAmountBadge(amount, size) {
 
 /** The shared cream/gold field-symbol icon set every printed tile uses. */
 const FIELD_ICON_ASSETS = {
-  resource: "ui/field-symbol-resource-cream.webp",
+  resource: "glyphs/resource-yellow.svg",
   treasure: "ui/icon-treasure-chest-glyph.webp",
-  mine: "ui/field-symbol-mine-cream.webp"
+  mine: "glyphs/building_materials.svg"
 };
 async function prepareFieldIcon(kind, hexSize, { scale = 1, rotate = 0 } = {}) {
   const src = path.join(assets, FIELD_ICON_ASSETS[kind]);
