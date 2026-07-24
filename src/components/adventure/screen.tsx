@@ -134,8 +134,11 @@ import {
   whirlpoolTokenImage
 } from "@/data/assets/homm-assets";
 import { fieldOverrideGlyph, fieldOverrideImage } from "@/data/map/field-overrides";
-// Side-effect: register Anime package Field Override kinds into the global catalog.
+import { fieldOverridePresentation } from "@/data/map/field-override-presentation";
+// Side-effect: register Anime + Wake of Gods Field Override kinds into the global
+// catalog, so their names/summaries/glyphs resolve for the board tooltip + inspect.
 import "@/data/anime/field-overrides";
+import "@/data/wog/field-overrides";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { CommanderCard, CommanderLevelUpOverlay } from "@/components/commander-card";
 import { EquipGradeChip, tierToGrade } from "@/components/equip-grade-chip";
@@ -1636,6 +1639,10 @@ export function HexMapBoard({
       // glyph so an art-less carve is a visible hex in icon mode (art wins once
       // it ships — fieldOverrideGlyph returns undefined then).
       const glyph = LOCATION_GLYPHS[field.location] ?? fieldOverrideGlyph(field.location) ?? "";
+      // Field Override (WOG / anime) hex: resolve its name + printed summary from
+      // the registry so the hover tooltip and the click-to-inspect float can tell
+      // the player what visiting does — data-driven, so every kind is covered.
+      const overrideInfo = fieldOverridePresentation(field.location);
       const isSelected = selectedTarget?.spaceId === spaceId;
 
       cells.push(
@@ -1719,11 +1726,12 @@ export function HexMapBoard({
                         }
                         remindToDraw(spaceId);
                       }
-                    : alteredGuardPreview || designerRewardTip
+                    : alteredGuardPreview || designerRewardTip || overrideInfo
                       ? () => {
-                          // Inspect a designer-altered object: click toggles a
-                          // float listing the exact guard army / reward — the
-                          // hover tooltip's touch-friendly, readable twin.
+                          // Inspect a designer-altered object OR a Field Override
+                          // (WOG / anime) hex: click toggles a float with the
+                          // guard army / reward / override summary — the hover
+                          // tooltip's touch-friendly, readable twin.
                           if (suppressClickRef.current) {
                             return;
                           }
@@ -1739,6 +1747,8 @@ export function HexMapBoard({
                 ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
                 : (location?.name ?? field.location)
             }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${alteredGuardTip}${designerRewardTip}${
+              overrideInfo ? ` — ${overrideInfo.summary}` : ""
+            }${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${
               field.location === "subterranean_gate"
@@ -2051,6 +2061,26 @@ export function HexMapBoard({
           >
             ★
           </text>
+        );
+      }
+      // Field Override (WOG / anime) hexes wear distinctive art; this small
+      // corner glyph badge flags "this hex is special — hover/tap it" for a
+      // zoomed-out player. Shown even over art (registry glyph, not the
+      // art-suppressed fieldOverrideGlyph); kinds with no glyph get no badge.
+      if (overrideInfo?.glyph) {
+        overlays.push(
+          <g
+            aria-hidden="true"
+            className="fieldOverrideGlyphBadge"
+            data-space-id={spaceId}
+            key={`${spaceId}-fo-glyph`}
+            transform={`translate(${x - HEX_SIZE * 0.5} ${y + HEX_SIZE * 0.52})`}
+          >
+            <circle r="8.4" />
+            <text textAnchor="middle" y="3.2">
+              {overrideInfo.glyph}
+            </text>
+          </g>
         );
       }
       if (field.blackCube) {
@@ -2599,13 +2629,18 @@ export function HexMapBoard({
   };
   const mapFloats: MapFloat[] = [];
 
-  // Click-to-inspect a designer-altered object: the exact guard army / reward
-  // in a readable card (the hover tooltip's touch-friendly twin). Closes on a
-  // second click, the ✕, or when the field stops being altered (guard beaten).
+  // Click-to-inspect a designer-altered object OR a Field Override (WOG / anime)
+  // hex: ONE readable card with the override's art + name + mod tag + what
+  // visiting does, plus (when present) the exact guard army / first-clear reward
+  // — the hover tooltip's touch-friendly twin. An override hex that ALSO carries
+  // a designer guard/reward shows a single combined card, never two. Closes on a
+  // second click, the Close button, or when the field stops being inspectable.
   if (inspectGuardAt) {
     const coord = parseHexSpaceId(inspectGuardAt);
     const field = adventure?.fields[inspectGuardAt];
+    const overrideInspect = field ? fieldOverridePresentation(field.location) : null;
     const preview = designedGuardPreview(field);
+    const inspectGuarded = Boolean(field && isFieldGuarded(field));
     const inspectClaimed = Boolean(
       field && (field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed)
     );
@@ -2619,25 +2654,56 @@ export function HexMapBoard({
         : "";
     const rewardVp =
       field && !inspectClaimed ? (field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0) : 0;
-    if (coord && field && (preview || rewardSummary || rewardVp > 0)) {
+    // Guard line for a plain (non-designer) override guard — bi_canh / emerald_tower
+    // etc. carry a printed difficulty but no `designedGuard`, so `preview` is null.
+    const overrideGuardLevel =
+      overrideInspect && !preview && inspectGuarded && field?.difficulty ? field.difficulty : 0;
+    if (coord && field && (overrideInspect || preview || rewardSummary || rewardVp > 0)) {
       mapFloats.push({
         key: "designed-guard-inspect-float",
         mapPoint: hexToPixel(coord, HEX_SIZE),
-        cardWidth: 250,
-        cardHeight: 96 + (preview?.units.length ? Math.min(3, preview.units.length) * 14 : 0),
+        cardWidth: 258,
+        cardHeight:
+          (overrideInspect ? 150 : 96) +
+          (preview?.units.length ? Math.min(3, preview.units.length) * 14 : 0),
         gap: HEX_SIZE * 0.62,
         render: () => (
           <div
-            aria-label="Designer object details"
-            className="mapFloatCard designedGuardInspectFloat"
+            aria-label="Map object details"
+            className={`mapFloatCard designedGuardInspectFloat${overrideInspect ? " fieldOverrideInspectFloat" : ""}`}
             data-inspect-guard={inspectGuardAt}
+            data-field-override={overrideInspect ? field.location : undefined}
             onPointerDown={(event) => event.stopPropagation()}
             role="dialog"
           >
-            <span className="mapFloatTitle">
-              <span aria-hidden="true">⚔</span>{" "}
-              {locationDefinitions[field.location]?.name ?? field.location} — altered by the map designer
-            </span>
+            {overrideInspect ? (
+              <span className="fieldOverrideInspectHead">
+                {overrideInspect.image ? (
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="fieldOverrideInspectArt"
+                    src={assetUrl(overrideInspect.image)}
+                  />
+                ) : overrideInspect.glyph ? (
+                  <span aria-hidden="true" className="fieldOverrideInspectGlyph">
+                    {overrideInspect.glyph}
+                  </span>
+                ) : null}
+                <span className="fieldOverrideInspectName">
+                  {overrideInspect.name}
+                  <span className="fieldOverrideInspectTag">{overrideInspect.packageTag}</span>
+                </span>
+              </span>
+            ) : (
+              <span className="mapFloatTitle">
+                <span aria-hidden="true">⚔</span>{" "}
+                {locationDefinitions[field.location]?.name ?? field.location} — altered by the map designer
+              </span>
+            )}
+            {overrideInspect ? (
+              <span className="fieldOverrideInspectSummary">{overrideInspect.summary}</span>
+            ) : null}
             {preview ? (
               <span className="designedGuardInspectUnits">
                 {preview.units.length > 0
@@ -2646,6 +2712,11 @@ export function HexMapBoard({
                 {preview.units.length > 0 && preview.difficulty
                   ? ` (counts as ${ROMAN[preview.difficulty] ?? preview.difficulty})`
                   : ""}
+                {overrideInspect ? " — altered by the map designer" : ""}
+              </span>
+            ) : overrideGuardLevel ? (
+              <span className="designedGuardInspectUnits">
+                Guarded — defeat the guard ({`level ${ROMAN[overrideGuardLevel] ?? overrideGuardLevel}`}) to visit.
               </span>
             ) : null}
             {rewardSummary || rewardVp > 0 ? (

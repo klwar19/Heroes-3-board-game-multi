@@ -4,7 +4,9 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { HexMapBoard } from "./screen";
 import { instantiateTile } from "@/engine/adventure";
 import { carveFieldOverride } from "@/engine/field-overrides";
-import { fieldOverrideGlyph, registerFieldOverrideDefinitions } from "@/data/map/field-overrides";
+import { fieldOverrideGlyph, getFieldOverrideDefinition, registerFieldOverrideDefinitions } from "@/data/map/field-overrides";
+// Register the Wake of Gods package too so a WOG carve resolves on the board.
+import "@/data/wog/field-overrides";
 import {
   applyAction,
   createAdventureGameState,
@@ -109,5 +111,104 @@ describe("live map board — art-less Field Override kinds fall back to a glyph"
     const token = container.querySelector(`image.locationToken[data-space-id="${spaceId}"]`);
     expect(token, "the FO art image is drawn").toBeTruthy();
     expect(token!.getAttribute("href")).toContain("kiem_trung.webp");
+  });
+});
+
+/**
+ * Every WOG + anime Field Override hex must TELL the player what it does — via
+ * the hover tooltip (name + summary) and a click-to-inspect float (art, name,
+ * mod tag, summary, guard line), plus a corner glyph badge for kinds that carry
+ * one. Data-driven from the registry, so future kinds are covered too.
+ */
+describe("Field Override hexes explain themselves (tooltip + inspect float + glyph badge)", () => {
+  function titleFor(container: HTMLElement, spaceId: string): string {
+    const poly = container.querySelector(`polygon[data-space-id="${spaceId}"]`);
+    return poly?.querySelector("title")?.textContent ?? "";
+  }
+
+  it("ANIME: the hex tooltip includes the override's summary", () => {
+    const { state, spaceId } = boardWithCarve("bi_canh");
+    const summary = getFieldOverrideDefinition("bi_canh")!.summary;
+    const container = renderBoard(state);
+    expect(titleFor(container, spaceId)).toContain(summary);
+  });
+
+  it("WOG: the hex tooltip includes the override's summary and the guard level", () => {
+    const { state, spaceId } = boardWithCarve("emerald_tower");
+    const summary = getFieldOverrideDefinition("emerald_tower")!.summary;
+    const container = renderBoard(state);
+    const title = titleFor(container, spaceId);
+    expect(title).toContain(summary);
+    // emerald_tower carves a difficulty-3 guard → the guard clause shows too
+    // (ROMAN uses the Unicode numeral Ⅲ, U+2162).
+    expect(title).toContain("guard Ⅲ");
+  });
+
+  it("clicking an ANIME override hex opens the inspect float (name + mod tag + summary); clicking again closes it", () => {
+    const { state, spaceId } = boardWithCarve("bi_canh");
+    const def = getFieldOverrideDefinition("bi_canh")!;
+    const container = renderBoard(state);
+    const poly = container.querySelector(`polygon[data-space-id="${spaceId}"]`)!;
+
+    fireEvent.click(poly);
+    const float = container.querySelector(`[data-field-override="${def.locationId}"]`);
+    expect(float, "the inspect float opened").toBeTruthy();
+    expect(float!.querySelector(".fieldOverrideInspectName")?.textContent).toContain(def.name);
+    expect(float!.querySelector(".fieldOverrideInspectTag")?.textContent).toContain("Anime");
+    expect(float!.querySelector(".fieldOverrideInspectSummary")?.textContent).toBe(def.summary);
+
+    // Second click on the same hex toggles the float closed.
+    fireEvent.click(poly);
+    expect(container.querySelector(`[data-field-override="${def.locationId}"]`)).toBeNull();
+  });
+
+  it("WOG: the inspect float shows the WOG tag, the summary, and a guard line", () => {
+    const { state, spaceId } = boardWithCarve("emerald_tower");
+    const def = getFieldOverrideDefinition("emerald_tower")!;
+    const container = renderBoard(state);
+    fireEvent.click(container.querySelector(`polygon[data-space-id="${spaceId}"]`)!);
+
+    const float = container.querySelector(`[data-field-override="${def.locationId}"]`);
+    expect(float, "the WOG inspect float opened").toBeTruthy();
+    expect(float!.querySelector(".fieldOverrideInspectName")?.textContent).toContain("Emerald Tower");
+    expect(float!.querySelector(".fieldOverrideInspectTag")?.textContent).toContain("WOG");
+    expect(float!.querySelector(".fieldOverrideInspectSummary")?.textContent).toBe(def.summary);
+    // A live guard (difficulty 3) → the "defeat the guard" line appears.
+    expect(float!.querySelector(".designedGuardInspectUnits")?.textContent).toMatch(/defeat the guard/i);
+  });
+
+  it("shows the registry glyph as a corner badge for a kind that has one (song_bac_quan 🀄)", () => {
+    const { state } = boardWithCarve("song_bac_quan");
+    const glyph = getFieldOverrideDefinition("song_bac_quan")!.glyph!;
+    expect(glyph, "song_bac_quan carries a glyph").toBeTruthy();
+    const container = renderBoard(state);
+    const badges = [...container.querySelectorAll(".fieldOverrideGlyphBadge text")].map((n) => n.textContent);
+    expect(badges).toContain(glyph);
+  });
+
+  it("CONTROL: a kind with NO glyph shows no corner badge (art carries it)", () => {
+    // bi_canh ships art and carries no glyph → no corner badge is drawn.
+    expect(getFieldOverrideDefinition("bi_canh")!.glyph).toBeUndefined();
+    const { state } = boardWithCarve("bi_canh");
+    const container = renderBoard(state);
+    expect(container.querySelector(".fieldOverrideGlyphBadge")).toBeNull();
+  });
+
+  it("CONTROL: a plain (non-override) map never shows an override float or glyph badge, and clicking a plain field opens no float", () => {
+    let state = createAdventureGameState({ seed: "fo-plain-control", difficulty: "normal", rollFirstPlayer: false });
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }).state;
+    }
+    const container = renderBoard(state);
+    expect(container.querySelector(".fieldOverrideGlyphBadge")).toBeNull();
+    expect(container.querySelector(".fieldOverrideInspectFloat")).toBeNull();
+
+    // Click any plain field hex — no override float should ever appear.
+    const anyHex = container.querySelector("polygon[data-space-id]");
+    if (anyHex) {
+      fireEvent.click(anyHex);
+    }
+    expect(container.querySelector(".fieldOverrideInspectFloat")).toBeNull();
   });
 });
