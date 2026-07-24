@@ -11,6 +11,7 @@ describe("SetupLobbyScreen — portrait-less heroes are still selectable", () =>
     const state = createAdventureLobbyState({ seed: "ui-lobby" });
     const onAction = vi.fn();
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: /Heroes & Draft/ }));
 
     // Moandor (Necropolis) and Zydar (Inferno) have no portrait asset; they must
     // still show their name and be selectable, exactly like the other heroes.

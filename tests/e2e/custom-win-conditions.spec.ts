@@ -15,7 +15,7 @@ const roomId = `e2e-cwc-${Date.now().toString(36)}`;
 
 async function openMatchOptions(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 30000 });
-  await page.getByRole("tab", { name: "Game options" }).click();
+  await page.getByRole("button", { name: /Advanced settings/ }).click();
   await page.getByRole("tab", { name: "Match" }).click();
 }
 

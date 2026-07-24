@@ -20,11 +20,17 @@ function build(seed: string, actions: GameAction[]): GameState {
   return state;
 }
 
+/** The faction/hero picks live in the Heroes & Draft hub window — open it. */
+function openHeroes() {
+  fireEvent.click(screen.getByRole("button", { name: /Heroes & Draft/ }));
+}
+
 describe("SetupLobbyScreen — hero info popup", () => {
   it("opens a closeable popup with stats, ability and all three specialties; inspecting does not choose", () => {
     const state = createAdventureLobbyState({ seed: "ui-popup" });
     const onAction = vi.fn();
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    openHeroes();
 
     // Closed by default — no detail card on screen.
     expect(screen.queryByLabelText("Rion details")).toBeNull();
@@ -61,6 +67,7 @@ describe("SetupLobbyScreen — setup format selector", () => {
     const state = createAdventureLobbyState({ seed: "ui-format" });
     const onAction = vi.fn();
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    openHeroes();
 
     fireEvent.click(screen.getByRole("button", { name: "Draft (ban-pick)" }));
     expect(onAction).toHaveBeenCalledWith({ type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" });
@@ -98,6 +105,7 @@ describe("SetupLobbyScreen — TYPE 4 free pick", () => {
     const state = createAdventureLobbyState({ seed: "ui-open" });
     const onAction = vi.fn();
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    openHeroes();
 
     fireEvent.click(screen.getByRole("button", { name: /Catherine/ }));
     expect(onAction).toHaveBeenCalledWith({
@@ -114,6 +122,7 @@ describe("SetupLobbyScreen — TYPE 2 full random", () => {
     const state = build("ui-random", [{ type: "SET_DRAFT_FORMAT", playerId: "p1", format: "random" }]);
     const onAction = vi.fn();
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    openHeroes();
 
     fireEvent.click(screen.getByRole("button", { name: /Roll random town/ }));
     expect(onAction).toHaveBeenCalledWith({ type: "RANDOM_ASSIGN_SEAT", playerId: "p1", scope: "faction" });
@@ -125,6 +134,7 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
     const state = build("ui-draft-town", [{ type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" }]);
     const onAction = vi.fn();
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    openHeroes();
 
     fireEvent.click(screen.getByRole("button", { name: /Roll two towns/ }));
     expect(onAction).toHaveBeenCalledWith({ type: "ROLL_TOWN_OPTIONS", playerId: "p1" });
@@ -141,6 +151,7 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
     ]);
     const reserved = state.setupLobby?.draft?.seatRolls?.p1?.townOptions ?? [];
     render(<SetupLobbyScreen onAction={vi.fn()} state={state} viewerPlayerId="p2" />);
+    openHeroes();
 
     expect(reserved).toHaveLength(2);
     for (const factionId of reserved) {
@@ -157,6 +168,7 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
     const onAction = vi.fn();
     // p1 is the first banner.
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    openHeroes();
 
     // A necropolis (opponent) hero is offered to ban; a castle (own) hero is not.
     fireEvent.click(screen.getByRole("button", { name: /Sandro/ }));
@@ -176,6 +188,7 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
     ]);
     const onAction = vi.fn();
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    openHeroes();
 
     // Catherine + Rion were banned by p2 → disabled in p1's castle pick grid.
     expect((screen.getByRole("button", { name: /Catherine/ }) as HTMLButtonElement).disabled).toBe(true);
@@ -241,7 +254,7 @@ describe("SetupLobbyScreen — merged Map picker", () => {
     const state = createAdventureLobbyState({ seed: "ui-map" });
     const onAction = vi.fn();
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
-    fireEvent.click(screen.getByRole("tab", { name: "Game options" }));
+    fireEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
     // The Game-options panel is itself tabbed; the Map picker lives on "Map & Setup".
     fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
 
@@ -265,6 +278,7 @@ describe("SetupLobbyScreen — TYPE 3 random with choice", () => {
     const townState = build("ui-rc", [{ type: "SET_DRAFT_FORMAT", playerId: "p1", format: "random-choice" }]);
     const onAction = vi.fn();
     const { unmount } = render(<SetupLobbyScreen onAction={onAction} state={townState} viewerPlayerId="p1" />);
+    openHeroes();
 
     fireEvent.click(screen.getByRole("button", { name: /Roll two towns/ }));
     expect(onAction).toHaveBeenCalledWith({ type: "ROLL_TOWN_OPTIONS", playerId: "p1" });
@@ -278,6 +292,7 @@ describe("SetupLobbyScreen — TYPE 3 random with choice", () => {
 
     const onAction2 = vi.fn();
     render(<SetupLobbyScreen onAction={onAction2} state={heroState} viewerPlayerId="p1" />);
+    openHeroes();
     fireEvent.click(screen.getByRole("button", { name: /Roll two heroes/ }));
     expect(onAction2).toHaveBeenCalledWith({ type: "ROLL_HERO_OPTIONS", playerId: "p1" });
   });

@@ -57,7 +57,6 @@ import {
   HOUSE_RULES,
   resolveHouseRules,
   resolveTournamentRules,
-  tournamentRulesAllOn,
   getTileBorderSegments,
   gatePairColor,
   describeFieldReward,
@@ -165,6 +164,18 @@ import {
 } from "@/components/adventure/town-sections";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
 import { buildCustomSetupFile, customSetupFileName, parseCustomSetupFile } from "@/lib/custom-setup-file";
+import {
+  advancedSettingsChanged,
+  deriveActiveSetupMode,
+  DIFFICULTY_CHOICES,
+  heroesSummary,
+  mapSummary,
+  MODE_PRESET_PAYLOADS,
+  type SetupModeId
+} from "@/components/adventure/setup-hub-summary";
+import { MapPickModal } from "@/components/adventure/map-pick-modal";
+import { SetupHubWindow } from "@/components/adventure/setup-hub-window";
+import { DIFFICULTY_CHESS_ICONS, SETUP_HUB_ICONS } from "@/data/assets/homm-assets";
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
@@ -6984,28 +6995,8 @@ export function PlacementPanel({
 // Map-setup lobby: pick a faction and hero, set the game options, start
 // ---------------------------------------------------------------------------
 
-const DIFFICULTY_CHOICES: { id: GameSetupOptions["difficulty"]; label: string; hint: string }[] = [
-  {
-    id: "easy",
-    label: "Easy",
-    hint: "Smallest guard armies. Starting bonus: Roll 2 Resource Dice and receive Resources from both — OR — Search (2) the Artifact Deck, twice."
-  },
-  {
-    id: "normal",
-    label: "Normal",
-    hint: "Printed baseline guards. Starting bonus: Roll 2 Resource Dice and receive the Resources from one of them — OR — Search (2) the Artifact Deck."
-  },
-  {
-    id: "hard",
-    label: "Hard",
-    hint: "Stronger guards. Starting bonus: Roll 1 Resource Die and receive the Resources on it — OR — reveal cards until you find 1 Minor Artifact (to hand)."
-  },
-  {
-    id: "impossible",
-    label: "Impossible",
-    hint: "Default — strongest guards. No starting bonus."
-  }
-];
+// DIFFICULTY_CHOICES lives in setup-hub-summary.ts (shared with the Map window's
+// chess-piece difficulty bar).
 
 /** Building ids (without the faction prefix) offered as pre-built options. */
 const STARTING_BUILDING_CHOICES: { id: string; label: string }[] = [
@@ -7984,9 +7975,7 @@ function HouseRulesSection({
   );
 }
 
-/** High-level setup modes shown as a card row on the Mode & Rules tab. */
-type SetupModeId = "legacy" | "binh" | "tournament" | "custom";
-
+/** High-level setup modes shown as a card row (SetupModeId lives in setup-hub-summary.ts). */
 const SETUP_MODE_CARDS: {
   id: SetupModeId;
   label: string;
@@ -8027,25 +8016,31 @@ const SETUP_MODE_CARDS: {
 ];
 
 /**
- * Adjustable setup: scenario, neutral difficulty (Impossible default),
- * starting resources, base income (10 gold / 0 / 0 default), starting unit
- * tiers and pre-built buildings. Any seated player may adjust; everything
- * syncs through the same action stream as the rest of the game.
+ * The Game-mode section: the four mode preset cards plus the WOG/Anime mod
+ * rows and their portal option windows. Shared by the full Game-options panel
+ * (Mode & Rules tab) and the Setup Hub's Game-mode window — one wiring, two
+ * hosts. `onCustomSelected` lets the host navigate to its custom-settings
+ * surface when the Custom card is picked; `customNotice`/`customHint` let it
+ * word the Custom texts for its own layout.
  */
-function GameOptionsPanel({
+function GameModeSection({
   state,
   viewerPlayerId,
-  onAction
+  onAction,
+  onCustomSelected,
+  customNotice,
+  customHint
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
+  onCustomSelected?: () => void;
+  customNotice?: string;
+  customHint?: string;
 }) {
   const [wogOptionsOpen, setWogOptionsOpen] = useState(false);
   const [animeOptionsOpen, setAnimeOptionsOpen] = useState(false);
   const [modeNotice, setModeNotice] = useState<string | null>(null);
-  const [tournamentRulesOpen, setTournamentRulesOpen] = useState(false);
-  const [tab, setTab] = useState<OptionsTabId>("rules");
   const lobby = state.setupLobby;
   if (!lobby) {
     return null;
@@ -8054,70 +8049,27 @@ function GameOptionsPanel({
   const options = lobby.options;
   const wog = { ...DEFAULT_WOG_OPTIONS, ...options.wog };
   const anime = { ...DEFAULT_ANIME_OPTIONS, ...options.anime };
-  const viewerFactionId = lobby.seats.find((seat) => seat.playerId === viewerPlayerId)?.factionId ?? null;
   const send = (next: Partial<GameSetupOptions>) =>
     onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
-  // Effective house-rule booleans (explicit toggle, else the chosen mode's
-  // default). Flipping one sends just that id; the reducer merges it.
-  const houseRules = resolveHouseRules(options);
-  const setHouseRule = (id: HouseRuleId, value: boolean) => {
-    // Selecting ANY Polish rule also auto-selects "split-decks" (the divided
-    // Minor/Major/Relic Artifact decks): the Polish package assumes divided
-    // Artifacts (Random Artifacts outright depends on it). Turning a Polish
-    // rule OFF never touches it.
-    const polishAuto: Partial<Record<HouseRuleId, boolean>> =
-      value && id.startsWith("polish-") && !houseRules["split-decks"] ? { "split-decks": true } : {};
-    if (id === "polish-spell-book" && value) {
-      send({ houseRules: { ...polishAuto, [id]: true }, spellBook: false });
-      return;
-    }
-    send({ houseRules: { ...polishAuto, [id]: value } });
-  };
-  // Flip a whole group of rules in ONE dispatch (the reducer merges the ids).
-  // Enabling the Polish Spell Book also forces the stash Spell Book off, exactly
-  // like the single-rule toggle above.
-  const setHouseRules = (updates: Partial<Record<HouseRuleId, boolean>>) => {
-    const next: Partial<GameSetupOptions> = { houseRules: updates };
-    if (updates["polish-spell-book"]) {
-      next.spellBook = false;
-    }
-    send(next);
-  };
-  const tournamentRules = resolveTournamentRules(options);
-  const tournamentAllOn = tournamentRulesAllOn(options);
 
   /** Which big mode card is highlighted from the current options. */
-  const activeSetupMode: SetupModeId = (() => {
-    if (options.customMode) {
-      return "custom";
-    }
-    if (tournamentAllOn && options.ruleset === "legacy" && options.difficulty === "hard") {
-      return "tournament";
-    }
-    if (options.ruleset === "legacy") {
-      return "legacy";
-    }
-    return "binh";
-  })();
+  const activeSetupMode = deriveActiveSetupMode(options);
 
   const applySetupMode = (mode: SetupModeId) => {
     if (mode === "custom") {
       send({ customMode: true });
-      setTab("map");
-      setModeNotice("Custom mode selected: save the current setup to a file, or load a setting file, in Map & Setup.");
+      onCustomSelected?.();
+      setModeNotice(
+        customNotice ??
+          "Custom mode selected: save the current setup to a file, or load a setting file, in Map & Setup."
+      );
       return;
     }
     if (mode === "legacy") {
       send({
-        customMode: false,
-        ruleset: "legacy",
+        ...MODE_PRESET_PAYLOADS.legacy,
         wog: { ...wog, enabled: false },
-        anime: { ...anime, enabled: false },
-        spellBook: false,
-        tournamentMode: false,
-        tournamentBanDiplomacy: false,
-        tournamentBanHourglass: false,
-        tournamentSecondPlayerMorale: false
+        anime: { ...anime, enabled: false }
       });
       setModeNotice(
         "Legacy mode applied: every house rule is off (printed rulebook). " +
@@ -8128,35 +8080,16 @@ function GameOptionsPanel({
     }
     if (mode === "binh") {
       // BINH does not force WOG off — the Mod row is independent.
-      send({
-        customMode: false,
-        ruleset: "binh",
-        spellBook: true,
-        tournamentMode: false,
-        tournamentBanDiplomacy: false,
-        tournamentBanHourglass: false,
-        tournamentSecondPlayerMorale: false
-      });
+      send({ ...MODE_PRESET_PAYLOADS.binh });
       setModeNotice(null);
       return;
     }
     // Tournament competitive preset — turns WOG + Anime off with the competitive
     // package. Neutrals default to human control (next player clockwise).
     send({
-      customMode: false,
-      ruleset: "legacy",
+      ...MODE_PRESET_PAYLOADS.tournament,
       wog: { ...wog, enabled: false },
-      anime: { ...anime, enabled: false },
-      spellBook: false,
-      tournamentMode: true,
-      tournamentBanDiplomacy: true,
-      tournamentBanHourglass: true,
-      tournamentSecondPlayerMorale: true,
-      tournamentObservatoryRerotate: true,
-      difficulty: "hard",
-      pvpNeutralControl: true,
-      events: false,
-      moraleCards: false
+      anime: { ...anime, enabled: false }
     });
     setModeNotice(
       "Tournament mode applied: house rules off, Diplomacy + Hourglass banned, second player +1 morale, " +
@@ -8165,32 +8098,7 @@ function GameOptionsPanel({
   };
 
   return (
-    <div className="gameOptions" aria-label="Game options">
-      <header className="gameOptionsHead">
-        <span className="gameOptionsEyebrow">⚜ Fan-made house-rule edition · BINH</span>
-        <h3>Game Setup</h3>
-        <small className="gameOptionsHeadSub">Pick a mode, toggle the house rules, and set up your army.</small>
-      </header>
-
-      <nav className="optionTabs" role="tablist" aria-label="Setup sections">
-        {OPTION_TABS.map((entry) => (
-          <button
-            aria-selected={tab === entry.id}
-            className={`optionTab ${tab === entry.id ? "selected" : ""}`}
-            key={entry.id}
-            onClick={() => setTab(entry.id)}
-            role="tab"
-            type="button"
-          >
-            {entry.icon}
-            <span>{entry.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      {tab === "rules" ? (
-      <div className="optionTabPanel" role="tabpanel" aria-label="Rules">
-
+    <>
       <div className="optionRow modePresetRow">
         <small title="One-click presets. Individual rules below stay editable after any preset.">Game mode</small>
         <div className="modePresetGrid" role="group" aria-label="Game mode presets">
@@ -8222,7 +8130,8 @@ function GameOptionsPanel({
         </div>
         <small className="optionHint">
           {activeSetupMode === "custom"
-            ? "Personal custom setup: in Map & Setup, save the current map & rules to a file or load one of your setting files."
+            ? customHint ??
+              "Personal custom setup: in Map & Setup, save the current map & rules to a file or load one of your setting files."
             : activeSetupMode === "legacy"
             ? RULESET_DESCRIPTIONS.legacy
             : activeSetupMode === "tournament"
@@ -8374,6 +8283,353 @@ function GameOptionsPanel({
           under Legacy switches the table to BINH so the modules can load.
         </small>
       </div>
+
+      {wog.enabled && wogOptionsOpen && typeof document !== "undefined"
+        ? createPortal((
+          <div className="wogWindowBackdrop" onMouseDown={() => setWogOptionsOpen(false)}>
+          <section
+            aria-label="Wake of Gods mod options"
+            aria-modal="true"
+            className="wogOptionsWindow"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <header>
+              <div>
+                <span className="wogWindowEyebrow">Optional mod</span>
+                <h4>Wake of Gods</h4>
+              </div>
+              <button aria-label="Close WOG options" onClick={() => setWogOptionsOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+            <div className="wogModuleList">
+              {([
+                ["newCreatures", "New neutral creatures", "Adds the WOG roster and the Doom neutral slice to the Bronze, Silver, Gold and Azure Neutral decks."],
+                ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
+                ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
+                ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
+                ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and a Drill action at your Towns."],
+                ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."],
+                ["monsterWaves", "Monster waves", "Calamity Waves: every Nth round (cadence below), EVERY live player fights a wave army at round start — the table pauses while the assaults resolve in seat order. Win: 2 gold + 1 hero XP (+ a Treasure die from wave 3 on). Loss or retreat: pillage — lose 3 gold and your mine/settlement nearest home is overrun by a difficulty-Ⅰ guard. Never razes buildings, never eliminates."],
+                ["raidBosses", "Raid bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead). Its wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
+                ["dungeon", "The Dungeon", "One repeatable delve site per map, carved onto a Near-tile Blocked Field (needs Creature Banks ON). Per-player floors 1–10, once per turn: pick a room (treasure vault, shrine, whispering wall…), then fight the floor guards for normal XP and a reward ladder. Floors 5 and 10 hold layered floor bosses; floor 10 pays a relic search + the Dungeon Conqueror title."]
+              ] as const).map(([key, label, description]) => {
+                const active = wog[key];
+                return (
+                  <button
+                    aria-pressed={active}
+                    className={`wogModuleToggle ${active ? "selected" : ""}`}
+                    key={key}
+                    onClick={() => send({ wog: { ...wog, [key]: !active } })}
+                    type="button"
+                  >
+                    <span className="wogModuleCheck">{active ? <Check size={15} /> : null}</span>
+                    <span>
+                      <strong>{label}</strong>
+                      <small>{description}</small>
+                    </span>
+                  </button>
+                );
+              })}
+              {wog.monsterWaves ? (
+                <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
+                  <strong>Wave cadence</strong>
+                  {([3, 4, 5] as const).map((cadence) => (
+                    <button
+                      aria-pressed={(wog.waveCadence ?? 4) === cadence}
+                      className={`waveCadenceChip ${(wog.waveCadence ?? 4) === cadence ? "selected" : ""}`}
+                      key={cadence}
+                      onClick={() => send({ wog: { ...wog, waveCadence: cadence } })}
+                      type="button"
+                    >
+                      Every {cadence === 3 ? "3rd" : `${cadence}th`} round
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="wogRosterPreview" aria-label="WOG neutral creature roster">
+              <strong>Neutral roster</strong>
+              <span><i className="tierDot bronze" /> Santa Gremlin</span>
+              <span><i className="tierDot silver" /> Ghost · Messengers · War Zealot · Sharpshooters · Sylvan Centaur · Werewolf</span>
+              <span><i className="tierDot gold" /> Nightmare · Hell Steed · Gorynych</span>
+              <span><i className="tierDot azure" /> Dracolich</span>
+            </div>
+            <footer>
+              <button className="selected" onClick={() => setWogOptionsOpen(false)} type="button">Done</button>
+            </footer>
+          </section>
+          </div>
+        ), document.body)
+        : null}
+
+      {anime.enabled && animeOptionsOpen && typeof document !== "undefined"
+        ? createPortal((
+          <div className="wogWindowBackdrop" onMouseDown={() => setAnimeOptionsOpen(false)}>
+          <section
+            aria-label="Anime mod options"
+            aria-modal="true"
+            className="wogOptionsWindow animeOptionsWindow"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <header>
+              <div>
+                <span className="wogWindowEyebrow">Optional mod</span>
+                <h4>Anime mod</h4>
+              </div>
+              <button aria-label="Close Anime options" onClick={() => setAnimeOptionsOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+            <small className="wogWindowDesc">
+              Ninefold Realms × Otherworld Gate — a stack of BINH-family modules (xianxia + isekai). Tick
+              only what you want; each is independent and coexists with WOG and the house rules. Doom is
+              available as its own explicit neutral-monster checkbox below.
+            </small>
+            <div className="wogModuleList">
+              {([
+                ["isekaiTowns", "Fuyuki City + Hidden Leaf Village + Azur Lane Naval Base", "Adds three complete anime towns: Fuyuki City (7-unit Servant roster), Hidden Leaf Village (7-unit shinobi swarm) and Azur Lane Naval Base (7-ship kansen fleet) — each with original heroes, its town board, buildings, starting tile, commander, and anime-themed system vocabulary."],
+                ["xianxiaTowns", "Azure Breeze Sect", "Adds the complete wuxia sect: 7-unit cultivation roster, two original heroes, its mountain town board, buildings, starting tile, and wuxia-themed system vocabulary."],
+                ["doomNeutrals", "Doom monsters", "Adds the 16 classic Doom neutral monsters across the exact Bronze, Silver, Gold and Azure decks. Independent checkbox; off by default."],
+                ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool. Turns Field Overrides on."],
+                ["combatEvents", "Forced battle events", "Scripted combat events on anime fields (the Bí Cảnh spirit-mist / earthvein-surge). Fully automatic — no new prompts."],
+                ["xianxiaArtifacts", "Pháp Bảo artifacts", "Shuffles 5 anime hero Artifact cards (Túi Càn Khôn, Phong Hỏa Luân, Tru Tiên Kiếm, Bát Quái Kính, Tụ Linh Bàn) into the shared Artifact decks by tier."],
+                ["cultivation", "Cultivation realms", "A per-hero Cultivation Realm track (hand limit / reroll / spell Power) plus the Heavenly Tribulation map action."],
+                ["heroGrades", "Hero Grades", "A per-hero Merit → grade track that unlocks a small passive / skill tree (shared by every hero)."],
+                ["equipment", "Hero Equipment", "Always-on hero items in 4 slots (weapon / armor / accessory / mount), bought at outfitter map locations."],
+                ["unitStacks", "Unit Stacks", "Pack / Neutral cards buy persistent Stack layers at the Citadel (+1 Attack, each layer soaks a lethal blow). The Polish Unit Stacks machinery — one pricing, coexists with the house rule."],
+                ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Town Drill training."],
+                ["monsterWaves", "Calamity Waves", "Every Nth round (cadence below), EVERY live player fights a Gate-invasion wave army at round start — assaults resolve in seat order behind the round-start pause. Win: 2 gold + 1 hero XP (+ a Treasure die from wave 3 on). Loss or retreat: pillage — lose 3 gold and your mine/settlement nearest home is overrun by a difficulty-Ⅰ guard."],
+                ["raidBosses", "Raid Bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead — \"the sky cracks\"). Wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
+                ["dungeon", "The Dungeon (Meikyū)", "One repeatable delve site per map, carved onto a Near-tile Blocked Field (needs Creature Banks ON). Per-player floors 1–10, once per turn: pick a room (treasure vault, shrine, whispering wall…), then fight the floor guards for normal XP and a reward ladder. Floors 5 and 10 hold layered floor bosses; floor 10 pays a relic search + the Dungeon Conqueror title."]
+              ] as const).map(([key, label, description]) => {
+                const active = anime[key];
+                return (
+                  <button
+                    aria-pressed={active}
+                    className={`wogModuleToggle ${active ? "selected" : ""}`}
+                    data-testid={`anime-module-${key}`}
+                    key={key}
+                    onClick={() => send({ anime: { ...anime, [key]: !active } })}
+                    type="button"
+                  >
+                    <span className="wogModuleCheck">{active ? <Check size={15} /> : null}</span>
+                    <span>
+                      <strong>{label}</strong>
+                      <small>{description}</small>
+                    </span>
+                  </button>
+                );
+              })}
+              {anime.monsterWaves ? (
+                <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
+                  <strong>Wave cadence</strong>
+                  {([3, 4, 5] as const).map((cadence) => (
+                    <button
+                      aria-pressed={(anime.waveCadence ?? 4) === cadence}
+                      className={`waveCadenceChip ${(anime.waveCadence ?? 4) === cadence ? "selected" : ""}`}
+                      data-testid={`anime-wave-cadence-${cadence}`}
+                      key={cadence}
+                      onClick={() => send({ anime: { ...anime, waveCadence: cadence } })}
+                      type="button"
+                    >
+                      Every {cadence === 3 ? "3rd" : `${cadence}th`} round
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <footer>
+              <button className="selected" onClick={() => setAnimeOptionsOpen(false)} type="button">Done</button>
+            </footer>
+          </section>
+          </div>
+        ), document.body)
+        : null}
+    </>
+  );
+}
+
+/**
+ * The seat-count control: computer-opponent count in single-player, player
+ * count in multiplayer. Shared by the Map & Setup tab and the Setup Hub's
+ * Heroes & Draft window (the user picks opponents where they pick heroes).
+ */
+function SeatCountControl({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const lobby = state.setupLobby;
+  if (!lobby) {
+    return null;
+  }
+  const options = lobby.options;
+  const send = (next: Partial<GameSetupOptions>) =>
+    onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
+  const scenario = scenarioDefinitions[options.scenarioId];
+  const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
+  // Single-player: the seat count is 1 human + N computers, changed only
+  // through the dedicated action (the engine reasserts the controller
+  // invariant on every resize — no resize can mint a human opponent).
+  if (state.sessionMode === "single-player") {
+    const current = lobby.seats.length - 1;
+    const counts: number[] = [];
+    for (let n = 1; n < max; n += 1) {
+      counts.push(n);
+    }
+    return counts.length > 1 ? (
+      <div className="optionRow">
+        <small title="How many computer opponents this game seats — leave them on auto and they pick their own factions after you, or hand-pick / roll each one's town & hero in Heroes & Draft">
+          Computer opponents
+        </small>
+        <div className="optionButtons">
+          {counts.map((count) => (
+            <button
+              aria-pressed={current === count}
+              className={current === count ? "selected" : ""}
+              key={count}
+              onClick={() =>
+                onAction({ type: "SET_COMPUTER_OPPONENTS", playerId: viewerPlayerId, count })
+              }
+              title={`Play against ${count} computer opponent${count === 1 ? "" : "s"}`}
+              type="button"
+            >
+              {count === 1 ? "1 computer" : `${count} computers`}
+            </button>
+          ))}
+        </div>
+        <small className="optionHint">
+          Playing with computer — every other seat is a computer opponent; nobody else can join this game.
+        </small>
+      </div>
+    ) : null;
+  }
+  const min = scenario?.minPlayers ?? 2;
+  const seatCount = lobby.seats.length;
+  const counts: number[] = [];
+  for (let n = min; n <= max; n += 1) {
+    counts.push(n);
+  }
+  return counts.length > 1 ? (
+    <div className="optionRow">
+      <small title="How many seats this game opens — each needs a faction before the adventure starts">
+        Players
+      </small>
+      <div className="optionButtons">
+        {counts.map((count) => (
+          <button
+            aria-pressed={seatCount === count}
+            className={seatCount === count ? "selected" : ""}
+            key={count}
+            onClick={() => send({ playerCount: count })}
+            title={`Play with ${count} players`}
+            type="button"
+          >
+            {count} players
+          </button>
+        ))}
+      </div>
+      <small className="optionHint">
+        Seats beyond two open empty — anyone can sit in them from the table’s seat switcher and pick a faction.
+      </small>
+    </div>
+  ) : null;
+}
+
+/**
+ * Adjustable setup: scenario, neutral difficulty (Impossible default),
+ * starting resources, base income (10 gold / 0 / 0 default), starting unit
+ * tiers and pre-built buildings. Any seated player may adjust; everything
+ * syncs through the same action stream as the rest of the game.
+ */
+function GameOptionsPanel({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const [tournamentRulesOpen, setTournamentRulesOpen] = useState(false);
+  const [tab, setTab] = useState<OptionsTabId>("rules");
+  const lobby = state.setupLobby;
+  if (!lobby) {
+    return null;
+  }
+
+  const options = lobby.options;
+  const viewerFactionId = lobby.seats.find((seat) => seat.playerId === viewerPlayerId)?.factionId ?? null;
+  const send = (next: Partial<GameSetupOptions>) =>
+    onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
+  // Effective house-rule booleans (explicit toggle, else the chosen mode's
+  // default). Flipping one sends just that id; the reducer merges it.
+  const houseRules = resolveHouseRules(options);
+  const setHouseRule = (id: HouseRuleId, value: boolean) => {
+    // Selecting ANY Polish rule also auto-selects "split-decks" (the divided
+    // Minor/Major/Relic Artifact decks): the Polish package assumes divided
+    // Artifacts (Random Artifacts outright depends on it). Turning a Polish
+    // rule OFF never touches it.
+    const polishAuto: Partial<Record<HouseRuleId, boolean>> =
+      value && id.startsWith("polish-") && !houseRules["split-decks"] ? { "split-decks": true } : {};
+    if (id === "polish-spell-book" && value) {
+      send({ houseRules: { ...polishAuto, [id]: true }, spellBook: false });
+      return;
+    }
+    send({ houseRules: { ...polishAuto, [id]: value } });
+  };
+  // Flip a whole group of rules in ONE dispatch (the reducer merges the ids).
+  // Enabling the Polish Spell Book also forces the stash Spell Book off, exactly
+  // like the single-rule toggle above.
+  const setHouseRules = (updates: Partial<Record<HouseRuleId, boolean>>) => {
+    const next: Partial<GameSetupOptions> = { houseRules: updates };
+    if (updates["polish-spell-book"]) {
+      next.spellBook = false;
+    }
+    send(next);
+  };
+  const tournamentRules = resolveTournamentRules(options);
+
+  return (
+    <div className="gameOptions" aria-label="Game options">
+      <header className="gameOptionsHead">
+        <span className="gameOptionsEyebrow">⚜ Fan-made house-rule edition · BINH</span>
+        <h3>Game Setup</h3>
+        <small className="gameOptionsHeadSub">Pick a mode, toggle the house rules, and set up your army.</small>
+      </header>
+
+      <nav className="optionTabs" role="tablist" aria-label="Setup sections">
+        {OPTION_TABS.map((entry) => (
+          <button
+            aria-selected={tab === entry.id}
+            className={`optionTab ${tab === entry.id ? "selected" : ""}`}
+            key={entry.id}
+            onClick={() => setTab(entry.id)}
+            role="tab"
+            type="button"
+          >
+            {entry.icon}
+            <span>{entry.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {tab === "rules" ? (
+      <div className="optionTabPanel" role="tabpanel" aria-label="Rules">
+
+      <GameModeSection
+        onAction={onAction}
+        onCustomSelected={() => setTab("map")}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
 
       {(() => {
         const tournamentDefs = [
@@ -8663,7 +8919,7 @@ function GameOptionsPanel({
               <OptionRowLabel
                 hint="Default ON: after you fill your hand to the limit (keeping or ditching a difficulty-bonus artifact), you may discard 0–N cards to your deck and redraw that many. OFF: only the fill step — ditch bonus artifact(s) or keep them, then draw to 4; no full-hand Mulligan."
                 iconClassName="optionRowIcon crest"
-                iconSrc="/assets/spell-icons/view-air.png"
+                iconSrc="/assets/spell-icons/view_air.png"
                 title="First-round hand Mulligan"
               />
               <div className="optionButtons">
@@ -8726,171 +8982,6 @@ function GameOptionsPanel({
       />
       </div>
       ) : null}
-
-      {wog.enabled && wogOptionsOpen && typeof document !== "undefined"
-        ? createPortal((
-          <div className="wogWindowBackdrop" onMouseDown={() => setWogOptionsOpen(false)}>
-          <section
-            aria-label="Wake of Gods mod options"
-            aria-modal="true"
-            className="wogOptionsWindow"
-            onMouseDown={(event) => event.stopPropagation()}
-            role="dialog"
-          >
-            <header>
-              <div>
-                <span className="wogWindowEyebrow">Optional mod</span>
-                <h4>Wake of Gods</h4>
-              </div>
-              <button aria-label="Close WOG options" onClick={() => setWogOptionsOpen(false)} type="button">
-                <X size={16} />
-              </button>
-            </header>
-            <div className="wogModuleList">
-              {([
-                ["newCreatures", "New neutral creatures", "Adds the WOG roster and the Doom neutral slice to the Bronze, Silver, Gold and Azure Neutral decks."],
-                ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
-                ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
-                ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
-                ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and a Drill action at your Towns."],
-                ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."],
-                ["monsterWaves", "Monster waves", "Calamity Waves: every Nth round (cadence below), EVERY live player fights a wave army at round start — the table pauses while the assaults resolve in seat order. Win: 2 gold + 1 hero XP (+ a Treasure die from wave 3 on). Loss or retreat: pillage — lose 3 gold and your mine/settlement nearest home is overrun by a difficulty-Ⅰ guard. Never razes buildings, never eliminates."],
-                ["raidBosses", "Raid bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead). Its wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
-                ["dungeon", "The Dungeon", "One repeatable delve site per map, carved onto a Near-tile Blocked Field (needs Creature Banks ON). Per-player floors 1–10, once per turn: pick a room (treasure vault, shrine, whispering wall…), then fight the floor guards for normal XP and a reward ladder. Floors 5 and 10 hold layered floor bosses; floor 10 pays a relic search + the Dungeon Conqueror title."]
-              ] as const).map(([key, label, description]) => {
-                const active = wog[key];
-                return (
-                  <button
-                    aria-pressed={active}
-                    className={`wogModuleToggle ${active ? "selected" : ""}`}
-                    key={key}
-                    onClick={() => send({ wog: { ...wog, [key]: !active } })}
-                    type="button"
-                  >
-                    <span className="wogModuleCheck">{active ? <Check size={15} /> : null}</span>
-                    <span>
-                      <strong>{label}</strong>
-                      <small>{description}</small>
-                    </span>
-                  </button>
-                );
-              })}
-              {wog.monsterWaves ? (
-                <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
-                  <strong>Wave cadence</strong>
-                  {([3, 4, 5] as const).map((cadence) => (
-                    <button
-                      aria-pressed={(wog.waveCadence ?? 4) === cadence}
-                      className={`waveCadenceChip ${(wog.waveCadence ?? 4) === cadence ? "selected" : ""}`}
-                      key={cadence}
-                      onClick={() => send({ wog: { ...wog, waveCadence: cadence } })}
-                      type="button"
-                    >
-                      Every {cadence === 3 ? "3rd" : `${cadence}th`} round
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <div className="wogRosterPreview" aria-label="WOG neutral creature roster">
-              <strong>Neutral roster</strong>
-              <span><i className="tierDot bronze" /> Santa Gremlin</span>
-              <span><i className="tierDot silver" /> Ghost · Messengers · War Zealot · Sharpshooters · Sylvan Centaur · Werewolf</span>
-              <span><i className="tierDot gold" /> Nightmare · Hell Steed · Gorynych</span>
-              <span><i className="tierDot azure" /> Dracolich</span>
-            </div>
-            <footer>
-              <button className="selected" onClick={() => setWogOptionsOpen(false)} type="button">Done</button>
-            </footer>
-          </section>
-          </div>
-        ), document.body)
-        : null}
-
-      {anime.enabled && animeOptionsOpen && typeof document !== "undefined"
-        ? createPortal((
-          <div className="wogWindowBackdrop" onMouseDown={() => setAnimeOptionsOpen(false)}>
-          <section
-            aria-label="Anime mod options"
-            aria-modal="true"
-            className="wogOptionsWindow animeOptionsWindow"
-            onMouseDown={(event) => event.stopPropagation()}
-            role="dialog"
-          >
-            <header>
-              <div>
-                <span className="wogWindowEyebrow">Optional mod</span>
-                <h4>Anime mod</h4>
-              </div>
-              <button aria-label="Close Anime options" onClick={() => setAnimeOptionsOpen(false)} type="button">
-                <X size={16} />
-              </button>
-            </header>
-            <small className="wogWindowDesc">
-              Ninefold Realms × Otherworld Gate — a stack of BINH-family modules (xianxia + isekai). Tick
-              only what you want; each is independent and coexists with WOG and the house rules. Doom is
-              available as its own explicit neutral-monster checkbox below.
-            </small>
-            <div className="wogModuleList">
-              {([
-                ["isekaiTowns", "Fuyuki City + Hidden Leaf Village + Azur Lane Naval Base", "Adds three complete anime towns: Fuyuki City (7-unit Servant roster), Hidden Leaf Village (7-unit shinobi swarm) and Azur Lane Naval Base (7-ship kansen fleet) — each with original heroes, its town board, buildings, starting tile, commander, and anime-themed system vocabulary."],
-                ["xianxiaTowns", "Azure Breeze Sect", "Adds the complete wuxia sect: 7-unit cultivation roster, two original heroes, its mountain town board, buildings, starting tile, and wuxia-themed system vocabulary."],
-                ["doomNeutrals", "Doom monsters", "Adds the 16 classic Doom neutral monsters across the exact Bronze, Silver, Gold and Azure decks. Independent checkbox; off by default."],
-                ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool. Turns Field Overrides on."],
-                ["combatEvents", "Forced battle events", "Scripted combat events on anime fields (the Bí Cảnh spirit-mist / earthvein-surge). Fully automatic — no new prompts."],
-                ["xianxiaArtifacts", "Pháp Bảo artifacts", "Shuffles 5 anime hero Artifact cards (Túi Càn Khôn, Phong Hỏa Luân, Tru Tiên Kiếm, Bát Quái Kính, Tụ Linh Bàn) into the shared Artifact decks by tier."],
-                ["cultivation", "Cultivation realms", "A per-hero Cultivation Realm track (hand limit / reroll / spell Power) plus the Heavenly Tribulation map action."],
-                ["heroGrades", "Hero Grades", "A per-hero Merit → grade track that unlocks a small passive / skill tree (shared by every hero)."],
-                ["equipment", "Hero Equipment", "Always-on hero items in 4 slots (weapon / armor / accessory / mount), bought at outfitter map locations."],
-                ["unitStacks", "Unit Stacks", "Pack / Neutral cards buy persistent Stack layers at the Citadel (+1 Attack, each layer soaks a lethal blow). The Polish Unit Stacks machinery — one pricing, coexists with the house rule."],
-                ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Town Drill training."],
-                ["monsterWaves", "Calamity Waves", "Every Nth round (cadence below), EVERY live player fights a Gate-invasion wave army at round start — assaults resolve in seat order behind the round-start pause. Win: 2 gold + 1 hero XP (+ a Treasure die from wave 3 on). Loss or retreat: pillage — lose 3 gold and your mine/settlement nearest home is overrun by a difficulty-Ⅰ guard."],
-                ["raidBosses", "Raid Bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead — \"the sky cracks\"). Wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
-                ["dungeon", "The Dungeon (Meikyū)", "One repeatable delve site per map, carved onto a Near-tile Blocked Field (needs Creature Banks ON). Per-player floors 1–10, once per turn: pick a room (treasure vault, shrine, whispering wall…), then fight the floor guards for normal XP and a reward ladder. Floors 5 and 10 hold layered floor bosses; floor 10 pays a relic search + the Dungeon Conqueror title."]
-              ] as const).map(([key, label, description]) => {
-                const active = anime[key];
-                return (
-                  <button
-                    aria-pressed={active}
-                    className={`wogModuleToggle ${active ? "selected" : ""}`}
-                    data-testid={`anime-module-${key}`}
-                    key={key}
-                    onClick={() => send({ anime: { ...anime, [key]: !active } })}
-                    type="button"
-                  >
-                    <span className="wogModuleCheck">{active ? <Check size={15} /> : null}</span>
-                    <span>
-                      <strong>{label}</strong>
-                      <small>{description}</small>
-                    </span>
-                  </button>
-                );
-              })}
-              {anime.monsterWaves ? (
-                <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
-                  <strong>Wave cadence</strong>
-                  {([3, 4, 5] as const).map((cadence) => (
-                    <button
-                      aria-pressed={(anime.waveCadence ?? 4) === cadence}
-                      className={`waveCadenceChip ${(anime.waveCadence ?? 4) === cadence ? "selected" : ""}`}
-                      data-testid={`anime-wave-cadence-${cadence}`}
-                      key={cadence}
-                      onClick={() => send({ anime: { ...anime, waveCadence: cadence } })}
-                      type="button"
-                    >
-                      Every {cadence === 3 ? "3rd" : `${cadence}th`} round
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <footer>
-              <button className="selected" onClick={() => setAnimeOptionsOpen(false)} type="button">Done</button>
-            </footer>
-          </section>
-          </div>
-        ), document.body)
-        : null}
 
       {tab === "play" ? (
       <div className="optionTabPanel" role="tabpanel" aria-label="Play">
@@ -9418,76 +9509,7 @@ function GameOptionsPanel({
         );
       })()}
 
-      {(() => {
-        const scenario = scenarioDefinitions[options.scenarioId];
-        const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
-        // Single-player: the seat count is 1 human + N computers, changed only
-        // through the dedicated action (the engine reasserts the controller
-        // invariant on every resize — no resize can mint a human opponent).
-        if (state.sessionMode === "single-player") {
-          const current = lobby.seats.length - 1;
-          const counts: number[] = [];
-          for (let n = 1; n < max; n += 1) {
-            counts.push(n);
-          }
-          return counts.length > 1 ? (
-            <div className="optionRow">
-              <small title="How many computer opponents this game seats — leave them on auto and they pick their own factions after you, or hand-pick / roll each one's town & hero in the Heroes & draft tab">
-                Computer opponents
-              </small>
-              <div className="optionButtons">
-                {counts.map((count) => (
-                  <button
-                    aria-pressed={current === count}
-                    className={current === count ? "selected" : ""}
-                    key={count}
-                    onClick={() =>
-                      onAction({ type: "SET_COMPUTER_OPPONENTS", playerId: viewerPlayerId, count })
-                    }
-                    title={`Play against ${count} computer opponent${count === 1 ? "" : "s"}`}
-                    type="button"
-                  >
-                    {count === 1 ? "1 computer" : `${count} computers`}
-                  </button>
-                ))}
-              </div>
-              <small className="optionHint">
-                Playing with computer — every other seat is a computer opponent; nobody else can join this game.
-              </small>
-            </div>
-          ) : null;
-        }
-        const min = scenario?.minPlayers ?? 2;
-        const seatCount = lobby.seats.length;
-        const counts: number[] = [];
-        for (let n = min; n <= max; n += 1) {
-          counts.push(n);
-        }
-        return counts.length > 1 ? (
-          <div className="optionRow">
-            <small title="How many seats this game opens — each needs a faction before the adventure starts">
-              Players
-            </small>
-            <div className="optionButtons">
-              {counts.map((count) => (
-                <button
-                  aria-pressed={seatCount === count}
-                  className={seatCount === count ? "selected" : ""}
-                  key={count}
-                  onClick={() => send({ playerCount: count })}
-                  title={`Play with ${count} players`}
-                  type="button"
-                >
-                  {count} players
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              Seats beyond two open empty — anyone can sit in them from the table’s seat switcher and pick a faction.
-            </small>
-          </div>
-        ) : null;
-      })()}
+      <SeatCountControl onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
 
       <div className="optionRow">
         <small title="The map you play on — a built-in scenario sheet or a designed map a player saved in the map designer">
@@ -9790,7 +9812,7 @@ function HeroInfoModal({ heroDefId, onClose }: { heroDefId: string; onClose: () 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
+  const modal = (
     <div
       aria-label="Hero details"
       aria-modal="true"
@@ -9806,6 +9828,10 @@ function HeroInfoModal({ heroDefId, onClose }: { heroDefId: string; onClose: () 
       </div>
     </div>
   );
+  // Portal to <body>: the hero grid now lives inside the Setup Hub's own
+  // (body-level) window, so an inline modal would be trapped in the lobby's
+  // stacking context and render UNDER it however high its z-index.
+  return typeof document === "undefined" ? modal : createPortal(modal, document.body);
 }
 
 /** One hero in a faction's hero list: a pick button + an info button (popup). */
@@ -10554,7 +10580,232 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
   );
 }
 
-type SetupTab = "heroes" | "options";
+/** The four big Setup Hub boxes: Game mode · Heroes & Draft · Map · Advanced settings. */
+type SetupHubBoxId = "mode" | "heroes" | "map" | "advanced";
+
+/** Short mode names for the Game-mode box summary. */
+const SETUP_HUB_MODE_NAMES: Record<SetupModeId, string> = {
+  legacy: "Legacy — printed rulebook",
+  binh: "BINH — house-rule edition",
+  tournament: "Tournament — competitive",
+  custom: "Custom — your saved setup"
+};
+
+/**
+ * The Setup Hub: four large icon boxes (2×2, centered) that open the setup
+ * windows, each summarizing the current choice underneath. The icons are the
+ * classic HoMM3 spell-book art (SETUP_HUB_ICONS).
+ */
+function SetupHub({
+  state,
+  viewerPlayerId,
+  onOpen
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onOpen: (box: SetupHubBoxId) => void;
+}) {
+  const lobby = state.setupLobby;
+  if (!lobby) {
+    return null;
+  }
+  const options = lobby.options;
+  const mode = deriveActiveSetupMode(options);
+  const wogOn = options.wog?.enabled === true;
+  const animeOn = options.anime?.enabled === true;
+  const heroes = heroesSummary(state, viewerPlayerId);
+  const map = mapSummary(state);
+  const advanced = advancedSettingsChanged(options);
+
+  return (
+    <div className="setupHubGrid" role="group" aria-label="Setup sections">
+      <button
+        aria-haspopup="dialog"
+        className="setupHubBox setupHubBox--mode"
+        onClick={() => onOpen("mode")}
+        title="Pick a game mode preset and toggle the WOG / Anime mods"
+        type="button"
+      >
+        <span className="setupHubBoxIconWrap">
+          <img alt="" aria-hidden="true" className="setupHubBoxIcon" decoding="async" src={assetUrl(SETUP_HUB_ICONS.mode)} />
+        </span>
+        <strong className="setupHubBoxTitle">Game mode</strong>
+        <span className="setupHubBoxSummary">
+          <span className="setupHubBoxLine">{SETUP_HUB_MODE_NAMES[mode]}</span>
+          {wogOn || animeOn ? (
+            <span className="setupHubBoxLine setupHubChips">
+              {wogOn ? <span className="setupHubChip">WOG</span> : null}
+              {animeOn ? <span className="setupHubChip">Anime</span> : null}
+            </span>
+          ) : null}
+        </span>
+      </button>
+
+      <button
+        aria-haspopup="dialog"
+        className="setupHubBox setupHubBox--heroes"
+        onClick={() => onOpen("heroes")}
+        title="Pick the setup format, your town & hero — and the computer opponents"
+        type="button"
+      >
+        <span className="setupHubBoxIconWrap">
+          <img alt="" aria-hidden="true" className="setupHubBoxIcon" decoding="async" src={assetUrl(SETUP_HUB_ICONS.heroes)} />
+        </span>
+        <strong className="setupHubBoxTitle">Heroes &amp; Draft</strong>
+        <span className="setupHubBoxSummary">
+          {heroes ? (
+            <>
+              <span className="setupHubBoxLine">{heroes.yourPick ?? "Pick your town & hero"}</span>
+              <span className="setupHubBoxLine setupHubBoxDim">
+                {heroes.formatLabel} · {heroes.picked}/{heroes.seats} picked
+                {heroes.computers > 0 ? ` · ${heroes.computers} computer${heroes.computers === 1 ? "" : "s"}` : ""}
+              </span>
+            </>
+          ) : null}
+        </span>
+      </button>
+
+      <button
+        aria-haspopup="dialog"
+        className="setupHubBox setupHubBox--map"
+        onClick={() => onOpen("map")}
+        title="Choose the map you play on and the neutral difficulty"
+        type="button"
+      >
+        <span className="setupHubBoxIconWrap">
+          <img alt="" aria-hidden="true" className="setupHubBoxIcon" decoding="async" src={assetUrl(SETUP_HUB_ICONS.map)} />
+        </span>
+        <strong className="setupHubBoxTitle">Map</strong>
+        <span className="setupHubBoxSummary">
+          {map ? (
+            <>
+              <span className="setupHubBoxLine">{map.name}</span>
+              <span className="setupHubBoxLine setupHubBoxDim">
+                {map.seats} players ·{" "}
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="setupHubDifficultyIcon"
+                  decoding="async"
+                  src={assetUrl(DIFFICULTY_CHESS_ICONS[map.difficulty])}
+                />{" "}
+                {map.difficultyLabel}
+              </span>
+            </>
+          ) : null}
+        </span>
+      </button>
+
+      <button
+        aria-haspopup="dialog"
+        className="setupHubBox setupHubBox--advanced"
+        onClick={() => onOpen("advanced")}
+        title="Every option — win condition, house rules, optional systems, army & resources"
+        type="button"
+      >
+        <span className="setupHubBoxIconWrap">
+          <img alt="" aria-hidden="true" className="setupHubBoxIcon" decoding="async" src={assetUrl(SETUP_HUB_ICONS.advanced)} />
+        </span>
+        <strong className="setupHubBoxTitle">Advanced settings</strong>
+        <span className="setupHubBoxSummary">
+          <span className={`setupHubBoxLine${advanced.changed ? "" : " setupHubBoxDim"}`}>{advanced.label}</span>
+        </span>
+      </button>
+    </div>
+  );
+}
+
+/** The Game-mode window: the 4 mode cards + the WOG/Anime mod rows (and, under Custom, the setting-file panel). */
+function GameModeModal({
+  state,
+  viewerPlayerId,
+  onAction,
+  onClose
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+  onClose: () => void;
+}) {
+  const lobby = state.setupLobby;
+  if (!lobby) {
+    return null;
+  }
+  const options = lobby.options;
+  const send = (next: Partial<GameSetupOptions>) =>
+    onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
+  return (
+    <SetupHubWindow className="setupHubWindow--mode" eyebrow="Game setup" label="Game mode" onClose={onClose}>
+      <GameModeSection
+        customHint="Personal custom setup: save the current map & rules to a file below, or load one of your setting files."
+        customNotice="Custom mode selected: save the current setup to a file, or load a setting file, below."
+        onAction={onAction}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
+      {deriveActiveSetupMode(options) === "custom" ? (
+        <PersonalCustomSettingsPanel options={options} send={send} />
+      ) : null}
+    </SetupHubWindow>
+  );
+}
+
+/** The Heroes & Draft window: setup format + faction/hero picks + the computer-opponent selection. */
+function HeroesDraftModal({
+  state,
+  viewerPlayerId,
+  onAction,
+  onInspect,
+  onClose
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+  onInspect: (heroDefId: string) => void;
+  onClose: () => void;
+}) {
+  // Hot-seat (open table, several seats, one browser): the local seat switcher
+  // lives in the top bar, which this window covers — say so instead of leaving
+  // the player hunting for it.
+  const hotSeat = !state.room?.hosted && (state.setupLobby?.seats.length ?? 0) > 1;
+  return (
+    <SetupHubWindow className="setupHubWindow--heroes" eyebrow="Map setup" label="Heroes & Draft" onClose={onClose}>
+      <SeatCountControl onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <DraftFlowPanel onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />
+      <ComputerOpponentPickers onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />
+      {hotSeat ? (
+        <small className="optionHint">
+          Playing several seats in one browser? Close this window to reach the seat switcher at the top, then open it
+          again for the next seat.
+        </small>
+      ) : null}
+    </SetupHubWindow>
+  );
+}
+
+/** The Advanced-settings window: the full classic Game-options panel, all four tabs. */
+function AdvancedSettingsModal({
+  state,
+  viewerPlayerId,
+  onAction,
+  onClose
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+  onClose: () => void;
+}) {
+  return (
+    <SetupHubWindow
+      className="setupHubWindow--advanced"
+      eyebrow="Full options"
+      label="Advanced settings"
+      onClose={onClose}
+    >
+      <GameOptionsPanel onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+    </SetupHubWindow>
+  );
+}
 
 /**
  * Red "take-back" warning, shown to EVERY player (seated or observing) the
@@ -10720,7 +10971,8 @@ export function SetupLobbyScreen({
   onAction: (action: GameAction) => void;
 }) {
   const lobby = state.setupLobby;
-  const [tab, setTab] = useState<SetupTab>("heroes");
+  // Which Setup Hub window is open (null = the four boxes only).
+  const [openBox, setOpenBox] = useState<SetupHubBoxId | null>(null);
   // The hero info popup (replaces the old inline detail panel). Null = closed.
   const [infoHeroId, setInfoHeroId] = useState<string | null>(null);
   // Re-open the helper-tips prompt after the player already chose (optional).
@@ -10735,11 +10987,6 @@ export function SetupLobbyScreen({
   const scenarioName = scenarioDefinitions[lobby.options.scenarioId]?.name ?? lobby.scenarioId;
   const singlePlayer = state.sessionMode === "single-player";
 
-  const tabs: { id: SetupTab; label: string }[] = [
-    { id: "heroes", label: "Heroes & draft" },
-    { id: "options", label: "Game options" }
-  ];
-
   return (
     <section className="setupLobby" aria-label="Map setup">
       {/* First-visit opt-in: next-step coach + card reasons (local browser pref). */}
@@ -10748,15 +10995,12 @@ export function SetupLobbyScreen({
         <h2>Map setup — {scenarioName}</h2>
         {singlePlayer ? (
           <p>
-            <strong>Playing with computer.</strong> Claim your own town and hero — and, below, hand-pick or roll each
-            computer opponent’s town &amp; hero too, or leave it on auto (the computer picks at game start). Click any
-            hero’s <Info aria-hidden="true" size={12} /> for its stats; the game options live on the second tab.
+            <strong>Playing with computer.</strong> Open <strong>Heroes &amp; Draft</strong> for your town, your hero
+            and the computer opponents. Each box shows its current choice.
           </p>
         ) : (
           <p>
-            Pick a setup format (free pick, draft + ban, full random, or random with choice), then claim a town and
-            hero. Click any hero’s <Info aria-hidden="true" size={12} /> for its stats, ability and specialties. The
-            table also sets the game options on the second tab.
+            Set the game up through the four boxes — each one shows the table&apos;s current choice.
           </p>
         )}
         {helperCoach.ready && helperCoach.preference !== null ? (
@@ -10801,39 +11045,40 @@ export function SetupLobbyScreen({
 
       {mySeat ? (
         <>
-          <div className="setupTabs" role="tablist" aria-label="Setup sections">
-            {tabs.map((entry) => (
-              <button
-                aria-selected={tab === entry.id}
-                className={`setupTab ${tab === entry.id ? "active" : ""}`}
-                key={entry.id}
-                onClick={() => setTab(entry.id)}
-                role="tab"
-                type="button"
-              >
-                {entry.label}
-              </button>
-            ))}
-          </div>
-
-          {tab === "options" ? (
-            <GameOptionsPanel onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
-          ) : (
-            <>
-              <DraftFlowPanel
-                onAction={onAction}
-                onInspect={setInfoHeroId}
-                state={state}
-                viewerPlayerId={viewerPlayerId}
-              />
-              <ComputerOpponentPickers
-                onAction={onAction}
-                onInspect={setInfoHeroId}
-                state={state}
-                viewerPlayerId={viewerPlayerId}
-              />
-            </>
-          )}
+          <SetupHub onOpen={setOpenBox} state={state} viewerPlayerId={viewerPlayerId} />
+          {openBox === "mode" ? (
+            <GameModeModal
+              onAction={onAction}
+              onClose={() => setOpenBox(null)}
+              state={state}
+              viewerPlayerId={viewerPlayerId}
+            />
+          ) : null}
+          {openBox === "heroes" ? (
+            <HeroesDraftModal
+              onAction={onAction}
+              onClose={() => setOpenBox(null)}
+              onInspect={setInfoHeroId}
+              state={state}
+              viewerPlayerId={viewerPlayerId}
+            />
+          ) : null}
+          {openBox === "map" ? (
+            <MapPickModal
+              onAction={onAction}
+              onClose={() => setOpenBox(null)}
+              state={state}
+              viewerPlayerId={viewerPlayerId}
+            />
+          ) : null}
+          {openBox === "advanced" ? (
+            <AdvancedSettingsModal
+              onAction={onAction}
+              onClose={() => setOpenBox(null)}
+              state={state}
+              viewerPlayerId={viewerPlayerId}
+            />
+          ) : null}
         </>
       ) : (
         (() => {

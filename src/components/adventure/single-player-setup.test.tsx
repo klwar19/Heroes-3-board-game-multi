@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
  * Setup lobby in SINGLE-PLAYER: the screen says "Playing with computer",
- * computer seats carry a Computer badge, and the Map & Setup tab replaces the
- * multiplayer "Players" control with a "Computer opponents" control that
- * dispatches the dedicated SET_COMPUTER_OPPONENTS action (never
- * SET_GAME_OPTIONS.playerCount). A multiplayer lobby is the CONTROL: no
- * badges, the classic Players control.
+ * computer seats carry a Computer badge, and the Heroes & Draft hub window
+ * (plus the Advanced settings → Map & Setup tab) replaces the multiplayer
+ * "Players" control with a "Computer opponents" control that dispatches the
+ * dedicated SET_COMPUTER_OPPONENTS action (never SET_GAME_OPTIONS.playerCount).
+ * A multiplayer lobby is the CONTROL: no badges, the classic Players control.
  */
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,11 @@ import { SetupLobbyScreen } from "./screen";
 vi.mock("@/lib/music", () => ({ useBackgroundMusic: vi.fn() }));
 
 afterEach(cleanup);
+
+/** The picks + computer selection live in the Heroes & Draft hub window. */
+function openHeroes() {
+  fireEvent.click(screen.getByRole("button", { name: /Heroes & Draft/ }));
+}
 
 function renderSinglePlayer(onAction = vi.fn()) {
   const state = createAdventureLobbyState({
@@ -36,10 +41,9 @@ describe("SetupLobbyScreen — single-player", () => {
     expect(screen.getByText("You", { selector: ".computerSeatBadge" })).toBeTruthy();
   });
 
-  it("offers Computer opponents (SET_COMPUTER_OPPONENTS), not the multiplayer Players control", () => {
+  it("offers Computer opponents (SET_COMPUTER_OPPONENTS) in the Heroes & Draft window, not the multiplayer Players control", () => {
     const onAction = renderSinglePlayer();
-    fireEvent.click(screen.getByRole("tab", { name: "Game options" }));
-    fireEvent.click(screen.getByRole("tab", { name: "Map & Setup" }));
+    openHeroes();
 
     expect(screen.queryByText("Players", { selector: ".optionRow small" })).toBeNull();
     const row = screen.getByText("Computer opponents").closest(".optionRow") as HTMLElement;
@@ -53,7 +57,7 @@ describe("SetupLobbyScreen — single-player", () => {
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
 
     expect(screen.queryByText("Computer", { selector: ".computerSeatBadge" })).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: "Game options" }));
+    fireEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
     fireEvent.click(screen.getByRole("tab", { name: "Map & Setup" }));
     const row = screen.getByText("Players").closest(".optionRow") as HTMLElement;
     fireEvent.click(within(row).getByRole("button", { name: "3 players" }));
@@ -74,6 +78,7 @@ describe("SetupLobbyScreen — single-player", () => {
 describe("SetupLobbyScreen — single-player computer opponent pickers", () => {
   it("renders one picker per computer seat (Random at start) and dispatches a roll", () => {
     const onAction = renderSinglePlayer();
+    openHeroes();
     const section = screen.getByLabelText("Computer opponents setup");
     // Two computer seats (computerOpponents: 2): "Computer 1" (p2), "Computer 2" (p3).
     expect(within(section).getByLabelText("Set up Computer 1")).toBeTruthy();
@@ -92,6 +97,7 @@ describe("SetupLobbyScreen — single-player computer opponent pickers", () => {
 
   it("expands the faction grid and dispatches a hand-picked town + hero", () => {
     const onAction = renderSinglePlayer();
+    openHeroes();
     const seatBlock = screen.getByLabelText("Set up Computer 1");
     // No grid until expanded.
     expect(within(seatBlock).queryByLabelText("Pick a faction and hero")).toBeNull();
@@ -121,6 +127,7 @@ describe("SetupLobbyScreen — single-player computer opponent pickers", () => {
     seat.heroDefId = "catherine";
     state.players.p2.name = "Catherine of Castle";
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    openHeroes();
 
     const seatBlock = screen.getByLabelText("Set up Computer 1");
     // Shows the pick, not the auto badge.
@@ -140,6 +147,7 @@ describe("SetupLobbyScreen — single-player computer opponent pickers", () => {
     const onAction = vi.fn();
     const state = createAdventureLobbyState({ seed: "mp-pickers", scenarioId: "skirmish", playerCount: 3 });
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    openHeroes();
     expect(screen.queryByLabelText("Computer opponents setup")).toBeNull();
   });
 });

@@ -9584,8 +9584,8 @@ span.recruitThumb {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 22px;
+  gap: 10px;
+  padding: 12px 22px 14px;
   max-width: 1080px;
   margin: 0 auto;
   width: 100%;
@@ -9860,40 +9860,514 @@ span.recruitThumb {
   background: rgb(82 61 29 / 38%);
 }
 
-/* Map-setup tabs (Heroes & specialties / Draft & random / Game options). */
-.setupTabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  border-bottom: 1px solid rgba(170, 130, 70, 0.3);
-  padding-bottom: 8px;
+/* ------------------------------------------------------------------------ */
+/* Setup Hub — the four big icon boxes (Game mode · Heroes & Draft · Map ·
+   Advanced settings), centered mid-screen in a 2×2 grid, each opening a
+   popup window and summarizing the current choice underneath. */
+.setupHubGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 300px));
+  justify-content: center;
+  gap: 14px;
+  /* Center the boxes in the leftover space between the seats row and the
+     Start button (the button below takes the matching auto margin). With a
+     short viewport the autos collapse to 0 and the page simply scrolls. */
+  margin-top: auto;
+  padding: 4px 0 2px;
 }
 
-.setupTab {
-  padding: 7px 14px;
-  border-radius: 9px 9px 0 0;
-  border: 1px solid rgba(150, 116, 60, 0.45);
-  border-bottom: none;
-  background: linear-gradient(180deg, rgba(48, 35, 18, 0.7), rgba(28, 21, 11, 0.8));
-  color: #d8c39a;
-  font-weight: 600;
-  font-size: 13px;
+/* The lobby's Start button is the same art button the menu uses; cap its height
+   here so the four boxes stay the screen's centre of gravity. */
+.setupLobby > .newGameMenuButton {
+  width: min(200px, 60vw);
+  margin-bottom: auto;
+}
+
+.setupLobby > .newGameMenuButton .newGameMenuLabel {
+  font-size: 19px;
+}
+
+/* The table chat docks bottom-LEFT at up to 380px wide (z-index 200). On a wide
+   screen the centered Start button clears it horizontally; on a narrow one the
+   dock spans the column, so reserve room to scroll the button out from under it. */
+@media (max-width: 820px) {
+  .setupLobby {
+    padding-bottom: calc(56vh + 32px);
+  }
+
+  /* Flow from the top instead of centering: on a narrow screen the auto margins
+     would park the Start button near the dock AND move it every time the dock
+     grows a line. */
+  .setupHubGrid,
+  .setupLobby > .newGameMenuButton {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .setupLobby > .newGameMenuButton {
+    margin-inline: auto;
+  }
+}
+
+/* The setup screen reads as a title screen: the whole column is centered on the
+   four boxes (the in-game table keeps its left-aligned panels). */
+.setupLobby > header,
+.setupLobby > header p,
+.setupLobby > .helperCoachLobbyNote {
+  text-align: center;
+  margin-inline: auto;
+}
+
+.setupLobby > .lobbySeats {
+  justify-content: center;
+}
+
+.setupHubBox {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  justify-items: center;
+  align-items: start;
+  gap: 7px;
+  min-height: 152px;
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(150, 116, 60, 0.55);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(214, 164, 76, 0.16), transparent 55%),
+    linear-gradient(165deg, rgba(52, 38, 20, 0.92), rgba(24, 17, 9, 0.94) 70%);
+  color: #e7d3a8;
   cursor: pointer;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 227, 172, 0.07),
+    0 10px 26px rgba(0, 0, 0, 0.5);
   transition:
-    background 0.15s ease,
-    color 0.15s ease;
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-.setupTab:hover {
+.setupHubBox:hover,
+.setupHubBox:focus-visible {
+  transform: translateY(-3px);
+  border-color: #ffd76a;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 227, 172, 0.14),
+    0 0 18px rgba(214, 164, 76, 0.28),
+    0 14px 30px rgba(0, 0, 0, 0.55);
+}
+
+.setupHubBoxIconWrap {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border: 2px solid rgba(214, 178, 94, 0.65);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 30%, rgba(120, 90, 40, 0.55), rgba(20, 14, 8, 0.92) 75%);
+  box-shadow:
+    inset 0 0 14px rgba(0, 0, 0, 0.7),
+    0 3px 10px rgba(0, 0, 0, 0.5);
+}
+
+.setupHubBoxIcon {
+  width: 48px;
+  height: 46px;
+  object-fit: contain;
+  border-radius: 8px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.7));
+}
+
+.setupHubBoxTitle {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
   color: #ffe9bd;
-  border-color: rgba(214, 178, 94, 0.7);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
 }
 
-.setupTab.active {
+.setupHubBoxSummary {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #cdb68a;
+  text-align: center;
+}
+
+.setupHubBoxLine {
+  display: block;
+  max-width: 26ch;
+}
+
+.setupHubBoxDim {
+  opacity: 0.78;
+  font-size: 11px;
+}
+
+.setupHubChips {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.setupHubChip {
+  padding: 1px 8px;
+  border: 1px solid rgba(193, 130, 225, 0.6);
+  border-radius: 999px;
+  background: rgba(90, 50, 110, 0.35);
+  color: #e8d4f5;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.setupHubDifficultyIcon {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+}
+
+/* The hub popup shell sits ABOVE the docked table chat (z-index 200), which
+   would otherwise cover the window's bottom-left corner. The two dialogs that
+   open from INSIDE a hub window — the hero-info popup (normally 120) and the
+   WOG/Anime mod windows (130) — are lifted over it for exactly that window's
+   lifetime, keeping the same relative order without touching any other screen. */
+.setupHubBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(7, 5, 3, 0.66);
+  backdrop-filter: blur(2px);
+}
+
+body:has(.setupHubBackdrop) .heroInfoBackdrop {
+  z-index: 220;
+}
+
+body:has(.setupHubBackdrop) .wogWindowBackdrop {
+  z-index: 230;
+}
+
+.setupHubWindow {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 96vw);
+  max-height: min(86vh, 860px);
+  border: 1px solid rgba(214, 178, 94, 0.66);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(140, 100, 40, 0.3), transparent 42%),
+    linear-gradient(160deg, #241a0e, #120d07 70%);
+  color: #e9d6ab;
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.72),
+    inset 0 0 0 1px rgba(255, 227, 172, 0.08);
+  outline: none;
+  animation: setupHubWindowIn 0.18s ease-out;
+}
+
+@keyframes setupHubWindowIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.setupHubWindow--mode {
+  width: min(900px, 96vw);
+}
+
+.setupHubWindow--heroes,
+.setupHubWindow--advanced {
+  width: min(1080px, 96vw);
+}
+
+.setupHubWindow--map {
+  width: min(980px, 96vw);
+}
+
+.setupHubWindowHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid rgba(170, 130, 70, 0.35);
+}
+
+.setupHubWindowEyebrow {
+  display: block;
+  color: #c9a55e;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.setupHubWindowHead h3 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  color: #ffe7a1;
+}
+
+.setupHubWindowClose {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  min-height: 30px;
+  border: 1px solid rgba(214, 178, 94, 0.5);
+  border-radius: 7px;
+  background: rgba(52, 38, 20, 0.8);
+  color: #ffe9bd;
+  cursor: pointer;
+}
+
+.setupHubWindowClose:hover {
+  border-color: #ffd76a;
+}
+
+.setupHubWindowBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px 16px;
+  overflow-y: auto;
+}
+
+/* --- Map window: filters · list · shape preview · chess difficulty bar --- */
+.mapPickFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.mapPickFilterChips {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.mapPickFilterChips button {
+  padding: 5px 11px;
+  border: 1px solid rgba(150, 116, 60, 0.45);
+  border-radius: 999px;
+  background: rgba(35, 26, 14, 0.55);
+  color: #d8c39a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mapPickFilterChips button:hover {
+  border-color: rgba(214, 178, 94, 0.8);
+  color: #ffe9bd;
+}
+
+.mapPickFilterChips button.selected {
+  border-color: #ffd76a;
   background: linear-gradient(180deg, #e8c576, #c2933f);
   color: #2a1c08;
+}
+
+.mapPickSearch {
+  display: flex;
+  flex: 1;
+  min-width: 160px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid rgba(150, 116, 60, 0.45);
+  border-radius: 999px;
+  background: rgba(20, 14, 8, 0.6);
+  color: #bfa87c;
+}
+
+.mapPickSearch input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: #ffe9bd;
+  font-size: 13px;
+  outline: none;
+}
+
+.mapPickLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 14px;
+  min-height: 240px;
+}
+
+.mapPickList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.mapPickRow {
+  display: grid;
+  gap: 2px;
+  padding: 9px 12px;
+  border: 1px solid rgba(150, 116, 60, 0.4);
+  border-radius: 10px;
+  background: rgba(35, 26, 14, 0.55);
+  color: #e7d3a8;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mapPickRow:hover {
+  border-color: rgba(214, 178, 94, 0.8);
+}
+
+.mapPickRow.highlighted {
   border-color: #ffd76a;
-  text-shadow: 0 1px 0 rgba(255, 244, 214, 0.4);
+  background: rgba(82, 61, 29, 0.5);
+}
+
+.mapPickRow.applied {
+  box-shadow: inset 0 0 0 1px rgba(126, 217, 87, 0.35);
+}
+
+.mapPickRowName {
+  font-weight: 700;
+  color: #ffe9bd;
+}
+
+.mapPickRowMeta {
+  font-size: 11px;
+  color: #bfa87c;
+}
+
+.mapPickDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid rgba(150, 116, 60, 0.35);
+  border-radius: 12px;
+  background: rgba(20, 14, 8, 0.55);
+}
+
+.mapShapePreviewSvg {
+  flex: none;
+  width: 100%;
+  height: 170px;
+  border: 1px solid rgba(150, 116, 60, 0.3);
+  border-radius: 10px;
+  background: radial-gradient(circle at 50% 40%, rgba(60, 45, 22, 0.5), rgba(12, 9, 5, 0.7));
+}
+
+.mapPickInfo {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #cdb68a;
+}
+
+.mapPickInfo strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  color: #ffe9bd;
+}
+
+.mapPickCredit {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.mapPickProblem {
+  color: #ff9a8a;
+}
+
+.mapPickUseButton {
+  margin-top: 4px;
+  padding: 9px 14px;
+  border: 1px solid #ffd76a;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #e8c576, #c2933f);
+  color: #2a1c08;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mapPickUseButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+  filter: grayscale(0.4);
+}
+
+.mapPickDifficulty {
+  display: grid;
+  gap: 6px;
+}
+
+.mapPickDifficultyLabel {
+  font-size: 11px;
+  color: #bfa87c;
+}
+
+/* Difficulty as chess pieces: Pawn = Easy · Knight = Normal · Rook = Hard ·
+   King = Impossible. */
+.difficultyChessBar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.difficultyChessBtn {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 6px 8px;
+  border: 1px solid rgba(150, 116, 60, 0.45);
+  border-radius: 12px;
+  background: rgba(35, 26, 14, 0.55);
+  color: #d8c39a;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.difficultyChessBtn img {
+  width: 44px;
+  height: 44px;
+  filter: grayscale(0.55) brightness(0.8);
+  transition: filter 0.15s ease;
+}
+
+.difficultyChessBtn:hover {
+  border-color: rgba(214, 178, 94, 0.8);
+  transform: translateY(-1px);
+}
+
+.difficultyChessBtn:hover img,
+.difficultyChessBtn.selected img {
+  filter: none;
+}
+
+.difficultyChessBtn.selected {
+  border-color: #ffd76a;
+  background: rgba(82, 61, 29, 0.55);
+  color: #ffe9bd;
+  box-shadow: inset 0 0 14px rgba(214, 164, 76, 0.25);
 }
 
 /* Heroes tab: detail panel above the faction grid. */
@@ -28645,6 +29119,96 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   border: 1px solid var(--cmp-gold-deep);
   border-image: none;
   border-radius: 12px;
+}
+
+/* Setup Hub on phone: the 2×2 boxes shrink to fit, and the hub popup windows
+   become full-screen sheets. The windows PORTAL to <body> (outside <main>),
+   so they take the body:has(main.phoneMode) form — same :has() dependency as
+   the header/footer collapse (graceful no-op on old browsers). */
+.phoneMode .setupHubGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.phoneMode .setupHubBox {
+  min-height: 136px;
+  padding: 12px 10px 10px;
+}
+
+.phoneMode .setupHubBoxIconWrap {
+  width: 56px;
+  height: 56px;
+}
+
+.phoneMode .setupHubBoxIcon {
+  width: 44px;
+  height: 42px;
+}
+
+.phoneMode .setupHubBoxTitle {
+  font-size: 15px;
+}
+
+/* The collapsed chat pill floats over the bottom-left corner; leave room so the
+   last row of boxes and the Start button can always scroll clear of it. */
+.phoneMode .setupLobby {
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+}
+
+body:has(main.phoneMode) .setupHubBackdrop {
+  padding: 0;
+}
+
+body:has(main.phoneMode) .setupHubWindow {
+  width: 100vw;
+  height: 100dvh;
+  max-height: none;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+}
+
+body:has(main.phoneMode) .setupHubWindowBody {
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+/* On a full-screen sheet the close button leads the header (the mobile-sheet
+   idiom), which also keeps it clear of anything pinned to the top-right corner
+   — in dev, the Next dev-tools badge sits exactly there. */
+body:has(main.phoneMode) .setupHubWindowHead {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+body:has(main.phoneMode) .setupHubWindowClose {
+  order: -1;
+}
+
+/* One column: the shape preview + info stack UNDER the map list. The list keeps
+   its own scroll (a big library would otherwise make the sheet miles long, and
+   a `min-height: 0` here would let the flex column shrink the grid while the
+   list spilled over the difficulty bar). */
+body:has(main.phoneMode) .mapPickLayout {
+  grid-template-columns: 1fr;
+  /* Never shrink: the sheet body scrolls instead, so the stacked preview + info
+     can't be squeezed into (and painted over) the difficulty bar below. */
+  flex: none;
+}
+
+/* A min-height as well as a max: the list is a scroll container, so without one
+   the flex column above would squeeze it to a couple of rows and scroll the
+   whole sheet instead. */
+body:has(main.phoneMode) .mapPickList {
+  min-height: 30vh;
+  max-height: 38vh;
+}
+
+body:has(main.phoneMode) .mapPickDetail {
+  max-height: none;
+}
+
+body:has(main.phoneMode) .difficultyChessBtn {
+  padding: 12px 6px 10px;
 }
 
 /* Anime/Wuxia boards use seven real slices from ONE fully-built panorama. The

@@ -1,6 +1,23 @@
 import { expect, type Page, test } from "@playwright/test";
 
 /**
+ * The lobby's faction/hero picks live in the Setup Hub's "Heroes & Draft"
+ * window; it is a modal, so the top-bar seat switcher needs it closed first.
+ */
+async function openHeroesWindow(page: Page): Promise<void> {
+  const box = page.locator(".setupHubBox--heroes");
+  await expect(box).toBeVisible();
+  await box.click();
+  await expect(page.getByRole("dialog", { name: "Heroes & Draft" })).toBeVisible();
+}
+
+async function closeHeroesWindow(page: Page): Promise<void> {
+  const dialog = page.getByRole("dialog", { name: "Heroes & Draft" });
+  await dialog.locator(".setupHubWindowClose").click();
+  await expect(dialog).toHaveCount(0);
+}
+
+/**
  * Phone UI mode — the REAL-BROWSER half of the feature's test bar.
  *
  * The jsdom suite (src/app/page-phone-mode.test.tsx) pins the wiring (class +
@@ -44,11 +61,15 @@ async function startTwoPlayerAdventure(page: Page, roomId: string): Promise<void
   await chooseUiMode(page, "phone");
   await dismissCoachPrompt(page);
 
+  await openHeroesWindow(page);
   await page.getByRole("button", { name: /Catherine/ }).click();
-  await expect(page.getByText("Castle — Catherine", { exact: false })).toBeVisible();
+  await expect(page.locator(".lobbySeat").filter({ hasText: "Castle — Catherine" })).toBeVisible();
+  await closeHeroesWindow(page);
   await page.getByTitle("Sit as Player 2").click();
+  await openHeroesWindow(page);
   await page.getByRole("button", { name: /Sandro/ }).click();
-  await expect(page.getByText("Necropolis — Sandro", { exact: false })).toBeVisible();
+  await expect(page.locator(".lobbySeat").filter({ hasText: "Necropolis — Sandro" })).toBeVisible();
+  await closeHeroesWindow(page);
 
   await page.getByRole("button", { name: "New Game" }).click();
   await expect(page.locator(".hexMapSvg")).toBeVisible({ timeout: 20000 });
@@ -129,9 +150,13 @@ test("CONTROL — computer mode: desktop side-by-side layout, zero phone chrome"
   await chooseUiMode(page, "computer");
   await dismissCoachPrompt(page);
 
+  await openHeroesWindow(page);
   await page.getByRole("button", { name: /Catherine/ }).click();
+  await closeHeroesWindow(page);
   await page.getByTitle("Sit as Player 2").click();
+  await openHeroesWindow(page);
   await page.getByRole("button", { name: /Sandro/ }).click();
+  await closeHeroesWindow(page);
   await page.getByRole("button", { name: "New Game" }).click();
   await expect(page.locator(".hexMapSvg")).toBeVisible({ timeout: 20000 });
   await dismissFirstRoll(page);

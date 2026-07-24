@@ -82,6 +82,7 @@ import {
 } from "@/engine";
 import { GuardSpecEditor } from "./guard-spec-editor";
 import { FieldRewardEditor } from "./field-reward-editor";
+import { flowerOutline, GROUP_COLORS } from "./map-shape-preview";
 import {
   fieldOverrideGlyph,
   fieldOverrideImage,
@@ -226,22 +227,8 @@ function planGroupLabel(plan: { group: DesignGroup; seaBand?: SeaBand; subBand?:
   return TILE_GROUP_LABELS[plan.group];
 }
 
-/**
- * Tile-outline colours mirror the creature-tier ladder, so a designer instantly
- * reads the band's MAX recruitable unit tier from the ring: Ⅰ = bronze, Ⅱ–Ⅲ =
- * silver, Ⅳ–Ⅴ = gold, Ⅵ–Ⅶ = azure. The land hues reuse the app's canonical grade
- * colours (`.tierDot.*` / `.neutralDeck.*` in globals.css). Sea is a light blue
- * and Underground keeps its purple. This is the MAP-EDITOR outline only — the
- * in-game yellow movement borders (screen.tsx / borders.ts) are untouched.
- */
-const GROUP_COLORS: Record<DesignGroup, string> = {
-  starting: "#b46f33", // bronze — Ⅰ tiles guard bronze units only
-  far: "#c7ccd6", // silver — Ⅱ–Ⅲ tiles top out at silver
-  near: "#e7b73c", // gold — Ⅳ–Ⅴ tiles top out at gold
-  center: "#3f7fd6", // azure — Ⅵ–Ⅶ tiles reach azure
-  sea: "#8fd8ff", // light blue — water
-  subterranean: "#7a5a9e" // purple — underground (kept, per the design brief)
-};
+// Tile-outline colours + the flower-outline path primitive live in
+// map-shape-preview.tsx (shared with the lobby's read-only map preview).
 
 /** Band-legend order: the six DesignGroups from weakest (Ⅰ) to Sea/Underground. */
 const BAND_LEGEND_GROUPS: readonly DesignGroup[] = [
@@ -1043,32 +1030,6 @@ function edgeStripPoints(cx: number, cy: number, size: number, direction: number
     `${x2 - ox},${y2 - oy}`,
     `${x1 - ox},${y1 - oy}`
   ].join(" ");
-}
-
-/** The outline of a 7-hex flower as one SVG path (outer edges only). */
-function flowerOutline(center: HexCoord, size: number): string {
-  const cells = tileFootprint(center, 0);
-  const cellKeys = new Set(cells.map((cell) => `${cell.row}:${cell.col}`));
-  const segments: string[] = [];
-  for (const cell of cells) {
-    const { x, y } = hexToPixel(cell, size);
-    const corners: { x: number; y: number }[] = [];
-    for (let index = 0; index < 6; index += 1) {
-      const angle = (Math.PI / 180) * (60 * index - 30);
-      corners.push({ x: x + size * Math.cos(angle), y: y + size * Math.sin(angle) });
-    }
-    const neighbors = hexNeighbors(cell);
-    for (let direction = 0; direction < 6; direction += 1) {
-      const neighbor = neighbors[direction];
-      if (cellKeys.has(`${neighbor.row}:${neighbor.col}`)) {
-        continue;
-      }
-      const a = corners[(direction + 5) % 6];
-      const b = corners[direction % 6];
-      segments.push(`M ${a.x} ${a.y} L ${b.x} ${b.y}`);
-    }
-  }
-  return segments.join(" ");
 }
 
 /** A live drag of a tile type from the palette, or of an already-placed tile. */

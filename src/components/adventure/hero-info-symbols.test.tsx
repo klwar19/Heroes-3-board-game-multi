@@ -16,6 +16,8 @@ afterEach(cleanup);
 function openHeroInfo(heroName: RegExp) {
   const state = createAdventureLobbyState({ seed: "ui-hero-info" });
   render(<SetupLobbyScreen onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+  // The hero pick grid lives in the Heroes & Draft hub window.
+  fireEvent.click(screen.getByRole("button", { name: /Heroes & Draft/ }));
   fireEvent.click(screen.getByTitle(new RegExp(`${heroName.source}: specialty`)));
   return screen.getByRole("dialog", { name: "Hero details" });
 }

@@ -16,7 +16,8 @@ function openOptions(onAction = vi.fn(), optionOverrides: { creatureBanks?: bool
   const state = createAdventureLobbyState({ seed: "options-tabs" });
   Object.assign(state.setupLobby!.options, optionOverrides);
   render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
-  fireEvent.click(screen.getByRole("tab", { name: "Game options" }));
+  // The full options panel lives in the Setup Hub's Advanced-settings window.
+  fireEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
   return onAction;
 }
 
@@ -25,7 +26,7 @@ function openOptionsWith(mutate: (state: GameState) => void, onAction = vi.fn())
   const state = createAdventureLobbyState({ seed: "options-tabs-vp" });
   mutate(state);
   render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
-  fireEvent.click(screen.getByRole("tab", { name: "Game options" }));
+  fireEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
   return onAction;
 }
 
