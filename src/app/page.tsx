@@ -82,6 +82,7 @@ import {
 } from "@/components/table/overlays";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
+import { takePendingSinglePlayerLoad } from "@/lib/single-player-saves";
 import { campaignSceneToFire, campaignSetupActions } from "@/lib/campaign-triggers";
 import { getCampaignChapter } from "@/data/story/campaigns";
 import {
@@ -3908,6 +3909,34 @@ export default function Home() {
     };
   }, [roomId, ingestSnapshot, clientId]);
 
+  // Single-player save slots: a Load clicked on the /single-player menu page
+  // (no live connection there) navigates here with a pending marker; apply it
+  // ONCE per room as soon as the connection and the first snapshot exist. The
+  // server validates owner + solo mode, and a stale or foreign marker is
+  // dropped by takePendingSinglePlayerLoad itself.
+  const pendingSpLoadRoomRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!roomId || !state || pendingSpLoadRoomRef.current === roomId) {
+      return;
+    }
+    const connection = connectionRef.current;
+    if (!connection) {
+      return;
+    }
+    pendingSpLoadRoomRef.current = roomId;
+    const pending = takePendingSinglePlayerLoad(roomId);
+    if (!pending) {
+      return;
+    }
+    connection
+      .loadSinglePlayerSave(pending.state)
+      .then((snapshot) => ingestSnapshotRef.current(snapshot, { seatAuthoritative: true }))
+      .catch((error) => {
+        // The in-game save panel remains the manual fallback.
+        console.warn("Pending single-player load failed:", error);
+      });
+  }, [roomId, state]);
+
   const submitAction = async (action: GameAction) => {
     // The human is taking their turn: snap any in-flight computer-move replay to
     // the settled positions so a paced pawn never lags under a fresh action.
@@ -5028,7 +5057,25 @@ export default function Home() {
         </button>
       </div>
       {state.sessionMode === "single-player" ? (
-        <SinglePlayerSavePanel roomId={roomId} roomVersion={roomVersion} state={state} compact />
+        <SinglePlayerSavePanel
+          compact
+          onFetchSaveState={() => {
+            const connection = connectionRef.current;
+            return connection
+              ? connection.fetchSinglePlayerSave()
+              : Promise.reject(new Error("Not connected to the room."));
+          }}
+          onLoadSave={async (saved) => {
+            const connection = connectionRef.current;
+            if (!connection) {
+              throw new Error("Not connected to the room.");
+            }
+            const snapshot = await connection.loadSinglePlayerSave(saved);
+            ingestSnapshotRef.current(snapshot, { seatAuthoritative: true });
+          }}
+          roomId={roomId}
+          state={state}
+        />
       ) : null}
     </div>
   );

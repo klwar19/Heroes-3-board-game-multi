@@ -163,13 +163,7 @@ import {
   activeBuildingActions
 } from "@/components/adventure/town-sections";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
-import {
-  deletePersonalCustomSetting,
-  loadPersonalCustomSettings,
-  savePersonalCustomSetting,
-  type PersonalCustomSetting
-} from "@/lib/personal-custom-settings";
-import { getIdentity } from "@/lib/identity";
+import { buildCustomSetupFile, customSetupFileName, parseCustomSetupFile } from "@/lib/custom-setup-file";
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
@@ -7339,6 +7333,14 @@ function MapPicker({
   );
 }
 
+/**
+ * "Custom setting" — FILE-based save/load of the lobby's whole map + rules
+ * setup (user spec: Save writes the current setting to a file, Load opens a
+ * file picker; every player keeps their own files). The loaded options run
+ * through the normal SET_GAME_OPTIONS pipeline, so an old file from a previous
+ * patch has its unknown fields skipped and any invalid value rejected with the
+ * engine's own message instead of corrupting the lobby.
+ */
 function PersonalCustomSettingsPanel({
   options,
   send
@@ -7346,34 +7348,49 @@ function PersonalCustomSettingsPanel({
   options: GameSetupOptions;
   send: (next: Partial<GameSetupOptions>) => void;
 }) {
-  const [settings, setSettings] = useState<PersonalCustomSetting[]>([]);
   const [name, setName] = useState("");
-  const [ownerLabel, setOwnerLabel] = useState("this player");
+  const [notice, setNotice] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const identity = getIdentity();
-      setOwnerLabel(identity.userId ? "your account" : "this browser tab");
-      setSettings(loadPersonalCustomSettings());
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  const saveCurrent = () => {
-    const existing = settings.find((setting) => setting.name === name.trim());
-    savePersonalCustomSetting(name, { ...options, customMode: true }, existing?.id);
-    setName("");
-    setSettings(loadPersonalCustomSettings());
-    // Keep the selected card visibly in Custom mode even when a preset was
-    // saved while the rules tab was active.
+  const saveToFile = () => {
+    const payload = buildCustomSetupFile(options, name);
+    const fileName = customSetupFileName(payload.name);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    // Keep the selected card visibly in Custom mode even when the setting was
+    // saved while another mode preset was active.
     send({ customMode: true });
+    setNotice(`Saved “${payload.name}” to ${fileName}.`);
+  };
+
+  const loadFromFile = async (file: File) => {
+    const parsed = parseCustomSetupFile(await file.text());
+    if (!parsed.ok) {
+      setNotice(parsed.reason);
+      return;
+    }
+    send(parsed.options);
+    setNotice(
+      `Loaded “${parsed.name}”.${
+        parsed.sameEngineVersion
+          ? ""
+          : " It was saved by a different game version — options a patch changed are skipped or rejected with a message."
+      }`
+    );
   };
 
   return (
-    <div className="personalCustomSettings" aria-label="Personal custom settings">
+    <div className="personalCustomSettings" aria-label="Custom setting — save or load a file">
       <div className="mapPickerGroupLabel">
-        <strong>Personal custom settings</strong>
-        <small>Save/load private map and rules sets for {ownerLabel}.</small>
+        <strong>Custom setting — file</strong>
+        <small>Save the current map &amp; rules to a file; load a file to restore them. Each player keeps their own files.</small>
       </div>
       <div className="personalCustomSaveRow">
         <input
@@ -7382,41 +7399,44 @@ function PersonalCustomSettingsPanel({
           onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
-              saveCurrent();
+              saveToFile();
             }
           }}
-          placeholder="Setting name"
+          placeholder="Setting name (used in the file name)"
           value={name}
         />
-        <button onClick={saveCurrent} type="button">Save current</button>
+        <button onClick={saveToFile} title="Download the current map & rules setup as a file" type="button">
+          Save to file
+        </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          title="Choose a saved setting file and apply it to this lobby"
+          type="button"
+        >
+          Load from file…
+        </button>
+        <input
+          accept=".json,application/json"
+          aria-label="Choose a custom setting file"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // Allow re-picking the same file after a failed/edited load.
+            event.target.value = "";
+            if (file) {
+              void loadFromFile(file);
+            }
+          }}
+          ref={fileInputRef}
+          type="file"
+        />
       </div>
-      {settings.length > 0 ? (
-        <ul className="personalCustomSettingsList">
-          {settings.map((setting) => (
-            <li key={setting.id}>
-              <span>
-                <strong>{setting.name}</strong>
-                <small>{new Date(setting.savedAt).toLocaleDateString()}</small>
-              </span>
-              <button onClick={() => send({ ...setting.options, customMode: true })} type="button">Load</button>
-              <button
-                aria-label={`Delete ${setting.name}`}
-                className="ghost"
-                onClick={() => {
-                  deletePersonalCustomSetting(setting.id);
-                  setSettings(loadPersonalCustomSettings());
-                }}
-                type="button"
-              >
-                Delete
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <small className="optionHint">No personal presets saved yet.</small>
-      )}
-      <small className="optionHint">Shared designer maps remain available above; these presets are only for you.</small>
+      {notice ? (
+        <small className="optionHint" role="status">
+          {notice}
+        </small>
+      ) : null}
+      <small className="optionHint">Shared designer maps remain available above; setting files are only for you.</small>
     </div>
   );
 }
@@ -7923,7 +7943,7 @@ const SETUP_MODE_CARDS: {
     id: "custom",
     label: "Custom",
     blurb: "Your saved setup",
-    hint: "Use a personal map and rules preset, saved privately for this player."
+    hint: "Save the current map & rules to a file, or load one of your setting files — each player keeps their own."
   }
 ];
 
@@ -8005,7 +8025,7 @@ function GameOptionsPanel({
     if (mode === "custom") {
       send({ customMode: true });
       setTab("map");
-      setModeNotice("Custom mode selected: save or load a personal map and rules setup in Map & Setup.");
+      setModeNotice("Custom mode selected: save the current setup to a file, or load a setting file, in Map & Setup.");
       return;
     }
     if (mode === "legacy") {
@@ -8122,7 +8142,7 @@ function GameOptionsPanel({
         </div>
         <small className="optionHint">
           {activeSetupMode === "custom"
-            ? "Personal custom setup: use Map & Setup to load or save your private map and rules preset."
+            ? "Personal custom setup: in Map & Setup, save the current map & rules to a file or load one of your setting files."
             : activeSetupMode === "legacy"
             ? RULESET_DESCRIPTIONS.legacy
             : activeSetupMode === "tournament"

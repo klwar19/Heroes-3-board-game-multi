@@ -2347,6 +2347,9 @@ export function CommandDock({
   );
 }
 
+/** How many events the single-player history drawer renders (newest kept). */
+const SINGLE_PLAYER_HISTORY_LIMIT = 500;
+
 export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerPlayerId?: PlayerId }) {
   const singlePlayer = state.sessionMode === "single-player";
   const [open, setOpen] = useState(singlePlayer);
@@ -2378,7 +2381,9 @@ export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerP
     };
   }, [singlePlayer, state, viewerPlayerId]);
   const events = useMemo(() => {
-    const source = singlePlayer ? logState.eventLog : logState.eventLog.slice(-30);
+    // Single-player history goes deep but stays bounded: a late-game log holds
+    // thousands of events, and rendering them all janks the drawer open/close.
+    const source = singlePlayer ? logState.eventLog.slice(-SINGLE_PLAYER_HISTORY_LIMIT) : logState.eventLog.slice(-30);
     const reversed = [...source].reverse();
     if (filter === "all") {
       return reversed;
@@ -2412,7 +2417,8 @@ export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerP
     };
     return reversed.filter((event) => groups[filter].has(event.type));
   }, [filter, logState.eventLog, singlePlayer]);
-  const latest = [...logState.eventLog].at(-1);
+  const latest = logState.eventLog.at(-1);
+  const truncated = singlePlayer && logState.eventLog.length > SINGLE_PLAYER_HISTORY_LIMIT;
 
   return (
     <section className={`logDrawer ${open ? "open" : ""}${singlePlayer ? " singlePlayerHistory" : ""}`} aria-label={singlePlayer ? "Single-player history" : "Game log"}>
@@ -2436,7 +2442,10 @@ export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerP
                   {entry === "all" ? "All" : entry === "dice" ? "Dice" : entry === "cards" ? "Draws & discards" : "Events"}
                 </button>
               ))}
-              <small>{events.length} entr{events.length === 1 ? "y" : "ies"}</small>
+              <small>
+                {events.length} entr{events.length === 1 ? "y" : "ies"}
+                {truncated ? ` (last ${SINGLE_PLAYER_HISTORY_LIMIT})` : ""}
+              </small>
             </div>
           ) : null}
           <ol>

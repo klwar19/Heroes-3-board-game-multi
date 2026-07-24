@@ -788,37 +788,47 @@ export function TownRecruitSection({
               <UnitCost cost={recruitCost} label={`Recruit cost for ${unit.name}`} />
               {recruitLegion > 0 ? ` · Legion −${recruitLegion}` : ""}
             </small>
-            {/* One-click shortcut: recruit this unit's Few into your unit deck now,
-                skipping the basket. Cost shown to the left, button gated on
-                affordability — the "limit/info" stays visible. */}
-            <button
-              className="recruitQuick"
-              disabled={!canPopulate || !recruitAffordable}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onAction({
-                  type: "POPULATION_ACTION",
-                  playerId: viewerPlayerId,
-                  purchases: [{ kind: "recruit", unitDefId }]
-                });
-              }}
-              title={
-                recruitAffordable ? `Recruit ${unit.name} now — ${formatCost(recruitCost)}` : "Not enough resources to recruit"
-              }
-              type="button"
-            >
-              Recruit
-            </button>
-            <input
-              checked={checked}
-              onChange={() =>
-                setRecruitIds((current) =>
-                  checked ? current.filter((id) => id !== unitDefId) : [...current, unitDefId]
-                )
-              }
-              type="checkbox"
-            />
+            {tierUnlocked ? (
+              <>
+                {/* One-click shortcut: recruit this unit's Few into your unit deck now,
+                    skipping the basket. Cost shown to the left, button gated on
+                    affordability — the "limit/info" stays visible. */}
+                <button
+                  className="recruitQuick"
+                  disabled={!canPopulate || !recruitAffordable}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onAction({
+                      type: "POPULATION_ACTION",
+                      playerId: viewerPlayerId,
+                      purchases: [{ kind: "recruit", unitDefId }]
+                    });
+                  }}
+                  title={
+                    recruitAffordable ? `Recruit ${unit.name} now — ${formatCost(recruitCost)}` : "Not enough resources to recruit"
+                  }
+                  type="button"
+                >
+                  Recruit
+                </button>
+                <input
+                  aria-label={`Add ${unit.name} to the recruit basket`}
+                  checked={checked}
+                  onChange={() =>
+                    setRecruitIds((current) =>
+                      checked ? current.filter((id) => id !== unitDefId) : [...current, unitDefId]
+                    )
+                  }
+                  type="checkbox"
+                />
+              </>
+            ) : (
+              /* The engine rejects a locked-tier recruit ("Build the dwelling of that
+                 unit's level first"), so the row shows the requirement instead of an
+                 always-failing button. The cards stay visible for planning/zoom. */
+              <small className="recruitState">build the {unit.tier} dwelling first</small>
+            )}
           </div>
         );
       })}
