@@ -55,6 +55,24 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     expect(document.querySelectorAll(".recruitThumbImg").length).toBeGreaterThan(0);
   });
 
+  it("keeps both Few and Pack cards visible with icon costs and owned-side glow", () => {
+    const state = recruitReadyState();
+    const faction = coreFactionDefinitions[state.players.p1.factionId!];
+    const unitIds = faction.units.filter((id) => Boolean(coreUnitDefinitions[id]?.few));
+    renderRecruit(state);
+
+    expect(document.querySelectorAll(".unitSideCards")).toHaveLength(unitIds.length);
+    expect(document.querySelectorAll(".unitSideCard.pack").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".unitCostItem img[src*='resource-gold']").length).toBeGreaterThan(0);
+
+    const ownedUnitId = unitIds.find((id) => Boolean(coreUnitDefinitions[id]?.pack))!;
+    state.players.p1.army = [{ id: "army_owned_few", unitDefId: ownedUnitId, side: "few" }];
+    cleanup();
+    renderRecruit(state);
+    expect(document.querySelector(`.recruitRow.owned-few .unitSideCard.few.owned`)).toBeTruthy();
+    expect(document.querySelector(`.recruitRow.owned-few .unitSideCard.pack.unowned`)).toBeTruthy();
+  });
+
   it("a per-row Recruit button fires a single-purchase POPULATION_ACTION", () => {
     const { onAction } = renderRecruit(recruitReadyState());
     const recruitButtons = screen.getAllByRole("button", { name: "Recruit" });
