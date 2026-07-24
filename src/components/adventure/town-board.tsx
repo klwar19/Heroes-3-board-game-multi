@@ -1145,7 +1145,8 @@ export function TownWindow({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
+  errors = []
 }: {
   open: boolean;
   onClose: () => void;
@@ -1153,6 +1154,14 @@ export function TownWindow({
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  /**
+   * Rules errors / notices from the last action. The app's shared error banner
+   * sits in normal document flow BEHIND this fixed, z-indexed modal, so a build
+   * refused while the town window is open was invisible ("nothing happened,
+   * only sound"). Surfacing them inside the window is why a failed BUILD_STRUCTURE
+   * now tells the player why.
+   */
+  errors?: string[];
 }) {
   // The last-used view persists across sessions. Reading localStorage in the
   // lazy initializer is hydration-safe here: the window renders nothing until
@@ -1263,6 +1272,13 @@ export function TownWindow({
             <X aria-hidden="true" size={16} />
           </button>
         </header>
+        {errors.length > 0 ? (
+          <div className="errorBanner townWindowErrors" aria-label="Rules errors" role="alert">
+            {errors.map((error) => (
+              <span key={error}>{error}</span>
+            ))}
+          </div>
+        ) : null}
         <div className="townWindowBody">
           {view === "board" ? (
             <TownBoardView legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />

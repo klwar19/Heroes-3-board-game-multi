@@ -18549,6 +18549,17 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   color: var(--gold);
 }
 
+/* Rules errors surfaced INSIDE the town modal (the shared page banner sits in
+   normal flow behind this fixed, z-indexed window). Sticky just under the
+   sticky header so a refused build stays visible even when the board is
+   scrolled. */
+.townWindowErrors {
+  position: sticky;
+  top: 66px;
+  z-index: 4;
+  margin: 8px 14px 0;
+}
+
 .townWindowBody {
   padding: 12px 14px 16px;
 }

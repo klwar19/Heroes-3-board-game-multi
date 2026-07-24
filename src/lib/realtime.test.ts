@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { connectRoom, requestCloseRoom } from "./realtime";
+import {
+  connectRoom,
+  requestCloseRoom,
+  SEAT_REHEAL_COOLDOWN_MS,
+  shouldReconnectForSeatRejection
+} from "./realtime";
+import { VERIFIED_SEAT_REJECTION_MESSAGE } from "@/engine";
 
 const partySocketMock = vi.hoisted(() => ({
   instances: [] as {
@@ -196,6 +202,110 @@ describe("connectRoom — PartyKit drop/reconnect handling", () => {
     expect(url.searchParams.get("clientId")).toBe("client-abc");
     expect(url.searchParams.get("token")).toBe("player-ticket");
 
+    connection.close();
+  });
+});
+
+/**
+ * Self-heal a lapsed verified identity. Over a long hosted session the edge can
+ * lose our verified identity (Cloudflare hibernation wipes its token cache AND
+ * the 10-minute socket ticket has expired), degrading a signed-in actor to a
+ * guest and rejecting every seat action with VERIFIED_SEAT_REJECTION_MESSAGE.
+ * The transport reconnects (re-running the async query → a fresh ticket) instead
+ * of forcing the player to refresh — bounded so a genuine refusal can't spin.
+ */
+describe("seat-rejection self-heal decision (pure)", () => {
+  it("matches only the seat-identity rejection, and respects the cooldown", () => {
+    const seatErr = [{ message: VERIFIED_SEAT_REJECTION_MESSAGE }];
+    // Fires when past the cooldown since the last heal.
+    expect(shouldReconnectForSeatRejection(seatErr, 0, 100_000)).toBe(true);
+    // Suppressed while still within the cooldown of the last heal.
+    expect(shouldReconnectForSeatRejection(seatErr, 100_000, 100_000 + 1_000)).toBe(false);
+    // Fires again exactly at the cooldown boundary.
+    expect(shouldReconnectForSeatRejection(seatErr, 100_000, 100_000 + SEAT_REHEAL_COOLDOWN_MS)).toBe(true);
+    // An ordinary rules error is never a re-auth trigger.
+    expect(shouldReconnectForSeatRejection([{ message: "You don't have enough gold." }], 0, 100_000)).toBe(false);
+    // No errors → nothing to heal.
+    expect(shouldReconnectForSeatRejection([], 0, 100_000)).toBe(false);
+  });
+});
+
+describe("connectRoom — PartyKit self-heals a lapsed verified seat", () => {
+  const realFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    partySocketMock.instances.length = 0;
+    process.env.NEXT_PUBLIC_PARTYKIT_HOST = "rooms.example.partykit.dev";
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ roomId: "room-42", version: 9, updatedAt: "now", state: {} })
+    })) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    delete process.env.NEXT_PUBLIC_PARTYKIT_HOST;
+    vi.restoreAllMocks();
+  });
+
+  const rejectOnce = async (
+    connection: ReturnType<typeof connectRoom>,
+    socket: (typeof partySocketMock.instances)[number],
+    message: string
+  ) => {
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const frame = JSON.parse(String(socket.send.mock.calls.at(-1)![0])) as { requestId: string };
+    socket.emit("message", {
+      data: JSON.stringify({
+        type: "action-result",
+        requestId: frame.requestId,
+        version: 9,
+        errors: [{ code: "ACTION_NOT_LEGAL", message }]
+      })
+    });
+    await resultPromise;
+  };
+
+  it("reconnects EXACTLY once (per cooldown) on the seat-identity rejection", async () => {
+    const connection = connectRoom(
+      "room-42",
+      { onSnapshot: vi.fn(), onStatus: vi.fn() },
+      "client-abc",
+      async () => "player-ticket"
+    );
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+
+    await rejectOnce(connection, socket, VERIFIED_SEAT_REJECTION_MESSAGE);
+    expect(socket.reconnect).toHaveBeenCalledTimes(1);
+    expect(socket.reconnect).toHaveBeenCalledWith(4000, "seat re-auth");
+
+    // A second rejection within the cooldown must NOT spin the socket.
+    await rejectOnce(connection, socket, VERIFIED_SEAT_REJECTION_MESSAGE);
+    expect(socket.reconnect).toHaveBeenCalledTimes(1);
+    connection.close();
+  });
+
+  it("CONTROL: an ordinary rules rejection never reconnects", async () => {
+    const connection = connectRoom(
+      "room-42",
+      { onSnapshot: vi.fn(), onStatus: vi.fn() },
+      "client-abc",
+      async () => "player-ticket"
+    );
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    await rejectOnce(connection, socket, "You don't have enough gold.");
+    expect(socket.reconnect).not.toHaveBeenCalled();
+    connection.close();
+  });
+
+  it("CONTROL: a guest (no token provider) never reconnects — a reconnect can't mint a ticket it lacks", async () => {
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    await rejectOnce(connection, socket, VERIFIED_SEAT_REJECTION_MESSAGE);
+    expect(socket.reconnect).not.toHaveBeenCalled();
     connection.close();
   });
 });

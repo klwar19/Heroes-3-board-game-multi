@@ -54,7 +54,8 @@ export {
   roomActionGuard,
   roomDisplayName,
   seatForViewer,
-  seatOfClient
+  seatOfClient,
+  VERIFIED_SEAT_REJECTION_MESSAGE
 } from "./room";
 export type { VerifiedActor } from "./room";
 export { getSeatIdentity, memberForSeat, seatPersonLabel, seatPickSummary } from "./player-identity";
