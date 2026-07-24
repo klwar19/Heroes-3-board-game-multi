@@ -1245,7 +1245,17 @@ function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFi
   // Designer Garrison object: its flag holder defends it like a settlement,
   // for 3 gold (the printed rule).
   const isGarrisonObject = field.location === "garrison" && Boolean(field.flagOwnerId);
-  if (!isTown && !isSettlement && !isCapturedUtopia && !isBuiltGrail && !isGarrisonObject) {
+  // Global house rule `mine-army-defense`: an enemy walking onto an ALREADY-
+  // FLAGGED Mine opens the settlement-style defense (3 gold, army-only) instead
+  // of re-flagging it for free. Only reached when the Mine has NO live guard —
+  // the guard fight takes precedence in resolveHeroArrival, so a re-seeded/
+  // unflagged Mine keeps its guard-fight path. A View Earth remote capture never
+  // reaches this code path (it flags directly), so it stays a free capture.
+  const isDefendableMine =
+    field.location === "mine" &&
+    Boolean(field.flagOwnerId) &&
+    houseRuleEnabled(state, "mine-army-defense");
+  if (!isTown && !isSettlement && !isCapturedUtopia && !isBuiltGrail && !isGarrisonObject && !isDefendableMine) {
     return null;
   }
 
@@ -1268,12 +1278,17 @@ function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFi
   return ownerId;
 }
 
-/** The gold a defender pays to garrison `field`: 3 for a designer Garrison object, 8 otherwise. */
+/**
+ * The gold a defender pays to garrison `field`: 3 for a designer Garrison object
+ * or a Mine (both minor holdings — `mine-army-defense`), 8 for a Town/Settlement/
+ * captured Utopia/Grail site.
+ */
 function garrisonDefenseCost(field: MapFieldState): number {
-  return field.location === "garrison" ? 3 : 8;
+  return field.location === "garrison" || field.location === "mine" ? 3 : 8;
 }
 
-/** Opens the 8-gold garrison decision for the town owner; true when waiting. */
+/** Opens the garrison defense decision for the holding's owner (cost per
+ * `garrisonDefenseCost`); returns true when the game is now waiting on it. */
 function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field: MapFieldState): boolean {
   const adventure = requireAdventure(state);
   const defenderId = garrisonDefenderFor(state, attacker, field);
@@ -1281,16 +1296,26 @@ function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field
     return false;
   }
 
-  // Parallel turns: assaulting another player's town/settlement is PvP — the
-  // mode stops (with the table-wide warning) whether the owner garrisons or
+  const siteLabel = isBuiltGrailField(state, field)
+    ? "Grail site"
+    : field.location === "dragon_utopia"
+      ? "Dragon Utopia"
+      : field.location === "garrison"
+        ? "garrison"
+        : field.location === "mine"
+          ? "mine"
+          : locationDefinitions[field.location]?.category === "town"
+            ? "town"
+            : "settlement";
+
+  // Parallel turns: assaulting another player's town/settlement/mine is PvP —
+  // the mode stops (with the table-wide warning) whether the owner garrisons or
   // lets it fall, before the garrison decision even opens.
   stopParallelTurns(
     state,
     "pvp-battle",
     attacker.controllerId,
-    `assaulting ${state.players[defenderId]?.name ?? defenderId}'s ${
-      locationDefinitions[field.location]?.category === "town" ? "town" : "settlement"
-    }`
+    `assaulting ${state.players[defenderId]?.name ?? defenderId}'s ${siteLabel}`
   );
 
   const cost = garrisonDefenseCost(field);
@@ -1308,15 +1333,6 @@ function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field
     goldCost: cost
   };
 
-  const siteLabel = isBuiltGrailField(state, field)
-    ? "Grail site"
-    : field.location === "dragon_utopia"
-      ? "Dragon Utopia"
-      : field.location === "garrison"
-        ? "garrison"
-        : locationDefinitions[field.location]?.category === "town"
-          ? "town"
-          : "settlement";
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",

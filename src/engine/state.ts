@@ -169,7 +169,15 @@ export type HouseRuleId =
   // never touches combat difficulty / XP / reward — only the fought army grows.
   // Quick Combat / level auto-wins (resolved before the army deploys) are
   // unaffected. See `mineGuardReinforcementDraws` / drawGuardArmy (adventure.ts).
-  | "mine-guard-reinforcement";
+  | "mine-guard-reinforcement"
+  // Global map rule (default OFF in BOTH modes): an enemy Hero walking onto YOUR
+  // already-flagged Mine no longer re-flags it for free — the owner gets the
+  // settlement-style defense window (pay 3 gold, defend with UNITS only, no
+  // hero/cards), or lets it fall (the flag hands over exactly like today's
+  // walk-in). Win keeps the Mine; loss/decline flags it for the attacker. A Mine
+  // with a LIVE neutral guard still fights the guard first; a View Earth remote
+  // capture is NOT intercepted. See `garrisonDefenderFor` (adventure-reducer.ts).
+  | "mine-army-defense";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
