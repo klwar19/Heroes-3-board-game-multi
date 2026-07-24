@@ -424,7 +424,6 @@ describe("BattlefieldBoard — Expert Tactics is one board control, not a menu o
         <CommandDock
           legalActions={expertSwapLegalActions()}
           onAction={vi.fn()}
-          onReset={() => {}}
           state={state}
           viewerPlayerId="p1"
         />
@@ -526,7 +525,7 @@ describe("BattlefieldBoard — PvP Neutral Control pre-battle formation sort", (
     const onAction = vi.fn();
     const { container } = render(
       <CardZoomProvider>
-        <CommandDock legalActions={[finish]} onAction={onAction} onReset={() => {}} state={sortState()} viewerPlayerId="p1" />
+        <CommandDock legalActions={[finish]} onAction={onAction} state={sortState()} viewerPlayerId="p1" />
       </CardZoomProvider>
     );
     const button = [...container.querySelectorAll("button")].find((entry) => /ready for battle/i.test(entry.textContent ?? ""));
@@ -585,7 +584,7 @@ describe("BattlefieldBoard — WOG Commanders pre-combat sort", () => {
     const onAction = vi.fn();
     const { container } = render(
       <CardZoomProvider>
-        <CommandDock legalActions={[finish]} onAction={onAction} onReset={() => {}} state={commanderSortState()} viewerPlayerId="p1" />
+        <CommandDock legalActions={[finish]} onAction={onAction} state={commanderSortState()} viewerPlayerId="p1" />
       </CardZoomProvider>
     );
     const button = [...container.querySelectorAll("button")].find((entry) => /ready for battle/i.test(entry.textContent ?? ""));

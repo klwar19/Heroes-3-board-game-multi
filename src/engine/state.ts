@@ -4782,6 +4782,8 @@ export type GameEvent =
       count: number;
       requested: number;
       reshuffledDiscard: boolean;
+      /** Exact cards for the owner’s private history; other seats see hidden entries. */
+      cardIds?: CardId[];
     }
   | {
       /** Spell Book (house rule): a Spell moved from hand into the Spell Book. */
@@ -5120,6 +5122,8 @@ export type GameEvent =
       playerId: PlayerId;
       discarded: number;
       drawn: number;
+      /** Exact cards for the owner’s private history; other seats see hidden entries. */
+      discardedCardIds?: CardId[];
       /** Set when the double-negative-morale penalty empties the hand at turn end. */
       reason?: "morale-double-negative";
     }
@@ -5130,6 +5134,8 @@ export type GameEvent =
       playerId: PlayerId;
       /** Replacements still left this game after this one. */
       remaining: number;
+      /** Exact replacement card(s) for the owner’s private history. */
+      discardedCardIds?: CardId[];
     }
   | {
       id: string;
@@ -5162,6 +5168,13 @@ export type GameEvent =
       cardId: string;
       name: string;
       text: string;
+      round: number;
+    }
+  | {
+      id: string;
+      type: "ASTROLOGERS_DISCARDED";
+      cardId: string;
+      name: string;
       round: number;
     }
   | {
@@ -10781,6 +10794,8 @@ export type GameSetupOptions = {
   scenarioId: string;
   /** Seats in the map-setup lobby, clamped to the scenario's min/max players. */
   playerCount?: number;
+  /** Personal custom setup mode; keeps the normal Legacy/BINH ruleset underneath. */
+  customMode?: boolean;
   /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
   ruleset: GameRuleset;
   /** Wake of Gods modules. Enabled only in BINH mode; absent means fully off. */

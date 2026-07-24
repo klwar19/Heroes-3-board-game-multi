@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
+import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import { assetUrl } from "@/lib/asset-url";
 import { createSinglePlayerRoom } from "@/lib/realtime";
 
@@ -70,6 +71,7 @@ export default function SinglePlayerPage() {
           pick during setup.
         </small>
       </div>
+      <SinglePlayerSavePanel />
       {error ? <p className="authError" role="alert">{error}</p> : null}
       <nav className="menuNav" aria-label="Single player">
         <button className="menuNavButton" disabled={creating} onClick={() => void create()} type="button">

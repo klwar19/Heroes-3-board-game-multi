@@ -49,6 +49,7 @@ export function drawCardsForPlayer(state: GameState, playerId: PlayerId, amount:
 
   let drawn = 0;
   let reshuffledDiscard = false;
+  const cardIds: CardId[] = [];
 
   for (let count = 0; count < amount; count += 1) {
     if (player.deck.length === 0 && player.discard.length > 0) {
@@ -63,6 +64,7 @@ export function drawCardsForPlayer(state: GameState, playerId: PlayerId, amount:
     }
 
     player.hand.push(card);
+    cardIds.push(card);
     drawn += 1;
   }
 
@@ -71,7 +73,8 @@ export function drawCardsForPlayer(state: GameState, playerId: PlayerId, amount:
     playerId,
     count: drawn,
     requested: amount,
-    reshuffledDiscard
+    reshuffledDiscard,
+    cardIds
   });
 
   return drawn;

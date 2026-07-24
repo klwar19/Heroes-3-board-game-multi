@@ -11,7 +11,6 @@ function renderDock(state: GameState, onAction: (action: GameAction) => void) {
     <CommandDock
       legalActions={[]}
       onAction={onAction}
-      onReset={() => {}}
       state={state}
       viewerPlayerId="p1"
     />
