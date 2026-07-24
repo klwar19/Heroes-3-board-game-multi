@@ -5700,6 +5700,7 @@ export default function Home() {
 
           {isSeated && viewerTown ? (
             <TownWindow
+              errors={errors}
               legalActions={legalActions}
               onAction={submitAction}
               onClose={() => setTownOpen(false)}

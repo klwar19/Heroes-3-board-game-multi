@@ -3,8 +3,10 @@ import {
   applyAction,
   createAdventureGameState,
   healVerifiedMembership,
+  roomActionGuard,
   seatForViewer,
   seatOfClient,
+  VERIFIED_SEAT_REJECTION_MESSAGE,
   type GameAction,
   type GameState
 } from "./index";
@@ -318,6 +320,70 @@ describe("a verified session over a guest-joined member (the fallback binding)",
       expectRejected(state, { type: "END_TURN", playerId: "p2" }, { clientId: "cB", userId: "uM" })
     ).toContain("Join the room");
     expect(seatForViewer(state, { clientId: "cB", userId: "uM" })).toBe("observer");
+  });
+});
+
+describe("private single-player: a degraded (guest) actor may act for its own verified seat", () => {
+  /**
+   * The reported single-player bug. On the deployed edge, a signed-in player's
+   * 10-minute socket ticket expires while the websocket stays open; a Cloudflare
+   * hibernation then wipes the edge's in-memory token cache, so the reconnect's
+   * re-verify fails and the actor degrades to a GUEST. Its clientId still matches
+   * the member — but the member carries the verified `userId`, so the hosted seat
+   * guard used to reject EVERY action ("That seat belongs to a verified account")
+   * until a page refresh minted a fresh ticket ("having to refresh a lot").
+   *
+   * A private single-player room is a 128-bit-unguessable, never-listed,
+   * one-human, never-ranked table only its owner could ever join, so it exempts
+   * the guest-degradation lockout while STILL enforcing the seat.
+   */
+  function singlePlayerVerifiedGame(): GameState {
+    let state = makeGame();
+    // Mark the game single-player; the human's verified JOIN then trips the
+    // owner gate that hosts + privates the room and seats them at p1.
+    state.sessionMode = "single-player";
+    state = expectOk(state, { type: "JOIN_ROOM", clientId: "cA", name: "Alice" }, { clientId: "cA", userId: "uA" });
+    expect(state.room?.hosted).toBe(true);
+    expect(state.room?.visibility).toBe("private");
+    const member = state.room?.members.find((m) => m.clientId === "cA");
+    expect(member?.seat).toBe("p1");
+    expect(member?.userId).toBe("uA"); // the seat IS bound to the verified account
+    return state;
+  }
+
+  it("a guest actor matching the member's clientId is NOT rejected (own private game)", () => {
+    const state = singlePlayerVerifiedGame();
+    // The verified identity lapsed → the actor arrives as a guest (clientId only).
+    expect(roomActionGuard(state, { type: "END_TURN", playerId: "p1" }, { clientId: "cA" })).toBeNull();
+  });
+
+  it("CONTROL: the identical guest actor IS rejected on a hosted MULTIPLAYER room", () => {
+    // Same shape — hosted room, member bound to a verified account, guest actor —
+    // but NOT private single-player, so the multiplayer lockout is unchanged.
+    // This is the mutation control: it fails if the exemption is not gated on
+    // isPrivateSinglePlayer.
+    const state = verifiedSeatedGame();
+    expect(roomActionGuard(state, { type: "END_TURN", playerId: "p1" }, { clientId: "cA" })).toBe(
+      VERIFIED_SEAT_REJECTION_MESSAGE
+    );
+  });
+
+  it("still enforces the seat: the guest cannot act for a DIFFERENT seat", () => {
+    const state = singlePlayerVerifiedGame();
+    // There is only one human seat in single-player, but the seat check must
+    // still bite if the action names another seat.
+    expect(roomActionGuard(state, { type: "END_TURN", playerId: "p2" }, { clientId: "cA" })).toContain(
+      "Seats are locked"
+    );
+  });
+
+  it("the verified actor (unexpired ticket) still acts normally — no regression", () => {
+    const state = singlePlayerVerifiedGame();
+    expect(roomActionGuard(state, { type: "END_TURN", playerId: "p1" }, { clientId: "cA", userId: "uA" })).toBeNull();
+    // And a stranger's guest clientId that matches NO member is still refused.
+    expect(roomActionGuard(state, { type: "END_TURN", playerId: "p1" }, { clientId: "stranger" })).toContain(
+      "Join the room"
+    );
   });
 });
 

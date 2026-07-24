@@ -391,6 +391,42 @@ describe("TownWindow — view toggle", () => {
     expect(strip?.getAttribute("aria-label")).toMatch(/resources/i);
   });
 
+  it("surfaces rules errors INSIDE the window (the page banner is hidden behind the modal)", () => {
+    // Report 2: a build refused while the town window is open produced "only
+    // sound" because the shared error banner sits in normal document flow behind
+    // the fixed, z-indexed town modal. The window renders the errors itself.
+    const state = freshState();
+    const { container, rerender } = render(
+      <TownWindow
+        errors={["You don't have enough gold."]}
+        legalActions={getLegalActions(state, "p1")}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        open
+        state={state}
+        viewerPlayerId="p1"
+      />
+    );
+    const banner = container.querySelector(".townWindowErrors");
+    expect(banner).toBeTruthy();
+    expect(banner?.getAttribute("role")).toBe("alert");
+    expect(banner?.textContent).toMatch(/enough gold/i);
+
+    // CONTROL: no errors → no in-window banner (so it never nags when nothing failed).
+    rerender(
+      <TownWindow
+        errors={[]}
+        legalActions={getLegalActions(state, "p1")}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        open
+        state={state}
+        viewerPlayerId="p1"
+      />
+    );
+    expect(container.querySelector(".townWindowErrors")).toBeNull();
+  });
+
   it("renders nothing while closed and closes via the ✕ button", () => {
     const state = freshState();
     const onClose = vi.fn();

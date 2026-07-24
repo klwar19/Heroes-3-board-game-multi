@@ -1,4 +1,5 @@
 import { appendSystemChat } from "./chat";
+import { isPrivateSinglePlayer } from "./computer/control";
 import { appendEvent } from "./events";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
@@ -52,6 +53,21 @@ export function isRoomMembershipAction(action: GameAction): boolean {
  * passes `{ clientId }` (guest) or `{ userId }` (signed-in) explicitly.
  */
 export type VerifiedActor = { clientId?: string; userId?: string };
+
+/**
+ * The seat-guard rejection a hosted room returns when a GUEST actor's claimed
+ * clientId matches a member bound to a verified account. Exported as ONE
+ * constant so the client transport can recognise it (see the self-heal
+ * reconnect in src/lib/realtime.ts): over a long hosted session the edge's
+ * verified-identity resolution can lapse — Cloudflare hibernation wipes the
+ * in-memory memoization AND the browser's 10-minute socket ticket has since
+ * expired — degrading a signed-in actor to a guest and producing exactly this
+ * message. The client answers it by reconnecting to mint a fresh ticket instead
+ * of forcing the player to refresh. Keep the string and this constant in
+ * lockstep; the guard below is the sole producer.
+ */
+export const VERIFIED_SEAT_REJECTION_MESSAGE =
+  "That seat belongs to a verified account — sign in to act for it.";
 
 /** Longest accepted room name; longer input is trimmed to this. */
 export const MAX_ROOM_NAME_LENGTH = 40;
@@ -871,8 +887,21 @@ export function roomActionGuard(
   if (!member) {
     return "Join the room before taking a seat's action.";
   }
-  if (member.userId) {
-    return "That seat belongs to a verified account — sign in to act for it.";
+  // PRIVATE single-player exemption (defense in depth for the hibernation
+  // ticket-expiry bug). An `sp-` room is a 128-bit-unguessable, never-listed,
+  // one-human table that only its owner could ever join (joinRoom's owner gate)
+  // and is never ranked/MMR. Its lone human member carries a `userId` when
+  // signed in, so when Cloudflare hibernation wipes the edge's in-memory token
+  // cache AND the 10-minute socket ticket has since expired, this actor
+  // degrades to a guest — and would otherwise be locked out of its OWN private
+  // game (every action rejected here) until a page refresh minted a fresh
+  // ticket. The claimed clientId still matches the seat's member and nobody
+  // else can be in the room, so let it act; the seat check below still applies.
+  // Hosted MULTIPLAYER rooms are NOT private single-player (checked via the
+  // sessionMode / private-visibility markers), so their behaviour is unchanged
+  // — a guest can never reach a verified account's seat there.
+  if (member.userId && !isPrivateSinglePlayer(state)) {
+    return VERIFIED_SEAT_REJECTION_MESSAGE;
   }
   if (member.seat !== playerId) {
     return "Seats are locked: you can only act for your own seat.";
