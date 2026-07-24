@@ -42,6 +42,7 @@ import {
   recordUndoSnapshot,
   undoModeEnabled
 } from "@/server/undo-history";
+import { prepareSinglePlayerLoad, singlePlayerSaveAccess } from "@/server/single-player-save";
 import { httpTokenVerifier, memoizeVerifier, type TokenVerifier, type VerifiedIdentity } from "@/server/verified-actor";
 
 /**
@@ -1513,7 +1514,69 @@ export default class GameRoomServer implements Party.Server {
       const body = (await request.json().catch(() => null)) as
         | ({ reset?: boolean; actorClientId?: string; adminKey?: string } & RoomResetOptions)
         | { action?: GameAction; actorClientId?: string }
+        | { spSave?: boolean; spLoad?: boolean; state?: GameState; actorClientId?: string }
         | null;
+
+      // Single-player save slots (owner-only, solo rooms only) — the edge twin
+      // of the built-in route's spSave/spLoad. The save fetch returns the RAW
+      // state on purpose: the per-seat redacted frames ("hidden" deck
+      // placeholders) can never restore a game. See src/server/single-player-save.ts.
+      if (body && "spSave" in body && body.spSave) {
+        const actorClientId = "actorClientId" in body ? body.actorClientId : undefined;
+        const userId = await this.verifiedUserIdFromRequest(request);
+        const current = this.ensureSnapshot();
+        const access = singlePlayerSaveAccess(current.state, { clientId: actorClientId, userId });
+        if (!access.ok) {
+          return jsonWithCors({ reason: access.reason }, 403);
+        }
+        // The `spSave: true` marker lets the client tell this RAW reply apart
+        // from the generic snapshot fallback an OLDER room-server deploy would
+        // return for an unknown body (which is REDACTED and would silently
+        // corrupt a save) — the stale-edge guard.
+        return jsonWithCors({ spSave: true, state: current.state, version: current.version });
+      }
+      if (body && "spLoad" in body && body.spLoad && "state" in body && body.state) {
+        const actorClientId = "actorClientId" in body ? body.actorClientId : undefined;
+        const userId = await this.verifiedUserIdFromRequest(request);
+        const incoming = body.state;
+        const outcome = await this.serialized(async () => {
+          const current = this.ensureSnapshot();
+          const prepared = prepareSinglePlayerLoad(current.state, incoming, { clientId: actorClientId, userId });
+          if (!prepared.ok) {
+            return { denied: prepared.reason as string | null, snapshot: current };
+          }
+          // A load jumps timelines — drop the undo history like a reset does.
+          clearUndoHistory(this.room.id);
+          this.snapshot = {
+            roomId: this.room.id,
+            version: current.version + 1,
+            updatedAt: new Date().toISOString(),
+            ...this.creationMeta(prepared.state),
+            state: prepared.state
+          };
+          await this.persist();
+          await this.broadcastSnapshot();
+          return { denied: null, snapshot: this.snapshot };
+        });
+        if (outcome.denied) {
+          return jsonWithCors({ reason: outcome.denied }, 403);
+        }
+        // The loaded game may be mid-computer-turn: re-arm the paced pump for
+        // the restored state (mirrors the undo path's scheduleComputer).
+        if (this.snapshot && computerPumpOwed(this.snapshot.state)) {
+          await this.scheduleComputerPump(computerStepDelayMs(this.snapshot.state));
+        }
+        // `spLoad: true` marker: an OLDER room-server deploy answers an unknown
+        // body with a plain snapshot WITHOUT applying anything — the client
+        // must be able to tell "loaded" from "ignored" (the stale-edge guard).
+        return jsonWithCors({
+          spLoad: true,
+          snapshot: this.redactSnapshotForActor(this.signed(this.snapshot ?? outcome.snapshot), {
+            clientId: actorClientId,
+            userId
+          })
+        });
+      }
 
       if (body && "reset" in body && body.reset) {
         // Same authority as DELETE: host while connected, member once the

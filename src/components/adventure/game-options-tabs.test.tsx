@@ -34,6 +34,10 @@ function expandBinhHouseRules() {
   fireEvent.click(screen.getByRole("button", { name: /BINH house rules/i }));
 }
 
+function expandGlobalMapRules() {
+  fireEvent.click(screen.getByRole("button", { name: /Global map rules/i }));
+}
+
 function expandPolishHouseRules() {
   fireEvent.click(screen.getByRole("button", { name: /Polish house rule type 1/i }));
 }
@@ -242,10 +246,12 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
-  it("renders the Global map-rules group (with its map icon) and wires the Mine-guard reinforcement toggle", () => {
+  it("renders the Global map-rules panel (its OWN collapsible, peer of BINH/Polish) with its map icon and wires the Mine-guard reinforcement toggle", () => {
     const onAction = openOptions();
-    expandBinhHouseRules();
-    // The new Global group header carries its map glyph (other groups have none).
+    // Global map rules is now its own panel, NOT nested in BINH house rules.
+    expect(screen.getByRole("button", { name: /Global map rules/i })).toBeTruthy();
+    expandGlobalMapRules();
+    // The Global group header carries its map glyph (other groups have none).
     const groupIcon = document.querySelector(".houseRuleGroupIcon") as HTMLImageElement | null;
     expect(groupIcon, "the Global group header shows an icon").toBeTruthy();
     expect(groupIcon!.getAttribute("src")).toContain("map.svg");
@@ -501,6 +507,17 @@ describe("Game options — tabbed layout", () => {
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
       options: { tournamentBanDiplomacy: true }
+    });
+
+    // The Observatory re-rotate tournament rule is its own toggle (default off).
+    onAction.mockClear();
+    const rerotate = screen.getByRole("button", { name: /Observatory re-rotates a nearby tile/i });
+    expect(rerotate.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(rerotate);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { tournamentObservatoryRerotate: true }
     });
   });
 

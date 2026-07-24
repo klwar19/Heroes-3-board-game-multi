@@ -159,10 +159,12 @@ import {
   HeroPortrait,
   HireHeroesSection,
   TownRecruitSection,
+  UnitSideCards,
   hasBuildingEffectPanel,
   activeBuildingActions
 } from "@/components/adventure/town-sections";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
+import { buildCustomSetupFile, customSetupFileName, parseCustomSetupFile } from "@/lib/custom-setup-file";
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
@@ -4314,6 +4316,14 @@ export function ArmyPanel({
             [rankLine, side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
           return (
             <li key={unit.id}>
+              {/* Full both-faces card display, identical to the town recruit
+                  roster (user request: the Unit deck should show the same full
+                  cards). Costs are omitted here — the units are already owned.
+                  A recruited Neutral card has no Few/Pack faces, so it keeps the
+                  single-face thumb in the row below instead. */}
+              {def?.few || def?.pack ? (
+                <UnitSideCards ownedSide={unit.side} unitDefId={unit.unitDefId} />
+              ) : null}
               <button
                 className="armyUnitRow"
                 onClick={() =>
@@ -4335,11 +4345,15 @@ export function ArmyPanel({
                 title={hoverTitle}
                 type="button"
               >
-                {side?.cardImage ? (
-                  <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={assetUrl(side.cardImage)} />
-                ) : (
-                  <span className={`armyUnitThumb fallback tier-${def?.tier ?? "bronze"}`} />
-                )}
+                {/* Neutral-only cards (no Few/Pack faces) keep their single-face
+                    thumb here, since the both-faces display above is skipped. */}
+                {!def?.few && !def?.pack ? (
+                  side?.cardImage ? (
+                    <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={assetUrl(side.cardImage)} />
+                  ) : (
+                    <span className={`armyUnitThumb fallback tier-${def?.tier ?? "bronze"}`} />
+                  )
+                ) : null}
                 <span className={`tierDot ${def?.tier}`} />
                 <strong>
                   {unit.side === "few" ? "Few" : unit.side === "neutral" ? "Neutral" : "Pack"}{" "}
@@ -6421,6 +6435,7 @@ export function AdventureDecksPanel({
               <button
                 className={`advDiscard${topId ? " hasCard" : ""}`}
                 onClick={() => onShowPile("Astrologers Proclaim — past rounds", astrologers.discardPile, "astrologers")}
+                aria-label={`Open Astrologers discard pile (${astrologers.discardPile.length} cards)`}
                 title={topCard ? `Last proclamation: ${topCard.name}` : "Past Astrologers proclamations"}
                 type="button"
               >
@@ -6547,6 +6562,11 @@ export function PileModal({
           </button>
         </header>
         {cardIds.length === 0 ? <small>Empty.</small> : null}
+        {kind === "astrologers" && cardIds.length > 0 ? (
+          <small className="pileModalHint">
+            Discarded proclamations are shown newest first. The top card is the last resolved Astrologers event.
+          </small>
+        ) : null}
         <PileModalCards cardIds={cardIds} kind={kind} />
       </div>
     </div>
@@ -7206,7 +7226,7 @@ function MapPicker({
                 // Picking a scenario sheet uses its own face-down layout and
                 // drops any designed map (sent together so the engine never
                 // leaves a stale map attached to a different scenario).
-                onClick={() => send({ scenarioId: scenario.id, customMap: null, customMapName: null })}
+                onClick={() => send({ scenarioId: scenario.id, customMode: false, customMap: null, customMapName: null })}
                 title={scenario.description}
                 type="button"
               >
@@ -7248,6 +7268,7 @@ function MapPicker({
                     send({
                       ...(record.scenarioId !== options.scenarioId ? { scenarioId: record.scenarioId } : {}),
                       playerCount: record.players,
+                      customMode: true,
                       customMap: record.tiles,
                       customMapName: record.name,
                       customMapPreset: record.preset ?? null
@@ -7313,6 +7334,7 @@ function MapPicker({
           ) : null}
         </div>
       ) : null}
+      <PersonalCustomSettingsPanel options={options} send={send} />
       <small className="optionHint designerLink">
         <Link href="/designer" target="_blank">
           <Hammer aria-hidden="true" size={11} /> Open the map designer
@@ -7320,6 +7342,119 @@ function MapPicker({
         to create, edit and save your own maps (shared with everyone), then pick one above. Picking a designed map opens
         the seat count it was designed for.
       </small>
+    </div>
+  );
+}
+
+/**
+ * "Custom setting" — FILE-based save/load of the lobby's whole map + rules
+ * setup (user spec: Save writes the current setting to a file, Load opens a
+ * file picker; every player keeps their own files). The loaded options run
+ * through the normal SET_GAME_OPTIONS pipeline, so an old file from a previous
+ * patch has its unknown fields skipped and any invalid value rejected with the
+ * engine's own message instead of corrupting the lobby.
+ */
+function PersonalCustomSettingsPanel({
+  options,
+  send
+}: {
+  options: GameSetupOptions;
+  send: (next: Partial<GameSetupOptions>) => void;
+}) {
+  const [name, setName] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const saveToFile = () => {
+    const payload = buildCustomSetupFile(options, name);
+    const fileName = customSetupFileName(payload.name);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    // Keep the selected card visibly in Custom mode even when the setting was
+    // saved while another mode preset was active.
+    send({ customMode: true });
+    setNotice(`Saved “${payload.name}” to ${fileName}.`);
+  };
+
+  const loadFromFile = async (file: File) => {
+    const parsed = parseCustomSetupFile(await file.text());
+    if (!parsed.ok) {
+      setNotice(parsed.reason);
+      return;
+    }
+    send(parsed.options);
+    setNotice(
+      `Loaded “${parsed.name}”.${
+        parsed.sameEngineVersion
+          ? ""
+          : " It was saved by a different game version — options a patch changed are skipped or rejected with a message."
+      }`
+    );
+  };
+
+  return (
+    <div className="personalCustomSettings" aria-label="Custom setting — save or load a file">
+      <div className="mapPickerGroupLabel">
+        <strong>Custom setting — file</strong>
+        <small>
+          Saves <b>every</b> setting from all four tabs — Mode &amp; Rules, Match, Map &amp; Setup and Army (mode,
+          mods, house rules, victory, difficulty, the designed map, and starting resources/units/buildings) — to a file;
+          load a file to restore them all. Your faction &amp; hero are picked per game and are not saved. Each player
+          keeps their own files.
+        </small>
+      </div>
+      <div className="personalCustomSaveRow">
+        <input
+          aria-label="Custom setting name"
+          maxLength={48}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              saveToFile();
+            }
+          }}
+          placeholder="Setting name (used in the file name)"
+          value={name}
+        />
+        <button onClick={saveToFile} title="Download every setting from all four tabs (not faction/hero) as a file" type="button">
+          Save to file
+        </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          title="Choose a saved setting file and apply it to this lobby"
+          type="button"
+        >
+          Load from file…
+        </button>
+        <input
+          accept=".json,application/json"
+          aria-label="Choose a custom setting file"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // Allow re-picking the same file after a failed/edited load.
+            event.target.value = "";
+            if (file) {
+              void loadFromFile(file);
+            }
+          }}
+          ref={fileInputRef}
+          type="file"
+        />
+      </div>
+      {notice ? (
+        <small className="optionHint" role="status">
+          {notice}
+        </small>
+      ) : null}
+      <small className="optionHint">Shared designer maps remain available above; setting files are only for you.</small>
     </div>
   );
 }
@@ -7381,7 +7516,10 @@ const HOUSE_RULE_CATEGORY_ICONS: Record<string, string | undefined> = {
   global: REWARD_GLYPH_ICONS.map
 };
 
-const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat", "global"] as const;
+// "global" now lives in its OWN collapsible ("Global map rules"), a peer of the
+// BINH / Polish panels (user request) — no longer nested inside BINH house rules.
+const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat"] as const;
+const GLOBAL_HOUSE_RULE_CATEGORIES = ["global"] as const;
 
 function houseRuleToggleDisabled(
   ruleId: HouseRuleId,
@@ -7644,12 +7782,74 @@ function GroupToggleAllButton({
 }
 
 /**
+ * One category's header + toggle grid, rendered straight from the engine
+ * registry. Shared by the BINH and the standalone Global map-rules panels so
+ * their markup can never drift. Returns null for an empty category.
+ */
+function HouseRuleCategoryGroup({
+  category,
+  houseRules,
+  creatureBanksEnabled,
+  setHouseRule,
+  setHouseRules
+}: {
+  category: string;
+  houseRules: Record<HouseRuleId, boolean>;
+  creatureBanksEnabled: boolean;
+  setHouseRule: (id: HouseRuleId, value: boolean) => void;
+  setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
+}) {
+  const rules = HOUSE_RULES.filter((rule) => rule.category === category);
+  if (rules.length === 0) {
+    return null;
+  }
+  const groupIconSrc = HOUSE_RULE_CATEGORY_ICONS[category];
+  return (
+    <div className="houseRuleGroup" key={category}>
+      <div className="houseRuleGroupHeader">
+        <span className="houseRuleGroupLabel">
+          {groupIconSrc ? (
+            <img
+              alt=""
+              aria-hidden="true"
+              className="houseRuleGroupIcon"
+              draggable={false}
+              src={assetUrl(groupIconSrc)}
+            />
+          ) : null}
+          {HOUSE_RULE_CATEGORY_LABELS[category]}
+        </span>
+        <GroupToggleAllButton
+          creatureBanksEnabled={creatureBanksEnabled}
+          groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
+          houseRules={houseRules}
+          rules={rules}
+          setHouseRules={setHouseRules}
+        />
+      </div>
+      <div className="houseRuleGrid">
+        {rules.map((rule) => (
+          <HouseRuleToggleButton
+            disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
+            key={rule.id}
+            on={houseRules[rule.id]}
+            onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
+            rule={rule}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The individual house-rule toggles, rendered straight from the engine registry
  * so the menu and the engine never drift. Each button flips exactly one rule
  * (the reducer merges it); the value shown is the resolved effective boolean.
  *
- * BINH core rules and Polish type-1 rules each live in their own collapsible
- * panel (default minimized) so the Mode & Rules tab stays scannable.
+ * BINH core rules, the Global map rules, and Polish type-1 rules each live in
+ * their own collapsible panel (default minimized) so the Mode & Rules tab stays
+ * scannable.
  */
 function HouseRulesSection({
   houseRules,
@@ -7664,13 +7864,18 @@ function HouseRulesSection({
 }) {
   // Default minimized — expand only when the host digs into the checklist.
   const [binhOpen, setBinhOpen] = useState(false);
+  const [globalOpen, setGlobalOpen] = useState(false);
   const [polishOpen, setPolishOpen] = useState(false);
 
   const binhRules = HOUSE_RULES.filter((rule) =>
     (BINH_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
   );
+  const globalRules = HOUSE_RULES.filter((rule) =>
+    (GLOBAL_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
+  );
   const polishRules = HOUSE_RULES.filter((rule) => rule.category === "polish");
   const binhOn = binhRules.filter((rule) => houseRules[rule.id]).length;
+  const globalOn = globalRules.filter((rule) => houseRules[rule.id]).length;
   const polishOn = polishRules.filter((rule) => houseRules[rule.id]).length;
 
   return (
@@ -7690,54 +7895,21 @@ function HouseRulesSection({
         onCount={binhOn}
         onToggle={() => setBinhOpen((v) => !v)}
         open={binhOpen}
-        subtitle="Core BINH tweaks — decks, units, abilities, combat & map"
+        subtitle="Core BINH tweaks — decks, units, abilities, combat"
         title="BINH house rules"
         totalCount={binhRules.length}
         variant="binh"
       >
-        {BINH_HOUSE_RULE_CATEGORIES.map((category) => {
-          const rules = binhRules.filter((rule) => rule.category === category);
-          if (rules.length === 0) {
-            return null;
-          }
-          const groupIconSrc = HOUSE_RULE_CATEGORY_ICONS[category];
-          return (
-            <div className="houseRuleGroup" key={category}>
-              <div className="houseRuleGroupHeader">
-                <span className="houseRuleGroupLabel">
-                  {groupIconSrc ? (
-                    <img
-                      alt=""
-                      aria-hidden="true"
-                      className="houseRuleGroupIcon"
-                      draggable={false}
-                      src={assetUrl(groupIconSrc)}
-                    />
-                  ) : null}
-                  {HOUSE_RULE_CATEGORY_LABELS[category]}
-                </span>
-                <GroupToggleAllButton
-                  creatureBanksEnabled={creatureBanksEnabled}
-                  groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
-                  houseRules={houseRules}
-                  rules={rules}
-                  setHouseRules={setHouseRules}
-                />
-              </div>
-              <div className="houseRuleGrid">
-                {rules.map((rule) => (
-                  <HouseRuleToggleButton
-                    disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
-                    key={rule.id}
-                    on={houseRules[rule.id]}
-                    onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
-                    rule={rule}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
+        {BINH_HOUSE_RULE_CATEGORIES.map((category) => (
+          <HouseRuleCategoryGroup
+            category={category}
+            creatureBanksEnabled={creatureBanksEnabled}
+            houseRules={houseRules}
+            key={category}
+            setHouseRule={setHouseRule}
+            setHouseRules={setHouseRules}
+          />
+        ))}
         <p className="houseRuleAlwaysOn">
           <Info size={11} aria-hidden="true" />
           <span>
@@ -7745,6 +7917,30 @@ function HouseRulesSection({
             is the standard “a full breach fells the tower” rule, not a buff.
           </span>
         </p>
+      </HouseRuleCollapsible>
+
+      <HouseRuleCollapsible
+        crestSrc={assetUrl(REWARD_GLYPH_ICONS.map)}
+        crestClassName="houseRuleCollapsibleCrest global"
+        id="global-map-rules"
+        onCount={globalOn}
+        onToggle={() => setGlobalOpen((v) => !v)}
+        open={globalOpen}
+        subtitle="Map-wide difficulty tweaks — apply to every game on any map"
+        title="Global map rules"
+        totalCount={globalRules.length}
+        variant="binh"
+      >
+        {GLOBAL_HOUSE_RULE_CATEGORIES.map((category) => (
+          <HouseRuleCategoryGroup
+            category={category}
+            creatureBanksEnabled={creatureBanksEnabled}
+            houseRules={houseRules}
+            key={category}
+            setHouseRule={setHouseRule}
+            setHouseRules={setHouseRules}
+          />
+        ))}
       </HouseRuleCollapsible>
 
       <HouseRuleCollapsible
@@ -7789,7 +7985,7 @@ function HouseRulesSection({
 }
 
 /** High-level setup modes shown as a card row on the Mode & Rules tab. */
-type SetupModeId = "legacy" | "binh" | "tournament";
+type SetupModeId = "legacy" | "binh" | "tournament" | "custom";
 
 const SETUP_MODE_CARDS: {
   id: SetupModeId;
@@ -7821,6 +8017,12 @@ const SETUP_MODE_CARDS: {
     blurb: "Competitive preset",
     hint: "House rules off, tournament bans on, Hard difficulty, human-controlled Neutrals, Diplomacy banned.",
     iconSrc: "/assets/ui/mode-tournament-crest-clear.webp"
+  },
+  {
+    id: "custom",
+    label: "Custom",
+    blurb: "Your saved setup",
+    hint: "Save the current map & rules to a file, or load one of your setting files — each player keeps their own."
   }
 ];
 
@@ -7886,6 +8088,9 @@ function GameOptionsPanel({
 
   /** Which big mode card is highlighted from the current options. */
   const activeSetupMode: SetupModeId = (() => {
+    if (options.customMode) {
+      return "custom";
+    }
     if (tournamentAllOn && options.ruleset === "legacy" && options.difficulty === "hard") {
       return "tournament";
     }
@@ -7896,8 +8101,15 @@ function GameOptionsPanel({
   })();
 
   const applySetupMode = (mode: SetupModeId) => {
+    if (mode === "custom") {
+      send({ customMode: true });
+      setTab("map");
+      setModeNotice("Custom mode selected: save the current setup to a file, or load a setting file, in Map & Setup.");
+      return;
+    }
     if (mode === "legacy") {
       send({
+        customMode: false,
         ruleset: "legacy",
         wog: { ...wog, enabled: false },
         anime: { ...anime, enabled: false },
@@ -7917,6 +8129,7 @@ function GameOptionsPanel({
     if (mode === "binh") {
       // BINH does not force WOG off — the Mod row is independent.
       send({
+        customMode: false,
         ruleset: "binh",
         spellBook: true,
         tournamentMode: false,
@@ -7930,6 +8143,7 @@ function GameOptionsPanel({
     // Tournament competitive preset — turns WOG + Anime off with the competitive
     // package. Neutrals default to human control (next player clockwise).
     send({
+      customMode: false,
       ruleset: "legacy",
       wog: { ...wog, enabled: false },
       anime: { ...anime, enabled: false },
@@ -7938,6 +8152,7 @@ function GameOptionsPanel({
       tournamentBanDiplomacy: true,
       tournamentBanHourglass: true,
       tournamentSecondPlayerMorale: true,
+      tournamentObservatoryRerotate: true,
       difficulty: "hard",
       pvpNeutralControl: true,
       events: false,
@@ -8006,7 +8221,9 @@ function GameOptionsPanel({
           ))}
         </div>
         <small className="optionHint">
-          {activeSetupMode === "legacy"
+          {activeSetupMode === "custom"
+            ? "Personal custom setup: in Map & Setup, save the current map & rules to a file or load one of your setting files."
+            : activeSetupMode === "legacy"
             ? RULESET_DESCRIPTIONS.legacy
             : activeSetupMode === "tournament"
             ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + human-controlled Neutrals."
@@ -8177,6 +8394,12 @@ function GameOptionsPanel({
             label: "2nd player +1 morale",
             on: tournamentRules.secondPlayerMorale,
             hint: "The second player gains 1 positive morale at game start."
+          },
+          {
+            key: "tournamentObservatoryRerotate" as const,
+            label: "Observatory re-rotates a nearby tile",
+            on: tournamentRules.observatoryRerotate,
+            hint: "The Redwood Observatory and the Speculum artifact may ALSO re-rotate one nearby placed tile (with no Hero/Town/Gate on it), in addition to discovering an adjacent tile."
           }
         ] as const;
         const tournamentOn = tournamentDefs.filter((rule) => rule.on).length;

@@ -81,6 +81,8 @@ import {
   type MapEventCue
 } from "@/components/table/overlays";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
+import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
+import { takePendingSinglePlayerLoad } from "@/lib/single-player-saves";
 import { campaignSceneToFire, campaignSetupActions } from "@/lib/campaign-triggers";
 import { getCampaignChapter } from "@/data/story/campaigns";
 import {
@@ -3907,6 +3909,34 @@ export default function Home() {
     };
   }, [roomId, ingestSnapshot, clientId]);
 
+  // Single-player save slots: a Load clicked on the /single-player menu page
+  // (no live connection there) navigates here with a pending marker; apply it
+  // ONCE per room as soon as the connection and the first snapshot exist. The
+  // server validates owner + solo mode, and a stale or foreign marker is
+  // dropped by takePendingSinglePlayerLoad itself.
+  const pendingSpLoadRoomRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!roomId || !state || pendingSpLoadRoomRef.current === roomId) {
+      return;
+    }
+    const connection = connectionRef.current;
+    if (!connection) {
+      return;
+    }
+    pendingSpLoadRoomRef.current = roomId;
+    const pending = takePendingSinglePlayerLoad(roomId);
+    if (!pending) {
+      return;
+    }
+    connection
+      .loadSinglePlayerSave(pending.state)
+      .then((snapshot) => ingestSnapshotRef.current(snapshot, { seatAuthoritative: true }))
+      .catch((error) => {
+        // The in-game save panel remains the manual fallback.
+        console.warn("Pending single-player load failed:", error);
+      });
+  }, [roomId, state]);
+
   const submitAction = async (action: GameAction) => {
     // The human is taking their turn: snap any in-flight computer-move replay to
     // the settled positions so a paced pawn never lags under a fresh action.
@@ -4882,6 +4912,32 @@ export default function Home() {
   // bare in the band; the setup screens keep the ornate box. Behaviour is
   // identical either way.
   const inGameTable = !inLobby && !inCombatSandboxSetup;
+  // Single-player Save / Load slots. Grouped with the "New adventure" control
+  // as one game-lifecycle cluster at the end of the table menu (conventional
+  // Save/Load-next-to-New-Game placement), not floating at the top.
+  const singlePlayerSaveSection =
+    state.sessionMode === "single-player" ? (
+      <SinglePlayerSavePanel
+        compact
+        onFetchSaveState={() => {
+          const connection = connectionRef.current;
+          return connection
+            ? connection.fetchSinglePlayerSave()
+            : Promise.reject(new Error("Not connected to the room."));
+        }}
+        onLoadSave={async (saved) => {
+          const connection = connectionRef.current;
+          if (!connection) {
+            throw new Error("Not connected to the room.");
+          }
+          const snapshot = await connection.loadSinglePlayerSave(saved);
+          ingestSnapshotRef.current(snapshot, { seatAuthoritative: true });
+        }}
+        roomId={roomId}
+        state={state}
+      />
+    ) : null;
+
   const tableMenu = (
     <div className={`tableMenu${inGameTable ? " tableMenuInline" : ""}`} aria-label="Table controls">
       {roomPasswordPrompt}
@@ -5001,10 +5057,12 @@ export default function Home() {
         {/* Per-browser layout switch (also the escape hatch out of phone mode). */}
         <UiModeToggle />
       </div>
-      {/* Restart THIS table in its own mode. The combat sandbox and the map
+      {/* Game-lifecycle controls, grouped: restart the table, and (single-player)
+          the Save / Load slots right beside it. The combat sandbox and the map
           designer are their own destinations on the main menu now (Battle Test /
           Map Designer), so they are not duplicated here. */}
-      <div className="menuRow resetRow">
+      <div className="menuRow gameControlsRow" aria-label="Game controls">
+        <div className="menuGroupLabel">Game</div>
         <button
           className="commandButton"
           onClick={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
@@ -5025,6 +5083,7 @@ export default function Home() {
             </>
           )}
         </button>
+        {singlePlayerSaveSection}
       </div>
     </div>
   );
@@ -5128,7 +5187,7 @@ export default function Home() {
             state={state}
             viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
           />
-          <LogDrawer state={state} />
+          <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
           {reactionsLayer}
         </main>
       </CardZoomProvider>
@@ -5159,7 +5218,7 @@ export default function Home() {
             state={state}
             viewerPlayerId={isSeated ? viewerPlayerId : "p1"}
           />
-          <LogDrawer state={state} />
+          <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
           {reactionsLayer}
         </main>
       </CardZoomProvider>
@@ -6436,7 +6495,7 @@ export default function Home() {
             viewerPlayerId={viewerPlayerId}
           />
           <SearchModal legalActions={legalActions} onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
-          <LogDrawer state={state} />
+          <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
           {isSeated && handMode === null && !forcedDiscard ? (
             <MoraleOverflowPrompt
               canRedraw={handCards.length > 0}
@@ -6759,7 +6818,6 @@ export default function Home() {
             <CommandDock
               legalActions={legalActions}
               onAction={submitAction}
-              onReset={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
@@ -6778,7 +6836,7 @@ export default function Home() {
         </div>
       ) : null}
 
-      <LogDrawer state={state} />
+      <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
 
       <AdventureEventFeed
         items={feedItems}
@@ -6821,7 +6879,6 @@ export default function Home() {
           key={`result-${state.combat?.id ?? "none"}`}
           legalActions={legalActions}
           onAction={submitAction}
-          onReset={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
           state={state}
           viewerPlayerId={viewerPlayerId}
         />
