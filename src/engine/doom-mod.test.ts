@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { DOOM_UNIT_IDS, DOOM_UNIT_IDS_BY_TIER } from "@/data/doom";
+import { DOOM_UNIT_IDS, DOOM_UNIT_IDS_BY_TIER, doomUnitDefinitions } from "@/data/doom";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { createAdventureGameState } from "./adventure-setup";
@@ -41,6 +41,32 @@ describe("Doom neutral monster slice", () => {
       expect(statSync(file).size, id).toBeGreaterThan(40_000);
       expect(statSync(file).size, id).toBeLessThan(220_000);
     }
+  });
+
+  it("pins the revised Doom stats, costs, types, and ability assignments", () => {
+    const expected: Record<string, { attack: number; defense: number; health: number; initiative: number; abilities: string[]; cost: Record<string, number> }> = {
+      "doom.demon": { attack: 2, defense: 1, health: 4, initiative: 7, abilities: ["unlimited-retaliation", "doom-demon-retaliation-attack"], cost: { gold: 7 } },
+      "doom.former_human": { attack: 2, defense: 0, health: 3, initiative: 4, abilities: [], cost: { gold: 4 } },
+      "doom.former_human_sergeant": { attack: 2, defense: 1, health: 3, initiative: 5, abilities: ["doom-former-human-sergeant-double-roll"], cost: { gold: 6 } },
+      "doom.imp": { attack: 2, defense: 0, health: 4, initiative: 7, abilities: ["ranged-extra-shot-on-low-roll", "ignore-combat-penalties"], cost: { gold: 5 } },
+      "doom.cacodemon": { attack: 3, defense: 1, health: 5, initiative: 9, abilities: ["doom-cacodemon-poison"], cost: { gold: 11 } },
+      "doom.hell_knight": { attack: 3, defense: 2, health: 6, initiative: 6, abilities: ["reduce-spell-damage-1"], cost: { gold: 14 } },
+      "doom.arachnotron": { attack: 3, defense: 0, health: 6, initiative: 7, abilities: ["doom-arachnotron-triple-strike"], cost: { gold: 15 } },
+      "doom.former_commando": { attack: 3, defense: 1, health: 4, initiative: 6, abilities: ["double-attack"], cost: { gold: 13 } },
+      "doom.baron_of_hell": { attack: 5, defense: 2, health: 8, initiative: 7, abilities: ["doom-baron-damage-cap"], cost: { gold: 29 } },
+      "doom.revenant": { attack: 5, defense: 1, health: 7, initiative: 10, abilities: ["doom-revenant-pre-attack-damage"], cost: { gold: 20 } },
+      "doom.mancubus": { attack: 5, defense: 1, health: 7, initiative: 7, abilities: ["magog-fireball-splash", "doom-mancubus-retaliation-advantage"], cost: { gold: 22 } },
+      "doom.pain_elemental": { attack: 4, defense: 1, health: 6, initiative: 7, abilities: ["doom-pain-elemental-summon-lost-soul"], cost: { gold: 20 } },
+      "doom.arch_vile": { attack: 6, defense: 1, health: 8, initiative: 12, abilities: ["archangel-lethal-save"], cost: { gold: 30 } },
+      "doom.spider_mastermind": { attack: 7, defense: 2, health: 10, initiative: 11, abilities: ["doom-spider-mastermind-adjacent-strike", "immune-specialty-damage"], cost: { gold: 38, valuables: 2 } },
+      "doom.cyberdemon": { attack: 7, defense: 3, health: 10, initiative: 10, abilities: ["magog-fireball-splash", "reduce-spell-damage-3"], cost: { gold: 42, valuables: 2 } }
+    };
+
+    for (const [id, values] of Object.entries(expected)) {
+      const def = doomUnitDefinitions[id as keyof typeof doomUnitDefinitions];
+      expect(def.neutral, id).toMatchObject(values);
+    }
+    expect(doomUnitDefinitions["doom.cacodemon"].type).toBe("flying");
   });
 
   it("adds Doom guards through WOG or Anime neutral-creature gates", () => {

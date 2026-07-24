@@ -117,6 +117,30 @@ describe("CommanderCardFace — rainbow frame spark", () => {
   });
 });
 
+describe("CommanderCardFace — themed commander layouts", () => {
+  it("uses a single contained themed information layout for Azur Lane", () => {
+    const { container, queryByText, getByText } = render(<CommanderCardFace slug="belfast" grades={{}} level={2} />);
+
+    expect(container.querySelector('[data-card-layout="azur-lane"]')).toBeTruthy();
+    expect(container.querySelector(".themedCommanderStats")).toBeTruthy();
+    expect(container.querySelector(".themedCommanderAbility")).toBeTruthy();
+    expect(getByText(/Royal Salvo/)).toBeTruthy();
+    // Belfast's commissioned art already contains the title; the renderer
+    // must not add a second text title over it.
+    expect(queryByText("Belfast")).toBeNull();
+  });
+
+  it("keeps Demon Ancestor on the same commander format with Wuxia styling", () => {
+    const { container, queryByText, getByText } = render(<CommanderCardFace slug="demon_ancestor" grades={{}} />);
+
+    expect(container.querySelector('[data-card-layout="wuxia"]')).toBeTruthy();
+    expect(container.querySelector(".themedCommanderStats")).toBeTruthy();
+    expect(container.querySelector(".themedCommanderAbility")).toBeTruthy();
+    expect(getByText(/Blood Frenzy/)).toBeTruthy();
+    expect(queryByText("Demon Ancestor")).toBeNull();
+  });
+});
+
 // The clearer level-up picker: one separated, highlighted option per stat.
 describe("CommanderLevelUpPicker", () => {
   it("lists all six stats, each its own highlighted option showing the grade jump", () => {

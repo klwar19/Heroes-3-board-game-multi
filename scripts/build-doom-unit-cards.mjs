@@ -41,9 +41,9 @@ const CARDS = [
     name: "Demon",
     tier: "bronze",
     kind: "MELEE",
-    stats: [3, 1, 5, 5],
+    stats: [2, 1, 4, 7],
     cost: "7",
-    rules: "Relentless Bite - this unit can perform unlimited Retaliation Attacks."
+    rules: "Relentless Bite - unlimited Retaliation Attacks; +1 Attack when retaliating."
   },
   {
     slug: "former-human",
@@ -53,7 +53,7 @@ const CARDS = [
     name: "Former Human",
     tier: "bronze",
     kind: "RANGED",
-    stats: [2, 0, 3, 6],
+    stats: [2, 0, 3, 4],
     cost: "4",
     rules: "Possessed Rifle - standard ranged attack."
   },
@@ -65,9 +65,9 @@ const CARDS = [
     name: "Imp",
     tier: "bronze",
     kind: "RANGED",
-    stats: [2, 0, 4, 8],
+    stats: [2, 0, 4, 7],
     cost: "5",
-    rules: "Fireball - standard ranged attack."
+    rules: "Fireball - ignore the melee penalty when attacking an adjacent unit."
   },
   {
     slug: "lost-soul",
@@ -89,9 +89,9 @@ const CARDS = [
     name: "Former Human Sergeant",
     tier: "bronze",
     kind: "MELEE",
-    stats: [2, 0, 3, 5],
+    stats: [2, 1, 3, 5],
     cost: "6",
-    rules: "Shotgun Assault - standard melee attack."
+    rules: "Shotgun Assault - roll 2 Attack dice and resolve both results."
   },
   {
     slug: "cacodemon",
@@ -100,10 +100,10 @@ const CARDS = [
     artScale: 1.05,
     name: "Cacodemon",
     tier: "silver",
-    kind: "FLYING",
+    kind: "MELEE",
     stats: [3, 1, 5, 9],
     cost: "11",
-    rules: "Floating Fireball - ignore the ranged combat penalty against adjacent units."
+    rules: "Burning Poison - on an Attack roll of -1 or 0, place a poison cube; it deals 1 damage at activation."
   },
   {
     slug: "hell-knight",
@@ -113,21 +113,21 @@ const CARDS = [
     name: "Hell Knight",
     tier: "silver",
     kind: "MELEE",
-    stats: [4, 2, 7, 8],
+    stats: [3, 2, 6, 6],
     cost: "14",
     rules: "Demonic Flesh - reduce any damage from spells by 1."
   },
   {
     slug: "arachnotron",
-    art: "14-doom-arachnotron-unit-card-art.png",
+    art: "14-doom-arachnotron-unit-card-art-v2.png",
     artPosition: "centre",
     artScale: 1.04,
     name: "Arachnotron",
     tier: "silver",
     kind: "RANGED",
-    stats: [4, 1, 6, 11],
+    stats: [3, 0, 6, 7],
     cost: "15",
-    rules: "Plasma Burst - if a non-adjacent attack rolls -1 or 0, attack the target again."
+    rules: "Triple Plasma - attack the target 3 times: Attack 3, then Attack 2, then Attack 1."
   },
   {
     slug: "baron-of-hell",
@@ -137,9 +137,9 @@ const CARDS = [
     name: "Baron of Hell",
     tier: "gold",
     kind: "MELEE",
-    stats: [5, 2, 8, 9],
-    cost: "22",
-    rules: "Hellborn Hide - reduce any damage from spells by 2."
+    stats: [5, 2, 8, 7],
+    cost: "29",
+    rules: "Hellborn Hide - cannot take more than 4 damage from a single attack."
   },
   {
     slug: "former-commando",
@@ -149,7 +149,7 @@ const CARDS = [
     name: "Former Commando",
     tier: "silver",
     kind: "RANGED",
-    stats: [3, 1, 5, 10],
+    stats: [3, 1, 4, 6],
     cost: "13",
     rules: "Suppressing Fire - if the target is non-adjacent, attack that target again."
   },
@@ -161,9 +161,9 @@ const CARDS = [
     name: "Revenant",
     tier: "gold",
     kind: "MELEE",
-    stats: [5, 1, 7, 13],
+    stats: [5, 1, 7, 10],
     cost: "20",
-    rules: "Deadly Pursuit - roll 2 Attack dice and resolve the higher outcome."
+    rules: "Death Mark - at activation, deal 1 damage to the target this unit will attack."
   },
   {
     slug: "mancubus",
@@ -173,9 +173,9 @@ const CARDS = [
     name: "Mancubus",
     tier: "gold",
     kind: "RANGED",
-    stats: [5, 2, 8, 7],
+    stats: [5, 1, 7, 7],
     cost: "22",
-    rules: "Flame Volley - a non-adjacent attack also deals 1 damage to a unit adjacent to the target."
+    rules: "Flame Volley - non-adjacent splash; when retaliating, roll 2 Attack dice and resolve the higher."
   },
   {
     slug: "pain-elemental",
@@ -185,9 +185,9 @@ const CARDS = [
     name: "Pain Elemental",
     tier: "gold",
     kind: "FLYING",
-    stats: [4, 1, 6, 10],
+    stats: [4, 1, 6, 7],
     cost: "20",
-    rules: "Soul Hunger - reduce any damage from spells by 2."
+    rules: "Lost Soul Burst - after an attack, randomly summon a Lost Soul on an empty space."
   },
   {
     slug: "arch-vile",
@@ -197,9 +197,9 @@ const CARDS = [
     name: "Arch-Vile",
     tier: "azure",
     kind: "RANGED",
-    stats: [6, 1, 8, 14],
+    stats: [6, 1, 8, 12],
     cost: "30",
-    rules: "Hellfire Ward - reduce any damage from spells by 2."
+    rules: "Doom Guard - once in Combat, automatically block the first lethal attack against a friendly unit."
   },
   {
     slug: "spider-mastermind",
@@ -209,9 +209,9 @@ const CARDS = [
     name: "Spider Mastermind",
     tier: "azure",
     kind: "MELEE",
-    stats: [7, 2, 10, 16],
-    cost: "45 + 2 valuables",
-    rules: "Mastermind Assault - roll 2 Attack dice, resolving the higher. Reduce spell damage by 2."
+    stats: [7, 2, 10, 11],
+    cost: "38 + 2 valuables",
+    rules: "Mastermind Assault - on -1, also attack a unit adjacent to the target; immune to Specialty damage."
   },
   {
     slug: "cyberdemon",
@@ -221,8 +221,8 @@ const CARDS = [
     name: "Cyberdemon",
     tier: "azure",
     kind: "RANGED",
-    stats: [8, 3, 12, 14],
-    cost: "52 + 3 valuables",
+    stats: [7, 3, 10, 10],
+    cost: "42 + 2 valuables",
     rules: "Rocket Barrage - a non-adjacent attack also deals 1 damage adjacent to the target; reduce spell damage by 3."
   }
 ];
