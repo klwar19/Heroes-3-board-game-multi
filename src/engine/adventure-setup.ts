@@ -237,7 +237,7 @@ export const SECRET_TILE_FEATURES: readonly {
     label: "Materials mine",
     shortLabel: "Materials",
     icon: "Materials",
-    iconSrc: "/assets/icons/resource-building_materials.webp",
+    iconSrc: "/assets/glyphs/building_materials.svg",
     description: "A random tile from this pool that has a Building Materials mine."
   },
   {

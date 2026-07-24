@@ -8,7 +8,7 @@
 import type { ResourceKind } from "@/engine/state";
 
 /** Free resource pickup — cream board-print tools (matches treasure/I gold). */
-export const FIELD_SYMBOL_RESOURCE = "/assets/ui/field-symbol-resource-cream.webp";
+export const FIELD_SYMBOL_RESOURCE = "/assets/glyphs/resource-yellow.svg";
 
 /** Treasure chest glyph (printed cream chest on core tiles). */
 export const FIELD_SYMBOL_TREASURE = "/assets/ui/icon-treasure-chest-glyph.webp";
@@ -16,7 +16,7 @@ export const FIELD_SYMBOL_TREASURE = "/assets/ui/icon-treasure-chest-glyph.webp"
 /** Mine income icon by resource (printed mine buildings use ↻N + pile). */
 export const FIELD_SYMBOL_MINE: Record<ResourceKind, string> = {
   gold: "/assets/icons/resource-gold.webp",
-  buildingMaterials: "/assets/icons/resource-building_materials.webp",
+  buildingMaterials: "/assets/glyphs/building_materials.svg",
   valuables: "/assets/icons/resource-valuables.webp"
 };
 

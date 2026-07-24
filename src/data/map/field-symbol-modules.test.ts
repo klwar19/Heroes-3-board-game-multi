@@ -19,11 +19,16 @@ function assertRealArt(assetPath: string, minBytes = 2_000) {
 
 describe("field symbol modules (attach, not whole-tile bake)", () => {
   it("ships real transparent modules for resource, treasure, and each mine resource", () => {
-    assertRealArt(FIELD_SYMBOL_RESOURCE);
+    assertRealArt(FIELD_SYMBOL_RESOURCE, 1_000);
     assertRealArt(FIELD_SYMBOL_TREASURE);
     for (const path of Object.values(FIELD_SYMBOL_MINE)) {
       assertRealArt(path);
     }
+  });
+
+  it("uses the canonical field glyphs", () => {
+    expect(FIELD_SYMBOL_RESOURCE).toBe("/assets/glyphs/resource-yellow.svg");
+    expect(FIELD_SYMBOL_MINE.buildingMaterials).toBe("/assets/glyphs/building_materials.svg");
   });
 
   it("maps standard starting-package fields to the right modules", () => {
