@@ -55,6 +55,45 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     expect(document.querySelectorAll(".recruitThumbImg").length).toBeGreaterThan(0);
   });
 
+  it("keeps both Few and Pack cards visible with icon costs and owned-side glow", () => {
+    const state = recruitReadyState();
+    const faction = coreFactionDefinitions[state.players.p1.factionId!];
+    const unitIds = faction.units.filter((id) => Boolean(coreUnitDefinitions[id]?.few));
+    renderRecruit(state);
+
+    expect(document.querySelectorAll(".unitSideCards")).toHaveLength(unitIds.length);
+    expect(document.querySelectorAll(".unitSideCard.pack").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".unitCostItem img[src*='resource-gold']").length).toBeGreaterThan(0);
+
+    const ownedUnitId = unitIds.find((id) => Boolean(coreUnitDefinitions[id]?.pack))!;
+    state.players.p1.army = [{ id: "army_owned_few", unitDefId: ownedUnitId, side: "few" }];
+    cleanup();
+    renderRecruit(state);
+    expect(document.querySelector(`.recruitRow.owned-few .unitSideCard.few.owned`)).toBeTruthy();
+    expect(document.querySelector(`.recruitRow.owned-few .unitSideCard.pack.unowned`)).toBeTruthy();
+  });
+
+  it("a locked-tier row shows the dwelling requirement instead of live recruit controls", () => {
+    // recruitReadyState builds ONLY the bronze dwelling, so silver/gold tiers
+    // are locked. The engine rejects a locked-tier recruit ("Build the dwelling
+    // of that unit's level first"), so the row must not offer an always-failing
+    // button or basket checkbox — the cards stay visible for planning.
+    renderRecruit(recruitReadyState());
+    const lockedRows = [...document.querySelectorAll(".recruitRow.unitRosterRow.locked")];
+    expect(lockedRows.length).toBeGreaterThan(0);
+    for (const row of lockedRows) {
+      expect(row.querySelector("button.recruitQuick")).toBeNull();
+      expect(row.querySelector("input[type='checkbox']")).toBeNull();
+      expect(row.textContent).toContain("dwelling first");
+    }
+    // CONTROL: an unlocked (bronze) row keeps both live controls.
+    const unlockedRow = [...document.querySelectorAll(".recruitRow.unitRosterRow:not(.locked)")].find((row) =>
+      row.querySelector("button.recruitQuick")
+    );
+    expect(unlockedRow).toBeTruthy();
+    expect(unlockedRow!.querySelector("input[type='checkbox']")).toBeTruthy();
+  });
+
   it("a per-row Recruit button fires a single-purchase POPULATION_ACTION", () => {
     const { onAction } = renderRecruit(recruitReadyState());
     const recruitButtons = screen.getAllByRole("button", { name: "Recruit" });

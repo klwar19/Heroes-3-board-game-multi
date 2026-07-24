@@ -80,7 +80,9 @@ function serveRoom(state: GameState) {
     submitAction: vi.fn(async () => ({ version: snapshot.version, errors: [], notices: [] })),
     resetRoom: vi.fn(async () => snapshot),
     fetchSnapshot: vi.fn(async () => snapshot),
-    restoreRoom: vi.fn(async () => snapshot)
+    restoreRoom: vi.fn(async () => snapshot),
+    fetchSinglePlayerSave: vi.fn(async () => ({ state: snapshot.state, version: snapshot.version })),
+    loadSinglePlayerSave: vi.fn(async () => snapshot)
   }));
 }
 
@@ -99,7 +101,9 @@ function serveRoomCapturing(state: GameState) {
       submitAction: vi.fn(async () => ({ version: snapshot.version, errors: [], notices: [] })),
       resetRoom: vi.fn(async () => snapshot),
       fetchSnapshot: vi.fn(async () => snapshot),
-      restoreRoom: vi.fn(async () => snapshot)
+      restoreRoom: vi.fn(async () => snapshot),
+    fetchSinglePlayerSave: vi.fn(async () => ({ state: snapshot.state, version: snapshot.version })),
+    loadSinglePlayerSave: vi.fn(async () => snapshot)
     };
   });
   return {
