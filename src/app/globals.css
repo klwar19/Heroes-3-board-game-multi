@@ -4720,6 +4720,24 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.96));
 }
 
+/* Field Override (WOG / anime) hex: a small unobtrusive corner glyph badge so a
+   zoomed-out player can spot the hex is special and hover/tap it. */
+.fieldOverrideGlyphBadge {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.9));
+}
+
+.fieldOverrideGlyphBadge circle {
+  fill: rgba(20, 14, 8, 0.82);
+  stroke: rgba(255, 224, 150, 0.7);
+  stroke-width: 1px;
+}
+
+.fieldOverrideGlyphBadge text {
+  font-size: 9px;
+  pointer-events: none;
+}
+
 .hexProduction {
   fill: #ffe9bd;
   font-size: 10px;
@@ -15111,6 +15129,54 @@ img.cardBack {
   white-space: normal;
 }
 .designedGuardInspectReward { color: #ffe9ad; }
+
+/* Field Override (WOG / anime) inspect float: art + name + mod tag + summary. */
+.fieldOverrideInspectFloat {
+  border-color: rgba(178, 150, 255, 0.6);
+}
+.fieldOverrideInspectHead {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+.fieldOverrideInspectArt {
+  border-radius: 6px;
+  flex: 0 0 auto;
+  height: 34px;
+  object-fit: cover;
+  width: 34px;
+}
+.fieldOverrideInspectGlyph {
+  flex: 0 0 auto;
+  font-size: 22px;
+  line-height: 1;
+}
+.fieldOverrideInspectName {
+  display: flex;
+  flex-direction: column;
+  font-size: 12.5px;
+  font-weight: 700;
+  gap: 2px;
+  line-height: 1.25;
+}
+.fieldOverrideInspectTag {
+  align-self: flex-start;
+  background: rgba(178, 150, 255, 0.18);
+  border: 1px solid rgba(178, 150, 255, 0.5);
+  border-radius: 999px;
+  color: #d9ccff;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0 6px;
+  text-transform: uppercase;
+}
+.fieldOverrideInspectSummary {
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
 
 /* Tile-popover check rows (win-condition / break flags). */
 .popoverCheckRow {

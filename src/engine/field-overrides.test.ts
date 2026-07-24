@@ -214,6 +214,15 @@ describe("Anime content package registration", () => {
     }
   });
 
+  it("every registered kind has a non-empty summary (the player-facing 'what happens')", () => {
+    // The board tooltip + inspect float show this text so every WOG/anime hex
+    // says what visiting does; a blank summary would be a silent, useless hex.
+    for (const def of allFieldOverrideDefinitions()) {
+      expect(def.summary?.trim().length ?? 0, `${def.id} has an empty summary`).toBeGreaterThan(0);
+      expect(def.name?.trim().length ?? 0, `${def.id} has an empty name`).toBeGreaterThan(0);
+    }
+  });
+
   it("fieldOverrideImage resolves location and kind", () => {
     expect(fieldOverrideImage("kiem_trung")).toContain("kiem_trung.webp");
     expect(fieldOverrideImage("anime.kiem_trung")).toContain("kiem_trung.webp");
