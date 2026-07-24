@@ -67,7 +67,7 @@ const CARDS = [
     kind: "RANGED",
     stats: [2, 0, 4, 7],
     cost: "5",
-    rules: "Fireball - ignore the melee penalty when attacking an adjacent unit."
+    rules: "Fireball - an attack roll of 0 or lower deals 1 extra damage; ignore the melee penalty when attacking an adjacent unit."
   },
   {
     slug: "lost-soul",
@@ -91,7 +91,7 @@ const CARDS = [
     kind: "MELEE",
     stats: [2, 1, 3, 5],
     cost: "6",
-    rules: "Shotgun Assault - roll 2 Attack dice and resolve both results."
+    rules: "Shotgun Assault - roll 2 Attack dice and resolve both results, also when retaliating."
   },
   {
     slug: "cacodemon",

@@ -463,6 +463,7 @@ import {
   getSameTargetAttackSequenceAbility,
   getSummonUnitOnAttackAbility,
   hasRollTwoDiceApplyBoth,
+  rollsTwoDiceOnRetaliation,
   hasRerollAllMinusOne,
   getReturnAfterAttackAbility,
   getSecondAttackAbility,
@@ -4773,6 +4774,63 @@ function finishResolvedAttack(
     }
   }
 
+  // Doom Arch-Vile on the NEUTRAL side: the lethal-save reaction window never
+  // opens for the neutral seat (getLethalSaveReactions returns {} for
+  // NEUTRAL_PLAYER_ID), so its printed "automatically block the first lethal
+  // attack against a friendly unit" AUTO-uses at this same chokepoint instead —
+  // the War Zealot Magic-Mirror auto-use precedent (declining is never right).
+  // Player-controlled units with the ability keep the normal reaction offer.
+  if (
+    state.combat &&
+    details.defender.controllerId === NEUTRAL_PLAYER_ID &&
+    !details.defender.cloneOfUnitId &&
+    !stackItem.modifiers.lethalSaveOffered &&
+    !stackItem.modifiers.cancelLethal
+  ) {
+    const saver = Object.values(state.combat.units).find(
+      (unit) =>
+        unit.controllerId === NEUTRAL_PLAYER_ID &&
+        unit.id !== details.defender.id &&
+        unit.damage < unit.maxHealth &&
+        !unit.usedLethalSaveThisCombat &&
+        getLethalSaveUnitAbility(unit)
+    );
+    if (saver) {
+      const preview = getAttackDamagePreview(
+        details.attacker,
+        details.defender,
+        resolvedCandidate.roll,
+        details.attackBonus,
+        details.defenseBonus,
+        defendBonus,
+        details.dieMultiplier,
+        details.abilityAttack?.baseAttack,
+        details.damageReduction,
+        details.ignoreDefense,
+        dieCancelled,
+        mightBonus,
+        details.isRetaliation
+      );
+      if (
+        preview.damage > 0 &&
+        details.defender.damage + preview.damage >= details.defender.maxHealth &&
+        !armyStacksWouldAbsorbHit(state, details.defender, preview.damage)
+      ) {
+        const saverAbility = getLethalSaveUnitAbility(saver)!;
+        saver.usedLethalSaveThisCombat = true;
+        stackItem.modifiers.lethalSaveOffered = true;
+        stackItem.modifiers.cancelLethal = { unitId: details.defender.id, grade: details.defender.grade };
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: saver.id,
+          abilityId: saverAbility.abilityId,
+          targetUnitId: details.defender.id,
+          message: `${saver.cardName} automatically cancels the killing blow on ${details.defender.cardName}.`
+        });
+      }
+    }
+  }
+
   if (details.defenseReductionAbility) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -6115,10 +6173,29 @@ function summonUnitOnAttack(state: GameState, attacker: CombatUnitState): void {
 
   const random = createSeededRandom(`${state.seed}#${ability.abilityId}#${eventSeedNumber(state)}`);
   const position = positions[random.nextInt(0, positions.length - 1)];
-  const summoned = placeSummonedUnit(state, attacker.controllerId, ability.unitDefId, "neutral", position);
+  // Minted directly (the borrowed-unit pattern), NOT via placeSummonedUnit: the
+  // summoner is usually a NEUTRAL guard — no PlayerState exists for the neutral
+  // seat, so a players[] lookup would silently no-op the whole ability — and the
+  // burst must never push a permanent card into a player's army either. The
+  // Lost Soul is a battlefield-only temporary body.
+  const summoned = makeCombatUnitFromArmy(
+    { id: `doomsummon_${nextEventNumber(state)}`, unitDefId: ability.unitDefId, side: "neutral" },
+    attacker.controllerId,
+    `unit_${attacker.controllerId}_doomsummon_${nextEventNumber(state)}`,
+    position,
+    getRuleset(state),
+    unitSideRuleOverrides(state)
+  );
   if (!summoned) {
     return;
   }
+  // Gradeless to the neutral AI (like a summon), no army card (never written
+  // back at combat end), and it acts on its own initiative this round.
+  summoned.summoned = true;
+  summoned.temporary = true;
+  summoned.activatedThisRound = false;
+  delete summoned.armyUnitId;
+  combat.units[summoned.id] = summoned;
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
@@ -9899,13 +9976,16 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
 
   // Neutral Champions ([unit_attack], own attacks only): "roll 2 Attack dice and
   // apply both outcomes". On a Retaliation Attack the champion rolls a SINGLE die
-  // instead (the doubling is own-attack-only). Either way the always-on
+  // instead (the doubling is own-attack-only), while the Doom Sergeant's
+  // `retaliationAlso` variant keeps both dice there too. Either way the always-on
   // [unit_passive] "-1" reroll applies to each die (repeated until not "-1"). The
   // reroll is intrinsic, so no separate reroll choice is opened.
-  if (hasRollTwoDiceApplyBoth(details.attacker, details.isRetaliation)) {
+  if (hasRollTwoDiceApplyBoth(details.attacker)) {
     const rerollMinus = hasRerollAllMinusOne(details.attacker);
-    const reduced = takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
-    const diceCount = reduced ? 1 : 2;
+    const doublesThisAttack = !details.isRetaliation || rollsTwoDiceOnRetaliation(details.attacker);
+    // Morale "roll 1 die less" only bites when 2 dice would otherwise be rolled.
+    const reduced = doublesThisAttack && takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
+    const diceCount = doublesThisAttack && !reduced ? 2 : 1;
     applyMoraleAttackRollPenalty(state, stackItem, details);
     const applyBothCandidate = rollApplyBothCandidate(combat, diceCount, rerollMinus);
     if (reduced) {
@@ -16671,7 +16751,7 @@ function placeSummonedUnit(
   state: GameState,
   playerId: PlayerId,
   unitDefId: string,
-  side: "few" | "pack" | "neutral",
+  side: "few" | "pack",
   position: number
 ): CombatUnitState | null {
   const combat = state.combat;

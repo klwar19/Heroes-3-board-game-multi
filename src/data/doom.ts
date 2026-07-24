@@ -91,7 +91,8 @@ export const doomUnitDefinitions: Record<DoomUnitId, UnitDefinition> = {
       initiative: 7,
       cost: { gold: 5 },
       abilities: ["ranged-extra-shot-on-low-roll", "ignore-combat-penalties"],
-      abilityText: "[unit_passive] Ignore the melee penalty when attacking an adjacent unit.",
+      abilityText:
+        '[unit_attack] A ranged attack roll of "0" or lower deals 1 extra damage. [unit_passive] Ignore the melee penalty when attacking an adjacent unit.',
       cardImage: "/assets/doom/units/imp.webp"
     },
     wikiUrl: "https://doom.fandom.com/wiki/Imp",
@@ -129,7 +130,8 @@ export const doomUnitDefinitions: Record<DoomUnitId, UnitDefinition> = {
       initiative: 5,
       cost: { gold: 6 },
       abilities: ["doom-former-human-sergeant-double-roll"],
-      abilityText: "[unit_attack] Roll 2 Attack dice and resolve both results.",
+      abilityText:
+        "[unit_passive] During any attack — own attacks and Retaliation Attacks alike — roll 2 Attack dice and resolve both results.",
       cardImage: "/assets/doom/units/former-human-sergeant.webp"
     },
     wikiUrl: "https://doom.fandom.com/wiki/Shotgun_Guy",

@@ -1404,13 +1404,23 @@ export function hasSpellCastPowerTax(unit: CombatUnitState): boolean {
  * Neutral Champions ([unit_attack], own attacks only): "roll 2 Attack dice and
  * apply both outcomes." Returns true when the unit carries the marker; the
  * caller gates it off on Retaliation Attacks (own-attack-only) and decides the
- * die count.
+ * die count. The apply-both roll branch must still be ENTERED on a Champion's
+ * retaliation (single die, but the intrinsic "-1" reroll only lives there), so
+ * this stays an unconditional marker check — `rollsTwoDiceOnRetaliation` below
+ * is the separate read that decides whether the retaliation doubles too.
  */
-export function hasRollTwoDiceApplyBoth(unit: CombatUnitState, isRetaliation = false): boolean {
+export function hasRollTwoDiceApplyBoth(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH");
+}
+
+/**
+ * Doom Former Human Sergeant: its two-dice apply-both roll ALSO fires on a
+ * Retaliation Attack (`retaliationAlso`). The classic Champion keeps the
+ * printed own-attack-only single-die retaliation.
+ */
+export function rollsTwoDiceOnRetaliation(unit: CombatUnitState): boolean {
   return getAbilitiesWithEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH").some(
-    (ability) =>
-      ability.effect?.type === "ROLL_TWO_DICE_APPLY_BOTH" &&
-      (!isRetaliation || ability.effect.retaliationAlso === true)
+    (ability) => ability.effect?.type === "ROLL_TWO_DICE_APPLY_BOTH" && ability.effect.retaliationAlso === true
   );
 }
 
