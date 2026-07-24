@@ -7602,7 +7602,8 @@ function houseRuleToggleDisabled(
 /** Optional crest/icon for individual house-rule toggles (paths under public/). */
 const HOUSE_RULE_ICONS: Partial<Record<(typeof HOUSE_RULES)[number]["id"], string>> = {
   "polish-rule-111": UI_REWARD_ICONS.rule111,
-  "mine-guard-reinforcement": REWARD_GLYPH_ICONS.treasure
+  "mine-guard-reinforcement": REWARD_GLYPH_ICONS.treasure,
+  "mine-army-defense": REWARD_GLYPH_ICONS.defense
 };
 
 function HouseRuleToggleButton({

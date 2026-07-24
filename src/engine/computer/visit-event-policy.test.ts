@@ -419,6 +419,53 @@ describe("choice policy — map discovery / garrison", () => {
     const fundedPick = chooseComputerAction(observe(funded, legal));
     expect((fundedPick!.action as { optionIndex: number }).optionIndex).toBe(0);
   });
+
+  it("garrison: the fee is read from pendingGarrison — a 3-gold MINE defense is kept where an 8-gold town would fall", () => {
+    // `mine-army-defense`: a Mine defense costs 3, not 8. The scorer reads the
+    // real cost so a modest purse (6 gold, army 3) DEFENDS the cheap mine but
+    // would CONCEDE the same holding at the town's 8-gold fee.
+    const choice: PendingChoice = {
+      id: "gar-mine",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "An enemy contests your mine — pay 3 gold to defend?",
+      options: [{ label: "Pay 3 gold and defend" }, { label: "Let it fall" }],
+      context: "garrison",
+      returnPhase: "map",
+    };
+    const legal: LegalAction[] = [
+      { label: "defend", action: { type: "CHOOSE_OPTION", playerId: "p2", choiceId: "gar-mine", optionIndex: 0 } },
+      { label: "fall", action: { type: "CHOOSE_OPTION", playerId: "p2", choiceId: "gar-mine", optionIndex: 1 } },
+    ];
+    const seat = {
+      p2: {
+        id: "p2",
+        hand: [],
+        resources: { gold: 6, buildingMaterials: 0, valuables: 0 },
+        army: [{ id: "a1" }, { id: "a2" }, { id: "a3" }],
+      },
+    };
+    // Mine (cost 3): a 6-gold owner defends.
+    const mineState = {
+      seed: "gar-mine",
+      round: 2,
+      eventCounter: 0,
+      combat: null,
+      pendingChoice: choice,
+      adventure: { pendingGarrison: { defenderPlayerId: "p2", goldCost: 3 } },
+      players: seat,
+    } as unknown as GameState;
+    const minePick = chooseComputerAction(observe(mineState, legal));
+    expect((minePick!.action as { optionIndex: number }).optionIndex, "defends the cheap mine").toBe(0);
+
+    // CONTROL: the SAME purse at the town's 8-gold fee concedes the holding.
+    const townState = {
+      ...mineState,
+      adventure: { pendingGarrison: { defenderPlayerId: "p2", goldCost: 8 } },
+    } as unknown as GameState;
+    const townPick = chooseComputerAction(observe(townState, legal));
+    expect((townPick!.action as { optionIndex: number }).optionIndex, "concedes at the 8-gold fee").toBe(1);
+  });
 });
 
 describe("decision owner — post-combat gates", () => {
