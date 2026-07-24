@@ -2008,6 +2008,49 @@ Leading with what does NOT run / deliberate limits:
   (≤ 6 designer units + 1); an over-full hand-edited map leaves the surplus at its
   default cell (`placeNeutralUnits`) — no crash, no stall.
 
+## Mine army defense (OPTIONAL "Global" house rule, default OFF) — what runs vs. limits
+
+House rule `mine-army-defense` (registry `src/engine/house-rules.ts`, category
+`"global"`, default OFF in BOTH binh AND legacy — an opt-in tweak). When ON, an
+enemy Hero walking onto YOUR already-flagged Mine no longer re-flags it for free:
+YOU (the owner) get the settlement-style defense window — pay 3 gold and defend
+with your UNITS ONLY (no hero, no cards), or let it fall. Engine: a flagged-mine
+arm in `garrisonDefenderFor` + a `garrisonDefenseCost` mine=3 (`adventure-reducer.ts`),
+reusing the EXISTING `pendingGarrison` / `openGarrisonPromptIfNeeded` /
+`resolveGarrisonChoice` / `startPlayerCombat` flow verbatim (the same one a
+town/settlement/designer-Garrison uses). Behaviour pinned in
+`src/engine/mine-army-defense.test.ts` (each claim mutation-checked with a
+rule-OFF / wrong-owner CONTROL), the AI twin in
+`src/engine/computer/visit-event-policy.test.ts`, and the lobby row in
+`src/components/adventure/game-options-tabs.test.tsx`.
+
+Leading with what does NOT run / deliberate limits:
+- **View Earth remote capture is NOT intercepted** — it flags directly through
+  `resolveViewEarthCapture` (a separate path from `resolveHeroArrival`), so a
+  remote View Earth steal of a flagged mine stays a free capture (documented, not
+  a bug). Only a physical WALK-IN (or a Dimension Door arrival, which shares
+  `resolveHeroArrival`) opens the defense.
+- **A Mine with a LIVE neutral guard fights the guard FIRST** — `isFieldGuarded`
+  is checked before the garrison prompt in `resolveHeroArrival`, and a re-seeded
+  mine (pillage) clears `flagOwnerId`, so the defense arm (`Boolean(field.flagOwnerId)`)
+  never fires on a guarded mine; that fight is unchanged.
+- **A broke owner (< 3 gold) is never asked** — the mine falls undefended, exactly
+  like today's walk-in (the shared `openGarrisonPromptIfNeeded` gold gate).
+- **Default OFF ⇒ byte-identical** — with the rule off the walk-in re-flags the
+  mine for free (the classic behaviour), no prompt.
+- **Outcome rides the generic garrison seam**: winning the defense keeps the mine
+  with the owner and repels the attacker; declining OR losing flags it for the
+  attacker with the normal production transfer (`finalizeAdventureCombat` →
+  `beginFieldVisit`'s mine branch → `applyMineFlag`) — no mine-specific finalize
+  code. Losing a mine defense never triggers the last-town elimination (a mine is
+  not a town-category location).
+- **AI**: the `context: "garrison"` choice scorer now reads the real
+  `pendingGarrison.goldCost` (3 for a mine, 8 for a town) instead of a hardcoded
+  8, so a computer owner defends a cheap mine it would concede at a town's fee;
+  town/settlement scoring is byte-identical (goldCost 8). The map policy's
+  free-reflag-of-enemy-mines objective may now walk into this fight — no stall
+  (the engine offers legal actions either way; the AI just answers the prompt).
+
 ## Creature Banks (Naval Battles optional rule) — what runs vs. what is deferred
 
 Added in `src/data/map/creature-banks.ts` (data, tested in

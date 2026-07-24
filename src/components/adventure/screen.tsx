@@ -4229,7 +4229,14 @@ export function ArmyPanel({
   const [xpBoardUnitId, setXpBoardUnitId] = useState<string | null>(null);
   const player = state.players[playerId];
   const lexicon = factionUiLexicon(player?.factionId);
-  if (!player || player.army.length === 0) {
+  const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+  // The Unit deck panel shows the player's WHOLE faction roster — owned or not —
+  // with printed recruit (Few) / reinforce (Pack) costs, so it reads like a full
+  // deck reference (user request "show all units even not available … show cost
+  // to recruit or reinforce too"). Recruited Neutrals sit OUTSIDE faction.units
+  // and are appended after the roster as their own owned rows (unchanged).
+  const roster = faction?.units ?? [];
+  if (!player || (roster.length === 0 && player.army.length === 0)) {
     return (
       <section className={`armyPanel theme-${lexicon.register}`}>
         <h3>{lexicon.army}</h3>
@@ -4244,10 +4251,34 @@ export function ArmyPanel({
   // live stats the engine will fight with (not just the bundled mode default).
   const sideOverrides = unitSideRuleOverrides(state);
 
+  // Ordered render list: each faction unit in printed order (owned card if the
+  // player has it, else an unowned "not recruited" placeholder), then any army
+  // cards NOT in the faction roster (recruited Neutrals) as owned rows.
+  const renderedArmyIds = new Set<string>();
+  type OwnedUnit = (typeof player.army)[number];
+  const rosterEntries: (
+    | { kind: "owned"; unit: OwnedUnit }
+    | { kind: "unowned"; unitDefId: string }
+  )[] = [];
+  for (const unitDefId of roster) {
+    const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId && !renderedArmyIds.has(candidate.id));
+    if (owned) {
+      renderedArmyIds.add(owned.id);
+      rosterEntries.push({ kind: "owned", unit: owned });
+    } else {
+      rosterEntries.push({ kind: "unowned", unitDefId });
+    }
+  }
+  for (const unit of player.army) {
+    if (!renderedArmyIds.has(unit.id)) {
+      rosterEntries.push({ kind: "owned", unit });
+    }
+  }
+
   return (
     <section className={`armyPanel theme-${lexicon.register}`} aria-label={lexicon.army}>
       <h3>{lexicon.army} ({player.army.length})</h3>
-      {experienceActive ? (
+      {experienceActive && player.army.length > 0 ? (
         // The board itself is a POP-UP WINDOW (like the Hero Grade / Hero
         // Equipment windows): this button opens it with per-unit XP, the
         // rank-by-rank stat changes and the elite-ability rules text.
@@ -4268,7 +4299,32 @@ export function ArmyPanel({
         </button>
       ) : null}
       <ul>
-        {player.army.map((unit) => {
+        {rosterEntries.map((entry) => {
+          // Unowned roster unit: card faces + name + a "not recruited" note,
+          // no zoom row / XP / controls (honest — nothing to act on here). The
+          // printed Few/Pack costs still ride the cards so the player can see
+          // what recruiting / reinforcing would cost.
+          if (entry.kind === "unowned") {
+            const rosterDef = coreUnitDefinitions[entry.unitDefId];
+            return (
+              <li className="armyRosterUnowned" key={`roster-${entry.unitDefId}`}>
+                {rosterDef?.few || rosterDef?.pack ? (
+                  <UnitSideCards
+                    fewCost={rosterDef?.few?.cost}
+                    ownedSide={null}
+                    packCost={rosterDef?.pack?.cost}
+                    unitDefId={entry.unitDefId}
+                  />
+                ) : null}
+                <span className="armyRosterUnownedMeta">
+                  <span className={`tierDot ${rosterDef?.tier}`} />
+                  <strong>{rosterDef?.name ?? entry.unitDefId}</strong>
+                  <small className="armyRosterState">not recruited</small>
+                </span>
+              </li>
+            );
+          }
+          const unit = entry.unit;
           const def = coreUnitDefinitions[unit.unitDefId];
           // Few/Pack printed sides, with a recruited Neutral card's own side
           // (it used to fall through to `pack`, hiding a Neutral's stats).
@@ -4329,11 +4385,17 @@ export function ArmyPanel({
             <li key={unit.id}>
               {/* Full both-faces card display, identical to the town recruit
                   roster (user request: the Unit deck should show the same full
-                  cards). Costs are omitted here — the units are already owned.
+                  cards). The printed recruit (Few) / reinforce (Pack) costs ride
+                  the cards too, so the deck doubles as a cost reference.
                   A recruited Neutral card has no Few/Pack faces, so it keeps the
                   single-face thumb in the row below instead. */}
               {def?.few || def?.pack ? (
-                <UnitSideCards ownedSide={unit.side} unitDefId={unit.unitDefId} />
+                <UnitSideCards
+                  fewCost={def?.few?.cost}
+                  ownedSide={unit.side}
+                  packCost={def?.pack?.cost}
+                  unitDefId={unit.unitDefId}
+                />
               ) : null}
               <button
                 className="armyUnitRow"
@@ -4464,6 +4526,11 @@ export function ArmyPanel({
           );
         })}
       </ul>
+      {player.army.length === 0 ? (
+        <small className="armyEmptyNote">
+          No units in your deck yet — the scenario&apos;s starting units return after the next combat.
+        </small>
+      ) : null}
       {xpBoardOpen && typeof document !== "undefined"
         ? createPortal(
             <UnitExperienceWindow
@@ -7526,7 +7593,8 @@ function houseRuleToggleDisabled(
 /** Optional crest/icon for individual house-rule toggles (paths under public/). */
 const HOUSE_RULE_ICONS: Partial<Record<(typeof HOUSE_RULES)[number]["id"], string>> = {
   "polish-rule-111": UI_REWARD_ICONS.rule111,
-  "mine-guard-reinforcement": REWARD_GLYPH_ICONS.treasure
+  "mine-guard-reinforcement": REWARD_GLYPH_ICONS.treasure,
+  "mine-army-defense": REWARD_GLYPH_ICONS.defense
 };
 
 function HouseRuleToggleButton({

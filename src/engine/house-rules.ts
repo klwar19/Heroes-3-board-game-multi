@@ -286,6 +286,17 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     // Opt-in difficulty tweak, OFF in both modes (not an existing core default).
     default: false,
     legacyDefault: false
+  },
+  {
+    id: "mine-army-defense",
+    label: "Mines: defend with your army",
+    description:
+      "Global map rule: an enemy Hero walking onto YOUR already-flagged Mine no longer re-flags it for free — you (the owner) get the settlement-style defense: pay 3 gold and defend with your UNITS only (no hero, no cards), or let it fall (the flag hands over exactly like today's walk-in). Winning the defense keeps the Mine and repels the attacker; declining or losing flags it for the attacker. A Mine with a LIVE neutral guard still fights that guard first; a View Earth remote capture is NOT intercepted. Off (default): byte-identical — the walk-in re-flags the Mine for free.",
+    category: "global",
+    // Opt-in house rule, OFF in both modes (adds a defense chokepoint that did
+    // not exist before — must not change any legacy/binh game unless picked).
+    default: false,
+    legacyDefault: false
   }
 ];
 

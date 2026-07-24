@@ -268,6 +268,19 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  it("wires the opt-in Mine-army-defense global rule (OFF by default) through the Global panel", () => {
+    const onAction = openOptions();
+    expandGlobalMapRules();
+    const toggle = screen.getByRole("button", { name: /Mines: defend with your army/i });
+    expect(toggle.getAttribute("aria-pressed"), "an opt-in rule is OFF by default").toBe("false");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "mine-army-defense": true } }
+    });
+  });
+
   it("renders the Torso-of-Legion re-tier row ON by default; unticking dispatches just that flag", () => {
     const onAction = openOptions();
     expandBinhHouseRules();
