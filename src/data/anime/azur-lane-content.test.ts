@@ -13,6 +13,8 @@ import { townBoardSpecs } from "@/data/towns/boards";
 import { commanderSoundKey } from "@/data/unit-sounds";
 import { unitAbilities } from "@/data/units/abilities";
 import {
+  AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE,
+  AZUR_LANE_RANK_ABILITY_ICONS,
   UNIT_RANK_ABILITY_ICONS,
   UNIT_RANK_SCHEDULES,
   hasUniqueRankSchedule,
@@ -208,6 +210,8 @@ describe("Azur Lane Naval Base — commander (Belfast)", () => {
     expect(commander.cast.effect).toEqual({ kind: "enemy-damage", damageByPower: [1, 1, 2] });
     expect(unitAbilities[commander.cast.abilityId]?.implementationStatus).toBe("implemented");
     expect(commander.cast.tierText).toHaveLength(3);
+    expect(commander.cast.icon).toContain("commander-royal-salvo.webp");
+    expect(fileExists(commander.cast.icon)).toBe(true);
     // Belfast is the SECOND First-Aid commander (specialty-keyed window, not slug).
     expect(commander.specialty.id).toBe("first-aid");
     expect(commander.specialty.name).toBe("Impeccable Service");
@@ -582,6 +586,44 @@ describe("Azur Lane Naval Base — Fleet veterancy: bespoke rank schedules", () 
         }
       }
     }
+  });
+
+  it("ART: the XP board uses a ship-specific HD icon for every Azur Lane unit", () => {
+    for (const unitId of Object.keys(EXPECTED_SCHEDULES)) {
+      const icon = AZUR_LANE_RANK_ABILITY_ICONS[unitId];
+      expect(icon, `${unitId} needs a ship-specific XP icon`).toBeTruthy();
+      expect(unitRankAbilityIcon("commander-max-damage", unitId)).toBe(icon);
+      expect(
+        existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))),
+        `${unitId} XP icon ${icon} missing on disk`
+      ).toBe(true);
+    }
+    // The optional unit id keeps the generic renderer unchanged for non-Azur
+    // units and for normal card ability presentations.
+    expect(unitRankAbilityIcon("commander-max-damage")).toBe(UNIT_RANK_ABILITY_ICONS["commander-max-damage"]);
+  });
+
+  it("ART: every Azur Lane XP choice has an explicit ship-skill emblem", () => {
+    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
+      for (const slot of expected.slots) {
+        for (const choiceId of slot) {
+          const key = `${unitId}:${choiceId}`;
+          const icon = AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE[key];
+          expect(icon, `${key} needs a ship-skill icon`).toBeTruthy();
+          expect(unitRankAbilityIcon(choiceId, unitId), key).toBe(icon);
+          expect(
+            existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))),
+            `${key} → ${icon} missing on disk`
+          ).toBe(true);
+        }
+      }
+    }
+
+    // Shared engine abilities still resolve to different ship art on the XP
+    // board; the optional unit id is what prevents a generic card icon leak.
+    expect(
+      unitRankAbilityIcon("commander-max-damage", "azur_lane.javelin")
+    ).not.toBe(unitRankAbilityIcon("commander-max-damage", "azur_lane.i19"));
   });
 
   // BEHAVIOURAL (effect-level): Yukikaze's schedule actually FOLDS in combat —

@@ -68,20 +68,17 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   sasuke: "/assets/anime/units/portraits/hidden-leaf-jonin.webp", // Jonin
   // Tsunade's Hundred Healings IS the First Aid medic set (Gem clone), like Lingxi.
   tsunade: "/assets/specialty-card/icon-first_aid.webp",
-  // Azur Lane might specialists — no dedicated signature-unit portrait shipped
-  // yet, so a thematic Homm3BG emblem: Enterprise's Grey Ghost carrier fury →
-  // the Bloodlust rage icon, Bismarck's Iron Blood armor → the Stone Skin icon,
-  // Nagato's Big Seven speed (doubles the fast Yukikaze) → the Haste icon.
-  // Enterprise's specialty IS the "Lucky E" dice luck (2026-07) — the Fortune die emblem.
-  enterprise: "/assets/specialty-card/icon-fortune.webp",
-  // Bismarck / Nagato are unit specialists — their signature shipgirl's own
-  // portrait cropped from the commissioned unit cards (build-azur-lane-unit-cards.mjs).
-  bismarck: "/assets/anime/units/portraits/azur-lane-prinz-eugen.webp",
-  nagato: "/assets/anime/units/portraits/azur-lane-yukikaze.webp",
-  // Akashi's Emergency Repairs & Sirius's Flawless Service ARE medic sets (Gem /
-  // Rion clones), like Tsunade / Aoko — the healer medallion / Cure spell icon.
-  akashi: "/assets/specialty-card/icon-first_aid.webp",
-  sirius: "/assets/specialty-card/icon-cure.webp",
+  // Azur Lane hero specialties use the heroes' actual in-game skill emblems,
+  // redrawn to HD for the native specialty-card icon and hero-board slot.
+  enterprise: "/assets/anime/icons/azur-lane/specialty-enterprise.webp",
+  // Bismarck and Nagato retain their unit-specialist mechanics; only their
+  // specialty symbol changes to the matching ship skill art.
+  bismarck: "/assets/anime/icons/azur-lane/specialty-bismarck.webp",
+  nagato: "/assets/anime/icons/azur-lane/specialty-nagato.webp",
+  // Akashi's Emergency Repairs and Sirius's Flawless Service retain their
+  // medic effects while showing their own ship skill emblems.
+  akashi: "/assets/anime/icons/azur-lane/specialty-akashi.webp",
+  sirius: "/assets/anime/icons/azur-lane/specialty-sirius.webp",
   // Heavenly Demon Palace might specialists — no dedicated signature-unit portrait
   // shipped yet, so a thematic Homm3BG emblem: Xuedao's Blood Path fury & Guiyan's
   // Ghost Flame → the Bloodlust rage icon; Xuanming's Bone Reaver command → the

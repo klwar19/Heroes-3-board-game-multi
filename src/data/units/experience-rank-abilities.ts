@@ -979,9 +979,72 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "teleport-move": "/assets/spell-icons/teleport.png"
 };
 
+/**
+ * Azur Lane's veterancy choices use the shipgirl's own skill emblem. This is
+ * keyed by unit definition, not by shared engine ability id: the same rank
+ * mechanic can be offered to several ships, but the XP board still shows the
+ * correct in-game art for the ship being trained.
+ *
+ * This unit-level map is the signature/default emblem. The choice-level map
+ * below is the authoritative lookup when a schedule offers a specific skill.
+ */
+export const AZUR_LANE_RANK_ABILITY_ICONS: Record<string, string> = {
+  "azur_lane.laffey": "/assets/anime/icons/azur-lane/rank-ability-laffey.webp",
+  "azur_lane.javelin": "/assets/anime/icons/azur-lane/rank-ability-javelin.webp",
+  "azur_lane.honolulu": "/assets/anime/icons/azur-lane/rank-ability-honolulu.webp",
+  "azur_lane.unicorn": "/assets/anime/icons/azur-lane/rank-ability-unicorn.webp",
+  "azur_lane.yukikaze": "/assets/anime/icons/azur-lane/rank-ability-yukikaze.webp",
+  "azur_lane.prinz_eugen": "/assets/anime/icons/azur-lane/rank-ability-prinz-eugen.webp",
+  "azur_lane.i19": "/assets/anime/icons/azur-lane/rank-ability-i19.webp"
+};
+
+/**
+ * Explicit XP-board art for every Azur Lane schedule choice. The engine ids
+ * are intentionally shared with the regular HoMM3-style rank abilities, so a
+ * lookup by ability id alone would make (for example) every `commander-charge`
+ * choice show the same generic Haste art. Pairing the id with the ship keeps
+ * normal card ability art untouched while assigning the actual in-game ship
+ * skill emblem to every Azur Lane choice.
+ */
+export const AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE: Record<string, string> = {
+  "azur_lane.laffey:kansen-full-barrage": "/assets/anime/icons/azur-lane/rank-ability-laffey.webp",
+  "azur_lane.laffey:sandworm-strike-again": "/assets/anime/icons/azur-lane/rank-ability-laffey-assault.webp",
+
+  "azur_lane.javelin:commander-max-damage": "/assets/anime/icons/azur-lane/rank-ability-javelin.webp",
+  "azur_lane.javelin:bulwark-air-shield": "/assets/anime/icons/azur-lane/rank-ability-javelin-assault.webp",
+
+  "azur_lane.honolulu:ranged-extra-shot-on-low-roll": "/assets/anime/icons/azur-lane/rank-ability-honolulu.webp",
+  "azur_lane.honolulu:bulwark-air-shield": "/assets/anime/icons/azur-lane/rank-ability-honolulu-barrage.webp",
+
+  "azur_lane.unicorn:wraith-heal-1": "/assets/anime/icons/azur-lane/rank-ability-unicorn.webp",
+  "azur_lane.unicorn:commander-defense-token": "/assets/anime/icons/azur-lane/rank-ability-unicorn-aid.webp",
+  "azur_lane.unicorn:kansen-fleet-formation": "/assets/anime/icons/azur-lane/rank-ability-unicorn.webp",
+  "azur_lane.unicorn:bulwark-air-shield": "/assets/anime/icons/azur-lane/rank-ability-unicorn-aid.webp",
+
+  "azur_lane.yukikaze:attack-roll-advantage-passive": "/assets/anime/icons/azur-lane/rank-ability-yukikaze.webp",
+  "azur_lane.yukikaze:wog-no-negative-attack-roll": "/assets/anime/icons/azur-lane/rank-ability-yukikaze-lucky.webp",
+  "azur_lane.yukikaze:commander-charge": "/assets/anime/icons/azur-lane/rank-ability-yukikaze.webp",
+  "azur_lane.yukikaze:commander-max-damage": "/assets/anime/icons/azur-lane/rank-ability-yukikaze.webp",
+
+  "azur_lane.prinz_eugen:zombie-resilience": "/assets/anime/icons/azur-lane/rank-ability-prinz-eugen.webp",
+  "azur_lane.prinz_eugen:reduce-spell-damage-1": "/assets/anime/icons/azur-lane/rank-ability-prinz-eugen-shield.webp",
+  "azur_lane.prinz_eugen:wog-fire-shield-1": "/assets/anime/icons/azur-lane/rank-ability-prinz-eugen.webp",
+  "azur_lane.prinz_eugen:ignore-paralysis": "/assets/anime/icons/azur-lane/rank-ability-prinz-eugen-shield.webp",
+
+  "azur_lane.i19:commander-max-damage": "/assets/anime/icons/azur-lane/rank-ability-i19.webp",
+  "azur_lane.i19:commander-charge": "/assets/anime/icons/azur-lane/rank-ability-i19-torpedoes.webp",
+  "azur_lane.i19:wog-nightmare-fear": "/assets/anime/icons/azur-lane/rank-ability-i19.webp",
+  "azur_lane.i19:wog-no-negative-attack-roll": "/assets/anime/icons/azur-lane/rank-ability-i19-torpedoes.webp"
+};
+
 const RANK_ABILITY_ICON_FALLBACK = "/assets/spell-icons/slayer.png";
 
-export function unitRankAbilityIcon(abilityId: string): string {
+export function unitRankAbilityIcon(abilityId: string, unitDefId?: string): string {
+  if (unitDefId?.startsWith("azur_lane.")) {
+    const choiceIcon = AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE[`${unitDefId}:${abilityId}`];
+    if (choiceIcon) return choiceIcon;
+    if (AZUR_LANE_RANK_ABILITY_ICONS[unitDefId]) return AZUR_LANE_RANK_ABILITY_ICONS[unitDefId];
+  }
   return UNIT_RANK_ABILITY_ICONS[abilityId] ?? RANK_ABILITY_ICON_FALLBACK;
 }
 
