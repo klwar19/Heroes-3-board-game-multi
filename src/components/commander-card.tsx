@@ -88,9 +88,227 @@ const DIM = "#b9a988";
 const OUTLINE =
   "0 0 2px #140c07, 0 0 2px #140c07, 1px 1px 0 #140c07, -1px 1px 0 #140c07, 1px -1px 0 #140c07, -1px -1px 0 #140c07";
 
+type CommanderCardLayout = "classic" | "azur-lane" | "wuxia";
+
+/**
+ * Belfast and Demon Ancestor use the newer commissioned card art. Those files
+ * already contain their own title banner, so the classic HoMM3 overlay
+ * coordinates would print a second title over the art and put the stat values
+ * on top of the character. Keep one renderer, but give both themed cards the
+ * same readable information layout with only the palette changing.
+ */
+const THEMED_CARD_STYLES: Record<Exclude<CommanderCardLayout, "classic">, {
+  panel: string;
+  panelStrong: string;
+  border: string;
+  accent: string;
+  text: string;
+}> = {
+  "azur-lane": {
+    panel: "rgba(6, 24, 53, 0.94)",
+    panelStrong: "rgba(10, 42, 84, 0.98)",
+    border: "#6fb3e8",
+    accent: "#f4d774",
+    text: "#eff7ff"
+  },
+  wuxia: {
+    panel: "rgba(38, 10, 17, 0.95)",
+    panelStrong: "rgba(78, 17, 29, 0.98)",
+    border: "#c66b4e",
+    accent: "#e6b866",
+    text: "#f8e2c1"
+  }
+};
+
+function commanderCardLayout(slug: CommanderSlug): CommanderCardLayout {
+  if (slug === "belfast") return "azur-lane";
+  if (slug === "demon_ancestor") return "wuxia";
+  return "classic";
+}
+
 /** Roman grade tag for tooltips/labels (grade 0 = base, no numeral). */
 function gradeNumeral(grade: CommanderGrade): string {
   return grade === 0 ? "base" : ["", "I", "II", "III"][grade];
+}
+
+function ThemedCommanderCardOverlays({
+  slug,
+  grades,
+  level,
+  stance,
+  statValues
+}: {
+  slug: CommanderSlug;
+  grades: CommanderGrades;
+  level?: number;
+  stance?: "attack" | "defense";
+  statValues?: { attack: number; defense: number; health: number; speed: number };
+}) {
+  const def = commanderDefinitions[slug];
+  const layout = commanderCardLayout(slug);
+  if (!def || layout === "classic") return null;
+
+  const theme = THEMED_CARD_STYLES[layout];
+  const power = commanderStatValue("magic", grades.magic);
+  const might = commanderStatValue("damage", grades.damage);
+  const spellWard = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[grades.magic];
+  const tierIndex = commanderCastTierIndex(power);
+  const combosUnlocked = commanderUnlockedCombos(grades);
+  const hasStance = def.specialty.id === "superior-combat";
+  const shownStance = stance ?? "attack";
+  const statKeys = ["attack", "defense", "health", "speed"] as const;
+  const themedPanel: CSSProperties = {
+    background: theme.panel,
+    border: `1px solid ${theme.border}`,
+    boxShadow: "0 2px 7px rgba(0, 0, 0, 0.7)",
+    color: theme.text
+  };
+
+  return (
+    <div
+      aria-label={`${def.name} themed commander information`}
+      data-card-layout={layout}
+      style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}
+    >
+      {/* The commissioned art already prints the title banner. The rail below
+          carries the same live stat information as the classic card without
+          placing numbers on top of the character. */}
+      <div
+        className="themedCommanderStats"
+        style={{
+          ...themedPanel,
+          position: "absolute",
+          left: "4%",
+          top: "21%",
+          bottom: "23%",
+          width: "23%",
+          borderRadius: "1.2cqw",
+          padding: "1.5cqw",
+          display: "grid",
+          gridTemplateRows: "auto repeat(4, 1fr) auto",
+          gap: "0.7cqw",
+          boxSizing: "border-box"
+        }}
+      >
+        <div style={{ color: theme.accent, fontSize: "2cqw", fontWeight: 700, letterSpacing: "0.12cqw", textAlign: "center" }}>
+          COMMANDER
+          {level !== undefined ? <span style={{ display: "block", color: theme.text, fontSize: "1.8cqw", letterSpacing: 0 }}>Lv {level}</span> : null}
+        </div>
+        {statKeys.map((key) => {
+          const stanceBonus = !statValues && hasStance && key === shownStance ? 1 : 0;
+          const value = statValues ? statValues[key] : commanderStatValue(key, grades[key]) + stanceBonus;
+          const boosted = stanceBonus > 0 || (statValues && value > commanderStatValue(key, grades[key]));
+          return (
+            <div
+              key={key}
+              title={`${COMMANDER_STAT_LABELS[key]} ${value}`}
+              style={{
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.5cqw",
+                borderTop: "1px solid rgba(255, 255, 255, 0.2)",
+                paddingTop: "0.5cqw"
+              }}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "1.9cqw", opacity: 0.9 }}>
+                {COMMANDER_STAT_ABBR[key]}
+              </span>
+              <b style={{ color: boosted ? "#9be29b" : theme.accent, fontSize: "4.2cqw", lineHeight: 1 }}>{value}</b>
+            </div>
+          );
+        })}
+        {might > 0 || grades.magic > 0 ? (
+          <div style={{ display: "grid", gap: "0.45cqw", fontSize: "1.7cqw", lineHeight: 1.1, textAlign: "center" }}>
+            {might > 0 ? <span style={{ color: theme.accent }}>Might +{might} die{might === 1 ? "" : "s"}</span> : null}
+            {grades.magic > 0 ? <span style={{ color: theme.text }}>Power {power}{spellWard > 0 ? ` · −${spellWard} spell` : ""}</span> : null}
+          </div>
+        ) : null}
+      </div>
+
+      {combosUnlocked.length > 0 ? (
+        <div
+          className="themedCommanderCombos"
+          style={{
+            ...themedPanel,
+            background: theme.panelStrong,
+            position: "absolute",
+            left: "30%",
+            right: "4%",
+            top: "21%",
+            minHeight: "10%",
+            maxHeight: "16%",
+            borderRadius: "1.2cqw",
+            padding: "1cqw",
+            display: "flex",
+            flexWrap: "wrap",
+            alignContent: "flex-start",
+            justifyContent: "flex-end",
+            gap: "0.8cqw",
+            overflow: "hidden",
+            boxSizing: "border-box"
+          }}
+        >
+          {combosUnlocked.map((combo) => (
+            <img
+              alt={combo.name}
+              key={combo.id}
+              src={assetUrl(combo.icon)}
+              title={`${combo.name} (${COMMANDER_STAT_LABELS[combo.requires[0]]} + ${COMMANDER_STAT_LABELS[combo.requires[1]]}) · ${combo.text}`}
+              style={{
+                width: "5.5cqw",
+                height: "5.5cqw",
+                objectFit: "cover",
+                borderRadius: "50%",
+                border: `0.35cqw solid ${theme.accent}`,
+                boxShadow: "0 0 5px rgba(0, 0, 0, 0.8)",
+                background: "#100a05"
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <div
+        className="themedCommanderAbility"
+        style={{
+          ...themedPanel,
+          position: "absolute",
+          left: "4%",
+          right: "4%",
+          bottom: "4%",
+          minHeight: "16%",
+          borderRadius: "1.3cqw",
+          padding: "1.6cqw 2cqw",
+          display: "flex",
+          alignItems: "center",
+          gap: "1.6cqw",
+          boxSizing: "border-box"
+        }}
+      >
+        <img
+          alt=""
+          src={assetUrl(def.cast.icon)}
+          style={{
+            width: "8cqw",
+            height: "8cqw",
+            flexShrink: 0,
+            objectFit: "cover",
+            borderRadius: "1cqw",
+            border: `1px solid ${theme.border}`,
+            background: "#100a05"
+          }}
+        />
+        <span style={{ minWidth: 0, color: theme.text, textAlign: "left", lineHeight: 1.18 }}>
+          <b style={{ display: "block", color: theme.accent, fontSize: "2.8cqw", letterSpacing: "0.12cqw" }}>
+            {def.cast.name} · once per combat round
+          </b>
+          <span style={{ display: "block", marginTop: "0.6cqw", fontSize: "2.15cqw" }}>{def.cast.tierText[tierIndex]}</span>
+        </span>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -130,6 +348,7 @@ export function CommanderCardFace({
   const combosUnlocked = commanderUnlockedCombos(grades);
   const hasStance = def?.specialty.id === "superior-combat";
   const shownStance: "attack" | "defense" = stance ?? "attack";
+  const cardLayout = commanderCardLayout(slug);
 
   if (!def) {
     return null;
@@ -151,6 +370,7 @@ export function CommanderCardFace({
   return (
     <div
       className={className}
+      data-card-layout={cardLayout}
       style={{ containerType: "inline-size", position: "relative", width: "100%", fontFamily: 'Georgia, "Times New Roman", serif', ...style }}
     >
       <img
@@ -165,7 +385,9 @@ export function CommanderCardFace({
           off so it never eats clicks. */}
       {!dead ? <div className="commanderRainbowFrame" aria-hidden="true" data-testid="commander-rainbow-spark" /> : null}
 
-      {/* Name + faction tag (overlaid on the banner). */}
+      {cardLayout === "classic" ? (
+        <>
+          {/* Name + faction tag (overlaid on the classic blank banner). */}
       <span
         style={{
           position: "absolute",
@@ -338,6 +560,16 @@ export function CommanderCardFace({
           <span style={{ fontSize: "2.45cqw", textShadow: "1px 1px 0 #160e08" }}>{def.cast.tierText[tierIndex]}</span>
         </span>
       </div>
+        </>
+      ) : (
+        <ThemedCommanderCardOverlays
+          slug={slug}
+          grades={grades}
+          level={level}
+          stance={hasStance ? shownStance : undefined}
+          statValues={statValues}
+        />
+      )}
 
       {/* Fallen overlay. */}
       {dead ? (

@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "render:maps": "vitest run --config vitest.render.config.ts",
     "build:anime-cards": "node scripts/build-anime-cards.mjs",
+    "build:doom-cards": "node scripts/build-doom-unit-cards.mjs",
     "deploy:partykit": "partykit deploy",
     "sync:assets": "scripts/sync-assets-to-r2.sh",
     "setup:r2-cors": "node scripts/setup-r2-cors.mjs"

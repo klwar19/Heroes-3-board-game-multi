@@ -27,12 +27,12 @@ function assertRealArt(assetPath: string, minBytes = 1500) {
 }
 
 describe("board-game resource icons", () => {
-  it("wires the three board-game resources to the real local webp icons (not the old .gif)", () => {
+  it("wires the three board-game resources to real local glyph art (not the old .gif)", () => {
     expect(RESOURCE_ICONS.gold).toBe("/assets/icons/resource-gold.webp");
-    expect(RESOURCE_ICONS.buildingMaterials).toBe("/assets/icons/resource-building_materials.webp");
+    expect(RESOURCE_ICONS.buildingMaterials).toBe("/assets/glyphs/building_materials.svg");
     expect(RESOURCE_ICONS.valuables).toBe("/assets/icons/resource-valuables.webp");
     assertRealArt(RESOURCE_ICONS.gold);
-    assertRealArt(RESOURCE_ICONS.buildingMaterials);
+    assertRealArt(RESOURCE_ICONS.buildingMaterials, 1_000);
     assertRealArt(RESOURCE_ICONS.valuables);
   });
 });

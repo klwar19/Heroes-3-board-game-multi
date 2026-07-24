@@ -55,9 +55,9 @@ const TILE_PLANS = {
 
 const ASSETS = {
   // Cream/gold board-print glyphs (same family as treasure + roman I) — not the photo tools.
-  resource: "public/assets/ui/field-symbol-resource-cream.webp",
+  resource: "public/assets/glyphs/resource-yellow.svg",
   treasure: "public/assets/ui/icon-treasure-chest-glyph.webp",
-  mine: "public/assets/ui/field-symbol-mine-cream.webp"
+  mine: "public/assets/glyphs/building_materials.svg"
 };
 
 async function makeBadge(text, { size = 96, fill = "#f3e2b0" } = {}) {

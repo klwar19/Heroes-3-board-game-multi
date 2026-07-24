@@ -99,8 +99,23 @@ export function unitHasAttackRollAdvantage(
     if (ability.effect?.type !== "ATTACK_ROLL_ADVANTAGE") {
       return false;
     }
-    return !(ability.effect.ownAttackOnly && isRetaliation);
+    if (ability.effect.ownAttackOnly && isRetaliation) {
+      return false;
+    }
+    if (ability.effect.retaliationOnly && !isRetaliation) {
+      return false;
+    }
+    return true;
   });
+}
+
+/** Doom Demon: the unit's Retaliation Attack gains a flat Attack bonus. */
+export function getRetaliationAttackBonus(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "RETALIATION_ATTACK_BONUS").reduce(
+    (total, ability) =>
+      ability.effect?.type === "RETALIATION_ATTACK_BONUS" ? total + ability.effect.amount : total,
+    0
+  );
 }
 
 /**
@@ -181,9 +196,43 @@ export function getDoubleAttackAbility(unit: CombatUnitState): { abilityId: stri
  */
 export function getSecondAttackAbility(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; baseAttack: number } | null {
+): { abilityId: string; abilityName: string; baseAttack: number; onRoll?: number } | null {
   for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_ADJACENT_TO_TARGET")) {
     if (ability.effect?.type === "SECOND_ATTACK_ADJACENT_TO_TARGET") {
+      return {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        baseAttack: ability.effect.baseAttack,
+        onRoll: ability.effect.onRoll
+      };
+    }
+  }
+
+  return null;
+}
+
+/** Doom Arachnotron: fixed same-target attacks queued after the primary attack. */
+export function getSameTargetAttackSequenceAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; followUpAttacks: number[] } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SEQUENCE_ATTACK_SAME_TARGET")) {
+    if (ability.effect?.type === "SEQUENCE_ATTACK_SAME_TARGET" && ability.effect.followUpAttacks.length > 0) {
+      return {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        followUpAttacks: ability.effect.followUpAttacks
+      };
+    }
+  }
+  return null;
+}
+
+/** Wolf Raiders: a same-target second attack after retaliation has resolved. */
+export function getAfterRetaliationAttackAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; baseAttack?: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION")) {
+    if (ability.effect?.type === "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION") {
       return { abilityId: ability.id, abilityName: ability.name, baseAttack: ability.effect.baseAttack };
     }
   }
@@ -191,17 +240,25 @@ export function getSecondAttackAbility(
   return null;
 }
 
-/** Wolf Raiders: a same-target second attack after retaliation has resolved. */
-export function getAfterRetaliationAttackAbility(
-  unit: CombatUnitState
-): { abilityId: string; abilityName: string } | null {
-  for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION")) {
-    if (ability.effect?.type === "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION") {
-      return { abilityId: ability.id, abilityName: ability.name };
-    }
-  }
-
-  return null;
+/** Azur Lane Best Friends: a live friendly-name check across the battlefield. */
+export function getAttackBonusWhenAllyNamePresent(combat: CombatState, attacker: CombatUnitState): number {
+  return getAbilitiesWithEffect(attacker, "ALLY_NAME_ATTACK_BONUS").reduce(
+    (total, ability) => {
+      const effect = ability.effect;
+      if (!effect || effect.type !== "ALLY_NAME_ATTACK_BONUS") {
+        return total;
+      }
+      const allyPresent = Object.values(combat.units).some(
+        (candidate) =>
+          candidate.id !== attacker.id &&
+          candidate.controllerId === attacker.controllerId &&
+          isAlive(candidate) &&
+          candidate.name === effect.allyName
+      );
+      return total + (allyPresent ? effect.amount : 0);
+    },
+    0
+  );
 }
 
 export type AttackDieDamageFollowUp = {
@@ -1347,10 +1404,24 @@ export function hasSpellCastPowerTax(unit: CombatUnitState): boolean {
  * Neutral Champions ([unit_attack], own attacks only): "roll 2 Attack dice and
  * apply both outcomes." Returns true when the unit carries the marker; the
  * caller gates it off on Retaliation Attacks (own-attack-only) and decides the
- * die count.
+ * die count. The apply-both roll branch must still be ENTERED on a Champion's
+ * retaliation (single die, but the intrinsic "-1" reroll only lives there), so
+ * this stays an unconditional marker check — `rollsTwoDiceOnRetaliation` below
+ * is the separate read that decides whether the retaliation doubles too.
  */
 export function hasRollTwoDiceApplyBoth(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH");
+}
+
+/**
+ * Doom Former Human Sergeant: its two-dice apply-both roll ALSO fires on a
+ * Retaliation Attack (`retaliationAlso`). The classic Champion keeps the
+ * printed own-attack-only single-die retaliation.
+ */
+export function rollsTwoDiceOnRetaliation(unit: CombatUnitState): boolean {
+  return getAbilitiesWithEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH").some(
+    (ability) => ability.effect?.type === "ROLL_TWO_DICE_APPLY_BOTH" && ability.effect.retaliationAlso === true
+  );
 }
 
 /**
@@ -1403,6 +1474,49 @@ export function getOnAttackPoisonCubes(
   for (const ability of getAbilitiesWithEffect(unit, "ON_ATTACK_POISON_CUBES")) {
     if (ability.effect?.type === "ON_ATTACK_POISON_CUBES" && ability.effect.count > 0) {
       return { abilityId: ability.id, abilityName: ability.name, count: ability.effect.count };
+    }
+  }
+  return null;
+}
+
+/** Doom Cacodemon: poison cubes gated by the resolved Attack die face. */
+export function getOnAttackDiePoisonCubes(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; minRoll: number; maxRoll?: number; count: number }[] {
+  return getAbilitiesWithEffect(unit, "ON_ATTACK_DIE_POISON_CUBES").flatMap((ability) =>
+    ability.effect?.type === "ON_ATTACK_DIE_POISON_CUBES" && ability.effect.count > 0
+      ? [
+          {
+            abilityId: ability.id,
+            abilityName: ability.name,
+            minRoll: ability.effect.minRoll,
+            maxRoll: ability.effect.maxRoll,
+            count: ability.effect.count
+          }
+        ]
+      : []
+  );
+}
+
+/** Doom Revenant: pre-attack damage applied to the target it selected. */
+export function getPreAttackDamageAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_ATTACK_PRE_DAMAGE")) {
+    if (ability.effect?.type === "ON_ATTACK_PRE_DAMAGE" && ability.effect.amount > 0) {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  return null;
+}
+
+/** Doom Pain Elemental: the neutral unit summoned after an own attack. */
+export function getSummonUnitOnAttackAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; unitDefId: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SUMMON_UNIT_ON_ATTACK")) {
+    if (ability.effect?.type === "SUMMON_UNIT_ON_ATTACK") {
+      return { abilityId: ability.id, abilityName: ability.name, unitDefId: ability.effect.unitDefId };
     }
   }
   return null;

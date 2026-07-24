@@ -267,6 +267,8 @@ export type AnimeModOptions = {
   xianxiaTowns: boolean;
   secretRealms: boolean;
   xianxiaNeutrals: boolean;
+  /** Optional Doom neutral-monster slice; explicit checkbox, default OFF. */
+  doomNeutrals?: boolean;
   elixirPills: boolean;
   cultivation: boolean;
   destiny: boolean;
@@ -7855,6 +7857,8 @@ export type AttackSequenceState = {
     abilityId: string;
     abilityName: string;
     targetUnitId: UnitId;
+    /** Optional fixed Attack value for the printed follow-up strike. */
+    baseAttack?: number;
   };
 };
 

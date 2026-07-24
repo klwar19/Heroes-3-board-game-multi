@@ -2858,16 +2858,16 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
 /** Neutral unit definition ids grouped by tier, used to build the four neutral decks. */
 export const neutralUnitIdsByTier: Record<"bronze" | "silver" | "gold" | "azure", string[]> = {
   bronze: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && unit.tier === "bronze" && Boolean(unit.neutral))
+    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "bronze" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   silver: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && unit.tier === "silver" && Boolean(unit.neutral))
+    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "silver" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   gold: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && unit.tier === "gold" && Boolean(unit.neutral))
+    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "gold" && Boolean(unit.neutral))
     .map((unit) => unit.id),
   azure: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && unit.tier === "azure" && Boolean(unit.neutral))
+    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "azure" && Boolean(unit.neutral))
     .map((unit) => unit.id)
 };
 

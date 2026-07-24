@@ -56,4 +56,14 @@ describe("CardFrame — art-less specialties render the native card in the tray"
     expect(iconSrc).not.toContain("abilities-first_aid");
     expect(iconSrc).not.toContain("hero_specialties-gem");
   });
+
+  it("draws every Azur Lane specialty card natively with the ship skill emblem", () => {
+    expect(cardLibrary["specialty.enterprise.1"]?.assets?.cardImage).toBeUndefined();
+    const { container } = render(<CardFrame cardId="specialty.enterprise.1" className="fanCardImage" />);
+    expect(container.querySelector(".scWrap")).toBeTruthy();
+    expect(container.querySelector(".cardFaceFallback")).toBeNull();
+    expect(container.textContent ?? "").toContain("Lucky E I");
+    const iconSrc = (container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src") ?? "";
+    expect(iconSrc).toContain("specialty-enterprise.webp");
+  });
 });

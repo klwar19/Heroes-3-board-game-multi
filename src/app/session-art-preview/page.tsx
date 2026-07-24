@@ -1,6 +1,7 @@
 import { SpecialtyCard } from "@/components/specialty-card";
 import { CommanderCard } from "@/components/commander-card";
 import { AZURE_BREEZE_UNIT_ORDER } from "@/data/anime/towns";
+import { DOOM_UNIT_IDS_BY_TIER } from "@/data/doom";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { assetUrl } from "@/lib/asset-url";
 
@@ -56,6 +57,25 @@ const HERO_ASSETS = [
   }
 ] as const;
 
+const DOOM_ART_SOURCE_BY_SLUG: Record<string, string> = {
+  demon: "05-doom-demon-unit-card-art-v2.png",
+  "former-human": "06-doom-former-human-unit-card-art-v2.png",
+  imp: "09-doom-imp-unit-card-art.png",
+  "lost-soul": "11-doom-lost-soul-unit-card-art.png",
+  "former-human-sergeant": "07-doom-former-human-sergeant-unit-card-art-v2.png",
+  cacodemon: "10-doom-cacodemon-unit-card-art-v3.png",
+  "hell-knight": "12-doom-hell-knight-unit-card-art-v2.png",
+  arachnotron: "14-doom-arachnotron-unit-card-art.png",
+  "former-commando": "08-doom-former-commando-unit-card-art-v2.png",
+  "baron-of-hell": "13-doom-baron-of-hell-unit-card-art-v3.png",
+  revenant: "16-doom-revenant-unit-card-art.png",
+  mancubus: "17-doom-mancubus-unit-card-art.png",
+  "pain-elemental": "15-doom-pain-elemental-unit-card-art-v2.png",
+  "arch-vile": "18-doom-arch-vile-unit-card-art.png",
+  "spider-mastermind": "19-doom-spider-mastermind-unit-card-art-v2.png",
+  cyberdemon: "20-doom-cyberdemon-unit-card-art-v2.png"
+};
+
 export default function SessionArtPreviewPage() {
   // Same LV1→LV7 order as the faction recruit list (never reorder ad-hoc).
   const azureUnits = AZURE_BREEZE_UNIT_ORDER.map((id) => coreUnitDefinitions[id]).filter(Boolean);
@@ -65,6 +85,13 @@ export default function SessionArtPreviewPage() {
       tierCounts[unit.tier] += 1;
     }
   }
+
+  const doomTiers = [
+    ["bronze", DOOM_UNIT_IDS_BY_TIER.bronze],
+    ["silver", DOOM_UNIT_IDS_BY_TIER.silver],
+    ["gold", DOOM_UNIT_IDS_BY_TIER.gold],
+    ["azure", DOOM_UNIT_IDS_BY_TIER.azure]
+  ] as const;
 
   return (
     <main style={{ minHeight: "100vh", padding: 24, background: "#16120e", color: "#e8ddc6" }}>
@@ -115,6 +142,59 @@ export default function SessionArtPreviewPage() {
             </div>
             <p style={{ margin: 0, fontSize: 12, color: "#b8ad96" }}>{item.wired}</p>
           </article>
+        ))}
+      </section>
+
+      <section id="doom-neutral-cards" style={{ marginTop: 42 }}>
+        <h2 style={{ margin: "0 0 8px", color: "#f4d774", fontFamily: '"Times New Roman", serif' }}>
+          Doom neutral monster cards (all 16 current faces)
+        </h2>
+        <p style={{ maxWidth: "82ch", margin: "0 0 18px", color: "#c8bba2", lineHeight: 1.55 }}>
+          Full card previews are grouped by tier so every current face can be checked before editing. The editable SVG
+          compositor source and the source art plate are listed under each card.
+        </p>
+        {doomTiers.map(([tier, ids]) => (
+          <div key={tier} style={{ marginBottom: 28 }}>
+            <h3 style={{ margin: "0 0 10px", color: "#e9b26e", textTransform: "uppercase", letterSpacing: "0.12em", fontSize: 14 }}>
+              {tier} ({ids.length})
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 14 }}>
+              {ids.map((id) => {
+                const unit = coreUnitDefinitions[id];
+                const image = unit?.neutral?.cardImage;
+                const slug = id.replace(/^doom\./, "").replaceAll("_", "-");
+                return (
+                  <article
+                    key={id}
+                    style={{
+                      border: "1px solid rgb(228 189 104 / 28%)",
+                      borderRadius: 10,
+                      padding: 10,
+                      background: "rgb(0 0 0 / 28%)",
+                      minWidth: 0
+                    }}
+                  >
+                    <strong style={{ display: "block", minHeight: 34, color: "#f0e0b8", fontSize: 14 }}>{unit?.name ?? id}</strong>
+                    <div style={{ margin: "8px 0", aspectRatio: "743 / 1040", display: "grid", placeItems: "center", background: "#0a0908", borderRadius: 6, overflow: "hidden" }}>
+                      {image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img alt={`${unit.name} Doom neutral monster card`} src={assetUrl(image)} style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
+                      ) : (
+                        <span style={{ color: "#f08b78", fontSize: 12 }}>Missing card image</span>
+                      )}
+                    </div>
+                    <code style={{ display: "block", fontSize: 9, lineHeight: 1.35, opacity: 0.72, overflowWrap: "anywhere" }}>
+                      {image}
+                      <br />
+                      scripts/doom-art/editable/doom-{tier}-{slug}.svg
+                      <br />
+                      generated-session-art/{DOOM_ART_SOURCE_BY_SLUG[slug] ?? "missing-source-art"}
+                    </code>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
         ))}
       </section>
 

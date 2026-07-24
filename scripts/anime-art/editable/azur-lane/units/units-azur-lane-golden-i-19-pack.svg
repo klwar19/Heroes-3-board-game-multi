@@ -107,5 +107,5 @@
 
   <!-- Rules -->
   <rect x="48" y="846" width="647" height="160" rx="8" fill="url(#panel)" stroke="url(#metal)" stroke-width="3"/>
-  <text x="384" y="914" class="rule">Silent Hunter — no Retaliation, surface</text><text x="384" y="937" class="rule">anywhere; Oxygen Torpedo Spread — then strike</text><text x="384" y="960" class="rule">the same target again.</text>
+  <text x="384" y="914" class="rule">Silent Hunter — no Retaliation, surface</text><text x="384" y="937" class="rule">anywhere; Oxygen Torpedo Spread — then strike</text><text x="384" y="960" class="rule">the same target again with Attack 4.</text>
 </svg>

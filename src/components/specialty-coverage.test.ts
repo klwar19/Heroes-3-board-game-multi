@@ -8,7 +8,8 @@ import {
   SPECIALTY_ICON_BY_HERO,
   canRenderSpecialtyCard,
   parseSpecialtyCardId,
-  specialtyEffectText
+  specialtyEffectText,
+  specialtyIconSrc
 } from "./specialty-card-data";
 
 const PUBLIC = join(process.cwd(), "public");
@@ -91,6 +92,21 @@ describe("hero specialty card coverage", () => {
     for (const [slug, icon] of Object.entries(SPECIALTY_ICON_BY_HERO)) {
       expect(coreHeroDefinitions[slug], `unknown hero slug in icon map: ${slug}`).toBeTruthy();
       expect(existsSync(assetPath(icon)), `missing file for ${slug}: ${icon}`).toBe(true);
+    }
+  });
+
+  it("all Azur Lane specialty levels use the ship emblem in native card and display paths", () => {
+    const azurHeroes = ["enterprise", "bismarck", "nagato", "akashi", "sirius"];
+    for (const slug of azurHeroes) {
+      for (const level of [1, 4, 6] as const) {
+        const cardId = `specialty.${slug}.${level}`;
+        expect(cardLibrary[cardId], cardId).toBeTruthy();
+        expect(cardLibrary[cardId]?.assets?.cardImage, `${cardId} must use native specialty art`).toBeUndefined();
+        expect(canRenderSpecialtyCard(cardId), `${cardId} must render natively`).toBe(true);
+        const icon = specialtyIconSrc(cardId);
+        expect(icon, `${cardId} needs a specialty icon`).toBe(SPECIALTY_ICON_BY_HERO[slug]);
+        expect(existsSync(assetPath(icon!)), `${cardId} icon missing on disk`).toBe(true);
+      }
     }
   });
 });

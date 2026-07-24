@@ -8525,7 +8525,7 @@ function GameOptionsPanel({
             </header>
             <div className="wogModuleList">
               {([
-                ["newCreatures", "New neutral creatures", "Adds the 15-card WOG roster to the Bronze, Silver, Gold and Azure Neutral decks."],
+                ["newCreatures", "New neutral creatures", "Adds the WOG roster and the Doom neutral slice to the Bronze, Silver, Gold and Azure Neutral decks."],
                 ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
                 ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
                 ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
@@ -8605,12 +8605,14 @@ function GameOptionsPanel({
             </header>
             <small className="wogWindowDesc">
               Ninefold Realms × Otherworld Gate — a stack of BINH-family modules (xianxia + isekai). Tick
-              only what you want; each is independent and coexists with WOG and the house rules.
+              only what you want; each is independent and coexists with WOG and the house rules. Doom is
+              available as its own explicit neutral-monster checkbox below.
             </small>
             <div className="wogModuleList">
               {([
                 ["isekaiTowns", "Fuyuki City + Hidden Leaf Village + Azur Lane Naval Base", "Adds three complete anime towns: Fuyuki City (7-unit Servant roster), Hidden Leaf Village (7-unit shinobi swarm) and Azur Lane Naval Base (7-ship kansen fleet) — each with original heroes, its town board, buildings, starting tile, commander, and anime-themed system vocabulary."],
                 ["xianxiaTowns", "Azure Breeze Sect", "Adds the complete wuxia sect: 7-unit cultivation roster, two original heroes, its mountain town board, buildings, starting tile, and wuxia-themed system vocabulary."],
+                ["doomNeutrals", "Doom monsters", "Adds the 16 classic Doom neutral monsters across the exact Bronze, Silver, Gold and Azure decks. Independent checkbox; off by default."],
                 ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool. Turns Field Overrides on."],
                 ["combatEvents", "Forced battle events", "Scripted combat events on anime fields (the Bí Cảnh spirit-mist / earthvein-surge). Fully automatic — no new prompts."],
                 ["xianxiaArtifacts", "Pháp Bảo artifacts", "Shuffles 5 anime hero Artifact cards (Túi Càn Khôn, Phong Hỏa Luân, Tru Tiên Kiếm, Bát Quái Kính, Tụ Linh Bàn) into the shared Artifact decks by tier."],
