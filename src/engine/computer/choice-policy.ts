@@ -546,19 +546,23 @@ function scorePositionOption(
   }
 
   if (context === "garrison") {
-    // Option 0 = pay 8 gold and defend; option 1 = let it fall.
+    // Option 0 = pay the fee and defend; option 1 = let it fall.
     // Defend when the army can still fight and gold covers the fee + reserve;
-    // otherwise cede the holding rather than bankrupt a thin force.
+    // otherwise cede the holding rather than bankrupt a thin force. The fee
+    // scales with the holding: 8 for a Town/Settlement, 3 for a minor holding
+    // (designer Garrison object, or a Mine under `mine-army-defense`) — read the
+    // real cost so a cheap Mine defense is not conceded as readily as a Town.
+    const cost = observation.state.adventure?.pendingGarrison?.goldCost ?? 8;
     const player = observation.state.players[observation.playerId];
     const gold = player?.resources.gold ?? 0;
     const army = player?.army.length ?? 0;
     if (optionIndex === 0) {
-      if (gold >= 8 + 5 && army >= 3) return CHOICE_BASE + 40;
-      if (gold >= 8 && army >= 2) return CHOICE_BASE + 25;
+      if (gold >= cost + 5 && army >= 3) return CHOICE_BASE + 40;
+      if (gold >= cost && army >= 2) return CHOICE_BASE + 25;
       return CHOICE_BASE + 5;
     }
     // Let it fall — preferred when broke or army is a husk.
-    if (gold < 8 || army < 2) return CHOICE_BASE + 35;
+    if (gold < cost || army < 2) return CHOICE_BASE + 35;
     return CHOICE_BASE + 12;
   }
 
