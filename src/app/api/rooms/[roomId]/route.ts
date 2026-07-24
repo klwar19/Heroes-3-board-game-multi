@@ -4,6 +4,8 @@ import {
   closeRoom,
   ensureComputerPump,
   getRoomSnapshot,
+  getSinglePlayerSaveState,
+  loadSinglePlayerSave,
   resetRoom,
   restoreRoom,
   type RoomResetOptions,
@@ -62,6 +64,9 @@ export async function POST(request: Request, context: RoomContext) {
     | ({
         reset?: boolean;
         restore?: boolean;
+        /** Single-player save slots: fetch the raw state / load a saved one. */
+        spSave?: boolean;
+        spLoad?: boolean;
         state?: GameState;
         actorClientId?: string;
         adminKey?: string;
@@ -90,6 +95,28 @@ export async function POST(request: Request, context: RoomContext) {
       return NextResponse.json({ reason: result.reason }, { status: 403 });
     }
     return NextResponse.json(redactSnapshotForViewer(result.snapshot, viewer));
+  }
+
+  // Single-player save slots (owner-only, solo rooms only): the save fetch
+  // returns the RAW state — deliberately NOT redactSnapshotForViewer, because
+  // the redacted frame ("hidden" deck placeholders) can never restore a game.
+  if (body?.spSave) {
+    const result = getSinglePlayerSaveState(decodeURIComponent(roomId), actorClientId, viewer.userId);
+    if (!result.ok) {
+      return NextResponse.json({ reason: result.reason }, { status: 403 });
+    }
+    // `spSave: true` marks the RAW reply so the client can tell it apart from a
+    // generic (redacted) snapshot an older server would answer with instead.
+    return NextResponse.json({ spSave: true, state: result.state, version: result.version });
+  }
+  if (body?.spLoad && body.state) {
+    const result = loadSinglePlayerSave(decodeURIComponent(roomId), body.state, actorClientId, viewer.userId);
+    if (!result.loaded) {
+      return NextResponse.json({ reason: result.reason }, { status: 403 });
+    }
+    // `spLoad: true` marks "actually applied" (an older server would ignore the
+    // body and return a plain snapshot without loading anything).
+    return NextResponse.json({ spLoad: true, snapshot: redactSnapshotForViewer(result.snapshot, viewer) });
   }
 
   // Client recovery: re-seed a room the server lost from the caller's cached

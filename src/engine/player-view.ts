@@ -407,17 +407,53 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
       }
     : base.combat;
 
-  // A drawn Pandora's Box card goes INTO A HIDDEN HAND (the draw pile is
-  // already face down above), so its identity must not reach other seats via
-  // the event log: only the drawer's own view keeps the card id.
+  // Cards that enter a private hand or are discarded from one must not reach
+  // multiplayer seats through the event log. Solo rooms have no human
+  // opponent, so their owner keeps exact ids for a useful personal history;
+  // multiplayer views get same-length hidden placeholders.
   const eventLog = base.eventLog.some(
-    (event) => event.type === "PANDORA_CARD_DRAWN" && event.playerId !== viewerPlayerId
+    (event) =>
+      (event.type === "PANDORA_CARD_DRAWN" ||
+        event.type === "CARDS_DRAWN" ||
+        event.type === "DECK_SEARCH_RESOLVED" ||
+        event.type === "HAND_REFRESHED" ||
+        event.type === "HAND_MULLIGAN") &&
+      "playerId" in event &&
+      (base.sessionMode === "single-player" ? event.playerId !== viewerPlayerId : true)
   )
-    ? base.eventLog.map((event) =>
-        event.type === "PANDORA_CARD_DRAWN" && event.playerId !== viewerPlayerId
-          ? { ...event, cardId: HIDDEN_CARD_ID }
-          : event
-      )
+    ? base.eventLog.map((event) => {
+        if (event.type === "PANDORA_CARD_DRAWN" && event.playerId !== viewerPlayerId) {
+          return { ...event, cardId: HIDDEN_CARD_ID };
+        }
+        if (
+          event.type === "CARDS_DRAWN" &&
+          (base.sessionMode !== "single-player" || event.playerId !== viewerPlayerId) &&
+          event.cardIds
+        ) {
+          return { ...event, cardIds: event.cardIds.map(() => HIDDEN_CARD_ID) };
+        }
+        if (
+          event.type === "DECK_SEARCH_RESOLVED" &&
+          (base.sessionMode !== "single-player" || event.playerId !== viewerPlayerId)
+        ) {
+          return { ...event, discardedCardIds: event.discardedCardIds.map(() => HIDDEN_CARD_ID) };
+        }
+        if (
+          event.type === "HAND_REFRESHED" &&
+          (base.sessionMode !== "single-player" || event.playerId !== viewerPlayerId) &&
+          event.discardedCardIds
+        ) {
+          return { ...event, discardedCardIds: event.discardedCardIds.map(() => HIDDEN_CARD_ID) };
+        }
+        if (
+          event.type === "HAND_MULLIGAN" &&
+          (base.sessionMode !== "single-player" || event.playerId !== viewerPlayerId) &&
+          event.discardedCardIds
+        ) {
+          return { ...event, discardedCardIds: event.discardedCardIds.map(() => HIDDEN_CARD_ID) };
+        }
+        return event;
+      })
     : base.eventLog;
 
   // Redact the room's password hash: its PRESENCE is preserved (so a UI can show

@@ -163,6 +163,7 @@ import {
   activeBuildingActions
 } from "@/components/adventure/town-sections";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
+import { buildCustomSetupFile, customSetupFileName, parseCustomSetupFile } from "@/lib/custom-setup-file";
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
@@ -6421,6 +6422,7 @@ export function AdventureDecksPanel({
               <button
                 className={`advDiscard${topId ? " hasCard" : ""}`}
                 onClick={() => onShowPile("Astrologers Proclaim — past rounds", astrologers.discardPile, "astrologers")}
+                aria-label={`Open Astrologers discard pile (${astrologers.discardPile.length} cards)`}
                 title={topCard ? `Last proclamation: ${topCard.name}` : "Past Astrologers proclamations"}
                 type="button"
               >
@@ -6547,6 +6549,11 @@ export function PileModal({
           </button>
         </header>
         {cardIds.length === 0 ? <small>Empty.</small> : null}
+        {kind === "astrologers" && cardIds.length > 0 ? (
+          <small className="pileModalHint">
+            Discarded proclamations are shown newest first. The top card is the last resolved Astrologers event.
+          </small>
+        ) : null}
         <PileModalCards cardIds={cardIds} kind={kind} />
       </div>
     </div>
@@ -7206,7 +7213,7 @@ function MapPicker({
                 // Picking a scenario sheet uses its own face-down layout and
                 // drops any designed map (sent together so the engine never
                 // leaves a stale map attached to a different scenario).
-                onClick={() => send({ scenarioId: scenario.id, customMap: null, customMapName: null })}
+                onClick={() => send({ scenarioId: scenario.id, customMode: false, customMap: null, customMapName: null })}
                 title={scenario.description}
                 type="button"
               >
@@ -7248,6 +7255,7 @@ function MapPicker({
                     send({
                       ...(record.scenarioId !== options.scenarioId ? { scenarioId: record.scenarioId } : {}),
                       playerCount: record.players,
+                      customMode: true,
                       customMap: record.tiles,
                       customMapName: record.name,
                       customMapPreset: record.preset ?? null
@@ -7313,6 +7321,7 @@ function MapPicker({
           ) : null}
         </div>
       ) : null}
+      <PersonalCustomSettingsPanel options={options} send={send} />
       <small className="optionHint designerLink">
         <Link href="/designer" target="_blank">
           <Hammer aria-hidden="true" size={11} /> Open the map designer
@@ -7320,6 +7329,114 @@ function MapPicker({
         to create, edit and save your own maps (shared with everyone), then pick one above. Picking a designed map opens
         the seat count it was designed for.
       </small>
+    </div>
+  );
+}
+
+/**
+ * "Custom setting" — FILE-based save/load of the lobby's whole map + rules
+ * setup (user spec: Save writes the current setting to a file, Load opens a
+ * file picker; every player keeps their own files). The loaded options run
+ * through the normal SET_GAME_OPTIONS pipeline, so an old file from a previous
+ * patch has its unknown fields skipped and any invalid value rejected with the
+ * engine's own message instead of corrupting the lobby.
+ */
+function PersonalCustomSettingsPanel({
+  options,
+  send
+}: {
+  options: GameSetupOptions;
+  send: (next: Partial<GameSetupOptions>) => void;
+}) {
+  const [name, setName] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const saveToFile = () => {
+    const payload = buildCustomSetupFile(options, name);
+    const fileName = customSetupFileName(payload.name);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    // Keep the selected card visibly in Custom mode even when the setting was
+    // saved while another mode preset was active.
+    send({ customMode: true });
+    setNotice(`Saved “${payload.name}” to ${fileName}.`);
+  };
+
+  const loadFromFile = async (file: File) => {
+    const parsed = parseCustomSetupFile(await file.text());
+    if (!parsed.ok) {
+      setNotice(parsed.reason);
+      return;
+    }
+    send(parsed.options);
+    setNotice(
+      `Loaded “${parsed.name}”.${
+        parsed.sameEngineVersion
+          ? ""
+          : " It was saved by a different game version — options a patch changed are skipped or rejected with a message."
+      }`
+    );
+  };
+
+  return (
+    <div className="personalCustomSettings" aria-label="Custom setting — save or load a file">
+      <div className="mapPickerGroupLabel">
+        <strong>Custom setting — file</strong>
+        <small>Save the current map &amp; rules to a file; load a file to restore them. Each player keeps their own files.</small>
+      </div>
+      <div className="personalCustomSaveRow">
+        <input
+          aria-label="Custom setting name"
+          maxLength={48}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              saveToFile();
+            }
+          }}
+          placeholder="Setting name (used in the file name)"
+          value={name}
+        />
+        <button onClick={saveToFile} title="Download the current map & rules setup as a file" type="button">
+          Save to file
+        </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          title="Choose a saved setting file and apply it to this lobby"
+          type="button"
+        >
+          Load from file…
+        </button>
+        <input
+          accept=".json,application/json"
+          aria-label="Choose a custom setting file"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // Allow re-picking the same file after a failed/edited load.
+            event.target.value = "";
+            if (file) {
+              void loadFromFile(file);
+            }
+          }}
+          ref={fileInputRef}
+          type="file"
+        />
+      </div>
+      {notice ? (
+        <small className="optionHint" role="status">
+          {notice}
+        </small>
+      ) : null}
+      <small className="optionHint">Shared designer maps remain available above; setting files are only for you.</small>
     </div>
   );
 }
@@ -7789,7 +7906,7 @@ function HouseRulesSection({
 }
 
 /** High-level setup modes shown as a card row on the Mode & Rules tab. */
-type SetupModeId = "legacy" | "binh" | "tournament";
+type SetupModeId = "legacy" | "binh" | "tournament" | "custom";
 
 const SETUP_MODE_CARDS: {
   id: SetupModeId;
@@ -7821,6 +7938,12 @@ const SETUP_MODE_CARDS: {
     blurb: "Competitive preset",
     hint: "House rules off, tournament bans on, Hard difficulty, human-controlled Neutrals, Diplomacy banned.",
     iconSrc: "/assets/ui/mode-tournament-crest-clear.webp"
+  },
+  {
+    id: "custom",
+    label: "Custom",
+    blurb: "Your saved setup",
+    hint: "Save the current map & rules to a file, or load one of your setting files — each player keeps their own."
   }
 ];
 
@@ -7886,6 +8009,9 @@ function GameOptionsPanel({
 
   /** Which big mode card is highlighted from the current options. */
   const activeSetupMode: SetupModeId = (() => {
+    if (options.customMode) {
+      return "custom";
+    }
     if (tournamentAllOn && options.ruleset === "legacy" && options.difficulty === "hard") {
       return "tournament";
     }
@@ -7896,8 +8022,15 @@ function GameOptionsPanel({
   })();
 
   const applySetupMode = (mode: SetupModeId) => {
+    if (mode === "custom") {
+      send({ customMode: true });
+      setTab("map");
+      setModeNotice("Custom mode selected: save the current setup to a file, or load a setting file, in Map & Setup.");
+      return;
+    }
     if (mode === "legacy") {
       send({
+        customMode: false,
         ruleset: "legacy",
         wog: { ...wog, enabled: false },
         anime: { ...anime, enabled: false },
@@ -7917,6 +8050,7 @@ function GameOptionsPanel({
     if (mode === "binh") {
       // BINH does not force WOG off — the Mod row is independent.
       send({
+        customMode: false,
         ruleset: "binh",
         spellBook: true,
         tournamentMode: false,
@@ -7930,6 +8064,7 @@ function GameOptionsPanel({
     // Tournament competitive preset — turns WOG + Anime off with the competitive
     // package. Neutrals default to human control (next player clockwise).
     send({
+      customMode: false,
       ruleset: "legacy",
       wog: { ...wog, enabled: false },
       anime: { ...anime, enabled: false },
@@ -8006,7 +8141,9 @@ function GameOptionsPanel({
           ))}
         </div>
         <small className="optionHint">
-          {activeSetupMode === "legacy"
+          {activeSetupMode === "custom"
+            ? "Personal custom setup: in Map & Setup, save the current map & rules to a file or load one of your setting files."
+            : activeSetupMode === "legacy"
             ? RULESET_DESCRIPTIONS.legacy
             : activeSetupMode === "tournament"
             ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + human-controlled Neutrals."
