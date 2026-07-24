@@ -4954,5 +4954,468 @@
   "units/heavenly-demon-avatar-move": {
     "src": "/sounds/units/heavenly-demon-avatar-move.mp3",
     "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
+  }  ,
+  "doom/dsdmact": {
+    "src": "/sounds/doom/dsdmact.wav",
+    "note": "DOOM shared demon-family active/nearby sound"
+  },
+  "doom/dsdmact-move": {
+    "src": "/sounds/doom/dsdmact.wav",
+    "repeat": 2,
+    "note": "DOOM shared active sound used as a two-step movement loop"
+  },
+  "doom/dsdmpain": {
+    "src": "/sounds/doom/dsdmpain.wav",
+    "note": "DOOM shared demon-family pain sound"
+  },
+  "doom/dssgtsit": {
+    "src": "/sounds/doom/dssgtsit.wav",
+    "note": "DOOM Demon sight/alert"
+  },
+  "doom/dssgtatk": {
+    "src": "/sounds/doom/dssgtatk.wav",
+    "note": "DOOM Demon melee attack"
+  },
+  "doom/dssgtdth": {
+    "src": "/sounds/doom/dssgtdth.wav",
+    "note": "DOOM Demon death"
+  },
+  "doom/dspistol": {
+    "src": "/sounds/doom/dspistol.wav",
+    "note": "DOOM pistol attack / Former Human attack"
+  },
+  "doom/dsposact": {
+    "src": "/sounds/doom/dsposact.wav",
+    "note": "DOOM zombie-soldier active/nearby"
+  },
+  "doom/dsposact-move": {
+    "src": "/sounds/doom/dsposact.wav",
+    "repeat": 2,
+    "note": "DOOM zombie-soldier active sound used as a two-step movement loop"
+  },
+  "doom/dspopain": {
+    "src": "/sounds/doom/dspopain.wav",
+    "note": "DOOM zombie-soldier pain, reused by Revenants"
+  },
+  "doom/dsshotgn": {
+    "src": "/sounds/doom/dsshotgn.wav",
+    "note": "DOOM shotgun attack, shared by Shotgun Guy, Heavy Weapon Dude, and Spider Mastermind"
+  },
+  "doom/dsposit1": {
+    "src": "/sounds/doom/dsposit1.wav",
+    "note": "DOOM zombie-soldier sight variant 1"
+  },
+  "doom/dsbgsit1": {
+    "src": "/sounds/doom/dsbgsit1.wav",
+    "note": "DOOM Imp sight variant 1"
+  },
+  "doom/dsbgact": {
+    "src": "/sounds/doom/dsbgact.wav",
+    "note": "DOOM Imp active/nearby"
+  },
+  "doom/dsbgact-move": {
+    "src": "/sounds/doom/dsbgact.wav",
+    "repeat": 2,
+    "note": "DOOM Imp active sound used as a two-step movement loop"
+  },
+  "doom/dsbgdth1": {
+    "src": "/sounds/doom/dsbgdth1.wav",
+    "note": "DOOM Imp death variant 1"
+  },
+  "doom/dsbgdth2": {
+    "src": "/sounds/doom/dsbgdth2.wav",
+    "note": "DOOM Imp death variant 2"
+  },
+  "doom/dssklatk": {
+    "src": "/sounds/doom/dssklatk.wav",
+    "note": "DOOM Lost Soul attack; also Pain Elemental's spawned-soul attack cue"
+  },
+  "doom/dscacsit": {
+    "src": "/sounds/doom/dscacsit.wav",
+    "note": "DOOM Cacodemon sight/alert"
+  },
+  "doom/dsfirsht": {
+    "src": "/sounds/doom/dsfirsht.wav",
+    "note": "DOOM fireball launch used by Imp, Cacodemon, Hell Knight, and Baron"
+  },
+  "doom/dsfirxpl": {
+    "src": "/sounds/doom/dsfirxpl.wav",
+    "note": "DOOM projectile explosion; also Lost Soul death"
+  },
+  "doom/dskntsit": {
+    "src": "/sounds/doom/dskntsit.wav",
+    "note": "DOOM Hell Knight sight/alert"
+  },
+  "doom/dskntdth": {
+    "src": "/sounds/doom/dskntdth.wav",
+    "note": "DOOM Hell Knight death"
+  },
+  "doom/dsbspsit": {
+    "src": "/sounds/doom/dsbspsit.wav",
+    "note": "DOOM Arachnotron sight/alert"
+  },
+  "doom/dsbspact": {
+    "src": "/sounds/doom/dsbspact.wav",
+    "note": "DOOM Arachnotron active/nearby"
+  },
+  "doom/dsbspwlk": {
+    "src": "/sounds/doom/dsbspwlk.wav",
+    "note": "DOOM Arachnotron walking"
+  },
+  "doom/dsbspwlk-move": {
+    "src": "/sounds/doom/dsbspwlk.wav",
+    "repeat": 2,
+    "note": "DOOM Arachnotron walking loop"
+  },
+  "doom/dsbspdth": {
+    "src": "/sounds/doom/dsbspdth.wav",
+    "note": "DOOM Arachnotron death"
+  },
+  "doom/dsplasma": {
+    "src": "/sounds/doom/dsplasma.wav",
+    "note": "DOOM Arachnotron plasma attack"
+  },
+  "doom/dsbrssit": {
+    "src": "/sounds/doom/dsbrssit.wav",
+    "note": "DOOM Baron of Hell sight/alert"
+  },
+  "doom/dsbrsdth": {
+    "src": "/sounds/doom/dsbrsdth.wav",
+    "note": "DOOM Baron of Hell death"
+  },
+  "doom/dsskesit": {
+    "src": "/sounds/doom/dsskesit.wav",
+    "note": "DOOM Revenant sight/alert"
+  },
+  "doom/dsskeact": {
+    "src": "/sounds/doom/dsskeact.wav",
+    "note": "DOOM Revenant active/nearby"
+  },
+  "doom/dsskeact-move": {
+    "src": "/sounds/doom/dsskeact.wav",
+    "repeat": 2,
+    "note": "DOOM Revenant active sound used as a two-step movement loop"
+  },
+  "doom/dsskeatk": {
+    "src": "/sounds/doom/dsskeatk.wav",
+    "note": "DOOM Revenant projectile attack"
+  },
+  "doom/dsskedth": {
+    "src": "/sounds/doom/dsskedth.wav",
+    "note": "DOOM Revenant death"
+  },
+  "doom/dsrlaunc": {
+    "src": "/sounds/doom/dsrlaunc.wav",
+    "note": "DOOM rocket launch; used by Cyberdemon and Revenant"
+  },
+  "doom/dsbarexp": {
+    "src": "/sounds/doom/dsbarexp.wav",
+    "note": "DOOM rocket/barrel explosion; used by Cyberdemon and Revenant"
+  },
+  "doom/dsmansit": {
+    "src": "/sounds/doom/dsmansit.wav",
+    "note": "DOOM Mancubus sight/alert"
+  },
+  "doom/dsmanatk": {
+    "src": "/sounds/doom/dsmanatk.wav",
+    "note": "DOOM Mancubus attack"
+  },
+  "doom/dsmnpain": {
+    "src": "/sounds/doom/dsmnpain.wav",
+    "note": "DOOM Mancubus pain"
+  },
+  "doom/dsmandth": {
+    "src": "/sounds/doom/dsmandth.wav",
+    "note": "DOOM Mancubus death"
+  },
+  "doom/dspesit": {
+    "src": "/sounds/doom/dspesit.wav",
+    "note": "DOOM Pain Elemental sight/alert"
+  },
+  "doom/dspepain": {
+    "src": "/sounds/doom/dspepain.wav",
+    "note": "DOOM Pain Elemental pain"
+  },
+  "doom/dspedth": {
+    "src": "/sounds/doom/dspedth.wav",
+    "note": "DOOM Pain Elemental death"
+  },
+  "doom/dsvilsit": {
+    "src": "/sounds/doom/dsvilsit.wav",
+    "note": "DOOM Arch-Vile sight/alert"
+  },
+  "doom/dsvilact": {
+    "src": "/sounds/doom/dsvilact.wav",
+    "note": "DOOM Arch-Vile active/nearby"
+  },
+  "doom/dsvilact-move": {
+    "src": "/sounds/doom/dsvilact.wav",
+    "repeat": 2,
+    "note": "DOOM Arch-Vile active sound used as a two-step movement loop"
+  },
+  "doom/dsvilatk": {
+    "src": "/sounds/doom/dsvilatk.wav",
+    "note": "DOOM Arch-Vile attack incantation"
+  },
+  "doom/dsvipain": {
+    "src": "/sounds/doom/dsvipain.wav",
+    "note": "DOOM Arch-Vile pain"
+  },
+  "doom/dsvildth": {
+    "src": "/sounds/doom/dsvildth.wav",
+    "note": "DOOM Arch-Vile death"
+  },
+  "doom/dsflamst": {
+    "src": "/sounds/doom/dsflamst.wav",
+    "note": "DOOM Arch-Vile fire start"
+  },
+  "doom/dsflame": {
+    "src": "/sounds/doom/dsflame.wav",
+    "note": "DOOM Arch-Vile fire column"
+  },
+  "doom/dsspisit": {
+    "src": "/sounds/doom/dsspisit.wav",
+    "note": "DOOM Spider Mastermind sight/alert"
+  },
+  "doom/dsmetal": {
+    "src": "/sounds/doom/dsmetal.wav",
+    "note": "DOOM Spider Mastermind walking"
+  },
+  "doom/dsmetal-move": {
+    "src": "/sounds/doom/dsmetal.wav",
+    "repeat": 2,
+    "note": "DOOM Spider Mastermind walking loop"
+  },
+  "doom/dsspidth": {
+    "src": "/sounds/doom/dsspidth.wav",
+    "note": "DOOM Spider Mastermind death"
+  },
+  "doom/dscybsit": {
+    "src": "/sounds/doom/dscybsit.wav",
+    "note": "DOOM Cyberdemon sight/alert"
+  },
+  "doom/dshoof": {
+    "src": "/sounds/doom/dshoof.wav",
+    "note": "DOOM Cyberdemon walking"
+  },
+  "doom/dshoof-move": {
+    "src": "/sounds/doom/dshoof.wav",
+    "repeat": 2,
+    "note": "DOOM Cyberdemon walking loop"
+  },
+  "doom/dscybdth": {
+    "src": "/sounds/doom/dscybdth.wav",
+    "note": "DOOM Cyberdemon death"
+  },
+  "units/doom-demon-attack": {
+    "src": "/sounds/doom/dssgtatk.wav",
+    "note": "DOOM Demon melee attack"
+  },
+  "units/doom-machinegun-attack": {
+    "src": "/sounds/doom/dsshotgn.wav",
+    "repeat": 4,
+    "note": "DOOM machine-gun burst: dsshotgn repeated four times"
+  },
+  "units/doom-former-human-death": {
+    "random": [
+      "doom/dspodth1",
+      "doom/dspodth2",
+      "doom/dspodth3"
+    ],
+    "note": "DOOM shared zombie-soldier death variants"
+  },
+  "units/doom-imp-attack": {
+    "sequence": [
+      "doom/dsfirsht",
+      "doom/dsfirxpl"
+    ],
+    "note": "DOOM Imp fireball launch followed by impact"
+  },
+  "units/doom-imp-death": {
+    "random": [
+      "doom/dsbgdth1",
+      "doom/dsbgdth2"
+    ],
+    "note": "DOOM Imp death variants"
+  },
+  "units/doom-cacodemon-attack": {
+    "sequence": [
+      "doom/dsfirsht",
+      "doom/dsfirxpl"
+    ],
+    "note": "DOOM Cacodemon fireball launch followed by impact"
+  },
+  "units/doom-hell-knight-attack": {
+    "sequence": [
+      "doom/dsfirsht",
+      "doom/dsfirxpl"
+    ],
+    "note": "DOOM Hell Knight fireball launch followed by impact"
+  },
+  "units/doom-arachnotron-attack": {
+    "sequence": [
+      "doom/dsplasma",
+      "doom/dsfirxpl"
+    ],
+    "note": "DOOM Arachnotron plasma launch followed by impact"
+  },
+  "units/doom-baron-attack": {
+    "sequence": [
+      "doom/dsfirsht",
+      "doom/dsfirxpl"
+    ],
+    "note": "DOOM Baron of Hell fireball launch followed by impact"
+  },
+  "units/doom-revenant-attack": {
+    "sequence": [
+      "doom/dsrlaunc",
+      "doom/dsbarexp"
+    ],
+    "note": "DOOM Revenant rocket launch followed by impact"
+  },
+  "units/doom-mancubus-attack": {
+    "sequence": [
+      "doom/dsmanatk",
+      "doom/dsfirxpl"
+    ],
+    "note": "DOOM Mancubus fireball volley followed by impact"
+  },
+  "units/doom-arch-vile-attack": {
+    "sequence": [
+      "doom/dsvilatk",
+      "doom/dsflamst",
+      "doom/dsflame",
+      "doom/dsbarexp"
+    ],
+    "note": "DOOM Arch-Vile incantation, fire start, fire column, and blast"
+  },
+  "units/doom-cyberdemon-attack": {
+    "sequence": [
+      "doom/dsrlaunc",
+      "doom/dsbarexp"
+    ],
+    "note": "DOOM Cyberdemon rocket launch followed by explosion"
+  },
+  "units/doom-demon-move": {
+    "sequence": [
+      "doom/dssgtsit",
+      "doom/dsdmact-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Demon sight cue followed by a two-play movement loop"
+  },
+  "units/doom-former-human-move": {
+    "sequence": [
+      "doom/dsposit1",
+      "doom/dsposact-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM soldier sight cue followed by a two-play movement loop"
+  },
+  "units/doom-imp-move": {
+    "sequence": [
+      "doom/dsbgsit1",
+      "doom/dsbgact-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Imp sight cue followed by a two-play movement loop"
+  },
+  "units/doom-lost-soul-move": {
+    "sequence": [
+      "doom/dsdmact-move"
+    ],
+    "note": "DOOM Lost Soul has no sight/walk lump; active sound repeats twice"
+  },
+  "units/doom-cacodemon-move": {
+    "sequence": [
+      "doom/dscacsit",
+      "doom/dsdmact-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Cacodemon sight cue followed by a two-play movement loop"
+  },
+  "units/doom-hell-knight-move": {
+    "sequence": [
+      "doom/dskntsit",
+      "doom/dsdmact-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Hell Knight sight cue followed by a two-play movement loop"
+  },
+  "units/doom-arachnotron-move": {
+    "sequence": [
+      "doom/dsbspsit",
+      "doom/dsbspwlk-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Arachnotron sight cue followed by a two-play walking loop"
+  },
+  "units/doom-baron-move": {
+    "sequence": [
+      "doom/dsbrssit",
+      "doom/dsdmact-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Baron sight cue followed by a two-play movement loop"
+  },
+  "units/doom-revenant-move": {
+    "sequence": [
+      "doom/dsskesit",
+      "doom/dsskeact-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Revenant sight cue followed by a two-play movement loop"
+  },
+  "units/doom-mancubus-move": {
+    "sequence": [
+      "doom/dsmansit",
+      "doom/dsposact-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Mancubus sight cue followed by a two-play movement loop"
+  },
+  "units/doom-pain-elemental-move": {
+    "sequence": [
+      "doom/dspesit",
+      "doom/dsdmact-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Pain Elemental sight cue followed by a two-play movement loop"
+  },
+  "units/doom-arch-vile-move": {
+    "sequence": [
+      "doom/dsvilsit",
+      "doom/dsvilact-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Arch-Vile sight cue followed by a two-play movement loop"
+  },
+  "units/doom-spider-mastermind-move": {
+    "sequence": [
+      "doom/dsspisit",
+      "doom/dsmetal-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Spider Mastermind sight cue followed by a two-play walking loop"
+  },
+  "units/doom-cyberdemon-move": {
+    "sequence": [
+      "doom/dscybsit",
+      "doom/dshoof-move"
+    ],
+    "sequenceDelayMs": 90,
+    "note": "DOOM Cyberdemon sight cue followed by a two-play walking loop"
+  }  ,
+  "doom/dspodth1": {
+    "src": "/sounds/doom/dspodth1.wav",
+    "note": "DOOM zombie-soldier death variant 1"
+  },
+  "doom/dspodth2": {
+    "src": "/sounds/doom/dspodth2.wav",
+    "note": "DOOM zombie-soldier death variant 2"
+  },
+  "doom/dspodth3": {
+    "src": "/sounds/doom/dspodth3.wav",
+    "note": "DOOM zombie-soldier death variant 3"
   }
 }

@@ -373,12 +373,154 @@ const actionCandidates: Record<UnitSoundAction, string[]> = {
  * sequenced in that order by `units/arch-devil-teleport`. Keyed by bare name,
  * so the Inferno and any neutral twin share it.
  */
+/**
+ * Classic DOOM neutral audio. The assignments intentionally reuse the
+ * original shared lumps: zombie soldiers share their sight/pain/death set,
+ * demon-family monsters share the active/pain sounds, and the shotgun sound
+ * is shared by the Shotgun Guy, Heavy Weapon Dude, and Spider Mastermind.
+ */
+const doomActionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundAction, string>>>> = {
+  demon: {
+    attack: "doom/demon-attack",
+    shoot: "doom/demon-attack",
+    defend: "doom/dsdmact",
+    hurt: "doom/dsdmpain",
+    death: "doom/dssgtdth"
+  },
+  former_human: {
+    attack: "doom/dspistol",
+    shoot: "doom/dspistol",
+    defend: "doom/dsposact",
+    hurt: "doom/dspopain",
+    death: "units/doom-former-human-death"
+  },
+  former_human_sergeant: {
+    attack: "doom/dsshotgn",
+    shoot: "doom/dsshotgn",
+    defend: "doom/dsposact",
+    hurt: "doom/dspopain",
+    death: "units/doom-former-human-death"
+  },
+  imp: {
+    attack: "units/doom-imp-attack",
+    shoot: "units/doom-imp-attack",
+    defend: "doom/dsbgact",
+    hurt: "doom/dspopain",
+    death: "units/doom-imp-death"
+  },
+  lost_soul: {
+    attack: "doom/dssklatk",
+    shoot: "doom/dssklatk",
+    defend: "doom/dsdmact",
+    hurt: "doom/dsdmpain",
+    death: "doom/dsfirxpl"
+  },
+  cacodemon: {
+    attack: "units/doom-cacodemon-attack",
+    shoot: "units/doom-cacodemon-attack",
+    defend: "doom/dsdmact",
+    hurt: "doom/dsdmpain",
+    death: "doom/dscacdth"
+  },
+  hell_knight: {
+    attack: "units/doom-hell-knight-attack",
+    shoot: "units/doom-hell-knight-attack",
+    defend: "doom/dsdmact",
+    hurt: "doom/dsdmpain",
+    death: "doom/dskntdth"
+  },
+  arachnotron: {
+    attack: "units/doom-arachnotron-attack",
+    shoot: "units/doom-arachnotron-attack",
+    defend: "doom/dsbspact",
+    hurt: "doom/dsdmpain",
+    death: "doom/dsbspdth"
+  },
+  former_commando: {
+    attack: "units/doom-machinegun-attack",
+    shoot: "units/doom-machinegun-attack",
+    defend: "doom/dsposact",
+    hurt: "doom/dspopain",
+    death: "units/doom-former-human-death"
+  },
+  baron_of_hell: {
+    attack: "units/doom-baron-attack",
+    shoot: "units/doom-baron-attack",
+    defend: "doom/dsdmact",
+    hurt: "doom/dsdmpain",
+    death: "doom/dsbrsdth"
+  },
+  revenant: {
+    attack: "units/doom-revenant-attack",
+    shoot: "units/doom-revenant-attack",
+    defend: "doom/dsskeact",
+    hurt: "doom/dspopain",
+    death: "doom/dsskedth"
+  },
+  mancubus: {
+    attack: "units/doom-mancubus-attack",
+    shoot: "units/doom-mancubus-attack",
+    defend: "doom/dsposact",
+    hurt: "doom/dsmnpain",
+    death: "doom/dsmandth"
+  },
+  pain_elemental: {
+    attack: "doom/dssklatk",
+    shoot: "doom/dssklatk",
+    defend: "doom/dsdmact",
+    hurt: "doom/dspepain",
+    death: "doom/dspedth"
+  },
+  arch_vile: {
+    attack: "units/doom-arch-vile-attack",
+    shoot: "units/doom-arch-vile-attack",
+    defend: "doom/dsvilact",
+    hurt: "doom/dsvipain",
+    death: "doom/dsvildth"
+  },
+  spider_mastermind: {
+    attack: "units/doom-machinegun-attack",
+    shoot: "units/doom-machinegun-attack",
+    defend: "doom/dsdmact",
+    hurt: "doom/dsdmpain",
+    death: "doom/dsspidth"
+  },
+  cyberdemon: {
+    attack: "units/doom-cyberdemon-attack",
+    shoot: "units/doom-cyberdemon-attack",
+    defend: "doom/dsdmact",
+    hurt: "doom/dsdmpain",
+    death: "doom/dscybdth"
+  }
+};
+
+const doomMoveSoundOverrides: Record<string, string> = {
+  demon: "units/doom-demon-move",
+  former_human: "units/doom-former-human-move",
+  former_human_sergeant: "units/doom-former-human-move",
+  imp: "units/doom-imp-move",
+  lost_soul: "units/doom-lost-soul-move",
+  cacodemon: "units/doom-cacodemon-move",
+  hell_knight: "units/doom-hell-knight-move",
+  arachnotron: "units/doom-arachnotron-move",
+  former_commando: "units/doom-former-human-move",
+  baron_of_hell: "units/doom-baron-move",
+  revenant: "units/doom-revenant-move",
+  mancubus: "units/doom-mancubus-move",
+  pain_elemental: "units/doom-pain-elemental-move",
+  arch_vile: "units/doom-arch-vile-move",
+  spider_mastermind: "units/doom-spider-mastermind-move",
+  cyberdemon: "units/doom-cyberdemon-move"
+};
+
 const moveSoundOverrides: Record<string, string> = {
+  ...doomMoveSoundOverrides,
   arch_devils: "units/arch-devil-teleport",
   gorynych: "units/black-dragon-move"
 };
 
 const actionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundAction, string>>>> = {
+  ...doomActionSoundOverrides,
   dracolich: { shoot: "units/lich-shoot" }
 };
 

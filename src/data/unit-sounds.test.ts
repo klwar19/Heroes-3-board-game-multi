@@ -3,10 +3,11 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
 import { coreUnitDefinitions } from "./factions/units";
+import { DOOM_UNIT_IDS } from "./doom";
 import { COMMANDER_SLUGS } from "./commanders";
 import { commanderSoundKey, commanderVoiceId, unitAttackFlourish, unitSoundKey, type UnitSoundAction } from "./unit-sounds";
 
-const soundLibrary = soundManifest as Record<string, { src?: string; sequence?: string[] }>;
+const soundLibrary = soundManifest as Record<string, { src?: string; sequence?: string[]; random?: string[]; repeat?: number; sequenceDelayMs?: number }>;
 const roster = Object.values(coreUnitDefinitions);
 const coreActions: UnitSoundAction[] = ["attack", "defend", "hurt", "death", "move"];
 const curatedAnimeTownVoices = [
@@ -43,6 +44,9 @@ function clipSrcs(key: string | undefined): string[] {
     return [];
   }
   const entry = soundLibrary[key];
+  if (entry?.random?.length) {
+    return entry.random.flatMap((member) => clipSrcs(member));
+  }
   if (entry?.sequence?.length) {
     return entry.sequence.flatMap((member) => clipSrcs(member));
   }
@@ -102,6 +106,37 @@ describe("unit combat voices", () => {
     }
   });
 
+  it("maps every Doom neutral to the correct source-lump behavior", () => {
+    for (const unitId of DOOM_UNIT_IDS) {
+      const actions: UnitSoundAction[] = ["attack", "defend", "hurt", "death", "move", "shoot"];
+      for (const action of actions) {
+        const key = unitSoundKey(unitId, action);
+        expect(key, unitId + ": " + action).toBeTruthy();
+        expect(clipSrcs(key), unitId + ": " + action + " should resolve to real clips").not.toEqual([]);
+      }
+    }
+
+    expect(unitSoundKey("doom.former_commando", "attack")).toBe("units/doom-machinegun-attack");
+    expect(unitSoundKey("doom.spider_mastermind", "shoot")).toBe("units/doom-machinegun-attack");
+    expect(soundLibrary["units/doom-machinegun-attack"]).toMatchObject({
+      src: "/sounds/doom/dsshotgn.wav",
+      repeat: 4
+    });
+
+    expect(unitSoundKey("doom.cyberdemon", "shoot")).toBe("units/doom-cyberdemon-attack");
+    expect(soundLibrary["units/doom-cyberdemon-attack"]).toMatchObject({
+      sequence: ["doom/dsrlaunc", "doom/dsbarexp"]
+    });
+
+    expect(soundLibrary["units/doom-arachnotron-move"]).toMatchObject({
+      sequence: ["doom/dsbspsit", "doom/dsbspwlk-move"],
+      sequenceDelayMs: 90
+    });
+    expect(soundLibrary["doom/dsbspwlk-move"]).toMatchObject({
+      src: "/sounds/doom/dsbspwlk.wav",
+      repeat: 2
+    });
+  });
   it("uses the documented shared-audio pairings", () => {
     // The original game shares these creatures' files (docs/sound-mapping.md).
     expect(unitSoundKey("castle.marksmen", "shoot")).toBe("units/archer-shoot");

@@ -28,6 +28,8 @@ type SoundManifestEntry = {
    * abilityFxPlans only when the splash ability actually fires.
    */
   then?: string;
+  /** Small pause between members of a virtual sequence. */
+  sequenceDelayMs?: number;
   /** Virtual entry: play one member at random. */
   random?: string[];
   /**
@@ -126,12 +128,25 @@ function playClip(key: string, volume: number, onDone?: () => void): void {
 }
 
 /** Play the members of a `sequence` entry one after another, in order. */
-function playSequence(keys: string[], volume: number, index = 0, onDone?: () => void): void {
+function playSequence(
+  keys: string[],
+  volume: number,
+  index = 0,
+  onDone?: () => void,
+  sequenceDelayMs = 0
+): void {
   if (index >= keys.length) {
     onDone?.();
     return;
   }
-  playClip(keys[index], volume, () => playSequence(keys, volume, index + 1, onDone));
+  playClip(keys[index], volume, () => {
+    const next = () => playSequence(keys, volume, index + 1, onDone, sequenceDelayMs);
+    if (sequenceDelayMs > 0) {
+      window.setTimeout(next, sequenceDelayMs);
+    } else {
+      next();
+    }
+  });
 }
 
 /** Play a converted H3 sound by manifest key ("spells/fireball"). */
@@ -145,7 +160,7 @@ export function playLibrarySound(key: string, volume = 0.55): void {
     return;
   }
   if (entry?.sequence?.length) {
-    playSequence(entry.sequence, volume);
+    playSequence(entry.sequence, volume, 0, undefined, entry.sequenceDelayMs);
     return;
   }
   playClip(key, volume);
@@ -168,7 +183,7 @@ export function playLibrarySoundThen(key: string, volume: number, onDone: () => 
     return;
   }
   if (entry?.sequence?.length) {
-    playSequence(entry.sequence, volume, 0, onDone);
+    playSequence(entry.sequence, volume, 0, onDone, entry.sequenceDelayMs);
     return;
   }
   playClip(key, volume, onDone);
