@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import PartySocket from "partysocket";
 import type { AdventurePlayerConfig, EngineResult, GameAction, GameDifficulty, GameMode, GameState } from "@/engine";
@@ -116,7 +116,54 @@ export type RoomConnection = {
    * state. Only applied over a fresh lobby, so it never clobbers live games.
    */
   restoreRoom: (state: GameState) => Promise<GameRoomSnapshot>;
+  /**
+   * Single-player save slots: fetch the room's RAW state for a local save.
+   * Owner-only and solo rooms only — the server refuses everything else (the
+   * per-seat redacted frames cannot serve as saves; see
+   * src/server/single-player-save.ts).
+   */
+  fetchSinglePlayerSave: () => Promise<{ state: GameState; version: number }>;
+  /**
+   * Single-player save slots: replace the room's game with a saved snapshot —
+   * an atomic whole-state swap into the SAME room (owner-only, solo only).
+   */
+  loadSinglePlayerSave: (state: GameState) => Promise<GameRoomSnapshot>;
 };
+
+/** Shared reader for the save/load endpoints' error bodies. */
+async function saveEndpointError(response: Response, fallback: string): Promise<Error> {
+  const body = (await response.json().catch(() => null)) as { reason?: string } | null;
+  return new Error(body && typeof body.reason === "string" ? body.reason : fallback);
+}
+
+const STALE_SAVE_SERVER_MESSAGE =
+  "The room server is running an older version without save slots — redeploy it (npm run deploy:partykit) and try again.";
+
+/**
+ * The spSave reply must carry its marker: an OLDER room-server deploy answers
+ * an unknown POST body with a generic (seat-REDACTED) snapshot, which would
+ * silently store a corrupted save. Never accept an unmarked reply.
+ */
+function parseSaveFetchReply(payload: unknown): { state: GameState; version: number } {
+  const marked = payload as { spSave?: boolean; state?: GameState; version?: number } | null;
+  if (!marked || marked.spSave !== true || !marked.state || typeof marked.version !== "number") {
+    throw new Error(STALE_SAVE_SERVER_MESSAGE);
+  }
+  return { state: marked.state, version: marked.version };
+}
+
+/**
+ * The spLoad reply must carry its marker: an older server would ignore the
+ * body and return a plain snapshot WITHOUT applying the load — the client must
+ * never report such a reply as "loaded".
+ */
+function parseSaveLoadReply(payload: unknown): GameRoomSnapshot {
+  const marked = payload as { spLoad?: boolean; snapshot?: GameRoomSnapshot } | null;
+  if (!marked || marked.spLoad !== true || !marked.snapshot) {
+    throw new Error(STALE_SAVE_SERVER_MESSAGE);
+  }
+  return marked.snapshot;
+}
 
 /**
  * Provides a short-lived socket ticket for the cross-origin PartyKit edge
@@ -626,6 +673,28 @@ function connectPartyRoom(
         throw new Error("Could not load room.");
       }
       return (await response.json()) as GameRoomSnapshot;
+    },
+    fetchSinglePlayerSave: async () => {
+      const response = await fetch(partyHttpUrl(host, roomId, actorClientId, await actorToken()), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spSave: true, ...(actorClientId ? { actorClientId } : {}) })
+      });
+      if (!response.ok) {
+        throw await saveEndpointError(response, "Could not read the game for saving.");
+      }
+      return parseSaveFetchReply(await response.json());
+    },
+    loadSinglePlayerSave: async (state) => {
+      const response = await fetch(partyHttpUrl(host, roomId, actorClientId, await actorToken()), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spLoad: true, state, ...(actorClientId ? { actorClientId } : {}) })
+      });
+      if (!response.ok) {
+        throw await saveEndpointError(response, "Could not load the saved game.");
+      }
+      return parseSaveLoadReply(await response.json());
     }
   };
 }
@@ -786,6 +855,28 @@ function connectApiRoom(
         throw new Error("Could not restore the room.");
       }
       return (await response.json()) as GameRoomSnapshot;
+    },
+    fetchSinglePlayerSave: async () => {
+      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spSave: true, ...(actorClientId ? { actorClientId } : {}) })
+      });
+      if (!response.ok) {
+        throw await saveEndpointError(response, "Could not read the game for saving.");
+      }
+      return parseSaveFetchReply(await response.json());
+    },
+    loadSinglePlayerSave: async (state) => {
+      const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spLoad: true, state, ...(actorClientId ? { actorClientId } : {}) })
+      });
+      if (!response.ok) {
+        throw await saveEndpointError(response, "Could not load the saved game.");
+      }
+      return parseSaveLoadReply(await response.json());
     },
     fetchSnapshot
   };

@@ -280,11 +280,20 @@ function formatBuildingEffect(effect: BuildingEffectDefinition): string {
   return "building effect";
 }
 
+/**
+ * Names the exact cards a draw/discard event carries — the single-player
+ * history detail. Redacted entries (the engine's HIDDEN_CARD_ID placeholder,
+ * what every multiplayer viewer receives) are dropped entirely, so multiplayer
+ * feed/log lines read exactly as they did before the ids were logged.
+ */
 function formatLoggedCards(cardIds: string[] | undefined): string {
   if (!cardIds || cardIds.length === 0) {
     return "";
   }
-  return cardIds.map((cardId) => (cardId === "hidden" ? "hidden card" : cardName(cardId))).join(", ");
+  return cardIds
+    .filter((cardId) => cardId !== "hidden")
+    .map((cardId) => cardName(cardId))
+    .join(", ");
 }
 
 export function formatEvent(event: GameEvent, state: GameState): string {
