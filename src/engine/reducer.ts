@@ -15658,10 +15658,18 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "DISCOVER_TILE_CARD") {
     const hero = getMainHero(state, action.playerId);
     if (state.adventure && hero?.spaceId) {
+      // Tournament rule (Observatory / Speculum re-rotate): the Speculum may ALSO
+      // re-rotate one nearby placed tile. Prepend the offer so it resolves BEFORE
+      // the discover step (which stays last, like the Observatory location visit).
+      const steps: VisitStep[] = [];
+      if (state.adventure.tournamentObservatoryRerotate) {
+        steps.push({ type: "OBSERVATORY_REROTATE_OFFER", anchorSpaceId: hero.spaceId });
+      }
+      steps.push({ type: "DISCOVER_ADJACENT_TILE" });
       state.adventure.rewardQueue.unshift({
         playerId: action.playerId,
         kind: "visit-steps",
-        steps: [{ type: "DISCOVER_ADJACENT_TILE" }]
+        steps
       });
     }
   }

@@ -159,6 +159,7 @@ import {
   HeroPortrait,
   HireHeroesSection,
   TownRecruitSection,
+  UnitSideCards,
   hasBuildingEffectPanel,
   activeBuildingActions
 } from "@/components/adventure/town-sections";
@@ -4315,6 +4316,14 @@ export function ArmyPanel({
             [rankLine, side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
           return (
             <li key={unit.id}>
+              {/* Full both-faces card display, identical to the town recruit
+                  roster (user request: the Unit deck should show the same full
+                  cards). Costs are omitted here — the units are already owned.
+                  A recruited Neutral card has no Few/Pack faces, so it keeps the
+                  single-face thumb in the row below instead. */}
+              {def?.few || def?.pack ? (
+                <UnitSideCards ownedSide={unit.side} unitDefId={unit.unitDefId} />
+              ) : null}
               <button
                 className="armyUnitRow"
                 onClick={() =>
@@ -4336,11 +4345,15 @@ export function ArmyPanel({
                 title={hoverTitle}
                 type="button"
               >
-                {side?.cardImage ? (
-                  <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={assetUrl(side.cardImage)} />
-                ) : (
-                  <span className={`armyUnitThumb fallback tier-${def?.tier ?? "bronze"}`} />
-                )}
+                {/* Neutral-only cards (no Few/Pack faces) keep their single-face
+                    thumb here, since the both-faces display above is skipped. */}
+                {!def?.few && !def?.pack ? (
+                  side?.cardImage ? (
+                    <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={assetUrl(side.cardImage)} />
+                  ) : (
+                    <span className={`armyUnitThumb fallback tier-${def?.tier ?? "bronze"}`} />
+                  )
+                ) : null}
                 <span className={`tierDot ${def?.tier}`} />
                 <strong>
                   {unit.side === "few" ? "Few" : unit.side === "neutral" ? "Neutral" : "Pack"}{" "}
@@ -7390,7 +7403,12 @@ function PersonalCustomSettingsPanel({
     <div className="personalCustomSettings" aria-label="Custom setting — save or load a file">
       <div className="mapPickerGroupLabel">
         <strong>Custom setting — file</strong>
-        <small>Save the current map &amp; rules to a file; load a file to restore them. Each player keeps their own files.</small>
+        <small>
+          Saves <b>every</b> setting from all four tabs — Mode &amp; Rules, Match, Map &amp; Setup and Army (mode,
+          mods, house rules, victory, difficulty, the designed map, and starting resources/units/buildings) — to a file;
+          load a file to restore them all. Your faction &amp; hero are picked per game and are not saved. Each player
+          keeps their own files.
+        </small>
       </div>
       <div className="personalCustomSaveRow">
         <input
@@ -7405,7 +7423,7 @@ function PersonalCustomSettingsPanel({
           placeholder="Setting name (used in the file name)"
           value={name}
         />
-        <button onClick={saveToFile} title="Download the current map & rules setup as a file" type="button">
+        <button onClick={saveToFile} title="Download every setting from all four tabs (not faction/hero) as a file" type="button">
           Save to file
         </button>
         <button
@@ -7498,7 +7516,10 @@ const HOUSE_RULE_CATEGORY_ICONS: Record<string, string | undefined> = {
   global: REWARD_GLYPH_ICONS.map
 };
 
-const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat", "global"] as const;
+// "global" now lives in its OWN collapsible ("Global map rules"), a peer of the
+// BINH / Polish panels (user request) — no longer nested inside BINH house rules.
+const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat"] as const;
+const GLOBAL_HOUSE_RULE_CATEGORIES = ["global"] as const;
 
 function houseRuleToggleDisabled(
   ruleId: HouseRuleId,
@@ -7761,12 +7782,74 @@ function GroupToggleAllButton({
 }
 
 /**
+ * One category's header + toggle grid, rendered straight from the engine
+ * registry. Shared by the BINH and the standalone Global map-rules panels so
+ * their markup can never drift. Returns null for an empty category.
+ */
+function HouseRuleCategoryGroup({
+  category,
+  houseRules,
+  creatureBanksEnabled,
+  setHouseRule,
+  setHouseRules
+}: {
+  category: string;
+  houseRules: Record<HouseRuleId, boolean>;
+  creatureBanksEnabled: boolean;
+  setHouseRule: (id: HouseRuleId, value: boolean) => void;
+  setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
+}) {
+  const rules = HOUSE_RULES.filter((rule) => rule.category === category);
+  if (rules.length === 0) {
+    return null;
+  }
+  const groupIconSrc = HOUSE_RULE_CATEGORY_ICONS[category];
+  return (
+    <div className="houseRuleGroup" key={category}>
+      <div className="houseRuleGroupHeader">
+        <span className="houseRuleGroupLabel">
+          {groupIconSrc ? (
+            <img
+              alt=""
+              aria-hidden="true"
+              className="houseRuleGroupIcon"
+              draggable={false}
+              src={assetUrl(groupIconSrc)}
+            />
+          ) : null}
+          {HOUSE_RULE_CATEGORY_LABELS[category]}
+        </span>
+        <GroupToggleAllButton
+          creatureBanksEnabled={creatureBanksEnabled}
+          groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
+          houseRules={houseRules}
+          rules={rules}
+          setHouseRules={setHouseRules}
+        />
+      </div>
+      <div className="houseRuleGrid">
+        {rules.map((rule) => (
+          <HouseRuleToggleButton
+            disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
+            key={rule.id}
+            on={houseRules[rule.id]}
+            onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
+            rule={rule}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The individual house-rule toggles, rendered straight from the engine registry
  * so the menu and the engine never drift. Each button flips exactly one rule
  * (the reducer merges it); the value shown is the resolved effective boolean.
  *
- * BINH core rules and Polish type-1 rules each live in their own collapsible
- * panel (default minimized) so the Mode & Rules tab stays scannable.
+ * BINH core rules, the Global map rules, and Polish type-1 rules each live in
+ * their own collapsible panel (default minimized) so the Mode & Rules tab stays
+ * scannable.
  */
 function HouseRulesSection({
   houseRules,
@@ -7781,13 +7864,18 @@ function HouseRulesSection({
 }) {
   // Default minimized — expand only when the host digs into the checklist.
   const [binhOpen, setBinhOpen] = useState(false);
+  const [globalOpen, setGlobalOpen] = useState(false);
   const [polishOpen, setPolishOpen] = useState(false);
 
   const binhRules = HOUSE_RULES.filter((rule) =>
     (BINH_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
   );
+  const globalRules = HOUSE_RULES.filter((rule) =>
+    (GLOBAL_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
+  );
   const polishRules = HOUSE_RULES.filter((rule) => rule.category === "polish");
   const binhOn = binhRules.filter((rule) => houseRules[rule.id]).length;
+  const globalOn = globalRules.filter((rule) => houseRules[rule.id]).length;
   const polishOn = polishRules.filter((rule) => houseRules[rule.id]).length;
 
   return (
@@ -7807,54 +7895,21 @@ function HouseRulesSection({
         onCount={binhOn}
         onToggle={() => setBinhOpen((v) => !v)}
         open={binhOpen}
-        subtitle="Core BINH tweaks — decks, units, abilities, combat & map"
+        subtitle="Core BINH tweaks — decks, units, abilities, combat"
         title="BINH house rules"
         totalCount={binhRules.length}
         variant="binh"
       >
-        {BINH_HOUSE_RULE_CATEGORIES.map((category) => {
-          const rules = binhRules.filter((rule) => rule.category === category);
-          if (rules.length === 0) {
-            return null;
-          }
-          const groupIconSrc = HOUSE_RULE_CATEGORY_ICONS[category];
-          return (
-            <div className="houseRuleGroup" key={category}>
-              <div className="houseRuleGroupHeader">
-                <span className="houseRuleGroupLabel">
-                  {groupIconSrc ? (
-                    <img
-                      alt=""
-                      aria-hidden="true"
-                      className="houseRuleGroupIcon"
-                      draggable={false}
-                      src={assetUrl(groupIconSrc)}
-                    />
-                  ) : null}
-                  {HOUSE_RULE_CATEGORY_LABELS[category]}
-                </span>
-                <GroupToggleAllButton
-                  creatureBanksEnabled={creatureBanksEnabled}
-                  groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
-                  houseRules={houseRules}
-                  rules={rules}
-                  setHouseRules={setHouseRules}
-                />
-              </div>
-              <div className="houseRuleGrid">
-                {rules.map((rule) => (
-                  <HouseRuleToggleButton
-                    disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
-                    key={rule.id}
-                    on={houseRules[rule.id]}
-                    onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
-                    rule={rule}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
+        {BINH_HOUSE_RULE_CATEGORIES.map((category) => (
+          <HouseRuleCategoryGroup
+            category={category}
+            creatureBanksEnabled={creatureBanksEnabled}
+            houseRules={houseRules}
+            key={category}
+            setHouseRule={setHouseRule}
+            setHouseRules={setHouseRules}
+          />
+        ))}
         <p className="houseRuleAlwaysOn">
           <Info size={11} aria-hidden="true" />
           <span>
@@ -7862,6 +7917,30 @@ function HouseRulesSection({
             is the standard “a full breach fells the tower” rule, not a buff.
           </span>
         </p>
+      </HouseRuleCollapsible>
+
+      <HouseRuleCollapsible
+        crestSrc={assetUrl(REWARD_GLYPH_ICONS.map)}
+        crestClassName="houseRuleCollapsibleCrest global"
+        id="global-map-rules"
+        onCount={globalOn}
+        onToggle={() => setGlobalOpen((v) => !v)}
+        open={globalOpen}
+        subtitle="Map-wide difficulty tweaks — apply to every game on any map"
+        title="Global map rules"
+        totalCount={globalRules.length}
+        variant="binh"
+      >
+        {GLOBAL_HOUSE_RULE_CATEGORIES.map((category) => (
+          <HouseRuleCategoryGroup
+            category={category}
+            creatureBanksEnabled={creatureBanksEnabled}
+            houseRules={houseRules}
+            key={category}
+            setHouseRule={setHouseRule}
+            setHouseRules={setHouseRules}
+          />
+        ))}
       </HouseRuleCollapsible>
 
       <HouseRuleCollapsible
@@ -8073,6 +8152,7 @@ function GameOptionsPanel({
       tournamentBanDiplomacy: true,
       tournamentBanHourglass: true,
       tournamentSecondPlayerMorale: true,
+      tournamentObservatoryRerotate: true,
       difficulty: "hard",
       pvpNeutralControl: true,
       events: false,
@@ -8314,6 +8394,12 @@ function GameOptionsPanel({
             label: "2nd player +1 morale",
             on: tournamentRules.secondPlayerMorale,
             hint: "The second player gains 1 positive morale at game start."
+          },
+          {
+            key: "tournamentObservatoryRerotate" as const,
+            label: "Observatory re-rotates a nearby tile",
+            on: tournamentRules.observatoryRerotate,
+            hint: "The Redwood Observatory and the Speculum artifact may ALSO re-rotate one nearby placed tile (with no Hero/Town/Gate on it), in addition to discovering an adjacent tile."
           }
         ] as const;
         const tournamentOn = tournamentDefs.filter((rule) => rule.on).length;

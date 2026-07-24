@@ -4912,6 +4912,32 @@ export default function Home() {
   // bare in the band; the setup screens keep the ornate box. Behaviour is
   // identical either way.
   const inGameTable = !inLobby && !inCombatSandboxSetup;
+  // Single-player Save / Load slots. Grouped with the "New adventure" control
+  // as one game-lifecycle cluster at the end of the table menu (conventional
+  // Save/Load-next-to-New-Game placement), not floating at the top.
+  const singlePlayerSaveSection =
+    state.sessionMode === "single-player" ? (
+      <SinglePlayerSavePanel
+        compact
+        onFetchSaveState={() => {
+          const connection = connectionRef.current;
+          return connection
+            ? connection.fetchSinglePlayerSave()
+            : Promise.reject(new Error("Not connected to the room."));
+        }}
+        onLoadSave={async (saved) => {
+          const connection = connectionRef.current;
+          if (!connection) {
+            throw new Error("Not connected to the room.");
+          }
+          const snapshot = await connection.loadSinglePlayerSave(saved);
+          ingestSnapshotRef.current(snapshot, { seatAuthoritative: true });
+        }}
+        roomId={roomId}
+        state={state}
+      />
+    ) : null;
+
   const tableMenu = (
     <div className={`tableMenu${inGameTable ? " tableMenuInline" : ""}`} aria-label="Table controls">
       {roomPasswordPrompt}
@@ -5031,10 +5057,12 @@ export default function Home() {
         {/* Per-browser layout switch (also the escape hatch out of phone mode). */}
         <UiModeToggle />
       </div>
-      {/* Restart THIS table in its own mode. The combat sandbox and the map
+      {/* Game-lifecycle controls, grouped: restart the table, and (single-player)
+          the Save / Load slots right beside it. The combat sandbox and the map
           designer are their own destinations on the main menu now (Battle Test /
           Map Designer), so they are not duplicated here. */}
-      <div className="menuRow resetRow">
+      <div className="menuRow gameControlsRow" aria-label="Game controls">
+        <div className="menuGroupLabel">Game</div>
         <button
           className="commandButton"
           onClick={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
@@ -5055,28 +5083,8 @@ export default function Home() {
             </>
           )}
         </button>
+        {singlePlayerSaveSection}
       </div>
-      {state.sessionMode === "single-player" ? (
-        <SinglePlayerSavePanel
-          compact
-          onFetchSaveState={() => {
-            const connection = connectionRef.current;
-            return connection
-              ? connection.fetchSinglePlayerSave()
-              : Promise.reject(new Error("Not connected to the room."));
-          }}
-          onLoadSave={async (saved) => {
-            const connection = connectionRef.current;
-            if (!connection) {
-              throw new Error("Not connected to the room.");
-            }
-            const snapshot = await connection.loadSinglePlayerSave(saved);
-            ingestSnapshotRef.current(snapshot, { seatAuthoritative: true });
-          }}
-          roomId={roomId}
-          state={state}
-        />
-      ) : null}
     </div>
   );
 

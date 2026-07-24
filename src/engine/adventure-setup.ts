@@ -567,6 +567,8 @@ export type AdventureSetupOptions = {
   tournamentBanHourglass?: boolean;
   /** Tournament rule: second player +1 positive morale at game start. */
   tournamentSecondPlayerMorale?: boolean;
+  /** Tournament rule: Observatory + Speculum may also re-rotate a nearby tile. */
+  tournamentObservatoryRerotate?: boolean;
   /**
    * PvP Neutral Control mode (default off, multiplayer only): the next live
    * player clockwise plays the Neutral units in every Neutral combat, PvP-style.
@@ -756,12 +758,17 @@ export const TOURNAMENT_REMOVED_ARTIFACT_ID = "artifact.hourglass_of_the_evil_ho
 export function resolveTournamentRules(
   options: Pick<
     GameSetupOptions,
-    "tournamentMode" | "tournamentBanDiplomacy" | "tournamentBanHourglass" | "tournamentSecondPlayerMorale"
+    | "tournamentMode"
+    | "tournamentBanDiplomacy"
+    | "tournamentBanHourglass"
+    | "tournamentSecondPlayerMorale"
+    | "tournamentObservatoryRerotate"
   >
 ): {
   banDiplomacy: boolean;
   banHourglass: boolean;
   secondPlayerMorale: boolean;
+  observatoryRerotate: boolean;
 } {
   // Explicit granular flags win; absent flags fall back to the master convenience
   // boolean (legacy snapshots / `tournamentMode: true` alone enable every rule).
@@ -774,6 +781,10 @@ export function resolveTournamentRules(
     secondPlayerMorale:
       options.tournamentSecondPlayerMorale !== undefined
         ? Boolean(options.tournamentSecondPlayerMorale)
+        : master,
+    observatoryRerotate:
+      options.tournamentObservatoryRerotate !== undefined
+        ? Boolean(options.tournamentObservatoryRerotate)
         : master
   };
 }
@@ -782,11 +793,15 @@ export function resolveTournamentRules(
 export function tournamentRulesAllOn(
   options: Pick<
     GameSetupOptions,
-    "tournamentMode" | "tournamentBanDiplomacy" | "tournamentBanHourglass" | "tournamentSecondPlayerMorale"
+    | "tournamentMode"
+    | "tournamentBanDiplomacy"
+    | "tournamentBanHourglass"
+    | "tournamentSecondPlayerMorale"
+    | "tournamentObservatoryRerotate"
   >
 ): boolean {
   const rules = resolveTournamentRules(options);
-  return rules.banDiplomacy && rules.banHourglass && rules.secondPlayerMorale;
+  return rules.banDiplomacy && rules.banHourglass && rules.secondPlayerMorale && rules.observatoryRerotate;
 }
 
 
@@ -2396,6 +2411,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.tournamentSecondPlayerMorale !== undefined
       ? { tournamentSecondPlayerMorale: options.tournamentSecondPlayerMorale }
       : {}),
+    ...(options.tournamentObservatoryRerotate !== undefined
+      ? { tournamentObservatoryRerotate: options.tournamentObservatoryRerotate }
+      : {}),
     ...(options.pvpNeutralControl !== undefined ? { pvpNeutralControl: options.pvpNeutralControl } : {}),
     ...(options.manualGuardControl !== undefined ? { manualGuardControl: options.manualGuardControl } : {}),
     ...(options.startingHandMulligan !== undefined ? { startingHandMulligan: options.startingHandMulligan } : {}),
@@ -2652,6 +2670,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     tournamentBanDiplomacy: tournamentRules.banDiplomacy,
     tournamentBanHourglass: tournamentRules.banHourglass,
     tournamentSecondPlayerMorale: tournamentRules.secondPlayerMorale,
+    tournamentObservatoryRerotate: tournamentRules.observatoryRerotate,
     pvpNeutralControl: pvpNeutralControlOn,
     pvpNeutralControlMustAttack: pvpNeutralControlMustAttackOn,
     // Manual guard control (default OFF): frozen so every neutral-control read
@@ -3600,6 +3619,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.tournamentSecondPlayerMorale !== undefined) {
     setupOptions.tournamentSecondPlayerMorale = options.tournamentSecondPlayerMorale;
   }
+  if (options.tournamentObservatoryRerotate !== undefined) {
+    setupOptions.tournamentObservatoryRerotate = options.tournamentObservatoryRerotate;
+  }
   if (options.pvpNeutralControl !== undefined) {
     setupOptions.pvpNeutralControl = options.pvpNeutralControl;
   }
@@ -3937,9 +3959,12 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     if (next.tournamentSecondPlayerMorale === undefined) {
       lobby.options.tournamentSecondPlayerMorale = on;
     }
+    if (next.tournamentObservatoryRerotate === undefined) {
+      lobby.options.tournamentObservatoryRerotate = on;
+    }
     changes.push(
       on
-        ? "Tournament Mode on (remove Diplomacy + Hourglass; second player +1 morale)"
+        ? "Tournament Mode on (remove Diplomacy + Hourglass; second player +1 morale; Observatory re-rotate)"
         : "Tournament Mode off"
     );
   }
@@ -3956,6 +3981,12 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     lobby.options.tournamentSecondPlayerMorale = Boolean(next.tournamentSecondPlayerMorale);
     changes.push(
       `Tournament second-player morale ${lobby.options.tournamentSecondPlayerMorale ? "on" : "off"}`
+    );
+  }
+  if (next.tournamentObservatoryRerotate !== undefined) {
+    lobby.options.tournamentObservatoryRerotate = Boolean(next.tournamentObservatoryRerotate);
+    changes.push(
+      `Tournament Observatory re-rotate ${lobby.options.tournamentObservatoryRerotate ? "on" : "off"}`
     );
   }
   // Keep the master flag in sync with the three granular rules for old readers.

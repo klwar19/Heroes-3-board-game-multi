@@ -351,7 +351,8 @@ function UnitSideCard({
 }: {
   unitDefId: string;
   side: "few" | "pack";
-  cost: ResourceCost;
+  /** Recruit/reinforce cost line. Omit (Unit deck view) to show only the face. */
+  cost?: ResourceCost;
   ownedSide: "few" | "pack" | "neutral" | null;
 }) {
   const def = coreUnitDefinitions[unitDefId];
@@ -369,25 +370,31 @@ function UnitSideCard({
           {side === "few" ? "Few" : "Pack"}
           {owned ? <span className="unitOwnedBadge">Owned</span> : null}
         </span>
-        <UnitCost
-          cost={cost}
-          label={`${side === "few" ? "Few recruit" : "Pack reinforce"} cost for ${def.name}`}
-        />
+        {cost ? (
+          <UnitCost
+            cost={cost}
+            label={`${side === "few" ? "Few recruit" : "Pack reinforce"} cost for ${def.name}`}
+          />
+        ) : null}
       </span>
     </div>
   );
 }
 
-/** Both printed sides stay visible so the roster doubles as a quick army inventory. */
-function UnitSideCards({
+/**
+ * Both printed sides stay visible so the roster doubles as a quick army
+ * inventory. Reused by the in-game Unit deck panel (ArmyPanel) so it renders
+ * the SAME full card faces as the town recruit roster; omit the costs there.
+ */
+export function UnitSideCards({
   unitDefId,
   fewCost,
   packCost,
   ownedSide
 }: {
   unitDefId: string;
-  fewCost: ResourceCost;
-  packCost: ResourceCost;
+  fewCost?: ResourceCost;
+  packCost?: ResourceCost;
   ownedSide: "few" | "pack" | "neutral" | null;
 }) {
   const name = coreUnitDefinitions[unitDefId]?.name ?? unitDefId;

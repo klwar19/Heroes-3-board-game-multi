@@ -31,7 +31,15 @@ export type ParsedCustomSetup =
   | { ok: true; name: string; options: GameSetupOptions; sameEngineVersion: boolean }
   | { ok: false; reason: string };
 
-/** The file payload for the CURRENT lobby options (customMode forced on). */
+/**
+ * The file payload for the CURRENT lobby options (customMode forced on). Saves
+ * the WHOLE GameSetupOptions object — every setting across all four setup tabs
+ * (Mode & Rules, Match, Map & Setup, Army: rules, mods, house rules, victory,
+ * difficulty, the designed map + its preset, starting resources/production/
+ * units/buildings, and every optional-system toggle). It deliberately does NOT
+ * store the seat's faction/hero pick — those live on the lobby seat, not in the
+ * setup options, and are chosen per game.
+ */
 export function buildCustomSetupFile(options: GameSetupOptions, name: string): CustomSetupFile {
   return {
     kind: CUSTOM_SETUP_FILE_KIND,

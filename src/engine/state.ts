@@ -9133,6 +9133,28 @@ export type VisitStep =
       rotation: number;
     }
   | {
+      /**
+       * Tournament rule (Observatory / Speculum re-rotate): offer one NEARBY
+       * placed tile to re-rotate, or skip. `anchorSpaceId` is the hero's own
+       * field — "nearby" = a tile whose flower touches the anchor's tile.
+       */
+      type: "OBSERVATORY_REROTATE_OFFER";
+      anchorSpaceId: MapSpaceId;
+    }
+  | {
+      /** Observatory re-rotate: the picked tile — opens its rotation choice. */
+      type: "OBSERVATORY_REROTATE_TILE";
+      tileInstanceId: string;
+      anchorSpaceId: MapSpaceId;
+    }
+  | {
+      /** Observatory re-rotate: rotate the picked tile in place. */
+      type: "OBSERVATORY_REROTATE_SET";
+      tileInstanceId: string;
+      anchorSpaceId: MapSpaceId;
+      rotation: number;
+    }
+  | {
       /** Isra's Friends / settlements: reinforce a Few unit, possibly at half cost. */
       type: "REINFORCE_ARMY_UNIT";
       armyUnitId: string;
@@ -10616,6 +10638,12 @@ export type AdventureState = {
   /** Second player gains +1 positive morale at game start (Tournament rule). */
   tournamentSecondPlayerMorale?: boolean;
   /**
+   * Tournament rule: the Redwood Observatory and the Speculum artifact may ALSO
+   * re-rotate one nearby placed tile (in addition to discovering a face-down
+   * tile). See GameSetupOptions.tournamentObservatoryRerotate.
+   */
+  tournamentObservatoryRerotate?: boolean;
+  /**
    * PvP Neutral Control mode (optional, multiplayer only). When on, the next
    * live player clockwise from a Neutral combat's fighter commands the Neutral
    * side's decisions (see GameSetupOptions.pvpNeutralControl). Absent on older
@@ -10906,6 +10934,14 @@ export type GameSetupOptions = {
    * 1 positive morale at game start. Absent falls back to `tournamentMode`.
    */
   tournamentSecondPlayerMorale?: boolean;
+  /**
+   * Tournament rule (community sheet): the Redwood Observatory AND the Speculum
+   * artifact may ALSO re-rotate one nearby, already-placed tile — in addition to
+   * discovering an adjacent face-down tile. Rotation reuses the safe in-place
+   * `rotateTileInPlace` primitive (no hero/town/gate tile is offered). Absent
+   * falls back to `tournamentMode`.
+   */
+  tournamentObservatoryRerotate?: boolean;
   /**
    * PvP Neutral Control mode (default OFF, multiplayer only). In every Neutral
    * combat the NEXT live player clockwise from the fighter PLAYS the Neutral
