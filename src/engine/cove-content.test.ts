@@ -311,8 +311,13 @@ describe("Cove Pub — Astrologers'-round reinforce discount", () => {
     return result.state;
   }
 
-  /** A Cove (p1) adventure on the Astrologers' round (round 2) with a Pub-only town. */
-  function pubRound(seed: string, army: { id: string; unitDefId: string; side: "few" | "pack" }[], gold: number): GameState {
+  /** A Cove (p1) adventure on the Astrologers' round (round 2) with a Pub and Citadel. */
+  function pubRound(
+    seed: string,
+    army: { id: string; unitDefId: string; side: "few" | "pack" }[],
+    gold: number,
+    withCitadel = true
+  ): GameState {
     const state = createAdventureGameState({
       seed,
       rollFirstPlayer: false,
@@ -323,7 +328,7 @@ describe("Cove Pub — Astrologers'-round reinforce discount", () => {
     });
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
     if (!town) throw new Error("no Cove town");
-    town.buildings = ["cove.pub"];
+    town.buildings = withCitadel ? ["cove.pub", "cove.citadel"] : ["cove.pub"];
     state.players.p1.army = army;
     state.players.p1.resources.gold = gold;
     state.pendingChoice = null;
@@ -357,6 +362,13 @@ describe("Cove Pub — Astrologers'-round reinforce discount", () => {
     const after = applyOk(state, reinforce!.action);
     expect(after.players.p1.army.find((unit) => unit.id === "army_sd")?.side).toBe("pack");
     expect(after.players.p1.resources.gold).toBe(7); // 10 − (6 − 3)
+  });
+
+  it("does not offer Pub reinforcement without a Citadel", () => {
+    const state = pubRound("pub-needs-citadel", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10, false);
+    pumpAdventureQueues(state);
+
+    expect(reinforceAction(state, "Sea Dogs"), "Pub reinforcement still needs a Citadel").toBeUndefined();
   });
 
   it("STACKS the Pub discount with a Legion voucher reserved for the same unit", () => {
