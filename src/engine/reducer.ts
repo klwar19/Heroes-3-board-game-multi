@@ -447,13 +447,18 @@ import {
   getBloodSiphonSelfHeal,
   getLineAttackAbility,
   getOnAttackDieDraw,
+  getOnAttackDiePoisonCubes,
   getOnAttackDieTokens,
   getOnAttackPoisonCubes,
   getOnAttackSelfHeal,
   getParalysisFollowUps,
   getPostAttackAbilityDamageEffects,
+  getPreAttackDamageAbility,
+  getRetaliationAttackBonus,
   getRetaliationAgainstAttackPenalty,
   getRetaliationParalysis,
+  getSameTargetAttackSequenceAbility,
+  getSummonUnitOnAttackAbility,
   hasRollTwoDiceApplyBoth,
   hasRerollAllMinusOne,
   getReturnAfterAttackAbility,
@@ -3628,6 +3633,7 @@ function getAttackStackDetails(
   // Flies sap the retaliator's Attack.
   const retaliationDefenseBonus = isRetaliation ? getDefenseBonusWhenRetaliated(defender) : 0;
   const retaliationAttackPenalty = isRetaliation ? getRetaliationAgainstAttackPenalty(defender) : 0;
+  const retaliationAttackBonus = isRetaliation ? getRetaliationAttackBonus(attacker) : 0;
 
   // Elemental damage (Elemental units, Moandor's Liches VI specialty): the
   // unit's attack value cannot be RAISED by attack cards (Bloodlust, Offense,
@@ -3681,7 +3687,8 @@ function getAttackStackDetails(
       // (not a charge), so every round-1 declared attack benefits.
       equipmentFirstAttackBonus(state, attacker, isRetaliation) +
       equipmentRound1AttackBonus(state, attacker, isRetaliation) -
-      equipmentIncomingAttackPenalty(state, defender, isRetaliation) -
+      equipmentIncomingAttackPenalty(state, defender, isRetaliation) +
+      retaliationAttackBonus -
       retaliationAttackPenalty -
       // Negative Morale "-1 to your next Attack … roll": latched onto this
       // attack when its die rolled (applyMoraleAttackRollPenalty), then folded
@@ -4878,6 +4885,14 @@ function finishResolvedAttack(
   const forceAbilityRoll = !details.isRetaliation && Boolean(stackItem.modifiers.forceAbilityRollsThisAttack);
   if (!dieCancelled) {
     applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation, forceAbilityRoll);
+    applyOnAttackDiePoisonCubes(
+      state,
+      details.attacker,
+      details.defender,
+      attackResult.roll,
+      details.isRetaliation,
+      forceAbilityRoll
+    );
     // Dungeon Minotaurs: draw a card when this unit's OWN Attack die resolves
     // "-1" ([unit_attack] — never on a Retaliation Attack).
     applyOnAttackDieDraw(state, details.attacker, attackResult.roll, details.isRetaliation, forceAbilityRoll);
@@ -5116,7 +5131,7 @@ function runPostAttackFollowUps(
     // 5 — double attack against the same target.
     () => maybeDeclareDoubleAttack(state, attacker, defender, ctx.attackKind, ctx.attackRoll, cards),
     // 6 — Liches' Death Cloud second attack.
-    () => openSecondAttackFollowUp(state, attacker, defender, cards),
+    () => openSecondAttackFollowUp(state, attacker, defender, ctx.attackRoll, cards),
     // 7 — Gold Dragons' line attack.
     () => openGoldDragonLineAttack(state, attacker, defender, cards),
     // 8 — Hydras' extra adjacent attack.
@@ -5134,7 +5149,16 @@ function runPostAttackFollowUps(
     // player discards a card of THEIR choice (parks combat on the choice).
     // Appended last so the existing step indexes (serialized in reroll-resume
     // contexts) never shift; no unit combines this with an earlier follow-up.
-    () => openWraithDiscardChoice(state, attacker, defender)
+    () => openWraithDiscardChoice(state, attacker, defender),
+    // 14 — Doom Pain Elemental's random Lost Soul summon.
+    () => {
+      summonUnitOnAttack(state, attacker);
+      return false;
+    },
+    // 15 — Doom Arachnotron's fixed Attack 2, then Attack 1 against the same
+    // target. Appended so every serialized ability-roll resume index above stays
+    // stable.
+    () => queueSameTargetAttackFollowUps(state, attacker, defender, cards)
   ];
 
   for (let step = Math.max(0, fromStep); step < steps.length; step += 1) {
@@ -5977,6 +6001,100 @@ function queueAttackAllFollowUps(
   }
 
   return declareNextQueuedAbilityAttack(state, cards);
+}
+
+/** Doom Cacodemon: poison cubes gated by the resolved own Attack die face. */
+function applyOnAttackDiePoisonCubes(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackRoll: number,
+  isRetaliation: boolean,
+  forceRoll = false
+): void {
+  if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
+    return;
+  }
+
+  for (const poison of getOnAttackDiePoisonCubes(attacker)) {
+    if (!forceRoll && (attackRoll < poison.minRoll || (poison.maxRoll !== undefined && attackRoll > poison.maxRoll))) {
+      continue;
+    }
+    defender.poisonCubes = (defender.poisonCubes ?? 0) + poison.count;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: poison.abilityId,
+      targetUnitId: defender.id,
+      message: `${attacker.cardName} leaves ${poison.count} burning poison cube${poison.count === 1 ? "" : "s"} on ${defender.cardName}.`
+    });
+  }
+}
+
+/** Doom Arachnotron: queue its fixed Attack 2 and Attack 1 follow-up strikes. */
+function queueSameTargetAttackFollowUps(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  cards: CardLibrary
+): boolean {
+  const combat = state.combat;
+  if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender) || (attacker.attacksThisActivation ?? 0) !== 1) {
+    return false;
+  }
+
+  const ability = getSameTargetAttackSequenceAbility(attacker);
+  if (!ability || !combat.attackSequence) {
+    return false;
+  }
+
+  combat.attackSequence.queuedAbilityAttacks = ability.followUpAttacks.map((baseAttack) => ({
+    abilityId: ability.abilityId,
+    abilityName: ability.abilityName,
+    baseAttack,
+    targetUnitId: defender.id
+  }));
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: ability.abilityId,
+    targetUnitId: defender.id,
+    message: `${attacker.cardName} fires its remaining plasma strikes at ${defender.cardName}.`
+  });
+  return declareNextQueuedAbilityAttack(state, cards);
+}
+
+/** Doom Pain Elemental: place one neutral Lost Soul on a seeded-random empty cell. */
+function summonUnitOnAttack(state: GameState, attacker: CombatUnitState): void {
+  const combat = state.combat;
+  const ability = getSummonUnitOnAttackAbility(attacker);
+  if (!combat || !ability || !isUnitAlive(attacker)) {
+    return;
+  }
+
+  const positions: number[] = [];
+  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    if (!isSpaceBlockedForSummon(combat, position)) {
+      positions.push(position);
+    }
+  }
+  if (positions.length === 0) {
+    return;
+  }
+
+  const random = createSeededRandom(`${state.seed}#${ability.abilityId}#${eventSeedNumber(state)}`);
+  const position = positions[random.nextInt(0, positions.length - 1)];
+  const summoned = placeSummonedUnit(state, attacker.controllerId, ability.unitDefId, "neutral", position);
+  if (!summoned) {
+    return;
+  }
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: attacker.id,
+    abilityId: ability.abilityId,
+    targetUnitId: summoned.id,
+    message: `${attacker.cardName} randomly summons ${summoned.cardName} at ${getBattlefieldLabel(position)}.`
+  });
 }
 
 /** Pops and declares the next queued BINH Cerberi follow-up attack. */
@@ -7975,6 +8093,7 @@ function openSecondAttackFollowUp(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
+  attackRoll: number,
   cards: CardLibrary
 ): boolean {
   const combat = state.combat;
@@ -7983,7 +8102,11 @@ function openSecondAttackFollowUp(
   }
 
   const ability = getSecondAttackAbility(attacker);
-  if (!ability || (attacker.attacksThisActivation ?? 0) !== 1) {
+  if (
+    !ability ||
+    (attacker.attacksThisActivation ?? 0) !== 1 ||
+    (ability.onRoll !== undefined && ability.onRoll !== attackRoll)
+  ) {
     return false;
   }
 
@@ -7992,7 +8115,10 @@ function openSecondAttackFollowUp(
   // unit attack (the cloud engulfs the whole area around the target). A
   // defender's own wall is excluded by the enemy-only filter, so a defending
   // Lich never demolishes its own fortifications.
-  if (destroyEnemyFortificationsInCells(state, attacker, getOrthogonalNeighbors(defender.position)) > 0) {
+  if (
+    ability.onRoll === undefined &&
+    destroyEnemyFortificationsInCells(state, attacker, getOrthogonalNeighbors(defender.position)) > 0
+  ) {
     if (finishCombatIfNeeded(state)) {
       return true;
     }
@@ -9745,13 +9871,10 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // instead (the doubling is own-attack-only). Either way the always-on
   // [unit_passive] "-1" reroll applies to each die (repeated until not "-1"). The
   // reroll is intrinsic, so no separate reroll choice is opened.
-  if (hasRollTwoDiceApplyBoth(details.attacker)) {
+  if (hasRollTwoDiceApplyBoth(details.attacker, details.isRetaliation)) {
     const rerollMinus = hasRerollAllMinusOne(details.attacker);
-    const doublesThisAttack = !details.isRetaliation;
-    // Morale "roll 1 die less" only bites when 2 dice would otherwise be rolled
-    // (an own attack); a retaliation already rolls a single die.
-    const reduced = doublesThisAttack && takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
-    const diceCount = doublesThisAttack && !reduced ? 2 : 1;
+    const reduced = takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
+    const diceCount = reduced ? 1 : 2;
     applyMoraleAttackRollPenalty(state, stackItem, details);
     const applyBothCandidate = rollApplyBothCandidate(combat, diceCount, rerollMinus);
     if (reduced) {
@@ -16508,7 +16631,7 @@ function placeSummonedUnit(
   state: GameState,
   playerId: PlayerId,
   unitDefId: string,
-  side: "few" | "pack",
+  side: "few" | "pack" | "neutral",
   position: number
 ): CombatUnitState | null {
   const combat = state.combat;
@@ -18354,6 +18477,30 @@ function declareAttack(
     }
   } else if (!canUnitAttack(combat, attacker, defender, state.activeEffects)) {
     throw new Error("That unit cannot attack the selected target.");
+  }
+
+  // Doom Revenant: its activation mark lands on the chosen target immediately
+  // before the attack. Printed follow-up attacks and Retaliation Attacks do not
+  // select a fresh activation target, so they never repeat the mark.
+  if (!isRetaliation && !abilityAttack && !isInternalFollowUp) {
+    const preAttackDamage = getPreAttackDamageAbility(attacker);
+    if (preAttackDamage) {
+      applyFlatAbilityDamage(
+        state,
+        attacker,
+        defender.id,
+        preAttackDamage.abilityId,
+        preAttackDamage.abilityName,
+        preAttackDamage.amount
+      );
+      if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      if (!isUnitAlive(defender)) {
+        concludeAttackerActivation(state, attacker);
+        return;
+      }
+    }
   }
 
   // Factory Sandworms (Pack): a repeat player attack (not a Retaliation or a
