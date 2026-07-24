@@ -100,6 +100,112 @@ describe("HeroBoard — the Ⅰ/Ⅳ/Ⅵ specialty cards live in the LEVEL-TRACK 
   });
 });
 
+// jsdom cannot compute CSS, so the sliding LOOK / glow is not asserted here (it
+// is CSS-only — see globals.css .hbCube left/top from --xp-index/--xp-row and
+// the transition). These pin the WIRING the browser paints over: the 13-box
+// zig-zag structure, the labels/rows, and — crucially — that the xp→box mapping
+// has no off-by-one (marker index === experience, current box === that box).
+describe("HeroBoard — the full printed 13-box experience zig-zag", () => {
+  const EXPECTED_LABELS = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5", "5.5", "6", "6.5", "7"];
+
+  it("renders exactly 13 XP boxes in order (1, 1.5, … 7); even xp on the TOP row, odd on the BOTTOM", () => {
+    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
+    const boxes = Array.from(container.querySelectorAll(".hbTrack .hbXpBox"));
+    expect(boxes).toHaveLength(13);
+    // Document order is the labelled sequence 1, 1.5, 2, 2.5, … 7.
+    expect(boxes.map((b) => b.getAttribute("data-xp-value"))).toEqual(EXPECTED_LABELS);
+    expect(boxes.map((b) => Number(b.getAttribute("data-xp-index")))).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+    ]);
+    // The zig-zag: even xp indices sit on the top row, odd on the bottom.
+    for (const box of boxes) {
+      const idx = Number(box.getAttribute("data-xp-index"));
+      expect(box.getAttribute("data-xp-row")).toBe(idx % 2 === 0 ? "top" : "bottom");
+    }
+  });
+
+  it.each([
+    { xp: 0, value: "1", row: "top" },
+    { xp: 3, value: "2.5", row: "bottom" },
+    { xp: 12, value: "7", row: "top" }
+  ])("puts the marker on the box for experience $xp (label $value) — no off-by-one", ({ xp, value, row }) => {
+    const state = bulwarkAdventure("eikthurn");
+    const hero = getMainHero(state, "p1")!;
+    hero.experience = xp;
+    hero.level = Math.min(7, 1 + Math.floor(xp / 2));
+    const { container } = renderBoardState(state);
+    // The sliding marker reads the xp index straight off experience.
+    expect(container.querySelector(".hbCube")?.getAttribute("data-xp-index")).toBe(String(xp));
+    // Exactly one box is flagged current, and it is the correct label + row.
+    const current = container.querySelectorAll('.hbXpBox[data-current="true"]');
+    expect(current).toHaveLength(1);
+    expect(current[0].getAttribute("data-xp-value")).toBe(value);
+    expect(current[0].getAttribute("data-xp-row")).toBe(row);
+    expect(current[0].getAttribute("aria-current")).toBe("step");
+  });
+
+  it("labels the numerals Ⅰ/Ⅳ/Ⅵ gold + laurelled and Ⅱ/Ⅲ/Ⅴ/Ⅶ silver", () => {
+    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
+    expect(container.querySelectorAll(".hbNumerals .hbNumeral.gold")).toHaveLength(3);
+    expect(container.querySelectorAll(".hbNumerals .hbNumeral.silver")).toHaveLength(4);
+    // Each gold numeral wears a pair of laurels; the silver ones wear none.
+    expect(container.querySelectorAll(".hbNumeral.gold .hbLaurel")).toHaveLength(6);
+    expect(container.querySelectorAll(".hbNumeral.silver .hbLaurel")).toHaveLength(0);
+  });
+
+  it("shows the hand-limit numbers 4/5/6/7 and the expert crowns (1/2/3) at Ⅱ/Ⅳ/Ⅵ", () => {
+    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
+    // Hand-limit cards at levels Ⅰ/Ⅲ/Ⅴ/Ⅶ.
+    expect(Array.from(container.querySelectorAll(".hbHandGain b")).map((b) => b.textContent)).toEqual([
+      "4",
+      "5",
+      "6",
+      "7"
+    ]);
+    // Three crown clusters (Ⅱ/Ⅳ/Ⅵ) totalling 1+2+3 = 6 crown icons.
+    expect(container.querySelectorAll(".hbCrowns")).toHaveLength(3);
+    expect(container.querySelectorAll(".hbCrowns .hbIcon")).toHaveLength(6);
+    // The Ⅵ cluster carries all three crowns.
+    expect(container.querySelector(".hbCrowns3")?.querySelectorAll(".hbIcon")).toHaveLength(3);
+  });
+
+  it("keeps the specialty cards in TOP boxes and the Ability-search glyph inside the track", () => {
+    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
+    expect(container.querySelectorAll(".hbTrack .hbXpBoxTop .hbSlotSpecialty")).toHaveLength(3);
+    expect(container.querySelector(".hbTrack .hbSlotSearch .hbIcon")).toBeTruthy();
+    // The track keeps its level+xp aria-label.
+    expect(container.querySelector('.hbTrack[aria-label*="experience"]')).toBeTruthy();
+  });
+});
+
+describe("HeroBoard — faction board theme (heavenly_demon was silently a Castle fallback)", () => {
+  function themedAdventure(factionId: FactionId, heroDefId: string): GameState {
+    return createAdventureGameState({
+      seed: `hero-board-theme-${factionId}`,
+      rollFirstPlayer: false,
+      anime: { enabled: true, xianxiaTowns: true, isekaiTowns: true },
+      players: [
+        { id: "p1", name: factionId, factionId, heroDefId },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+  }
+
+  it("resolves a dedicated dark-crimson theme for heavenly_demon — not the Castle blue fallback", () => {
+    const { container } = renderBoardState(themedAdventure("heavenly_demon", "xuedao"));
+    const edge = (container.querySelector(".hb") as HTMLElement).style.getPropertyValue("--hb-edge").trim();
+    expect(edge).toBe("#b23a4e");
+    expect(edge).not.toBe("#3f6fb5"); // the Castle fallback edge
+  });
+
+  it("CONTROL — a Castle hero resolves the Castle blue edge", () => {
+    const { container } = renderBoardState(themedAdventure("castle", "catherine"));
+    expect((container.querySelector(".hb") as HTMLElement).style.getPropertyValue("--hb-edge").trim()).toBe(
+      "#3f6fb5"
+    );
+  });
+});
+
 describe("HeroBoard — anime Cultivation realm chip (§5.6)", () => {
   function cultivationAdventure(): GameState {
     return createAdventureGameState({
