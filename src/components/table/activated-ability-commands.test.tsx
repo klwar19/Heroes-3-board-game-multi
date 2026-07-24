@@ -178,7 +178,7 @@ describe("Genie command dock — DOM", () => {
     const onAction = vi.fn();
     const { container } = render(
       <CardZoomProvider>
-        <CommandDock legalActions={legal} onAction={onAction} onReset={() => {}} state={s} viewerPlayerId="p1" />
+        <CommandDock legalActions={legal} onAction={onAction} state={s} viewerPlayerId="p1" />
       </CardZoomProvider>
     );
     const wish = [...container.querySelectorAll("button")].find((b) => /wish/i.test(b.textContent ?? ""));
@@ -195,7 +195,7 @@ describe("Genie command dock — DOM", () => {
     const legal = getLegalActions(s, "p1");
     const { container } = render(
       <CardZoomProvider>
-        <CommandDock legalActions={legal} onAction={vi.fn()} onReset={() => {}} state={s} viewerPlayerId="p1" />
+        <CommandDock legalActions={legal} onAction={vi.fn()} state={s} viewerPlayerId="p1" />
       </CardZoomProvider>
     );
     const wish = [...container.querySelectorAll("button")].find((b) => /wish/i.test(b.textContent ?? ""));

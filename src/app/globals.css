@@ -9108,6 +9108,99 @@ span.recruitThumb {
   box-shadow: 0 0 6px rgba(230, 190, 110, 0.4);
 }
 
+/* The unit board keeps both printed sides in every row. The owned side is
+   deliberately bright so the roster reads like an inventory at a glance;
+   unowned/locked cards remain visible for planning and zoom inspection. */
+.unitSideCards {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.unitSideCard {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 48px;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  transition: opacity 120ms ease, filter 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.unitSideCard.unowned {
+  opacity: 0.56;
+  filter: saturate(0.7);
+}
+
+.unitSideCard.owned {
+  border-color: rgba(255, 218, 106, 0.95);
+  background: rgba(255, 211, 84, 0.12);
+  box-shadow: 0 0 8px rgba(255, 213, 92, 0.78), inset 0 0 7px rgba(255, 226, 120, 0.22);
+  filter: saturate(1.2);
+  opacity: 1;
+}
+
+.unitSideCard .recruitThumbImg {
+  width: 38px;
+  height: 42px;
+}
+
+.unitSideMeta {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  line-height: 1;
+}
+
+.unitSideLabel {
+  color: #e7d29f;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.unitOwnedBadge {
+  display: inline-block;
+  margin-left: 2px;
+  color: #ffe47d;
+  font-size: 7px;
+  letter-spacing: 0;
+}
+
+.unitCost {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+  color: #f2dfad;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.unitCostItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.unitCostItem img {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+}
+
+.unitCostFree {
+  color: #b9a579;
+  font-size: 9px;
+  font-weight: 600;
+}
+
 .recruitThumbImg.fallback {
   display: inline-block;
   background: linear-gradient(145deg, #3a2c18, #20160b);
@@ -14137,6 +14230,34 @@ img.cardBack {
   opacity: 0.75;
 }
 
+.recruitRow.unitRosterRow {
+  align-items: center;
+  min-width: 0;
+  padding: 5px 4px;
+  border: 1px solid rgba(170, 130, 70, 0.18);
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(74, 49, 20, 0.18), rgba(35, 24, 14, 0.08));
+}
+
+.recruitRow.unitRosterRow.owned-few,
+.recruitRow.unitRosterRow.owned-pack {
+  border-color: rgba(255, 210, 91, 0.46);
+  box-shadow: inset 0 0 18px rgba(255, 205, 72, 0.1);
+}
+
+.recruitRow.unitRosterRow.owned-neutral {
+  border-color: rgba(150, 184, 225, 0.42);
+  box-shadow: inset 0 0 18px rgba(121, 164, 222, 0.1);
+}
+
+.recruitRow.unitRosterRow.locked {
+  opacity: 0.76;
+}
+
+.recruitRow.unitRosterRow > .recruitName {
+  min-width: 70px;
+}
+
 .recruitRow .recruitState {
   margin-left: auto;
   opacity: 0.75;
@@ -14223,6 +14344,10 @@ img.cardBack {
   font-size: 11px;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.upgradeTag .unitCost {
+  color: #1c130a;
 }
 
 .recruitRow.reinforce.locked .upgradeTag {
@@ -22117,7 +22242,7 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 
 @media (min-width: 560px) {
   .modePresetGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -29797,4 +29922,162 @@ button.armyExperienceBoard > small { color: #9b917d; font-size: 8px; text-transf
   .commanderArtifactSlot.slot-trinket { top: 378px; bottom: auto; }
   .commanderInventoryCard { grid-template-columns: 70px 1fr; }
   .commanderInventoryCard > img { width: 70px; height: 98px; }
+}
+
+/* ---------- private custom setups / solo save slots ---------- */
+
+.personalCustomSettings,
+.singlePlayerSavePanel {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgb(217 178 90 / 28%);
+  border-radius: 8px;
+  background: rgb(12 9 6 / 42%);
+}
+
+.personalCustomSettings > .mapPickerGroupLabel,
+.singlePlayerSaveHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.personalCustomSettings > .mapPickerGroupLabel small,
+.singlePlayerSaveHead small,
+.singlePlayerSaveHint,
+.singlePlayerSaveEmpty,
+.singlePlayerSaveNotice {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.personalCustomSaveRow,
+.singlePlayerSaveCreate {
+  display: flex;
+  gap: 6px;
+}
+
+.personalCustomSaveRow input,
+.singlePlayerSaveCreate input {
+  min-width: 0;
+  flex: 1;
+}
+
+.personalCustomSettingsList,
+.singlePlayerSaveList {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.personalCustomSettingsList li,
+.singlePlayerSaveList li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px solid rgb(217 178 90 / 16%);
+  border-radius: 5px;
+}
+
+.personalCustomSettingsList li > span,
+.singlePlayerSaveList li > span {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+
+.personalCustomSettingsList li small,
+.singlePlayerSaveList li small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.personalCustomSettings button,
+.singlePlayerSavePanel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid rgb(217 178 90 / 42%);
+  border-radius: 5px;
+  padding: 4px 7px;
+  color: #f0dcb8;
+  background: rgb(48 33 15 / 72%);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.personalCustomSettings button:hover,
+.singlePlayerSavePanel button:hover {
+  border-color: rgb(255 224 154 / 78%);
+}
+
+.personalCustomSettings button.ghost,
+.singlePlayerSavePanel button.ghost {
+  color: var(--muted);
+  background: transparent;
+}
+
+.singlePlayerSaveHead > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.singlePlayerSavePanel.compact {
+  max-width: 360px;
+  margin: 8px 0 0 auto;
+}
+
+.singlePlayerHistory .historyFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px 0;
+}
+
+.singlePlayerHistory .historyFilters button {
+  padding: 3px 7px;
+  border: 1px solid rgb(217 178 90 / 32%);
+  border-radius: 4px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.singlePlayerHistory .historyFilters button.selected {
+  color: #211507;
+  background: #e6bc62;
+}
+
+.singlePlayerHistory .historyFilters small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.singlePlayerHistory .logEventMeta {
+  white-space: nowrap;
+}
+
+.pileModalHint {
+  display: block;
+  margin: 4px 0 8px;
+  color: var(--muted);
+}
+
+@media (max-width: 620px) {
+  .singlePlayerSavePanel.compact {
+    max-width: none;
+    margin-left: 0;
+  }
 }

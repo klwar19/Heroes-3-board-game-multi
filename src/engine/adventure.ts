@@ -15144,6 +15144,13 @@ function expireActiveAstrologersCard(state: GameState): void {
     return;
   }
 
+  const card = astrologersCardDefinitions[astrologers.activeCardId];
+  appendEvent(state, {
+    type: "ASTROLOGERS_DISCARDED",
+    cardId: astrologers.activeCardId,
+    name: card?.name ?? astrologers.activeCardId,
+    round: state.round
+  });
   deck?.discardPile.push(astrologers.activeCardId);
   astrologers.activeCardId = null;
   astrologers.crazyWizardUsedBy = [];
