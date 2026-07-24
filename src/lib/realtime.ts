@@ -2,6 +2,7 @@
 
 import PartySocket from "partysocket";
 import type { AdventurePlayerConfig, EngineResult, GameAction, GameDifficulty, GameMode, GameState } from "@/engine";
+import { VERIFIED_SEAT_REJECTION_MESSAGE } from "@/engine";
 import { getPartyKitHost, partyProtocol } from "@/lib/party-origin";
 import { frameBytes, metricNow, metricsSampled, recordPerformanceMetric } from "@/lib/performance-metrics";
 import { peekPendingSinglePlayer, savePendingSinglePlayer } from "@/lib/pending-room-name";
@@ -125,6 +126,39 @@ export type RoomConnection = {
  * the same-origin httpOnly session cookie and needs no ticket.
  */
 export type SocketTokenProvider = () => Promise<string | undefined>;
+
+/**
+ * Minimum gap between two self-healing reconnects (see
+ * {@link shouldReconnectForSeatRejection}) so a persistent refusal can never
+ * spin the socket.
+ */
+export const SEAT_REHEAL_COOLDOWN_MS = 30_000;
+
+/**
+ * Whether an action-result's errors warrant a self-healing socket reconnect.
+ *
+ * Over a long hosted session the edge's verified-identity resolution can lapse:
+ * Cloudflare hibernation wipes its in-memory token cache AND the browser's
+ * 10-minute socket ticket has since expired, so a signed-in actor degrades to a
+ * guest and the seat guard rejects EVERY subsequent action with
+ * VERIFIED_SEAT_REJECTION_MESSAGE — until the player refreshes the page. The
+ * transport instead reconnects (which re-runs the async query → a fresh ticket)
+ * and refetches the seat snapshot, healing the session with no refresh. Pure so
+ * the decision (including the cooldown that stops it spinning) is unit-tested
+ * without a socket. The edge's own storage cache (Fix A) is the primary fix;
+ * this is the client-side belt-and-braces that also heals a hosted MULTIPLAYER
+ * session whose ticket simply aged out.
+ */
+export function shouldReconnectForSeatRejection(
+  errors: { message: string }[],
+  lastHealAt: number,
+  now: number
+): boolean {
+  if (now - lastHealAt < SEAT_REHEAL_COOLDOWN_MS) {
+    return false;
+  }
+  return errors.some((error) => error.message.includes(VERIFIED_SEAT_REJECTION_MESSAGE));
+}
 
 export function connectRoom(
   roomId: string,
@@ -279,6 +313,9 @@ function connectPartyRoom(
   let pingSentAt = 0;
   let syncRequested = false;
   let knownVersion = 0;
+  // Last time a seat-identity rejection triggered a self-healing reconnect —
+  // the cooldown gate for shouldReconnectForSeatRejection.
+  let lastSeatHealAt = 0;
   // Reset travels over the socket, not HTTP: the room server is a different
   // origin than the app, so a cross-origin fetch would be blocked by CORS
   // (the WebSocket is not). The next snapshot the server broadcasts is the
@@ -514,13 +551,27 @@ function connectPartyRoom(
           // quality surface from it (pongs alone are too rare while playing).
           // Wall-clock, like the pong sample.
           handlers.onQuality?.({ rttMs: Date.now() - sentAtWall, at: Date.now() });
+          const errors = reply.errors.map((error) => ({
+            code: error.code as EngineResult["errors"][number]["code"],
+            message: error.message
+          }));
+          // Self-heal a lapsed verified identity: a seat-identity rejection on a
+          // client that CAN mint a ticket (getSocketToken) means the edge lost
+          // our verified identity — reconnect to re-run the async query (fresh
+          // ticket) and refetch the seat snapshot, instead of forcing a page
+          // refresh. Bounded to once per SEAT_REHEAL_COOLDOWN_MS so a genuine,
+          // persistent refusal can never spin the socket. A pure guest gains
+          // nothing from a reconnect, so it is skipped for them.
+          if (getSocketToken && shouldReconnectForSeatRejection(errors, lastSeatHealAt, Date.now())) {
+            lastSeatHealAt = Date.now();
+            handlers.onStatus("re-authenticating (edge)");
+            void refetchSeatSnapshot();
+            socket.reconnect(4000, "seat re-auth");
+          }
           resolve({
             version: reply.version,
             notices: reply.notices ?? [],
-            errors: reply.errors.map((error) => ({
-                code: error.code as EngineResult["errors"][number]["code"],
-                message: error.message
-              }))
+            errors
           });
         });
 

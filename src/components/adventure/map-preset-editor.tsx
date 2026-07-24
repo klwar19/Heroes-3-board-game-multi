@@ -5,7 +5,12 @@ import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { DESIGNER_UI_ICONS, REWARD_GLYPH_ICONS, SECRET_FEATURE_ICONS } from "@/data/assets/homm-assets";
 import { listStoryScenes } from "@/data/story/scenes";
+import { RAID_BOSS_ABILITY_CHOICES } from "@/data/anime/bosses";
+import { unitAbilities } from "@/data/units/abilities";
 import {
+  CUSTOM_BOSS_LIMITS,
+  MAX_CUSTOM_RAID_BOSSES,
+  MAX_CUSTOM_WAVE_OVERRIDES,
   CUSTOM_WIN_CONDITION_OPTIONS,
   DEFAULT_VICTORY_CONDITION_VP,
   defaultCustomWinCondition,
@@ -2063,6 +2068,278 @@ export function MapPresetEditor({
         ) : (
           <small className="mapPresetEmpty">No timed events yet — add one or pick a template.</small>
         )}
+      </section>
+      </MapPresetGroup>
+
+      <MapPresetGroup
+        title="Waves & Raid bosses"
+        glyphEmoji="🐉"
+        count={(value.monsterWaves ? 1 : 0) + (value.raidBosses ? 1 : 0)}
+      >
+      <section className="mapPresetSection" aria-label="Calamity Waves">
+        <div className="mapPresetSectionLabel">Calamity Waves (map overrides)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Wave cadence (map)">
+          {(
+            [
+              { id: undefined, label: "Default cadence" },
+              { id: 3 as const, label: "Every 3rd round" },
+              { id: 4 as const, label: "Every 4th round" },
+              { id: 5 as const, label: "Every 5th round" }
+            ] as const
+          ).map((opt) => (
+            <button
+              aria-pressed={value.monsterWaves?.cadence === opt.id}
+              className={`mapPresetChip${value.monsterWaves?.cadence === opt.id ? " active" : ""}`}
+              key={opt.label}
+              onClick={() => {
+                const next = { ...(value.monsterWaves ?? {}), cadence: opt.id };
+                if (next.cadence === undefined) {
+                  delete next.cadence;
+                }
+                patch({
+                  monsterWaves: next.cadence !== undefined || next.waves ? next : undefined
+                });
+              }}
+              type="button"
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {Object.entries(value.monsterWaves?.waves ?? {}).map(([waveKey, spec]) => (
+          <div className="mapPresetRow" key={waveKey}>
+            <span className="mapPresetRowLabel">Wave {waveKey} army</span>
+            <GuardSpecEditor
+              compact
+              guard={spec}
+              noneLabel="Level table"
+              onChange={(guard) => {
+                const waves = { ...(value.monsterWaves?.waves ?? {}) };
+                if (guard) {
+                  waves[Number(waveKey)] = guard;
+                } else {
+                  delete waves[Number(waveKey)];
+                }
+                const hasWaves = Object.keys(waves).length > 0;
+                patch({
+                  monsterWaves:
+                    hasWaves || value.monsterWaves?.cadence !== undefined
+                      ? {
+                          ...(value.monsterWaves?.cadence !== undefined
+                            ? { cadence: value.monsterWaves.cadence }
+                            : {}),
+                          ...(hasWaves ? { waves } : {})
+                        }
+                      : undefined
+                });
+              }}
+            />
+          </div>
+        ))}
+        {Object.keys(value.monsterWaves?.waves ?? {}).length < MAX_CUSTOM_WAVE_OVERRIDES ? (
+          <button
+            className="mapPresetAdd"
+            onClick={() => {
+              const waves = { ...(value.monsterWaves?.waves ?? {}) };
+              let wave = 1;
+              while (waves[wave] && wave < 10) {
+                wave += 1;
+              }
+              waves[wave] = { level: 2 };
+              patch({
+                monsterWaves: { ...(value.monsterWaves ?? {}), waves }
+              });
+            }}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={13} /> Override a wave&apos;s army
+          </button>
+        ) : null}
+        <small className="mapPresetHint">
+          Applies only while a mod surface ticks Monster waves (WOG / Anime). The cadence override wins over the
+          lobby pick; a wave-army override replaces that wave number&apos;s level-table draw for EVERY seat&apos;s
+          assault.
+        </small>
+      </section>
+
+      <section className="mapPresetSection" aria-label="Raid bosses">
+        <div className="mapPresetSectionLabel">Raid bosses (custom monsters)</div>
+        <label className="mapPresetRow">
+          <span className="mapPresetRowLabel">Rift Lair spawn round</span>
+          <input
+            aria-label="Raid boss spawn round"
+            max={30}
+            min={2}
+            onChange={(event) => {
+              const parsed = Number(event.target.value);
+              const spawnRound = Number.isInteger(parsed) && parsed >= 2 && parsed <= 30 ? parsed : undefined;
+              const next = { ...(value.raidBosses ?? {}), spawnRound };
+              if (spawnRound === undefined) {
+                delete next.spawnRound;
+              }
+              patch({ raidBosses: next.spawnRound !== undefined || next.bosses?.length ? next : undefined });
+            }}
+            placeholder="5"
+            type="number"
+            value={value.raidBosses?.spawnRound ?? ""}
+          />
+        </label>
+        {(value.raidBosses?.bosses ?? []).map((boss, index) => (
+          <div className="mapPresetCard" key={boss.id}>
+            <div className="mapPresetRow">
+              <input
+                aria-label={`Boss ${index + 1} name`}
+                maxLength={60}
+                onChange={(event) => {
+                  const bosses = [...(value.raidBosses?.bosses ?? [])];
+                  bosses[index] = { ...boss, name: event.target.value };
+                  patch({ raidBosses: { ...(value.raidBosses ?? {}), bosses } });
+                }}
+                type="text"
+                value={boss.name}
+              />
+              <button
+                aria-label={`Remove boss ${boss.name}`}
+                className="mapPresetRemove"
+                onClick={() => {
+                  const bosses = (value.raidBosses?.bosses ?? []).filter((entry) => entry.id !== boss.id);
+                  patch({
+                    raidBosses:
+                      bosses.length > 0 || value.raidBosses?.spawnRound !== undefined
+                        ? {
+                            ...(value.raidBosses?.spawnRound !== undefined
+                              ? { spawnRound: value.raidBosses.spawnRound }
+                              : {}),
+                            ...(bosses.length > 0 ? { bosses } : {})
+                          }
+                        : undefined
+                  });
+                }}
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={13} />
+              </button>
+            </div>
+            <div className="mapPresetRow mapPresetStatRow">
+              {(
+                [
+                  ["attack", "Attack", CUSTOM_BOSS_LIMITS.attack],
+                  ["defense", "Defense", CUSTOM_BOSS_LIMITS.defense],
+                  ["health", "Health", CUSTOM_BOSS_LIMITS.health],
+                  ["initiative", "Initiative", CUSTOM_BOSS_LIMITS.initiative],
+                  ["layers", "Layers", CUSTOM_BOSS_LIMITS.layers]
+                ] as const
+              ).map(([stat, label, limits]) => (
+                <label key={stat}>
+                  <span>{label}</span>
+                  <input
+                    aria-label={`Boss ${boss.name} ${label}`}
+                    max={limits.max}
+                    min={limits.min}
+                    onChange={(event) => {
+                      const parsed = Number(event.target.value);
+                      const clamped = Number.isFinite(parsed)
+                        ? Math.max(limits.min, Math.min(limits.max, Math.round(parsed)))
+                        : limits.min;
+                      const bosses = [...(value.raidBosses?.bosses ?? [])];
+                      bosses[index] = { ...boss, [stat]: clamped };
+                      patch({ raidBosses: { ...(value.raidBosses ?? {}), bosses } });
+                    }}
+                    type="number"
+                    value={boss[stat]}
+                  />
+                </label>
+              ))}
+              <label>
+                <span>Type</span>
+                <select
+                  aria-label={`Boss ${boss.name} type`}
+                  onChange={(event) => {
+                    const type =
+                      event.target.value === "ranged" || event.target.value === "flying"
+                        ? (event.target.value as "ranged" | "flying")
+                        : undefined;
+                    const bosses = [...(value.raidBosses?.bosses ?? [])];
+                    const next = { ...boss };
+                    if (type) {
+                      next.type = type;
+                    } else {
+                      delete next.type;
+                    }
+                    bosses[index] = next;
+                    patch({ raidBosses: { ...(value.raidBosses ?? {}), bosses } });
+                  }}
+                  value={boss.type ?? "ground"}
+                >
+                  <option value="ground">Ground</option>
+                  <option value="ranged">Ranged</option>
+                  <option value="flying">Flying</option>
+                </select>
+              </label>
+            </div>
+            <div className="mapPresetChipRow" role="group" aria-label={`Boss ${boss.name} abilities`}>
+              {RAID_BOSS_ABILITY_CHOICES.map((abilityId) => {
+                const active = (boss.abilities ?? []).includes(abilityId);
+                return (
+                  <button
+                    aria-pressed={active}
+                    className={`mapPresetChip${active ? " active" : ""}`}
+                    key={abilityId}
+                    onClick={() => {
+                      const abilities = active
+                        ? (boss.abilities ?? []).filter((entry) => entry !== abilityId)
+                        : [...(boss.abilities ?? []), abilityId].slice(0, 5);
+                      const bosses = [...(value.raidBosses?.bosses ?? [])];
+                      const next = { ...boss };
+                      if (abilities.length > 0) {
+                        next.abilities = abilities;
+                      } else {
+                        delete next.abilities;
+                      }
+                      bosses[index] = next;
+                      patch({ raidBosses: { ...(value.raidBosses ?? {}), bosses } });
+                    }}
+                    title={unitAbilities[abilityId]?.text ?? abilityId}
+                    type="button"
+                  >
+                    {unitAbilities[abilityId]?.name ?? abilityId}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {(value.raidBosses?.bosses ?? []).length < MAX_CUSTOM_RAID_BOSSES ? (
+          <button
+            className="mapPresetAdd"
+            onClick={() => {
+              const bosses = [...(value.raidBosses?.bosses ?? [])];
+              let n = bosses.length + 1;
+              while (bosses.some((entry) => entry.id === `custom_boss_${n}`)) {
+                n += 1;
+              }
+              bosses.push({
+                id: `custom_boss_${n}`,
+                name: `Custom Boss ${n}`,
+                attack: 5,
+                defense: 1,
+                health: 3,
+                initiative: 6,
+                layers: 3,
+                abilities: ["boss-enrage"]
+              });
+              patch({ raidBosses: { ...(value.raidBosses ?? {}), bosses } });
+            }}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={13} /> Add a custom boss
+          </button>
+        ) : null}
+        <small className="mapPresetHint">
+          Applies only while a mod surface ticks Raid bosses. Custom bosses REPLACE the built-in catalog pool for
+          this map&apos;s Rift Lair spawn; stats are per health-layer, abilities come from the curated implemented
+          list.
+        </small>
       </section>
       </MapPresetGroup>
 

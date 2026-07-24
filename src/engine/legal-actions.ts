@@ -82,6 +82,7 @@ import {
   cardCanBoostPower,
   getEffectiveCardEffect,
   heroMovementGrantOption,
+  spellMinUsefulPower,
   spellPowerValueOfCard
 } from "./effects";
 import { commanderReviveCost } from "@/data/commanders";
@@ -240,6 +241,7 @@ import {
   hasSpellCastLock,
   hasSpellCastPowerTax,
   hasUnitAbilityEffect,
+  moraleLockedForPlayer,
   unitHasAttackRollAdvantage,
   unitImmuneToSpellSchools
 } from "./unit-abilities";
@@ -2165,9 +2167,10 @@ function addSpellActions(
     // Basic X Magic (Conflux fetch permanent) in play matching this spell, with an
     // expert use to spend: the caster may fold its +3 Power AS PART OF the cast
     // (up front, like the Tower schoolExpert above) instead of playing the
-    // standalone USE_SCHOOL_FETCH_EXPERT reaction after the cast. Unlike the Tower
-    // discard the permanent STAYS in play — only a crown is spent. Same
-    // scroll/Spell-deck/Tarnum exclusions; a Book cast keeps its flag.
+    // standalone USE_SCHOOL_FETCH_EXPERT reaction after the cast. Like the Tower
+    // expert it CONSUMES its source — the permanent is discarded (user ruling)
+    // — and a crown is spent; the label says so. Same scroll/Spell-deck/Tarnum
+    // exclusions; a Book cast keeps its flag.
     const fetchExpertSchool =
       !fromScroll && !fromSpellDeck && !tarnumReturn && expertUsesAvailable(player) > 0
         ? matchingSchoolFetchForCast(state, playerId, card.spellSchools ?? [])
@@ -2218,7 +2221,7 @@ function addSpellActions(
       if (fetchExpertSchool) {
         const schoolName = `${fetchExpertSchool.charAt(0).toUpperCase()}${fetchExpertSchool.slice(1)}`;
         actions.push({
-          label: `Cast ${card.name} with +3 Power — Basic ${schoolName} Magic expert (crown)${
+          label: `Cast ${card.name} with +3 Power — Basic ${schoolName} Magic expert (crown; discards the permanent)${
             fromSpellBook ? " (Spell Book)" : ""
           }`,
           action: {
@@ -4123,6 +4126,24 @@ export function preHitHealReactions(
   ];
 }
 
+/**
+ * Human-readable command label for a `PLACE_TOKEN_ACTION` "[activation]" other
+ * action (Ogres' Bloodlust, Sorceresses' Weakness). Names the ability AND what
+ * it does — "place it on <side> unit (<±amount>)" — so the command reads like a
+ * proper instruction, not a bare "Bloodlust Token (+1)". Shared by the player
+ * offer (addUnitAbilityActions) and the PvP-Neutral-Control offer
+ * (addControlledNeutralTokenActions) so both stay in lockstep.
+ */
+function placeTokenCommandLabel(
+  unitName: string,
+  abilityName: string,
+  targets: "any" | "friendly" | "enemy",
+  amount: number
+): string {
+  const sideWord = targets === "enemy" ? "an enemy" : targets === "friendly" ? "a friendly" : "a";
+  return `${unitName}: ${abilityName} — place it on ${sideWord} unit (${amount >= 0 ? "+" : ""}${amount})`;
+}
+
 function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerId: PlayerId, activeUnit: CombatUnitState): void {
   const combat = state.combat;
   if (!combat || activeUnit.movedThisActivation) {
@@ -4273,7 +4294,7 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
       });
       if (hasCandidate) {
         actions.push({
-          label: `${activeUnit.name}: ${ability.name} (${effect.amount >= 0 ? "+" : ""}${effect.amount})`,
+          label: placeTokenCommandLabel(activeUnit.name, ability.name, effect.targets, effect.amount),
           action: {
             type: "USE_UNIT_ABILITY",
             playerId,
@@ -4539,7 +4560,7 @@ function addControlledNeutralTokenActions(
       continue;
     }
     actions.push({
-      label: `${activeUnit.name}: ${ability.name} (${effect.amount >= 0 ? "+" : ""}${effect.amount})`,
+      label: placeTokenCommandLabel(activeUnit.name, ability.name, effect.targets, effect.amount),
       action: {
         type: "USE_UNIT_ABILITY",
         playerId,
@@ -6761,7 +6782,13 @@ export function getLegalReactionsForTrigger(
     // (a negated buff would be misleading; +Defense is never negated). The used
     // card returns to its deck, and the window refreshes (reducer) so it is not
     // re-offered. "+1 Combat Power" is Battlefield-mode only (inert here).
-    if (triggerEvent.type === "UNIT_ATTACK_DECLARED" && moraleCardsRuleEnabled(state)) {
+    if (
+      triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+      moraleCardsRuleEnabled(state) &&
+      // Raid-boss Fear (§6.8): a living enemy Fear unit locks every morale USE
+      // — the reaction-window combat bonus included.
+      !moraleLockedForPlayer(state.combat, player.id)
+    ) {
       const held = player.moraleCards?.positive ?? [];
       if (held.includes(MORALE_CARD_IDS.combatBonus)) {
         const attacker = state.combat?.units[triggerEvent.attackerId];
@@ -7105,7 +7132,7 @@ function getSchoolFetchExpertActions(
     }
     if (matches) {
       offers.push({
-        label: `Basic ${school.charAt(0).toUpperCase()}${school.slice(1)} Magic: +3 Power (expert)`,
+        label: `Basic ${school.charAt(0).toUpperCase()}${school.slice(1)} Magic: +3 Power (expert — discards the permanent)`,
         action: { type: "USE_SCHOOL_FETCH_EXPERT", playerId, school }
       });
     }
@@ -7189,7 +7216,12 @@ function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
  *    proclamation + Pandora's flat bonus)
  *   × the matching Elemental-Orb multiplier − the enemy Pegasi reduction,
  *   floored at 0.
- * A Spell Scroll cast is locked to Power 0 and ignores every source.
+ * A Spell Scroll cast ignores standing/school/equipment Power and Orb
+ * doubling: only Power paid into THIS cast window (`spellPowerBonus` from
+ * Power cards / "+1 Power" discards) counts, and only up to the spell's
+ * lowest useful tier (`spellMinUsefulPower`) — so you may fuel Implosion to
+ * Power 1 for its first damage rung, but never climb a higher ladder. Spells
+ * whose lowest useful tier is 0 (Magic Arrow, Lightning Bolt…) stay at 0.
  *
  * Previously the readout/gate counted only the stack-item modifier terms and
  * silently dropped the Orb doubling, the school/flat bonuses and the Pegasi
@@ -7202,10 +7234,19 @@ export function resolvedSpellPowerForStackItem(
   stackItem: ResolutionStackItem | undefined,
   cards: CardLibrary = cardLibrary
 ): number {
-  if (!stackItem || stackItem.action.type !== "CAST_SPELL" || stackItem.modifiers.scrollLocked) {
+  if (!stackItem || stackItem.action.type !== "CAST_SPELL") {
     return 0;
   }
   const card = cards[stackItem.action.cardId];
+  if (stackItem.modifiers.scrollLocked) {
+    // Scroll: paid Power into this window only, capped at the lowest useful tier.
+    const minUseful = spellMinUsefulPower(card);
+    const paid = Math.max(0, stackItem.modifiers.spellPowerBonus);
+    if (minUseful <= 0) {
+      return 0;
+    }
+    return Math.min(paid, minUseful);
+  }
   const playerId = stackItem.action.playerId;
   const base =
     (card?.power ?? 0) +
@@ -8781,6 +8822,12 @@ function addAbilityEmpowerTokenActions(actions: LegalAction[], state: GameState,
 
 function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
+  // Raid-boss Fear (§6.8): while a living enemy Fear unit stands in the
+  // player's open combat, NO morale use is offered (token or cards alike);
+  // morale gains and morale-card draws still happen normally.
+  if (moraleLockedForPlayer(state.combat, playerId)) {
+    return;
+  }
   if (moraleCardsRuleEnabled(state)) {
     const held = player?.moraleCards?.positive ?? [];
     if (held.includes("morale.positive.redraw_hand") && (player?.hand.length ?? 0) > 0) {

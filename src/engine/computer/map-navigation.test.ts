@@ -1268,11 +1268,14 @@ describe("sticky primary + explore objectives", () => {
     const needy = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(needy).toContain(EMPTY);
 
-    // CONTROL: flush balanced resources → market is not a detour.
+    // CONTROL: treasury already covers the next dwelling AND the recruit
+    // cushion — no rebalance, so the market is not a detour. (A mid-tier
+    // "looks balanced" pile can still trip assessDwellingRush.feasible and
+    // wrongly keep the market as an objective.)
     state.players.p2.resources = {
-      gold: 20,
-      buildingMaterials: 6,
-      valuables: 2,
+      gold: 40,
+      buildingMaterials: 12,
+      valuables: 6,
     };
     const flush = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(flush).not.toContain(EMPTY);
@@ -2730,6 +2733,150 @@ describe("navigation across sea / underground, teleport routing, Spell-Book stas
     delete fields[surfaceGate].gateLinkSpaceId;
     delete fields[uGate].gateLinkSpaceId;
     expect(distanceFromHeroTo(state, hero, uObj)).toBeUndefined();
+  });
+
+  it("routes the objective-distance field THROUGH a colored Gate pair; CONTROL: unlinked color / removed pair is longer", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    neutralizeObjectives(state);
+    const doorway = homeDoorway(state, hero);
+    // Pure-walk corridor of EMPTY fields (no stops) so the long path stays open.
+    // Gates sit OFF the corridor, adjacent to the near and far ends, so the jump
+    // is a shortcut without blocking the walk-around CONTROL path.
+    const arm = buildArm(state, doorway, 8, false);
+    const nearJoin = arm[0];
+    const farJoin = arm[arm.length - 2];
+    const objField = arm[arm.length - 1];
+    state.adventure!.fields[objField].location = "hill_fort";
+    state.adventure!.fields[objField].blackCube = false;
+
+    const placeSideGate = (join: MapSpaceId, pair: 1 | 2 | 3 | 4): MapSpaceId => {
+      const side = getAdjacentSpaceIds(join).find((id) => !state.adventure!.fields[id]);
+      expect(side, "side gate cell").toBeDefined();
+      state.adventure!.fields[side!] = {
+        ...state.adventure!.fields[join],
+        spaceId: side!,
+        location: "gate",
+        gatePair: pair,
+        flagOwnerId: null,
+        blackCube: false,
+        tileInstanceId: "tile_ghost_gate",
+      };
+      delete state.adventure!.fields[side!].difficulty;
+      return side!;
+    };
+    const nearPortal = placeSideGate(nearJoin, 1);
+    const farPortal = placeSideGate(farJoin, 1);
+
+    const viaGate = distanceFromHeroTo(state, hero, objField);
+    expect(viaGate).toBeDefined();
+    const df = objectiveDistanceField(state, hero, [
+      { spaceId: objField, kind: "visitable" },
+    ]);
+    expect(df.get(objField)).toBe(0);
+    expect(df.get(farPortal)).toBeDefined();
+    expect(df.get(nearPortal)).toBeDefined();
+    // Reverse teleport: near portal is exactly one hop beyond the far landing.
+    expect(df.get(nearPortal)).toBe(df.get(farPortal)! + 1);
+    // Jump-assisted path is strictly shorter than pure walk along the arm.
+    const noPortalDist = (() => {
+      // Snapshot distances without any gate network (pure corridor).
+      delete state.adventure!.fields[nearPortal];
+      delete state.adventure!.fields[farPortal];
+      const pure = distanceFromHeroTo(state, hero, objField);
+      // Restore for CONTROLs below.
+      state.adventure!.fields[nearPortal] = {
+        ...state.adventure!.fields[nearJoin],
+        spaceId: nearPortal,
+        location: "gate",
+        gatePair: 1,
+        flagOwnerId: null,
+        blackCube: false,
+        tileInstanceId: "tile_ghost_gate",
+      };
+      delete state.adventure!.fields[nearPortal].difficulty;
+      state.adventure!.fields[farPortal] = {
+        ...state.adventure!.fields[farJoin],
+        spaceId: farPortal,
+        location: "gate",
+        gatePair: 1,
+        flagOwnerId: null,
+        blackCube: false,
+        tileInstanceId: "tile_ghost_gate",
+      };
+      delete state.adventure!.fields[farPortal].difficulty;
+      return pure;
+    })();
+    expect(noPortalDist).toBeDefined();
+    expect(viaGate!).toBeLessThan(noPortalDist!);
+
+    // CONTROL 1: different colors — no cross-pair jump; near portal must walk.
+    const linkedNear = df.get(nearPortal)!;
+    state.adventure!.fields[farPortal].gatePair = 2;
+    const dfSplit = objectiveDistanceField(state, hero, [
+      { spaceId: objField, kind: "visitable" },
+    ]);
+    expect(dfSplit.get(nearPortal)).toBeGreaterThan(linkedNear);
+    state.adventure!.fields[farPortal].gatePair = 1;
+
+    // CONTROL 2: remove the far gate — network size 1 is inert; distance rises.
+    delete state.adventure!.fields[farPortal];
+    const noJump = distanceFromHeroTo(state, hero, objField);
+    expect(noJump).toBeDefined();
+    expect(noJump!).toBeGreaterThan(viaGate!);
+  });
+
+  it("one-way monolith shortens entrance→exit only; CONTROL: exit does not reverse to entrance", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    neutralizeObjectives(state);
+    const doorway = homeDoorway(state, hero);
+    const arm = buildArm(state, doorway, 6, false);
+    const nearJoin = arm[0];
+    const farJoin = arm[arm.length - 2];
+    const objField = arm[arm.length - 1];
+    state.adventure!.fields[objField].location = "hill_fort";
+    state.adventure!.fields[objField].blackCube = false;
+
+    const placeSide = (join: MapSpaceId, location: "oneway_entrance" | "oneway_exit"): MapSpaceId => {
+      const side = getAdjacentSpaceIds(join).find((id) => !state.adventure!.fields[id]);
+      expect(side, "side one-way cell").toBeDefined();
+      state.adventure!.fields[side!] = {
+        ...state.adventure!.fields[join],
+        spaceId: side!,
+        location,
+        gatePair: 3,
+        flagOwnerId: null,
+        blackCube: false,
+        tileInstanceId: "tile_ghost_oneway",
+      };
+      delete state.adventure!.fields[side!].difficulty;
+      return side!;
+    };
+    const entrance = placeSide(nearJoin, "oneway_entrance");
+    const exit = placeSide(farJoin, "oneway_exit");
+
+    const df = objectiveDistanceField(state, hero, [
+      { spaceId: objField, kind: "visitable" },
+    ]);
+    expect(df.get(exit)).toBeDefined();
+    expect(df.get(entrance)).toBeDefined();
+    // Reverse edge exit → entrance: entrance is exactly one hop beyond the exit.
+    expect(df.get(entrance)).toBe(df.get(exit)! + 1);
+
+    // CONTROL: objective beside the entrance only — exit cannot jump back.
+    state.adventure!.fields[objField].location = "empty_field";
+    state.adventure!.fields[objField].blackCube = true;
+    state.adventure!.fields[nearJoin].location = "hill_fort";
+    state.adventure!.fields[nearJoin].blackCube = false;
+    const dfBack = objectiveDistanceField(state, hero, [
+      { spaceId: nearJoin, kind: "visitable" },
+    ]);
+    expect(dfBack.get(entrance)).toBeDefined();
+    // Exit is NOT entrance+1 via reverse teleport (one-way); pure walk is longer.
+    expect(dfBack.get(exit)).toBeGreaterThan(dfBack.get(entrance)! + 1);
   });
 
   it("routes a Monolith/Whirlpool teleport to the destination NEAREST the march objective; CONTROL: no objective ⇒ first-index tie", () => {

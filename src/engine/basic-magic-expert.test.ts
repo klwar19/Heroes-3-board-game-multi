@@ -250,8 +250,11 @@ describe("Basic X Magic expert (+3) FROM HAND on the owner's own cast", () => {
  * a first-class CAST_SPELL variant (`useSchoolFetchExpert`) while the fetch
  * permanent is IN PLAY — mirroring the Tower `useSchoolExpert` variant, instead of
  * only surfacing as the standalone USE_SCHOOL_FETCH_EXPERT reaction after the
- * cast. Using the +3 DISCARDS the fetch permanent (consumes it, like the Tower
- * School-of-Magic expert); a crown is spent; the +3 is folded up front.
+ * cast. A crown is spent; the +3 is folded up front. The permanent STAYS in play:
+ * unlike the Tower School-of-Magic card ("you can discard this card, then gain
+ * +3"), the printed Basic X Magic expert side is just "+3 Power for a <School>
+ * Magic spell" — no discard clause (user regression report: consuming it here
+ * silently killed the card's BASIC fetch effect for the rest of the game).
  */
 describe("Basic X Magic expert as an UP-FRONT cast variant (useSchoolFetchExpert)", () => {
   function upfrontCombat(seed: string, hand: string[], permanent: string, crowns = 1): GameState {
@@ -296,12 +299,18 @@ describe("Basic X Magic expert as an UP-FRONT cast variant (useSchoolFetchExpert
     const state = upfrontCombat("upfront-arrow", ["spell.magic_arrow"], "ability.basic_fire_magic", 1);
     const cast = upfrontCast(state, "spell.magic_arrow");
     expect(cast, "the up-front +3 cast variant should be offered for Magic Arrow").toBeTruthy();
+    // The offer NAMES the consumption — a silent discard reads as "my Basic
+    // Magic stopped working" (the user bug report behind this rule).
+    expect(cast!.label).toMatch(/discards the permanent/i);
     const spentBefore = state.players.p1.combatStats.expertUsesSpentThisRound;
     const s = passAll(applyOk(state, cast!.action));
     expect(s.combat!.units.unit_p2_skeletons.damage).toBe(3); // Power 0 → 3 (+3)
     expect(s.players.p1.combatStats.expertUsesSpentThisRound).toBe(spentBefore + 1);
-    expect(s.players.p1.permanents).toEqual([]); // consumed by the +3
+    // USER RULING: the +3 consumes its source — the permanent goes to the
+    // owner's DISCARD pile (recycles into their deck; never out of the game).
+    expect(s.players.p1.permanents).toEqual([]);
     expect(s.players.p1.discard).toContain("ability.basic_fire_magic");
+    expect(s.players.p1.removed ?? []).not.toContain("ability.basic_fire_magic");
   });
 
   it("empowers a FIRE-school spell (Fireball) up front — exact-school match, not just 'any'", () => {
@@ -352,5 +361,123 @@ describe("Basic X Magic expert as an UP-FRONT cast variant (useSchoolFetchExpert
     s = passAll(s);
     // Implosion {0:0, 1:2, 3:4, 5:6}: Power 3 = 4 (NOT Power 6 = 6 → applied once).
     expect(s.combat!.units.unit_p2_skeletons.damage).toBe(4);
+  });
+});
+
+/**
+ * USER BUG REPORT ("Basic effect of basic fire magic not working" … "now even
+ * basic is gone"): the whole card LIFECYCLE, engine-enforced end to end. While
+ * the fetch permanent is IN PLAY its BASIC effect (the Spell-deck fetch) works;
+ * using the +3 expert CONSUMES the permanent to the owner's DISCARD PILE (user
+ * ruling — never removed from the game), after which the fetch is correctly
+ * gone; redrawing and replaying the card brings the BASIC fetch back. Each leg
+ * fails if its wiring is removed.
+ */
+describe("Basic X Magic lifecycle: fetch works → expert consumes → replay restores the fetch", () => {
+  function fetchOptionFor(state: GameState) {
+    return getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CHOOSE_OPTION" && /Fire Magic spell/i.test(legal.label)
+    );
+  }
+
+  it("plays through the whole story on one state", () => {
+    let s = createInitialGameState("fetch-lifecycle");
+    s.players.p1.hand = ["ability.basic_fire_magic", "spell.magic_arrow"];
+    s.players.p2.hand = [];
+    s.players.p1.deck = [];
+    s.players.p1.discard = [];
+    s.players.p1.limits.expertUses = 1;
+    s.activePlayerId = "p1";
+    s.combat!.activeUnitId = "unit_p1_marksmen";
+    const target = s.combat!.units.unit_p2_skeletons;
+    target.abilities = [];
+    target.maxHealth = 40;
+
+    // 1. Play the BASIC side: the card enters play as the fetch permanent.
+    const basicPlay = getLegalActions(s, "p1").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.basic_fire_magic" && l.action.optionIndex === 0
+    );
+    expect(basicPlay, "the basic (enter play) side is offered").toBeTruthy();
+    s = applyOk(s, basicPlay!.action);
+    expect(s.players.p1.permanents).toEqual(["ability.basic_fire_magic"]);
+
+    // 2. The BASIC effect works: a Spell-deck Search offers the fetch and delivers.
+    s.decks["spells"].drawPile = ["spell.bloodlust", "spell.slow", "spell.slow"];
+    s.decks["spells"].discardPile = [];
+    s = applyOk(s, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
+    const fetch1 = fetchOptionFor(s);
+    expect(fetch1, "the Fire fetch is offered while the permanent is in play").toBeTruthy();
+    s = applyOk(s, fetch1!.action);
+    expect(s.players.p1.hand).toContain("spell.bloodlust");
+
+    // 3. Use the +3 EXPERT on a cast: it consumes the permanent to the DISCARD
+    //    pile (user ruling) — never out of the game.
+    const cast = getLegalActions(s, "p1").find(
+      (l) =>
+        l.action.type === "CAST_SPELL" &&
+        l.action.cardId === "spell.magic_arrow" &&
+        l.action.useSchoolFetchExpert === true &&
+        l.action.target?.type === "unit" &&
+        l.action.target.unitId === "unit_p2_skeletons"
+    );
+    expect(cast, "the up-front +3 cast variant is offered").toBeTruthy();
+    s = passAll(applyOk(s, cast!.action));
+    expect(s.combat!.units.unit_p2_skeletons.damage).toBe(3);
+    expect(s.players.p1.permanents).toEqual([]);
+    expect(s.players.p1.discard).toContain("ability.basic_fire_magic");
+    expect(s.players.p1.removed ?? []).not.toContain("ability.basic_fire_magic");
+
+    // 4. With the permanent consumed, a Search correctly offers NO fetch
+    //    (straight to the reveal when nothing else is up front).
+    s.decks["spells"].drawPile = ["spell.bloodlust", "spell.slow", "spell.slow"];
+    s.decks["spells"].discardPile = [];
+    s = applyOk(s, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
+    expect(fetchOptionFor(s), "no fetch offer without the permanent").toBeFalsy();
+    expect(s.pendingChoice?.type).toBe("DECK_SEARCH");
+    const keep = getLegalActions(s, "p1").find((l) => l.action.type === "RESOLVE_DECK_SEARCH");
+    s = applyOk(s, keep!.action);
+
+    // 5. The card recycles: redraw it (simulated) and replay the BASIC side —
+    //    the fetch permanent (and its basic effect) is BACK.
+    const discardIndex = s.players.p1.discard.indexOf("ability.basic_fire_magic");
+    expect(discardIndex, "the card is still in the personal discard cycle").toBeGreaterThanOrEqual(0);
+    s.players.p1.discard.splice(discardIndex, 1);
+    s.players.p1.hand.push("ability.basic_fire_magic");
+    const replay = getLegalActions(s, "p1").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.basic_fire_magic" && l.action.optionIndex === 0
+    );
+    expect(replay, "the basic side is playable again after the redraw").toBeTruthy();
+    s = applyOk(s, replay!.action);
+    expect(s.players.p1.permanents).toEqual(["ability.basic_fire_magic"]);
+
+    s.decks["spells"].drawPile = ["spell.curse", "spell.slow"];
+    s.decks["spells"].discardPile = [];
+    s = applyOk(s, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
+    const fetch2 = fetchOptionFor(s);
+    expect(fetch2, "the BASIC fetch works again after the replay").toBeTruthy();
+    s = applyOk(s, fetch2!.action);
+    expect(s.players.p1.hand).toContain("spell.curse");
+  });
+
+  it("a fetch that finds no takeable spell says so instead of failing silently", () => {
+    let s = createInitialGameState("fetch-empty-note");
+    s.players.p1.hand = [];
+    s.players.p2.hand = [];
+    s.players.p1.permanents = ["ability.basic_fire_magic"];
+    s.activePlayerId = "p1";
+    // No Fire/any spell in the deck: the fetch resolves to nothing — the player
+    // must be TOLD (a silent no-op reads as "the basic effect did not work").
+    s.decks["spells"].drawPile = ["spell.slow", "spell.haste"]; // earth / air only
+    s.decks["spells"].discardPile = [];
+    s = applyOk(s, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
+    const fetch = getLegalActions(s, "p1").find(
+      (l) => l.action.type === "CHOOSE_OPTION" && /Fire Magic spell/i.test(l.label)
+    );
+    expect(fetch, "the fetch option is offered (the deck content is hidden)").toBeTruthy();
+    const handBefore = s.players.p1.hand.length;
+    s = applyOk(s, fetch!.action);
+    expect(s.players.p1.hand.length).toBe(handBefore);
+    const note = [...s.eventLog].reverse().find((event) => event.type === "EVENT_NOTE");
+    expect(note && note.type === "EVENT_NOTE" ? note.message : "").toMatch(/no takeable Fire Magic spell/i);
   });
 });

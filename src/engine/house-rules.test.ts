@@ -50,15 +50,23 @@ function binhWith(houseRules: Partial<Record<HouseRuleId, boolean>>, seed = "hou
 // ===========================================================================
 
 describe("house-rule resolver", () => {
-  it("uses each registry default in BINH and keeps every rule OFF in Legacy", () => {
+  it("uses each registry default in BINH and its declared Legacy default", () => {
     const binh = resolveHouseRules({ ruleset: "binh" });
     const legacy = resolveHouseRules({ ruleset: "legacy" });
     for (const def of HOUSE_RULES) {
+      // Legacy defaults are OFF for every rule EXCEPT one that predates its
+      // toggle and must stay byte-identical in Legacy too (torso-of-legion-major).
+      const legacyExpected = def.legacyDefault ?? false;
       expect(binh[def.id], `${def.id} uses its declared BINH default`).toBe(def.default);
-      expect(legacy[def.id], `${def.id} defaults OFF in Legacy`).toBe(false);
+      expect(legacy[def.id], `${def.id} uses its declared Legacy default`).toBe(legacyExpected);
       expect(houseRuleDefaultFor("binh", def.id)).toBe(def.default);
-      expect(houseRuleDefaultFor("legacy", def.id)).toBe(false);
+      expect(houseRuleDefaultFor("legacy", def.id)).toBe(legacyExpected);
     }
+    // The Torso re-tier is the sole rule ON in BOTH modes by default: every
+    // existing binh AND legacy game already sorts/prices Torso of Legion as Major.
+    expect(binh["torso-of-legion-major"], "Torso re-tier ON by default (BINH)").toBe(true);
+    expect(legacy["torso-of-legion-major"], "Torso re-tier ON by default in Legacy too").toBe(true);
+    expect(houseRuleDefaultFor("legacy", "torso-of-legion-major")).toBe(true);
     expect(binh["polish-spell-book"], "Polish variants are opt-in under BINH too").toBe(false);
     expect(binh["polish-bank-sizes"], "Polish variants are opt-in under BINH too").toBe(false);
     expect(binh["polish-unit-stacks"], "Polish variants are opt-in under BINH too").toBe(false);
@@ -99,8 +107,11 @@ describe("house-rule resolver", () => {
     expect(state.setupLobby?.options.ruleset).toBe("legacy");
     expect(state.setupLobby?.options.houseRules).toBeUndefined();
     expect(state.setupLobby?.options.spellBook).toBe(false);
-    for (const enabled of Object.values(resolveHouseRules(state.setupLobby!.options))) {
-      expect(enabled).toBe(false);
+    // Legacy clears every rule to its declared Legacy default — OFF for all but
+    // torso-of-legion-major (ON in Legacy too; it predates the toggle).
+    const legacyResolved = resolveHouseRules(state.setupLobby!.options);
+    for (const def of HOUSE_RULES) {
+      expect(legacyResolved[def.id], `${def.id}`).toBe(def.legacyDefault ?? false);
     }
 
     // Soft lock: a later multiplayer toggle re-enables a single rule.
@@ -157,6 +168,30 @@ describe("griffin-buff toggle", () => {
     const pack = makeCombatUnitFromArmy(packGriffin, "p1", "u2", 1, "binh", overrides)!;
     expect(few.attack).toBe(2);
     expect(pack.defense).toBe(0);
+  });
+});
+
+describe("phoenix-pack-rebirth toggle", () => {
+  const packPhoenix = { id: "ph", unitDefId: "conflux.phoenixes", side: "pack" as const };
+  const fewPhoenix = { id: "phf", unitDefId: "conflux.phoenixes", side: "few" as const };
+
+  it("ON: Pack Phoenixes carry phoenix-rebirth (house rule)", () => {
+    const state = binhWith({ "phoenix-pack-rebirth": true });
+    const unit = makeCombatUnitFromArmy(packPhoenix, "p1", "u1", 0, "binh", unitSideRuleOverrides(state))!;
+    expect(unit.abilities).toContain("phoenix-rebirth");
+  });
+
+  it("OFF: Pack Phoenixes have NO rebirth — only line attack + fire immunity (control)", () => {
+    const state = binhWith({ "phoenix-pack-rebirth": false });
+    const unit = makeCombatUnitFromArmy(packPhoenix, "p1", "u1", 0, "binh", unitSideRuleOverrides(state))!;
+    expect(unit.abilities).not.toContain("phoenix-rebirth");
+    expect(unit.abilities).toEqual(["dragon-line-attack-2", "phoenix-fire-immunity"]);
+  });
+
+  it("Few Phoenixes always have Rebirth regardless of the Pack toggle", () => {
+    const off = binhWith({ "phoenix-pack-rebirth": false });
+    const few = makeCombatUnitFromArmy(fewPhoenix, "p1", "u1", 0, "binh", unitSideRuleOverrides(off))!;
+    expect(few.abilities).toContain("phoenix-rebirth");
   });
 });
 

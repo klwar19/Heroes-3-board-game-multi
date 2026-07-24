@@ -240,9 +240,11 @@ describe("Map cast — School of Magic expert + Basic Magic expert (combat parit
       optionIndex: fetchIndex
     });
     expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
-    // The +3 consumes the fetch permanent (combat parity: USE_SCHOOL_FETCH_EXPERT).
+    // USER RULING: the +3 consumes the fetch permanent (combat parity:
+    // USE_SCHOOL_FETCH_EXPERT) — to the owner's DISCARD pile, never removed.
     expect(state.players.p1.permanents ?? []).not.toContain("ability.basic_air_magic");
     expect(state.players.p1.discard).toContain("ability.basic_air_magic");
+    expect(state.players.p1.removed ?? []).not.toContain("ability.basic_air_magic");
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
   });
 

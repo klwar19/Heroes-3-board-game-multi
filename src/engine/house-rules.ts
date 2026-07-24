@@ -23,7 +23,7 @@ import type { GameRuleset, GameState, GameSetupOptions, HouseRuleId } from "./st
  */
 export type { HouseRuleId };
 
-export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat" | "polish";
+export type HouseRuleCategory = "decks" | "units" | "abilities" | "combat" | "global" | "polish";
 
 export type HouseRuleDef = {
   id: HouseRuleId;
@@ -44,6 +44,18 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "On: Basic/Expert Spell decks and Minor/Major/Relic Artifact decks with level and map gating. Off: one combined Spell deck and one combined Artifact deck; Spells and Artifacts always remain separate families.",
     category: "decks",
     default: true
+  },
+  {
+    id: "torso-of-legion-major",
+    label: "Torso of Legion plays as Major",
+    description:
+      "BINH house rule: Torso of Legion (printed Minor) is sorted and priced as a Major artifact. Untick to sort it as its printed Minor tier — Minor deck, Minor prices, takeable at any level.",
+    category: "decks",
+    // ON in BOTH modes: the re-tier predates this toggle, so every existing binh
+    // AND legacy game already treats Torso as Major. Defaulting it OFF in Legacy
+    // would silently change those games (Minor prices), so it stays ON there too.
+    default: true,
+    legacyDefault: true
   },
   {
     id: "griffin-buff",
@@ -256,6 +268,24 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "On (house rule): Pit Lords may summon a new Few of Demons even when Demons are already on the field (multiple Demon units, still once per Pit Lords per combat). Off (official): only ONE Demons unit may stand on the field — either a Few or a Pack. With Demons already present you may only Reinforce a Few up to a Pack, never summon a second stack.",
     category: "combat",
     default: true
+  },
+  {
+    id: "phoenix-pack-rebirth",
+    label: "Phoenix Pack Rebirth",
+    description:
+      "On (BINH house rule): the Pack of Phoenixes also has Rebirth (once per Combat, lethal damage leaves it at 1 Health on its Pack side). Off (printed/wiki): only the Few (and Neutral) Phoenixes have Rebirth — the Pack has the line attack and Fire immunity only.",
+    category: "units",
+    default: true
+  },
+  {
+    id: "mine-guard-reinforcement",
+    label: "Mine guards: +1 bronze",
+    description:
+      "Global map rule: every fought-out neutral guard fight on a Mine (all resource types — gold / valuables / materials) fields one EXTRA random neutral bronze creature on top of the normal guard army. It only makes the fought army bigger — the fight's difficulty, experience and reward are unchanged, and Quick Combat / level auto-wins (won before the army deploys) are unaffected. Creature Banks are not mines.",
+    category: "global",
+    // Opt-in difficulty tweak, OFF in both modes (not an existing core default).
+    default: false,
+    legacyDefault: false
   }
 ];
 

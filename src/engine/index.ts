@@ -54,7 +54,8 @@ export {
   roomActionGuard,
   roomDisplayName,
   seatForViewer,
-  seatOfClient
+  seatOfClient,
+  VERIFIED_SEAT_REJECTION_MESSAGE
 } from "./room";
 export type { VerifiedActor } from "./room";
 export { getSeatIdentity, memberForSeat, seatPersonLabel, seatPickSummary } from "./player-identity";
@@ -402,6 +403,7 @@ export {
   MAX_FIELD_REWARD_MOVEMENT,
   MAX_FIELD_REWARD_RESOURCE_DICE,
   MAX_CUSTOM_MAP_OBJECTS,
+  MAX_CUSTOM_WAVE_OVERRIDES,
   MAX_CUSTOM_WIN_CONDITIONS,
   MAX_GATES_PER_PAIR,
   MAX_OBELISK_BONUSES,
@@ -457,16 +459,22 @@ export {
   guardUnitEntryLabel,
   isCustomGuardUnitEntry,
   isAnyPackGuardSlot,
+  isAnyFewGuardSlot,
   isPackGuardSlot,
+  isFewGuardSlot,
   isRandomGuardSlot,
   isRandomPackGuardSlot,
+  isRandomFewGuardSlot,
   isLevelPackGuard,
   packUnitPoolForTier,
+  fewUnitPoolForTier,
   resolveCustomGuardDraws,
   resolveLevelPackGuardDraws,
   PACK_GUARD_PREFIX,
+  FEW_GUARD_PREFIX,
   RANDOM_GUARD_PREFIX,
   RANDOM_PACK_GUARD_PREFIX,
+  RANDOM_FEW_GUARD_PREFIX,
   RANDOM_GUARD_TIERS
 } from "./map-design-features";
 export type { RandomGuardTier, ResolveCustomGuardOptions } from "./map-design-features";
@@ -498,6 +506,36 @@ export type {
   PresetForcedOptionKey,
   TimedEffectKind
 } from "./map-preset";
+export {
+  CUSTOM_BOSS_LIMITS,
+  MAX_CUSTOM_RAID_BOSSES,
+  RAID_BOSS_ESCALATION_INTERVAL,
+  RAID_BOSS_KILL_GOLD,
+  RAID_BOSS_LAYER_BREAK_GOLD,
+  RAID_BOSS_SPAWN_ROUND,
+  customBossToDefinition,
+  raidBossesEnabled,
+  resolveBossDefinition
+} from "./raid-bosses";
+export {
+  WAVE_ARMY_LEVEL_CAP,
+  WAVE_PILLAGE_GOLD,
+  WAVE_TREASURE_DIE_FROM_WAVE,
+  WAVE_WIN_GOLD,
+  WAVE_WIN_XP,
+  monsterWavesEnabled,
+  waveArmyLevel,
+  waveCadenceOf,
+  waveNumberForRound
+} from "./monster-waves";
+export {
+  DUNGEON_BOSS_FLOORS,
+  DUNGEON_FLOOR_CAP,
+  dungeonEnabled,
+  dungeonFloorDifficulty,
+  dungeonFloorOf
+} from "./dungeon";
+export type { RaidBossState, CustomRaidBossDef } from "./state";
 export { getTileBorderSegments, hasInternalBorder } from "@/data/map/borders";
 export type { TileBorderSegment } from "@/data/map/borders";
 export { astrologersCardDefinitions, astrologersDeckCardIds } from "@/data/cards/astrologers";

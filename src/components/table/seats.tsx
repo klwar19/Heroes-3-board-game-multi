@@ -1147,11 +1147,14 @@ export function OpponentBar({
 export function PlayerDock({
   state,
   view,
-  viewerPlayerId
+  viewerPlayerId,
+  onShowPile
 }: {
   state: GameState;
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
+  /** Open the full discard (or other) pile browser — same surface as map mode. */
+  onShowPile?: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers" | "events") => void;
 }) {
   const player = view.players[viewerPlayerId];
   if (!player) {
@@ -1161,6 +1164,9 @@ export function PlayerDock({
   const spellLimit = 1 + player.combatStats.spellLimitBonusThisRound;
   const spellLimitLabel = playerSpellCastsIgnoreLimit(state, viewerPlayerId) ? "∞" : String(spellLimit);
   const crownsLeft = player.limits.expertUses - player.combatStats.expertUsesSpentThisRound;
+  const topDiscardId = player.discard.length > 0 ? player.discard[player.discard.length - 1] : undefined;
+  const openDiscard = () =>
+    onShowPile?.(`${player.name} — discard pile`, player.discard, "cards");
 
   return (
     <div className="playerDock" aria-label="Your decks and resources">
@@ -1173,19 +1179,30 @@ export function PlayerDock({
         <span>{player.deckCount}</span>
         <small>deck</small>
       </div>
-      <div className="pileSpot tall" title="Your discard pile" data-fx-anchor={`discard:${viewerPlayerId}`}>
-        {player.discard.length > 0 ? (
+      <button
+        className={`pileSpot tall combatDiscardSpot${topDiscardId ? " hasCard" : ""}`}
+        data-fx-anchor={`discard:${viewerPlayerId}`}
+        disabled={!onShowPile}
+        onClick={openDiscard}
+        title={
+          topDiscardId
+            ? `Discard top visible (${player.discard.length} total) — click to browse the full pile`
+            : "Your discard pile is empty"
+        }
+        type="button"
+      >
+        {topDiscardId ? (
           <CardFrame
-            cardId={player.discard.at(-1)}
+            cardId={topDiscardId}
             className="pileCard faceUp"
-            empowered={cardIsEmpoweredFor(player.discard.at(-1), player.empoweredAbilities)}
+            empowered={cardIsEmpoweredFor(topDiscardId, player.empoweredAbilities)}
           />
         ) : (
           <div className="pileCard emptyPile" />
         )}
         <span>{player.discard.length}</span>
         <small>discard</small>
-      </div>
+      </button>
       <div className="dockMetrics">
         <SeatNameplate state={state} playerId={viewerPlayerId} />
         <span title="Crowns left this combat round">
@@ -1199,6 +1216,64 @@ export function PlayerDock({
         </span>
       </div>
       <RuneTrack state={state} playerId={viewerPlayerId} />
+    </div>
+  );
+}
+
+/**
+ * Bottom combat strip: own deck + browsable discard (map-mode parity). Keeps the
+ * discard one click away during a fight without leaving the combat surface.
+ */
+export function CombatOwnPiles({
+  view,
+  viewerPlayerId,
+  onShowPile
+}: {
+  view: PlayerVisibleState;
+  viewerPlayerId: PlayerId;
+  onShowPile: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers" | "events") => void;
+}) {
+  const player = view.players[viewerPlayerId];
+  if (!player) {
+    return null;
+  }
+  const topDiscardId = player.discard.length > 0 ? player.discard[player.discard.length - 1] : undefined;
+  const topDiscard = topDiscardId ? cardLibrary[topDiscardId] : undefined;
+
+  return (
+    <div className="combatOwnPiles" aria-label="Your deck and discard">
+      <div
+        className="combatOwnPile combatOwnDeck"
+        data-fx-anchor={`deck-bottom:${viewerPlayerId}`}
+        title="Your draw deck (face down — reshuffles from the discard when empty)"
+      >
+        <CardBack className="combatOwnPileCard" />
+        <span className="combatOwnPileCount">{player.deckCount}</span>
+        <small>Deck</small>
+      </div>
+      <button
+        className={`combatOwnPile combatOwnDiscard${topDiscardId ? " hasCard" : ""}`}
+        data-fx-anchor={`discard-bottom:${viewerPlayerId}`}
+        onClick={() => onShowPile(`${player.name} — discard pile`, player.discard, "cards")}
+        title={
+          topDiscard
+            ? `Discard top: ${topDiscard.name} (${player.discard.length} total) — click to browse`
+            : "Open your discard pile"
+        }
+        type="button"
+      >
+        {topDiscardId ? (
+          <CardFrame
+            cardId={topDiscardId}
+            className="combatOwnPileCard faceUp"
+            empowered={cardIsEmpoweredFor(topDiscardId, player.empoweredAbilities)}
+          />
+        ) : (
+          <span className="combatOwnPileCount">0</span>
+        )}
+        <span className="combatOwnDiscardBadge">{player.discard.length}</span>
+        <small>Discard</small>
+      </button>
     </div>
   );
 }

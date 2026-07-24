@@ -656,6 +656,17 @@ Leading with what does NOT run (deliberate limits):
   swaps, focus-fire), and a fixed-seed multi-round soak + reconnect suite
   (`single-player-soak.test.ts`) are wired. STILL deferred: hide multiplayer-
   only invite/share affordances on the SP table page; optional nightly long soak.
+- **Teleport networks, mod FO, equipment, permanents (2026-07 AI upgrade).** The
+  march BFS adds reverse edges for Monolith / Whirlpool / colored Gate / one-way
+  entrance→exit (known fields only; `listKnownTeleportDestinations` +
+  `objectiveDistanceField`; tests in `map-navigation.test.ts`). Visit menus
+  still pick the landing nearest the primary. Equipment outfitters and WOG FO
+  hexes are conditional visitables; Keymaster tents that open still-blocking
+  Barriers are elevated. `BIND_COMMANDER_ARTIFACT` / `EQUIP_HERO_EQUIPMENT` /
+  `GAIN_GRADE_PROGRESS` score as permanent packages (~740–810). Polish Wait,
+  smarter `SPEND_MORALE`, and map-spell-boost option ranking are wired. V1
+  limits: no face-down portal landings in the BFS, no whirlpool unit-toll EV,
+  no full Neutral Rank-Up engagement rewrite.
 - **Expansion tempo, dwelling-first economy, crown & Power discipline,
   high-value combat trades** — all score-layer heuristics over already-legal
   actions (the engine rules are untouched, so nothing here can produce an
@@ -885,6 +896,21 @@ Leading with what does NOT run / deliberate limits:
   (`placeCreatureBankGuards`), so no sort window opens.
 - **Berserk and the Astrologers Werewolf frenzy override both toggle modes**
   (the spell/frenzy menu binds a controlled guard exactly like a player unit).
+- **A neutral Harpy's "Strike and Return" fly-back is the CONTROLLER's choice in
+  FREE mode** (`pvpNeutralControlMustAttack` OFF, and under Manual guard control,
+  which is always free play): after a moved-then-struck guard with the
+  `harpy-return` ability, the fly-back-or-stay `combat-reposition` OPTION_CHOICE
+  is opened NEUTRAL-owned and re-stamped to the controller like every other
+  neutral follow-up — an eliminated controller hands it back to the neutral seat
+  (`isNeutralSideCombatChoice` covers a neutral `combat-reposition`), the AFK
+  driver default-answers it (plain `CHOOSE_OPTION`), and a computer controller
+  scores it through the generic OPTION_CHOICE policy (never a stall). In
+  MUST-ATTACK mode (rulebook spirit) the guard still AUTO-returns — no "stay" is
+  offered (deliberate, wired at `concludeAttackerActivation`). With no human
+  driver (plain AI / computer fighter / mode off) the auto-return is
+  byte-identical. Pinned in `pvp-neutral-control.test.ts` (free vs must-attack,
+  eliminated-controller hand-back) and `manual-guard-control.test.ts` (the
+  fighter's choice + mode-off / computer-fighter CONTROLs).
 - The continue-or-retreat window, the pre-activation reaction pause (which no
   longer previews an intent under this mode — a human hasn't decided yet; the
   pause can coexist with the controller's open choice, each resolving
@@ -1528,9 +1554,9 @@ Leading with what does NOT run / deliberate limits:
 - **The Hierophant First Aid flip-up never dilutes** — it restores THIS
   battle's own casualties, not fresh recruits (the one reinforce-shaped
   exception, pinned with the reinforce halving as its control).
-- **The AI has no bespoke veterancy strategy**: it drills only as an idle-time
-  luxury from surplus gold (`map-policy.ts` DRILL_UNIT, score 325 when gold ≥
-  10) and otherwise just benefits from the folds like a human.
+- **The AI drills from surplus gold** (`map-policy.ts` DRILL_UNIT, score ~325+
+  when gold ≥ 10) and prefers silver/gold bodies; it is still not a full
+  veterancy planner (no multi-round XP dilution strategy).
 - **Badge art now ships as real webp icons**: per-rank badges
   (`/assets/ui/unit-rank-{seasoned,veteran,elite,legend}.webp`,
   `unitRankBadgeImage`) and per-ability icons (`/assets/ui/rank-ability/*.webp`,
@@ -1655,6 +1681,158 @@ What runs (each with a failing-if-removed test):
 - **Default OFF ⇒ byte-identical**: neither half is reached (the freeze leaves
   `adventure.neutralRankUp` absent, `neutralRankUpActive` false, the bank
   override false), so no fold runs — an exact-equality CONTROL.
+
+## Calamity Waves · Raid Bosses · The Dungeon (OPTIONAL modules, WOG + anime surfaces) — what runs vs. limits
+
+Three PvE-pressure modules from the anime plan (§6.6 / §6.5 / §6.7.3), each with
+TWO tick surfaces resolving to ONE frozen adventure field (the
+`unitExperience`/`neutralRankUp` precedent): `wog.monsterWaves|raidBosses|dungeon`
+(rows in the WOG mod window) and `anime.monsterWaves|raidBosses|dungeon` (rows in
+the Anime mod window; these anime flags existed as unshipped types and are now
+SHIPPED). `waveCadence` (3|4|5, chip row shown while waves are ticked, default 4)
+exists on both option types; the designed-map preset override wins. Default OFF ⇒
+byte-identical (legacy snapshots unaffected). Engine:
+`src/engine/monster-waves.ts` / `raid-bosses.ts` / `dungeon.ts` (pure helpers) +
+wiring in `adventure.ts` (round-start hooks, lair/gate visits, pillage/rewards),
+`adventure-reducer.ts` (assault/lair/floor combat opens, the placement→draw seam
+branches, finalize outcome routing), `combat-units.ts` (boss layer shed +
+layer-break payout). Boss data: `src/data/anime/bosses.ts`. Behaviour pinned in
+`monster-waves.test.ts`, `raid-bosses.test.ts`, `boss-abilities.test.ts`,
+`dungeon.test.ts` (every claim mutation-checked with off/side CONTROLs), the
+lobby rows in `game-options-tabs.test.tsx`, the designer section in
+`map-preset-editor.test.tsx`, and all three flags run in the all-on
+`anime-coexistence-soak.test.ts`.
+
+Leading with what does NOT run / deliberate limits (ALL three):
+- **No guild rank points, no fate/karma** (those modules are unshipped — the
+  plan's "+1 rank point" / "fate" reward clauses are dropped, stated here).
+- **Wave themes are core-neutral draws** (`isekaiNeutrals` is unshipped; the
+  plan itself names this fallback): a wave army is a real `NEUTRAL_ARMY_TABLE`
+  level draw from the live tier decks (recycled at combat end like any guard).
+- **No pre-battle swap windows on waves/bosses/floors** (Judge Dread / Groovy
+  Satyr / Visions / Rule 111 stay ordinary-guard offers), and **no computer
+  guaranteed-win** ever applies (explicit context exclusions + the difficulty-0
+  gates; the dungeon's real difficulty needed the explicit clause — CONTROL in
+  `dungeon.test.ts`).
+- **Boss art is PROCEDURAL PLACEHOLDER art** (committed webp, generated by
+  `scripts/build-raid-dungeon-art.mjs`; on-disk pinned) — upgrade directions
+  in `docs/raid-dungeon-art.md`. Every DESIGNER custom boss wears the shared
+  `custom_boss.webp` face.
+- **The AI does not MARCH toward lairs/the Dungeon** (no objective-field
+  entries): computer seats fight their waves through the normal runner, and
+  answer lair/gate menus when they stand there (visit scoring: challenge only
+  with `playerArmyStrength ≥ 8`, delve at ≥ 4 — `map-policy.ts`); no bespoke
+  route-planning toward the sites in V1.
+- **No `boss_lair` / `dungeon` DESIGNER MAP OBJECTS yet** (the plan's §6.5.3(b)
+  hex-pinned lair): designer control ships at the PRESET level instead — custom
+  bosses + the spawn-round override (`preset.raidBosses`) and per-wave armies +
+  cadence (`preset.monsterWaves`) in the "Waves & Raid bosses" editor group; the
+  scheduled spawn still picks its own field, and the Dungeon places itself via
+  the bank seam.
+
+**Calamity Waves** (`monsterWaves`): every Nth round (cadence; wave k = round
+k×N), EVERY live seat fights a wave army at round start — announced the round
+BEFORE ("the Gate groans"), resolved in seat order behind the SAME round-start
+event barrier the Fortress Event uses (one barrier spans Event + waves: the
+trailing sentinel is lifted and re-appended after the assault steps — exactly
+ONE sentinel, pinned). While an assault COMBAT is open the barrier's resolver
+read is null — the fight's own machinery (reactions, PvP-Neutral-Control,
+placement) governs who acts, and `computerDecisionOwner` falls through to its
+combat block so an AI seat's assault is driven (the `!state.combat` guard —
+reverting it hangs the whole table, pinned in monster-waves.test.ts); in
+parallel mode bystanders keep the usual quiet set during that fight, exactly
+like any open combat. Each assault is a normal neutral combat at the MAIN
+hero's position: `context.waveAssault`, difficulty 0 (no level XP — the wave
+pays its own reward), `unlimitedRounds` (fought to the end; no retreat window).
+Win: 2 gold + 1 main-hero XP (+ one Treasure die from wave 3 on, unshifted to
+the queue front); Freelancer's Guild / Necromancy fire as on any fought neutral
+win, but the post-win FIELD VISIT is SKIPPED (the hero merely stands there) and
+Necromancy opens with no deferred fieldId (bank precedent). ANY non-win =
+PILLAGE: lose 3 gold (floored at 0) and the flagged mine/settlement NEAREST the
+home town is overrun — flag removed, `everFlagged`/cube reset, a difficulty-Ⅰ
+guard re-seeded (re-fight → re-flag re-earns the first-flag reward, the
+clear-cubes precedent); the hero never bounces (no retreat step-back, no
+move-home — the assault came TO them). A seat with no main hero on the map is
+pillaged directly. Wave army level = min(5, wave+1); the designed-map preset
+(`monsterWaves.waves[k]`, the CustomGuardSpec vocabulary incl. exact armies and
+"packs" level draws) replaces wave k's draw for every seat. Eliminated seats'
+queued assaults drop; an eliminated mid-queue table still lifts the barrier.
+
+**Raid Bosses** (`raidBosses`): persistent multi-layer world bosses. A boss is
+a bespoke-stat LAYERED monster (`src/data/anime/bosses.ts` — Goblin King 3 /
+Colossal Titan 5 / Abyss Kraken 4 / Calamity Dragon 6 / Avatar of Erebos 7
+bars) minted gradeless (`bankUnit` + `bossUnit`): its `armyStacks` ARE the
+health bars, shed UNCONDITIONALLY by the boss branch of
+`markUnitRemovedIfNeeded` (no Unit-Stacks rule needed; excess damage carries;
+minted stats survive — the bank branch of `applyUnitCurrentSide` no-ops on the
+synthetic `boss.<id>` def). Tier-gated spells can't touch it, the neutral AI
+ranks it by distance, and `applyNeutralRoundsRank` skips it. THREE new ability
+arms ship (mutation-checked in `boss-abilities.test.ts`): **Enrage**
+(`boss-enrage` — FLAT_ATTACK_BONUS +2 gated by the NEW
+`requiresLayersAtMost: 1` on `getUnitAbilityDefinitions`, switching on LIVE at
+the last bar), **Devour** (`boss-devour` — the DEATH_STARE_ON_DICE machinery
+with diceCount 1 / onRoll +1 / NEW `targetGradeAtMost: "bronze"`: one "+1" die
+removes a surviving bronze side outright; silver+ and gradeless targets are
+never threatened — no die is even thrown; rides the ability-roll
+reroll/set-die windows for free), and **Fear** (`boss-fear` — NEW MORALE_LOCK:
+while a living enemy Fear unit stands, morale cannot be USED — the +1 token and
+Positive Morale cards are withheld from `addMoraleActions`, the reaction-window
+combat bonus, BOTH reroll-source builders (attack + ability windows) and
+`spendMorale` rejects a forged spend; gains/draws untouched; unlocks the moment
+it dies). Schedule: announced round 4, spawned round 5 (preset
+`raidBosses.spawnRound` override 2–30) — the highest-difficulty REVEALED plain
+guard field (objectives/flags/banks/outposts/teleports/hero-hexes excluded,
+center bands preferred) converts to a **Rift Lair** (`field.riftLair`, location
+`rift_lair`, printed guard cleared — the boss IS the guard); nothing revealed ⇒
+retry every round. Entering = a confirm menu (Challenge / Withdraw — withdraw
+stays at the mouth; the lair is revisitable for 1 MP); the fight is
+difficulty-0 (no XP, bank precedent) with the boss pinned back-center + a
+minion escort (`minionCount` draws off the `minionLevel` table row). WOUNDS
+PERSIST: remaining layers write back to `adventure.raidBosses[id]` at finalize
+whatever the outcome (and across snapshots — round-trip pinned). Every layer
+broken pays the FIGHTER 2 gold AT ONCE through the real removal chokepoint (+
+the per-player `layerBreaks` ledger); the kill pays 5 gold + a relic-tier
+Artifact search (split deck when present; the normal BINH search gates apply)
+and clears the lair (black cube; later visits inert). Ignored, the boss regrows
++1 layer every 4th round, capped at printed layers. DESIGNER custom bosses
+(preset `raidBosses.bosses`, cap 6, editor section "Waves & Raid bosses"):
+name + per-layer stats (clamped to `CUSTOM_BOSS_LIMITS`) + layers 1–8 + type +
+abilities from the curated implemented whitelist `RAID_BOSS_ABILITY_CHOICES`
+(sanitizer-filtered, dedupe, every id pinned implemented) — a custom list
+REPLACES the catalog pool for that map's scheduled spawn, and a custom def
+reusing a catalog id replaces that boss. PvP-Neutral-Control plays the boss via
+the unchanged controller machinery (emergent).
+
+**The Dungeon** (`dungeon`; ALSO requires the Creature Banks option — the site
+is carved onto a Blocked Field): ONE repeatable delve site per map. Placement
+rides the Creature-Bank seam: the FIRST Near-band tile revealed with a Blocked
+Field carves the gate (`location: "dungeon_gate"`) INSTEAD of offering a bank
+(nothing peeked/consumed from the bank piles; later Near tiles offer banks
+normally; a map whose Near blocked fields never reveal simply never hosts it —
+a stated deviation from the plan's "at setup"). Per player: `dungeonFloor`
+(1..10), once per turn (`dungeonDelveRound`, the Drill-style per-round latch,
+consumed only when a FIGHT opens — leaving is free). Ordinary floors offer TWO
+seeded rooms + Leave (the user-spec door crawl): treasure vault (+gold), the
+forgotten shrine (PAY_TO 2 gold → +1 morale), the whispering wall (a REAL
+bilingual story scene via the new auto `PLAY_STORY_SCENE` step —
+`dungeon_whispers_first/deep` in scenes.ts, deliberately art-less — then +1
+XP), the abandoned camp (+1 MP); the chosen room resolves, THEN the floor den
+opens: `context.dungeonFloor`, REAL difficulty min(floor+1, 7) — the grind site
+pays normal hero AND unit XP — never Quick Combat, normal round-limit rules,
+normal defender-rows formation (the plan's bank-corner formation is dropped:
+variable party sizes don't fit 4 corners — stated deviation; the plan's
+spike-pit combat tokens are NOT modeled either). Floors 5/10 skip the doors and
+field the LAYERED floor bosses (Minotaur of the Depths / the Floor Wyrm — 2
+bars, §6.5.2 anatomy, minted FRESH each attempt: the Dungeon deals fair, no
+boss-wound bookkeeping). Win: floor+1 + the reward ladder (gold → valuables →
+minor/major artifact searches; floor 10 = a relic search + the DUNGEON
+CONQUERED title, once) unshifted to the queue front; the conquered bottom floor
+stays repeatable for a fallback (Treasure die + 3 gold). Loss/retreat: nothing
+lost, the hero stays at the gate. New visit-step kinds `RAID_BOSS_FIGHT` /
+`DUNGEON_FLOOR_FIGHT` (auto, opening combats via registered hooks — the
+hex-event-hook pattern) and `PLAY_STORY_SCENE` (auto, fires
+STORY_SCENE_TRIGGERED); none pause for input, so AFK defaults and AI seats
+resolve every dungeon/lair menu through the normal CHOOSE_ONE machinery.
 
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
@@ -1791,6 +1969,44 @@ the wiring site):
 - Leftover revealed cards shuffle back into their decks (rulebook default);
   Shrine of the Magic Thought's leftovers go to the Spell discard pile and
   Messenger's declined pair to the Artifact discard pile, as printed.
+
+## Mine-guard reinforcement (OPTIONAL "Global" house rule, default OFF) — what runs vs. limits
+
+House rule `mine-guard-reinforcement` (registry `src/engine/house-rules.ts`,
+category `"global"` — a NEW house-rule group whose lobby header carries the map
+glyph `REWARD_GLYPH_ICONS.map`). Default OFF in BOTH binh AND legacy (an opt-in
+difficulty tweak). Engine: `mineGuardReinforcementDraws` folded into `drawGuardArmy`
+(`src/engine/adventure.ts`). Behaviour pinned in
+`src/engine/mine-guard-reinforcement.test.ts` (each claim mutation-checked with a
+rule-OFF / non-mine CONTROL) + the lobby row in
+`src/components/adventure/game-options-tabs.test.tsx`.
+
+When ON, every fought-out neutral guard fight on a **Mine field** (all resource
+types — gold / valuables / materials share `location === "mine"`) fields ONE
+EXTRA random neutral BRONZE creature drawn from the bronze Neutral deck, on top of
+the normal guard army. It composes with EVERY base guard branch (level draw AND
+designer exact / custom / level armies) and with a RE-fight of a re-guarded mine
+(all funnel through `drawGuardArmy`). The extra bronze is a plain non-bankGuard
+draw, so it recycles to the bronze discard at combat end via the shared
+guard-recycle seam (`finalizeAdventureCombat`) like every other guard.
+
+Leading with what does NOT run / deliberate limits:
+- **Reward / XP / difficulty are UNTOUCHED** — the extra is appended AFTER
+  `combat.context.difficulty` is fixed and only makes the fought army bigger; the
+  fight's difficulty-based reward is byte-identical (pinned "reward unchanged").
+- **Quick Combat / level auto-wins are unaffected** — they resolve BEFORE the army
+  deploys (the rule makes a FOUGHT-OUT fight harder, never a skipped one), same as
+  the Neutral Rank-Up reading.
+- **Creature Banks are NOT mines** — banks reveal via `buildCreatureBankDraws`, a
+  separate mint the rule never reaches (waves / raid bosses / dungeon floors never
+  call `drawGuardArmy` either); only real guard-field fights on a mine qualify.
+- **The AI ignores it** — the map policy still reasons by field difficulty / level,
+  so a computer hero just fights the (harder) mine.
+- **Flagged-mine free re-flags (no fight) are untouched**, and PvP-Neutral-Control /
+  manual guard control compose automatically (the extra body is just another guard).
+- **Placement caps gracefully**: the 8-cell defender zone seats a legit mine army
+  (≤ 6 designer units + 1); an over-full hand-edited map leaves the surplus at its
+  default cell (`placeNeutralUnits`) — no crash, no stall.
 
 ## Creature Banks (Naval Battles optional rule) — what runs vs. what is deferred
 
@@ -2179,14 +2395,23 @@ network partitioned by `gatePair` — FULL parity, face-down tiles included:
 `resolveGateTeleport` offers every OTHER same-color gate — carved FIELDS (minus
 hero-occupied ones) AND same-color gate tokens still riding FACE-DOWN tiles
 (`coloredGateDestinations` / `countColoredGates`, the Monolith
-`mapTokenDestinations` / `countMapTokens` mirror). 1 free → automatic, 2+ free →
-the traveller PICKS via the same CHOOSE_ONE visit-step the Monolith picker uses,
-<2 same-color gates → inert note, all occupied → fizzle; arrival never
-re-triggers. A guarded gate fights first and only a WIN resolves the network
-travel. On the board a gate FIELD (tile-carved or standalone) and a designer gate
-TOKEN/palette draw the gate's OWN per-color portal art (`teleportGateImage` —
-1 red / 2 blue / 3 green / 4 violet, renamed from yellow) with the colored ring
-+ pair badge (`gateHexMark` / `designerTokenImage`); gates are labeled
+`mapTokenDestinations` / `countMapTokens` mirror). Since the 2026-07-24 rule
+every entry opens a travel-vs-stay offer (see rule 3a below): 1 free → [Travel,
+Stay], 2+ free → the destinations + "Stay here", <2 same-color gates → inert
+note, all-own-occupied → fizzle; arrival never re-triggers. A guarded gate
+fought ON ENTRY still gates the travel; a guarded gate reached by ARRIVAL is now
+FOUGHT bank-style (rule 3 — no longer auto-swept), and an enemy-hero destination
+starts a PvP battle. On the board EVERY teleport-object field (tile-carved or standalone) —
+Teleport Gate, Monolith, Whirlpool AND one-way Monolith halves — draws the SAME
+designer-parity mark the map editor uses (user request 2026-07): the object's
+own UNDISTORTED token art (`teleportGateImage` — 1 red / 2 blue / 3 green /
+4 violet, renamed from yellow — / `monolithTokenImage` / `whirlpoolTokenImage` /
+`onewayMonolithImage`) inside an identifying ring (pair-colored, gold for
+Monolith/Whirlpool) + a pair-number badge on the colored networks, and a
+designer guard's level numeral stays visible on the hex even in art mode
+(`teleportHexMark` in screen.tsx, the `gateHexMark` generalisation — the old
+full-hex `preserveAspectRatio="none"` stretch is retired; pinned in
+`gate-object-board.test.tsx` "designer-parity marks"); gates are labeled
 "Teleport Gate" in the UI. LIMIT (updated 2026-07): a tile may host multiple
 tokens on DISTINCT slots; gate TOKENS (like every single-hex placement) may now
 carry a designer guard (see the "Designer guards, outposts & one-way monoliths"
@@ -2202,15 +2427,21 @@ Leading with what does NOT run / deliberate readings:
   (the Monolith network, the "monolith" Obelisk role and the anime
   `tran_phap_truyen_tong` override are untouched); the whirlpool-only ADD
   picker and the retired palette button are pinned in `map-designer.test.tsx`.
-  With 3+ monoliths the TRAVELLER PICKS the destination; with exactly 2 the
-  travel is automatic.
+  With 3+ monoliths the offer lists every destination + "Stay here"; with
+  exactly 2 it is [Travel, Stay] (the 2026-07-24 rule replaced the old automatic
+  travel — see rule 3a in the "Designer guards, outposts & one-way monoliths"
+  section).
 - **"Lose 1 unit from your unit Deck" is the traveller's pick** of one army
   card (the card names no unit); a Neutral-side card recycles to its tier
   discard pile like a combat casualty. An empty army loses nothing (noted).
-- **Occupied destinations are skipped** (the p.83 "skip the movement if you
-  would be stepping onto an allied Hero" note, read for ANY hero): a token a
-  hero stands on is not offered, the 3-whirlpool die rerolls its number, and
-  with no free destination the travel fizzles with a note.
+- **Own-hero destinations are skipped, ENEMY-hero destinations are OFFERED**
+  (2026-07-24 rule; the p.83 "skip the movement if you would be stepping onto an
+  ALLIED Hero"): a token the traveller's OWN hero stands on is not offered and
+  the 3-whirlpool die rerolls its number; a token an ENEMY hero stands on IS
+  offered (travelling there starts a PvP battle on arrival, rule 3). With no
+  free/enemy destination the travel fizzles with a note. The AI's known-teleport
+  read (`listKnownTeleportDestinations`, no traveller context) still blocks ANY
+  occupied hex — conservative, so it never plans a jump onto an occupied cell.
 - **Guarded fields refuse a token placement** (engine safety reading — the
   printed rule bans only Location Tokens/Blocked Fields/victory Locations, but
   overwriting a guard would erase it for free). Towns, Settlements, Mines,
@@ -2293,9 +2524,6 @@ designer UI in `map-designer.tsx` (shared `GuardSpecEditor`). Pinned in
 (each behaviour mutation-checked, CONTROLs included).
 
 Leading with what does NOT run / deliberate limits:
-- **The map AI treats every new object hex as an ordinary (guarded) field** —
-  it never plans a path through a one-way link, never seeks a Tent flag to open
-  a Barrier, and scores an outpost fight like any guard fight.
 - **Outposts (Garrison / Keymaster's Tent / Barrier) are STANDALONE-only**
   (`OUTPOST_OBJECT_KINDS`): a tile-slot/token form is rejected by the
   sanitizer + `validateCustomMapObjects` — they live out of every tile by
@@ -2358,13 +2586,37 @@ What runs (each pinned by a test that fails if the wiring is removed):
   the link rows) and the center hex — one shared stamp
   (`applyCustomGuardToField`). A hero must FIGHT to enter; a WIN clears the
   guard for good (`clearCustomGuard`), a loss/retreat leaves it.
-- **3. Teleport ARRIVAL auto-wins the exit's guard** (user rule "auto win when
-  get out"): every teleport arrival — Monolith, Teleport Gate, whirlpool,
-  one-way, AND stepping OUT through a linked subterranean gate — sweeps a
-  still-standing guard on the destination for free
-  (`TELEPORT_HERO.sweepGuard` → `autoWinArrivalGuard`: guard cleared, feed
-  note, no fight, no XP, no reward). Walking onto the same hex normally still
-  fights it.
+- **3. Teleport ARRIVAL now FIGHTS the exit's guard / starts a PvP battle**
+  (2026-07-24 user rule — REPLACES the earlier 2026-07 "auto-win the exit's
+  guard" reading): a hero teleporting through a teleport-network exit
+  (Monolith, Teleport Gate, Whirlpool, one-way monolith, obelisk-as-monolith)
+  onto a hex with a LIVE designed guard must FIGHT it — bank-style, no
+  auto-sweep (`RESOLVE_TELEPORT_ARRIVAL` → `setTeleportArrivalHook` →
+  `startNeutralEncounter(..., { teleportArrival: true })`: difficulty 0, no
+  Quick Combat, no XP, unlimited rounds). A WIN clears the guard but does NOT
+  re-open the teleport (arrival never re-triggers — no ping-pong); a RETREAT
+  bounces the hero back to the ORIGIN teleporter (`lastVisitedField`); a defeat
+  homes them like any lost fight; the guard stays intact on a non-win. A
+  destination now occupied by an ENEMY hero is OFFERED and travelling there
+  starts a normal PvP battle (the walk-onto-enemy flow — parallel stop, defense
+  prompts); an OWN-hero destination stays skipped. **Scope guard:** stepping OUT
+  through a linked SUBTERRANEAN GATE keeps the old auto-win sweep
+  (`autoWinArrivalGuard` in `performHeroStep` — that is walking, not the
+  network). Pinned in `teleport-arrival-rule.test.ts` (guarded-arrival fight +
+  win-clears + retreat-bounces + PvP + own-hero-skip, each with a CONTROL) and
+  the updated `map-objects.test.ts` / `map-tokens.test.ts` / `obelisk-roles.test.ts`.
+- **3a. Every teleport travel offers "Stay here"** (2026-07-24 rule): entering
+  or Revisiting a teleporter opens a travel-vs-stay offer (even the formerly
+  AUTOMATIC single-destination / 2-Monolith / Whirlpool-die / random / mix
+  cases) — the LAST option is always "Stay here" (empty steps → the AI scorer
+  reads it as leave/cancel). A random/mix roll resolves ONLY when travel is
+  chosen (the deferred-roll shapes wrap the roll behind a `committed` re-entry
+  of the same `TOKEN_TELEPORT`/`GATE_TELEPORT`/`ONEWAY_TELEPORT` step, so a Stay
+  never consumes/leaks the die). A hero that Stays (or arrives) on a teleporter
+  may Revisit (1 MP) on a later turn to re-open the offer — works for all three
+  canonical forms (tile tokens, carved fields, standalone objects). Pinned in
+  `teleport-arrival-rule.test.ts` ("Stay here + Revisit") and the updated token
+  travel suites.
 - **4. Yellow border edges on standalone object hexes**
   (`CustomMapObject.borderEdges`, absolute dirs 0-5 →
   `MapFieldState.borderEdges`): the 🖌 border tool paints object-hex edges
@@ -2387,11 +2639,13 @@ What runs (each pinned by a test that fails if the wiring is removed):
   picks, default), **mix** (exits flagged `alwaysPickable` are offered up
   front + one "Roll the die" option over the rest; degenerates gracefully —
   all-always = certain, none-always = random, resolved at CHOICE time via
-  `ONEWAY_RANDOM_EXIT` so the pick leaks nothing). Occupied exits are skipped;
-  no exit on the map / all occupied = inert note. Arrival never re-triggers
-  and (rule 3) sweeps any hand-edited exit guard. Exits are one-way: standing
-  ON an exit offers no travel. `map-objects.test.ts` ("one-way monolith"
-  suites).
+  `ONEWAY_RANDOM_EXIT` so the pick leaks nothing). Own-hero exits are skipped,
+  an ENEMY-occupied exit is OFFERED (PvP on arrival, rule 3); no exit on the
+  map / all-own-occupied = inert note. Every exit offer also carries "Stay here"
+  (rule 3a). Arrival never re-triggers, and a still-standing exit guard is now
+  FOUGHT bank-style on arrival (rule 3 — no longer swept). Exits are one-way:
+  standing ON an exit offers no travel. `map-objects.test.ts` ("one-way
+  monolith" suites).
 - **7. Teleport Gate reskin** (was "Colored Gate"): per-color PORTAL art on
   the board, the palette and tokens (`teleportGateImage`, 1 red / 2 blue /
   3 green / 4 violet — pair 4 renamed from yellow, `gatePairColor`); the
@@ -2700,9 +2954,9 @@ Leading with what does NOT run / deliberate limits:
   `HeroActionsDock` under the hero board (with the Cultivation Tribulation), each
   shown only while `getLegalActions` offers it and dispatching the exact payload
   (`hero-actions-dock.test.tsx`); the grade PICKER + combat command dock remain
-  the surfaces for grade-ups and combat/reaction skills; **the AI does not shop
-  for the Training Manual** (it declines the optional 2-gold PAY_TO by default —
-  buying it is a human play); **per-package fancy grade-label art/fonts are deferred** (the
+  the surfaces for grade-ups and combat/reaction skills; **the AI will accept a
+  Training Manual PAY_TO when gold allows and play `GAIN_GRADE_PROGRESS` cards
+  promptly** (score ~740+); **per-package fancy grade-label art/fonts are deferred** (the
   register text is bilingual plain text); **combat skills are the MAIN hero's
   fights only** (garrison/secondary offer none — commander-scope). What runs: five
   Merit sources funnel through ONE arm (`gainGradeProgress`) — +1/level-up, the
@@ -2757,9 +3011,10 @@ Leading with what does NOT run / deliberate limits:
   rules text; the other 27 items have painted/vector art. Heavenly Demon's three
   former monograms were replaced by painted masters and are no longer in this
   limitation. `ANIME_EQUIPMENT_ART_PLACEHOLDERS` stays EMPTY (the placeholders
-  are real files on disk, not glyph fallbacks). **The AI never buys equipment** (it
-  declines the optional outfitter shop by policy — a documented limit, unchanged;
-  register-aware shops added no AI heuristic). **same-slot twins do NOT stack** —
+  are real files on disk, not glyph fallbacks). **The AI buys equipment** when the
+  outfitter menu is open (empty slot or upgrade-grade, gold ≥ cost+6) and **marches
+  to outfitters** when surplus + an empty slot (`wantsEquipmentShop`); it still
+  never auto-replaces same/worse grade. **same-slot twins do NOT stack** —
   Cosmos Pendant + Spirit Focus (both accessory,
   +1 spell Power) and Twin-Tail Ribbon + Eternal Sash (both accessory, +1 hand
   limit) share the ONE accessory slot, so only one is ever worn (the earlier
@@ -2915,9 +3170,9 @@ Leading with what does NOT run / deliberate limits:
     reaches round 6 with ZERO stalls / negative resources (a shorter round-4
     variant swaps in the mutually-exclusive Polish Spell Book; a 3-opponent run
     for breadth). Soft-asserts anime systems are LIVE (overrides carved, Merit/
-    grade/realm progression fires). HONEST LIMIT: the AI never buys Equipment (it
-    declines the optional outfitter shop by policy), so `EQUIPMENT_EQUIPPED` stays
-    0 in the soak — a documented AI-policy limit, not a coexistence failure.
+    grade/realm progression fires). Soft note: equipment equips only when a seat
+    both reaches an outfitter and has surplus gold — the soak may still see 0
+    equips on unlucky maps (pathing + gold), not a coexistence failure.
   - **(c) mixed-package no-cross-talk CONTROL** (`src/engine/anime-coexistence.test.ts`):
     carving an ISEKAI field-override kind (content present) leaves the xianxia
     Cultivation/Grade event sequence byte-identical to a xianxia-only run, and the
@@ -3368,8 +3623,11 @@ commander/progression activity.
 Leading with what does NOT run / deliberate limits:
 - **The combat sandbox never offers the anime factions** (its
   `isPlayableFaction` call passes no anime options — conservative).
-- **Unit voices**: Fuyuki still thematically reuses complete H3 voice sets;
-  Azure Breeze, Hidden Leaf and Heavenly Demon now ship a dedicated 109-clip
+- **Unit voices**: Fuyuki now ships 37 normalized Fate/unlimited codes clips
+  (five core actions for all seven lines, plus Archer/Caster shoot lines;
+  `public/sounds/fuyuki/README.md` documents the exact source map), with its
+  former H3 assignments retained only as missing-asset fallbacks. Azure Breeze,
+  Hidden Leaf and Heavenly Demon ship a dedicated 109-clip
   curated pack (`docs/anime-town-audio.md`) wired to
   `units/<town>-<unit>-<action>` keys — every action per unit, shoot for the
   four ranged units, pinned by exact-key tests in `unit-sounds.test.ts`. Azur
@@ -3720,9 +3978,15 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   **School of Magic expert** (discard the permanent for +2 over the free basic
   +1, needs crown), and **Basic X Magic expert** (+3, once per cast, needs a
   crown — offered from BOTH the in-play fetch permanent AND a Basic X Magic card
-  held in hand; using it CONSUMES that source: the permanent is discarded, the
-  hand card is played to the discard — mirroring the School-of-Magic expert and
-  the combat `USE_SCHOOL_FETCH_EXPERT`) — or "Resolve now". Highest printed tier with
+  held in hand; USER RULING 2026-07-23 "if use expert, must discard, on hand or
+  on permanent": using it CONSUMES that source — the permanent is discarded, the
+  hand card is played to the discard, both to the owner's DISCARD pile (recycles
+  into their deck, never removed from the game), and every surface SAYS so (the
+  offer labels + the CARD_PLAYED feed line) because a silent consumption reads
+  as "my Basic Magic stopped working". The full lifecycle — basic fetch works →
+  expert consumes → redraw + replay restores the fetch — is pinned in
+  `basic-magic-expert.test.ts` "lifecycle"; combat parity via
+  `USE_SCHOOL_FETCH_EXPERT`) — or "Resolve now". Highest printed tier with
   `minPower ≤ final Power` resolves (Orb doubling applied at resolve). Starting
   Power = standingSpellPower (school basic, Astrologers, Pandora, cultivation /
   grade / equipment) + specialty school auras + map Sorcery/Scales bank.
@@ -3781,7 +4045,10 @@ Five additions; each engine claim fails a named test if its wiring is removed.
   still draws the real designed guards. Pinned in `map-objects.test.ts` (a
   guarded Gate / Monolith opens a difficulty-0 bank-style fight, exact-army AND
   level, the no-QUICK_COMBAT assertion as the mutation control, and the
-  "rolls straight into round 2" unlimited-rounds case).
+  "rolls straight into round 2" unlimited-rounds case). 2026-07-24: a guard
+  reached by teleport ARRIVAL (not just entry) is now fought the SAME bank-style
+  way via the `teleportArrival` context branch — see rule 3 in the "Designer
+  guards, outposts & one-way monoliths" section.
 - **Map-visit notice = reward chips, not a "mass of text".** A treasure-chest /
   mine / resource visit's outcome is shown as a compact row of icon chips
   (resource token / experience / morale glyph + a short "+N" or "+N/turn" income
@@ -3832,6 +4099,26 @@ FIX). Each engine claim fails a named test if its wiring is removed.
   (single top-only take, a buried acquirable spell NOT offered = the user's
   CONTROL, the take, the school-fetch-still-after-it, and the legacy in-flight
   resolution) and `deck-search-mode-modal.test.tsx` (top-discard face + grouping).
+- **The SPLIT-deck spells family search is a ONE-STEP up-front decision** (USER
+  DEMAND 2026-07: "choose discard, search or school of magic" BEFORE any card is
+  revealed — never "choose search spell, then the draw school of magic appear
+  with that"). `beginSharedDeckSearchNow`'s deck-pick for the `"spells"` family
+  is ENRICHED (`deckPick.upFront` + `discardTops` + `fetchSchools`): its options
+  run [Search (N) Basic Spells | Search (N) Expert Spells | Take the top discard
+  (per acquirable deck top) | Draw the first <School> Magic spell (per Basic X
+  Magic in play)]. Committing to a Search reveals DIRECTLY (a held Scouting
+  still prompts in between; `openSharedDeckSearch`'s `modeResolved` skips the
+  old second "Search or draw from a School?" step, carried through the Scouting
+  prompt); the school draw scans Basic THEN Expert (`performSchoolFetchFromDecks`)
+  and a no-match draw leaves an EVENT_NOTE instead of failing silently. A LEGACY
+  in-flight deck-pick (no `upFront`) still resolves the old two-step way; the
+  single-eligible-deck flow and the artifacts family keep their existing shape.
+  The enriched pick renders in `DeckSearchModeModal` (deck backs / discard faces
+  / the Basic X Magic card face), routed there like `deck-search-mode`. Pinned
+  in `basic-magic-fetch.test.ts` ("One-step spells deck-pick": the single
+  up-front offer, the straight-to-reveal CONTROL = the reported bug, the
+  Basic→Expert scan, the empty-note, Scouting, the discard take, the Polish-Book
+  destination, and the legacy resolution).
 - **The deck-search menu's "Search (N)" tile is HONEST about a standing
   Scouting override.** A `SEARCH_COUNT_OVERRIDE` (a pre-played Scouting) is
   consumed only at REVEAL (`applySearchCountEffects`), never when the up-front
@@ -3863,8 +4150,11 @@ FIX). Each engine claim fails a named test if its wiring is removed.
   certain / random / mix + always-pickable destinations, default certain =
   classic traveller-picks): stored on the origin field
   (`onewayExitMode`/`onewayAlwaysPickable`), read in `resolveGateTeleport` /
-  `resolveTokenTeleport`. The 3-whirlpool die and the 2-monolith auto-travel
-  are unchanged; mix rolls its random pick ONCE per visit open. (AUDIT FIX ×3):
+  `resolveTokenTeleport`. Since the 2026-07-24 rule the 3-whirlpool die, the
+  2-monolith travel, and the random/mix roll are all wrapped behind a
+  travel-vs-stay offer first (rule 3a — the roll resolves only when travel is
+  chosen, never leaked on a Stay); mix still rolls its random pick ONCE per
+  committed travel. (AUDIT FIX ×3):
   a face-down designed token KEEPS its mode when the reveal places it
   (`placeMapToken` now carries the extras for gate + monolith, like one-way); a
   "mix" always-pickable destination that is still a PENDING token on a
@@ -3979,11 +4269,13 @@ Leading with what does NOT run / deliberate limits:
   saved preset still carves exactly as before (`applyCustomMapObjects`), and a
   face-down / forbidden-slot tile-slot object is dropped with a problem
   (`map-objects.test.ts`).
-- **The map AI never routes THROUGH a teleport** (Monolith / Gate / monolith-role
-  Obelisk): it treats a teleport/guarded object hex as an ordinary field — it can
-  walk onto and fight a guarded Gate, but never plans a path across the link
-  (`map-objects.test.ts` "computer AI treats object hexes as ordinary guarded
-  fields" runs a whole SP turn with a guarded Gate + Monolith, no stall/crash).
+- **The map AI DOES route through teleport networks** (Monolith / Whirlpool /
+  colored Gate / one-way entrance→exit / obelisk-monolith-role / anime
+  `tran_phap`): `objectiveDistanceField` adds reverse edges from
+  `listKnownTeleportDestinations` (known fields only — face-down pending landings
+  excluded in V1; no whirlpool unit-toll EV). Destination menus still pick the
+  landing nearest the primary objective. Safety: a full SP turn over Gate +
+  Monolith hexes must not stall (`map-objects.test.ts`).
 - **Obelisk role is MAP-WIDE, never per-Obelisk** (face-down tiles hide which is
   which); every role still credits the Holy-Grail dig identically
   (`obelisk-roles.test.ts` "dig progress is role-independent").
@@ -4253,6 +4545,23 @@ Leading with what does NOT run / deliberate limits:
   face-up plan carrying one, so the designer UI clears bans on every face-up
   transition (exact face-up pin, mode switch, the center "Always visible" flip
   — audit fix: the flip used to leave a stale ban that hard-blocked the lobby).
+- **"One of these tiles" works FACE-DOWN (secret) as well as face-up** (2026-07):
+  the designer's "One of" mode now carries an "Always visible ON/OFF" flip
+  (mirroring the center exact-pin flip) — ON places a random tile from the list
+  revealed, OFF places one HIDDEN until discovery (even the designer can't tell
+  which). `tileSlotMode` classifies a face-down `oneOfTileDefIds` plan (no
+  exact `tileDefId`) as one-of so the list stays editable, and the board flower
+  reads as a secret (blue halo + 🔒 "1 of N" badge). This is the ONLY way to put
+  an Obelisk on a Ⅱ–Ⅲ Far slot as a secret — the random Far pool strips Obelisks
+  (the far-pool house rule), but a one-of/exact pin bypasses the pool. Engine /
+  validator / sanitizers already honoured a face-down one-of (only the designer
+  UI surfaced it face-up); the redacted-while-face-down id + obelisk-Far case are
+  pinned in `custom-setup.test.ts` (CONTROL: a plain random Far slot never draws
+  an Obelisk), the sanitizer keep in `map-registry.test.ts`, and the flip /
+  classification / editability / secret badge in `map-designer.test.tsx`. The
+  candidate LIST stays readable in `adventure.mapPreset` (unchanged — the
+  existing design for designer secrets, like `secretFeatures`); only the
+  RESOLVED live-tile id is redacted in player views.
 - **No azure Pack exists in the unit data** (azure is Neutral-only): the guard
   editor offers "+ Pack I–III" only (data-driven — the chip returns by itself
   if an azure Pack ever ships), and ANY Pack slot that cannot mint a Pack — an

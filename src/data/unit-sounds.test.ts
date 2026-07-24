@@ -190,6 +190,51 @@ describe("unit combat voices", () => {
     expect(commanderSoundKey("belfast", "move")).toBe("azur-lane/voices/belfast/move");
   });
 
+  it("uses Fate/unlimited codes audio for every Fuyuki Servant line", () => {
+    const meleeSlugs = ["assassins", "riders", "lancers", "sabers", "berserkers"];
+    const rangedSlugs = ["archers", "casters"];
+
+    // The wiring's shoot handling depends on which lines are ranged: only a
+    // ranged line ships a dedicated shoot clip; a melee line borrows its attack
+    // clip. Pin that split against the actual town data so a type change (which
+    // would make a melee line demand a missing shoot clip) fails HERE.
+    for (const slug of meleeSlugs) {
+      expect(coreUnitDefinitions[`fuyuki.${slug}`]?.type, `${slug} type`).not.toBe("ranged");
+    }
+    for (const slug of rangedSlugs) {
+      expect(coreUnitDefinitions[`fuyuki.${slug}`]?.type, `${slug} type`).toBe("ranged");
+    }
+
+    // Every action resolves to the bespoke key AND that key resolves to a real
+    // clip on disk (fails if the wiring, the manifest entry, or the file is
+    // removed — the effect, not just the artifact).
+    const expectResolvesToOgg = (key: string | undefined) => {
+      const srcs = clipSrcs(key);
+      expect(srcs, `${key} should resolve to one clip`).toEqual([`/sounds/${key}.ogg`]);
+      const file = fileURLToPath(new URL(`../../public/sounds/${key}.ogg`, import.meta.url));
+      expect(existsSync(file), `${key} file on disk`).toBe(true);
+    };
+
+    for (const slug of [...meleeSlugs, ...rangedSlugs]) {
+      for (const action of coreActions) {
+        const key = unitSoundKey(`fuyuki.${slug}`, action);
+        expect(key).toBe(`fuyuki/voices/${slug}/${action}`);
+        expectResolvesToOgg(key);
+      }
+    }
+    for (const slug of meleeSlugs) {
+      // A melee line has no shoot clip: a shoot-shaped event borrows its attack.
+      const key = unitSoundKey(`fuyuki.${slug}`, "shoot");
+      expect(key).toBe(`fuyuki/voices/${slug}/attack`);
+      expectResolvesToOgg(key);
+    }
+    for (const slug of rangedSlugs) {
+      const key = unitSoundKey(`fuyuki.${slug}`, "shoot");
+      expect(key).toBe(`fuyuki/voices/${slug}/shoot`);
+      expectResolvesToOgg(key);
+    }
+  });
+
   it("layers naval combat SFX under Azur Lane attacks", () => {
     for (const slug of ["laffey", "javelin", "honolulu", "yukikaze", "prinz_eugen"]) {
       expect(unitAttackFlourish(`azur_lane.${slug}`)).toBe("units/cannon-shoot");

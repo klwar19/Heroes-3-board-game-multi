@@ -1,5 +1,6 @@
 import type { UnitSideDefinition } from "@/data/factions/types";
 import { cardLibrary } from "@/data/cards/library";
+import { TORSO_OF_LEGION_ID } from "@/data/cards/artifacts";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import type {
@@ -100,10 +101,11 @@ export function applyUnitSideRules(
    * existing caller keeps its old behaviour; live callers pass the resolved
    * `griffin-buff` / `marksman-buff` flags so a table can flip either alone.
    */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean; phoenixPackRebirth?: boolean }
 ): UnitSideDefinition {
   const griffinBuff = overrides?.griffinBuff ?? ruleset === "binh";
   const marksmanBuff = overrides?.marksmanBuff ?? ruleset === "binh";
+  const phoenixPackRebirth = overrides?.phoenixPackRebirth ?? ruleset === "binh";
 
   if (griffinBuff && unitDefId === "castle.griffins" && side === "few") {
     return { ...definition, attack: 3 };
@@ -113,6 +115,18 @@ export function applyUnitSideRules(
   }
   if (marksmanBuff && unitDefId === "castle.marksmen" && side === "pack") {
     return { ...definition, health: 3 };
+  }
+  // BINH house rule: Pack Phoenixes also get Rebirth (Few always has it on data).
+  if (
+    phoenixPackRebirth &&
+    unitDefId === "conflux.phoenixes" &&
+    side === "pack" &&
+    !definition.abilities.includes("phoenix-rebirth")
+  ) {
+    return {
+      ...definition,
+      abilities: [...definition.abilities, "phoenix-rebirth"]
+    };
   }
 
   return definition;
@@ -125,7 +139,13 @@ export function applyUnitSideRules(
  */
 export function unitSideRuleOverrides(
   state: Pick<GameState, "ruleset" | "adventure" | "anime">
-): { griffinBuff: boolean; marksmanBuff: boolean; polishUnitStacks: boolean; neutralRankUp: boolean } {
+): {
+  griffinBuff: boolean;
+  marksmanBuff: boolean;
+  polishUnitStacks: boolean;
+  neutralRankUp: boolean;
+  phoenixPackRebirth: boolean;
+} {
   return {
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
     marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
@@ -137,7 +157,18 @@ export function unitSideRuleOverrides(
     // LIVE Stack Token, which the bank stat-recompute branch owns. The ROUNDS
     // half instead mirrors capped XP straight onto the guard (see
     // unit-experience.ts), like player veterancy — no flag needed there.
-    neutralRankUp: Boolean(state.adventure?.neutralRankUp)
+    neutralRankUp: Boolean(state.adventure?.neutralRankUp),
+    // Pack of Phoenixes Rebirth: ON by default in BOTH modes. The Pack carried
+    // `phoenix-rebirth` in its printed DATA until commit 1006074e made it a
+    // toggle, so a Legacy game must NOT silently lose it (that was the regression).
+    // In BINH the `phoenix-pack-rebirth` house rule opts OUT (registry default ON);
+    // Legacy keeps the historical always-on Pack rebirth — the rule is registry-OFF
+    // in Legacy like EVERY rule (the house-rule invariant), so it cannot express
+    // "on" there and the injection defaults it on instead.
+    phoenixPackRebirth:
+      getRuleset(state) === "binh"
+        ? houseRuleEnabled(state, "phoenix-pack-rebirth")
+        : true
     // Unit Experience is NOT threaded through these overrides: the shared
     // veterancy machinery folds the rank bonus straight off `armyUnit.experience`
     // / the mirrored `unit.unitExperience` (see unit-experience.ts), which a card
@@ -344,6 +375,29 @@ function playerHeldCardIds(state: GameState, playerId: PlayerId): Set<CardId> {
 /** Artifact card ids are the globally-unique cards (one of each in the game). */
 function isArtifactCard(cardId: CardId): boolean {
   return cardId.startsWith("artifact.");
+}
+
+/**
+ * The artifact tier the engine treats `cardId` as in THIS game — the ONE seam
+ * every tier-read chokepoint routes through. Identical to the card's static
+ * `artifactTier` for every artifact EXCEPT Torso of Legion, which BINH plays as
+ * a MAJOR artifact by default (house rule `torso-of-legion-major`, default ON in
+ * both modes). With that rule OFF the engine reads Torso as its PRINTED Minor
+ * tier — Minor deck placement, Minor black-market/junk/event prices, Minor
+ * Polish tier gates, Minor deck-return. Every other card returns its own tier
+ * unchanged, so keying a chokepoint off this helper is byte-identical while the
+ * rule is ON (or absent — the mode default is ON). Returns `undefined` for a
+ * non-artifact card, exactly like a raw `card.artifactTier` read (callers keep
+ * their `?? "minor"`).
+ */
+export function effectiveArtifactTier(
+  state: Pick<GameState, "ruleset" | "adventure">,
+  cardId: CardId
+): "minor" | "major" | "relic" | undefined {
+  if (cardId === TORSO_OF_LEGION_ID && !houseRuleEnabled(state, "torso-of-legion-major")) {
+    return "minor";
+  }
+  return cardLibrary[cardId]?.artifactTier;
 }
 
 /**

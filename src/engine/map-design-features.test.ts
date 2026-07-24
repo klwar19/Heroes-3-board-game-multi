@@ -85,7 +85,7 @@ function placeHero(state: GameState, playerId: PlayerId, spaceId: string): strin
 }
 
 describe("map-design-features — certain army slots", () => {
-  it("accepts neutral units, random:<tier>, and pack:<id> entries", () => {
+  it("accepts neutral units, random:<tier>, pack:<id>, and few:<id> entries", () => {
     expect(isCustomGuardUnitEntry("neutral.skeletons")).toBe(true);
     expect(isRandomGuardSlot("random:bronze")).toBe(true);
     expect(isRandomGuardSlot("random:azure")).toBe(true);
@@ -95,7 +95,31 @@ describe("map-design-features — certain army slots", () => {
     expect(packId).toBeTruthy();
     expect(isPackGuardSlot(`pack:${packId}`)).toBe(true);
     expect(isCustomGuardUnitEntry(`pack:${packId}`)).toBe(true);
+    // A known Few unit
+    const fewId = Object.keys(coreUnitDefinitions).find((id) => coreUnitDefinitions[id]?.few);
+    expect(fewId).toBeTruthy();
+    expect(isCustomGuardUnitEntry(`few:${fewId}`)).toBe(true);
+    expect(isCustomGuardUnitEntry("random-few:bronze")).toBe(true);
     expect(isCustomGuardUnitEntry("not-a-unit")).toBe(false);
+  });
+
+  it("resolves few:<id> and random-few slots to faction Few bodies", () => {
+    const fewId = Object.keys(coreUnitDefinitions).find(
+      (id) => coreUnitDefinitions[id]?.few && coreUnitDefinitions[id]?.tier === "bronze"
+    )!;
+    let i = 0;
+    const rng = { nextInt: (_min: number, max: number) => (i++ % (max + 1)) };
+    const named = resolveCustomGuardDraws([`few:${fewId}`], rng);
+    expect(named).toHaveLength(1);
+    expect(named[0].unitDefId).toBe(fewId);
+    expect(named[0].factionFew).toBe(true);
+    expect(named[0].factionPack).toBeFalsy();
+
+    const randomFew = resolveCustomGuardDraws(["random-few:bronze"], rng);
+    expect(randomFew).toHaveLength(1);
+    expect(randomFew[0].factionFew).toBe(true);
+    expect(coreUnitDefinitions[randomFew[0].unitDefId]?.few).toBeTruthy();
+    expect(randomFew[0].tier).toBe("bronze");
   });
 
   it("sanitiser keeps random-tier slots and drops garbage", () => {

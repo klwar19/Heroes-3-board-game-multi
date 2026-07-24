@@ -26,6 +26,8 @@ export type ResolvedGuardDraw = {
   tier: "bronze" | "silver" | "gold" | "azure";
   bankGuard?: boolean;
   factionPack?: boolean;
+  /** Named / random-few slot: fight on the faction Few side (not Pack). */
+  factionFew?: boolean;
 };
 
 /** Prefix for a "random Neutral of this tier" certain-army slot. */
@@ -34,6 +36,10 @@ export const RANDOM_GUARD_PREFIX = "random:" as const;
 export const PACK_GUARD_PREFIX = "pack:" as const;
 /** Prefix for a "random Pack of this tier" certain-army slot. */
 export const RANDOM_PACK_GUARD_PREFIX = "random-pack:" as const;
+/** Prefix for a named faction Few certain-army slot. */
+export const FEW_GUARD_PREFIX = "few:" as const;
+/** Prefix for a "random Few of this tier" certain-army slot. */
+export const RANDOM_FEW_GUARD_PREFIX = "random-few:" as const;
 
 export const RANDOM_GUARD_TIERS: readonly RandomGuardTier[] = ["bronze", "silver", "gold", "azure"];
 
@@ -74,6 +80,26 @@ export function isPackGuardSlot(id: unknown): id is `pack:${string}` {
   return Boolean(coreUnitDefinitions[unitDefId]?.pack);
 }
 
+/** True when `id` is a `random-few:<tier>` certain-army slot (faction Few). */
+export function isRandomFewGuardSlot(id: unknown): id is `random-few:${RandomGuardTier}` {
+  if (typeof id !== "string" || !id.startsWith(RANDOM_FEW_GUARD_PREFIX)) {
+    return false;
+  }
+  return isRandomGuardTier(id.slice(RANDOM_FEW_GUARD_PREFIX.length));
+}
+
+/** True when `id` is a `few:<unitDefId>` certain-army slot (faction Few). */
+export function isFewGuardSlot(id: unknown): id is `few:${string}` {
+  if (typeof id !== "string" || !id.startsWith(FEW_GUARD_PREFIX)) {
+    return false;
+  }
+  if (id.startsWith(RANDOM_FEW_GUARD_PREFIX)) {
+    return false;
+  }
+  const unitDefId = id.slice(FEW_GUARD_PREFIX.length);
+  return Boolean(coreUnitDefinitions[unitDefId]?.few);
+}
+
 /** True when `id` names a unit with a Neutral side (classic certain-army entry). */
 export function isNeutralGuardUnit(id: unknown): id is string {
   return typeof id === "string" && Boolean(coreUnitDefinitions[id]?.neutral);
@@ -81,15 +107,17 @@ export function isNeutralGuardUnit(id: unknown): id is string {
 
 /**
  * A certain-army entry is legal when it is a neutral unit, a random-tier Neutral
- * slot, a random-pack tier slot, or a named faction Pack. Shared by the
- * sanitiser and the GuardSpecEditor.
+ * slot, a random-pack / random-few tier slot, or a named faction Pack / Few.
+ * Shared by the sanitiser and the GuardSpecEditor.
  */
 export function isCustomGuardUnitEntry(id: unknown): id is string {
   return (
     isNeutralGuardUnit(id) ||
     isRandomGuardSlot(id) ||
     isRandomPackGuardSlot(id) ||
-    isPackGuardSlot(id)
+    isPackGuardSlot(id) ||
+    isRandomFewGuardSlot(id) ||
+    isFewGuardSlot(id)
   );
 }
 
@@ -114,9 +142,28 @@ export function packGuardUnitDefId(id: string): string | null {
   return id.slice(PACK_GUARD_PREFIX.length);
 }
 
+export function randomFewGuardTierOf(id: string): RandomGuardTier | null {
+  if (!isRandomFewGuardSlot(id)) {
+    return null;
+  }
+  return id.slice(RANDOM_FEW_GUARD_PREFIX.length) as RandomGuardTier;
+}
+
+export function fewGuardUnitDefId(id: string): string | null {
+  if (!isFewGuardSlot(id)) {
+    return null;
+  }
+  return id.slice(FEW_GUARD_PREFIX.length);
+}
+
 /** True when the entry mints a Pack (named or random-pack tier). */
 export function isAnyPackGuardSlot(id: unknown): boolean {
   return isPackGuardSlot(id) || isRandomPackGuardSlot(id);
+}
+
+/** True when the entry mints a Few (named or random-few tier). */
+export function isAnyFewGuardSlot(id: unknown): boolean {
+  return isFewGuardSlot(id) || isRandomFewGuardSlot(id);
 }
 
 /** Display label for one certain-army entry (editor chips + previews). */
@@ -128,6 +175,16 @@ export function guardUnitEntryLabel(id: string): string {
       silver: "Pack of Tier II (random)",
       gold: "Pack of Tier III (random)",
       azure: "Pack of Tier IV (random)"
+    };
+    return labels[tier];
+  }
+  if (isRandomFewGuardSlot(id)) {
+    const tier = randomFewGuardTierOf(id)!;
+    const labels: Record<RandomGuardTier, string> = {
+      bronze: "Few of Tier I (random)",
+      silver: "Few of Tier II (random)",
+      gold: "Few of Tier III (random)",
+      azure: "Few of Tier IV (random)"
     };
     return labels[tier];
   }
@@ -145,6 +202,11 @@ export function guardUnitEntryLabel(id: string): string {
     const unitDefId = packGuardUnitDefId(id)!;
     const def = coreUnitDefinitions[unitDefId];
     return def ? `Pack of ${def.name}` : id;
+  }
+  if (isFewGuardSlot(id)) {
+    const unitDefId = fewGuardUnitDefId(id)!;
+    const def = coreUnitDefinitions[unitDefId];
+    return def ? `Few of ${def.name}` : id;
   }
   return coreUnitDefinitions[id]?.name ?? id;
 }
@@ -205,12 +267,20 @@ export function expandGuardUnitGroups(
  * unit's tier). Azure body ⇒ Ⅶ overall when ANY entry is azure-tier.
  */
 export function guardUnitEntryPoints(id: string): { points: number; azure: boolean } {
-  if (isRandomGuardSlot(id) || isRandomPackGuardSlot(id)) {
-    const tier = isRandomPackGuardSlot(id) ? randomPackGuardTierOf(id)! : randomGuardTierOf(id)!;
+  if (isRandomGuardSlot(id) || isRandomPackGuardSlot(id) || isRandomFewGuardSlot(id)) {
+    const tier = isRandomPackGuardSlot(id)
+      ? randomPackGuardTierOf(id)!
+      : isRandomFewGuardSlot(id)
+        ? randomFewGuardTierOf(id)!
+        : randomGuardTierOf(id)!;
     if (tier === "azure") return { points: 0, azure: true };
     return { points: tier === "gold" ? 3 : tier === "silver" ? 2 : 1, azure: false };
   }
-  const unitDefId = isPackGuardSlot(id) ? packGuardUnitDefId(id)! : id;
+  const unitDefId = isPackGuardSlot(id)
+    ? packGuardUnitDefId(id)!
+    : isFewGuardSlot(id)
+      ? fewGuardUnitDefId(id)!
+      : id;
   const tier = coreUnitDefinitions[unitDefId]?.tier;
   if (tier === "azure") return { points: 0, azure: true };
   return {
@@ -261,6 +331,19 @@ export function packUnitPoolForTier(
   return Object.keys(coreUnitDefinitions).filter((id) => {
     const def = coreUnitDefinitions[id];
     if (!def?.pack || def.tier !== tier) return false;
+    if (faction && def.faction !== faction) return false;
+    return true;
+  });
+}
+
+/** Unit def ids that have a Few side of the given tier (optional faction lock). */
+export function fewUnitPoolForTier(
+  tier: RandomGuardTier,
+  faction?: string | null
+): string[] {
+  return Object.keys(coreUnitDefinitions).filter((id) => {
+    const def = coreUnitDefinitions[id];
+    if (!def?.few || def.tier !== tier) return false;
     if (faction && def.faction !== faction) return false;
     return true;
   });
@@ -321,14 +404,32 @@ function packDrawWithNeutralFallback(
   return null;
 }
 
+function fewDrawWithNeutralFallback(
+  tier: RandomGuardTier,
+  lockedFaction: string | null,
+  rng: { nextInt: (min: number, max: number) => number }
+): ResolvedGuardDraw | null {
+  const fewId = pickRandomFromPool(fewUnitPoolForTier(tier, lockedFaction), rng);
+  if (fewId) {
+    return { unitDefId: fewId, tier, factionFew: true, bankGuard: true };
+  }
+  const neutralId = pickRandomFromPool(neutralUnitPoolForTier(tier), rng);
+  if (neutralId) {
+    return { unitDefId: neutralId, tier, bankGuard: true };
+  }
+  return null;
+}
+
 /**
  * Resolve design-time certain-army entries into fight-time draws.
  * - `random:<tier>` → random Neutral of that tier
  * - `random-pack:<tier>` → random Pack of that tier (optional faction lock;
  *   no Pack available for the pool → same-tier Neutral, never a missing body)
+ * - `random-few:<tier>` → random Few of that tier (same faction lock / fallback)
  * - `pack:<id>` → named Pack; under a faction lock a mismatching name converts
  *   to a random Pack of the SAME tier in the locked faction (the lock promises
  *   one shared faction, the entry promises a body of that tier — keep both)
+ * - `few:<id>` → named Few (same faction-lock conversion)
  * - plain id → named Neutral
  * When packFaction is "random", one faction is rolled for the whole army.
  */
@@ -339,7 +440,7 @@ export function resolveCustomGuardDraws(
 ): ResolvedGuardDraw[] {
   const needsFaction =
     Boolean(options?.packFaction) &&
-    units.some((entry) => isAnyPackGuardSlot(entry));
+    units.some((entry) => isAnyPackGuardSlot(entry) || isAnyFewGuardSlot(entry));
   const lockedFaction = needsFaction
     ? resolvePackFactionForFight(options?.packFaction, rng, options?.playableFactions)
     : options?.packFaction && options.packFaction !== "random"
@@ -361,6 +462,12 @@ export function resolveCustomGuardDraws(
       if (draw) draws.push(draw);
       continue;
     }
+    if (isRandomFewGuardSlot(entry)) {
+      const tier = randomFewGuardTierOf(entry)!;
+      const draw = fewDrawWithNeutralFallback(tier, lockedFaction, rng);
+      if (draw) draws.push(draw);
+      continue;
+    }
     if (isPackGuardSlot(entry)) {
       const unitDefId = packGuardUnitDefId(entry)!;
       const def = coreUnitDefinitions[unitDefId];
@@ -374,6 +481,23 @@ export function resolveCustomGuardDraws(
         unitDefId,
         tier: def.tier as RandomGuardTier,
         factionPack: true,
+        bankGuard: true
+      });
+      continue;
+    }
+    if (isFewGuardSlot(entry)) {
+      const unitDefId = fewGuardUnitDefId(entry)!;
+      const def = coreUnitDefinitions[unitDefId];
+      if (!def?.few) continue;
+      if (lockedFaction && def.faction !== lockedFaction) {
+        const draw = fewDrawWithNeutralFallback(def.tier as RandomGuardTier, lockedFaction, rng);
+        if (draw) draws.push(draw);
+        continue;
+      }
+      draws.push({
+        unitDefId,
+        tier: def.tier as RandomGuardTier,
+        factionFew: true,
         bankGuard: true
       });
       continue;
@@ -432,13 +556,20 @@ export function isLevelPackGuard(guard: CustomGuardSpec | undefined): boolean {
  * Pack survivors keep the `pack:` prefix so they re-mint as faction Packs.
  */
 export function survivorsToCustomGuardUnits(
-  living: Array<{ unitDefId?: string; factionPack?: boolean; bankGuard?: boolean }>
+  living: Array<{
+    unitDefId?: string;
+    factionPack?: boolean;
+    factionFew?: boolean;
+    bankGuard?: boolean;
+  }>
 ): string[] {
   const units: string[] = [];
   for (const unit of living) {
     if (!unit.unitDefId) continue;
     if (unit.factionPack) {
       units.push(`${PACK_GUARD_PREFIX}${unit.unitDefId}`);
+    } else if (unit.factionFew) {
+      units.push(`${FEW_GUARD_PREFIX}${unit.unitDefId}`);
     } else {
       units.push(unit.unitDefId);
     }

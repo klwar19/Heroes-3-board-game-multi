@@ -96,6 +96,7 @@ import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./perman
 import {
   applyUnitSideRules,
   canAcquireSharedDeckCard,
+  effectiveArtifactTier,
   expertUsesAvailable,
   getRuleset,
   unitSideRuleOverrides,
@@ -150,6 +151,30 @@ import {
   type HexCoord
 } from "./hex";
 import { createSeededRandom } from "./random";
+import {
+  designedWaveSpec,
+  waveArmyLevel,
+  waveNumberForRound,
+  WAVE_PILLAGE_GOLD,
+  WAVE_TREASURE_DIE_FROM_WAVE,
+  WAVE_OVERRUN_GUARD_LEVEL,
+  WAVE_WIN_GOLD,
+  WAVE_WIN_XP
+} from "./monster-waves";
+import {
+  RAID_BOSS_ESCALATION_INTERVAL,
+  RAID_BOSS_KILL_GOLD,
+  RAID_BOSS_LAYER_BREAK_GOLD,
+  RAID_BOSS_SPAWN_ROUND,
+  resolveBossDefinition,
+  scheduledBossPool
+} from "./raid-bosses";
+import {
+  DUNGEON_BOSS_FLOORS,
+  dungeonDoorsForFloor,
+  dungeonFloorDifficulty,
+  dungeonFloorOf
+} from "./dungeon";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
   diluteUnitExperienceForUpgrade,
@@ -4489,6 +4514,67 @@ export function setHexEventEncounterHook(
 }
 
 /**
+ * Raid Bosses (§6.5): the lair fight is opened by adventure-reducer.ts on the
+ * far side of the import cycle — same registered-hook pattern as
+ * {@link setHexEventEncounterHook}. Until registered, the RAID_BOSS_FIGHT
+ * visit step is a safe no-op (the lair simply stays; the next visit retries).
+ */
+let raidBossEncounterHook: ((state: GameState, heroId: HeroId, bossInstanceId: string) => void) | null =
+  null;
+export function setRaidBossEncounterHook(
+  hook: ((state: GameState, heroId: HeroId, bossInstanceId: string) => void) | null
+): void {
+  raidBossEncounterHook = hook;
+}
+
+/** The Dungeon (§6.7.3): the floor fight's reducer-side opener (same pattern). */
+let dungeonEncounterHook: ((state: GameState, heroId: HeroId, floor: number) => void) | null = null;
+export function setDungeonEncounterHook(
+  hook: ((state: GameState, heroId: HeroId, floor: number) => void) | null
+): void {
+  dungeonEncounterHook = hook;
+}
+
+/**
+ * Teleport ARRIVAL resolver (2026-07-24 user rule), registered by
+ * adventure-reducer.ts across the import cycle (the RESOLVE_TELEPORT_ARRIVAL
+ * visit step / completeMapTokenTeleport call it). Given the just-arrived hero
+ * and the destination field, it opens a PvP battle against an enemy hero
+ * standing there, FIGHTS a live designed guard (bank-style, no auto-sweep), or
+ * leaves the hero standing on an empty exit. `originSpaceId` is the teleporter
+ * left, so the reducer can bounce a retreat back there. Until registered (unit
+ * tests without the reducer), arrival is inert — the hero simply arrives.
+ */
+let teleportArrivalHook:
+  | ((state: GameState, hero: HeroState, field: MapFieldState, originSpaceId: MapSpaceId) => void)
+  | null = null;
+export function setTeleportArrivalHook(
+  hook: ((state: GameState, hero: HeroState, field: MapFieldState, originSpaceId: MapSpaceId) => void) | null
+): void {
+  teleportArrivalHook = hook;
+}
+
+/**
+ * Resolve a teleport-network arrival: stamp the origin as the retreat fall-back
+ * and hand off to the registered {@link setTeleportArrivalHook} (PvP / guard
+ * fight / stand). A no-op if the world moved on (hero/field gone).
+ */
+function resolveTeleportArrival(
+  state: GameState,
+  heroId: HeroId,
+  spaceId: MapSpaceId,
+  originSpaceId: MapSpaceId
+): void {
+  const adventure = state.adventure;
+  const hero = state.heroes[heroId];
+  const field = adventure?.fields[spaceId];
+  if (!adventure || !hero || !field) {
+    return;
+  }
+  teleportArrivalHook?.(state, hero, field, originSpaceId);
+}
+
+/**
  * Spring the designer hex event on this field, if one is armed for this
  * player. Called from the beginFieldVisit seam (before the field's own
  * designer bonus), so a WON ambush re-enters here with the guard beaten.
@@ -5150,7 +5236,7 @@ export function blackMarketOffers(state: GameState): { cardId: CardId; deckId: s
         continue;
       }
       const cardId = pile.cards[index];
-      const tier = cardLibrary[cardId]?.artifactTier ?? "minor";
+      const tier = effectiveArtifactTier(state, cardId) ?? "minor";
       offers.push({ cardId, deckId: pile.id, price: BLACK_MARKET_PRICE[tier] });
       added = true;
       if (offers.length >= 4) {
@@ -5371,9 +5457,11 @@ export function grantRegularArtifactOfSameGrade(
     if (!card || card.kind !== "artifact") {
       return false;
     }
-    // On the legacy combined pile, keep only the matching grade.
+    // On the legacy combined pile, keep only the matching grade (effective tier —
+    // so with the Torso re-tier OFF, Torso is claimable by a Minor grant, not a
+    // Major one; split decks already draw from the matching tier pile).
     if (deckId === "artifacts") {
-      return (card.artifactTier ?? "minor") === tier;
+      return (effectiveArtifactTier(state, cardId) ?? "minor") === tier;
     }
     return true;
   });
@@ -5614,7 +5702,7 @@ function buildWogFieldVisitStep(
       if (card?.kind !== "artifact") {
         continue;
       }
-      const tier = card.artifactTier ?? "minor";
+      const tier = effectiveArtifactTier(state, cardId) ?? "minor";
       const gold = tier === "relic" ? 4 : tier === "major" ? 3 : 2;
       options.push({
         label: `Sell ${card.name} (${tier}): gain ${gold} gold`,
@@ -5905,6 +5993,17 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   // FO clear below (which would just wipe the beaten guard without paying).
   if (location.id === "anime.thi_luyen_thap") {
     handleAnimeTrialTowerVisit(state, playerId, heroId, field);
+    return;
+  }
+  // Raid Bosses (§6.5): a Rift Lair field opens the confirm-and-challenge
+  // menu (the boss fight is rebuilt from its REMAINING layers each attempt).
+  if (location.id === "rift_lair") {
+    handleRiftLairVisit(state, playerId, heroId, field);
+    return;
+  }
+  // The Dungeon (§6.7.3): the delve site's per-player floor menu.
+  if (location.id === "dungeon_gate") {
+    handleDungeonGateVisit(state, playerId, heroId, field);
     return;
   }
 
@@ -6318,6 +6417,35 @@ export function processPendingVisit(state: GameState): void {
         break;
       case "RESUME_FIELD_VISIT":
         beginFieldVisit(state, step.heroId, step.fieldId, step.revisit);
+        break;
+      case "RAID_BOSS_FIGHT": {
+        // The combat opener lives across the import cycle; the visit is done
+        // (this is always an option's last step) — clear it BEFORE the combat
+        // opens so no stale empty visit lingers under the fight.
+        const bossInstanceId = step.bossInstanceId;
+        const heroId = visit.heroId;
+        if (adventure.pendingVisit === visit && visit.steps.length === 0) {
+          adventure.pendingVisit = null;
+        }
+        raidBossEncounterHook?.(state, heroId, bossInstanceId);
+        return;
+      }
+      case "DUNGEON_FLOOR_FIGHT": {
+        const floor = step.floor;
+        const heroId = visit.heroId;
+        if (adventure.pendingVisit === visit && visit.steps.length === 0) {
+          adventure.pendingVisit = null;
+        }
+        dungeonEncounterHook?.(state, heroId, floor);
+        return;
+      }
+      case "PLAY_STORY_SCENE":
+        appendEvent(state, {
+          type: "STORY_SCENE_TRIGGERED",
+          round: state.round,
+          sceneId: step.sceneId,
+          message: "Whispers in the dark — a story unfolds."
+        });
         break;
       case "ROLL_TREASURE_DICE":
         rollTreasureDice(state, visit, step.count);
@@ -6964,16 +7092,16 @@ export function processPendingVisit(state: GameState): void {
         resolveSubterraneanGate(state, visit);
         break;
       case "TOKEN_TELEPORT":
-        resolveTokenTeleport(state, visit, step.token);
+        resolveTokenTeleport(state, visit, step.token, step.committed ?? false);
         break;
       case "ONEWAY_TELEPORT":
-        resolveOnewayTeleport(state, visit);
+        resolveOnewayTeleport(state, visit, step.committed ?? false);
         break;
       case "ONEWAY_RANDOM_EXIT":
         resolveOnewayRandomExit(state, visit, step.pair, step.fromSpaceId);
         break;
       case "GATE_TELEPORT":
-        resolveGateTeleport(state, visit);
+        resolveGateTeleport(state, visit, step.committed ?? false);
         break;
       case "TOKEN_TELEPORT_REVEAL":
         resolveTokenTeleportReveal(state, visit, step);
@@ -7053,17 +7181,27 @@ export function processPendingVisit(state: GameState): void {
             teleport: teleportKind
           });
           commitPopulationOnMove(state, movedHero.controllerId);
-          // Teleport-network arrival: a designed guard still standing on the
-          // destination token/gate is swept aside (auto-win, no experience).
-          if (step.sweepGuard) {
-            autoWinArrivalGuard(state, movedHero.controllerId, adventure.fields[step.spaceId]);
-          }
           if (step.visit) {
             adventure.lastVisitedField[movedHero.id] = step.spaceId;
             beginFieldVisit(state, movedHero.id, step.spaceId, false);
           }
         }
         break;
+      }
+      case "RESOLVE_TELEPORT_ARRIVAL": {
+        // 2026-07-24 user rule: the hero has arrived through the teleport network
+        // (after any Whirlpool unit toll). Resolve the destination — PvP against
+        // an enemy hero, a real fight vs a live designed guard (no auto-sweep), or
+        // just stand. A combat opens across the import cycle, so clear this
+        // (final, empty) visit BEFORE handing off — the RAID_BOSS_FIGHT pattern.
+        const heroId = visit.heroId;
+        const spaceId = step.spaceId;
+        const originSpaceId = step.originSpaceId;
+        if (adventure.pendingVisit === visit && visit.steps.length === 0) {
+          adventure.pendingVisit = null;
+        }
+        resolveTeleportArrival(state, heroId, spaceId, originSpaceId);
+        return;
       }
       case "CREATE_SECONDARY_HERO": {
         // The placement choice resolved: drop the Secondary Hero on the chosen
@@ -8353,7 +8491,7 @@ export function processPendingVisit(state: GameState): void {
           .filter(
             (offer) =>
               hasResources(player, { gold: offer.price }) &&
-              polishArtifactTierAllowed(state, cardLibrary[offer.cardId]?.artifactTier)
+              polishArtifactTierAllowed(state, effectiveArtifactTier(state, offer.cardId))
           )
           .map((offer) => ({
             label: `Buy ${cardLibrary[offer.cardId]?.name ?? offer.cardId} (${offer.price} gold)`,
@@ -8921,8 +9059,31 @@ function countMapTokens(state: GameState, kind: MapTokenKind): number {
 
 /** One reachable travel destination: a carved token field, or one still face-down. */
 type MapTokenDestination =
-  | { type: "field"; spaceId: MapSpaceId; number?: -1 | 0 | 1; label: string }
+  | { type: "field"; spaceId: MapSpaceId; number?: -1 | 0 | 1; label: string; enemyHero?: boolean }
   | { type: "pending-tile"; tileInstanceId: string; number?: -1 | 0 | 1; label: string };
+
+/**
+ * How a hero standing on a teleport destination hex gates a travel offer
+ * (2026-07-24 user rule):
+ *  - no `travellerPlayerId` (AI known-destination reads) → ANY hero BLOCKS the
+ *    destination (conservative: the AI never plans a jump onto an occupied hex);
+ *  - the traveller's OWN hero → skip (never offered);
+ *  - an ENEMY hero → OFFERED — choosing it teleports in and starts a PvP battle.
+ */
+function teleportDestinationHeroGate(
+  state: GameState,
+  spaceId: MapSpaceId,
+  travellerPlayerId?: PlayerId
+): { skip: boolean; enemyHero: boolean } {
+  const occupant = heroAtSpace(state, spaceId);
+  if (!occupant) {
+    return { skip: false, enemyHero: false };
+  }
+  if (travellerPlayerId === undefined || occupant.controllerId === travellerPlayerId) {
+    return { skip: true, enemyHero: false };
+  }
+  return { skip: false, enemyHero: true };
+}
 
 /**
  * Whether a Monolith / colored-Gate travel destination is a "mix"-mode free
@@ -8953,32 +9114,45 @@ function tokenDestinationAlwaysPickable(
 
 /**
  * Where a `kind` travel from `fromSpaceId` may go: every OTHER token of the
- * kind — carved fields (skipping any a hero currently occupies: the p.83 note
- * "skip the movement" reading) plus face-down tiles still carrying the token
- * (travelling there reveals the tile and the traveller places the token).
+ * kind — carved fields plus face-down tiles still carrying the token (travelling
+ * there reveals the tile and the traveller places the token). A carved field a
+ * hero stands on is gated by {@link teleportDestinationHeroGate}: the traveller's
+ * OWN hero skips it (p.83 "skip the movement"), an ENEMY hero is OFFERED (arrival
+ * starts a PvP battle); with no `travellerPlayerId` (AI reads) any hero blocks.
  */
-function mapTokenDestinations(state: GameState, kind: MapTokenKind, fromSpaceId: MapSpaceId): MapTokenDestination[] {
+function mapTokenDestinations(
+  state: GameState,
+  kind: MapTokenKind,
+  fromSpaceId: MapSpaceId,
+  travellerPlayerId?: PlayerId
+): MapTokenDestination[] {
   const adventure = state.adventure;
   if (!adventure) {
     return [];
   }
   const destinations: MapTokenDestination[] = [];
   for (const field of Object.values(adventure.fields)) {
-    if (!fieldIsTokenNetworkMember(state, field, kind) || field.spaceId === fromSpaceId || heroAtSpace(state, field.spaceId)) {
+    if (!fieldIsTokenNetworkMember(state, field, kind) || field.spaceId === fromSpaceId) {
+      continue;
+    }
+    const gate = teleportDestinationHeroGate(state, field.spaceId, travellerPlayerId);
+    if (gate.skip) {
       continue;
     }
     const tile = adventure.tiles[field.tileInstanceId];
     const where = tile ? ` on the ${tile.backLabel ?? tile.group ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol})` : "";
     // An Obelisk acting as a Monolith network member is labelled as an Obelisk.
     const memberLabel = field.location === "obelisk" ? "Obelisk" : mapTokenLabel(kind);
+    const baseLabel =
+      kind === "whirlpool" && field.whirlpoolNumber !== undefined
+        ? `Whirlpool ${field.whirlpoolNumber >= 0 ? "+" : ""}${field.whirlpoolNumber}${where}`
+        : `${memberLabel}${where}`;
     destinations.push({
       type: "field",
       spaceId: field.spaceId,
       ...(field.whirlpoolNumber !== undefined ? { number: field.whirlpoolNumber } : {}),
-      label:
-        kind === "whirlpool" && field.whirlpoolNumber !== undefined
-          ? `Whirlpool ${field.whirlpoolNumber >= 0 ? "+" : ""}${field.whirlpoolNumber}${where}`
-          : `${memberLabel}${where}`
+      ...(gate.enemyHero ? { enemyHero: true } : {}),
+      label: gate.enemyHero ? `${baseLabel} (enemy hero — battle)` : baseLabel
     });
   }
   for (const tile of Object.values(adventure.tiles)) {
@@ -9005,6 +9179,16 @@ function mapTokenDestinations(state: GameState, kind: MapTokenKind, fromSpaceId:
   return destinations;
 }
 
+/**
+ * The "Stay here" option every teleport travel offer now carries (2026-07-24
+ * user rule): decline the travel, remaining on the teleporter (empty steps, so
+ * the visit just completes and the AI scorer reads it as a leave/cancel branch).
+ * The hero may Revisit (1 MP) later to open the offer again.
+ */
+function teleportStayOption(noun: string): { label: string; steps: VisitStep[] } {
+  return { label: `Stay on the ${noun} (do not travel)`, steps: [] };
+}
+
 /** The visit steps that carry the hero to one travel destination. */
 function mapTokenTravelSteps(visit: PendingVisit, kind: MapTokenKind, destination: MapTokenDestination): VisitStep[] {
   if (destination.type === "pending-tile") {
@@ -9013,12 +9197,19 @@ function mapTokenTravelSteps(visit: PendingVisit, kind: MapTokenKind, destinatio
     return [{ type: "TOKEN_TELEPORT_REVEAL", token: kind, tileInstanceId: destination.tileInstanceId }];
   }
   return [
-    // TELEPORT_HERO without `visit`: arriving on the destination token must
-    // NOT re-run its own TOKEN_TELEPORT (an instant ping-pong loop). The hero
-    // may Revisit (1 MP) or re-enter later to travel again. `sweepGuard`:
-    // a designed guard still standing on the destination is auto-won.
-    { type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId, sweepGuard: true },
-    ...(kind === "whirlpool" ? [{ type: "WHIRLPOOL_PENALTY" } as const] : [])
+    // TELEPORT_HERO without `visit`: arriving on the destination token must NOT
+    // re-run its own TOKEN_TELEPORT (an instant ping-pong loop). RESOLVE_TELEPORT_
+    // ARRIVAL then fights a live guard / starts a PvP battle (2026-07-24 rule) —
+    // for a Whirlpool AFTER the unit toll. The hero may Revisit (1 MP) or re-enter
+    // later to travel again.
+    { type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId },
+    ...(kind === "whirlpool" ? [{ type: "WHIRLPOOL_PENALTY" } as const] : []),
+    {
+      type: "RESOLVE_TELEPORT_ARRIVAL",
+      heroId: visit.heroId,
+      spaceId: destination.spaceId,
+      originSpaceId: visit.fieldId
+    }
   ];
 }
 
@@ -9036,7 +9227,12 @@ function mapTokenTravelSteps(visit: PendingVisit, kind: MapTokenKind, destinatio
  * A destination still face-down routes through TOKEN_TELEPORT_REVEAL: the tile
  * is discovered for free and the traveller places the destination token first.
  */
-function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTokenKind): void {
+function resolveTokenTeleport(
+  state: GameState,
+  visit: PendingVisit,
+  kind: MapTokenKind,
+  committed = false
+): void {
   const adventure = state.adventure;
   const field = adventure?.fields[visit.fieldId];
   // The origin may be a carved token OR an Obelisk under the monolith role
@@ -9055,125 +9251,151 @@ function resolveTokenTeleport(state: GameState, visit: PendingVisit, kind: MapTo
     return;
   }
 
-  const destinations = mapTokenDestinations(state, kind, visit.fieldId);
+  const destinations = mapTokenDestinations(state, kind, visit.fieldId, visit.playerId);
   if (destinations.length === 0) {
-    eventNote(state, `The ${label} fizzles — every other ${label} is occupied by a hero.`, visit.playerId);
-    return;
-  }
-  if (destinations.length === 1) {
-    visit.steps.unshift(...mapTokenTravelSteps(visit, kind, destinations[0]));
+    eventNote(state, `The ${label} fizzles — every other ${label} is occupied by a friendly hero.`, visit.playerId);
     return;
   }
 
-  // Two-way Monolith exit mode (same as colored Gates / one-way): when not a
-  // forced 3-whirlpool die, respect the origin's exitMode (default certain).
-  if (kind === "monolith" && destinations.length > 1) {
-    const mode: OnewayExitMode = field.onewayExitMode ?? "certain";
-    if (mode === "random") {
-      const random = adventureRandom(state, "monolith-exit");
+  const stay = teleportStayOption(label);
+
+  // 2026-07-24 user rule: a roll (Monolith random/mix, the 3-Whirlpool die) must
+  // resolve ONLY when the traveller chooses to travel — never leaked on a Stay.
+  // These "deferred-roll" shapes present a travel-vs-stay wrapper first; "Travel"
+  // re-enters this resolver committed to run the roll. The deterministic shapes
+  // (single / certain pick) instead offer one picker with "Stay here" appended.
+  const monolithMode: OnewayExitMode =
+    kind === "monolith" && destinations.length > 1 ? (field.onewayExitMode ?? "certain") : "certain";
+  const whirlpoolDie =
+    kind === "whirlpool" &&
+    countMapTokens(state, "whirlpool") === 3 &&
+    field.whirlpoolNumber !== undefined &&
+    destinations.every((destination) => destination.number !== undefined);
+  const deferredRoll =
+    (kind === "monolith" && (monolithMode === "random" || monolithMode === "mix")) || whirlpoolDie;
+
+  if (deferredRoll && !committed) {
+    visit.steps.unshift({
+      type: "CHOOSE_ONE",
+      prompt: `${label} — travel, or stay here?`,
+      options: [
+        { label: `Travel through the ${label}`, steps: [{ type: "TOKEN_TELEPORT", token: kind, committed: true }] },
+        stay
+      ]
+    });
+    return;
+  }
+
+  // Two-way Monolith exit mode (same as colored Gates / one-way). Reached only
+  // when committed (the traveller already chose to travel).
+  if (kind === "monolith" && monolithMode === "random") {
+    const random = adventureRandom(state, "monolith-exit");
+    const destination = destinations[random.nextInt(0, destinations.length - 1)];
+    eventNote(
+      state,
+      `${eventPlayerName(state, visit.playerId)} rolls for the Monolith exit — emerges at ${destination.label}.`,
+      visit.playerId
+    );
+    visit.steps.unshift(...mapTokenTravelSteps(visit, kind, destination));
+    return;
+  }
+  if (kind === "monolith" && monolithMode === "mix") {
+    const always = destinations.filter((destination) =>
+      tokenDestinationAlwaysPickable(adventure, destination, "monolith")
+    );
+    const randomPool = destinations.filter((destination) => !always.includes(destination));
+    if (always.length === 0) {
+      const random = adventureRandom(state, "monolith-exit-mix");
       const destination = destinations[random.nextInt(0, destinations.length - 1)];
-      eventNote(
-        state,
-        `${eventPlayerName(state, visit.playerId)} rolls for the Monolith exit — emerges at ${destination.label}.`,
-        visit.playerId
-      );
       visit.steps.unshift(...mapTokenTravelSteps(visit, kind, destination));
       return;
     }
-    if (mode === "mix") {
-      const always = destinations.filter((destination) =>
-        tokenDestinationAlwaysPickable(adventure, destination, "monolith")
-      );
-      const randomPool = destinations.filter((destination) => !always.includes(destination));
-      if (always.length === 0) {
-        const random = adventureRandom(state, "monolith-exit-mix");
-        const destination = destinations[random.nextInt(0, destinations.length - 1)];
-        visit.steps.unshift(...mapTokenTravelSteps(visit, kind, destination));
-        return;
-      }
-      if (randomPool.length === 0) {
-        // all always-pickable → certain
-      } else {
-        const random = adventureRandom(state, "monolith-exit-mix-roll");
-        const rolled = randomPool[random.nextInt(0, randomPool.length - 1)];
-        visit.steps.unshift({
-          type: "CHOOSE_ONE",
-          prompt: `${label} — pick an exit, or roll`,
-          teleport: { kind },
-          options: [
-            ...always.map((destination) => ({
-              label: `${destination.label} (always pickable)`,
-              steps: mapTokenTravelSteps(visit, kind, destination)
-            })),
-            {
-              label: `Roll the die — random among ${randomPool.length}`,
-              steps: mapTokenTravelSteps(visit, kind, rolled)
-            }
-          ]
-        });
-        return;
-      }
+    if (randomPool.length > 0) {
+      const random = adventureRandom(state, "monolith-exit-mix-roll");
+      const rolled = randomPool[random.nextInt(0, randomPool.length - 1)];
+      visit.steps.unshift({
+        type: "CHOOSE_ONE",
+        prompt: `${label} — pick an exit, or roll`,
+        teleport: { kind },
+        options: [
+          ...always.map((destination) => ({
+            label: `${destination.label} (always pickable)`,
+            steps: mapTokenTravelSteps(visit, kind, destination)
+          })),
+          {
+            label: `Roll the die — random among ${randomPool.length}`,
+            steps: mapTokenTravelSteps(visit, kind, rolled)
+          }
+        ]
+      });
+      return;
     }
+    // all always-pickable → certain pick over the always list (fall through).
   }
 
   // "If there are 3 Whirlpools, roll an Attack Die to determine where your
   // Hero goes, and reroll any Die that shows the number of the Whirlpool your
   // Hero is moving from." The printed tokens carry the die faces -1/0/+1 as
   // their numbers, so the roll maps straight onto them. A face that maps to no
-  // reachable destination (its token occupied) is rerolled too.
-  if (kind === "whirlpool" && countMapTokens(state, "whirlpool") === 3 && field.whirlpoolNumber !== undefined) {
+  // reachable destination (its token occupied) is rerolled too. Reached only
+  // when committed (past the travel-vs-stay gate).
+  if (whirlpoolDie) {
     const byNumber = new Map<number, MapTokenDestination>();
     for (const destination of destinations) {
       if (destination.number !== undefined) {
         byNumber.set(destination.number, destination);
       }
     }
-    if (byNumber.size === destinations.length) {
-      const random = adventureRandom(state, "whirlpool-die");
-      const faces = [-1, -1, 0, 0, 1, 1];
-      const rolls: number[] = [];
-      let destination: MapTokenDestination | undefined;
-      // Two of the six faces always match a reachable candidate here, so this
-      // terminates almost immediately; the bound is a pure safety net (falling
-      // through to the traveller's pick below).
-      for (let attempt = 0; attempt < 24 && !destination; attempt += 1) {
-        const roll = faces[random.nextInt(0, faces.length - 1)];
-        rolls.push(roll);
-        if (roll === field.whirlpoolNumber) {
-          continue;
-        }
-        destination = byNumber.get(roll);
+    const random = adventureRandom(state, "whirlpool-die");
+    const faces = [-1, -1, 0, 0, 1, 1];
+    const rolls: number[] = [];
+    let destination: MapTokenDestination | undefined;
+    // Two of the six faces always match a reachable candidate here, so this
+    // terminates almost immediately; the bound is a pure safety net (falling
+    // through to the traveller's pick below).
+    for (let attempt = 0; attempt < 24 && !destination; attempt += 1) {
+      const roll = faces[random.nextInt(0, faces.length - 1)];
+      rolls.push(roll);
+      if (roll === field.whirlpoolNumber) {
+        continue;
       }
-      if (destination) {
-        appendEvent(state, {
-          type: "ADVENTURE_DICE_ROLLED",
-          playerId: visit.playerId,
-          dice: "attack",
-          results: rolls.map((roll, index) => {
-            const face = `${roll >= 0 ? "+" : ""}${roll}`;
-            return index === rolls.length - 1
-              ? `Attack die: ${face} — the Whirlpool ${face}`
-              : `Attack die: ${face} (rerolled)`;
-          }),
-          attackRolls: rolls
-        });
-        visit.steps.unshift(...mapTokenTravelSteps(visit, kind, destination));
-        return;
-      }
+      destination = byNumber.get(roll);
     }
+    if (destination) {
+      appendEvent(state, {
+        type: "ADVENTURE_DICE_ROLLED",
+        playerId: visit.playerId,
+        dice: "attack",
+        results: rolls.map((roll, index) => {
+          const face = `${roll >= 0 ? "+" : ""}${roll}`;
+          return index === rolls.length - 1
+            ? `Attack die: ${face} — the Whirlpool ${face}`
+            : `Attack die: ${face} (rerolled)`;
+        }),
+        attackRolls: rolls
+      });
+      visit.steps.unshift(...mapTokenTravelSteps(visit, kind, destination));
+      return;
+    }
+    // die mapped no reachable destination → fall through to the pick.
   }
 
+  // Single free destination, or a certain-mode multi-pick: ONE picker with each
+  // destination plus "Stay here" (2026-07-24 rule — every offer can decline).
   visit.steps.unshift({
     type: "CHOOSE_ONE",
-    prompt: `${label} — choose where to travel`,
+    prompt: destinations.length === 1 ? `${label} — travel, or stay here?` : `${label} — choose where to travel`,
     // Tag the picker so the board can offer each destination as a glowing,
     // clickable exit hex (themed by kind) instead of a bare numbered list; the
     // travel semantics are unchanged (the option steps are still authoritative).
     teleport: { kind },
-    options: destinations.map((destination) => ({
-      label: destination.label,
-      steps: mapTokenTravelSteps(visit, kind, destination)
-    }))
+    options: [
+      ...destinations.map((destination) => ({
+        label: destination.label,
+        steps: mapTokenTravelSteps(visit, kind, destination)
+      })),
+      stay
+    ]
   });
 }
 
@@ -9212,7 +9434,12 @@ function countColoredGates(state: GameState, pair: 1 | 2 | 3 | 4): number {
  * carving its partner gate). The Monolith network's {@link mapTokenDestinations}
  * mirror, partitioned by `gatePair` — never a different color, never a Monolith.
  */
-function coloredGateDestinations(state: GameState, pair: 1 | 2 | 3 | 4, fromSpaceId: MapSpaceId): MapTokenDestination[] {
+function coloredGateDestinations(
+  state: GameState,
+  pair: 1 | 2 | 3 | 4,
+  fromSpaceId: MapSpaceId,
+  travellerPlayerId?: PlayerId
+): MapTokenDestination[] {
   const adventure = state.adventure;
   if (!adventure) {
     return [];
@@ -9220,17 +9447,23 @@ function coloredGateDestinations(state: GameState, pair: 1 | 2 | 3 | 4, fromSpac
   const color = gatePairColor(pair);
   const destinations: MapTokenDestination[] = [];
   for (const field of Object.values(adventure.fields)) {
-    if (
-      field.location !== "gate" ||
-      field.gatePair !== pair ||
-      field.spaceId === fromSpaceId ||
-      heroAtSpace(state, field.spaceId)
-    ) {
+    if (field.location !== "gate" || field.gatePair !== pair || field.spaceId === fromSpaceId) {
+      continue;
+    }
+    // Own hero → skip (p.83); enemy hero → offered (arrival starts a PvP battle);
+    // no traveller context (AI reads) → any hero blocks. See mapTokenDestinations.
+    const gate = teleportDestinationHeroGate(state, field.spaceId, travellerPlayerId);
+    if (gate.skip) {
       continue;
     }
     const tile = adventure.tiles[field.tileInstanceId];
     const where = tile ? ` on the ${tile.backLabel ?? tile.group ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol})` : "";
-    destinations.push({ type: "field", spaceId: field.spaceId, label: `${color} Gate${where}` });
+    destinations.push({
+      type: "field",
+      spaceId: field.spaceId,
+      ...(gate.enemyHero ? { enemyHero: true } : {}),
+      label: gate.enemyHero ? `${color} Gate${where} (enemy hero — battle)` : `${color} Gate${where}`
+    });
   }
   for (const tile of Object.values(adventure.tiles)) {
     if (
@@ -9259,8 +9492,17 @@ function coloredGateTravelSteps(visit: PendingVisit, pair: 1 | 2 | 3 | 4, destin
   }
   // TELEPORT_HERO without `visit`: arriving on the destination gate must NOT
   // re-run its own GATE_TELEPORT (no ping-pong); Revisit (1 MP) travels again.
-  // `sweepGuard`: a designed guard still standing there is auto-won on arrival.
-  return [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId, sweepGuard: true }];
+  // RESOLVE_TELEPORT_ARRIVAL then fights a live designed guard / starts a PvP
+  // battle on arrival (2026-07-24 rule — no auto-sweep).
+  return [
+    { type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: destination.spaceId },
+    {
+      type: "RESOLVE_TELEPORT_ARRIVAL",
+      heroId: visit.heroId,
+      spaceId: destination.spaceId,
+      originSpaceId: visit.fieldId
+    }
+  ];
 }
 
 /**
@@ -9283,7 +9525,7 @@ function coloredGateTravelSteps(visit: PendingVisit, pair: 1 | 2 | 3 | 4, destin
  * exactly like a Monolith). Arrival does NOT re-trigger, so there is no
  * ping-pong; the hero may Revisit (1 MP) to travel again.
  */
-function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
+function resolveGateTeleport(state: GameState, visit: PendingVisit, committed = false): void {
   const adventure = state.adventure;
   const field = adventure?.fields[visit.fieldId];
   if (!adventure || !field || field.location !== "gate" || field.gatePair === undefined) {
@@ -9291,6 +9533,7 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
   }
   const pair = field.gatePair;
   const color = gatePairColor(pair);
+  const Color = `${color.charAt(0).toUpperCase()}${color.slice(1)}`;
   // At least 2 same-color gates must be in play — carved OR still riding a
   // face-down tile (travelling to a pending one is what discovers it), exactly
   // like the Monolith network's countMapTokens gate.
@@ -9305,19 +9548,30 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
   // Every OTHER free same-color destination (carved field or pending face-down
   // tile). Per-color isolation is deliberate: a red gate never offers a blue
   // gate or a Monolith, and no pending Monolith/whirlpool tile ever appears here.
-  const destinations = coloredGateDestinations(state, pair, visit.fieldId);
+  const destinations = coloredGateDestinations(state, pair, visit.fieldId, visit.playerId);
   if (destinations.length === 0) {
-    eventNote(state, `The ${color} Gate fizzles — every other ${color} Gate is occupied by a hero.`, visit.playerId);
+    eventNote(state, `The ${color} Gate fizzles — every other ${color} Gate is occupied by a friendly hero.`, visit.playerId);
     return;
   }
-  if (destinations.length === 1) {
-    visit.steps.unshift(...coloredGateTravelSteps(visit, pair, destinations[0]));
-    return;
-  }
+  const stay = teleportStayOption(`${color} Gate`);
+
   // Two-way gate exit mode (same options as one-way): certain (pick), random
   // (seeded), mix (always-pickable destinations + roll among the rest). Default
-  // certain matches the classic "traveller picks" behaviour.
-  const mode: OnewayExitMode = field.onewayExitMode ?? "certain";
+  // certain matches the classic "traveller picks" behaviour. 2026-07-24 rule: a
+  // random/mix roll must resolve ONLY when travel is chosen — offer travel-vs-stay
+  // first (the "Travel" option re-enters committed to run the roll).
+  const mode: OnewayExitMode = destinations.length > 1 ? (field.onewayExitMode ?? "certain") : "certain";
+  if ((mode === "random" || mode === "mix") && !committed) {
+    visit.steps.unshift({
+      type: "CHOOSE_ONE",
+      prompt: `${Color} Gate — travel, or stay here?`,
+      options: [
+        { label: `Travel through the ${color} Gate`, steps: [{ type: "GATE_TELEPORT", committed: true }] },
+        stay
+      ]
+    });
+    return;
+  }
   if (mode === "random") {
     const random = adventureRandom(state, "gate-exit");
     const destination = destinations[random.nextInt(0, destinations.length - 1)];
@@ -9344,12 +9598,15 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
     if (randomPool.length === 0) {
       visit.steps.unshift({
         type: "CHOOSE_ONE",
-        prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} Gate — choose where to travel`,
+        prompt: `${Color} Gate — choose where to travel`,
         teleport: { kind: "gate", pair },
-        options: always.map((destination) => ({
-          label: destination.label,
-          steps: coloredGateTravelSteps(visit, pair, destination)
-        }))
+        options: [
+          ...always.map((destination) => ({
+            label: destination.label,
+            steps: coloredGateTravelSteps(visit, pair, destination)
+          })),
+          stay
+        ]
       });
       return;
     }
@@ -9360,7 +9617,7 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
     const rolled = randomPool[random.nextInt(0, randomPool.length - 1)];
     visit.steps.unshift({
       type: "CHOOSE_ONE",
-      prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} Gate — pick an exit, or roll`,
+      prompt: `${Color} Gate — pick an exit, or roll`,
       teleport: { kind: "gate", pair },
       options: [
         ...always.map((destination) => ({
@@ -9370,22 +9627,26 @@ function resolveGateTeleport(state: GameState, visit: PendingVisit): void {
         {
           label: `Roll the die — random among ${randomPool.length}`,
           steps: coloredGateTravelSteps(visit, pair, rolled)
-        }
+        },
+        stay
       ]
     });
     return;
   }
-  // certain (default): the traveller picks.
+  // certain (default): the traveller picks a destination, or Stay here.
   visit.steps.unshift({
     type: "CHOOSE_ONE",
-    prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} Gate — choose where to travel`,
+    prompt: destinations.length === 1 ? `${Color} Gate — travel, or stay here?` : `${Color} Gate — choose where to travel`,
     // Same board affordance as the Monolith picker, themed by the gate's color
     // pair (the ring tint) — see resolveTokenTeleport.
     teleport: { kind: "gate", pair },
-    options: destinations.map((destination) => ({
-      label: destination.label,
-      steps: coloredGateTravelSteps(visit, pair, destination)
-    }))
+    options: [
+      ...destinations.map((destination) => ({
+        label: destination.label,
+        steps: coloredGateTravelSteps(visit, pair, destination)
+      })),
+      stay
+    ]
   });
 }
 
@@ -9433,12 +9694,19 @@ export function carveColoredGateField(
 }
 
 /**
- * Every CARVED free same-color one-way EXIT a travel from `fromSpaceId` may
- * reach: `location: "oneway_exit"` fields of `pair`, minus hero-occupied ones.
+ * Every free same-color one-way EXIT a travel from `fromSpaceId` may reach:
+ * `location: "oneway_exit"` fields of `pair`. The OWN hero skips an exit (p.83);
+ * an ENEMY hero on an exit is still offered (arrival starts a PvP battle,
+ * 2026-07-24 rule); with no `travellerPlayerId` (AI reads) any hero blocks.
  * Exits still riding a FACE-DOWN tile are deliberately NOT offered (reveal the
  * tile first) — the documented one-way limit, unlike the Monolith network.
  */
-function onewayExitFields(state: GameState, pair: 1 | 2 | 3 | 4, fromSpaceId: MapSpaceId): MapFieldState[] {
+function onewayExitFields(
+  state: GameState,
+  pair: 1 | 2 | 3 | 4,
+  fromSpaceId: MapSpaceId,
+  travellerPlayerId?: PlayerId
+): MapFieldState[] {
   const adventure = state.adventure;
   if (!adventure) {
     return [];
@@ -9448,20 +9716,86 @@ function onewayExitFields(state: GameState, pair: 1 | 2 | 3 | 4, fromSpaceId: Ma
       field.location === "oneway_exit" &&
       field.gatePair === pair &&
       field.spaceId !== fromSpaceId &&
-      !heroAtSpace(state, field.spaceId)
+      !teleportDestinationHeroGate(state, field.spaceId, travellerPlayerId).skip
   );
 }
 
-/** The travel steps to one one-way exit (arrival sweeps any hand-edited guard). */
+/**
+ * Known carved-field destinations a hero standing on `fromSpaceId` can teleport
+ * to (Monolith / Whirlpool / Obelisk-as-monolith / anime `tran_phap_truyen_tong`,
+ * colored Gate, one-way entrance→exit). Face-down pending-tile landings are
+ * EXCLUDED — pathfinding consumers (the computer AI distance field) only plan
+ * over known cells. Occupied destinations are excluded (same p.83 skip as the
+ * live travel menus). Empty when the origin is not a network member, or the
+ * network has fewer than 2 members (inert portal).
+ *
+ * Pure public-state read; the destination lists reuse the same private helpers
+ * the visit menus use so AI planning cannot diverge from real travel.
+ */
+export function listKnownTeleportDestinations(
+  state: GameState,
+  fromSpaceId: MapSpaceId,
+): MapSpaceId[] {
+  const field = state.adventure?.fields[fromSpaceId];
+  if (!field) {
+    return [];
+  }
+  const fieldOnly = (destinations: ReadonlyArray<MapTokenDestination>): MapSpaceId[] =>
+    destinations
+      .filter((destination): destination is Extract<MapTokenDestination, { type: "field" }> =>
+        destination.type === "field",
+      )
+      .map((destination) => destination.spaceId);
+
+  if (fieldIsTokenNetworkMember(state, field, "whirlpool")) {
+    if (countMapTokens(state, "whirlpool") < 2) {
+      return [];
+    }
+    return fieldOnly(mapTokenDestinations(state, "whirlpool", fromSpaceId));
+  }
+  if (fieldIsTokenNetworkMember(state, field, "monolith")) {
+    if (countMapTokens(state, "monolith") < 2) {
+      return [];
+    }
+    return fieldOnly(mapTokenDestinations(state, "monolith", fromSpaceId));
+  }
+  if (field.location === "gate" && field.gatePair !== undefined) {
+    if (countColoredGates(state, field.gatePair) < 2) {
+      return [];
+    }
+    return fieldOnly(coloredGateDestinations(state, field.gatePair, fromSpaceId));
+  }
+  if (field.location === "oneway_entrance" && field.gatePair !== undefined) {
+    return onewayExitFields(state, field.gatePair, fromSpaceId).map((exit) => exit.spaceId);
+  }
+  return [];
+}
+
+/**
+ * The travel steps to one one-way exit. RESOLVE_TELEPORT_ARRIVAL resolves the
+ * landing (an enemy hero there starts a PvP battle; one-way exits are never
+ * guarded, so no guard fight); the origin ENTRANCE is `visit.fieldId`.
+ */
 function onewayTravelSteps(visit: PendingVisit, exit: MapFieldState): VisitStep[] {
-  return [{ type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: exit.spaceId, sweepGuard: true }];
+  return [
+    { type: "TELEPORT_HERO", heroId: visit.heroId, spaceId: exit.spaceId },
+    {
+      type: "RESOLVE_TELEPORT_ARRIVAL",
+      heroId: visit.heroId,
+      spaceId: exit.spaceId,
+      originSpaceId: visit.fieldId
+    }
+  ];
 }
 
 /** A short board label for a one-way exit destination. */
 function onewayExitLabel(state: GameState, exit: MapFieldState): string {
   const tile = state.adventure?.tiles[exit.tileInstanceId];
   const where = tile ? ` on the ${tile.backLabel ?? tile.group ?? "map"} tile at (${tile.centerRow}, ${tile.centerCol})` : "";
-  return `One-way exit${where || ` at ${exit.spaceId}`}${exit.onewayAlwaysPickable ? " (always pickable)" : ""}`;
+  // An offered exit is either free or ENEMY-occupied (own heroes were skipped),
+  // so any occupant here means arriving starts a PvP battle.
+  const battle = heroAtSpace(state, exit.spaceId) ? " (enemy hero — battle)" : "";
+  return `One-way exit${where || ` at ${exit.spaceId}`}${exit.onewayAlwaysPickable ? " (always pickable)" : ""}${battle}`;
 }
 
 /** Roll (seeded) among `exits` and unshift the travel; notes the roll for the table. */
@@ -9489,7 +9823,7 @@ function rollOnewayExit(state: GameState, visit: PendingVisit, exits: MapFieldSt
  * Entrances are never destinations (one-way), other colors never mix, and the
  * Monolith/Gate networks stay separate.
  */
-function resolveOnewayTeleport(state: GameState, visit: PendingVisit): void {
+function resolveOnewayTeleport(state: GameState, visit: PendingVisit, committed = false): void {
   const adventure = state.adventure;
   const field = adventure?.fields[visit.fieldId];
   if (!adventure || !field || field.location !== "oneway_entrance" || field.gatePair === undefined) {
@@ -9497,6 +9831,7 @@ function resolveOnewayTeleport(state: GameState, visit: PendingVisit): void {
   }
   const pair = field.gatePair;
   const color = gatePairColor(pair);
+  const Color = `${color.charAt(0).toUpperCase()}${color.slice(1)}`;
   const anyExit = Object.values(adventure.fields).some(
     (candidate) => candidate.location === "oneway_exit" && candidate.gatePair === pair
   );
@@ -9508,17 +9843,29 @@ function resolveOnewayTeleport(state: GameState, visit: PendingVisit): void {
     );
     return;
   }
-  const exits = onewayExitFields(state, pair, visit.fieldId);
+  const exits = onewayExitFields(state, pair, visit.fieldId, visit.playerId);
   if (exits.length === 0) {
-    eventNote(state, `The ${color} one-way monolith fizzles — every ${color} exit is occupied by a hero.`, visit.playerId);
-    return;
-  }
-  if (exits.length === 1) {
-    visit.steps.unshift(...onewayTravelSteps(visit, exits[0]));
+    eventNote(state, `The ${color} one-way monolith fizzles — every ${color} exit is occupied by a friendly hero.`, visit.playerId);
     return;
   }
 
-  const mode: OnewayExitMode = field.onewayExitMode ?? "certain";
+  const stay = teleportStayOption(`${color} one-way monolith`);
+  const mode: OnewayExitMode = exits.length > 1 ? (field.onewayExitMode ?? "certain") : "certain";
+
+  // 2026-07-24 rule: a random/mix roll resolves ONLY when travel is chosen —
+  // offer travel-vs-stay first ("Travel" re-enters committed to run the roll).
+  if ((mode === "random" || mode === "mix") && !committed) {
+    visit.steps.unshift({
+      type: "CHOOSE_ONE",
+      prompt: `${Color} one-way monolith — travel, or stay here?`,
+      options: [
+        { label: `Travel through the ${color} one-way monolith`, steps: [{ type: "ONEWAY_TELEPORT", committed: true }] },
+        stay
+      ]
+    });
+    return;
+  }
+
   if (mode === "random") {
     rollOnewayExit(state, visit, exits);
     return;
@@ -9526,26 +9873,29 @@ function resolveOnewayTeleport(state: GameState, visit: PendingVisit): void {
   if (mode === "certain") {
     visit.steps.unshift({
       type: "CHOOSE_ONE",
-      prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} one-way monolith — choose the exit`,
+      prompt: exits.length === 1 ? `${Color} one-way monolith — travel, or stay here?` : `${Color} one-way monolith — choose the exit`,
       teleport: { kind: "oneway", pair },
-      options: exits.map((exit) => ({
-        label: onewayExitLabel(state, exit),
-        steps: onewayTravelSteps(visit, exit)
-      }))
+      options: [
+        ...exits.map((exit) => ({
+          label: onewayExitLabel(state, exit),
+          steps: onewayTravelSteps(visit, exit)
+        })),
+        stay
+      ]
     });
     return;
   }
 
   // "mix": always-pickable exits are offered up front; the rest are the random
   // pool behind a single "roll" option. Degenerates gracefully: all-always =
-  // certain, none-always = random.
+  // certain, none-always = random. Reached only when committed.
   const always = exits.filter((exit) => exit.onewayAlwaysPickable);
   const randomPool = exits.filter((exit) => !exit.onewayAlwaysPickable);
   if (always.length === 0) {
     rollOnewayExit(state, visit, exits);
     return;
   }
-  const options = always.map((exit) => ({
+  const options: { label: string; steps: VisitStep[] }[] = always.map((exit) => ({
     label: onewayExitLabel(state, exit),
     steps: onewayTravelSteps(visit, exit)
   }));
@@ -9555,9 +9905,10 @@ function resolveOnewayTeleport(state: GameState, visit: PendingVisit): void {
       steps: [{ type: "ONEWAY_RANDOM_EXIT", pair, fromSpaceId: visit.fieldId }]
     });
   }
+  options.push(stay);
   visit.steps.unshift({
     type: "CHOOSE_ONE",
-    prompt: `${color.charAt(0).toUpperCase()}${color.slice(1)} one-way monolith — pick an exit, or roll`,
+    prompt: `${Color} one-way monolith — pick an exit, or roll`,
     teleport: { kind: "oneway", pair },
     options
   });
@@ -9574,7 +9925,7 @@ function resolveOnewayRandomExit(
   pair: 1 | 2 | 3 | 4,
   fromSpaceId: MapSpaceId
 ): void {
-  const exits = onewayExitFields(state, pair, fromSpaceId);
+  const exits = onewayExitFields(state, pair, fromSpaceId, visit.playerId);
   const pool = exits.filter((exit) => !exit.onewayAlwaysPickable);
   const rollable = pool.length > 0 ? pool : exits;
   if (rollable.length === 0) {
@@ -9924,18 +10275,22 @@ function completeMapTokenTeleport(
     teleport: teleport.kind
   });
   commitPopulationOnMove(state, hero.controllerId);
-  // Reveal-travel arrival: the just-placed destination token may carry a
-  // designed guard — swept aside on arrival like every network exit.
-  autoWinArrivalGuard(state, hero.controllerId, adventure.fields[destSpaceId]);
-  if (teleport.kind === "whirlpool") {
-    const penalty: VisitStep = { type: "WHIRLPOOL_PENALTY" };
-    if (adventure.pendingVisit) {
-      adventure.pendingVisit.steps.unshift(penalty);
-    } else {
-      adventure.pendingVisit = { heroId: hero.id, playerId: teleport.playerId, fieldId: destSpaceId, steps: [penalty] };
-    }
-    processPendingVisit(state);
+  // Reveal-travel arrival (2026-07-24 rule): resolve the landing like any
+  // teleport arrival — a live designed guard on the just-placed token is FOUGHT
+  // (no auto-sweep); a Whirlpool pays its unit toll FIRST, then resolves arrival.
+  const arrival: VisitStep = {
+    type: "RESOLVE_TELEPORT_ARRIVAL",
+    heroId: hero.id,
+    spaceId: destSpaceId,
+    originSpaceId: from
+  };
+  const steps: VisitStep[] = teleport.kind === "whirlpool" ? [{ type: "WHIRLPOOL_PENALTY" }, arrival] : [arrival];
+  if (adventure.pendingVisit) {
+    adventure.pendingVisit.steps.unshift(...steps);
+  } else {
+    adventure.pendingVisit = { heroId: hero.id, playerId: teleport.playerId, fieldId: destSpaceId, steps };
   }
+  processPendingVisit(state);
 }
 
 // ---------------------------------------------------------------------------
@@ -11340,6 +11695,8 @@ export type NeutralDraw = {
   bankGuard?: boolean;
   /** Random Town defender: fight this unit on its faction Pack side. */
   factionPack?: boolean;
+  /** Designer few-slot guard: fight this unit on its faction Few side. */
+  factionFew?: boolean;
   /**
    * Naval Battles Creature Bank defender: fight from the unit's Creature Bank
    * card (its own stats/abilities, no tier) rather than the Few/Pack/Neutral
@@ -11906,7 +12263,7 @@ export function openDrawChooseMinorArtifacts(
   while (drawn.length < drawCount && deck.drawPile.length > 0) {
     const cardId = deck.drawPile.pop() as CardId;
     const card = cardLibrary[cardId];
-    const isMinor = card?.kind === "artifact" && (card.artifactTier ?? "minor") === "minor";
+    const isMinor = card?.kind === "artifact" && (effectiveArtifactTier(state, cardId) ?? "minor") === "minor";
     if (isMinor && canAcquireSharedDeckCard(state, visit.playerId, deckId, cardId)) {
       drawn.push(cardId);
     } else {
@@ -11998,7 +12355,7 @@ export function revealUntilMinorArtifact(state: GameState, playerId: PlayerId): 
     while (deck.drawPile.length > 0) {
       const cardId = deck.drawPile.pop() as CardId;
       const card = cardLibrary[cardId];
-      const isMinor = card?.kind === "artifact" && (card.artifactTier ?? "minor") === "minor";
+      const isMinor = card?.kind === "artifact" && (effectiveArtifactTier(state, cardId) ?? "minor") === "minor";
       if (isMinor && canAcquireSharedDeckCard(state, playerId, deckId, cardId)) {
         player.hand.push(cardId);
         appendEvent(state, {
@@ -12076,7 +12433,77 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
  *    Neutral Army (the rulebook override).
  * Every other field draws normally from the Field Difficulty Level Table.
  */
+/**
+ * Calamity Waves (§6.6.3): the wave army for wave N — a designer exact-army /
+ * level override when the map pins one (the CustomGuardSpec vocabulary,
+ * mirroring drawGuardArmy's designer branches), else the level table at
+ * waveArmyLevel(N). Deck draws recycle at combat end like any guard army.
+ */
+export function drawWaveArmy(state: GameState, wave: number): NeutralDraw[] {
+  const spec = designedWaveSpec(state, wave);
+  if (spec?.units && spec.units.length > 0) {
+    const random = adventureRandom(state, `wave-army-${wave}`);
+    const playable = PLAYABLE_FACTIONS.filter((faction) => isPlayableFaction(faction, state.anime));
+    return resolveCustomGuardDraws(spec.units, random, {
+      packFaction: spec.packFaction,
+      playableFactions: playable
+    }) as NeutralDraw[];
+  }
+  if (spec?.level) {
+    if (spec.levelArmy === "packs") {
+      const scenarioDifficulty = neutralArmyDifficulty(state);
+      const composition =
+        NEUTRAL_ARMY_TABLE[scenarioDifficulty]?.[spec.level] ??
+        NEUTRAL_ARMY_TABLE.normal[spec.level] ??
+        NEUTRAL_ARMY_TABLE.normal[1];
+      const random = adventureRandom(state, `wave-army-packs-${wave}`);
+      const playable = PLAYABLE_FACTIONS.filter((faction) => isPlayableFaction(faction, state.anime));
+      return resolveLevelPackGuardDraws(composition, random, {
+        packFaction: spec.packFaction,
+        playableFactions: playable
+      }) as NeutralDraw[];
+    }
+    return drawNeutralArmy(state, spec.level);
+  }
+  return drawNeutralArmy(state, waveArmyLevel(wave));
+}
+
+/**
+ * Mine-guard reinforcement (house rule `mine-guard-reinforcement`, default OFF):
+ * every fought-out neutral guard fight on a MINE field (all resource types —
+ * gold / valuables / materials share `location === "mine"`) fields ONE EXTRA
+ * random neutral BRONZE creature on top of the normal guard army. Returns [] when
+ * the rule is off or the field is not a mine.
+ *
+ * The extra bronze is a PLAIN deck draw (`{ tier: "bronze" }`, no bankGuard), so
+ * it recycles to the bronze discard at combat end via the shared guard-recycle
+ * seam like every other drawn guard. It is appended AFTER the base guard army in
+ * drawGuardArmy — which the reveal seam only reaches for real guard-field fights
+ * (waves / raid bosses / dungeon floors / Creature Banks never call drawGuardArmy)
+ * and AFTER combat difficulty is fixed — so the fight's difficulty / XP / reward
+ * are untouched (the extra bronze only makes the fought army bigger). It applies
+ * to level-drawn armies AND designer exact / custom / level guards on a mine, and
+ * to re-fights of a re-guarded mine (each funnels through drawGuardArmy).
+ */
+function mineGuardReinforcementDraws(state: GameState, field: MapFieldState | undefined): NeutralDraw[] {
+  if (field?.location !== "mine" || !houseRuleEnabled(state, "mine-guard-reinforcement")) {
+    return [];
+  }
+  const unitDefId = drawFromNeutralDeck(state, "bronze");
+  return unitDefId ? [{ unitDefId, tier: "bronze" }] : [];
+}
+
 export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
+  // Global "mine guards +1 bronze" house rule composes with EVERY base branch
+  // below (level draw, designer exact / level, Random Town, etc.) — it appends
+  // one extra bronze on a mine field, or nothing when the rule is off / the field
+  // is not a mine. Placement caps gracefully: the 8-cell defender zone seats a
+  // legit mine army (≤ 6 designer units + 1); an over-full hand-edited map leaves
+  // the surplus at its default cell (placeNeutralUnits) — no crash, no stall.
+  return [...drawGuardArmyBase(state, field, difficulty), ...mineGuardReinforcementDraws(state, field)];
+}
+
+function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
   // Designer "certain army" guard: mint the exact cards, Creature-Bank style —
   // never drawn from nor recycled to the tier decks. It REPLACES every
   // printed/location draw below. Unknown ids are skipped defensively.
@@ -12442,16 +12869,30 @@ export function makeCombatUnitFromNeutral(
   unitId: UnitId,
   position: number,
   ruleset: GameRuleset = "legacy",
-  /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean }
+  /** Unit house-rule overrides; falls back to the bundled mode default. */
+  overrides?: {
+    griffinBuff?: boolean;
+    marksmanBuff?: boolean;
+    phoenixPackRebirth?: boolean;
+  }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[draw.unitDefId];
-  // Creature Bank defenders fight from their own bank card; Random Town
-  // defenders fight on their faction's Pack side; every other guard uses the
-  // single-sided Neutral card.
+  // Creature Bank defenders fight from their own bank card; Random Town /
+  // designer Pack slots fight on the faction Pack side; designer Few slots on
+  // the Few side; every other guard uses the single-sided Neutral card.
   const bankSide = draw.bankUnit ? getBankSide(draw.unitDefId) : undefined;
-  const variant: "neutral" | "pack" = draw.factionPack ? "pack" : "neutral";
-  const printed = draw.bankUnit ? bankSide : draw.factionPack ? def?.pack : def?.neutral;
+  const variant: "neutral" | "pack" | "few" = draw.factionPack
+    ? "pack"
+    : draw.factionFew
+      ? "few"
+      : "neutral";
+  const printed = draw.bankUnit
+    ? bankSide
+    : draw.factionPack
+      ? def?.pack
+      : draw.factionFew
+        ? def?.few
+        : def?.neutral;
   if (!def || !printed) {
     return null;
   }
@@ -12461,7 +12902,7 @@ export function makeCombatUnitFromNeutral(
   const side = draw.bankUnit ? printed : applyUnitSideRules(ruleset, draw.unitDefId, variant, printed, overrides);
   const cardName = draw.bankUnit
     ? `${def.name} (Creature Bank)`
-    : `${draw.factionPack ? "Pack of" : "Neutral"} ${def.name}`;
+    : `${draw.factionPack ? "Pack of" : draw.factionFew ? "Few of" : "Neutral"} ${def.name}`;
 
   return {
     id: unitId,
@@ -12469,6 +12910,8 @@ export function makeCombatUnitFromNeutral(
     name: def.name,
     cardName,
     variant,
+    // Designer few-slot: survive a retreat as Few (not re-promoted to Pack).
+    ...(draw.factionFew ? { factionFew: true as const } : {}),
     grade: def.tier,
     type: side.type ?? def.type,
     attack: side.attack,
@@ -12509,11 +12952,12 @@ export function makeCombatUnitFromArmy(
   unitId: UnitId,
   position: number,
   ruleset: GameRuleset = "legacy",
-  /** Griffin/Marksman toggle overrides; falls back to the bundled mode default. */
+  /** Unit house-rule overrides; falls back to the bundled mode default. */
   overrides?: {
     griffinBuff?: boolean;
     marksmanBuff?: boolean;
     polishUnitStacks?: boolean;
+    phoenixPackRebirth?: boolean;
   }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
@@ -12900,6 +13344,482 @@ function beginRoundStartEventBarrier(state: GameState): void {
 }
 
 /**
+ * Calamity Waves (§6.6) — the round-start hook, called from BOTH round-kind
+ * branches of startAdventureRound right after the Event/Astrologers block:
+ *  - the round BEFORE a wave, announce it ("the Gate groans") so players can
+ *    position;
+ *  - on the wave round, queue one `wave-assault` reward per LIVE seat (seat
+ *    order) and raise the round-start barrier over them. ONE barrier spans the
+ *    Event AND the waves: an already-queued trailing sentinel is lifted and
+ *    re-appended after the assault steps, so the whole table stays frozen
+ *    until the last assault resolves (plan order: income → Event → waves →
+ *    City Halls → turns).
+ */
+function applyCalamityWaveRoundStart(state: GameState): void {
+  const adventure = state.adventure;
+  const config = adventure?.monsterWaves;
+  if (!adventure || !config) {
+    return;
+  }
+  const nextWave = waveNumberForRound(config.cadence, state.round + 1);
+  if (nextWave) {
+    appendEvent(state, {
+      type: "MONSTER_WAVE_ANNOUNCED",
+      round: state.round,
+      wave: nextWave,
+      message: `The Gate groans — monster wave ${nextWave} strikes every army at the start of round ${
+        state.round + 1
+      }. Position your defenses!`
+    });
+  }
+  const wave = waveNumberForRound(config.cadence, state.round);
+  if (!wave) {
+    return;
+  }
+  const seats = liveEventPlayers(state);
+  if (seats.length === 0) {
+    return;
+  }
+  const last = adventure.rewardQueue[adventure.rewardQueue.length - 1];
+  if (last?.kind === "round-start-events-resolved") {
+    adventure.rewardQueue.pop();
+  }
+  for (const playerId of seats) {
+    adventure.rewardQueue.push({ playerId, kind: "wave-assault", wave });
+  }
+  appendEvent(state, {
+    type: "MONSTER_WAVE_STARTED",
+    round: state.round,
+    wave,
+    level: waveArmyLevel(wave),
+    message: `Monster wave ${wave} pours through — every player fights a level-${waveArmyLevel(
+      wave
+    )} war party at round start, in seat order.`
+  });
+  beginRoundStartEventBarrier(state);
+}
+
+/**
+ * Calamity Waves — a repelled assault's printed reward (§6.6.3): +2 gold,
+ * +1 main-hero XP, and from wave 3 on one Treasure-die roll (unshifted to the
+ * queue FRONT so the winner rolls before the next seat's assault opens).
+ * Called from finalizeAdventureCombat's wave branch; the difficulty-0 context
+ * already paid no level XP, and the post-win field visit is skipped there.
+ */
+export function grantWaveVictoryRewards(state: GameState, playerId: PlayerId, wave: number): void {
+  gainResources(state, playerId, { gold: WAVE_WIN_GOLD }, `repelled monster wave ${wave}`);
+  gainExperience(state, playerId, WAVE_WIN_XP);
+  if (wave >= WAVE_TREASURE_DIE_FROM_WAVE) {
+    state.adventure?.rewardQueue.unshift({
+      playerId,
+      kind: "visit-steps",
+      steps: [{ type: "ROLL_TREASURE_DICE", count: 1 }]
+    });
+  }
+  appendEvent(state, {
+    type: "MONSTER_WAVE_REPELLED",
+    playerId,
+    wave,
+    gold: WAVE_WIN_GOLD,
+    message: `${state.players[playerId]?.name ?? playerId} repelled monster wave ${wave}: +${WAVE_WIN_GOLD} gold, +${WAVE_WIN_XP} hero experience${
+      wave >= WAVE_TREASURE_DIE_FROM_WAVE ? ", and a Treasure-die roll" : ""
+    }.`
+  });
+}
+
+/**
+ * Calamity Waves — pillage on a LOST (or retreated/emptied) assault (§6.6.3):
+ * lose 3 gold (floored at 0), and the player's mine/settlement NEAREST their
+ * home town is OVERRUN — flag removed, `everFlagged`/`blackCube` reset and a
+ * difficulty-Ⅰ guard re-seeded, so the field must be re-fought and re-flagged
+ * (re-earning its first-flag reward — the clear-cubes re-open precedent).
+ * Never razes a building, never eliminates. No holding = gold loss only.
+ */
+export function applyWavePillage(state: GameState, playerId: PlayerId, wave: number): void {
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (!adventure || !player) {
+    return;
+  }
+  const goldLost = Math.min(WAVE_PILLAGE_GOLD, player.resources.gold);
+  if (goldLost > 0) {
+    player.resources.gold -= goldLost;
+  }
+
+  const homeFieldId = getTownOfPlayer(state, playerId)?.fieldId ?? null;
+  const homeCoord = homeFieldId ? parseHexSpaceId(homeFieldId) : null;
+  const holdings = Object.values(adventure.fields)
+    .filter(
+      (field) =>
+        field.flagOwnerId === playerId && (field.location === "mine" || field.location === "settlement")
+    )
+    .sort((left, right) => {
+      const leftCoord = parseHexSpaceId(left.spaceId);
+      const rightCoord = parseHexSpaceId(right.spaceId);
+      const leftDistance = homeCoord && leftCoord ? hexDistance(homeCoord, leftCoord) : 0;
+      const rightDistance = homeCoord && rightCoord ? hexDistance(homeCoord, rightCoord) : 0;
+      if (leftDistance !== rightDistance) {
+        return leftDistance - rightDistance;
+      }
+      return left.spaceId.localeCompare(right.spaceId);
+    });
+  const overrun = holdings[0] ?? null;
+  if (overrun) {
+    overrun.flagOwnerId = null;
+    overrun.blackCube = false;
+    overrun.everFlagged = false;
+    if (overrun.location === "settlement") {
+      overrun.settlementResource = null;
+    }
+    overrun.difficulty = WAVE_OVERRUN_GUARD_LEVEL;
+    overrun.customGuardLevel = WAVE_OVERRUN_GUARD_LEVEL;
+  }
+
+  appendEvent(state, {
+    type: "MONSTER_WAVE_PILLAGED",
+    playerId,
+    wave,
+    goldLost,
+    overrunFieldId: overrun?.spaceId ?? null,
+    message: `Monster wave ${wave} broke through ${state.players[playerId]?.name ?? playerId}'s defense: ${
+      goldLost > 0 ? `${goldLost} gold plundered` : "nothing left to plunder"
+    }${overrun ? `, and the ${overrun.location === "mine" ? "mine" : "settlement"} nearest home is overrun (a level-Ⅰ guard moves in)` : ""}.`
+  });
+}
+
+/**
+ * Raid Bosses (§6.5.3) — the round-start hook beside the waves': announce the
+ * scheduled Rift Lair one round ahead ("the sky cracks"), place it on the
+ * spawn round (retrying every round until a candidate field is revealed), and
+ * regrow an ignored boss +1 layer (to its printed cap) every 4th round.
+ */
+function applyRaidBossRoundStart(state: GameState): void {
+  const adventure = state.adventure;
+  const bosses = adventure?.raidBosses;
+  if (!adventure || !bosses) {
+    return;
+  }
+
+  const spawnRound = Math.max(
+    2,
+    Math.min(30, adventure.mapPreset?.raidBosses?.spawnRound ?? RAID_BOSS_SPAWN_ROUND)
+  );
+  const scheduledSpawned = Object.values(bosses).some((boss) => boss.scheduled);
+
+  if (!scheduledSpawned && state.round === spawnRound - 1) {
+    appendEvent(state, {
+      type: "RAID_BOSS_ANNOUNCED",
+      round: state.round,
+      message: `The sky cracks — a Rift Lair tears open at the start of round ${spawnRound}. Something colossal is coming through.`
+    });
+  }
+
+  if (!scheduledSpawned && state.round >= spawnRound) {
+    spawnScheduledRaidBoss(state);
+  }
+
+  // Escalation — an unslain boss festers: +1 layer every 4th round after its
+  // spawn, capped at the printed layer count.
+  for (const [instanceId, boss] of Object.entries(bosses)) {
+    if (boss.slainBy || boss.layersLeft <= 0) {
+      continue;
+    }
+    const age = state.round - boss.spawnedRound;
+    if (age <= 0 || age % RAID_BOSS_ESCALATION_INTERVAL !== 0) {
+      continue;
+    }
+    const def = resolveBossDefinition(state, boss.defId);
+    const cap = def?.layers ?? boss.layersLeft;
+    if (boss.layersLeft >= cap) {
+      continue;
+    }
+    boss.layersLeft += 1;
+    appendEvent(state, {
+      type: "RAID_BOSS_ESCALATED",
+      bossInstanceId: instanceId,
+      layersLeft: boss.layersLeft,
+      message: `${def?.name ?? "The rift boss"} festers unslain — it regrows a health layer (${boss.layersLeft} bars now).`
+    });
+  }
+}
+
+/**
+ * The scheduled spawn's field pick: the highest-difficulty REVEALED plain
+ * guard field, preferring the map center bands, skipping objectives (towns,
+ * settlements, mines, obelisks, victory fields, banks, outposts, teleports),
+ * flagged fields and any hex a hero stands on. No candidate revealed yet =
+ * no spawn (the round-start hook retries next round).
+ */
+function spawnScheduledRaidBoss(state: GameState): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  const excludedLocations = new Set([
+    "town",
+    "random_town",
+    "settlement",
+    "mine",
+    "obelisk",
+    "star_axis",
+    "grail",
+    "dragon_utopia",
+    "creature_bank",
+    "rift_lair",
+    "dungeon_gate"
+  ]);
+  const bandRank: Record<string, number> = { center: 0, near: 1, far: 2 };
+  const heroSpaces = new Set(
+    Object.values(state.heroes).flatMap((hero) => (hero?.spaceId ? [hero.spaceId] : []))
+  );
+  const candidates = Object.values(adventure.fields)
+    .filter(
+      (field) =>
+        (field.difficulty ?? 0) >= 1 &&
+        !field.flagOwnerId &&
+        !field.bankId &&
+        !field.riftLair &&
+        !field.dungeonSite &&
+        !excludedLocations.has(field.location) &&
+        !isBankStyleGuardLocation(field.location) &&
+        !isTeleportObjectGuardLocation(field.location) &&
+        !heroSpaces.has(field.spaceId)
+    )
+    .sort((left, right) => {
+      const difficultyOrder = (right.difficulty ?? 0) - (left.difficulty ?? 0);
+      if (difficultyOrder !== 0) {
+        return difficultyOrder;
+      }
+      const leftBand = bandRank[adventure.tiles[left.tileInstanceId]?.group ?? ""] ?? 3;
+      const rightBand = bandRank[adventure.tiles[right.tileInstanceId]?.group ?? ""] ?? 3;
+      if (leftBand !== rightBand) {
+        return leftBand - rightBand;
+      }
+      return left.spaceId.localeCompare(right.spaceId);
+    });
+  const field = candidates[0];
+  if (!field) {
+    return;
+  }
+  const pool = scheduledBossPool(state);
+  if (pool.length === 0) {
+    return;
+  }
+  const random = adventureRandom(state, `raid-boss-spawn-${state.round}`);
+  const defId = pool[random.nextInt(0, pool.length - 1)] ?? pool[0];
+  const def = resolveBossDefinition(state, defId);
+  if (!def) {
+    return;
+  }
+  spawnRaidBossOnField(state, field, def.id, { scheduled: true });
+}
+
+/**
+ * Convert a field into a Rift Lair holding `defId` at full printed layers.
+ * The printed guard/visit content is REPLACED (the boss IS the guard):
+ * designer guard remnants and the black cube are cleared, `location` becomes
+ * "rift_lair" and the instance is recorded on `adventure.raidBosses`. Also
+ * the designer `boss_lair`-style entry point (preset spawns reuse it).
+ */
+export function spawnRaidBossOnField(
+  state: GameState,
+  field: MapFieldState,
+  defId: string,
+  options?: { scheduled?: true }
+): void {
+  const adventure = state.adventure;
+  const def = resolveBossDefinition(state, defId);
+  if (!adventure || !def) {
+    return;
+  }
+  if (!adventure.raidBosses) {
+    adventure.raidBosses = {};
+  }
+  const instanceId = `raid_${def.id}_${field.spaceId}`;
+  clearCustomGuard(field);
+  delete field.difficulty;
+  field.blackCube = false;
+  field.location = "rift_lair";
+  field.riftLair = instanceId;
+  adventure.raidBosses[instanceId] = {
+    defId: def.id,
+    fieldId: field.spaceId,
+    layersLeft: def.layers,
+    layerBreaks: {},
+    spawnedRound: state.round,
+    ...(options?.scheduled ? { scheduled: true as const } : {})
+  };
+  appendEvent(state, {
+    type: "RAID_BOSS_SPAWNED",
+    bossInstanceId: instanceId,
+    defId: def.id,
+    bossName: def.name,
+    fieldId: field.spaceId,
+    layers: def.layers,
+    message: `${def.name} (${def.layers} health bars) now lairs in a Rift on the map. Every layer broken pays 2 gold at once; the kill pays ${RAID_BOSS_KILL_GOLD} gold + a relic-tier Artifact search. Ignored, it regrows a layer every ${RAID_BOSS_ESCALATION_INTERVAL}th round.`
+  });
+}
+
+/**
+ * The Dungeon (§6.7.3): carve the one-per-map delve site onto a (former
+ * Blocked) Field — the placeCreatureBank sibling. Latches
+ * `adventure.dungeonSite.fieldId`; per-player floors live on PlayerState.
+ */
+export function placeDungeonSite(state: GameState, spaceId: MapSpaceId): MapFieldState | null {
+  const adventure = state.adventure;
+  const field = adventure?.fields[spaceId];
+  if (!adventure || !adventure.dungeonSite || !field) {
+    return null;
+  }
+  field.location = "dungeon_gate";
+  field.dungeonSite = true;
+  delete field.difficulty;
+  delete field.resource;
+  delete field.amount;
+  delete field.faction;
+  delete field.terrain;
+  delete field.borderEdges;
+  field.blackCube = false;
+  field.flagOwnerId = null;
+  delete field.extraFlagOwnerIds;
+  field.everFlagged = false;
+  field.settlementResource = null;
+  delete field.grailDiggable;
+  adventure.dungeonSite.fieldId = spaceId;
+  appendEvent(state, {
+    type: "DUNGEON_PLACED",
+    fieldId: spaceId,
+    message:
+      "The Dungeon's gate stands open — a repeatable delve, one floor per turn (floors 1–10, floor bosses at 5 and 10, a relic and the Conqueror title at the bottom)."
+  });
+  return field;
+}
+
+/**
+ * The Dungeon gate visit (§6.7.3 + door rooms): once per turn, delve YOUR
+ * current floor — pick one of two revealed rooms (treasure / shrine /
+ * whispering-wall dialogue / camp), resolve it, then the floor den fight
+ * opens. Floors 5 and 10 skip the doors and face the floor boss directly.
+ * Loss/retreat costs nothing; a win advances the floor and pays the ladder.
+ */
+function handleDungeonGateVisit(
+  state: GameState,
+  playerId: PlayerId,
+  heroId: HeroId,
+  field: MapFieldState
+): void {
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (!adventure || !adventure.dungeonSite || !player) {
+    return;
+  }
+  if (player.dungeonDelveRound === state.round) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: "The Dungeon admits each delver once per turn — return next turn."
+    });
+    return;
+  }
+  const floor = dungeonFloorOf(state, playerId);
+  const bossId = DUNGEON_BOSS_FLOORS[floor];
+  const repeat = Boolean(player.dungeonConquered);
+  const fightStep: VisitStep = { type: "DUNGEON_FLOOR_FIGHT", floor };
+
+  if (bossId) {
+    const boss = resolveBossDefinition(state, bossId);
+    adventure.pendingVisit = {
+      heroId,
+      playerId,
+      fieldId: field.spaceId,
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: `Floor ${floor}: ${boss?.name ?? "the floor warden"} bars the way (${
+            boss?.layers ?? 2
+          } health bars, with its retinue). Face it?${repeat ? " (Already conquered — the repeat pays a Treasure die + 3 gold.)" : ""}`,
+          options: [
+            { label: `Face ${boss?.name ?? "the floor boss"}`, steps: [fightStep] },
+            { label: "Withdraw", steps: [] }
+          ]
+        }
+      ]
+    };
+    processPendingVisit(state);
+    return;
+  }
+
+  const rng = adventureRandom(state, `dungeon-doors-${playerId}-${floor}`);
+  const [left, right] = dungeonDoorsForFloor(rng, floor);
+  adventure.pendingVisit = {
+    heroId,
+    playerId,
+    fieldId: field.spaceId,
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `Floor ${floor} of the Dungeon — two doors stand ajar. Behind either, the floor's den (a level-${dungeonFloorDifficulty(
+          floor
+        )} war party) waits. Which way?`,
+        options: [
+          { label: `Left door: ${left.label}`, steps: [...left.steps, fightStep] },
+          { label: `Right door: ${right.label}`, steps: [...right.steps, fightStep] },
+          { label: "Leave the Dungeon", steps: [] }
+        ]
+      }
+    ]
+  };
+  processPendingVisit(state);
+}
+
+/**
+ * Rift Lair visit (§6.5.3): "entering the lair = a normal neutral-combat entry
+ * behind a confirm prompt". Challenge opens the boss fight (rebuilt from its
+ * REMAINING layers — wounds persist); Withdraw steps the hero back where they
+ * came from. A dead/cleared lair visit is inert (the kill already black-cubed
+ * the field).
+ */
+function handleRiftLairVisit(state: GameState, playerId: PlayerId, heroId: HeroId, field: MapFieldState): void {
+  const adventure = state.adventure;
+  if (!adventure || !field.riftLair) {
+    return;
+  }
+  const boss = adventure.raidBosses?.[field.riftLair];
+  const def = boss ? resolveBossDefinition(state, boss.defId) : null;
+  if (!boss || !def || boss.slainBy || boss.layersLeft <= 0) {
+    return;
+  }
+  adventure.pendingVisit = {
+    heroId,
+    playerId,
+    fieldId: field.spaceId,
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `${def.name} lairs here — ${boss.layersLeft} health bar${boss.layersLeft === 1 ? "" : "s"} remain${
+          boss.layersLeft === 1 ? "s" : ""
+        }. Challenge it? (Wounds persist; every layer broken pays ${RAID_BOSS_LAYER_BREAK_GOLD} gold, the kill ${RAID_BOSS_KILL_GOLD} gold + a relic search.)`,
+        options: [
+          {
+            label: `Challenge ${def.name}`,
+            steps: [{ type: "RAID_BOSS_FIGHT", bossInstanceId: field.riftLair }]
+          },
+          {
+            // The lair is revisitable: withdrawing means standing at its mouth
+            // (Revisit for 1 MP to reconsider). No forced step-back — the
+            // visit already re-stamped lastVisitedField, so a synthetic
+            // teleport would only ever bounce the hero onto itself.
+            label: "Withdraw",
+            steps: []
+          }
+        ]
+      }
+    ]
+  };
+  processPendingVisit(state);
+}
+
+/**
  * Starts an adventure round (rulebook round structure): refresh tokens, MP
  * and expert effects; then even rounds draw an Astrologers Proclaim card and
  * odd rounds after the first pay Resource Round income.
@@ -12979,6 +13899,11 @@ export function startAdventureRound(state: GameState): void {
     if ((state.adventure?.rewardQueue.length ?? 0) > astroQueueBefore) {
       beginRoundStartEventBarrier(state);
     }
+    // Calamity Waves: announce/queue this round's wave assaults right behind
+    // the proclamation, under ONE shared barrier (waves resolve before any
+    // building trigger or turn). Raid Bosses ride the same round-start hook.
+    applyCalamityWaveRoundStart(state);
+    applyRaidBossRoundStart(state);
     // Map timed events queue behind the proclamation (and its barrier
     // sentinel), so the table finishes the Astrologers card first.
     applyCustomMapTimedEvents(state);
@@ -13141,6 +14066,12 @@ export function startAdventureRound(state: GameState): void {
   if ((state.adventure?.rewardQueue.length ?? 0) > eventQueueBefore) {
     beginRoundStartEventBarrier(state);
   }
+
+  // Calamity Waves + Raid Bosses: the shared round-start hook (plan order:
+  // income → Event → wave assaults → City Halls → turns; one barrier spans
+  // the Event and the waves).
+  applyCalamityWaveRoundStart(state);
+  applyRaidBossRoundStart(state);
 
   for (const playerId of state.turnOrder) {
     const player = state.players[playerId];
@@ -16389,7 +17320,7 @@ function drawEventFamilyCard(
         if (relicLocked && cardLibrary[candidate]?.artifactTier === "relic") {
           return false;
         }
-        if (family === "artifacts" && !polishArtifactTierAllowed(state, cardLibrary[candidate]?.artifactTier)) {
+        if (family === "artifacts" && !polishArtifactTierAllowed(state, effectiveArtifactTier(state, candidate))) {
           return false;
         }
         return true;
@@ -16411,7 +17342,9 @@ function drawEventFamilyCard(
 function sharedDeckIdForCard(state: GameState, cardId: CardId): string {
   const card = cardLibrary[cardId];
   if (card?.kind === "artifact") {
-    return state.decks["artifacts"] ? "artifacts" : `artifacts-${card.artifactTier ?? "minor"}`;
+    // Return to the tier pile it was DEALT from (effective tier), so a Torso
+    // dealt into the Minor deck (rule OFF) goes back Minor, never Major.
+    return state.decks["artifacts"] ? "artifacts" : `artifacts-${effectiveArtifactTier(state, cardId) ?? "minor"}`;
   }
   if (card?.kind === "spell") {
     return state.decks["spells-expert"] && spellDeckBinhExpert.includes(cardId) ? "spells-expert" : "spells";
@@ -17091,7 +18024,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       }
       const options: { label: string; steps: VisitStep[] }[] = [];
       for (const draw of drawn) {
-        const tier = cardLibrary[draw.cardId]?.artifactTier ?? "minor";
+        const tier = effectiveArtifactTier(state, draw.cardId) ?? "minor";
         const price = EVENT_ARTIFACT_PRICES[tier];
         if (!hasResources(player, { gold: price })) {
           continue;
@@ -17746,7 +18679,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
           continue;
         }
         seen.add(entry.cardId);
-        const tier = cardLibrary[entry.cardId]?.artifactTier ?? "minor";
+        const tier = effectiveArtifactTier(state, entry.cardId) ?? "minor";
         if (!polishArtifactTierAllowed(state, tier)) {
           continue;
         }
@@ -17777,7 +18710,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
           if (!top) {
             continue;
           }
-          const tier = cardLibrary[top]?.artifactTier ?? "minor";
+          const tier = effectiveArtifactTier(state, top) ?? "minor";
           // The early-game Relic lock covers the discard-top offer too.
           if (tier === "relic" && eventRelicsLocked(state)) {
             continue;

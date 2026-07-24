@@ -683,7 +683,11 @@ describe("sanitizeSharedMap", () => {
           // Not an array → property absent.
           { row: 12, col: 12, group: "near", faceDown: true, oneOfTileDefIds: "nope" },
           // All-garbage list → property absent entirely.
-          { row: 15, col: 15, group: "sea", faceDown: true, oneOfTileDefIds: [1, null, {}] }
+          { row: 15, col: 15, group: "sea", faceDown: true, oneOfTileDefIds: [1, null, {}] },
+          // A VALID FACE-DOWN one-of list (the "secret random tile from a list"
+          // variant) must survive with faceDown intact — the sanitizer keeps
+          // oneOfTileDefIds regardless of face-up/down (only starting strips it).
+          { row: 20, col: 20, group: "far", faceDown: true, oneOfTileDefIds: ["F1", "F2"] }
         ]
       },
       1
@@ -692,6 +696,8 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[1]).not.toHaveProperty("oneOfTileDefIds");
     expect(record!.tiles[2]).not.toHaveProperty("oneOfTileDefIds");
     expect(record!.tiles[3]).not.toHaveProperty("oneOfTileDefIds");
+    expect(record!.tiles[4].faceDown).toBe(true);
+    expect(record!.tiles[4].oneOfTileDefIds).toEqual(["F1", "F2"]);
   });
 
   it("falls back to the default scenario when the id is unknown", () => {

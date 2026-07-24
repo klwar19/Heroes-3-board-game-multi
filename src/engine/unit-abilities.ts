@@ -47,6 +47,12 @@ export function getUnitAbilityDefinitions(unit: CombatUnitState): UnitAbilityDef
   // abilities must never leak onto a player's army card even if another effect
   // copied an ability id onto it.
   const isStacked = Boolean(unit.stackToken);
+  // Raid-boss phase gate (§6.5.2): health layers remaining = armyStacks + 1
+  // (a plain unlayered unit counts 1). An ability with `requiresLayersAtMost`
+  // is hidden — for every read, combat or display — while MORE layers remain,
+  // so e.g. Enrage switches on live the moment the boss sheds down to its
+  // last bar (the shed path re-reads abilities on the next attack fold).
+  const layersRemaining = (unit.armyStacks ?? 0) + 1;
   return unit.abilities
     .map((abilityId) => unitAbilities[abilityId])
     .filter(Boolean)
@@ -54,7 +60,11 @@ export function getUnitAbilityDefinitions(unit: CombatUnitState): UnitAbilityDef
     // ability vanishes — for every read, combat or display — the instant the
     // unit is not Stacked (never given a token, or it was discarded on a lethal
     // hit). Non-bank abilities never set the flag, so this is a no-op for them.
-    .filter((ability) => !ability.requiresStacked || isStacked);
+    .filter((ability) => !ability.requiresStacked || isStacked)
+    .filter(
+      (ability) =>
+        ability.requiresLayersAtMost === undefined || layersRemaining <= ability.requiresLayersAtMost
+    );
 }
 
 export function hasUnitAbilityEffect(
@@ -559,6 +569,8 @@ export type DeathStareFollowUp = {
   abilityName: string;
   diceCount: number;
   onRoll: number;
+  /** Raid-boss Devour: only target sides of at most this tier are threatened. */
+  targetGradeAtMost?: "bronze" | "silver" | "gold" | "azure";
 };
 
 /** Gorgons: roll extra dice after the attack and instakill the target on all-matching faces. */
@@ -570,10 +582,63 @@ export function getDeathStareFollowUps(unit: CombatUnitState): DeathStareFollowU
             abilityId: ability.id,
             abilityName: ability.name,
             diceCount: ability.effect.diceCount,
-            onRoll: ability.effect.onRoll
+            onRoll: ability.effect.onRoll,
+            ...(ability.effect.targetGradeAtMost
+              ? { targetGradeAtMost: ability.effect.targetGradeAtMost }
+              : {})
           }
         ]
       : []
+  );
+}
+
+const STARE_GRADE_ORDER: Record<"bronze" | "silver" | "gold" | "azure", number> = {
+  bronze: 0,
+  silver: 1,
+  gold: 2,
+  azure: 3
+};
+
+/**
+ * Whether a tier-gated stare (raid-boss Devour) threatens this defender. A
+ * gradeless target — bank card, commander, summon, raid boss — is never
+ * threatened (the engine-wide tier-gate convention); otherwise the defender's
+ * printed tier must be at most the follow-up's gate. A classic Death Stare
+ * (no gate) threatens everyone.
+ */
+export function deathStareFollowUpAppliesTo(
+  followUp: DeathStareFollowUp,
+  defender: CombatUnitState
+): boolean {
+  if (!followUp.targetGradeAtMost) {
+    return true;
+  }
+  if (defender.bankUnit || defender.bossUnit || defender.commanderSlug || defender.summoned) {
+    return false;
+  }
+  return STARE_GRADE_ORDER[defender.grade] <= STARE_GRADE_ORDER[followUp.targetGradeAtMost];
+}
+
+/**
+ * Raid-boss Fear (§6.8): whether this player's morale USE is locked — a living
+ * ENEMY unit in their open combat carries MORALE_LOCK. Gates every morale
+ * spend surface (token/card reroll + set-die sources, SPEND_MORALE offers and
+ * resolution, the reaction-window combat bonus); morale GAIN and morale-card
+ * draws are deliberately untouched.
+ */
+export function moraleLockedForPlayer(
+  combat: CombatState | null | undefined,
+  playerId: string
+): boolean {
+  if (!combat || combat.outcome) {
+    return false;
+  }
+  if (combat.attackerPlayerId !== playerId && combat.defenderPlayerId !== playerId) {
+    return false;
+  }
+  return Object.values(combat.units).some(
+    (unit) =>
+      unit.controllerId !== playerId && isAlive(unit) && hasUnitAbilityEffect(unit, "MORALE_LOCK")
   );
 }
 

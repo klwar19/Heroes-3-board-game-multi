@@ -100,6 +100,108 @@ describe("HeroBoard — the Ⅰ/Ⅳ/Ⅵ specialty cards live in the LEVEL-TRACK 
   });
 });
 
+// jsdom cannot compute CSS, so the glowing-frame LOOK is not asserted here (it
+// is CSS-only — see globals.css .hbXpBox.current + .hbCube). These pin the
+// WIRING the browser paints over: the 13 die-cut hole overlays laid on the
+// AUTHENTIC printed-mat art (xp-track.webp — the laurelled Ⅰ–Ⅶ numerals, blue
+// arrows and hand/crown icons are IN the scan, not drawn in CSS), and — crucially
+// — that the xp→box mapping has no off-by-one (current box index === experience,
+// carrying exactly one corner cube). The mat has no engraved 1/1.5/…/7 values or
+// spear dividers, so none render.
+describe("HeroBoard — the full printed 13-box experience zig-zag", () => {
+  const EXPECTED_LABELS = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5", "5.5", "6", "6.5", "7"];
+
+  it("lays 13 hole overlays over the real printed-mat track art (numerals/arrows/icons are the scan)", () => {
+    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
+    // The track is the authentic scan, not a CSS reconstruction.
+    const art = container.querySelector(".hbTrack .hbTrackArt") as HTMLElement | null;
+    expect(art).toBeTruthy();
+    expect(art!.style.backgroundImage).toContain("xp-track.webp");
+    // …so the old CSS-drawn numerals / hand-limit / crown / spear layers are gone.
+    expect(container.querySelector(".hbNumerals")).toBeNull();
+    expect(container.querySelector(".hbMidBand")).toBeNull();
+    expect(container.querySelector(".hbSpear")).toBeNull();
+    expect(container.querySelector(".hbBoxValue")).toBeNull();
+  });
+
+  it("renders exactly 13 XP boxes in order (1, 1.5, … 7); even xp on the TOP row, odd on the BOTTOM", () => {
+    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
+    const boxes = Array.from(container.querySelectorAll(".hbTrack .hbXpBox"));
+    expect(boxes).toHaveLength(13);
+    // Document order is the labelled sequence 1, 1.5, 2, 2.5, … 7.
+    expect(boxes.map((b) => b.getAttribute("data-xp-value"))).toEqual(EXPECTED_LABELS);
+    expect(boxes.map((b) => Number(b.getAttribute("data-xp-index")))).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+    ]);
+    // The zig-zag: even xp indices sit on the top row, odd on the bottom.
+    for (const box of boxes) {
+      const idx = Number(box.getAttribute("data-xp-index"));
+      expect(box.getAttribute("data-xp-row")).toBe(idx % 2 === 0 ? "top" : "bottom");
+      // Each hole is absolutely positioned over its measured spot in the art.
+      expect((box as HTMLElement).style.left).toMatch(/%$/);
+      expect((box as HTMLElement).style.width).toMatch(/%$/);
+    }
+  });
+
+  it.each([
+    { xp: 0, value: "1", row: "top" },
+    { xp: 3, value: "2.5", row: "bottom" },
+    { xp: 12, value: "7", row: "top" }
+  ])("marks experience $xp (label $value) with the glow + a single corner cube — no off-by-one", ({ xp, value, row }) => {
+    const state = bulwarkAdventure("eikthurn");
+    const hero = getMainHero(state, "p1")!;
+    hero.experience = xp;
+    hero.level = Math.min(7, 1 + Math.floor(xp / 2));
+    const { container } = renderBoardState(state);
+    // Exactly one box is flagged current, and it is the correct label + row.
+    const current = container.querySelectorAll('.hbXpBox[data-current="true"]');
+    expect(current).toHaveLength(1);
+    expect(current[0].getAttribute("data-xp-value")).toBe(value);
+    expect(current[0].getAttribute("data-xp-row")).toBe(row);
+    expect(current[0].getAttribute("aria-current")).toBe("step");
+    // Exactly one subtle progress cube, and it lives INSIDE the current box's
+    // corner (never a separate marker floating over a box's centre).
+    const cubes = container.querySelectorAll(".hbCube");
+    expect(cubes).toHaveLength(1);
+    expect(current[0].contains(cubes[0])).toBe(true);
+  });
+
+  it("shows the specialty cards THROUGH the top-row holes; the aria-label carries level + xp", () => {
+    const { container } = renderBoardState(bulwarkAdventure("eikthurn"));
+    expect(container.querySelectorAll(".hbTrack .hbXpBoxTop .hbSlotSpecialty")).toHaveLength(3);
+    // The track keeps its level+xp aria-label.
+    expect(container.querySelector('.hbTrack[aria-label*="experience"]')).toBeTruthy();
+  });
+});
+
+describe("HeroBoard — faction board theme (heavenly_demon was silently a Castle fallback)", () => {
+  function themedAdventure(factionId: FactionId, heroDefId: string): GameState {
+    return createAdventureGameState({
+      seed: `hero-board-theme-${factionId}`,
+      rollFirstPlayer: false,
+      anime: { enabled: true, xianxiaTowns: true, isekaiTowns: true },
+      players: [
+        { id: "p1", name: factionId, factionId, heroDefId },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+  }
+
+  it("resolves a dedicated dark-crimson theme for heavenly_demon — not the Castle blue fallback", () => {
+    const { container } = renderBoardState(themedAdventure("heavenly_demon", "xuedao"));
+    const edge = (container.querySelector(".hb") as HTMLElement).style.getPropertyValue("--hb-edge").trim();
+    expect(edge).toBe("#b23a4e");
+    expect(edge).not.toBe("#3f6fb5"); // the Castle fallback edge
+  });
+
+  it("CONTROL — a Castle hero resolves the Castle blue edge", () => {
+    const { container } = renderBoardState(themedAdventure("castle", "catherine"));
+    expect((container.querySelector(".hb") as HTMLElement).style.getPropertyValue("--hb-edge").trim()).toBe(
+      "#3f6fb5"
+    );
+  });
+});
+
 describe("HeroBoard — anime Cultivation realm chip (§5.6)", () => {
   function cultivationAdventure(): GameState {
     return createAdventureGameState({
@@ -416,13 +518,16 @@ describe("HeroBoard — Feature B: the kept level-up Ability at levels 2/3/5/7",
     expect(screen.getByTitle(new RegExp(`kept ${offenseName}`))).toBeTruthy();
   });
 
-  it("CONTROL — with no pick recorded, the level shows the bare Search marker (no pick tile)", () => {
+  it("CONTROL — with no pick recorded, the Ability-search hole stays an empty die-cut window", () => {
     const state = bulwarkAdventure("eikthurn");
     getMainHero(state, "p1")!.level = 3;
     const { container } = renderBoardState(state); // no levelUpAbilityPicks
     expect(container.querySelectorAll(".hbSlotAbilityPick")).toHaveLength(0);
-    // The plain Search-glyph slot is still drawn.
-    expect(container.querySelector(".hbSlotSearch .hbIcon")).toBeTruthy();
+    // No pick tile and no card art fills the level-2 hole — it stays a bare
+    // transparent window in the printed art (the mat shows an empty box there).
+    const lvl2 = container.querySelector('.hbXpBox[data-xp-index="2"]');
+    expect(lvl2).toBeTruthy();
+    expect(lvl2!.querySelector(".hbSlot")).toBeNull();
   });
 
   it("renders an OPPONENT's board from the same component (opponent-info modal path)", () => {
