@@ -702,3 +702,179 @@ describe("Lucky E — held Enterprise specialty levels join the Attack-die rerol
     expect(setDieAttempt.errors.length).toBeGreaterThan(0); // the sibling half is gone
   });
 });
+
+// ---------------------------------------------------------------------------
+// 5. The 2026-07 shipgirl re-abilities: Best Friends / Torpedo Run / Oxygen
+//    Torpedo Spread — each an OBSERVABLE outcome with a CONTROL.
+// ---------------------------------------------------------------------------
+
+describe("Javelin 'Best Friends' — +1 Attack while a friendly Laffey is in the battlefield", () => {
+  const FRIENDS = ["kansen-best-friends"];
+
+  function layout(state: GameState, laffey: { controllerId: PlayerId; dead?: boolean } | null): void {
+    place(state, "unit_p1_marksmen", {
+      position: 9,
+      controllerId: "p1",
+      abilities: FRIENDS,
+      attack: 2,
+      defense: 0,
+      maxHealth: 100,
+      damage: 0,
+      type: "ground"
+    });
+    place(state, "unit_p2_skeletons", { position: 10, controllerId: "p2", abilities: [], attack: 0, defense: 0, maxHealth: 30, damage: 0, type: "ground" });
+    // The (would-be) Laffey sits far away @0 — the bonus is presence-based, not adjacency.
+    const griffins = place(state, "unit_p1_griffins", { position: 0, controllerId: "p1", abilities: [], maxHealth: 20, damage: 0 });
+    if (laffey) {
+      Object.assign(griffins, {
+        controllerId: laffey.controllerId,
+        damage: laffey.dead ? 20 : 0
+      });
+      (griffins as { name: string }).name = "Laffey";
+    }
+    place(state, "unit_p1_crusaders", { position: 2, controllerId: "p1", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p2_vampires", { position: 18, controllerId: "p2", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p2_dread_knights", { position: 19, controllerId: "p2", abilities: [], maxHealth: 20, damage: 0 });
+  }
+
+  it("with a LIVING friendly Laffey anywhere on the field: 2+1 damage (CONTROLs: none / enemy / fallen)", () => {
+    const withLaffey = freshCombat("friends-on");
+    layout(withLaffey, { controllerId: "p1" });
+    expect(unitAt(attack(withLaffey, "unit_p1_marksmen", "unit_p2_skeletons"), "unit_p2_skeletons").damage).toBe(3);
+
+    const noLaffey = freshCombat("friends-none");
+    layout(noLaffey, null);
+    expect(unitAt(attack(noLaffey, "unit_p1_marksmen", "unit_p2_skeletons"), "unit_p2_skeletons").damage).toBe(2);
+
+    const enemyLaffey = freshCombat("friends-enemy");
+    layout(enemyLaffey, { controllerId: "p2" });
+    expect(unitAt(attack(enemyLaffey, "unit_p1_marksmen", "unit_p2_skeletons"), "unit_p2_skeletons").damage).toBe(2);
+
+    const fallenLaffey = freshCombat("friends-dead");
+    layout(fallenLaffey, { controllerId: "p1", dead: true });
+    expect(unitAt(attack(fallenLaffey, "unit_p1_marksmen", "unit_p2_skeletons"), "unit_p2_skeletons").damage).toBe(2);
+  });
+
+  it("the passive also buffs the Retaliation Attack (Laffey still standing)", () => {
+    const state = freshCombat("friends-retaliation");
+    // Untagged p1 attacker; the TAGGED p2 defender retaliates with Laffey alive on p2's side.
+    place(state, "unit_p1_marksmen", { position: 9, controllerId: "p1", abilities: [], attack: 0, defense: 0, maxHealth: 100, damage: 0, type: "ground" });
+    place(state, "unit_p2_skeletons", { position: 10, controllerId: "p2", abilities: FRIENDS, attack: 2, defense: 0, maxHealth: 30, damage: 0, type: "ground" });
+    const laffey = place(state, "unit_p2_vampires", { position: 18, controllerId: "p2", abilities: [], maxHealth: 20, damage: 0 });
+    (laffey as { name: string }).name = "Laffey";
+    place(state, "unit_p1_griffins", { position: 0, controllerId: "p1", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p1_crusaders", { position: 2, controllerId: "p1", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p2_dread_knights", { position: 19, controllerId: "p2", abilities: [], maxHealth: 20, damage: 0 });
+    const after = attack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+    expect(unitAt(after, "unit_p1_marksmen").damage).toBe(3); // 2 + 1 with Laffey standing
+  });
+});
+
+describe("Yukikaze 'Torpedo Run' — reroll a '-1' on her own Attack die", () => {
+  // The torpedo arm ALONE: her printed Defend-die token would consume scripted
+  // dice when she is attacked, muddying the retaliation CONTROL's script.
+  const RUN = ["yukikaze-torpedo-run"];
+
+  function layout(state: GameState): void {
+    place(state, "unit_p1_marksmen", {
+      position: 9,
+      controllerId: "p1",
+      abilities: RUN,
+      attack: 4,
+      defense: 0,
+      maxHealth: 100,
+      damage: 0,
+      type: "ground"
+    });
+    place(state, "unit_p2_skeletons", { position: 10, controllerId: "p2", abilities: [], attack: 0, defense: 0, maxHealth: 30, damage: 0, type: "ground" });
+    place(state, "unit_p1_griffins", { position: 0, controllerId: "p1", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p1_crusaders", { position: 2, controllerId: "p1", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p2_vampires", { position: 18, controllerId: "p2", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p2_dread_knights", { position: 19, controllerId: "p2", abilities: [], maxHealth: 20, damage: 0 });
+  }
+
+  it("a '-1' opens her reroll window; taking it lifts the kept roll (4-1=3 → 4+1=5)", () => {
+    const state = freshCombat("torpedo-run");
+    layout(state);
+    state.combat!.dice.scriptedRolls = [-1, 1, 0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    const windowState = attackToRerollWindow(state, "unit_p1_marksmen", "unit_p2_skeletons");
+    const choice = windowState.pendingChoice;
+    expect(choice?.type).toBe("ATTACK_DIE_REROLL");
+    if (choice?.type !== "ATTACK_DIE_REROLL") throw new Error("expected the reroll window");
+    expect(choice.rerollSources.some((source) => source.name === "Torpedo Run")).toBe(true);
+
+    const rerolled = applyOk(windowState, { type: "REROLL_PENDING_CHOICE", playerId: "p1", choiceId: choice.id });
+    const open = rerolled.pendingChoice;
+    if (open?.type !== "ATTACK_DIE_REROLL") throw new Error("window stays open on the rerolled die");
+    const kept = applyOk(rerolled, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: open.id,
+      candidateIndex: open.candidates.length - 1
+    });
+    expect(unitAt(settle(kept), "unit_p2_skeletons").damage).toBe(5); // 4 + the rerolled +1
+  });
+
+  it("CONTROL: a non-'-1' die never pauses — the attack resolves straight through", () => {
+    const state = freshCombat("torpedo-run-control");
+    layout(state);
+    state.combat!.dice.scriptedRolls = [0, 1, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    const after = attackToRerollWindow(state, "unit_p1_marksmen", "unit_p2_skeletons");
+    expect(after.pendingChoice?.type).not.toBe("ATTACK_DIE_REROLL");
+    expect(unitAt(after, "unit_p2_skeletons").damage).toBe(4);
+  });
+
+  it("CONTROL: never offered on her Retaliation Attack (unit rerolls are own-attack only)", () => {
+    const state = freshCombat("torpedo-run-retaliation");
+    // Untagged attacker strikes the TAGGED defender; the retaliation die is -1.
+    place(state, "unit_p1_marksmen", { position: 9, controllerId: "p1", abilities: [], attack: 0, defense: 0, maxHealth: 100, damage: 0, type: "ground" });
+    place(state, "unit_p2_skeletons", { position: 10, controllerId: "p2", abilities: RUN, attack: 4, defense: 0, maxHealth: 30, damage: 0, type: "ground" });
+    place(state, "unit_p1_griffins", { position: 0, controllerId: "p1", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p1_crusaders", { position: 2, controllerId: "p1", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p2_vampires", { position: 18, controllerId: "p2", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p2_dread_knights", { position: 19, controllerId: "p2", abilities: [], maxHealth: 20, damage: 0 });
+    state.combat!.dice.scriptedRolls = [0, -1, 1, 0];
+    state.combat!.dice.rollCount = 0;
+    const after = attack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+    // Retaliation resolved at 4 - 1 = 3 with NO reroll pause (settle() would
+    // have kept a rerolled +1 → 5 if the window had wrongly opened).
+    expect(unitAt(after, "unit_p1_marksmen").damage).toBe(3);
+  });
+});
+
+describe("I-19 'Oxygen Torpedo Spread' — the same-target follow-up strikes at FIXED Attack 4", () => {
+  function layout(state: GameState, attackerAbilities: string[]): void {
+    place(state, "unit_p1_marksmen", {
+      position: 9,
+      controllerId: "p1",
+      abilities: attackerAbilities,
+      attack: 7,
+      defense: 0,
+      maxHealth: 100,
+      damage: 0,
+      type: "ground"
+    });
+    place(state, "unit_p2_skeletons", { position: 10, controllerId: "p2", abilities: [], attack: 0, defense: 0, maxHealth: 40, damage: 0, type: "ground" });
+    place(state, "unit_p1_griffins", { position: 0, controllerId: "p1", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p1_crusaders", { position: 2, controllerId: "p1", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p2_vampires", { position: 18, controllerId: "p2", abilities: [], maxHealth: 20, damage: 0 });
+    place(state, "unit_p2_dread_knights", { position: 19, controllerId: "p2", abilities: [], maxHealth: 20, damage: 0 });
+  }
+
+  it("Attack 7 primary + Attack 4 follow-up = 11 (CONTROLs: sandworm twin re-uses live Attack → 14; untagged → 7)", () => {
+    const spread = freshCombat("i19-spread");
+    layout(spread, ["ignores-retaliation", "teleport-move", "i19-oxygen-torpedo-spread"]);
+    expect(unitAt(attack(spread, "unit_p1_marksmen", "unit_p2_skeletons"), "unit_p2_skeletons").damage).toBe(11);
+
+    const sandworm = freshCombat("i19-sandworm-control");
+    layout(sandworm, ["ignores-retaliation", "teleport-move", "sandworm-strike-again"]);
+    expect(unitAt(attack(sandworm, "unit_p1_marksmen", "unit_p2_skeletons"), "unit_p2_skeletons").damage).toBe(14);
+
+    const control = freshCombat("i19-none");
+    layout(control, ["ignores-retaliation", "teleport-move"]);
+    expect(unitAt(attack(control, "unit_p1_marksmen", "unit_p2_skeletons"), "unit_p2_skeletons").damage).toBe(7);
+  });
+});
+

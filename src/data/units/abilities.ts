@@ -1309,7 +1309,10 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "doom-former-human-sergeant-double-roll": {
     id: "doom-former-human-sergeant-double-roll",
     name: "Shotgun Assault",
-    text: "[unit_attack] Roll 2 Attack dice and resolve both results.",
+    // [unit_passive] wording (the Crusaders convention): `retaliationAlso`
+    // makes the two-dice roll fire on Retaliation Attacks too, so an
+    // own-attack-only [unit_attack] icon would misstate what runs.
+    text: "[unit_passive] During any attack — own attacks and Retaliation Attacks alike — roll 2 Attack dice and resolve both results.",
     effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", retaliationAlso: true },
     implementationStatus: "implemented"
   },

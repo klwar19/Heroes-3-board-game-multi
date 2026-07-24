@@ -47,5 +47,5 @@
 
   <rect x="48" y="846" width="647" height="160" rx="8" fill="url(#panel)" stroke="url(#metal)" stroke-width="3"/>
   <circle cx="78" cy="875" r="17" fill="#261415" stroke="#e05e36" stroke-width="2"/><path d="M70 875h16M78 867v16" stroke="#f4bd52" stroke-width="2"/>
-  <text x="371" y="912.5" class="rule">Fireball - ignore the melee penalty when attacking</text><text x="371" y="937.5" class="rule">an adjacent unit.</text>
+  <text x="371" y="900" class="rule">Fireball - an attack roll of 0 or lower deals 1</text><text x="371" y="925" class="rule">extra damage; ignore the melee penalty when</text><text x="371" y="950" class="rule">attacking an adjacent unit.</text>
 </svg>
