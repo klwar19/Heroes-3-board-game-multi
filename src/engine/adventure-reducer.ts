@@ -429,7 +429,13 @@ function discardRandomHandCard(state: GameState, targetPlayerId: PlayerId): void
   const [discarded] = target.hand.splice(index, 1);
   target.discard.push(discarded);
 
-  appendEvent(state, { type: "HAND_REFRESHED", playerId: targetPlayerId, discarded: 1, drawn: 0 });
+  appendEvent(state, {
+    type: "HAND_REFRESHED",
+    playerId: targetPlayerId,
+    discarded: 1,
+    drawn: 0,
+    discardedCardIds: discarded ? [discarded] : []
+  });
 }
 
 
@@ -905,7 +911,8 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
     type: "HAND_REFRESHED",
     playerId: action.playerId,
     discarded: action.discardCardIds.length,
-    drawn
+    drawn,
+    discardedCardIds: [...action.discardCardIds]
   });
 
   // Explorers (Astrologers): "for every 3 cards discarded this way, Remove a
@@ -972,16 +979,18 @@ export function openingHandMulligan(
   player.canOpeningMulligan = false;
 
   appendEvent(state, {
-    type: "HAND_MULLIGAN",
-    playerId: action.playerId,
-    remaining: 0
+      type: "HAND_MULLIGAN",
+      playerId: action.playerId,
+      remaining: 0,
+      discardedCardIds: [...action.discardCardIds]
   });
   if (action.discardCardIds.length > 0) {
     appendEvent(state, {
       type: "HAND_REFRESHED",
       playerId: action.playerId,
       discarded: action.discardCardIds.length,
-      drawn
+      drawn,
+      discardedCardIds: [...action.discardCardIds]
     });
   }
 }
@@ -1042,7 +1051,8 @@ export function mulliganCard(state: GameState, action: Extract<GameAction, { typ
   appendEvent(state, {
     type: "HAND_MULLIGAN",
     playerId: action.playerId,
-    remaining: player.firstRoundMulligansLeft
+    remaining: player.firstRoundMulligansLeft,
+    discardedCardIds: [action.cardId]
   });
 }
 
@@ -9005,7 +9015,13 @@ function applyCombatStartMoraleCards(state: GameState): void {
         const [discarded] = player.hand.splice(index, 1);
         if (discarded) {
           player.discard.push(discarded);
-          appendEvent(state, { type: "HAND_REFRESHED", playerId, discarded: 1, drawn: 0 });
+          appendEvent(state, {
+            type: "HAND_REFRESHED",
+            playerId,
+            discarded: 1,
+            drawn: 0,
+            discardedCardIds: discarded ? [discarded] : []
+          });
         }
       }
       returnHeldMoraleCardToDeckBottom(state, playerId, "morale.negative.random_combat_discard", "used");
@@ -13383,8 +13399,9 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
     // the hand. After the dump, clear back to neutral so the penalty is paid once.
     player.discardHandAtTurnEnd = false; // legacy field; end-turn check is morale value
     if (player.morale <= -2) {
-      const discarded = player.hand.length;
-      player.discard.push(...player.hand);
+      const discardedCardIds = [...player.hand];
+      const discarded = discardedCardIds.length;
+      player.discard.push(...discardedCardIds);
       player.hand = [];
       player.morale = 0;
       appendEvent(state, {
@@ -13392,6 +13409,7 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
         playerId: action.playerId,
         discarded,
         drawn: 0,
+        discardedCardIds,
         reason: "morale-double-negative"
       });
       appendEvent(state, {

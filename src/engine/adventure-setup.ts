@@ -680,6 +680,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
   return {
     scenarioId: scenario.id,
     playerCount: scenario.minPlayers,
+    customMode: false,
     ruleset: "binh",
     wog: { ...DEFAULT_WOG_OPTIONS },
     victoryMode: "conquest",
@@ -3729,6 +3730,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
 
   const next = action.options;
   const changes: string[] = [];
+
+  if (next.customMode !== undefined) {
+    lobby.options.customMode = Boolean(next.customMode);
+    changes.push(`game mode ${lobby.options.customMode ? "Custom (personal setup)" : "standard preset"}`);
+  }
 
   if (next.ruleset !== undefined) {
     if (next.ruleset !== "legacy" && next.ruleset !== "binh") {

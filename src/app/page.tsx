@@ -5132,7 +5132,7 @@ export default function Home() {
             state={state}
             viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
           />
-          <LogDrawer state={state} />
+          <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
           {reactionsLayer}
         </main>
       </CardZoomProvider>
@@ -5163,7 +5163,7 @@ export default function Home() {
             state={state}
             viewerPlayerId={isSeated ? viewerPlayerId : "p1"}
           />
-          <LogDrawer state={state} />
+          <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
           {reactionsLayer}
         </main>
       </CardZoomProvider>
@@ -6440,7 +6440,7 @@ export default function Home() {
             viewerPlayerId={viewerPlayerId}
           />
           <SearchModal legalActions={legalActions} onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
-          <LogDrawer state={state} />
+          <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
           {isSeated && handMode === null && !forcedDiscard ? (
             <MoraleOverflowPrompt
               canRedraw={handCards.length > 0}
@@ -6781,7 +6781,7 @@ export default function Home() {
         </div>
       ) : null}
 
-      <LogDrawer state={state} />
+      <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
 
       <AdventureEventFeed
         items={feedItems}

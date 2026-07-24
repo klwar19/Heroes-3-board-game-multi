@@ -16253,9 +16253,9 @@ function discardRandomEnemyCards(state: GameState, playerId: PlayerId, count: nu
       type: "HAND_REFRESHED",
       playerId: enemyId,
       discarded: 1,
-      drawn: 0
+      drawn: 0,
+      discardedCardIds: cardId ? [cardId] : []
     });
-    void cardId;
   }
 }
 
