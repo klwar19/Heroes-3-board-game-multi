@@ -106,28 +106,68 @@ describe("unit combat voices", () => {
     }
   });
 
-  it("maps every Doom neutral to the correct source-lump behavior", () => {
+  // The EXACT manifest key each of the 16 Doom neutrals' six actions must
+  // resolve to — an independent restatement of the intended wiring. A truthy /
+  // "resolves to some clip" check is not enough: a typo'd override key falls
+  // through to the H3 voice the unit is mapped onto (Behemoth, Gog, …) and a
+  // clip still plays, so the weaker check greenlights the bug. These exact-key
+  // assertions ARE the mutation guard — they caught doom.demon attack/shoot
+  // falling back to the Behemoth roar (override pointed at a nonexistent
+  // "doom/demon-attack") and doom.cacodemon death to the Gog's (missing
+  // "doom/dscacdth" manifest entry).
+  const doomVoiceKeys: Record<string, Record<UnitSoundAction, string>> = {
+    demon: { attack: "units/doom-demon-attack", shoot: "units/doom-demon-attack", defend: "doom/dsdmact", hurt: "doom/dsdmpain", death: "doom/dssgtdth", move: "units/doom-demon-move" },
+    former_human: { attack: "doom/dspistol", shoot: "doom/dspistol", defend: "doom/dsposact", hurt: "doom/dspopain", death: "units/doom-former-human-death", move: "units/doom-former-human-move" },
+    former_human_sergeant: { attack: "doom/dsshotgn", shoot: "doom/dsshotgn", defend: "doom/dsposact", hurt: "doom/dspopain", death: "units/doom-former-human-death", move: "units/doom-former-human-move" },
+    imp: { attack: "units/doom-imp-attack", shoot: "units/doom-imp-attack", defend: "doom/dsbgact", hurt: "doom/dspopain", death: "units/doom-imp-death", move: "units/doom-imp-move" },
+    lost_soul: { attack: "doom/dssklatk", shoot: "doom/dssklatk", defend: "doom/dsdmact", hurt: "doom/dsdmpain", death: "doom/dsfirxpl", move: "units/doom-lost-soul-move" },
+    cacodemon: { attack: "units/doom-cacodemon-attack", shoot: "units/doom-cacodemon-attack", defend: "doom/dsdmact", hurt: "doom/dsdmpain", death: "doom/dscacdth", move: "units/doom-cacodemon-move" },
+    hell_knight: { attack: "units/doom-hell-knight-attack", shoot: "units/doom-hell-knight-attack", defend: "doom/dsdmact", hurt: "doom/dsdmpain", death: "doom/dskntdth", move: "units/doom-hell-knight-move" },
+    arachnotron: { attack: "units/doom-arachnotron-attack", shoot: "units/doom-arachnotron-attack", defend: "doom/dsbspact", hurt: "doom/dsdmpain", death: "doom/dsbspdth", move: "units/doom-arachnotron-move" },
+    former_commando: { attack: "units/doom-machinegun-attack", shoot: "units/doom-machinegun-attack", defend: "doom/dsposact", hurt: "doom/dspopain", death: "units/doom-former-human-death", move: "units/doom-former-human-move" },
+    baron_of_hell: { attack: "units/doom-baron-attack", shoot: "units/doom-baron-attack", defend: "doom/dsdmact", hurt: "doom/dsdmpain", death: "doom/dsbrsdth", move: "units/doom-baron-move" },
+    revenant: { attack: "units/doom-revenant-attack", shoot: "units/doom-revenant-attack", defend: "doom/dsskeact", hurt: "doom/dspopain", death: "doom/dsskedth", move: "units/doom-revenant-move" },
+    mancubus: { attack: "units/doom-mancubus-attack", shoot: "units/doom-mancubus-attack", defend: "doom/dsposact", hurt: "doom/dsmnpain", death: "doom/dsmandth", move: "units/doom-mancubus-move" },
+    pain_elemental: { attack: "doom/dssklatk", shoot: "doom/dssklatk", defend: "doom/dsdmact", hurt: "doom/dspepain", death: "doom/dspedth", move: "units/doom-pain-elemental-move" },
+    arch_vile: { attack: "units/doom-arch-vile-attack", shoot: "units/doom-arch-vile-attack", defend: "doom/dsvilact", hurt: "doom/dsvipain", death: "doom/dsvildth", move: "units/doom-arch-vile-move" },
+    spider_mastermind: { attack: "units/doom-machinegun-attack", shoot: "units/doom-machinegun-attack", defend: "doom/dsdmact", hurt: "doom/dsdmpain", death: "doom/dsspidth", move: "units/doom-spider-mastermind-move" },
+    cyberdemon: { attack: "units/doom-cyberdemon-attack", shoot: "units/doom-cyberdemon-attack", defend: "doom/dsdmact", hurt: "doom/dsdmpain", death: "doom/dscybdth", move: "units/doom-cyberdemon-move" }
+  };
+
+  it("maps every Doom neutral action to its EXACT intended clip (no H3 fallback)", () => {
+    const doomActions: UnitSoundAction[] = ["attack", "shoot", "defend", "hurt", "death", "move"];
     for (const unitId of DOOM_UNIT_IDS) {
-      const actions: UnitSoundAction[] = ["attack", "defend", "hurt", "death", "move", "shoot"];
-      for (const action of actions) {
+      const bareName = unitId.split(".")[1];
+      const expected = doomVoiceKeys[bareName];
+      expect(expected, `${unitId} missing from the expected-key table`).toBeTruthy();
+      for (const action of doomActions) {
         const key = unitSoundKey(unitId, action);
-        expect(key, unitId + ": " + action).toBeTruthy();
-        expect(clipSrcs(key), unitId + ": " + action + " should resolve to real clips").not.toEqual([]);
+        expect(key, `${unitId}: ${action}`).toBe(expected[action]);
+        // …and that key resolves to real clips that exist on disk (fails if the
+        // manifest entry or the underlying .wav is removed — effect, not artifact).
+        const srcs = clipSrcs(key);
+        expect(srcs, `${unitId}: ${action} -> ${key} should resolve to real clips`).not.toEqual([]);
+        for (const src of srcs) {
+          const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
+          expect(existsSync(file), `${unitId}: ${action} -> ${src} on disk`).toBe(true);
+        }
       }
     }
 
+    // Special source-lump behaviors pinned structurally.
+    // The machine-gun burst is one shotgun lump replayed four times, shared by
+    // the Heavy Weapon Dude and the Spider Mastermind's chaingun.
     expect(unitSoundKey("doom.former_commando", "attack")).toBe("units/doom-machinegun-attack");
     expect(unitSoundKey("doom.spider_mastermind", "shoot")).toBe("units/doom-machinegun-attack");
     expect(soundLibrary["units/doom-machinegun-attack"]).toMatchObject({
       src: "/sounds/doom/dsshotgn.wav",
       repeat: 4
     });
-
-    expect(unitSoundKey("doom.cyberdemon", "shoot")).toBe("units/doom-cyberdemon-attack");
+    // Cyberdemon/Revenant rockets are a launch→explosion sequence.
     expect(soundLibrary["units/doom-cyberdemon-attack"]).toMatchObject({
       sequence: ["doom/dsrlaunc", "doom/dsbarexp"]
     });
-
+    // Arachnotron move is a sight cue, then a delayed two-play walking loop.
     expect(soundLibrary["units/doom-arachnotron-move"]).toMatchObject({
       sequence: ["doom/dsbspsit", "doom/dsbspwlk-move"],
       sequenceDelayMs: 90
@@ -136,6 +176,37 @@ describe("unit combat voices", () => {
       src: "/sounds/doom/dsbspwlk.wav",
       repeat: 2
     });
+    // The three zombie-soldier types share one random death-variant pool.
+    expect(soundLibrary["units/doom-former-human-death"].random).toEqual([
+      "doom/dspodth1",
+      "doom/dspodth2",
+      "doom/dspodth3"
+    ]);
+  });
+
+  it("never lets a NON-Doom unit borrow a Doom clip (bare-name hijack guard)", () => {
+    // The Doom overrides are spread into the SHARED moveSoundOverrides /
+    // actionSoundOverrides maps keyed by BARE name. A future unit whose bare
+    // name collides (e.g. some faction gaining an `imp` or `revenant`) would
+    // silently pick up a Doom voice — the exact regression class this repo has
+    // shipped before. No unit outside the doom.* namespace may resolve to a
+    // Doom clip.
+    const leaks: string[] = [];
+    for (const unit of roster) {
+      if (unit.id.startsWith("doom.")) {
+        continue;
+      }
+      for (const action of [...coreActions, "shoot"] as UnitSoundAction[]) {
+        const key = unitSoundKey(unit.id, action);
+        if (key && (key.startsWith("units/doom-") || key.startsWith("doom/"))) {
+          leaks.push(`${unit.id}: ${action} -> ${key}`);
+        }
+      }
+    }
+    expect(leaks).toEqual([]);
+    // CONTROL: a real Doom unit DOES resolve to a Doom clip, so the guard is
+    // asserting a live condition, not a vacuous one.
+    expect(unitSoundKey("doom.imp", "attack")).toBe("units/doom-imp-attack");
   });
   it("uses the documented shared-audio pairings", () => {
     // The original game shares these creatures' files (docs/sound-mapping.md).

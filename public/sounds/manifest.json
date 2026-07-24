@@ -5030,6 +5030,10 @@
     "src": "/sounds/doom/dssklatk.wav",
     "note": "DOOM Lost Soul attack; also Pain Elemental's spawned-soul attack cue"
   },
+  "doom/dscacdth": {
+    "src": "/sounds/doom/dscacdth.wav",
+    "note": "DOOM Cacodemon death"
+  },
   "doom/dscacsit": {
     "src": "/sounds/doom/dscacsit.wav",
     "note": "DOOM Cacodemon sight/alert"
