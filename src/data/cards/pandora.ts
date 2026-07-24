@@ -70,8 +70,10 @@ export const pandoraCards: CardLibrary = {
   // casts (getCurrentSpellPower at cast time + standingSpellPower for
   // affordability/preview, so it is never display-only). Its upkeep ("at the end
   // of your turn, remove this card OR gain Negative Morale") is offered by
-  // queuePandoraUpkeep when the owner ends their turn. (Card 178 — no card art in
-  // the provided set, so it renders as a text frame.) See pandora-cards.test.ts.
+  // queuePandoraUpkeep when the owner ends their turn. (Card 178 — the provided
+  // scan set had no face for it, so its art is composited from the set's shared
+  // frame + the game's real symbol icons by scripts/build-pandora-power-card.mjs.)
+  // See pandora-cards.test.ts.
   "pandora.power_or_morale": {
     id: "pandora.power_or_morale",
     name: "Pandora's Bargain: Power",
@@ -88,7 +90,10 @@ export const pandoraCards: CardLibrary = {
       endTurnUpkeep: "remove-or-negative-morale"
     },
     effect: { type: "ENTER_PLAY" },
-    assets: { imageAlt: "Pandora's Box card: +1 power with an upkeep" },
+    assets: {
+      cardImage: art("power_or_morale"),
+      imageAlt: "Pandora's Box card: +1 power with an upkeep"
+    },
     implementationStatus: "implemented",
     source: pandoraSource
   },

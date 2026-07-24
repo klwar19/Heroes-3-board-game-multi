@@ -315,6 +315,7 @@ export const REWARD_GLYPH_ICONS = {
   materials: "/assets/glyphs/building_materials.svg",
   treasure: "/assets/glyphs/treasure.svg",
   resourceDie: "/assets/glyphs/resource_die.svg",
+  map: "/assets/glyphs/map.svg",
   attack: "/assets/glyphs/attack.svg",
   defense: "/assets/glyphs/defense.svg",
   ok: "/assets/glyphs/green_tick.svg",

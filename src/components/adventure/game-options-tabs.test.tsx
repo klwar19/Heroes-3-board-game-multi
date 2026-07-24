@@ -189,7 +189,10 @@ describe("Game options — tabbed layout", () => {
       ["anime-module-heroGrades", "heroGrades"],
       ["anime-module-equipment", "equipment"],
       ["anime-module-unitStacks", "unitStacks"],
-      ["anime-module-unitExperience", "unitExperience"]
+      ["anime-module-unitExperience", "unitExperience"],
+      ["anime-module-monsterWaves", "monsterWaves"],
+      ["anime-module-raidBosses", "raidBosses"],
+      ["anime-module-dungeon", "dungeon"]
     ];
     for (const [testid, flag] of modules) {
       onAction.mockClear();
@@ -236,6 +239,38 @@ describe("Game options — tabbed layout", () => {
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
       options: { houseRules: { "estates-nerf": false } }
+    });
+  });
+
+  it("renders the Global map-rules group (with its map icon) and wires the Mine-guard reinforcement toggle", () => {
+    const onAction = openOptions();
+    expandBinhHouseRules();
+    // The new Global group header carries its map glyph (other groups have none).
+    const groupIcon = document.querySelector(".houseRuleGroupIcon") as HTMLImageElement | null;
+    expect(groupIcon, "the Global group header shows an icon").toBeTruthy();
+    expect(groupIcon!.getAttribute("src")).toContain("map.svg");
+    // The rule is OFF by default (an opt-in tweak) and toggling it dispatches
+    // only its own flag through the shared registry UI.
+    const toggle = screen.getByRole("button", { name: /Mine guards: \+1 bronze/i });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "mine-guard-reinforcement": true } }
+    });
+  });
+
+  it("renders the Torso-of-Legion re-tier row ON by default; unticking dispatches just that flag", () => {
+    const onAction = openOptions();
+    expandBinhHouseRules();
+    const toggle = screen.getByRole("button", { name: /Torso of Legion plays as Major/i });
+    expect(toggle.getAttribute("aria-pressed"), "the re-tier is ON by default").toBe("true");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "torso-of-legion-major": false } }
     });
   });
 
@@ -565,6 +600,74 @@ describe("Game options — tabbed layout", () => {
         playerId: "p1",
         options: expect.objectContaining({
           wog: expect.objectContaining({ enabled: true, neutralRankUp: true })
+        })
+      })
+    );
+  });
+
+  it("the WOG mod window lists Monster waves / Raid bosses / Dungeon rows, each dispatching its wog flag", () => {
+    const rows: Array<[RegExp, string]> = [
+      [/Calamity Waves: every Nth round/i, "monsterWaves"],
+      [/persistent multi-layer world boss/i, "raidBosses"],
+      [/One repeatable delve site per map/i, "dungeon"]
+    ];
+    for (const [labelPattern, flag] of rows) {
+      cleanup();
+      const onAction = openOptionsWith((state) => {
+        state.setupLobby!.options.wog = {
+          ...state.setupLobby!.options.wog!,
+          enabled: true
+        };
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+      const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+      const row = within(dialog).getByRole("button", { name: labelPattern });
+      expect(row.getAttribute("aria-pressed")).toBe("false");
+      fireEvent.click(row);
+      expect(onAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "SET_GAME_OPTIONS",
+          playerId: "p1",
+          options: expect.objectContaining({
+            wog: expect.objectContaining({ enabled: true, [flag]: true })
+          })
+        })
+      );
+    }
+  });
+
+  it("the wave-cadence chips render only while Monster waves is ticked and dispatch the cadence", () => {
+    // WOG window: monsterWaves off → no cadence row.
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    let dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+    expect(within(dialog).queryByRole("group", { name: /Wave cadence/i })).toBeNull();
+    cleanup();
+
+    // WOG window with monsterWaves ON → chips render, default 4th pressed, and
+    // clicking "Every 5th round" dispatches wog.waveCadence 5.
+    const onAction2 = openOptionsWith((state) => {
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true,
+        monsterWaves: true
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+    const cadenceRow = within(dialog).getByRole("group", { name: /Wave cadence/i });
+    expect(within(cadenceRow).getByRole("button", { name: /Every 4th round/i }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(cadenceRow).getByRole("button", { name: /Every 5th round/i }));
+    expect(onAction2).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SET_GAME_OPTIONS",
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ waveCadence: 5 })
         })
       })
     );

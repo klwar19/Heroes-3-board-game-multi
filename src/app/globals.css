@@ -1870,6 +1870,95 @@ button.battleCell {
   background: linear-gradient(180deg, rgb(34 28 20 / 92%), rgb(20 18 14 / 94%));
 }
 
+/* Clickable discard in the combat player dock (opens the full pile browser). */
+button.combatDiscardSpot {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+button.combatDiscardSpot:disabled {
+  cursor: default;
+}
+button.combatDiscardSpot:not(:disabled):hover .pileCard.faceUp {
+  outline: 2px solid rgb(213 168 79 / 70%);
+  outline-offset: 1px;
+}
+
+/* Bottom combat deck + discard rail (map-mode own-deck parity). */
+.combatDecksBottom {
+  display: flex;
+  justify-content: flex-start;
+  padding: 6px 10px 8px;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, rgb(18 16 12 / 88%), rgb(12 11 9 / 96%));
+}
+.combatOwnPiles {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+.combatOwnPile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 72px;
+}
+button.combatOwnPile {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+.combatOwnPileCard {
+  width: 72px;
+  aspect-ratio: 5 / 7;
+  border-radius: 6px;
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 45%);
+}
+.combatOwnPileCard.faceUp {
+  border: 1px solid rgb(243 239 228 / 28%);
+}
+.combatOwnPileCount,
+.combatOwnDiscardBadge {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  border: 1px solid rgb(213 168 79 / 60%);
+  color: var(--ink);
+  background: var(--gold);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  line-height: 1.3;
+}
+.combatOwnPile small {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+button.combatOwnDiscard:hover .combatOwnPileCard {
+  outline: 2px solid rgb(213 168 79 / 75%);
+  outline-offset: 2px;
+}
+button.combatOwnDiscard.hasCard .combatOwnPileCard {
+  box-shadow:
+    0 4px 12px rgb(0 0 0 / 45%),
+    0 0 0 1px rgb(213 168 79 / 25%);
+}
+
 .dockMetrics {
   display: grid;
   gap: 4px;
@@ -4631,6 +4720,24 @@ button.battleCell {
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.96));
 }
 
+/* Field Override (WOG / anime) hex: a small unobtrusive corner glyph badge so a
+   zoomed-out player can spot the hex is special and hover/tap it. */
+.fieldOverrideGlyphBadge {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.9));
+}
+
+.fieldOverrideGlyphBadge circle {
+  fill: rgba(20, 14, 8, 0.82);
+  stroke: rgba(255, 224, 150, 0.7);
+  stroke-width: 1px;
+}
+
+.fieldOverrideGlyphBadge text {
+  font-size: 9px;
+  pointer-events: none;
+}
+
 .hexProduction {
   fill: #ffe9bd;
   font-size: 10px;
@@ -5020,68 +5127,37 @@ button.hbBanner {
     #2a1b0c;
 }
 
-/* ---- Level track Ⅰ–Ⅶ ---- */
+/* ---- Experience track: the AUTHENTIC printed mat art ----
+   The green marble strip — with the laurelled Ⅰ–Ⅶ numerals, the blue connector
+   arrows and the hand-limit / crown icons — is the real printed scan
+   (xp-track.webp; identical on every hero mat, so one shared crop). The 13
+   die-cut boxes are TRANSPARENT holes in that art; each .hbXpBox is positioned
+   exactly over its hole (inline % from HOLE_RECTS) so the specialty / ability
+   card shows THROUGH it, like a card slid behind the printed board. The current
+   XP box wears a glowing gold frame + a subtle cube in its corner — the only
+   markers, and neither covers the card art. */
 .hbTrack {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  padding: 1.6cqw 2.6cqw 1.4cqw;
-  border-radius: 1.8cqw;
-  background:
-    linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.035) 43%, transparent 46%),
-    linear-gradient(180deg, #25272c, #18191d 65%, #141518);
-  border: 0.25cqw solid rgba(168, 124, 65, 0.45);
-  box-shadow: inset 0 0.6cqw 1.8cqw rgba(0, 0, 0, 0.65);
-}
-
-.hbLevel {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.9cqw;
+  border-radius: 1.4cqw;
 }
 
-.hbSpear {
+.hbTrackArt {
+  position: relative;
+  width: 100%;
+  border-radius: 1.2cqw;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  /* aspect-ratio is set inline (XP_TRACK_ASPECT) so the % hole coords hold. */
+}
+
+/* One die-cut hole: a transparent window laid exactly over the art's punched
+   box (left/top/width/height come inline from HOLE_RECTS). It has no fill of
+   its own — the card in it (top row) or the dark table beneath (empty holes)
+   shows through the transparent art. */
+.hbXpBox {
   position: absolute;
-  left: -1.6cqw;
-  bottom: 2cqw;
-  width: 3.2cqw;
-  height: 3.2cqw;
-  color: #9a7a45;
-  opacity: 0.9;
-}
-
-.hbNumeral {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5cqw;
-  font-family: Georgia, serif;
-  font-weight: 700;
-  font-size: 3.7cqw;
-  letter-spacing: 0.08em;
-  text-shadow: 0 0.25cqw 0.5cqw rgba(0, 0, 0, 0.9);
-}
-
-.hbNumeral.gold { color: var(--hb-gold); }
-.hbNumeral.silver { color: #c8cdd6; }
-
-.hbLevel:not(.reached) .hbNumeral { opacity: 0.62; }
-
-.hbLevel.current .hbNumeral {
-  text-shadow: 0 0 1.8cqw rgba(232, 201, 106, 0.95), 0 0.25cqw 0.5cqw rgba(0, 0, 0, 0.9);
-}
-
-.hbLaurel {
-  width: 1.5cqw;
-  height: 2.7cqw;
-  flex: none;
-}
-
-.hbNumeral .hbLaurel:last-child { transform: scaleX(-1); }
-
-.hbSlotCell {
-  position: relative;
-  width: 74%;
+  border-radius: 0.9cqw;
 }
 
 .hbSlot {
@@ -5089,62 +5165,18 @@ button.hbBanner {
   align-items: center;
   justify-content: center;
   width: 100%;
-  aspect-ratio: 0.94;
-  border-radius: 1.1cqw;
-  background: #0b0c0e;
-  border: 0.25cqw solid #2c2f36;
-  box-shadow:
-    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.95),
-    0 0.25cqw 0 rgba(255, 255, 255, 0.05);
+  height: 100%;
+  border-radius: 0.7cqw;
   overflow: hidden;
 }
 
 button.hbSlot { cursor: zoom-in; }
 button.hbSlot:disabled { cursor: default; }
 
-.hbSlotSearch .hbIcon {
-  width: 46%;
-  height: 46%;
-  color: #34373f;
-}
-
-.reached .hbSlotSearch .hbIcon { color: #97a1b3; }
-
-.hbSlotSpecialty .hbArt {
-  width: 100%;
-  height: 100%;
-  border-radius: 0;
-  filter: none;
-}
-
-.hbSlotSpecialty .hbArt img {
-  width: 286%;
-  transform: translate(-32.5%, -10.5%);
-}
-
-/* Earned specialty (hero level ≥ Ⅰ/Ⅳ/Ⅵ): a bright GOLDEN wrap + glow. */
-.hbSlotSpecialty.gained {
-  border-color: var(--hb-gold);
-  box-shadow:
-    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.95),
-    0 0 1.4cqw rgba(232, 201, 106, 0.55);
-}
-
-/* Not yet earned: the card still shows from the beginning, dimmed as a preview. */
-.hbSlotSpecialty.preview {
-  border-color: #2c2f36;
-}
-
-.hbSlotSpecialty.preview .hbArt {
-  filter: grayscale(0.65) brightness(0.6);
-}
-
-/* Ability-search level (2/3/5/7) whose kept card is on record: the ability art
-   fills the slot in place of the search glyph, framed like a gained specialty. */
-.hbSlotAbilityPick {
-  border-color: rgba(151, 161, 179, 0.7);
-}
-
+/* Specialty / kept-ability card art fills its hole exactly (the card shows
+   through the die-cut window — no frame of its own; the art's hole is the
+   frame). */
+.hbSlotSpecialty .hbArt,
 .hbSlotAbilityPick .hbArt {
   width: 100%;
   height: 100%;
@@ -5153,6 +5185,12 @@ button.hbSlot:disabled { cursor: default; }
   border: none;
   border-radius: 0;
   filter: none;
+  background: none;
+}
+
+.hbSlotSpecialty .hbArt img {
+  width: 286%;
+  transform: translate(-32.5%, -10.5%);
 }
 
 .hbSlotAbilityPick .hbArt-ability img {
@@ -5160,73 +5198,63 @@ button.hbSlot:disabled { cursor: default; }
   transform: translate(-25%, -8%);
 }
 
+/* Not yet earned: the specialty card still shows through its hole, dimmed as a
+   preview. */
+.hbSlotSpecialty.preview .hbArt {
+  filter: grayscale(0.6) brightness(0.62);
+}
+
+/* CURRENT box: the level marker — a glowing gold frame hugging the hole. It
+   sits OUTSIDE the hole (box-shadow spread), so the card art is never covered. */
+.hbXpBox.current {
+  box-shadow:
+    0 0 0 0.35cqw rgba(255, 238, 182, 0.95),
+    0 0 2.4cqw rgba(232, 201, 106, 0.95),
+    inset 0 0 1.2cqw rgba(232, 201, 106, 0.5);
+  animation: hbCurrentGlow 2.4s ease-in-out infinite;
+}
+
+/* The subtle progress cube — a small faction-coloured gem tucked into the
+   current box's top-right corner. Marks exactly which box (half-step included)
+   you are on, without blocking the specialty / ability art. */
 .hbCube {
   position: absolute;
-  right: -1.1cqw;
-  top: -1.1cqw;
-  width: 3cqw;
-  height: 3cqw;
-  background: var(--hb-cube, #2f6fd0);
-  border: 0.3cqw solid #0a0805;
-  border-radius: 0.6cqw;
+  top: -0.9cqw;
+  right: -0.9cqw;
+  width: 2.7cqw;
+  height: 2.7cqw;
+  transform: rotate(45deg);
+  border-radius: 0.5cqw;
+  background:
+    radial-gradient(125% 125% at 32% 26%, #fff 0%, var(--hb-cube, #2f6fd0) 46%, color-mix(in srgb, var(--hb-cube, #2f6fd0) 52%, #000) 100%);
+  border: 0.25cqw solid rgba(255, 244, 214, 0.95);
   box-shadow:
-    0 0.4cqw 0.9cqw rgba(0, 0, 0, 0.7),
-    inset 0.3cqw 0.3cqw 0 rgba(255, 255, 255, 0.35);
+    0 0.3cqw 0.7cqw rgba(0, 0, 0, 0.7),
+    0 0 1.2cqw color-mix(in srgb, var(--hb-cube, #2f6fd0) 80%, transparent);
   z-index: 3;
+  pointer-events: none;
 }
 
-.hbGain {
-  min-height: 6.4cqw;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 0.3cqw;
+@keyframes hbCurrentGlow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0.3cqw rgba(255, 238, 182, 0.85),
+      0 0 1.6cqw rgba(232, 201, 106, 0.7),
+      inset 0 0 1cqw rgba(232, 201, 106, 0.42);
+  }
+  50% {
+    box-shadow:
+      0 0 0 0.42cqw rgba(255, 246, 206, 1),
+      0 0 3.4cqw rgba(232, 201, 106, 1),
+      inset 0 0 1.4cqw rgba(232, 201, 106, 0.68);
+  }
 }
 
-.hbLevel:not(.reached) .hbGain { opacity: 0.55; }
-
-.hbHandGain {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.1cqw;
-}
-
-.hbHandGain .hbIcon {
-  width: 3.4cqw;
-  height: 3.4cqw;
-  color: #cfc5a6;
-}
-
-.hbHandGain b {
-  font-family: Georgia, serif;
-  font-size: 3cqw;
-  color: var(--hb-gold);
-  text-shadow: 0 0.25cqw 0.45cqw rgba(0, 0, 0, 0.9);
-}
-
-.hbCrowns {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.15cqw;
-  padding-top: 0.5cqw;
-}
-
-.hbCrowns3 {
-  display: grid;
-  grid-template-columns: repeat(2, auto);
-  justify-items: center;
-  column-gap: 0.3cqw;
-}
-
-.hbCrowns3 .hbIcon:first-child { grid-column: 1 / -1; }
-
-.hbCrowns .hbIcon {
-  width: 3.5cqw;
-  height: 3.5cqw;
-  color: var(--hb-gold);
+@media (prefers-reduced-motion: reduce) {
+  .hbXpBox.current {
+    animation: none;
+  }
 }
 
 .hbFooter {
@@ -11424,6 +11452,34 @@ span.recruitThumb {
   background: rgba(74, 32, 88, 0.66);
 }
 
+/* Calamity Waves cadence picker (both mod windows) — a compact chip row shown
+   only while the monsterWaves module is ticked. */
+.waveCadenceRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed rgba(154, 104, 174, 0.45);
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.waveCadenceChip {
+  padding: 4px 10px;
+  border: 1px solid rgba(154, 104, 174, 0.45);
+  border-radius: 999px;
+  background: rgba(24, 14, 29, 0.8);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.waveCadenceChip.selected {
+  border-color: rgba(225, 168, 248, 0.9);
+  background: rgba(74, 32, 88, 0.75);
+}
+
 .wogModuleCheck {
   display: inline-grid;
   place-items: center;
@@ -14866,6 +14922,54 @@ img.cardBack {
 }
 .designedGuardInspectReward { color: #ffe9ad; }
 
+/* Field Override (WOG / anime) inspect float: art + name + mod tag + summary. */
+.fieldOverrideInspectFloat {
+  border-color: rgba(178, 150, 255, 0.6);
+}
+.fieldOverrideInspectHead {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+.fieldOverrideInspectArt {
+  border-radius: 6px;
+  flex: 0 0 auto;
+  height: 34px;
+  object-fit: cover;
+  width: 34px;
+}
+.fieldOverrideInspectGlyph {
+  flex: 0 0 auto;
+  font-size: 22px;
+  line-height: 1;
+}
+.fieldOverrideInspectName {
+  display: flex;
+  flex-direction: column;
+  font-size: 12.5px;
+  font-weight: 700;
+  gap: 2px;
+  line-height: 1.25;
+}
+.fieldOverrideInspectTag {
+  align-self: flex-start;
+  background: rgba(178, 150, 255, 0.18);
+  border: 1px solid rgba(178, 150, 255, 0.5);
+  border-radius: 999px;
+  color: #d9ccff;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0 6px;
+  text-transform: uppercase;
+}
+.fieldOverrideInspectSummary {
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
 /* Tile-popover check rows (win-condition / break flags). */
 .popoverCheckRow {
   align-items: center;
@@ -18301,6 +18405,17 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 .townWindowClose:hover {
   border-color: var(--gold);
   color: var(--gold);
+}
+
+/* Rules errors surfaced INSIDE the town modal (the shared page banner sits in
+   normal flow behind this fixed, z-indexed window). Sticky just under the
+   sticky header so a refused build stays visible even when the board is
+   scrolled. */
+.townWindowErrors {
+  position: sticky;
+  top: 66px;
+  z-index: 4;
+  margin: 8px 14px 0;
 }
 
 .townWindowBody {
@@ -22447,6 +22562,17 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: #a8894f;
+}
+
+/* Optional group-header glyph (e.g. the Global map-rules map icon). The
+   print-and-play glyph SVGs are currentColor black, so lighten them to read on
+   the dark panel exactly like the VP breakdown glyphs. */
+.houseRuleGroupIcon {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  filter: invert(0.82) brightness(1.05);
 }
 
 .houseRuleGroupToggleAll {

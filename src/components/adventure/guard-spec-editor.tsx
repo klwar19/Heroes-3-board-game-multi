@@ -2,9 +2,9 @@
 
 /**
  * Shared designer guard editor — level Ⅰ–Ⅶ (Neutrals OR Packs of those tiers),
- * or an exact army of random-tier Neutrals, random-pack-of-tier, named Neutrals,
- * and faction Packs. Optional packFaction locks every Pack body to one faction
- * (or rolls one at fight time).
+ * or an exact army of random-tier Neutrals, random-pack/few-of-tier, named
+ * Neutrals, and faction Packs / Fews. Optional packFaction locks every Pack/Few
+ * body to one faction (or rolls one at fight time).
  *
  * Data model stays slot-based (`units: string[]` + level/levelArmy/packFaction)
  * so sanitize / fight resolve stay byte-compatible with legacy maps.
@@ -16,6 +16,7 @@ import {
   describeGuardArmyGrouped,
   groupGuardUnitEntries,
   guardUnitEntryLabel,
+  isAnyFewGuardSlot,
   isAnyPackGuardSlot,
   MAX_CUSTOM_GUARD_UNITS,
   RANDOM_GUARD_TIERS,
@@ -60,6 +61,14 @@ const RANDOM_PACK_QUICK: { tier: RandomGuardTier; slot: string; label: string }[
   { tier: "azure" as const, slot: "random-pack:azure", label: "+ Pack IV" }
 ].filter(({ tier }) => Object.values(coreUnitDefinitions).some((def) => def.pack && def.tier === tier));
 
+// Same for Few (most recruitable units have a Few side; azure still rarely).
+const RANDOM_FEW_QUICK: { tier: RandomGuardTier; slot: string; label: string }[] = [
+  { tier: "bronze" as const, slot: "random-few:bronze", label: "+ Few I" },
+  { tier: "silver" as const, slot: "random-few:silver", label: "+ Few II" },
+  { tier: "gold" as const, slot: "random-few:gold", label: "+ Few III" },
+  { tier: "azure" as const, slot: "random-few:azure", label: "+ Few IV" }
+].filter(({ tier }) => Object.values(coreUnitDefinitions).some((def) => def.few && def.tier === tier));
+
 /** Every Neutral-side unit a designer may field, grouped by tier. */
 const GUARD_UNIT_OPTIONS: {
   tier: (typeof GUARD_TIER_ORDER)[number];
@@ -72,12 +81,12 @@ const GUARD_UNIT_OPTIONS: {
     .sort((a, b) => a.label.localeCompare(b.label))
 })).filter((group) => group.units.length > 0);
 
-/** Factions that have at least one Pack unit (for the faction lock chips). */
+/** Factions that have at least one Pack or Few unit (for the faction lock chips). */
 const PACK_FACTIONS: { id: FactionId; label: string }[] = (() => {
   const seen = new Map<string, string>();
   for (const def of Object.values(coreUnitDefinitions)) {
-    if (!def.pack || seen.has(def.faction)) continue;
-    // Prefer a readable faction name from the first pack unit's faction id.
+    if ((!def.pack && !def.few) || seen.has(def.faction)) continue;
+    // Prefer a readable faction name from the first pack/few unit's faction id.
     const label = def.faction
       .split("_")
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -103,6 +112,20 @@ function packUnitOptions(factionFilter: FactionId | "random" | undefined): {
   })).filter((group) => group.units.length > 0);
 }
 
+function fewUnitOptions(factionFilter: FactionId | "random" | undefined): {
+  tier: (typeof GUARD_TIER_ORDER)[number];
+  units: { id: string; label: string }[];
+}[] {
+  const concrete = factionFilter && factionFilter !== "random" ? factionFilter : null;
+  return GUARD_TIER_ORDER.map((tier) => ({
+    tier,
+    units: Object.values(coreUnitDefinitions)
+      .filter((def) => def.few && def.tier === tier && (!concrete || def.faction === concrete))
+      .map((def) => ({ id: `few:${def.id}`, label: `Few of ${def.name}` }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  })).filter((group) => group.units.length > 0);
+}
+
 function setUnitCount(units: string[], id: string, count: number): string[] {
   const without = units.filter((u) => u !== id);
   const n = Math.max(0, Math.min(MAX_CUSTOM_GUARD_UNITS - without.length, Math.floor(count)));
@@ -110,7 +133,7 @@ function setUnitCount(units: string[], id: string, count: number): string[] {
 }
 
 function armyUsesPacks(units: string[]): boolean {
-  return units.some((id) => isAnyPackGuardSlot(id));
+  return units.some((id) => isAnyPackGuardSlot(id) || isAnyFewGuardSlot(id));
 }
 
 export function GuardSpecEditor({
@@ -137,6 +160,7 @@ export function GuardSpecEditor({
   const showFactionRow =
     (armyMode && (armyUsesPacks(units) || units.length === 0)) || (levelMode && levelArmyPacks);
   const packOptions = packUnitOptions(packFaction);
+  const fewOptions = fewUnitOptions(packFaction);
 
   const setUnits = (next: string[], nextFaction = packFaction) => {
     if (next.length === 0) {
@@ -280,6 +304,23 @@ export function GuardSpecEditor({
                 {label}
               </button>
             ))}
+          </div>
+          <div className="popoverGuardQuickRow" role="group" aria-label="Add Few of tier">
+            {RANDOM_FEW_QUICK.map(({ slot, label, tier }) => (
+              <button
+                className="popoverGuardChip popoverGuardQuickChip"
+                disabled={atCap}
+                key={slot}
+                onClick={() => {
+                  if (atCap) return;
+                  setUnits([...units, slot]);
+                }}
+                title={`Add a random Few of Tier ${tier} (faction unit card, rolled at fight time).`}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
             <span className="popoverGuardCapHint" aria-live="polite">
               {units.length}/{MAX_CUSTOM_GUARD_UNITS}
             </span>
@@ -325,7 +366,7 @@ export function GuardSpecEditor({
             </div>
           ) : (
             <small className="popoverHint">
-              No units yet — add Pack of Tier I–IV, random Neutrals, or a named unit (up to{" "}
+              No units yet — add Pack/Few of Tier I–IV, random Neutrals, or a named unit (up to{" "}
               {MAX_CUSTOM_GUARD_UNITS}).
             </small>
           )}
@@ -346,6 +387,15 @@ export function GuardSpecEditor({
               <option value="">+ Add named unit…</option>
               {GUARD_UNIT_OPTIONS.map((group) => (
                 <optgroup key={group.tier} label={`Neutral · ${GUARD_TIER_LABELS[group.tier]}`}>
+                  {group.units.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+              {fewOptions.map((group) => (
+                <optgroup key={`few-${group.tier}`} label={`Faction Few · ${GUARD_TIER_LABELS[group.tier]}`}>
                   {group.units.map((unit) => (
                     <option key={unit.id} value={unit.id}>
                       {unit.label}
@@ -416,7 +466,7 @@ export function GuardSpecEditor({
             ))}
           </div>
           <small className="popoverHint">
-            All Packs share one faction (or roll one at fight). Neutrals stay free.
+            All Packs and Fews share one faction (or roll one at fight). Neutrals stay free.
           </small>
         </div>
       ) : null}

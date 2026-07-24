@@ -859,6 +859,19 @@ export function scoreCombatAction(
       // the AI lands the free once-per-combat buff first, then strikes. The map
       // Forced March (no combat) is scored by map-policy instead.
       return combat ? { score: 715, policy: "combat.hero-war-cry" } : null;
+    case "WAIT_UNIT": {
+      // Polish Wait: re-queue the unit at the end of the round. Prefer Wait
+      // over Defend when the unit has no strike this moment and is healthy —
+      // acting last often lands a better attack after enemies close. Below
+      // real attacks (560+) and above END_ACTIVATION (400).
+      const waiter = combat.units[action.unitId];
+      if (!waiter) return { score: 520, policy: "combat.wait" };
+      const missing = waiter.maxHealth - unitRemainingHealth(waiter);
+      // Wounded bodies Defend instead (save now); healthy Wait for a better
+      // activation later.
+      const score = missing >= 2 ? 480 : 560 + Math.min(20, waiter.initiative ?? 0);
+      return { score, policy: "combat.wait" };
+    }
     case "DEFEND_UNIT": {
       // Prefer defending a wounded unit over a healthy one (still below any
       // real attack). A unit that already moved and cannot strike should sit

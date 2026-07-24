@@ -24,8 +24,6 @@ import {
   ABILITY_SEARCH_LEVELS,
   ANIME_EQUIPMENT_SLOTS,
   EQUIPMENT_SLOT_GLYPH,
-  EXPERT_USES_BY_LEVEL,
-  HAND_LIMIT_BY_LEVEL,
   HERO_GRADE_MAX,
   HERO_GRADE_MERIT_THRESHOLDS,
   MAX_EXPERIENCE,
@@ -62,6 +60,78 @@ const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
 /** Specialty cards sit at Ⅰ (starting deck), Ⅳ and Ⅵ — the laurelled numerals. */
 const SPECIALTY_TRACK_LEVELS = [1, ...SPECIALTY_LEVELS] as number[];
 
+/** One die-cut box on the printed experience track. */
+type XpBox = {
+  /** 0…MAX_EXPERIENCE — equals the `hero.experience` value that lands here. */
+  index: number;
+  /** The engraved value: 1, 1.5, 2, 2.5, … 7. */
+  value: number;
+  /** Even xp = a level box on the TOP row, odd xp = a half-step box below. */
+  row: "top" | "bottom";
+  /** The level this box belongs to (a top box) or advances from (a bottom box). */
+  level: number;
+  /** Display label ("1", "1.5", … "7"). */
+  label: string;
+};
+
+/**
+ * The printed hero mat's experience track is 13 die-cut boxes in a zig-zag:
+ * 7 numbered level boxes on the TOP row (Ⅰ…Ⅶ, the even xp values 0,2,…,12) and
+ * 6 half-step boxes on the BOTTOM row offset between them (1.5…6.5, the odd xp
+ * values 1,3,…,11). The XP cube advances exactly one box per experience point,
+ * so **box index === `hero.experience`** — no off-by-one, no rounding. This
+ * derives every box's descriptor once; `levelOfExperience` (engine) stays the
+ * single source of the level, this only lays the boxes out.
+ *
+ * The current box (index === experience) is marked by a glowing gold frame on
+ * the box itself — as on the printed mat, nothing sits ON the box, so the
+ * specialty/ability art in the top boxes stays fully visible.
+ */
+function xpTrackBoxes(): XpBox[] {
+  return Array.from({ length: MAX_EXPERIENCE + 1 }, (_, index) => {
+    const value = 1 + index / 2;
+    const row: "top" | "bottom" = index % 2 === 0 ? "top" : "bottom";
+    return {
+      index,
+      value,
+      row,
+      level: Math.floor(index / 2) + 1,
+      label: Number.isInteger(value) ? String(value) : value.toFixed(1)
+    };
+  });
+}
+
+/**
+ * The authentic printed experience-track art (green marble strip with the
+ * laurelled Ⅰ–Ⅶ numerals, blue connector arrows and hand-limit/crown icons all
+ * baked in). The track is identical on every hero mat, so this ONE crop from
+ * the printed scan is shared by all heroes. Its native crop is 1454×360.
+ */
+const XP_TRACK_ART = "/assets/hero-board/xp-track.webp";
+const XP_TRACK_ASPECT = 1454 / 360;
+
+/**
+ * Measured position of each die-cut hole in the track art, as percentages of
+ * the crop (keyed by xp index 0…12 = the box the marker lands on). Detected
+ * from the scan's transparent (alpha-0) hole regions, so an overlaid card shows
+ * exactly through its hole. Even indices are the TOP row, odd the BOTTOM row.
+ */
+const HOLE_RECTS: Record<number, { left: number; top: number; width: number; height: number }> = {
+  0: { left: 5.296, top: 16.667, width: 6.534, height: 25.278 },
+  1: { left: 12.173, top: 68.056, width: 6.602, height: 24.444 },
+  2: { left: 19.12, top: 16.944, width: 6.602, height: 25 },
+  3: { left: 25.997, top: 67.778, width: 6.602, height: 25 },
+  4: { left: 32.875, top: 16.667, width: 6.671, height: 25.278 },
+  5: { left: 39.89, top: 67.5, width: 6.534, height: 25.278 },
+  6: { left: 46.768, top: 16.944, width: 6.534, height: 25 },
+  7: { left: 53.645, top: 67.5, width: 6.602, height: 24.722 },
+  8: { left: 60.523, top: 16.944, width: 6.602, height: 24.167 },
+  9: { left: 67.469, top: 67.778, width: 6.534, height: 24.722 },
+  10: { left: 74.278, top: 16.944, width: 6.671, height: 24.444 },
+  11: { left: 81.155, top: 67.5, width: 6.602, height: 24.722 },
+  12: { left: 88.171, top: 16.944, width: 6.602, height: 24.167 }
+};
+
 /** Equipment grade order (I < II < III) for the "upgrade waiting in bag" hint. */
 const EQUIPMENT_GRADE_RANK: Record<EquipmentGrade, number> = { I: 1, II: 2, III: 3 };
 
@@ -76,7 +146,11 @@ const BOARD_THEMES: Record<string, { banner: string; edge: string }> = {
   fuyuki: { banner: "linear-gradient(180deg, #164e8c 0%, #631f42 52%, #1a1838 100%)", edge: "#e15b7d" },
   azure_breeze: { banner: "linear-gradient(180deg, #4a9a8d 0%, #176477 50%, #173c54 100%)", edge: "#74d2b6" },
   hidden_leaf: { banner: "linear-gradient(180deg, #4f9d45 0%, #2f6b34 52%, #17361f 100%)", edge: "#79c76a" },
-  azur_lane: { banner: "linear-gradient(180deg, #1d5db4 0%, #123a6b 52%, #0a1c33 100%)", edge: "#6fb3e8" }
+  azur_lane: { banner: "linear-gradient(180deg, #1d5db4 0%, #123a6b 52%, #0a1c33 100%)", edge: "#6fb3e8" },
+  // Heavenly Demon Palace (modao): a dark blood-crimson banner + demonic edge,
+  // consistent with the faction's wuxia/modao chrome (was silently falling back
+  // to the Castle blue).
+  heavenly_demon: { banner: "linear-gradient(180deg, #7a1524 0%, #3f0a14 52%, #17060a 100%)", edge: "#b23a4e" }
 };
 
 // ---------------------------------------------------------------------------
@@ -88,65 +162,6 @@ function StatIcon({ stat }: { stat: keyof typeof HERO_INFO_STAT_ICONS }) {
   // Use the clean TRANSPARENT board-game glyphs (Heegu-sama/Homm3BG) — the same
   // set the hero-selection info board uses — not the opaque scan crops.
   return <img alt="" aria-hidden="true" className="hbStatIcon" src={assetUrl(HERO_INFO_STAT_ICONS[stat])} />;
-}
-
-function CrownIcon() {
-  return (
-    <svg aria-hidden="true" className="hbIcon" viewBox="0 0 24 24">
-      <path d="M3.4 16.6 L4.6 7.8 L8.8 11.6 L12 5.4 L15.2 11.6 L19.4 7.8 L20.6 16.6 Z" fill="currentColor" />
-      <rect fill="currentColor" height="2" rx="0.6" width="17.2" x="3.4" y="17.6" />
-    </svg>
-  );
-}
-
-function HandCardsIcon() {
-  return (
-    <svg aria-hidden="true" className="hbIcon" viewBox="0 0 24 24">
-      <rect fill="currentColor" height="14.5" rx="1.6" transform="rotate(-10 9.5 11.5)" width="9.6" x="4.7" y="4.2" />
-      <rect
-        fill="currentColor"
-        height="14.5"
-        rx="1.6"
-        stroke="var(--hb-slate)"
-        strokeWidth="1"
-        transform="rotate(9 14.5 12.5)"
-        width="9.6"
-        x="9.7"
-        y="5.2"
-      />
-    </svg>
-  );
-}
-
-function SearchGlyph() {
-  return (
-    <svg aria-hidden="true" className="hbIcon" viewBox="0 0 24 24">
-      <circle cx="10.4" cy="10.4" fill="none" r="5.6" stroke="currentColor" strokeWidth="2.1" />
-      <path d="M14.6 14.6 L19.6 19.6" stroke="currentColor" strokeLinecap="round" strokeWidth="2.6" />
-    </svg>
-  );
-}
-
-/** One laurel sprig; mirrored with CSS for the right-hand side. */
-function LaurelIcon() {
-  return (
-    <svg aria-hidden="true" className="hbLaurel" viewBox="0 0 10 18">
-      <path d="M8.6 1.6 C5 5 3.4 9.4 4.8 16.2" fill="none" stroke="currentColor" strokeWidth="1" />
-      <path d="M7.9 3.4 C6.3 2.7 4.9 3 3.8 4.2 C5.4 5 6.9 4.8 7.9 3.4 Z" fill="currentColor" />
-      <path d="M6 7.2 C4.5 6.7 3.1 7.2 2.2 8.5 C3.9 9.1 5.3 8.7 6 7.2 Z" fill="currentColor" />
-      <path d="M5 11.4 C3.6 11.1 2.3 11.7 1.6 13.1 C3.3 13.5 4.6 12.9 5 11.4 Z" fill="currentColor" />
-    </svg>
-  );
-}
-
-/** Spear divider between the level-track columns, as printed. */
-function SpearIcon({ flip }: { flip: boolean }) {
-  return (
-    <svg aria-hidden="true" className="hbSpear" style={flip ? { transform: "scaleX(-1)" } : undefined} viewBox="0 0 16 16">
-      <path d="M3 13 L11.4 4.6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
-      <path d="M10 2 C12 2.4 13.6 4 14 6 C12 5.6 10.4 4 10 2 Z" fill="currentColor" />
-    </svg>
-  );
 }
 
 /** Might heroes wear the horned helmet, magic heroes the wizard hat. */
@@ -393,79 +408,110 @@ export function HeroBoard({
           </div>
         </div>
 
-        <div aria-label={`Level track: level ${hero.level}, ${hero.experience}/${MAX_EXPERIENCE} experience`} className="hbTrack">
-          {[1, 2, 3, 4, 5, 6, 7].map((level) => {
-            const reached = hero.level >= level;
-            const specialty = SPECIALTY_TRACK_LEVELS.includes(level);
-            const specialtyCardId = specialty ? heroDef.specialtyCardIds?.[level as 1 | 4 | 6] : undefined;
-            // Ability-search levels (2/3/5/7): the card the player KEPT from that
-            // level-up Search, if any is recorded (public info, opponents too).
-            const keptAbilityId = ABILITY_SEARCH_LEVELS.includes(level) ? player.levelUpAbilityPicks?.[level] : undefined;
-            const handGain = HAND_LIMIT_BY_LEVEL[level] !== HAND_LIMIT_BY_LEVEL[level - 1] || level === 1;
-            const crowns = EXPERT_USES_BY_LEVEL[level] - (EXPERT_USES_BY_LEVEL[level - 1] ?? 0) > 0 ? EXPERT_USES_BY_LEVEL[level] : 0;
-
-            return (
-              <div className={`hbLevel ${reached ? "reached" : ""} ${hero.level === level ? "current" : ""}`} key={level}>
-                {level > 1 ? <SpearIcon flip={level % 2 === 0} /> : null}
-                <span className={`hbNumeral ${specialty ? "gold" : "silver"}`}>
-                  {specialty ? <LaurelIcon /> : null}
-                  {ROMAN[level]}
-                  {specialty ? <LaurelIcon /> : null}
-                </span>
-                <div className="hbSlotCell">
-                  {specialty && specialtyCardId ? (
-                    // The specialty card is visible from the very beginning:
-                    // EARNED (hero level ≥ Ⅰ/Ⅳ/Ⅵ) wears the golden frame,
-                    // unearned stays a dimmed preview — click zooms either way.
-                    <button
-                      className={`hbSlot hbSlotSpecialty ${reached ? "gained" : "preview"}`}
-                      onClick={() => zoomCard(specialtyCardId)}
-                      title={
-                        reached
-                          ? `${specialtyDisplayName(specialtyCardId)} (level ${ROMAN[level]} specialty)`
-                          : `${specialtyDisplayName(specialtyCardId)} — specialty card gained at level ${ROMAN[level]}`
-                      }
-                      type="button"
+        {(() => {
+          // The experience track is the AUTHENTIC printed mat art (green marble
+          // strip with the Ⅰ–Ⅶ laurelled numerals, blue connector arrows, and
+          // the hand-limit/crown icons all baked into the scan — identical on
+          // every hero mat, so one shared crop). The 13 die-cut boxes are
+          // transparent HOLES in the art; we overlay each hole at its measured
+          // position (HOLE_RECTS) so the specialty/ability card shows THROUGH
+          // it. The current XP box (index === experience) wears a glowing gold
+          // frame plus a subtle cube tucked in its corner — the only markers,
+          // never covering the card art.
+          const boxes = xpTrackBoxes();
+          const currentXp = Math.max(0, Math.min(MAX_EXPERIENCE, hero.experience));
+          return (
+            <div
+              aria-label={`Level track: level ${hero.level}, ${hero.experience}/${MAX_EXPERIENCE} experience`}
+              className="hbTrack"
+            >
+              <div
+                className="hbTrackArt"
+                style={{ backgroundImage: `url(${assetUrl(XP_TRACK_ART)})`, aspectRatio: String(XP_TRACK_ASPECT) }}
+              >
+                {boxes.map((box) => {
+                  const isCurrent = currentXp === box.index;
+                  const rect = HOLE_RECTS[box.index];
+                  const holeStyle: React.CSSProperties = {
+                    left: `${rect.left}%`,
+                    top: `${rect.top}%`,
+                    width: `${rect.width}%`,
+                    height: `${rect.height}%`
+                  };
+                  const cube = isCurrent ? <span aria-hidden="true" className="hbCube" /> : null;
+                  if (box.row === "top") {
+                    const level = box.level;
+                    const reached = hero.level >= level;
+                    const specialty = SPECIALTY_TRACK_LEVELS.includes(level);
+                    const specialtyCardId = specialty ? heroDef.specialtyCardIds?.[level as 1 | 4 | 6] : undefined;
+                    // Ability-search levels (2/3/5/7): the card the player KEPT
+                    // from that level-up Search, if any is recorded (public info).
+                    const keptAbilityId = ABILITY_SEARCH_LEVELS.includes(level)
+                      ? player.levelUpAbilityPicks?.[level]
+                      : undefined;
+                    return (
+                      <div
+                        aria-current={isCurrent ? "step" : undefined}
+                        className={`hbXpBox hbXpBoxTop ${isCurrent ? "current" : ""}`}
+                        data-current={isCurrent ? "true" : undefined}
+                        data-xp-index={box.index}
+                        data-xp-row="top"
+                        data-xp-value={box.label}
+                        key={box.index}
+                        style={holeStyle}
+                      >
+                        {specialty && specialtyCardId ? (
+                          // The specialty card shows through the hole from the
+                          // very beginning: EARNED (hero level ≥ Ⅰ/Ⅳ/Ⅵ) at full
+                          // colour, unearned dimmed as a preview — click zooms.
+                          <button
+                            className={`hbSlot hbSlotSpecialty ${reached ? "gained" : "preview"}`}
+                            onClick={() => zoomCard(specialtyCardId)}
+                            title={
+                              reached
+                                ? `${specialtyDisplayName(specialtyCardId)} (level ${ROMAN[level]} specialty)`
+                                : `${specialtyDisplayName(specialtyCardId)} — specialty card gained at level ${ROMAN[level]}`
+                            }
+                            type="button"
+                          >
+                            <CardArt cardId={specialtyCardId} kind="specialty" />
+                          </button>
+                        ) : keptAbilityId ? (
+                          <button
+                            className="hbSlot hbSlotAbilityPick"
+                            onClick={() => zoomCard(keptAbilityId)}
+                            title={`Level ${ROMAN[level]}: kept ${
+                              cardLibrary[keptAbilityId]?.name ?? keptAbilityId
+                            } from the Ability Search`}
+                            type="button"
+                          >
+                            <CardArt cardId={keptAbilityId} kind="ability" />
+                          </button>
+                        ) : null}
+                        {cube}
+                      </div>
+                    );
+                  }
+                  // Bottom row: an empty half-step hole — transparent, as printed.
+                  return (
+                    <div
+                      aria-current={isCurrent ? "step" : undefined}
+                      className={`hbXpBox hbXpBoxBottom ${isCurrent ? "current" : ""}`}
+                      data-current={isCurrent ? "true" : undefined}
+                      data-xp-index={box.index}
+                      data-xp-row="bottom"
+                      data-xp-value={box.label}
+                      key={box.index}
+                      style={holeStyle}
                     >
-                      <CardArt cardId={specialtyCardId} kind="specialty" />
-                    </button>
-                  ) : keptAbilityId ? (
-                    <button
-                      className="hbSlot hbSlotSearch hbSlotAbilityPick"
-                      onClick={() => zoomCard(keptAbilityId)}
-                      title={`Level ${ROMAN[level]}: kept ${cardLibrary[keptAbilityId]?.name ?? keptAbilityId} from the Ability Search`}
-                      type="button"
-                    >
-                      <CardArt cardId={keptAbilityId} kind="ability" />
-                    </button>
-                  ) : (
-                    <div className="hbSlot hbSlotSearch" title={`Level ${ROMAN[level]}: Search (2) the Ability deck`}>
-                      <SearchGlyph />
+                      {cube}
                     </div>
-                  )}
-                  {hero.level === level ? (
-                    <span className="hbCube" title={`${lexicon.experience} ${hero.experience}/${MAX_EXPERIENCE}`} />
-                  ) : null}
-                </div>
-                <div className="hbGain">
-                  {handGain ? (
-                    <span className="hbHandGain">
-                      <HandCardsIcon />
-                      <b>{HAND_LIMIT_BY_LEVEL[level]}</b>
-                    </span>
-                  ) : null}
-                  {crowns > 0 ? (
-                    <span className={`hbCrowns hbCrowns${crowns}`}>
-                      {Array.from({ length: crowns }, (_, i) => (
-                        <CrownIcon key={i} />
-                      ))}
-                    </span>
-                  ) : null}
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })()}
 
         <footer className="hbFooter">
           <span>

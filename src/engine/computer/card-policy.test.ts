@@ -612,6 +612,49 @@ describe("card policy — correct Power on a pending damage cast", () => {
   });
 });
 
+describe("card policy — permanent bind / equip / Merit packages", () => {
+  function mapObs(): ComputerObservation {
+    const state = {
+      seed: "card-policy-bind",
+      round: 2,
+      eventCounter: 0,
+      combat: null,
+      players: {
+        p2: {
+          id: "p2",
+          hand: ["wog.artifact.iron_cudgel"],
+          resources: { gold: 20, buildingMaterials: 2, valuables: 0 },
+          army: [],
+        },
+      },
+    } as unknown as PlayerVisibleState;
+    return { playerId: "p2", state, legalActions: [] };
+  }
+
+  it("scores BIND_COMMANDER_ARTIFACT above residual map junk and END_TURN", () => {
+    const bind = scoreCardAction(mapObs(), {
+      type: "PLAY_CARD",
+      playerId: "p2",
+      cardId: "wog.artifact.iron_cudgel",
+      mode: "basic",
+    } as GameAction);
+    expect(bind).not.toBeNull();
+    // Mutation control: residual implemented map plays score 520; bind must
+    // clear that band so permanent packages are played promptly.
+    expect(bind!.score).toBeGreaterThanOrEqual(780);
+    expect(bind!.score).toBeGreaterThan(520);
+  });
+
+  it("CONTROL: SPEND_MORALE combat-bonus still beats PASS_REACTION band", () => {
+    const morale = scoreCardAction(mapObs(), {
+      type: "SPEND_MORALE",
+      playerId: "p2",
+      benefit: "combat-bonus",
+    } as GameAction);
+    expect(morale?.score).toBeGreaterThan(1_050);
+  });
+});
+
 describe("card policy — crown (expert use) discipline", () => {
   function mapObservation(
     crowns: number,

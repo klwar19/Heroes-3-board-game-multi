@@ -69,7 +69,6 @@ import {
   hexToPixel,
   inCombatPrep,
   isMapObjectLocation,
-  isMapTokenLocation,
   isParallelActor,
   isRoundStartEventBarrierActive,
   MAX_CUSTOM_WIN_CONDITIONS,
@@ -109,6 +108,7 @@ import {
   type HeroPathTarget,
   type HeroState,
   type LegalAction,
+  type MapFieldState,
   type MapSpaceId,
   type MapTileState,
   type PlayerId,
@@ -134,8 +134,11 @@ import {
   whirlpoolTokenImage
 } from "@/data/assets/homm-assets";
 import { fieldOverrideGlyph, fieldOverrideImage } from "@/data/map/field-overrides";
-// Side-effect: register Anime package Field Override kinds into the global catalog.
+import { fieldOverridePresentation } from "@/data/map/field-override-presentation";
+// Side-effect: register Anime + Wake of Gods Field Override kinds into the global
+// catalog, so their names/summaries/glyphs resolve for the board tooltip + inspect.
 import "@/data/anime/field-overrides";
+import "@/data/wog/field-overrides";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { CommanderCard, CommanderLevelUpOverlay } from "@/components/commander-card";
 import { EquipGradeChip, tierToGrade } from "@/components/equip-grade-chip";
@@ -237,42 +240,78 @@ const GATE_PAIR_COLORS: Record<number, string> = {
   4: "#b04fd6"
 };
 
+/** Teleport-object locations the unified {@link teleportHexMark} renders. */
+function isTeleportMarkLocation(locationId: string): boolean {
+  return (
+    locationId === "gate" ||
+    locationId === "monolith" ||
+    locationId === "whirlpool" ||
+    locationId === "oneway_entrance" ||
+    locationId === "oneway_exit"
+  );
+}
+
 /**
- * A colored Gate hex mark: the MONOLITH artwork (a colored Gate is "a Monolith
- * with a color") tinted by a colored disc + ring, with a small readable
- * pair-number badge. Used for BOTH tile-carved and standalone gate fields.
+ * Unified teleport-object hex mark — the SAME iconography the map designer
+ * draws (user request: the game map should reuse the editor's teleport icons):
+ * the object's own UNDISTORTED token art (never stretched into the hex box),
+ * an identifying ring, and — for the colored networks — a readable pair-number
+ * badge (colour-blind-safe). Teleport Gates and one-way Monoliths ring in
+ * their pair colour; Monoliths and Whirlpools wear the designer's gold ring.
+ * Used for BOTH tile-carved and standalone fields.
  */
-function gateHexMark(spaceId: string, x: number, y: number, pair: number): ReactNode {
-  const color = GATE_PAIR_COLORS[pair] ?? "#c9a24b";
-  // A touch smaller than the monolith so the portal icon sits neatly inside its
-  // hex (the ring + pair badge below keep it identifiable at the reduced size).
+function teleportHexMark(
+  spaceId: string,
+  x: number,
+  y: number,
+  field: Pick<MapFieldState, "location" | "gatePair" | "whirlpoolNumber">
+): ReactNode {
+  const pair = (field.gatePair ?? 1) as 1 | 2 | 3 | 4;
+  // Gates and one-way halves belong to a colored network; the plain Monolith /
+  // Whirlpool networks are identified by the designer's gold ring instead.
+  const colored = field.location !== "monolith" && field.location !== "whirlpool";
+  const color = colored ? GATE_PAIR_COLORS[pair] ?? "#c9a24b" : "#c9a24b";
+  const image =
+    field.location === "gate"
+      ? teleportGateImage(pair)
+      : field.location === "monolith"
+        ? monolithTokenImage()
+        : field.location === "whirlpool"
+          ? whirlpoolTokenImage(field.whirlpoolNumber)
+          : onewayMonolithImage(field.location === "oneway_entrance" ? "entrance" : "exit", pair);
+  // A touch smaller than the hex so the token icon sits neatly inside it
+  // (the ring + badge keep it identifiable at the reduced size).
   const art = HEX_SIZE * 1.28;
   return (
     <g className="hexGateMark" key={`${spaceId}-gate-mark`} style={{ pointerEvents: "none" }}>
-      {/* The Teleport Gate's own per-color portal artwork. */}
+      {/* The object's own token artwork, undistorted (designer parity). */}
       <image
         className="hexGateMonolith"
         height={art * 1.4}
-        href={assetUrl(teleportGateImage((pair as 1 | 2 | 3 | 4) ?? 1))}
+        href={assetUrl(image)}
         preserveAspectRatio="xMidYMid meet"
         width={art}
         x={x - art / 2}
         y={y - art * 0.72}
       />
-      {/* Colored ring identifying the pair colour (colour-blind-safe with the badge). */}
+      {/* Ring identifying the network (pair colour, or the designer gold). */}
       <circle cx={x} cy={y} fill="none" r={HEX_SIZE * 0.62} stroke={color} strokeWidth={3} />
-      {/* Small pair-number badge (top-right). */}
-      <circle cx={x + HEX_SIZE * 0.46} cy={y - HEX_SIZE * 0.46} fill="rgba(12,8,4,0.85)" r={HEX_SIZE * 0.3} stroke={color} strokeWidth={2} />
-      <text
-        fill={color}
-        fontSize={HEX_SIZE * 0.44}
-        fontWeight={700}
-        textAnchor="middle"
-        x={x + HEX_SIZE * 0.46}
-        y={y - HEX_SIZE * 0.3}
-      >
-        {pair}
-      </text>
+      {colored ? (
+        <>
+          {/* Small pair-number badge (top-right). */}
+          <circle cx={x + HEX_SIZE * 0.46} cy={y - HEX_SIZE * 0.46} fill="rgba(12,8,4,0.85)" r={HEX_SIZE * 0.3} stroke={color} strokeWidth={2} />
+          <text
+            fill={color}
+            fontSize={HEX_SIZE * 0.44}
+            fontWeight={700}
+            textAnchor="middle"
+            x={x + HEX_SIZE * 0.46}
+            y={y - HEX_SIZE * 0.3}
+          >
+            {pair}
+          </text>
+        </>
+      ) : null}
     </g>
   );
 }
@@ -1600,6 +1639,10 @@ export function HexMapBoard({
       // glyph so an art-less carve is a visible hex in icon mode (art wins once
       // it ships — fieldOverrideGlyph returns undefined then).
       const glyph = LOCATION_GLYPHS[field.location] ?? fieldOverrideGlyph(field.location) ?? "";
+      // Field Override (WOG / anime) hex: resolve its name + printed summary from
+      // the registry so the hover tooltip and the click-to-inspect float can tell
+      // the player what visiting does — data-driven, so every kind is covered.
+      const overrideInfo = fieldOverridePresentation(field.location);
       const isSelected = selectedTarget?.spaceId === spaceId;
 
       cells.push(
@@ -1683,11 +1726,12 @@ export function HexMapBoard({
                         }
                         remindToDraw(spaceId);
                       }
-                    : alteredGuardPreview || designerRewardTip
+                    : alteredGuardPreview || designerRewardTip || overrideInfo
                       ? () => {
-                          // Inspect a designer-altered object: click toggles a
-                          // float listing the exact guard army / reward — the
-                          // hover tooltip's touch-friendly, readable twin.
+                          // Inspect a designer-altered object OR a Field Override
+                          // (WOG / anime) hex: click toggles a float with the
+                          // guard army / reward / override summary — the hover
+                          // tooltip's touch-friendly, readable twin.
                           if (suppressClickRef.current) {
                             return;
                           }
@@ -1703,6 +1747,8 @@ export function HexMapBoard({
                 ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
                 : (location?.name ?? field.location)
             }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${alteredGuardTip}${designerRewardTip}${
+              overrideInfo ? ` — ${overrideInfo.summary}` : ""
+            }${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
             }${
               field.location === "subterranean_gate"
@@ -1761,10 +1807,11 @@ export function HexMapBoard({
           </text>
         );
       }
-      // A colored Gate hex: a tinted ring + its pair number (colour-blind-safe),
-      // so the hex is visibly a gate of its pair (tile-slot gates render here).
-      if (field.location === "gate" && field.gatePair) {
-        overlays.push(gateHexMark(spaceId, x, y, field.gatePair));
+      // A teleport-object hex (Gate / Monolith / Whirlpool / one-way Monolith):
+      // the unified designer-parity mark — token art + ring (+ pair badge for
+      // the colored networks). Tile-slot placements render here.
+      if (isTeleportMarkLocation(field.location)) {
+        overlays.push(teleportHexMark(spaceId, x, y, field));
       }
 
       // Pick-a-field Monolith/Whirlpool token placement: label each candidate
@@ -1834,24 +1881,26 @@ export function HexMapBoard({
       // halves are distinct: the skull cave-mouth GATE on a Surface tile, the
       // lighter passage ENTRANCE on a Subterranean tile.
       const overrideArt = fieldOverrideImage(field.location);
+      // Raid Bosses / the Dungeon: carved module fields wear their own hex art
+      // (procedural placeholders — see docs/raid-dungeon-art.md for upgrades).
+      const moduleFieldArt =
+        field.location === "rift_lair"
+          ? "/assets/bosses/rift_lair_field.webp"
+          : field.location === "dungeon_gate"
+            ? "/assets/bosses/dungeon_gate_field.webp"
+            : null;
+      // Monolith / Whirlpool / one-way hexes are NOT in this chain any more —
+      // they render through the designer-parity teleportHexMark above (their
+      // old full-hex stretch distorted the token art).
       const tokenImage =
         field.location === "subterranean_gate"
           ? subterraneanGateTokenImage(undergroundTile ? "subterranean" : "surface")
           : field.location === "creature_bank"
             ? creatureBankFieldImage(field.bankId)
-            : field.location === "monolith"
-              ? monolithTokenImage()
-              : field.location === "whirlpool"
-                ? whirlpoolTokenImage(field.whirlpoolNumber)
-                : field.location === "oneway_entrance" || field.location === "oneway_exit"
-                  ? onewayMonolithImage(
-                      field.location === "oneway_entrance" ? "entrance" : "exit",
-                      field.gatePair ?? 1
-                    )
-                  : overrideArt;
+            : (moduleFieldArt ?? overrideArt);
       if (tokenImage) {
         // Clip landscape/field art to the hex (Creature Banks + Field Override objects).
-        if (field.location === "creature_bank" || Boolean(overrideArt)) {
+        if (field.location === "creature_bank" || Boolean(overrideArt) || Boolean(moduleFieldArt)) {
           // The bank's field-tile scan is landscape; clip it to the hex and use
           // "slice" (cover) so the structure fills the cell centred and
           // undistorted — the old "none" stretched it into the tall hex box,
@@ -1911,7 +1960,7 @@ export function HexMapBoard({
           </g>
         );
       }
-      if (!artShown && glyph && field.location !== "empty_field" && !tokenImage) {
+      if (!artShown && glyph && field.location !== "empty_field" && !tokenImage && !isTeleportMarkLocation(field.location)) {
         overlays.push(
           <text className="hexGlyph" key={`${spaceId}-glyph`} textAnchor="middle" x={x} y={y + 6}>
             {glyph}
@@ -1967,10 +2016,16 @@ export function HexMapBoard({
           }
         }
       }
-      // Designed guards on map-object hexes (teleport tokens / gates / gate
+      // Designed guards on map-object hexes (teleport tokens / gates / one-way
       // halves) are NOT printed on the tile scan, so their numeral shows even
-      // in art mode — otherwise a designed guard would be invisible.
-      const designedGuardHex = isMapObjectLocation(field.location) || field.location === "subterranean_gate";
+      // in art mode — otherwise a designed guard would be invisible. The
+      // teleport-mark set covers the one-way Monolith halves isMapObjectLocation
+      // does not (a guarded tile-carved one-way entrance was numeral-less in
+      // art mode).
+      const designedGuardHex =
+        isMapObjectLocation(field.location) ||
+        isTeleportMarkLocation(field.location) ||
+        field.location === "subterranean_gate";
       if ((!artShown || designedGuardHex) && field.difficulty && guarded) {
         overlays.push(
           <text className="hexDifficulty" key={`${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
@@ -2006,6 +2061,26 @@ export function HexMapBoard({
           >
             ★
           </text>
+        );
+      }
+      // Field Override (WOG / anime) hexes wear distinctive art; this small
+      // corner glyph badge flags "this hex is special — hover/tap it" for a
+      // zoomed-out player. Shown even over art (registry glyph, not the
+      // art-suppressed fieldOverrideGlyph); kinds with no glyph get no badge.
+      if (overrideInfo?.glyph) {
+        overlays.push(
+          <g
+            aria-hidden="true"
+            className="fieldOverrideGlyphBadge"
+            data-space-id={spaceId}
+            key={`${spaceId}-fo-glyph`}
+            transform={`translate(${x - HEX_SIZE * 0.5} ${y + HEX_SIZE * 0.52})`}
+          >
+            <circle r="8.4" />
+            <text textAnchor="middle" y="3.2">
+              {overrideInfo.glyph}
+            </text>
+          </g>
         );
       }
       if (field.blackCube) {
@@ -2218,57 +2293,11 @@ export function HexMapBoard({
         </title>
       </polygon>
     );
-    if (field.location === "gate" && field.gatePair) {
-      overlays.push(gateHexMark(spaceId, x, y, field.gatePair));
-    } else if (field.location === "monolith") {
-      overlays.push(
-        <image
-          className="locationToken"
-          height={2 * HEX_SIZE}
-          href={assetUrl(monolithTokenImage())}
-          key={`standalone-${spaceId}-mono`}
-          preserveAspectRatio="none"
-          style={{ pointerEvents: "none" }}
-          width={HEX_WIDTH}
-          x={x - HEX_WIDTH / 2}
-          y={y - HEX_SIZE}
-        />
-      );
-    } else if (field.location === "oneway_entrance" || field.location === "oneway_exit") {
-      // One-way monolith halves: per-color art + a small pair badge.
-      overlays.push(
-        <image
-          className="locationToken"
-          height={2 * HEX_SIZE}
-          href={assetUrl(
-            onewayMonolithImage(field.location === "oneway_entrance" ? "entrance" : "exit", field.gatePair ?? 1)
-          )}
-          key={`standalone-${spaceId}-oneway`}
-          preserveAspectRatio="none"
-          style={{ pointerEvents: "none" }}
-          width={HEX_WIDTH}
-          x={x - HEX_WIDTH / 2}
-          y={y - HEX_SIZE}
-        />
-      );
-      if (field.gatePair) {
-        const color = GATE_PAIR_COLORS[field.gatePair];
-        overlays.push(
-          <g className="hexGateMark" key={`standalone-${spaceId}-oneway-badge`} style={{ pointerEvents: "none" }}>
-            <circle cx={x + HEX_SIZE * 0.52} cy={y - HEX_SIZE * 0.56} fill={color} r={7} stroke="#160f06" strokeWidth={1} />
-            <text
-              fill="#fff"
-              fontSize={9}
-              fontWeight={700}
-              textAnchor="middle"
-              x={x + HEX_SIZE * 0.52}
-              y={y - HEX_SIZE * 0.56 + 3}
-            >
-              {field.gatePair}
-            </text>
-          </g>
-        );
-      }
+    if (isTeleportMarkLocation(field.location)) {
+      // Teleport objects (Gate / Monolith / one-way halves): the unified
+      // designer-parity mark — same undistorted art + ring + pair badge the
+      // map editor draws.
+      overlays.push(teleportHexMark(spaceId, x, y, field));
     } else if (outpostObjectImage(field.location)) {
       // Designer outposts: the printed hex scan (Garrison / Keymaster's Tent /
       // Barrier). Tents and Barriers add a colored ring + number (their color
@@ -2600,13 +2629,18 @@ export function HexMapBoard({
   };
   const mapFloats: MapFloat[] = [];
 
-  // Click-to-inspect a designer-altered object: the exact guard army / reward
-  // in a readable card (the hover tooltip's touch-friendly twin). Closes on a
-  // second click, the ✕, or when the field stops being altered (guard beaten).
+  // Click-to-inspect a designer-altered object OR a Field Override (WOG / anime)
+  // hex: ONE readable card with the override's art + name + mod tag + what
+  // visiting does, plus (when present) the exact guard army / first-clear reward
+  // — the hover tooltip's touch-friendly twin. An override hex that ALSO carries
+  // a designer guard/reward shows a single combined card, never two. Closes on a
+  // second click, the Close button, or when the field stops being inspectable.
   if (inspectGuardAt) {
     const coord = parseHexSpaceId(inspectGuardAt);
     const field = adventure?.fields[inspectGuardAt];
+    const overrideInspect = field ? fieldOverridePresentation(field.location) : null;
     const preview = designedGuardPreview(field);
+    const inspectGuarded = Boolean(field && isFieldGuarded(field));
     const inspectClaimed = Boolean(
       field && (field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed)
     );
@@ -2620,25 +2654,56 @@ export function HexMapBoard({
         : "";
     const rewardVp =
       field && !inspectClaimed ? (field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0) : 0;
-    if (coord && field && (preview || rewardSummary || rewardVp > 0)) {
+    // Guard line for a plain (non-designer) override guard — bi_canh / emerald_tower
+    // etc. carry a printed difficulty but no `designedGuard`, so `preview` is null.
+    const overrideGuardLevel =
+      overrideInspect && !preview && inspectGuarded && field?.difficulty ? field.difficulty : 0;
+    if (coord && field && (overrideInspect || preview || rewardSummary || rewardVp > 0)) {
       mapFloats.push({
         key: "designed-guard-inspect-float",
         mapPoint: hexToPixel(coord, HEX_SIZE),
-        cardWidth: 250,
-        cardHeight: 96 + (preview?.units.length ? Math.min(3, preview.units.length) * 14 : 0),
+        cardWidth: 258,
+        cardHeight:
+          (overrideInspect ? 150 : 96) +
+          (preview?.units.length ? Math.min(3, preview.units.length) * 14 : 0),
         gap: HEX_SIZE * 0.62,
         render: () => (
           <div
-            aria-label="Designer object details"
-            className="mapFloatCard designedGuardInspectFloat"
+            aria-label="Map object details"
+            className={`mapFloatCard designedGuardInspectFloat${overrideInspect ? " fieldOverrideInspectFloat" : ""}`}
             data-inspect-guard={inspectGuardAt}
+            data-field-override={overrideInspect ? field.location : undefined}
             onPointerDown={(event) => event.stopPropagation()}
             role="dialog"
           >
-            <span className="mapFloatTitle">
-              <span aria-hidden="true">⚔</span>{" "}
-              {locationDefinitions[field.location]?.name ?? field.location} — altered by the map designer
-            </span>
+            {overrideInspect ? (
+              <span className="fieldOverrideInspectHead">
+                {overrideInspect.image ? (
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="fieldOverrideInspectArt"
+                    src={assetUrl(overrideInspect.image)}
+                  />
+                ) : overrideInspect.glyph ? (
+                  <span aria-hidden="true" className="fieldOverrideInspectGlyph">
+                    {overrideInspect.glyph}
+                  </span>
+                ) : null}
+                <span className="fieldOverrideInspectName">
+                  {overrideInspect.name}
+                  <span className="fieldOverrideInspectTag">{overrideInspect.packageTag}</span>
+                </span>
+              </span>
+            ) : (
+              <span className="mapFloatTitle">
+                <span aria-hidden="true">⚔</span>{" "}
+                {locationDefinitions[field.location]?.name ?? field.location} — altered by the map designer
+              </span>
+            )}
+            {overrideInspect ? (
+              <span className="fieldOverrideInspectSummary">{overrideInspect.summary}</span>
+            ) : null}
             {preview ? (
               <span className="designedGuardInspectUnits">
                 {preview.units.length > 0
@@ -2647,6 +2712,11 @@ export function HexMapBoard({
                 {preview.units.length > 0 && preview.difficulty
                   ? ` (counts as ${ROMAN[preview.difficulty] ?? preview.difficulty})`
                   : ""}
+                {overrideInspect ? " — altered by the map designer" : ""}
+              </span>
+            ) : overrideGuardLevel ? (
+              <span className="designedGuardInspectUnits">
+                Guarded — defeat the guard ({`level ${ROMAN[overrideGuardLevel] ?? overrideGuardLevel}`}) to visit.
               </span>
             ) : null}
             {rewardSummary || rewardVp > 0 ? (
@@ -5104,7 +5174,9 @@ export function PromptTray({
   const waitingOn =
     choice && choice.playerId !== viewerPlayerId
       ? choice.type === "OPTION_CHOICE" &&
-        (choice.context === "learning-level-up" || choice.context === "deck-search-mode")
+        (choice.context === "learning-level-up" ||
+          choice.context === "deck-search-mode" ||
+          (choice.context === "deck-pick" && Boolean(choice.deckPick?.upFront)))
         ? null
         : { ownerId: choice.playerId, doing: "is deciding…" }
       : !choice && visit && visit.playerId !== viewerPlayerId
@@ -5161,9 +5233,11 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" &&
     choice.playerId === viewerPlayerId &&
     // The Learning level-up offer has its own card-showing modal (LearningOfferModal).
-    // The Search-or-take-discard prompt has DeckSearchModeModal (card back / discard face).
+    // The Search-or-take-discard prompt AND the one-step spells deck-pick have
+    // DeckSearchModeModal (card backs / discard faces / school card faces).
     choice.context !== "learning-level-up" &&
-    choice.context !== "deck-search-mode"
+    choice.context !== "deck-search-mode" &&
+    !(choice.context === "deck-pick" && choice.deckPick?.upFront)
   ) {
     title = choice.prompt;
     body = optionActions;
@@ -5295,7 +5369,9 @@ export function PromptTray({
       choice.type === "DECK_SEARCH" ||
       choice.type === "ATTACK_DIE_REROLL" ||
       (choice.type === "OPTION_CHOICE" &&
-        (choice.context === "learning-level-up" || choice.context === "deck-search-mode"));
+        (choice.context === "learning-level-up" ||
+          choice.context === "deck-search-mode" ||
+          (choice.context === "deck-pick" && Boolean(choice.deckPick?.upFront))));
     if (!ownedElsewhere && legalActions.length > 0) {
       title = choice.type === "OPTION_CHOICE" ? choice.prompt : "Choose how to resolve this";
       body = legalActions;
@@ -5434,7 +5510,12 @@ export function PromptTray({
             optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
               ? chooseOneOptions[optionIndex]
               : undefined;
-          return { legal, art: option ? teleportOptionArt(state, teleport, option) : null };
+          // The trailing "Stay here" option (2026-07-24 rule) has empty steps —
+          // it is a DECLINE, not a destination, so it carries no token art (a
+          // plain ⇄ fallback card), keeping the destination cards distinct.
+          const innerType = option?.steps[0]?.type;
+          const isTravel = innerType === "TELEPORT_HERO" || innerType === "TOKEN_TELEPORT_REVEAL";
+          return { legal, art: option && isTravel ? teleportOptionArt(state, teleport, option) : null };
         })
       : null;
 
@@ -7291,10 +7372,16 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   units: "Unit buffs",
   abilities: "Abilities & heroes",
   combat: "Combat & map rules",
+  global: "Global map rules",
   polish: "Polish house rule type 1"
 };
 
-const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat"] as const;
+/** Optional crest/icon for a house-rule GROUP header (paths under public/). */
+const HOUSE_RULE_CATEGORY_ICONS: Record<string, string | undefined> = {
+  global: REWARD_GLYPH_ICONS.map
+};
+
+const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat", "global"] as const;
 
 function houseRuleToggleDisabled(
   ruleId: HouseRuleId,
@@ -7309,7 +7396,8 @@ function houseRuleToggleDisabled(
 
 /** Optional crest/icon for individual house-rule toggles (paths under public/). */
 const HOUSE_RULE_ICONS: Partial<Record<(typeof HOUSE_RULES)[number]["id"], string>> = {
-  "polish-rule-111": UI_REWARD_ICONS.rule111
+  "polish-rule-111": UI_REWARD_ICONS.rule111,
+  "mine-guard-reinforcement": REWARD_GLYPH_ICONS.treasure
 };
 
 function HouseRuleToggleButton({
@@ -7612,10 +7700,22 @@ function HouseRulesSection({
           if (rules.length === 0) {
             return null;
           }
+          const groupIconSrc = HOUSE_RULE_CATEGORY_ICONS[category];
           return (
             <div className="houseRuleGroup" key={category}>
               <div className="houseRuleGroupHeader">
-                <span className="houseRuleGroupLabel">{HOUSE_RULE_CATEGORY_LABELS[category]}</span>
+                <span className="houseRuleGroupLabel">
+                  {groupIconSrc ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="houseRuleGroupIcon"
+                      draggable={false}
+                      src={assetUrl(groupIconSrc)}
+                    />
+                  ) : null}
+                  {HOUSE_RULE_CATEGORY_LABELS[category]}
+                </span>
                 <GroupToggleAllButton
                   creatureBanksEnabled={creatureBanksEnabled}
                   groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
@@ -8430,7 +8530,10 @@ function GameOptionsPanel({
                 ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
                 ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
                 ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and a Drill action at your Towns."],
-                ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."]
+                ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."],
+                ["monsterWaves", "Monster waves", "Calamity Waves: every Nth round (cadence below), EVERY live player fights a wave army at round start — the table pauses while the assaults resolve in seat order. Win: 2 gold + 1 hero XP (+ a Treasure die from wave 3 on). Loss or retreat: pillage — lose 3 gold and your mine/settlement nearest home is overrun by a difficulty-Ⅰ guard. Never razes buildings, never eliminates."],
+                ["raidBosses", "Raid bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead). Its wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
+                ["dungeon", "The Dungeon", "One repeatable delve site per map, carved onto a Near-tile Blocked Field (needs Creature Banks ON). Per-player floors 1–10, once per turn: pick a room (treasure vault, shrine, whispering wall…), then fight the floor guards for normal XP and a reward ladder. Floors 5 and 10 hold layered floor bosses; floor 10 pays a relic search + the Dungeon Conqueror title."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
                 return (
@@ -8449,6 +8552,22 @@ function GameOptionsPanel({
                   </button>
                 );
               })}
+              {wog.monsterWaves ? (
+                <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
+                  <strong>Wave cadence</strong>
+                  {([3, 4, 5] as const).map((cadence) => (
+                    <button
+                      aria-pressed={(wog.waveCadence ?? 4) === cadence}
+                      className={`waveCadenceChip ${(wog.waveCadence ?? 4) === cadence ? "selected" : ""}`}
+                      key={cadence}
+                      onClick={() => send({ wog: { ...wog, waveCadence: cadence } })}
+                      type="button"
+                    >
+                      Every {cadence === 3 ? "3rd" : `${cadence}th`} round
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <div className="wogRosterPreview" aria-label="WOG neutral creature roster">
               <strong>Neutral roster</strong>
@@ -8501,7 +8620,10 @@ function GameOptionsPanel({
                 ["heroGrades", "Hero Grades", "A per-hero Merit → grade track that unlocks a small passive / skill tree (shared by every hero)."],
                 ["equipment", "Hero Equipment", "Always-on hero items in 4 slots (weapon / armor / accessory / mount), bought at outfitter map locations."],
                 ["unitStacks", "Unit Stacks", "Pack / Neutral cards buy persistent Stack layers at the Citadel (+1 Attack, each layer soaks a lethal blow). The Polish Unit Stacks machinery — one pricing, coexists with the house rule."],
-                ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Town Drill training."]
+                ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Town Drill training."],
+                ["monsterWaves", "Calamity Waves", "Every Nth round (cadence below), EVERY live player fights a Gate-invasion wave army at round start — assaults resolve in seat order behind the round-start pause. Win: 2 gold + 1 hero XP (+ a Treasure die from wave 3 on). Loss or retreat: pillage — lose 3 gold and your mine/settlement nearest home is overrun by a difficulty-Ⅰ guard."],
+                ["raidBosses", "Raid Bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead — \"the sky cracks\"). Wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
+                ["dungeon", "The Dungeon (Meikyū)", "One repeatable delve site per map, carved onto a Near-tile Blocked Field (needs Creature Banks ON). Per-player floors 1–10, once per turn: pick a room (treasure vault, shrine, whispering wall…), then fight the floor guards for normal XP and a reward ladder. Floors 5 and 10 hold layered floor bosses; floor 10 pays a relic search + the Dungeon Conqueror title."]
               ] as const).map(([key, label, description]) => {
                 const active = anime[key];
                 return (
@@ -8521,6 +8643,23 @@ function GameOptionsPanel({
                   </button>
                 );
               })}
+              {anime.monsterWaves ? (
+                <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
+                  <strong>Wave cadence</strong>
+                  {([3, 4, 5] as const).map((cadence) => (
+                    <button
+                      aria-pressed={(anime.waveCadence ?? 4) === cadence}
+                      className={`waveCadenceChip ${(anime.waveCadence ?? 4) === cadence ? "selected" : ""}`}
+                      data-testid={`anime-wave-cadence-${cadence}`}
+                      key={cadence}
+                      onClick={() => send({ anime: { ...anime, waveCadence: cadence } })}
+                      type="button"
+                    >
+                      Every {cadence === 3 ? "3rd" : `${cadence}th`} round
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <footer>
               <button className="selected" onClick={() => setAnimeOptionsOpen(false)} type="button">Done</button>

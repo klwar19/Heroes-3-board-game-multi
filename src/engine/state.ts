@@ -148,7 +148,28 @@ export type HouseRuleId =
   // only ONE Demons unit may stand on the field (Few or Pack) — summon is
   // blocked while any living Demons of the controller are already present;
   // reinforce Few→Pack stays legal.
-  | "multi-demon-summon";
+  | "multi-demon-summon"
+  // Phoenix Pack Rebirth (BINH house rule): the Pack of Phoenixes also carries
+  // the printed Few Rebirth ("once per Combat, lethal → 1 HP") so a Pack
+  // Phoenix clings to life at its Pack side. Off (wiki/printed Pack): Pack has
+  // only the line attack + Fire immunity — Rebirth is Few-only (and Neutral).
+  | "phoenix-pack-rebirth"
+  // Torso of Legion re-tier (BINH house rule): Torso of Legion is PRINTED Minor
+  // but BINH plays/sorts it as a MAJOR artifact. Default ON in BOTH modes (it
+  // predates this toggle — every existing binh AND legacy game already treats it
+  // as Major, so byte-identical preservation forces the legacy default ON too).
+  // Off: the engine reads Torso as its printed MINOR tier at every tier
+  // chokepoint (deck placement, black-market/junk/event prices, Polish tier
+  // gates, deck return). See `effectiveArtifactTier` (ruleset.ts).
+  | "torso-of-legion-major"
+  // Global map rule (default OFF in BOTH modes): every fought-out neutral guard
+  // fight on a MINE field (all resource types) fields ONE EXTRA random neutral
+  // BRONZE creature on top of the normal guard army. The extra bronze is a plain
+  // deck draw (recycles to the bronze discard at combat end like any guard); it
+  // never touches combat difficulty / XP / reward — only the fought army grows.
+  // Quick Combat / level auto-wins (resolved before the army deploys) are
+  // unaffected. See `mineGuardReinforcementDraws` / drawGuardArmy (adventure.ts).
+  | "mine-guard-reinforcement";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
@@ -172,6 +193,30 @@ export type WogModOptions = {
    * scope in src/engine/unit-experience.ts. Default OFF ⇒ byte-identical.
    */
   neutralRankUp?: boolean;
+  /**
+   * Calamity Waves (WOG surface of the shared module, §6.6 of the anime plan):
+   * scheduled monster invasions every `waveCadence` rounds — every live seat
+   * fights a wave army at round start behind the event barrier; a loss is
+   * pillage (gold + one mine/settlement overrun), never elimination. Same
+   * engine as `anime.monsterWaves` — either surface activates it.
+   */
+  monsterWaves?: boolean;
+  /**
+   * Raid Bosses (WOG surface of the shared module, §6.5): persistent
+   * multi-layer world bosses in a Rift Lair — wounds persist between attempts,
+   * escalate if ignored, pay per layer broken. Same engine as
+   * `anime.raidBosses` — either surface activates it.
+   */
+  raidBosses?: boolean;
+  /**
+   * The Dungeon (WOG surface of the shared module, §6.7.3): one repeatable
+   * delve site per map with per-player floor progress, door-choice rooms and
+   * floor bosses. Needs `creatureBanks` (the site is carved onto a Blocked
+   * Field). Same engine as `anime.dungeon` — either surface activates it.
+   */
+  dungeon?: boolean;
+  /** Calamity wave cadence when monsterWaves is on (mirrors anime.waveCadence). */
+  waveCadence?: 3 | 4 | 5;
 };
 
 export const DEFAULT_WOG_OPTIONS: WogModOptions = {
@@ -181,7 +226,10 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
   newCreatures: true,
   artifacts: false,
   unitExperience: false,
-  neutralRankUp: false
+  neutralRankUp: false,
+  monsterWaves: false,
+  raidBosses: false,
+  dungeon: false
 };
 
 /**
@@ -273,6 +321,26 @@ export type AnimeModOptions = {
   neutralRankUp?: boolean;
   /** Calamity wave cadence when monsterWaves is on. */
   waveCadence?: 3 | 4 | 5;
+};
+
+/**
+ * One live Raid Boss (§6.5): a persistent multi-layer world boss lairing on a
+ * map field. Wounds persist between attempts (and across snapshots) via
+ * `layersLeft`; `layerBreaks` is the per-player payout ledger.
+ */
+export type RaidBossState = {
+  /** Catalog boss id (src/data/anime/bosses.ts) or a preset custom-boss id. */
+  defId: string;
+  fieldId: MapSpaceId;
+  /** Health bars remaining (the mint = 1 body + layersLeft-1 stack layers). */
+  layersLeft: number;
+  /** Layers broken per player — each break paid 2 gold immediately. */
+  layerBreaks: Record<PlayerId, number>;
+  spawnedRound: number;
+  /** Set for the lobby-scheduled spawn (vs a designer-placed lair). */
+  scheduled?: true;
+  /** Set once slain; the lair field is cleared and the entry stays as a record. */
+  slainBy?: PlayerId;
 };
 
 /**
@@ -5696,6 +5764,109 @@ export type GameEvent =
       message: string;
     }
   | {
+      /** Calamity Waves: next round brings a wave — position your armies. */
+      id: string;
+      type: "MONSTER_WAVE_ANNOUNCED";
+      round: number;
+      wave: number;
+      message: string;
+    }
+  | {
+      /** Calamity Waves: the wave round began — assaults resolve in seat order. */
+      id: string;
+      type: "MONSTER_WAVE_STARTED";
+      round: number;
+      wave: number;
+      level: number;
+      message: string;
+    }
+  | {
+      /** Calamity Waves: this seat repelled its assault (win reward paid). */
+      id: string;
+      type: "MONSTER_WAVE_REPELLED";
+      playerId: PlayerId;
+      wave: number;
+      gold: number;
+      message: string;
+    }
+  | {
+      /** Calamity Waves: the assault broke through — gold lost, a holding overrun. */
+      id: string;
+      type: "MONSTER_WAVE_PILLAGED";
+      playerId: PlayerId;
+      wave: number;
+      goldLost: number;
+      overrunFieldId: MapSpaceId | null;
+      message: string;
+    }
+  | {
+      /** Raid Bosses: the sky cracks — a Rift Lair opens next round. */
+      id: string;
+      type: "RAID_BOSS_ANNOUNCED";
+      round: number;
+      message: string;
+    }
+  | {
+      /** Raid Bosses: the boss lairs on a field (scheduled or designer-placed). */
+      id: string;
+      type: "RAID_BOSS_SPAWNED";
+      bossInstanceId: string;
+      defId: string;
+      bossName: string;
+      fieldId: MapSpaceId;
+      layers: number;
+      message: string;
+    }
+  | {
+      /** Raid Bosses: a health layer broke — the breaker is paid at once. */
+      id: string;
+      type: "RAID_BOSS_LAYER_BROKEN";
+      bossInstanceId: string;
+      playerId: PlayerId;
+      layersLeft: number;
+      gold: number;
+      message: string;
+    }
+  | {
+      /** Raid Bosses: an ignored boss regrew a layer. */
+      id: string;
+      type: "RAID_BOSS_ESCALATED";
+      bossInstanceId: string;
+      layersLeft: number;
+      message: string;
+    }
+  | {
+      /** Raid Bosses: slain — the killer takes the printed reward, the lair clears. */
+      id: string;
+      type: "RAID_BOSS_SLAIN";
+      bossInstanceId: string;
+      playerId: PlayerId;
+      bossName: string;
+      message: string;
+    }
+  | {
+      /** The Dungeon: the delve site was carved onto a Blocked Field. */
+      id: string;
+      type: "DUNGEON_PLACED";
+      fieldId: MapSpaceId;
+      message: string;
+    }
+  | {
+      /** The Dungeon: a floor fell — the delver's ladder reward paid. */
+      id: string;
+      type: "DUNGEON_FLOOR_CLEARED";
+      playerId: PlayerId;
+      floor: number;
+      message: string;
+    }
+  | {
+      /** The Dungeon: floor 10 fell — the Dungeon Conqueror title. */
+      id: string;
+      type: "DUNGEON_CONQUERED";
+      playerId: PlayerId;
+      message: string;
+    }
+  | {
       /**
        * A Secret landmark filter could not be fulfilled from the remaining
        * pool, so the slot fell back to a pure random draw. Public note so
@@ -6111,9 +6282,10 @@ export type ResolutionStackItem = {
     /** Brimstone Stormclouds: faction cubes spent on this cast (max 1). */
     townCubePowerBonus?: number;
     /**
-     * Spell Scroll cast: the spell resolves at power 0 and no Power source
-     * (Power cards, +1 discards, School of Magic, town cubes, Astrologers) may
-     * raise it — getCurrentSpellPower returns 0 while this is set.
+     * Spell Scroll cast: standing/school/equipment Power and Orb doubling never
+     * apply. Only Power paid into this window (`spellPowerBonus` from Power
+     * cards / "+1 Power" discards) counts, and only up to the spell's lowest
+     * useful tier — higher ladder rungs are unreachable.
      */
     scrollLocked?: boolean;
     /**
@@ -7089,6 +7261,19 @@ export type PlayerState = {
    */
   bankWins?: number;
   /**
+   * The Dungeon (§6.7.3): this player's current floor (1..10, absent === 1).
+   * Advanced by one on every floor-fight WIN; the cap floor stays repeatable.
+   */
+  dungeonFloor?: number;
+  /** The Dungeon: floor 10 cleared — the Conqueror title (relic paid once). */
+  dungeonConquered?: boolean;
+  /**
+   * The Dungeon: the game round this player last OPENED a floor fight ("once
+   * per turn" — the Drill-style per-round latch; both turn modes give each
+   * seat one turn per round).
+   */
+  dungeonDelveRound?: number;
+  /**
    * Unit Experience (optional rule): the game round this player last used the
    * DRILL_UNIT action (2 gold → +1 unit XP at their own Town). Once per own
    * turn: legal only while `unitDrillRound !== state.round`. Absent = never.
@@ -7237,6 +7422,12 @@ export type CombatUnitState = {
   name: string;
   cardName: string;
   variant: "few" | "pack" | "neutral";
+  /**
+   * Designer `few:` / `random-few:` guard: minted as a faction Few. Distinguishes
+   * a designed Few from a Pack that flipped mid-fight, so retreat survivors keep
+   * the Few slot instead of being re-promoted to Pack.
+   */
+  factionFew?: boolean;
   grade: UnitGrade;
   type: UnitType;
   attack: number;
@@ -7444,6 +7635,16 @@ export type CombatUnitState = {
    */
   bankUnit?: boolean;
   /**
+   * Raid Boss / Dungeon floor boss (§6.5.2): a bespoke-stat layered monster.
+   * Always minted WITH `bankUnit` (that carries the gradeless targeting /
+   * tier-gate exemption and keeps applyUnitCurrentSide off its minted stats);
+   * this flag additionally (a) makes the army-stack layer shed unconditional
+   * (its `armyStacks` ARE the printed health bars, rule toggles or not),
+   * (b) marks it for layer-break payouts and wound persistence, and
+   * (c) excludes it from tier-gated stares (Devour).
+   */
+  bossUnit?: boolean;
+  /**
    * The Stack Token currently sitting on this Creature Bank defender, if any.
    * A Stacked unit's printed statistics already include the token's bonus; when
    * it would take lethal damage the token is discarded (reverting the bonus) and
@@ -7543,6 +7744,39 @@ export type CombatContext =
        * experience), independent of the Creature-Bank house rule.
        */
       unlimitedRounds?: boolean;
+      /**
+       * Calamity Wave assault (§6.6): this neutral fight is a scheduled wave
+       * hitting the fighter at round start. Set with `difficulty: 0` (no level
+       * XP — the wave pays its own printed reward) and `unlimitedRounds` (the
+       * assault is fought to the end; loss OR an emptied army = pillage). The
+       * post-win field visit is SKIPPED (the fighter merely stands there).
+       */
+      waveAssault?: { wave: number };
+      /**
+       * Raid Boss attempt (§6.5): the Rift Lair instance being fought. Set
+       * with `difficulty: 0` (no XP — the bank precedent; the boss pays per
+       * layer broken and on the kill). Wounds persist: the boss's remaining
+       * layers are written back to `adventure.raidBosses[raidBossId]` at
+       * combat end, whatever the outcome.
+       */
+      raidBossId?: string;
+      /**
+       * Dungeon floor fight (§6.7.3): the per-player floor being delved. Runs
+       * at REAL difficulty min(floor+1, 7) — the Dungeon is the grind site, so
+       * hero and unit XP apply — but never Quick Combat, and the post-win
+       * field visit is replaced by the floor ladder reward.
+       */
+      dungeonFloor?: number;
+      /**
+       * Teleport ARRIVAL guard fight (2026-07-24 user rule): the hero teleported
+       * onto a guarded destination (Monolith / Teleport Gate / Whirlpool /
+       * obelisk-as-monolith network exit) and must fight the guard instead of the
+       * old auto-sweep. Set with `difficulty: 0` + `unlimitedRounds` (bank-style —
+       * no Quick Combat, no XP). On the WIN the guard is cleared but the teleport
+       * travel is NOT re-opened (arrival never re-triggers — no ping-pong); on a
+       * retreat the hero bounces back to the origin teleporter (lastVisitedField).
+       */
+      teleportArrival?: boolean;
     }
   | {
       kind: "player";
@@ -8199,6 +8433,18 @@ export type MapFieldState = {
    */
   grailDiggable?: boolean;
   /**
+   * Raid Bosses (§6.5): the boss INSTANCE lairing on this field (the key into
+   * `adventure.raidBosses`). Set when the field converts to a Rift Lair;
+   * removed on the kill (the field is then black-cubed empty).
+   */
+  riftLair?: string;
+  /**
+   * The Dungeon (§6.7.3): latched once the one-per-map delve site is carved
+   * onto this (former Blocked) Field — `location` becomes "dungeon_gate" and
+   * `adventure.dungeonSite.fieldId` points here.
+   */
+  dungeonSite?: boolean;
+  /**
    * Designer center-hex bonus resolved onto this field when its center tile
    * materialized (from {@link MapTileState.centerHex}). Granted ONCE, to the
    * player who FIRST clears / captures the objective — `centerHexClaimed`
@@ -8566,6 +8812,17 @@ export type AdventureReward =
     }
   | {
       /**
+       * Calamity Waves (§6.6): one queued assault per live seat on a wave
+       * round, resolved in seat order behind the round-start barrier. When the
+       * pump reaches it, the seat's wave combat opens (a normal neutral fight
+       * at the main hero's position); the next seat's assault waits for it.
+       */
+      playerId: PlayerId;
+      kind: "wave-assault";
+      wave: number;
+    }
+  | {
+      /**
        * Round-start Event / Astrologers barrier sentinel. Queued once, right
        * after the round's Event (or Astrologers proclamation) has pushed its
        * per-player resolution rewards, so it is the LAST event-related reward in
@@ -8655,6 +8912,31 @@ export type VisitStep =
     }
   | { type: "GAIN_MOVEMENT_FOR_HERO"; heroId: HeroId; amount: number }
   | { type: "GAIN_MORALE"; amount: number }
+  | {
+      /**
+       * Raid Bosses (§6.5): open the lair fight against this boss instance.
+       * Auto-resolving — processPendingVisit fires the registered
+       * raid-boss encounter hook (adventure-reducer opens the combat).
+       */
+      type: "RAID_BOSS_FIGHT";
+      bossInstanceId: string;
+    }
+  | {
+      /**
+       * The Dungeon (§6.7.3): open this player's floor fight. Auto-resolving —
+       * processPendingVisit fires the registered dungeon encounter hook.
+       */
+      type: "DUNGEON_FLOOR_FIGHT";
+      floor: number;
+    }
+  | {
+      /**
+       * Fire a visual-novel story scene (STORY_SCENE_TRIGGERED — the dungeon
+       * whispering-wall rooms). Pure presentation, auto-resolving.
+       */
+      type: "PLAY_STORY_SCENE";
+      sceneId: string;
+    }
   | {
       type: "ROLL_RESOURCE_DICE";
       count: number;
@@ -9153,6 +9435,12 @@ export type VisitStep =
        */
       type: "TOKEN_TELEPORT";
       token: "monolith" | "whirlpool";
+      /**
+       * The traveller already chose "Travel" over "Stay here" (2026-07-24 rule):
+       * skip the travel-vs-stay wrapper and run the roll / mix mechanics directly
+       * (so a random/mix roll resolves only when travel is actually chosen).
+       */
+      committed?: boolean;
     }
   | {
       /**
@@ -9164,6 +9452,8 @@ export type VisitStep =
        * the tile first) — a deliberate limit, unlike the Monolith network.
        */
       type: "ONEWAY_TELEPORT";
+      /** The traveller chose "Travel" over "Stay here" — run the exit resolution. */
+      committed?: boolean;
     }
   | {
       /**
@@ -9184,6 +9474,8 @@ export type VisitStep =
        * note. The pair is read from the origin field's {@link MapFieldState.gatePair}.
        */
       type: "GATE_TELEPORT";
+      /** The traveller chose "Travel" over "Stay here" — run the gate resolution. */
+      committed?: boolean;
     }
   | {
       /**
@@ -9221,15 +9513,25 @@ export type VisitStep =
       spaceId: MapSpaceId;
       /** Whether arriving resolves the field like a normal visit. */
       visit?: boolean;
-      /**
-       * Teleport-NETWORK travel only (Monolith / colored Gate steps): a designed
-       * guard still standing on the destination is swept aside on arrival — an
-       * automatic win, no fight, no experience. Never set by Town Portal /
-       * Logistics placements.
-       */
-      sweepGuard?: boolean;
       /** Town Portal Power 2/4: movement granted to the hero on arrival. */
       movementBonus?: number;
+    }
+  | {
+      /**
+       * Teleport-NETWORK arrival resolution (2026-07-24 user rule): the hero has
+       * just teleported (Monolith / Teleport Gate / Whirlpool / obelisk-as-
+       * monolith / one-way exit) onto `spaceId`. Runs AFTER any Whirlpool unit
+       * toll and resolves the destination like a normal arrival — an enemy hero
+       * there starts a PvP battle, a live designed guard is FOUGHT (bank-style, no
+       * auto-sweep), and an unguarded/unoccupied exit simply leaves the hero
+       * standing (arrival never re-triggers the travel). `originSpaceId` is the
+       * teleporter the hero left, so a retreat from the arrival fight bounces back
+       * there.
+       */
+      type: "RESOLVE_TELEPORT_ARRIVAL";
+      heroId: HeroId;
+      spaceId: MapSpaceId;
+      originSpaceId: MapSpaceId;
     }
   | {
       /**
@@ -10357,6 +10659,31 @@ export type AdventureState = {
    */
   neutralRankUp?: boolean;
   /**
+   * Calamity Waves (optional module, §6.6): frozen at setup when either mod
+   * surface enabled it (`wog.monsterWaves` / `anime.monsterWaves`). Presence =
+   * ON; `cadence` is the wave rhythm (a wave every Nth round, first wave on
+   * round N). Absent = OFF (byte-identical, legacy snapshots unaffected).
+   * See src/engine/monster-waves.ts.
+   */
+  monsterWaves?: { cadence: 3 | 4 | 5 };
+  /**
+   * Raid Bosses (optional module, §6.5): PRESENCE = module ON (frozen at setup
+   * from `wog.raidBosses` / `anime.raidBosses`), keyed by boss instance id —
+   * empty until the scheduled spawn or a designer lair places one. Wounds
+   * (`layersLeft`) persist here between attempts and across snapshots.
+   * See src/engine/raid-bosses.ts.
+   */
+  raidBosses?: Record<string, RaidBossState>;
+  /**
+   * The Dungeon (optional module, §6.7.3): PRESENCE = module ON (frozen at
+   * setup from `wog.dungeon` / `anime.dungeon`; also requires the Creature
+   * Banks option — the site is carved onto a Blocked Field). `fieldId` is null
+   * until the site is placed (first Near-band tile revealed with a Blocked
+   * Field). Per-player floor progress lives on `PlayerState.dungeonFloor`.
+   * See src/engine/dungeon.ts.
+   */
+  dungeonSite?: { fieldId: MapSpaceId | null };
+  /**
    * Individual BINH house-rule toggles, resolved to concrete booleans at setup
    * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older
    * snapshots and the combat sandbox, where the mode default is derived instead.
@@ -10723,6 +11050,24 @@ export type CustomStartingUnit = {
  * Map-only scenario conditions (mission-book style). Structural type for
  * GameSetupOptions / AdventureState; helpers live in `map-preset.ts`.
  */
+/**
+ * A designer-authored Raid Boss (map preset `raidBosses.bosses`): either a
+ * brand-new monster or a stat-tweaked catalog boss (reuse a catalog id to
+ * replace it). Stats are per-LAYER; `layers` is the total health-bar count.
+ * `abilities` may only name curated implemented ability ids (sanitized).
+ */
+export type CustomRaidBossDef = {
+  id: string;
+  name: string;
+  attack: number;
+  defense: number;
+  health: number;
+  initiative: number;
+  layers: number;
+  type?: UnitType;
+  abilities?: string[];
+};
+
 export type CustomMapPreset = {
   victoryMode?: VictoryMode;
   /**
@@ -10741,6 +11086,29 @@ export type CustomMapPreset = {
   difficulty?: GameDifficulty;
   farTileOpening?: boolean;
   farTilesPerPlayer?: number;
+  /**
+   * Calamity Waves designer overrides (module `monsterWaves`): `cadence`
+   * overrides the lobby wave rhythm for this map; `waves` maps a wave NUMBER
+   * (1-based) to an exact guard spec (the {@link CustomGuardSpec} vocabulary)
+   * replacing that wave's level-table draw — the designer's "edit the wave
+   * monsters" hook. Sanitized by `sanitizeCustomMapPreset` (clamps + the
+   * {@link MAX_CUSTOM_WAVE_OVERRIDES} cap).
+   */
+  monsterWaves?: {
+    cadence?: 3 | 4 | 5;
+    waves?: Record<number, CustomGuardSpec>;
+  };
+  /**
+   * Raid Bosses designer content (module `raidBosses`): custom boss
+   * definitions — brand-new monsters or stat-tweaked catalog bosses — that
+   * REPLACE the built-in catalog pool for this map's scheduled spawn, plus an
+   * optional spawn-round override. Ability ids are sanitized against the
+   * curated implemented whitelist (`RAID_BOSS_ABILITY_CHOICES`).
+   */
+  raidBosses?: {
+    spawnRound?: number;
+    bosses?: CustomRaidBossDef[];
+  };
   startingResources?: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
   startingBuildings?: string[];
@@ -12432,8 +12800,27 @@ export type PendingChoice =
        * answering player.
        */
       activationOrder?: { unitIds: UnitId[]; side: PlayerId };
-      /** deck-pick: the shared-deck search waiting on the deck choice. */
-      deckPick?: { deckIds: DeckId[]; count: number; allowRemove?: boolean };
+      /**
+       * deck-pick: the shared-deck search waiting on the deck choice. For the
+       * SPELLS family this is the ONE up-front decision (user demand: "choose
+       * discard, search or school of magic" BEFORE anything is revealed): the
+       * options run [search deck 0..n] then [take a discard top per entry of
+       * `discardTops`] then [one Basic X Magic school draw per entry of
+       * `fetchSchools`]. Picking a Search then reveals DIRECTLY — the old
+       * second "Search or draw from a School?" step never re-opens. A legacy
+       * in-flight pick (no `upFront`) resolves the old two-step way.
+       */
+      deckPick?: {
+        deckIds: DeckId[];
+        count: number;
+        allowRemove?: boolean;
+        /** The enriched one-step form (options beyond the deck picks exist). */
+        upFront?: boolean;
+        /** Acquirable face-up discard tops offered up front, in option order. */
+        discardTops?: { deckId: DeckId; cardId: CardId }[];
+        /** Basic X Magic fetch schools offered up front, in option order. */
+        fetchSchools?: ("air" | "earth" | "fire" | "water")[];
+      };
       /**
        * combat-remove-then-search: Spellbinder's Hat (option A) played
        * mid-combat — the removable hand cards, index-aligned with the options
@@ -12492,6 +12879,12 @@ export type PendingChoice =
         offerExpert: boolean;
         /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege through the Scouting prompt. */
         allowRemove?: boolean;
+        /**
+         * The up-front discard/fetch alternatives were already offered (the
+         * one-step spells deck-pick) — after Scouting resolves, the Search goes
+         * straight to the reveal instead of re-opening the mode choice.
+         */
+        modeResolved?: boolean;
       };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
       ownDeckPick?: {
@@ -12662,9 +13055,11 @@ export type PendingChoice =
             }
           | {
               /**
-               * Basic X Magic +3: crown for +3, once per cast. Consumes its source —
-               * the in-play fetch permanent by default, or the hand card named by
-               * `fromHandCardId` when the +3 comes from a Basic X Magic held in hand.
+               * Basic X Magic +3: crown for +3, once per cast. Consumes its source
+               * (user ruling: "if use expert, must discard, on hand or on
+               * permanent") — the in-play fetch permanent by default, or the hand
+               * card named by `fromHandCardId`; either lands in the owner's
+               * discard pile (recycles into their deck, never out of the game).
                */
               kind: "school-fetch-expert";
               school: "air" | "earth" | "fire" | "water";

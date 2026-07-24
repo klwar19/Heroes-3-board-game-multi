@@ -5,7 +5,8 @@ import {
   artifactDeckBinhMajor,
   artifactDeckBinhMinor,
   artifactDeckBinhRelic,
-  artifactDeckLegacy
+  artifactDeckLegacy,
+  TORSO_OF_LEGION_ID
 } from "@/data/cards/artifacts";
 import {
   animeXianxiaArtifactCardIds,
@@ -807,10 +808,22 @@ function makeSharedDecks(
   xianxiaArtifacts = false,
   wogArtifacts = false,
   wogCommanderArtifacts = false,
-  animeEquipment = false
+  animeEquipment = false,
+  torsoOfLegionMajor = true
 ): Record<string, DeckState> {
   const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
     ban ? cardIds.filter((id) => id !== removeId) : cardIds;
+
+  // Torso of Legion re-tier (house rule `torso-of-legion-major`, default ON):
+  // the lists statically place Torso in the BINH Major deck. With the rule OFF
+  // it joins the Minor deck instead — its PRINTED tier. Default ON ⇒ the lists
+  // are untouched (byte-identical). The legacy single Artifact deck is one pile,
+  // so its membership never changes — only the per-card tier READ (via
+  // `effectiveArtifactTier`) does, which is handled at each read site.
+  const binhMinor = torsoOfLegionMajor ? artifactDeckBinhMinor : [...artifactDeckBinhMinor, TORSO_OF_LEGION_ID];
+  const binhMajor = torsoOfLegionMajor
+    ? artifactDeckBinhMajor
+    : artifactDeckBinhMajor.filter((id) => id !== TORSO_OF_LEGION_ID);
 
   // Anime Pháp Bảo artifacts (§5.10) join the shared Artifact deck(s) ONLY when
   // the module is on; default OFF ⇒ these arrays are empty and the decks are
@@ -867,7 +880,7 @@ function makeSharedDecks(
         "artifacts-minor",
         without(
           withEquipment(
-            withWogCommander(withWog(withAnime(artifactDeckBinhMinor, animeXianxiaArtifactMinorIds), wogArtifactMinorIds), wogCommanderArtifactMinorIds),
+            withWogCommander(withWog(withAnime(binhMinor, animeXianxiaArtifactMinorIds), wogArtifactMinorIds), wogCommanderArtifactMinorIds),
             animeEquipmentMinorIds
           ),
           TOURNAMENT_REMOVED_ARTIFACT_ID,
@@ -877,7 +890,7 @@ function makeSharedDecks(
       "artifacts-major": make(
         "artifacts-major",
         withEquipment(
-          withWogCommander(withWog(withAnime(artifactDeckBinhMajor, animeXianxiaArtifactMajorIds), wogArtifactMajorIds), wogCommanderArtifactMajorIds),
+          withWogCommander(withWog(withAnime(binhMajor, animeXianxiaArtifactMajorIds), wogArtifactMajorIds), wogCommanderArtifactMajorIds),
           animeEquipmentMajorIds
         )
       ),
@@ -2527,6 +2540,26 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // state below. Default OFF ⇒ byte-identical.
   const neutralRankUpOn =
     Boolean(wog.enabled && wog.neutralRankUp) || Boolean(anime.enabled && anime.neutralRankUp);
+  // Calamity Waves / Raid Bosses / the Dungeon (optional modules): TWO module
+  // surfaces each — the WOG toggle and the anime flag — activate ONE shared
+  // engine flag, frozen onto adventure state below. Default OFF ⇒ byte-identical.
+  const monsterWavesOn =
+    Boolean(wog.enabled && wog.monsterWaves) || Boolean(anime.enabled && anime.monsterWaves);
+  const normalizeWaveCadence = (value: unknown): 3 | 4 | 5 | undefined =>
+    value === 3 || value === 4 || value === 5 ? value : undefined;
+  // Cadence precedence: designed-map override > anime (the plan's home) > WOG > 4.
+  const waveCadence =
+    normalizeWaveCadence(setupOptions.customMapPreset?.monsterWaves?.cadence) ??
+    (anime.enabled && anime.monsterWaves ? normalizeWaveCadence(anime.waveCadence) : undefined) ??
+    (wog.enabled && wog.monsterWaves ? normalizeWaveCadence(wog.waveCadence) : undefined) ??
+    4;
+  const raidBossesOn =
+    Boolean(wog.enabled && wog.raidBosses) || Boolean(anime.enabled && anime.raidBosses);
+  // The Dungeon is carved onto a Blocked Field through the Creature-Bank
+  // reservation seam, so it additionally requires the Creature Banks option.
+  const dungeonOn =
+    (Boolean(wog.enabled && wog.dungeon) || Boolean(anime.enabled && anime.dungeon)) &&
+    creatureBanksOn;
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
@@ -2641,6 +2674,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // (neutralRankUpActive, the mint-seam ROUNDS fold, the bank STACKS fold)
     // checks one plain boolean. Default OFF.
     ...(neutralRankUpOn ? { neutralRankUp: true } : {}),
+    // Calamity Waves (optional module): presence = ON; the cadence is frozen
+    // here so every schedule read is pure in the round number. Default OFF.
+    ...(monsterWavesOn ? { monsterWaves: { cadence: waveCadence } } : {}),
+    // Raid Bosses (optional module): presence = ON; entries appear when the
+    // scheduled spawn (or a designer lair) places a boss. Default OFF.
+    ...(raidBossesOn ? { raidBosses: {} } : {}),
+    // The Dungeon (optional module): presence = ON; fieldId stays null until
+    // the first Near-band Blocked Field reveal carves the site. Default OFF.
+    ...(dungeonOn ? { dungeonSite: { fieldId: null } } : {}),
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
@@ -2728,7 +2770,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         animeModuleEnabled({ anime }, "xianxiaArtifacts"),
         wog.enabled && wog.artifacts,
         wog.enabled && wog.artifacts && wog.commanders,
-        animeModuleEnabled({ anime }, "equipment")
+        animeModuleEnabled({ anime }, "equipment"),
+        houseRules["torso-of-legion-major"]
       ),
       ...makeNeutralDecks(seed, wog, anime),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
@@ -3722,7 +3765,13 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       newCreatures: Boolean(next.wog.newCreatures),
       artifacts: Boolean(next.wog.artifacts),
       unitExperience: Boolean(next.wog.unitExperience),
-      neutralRankUp: Boolean(next.wog.neutralRankUp)
+      neutralRankUp: Boolean(next.wog.neutralRankUp),
+      monsterWaves: Boolean(next.wog.monsterWaves),
+      raidBosses: Boolean(next.wog.raidBosses),
+      dungeon: Boolean(next.wog.dungeon),
+      ...(next.wog.waveCadence === 3 || next.wog.waveCadence === 4 || next.wog.waveCadence === 5
+        ? { waveCadence: next.wog.waveCadence }
+        : {})
     };
     // WOG is a BINH-family module. Enabling it while still on Legacy flips the
     // table to BINH so the module can actually load.

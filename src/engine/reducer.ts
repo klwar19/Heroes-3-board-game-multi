@@ -181,6 +181,7 @@ import {
   isNeutralSplashVictimChoice,
   manualGuardControllerId,
   neutralCombatControllerId,
+  neutralControlMustAttack,
   pvpNeutralControllerId
 } from "./neutral-control";
 import {
@@ -410,7 +411,9 @@ import {
   getOnKillResourceGain,
   getAttackDieDamageFollowUps,
   getAttackDieResultBonus,
+  deathStareFollowUpAppliesTo,
   getDeathStareFollowUps,
+  moraleLockedForPlayer,
   getDefenseBonusOnAttackDie,
   getDefenseBonusWhenRetaliated,
   getDefenseDieDamageReduction,
@@ -3785,10 +3788,14 @@ function buildRerollSources(
   );
 
   const player = state.players[attacker.controllerId];
+  // Raid-boss Fear (§6.8): while a living enemy Fear unit stands, every morale
+  // USE is locked — the token/card reroll and set-die sources are withheld
+  // (morale gains and morale-card draws stay untouched).
+  const attackerMoraleLocked = moraleLockedForPlayer(state.combat, attacker.controllerId);
   // The positive morale token's "reroll any die" use is available in every mode
   // a combat runs in (adventure and the combat sandbox alike).
   const moraleSources: AttackRerollSource[] =
-    player && moraleCardsRuleEnabled(state)
+    !attackerMoraleLocked && player && moraleCardsRuleEnabled(state)
       ? (player.moraleCards?.positive ?? [])
           .filter((cardId) => cardId === "morale.positive.reroll_die")
           .map((cardId) => ({
@@ -3797,7 +3804,7 @@ function buildRerollSources(
             remaining: 1,
             used: 0
           }))
-    : player && player.morale > 0
+    : !attackerMoraleLocked && player && player.morale > 0
       ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
       : [];
 
@@ -3806,7 +3813,7 @@ function buildRerollSources(
   // plain reroll press). The attackRerollsBlocked gate above withholds it too —
   // a deliberate reading: the lockout stops every Attack-die manipulation.
   const moraleSetSources: AttackRerollSource[] =
-    player && moraleCardsRuleEnabled(state)
+    !attackerMoraleLocked && player && moraleCardsRuleEnabled(state)
       ? (player.moraleCards?.positive ?? [])
           .filter((cardId) => cardId === MORALE_CARD_IDS.setAttackDiePlus)
           .map((cardId) => ({
@@ -4020,30 +4027,36 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
     return [];
   }
 
-  const moraleSources: AttackRerollSource[] = moraleCardsRuleEnabled(state)
-    ? (player.moraleCards?.positive ?? [])
-        .filter((cardId) => cardId === MORALE_CARD_IDS.rerollDie)
-        .map((cardId) => ({
-          name: cardLibrary[cardId]?.name ?? "Positive Morale: Reroll a Die",
-          moraleCardId: cardId,
-          remaining: 1,
-          used: 0
-        }))
-    : player.morale > 0
-      ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
-      : [];
+  // Raid-boss Fear (§6.8): a living enemy Fear unit locks every morale USE —
+  // the ability-roll window loses its morale token/card sources too.
+  const rollerMoraleLocked = moraleLockedForPlayer(state.combat, roller.controllerId);
+  const moraleSources: AttackRerollSource[] = rollerMoraleLocked
+    ? []
+    : moraleCardsRuleEnabled(state)
+      ? (player.moraleCards?.positive ?? [])
+          .filter((cardId) => cardId === MORALE_CARD_IDS.rerollDie)
+          .map((cardId) => ({
+            name: cardLibrary[cardId]?.name ?? "Positive Morale: Reroll a Die",
+            moraleCardId: cardId,
+            remaining: 1,
+            used: 0
+          }))
+      : player.morale > 0
+        ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
+        : [];
 
-  const moraleSetSources: AttackRerollSource[] = moraleCardsRuleEnabled(state)
-    ? (player.moraleCards?.positive ?? [])
-        .filter((cardId) => cardId === MORALE_CARD_IDS.setAttackDiePlus)
-        .map((cardId) => ({
-          name: cardLibrary[cardId]?.name ?? "Positive Morale: Set Attack Die +1",
-          moraleCardId: cardId,
-          setDieFace: 1,
-          remaining: 1,
-          used: 0
-        }))
-    : [];
+  const moraleSetSources: AttackRerollSource[] =
+    !rollerMoraleLocked && moraleCardsRuleEnabled(state)
+      ? (player.moraleCards?.positive ?? [])
+          .filter((cardId) => cardId === MORALE_CARD_IDS.setAttackDiePlus)
+          .map((cardId) => ({
+            name: cardLibrary[cardId]?.name ?? "Positive Morale: Set Attack Die +1",
+            moraleCardId: cardId,
+            setDieFace: 1,
+            remaining: 1,
+            used: 0
+          }))
+      : [];
 
   const artifactSources: AttackRerollSource[] = !isHandLockedInCombat(state, roller.controllerId)
     ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) => ({
@@ -4227,11 +4240,24 @@ function concludeAttackerActivation(state: GameState, attacker: CombatUnitState)
 
   // Harpies' "Strike and Return": once the attack (and the enemy's Retaliation
   // Attack, if any) has resolved, the harpy may fly back to the space it moved
-  // from. A neutral always returns; a player is asked to return or stay.
+  // from. A player always chooses (return or stay). A neutral normally auto-
+  // returns (the printed "always returns" reading) — EXCEPT when a HUMAN drives
+  // the guards with FREE control: Manual guard control, or PvP Neutral Control
+  // with the must-attack sub-toggle OFF. Then the fly-back becomes the
+  // CONTROLLING seat's choice, exactly like a player harpy's — the choice is
+  // opened NEUTRAL-owned (openHarpyReturnChoice keeps unit.controllerId) and the
+  // adventure pump re-stamps it to the controller like every other neutral
+  // follow-up. In PvP Neutral Control MUST-ATTACK mode (rulebook spirit) the
+  // guard still auto-returns (deliberate — no "stay" is offered).
   if (combat) {
     const origin = harpyReturnOrigin(combat, attacker);
     if (origin !== null) {
       if (isNeutralUnit(attacker)) {
+        const controller = neutralCombatControllerId(state, combat);
+        if (controller && !neutralControlMustAttack(state, combat)) {
+          openHarpyReturnChoice(state, attacker, origin);
+          return;
+        }
         moveUnitToOrigin(state, attacker, origin);
         // fall through to end the activation
       } else {
@@ -5856,6 +5882,11 @@ function applyDeathStareFollowUps(
     const followUp = followUps[index];
     if (!isUnitAlive(defender)) {
       break;
+    }
+    // Raid-boss Devour: a tier-gated stare skips a target above its gate (and
+    // every gradeless target) BEFORE any die is thrown — no roll, no window.
+    if (!deathStareFollowUpAppliesTo(followUp, defender)) {
+      continue;
     }
     const window: AbilityRollWindow = { minRoll: followUp.onRoll, maxRoll: followUp.onRoll };
     // Negative Morale "roll 1 die less": the stare is a 2+-Attack-dice roll,
@@ -11324,8 +11355,9 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     }
   }
 
-  // Scroll spells are locked to power 0 and cannot be boosted by any Power
-  // source — skip every power-granting hook below and flag the stack item.
+  // Scroll spells ignore standing/school/equipment Power (skip those hooks) but
+  // allow paid Power cards into the cast window up to the lowest useful tier
+  // (see resolvedSpellPowerForStackItem). Flag the stack item as scroll-locked.
   if (action.fromScroll) {
     stackItem.modifiers.scrollLocked = true;
   } else {
@@ -11461,7 +11493,8 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   // spell is still below its useful Power floor AND they can still fuel it
   // (Implosion needs ≥1, etc.). Prevents a silent 0-damage resolve. Escape
   // hatch: if they have nothing left to fuel with, pass is allowed (spell
-  // fizzles) so the table cannot soft-lock. Scroll-locked casts stay free at 0.
+  // fizzles) so the table cannot soft-lock. Scroll casts ALSO honour this floor
+  // — paid Power is the only way to reach it (standing bonuses never apply).
   //
   // A FORCED-resolution pass (the passing seat is being AFK-dropped or turn-
   // timed-out) always goes through: those drivers hard-code PASS_REACTION and
@@ -11475,8 +11508,7 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   if (
     !forcedResolutionPass &&
     pending?.action.type === "CAST_SPELL" &&
-    pending.action.playerId === action.playerId &&
-    !pending.modifiers.scrollLocked
+    pending.action.playerId === action.playerId
   ) {
     const spell = cards[pending.action.cardId];
     const minUseful = spellMinUsefulPower(spell);
@@ -13215,9 +13247,14 @@ const SCHOOL_FETCH_EXPERT_POWER = 3;
  * Basic X Magic (the in-play spell-fetch permanent): spend an expert use to add
  * +3 Power to a matching-school spell you are casting now — a normal cast (into
  * the cast's School power) or an instant played into an attack (into your own
- * attack-window Power pool, re-derived like any other paid Power). Using the +3
- * CONSUMES the fetch permanent (mirroring the Tower School-of-Magic expert): the
- * matching Basic X Magic card is discarded from play. Once per stack per player.
+ * attack-window Power pool, re-derived like any other paid Power). USER RULING
+ * (2026-07-23, "if use expert, must discard, on hand or on permanent"): using
+ * the +3 CONSUMES its source — the in-play Basic X Magic card is discarded from
+ * play to the owner's DISCARD PILE (it recycles into their deck, so the card
+ * can be redrawn and its BASIC fetch replayed later — never removed from the
+ * game). The consumption is announced (offer labels + the CARD_PLAYED feed
+ * line) so the fetch permanent never vanishes silently. Once per stack per
+ * player.
  */
 function applySchoolFetchExpert(
   state: GameState,
@@ -13271,18 +13308,21 @@ function applySchoolFetchExpert(
 
   usedBy.push(action.playerId);
   player.combatStats.expertUsesSpentThisRound += 1;
-  // BINH rule: the +3 CONSUMES the fetch permanent, so discard the matching Basic
-  // X Magic card from play (like the School-of-Magic expert). A legacy
-  // SPELL_SCHOOL_FETCH active-effect fetch carries no card — this is then a no-op,
-  // and the once-per-stack `usedBy` guard still blocks a second dip on this cast.
-  discardPermanentFromPlay(state, action.playerId, `ability.basic_${action.school}_magic` as CardId);
+  // The +3 CONSUMES the fetch permanent (user ruling — see the function doc):
+  // the card goes to the owner's discard pile, never out of the game. A legacy
+  // SPELL_SCHOOL_FETCH active-effect fetch carries no card — this is then a
+  // no-op, and the once-per-stack `usedBy` guard still blocks a second dip.
+  const consumed = discardPermanentFromPlay(state, action.playerId, `ability.basic_${action.school}_magic` as CardId);
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId: action.playerId,
     cardId: `ability.basic_${action.school}_magic` as CardId,
     timing: "instant",
     mode: "expert",
-    effectAmount: SCHOOL_FETCH_EXPERT_POWER
+    effectAmount: SCHOOL_FETCH_EXPERT_POWER,
+    // Say OUT LOUD that the permanent left play — a silent consumption reads as
+    // "my Basic Magic stopped working" (the original user bug report).
+    ...(consumed ? { optionLabel: "+3 Power — the permanent is discarded" } : {})
   });
 }
 

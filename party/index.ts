@@ -42,7 +42,7 @@ import {
   recordUndoSnapshot,
   undoModeEnabled
 } from "@/server/undo-history";
-import { httpTokenVerifier, memoizeVerifier, type TokenVerifier } from "@/server/verified-actor";
+import { httpTokenVerifier, memoizeVerifier, type TokenVerifier, type VerifiedIdentity } from "@/server/verified-actor";
 
 /**
  * One PartyKit room per game table — PartyKit runs every room as its own
@@ -144,6 +144,19 @@ type ServerMessage =
 
 const SNAPSHOT_KEY = "snapshot";
 
+/**
+ * One entry of the hibernation-surviving verified-identity cache (Fix A). Keyed
+ * in Durable Object storage by a SHA-256 digest of the socket ticket (never the
+ * raw token), so a WOKEN instance whose in-memory memoization was wiped — and
+ * whose 10-minute socket ticket has since expired while the websocket stayed
+ * open — can still resolve a signed-in actor it once verified. See
+ * `resolveVerifiedIdentity` for the trust model.
+ */
+type StoredIdentity = VerifiedIdentity & { expiresAt: number };
+
+/** Storage key holding the bounded { digest → StoredIdentity } record map. */
+const VERIFIED_IDENTITY_CACHE_KEY = "verified-identity-cache";
+
 export default class GameRoomServer implements Party.Server {
   /** Snapshots persist across hibernation; connections re-sync on attach. */
   readonly options: Party.ServerOptions = { hibernate: true };
@@ -160,6 +173,26 @@ export default class GameRoomServer implements Party.Server {
    * is configured — the current guest behaviour, unchanged.
    */
   private tokenVerifier: TokenVerifier | null | undefined;
+
+  /**
+   * Raw tokens already write-through to the storage identity cache this
+   * instance lifetime — so a cache HIT (live verify still succeeds) never
+   * churns storage on every broadcast/action. In-memory only (like the
+   * memoization), so a cold wake starts empty and re-persists once per token.
+   */
+  private persistedTokens = new Set<string>();
+
+  /**
+   * In-memory mirror of identities RECALLED from the storage cache (a lapsed
+   * ticket on this instance). Purely a fast path: entries originate from the
+   * storage cache alone and carry its expiresAt, so the trust model is
+   * unchanged; see resolveVerifiedIdentity. Lost on instance death by design.
+   */
+  private recalledIdentities = new Map<string, StoredIdentity>();
+
+  /** Identity-cache tuning: one full game session, bounded to a small map. */
+  private static readonly VERIFIED_IDENTITY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  private static readonly VERIFIED_IDENTITY_CACHE_MAX = 64;
 
   /**
    * Serializes every snapshot MUTATION on this room. A Durable Object delivers
@@ -269,18 +302,124 @@ export default class GameRoomServer implements Party.Server {
   }
 
   /**
+   * SHA-256 hex digest of a token — the storage cache key (never the raw token).
+   * `crypto.subtle` is available in the Workers runtime and Node ≥18.
+   */
+  private async tokenDigest(token: string): Promise<string> {
+    const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+    return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  /**
+   * Resolve a socket/request token to its verified identity — DURABLY (Fix A).
+   *
+   * TRUST MODEL: this makes the in-memory positive memoization survive
+   * Cloudflare hibernation. When the live app callback verifies a token we WRITE
+   * THROUGH the resulting identity to THIS room's Durable Object storage, keyed
+   * by a SHA-256 digest of the token. When a later verify FAILS — the canonical
+   * case is a woken instance whose 10-minute socket ticket has since expired
+   * while the websocket stayed open — we fall back to that stored entry.
+   *
+   * We NEVER grant identity for a token that never successfully verified (the
+   * store is written only on a real success), so possession of the ticket was
+   * already the credential; this only extends its validity for THIS room,
+   * exactly as the in-memory memoization already did for the instance's
+   * lifetime. A ban/logout still bites at the client's next FRESH connect: a new
+   * ticket that never verifies has no stored entry to fall back on. Entries live
+   * 24h (a full session), bounded to 64, oldest/expired pruned on write.
+   * Degrades to guest (null) on any failure — never throws, never blocks.
+   */
+  private async resolveVerifiedIdentity(token: string | undefined | null): Promise<VerifiedIdentity | null> {
+    const verify = this.verifier();
+    if (!verify || !token) {
+      return null;
+    }
+    // Post-expiry steady state: once a LAPSED ticket has been recalled from
+    // storage on this instance, answer from the in-memory mirror — otherwise
+    // every later action would pay a failed HTTP verify round-trip plus a
+    // storage read for the rest of the session. Entries only ever come from
+    // the storage cache (written on a real verify success alone) and keep its
+    // expiresAt, so the trust model and expiry are identical; instance death
+    // simply drops the mirror and the next action re-reads storage.
+    const mirrored = this.recalledIdentities.get(token);
+    if (mirrored && mirrored.expiresAt > Date.now()) {
+      return { userId: mirrored.userId, nickname: mirrored.nickname, isAdmin: mirrored.isAdmin };
+    }
+    const live = await verify(token);
+    if (live) {
+      await this.rememberVerifiedIdentity(token, live);
+      return live;
+    }
+    return this.recallVerifiedIdentity(token);
+  }
+
+  /**
+   * Write-through a freshly-verified identity to storage, at most once per token
+   * per instance lifetime (the `persistedTokens` guard keeps the happy path —
+   * cache hits on every broadcast — from churning storage). Best-effort: a
+   * storage hiccup only costs a future cold wake a live re-verify, never a
+   * crashed action.
+   */
+  private async rememberVerifiedIdentity(token: string, identity: VerifiedIdentity): Promise<void> {
+    if (this.persistedTokens.has(token)) {
+      return;
+    }
+    try {
+      const digest = await this.tokenDigest(token);
+      const now = Date.now();
+      const stored =
+        (await this.room.storage.get<Record<string, StoredIdentity>>(VERIFIED_IDENTITY_CACHE_KEY)) ?? {};
+      stored[digest] = { ...identity, expiresAt: now + GameRoomServer.VERIFIED_IDENTITY_CACHE_TTL_MS };
+      // Drop expired, then bound the map (oldest expiry evicted first) so a room
+      // churning through many tokens can never grow storage without limit.
+      let entries = Object.entries(stored).filter(([, entry]) => entry.expiresAt > now);
+      if (entries.length > GameRoomServer.VERIFIED_IDENTITY_CACHE_MAX) {
+        entries = entries
+          .sort((a, b) => a[1].expiresAt - b[1].expiresAt)
+          .slice(entries.length - GameRoomServer.VERIFIED_IDENTITY_CACHE_MAX);
+      }
+      await this.room.storage.put(VERIFIED_IDENTITY_CACHE_KEY, Object.fromEntries(entries));
+      this.persistedTokens.add(token);
+      if (this.persistedTokens.size > GameRoomServer.VERIFIED_IDENTITY_CACHE_MAX * 4) {
+        // Keep the in-memory guard bounded too; a dropped token just re-persists.
+        this.persistedTokens.clear();
+      }
+    } catch (error) {
+      console.warn("[verified-identity] failed to persist token identity", error);
+    }
+  }
+
+  /** Read a non-expired stored identity for a token, or null. Never throws. */
+  private async recallVerifiedIdentity(token: string): Promise<VerifiedIdentity | null> {
+    try {
+      const digest = await this.tokenDigest(token);
+      const stored =
+        (await this.room.storage.get<Record<string, StoredIdentity>>(VERIFIED_IDENTITY_CACHE_KEY)) ?? {};
+      const entry = stored[digest];
+      if (!entry || entry.expiresAt <= Date.now()) {
+        return null;
+      }
+      // Prime the in-memory mirror so the NEXT action for this lapsed ticket
+      // skips both the failed HTTP verify and this storage read (see
+      // resolveVerifiedIdentity). Bounded like persistedTokens.
+      if (this.recalledIdentities.size > GameRoomServer.VERIFIED_IDENTITY_CACHE_MAX * 4) {
+        this.recalledIdentities.clear();
+      }
+      this.recalledIdentities.set(token, entry);
+      return { userId: entry.userId, nickname: entry.nickname, isAdmin: entry.isAdmin };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * The VERIFIED account id for a socket, or undefined for a guest. Authoritative
    * over any client-claimed actorClientId (Phase 2): the engine binds a signed-in
    * actor to their seat by this id, so a spoofed clientId can no longer act for a
    * verified seat. A verification failure degrades to guest, never throws.
    */
   private async verifiedUserId(connection: Party.Connection): Promise<string | undefined> {
-    const verify = this.verifier();
-    if (!verify) {
-      return undefined;
-    }
-    const identity = await verify(this.tokenOf(connection));
-    return identity?.userId;
+    return (await this.resolveVerifiedIdentity(this.tokenOf(connection)))?.userId;
   }
 
   /**
@@ -291,11 +430,7 @@ export default class GameRoomServer implements Party.Server {
    * for a guest, an ordinary player, or when no app URL is configured.
    */
   private async verifiedIsAdmin(connection: Party.Connection): Promise<boolean> {
-    const verify = this.verifier();
-    if (!verify) {
-      return false;
-    }
-    return (await verify(this.tokenOf(connection)))?.isAdmin === true;
+    return (await this.resolveVerifiedIdentity(this.tokenOf(connection)))?.isAdmin === true;
   }
 
   async onStart(): Promise<void> {
@@ -670,18 +805,18 @@ export default class GameRoomServer implements Party.Server {
     });
   }
 
-  /** The verified account id for an HTTP request's `?token=`, or undefined. */
-  private async verifiedUserIdFromRequest(request: Party.Request): Promise<string | undefined> {
-    const verify = this.verifier();
-    if (!verify) {
-      return undefined;
-    }
+  /** The raw `?token=` on an HTTP request URL, or undefined. */
+  private tokenFromRequest(request: Party.Request): string | undefined {
     try {
-      const token = new URL(request.url).searchParams.get("token") ?? undefined;
-      return (await verify(token))?.userId;
+      return new URL(request.url).searchParams.get("token") ?? undefined;
     } catch {
       return undefined;
     }
+  }
+
+  /** The verified account id for an HTTP request's `?token=`, or undefined. */
+  private async verifiedUserIdFromRequest(request: Party.Request): Promise<string | undefined> {
+    return (await this.resolveVerifiedIdentity(this.tokenFromRequest(request)))?.userId;
   }
 
   /**
@@ -690,16 +825,7 @@ export default class GameRoomServer implements Party.Server {
    * room, so only this role bypass lets them close it. False on any failure.
    */
   private async verifiedIsAdminFromRequest(request: Party.Request): Promise<boolean> {
-    const verify = this.verifier();
-    if (!verify) {
-      return false;
-    }
-    try {
-      const token = new URL(request.url).searchParams.get("token") ?? undefined;
-      return (await verify(token))?.isAdmin === true;
-    } catch {
-      return false;
-    }
+    return (await this.resolveVerifiedIdentity(this.tokenFromRequest(request)))?.isAdmin === true;
   }
 
   private async broadcastSnapshot(): Promise<void> {
