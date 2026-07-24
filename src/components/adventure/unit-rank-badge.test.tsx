@@ -51,6 +51,20 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(stats).toContain(`D${printed.defense}`);
   });
 
+  it("renders the FULL both-faces card display (same component as the town recruit roster)", () => {
+    // User request: the in-game Unit deck should display units the SAME as the
+    // town's recruit roster, i.e. the shared UnitSideCards (Few + Pack faces).
+    renderArmy(makeState(false, "unit-deck-full-cards"));
+    const cards = document.querySelector(".unitSideCards");
+    expect(cards, "the Unit deck reuses the town's full card-face display").toBeTruthy();
+    // Both printed faces (Few and Pack) are shown, with the owned Few badged.
+    expect(document.querySelector(".unitSideCard.few")).toBeTruthy();
+    expect(document.querySelector(".unitSideCard.pack")).toBeTruthy();
+    expect(document.querySelector(".unitSideCard.few .unitOwnedBadge")).toBeTruthy();
+    // The card ART is present (not just the old tiny compact-row thumb).
+    expect(document.querySelector(".unitSideCards .recruitThumbImg")).toBeTruthy();
+  });
+
   it("shows the rulebook Stack Token badge on a Stacked bank-reward Few card", () => {
     const state = createAdventureGameState({ seed: "army-stack-token", difficulty: "normal", rollFirstPlayer: false });
     // A Dragon Fly Hive / Griffin Conservatory Stacked reward: the Few card carries

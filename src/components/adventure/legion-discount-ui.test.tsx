@@ -27,14 +27,23 @@ function castleTownState(buildings: string[]): GameState {
   return state;
 }
 
-/** The town-panel recruit/reinforce row whose text mentions `unitName`. */
+/**
+ * The town-panel recruit/reinforce row whose text mentions `unitName`, including
+ * the cost chips' aria-labels. `UnitCost` renders a price as an icon + number,
+ * so the human-readable "N gold" text lives in the chip's aria-label/title (via
+ * formatCost), not in `textContent` — read both so the discounted-price
+ * assertions see it.
+ */
 function recruitRowText(unitName: string): string {
   const rows = Array.from(document.querySelectorAll(".recruitRow")) as HTMLElement[];
   const row = rows.find((candidate) => candidate.textContent?.includes(unitName));
   if (!row) {
     throw new Error(`no recruit row for ${unitName}`);
   }
-  return row.textContent ?? "";
+  const labels = Array.from(row.querySelectorAll("[aria-label]"))
+    .map((element) => element.getAttribute("aria-label"))
+    .join(" | ");
+  return `${row.textContent ?? ""} | ${labels}`;
 }
 
 function renderTown(state: GameState) {
@@ -70,7 +79,8 @@ describe("TownPanel — Legion voucher shows the discounted price", () => {
     renderTown(state);
 
     const row = recruitRowText("Griffins");
-    expect(row).toMatch(/Pack\s*2 gold/);
+    // The discounted Pack reinforce price (6 → 2 gold) shown on the reinforce chip.
+    expect(row).toMatch(/Reinforce cost for Griffins: 2 gold/);
     expect(row).toMatch(/Legion\s*[−-]\s*4/);
   });
 });
