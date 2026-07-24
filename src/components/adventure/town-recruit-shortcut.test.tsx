@@ -85,6 +85,10 @@ describe("Population recruit — unit view + one-click shortcut", () => {
       expect(row.querySelector("button.recruitQuick")).toBeNull();
       expect(row.querySelector("input[type='checkbox']")).toBeNull();
       expect(row.textContent).toContain("dwelling first");
+      // "show all units even not available": a locked unit STILL renders its
+      // full card faces AND its recruit cost, so it stays a planning reference.
+      expect(row.querySelector(".unitSideCards"), "locked unit shows its cards").toBeTruthy();
+      expect(row.querySelector(".unitCost"), "locked unit shows its recruit cost").toBeTruthy();
     }
     // CONTROL: an unlocked (bronze) row keeps both live controls.
     const unlockedRow = [...document.querySelectorAll(".recruitRow.unitRosterRow:not(.locked)")].find((row) =>

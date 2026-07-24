@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { ArmyPanel } from "./screen";
 import { CardZoomProvider } from "@/components/table/zoom";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { coreFactionDefinitions } from "@/data/factions/core";
 import { createAdventureGameState, type GameState } from "@/engine";
 
 afterEach(cleanup);
@@ -128,5 +129,71 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(text).toContain("+1 Defense while this unit is defending");
     fireEvent.click(dialog.querySelector(".armyUnitActions button") as Element);
     expect(dispatched[0]).toEqual({ type: "DRILL_UNIT", playerId: "p1", armyUnitId: "vets" });
+  });
+});
+
+// p1 defaults to Castle in createAdventureGameState.
+const CASTLE_ROSTER_SIZE = coreFactionDefinitions.castle!.units.length;
+
+describe("ArmyPanel — full faction roster (owned + unowned) with costs", () => {
+  it("renders the WHOLE Castle roster — an unowned unit shows its cards + recruit cost + 'not recruited'", () => {
+    // Own only Halberdiers Few; the other Castle units must still appear (user
+    // request: "show all units even not available").
+    renderArmy(makeState(false, "roster-full"));
+    // One owned unit → the rest of the roster renders as unowned placeholders.
+    expect(document.querySelectorAll(".armyRosterUnowned").length).toBe(CASTLE_ROSTER_SIZE - 1);
+    // A NOT-recruited unit (Champions) shows its full card faces, dimmed…
+    const champs = document.querySelector('[aria-label="Champions Few and Pack cards"]');
+    expect(champs, "an unowned faction unit still shows its cards").toBeTruthy();
+    expect(champs?.querySelector(".unitSideCard.unowned")).toBeTruthy();
+    // …with its printed Few RECRUIT cost visible on the card…
+    expect(
+      document.querySelector('[aria-label^="Few recruit cost for Champions"]'),
+      "unowned unit shows its recruit cost"
+    ).toBeTruthy();
+    // …and an explicit not-in-deck state line.
+    expect(
+      [...document.querySelectorAll(".armyRosterState")].some((el) => el.textContent === "not recruited")
+    ).toBe(true);
+  });
+
+  it("an OWNED unit now carries its cost line on the cards too", () => {
+    // Costs used to be omitted in the deck view; the user asked to "show cost to
+    // recruit or reinforce too", so owned cards now display printed costs.
+    renderArmy(makeState(false, "roster-owned-cost"));
+    const halb = document.querySelector('[aria-label="Halberdiers Few and Pack cards"]');
+    expect(halb).toBeTruthy();
+    // The owned Few side stays badged AND now shows a cost line.
+    expect(halb?.querySelector(".unitSideCard.few.owned .unitOwnedBadge")).toBeTruthy();
+    expect(halb?.querySelector(".unitCost"), "owned unit shows a cost line").toBeTruthy();
+    expect(document.querySelector('[aria-label^="Few recruit cost for Halberdiers"]')).toBeTruthy();
+  });
+
+  it("an empty army still lists the full unowned roster + the starting-units note", () => {
+    const state = makeState(false, "roster-empty");
+    state.players.p1.army = [];
+    renderArmy(state);
+    expect(document.querySelectorAll(".armyRosterUnowned").length).toBe(CASTLE_ROSTER_SIZE);
+    expect(document.querySelector(".armyEmptyNote")?.textContent).toContain("starting units return");
+    // No Unit Experience Board button when the deck is empty.
+    expect(document.querySelector(".armyExperienceBoard")).toBeNull();
+  });
+
+  it("CONTROL — a recruited Neutral keeps its single-face owned row, outside the faction roster", () => {
+    const state = makeState(false, "roster-neutral");
+    // A recruited Neutral (no Few/Pack faces) is not part of faction.units.
+    state.players.p1.army = [{ id: "boar", unitDefId: "neutral.boars", side: "neutral" }];
+    renderArmy(state);
+    // The whole Castle roster still shows as unowned…
+    expect(document.querySelectorAll(".armyRosterUnowned").length).toBe(CASTLE_ROSTER_SIZE);
+    // …and the Neutral appears as an owned row with its single-face thumb,
+    // exactly as before (no Few/Pack card faces for a Neutral).
+    const boarRow = [...document.querySelectorAll(".armyUnitRow")].find((el) => el.textContent?.includes("Boars"));
+    expect(boarRow, "the recruited Neutral still renders").toBeTruthy();
+    expect(boarRow?.querySelector(".armyUnitThumb")).toBeTruthy();
+    // The Neutral is NOT rendered as an unowned roster placeholder.
+    expect(
+      [...document.querySelectorAll(".armyRosterUnowned")].some((el) => el.textContent?.includes("Boars"))
+    ).toBe(false);
   });
 });

@@ -680,8 +680,21 @@ export function TownRecruitSection({
         ) : null;
         // Stack purchases require only the owned Pack + Citadel, not that tier's
         // dwelling. Keep such a Pack visible even when its dwelling is absent.
-        if (!unit?.few) {
+        if (!unit) {
           return null;
+        }
+        // A faction unit with no recruitable Few side should not happen for a
+        // real roster, but never let a unit vanish (user request: "show all
+        // units even not available"): show its faces + name as display-only.
+        if (!unit.few) {
+          return (
+            <div className="recruitRow unitRosterRow locked" key={unitDefId}>
+              {unitCards}
+              <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
+              <span className="recruitName">{unit.name}</span>
+              <small className="recruitState">not recruitable</small>
+            </div>
+          );
         }
         // Pack (or other non-Few): the card is complete for recruit; Stacks may still apply.
         if (owned && owned.side !== "few") {
