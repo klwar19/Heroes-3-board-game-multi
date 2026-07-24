@@ -9143,18 +9143,19 @@ span.recruitThumb {
 .unitSideCards {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 4px;
+  gap: 6px;
 }
 
 .unitSideCard {
   display: grid;
   justify-items: center;
-  gap: 2px;
-  min-width: 48px;
-  padding: 2px;
+  gap: 3px;
+  min-width: 100px;
+  padding: 3px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 8px;
   transition: opacity 120ms ease, filter 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
 
@@ -9171,21 +9172,27 @@ span.recruitThumb {
   opacity: 1;
 }
 
+/* Bigger, correctly-proportioned card face so the printed stat + resource icons
+   are actually legible (user request). The box matches the real 743:1040 card
+   aspect (≈0.714), so object-fit: cover shows the WHOLE face with no squash or
+   crop; object-position is centred (the base 62%/30% crop only matters when the
+   aspect mismatches). Serves the Unit deck panel AND both town recruit rosters. */
 .unitSideCard .recruitThumbImg {
-  width: 38px;
-  height: 42px;
+  width: 100px;
+  height: 140px;
+  object-position: center;
 }
 
 .unitSideMeta {
   display: grid;
   justify-items: center;
-  gap: 1px;
-  line-height: 1;
+  gap: 2px;
+  line-height: 1.05;
 }
 
 .unitSideLabel {
   color: #e7d29f;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -9193,9 +9200,9 @@ span.recruitThumb {
 
 .unitOwnedBadge {
   display: inline-block;
-  margin-left: 2px;
+  margin-left: 3px;
   color: #ffe47d;
-  font-size: 7px;
+  font-size: 9px;
   letter-spacing: 0;
 }
 
@@ -9204,9 +9211,9 @@ span.recruitThumb {
   align-items: center;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   color: #f2dfad;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
@@ -9215,18 +9222,18 @@ span.recruitThumb {
 .unitCostItem {
   display: inline-flex;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
 }
 
 .unitCostItem img {
-  width: 12px;
-  height: 12px;
+  width: 15px;
+  height: 15px;
   object-fit: contain;
 }
 
 .unitCostFree {
   color: #b9a579;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -14260,6 +14267,7 @@ img.cardBack {
 }
 
 .recruitRow.unitRosterRow {
+  flex-wrap: wrap;
   align-items: center;
   min-width: 0;
   padding: 5px 4px;
@@ -28647,6 +28655,18 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   border-radius: 12px;
 }
 
+/* Unit-deck / recruit card faces are big on desktop (legible stat + resource
+   icons); on the narrow phone Army tab and town window that pair would overflow,
+   so scale them down while KEEPING the true 743:1040 aspect (no squash). The
+   cost/label typography rides the desktop sizes — still readable at this scale. */
+.phoneMode .unitSideCard {
+  min-width: 78px;
+}
+.phoneMode .unitSideCard .recruitThumbImg {
+  width: 78px;
+  height: 109px;
+}
+
 /* Anime/Wuxia boards use seven real slices from ONE fully-built panorama. The
    slice lives on the whole bar; transparent per-building hit regions preserve
    the two-building shared-slot rules without breaking the continuous artwork. */
@@ -29412,6 +29432,36 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   color: #998f7e;
   font-size: 10px;
   text-align: center;
+}
+
+/* Unowned faction-roster row in the Unit deck panel: card faces (dimmed via
+   .unitSideCard.unowned) + a name row with a clear "not recruited" tag. No zoom
+   row / XP / controls — there is nothing to act on for a unit you do not own. */
+.armyRosterUnowned {
+  opacity: 0.9;
+}
+.armyRosterUnownedMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 1px;
+  font-size: 11px;
+  color: #cbb489;
+}
+.armyRosterUnownedMeta strong {
+  font-weight: 700;
+}
+.armyRosterState {
+  margin-left: auto;
+  font-style: italic;
+  opacity: 0.72;
+  color: #99835f;
+  font-size: 10px;
+}
+.armyEmptyNote {
+  display: block;
+  margin-top: 6px;
+  color: #99835f;
 }
 
 /* Unit Experience board: milestones, elite reward and engine-backed controls. */
