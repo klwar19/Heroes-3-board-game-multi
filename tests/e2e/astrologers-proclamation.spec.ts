@@ -1,4 +1,21 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
+
+/**
+ * The lobby's faction/hero picks live in the Setup Hub's "Heroes & Draft"
+ * window; it is a modal, so the top-bar seat switcher needs it closed first.
+ */
+async function openHeroesWindow(page: Page): Promise<void> {
+  const box = page.locator(".setupHubBox--heroes");
+  await expect(box).toBeVisible();
+  await box.click();
+  await expect(page.getByRole("dialog", { name: "Heroes & Draft" })).toBeVisible();
+}
+
+async function closeHeroesWindow(page: Page): Promise<void> {
+  const dialog = page.getByRole("dialog", { name: "Heroes & Draft" });
+  await dialog.locator(".setupHubWindowClose").click();
+  await expect(dialog).toHaveCount(0);
+}
 
 /**
  * The active "Astrologers Proclaim" card pops into the player's face at the
@@ -12,12 +29,16 @@ test("the active Astrologers proclamation pops up on the round-2 turn", async ({
   // --- Lobby: seat two players and start ----------------------------------
   await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 20000 });
 
+  await openHeroesWindow(page);
   await page.getByRole("button", { name: /Catherine/ }).click();
-  await expect(page.getByText("Castle — Catherine", { exact: false })).toBeVisible();
+  await expect(page.locator(".lobbySeat").filter({ hasText: "Castle — Catherine" })).toBeVisible();
 
+  await closeHeroesWindow(page);
   await page.getByTitle("Sit as Player 2").click();
+  await openHeroesWindow(page);
   await page.getByRole("button", { name: /Sandro/ }).click();
-  await expect(page.getByText("Necropolis — Sandro", { exact: false })).toBeVisible();
+  await expect(page.locator(".lobbySeat").filter({ hasText: "Necropolis — Sandro" })).toBeVisible();
+  await closeHeroesWindow(page);
 
   await page.getByRole("button", { name: "New Game" }).click();
   await expect(page.locator(".hexMapSvg")).toBeVisible({ timeout: 20000 });

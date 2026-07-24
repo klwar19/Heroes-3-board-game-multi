@@ -3677,6 +3677,90 @@ tier data + Drill dispatch + rule-off CONTROL) and `hero-board.test.tsx`
 (systems-row button + CONTROL). Component:
 `src/components/adventure/unit-experience-window.tsx`.
 
+## Setup Hub — the four-box map-setup lobby (2026-07) — what runs vs. limits
+
+The map-setup lobby (`SetupLobbyScreen`, `screen.tsx`) is FOUR large icon boxes in
+a centered 2×2 grid — **Game mode · Heroes & Draft · Map · Advanced settings** —
+each opening ONE popup window and summarizing the table's current choice
+underneath, with the classic Start button below them. It REPLACED the old two-tab
+layout ("Heroes & draft" / "Game options"). Pure PRESENTATION over the existing
+lobby actions: every control still dispatches the same `SET_GAME_OPTIONS` /
+`CHOOSE_FACTION` / `SET_DRAFT_FORMAT` / `SET_COMPUTER_OPPONENTS` /
+`START_ADVENTURE` payloads, so no engine rule changed. Applies to single-player
+too (it shares the component). Box icons are the classic HoMM3 spell-book art
+(`SETUP_HUB_ICONS` in `homm-assets.ts`: Counterstrike / Precision / View Earth /
+Visions, fetched by `scripts/fetch-setup-hub-spell-icons.py`).
+
+Components: `SetupHub` / `GameModeModal` / `HeroesDraftModal` /
+`AdvancedSettingsModal` + the extracted `GameModeSection` and `SeatCountControl`
+(all in `screen.tsx`); the shared popup shell
+`src/components/adventure/setup-hub-window.tsx`; the Map window
+`src/components/adventure/map-pick-modal.tsx` (+ its `DifficultyChessBar`); the
+read-only preview `src/components/adventure/map-shape-preview.tsx` (now the ONE
+home of `GROUP_COLORS` + `flowerOutline`, which `map-designer.tsx` imports); the
+pure derivations `src/components/adventure/setup-hub-summary.ts`. Behaviour is
+pinned in `setup-hub.test.tsx`, `setup-hub-summary.test.ts`,
+`map-pick-modal.test.tsx`, `map-shape-preview.test.tsx` (each claim
+mutation-checked with CONTROLs) plus the real-browser half
+`tests/e2e/setup-hub-phone.spec.ts` (jsdom cannot compute CSS).
+
+Leading with what does NOT run / deliberate limits:
+- **The Advanced window hosts the WHOLE classic `GameOptionsPanel` unchanged**
+  (all four tabs), so its mode grid, Map picker and difficulty CHIP row are
+  DUPLICATED with the Game-mode and Map boxes. Deliberate — the mode grid and
+  the seat-count control are SHARED components, and the chess bar dispatches the
+  identical `SET_GAME_OPTIONS { difficulty }` as the chip row, so the two
+  surfaces can never disagree.
+- **The hub window is a true MODAL**: the top-bar seat switcher (the local
+  hot-seat convenience on an open table) is behind its backdrop, so switching
+  seats needs the window closed. The Heroes window says so on a hot-seat table
+  instead of leaving the player hunting; the e2e mirrors that flow.
+- **The Advanced box's "Default vs Customized" badge compares only
+  ADVANCED-owned keys** against a fresh LOBBY baseline for the active mode
+  (`advancedSettingsChanged`): mode-box keys (customMode/ruleset/tournament*/wog/
+  anime) and map-box keys (scenarioId/playerCount/customMap*/difficulty) never
+  count. `customMode` short-circuits to "Custom setup file" (a loaded setting
+  file IS a customized setup). LIMIT: the baseline is the LOBBY baseline — a raw
+  `defaultGameSetupOptions(scenario)` object, only reachable through a direct
+  `createAdventureGameState` build, differs in `startingBuildings` and would read
+  "Customized". (A fresh lobby pre-builds Citadel / Mage Guild / Bronze Dwelling;
+  folding that in is what keeps an untouched table reading "Default".)
+- **The map SHAPE preview is band-coloured outlines only** — tile flowers stroked
+  by band with numbered seat tiles and a dashed underground layer; no printed tile
+  art, no guards/objects/tokens. Built-in scenarios preview their `layout`,
+  designed maps their saved `tiles`.
+- **The Map window's difficulty bar is the ONLY chess-piece surface**
+  (`DIFFICULTY_CHESS_ICONS`, Pawn=Easy / Knight=Normal / Rook=Hard /
+  King=Impossible — gold silhouettes from `scripts/build-difficulty-chess-icons.mjs`,
+  procedural SVG→sharp, not painted art).
+- **No new map filters beyond source / player-count / name search**, and the
+  designed-map list keeps the classic `validateCustomMapPlan` gate (an invalid map
+  previews but cannot be applied).
+- **Z-INDEX**: the hub backdrop sits at 210 — above the docked table chat (200),
+  which used to cover a window's bottom-left corner. The two dialogs that open
+  from INSIDE a hub window (hero info, normally 120; the WOG/Anime mod windows,
+  130) are lifted to 220 / 230 for exactly that window's lifetime via
+  `body:has(.setupHubBackdrop)`, so no other screen's stacking changes. Escape
+  closes only the TOPMOST dialog (`SetupHubWindow` defers while a
+  `.heroInfoBackdrop` / `.wogWindowBackdrop` is mounted). `HeroInfoModal` also
+  had to start PORTALING to `<body>`: rendered inline it stayed trapped in the
+  lobby's stacking context (`.setupLobby` z-index 1) and drew UNDER the window
+  with its close button unclickable, whatever z-index it carried (pinned by the
+  `parentElement === document.body` assertion in `setup-hub.test.tsx`).
+- **Narrow viewports (≤820px) flow from the top instead of centering** and
+  reserve `56vh` of bottom padding: the chat dock is fixed bottom-left at up to
+  380px wide, so on a narrow column the centered auto-margins would park the
+  Start button under the dock AND move it every time the dock grew a line.
+- **Phone mode**: the boxes stay 2×2 (smaller), and a hub window becomes a
+  full-screen sheet with the Map layout stacked (list above, preview + info
+  below). Those rules live in the `.phoneMode` block at the end of `globals.css`;
+  the WINDOW ones take the `body:has(main.phoneMode)` form because the window
+  portals to `<body>`, outside `<main>` (same `:has` dependency as the header
+  collapse — a graceful no-op on old browsers).
+- Bonus fix: `screen.tsx` referenced a `/assets/spell-icons/view-air.png` that
+  never existed (a broken image on the Mulligan option row) — now the real
+  `view_air.png`.
+
 ## First-round rules, Cove City Hall & bank/opponent UI (BINH house rules) — what runs
 
 Six additions; each engine rule fails a named test if its wiring is removed.

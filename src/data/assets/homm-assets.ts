@@ -348,6 +348,34 @@ export const UI_REWARD_ICONS = {
 export const ABILITY_EMPOWER_TOKEN_ICON = "/assets/icons/ability-empower-token.webp";
 
 /**
+ * Setup Hub box icons (lobby map-setup screen): the classic HoMM3 spell-book
+ * art (same set as the commander cast icons; fetched by
+ * scripts/fetch-setup-hub-spell-icons.py / fetch-commander-spell-icons.py).
+ * Counterstrike = clashing rules (Game mode), Precision = an aimed pick
+ * (Heroes & Draft), View Earth = the world map (Map), Visions = scrutinising
+ * the fine print (Advanced settings). Paths only — render through assetUrl().
+ */
+export const SETUP_HUB_ICONS = {
+  mode: "/assets/spell-icons/counterstrike.png",
+  heroes: "/assets/spell-icons/precision.png",
+  map: "/assets/spell-icons/view_earth.png",
+  advanced: "/assets/spell-icons/visions.png"
+} as const;
+
+/**
+ * Difficulty chess pieces (Setup Hub map window): Easy = Pawn, Normal =
+ * Knight, Hard = Rook, Impossible = King. Gold silhouettes built by
+ * scripts/build-difficulty-chess-icons.mjs. Paths only — render through
+ * assetUrl().
+ */
+export const DIFFICULTY_CHESS_ICONS = {
+  easy: "/assets/ui/difficulty-pawn.webp",
+  normal: "/assets/ui/difficulty-knight.webp",
+  hard: "/assets/ui/difficulty-rook.webp",
+  impossible: "/assets/ui/difficulty-king.webp"
+} as const;
+
+/**
  * Morale birds, the classic Heroes III IMRL42 sprite set (one frame per track
  * step, −3 … +3): the gold bird soaring with wings spread for high morale down
  * through the tarnished, grounded bird for low morale, with the stone bird at
