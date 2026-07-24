@@ -7585,7 +7585,11 @@ export function processPendingVisit(state: GameState): void {
       }
       case "REINFORCE_FLAT_GOLD":
         // Cove Pub: flat gold discount on one reinforcement (no halving).
-        reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, false, step.discount);
+        // The Pub discounts a normal reinforcement; it does not replace the
+        // Citadel requirement that unlocks reinforcements in the first place.
+        if (townHasBuildingEffect(state, visit.playerId, "UNLOCK_REINFORCE")) {
+          reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, false, step.discount);
+        }
         break;
       case "BUY_UNIT_STACK": {
         // Polish Unit Stacks building/skill offers (Necro City Hall, Saplings,
@@ -14707,9 +14711,10 @@ function queueFlatGoldReinforce(
     return;
   }
 
+  const canReinforce = townHasBuildingEffect(state, playerId, "UNLOCK_REINFORCE");
   const options: { label: string; steps: VisitStep[] }[] = [];
   for (const unit of player.army) {
-    if (unit.side !== "few") {
+    if (!canReinforce || unit.side !== "few") {
       continue;
     }
 
