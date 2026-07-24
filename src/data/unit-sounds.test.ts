@@ -160,7 +160,7 @@ describe("unit combat voices", () => {
     expect(unitSoundKey("doom.former_commando", "attack")).toBe("units/doom-machinegun-attack");
     expect(unitSoundKey("doom.spider_mastermind", "shoot")).toBe("units/doom-machinegun-attack");
     expect(soundLibrary["units/doom-machinegun-attack"]).toMatchObject({
-      src: "/sounds/doom/dsshotgn.wav",
+      src: "/sounds/doom/dsshotgn.mp3",
       repeat: 4
     });
     // Cyberdemon/Revenant rockets are a launch→explosion sequence.
@@ -173,7 +173,7 @@ describe("unit combat voices", () => {
       sequenceDelayMs: 90
     });
     expect(soundLibrary["doom/dsbspwlk-move"]).toMatchObject({
-      src: "/sounds/doom/dsbspwlk.wav",
+      src: "/sounds/doom/dsbspwlk.mp3",
       repeat: 2
     });
     // The three zombie-soldier types share one random death-variant pool.
