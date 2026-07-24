@@ -229,7 +229,7 @@ describe("sequenceDelayMs (paced virtual sequences)", () => {
     playLibrarySound("units/doom-demon-move");
     expect(FakeAudio.instances).toHaveLength(1);
     const sight = FakeAudio.instances[0];
-    expect(sight.src).toContain("/sounds/doom/dssgtsit.wav");
+    expect(sight.src).toContain("/sounds/doom/dssgtsit.mp3");
     expect(sight.playCount).toBe(1);
 
     // The first member ends: the next must NOT start until the 90ms gap elapses.
@@ -241,7 +241,7 @@ describe("sequenceDelayMs (paced virtual sequences)", () => {
     expect(FakeAudio.instances).toHaveLength(2);
 
     const walk = FakeAudio.instances[1];
-    expect(walk.src).toContain("/sounds/doom/dsdmact.wav");
+    expect(walk.src).toContain("/sounds/doom/dsdmact.mp3");
     expect(walk.playCount).toBe(1);
     // repeat:2 replays on the same element (the gap is BETWEEN members, not
     // between a member's own repeats).
