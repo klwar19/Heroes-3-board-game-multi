@@ -45,6 +45,7 @@ import {
   recordUndoSnapshot,
   undoModeEnabled
 } from "@/server/undo-history";
+import { prepareSinglePlayerLoad, singlePlayerSaveAccess } from "@/server/single-player-save";
 import {
   deriveLobbyRecord,
   isStaleRecord,
@@ -500,6 +501,65 @@ export function restoreRoom(roomId: string, state: GameState, actorClientId?: st
   // recovered table would sit frozen on the AI with no action able to wake it.
   ensureComputerPump(roomId);
   return snapshot;
+}
+
+/**
+ * Single-player save slots: the RAW (unredacted) room state for the OWNER's
+ * local save file. Solo rooms only — see src/server/single-player-save.ts for
+ * why the redacted client frames can never serve as a save.
+ */
+export function getSinglePlayerSaveState(
+  roomId: string,
+  actorClientId?: string,
+  actorUserId?: string
+): { ok: true; state: GameState; version: number } | { ok: false; reason: string } {
+  const current = getRoomRecord(roomId);
+  const access = singlePlayerSaveAccess(current.state, { clientId: actorClientId, userId: actorUserId });
+  if (!access.ok) {
+    return { ok: false, reason: access.reason };
+  }
+  return { ok: true, state: cloneSerializable(current.state), version: current.version };
+}
+
+/**
+ * Single-player save slots: replace the room's game with a saved snapshot —
+ * an atomic whole-state swap into the SAME room (never a new room), mirroring
+ * the undo restore: version bump, persist, broadcast, pump re-derive. The undo
+ * history is dropped like on a reset (a load jumps timelines).
+ */
+export function loadSinglePlayerSave(
+  roomId: string,
+  incoming: unknown,
+  actorClientId?: string,
+  actorUserId?: string
+): { loaded: true; snapshot: GameRoomSnapshot } | { loaded: false; reason: string } {
+  const current = getRoomRecord(roomId);
+  const prepared = prepareSinglePlayerLoad(current.state, incoming, {
+    clientId: actorClientId,
+    userId: actorUserId
+  });
+  if (!prepared.ok) {
+    return { loaded: false, reason: prepared.reason };
+  }
+  const next: GameRoomRecord = {
+    roomId,
+    version: current.version + 1,
+    ...(current.createdAt ? { createdAt: current.createdAt } : {}),
+    ...(current.createdByName ? { createdByName: current.createdByName } : {}),
+    updatedAt: new Date().toISOString(),
+    state: prepared.state
+  };
+  roomStore.set(roomId, next);
+  persistRoom(next);
+  clearUndoHistory(roomId);
+  const snapshot = withBootId(cloneSerializable(next));
+  notifyRoomListeners(roomId, snapshot);
+  // The loaded game may be mid-computer-turn: re-derive the paced pump exactly
+  // like the undo restore (cancel the abandoned timeline's timer, re-arm iff
+  // the loaded state owes a move).
+  cancelComputerPump(roomId);
+  ensureComputerPump(roomId);
+  return { loaded: true, snapshot };
 }
 
 export function submitRoomAction(

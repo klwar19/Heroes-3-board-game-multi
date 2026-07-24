@@ -40,7 +40,7 @@ describe("CommandDock — in-combat escape buttons", () => {
       { label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)", action: { type: "RETREAT_FROM_COMBAT", playerId: "p1" } },
       { label: "Surrender (pay 7 gold, keep your whole army, return home)", action: { type: "SURRENDER_COMBAT", playerId: "p1" } }
     ];
-    render(<CommandDock legalActions={actions} onAction={onAction} onReset={vi.fn()} state={state} viewerPlayerId="p1" />);
+    render(<CommandDock legalActions={actions} onAction={onAction} state={state} viewerPlayerId="p1" />);
     expect(screen.getByRole("button", { name: /retreat/i })).toBeTruthy();
     const surrender = screen.getByRole("button", { name: /surrender/i });
     fireEvent.click(surrender);
@@ -52,7 +52,7 @@ describe("CommandDock — in-combat escape buttons", () => {
     const actions: LegalAction[] = [
       { label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)", action: { type: "RETREAT_FROM_COMBAT", playerId: "p1" } }
     ];
-    render(<CommandDock legalActions={actions} onAction={vi.fn()} onReset={vi.fn()} state={state} viewerPlayerId="p1" />);
+    render(<CommandDock legalActions={actions} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
     expect(screen.getByRole("button", { name: /retreat/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /surrender/i })).toBeNull();
   });
@@ -66,7 +66,7 @@ describe("CommandDock — in-combat escape buttons", () => {
         action: { type: "GIVE_UP_COMBAT", playerId: "p1" }
       }
     ];
-    render(<CommandDock legalActions={actions} onAction={onAction} onReset={vi.fn()} state={state} viewerPlayerId="p1" />);
+    render(<CommandDock legalActions={actions} onAction={onAction} state={state} viewerPlayerId="p1" />);
     const retreat = screen.getByRole("button", { name: /retreat/i });
     expect(screen.queryByRole("button", { name: /give up/i })).toBeNull();
     fireEvent.click(retreat);

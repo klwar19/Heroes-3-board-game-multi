@@ -1179,6 +1179,35 @@ export function disruptionTileLabel(state: GameState, tile: MapTileState): strin
   return landmarks.length > 0 ? `${tile.tileDefId} — ${landmarks.join(", ")}` : tile.tileDefId;
 }
 
+/**
+ * Tournament rule (Observatory / Speculum re-rotate): the placed tiles a hero
+ * standing at `anchorSpaceId` may re-rotate right now. Reuses the same safety
+ * gate as {@link disruptionEligibleTiles} (revealed + fully materialized, no
+ * Hero/Town/Subterranean-Gate on any of its seven hexes) and adds the "nearby"
+ * restriction: a tile on the SAME layer whose flower directly touches the
+ * anchor's tile (center hex distance 3, matching the Observatory discover
+ * adjacency). The anchor's own tile is excluded — the hero stands on it, so it
+ * already fails the no-Hero gate; the explicit filter documents the intent.
+ */
+export function nearbyRerotateEligibleTiles(state: GameState, anchorSpaceId: MapSpaceId): MapTileState[] {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return [];
+  }
+  const anchorTile = findTileAtSpace(adventure, anchorSpaceId);
+  if (!anchorTile) {
+    return [];
+  }
+  const anchorLayer = tileLayer(anchorTile);
+  const anchorCenter = { row: anchorTile.centerRow, col: anchorTile.centerCol };
+  return disruptionEligibleTiles(state).filter(
+    (tile) =>
+      tile.id !== anchorTile.id &&
+      tileLayer(tile) === anchorLayer &&
+      hexDistance({ row: tile.centerRow, col: tile.centerCol }, anchorCenter) === 3
+  );
+}
+
 export function findTileAtSpace(adventure: AdventureState, spaceId: MapSpaceId): MapTileState | null {
   const coord = parseHexSpaceId(spaceId);
   if (!coord) {
@@ -3446,7 +3475,8 @@ export function tournamentMoraleSearchAgainEnabled(
     a.tournamentMode ||
       a.tournamentBanDiplomacy ||
       a.tournamentBanHourglass ||
-      a.tournamentSecondPlayerMorale
+      a.tournamentSecondPlayerMorale ||
+      a.tournamentObservatoryRerotate
   );
 }
 
@@ -6129,6 +6159,14 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
       ? interactionToSteps(location.interaction, locationDiceBonusFor(state, playerId))
       : [];
 
+  // Tournament rule (Observatory re-rotate): the Redwood Observatory may ALSO
+  // re-rotate one nearby placed tile. Prepended so it resolves BEFORE the
+  // discover step — the discover stays the visit's LAST step, so a far-tile flip
+  // triggered by the discovery still finalizes against an otherwise-empty visit.
+  if (adventure.tournamentObservatoryRerotate && steps.some((s) => s.type === "DISCOVER_ADJACENT_TILE")) {
+    steps.unshift({ type: "OBSERVATORY_REROTATE_OFFER", anchorSpaceId: fieldId });
+  }
+
   // Anime Hero Grades (§3.11): the two "enlightenment" hexes grant +1 Merit IN
   // ADDITION to their printed reward when the module is on. Runtime-gated so the
   // module-OFF visit is byte-identical (the location definitions are untouched);
@@ -6887,6 +6925,85 @@ export function processPendingVisit(state: GameState): void {
           type: "EVENT_NOTE",
           playerId: visit.playerId,
           message: `Disruption: ${state.players[visit.playerId]?.name ?? visit.playerId} rotated tile ${tile.tileDefId}.`
+        });
+        break;
+      }
+      case "OBSERVATORY_REROTATE_OFFER": {
+        // Tournament rule: after the Observatory / Speculum discover, offer to
+        // re-rotate ONE nearby placed tile (or skip). Eligibility is recomputed
+        // from live state each time so a tile that gained a hero drops out; with
+        // nothing eligible (or the rule off) the step resolves silently.
+        if (!state.adventure?.tournamentObservatoryRerotate) {
+          break;
+        }
+        const eligible = nearbyRerotateEligibleTiles(state, step.anchorSpaceId);
+        if (eligible.length === 0) {
+          break;
+        }
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "Observatory: re-rotate one nearby tile (or skip)",
+          options: [
+            ...eligible.map((tile) => ({
+              label: `Rotate tile ${disruptionTileLabel(state, tile)}`,
+              steps: [
+                {
+                  type: "OBSERVATORY_REROTATE_TILE",
+                  tileInstanceId: tile.id,
+                  anchorSpaceId: step.anchorSpaceId
+                } as VisitStep
+              ]
+            })),
+            { label: "Skip", steps: [] }
+          ]
+        });
+        break;
+      }
+      case "OBSERVATORY_REROTATE_TILE": {
+        // The picked tile: choose its new orientation (any of the five others),
+        // or back out to the tile pick.
+        const tile = adventure.tiles[step.tileInstanceId];
+        const stillEligible =
+          tile && nearbyRerotateEligibleTiles(state, step.anchorSpaceId).some((candidate) => candidate.id === tile.id);
+        if (!stillEligible) {
+          visit.steps.unshift({ type: "OBSERVATORY_REROTATE_OFFER", anchorSpaceId: step.anchorSpaceId });
+          break;
+        }
+        const options: { label: string; steps: VisitStep[] }[] = [];
+        for (let turns = 1; turns <= 5; turns += 1) {
+          const rotation = (tile.rotation + turns) % 6;
+          options.push({
+            label: `Turn ${turns * 60}° clockwise`,
+            steps: [
+              { type: "OBSERVATORY_REROTATE_SET", tileInstanceId: tile.id, anchorSpaceId: step.anchorSpaceId, rotation }
+            ]
+          });
+        }
+        options.push({
+          label: "Pick a different tile",
+          steps: [{ type: "OBSERVATORY_REROTATE_OFFER", anchorSpaceId: step.anchorSpaceId }]
+        });
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Observatory: re-rotate tile ${disruptionTileLabel(state, tile)} by how much?`,
+          options
+        });
+        break;
+      }
+      case "OBSERVATORY_REROTATE_SET": {
+        // Apply the rotation in place. Re-validated against live eligibility as a
+        // transactional backstop — a stale/duplicated step can only no-op, never
+        // corrupt a tile or rotate one twice.
+        const tile = adventure.tiles[step.tileInstanceId];
+        const stillEligible =
+          tile && nearbyRerotateEligibleTiles(state, step.anchorSpaceId).some((candidate) => candidate.id === tile.id);
+        if (!stillEligible || !rotateTileInPlace(adventure, tile, step.rotation)) {
+          break;
+        }
+        appendEvent(state, {
+          type: "EVENT_NOTE",
+          playerId: visit.playerId,
+          message: `Observatory: ${state.players[visit.playerId]?.name ?? visit.playerId} re-rotated tile ${tile.tileDefId}.`
         });
         break;
       }
@@ -15144,6 +15261,13 @@ function expireActiveAstrologersCard(state: GameState): void {
     return;
   }
 
+  const card = astrologersCardDefinitions[astrologers.activeCardId];
+  appendEvent(state, {
+    type: "ASTROLOGERS_DISCARDED",
+    cardId: astrologers.activeCardId,
+    name: card?.name ?? astrologers.activeCardId,
+    round: state.round
+  });
   deck?.discardPile.push(astrologers.activeCardId);
   astrologers.activeCardId = null;
   astrologers.crazyWizardUsedBy = [];

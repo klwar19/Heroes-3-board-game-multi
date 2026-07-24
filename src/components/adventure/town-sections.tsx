@@ -9,6 +9,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import type { TownBuildingDefinition } from "@/data/factions/types";
 import {
   applyRecruitGoldDiscount,
@@ -24,6 +25,8 @@ import {
   type LegalAction,
   type PlayerId,
   type PlayerState,
+  type ResourceCost,
+  type ResourceKind,
   type TownState
 } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
@@ -263,6 +266,35 @@ function costAffordable(
   );
 }
 
+const UNIT_RESOURCE_ORDER: readonly ResourceKind[] = ["gold", "buildingMaterials", "valuables"];
+const UNIT_RESOURCE_LABELS: Record<ResourceKind, string> = {
+  gold: "Gold",
+  buildingMaterials: "Building materials",
+  valuables: "Valuables"
+};
+
+/** Compact resource cost display used by each Few/Pack card in the roster. */
+function UnitCost({ cost, label }: { cost: ResourceCost; label: string }) {
+  const entries = UNIT_RESOURCE_ORDER
+    .map((resource) => [resource, cost[resource] ?? 0] as const)
+    .filter(([, amount]) => amount > 0);
+
+  return (
+    <span aria-label={`${label}: ${formatCost(cost)}`} className="unitCost" title={`${label}: ${formatCost(cost)}`}>
+      {entries.length > 0 ? (
+        entries.map(([resource, amount]) => (
+          <span className="unitCostItem" key={resource}>
+            <img alt={UNIT_RESOURCE_LABELS[resource]} src={assetUrl(RESOURCE_ICONS[resource])} />
+            <b>{amount}</b>
+          </span>
+        ))
+      ) : (
+        <span className="unitCostFree">free</span>
+      )}
+    </span>
+  );
+}
+
 /**
  * A recruitable unit's card art: a click-to-enlarge thumbnail so the player can
  * SEE the unit (its scan + stats) before spending the Population token on it.
@@ -275,7 +307,7 @@ function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" |
   const unitSide =
     side === "pack" ? def?.pack : side === "neutral" ? def?.neutral : def?.few;
   const image = unitSide?.cardImage;
-  const sideLabel = side === "pack" ? "Pack of" : side === "neutral" ? "Neutral" : "Few";
+  const sideLabel = side === "pack" ? "Pack" : side === "neutral" ? "Neutral" : "Few";
   const thumb = image ? (
     <img alt="" aria-hidden="true" className="recruitThumbImg" loading="lazy" src={assetUrl(image)} />
   ) : (
@@ -286,7 +318,7 @@ function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" |
   }
   return (
     <button
-      aria-label={`View the ${def.name} card`}
+      aria-label={`View the ${sideLabel} ${def.name} card`}
       className="recruitThumb"
       onClick={(event) => {
         // A button inside the row's <label> must not toggle the basket checkbox.
@@ -298,15 +330,79 @@ function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" |
           subtitle: `${def.tier} ${def.type}`,
           lines: [
             `Attack ${unitSide.attack} · Defense ${unitSide.defense} · HP ${unitSide.health} · Initiative ${unitSide.initiative}`,
+            `Cost: ${formatCost(unitSide.cost)}`,
             unitSide.abilityText ?? ""
           ].filter(Boolean)
         });
       }}
-      title={`View the ${def.name} card`}
+      title={`View the ${sideLabel} ${def.name} card`}
       type="button"
     >
       {thumb}
     </button>
+  );
+}
+
+function UnitSideCard({
+  unitDefId,
+  side,
+  cost,
+  ownedSide
+}: {
+  unitDefId: string;
+  side: "few" | "pack";
+  /** Recruit/reinforce cost line. Omit (Unit deck view) to show only the face. */
+  cost?: ResourceCost;
+  ownedSide: "few" | "pack" | "neutral" | null;
+}) {
+  const def = coreUnitDefinitions[unitDefId];
+  const unitSide = side === "pack" ? def?.pack : def?.few;
+  if (!def || !unitSide) {
+    return null;
+  }
+
+  const owned = ownedSide === side;
+  return (
+    <div className={`unitSideCard ${side} ${owned ? "owned" : "unowned"}`}>
+      <RecruitUnitView side={side} unitDefId={unitDefId} />
+      <span className="unitSideMeta">
+        <span className="unitSideLabel">
+          {side === "few" ? "Few" : "Pack"}
+          {owned ? <span className="unitOwnedBadge">Owned</span> : null}
+        </span>
+        {cost ? (
+          <UnitCost
+            cost={cost}
+            label={`${side === "few" ? "Few recruit" : "Pack reinforce"} cost for ${def.name}`}
+          />
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Both printed sides stay visible so the roster doubles as a quick army
+ * inventory. Reused by the in-game Unit deck panel (ArmyPanel) so it renders
+ * the SAME full card faces as the town recruit roster; omit the costs there.
+ */
+export function UnitSideCards({
+  unitDefId,
+  fewCost,
+  packCost,
+  ownedSide
+}: {
+  unitDefId: string;
+  fewCost?: ResourceCost;
+  packCost?: ResourceCost;
+  ownedSide: "few" | "pack" | "neutral" | null;
+}) {
+  const name = coreUnitDefinitions[unitDefId]?.name ?? unitDefId;
+  return (
+    <div aria-label={`${name} Few and Pack cards`} className="unitSideCards">
+      <UnitSideCard cost={fewCost} ownedSide={ownedSide} side="few" unitDefId={unitDefId} />
+      <UnitSideCard cost={packCost} ownedSide={ownedSide} side="pack" unitDefId={unitDefId} />
+    </div>
   );
 }
 
@@ -558,19 +654,42 @@ export function TownRecruitSection({
       {faction.units.map((unitDefId) => {
         const unit = coreUnitDefinitions[unitDefId];
         const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId);
+        const tierUnlocked = Boolean(unit && unlockedTiers.has(unit.tier));
+        const rosterOwnedSide =
+          owned?.side === "few" || owned?.side === "pack" || owned?.side === "neutral" ? owned.side : null;
+        const rosterRecruitRef = { kind: "recruit" as const, unitDefId };
+        const rosterRecruitCost = unit?.few
+          ? applyRecruitGoldDiscount(state, viewerPlayerId, rosterRecruitRef, unit.few.cost)
+          : {};
+        const rosterPackCost =
+          owned?.side === "few" && unit?.pack
+            ? applyRecruitGoldDiscount(
+                state,
+                viewerPlayerId,
+                { kind: "reinforce" as const, unitDefId, armyUnitId: owned.id },
+                unit.pack.cost
+              )
+            : unit?.pack?.cost ?? {};
+        const unitCards = unit ? (
+          <UnitSideCards
+            fewCost={rosterRecruitCost}
+            ownedSide={rosterOwnedSide}
+            packCost={rosterPackCost}
+            unitDefId={unitDefId}
+          />
+        ) : null;
         // Stack purchases require only the owned Pack + Citadel, not that tier's
         // dwelling. Keep such a Pack visible even when its dwelling is absent.
-        if (!unit?.few || (!unlockedTiers.has(unit.tier) && !(polishStacksEnabled && owned?.side === "pack"))) {
+        if (!unit?.few) {
           return null;
         }
         // Pack (or other non-Few): the card is complete for recruit; Stacks may still apply.
         if (owned && owned.side !== "few") {
           const canStack =
             polishStacksEnabled && (owned.side === "pack" || owned.side === "neutral") && polishArmyUnitStackCap(owned) > 0;
-          const viewSide = owned.side === "neutral" ? "neutral" : "pack";
           return (
-            <div className={`recruitRow done ${canStack ? "unitStackRow" : ""}`} key={unitDefId}>
-              <RecruitUnitView side={viewSide} unitDefId={unitDefId} />
+            <div className={`recruitRow unitRosterRow done owned-${owned.side} ${canStack ? "unitStackRow" : ""}`} key={unitDefId}>
+              {unitCards}
               <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
               <span className="recruitName">
                 {unit.name}
@@ -602,12 +721,12 @@ export function TownRecruitSection({
           const reinforceLegion = legionVoucherDiscount(state, viewerPlayerId, reinforceRef);
           const reinforceAffordable = costAffordable(reinforceCost, player.resources);
           return (
-            <label
-              className={`recruitRow reinforce ${checked ? "checked" : ""} ${upgradable ? "" : "locked"}`}
+            <div
+              className={`recruitRow unitRosterRow reinforce owned-few ${checked ? "checked" : ""} ${upgradable ? "" : "locked"}`}
               key={unitDefId}
               title={upgradable ? `Reinforce ${unit.name}: Few → Pack` : undefined}
             >
-              <RecruitUnitView side="few" unitDefId={unitDefId} />
+              {unitCards}
               <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
               <span className="recruitName">
                 {unit.name} <span className="fewBadge">Few</span>
@@ -615,7 +734,9 @@ export function TownRecruitSection({
               {upgradable ? (
                 <>
                   <span className="upgradeTag" title={reinforceLegion > 0 ? `Legion voucher reserved: −${reinforceLegion} gold` : undefined}>
-                    <ChevronsUp aria-hidden="true" size={12} /> Pack {formatCost(reinforceCost)}
+                    <ChevronsUp aria-hidden="true" size={12} />
+                    <span>Reinforce</span>
+                    <UnitCost cost={reinforceCost} label={`Reinforce cost for ${unit.name}`} />
                     {reinforceLegion > 0 ? ` · Legion −${reinforceLegion}` : ""}
                   </span>
                   {/* One-click shortcut: reinforce this owned Few straight to its
@@ -657,7 +778,7 @@ export function TownRecruitSection({
               ) : (
                 <small className="recruitState">few in army{canReinforce ? "" : " — build the Citadel to reinforce"}</small>
               )}
-            </label>
+            </div>
           );
         }
         const checked = recruitIds.includes(unitDefId);
@@ -666,46 +787,56 @@ export function TownRecruitSection({
         const recruitLegion = legionVoucherDiscount(state, viewerPlayerId, recruitRef);
         const recruitAffordable = costAffordable(recruitCost, player.resources);
         return (
-          <label className="recruitRow" key={unitDefId}>
-            <RecruitUnitView side="few" unitDefId={unitDefId} />
+          <div className={`recruitRow unitRosterRow ${tierUnlocked ? "" : "locked"}`} key={unitDefId}>
+            {unitCards}
             <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
             <span className="recruitName">{unit.name}</span>
             <small title={recruitLegion > 0 ? `Legion voucher reserved: −${recruitLegion} gold` : undefined}>
-              {formatCost(recruitCost)}
+              <UnitCost cost={recruitCost} label={`Recruit cost for ${unit.name}`} />
               {recruitLegion > 0 ? ` · Legion −${recruitLegion}` : ""}
             </small>
-            {/* One-click shortcut: recruit this unit's Few into your unit deck now,
-                skipping the basket. Cost shown to the left, button gated on
-                affordability — the "limit/info" stays visible. */}
-            <button
-              className="recruitQuick"
-              disabled={!canPopulate || !recruitAffordable}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onAction({
-                  type: "POPULATION_ACTION",
-                  playerId: viewerPlayerId,
-                  purchases: [{ kind: "recruit", unitDefId }]
-                });
-              }}
-              title={
-                recruitAffordable ? `Recruit ${unit.name} now — ${formatCost(recruitCost)}` : "Not enough resources to recruit"
-              }
-              type="button"
-            >
-              Recruit
-            </button>
-            <input
-              checked={checked}
-              onChange={() =>
-                setRecruitIds((current) =>
-                  checked ? current.filter((id) => id !== unitDefId) : [...current, unitDefId]
-                )
-              }
-              type="checkbox"
-            />
-          </label>
+            {tierUnlocked ? (
+              <>
+                {/* One-click shortcut: recruit this unit's Few into your unit deck now,
+                    skipping the basket. Cost shown to the left, button gated on
+                    affordability — the "limit/info" stays visible. */}
+                <button
+                  className="recruitQuick"
+                  disabled={!canPopulate || !recruitAffordable}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onAction({
+                      type: "POPULATION_ACTION",
+                      playerId: viewerPlayerId,
+                      purchases: [{ kind: "recruit", unitDefId }]
+                    });
+                  }}
+                  title={
+                    recruitAffordable ? `Recruit ${unit.name} now — ${formatCost(recruitCost)}` : "Not enough resources to recruit"
+                  }
+                  type="button"
+                >
+                  Recruit
+                </button>
+                <input
+                  aria-label={`Add ${unit.name} to the recruit basket`}
+                  checked={checked}
+                  onChange={() =>
+                    setRecruitIds((current) =>
+                      checked ? current.filter((id) => id !== unitDefId) : [...current, unitDefId]
+                    )
+                  }
+                  type="checkbox"
+                />
+              </>
+            ) : (
+              /* The engine rejects a locked-tier recruit ("Build the dwelling of that
+                 unit's level first"), so the row shows the requirement instead of an
+                 always-failing button. The cards stay visible for planning/zoom. */
+              <small className="recruitState">build the {unit.tier} dwelling first</small>
+            )}
+          </div>
         );
       })}
       {/* Recruited Neutrals sit outside the faction roster — dedicated Stack rows. */}

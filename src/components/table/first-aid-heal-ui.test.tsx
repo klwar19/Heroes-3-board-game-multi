@@ -93,7 +93,6 @@ describe("First Aid Tent heal — button by the commands", () => {
         viewerPlayerId="p1"
         legalActions={legalActions}
         onAction={onAction}
-        onReset={() => {}}
       />
     );
 

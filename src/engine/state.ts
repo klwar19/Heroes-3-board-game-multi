@@ -4782,6 +4782,8 @@ export type GameEvent =
       count: number;
       requested: number;
       reshuffledDiscard: boolean;
+      /** Exact cards for the owner’s private history; other seats see hidden entries. */
+      cardIds?: CardId[];
     }
   | {
       /** Spell Book (house rule): a Spell moved from hand into the Spell Book. */
@@ -5120,6 +5122,8 @@ export type GameEvent =
       playerId: PlayerId;
       discarded: number;
       drawn: number;
+      /** Exact cards for the owner’s private history; other seats see hidden entries. */
+      discardedCardIds?: CardId[];
       /** Set when the double-negative-morale penalty empties the hand at turn end. */
       reason?: "morale-double-negative";
     }
@@ -5130,6 +5134,8 @@ export type GameEvent =
       playerId: PlayerId;
       /** Replacements still left this game after this one. */
       remaining: number;
+      /** Exact replacement card(s) for the owner’s private history. */
+      discardedCardIds?: CardId[];
     }
   | {
       id: string;
@@ -5162,6 +5168,13 @@ export type GameEvent =
       cardId: string;
       name: string;
       text: string;
+      round: number;
+    }
+  | {
+      id: string;
+      type: "ASTROLOGERS_DISCARDED";
+      cardId: string;
+      name: string;
       round: number;
     }
   | {
@@ -9120,6 +9133,28 @@ export type VisitStep =
       rotation: number;
     }
   | {
+      /**
+       * Tournament rule (Observatory / Speculum re-rotate): offer one NEARBY
+       * placed tile to re-rotate, or skip. `anchorSpaceId` is the hero's own
+       * field — "nearby" = a tile whose flower touches the anchor's tile.
+       */
+      type: "OBSERVATORY_REROTATE_OFFER";
+      anchorSpaceId: MapSpaceId;
+    }
+  | {
+      /** Observatory re-rotate: the picked tile — opens its rotation choice. */
+      type: "OBSERVATORY_REROTATE_TILE";
+      tileInstanceId: string;
+      anchorSpaceId: MapSpaceId;
+    }
+  | {
+      /** Observatory re-rotate: rotate the picked tile in place. */
+      type: "OBSERVATORY_REROTATE_SET";
+      tileInstanceId: string;
+      anchorSpaceId: MapSpaceId;
+      rotation: number;
+    }
+  | {
       /** Isra's Friends / settlements: reinforce a Few unit, possibly at half cost. */
       type: "REINFORCE_ARMY_UNIT";
       armyUnitId: string;
@@ -10603,6 +10638,12 @@ export type AdventureState = {
   /** Second player gains +1 positive morale at game start (Tournament rule). */
   tournamentSecondPlayerMorale?: boolean;
   /**
+   * Tournament rule: the Redwood Observatory and the Speculum artifact may ALSO
+   * re-rotate one nearby placed tile (in addition to discovering a face-down
+   * tile). See GameSetupOptions.tournamentObservatoryRerotate.
+   */
+  tournamentObservatoryRerotate?: boolean;
+  /**
    * PvP Neutral Control mode (optional, multiplayer only). When on, the next
    * live player clockwise from a Neutral combat's fighter commands the Neutral
    * side's decisions (see GameSetupOptions.pvpNeutralControl). Absent on older
@@ -10781,6 +10822,8 @@ export type GameSetupOptions = {
   scenarioId: string;
   /** Seats in the map-setup lobby, clamped to the scenario's min/max players. */
   playerCount?: number;
+  /** Personal custom setup mode; keeps the normal Legacy/BINH ruleset underneath. */
+  customMode?: boolean;
   /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
   ruleset: GameRuleset;
   /** Wake of Gods modules. Enabled only in BINH mode; absent means fully off. */
@@ -10891,6 +10934,14 @@ export type GameSetupOptions = {
    * 1 positive morale at game start. Absent falls back to `tournamentMode`.
    */
   tournamentSecondPlayerMorale?: boolean;
+  /**
+   * Tournament rule (community sheet): the Redwood Observatory AND the Speculum
+   * artifact may ALSO re-rotate one nearby, already-placed tile — in addition to
+   * discovering an adjacent face-down tile. Rotation reuses the safe in-place
+   * `rotateTileInPlace` primitive (no hero/town/gate tile is offered). Absent
+   * falls back to `tournamentMode`.
+   */
+  tournamentObservatoryRerotate?: boolean;
   /**
    * PvP Neutral Control mode (default OFF, multiplayer only). In every Neutral
    * combat the NEXT live player clockwise from the fighter PLAYS the Neutral
