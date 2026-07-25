@@ -1,12 +1,10 @@
 param(
   [Parameter(Mandatory = $true)][string]$TargetRel,
   [Parameter(Mandatory = $true)][string]$Prompt,
-  [int]$TimeoutSec = 600,
-  # Which working copy to generate into. Defaults to the clone this script was
-  # written against, so omitting it behaves exactly as before.
-  [string]$Root = "C:\Users\klwar\Heroes-3-board-game-multi"
+  [int]$TimeoutSec = 600
 )
 $ErrorActionPreference = "Continue"
+$Root = "C:\Users\klwar\Heroes-3-board-game-multi"
 $Codex = "C:\Users\klwar\AppData\Local\OpenAI\Codex\bin\codex.exe"
 if (-not (Test-Path $Codex)) {
   Write-Host "FAIL: codex.exe not found at $Codex"
