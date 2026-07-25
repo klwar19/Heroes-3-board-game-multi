@@ -3896,9 +3896,19 @@ layout ("Heroes & draft" / "Game options"). Pure PRESENTATION over the existing
 lobby actions: every control still dispatches the same `SET_GAME_OPTIONS` /
 `CHOOSE_FACTION` / `SET_DRAFT_FORMAT` / `SET_COMPUTER_OPPONENTS` /
 `START_ADVENTURE` payloads, so no engine rule changed. Applies to single-player
-too (it shares the component). Box icons are the classic HoMM3 spell-book art
-(`SETUP_HUB_ICONS` in `homm-assets.ts`: Counterstrike / Precision / View Earth /
-Visions, fetched by `scripts/fetch-setup-hub-spell-icons.py`).
+too (it shares the component). The boxes are full-bleed PAINTED PANELS
+(2026-07-25, replacing the icon-in-a-circle look): `SETUP_HUB_ART` in
+`homm-assets.ts` — four codex-image_gen oil-painted 3:2 panels (war-council
+emblem / mounted knight / campaign map / arcanist's workbench, ornate frame
+baked in, lower third kept dark for the title plate; on-disk pinned in
+`src/data/assets/setup-hub-art.test.ts`, regenerate via
+`scripts/codex-gen-art.ps1`) with a bottom text plate, staggered entrance,
+ember-breath rim and a hover light-sweep + art zoom (all CSS, disabled under
+`prefers-reduced-motion`). The small `SETUP_HUB_ICONS` spell-book icons remain
+the cross-window strip's (`SetupHubNav`) icons only. The Map window pins
+"Play this map" in an always-visible `.mapPickApplyBar` under the detail
+column's own scroll area (sticky over the sheet scroll in phone mode) — it
+must never sit below the fold of a long description/conditions list.
 
 Components: `SetupHub` / `GameModeModal` / `HeroesDraftModal` /
 `AdvancedSettingsModal` + the extracted `GameModeSection` and `SeatCountControl`

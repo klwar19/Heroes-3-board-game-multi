@@ -180,7 +180,7 @@ import {
 import { MapPickModal } from "@/components/adventure/map-pick-modal";
 import { SetupHubNav } from "@/components/adventure/setup-hub-nav";
 import { SetupHubWindow } from "@/components/adventure/setup-hub-window";
-import { DIFFICULTY_CHESS_ICONS, SETUP_HUB_ICONS } from "@/data/assets/homm-assets";
+import { DIFFICULTY_CHESS_ICONS, SETUP_HUB_ART } from "@/data/assets/homm-assets";
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
@@ -10744,9 +10744,24 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
 // with the Map window and the cross-window strip.
 
 /**
- * The Setup Hub: four large icon boxes (2×2, centered) that open the setup
- * windows, each summarizing the current choice underneath. The icons are the
- * classic HoMM3 spell-book art (SETUP_HUB_ICONS).
+ * One hub box's full-bleed painted panel (SETUP_HUB_ART): the art, a bottom
+ * shade so the title plate always reads over it, and the hover light-sweep
+ * layer. Pure presentation — aria-hidden, the button text carries the meaning.
+ */
+function SetupHubBoxArt({ id }: { id: SetupHubBoxId }) {
+  return (
+    <span aria-hidden="true" className="setupHubBoxArt">
+      <img alt="" className="setupHubBoxArtImg" decoding="async" src={assetUrl(SETUP_HUB_ART[id])} />
+      <span className="setupHubBoxArtShade" />
+      <span className="setupHubBoxSheen" />
+    </span>
+  );
+}
+
+/**
+ * The Setup Hub: four large painted panels (2×2, centered) that open the setup
+ * windows, each summarizing the current choice on its bottom plate. The panel
+ * art is the codex-generated SETUP_HUB_ART set (framed oil-painted scenes).
  */
 function SetupHub({
   state,
@@ -10778,18 +10793,18 @@ function SetupHub({
         title="Pick a game mode preset and toggle the WOG / Anime mods"
         type="button"
       >
-        <span className="setupHubBoxIconWrap">
-          <img alt="" aria-hidden="true" className="setupHubBoxIcon" decoding="async" src={assetUrl(SETUP_HUB_ICONS.mode)} />
-        </span>
-        <strong className="setupHubBoxTitle">Game mode</strong>
-        <span className="setupHubBoxSummary">
-          <span className="setupHubBoxLine">{SETUP_HUB_MODE_NAMES[mode]}</span>
-          {wogOn || animeOn ? (
-            <span className="setupHubBoxLine setupHubChips">
-              {wogOn ? <span className="setupHubChip">WOG</span> : null}
-              {animeOn ? <span className="setupHubChip">Anime</span> : null}
-            </span>
-          ) : null}
+        <SetupHubBoxArt id="mode" />
+        <span className="setupHubBoxPlate">
+          <strong className="setupHubBoxTitle">Game mode</strong>
+          <span className="setupHubBoxSummary">
+            <span className="setupHubBoxLine">{SETUP_HUB_MODE_NAMES[mode]}</span>
+            {wogOn || animeOn ? (
+              <span className="setupHubBoxLine setupHubChips">
+                {wogOn ? <span className="setupHubChip">WOG</span> : null}
+                {animeOn ? <span className="setupHubChip">Anime</span> : null}
+              </span>
+            ) : null}
+          </span>
         </span>
       </button>
 
@@ -10800,20 +10815,20 @@ function SetupHub({
         title="Pick the setup format, your town & hero — and the computer opponents"
         type="button"
       >
-        <span className="setupHubBoxIconWrap">
-          <img alt="" aria-hidden="true" className="setupHubBoxIcon" decoding="async" src={assetUrl(SETUP_HUB_ICONS.heroes)} />
-        </span>
-        <strong className="setupHubBoxTitle">Heroes &amp; Draft</strong>
-        <span className="setupHubBoxSummary">
-          {heroes ? (
-            <>
-              <span className="setupHubBoxLine">{heroes.yourPick ?? "Pick your town & hero"}</span>
-              <span className="setupHubBoxLine setupHubBoxDim">
-                {heroes.formatLabel} · {heroes.picked}/{heroes.seats} picked
-                {heroes.computers > 0 ? ` · ${heroes.computers} computer${heroes.computers === 1 ? "" : "s"}` : ""}
-              </span>
-            </>
-          ) : null}
+        <SetupHubBoxArt id="heroes" />
+        <span className="setupHubBoxPlate">
+          <strong className="setupHubBoxTitle">Heroes &amp; Draft</strong>
+          <span className="setupHubBoxSummary">
+            {heroes ? (
+              <>
+                <span className="setupHubBoxLine">{heroes.yourPick ?? "Pick your town & hero"}</span>
+                <span className="setupHubBoxLine setupHubBoxDim">
+                  {heroes.formatLabel} · {heroes.picked}/{heroes.seats} picked
+                  {heroes.computers > 0 ? ` · ${heroes.computers} computer${heroes.computers === 1 ? "" : "s"}` : ""}
+                </span>
+              </>
+            ) : null}
+          </span>
         </span>
       </button>
 
@@ -10824,27 +10839,27 @@ function SetupHub({
         title="Choose the map you play on and the neutral difficulty"
         type="button"
       >
-        <span className="setupHubBoxIconWrap">
-          <img alt="" aria-hidden="true" className="setupHubBoxIcon" decoding="async" src={assetUrl(SETUP_HUB_ICONS.map)} />
-        </span>
-        <strong className="setupHubBoxTitle">Map</strong>
-        <span className="setupHubBoxSummary">
-          {map ? (
-            <>
-              <span className="setupHubBoxLine">{map.name}</span>
-              <span className="setupHubBoxLine setupHubBoxDim">
-                {map.seats} players ·{" "}
-                <img
-                  alt=""
-                  aria-hidden="true"
-                  className="setupHubDifficultyIcon"
-                  decoding="async"
-                  src={assetUrl(DIFFICULTY_CHESS_ICONS[map.difficulty])}
-                />{" "}
-                {map.difficultyLabel}
-              </span>
-            </>
-          ) : null}
+        <SetupHubBoxArt id="map" />
+        <span className="setupHubBoxPlate">
+          <strong className="setupHubBoxTitle">Map</strong>
+          <span className="setupHubBoxSummary">
+            {map ? (
+              <>
+                <span className="setupHubBoxLine">{map.name}</span>
+                <span className="setupHubBoxLine setupHubBoxDim">
+                  {map.seats} players ·{" "}
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="setupHubDifficultyIcon"
+                    decoding="async"
+                    src={assetUrl(DIFFICULTY_CHESS_ICONS[map.difficulty])}
+                  />{" "}
+                  {map.difficultyLabel}
+                </span>
+              </>
+            ) : null}
+          </span>
         </span>
       </button>
 
@@ -10855,12 +10870,12 @@ function SetupHub({
         title="Every option — win condition, house rules, optional systems, army & resources"
         type="button"
       >
-        <span className="setupHubBoxIconWrap">
-          <img alt="" aria-hidden="true" className="setupHubBoxIcon" decoding="async" src={assetUrl(SETUP_HUB_ICONS.advanced)} />
-        </span>
-        <strong className="setupHubBoxTitle">Advanced settings</strong>
-        <span className="setupHubBoxSummary">
-          <span className={`setupHubBoxLine${advanced.changed ? "" : " setupHubBoxDim"}`}>{advanced.label}</span>
+        <SetupHubBoxArt id="advanced" />
+        <span className="setupHubBoxPlate">
+          <strong className="setupHubBoxTitle">Advanced settings</strong>
+          <span className="setupHubBoxSummary">
+            <span className={`setupHubBoxLine${advanced.changed ? "" : " setupHubBoxDim"}`}>{advanced.label}</span>
+          </span>
         </span>
       </button>
     </div>

@@ -363,6 +363,22 @@ export const SETUP_HUB_ICONS = {
 } as const;
 
 /**
+ * Setup Hub box PANEL art (the four big lobby boxes): full-bleed oil-painted
+ * panels with the ornate frame baked in — war-council emblem (Game mode),
+ * mounted knight (Heroes & Draft), campaign map on a war table (Map), an
+ * arcanist's workbench (Advanced settings). Codex image_gen, 3:2 landscape,
+ * lower third kept dark so the title/summary plate reads over the art
+ * (scripts/codex-gen-art.ps1; on-disk pinned in setup-hub-art.test.ts).
+ * Paths only — render through assetUrl().
+ */
+export const SETUP_HUB_ART = {
+  mode: "/assets/ui/setup-hub/panel-mode.webp",
+  heroes: "/assets/ui/setup-hub/panel-heroes.webp",
+  map: "/assets/ui/setup-hub/panel-map.webp",
+  advanced: "/assets/ui/setup-hub/panel-advanced.webp"
+} as const;
+
+/**
  * Difficulty chess pieces (Setup Hub map window): Easy = Pawn, Normal =
  * Knight, Hard = Rook, Impossible = King. Gold silhouettes built by
  * scripts/build-difficulty-chess-icons.mjs. Paths only — render through

@@ -346,6 +346,9 @@ export function MapPickModal({
         <div className="mapPickDetail">
           {selected ? (
             <>
+              {/* Scrolls on its own; the apply bar below NEVER scrolls away —
+                  "Play this map" must be visible without hunting for it. */}
+              <div className="mapPickDetailScroll">
               <MapShapePreview
                 tiles={
                   selected.kind === "builtin"
@@ -392,6 +395,9 @@ export function MapPickModal({
                     ) : null}
                   </>
                 )}
+              </div>
+              </div>
+              <div className="mapPickApplyBar">
                 {seatChange ? (
                   <small className="mapPickSeatChange">
                     {`Playing it opens ${seatChange.next} seats (the table has ${seatChange.now} now)${
@@ -409,7 +415,7 @@ export function MapPickModal({
                   onClick={() => applyEntry(selected)}
                   type="button"
                 >
-                  {isApplied(selected) ? "✓ In play" : "Play this map"}
+                  {isApplied(selected) ? "✓ In play" : `▶ Play this map — ${selectedName}`}
                 </button>
               </div>
             </>
