@@ -10,9 +10,12 @@ import type { GameSetupOptions } from "@/engine";
 import {
   advancedSettingsChanged,
   deriveActiveSetupMode,
+  designedMapBlockers,
+  designedMapInPlay,
   heroesSummary,
   mapSummary,
-  MODE_PRESET_PAYLOADS
+  MODE_PRESET_PAYLOADS,
+  setupHubNavItems
 } from "./setup-hub-summary";
 
 /**
@@ -146,5 +149,83 @@ describe("heroesSummary / mapSummary", () => {
     const designed = mapSummary(state)!;
     expect(designed.name).toBe("Twin Peaks");
     expect(designed.designed).toBe(true);
+  });
+});
+
+/**
+ * `designedMapInPlay` is the ONE reading of "a designed map is in play" — the
+ * Map box, the Map window's "in play" marks and the classic Map & Setup picker
+ * all take it, so none of them can claim a map the engine will not build.
+ */
+describe("designedMapInPlay / designedMapBlockers", () => {
+  it("matches the engine: a plan with tiles is in play, an EMPTY plan is not", () => {
+    const options = freshOptions();
+    expect(designedMapInPlay(options)).toBe(false);
+    expect(designedMapInPlay({ ...options, customMap: [{ row: 0, col: 0, group: "starting", faceDown: false }] })).toBe(
+      true
+    );
+    // createAdventureGameState reads `setupOptions.customMap?.length`, so an
+    // empty plan builds the SCENARIO layout — a surface testing only
+    // `Boolean(customMap)` would mark it in play and name the wrong map.
+    expect(designedMapInPlay({ ...options, customMap: [] })).toBe(false);
+  });
+
+  it("mapSummary falls back to the scenario sheet for an empty plan", () => {
+    const state = createAdventureLobbyState({ seed: "hub-summary-empty" });
+    state.setupLobby!.options.customMap = [];
+    state.setupLobby!.options.customMapName = "Blank Slate";
+    const summary = mapSummary(state)!;
+    expect(summary.designed).toBe(false);
+    expect(summary.name).toBe(scenarioDefinitions[state.setupLobby!.options.scenarioId].name);
+  });
+
+  it("blocks an empty saved map, and passes a real one's own problems through", () => {
+    expect(designedMapBlockers(0, [])[0]).toMatch(/no tiles/);
+    // CONTROL: a map WITH tiles is judged purely on its plan problems.
+    expect(designedMapBlockers(7, [])).toEqual([]);
+    expect(designedMapBlockers(7, ["pick a tile for the face-up slot"])).toEqual([
+      "pick a tile for the face-up slot"
+    ]);
+  });
+});
+
+/**
+ * The strip every hub window shows. It is built from the SAME derivations the
+ * four boxes render, so what a window says about the other boxes is exactly
+ * what those boxes say — that shared reading is the whole connection.
+ */
+describe("setupHubNavItems", () => {
+  it("carries all four boxes' live values, agreeing with the box derivations", () => {
+    const state = createAdventureLobbyState({ seed: "hub-nav" });
+    const options = state.setupLobby!.options;
+    Object.assign(options, MODE_PRESET_PAYLOADS.legacy);
+    options.wog = { ...DEFAULT_WOG_OPTIONS, enabled: true };
+    options.difficulty = "easy";
+    options.customMap = [{ row: 0, col: 0, group: "starting", faceDown: false }];
+    options.customMapName = "Twin Peaks";
+    const seat = state.setupLobby!.seats.find((entry) => entry.playerId === "p1")!;
+    seat.factionId = "castle";
+    seat.heroDefId = "catherine";
+
+    const items = setupHubNavItems(state, "p1");
+    expect(items.map((item) => item.id)).toEqual(["mode", "heroes", "map", "advanced"]);
+    const byId = Object.fromEntries(items.map((item) => [item.id, `${item.value} | ${item.detail ?? ""}`]));
+    expect(byId.mode).toContain("Legacy");
+    expect(byId.mode).toContain("WOG");
+    expect(byId.heroes).toContain("Castle — Catherine");
+    expect(byId.heroes).toContain(`${heroesSummary(state, "p1")!.picked}/${state.setupLobby!.seats.length} picked`);
+    expect(byId.map).toContain(mapSummary(state)!.name);
+    expect(byId.map).toContain("Easy");
+    expect(items.find((item) => item.id === "advanced")!.value).toBe(advancedSettingsChanged(options).label);
+  });
+
+  it("CONTROL: a fresh lobby reports the plain defaults, and no mods", () => {
+    const items = setupHubNavItems(createAdventureLobbyState({ seed: "hub-nav-fresh" }), "p1");
+    const byId = Object.fromEntries(items.map((item) => [item.id, item]));
+    expect(byId.mode.value).toBe("BINH — house-rule edition");
+    // No mod line at all when neither WOG nor the Anime mod is on.
+    expect(byId.mode.detail).toBeUndefined();
+    expect(byId.heroes.value).toBe("no town yet");
+    expect(byId.advanced.value).toBe("Default");
   });
 });

@@ -10,6 +10,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { SetupLobbyScreen } from "./screen";
+import { MODE_PRESET_PAYLOADS } from "./setup-hub-summary";
 import { createAdventureLobbyState, DEFAULT_WOG_OPTIONS, type GameState } from "@/engine";
 
 // The Map window fetches the shared map library on mount; keep it offline.
@@ -138,12 +139,15 @@ describe("Setup Hub — Game mode window", () => {
     );
   });
 
-  it("picking Custom reveals the setting-FILE panel inside the same window", () => {
+  it("holds the ONE setting-FILE panel, in every mode (saving is what makes a setup Custom)", () => {
     const { onAction } = renderLobby();
     fireEvent.click(box(/Game mode/));
     const dialog = screen.getByRole("dialog", { name: "Game mode" });
-    // Not there under a normal mode.
-    expect(within(dialog).queryByLabelText(/Custom setting — save or load a file/)).toBeNull();
+    // Available on a plain BINH table too: saveToFile is what sends
+    // customMode: true, so gating it behind Custom mode would be circular and
+    // leave a BINH/Legacy table unable to save its setup at all.
+    expect(within(dialog).getByLabelText(/Custom setting — save or load a file/)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Save to file" })).toBeTruthy();
 
     fireEvent.click(within(dialog).getByRole("button", { name: /Custom/ }));
     expect(onAction).toHaveBeenCalledWith({
@@ -152,15 +156,25 @@ describe("Setup Hub — Game mode window", () => {
       options: { customMode: true }
     });
 
-    // Re-render in Custom mode: the save/load panel is right there in the popup.
+    // Re-render in Custom mode: still exactly one panel, still right here.
     cleanup();
     renderLobby((state) => {
       state.setupLobby!.options.customMode = true;
     });
     fireEvent.click(box(/Game mode/));
     const custom = screen.getByRole("dialog", { name: "Game mode" });
-    expect(within(custom).getByLabelText(/Custom setting — save or load a file/)).toBeTruthy();
-    expect(within(custom).getByRole("button", { name: "Save to file" })).toBeTruthy();
+    expect(within(custom).getAllByLabelText(/Custom setting — save or load a file/)).toHaveLength(1);
+  });
+
+  it("CONTROL: the setting-FILE panel is NOT duplicated in the Advanced window's map picker", () => {
+    // Two copies each kept their own name field, so a name typed in one was
+    // ignored by the other's Save button.
+    renderLobby();
+    fireEvent.click(box(/Advanced settings/));
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    expect(screen.queryByLabelText(/Custom setting — save or load a file/)).toBeNull();
+    // …and the map picker points at the box that does own it.
+    expect(screen.getByRole("button", { name: /Open the Game-mode window for Custom setting files/ })).toBeTruthy();
   });
 
   it("a Mod window opens ON TOP of the hub window (both stay mounted) and Escape closes only it", () => {
@@ -270,6 +284,98 @@ describe("Setup Hub — Advanced settings window", () => {
     for (const name of [/Mode & Rules/, /Match/, /Map & Setup/, /Army/]) {
       expect(within(dialog).getByRole("tab", { name })).toBeTruthy();
     }
+  });
+
+  it("its rows that duplicate another box say so and jump there", () => {
+    renderLobby();
+    fireEvent.click(box(/Advanced settings/));
+    // Mode & Rules hosts the same mode grid the Game-mode box does.
+    expect(screen.getByRole("button", { name: "Open the Game-mode window" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open the Game-mode window" }));
+    expect(screen.getByRole("dialog", { name: "Game mode" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Advanced settings" })).toBeNull();
+  });
+});
+
+/**
+ * The cross-window strip. The four windows edit ONE shared options object, so
+ * the connection between them has to be VISIBLE: every window shows all four
+ * boxes' live values (read from the same derivation the boxes render) and
+ * switches to any of them in one click.
+ */
+describe("Setup Hub — the cross-window strip", () => {
+  function stripValues() {
+    return Array.from(document.querySelectorAll(".setupHubNavItem")).map((item) => item.textContent ?? "");
+  }
+
+  it("shows every box's live choice inside EVERY window, marking the current one", () => {
+    renderLobby((state) => {
+      const options = state.setupLobby!.options;
+      options.ruleset = "legacy";
+      options.wog = { ...DEFAULT_WOG_OPTIONS, enabled: true };
+      options.difficulty = "easy";
+      options.customMap = [{ row: 0, col: 0, group: "starting", faceDown: false }];
+      options.customMapName = "Twin Peaks";
+      const seat = state.setupLobby!.seats.find((entry) => entry.playerId === "p1")!;
+      seat.factionId = "castle";
+      seat.heroDefId = "catherine";
+    });
+
+    for (const [boxName, dialogName, hereTitle] of [
+      [/Game mode/, "Game mode", "Game mode"],
+      [/Heroes & Draft/, "Heroes & Draft", "Heroes & Draft"],
+      [/^Map/, "Choose a map", "Map"],
+      [/Advanced settings/, "Advanced settings", "Advanced settings"]
+    ] as const) {
+      fireEvent.click(box(boxName));
+      const values = stripValues();
+      expect(values).toHaveLength(4);
+      // The MAP window shows the game mode and difficulty; the ADVANCED window
+      // shows the map — that is the "reflection" the four separate boxes lost.
+      expect(values.join(" | ")).toContain("Legacy");
+      expect(values.join(" | ")).toContain("WOG");
+      expect(values.join(" | ")).toContain("Castle — Catherine");
+      expect(values.join(" | ")).toContain("Twin Peaks");
+      expect(values.join(" | ")).toContain("Easy");
+
+      const here = document.querySelector(".setupHubNavItem.here") as HTMLElement;
+      expect(here.textContent).toContain(hereTitle);
+      // "You are here" is not a button — only the other three switch windows.
+      expect(here.tagName).toBe("SPAN");
+      expect(document.querySelectorAll("button.setupHubNavItem")).toHaveLength(3);
+      fireEvent.click(screen.getByRole("button", { name: `Close ${dialogName}` }));
+    }
+  });
+
+  it("a strip chip switches straight to that window", () => {
+    renderLobby();
+    fireEvent.click(box(/Advanced settings/));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to the Map box" }));
+    expect(screen.getByRole("dialog", { name: "Choose a map" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Advanced settings" })).toBeNull();
+    // Still exactly one hub window open.
+    expect(document.querySelectorAll(".setupHubWindow")).toHaveLength(1);
+  });
+
+  it("REGRESSION: picking a designed map leaves the Game-mode choice alone", () => {
+    // The Map window used to send `customMode: true`, so choosing a map threw
+    // the table into "Custom — your saved setup" and the Advanced box stopped
+    // reporting anything but "Custom setup file".
+    renderLobby((state) => {
+      const options = state.setupLobby!.options;
+      // The full Legacy preset (the mode card's payload) — setting `ruleset`
+      // alone would leave the BINH Spell Book on, which honestly reads as a
+      // deviation from Legacy and would report "Customized" for that reason.
+      Object.assign(options, MODE_PRESET_PAYLOADS.legacy);
+      options.customMap = [{ row: 0, col: 0, group: "starting", faceDown: false }];
+      options.customMapName = "Twin Peaks";
+    });
+    expect(box(/Game mode/).textContent).toContain("Legacy");
+    expect(box(/Advanced settings/).textContent).toContain("Default");
+
+    fireEvent.click(box(/^Map/));
+    expect(stripValues().join(" | ")).toContain("Legacy");
+    expect(stripValues().join(" | ")).toContain("Twin Peaks");
   });
 });
 

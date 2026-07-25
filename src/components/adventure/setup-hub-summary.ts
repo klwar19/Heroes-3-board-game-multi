@@ -27,6 +27,50 @@ export const SETUP_MODE_LABELS: Record<SetupModeId, string> = {
   custom: "Custom — your saved setup"
 };
 
+/** The four Setup Hub boxes — one window, one owner, per group of choices. */
+export type SetupHubBoxId = "mode" | "heroes" | "map" | "advanced";
+
+export const SETUP_HUB_BOX_TITLES: Record<SetupHubBoxId, string> = {
+  mode: "Game mode",
+  heroes: "Heroes & Draft",
+  map: "Map",
+  advanced: "Advanced settings"
+};
+
+/** Short mode names for the Game-mode box summary and the cross-window strip. */
+export const SETUP_HUB_MODE_NAMES: Record<SetupModeId, string> = {
+  legacy: "Legacy — printed rulebook",
+  binh: "BINH — house-rule edition",
+  tournament: "Tournament — competitive",
+  custom: "Custom — your saved setup"
+};
+
+/**
+ * Whether a DESIGNED map is genuinely in play — the ONE predicate every surface
+ * must use (the Map box summary, the Map window's list/"in play" marks and the
+ * classic Map & Setup picker). It mirrors the engine build exactly:
+ * `createAdventureGameState` reads `setupOptions.customMap?.length`, so an
+ * EMPTY tile plan is not a map at all — the game falls back to the scenario
+ * layout. A surface testing only `Boolean(options.customMap)` would mark such a
+ * plan "in play" while the Map box (and the real game) still showed the
+ * scenario sheet.
+ */
+export function designedMapInPlay(options: GameSetupOptions): boolean {
+  return Boolean(options.customMap && options.customMap.length > 0);
+}
+
+/**
+ * Why a saved designed map cannot be applied, or null when it can. Shared by
+ * both map pickers so they refuse the same records: an empty tile plan is
+ * refused because applying it would silently leave the scenario layout in play
+ * (see `designedMapInPlay`).
+ */
+export function designedMapBlockers(tileCount: number, planProblems: string[]): string[] {
+  return tileCount === 0
+    ? ["This map has no tiles — open it in the map designer and place some.", ...planProblems]
+    : planProblems;
+}
+
 /** Which big mode card is highlighted from the current options. */
 export function deriveActiveSetupMode(options: GameSetupOptions): SetupModeId {
   if (options.customMode) {
@@ -257,6 +301,52 @@ export type MapBoxSummary = {
   designed: boolean;
 };
 
+/**
+ * One entry of the cross-window strip: the box, its title, its headline value
+ * and a second, dimmer line — the same two-line shape the boxes themselves use,
+ * so neither line has to be squeezed into an ellipsis.
+ */
+export type SetupHubNavItem = { id: SetupHubBoxId; title: string; value: string; detail?: string };
+
+/**
+ * The live value of EVERY box, for the strip each Setup Hub window shows at the
+ * top. It is derived from the same `setupLobby.options` the boxes read, so the
+ * strip can never disagree with them — that shared derivation IS the connection
+ * between the windows (open Advanced settings and you still see which map, mode
+ * and difficulty the table is on, one click from changing any of them).
+ */
+export function setupHubNavItems(state: GameState, viewerPlayerId: PlayerId): SetupHubNavItem[] {
+  const lobby = state.setupLobby;
+  if (!lobby) {
+    return [];
+  }
+  const options = lobby.options;
+  const mods = [options.wog?.enabled ? "WOG" : null, options.anime?.enabled ? "Anime" : null].filter(Boolean);
+  const heroes = heroesSummary(state, viewerPlayerId);
+  const map = mapSummary(state);
+  return [
+    {
+      id: "mode",
+      title: SETUP_HUB_BOX_TITLES.mode,
+      value: SETUP_HUB_MODE_NAMES[deriveActiveSetupMode(options)],
+      detail: mods.length ? `Mods: ${mods.join(" + ")}` : undefined
+    },
+    {
+      id: "heroes",
+      title: SETUP_HUB_BOX_TITLES.heroes,
+      value: heroes ? heroes.yourPick ?? "no town yet" : "—",
+      detail: heroes ? `${heroes.formatLabel} · ${heroes.picked}/${heroes.seats} picked` : undefined
+    },
+    {
+      id: "map",
+      title: SETUP_HUB_BOX_TITLES.map,
+      value: map ? map.name : "—",
+      detail: map ? `${map.seats} players · ${map.difficultyLabel}` : undefined
+    },
+    { id: "advanced", title: SETUP_HUB_BOX_TITLES.advanced, value: advancedSettingsChanged(options).label }
+  ];
+}
+
 export function mapSummary(state: GameState): MapBoxSummary | null {
   const lobby = state.setupLobby;
   if (!lobby) {
@@ -264,7 +354,7 @@ export function mapSummary(state: GameState): MapBoxSummary | null {
   }
   const options = lobby.options;
   const scenario = scenarioDefinitions[options.scenarioId];
-  const designed = Boolean(options.customMap && options.customMap.length);
+  const designed = designedMapInPlay(options);
   return {
     name: (designed ? options.customMapName : null) ?? scenario?.name ?? options.scenarioId,
     seats: lobby.seats.length,

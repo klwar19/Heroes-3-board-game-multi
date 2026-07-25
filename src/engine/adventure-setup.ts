@@ -3457,7 +3457,13 @@ function rollFirstPlayer(state: GameState, seed: string): void {
 const LOBBY_SEAT_NAMES = ["Player 1", "Player 2", "Player 3", "Player 4"];
 
 /** Seats the lobby opens for a scenario, clamped to its min/max players. */
-function clampSeatCount(scenario: ScenarioDefinition, requested: number | undefined): number {
+/**
+ * How many seats a scenario really opens for a requested count. Exported so the
+ * lobby can PREDICT a map pick's seat change with the same arithmetic the
+ * resize performs — a picked map that seats fewer players closes the surplus
+ * seats (and their faction/hero picks) the moment it is applied.
+ */
+export function clampSeatCount(scenario: ScenarioDefinition, requested: number | undefined): number {
   const ceiling = Math.min(scenario.maxPlayers, scenario.layout.starts.length);
   const wanted = Number.isFinite(requested) ? Math.floor(requested as number) : scenario.minPlayers;
   return Math.max(scenario.minPlayers, Math.min(ceiling, wanted));

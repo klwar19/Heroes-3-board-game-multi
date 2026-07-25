@@ -262,13 +262,15 @@ describe("SetupLobbyScreen — merged Map picker", () => {
     expect(screen.getByText(/Scenario sheets/i)).toBeTruthy();
     expect(screen.getByText(/custom-made by a person/i)).toBeTruthy();
 
-    // Picking a built-in scenario sheet clears any designed map in the same action
-    // AND leaves Custom mode (customMode: false), so the two can never disagree.
+    // Picking a built-in scenario sheet clears any designed map in the SAME
+    // action, and touches nothing else — notably not `customMode`, which the
+    // Game-mode box owns (sending it here silently dropped a table out of a
+    // deliberately chosen Custom mode on every map pick).
     fireEvent.click(screen.getByRole("button", { name: "Twin Kingdoms (2P Land)" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { scenarioId: "land-2p", customMap: null, customMapName: null, customMode: false }
+      options: { scenarioId: "land-2p", customMap: null, customMapName: null }
     });
   });
 });

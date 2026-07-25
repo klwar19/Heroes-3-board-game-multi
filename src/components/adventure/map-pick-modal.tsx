@@ -16,6 +16,7 @@ import { Hammer, Search } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
 import {
+  clampSeatCount,
   describeCustomMapPresetEntries,
   scenarioDefinitions,
   validateCustomMapPlan,
@@ -26,8 +27,14 @@ import {
   type ScenarioDefinition
 } from "@/engine";
 import { DIFFICULTY_CHESS_ICONS } from "@/data/assets/homm-assets";
-import { DIFFICULTY_CHOICES } from "./setup-hub-summary";
+import {
+  DIFFICULTY_CHOICES,
+  designedMapBlockers,
+  designedMapInPlay,
+  type SetupHubBoxId
+} from "./setup-hub-summary";
 import { designedTilesToPreview, MapShapePreview, scenarioToTilePlans } from "./map-shape-preview";
+import { SetupHubNav } from "./setup-hub-nav";
 import { SetupHubWindow } from "./setup-hub-window";
 
 type MapEntry =
@@ -82,11 +89,14 @@ export function MapPickModal({
   state,
   viewerPlayerId,
   onAction,
+  onOpenBox,
   onClose
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
+  /** Switch to another Setup Hub window from the cross-window strip. */
+  onOpenBox: (box: SetupHubBoxId) => void;
   onClose: () => void;
 }) {
   const lobby = state.setupLobby;
@@ -128,7 +138,10 @@ export function MapPickModal({
         kind: "designed",
         key: `designed:${record.id}`,
         record,
-        problems: scenario ? validateCustomMapPlan(record.tiles, scenario).problems : ["Unknown scenario."]
+        problems: designedMapBlockers(
+          record.tiles.length,
+          scenario ? validateCustomMapPlan(record.tiles, scenario).problems : ["Unknown scenario."]
+        )
       };
     });
     return [...builtins, ...designed];
@@ -169,16 +182,42 @@ export function MapPickModal({
   const send = (next: Partial<GameSetupOptions>) =>
     onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
 
-  const usingScenarioSheet = !options.customMap;
+  // "In play" must mean what the ENGINE will build (designedMapInPlay), or a
+  // designed plan the game ignores would be marked applied while the Map box
+  // still named the scenario sheet.
+  const usingScenarioSheet = !designedMapInPlay(options);
   const isApplied = (entry: MapEntry) =>
     entry.kind === "builtin"
       ? usingScenarioSheet && options.scenarioId === entry.scenario.id
-      : Boolean(options.customMap) &&
+      : designedMapInPlay(options) &&
         options.customMapName === entry.record.name &&
         options.customMap?.length === entry.record.tiles.length;
 
   const appliedEntry = entries.find(isApplied) ?? null;
   const selected = (selectedKey ? entries.find((entry) => entry.key === selectedKey) : null) ?? appliedEntry;
+  // What applying the highlighted map would do to the SEATS. A map pick resizes
+  // the lobby (a designed map to the count it was built for, a sheet down to its
+  // own ceiling) and closed seats take their faction/hero picks with them — a
+  // cross-box consequence the Heroes & Draft box could not warn about.
+  const seatChange = (() => {
+    // Only for a map that is about to be APPLIED — the one already in play has
+    // nothing to warn about (its "Play this map" button is disabled anyway).
+    if (!selected || isApplied(selected)) {
+      return null;
+    }
+    const scenario =
+      selected.kind === "builtin" ? selected.scenario : scenarioDefinitions[selected.record.scenarioId];
+    if (!scenario) {
+      return null;
+    }
+    const now = lobby.seats.length;
+    const next = clampSeatCount(scenario, selected.kind === "builtin" ? now : selected.record.players);
+    if (next === now) {
+      return null;
+    }
+    const losingPicks = lobby.seats.slice(next).filter((seat) => seat.factionId || seat.heroDefId).length;
+    return { now, next, losingPicks };
+  })();
   const selectedName = selected
     ? selected.kind === "builtin"
       ? selected.scenario.name
@@ -189,12 +228,18 @@ export function MapPickModal({
   const selectedMapDifficulty =
     selected?.kind === "designed" ? selected.record.preset?.difficulty ?? null : null;
 
+  // Picking a map NEVER writes `customMode`: that key belongs to the Game-mode
+  // box alone (it is what makes its Custom card active and what the Advanced
+  // box reports). Sending it here used to silently throw the table into
+  // "Custom — your saved setup" on every designed-map pick, and to drop a
+  // deliberately chosen Custom mode on every built-in pick — the table's mode
+  // choice disappearing behind a map choice.
   const applyEntry = (entry: MapEntry) => {
     if (entry.kind === "builtin") {
       // Picking a scenario sheet uses its own face-down layout and drops any
       // designed map (sent together so the engine never leaves a stale map
       // attached to a different scenario).
-      send({ scenarioId: entry.scenario.id, customMode: false, customMap: null, customMapName: null });
+      send({ scenarioId: entry.scenario.id, customMap: null, customMapName: null });
       return;
     }
     // A saved map carries the seat count it was designed for; switch the
@@ -203,7 +248,6 @@ export function MapPickModal({
     send({
       ...(entry.record.scenarioId !== options.scenarioId ? { scenarioId: entry.record.scenarioId } : {}),
       playerCount: entry.record.players,
-      customMode: true,
       customMap: entry.record.tiles,
       customMapName: entry.record.name,
       customMapPreset: entry.record.preset ?? null
@@ -211,7 +255,13 @@ export function MapPickModal({
   };
 
   return (
-    <SetupHubWindow className="setupHubWindow--map" eyebrow="Map setup" label="Choose a map" onClose={onClose}>
+    <SetupHubWindow
+      className="setupHubWindow--map"
+      eyebrow="Map setup"
+      label="Choose a map"
+      nav={<SetupHubNav current="map" onOpen={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />}
+      onClose={onClose}
+    >
       <div className="mapPickFilters">
         <div className="mapPickFilterChips" role="group" aria-label="Map source">
           {(
@@ -342,6 +392,17 @@ export function MapPickModal({
                     ) : null}
                   </>
                 )}
+                {seatChange ? (
+                  <small className="mapPickSeatChange">
+                    {`Playing it opens ${seatChange.next} seats (the table has ${seatChange.now} now)${
+                      seatChange.losingPicks > 0
+                        ? ` — ${seatChange.losingPicks} seat${
+                            seatChange.losingPicks === 1 ? " closes" : "s close"
+                          }, and their town & hero picks go with them.`
+                        : "."
+                    }`}
+                  </small>
+                ) : null}
                 <button
                   className="mapPickUseButton"
                   disabled={isApplied(selected) || (selected.kind === "designed" && selected.problems.length > 0)}

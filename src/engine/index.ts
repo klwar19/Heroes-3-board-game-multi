@@ -342,6 +342,7 @@ export {
 export { freshEntropy, freshSeed } from "./seed";
 export {
   bannableHeroesForSeat,
+  clampSeatCount,
   createAdventureGameState,
   createAdventureLobbyState,
   defaultGameSetupOptions,

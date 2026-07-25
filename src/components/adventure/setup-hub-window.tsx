@@ -18,6 +18,7 @@ export function SetupHubWindow({
   title,
   onClose,
   className,
+  nav,
   children
 }: {
   /** Accessible dialog label (also the default title). */
@@ -27,6 +28,8 @@ export function SetupHubWindow({
   title?: string;
   onClose: () => void;
   className?: string;
+  /** The cross-window strip (SetupHubNav) — the other boxes' live choices. */
+  nav?: ReactNode;
   children: ReactNode;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -74,6 +77,7 @@ export function SetupHubWindow({
             <X size={18} />
           </button>
         </header>
+        {nav}
         <div className="setupHubWindowBody">{children}</div>
       </section>
     </div>,

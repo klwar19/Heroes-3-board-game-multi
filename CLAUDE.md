@@ -3907,19 +3907,66 @@ Components: `SetupHub` / `GameModeModal` / `HeroesDraftModal` /
 `src/components/adventure/map-pick-modal.tsx` (+ its `DifficultyChessBar`); the
 read-only preview `src/components/adventure/map-shape-preview.tsx` (now the ONE
 home of `GROUP_COLORS` + `flowerOutline`, which `map-designer.tsx` imports); the
+cross-window strip `src/components/adventure/setup-hub-nav.tsx`; the
 pure derivations `src/components/adventure/setup-hub-summary.ts`. Behaviour is
 pinned in `setup-hub.test.tsx`, `setup-hub-summary.test.ts`,
 `map-pick-modal.test.tsx`, `map-shape-preview.test.tsx` (each claim
 mutation-checked with CONTROLs) plus the real-browser half
 `tests/e2e/setup-hub-phone.spec.ts` (jsdom cannot compute CSS).
 
+### Box ownership + the cross-window strip (2026-07-25) — the four boxes are ONE screen
+
+Three rules keep the four windows from reading as four unconnected screens (each
+mutation-checked; the first two fix real bugs, not cosmetics):
+
+1. **A box never writes another box's key.** `customMode` — the key that makes
+   the Game-mode box's Custom card active and that `advancedSettingsChanged`
+   short-circuits on — belongs to the Game-mode box ALONE. Both map pickers
+   (`MapPickModal.applyEntry`, the classic `MapPicker`) used to send it: a
+   designed-map pick sent `customMode: true`, so choosing a map silently threw a
+   BINH/Legacy/Tournament table into "Custom — your saved setup" and the Advanced
+   box stopped reporting anything but "Custom setup file"; a built-in pick sent
+   `customMode: false`, dropping a deliberately chosen Custom mode. Neither
+   payload carries it any more (pinned in `map-pick-modal.test.tsx` with an
+   explicit "the payload has no customMode key" assertion, and in
+   `setup-draft-ui.test.tsx` for the classic picker).
+2. **One reading of "a designed map is in play"** — `designedMapInPlay(options)`
+   = `Boolean(options.customMap?.length)`, which is exactly what
+   `createAdventureGameState` builds from. The Map box, the Map window's list /
+   "✓ In play" marks and the classic picker all take it, so a 0-tile plan can no
+   longer be marked in play in one surface while the Map box (and the real game)
+   still show the scenario sheet. Both pickers additionally REFUSE an empty saved
+   map (`designedMapBlockers`) — applying it would have been a silent no-op.
+3. **Every hub window shows all four boxes' live values** (`SetupHubNav`, fed by
+   the pure `setupHubNavItems`, rendered through `SetupHubWindow`'s `nav` slot):
+   the current box is a non-button "you are here" chip, the other three switch
+   windows in one click. Because the strip reads the SAME derivations the boxes
+   render, it can never disagree with them — that shared reading IS the
+   connection (open Advanced settings and the map, mode and difficulty are right
+   there). Pure presentation: it dispatches nothing.
+
+Two smaller de-duplications ride along:
+- The **Custom-setting FILE panel** (`PersonalCustomSettingsPanel`) now exists
+  ONCE, in the Game-mode window, and renders in EVERY mode — saving is what puts
+  the table in Custom mode (`saveToFile` sends `customMode: true`), so gating it
+  behind already being in Custom mode was circular. Its old second copy inside
+  the Map & Setup picker kept its own name field, so a name typed in one was
+  ignored by the other's Save button. The picker now links to the Game-mode box
+  instead (CONTROL-pinned in `setup-hub.test.tsx`).
+- The **Map window warns what a map pick does to the SEATS** — a designed map
+  opens the count it was built for and a scenario sheet clamps to its own
+  ceiling, so closing seats take their faction/hero picks with them. Predicted
+  with the engine's own `clampSeatCount` (now exported for exactly this), never a
+  UI re-implementation.
+
 Leading with what does NOT run / deliberate limits:
-- **The Advanced window hosts the WHOLE classic `GameOptionsPanel` unchanged**
-  (all four tabs), so its mode grid, Map picker and difficulty CHIP row are
-  DUPLICATED with the Game-mode and Map boxes. Deliberate — the mode grid and
-  the seat-count control are SHARED components, and the chess bar dispatches the
-  identical `SET_GAME_OPTIONS { difficulty }` as the chip row, so the two
-  surfaces can never disagree.
+- **The Advanced window still hosts the WHOLE classic `GameOptionsPanel`** (all
+  four tabs), so its mode grid, Map picker, seat count and difficulty CHIP row
+  are DUPLICATE SURFACES of the Game-mode / Map / Heroes boxes. They are the SAME
+  components over the SAME `setupLobby.options`, so they cannot disagree, and
+  each duplicated row now carries a `SameChoiceAsBoxNote` naming the owning box
+  and jumping to it (the seat-count note renders only when the control itself
+  does — a scenario with one legal seat count shows neither).
 - **The hub window is a true MODAL**: the top-bar seat switcher (the local
   hot-seat convenience on an open table) is behind its backdrop, so switching
   seats needs the window closed. The Heroes window says so on a hot-seat table
@@ -3929,7 +3976,10 @@ Leading with what does NOT run / deliberate limits:
   (`advancedSettingsChanged`): mode-box keys (customMode/ruleset/tournament*/wog/
   anime) and map-box keys (scenarioId/playerCount/customMap*/difficulty) never
   count. `customMode` short-circuits to "Custom setup file" (a loaded setting
-  file IS a customized setup). LIMIT: the baseline is the LOBBY baseline — a raw
+  file IS a customized setup) — which is honest only because a map pick can no
+  longer set that key behind the player's back (rule 1 above). LIMIT: the badge
+  therefore says nothing about the map/mode/difficulty; the strip is where those
+  are read. LIMIT: the baseline is the LOBBY baseline — a raw
   `defaultGameSetupOptions(scenario)` object, only reachable through a direct
   `createAdventureGameState` build, differs in `startingBuildings` and would read
   "Customized". (A fresh lobby pre-builds Citadel / Mage Guild / Bronze Dwelling;
@@ -4003,8 +4053,22 @@ Leading with what does NOT run / deliberate limits:
   its own", with the built-in sheet as the CONTROL).
 - **The Map window's difficulty bar is the ONLY chess-piece surface**
   (`DIFFICULTY_CHESS_ICONS`, Pawn=Easy / Knight=Normal / Rook=Hard /
-  King=Impossible — gold silhouettes from `scripts/build-difficulty-chess-icons.mjs`,
-  procedural SVG→sharp, not painted art).
+  King=Impossible). The icons are REAL painted art (2026-07-25, replacing the
+  earlier procedural SVG→sharp silhouettes): `scripts/build-difficulty-chess-icons.mjs`
+  cuts all four from ONE committed master sheet,
+  `scripts/chess-art/difficulty-chess-master.webp` (provenance + the
+  regeneration prompt in `scripts/chess-art/README.md`) — so they share a
+  sculpt, a metal and a light direction. The cut is a border FLOOD FILL keyed on
+  near-pure black (`FIELD_LEVEL` 12), never a luminance threshold: a generous
+  threshold walks up each piece's shadow side and hollows it out, leaving an
+  icon that only looks right over a dark panel. All four are scaled by one
+  factor onto one baseline, so the set keeps a real Staunton set's proportions —
+  which means the icon heights run pawn < ROOK < KNIGHT < king and deliberately
+  do NOT track the difficulty order. Pinned in
+  `src/data/assets/difficulty-chess-icons.test.ts` (256×256 + margins, the
+  solid-cut fill ratio with the hollow cut as its measured control — 0.87–0.92
+  vs 0.32–0.37 — the shared baseline and the chess proportions);
+  mutation-checked by rebuilding at `FIELD_LEVEL` 60, which fails it.
 - **No new map filters beyond source / player-count / name search**, and the
   designed-map list keeps the classic `validateCustomMapPlan` gate (an invalid map
   previews but cannot be applied).
