@@ -80,6 +80,7 @@ import {
   type EventDrawnCue,
   type MapEventCue
 } from "@/components/table/overlays";
+import { MapSpellBoostModal } from "@/components/table/map-spell-boost-modal";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import { takePendingSinglePlayerLoad } from "@/lib/single-player-saves";
@@ -6494,6 +6495,12 @@ export default function Home() {
             view={playerView}
             viewerPlayerId={viewerPlayerId}
           />
+          <MapSpellBoostModal
+            legalActions={legalActions}
+            onAction={submitAction}
+            state={state}
+            viewerPlayerId={viewerPlayerId}
+          />
           <SearchModal legalActions={legalActions} onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
           {isSeated && handMode === null && !forcedDiscard ? (
@@ -6853,6 +6860,12 @@ export default function Home() {
         onAction={submitAction}
         state={state}
         view={playerView}
+        viewerPlayerId={viewerPlayerId}
+      />
+      <MapSpellBoostModal
+        legalActions={legalActions}
+        onAction={submitAction}
+        state={state}
         viewerPlayerId={viewerPlayerId}
       />
       {/* Hold the instant window back until the attack-die animation has fully

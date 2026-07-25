@@ -4406,25 +4406,53 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   Air, View Earth, Dimension Door, Fly, Water Walk and Town Portal are a single
   **Cast** action — no up-front tier pick / cost picker. The spell is spent,
   then a `map-spell-boost` window offers the same Power sources combat uses:
-  hand/Book power-source discards (printed value; Expert Power + crown),
-  **School of Magic expert** (discard the permanent for +2 over the free basic
-  +1, needs crown), and **Basic X Magic expert** (+3, once per cast, needs a
-  crown — offered from BOTH the in-play fetch permanent AND a Basic X Magic card
-  held in hand; USER RULING 2026-07-23 "if use expert, must discard, on hand or
-  on permanent": using it CONSUMES that source — the permanent is discarded, the
-  hand card is played to the discard, both to the owner's DISCARD pile (recycles
-  into their deck, never removed from the game), and every surface SAYS so (the
-  offer labels + the CARD_PLAYED feed line) because a silent consumption reads
-  as "my Basic Magic stopped working". The full lifecycle — basic fetch works →
-  expert consumes → redraw + replay restores the fetch — is pinned in
-  `basic-magic-expert.test.ts` "lifecycle"; combat parity via
-  `USE_SCHOOL_FETCH_EXPERT`) — or "Resolve now". Highest printed tier with
-  `minPower ≤ final Power` resolves (Orb doubling applied at resolve). Starting
-  Power = standingSpellPower (school basic, Astrologers, Pandora, cultivation /
-  grade / equipment) + specialty school auras + map Sorcery/Scales bank.
-  Printed CHOOSE_ONE tiers stay as the effect table only. Pinned in
-  `map-spell-cast.test.ts` (School expert, Basic Magic expert, wrong-school
-  CONTROL) + `view-spells.test.ts` + `map-movement-spells.test.ts`.
+  hand/Book power-source discards, **School of Magic expert** (discard the
+  permanent for +2 over the free basic +1, needs crown), and **Basic X Magic
+  expert** (+3, once per cast, needs a crown — offered from BOTH the in-play
+  fetch permanent AND a Basic X Magic card held in hand; USER RULING 2026-07-23
+  "if use expert, must discard, on hand or on permanent": using it CONSUMES
+  that source — the permanent is discarded, the hand card is played to the
+  discard, both to the owner's DISCARD pile (recycles into their deck, never
+  removed from the game), and every surface SAYS so (the offer labels + the
+  CARD_PLAYED feed line) because a silent consumption reads as "my Basic Magic
+  stopped working". The full lifecycle — basic fetch works → expert consumes →
+  redraw + replay restores the fetch — is pinned in `basic-magic-expert.test.ts`
+  "lifecycle"; combat parity via `USE_SCHOOL_FETCH_EXPERT`) — or "Resolve now".
+  Highest printed tier with `minPower ≤ final Power` resolves (Orb doubling
+  applied at resolve). Starting Power = standingSpellPower (school basic,
+  Astrologers, Pandora, cultivation / grade / equipment) + specialty school
+  auras + map Sorcery/Scales bank. Printed CHOOSE_ONE tiers stay as the effect
+  table only. Pinned in `map-spell-cast.test.ts` (School expert, Basic Magic
+  expert, wrong-school CONTROL) + `view-spells.test.ts` +
+  `map-movement-spells.test.ts`.
+  **Per-SIDE card offers (2026-07-26 overhaul, combat parity):** a hand power
+  card is enumerated one offer per printed "+Power" SIDE
+  (`spellPowerSidesOfCard` in effects.ts) — the Tunic of the Cyclops King
+  offers BOTH "+2" and "+1, draw 1" (the collapsed single-value read that hid
+  the +2 was the reported bug), Scales both "+3" and "+1, draw 1"; the draw
+  rider fires only on the side actually played. Printed side costs are
+  honoured: "Remove this card: +5" (Orb of Driving Rain / Silt / … on a
+  matching-school spell) sends the card to `removed`, never the discard;
+  Titan's Cuirass "Discard 1 card: +4" opens a MANDATORY cost-discard window
+  (`mapSpellBoost.costDiscards` — Resolve is withheld, a forged resolve throws,
+  an empty hand forgives); Breastplate of Brimstone's "up to 3, +1 each" joins
+  the offers as optional cost discards. Expert sides honour the Empower crown
+  waiver (`canPlayExpertMode` / `abilityExpertIsCrownFree` — an Empowered
+  Sorcery plays its +2 crown-free on the map). The COST channel
+  (`spellPowerValueOfCard`, Sorrow / lethal saves / pickers) now collapses to
+  the best HONEST side: highest cost-free amount (Tunic pays 2, no draw — like
+  its twin Scales' 3) and never a removeSelf side (discarding a relic for its
+  +5 while it recycled was an exploit). All pinned in `map-spell-cast.test.ts`
+  ("every printed power side is offered" + "cost valuation", each with
+  CONTROLs). **UI:** the boost window is `MapSpellBoostModal`
+  (`src/components/table/map-spell-boost-modal.tsx`) — a battle-style picker
+  (spell face, live Power over the printed tier ladder, sources as card tiles
+  grouped hand/Book/School/cost, Resolve button) replacing the old PromptTray
+  text-button list; presentation only, every tile dispatches the exact
+  index-aligned CHOOSE_OPTION, PromptTray excludes the context (three spots in
+  screen.tsx). Pinned in `map-spell-boost-modal.test.tsx` (both Tunic sides
+  render + dispatch, cost window withholds Resolve, non-owner waiting strip,
+  PromptTray-renders-nothing CONTROL).
   **Both Spell Books:** old stash Book may burn one Book Spell for +1 Power
   (once/turn) and Knowledge can return a Book-cast map Spell to the Book;
   Polish Book needs Cast a Spell to cast, never burns Book Spells for Power

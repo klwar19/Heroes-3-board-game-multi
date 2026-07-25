@@ -5273,6 +5273,7 @@ export function PromptTray({
       ? choice.type === "OPTION_CHOICE" &&
         (choice.context === "learning-level-up" ||
           choice.context === "deck-search-mode" ||
+          choice.context === "map-spell-boost" ||
           (choice.context === "deck-pick" && Boolean(choice.deckPick?.upFront)))
         ? null
         : { ownerId: choice.playerId, doing: "is deciding…" }
@@ -5332,8 +5333,11 @@ export function PromptTray({
     // The Learning level-up offer has its own card-showing modal (LearningOfferModal).
     // The Search-or-take-discard prompt AND the one-step spells deck-pick have
     // DeckSearchModeModal (card backs / discard faces / school card faces).
+    // The map cast-then-boost Power window has MapSpellBoostModal (the
+    // battle-style picker — never the text-button box list again).
     choice.context !== "learning-level-up" &&
     choice.context !== "deck-search-mode" &&
+    choice.context !== "map-spell-boost" &&
     !(choice.context === "deck-pick" && choice.deckPick?.upFront)
   ) {
     title = choice.prompt;
@@ -5468,6 +5472,7 @@ export function PromptTray({
       (choice.type === "OPTION_CHOICE" &&
         (choice.context === "learning-level-up" ||
           choice.context === "deck-search-mode" ||
+          choice.context === "map-spell-boost" ||
           (choice.context === "deck-pick" && Boolean(choice.deckPick?.upFront))));
     if (!ownedElsewhere && legalActions.length > 0) {
       title = choice.type === "OPTION_CHOICE" ? choice.prompt : "Choose how to resolve this";

@@ -3109,6 +3109,111 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   gap: 12px;
 }
 
+/* Map spell cast-then-boost window (MapSpellBoostModal): the battle-style
+   Power picker — spell face + live Power readout over the printed tier ladder,
+   then the sources as card tiles. Shares the searchModal shell. */
+.mapSpellBoostModal {
+  width: min(760px, 96vw);
+}
+
+.spellBoostTop {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.spellBoostTop .searchCardImage {
+  width: 120px;
+}
+
+.spellBoostLadder {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: 460px;
+}
+
+.spellBoostPower {
+  color: var(--gold);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.spellBoostPower b {
+  font-size: 18px;
+}
+
+.spellBoostTier {
+  padding: 4px 8px;
+  border: 1px solid rgb(243 239 228 / 14%);
+  border-radius: 7px;
+  background: rgb(13 15 16 / 45%);
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.spellBoostTier b {
+  color: #e8d9b8;
+  margin-right: 4px;
+}
+
+.spellBoostTier.reached {
+  color: #e8d9b8;
+  border-color: rgb(213 168 79 / 40%);
+}
+
+.spellBoostTier.best {
+  border-color: var(--gold);
+  background: rgb(213 168 79 / 12%);
+  color: var(--gold);
+  box-shadow: 0 0 10px rgb(213 168 79 / 22%);
+}
+
+.spellBoostTile {
+  position: relative;
+  width: 132px;
+}
+
+.spellBoostValue {
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.spellBoostTileName {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.spellBoostChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border: 1px solid rgb(213 168 79 / 35%);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.spellBoostResolveRow {
+  display: flex;
+  justify-content: center;
+}
+
+.spellBoostCostNote {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 /* Tournament Morale token — "discard all revealed, Search (X) again" row. */
 .searchRepeatRow {
   display: flex;

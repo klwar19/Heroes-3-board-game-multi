@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
 import { bestMapSpellTier, isMapPowerTierSpell, mapSpellPowerTiers } from "./map-spell-cast";
-import { applyAction, createAdventureGameState, getLegalActions, getPlayerView, type GameAction, type GameState } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  getLegalActions,
+  getPlayerView,
+  spellPowerSourceDrawCards,
+  spellPowerValueOfCard,
+  type GameAction,
+  type GameState
+} from "./index";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -324,6 +333,303 @@ describe("Map cast — School of Magic expert + Basic Magic expert (combat parit
     expect(state.players.p1.permanents).toEqual(
       expect.arrayContaining(["ability.fire_magic", "ability.basic_fire_magic"])
     );
+  });
+});
+
+// Per-side offers (combat parity): every printed "+Power" side of a CHOOSE_ONE
+// card is its own offer — never one collapsed value. The reported bug: the
+// Tunic of the Cyclops King only ever offered its "+1, draw 1" side; the "+2
+// Power" side was missing from the map boost window.
+describe("map-spell-boost — every printed power side is offered", () => {
+  function castViewAir(state: GameState): GameState {
+    return applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.view_air",
+      mode: "basic",
+      target: { type: "none" }
+    });
+  }
+
+  function cardOffers(state: GameState, cardId: string) {
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || !choice.mapSpellBoost) {
+      throw new Error("expected an open map-spell-boost choice");
+    }
+    return choice.mapSpellBoost.offers
+      .map((offer, index) => ({ offer, index }))
+      .filter((entry) => entry.offer.kind === "card" && entry.offer.cardId === cardId);
+  }
+
+  it("Tunic of the Cyclops King offers BOTH sides; the +2 side adds 2 and never draws", () => {
+    let state = mapHand(["spell.view_air", "artifact.tunic_of_the_cyclops_king"]);
+    const valuablesBefore = state.players.p1.resources.valuables;
+    state = castViewAir(state);
+
+    const offers = cardOffers(state, "artifact.tunic_of_the_cyclops_king");
+    const plusTwo = offers.find((entry) => entry.offer.kind === "card" && entry.offer.value === 2);
+    const drawSide = offers.find((entry) => entry.offer.kind === "card" && entry.offer.value === 1);
+    expect(plusTwo, "the +2 Power side is offered (the reported bug)").toBeTruthy();
+    expect(drawSide, "the +1/draw side is still offered").toBeTruthy();
+    if (drawSide?.offer.kind === "card") {
+      expect(drawSide.offer.drawCards).toBe(1);
+    }
+
+    const deckBefore = state.players.p1.deck.length;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: plusTwo!.index
+    });
+    // Power 0 + 2 = 2 → valuables tier; the +2 side has NO draw rider.
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
+    expect(state.players.p1.deck.length, "the +2 side never draws").toBe(deckBefore);
+    expect(state.players.p1.discard).toContain("artifact.tunic_of_the_cyclops_king");
+  });
+
+  it("CONTROL: the Tunic's +1 side still draws its card", () => {
+    let state = mapHand(["spell.view_air", "artifact.tunic_of_the_cyclops_king"]);
+    const materialsBefore = state.players.p1.resources.buildingMaterials;
+    state = castViewAir(state);
+    const drawSide = cardOffers(state, "artifact.tunic_of_the_cyclops_king").find(
+      (entry) => entry.offer.kind === "card" && entry.offer.value === 1
+    );
+    const deckBefore = state.players.p1.deck.length;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: drawSide!.index
+    });
+    // The printed "draw 1" fired — and if the drawn card is itself a power
+    // source the window re-opens (battle parity: a Sorcery-style draw can
+    // refresh fuel into the same cast). Resolve at Power 1 → materials tier.
+    expect(state.players.p1.deck.length).toBe(deckBefore - 1);
+    expect(state.players.p1.hand).toHaveLength(1);
+    if (state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.mapSpellBoost) {
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: state.pendingChoice.id,
+        optionIndex: state.pendingChoice.mapSpellBoost.offers.length
+      });
+    }
+    expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
+  });
+
+  it("Scales of the Greater Basilisk offers +3 AND +1/draw as separate sides", () => {
+    let state = mapHand(["spell.view_air", "artifact.scales_of_the_greater_basilisk"]);
+    const valuablesBefore = state.players.p1.resources.valuables;
+    state = castViewAir(state);
+    const offers = cardOffers(state, "artifact.scales_of_the_greater_basilisk");
+    const values = offers.map((entry) => (entry.offer.kind === "card" ? entry.offer.value : 0)).sort();
+    expect(values).toEqual([1, 3]);
+    const plusThree = offers.find((entry) => entry.offer.kind === "card" && entry.offer.value === 3)!;
+    const deckBefore = state.players.p1.deck.length;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: plusThree.index
+    });
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
+    expect(state.players.p1.deck.length, "the +3 side never draws").toBe(deckBefore);
+  });
+
+  it("Orb of Driving Rain: 'Remove this card: +5 Power' works on a Water spell and LEAVES THE GAME", () => {
+    let state = mapHand(["spell.water_walk", "artifact.orb_of_driving_rain"]);
+    const hero = Object.values(state.heroes).find((h) => h.controllerId === "p1" && h.kind === "main")!;
+    const movementBefore = hero.movementPoints;
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.water_walk",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    const offers = cardOffers(state, "artifact.orb_of_driving_rain");
+    expect(offers.length, "the +5 Water side is offered on a Water spell").toBe(1);
+    if (offers[0]!.offer.kind === "card") {
+      expect(offers[0]!.offer.removeSelf).toBe(true);
+      expect(offers[0]!.offer.value).toBe(5);
+    }
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: offers[0]!.index
+    });
+    // Power 5 → the +2 movement tier; the Orb is REMOVED, never discarded.
+    const heroAfter = Object.values(state.heroes).find((h) => h.controllerId === "p1" && h.kind === "main")!;
+    expect(heroAfter.movementPoints).toBe(movementBefore + 2);
+    expect(state.players.p1.removed).toContain("artifact.orb_of_driving_rain");
+    expect(state.players.p1.discard).not.toContain("artifact.orb_of_driving_rain");
+  });
+
+  it("CONTROL: the Orb's water-only +5 is NOT offered on an Air spell", () => {
+    let state = mapHand(["spell.view_air", "artifact.orb_of_driving_rain"]);
+    state = castViewAir(state);
+    // View Air is Air school — the water-only side must be absent; with no other
+    // source the cast auto-resolved at Power 0 (no pending choice at all).
+    if (state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.mapSpellBoost) {
+      expect(cardOffers(state, "artifact.orb_of_driving_rain")).toHaveLength(0);
+    } else {
+      expect(state.pendingChoice).toBeNull();
+    }
+    expect(state.players.p1.hand).toContain("artifact.orb_of_driving_rain");
+  });
+
+  it("Titan's Cuirass: the +4 side demands its printed discard before the spell may resolve", () => {
+    let state = mapHand(["spell.view_air", "artifact.titans_cuirass", "spell.haste"]);
+    const valuablesBefore = state.players.p1.resources.valuables;
+    state = castViewAir(state);
+    const offers = cardOffers(state, "artifact.titans_cuirass");
+    const plusFour = offers.find((entry) => entry.offer.kind === "card" && entry.offer.value === 4);
+    const plusTwo = offers.find((entry) => entry.offer.kind === "card" && entry.offer.value === 2);
+    expect(plusFour, "the 'Discard 1 card: +4' side is offered").toBeTruthy();
+    expect(plusTwo, "the plain +2 side is offered").toBeTruthy();
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: plusFour!.index
+    });
+    // The printed cost is owed: only cost discards are offered, NO resolve.
+    const costChoice = state.pendingChoice;
+    if (costChoice?.type !== "OPTION_CHOICE" || !costChoice.mapSpellBoost) {
+      throw new Error("expected the cost-discard window");
+    }
+    expect(costChoice.mapSpellBoost.offers.every((offer) => offer.kind === "cost-discard")).toBe(true);
+    expect(costChoice.options).toHaveLength(costChoice.mapSpellBoost.offers.length); // no trailing Resolve
+    // A forged resolve past the offers is refused while a hand card can pay.
+    const forged = applyAction(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: costChoice.id,
+      optionIndex: costChoice.mapSpellBoost.offers.length
+    });
+    expect(forged.errors.length).toBeGreaterThan(0);
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: costChoice.id,
+      optionIndex: 0
+    });
+    // Power 4 (cap 2) → valuables tier; Haste paid the cost to the discard.
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
+    expect(state.players.p1.discard).toEqual(
+      expect.arrayContaining(["artifact.titans_cuirass", "spell.haste"])
+    );
+  });
+
+  it("CONTROL: with no other hand card, the Cuirass +4 side is withheld (the +2 stays)", () => {
+    let state = mapHand(["spell.view_air", "artifact.titans_cuirass"]);
+    state = castViewAir(state);
+    const values = cardOffers(state, "artifact.titans_cuirass").map((entry) =>
+      entry.offer.kind === "card" ? entry.offer.value : 0
+    );
+    expect(values).toEqual([2]);
+  });
+
+  it("Breastplate of Brimstone: +1, then up-to-3 optional discards at +1 each (resolve stays open)", () => {
+    let state = mapHand(["spell.view_air", "artifact.breastplate_of_brimstone", "spell.slow", "spell.haste"]);
+    const valuablesBefore = state.players.p1.resources.valuables;
+    state = castViewAir(state);
+    const brimstone = cardOffers(state, "artifact.breastplate_of_brimstone")[0]!;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: brimstone.index
+    });
+    // Power 1; the optional discards join the normal offers AND resolve stays.
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || !choice.mapSpellBoost) {
+      throw new Error("expected the reopened boost window");
+    }
+    const costOffers = choice.mapSpellBoost.offers
+      .map((offer, index) => ({ offer, index }))
+      .filter((entry) => entry.offer.kind === "cost-discard");
+    expect(costOffers.length).toBeGreaterThan(0);
+    expect(choice.options.length).toBe(choice.mapSpellBoost.offers.length + 1); // Resolve now present
+    const slowDiscard = costOffers.find((entry) => entry.offer.kind === "cost-discard" && entry.offer.cardId === "spell.slow")!;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: slowDiscard.index
+    });
+    // Power 2 = the cap → auto-resolves at the valuables tier; Haste is KEPT.
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
+    expect(state.players.p1.discard).toEqual(
+      expect.arrayContaining(["artifact.breastplate_of_brimstone", "spell.slow"])
+    );
+    expect(state.players.p1.hand).toContain("spell.haste");
+  });
+
+  it("an Empowered Sorcery plays its expert +2 side CROWN-FREE on the map", () => {
+    let state = mapHand(["spell.view_air", "ability.sorcery"]);
+    state.players.p1.limits.expertUses = 0;
+    state.players.p1.empoweredAbilities = ["ability.sorcery"];
+    const valuablesBefore = state.players.p1.resources.valuables;
+    state = castViewAir(state);
+    const expert = cardOffers(state, "ability.sorcery").find(
+      (entry) => entry.offer.kind === "card" && entry.offer.mode === "expert"
+    );
+    expect(expert, "the Empowered expert +2 is offered with zero crowns").toBeTruthy();
+    if (expert?.offer.kind === "card") {
+      expect(expert.offer.crownFree).toBe(true);
+    }
+    const deckBefore = state.players.p1.deck.length;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: expert!.index
+    });
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1); // Power 2
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0); // no crown spent
+    expect(state.players.p1.deck.length).toBe(deckBefore - 1); // Sorcery's draw rider
+  });
+
+  it("CONTROL: an un-Empowered Sorcery with zero crowns offers only its basic +1", () => {
+    let state = mapHand(["spell.view_air", "ability.sorcery"]);
+    state.players.p1.limits.expertUses = 0;
+    state = castViewAir(state);
+    const modes = cardOffers(state, "ability.sorcery").map((entry) =>
+      entry.offer.kind === "card" ? entry.offer.mode : ""
+    );
+    expect(modes).toEqual(["basic"]);
+  });
+});
+
+// The COST channel (Sorrow / lethal saves / affordability / UI pickers) values
+// a CHOOSE_ONE card through ONE collapsed side. Sibling cross-check: the Tunic
+// must pay its best cost-free side (+2, no draw) exactly like its twin Scales
+// pays +3 — not whichever side is printed first — and a "Remove this card"
+// side is never valued (discarding a relic for its +5 was an exploit: the
+// printed removal was skipped and the card recycled).
+describe("power-source cost valuation — collapsed side is the best HONEST one", () => {
+  it("Tunic of the Cyclops King pays 2 with NO draw rider (Scales stays 3)", () => {
+    const tunic = cardLibrary["artifact.tunic_of_the_cyclops_king"];
+    const scales = cardLibrary["artifact.scales_of_the_greater_basilisk"];
+    expect(spellPowerValueOfCard(tunic, ["air"], "basic")).toBe(2);
+    expect(spellPowerSourceDrawCards(tunic, ["air"]), "the +2 side has no draw").toBe(0);
+    expect(spellPowerValueOfCard(scales, ["air"], "basic")).toBe(3);
+    expect(spellPowerSourceDrawCards(scales, ["air"])).toBe(0);
+  });
+
+  it("a 'Remove this card: +5' side is never a discard value (Orb of Driving Rain pays 0)", () => {
+    const orb = cardLibrary["artifact.orb_of_driving_rain"];
+    expect(spellPowerValueOfCard(orb, ["water"], "basic")).toBe(0);
+  });
+
+  it("CONTROL: a discard-cost side still values its flat base (Breastplate of Brimstone pays 1)", () => {
+    const brimstone = cardLibrary["artifact.breastplate_of_brimstone"];
+    expect(spellPowerValueOfCard(brimstone, ["water"], "basic")).toBe(1);
   });
 });
 

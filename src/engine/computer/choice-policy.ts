@@ -377,7 +377,10 @@ function scorePositionOption(
   ) {
     // The three boost choices carry different pending-data shapes (only
     // mapSpellBoost lists `offers`); the OPTION_CHOICE options are the uniform
-    // surface here, and the trailing option is always "Resolve now".
+    // surface here, and the trailing option is normally "Resolve now". The one
+    // exception is a mandatory cost-discard window (Titan's Cuirass +4 on the
+    // map): every option is then a payable discard, so whichever this scorer
+    // prefers still pays the cost — bounded, never a stall.
     const optionCount =
       choice.type === "OPTION_CHOICE" ? choice.options.length : 0;
     const label = (optionLabel(choice, optionIndex) ?? "").toLowerCase();
