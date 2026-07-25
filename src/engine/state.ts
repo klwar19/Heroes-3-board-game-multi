@@ -172,11 +172,12 @@ export type HouseRuleId =
   | "mine-guard-reinforcement"
   // Global map rule (default OFF in BOTH modes): an enemy Hero walking onto YOUR
   // already-flagged Mine no longer re-flags it for free — the owner gets the
-  // settlement-style defense window (pay 3 gold, defend with UNITS only, no
-  // hero/cards), or lets it fall (the flag hands over exactly like today's
-  // walk-in). Win keeps the Mine; loss/decline flags it for the attacker. A Mine
-  // with a LIVE neutral guard still fights the guard first; a View Earth remote
-  // capture is NOT intercepted. See `garrisonDefenderFor` (adventure-reducer.ts).
+  // settlement-style defense window (pay 3 gold, defend with your army AND your
+  // CARDS; only the hero is missing), or lets it fall (the flag hands over
+  // exactly like today's walk-in). Win keeps the Mine; loss/decline flags it for
+  // the attacker. A Mine with a LIVE neutral guard still fights the guard first;
+  // a View Earth remote capture is NOT intercepted. See `garrisonDefenderFor` /
+  // `garrisonDefenseKeepsCards` (adventure-reducer.ts).
   | "mine-army-defense"
   // BINH house rule (default OFF in BOTH modes — the OFFICIAL reading is the
   // default): while ON, elemental damage ALSO skips the Attack die entirely and
@@ -7856,6 +7857,17 @@ export type CombatContext =
       fieldId: MapSpaceId;
       /** Defending a faction town with a Citadel: walls, gate and arrow tower. */
       siege?: boolean;
+      /**
+       * Heroless (garrison) defense in which the DEFENDER may still play cards
+       * from hand: the `mine-army-defense` house rule's Mine defense only — the
+       * owner is close enough to send orders even though their hero is elsewhere.
+       * Absent on every other heroless defense (town / settlement / captured
+       * Utopia / Grail site / designer Garrison stay units-only). Stamped in
+       * `startPlayerCombat` and read at ONE seam, `isHandLockedInCombat`;
+       * HERO-scoped effects (commander, equipment, hero grades, Tactics,
+       * Retreat/Surrender) still need a hero in the fight and stay off.
+       */
+      garrisonCardsAllowed?: boolean;
     };
 
 export type CombatBoardArtId =
@@ -10385,8 +10397,9 @@ export type FirstPlayerRollState = {
 };
 
 /**
- * An attacker stepped onto an enemy Town/Settlement whose owner has no hero
- * there: the owner decides whether to pay 8 gold and defend with units only.
+ * An attacker stepped onto an enemy Town/Settlement/Mine whose owner has no hero
+ * there: the owner decides whether to pay the defense fee and fight without
+ * their hero (units only — plus their CARDS on a `mine-army-defense` Mine).
  */
 export type PendingGarrisonState = {
   attackerPlayerId: PlayerId;
@@ -10395,8 +10408,8 @@ export type PendingGarrisonState = {
   fieldId: MapSpaceId;
   /**
    * Gold the defender pays to garrison: 8 for a town / settlement / captured
-   * Utopia (the printed rule), 3 for a designer Garrison object. Absent on a
-   * pre-feature snapshot = 8.
+   * Utopia / Grail site (the printed rule), 3 for a designer Garrison object or
+   * a Mine (`mine-army-defense`). Absent on a pre-feature snapshot = 8.
    */
   goldCost?: number;
 };

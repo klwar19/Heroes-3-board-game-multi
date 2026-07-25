@@ -1287,6 +1287,46 @@ function garrisonDefenseCost(field: MapFieldState): number {
   return field.location === "garrison" || field.location === "mine" ? 3 : 8;
 }
 
+/**
+ * Whether a HEROLESS (garrison) defense of `field` still lets its owner play
+ * CARDS from hand: the `mine-army-defense` Mine defense only. Every other
+ * garrison defense (town / settlement / captured Utopia / Grail site / designer
+ * Garrison object) stays units-only, exactly as before.
+ *
+ * ONE source shared by the prompt wording (`openGarrisonPromptIfNeeded`) and the
+ * combat-context stamp (`startPlayerCombat` → `CombatContext.garrisonCardsAllowed`,
+ * read by `isHandLockedInCombat`), so what the owner is promised and what the
+ * fight actually allows can never disagree.
+ */
+function garrisonDefenseKeepsCards(state: GameState, field: MapFieldState | undefined): boolean {
+  return Boolean(field && field.location === "mine" && houseRuleEnabled(state, "mine-army-defense"));
+}
+
+/**
+ * Is `playerId` the HEROLESS Mine defender of the open fight — the
+ * `mine-army-defense` defense whose context carries `garrisonCardsAllowed`?
+ *
+ * That side is the ONE heroless defender that gets more than bare units: their
+ * hand is unlocked (`isHandLockedInCombat`) and they may concede with Retreat
+ * (`giveUpCombat` / the legal-action offer) so the fight can end quickly. The
+ * concede is the NORMAL give-up settlement — the casualties taken so far stay
+ * lost, survivors are kept — and it moves NO hero, because there is no hero in
+ * this fight to send home. Every OTHER heroless garrison defense (town /
+ * settlement / captured Utopia / Grail site / designer Garrison) keeps the
+ * units-only, no-Retreat rule.
+ */
+export function isHerolessMineDefender(state: GameState, playerId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "player") {
+    return false;
+  }
+  return (
+    combat.context.defenderHeroId === null &&
+    combat.context.garrisonCardsAllowed === true &&
+    playerId === combat.defenderPlayerId
+  );
+}
+
 /** Opens the garrison defense decision for the holding's owner (cost per
  * `garrisonDefenseCost`); returns true when the game is now waiting on it. */
 function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field: MapFieldState): boolean {
@@ -1333,11 +1373,17 @@ function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field
     goldCost: cost
   };
 
+  // A `mine-army-defense` Mine keeps the owner's cards; every other holding is
+  // units-only. Same predicate the combat context is stamped from, so the promise
+  // in the prompt is exactly what the fight allows.
+  const how = garrisonDefenseKeepsCards(state, field)
+    ? "your units and your cards (your hero is away)"
+    : "your units (no cards, your hero is away)";
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId: defenderId,
-    prompt: `${state.players[attacker.controllerId]?.name ?? "An enemy"} contests your ${siteLabel} — pay ${cost} gold to defend with your units (no cards, your hero is away)?`,
+    prompt: `${state.players[attacker.controllerId]?.name ?? "An enemy"} contests your ${siteLabel} — pay ${cost} gold to defend with ${how}?`,
     options: [{ label: `Pay ${cost} gold and defend` }, { label: "Let it fall" }],
     context: "garrison",
     returnPhase: "player-turn"
@@ -7759,13 +7805,20 @@ export function startPlayerCombat(
         town.buildings.some((buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE")
     );
 
+  // House rule `mine-army-defense`: a Mine's owner defends with their army AND
+  // their cards. DERIVED here (never passed in by a caller) so the flag can only
+  // ever be true for a heroless Mine defense with the rule on — every other
+  // garrison defense keeps the units-only hand lock.
+  const mineCardDefense = !defender && garrisonDefenseKeepsCards(state, field);
+
   const combat = makeCombatShell(state, attacker.controllerId, defenderPlayerId);
   combat.context = {
     kind: "player",
     attackerHeroId: attacker.id,
     defenderHeroId: defender?.id ?? null,
     fieldId,
-    ...(siege ? { siege: true } : {})
+    ...(siege ? { siege: true } : {}),
+    ...(mineCardDefense ? { garrisonCardsAllowed: true } : {})
   };
   assignCombatBoardArt(state, combat);
   combat.setup = {
@@ -9323,7 +9376,9 @@ export function giveUpCombat(state: GameState, action: Extract<GameAction, { typ
   }
   const heroId =
     playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
-  if (!heroId) {
+  // The `mine-army-defense` Mine defender concedes WITHOUT a hero (nothing to
+  // send home) — every other heroless garrison still needs one.
+  if (!heroId && !isHerolessMineDefender(state, playerId)) {
     throw new Error("A hero must be present to give up.");
   }
   const winnerPlayerId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;

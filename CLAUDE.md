@@ -2014,15 +2014,51 @@ House rule `mine-army-defense` (registry `src/engine/house-rules.ts`, category
 `"global"`, default OFF in BOTH binh AND legacy — an opt-in tweak). When ON, an
 enemy Hero walking onto YOUR already-flagged Mine no longer re-flags it for free:
 YOU (the owner) get the settlement-style defense window — pay 3 gold and defend
-with your UNITS ONLY (no hero, no cards), or let it fall. Engine: a flagged-mine
-arm in `garrisonDefenderFor` + a `garrisonDefenseCost` mine=3 (`adventure-reducer.ts`),
-reusing the EXISTING `pendingGarrison` / `openGarrisonPromptIfNeeded` /
-`resolveGarrisonChoice` / `startPlayerCombat` flow verbatim (the same one a
-town/settlement/designer-Garrison uses). Behaviour pinned in
-`src/engine/mine-army-defense.test.ts` (each claim mutation-checked with a
+with your UNITS **and your CARDS** (only your Hero is missing), or let it fall.
+Engine: a flagged-mine arm in `garrisonDefenderFor` + a `garrisonDefenseCost`
+mine=3 (`adventure-reducer.ts`), reusing the EXISTING `pendingGarrison` /
+`openGarrisonPromptIfNeeded` / `resolveGarrisonChoice` / `startPlayerCombat` flow
+verbatim (the same one a town/settlement/designer-Garrison uses). Behaviour pinned
+in `src/engine/mine-army-defense.test.ts` (each claim mutation-checked with a
 rule-OFF / wrong-owner CONTROL), the AI twin in
 `src/engine/computer/visit-event-policy.test.ts`, and the lobby row in
 `src/components/adventure/game-options-tabs.test.tsx`.
+
+**The CARDS half (2026-07-25)** is ONE flag on the combat context —
+`CombatContext.garrisonCardsAllowed` — DERIVED inside `startPlayerCombat` from
+`garrisonDefenseKeepsCards(state, field)` (a heroless defense of a `mine` with the
+rule on; never passed in by a caller, so it cannot be set anywhere else) and read
+at the SINGLE hand-lock seam `isHandLockedInCombat` (`legal-actions.ts`), which
+every legal-action offer AND every reducer backstop already consults — so the
+waiver can never be honoured by one surface and refused by another. The SAME
+predicate builds the prompt wording ("defend with your units and your cards"), so
+what the owner is promised is exactly what the fight allows. What this does NOT
+lift: everything gated on a HERO being in the fight stays off for every heroless
+defense — Tactics (`defenderHeroId != null`), Retreat / Surrender / Shackles, and
+the commander / equipment / hero-grade folds (`commanders.ts`,
+`anime-equipment.ts`, `anime-hero-grades.ts` all key off the context hero). Every
+OTHER heroless garrison defense (town / settlement / captured Utopia / Grail site /
+designer Garrison object) is untouched and stays units-only — pinned as a CONTROL
+here and in `secondary-heroes.test.ts`. Both halves are mutation-checked: the
+WIRING (a real walk-in stamps the flag and unlocks the owner's hand) and the
+EFFECT (a heroless Mine defender is offered the Resurrection Deck card in the
+lethal-save window and it really cancels the killing blow — the CONTROL without
+the flag offers nothing and the Pack flips to Few).
+
+**RETREAT (2026-07-25)**: the heroless Mine defender may CONCEDE so the fight can
+end quickly instead of being played out to the last unit — the ONE heroless
+garrison defense that can. `isHerolessMineDefender` (adventure-reducer.ts, the
+same "heroless + `garrisonCardsAllowed`" predicate `isHandLockedInCombat` now
+reads, so cards and Retreat can never disagree about who this side is) relaxes
+BOTH the `giveUpCombat` "A hero must be present to give up." throw and the
+`addGiveUpCombatActions` offer gate. It is the NORMAL give-up settlement — the
+casualties taken so far stay lost, survivors are KEPT (it does not forfeit the
+army), the hand is discarded instead in keep-troops mode — and it moves NO hero,
+because there is no hero in this fight to send home. Retreat/Surrender for every
+other heroless garrison, and `escapePvpCombat`'s own hero requirement, are
+UNCHANGED. Pinned in `mine-army-defense.test.ts` ("Retreat from a heroless Mine
+defense": the predicate scoping, the concede outcome + survivor kept + hero never
+moves, and a no-flag CONTROL that still throws).
 
 Leading with what does NOT run / deliberate limits:
 - **View Earth remote capture is NOT intercepted** — it flags directly through
@@ -3898,10 +3934,73 @@ Leading with what does NOT run / deliberate limits:
   `createAdventureGameState` build, differs in `startingBuildings` and would read
   "Customized". (A fresh lobby pre-builds Citadel / Mage Guild / Bronze Dwelling;
   folding that in is what keeps an untouched table reading "Default".)
-- **The map SHAPE preview is band-coloured outlines only** — tile flowers stroked
-  by band with numbered seat tiles and a dashed underground layer; no printed tile
-  art, no guards/objects/tokens. Built-in scenarios preview their `layout`,
-  designed maps their saved `tiles`.
+- **The map preview draws the REAL printed tile graphics (2026-07-25)** — no
+  longer an outline-only sketch. `MapShapePreview` renders one `<image>` per tile
+  in a background layer (before every outline, so a neighbour's art box can never
+  cover an already-drawn ring) using the board's OWN art geometry: a
+  `3·hexWidth × 5·hexSize` flower bounding box, `preserveAspectRatio="none"`, and
+  `rotate(60°·rotation)` on face-up scans. The band-coloured `flowerOutline` ring,
+  the seat numbers (now with a dark casing so they read over art) and the dashed
+  underground stroke all stay on top; the band FILL drops to 0.10/0.14 opacity
+  where art exists (the board's own `.hexCell.withArt` lens reading) and keeps its
+  full 0.16/0.28 where it does not. `.mapShapePreviewSvg` grew 170px → 230px.
+  Which graphic a tile shows comes from ONE shared resolver,
+  `planTileArt` / `planTileArtRotation` in `map-shape-preview.tsx` — which the map
+  DESIGNER board now also calls (its inline copy is gone), together with
+  `planBackLabel` / `planBackArt` / `SEA_BAND_NUMERAL` / `SUB_BAND_NUMERAL`, all
+  MOVED there from `map-designer.tsx` (which re-exports the two `planBack*` for its
+  existing call sites) — so preview and designer can never disagree. Rules: a seat
+  tile and every face-DOWN slot wear the band-correct printed BACK
+  (`tileBackImage`, so a sea/underground Ⅵ–Ⅶ never wears the Ⅳ–Ⅴ back); a face-UP
+  slot shows its pinned tile's own face scan (a face-up "one of these tiles" slot
+  shows its FIRST candidate); a plain random face-up slot has no art and falls back
+  to the band colour alone. A BUILT-IN scenario sheet pins only the shape (the tile
+  in each slot is drawn at setup, and a seat's home tile depends on the faction), so
+  every tile of a scenario preview wears its band's BACK — literally the physical
+  board as it is laid out. STILL not drawn: guards, objects, tokens, field symbols,
+  the Ⅵ–Ⅶ designations. Sea / underground slots in a built-in `layout` carry no
+  band, so they take the Ⅳ–Ⅴ back. Pinned in `map-shape-preview.test.tsx`
+  (per-band backs, the shared resolver's four rules, the image geometry, the
+  art-before-outline layer order, the art-less fill CONTROL, rotation + its
+  printed-back CONTROL) and `map-pick-modal.test.tsx`; verified in a real browser
+  (all back webps 200 OK, 7/18-tile previews, per-band hrefs).
+- **BUG FIXED — the difficulty bar's gold ring could stay on the OLD piece**
+  (2026-07-25, reproduced on the deployed app). `.difficultyChessBtn` transitioned
+  `border-color` + `background` and its `img` transitioned `filter` — the three
+  properties carrying the whole "this is your difficulty" signal. When those
+  transitions do not advance, the class had correctly moved (verified: `.selected`,
+  `aria-pressed`, and the UNtransitioned `color` / `box-shadow` were all on the new
+  button) while the gold ring, lighter fill and un-greyed chess piece stayed frozen
+  on the previous one — so picking a map with difficulty Normal still READ as
+  Impossible. FIX: the bar transitions `transform` ONLY; the picked state is
+  expressed purely by untransitioned properties, plus a solid `outline` ring that
+  cannot lag. Do NOT re-add a transition to `border-color` / `background` / `filter`
+  here. jsdom cannot compute CSS, so the visible half was verified in a real
+  browser (transitionProperty === "transform"; the ring moves with the class in
+  the same frame).
+- **The difficulty bar marks the SELECTED map's own difficulty** with a blue
+  "map" tag (`.difficultyChessBtn.mapSet`, `DifficultyChessBar`'s `mapDifficulty`
+  prop) so clicking through the list visibly moves something even before "Play
+  this map" commits it — the gold `.selected` ring keeps following the LIVE lobby
+  value only, and the two never land on one button. Pinned in
+  `map-pick-modal.test.tsx` with a no-authored-difficulty CONTROL.
+- **The difficulty bar says whether the SELECTED map brings a difficulty**
+  (`.mapPickDifficultyNote`, 2026-07-25). The bar edits the LOBBY difficulty and
+  deliberately does not move when you click through the list: only a map whose
+  AUTHOR set one in the designer carries a difficulty, and it is applied by "Play
+  this map", never by previewing. The note now says which of the two the selected
+  map is ("X sets Hard — Play this map applies it, and you can still change it
+  afterwards" / "X brings no difficulty of its own, so this stays on your pick"),
+  so an unchanged bar reads as an answer instead of a dead control. Presentation
+  only — it reads `record.preset.difficulty`, the seed-at-pick machinery in the
+  "Map settings defaults" section is unchanged. HONEST LIMIT: all four built-in
+  scenario sheets ship IDENTICAL setup values (same `startingResources` /
+  `startingProduction` / `startingUnits` / `startingBuildings` /
+  `farTiles.perPlayer`, and `defaultGameSetupOptions` hardcodes
+  `difficulty: "impossible"`), so picking a built-in sheet has nothing of its own
+  to apply — per-map difficulty exists ONLY on designed maps. Pinned in
+  `map-pick-modal.test.tsx` ("says whether the SELECTED map brings a difficulty of
+  its own", with the built-in sheet as the CONTROL).
 - **The Map window's difficulty bar is the ONLY chess-piece surface**
   (`DIFFICULTY_CHESS_ICONS`, Pawn=Easy / Knight=Normal / Rook=Hard /
   King=Impossible — gold silhouettes from `scripts/build-difficulty-chess-icons.mjs`,

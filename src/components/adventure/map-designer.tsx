@@ -14,7 +14,6 @@ import {
   teleportGateImage,
   REWARD_GLYPH_ICONS,
   TILE_BACK_IMAGES,
-  tileBackImage,
   subterraneanGateTokenImage
 } from "@/data/assets/homm-assets";
 import { CREATURE_BANK_IDS, CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
@@ -82,7 +81,15 @@ import {
 } from "@/engine";
 import { GuardSpecEditor } from "./guard-spec-editor";
 import { FieldRewardEditor } from "./field-reward-editor";
-import { flowerOutline, GROUP_COLORS } from "./map-shape-preview";
+import {
+  flowerOutline,
+  GROUP_COLORS,
+  planBackArt,
+  planTileArt,
+  planTileArtRotation,
+  SEA_BAND_NUMERAL,
+  SUB_BAND_NUMERAL
+} from "./map-shape-preview";
 import {
   fieldOverrideGlyph,
   fieldOverrideImage,
@@ -173,48 +180,11 @@ export const TILE_GROUP_LABELS: Record<DesignGroup, string> = {
   subterranean: "Underground"
 };
 
-/** The printed numerals for a sea tile's guard band. */
-const SEA_BAND_NUMERAL: Record<SeaBand, string> = { "iv-v": "Ⅳ–Ⅴ", "vi-vii": "Ⅵ–Ⅶ" };
-
-/** The printed numerals for an underground tile's guard band. */
-const SUB_BAND_NUMERAL: Record<SubBand, string> = { "iv-v": "Ⅳ–Ⅴ", "vi-vii": "Ⅵ–Ⅶ" };
-
-/**
- * Printed roman band on the physical tile BACK (matches `tile.backLabel` in play).
- * Sea / underground MUST pass their band so Ⅵ–Ⅶ never wears the Ⅳ–Ⅴ back art.
- */
-export function planBackLabel(plan: {
-  group: DesignGroup;
-  seaBand?: SeaBand;
-  subBand?: SubBand;
-}): string {
-  if (plan.group === "sea") {
-    return SEA_BAND_NUMERAL[plan.seaBand ?? "iv-v"];
-  }
-  if (plan.group === "subterranean") {
-    return SUB_BAND_NUMERAL[plan.subBand ?? "iv-v"];
-  }
-  switch (plan.group) {
-    case "starting":
-      return "Ⅰ";
-    case "far":
-      return "Ⅱ–Ⅲ";
-    case "center":
-      return "Ⅵ–Ⅶ";
-    case "near":
-    default:
-      return "Ⅳ–Ⅴ";
-  }
-}
-
-/** Correct printed back art for a designed plan (band-aware for sea / underground). */
-export function planBackArt(plan: {
-  group: DesignGroup;
-  seaBand?: SeaBand;
-  subBand?: SubBand;
-}): string {
-  return tileBackImage(plan.group, planBackLabel(plan));
-}
+// The band numerals, the printed BACK art resolver and the plan→art resolver all
+// live in map-shape-preview.tsx (ONE source shared with the lobby's read-only map
+// preview, so the designer board and the preview can never disagree). Re-exported
+// here because they read as designer helpers at every call site.
+export { planBackArt, planBackLabel } from "./map-shape-preview";
 
 /** Label for a placed/dragged plan — sea/underground read their band, every other group its numeral. */
 function planGroupLabel(plan: { group: DesignGroup; seaBand?: SeaBand; subBand?: SubBand }): string {
@@ -3566,19 +3536,13 @@ export function MapDesigner({
     const faceDownOneOf = plan.faceDown && !plan.tileDefId && (plan.oneOfTileDefIds?.length ?? 0) > 0;
     const secretPin = plan.faceDown && Boolean(plan.tileDefId || planSecretSet.length > 0 || faceDownOneOf);
     const featureSecret = plan.faceDown && planSecretSet.length > 0 && !plan.tileDefId;
-    // A face-up "one of these tiles" slot has no concrete tile yet — show the
-    // FIRST candidate's art as a representative (a 🎲 badge below marks it random).
-    // A face-DOWN one-of shows the printed BACK like every other secret.
-    const oneOfList = !plan.faceDown && !plan.tileDefId ? plan.oneOfTileDefIds ?? [] : [];
-    const art = isStart
-      ? TILE_BACK_IMAGES.starting
-      : plan.faceDown
-        ? planBackArt(plan)
-        : plan.tileDefId
-          ? allTileDefinitions[plan.tileDefId]?.assets?.tileImage
-          : oneOfList.length > 0
-            ? allTileDefinitions[oneOfList[0]]?.assets?.tileImage
-            : undefined;
+    // Shared with the lobby's read-only preview so both boards resolve a plan's
+    // printed graphic identically: a seat / face-DOWN slot shows the band-correct
+    // printed BACK, a face-UP slot its own face scan (a face-up "one of these
+    // tiles" slot shows the FIRST candidate as a representative — a 🎲 badge below
+    // marks it random).
+    const art = planTileArt(plan);
+    const artRotation = planTileArtRotation(plan);
     const width = 3 * hexWidth;
     const height = 5 * size;
 
@@ -3593,9 +3557,7 @@ export function MapDesigner({
           // Face-down backs are orientation-independent (printed numeral sits
           // upright on the physical back); only face-up scans rotate.
           transform={
-            !isStart && !plan.faceDown
-              ? `rotate(${(plan.rotation ?? 0) * 60} ${centerPixel.x} ${centerPixel.y})`
-              : undefined
+            artRotation ? `rotate(${artRotation * 60} ${centerPixel.x} ${centerPixel.y})` : undefined
           }
           width={width}
           x={centerPixel.x - width / 2}
