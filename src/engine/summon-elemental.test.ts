@@ -146,22 +146,49 @@ describe("elemental damage — attack maths", () => {
     expect(firstAttackValue(attack(state))).toBe(7); // 3 + 4
   });
 
-  it("an elemental unit's attack is NOT raised by an attack card", () => {
+  // Official rule: elemental damage ONLY ignores Defense — an attack card or an
+  // Attack token raises it exactly like on any other unit. The old "unbuffable"
+  // reading lives on behind the `elemental-damage-no-die` house rule (below).
+  it("an elemental unit's attack IS raised by an attack card (official rule)", () => {
     const state = duel((draft) => {
       draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
       attackBonus(draft, "unit_p1_griffins", 4);
     });
-    expect(firstAttackValue(attack(state))).toBe(3); // buff ignored
+    expect(firstAttackValue(attack(state))).toBe(7); // 3 + 4
   });
 
-  it("an elemental unit's attack is NOT raised by an Attack token (Ogres)", () => {
+  it("an elemental unit's attack IS raised by an Attack token (Ogres) (official rule)", () => {
     const state = duel((draft) => {
       draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
       draft.combat!.units.unit_p1_griffins.tokens = [
         { id: "tk", kind: "attack", amount: 2, sourceName: "Ogres" }
       ];
     });
-    expect(firstAttackValue(attack(state))).toBe(3); // token ignored
+    expect(firstAttackValue(attack(state))).toBe(5); // 3 + 2
+  });
+
+  it("HOUSE RULE ON: the attack card and the Attack token are both ignored", () => {
+    const withRule = (configure: (draft: GameState) => void) =>
+      duel((draft) => {
+        draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
+        draft.adventure = {
+          houseRules: { "elemental-damage-no-die": true }
+        } as unknown as GameState["adventure"];
+        configure(draft);
+      });
+
+    expect(firstAttackValue(attack(withRule((draft) => attackBonus(draft, "unit_p1_griffins", 4))))).toBe(3);
+    expect(
+      firstAttackValue(
+        attack(
+          withRule((draft) => {
+            draft.combat!.units.unit_p1_griffins.tokens = [
+              { id: "tk", kind: "attack", amount: 2, sourceName: "Ogres" }
+            ];
+          })
+        )
+      )
+    ).toBe(3);
   });
 
   it("an elemental unit's attack IS lowered by a Sorceress' Weakness token", () => {
@@ -174,13 +201,27 @@ describe("elemental damage — attack maths", () => {
     expect(firstAttackValue(attack(state))).toBe(1); // 3 - 2
   });
 
-  it("blocks the buff but keeps the debuff when both are present", () => {
+  it("buff and debuff both apply when both are present (official rule)", () => {
     const state = duel((draft) => {
       draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
       attackBonus(draft, "unit_p1_griffins", 5);
       draft.combat!.units.unit_p1_griffins.tokens = [
         { id: "tk", kind: "weakness", amount: -2, sourceName: "Sorceresses" }
       ];
+    });
+    expect(firstAttackValue(attack(state))).toBe(6); // 3 + 5 - 2
+  });
+
+  it("HOUSE RULE ON: blocks the buff but keeps the debuff when both are present", () => {
+    const state = duel((draft) => {
+      draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
+      attackBonus(draft, "unit_p1_griffins", 5);
+      draft.combat!.units.unit_p1_griffins.tokens = [
+        { id: "tk", kind: "weakness", amount: -2, sourceName: "Sorceresses" }
+      ];
+      draft.adventure = {
+        houseRules: { "elemental-damage-no-die": true }
+      } as unknown as GameState["adventure"];
     });
     expect(firstAttackValue(attack(state))).toBe(1); // 3 + 0(buff) - 2(weakness)
   });
@@ -207,11 +248,26 @@ describe("elemental damage — attack maths", () => {
     expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(3);
   });
 
-  it("an elemental unit never rolls the Attack die — damage is just its Attack", () => {
+  it("an elemental unit DOES roll the Attack die (official rule)", () => {
     const state = duel((draft) => {
       draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
-      // A +1 face is queued; a normal unit would add it, an elemental ignores it.
       draft.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+    });
+    const event = firstAttack(attack(state));
+    expect(event.noDie ?? false).toBe(false);
+    expect(event.roll).toBe(1);
+    expect(event.attackValue).toBe(4); // 3 + the rolled +1
+    expect(event.damage).toBe(4);
+  });
+
+  it("HOUSE RULE ON: an elemental unit never rolls the Attack die — damage is just its Attack", () => {
+    const state = duel((draft) => {
+      draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
+      // A +1 face is queued; with the house rule on the die is skipped entirely.
+      draft.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+      draft.adventure = {
+        houseRules: { "elemental-damage-no-die": true }
+      } as unknown as GameState["adventure"];
     });
     const event = firstAttack(attack(state));
     expect(event.noDie).toBe(true);
@@ -583,27 +639,35 @@ describe("Moandor's Liches VI specialty", () => {
     expect(state.activeEffects.some((effect) => effect.modifiers.some((m) => m.type === "ELEMENTAL_DAMAGE"))).toBe(true);
   });
 
-  it("once elemental, the Liches' attack can no longer be buffed", () => {
-    let state = moandorCombat();
-    const action = moandorOption(state, 0)[0].action;
-    state = passAllReactions(applyOk(state, action));
+  it("the granted elemental damage follows the same rule as a printed one (buffable officially, locked by the house rule)", () => {
+    /** Grants the Liches elemental damage, then attacks with a +4 buff up. */
+    const withGrant = (houseRuleOn: boolean): number => {
+      let state = moandorCombat();
+      if (houseRuleOn) {
+        state.adventure = {
+          houseRules: { "elemental-damage-no-die": true }
+        } as unknown as GameState["adventure"];
+      }
+      const action = moandorOption(state, 0)[0].action;
+      state = passAllReactions(applyOk(state, action));
 
-    // Tee up a clean attack with a +4 attack buff that should be ignored.
-    const defender = state.combat!.units.unit_p2_skeletons;
-    defender.position = 13;
-    defender.defense = 0;
-    defender.maxHealth = 50;
-    defender.abilities = [];
-    state.combat!.units.unit_p1_marksmen.position = 0;
-    state.combat!.units.unit_p1_crusaders.position = 3;
-    state.combat!.units.unit_p2_vampires.position = 19;
-    state.combat!.units.unit_p2_dread_knights.position = 16;
-    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
-    state.combat!.dice.rollCount = 0;
-    attackBonus(state, "unit_p1_griffins", 4);
+      const defender = state.combat!.units.unit_p2_skeletons;
+      defender.position = 13;
+      defender.defense = 0;
+      defender.maxHealth = 50;
+      defender.abilities = [];
+      state.combat!.units.unit_p1_marksmen.position = 0;
+      state.combat!.units.unit_p1_crusaders.position = 3;
+      state.combat!.units.unit_p2_vampires.position = 19;
+      state.combat!.units.unit_p2_dread_knights.position = 16;
+      state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+      state.combat!.dice.rollCount = 0;
+      attackBonus(state, "unit_p1_griffins", 4);
+      return firstAttackValue(attack(state));
+    };
 
-    const resolved = attack(state);
-    expect(firstAttackValue(resolved)).toBe(3); // 3 printed, +4 buff ignored
+    expect(withGrant(false)).toBe(7); // official: 3 printed + 4 buff
+    expect(withGrant(true)).toBe(3); // house rule: buff ignored
   });
 
   it("the alternative option grants a plain +2 attack", () => {

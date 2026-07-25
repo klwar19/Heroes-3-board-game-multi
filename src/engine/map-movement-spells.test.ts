@@ -20,6 +20,7 @@ import {
   type GameAction,
   type GameState
 } from "./index";
+import { cardLibrary } from "@/data/cards/library";
 
 // ---------------------------------------------------------------------------
 // Test harness
@@ -357,6 +358,121 @@ describe("Angel Wings artifact", () => {
     state = applyOk(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [blocked, beyond] });
     expect(heroP1(state).spaceId).toBe(beyond);
     expect(heroP1(state).movementPoints).toBe(2); // 4 - 2 steps
+  });
+
+  // The printed relic: "Chosen Hero gains +1 movement and can move through any
+  // fields WITHOUT RESOLVING THEM. The last visited field must be resolved
+  // normally." Before this, the card granted only the blocked-field walk-through,
+  // so a guarded field mid-path still stopped the hero and started the fight.
+  it("walks OVER a guarded field without fighting, and still fights when the walk ENDS there", () => {
+    const base = withHand(makeGame(), ["artifact.angel_wings", "artifact.angel_wings"]);
+    const footprint = heroTileFootprint(base);
+    const guarded = footprint[1];
+    const beyond = footprint[2];
+    setField(base, guarded, "empty_field");
+    setField(base, beyond, "empty_field");
+    const guardedField = base.adventure!.fields[guarded]!;
+    guardedField.difficulty = 1; // live neutral guards, nobody's flag
+
+    // CONTROL: with no Angel Wings played, the guarded field is a hard stop — a
+    // path THROUGH it is rejected outright.
+    expect(classifyHeroStep(base, heroP1(base), guarded)).toBe("stop");
+    expectError(base, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [guarded, beyond] });
+
+    let state = applyOk(base, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "artifact.angel_wings",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+    expect(hasModifier(state, "p1", "HERO_PASS_ANY_FIELD")).toBe(true);
+    expect(getHeroMovementCapabilities(state, heroP1(state)).passAnyField).toBe(true);
+    expect(classifyHeroStep(state, heroP1(state), guarded, getHeroMovementCapabilities(state, heroP1(state)))).toBe(
+      "encounter"
+    );
+
+    // Walk through the guarded field to the far side: no combat opens, the
+    // guards are untouched, and the hero really is on the far hex.
+    state = applyOk(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [guarded, beyond] });
+    expect(state.combat, "no fight for a field merely flown over").toBeFalsy();
+    expect(heroP1(state).spaceId).toBe(beyond);
+    expect(state.adventure!.fields[guarded]!.difficulty).toBe(1); // guards still there
+
+    // "The last visited field must be resolved normally": ENDING on the guarded
+    // field starts the fight exactly as usual.
+    const ending = applyOk(state, { type: "MOVE_HERO_PATH", playerId: "p1", heroId: "hero_p1", path: [guarded] });
+    expect(ending.combat, "ending on the guarded field resolves it").toBeTruthy();
+  });
+
+  it("walks OVER an unvisited location and an enemy-flagged mine without resolving them", () => {
+    let state = withHand(makeGame(), ["artifact.angel_wings"]);
+    const footprint = heroTileFootprint(state);
+    const treasure = footprint[1];
+    const mine = footprint[2];
+    const beyond = footprint[3];
+    setField(state, treasure, "treasure_symbol");
+    setField(state, mine, "mine");
+    setField(state, beyond, "empty_field");
+    state.adventure!.fields[mine]!.flagOwnerId = "p2";
+    state.adventure!.fields[mine]!.resource = "gold";
+    state.adventure!.fields[mine]!.amount = 1;
+    heroP1(state).movementPoints = 5;
+
+    // CONTROL: both are ordinary stops without the relic.
+    expect(classifyHeroStep(state, heroP1(state), treasure)).toBe("stop");
+    expect(classifyHeroStep(state, heroP1(state), mine)).toBe("stop");
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "artifact.angel_wings",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+    const goldBefore = state.players.p1.resources.gold;
+    state = applyOk(state, {
+      type: "MOVE_HERO_PATH",
+      playerId: "p1",
+      heroId: "hero_p1",
+      path: [treasure, mine, beyond]
+    });
+    expect(heroP1(state).spaceId).toBe(beyond);
+    // Nothing along the way was resolved: the chest is unused, the enemy keeps
+    // its flag, and no visit/pending choice was opened.
+    expect(state.adventure!.fields[treasure]!.blackCube ?? false).toBe(false);
+    expect(state.adventure!.fields[mine]!.flagOwnerId).toBe("p2");
+    expect(state.adventure!.pendingVisit).toBeFalsy();
+    expect(state.players.p1.resources.gold).toBe(goldBefore);
+  });
+
+  it("CONTROL: Fly and Dessa's Logistics VI print blocked fields only — they do NOT pass over guards", () => {
+    // Data half: only Angel Wings carries the pass-any-field flag. (A future card
+    // gaining it must be a deliberate edit, not a copy-paste.)
+    const flagged = (cardId: string): boolean => {
+      const effect = cardLibrary[cardId]?.effect;
+      const options = effect?.type === "CHOOSE_ONE" ? effect.options : [];
+      return options.some(
+        (option) => option.effect?.type === "GAIN_HERO_MOVEMENT" && option.effect.passAnyFieldThisTurn === true
+      );
+    };
+    expect(flagged("artifact.angel_wings")).toBe(true);
+    expect(flagged("spell.fly")).toBe(false);
+    expect(flagged("specialty.dessa.6")).toBe(false);
+
+    // Behaviour half: the blocked-field walk-through ALONE never turns a guarded
+    // field into a walk-over — passAnyField is what does, and only Angel Wings
+    // grants it.
+    const state = makeGame();
+    const guarded = heroTileFootprint(state)[1];
+    setField(state, guarded, "empty_field");
+    state.adventure!.fields[guarded]!.difficulty = 1;
+    expect(classifyHeroStep(state, heroP1(state), guarded, { moveThrough: true, waterWalk: false })).toBe("stop");
+    expect(
+      classifyHeroStep(state, heroP1(state), guarded, { moveThrough: true, waterWalk: false, passAnyField: true })
+    ).toBe("encounter");
   });
 });
 

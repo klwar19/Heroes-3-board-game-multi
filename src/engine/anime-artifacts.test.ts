@@ -489,7 +489,13 @@ describe("Pháp Bảo tier gate", () => {
       seed: "anime-art-tier",
       difficulty: "normal",
       rollFirstPlayer: false,
-      anime: { enabled: true, xianxiaArtifacts: true }
+      anime: { enabled: true, xianxiaArtifacts: true },
+      // The level/source unlocks this case is about are the opt-in
+      // `deck-access-hero-level` house rule; officially the hero's TILE decides
+      // (pinned in official-rules-house-rules.test.ts). The point here is that
+      // ONE gate governs the anime relic and a core relic alike, so it is checked
+      // in the mode where a level unlock exists at all.
+      houseRules: { "deck-access-hero-level": true }
     });
     // The anime relic and a core relic sit in the SAME relic deck, so one gate
     // governs both.

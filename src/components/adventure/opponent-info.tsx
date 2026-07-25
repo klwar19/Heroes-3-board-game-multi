@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Users, X } from "lucide-react";
+import { Crown, Footprints, Hand, Layers, Trash2, Users, X } from "lucide-react";
 import type { GameState, PlayerId } from "@/engine/state";
 import { getSeatIdentity } from "@/engine/player-identity";
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
+import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions } from "@/data/factions/core";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
-import { SeatNameplate } from "@/components/table/seats";
+import { CardFrame, SeatNameplate } from "@/components/table/seats";
 import { HeroBoard } from "@/components/hero-board";
 import { ArmyPanel } from "@/components/adventure/screen";
 
@@ -53,6 +54,16 @@ function OpponentInfoModal({
   );
   const town = Object.values(state.towns).find((candidate) => candidate.controllerId === playerId);
   const buildings = town?.buildings ?? [];
+  // Public counts only. In a redacted view an opponent's `hand`/`deck` are
+  // same-length placeholder ids (see redactStateForSeat), so their LENGTH is the
+  // real count while the cards themselves stay hidden — exactly what the physical
+  // game shows across the table.
+  const handCount = player?.hand.length ?? 0;
+  const deckCount = player?.deck.length ?? 0;
+  // Crowns left this combat round, with the seat's total — the same arithmetic the
+  // combat command dock uses for the viewer's own crowns.
+  const crownsTotal = (player?.limits.expertUses ?? 0) + (player?.combatStats.expertUseBonusThisRound ?? 0);
+  const crownsLeft = Math.max(0, crownsTotal - (player?.combatStats.expertUsesSpentThisRound ?? 0));
 
   return (
     <div className="modalBackdrop opponentInfoBackdrop" role="dialog" aria-modal="true" onClick={onClose}>
@@ -82,6 +93,60 @@ function OpponentInfoModal({
                 </span>
               ))}
             </div>
+          </section>
+        ) : null}
+
+        {player ? (
+          <section className="opponentInfoSection" aria-label="Cards and crowns">
+            <h4>Cards &amp; crowns</h4>
+            <div className="opponentCardCounts">
+              <span className="opponentCountChip" title="Cards in hand (the cards themselves stay hidden)">
+                <Hand aria-hidden="true" size={12} /> Hand <b>{handCount}</b>
+              </span>
+              <span className="opponentCountChip" title="Cards left in their draw deck (order hidden from everyone)">
+                <Layers aria-hidden="true" size={12} /> Deck <b>{deckCount}</b>
+              </span>
+              <span className="opponentCountChip" title="Cards in their discard pile — public, listed below">
+                <Trash2 aria-hidden="true" size={12} /> Discard <b>{player.discard.length}</b>
+              </span>
+              <span
+                className={`opponentCountChip${crownsLeft === 0 ? " spent" : ""}`}
+                title={`Expert-effect crowns left this combat round: ${crownsLeft} of ${crownsTotal}`}
+              >
+                <Crown aria-hidden="true" size={12} /> Crowns{" "}
+                <b>
+                  {crownsLeft}/{crownsTotal}
+                </b>
+              </span>
+              {hero ? (
+                <span className="opponentCountChip" title="Movement points their main hero has left this turn">
+                  <Footprints aria-hidden="true" size={12} /> Moves <b>{hero.movementPoints}</b>
+                </span>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {player ? (
+          <section className="opponentInfoSection" aria-label="Discard pile">
+            <h4>Discard pile ({player.discard.length})</h4>
+            {player.discard.length > 0 ? (
+              // A discard pile is PUBLIC in this game (player-view never masks it),
+              // so the whole pile is browsable — newest (the face-up top) first.
+              <div className="opponentDiscardGrid">
+                {[...player.discard].reverse().map((cardId, index) => (
+                  <CardFrame
+                    cardId={cardId}
+                    className={`opponentDiscardCard${index === 0 ? " top" : ""}`}
+                    empowered={player.empoweredAbilities?.includes(cardId)}
+                    key={`${cardId}-${index}`}
+                    title={`${cardLibrary[cardId]?.name ?? cardId}${index === 0 ? " (face-up top)" : ""}`}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="opponentInfoEmpty">Their discard pile is empty.</p>
+            )}
           </section>
         ) : null}
 

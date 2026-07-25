@@ -13,6 +13,7 @@ import {
 } from "./adventure";
 import {
   applyAction,
+  canCrossEdge,
   canHeroReachPlacedTile,
   canHeroReachPlacementCenter,
   createAdventureGameState,
@@ -40,6 +41,23 @@ function makeGame(): GameState {
   // The lobby defaults to "impossible"; these fixtures pin "normal" so the
   // guard armies stay small and deterministic.
   return createAdventureGameState({ startingBuildings: [], seed: "test-seed", difficulty: "normal", rollFirstPlayer: false, events: false });
+}
+
+/**
+ * Same fixture with the OPT-IN `discovery-border-gate` house rule ON: yellow
+ * borders then also block TILE DISCOVERY / placement, the way the engine used to
+ * behave. Officially (rule OFF, the default) being adjacent is the whole
+ * requirement — pinned by "official: adjacency alone …" below.
+ */
+function makeBorderGateGame(): GameState {
+  return createAdventureGameState({
+    startingBuildings: [],
+    seed: "test-seed",
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    events: false,
+    houseRules: { "discovery-border-gate": true }
+  });
 }
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -825,8 +843,38 @@ describe("tile discovery and placement", () => {
     expect(next.adventure!.fields["h:9:4"]).toBeTruthy();
   });
 
-  it("refuses ordinary discovery across a sealed yellow border (edge/border gate)", () => {
+  it("official: adjacency alone lets a hero discover across a sealed yellow border", () => {
+    // Official rules "only require your hero to be adjacent to the discovered
+    // tile … There is no mention of blockers or yellow borders." (8,3) sits behind
+    // a printed yellow arc facing the face-down hub at (9,4) — the very vantage
+    // the house-rule case below refuses — and here the reveal simply works.
     const state = refreshP1(makeGame());
+    state.heroes.hero_p1.spaceId = "h:8:3";
+    state.heroes.hero_p1.movementPoints = 3;
+    const tile = Object.values(state.adventure!.tiles).find(
+      (candidate) => candidate.centerRow === 9 && candidate.centerCol === 4
+    )!;
+    expect(tile.faceDown).toBe(true);
+
+    const offered = getLegalActions(state, "p1").some(
+      (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id
+    );
+    expect(offered).toBe(true);
+
+    const next = apply(state, {
+      type: "DISCOVER_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      tileInstanceId: tile.id
+    });
+    expect(next.adventure!.tiles[tile.id].faceDown).toBe(false);
+    expect(next.heroes.hero_p1.movementPoints).toBe(2);
+    // Movement is UNAFFECTED: the border still seals the step across it.
+    expect(canCrossEdge(next, "h:8:3", "h:9:4")).toBe(false);
+  });
+
+  it("HOUSE RULE ON: refuses ordinary discovery across a sealed yellow border (edge/border gate)", () => {
+    const state = refreshP1(makeBorderGateGame());
     // (8,3) is S3 slot 2 — geometrically adjacent to the same face-down hub at
     // (9,4), but its outer arc toward the hub is a printed yellow line. A hero
     // standing behind that border cannot reveal across it on its own turn; only
@@ -858,14 +906,14 @@ describe("tile discovery and placement", () => {
     expect(result.state.adventure!.tiles[tile!.id].faceDown).toBe(true);
   });
 
-  it("lets a hero standing on a (border-free) Creature Bank discover across that edge", () => {
+  it("HOUSE RULE ON: lets a hero standing on a (border-free) Creature Bank discover across that edge", () => {
     // Same vantage as the sealed-border test: h:8:3 is S3 slot 2, whose outer arc
     // toward the face-down hub at (9,4) is a printed yellow line — so an ordinary
     // Location there cannot discover across it (that's the CONTROL above). But a
     // Creature Bank draws NO border ("reads as fully open"), so a hero standing on
     // one faces an OPEN edge and MAY flip the adjacent Tile. Carving a bank into
     // that very field is the only change, isolating the bank as the cause.
-    const state = refreshP1(makeGame());
+    const state = refreshP1(makeBorderGateGame());
     state.heroes.hero_p1.spaceId = "h:8:3";
     state.heroes.hero_p1.movementPoints = 3;
     const tile = Object.values(state.adventure!.tiles).find(
@@ -1021,8 +1069,8 @@ describe("tile discovery and placement", () => {
     expect(canHeroReachPlacedTile(state, state.heroes.hero_p1, tileDefId, { row: 50, col: 50 }, 0)).toBe(false);
   });
 
-  it("rejects far-tile placement at a position sealed off from the hero by a yellow border (regression)", () => {
-    const state = refreshP1(makeGame());
+  it("HOUSE RULE ON: rejects far-tile placement at a position sealed off from the hero by a yellow border (regression)", () => {
+    const state = refreshP1(makeBorderGateGame());
     // h:8:3 is S3 slot 2 — its outer arc toward the hub at (9,4) is a printed
     // yellow border. No rotation of any tile placed at (9,4) is reachable from
     // here: the BFS can traverse within S3 to its two open slots (7,2) and (8,1)

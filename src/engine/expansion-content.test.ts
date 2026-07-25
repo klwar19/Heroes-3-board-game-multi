@@ -720,7 +720,11 @@ describe("rulebook conformance fixes", () => {
   // the hero to be at the tile's edge nor at an open (unsealed) border — that
   // is the whole point of the card. The hero's CURRENT tile is the anchor.
   it("Speculum reveals an adjacent face-down tile across a sealed border (no edge/border gate)", () => {
-    const state = createAdventureGameState({ seed: "speculum", difficulty: "normal", rollFirstPlayer: false });
+    // The border CONTRAST below (ordinary discovery refused at a sealed field) is
+    // the opt-in `discovery-border-gate` house rule since 2026-07-25 — officially
+    // adjacency alone discovers — so this case runs with it ON to keep proving
+    // that Speculum is a SEPARATE, border-ignoring path.
+    const state = createAdventureGameState({ seed: "speculum", difficulty: "normal", rollFirstPlayer: false, houseRules: { "discovery-border-gate": true } });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure;
     if (!adventure) {

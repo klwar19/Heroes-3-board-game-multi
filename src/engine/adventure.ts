@@ -1239,6 +1239,13 @@ export type HeroMovementCapabilities = {
    */
   passEncounters?: boolean;
   /**
+   * Angel Wings: may walk through ANY field without resolving it — on top of the
+   * guards / enemy Heroes `passEncounters` covers, also unvisited locations,
+   * revisitables and enemy-held flags. "The last visited field must be resolved
+   * normally", so only the field the walk ENDS on triggers. Defaults off.
+   */
+  passAnyField?: boolean;
+  /**
    * Pathfinding: may cross yellow (sealed) borders — printed internal border
    * lines and sealed outer tile edges alike. Defaults off.
    */
@@ -1262,6 +1269,7 @@ export function getHeroMovementCapabilities(state: GameState, hero: HeroState): 
   let moveThrough = false;
   let waterWalk = false;
   let passEncounters = false;
+  let passAnyField = false;
   let crossSealedBorders = false;
   let crossLayers = false;
   for (const effect of state.activeEffects) {
@@ -1271,6 +1279,11 @@ export function getHeroMovementCapabilities(state: GameState, hero: HeroState): 
     for (const modifier of effect.modifiers) {
       if (modifier.type === "HERO_MOVE_THROUGH") {
         moveThrough = true;
+      } else if (modifier.type === "HERO_PASS_ANY_FIELD") {
+        // Angel Wings: walk over EVERY field without resolving it. A strict
+        // superset of Pathfinding's pass-through, so it implies passEncounters.
+        passAnyField = true;
+        passEncounters = true;
       } else if (modifier.type === "HERO_WATER_WALK") {
         waterWalk = true;
       } else if (modifier.type === "HERO_PATHFINDING") {
@@ -1300,8 +1313,8 @@ export function getHeroMovementCapabilities(state: GameState, hero: HeroState): 
       }
     }
   }
-  return moveThrough || waterWalk || passEncounters || crossSealedBorders || crossLayers
-    ? { moveThrough, waterWalk, passEncounters, crossSealedBorders, crossLayers }
+  return moveThrough || waterWalk || passEncounters || passAnyField || crossSealedBorders || crossLayers
+    ? { moveThrough, waterWalk, passEncounters, passAnyField, crossSealedBorders, crossLayers }
     : NO_MOVEMENT_CAPABILITIES;
 }
 
@@ -1791,7 +1804,16 @@ export function heroFieldSealedForDiscovery(adventure: AdventureState, field: Ma
 
 /**
  * Whether a hero on `heroField` (at `heroSpaceId`) may DISCOVER the adjacent
- * face-down `tile` across an OPEN border. Two rules combine:
+ * face-down `tile`.
+ *
+ * OFFICIAL rule (house rule `discovery-border-gate` OFF — the default): being
+ * ADJACENT is the whole requirement, so this always returns true. The printed
+ * rules require only that the hero stands next to the tile (already checked by
+ * the caller); they mention no blockers or yellow borders for discovery. Borders
+ * still block MOVEMENT — only the discovery gate is lifted.
+ *
+ * With the house rule ON, the older BINH reading applies: the hero must also
+ * touch the tile across an OPEN border. Two sub-rules combine:
  *  - the WHOLE-ARC rule ({@link heroFieldSealedForDiscovery}: a printed arc or a
  *    designed `extraBorders` arc seals the hero's outward edges — but a
  *    border-free Creature Bank the hero stands on is open), AND
@@ -1809,11 +1831,19 @@ export function heroFieldSealedForDiscovery(adventure: AdventureState, field: Ma
  * and HANDLER (`revealTileForHero`) so the two can never drift.
  */
 export function heroCanDiscoverTileAcrossBorders(
-  adventure: AdventureState,
+  state: Pick<GameState, "ruleset" | "adventure">,
   heroSpaceId: MapSpaceId,
   heroField: MapFieldState,
   tile: MapTileState
 ): boolean {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return false;
+  }
+  // Official rule: adjacency alone (checked by the caller) is the requirement.
+  if (!houseRuleEnabled(state, "discovery-border-gate")) {
+    return true;
+  }
   if (heroFieldSealedForDiscovery(adventure, heroField)) {
     return false;
   }
@@ -1903,10 +1933,10 @@ export function isFieldGuarded(field: MapFieldState): boolean {
  *    valid as both a stop and a pass-through.
  *  - "stop": entering triggers something (guards, enemy heroes, unvisited
  *    locations, flags to steal) so the path must end here.
- *  - "encounter": Pathfinding over a Neutral-Unit / enemy-Hero field — the hero
- *    may walk THROUGH it without resolving (no Combat) or END there (Combat
- *    begins). Like "open" for reachability, but a non-final path step passes
- *    over it instead of fighting.
+ *  - "encounter": Pathfinding over a Neutral-Unit / enemy-Hero field, or Angel
+ *    Wings over ANY field — the hero may walk THROUGH it without resolving (no
+ *    Combat, no visit) or END there (it resolves normally). Like "open" for
+ *    reachability, but a non-final path step passes over it instead of resolving.
  *  - "pass-only": an allied hero stands here; you may walk through but not stay.
  *  - "block": never enterable (blocked fields, sanctuary-protected enemies).
  */
@@ -1950,24 +1980,26 @@ export function classifyHeroStep(
     if (location?.passive?.protectsFromAttack) {
       return "pass-only";
     }
-    // Pathfinding walks through an enemy Hero's field; Combat only if you END here.
-    return movement.passEncounters ? "encounter" : "stop";
+    // Pathfinding walks through an enemy Hero's field; Combat only if you END
+    // here. Angel Wings' pass-any-field covers this case too.
+    return movement.passEncounters || passAnyField(movement) ? "encounter" : "stop";
   }
 
   if (isFieldGuarded(field) && field.flagOwnerId !== playerId) {
     // Break fields (PC-style): Pathfinding may NOT walk through — must fight
-    // to enter / clear. Classic guarded fields still allow Pathfinding pass.
+    // to enter / clear. Angel Wings flies over them all the same ("through ANY
+    // fields"). Classic guarded fields still allow Pathfinding pass.
     if (field.breakField) {
-      return "stop";
+      return passAnyField(movement) ? "encounter" : "stop";
     }
     // Pathfinding walks through Neutral Units; Combat only if you END here.
-    return movement.passEncounters ? "encounter" : "stop";
+    return movement.passEncounters || passAnyField(movement) ? "encounter" : "stop";
   }
 
   // Dragon Conqueror: a captured Dragon Utopia is a stronghold — its holder
   // walks on and off freely, everyone else must stop to besiege it.
   if (field.location === "dragon_utopia" && field.flagOwnerId && adventureVictoryMode(state) === "dragon-conqueror") {
-    return field.flagOwnerId === playerId ? "open" : "stop";
+    return field.flagOwnerId === playerId ? "open" : passAnyField(movement) ? "encounter" : "stop";
   }
 
   // Obelisk role "monolith": the field is a Monolith network member, so entering
@@ -1975,24 +2007,38 @@ export function classifyHeroStep(
   // (unlike its classic flaggable "open once mine" behaviour below). Mirrors a
   // real Monolith token (category "revisitable" → always "stop").
   if (field.location === "obelisk" && obeliskRoleIsMonolith(state)) {
-    return "stop";
+    return passAnyField(movement) ? "encounter" : "stop";
   }
 
   if (!location || location.category === "empty") {
     return "open";
   }
   if (location.category === "visitable") {
-    return field.blackCube ? "open" : "stop";
+    if (field.blackCube) {
+      return "open"; // already used up — nothing to resolve either way
+    }
+    return passAnyField(movement) ? "encounter" : "stop";
   }
   if (location.category === "revisitable") {
-    return "stop";
+    return passAnyField(movement) ? "encounter" : "stop";
   }
   if (location.category === "flaggable") {
     const mine = field.flagOwnerId === playerId || Boolean(field.extraFlagOwnerIds?.includes(playerId));
-    return mine ? "open" : "stop";
+    return mine ? "open" : passAnyField(movement) ? "encounter" : "stop";
   }
 
-  return "stop";
+  return passAnyField(movement) ? "encounter" : "stop";
+}
+
+/**
+ * Angel Wings ("move through any fields without resolving them"): every field
+ * that would ordinarily STOP the hero becomes a walk-over ("encounter") — it is
+ * only resolved when the walk ENDS there. Kept as one helper so no stop branch of
+ * classifyHeroStep can be missed. Blocked fields / Barriers stay "pass-only"
+ * (never a landing) and an allied hero's field stays "pass-only" too.
+ */
+function passAnyField(movement: HeroMovementCapabilities): boolean {
+  return Boolean(movement.passAnyField);
 }
 
 /**
@@ -2319,8 +2365,12 @@ export function canHeroReachPlacementCenter(
   if (!heroField) {
     return false;
   }
+  // Official rule (house rule `discovery-border-gate` OFF — the default): opening
+  // a new tile needs only that the hero's field TOUCHES the footprint; yellow
+  // borders and blockers are not part of the printed discovery/placement rule.
+  const borderGate = houseRuleEnabled(state, "discovery-border-gate");
   // A sealed outer arc under the hero walls off every outward edge — no opening.
-  if (isOuterEdgeSealed(adventure, heroField)) {
+  if (borderGate && isOuterEdgeSealed(adventure, heroField)) {
     return false;
   }
   const heroTile = adventure.tiles[heroField.tileInstanceId];
@@ -2332,7 +2382,7 @@ export function canHeroReachPlacementCenter(
     }
     // A designer per-edge yellow border on the hero's own field toward this
     // doorway walls the opening off, just like a sealed arc does above.
-    if (heroTile && heroCoord) {
+    if (borderGate && heroTile && heroCoord) {
       const neighborCoord = parseHexSpaceId(neighborId);
       const direction = neighborCoord ? hexDirectionBetween(heroCoord, neighborCoord) : null;
       if (direction !== null && tileEdgeDesignedSealed(heroTile, heroField.slot, direction)) {
@@ -2554,8 +2604,9 @@ export function markAbilityEmpowered(player: PlayerState, cardId: CardId): boole
  * - Negative floors at −2 (a second negative lands as −2; it does NOT reset to 0
  *   mid-turn and does NOT arm a sticky hand-dump flag).
  * - Hand discard is checked ONLY at END_TURN: if morale is still −2 then, dump
- *   the hand and clear back to 0. Recover during the turn (−2 → −1 via a Temple
- *   / Mermaid / etc.) and the hand is kept.
+ *   the hand and step the marker back ONE, to −1 (paying the penalty settles the
+ *   second token only — never a free recovery to neutral). Recover during the
+ *   turn (−2 → −1 via a Temple / Mermaid / etc.) and the hand is kept.
  * - Multi-token sources (Warrior's Tomb amount −2) apply one step at a time so
  *   the feed shows −1 (now −1) then −1 (now −2), never a batch "−2 (now 0)".
  * - Necropolis ignores morale entirely.

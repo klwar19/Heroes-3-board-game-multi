@@ -18,6 +18,15 @@
  *      Far (Ⅱ–Ⅲ) supply tile, on your turn — REQUIRES the border-and-edge
  *      interaction: the hero's own field must touch the tile across an OPEN
  *      (unsealed) outer edge, on the same Surface/Subterranean layer.
+ *      *** SCOPE (2026-07-25): this half is now the OPT-IN house rule
+ *      `discovery-border-gate`. The OFFICIAL rules require only that the hero be
+ *      ADJACENT to the tile ("There is no mention of blockers or yellow
+ *      borders"), so that is the default and the border gate is a toggle. Every
+ *      case below therefore builds its game with the rule ON — the configuration
+ *      in which this invariant is exactly true — and none of them was weakened.
+ *      The DEFAULT (adjacency-only) behaviour is pinned in adventure.test.ts
+ *      ("official: adjacency alone lets a hero discover across a sealed yellow
+ *      border"). The LAYER rule and rule #1's movement seal are unconditional. ***
  *
  *   3. The Redwood Observatory and the Speculum artifact are the ONLY ways to
  *      open a tile WITHOUT that gate — no edge, no open border, across yellow
@@ -30,6 +39,9 @@
  *  artifact/spell/field) is added as a NEW `it(...)` appended at the END, never
  *  by changing these. If a case here ever seems to need changing, that is
  *  almost certainly a regression you are introducing — stop and re-check.
+ *  (The one exception on record: the 2026-07-25 scope note on rule #2 above,
+ *  which turned a default into a toggle at the USER's explicit instruction and
+ *  kept every case running — with the toggle ON — unchanged.)
  * ----------------------------------------------------------------------------
  */
 import { describe, expect, it } from "vitest";
@@ -99,7 +111,7 @@ describe("LOCKED: outer-border seal model (all tiles)", () => {
   });
 
   it("a materialized field's seal equals the slot primitive (placed-field path stays in sync)", () => {
-    const state = createAdventureGameState({ seed: "lock-seal", difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "lock-seal", difficulty: "normal", rollFirstPlayer: false, houseRules: { "discovery-border-gate": true } });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure!;
     // S3 and F7 both carry sealed arcs; instantiate one of each in clear space.
@@ -125,7 +137,7 @@ describe("LOCKED: outer-border seal model (all tiles)", () => {
 // ===========================================================================
 describe("LOCKED: ordinary movement crossing follows the seal primitive", () => {
   it("blocks a tile-to-tile step iff either field's outer arc is sealed", () => {
-    const state = createAdventureGameState({ seed: "lock-cross", difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "lock-cross", difficulty: "normal", rollFirstPlayer: false, houseRules: { "discovery-border-gate": true } });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure!;
     const O: HexCoord = { row: 40, col: 30 };
@@ -169,7 +181,7 @@ describe("LOCKED: ordinary movement crossing follows the seal primitive", () => 
 // ===========================================================================
 describe("LOCKED: ordinary discovery is gated on an open border", () => {
   function freshHub() {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false, houseRules: { "discovery-border-gate": true } });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const hub = Object.values(state.adventure!.tiles).find((t) => t.centerRow === 9 && t.centerCol === 4)!;
     expect(hub.faceDown).toBe(true);
@@ -230,7 +242,7 @@ describe("LOCKED: ordinary discovery is gated on an open border", () => {
 // ===========================================================================
 describe("LOCKED: Far (Ⅱ–Ⅲ) placement needs a reachable (open-border) slot", () => {
   it("can reach the empty notch (6,4) from the open-border field (7,2)", () => {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false, houseRules: { "discovery-border-gate": true } });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.heroes.hero_p1.spaceId = "h:7:2";
     // The supply holds opaque UNOPENED markers now, so reach is checked against a
@@ -243,7 +255,7 @@ describe("LOCKED: Far (Ⅱ–Ⅲ) placement needs a reachable (open-border) slot
   });
 
   it("cannot reach a placed tile from behind a sealed arc (8,3)", () => {
-    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rollFirstPlayer: false, houseRules: { "discovery-border-gate": true } });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.heroes.hero_p1.spaceId = "h:8:3";
     // Any concrete Ⅱ–Ⅲ def is unreachable here — the sealed (8,3) arc blocks the
@@ -274,7 +286,7 @@ function f7Rings(O: HexCoord) {
 
 describe("LOCKED: Redwood Observatory ignores edges and borders", () => {
   it("flips an adjacent face-down tile across a sealed border, standing on the sealed field", () => {
-    const state = createAdventureGameState({ seed: "lock-obs", difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "lock-obs", difficulty: "normal", rollFirstPlayer: false, houseRules: { "discovery-border-gate": true } });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure!;
     state.players.p1.needsHandRefresh = false;
@@ -303,7 +315,7 @@ describe("LOCKED: Redwood Observatory ignores edges and borders", () => {
 
 describe("LOCKED: Speculum ignores edges and borders", () => {
   it("reveals an adjacent face-down tile across a sealed border, end-to-end", () => {
-    const state = createAdventureGameState({ seed: "lock-spec", difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "lock-spec", difficulty: "normal", rollFirstPlayer: false, houseRules: { "discovery-border-gate": true } });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const adventure = state.adventure!;
     state.players.p1.needsHandRefresh = false;
@@ -349,7 +361,7 @@ describe("LOCKED: Speculum ignores edges and borders", () => {
 // ===========================================================================
 describe("LOCKED: opening a Ⅱ–Ⅲ tile needs the hero's OWN open edge, not a detour", () => {
   it("refuses placement across a sealed edge even when the notch is reachable the long way around", () => {
-    const state = createAdventureGameState({ seed: "lock-roundabout", difficulty: "normal", rollFirstPlayer: false });
+    const state = createAdventureGameState({ seed: "lock-roundabout", difficulty: "normal", rollFirstPlayer: false, houseRules: { "discovery-border-gate": true } });
     for (const _pl of Object.values(state.players)) {
       _pl.canMulligan = false;
       _pl.needsHandRefresh = false;

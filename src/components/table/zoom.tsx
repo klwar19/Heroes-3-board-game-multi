@@ -6,7 +6,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { assetUrl } from "@/lib/asset-url";
 import { Sparkles, X, ZoomIn } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
-import { describeCardEffect, getUnitAbilityDefinitions, type CombatUnitState } from "@/engine";
+import {
+  describeCardEffect,
+  getUnitAbilityDefinitions,
+  unitFlipSidePreview,
+  type CombatUnitState,
+  type GameRuleset
+} from "@/engine";
 import { UNIT_RANK_NAMES } from "@/data/units/experience";
 import { getCardMetaLabels, isEmpoweredStatisticCard, titleCase } from "./utils";
 import { SpecialtyCard } from "@/components/specialty-card";
@@ -38,7 +44,7 @@ export type ZoomContent = {
 
 type CardZoomContextValue = {
   zoomCard: (cardId: string) => void;
-  zoomUnit: (unit: CombatUnitState) => void;
+  zoomUnit: (unit: CombatUnitState, ruleset?: GameRuleset) => void;
   zoomContent: (content: ZoomContent) => void;
 };
 
@@ -85,9 +91,14 @@ export function cardZoomContent(cardId: string): ZoomContent {
   };
 }
 
-export function unitZoomContent(unit: CombatUnitState): ZoomContent {
+export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "legacy"): ZoomContent {
   const health = Math.max(0, unit.maxHealth - unit.damage);
   const abilities = getUnitAbilityDefinitions(unit);
+  // A Pack card's other side: lethal damage flips it to its Few side. Shown as a
+  // plain line so a player can read what the card becomes before committing.
+  // (The zoom is a pure card view with no GameState, so the mode defaults come
+  // from `ruleset` — the caller passes the table's.)
+  const flip = unitFlipSidePreview(unit, ruleset);
 
   return {
     title: unit.cardName,
@@ -106,6 +117,11 @@ export function unitZoomContent(unit: CombatUnitState): ZoomContent {
       : `${titleCase(unit.grade)} ${unit.type} · initiative ${unit.initiative}`,
     lines: [
       `Attack ${unit.attack} · Defense ${unit.defense}${unit.defenseToken ? " (defending: rolls +1 for +1 Defense)" : ""} · HP ${health}/${unit.maxHealth}`,
+      flip
+        ? `Lethal damage flips this card to its ${flip.cardName} side: Attack ${flip.attack} · Defense ${flip.defense} · HP ${flip.health} · initiative ${flip.initiative}${
+            flip.type !== unit.type ? ` (fights as a ${flip.type} unit)` : ""
+          }.`
+        : "",
       (unit.unitRank ?? 0) > 0
         ? `Veteran rank ${unit.unitRank} (${UNIT_RANK_NAMES[unit.unitRank ?? 0] ?? ""}) — ${
             unit.unitExperience ?? 0
@@ -133,7 +149,7 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CardZoomContextValue>(
     () => ({
       zoomCard: (cardId) => setContent(cardZoomContent(cardId)),
-      zoomUnit: (unit) => setContent(unitZoomContent(unit)),
+      zoomUnit: (unit, ruleset) => setContent(unitZoomContent(unit, ruleset)),
       zoomContent: (next) => setContent(next)
     }),
     []

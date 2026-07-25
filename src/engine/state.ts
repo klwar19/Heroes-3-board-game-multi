@@ -177,7 +177,36 @@ export type HouseRuleId =
   // walk-in). Win keeps the Mine; loss/decline flags it for the attacker. A Mine
   // with a LIVE neutral guard still fights the guard first; a View Earth remote
   // capture is NOT intercepted. See `garrisonDefenderFor` (adventure-reducer.ts).
-  | "mine-army-defense";
+  | "mine-army-defense"
+  // BINH house rule (default OFF in BOTH modes — the OFFICIAL reading is the
+  // default): while ON, elemental damage ALSO skips the Attack die entirely and
+  // can never be RAISED by attack cards / Attack tokens (only lowered) — the old
+  // engine reading. OFF (official): elemental damage does exactly ONE thing —
+  // ignore the target's Defense (including any Defense cards played). The attack
+  // otherwise happens normally: the die IS rolled and +⚔ / −⚔ cards change the
+  // value like on any other attack. See `getAttackStackDetails` (reducer.ts).
+  | "elemental-damage-no-die"
+  // BINH house rule (default OFF in BOTH modes — the OFFICIAL reading is the
+  // default): while ON, DISCOVERING a face-down Tile (and OPENING a new Ⅱ–Ⅲ one)
+  // additionally requires an un-sealed border between the hero and the tile — a
+  // printed yellow arc / designer border on the hero's own field, or a designed
+  // per-edge line on every shared edge, blocks it (use a Redwood Observatory /
+  // Speculum instead). OFF (official): being ADJACENT is the whole requirement —
+  // the rules mention no blockers or yellow borders for discovery. The
+  // Surface/Subterranean divide (a printed rule) still applies either way. See
+  // `heroCanDiscoverTileAcrossBorders` / `canHeroReachPlacementCenter`.
+  | "discovery-border-gate"
+  // BINH house rule (default OFF in BOTH modes — the OFFICIAL reading is the
+  // default): while ON, which Spell/Artifact decks a Search may reach also
+  // unlocks from HERO LEVEL and map progress (expert Spells at level ≥ 4 or once
+  // a Ⅳ–Ⅴ tile is revealed anywhere, or while holding Eagle Eye / Wisdom / a
+  // Basic X Magic; Major/Relic artifacts at level ≥ 4 / ≥ 6 with an artifact
+  // source) — the old BINH tier-progression gate. OFF (official): the TILE the
+  // main hero stands on decides, and nothing else — starting/far Ⅰ–Ⅲ = basic
+  // Spells / Minor artifacts, near Ⅳ–Ⅴ = expert Spells / Major artifacts, centre
+  // Ⅵ–Ⅶ = expert Spells / Relic artifacts (weaker tiers always allowed). See
+  // `canDrawExpertSpells` / `artifactDeckAccess` (ruleset.ts).
+  | "deck-access-hero-level";
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
@@ -826,6 +855,19 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Angel Wings: "can move through ANY fields without resolving them. The
+       * last visited field must be resolved normally." Every field along the way
+       * — Neutral guards, enemy Heroes, unvisited locations, enemy flags — is
+       * walked OVER with nothing triggered; only the field the walk ENDS on
+       * resolves. A strict superset of Pathfinding's pass-through, and separate
+       * from HERO_MOVE_THROUGH (blocked fields) which Fly / Dessa's Logistics VI
+       * grant on their own: those two print blocked fields ONLY and must not gain
+       * this. Read by the adventure pathfinding (classifyHeroStep).
+       */
+      type: "HERO_PASS_ANY_FIELD";
+    }
+  | {
+      /**
        * Water Walk: this turn the player's Heroes may enter, cross and stop on
        * sea (water-terrain) fields. Read by the adventure pathfinding.
        */
@@ -1351,6 +1393,13 @@ export type EffectDefinition =
       expertAmount?: number;
       /** Angel Wings / Fly: also move through blocked fields this turn. */
       moveThroughThisTurn?: boolean;
+      /**
+       * Angel Wings ONLY: also walk through ANY field without resolving it this
+       * turn (guards, enemy heroes, locations, flags) — only the field the walk
+       * ends on is resolved. Fly / Dessa's Logistics VI print blocked fields
+       * only and deliberately do NOT set this (HERO_PASS_ANY_FIELD).
+       */
+      passAnyFieldThisTurn?: boolean;
       /** Water Walk: also cross/stop on sea fields this turn. */
       waterWalkThisTurn?: boolean;
       /** Shield of Naval Glory (Sea side): also draw this many cards. */
@@ -12910,13 +12959,17 @@ export type PendingChoice =
         allowRemove?: boolean;
       };
       /**
-       * LEGACY ONLY — no longer created (the "take any discarded spell / pick
-       * the face-up top" feature was reverted per the 2026-07-21 user demand;
-       * Spell decks now take only the face-up top like every other deck). Kept
-       * so a live room holding an in-flight `spell-discard-top` choice when the
-       * server updates can still resolve it. `baseCount` + `keptCardId` carried
-       * the Search's identity so the morale repeat-search / Pendant-of-Courage
-       * post-Search offers still open after the legacy pick resolves.
+       * "Which card sits face up?" — after a Search puts 2+ revealed cards BACK,
+       * the searcher orders the pile: the chosen card goes on TOP (the one every
+       * later top-discard offer sees), the rest underneath. Opened by
+       * `openDiscardTopPick` for EVERY shared deck family; a Search returning a
+       * single card never opens it. `baseCount` + `keptCardId` carry the Search's
+       * identity so the morale repeat-search / Pendant-of-Courage post-Search
+       * offers still open after the pick resolves. (The context id keeps its
+       * historical `spell-discard-top` name — a room holding an in-flight choice
+       * across a server update resolves through the very same branch. NOTE: taking
+       * from a discard pile is still the FACE-UP TOP only, like every other deck —
+       * the reverted "take any discarded spell" feature is not back.)
        */
       spellDiscardTopPick?: {
         deckId: DeckId;

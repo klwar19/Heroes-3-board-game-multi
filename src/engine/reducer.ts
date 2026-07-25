@@ -67,6 +67,7 @@ import {
   openMarket,
   openSharedDeckSearch,
   maybeOpenPostSearchOffers,
+  openDiscardTopPick,
   clearPolishArtifactAccess,
   beginSharedDeckSearchNow,
   removableHandCards,
@@ -345,7 +346,7 @@ import {
   commanderLiveDefenseBonus,
   commanderRunePool
 } from "./commanders";
-import { drawCardsForPlayer, isSharedDeckId, shuffleCards } from "./decks";
+import { drawCardsForPlayer, isSharedDeckId, refillSharedDeckDiscards, shuffleCards } from "./decks";
 import {
   cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
@@ -3639,21 +3640,28 @@ function getAttackStackDetails(
   const retaliationAttackPenalty = isRetaliation ? getRetaliationAgainstAttackPenalty(defender) : 0;
   const retaliationAttackBonus = isRetaliation ? getRetaliationAttackBonus(attacker) : 0;
 
-  // Elemental damage (Elemental units, Moandor's Liches VI specialty): the
-  // unit's attack value cannot be RAISED by attack cards (Bloodlust, Offense,
-  // the Attack statistic, Bless's bonus…) or by Attack tokens — only LOWERED
-  // by debuffs such as a Sorceress' Weakness. Clamp the positive card/token
-  // contributions to 0 while leaving every negative one (and the printed
-  // attack) intact.
+  // Elemental damage (Elemental units, Moandor's Liches VI specialty).
+  //
+  // OFFICIAL rule (house rule `elemental-damage-no-die` OFF, the default): it
+  // does exactly ONE thing — ignore the target's Defense value, including any
+  // Defense cards played. Everything else is a normal attack: the Attack die IS
+  // rolled and +⚔ / −⚔ cards (Bloodlust, Bless, Weakness…) change the value like
+  // on any other attack.
+  //
+  // With the house rule ON (the engine's earlier reading): the attack ALSO skips
+  // the Attack die and can never be RAISED by attack cards or Attack tokens —
+  // only LOWERED by debuffs. `elementalLocksAttack` is that half, so the Defense
+  // bypass below stays unconditional in both readings.
   const dealsElemental = unitDealsElementalDamage(state, attacker, attackKind);
+  const elementalLocksAttack = dealsElemental && houseRuleEnabled(state, "elemental-damage-no-die");
   const cardAttackBonus =
     stackItem.modifiers.attackBonus +
     activeAttackBonus +
     redirectedAttackDelta +
     initiativeConditionalAttackBonus +
     proclamationGroundAttackBonus;
-  const effectiveCardAttackBonus = dealsElemental ? Math.min(0, cardAttackBonus) : cardAttackBonus;
-  const effectiveTokenAttack = dealsElemental ? Math.min(0, tokenAttack) : tokenAttack;
+  const effectiveCardAttackBonus = elementalLocksAttack ? Math.min(0, cardAttackBonus) : cardAttackBonus;
+  const effectiveTokenAttack = elementalLocksAttack ? Math.min(0, tokenAttack) : tokenAttack;
 
   return {
     attacker,
@@ -3662,8 +3670,9 @@ function getAttackStackDetails(
     attackKind,
     rollMode,
     attackBonus:
-      // Elemental units clamp card/token buffs to ≤0 (main); innate ability
-      // bonuses (Ghost Dragon die result, Hatred) are added unclamped.
+      // With `elemental-damage-no-die` ON, elemental units clamp card/token buffs
+      // to ≤0 (main); innate ability bonuses (Ghost Dragon die result, Hatred) are
+      // added unclamped. OFF (official): no clamp at all — +⚔ cards work normally.
       effectiveCardAttackBonus +
       effectiveTokenAttack +
       attackDieResultBonus +
@@ -3700,14 +3709,17 @@ function getAttackStackDetails(
       (stackItem.modifiers.moraleRollPenalty ?? 0),
     defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
-    // Elemental damage never rolls the Attack die and ignores Defense entirely:
-    // the hit always lands for the (un-buffable) Attack value.
+    // With `elemental-damage-no-die` ON, elemental damage never rolls the Attack
+    // die: the hit lands for the (un-buffable) Attack value. OFF (official): the
+    // die is rolled exactly like any other attack — only Defense is ignored.
     // Mummies "[unit_attack] ignore the result on the Attack die" — their OWN
-    // attack die is treated as 0, exactly like Bless / Elemental damage. The
-    // [unit_attack] icon means own declared attack only, so a Mummy's Retaliation
-    // Attack rolls a normal die (same convention as Hatred / the roll advantage).
+    // attack die is treated as 0, exactly like Bless. The [unit_attack] icon means
+    // own declared attack only, so a Mummy's Retaliation Attack rolls a normal die
+    // (same convention as Hatred / the roll advantage).
     ignoreAttackDie:
-      Boolean(stackItem.modifiers.ignoreAttackDie) || dealsElemental || (!isRetaliation && hasIgnoreOwnAttackDie(attacker)),
+      Boolean(stackItem.modifiers.ignoreAttackDie) ||
+      elementalLocksAttack ||
+      (!isRetaliation && hasIgnoreOwnAttackDie(attacker)),
     // Frenzy: legacy fixed-grade sets modifiers.ignoreDefense outright; the
     // Power-scaled form re-derives its pierced grade now from the caster's final
     // pooled Power, so Power paid after Frenzy was played still counts. Elemental
@@ -15363,7 +15375,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         main.movementPoints += amount;
       }
     }
-    if (effect.moveThroughThisTurn) {
+    if (effect.moveThroughThisTurn || effect.passAnyFieldThisTurn) {
       createActiveEffect(
         state,
         {
@@ -15372,7 +15384,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           duration: { type: "current-turn" },
           polarity: "positive",
           removable: false,
-          modifiers: [{ type: "HERO_MOVE_THROUGH" }]
+          // Angel Wings adds HERO_PASS_ANY_FIELD on top of the blocked-field
+          // walk-through: "move through any fields without resolving them".
+          modifiers: [
+            ...(effect.moveThroughThisTurn ? [{ type: "HERO_MOVE_THROUGH" as const }] : []),
+            ...(effect.passAnyFieldThisTurn ? [{ type: "HERO_PASS_ANY_FIELD" as const }] : [])
+          ]
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
         action.playerId
@@ -19651,7 +19668,14 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   // the whole "Remove from the game" — it never reaches the discard pile below.
   const keptIndex = action.pick.index;
   const discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
-  deck.discardPile.push(...discardedCardIds);
+  // A Search that puts 2+ cards back lets the searcher decide WHICH of them ends
+  // up face-up on top of the pile — the one every later "take the top discard"
+  // offer (and Genie wish, and merchant top-buy) will see. With a single card
+  // going back there is nothing to decide, so it is placed straight away.
+  const picksDiscardTop = discardedCardIds.length >= 2;
+  if (!picksDiscardTop) {
+    deck.discardPile.push(...discardedCardIds);
+  }
 
   appendEvent(state, {
     type: "DECK_SEARCH_RESOLVED",
@@ -19670,9 +19694,21 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     clearPolishArtifactAccess(state);
   }
 
+  if (picksDiscardTop) {
+    // Interposes BEFORE the post-Search repeat offers; its handler
+    // (chooseOption, context "discard-top") places the cards and then opens them,
+    // so neither is swallowed.
+    openDiscardTopPick(state, action.playerId, choice.deckId, discardedCardIds, {
+      baseCount: choice.baseCount,
+      keptCardId: removePicked ? undefined : keptCardId,
+      returnPhase: choice.returnPhase
+    });
+    return;
+  }
+
   // Positive Morale "discard the cards gained from Search (X) to perform the
   // Search (X) again", else the Pendant of Courage repeat — the shared
-  // post-Search seam (also re-run after a Spell discard face-up pick).
+  // post-Search seam (also re-run after the discard face-up pick).
   maybeOpenPostSearchOffers(
     state,
     action.playerId,
@@ -21191,6 +21227,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // Ongoing cards whose every effect has ended (expired, consumed, dispelled
   // — whatever this action did) finally reach their discard pile or hand.
   releaseEndedOngoingCards(nextState);
+
+  // Shared decks always show one card face-up on their discard pile: if a take
+  // this action performed (the Search's discard-top option, a Genie wish, a
+  // discard-top purchase…) emptied a pile that HAD a card, flip that deck's next
+  // card into its place. Runs last so it sees every discard the action produced.
+  refillSharedDeckDiscards(nextState, base);
 
   // Parallel turns: reject a bystander action that touched the exclusive
   // interaction machinery (see the fingerprint capture above).

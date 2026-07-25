@@ -226,6 +226,25 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // "Which card sits face up?" (after a Search put 2+ cards back): the options
+  // name cards only the searcher has seen. They become public the instant the
+  // pick lands them on the discard pile, so this only keeps the reveal from
+  // leaking one beat early — the same rule the DECK_SEARCH reveal itself follows.
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    choice.context === "spell-discard-top" &&
+    choice.playerId !== viewerPlayerId
+  ) {
+    return {
+      ...cloneSerializable(choice),
+      prompt: "Choosing which searched card sits face up on the discard pile.",
+      options: choice.options.map(() => ({ label: "Hidden card" })),
+      spellDiscardTopPick: choice.spellDiscardTopPick
+        ? { ...choice.spellDiscardTopPick, cardIds: choice.spellDiscardTopPick.cardIds.map(() => "hidden"), keptCardId: undefined }
+        : undefined
+    };
+  }
+
   // Positive Morale "Repeat Search": the offer names the card the Search just
   // gained — a card that went into the searcher's (private) hand, revealed to
   // no one else — so other viewers only learn that the offer is open.

@@ -110,7 +110,17 @@ lockRemovedDescribe("designer-border sealing DISABLED (lock removed)", () => {
 });
 
 function cleanState(seed: string): GameState {
-  return createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, events: false });
+  return createAdventureGameState({
+    seed,
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    events: false,
+    // Yellow borders always block MOVEMENT; whether they also block TILE
+    // DISCOVERY / placement is the opt-in `discovery-border-gate` house rule
+    // (official rules need only adjacency). These fixtures cover both, so the
+    // rule is ON here — the OFF default is pinned in adventure.test.ts.
+    houseRules: { "discovery-border-gate": true }
+  });
 }
 
 function adv(state: GameState): AdventureState {

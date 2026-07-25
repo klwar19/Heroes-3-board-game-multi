@@ -1587,12 +1587,18 @@ button.battleCell {
   background: #090a0a;
 }
 
+/* Name + HP readout, bottom-RIGHT of a board unit card. `max-width` deliberately
+   leaves the card's left quarter clear: every printed card face carries its stat
+   rail down the left edge, and the BOTTOM entry of that rail is Initiative — a
+   full-width plate covered it, so a long name ("Neutral Iron Golems") made the
+   card's initiative unreadable. The name ellipsizes instead; the full card
+   (initiative included) is one hover/click away in the inspector. */
 .boardCardHud {
   position: absolute;
   right: 0;
   bottom: 0;
   min-width: 58px;
-  max-width: 100%;
+  max-width: 76%;
   display: grid;
   gap: 1px;
   padding: 4px 5px;
@@ -1735,6 +1741,31 @@ button.battleCell {
 .inspectRetaliation.unlimited {
   color: #f4d774;
   border-color: rgb(210 170 80 / 60%);
+}
+
+/* A Pack card's other side (what lethal damage flips it to). Deliberately quiet
+   — a dashed, muted strip that reads as reference, not as a live stat. */
+.inspectFlipSide {
+  display: grid;
+  gap: 1px;
+  align-self: start;
+  padding: 3px 8px;
+  border: 1px dashed rgb(243 239 228 / 16%);
+  border-radius: 5px;
+  background: rgb(13 15 16 / 26%);
+  font-size: 10px;
+  line-height: 1.25;
+}
+.inspectFlipHead {
+  color: rgb(243 239 228 / 62%);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.inspectFlipStats {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
 }
 
 .inspectAbilities {
@@ -8537,12 +8568,20 @@ button.hbSlot:disabled { cursor: default; }
 /* ---- Command dock limits + dice multiplier -------------------------------- */
 .dockLimits {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 5px 8px;
   background: rgba(20, 18, 14, 0.7);
   border: 1px solid var(--line);
   border-radius: 8px;
   font-size: 11.5px;
+}
+/* Watching someone else's fight: the panel reports THEIR resources, so it is
+   labelled with their name to make the switch unmistakable. */
+.dockLimits .dockLimitsWho {
+  color: #d9c79b;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .dockLimits span {
@@ -11601,6 +11640,54 @@ body:has(.setupHubBackdrop) .wogWindowBackdrop {
   color: #b7a578;
   font-size: 12px;
   font-style: italic;
+}
+
+/* Opponent public counts: hand / deck / discard sizes, crowns and movement. */
+.opponentCardCounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.opponentCountChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid rgba(120, 92, 48, 0.55);
+  border-radius: 6px;
+  background: rgba(20, 16, 11, 0.55);
+  color: #e8d9b8;
+  font-size: 11px;
+}
+
+.opponentCountChip b {
+  color: #f4e3b6;
+}
+
+.opponentCountChip.spent b {
+  color: #c98b7a;
+}
+
+/* The (public) discard pile, newest first; the face-up top gets a gold ring. */
+.opponentDiscardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.opponentDiscardCard {
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.opponentDiscardCard.top {
+  outline: 2px solid rgba(244, 215, 116, 0.85);
+  outline-offset: -2px;
 }
 
 /* Map-setup game options (scenario, difficulty, resources, income, units). */

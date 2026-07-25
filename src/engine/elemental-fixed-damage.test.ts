@@ -15,10 +15,14 @@ import type { ActiveEffectModifier, CombatUnitState, GameAction, GameEvent, Game
  * End-to-end guarantees for EVERY Elemental (neutral guards + the four summon
  * sides), driven straight from the shipped unit data — not hand-set abilities.
  *
- * 1. Elemental damage is "die-proof": the Attack die never rolls, attack-card
- *    and Attack-token buffs are ignored, the defender's Defense is ignored, and
- *    the hit always lands for the unit's printed Attack value.
- * 2. Every Elemental is immune to Magic Arrow (school "any") AND to its own
+ * 1. OFFICIAL rule (house rule `elemental-damage-no-die` OFF — the default):
+ *    elemental damage does exactly ONE thing — it ignores the defender's Defense.
+ *    The Attack die IS rolled and attack cards / Attack tokens change the value
+ *    like on any other attack.
+ * 2. HOUSE RULE ON: the old engine reading — "die-proof" damage. The die never
+ *    rolls, positive card/token buffs are ignored, and the hit always lands for
+ *    the printed Attack value (a Weakness debuff still lowers it).
+ * 3. Every Elemental is immune to Magic Arrow (school "any") AND to its own
  *    School of Magic — and to nothing else (Magic Elementals: Magic Arrow only).
  *
  * If a side ever loses its `elemental-damage` / `<school>-elemental-immunity`
@@ -189,13 +193,13 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
   });
 
   for (const { unitId, sideKey, printedAttack, abilities } of elementalSides) {
-    it(`${unitId} (${sideKey}) ignores the die, a +4 buff and the foe's Defense`, () => {
+    it(`${unitId} (${sideKey}): official rule — die + buff apply, only Defense is ignored`, () => {
       const state = duel((draft) => {
         const a = draft.combat!.units.unit_p1_griffins;
         a.attack = printedAttack;
         a.abilities = abilities; // straight from the shipped definition
         // A +1 die face is queued and a +4 attack buff is played; the foe has
-        // Defense 4. An Elemental must ignore all three.
+        // Defense 4. Officially the Elemental ignores ONLY the Defense.
         draft.combat!.dice.scriptedRolls = [1, 1, 1, 1];
         draft.combat!.units.unit_p2_skeletons.defense = 4;
         attackBonus(draft, "unit_p1_griffins", 4);
@@ -206,26 +210,58 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
 
       const resolved = runAttack(state);
       const event = firstAttack(resolved);
-      expect(event.noDie, "the die is skipped").toBe(true);
-      expect(event.roll, "the queued +1 face is not applied").toBe(0);
-      expect(event.attackValue, "buff and die both ignored").toBe(printedAttack);
-      expect(event.defenseValue, "Defense is ignored entirely").toBe(0);
-      expect(event.damage, "damage is exactly the printed Attack").toBe(printedAttack);
-      expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(printedAttack);
+      expect(event.noDie ?? false, "the die is rolled like any other attack").toBe(false);
+      expect(event.roll, "the queued +1 face applies").toBe(1);
+      expect(event.attackValue, "printed Attack + the +4 buff + the +1 die").toBe(printedAttack + 5);
+      expect(event.defenseValue, "Defense is ignored entirely — the ONE elemental effect").toBe(0);
+      expect(event.damage, "full attack value lands (no Defense soak)").toBe(printedAttack + 5);
+      expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(printedAttack + 5);
     });
   }
 
-  it("a Sorceress' Weakness still lowers an Elemental's fixed damage", () => {
-    // The one modifier that DOES apply: a debuff lowers the Attack value.
+  it("HOUSE RULE ON (elemental-damage-no-die): the die and the +4 buff are both ignored", () => {
     const air = coreUnitDefinitions["neutral.air_elementals"].neutral!;
     const state = duel((draft) => {
       const a = draft.combat!.units.unit_p1_griffins;
       a.attack = air.attack;
       a.abilities = [...(air.abilities ?? [])];
-      a.tokens = [{ id: "tk", kind: "weakness", amount: -1, sourceName: "Sorceresses" }];
+      draft.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+      draft.combat!.units.unit_p2_skeletons.defense = 4;
+      attackBonus(draft, "unit_p1_griffins", 4);
+      draft.adventure = {
+        houseRules: { "elemental-damage-no-die": true }
+      } as unknown as GameState["adventure"];
     });
+
     const event = firstAttack(runAttack(state));
-    expect(event.damage).toBe(air.attack - 1);
+    expect(event.noDie, "the die is skipped while the house rule is on").toBe(true);
+    expect(event.roll, "the queued +1 face is not applied").toBe(0);
+    expect(event.attackValue, "buff and die both ignored").toBe(air.attack);
+    expect(event.defenseValue, "Defense is ignored in both readings").toBe(0);
+    expect(event.damage, "damage is exactly the printed Attack").toBe(air.attack);
+  });
+
+  it("a Sorceress' Weakness lowers an Elemental's damage in BOTH readings", () => {
+    const air = coreUnitDefinitions["neutral.air_elementals"].neutral!;
+    const weakened = (houseRuleOn: boolean): number => {
+      const state = duel((draft) => {
+        const a = draft.combat!.units.unit_p1_griffins;
+        a.attack = air.attack;
+        a.abilities = [...(air.abilities ?? [])];
+        a.tokens = [{ id: "tk", kind: "weakness", amount: -1, sourceName: "Sorceresses" }];
+        // A 0-face die so the official reading's roll adds nothing — the point
+        // here is the debuff, which bites either way.
+        draft.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+        if (houseRuleOn) {
+          draft.adventure = {
+            houseRules: { "elemental-damage-no-die": true }
+          } as unknown as GameState["adventure"];
+        }
+      });
+      return firstAttack(runAttack(state)).damage;
+    };
+    expect(weakened(false)).toBe(air.attack - 1);
+    expect(weakened(true)).toBe(air.attack - 1);
   });
 });
 

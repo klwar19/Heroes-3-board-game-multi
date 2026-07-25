@@ -26,6 +26,7 @@ import {
   type LegalAction
 } from "@/engine";
 import { CREATURE_BANK_IDS } from "@/data/map/creature-banks";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import type { CardBoardAction } from "./utils";
 
 afterEach(cleanup);
@@ -1595,3 +1596,121 @@ describe("BattlefieldBoard — Polish Wait hourglass badge", () => {
     expect(badges[0].textContent).toContain("Wait");
   });
 })
+
+// ---------------------------------------------------------------------------
+// Pack/Few side info: a Pack card tells the player what it flips to.
+// ---------------------------------------------------------------------------
+describe("InspectPanel — a Pack card shows the Few side it flips to", () => {
+  function renderInspect(state: GameState, unitId: string) {
+    return render(
+      <CardZoomProvider>
+        <InspectPanel state={state} unitId={unitId} />
+      </CardZoomProvider>
+    );
+  }
+
+  /** Rebuilds a combat unit as the PACK side of a shipped definition. */
+  function asPack(state: GameState, unitId: string, unitDefId: string): void {
+    const def = coreUnitDefinitions[unitDefId];
+    const side = def.pack!;
+    const unit = state.combat!.units[unitId];
+    unit.unitDefId = unitDefId;
+    unit.variant = "pack";
+    unit.cardName = `Pack of ${def.name}`;
+    unit.attack = side.attack;
+    unit.defense = side.defense;
+    unit.maxHealth = side.health;
+    unit.initiative = side.initiative;
+    unit.type = side.type ?? def.type;
+    unit.abilities = [...(side.abilities ?? [])];
+  }
+
+  it("names the Few side and lists its stats", () => {
+    const state = createInitialGameState("inspect-flip");
+    asPack(state, "unit_p1_marksmen", "castle.marksmen");
+    const few = coreUnitDefinitions["castle.marksmen"].few!;
+
+    const { container } = renderInspect(state, "unit_p1_marksmen");
+    const note = container.querySelector(".inspectFlipSide");
+    expect(note, "the flip-side note").toBeTruthy();
+    expect(note!.textContent).toContain("Flips to Few Marksmen");
+    expect(note!.textContent).toContain(String(few.attack));
+    expect(note!.textContent).toContain(String(few.health));
+    expect(note!.textContent).toContain(`init ${few.initiative}`);
+  });
+
+  it("CONTROL: a FEW-side unit shows no flip note (nothing left to flip to)", () => {
+    const state = createInitialGameState("inspect-flip-control");
+    asPack(state, "unit_p1_marksmen", "castle.marksmen");
+    state.combat!.units.unit_p1_marksmen.variant = "few";
+    const { container } = renderInspect(state, "unit_p1_marksmen");
+    expect(container.querySelector(".inspectFlipSide")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Watching a PvM (neutral) fight: the dock reports the FIGHTER's resources, not
+// the watcher's own meaningless counters.
+// ---------------------------------------------------------------------------
+describe("CommandDock — a watcher sees the fighting player's resources", () => {
+  /** A neutral fight p1 is playing out; p3 is a third seat merely watching. */
+  function neutralFightState(): GameState {
+    const state = createInitialGameState("dock-watcher");
+    state.combat!.context = {
+      kind: "neutral",
+      heroId: "hero_p1",
+      fieldId: "h:0:0",
+      difficulty: 2,
+      hasAzure: false
+    };
+    state.combat!.attackerPlayerId = "p1";
+    state.combat!.defenderPlayerId = NEUTRAL_PLAYER_ID;
+    for (const unit of Object.values(state.combat!.units)) {
+      // Only p1's units and the neutral guards stand in this fight.
+      unit.controllerId = unit.controllerId === "p1" ? "p1" : NEUTRAL_PLAYER_ID;
+    }
+    // The fighter's public state, distinct from the watcher's.
+    state.players.p1.hand = ["stat.attack", "stat.defense", "stat.power"];
+    state.players.p1.limits.expertUses = 2;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 1;
+    state.players.p1.combatStats.spellsCastThisRound = 1;
+    state.heroes.hero_p1.movementPoints = 4;
+    // A third seat with DIFFERENT numbers: if the dock showed the viewer's own
+    // state these are what would appear.
+    state.players.p3 = {
+      ...structuredClone(state.players.p2),
+      id: "p3",
+      name: "Watcher",
+      hand: [],
+      limits: { ...state.players.p2.limits, expertUses: 9 }
+    };
+    return state;
+  }
+
+  function renderDock(state: GameState, viewerPlayerId: string) {
+    return render(
+      <CardZoomProvider>
+        <CommandDock legalActions={[]} onAction={vi.fn()} state={state} viewerPlayerId={viewerPlayerId as never} />
+      </CardZoomProvider>
+    );
+  }
+
+  it("names the fighter and shows THEIR spell count, crowns, hand and movement", () => {
+    const { container } = renderDock(neutralFightState(), "p3");
+    const limits = container.querySelector(".dockLimits")!;
+    expect(limits.querySelector(".dockLimitsWho")?.textContent).toBe(neutralFightState().players.p1.name);
+    expect(limits.textContent).toMatch(/Spell 1\/1/);
+    expect(limits.textContent).toMatch(/1\/2 crowns/); // fighter's, not the watcher's 9
+    expect(limits.textContent).toMatch(/Hand 3/);
+    expect(limits.textContent).toMatch(/MP 4/);
+  });
+
+  it("CONTROL: the FIGHTER's own dock keeps their own numbers and no name label", () => {
+    const { container } = renderDock(neutralFightState(), "p1");
+    const limits = container.querySelector(".dockLimits")!;
+    expect(limits.querySelector(".dockLimitsWho")).toBeNull();
+    expect(limits.textContent).toMatch(/Spell 1\/1/);
+    expect(limits.textContent).toMatch(/1\/2 crowns/);
+    expect(limits.textContent).toMatch(/Hand 3/);
+  });
+});

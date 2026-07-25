@@ -288,6 +288,35 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false
   },
   {
+    id: "elemental-damage-no-die",
+    label: "Elemental damage skips the Attack die",
+    description:
+      "On (old BINH reading): a unit dealing elemental damage never rolls the Attack die, and its attack can never be RAISED by attack cards or Attack tokens (debuffs still lower it). Off (official rules, default): elemental damage does exactly one thing — it ignores the target's Defense value, including any Defense cards played. The attack otherwise happens as normal: you DO roll the die, and +⚔ / −⚔ cards (Bloodlust, Bless, Weakness…) change the value like on any other attack.",
+    category: "combat",
+    // OFF in both modes: the official reading is the default. Turning it ON
+    // restores the engine's previous behaviour for tables that prefer it.
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "discovery-border-gate",
+    label: "Yellow borders block Tile discovery",
+    description:
+      "On (old BINH reading): discovering a face-down Map Tile — or opening a new Ⅱ–Ⅲ one — also needs an OPEN border between your Hero's field and the tile; a printed yellow arc or a designer border seals it off (a Redwood Observatory / Speculum still reveals across). Off (official rules, default): being ADJACENT to the tile is the whole requirement — the rules mention no blockers or yellow borders for discovery. Moving is unaffected either way (borders still block movement), and you still cannot discover across the Surface/Subterranean divide.",
+    category: "global",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "deck-access-hero-level",
+    label: "Hero level unlocks Spell/Artifact tiers",
+    description:
+      "On (old BINH reading): which Spell/Artifact decks a Search may reach also unlocks from hero level and map progress — Expert Spells at level 4+, or once a Ⅳ–Ⅴ tile is revealed anywhere, or while holding Eagle Eye / Wisdom / a Basic X Magic; Major artifacts at level 4+ and Relics at level 6+ with an artifact source. Off (official rules, default): the TILE your main Hero stands on decides and nothing else — starting & far tiles (Ⅰ–Ⅲ) = basic Spells / Minor artifacts, near tiles (Ⅳ–Ⅴ) = expert Spells / Major artifacts, centre tiles (Ⅵ–Ⅶ) = expert Spells / Relic artifacts. Weaker tiers are always allowed, so a centre tile can still Search Minors.",
+    category: "decks",
+    default: false,
+    legacyDefault: false
+  },
+  {
     id: "mine-army-defense",
     label: "Mines: defend with your army",
     description:

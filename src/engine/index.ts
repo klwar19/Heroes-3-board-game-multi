@@ -311,7 +311,10 @@ export {
   canPlaceTransformOn,
   insertUnitTransform,
   makeUnitTransformState,
-  topTransform
+  printedCardName,
+  topTransform,
+  unitFlipSidePreview,
+  type UnitFlipSide
 } from "./unit-transforms";
 export { markUnitRemovedIfNeeded } from "./combat-units";
 export { makeCombatUnitFromArmy } from "./adventure";
@@ -1000,7 +1003,8 @@ export type {
   FirstPlayerRollState,
   SiegeState,
   WogModOptions,
-  AnimeModOptions
+  AnimeModOptions,
+  GameRuleset
 } from "./state";
 
 export { getUnitTokens, tokenAttackBonus, tokenDefenseDelta } from "./tokens";

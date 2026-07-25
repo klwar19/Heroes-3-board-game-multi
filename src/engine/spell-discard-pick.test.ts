@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, type GameAction, type GameState } from "./index";
 import { openSharedDeckSearch } from "./adventure-reducer";
+import { getPlayerView } from "./player-view";
 
 /**
  * Spell decks behave like EVERY other deck: a Search offers at most ONE take —
@@ -98,7 +99,7 @@ describe("Spell search — the classic single top-only discard take (any-discard
     expect(state.pendingChoice.deckSearchMode?.schoolFetch).toEqual(["fire"]);
   });
 
-  it("still resolves an IN-FLIGHT legacy spell-discard-top choice (never opened anymore, but a live room could hold one when the server updates)", () => {
+  it("still resolves an IN-FLIGHT spell-discard-top choice created by an older build", () => {
     const state = createAdventureGameState({
       seed: "legacy-spell-discard-top",
       difficulty: "normal",
@@ -133,5 +134,123 @@ describe("Spell search — the classic single top-only discard take (any-discard
     expect(discard).toContain("spell.bless");
     expect(discard).toHaveLength(2);
     expect(after.pendingChoice).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Search (X): when 2+ revealed cards go BACK, the searcher picks which one ends
+// up face up on the discard pile (the card every later top-discard take sees).
+// ---------------------------------------------------------------------------
+describe("Search — the searcher orders the cards that go back on the discard pile", () => {
+  /** Opens a Search of the Ability deck (single deck, so it reveals straight away). */
+  function searchAbilities(state: GameState, count: number, drawPile: string[]): GameState {
+    cleanSpellSlate(state);
+    state.players.p1.permanents = [];
+    state.decks.abilities.discardPile = [];
+    state.decks.abilities.drawPile = [...drawPile];
+    openSharedDeckSearch(state, "p1", "abilities", count);
+    if (state.pendingChoice?.type !== "DECK_SEARCH") {
+      throw new Error(`expected the Ability deck search to reveal, got ${state.pendingChoice?.type}`);
+    }
+    return state;
+  }
+
+  it("Search (3) keeping 1: the two unkept cards are held, then the CHOSEN one sits face up on top", () => {
+    const state = searchAbilities(
+      createAdventureGameState({ seed: "discard-top-pick-3", difficulty: "normal", rollFirstPlayer: false }),
+      3,
+      ["ability.luck", "ability.offense", "ability.archery"]
+    );
+    const search = state.pendingChoice;
+    if (search?.type !== "DECK_SEARCH") {
+      throw new Error("expected DECK_SEARCH");
+    }
+    const revealed = [...search.revealedCardIds];
+    expect(revealed).toHaveLength(3);
+
+    const resolved = applyOk(state, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: search.id,
+      pick: { kind: "revealed", index: 0 }
+    });
+    expect(resolved.players.p1.hand).toContain(revealed[0]);
+    // The pick interposes: the two unkept cards are still HELD (not on the pile).
+    if (resolved.pendingChoice?.type !== "OPTION_CHOICE" || resolved.pendingChoice.context !== "spell-discard-top") {
+      throw new Error("expected the face-up pick to open");
+    }
+    const pick = resolved.pendingChoice;
+    expect(pick.spellDiscardTopPick?.cardIds).toEqual([revealed[1], revealed[2]]);
+    expect(resolved.decks.abilities.discardPile).toEqual([]);
+    expect(pick.options).toHaveLength(2);
+    expect(pick.options[1].label).toMatch(/face up on top/i);
+
+    // Choosing the SECOND card puts exactly that one on top, the other under it.
+    const placed = applyOk(resolved, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: pick.id,
+      optionIndex: 1
+    });
+    expect(placed.decks.abilities.discardPile).toEqual([revealed[1], revealed[2]]);
+    expect(placed.pendingChoice).toBeNull();
+
+    // Mutation control: choosing the FIRST card instead reverses the order, so
+    // the pick genuinely decides the face-up card (not a fixed reveal order).
+    const other = applyOk(resolved, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: pick.id,
+      optionIndex: 0
+    });
+    expect(other.decks.abilities.discardPile).toEqual([revealed[2], revealed[1]]);
+  });
+
+  it("CONTROL: Search (2) keeping 1 returns a single card — no pick is opened", () => {
+    const state = searchAbilities(
+      createAdventureGameState({ seed: "discard-top-pick-2", difficulty: "normal", rollFirstPlayer: false }),
+      2,
+      ["ability.luck", "ability.offense", "ability.archery"]
+    );
+    const search = state.pendingChoice;
+    if (search?.type !== "DECK_SEARCH") {
+      throw new Error("expected DECK_SEARCH");
+    }
+    const revealed = [...search.revealedCardIds];
+    const resolved = applyOk(state, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: search.id,
+      pick: { kind: "revealed", index: 0 }
+    });
+    expect(resolved.pendingChoice).toBeNull();
+    expect(resolved.decks.abilities.discardPile).toEqual([revealed[1]]);
+  });
+
+  it("other viewers never see which cards are being ordered", () => {
+    const state = searchAbilities(
+      createAdventureGameState({ seed: "discard-top-pick-mask", difficulty: "normal", rollFirstPlayer: false }),
+      3,
+      ["ability.luck", "ability.offense", "ability.archery"]
+    );
+    const search = state.pendingChoice;
+    if (search?.type !== "DECK_SEARCH") {
+      throw new Error("expected DECK_SEARCH");
+    }
+    const resolved = applyOk(state, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: search.id,
+      pick: { kind: "revealed", index: 0 }
+    });
+
+    const own = getPlayerView(resolved, "p1").pendingChoice;
+    const other = getPlayerView(resolved, "p2").pendingChoice;
+    if (own?.type !== "OPTION_CHOICE" || other?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the pick in both views");
+    }
+    expect(own.spellDiscardTopPick?.cardIds.every((id) => id !== "hidden")).toBe(true);
+    expect(other.spellDiscardTopPick?.cardIds).toEqual(["hidden", "hidden"]);
+    expect(other.options.map((option) => option.label)).toEqual(["Hidden card", "Hidden card"]);
   });
 });

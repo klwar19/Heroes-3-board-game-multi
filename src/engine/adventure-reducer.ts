@@ -2159,7 +2159,7 @@ export function revealTileForHero(
   // heroCanDiscoverTileAcrossBorders). The Redwood Observatory and the Speculum
   // artifact are the only ways to reveal across a still-sealed border.
   const heroField = adventure.fields[hero.spaceId];
-  if (!heroField || !heroCanDiscoverTileAcrossBorders(adventure, hero.spaceId, heroField, tile)) {
+  if (!heroField || !heroCanDiscoverTileAcrossBorders(state, hero.spaceId, heroField, tile)) {
     throw new Error(
       "A yellow border line seals this edge — move to an open border, or use a Redwood Observatory / Speculum to discover across it."
     );
@@ -2920,7 +2920,7 @@ export function canHeroDiscoverAdjacentTile(state: GameState, hero: HeroState, t
   // ordinary discovery (use a Redwood Observatory or Speculum to reveal across it
   // instead); a border-free Creature Bank the hero stands on is open for the
   // whole-arc rule, though a per-edge line still seals.
-  return heroCanDiscoverTileAcrossBorders(adventure, hero.spaceId, field, tile);
+  return heroCanDiscoverTileAcrossBorders(state, hero.spaceId, field, tile);
 }
 
 // ---------------------------------------------------------------------------
@@ -6085,6 +6085,11 @@ function applyMapSpellEffect(
     if (effect.moveThroughThisTurn) {
       pushMapSpellHeroModifier(state, playerId, spell, "HERO_MOVE_THROUGH");
     }
+    // Angel Wings' "move through ANY fields without resolving them". (Fly and
+    // Dessa's Logistics VI print blocked fields only and never set this flag.)
+    if (effect.passAnyFieldThisTurn) {
+      pushMapSpellHeroModifier(state, playerId, spell, "HERO_PASS_ANY_FIELD");
+    }
     if (effect.waterWalkThisTurn) {
       pushMapSpellHeroModifier(state, playerId, spell, "HERO_WATER_WALK");
       liftSeaHaltForWaterWalk(state, playerId);
@@ -6099,7 +6104,7 @@ function pushMapSpellHeroModifier(
   state: GameState,
   playerId: PlayerId,
   spell: CardDefinition,
-  modifier: "HERO_MOVE_THROUGH" | "HERO_WATER_WALK"
+  modifier: "HERO_MOVE_THROUGH" | "HERO_WATER_WALK" | "HERO_PASS_ANY_FIELD"
 ): void {
   const effect = makeActiveEffect(
     state,
@@ -12641,10 +12646,9 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
-  // LEGACY RESOLUTION ONLY: the "pick which unkept spell sits face-up" choice is
-  // no longer OPENED (the invented any-discard-take feature was reverted per the
-  // 2026-07-21 user demand), but a live room mid-choice when the server updates
-  // could still hold one — this handler resolves it so it never strands.
+  // "Which card sits face up?" — a Search that put 2+ revealed cards back lets
+  // the searcher order the pile (see openDiscardTopPick). Same branch resolves an
+  // in-flight choice from an older build (the context id is unchanged).
   if (choice.context === "spell-discard-top") {
     const pick = choice.spellDiscardTopPick;
     if (!pick) {
@@ -12653,19 +12657,21 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     const deck = state.decks[pick.deckId];
     const faceUpId = pick.cardIds[action.optionIndex];
     if (!deck || !faceUpId || !pick.cardIds.includes(faceUpId)) {
-      throw new Error("That discarded spell is not available.");
+      throw new Error("That discarded card is not available.");
     }
-    // Push non-chosen unkept cards first, then the chosen face-up on top.
-    for (const cardId of pick.cardIds) {
-      if (cardId !== faceUpId) {
+    // Push non-chosen unkept cards first, then the chosen face-up on top. Placed
+    // by POSITION (the option index), so two copies of the same card revealed
+    // together both land — exactly the revealed cards, never one of them twice.
+    pick.cardIds.forEach((cardId, index) => {
+      if (index !== action.optionIndex) {
         deck.discardPile.push(cardId);
       }
-    }
+    });
     deck.discardPile.push(faceUpId);
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId: action.playerId,
-      message: `${state.players[action.playerId]?.name ?? action.playerId} sets ${cardLibrary[faceUpId]?.name ?? faceUpId} face-up on the Spell discard pile.`
+      message: `${state.players[action.playerId]?.name ?? action.playerId} sets ${cardLibrary[faceUpId]?.name ?? faceUpId} face-up on the ${deckDisplayName(state, pick.deckId)} discard pile.`
     });
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
@@ -13412,14 +13418,19 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
     player.necromancyWindow = false;
     // Double-negative morale: dump the hand ONLY if still at −2 when the turn
     // ends. Recovering during the turn (−2 → −1 via Mermaid/Temple/etc.) keeps
-    // the hand. After the dump, clear back to neutral so the penalty is paid once.
+    // the hand. Paying the penalty moves the marker ONE step back — to −1, NOT
+    // to neutral: the hand dump settles the second negative token only, so the
+    // player is still on bad morale going into the next turn (and a further
+    // negative pushes them straight back to −2). Clearing to 0 here used to hand
+    // out a free full recovery.
     player.discardHandAtTurnEnd = false; // legacy field; end-turn check is morale value
     if (player.morale <= -2) {
       const discardedCardIds = [...player.hand];
       const discarded = discardedCardIds.length;
       player.discard.push(...discardedCardIds);
       player.hand = [];
-      player.morale = 0;
+      const before = player.morale;
+      player.morale = -1;
       appendEvent(state, {
         type: "HAND_REFRESHED",
         playerId: action.playerId,
@@ -13431,8 +13442,8 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
       appendEvent(state, {
         type: "MORALE_CHANGED",
         playerId: action.playerId,
-        amount: 2,
-        total: 0
+        amount: player.morale - before,
+        total: player.morale
       });
     }
   }
@@ -14545,6 +14556,42 @@ export function maybeOpenPendantRepeatOffer(
  * for the morale offer (it names the card that would be discarded); with only
  * a Pendant in hand the offer opens regardless.
  */
+/**
+ * "Which of these sits face up?" — after a Search puts 2+ revealed cards back,
+ * the searcher chooses which one ends up ON TOP of that deck's discard pile (the
+ * card every later top-discard offer will see). Works for EVERY shared deck
+ * family (Spells, Abilities, Artifacts and their split tiers); a Search that
+ * returns a single card never opens it (nothing to decide).
+ *
+ * The cards stay LIFTED (held in the choice) until it resolves; `chooseOption`'s
+ * "spell-discard-top" branch places the unchosen ones first and the chosen one
+ * last, then runs the post-Search repeat offers so the pick only interposes.
+ * The context id keeps its historical name so a room holding an in-flight choice
+ * across a server update still resolves through the same branch.
+ */
+export function openDiscardTopPick(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: DeckId,
+  cardIds: CardId[],
+  meta: { baseCount?: number; keptCardId?: CardId; returnPhase: GamePhase }
+): void {
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Which card sits face up on top of the ${deckDisplayName(state, deckId)} discard pile?`,
+    options: cardIds.map((cardId) => ({
+      label: `Put ${cardLibrary[cardId]?.name ?? cardId} face up on top`
+    })),
+    context: "spell-discard-top",
+    spellDiscardTopPick: { deckId, cardIds: [...cardIds], baseCount: meta.baseCount, keptCardId: meta.keptCardId },
+    returnPhase: meta.returnPhase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
 export function maybeOpenPostSearchOffers(
   state: GameState,
   playerId: PlayerId,
