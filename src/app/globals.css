@@ -9968,67 +9968,200 @@ span.recruitThumb {
   justify-content: center;
 }
 
+/* Each box is a full-bleed PAINTED PANEL (SETUP_HUB_ART, frame baked into the
+   art) with the title/summary on a dark bottom plate — the AAA-menu-tile idiom
+   (Diablo/StarCraft campaign buttons), replacing the old icon-in-a-circle. */
 .setupHubBox {
   position: relative;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-  justify-items: center;
-  align-items: start;
-  gap: 7px;
-  min-height: 152px;
-  padding: 14px 14px 12px;
-  border: 1px solid rgba(150, 116, 60, 0.55);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 50% 0%, rgba(214, 164, 76, 0.16), transparent 55%),
-    linear-gradient(165deg, rgba(52, 38, 20, 0.92), rgba(24, 17, 9, 0.94) 70%);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  /* The panel art is 3:2 with its ornate frame BAKED IN — matching the box's
+     aspect means the frame is never cropped away (the box still grows if a
+     long summary needs more room; `cover` absorbs that case). */
+  aspect-ratio: 3 / 2;
+  padding: 0;
+  border: 1px solid rgba(163, 126, 64, 0.7);
+  border-radius: 12px;
+  overflow: hidden;
+  isolation: isolate;
+  /* Fallback ground while the panel art streams in. */
+  background: linear-gradient(165deg, rgba(46, 33, 17, 0.95), rgba(18, 13, 7, 0.97) 70%);
   color: #e7d3a8;
   cursor: pointer;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 227, 172, 0.07),
-    0 10px 26px rgba(0, 0, 0, 0.5);
+    inset 0 0 0 1px rgba(255, 227, 172, 0.08),
+    0 12px 28px rgba(0, 0, 0, 0.55);
   transition:
-    transform 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+  animation: setupHubBoxIn 0.5s cubic-bezier(0.22, 0.9, 0.28, 1) both;
+}
+
+/* Staggered entrance, reading order. */
+.setupHubBox--mode { animation-delay: 0.04s; }
+.setupHubBox--heroes { animation-delay: 0.12s; }
+.setupHubBox--map { animation-delay: 0.2s; }
+.setupHubBox--advanced { animation-delay: 0.28s; }
+
+@keyframes setupHubBoxIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A slow ember "breath" on the inner rim so the panels feel alive at rest. */
+.setupHubBox::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 26px rgba(255, 186, 92, 0.16);
+  animation: setupHubBreath 5.4s ease-in-out infinite;
+}
+
+.setupHubBox--heroes::after { animation-delay: 1.3s; }
+.setupHubBox--map::after { animation-delay: 2.6s; }
+.setupHubBox--advanced::after { animation-delay: 3.9s; }
+
+@keyframes setupHubBreath {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+
+  50% {
+    opacity: 0.75;
+  }
 }
 
 .setupHubBox:hover,
 .setupHubBox:focus-visible {
-  transform: translateY(-3px);
+  transform: translateY(-4px);
   border-color: #ffd76a;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 227, 172, 0.14),
-    0 0 18px rgba(214, 164, 76, 0.28),
-    0 14px 30px rgba(0, 0, 0, 0.55);
+    inset 0 0 0 1px rgba(255, 227, 172, 0.16),
+    0 0 24px rgba(224, 170, 76, 0.34),
+    0 18px 36px rgba(0, 0, 0, 0.62);
 }
 
-.setupHubBoxIconWrap {
+/* The painted panel: art (cover-cropped), a bottom shade for the text plate,
+   and the hover light-sweep. All aria-hidden presentation. */
+.setupHubBoxArt {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  z-index: -1;
+}
+
+.setupHubBoxArtImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.97) brightness(0.95);
+  transition:
+    transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
+    filter 0.3s ease;
+}
+
+.setupHubBox:hover .setupHubBoxArtImg,
+.setupHubBox:focus-visible .setupHubBoxArtImg {
+  transform: scale(1.07);
+  filter: saturate(1.08) brightness(1.06);
+}
+
+.setupHubBoxArtShade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 7, 3, 0) 36%,
+    rgba(10, 7, 3, 0.4) 58%,
+    rgba(8, 5, 2, 0.86) 84%,
+    rgba(6, 4, 2, 0.94) 100%
+  );
+}
+
+/* Travelling light sweep across the art on hover/focus (torchlight pass). */
+.setupHubBoxSheen {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: -60%;
+  width: 45%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 232, 180, 0.26) 45%,
+    rgba(255, 246, 220, 0.4) 50%,
+    rgba(255, 232, 180, 0.26) 55%,
+    transparent 100%
+  );
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.setupHubBox:hover .setupHubBoxSheen,
+.setupHubBox:focus-visible .setupHubBoxSheen {
+  animation: setupHubSheen 0.9s ease 0.05s 1;
+}
+
+@keyframes setupHubSheen {
+  0% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(0);
+  }
+
+  12% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(430%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setupHubBox,
+  .setupHubBox::after,
+  .setupHubBoxSheen,
+  .setupHubBoxArtImg {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* The text plate the shade keeps readable, pinned to the panel bottom. */
+.setupHubBoxPlate {
+  position: relative;
   display: grid;
-  place-items: center;
-  width: 64px;
-  height: 64px;
-  border: 2px solid rgba(214, 178, 94, 0.65);
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 30%, rgba(120, 90, 40, 0.55), rgba(20, 14, 8, 0.92) 75%);
-  box-shadow:
-    inset 0 0 14px rgba(0, 0, 0, 0.7),
-    0 3px 10px rgba(0, 0, 0, 0.5);
-}
-
-.setupHubBoxIcon {
-  width: 48px;
-  height: 46px;
-  object-fit: contain;
-  border-radius: 8px;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.7));
+  gap: 4px;
+  justify-items: center;
+  width: 100%;
+  padding: 10px 12px 12px;
 }
 
 .setupHubBoxTitle {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 17px;
+  font-size: 18px;
+  letter-spacing: 0.4px;
   color: #ffe9bd;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.9),
+    0 0 14px rgba(255, 205, 112, 0.28);
 }
 
 .setupHubBoxSummary {
@@ -10413,16 +10546,43 @@ button.setupHubNavItem:hover {
   color: #bfa87c;
 }
 
+/* The detail column: the preview + info SCROLL inside .mapPickDetailScroll,
+   while .mapPickApplyBar (the "Play this map" button) stays pinned below them,
+   always visible — it must never have to be hunted for under a long
+   description / conditions list. */
 .mapPickDetail {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   max-height: 46vh;
-  overflow-y: auto;
-  padding: 12px;
+  overflow: hidden;
+  padding: 0;
   border: 1px solid rgba(150, 116, 60, 0.35);
   border-radius: 12px;
   background: rgba(20, 14, 8, 0.55);
+}
+
+.mapPickDetail > .optionHint {
+  padding: 12px;
+}
+
+.mapPickDetailScroll {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.mapPickApplyBar {
+  flex: none;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(170, 130, 70, 0.4);
+  background: linear-gradient(180deg, rgba(48, 34, 15, 0.92), rgba(24, 16, 8, 0.97));
+  box-shadow: 0 -8px 18px rgba(0, 0, 0, 0.35);
 }
 
 /* Taller than the old outline-only sketch: the preview now draws the REAL printed
@@ -10470,14 +10630,34 @@ button.setupHubNavItem:hover {
 }
 
 .mapPickUseButton {
-  margin-top: 4px;
-  padding: 9px 14px;
+  padding: 11px 14px;
   border: 1px solid #ffd76a;
   border-radius: 10px;
-  background: linear-gradient(180deg, #e8c576, #c2933f);
+  background: linear-gradient(180deg, #efcf82, #c2933f);
   color: #2a1c08;
+  font-size: 14px;
   font-weight: 800;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 246, 214, 0.7),
+    0 3px 10px rgba(0, 0, 0, 0.45);
+  transition:
+    filter 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.mapPickUseButton:not(:disabled):hover,
+.mapPickUseButton:not(:disabled):focus-visible {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 246, 214, 0.8),
+    0 0 16px rgba(232, 183, 92, 0.5),
+    0 5px 12px rgba(0, 0, 0, 0.5);
 }
 
 .mapPickUseButton:disabled {
@@ -29389,23 +29569,21 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   gap: 10px;
 }
 
-.phoneMode .setupHubBox {
-  min-height: 136px;
-  padding: 12px 10px 10px;
-}
-
-.phoneMode .setupHubBoxIconWrap {
-  width: 56px;
-  height: 56px;
-}
-
-.phoneMode .setupHubBoxIcon {
-  width: 44px;
-  height: 42px;
+.phoneMode .setupHubBoxPlate {
+  gap: 2px;
+  padding: 6px 8px 8px;
 }
 
 .phoneMode .setupHubBoxTitle {
-  font-size: 15px;
+  font-size: 14px;
+}
+
+.phoneMode .setupHubBoxSummary {
+  font-size: 11px;
+}
+
+.phoneMode .setupHubBoxDim {
+  font-size: 10px;
 }
 
 /* The collapsed chat pill floats over the bottom-left corner; leave room so the
@@ -29470,6 +29648,23 @@ body:has(main.phoneMode) .mapPickList {
 
 body:has(main.phoneMode) .mapPickDetail {
   max-height: none;
+  overflow: visible;
+}
+
+/* On the phone sheet the whole body scrolls (the detail column doesn't), so
+   pin the apply bar to the scrollport bottom while the detail is in view —
+   "Play this map" stays reachable without hunting below the conditions list. */
+body:has(main.phoneMode) .mapPickDetailScroll {
+  overflow-y: visible;
+  flex: none;
+}
+
+body:has(main.phoneMode) .mapPickApplyBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  border: 1px solid rgba(170, 130, 70, 0.4);
+  border-radius: 10px;
 }
 
 body:has(main.phoneMode) .difficultyChessBtn {
