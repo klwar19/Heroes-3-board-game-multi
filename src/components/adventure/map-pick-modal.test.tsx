@@ -46,14 +46,17 @@ function designedMap(overrides: Partial<SharedMapRecord> = {}): SharedMapRecord 
 async function open(maps: SharedMapRecord[] = [], mutate?: (state: GameState) => void) {
   vi.mocked(fetchSharedMaps).mockResolvedValue(maps);
   const onAction = vi.fn();
+  const onOpenBox = vi.fn();
   const state = createAdventureLobbyState({ seed: "map-pick" });
   mutate?.(state);
-  render(<MapPickModal onAction={onAction} onClose={vi.fn()} state={state} viewerPlayerId="p1" />);
+  render(
+    <MapPickModal onAction={onAction} onClose={vi.fn()} onOpenBox={onOpenBox} state={state} viewerPlayerId="p1" />
+  );
   const dialog = screen.getByRole("dialog", { name: "Choose a map" });
   if (maps.length) {
     await waitFor(() => expect(within(dialog).getByText(new RegExp(maps[0].name))).toBeTruthy());
   }
-  return { onAction, dialog, state };
+  return { onAction, onOpenBox, dialog, state };
 }
 
 function rows(dialog: HTMLElement) {
@@ -164,9 +167,10 @@ describe("Map window — preview + info", () => {
 });
 
 describe("Map window — applying a map", () => {
-  it("a built-in sheet clears any designed map in the same action", async () => {
+  it("a built-in sheet clears any designed map in the same action, and never touches the game MODE", async () => {
     const { dialog, onAction } = await open([], (state) => {
-      // Start from a designed map so the switch has something to clear.
+      // Start from a designed map so the switch has something to clear — and
+      // from a deliberately chosen Custom mode, which the pick must preserve.
       state.setupLobby!.options.customMap = designedMap().tiles;
       state.setupLobby!.options.customMapName = "Twin Peaks";
       state.setupLobby!.options.customMode = true;
@@ -177,11 +181,14 @@ describe("Map window — applying a map", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { scenarioId: "land-2p", customMode: false, customMap: null, customMapName: null }
+      options: { scenarioId: "land-2p", customMap: null, customMapName: null }
     });
+    // The mode key is the Game-mode box's alone — a map pick that sent
+    // `customMode: false` here silently dropped the table out of Custom mode.
+    expect(Object.keys(onAction.mock.calls[0][0].options)).not.toContain("customMode");
   });
 
-  it("a designed map applies its tiles, seat count and preset", async () => {
+  it("a designed map applies its tiles, seat count and preset — and never touches the game MODE", async () => {
     const record = designedMap();
     const { dialog, onAction } = await open([record]);
     fireEvent.click(within(dialog).getByText(/Twin Peaks/).closest("button") as HTMLElement);
@@ -192,12 +199,73 @@ describe("Map window — applying a map", () => {
       playerId: "p1",
       options: {
         playerCount: 2,
-        customMode: true,
         customMap: record.tiles,
         customMapName: "Twin Peaks",
         customMapPreset: null
       }
     });
+    // Sending `customMode: true` here threw a BINH/Legacy/Tournament table into
+    // "Custom — your saved setup" on every designed-map pick.
+    expect(Object.keys(onAction.mock.calls[0][0].options)).not.toContain("customMode");
+  });
+
+  it("an EMPTY designed map cannot be applied — the engine would keep the scenario layout", async () => {
+    // createAdventureGameState reads `setupOptions.customMap?.length`, so a
+    // 0-tile plan builds the scenario sheet. Offering it as playable made the
+    // Map box name the scenario while the list claimed the designed map.
+    const empty = designedMap({ id: "empty", name: "Blank Slate", tiles: [] });
+    const { dialog, onAction } = await open([empty]);
+    fireEvent.click(within(dialog).getByText(/Blank Slate/).closest("button") as HTMLElement);
+
+    expect(within(dialog).getByText(/has no tiles/)).toBeTruthy();
+    const use = within(dialog).getByRole("button", { name: /Play this map/ }) as HTMLButtonElement;
+    expect(use.disabled).toBe(true);
+    fireEvent.click(use);
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("warns that a map with a different seat count closes seats — and their picks", async () => {
+    // The lobby seats 2; this designed map was built for 4, so applying it
+    // OPENS seats. Nothing about that lived in the Heroes & Draft box.
+    const four = designedMap({ id: "four", name: "Quad Vale", players: 4, scenarioId: "skirmish" });
+    const { dialog } = await open([four]);
+    fireEvent.click(within(dialog).getByText(/Quad Vale/).closest("button") as HTMLElement);
+    const note = dialog.querySelector(".mapPickSeatChange")?.textContent ?? "";
+    expect(note).toContain("opens 4 seats");
+    expect(note).toContain("the table has 2 now");
+    // Nothing is LOST here, so no scare about picks.
+    expect(note).not.toMatch(/picks go with them/);
+  });
+
+  it("names the picks a shrinking map would take with it", async () => {
+    const two = designedMap({ id: "two", name: "Duel Vale", players: 2, scenarioId: "skirmish" });
+    const { dialog } = await open([two], (state) => {
+      const lobby = state.setupLobby!;
+      // A 3-seat table where the third seat has already picked.
+      lobby.seats.push({ playerId: "p3", name: "Player 3", factionId: "rampart", heroDefId: "gelu" });
+    });
+    fireEvent.click(within(dialog).getByText(/Duel Vale/).closest("button") as HTMLElement);
+    const note = dialog.querySelector(".mapPickSeatChange")?.textContent ?? "";
+    expect(note).toContain("opens 2 seats (the table has 3 now)");
+    expect(note).toContain("1 seat closes, and their town & hero picks go with them");
+  });
+
+  it("CONTROL: a map that seats exactly what the table already has warns about nothing", async () => {
+    const { dialog } = await open([designedMap()]);
+    fireEvent.click(within(dialog).getByText(/Twin Peaks/).closest("button") as HTMLElement);
+    expect(dialog.querySelector(".mapPickSeatChange")).toBeNull();
+  });
+
+  it("CONTROL: an empty designed map in the options is NOT marked in play", async () => {
+    const empty = designedMap({ id: "empty", name: "Blank Slate", tiles: [] });
+    const { dialog } = await open([empty], (state) => {
+      state.setupLobby!.options.customMap = [];
+      state.setupLobby!.options.customMapName = "Blank Slate";
+    });
+    // The built-in sheet the game will actually build is the one "in play".
+    const applied = Array.from(rows(dialog)).filter((row) => row.classList.contains("applied"));
+    expect(applied).toHaveLength(1);
+    expect(applied[0].textContent).toContain("Border Skirmish");
   });
 
   it("the map already in play is marked and cannot be re-applied", async () => {

@@ -10187,6 +10187,123 @@ body:has(.setupHubBackdrop) .wogWindowBackdrop {
   overflow-y: auto;
 }
 
+/* --- Cross-window strip: all four boxes' live choices, one click apart ----- */
+.setupHubNav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(170, 130, 70, 0.28);
+  background: rgba(24, 17, 9, 0.55);
+}
+
+/* Four chips in one row would ellipsize every value away on a narrow window —
+   stack them 2×2. Must sit AFTER the base rule (same specificity, later wins);
+   the phone sheet has the same rule in its own block. */
+@media (max-width: 820px) {
+  .setupHubNav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 6px 10px;
+  }
+}
+
+.setupHubNavItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(150, 116, 60, 0.4);
+  border-radius: 8px;
+  background: rgba(44, 32, 17, 0.7);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+button.setupHubNavItem {
+  cursor: pointer;
+}
+
+button.setupHubNavItem:hover {
+  border-color: #ffd76a;
+  background: rgba(66, 48, 24, 0.9);
+}
+
+.setupHubNavItem.here {
+  border-color: rgba(255, 215, 106, 0.85);
+  background: rgba(78, 58, 26, 0.85);
+}
+
+.setupHubNavIcon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.setupHubNavItem.here .setupHubNavIcon {
+  box-shadow: 0 0 0 1px rgba(255, 215, 106, 0.7);
+}
+
+.setupHubNavText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.setupHubNavText small {
+  color: #c9a55e;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.setupHubNavText strong,
+.setupHubNavText em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setupHubNavText strong {
+  color: #ffe9bd;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.setupHubNavText em {
+  color: #c2ae86;
+  font-size: 9.5px;
+  font-style: normal;
+}
+
+/* "Same choice as the <box> box" note on the Advanced window's shared rows. */
+.sameChoiceNote {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sameChoiceLink {
+  padding: 2px 8px;
+  border: 1px solid rgba(214, 178, 94, 0.55);
+  border-radius: 999px;
+  background: rgba(52, 38, 20, 0.8);
+  color: #ffe9bd;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.sameChoiceLink:hover {
+  border-color: #ffd76a;
+}
+
 /* --- Map window: filters · list · shape preview · chess difficulty bar --- */
 .mapPickFilters {
   display: flex;
@@ -10339,6 +10456,17 @@ body:has(.setupHubBackdrop) .wogWindowBackdrop {
 
 .mapPickProblem {
   color: #ff9a8a;
+}
+
+/* What applying this map does to the SEATS (and the picks on them). */
+.mapPickSeatChange {
+  padding: 5px 8px;
+  border: 1px solid rgba(214, 178, 94, 0.4);
+  border-radius: 7px;
+  background: rgba(60, 44, 20, 0.55);
+  color: #ffd9a0;
+  font-size: 10.5px;
+  line-height: 1.4;
 }
 
 .mapPickUseButton {
@@ -29313,6 +29441,12 @@ body:has(main.phoneMode) .setupHubWindowHead {
 
 body:has(main.phoneMode) .setupHubWindowClose {
   order: -1;
+}
+
+/* Four cross-window chips never fit a phone row — stack them 2×2. */
+body:has(main.phoneMode) .setupHubNav {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 6px 10px;
 }
 
 /* One column: the shape preview + info stack UNDER the map list. The list keeps

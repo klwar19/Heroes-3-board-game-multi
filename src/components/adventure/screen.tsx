@@ -167,13 +167,18 @@ import { buildCustomSetupFile, customSetupFileName, parseCustomSetupFile } from 
 import {
   advancedSettingsChanged,
   deriveActiveSetupMode,
+  designedMapBlockers,
+  designedMapInPlay,
   DIFFICULTY_CHOICES,
   heroesSummary,
   mapSummary,
   MODE_PRESET_PAYLOADS,
+  SETUP_HUB_MODE_NAMES,
+  type SetupHubBoxId,
   type SetupModeId
 } from "@/components/adventure/setup-hub-summary";
 import { MapPickModal } from "@/components/adventure/map-pick-modal";
+import { SetupHubNav } from "@/components/adventure/setup-hub-nav";
 import { SetupHubWindow } from "@/components/adventure/setup-hub-window";
 import { DIFFICULTY_CHESS_ICONS, SETUP_HUB_ICONS } from "@/data/assets/homm-assets";
 
@@ -7266,8 +7271,10 @@ function MapPicker({
     };
   }, []);
 
-  // A built-in scenario sheet is in play whenever no designed map is loaded.
-  const usingScenarioSheet = !options.customMap;
+  // A built-in scenario sheet is in play whenever no designed map is loaded —
+  // the ENGINE's own reading (designedMapInPlay), shared with the Map window
+  // and the Map box so all three can never disagree about what is in play.
+  const usingScenarioSheet = !designedMapInPlay(options);
 
   return (
     <div className="mapPicker">
@@ -7283,8 +7290,10 @@ function MapPicker({
                 key={scenario.id}
                 // Picking a scenario sheet uses its own face-down layout and
                 // drops any designed map (sent together so the engine never
-                // leaves a stale map attached to a different scenario).
-                onClick={() => send({ scenarioId: scenario.id, customMode: false, customMap: null, customMapName: null })}
+                // leaves a stale map attached to a different scenario). It does
+                // NOT touch `customMode` — the game MODE belongs to the
+                // Game-mode box, and a map pick must never silently drop it.
+                onClick={() => send({ scenarioId: scenario.id, customMap: null, customMapName: null })}
                 title={scenario.description}
                 type="button"
               >
@@ -7303,11 +7312,12 @@ function MapPicker({
           ) : (
             savedMaps.map((record) => {
               const scenario = scenarioDefinitions[record.scenarioId];
-              const problems = scenario
-                ? validateCustomMapPlan(record.tiles, scenario).problems
-                : ["Unknown scenario."];
+              const problems = designedMapBlockers(
+                record.tiles.length,
+                scenario ? validateCustomMapPlan(record.tiles, scenario).problems : ["Unknown scenario."]
+              );
               const selected =
-                Boolean(options.customMap) &&
+                designedMapInPlay(options) &&
                 options.customMapName === record.name &&
                 options.customMap?.length === record.tiles.length;
               const author = record.createdByName?.trim() || null;
@@ -7322,11 +7332,12 @@ function MapPicker({
                   // open that many seats, then apply the map. SET_GAME_OPTIONS
                   // processes scenarioId → playerCount → customMap in that order,
                   // and keeps the map because customMap is sent in the same action.
+                  // `customMode` is deliberately NOT sent — see applyEntry in
+                  // map-pick-modal.tsx: the game MODE is the Game-mode box's.
                   onClick={() =>
                     send({
                       ...(record.scenarioId !== options.scenarioId ? { scenarioId: record.scenarioId } : {}),
                       playerCount: record.players,
-                      customMode: true,
                       customMap: record.tiles,
                       customMapName: record.name,
                       customMapPreset: record.preset ?? null
@@ -7354,12 +7365,12 @@ function MapPicker({
         </div>
       </div>
 
-      {options.customMap ? (
+      {designedMapInPlay(options) ? (
         <div className="mapPresetLobbyNote">
           <small className="optionHint">
             Playing the designed map {options.customMapName ? `“${options.customMapName}” ` : ""}with{" "}
-            {options.customMap.length} tile{options.customMap.length === 1 ? "" : "s"} — face-down Secret landmarks draw
-            a random matching tile from their pool.
+            {options.customMap!.length} tile{options.customMap!.length === 1 ? "" : "s"} — face-down Secret landmarks
+            draw a random matching tile from their pool.
           </small>
           {(() => {
             const fixedSeats = options.customMap!.filter(
@@ -7392,7 +7403,6 @@ function MapPicker({
           ) : null}
         </div>
       ) : null}
-      <PersonalCustomSettingsPanel options={options} send={send} />
       <small className="optionHint designerLink">
         <Link href="/designer" target="_blank">
           <Hammer aria-hidden="true" size={11} /> Open the map designer
@@ -7512,7 +7522,9 @@ function PersonalCustomSettingsPanel({
           {notice}
         </small>
       ) : null}
-      <small className="optionHint">Shared designer maps remain available above; setting files are only for you.</small>
+      <small className="optionHint">
+        Designer maps are shared with the whole table (pick one in the Map box); setting files are only for you.
+      </small>
     </div>
   );
 }
@@ -8528,11 +8540,18 @@ function GameModeSection({
 function SeatCountControl({
   state,
   viewerPlayerId,
-  onAction
+  onAction,
+  footer
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
+  /**
+   * Rendered only when the control itself renders. A scenario with a single
+   * legal seat count shows nothing at all, and a note pointing at a control
+   * that is not there would be worse than no note.
+   */
+  footer?: ReactNode;
 }) {
   const lobby = state.setupLobby;
   if (!lobby) {
@@ -8553,6 +8572,7 @@ function SeatCountControl({
       counts.push(n);
     }
     return counts.length > 1 ? (
+      <>
       <div className="optionRow">
         <small title="How many computer opponents this game seats — leave them on auto and they pick their own factions after you, or hand-pick / roll each one's town & hero in Heroes & Draft">
           Computer opponents
@@ -8577,6 +8597,8 @@ function SeatCountControl({
           Playing with computer — every other seat is a computer opponent; nobody else can join this game.
         </small>
       </div>
+      {footer}
+      </>
     ) : null;
   }
   const min = scenario?.minPlayers ?? 2;
@@ -8586,6 +8608,7 @@ function SeatCountControl({
     counts.push(n);
   }
   return counts.length > 1 ? (
+    <>
     <div className="optionRow">
       <small title="How many seats this game opens — each needs a faction before the adventure starts">
         Players
@@ -8608,6 +8631,8 @@ function SeatCountControl({
         Seats beyond two open empty — anyone can sit in them from the table’s seat switcher and pick a faction.
       </small>
     </div>
+    {footer}
+    </>
   ) : null;
 }
 
@@ -8617,14 +8642,59 @@ function SeatCountControl({
  * tiers and pre-built buildings. Any seated player may adjust; everything
  * syncs through the same action stream as the rest of the game.
  */
+/**
+ * "This control is the same choice as the <box> box" — the Advanced window
+ * hosts the FULL option set, so a few of its rows (game mode, seats, map,
+ * difficulty) edit exactly what a dedicated hub box owns. They share one
+ * component and one `setupLobby.options`, so they can never disagree; this note
+ * says so and jumps straight to that box's window.
+ */
+function SameChoiceAsBoxNote({
+  box,
+  boxLabel,
+  onOpenBox
+}: {
+  box: SetupHubBoxId;
+  boxLabel: string;
+  onOpenBox?: (box: SetupHubBoxId) => void;
+}) {
+  if (!onOpenBox) {
+    return null;
+  }
+  return (
+    <small className="optionHint sameChoiceNote">
+      Same choice as the <strong>{boxLabel}</strong> box — changing it here changes it there.{" "}
+      <button
+        aria-label={`Open the ${SAME_CHOICE_ARIA[box]} window`}
+        className="sameChoiceLink"
+        onClick={() => onOpenBox(box)}
+        type="button"
+      >
+        Open {boxLabel}
+      </button>
+    </small>
+  );
+}
+
+/** Distinct from the strip's "Switch to the … box" labels (unique names). */
+const SAME_CHOICE_ARIA: Record<SetupHubBoxId, string> = {
+  mode: "Game-mode",
+  heroes: "Heroes",
+  map: "Map",
+  advanced: "Advanced"
+};
+
 function GameOptionsPanel({
   state,
   viewerPlayerId,
-  onAction
+  onAction,
+  onOpenBox
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
+  /** Jump to the hub box that OWNS a duplicated row (absent = no cross-links). */
+  onOpenBox?: (box: SetupHubBoxId) => void;
 }) {
   const [tournamentRulesOpen, setTournamentRulesOpen] = useState(false);
   const [tab, setTab] = useState<OptionsTabId>("rules");
@@ -8698,6 +8768,7 @@ function GameOptionsPanel({
         state={state}
         viewerPlayerId={viewerPlayerId}
       />
+      <SameChoiceAsBoxNote box="mode" boxLabel="Game mode" onOpenBox={onOpenBox} />
 
       {(() => {
         const tournamentDefs = [
@@ -9577,7 +9648,12 @@ function GameOptionsPanel({
         );
       })()}
 
-      <SeatCountControl onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <SeatCountControl
+        footer={<SameChoiceAsBoxNote box="heroes" boxLabel="Heroes & Draft" onOpenBox={onOpenBox} />}
+        onAction={onAction}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
 
       <div className="optionRow">
         <small title="The map you play on — a built-in scenario sheet or a designed map a player saved in the map designer">
@@ -9585,6 +9661,21 @@ function GameOptionsPanel({
         </small>
         <MapPicker options={options} send={send} />
       </div>
+      <SameChoiceAsBoxNote box="map" boxLabel="Map" onOpenBox={onOpenBox} />
+      {onOpenBox ? (
+        <small className="optionHint sameChoiceNote">
+          Saving or loading a whole setup as a <strong>Custom setting</strong> file lives with the game modes — it is
+          what the Custom mode card is.{" "}
+          <button
+            aria-label="Open the Game-mode window for Custom setting files"
+            className="sameChoiceLink"
+            onClick={() => onOpenBox("mode")}
+            type="button"
+          >
+            Open Game mode
+          </button>
+        </small>
+      ) : null}
 
       <div className="optionRow">
         <small title="Field Difficulty Level Table column used when guards are drawn, and the printed starting bonus each player receives at setup (rulebook p.10)">
@@ -9612,6 +9703,7 @@ function GameOptionsPanel({
           {" "}Guards use the Field Difficulty Level Table column for this difficulty.
         </small>
       </div>
+      <SameChoiceAsBoxNote box="map" boxLabel="Map" onOpenBox={onOpenBox} />
 
       </div>
       ) : null}
@@ -10648,16 +10740,8 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
   );
 }
 
-/** The four big Setup Hub boxes: Game mode · Heroes & Draft · Map · Advanced settings. */
-type SetupHubBoxId = "mode" | "heroes" | "map" | "advanced";
-
-/** Short mode names for the Game-mode box summary. */
-const SETUP_HUB_MODE_NAMES: Record<SetupModeId, string> = {
-  legacy: "Legacy — printed rulebook",
-  binh: "BINH — house-rule edition",
-  tournament: "Tournament — competitive",
-  custom: "Custom — your saved setup"
-};
+// SetupHubBoxId and SETUP_HUB_MODE_NAMES live in setup-hub-summary.ts — shared
+// with the Map window and the cross-window strip.
 
 /**
  * The Setup Hub: four large icon boxes (2×2, centered) that open the setup
@@ -10788,11 +10872,13 @@ function GameModeModal({
   state,
   viewerPlayerId,
   onAction,
+  onOpenBox,
   onClose
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
+  onOpenBox: (box: SetupHubBoxId) => void;
   onClose: () => void;
 }) {
   const lobby = state.setupLobby;
@@ -10803,7 +10889,13 @@ function GameModeModal({
   const send = (next: Partial<GameSetupOptions>) =>
     onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
   return (
-    <SetupHubWindow className="setupHubWindow--mode" eyebrow="Game setup" label="Game mode" onClose={onClose}>
+    <SetupHubWindow
+      className="setupHubWindow--mode"
+      eyebrow="Game setup"
+      label="Game mode"
+      nav={<SetupHubNav current="mode" onOpen={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />}
+      onClose={onClose}
+    >
       <GameModeSection
         customHint="Personal custom setup: save the current map & rules to a file below, or load one of your setting files."
         customNotice="Custom mode selected: save the current setup to a file, or load a setting file, below."
@@ -10811,9 +10903,15 @@ function GameModeModal({
         state={state}
         viewerPlayerId={viewerPlayerId}
       />
-      {deriveActiveSetupMode(options) === "custom" ? (
-        <PersonalCustomSettingsPanel options={options} send={send} />
-      ) : null}
+      {/*
+        The setting-FILE panel is the Custom card's other half, and it is the
+        ONLY copy in the app (it used to be duplicated inside the Map & Setup
+        picker, where two independent name fields could disagree). It renders in
+        every mode on purpose: saving IS what puts the table in Custom mode
+        (saveToFile sends customMode: true), so gating it behind already being
+        in Custom mode would leave a BINH/Legacy table unable to save at all.
+      */}
+      <PersonalCustomSettingsPanel options={options} send={send} />
     </SetupHubWindow>
   );
 }
@@ -10824,12 +10922,14 @@ function HeroesDraftModal({
   viewerPlayerId,
   onAction,
   onInspect,
+  onOpenBox,
   onClose
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
   onInspect: (heroDefId: string) => void;
+  onOpenBox: (box: SetupHubBoxId) => void;
   onClose: () => void;
 }) {
   // Hot-seat (open table, several seats, one browser): the local seat switcher
@@ -10837,7 +10937,13 @@ function HeroesDraftModal({
   // the player hunting for it.
   const hotSeat = !state.room?.hosted && (state.setupLobby?.seats.length ?? 0) > 1;
   return (
-    <SetupHubWindow className="setupHubWindow--heroes" eyebrow="Map setup" label="Heroes & Draft" onClose={onClose}>
+    <SetupHubWindow
+      className="setupHubWindow--heroes"
+      eyebrow="Map setup"
+      label="Heroes & Draft"
+      nav={<SetupHubNav current="heroes" onOpen={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />}
+      onClose={onClose}
+    >
       <SeatCountControl onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
       <DraftFlowPanel onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />
       <ComputerOpponentPickers onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />
@@ -10856,11 +10962,13 @@ function AdvancedSettingsModal({
   state,
   viewerPlayerId,
   onAction,
+  onOpenBox,
   onClose
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
+  onOpenBox: (box: SetupHubBoxId) => void;
   onClose: () => void;
 }) {
   return (
@@ -10868,9 +10976,10 @@ function AdvancedSettingsModal({
       className="setupHubWindow--advanced"
       eyebrow="Full options"
       label="Advanced settings"
+      nav={<SetupHubNav current="advanced" onOpen={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />}
       onClose={onClose}
     >
-      <GameOptionsPanel onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <GameOptionsPanel onAction={onAction} onOpenBox={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />
     </SetupHubWindow>
   );
 }
@@ -11118,6 +11227,7 @@ export function SetupLobbyScreen({
             <GameModeModal
               onAction={onAction}
               onClose={() => setOpenBox(null)}
+              onOpenBox={setOpenBox}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
@@ -11127,6 +11237,7 @@ export function SetupLobbyScreen({
               onAction={onAction}
               onClose={() => setOpenBox(null)}
               onInspect={setInfoHeroId}
+              onOpenBox={setOpenBox}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
@@ -11135,6 +11246,7 @@ export function SetupLobbyScreen({
             <MapPickModal
               onAction={onAction}
               onClose={() => setOpenBox(null)}
+              onOpenBox={setOpenBox}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
@@ -11143,6 +11255,7 @@ export function SetupLobbyScreen({
             <AdvancedSettingsModal
               onAction={onAction}
               onClose={() => setOpenBox(null)}
+              onOpenBox={setOpenBox}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
