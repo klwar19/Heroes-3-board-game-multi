@@ -2106,7 +2106,9 @@ one boolean read at ONE seam, with the old behaviour pinned as the CONTROL.
   house-rule CONTROLs in `elemental-fixed-damage.test.ts` (every shipped elemental
   side, driven from the unit data) and `summon-elemental.test.ts` (attack maths,
   Attack tokens, Moandor's granted elemental damage).
-- **`discovery-border-gate`** (category global). OFFICIAL (OFF): DISCOVERING a
+- **`discovery-border-gate`** (category combat — it sits in the BINH house-rules
+  panel under "Combat & map rules", beside its two official-rules siblings, NOT in
+  the "Global map rules" panel; placement pinned in `game-options-tabs.test.tsx`). OFFICIAL (OFF): DISCOVERING a
   face-down Tile — and OPENING a new Ⅱ–Ⅲ one — needs only that the hero is
   ADJACENT; the printed rules mention no blockers or yellow borders for discovery.
   ON: the old reading — the hero must also touch the tile across an OPEN border

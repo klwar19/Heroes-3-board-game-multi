@@ -281,7 +281,7 @@ describe("Setup Hub — Advanced settings window", () => {
     renderLobby();
     fireEvent.click(box(/Advanced settings/));
     const dialog = screen.getByRole("dialog", { name: "Advanced settings" });
-    for (const name of [/Mode & Rules/, /Match/, /Map & Setup/, /Army/]) {
+    for (const name of [/Mode & Rules/, /Match/, /Map & Setup/, /Town & Resources/]) {
       expect(within(dialog).getByRole("tab", { name })).toBeTruthy();
     }
   });

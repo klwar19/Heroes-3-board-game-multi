@@ -303,7 +303,10 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     label: "Yellow borders block Tile discovery",
     description:
       "On (old BINH reading): discovering a face-down Map Tile — or opening a new Ⅱ–Ⅲ one — also needs an OPEN border between your Hero's field and the tile; a printed yellow arc or a designer border seals it off (a Redwood Observatory / Speculum still reveals across). Off (official rules, default): being ADJACENT to the tile is the whole requirement — the rules mention no blockers or yellow borders for discovery. Moving is unaffected either way (borders still block movement), and you still cannot discover across the Surface/Subterranean divide.",
-    category: "global",
+    // BINH panel ("Combat & map rules") beside its two official-rules siblings
+    // (`elemental-damage-no-die` / `deck-access-hero-level`) — it restores an old
+    // BINH reading, not a Global map rule.
+    category: "combat",
     default: false,
     legacyDefault: false
   },

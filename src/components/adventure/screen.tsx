@@ -7472,7 +7472,7 @@ function PersonalCustomSettingsPanel({
       <div className="mapPickerGroupLabel">
         <strong>Custom setting — file</strong>
         <small>
-          Saves <b>every</b> setting from all four tabs — Mode &amp; Rules, Match, Map &amp; Setup and Army (mode,
+          Saves <b>every</b> setting from all four tabs — Mode &amp; Rules, Match, Map &amp; Setup and Town &amp; Resources (mode,
           mods, house rules, victory, difficulty, the designed map, and starting resources/units/buildings) — to a file;
           load a file to restore them all. Your faction &amp; hero are picked per game and are not saved. Each player
           keeps their own files.
@@ -7569,7 +7569,7 @@ const OPTION_TABS: { id: OptionsTabId; label: string; icon: ReactNode }[] = [
   { id: "rules", label: "Mode & Rules", icon: <Swords size={13} /> },
   { id: "play", label: "Match", icon: <Crown size={13} /> },
   { id: "map", label: "Map & Setup", icon: <ImageIcon size={13} /> },
-  { id: "army", label: "Army", icon: <Castle size={13} /> }
+  { id: "army", label: "Town & Resources", icon: <Castle size={13} /> }
 ];
 
 const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
@@ -9709,7 +9709,7 @@ function GameOptionsPanel({
       ) : null}
 
       {tab === "army" ? (
-      <div className="optionTabPanel" role="tabpanel" aria-label="Starting army">
+      <div className="optionTabPanel" role="tabpanel" aria-label="Town & Resources">
 
       <div className="optionRow">
         <small>Starting resources</small>
