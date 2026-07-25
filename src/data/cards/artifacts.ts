@@ -2248,9 +2248,13 @@ export const artifactCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
+          // engine: +1 movement, plus BOTH walk-through flags — blocked fields
+          // (moveThroughThisTurn) and "any fields without resolving them"
+          // (passAnyFieldThisTurn: guards, enemy heroes, locations and flags are
+          // stepped over; only the field the walk ENDS on resolves).
           label: "+1 movement and walk through fields this turn",
           mapOnly: true,
-          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, moveThroughThisTurn: true }
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, moveThroughThisTurn: true, passAnyFieldThisTurn: true }
         },
         {
           label: "Draw a card",

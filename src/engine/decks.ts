@@ -18,6 +18,55 @@ export function isSharedDeckId(deckId: string): deckId is SharedDeckId {
 }
 
 /**
+ * Face-up discard invariant: every SHARED deck (Spells / Abilities / Artifacts
+ * and their split tiers) ALWAYS shows one card face-up on its discard pile.
+ *
+ * Setup flips the first one (`makeSharedDecks`); this keeps it true for the rest
+ * of the game — the instant the LAST discarded card is TAKEN (a Search's "take
+ * the top discard", the Genie wish, an Artifact-Merchant discard-top buy, a
+ * recovery artifact…) the deck's next draw-pile card is flipped into its place,
+ * exactly like the physical game.
+ *
+ * ONE seam: called at the tail of every action transaction (`applyAction`) with
+ * the PRE-action state, so no take path can bypass it and none has to remember
+ * to refill. It moves a card only from that deck's own draw pile to its own
+ * discard pile, so nothing is created or lost and every downstream tier /
+ * uniqueness gate still applies to the flipped card.
+ *
+ * Three deliberate limits:
+ *  - `before` gates it on the pile having HELD a card when the action started.
+ *    A pile that was already empty is left alone — the rule is "when the last
+ *    card is taken, flip a new one", not "conjure a face-up card onto an empty
+ *    pile" (which would also quietly steal a card another effect had just put
+ *    on the deck top).
+ *  - never while a pendingChoice is open: an open decision can be HOLDING cards
+ *    lifted out of a deck (a Search's revealed cards, a Pandora scry, the
+ *    discard face-up pick) that are about to land back on that pile, so flipping
+ *    a replacement then would burn a draw-pile card for nothing. The invariant
+ *    re-checks on the next action, so the flip lands as soon as it settles.
+ *  - a deck whose draw pile is ALSO empty has nothing left to show and is left
+ *    alone (a Search reshuffle refills the draw pile first).
+ *
+ * Deliberately silent (no feed event): the discard top is rendered on the table,
+ * so a line per flip would be noise, and the state is public either way.
+ */
+export function refillSharedDeckDiscards(state: GameState, before: GameState): void {
+  if (state.pendingChoice) {
+    return;
+  }
+  for (const deckId of SHARED_DECK_IDS) {
+    const deck = state.decks[deckId];
+    if (!deck || deck.discardPile.length > 0 || deck.drawPile.length === 0) {
+      continue;
+    }
+    if ((before.decks[deckId]?.discardPile.length ?? 0) === 0) {
+      continue;
+    }
+    deck.discardPile.push(deck.drawPile.pop() as CardId);
+  }
+}
+
+/**
  * Deterministic Fisher-Yates shuffle. Every shuffle in the engine must come
  * through here so multiplayer clients replay identical deck orders from the
  * shared game seed.

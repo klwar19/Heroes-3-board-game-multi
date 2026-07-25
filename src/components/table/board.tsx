@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChevronDown, ChevronUp, Crown, Hourglass, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
+import { ChevronDown, ChevronUp, Crown, Footprints, Hourglass, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { UNIT_RANK_NAMES, unitRankBadgeImage } from "@/data/units/experience";
@@ -38,7 +38,9 @@ import {
   neutralFormationCellsForGuard,
   playerSpellCastsIgnoreLimit,
   unitHasUnlimitedRetaliationEffect,
+  unitFlipSidePreview,
   unitIsBerserk,
+  unitSideRuleOverrides,
   type BattlefieldTokenState,
   type CombatBoardArtId,
   type CombatTokenState,
@@ -1746,7 +1748,7 @@ export function InitiativeRail({ state }: { state: GameState }) {
               isDone ? "done" : ""
             } ${unit.waitPending ? "waited" : ""} ${unit.defenseToken ? "defending" : ""}`}
             key={unit.id}
-            onClick={() => zoomUnit(unit)}
+            onClick={() => zoomUnit(unit, state.ruleset)}
             title={`${index + 1}. ${unit.cardName} — initiative ${init}${
               delta !== 0 ? ` (base ${unit.initiative}, ${delta > 0 ? "+" : ""}${delta} from effects)` : ""
             }${isDone ? " (already activated)" : ""}${
@@ -1789,6 +1791,38 @@ function heroLevelOf(state: GameState, playerId: PlayerId): number {
   return 1;
 }
 
+/**
+ * A PACK card's other side, spelled out: lethal damage flips it to its Few side,
+ * so the player can see up front what they are about to be left with (and what
+ * an attack of theirs will leave standing). Renders nothing for a card that never
+ * flips — a Few/Neutral side, a bank/boss guard, a Clone, or a covered card.
+ *
+ * Pure presentation over `unitFlipSidePreview`, which reads the shipped
+ * definitions through the same house-rule side tweaks the real flip uses.
+ */
+function UnitFlipSideNote({ state, unit }: { state: GameState; unit: CombatUnitState }) {
+  const flip = unitFlipSidePreview(unit, state.ruleset ?? "legacy", unitSideRuleOverrides(state));
+  if (!flip) {
+    return null;
+  }
+  const typeChanged = flip.type !== unit.type;
+  return (
+    <div
+      className="inspectFlipSide"
+      title={`Lethal damage removes the Pack side and this card keeps fighting as ${flip.cardName}${
+        typeChanged ? ` (and becomes a ${flip.type} unit)` : ""
+      }.`}
+    >
+      <span className="inspectFlipHead">Flips to {flip.cardName}</span>
+      <span className="inspectFlipStats">
+        ⚔ {flip.attack} · <Shield aria-hidden="true" size={10} /> {flip.defense} · ♥ {flip.health} · init{" "}
+        {flip.initiative}
+        {typeChanged ? ` · ${flip.type}` : ""}
+      </span>
+    </div>
+  );
+}
+
 export function InspectPanel({ state, unitId }: { state: GameState; unitId: string | null }) {
   const { zoomUnit } = useCardZoom();
   const unit = unitId ? state.combat?.units[unitId] : undefined;
@@ -1828,7 +1862,7 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
       <button
         aria-label={`Read ${unit.cardName} at full size`}
         className="inspectZoom"
-        onClick={() => zoomUnit(unit)}
+        onClick={() => zoomUnit(unit, state.ruleset)}
         title="Click to enlarge"
         type="button"
       >
@@ -1882,6 +1916,7 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         <div className={`inspectRetaliation ${retaliation}`} title={`Retaliation ${retaliationText[retaliation]}`}>
           <Swords aria-hidden="true" size={12} /> Retaliation: <b>{retaliation === "used" ? "spent" : retaliation}</b>
         </div>
+        <UnitFlipSideNote state={state} unit={unit} />
         {unit.commanderSlug && unit.commanderGrades ? (
           // Commander-only extras: the Might dice (Damage grade) and the Magic
           // Power — the stats the generic row omits. Full detail (grade bonuses,
@@ -2283,37 +2318,65 @@ export function CommandDock({
             : "Your move"
           : `Waiting for ${state.players[waitingOn]?.name ?? waitingOn}`;
 
-  const player = state.players[viewerPlayerId];
+  // WHOSE limits the dock reports. Normally the viewer's own — but in a fight the
+  // viewer is not part of (a neutral/PvM battle another seat is playing out, which
+  // "anyone may watch") their own counters are meaningless noise: what a watcher
+  // wants is the FIGHTER's state. So the panel follows the fighter there, labelled
+  // with their name. In a fight the viewer takes part in (their own neutral fight,
+  // either side of a PvP battle, the sandbox) it stays the viewer's own numbers.
+  const combat = state.combat;
+  const viewerFights = Boolean(
+    combat &&
+      (combat.attackerPlayerId === viewerPlayerId ||
+        combat.defenderPlayerId === viewerPlayerId ||
+        Object.values(combat.units).some((unit) => isUnitAlive(unit) && unit.controllerId === viewerPlayerId))
+  );
+  const shownPlayerId = combat && !viewerFights ? combat.attackerPlayerId : viewerPlayerId;
+  const watching = shownPlayerId !== viewerPlayerId;
+  const player = state.players[shownPlayerId];
   // Expert Intelligence "ignores the limit": casts still tick the counter, so
   // show the cap as ∞ and never mark it spent while that effect is held.
-  const ignoreSpellLimit = Boolean(player) && playerSpellCastsIgnoreLimit(state, viewerPlayerId);
+  const ignoreSpellLimit = Boolean(player) && playerSpellCastsIgnoreLimit(state, shownPlayerId);
   const spellLimit = 1 + (player?.combatStats.spellLimitBonusThisRound ?? 0);
   const spellLimitLabel = ignoreSpellLimit ? "∞" : String(spellLimit);
   const spellsCast = player?.combatStats.spellsCastThisRound ?? 0;
-  const crownsLeft = player
-    ? player.limits.expertUses +
-      (player.combatStats.expertUseBonusThisRound ?? 0) -
-      player.combatStats.expertUsesSpentThisRound
-    : 0;
+  const crownsTotal = player ? player.limits.expertUses + (player.combatStats.expertUseBonusThisRound ?? 0) : 0;
+  const crownsLeft = player ? crownsTotal - player.combatStats.expertUsesSpentThisRound : 0;
+  // Public, already-unmasked reads (a redacted view keeps opponent hand/deck as
+  // same-length placeholders, so their COUNT is real while the cards stay hidden).
+  const handCount = player?.hand.length ?? 0;
+  const shownHero = Object.values(state.heroes).find(
+    (candidate) => candidate.controllerId === shownPlayerId && candidate.kind === "main"
+  );
+  const whose = watching ? `${player?.name ?? shownPlayerId}'s` : "your";
 
   return (
     <div className="commandDock" aria-label="Commands">
       <span className="dockStatus">{status}</span>
       {state.combat && !outcome ? (
-        <div className="dockLimits" aria-label="Per-round limits">
+        <div className="dockLimits" aria-label={watching ? `${player?.name ?? shownPlayerId} — resources` : "Per-round limits"}>
+          {watching ? <span className="dockLimitsWho">{player?.name ?? shownPlayerId}</span> : null}
           <span
             className={!ignoreSpellLimit && spellsCast >= spellLimit ? "limitSpent" : ""}
             title={
               ignoreSpellLimit
-                ? "Intelligence (expert): your spells no longer count toward the per-combat-round limit."
+                ? `Intelligence (expert): ${whose} spells no longer count toward the per-combat-round limit.`
                 : `One spell per combat round${spellLimit > 1 ? ` (+${spellLimit - 1} from Knowledge)` : ""}. Hero specialties never count against it.`
             }
           >
             <Sparkles aria-hidden="true" size={12} /> Spell {spellsCast}/{spellLimitLabel}
           </span>
-          <span title="Expert-effect crowns left this combat round">
-            <Crown aria-hidden="true" size={12} /> {crownsLeft} crown{crownsLeft === 1 ? "" : "s"}
+          <span title={`Expert-effect crowns left this combat round (${whose} total: ${crownsTotal})`}>
+            <Crown aria-hidden="true" size={12} /> {crownsLeft}/{crownsTotal} crown{crownsTotal === 1 ? "" : "s"}
           </span>
+          <span title={`Cards in ${whose} hand`}>
+            <ScrollText aria-hidden="true" size={12} /> Hand {handCount}
+          </span>
+          {shownHero ? (
+            <span title={`Movement points ${whose} main hero has left this turn`}>
+              <Footprints aria-hidden="true" size={12} /> MP {shownHero.movementPoints}
+            </span>
+          ) : null}
         </div>
       ) : null}
       {commands.map((legal) => (

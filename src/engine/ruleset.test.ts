@@ -128,8 +128,58 @@ describe("split decks (BINH) vs single decks (legacy)", () => {
     expect(state.decks["artifacts-minor"]).toBeUndefined();
   });
 
-  it("gates the Expert spell deck by level 4+ OR a revealed IV–V tile, with a key-card bypass", () => {
+  // Official rule: the TILE the hero stands on decides which Spell/Artifact decks
+  // a Search may reach — starting & far (Ⅰ–Ⅲ) = basic/minor, near (Ⅳ–Ⅴ) =
+  // expert/major, centre (Ⅵ–Ⅶ) = expert/relic. The old level/reveal/key-card
+  // unlocks live behind the `deck-access-hero-level` house rule.
+  /** Re-labels the tile the hero stands on, which is all `heroTileGroup` reads. */
+  function standOnBand(state: GameState, backLabel: string): void {
+    const field = state.adventure!.fields[state.heroes.hero_p1.spaceId as string]!;
+    state.adventure!.tiles[field.tileInstanceId]!.backLabel = backLabel;
+  }
+
+  /** A BINH game with the old hero-level deck unlocks turned back ON. */
+  function makeLevelGateGame(): GameState {
+    return createAdventureGameState({
+      seed: "ruleset-seed",
+      difficulty: "normal",
+      ruleset: "binh",
+      rotateStartTiles: false,
+      houseRules: { "deck-access-hero-level": true }
+    });
+  }
+
+  it("official: the hero's TILE decides the Spell deck — level, map progress and key cards do not", () => {
     const state = makeBinhGame();
+    const hero = state.heroes.hero_p1;
+    state.players.p1.hand = [];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+
+    // Starting tile (Ⅰ): Basic only — even at max level, holding a key card, with
+    // a Ⅳ–Ⅴ tile revealed elsewhere on the map.
+    hero.level = 7;
+    state.players.p1.discard = ["ability.eagle_eye"];
+    const revealed = Object.values(state.adventure!.tiles).find((tile) => tile.backLabel === "Ⅳ–Ⅴ");
+    expect(revealed).toBeDefined();
+    revealed!.faceDown = false;
+    expect(canDrawExpertSpells(state, "p1", hero)).toBe(false);
+
+    // Standing on a near (Ⅳ–Ⅴ) tile opens the Expert deck at level 1 with no key
+    // card at all — the tile is the whole rule. A centre tile likewise.
+    hero.level = 1;
+    state.players.p1.discard = [];
+    standOnBand(state, "Ⅳ–Ⅴ");
+    expect(canDrawExpertSpells(state, "p1", hero)).toBe(true);
+    standOnBand(state, "Ⅵ–Ⅶ");
+    expect(canDrawExpertSpells(state, "p1", hero)).toBe(true);
+    // Far tiles (Ⅱ–Ⅲ) sit in the shallow band, like the starting tile.
+    standOnBand(state, "Ⅱ–Ⅲ");
+    expect(canDrawExpertSpells(state, "p1", hero)).toBe(false);
+  });
+
+  it("HOUSE RULE ON: level 4+ OR a revealed IV–V tile, with a key-card bypass", () => {
+    const state = makeLevelGateGame();
     const hero = state.heroes.hero_p1;
     state.players.p1.hand = [];
     state.players.p1.deck = [];
@@ -159,8 +209,25 @@ describe("split decks (BINH) vs single decks (legacy)", () => {
     expect(canDrawExpertSpells(state, "p1", hero)).toBe(true);
   });
 
-  it("unlocks Major/Relic artifact decks by hero position or level + Blacksmith", () => {
+  it("official: Major/Relic artifact decks come from the hero's TILE, not level + Blacksmith", () => {
     const state = makeBinhGame();
+    const hero = state.heroes.hero_p1;
+
+    // On the starting tile: Minor only — level 6 AND a Blacksmith change nothing.
+    expect(artifactDeckAccess(state, "p1", hero, false)).toEqual({ minor: true, major: false, relic: false });
+    hero.level = 6;
+    expect(artifactDeckAccess(state, "p1", hero, true)).toEqual({ minor: true, major: false, relic: false });
+
+    // Near tile → Major (weaker Minor still allowed); centre tile → Relic too.
+    hero.level = 1;
+    standOnBand(state, "Ⅳ–Ⅴ");
+    expect(artifactDeckAccess(state, "p1", hero, false)).toEqual({ minor: true, major: true, relic: false });
+    standOnBand(state, "Ⅵ–Ⅶ");
+    expect(artifactDeckAccess(state, "p1", hero, false)).toEqual({ minor: true, major: true, relic: true });
+  });
+
+  it("HOUSE RULE ON: level 4/6 + an artifact source also unlocks Major/Relic", () => {
+    const state = makeLevelGateGame();
     const hero = state.heroes.hero_p1;
 
     // On the starting tile with no artifact source: minor only.
@@ -171,6 +238,8 @@ describe("split decks (BINH) vs single decks (legacy)", () => {
     expect(artifactDeckAccess(state, "p1", hero, true)).toEqual({ minor: true, major: true, relic: false });
     hero.level = 6;
     expect(artifactDeckAccess(state, "p1", hero, true)).toEqual({ minor: true, major: true, relic: true });
+    // CONTROL: the artifact SOURCE is still required while the rule is on.
+    expect(artifactDeckAccess(state, "p1", hero, false)).toEqual({ minor: true, major: false, relic: false });
   });
 });
 
@@ -338,8 +407,16 @@ describe("Wisdom at the Mage Guild", () => {
     expect(choice.deckId).toBe("spells");
   });
 
-  it("offers the Expert deck at the Mage Guild once the hero is level 4 (progression, not the key card, unlocks it)", () => {
-    const state = makeBinhGame();
+  it("offers the Expert deck at the Mage Guild once the hero is level 4 (HOUSE RULE ON: progression, not the key card, unlocks it)", () => {
+    // Level progression only unlocks tiers while `deck-access-hero-level` is on;
+    // officially the Town's own tile band (Ⅰ) keeps the Guild Basic-only.
+    const state = createAdventureGameState({
+      seed: "ruleset-seed",
+      difficulty: "normal",
+      ruleset: "binh",
+      rotateStartTiles: false,
+      houseRules: { "deck-access-hero-level": true }
+    });
     // Isolate the level-4 Expert-deck search from the first-round face-up seed on
     // the Expert Spell discard (the deck-pick itself is the assertion under test;
     // clearing the seed keeps the follow-up search a direct DECK_SEARCH).
@@ -381,12 +458,20 @@ describe("Wisdom at the Mage Guild", () => {
     }
   });
 
-  it("keeps the key-card bypass for NON-Mage-Guild spell searches (surgical fix)", () => {
+  it("HOUSE RULE ON: keeps the key-card bypass for NON-Mage-Guild spell searches (surgical fix)", () => {
     // A generic shared-deck spell Search (a map object / bank reward, NOT the
     // Mage Guild) still honours the Wisdom/Eagle-Eye/Basic-Magic bypass: owning
     // a key card opens the Expert deck at level 1 with no tile revealed. This is
-    // the CONTROL proving only the Mage Guild path was tightened.
-    const state = makeBinhGame();
+    // the CONTROL proving only the Mage Guild path was tightened. (The bypass
+    // exists only while `deck-access-hero-level` is on; officially there are no
+    // key-card unlocks at all — see the tile-band cases above.)
+    const state = createAdventureGameState({
+      seed: "ruleset-seed",
+      difficulty: "normal",
+      ruleset: "binh",
+      rotateStartTiles: false,
+      houseRules: { "deck-access-hero-level": true }
+    });
     const hero = state.heroes.hero_p1;
     hero.level = 1;
     state.players.p1.hand = [];

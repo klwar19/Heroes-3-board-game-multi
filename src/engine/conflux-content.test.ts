@@ -173,6 +173,13 @@ describe("Conflux content", () => {
     next = applyOk(next, keep!.action);
     expect(next.players.p1.hand.length).toBe(limit + 1);
 
+    // A Search(3) puts TWO cards back, so the searcher first picks which one sits
+    // face up on the discard pile (openDiscardTopPick). Settle it and carry on.
+    const faceUp = pendingChoiceOf(next);
+    if (faceUp?.type === "OPTION_CHOICE" && faceUp.context === "spell-discard-top") {
+      next = applyOk(next, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: faceUp.id, optionIndex: 0 });
+    }
+
     // At p1's turn the over-limit hand forces a discard before they can act
     // (the hand-limit snapshot runs when the start-of-turn queue is pumped).
     startPlayerTurn(next, "p1");

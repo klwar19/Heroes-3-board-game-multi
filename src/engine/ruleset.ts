@@ -482,11 +482,18 @@ function anyNearOrCenterTileRevealed(state: GameState): boolean {
 }
 
 /**
- * BINH gate for the Expert Spell deck: a hero may search it (choosing Basic or
- * Expert) once EITHER condition holds — the hero is level 4 or higher, OR a IV–V
- * (or deeper) map tile has been revealed. Below both, only the Basic deck is
- * available, unless the hero owns a key card (Eagle Eye, Wisdom, or a Basic
- * elemental Magic), which unlocks the Expert deck at any level / map state.
+ * Which Spell deck a Search may reach.
+ *
+ * OFFICIAL rule (house rule `deck-access-hero-level` OFF — the default): the TILE
+ * the searching hero stands on decides, and nothing else. Starting and far tiles
+ * (Ⅰ–Ⅲ) reach Basic Spells only; near (Ⅳ–Ⅴ) and centre (Ⅵ–Ⅶ) tiles reach the
+ * Expert deck too (weaker cards stay allowed, so the choice is Basic OR Expert).
+ * A "tile-agnostic" Search — playing an Artifact, activating the Mage Guild — uses
+ * the MAIN hero's tile, which is what `hero` carries at those call sites.
+ *
+ * With the house rule ON, the old BINH tier-progression unlocks apply on TOP of
+ * the tile band: hero level ≥ 4, OR any Ⅳ–Ⅴ (or deeper) tile revealed anywhere on
+ * the map, OR owning a key card (Eagle Eye, Wisdom, a Basic elemental Magic).
  *
  * `ignoreKeyCards` drops that key-card bypass: buying spells at the **Mage
  * Guild** must be Basic-only until the hero actually reaches level 4 or a IV–V
@@ -494,7 +501,8 @@ function anyNearOrCenterTileRevealed(state: GameState): boolean {
  * Expert deck there (those cards keep their own Expert access via their own
  * effects and via other spell sources, which pass the bypass through). The map
  * Spell Scroll and Eagle Eye's combat dig reach the Expert deck directly and
- * never route through this gate at all.
+ * never route through this gate at all. It is meaningless while the house rule is
+ * off (there are no key-card unlocks to drop).
  */
 export function canDrawExpertSpells(
   state: GameState,
@@ -503,6 +511,16 @@ export function canDrawExpertSpells(
   options?: { ignoreKeyCards?: boolean }
 ): boolean {
   if (!houseRuleEnabled(state, "split-decks")) {
+    return false;
+  }
+
+  // Official: the hero's own tile band is the whole rule.
+  const group = heroTileGroup(state, hero);
+  if (group === "near" || group === "center") {
+    return true;
+  }
+
+  if (!houseRuleEnabled(state, "deck-access-hero-level")) {
     return false;
   }
 
@@ -522,11 +540,18 @@ export function hasArtifactSource(state: GameState, playerId: PlayerId, building
 export type { ArtifactDeckAccess };
 
 /**
- * BINH artifact deck gates:
- *  - Minor: always.
- *  - Major: hero on a IV–V or VI–VII tile, OR level ≥ 4 with an artifact
- *    source (Blacksmith / artifact-granting specialty).
- *  - Relic: hero on a VI–VII tile, OR level ≥ 6 with an artifact source.
+ * Which Artifact decks a Search may reach.
+ *
+ * OFFICIAL rule (house rule `deck-access-hero-level` OFF — the default): the TILE
+ * the hero stands on decides, and nothing else:
+ *  - Minor: always (starting & far tiles Ⅰ–Ⅲ, and every deeper band too);
+ *  - Major: hero on a near (Ⅳ–Ⅴ) or centre (Ⅵ–Ⅶ) tile;
+ *  - Relic: hero on a centre (Ⅵ–Ⅶ) tile.
+ * Weaker tiers stay allowed, so a centre tile can still Search Minors.
+ *
+ * With the house rule ON, the old BINH level unlocks apply on TOP of that band:
+ * Major also at level ≥ 4 and Relic at level ≥ 6, each with an artifact source
+ * (Blacksmith / artifact-granting specialty).
  *
  * With `polish-random-artifacts` ON (and split decks), a live override on
  * `adventure.polishArtifactAccess` replaces this table for the current
@@ -544,12 +569,13 @@ export function artifactDeckAccess(
   }
 
   const group = heroTileGroup(state, hero);
+  const levelUnlocks = houseRuleEnabled(state, "deck-access-hero-level");
   const level = hero?.level ?? 1;
 
   return {
     minor: true,
-    major: group === "near" || group === "center" || (level >= 4 && artifactSource),
-    relic: group === "center" || (level >= 6 && artifactSource)
+    major: group === "near" || group === "center" || (levelUnlocks && level >= 4 && artifactSource),
+    relic: group === "center" || (levelUnlocks && level >= 6 && artifactSource)
   };
 }
 

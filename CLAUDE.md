@@ -2051,6 +2051,136 @@ Leading with what does NOT run / deliberate limits:
   free-reflag-of-enemy-mines objective may now walk into this fight — no stall
   (the engine offers legal actions either way; the AI just answers the prompt).
 
+## Official-rules switch-over (2026-07-25) — three OLD readings became opt-in house rules
+
+Three engine readings the printed/official rules contradict were replaced by the
+OFFICIAL rule, with the OLD behaviour preserved behind a NEW house rule that is
+**default OFF in BOTH binh and legacy**. So a table that changes nothing now plays
+the official rule; a table that wants the old engine flips the toggle. Each rule is
+one boolean read at ONE seam, with the old behaviour pinned as the CONTROL.
+
+- **`elemental-damage-no-die`** (category combat). OFFICIAL (OFF): elemental damage
+  does exactly ONE thing — it ignores the target's Defense value (printed Defense,
+  Defense tokens and Defense cards alike). The attack is otherwise normal: the
+  Attack die IS rolled and +⚔ / −⚔ cards (Bloodlust, Bless, Weakness, Attack
+  tokens…) change the value like on any other attack. ON: the old reading — the die
+  is skipped AND positive card/token bonuses are clamped away (debuffs still bite).
+  ONE seam: `elementalLocksAttack` in `getAttackStackDetails` (reducer.ts); the
+  `ignoreDefense` half stays unconditional in both readings. Behaviour + the
+  house-rule CONTROLs in `elemental-fixed-damage.test.ts` (every shipped elemental
+  side, driven from the unit data) and `summon-elemental.test.ts` (attack maths,
+  Attack tokens, Moandor's granted elemental damage).
+- **`discovery-border-gate`** (category global). OFFICIAL (OFF): DISCOVERING a
+  face-down Tile — and OPENING a new Ⅱ–Ⅲ one — needs only that the hero is
+  ADJACENT; the printed rules mention no blockers or yellow borders for discovery.
+  ON: the old reading — the hero must also touch the tile across an OPEN border
+  (printed arc, designer whole arc, or a designed per-edge line on every shared
+  edge), with a Redwood Observatory / Speculum as the bypass. Two seams:
+  `heroCanDiscoverTileAcrossBorders` (now takes the STATE, not a bare
+  AdventureState) and `canHeroReachPlacementCenter`. **Movement is UNTOUCHED** —
+  yellow borders still seal every step, in both readings, and the
+  Surface/Subterranean divide still blocks discovery either way. Official half
+  pinned in `adventure.test.ts` ("official: adjacency alone lets a hero discover
+  across a sealed yellow border", which also asserts the movement seal survives);
+  the ON half is the renamed "HOUSE RULE ON: …" cases there plus
+  `designed-borders.test.ts` / `map-objects.test.ts` (whose fixtures now turn the
+  rule ON) and the bank-exception case in `creature-bank-objects.test.ts`.
+- **`deck-access-hero-level`** (category decks). OFFICIAL (OFF): which Spell /
+  Artifact decks a Search may reach is decided by the TILE the (main) hero stands
+  on and nothing else — starting & far Ⅰ–Ⅲ = basic Spells / Minor artifacts, near
+  Ⅳ–Ⅴ = expert Spells / Major artifacts, centre Ⅵ–Ⅶ = expert Spells / Relic
+  artifacts; weaker tiers stay allowed, so a centre tile can still Search Minors.
+  A "tile-agnostic" Search (playing an Artifact, activating the Mage Guild) reads
+  the same main-hero tile — that is what those call sites already pass. ON: the old
+  BINH progression unlocks ride on TOP — expert Spells at hero level ≥ 4 or once
+  ANY Ⅳ–Ⅴ tile is revealed anywhere or while holding Eagle Eye / Wisdom / a Basic
+  X Magic, and Major/Relic artifacts at level ≥ 4 / ≥ 6 with an artifact source.
+  Two seams: `canDrawExpertSpells` and `artifactDeckAccess` (ruleset.ts) — so
+  `eligibleSpellDecks` / `eligibleArtifactDecks` and every consumer follow. Pinned
+  in `official-rules-house-rules.test.ts` (per-band deck lists, both flags default
+  OFF in binh AND legacy) and the recast `ruleset.test.ts` pairs.
+  KNOWN CONSEQUENCE (deliberate): the Mage-Guild purchase is a TOWN-TOKEN action
+  playable from anywhere, and a Town sits on a Ⅰ tile — so under the official rule
+  buying Expert spells means **walking the main hero onto a Ⅳ+ tile first** and
+  spending the token there (standing in the Town reaches Basic only). The
+  `ignoreKeyCards` Mage-Guild strictness only means anything while the house rule
+  is ON.
+
+## First-round hand discards, Angel Wings, morale −2, Search top-of-discard (2026-07-25)
+
+Four fixes to shipped behaviour (not toggles — the previous behaviour was wrong):
+
+- **Angel Wings now walks through fields.** The relic prints "can move through any
+  fields WITHOUT RESOLVING THEM. The last visited field must be resolved normally",
+  but only granted `HERO_MOVE_THROUGH` (blocked fields), so a guarded / visitable /
+  flaggable field mid-path still stopped the hero and opened its fight or visit.
+  It now ALSO grants the new `HERO_PASS_ANY_FIELD` modifier (effect flag
+  `GAIN_HERO_MOVEMENT.passAnyFieldThisTurn`), read as the `passAnyField` movement
+  capability: every branch of `classifyHeroStep` that would return "stop" returns
+  "encounter" instead (the existing Pathfinding pass-through machinery — walk over
+  it, resolve ONLY if the walk ends there). Blocked fields / Barriers stay
+  "pass-only" (never a landing) and an allied hero's field stays "pass-only".
+  Scoped to Angel Wings: **Fly and Dessa's Logistics VI print blocked fields only
+  and deliberately do NOT get it** (data + behaviour CONTROL). Yellow borders are
+  NOT crossed (the card says nothing about them). Pinned in
+  `map-movement-spells.test.ts` ("walks OVER a guarded field …", "walks OVER an
+  unvisited location and an enemy-flagged mine …", plus the Fly/Dessa CONTROL).
+- **Double-negative morale leaves the marker at −1, not 0.** Paying the end-of-turn
+  hand dump at −2 settles the SECOND negative token only: `player.morale = -1` with
+  a `MORALE_CHANGED { amount: 1, total: -1 }` feed line (it used to hand out a free
+  full recovery to neutral). `map-tile-effects-audit.test.ts`.
+- **A shared discard pile always shows a card.** Setup already flipped one face-up
+  per shared deck; `refillSharedDeckDiscards` (decks.ts, called at the tail of
+  every `applyAction` with the PRE-action state) now keeps that true — taking the
+  LAST discarded card flips the deck's next draw-pile card into its place. Three
+  deliberate limits: it fires only on a pile that HELD a card when the action
+  started (never conjures one onto an already-empty pile, so it can never steal a
+  card another effect just put on the deck top), never while a `pendingChoice` is
+  open (an open Search / Pandora scry / discard-top pick is HOLDING cards that are
+  about to land back there), and a deck with an empty draw pile is left alone.
+  Silent by design (the pile is rendered; a feed line per flip would be noise).
+  `shared-deck-discard-seed.test.ts` + the take-the-top case in `reducer.test.ts`.
+- **Search (X): the searcher chooses which card sits face up.** When a Search puts
+  2+ revealed cards BACK (X ≥ 3 keeping one), `openDiscardTopPick`
+  (adventure-reducer.ts) opens a pick — the chosen card goes on TOP of that deck's
+  discard pile, the rest underneath — before the post-Search repeat offers. Works
+  for EVERY shared deck family; a Search returning a single card opens nothing.
+  It re-uses the dormant `spell-discard-top` context/state (so an in-flight choice
+  from an older build still resolves) and is masked for other viewers in
+  `player-view.ts`. NOTE: taking FROM a discard pile is still the face-up TOP only
+  — the reverted "take any discarded spell" feature is NOT back.
+  `spell-discard-pick.test.ts`.
+
+## Table info & readability pass (2026-07-25) — presentation only
+
+No engine change; every value shown is already public in player views.
+
+- **A Pack card names the Few side it flips to.** `unitFlipSidePreview`
+  (unit-transforms.ts) derives the other printed side through `applyUnitSideRules`
+  — the SAME numbers the real flip produces, house-rule buffs and the per-side
+  melee/ranged TYPE switch included. Rendered as a quiet dashed strip in the combat
+  inspector (`.inspectFlipSide`) and as a line in the enlarged card view. Null (so
+  nothing renders) for a Few/Neutral side, a Creature-Bank / boss card, a Clone or
+  a card under a specialty cover. Veteran-rank folds and Polish Stack layers are
+  deliberately NOT applied — it is the printed card the player is about to see.
+  `unit-flip-side-preview.test.ts` + `board.test.tsx`.
+- **The opponent window adds public counts + the discard pile:** cards in hand,
+  cards in deck, discard size, crowns left/total this combat round, and the main
+  hero's movement points — plus the whole (public) discard pile browsable newest
+  first with the face-up top ringed. `opponent-info.test.tsx`.
+- **Watching a PvM fight shows the FIGHTER's resources.** The combat command dock
+  used to report the VIEWER's own spell/crown counters even when another seat was
+  playing out a neutral fight ("anyone may watch"), which is meaningless noise. It
+  now follows the fighter — name-labelled, with their Spell x/y, crowns left/total,
+  hand size and hero MP — whenever the viewer is not a participant (attacker,
+  defender or a living unit's controller). A participant's own dock is unchanged.
+  `board.test.tsx`.
+- **The card name/HP plate no longer covers the printed initiative.**
+  `.boardCardHud` was `max-width: 100%`, so a long name ("Neutral Iron Golems")
+  spanned the card bottom and hid the bottom entry of the left stat rail —
+  Initiative. Capped at 76% (right-anchored, name ellipsizes). jsdom cannot compute
+  CSS, so the contract is pinned in `board-card-hud-width.test.ts`.
+
 ## Creature Banks (Naval Battles optional rule) — what runs vs. what is deferred
 
 Added in `src/data/map/creature-banks.ts` (data, tested in

@@ -140,6 +140,13 @@ describe("One-step spells deck-pick — discard, search or School of Magic, up f
       state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     }
     state.players.p1.permanents = ["ability.basic_fire_magic"];
+    // Official deck-access rule: the TILE the main hero stands on decides which
+    // Spell decks a Search may reach, so this fixture — which is about the ONE-STEP
+    // pick offering BOTH decks — stands the hero on a near (Ⅳ–Ⅴ) tile. (Relabelling
+    // the tile band is all `heroTileGroup` reads.) The gate itself is pinned in
+    // official-rules-house-rules.test.ts / ruleset.test.ts.
+    const heroField = state.adventure!.fields[state.heroes.hero_p1.spaceId as string]!;
+    state.adventure!.tiles[heroField.tileInstanceId]!.backLabel = "Ⅳ–Ⅴ";
     return state;
   }
 

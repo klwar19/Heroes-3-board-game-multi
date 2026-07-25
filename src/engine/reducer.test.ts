@@ -2365,8 +2365,13 @@ describe("rules engine prototype", () => {
       optionIndex: 1
     });
     expect(tookDiscard.players.p1.hand).toContain(choice.revealedCardIds[1]);
-    expect(tookDiscard.decks.spells.discardPile).toEqual([]);
-    expect(tookDiscard.decks.spells.drawPile.length).toBe(drawBefore);
+    // A shared discard pile is never left empty: taking its last card flips the
+    // deck's next card face-up in its place (refillSharedDeckDiscards, run at
+    // the tail of every action) — so the pile shows a NEW card, not the taken
+    // one, and the draw pile is one shorter.
+    expect(tookDiscard.decks.spells.discardPile).toHaveLength(1);
+    expect(tookDiscard.decks.spells.discardPile[0]).not.toBe(choice.revealedCardIds[1]);
+    expect(tookDiscard.decks.spells.drawPile.length).toBe(drawBefore - 1);
     expect(tookDiscard.pendingChoice).toBeNull();
   });
 

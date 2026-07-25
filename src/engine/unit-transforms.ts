@@ -92,6 +92,57 @@ export function printedCardName(side: "few" | "pack" | "neutral", unitName: stri
   return side === "few" ? `Few ${unitName}` : side === "pack" ? `Pack of ${unitName}` : `Neutral ${unitName}`;
 }
 
+/** The other printed side a card shows once it flips (what a Pack becomes). */
+export type UnitFlipSide = {
+  side: "few";
+  cardName: string;
+  attack: number;
+  defense: number;
+  health: number;
+  initiative: number;
+  type: CombatUnitState["type"];
+  abilities: string[];
+};
+
+/**
+ * What a PACK unit turns into when it takes lethal damage: its own card's FEW
+ * side, with the same house-rule side tweaks the engine would apply when the flip
+ * actually happens (`applyUnitSideRules` — so a buffed Few reads its buffed
+ * numbers here too, and the per-side `type` switch is reflected: a Pack shooter
+ * that reverts to a melee Few shows "ground").
+ *
+ * Returns null when nothing will flip — a Few or Neutral side, a Creature-Bank /
+ * boss card, a Clone (clones never flip), a unit wearing a specialty transform
+ * (its cover decides the stats), or a definition with no Few side. Read-only: it
+ * derives from the shipped definitions and mutates nothing, so it is safe to call
+ * from the UI on every render. Rank folds and Polish Stack layers are deliberately
+ * NOT applied — this is the printed card the player is about to see.
+ */
+export function unitFlipSidePreview(
+  unit: CombatUnitState,
+  ruleset: GameRuleset,
+  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean; phoenixPackRebirth?: boolean }
+): UnitFlipSide | null {
+  if (unit.variant !== "pack" || unit.bankUnit || unit.bossUnit || unit.cloneOfUnitId || topTransform(unit)) {
+    return null;
+  }
+  const def = unit.unitDefId ? coreUnitDefinitions[unit.unitDefId] : undefined;
+  if (!def?.few) {
+    return null;
+  }
+  const side = applyUnitSideRules(ruleset, unit.unitDefId as string, "few", def.few, overrides);
+  return {
+    side: "few",
+    cardName: printedCardName("few", def.name),
+    attack: side.attack,
+    defense: side.defense,
+    health: side.health,
+    initiative: side.initiative,
+    type: side.type ?? def.type,
+    abilities: [...(side.abilities ?? [])]
+  };
+}
+
 /**
  * Recomputes a combat unit's fighting statistics from its current top: the
  * topmost transform when one is on the card (printed abilities inactive,

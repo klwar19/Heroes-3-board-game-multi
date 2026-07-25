@@ -402,7 +402,7 @@ describe("Morale tokens and this-turn movement", () => {
     ).toBe(false);
   });
 
-  it("ending the turn still at −2 discards the hand and clears morale to 0", () => {
+  it("ending the turn still at −2 discards the hand and leaves morale at −1", () => {
     const state = makeGame("w6-tomb-end-at-minus-2");
     const player = state.players.p1;
     player.hand = ["ability.attack", "ability.defence", "spell.magic_arrow"];
@@ -414,7 +414,9 @@ describe("Morale tokens and this-turn movement", () => {
     const ended = applyAction(state, { type: "END_TURN", playerId: "p1" });
     expect(ended.errors, ended.errors.map((e) => e.message).join("; ")).toEqual([]);
     expect(ended.state.players.p1.hand).toEqual([]);
-    expect(ended.state.players.p1.morale).toBe(0);
+    // Paying the penalty steps the marker back ONE, to −1 — never a free
+    // recovery to neutral (CONTROL: a 0 here is the bug this pins).
+    expect(ended.state.players.p1.morale).toBe(-1);
     expect(
       ended.state.eventLog.some(
         (event) =>
@@ -423,6 +425,11 @@ describe("Morale tokens and this-turn movement", () => {
           event.discarded === 3
       )
     ).toBe(true);
+    // The feed reports the real one-step recovery, not "+2 (now 0)".
+    const recovery = ended.state.eventLog.filter(
+      (event) => event.type === "MORALE_CHANGED" && event.playerId === "p1"
+    );
+    expect(recovery[recovery.length - 1]).toMatchObject({ amount: 1, total: -1 });
   });
 });
 

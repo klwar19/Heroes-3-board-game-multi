@@ -103,3 +103,60 @@ describe("OpponentInfoDock", () => {
     expect(within(box as HTMLElement).getByRole("button", { name: /Bob/ })).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Public card counts + the (public) discard pile.
+// ---------------------------------------------------------------------------
+describe("OpponentInfoDock — hand/deck/discard counts, crowns and the discard pile", () => {
+  function openBob(state: GameState) {
+    renderMapDock(state);
+    fireEvent.click(screen.getByRole("button", { name: /Bob/ }));
+    return within(screen.getByRole("dialog"));
+  }
+
+  it("shows hand / deck / discard sizes, crowns left of total, and hero movement", () => {
+    const state = twoPlayerGame();
+    // Public counts: 4 in hand, 9 in the deck, 2 discarded (hidden identities for
+    // hand/deck are irrelevant — only the COUNT is public).
+    state.players.p2.hand = ["stat.attack", "stat.defense", "stat.power", "stat.knowledge"];
+    state.players.p2.deck = new Array(9).fill("stat.attack");
+    state.players.p2.discard = ["ability.offense", "spell.magic_arrow"];
+    state.players.p2.limits.expertUses = 2;
+    state.players.p2.combatStats.expertUsesSpentThisRound = 1;
+    const hero = Object.values(state.heroes).find((h) => h.controllerId === "p2" && h.kind === "main")!;
+    hero.movementPoints = 3;
+
+    const panel = openBob(state);
+    const counts = panel.getByLabelText("Cards and crowns");
+    expect(counts.textContent).toMatch(/Hand\s*4/);
+    expect(counts.textContent).toMatch(/Deck\s*9/);
+    expect(counts.textContent).toMatch(/Discard\s*2/);
+    // Crowns: 1 of 2 left this combat round.
+    expect(counts.textContent).toMatch(/Crowns\s*1\/2/);
+    expect(counts.textContent).toMatch(/Moves\s*3/);
+  });
+
+  it("lists the discard pile (public), newest first, and marks the face-up top", () => {
+    const state = twoPlayerGame();
+    state.players.p2.discard = ["ability.offense", "spell.magic_arrow"];
+
+    const panel = openBob(state);
+    const section = panel.getByLabelText("Discard pile");
+    const cards = section.querySelectorAll(".opponentDiscardCard");
+    expect(cards).toHaveLength(2);
+    // Newest first: the face-up TOP (Magic Arrow) leads and carries the cue.
+    expect(cards[0].classList.contains("top")).toBe(true);
+    expect(cards[0].getAttribute("title")).toMatch(/Magic Arrow/i);
+    expect(cards[1].classList.contains("top")).toBe(false);
+    expect(cards[1].getAttribute("title")).toMatch(/Offense/i);
+  });
+
+  it("CONTROL: an empty discard pile says so instead of rendering cards", () => {
+    const state = twoPlayerGame();
+    state.players.p2.discard = [];
+    const panel = openBob(state);
+    const section = panel.getByLabelText("Discard pile");
+    expect(section.querySelectorAll(".opponentDiscardCard")).toHaveLength(0);
+    expect(section.textContent).toMatch(/empty/i);
+  });
+});
