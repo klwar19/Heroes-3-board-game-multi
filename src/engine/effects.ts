@@ -254,7 +254,14 @@ export function heroMovementGrantOption(card: CardDefinition | undefined):
  * The card's ADD_SPELL_POWER effect (top-level or inside an "OR" option) used to
  * value it as a discarded power source. A cost-free power side is preferred over
  * one that demands its own extra discard (Titan's Cuirass: +2 plain, not the
- * +4 that costs another card), so a simple discard is never over-valued.
+ * +4 that costs another card) — and among cost-free sides the HIGHEST amount is
+ * picked, so the Tunic of the Cyclops King pays 2 (its "+2 Power" side, no
+ * draw) exactly like its twin Scales pays 3, instead of whichever side happened
+ * to be printed first. A "Remove this card" side (the Orb relics' +5) is NEVER
+ * picked: the discard-based cost channel cannot honour that removal, and the
+ * old fallback let a relic be discarded — and recycled — for its +5.
+ * spellPowerSourceDrawCards reads the SAME chosen side, so a draw rider only
+ * fires when the valued side actually prints one.
  */
 function findAddSpellPowerEffect(
   card: CardDefinition
@@ -263,9 +270,22 @@ function findAddSpellPowerEffect(
     return card.effect;
   }
   if (card.effect.type === "CHOOSE_ONE") {
-    const powerOptions = card.effect.options.filter((option) => option.effect.type === "ADD_SPELL_POWER");
-    const costFree = powerOptions.find((option) => !option.cost);
-    const chosen = costFree ?? powerOptions[0];
+    const powerOptions = card.effect.options.filter(
+      (option) => option.effect.type === "ADD_SPELL_POWER" && !option.cost?.removeSelf
+    );
+    const costFree = powerOptions.filter((option) => !option.cost);
+    let chosen: CardOptionDefinition | undefined;
+    for (const option of costFree) {
+      if (
+        !chosen ||
+        (option.effect.type === "ADD_SPELL_POWER" &&
+          chosen.effect.type === "ADD_SPELL_POWER" &&
+          option.effect.amount > chosen.effect.amount)
+      ) {
+        chosen = option;
+      }
+    }
+    chosen = chosen ?? powerOptions[0];
     return chosen?.effect.type === "ADD_SPELL_POWER" ? chosen.effect : undefined;
   }
   return undefined;
@@ -336,6 +356,90 @@ export function spellPowerSourceDrawCards(
     return 0;
   }
   return add.drawCards ?? 0;
+}
+
+/** One playable "+Power" side of a card (see spellPowerSidesOfCard). */
+export type SpellPowerSide = {
+  /** CHOOSE_ONE option index; undefined for a bare ADD_SPELL_POWER card. */
+  optionIndex?: number;
+  optionLabel?: string;
+  amount: number;
+  expertAmount?: number;
+  /** The side itself is the card's expert half (crown-gated to play at all). */
+  expertOnly?: boolean;
+  drawCards: number;
+  /** Printed side cost: the card leaves the game instead of the discard pile. */
+  removeSelf?: boolean;
+  /**
+   * Printed side cost: other hand cards discarded with it — `required` must be
+   * paid (Titan's Cuirass "Discard 1 card: +4"), `upTo` may be (Breastplate of
+   * Brimstone "up to 3"), each adding `perCard` Power.
+   */
+  costDiscards?: { required: number; upTo: number; perCard: number };
+  combatOnly?: boolean;
+};
+
+/**
+ * EVERY playable "+Power" side of a non-Spell card, one entry per printed
+ * option — never a single collapsed value. A CHOOSE_ONE card like the Tunic of
+ * the Cyclops King yields BOTH its "+2 Power" and its "Draw 1 card and +1
+ * Power" sides (the old findAddSpellPowerEffect collapse is what hid the +2
+ * from the map boost window). School-restricted sides that do not match
+ * `spellSchools` are dropped; sides with unsupported extra costs (resources /
+ * powerCost) are skipped. Spells themselves (the generic "+1 Power" bottom
+ * side) are a fixed +1 and are not listed here.
+ */
+export function spellPowerSidesOfCard(
+  card: CardDefinition | undefined,
+  spellSchools: readonly SpellSchool[]
+): SpellPowerSide[] {
+  if (!card || card.kind === "spell" || card.id === CAST_A_SPELL_CARD_ID) {
+    return [];
+  }
+  const sides: SpellPowerSide[] = [];
+  const push = (
+    effect: Extract<EffectDefinition, { type: "ADD_SPELL_POWER" }>,
+    option?: CardOptionDefinition,
+    optionIndex?: number
+  ) => {
+    if (effect.schoolOnly && !(spellSchools.includes(effect.schoolOnly) || spellSchools.includes("any"))) {
+      return;
+    }
+    const cost = option?.cost;
+    if (cost && (cost.resources || cost.powerCost !== undefined)) {
+      return;
+    }
+    const upTo = cost?.discardCardsUpTo ?? cost?.discardCards ?? 0;
+    sides.push({
+      ...(optionIndex !== undefined ? { optionIndex } : {}),
+      ...(option?.label ? { optionLabel: option.label } : {}),
+      amount: effect.amount,
+      ...(effect.expertAmount !== undefined ? { expertAmount: effect.expertAmount } : {}),
+      ...(option?.expertOnly ? { expertOnly: true } : {}),
+      drawCards: effect.drawCards ?? 0,
+      ...(cost?.removeSelf ? { removeSelf: true } : {}),
+      ...(upTo > 0
+        ? {
+            costDiscards: {
+              required: cost?.discardCards ?? 0,
+              upTo,
+              perCard: effect.perCostCard ?? 0
+            }
+          }
+        : {}),
+      ...(option?.combatOnly ? { combatOnly: true } : {})
+    });
+  };
+  if (card.effect.type === "ADD_SPELL_POWER") {
+    push(card.effect);
+  } else if (card.effect.type === "CHOOSE_ONE") {
+    for (const [optionIndex, option] of card.effect.options.entries()) {
+      if (option.effect.type === "ADD_SPELL_POWER") {
+        push(option.effect, option, optionIndex);
+      }
+    }
+  }
+  return sides;
 }
 
 /**

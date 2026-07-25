@@ -206,7 +206,7 @@ import { isComputerPlayer } from "./computer/control";
 import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { applyCombatScriptCombatStart } from "./combat-scripts";
-import { cardCanBoostPower, spellPowerSourceDrawCards, spellPowerValueOfCard } from "./effects";
+import { cardCanBoostPower, spellPowerSidesOfCard, spellPowerSourceDrawCards } from "./effects";
 import {
   bestMapSpellTier,
   isMapPowerTierSpell,
@@ -5620,6 +5620,27 @@ type MapSpellBoostOffer =
       mode: "basic" | "expert";
       value: number;
       fromBook?: boolean;
+      /**
+       * CHOOSE_ONE cards: the exact printed side this offer plays. The Tunic of
+       * the Cyclops King is TWO offers ("+2 Power" and "Draw 1 card and +1
+       * Power"), never one collapsed value — the old single-value read is what
+       * hid its +2 side from the map boost window.
+       */
+      optionIndex?: number;
+      /** Cards drawn when this side resolves (the Sorcery/Tunic/Scales rider). */
+      drawCards?: number;
+      /** Printed side cost: the card leaves the game (the Orb relics' +5). */
+      removeSelf?: boolean;
+      /** The expert side costs no crown (Empowered ability). */
+      crownFree?: boolean;
+      /** Printed side cost: other hand cards discarded with it (see state.ts). */
+      costDiscards?: { required: number; upTo: number; perCard: number };
+    }
+  | {
+      /** A pending cost discard of the last-played power side (one per hand card). */
+      kind: "cost-discard";
+      cardId: CardId;
+      value: number;
     }
   | {
       kind: "school-permanent-expert";
@@ -5648,6 +5669,13 @@ type MapSpellBoostFlags = {
   castEnablerCardId?: CardId;
   schoolFetchExpertUsed?: boolean;
   schoolPermanentExpertUsed?: boolean;
+  /**
+   * A played power side's still-open printed card cost (Titan's Cuirass
+   * "Discard 1 card: +4" / Breastplate of Brimstone "up to 3, +1 each"):
+   * `required` more discards owed before the spell may resolve, `upTo` more
+   * allowed, `perCard` Power each adds.
+   */
+  costDiscards?: { sourceCardId: CardId; required: number; upTo: number; perCard: number };
 };
 
 function mapSpellCrownsLeft(state: GameState, playerId: PlayerId): number {
@@ -5665,47 +5693,115 @@ function listMapSpellBoostOffers(
   maxPower: number,
   flags: MapSpellBoostFlags
 ): MapSpellBoostOffer[] {
-  if (currentPower >= maxPower) {
-    return [];
-  }
   const player = state.players[playerId];
   if (!player) {
     return [];
   }
   const schools = spell.spellSchools ?? [];
-  const crowns = mapSpellCrownsLeft(state, playerId);
   const offers: MapSpellBoostOffer[] = [];
+
+  const pushCostDiscards = (perCard: number) => {
+    const seenCost = new Set<CardId>();
+    for (const cardId of player.hand) {
+      if (!seenCost.has(cardId)) {
+        seenCost.add(cardId);
+        offers.push({ kind: "cost-discard", cardId, value: perCard });
+      }
+    }
+  };
+
+  // A played side's still-owed REQUIRED card cost (Titan's Cuirass "Discard 1
+  // card: +4 Power") is paid before anything else: while it is owed, the cost
+  // discards are the ONLY offers and openMapSpellBoost withholds "Resolve now".
+  // An empty hand forgives the remainder — the cast is never stranded.
+  const costDiscards = flags.costDiscards;
+  if (costDiscards && costDiscards.required > 0) {
+    pushCostDiscards(costDiscards.perCard);
+    return offers;
+  }
+
+  if (currentPower >= maxPower) {
+    return [];
+  }
+
+  // Optional cost discards of the last-played side (Breastplate of Brimstone's
+  // "up to 3, +1 Power each") join the normal offers until spent or resolved.
+  if (costDiscards && costDiscards.upTo > 0 && costDiscards.perCard > 0) {
+    pushCostDiscards(costDiscards.perCard);
+  }
+
   const seen = new Set<string>();
 
-  const consider = (cardId: CardId, fromBook?: boolean) => {
+  // A Spell's generic "+1 Power" bottom side (hand, or one stashed Book Spell).
+  const considerSpellDiscard = (cardId: CardId, fromBook?: boolean) => {
     const key = `${fromBook ? "book" : "hand"}:${cardId}`;
     if (seen.has(key)) {
       return;
     }
+    seen.add(key);
+    offers.push({ kind: "card", cardId, mode: "basic", value: 1, drawCards: 0, ...(fromBook ? { fromBook: true } : {}) });
+  };
+
+  // A non-Spell power source: EVERY printed "+Power" side is its own offer —
+  // combat parity, where each side is a separate reaction. The Tunic of the
+  // Cyclops King offers BOTH "+2 Power" and "Draw 1 card and +1 Power"; the old
+  // single spellPowerValueOfCard read collapsed it to the draw side and hid the
+  // +2 (the reported bug). Expert sides honour the Empower crown waiver.
+  const considerPowerCard = (cardId: CardId) => {
     const card = cardLibrary[cardId];
     if (!cardCanBoostPower(card)) {
       return;
     }
     // A Basic X Magic card's only Power side is its `expertOnly` +3 — never a
     // crown-free "basic" source. It is offered separately as a crown-gated
-    // fetch-expert (from hand, below), so keep it out of the generic path here
-    // (otherwise `spellPowerValueOfCard` reads its +3 as a no-crown basic boost).
+    // fetch-expert (from hand, below), so keep it out of the generic path here.
     if (card?.permanentEffect?.schoolFetch) {
       return;
     }
-    const basic = spellPowerValueOfCard(card, schools, "basic");
-    if (basic > 0) {
-      seen.add(key);
-      offers.push({ kind: "card", cardId, mode: "basic", value: basic, fromBook });
+    if (card?.kind === "spell") {
+      considerSpellDiscard(cardId);
+      return;
     }
-    const expert = spellPowerValueOfCard(card, schools, "expert");
-    if (expert > basic && crowns > 0) {
-      offers.push({ kind: "card", cardId, mode: "expert", value: expert, fromBook });
+    const key = `hand:${cardId}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    const crownFree = abilityExpertIsCrownFree(player, cardId);
+    for (const side of spellPowerSidesOfCard(card, schools)) {
+      if (side.combatOnly) {
+        continue;
+      }
+      // A side that must ALSO discard other cards is withheld when no other
+      // hand card is there to pay it.
+      if (side.costDiscards && side.costDiscards.required > 0 && player.hand.length - 1 < side.costDiscards.required) {
+        continue;
+      }
+      const common = {
+        kind: "card" as const,
+        cardId,
+        ...(side.optionIndex !== undefined ? { optionIndex: side.optionIndex } : {}),
+        drawCards: side.drawCards,
+        ...(side.removeSelf ? { removeSelf: true } : {}),
+        ...(side.costDiscards ? { costDiscards: side.costDiscards } : {})
+      };
+      if (side.expertOnly) {
+        if (side.amount > 0 && canPlayExpertMode(player, cardId)) {
+          offers.push({ ...common, mode: "expert", value: side.amount, ...(crownFree ? { crownFree: true } : {}) });
+        }
+        continue;
+      }
+      if (side.amount > 0 || (side.costDiscards?.perCard ?? 0) > 0) {
+        offers.push({ ...common, mode: "basic", value: side.amount });
+      }
+      if (side.expertAmount !== undefined && side.expertAmount > side.amount && canPlayExpertMode(player, cardId)) {
+        offers.push({ ...common, mode: "expert", value: side.expertAmount, ...(crownFree ? { crownFree: true } : {}) });
+      }
     }
   };
 
   for (const cardId of player.hand) {
-    consider(cardId);
+    considerPowerCard(cardId);
   }
 
   // --- Spell Book power fuel (two house rules, mutually exclusive) ---
@@ -5720,18 +5816,20 @@ function listMapSpellBoostOffers(
         const key = `hand:${cardId}:cast`;
         if (!seen.has(key)) {
           seen.add(key);
-          offers.push({ kind: "card", cardId, mode: "basic", value: 1 });
+          offers.push({ kind: "card", cardId, mode: "basic", value: 1, drawCards: 0 });
         }
       }
     }
   } else if (spellBookRuleEnabled(state) && !player.combatStats.spellBookPowerUsedThisTurn) {
     for (const cardId of player.spellBook ?? []) {
       if (cardLibrary[cardId]?.kind === "spell" && !isCastASpellCard(cardId)) {
-        consider(cardId, true);
+        considerSpellDiscard(cardId, true);
         break; // only one Book source is ever offered
       }
     }
   }
+
+  const crowns = mapSpellCrownsLeft(state, playerId);
 
   // School of Magic permanent expert: discard for +expert (basic already in
   // starting Power via standingSpellPower — only the extra is offered here).
@@ -5793,15 +5891,31 @@ function listMapSpellBoostOffers(
 function mapSpellBoostOfferLabel(
   offer: MapSpellBoostOffer,
   tiers: NonNullable<ReturnType<typeof mapSpellPowerTiers>>,
-  power: number
+  power: number,
+  costSourceCardId?: CardId
 ): string {
   const next = Math.min(tiers.maxPower, power + offer.value);
   const tierHint = mapSpellTierSummary(tiers, next);
   if (offer.kind === "card") {
     const name = cardLibrary[offer.cardId]?.name ?? offer.cardId;
-    const modeTag = offer.mode === "expert" ? " expert" : "";
+    const modeTag = offer.mode === "expert" ? (offer.crownFree ? " expert (Empowered)" : " expert") : "";
     const bookTag = offer.fromBook ? " (Book)" : "";
-    return `Discard ${name}${modeTag}${bookTag} (+${offer.value} Power) → ${tierHint}`;
+    const verb = offer.removeSelf ? "Remove" : "Discard";
+    const drawTag = offer.drawCards ? `, draw ${offer.drawCards}` : "";
+    const removeTag = offer.removeSelf ? ", leaves the game" : "";
+    const costTag = offer.costDiscards
+      ? offer.costDiscards.required > 0
+        ? `, then discard ${offer.costDiscards.required} card${offer.costDiscards.required === 1 ? "" : "s"}`
+        : `, then up to ${offer.costDiscards.upTo} discards +${offer.costDiscards.perCard} each`
+      : "";
+    return `${verb} ${name}${modeTag}${bookTag} (+${offer.value} Power${drawTag}${removeTag}${costTag}) → ${tierHint}`;
+  }
+  if (offer.kind === "cost-discard") {
+    const name = cardLibrary[offer.cardId]?.name ?? offer.cardId;
+    const sourceName = costSourceCardId ? cardLibrary[costSourceCardId]?.name ?? costSourceCardId : "the played card";
+    return offer.value > 0
+      ? `Discard ${name} (+${offer.value} Power, ${sourceName}) → ${tierHint}`
+      : `Discard ${name} — pays ${sourceName}`;
   }
   if (offer.kind === "school-permanent-expert") {
     const name = cardLibrary[offer.permanentCardId]?.name ?? "School of Magic";
@@ -5837,14 +5951,27 @@ export function openMapSpellBoost(
     return;
   }
 
+  // A still-owed REQUIRED cost discard (Titan's Cuirass) withholds "Resolve
+  // now" until paid — the offers are then exactly the payable cost discards.
+  const mustPayCost = Boolean(
+    flags.costDiscards && flags.costDiscards.required > 0 && offers.some((offer) => offer.kind === "cost-discard")
+  );
+  const costSourceCardId = flags.costDiscards?.sourceCardId;
+  const costSourceName = costSourceCardId ? cardLibrary[costSourceCardId]?.name ?? costSourceCardId : "";
+  const prompt = mustPayCost
+    ? `${spell.name}: Power ${power} — discard ${flags.costDiscards!.required} more card${
+        flags.costDiscards!.required === 1 ? "" : "s"
+      } to pay ${costSourceName}.`
+    : `${spell.name}: Power ${power} — ${mapSpellTierSummary(tiers, power)}. Add Power (cards / School / Basic Magic), or resolve now.`;
+
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `${spell.name}: Power ${power} — ${mapSpellTierSummary(tiers, power)}. Add Power (cards / School / Basic Magic), or resolve now.`,
+    prompt,
     options: [
-      ...offers.map((offer) => ({ label: mapSpellBoostOfferLabel(offer, tiers, power) })),
-      { label: `Resolve now — Power ${power}: ${mapSpellTierSummary(tiers, power)}` }
+      ...offers.map((offer) => ({ label: mapSpellBoostOfferLabel(offer, tiers, power, costSourceCardId) })),
+      ...(mustPayCost ? [] : [{ label: `Resolve now — Power ${power}: ${mapSpellTierSummary(tiers, power)}` }])
     ],
     context: "map-spell-boost",
     mapSpellBoost: {
@@ -5854,7 +5981,8 @@ export function openMapSpellBoost(
       ...(flags.schoolFetchExpertUsed ? { schoolFetchExpertUsed: true as const } : {}),
       ...(flags.schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true as const } : {}),
       ...(flags.fromSpellBook ? { fromSpellBook: true as const } : {}),
-      ...(flags.castEnablerCardId ? { castEnablerCardId: flags.castEnablerCardId } : {})
+      ...(flags.castEnablerCardId ? { castEnablerCardId: flags.castEnablerCardId } : {}),
+      ...(flags.costDiscards ? { costDiscards: flags.costDiscards } : {})
     },
     returnPhase: "player-turn"
   };
@@ -5883,10 +6011,28 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     fromSpellBook,
     castEnablerCardId,
     schoolFetchExpertUsed,
-    schoolPermanentExpertUsed
+    schoolPermanentExpertUsed,
+    costDiscards
   } = boost;
   const spell = cardLibrary[spellCardId];
   const player = state.players[playerId];
+
+  // A still-owed REQUIRED cost discard (Titan's Cuirass) cannot be skipped by a
+  // forged resolve while a hand card is there to pay it. Checked before any
+  // mutation so the open choice survives the rejection.
+  if (
+    optionIndex >= offers.length &&
+    costDiscards &&
+    costDiscards.required > 0 &&
+    (player?.hand.length ?? 0) > 0
+  ) {
+    throw new Error(
+      `Discard ${costDiscards.required} more card${costDiscards.required === 1 ? "" : "s"} to pay ${
+        cardLibrary[costDiscards.sourceCardId]?.name ?? costDiscards.sourceCardId
+      } first.`
+    );
+  }
+
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
@@ -5895,7 +6041,8 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     ...(fromSpellBook ? { fromSpellBook: true as const } : {}),
     ...(castEnablerCardId ? { castEnablerCardId } : {}),
     ...(schoolFetchExpertUsed ? { schoolFetchExpertUsed: true } : {}),
-    ...(schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true } : {})
+    ...(schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true } : {}),
+    ...(costDiscards ? { costDiscards } : {})
   };
 
   if (!player || !spell || optionIndex >= offers.length) {
@@ -5953,6 +6100,41 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     });
     nextPower = power + offer.value;
     nextFlags = { ...nextFlags, schoolFetchExpertUsed: true };
+  } else if (offer.kind === "cost-discard") {
+    // Paying the last-played side's printed card cost (Titan's Cuirass /
+    // Breastplate of Brimstone): any hand card, to the discard pile; adds the
+    // side's per-card Power (0 for a pure cost like the Cuirass).
+    const cost = flags.costDiscards;
+    if (!cost) {
+      throw new Error("No card cost is waiting to be paid.");
+    }
+    const handIndex = player.hand.indexOf(offer.cardId);
+    if (handIndex === -1) {
+      throw new Error("That card is no longer in hand.");
+    }
+    player.hand.splice(handIndex, 1);
+    player.discard.push(offer.cardId);
+    const sourceName = cardLibrary[cost.sourceCardId]?.name ?? cost.sourceCardId;
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId,
+      cardId: offer.cardId,
+      timing: cardLibrary[offer.cardId]?.timing ?? "instant",
+      mode: "basic",
+      optionLabel: cost.perCard > 0 ? `+${cost.perCard} Power (${sourceName})` : `pays ${sourceName}`
+    });
+    nextPower = power + cost.perCard;
+    const remaining = {
+      sourceCardId: cost.sourceCardId,
+      required: Math.max(0, cost.required - 1),
+      upTo: cost.upTo - 1,
+      perCard: cost.perCard
+    };
+    if (remaining.upTo > 0) {
+      nextFlags = { ...nextFlags, costDiscards: remaining };
+    } else {
+      delete nextFlags.costDiscards;
+    }
   } else {
     // Hand / Book power-source card (or Polish Cast-a-Spell +1 alternative).
     const zone = offer.fromBook ? player.spellBook : player.hand;
@@ -5974,7 +6156,8 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       throw new Error("Only one Spell Book Power discard is allowed per turn.");
     }
 
-    if (offer.mode === "expert") {
+    // Expert side: costs a crown unless Empowered (crown-free, combat parity).
+    if (offer.mode === "expert" && !abilityExpertIsCrownFree(player, offer.cardId)) {
       if (mapSpellCrownsLeft(state, playerId) <= 0) {
         throw new Error("No crown left for expert Power payment.");
       }
@@ -5982,7 +6165,12 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     }
 
     zone.splice(handIndex, 1);
-    player.discard.push(offer.cardId);
+    if (offer.removeSelf && !offer.fromBook) {
+      // Printed side cost "Remove this card" (the Orb relics' +5): out of the game.
+      player.removed.push(offer.cardId);
+    } else {
+      player.discard.push(offer.cardId);
+    }
     if (offer.fromBook) {
       player.combatStats.spellBookPowerUsedThisTurn = true;
     }
@@ -5993,17 +6181,25 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       cardId: offer.cardId,
       timing: cardLibrary[offer.cardId]?.timing ?? "instant",
       mode: offer.mode,
-      optionLabel: `+${offer.value} Power (${spell.name})`
+      optionLabel: `+${offer.value} Power (${spell.name})${offer.removeSelf ? " — removed from the game" : ""}`
     });
 
-    // Cast a Spell is not a power-source for draw riders; real Sorcery still is.
+    // Draw rider of the EXACT printed side played (the Tunic's +2 never draws;
+    // its "+1, draw 1" side does). Legacy in-flight offers (no drawCards field)
+    // keep the old collapsed read; Cast a Spell is never a draw rider.
     const draws = isCastASpellCard(offer.cardId)
       ? 0
-      : spellPowerSourceDrawCards(cardLibrary[offer.cardId], spell.spellSchools ?? []);
+      : offer.drawCards !== undefined
+        ? offer.drawCards
+        : spellPowerSourceDrawCards(cardLibrary[offer.cardId], spell.spellSchools ?? []);
     if (draws > 0) {
       drawCardsForPlayer(state, playerId, draws);
     }
     nextPower = power + offer.value;
+    // The side's own printed card cost (discard 1 / up to 3) opens now.
+    if (offer.costDiscards && (offer.costDiscards.required > 0 || (offer.costDiscards.upTo > 0 && offer.costDiscards.perCard > 0))) {
+      nextFlags = { ...nextFlags, costDiscards: { sourceCardId: offer.cardId, ...offer.costDiscards } };
+    }
   }
 
   openMapSpellBoost(state, playerId, spellCardId, nextPower, nextFlags);

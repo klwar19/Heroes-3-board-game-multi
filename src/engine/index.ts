@@ -168,10 +168,12 @@ export {
   spellMinUsefulPower,
   spellPowerBreakpoints,
   spellPowerLadder,
+  spellPowerSidesOfCard,
+  spellPowerSourceDrawCards,
   spellPowerValueOfCard,
   spellTimingKind
 } from "./effects";
-export type { SpellLadderRow, SpellTimingKind } from "./effects";
+export type { SpellLadderRow, SpellPowerSide, SpellTimingKind } from "./effects";
 export { appendEvent } from "./events";
 export { getPlayerView, OBSERVER_VIEWER_SEAT, PASSWORD_REDACTED, redactStateForSeat } from "./player-view";
 export { createSeededRandom } from "./random";
@@ -681,6 +683,8 @@ export {
   neutralPlacementIsManual,
   pumpAdventureQueues
 } from "./adventure-reducer";
+export { bestMapSpellTier, isMapPowerTierSpell, mapSpellPowerTiers } from "./map-spell-cast";
+export type { MapSpellPowerTiers } from "./map-spell-cast";
 export {
   canonicalTileEdgeCode,
   HEX_DIRECTIONS,

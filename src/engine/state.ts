@@ -13171,6 +13171,35 @@ export type PendingChoice =
               mode: "basic" | "expert";
               value: number;
               fromBook?: boolean;
+              /**
+               * CHOOSE_ONE cards: the exact printed side this offer plays (Tunic of
+               * the Cyclops King's "+2 Power" vs "Draw 1 card and +1 Power" are two
+               * separate offers). Absent for bare cards and legacy snapshots.
+               */
+              optionIndex?: number;
+              /** Cards drawn when this side resolves (the Sorcery/Tunic/Scales rider). */
+              drawCards?: number;
+              /** This side's printed cost removes the card from the game (the Orb relics' +5). */
+              removeSelf?: boolean;
+              /** The expert side costs no crown (Empowered ability). */
+              crownFree?: boolean;
+              /**
+               * This side's printed cost also discards other hand cards (Titan's
+               * Cuirass "Discard 1 card: +4", Breastplate of Brimstone "up to 3,
+               * +1 each") — resolving it opens the cost-discard follow-ups below.
+               */
+              costDiscards?: { required: number; upTo: number; perCard: number };
+            }
+          | {
+              /**
+               * A pending cost discard of the last-played power side: `required`
+               * discards must be paid before the spell may resolve (Titan's
+               * Cuirass); optional `perCard` discards add Power (Breastplate of
+               * Brimstone). One offer per distinct hand card.
+               */
+              kind: "cost-discard";
+              cardId: CardId;
+              value: number;
             }
           | {
               /** School of Magic permanent: discard for expert (+3 instead of basic +1). */
@@ -13198,6 +13227,13 @@ export type PendingChoice =
         schoolPermanentExpertUsed?: boolean;
         fromSpellBook?: boolean;
         castEnablerCardId?: CardId;
+        /**
+         * A played power side's still-open printed card cost (Titan's Cuirass /
+         * Breastplate of Brimstone): `required` more discards owed before the
+         * spell may resolve, `upTo` more allowed, `perCard` Power each adds.
+         * `sourceCardId` names the side's card for the offer labels.
+         */
+        costDiscards?: { sourceCardId: CardId; required: number; upTo: number; perCard: number };
       };
       /**
        * visions-deck: the Neutral tier decks Visions may scry (index-aligned with
