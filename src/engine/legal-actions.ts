@@ -57,6 +57,7 @@ import {
   hillFortCost,
   inCombatPrep,
   isDefendingOwnFactionTown,
+  isHerolessMineDefender,
   isMapPowerTierSpell,
   canHeroDiscoverAdjacentTile,
   isTileRotationConnected,
@@ -1802,6 +1803,16 @@ function isCombatParticipant(state: GameState, playerId: PlayerId): boolean {
  * no hero present (a garrison defended without the town hero) or when a
  * Secondary Hero leads the fight — Secondary Heroes never play cards. Applies
  * to the relevant side of both Neutral and player-vs-player combats.
+ *
+ * ONE exception, flagged on the combat context by `startPlayerCombat`: the
+ * `mine-army-defense` house rule's Mine defense (`garrisonCardsAllowed`) — its
+ * heroless DEFENDER keeps their cards. Hero-scoped effects (commander,
+ * equipment, hero grades, Tactics, Retreat/Surrender) are gated on the hero
+ * itself elsewhere and stay off for every heroless defense.
+ *
+ * This is the SINGLE seam every hand-lock gate reads (legal-action offers and
+ * the reducer backstops alike), so the exception can never be honoured by one
+ * surface and refused by another.
  */
 export function isHandLockedInCombat(state: GameState, playerId: PlayerId): boolean {
   const combat = state.combat;
@@ -1827,7 +1838,13 @@ export function isHandLockedInCombat(state: GameState, playerId: PlayerId): bool
     return false;
   }
 
-  return heroId === null || state.heroes[heroId]?.kind === "secondary";
+  if (heroId === null) {
+    // Heroless (garrison) defense: units-only, unless this fight is the
+    // `mine-army-defense` Mine defense — there the OWNER still plays cards.
+    return !isHerolessMineDefender(state, playerId);
+  }
+
+  return state.heroes[heroId]?.kind === "secondary";
 }
 
 /**
@@ -8781,14 +8798,21 @@ function addGiveUpCombatActions(actions: LegalAction[], state: GameState, player
   const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
   const heroId =
     playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
-  if (!isParticipant || !heroId) {
+  // The `mine-army-defense` Mine defender concedes with no hero in the fight, so
+  // the game can end quickly instead of playing the garrison out to the last unit.
+  const herolessMine = isHerolessMineDefender(state, playerId);
+  if (!isParticipant || (!heroId && !herolessMine)) {
     return;
   }
   const losesTroops = adventurePvpTroopLoss(state) === "normal";
   actions.push({
-    label: losesTroops
-      ? "Retreat (lose the combat — your fallen so far stay lost, survivors fall back home)"
-      : "Retreat (lose the combat and discard your hand, fall back home)",
+    label: herolessMine
+      ? losesTroops
+        ? "Retreat (give up the Mine — your fallen so far stay lost, survivors are kept, no hero to move)"
+        : "Retreat (give up the Mine and discard your hand, no hero to move)"
+      : losesTroops
+        ? "Retreat (lose the combat — your fallen so far stay lost, survivors fall back home)"
+        : "Retreat (lose the combat and discard your hand, fall back home)",
     action: { type: "GIVE_UP_COMBAT", playerId }
   });
 }

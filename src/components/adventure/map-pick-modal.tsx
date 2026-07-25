@@ -43,22 +43,30 @@ type SourceFilter = "all" | "builtin" | "designed";
  */
 export function DifficultyChessBar({
   options,
-  send
+  send,
+  mapDifficulty = null
 }: {
   options: GameSetupOptions;
   send: (next: Partial<GameSetupOptions>) => void;
+  /**
+   * Difficulty the currently PREVIEWED map authors, marked with a "map" tag so
+   * clicking through the list visibly moves something even before "Play this map"
+   * commits it (the gold `selected` ring follows the LIVE lobby value only).
+   */
+  mapDifficulty?: GameSetupOptions["difficulty"] | null;
 }) {
   return (
     <div className="difficultyChessBar" role="group" aria-label="Neutral difficulty">
       {DIFFICULTY_CHOICES.map((choice) => {
         const selected = options.difficulty === choice.id;
+        const mapSet = mapDifficulty === choice.id && !selected;
         return (
           <button
             aria-pressed={selected}
-            className={`difficultyChessBtn ${selected ? "selected" : ""}`}
+            className={`difficultyChessBtn ${selected ? "selected" : ""} ${mapSet ? "mapSet" : ""}`}
             key={choice.id}
             onClick={() => send({ difficulty: choice.id })}
-            title={choice.hint}
+            title={mapSet ? `${choice.hint} — this map sets it` : choice.hint}
             type="button"
           >
             <img alt="" aria-hidden="true" decoding="async" src={assetUrl(DIFFICULTY_CHESS_ICONS[choice.id])} />
@@ -171,6 +179,15 @@ export function MapPickModal({
 
   const appliedEntry = entries.find(isApplied) ?? null;
   const selected = (selectedKey ? entries.find((entry) => entry.key === selectedKey) : null) ?? appliedEntry;
+  const selectedName = selected
+    ? selected.kind === "builtin"
+      ? selected.scenario.name
+      : selected.record.name
+    : "";
+  // A map carries a difficulty only when its AUTHOR set one in the designer (a
+  // built-in scenario sheet never does — every sheet ships the same setup).
+  const selectedMapDifficulty =
+    selected?.kind === "designed" ? selected.record.preset?.difficulty ?? null : null;
 
   const applyEntry = (entry: MapEntry) => {
     if (entry.kind === "builtin") {
@@ -346,7 +363,23 @@ export function MapPickModal({
           Neutral difficulty —{" "}
           {DIFFICULTY_CHOICES.find((choice) => choice.id === options.difficulty)?.hint ?? ""}
         </small>
-        <DifficultyChessBar options={options} send={send} />
+        <DifficultyChessBar mapDifficulty={selectedMapDifficulty} options={options} send={send} />
+        {/*
+          Why the bar does not move when you click through the list: only a map
+          whose AUTHOR set a difficulty brings one, and it is applied by "Play this
+          map", never by merely previewing. Say which of the two the selected map
+          is, so an unchanged bar reads as an answer instead of a dead control.
+        */}
+        <small className="mapPickDifficultyNote">
+          {!selected
+            ? "Pick a map to see whether it brings a difficulty of its own."
+            : selectedMapDifficulty
+              ? `${selectedName} sets ${
+                  DIFFICULTY_CHOICES.find((choice) => choice.id === selectedMapDifficulty)?.label ??
+                  selectedMapDifficulty
+                } — “Play this map” applies it, and you can still change it afterwards.`
+              : `${selectedName} brings no difficulty of its own, so this stays on your pick. A map's author sets one in the map designer.`}
+        </small>
       </div>
 
       <small className="optionHint designerLink">

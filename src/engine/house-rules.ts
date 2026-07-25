@@ -318,9 +318,9 @@ export const HOUSE_RULES: HouseRuleDef[] = [
   },
   {
     id: "mine-army-defense",
-    label: "Mines: defend with your army",
+    label: "Mines: defend with your army & cards",
     description:
-      "Global map rule: an enemy Hero walking onto YOUR already-flagged Mine no longer re-flags it for free — you (the owner) get the settlement-style defense: pay 3 gold and defend with your UNITS only (no hero, no cards), or let it fall (the flag hands over exactly like today's walk-in). Winning the defense keeps the Mine and repels the attacker; declining or losing flags it for the attacker. A Mine with a LIVE neutral guard still fights that guard first; a View Earth remote capture is NOT intercepted. Off (default): byte-identical — the walk-in re-flags the Mine for free.",
+      "Global map rule: an enemy Hero walking onto YOUR already-flagged Mine no longer re-flags it for free — you (the owner) get the settlement-style defense: pay 3 gold and defend with your UNITS and your CARDS (only your Hero is missing, so no Tactics, no Retreat/Surrender and no hero-borne effects — commander, equipment, hero grades), or let it fall (the flag hands over exactly like today's walk-in). Winning the defense keeps the Mine and repels the attacker; declining or losing flags it for the attacker. A Mine with a LIVE neutral guard still fights that guard first; a View Earth remote capture is NOT intercepted. Off (default): byte-identical — the walk-in re-flags the Mine for free.",
     category: "global",
     // Opt-in house rule, OFF in both modes (adds a defense chokepoint that did
     // not exist before — must not change any legacy/binh game unless picked).

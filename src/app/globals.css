@@ -10308,10 +10308,12 @@ body:has(.setupHubBackdrop) .wogWindowBackdrop {
   background: rgba(20, 14, 8, 0.55);
 }
 
+/* Taller than the old outline-only sketch: the preview now draws the REAL printed
+   tile graphics, so it needs room for the scans to be legible. */
 .mapShapePreviewSvg {
   flex: none;
   width: 100%;
-  height: 170px;
+  height: 230px;
   border: 1px solid rgba(150, 116, 60, 0.3);
   border-radius: 10px;
   background: radial-gradient(circle at 50% 40%, rgba(60, 45, 22, 0.5), rgba(12, 9, 5, 0.7));
@@ -10366,6 +10368,14 @@ body:has(.setupHubBackdrop) .wogWindowBackdrop {
   color: #bfa87c;
 }
 
+/* Whether the SELECTED map brings a difficulty of its own — so an unchanged bar
+   reads as an answer, not a dead control. */
+.mapPickDifficultyNote {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #9c8a66;
+}
+
 /* Difficulty as chess pieces: Pawn = Easy · Knight = Normal · Rook = Hard ·
    King = Impossible. */
 .difficultyChessBar {
@@ -10386,17 +10396,19 @@ body:has(.setupHubBackdrop) .wogWindowBackdrop {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease,
-    transform 0.15s ease;
+  /* Only `transform` transitions. The picked-difficulty signal (border, fill,
+     un-greyed piece) must land the INSTANT the value changes: a transitioned
+     border-color / background / filter can be left frozen on the previously
+     picked button — observed on the live app, where the class had correctly moved
+     to Normal while the gold ring stayed on Impossible, so the bar read as
+     "still Impossible". Untransitioned properties cannot get stuck. */
+  transition: transform 0.15s ease;
 }
 
 .difficultyChessBtn img {
   width: 44px;
   height: 44px;
   filter: grayscale(0.55) brightness(0.8);
-  transition: filter 0.15s ease;
 }
 
 .difficultyChessBtn:hover {
@@ -10413,7 +10425,31 @@ body:has(.setupHubBackdrop) .wogWindowBackdrop {
   border-color: #ffd76a;
   background: rgba(82, 61, 29, 0.55);
   color: #ffe9bd;
+  /* A solid ring on top of the inset glow: the one unmistakable "this is the
+     picked difficulty" mark, and it is not a transitioned property either. */
+  outline: 2px solid #ffd76a;
+  outline-offset: 1px;
   box-shadow: inset 0 0 14px rgba(214, 164, 76, 0.25);
+}
+
+/* The SELECTED map's own authored difficulty, marked while you browse the list:
+   clicking through maps visibly moves this mark even before "Play this map"
+   commits it (which is when the gold `.selected` ring moves). */
+.difficultyChessBtn.mapSet::after {
+  content: "map";
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8fd8ff;
+}
+
+.difficultyChessBtn.mapSet {
+  position: relative;
+  border-color: #8fd8ff;
+  box-shadow: inset 0 0 12px rgba(143, 216, 255, 0.2);
 }
 
 /* Heroes tab: detail panel above the faction grid. */

@@ -245,4 +245,59 @@ describe("Map window — the chess-piece difficulty bar", () => {
     expect(within(bar).getByRole("button", { name: /^Easy/ }).getAttribute("aria-pressed")).toBe("true");
     expect(within(bar).getByRole("button", { name: /Impossible/ }).getAttribute("aria-pressed")).toBe("false");
   });
+
+  it("says whether the SELECTED map brings a difficulty of its own", async () => {
+    const authored = designedMap({
+      id: "map-hard",
+      name: "Hard Pass",
+      preset: { difficulty: "hard" } as SharedMapRecord["preset"]
+    });
+    const { dialog } = await open([authored]);
+    const note = () => dialog.querySelector(".mapPickDifficultyNote")?.textContent ?? "";
+
+    // A map whose AUTHOR set a difficulty: the note names it and says the pick
+    // applies it (the bar itself only moves once "Play this map" is pressed).
+    const row = (name: RegExp) =>
+      Array.from(rows(dialog)).find((node) => name.test(node.textContent ?? "")) as HTMLElement;
+
+    fireEvent.click(row(/Hard Pass/));
+    expect(note()).toContain("Hard Pass sets Hard");
+    expect(note()).toMatch(/Play this map/);
+
+    // CONTROL: a built-in sheet authors none, so the bar staying put is correct —
+    // and the note says so instead of leaving the control looking dead.
+    fireEvent.click(row(/Border Skirmish/));
+    expect(note()).toContain("brings no difficulty of its own");
+    expect(note()).not.toContain("sets Hard");
+  });
+
+  it("marks the SELECTED map's own difficulty on the bar, and the gold ring still follows the LIVE value", async () => {
+    const authored = designedMap({
+      id: "map-hard",
+      name: "Hard Pass",
+      preset: { difficulty: "hard" } as SharedMapRecord["preset"]
+    });
+    const { dialog } = await open([authored]); // lobby difficulty: impossible
+    const bar = within(dialog).getByRole("group", { name: "Neutral difficulty" });
+    const btn = (name: RegExp) => within(bar).getByRole("button", { name });
+
+    fireEvent.click(
+      Array.from(rows(dialog)).find((node) => /Hard Pass/.test(node.textContent ?? "")) as HTMLElement
+    );
+
+    // The map's Hard is TAGGED (so browsing the list visibly moves something)…
+    expect(btn(/^Hard/).className).toContain("mapSet");
+    expect(btn(/^Hard/).getAttribute("title")).toContain("this map sets it");
+    // …while the picked-difficulty ring stays on the LIVE lobby value until
+    // "Play this map" commits — and never doubles up on one button.
+    expect(btn(/Impossible/).className).toContain("selected");
+    expect(btn(/^Hard/).className).not.toContain("selected");
+    expect(btn(/Impossible/).className).not.toContain("mapSet");
+
+    // CONTROL: a map authoring nothing tags nothing.
+    fireEvent.click(
+      Array.from(rows(dialog)).find((node) => /Border Skirmish/.test(node.textContent ?? "")) as HTMLElement
+    );
+    expect(bar.querySelectorAll(".mapSet")).toHaveLength(0);
+  });
 });
