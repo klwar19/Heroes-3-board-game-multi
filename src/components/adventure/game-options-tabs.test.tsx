@@ -50,7 +50,7 @@ function expandTournamentRules() {
 describe("Game options — tabbed layout", () => {
   it("shows the four setup tabs", () => {
     openOptions();
-    for (const name of [/Mode & Rules/, /Match/, /Map & Setup/, /Army/]) {
+    for (const name of [/Mode & Rules/, /Match/, /Map & Setup/, /Town & Resources/]) {
       expect(screen.getByRole("tab", { name })).toBeTruthy();
     }
   });
@@ -278,6 +278,26 @@ describe("Game options — tabbed layout", () => {
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
       options: { houseRules: { "mine-army-defense": true } }
+    });
+  });
+
+  it("hosts the Yellow-borders-block-discovery rule in the BINH panel, not the Global one", () => {
+    const onAction = openOptions();
+    // It restores an OLD BINH reading, so it belongs beside its official-rules
+    // siblings under BINH house rules → "Combat & map rules".
+    expandGlobalMapRules();
+    expect(
+      screen.queryByRole("button", { name: /Yellow borders block Tile discovery/i }),
+      "the Global map-rules panel does NOT host it"
+    ).toBeNull();
+    expandBinhHouseRules();
+    const toggle = screen.getByRole("button", { name: /Yellow borders block Tile discovery/i });
+    expect(toggle.getAttribute("aria-pressed"), "the official rule is the default (OFF)").toBe("false");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "discovery-border-gate": true } }
     });
   });
 
@@ -753,9 +773,9 @@ describe("Game options — tabbed layout", () => {
     );
   });
 
-  it("the Army tab offers the three quick presets and a Random roll", () => {
+  it("the Town & Resources tab offers the three quick presets and a Random roll", () => {
     const onAction = openOptions();
-    fireEvent.click(screen.getByRole("tab", { name: /Army/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Town & Resources/ }));
 
     fireEvent.click(screen.getByRole("button", { name: "Lv 3 Pack" }));
     expect(onAction).toHaveBeenCalledWith({
