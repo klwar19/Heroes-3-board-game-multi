@@ -8951,15 +8951,13 @@ export type AdventureReward =
     }
   | {
       /**
-       * Start-of-turn phase divider. Queued LAST by startPlayerTurn, after every
-       * round-start ("beginning of the round" City Hall income/draws, Astrologers
-       * Proclaim) and start-of-turn ("beginning of your turn" building/Astrologers)
-       * effect. When pumped it takes the hand-limit snapshot for the player whose
-       * turn is starting: it opens the optional discard-and-draw and, if the
-       * earlier effects pushed the hand over the limit, requires a discard down
-       * before the player may act. Snapshotting here — not eagerly in
-       * startPlayerTurn — is what makes a round-start draw (e.g. Stronghold City
-       * Hall "draw 2") correctly force the first player to discard.
+       * Start-of-turn phase divider. Queued by startPlayerTurn behind every
+       * round-start effect ("beginning of the round" City Hall income/draws,
+       * Astrologers Proclaim). When pumped it opens the player's draw/discard
+       * phase and records whether a forced discard-down is needed. Once
+       * REFRESH_HAND resolves, "beginning of your turn" building effects are
+       * queued against the settled hand. Snapshotting here still ensures a
+       * round-start draw (for example City Hall "draw 2") can force a discard.
        */
       playerId: PlayerId;
       kind: "start-turn-hand";
@@ -13336,6 +13334,8 @@ export type PendingChoice =
         schoolPermanentExpertUsed?: boolean;
         fromSpellBook?: boolean;
         castEnablerCardId?: CardId;
+        /** Spell/support/enabler cards held out of empty-deck reshuffles until resolution. */
+        inFlightCardIds?: CardId[];
         /**
          * A played power side's still-open printed card cost (Titan's Cuirass /
          * Breastplate of Brimstone): `required` more discards owed before the

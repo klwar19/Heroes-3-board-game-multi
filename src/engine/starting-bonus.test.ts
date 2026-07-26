@@ -7,6 +7,7 @@ import {
   TOURNAMENT_REMOVED_ARTIFACT_ID
 } from "./adventure-setup";
 import {
+  openDrawChooseMinorArtifacts,
   reshuffleArtifactDecksAfterStartingBonus,
   revealUntilMinorArtifact,
   startingBonusDescription,
@@ -90,6 +91,49 @@ describe("startingBonusDescription / steps (rulebook p.10)", () => {
 });
 
 describe("starting bonus at game setup", () => {
+  it("Polish draw-and-choose reshuffles an empty Minor Artifact draw pile", () => {
+    const state = createAdventureGameState({
+      seed: "bonus-polish-minor-discard",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      startingBonus: true
+    });
+    const deck = state.decks["artifacts-minor"] ?? state.decks.artifacts;
+    const minors = deck.drawPile
+      .filter((cardId) => cardLibrary[cardId]?.artifactTier === "minor")
+      .slice(0, 2);
+    expect(minors).toHaveLength(2);
+    deck.drawPile = [];
+    deck.discardPile = [...minors];
+    const visit = state.adventure!.pendingVisit!;
+
+    openDrawChooseMinorArtifacts(state, visit, 2, 1);
+
+    expect(visit.steps[0]).toMatchObject({ type: "CHOOSE_ONE" });
+    expect(visit.steps[0]?.type === "CHOOSE_ONE" ? visit.steps[0].options : []).toHaveLength(2);
+    expect(deck.discardPile).toEqual([]);
+  });
+
+  it("reveal-until-Minor reshuffles a discard-only Artifact deck", () => {
+    const state = createAdventureGameState({
+      seed: "bonus-reveal-minor-discard",
+      difficulty: "hard",
+      rollFirstPlayer: false
+    });
+    const deck = state.decks["artifacts-minor"] ?? state.decks.artifacts;
+    const minor = deck.drawPile.find(
+      (cardId) => cardLibrary[cardId]?.artifactTier === "minor"
+    );
+    expect(minor).toBeTruthy();
+    deck.drawPile = [];
+    deck.discardPile = [minor!];
+    state.players.p1.hand = [];
+
+    expect(revealUntilMinorArtifact(state, "p1")).toBe(minor);
+    expect(state.players.p1.hand).toContain(minor);
+    expect(deck.discardPile).toEqual([]);
+  });
+
   it("queues no starting bonus on Impossible (CONTROL)", () => {
     const state = createAdventureGameState({
       seed: "bonus-impossible",

@@ -370,6 +370,28 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
     expect(after.decks.spells.drawPile).toContain("spell.fireball");
   });
 
+  it("offers and resolves a Search when the only Spell is in a discard pile", () => {
+    let state = tarnumCombat("tarnum-vi-discard-only", []);
+    state.decks.spells.discardPile = ["spell.lightning_bolt"];
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === T6
+    );
+    expect(play, "discard-only Spell decks still make Tarnum VI playable").toBeTruthy();
+    state = applyOk(state, play!.action);
+
+    expect(state.pendingChoice?.type).toBe("TARNUM_SEARCH");
+    const choices = getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "CHOOSE_OPTION"
+    );
+    expect(choices.some((legal) => /basic Spell deck/i.test(legal.label))).toBe(true);
+
+    state = drivePicks(state, ["basic"]);
+    expect(state.players.p1.hand).toContain("spell.lightning_bolt");
+    expect(state.decks.spells.drawPile).not.toContain("spell.lightning_bolt");
+    expect(state.decks.spells.discardPile).not.toContain("spell.lightning_bolt");
+  });
+
   it("INSTANT WINDOW: can be played off-turn (during an enemy unit's activation)", () => {
     const state = tarnumCombat("tarnum-vi-offturn", ["spell.bless", "spell.lightning_bolt"]);
     state.phase = "combat";
@@ -380,6 +402,20 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
     expect(
       offTurn.some((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === T6),
       "Tarnum VI is an Instant, playable off-turn in the instant window"
+    ).toBe(true);
+  });
+
+  it("INSTANT WINDOW: discard-only Spell decks do not hide Tarnum VI", () => {
+    const state = tarnumCombat("tarnum-vi-offturn-discard-only", []);
+    state.decks.spells.discardPile = ["spell.bloodlust"];
+    state.phase = "combat";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = true;
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+
+    expect(
+      getOffTurnCombatReactions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === T6
+      )
     ).toBe(true);
   });
 

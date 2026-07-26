@@ -98,7 +98,7 @@ describe("digFromOwnDeckTop — the one own-deck draw seam", () => {
     // The played card is already in the discard when its own effect resolves.
     state.players.p1.discard = ["specialty.jeddite.1", "stat.attack"];
 
-    const dig = digFromOwnDeckTop(state, "p1", 3, "test", { playedCardId: "specialty.jeddite.1" });
+    const dig = digFromOwnDeckTop(state, "p1", 3, "test", { inFlightCardIds: ["specialty.jeddite.1"] });
 
     expect(dig.cardIds).toEqual(["stat.attack"]);
     expect(dig.cardIds).not.toContain("specialty.jeddite.1");
@@ -110,6 +110,27 @@ describe("digFromOwnDeckTop — the one own-deck draw seam", () => {
     control.players.p1.deck = [];
     control.players.p1.discard = ["specialty.jeddite.1", "stat.attack"];
     expect(digFromOwnDeckTop(control, "p1", 3, "test").cardIds).toHaveLength(2);
+  });
+
+  it("holds every in-flight card while allowing a genuine duplicate to reshuffle", () => {
+    const state = adventureState("dig-helper-in-flight", "jeddite", "dungeon");
+    state.players.p1.deck = [];
+    state.players.p1.discard = [
+      "spell.fly",
+      "artifact.tunic_of_the_cyclops_king",
+      "spell.fly",
+      "stat.attack"
+    ];
+
+    const dig = digFromOwnDeckTop(state, "p1", 4, "test", {
+      inFlightCardIds: ["spell.fly", "artifact.tunic_of_the_cyclops_king"]
+    });
+
+    expect(dig.cardIds.sort()).toEqual(["spell.fly", "stat.attack"]);
+    expect(state.players.p1.discard).toEqual([
+      "spell.fly",
+      "artifact.tunic_of_the_cyclops_king"
+    ]);
   });
 });
 

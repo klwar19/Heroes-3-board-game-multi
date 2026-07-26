@@ -2208,13 +2208,14 @@ dealt again — a "dig until X" scan would never finish. With them held, nothing
 is added to the discard while a dig runs, so at most ONE reshuffle can happen.
 This mirrors `revealSharedDeckSearch`, which already did it for Searches.
 
-**The card being played is held OUT of its own reshuffle.** It is already in the
-discard when its effect resolves, so a naive reshuffle would deal it straight
-back to hand — the card would pay for itself (Jeddite would return to hand every
-play). `digFromOwnDeckTop`'s `playedCardId` option keeps ONE copy in the discard,
-the reading Deemer's Meteor Shower IV already used ("the played card stays in the
-discard, discarded after the shuffle"); Meteor Shower IV now passes it to its
-draw too, so its stated invariant holds even with nothing else left anywhere.
+**Every in-flight card is held OUT of its own reshuffle.** A Spell, its
+Cast-a-Spell enabler, and any support cards can already be in the discard while
+their cast/reaction/draw riders are still resolving. A naive reshuffle could
+return any of them to hand before bookkeeping finishes. Callers therefore pass
+the full `inFlightCardIds` set through `drawCardsForPlayer` /
+`digFromOwnDeckTop`; the helper protects one occurrence per entry while genuine
+duplicate copies still shuffle normally. This covers direct draw-only plays,
+map boosts, combat reactions, after-cast draws, and ongoing-map-spell handling.
 
 Fixed (each was dead or short at an empty pile; each has a failing-if-removed
 test): **own deck** — Mysterious Warlock I/VI `DECK_DIG_KEEP_MATCHING` (offer
@@ -2225,20 +2226,29 @@ Search (3) now really reveals 3), the Conflux Magic University dig (reshuffled
 mid-scan, not only at the start); **shared decks** — Tazar's War Hero VI
 `DRAW_TOP_ARTIFACT` (offer gate, the reducer's deck menu AND the draw), the Witch
 Hut reveal, the Necromancy Amplifier fetch, Tarnum (Conflux) VI's Search(1)
-Spell (offer + pull). `drawCardsForPlayer` and the Genie Wish dig were already
-correct and now share the one seam.
+Spell (offer + pull), Polish draw-and-choose Minor Artifacts, and reveal-until
+Minor Artifact. `DRAW_TOP_ARTIFACT` now also reports its
+`reshuffledDiscard` event flag truthfully. `drawCardsForPlayer` and the Genie
+Wish dig share the same seam.
 
 Leading with what deliberately does NOT reshuffle:
 - **Peeks are not draws.** The Thieves' Guild "look at the top 2 of any deck"
   still needs 2 cards actually sitting on that draw pile (you cannot look at two
   cards that are not there; reshuffling is triggered by drawing, not looking).
-- **A generic "…and draw a card" rider can still redraw the card that granted
-  it** when it is the only card anywhere — `drawCardsForPlayer` only holds a
-  played card out when the caller passes `playedCardId` (today: Meteor Shower
-  IV). That is the literal rule (the played card IS in the discard pile you
-  shuffle), and it is pre-existing behaviour left unchanged on purpose.
 - **Mana Vortex** shuffles the whole discard in up front, so a short reveal
   there means the player genuinely owns fewer cards.
+
+## Beginning-of-player-turn draws resolve after the hand phase (2026-07-26)
+
+Timing is now explicit: **beginning-of-the-round** effects still resolve first
+(including City Hall / Wall of Knowledge changes that can force a discard),
+then the active player completes `REFRESH_HAND`, and only then are
+**beginning-of-your-turn** buildings queued. This covers Necromancy Amplifier,
+Portal of Summoning (and its anime equivalents), and Mana Vortex. In
+particular, Mana Vortex builds its discard choice from the settled
+post-refresh hand, so a card drawn in that turn's hand phase can be selected.
+`start-turn-hand` remains the round/start divider; `refreshHand` calls
+`queueTurnStartBuildingChoices` after its discard-then-draw transaction.
 
 ## Table info & readability pass (2026-07-25) — presentation only
 

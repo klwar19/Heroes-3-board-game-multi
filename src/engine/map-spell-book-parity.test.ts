@@ -296,6 +296,43 @@ describe("Map cast-then-boost × POLISH Spell Book", () => {
     expect(state.players.p1.spellBook).not.toContain("spell.view_air");
   });
 
+  it("an empty-deck cast draw cannot steal the enabler before Knowledge recalls it", () => {
+    let state = polishBookGame("polish-book-empty-draw-recall");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "stat.knowledge"];
+    state.players.p1.spellBook = ["spell.view_air"];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    state.players.p1.limits.expertUses = 0;
+    state.activeEffects.push({
+      id: "polish-map-draw-on-cast",
+      name: "Draw after casting",
+      scope: "player",
+      duration: { type: "permanent" },
+      modifiers: [{ type: "DRAW_ON_SPELL_CAST", amount: 1 }],
+      source: { type: "system" },
+      controllerId: "p1",
+      startedRound: state.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    });
+
+    state = castViewAirFrom(state, true);
+    state = resolveBoostNow(state);
+
+    expect(state.players.p1.discard).toContain(CAST_A_SPELL_CARD_ID);
+    expect(state.players.p1.hand).not.toContain(CAST_A_SPELL_CARD_ID);
+    expect(state.adventure?.pendingVisit?.steps[0]).toMatchObject({ type: "CHOOSE_ONE" });
+
+    state = applyOk(state, {
+      type: "RESOLVE_VISIT_STEP",
+      playerId: "p1",
+      optionIndex: 0
+    });
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(state.players.p1.spellBookUsed).toContain("spell.view_air");
+  });
+
   it("Polish Book Fly: spell stays used (no ongoing hold); Knowledge still returns Cast a Spell", () => {
     let state = polishBookGame("polish-book-fly");
     state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "stat.knowledge"];

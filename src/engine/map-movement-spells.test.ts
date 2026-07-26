@@ -662,6 +662,30 @@ function dimensionDoorDestinations(state: GameState): string[] {
 }
 
 describe("Dimension Door spell", () => {
+  it("is not offered when no tier has a valid landing field", () => {
+    const state = withHand(makeGame(), [
+      "spell.dimension_door",
+      "spell.haste",
+      "spell.slow",
+      "stat.power",
+      "ability.sorcery"
+    ]);
+    const hero = heroP1(state);
+    for (const field of Object.values(state.adventure!.fields)) {
+      if (field.spaceId !== hero.spaceId) {
+        setField(state, field.spaceId, "blocked_field");
+      }
+    }
+
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) =>
+          legal.action.type === "PLAY_CARD" &&
+          legal.action.cardId === "spell.dimension_door"
+      )
+    ).toBe(false);
+  });
+
   it("Power 0 offers only adjacent stoppable fields, and Cancel keeps the hero put", () => {
     let state = withHand(makeGame(), ["spell.dimension_door"]);
     const { near, far } = dimensionDoorSetup(state);
@@ -929,6 +953,34 @@ describe("Town Portal spell", () => {
       option.steps.some((inner) => inner.type === "TELEPORT_HERO" && inner.spaceId === spaceId)
     );
   }
+
+  it("is not offered without a controlled destination", () => {
+    const state = withHand(makeGame(), [
+      "spell.town_portal",
+      "spell.haste",
+      "spell.slow",
+      "stat.power",
+      "ability.sorcery"
+    ]);
+    for (const field of Object.values(state.adventure!.fields)) {
+      if (field.location === "settlement") {
+        field.flagOwnerId = null;
+      }
+    }
+    for (const town of Object.values(state.towns)) {
+      if (town.controllerId === "p1" && town.fieldId !== heroP1(state).spaceId) {
+        town.controllerId = "p2";
+      }
+    }
+
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) =>
+          legal.action.type === "PLAY_CARD" &&
+          legal.action.cardId === "spell.town_portal"
+      )
+    ).toBe(false);
+  });
 
   it("Power 0 teleports to a controlled settlement with no movement bonus", () => {
     let state = withHand(makeGame(), ["spell.town_portal"]);
