@@ -327,7 +327,7 @@ function buildingScore(
         const unit = coreUnitDefinitions[unitDefId];
         return (
           unit?.tier === "bronze" &&
-          !player?.army.some((armyUnit) => armyUnit.unitDefId === unitDefId)
+          !player?.army.some((armyUnit) => armyUnit.side !== "bank" && armyUnit.unitDefId === unitDefId)
         );
       });
       score =

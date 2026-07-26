@@ -1053,7 +1053,14 @@ export function collectFirstAidCandidates(state: GameState, playerId: PlayerId):
 
   const options: CommanderFirstAidOption[] = [];
   for (const unit of Object.values(combat.units)) {
-    if (unit.controllerId !== playerId || unit.commanderSlug || unit.temporary || unit.cloneOfUnitId || unit.summoned) {
+    if (
+      unit.controllerId !== playerId ||
+      unit.commanderSlug ||
+      unit.temporary ||
+      unit.cloneOfUnitId ||
+      unit.summoned ||
+      unit.bankUnit
+    ) {
       continue;
     }
     if (unit.grade !== "bronze" && unit.grade !== "silver") {

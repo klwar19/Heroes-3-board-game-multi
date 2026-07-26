@@ -390,7 +390,12 @@ export type ArmyUnitRankInfo = {
 };
 
 /** UI summary of a card's veteran progression (badge + tooltip + board window). */
-export function armyUnitRankInfo(armyUnit: Pick<ArmyUnitState, "unitDefId" | "experience">): ArmyUnitRankInfo | null {
+export function armyUnitRankInfo(
+  armyUnit: Pick<ArmyUnitState, "unitDefId" | "side" | "experience">
+): ArmyUnitRankInfo | null {
+  // Creature Bank reward cards are tierless printed bank cards, not recruitable
+  // Neutral units; they do not enter the player-unit experience tracks.
+  if (armyUnit.side === "bank") return null;
   const def = coreUnitDefinitions[armyUnit.unitDefId];
   if (!def) return null;
   const experience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));

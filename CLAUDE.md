@@ -2678,14 +2678,14 @@ is NOT done:
   `creature-bank-combat.test.ts` ("exempt from tier-specific spells") with a
   graded CONTROL.
 - "Gain a unit" rewards: the Dragon Fly Hive (Dragon Flies) and Griffin
-  Conservatory (Griffins) add the recruitable card to the army for free — ALWAYS
-  the FEW card, but carrying a REAL rulebook Stack Token (the actual game
-  "Stacked" unit — `ArmyUnitState.stackToken`) when X ≥ 2. NEVER the Pack side,
-  and NEVER a Polish Unit-Stack layer even with `polish-unit-stacks` on (a
-  DIFFERENT mechanism). The `GAIN_UNIT` interaction carries `side:"few"` +
-  `stacked:x>=2` → the `RECRUIT_FREE` step's `stacked` flag → the token stat is
-  rolled from the SAME `rollStackTokenStat` helper the bank defenders use and set
-  on the added army card. In combat the token folds one stat (+1 Attack/Defense/
+  Conservatory (Griffins) add their dedicated CREATURE BANK card to the army
+  for free. They never grant the similarly named faction or Neutral-deck card,
+  and never grant a Polish Unit-Stack layer even with `polish-unit-stacks` on
+  (a DIFFERENT mechanism). The `GAIN_UNIT` interaction carries `side:"bank"` +
+  `stacked:x>=2`; if eligible, resolution first opens a four-option choice
+  (+1 Attack/Defense/Health or +2 Initiative), then places that chosen REAL
+  rulebook Stack Token (`ArmyUnitState.stackToken`) on the awarded bank card.
+  In combat the token folds one stat (+1 Attack/Defense/
   Health or +2 Initiative) into the card (`makeCombatUnitFromArmy` /
   `applyUnitCurrentSide`, mirrored onto `CombatUnitState.stackToken`); the SHARED
   absorb path (`markUnitRemovedIfNeeded`, keyed on `stackToken` alone, no longer
@@ -2693,7 +2693,7 @@ is NOT done:
   back to the army card at combat end. Tested in `creature-banks.test.ts`,
   `polish-bank-sizes.test.ts` (the don't-confuse-Polish CONTROL) and end-to-end in
   `creature-bank-combat.test.ts` ("adds the gained Dragon Flies card to the army"
-  + "the Few card carries a real Stack Token": fold, absorb, and the survivor
+  + "the bank card carries a chosen Stack Token": choose, fold, absorb, and the survivor
   sync-back with an un-absorbed CONTROL).
   HOUSE-RULE bonus: each of these two banks ALSO grants an **Ability Empower
   token** (the `GAIN_ABILITY_EMPOWER_TOKEN` interaction, additive in the reward
@@ -2803,8 +2803,8 @@ and `creature-bank-combat.test.ts` "Pyramid: a Stacked win …" end-to-end).
   targets the nearest, and as a target it is hit LAST — and tier gates exempt it
   via `gradeRankOfUnit`. (The "gain a Stacked unit" reward is NO LONGER a deferred
   house reading: army cards now carry a real rulebook Stack Token via
-  `ArmyUnitState.stackToken` — the Few card is granted Stacked, never a Pack. See
-  the "Gain a unit" rewards bullet above.)
+  `ArmyUnitState.stackToken` — the dedicated bank card is granted Stacked,
+  never a faction/Neutral-deck card. See the "Gain a unit" rewards bullet above.)
 
 ## Monolith & Whirlpool Tokens (Conflux/Cove, map-designer content) — what runs vs. readings
 
