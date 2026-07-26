@@ -400,6 +400,30 @@ describe("Map casts share the non-combat spell lifecycle", () => {
     expect(state.adventure!.astrologers!.crazyWizardUsedBy).toContain("p1");
   });
 
+  it("CONTROL: an ONGOING map Spell is held, so Crazy Wizard neither returns it nor spends its charge", () => {
+    let state = mapHand(["spell.fly"]);
+    state.adventure!.astrologers = {
+      activeCardId: "astrologers.crazy_wizard",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.fly",
+      mode: "basic",
+      target: { type: "none" }
+    });
+
+    expect(state.players.p1.ongoingCards ?? []).toEqual(
+      expect.arrayContaining([expect.objectContaining({ cardId: "spell.fly" })])
+    );
+    expect(state.players.p1.hand).not.toContain("spell.fly");
+    expect(state.adventure!.astrologers!.crazyWizardUsedBy).toEqual([]);
+  });
+
   it("DRAW_ON_SPELL_CAST fires on the map without recycling the resolving Spell", () => {
     let state = mapHand(["spell.view_air"]);
     state.players.p1.deck = [];

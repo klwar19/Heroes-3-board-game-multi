@@ -2405,6 +2405,27 @@ post-refresh hand, so a card drawn in that turn's hand phase can be selected.
 `start-turn-hand` remains the round/start divider; `refreshHand` calls
 `queueTurnStartBuildingChoices` after its discard-then-draw transaction.
 
+Leading with the consequences of moving the queue point (both deliberate, both
+pinned):
+- **The buildings are now queued by `REFRESH_HAND` alone, so PASSING forfeits
+  them.** Ending a turn without taking the draw stays legal and deliberate ("a
+  deliberate pass, never a forgotten draw" — `mandatory-draw-six-rounds.test.ts`
+  pins the End-turn offer AND the pass going through unspent), and the AFK /
+  turn-timeout driver ends turns the same way. A seat that passes therefore gets
+  no Necromancy Amplifier / Portal of Summoning / Mana Vortex prompt that turn
+  — the rulebook resolves them "after drawing", so no draw means no prompt.
+  BEFORE this change they were queued at turn start and fired regardless; this
+  is a real behaviour change, now a conscious one. Pinned in
+  `siege-tokens.test.ts` ("a seat that ends its turn WITHOUT drawing forfeits
+  that turn's building prompt", with the next-turn CONTROL).
+- **A turn-start building's card gain now lands AFTER the hand-limit snapshot**
+  (e.g. a Necromancy Amplifier fetch onto a just-filled hand leaves it one over
+  the limit for that turn, with no forced discard-down). That matches every
+  other mid-turn card gain in this engine — only the start-of-turn snapshot
+  enforces the limit, and the NEXT turn's snapshot forces the discard-down. It
+  is a real change from the old ordering, where the same fetch was folded into
+  the snapshot.
+
 ## Table info & readability pass (2026-07-25) — presentation only
 
 No engine change; every value shown is already public in player views.
@@ -4675,6 +4696,45 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   (spare Cast a Spell may still +1), Knowledge returns only Cast a Spell (spell
   stays used), lasting Fly stays used not ongoing — pinned in
   `map-spell-book-parity.test.ts` (each system + CONTROLs).
+  **Map casts share the non-combat spell LIFECYCLE (2026-07-26).** A map cast
+  now runs `noteMapSpellCast` (`src/engine/spell-lifecycle.ts`): it counts as a
+  Spell cast THIS TURN (so Astrologers' Grim Warlock "+1 Power to the first
+  spell each turn" lands on the first map Spell only — its starting Power is
+  read BEFORE the counter moves) and fires ongoing `DRAW_ON_SPELL_CAST` riders.
+  It calls `markEquipmentFirstSpellCast` for parity, but that is a NO-OP on the
+  map: the Neon Microphone charge is gated on the hero being in combat, so a map
+  cast can never eat it. It deliberately does NOT touch the
+  combat-round spell limit / `anySpellCastThisRound`. Astrologers' Crazy Wizard
+  (`maybeReturnFirstSpellToHand`, same module, shared with the combat path) now
+  also returns the first RESOLVED map Spell to hand — but never an ONGOING one
+  (Fly / Water Walk are held out of the discard, so there is nothing to return
+  and the once-per-player charge is not spent). Pinned in `map-spell-cast.test.ts`
+  ("Map casts share the non-combat spell lifecycle", each mutation-checked).
+  **At the highest useful tier the window still offers "+Power, draw" riders**
+  (combat parity) and nothing else — pure Power that can no longer raise the
+  tier is filtered out (`map-spell-cast.test.ts`, "at the highest useful tier").
+  **The OFFER GATE hides a map Spell no reachable tier can afford.** A
+  destination-gated Spell (Dimension Door / Town Portal / View Earth) is offered
+  only when SOME tier is both effect-playable (a landing / a controlled
+  destination / a capturable enemy Mine in range — `dimensionDoorDestinations` /
+  `townPortalDestinations` / `capturableEnemyMinesWithin`) AND affordable
+  (`canAffordCardCost`). The affordability read must therefore agree with the
+  cast's own starting Power: it counts standingSpellPower + `getSchoolPowerBonus`
+  + the map bank + hand power sources, plus the crown-gated School-of-Magic
+  expert half, the Basic X Magic +3 fetch, and (Polish Book) each SPARE "Cast a
+  Spell" beyond the one the cast itself consumes. Each of those four is pinned
+  with a CONTROL that hides the cast when the source is missing
+  (`view-spells.test.ts` "View Earth reach scales with the Power paid",
+  `map-spell-book-parity.test.ts` "a SPARE Cast a Spell pays the +1 …").
+  KNOWN LIMIT (both directions, unfixed): the gate values a hand card through
+  the flat cost channel (`spellPowerValueOfCard`), not through the per-SIDE
+  read the boost window uses, so a card whose Power lives in a cost-BEARING or
+  removeSelf side is under-counted — Sandals of the Saint ("discard X: +X" /
+  "remove: +4") is valued at 0, so it cannot rescue a destination-gated Spell
+  from being hidden, and Breastplate of Brimstone counts only its free +1. The
+  opposite (offering a cast that then falls a tier short) is possible too. Only
+  the Polish spare-enabler case above is corrected, because those cards sit in
+  every Polish hand; the rest is a single relic's edge.
 - **Expert Power payment (crown) works for combat reactions too.** The same
   value-based `powerCost` costs paid in combat — Sorrow's silver/gold skip,
   Alamar's / Jeddite's lethal-save Resurrection, any future one — accept
