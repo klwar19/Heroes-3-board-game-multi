@@ -5,6 +5,8 @@ ImageGen tool. The generated PNG masters and exact prompt provenance live in:
 
 - `scripts/anime-art/raw/bosses/`
 - `scripts/anime-art/raw/bosses/PROMPTS.md`
+- `scripts/anime-art/raw/battlefields/`
+- `scripts/anime-art/raw/battlefields/PROMPTS.md`
 
 `scripts/build-raid-dungeon-art.mjs` is the deterministic compositor. It reads
 those masters, adds the board-game frame, titles and functional health-layer
@@ -52,10 +54,26 @@ clips it to a hex.
 aliases of the classic art for old snapshots and any code that still references
 the legacy names.
 
+## PvE-only battlefield contract
+
+Wave assaults, Rift Lair attempts, and Dungeon floor fights use one of two
+theme-locked board pairs. Ordinary guards, Creature Banks, sieges, naval fights,
+PvP, and the sandbox never enter this pool.
+
+| Output pair | Theme |
+| --- | --- |
+| `battlefield-4x5-pve-calamity-classic[-scenery].webp` | Erathian arcane rift |
+| `battlefield-4x5-pve-calamity-doom[-scenery].webp` | Doom infernal breach |
+
+The scenery strip is **2500×520**. The orthographic play surface is
+**2500×2000**, with its exact five-column × four-row grid added by
+`scripts/build-pve-battlefields.mjs` rather than left to image generation.
+
 ## Rebuild and verify
 
 ```powershell
 node scripts/build-raid-dungeon-art.mjs
+node scripts/build-pve-battlefields.mjs
 npx vitest run src/engine/boss-abilities.test.ts
 ```
 

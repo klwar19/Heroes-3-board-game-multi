@@ -7,6 +7,22 @@ export const SHIP_BATTLE_OBSTACLES = [9, 10] as const;
 const BASE_BOARD_ART_IDS: readonly CombatBoardArtId[] = ["classic", "frozen", "hell-necro", "jungle-fortress"];
 const CREATURE_BANK_BOARD_ART_ID: CombatBoardArtId = "creature-bank-dungeon";
 
+/** These three context marks are reserved for the shared optional PvE director. */
+export function isPveEncounterCombat(combat: CombatState | null | undefined): boolean {
+  return Boolean(
+    combat?.context.kind === "neutral" &&
+      (combat.context.waveAssault ||
+        combat.context.raidBossId !== undefined ||
+        combat.context.dungeonFloor !== undefined)
+  );
+}
+
+function pveEncounterBoardArtId(state: GameState): CombatBoardArtId {
+  return state.adventure?.pveTheme === "doom"
+    ? "pve-calamity-doom"
+    : "pve-calamity-classic";
+}
+
 export function isSeaCombat(state: GameState, combat: CombatState | null | undefined): boolean {
   if (!combat || combat.context.kind === "sandbox") {
     return false;
@@ -48,6 +64,13 @@ function combatFactionIds(state: GameState, combat: CombatState): Set<string> {
 export function eligibleCombatBoardArtIds(state: GameState, combat: CombatState | null | undefined): CombatBoardArtId[] {
   if (!combat) {
     return ["classic"];
+  }
+
+  // The two authored calamity boards belong only to Waves, Raid Bosses and the
+  // Dungeon. They are forced by the frozen encounter theme and never enter the
+  // random open-field pool.
+  if (isPveEncounterCombat(combat)) {
+    return [pveEncounterBoardArtId(state)];
   }
 
   // A Creature Bank is ALWAYS fought on its dungeon board — never a random
@@ -109,6 +132,10 @@ export function pickCombatBoardArtId(state: GameState, combat: CombatState | nul
 
   if (combat.boardArtId) {
     return combat.boardArtId;
+  }
+
+  if (isPveEncounterCombat(combat)) {
+    return pveEncounterBoardArtId(state);
   }
 
   // A siege is ALWAYS fought on the castle siege board: the defender stands on

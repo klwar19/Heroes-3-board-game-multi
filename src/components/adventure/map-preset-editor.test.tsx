@@ -72,6 +72,65 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     );
   });
 
+  it("PvE director lets a map author the theme, wave stakes, and Dungeon campaign", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+
+    fireEvent.click(within(section("PvE theme override")).getByRole("button", { name: "Doom" }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ pveTheme: "doom" }));
+
+    fireEvent.click(within(section("Wave pressure (map)")).getByRole("button", { name: "Brutal" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ monsterWaves: expect.objectContaining({ pressure: "brutal" }) })
+    );
+
+    fireEvent.click(
+      within(section("Dungeon campaign length (map)")).getByRole("button", { name: "5-floor expedition" })
+    );
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ dungeon: expect.objectContaining({ maxFloor: 5 }) })
+    );
+
+    fireEvent.click(within(section("Dungeon descent cost (map)")).getByRole("button", { name: "Free descent" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ dungeon: expect.objectContaining({ descentCost: 0 }) })
+    );
+  });
+
+  it("Dungeon wardens may be chosen from built-ins or this map's custom bosses", () => {
+    const onChange = vi.fn();
+    render(
+      <MapPresetEditor
+        preset={{
+          dungeon: { maxFloor: 10 },
+          raidBosses: {
+            bosses: [
+              {
+                id: "gloomfang",
+                name: "Gloomfang",
+                attack: 5,
+                defense: 1,
+                health: 3,
+                initiative: 6,
+                layers: 3
+              }
+            ]
+          }
+        }}
+        onChange={onChange}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Dungeon floor 5 boss"), {
+      target: { value: "gloomfang" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        dungeon: expect.objectContaining({ floorBosses: { 5: "gloomfang" } })
+      })
+    );
+  });
+
   it("Waves & Raid bosses: a rendered boss card edits stats and toggles whitelist abilities", () => {
     const onChange = vi.fn();
     const preset: CustomMapPreset = {
@@ -830,7 +889,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
       "Victory & scoring",
       "Map objects",
       "Timed events",
-      "Waves & Raid bosses",
+      "PvE encounter director",
       "Designer note"
     ]);
   });

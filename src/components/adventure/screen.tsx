@@ -8450,24 +8450,88 @@ function GameModeSection({
                 </div>
               ) : null}
               {wog.monsterWaves || wog.raidBosses || wog.dungeon ? (
-                <div className="waveCadenceRow" role="group" aria-label="PvE encounter theme">
-                  <strong>PvE theme</strong>
-                  {([
-                    ["classic", "Erathian"],
-                    ["doom", "Doom"],
-                    ["random", "Random"]
-                  ] as const).map(([theme, label]) => (
+                <div className="pveDirectorPanel">
+                  <div className="pveDirectorHeading">
+                    <span>Encounter director</span>
+                    <strong>Choose the world these battles belong to</strong>
+                  </div>
+                  <div className="pveThemeCards" role="group" aria-label="PvE encounter theme">
+                    {([
+                      ["classic", "Erathian", "Arcane calamity", "/assets/board/battlefield-4x5-pve-calamity-classic-scenery.webp"],
+                      ["doom", "Doom", "Infernal invasion", "/assets/board/battlefield-4x5-pve-calamity-doom-scenery.webp"]
+                    ] as const).map(([theme, label, subtitle, image]) => (
+                      <button
+                        aria-label={label}
+                        aria-pressed={(wog.pveTheme ?? "classic") === theme}
+                        className={(wog.pveTheme ?? "classic") === theme ? "selected" : ""}
+                        key={theme}
+                        onClick={() => send({ wog: { ...wog, pveTheme: theme } })}
+                        type="button"
+                      >
+                        <img alt="" aria-hidden="true" src={assetUrl(image)} />
+                        <span><strong>{label}</strong><small>{subtitle}</small></span>
+                      </button>
+                    ))}
                     <button
-                      aria-pressed={(wog.pveTheme ?? "classic") === theme}
-                      className={`waveCadenceChip ${(wog.pveTheme ?? "classic") === theme ? "selected" : ""}`}
-                      key={theme}
-                      onClick={() => send({ wog: { ...wog, pveTheme: theme } })}
+                      aria-label="Random"
+                      aria-pressed={wog.pveTheme === "random"}
+                      className={`pveThemeRandom${wog.pveTheme === "random" ? " selected" : ""}`}
+                      onClick={() => send({ wog: { ...wog, pveTheme: "random" } })}
                       type="button"
                     >
-                      {label}
+                      <span><strong>Random</strong><small>Seeded once</small></span>
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {wog.raidBosses ? (
+                <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Raid boss arrival">
+                  <strong>Rift Lair arrival</strong>
+                  {([4, 5, 6] as const).map((round) => (
+                    <button
+                      aria-pressed={(wog.raidBossSpawnRound ?? 5) === round}
+                      className={`waveCadenceChip ${(wog.raidBossSpawnRound ?? 5) === round ? "selected" : ""}`}
+                      key={round}
+                      onClick={() => send({ wog: { ...wog, raidBossSpawnRound: round } })}
+                      type="button"
+                    >
+                      Round {round}
                     </button>
                   ))}
+                  <small>Warning appears one round earlier.</small>
                 </div>
+              ) : null}
+              {wog.dungeon ? (
+                <>
+                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Dungeon campaign length">
+                    <strong>Dungeon campaign</strong>
+                    {([5, 10] as const).map((depth) => (
+                      <button
+                        aria-pressed={(wog.dungeonDepth ?? 10) === depth}
+                        className={`waveCadenceChip ${(wog.dungeonDepth ?? 10) === depth ? "selected" : ""}`}
+                        key={depth}
+                        onClick={() => send({ wog: { ...wog, dungeonDepth: depth } })}
+                        type="button"
+                      >
+                        {depth === 5 ? "5-floor expedition" : "10-floor campaign"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Dungeon descent cost">
+                    <strong>Immediate descent</strong>
+                    {([0, 1, 2] as const).map((cost) => (
+                      <button
+                        aria-pressed={(wog.dungeonDescentCost ?? 1) === cost}
+                        className={`waveCadenceChip ${(wog.dungeonDescentCost ?? 1) === cost ? "selected" : ""}`}
+                        key={cost}
+                        onClick={() => send({ wog: { ...wog, dungeonDescentCost: cost } })}
+                        type="button"
+                      >
+                        {cost === 0 ? "Free" : `${cost} movement`}
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : null}
               {wog.monsterWaves ? (
                 <>
@@ -8594,25 +8658,93 @@ function GameModeSection({
                 </div>
               ) : null}
               {anime.monsterWaves || anime.raidBosses || anime.dungeon ? (
-                <div className="waveCadenceRow" role="group" aria-label="PvE encounter theme">
-                  <strong>PvE theme</strong>
-                  {([
-                    ["classic", "Erathian"],
-                    ["doom", "Doom"],
-                    ["random", "Random"]
-                  ] as const).map(([theme, label]) => (
+                <div className="pveDirectorPanel">
+                  <div className="pveDirectorHeading">
+                    <span>Encounter director</span>
+                    <strong>Choose the world these battles belong to</strong>
+                  </div>
+                  <div className="pveThemeCards" role="group" aria-label="PvE encounter theme">
+                    {([
+                      ["classic", "Erathian", "Arcane calamity", "/assets/board/battlefield-4x5-pve-calamity-classic-scenery.webp"],
+                      ["doom", "Doom", "Infernal invasion", "/assets/board/battlefield-4x5-pve-calamity-doom-scenery.webp"]
+                    ] as const).map(([theme, label, subtitle, image]) => (
+                      <button
+                        aria-label={label}
+                        aria-pressed={(anime.pveTheme ?? "classic") === theme}
+                        className={(anime.pveTheme ?? "classic") === theme ? "selected" : ""}
+                        data-testid={`anime-pve-theme-${theme}`}
+                        key={theme}
+                        onClick={() => send({ anime: { ...anime, pveTheme: theme } })}
+                        type="button"
+                      >
+                        <img alt="" aria-hidden="true" src={assetUrl(image)} />
+                        <span><strong>{label}</strong><small>{subtitle}</small></span>
+                      </button>
+                    ))}
                     <button
-                      aria-pressed={(anime.pveTheme ?? "classic") === theme}
-                      className={`waveCadenceChip ${(anime.pveTheme ?? "classic") === theme ? "selected" : ""}`}
-                      data-testid={`anime-pve-theme-${theme}`}
-                      key={theme}
-                      onClick={() => send({ anime: { ...anime, pveTheme: theme } })}
+                      aria-label="Random"
+                      aria-pressed={anime.pveTheme === "random"}
+                      className={`pveThemeRandom${anime.pveTheme === "random" ? " selected" : ""}`}
+                      data-testid="anime-pve-theme-random"
+                      onClick={() => send({ anime: { ...anime, pveTheme: "random" } })}
                       type="button"
                     >
-                      {label}
+                      <span><strong>Random</strong><small>Seeded once</small></span>
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {anime.raidBosses ? (
+                <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Raid boss arrival">
+                  <strong>Rift Lair arrival</strong>
+                  {([4, 5, 6] as const).map((round) => (
+                    <button
+                      aria-pressed={(anime.raidBossSpawnRound ?? 5) === round}
+                      className={`waveCadenceChip ${(anime.raidBossSpawnRound ?? 5) === round ? "selected" : ""}`}
+                      data-testid={`anime-raid-round-${round}`}
+                      key={round}
+                      onClick={() => send({ anime: { ...anime, raidBossSpawnRound: round } })}
+                      type="button"
+                    >
+                      Round {round}
                     </button>
                   ))}
+                  <small>Warning appears one round earlier.</small>
                 </div>
+              ) : null}
+              {anime.dungeon ? (
+                <>
+                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Dungeon campaign length">
+                    <strong>Dungeon campaign</strong>
+                    {([5, 10] as const).map((depth) => (
+                      <button
+                        aria-pressed={(anime.dungeonDepth ?? 10) === depth}
+                        className={`waveCadenceChip ${(anime.dungeonDepth ?? 10) === depth ? "selected" : ""}`}
+                        data-testid={`anime-dungeon-depth-${depth}`}
+                        key={depth}
+                        onClick={() => send({ anime: { ...anime, dungeonDepth: depth } })}
+                        type="button"
+                      >
+                        {depth === 5 ? "5-floor expedition" : "10-floor campaign"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Dungeon descent cost">
+                    <strong>Immediate descent</strong>
+                    {([0, 1, 2] as const).map((cost) => (
+                      <button
+                        aria-pressed={(anime.dungeonDescentCost ?? 1) === cost}
+                        className={`waveCadenceChip ${(anime.dungeonDescentCost ?? 1) === cost ? "selected" : ""}`}
+                        data-testid={`anime-dungeon-cost-${cost}`}
+                        key={cost}
+                        onClick={() => send({ anime: { ...anime, dungeonDescentCost: cost } })}
+                        type="button"
+                      >
+                        {cost === 0 ? "Free" : `${cost} movement`}
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : null}
               {anime.monsterWaves ? (
                 <>

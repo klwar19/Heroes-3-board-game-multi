@@ -1746,9 +1746,20 @@ function sanitizeMonsterWavesPreset(input: unknown): CustomMapPreset["monsterWav
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as { cadence?: unknown; waves?: unknown };
+  const raw = input as {
+    cadence?: unknown;
+    pressure?: unknown;
+    defeatLimit?: unknown;
+    waves?: unknown;
+  };
   const cadence =
     raw.cadence === 3 || raw.cadence === 4 || raw.cadence === 5 ? raw.cadence : undefined;
+  const pressure =
+    raw.pressure === "standard" || raw.pressure === "brutal" ? raw.pressure : undefined;
+  const defeatLimit =
+    raw.defeatLimit === 0 || raw.defeatLimit === 2 || raw.defeatLimit === 3
+      ? raw.defeatLimit
+      : undefined;
   let waves: Record<number, CustomGuardSpec> | undefined;
   if (raw.waves && typeof raw.waves === "object") {
     const entries = Object.entries(raw.waves as Record<string, unknown>)
@@ -1765,10 +1776,15 @@ function sanitizeMonsterWavesPreset(input: unknown): CustomMapPreset["monsterWav
       waves = Object.fromEntries(entries);
     }
   }
-  if (cadence === undefined && !waves) {
+  if (cadence === undefined && pressure === undefined && defeatLimit === undefined && !waves) {
     return undefined;
   }
-  return { ...(cadence !== undefined ? { cadence } : {}), ...(waves ? { waves } : {}) };
+  return {
+    ...(cadence !== undefined ? { cadence } : {}),
+    ...(pressure !== undefined ? { pressure } : {}),
+    ...(defeatLimit !== undefined ? { defeatLimit } : {}),
+    ...(waves ? { waves } : {})
+  };
 }
 
 /**
@@ -1843,6 +1859,44 @@ function sanitizeRaidBossesPreset(input: unknown): CustomMapPreset["raidBosses"]
   return { ...(spawnRound > 0 ? { spawnRound } : {}), ...(bosses ? { bosses } : {}) };
 }
 
+/** Dungeon campaign block: compact/full depth, immediate-descent cost, and optional floor wardens. */
+function sanitizeDungeonPreset(input: unknown): CustomMapPreset["dungeon"] | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as {
+    maxFloor?: unknown;
+    descentCost?: unknown;
+    floorBosses?: unknown;
+  };
+  const maxFloor = raw.maxFloor === 5 || raw.maxFloor === 10 ? raw.maxFloor : undefined;
+  const descentCost =
+    raw.descentCost === 0 || raw.descentCost === 1 || raw.descentCost === 2
+      ? raw.descentCost
+      : undefined;
+  const floorBosses: Partial<Record<5 | 10, string>> = {};
+  if (raw.floorBosses && typeof raw.floorBosses === "object") {
+    for (const floor of [5, 10] as const) {
+      const value = (raw.floorBosses as Record<string, unknown>)[floor];
+      if (typeof value === "string") {
+        const id = value.trim().slice(0, 40);
+        if (id) {
+          floorBosses[floor] = id;
+        }
+      }
+    }
+  }
+  const hasBosses = Object.keys(floorBosses).length > 0;
+  if (maxFloor === undefined && descentCost === undefined && !hasBosses) {
+    return undefined;
+  }
+  return {
+    ...(maxFloor !== undefined ? { maxFloor } : {}),
+    ...(descentCost !== undefined ? { descentCost } : {}),
+    ...(hasBosses ? { floorBosses } : {})
+  };
+}
+
 export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
@@ -1852,6 +1906,9 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
 
   if (typeof raw.victoryMode === "string" && VICTORY_MODES.has(raw.victoryMode as VictoryMode)) {
     preset.victoryMode = raw.victoryMode as VictoryMode;
+  }
+  if (raw.pveTheme === "classic" || raw.pveTheme === "doom" || raw.pveTheme === "random") {
+    preset.pveTheme = raw.pveTheme;
   }
   // Map-settings defaults (difficulty / far-tile supply). Garbage difficulty is
   // dropped; farTilesPerPlayer clamps to 0..MAX (a non-number is dropped, never
@@ -1906,6 +1963,10 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
   const raidBosses = sanitizeRaidBossesPreset(raw.raidBosses);
   if (raidBosses) {
     preset.raidBosses = raidBosses;
+  }
+  const dungeon = sanitizeDungeonPreset(raw.dungeon);
+  if (dungeon) {
+    preset.dungeon = dungeon;
   }
   if (Array.isArray(raw.timedEvents)) {
     const events: CustomMapTimedEvent[] = [];
@@ -2013,6 +2074,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
   }
   return Boolean(
     preset.victoryMode ||
+      preset.pveTheme ||
       preset.difficulty ||
       preset.farTileOpening !== undefined ||
       preset.farTilesPerPlayer !== undefined ||
@@ -2034,7 +2096,8 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       (preset.customWinConditions && preset.customWinConditions.length > 0) ||
       (preset.hexEvents && preset.hexEvents.length > 0) ||
       Boolean(preset.monsterWaves) ||
-      Boolean(preset.raidBosses)
+      Boolean(preset.raidBosses) ||
+      Boolean(preset.dungeon)
   );
 }
 
@@ -2464,6 +2527,52 @@ export function describeCustomMapPresetEntries(
       icon: "🎁",
       text: `Start bonus: ${preset.startingBonuses.map(describeBonus).join("; ")}`
     });
+  }
+  if (preset.pveTheme) {
+    entries.push({
+      icon: "🌀",
+      text: `PvE theme: ${
+        preset.pveTheme === "classic"
+          ? "Erathian calamity"
+          : preset.pveTheme === "doom"
+            ? "Doom invasion"
+            : "random each match"
+      }`
+    });
+  }
+  if (preset.monsterWaves) {
+    const parts: string[] = [];
+    if (preset.monsterWaves.cadence) parts.push(`every ${preset.monsterWaves.cadence} rounds`);
+    if (preset.monsterWaves.pressure) parts.push(`${preset.monsterWaves.pressure} pressure`);
+    if (preset.monsterWaves.defeatLimit !== undefined) {
+      parts.push(
+        preset.monsterWaves.defeatLimit === 0
+          ? "pillage only"
+          : `eliminate after ${preset.monsterWaves.defeatLimit} losses`
+      );
+    }
+    const overrides = Object.keys(preset.monsterWaves.waves ?? {}).length;
+    if (overrides > 0) parts.push(`${overrides} authored ${overrides === 1 ? "army" : "armies"}`);
+    entries.push({ icon: "🌊", text: `Calamity Waves: ${parts.join(", ") || "map directed"}` });
+  }
+  if (preset.raidBosses) {
+    const bossCount = preset.raidBosses.bosses?.length ?? 0;
+    entries.push({
+      icon: "🐉",
+      text: `Raid Bosses: ${
+        preset.raidBosses.spawnRound ? `round ${preset.raidBosses.spawnRound}` : "lobby arrival"
+      }${bossCount > 0 ? `, ${bossCount} custom ${bossCount === 1 ? "boss" : "bosses"}` : ""}`
+    });
+  }
+  if (preset.dungeon) {
+    const parts: string[] = [];
+    if (preset.dungeon.maxFloor) parts.push(`${preset.dungeon.maxFloor} floors`);
+    if (preset.dungeon.descentCost !== undefined) {
+      parts.push(`${preset.dungeon.descentCost} movement to descend`);
+    }
+    const wardens = Object.keys(preset.dungeon.floorBosses ?? {}).length;
+    if (wardens > 0) parts.push(`${wardens} custom ${wardens === 1 ? "warden" : "wardens"}`);
+    entries.push({ icon: "🗝️", text: `Dungeon: ${parts.join(", ") || "map directed"}` });
   }
   if (preset.timedEvents && preset.timedEvents.length > 0) {
     for (const event of preset.timedEvents) {

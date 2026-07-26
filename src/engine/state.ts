@@ -217,6 +217,12 @@ export type ResolvedPveEncounterTheme = Exclude<PveEncounterTheme, "random">;
 export type WavePressure = "standard" | "brutal";
 /** Optional consecutive/total wave-loss elimination threshold; 0 keeps elimination off. */
 export type WaveDefeatLimit = 0 | 2 | 3;
+/** Lobby-friendly scheduled world-boss arrival choices. Designed maps may still use any round 2..30. */
+export type RaidBossSpawnRound = 4 | 5 | 6;
+/** Short expedition or full ten-floor Dungeon campaign. */
+export type DungeonDepth = 5 | 10;
+/** Movement paid only when immediately descending to the next floor. */
+export type DungeonDescentCost = 0 | 1 | 2;
 
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
@@ -270,6 +276,12 @@ export type WogModOptions = {
   wavePressure?: WavePressure;
   /** Optional elimination after this many lost waves; 0 = pillage only. */
   waveDefeatLimit?: WaveDefeatLimit;
+  /** Scheduled Rift Lair arrival (the warning appears one round earlier). */
+  raidBossSpawnRound?: RaidBossSpawnRound;
+  /** Five-floor expedition or the full ten-floor delve. */
+  dungeonDepth?: DungeonDepth;
+  /** Movement paid for each immediate descent after a floor win. */
+  dungeonDescentCost?: DungeonDescentCost;
 };
 
 export const DEFAULT_WOG_OPTIONS: WogModOptions = {
@@ -285,7 +297,10 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
   dungeon: false,
   pveTheme: "classic",
   wavePressure: "standard",
-  waveDefeatLimit: 0
+  waveDefeatLimit: 0,
+  raidBossSpawnRound: 5,
+  dungeonDepth: 10,
+  dungeonDescentCost: 1
 };
 
 /**
@@ -383,6 +398,12 @@ export type AnimeModOptions = {
   wavePressure?: WavePressure;
   /** Optional elimination after this many lost waves; 0 = pillage only. */
   waveDefeatLimit?: WaveDefeatLimit;
+  /** Scheduled Rift Lair arrival (the warning appears one round earlier). */
+  raidBossSpawnRound?: RaidBossSpawnRound;
+  /** Five-floor expedition or the full ten-floor delve. */
+  dungeonDepth?: DungeonDepth;
+  /** Movement paid for each immediate descent after a floor win. */
+  dungeonDescentCost?: DungeonDescentCost;
 };
 
 /**
@@ -7926,6 +7947,8 @@ export type CombatBoardArtId =
   | "hell-necro"
   | "jungle-fortress"
   | "creature-bank-dungeon"
+  | "pve-calamity-classic"
+  | "pve-calamity-doom"
   | "castle-siege"
   | "ship-battle";
 
@@ -10838,6 +10861,8 @@ export type AdventureState = {
   };
   /** Resolved shared art/army theme for Waves, Raid Bosses and the Dungeon. */
   pveTheme?: ResolvedPveEncounterTheme;
+  /** Frozen scheduled Rift Lair arrival; absent means the legacy round-5 default. */
+  raidBossSpawnRound?: number;
   /**
    * Raid Bosses (optional module, §6.5): PRESENCE = module ON (frozen at setup
    * from `wog.raidBosses` / `anime.raidBosses`), keyed by boss instance id —
@@ -10854,7 +10879,15 @@ export type AdventureState = {
    * Field). Per-player floor progress lives on `PlayerState.dungeonFloor`.
    * See src/engine/dungeon.ts.
    */
-  dungeonSite?: { fieldId: MapSpaceId | null };
+  dungeonSite?: {
+    fieldId: MapSpaceId | null;
+    /** Absent = the original ten-floor campaign. */
+    maxFloor?: DungeonDepth;
+    /** Absent = the original 1-movement immediate-descent cost. */
+    descentCost?: DungeonDescentCost;
+    /** Designer-selected floor wardens; absent entries use the resolved theme catalog. */
+    floorBosses?: Partial<Record<5 | 10, string>>;
+  };
   /**
    * Individual BINH house-rule toggles, resolved to concrete booleans at setup
    * (see resolveHouseRules / houseRuleEnabled in house-rules.ts). Absent on older
@@ -11253,6 +11286,11 @@ export type CustomRaidBossDef = {
 export type CustomMapPreset = {
   victoryMode?: VictoryMode;
   /**
+   * Map-authored presentation/army theme for all optional PvE encounters.
+   * It overrides the mod-window pick only when this designed map is played.
+   */
+  pveTheme?: PveEncounterTheme;
+  /**
    * Map-settings DEFAULTS the designer seeds into the lobby when this map is
    * picked (apply-once: the host may still change each after pick — their edit
    * wins at build). Absent = the lobby keeps its own value (byte-identical to a
@@ -11278,6 +11316,8 @@ export type CustomMapPreset = {
    */
   monsterWaves?: {
     cadence?: 3 | 4 | 5;
+    pressure?: WavePressure;
+    defeatLimit?: WaveDefeatLimit;
     waves?: Record<number, CustomGuardSpec>;
   };
   /**
@@ -11290,6 +11330,15 @@ export type CustomMapPreset = {
   raidBosses?: {
     spawnRound?: number;
     bosses?: CustomRaidBossDef[];
+  };
+  /**
+   * Dungeon campaign direction. The floor wardens may name any built-in boss
+   * or a custom boss authored in `raidBosses.bosses`.
+   */
+  dungeon?: {
+    maxFloor?: DungeonDepth;
+    descentCost?: DungeonDescentCost;
+    floorBosses?: Partial<Record<5 | 10, string>>;
   };
   startingResources?: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction?: { gold: number; buildingMaterials: number; valuables: number };

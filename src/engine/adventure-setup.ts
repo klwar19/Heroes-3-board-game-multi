@@ -2584,27 +2584,61 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     anime.enabled && (anime.monsterWaves || anime.raidBosses || anime.dungeon);
   const wogPveOn =
     wog.enabled && (wog.monsterWaves || wog.raidBosses || wog.dungeon);
-  const requestedPveTheme = animePveOn
-    ? anime.pveTheme
-    : wogPveOn
-      ? wog.pveTheme
-      : "classic";
+  const requestedPveTheme =
+    setupOptions.customMapPreset?.pveTheme ??
+    (animePveOn
+      ? anime.pveTheme
+      : wogPveOn
+        ? wog.pveTheme
+        : "classic");
   const pveTheme = resolvePveEncounterTheme(requestedPveTheme, seed);
   const pressureCandidate =
-    anime.enabled && anime.monsterWaves
+    setupOptions.customMapPreset?.monsterWaves?.pressure ??
+    (anime.enabled && anime.monsterWaves
       ? anime.wavePressure
       : wog.enabled && wog.monsterWaves
         ? wog.wavePressure
-        : undefined;
+        : undefined);
   const wavePressure = pressureCandidate === "brutal" ? "brutal" : "standard";
   const defeatLimitCandidate =
-    anime.enabled && anime.monsterWaves
+    setupOptions.customMapPreset?.monsterWaves?.defeatLimit ??
+    (anime.enabled && anime.monsterWaves
       ? anime.waveDefeatLimit
       : wog.enabled && wog.monsterWaves
         ? wog.waveDefeatLimit
-        : undefined;
+        : undefined);
   const waveDefeatLimit =
     defeatLimitCandidate === 2 || defeatLimitCandidate === 3 ? defeatLimitCandidate : 0;
+  const raidBossSpawnCandidate =
+    setupOptions.customMapPreset?.raidBosses?.spawnRound ??
+    (anime.enabled && anime.raidBosses
+      ? anime.raidBossSpawnRound
+      : wog.enabled && wog.raidBosses
+        ? wog.raidBossSpawnRound
+        : undefined);
+  const raidBossSpawnRound =
+    typeof raidBossSpawnCandidate === "number" && Number.isFinite(raidBossSpawnCandidate)
+      ? Math.max(2, Math.min(30, Math.round(raidBossSpawnCandidate)))
+      : 5;
+  const dungeonDepthCandidate =
+    setupOptions.customMapPreset?.dungeon?.maxFloor ??
+    (anime.enabled && anime.dungeon
+      ? anime.dungeonDepth
+      : wog.enabled && wog.dungeon
+        ? wog.dungeonDepth
+        : undefined);
+  const dungeonDepth = dungeonDepthCandidate === 5 ? 5 : 10;
+  const dungeonDescentCandidate =
+    setupOptions.customMapPreset?.dungeon?.descentCost ??
+    (anime.enabled && anime.dungeon
+      ? anime.dungeonDescentCost
+      : wog.enabled && wog.dungeon
+        ? wog.dungeonDescentCost
+        : undefined);
+  const dungeonDescentCost =
+    dungeonDescentCandidate === 0 || dungeonDescentCandidate === 2
+      ? dungeonDescentCandidate
+      : 1;
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
@@ -2736,9 +2770,21 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // Raid Bosses (optional module): presence = ON; entries appear when the
     // scheduled spawn (or a designer lair) places a boss. Default OFF.
     ...(raidBossesOn ? { raidBosses: {} } : {}),
+    ...(raidBossesOn && raidBossSpawnRound !== 5 ? { raidBossSpawnRound } : {}),
     // The Dungeon (optional module): presence = ON; fieldId stays null until
     // the first Near-band Blocked Field reveal carves the site. Default OFF.
-    ...(dungeonOn ? { dungeonSite: { fieldId: null } } : {}),
+    ...(dungeonOn
+      ? {
+          dungeonSite: {
+            fieldId: null,
+            ...(dungeonDepth !== 10 ? { maxFloor: dungeonDepth } : {}),
+            ...(dungeonDescentCost !== 1 ? { descentCost: dungeonDescentCost } : {}),
+            ...(setupOptions.customMapPreset?.dungeon?.floorBosses
+              ? { floorBosses: setupOptions.customMapPreset.dungeon.floorBosses }
+              : {})
+          }
+        }
+      : {}),
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
     ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
@@ -3851,6 +3897,19 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       next.wog.waveDefeatLimit === 2 ||
       next.wog.waveDefeatLimit === 3
         ? { waveDefeatLimit: next.wog.waveDefeatLimit }
+        : {}),
+      ...(next.wog.raidBossSpawnRound === 4 ||
+      next.wog.raidBossSpawnRound === 5 ||
+      next.wog.raidBossSpawnRound === 6
+        ? { raidBossSpawnRound: next.wog.raidBossSpawnRound }
+        : {}),
+      ...(next.wog.dungeonDepth === 5 || next.wog.dungeonDepth === 10
+        ? { dungeonDepth: next.wog.dungeonDepth }
+        : {}),
+      ...(next.wog.dungeonDescentCost === 0 ||
+      next.wog.dungeonDescentCost === 1 ||
+      next.wog.dungeonDescentCost === 2
+        ? { dungeonDescentCost: next.wog.dungeonDescentCost }
         : {}),
       ...(next.wog.waveCadence === 3 || next.wog.waveCadence === 4 || next.wog.waveCadence === 5
         ? { waveCadence: next.wog.waveCadence }

@@ -766,6 +766,36 @@ describe("Game options — tabbed layout", () => {
         })
       })
     );
+
+    const arrival = within(dialog).getByRole("group", { name: /Raid boss arrival/i });
+    fireEvent.click(within(arrival).getByRole("button", { name: "Round 6" }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ raidBossSpawnRound: 6 })
+        })
+      })
+    );
+
+    const campaign = within(dialog).getByRole("group", { name: /Dungeon campaign length/i });
+    fireEvent.click(within(campaign).getByRole("button", { name: /5-floor expedition/i }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ dungeonDepth: 5 })
+        })
+      })
+    );
+
+    const descent = within(dialog).getByRole("group", { name: /Dungeon descent cost/i });
+    fireEvent.click(within(descent).getByRole("button", { name: /2 movement/i }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ dungeonDescentCost: 2 })
+        })
+      })
+    );
   });
 
   it("Legacy preset turns house rules off without locking them (notice + free toggle)", () => {

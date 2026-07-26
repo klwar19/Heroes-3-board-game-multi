@@ -210,6 +210,7 @@ export {
   assignCombatBoardArt,
   eligibleCombatBoardArtIds,
   isCreatureBankCombat,
+  isPveEncounterCombat,
   isSeaCombat,
   isSiegeCombat,
   pickCombatBoardArtId,
@@ -537,11 +538,19 @@ export {
 export {
   DUNGEON_BOSS_FLOORS,
   DUNGEON_FLOOR_CAP,
+  dungeonDescentCostOf,
   dungeonEnabled,
+  dungeonFloorCapOf,
   dungeonFloorDifficulty,
   dungeonFloorOf
 } from "./dungeon";
-export type { RaidBossState, CustomRaidBossDef } from "./state";
+export type {
+  CustomRaidBossDef,
+  DungeonDepth,
+  DungeonDescentCost,
+  RaidBossSpawnRound,
+  RaidBossState
+} from "./state";
 export { getTileBorderSegments, hasInternalBorder } from "@/data/map/borders";
 export type { TileBorderSegment } from "@/data/map/borders";
 export { astrologersCardDefinitions, astrologersDeckCardIds } from "@/data/cards/astrologers";
