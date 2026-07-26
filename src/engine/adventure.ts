@@ -35,7 +35,7 @@ import {
   makeActiveEffect,
   releaseEndedOngoingCards
 } from "./active-effects";
-import { drawCardsForPlayer, shuffleCards } from "./decks";
+import { digFromOwnDeckTop, drawCardsForPlayer, reshuffleSharedDeckIfEmpty, shuffleCards } from "./decks";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { cultivationEnabled, cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
 import {
@@ -7564,18 +7564,26 @@ export function processPendingVisit(state: GameState): void {
         if (!abilityDeck) {
           break;
         }
-        while (
-          abilityDeck.drawPile.length > 0 &&
-          !canAcquireSharedDeckCard(
-            state,
-            visit.playerId,
-            "abilities",
-            abilityDeck.drawPile[abilityDeck.drawPile.length - 1]
-          )
-        ) {
-          abilityDeck.discardPile.push(abilityDeck.drawPile.pop() as string);
+        // Skipped cards are held aside and binned only once the reveal is over:
+        // a draw pile emptied by earlier Searches reshuffles its discard pile back
+        // in (so the Witch Hut still has a card to show), and holding the skips
+        // out of that reshuffle is what keeps this loop finite.
+        const binned: string[] = [];
+        let revealed: string | undefined;
+        for (;;) {
+          if (abilityDeck.drawPile.length === 0) {
+            if (!reshuffleSharedDeckIfEmpty(state, "abilities", "witch-hut-reshuffle")) {
+              break;
+            }
+          }
+          const cardId = abilityDeck.drawPile.pop() as string;
+          if (canAcquireSharedDeckCard(state, visit.playerId, "abilities", cardId)) {
+            revealed = cardId;
+            break;
+          }
+          binned.push(cardId);
         }
-        const revealed = abilityDeck.drawPile.pop();
+        abilityDeck.discardPile.push(...binned);
         if (!revealed) {
           eventNote(state, "The Witch Hut finds no Ability card to reveal.", visit.playerId);
           break;
@@ -16834,7 +16842,15 @@ function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
 
   const dug: string[] = [];
   let found: string | null = null;
-  while (deck.drawPile.length > 0) {
+  for (;;) {
+    // A draw pile emptied by earlier Searches reshuffles its discard pile back in
+    // so the fetch can still find the Necromancy card (the dug cards are held in
+    // `dug` until the end, so nothing is ever re-read and this terminates).
+    if (deck.drawPile.length === 0) {
+      if (!reshuffleSharedDeckIfEmpty(state, "abilities", "necromancy-fetch-reshuffle")) {
+        break;
+      }
+    }
     const cardId = deck.drawPile.pop() as string;
     // House rule: a hero never keeps two copies of the same Ability. The
     // turn-start option is already withheld once the hero owns Necromancy, but
@@ -16879,19 +16895,16 @@ function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
  * Magic University (Conflux): discard cards from the top of the player's deck
  * one at a time until a Spell of the chosen school is revealed; that Spell goes
  * to hand and the rejects stay in the discard pile. Magic Arrow (school "any")
- * counts as every school, matching the School-of-Magic convention. If the deck
- * is empty to start, the discard pile is shuffled back in first so the search
- * is not a dead no-op (mirrors how drawing reshuffles an empty deck).
+ * counts as every school, matching the School-of-Magic convention. A deck that
+ * runs out — at the start OR mid-dig — shuffles the discard pile back in so the
+ * dig keeps going (mirrors how drawing reshuffles an empty deck); the cards this
+ * dig has already rejected are held aside until it ends, so they are never
+ * shuffled back and re-read, and the scan always terminates.
  */
 export function resolveMagicUniversityDig(state: GameState, playerId: PlayerId, school: SpellSchool): void {
   const player = state.players[playerId];
   if (!player) {
     return;
-  }
-
-  if (player.deck.length === 0 && player.discard.length > 0) {
-    player.deck = shuffleCards(player.discard, `${state.seed}#magic-university#${playerId}#${eventSeedNumber(state)}`);
-    player.discard = [];
   }
 
   const matches = (cardId: string): boolean => {
@@ -16905,18 +16918,20 @@ export function resolveMagicUniversityDig(state: GameState, playerId: PlayerId, 
 
   let found: string | null = null;
   const discarded: string[] = [];
-  while (player.deck.length > 0) {
-    const cardId = player.deck.pop();
+  for (;;) {
+    const cardId = digFromOwnDeckTop(state, playerId, 1, "magic-university").cardIds[0];
     if (cardId === undefined) {
-      break;
+      break; // both piles are genuinely empty
     }
     if (matches(cardId)) {
       found = cardId;
       break;
     }
     discarded.push(cardId);
-    player.discard.push(cardId);
   }
+  // The rejects land in the discard pile only now the dig is over (see the
+  // digFromOwnDeckTop caller contract).
+  player.discard.push(...discarded);
 
   appendEvent(state, {
     type: "TOWN_BUILDING_USED",

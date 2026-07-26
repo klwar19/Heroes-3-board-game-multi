@@ -621,13 +621,20 @@ describe("Adrienne's Fire Magic IV (Search 3, then reshuffle discard into deck)"
   it("with 0/1 cards revealed it still reshuffles the discard into the deck (no choice)", () => {
     const state = adventureState("adrienne-iv-one", "adrienne", "fortress");
     state.players.p1.hand = ["specialty.adrienne.4"];
+    // ONE card is all the player owns: the deck holds it and the discard is
+    // empty, so the Search reveals a single card and auto-keeps it. (A discard
+    // pile with cards in it would no longer end here — an emptied deck now
+    // reshuffles mid-reveal so a Search (3) really reveals 3; see
+    // deck-reshuffle-on-empty.test.ts.)
     state.players.p1.deck = ["spell.magic_arrow"]; // single reveal -> auto-kept
-    state.players.p1.discard = ["stat.attack", "stat.defense"];
+    state.players.p1.discard = [];
     const next = applyOk(state, findPlay(state, "specialty.adrienne.4", 0)!.action);
     expect(next.pendingChoice).toBeNull();
     expect(next.players.p1.hand).toContain("spell.magic_arrow");
+    // The closing "shuffle your discard pile into your deck" still ran: the card
+    // played for this specialty was in the discard and is now in the deck.
     expect(next.players.p1.discard).toEqual([]);
-    expect(next.players.p1.deck).toEqual(expect.arrayContaining(["stat.attack", "stat.defense"]));
+    expect(next.players.p1.deck).toEqual(["specialty.adrienne.4"]);
   });
 });
 

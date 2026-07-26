@@ -2848,12 +2848,14 @@ function isOptionEffectPlayable(
       // Jeddite's Mysterious Warlock I/VI: dig your own deck, keeping Spells /
       // Specialties. A printed Instant's card manipulation is playable on the map
       // AND mid-Combat (instantSideAllowedInCombat — the reducer resolves the dig
-      // synchronously either way). Useful while the deck still holds a card.
+      // synchronously either way). Useful while the deck OR its discard pile (which
+      // reshuffles in mid-dig, like every other draw) still holds a card — an
+      // emptied deck must never make the specialty unplayable.
       if (context === "combat" ? !(state.combat && instantSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined)) : !state.adventure) {
         return false;
       }
       const player = state.players[playerId];
-      return Boolean(player && player.deck.length > 0);
+      return Boolean(player && player.deck.length + player.discard.length > 0);
     }
     case "SEARCH_DECK_THEN_RESHUFFLE": {
       // Adrienne's Fire Magic IV: Search your own deck + reshuffle the discard. A
@@ -2872,12 +2874,14 @@ function isOptionEffectPlayable(
       // Instant's card manipulation is playable on the map AND mid-Combat
       // (instantSideAllowedInCombat — the reducer draws / opens the deck pick with
       // a combat returnPhase). Useful while any Artifact deck (the Legacy deck, or
-      // a BINH Minor/Major/Relic deck) still holds a card.
+      // a BINH Minor/Major/Relic deck) still holds a card in its draw pile OR its
+      // discard pile — an emptied draw pile reshuffles its discard back in.
       if (context === "combat" ? !(state.combat && instantSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined)) : !state.adventure) {
         return false;
       }
       return ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"].some(
-        (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0
+        (deckId) =>
+          (state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0) > 0
       );
     }
     case "PLACE_PARALYSIS":
