@@ -24,7 +24,8 @@ import {
 import {
   finalizeAdventureCombat,
   pumpAdventureQueues,
-  setTileRotation
+  setTileRotation,
+  startNeutralEncounter
 } from "./adventure-reducer";
 import { waveArmyLevel, waveNumberForRound } from "./monster-waves";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -669,6 +670,36 @@ describe("Calamity Waves — themes and pressure", () => {
       expect(unit.bankUnit).toBeFalsy();
       expect(unit.grade).toBe(def.tier);
     }
+  });
+
+  it("a wave assault is FOUGHT on the theme's dedicated calamity board (server-assigned, not client guesswork)", () => {
+    // The EFFECT a player sees: the opened assault carries the frozen theme's
+    // PvE board id, stamped by the engine at combat creation (the client only
+    // renders `combat.boardArtId`). An ordinary guard fight in the SAME game is
+    // the CONTROL — it never gets a calamity board.
+    for (const [theme, expected] of [
+      ["classic", "pve-calamity-classic"],
+      ["doom", "pve-calamity-doom"]
+    ] as const) {
+      const state = wavesGame(`waves-board-${theme}`, {
+        wog: { enabled: true, monsterWaves: true, waveCadence: 3, pveTheme: theme }
+      });
+      const opened = openWave(state, 3);
+      expect(opened.combat?.boardArtId, theme).toBe(expected);
+    }
+
+    const control = wavesGame("waves-board-control", {
+      wog: { enabled: true, monsterWaves: true, waveCadence: 3, pveTheme: "doom" }
+    });
+    const guarded = Object.values(control.adventure!.fields).find(
+      (field) => field.location !== "town" && !field.flagOwnerId
+    )!;
+    guarded.difficulty = 3;
+    control.heroes.hero_p1.spaceId = guarded.spaceId;
+    startNeutralEncounter(control, control.heroes.hero_p1, guarded);
+    expect(control.combat?.context.kind).toBe("neutral");
+    expect(control.combat?.boardArtId).not.toBe("pve-calamity-doom");
+    expect(control.combat?.boardArtId).not.toBe("pve-calamity-classic");
   });
 
   it("Brutal pressure increases rewards/pillage and an optional loss limit eliminates only at the threshold", () => {
