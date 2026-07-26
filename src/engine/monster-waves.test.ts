@@ -362,14 +362,28 @@ describe("Calamity Waves — the wave army", () => {
     expect(normal.length).toBe(3);
   });
 
-  it("the cadence freezes designer-first: preset cadence beats the mod option", () => {
+  it("the wave director freezes designer-first: map cadence, pressure, and loss rule beat setup", () => {
     const state = createAdventureGameState({
       seed: "waves-cadence-preset",
       rollFirstPlayer: false,
-      wog: { enabled: true, monsterWaves: true, waveCadence: 3 },
-      customMapPreset: { monsterWaves: { cadence: 5 } }
+      wog: {
+        enabled: true,
+        monsterWaves: true,
+        waveCadence: 3,
+        wavePressure: "standard",
+        waveDefeatLimit: 0
+      },
+      customMapPreset: {
+        pveTheme: "doom",
+        monsterWaves: { cadence: 5, pressure: "brutal", defeatLimit: 2 }
+      }
     });
-    expect(state.adventure?.monsterWaves?.cadence).toBe(5);
+    expect(state.adventure?.monsterWaves).toMatchObject({
+      cadence: 5,
+      pressure: "brutal",
+      defeatLimit: 2
+    });
+    expect(state.adventure?.pveTheme).toBe("doom");
   });
 
   it("anime.monsterWaves is the second surface activating the SAME frozen flag", () => {

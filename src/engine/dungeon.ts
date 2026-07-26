@@ -8,6 +8,8 @@
  */
 
 import type {
+  DungeonDepth,
+  DungeonDescentCost,
   GameState,
   PlayerId,
   ResolvedPveEncounterTheme,
@@ -30,9 +32,24 @@ export function dungeonThemeOf(state: GameState): ResolvedPveEncounterTheme {
 }
 
 export function dungeonBossId(state: GameState, floor: number): string | undefined {
+  const designed = state.adventure?.dungeonSite?.floorBosses?.[floor as 5 | 10];
+  if (designed) {
+    return designed;
+  }
   return (dungeonThemeOf(state) === "doom"
     ? DOOM_DUNGEON_BOSS_FLOORS
     : DUNGEON_BOSS_FLOORS)[floor];
+}
+
+/** Frozen campaign length; older snapshots and unconfigured games remain ten floors. */
+export function dungeonFloorCapOf(state: GameState): DungeonDepth {
+  return state.adventure?.dungeonSite?.maxFloor === 5 ? 5 : DUNGEON_FLOOR_CAP;
+}
+
+/** Frozen cost for chaining another floor immediately after a victory. */
+export function dungeonDescentCostOf(state: GameState): DungeonDescentCost {
+  const cost = state.adventure?.dungeonSite?.descentCost;
+  return cost === 0 || cost === 2 ? cost : 1;
 }
 /** A floor party draws at min(floor + 1, 7) — real difficulty (the grind site). */
 export function dungeonFloorDifficulty(floor: number): number {
@@ -47,7 +64,7 @@ export function dungeonEnabled(state: GameState): boolean {
 /** This player's current floor (1..10; the cap floor stays repeatable). */
 export function dungeonFloorOf(state: GameState, playerId: PlayerId): number {
   const floor = state.players[playerId]?.dungeonFloor ?? 1;
-  return Math.max(1, Math.min(DUNGEON_FLOOR_CAP, Math.round(floor)));
+  return Math.max(1, Math.min(dungeonFloorCapOf(state), Math.round(floor)));
 }
 
 /**

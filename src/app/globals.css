@@ -1105,6 +1105,54 @@ button {
     0 25px 22px rgb(0 0 0 / 32%);
 }
 
+.battlefieldFrame[data-board-art="pve-calamity-classic"],
+.battlefieldFrame[data-board-art="pve-calamity-doom"] {
+  isolation: isolate;
+}
+
+.battlefieldFrame[data-board-art="pve-calamity-classic"] {
+  box-shadow:
+    0 0 0 1px rgba(157, 130, 220, 0.5),
+    0 18px 42px rgba(29, 14, 64, 0.45);
+}
+
+.battlefieldFrame[data-board-art="pve-calamity-doom"] {
+  box-shadow:
+    0 0 0 1px rgba(201, 82, 48, 0.48),
+    0 18px 42px rgba(72, 14, 5, 0.5);
+}
+
+.pveBattlefieldTitle {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 4;
+  display: grid;
+  gap: 1px;
+  padding: 6px 10px 7px;
+  border: 1px solid rgba(231, 201, 139, 0.5);
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(12, 9, 17, 0.88), rgba(33, 20, 28, 0.68));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  color: #f2e3be;
+  pointer-events: none;
+  text-shadow: 0 1px 2px #000;
+}
+
+.pveBattlefieldTitle > span {
+  color: #c6a664;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+}
+
+.pveBattlefieldTitle > strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+}
+
 .battlefieldScenery {
   display: block;
   width: 100%;
@@ -12636,6 +12684,161 @@ button.setupHubNavItem:hover {
 .waveCadenceChip.selected {
   border-color: rgba(225, 168, 248, 0.9);
   background: rgba(74, 32, 88, 0.75);
+}
+
+.pveDirectorPanel {
+  position: relative;
+  overflow: hidden;
+  padding: 11px;
+  border: 1px solid rgba(211, 169, 106, 0.52);
+  border-radius: 11px;
+  background:
+    linear-gradient(135deg, rgba(73, 46, 30, 0.3), transparent 42%),
+    rgba(11, 9, 15, 0.88);
+  box-shadow:
+    inset 0 1px rgba(255, 230, 176, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+.pveDirectorHeading {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 9px;
+}
+
+.pveDirectorHeading > span {
+  color: #caa868;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.pveDirectorHeading > strong {
+  color: #f2e4c5;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+}
+
+.pveThemeCards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.pveThemeCards > button {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 74px;
+  padding: 0;
+  border: 1px solid rgba(171, 143, 111, 0.38);
+  border-radius: 8px;
+  background: #100e12;
+  color: #eadfc8;
+  cursor: pointer;
+  isolation: isolate;
+}
+
+.pveThemeCards > button > img {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.62;
+  filter: saturate(0.9) brightness(0.78);
+  transition: filter 160ms ease, transform 160ms ease;
+}
+
+.pveThemeCards > button::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  background: linear-gradient(180deg, transparent 24%, rgba(8, 7, 10, 0.92) 100%);
+}
+
+.pveThemeCards > button > span {
+  display: grid;
+  align-content: end;
+  align-self: stretch;
+  gap: 1px;
+  padding: 9px;
+  text-align: left;
+}
+
+.pveThemeCards > button strong {
+  color: #fff1cf;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
+}
+
+.pveThemeCards > button small {
+  color: #c6b9ad;
+  font-size: 9px;
+}
+
+.pveThemeCards > button:hover > img,
+.pveThemeCards > button.selected > img {
+  filter: saturate(1.15) brightness(0.98);
+  transform: scale(1.025);
+}
+
+.pveThemeCards > button.selected {
+  border-color: #e4bd70;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 230, 168, 0.34),
+    0 0 18px rgba(185, 116, 224, 0.18);
+}
+
+.pveThemeCards > .pveThemeRandom {
+  min-width: 74px;
+  background:
+    radial-gradient(circle at 50% 22%, rgba(150, 105, 205, 0.38), transparent 48%),
+    linear-gradient(145deg, #21172a, #100d13);
+}
+
+.pveThemeCards > .pveThemeRandom > span {
+  align-content: center;
+  text-align: center;
+}
+
+.pveSettingRow > small {
+  color: #aa98b1;
+  font-size: 9px;
+}
+
+.mapPresetPveTheme {
+  border-color: rgba(187, 142, 84, 0.52);
+  background:
+    linear-gradient(135deg, rgba(86, 53, 28, 0.17), transparent 52%),
+    rgba(19, 15, 18, 0.52);
+}
+
+.mapPresetPveThemeCards {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(74px, 0.42fr) minmax(74px, 0.42fr);
+}
+
+@media (max-width: 620px) {
+  .pveThemeCards {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pveThemeCards > .pveThemeRandom {
+    grid-column: 1 / -1;
+    min-height: 42px;
+  }
+
+  .mapPresetPveThemeCards {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mapPresetPveThemeCards > .pveThemeRandom {
+    grid-column: auto;
+  }
 }
 
 .wogModuleCheck {

@@ -235,8 +235,8 @@ import {
 } from "./raid-bosses";
 import { waveBattleEventOf } from "./monster-waves";
 import {
-  DUNGEON_FLOOR_CAP,
   dungeonBossId,
+  dungeonFloorCapOf,
   dungeonFloorDifficulty,
   dungeonFloorRewardSteps
 } from "./dungeon";
@@ -9795,7 +9795,8 @@ function resolveDungeonFloorVictory(state: GameState, playerId: PlayerId, floor:
   if (!adventure || !player) {
     return;
   }
-  const repeat = floor >= DUNGEON_FLOOR_CAP && Boolean(player.dungeonConquered);
+  const floorCap = dungeonFloorCapOf(state);
+  const repeat = floor >= floorCap && Boolean(player.dungeonConquered);
   adventure.rewardQueue.unshift({
     playerId,
     kind: "visit-steps",
@@ -9804,7 +9805,7 @@ function resolveDungeonFloorVictory(state: GameState, playerId: PlayerId, floor:
       { type: "DUNGEON_CONTINUE" }
     ]
   });
-  player.dungeonFloor = Math.min(DUNGEON_FLOOR_CAP, floor + 1);
+  player.dungeonFloor = Math.min(floorCap, floor + 1);
   appendEvent(state, {
     type: "DUNGEON_FLOOR_CLEARED",
     playerId,
@@ -9813,12 +9814,12 @@ function resolveDungeonFloorVictory(state: GameState, playerId: PlayerId, floor:
       repeat ? " (again)" : ""
     }.`
   });
-  if (floor >= DUNGEON_FLOOR_CAP && !player.dungeonConquered) {
+  if (floor >= floorCap && !player.dungeonConquered) {
     player.dungeonConquered = true;
     appendEvent(state, {
       type: "DUNGEON_CONQUERED",
       playerId,
-      message: `${state.players[playerId]?.name ?? playerId} has CONQUERED the Dungeon — floor 10 has fallen! (Dungeon Conqueror)`
+      message: `${state.players[playerId]?.name ?? playerId} has CONQUERED the Dungeon — floor ${floorCap} has fallen! (Dungeon Conqueror)`
     });
   }
 }

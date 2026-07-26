@@ -284,6 +284,48 @@ describe("The Dungeon — delving floors", () => {
     );
   });
 
+  it("setup can make immediate descents free or cost 2 movement", () => {
+    for (const cost of [0, 2] as const) {
+      const state = dungeonGame(`dungeon-cost-${cost}`, {
+        wog: { enabled: true, dungeon: true, dungeonDescentCost: cost }
+      });
+      const fieldId = placeSiteUnderHero(state);
+      const fought = delveFloor(state, fieldId);
+      fought.combat!.outcome = {
+        winnerPlayerId: "p1",
+        defeatedPlayerId: NEUTRAL_PLAYER_ID,
+        reason: "all-enemy-units-defeated"
+      };
+      finalizeAdventureCombat(fought);
+      const movementBefore = fought.heroes.hero_p1.movementPoints;
+      pumpAdventureQueues(fought);
+      const menu = fought.adventure!.pendingVisit?.steps[0];
+      expect(menu?.type).toBe("CHOOSE_ONE");
+      if (menu?.type !== "CHOOSE_ONE") throw new Error("expected continuation");
+      expect(menu.options[0]?.label).toMatch(
+        cost === 0 ? /Descend \(free descent\)/ : /Descend \(2 movement\)/
+      );
+      const spend = menu.options[0]!.steps.find((step) => step.type === "SPEND_HERO_MOVEMENT");
+      if (cost === 0) {
+        expect(spend).toBeUndefined();
+      } else {
+        expect(spend).toMatchObject({ amount: 2 });
+      }
+      const roomMovement = menu.options[0]!.steps.reduce(
+        (total, step) => total + (step.type === "GAIN_MOVEMENT" ? step.amount : 0),
+        0
+      );
+      const continued = apply(fought, {
+        type: "RESOLVE_VISIT_STEP",
+        playerId: "p1",
+        optionIndex: 0
+      });
+      expect(continued.heroes.hero_p1.movementPoints).toBe(
+        movementBefore - cost + roomMovement
+      );
+    }
+  });
+
   it("with no movement left, a win saves the new floor and tells the player to resume later", () => {
     const state = dungeonGame("dungeon-resume-later");
     const fieldId = placeSiteUnderHero(state);
@@ -433,6 +475,29 @@ describe("The Dungeon — delving floors", () => {
     const repeat = again.adventure!.rewardQueue[0];
     expect(
       repeat?.kind === "visit-steps" && repeat.steps.some((step) => step.type === "ROLL_TREASURE_DICE")
+    ).toBe(true);
+  });
+
+  it("a 5-floor expedition crowns floor 5 as the final repeatable floor", () => {
+    const state = dungeonGame("dungeon-short-campaign", {
+      wog: { enabled: true, dungeon: true, dungeonDepth: 5 }
+    });
+    expect(state.adventure?.dungeonSite).toEqual({ fieldId: null, maxFloor: 5 });
+    const fieldId = placeSiteUnderHero(state);
+    state.players.p1.dungeonFloor = 5;
+    const fight = visitGate(state, fieldId, 0);
+    fight.combat!.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    finalizeAdventureCombat(fight);
+    expect(fight.players.p1.dungeonConquered).toBe(true);
+    expect(fight.players.p1.dungeonFloor).toBe(5);
+    expect(
+      fight.eventLog.some(
+        (event) => event.type === "DUNGEON_CONQUERED" && /floor 5 has fallen/i.test(event.message)
+      )
     ).toBe(true);
   });
 

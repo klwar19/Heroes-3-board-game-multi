@@ -95,6 +95,8 @@ describe("combat board art variants", () => {
       "hell-necro",
       "jungle-fortress",
       "creature-bank-dungeon",
+      "pve-calamity-classic",
+      "pve-calamity-doom",
       "castle-siege",
       "ship-battle"
     ]);
@@ -104,9 +106,46 @@ describe("combat board art variants", () => {
       "/assets/board/battlefield-4x5-hell-necro.webp",
       "/assets/board/battlefield-4x5-jungle-fortress.webp",
       "/assets/board/battlefield-4x5-creature-bank-dungeon.webp",
+      "/assets/board/battlefield-4x5-pve-calamity-classic.webp",
+      "/assets/board/battlefield-4x5-pve-calamity-doom.webp",
       "/assets/board/battlefield-4x5-castle-siege.webp",
       "/assets/board/battlefield-4x5-ship-battle.webp"
     ]);
+  });
+
+  it("reserves the two calamity boards for wave, raid-boss, and dungeon combats", () => {
+    const contexts = [
+      { waveAssault: { wave: 2 } },
+      { raidBossId: "raid_goblin" },
+      { dungeonFloor: 5 }
+    ] as const;
+
+    for (const theme of ["classic", "doom"] as const) {
+      for (const mark of contexts) {
+        const state = createInitialGameState(`pve-board-${theme}-${Object.keys(mark)[0]}`);
+        state.adventure = {
+          fields: {},
+          tiles: {},
+          pveTheme: theme
+        } as unknown as GameState["adventure"];
+        state.combat!.context = {
+          kind: "neutral",
+          heroId: "hero_p1",
+          fieldId: "pve_field",
+          difficulty: 0,
+          hasAzure: false,
+          ...mark
+        };
+        state.combat!.boardArtId = undefined;
+        const expected = theme === "doom" ? "pve-calamity-doom" : "pve-calamity-classic";
+        expect(eligibleCombatBoardArtIds(state, state.combat)).toEqual([expected]);
+        expect(pickCombatBoardArt(state).id).toBe(expected);
+      }
+    }
+
+    const ordinary = createInitialGameState("pve-board-ordinary");
+    expect(eligibleCombatBoardArtIds(ordinary, ordinary.combat)).not.toContain("pve-calamity-classic");
+    expect(eligibleCombatBoardArtIds(ordinary, ordinary.combat)).not.toContain("pve-calamity-doom");
   });
 
   it("fights EVERY Creature Bank on the dungeon board (all current and future banks)", () => {

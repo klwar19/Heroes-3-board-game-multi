@@ -188,6 +188,9 @@ function moduleEnabledForState(state: Pick<GameState, "anime">) {
     module !== "pveTheme" &&
     module !== "wavePressure" &&
     module !== "waveDefeatLimit" &&
+    module !== "raidBossSpawnRound" &&
+    module !== "dungeonDepth" &&
+    module !== "dungeonDescentCost" &&
     animeModuleEnabled(state, module);
 }
 

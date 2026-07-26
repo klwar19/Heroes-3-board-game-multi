@@ -55,7 +55,10 @@ function scriptModuleActive(state: Pick<GameState, "anime">, script: CombatScrip
     required === "waveCadence" ||
     required === "pveTheme" ||
     required === "wavePressure" ||
-    required === "waveDefeatLimit"
+    required === "waveDefeatLimit" ||
+    required === "raidBossSpawnRound" ||
+    required === "dungeonDepth" ||
+    required === "dungeonDescentCost"
   ) {
     return animeEnabled(state);
   }
