@@ -590,8 +590,8 @@ export function TownRecruitSection({
   };
   // Each unit's cost carries the TOTAL gold discount the engine will charge for
   // it: a Legion voucher reserved for that unit STACKS with the building/location
-  // discount (Champions' Stables, Cove Pub). Two Legion pieces on the same unit
-  // still take the larger. The shown total and the affordability gate use this
+  // discount (Champions' Stables, Cove Pub). Distinct Legion pieces on the same
+  // unit add together. The shown total and the affordability gate use this
   // same applyRecruitGoldDiscount, so they match the engine exactly.
   for (const unitDefId of recruitIds) {
     const few = coreUnitDefinitions[unitDefId]?.few;

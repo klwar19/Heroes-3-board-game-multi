@@ -541,8 +541,48 @@ describe("Market of Time: remove a card, then Search(2) ANY shared deck", () => 
 // Hill Fort: the bronze/silver-only restriction is real (not decorative)
 // ---------------------------------------------------------------------------
 describe("Hill Fort discounts ONLY bronze/silver reinforcements", () => {
+  it("new default banks the Hill Fort, keeps the unit unchanged, then applies Hill Fort before Legion", () => {
+    const state = makeGame("hill-fort-adjustable");
+    const player = state.players.p1;
+    player.canMulligan = false;
+    player.needsHandRefresh = false;
+    player.resources.gold = 50;
+    player.army = [];
+    const unit = addArmyUnit(player, "castle.crusaders", "few"); // Pack 10 gold
+    player.recruitDiscounts = [
+      {
+        cardId: "artifact.legs_of_legion",
+        amount: 4,
+        target: { kind: "reinforce", armyUnitId: unit.id }
+      }
+    ];
+
+    visit(state, "p1", injectField(state, "hill_fort"));
+    const bank = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Bank Hill Fort/i.test(legal.label)
+    );
+    expect(bank).toBeTruthy();
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+
+    expect(player.army[0]?.side).toBe("few");
+    expect(player.reinforcementDiscounts).toHaveLength(1);
+    const redeem = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" && legal.action.armyUnitId === unit.id
+    );
+    // Crusaders 10 − Hill Fort 3 first − Legs 4 = 3.
+    expect(redeem?.label).toContain("3 gold");
+    const result = applyAction(state, redeem!.action);
+    expect(result.errors).toEqual([]);
+    expect(result.state.players.p1.army[0]?.side).toBe("pack");
+    expect(result.state.players.p1.resources.gold).toBe(47);
+  });
+
   it("offers bronze and silver Few units but never a gold-tier one", () => {
     const state = makeGame("hill-fort");
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "immediate-reinforcement-prompts": true
+    };
     const player = state.players.p1;
     player.resources.gold = 50;
     player.army = [];
@@ -562,6 +602,10 @@ describe("Hill Fort discounts ONLY bronze/silver reinforcements", () => {
 
   it("reinforces the chosen bronze Few to a Pack at a 3-gold discount (free at cost 3)", () => {
     const state = makeGame("hill-fort-reinforce");
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "immediate-reinforcement-prompts": true
+    };
     const player = state.players.p1;
     player.resources.gold = 50;
     player.army = [];

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
+import { startPlayerTurn } from "./adventure";
 import type { GameAction, GameState } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -9,8 +10,8 @@ import type { GameAction, GameState } from "./state";
 // for the next map Spell this turn. Play the rider to draw a card, then cast the
 // drawn Spell (View Air / Dimension Door / Fly / …) with the banked Power paying
 // part of its tier. The bank is consumed by the next map Spell that pays a Power
-// cost, and "goes away after you move" (cleared on the hero's next step) or at
-// the owner's next turn.
+// cost. Resolving the Spell consumes all Power added to that cast; if no Spell
+// is cast, the bank "goes away after you move" (the hero's next step).
 //
 // Also pins the crash fix: the Polish "Cast a Spell" enabler is a physical Spell
 // card but must NOT count as a Power source (it let a 3-Power hand reach a
@@ -45,20 +46,6 @@ function castViewAir(state: GameState): GameState {
   return applyOk(state, play);
 }
 
-function resolveMapSpellBoost(state: GameState): GameState {
-  const choice = state.pendingChoice;
-  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "map-spell-boost") {
-    return state; // auto-resolved
-  }
-  // Trailing option = resolve now.
-  return applyOk(state, {
-    type: "CHOOSE_OPTION",
-    playerId: "p1",
-    choiceId: choice.id,
-    optionIndex: choice.mapSpellBoost?.offers.length ?? choice.options.length - 1
-  });
-}
-
 describe("Map spell-power bank — Sorcery / Scales on the map", () => {
   it("banks +Power and draws a card when Sorcery is played on the map", () => {
     let state = mapHand(["ability.sorcery"]);
@@ -80,6 +67,23 @@ describe("Map spell-power bank — Sorcery / Scales on the map", () => {
     state = castViewAir(state);
     expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
     expect(state.players.p1.mapSpellPowerBank ?? 0, "one Spell, one boost — the bank is spent").toBe(0);
+  });
+
+  it("consumes the whole bank when the Spell resolves, including tier surplus", () => {
+    let state = mapHand(["spell.view_air"]);
+    state.players.p1.mapSpellPowerBank = 3;
+    const valuablesBefore = state.players.p1.resources.valuables;
+
+    state = castViewAir(state);
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1); // top tier needs Power 2
+    expect(state.players.p1.mapSpellPowerBank ?? 0).toBe(0);
+  });
+
+  it("does not clear surplus Power merely because a new turn starts", () => {
+    const state = mapHand([]);
+    state.players.p1.mapSpellPowerBank = 2;
+    startPlayerTurn(state, "p1");
+    expect(state.players.p1.mapSpellPowerBank).toBe(2);
   });
 
   it("CONTROL: with no bank and no power card, cast resolves at Power 0 (3 gold), never the materials tier", () => {

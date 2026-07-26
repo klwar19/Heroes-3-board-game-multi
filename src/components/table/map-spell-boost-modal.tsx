@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * Map spell cast-then-boost window — the battle-style Power picker.
+ * Map spell cast-then-boost window — the battle-style Power tray.
  *
  * After a Power-tiered map Spell (View Air, View Earth, Fly, Dimension Door,
  * Water Walk, Town Portal) is cast, the engine opens the `map-spell-boost`
- * OPTION_CHOICE. This modal replaces the old PromptTray text-button list ("the
- * box system") with the same vibe as casting in combat: the spell's card face,
- * a live Power readout over the printed tier ladder, and every Power source as
- * a clickable card tile — hand cards (each printed side its own tile, expert
+ * OPTION_CHOICE. This tray replaces the old PromptTray text-button list and
+ * uses the actual combat reaction-tray language: the cast stays open, current
+ * Power updates live, and every Power source is a one-click card tile. There is
+ * no tier picker — the player gradually adds Power, then commits the cast.
+ * Sources include hand cards (each printed side its own tile, expert
  * crowns marked), the Spell Book, the School of Magic and Basic X Magic
  * experts, plus the printed cost discards (Titan's Cuirass / Breastplate of
  * Brimstone). PRESENTATION ONLY: every tile dispatches the exact CHOOSE_OPTION
@@ -16,7 +17,7 @@
  * masking are untouched.
  */
 
-import { Check, Crown, Hourglass } from "lucide-react";
+import { Check, Crown, Hourglass, Zap } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import {
   bestMapSpellTier,
@@ -37,6 +38,9 @@ type BoostOffer = NonNullable<BoostChoice["mapSpellBoost"]>["offers"][number];
 function offerVisual(offer: BoostOffer): { section: "hand" | "book" | "cost" | "school"; faceCardId: string } {
   if (offer.kind === "card") {
     return { section: offer.fromBook ? "book" : "hand", faceCardId: offer.cardId };
+  }
+  if (offer.kind === "tome-max") {
+    return { section: "hand", faceCardId: offer.cardId };
   }
   if (offer.kind === "cost-discard") {
     return { section: "cost", faceCardId: offer.cardId };
@@ -73,6 +77,9 @@ function offerChips(offer: BoostOffer): string[] {
   } else if (offer.kind === "school-permanent-expert" || offer.kind === "school-fetch-expert") {
     chips.push("Expert — 1 crown");
     chips.push(offer.kind === "school-fetch-expert" && offer.fromHandCardId ? "discards the card" : "discards the permanent");
+  } else if (offer.kind === "tome-max") {
+    chips.push("Maximum Power");
+    chips.push("discards the Tome");
   }
   return chips;
 }
@@ -106,7 +113,7 @@ export function MapSpellBoostModal({
   const boost = choice.mapSpellBoost;
   const spell = cardLibrary[boost.spellCardId];
   const tiers = mapSpellPowerTiers(spell);
-  const power = boost.power;
+  const power = boost.effectivePower ?? boost.power;
   const best = tiers ? bestMapSpellTier(tiers, power) : null;
 
   const optionActions = legalActions.filter(
@@ -117,25 +124,22 @@ export function MapSpellBoostModal({
     return null;
   }
   const actionFor = (optionIndex: number) => optionActions.find((legal) => legal.action.optionIndex === optionIndex);
-  // The trailing option (when present) is "Resolve now"; while a printed cost
+  // The trailing option (when present) commits the Power and casts; while a printed cost
   // discard is still owed the engine withholds it, and so do we.
   const resolveAction = choice.options.length > boost.offers.length ? actionFor(boost.offers.length) : undefined;
 
   const entries = boost.offers.map((offer, index) => ({ offer, index, visual: offerVisual(offer) }));
   const costSourceName = boost.costDiscards ? cardName(boost.costDiscards.sourceCardId) : null;
-  const sections: { key: "hand" | "book" | "cost" | "school"; heading: string }[] = [
-    {
-      key: "cost",
-      heading: boost.costDiscards
-        ? boost.costDiscards.required > 0
-          ? `Pay ${costSourceName}: discard ${boost.costDiscards.required} more card${boost.costDiscards.required === 1 ? "" : "s"}`
-          : `${costSourceName}: discard up to ${boost.costDiscards.upTo} more, +${boost.costDiscards.perCard} Power each`
-        : "Pay the printed cost"
-    },
-    { key: "hand", heading: "Add Power from your hand" },
-    { key: "book", heading: "…or burn a Spell Book Spell" },
-    { key: "school", heading: "…or your School of Magic (expert)" }
-  ];
+  const sourceLabel = (entry: (typeof entries)[number]) =>
+    entry.visual.section === "book"
+      ? "Spell Book"
+      : entry.visual.section === "school"
+        ? "School expert"
+        : entry.visual.section === "cost"
+          ? `Pay ${costSourceName ?? "printed cost"}`
+          : entry.offer.kind === "tome-max"
+            ? "Tome"
+            : "Power source";
 
   const renderTile = (entry: (typeof entries)[number]) => {
     const legal = actionFor(entry.index);
@@ -145,94 +149,93 @@ export function MapSpellBoostModal({
     const label = choice.options[entry.index]?.label ?? legal.label;
     const value = entry.offer.value;
     return (
-      <div className="searchCardWrap" key={entry.index}>
-        <button
-          aria-label={label}
-          className="searchCard spellBoostTile"
-          onClick={() => onAction(legal.action)}
-          title={label}
-          type="button"
-        >
-          <span className="spellBoostValue">{value > 0 ? `+${value} Power` : "Pay cost"}</span>
-          <CardFrame cardId={entry.visual.faceCardId} className="searchCardImage" />
-          <span className="spellBoostTileName">{cardName(entry.visual.faceCardId)}</span>
-          {offerChips(entry.offer).map((chip) => (
-            <small className="spellBoostChip" key={chip}>
-              {chip.startsWith("Expert") ? <Crown aria-hidden="true" size={10} /> : null}
-              {chip}
-            </small>
-          ))}
-        </button>
-        <ZoomButton
-          label={`Read ${cardName(entry.visual.faceCardId)}`}
-          onZoom={() => zoomCard(entry.visual.faceCardId)}
-        />
+      <div className="trayTile mapSpellSourceTile" key={entry.index}>
+        <div className="mapSpellTrayCard">
+          <CardFrame cardId={entry.visual.faceCardId} className="trayCardImage" />
+          <ZoomButton
+            label={`Read ${cardName(entry.visual.faceCardId)}`}
+            onZoom={() => zoomCard(entry.visual.faceCardId)}
+          />
+        </div>
+        <div className="trayTileBody">
+          <strong>{cardName(entry.visual.faceCardId)}</strong>
+          <small className="mapSpellSourceKind">{sourceLabel(entry)}</small>
+          <div className="mapSpellSourceChips">
+            {offerChips(entry.offer).map((chip) => (
+              <small className="spellBoostChip" key={chip}>
+                {chip.startsWith("Expert") ? <Crown aria-hidden="true" size={10} /> : null}
+                {chip}
+              </small>
+            ))}
+          </div>
+          <button
+            aria-label={label}
+            className="trayInstant mapSpellAddPower"
+            onClick={() => onAction(legal.action)}
+            title={label}
+            type="button"
+          >
+            <Zap aria-hidden="true" size={13} />
+            {entry.offer.kind === "tome-max"
+              ? "Set to maximum Power"
+              : value > 0
+                ? `Add +${value} Power`
+                : "Pay cost"}
+          </button>
+        </div>
       </div>
     );
   };
 
   return (
-    <div className="modalBackdrop" role="dialog" aria-label={choice.prompt}>
-      <div className="searchModal mapSpellBoostModal">
-        <header>
-          <strong>{spell?.name ?? "Map Spell"} — add Power like in battle</strong>
-          <span>Pump Power sources into the cast, then resolve at the best tier you reach.</span>
-        </header>
-        <div className="spellBoostTop">
-          <div className="searchCardWrap spellBoostSpell">
-            <CardFrame cardId={boost.spellCardId} className="searchCardImage" />
+    <div className="reactionTray mapSpellPowerTray" role="dialog" aria-label={choice.prompt}>
+      <header>
+        <Zap aria-hidden="true" size={15} />
+        <strong>Map Spell — Power window</strong>
+        <span>{spell?.name ?? "Map Spell"}</span>
+        <span className="trayPowerMeter" data-testid="spell-boost-power">
+          <Zap aria-hidden="true" size={13} />
+          <strong>Power {power}</strong>
+          <small>{best ? `Current effect: ${best.label}` : "Cast in progress"}</small>
+        </span>
+      </header>
+      <div className="trayTiles">
+        <div className="trayTile mapSpellCastTile">
+          <div className="mapSpellTrayCard">
+            <CardFrame cardId={boost.spellCardId} className="trayCardImage" />
             <ZoomButton label={`Read ${cardName(boost.spellCardId)}`} onZoom={() => zoomCard(boost.spellCardId)} />
           </div>
-          <div className="spellBoostLadder" data-testid="spell-boost-ladder">
-            <span className="spellBoostPower">
-              Power: <b>{power}</b>
-            </span>
-            {(tiers?.tiers ?? []).map((tier) => {
-              const reached = tier.minPower <= power;
-              const isBest = best?.optionIndex === tier.optionIndex;
-              return (
-                <span
-                  className={`spellBoostTier${reached ? " reached" : ""}${isBest ? " best" : ""}`}
-                  data-reached={reached ? "true" : "false"}
-                  key={tier.optionIndex}
-                >
-                  <b>{tier.minPower}+</b> {tier.label}
-                  {isBest ? " ← resolves now" : ""}
-                </span>
-              );
-            })}
+          <div className="trayTileBody">
+            <strong>{cardName(boost.spellCardId)}</strong>
+            <small>Spell prepared. Add Power one source at a time, then commit the cast.</small>
           </div>
         </div>
-        <div className="searchCards deckSearchSections">
-          {sections.map((section) => {
-            const own = entries.filter((entry) => entry.visual.section === section.key);
-            if (own.length === 0) {
-              return null;
-            }
-            return (
-              <section className="deckSearchSection" key={section.key}>
-                <span className="deckSearchSectionLabel">{section.heading}</span>
-                <div className="deckSearchSectionRow spellBoostRow">{own.map(renderTile)}</div>
-              </section>
-            );
-          })}
+        {entries.map(renderTile)}
+      </div>
+      <footer>
+        <div className="trayPreview">
+          <span>All added Power is spent when this Spell resolves. Recall never restores Power.</span>
+          {boost.costDiscards ? (
+            <span>
+              {boost.costDiscards.required > 0
+                ? `Pay ${costSourceName}: discard ${boost.costDiscards.required} more`
+                : `${costSourceName}: up to ${boost.costDiscards.upTo} more discards`}
+            </span>
+          ) : null}
         </div>
         {resolveAction ? (
-          <footer className="spellBoostResolveRow">
-            <button
-              className="commandButton primary"
-              onClick={() => onAction(resolveAction.action)}
-              type="button"
-            >
-              <Check aria-hidden="true" size={13} /> {choice.options[boost.offers.length]?.label ?? resolveAction.label}
-            </button>
-          </footer>
+          <button
+            className="trayPass mapSpellResolve"
+            onClick={() => onAction(resolveAction.action)}
+            type="button"
+          >
+            <Check aria-hidden="true" size={15} />
+            Commit Power &amp; Cast — Power {power}
+          </button>
         ) : (
-          <footer className="spellBoostResolveRow">
-            <small className="spellBoostCostNote">The printed cost must be paid before the Spell resolves.</small>
-          </footer>
+          <small className="spellBoostCostNote">Pay the printed cost before resolving.</small>
         )}
-      </div>
+      </footer>
     </div>
   );
 }

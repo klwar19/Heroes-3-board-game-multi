@@ -28,11 +28,10 @@ import type { GameAction, GameState, MapFieldState, PlayerId, RecruitDiscountVou
 // The stacking rules these tests pin (HOUSE RULE): a Legion voucher STACKS with
 // the building/location discount — the Champions' Stables and the Cove Pub — so
 // those are ADDED on the same unit (a Champion on a Stables field at −6 plus a
-// 4-gold Legion voucher is −10). What still does NOT stack: two Legion pieces on
-// the SAME unit (the larger single voucher is taken) and the Necromancy half-cost
-// (it competes with the combined flat discount — the bigger wins — and is always
-// figured from the ORIGINAL price). A voucher is consumed when its unit is bought
-// and expires at the owner's next turn.
+// 4-gold Legion voucher is −10). Every DISTINCT Legion piece on the same unit
+// also stacks. Necromancy/Hill Fort alter the printed price first, then every
+// applicable flat discount reduces what remains. The same physical Legion piece
+// cannot bank twice after discard recovery, and all unused banks expire on move.
 // ---------------------------------------------------------------------------
 
 const LEGION_DISCOUNTS: { cardId: string; tier: "minor" | "major"; amount: number; name: string }[] = [
@@ -263,16 +262,15 @@ describe("Playing a Legion discount side opens a unit-selection window (no immed
   });
 });
 
-describe("Legion does not stack with itself; Necromancy half competes, not stacks", () => {
-  it("two Legion pieces aimed at the SAME unit take the bigger, not the sum", () => {
+describe("Distinct Legion pieces stack; initiating reinforcement discounts apply first", () => {
+  it("two different Legion pieces aimed at the SAME unit add together", () => {
     const state = setupRecruitTown();
     bankVoucher(state, "p1", "artifact.legs_of_legion", 4, { kind: "recruit", unitDefId: "castle.griffins" });
     bankVoucher(state, "p1", "artifact.head_of_legion", 6, { kind: "recruit", unitDefId: "castle.griffins" });
 
-    // Legs (4) + Head (6) on the same Griffins → 6, never 10 (Legion never stacks
-    // with Legion). With no building/location source, the total equals that 6.
-    expect(legionVoucherDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(6);
-    expect(totalRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(6);
+    // Legs (4) + Head (6) on the same Griffins → 10.
+    expect(legionVoucherDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(10);
+    expect(totalRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" })).toBe(10);
     expect(applyRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.griffins" }, { gold: 4 })).toEqual({
       gold: 0
     });
@@ -312,37 +310,33 @@ describe("Legion does not stack with itself; Necromancy half competes, not stack
       gold: Math.max(0, (packCost.gold ?? 0) - 12)
     });
 
-    // Two Legion pieces on the same Champion still don't stack with EACH OTHER:
-    // the larger (6) is taken, then added to the Stables 6 → 12, not 6+4+6.
+    // Both different Legion pieces also stack with the Stables source.
     bankVoucher(state, "p1", "artifact.legs_of_legion", 4, { kind: "reinforce", armyUnitId: "champ_few" });
-    expect(legionVoucherDiscount(state, "p1", ref)).toBe(6); // larger of the two Legion vouchers
-    expect(totalRecruitGoldDiscount(state, "p1", ref)).toBe(12); // 6 Stables + 6 Legion (NOT 16)
+    expect(legionVoucherDiscount(state, "p1", ref)).toBe(10);
+    expect(totalRecruitGoldDiscount(state, "p1", ref)).toBe(16);
   });
 
-  it("Necromancy's half is figured from the ORIGINAL price; the bigger of half vs Legion wins, and the voucher is spent", () => {
+  it("Necromancy halves the ORIGINAL price first, then Legion reduces what remains", () => {
     // Griffins Pack costs 6 gold. Necromancy = reinforceArmyUnit(halfGoldOnly,
-    // roundDown): floor(6/2) = 3 gold. A 2-gold Legion voucher (→ pay 4) is the
-    // smaller discount, so Necromancy's 3 wins — proving the half is taken from
-    // the ORIGINAL 6, not from a Legion-reduced price (which would be floor(4/2)=2).
+    // roundDown): floor(6/2) = 3 gold. Legion −2 then leaves 1 gold payable.
     let state = setupRecruitTown();
     state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
     state.players.p1.army.push({ id: "u_griffins", unitDefId: "castle.griffins", side: "few" });
     bankVoucher(state, "p1", "artifact.legs_of_legion", 2, { kind: "reinforce", armyUnitId: "u_griffins" });
 
     reinforceArmyUnit(state, "p1", "u_griffins", false, true, true); // Necromancy mode
-    expect(state.players.p1.resources.gold).toBe(7); // paid 3 (original half), not 2 (would be a stack)
+    expect(state.players.p1.resources.gold).toBe(9); // paid floor(6/2) − 2 = 1
     expect(state.players.p1.army.find((unit) => unit.id === "u_griffins")?.side).toBe("pack");
-    // The reserved voucher is spent on this unit even though Necromancy beat it.
     expect(state.players.p1.recruitDiscounts ?? []).toHaveLength(0);
 
-    // Now the other way: a 4-gold Legion voucher (→ pay 2) beats Necromancy's 3.
+    // A −4 Legion piece reduces the post-Necromancy 3 gold to free.
     state = setupRecruitTown();
     state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
     state.players.p1.army.push({ id: "u_griffins2", unitDefId: "castle.griffins", side: "few" });
     bankVoucher(state, "p1", "artifact.legs_of_legion", 4, { kind: "reinforce", armyUnitId: "u_griffins2" });
 
     reinforceArmyUnit(state, "p1", "u_griffins2", false, true, true); // Necromancy mode
-    expect(state.players.p1.resources.gold).toBe(8); // paid 2 (6 - 4 Legion), the bigger discount
+    expect(state.players.p1.resources.gold).toBe(10);
     expect(state.players.p1.recruitDiscounts ?? []).toHaveLength(0);
   });
 });
@@ -400,7 +394,7 @@ describe("The voucher is read and consumed by the recruit/reinforce cost path", 
   });
 });
 
-describe("Same-piece guard, the no-target gate, and end-of-turn expiry", () => {
+describe("Same-piece guard, the no-target gate, and movement expiry", () => {
   it("never banks the SAME piece twice — its discount side disappears once a voucher is banked (resource side stays)", () => {
     let state = setupRecruitTown();
     state.players.p1.hand = ["artifact.legs_of_legion"];
@@ -426,6 +420,29 @@ describe("Same-piece guard, the no-target gate, and end-of-turn expiry", () => {
     });
     expect(replay.errors.length).toBeGreaterThan(0);
     expect(state.players.p1.recruitDiscounts).toHaveLength(1);
+  });
+
+  it("still blocks the same piece after its voucher was spent and Scholar returned the card", () => {
+    let state = setupRecruitTown();
+    state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
+    state.players.p1.hand = ["artifact.legs_of_legion"];
+
+    state = apply(state, findPlay(state, "p1", "artifact.legs_of_legion", 0)!);
+    state = resolveLegionPick(state, "Marksmen", "recruit");
+    state = apply(state, {
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "recruit", unitDefId: "castle.marksmen" }]
+    });
+    expect(state.players.p1.recruitDiscounts).toEqual([]);
+
+    // Give Scholar a real alternative target and return both a used Legion
+    // piece and a different one. Only the different piece may bank a voucher.
+    state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.griffins");
+    state.players.p1.army.push({ id: "scholar_target", unitDefId: "castle.griffins", side: "few" });
+    state.players.p1.hand = ["artifact.legs_of_legion", "artifact.loins_of_legion"];
+    expect(findPlay(state, "p1", "artifact.legs_of_legion", 0)).toBeUndefined();
+    expect(findPlay(state, "p1", "artifact.loins_of_legion", 0)).toBeTruthy();
   });
 
   it("hides the discount side when there is no unit to spend it on (the resource side still plays)", () => {
@@ -462,15 +479,43 @@ describe("Same-piece guard, the no-target gate, and end-of-turn expiry", () => {
     ]);
   });
 
-  it("expires the banked vouchers at the start of the player's next turn", () => {
+  it("keeps banked vouchers across turn start and expires them only on movement", () => {
     const state = setupRecruitTown();
     bankVoucher(state, "p1", "artifact.torso_of_legion", 6, { kind: "recruit", unitDefId: "castle.marksmen" });
     expect(totalRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(6);
 
-    // The voucher is a current-turn voucher: the owner's next turn clears it.
+    startPlayerTurn(state, "p1");
+    expect(state.players.p1.recruitDiscounts).toHaveLength(1);
+
+    const moving = setupRecruitTown();
+    bankVoucher(moving, "p1", "artifact.torso_of_legion", 6, { kind: "recruit", unitDefId: "castle.marksmen" });
+    const move = getLegalActions(moving, "p1").find((entry) => entry.action.type === "MOVE_HERO");
+    expect(move).toBeTruthy();
+    const moved = apply(moving, move!.action);
+    expect(moved.players.p1.recruitDiscounts).toEqual([]);
+  });
+
+  it("the Binh old-rule toggle keeps largest-only stacking and next-turn expiry", () => {
+    const state = setupRecruitTown();
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "immediate-reinforcement-prompts": true
+    };
+    bankVoucher(state, "p1", "artifact.legs_of_legion", 4, {
+      kind: "recruit",
+      unitDefId: "castle.marksmen"
+    });
+    bankVoucher(state, "p1", "artifact.head_of_legion", 6, {
+      kind: "recruit",
+      unitDefId: "castle.marksmen"
+    });
+
+    expect(legionVoucherDiscount(state, "p1", {
+      kind: "recruit",
+      unitDefId: "castle.marksmen"
+    })).toBe(6);
     startPlayerTurn(state, "p1");
     expect(state.players.p1.recruitDiscounts).toEqual([]);
-    expect(totalRecruitGoldDiscount(state, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })).toBe(0);
   });
 });
 
@@ -507,7 +552,7 @@ describe("The banked voucher affects what is offered", () => {
     expect(championOption!.label).toContain("stacks with the −6");
   });
 
-  it("the Necromancy prompt prices a reinforce with the voucher — non-stacking, half still from the original gold", () => {
+  it("the old immediate Necromancy prompt prices source-first, then Legion", () => {
     function necropolisGriffinTurn(): GameState {
       const state = setupRecruitTown();
       state.players.p1.resources = { gold: 20, buildingMaterials: 0, valuables: 0 };
@@ -521,15 +566,12 @@ describe("The banked voucher affects what is offered", () => {
     queueNecromancyReinforce(plain, "p1", "basic");
     expect(queuedOptionLabels(plain).some((label) => label.includes("Griffins") && label.includes("3 gold"))).toBe(true);
 
-    // A 4-gold voucher beats the half: the flat 6 − 4 = 2 wins (and Necromancy's
-    // half is still figured from the original 6, not floor((6−4)/2)=1), so the
-    // prompt prices it at 2 gold.
+    // A 4-gold voucher applies after the printed 6 is halved to 3, so it is free.
     const withVoucher = necropolisGriffinTurn();
     bankVoucher(withVoucher, "p1", "artifact.legs_of_legion", 4, { kind: "reinforce", armyUnitId: "u_griffins" });
     queueNecromancyReinforce(withVoucher, "p1", "basic");
     const labels = queuedOptionLabels(withVoucher);
-    expect(labels.some((label) => label.includes("Griffins") && label.includes("2 gold"))).toBe(true);
-    expect(labels.some((label) => label.includes("Griffins") && label.includes("1 gold"))).toBe(false);
+    expect(labels.some((label) => label.includes("Griffins") && label.includes("free"))).toBe(true);
   });
 });
 
@@ -582,7 +624,7 @@ describe("Real Population-action pipeline (applyAction only): Champions' Stables
     expect(state.players.p2.recruitDiscounts ?? []).toHaveLength(0);
   });
 
-  it("a Settlement half-cost reinforce honors the voucher (non-stacking) and spends it — no Citadel involved", () => {
+  it("a Settlement half-cost reinforce applies first, then Legion, and spends it — no Citadel involved", () => {
     const state = setupRecruitTown();
     state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.griffins");
     state.players.p1.army.push({ id: "u_griffins", unitDefId: "castle.griffins", side: "few" });
@@ -607,16 +649,15 @@ describe("Real Population-action pipeline (applyAction only): Champions' Stables
     beginFieldVisit(state, hero.id, fieldId, false);
 
     // The Settlement reinforce option is priced with the voucher: Griffins Pack 6
-    // gold, half = 3, Legion −4 → pay 2 (the bigger discount), not 3 and not the
-    // stacked 1.
+    // gold, half = 3, then Legion −4 → free.
     const reinforce = getLegalActions(state, "p1").find(
       (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label.includes("Griffins")
     );
     expect(reinforce, "the Settlement should offer the Griffins reinforce").toBeTruthy();
-    expect(reinforce!.label).toContain("2 gold");
+    expect(reinforce!.label).toContain("free");
 
     const next = apply(state, reinforce!.action);
-    expect(next.players.p1.resources.gold).toBe(18); // paid 2
+    expect(next.players.p1.resources.gold).toBe(20);
     expect(next.players.p1.army.find((unit) => unit.id === "u_griffins")?.side).toBe("pack");
     expect(next.players.p1.recruitDiscounts ?? []).toHaveLength(0);
   });

@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
- * Map spell cast-then-boost window: the battle-style Power picker
- * (MapSpellBoostModal) replaces the old PromptTray text-button list. The modal
- * shows the spell's card face, the live Power over the printed tier ladder,
- * and every engine offer as a card tile — including the Tunic of the Cyclops
+ * Map spell cast-then-boost window: the battle-style Power tray
+ * (MapSpellBoostModal) replaces the old PromptTray text-button list. The tray
+ * shows the spell's card face, a live combat-style Power meter, and every
+ * engine offer as a card tile — including the Tunic of the Cyclops
  * King's TWO sides (the missing "+2 Power" was the reported bug). Presentation
  * only: each tile dispatches the exact CHOOSE_OPTION the engine offered.
  */
@@ -51,19 +51,19 @@ function openBoost(cards: string[]): GameState {
   return state;
 }
 
-describe("MapSpellBoostModal — battle-style Power picker", () => {
-  it("shows the spell face, the tier ladder, BOTH Tunic sides, and dispatches the exact engine option", () => {
+describe("MapSpellBoostModal — battle-style Power tray", () => {
+  it("uses the combat reaction tray, shows BOTH Tunic sides, and dispatches the exact engine option", () => {
     const state = openBoost(["spell.view_air", "artifact.tunic_of_the_cyclops_king"]);
     const legalActions = getLegalActions(state, "p1");
     const onAction = vi.fn();
     wrap(<MapSpellBoostModal legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId="p1" />);
 
     expect(screen.getByRole("dialog", { name: /View Air/i })).toBeTruthy();
-    // The printed tier ladder renders with the current best tier marked.
-    const ladder = screen.getByTestId("spell-boost-ladder");
-    expect(ladder.textContent).toContain("Power:");
-    expect(ladder.querySelectorAll(".spellBoostTier").length).toBeGreaterThanOrEqual(2);
-    expect(ladder.querySelector(".spellBoostTier.best")?.textContent).toContain("resolves now");
+    const dialog = screen.getByRole("dialog", { name: /View Air/i });
+    expect(dialog.className).toContain("reactionTray");
+    expect(dialog.querySelector(".modalBackdrop")).toBeNull();
+    expect(screen.getByTestId("spell-boost-power").textContent).toContain("Power 0");
+    expect(dialog.querySelector(".spellBoostTier"), "there is no tier picker").toBeNull();
 
     // BOTH Tunic sides are tiles (the +2 used to be missing — the reported bug),
     // each wearing the card's face image.
@@ -73,7 +73,7 @@ describe("MapSpellBoostModal — battle-style Power picker", () => {
     const drawSide = screen.getByRole("button", {
       name: /Discard Tunic of the Cyclops King \(\+1 Power, draw 1\)/i
     });
-    expect(plusTwo.querySelector("img"), "tiles wear the card face").toBeTruthy();
+    expect(plusTwo.closest(".trayTile")?.querySelector("img"), "tiles wear the card face").toBeTruthy();
     expect(drawSide).toBeTruthy();
 
     // Clicking a tile dispatches the exact index-aligned CHOOSE_OPTION.
@@ -89,7 +89,7 @@ describe("MapSpellBoostModal — battle-style Power picker", () => {
     expect(action.optionIndex).toBe(plusTwoIndex);
 
     // The trailing "Resolve now" is a primary button dispatching the resolve index.
-    const resolve = screen.getByRole("button", { name: /Resolve now/i });
+    const resolve = screen.getByRole("button", { name: /Commit Power & Cast/i });
     fireEvent.click(resolve);
     const resolveAction = onAction.mock.calls[1]![0] as Extract<GameAction, { type: "CHOOSE_OPTION" }>;
     expect(resolveAction.optionIndex).toBe(boost!.offers.length);
@@ -117,10 +117,10 @@ describe("MapSpellBoostModal — battle-style Power picker", () => {
         viewerPlayerId="p1"
       />
     );
-    expect(screen.queryByRole("button", { name: /Resolve now/i })).toBeNull();
-    expect(screen.getByText(/printed cost must be paid/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Commit Power & Cast/i })).toBeNull();
+    expect(screen.getByText(/Pay the printed cost before resolving/i)).toBeTruthy();
     // The cost section names the source and offers the hand card as payment.
-    expect(screen.getByText(/Pay Titan's Cuirass/i)).toBeTruthy();
+    expect(screen.getAllByText(/Pay Titan's Cuirass/i).length).toBeGreaterThan(0);
     const pay = screen.getByRole("button", { name: /Discard Haste — pays Titan's Cuirass/i });
     fireEvent.click(pay);
     expect(onAction).toHaveBeenCalledTimes(1);

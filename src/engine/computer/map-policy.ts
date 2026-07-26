@@ -1830,6 +1830,11 @@ export function scoreMapAction(
         score: populationScore(observation, action),
         policy: "map.recruit-army",
       };
+    case "REDEEM_REINFORCEMENT_DISCOUNT":
+      return {
+        score: action.kind === "reinforce" ? 820 : 760,
+        policy: "map.redeem-reinforcement-discount",
+      };
     case "BUILD_STRUCTURE":
       return {
         score: buildingScore(

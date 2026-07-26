@@ -221,6 +221,7 @@ import type {
   PlayerId,
   PlayerState,
   RecruitDiscountVoucher,
+  ReinforcementDiscountBank,
   ResourceCost,
   ResourceKind,
   SpellSchool,
@@ -6692,6 +6693,23 @@ export function processPendingVisit(state: GameState): void {
             player.spellBook.push(step.spellCardId);
           } else {
             player.hand.push(step.spellCardId);
+          }
+        }
+
+        if (mode === "expert" && effect.expertRecallPlayedCards) {
+          for (const cardId of step.recallPlayedCardIds ?? []) {
+            if (
+              cardId === step.spellCardId ||
+              cardId === step.knowledgeCardId ||
+              cardId === step.castEnablerCardId
+            ) {
+              continue;
+            }
+            const playedIndex = player.discard.lastIndexOf(cardId);
+            if (playedIndex !== -1) {
+              player.discard.splice(playedIndex, 1);
+              player.hand.push(cardId);
+            }
           }
         }
 
@@ -15265,13 +15283,14 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   player.satyrMoraleRollUsedThisTurn = false;
   // Pandora's Bargain: Power upkeep is owed again each of the player's turns.
   player.pandoraUpkeepResolvedThisTurn = false;
-  // Legion artifacts: banked discount vouchers are current-turn — they expire now
-  // (the owner's next turn), like the other map abilities, so an unused voucher
-  // never carries over.
-  player.recruitDiscounts = [];
-  // Map draw-rider spell-Power bank (Sorcery / Scales) is a within-turn resource
-  // too — a value banked and never spent expires at the owner's next turn.
-  player.mapSpellPowerBank = 0;
+  // Under the new default, Legion, Necromancy/Hill-Fort and map draw-rider Power
+  // banks do NOT expire at turn start. Movement is their expiry seam. The old
+  // Binh fallback below preserves its former next-turn Legion expiry.
+  if (houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
+    player.recruitDiscounts = [];
+    player.legionDiscountCardIdsUsed = [];
+    player.reinforcementDiscounts = [];
+  }
 
   // "Resolve any 'at the beginning of your turn' abilities after drawing":
   // Necromancy Amplifier, Portal of Summoning, Mana Vortex.
@@ -16003,9 +16022,9 @@ function queueHalfCostReinforce(state: GameState, playerId: PlayerId): void {
       continue;
     }
 
-    // Half-cost (all resources, rounded up) — but a Legion voucher reserved for
-    // this unit may make it cheaper still (non-stacking; see reinforceCostFor),
-    // so the label and the affordability gate use the actual charged cost.
+    // Half-cost (all resources, rounded up) applies first; all Legion vouchers
+    // reserved for this unit then reduce the remaining gold, so the label and
+    // affordability gate use the actual charged cost.
     const finalCost = reinforceCostFor(state, playerId, unit.id, true, false, false);
     if (!finalCost || !hasResources(player, finalCost)) {
       continue;
@@ -16393,18 +16412,22 @@ function voucherMatchesPurchase(voucher: RecruitDiscountVoucher, purchase: Recru
 }
 
 /**
- * The largest Legion voucher gold reserved for this exact unit (0 if none).
- * Legion pieces NEVER stack with each other, so two pieces aimed at the same
- * unit yield the bigger of the two — never their sum.
+ * Sum of DISTINCT Legion-piece vouchers reserved for this exact unit (0 if
+ * none). Different pieces stack; duplicate copies of the same card id never do,
+ * which is the final read-side guard against Scholar/discard-recovery replay.
  */
 export function legionVoucherDiscount(state: GameState, playerId: PlayerId, purchase: RecruitPurchaseRef): number {
-  let best = 0;
+  let total = 0;
+  let largest = 0;
+  const counted = new Set<CardId>();
   for (const voucher of state.players[playerId]?.recruitDiscounts ?? []) {
-    if (voucherMatchesPurchase(voucher, purchase) && voucher.amount > best) {
-      best = voucher.amount;
+    if (voucherMatchesPurchase(voucher, purchase) && !counted.has(voucher.cardId)) {
+      counted.add(voucher.cardId);
+      total += voucher.amount;
+      largest = Math.max(largest, voucher.amount);
     }
   }
-  return best;
+  return houseRuleEnabled(state, "immediate-reinforcement-prompts") ? largest : total;
 }
 
 /**
@@ -16431,11 +16454,9 @@ export function externalRecruitGoldDiscount(state: GameState, playerId: PlayerId
  * the Cove Pub) — the two are ADDED. So a Champion on a Stables field (−6) plus a
  * 4-gold Legion voucher reserved for it is −10, not −6.
  *
- * What still does NOT stack: two Legion pieces aimed at the SAME unit (the larger
- * single voucher is taken, inside `legionVoucherDiscount`) and the building/
- * location sources among themselves (the larger is taken, inside
- * `externalRecruitGoldDiscount`). The Necromancy/Isra HALF-cost is handled
- * separately in `reinforceCostFor` and still competes (bigger wins), never stacks.
+ * Every distinct Legion piece stacks. The same physical piece is deduplicated by
+ * card id, and Necromancy/Hill Fort apply first in their reinforcement path
+ * before this flat total is subtracted from the amount still owed.
  * Pure read.
  */
 export function totalRecruitGoldDiscount(state: GameState, playerId: PlayerId, purchase: RecruitPurchaseRef): number {
@@ -16481,8 +16502,8 @@ export function consumeRecruitVoucherFor(state: GameState, playerId: PlayerId, p
  * One selectable target for a Legion discount side: a unit the player can
  * recruit or reinforce at their town right now. The two existing-discount fields
  * drive the prompt label:
- *  - `existingLegion` — a Legion voucher ALREADY reserved for this unit. The new
- *    piece does NOT stack with it (the larger single voucher is taken).
+ *  - `existingLegion` — distinct Legion pieces ALREADY reserved for this unit.
+ *    A new, different piece is added to them.
  *  - `existingExternal` — the building/location discount on this unit (Champions'
  *    Stables / Cove Pub). The new Legion piece STACKS on top of this.
  */
@@ -16577,9 +16598,8 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
 }
 
 /**
- * A Legion target's prompt label. The new piece STACKS with the building/
- * location discount (Champions' Stables / Cove Pub) but does NOT stack with
- * another Legion voucher already on the unit (the larger of the two is taken).
+ * A Legion target's prompt label. Distinct Legion pieces and building/location
+ * discounts all stack by addition.
  */
 function legionTargetLabel(target: LegionDiscountTarget, amount: number): string {
   const verb =
@@ -16591,19 +16611,14 @@ function legionTargetLabel(target: LegionDiscountTarget, amount: number): string
   if (target.existingLegion <= 0 && target.existingExternal <= 0) {
     return `${verb} ${target.unitName} — reduce cost by ${amount} gold`;
   }
-  // Legion-vs-Legion: keep the larger single voucher; then stack the external.
-  const legionPart = Math.max(target.existingLegion, amount);
+  const legionPart = target.existingLegion + amount;
   const total = legionPart + target.existingExternal;
   const notes: string[] = [];
   if (target.existingExternal > 0) {
     notes.push(`stacks with the −${target.existingExternal} gold building/location discount`);
   }
   if (target.existingLegion > 0) {
-    notes.push(
-      amount > target.existingLegion
-        ? `replaces the −${target.existingLegion} gold Legion voucher (Legion does not stack with Legion)`
-        : `keeps the larger −${target.existingLegion} gold Legion voucher (Legion does not stack with Legion)`
-    );
+    notes.push(`stacks with −${target.existingLegion} gold from other Legion pieces`);
   }
   return `${verb} ${target.unitName} — total −${total} gold; ${notes.join("; ")}`;
 }
@@ -16659,11 +16674,23 @@ function bankRecruitDiscountVoucher(
     return;
   }
   player.recruitDiscounts ??= [];
-  // The SAME Legion piece never banks twice in a turn (the legal-action layer
-  // hides a replay, this is the matching safety net).
-  if (player.recruitDiscounts.some((existing) => existing.cardId === voucher.cardId)) {
+  player.legionDiscountCardIdsUsed ??= [];
+  if (houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
+    // Preserve the old rule exactly: it only blocked a second copy while that
+    // piece's voucher was still waiting. Once spent, discard recovery could
+    // play it again later in the turn.
+    if (player.recruitDiscounts.some((banked) => banked.cardId === voucher.cardId)) {
+      return;
+    }
+    player.recruitDiscounts.push(voucher);
     return;
   }
+  // The SAME physical Legion piece never banks twice before movement, even if
+  // Scholar returned it after its first voucher had already been redeemed.
+  if (player.legionDiscountCardIdsUsed.includes(voucher.cardId)) {
+    return;
+  }
+  player.legionDiscountCardIdsUsed.push(voucher.cardId);
   player.recruitDiscounts.push(voucher);
 }
 
@@ -16674,15 +16701,11 @@ function bankRecruitDiscountVoucher(
  * spends nothing.
  */
 /**
- * The final (non-stacking) cost to flip a Few army unit to its Pack, BEFORE any
- * voucher is consumed — the shared truth for both the charge (reinforceArmyUnit)
- * and the prompt label/affordability (Necromancy, Isra). Discounts never stack:
- * the half-cost reward (`halfCost` halves every resource, `halfGoldOnly` only
- * gold) and the best FLAT gold discount (Champions' Stables, a Legion voucher
- * reserved for this unit, a future recruit-cost building / event) are rival
- * sources, each measured from the ORIGINAL printed price; the cheaper GOLD wins
- * and only that source's rules apply (so the half is never taken from an
- * already-discounted price). Returns null when the unit cannot be reinforced.
+ * Final cost to flip a Few army unit to its Pack, before vouchers are consumed.
+ * Percentage/source discounts apply FIRST (Necromancy/Isra), then every flat
+ * source is subtracted from what remains: Hill Fort/Cove Pub, building/location
+ * discounts, and all distinct Legion pieces. Returns null when the unit cannot
+ * be reinforced.
  */
 export function reinforceCostFor(
   state: GameState,
@@ -16693,10 +16716,8 @@ export function reinforceCostFor(
   roundDown: boolean,
   /**
    * Cove Pub: a flat gold discount applied to THIS reinforcement (min 0). HOUSE
-   * RULE: it STACKS with a Legion voucher and the Champions' Stables discount —
-   * the Pub discount is ADDED on top of `totalRecruitGoldDiscount`. It still
-   * competes with (never stacks with) the Necromancy/Isra HALF — the bigger of
-   * the combined flat discount vs. the half wins.
+   * It stacks with Legion and the Champions' Stables discount, after any
+   * half-cost source has already reduced the printed price.
    */
   flatGoldDiscount = 0
 ): ResourceCost | null {
@@ -16707,25 +16728,19 @@ export function reinforceCostFor(
   }
   const purchase: RecruitPurchaseRef = { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId };
   const half = (amount: number) => (roundDown ? Math.floor(amount / 2) : Math.ceil(amount / 2));
-  const halfApplies = halfCost || halfGoldOnly;
   const originalGold = packSide.cost.gold ?? 0;
-  const halfGold = half(originalGold);
-  // The Cove Pub flat discount STACKS with the Legion voucher + Champions' Stables
-  // (which already stack with each other inside totalRecruitGoldDiscount).
+  const sourceGold = halfCost || halfGoldOnly ? half(originalGold) : originalGold;
   const flatDiscount = flatGoldDiscount + totalRecruitGoldDiscount(state, playerId, purchase);
-  const flatGold = Math.max(0, originalGold - flatDiscount);
-  // The flat source wins only when it actually beats the half on gold; a tie (or
-  // no flat discount) keeps the half so its non-gold halving (Isra) still stands.
-  const useHalf = halfApplies && (flatDiscount <= 0 || halfGold <= flatGold);
+  const finalGold = houseRuleEnabled(state, "immediate-reinforcement-prompts") && (halfCost || halfGoldOnly)
+    ? Math.min(sourceGold, Math.max(0, originalGold - flatDiscount))
+    : Math.max(0, sourceGold - flatDiscount);
 
   const cost: ResourceCost = {};
   for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
     if (resource === "gold") {
-      cost.gold = useHalf ? halfGold : flatGold;
+      cost.gold = finalGold;
     } else {
-      // Only the half-ALL reward (Isra) reduces non-gold; half-gold-only
-      // (Necromancy) and the flat sources leave other resources at full price.
-      cost[resource] = useHalf && halfCost ? half(amount) : amount;
+      cost[resource] = halfCost ? half(amount) : amount;
     }
   }
   return cost;
@@ -16774,6 +16789,138 @@ export function reinforceArmyUnit(
     cost: finalCost
   });
   return true;
+}
+
+/** Bank a non-blocking Necromancy or Hill Fort reinforcement opportunity. */
+export function bankReinforcementDiscount(
+  state: GameState,
+  playerId: PlayerId,
+  source: ReinforcementDiscountBank["source"],
+  options: Pick<
+    ReinforcementDiscountBank,
+    "sourceName" | "allowedTiers" | "allowStack" | "halfGoldOnly" | "roundDown" | "flatGoldDiscount"
+  >
+): ReinforcementDiscountBank | null {
+  const player = state.players[playerId];
+  if (!player) {
+    return null;
+  }
+  player.reinforcementDiscounts ??= [];
+  const bank: ReinforcementDiscountBank = {
+    id: `reinforcement_${source}_${nextEventNumber(state)}_${player.reinforcementDiscounts.length}`,
+    source,
+    ...options
+  };
+  player.reinforcementDiscounts.push(bank);
+  return bank;
+}
+
+/**
+ * Price one banked reinforcement. The initiating source changes the printed
+ * price first; all distinct Legion pieces and other flat discounts then reduce
+ * the amount still owed.
+ */
+export function reinforcementDiscountCostFor(
+  state: GameState,
+  playerId: PlayerId,
+  discountId: string,
+  armyUnitId: string,
+  kind: "reinforce" | "stack"
+): ResourceCost | null {
+  const player = state.players[playerId];
+  const bank = player?.reinforcementDiscounts?.find((candidate) => candidate.id === discountId);
+  const unit = player?.army.find((candidate) => candidate.id === armyUnitId);
+  if (!player || !bank || !unit) {
+    return null;
+  }
+  const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+  if (!tier || !bank.allowedTiers.includes(tier)) {
+    return null;
+  }
+
+  let baseCost: ResourceCost | null = null;
+  let purchase: RecruitPurchaseRef;
+  if (kind === "stack") {
+    if (!bank.allowStack || !armyUnitStacksActive(state) || !polishArmyUnitCanBuyStack(unit)) {
+      return null;
+    }
+    baseCost = polishArmyUnitStackCost(unit);
+    purchase = { kind: "stack", unitDefId: unit.unitDefId, armyUnitId: unit.id };
+  } else {
+    if (unit.side !== "few") {
+      return null;
+    }
+    const pack = getUnitSide(unit.unitDefId, "pack");
+    if (!pack) {
+      return null;
+    }
+    baseCost = { ...pack.cost };
+    purchase = { kind: "reinforce", unitDefId: unit.unitDefId, armyUnitId: unit.id };
+  }
+  if (!baseCost) {
+    return null;
+  }
+
+  const sourceAdjusted: ResourceCost = { ...baseCost };
+  const printedGold = sourceAdjusted.gold ?? 0;
+  if (bank.halfGoldOnly) {
+    sourceAdjusted.gold = bank.roundDown ? Math.floor(printedGold / 2) : Math.ceil(printedGold / 2);
+  }
+  if (bank.flatGoldDiscount) {
+    sourceAdjusted.gold = Math.max(0, (sourceAdjusted.gold ?? 0) - bank.flatGoldDiscount);
+  }
+  return applyRecruitGoldDiscount(state, playerId, purchase, sourceAdjusted);
+}
+
+/** Redeem and consume one banked reinforcement opportunity. */
+export function redeemReinforcementDiscount(
+  state: GameState,
+  playerId: PlayerId,
+  discountId: string,
+  armyUnitId: string,
+  kind: "reinforce" | "stack"
+): void {
+  const player = state.players[playerId];
+  const bankIndex = player?.reinforcementDiscounts?.findIndex((candidate) => candidate.id === discountId) ?? -1;
+  const bank = bankIndex >= 0 ? player?.reinforcementDiscounts?.[bankIndex] : undefined;
+  const unit = player?.army.find((candidate) => candidate.id === armyUnitId);
+  const cost = reinforcementDiscountCostFor(state, playerId, discountId, armyUnitId, kind);
+  if (!player || !bank || !unit || !cost) {
+    throw new Error("That banked reinforcement no longer applies to this unit.");
+  }
+  if (!hasRecruitResources(state, playerId, cost)) {
+    throw new Error(`Not enough resources to reinforce with ${bank.sourceName}.`);
+  }
+
+  spendRecruitResources(state, playerId, cost, `${bank.sourceName} reinforcement`);
+  const purchase: RecruitPurchaseRef =
+    kind === "stack"
+      ? { kind: "stack", unitDefId: unit.unitDefId, armyUnitId: unit.id }
+      : { kind: "reinforce", unitDefId: unit.unitDefId, armyUnitId: unit.id };
+  if (kind === "stack") {
+    unit.stacks = (unit.stacks ?? 0) + 1;
+    diluteUnitExperienceForUpgrade(state, playerId, unit, "stack");
+    appendEvent(state, {
+      type: "ARMY_STACK_PURCHASED",
+      playerId,
+      armyUnitId: unit.id,
+      unitDefId: unit.unitDefId,
+      stacks: unit.stacks,
+      cost
+    });
+  } else {
+    unit.side = "pack";
+    diluteUnitExperienceForUpgrade(state, playerId, unit, "reinforce");
+    appendEvent(state, {
+      type: "UNIT_RECRUITED",
+      playerId,
+      unitDefId: unit.unitDefId,
+      kind: "reinforce",
+      cost
+    });
+  }
+  consumeRecruitVoucherFor(state, playerId, purchase);
+  player.reinforcementDiscounts!.splice(bankIndex, 1);
 }
 
 /**
@@ -17002,10 +17149,8 @@ export function queueNecromancyReinforce(
       continue;
     }
 
-    // Half the gold (rounded down) — but a Legion voucher reserved for this unit
-    // may beat that (non-stacking, and the half is still figured from the
-    // ORIGINAL price; see reinforceCostFor), so price and gate on the actual
-    // charged cost.
+    // Half the printed gold (rounded down) applies first; all distinct Legion
+    // vouchers then reduce what remains. Price and gate on the actual charge.
     const cost = reinforceCostFor(state, playerId, unit.id, false, true, true);
     if (!cost || !hasRecruitResources(state, playerId, cost)) {
       continue;

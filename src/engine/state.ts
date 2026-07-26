@@ -179,6 +179,11 @@ export type HouseRuleId =
   // a View Earth remote capture is NOT intercepted. See `garrisonDefenderFor` /
   // `garrisonDefenseKeepsCards` (adventure-reducer.ts).
   | "mine-army-defense"
+  // Old BINH reinforcement timing: playing Necromancy or visiting a Hill Fort
+  // immediately opens a blocking pick-and-pay upgrade prompt. Off (new default):
+  // the effect banks its reinforcement discount; the player may add Legion
+  // pieces and redeem it later, until one of their heroes moves a step.
+  | "immediate-reinforcement-prompts"
   // BINH house rule (default OFF in BOTH modes — the OFFICIAL reading is the
   // default): while ON, elemental damage ALSO skips the Attack die entirely and
   // can never be RAISED by attack cards / Attack tokens (only lowered) — the old
@@ -1425,8 +1430,10 @@ export type EffectDefinition =
        * recruitable/reinforceable unit, then banks a one-shot voucher of `amount`
        * gold reserved for that exact unit (player.recruitDiscounts). The artifact
        * card resolves to the discard pile at once — it is never an ongoing effect.
-       * The voucher never stacks (the cost path takes the single largest discount)
-       * and is consumed when its unit is recruited/reinforced. See
+       * Different Legion pieces stack with one another and other reinforcement
+       * discounts. The same piece cannot bank twice before movement, even if a
+       * discard-recovery effect returns it. The voucher is consumed when its
+       * unit is recruited/reinforced. See
        * `queueLegionDiscountChoice` and the `BANK_RECRUIT_DISCOUNT` visit step.
        */
       type: "GAIN_RECRUIT_DISCOUNT";
@@ -3850,6 +3857,18 @@ export type GameAction =
       type: "POPULATION_ACTION";
       playerId: PlayerId;
       purchases: { kind: "recruit" | "reinforce" | "stack"; unitDefId: string; armyUnitId?: string }[];
+    }
+  | {
+      /**
+       * Redeem one non-blocking Necromancy / Hill Fort reinforcement bank.
+       * The source discount is applied first, then every distinct Legion piece
+       * and other flat discount is subtracted from the remaining gold.
+       */
+      type: "REDEEM_REINFORCEMENT_DISCOUNT";
+      playerId: PlayerId;
+      discountId: string;
+      armyUnitId: string;
+      kind: "reinforce" | "stack";
     }
   | {
       /**
@@ -7010,16 +7029,15 @@ export type SpellScrollState = {
 /**
  * A Legion artifact discount voucher (Legs/Loins/Torso/Arms/Head of Legion).
  * Playing a Legion discount side opens a prompt to pick ONE specific unit; the
- * choice banks a voucher reserved for that exact recruit/reinforce target. The
- * cost path NEVER stacks discounts — neither two Legion pieces aimed at the same
- * unit nor a Legion piece with another source (Champions' Stables, a recruit-cost
- * building, a discount event…). It always applies the single LARGEST applicable
- * gold discount, each computed from the unit's ORIGINAL printed cost. A voucher
- * is consumed when its target unit is recruited/reinforced (whichever path), and
- * any unused vouchers expire at the start of the owner's next turn.
+ * choice banks a voucher reserved for that exact recruit/reinforce target.
+ * Every distinct Legion piece aimed at that unit stacks with the others and
+ * with external flat discounts. Necromancy/Hill Fort alter the printed price
+ * first, then these vouchers reduce the remaining gold. A voucher is consumed
+ * when its target unit is bought; unused vouchers expire only when one of the
+ * owner's heroes moves a step.
  */
 export type RecruitDiscountVoucher = {
-  /** The Legion artifact card id that banked this voucher (one per piece per turn). */
+  /** The Legion artifact card id that banked this voucher (one per piece between hero steps). */
   cardId: CardId;
   /** Gold knocked off the targeted unit's recruit/reinforce, floored at 0. */
   amount: number;
@@ -7029,6 +7047,27 @@ export type RecruitDiscountVoucher = {
     | { kind: "reinforce"; armyUnitId: string }
     /** Polish Unit Stacks: reserved for one army card's Stack purchase. */
     | { kind: "stack"; armyUnitId: string };
+};
+
+/**
+ * A reinforcement opportunity banked by Necromancy or a Hill Fort. Unlike the
+ * old blocking prompt, this sits on the player until redeemed or until one of
+ * their heroes moves a step, leaving time to play stackable Legion pieces.
+ */
+export type ReinforcementDiscountBank = {
+  id: string;
+  source: "necromancy" | "hill-fort";
+  /** Human-readable source card/object name used in action labels and logs. */
+  sourceName: string;
+  /** Unit tiers this source may reinforce. */
+  allowedTiers: ("bronze" | "silver" | "gold" | "azure")[];
+  /** Necromancy may also buy a Unit Stack when that rules module is active. */
+  allowStack?: boolean;
+  /** Necromancy: halve only the printed gold, using the printed rounding rule. */
+  halfGoldOnly?: boolean;
+  roundDown?: boolean;
+  /** Hill Fort: subtract this from printed gold before Legion discounts. */
+  flatGoldDiscount?: number;
 };
 
 /** The six gradeable stats of a WOG commander (see src/data/commanders.ts). */
@@ -7276,26 +7315,25 @@ export type PlayerState = {
   nomadStepDoneThisTurn?: boolean;
   /**
    * Legion artifacts (Legs/Loins/Torso/Arms/Head of Legion): per-unit discount
-   * vouchers. Playing a Legion discount side opens a prompt to pick the single
-   * unit it applies to, banking one voucher reserved for that exact target. HOUSE
-   * RULE: a Legion voucher STACKS with the building/location discount (Champions'
-   * Stables, Cove Pub) — the two are ADDED on the same unit. It does NOT stack
-   * with another Legion voucher on the same unit (the larger single voucher is
-   * taken), and it competes with (never stacks with) the Necromancy/Isra HALF.
-   * A voucher is consumed when its unit is recruited/reinforced; each Legion piece
-   * may bank at most one voucher per turn (the SAME piece cannot stack with
-   * itself), and all unused vouchers expire at the start of the owner's next turn.
-   * See `totalRecruitGoldDiscount`/`consumeRecruitVoucherFor`.
+   * vouchers. Different Legion pieces STACK by addition with one another and with
+   * every other reinforcement discount. A physical piece cannot stack with itself
+   * after Scholar (or another discard-recovery effect) returns it; the used-card
+   * ledger below enforces that until movement. A target's vouchers are consumed
+   * when that purchase resolves; otherwise they remain until a hero moves.
    */
   recruitDiscounts?: RecruitDiscountVoucher[];
+  /** Legion piece ids already used since this player's last hero step. */
+  legionDiscountCardIdsUsed?: CardId[];
+  /** Necromancy / Hill Fort opportunities waiting to be redeemed. */
+  reinforcementDiscounts?: ReinforcementDiscountBank[];
   /**
    * Map-side twin of `combatStats.pendingDrawRiderSpellPower`: +Power banked by
    * playing a Sorcery / Scales-of-the-Greater-Basilisk-style "+Power, then draw
    * a card" rider on the MAP (outside any combat). It counts toward the Power a
    * map Spell needs (View Air / Dimension Door / Fly / Town Portal tiers), so a
-   * hero can bank Power, draw, then cast the drawn Spell for less. Consumed by
-   * the next map Spell that pays a Power cost, and cleared when the hero moves
-   * (the banked Power "goes away after you move") or at the owner's next turn.
+   * hero can bank Power, draw, then cast the drawn Spell for less. Resolving a
+   * map Spell consumes the whole bank; an unused bank is cleared only when one
+   * of the owner's heroes moves a step.
    */
   mapSpellPowerBank?: number;
   /** Rogues (army map ability): the once-per-turn deck peek was used this turn. */
@@ -9488,12 +9526,12 @@ export type VisitStep =
   | { type: "DISCOVER_ADJACENT_TILE" }
   | {
       /**
-       * Knowledge reaction after a Spell resolves on the map. Basic recall
+       * Knowledge / Mysticism reaction after a Spell resolves on the map. Basic
        * (mode "basic"/absent) takes the Spell back without a crown — there is
-       * no per-turn spell limit outside combat. Expert (mode "expert") also
-       * spends a crown and raises the combat-round spell limit by 1 (the printed
-       * expert side; mostly cosmetic on the map). Empowered Knowledge always
-       * recalls with the limit bonus and never spends a crown.
+       * no per-turn spell limit outside combat. Regular Knowledge therefore
+       * never needs expert here. Expert Mysticism spends a crown and also
+       * returns the other discardable cards played with the cast. Empowered
+       * Knowledge recalls with its printed limit bonus.
        * The spell may already be in the discard pile, or held in play by an
        * ongoing effect; the latter is marked to return when it expires.
        * `fromSpellBook` routes a Book-cast Spell back into the Spell Book
@@ -9505,7 +9543,9 @@ export type VisitStep =
       fromSpellBook?: boolean;
       /** Polish Book: recall this generic cast card, leaving the Spell used. */
       castEnablerCardId?: CardId;
-      /** "basic" (default) = free recall; "expert" = crown + limit bonus. */
+      /** Other support cards expert Mysticism may return from discard. */
+      recallPlayedCardIds?: CardId[];
+      /** "basic" (default) = free recall; "expert" = Mysticism + one crown. */
       mode?: CardPlayMode;
     }
   | {
@@ -13333,7 +13373,19 @@ export type PendingChoice =
               value: number;
               fromHandCardId?: CardId;
             }
+          | {
+              /**
+               * Tome of X: discard the matching Tome to lift this cast directly
+               * to its highest useful map Power through the open Power tray.
+               */
+              kind: "tome-max";
+              cardId: CardId;
+              optionIndex: number;
+              value: number;
+            }
         >;
+        /** Display/resolution Power after Tome/Orb-style multipliers. */
+        effectivePower?: number;
         /** Basic Magic expert already spent on this cast (once per cast, like combat). */
         schoolFetchExpertUsed?: boolean;
         /** School permanent already experted on this cast. */
