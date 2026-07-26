@@ -355,6 +355,7 @@ import {
   reshuffleSharedDeckIfEmpty,
   shuffleCards
 } from "./decks";
+import { maybeReturnFirstSpellToHand, noteMapSpellCast } from "./spell-lifecycle";
 import {
   cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
@@ -1942,7 +1943,12 @@ function stripCombatHealthBonusFromRemovedEffects(
  * one-Spell-per-round accounting) and fires any ongoing "after casting a Spell,
  * draw N cards" effects (Zydar's Sorcery VI).
  */
-function noteSpellCast(state: GameState, player: PlayerState, countsTowardLimit = true): void {
+function noteSpellCast(
+  state: GameState,
+  player: PlayerState,
+  countsTowardLimit = true,
+  inFlightCardIds: readonly CardId[] = []
+): void {
   // Neon Microphone: consume the first-spell +1 Power charge on any real spell cast.
   markEquipmentFirstSpellCast(state, player.id);
   // Free bonus casts (Helm of the Alabaster Unicorn Spell-deck cast, Spell Scroll
@@ -1989,8 +1995,41 @@ function noteSpellCast(state: GameState, player: PlayerState, countsTowardLimit 
     }
   }
   if (draws > 0) {
-    drawCardsForPlayer(state, player.id, draws);
+    drawCardsForPlayer(state, player.id, draws, { inFlightCardIds });
   }
+}
+
+function castInFlightCardIds(
+  state: GameState,
+  action: Extract<GameAction, { type: "CAST_SPELL" }>
+): CardId[] {
+  if (action.fromScroll) {
+    return [];
+  }
+  if (action.fromSpellDeck) {
+    return cardLibrary[action.fromSpellDeck]?.kind === "hero-specialty"
+      ? [action.fromSpellDeck]
+      : [];
+  }
+  if (action.fromSpellBook && polishSpellBookEnabled(state)) {
+    return action.castEnablerCardId ? [action.castEnablerCardId] : [];
+  }
+  return [action.cardId];
+}
+
+function stackInFlightCardIds(
+  state: GameState,
+  stackItem: ResolutionStackItem | undefined
+): CardId[] {
+  if (!stackItem) {
+    return [];
+  }
+  return [
+    ...(stackItem.action.type === "CAST_SPELL"
+      ? castInFlightCardIds(state, stackItem.action)
+      : []),
+    ...stackItem.modifiers.playedCardIds
+  ];
 }
 
 function createAttackBuffFromCard(
@@ -5865,7 +5904,9 @@ function applyOnAttackDieDraw(
     if (!forceRoll && attackRoll !== draw.onRoll) {
       continue;
     }
-    drawCardsForPlayer(state, attacker.controllerId, draw.amount);
+    drawCardsForPlayer(state, attacker.controllerId, draw.amount, {
+      inFlightCardIds: stackInFlightCardIds(state, state.stack.at(-1))
+    });
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
@@ -9947,7 +9988,9 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     finishResolvedAttack(state, stackItem, details, slayerCandidate, cards);
     if (stackItem.modifiers.slayerDraw) {
       stackItem.modifiers.slayerDraw = false;
-      drawCardsForPlayer(state, details.attacker.controllerId, 1);
+      drawCardsForPlayer(state, details.attacker.controllerId, 1, {
+        inFlightCardIds: stackInFlightCardIds(state, stackItem)
+      });
     }
     return;
   }
@@ -10382,7 +10425,9 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     }
 
     if (card?.effect.type === "DRAW_CARDS") {
-      drawCardsForPlayer(state, stackItem.action.playerId, getEffectAmount(card.effect, "basic"));
+      drawCardsForPlayer(state, stackItem.action.playerId, getEffectAmount(card.effect, "basic"), {
+        inFlightCardIds: stackInFlightCardIds(state, stackItem)
+      });
     }
 
     if (card?.effect.type === "CREATE_INITIATIVE_BUFF" && state.combat && stackItem.action.target.type === "unit") {
@@ -11059,38 +11104,6 @@ function refreshPolishUsedSpell(state: GameState, playerId: PlayerId, cardId: Ca
 }
 
 /**
- * Astrologers — Crazy Wizard: until the next Astrologers round, the first
- * spell card each player plays returns to their hand instead of staying in
- * the discard pile.
- */
-function maybeReturnFirstSpellToHand(state: GameState, playerId: PlayerId, cardId: string): void {
-  const astrologers = state.adventure?.astrologers;
-  if (!astrologers || getActiveAstrologersCard(state)?.effect.type !== "FIRST_SPELL_RETURNS") {
-    return;
-  }
-
-  if (astrologers.crazyWizardUsedBy.includes(playerId)) {
-    return;
-  }
-
-  const player = state.players[playerId];
-  const discardIndex = player?.discard.lastIndexOf(cardId) ?? -1;
-  if (!player || discardIndex === -1) {
-    return;
-  }
-
-  player.discard.splice(discardIndex, 1);
-  player.hand.push(cardId);
-  astrologers.crazyWizardUsedBy.push(playerId);
-  appendEvent(state, {
-    type: "SPELL_RETURNED_TO_HAND",
-    playerId,
-    cardId,
-    reason: "Crazy Wizard"
-  });
-}
-
-/**
  * Knowledge / Mysticism recalls declared into an ATTACK window are held (see
  * modifiers.deferredSpellRecalls) until the attack has finished resolving, then
  * released here — so the recalled copy is never in hand while the same attack is
@@ -11429,7 +11442,8 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   noteSpellCast(
     state,
     caster,
-    !action.fromSpellDeck && !action.tarnumReturn && !action.fromScroll
+    !action.fromSpellDeck && !action.tarnumReturn && !action.fromScroll,
+    castInFlightCardIds(state, action)
   );
 
   const stackItem = makeStackItem(state, action);
@@ -11904,7 +11918,9 @@ function payOptionCardCost(
     const schools = playedCard.spellSchools ?? [];
     const draws = paying.reduce((sum, cardId) => sum + spellPowerSourceDrawCards(cards[cardId], schools), 0);
     if (draws > 0) {
-      drawCardsForPlayer(state, playerId, draws);
+      drawCardsForPlayer(state, playerId, draws, {
+        inFlightCardIds: [playedCard.id, ...paying]
+      });
     }
   }
 
@@ -12246,12 +12262,30 @@ function applyReactionPlayCore(
     }
   }
 
+  const reactionInFlightCardIds: CardId[] = [
+    ...stackInFlightCardIds(state, stackItem),
+    ...(!play.fromScroll && !play.tarnumReturn
+      ? play.fromSpellBook && polishSpellBookEnabled(state)
+        ? play.castEnablerCardId
+          ? [play.castEnablerCardId]
+          : []
+        : !option?.cost?.removeSelf
+          ? [play.cardId]
+          : []
+      : [])
+  ];
+
   if (card.kind === "spell" && state.combat && player) {
     // A Tarnum VI over-limit reaction and a Spell Scroll instant are free: they
     // do not bump the per-round limit (noteSpellCast still closes the
     // first-spell-this-round gate for them). A Book instant DOES count — it
     // casts like a hand Spell and shares the limit.
-    noteSpellCast(state, player, !play.tarnumReturn && !play.fromScroll);
+    noteSpellCast(
+      state,
+      player,
+      !play.tarnumReturn && !play.fromScroll,
+      reactionInFlightCardIds
+    );
   }
 
   // A spell instant played into a pending ATTACK may be taken back by a
@@ -12697,7 +12731,9 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
     recomputePowerScaledAttackInstants(stackItem);
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards);
+      drawCardsForPlayer(state, playerId, effect.drawCards, {
+        inFlightCardIds: reactionInFlightCardIds
+      });
     }
   }
 
@@ -12717,7 +12753,9 @@ function applyReactionPlayCore(
 
   if (effect.type === "GAIN_MORALE") {
     if (mode === "expert" && effect.expertDrawCards) {
-      drawCardsForPlayer(state, playerId, effect.expertDrawCards);
+      drawCardsForPlayer(state, playerId, effect.expertDrawCards, {
+        inFlightCardIds: reactionInFlightCardIds
+      });
     }
     changeMorale(state, playerId, effect.amount);
   }
@@ -12880,14 +12918,16 @@ function applyReactionPlayCore(
     }
 
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards);
+      drawCardsForPlayer(state, playerId, effect.drawCards, {
+        inFlightCardIds: reactionInFlightCardIds
+      });
     }
 
     // Blackshard of the Dead Knight: the option discarded 1 card; draw 1 only
     // when that paid card was a Spell. The cost cards were already moved to the
     // discard pile by payOptionCardCost above, so inspect the paid ids.
     if (effect.drawIfCostCardSpell && (play.costCardIds ?? []).some((id) => cards[id]?.kind === "spell")) {
-      drawCardsForPlayer(state, playerId, 1);
+      drawCardsForPlayer(state, playerId, 1, { inFlightCardIds: reactionInFlightCardIds });
     }
 
     // Spells (Curse/Weakness/Bloodlust/Precision) may be cancelled by the other
@@ -13066,8 +13106,10 @@ function applyReactionPlayCore(
   }
 
   if (effect.type === "DRAW_CARDS") {
-    drawCardsForPlayer(state, playerId, effectAmount);
     stackItem?.modifiers.playedCardIds.push(play.cardId);
+    drawCardsForPlayer(state, playerId, effectAmount, {
+      inFlightCardIds: reactionInFlightCardIds
+    });
   }
 
   // Kriv (Bulwark)'s rune-synergy specialty played as a REACTION to an enemy
@@ -13079,7 +13121,9 @@ function applyReactionPlayCore(
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, playerId, effect.amount);
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards);
+      drawCardsForPlayer(state, playerId, effect.drawCards, {
+        inFlightCardIds: reactionInFlightCardIds
+      });
     }
     stackItem?.modifiers.playedCardIds.push(play.cardId);
   }
@@ -13288,7 +13332,9 @@ function applyReactionPlayCore(
         removeToken(state, unit, "paralysis", "dispelled");
       }
       if (effect.drawCards) {
-        drawCardsForPlayer(state, playerId, effect.drawCards);
+        drawCardsForPlayer(state, playerId, effect.drawCards, {
+          inFlightCardIds: reactionInFlightCardIds
+        });
       }
     }
   }
@@ -14409,12 +14455,22 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       standingSpellPower(state, action.playerId, card) +
       getSchoolPowerBonus(state, action.playerId, card) +
       mapBank;
+    const inFlightCardIds =
+      action.fromSpellBook && polishSpellBookEnabled(state)
+        ? action.castEnablerCardId
+          ? [action.castEnablerCardId]
+          : []
+        : [action.cardId];
+    // Map spells share the cast lifecycle without touching combat-round limits:
+    // close first-spell-this-turn gates, consume equipment, and fire cast draws.
+    noteMapSpellCast(state, action.playerId, inFlightCardIds);
     if (player && mapBank > 0) {
       player.mapSpellPowerBank = 0;
     }
     openMapSpellBoost(state, action.playerId, action.cardId, startingPower, {
       ...(action.fromSpellBook ? { fromSpellBook: true as const } : {}),
-      ...(action.castEnablerCardId ? { castEnablerCardId: action.castEnablerCardId } : {})
+      ...(action.castEnablerCardId ? { castEnablerCardId: action.castEnablerCardId } : {}),
+      inFlightCardIds
     });
     return;
   }
@@ -14423,6 +14479,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (!effect) {
     throw new Error(`${card.name} needs a chosen option.`);
   }
+  const selectedOption = getChosenOption(card, action.optionIndex);
+  const isPolishBookPlay =
+    Boolean(action.fromSpellBook) && polishSpellBookEnabled(state);
+  const playInFlightCardIds: CardId[] = [
+    ...(!selectedOption?.cost?.removeSelf && !isPolishBookPlay
+      ? [action.cardId]
+      : []),
+    ...(isPolishBookPlay && action.castEnablerCardId
+      ? [action.castEnablerCardId]
+      : [])
+  ];
 
   // Tactics is never played from hand: the swap is offered by the engine in the
   // start-of-combat window or on the holder's turn (SWAP_COMBAT_UNITS), and
@@ -14455,7 +14522,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error("First Aid's expert side resolves when you use your First Aid Tent, not from hand.");
   }
 
-  const option = getChosenOption(card, action.optionIndex);
+  const option = selectedOption;
   const mode = action.mode ?? "basic";
   if (option?.expertOnly && mode !== "expert") {
     throw new Error(`${option.label} is the card's expert side.`);
@@ -14531,6 +14598,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     if (playerForLimit.combatStats.spellsCastThisRound >= spellLimitFor(state, playerForLimit)) {
       throw new Error("Spell limit reached for this combat round.");
     }
+    // This direct-play path records the cast before moving its physical card,
+    // so no just-played card is in the discard during the after-cast draw yet.
     noteSpellCast(state, playerForLimit);
   }
 
@@ -14631,7 +14700,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     // Rion's Battlefield Medic: "Remove 1 damage … then draw 1 card."
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards);
+      drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+        inFlightCardIds: playInFlightCardIds
+      });
     }
   }
 
@@ -14652,7 +14723,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     // Astra's Cure I: "… then draw 1 card."
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards);
+      drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+        inFlightCardIds: playInFlightCardIds
+      });
     }
   }
 
@@ -15109,7 +15182,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "DRAW_CARDS") {
     const handBefore = state.players[action.playerId].hand.length;
-    drawCardsForPlayer(state, action.playerId, getEffectAmount(effect, mode));
+    drawCardsForPlayer(state, action.playerId, getEffectAmount(effect, mode), {
+      inFlightCardIds: playInFlightCardIds
+    });
     // Charm of Mana / Shackles of War: "draw N, then discard M". The discard is
     // a follow-up choice; `thenDiscardDrawnOnly` limits it to the drawn cards.
     if (effect.thenDiscard) {
@@ -15133,7 +15208,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     !state.reactionWindow &&
     state.stack.length === 0
   ) {
-    drawCardsForPlayer(state, action.playerId, effect.drawCards);
+    drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+      inFlightCardIds: playInFlightCardIds
+    });
     if (effect.type === "ADD_SPELL_POWER" && state.combat) {
       const combat = state.combat;
       const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
@@ -15166,7 +15243,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "GAIN_MORALE") {
     if (mode === "expert" && effect.expertDrawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.expertDrawCards);
+      drawCardsForPlayer(state, action.playerId, effect.expertDrawCards, {
+        inFlightCardIds: playInFlightCardIds
+      });
     }
     changeMorale(state, action.playerId, effect.amount);
   }
@@ -15392,7 +15471,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     // Shield of Naval Glory (Sea side): the +1 movement comes with a card draw.
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards);
+      drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+        inFlightCardIds: playInFlightCardIds
+      });
     }
   }
 
@@ -15790,7 +15871,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       // is held out of the draw's own empty-deck reshuffle too, so it can never
       // be the card drawn even when nothing else is left anywhere.
       player.discard = playedCard;
-      drawCardsForPlayer(state, action.playerId, effect.drawCards, { playedCardId: action.cardId });
+      drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+        inFlightCardIds: playInFlightCardIds
+      });
     }
   }
 
@@ -15800,7 +15883,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, action.playerId, effect.amount);
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards);
+      drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+        inFlightCardIds: playInFlightCardIds
+      });
     }
   }
 
@@ -15854,7 +15939,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // its printed count (digFromOwnDeckTop; the revealed cards are held here,
     // never discarded mid-dig, so they can never be dealt twice).
     const revealed = digFromOwnDeckTop(state, action.playerId, effect.count, "deck-dig-keep-one", {
-      playedCardId: action.cardId
+      inFlightCardIds: [action.cardId]
     }).cardIds;
     if (revealed.length === 1) {
       // Polish Spell Book: owned Spells enter the Book, not hand.
@@ -15887,7 +15972,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // and pushed to the discard pile only afterwards, so the reshuffle can never
     // deal a card this same dig already rejected.
     const dig = digFromOwnDeckTop(state, action.playerId, effect.count, "deck-dig-keep-matching", {
-      playedCardId: action.cardId
+      inFlightCardIds: [action.cardId]
     });
     const kept: CardId[] = [];
     const discarded: CardId[] = [];
@@ -15955,7 +16040,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // Search (N) really reveals N whenever the player owns that many cards (the
     // revealed cards are held out of both piles, so none can be shown twice).
     const revealed = digFromOwnDeckTop(state, action.playerId, effect.count, "search-deck-then-reshuffle", {
-      playedCardId: action.cardId
+      inFlightCardIds: [action.cardId]
     }).cardIds;
     if (revealed.length > 1) {
       state.pendingChoice = {
@@ -16017,7 +16102,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         at: "factory"
       });
     } else if (effect.fallbackDrawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.fallbackDrawCards);
+      drawCardsForPlayer(state, action.playerId, effect.fallbackDrawCards, {
+        inFlightCardIds: playInFlightCardIds
+      });
     }
   }
 

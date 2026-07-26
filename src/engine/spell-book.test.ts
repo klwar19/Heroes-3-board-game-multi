@@ -489,6 +489,18 @@ describe("Spell Book — map Spells", () => {
     const state = adventure("book-map-cast");
     state.players.p1.hand = [];
     state.players.p1.spellBook = ["spell.town_portal"];
+    const occupied = new Set(
+      Object.values(state.heroes)
+        .map((hero) => hero.spaceId)
+        .filter((spaceId): spaceId is string => Boolean(spaceId))
+    );
+    const destination = Object.values(state.adventure!.fields).find(
+      (field) => !occupied.has(field.spaceId)
+    );
+    expect(destination).toBeTruthy();
+    destination!.location = "settlement";
+    destination!.flagOwnerId = "p1";
+    destination!.blackCube = false;
 
     const play = legal(state, "p1").find(
       (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "spell.town_portal" && l.action.fromSpellBook === true

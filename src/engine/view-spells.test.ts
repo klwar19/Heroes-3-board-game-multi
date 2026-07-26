@@ -394,6 +394,14 @@ describe("View Earth captures an enemy Mine", () => {
 });
 
 describe("View Earth reach scales with the Power paid", () => {
+  it("is not offered when the only useful tier is beyond the available Power", () => {
+    const state = withHand(makeGame(), ["spell.view_earth"]);
+    const hero = heroP1(state);
+    placeMine(state, spaceAtDistance(hero.spaceId!, 3), "p2", "valuables", 1);
+
+    expect(viewEarthCasts(state)).toBe(0);
+  });
+
   it("a Mine two fields away is captured after boosting to Power 1", () => {
     let state = withHand(makeGame(), ["spell.view_earth", "spell.haste", "spell.slow"]);
     const hero = heroP1(state);

@@ -611,6 +611,9 @@ describe("turn-start town buildings", () => {
 
     // End p1's turn: p2's turn starts and the amplifier prompt queues.
     state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(state.players.p2.canMulligan).toBe(true);
+    state = applyOk(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
 
     const visit = state.adventure?.pendingVisit;
     expect(visit?.playerId).toBe("p2");
@@ -635,6 +638,8 @@ describe("turn-start town buildings", () => {
     state.players.p2.discard.push("specialty.sandro.1");
 
     state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+    expect(state.adventure?.pendingVisit).toBeNull();
+    state = applyOk(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
 
     const step = state.adventure?.pendingVisit?.steps[0];
     expect(step?.type).toBe("CHOOSE_ONE");
@@ -690,6 +695,8 @@ describe("turn-start town buildings", () => {
     state.players.p2.discard = state.players.p2.discard.filter((id) => id !== "ability.necromancy");
 
     state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+    expect(state.adventure?.pendingVisit).toBeNull();
+    state = applyOk(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
 
     const step = state.adventure?.pendingVisit?.steps[0];
     expect(step?.type).toBe("CHOOSE_ONE");
@@ -703,9 +710,17 @@ describe("turn-start town buildings", () => {
     let state = createAdventureGameState({ seed: "vortex-seed", rollFirstPlayer: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.towns.town_p2.buildings.push("dungeon.mana_vortex");
-    state.players.p2.discard = ["stat.attack"];
+    state.players.p2.hand = ["stat.knowledge"];
+    state.players.p2.deck = ["stat.attack", "stat.power", "stat.defense"];
+    state.players.p2.discard = ["spell.bless"];
 
     state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+    // Beginning-of-turn building effects wait for the player's draw/discard
+    // phase. The freshly drawn Defense card is therefore visible to the Vortex.
+    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(state.players.p2.hand).not.toContain("stat.defense");
+    state = applyOk(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
+    expect(state.players.p2.hand).toContain("stat.defense");
 
     const visit = state.adventure?.pendingVisit;
     const step = visit?.steps[0];

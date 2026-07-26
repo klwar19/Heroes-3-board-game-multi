@@ -2294,12 +2294,12 @@ describe("rules engine prototype", () => {
       target: { type: "none" }
     });
 
-    // The played card joins the discard first, then the old discard becomes
-    // the new deck, one card is drawn, and one remains in the pile.
+    // The resolving card is held out. Only the two OLD discard cards become
+    // the new deck; one is drawn and one remains there.
     expect(findEvent(drawn, "CARDS_DRAWN")).toMatchObject({ count: 1, reshuffledDiscard: true });
     expect(drawn.players.p1.hand.length).toBe(1);
-    expect(drawn.players.p1.deck.length).toBe(2);
-    expect(drawn.players.p1.discard).toEqual([]);
+    expect(drawn.players.p1.deck.length).toBe(1);
+    expect(drawn.players.p1.discard).toEqual(["artifact.breastplate_of_petrified_wood"]);
   });
 
   it("searches a shared deck, keeps one reveal, and discards the rest", () => {

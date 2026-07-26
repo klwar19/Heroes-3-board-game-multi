@@ -154,6 +154,7 @@ import {
   queueExplorersEmpower,
   queueFreeBronzeReinforce,
   queueSkeletonReinforce,
+  queueTurnStartBuildingChoices,
   recordLevelUpAbilityPick,
   clearPendingLevelUpAbilitySearch,
   reinforceArmyUnit,
@@ -226,6 +227,7 @@ import {
   SIEGE_ROW_POSITIONS
 } from "./siege";
 import { drawCardsForPlayer, reshuffleSharedDeckIfEmpty, shuffleCards } from "./decks";
+import { maybeReturnFirstSpellToHand } from "./spell-lifecycle";
 import { getCombatStartDraws, getCombatStartMark, moraleLockedForPlayer } from "./unit-abilities";
 import {
   bossLayersRemaining,
@@ -927,6 +929,10 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   if (explorers?.type === "EMPOWER_PER_DISCARD" && explorers.per > 0) {
     queueExplorersEmpower(state, action.playerId, Math.floor(action.discardCardIds.length / explorers.per));
   }
+  // Beginning-of-your-turn town effects inspect the settled post-refresh hand.
+  // Queue them only now so Mana Vortex and every draw/search sibling happen
+  // after, never before, the player's draw/discard phase.
+  queueTurnStartBuildingChoices(state, action.playerId);
 }
 
 /**
@@ -1460,7 +1466,7 @@ function dimensionDoorTeleport(state: GameState, hero: HeroState, to: MapSpaceId
  * hero, a location, or the open sea, which lands the hero and halts them).
  * Blocked fields and fields holding an allied hero are not valid landings.
  */
-function dimensionDoorDestinations(state: GameState, hero: HeroState, range: number): MapSpaceId[] {
+export function dimensionDoorDestinations(state: GameState, hero: HeroState, range: number): MapSpaceId[] {
   const adventure = state.adventure;
   const origin = hero.spaceId ? parseHexSpaceId(hero.spaceId) : null;
   if (!adventure || !origin || range <= 0) {
@@ -5684,6 +5690,8 @@ const MAP_SCHOOL_FETCH_EXPERT_POWER = 3;
 type MapSpellBoostFlags = {
   fromSpellBook?: boolean;
   castEnablerCardId?: CardId;
+  /** Spell, enabler, and support cards whose effects have not finished yet. */
+  inFlightCardIds?: CardId[];
   schoolFetchExpertUsed?: boolean;
   schoolPermanentExpertUsed?: boolean;
   /**
@@ -5735,10 +5743,6 @@ function listMapSpellBoostOffers(
   if (costDiscards && costDiscards.required > 0) {
     pushCostDiscards(costDiscards.perCard);
     return offers;
-  }
-
-  if (currentPower >= maxPower) {
-    return [];
   }
 
   // Optional cost discards of the last-played side (Breastplate of Brimstone's
@@ -5902,7 +5906,12 @@ function listMapSpellBoostOffers(
     }
   }
 
-  return offers;
+  // Battle still allows a "+Power, draw" rider after a spell has reached its
+  // highest useful tier. Preserve that parity without offering pure Power that
+  // can no longer improve the map spell.
+  return currentPower >= maxPower
+    ? offers.filter((offer) => offer.kind === "card" && (offer.drawCards ?? 0) > 0)
+    : offers;
 }
 
 function mapSpellBoostOfferLabel(
@@ -5999,6 +6008,7 @@ export function openMapSpellBoost(
       ...(flags.schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true as const } : {}),
       ...(flags.fromSpellBook ? { fromSpellBook: true as const } : {}),
       ...(flags.castEnablerCardId ? { castEnablerCardId: flags.castEnablerCardId } : {}),
+      ...(flags.inFlightCardIds ? { inFlightCardIds: flags.inFlightCardIds } : {}),
       ...(flags.costDiscards ? { costDiscards: flags.costDiscards } : {})
     },
     returnPhase: "player-turn"
@@ -6027,6 +6037,7 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     offers,
     fromSpellBook,
     castEnablerCardId,
+    inFlightCardIds,
     schoolFetchExpertUsed,
     schoolPermanentExpertUsed,
     costDiscards
@@ -6057,6 +6068,7 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
   const flags: MapSpellBoostFlags = {
     ...(fromSpellBook ? { fromSpellBook: true as const } : {}),
     ...(castEnablerCardId ? { castEnablerCardId } : {}),
+    ...(inFlightCardIds ? { inFlightCardIds } : {}),
     ...(schoolFetchExpertUsed ? { schoolFetchExpertUsed: true } : {}),
     ...(schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true } : {}),
     ...(costDiscards ? { costDiscards } : {})
@@ -6082,7 +6094,11 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       throw new Error("No matching School of Magic permanent to discard for expert Power.");
     }
     nextPower = power + offer.value;
-    nextFlags = { ...nextFlags, schoolPermanentExpertUsed: true };
+    nextFlags = {
+      ...nextFlags,
+      schoolPermanentExpertUsed: true,
+      inFlightCardIds: [...(nextFlags.inFlightCardIds ?? []), expert.cardId]
+    };
   } else if (offer.kind === "school-fetch-expert") {
     if (mapSpellCrownsLeft(state, playerId) <= 0) {
       throw new Error("No crown left for Basic Magic expert Power.");
@@ -6116,7 +6132,14 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       optionLabel: `+${offer.value} Power (${spell.name}) — ${offer.fromHandCardId ? "played from hand" : "the permanent is discarded"}`
     });
     nextPower = power + offer.value;
-    nextFlags = { ...nextFlags, schoolFetchExpertUsed: true };
+    nextFlags = {
+      ...nextFlags,
+      schoolFetchExpertUsed: true,
+      inFlightCardIds: [
+        ...(nextFlags.inFlightCardIds ?? []),
+        `ability.basic_${offer.school}_magic` as CardId
+      ]
+    };
   } else if (offer.kind === "cost-discard") {
     // Paying the last-played side's printed card cost (Titan's Cuirass /
     // Breastplate of Brimstone): any hand card, to the discard pile; adds the
@@ -6141,6 +6164,10 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       optionLabel: cost.perCard > 0 ? `+${cost.perCard} Power (${sourceName})` : `pays ${sourceName}`
     });
     nextPower = power + cost.perCard;
+    nextFlags = {
+      ...nextFlags,
+      inFlightCardIds: [...(nextFlags.inFlightCardIds ?? []), offer.cardId]
+    };
     const remaining = {
       sourceCardId: cost.sourceCardId,
       required: Math.max(0, cost.required - 1),
@@ -6209,8 +6236,17 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       : offer.drawCards !== undefined
         ? offer.drawCards
         : spellPowerSourceDrawCards(cardLibrary[offer.cardId], spell.spellSchools ?? []);
+    const resolving = offer.removeSelf
+      ? [...(nextFlags.inFlightCardIds ?? [])]
+      : [...(nextFlags.inFlightCardIds ?? []), offer.cardId];
     if (draws > 0) {
-      drawCardsForPlayer(state, playerId, draws);
+      nextFlags = { ...nextFlags, inFlightCardIds: resolving };
+      drawCardsForPlayer(state, playerId, draws, { inFlightCardIds: resolving });
+    } else if (!offer.removeSelf) {
+      nextFlags = {
+        ...nextFlags,
+        inFlightCardIds: resolving
+      };
     }
     nextPower = power + offer.value;
     // The side's own printed card cost (discard 1 / up to 3) opens now.
@@ -6243,7 +6279,13 @@ function applyMapSpellAtPower(
   const effectivePower = power * multiplier;
   const best = bestMapSpellTier(tiers, effectivePower);
   const effectCountBefore = state.activeEffects.length;
-  applyMapSpellEffect(state, playerId, spell, best.effect);
+  applyMapSpellEffect(
+    state,
+    playerId,
+    spell,
+    best.effect,
+    bookFlags.inFlightCardIds ?? [spellCardId]
+  );
   // Lasting map effects (Fly / Water Walk): hold the physical card while the
   // effect lives — same as playCard's holdOngoingCardIfEffectCreated.
   //   - Hand / OLD Book cast: card is in discard → hold it (default returnTo
@@ -6251,8 +6293,12 @@ function applyMapSpellAtPower(
   //   - POLISH Book cast: card is in spellBookUsed (never discard) → do NOT
   //     hold; it stays used until the Book refreshes. Knowledge only returns
   //     Cast a Spell (see offerMapSpellKnowledgeRecall).
+  let held = false;
   if (!(bookFlags.fromSpellBook && bookFlags.castEnablerCardId && polishSpellBookEnabled(state))) {
-    holdMapSpellOngoingIfEffectCreated(state, playerId, spellCardId, effectCountBefore, "discard");
+    held = holdMapSpellOngoingIfEffectCreated(state, playerId, spellCardId, effectCountBefore, "discard");
+  }
+  if (!held) {
+    maybeReturnFirstSpellToHand(state, playerId, spellCardId);
   }
   offerMapSpellKnowledgeRecall(state, playerId, spell, bookFlags);
 }
@@ -6293,7 +6339,8 @@ function applyMapSpellEffect(
   state: GameState,
   playerId: PlayerId,
   spell: CardDefinition,
-  effect: MapSpellTierEffect
+  effect: MapSpellTierEffect,
+  inFlightCardIds: readonly CardId[]
 ): void {
   if (effect.type === "GAIN_RESOURCES") {
     gainResources(state, playerId, effect.gain, `played ${spell.name}`);
@@ -6354,7 +6401,7 @@ function applyMapSpellEffect(
       liftSeaHaltForWaterWalk(state, playerId);
     }
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards);
+      drawCardsForPlayer(state, playerId, effect.drawCards, { inFlightCardIds });
     }
   }
 }
@@ -6388,11 +6435,15 @@ function pushMapSpellHeroModifier(
   });
 }
 
-function queueTownPortalFromMapSpell(state: GameState, playerId: PlayerId, movementBonus: number): void {
+export function townPortalDestinations(
+  state: GameState,
+  playerId: PlayerId,
+  movementBonus: number
+): { label: string; spaceId: string }[] {
   const adventure = state.adventure;
   const hero = getMainHero(state, playerId);
   if (!adventure || !hero) {
-    return;
+    return [];
   }
   const projectedMovement = hero.movementPoints + movementBonus;
   const fieldHasOtherHero = (spaceId: string) =>
@@ -6428,6 +6479,16 @@ function queueTownPortalFromMapSpell(state: GameState, playerId: PlayerId, movem
       destinations.push({ label: `Settlement${distanceSuffix(field.spaceId)}`, spaceId: field.spaceId });
     }
   }
+  return destinations;
+}
+
+function queueTownPortalFromMapSpell(state: GameState, playerId: PlayerId, movementBonus: number): void {
+  const adventure = state.adventure;
+  const hero = getMainHero(state, playerId);
+  if (!adventure || !hero) {
+    return;
+  }
+  const destinations = townPortalDestinations(state, playerId, movementBonus);
   if (destinations.length === 0) {
     return;
   }
@@ -14717,13 +14778,17 @@ export function drawTopArtifact(state: GameState, playerId: PlayerId, deckId: st
   // it keeps the rule explicit here too), tucking the skipped cards back under.
   const skipped: CardId[] = [];
   let drawn: CardId | null = null;
+  let reshuffledDiscard = false;
   for (;;) {
     // A draw pile emptied by earlier Searches reshuffles its discard pile back in
     // — "draw the top Artifact card" must not come up empty while that deck's
     // cards are all sitting in its discard pile. The skipped cards are held aside
     // until the pull ends, so none is ever reshuffled in and re-read.
-    if (deck.drawPile.length === 0 && !reshuffleSharedDeckIfEmpty(state, deckId, "draw-top-artifact-reshuffle")) {
-      break;
+    if (deck.drawPile.length === 0) {
+      if (!reshuffleSharedDeckIfEmpty(state, deckId, "draw-top-artifact-reshuffle")) {
+        break;
+      }
+      reshuffledDiscard = true;
     }
     const cardId = deck.drawPile.pop();
     if (!cardId) {
@@ -14742,7 +14807,7 @@ export function drawTopArtifact(state: GameState, playerId: PlayerId, deckId: st
     return;
   }
   state.players[playerId]?.hand.push(drawn);
-  appendEvent(state, { type: "CARDS_DRAWN", playerId, count: 1, requested: 1, reshuffledDiscard: false });
+  appendEvent(state, { type: "CARDS_DRAWN", playerId, count: 1, requested: 1, reshuffledDiscard });
 }
 
 export function revealSharedDeckSearch(
@@ -15404,15 +15469,16 @@ export function pumpAdventureQueues(state: GameState): void {
     }
 
     if (reward.kind === "start-turn-hand") {
-      // Phase divider (queued last by startPlayerTurn). Take the hand-limit
-      // snapshot only once EVERY other start-of-turn reward has cleared —
-      // including follow-up rewards a round-start effect enqueues BEHIND it
+      // Phase divider queued by startPlayerTurn. Take the hand-limit snapshot
+      // once every earlier ROUND-start reward has cleared, including follow-up
+      // rewards a round-start effect enqueues behind it
       // (e.g. Wall of Knowledge / Blood Obelisk turn a CHOOSE_ONE into a fresh
       // discard-pick reward; the City Hall draw is just an option resolution).
       // While anything else is still queued, send the snapshot to the back and
       // let those resolve first; only take it when nothing but dividers remain.
-      // The queue is a finite, non-regenerating set of start-of-turn rewards,
-      // so this settles. A parallel round start queues ONE divider PER PLAYER —
+      // Beginning-of-player-turn buildings are not in this queue yet: REFRESH_HAND
+      // queues them after the draw/discard phase. A parallel round start queues
+      // ONE divider PER PLAYER —
       // requeueing must therefore ignore the other dividers, or they would
       // chase each other around the queue forever.
       adventure.rewardQueue.shift();

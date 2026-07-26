@@ -114,15 +114,13 @@ export function digFromOwnDeckTop(
   seedTag: string,
   options?: {
     /**
-     * The card whose own effect is digging. It was moved to the discard pile
-     * when it was played, so a reshuffle would sweep it back into the deck and
-     * the dig could deal it straight back to the hand — the card would pay for
-     * itself. It is held in the discard instead, exactly as Deemer's Meteor
-     * Shower IV ("the played card stays in the discard, discarded after the
-     * shuffle") already reads it. One copy only, so a genuine second copy of
-     * the same card elsewhere in the discard still shuffles in.
+     * Every card whose current play/cast has not finished resolving. These
+     * cards have often already entered the discard pile, but must not be swept
+     * into an empty-deck reshuffle and dealt back before their effects finish.
+     * One occurrence is protected per entry, so genuine duplicate copies still
+     * shuffle normally.
      */
-    playedCardId?: CardId;
+    inFlightCardIds?: readonly CardId[];
   }
 ): OwnDeckDigResult {
   const player = state.players[playerId];
@@ -134,12 +132,21 @@ export function digFromOwnDeckTop(
 
   for (let count = 0; count < amount; count += 1) {
     if (player.deck.length === 0 && player.discard.length > 0) {
-      const playedIndex = options?.playedCardId ? player.discard.indexOf(options.playedCardId) : -1;
-      const held = playedIndex >= 0 ? [player.discard[playedIndex]] : [];
-      const toShuffle =
-        playedIndex >= 0
-          ? [...player.discard.slice(0, playedIndex), ...player.discard.slice(playedIndex + 1)]
-          : player.discard;
+      const protectedCounts = new Map<CardId, number>();
+      for (const cardId of options?.inFlightCardIds ?? []) {
+        protectedCounts.set(cardId, (protectedCounts.get(cardId) ?? 0) + 1);
+      }
+      const held: CardId[] = [];
+      const toShuffle: CardId[] = [];
+      for (const cardId of player.discard) {
+        const remaining = protectedCounts.get(cardId) ?? 0;
+        if (remaining > 0) {
+          held.push(cardId);
+          protectedCounts.set(cardId, remaining - 1);
+        } else {
+          toShuffle.push(cardId);
+        }
+      }
       if (toShuffle.length === 0) {
         break; // nothing left to shuffle back in but the card being played
       }
@@ -188,7 +195,7 @@ export function drawCardsForPlayer(
   state: GameState,
   playerId: PlayerId,
   amount: number,
-  options?: { playedCardId?: CardId }
+  options?: { inFlightCardIds?: readonly CardId[] }
 ): number {
   const player = state.players[playerId];
   if (!player || amount <= 0) {
