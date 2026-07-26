@@ -152,7 +152,7 @@ export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
       "[unit_attack] Rocket barrage strikes the target and the unit directly behind it at Attack 3. While this boss is on its LAST health layer, its Attack gains +2 (Enrage).",
     minionCount: 3,
     minionLevel: 4,
-    cardImage: art("doom_baron_warden"),
+    cardImage: art("cyberdemon_prime"),
     summary: "6 layers; a rocket barrage tears through lines before its final enrage."
   },
   spider_overmind: {
@@ -170,7 +170,7 @@ export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
       '[unit_attack] After its attack, this unit makes a full separate attack against every other adjacent enemy; those follow-ups do not retaliate or chain. If the attacker resolves a "0" or "+1" on the Attack die, this unit gains +1 Defense against that attack.',
     minionCount: 3,
     minionLevel: 4,
-    cardImage: art("doom_cyberdemon_tyrant"),
+    cardImage: art("spider_overmind"),
     summary: "5 layers; suppressing fire lashes the whole formation while armor absorbs hits."
   }
 };
@@ -228,7 +228,7 @@ export const DUNGEON_FLOOR_BOSSES: Record<string, RaidBossDefinition> = {
       "This unit cannot take more than 4 damage from a single attack (Spell and ability damage are not capped). While on its LAST health layer, its Attack gains +2 (Enrage).",
     minionCount: 2,
     minionLevel: 3,
-    cardImage: art("cyberdemon_prime"),
+    cardImage: art("doom_baron_warden"),
     summary: "The Doom floor-5 warden: two armored layers and a vicious final phase."
   },
   doom_cyberdemon_tyrant: {
@@ -246,7 +246,7 @@ export const DUNGEON_FLOOR_BOSSES: Record<string, RaidBossDefinition> = {
       "[unit_attack] Rocket barrage strikes the target and the unit directly behind it at Attack 3. Ignore the Retaliation Attack.",
     minionCount: 3,
     minionLevel: 4,
-    cardImage: art("spider_overmind"),
+    cardImage: art("doom_cyberdemon_tyrant"),
     summary: "The Doom floor-10 tyrant: three layers, line-breaking rockets, no retaliation."
   }
 };

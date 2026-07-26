@@ -50,7 +50,8 @@ const CLASSIC_RAID_BOSS_IDS = [
   "calamity_dragon",
   "avatar_of_erebos"
 ] as const;
-const DOOM_RAID_BOSS_IDS = ["cyberdemon_prime", "spider_overmind"] as const;
+/** Exported for the theme-pool test: a classic game must never roll these. */
+export const DOOM_RAID_BOSS_IDS = ["cyberdemon_prime", "spider_overmind"] as const;
 
 /** Whether the Raid Bosses module is ON for this game (presence = frozen ON). */
 export function raidBossesEnabled(state: GameState): boolean {

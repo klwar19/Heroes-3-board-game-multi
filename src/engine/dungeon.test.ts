@@ -112,6 +112,40 @@ describe("The Dungeon — module gate & placement", () => {
     expect(noBanks.adventure?.dungeonSite).toEqual({ fieldId: null });
   });
 
+  it("with Creature Banks OFF the site still PLACES on a revealed Near tile (the flag alone proved nothing)", () => {
+    // The Dungeon used to ride the bank RESERVATION, so it needed the banks
+    // option; it now carves ahead of the (absent) token pile. Drive the real
+    // rotation seam with no piles at all — the effect, not the frozen flag.
+    const state = dungeonGame("dungeon-no-banks-placement", {
+      creatureBanks: false,
+      wog: { enabled: true, dungeon: true }
+    });
+    const adventure = state.adventure!;
+    expect(adventure.creatureBankTokensNear).toBeUndefined();
+
+    const tile = instantiateTile(adventure, "N1", { row: -8, col: -8 }, 0, true);
+    expect(tile.group).toBe("near");
+    tile.awaitingRotation = true;
+    adventure.pendingTileChoice = { tileInstanceId: tile.id, playerId: "p1", kind: "place" };
+    setTileRotation(state, {
+      type: "SET_TILE_ROTATION",
+      playerId: "p1",
+      tileInstanceId: tile.id,
+      rotation: 0
+    });
+
+    const siteId = adventure.dungeonSite?.fieldId;
+    expect(siteId).toBeTruthy();
+    expect(adventure.fields[siteId!].location).toBe("dungeon_gate");
+    expect(state.pendingChoice).toBeNull();
+    expect(state.eventLog.some((event) => event.type === "DUNGEON_PLACED")).toBe(true);
+
+    // And it is a real delve site: standing on it opens the floor-1 door menu.
+    state.heroes.hero_p1.spaceId = siteId!;
+    beginFieldVisit(state, state.heroes.hero_p1.id, siteId!, false);
+    expect(firstPendingVisitStep(state)?.type).toBe("CHOOSE_ONE");
+  });
+
   it("anime.dungeon is the second surface activating the same frozen flag", () => {
     const state = dungeonGame("dungeon-anime-surface", {
       wog: undefined,

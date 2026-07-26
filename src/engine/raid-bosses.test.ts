@@ -9,7 +9,7 @@ import { beginFieldVisit, startAdventureRound } from "./adventure";
 import { DEFENDER_BACKLINE, finalizeAdventureCombat, pumpAdventureQueues } from "./adventure-reducer";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { RAID_BOSSES } from "@/data/anime/bosses";
-import { makeRaidBossCombatUnit, scheduledBossPool } from "./raid-bosses";
+import { DOOM_RAID_BOSS_IDS, makeRaidBossCombatUnit, scheduledBossPool } from "./raid-bosses";
 import { MAX_CUSTOM_WAVE_OVERRIDES, sanitizeCustomMapPreset } from "./map-preset";
 import { NEUTRAL_PLAYER_ID, type MapFieldState } from "./state";
 
@@ -149,6 +149,55 @@ describe("Raid Bosses — spawn schedule", () => {
     const { instanceId } = spawnLair(state);
     expect(state.adventure!.raidBosses![instanceId].defId).toBe("map_horror");
     expect(state.adventure!.raidBosses![instanceId].layersLeft).toBe(4);
+  });
+
+  it("the frozen PvE theme picks the pool: a Doom game can only spawn a Doom boss, a classic game never one", () => {
+    const doom = raidGame("raid-doom-pool", {
+      wog: { enabled: true, raidBosses: true, pveTheme: "doom" }
+    });
+    expect(doom.adventure?.pveTheme).toBe("doom");
+    expect(scheduledBossPool(doom).sort()).toEqual(["cyberdemon_prime", "spider_overmind"]);
+    // The EFFECT: the boss actually spawned is one of them.
+    const spawned = spawnLair(doom);
+    expect(DOOM_RAID_BOSS_IDS).toContain(doom.adventure!.raidBosses![spawned.instanceId].defId);
+
+    // CONTROL: the default (classic) theme keeps the five Erathian bosses and
+    // never rolls a Doom one, even though RAID_BOSSES holds all seven.
+    const classic = raidGame("raid-doom-pool");
+    expect(classic.adventure?.pveTheme).toBe("classic");
+    const classicPool = scheduledBossPool(classic);
+    expect(classicPool.length).toBe(5);
+    for (const doomId of DOOM_RAID_BOSS_IDS) {
+      expect(classicPool).not.toContain(doomId);
+      expect(Object.keys(RAID_BOSSES)).toContain(doomId);
+    }
+    const classicSpawn = spawnLair(classic);
+    expect(DOOM_RAID_BOSS_IDS).not.toContain(
+      classic.adventure!.raidBosses![classicSpawn.instanceId].defId
+    );
+  });
+
+  it('the "random" theme is resolved ONCE from the game seed and frozen (never Math.random)', () => {
+    const themes = new Set<string>();
+    for (let index = 0; index < 12; index += 1) {
+      const rolled = raidGame(`raid-random-theme-${index}`, {
+        wog: { enabled: true, raidBosses: true, pveTheme: "random" }
+      });
+      const theme = rolled.adventure?.pveTheme;
+      expect(theme === "classic" || theme === "doom", String(theme)).toBe(true);
+      themes.add(String(theme));
+      // Same seed ⇒ same theme (a Math.random / Date.now roll would drift).
+      const twin = raidGame(`raid-random-theme-${index}`, {
+        wog: { enabled: true, raidBosses: true, pveTheme: "random" }
+      });
+      expect(twin.adventure?.pveTheme).toBe(theme);
+    }
+    // Both outcomes are actually reachable (not a constant fallback).
+    expect([...themes].sort()).toEqual(["classic", "doom"]);
+    // CONTROL: with NO PvE module on, no theme is frozen at all — a legacy /
+    // default table stays byte-identical.
+    const plain = createAdventureGameState({ seed: "raid-random-theme-off", rollFirstPlayer: false });
+    expect(plain.adventure?.pveTheme).toBeUndefined();
   });
 });
 
