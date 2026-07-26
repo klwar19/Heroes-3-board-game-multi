@@ -136,6 +136,42 @@ export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
     minionLevel: 4,
     cardImage: art("avatar_of_erebos"),
     summary: "7 layers; its Fear locks your morale away, and it enrages at the end."
+  },
+  cyberdemon_prime: {
+    id: "cyberdemon_prime",
+    name: "Cyberdemon Prime",
+    title: "Siege Lord of Hell",
+    attack: 7,
+    defense: 2,
+    health: 4,
+    initiative: 6,
+    type: "ground",
+    layers: 6,
+    abilities: ["dragon-line-attack-3", "boss-enrage"],
+    abilityText:
+      "[unit_attack] Rocket barrage strikes the target and the unit directly behind it at Attack 3. While this boss is on its LAST health layer, its Attack gains +2 (Enrage).",
+    minionCount: 3,
+    minionLevel: 4,
+    cardImage: art("doom_baron_warden"),
+    summary: "6 layers; a rocket barrage tears through lines before its final enrage."
+  },
+  spider_overmind: {
+    id: "spider_overmind",
+    name: "Spider Overmind",
+    title: "Architect of the Invasion",
+    attack: 6,
+    defense: 3,
+    health: 3,
+    initiative: 7,
+    type: "ranged",
+    layers: 5,
+    abilities: ["magic-elemental-attack-all-enemies", "zombie-resilience"],
+    abilityText:
+      '[unit_attack] After its attack, this unit makes a full separate attack against every other adjacent enemy; those follow-ups do not retaliate or chain. If the attacker resolves a "0" or "+1" on the Attack die, this unit gains +1 Defense against that attack.',
+    minionCount: 3,
+    minionLevel: 4,
+    cardImage: art("doom_cyberdemon_tyrant"),
+    summary: "5 layers; suppressing fire lashes the whole formation while armor absorbs hits."
   }
 };
 
@@ -176,6 +212,42 @@ export const DUNGEON_FLOOR_BOSSES: Record<string, RaidBossDefinition> = {
     minionLevel: 4,
     cardImage: art("floor_wyrm"),
     summary: "The floor-10 warden: 2 thick layers, devours bronze units, always retaliates."
+  },
+  doom_baron_warden: {
+    id: "doom_baron_warden",
+    name: "Baron Warden",
+    title: "Keeper of Infernal Floor 5",
+    attack: 5,
+    defense: 2,
+    health: 3,
+    initiative: 6,
+    type: "ground",
+    layers: 2,
+    abilities: ["nix-damage-cap", "boss-enrage"],
+    abilityText:
+      "This unit cannot take more than 4 damage from a single attack (Spell and ability damage are not capped). While on its LAST health layer, its Attack gains +2 (Enrage).",
+    minionCount: 2,
+    minionLevel: 3,
+    cardImage: art("cyberdemon_prime"),
+    summary: "The Doom floor-5 warden: two armored layers and a vicious final phase."
+  },
+  doom_cyberdemon_tyrant: {
+    id: "doom_cyberdemon_tyrant",
+    name: "Cyberdemon Tyrant",
+    title: "Keeper of Infernal Floor 10",
+    attack: 6,
+    defense: 2,
+    health: 4,
+    initiative: 7,
+    type: "ground",
+    layers: 3,
+    abilities: ["dragon-line-attack-3", "ignores-retaliation"],
+    abilityText:
+      "[unit_attack] Rocket barrage strikes the target and the unit directly behind it at Attack 3. Ignore the Retaliation Attack.",
+    minionCount: 3,
+    minionLevel: 4,
+    cardImage: art("spider_overmind"),
+    summary: "The Doom floor-10 tyrant: three layers, line-breaking rockets, no retaliation."
   }
 };
 

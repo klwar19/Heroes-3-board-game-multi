@@ -46,7 +46,10 @@ export type LocalizedText = { en: string; vi: string };
 export type CampaignTheme = "xianxia" | "isekai" | "classic";
 
 /** The boolean anime module flags (every AnimeModOptions key except waveCadence). */
-export type AnimeModuleFlag = keyof Omit<AnimeModOptions, "waveCadence">;
+export type AnimeModuleFlag = keyof Omit<
+  AnimeModOptions,
+  "waveCadence" | "pveTheme" | "wavePressure" | "waveDefeatLimit"
+>;
 
 /**
  * A playable chapter's room configuration. `anime` names the anime MODULE flags

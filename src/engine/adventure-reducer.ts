@@ -61,11 +61,14 @@ import {
   adventureSeatCount,
   declareAdventureWinner,
   drawFromNeutralDeck,
+  drawDungeonArmy,
   drawGuardArmy,
   drawNeutralArmy,
+  drawPveThemedArmy,
   drawWaveArmy,
   grantWaveVictoryRewards,
   applyWavePillage,
+  placeCalamityGate,
   placeDungeonSite,
   setRaidBossEncounterHook,
   setDungeonEncounterHook,
@@ -230,9 +233,10 @@ import {
   RAID_BOSS_KILL_GOLD,
   resolveBossDefinition
 } from "./raid-bosses";
+import { waveBattleEventOf } from "./monster-waves";
 import {
-  DUNGEON_BOSS_FLOORS,
   DUNGEON_FLOOR_CAP,
+  dungeonBossId,
   dungeonFloorDifficulty,
   dungeonFloorRewardSteps
 } from "./dungeon";
@@ -2279,7 +2283,7 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState, player
   }
   // The Dungeon (§6.7.3): the pending delve site will claim this tile's
   // Blocked Field after rotation — no bank is peeked or offered for it.
-  if (dungeonClaimsTile(state, tile)) {
+  if (calamityGateClaimsTile(state, tile) || dungeonClaimsTile(state, tile)) {
     return;
   }
   const tier = creatureBankTierForGroup(tile.group);
@@ -2743,6 +2747,20 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
   const adventure = state.adventure;
   if (!adventure) {
     return;
+  }
+  // The Waves module anchors itself to the first Far-band Blocked Field. It is
+  // a real revisitable map object and takes priority over a bank reservation.
+  if (calamityGateClaimsTile(state, tile)) {
+    const blockedSpaceId = getTileFootprintSpaceIds(tile).find(
+      (spaceId) => adventure.fields[spaceId]?.location === "blocked_field"
+    );
+    tile.reservedBankId = undefined;
+    tile.reservedBankOptions = undefined;
+    tile.reservedBankDeclined = undefined;
+    if (blockedSpaceId) {
+      placeCalamityGate(state, blockedSpaceId);
+      return;
+    }
   }
   // The Dungeon (§6.7.3): the FIRST Near-band Blocked Field materialized
   // claims the one-per-map delve site INSTEAD of a Creature Bank (the bank
@@ -3623,7 +3641,7 @@ setRaidBossEncounterHook((state, heroId, bossInstanceId) => {
 // The Dungeon (§6.7.3): the floor-fight opener (the DUNGEON_FLOOR_FIGHT visit
 // step calls it). REAL difficulty min(floor+1, 7) — the grind site pays normal
 // hero/unit XP — but never Quick Combat (the fight opens directly, bypassing
-// startNeutralEncounter). Opening the fight consumes the once-per-turn delve.
+// startNeutralEncounter). A win can enqueue another 1-movement descent.
 setDungeonEncounterHook((state, heroId, floor) => {
   const adventure = state.adventure;
   const hero = state.heroes[heroId];
@@ -3633,7 +3651,6 @@ setDungeonEncounterHook((state, heroId, floor) => {
   if (!adventure || !hero || !player || !field) {
     return;
   }
-  player.dungeonDelveRound = state.round;
   beginNeutralCombatPlacement(state, hero, field, dungeonFloorDifficulty(floor), {
     dungeonFloor: floor
   });
@@ -7069,6 +7086,32 @@ export function revealNeutralArmy(
     combat.units[unit.id] = unit;
   }
 
+  // Calamity Waves: each numbered wave carries a visible battle event. A hero
+  // who previously visited the Calamity Gate is prepared and cancels the
+  // invaders' modifier for their own assault; otherwise the modifier is folded
+  // directly into the minted neutral stats for this combat only.
+  if (combat.context.waveAssault) {
+    const wave = combat.context.waveAssault.wave;
+    const event = waveBattleEventOf(state, wave);
+    const prepared = state.players[combat.attackerPlayerId]?.wavePreparedFor === wave;
+    if (!prepared) {
+      for (const unit of [...neutralUnits, ...extraUnits]) {
+        unit.attack += event.neutralAttack ?? 0;
+        unit.defense += event.neutralDefense ?? 0;
+        unit.initiative += event.neutralInitiative ?? 0;
+      }
+    }
+    appendEvent(state, {
+      type: "MONSTER_WAVE_BATTLE_EVENT",
+      playerId: combat.attackerPlayerId,
+      wave,
+      eventId: event.id,
+      message: prepared
+        ? `${event.name} was neutralized — the hero's Calamity Gate preparations hold.`
+        : `${event.name}: ${event.description}`
+    });
+  }
+
   appendEvent(state, {
     type: "NEUTRAL_ARMY_REVEALED",
     playerId: combat.attackerPlayerId,
@@ -7096,6 +7139,18 @@ export function revealNeutralArmy(
  * claimed by the still-unplaced delve site — Near-band tiles only ("placed
  * like a Creature Bank on a Near tile's Blocked Field"), one per map.
  */
+function calamityGateClaimsTile(state: GameState, tile: MapTileState): boolean {
+  const waves = state.adventure?.monsterWaves;
+  if (!waves || (waves.gateFieldId ?? null) !== null) {
+    return false;
+  }
+  if (tile.group !== "far") {
+    return false;
+  }
+  const def = allTileDefinitions[tile.tileDefId];
+  return Boolean(def?.fields.some((field) => field.location === "blocked_field"));
+}
+
 function dungeonClaimsTile(state: GameState, tile: MapTileState): boolean {
   const site = state.adventure?.dungeonSite;
   if (!site || site.fieldId !== null) {
@@ -7146,7 +7201,11 @@ function revealRaidBossArmy(state: GameState, bossInstanceId: string): void {
     return;
   }
   const bossUnit = makeRaidBossCombatUnit(def, boss.layersLeft, `boss_${def.id}`, DEFENDER_BACKLINE[1]);
-  const minions = drawNeutralArmy(state, Math.max(1, Math.min(7, def.minionLevel))).slice(
+  const minions = drawPveThemedArmy(
+    state,
+    Math.max(1, Math.min(7, def.minionLevel)),
+    `raid-boss-${bossInstanceId}`
+  ).slice(
     0,
     Math.max(0, def.minionCount)
   );
@@ -7159,18 +7218,18 @@ function revealRaidBossArmy(state: GameState, bossInstanceId: string): void {
  * Dungeon deals fair, no wound bookkeeping) with its own smaller escort.
  */
 function revealDungeonFloorArmy(state: GameState, floor: number): void {
-  const bossId = DUNGEON_BOSS_FLOORS[floor];
+  const bossId = dungeonBossId(state, floor);
   const def = bossId ? resolveBossDefinition(state, bossId) : null;
   if (def) {
     const bossUnit = makeRaidBossCombatUnit(def, def.layers, `boss_${def.id}`, DEFENDER_BACKLINE[1]);
-    const minions = drawNeutralArmy(state, Math.max(1, Math.min(7, def.minionLevel))).slice(
+    const minions = drawDungeonArmy(state, floor, Math.max(1, Math.min(7, def.minionLevel))).slice(
       0,
       Math.max(0, def.minionCount)
     );
     revealNeutralArmy(state, minions, [bossUnit]);
     return;
   }
-  revealNeutralArmy(state, drawNeutralArmy(state, dungeonFloorDifficulty(floor)));
+  revealNeutralArmy(state, drawDungeonArmy(state, floor));
 }
 
 /**
@@ -9740,7 +9799,10 @@ function resolveDungeonFloorVictory(state: GameState, playerId: PlayerId, floor:
   adventure.rewardQueue.unshift({
     playerId,
     kind: "visit-steps",
-    steps: dungeonFloorRewardSteps(state, floor, { repeat })
+    steps: [
+      ...dungeonFloorRewardSteps(state, floor, { repeat }),
+      { type: "DUNGEON_CONTINUE" }
+    ]
   });
   player.dungeonFloor = Math.min(DUNGEON_FLOOR_CAP, floor + 1);
   appendEvent(state, {

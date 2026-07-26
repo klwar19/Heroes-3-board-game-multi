@@ -39,7 +39,10 @@ export const DEFAULT_ANIME_OPTIONS: AnimeModOptions = {
   // Opt-in only (=== true, no legacy semantics — new mechanics).
   unitStacks: false,
   unitExperience: false,
-  neutralRankUp: false
+  neutralRankUp: false,
+  pveTheme: "classic",
+  wavePressure: "standard",
+  waveDefeatLimit: 0
 };
 
 /** Master crest / skin gate. */
@@ -50,7 +53,10 @@ export function animeEnabled(state: Pick<GameState, "anime"> | { anime?: AnimeMo
 /** Whether a named module is on (implies master enabled). */
 export function animeModuleEnabled(
   state: Pick<GameState, "anime"> | { anime?: AnimeModOptions } | null | undefined,
-  module: keyof Omit<AnimeModOptions, "enabled" | "waveCadence">
+  module: keyof Omit<
+    AnimeModOptions,
+    "enabled" | "waveCadence" | "pveTheme" | "wavePressure" | "waveDefeatLimit"
+  >
 ): boolean {
   const anime = state?.anime;
   if (!anime?.enabled) {
@@ -64,9 +70,21 @@ export function resolveAnimeOptions(partial?: Partial<AnimeModOptions> | null): 
   if (!partial) {
     return { ...DEFAULT_ANIME_OPTIONS };
   }
-  return {
+  const merged = {
     ...DEFAULT_ANIME_OPTIONS,
     ...partial
+  };
+  return {
+    ...merged,
+    pveTheme:
+      merged.pveTheme === "doom" || merged.pveTheme === "random"
+        ? merged.pveTheme
+        : "classic",
+    wavePressure: merged.wavePressure === "brutal" ? "brutal" : "standard",
+    waveDefeatLimit:
+      merged.waveDefeatLimit === 2 || merged.waveDefeatLimit === 3
+        ? merged.waveDefeatLimit
+        : 0
   };
 }
 

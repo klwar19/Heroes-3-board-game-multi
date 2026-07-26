@@ -50,7 +50,13 @@ function scriptModuleActive(state: Pick<GameState, "anime">, script: CombatScrip
   }
   // Anime locations only exist under the master flag; `"enabled"` (and the
   // non-boolean `waveCadence`) both resolve to the master gate.
-  if (required === "enabled" || required === "waveCadence") {
+  if (
+    required === "enabled" ||
+    required === "waveCadence" ||
+    required === "pveTheme" ||
+    required === "wavePressure" ||
+    required === "waveDefeatLimit"
+  ) {
     return animeEnabled(state);
   }
   // Forced Battle Events content module — LEGACY SEMANTICS (absent === ON):

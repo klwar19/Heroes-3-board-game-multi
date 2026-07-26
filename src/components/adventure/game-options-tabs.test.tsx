@@ -660,7 +660,7 @@ describe("Game options — tabbed layout", () => {
     const rows: Array<[RegExp, string]> = [
       [/Calamity Waves: every Nth round/i, "monsterWaves"],
       [/persistent multi-layer world boss/i, "raidBosses"],
-      [/One repeatable delve site per map/i, "dungeon"]
+      [/One shared, repeatable delve site per map/i, "dungeon"]
     ];
     for (const [labelPattern, flag] of rows) {
       cleanup();
@@ -719,6 +719,50 @@ describe("Game options — tabbed layout", () => {
         type: "SET_GAME_OPTIONS",
         options: expect.objectContaining({
           wog: expect.objectContaining({ waveCadence: 5 })
+        })
+      })
+    );
+  });
+
+  it("PvE setup dispatches theme, pressure, and optional repeated-loss elimination", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true,
+        monsterWaves: true,
+        raidBosses: true,
+        dungeon: true
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+
+    const theme = within(dialog).getByRole("group", { name: /PvE encounter theme/i });
+    fireEvent.click(within(theme).getByRole("button", { name: "Doom" }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ pveTheme: "doom" })
+        })
+      })
+    );
+
+    const pressure = within(dialog).getByRole("group", { name: /Wave pressure/i });
+    fireEvent.click(within(pressure).getByRole("button", { name: /Brutal/ }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ wavePressure: "brutal" })
+        })
+      })
+    );
+
+    const losses = within(dialog).getByRole("group", { name: /Wave loss limit/i });
+    fireEvent.click(within(losses).getByRole("button", { name: /Eliminate after 2/i }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ waveDefeatLimit: 2 })
         })
       })
     );

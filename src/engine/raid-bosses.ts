@@ -43,6 +43,14 @@ export const CUSTOM_BOSS_LIMITS = {
   layers: { min: 1, max: 8 }
 } as const;
 export const MAX_CUSTOM_RAID_BOSSES = 6;
+const CLASSIC_RAID_BOSS_IDS = [
+  "goblin_king",
+  "colossal_titan",
+  "abyss_kraken",
+  "calamity_dragon",
+  "avatar_of_erebos"
+] as const;
+const DOOM_RAID_BOSS_IDS = ["cyberdemon_prime", "spider_overmind"] as const;
 
 /** Whether the Raid Bosses module is ON for this game (presence = frozen ON). */
 export function raidBossesEnabled(state: GameState): boolean {
@@ -112,7 +120,9 @@ export function scheduledBossPool(state: GameState): string[] {
   if (custom && custom.length > 0) {
     return custom.map((boss) => boss.id);
   }
-  return Object.keys(RAID_BOSSES);
+  return state.adventure?.pveTheme === "doom"
+    ? [...DOOM_RAID_BOSS_IDS]
+    : [...CLASSIC_RAID_BOSS_IDS];
 }
 
 /**
