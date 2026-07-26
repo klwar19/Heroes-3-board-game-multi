@@ -141,7 +141,7 @@ both are on.
 | `anime.guild` | 門 | OFF | The **Adventurers' Guild**: global commission board, per-player ranks F→S with perks, rank-A **Party Member** unique neutrals (§6.4). Map-independent. |
 | `anime.monsterWaves` | 門 | OFF | **Calamity Waves**: scheduled monster invasions; every live seat fights a themed wave army; loss = pillage (§6.6). Cadence select (3rd/4th/5th round). Works in single-player. |
 | `anime.raidBosses` | 門 | OFF | **Raid Bosses**: persistent multi-layer world bosses — announced spawns or designer **Rift Lairs**, wounds persist between attempts, escalate if ignored, pay per layer broken (§6.5). |
-| `anime.dungeon` | 門 | OFF | **The Dungeon** (*Meikyū*): one repeatable multi-floor delve per map, per-player floor progress, floor bosses, scaling rewards (§6.7.3). Requires `creatureBanks`. |
+| `anime.dungeon` | 門 | OFF | **The Dungeon** (*Meikyū*): one shared repeatable multi-floor delve per map, per-player floor progress, shared seeded room layouts, themed floor bosses and scaling rewards (§6.7.3). Independent of `creatureBanks`. |
 | `anime.gods` | 門 | OFF | **Patron Blessings**: pick a patron deity (small passive + once-per-game Miracle); the antagonist god's wave hook (§6.9). Also lights the §3.4 substrate. |
 | `anime.fieldOverrides` | both | OFF | **Single-hex Field Overrides** (§3.10 / §9b): on Far/Near/Center (and optional other groups) tile reveal, a catalog object may replace one legal hex with a real location (random place / manual pick / manual-or-refuse). Designer may pin overrides on face-up tiles or face-down pending hexes. Map-setup choice for placement mode. |
 | `anime.xianxiaArtifacts` | 九 | OFF | Ninefold **Pháp Bảo** artifact cards join the Artifact deck(s) (§5.10). |
@@ -150,7 +150,7 @@ both are on.
 | Story mode | both | n/a | The campaign hub: **"The Jianghu Chronicle"** (Chen Fan, §12.1) and **"Bin's Otherworld Chronicle"** (Bin, §12.2), plus the stretch convergence arc (§12.3). Menu entry, single-player infrastructure. |
 
 Module dependency edges (enforced in the lobby UI like `creatureBanks` →
-`polish-bank-sizes`): `secretRealms` and `dungeon` and the bank half of
+`polish-bank-sizes`): `secretRealms` and the bank half of
 `isekaiNeutrals` require `creatureBanks`; `elixirPills` is required for the
 Alchemy Pavilion's pill shop and the Guild Shop's pill stock (both fall back
 gracefully, stated on the definitions); `destiny` OR `gods` activates the
@@ -1633,13 +1633,17 @@ on defender-approach cells (data on the bank/floor definition); Shikamaru's
 specialty (§6.2) places friendly ones. No new damage code.
 
 **6.7.3 The Dungeon (one per map, repeatable, per-player floors).** A
-special site placed like a Creature Bank on a Near tile's Blocked Field at
-setup when `anime.dungeon` is on (or designer-pinned). Per player:
-`player.dungeonFloor?: number` (starts 1). Entering (1 MP, own turn, once
-per turn) fights **your** next floor: a guard party of difficulty
-`min(floor + 1, 7)` (the bank-guard draw machinery) + 2 spike-pits; floors 5
-and 10 add a **floor boss** (Minotaur of the Depths / the Floor Wyrm —
-2-layer mini-bosses using §6.5.2 anatomy). Win: floor++, reward ladder
+special site placed through the Creature-Bank reveal seam on the first Near
+tile's Blocked Field when `anime.dungeon` is on (or designer-pinned), but it
+does not require Creature Banks. Per player: `player.dungeonFloor?: number`
+(starts 1). Every entered or immediately continued floor costs 1 MP. A win
+may open the next floor at once while movement remains; otherwise progress is
+saved and the player resumes from that floor on a later turn. Every player
+sees the same seed-fixed pair of rooms for a floor. The selected Erathian or
+Doom theme changes those rooms, guards and floor bosses. A guard party fights
+at difficulty `min(floor + 1, 7)`; floors 5 and 10 add a layered floor boss
+(classic: Minotaur / Floor Wyrm; Doom: Baron Warden / Cyberdemon Tyrant).
+Win: floor++, reward ladder
 (gold → valuables → minor→major artifact draws; floor 5 = major + 1 rank
 point; floor 10 = relic + "Dungeon Conqueror" feed title + fate); fights
 grant normal XP (it is the grind site). Loss/retreat: nothing lost but the

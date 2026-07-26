@@ -7,7 +7,12 @@ import {
   type GameState
 } from "./index";
 import { beginFieldVisit, instantiateTile, placeDungeonSite } from "./adventure";
-import { DEFENDER_BACKLINE, finalizeAdventureCombat, setTileRotation } from "./adventure-reducer";
+import {
+  DEFENDER_BACKLINE,
+  finalizeAdventureCombat,
+  pumpAdventureQueues,
+  setTileRotation
+} from "./adventure-reducer";
 import { combatQualifiesForComputerGuaranteedWin } from "./computer/guaranteed-wins";
 import { DUNGEON_FLOOR_CAP, dungeonFloorDifficulty, dungeonFloorRewardSteps } from "./dungeon";
 import { DUNGEON_FLOOR_BOSSES } from "@/data/anime/bosses";
@@ -15,10 +20,10 @@ import { NEUTRAL_PLAYER_ID, type CombatState, type MapSpaceId } from "./state";
 
 /**
  * The Dungeon (§6.7.3 + the door-room/dialogue enrichment) — every claim
- * engine-enforced with CONTROLs: the module gate (needs Creature Banks), the
+ * engine-enforced with CONTROLs: the independent module gate, the
  * one-per-map placement claiming the FIRST Near Blocked Field instead of a
  * bank, the per-floor door menu (two seeded rooms + Leave; rooms resolve
- * BEFORE the den fight opens), the once-per-turn delve latch, floor fights at
+ * BEFORE the den fight opens), one-movement-per-floor continuation, floor fights at
  * REAL difficulty (never a computer guaranteed win), the floor ladder +
  * advance on a win (nothing lost on a loss), the floor-5/10 bosses, and the
  * Conqueror title with the repeatable bottom floor.
@@ -59,6 +64,12 @@ function placeSiteUnderHero(state: GameState): MapSpaceId {
   return field.spaceId;
 }
 
+/** Read through a helper so TypeScript does not retain stale property narrowing
+ * across the mutating beginFieldVisit engine call. */
+function firstPendingVisitStep(state: GameState) {
+  return state.adventure?.pendingVisit?.steps[0];
+}
+
 /** Open the gate menu and take the given option index. */
 function visitGate(state: GameState, fieldId: MapSpaceId, optionIndex: number): GameState {
   beginFieldVisit(state, state.heroes.hero_p1.id, fieldId, false);
@@ -91,14 +102,14 @@ function revealFloorArmy(state: GameState): GameState {
 }
 
 describe("The Dungeon — module gate & placement", () => {
-  it("CONTROL: module off ⇒ no site; and the flag WITHOUT Creature Banks stays off too", () => {
+  it("CONTROL: module off ⇒ no site; with Creature Banks off the Dungeon still activates", () => {
     const off = dungeonGame("dungeon-off", { wog: { enabled: true } });
     expect(off.adventure?.dungeonSite).toBeUndefined();
     const noBanks = dungeonGame("dungeon-no-banks", {
       creatureBanks: false,
       wog: { enabled: true, dungeon: true }
     });
-    expect(noBanks.adventure?.dungeonSite).toBeUndefined();
+    expect(noBanks.adventure?.dungeonSite).toEqual({ fieldId: null });
   });
 
   it("anime.dungeon is the second surface activating the same frozen flag", () => {
@@ -144,6 +155,28 @@ describe("The Dungeon — module gate & placement", () => {
 });
 
 describe("The Dungeon — delving floors", () => {
+  it("uses one shared room layout per floor for every player", () => {
+    const state = dungeonGame("dungeon-shared-layout");
+    const fieldId = placeSiteUnderHero(state);
+    beginFieldVisit(state, state.heroes.hero_p1.id, fieldId, false);
+    const first = state.adventure!.pendingVisit?.steps[0];
+    expect(first?.type).toBe("CHOOSE_ONE");
+    const firstLabels =
+      first?.type === "CHOOSE_ONE"
+        ? first.options.slice(0, 2).map((option) => option.label)
+        : [];
+
+    state.adventure!.pendingVisit = null;
+    state.heroes.hero_p2.spaceId = fieldId;
+    beginFieldVisit(state, state.heroes.hero_p2.id, fieldId, false);
+    const second = firstPendingVisitStep(state);
+    const secondLabels =
+      second?.type === "CHOOSE_ONE"
+        ? second.options.slice(0, 2).map((option) => option.label)
+        : [];
+    expect(secondLabels).toEqual(firstLabels);
+  });
+
   it("floor 1 offers TWO seeded rooms + Leave; the chosen room resolves BEFORE the den fight opens (real difficulty, never a guaranteed win)", () => {
     const state = dungeonGame("dungeon-delve");
     const fieldId = placeSiteUnderHero(state);
@@ -179,14 +212,14 @@ describe("The Dungeon — delving floors", () => {
     expect(context.dungeonFloor).toBe(1);
     // The grind site: REAL difficulty (floor+1) — hero/unit XP apply.
     expect(context.difficulty).toBe(dungeonFloorDifficulty(1));
-    // Opening the fight consumed the once-per-turn delve.
-    expect(after.players.p1.dungeonDelveRound).toBe(after.round);
+    // Opening the fight does not set the removed once-per-round latch.
+    expect(after.players.p1.dungeonDelveRound).toBeUndefined();
     // The delve is NEVER a computer guaranteed win (the explicit exclusion —
     // its difficulty would otherwise pass the level gates).
     expect(combatQualifiesForComputerGuaranteedWin(after, after.combat as CombatState)).toBe(false);
   });
 
-  it("Leave the Dungeon opens no fight and does NOT consume the once-per-turn delve", () => {
+  it("Leave the Dungeon opens no fight and consumes no extra movement", () => {
     const state = dungeonGame("dungeon-leave");
     const fieldId = placeSiteUnderHero(state);
     const after = visitGate(state, fieldId, 2);
@@ -194,11 +227,11 @@ describe("The Dungeon — delving floors", () => {
     expect(after.players.p1.dungeonDelveRound).toBeUndefined();
   });
 
-  it("once per turn: a second delve the same round is refused with a note; next round it opens again", () => {
+  it("a loss keeps the current floor immediately retryable, including on a later round", () => {
     const state = dungeonGame("dungeon-once");
     const fieldId = placeSiteUnderHero(state);
     const fought = delveFloor(state, fieldId);
-    // Lose the fight (nothing lost) and try again the same round.
+    // Lose the fight (nothing lost) and try again immediately.
     fought.combat!.outcome = {
       winnerPlayerId: NEUTRAL_PLAYER_ID,
       defeatedPlayerId: "p1",
@@ -206,17 +239,74 @@ describe("The Dungeon — delving floors", () => {
     };
     finalizeAdventureCombat(fought);
     beginFieldVisit(fought, fought.heroes.hero_p1.id, fieldId, false);
-    expect(fought.adventure!.pendingVisit).toBeNull();
-    expect(
-      fought.eventLog.some(
-        (event) => event.type === "EVENT_NOTE" && /once per turn/.test("message" in event ? event.message : "")
-      )
-    ).toBe(true);
+    expect(fought.adventure!.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
 
-    // Next round the gate admits the delver again.
+    // It remains available after a round change as well.
     fought.round += 1;
     beginFieldVisit(fought, fought.heroes.hero_p1.id, fieldId, false);
     expect(fought.adventure!.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
+  });
+
+  it("a win offers the next floor immediately and continuation spends exactly 1 movement", () => {
+    const state = dungeonGame("dungeon-movement");
+    const fieldId = placeSiteUnderHero(state);
+    const fought = delveFloor(state, fieldId);
+    fought.combat!.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    finalizeAdventureCombat(fought);
+    const movementBefore = fought.heroes.hero_p1.movementPoints;
+    pumpAdventureQueues(fought);
+    const menu = fought.adventure!.pendingVisit?.steps[0];
+    expect(menu?.type).toBe("CHOOSE_ONE");
+    if (menu?.type !== "CHOOSE_ONE") {
+      throw new Error("expected a continuation door menu");
+    }
+    expect(menu.options[0]?.label).toMatch(/Descend \(1 movement\)/);
+    const optionIndex = 0;
+    expect(menu.options[optionIndex]?.steps[0]).toMatchObject({
+      type: "SPEND_HERO_MOVEMENT",
+      amount: 1
+    });
+    const movementRefund = menu.options[optionIndex]!.steps.reduce(
+      (total, step) => total + (step.type === "GAIN_MOVEMENT" ? step.amount : 0),
+      0
+    );
+    const continued = apply(fought, {
+      type: "RESOLVE_VISIT_STEP",
+      playerId: "p1",
+      optionIndex
+    });
+    expect(continued.heroes.hero_p1.movementPoints).toBe(
+      movementBefore - 1 + movementRefund
+    );
+  });
+
+  it("with no movement left, a win saves the new floor and tells the player to resume later", () => {
+    const state = dungeonGame("dungeon-resume-later");
+    const fieldId = placeSiteUnderHero(state);
+    const fought = delveFloor(state, fieldId);
+    fought.combat!.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    finalizeAdventureCombat(fought);
+    fought.heroes.hero_p1.movementPoints = 0;
+    pumpAdventureQueues(fought);
+
+    expect(fought.players.p1.dungeonFloor).toBe(2);
+    expect(fought.adventure!.pendingVisit).toBeNull();
+    expect(
+      fought.eventLog.some(
+        (event) =>
+          event.type === "EVENT_NOTE" &&
+          event.playerId === "p1" &&
+          /resume here on a later turn/i.test(event.message)
+      )
+    ).toBe(true);
   });
 
   it("a WIN advances the floor and pays the ladder (unshifted to the queue front); a LOSS keeps the floor and the hero stays on the gate", () => {
@@ -279,6 +369,33 @@ describe("The Dungeon — delving floors", () => {
     );
     expect(minions.length).toBeGreaterThan(0);
     expect(minions.length).toBeLessThanOrEqual(DUNGEON_FLOOR_BOSSES.minotaur_of_the_depths.minionCount);
+  });
+
+  it("the Doom dungeon swaps in Doom rooms, guards, and its own layered floor bosses", () => {
+    const state = dungeonGame("dungeon-doom-floor", {
+      wog: { enabled: true, dungeon: true, pveTheme: "doom" }
+    });
+    const fieldId = placeSiteUnderHero(state);
+    state.players.p1.dungeonFloor = 5;
+
+    beginFieldVisit(state, state.heroes.hero_p1.id, fieldId, false);
+    const menu = state.adventure!.pendingVisit?.steps[0];
+    expect(state.adventure?.pveTheme).toBe("doom");
+    expect(menu?.type).toBe("CHOOSE_ONE");
+    if (menu?.type !== "CHOOSE_ONE") {
+      throw new Error("expected the Doom boss confirm");
+    }
+    expect(menu.prompt).toMatch(/Baron Warden/);
+
+    let fight = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    fight = revealFloorArmy(fight);
+    const boss = Object.values(fight.combat!.units).find((unit) => unit.bossUnit);
+    const minions = Object.values(fight.combat!.units).filter(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && !unit.bossUnit
+    );
+    expect(boss?.unitDefId).toBe("boss.doom_baron_warden");
+    expect(minions.length).toBeGreaterThan(0);
+    expect(minions.every((unit) => unit.unitDefId?.startsWith("doom."))).toBe(true);
   });
 
   it("conquering floor 10 pays the relic search + the Conqueror title ONCE; the bottom floor stays repeatable for the fallback reward", () => {

@@ -128,14 +128,20 @@ describe("Boss data — ability hygiene", () => {
     }
   });
 
-  it("every boss card face + the two module hex sprites ship on disk (procedural placeholders — docs/raid-dungeon-art.md)", () => {
+  it("every boss card face + every themed module map object ships on disk", () => {
     for (const def of listAllBossDefinitions()) {
       expect(existsSync(join(process.cwd(), "public", def.cardImage)), def.cardImage).toBe(true);
     }
     for (const asset of [
       "/assets/bosses/custom_boss.webp",
       "/assets/bosses/rift_lair_field.webp",
-      "/assets/bosses/dungeon_gate_field.webp"
+      "/assets/bosses/dungeon_gate_field.webp",
+      "/assets/bosses/calamity_gate_classic.webp",
+      "/assets/bosses/calamity_gate_doom.webp",
+      "/assets/bosses/rift_lair_classic.webp",
+      "/assets/bosses/rift_lair_doom.webp",
+      "/assets/bosses/dungeon_gate_classic.webp",
+      "/assets/bosses/dungeon_gate_doom.webp"
     ]) {
       expect(existsSync(join(process.cwd(), "public", asset)), asset).toBe(true);
     }

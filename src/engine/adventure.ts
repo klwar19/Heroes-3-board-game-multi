@@ -11,6 +11,7 @@ import {
   neutralUnitIdsByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { DOOM_UNIT_IDS_BY_TIER } from "@/data/doom";
 import { unitAbilities, type UnitMapAbilityEffect } from "@/data/units/abilities";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { hasInternalBorder } from "@/data/map/borders";
@@ -153,13 +154,12 @@ import {
 import { createSeededRandom } from "./random";
 import {
   designedWaveSpec,
+  waveBattleEventOf,
   waveArmyLevel,
+  waveDefeatLimitOf,
   waveNumberForRound,
-  WAVE_PILLAGE_GOLD,
-  WAVE_TREASURE_DIE_FROM_WAVE,
+  waveRewardsOf,
   WAVE_OVERRUN_GUARD_LEVEL,
-  WAVE_WIN_GOLD,
-  WAVE_WIN_XP
 } from "./monster-waves";
 import {
   RAID_BOSS_ESCALATION_INTERVAL,
@@ -170,10 +170,11 @@ import {
   scheduledBossPool
 } from "./raid-bosses";
 import {
-  DUNGEON_BOSS_FLOORS,
+  dungeonBossId,
   dungeonDoorsForFloor,
   dungeonFloorDifficulty,
-  dungeonFloorOf
+  dungeonFloorOf,
+  dungeonThemeOf
 } from "./dungeon";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
@@ -6078,6 +6079,10 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   }
   // Raid Bosses (§6.5): a Rift Lair field opens the confirm-and-challenge
   // menu (the boss fight is rebuilt from its REMAINING layers each attempt).
+  if (location.id === "calamity_gate") {
+    handleCalamityGateVisit(state, playerId);
+    return;
+  }
   if (location.id === "rift_lair") {
     handleRiftLairVisit(state, playerId, heroId, field);
     return;
@@ -6526,6 +6531,21 @@ export function processPendingVisit(state: GameState): void {
           adventure.pendingVisit = null;
         }
         dungeonEncounterHook?.(state, heroId, floor);
+        return;
+      }
+      case "DUNGEON_CONTINUE": {
+        const hero = state.heroes[visit.heroId];
+        const field = adventure.fields[visit.fieldId];
+        if (adventure.pendingVisit === visit) {
+          adventure.pendingVisit = null;
+        }
+        if (
+          hero &&
+          field?.location === "dungeon_gate" &&
+          hero.spaceId === field.spaceId
+        ) {
+          handleDungeonGateVisit(state, visit.playerId, visit.heroId, field, true);
+        }
         return;
       }
       case "PLAY_STORY_SCENE":
@@ -12606,6 +12626,38 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
 }
 
 /**
+ * Draw a module encounter army from the frozen PvE theme. Classic encounters
+ * use the real Neutral decks. Doom encounters mint seeded Doom cards directly
+ * so the theme is complete even when the separate "Doom neutrals" deck option
+ * is off; `bankGuard` prevents those themed copies entering shared discards.
+ */
+export function drawPveThemedArmy(
+  state: GameState,
+  difficulty: number,
+  seedScope: string
+): NeutralDraw[] {
+  if (state.adventure?.pveTheme !== "doom") {
+    return drawNeutralArmy(state, difficulty);
+  }
+  const counts = NEUTRAL_ARMY_TABLE[neutralArmyDifficulty(state)][difficulty];
+  if (!counts) {
+    return [];
+  }
+  const random = adventureRandom(state, `pve-${seedScope}`);
+  const draws: NeutralDraw[] = [];
+  for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
+    const pool = DOOM_UNIT_IDS_BY_TIER[tier];
+    for (let index = 0; index < counts[tier]; index += 1) {
+      const unitDefId = pool[random.nextInt(0, pool.length - 1)];
+      if (unitDefId) {
+        draws.push({ unitDefId, tier, bankGuard: true });
+      }
+    }
+  }
+  return draws;
+}
+
+/**
  * Builds the guard army for a field, applying the creature-bank overrides:
  *  - Dragon Utopia: a fixed party of the four dragons (not from the deck).
  *  - Random Town: the rolled faction's packs (1 bronze, 2 silver, 2 gold).
@@ -12643,9 +12695,18 @@ export function drawWaveArmy(state: GameState, wave: number): NeutralDraw[] {
         playableFactions: playable
       }) as NeutralDraw[];
     }
-    return drawNeutralArmy(state, spec.level);
+    return drawPveThemedArmy(state, spec.level, `wave-${wave}-designed-level`);
   }
-  return drawNeutralArmy(state, waveArmyLevel(wave));
+  return drawPveThemedArmy(state, waveArmyLevel(wave), `wave-${wave}`);
+}
+
+/** Theme-aware Dungeon party; the floor and theme seed one shared layout/army. */
+export function drawDungeonArmy(
+  state: GameState,
+  floor: number,
+  difficulty = dungeonFloorDifficulty(floor)
+): NeutralDraw[] {
+  return drawPveThemedArmy(state, difficulty, `dungeon-floor-${floor}-level-${difficulty}`);
 }
 
 /**
@@ -13587,9 +13648,10 @@ function applyCalamityWaveRoundStart(state: GameState): void {
  * already paid no level XP, and the post-win field visit is skipped there.
  */
 export function grantWaveVictoryRewards(state: GameState, playerId: PlayerId, wave: number): void {
-  gainResources(state, playerId, { gold: WAVE_WIN_GOLD }, `repelled monster wave ${wave}`);
-  gainExperience(state, playerId, WAVE_WIN_XP);
-  if (wave >= WAVE_TREASURE_DIE_FROM_WAVE) {
+  const profile = waveRewardsOf(state);
+  gainResources(state, playerId, { gold: profile.winGold }, `repelled monster wave ${wave}`);
+  gainExperience(state, playerId, profile.winXp);
+  if (wave >= profile.treasureFromWave) {
     state.adventure?.rewardQueue.unshift({
       playerId,
       kind: "visit-steps",
@@ -13600,11 +13662,14 @@ export function grantWaveVictoryRewards(state: GameState, playerId: PlayerId, wa
     type: "MONSTER_WAVE_REPELLED",
     playerId,
     wave,
-    gold: WAVE_WIN_GOLD,
-    message: `${state.players[playerId]?.name ?? playerId} repelled monster wave ${wave}: +${WAVE_WIN_GOLD} gold, +${WAVE_WIN_XP} hero experience${
-      wave >= WAVE_TREASURE_DIE_FROM_WAVE ? ", and a Treasure-die roll" : ""
+    gold: profile.winGold,
+    message: `${state.players[playerId]?.name ?? playerId} repelled monster wave ${wave}: +${profile.winGold} gold, +${profile.winXp} hero experience${
+      wave >= profile.treasureFromWave ? ", and a Treasure-die roll" : ""
     }.`
   });
+  if (state.players[playerId]?.wavePreparedFor === wave) {
+    delete state.players[playerId].wavePreparedFor;
+  }
 }
 
 /**
@@ -13613,7 +13678,8 @@ export function grantWaveVictoryRewards(state: GameState, playerId: PlayerId, wa
  * home town is OVERRUN — flag removed, `everFlagged`/`blackCube` reset and a
  * difficulty-Ⅰ guard re-seeded, so the field must be re-fought and re-flagged
  * (re-earning its first-flag reward — the clear-cubes re-open precedent).
- * Never razes a building, never eliminates. No holding = gold loss only.
+ * Never razes a building. Optional setup rules may eliminate a player after
+ * two or three accumulated wave defeats. No holding = resource loss only.
  */
 export function applyWavePillage(state: GameState, playerId: PlayerId, wave: number): void {
   const adventure = state.adventure;
@@ -13621,9 +13687,17 @@ export function applyWavePillage(state: GameState, playerId: PlayerId, wave: num
   if (!adventure || !player) {
     return;
   }
-  const goldLost = Math.min(WAVE_PILLAGE_GOLD, player.resources.gold);
+  const profile = waveRewardsOf(state);
+  const goldLost = Math.min(profile.pillageGold, player.resources.gold);
   if (goldLost > 0) {
     player.resources.gold -= goldLost;
+  }
+  if (profile.pillageMorale < 0) {
+    changeMorale(state, playerId, profile.pillageMorale);
+  }
+  player.waveDefeats = (player.waveDefeats ?? 0) + 1;
+  if (player.wavePreparedFor === wave) {
+    delete player.wavePreparedFor;
   }
 
   const homeFieldId = getTownOfPlayer(state, playerId)?.fieldId ?? null;
@@ -13665,6 +13739,15 @@ export function applyWavePillage(state: GameState, playerId: PlayerId, wave: num
       goldLost > 0 ? `${goldLost} gold plundered` : "nothing left to plunder"
     }${overrun ? `, and the ${overrun.location === "mine" ? "mine" : "settlement"} nearest home is overrun (a level-Ⅰ guard moves in)` : ""}.`
   });
+  const defeatLimit = waveDefeatLimitOf(state);
+  if (defeatLimit > 0 && player.waveDefeats >= defeatLimit && !player.eliminated) {
+    eliminatePlayer(
+      state,
+      playerId,
+      `lost ${player.waveDefeats} Calamity Wave assaults (limit ${defeatLimit})`,
+      false
+    );
+  }
 }
 
 /**
@@ -13745,6 +13828,7 @@ function spawnScheduledRaidBoss(state: GameState): void {
     "grail",
     "dragon_utopia",
     "creature_bank",
+    "calamity_gate",
     "rift_lair",
     "dungeon_gate"
   ]);
@@ -13841,10 +13925,66 @@ export function spawnRaidBossOnField(
 }
 
 /**
- * The Dungeon (§6.7.3): carve the one-per-map delve site onto a (former
- * Blocked) Field — the placeCreatureBank sibling. Latches
- * `adventure.dungeonSite.fieldId`; per-player floors live on PlayerState.
+ * The Dungeon (§6.7.3): carve the one-per-map delve site onto a former
+ * Near-band Blocked Field. It uses the same placement seam as Creature Banks,
+ * but does not require that optional rule. The map site is shared; per-player
+ * floor progress lives on PlayerState.
  */
+/** Convert a Far-band Blocked Field into the Waves module's shared map object. */
+export function placeCalamityGate(state: GameState, spaceId: MapSpaceId): MapFieldState | null {
+  const adventure = state.adventure;
+  const config = adventure?.monsterWaves;
+  const field = adventure?.fields[spaceId];
+  if (!adventure || !config || !field) {
+    return null;
+  }
+  clearCustomGuard(field);
+  field.location = "calamity_gate";
+  delete field.difficulty;
+  delete field.resource;
+  delete field.amount;
+  delete field.faction;
+  field.blackCube = false;
+  field.flagOwnerId = null;
+  delete field.extraFlagOwnerIds;
+  field.everFlagged = false;
+  field.settlementResource = null;
+  config.gateFieldId = spaceId;
+  appendEvent(state, {
+    type: "CALAMITY_GATE_PLACED",
+    fieldId: spaceId,
+    message:
+      "The Calamity Gate has appeared on the map. Visit it before a wave to cancel that assault's battle event."
+  });
+  return field;
+}
+
+/** Visiting the shared Gate prepares only this player for the next numbered wave. */
+function handleCalamityGateVisit(state: GameState, playerId: PlayerId): void {
+  const config = state.adventure?.monsterWaves;
+  const player = state.players[playerId];
+  if (!config || !player) {
+    return;
+  }
+  const nextWave = Math.floor(state.round / config.cadence) + 1;
+  if (player.wavePreparedFor === nextWave) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: `Your defenses are already prepared for monster wave ${nextWave}.`
+    });
+    return;
+  }
+  player.wavePreparedFor = nextWave;
+  const event = waveBattleEventOf(state, nextWave);
+  appendEvent(state, {
+    type: "CALAMITY_GATE_PREPARED",
+    playerId,
+    wave: nextWave,
+    message: `${player.name} scouts the Calamity Gate and prepares for wave ${nextWave}; ${event.name} will be canceled for this assault.`
+  });
+}
+
 export function placeDungeonSite(state: GameState, spaceId: MapSpaceId): MapFieldState | null {
   const adventure = state.adventure;
   const field = adventure?.fields[spaceId];
@@ -13870,41 +14010,45 @@ export function placeDungeonSite(state: GameState, spaceId: MapSpaceId): MapFiel
     type: "DUNGEON_PLACED",
     fieldId: spaceId,
     message:
-      "The Dungeon's gate stands open — a repeatable delve, one floor per turn (floors 1–10, floor bosses at 5 and 10, a relic and the Conqueror title at the bottom)."
+      "The Dungeon's gate stands open — a shared, repeatable delve (floors 1–10). Each floor costs 1 movement; victors may descend immediately or resume later. Layered bosses guard floors 5 and 10."
   });
   return field;
 }
 
 /**
- * The Dungeon gate visit (§6.7.3 + door rooms): once per turn, delve YOUR
- * current floor — pick one of two revealed rooms (treasure / shrine /
- * whispering-wall dialogue / camp), resolve it, then the floor den fight
- * opens. Floors 5 and 10 skip the doors and face the floor boss directly.
- * Loss/retreat costs nothing; a win advances the floor and pays the ladder.
+ * The Dungeon gate visit (§6.7.3 + door rooms): delve YOUR current floor.
+ * Entering the field paid the first movement; every immediate descent pays
+ * another movement. Pick one of two shared seeded rooms, resolve it, then the
+ * floor den fight opens. Floors 5 and 10 face a layered themed boss directly.
+ * Loss/retreat keeps progress; a win advances the floor and pays the ladder.
  */
 function handleDungeonGateVisit(
   state: GameState,
   playerId: PlayerId,
   heroId: HeroId,
-  field: MapFieldState
+  field: MapFieldState,
+  continuing = false
 ): void {
   const adventure = state.adventure;
   const player = state.players[playerId];
   if (!adventure || !adventure.dungeonSite || !player) {
     return;
   }
-  if (player.dungeonDelveRound === state.round) {
+  if (continuing && (state.heroes[heroId]?.movementPoints ?? 0) < 1) {
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
-      message: "The Dungeon admits each delver once per turn — return next turn."
+      message: "You need 1 movement to descend another Dungeon floor; resume here on a later turn."
     });
     return;
   }
   const floor = dungeonFloorOf(state, playerId);
-  const bossId = DUNGEON_BOSS_FLOORS[floor];
+  const bossId = dungeonBossId(state, floor);
   const repeat = Boolean(player.dungeonConquered);
   const fightStep: VisitStep = { type: "DUNGEON_FLOOR_FIGHT", floor };
+  const movementCost: VisitStep[] = continuing
+    ? [{ type: "SPEND_HERO_MOVEMENT", heroId, amount: 1 }]
+    : [];
 
   if (bossId) {
     const boss = resolveBossDefinition(state, bossId);
@@ -13919,7 +14063,12 @@ function handleDungeonGateVisit(
             boss?.layers ?? 2
           } health bars, with its retinue). Face it?${repeat ? " (Already conquered — the repeat pays a Treasure die + 3 gold.)" : ""}`,
           options: [
-            { label: `Face ${boss?.name ?? "the floor boss"}`, steps: [fightStep] },
+            {
+              label: `${continuing ? "Descend (1 movement) and " : ""}Face ${
+                boss?.name ?? "the floor boss"
+              }`,
+              steps: [...movementCost, fightStep]
+            },
             { label: "Withdraw", steps: [] }
           ]
         }
@@ -13929,8 +14078,9 @@ function handleDungeonGateVisit(
     return;
   }
 
-  const rng = adventureRandom(state, `dungeon-doors-${playerId}-${floor}`);
-  const [left, right] = dungeonDoorsForFloor(rng, floor);
+  const theme = dungeonThemeOf(state);
+  const rng = createSeededRandom(`${state.seed}#dungeon-doors-${theme}-${floor}`);
+  const [left, right] = dungeonDoorsForFloor(rng, floor, theme);
   adventure.pendingVisit = {
     heroId,
     playerId,
@@ -13942,8 +14092,14 @@ function handleDungeonGateVisit(
           floor
         )} war party) waits. Which way?`,
         options: [
-          { label: `Left door: ${left.label}`, steps: [...left.steps, fightStep] },
-          { label: `Right door: ${right.label}`, steps: [...right.steps, fightStep] },
+          {
+            label: `${continuing ? "Descend (1 movement) — " : ""}Left door: ${left.label}`,
+            steps: [...movementCost, ...left.steps, fightStep]
+          },
+          {
+            label: `${continuing ? "Descend (1 movement) — " : ""}Right door: ${right.label}`,
+            steps: [...movementCost, ...right.steps, fightStep]
+          },
           { label: "Leave the Dungeon", steps: [] }
         ]
       }
