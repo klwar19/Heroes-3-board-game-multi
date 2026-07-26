@@ -24,6 +24,7 @@ import {
   freeSpellBookActive,
   legionDiscountTargets,
   playerHasPlaceableFarTile,
+  reinforcementDiscountCostFor,
   reinforceCostFor,
   getActiveAstrologersCard,
   getMainHero,
@@ -54,7 +55,6 @@ import {
   neutralPlacementIsManual,
   canMulliganStartingHand,
   getHeroMoveDestinations,
-  hillFortCost,
   inCombatPrep,
   isDefendingOwnFactionTown,
   isHerolessMineDefender,
@@ -3240,7 +3240,9 @@ function addOptionPlays(
     // sensible choice is the resource side, so the discount side is withheld
     // (this also guarantees the selection prompt is never opened empty).
     if (option.effect.type === "GAIN_RECRUIT_DISCOUNT") {
-      const alreadyBanked = player.recruitDiscounts?.some((voucher) => voucher.cardId === cardId) ?? false;
+      const alreadyBanked = houseRuleEnabled(state, "immediate-reinforcement-prompts")
+        ? player.recruitDiscounts?.some((voucher) => voucher.cardId === cardId) ?? false
+        : player.legionDiscountCardIdsUsed?.includes(cardId) ?? false;
       if (alreadyBanked || legionDiscountTargets(state, playerId).length === 0) {
         continue;
       }
@@ -3642,6 +3644,65 @@ function addTurnCardActions(
           ...(fromSpellBook ? { fromSpellBook: true } : {})
         }
       });
+    }
+  }
+}
+
+function formatResourceCost(cost: ResourceCost): string {
+  return (
+    Object.entries(cost)
+      .filter(([, amount]) => (amount ?? 0) > 0)
+      .map(([resource, amount]) => `${amount} ${resource}`)
+      .join(" + ") || "free"
+  );
+}
+
+/**
+ * Necromancy and Hill Fort now bank their reinforcement offer instead of
+ * forcing an immediate target. The source discount is priced first; any
+ * currently banked Legion/Stables gold discount is then deducted from the
+ * amount shown and paid here.
+ */
+function addBankedReinforcementActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId
+): void {
+  const player = state.players[playerId];
+  if (!player || state.combat || !hasOpenAdventureTurn(state, playerId)) {
+    return;
+  }
+
+  for (const discount of player.reinforcementDiscounts ?? []) {
+    for (const unit of player.army) {
+      const name = coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId;
+      const reinforceCost = reinforcementDiscountCostFor(state, playerId, discount.id, unit.id, "reinforce");
+      if (reinforceCost && hasRecruitResources(state, playerId, reinforceCost)) {
+        actions.push({
+          label: `${discount.sourceName}: reinforce ${name} (${formatResourceCost(reinforceCost)})`,
+          action: {
+            type: "REDEEM_REINFORCEMENT_DISCOUNT",
+            playerId,
+            discountId: discount.id,
+            armyUnitId: unit.id,
+            kind: "reinforce"
+          }
+        });
+      }
+
+      const stackCost = reinforcementDiscountCostFor(state, playerId, discount.id, unit.id, "stack");
+      if (stackCost && hasRecruitResources(state, playerId, stackCost)) {
+        actions.push({
+          label: `${discount.sourceName}: increase ${name} stack (${formatResourceCost(stackCost)})`,
+          action: {
+            type: "REDEEM_REINFORCEMENT_DISCOUNT",
+            playerId,
+            discountId: discount.id,
+            armyUnitId: unit.id,
+            kind: "stack"
+          }
+        });
+      }
     }
   }
 }
@@ -7945,12 +8006,12 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
       return tier === "bronze" || tier === "silver";
     });
     fewUnits.forEach((unit, index) => {
-      // Half cost (rounded up), unless a Legion voucher reserved for this unit
-      // beats it (non-stacking; matches what resolveSettlementChoice charges).
+      // Half cost (rounded up) applies first, then every distinct Legion voucher
+      // reserved for this unit reduces the remaining gold.
       const halfCost = Object.entries(reinforceCostFor(state, playerId, unit.id, true, false, false) ?? {})
         .filter(([, amount]) => amount)
         .map(([resource, amount]) => `${amount} ${resource}`)
-        .join(" + ");
+        .join(" + ") || "free";
       actions.push({
         label: free
           ? `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} for free`
@@ -8110,6 +8171,15 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
   }
 
   if (step.type === "HILL_FORT") {
+    if (!houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
+      actions.push({
+        label: "Bank Hill Fort reinforcement discount (-3 gold; expires when you move)",
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 }
+      });
+      actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+      return;
+    }
+
     const fewUnits = player.army.filter((unit) => {
       if (unit.side !== "few" || !getUnitSide(unit.unitDefId, "pack")) {
         return false;
@@ -8118,14 +8188,10 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
       return tier === "bronze" || tier === "silver";
     });
     fewUnits.forEach((unit, index) => {
-      const packSide = getUnitSide(unit.unitDefId, "pack");
-      const cost = hillFortCost(packSide?.cost ?? {});
-      const costLabel = Object.entries(cost)
-        .map(([resource, amount]) => `${amount} ${resource}`)
-        .join(" + ") || "free";
-      if (playerHasResources(player, cost)) {
+      const cost = reinforceCostFor(state, playerId, unit.id, false, false, false, 3);
+      if (cost && hasRecruitResources(state, playerId, cost)) {
         actions.push({
-          label: `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${costLabel})`,
+          label: `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${formatResourceCost(cost)})`,
           action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
         });
       }
@@ -8453,7 +8519,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         const packSide = unit.pack;
         // The gold paid drops by the TOTAL discount: a Legion voucher reserved for
         // this unit STACKS with the Champions' Stables discount
-        // (applyRecruitGoldDiscount). Two Legion pieces still take the larger.
+        // (applyRecruitGoldDiscount). Every distinct Legion piece is included.
         const reinforceCost =
           packSide && target
             ? applyRecruitGoldDiscount(
@@ -9730,6 +9796,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
 
   // Instant, Ongoing and Map cards may be played during your own map turn.
   addTurnCardActions(actions, state, playerId, cards);
+  // Banked reinforcement offers remain non-blocking so Legion pieces and other
+  // discount sources can be added before the player chooses a target.
+  addBankedReinforcementActions(actions, state, playerId);
   // Spell Book (house rule): stash hand Spells into the Book to free hand slots.
   addSpellBookStashActions(actions, state, playerId, cards);
   addPermanentDiscardActions(actions, state, playerId);

@@ -51,7 +51,7 @@ function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: s
 //     School-filtered Spell-deck dig — find the first spell of this School
 //     (any level), take it into hand OR discard it, then reshuffle
 //     (engine: EAGLE_EYE_DIG { school }, the school-aware Eagle Eye dig).
-//   • Option B (combat reaction, the new mechanic): "When playing a {School}
+//   • Option B (cast reaction, including the map Power tray): "When playing a {School}
 //     Magic spell, resolve its effect without paying the Power cost." Played
 //     while casting a matching spell, it lifts that cast to the spell's MAXIMUM
 //     Power breakpoint for free (engine: SET_SPELL_POWER_MAX { schoolOnly }; the
@@ -83,6 +83,8 @@ function tomeArtifact(school: Exclude<SpellSchool, "any">): CardLibrary[string] 
         },
         {
           label: `Resolve a ${schoolName} Magic spell at maximum Power without paying`,
+          // Generic map play is intentionally blocked; the map Spell Power
+          // tray offers this option only while a matching cast is prepared.
           combatOnly: true,
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
           effect: { type: "SET_SPELL_POWER_MAX", schoolOnly: school }
@@ -302,9 +304,9 @@ export const artifactCards: CardLibrary = {
           label: "Reduce a chosen unit's recruit/reinforce cost by 4 gold",
           // Instant, map-only: playing it opens a prompt to pick the unit, then
           // banks a one-shot voucher reserved for that unit (never an ongoing
-          // effect; the card is discarded at once). The voucher never stacks with
-          // another Legion piece or any other discount source — the cost path
-          // applies the single largest. See queueLegionDiscountChoice.
+          // effect; the card is discarded at once). Distinct Legion pieces and
+          // other discount sources stack; the same piece cannot be replayed for
+          // a second voucher before movement. See queueLegionDiscountChoice.
           mapOnly: true,
           effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 4 }
         },
@@ -332,9 +334,9 @@ export const artifactCards: CardLibrary = {
           label: "Reduce a chosen unit's recruit/reinforce cost by 5 gold",
           // Instant, map-only: playing it opens a prompt to pick the unit, then
           // banks a one-shot voucher reserved for that unit (never an ongoing
-          // effect; the card is discarded at once). The voucher never stacks with
-          // another Legion piece or any other discount source — the cost path
-          // applies the single largest. See queueLegionDiscountChoice.
+          // effect; the card is discarded at once). Distinct Legion pieces and
+          // other discount sources stack; the same piece cannot be replayed for
+          // a second voucher before movement. See queueLegionDiscountChoice.
           mapOnly: true,
           effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 5 }
         },
@@ -375,9 +377,9 @@ export const artifactCards: CardLibrary = {
           label: "Reduce a chosen unit's recruit/reinforce cost by 6 gold",
           // Instant, map-only: playing it opens a prompt to pick the unit, then
           // banks a one-shot voucher reserved for that unit (never an ongoing
-          // effect; the card is discarded at once). The voucher never stacks with
-          // another Legion piece or any other discount source — the cost path
-          // applies the single largest. See queueLegionDiscountChoice.
+          // effect; the card is discarded at once). Distinct Legion pieces and
+          // other discount sources stack; the same piece cannot be replayed for
+          // a second voucher before movement. See queueLegionDiscountChoice.
           mapOnly: true,
           effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 6 }
         },
@@ -1160,9 +1162,9 @@ export const artifactCards: CardLibrary = {
           label: "Reduce a chosen unit's recruit/reinforce cost by 6 gold",
           // Instant, map-only: playing it opens a prompt to pick the unit, then
           // banks a one-shot voucher reserved for that unit (never an ongoing
-          // effect; the card is discarded at once). The voucher never stacks with
-          // another Legion piece or any other discount source — the cost path
-          // applies the single largest. See queueLegionDiscountChoice.
+          // effect; the card is discarded at once). Distinct Legion pieces and
+          // other discount sources stack; the same piece cannot be replayed for
+          // a second voucher before movement. See queueLegionDiscountChoice.
           mapOnly: true,
           effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 6 }
         },
@@ -1194,9 +1196,9 @@ export const artifactCards: CardLibrary = {
           label: "Reduce a chosen unit's recruit/reinforce cost by 5 gold",
           // Instant, map-only: playing it opens a prompt to pick the unit, then
           // banks a one-shot voucher reserved for that unit (never an ongoing
-          // effect; the card is discarded at once). The voucher never stacks with
-          // another Legion piece or any other discount source — the cost path
-          // applies the single largest. See queueLegionDiscountChoice.
+          // effect; the card is discarded at once). Distinct Legion pieces and
+          // other discount sources stack; the same piece cannot be replayed for
+          // a second voucher before movement. See queueLegionDiscountChoice.
           mapOnly: true,
           effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 5 }
         },

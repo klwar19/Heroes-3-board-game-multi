@@ -196,6 +196,7 @@ describe("Map cast — School of Magic expert + Basic Magic expert (combat parit
     });
     // Power 1 + 2 = 3 → valuables tier (minPower 2). Permanent discarded, crown spent.
     expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
+    expect(state.players.p1.mapSpellPowerBank ?? 0).toBe(0);
     expect(state.players.p1.permanents ?? []).not.toContain("ability.air_magic");
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
   });
@@ -591,6 +592,7 @@ describe("map-spell-boost — every printed power side is offered", () => {
     );
     expect(state.players.p1.discard).toContain("artifact.tunic_of_the_cyclops_king");
     expect(state.players.p1.discard).not.toContain("spell.fly");
+    expect(state.players.p1.mapSpellPowerBank ?? 0).toBe(0);
   });
 
   it("Scales of the Greater Basilisk offers +3 AND +1/draw as separate sides", () => {
@@ -834,5 +836,235 @@ describe("map-spell-boost — hidden-info safety", () => {
     }
     expect(other.options.every((option) => option.label === "Hidden option")).toBe(true);
     expect(JSON.stringify(other)).not.toContain("spell.haste");
+  });
+});
+
+describe("map Spell Power parity — events, specialties, Tomes, Orbs, and recall", () => {
+  function castViewAir(state: GameState): GameState {
+    return applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.view_air",
+      mode: "basic",
+      target: { type: "none" }
+    });
+  }
+
+  function chooseOffer(
+    state: GameState,
+    predicate: (
+      offer: NonNullable<
+        Extract<NonNullable<GameState["pendingChoice"]>, { type: "OPTION_CHOICE" }>["mapSpellBoost"]
+      >["offers"][number]
+    ) => boolean
+  ): GameState {
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || !choice.mapSpellBoost) {
+      throw new Error("expected map-spell-boost");
+    }
+    const optionIndex = choice.mapSpellBoost.offers.findIndex(predicate);
+    expect(optionIndex).toBeGreaterThanOrEqual(0);
+    return applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex
+    });
+  }
+
+  it("stacks an Astrologers school event with a hero school specialty on the map", () => {
+    let state = mapHand(["spell.view_air"]);
+    state.adventure!.astrologers = {
+      activeCardId: "astrologers.blue_sky",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+    state.activeEffects.push({
+      id: "map-air-specialty",
+      name: "Hero Air Magic specialty",
+      scope: "player",
+      duration: { type: "permanent" },
+      modifiers: [{ type: "SPELL_SCHOOL_POWER_BONUS", school: "air", amount: 1 }],
+      source: { type: "system" },
+      controllerId: "p1",
+      startedRound: state.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    });
+    const valuablesBefore = state.players.p1.resources.valuables;
+
+    state = castViewAir(state);
+
+    // Blue Sky +1 and the hero specialty +1 are the same automatic sources
+    // used by battle, so View Air reaches its Power-2 tier without a discard.
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
+  });
+
+  it("offers a matching Tome in the tray and discards it to set maximum Power", () => {
+    let state = mapHand(["spell.view_air", "artifact.tome_of_air"]);
+    const valuablesBefore = state.players.p1.resources.valuables;
+    state = castViewAir(state);
+
+    const choice = state.pendingChoice;
+    expect(
+      choice?.type === "OPTION_CHOICE" &&
+        choice.mapSpellBoost?.offers.some(
+          (offer) => offer.kind === "tome-max" && offer.cardId === "artifact.tome_of_air"
+        )
+    ).toBe(true);
+    state = chooseOffer(
+      state,
+      (offer) => offer.kind === "tome-max" && offer.cardId === "artifact.tome_of_air"
+    );
+
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
+    expect(state.players.p1.hand).not.toContain("artifact.tome_of_air");
+    expect(state.players.p1.discard).toContain("artifact.tome_of_air");
+  });
+
+  it("keeps a wrong-school Tome out of the map cast", () => {
+    const state = castViewAir(mapHand(["spell.view_air", "artifact.tome_of_fire"]));
+    expect(state.players.p1.hand).toContain("artifact.tome_of_fire");
+    expect(
+      state.pendingChoice?.type === "OPTION_CHOICE" &&
+        state.pendingChoice.mapSpellBoost?.offers.some((offer) => offer.kind === "tome-max")
+    ).toBe(false);
+  });
+
+  it("shows Orb-doubled effective Power in the live tray before commit", () => {
+    let state = mapHand([
+      "spell.view_air",
+      "spell.haste",
+      "artifact.tunic_of_the_cyclops_king"
+    ]);
+    state.activeEffects.push({
+      id: "map-air-orb",
+      name: "Air Power doubles",
+      scope: "player",
+      duration: { type: "permanent" },
+      modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "air" }],
+      source: { type: "system" },
+      controllerId: "p1",
+      startedRound: state.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    });
+    state = castViewAir(state);
+    state = chooseOffer(
+      state,
+      (offer) => offer.kind === "card" && offer.cardId === "spell.haste"
+    );
+
+    // Raw added Power is 1, but the same Orb multiplier used by battle makes
+    // the displayed/resolved map Power 2. The Tunic draw side keeps the tray
+    // open at maximum so the live value is observable.
+    expect(
+      state.pendingChoice?.type === "OPTION_CHOICE"
+        ? state.pendingChoice.mapSpellBoost?.power
+        : undefined
+    ).toBe(1);
+    expect(
+      state.pendingChoice?.type === "OPTION_CHOICE"
+        ? state.pendingChoice.mapSpellBoost?.effectivePower
+        : undefined
+    ).toBe(2);
+  });
+
+  it("basic Mysticism recalls the map Spell with no crown", () => {
+    let state = mapHand(["spell.view_air", "spell.haste", "ability.mysticism"]);
+    state.players.p1.limits.expertUses = 0;
+    state = castViewAir(state);
+    state = chooseOffer(
+      state,
+      (offer) => offer.kind === "card" && offer.cardId === "spell.haste"
+    );
+
+    const recall = state.adventure?.pendingVisit?.steps[0];
+    expect(recall?.type).toBe("CHOOSE_ONE");
+    if (recall?.type === "CHOOSE_ONE") {
+      expect(recall.options.some((option) => /Use Mysticism:/i.test(option.label))).toBe(true);
+    }
+    state = applyOk(state, {
+      type: "RESOLVE_VISIT_STEP",
+      playerId: "p1",
+      optionIndex: 0
+    });
+    expect(state.players.p1.hand).toContain("spell.view_air");
+    expect(state.players.p1.hand).not.toContain("ability.mysticism");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+  });
+
+  it("expert Mysticism also recovers discardable support cards used in the map cast", () => {
+    let state = mapHand(["spell.view_air", "spell.haste", "ability.mysticism"]);
+    state.players.p1.limits.expertUses = 1;
+    state = castViewAir(state);
+    state = chooseOffer(
+      state,
+      (offer) => offer.kind === "card" && offer.cardId === "spell.haste"
+    );
+
+    const recall = state.adventure?.pendingVisit?.steps[0];
+    if (recall?.type !== "CHOOSE_ONE") {
+      throw new Error("expected a Mysticism recall choice");
+    }
+    const expertIndex = recall.options.findIndex((option) => /Mysticism expert/i.test(option.label));
+    expect(expertIndex).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, {
+      type: "RESOLVE_VISIT_STEP",
+      playerId: "p1",
+      optionIndex: expertIndex
+    });
+
+    expect(state.players.p1.hand).toEqual(
+      expect.arrayContaining(["spell.view_air", "spell.haste"])
+    );
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("expert Mysticism can recover a Tome spent to maximize the map Spell", () => {
+    let state = mapHand(["spell.view_air", "artifact.tome_of_air", "ability.mysticism"]);
+    state.players.p1.limits.expertUses = 1;
+    state = castViewAir(state);
+    state = chooseOffer(
+      state,
+      (offer) => offer.kind === "tome-max" && offer.cardId === "artifact.tome_of_air"
+    );
+
+    const recall = state.adventure?.pendingVisit?.steps[0];
+    if (recall?.type !== "CHOOSE_ONE") {
+      throw new Error("expected a Mysticism recall choice after the Tome cast");
+    }
+    const expertIndex = recall.options.findIndex((option) => /Mysticism expert/i.test(option.label));
+    expect(expertIndex).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, {
+      type: "RESOLVE_VISIT_STEP",
+      playerId: "p1",
+      optionIndex: expertIndex
+    });
+
+    expect(state.players.p1.hand).toEqual(
+      expect.arrayContaining(["spell.view_air", "artifact.tome_of_air"])
+    );
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("regular Knowledge offers only its free basic recall on the map", () => {
+    let state = mapHand(["spell.view_air", "spell.haste", "stat.knowledge"]);
+    state.players.p1.limits.expertUses = 2;
+    state = castViewAir(state);
+    state = chooseOffer(
+      state,
+      (offer) => offer.kind === "card" && offer.cardId === "spell.haste"
+    );
+
+    const recall = state.adventure?.pendingVisit?.steps[0];
+    if (recall?.type !== "CHOOSE_ONE") {
+      throw new Error("expected a Knowledge recall choice");
+    }
+    expect(recall.options.some((option) => /Knowledge expert/i.test(option.label))).toBe(false);
+    expect(recall.options.some((option) => /Use Knowledge:/i.test(option.label))).toBe(true);
   });
 });
