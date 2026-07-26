@@ -680,6 +680,9 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "MONSTER_WAVE_STARTED":
     case "MONSTER_WAVE_REPELLED":
     case "MONSTER_WAVE_PILLAGED":
+    case "MONSTER_WAVE_BATTLE_EVENT":
+    case "CALAMITY_GATE_PLACED":
+    case "CALAMITY_GATE_PREPARED":
     case "RAID_BOSS_ANNOUNCED":
     case "RAID_BOSS_SPAWNED":
     case "RAID_BOSS_LAYER_BROKEN":

@@ -25,6 +25,7 @@ import { locationDefinitions } from "@/data/map/locations";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { fieldSymbolOverlayFor } from "@/data/map/field-symbol-modules";
 import { allTileDefinitions } from "@/data/map/tiles";
+import { pveThemeFieldArt } from "@/engine/pve-content";
 import {
   NEUTRAL_DECK_IDS,
   NEUTRAL_PLAYER_ID,
@@ -1899,14 +1900,15 @@ export function HexMapBoard({
       // halves are distinct: the skull cave-mouth GATE on a Surface tile, the
       // lighter passage ENTRANCE on a Subterranean tile.
       const overrideArt = fieldOverrideImage(field.location);
-      // Raid Bosses / the Dungeon: carved module fields wear their own hex art
-      // (procedural placeholders — see docs/raid-dungeon-art.md for upgrades).
+      // Waves / Raid Bosses / the Dungeon: carved module fields wear painted,
+      // theme-aware map-object art generated from the masters documented in
+      // docs/raid-dungeon-art.md.
       const moduleFieldArt =
-        field.location === "rift_lair"
-          ? "/assets/bosses/rift_lair_field.webp"
-          : field.location === "dungeon_gate"
-            ? "/assets/bosses/dungeon_gate_field.webp"
-            : null;
+        field.location === "calamity_gate" ||
+        field.location === "rift_lair" ||
+        field.location === "dungeon_gate"
+          ? pveThemeFieldArt(field.location, adventure.pveTheme)
+          : null;
       // Monolith / Whirlpool / one-way hexes are NOT in this chain any more —
       // they render through the designer-parity teleportHexMark above (their
       // old full-hex stretch distorted the token art).
@@ -1963,6 +1965,20 @@ export function HexMapBoard({
             />
           );
         }
+      }
+      if (field.location === "dungeon_gate") {
+        const floor = Math.max(1, Math.min(10, state.players[viewerPlayerId]?.dungeonFloor ?? 1));
+        overlays.push(
+          <g
+            aria-label={`Your dungeon progress: floor ${floor}`}
+            className="dungeonFloorSvgBadge"
+            key={`${spaceId}-dungeon-floor`}
+            transform={`translate(${x} ${y + HEX_SIZE * 0.62})`}
+          >
+            <rect height="20" rx="8" width="70" x="-35" y="-13" />
+            <text textAnchor="middle" y="1">FLOOR {floor}</text>
+          </g>
+        );
       }
       if (field.location === "creature_bank" && field.bankSize) {
         overlays.push(
@@ -8396,9 +8412,9 @@ function GameModeSection({
                 ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
                 ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and a Drill action at your Towns."],
                 ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."],
-                ["monsterWaves", "Monster waves", "Calamity Waves: every Nth round (cadence below), EVERY live player fights a wave army at round start — the table pauses while the assaults resolve in seat order. Win: 2 gold + 1 hero XP (+ a Treasure die from wave 3 on). Loss or retreat: pillage — lose 3 gold and your mine/settlement nearest home is overrun by a difficulty-Ⅰ guard. Never razes buildings, never eliminates."],
+                ["monsterWaves", "Monster waves", "Calamity Waves: every Nth round, EVERY live player fights a themed invasion at round start. A Far-tile Calamity Gate can be visited beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats."],
                 ["raidBosses", "Raid bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead). Its wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
-                ["dungeon", "The Dungeon", "One repeatable delve site per map, carved onto a Near-tile Blocked Field (needs Creature Banks ON). Per-player floors 1–10, once per turn: pick a room (treasure vault, shrine, whispering wall…), then fight the floor guards for normal XP and a reward ladder. Floors 5 and 10 hold layered floor bosses; floor 10 pays a relic search + the Dungeon Conqueror title."]
+                ["dungeon", "The Dungeon", "One shared, repeatable delve site per map, independent of Creature Banks. Every player has their own floor progress but sees the same seeded rooms. Entering or descending costs 1 movement per floor; after a win you may descend immediately while movement remains, or resume from that floor on a later turn. Theme-specific rooms and layered bosses wait on floors 5 and 10."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
                 return (
@@ -8432,6 +8448,58 @@ function GameModeSection({
                     </button>
                   ))}
                 </div>
+              ) : null}
+              {wog.monsterWaves || wog.raidBosses || wog.dungeon ? (
+                <div className="waveCadenceRow" role="group" aria-label="PvE encounter theme">
+                  <strong>PvE theme</strong>
+                  {([
+                    ["classic", "Erathian"],
+                    ["doom", "Doom"],
+                    ["random", "Random"]
+                  ] as const).map(([theme, label]) => (
+                    <button
+                      aria-pressed={(wog.pveTheme ?? "classic") === theme}
+                      className={`waveCadenceChip ${(wog.pveTheme ?? "classic") === theme ? "selected" : ""}`}
+                      key={theme}
+                      onClick={() => send({ wog: { ...wog, pveTheme: theme } })}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {wog.monsterWaves ? (
+                <>
+                  <div className="waveCadenceRow" role="group" aria-label="Wave pressure">
+                    <strong>Rewards &amp; pillage</strong>
+                    {(["standard", "brutal"] as const).map((pressure) => (
+                      <button
+                        aria-pressed={(wog.wavePressure ?? "standard") === pressure}
+                        className={`waveCadenceChip ${(wog.wavePressure ?? "standard") === pressure ? "selected" : ""}`}
+                        key={pressure}
+                        onClick={() => send({ wog: { ...wog, wavePressure: pressure } })}
+                        type="button"
+                      >
+                        {pressure === "standard" ? "Standard" : "Brutal (+rewards, -1 morale)"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="waveCadenceRow" role="group" aria-label="Wave loss limit">
+                    <strong>Lost waves</strong>
+                    {([0, 3, 2] as const).map((limit) => (
+                      <button
+                        aria-pressed={(wog.waveDefeatLimit ?? 0) === limit}
+                        className={`waveCadenceChip ${(wog.waveDefeatLimit ?? 0) === limit ? "selected" : ""}`}
+                        key={limit}
+                        onClick={() => send({ wog: { ...wog, waveDefeatLimit: limit } })}
+                        type="button"
+                      >
+                        {limit === 0 ? "Pillage only" : `Eliminate after ${limit}`}
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : null}
             </div>
             <div className="wogRosterPreview" aria-label="WOG neutral creature roster">
@@ -8486,9 +8554,9 @@ function GameModeSection({
                 ["equipment", "Hero Equipment", "Always-on hero items in 4 slots (weapon / armor / accessory / mount), bought at outfitter map locations."],
                 ["unitStacks", "Unit Stacks", "Pack / Neutral cards buy persistent Stack layers at the Citadel (+1 Attack, each layer soaks a lethal blow). The Polish Unit Stacks machinery — one pricing, coexists with the house rule."],
                 ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Town Drill training."],
-                ["monsterWaves", "Calamity Waves", "Every Nth round (cadence below), EVERY live player fights a Gate-invasion wave army at round start — assaults resolve in seat order behind the round-start pause. Win: 2 gold + 1 hero XP (+ a Treasure die from wave 3 on). Loss or retreat: pillage — lose 3 gold and your mine/settlement nearest home is overrun by a difficulty-Ⅰ guard."],
+                ["monsterWaves", "Calamity Waves", "Every Nth round, EVERY live player fights a themed Gate invasion at round start. Visit the Far-tile Calamity Gate beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats."],
                 ["raidBosses", "Raid Bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead — \"the sky cracks\"). Wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
-                ["dungeon", "The Dungeon (Meikyū)", "One repeatable delve site per map, carved onto a Near-tile Blocked Field (needs Creature Banks ON). Per-player floors 1–10, once per turn: pick a room (treasure vault, shrine, whispering wall…), then fight the floor guards for normal XP and a reward ladder. Floors 5 and 10 hold layered floor bosses; floor 10 pays a relic search + the Dungeon Conqueror title."]
+                ["dungeon", "The Dungeon (Meikyū)", "One shared, repeatable delve site per map, independent of Creature Banks. Every player has their own floor progress but sees the same seeded rooms. Entering or descending costs 1 movement per floor; after a win you may descend immediately while movement remains, or resume from that floor on a later turn. Theme-specific rooms and layered bosses wait on floors 5 and 10."]
               ] as const).map(([key, label, description]) => {
                 const active = anime[key];
                 return (
@@ -8524,6 +8592,61 @@ function GameModeSection({
                     </button>
                   ))}
                 </div>
+              ) : null}
+              {anime.monsterWaves || anime.raidBosses || anime.dungeon ? (
+                <div className="waveCadenceRow" role="group" aria-label="PvE encounter theme">
+                  <strong>PvE theme</strong>
+                  {([
+                    ["classic", "Erathian"],
+                    ["doom", "Doom"],
+                    ["random", "Random"]
+                  ] as const).map(([theme, label]) => (
+                    <button
+                      aria-pressed={(anime.pveTheme ?? "classic") === theme}
+                      className={`waveCadenceChip ${(anime.pveTheme ?? "classic") === theme ? "selected" : ""}`}
+                      data-testid={`anime-pve-theme-${theme}`}
+                      key={theme}
+                      onClick={() => send({ anime: { ...anime, pveTheme: theme } })}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {anime.monsterWaves ? (
+                <>
+                  <div className="waveCadenceRow" role="group" aria-label="Wave pressure">
+                    <strong>Rewards &amp; pillage</strong>
+                    {(["standard", "brutal"] as const).map((pressure) => (
+                      <button
+                        aria-pressed={(anime.wavePressure ?? "standard") === pressure}
+                        className={`waveCadenceChip ${(anime.wavePressure ?? "standard") === pressure ? "selected" : ""}`}
+                        data-testid={`anime-wave-pressure-${pressure}`}
+                        key={pressure}
+                        onClick={() => send({ anime: { ...anime, wavePressure: pressure } })}
+                        type="button"
+                      >
+                        {pressure === "standard" ? "Standard" : "Brutal (+rewards, -1 morale)"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="waveCadenceRow" role="group" aria-label="Wave loss limit">
+                    <strong>Lost waves</strong>
+                    {([0, 3, 2] as const).map((limit) => (
+                      <button
+                        aria-pressed={(anime.waveDefeatLimit ?? 0) === limit}
+                        className={`waveCadenceChip ${(anime.waveDefeatLimit ?? 0) === limit ? "selected" : ""}`}
+                        data-testid={`anime-wave-loss-${limit}`}
+                        key={limit}
+                        onClick={() => send({ anime: { ...anime, waveDefeatLimit: limit } })}
+                        type="button"
+                      >
+                        {limit === 0 ? "Pillage only" : `Eliminate after ${limit}`}
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : null}
             </div>
             <footer>

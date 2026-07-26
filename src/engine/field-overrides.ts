@@ -183,7 +183,12 @@ function packageAllowedForState(
  */
 function moduleEnabledForState(state: Pick<GameState, "anime">) {
   return (module: keyof AnimeModOptions): boolean =>
-    module !== "enabled" && module !== "waveCadence" && animeModuleEnabled(state, module);
+    module !== "enabled" &&
+    module !== "waveCadence" &&
+    module !== "pveTheme" &&
+    module !== "wavePressure" &&
+    module !== "waveDefeatLimit" &&
+    animeModuleEnabled(state, module);
 }
 
 /**

@@ -1,7 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { createAdventureGameState, type GameState, type PlayerId } from "./index";
-import { drawWaveArmy, eliminatePlayer, startAdventureRound } from "./adventure";
-import { finalizeAdventureCombat, pumpAdventureQueues } from "./adventure-reducer";
+import {
+  applyAction,
+  createAdventureGameState,
+  getLegalActions,
+  type GameAction,
+  type GameState,
+  type PlayerId
+} from "./index";
+import {
+  applyWavePillage,
+  beginFieldVisit,
+  drawWaveArmy,
+  eliminatePlayer,
+  grantWaveVictoryRewards,
+  instantiateTile,
+  startAdventureRound
+} from "./adventure";
+import {
+  finalizeAdventureCombat,
+  pumpAdventureQueues,
+  setTileRotation
+} from "./adventure-reducer";
 import { waveArmyLevel, waveNumberForRound } from "./monster-waves";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -40,6 +59,26 @@ function startRound(state: GameState, round: number): void {
   pumpAdventureQueues(state);
 }
 
+function apply(state: GameState, action: GameAction): GameState {
+  const result = applyAction(state, action);
+  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  return result.state;
+}
+
+/** Deploy one hero unit and reveal the waiting wave army. */
+function revealWaveArmy(state: GameState): GameState {
+  const placement = getLegalActions(state, state.combat!.attackerPlayerId).find(
+    (entry) => entry.action.type === "PLACE_COMBAT_UNIT"
+  );
+  expect(placement, "expected a wave placement offer").toBeTruthy();
+  let next = apply(state, placement!.action);
+  next = apply(next, {
+    type: "FINISH_COMBAT_PLACEMENT",
+    playerId: next.combat!.attackerPlayerId
+  });
+  return next;
+}
+
 /** Force-resolve the OPEN wave combat with the given outcome, then finalize. */
 function settleWaveCombat(
   state: GameState,
@@ -74,6 +113,49 @@ describe("Calamity Waves — schedule purity", () => {
   });
 });
 
+describe("Calamity Waves — shared map object", () => {
+  it("the first Far Blocked Field becomes a themed, revisitable Gate that prepares a player for the next wave", () => {
+    const state = wavesGame("waves-calamity-gate", {
+      wog: {
+        enabled: true,
+        monsterWaves: true,
+        waveCadence: 3,
+        pveTheme: "doom"
+      }
+    });
+    const adventure = state.adventure!;
+    const tile = instantiateTile(adventure, "F1", { row: -9, col: -9 }, 0, true);
+    tile.awaitingRotation = true;
+    adventure.pendingTileChoice = { tileInstanceId: tile.id, playerId: "p1", kind: "place" };
+    setTileRotation(state, {
+      type: "SET_TILE_ROTATION",
+      playerId: "p1",
+      tileInstanceId: tile.id,
+      rotation: 0
+    });
+
+    const gateId = adventure.monsterWaves?.gateFieldId;
+    expect(gateId).toBeTruthy();
+    expect(adventure.fields[gateId!].location).toBe("calamity_gate");
+    expect(adventure.pveTheme).toBe("doom");
+    expect(state.eventLog.some((event) => event.type === "CALAMITY_GATE_PLACED")).toBe(true);
+
+    state.heroes.hero_p1.spaceId = gateId!;
+    beginFieldVisit(state, state.heroes.hero_p1.id, gateId!, true);
+    expect(state.players.p1.wavePreparedFor).toBe(1);
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === "CALAMITY_GATE_PREPARED" &&
+          event.playerId === "p1" &&
+          event.wave === 1
+      )
+    ).toBe(true);
+    // It is personal preparation: the shared object's other visitors must scout it too.
+    expect(state.players.p2.wavePreparedFor).toBeUndefined();
+  });
+});
+
 describe("Calamity Waves — the wave round", () => {
   it("CONTROL: with the module OFF, a wave round starts with no wave event and no assault", () => {
     const state = wavesGame("waves-off-control", { wog: { enabled: true } });
@@ -91,6 +173,32 @@ describe("Calamity Waves — the wave round", () => {
     expect(announce?.type === "MONSTER_WAVE_ANNOUNCED" && announce.wave).toBe(1);
     // No assault yet — the wave itself fires next round.
     expect(state.combat).toBeNull();
+  });
+
+  it("each wave reveals a real battle event, while Gate preparation cancels it for that player", () => {
+    const exposed = wavesGame("waves-event");
+    startRound(exposed, 3);
+    const revealed = revealWaveArmy(exposed);
+    const activeEvent = revealed.eventLog.find(
+      (event) => event.type === "MONSTER_WAVE_BATTLE_EVENT" && event.playerId === "p1"
+    );
+    if (activeEvent?.type !== "MONSTER_WAVE_BATTLE_EVENT") {
+      throw new Error("expected the wave battle event");
+    }
+    expect(activeEvent.eventId).toBe("war_drums");
+    expect(activeEvent.message).toMatch(/\+1 Attack/);
+
+    const prepared = wavesGame("waves-event-prepared");
+    prepared.players.p1.wavePreparedFor = 1;
+    startRound(prepared, 3);
+    const canceled = revealWaveArmy(prepared);
+    const canceledEvent = canceled.eventLog.find(
+      (event) => event.type === "MONSTER_WAVE_BATTLE_EVENT" && event.playerId === "p1"
+    );
+    if (canceledEvent?.type !== "MONSTER_WAVE_BATTLE_EVENT") {
+      throw new Error("expected the canceled wave battle event");
+    }
+    expect(canceledEvent.message).toMatch(/neutralized/i);
   });
 
   it("on the wave round every live seat's assault queues in seat order behind ONE barrier, resolving one combat at a time", () => {
@@ -270,7 +378,12 @@ describe("Calamity Waves — the wave army", () => {
       rollFirstPlayer: false,
       anime: { enabled: true, monsterWaves: true, waveCadence: 4 }
     });
-    expect(state.adventure?.monsterWaves).toEqual({ cadence: 4 });
+    expect(state.adventure?.monsterWaves).toMatchObject({
+      cadence: 4,
+      pressure: "standard",
+      defeatLimit: 0,
+      gateFieldId: null
+    });
   });
 });
 
@@ -323,5 +436,50 @@ describe("Calamity Waves — barrier reuse", () => {
     const lastAssault = state.adventure!.rewardQueue.map((reward) => reward.kind).lastIndexOf("wave-assault");
     const sentinelIndex = state.adventure!.rewardQueue.map((reward) => reward.kind).indexOf("round-start-events-resolved");
     expect(sentinelIndex).toBeGreaterThan(lastAssault);
+  });
+});
+
+describe("Calamity Waves — themes and pressure", () => {
+  it("a Doom theme mints an all-Doom wave without polluting the shared Neutral decks", () => {
+    const state = wavesGame("waves-doom", {
+      wog: {
+        enabled: true,
+        monsterWaves: true,
+        waveCadence: 3,
+        pveTheme: "doom"
+      }
+    });
+    const draws = drawWaveArmy(state, 2);
+    expect(state.adventure?.pveTheme).toBe("doom");
+    expect(draws.length).toBeGreaterThan(0);
+    expect(draws.every((draw) => draw.unitDefId.startsWith("doom."))).toBe(true);
+    expect(draws.every((draw) => draw.bankGuard)).toBe(true);
+  });
+
+  it("Brutal pressure increases rewards/pillage and an optional loss limit eliminates only at the threshold", () => {
+    const state = wavesGame("waves-brutal-limit", {
+      wog: {
+        enabled: true,
+        monsterWaves: true,
+        waveCadence: 3,
+        wavePressure: "brutal",
+        waveDefeatLimit: 2
+      }
+    });
+    const winnerGold = state.players.p2.resources.gold;
+    const winnerXp = state.heroes.hero_p2.experience ?? 0;
+    grantWaveVictoryRewards(state, "p2", 1);
+    expect(state.players.p2.resources.gold).toBe(winnerGold + 3);
+    expect(state.heroes.hero_p2.experience ?? 0).toBe(winnerXp + 2);
+
+    state.players.p1.resources.gold = 20;
+    const moraleBefore = state.players.p1.morale;
+    applyWavePillage(state, "p1", 1);
+    expect(state.players.p1.resources.gold).toBe(15);
+    expect(state.players.p1.morale).toBeLessThan(moraleBefore);
+    expect(state.players.p1.eliminated).not.toBe(true);
+    applyWavePillage(state, "p1", 2);
+    expect(state.players.p1.waveDefeats).toBe(2);
+    expect(state.players.p1.eliminated).toBe(true);
   });
 });

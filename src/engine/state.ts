@@ -209,6 +209,15 @@ export type HouseRuleId =
   // `canDrawExpertSpells` / `artifactDeckAccess` (ruleset.ts).
   | "deck-access-hero-level";
 
+/** Shared presentation/army theme for the optional wave, boss and dungeon modules. */
+export type PveEncounterTheme = "classic" | "doom" | "random";
+/** The concrete theme frozen into a started game (`random` is resolved from the seed). */
+export type ResolvedPveEncounterTheme = Exclude<PveEncounterTheme, "random">;
+/** Wave reward/pillage profile selected in the pre-game mod options. */
+export type WavePressure = "standard" | "brutal";
+/** Optional consecutive/total wave-loss elimination threshold; 0 keeps elimination off. */
+export type WaveDefeatLimit = 0 | 2 | 3;
+
 /** Optional Wake of Gods modules. WOG is a BINH-family mod (not a game mode). */
 export type WogModOptions = {
   enabled: boolean;
@@ -255,6 +264,12 @@ export type WogModOptions = {
   dungeon?: boolean;
   /** Calamity wave cadence when monsterWaves is on (mirrors anime.waveCadence). */
   waveCadence?: 3 | 4 | 5;
+  /** Shared monster/map-object theme for Waves, Raid Bosses and the Dungeon. */
+  pveTheme?: PveEncounterTheme;
+  /** Standard rewards/pillage, or a richer and more punishing brutal profile. */
+  wavePressure?: WavePressure;
+  /** Optional elimination after this many lost waves; 0 = pillage only. */
+  waveDefeatLimit?: WaveDefeatLimit;
 };
 
 export const DEFAULT_WOG_OPTIONS: WogModOptions = {
@@ -267,7 +282,10 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
   neutralRankUp: false,
   monsterWaves: false,
   raidBosses: false,
-  dungeon: false
+  dungeon: false,
+  pveTheme: "classic",
+  wavePressure: "standard",
+  waveDefeatLimit: 0
 };
 
 /**
@@ -359,6 +377,12 @@ export type AnimeModOptions = {
   neutralRankUp?: boolean;
   /** Calamity wave cadence when monsterWaves is on. */
   waveCadence?: 3 | 4 | 5;
+  /** Shared monster/map-object theme for Waves, Raid Bosses and the Dungeon. */
+  pveTheme?: PveEncounterTheme;
+  /** Standard rewards/pillage, or a richer and more punishing brutal profile. */
+  wavePressure?: WavePressure;
+  /** Optional elimination after this many lost waves; 0 = pillage only. */
+  waveDefeatLimit?: WaveDefeatLimit;
 };
 
 /**
@@ -5871,6 +5895,27 @@ export type GameEvent =
       message: string;
     }
   | {
+      id: string;
+      type: "MONSTER_WAVE_BATTLE_EVENT";
+      playerId: PlayerId;
+      wave: number;
+      eventId: string;
+      message: string;
+    }
+  | {
+      id: string;
+      type: "CALAMITY_GATE_PLACED";
+      fieldId: MapSpaceId;
+      message: string;
+    }
+  | {
+      id: string;
+      type: "CALAMITY_GATE_PREPARED";
+      playerId: PlayerId;
+      wave: number;
+      message: string;
+    }
+  | {
       /** Raid Bosses: the sky cracks — a Rift Lair opens next round. */
       id: string;
       type: "RAID_BOSS_ANNOUNCED";
@@ -7344,6 +7389,10 @@ export type PlayerState = {
    * seat one turn per round).
    */
   dungeonDelveRound?: number;
+  /** Calamity Waves: number of wave assaults this player has lost. */
+  waveDefeats?: number;
+  /** Calamity Gate preparation: the numbered wave this player has scouted. */
+  wavePreparedFor?: number;
   /**
    * Unit Experience (optional rule): the game round this player last used the
    * DRILL_UNIT action (2 gold → +1 unit XP at their own Town). Once per own
@@ -9010,6 +9059,9 @@ export type VisitStep =
        */
       type: "DUNGEON_FLOOR_FIGHT";
       floor: number;
+    }
+  | {
+      type: "DUNGEON_CONTINUE";
     }
   | {
       /**
@@ -10776,7 +10828,15 @@ export type AdventureState = {
    * round N). Absent = OFF (byte-identical, legacy snapshots unaffected).
    * See src/engine/monster-waves.ts.
    */
-  monsterWaves?: { cadence: 3 | 4 | 5 };
+  monsterWaves?: {
+    cadence: 3 | 4 | 5;
+    pressure?: WavePressure;
+    defeatLimit?: WaveDefeatLimit;
+    /** The shared Calamity Gate map-object field; null until a Far tile hosts it. */
+    gateFieldId?: MapSpaceId | null;
+  };
+  /** Resolved shared art/army theme for Waves, Raid Bosses and the Dungeon. */
+  pveTheme?: ResolvedPveEncounterTheme;
   /**
    * Raid Bosses (optional module, §6.5): PRESENCE = module ON (frozen at setup
    * from `wog.raidBosses` / `anime.raidBosses`), keyed by boss instance id —

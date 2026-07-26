@@ -7,7 +7,14 @@
  * NOTHING here imports adventure.ts (no cycles).
  */
 
-import type { CustomGuardSpec, GameState } from "./state";
+import type {
+  CustomGuardSpec,
+  GameState,
+  ResolvedPveEncounterTheme,
+  WaveDefeatLimit,
+  WavePressure
+} from "./state";
+import { waveBattleEventFor, waveEconomyProfile } from "./pve-content";
 
 /** Standard waves cap at a level-5 war party (level 7 = azure, never a wave). */
 export const WAVE_ARMY_LEVEL_CAP = 5;
@@ -29,6 +36,26 @@ export function monsterWavesEnabled(state: GameState): boolean {
 /** The frozen wave rhythm: a wave every Nth round, first wave on round N. */
 export function waveCadenceOf(state: GameState): 3 | 4 | 5 {
   return state.adventure?.monsterWaves?.cadence ?? 4;
+}
+
+export function waveThemeOf(state: GameState): ResolvedPveEncounterTheme {
+  return state.adventure?.pveTheme ?? "classic";
+}
+
+export function wavePressureOf(state: GameState): WavePressure {
+  return state.adventure?.monsterWaves?.pressure ?? "standard";
+}
+
+export function waveDefeatLimitOf(state: GameState): WaveDefeatLimit {
+  return state.adventure?.monsterWaves?.defeatLimit ?? 0;
+}
+
+export function waveRewardsOf(state: GameState) {
+  return waveEconomyProfile(wavePressureOf(state));
+}
+
+export function waveBattleEventOf(state: GameState, wave: number) {
+  return waveBattleEventFor(waveThemeOf(state), wave);
 }
 
 /**

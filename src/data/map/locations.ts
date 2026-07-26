@@ -815,6 +815,20 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     implementationStatus: "implemented",
     source: source("cyclops_stockpile")
   },
+  calamity_gate: {
+    id: "calamity_gate",
+    name: "Calamity Gate",
+    // Physical anchor for the global Monster Waves module. Entering or
+    // Revisiting scouts the next numbered wave; that player's preparation
+    // cancels its battle-event modifier when the assault arrives.
+    category: "revisitable",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes 3 BG — Calamity Waves module",
+      credit: "BINH house content"
+    }
+  },
   rift_lair: {
     id: "rift_lair",
     name: "Rift Lair",

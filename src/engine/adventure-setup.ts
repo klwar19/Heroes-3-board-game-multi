@@ -174,6 +174,7 @@ import type {
 } from "./state";
 import { DEFAULT_WOG_OPTIONS, MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 import { animeModuleEnabled, resolveAnimeOptions } from "./anime";
+import { resolvePveEncounterTheme } from "./pve-content";
 import { planFieldOverrides, planTokens } from "./tile-hex-placements";
 import {
   applyCustomMapFieldOverrides,
@@ -2574,11 +2575,36 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     4;
   const raidBossesOn =
     Boolean(wog.enabled && wog.raidBosses) || Boolean(anime.enabled && anime.raidBosses);
-  // The Dungeon is carved onto a Blocked Field through the Creature-Bank
-  // reservation seam, so it additionally requires the Creature Banks option.
   const dungeonOn =
-    (Boolean(wog.enabled && wog.dungeon) || Boolean(anime.enabled && anime.dungeon)) &&
-    creatureBanksOn;
+    Boolean(wog.enabled && wog.dungeon) || Boolean(anime.enabled && anime.dungeon);
+  const anyPveModuleOn = monsterWavesOn || raidBossesOn || dungeonOn;
+  // A mod surface only controls the shared PvE settings when it actually has
+  // one of those modules enabled. Anime wins ties, mirroring wave cadence.
+  const animePveOn =
+    anime.enabled && (anime.monsterWaves || anime.raidBosses || anime.dungeon);
+  const wogPveOn =
+    wog.enabled && (wog.monsterWaves || wog.raidBosses || wog.dungeon);
+  const requestedPveTheme = animePveOn
+    ? anime.pveTheme
+    : wogPveOn
+      ? wog.pveTheme
+      : "classic";
+  const pveTheme = resolvePveEncounterTheme(requestedPveTheme, seed);
+  const pressureCandidate =
+    anime.enabled && anime.monsterWaves
+      ? anime.wavePressure
+      : wog.enabled && wog.monsterWaves
+        ? wog.wavePressure
+        : undefined;
+  const wavePressure = pressureCandidate === "brutal" ? "brutal" : "standard";
+  const defeatLimitCandidate =
+    anime.enabled && anime.monsterWaves
+      ? anime.waveDefeatLimit
+      : wog.enabled && wog.monsterWaves
+        ? wog.waveDefeatLimit
+        : undefined;
+  const waveDefeatLimit =
+    defeatLimitCandidate === 2 || defeatLimitCandidate === 3 ? defeatLimitCandidate : 0;
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
@@ -2696,7 +2722,17 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(neutralRankUpOn ? { neutralRankUp: true } : {}),
     // Calamity Waves (optional module): presence = ON; the cadence is frozen
     // here so every schedule read is pure in the round number. Default OFF.
-    ...(monsterWavesOn ? { monsterWaves: { cadence: waveCadence } } : {}),
+    ...(monsterWavesOn
+      ? {
+          monsterWaves: {
+            cadence: waveCadence,
+            pressure: wavePressure,
+            defeatLimit: waveDefeatLimit,
+            gateFieldId: null
+          }
+        }
+      : {}),
+    ...(anyPveModuleOn ? { pveTheme } : {}),
     // Raid Bosses (optional module): presence = ON; entries appear when the
     // scheduled spawn (or a designer lair) places a boss. Default OFF.
     ...(raidBossesOn ? { raidBosses: {} } : {}),
@@ -3803,6 +3839,19 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       monsterWaves: Boolean(next.wog.monsterWaves),
       raidBosses: Boolean(next.wog.raidBosses),
       dungeon: Boolean(next.wog.dungeon),
+      ...(next.wog.pveTheme === "classic" ||
+      next.wog.pveTheme === "doom" ||
+      next.wog.pveTheme === "random"
+        ? { pveTheme: next.wog.pveTheme }
+        : {}),
+      ...(next.wog.wavePressure === "standard" || next.wog.wavePressure === "brutal"
+        ? { wavePressure: next.wog.wavePressure }
+        : {}),
+      ...(next.wog.waveDefeatLimit === 0 ||
+      next.wog.waveDefeatLimit === 2 ||
+      next.wog.waveDefeatLimit === 3
+        ? { waveDefeatLimit: next.wog.waveDefeatLimit }
+        : {}),
       ...(next.wog.waveCadence === 3 || next.wog.waveCadence === 4 || next.wog.waveCadence === 5
         ? { waveCadence: next.wog.waveCadence }
         : {})
