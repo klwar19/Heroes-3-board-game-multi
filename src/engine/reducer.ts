@@ -113,6 +113,7 @@ import {
   commanderSetStance,
   spellBookAction,
   spendMorale,
+  drawTopArtifact,
   useAbilityEmpowerToken,
   spendTownCube,
   activateTownBuilding,
@@ -346,7 +347,14 @@ import {
   commanderLiveDefenseBonus,
   commanderRunePool
 } from "./commanders";
-import { drawCardsForPlayer, isSharedDeckId, refillSharedDeckDiscards, shuffleCards } from "./decks";
+import {
+  digFromOwnDeckTop,
+  drawCardsForPlayer,
+  isSharedDeckId,
+  refillSharedDeckDiscards,
+  reshuffleSharedDeckIfEmpty,
+  shuffleCards
+} from "./decks";
 import {
   cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
@@ -513,7 +521,6 @@ import type {
   CardPlayCost,
   CardPlayMode,
   CombatState,
-  DeckId,
   CombatUnitState,
   EffectDefinition,
   EngineResult,
@@ -14249,37 +14256,6 @@ const ARTIFACT_DECK_LABELS: Record<string, string> = {
   "artifacts-relic": "Relic"
 };
 
-/** Tazar's War Hero VI: move the top card of an Artifact deck into a hand. */
-export function drawTopArtifact(state: GameState, playerId: PlayerId, deckId: string): void {
-  const deck = state.decks[deckId];
-  if (!deck) {
-    return;
-  }
-  // Artifacts are globally unique. The deck normally holds one of each, but
-  // redraw past any artifact already owned by ANY player (defence in depth, and
-  // it keeps the rule explicit here too), tucking the skipped cards back under.
-  const skipped: CardId[] = [];
-  let drawn: CardId | null = null;
-  while (deck.drawPile.length > 0) {
-    const cardId = deck.drawPile.pop();
-    if (!cardId) {
-      break;
-    }
-    if (canAcquireSharedDeckCard(state, playerId, deckId as DeckId, cardId)) {
-      drawn = cardId;
-      break;
-    }
-    skipped.push(cardId);
-  }
-  if (skipped.length > 0) {
-    deck.drawPile.unshift(...skipped);
-  }
-  if (!drawn) {
-    return;
-  }
-  state.players[playerId]?.hand.push(drawn);
-  appendEvent(state, { type: "CARDS_DRAWN", playerId, count: 1, requested: 1, reshuffledDiscard: false });
-}
 
 function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CARD" }>, cards: CardLibrary): void {
   const card = cards[action.cardId];
@@ -15810,9 +15786,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           `${state.seed}#reshuffle-draw#${action.playerId}#${eventSeedNumber(state)}`
         );
       }
-      // The played card stays in the discard (discarded after the shuffle).
+      // The played card stays in the discard (discarded after the shuffle) — and
+      // is held out of the draw's own empty-deck reshuffle too, so it can never
+      // be the card drawn even when nothing else is left anywhere.
       player.discard = playedCard;
-      drawCardsForPlayer(state, action.playerId, effect.drawCards);
+      drawCardsForPlayer(state, action.playerId, effect.drawCards, { playedCardId: action.cardId });
     }
   }
 
@@ -15871,15 +15849,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Solmyr's Chain Lightning IV: dig the top of your own deck, keep 1, discard
   // the rest. One revealed card is auto-kept; with several, the owner chooses.
   if (effect.type === "DECK_DIG_KEEP_ONE") {
-    const digPlayer = state.players[action.playerId];
-    const revealed: CardId[] = [];
-    for (let index = 0; index < effect.count; index += 1) {
-      const drawn = digPlayer.deck.pop();
-      if (!drawn) {
-        break;
-      }
-      revealed.push(drawn);
-    }
+    // "Discard up to N cards from your deck and return 1 of them to your hand":
+    // an empty deck reshuffles the discard pile back in so the dig still reaches
+    // its printed count (digFromOwnDeckTop; the revealed cards are held here,
+    // never discarded mid-dig, so they can never be dealt twice).
+    const revealed = digFromOwnDeckTop(state, action.playerId, effect.count, "deck-dig-keep-one", {
+      playedCardId: action.cardId
+    }).cardIds;
     if (revealed.length === 1) {
       // Polish Spell Book: owned Spells enter the Book, not hand.
       gainOwnedCard(state, action.playerId, revealed[0], cards);
@@ -15904,31 +15880,38 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // rest. No choice — all matches are taken automatically.
   if (effect.type === "DECK_DIG_KEEP_MATCHING") {
     const digPlayer = state.players[action.playerId];
+    // "Draw up to N cards from your deck": a deck that runs out mid-dig
+    // reshuffles the discard pile back in (digFromOwnDeckTop), so the specialty
+    // still digs its printed count — and is playable at all with an empty deck.
+    // The whole dig runs BEFORE anything is routed: the rejects are held here
+    // and pushed to the discard pile only afterwards, so the reshuffle can never
+    // deal a card this same dig already rejected.
+    const dig = digFromOwnDeckTop(state, action.playerId, effect.count, "deck-dig-keep-matching", {
+      playedCardId: action.cardId
+    });
     const kept: CardId[] = [];
     const discarded: CardId[] = [];
-    for (let index = 0; index < effect.count; index += 1) {
-      const drawn = digPlayer.deck.pop();
-      if (!drawn) {
-        break;
-      }
+    for (const drawn of dig.cardIds) {
       const drawnKind = cards[drawn]?.kind;
       const matches =
         effect.filter === "spell-or-specialty" && (drawnKind === "spell" || drawnKind === "hero-specialty");
       if (matches) {
-        // Polish: owned Spells → Book; specialties / Cast-a-Spell → hand.
-        gainOwnedCard(state, action.playerId, drawn, cards);
         kept.push(drawn);
       } else {
-        digPlayer.discard.push(drawn);
         discarded.push(drawn);
       }
+    }
+    digPlayer.discard.push(...discarded);
+    for (const keptCardId of kept) {
+      // Polish: owned Spells → Book; specialties / Cast-a-Spell → hand.
+      gainOwnedCard(state, action.playerId, keptCardId, cards);
     }
     appendEvent(state, {
       type: "CARDS_DRAWN",
       playerId: action.playerId,
       count: kept.length,
       requested: effect.count,
-      reshuffledDiscard: false
+      reshuffledDiscard: dig.reshuffledDiscard
     });
   }
 
@@ -15939,7 +15922,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // Tazar's War Hero VI: draw the top of an Artifact deck of the player's
     // choice. Legacy has one ("artifacts"); BINH splits Minor/Major/Relic — when
     // more than one still holds cards the caster picks which to draw from.
-    const available = ARTIFACT_DECK_IDS.filter((deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0);
+    // A deck whose draw pile is empty but whose discard pile still holds cards is
+    // still drawable — drawTopArtifact reshuffles it — so it stays on the menu.
+    const available = ARTIFACT_DECK_IDS.filter(
+      (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0) > 0
+    );
     if (available.length === 1) {
       drawTopArtifact(state, action.playerId, available[0]);
     } else if (available.length > 1) {
@@ -15964,14 +15951,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // carries `thenReshuffleDiscard`); a 0/1-card reveal reshuffles immediately.
   if (effect.type === "SEARCH_DECK_THEN_RESHUFFLE") {
     const searchPlayer = state.players[action.playerId];
-    const revealed: CardId[] = [];
-    for (let index = 0; index < effect.count; index += 1) {
-      const drawn = searchPlayer.deck.pop();
-      if (!drawn) {
-        break;
-      }
-      revealed.push(drawn);
-    }
+    // A deck that runs out mid-reveal reshuffles the discard pile back in, so a
+    // Search (N) really reveals N whenever the player owns that many cards (the
+    // revealed cards are held out of both piles, so none can be shown twice).
+    const revealed = digFromOwnDeckTop(state, action.playerId, effect.count, "search-deck-then-reshuffle", {
+      playedCardId: action.cardId
+    }).cardIds;
     if (revealed.length > 1) {
       state.pendingChoice = {
         id: `choice_${nextEventNumber(state)}`,
@@ -17007,26 +16992,7 @@ function convertCardToAttack(
  * caller routes them to the hand/discard.
  */
 function discardFromDeckTop(state: GameState, playerId: PlayerId, count: number): CardId[] {
-  const player = state.players[playerId];
-  if (!player) {
-    return [];
-  }
-  const dug: CardId[] = [];
-  for (let index = 0; index < count; index += 1) {
-    if (player.deck.length === 0 && player.discard.length > 0) {
-      player.deck = shuffleCards(
-        player.discard,
-        `${state.seed}#genie-reshuffle#${playerId}#${eventSeedNumber(state)}#${index}`
-      );
-      player.discard = [];
-    }
-    const card = player.deck.pop();
-    if (!card) {
-      break;
-    }
-    dug.push(card);
-  }
-  return dug;
+  return digFromOwnDeckTop(state, playerId, count, "genie-reshuffle").cardIds;
 }
 
 /**
@@ -19519,7 +19485,13 @@ function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId, deck
   }
   const skipped: CardId[] = [];
   let taken: CardId | null = null;
-  while (deck.drawPile.length > 0) {
+  for (;;) {
+    // A draw pile emptied by earlier Searches reshuffles its discard pile back in
+    // so this Search(1) still finds a Spell; the skipped cards stay aside until
+    // the pull ends, so none is reshuffled in and re-read.
+    if (deck.drawPile.length === 0 && !reshuffleSharedDeckIfEmpty(state, deckId, "tarnum-search-reshuffle")) {
+      break;
+    }
     const cardId = deck.drawPile.pop();
     if (!cardId) {
       break;
@@ -19544,10 +19516,14 @@ function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId, deck
   return taken;
 }
 
-/** Spell decks with at least one card, basic first, that Tarnum VI may Search. */
+/**
+ * Spell decks with at least one card, basic first, that Tarnum VI may Search.
+ * A deck whose draw pile is empty but whose discard pile still holds cards
+ * counts — the pull reshuffles it back in (takeTopAcquirableSpellToHand).
+ */
 function tarnumSearchableDecks(state: GameState): string[] {
   return [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].filter(
-    (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0
+    (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0) > 0
   );
 }
 

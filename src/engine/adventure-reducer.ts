@@ -222,7 +222,7 @@ import {
   makeArrowTowerUnit,
   SIEGE_ROW_POSITIONS
 } from "./siege";
-import { drawCardsForPlayer, shuffleCards } from "./decks";
+import { drawCardsForPlayer, reshuffleSharedDeckIfEmpty, shuffleCards } from "./decks";
 import { getCombatStartDraws, getCombatStartMark, moraleLockedForPlayer } from "./unit-abilities";
 import {
   bossLayersRemaining,
@@ -13173,14 +13173,13 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     const deckId = pick?.deckIds[action.optionIndex];
     const player = state.players[action.playerId];
     const deck = deckId ? state.decks[deckId] : undefined;
-    if (!pick || !player || !deck) {
+    if (!pick || !player || !deckId || !deck) {
       throw new Error("Pick one of the Artifact decks.");
     }
-    const drawn = deck.drawPile.pop();
-    if (drawn) {
-      player.hand.push(drawn);
-      appendEvent(state, { type: "CARDS_DRAWN", playerId: action.playerId, count: 1, requested: 1, reshuffledDiscard: false });
-    }
+    // Same pull as the single-deck case (uniqueness redraw + reshuffle of an
+    // emptied draw pile) — never a raw pop, or a deck offered on the strength of
+    // its discard pile would hand out nothing.
+    drawTopArtifact(state, action.playerId, deckId);
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
@@ -14637,6 +14636,50 @@ export function playScoutingCard(state: GameState, playerId: PlayerId, mode: "ba
     timing: "instant",
     mode
   });
+}
+
+/**
+ * Tazar's War Hero VI: move the top card of an Artifact deck into a hand. Lives
+ * here beside `revealSharedDeckSearch` so the reducer's direct play AND the
+ * artifact-deck-pick choice below both pull through this one implementation
+ * (uniqueness redraw + empty-draw-pile reshuffle included).
+ */
+export function drawTopArtifact(state: GameState, playerId: PlayerId, deckId: string): void {
+  const deck = state.decks[deckId];
+  if (!deck) {
+    return;
+  }
+  // Artifacts are globally unique. The deck normally holds one of each, but
+  // redraw past any artifact already owned by ANY player (defence in depth, and
+  // it keeps the rule explicit here too), tucking the skipped cards back under.
+  const skipped: CardId[] = [];
+  let drawn: CardId | null = null;
+  for (;;) {
+    // A draw pile emptied by earlier Searches reshuffles its discard pile back in
+    // — "draw the top Artifact card" must not come up empty while that deck's
+    // cards are all sitting in its discard pile. The skipped cards are held aside
+    // until the pull ends, so none is ever reshuffled in and re-read.
+    if (deck.drawPile.length === 0 && !reshuffleSharedDeckIfEmpty(state, deckId, "draw-top-artifact-reshuffle")) {
+      break;
+    }
+    const cardId = deck.drawPile.pop();
+    if (!cardId) {
+      break;
+    }
+    if (canAcquireSharedDeckCard(state, playerId, deckId, cardId)) {
+      drawn = cardId;
+      break;
+    }
+    skipped.push(cardId);
+  }
+  if (skipped.length > 0) {
+    deck.drawPile.unshift(...skipped);
+  }
+  if (!drawn) {
+    return;
+  }
+  state.players[playerId]?.hand.push(drawn);
+  appendEvent(state, { type: "CARDS_DRAWN", playerId, count: 1, requested: 1, reshuffledDiscard: false });
 }
 
 export function revealSharedDeckSearch(

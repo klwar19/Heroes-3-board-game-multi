@@ -85,25 +85,66 @@ export function shuffleCards(cards: CardId[], seed: string): CardId[] {
   return shuffled;
 }
 
-/**
- * Draws up to `amount` cards from the player's personal deck into their hand.
- * When the draw pile empties mid-draw, the discard pile is shuffled into a new
- * draw pile (standard board-game reshuffle) before drawing continues.
- */
-export function drawCardsForPlayer(state: GameState, playerId: PlayerId, amount: number): number {
-  const player = state.players[playerId];
-  if (!player || amount <= 0) {
-    return 0;
-  }
+/** What a dig off the top of a player's own deck turned up. */
+export interface OwnDeckDigResult {
+  /** Cards taken off the top, in dig order (the first entry was the top card). */
+  cardIds: CardId[];
+  /** True when the discard pile had to be shuffled back in to keep the dig going. */
+  reshuffledDiscard: boolean;
+}
 
-  let drawn = 0;
-  let reshuffledDiscard = false;
+/**
+ * THE one seam for taking cards off the top of a player's own Might & Magic
+ * deck. When the deck runs out mid-dig the discard pile is shuffled into a new
+ * deck (the standard board-game reshuffle) so the dig can finish the count the
+ * card asks for; it stops early only when BOTH piles are genuinely empty.
+ *
+ * CALLER CONTRACT (this is what makes it terminate): the cards it returns are
+ * held by the caller and must NOT be pushed onto `player.discard` until the
+ * whole dig is over. A card discarded back mid-dig would be shuffled in and
+ * dealt again — the dig would re-read its own rejects, and a "dig until X" scan
+ * would never finish. With the rejects held aside nothing is ever added to the
+ * discard pile while the dig runs, so at most ONE reshuffle can happen and the
+ * loop always ends.
+ */
+export function digFromOwnDeckTop(
+  state: GameState,
+  playerId: PlayerId,
+  amount: number,
+  seedTag: string,
+  options?: {
+    /**
+     * The card whose own effect is digging. It was moved to the discard pile
+     * when it was played, so a reshuffle would sweep it back into the deck and
+     * the dig could deal it straight back to the hand — the card would pay for
+     * itself. It is held in the discard instead, exactly as Deemer's Meteor
+     * Shower IV ("the played card stays in the discard, discarded after the
+     * shuffle") already reads it. One copy only, so a genuine second copy of
+     * the same card elsewhere in the discard still shuffles in.
+     */
+    playedCardId?: CardId;
+  }
+): OwnDeckDigResult {
+  const player = state.players[playerId];
   const cardIds: CardId[] = [];
+  let reshuffledDiscard = false;
+  if (!player || amount <= 0) {
+    return { cardIds, reshuffledDiscard };
+  }
 
   for (let count = 0; count < amount; count += 1) {
     if (player.deck.length === 0 && player.discard.length > 0) {
-      player.deck = shuffleCards(player.discard, `${state.seed}#reshuffle#${playerId}#${eventSeedNumber(state)}`);
-      player.discard = [];
+      const playedIndex = options?.playedCardId ? player.discard.indexOf(options.playedCardId) : -1;
+      const held = playedIndex >= 0 ? [player.discard[playedIndex]] : [];
+      const toShuffle =
+        playedIndex >= 0
+          ? [...player.discard.slice(0, playedIndex), ...player.discard.slice(playedIndex + 1)]
+          : player.discard;
+      if (toShuffle.length === 0) {
+        break; // nothing left to shuffle back in but the card being played
+      }
+      player.deck = shuffleCards(toShuffle, `${state.seed}#${seedTag}#${playerId}#${eventSeedNumber(state)}`);
+      player.discard = held;
       reshuffledDiscard = true;
     }
 
@@ -111,20 +152,60 @@ export function drawCardsForPlayer(state: GameState, playerId: PlayerId, amount:
     if (!card) {
       break;
     }
-
-    player.hand.push(card);
     cardIds.push(card);
-    drawn += 1;
   }
+
+  return { cardIds, reshuffledDiscard };
+}
+
+/**
+ * The same rule for a SHARED deck: when its draw pile has run out, shuffle its
+ * discard pile back into it so a draw / dig can keep going (exactly what
+ * `revealSharedDeckSearch` already does mid-Search). Returns true when a
+ * reshuffle actually happened.
+ *
+ * Same CALLER CONTRACT as `digFromOwnDeckTop`: cards this dig has already looked
+ * at must be held aside (a local array, tucked back or discarded once the dig
+ * ends), never pushed onto `deck.discardPile` while the dig runs — otherwise the
+ * reshuffle would deal them again.
+ */
+export function reshuffleSharedDeckIfEmpty(state: GameState, deckId: string, seedTag: string): boolean {
+  const deck = state.decks[deckId];
+  if (!deck || deck.drawPile.length > 0 || deck.discardPile.length === 0) {
+    return false;
+  }
+  deck.drawPile = shuffleCards(deck.discardPile, `${state.seed}#${seedTag}#${deckId}#${eventSeedNumber(state)}`);
+  deck.discardPile = [];
+  return true;
+}
+
+/**
+ * Draws up to `amount` cards from the player's personal deck into their hand.
+ * When the draw pile empties mid-draw, the discard pile is shuffled into a new
+ * draw pile (standard board-game reshuffle) before drawing continues.
+ */
+export function drawCardsForPlayer(
+  state: GameState,
+  playerId: PlayerId,
+  amount: number,
+  options?: { playedCardId?: CardId }
+): number {
+  const player = state.players[playerId];
+  if (!player || amount <= 0) {
+    return 0;
+  }
+
+  const { cardIds, reshuffledDiscard } = digFromOwnDeckTop(state, playerId, amount, "reshuffle", options);
+  player.hand.push(...cardIds);
 
   appendEvent(state, {
     type: "CARDS_DRAWN",
     playerId,
-    count: drawn,
+    count: cardIds.length,
     requested: amount,
     reshuffledDiscard,
     cardIds
   });
 
-  return drawn;
+  return cardIds.length;
 }

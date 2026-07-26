@@ -2189,6 +2189,57 @@ Four fixes to shipped behaviour (not toggles — the previous behaviour was wron
   — the reverted "take any discarded spell" feature is NOT back.
   `spell-discard-pick.test.ts`.
 
+## "The deck ran out" never ends a draw (2026-07-26) — one seam per deck kind
+
+Reported bug: **Jeddite's Mysterious Warlock I could not be played at all with
+0 cards in the deck**, however full the discard pile was — the offer keyed off
+`deck.length > 0` and the dig popped the deck raw. The printed card says "Draw
+up to 3 cards from your deck", and the board-game rule for an emptied deck is to
+shuffle the discard pile back in and keep drawing. Fixed as a CLASS, not a
+one-off: every own-deck dig now runs through **`digFromOwnDeckTop`** and every
+shared-deck top-pull through **`reshuffleSharedDeckIfEmpty`** (both in
+`decks.ts`). Behaviour pinned in `src/engine/deck-reshuffle-on-empty.test.ts`
+(20 cases, every claim mutation-checked, each with a CONTROL).
+
+**Caller contract (this is what makes a dig terminate):** cards a dig has
+already taken/rejected are held ASIDE by the caller and land in the discard pile
+only once the dig ends. A card discarded back mid-dig would be shuffled in and
+dealt again — a "dig until X" scan would never finish. With them held, nothing
+is added to the discard while a dig runs, so at most ONE reshuffle can happen.
+This mirrors `revealSharedDeckSearch`, which already did it for Searches.
+
+**The card being played is held OUT of its own reshuffle.** It is already in the
+discard when its effect resolves, so a naive reshuffle would deal it straight
+back to hand — the card would pay for itself (Jeddite would return to hand every
+play). `digFromOwnDeckTop`'s `playedCardId` option keeps ONE copy in the discard,
+the reading Deemer's Meteor Shower IV already used ("the played card stays in the
+discard, discarded after the shuffle"); Meteor Shower IV now passes it to its
+draw too, so its stated invariant holds even with nothing else left anywhere.
+
+Fixed (each was dead or short at an empty pile; each has a failing-if-removed
+test): **own deck** — Mysterious Warlock I/VI `DECK_DIG_KEEP_MATCHING` (offer
+gate AND dig; its `CARDS_DRAWN` event now reports `reshuffledDiscard` truthfully
+instead of a hardcoded `false`), Solmyr's Chain Lightning IV
+`DECK_DIG_KEEP_ONE`, Adrienne's Fire Magic IV `SEARCH_DECK_THEN_RESHUFFLE` (a
+Search (3) now really reveals 3), the Conflux Magic University dig (reshuffled
+mid-scan, not only at the start); **shared decks** — Tazar's War Hero VI
+`DRAW_TOP_ARTIFACT` (offer gate, the reducer's deck menu AND the draw), the Witch
+Hut reveal, the Necromancy Amplifier fetch, Tarnum (Conflux) VI's Search(1)
+Spell (offer + pull). `drawCardsForPlayer` and the Genie Wish dig were already
+correct and now share the one seam.
+
+Leading with what deliberately does NOT reshuffle:
+- **Peeks are not draws.** The Thieves' Guild "look at the top 2 of any deck"
+  still needs 2 cards actually sitting on that draw pile (you cannot look at two
+  cards that are not there; reshuffling is triggered by drawing, not looking).
+- **A generic "…and draw a card" rider can still redraw the card that granted
+  it** when it is the only card anywhere — `drawCardsForPlayer` only holds a
+  played card out when the caller passes `playedCardId` (today: Meteor Shower
+  IV). That is the literal rule (the played card IS in the discard pile you
+  shuffle), and it is pre-existing behaviour left unchanged on purpose.
+- **Mana Vortex** shuffles the whole discard in up front, so a short reveal
+  there means the player genuinely owns fewer cards.
+
 ## Table info & readability pass (2026-07-25) — presentation only
 
 No engine change; every value shown is already public in player views.
