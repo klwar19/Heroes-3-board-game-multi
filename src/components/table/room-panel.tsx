@@ -50,7 +50,8 @@ export function RoomPanel({
   onCreateRoom,
   onRename,
   onCloseRoom,
-  onBrowseRooms
+  onBrowseRooms,
+  compact = false
 }: {
   state: GameState;
   roomId: string;
@@ -63,6 +64,8 @@ export function RoomPanel({
   onCloseRoom?: () => void;
   /** Leave this room and return to the lobby room browser. */
   onBrowseRooms?: () => void;
+  /** In-game HUD: keep the closed trigger terse; the full manager still opens. */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   // Seeded from the persisted name (already loaded by the time this panel
@@ -242,6 +245,7 @@ export function RoomPanel({
         aria-expanded={open}
         className={`roomToggle ${open ? "open" : ""}`}
         onClick={() => setOpen((value) => !value)}
+        title={compact ? `${roleLabel} · ${members.length} in room` : undefined}
         type="button"
       >
         <Users aria-hidden="true" size={13} />
@@ -253,7 +257,7 @@ export function RoomPanel({
             <Eye aria-hidden="true" size={11} />
           )}
           {isHost ? <Crown aria-hidden="true" size={11} /> : null}
-          {roleLabel} · {members.length} in room
+          {compact ? members.length : `${roleLabel} · ${members.length} in room`}
         </span>
       </button>
 

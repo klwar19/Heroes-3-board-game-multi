@@ -95,14 +95,15 @@ export type LocationInteraction =
       /**
        * Add a unit card to the visiting player's army for free (Creature Bank
        * "gain a unit" rewards, Garden of Life). `side` is the printed side to
-       * grant. `stacked` (Dragon Fly Hive / Griffin Conservatory, X ≥ 2) grants
-       * the FEW card a rulebook Stack Token — the actual game "Stacked" unit —
-       * NEVER a Pack and NEVER a Polish layer. Optional `stacks` (Polish bank
-       * sizes / unit stacks) is the SEPARATE Polish-layer grant on a Pack.
+       * grant. `side: "bank"` selects the dedicated Creature Bank face/stats,
+       * never a similarly named faction or Neutral-deck card. `stacked` (Dragon
+       * Fly Hive / Griffin Conservatory, X ≥ 2) opens a choice of rulebook Stack
+       * Token bonus before that bank card joins the army. Optional `stacks`
+       * remains the separate Polish-layer grant on a Pack.
        */
       type: "GAIN_UNIT";
       unitDefId: string;
-      side: "few" | "pack";
+      side: "few" | "pack" | "neutral" | "bank";
       stacks?: number;
       stacked?: boolean;
     }

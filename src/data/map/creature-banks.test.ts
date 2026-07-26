@@ -250,42 +250,40 @@ describe("Creature Bank rewards", () => {
     return reward.interactions[0];
   }
 
-  it("always gains the FEW card, Stacked (rulebook Stack Token) when 2+ defenders Stacked — NEVER a Pack", () => {
-    // Dragon Fly Hive → Dragon Flies; Griffin Conservatory → Griffins. The reward
-    // is ALWAYS the Few card; the "Stacked" version is that Few carrying a rulebook
-    // Stack Token (the `stacked` flag), granted only when at least 2 defenders
-    // Stacked. It is NEVER the Pack side (the old house-rule reading, now retired).
+  it("gains the dedicated bank card and asks for a Stack Token when 2+ defenders were Stacked", () => {
+    // These are the dedicated Creature Bank faces, not faction or Neutral-deck
+    // cards. `stacked` opens the four-stat token choice during resolution.
     expect(CREATURE_BANKS.dragon_fly_hive.rewardStatus).toBe("implemented");
     expect(unitGain(CREATURE_BANKS.dragon_fly_hive.buildReward(0))).toEqual({
       type: "GAIN_UNIT",
-      unitDefId: "fortress.dragon_flies",
-      side: "few",
+      unitDefId: "neutral.dragon_flies",
+      side: "bank",
       stacked: false
     });
     expect(unitGain(CREATURE_BANKS.dragon_fly_hive.buildReward(1))).toEqual({
       type: "GAIN_UNIT",
-      unitDefId: "fortress.dragon_flies",
-      side: "few",
+      unitDefId: "neutral.dragon_flies",
+      side: "bank",
       stacked: false
     });
     expect(unitGain(CREATURE_BANKS.dragon_fly_hive.buildReward(2))).toEqual({
       type: "GAIN_UNIT",
-      unitDefId: "fortress.dragon_flies",
-      side: "few",
+      unitDefId: "neutral.dragon_flies",
+      side: "bank",
       stacked: true
     });
 
     expect(CREATURE_BANKS.griffin_conservatory.rewardStatus).toBe("implemented");
     expect(unitGain(CREATURE_BANKS.griffin_conservatory.buildReward(1))).toEqual({
       type: "GAIN_UNIT",
-      unitDefId: "castle.griffins",
-      side: "few",
+      unitDefId: "neutral.griffins",
+      side: "bank",
       stacked: false
     });
     expect(unitGain(CREATURE_BANKS.griffin_conservatory.buildReward(3))).toEqual({
       type: "GAIN_UNIT",
-      unitDefId: "castle.griffins",
-      side: "few",
+      unitDefId: "neutral.griffins",
+      side: "bank",
       stacked: true
     });
   });
@@ -308,8 +306,7 @@ describe("Creature Bank rewards", () => {
       if (!reward || reward.type !== "GAIN_UNIT") continue;
       const def = coreUnitDefinitions[reward.unitDefId];
       expect(def, reward.unitDefId).toBeTruthy();
-      expect(def.few, `${reward.unitDefId} few`).toBeTruthy();
-      expect(def.pack, `${reward.unitDefId} pack`).toBeTruthy();
+      expect(def.neutral, `${reward.unitDefId} neutral`).toBeTruthy();
     }
   });
 

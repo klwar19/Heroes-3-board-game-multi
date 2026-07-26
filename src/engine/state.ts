@@ -6144,7 +6144,7 @@ export type GameEvent =
       attackBuff?: number;
       /**
        * Creature Bank Stacked reward (Dragon Fly Hive / Griffin Conservatory,
-       * X ≥ 2): the Few card joined the army carrying this rulebook Stack Token
+       * X ≥ 2): the dedicated bank reward card carries this rulebook Stack Token
        * (+1 Attack/Defense/Health or +2 Initiative). Drives the "Stacked" feed
        * note so the token grant is never silent.
        */
@@ -6933,8 +6933,12 @@ export type ArmyUnitState = {
   /** Stable instance id of this unit card in the player's unit deck. */
   id: string;
   unitDefId: string;
-  /** "neutral": a single-sided Neutral card recruited via Portal of Summoning. */
-  side: "few" | "pack" | "neutral";
+  /**
+   * "neutral": a single-sided Neutral-deck card. "bank": the dedicated Creature
+   * Bank card won from the Dragon Fly Hive or Griffin Conservatory; it uses
+   * CREATURE_BANK_UNIT_SIDES and is a physically distinct card.
+   */
+  side: "few" | "pack" | "neutral" | "bank";
   /**
    * Specialty cards stacked on this unit card (Sandro's Cloak), bottom-up.
    * The top entry's statistics replace the printed side between and during
@@ -6961,12 +6965,12 @@ export type ArmyUnitState = {
    * Rulebook Stack Token (Naval Battles p.67) riding this army card between
    * combats — the ACTUAL game "Stacked" version of a Dragon Fly Hive / Griffin
    * Conservatory reward unit (source: those two banks' `stacked` GAIN_UNIT
-   * reward). One random stat bonus (+1 Attack/Defense/Health or +2 Initiative)
+   * reward). One player-chosen stat bonus (+1 Attack/Defense/Health or +2 Initiative)
    * is folded into the card every combat (makeCombatUnitFromArmy /
    * applyUnitCurrentSide) and mirrored onto `CombatUnitState.stackToken`, so the
    * EXISTING absorb path (markUnitRemovedIfNeeded) discards it — FOREVER — to
-   * soak one lethal blow; the survivor's token syncs back at combat end. Survives
-   * Few→Pack reinforce and Pack→Few flips. DELIBERATELY separate from the Polish
+   * soak one lethal blow; the survivor's token syncs back at combat end.
+   * DELIBERATELY separate from the Polish
    * `stacks` layers above: a different mechanism (this is NOT a Polish layer),
    * never granted by these banks even with polish-unit-stacks on, and a card may
    * carry neither, either, or both. Absent otherwise.
@@ -7554,7 +7558,7 @@ export type BattlefieldTokenState = {
   expiresAtCombatRoundEnd?: number;
 };
 
-/** A Stack Token modifies exactly one statistic of a Creature Bank defender. */
+/** A Stack Token modifies exactly one statistic of a Creature Bank unit card. */
 export type StackTokenStat = "attack" | "defense" | "health" | "initiative";
 
 export type CombatUnitState = {
@@ -7769,10 +7773,10 @@ export type CombatUnitState = {
    */
   bankGuard?: boolean;
   /**
-   * Creature Bank defender (Naval Battles optional rule). Fights from its own
-   * Creature Bank unit card (distinct stats, NO tier), is returned to the bank
-   * pile rather than a Neutral tier deck, and follows the Stack Token rules.
-   * Implies bankGuard (minted, never deck-drawn).
+   * Creature Bank unit (Naval Battles optional rule). It fights from its own
+   * dedicated unit card (distinct stats, NO tier) and follows the Stack Token
+   * rules. Minted defenders also carry `bankGuard`; won reward cards instead
+   * carry an `armyUnitId` and remain in the player's army.
    */
   bankUnit?: boolean;
   /**
@@ -7786,7 +7790,7 @@ export type CombatUnitState = {
    */
   bossUnit?: boolean;
   /**
-   * The Stack Token currently sitting on this Creature Bank defender, if any.
+   * The Stack Token currently sitting on this Creature Bank unit, if any.
    * A Stacked unit's printed statistics already include the token's bonus; when
    * it would take lethal damage the token is discarded (reverting the bonus) and
    * the leftover damage carries to the new, lower Health (rulebook p.67).
@@ -9311,15 +9315,16 @@ export type VisitStep =
       /**
        * Add a unit of `unitDefId` to the army for free. `side` defaults to "few"
        * (Garden of Life, Conflux). Optional `stacks` grants Polish Unit Stack
-       * layers on a Pack. `stacked` (Dragon Fly Hive / Griffin Conservatory,
-       * X ≥ 2) instead grants the FEW card a rulebook Stack Token — the actual
-       * game "Stacked" unit — NEVER a Polish layer (independent mechanisms).
+       * layers on a Pack. `side: "bank"` uses the dedicated Creature Bank face.
+       * `stacked` (Dragon Fly Hive / Griffin Conservatory, X ≥ 2) first asks the
+       * player which rulebook Stack Token stat the bank card should receive.
        */
       type: "RECRUIT_FREE";
       unitDefId: string;
-      side?: "few" | "pack";
+      side?: "few" | "pack" | "neutral" | "bank";
       stacks?: number;
       stacked?: boolean;
+      stackToken?: StackTokenStat;
     }
   | {
       /**

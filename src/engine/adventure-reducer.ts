@@ -10004,6 +10004,10 @@ export function finalizeAdventureCombat(state: GameState): void {
       // Few side defeated: the unit card leaves the unit deck. A recruited
       // Neutral card returns to its tier's discard pile.
       discardDefeatedArmyUnit(state, player, armyUnit);
+    } else if (armyUnit.side === "bank") {
+      // A won Creature Bank card has no Few/Pack/Neutral-deck side to sync.
+      // Keep the distinct bank face; the Stack Token is synchronized below.
+      delete armyUnit.stacks;
     } else if (armyUnit.side === "neutral") {
       // Surviving Neutral: keep paid Stack layers (and drop them if all spent).
       if ((unit.armyStacks ?? 0) > 0) {
@@ -11375,7 +11379,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       }
       // Each unit card exists once: a type already in the army (Few or Pack)
       // cannot be recruited again — reinforce the Few card instead.
-      if (armyCopy.some((unit) => unit.unitDefId === purchase.unitDefId)) {
+      if (armyCopy.some((unit) => unit.side !== "bank" && unit.unitDefId === purchase.unitDefId)) {
         throw new Error(
           `${coreUnitDefinitions[purchase.unitDefId]?.name ?? "That unit"} is already in your army — each unit card exists once. Reinforce it to a pack instead.`
         );

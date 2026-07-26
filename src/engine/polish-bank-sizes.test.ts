@@ -29,6 +29,14 @@ function apply(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
+function chooseStackBonus(state: GameState, label = "+1 Defense"): GameState {
+  const action = getLegalActions(state, "p1").find(
+    (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label === label
+  );
+  expect(action, `expected Stack Token choice ${label}`).toBeTruthy();
+  return apply(state, action!.action);
+}
+
 function placeFarTileAwaitingRotation({
   enabled = true,
   openings = 0,
@@ -478,40 +486,49 @@ describe("Polish bank size rewards (back to the normal X-scaled reward)", () => 
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
   });
 
-  it("a Dragon Fly Hive win grants the FEW card — plain at size Ⅰ, Stacked (Stack Token) from size Ⅱ, NEVER a Pack/layer", () => {
-    // Size Ⅲ (X = 3 ≥ 2): the FEW card carrying a rulebook Stack Token — the actual
-    // game "Stacked" unit — plus the house-rule Empower pick. NEVER the Pack side
-    // and NEVER a Polish Unit-Stack layer.
-    const stackedState = bankRewardState("dragon_fly_hive", 3, "polish-bank-reward-stacked");
+  it("a Dragon Fly Hive win grants the bank card — plain at size Ⅰ, chosen Stack Token from size Ⅱ", () => {
+    // Size Ⅲ (X = 3 ≥ 2): pause before granting the dedicated bank card so the
+    // player selects its rulebook Stack Token. It never becomes a faction,
+    // Neutral-deck, or Polish Unit-Stack card.
+    let stackedState = bankRewardState("dragon_fly_hive", 3, "polish-bank-reward-stacked");
     const stackedBefore = new Set(stackedState.players.p1.army.map((unit) => unit.id));
     grantCreatureBankReward(stackedState, "hero_p1", "bank-field", 3);
+    expect(stackedState.players.p1.army.filter((unit) => !stackedBefore.has(unit.id))).toHaveLength(0);
+    stackedState = chooseStackBonus(stackedState);
     const stackedGained = stackedState.players.p1.army.filter((unit) => !stackedBefore.has(unit.id));
     expect(stackedGained).toHaveLength(1);
-    expect(stackedGained[0]).toMatchObject({ unitDefId: "fortress.dragon_flies", side: "few" });
-    expect(stackedGained[0].stackToken, "size Ⅲ → a rulebook Stack Token on the Few").toBeTruthy();
+    expect(stackedGained[0]).toMatchObject({
+      unitDefId: "neutral.dragon_flies",
+      side: "bank",
+      stackToken: "defense"
+    });
     expect(stackedGained[0].stacks, "never a Polish layer").toBeUndefined();
 
-    // Size Ⅰ (X = 0): a plain Few, no token.
+    // Size Ⅰ (X = 0): a plain bank card, no token and no prompt.
     const fewState = bankRewardState("dragon_fly_hive", 1, "polish-bank-reward-few");
     const fewBefore = new Set(fewState.players.p1.army.map((unit) => unit.id));
     grantCreatureBankReward(fewState, "hero_p1", "bank-field", 0);
     const fewGained = fewState.players.p1.army.filter((unit) => !fewBefore.has(unit.id));
     expect(fewGained).toHaveLength(1);
-    expect(fewGained[0]).toMatchObject({ unitDefId: "fortress.dragon_flies", side: "few" });
-    expect(fewGained[0].stackToken, "size Ⅰ → plain Few, no token").toBeUndefined();
+    expect(fewGained[0]).toMatchObject({ unitDefId: "neutral.dragon_flies", side: "bank" });
+    expect(fewGained[0].stackToken, "size Ⅰ → plain bank card, no token").toBeUndefined();
     expect(fewGained[0].stacks).toBeUndefined();
   });
 
   it("CONTROL (don't confuse Polish stacks): with polish-unit-stacks ON the Stacked reward STILL has NO layers — only the Stack Token", () => {
     // The user's explicit warning: even with the Polish Unit-Stacks house rule on,
     // these two banks must grant a normal-game Stack Token, never Polish layers.
-    const state = bankRewardState("dragon_fly_hive", 3, "polish-bank-reward-both-on", /* unitStacks */ true);
+    let state = bankRewardState("dragon_fly_hive", 3, "polish-bank-reward-both-on", /* unitStacks */ true);
     const before = new Set(state.players.p1.army.map((unit) => unit.id));
     grantCreatureBankReward(state, "hero_p1", "bank-field", 3);
+    state = chooseStackBonus(state);
     const gained = state.players.p1.army.filter((unit) => !before.has(unit.id));
     expect(gained).toHaveLength(1);
-    expect(gained[0]).toMatchObject({ unitDefId: "fortress.dragon_flies", side: "few" });
-    expect(gained[0].stackToken, "the rulebook Stack Token is present").toBeTruthy();
+    expect(gained[0]).toMatchObject({
+      unitDefId: "neutral.dragon_flies",
+      side: "bank",
+      stackToken: "defense"
+    });
     expect(gained[0].stacks, "NO Polish layer, even with polish-unit-stacks on").toBeUndefined();
   });
 
