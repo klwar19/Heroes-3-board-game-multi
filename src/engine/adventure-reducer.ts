@@ -10741,6 +10741,12 @@ export function drillUnit(state: GameState, action: Extract<GameAction, { type: 
   if (!def) {
     throw new Error("That unit cannot be drilled.");
   }
+  // A won Creature Bank card has no veteran track (grantArmyUnitExperience
+  // refuses it and makeCombatUnitFromArmy zeroes its experience), so a forged
+  // drill would spend the gold and the once-per-turn slot on a guaranteed no-op.
+  if (armyUnit.side === "bank") {
+    throw new Error("A Creature Bank card has no veteran track — it cannot be drilled.");
+  }
   // Guard the SPECIFIC target: `unitDrillAvailable` only proves SOME card is
   // drillable, and the offer (drillableArmyUnits) hides maxed cards — but a
   // forged/stale DRILL_UNIT aimed at a max-rank card would otherwise spend the

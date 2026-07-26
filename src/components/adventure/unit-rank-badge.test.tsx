@@ -5,6 +5,7 @@ import { ArmyPanel } from "./screen";
 import { CardZoomProvider } from "@/components/table/zoom";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { coreFactionDefinitions } from "@/data/factions/core";
+import { CREATURE_BANK_UNIT_SIDES } from "@/data/map/creature-banks";
 import { createAdventureGameState, type GameState } from "@/engine";
 
 afterEach(cleanup);
@@ -195,5 +196,53 @@ describe("ArmyPanel — full faction roster (owned + unowned) with costs", () =>
     expect(
       [...document.querySelectorAll(".armyRosterUnowned")].some((el) => el.textContent?.includes("Boars"))
     ).toBe(false);
+  });
+
+  it("a won Creature Bank card shows its OWN bank face, the Stack Token fold, and no veteran track", () => {
+    // The Dragon Fly Hive / Griffin Conservatory reward is a dedicated bank card
+    // (`side: "bank"`), not the faction/Neutral card of the same name. The panel
+    // must read it off CREATURE_BANK_UNIT_SIDES and fold its rulebook Stack
+    // Token, or it shows numbers the engine will not fight with.
+    const state = makeState(true, "roster-bank-card");
+    state.players.p1.army = [
+      { id: "bank1", unitDefId: "neutral.griffins", side: "bank", stackToken: "attack", experience: 14 }
+    ];
+    renderArmy(state);
+
+    const row = [...document.querySelectorAll(".armyUnitRow")].find((el) => el.textContent?.includes("Griffins"));
+    expect(row, "the won bank card renders as an owned row").toBeTruthy();
+    expect(row?.textContent).toContain("Creature Bank");
+    const bankSide = CREATURE_BANK_UNIT_SIDES["neutral.griffins"]!;
+    const stats = row?.querySelector("small")?.textContent ?? "";
+    // Bank face + the +1 Attack Stack Token; every other stat is the bank face.
+    expect(stats).toContain(`A${bankSide.attack + 1}`);
+    expect(stats).toContain(`D${bankSide.defense}`);
+    // Tierless printed bank card: no veteran badge even carrying max XP with the
+    // rule ON (the engine zeroes a bank face's experience).
+    expect(row?.querySelector(".unitRankBadge"), "no veteran rank on a bank face").toBeNull();
+    // A bank face has no Few/Pack sides, so the row keeps the single-face thumb
+    // instead of the both-faces card block.
+    expect(row?.querySelector(".armyUnitThumb"), "single bank face thumb").toBeTruthy();
+    // …and it does NOT consume the faction's own Griffins roster slot: the
+    // Castle card is still listed as un-recruited (the display twin of the
+    // engine's `side !== "bank"` ownership reads).
+    expect(
+      [...document.querySelectorAll(".armyRosterUnowned")].some((el) => el.textContent?.includes("Griffins")),
+      "the faction Griffins card is still recruitable"
+    ).toBe(true);
+
+    // CONTROL: the SAME creature as a recruited Neutral shows the Neutral face's
+    // own (different) stats and the veteran badge its XP earns.
+    cleanup();
+    const control = makeState(true, "roster-bank-control");
+    control.players.p1.army = [
+      { id: "neutral1", unitDefId: "neutral.griffins", side: "neutral", experience: 14 }
+    ];
+    renderArmy(control);
+    const controlRow = [...document.querySelectorAll(".armyUnitRow")].find((el) =>
+      el.textContent?.includes("Griffins")
+    );
+    expect(controlRow?.textContent).toContain("Neutral");
+    expect(controlRow?.querySelector(".unitRankBadge"), "a Neutral card DOES rank").toBeTruthy();
   });
 });

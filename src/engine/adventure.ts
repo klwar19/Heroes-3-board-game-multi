@@ -2694,7 +2694,9 @@ export function mainHeroInOwnTown(state: GameState, playerId: PlayerId): boolean
 /**
  * Unit Experience Drill (map action): the army cards still below max veteran
  * rank (XP past the last threshold does nothing, so maxed cards are not
- * offered).
+ * offered). A WON Creature Bank card (`side: "bank"`) is never offered either —
+ * its face has no veteran track at all (grantArmyUnitExperience refuses it), so
+ * drilling it would charge 2 gold and the once-per-turn slot for nothing.
  */
 export function drillableArmyUnits(state: GameState, playerId: PlayerId): ArmyUnitState[] {
   const player = state.players[playerId];
@@ -2702,6 +2704,9 @@ export function drillableArmyUnits(state: GameState, playerId: PlayerId): ArmyUn
     return [];
   }
   return player.army.filter((armyUnit) => {
+    if (armyUnit.side === "bank") {
+      return false;
+    }
     const def = coreUnitDefinitions[armyUnit.unitDefId];
     return def ? unitRankForExperience(def.tier, armyUnit.experience ?? 0) < MAX_UNIT_RANK : false;
   });

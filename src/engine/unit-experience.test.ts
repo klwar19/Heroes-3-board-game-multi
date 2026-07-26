@@ -33,6 +33,7 @@ import { finalizeAdventureCombat } from "./adventure-reducer";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import type { CombatState, GameAction, GameState } from "./state";
 import {
+  armyUnitRankInfo,
   awardUnitExperienceAfterCombat,
   unitRankAbilityIds,
   unitRankForExperience,
@@ -665,5 +666,93 @@ describe("Unit Experience — Drill", () => {
     expect(applyAction(state, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: "maxed" }).errors[0]?.message).toContain(
       "max veteran rank"
     );
+  });
+});
+
+// ===========================================================================
+// A WON Creature Bank card (Dragon Fly Hive / Griffin Conservatory reward,
+// `side: "bank"`) is a tierless printed bank face, NOT a recruitable unit: it
+// never enters the veteran tracks. The read side already refuses it
+// (armyUnitRankInfo → null, makeCombatUnitFromArmy zeroes its experience), so
+// every PRODUCER must refuse it too — otherwise the card silently banks XP that
+// can never fold, the feed announces rank-ups that do not exist, and Drill
+// charges 2 gold plus the once-per-turn slot for literally nothing.
+// ===========================================================================
+
+describe("Unit Experience — a won Creature Bank card stays out of the veteran tracks", () => {
+  const BANK_FLIES = { id: "xp_bank_flies", unitDefId: "neutral.dragon_flies", side: "bank" as const };
+
+  it("the READ side cannot fold a bank card's XP (why accruing it would be a lie)", () => {
+    const loaded = { ...BANK_FLIES, experience: 14 };
+    expect(armyUnitRankInfo(loaded), "no veteran track for a bank face").toBeNull();
+    const plain = makeCombatUnitFromArmy(BANK_FLIES, "p1", "u_bank_plain", 0, "legacy")!;
+    const veteran = makeCombatUnitFromArmy(loaded, "p1", "u_bank_vet", 0, "legacy")!;
+    expect(veteran.attack).toBe(plain.attack);
+    expect(veteran.defense).toBe(plain.defense);
+    expect(veteran.maxHealth).toBe(plain.maxHealth);
+    expect(veteran.unitRank ?? 0).toBe(0);
+    // CONTROL: the SAME creature as a recruited Neutral card does fold its rank.
+    const neutralPlain = makeCombatUnitFromArmy(
+      { id: "n0", unitDefId: "neutral.dragon_flies", side: "neutral" },
+      "p1",
+      "u_n_plain",
+      0,
+      "legacy"
+    )!;
+    const neutralVeteran = makeCombatUnitFromArmy(
+      { id: "n1", unitDefId: "neutral.dragon_flies", side: "neutral", experience: 14 },
+      "p1",
+      "u_n_vet",
+      0,
+      "legacy"
+    )!;
+    expect(neutralVeteran.unitRank).toBe(MAX_UNIT_RANK);
+    expect(
+      neutralVeteran.attack + neutralVeteran.defense + neutralVeteran.maxHealth
+    ).toBeGreaterThan(neutralPlain.attack + neutralPlain.defense + neutralPlain.maxHealth);
+  });
+
+  it("a won combat awards no XP to the bank card (CONTROL: the deployed faction card gains it)", () => {
+    const state = makeAdventure("uxp-bank-reward", { unitExperience: true });
+    state.players.p1.army = [{ ...BANK_FLIES }, { ...MARKSMEN }];
+    const bankCard = makeCombatUnitFromArmy(state.players.p1.army[0], "p1", "u_bank_card", 0, "legacy")!;
+    const marksmen = makeCombatUnitFromArmy(state.players.p1.army[1], "p1", "u_marks", 1, "legacy")!;
+    bankCard.damage = 0;
+    marksmen.damage = 0;
+    finishNeutralCombat(state, { [bankCard.id]: bankCard, [marksmen.id]: marksmen }, "p1", { difficulty: 3 });
+
+    expect(state.players.p1.army.find((unit) => unit.id === MARKSMEN.id)?.experience, "CONTROL").toBe(3);
+    expect(state.players.p1.army.find((unit) => unit.id === BANK_FLIES.id)?.experience).toBeUndefined();
+    expect(
+      state.eventLog.some((event) => event.type === "UNIT_RANK_UP" && event.unitDefId === "neutral.dragon_flies")
+    ).toBe(false);
+  });
+
+  it("is never a Drill target, and a forged DRILL_UNIT is rejected without spending", () => {
+    const state = makeAdventure("uxp-bank-drill", { unitExperience: true });
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+    getMainHero(state, "p1")!.spaceId = town.fieldId ?? null;
+    state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
+    state.players.p1.army = [{ ...BANK_FLIES }, { ...MARKSMEN }];
+
+    const offered = getLegalActions(state, "p1")
+      .filter((legal) => legal.action.type === "DRILL_UNIT")
+      .map((legal) => (legal.action.type === "DRILL_UNIT" ? legal.action.armyUnitId : ""));
+    expect(offered).toEqual([MARKSMEN.id]);
+
+    const forged = applyAction(state, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: BANK_FLIES.id });
+    expect(forged.errors[0]?.message).toContain("Creature Bank");
+    expect(forged.state.players.p1.resources.gold, "no gold burned on the rejected drill").toBe(10);
+    expect(forged.state.players.p1.army[0].experience).toBeUndefined();
+
+    // CONTROL: the SAME creature recruited as a Neutral card IS drillable — the
+    // exclusion keys off the bank FACE, not off `neutral.dragon_flies`.
+    const control = makeAdventure("uxp-bank-drill-control", { unitExperience: true });
+    const controlTown = Object.values(control.towns).find((candidate) => candidate.controllerId === "p1")!;
+    getMainHero(control, "p1")!.spaceId = controlTown.fieldId ?? null;
+    control.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
+    control.players.p1.army = [{ id: BANK_FLIES.id, unitDefId: "neutral.dragon_flies", side: "neutral" }];
+    const drilled = applyOk(control, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: BANK_FLIES.id });
+    expect(drilled.players.p1.army[0].experience).toBe(1);
   });
 });
