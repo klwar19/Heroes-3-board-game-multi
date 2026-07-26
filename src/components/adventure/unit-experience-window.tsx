@@ -9,6 +9,7 @@ import { assetUrl } from "@/lib/asset-url";
 import { factionUiLexicon } from "@/data/faction-theme";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
+import { CREATURE_BANK_UNIT_SIDES } from "@/data/map/creature-banks";
 import { unitAbilities } from "@/data/units/abilities";
 import {
   MAX_UNIT_RANK,
@@ -33,9 +34,11 @@ import {
 
 export function armyUnitPrintedSide(
   def: UnitDefinition | undefined,
-  side: ArmyUnitState["side"]
+  side: ArmyUnitState["side"],
+  unitDefId?: string
 ): UnitSideDefinition | undefined {
   if (!def) return undefined;
+  if (side === "bank") return unitDefId ? CREATURE_BANK_UNIT_SIDES[unitDefId] : undefined;
   return side === "few" ? def.few : side === "pack" ? def.pack : (def.neutral ?? def.pack);
 }
 
@@ -73,7 +76,7 @@ function RankBadgeIcon({ rank, large = false }: { rank: number; large?: boolean 
 }
 
 function sideLabel(side: ArmyUnitState["side"]): string {
-  return side === "few" ? "Few" : side === "neutral" ? "Neutral" : "Pack of";
+  return side === "few" ? "Few" : side === "neutral" ? "Neutral" : side === "bank" ? "Creature Bank" : "Pack of";
 }
 
 /**
@@ -123,9 +126,11 @@ export function UnitExperienceWindow({
     const def = coreUnitDefinitions[unit.unitDefId];
     const rankInfo = armyUnitRankInfo(unit);
     if (!def || !rankInfo) return null;
-    const printed = armyUnitPrintedSide(def, unit.side);
+    const printed = armyUnitPrintedSide(def, unit.side, unit.unitDefId);
     const side = printed
-      ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides)
+      ? unit.side === "bank"
+        ? printed
+        : applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides)
       : undefined;
     const thresholds = UNIT_RANK_THRESHOLDS[def.tier] ?? UNIT_RANK_THRESHOLDS.gold;
     const maxXp = thresholds[MAX_UNIT_RANK - 1];
@@ -223,8 +228,8 @@ export function UnitExperienceWindow({
               {army.map((unit) => {
                 const def = coreUnitDefinitions[unit.unitDefId];
                 const rankInfo = armyUnitRankInfo(unit);
-                if (!def || !rankInfo) return null;
-                const printed = armyUnitPrintedSide(def, unit.side);
+                if (!def || !rankInfo || unit.side === "bank") return null;
+                const printed = armyUnitPrintedSide(def, unit.side, unit.unitDefId);
                 const side = printed
                   ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides)
                   : undefined;

@@ -22,7 +22,12 @@ import {
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions } from "@/data/map/locations";
-import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
+import {
+  CREATURE_BANKS,
+  CREATURE_BANK_UNIT_SIDES,
+  stackTokenDelta,
+  type CreatureBankId
+} from "@/data/map/creature-banks";
 import { fieldSymbolOverlayFor } from "@/data/map/field-symbol-modules";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { pveThemeFieldArt } from "@/engine/pve-content";
@@ -3775,7 +3780,10 @@ export function TownHeroDock({
           <span aria-hidden="true" className="dockUnitStack">
             {army.slice(0, 3).map((unit, index) => {
               const def = coreUnitDefinitions[unit.unitDefId];
-              const side = unit.side === "few" ? def?.few : def?.pack;
+              const side =
+                unit.side === "bank"
+                  ? CREATURE_BANK_UNIT_SIDES[unit.unitDefId]
+                  : armyUnitPrintedSide(def, unit.side, unit.unitDefId);
               return side?.cardImage ? (
                 <img alt="" className="dockUnitThumb" decoding="async" key={unit.id} loading="lazy" src={assetUrl(side.cardImage)} style={{ zIndex: 3 - index }} />
               ) : (
@@ -4349,9 +4357,13 @@ export function ArmyPanel({
           const def = coreUnitDefinitions[unit.unitDefId];
           // Few/Pack printed sides, with a recruited Neutral card's own side
           // (it used to fall through to `pack`, hiding a Neutral's stats).
-          const printed = armyUnitPrintedSide(def, unit.side);
+          const printed = armyUnitPrintedSide(def, unit.side, unit.unitDefId);
           // BINH stat tweaks (Griffins, Marksmen) show live values.
-          const side = printed ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides) : printed;
+          const side = printed
+            ? unit.side === "bank"
+              ? printed
+              : applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides)
+            : printed;
           const stackAttack =
             sideOverrides.polishUnitStacks &&
             (unit.side === "pack" || unit.side === "neutral") &&
@@ -4362,10 +4374,14 @@ export function ArmyPanel({
           // the engine fights with, plus a WoG-style caret/sword rank badge.
           const rankInfo = unitExperienceActive(state) ? armyUnitRankInfo(unit) : null;
           const rankBonus = rankInfo?.bonus ?? { attack: 0, defense: 0, health: 0, initiative: 0 };
-          const shownAttack = side ? side.attack + (unit.permanentAttackBonus ?? 0) + stackAttack + rankBonus.attack : 0;
-          const shownDefense = side ? side.defense + rankBonus.defense : 0;
-          const shownHealth = side ? side.health + rankBonus.health : 0;
-          const shownInitiative = side ? side.initiative + rankBonus.initiative : 0;
+          const tokenBonus = (stat: NonNullable<typeof unit.stackToken>) =>
+            unit.stackToken === stat ? stackTokenDelta(stat) : 0;
+          const shownAttack = side
+            ? side.attack + (unit.permanentAttackBonus ?? 0) + stackAttack + rankBonus.attack + tokenBonus("attack")
+            : 0;
+          const shownDefense = side ? side.defense + rankBonus.defense + tokenBonus("defense") : 0;
+          const shownHealth = side ? side.health + rankBonus.health + tokenBonus("health") : 0;
+          const shownInitiative = side ? side.initiative + rankBonus.initiative + tokenBonus("initiative") : 0;
           const eliteAbility = rankInfo?.eliteActive && rankInfo.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
           const elitePreview = rankInfo?.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
           const thresholds = def ? UNIT_RANK_THRESHOLDS[def.tier] : null;
@@ -4410,7 +4426,7 @@ export function ArmyPanel({
                   the cards too, so the deck doubles as a cost reference.
                   A recruited Neutral card has no Few/Pack faces, so it keeps the
                   single-face thumb in the row below instead. */}
-              {def?.few || def?.pack ? (
+              {unit.side !== "bank" && (def?.few || def?.pack) ? (
                 <UnitSideCards
                   fewCost={def?.few?.cost}
                   ownedSide={unit.side}
@@ -4422,7 +4438,15 @@ export function ArmyPanel({
                 className="armyUnitRow"
                 onClick={() =>
                   zoomContent({
-                    title: `${unit.side === "few" ? "Few" : "Pack of"} ${def?.name ?? unit.unitDefId}`,
+                    title: `${
+                      unit.side === "bank"
+                        ? "Creature Bank"
+                        : unit.side === "few"
+                          ? "Few"
+                          : unit.side === "neutral"
+                            ? "Neutral"
+                            : "Pack of"
+                    } ${def?.name ?? unit.unitDefId}`,
                     image: side?.cardImage,
                     subtitle: def ? `${def.tier} ${def.type}` : undefined,
                     lines: [
@@ -4441,7 +4465,7 @@ export function ArmyPanel({
               >
                 {/* Neutral-only cards (no Few/Pack faces) keep their single-face
                     thumb here, since the both-faces display above is skipped. */}
-                {!def?.few && !def?.pack ? (
+                {unit.side === "bank" || (!def?.few && !def?.pack) ? (
                   side?.cardImage ? (
                     <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={assetUrl(side.cardImage)} />
                   ) : (
@@ -4450,7 +4474,13 @@ export function ArmyPanel({
                 ) : null}
                 <span className={`tierDot ${def?.tier}`} />
                 <strong>
-                  {unit.side === "few" ? "Few" : unit.side === "neutral" ? "Neutral" : "Pack"}{" "}
+                  {unit.side === "few"
+                    ? "Few"
+                    : unit.side === "neutral"
+                      ? "Neutral"
+                      : unit.side === "bank"
+                        ? "Creature Bank"
+                        : "Pack"}{" "}
                   {def?.name ?? unit.unitDefId}
                 </strong>
                 {rankInfo && rankInfo.rank > 0 ? (
@@ -4803,7 +4833,7 @@ function rewardArtFromVisitSteps(
         const armyUnit = state.players[playerId]?.army.find((unit) => unit.id === target.armyUnitId);
         if (armyUnit) {
           const def = coreUnitDefinitions[armyUnit.unitDefId];
-          const side = def?.[armyUnit.side];
+          const side = armyUnitPrintedSide(def, armyUnit.side, armyUnit.unitDefId);
           return {
             image: side?.cardImage ?? def?.few?.cardImage ?? def?.pack?.cardImage ?? def?.neutral?.cardImage,
             name: def?.name ?? armyUnit.unitDefId,
@@ -4829,7 +4859,7 @@ function rewardArtFromVisitSteps(
       const armyUnit = state.players[playerId]?.army.find((unit) => unit.id === step.armyUnitId);
       if (armyUnit) {
         const def = coreUnitDefinitions[armyUnit.unitDefId];
-        const side = def?.[armyUnit.side];
+        const side = armyUnitPrintedSide(def, armyUnit.side, armyUnit.unitDefId);
         return {
           image: side?.cardImage ?? def?.few?.cardImage ?? def?.pack?.cardImage ?? def?.neutral?.cardImage,
           name: def?.name ?? armyUnit.unitDefId,
@@ -6986,7 +7016,7 @@ export function PlacementPanel({
       <div className="placementUnits">
         {player.army.map((unit) => {
           const def = coreUnitDefinitions[unit.unitDefId];
-          const portrait = def?.[unit.side]?.cardImage;
+          const portrait = armyUnitPrintedSide(def, unit.side, unit.unitDefId)?.cardImage;
           const isPlaced = placed.includes(unit.id);
           const canPlace = placeActions.some((legal) => legal.action.armyUnitId === unit.id);
           const canDrag = canPlace || isPlaced;

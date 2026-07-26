@@ -18,6 +18,7 @@ import { hasInternalBorder } from "@/data/map/borders";
 import {
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
+  STACK_TOKEN_STATS,
   STACK_TOKEN_PLACEMENT_PERCENT,
   STACK_TOKENS_BY_DIFFICULTY,
   rollStackTokenStat,
@@ -704,7 +705,13 @@ export function getUnitDefinition(unitDefId: string): UnitDefinition | undefined
   return coreUnitDefinitions[unitDefId];
 }
 
-export function getUnitSide(unitDefId: string, side: "few" | "pack" | "neutral"): UnitSideDefinition | undefined {
+export function getUnitSide(
+  unitDefId: string,
+  side: "few" | "pack" | "neutral" | "bank"
+): UnitSideDefinition | undefined {
+  if (side === "bank") {
+    return CREATURE_BANK_UNIT_SIDES[unitDefId];
+  }
   const def = coreUnitDefinitions[unitDefId];
   if (!def) {
     return undefined;
@@ -2519,8 +2526,7 @@ export function getArmyMapAbilities(state: GameState, playerId: PlayerId): ArmyM
 
   const abilities: ArmyMapAbility[] = [];
   for (const armyUnit of player.army) {
-    const definition = coreUnitDefinitions[armyUnit.unitDefId];
-    const side = definition?.[armyUnit.side];
+    const side = getUnitSide(armyUnit.unitDefId, armyUnit.side);
     for (const abilityId of side?.abilities ?? []) {
       const ability = unitAbilities[abilityId];
       if (ability?.mapEffect && ability.implementationStatus === "implemented") {
@@ -7081,8 +7087,30 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "RECRUIT_FREE": {
-        // Add a unit to the army for free: a Few (Garden of Life) or a Pack
-        // (a Creature Bank "gain a Stacked unit" reward). Optional `stacks` only
+        // A qualifying Hive/Conservatory reward pauses BEFORE minting the card:
+        // the player chooses which physical Stack Token rides the dedicated
+        // Creature Bank card. The chosen leaf returns here with stackToken set.
+        if (step.side === "bank" && step.stacked && !step.stackToken) {
+          visit.steps.unshift({
+            type: "CHOOSE_ONE",
+            prompt: `${coreUnitDefinitions[step.unitDefId]?.name ?? "Creature Bank unit"}: choose its Stack Token bonus`,
+            options: STACK_TOKEN_STATS.map((stackToken) => ({
+              label:
+                stackToken === "attack"
+                  ? "+1 Attack"
+                  : stackToken === "defense"
+                    ? "+1 Defense"
+                    : stackToken === "health"
+                      ? "+1 Health"
+                      : "+2 Initiative",
+              steps: [{ ...step, stacked: false, stackToken }]
+            }))
+          });
+          break;
+        }
+
+        // Add a unit to the army for free: a Few (Garden of Life), Pack, Neutral,
+        // or the dedicated Creature Bank card. Optional `stacks` only
         // apply when army Unit Stacks are active (polish-unit-stacks / anime
         // unitStacks) — bank rewards deliberately do NOT set this field.
         const recruitPlayer = state.players[visit.playerId];
@@ -7100,11 +7128,9 @@ export function processPendingVisit(state: GameState): void {
               added.stacks = layers;
             }
           }
-          // Dragon Fly Hive / Griffin Conservatory Stacked reward (X ≥ 2): the
-          // Few card carries a rulebook Stack Token — the actual game "Stacked"
-          // unit. Rolled from the SAME distribution the bank defenders use
-          // (rollStackTokenStat) and INDEPENDENT of any Polish layer above.
-          const stackToken = step.stacked ? rollStackTokenStat(adventureRandom(state, "bank-reward-stack-token")) : undefined;
+          // Dragon Fly Hive / Griffin Conservatory: the selected rulebook token
+          // rides the bank card and remains independent of Polish Stack layers.
+          const stackToken = step.stackToken;
           if (stackToken) {
             added.stackToken = stackToken;
           }
@@ -13211,7 +13237,7 @@ export function makeCombatUnitFromArmy(
   armyUnit: {
     id: string;
     unitDefId: string;
-    side: "few" | "pack" | "neutral";
+    side: "few" | "pack" | "neutral" | "bank";
     transforms?: UnitTransformState[];
     permanentAttackBonus?: number;
     permanentHealthBonus?: number;
@@ -13232,12 +13258,23 @@ export function makeCombatUnitFromArmy(
   }
 ): CombatUnitState | null {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
-  const printed = armyUnit.side === "few" ? def?.few : armyUnit.side === "pack" ? def?.pack : def?.neutral;
+  const printed =
+    armyUnit.side === "bank"
+      ? getBankSide(armyUnit.unitDefId)
+      : armyUnit.side === "few"
+        ? def?.few
+        : armyUnit.side === "pack"
+          ? def?.pack
+          : def?.neutral;
   if (!def || !printed) {
     return null;
   }
 
-  const side = applyUnitSideRules(ruleset, armyUnit.unitDefId, armyUnit.side, printed, overrides);
+  const side =
+    armyUnit.side === "bank"
+      ? printed
+      : applyUnitSideRules(ruleset, armyUnit.unitDefId, armyUnit.side, printed, overrides);
+  const variant = armyUnit.side === "bank" ? "neutral" : armyUnit.side;
   // House rule (BINH) — Gelu IV: a permanent +Attack baked onto this army card is
   // folded into the unit's printed Attack every combat (start to end).
   const permanentAttackBonus = armyUnit.permanentAttackBonus ?? 0;
@@ -13250,7 +13287,7 @@ export function makeCombatUnitFromArmy(
   // Unit Experience (optional rule): veteran-rank stat bonuses + the elite
   // ability fold into the printed side like permanentAttackBonus. With the rule
   // off no card ever carries `experience`, so this is an exact no-op.
-  const unitExperience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
+  const unitExperience = armyUnit.side === "bank" ? 0 : Math.max(0, Math.trunc(armyUnit.experience ?? 0));
   const rankFold = unitRankFold(armyUnit.unitDefId, def.tier, unitExperience);
   // Creature Bank Stacked reward (Dragon Fly Hive / Griffin Conservatory): a
   // rulebook Stack Token baked onto this army card folds one stat bonus (+1
@@ -13265,8 +13302,11 @@ export function makeCombatUnitFromArmy(
     id: unitId,
     controllerId,
     name: def.name,
-    cardName: `${armyUnit.side === "few" ? "Few" : armyUnit.side === "pack" ? "Pack of" : "Neutral"} ${def.name}`,
-    variant: armyUnit.side,
+    cardName:
+      armyUnit.side === "bank"
+        ? `${def.name} (Creature Bank)`
+        : `${armyUnit.side === "few" ? "Few" : armyUnit.side === "pack" ? "Pack of" : "Neutral"} ${def.name}`,
+    variant,
     grade: def.tier,
     type: side.type ?? def.type,
     attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0) + rankFold.attack + tokenBonus("attack"),
@@ -13282,6 +13322,7 @@ export function makeCombatUnitFromArmy(
     abilities: withRankAbilities(side.abilities, rankFold),
     unitDefId: armyUnit.unitDefId,
     armyUnitId: armyUnit.id,
+    ...(armyUnit.side === "bank" ? { bankUnit: true } : {}),
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
     ...(permanentHealthBonus ? { permanentHealthBonus } : {}),
     ...(armyStacks ? { armyStacks } : {}),
@@ -13428,7 +13469,7 @@ function nextArmyUnitId(player: PlayerState): string {
 export function addArmyUnit(
   player: PlayerState,
   unitDefId: string,
-  side: "few" | "pack" | "neutral"
+  side: "few" | "pack" | "neutral" | "bank"
 ): PlayerState["army"][number] {
   const armyUnit = {
     id: nextArmyUnitId(player),
@@ -14959,7 +15000,7 @@ function queueGardenOfLife(state: GameState, playerId: PlayerId, buildingId: str
   // duplicate Few cards (a Conflux player starts with a Sprites Few, so the
   // unconditional recruit duplicated it). When already owned, the only free
   // action is reinforcing the Few you have to a Pack.
-  const owned = player.army.some((unit) => unit.unitDefId === unitDefId);
+  const owned = player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
   if (!owned && getUnitSide(unitDefId, "few")) {
     options.push({ label: `Recruit ${def.name} (free)`, steps: [{ type: "RECRUIT_FREE", unitDefId }] });
   }
@@ -16473,7 +16514,7 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
     if (!unit || !fewSide || !tiers.has(unit.tier)) {
       continue;
     }
-    if (player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId)) {
+    if (player.army.some((armyUnit) => armyUnit.side !== "bank" && armyUnit.unitDefId === unitDefId)) {
       continue;
     }
     if ((fewSide.cost.gold ?? 0) <= 0) {

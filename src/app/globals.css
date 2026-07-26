@@ -29076,6 +29076,529 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 }
 
 /* ======================================================================== */
+/* DESKTOP COMMAND HUD                                                      */
+/*                                                                          */
+/* The map is the work surface; the things a player repeatedly reads or     */
+/* touches stay docked around it: status/resources at the top, town/hero/    */
+/* army on the left, shared libraries on the right, and the hand at the      */
+/* bottom. This is deliberately desktop-only: phone mode keeps its tabbed    */
+/* full-screen panels below.                                                 */
+/* ======================================================================== */
+@media (min-width: 1101px) {
+  .adventureRoot:not(.phoneMode) {
+    --desktop-hud-height: 62px;
+    --desktop-hand-height: 198px;
+    --desktop-library-width: 210px;
+    --desktop-edge: max(14px, calc((100vw - 1680px) / 2 + 14px));
+    padding-bottom: calc(var(--desktop-hand-height) + 18px);
+  }
+
+  /* Status and resources remain readable while the map scrolls. The old
+     wrapped ribbon could become two or three rows tall; one compact strip
+     keeps the map directly under it and permits a small horizontal scroll at
+     unusually dense rulesets. */
+  .adventureRoot:not(.phoneMode) > .tableTopRow {
+    position: sticky;
+    top: 6px;
+    z-index: 55;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    align-items: start;
+  }
+
+  .adventureRoot:not(.phoneMode) > .tableTopRow > .advHud {
+    min-height: var(--desktop-hud-height);
+    max-height: var(--desktop-hud-height);
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 5px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    overscroll-behavior-x: contain;
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudCell {
+    flex: 0 0 auto;
+    gap: 0;
+    padding-right: 8px;
+    white-space: nowrap;
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudCell strong {
+    font-size: 12px;
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudCell small {
+    font-size: 9.5px;
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudCell.resources {
+    gap: 6px;
+    padding: 2px 8px 2px 0;
+  }
+
+  .adventureRoot:not(.phoneMode) .resourceChip {
+    gap: 3px;
+  }
+
+  .adventureRoot:not(.phoneMode) .resourceIcon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .adventureRoot:not(.phoneMode) .incomeNote {
+    max-width: 54px;
+    font-size: 8px;
+    line-height: 1.05;
+    white-space: normal;
+  }
+
+  .adventureRoot:not(.phoneMode) .moveMoraleCell {
+    gap: 5px;
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudButtons {
+    flex: 0 0 auto;
+    gap: 4px;
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudButtons .commandButton {
+    min-height: 30px;
+    padding: 4px 9px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  /* In-game room controls are utility controls, not page content. Remove the
+     join/ID row in JSX, and compress the remaining controls into a narrow
+     cluster. Opening Room produces a floating manager instead of stretching
+     the sticky header and pushing the map away. */
+  .tableRoot:not(.phoneMode) > .tableTopRow > .tableMenu.tableMenuInline {
+    position: relative;
+    display: block;
+    min-height: 0;
+  }
+
+  .tableRoot:not(.phoneMode) > .tableTopRow > .tableMenu.tableMenuInline:not(.controlsOpen)
+    > :not(.tableControlsToggle) {
+    display: none;
+  }
+
+  .tableRoot:not(.phoneMode) .tableControlsToggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-width: 76px;
+    min-height: var(--desktop-hud-height, 62px);
+    padding: 5px 10px;
+    border: 1px solid var(--cmp-gold-deep);
+    border-radius: 9px;
+    color: var(--cmp-gold-bright);
+    background:
+      linear-gradient(180deg, rgb(34 25 14 / 96%), rgb(18 13 8 / 98%)),
+      var(--cmp-leather) center / 180px repeat;
+    box-shadow:
+      inset 0 0 0 1px rgb(217 178 90 / 30%),
+      inset 0 1px 0 rgb(246 226 168 / 12%),
+      0 6px 18px rgb(0 0 0 / 46%);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .tableRoot:not(.phoneMode) > .tableTopRow > .tableMenu.tableMenuInline.controlsOpen {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 88;
+    display: grid;
+    width: min(390px, calc(100vw - 28px));
+    max-height: calc(100vh - var(--desktop-hud-height) - 28px);
+    gap: 6px;
+    padding: 8px;
+    overflow-y: auto;
+    border: 1px solid var(--cmp-gold-deep);
+    border-radius: 10px;
+    background:
+      linear-gradient(180deg, rgb(26 19 11 / 98%), rgb(13 10 7 / 99%)),
+      var(--cmp-leather) center / 280px repeat;
+    box-shadow:
+      inset 0 0 0 1px rgb(217 178 90 / 24%),
+      0 18px 48px rgb(0 0 0 / 72%);
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline.controlsOpen > .tableControlsToggle {
+    min-height: 30px;
+    justify-self: end;
+    width: auto;
+  }
+
+  .tableRoot:not(.phoneMode) > .tableTopRow:has(> .tableMenuInline) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline.controlsOpen .roomBody {
+    position: static;
+    width: 100%;
+    max-width: none;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline > .seatSwitch,
+  .tableRoot:not(.phoneMode) .tableMenuInline > .seatLocked {
+    flex: 1 1 100%;
+    min-height: 27px;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline .seatSwitch button {
+    min-height: 27px;
+    padding: 2px 5px;
+    font-size: 10px;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline > .roomPanel {
+    flex: 0 0 auto;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline .roomToggle {
+    min-height: 28px;
+    padding: 3px 7px;
+    font-size: 10.5px;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline .roomToggleMeta {
+    font-size: 9.5px;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline .roomBody {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 90;
+    width: min(560px, calc(100vw - 28px));
+    max-height: calc(100vh - 92px);
+    overflow-y: auto;
+    border-color: var(--cmp-gold-deep);
+    background:
+      linear-gradient(180deg, rgb(26 19 11 / 98%), rgb(13 10 7 / 99%)),
+      var(--cmp-leather) center / 280px repeat;
+    box-shadow:
+      inset 0 0 0 1px rgb(217 178 90 / 24%),
+      0 18px 48px rgb(0 0 0 / 72%);
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline > .statusRow {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline > .statusRow > small {
+    white-space: nowrap;
+    font-size: 8.5px;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline .connectionQualityChip {
+    padding: 1px 5px;
+    font-size: 8px;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline .musicToggle,
+  .tableRoot:not(.phoneMode) .tableMenuInline .uiModeToggle {
+    min-height: 26px;
+    padding: 2px 6px;
+    font-size: 8.5px;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline .musicToggle svg,
+  .tableRoot:not(.phoneMode) .tableMenuInline .uiModeToggle svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline > .gameControlsRow {
+    flex: 0 0 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .tableRoot:not(.phoneMode)
+    .tableMenuInline.controlsOpen
+    .gameControlsRow
+    > .singlePlayerSavePanel.compact.open {
+    flex: 1 0 100%;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline .menuGroupLabel {
+    display: none;
+  }
+
+  .tableRoot:not(.phoneMode) .tableMenuInline .gameControlsRow > .commandButton {
+    min-height: 27px;
+    padding: 3px 7px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  /* The map begins immediately below the top HUD. The right margin is the
+     always-visible shared-library rail; no transparent panel covers map
+     controls or fields. */
+  .adventureRoot:not(.phoneMode) > .adventureMidRow {
+    order: 3;
+    margin-right: calc(var(--desktop-library-width) + 8px);
+    grid-template-columns: 218px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .adventureRoot:not(.phoneMode) > .adventureMidRow > .mapColumn {
+    grid-column: 2;
+  }
+
+  .adventureRoot:not(.phoneMode) > .logDrawer {
+    order: 6;
+  }
+
+  /* Town / Hero / Army stay in view. Less-used morale/VP panels remain in the
+     same scrollable rail rather than lengthening the entire page. */
+  .adventureRoot:not(.phoneMode) .leftRail {
+    position: fixed;
+    top: calc(var(--desktop-hud-height) + 14px);
+    bottom: calc(var(--desktop-hand-height) + 14px);
+    left: var(--desktop-edge);
+    z-index: 36;
+    width: 218px;
+    max-height: none;
+    overflow-y: auto;
+    padding-right: 4px;
+    scrollbar-width: thin;
+    overscroll-behavior: contain;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailDock .townHeroDock {
+    gap: 6px;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailDock .dockTile {
+    min-height: 64px;
+    gap: 8px;
+    padding: 6px 8px;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailDock .dockTileText strong {
+    font-size: 13px;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailDock .dockTileText small {
+    font-size: 9.5px;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailDock .heroDrop {
+    max-height: calc(100vh - var(--desktop-hud-height) - var(--desktop-hand-height) - 30px);
+  }
+
+  /* Shared Spells / Abilities / Artifacts / Events / Neutral units are a
+     fixed library on the right. Every station is visible or reachable within
+     this rail without scrolling away from the current map position. */
+  .adventureRoot:not(.phoneMode) > .advDecksBottom {
+    position: fixed;
+    top: calc(var(--desktop-hud-height) + 22px);
+    right: var(--desktop-edge);
+    bottom: calc(var(--desktop-hand-height) + 14px);
+    z-index: 42;
+    width: var(--desktop-library-width);
+    margin: 0;
+  }
+
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .advDecks {
+    height: 100%;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 5px;
+    padding: 25px 7px 8px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    overscroll-behavior: contain;
+    box-shadow:
+      inset 0 0 0 1px rgb(217 178 90 / 22%),
+      inset 0 1px 0 rgb(255 235 190 / 7%),
+      -8px 8px 24px rgb(0 0 0 / 50%);
+  }
+
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .advDecks::before {
+    content: "Shared library";
+    top: 7px;
+    left: 10px;
+    color: var(--cmp-gold-bright);
+    font-size: 9px;
+  }
+
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .advDeckRow {
+    flex: 0 0 auto;
+    min-height: 58px;
+    justify-content: center;
+    gap: 5px;
+    padding: 4px 3px;
+    border: 0;
+    border-bottom: 1px solid rgb(217 178 90 / 14%);
+  }
+
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .advDeckRow:last-child {
+    border-bottom: 0;
+  }
+
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .cardBack.small,
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .advDiscard {
+    width: 38px;
+    height: 53px;
+  }
+
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .advDeck small,
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .advDiscard small {
+    max-width: 66px;
+    white-space: normal;
+    line-height: 1.05;
+    text-align: center;
+    font-size: 8px;
+  }
+
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .advDeckRow.neutral {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+    gap: 3px;
+  }
+
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .neutralDeck {
+    width: 100%;
+    min-height: 48px;
+    padding: 2px 1px;
+    background-size: cover;
+    font-size: 11px;
+  }
+
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .neutralDeck small {
+    font-size: 7px;
+  }
+
+  /* The player's hand is the bottom command surface, not a large row between
+     status and map. It is fixed and one-card tall. Deck/book and any ongoing
+     effects sit beside the cards so the tray never grows vertically. */
+  .adventureRoot:not(.phoneMode) > .playerCardBar {
+    position: fixed;
+    left: var(--desktop-edge);
+    right: var(--desktop-edge);
+    bottom: 6px;
+    z-index: 48;
+    order: 5;
+    height: var(--desktop-hand-height);
+    max-height: calc(100vh - 92px);
+    gap: 8px;
+    padding: 7px 9px;
+    border-radius: 12px;
+    box-shadow:
+      inset 0 0 0 1px rgb(217 178 90 / 30%),
+      inset 0 1px 0 rgb(255 235 190 / 8%),
+      0 -10px 30px rgb(0 0 0 / 62%);
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .ownDeckToolsRow {
+    gap: 6px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .ownDeckColumn .ownDeckPile {
+    gap: 6px;
+    padding: 5px 7px 7px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .ownDeckColumn .ownDeckBack,
+  .adventureRoot:not(.phoneMode) .playerCardBar .ownDeckColumn .ownDiscardSpot {
+    width: 48px;
+    height: 67px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .ownDeckColumn .ownDeckCount {
+    font-size: 15px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .ownDeckColumn .spellBookToggle {
+    padding: 6px 7px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .ownDeckColumn .spellBookIcon {
+    width: 48px;
+    height: 38px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .handMain {
+    display: grid;
+    grid-template-columns: minmax(180px, 230px) minmax(0, 1fr);
+    gap: 7px;
+    margin-left: 0;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .permanentEffectsPanel,
+  .adventureRoot:not(.phoneMode) .playerCardBar .handArea {
+    min-height: 0;
+    height: 100%;
+    padding: 5px 7px 7px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .permanentEffectsPanel {
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .trayBoxHeader,
+  .adventureRoot:not(.phoneMode) .playerCardBar .handTopBar {
+    min-height: 25px;
+    padding-bottom: 6px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .permanentEffectsPanel .trayBoxHeader strong,
+  .adventureRoot:not(.phoneMode) .playerCardBar .handArea .handTopBar > small:first-child {
+    padding: 3px 18px 4px;
+    font-size: 9px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .adventureHandCards {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .adventureHandCard .handCardImage {
+    width: clamp(78px, 6.2vw, 94px);
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .permanentEffectsPanel .permanentCardImage {
+    width: 42px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .trayFootFrost {
+    display: none;
+  }
+
+  /* Choice and reaction windows sit above the fixed hand rather than covering
+     the cards the player may need to inspect while deciding. */
+  .adventureRoot:not(.phoneMode) .promptTray,
+  .adventureRoot:not(.phoneMode) .reactionTray {
+    bottom: calc(var(--desktop-hand-height) + 20px);
+  }
+
+  .adventureRoot:not(.phoneMode) .chatDock,
+  .adventureRoot:not(.phoneMode) .helperCoachChip,
+  .adventureRoot:not(.phoneMode) .tableReactionBar,
+  .adventureRoot:not(.phoneMode) .reactionStrip {
+    bottom: calc(var(--desktop-hand-height) + 16px);
+  }
+}
+
+/* ======================================================================== */
 /* PHONE UI MODE                                                            */
 /*                                                                          */
 /* Everything below only applies inside `main.phoneMode` (plus the mode     */
@@ -29363,6 +29886,16 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   display: none;
 }
 
+/* Once a live desktop table owns the viewport, its sticky HUD replaces the
+   generic site masthead. Keep setup/menu pages branded, but do not spend a
+   second header and footer row inside the game. */
+@media (min-width: 1101px) {
+  .appShell:has(.tableMenuInline) .topBar,
+  .appShell:has(.tableMenuInline) .footerNotice {
+    display: none;
+  }
+}
+
 /* ---------- shared phone shell (all table branches) ---------- */
 
 .phoneMode {
@@ -29394,6 +29927,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 
 .phoneMode[data-phone-tab="menu"] .tableMenu {
   display: grid;
+}
+
+.phoneMode .tableControlsToggle {
+  display: none;
 }
 
 /* ---------- adventure surface ---------- */
@@ -31463,8 +32000,62 @@ button.armyExperienceBoard > small { color: #9b917d; font-size: 8px; text-transf
 }
 
 .singlePlayerSavePanel.compact {
-  max-width: 360px;
-  margin: 8px 0 0 auto;
+  position: relative;
+  display: block;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.singlePlayerSavePanel.compact:not(.open) > :not(.singlePlayerSaveToggle),
+.singlePlayerSavePanel.compact > .singlePlayerSaveHead {
+  display: none;
+}
+
+.singlePlayerSavePanel.compact .singlePlayerSaveToggle {
+  min-height: 27px;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+
+.singlePlayerSavePanel.compact .singlePlayerSaveToggle b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  color: #231608;
+  background: var(--cmp-gold);
+  font-size: 9px;
+}
+
+.singlePlayerSavePanel.compact.open {
+  display: grid;
+  gap: 8px;
+  width: min(400px, calc(100vw - 28px));
+  padding: 9px;
+  border: 1px solid var(--cmp-gold-deep);
+  background:
+    linear-gradient(180deg, rgb(26 19 11 / 98%), rgb(13 10 7 / 99%)),
+    var(--cmp-leather) center / 260px repeat;
+  box-shadow:
+    inset 0 0 0 1px rgb(217 178 90 / 24%),
+    0 18px 48px rgb(0 0 0 / 72%);
+}
+
+@media (min-width: 1101px) {
+  .tableMenuInline .gameControlsRow {
+    position: relative;
+  }
+
+  .tableMenuInline.controlsOpen .singlePlayerSavePanel.compact.open {
+    position: static;
+    width: 100%;
+    max-width: none;
+  }
 }
 
 .singlePlayerHistory .historyFilters {

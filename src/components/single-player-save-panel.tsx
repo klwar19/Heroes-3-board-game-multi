@@ -46,6 +46,7 @@ export function SinglePlayerSavePanel({
   const [name, setName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [compactOpen, setCompactOpen] = useState(false);
 
   const refresh = useCallback(() => setSaves(loadSavedSinglePlayerGames()), []);
   useEffect(() => {
@@ -122,7 +123,23 @@ export function SinglePlayerSavePanel({
   };
 
   return (
-    <section className={`singlePlayerSavePanel${compact ? " compact" : ""}`} aria-label="Single-player saves">
+    <section
+      className={`singlePlayerSavePanel${compact ? " compact" : ""}${compactOpen ? " open" : ""}`}
+      aria-label="Single-player saves"
+    >
+      {compact ? (
+        <button
+          aria-expanded={compactOpen}
+          className="singlePlayerSaveToggle"
+          onClick={() => setCompactOpen((current) => !current)}
+          title="Open save and load slots"
+          type="button"
+        >
+          <Save aria-hidden="true" size={13} />
+          <span>Saves</span>
+          <b>{saves.length}</b>
+        </button>
+      ) : null}
       <header className="singlePlayerSaveHead">
         <span>
           <Save aria-hidden="true" size={14} />

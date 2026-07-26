@@ -14072,7 +14072,11 @@ function playTransformCard(
     throw new Error(`${card.name} must be placed on one of your unit cards.`);
   }
   const def = coreUnitDefinitions[armyUnit.unitDefId];
-  if (!def || !canPlaceTransformOn(def.name, armyUnit.side, armyUnit.transforms, effect)) {
+  if (
+    !def ||
+    armyUnit.side === "bank" ||
+    !canPlaceTransformOn(def.name, armyUnit.side, armyUnit.transforms, effect)
+  ) {
     throw new Error(`${card.name} cannot be placed on that unit card.`);
   }
 

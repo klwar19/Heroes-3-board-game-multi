@@ -849,6 +849,7 @@ export default function Home() {
   /** Phone mode: the active full-screen panel per surface (local, never sent). */
   const [phoneMapTab, setPhoneMapTab] = useState<PhoneMapTab>("map");
   const [phoneCombatTab, setPhoneCombatTab] = useState<PhoneCombatTab>("board");
+  const [tableControlsOpen, setTableControlsOpen] = useState(false);
   /**
    * Phone mode auto-switch: when the viewer OWES a tile rotation (the round-1
    * forced home-tile rotation, or a mid-round reveal/placement landing while they
@@ -4940,7 +4941,22 @@ export default function Home() {
     ) : null;
 
   const tableMenu = (
-    <div className={`tableMenu${inGameTable ? " tableMenuInline" : ""}`} aria-label="Table controls">
+    <div
+      className={`tableMenu${inGameTable ? " tableMenuInline" : ""}${tableControlsOpen ? " controlsOpen" : ""}`}
+      aria-label="Table controls"
+    >
+      {inGameTable ? (
+        <button
+          aria-expanded={tableControlsOpen}
+          className="tableControlsToggle"
+          onClick={() => setTableControlsOpen((current) => !current)}
+          title={tableControlsOpen ? "Close table controls" : "Open room, connection, save and game controls"}
+          type="button"
+        >
+          <MenuIcon aria-hidden="true" size={14} />
+          <span>Table</span>
+        </button>
+      ) : null}
       {roomPasswordPrompt}
       {roomHosted ? (
         // Hosted/closed room: the host controls seats, but a player may still
@@ -5041,17 +5057,20 @@ export default function Home() {
         onRename={onRename}
         roomId={roomId}
         state={state}
+        compact={inGameTable}
       />
-      <div className="menuRow roomRow">
-        <input aria-label="Room ID" onChange={(event) => setRoomInput(event.target.value)} suppressHydrationWarning value={roomInput} />
-        <button onClick={joinRoom} title="Join room" type="button">
-          <StepForward aria-hidden="true" size={13} />
-        </button>
-      </div>
+      {!inGameTable ? (
+        <div className="menuRow roomRow">
+          <input aria-label="Room ID" onChange={(event) => setRoomInput(event.target.value)} suppressHydrationWarning value={roomInput} />
+          <button onClick={joinRoom} title="Join room" type="button">
+            <StepForward aria-hidden="true" size={13} />
+          </button>
+        </div>
+      ) : null}
       <div className="menuRow statusRow">
-        <span suppressHydrationWarning>{roomId}</span>
+        {!inGameTable ? <span suppressHydrationWarning>{roomId}</span> : null}
         <small suppressHydrationWarning>
-          v{roomVersion} · {syncStatus} · {state.phase}
+          {inGameTable ? `${syncStatus} · ${state.phase}` : `v${roomVersion} · ${syncStatus} · ${state.phase}`}
         </small>
         <ConnectionQualityChip sample={connectionQuality} />
         <MusicToggle />

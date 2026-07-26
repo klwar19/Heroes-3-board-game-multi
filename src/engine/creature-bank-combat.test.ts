@@ -48,6 +48,21 @@ function apply(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
+function chooseVisitOption(state: GameState, match: RegExp): GameState {
+  const legal = getLegalActions(state, "p1").find(
+    (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && match.test(entry.label)
+  );
+  expect(legal, `expected a visit option matching ${match}`).toBeTruthy();
+  return apply(state, legal!.action);
+}
+
+function chooseAttackStackTokenIfOffered(state: GameState): GameState {
+  const offered = getLegalActions(state, "p1").some(
+    (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label === "+1 Attack"
+  );
+  return offered ? chooseVisitOption(state, /^\+1 Attack$/) : state;
+}
+
 /** Drops a Creature Bank onto a fresh field the main hero is standing on. */
 function placeBankUnderHero(state: GameState, bankId: CreatureBankId, level = 7): GameState {
   const hero = getMainHero(state, "p1")!;
@@ -607,13 +622,13 @@ describe("Stacked defender lethal absorption", () => {
 });
 
 // ===========================================================================
-// The Dragon Fly Hive / Griffin Conservatory reward is the FEW card carrying a
-// REAL rulebook Stack Token (not the Pack, not a Polish layer). This section
-// pins the token riding a PLAYER army card: folded into a later combat, absorbed
-// like a bank defender, and synced back to the army card.
+// The Dragon Fly Hive / Griffin Conservatory reward is its dedicated Creature
+// Bank card carrying a REAL rulebook Stack Token (not a Neutral/faction card or
+// Polish layer). These tests pin the token riding a PLAYER army card: folded
+// into a later combat, absorbed like a bank defender, and synced back to it.
 // ===========================================================================
 
-describe("Creature Bank Stacked reward — the Few card carries a real Stack Token", () => {
+describe("Creature Bank Stacked reward — the bank card carries a chosen Stack Token", () => {
   function refreshIfNeeded(state: GameState): GameState {
     return state.players.p1.needsHandRefresh || state.players.p1.canMulligan
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
@@ -621,11 +636,16 @@ describe("Creature Bank Stacked reward — the Few card carries a real Stack Tok
   }
 
   it("makeCombatUnitFromArmy folds the Stack Token: +1 stat and +2 initiative, mirroring it onto the unit", () => {
-    const plain = makeCombatUnitFromArmy({ id: "a-plain", unitDefId: "castle.griffins", side: "few" }, "p1", "u-plain", 1)!;
+    const plain = makeCombatUnitFromArmy(
+      { id: "a-plain", unitDefId: "neutral.griffins", side: "bank" },
+      "p1",
+      "u-plain",
+      1
+    )!;
     expect(plain.stackToken).toBeUndefined();
 
     const attackTok = makeCombatUnitFromArmy(
-      { id: "a-atk", unitDefId: "castle.griffins", side: "few", stackToken: "attack" },
+      { id: "a-atk", unitDefId: "neutral.griffins", side: "bank", stackToken: "attack" },
       "p1",
       "u-atk",
       0
@@ -637,7 +657,7 @@ describe("Creature Bank Stacked reward — the Few card carries a real Stack Tok
 
     // The +2 Initiative variant (direct setup) folds initiative, nothing else.
     const iniTok = makeCombatUnitFromArmy(
-      { id: "a-ini", unitDefId: "castle.griffins", side: "few", stackToken: "initiative" },
+      { id: "a-ini", unitDefId: "neutral.griffins", side: "bank", stackToken: "initiative" },
       "p1",
       "u-ini",
       0
@@ -648,7 +668,7 @@ describe("Creature Bank Stacked reward — the Few card carries a real Stack Tok
 
     // +1 Health folds onto the health bar.
     const hpTok = makeCombatUnitFromArmy(
-      { id: "a-hp", unitDefId: "castle.griffins", side: "few", stackToken: "health" },
+      { id: "a-hp", unitDefId: "neutral.griffins", side: "bank", stackToken: "health" },
       "p1",
       "u-hp",
       0
@@ -656,7 +676,7 @@ describe("Creature Bank Stacked reward — the Few card carries a real Stack Tok
     expect(hpTok.maxHealth).toBe(plain.maxHealth + 1);
   });
 
-  // Deploys a single reward Few carrying a `token` Stack Token into a bank fight
+  // Deploys a single reward bank card carrying a `token` into a bank fight
   // the player then wins. Returns the settled state; the caller inspects the
   // army card's surviving `stackToken`.
   function fightWithRewardCard(
@@ -666,8 +686,10 @@ describe("Creature Bank Stacked reward — the Few card carries a real Stack Tok
   ): GameState {
     let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
     state = refreshIfNeeded(state);
-    // Direct setup: the player's ONLY army card is a reward Few with the token.
-    state.players.p1.army = [{ id: "reward1", unitDefId: "fortress.dragon_flies", side: "few", stackToken: token }];
+    // Direct setup: the player's ONLY army card is the dedicated bank card.
+    state.players.p1.army = [
+      { id: "reward1", unitDefId: "neutral.dragon_flies", side: "bank", stackToken: token }
+    ];
     placeBankUnderHero(state, "naga_bank", 7);
     const hero = getMainHero(state, "p1")!;
 
@@ -677,7 +699,8 @@ describe("Creature Bank Stacked reward — the Few card carries a real Stack Tok
     state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
 
     const rewardUnit = Object.values(state.combat!.units).find((unit) => unit.armyUnitId === "reward1")!;
-    expect(rewardUnit, "the reward Few deployed").toBeTruthy();
+    expect(rewardUnit, "the Creature Bank reward deployed").toBeTruthy();
+    expect(rewardUnit.bankUnit).toBe(true);
     expect(rewardUnit.stackToken, "the token mirrored onto the deployed unit").toBe(token);
 
     if (absorbInCombat) {
@@ -712,7 +735,7 @@ describe("Creature Bank Stacked reward — the Few card carries a real Stack Tok
     const state = fightWithRewardCard("reward-token-absorbed", "health", /* absorbInCombat */ true);
     const card = state.players.p1.army.find((unit) => unit.id === "reward1");
     expect(card, "the reward card survived the fight").toBeTruthy();
-    expect(card!.side).toBe("few");
+    expect(card!.side).toBe("bank");
     expect(card!.stackToken, "the absorbed token never comes back").toBeUndefined();
     expect(card!.stacks, "still never a Polish layer").toBeUndefined();
   });
@@ -721,7 +744,7 @@ describe("Creature Bank Stacked reward — the Few card carries a real Stack Tok
     const state = fightWithRewardCard("reward-token-kept", "attack", /* absorbInCombat */ false);
     const card = state.players.p1.army.find((unit) => unit.id === "reward1");
     expect(card, "the reward card survived the fight").toBeTruthy();
-    expect(card!.side).toBe("few");
+    expect(card!.side).toBe("bank");
     expect(card!.stackToken, "an untouched token rides the card into the next fight").toBe("attack");
   });
 });
@@ -901,7 +924,7 @@ describe("Creature Bank combat lifecycle", () => {
     state = apply(state, place!.action);
     state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
 
-    // X (Stacked defenders) decides Few vs the Stacked Pack reward.
+    // X (Stacked defenders) decides whether the bank card gets a Stack Token.
     const stacked = state.combat?.context.kind === "neutral" ? (state.combat.context.bankStackCount ?? 0) : 0;
     const resourcesBefore = { ...state.players.p1.resources };
     const armyIdsBefore = new Set(state.players.p1.army.map((unit) => unit.id));
@@ -916,20 +939,83 @@ describe("Creature Bank combat lifecycle", () => {
 
     // The reward grants a unit card, not resources.
     expect(state.players.p1.resources).toEqual(resourcesBefore);
-    // Exactly one Dragon Flies card joined the army — ALWAYS the Few card, carrying
-    // a rulebook Stack Token iff 2+ defenders Stacked (never a Pack, never a layer).
+    if (stacked >= 2) {
+      // The card does not enter the army until its token stat is chosen.
+      expect(state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id))).toHaveLength(0);
+      const labels = getLegalActions(state, "p1")
+        .filter((entry) => entry.action.type === "RESOLVE_VISIT_STEP")
+        .map((entry) => entry.label);
+      expect(labels).toEqual(["+1 Attack", "+1 Defense", "+1 Health", "+2 Initiative"]);
+      state = chooseVisitOption(state, /^\+1 Attack$/);
+    }
+
+    // Exactly one dedicated Dragon Flies bank card joined the army.
     const gained = state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id));
     expect(gained).toHaveLength(1);
-    expect(gained[0].unitDefId).toBe("fortress.dragon_flies");
-    expect(gained[0].side).toBe("few");
+    expect(gained[0].unitDefId).toBe("neutral.dragon_flies");
+    expect(gained[0].side).toBe("bank");
     expect(gained[0].stacks).toBeUndefined();
     if (stacked >= 2) {
-      expect(gained[0].stackToken, "2+ Stacked defenders → the Few reward carries a Stack Token").toBeTruthy();
+      expect(gained[0].stackToken).toBe("attack");
     } else {
-      expect(gained[0].stackToken, "fewer than 2 Stacked → plain Few, no token").toBeUndefined();
+      expect(gained[0].stackToken, "fewer than 2 Stacked → plain bank card, no token").toBeUndefined();
     }
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
     expect(state.combat).toBeNull();
+  });
+
+  it("Griffin Conservatory grants its bank card after the player chooses the Stack bonus", () => {
+    let state = createAdventureGameState({
+      seed: "bank-conservatory-reward",
+      difficulty: "normal",
+      rollFirstPlayer: false
+    });
+    state = state.players.p1.needsHandRefresh || state.players.p1.canMulligan
+      ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    placeBankUnderHero(state, "griffin_conservatory", 7);
+    const hero = getMainHero(state, "p1")!;
+    const armyIdsBefore = new Set(state.players.p1.army.map((unit) => unit.id));
+
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+    const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+    state = apply(state, place!.action);
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    // Pin the reward threshold so this test covers the Stacked card as well as
+    // its identity. The bank setup/roll tests cover how this count is produced.
+    if (state.combat?.context.kind === "neutral") {
+      state.combat.context.bankStackCount = 2;
+    }
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId === "neutrals") {
+        unit.damage = unit.maxHealth;
+      }
+    }
+    finishCombatIfNeeded(state);
+    finalizeAdventureCombat(state);
+
+    expect(state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id))).toHaveLength(0);
+    expect(state.adventure?.pendingVisit?.steps[0]).toMatchObject({
+      type: "CHOOSE_ONE",
+      prompt: "Griffins: choose its Stack Token bonus"
+    });
+    state = chooseVisitOption(state, /^\+2 Initiative$/);
+
+    const gained = state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id));
+    expect(gained).toHaveLength(1);
+    expect(gained[0]).toMatchObject({
+      unitDefId: "neutral.griffins",
+      side: "bank",
+      stackToken: "initiative"
+    });
+    expect(gained[0].stacks, "the reward is never a Polish layer").toBeUndefined();
+
+    const deployed = makeCombatUnitFromArmy(gained[0], "p1", "reward-griffins", 0)!;
+    expect(deployed.bankUnit).toBe(true);
+    expect(deployed.assets?.cardImage).toBe("/assets/units-creature-bank-griffins.webp");
+    expect(deployed.cardName).toBe("Griffins (Creature Bank)");
+    expect(deployed.initiative).toBe(CREATURE_BANK_UNIT_SIDES["neutral.griffins"].initiative + 2);
   });
 
   it("Pyramid: a Stacked win grants the base Search plus a remove-a-card-then-Search(5) per Stacked defender", () => {
@@ -965,6 +1051,7 @@ describe("Creature Bank combat lifecycle", () => {
     state.pendingChoice = null;
     finishCombatIfNeeded(state);
     finalizeAdventureCombat(state);
+    state = chooseAttackStackTokenIfOffered(state);
 
     // The win cubed the field and queued the base Search (5) of the Spell deck.
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
@@ -1024,11 +1111,13 @@ describe("Creature Bank combat lifecycle", () => {
     state.pendingChoice = null;
     finishCombatIfNeeded(state);
     finalizeAdventureCombat(state);
+    state = chooseAttackStackTokenIfOffered(state);
 
     // The unit reward resolved first (a Dragon Flies card joined the army)...
     const gained = state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id));
     expect(gained).toHaveLength(1);
-    expect(gained[0].unitDefId).toBe("fortress.dragon_flies");
+    expect(gained[0].unitDefId).toBe("neutral.dragon_flies");
+    expect(gained[0].side).toBe("bank");
 
     // ...then the house-rule bonus grants an Ability Empower token (not an
     // immediate empower pick). Spend anytime on a hand Ability.
@@ -1078,11 +1167,13 @@ describe("Creature Bank combat lifecycle", () => {
     state.pendingChoice = null;
     finishCombatIfNeeded(state);
     finalizeAdventureCombat(state);
+    state = chooseAttackStackTokenIfOffered(state);
 
     // The unit reward still resolves — a Dragon Flies card joined the army…
     const gained = state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id));
     expect(gained).toHaveLength(1);
-    expect(gained[0].unitDefId).toBe("fortress.dragon_flies");
+    expect(gained[0].unitDefId).toBe("neutral.dragon_flies");
+    expect(gained[0].side).toBe("bank");
 
     // …but the token bonus is gated off.
     expect(state.players.p1.abilityEmpowerToken ?? 0, "no token without the rule").toBe(0);

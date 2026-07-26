@@ -3602,7 +3602,11 @@ function addTurnCardActions(
       const effectDef = card.effect;
       for (const armyUnit of player.army) {
         const def = coreUnitDefinitions[armyUnit.unitDefId];
-        if (def && canPlaceTransformOn(def.name, armyUnit.side, armyUnit.transforms, effectDef)) {
+        if (
+          def &&
+          armyUnit.side !== "bank" &&
+          canPlaceTransformOn(def.name, armyUnit.side, armyUnit.transforms, effectDef)
+        ) {
           actions.push({
             label: `Place ${card.name} on ${def.name}`,
             action: {
@@ -8422,7 +8426,9 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
 
       // Each unit card exists once: a type already in the army cannot be
       // recruited again — only its Few card may be reinforced to the Pack.
-      const owned = player.army.some((armyUnit) => armyUnit.unitDefId === unitDefId);
+      const owned = player.army.some(
+        (armyUnit) => armyUnit.side !== "bank" && armyUnit.unitDefId === unitDefId
+      );
       // Factory: Couatls and Juggernauts are mutually exclusive — owning one
       // hides the other from the recruit offer.
       const goldChoiceBlocked = factoryGoldUnitConflict(player.army, unitDefId);
@@ -8441,7 +8447,9 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       }
 
       if (canReinforce) {
-        const target = player.army.find((armyUnit) => armyUnit.unitDefId === unitDefId && armyUnit.side === "few");
+        const target = player.army.find(
+          (armyUnit) => armyUnit.unitDefId === unitDefId && armyUnit.side === "few"
+        );
         const packSide = unit.pack;
         // The gold paid drops by the TOTAL discount: a Legion voucher reserved for
         // this unit STACKS with the Champions' Stables discount

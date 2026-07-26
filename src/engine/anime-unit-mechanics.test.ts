@@ -59,7 +59,13 @@ const centaurs = { id: "stack_centaurs", unitDefId: "rampart.centaurs", side: "p
 
 function combatUnit(
   state: GameState,
-  armyUnit: { id: string; unitDefId: string; side: "few" | "pack" | "neutral"; stacks?: number; experience?: number },
+  armyUnit: {
+    id: string;
+    unitDefId: string;
+    side: "few" | "pack" | "neutral" | "bank";
+    stacks?: number;
+    experience?: number;
+  },
   id = "cu"
 ): CombatUnitState {
   return makeCombatUnitFromArmy(armyUnit, "p1", id, 0, "binh", unitSideRuleOverrides(state))!;
