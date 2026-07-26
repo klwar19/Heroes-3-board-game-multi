@@ -17,6 +17,7 @@ import {
   type UnitTransformState
 } from "./index";
 import { finalizeAdventureCombat, pumpAdventureQueues } from "./adventure-reducer";
+import { startPlayerTurn } from "./adventure";
 import type { CombatState, MapFieldState } from "./state";
 import { cardLibrary } from "@/data/cards/library";
 
@@ -24,6 +25,17 @@ function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
   expect(result.errors, result.errors.map((error) => error.message).join("; ")).toHaveLength(0);
   return result.state;
+}
+
+/** Preserve the pre-change blocking flow for the legacy-behavior regression tests below. */
+function withImmediateReinforcementPrompts(state: GameState): GameState {
+  if (state.adventure) {
+    state.adventure.houseRules = {
+      ...(state.adventure.houseRules ?? {}),
+      "immediate-reinforcement-prompts": true
+    };
+  }
+  return state;
 }
 
 const HORDE = makeTransformEffect("specialty.sandro.1");
@@ -146,7 +158,7 @@ describe("Necromancy ability — after-combat window", () => {
       rollFirstPlayer: false
     });
       for (const _pl of Object.values(_g.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
-      return _g;
+      return withImmediateReinforcementPrompts(_g);
     }
   }
 
@@ -331,6 +343,95 @@ describe("Necromancy ability — after-combat window", () => {
   });
 });
 
+describe("Necromancy — adjustable reinforcement bank (new default)", () => {
+  function startAdjustableGame(): GameState {
+    const state = createAdventureGameState({
+      seed: "necro-adjustable",
+      ruleset: "binh",
+      difficulty: "normal",
+      players: [
+        { id: "p1", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ],
+      rollFirstPlayer: false
+    });
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    state.players.p1.army = [{ id: "army_wraiths", unitDefId: "necropolis.wraiths", side: "few" }];
+    state.players.p1.resources = { gold: 20, buildingMaterials: 0, valuables: 0 };
+    state.players.p1.hand = ["ability.necromancy", "artifact.legs_of_legion"];
+    state.players.p1.necromancyWindow = true;
+    state.adventure!.pendingNecromancy = { playerId: "p1" };
+    return state;
+  }
+
+  it("banks Necromancy without forcing a target, lets Legion stack, then redeems source-first", () => {
+    let state = startAdjustableGame();
+    const necromancy = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+    );
+    expect(necromancy).toBeTruthy();
+    state = apply(state, necromancy!.action);
+
+    expect(state.pendingChoice).toBeNull();
+    expect(state.adventure?.pendingVisit ?? null).toBeNull();
+    expect(state.players.p1.discard).toContain("ability.necromancy");
+    expect(state.players.p1.reinforcementDiscounts).toHaveLength(1);
+
+    const legion = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.legs_of_legion" &&
+        legal.action.optionIndex === 0
+    );
+    expect(legion, "Legion remains playable while Necromancy is banked").toBeTruthy();
+    state = apply(state, legion!.action);
+    const target = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.includes("Wraiths")
+    );
+    expect(target).toBeTruthy();
+    state = apply(state, target!.action);
+
+    const redeem = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
+        legal.action.armyUnitId === "army_wraiths"
+    );
+    // Wraiths Pack 6 → Necromancy floor-half 3 → Legs −4 = free.
+    expect(redeem?.label).toContain("free");
+    state = apply(state, redeem!.action);
+    expect(state.players.p1.resources.gold).toBe(20);
+    expect(state.players.p1.army[0]?.side).toBe("pack");
+    expect(state.players.p1.reinforcementDiscounts).toEqual([]);
+    expect(state.players.p1.recruitDiscounts).toEqual([]);
+  });
+
+  it("keeps an unused bank across turn start but clears it on the next hero step", () => {
+    let state = startAdjustableGame();
+    const necromancy = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+    );
+    state = apply(state, necromancy!.action);
+    expect(state.players.p1.reinforcementDiscounts).toHaveLength(1);
+
+    startPlayerTurn(state, "p1");
+    expect(state.players.p1.reinforcementDiscounts).toHaveLength(1);
+
+    // Use a fresh unblocked map state for the movement seam.
+    state = startAdjustableGame();
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+    );
+    state = apply(state, play!.action);
+    const move = getLegalActions(state, "p1").find((legal) => legal.action.type === "MOVE_HERO");
+    expect(move).toBeTruthy();
+    state = apply(state, move!.action);
+    expect(state.players.p1.reinforcementDiscounts).toEqual([]);
+  });
+});
+
 describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
   function startSandroGame(): GameState {
     {
@@ -345,7 +446,7 @@ describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
       rollFirstPlayer: false
     });
       for (const _pl of Object.values(_g.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
-      return _g;
+      return withImmediateReinforcementPrompts(_g);
     }
   }
 
@@ -517,14 +618,11 @@ describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Legion artifact voucher × Necromancy reinforce — the full multiplayer flow
-// through applyAction/getLegalActions ONLY (no internals), proving discounts do
-// not stack: the Legion voucher and Necromancy's half are rival sources, each
-// figured from the ORIGINAL printed price, and the cost path takes the cheaper.
-// The voucher is banked by actually PLAYING the Legion piece and picking the
-// unit, then spent by the real now-or-never Necromancy reinforce.
+// Old Binh-toggle Legion voucher × Necromancy reinforcement, through the full
+// applyAction/getLegalActions flow. This preserves the former competing-
+// discount behavior as an explicit opt-in regression control.
 // ---------------------------------------------------------------------------
-describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)", () => {
+describe("Old-rule Legion voucher × Necromancy reinforce (real end-to-end)", () => {
   function startSandroGame(): GameState {
     {
       const _g = createAdventureGameState({
@@ -538,7 +636,7 @@ describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)
       rollFirstPlayer: false
     });
       for (const _pl of Object.values(_g.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
-      return _g;
+      return withImmediateReinforcementPrompts(_g);
     }
   }
 
@@ -597,10 +695,9 @@ describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)
     )?.label;
   }
 
-  it("Necromancy's half wins on an expensive unit, figured from the ORIGINAL price (never stacked), and still spends the voucher", () => {
-    // Vampires Pack = 12 gold. Necromancy half = 6. A Legs voucher (−4 → pay 8)
-    // is the SMALLER discount, so Necromancy's 6 wins. The 6 must come off the
-    // original 12 (NOT floor((12−4)/2) = 4, which would be illegal stacking).
+  it("old rule keeps Necromancy half and Legion as competing discounts", () => {
+    // Vampires Pack = 12 gold. Necromancy half = 6. Legs alone would leave 8,
+    // so the old-rule prompt charges the better competing price: 6.
     let state = startSandroGame();
     state.players.p1.army = [{ id: "army_vamp", unitDefId: "necropolis.vampires", side: "few" }];
     state.players.p1.resources.gold = 20;
@@ -622,7 +719,6 @@ describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)
     expect(playAction, "Necromancy should be playable in the open window").toBeTruthy();
     state = apply(state, playAction!.action);
 
-    // The Necromancy prompt prices the Vampires at the original half (6 gold).
     expect(necromancyReinforceLabel(state, "Vampires")).toContain("6 gold");
 
     const reinforce = getLegalActions(state, "p1").find(
@@ -630,16 +726,15 @@ describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)
     );
     state = apply(state, reinforce!.action);
 
-    // Paid 6 (original half), NOT 8 (Legion) and NOT 4 (stacked): 20 → 14.
     expect(state.players.p1.resources.gold).toBe(14);
     expect(state.players.p1.army.find((unit) => unit.id === "army_vamp")?.side).toBe("pack");
     // The voucher is single-use: spent on this unit even though Necromancy won.
     expect(state.players.p1.recruitDiscounts ?? []).toHaveLength(0);
   });
 
-  it("the Legion voucher wins on a cheap unit (beats Necromancy's half) through the same real flow", () => {
-    // Wraiths Pack = 6 gold. Necromancy half = 3. A Legs voucher (−4 → pay 2) is
-    // the bigger discount, so the reinforce costs 2, not 3.
+  it("old rule lets the larger Legion discount beat Necromancy's half", () => {
+    // Wraiths Pack = 6 gold. Necromancy leaves 3; Legs leaves 2, so old behavior
+    // chooses the better competing discount and charges 2.
     let state = startSandroGame();
     state.players.p1.army = [{ id: "army_wraith", unitDefId: "necropolis.wraiths", side: "few" }];
     state.players.p1.resources.gold = 20;
@@ -662,7 +757,6 @@ describe("Legion voucher × Necromancy reinforce (real end-to-end, non-stacking)
     );
     state = apply(state, reinforce!.action);
 
-    // Paid 2 (6 − 4 Legion), beating Necromancy's 3: 20 → 18.
     expect(state.players.p1.resources.gold).toBe(18);
     expect(state.players.p1.recruitDiscounts ?? []).toHaveLength(0);
   });
@@ -694,7 +788,7 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
       pl.canMulligan = false;
       pl.needsHandRefresh = false;
     }
-    return g;
+    return withImmediateReinforcementPrompts(g);
   }
 
   /**

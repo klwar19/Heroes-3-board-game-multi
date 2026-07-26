@@ -93,6 +93,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true
   },
   {
+    id: "immediate-reinforcement-prompts",
+    label: "Old Legion / reinforcement behavior",
+    description:
+      "On: old behavior — Legion pieces use only the largest piece, half-cost reinforcement competes with flat discounts, Necromancy/Hill Fort force an immediate choice, and unused Legion discounts expire next turn. Off (new default): distinct Legion pieces stack, the initiating discount applies first, and adjustable banks expire only when a hero moves.",
+    category: "abilities",
+    default: false,
+    legacyDefault: false
+  },
+  {
     id: "gelu-sharpshooter-buff",
     label: "Gelu IV Sharpshooter buff",
     description: "A Sharpshooters recruited via Gelu's level-IV specialty permanently carries +1 Attack in every combat.",

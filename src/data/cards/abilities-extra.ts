@@ -163,7 +163,7 @@ export const extraAbilityCards: CardLibrary = {
     name: "Mysticism",
     kind: "ability",
     timing: "instant",
-    phaseLimit: ["reaction", "combat"],
+    phaseLimit: ["reaction", "combat", "map"],
     abilityClass: "magic",
     tags: [
       "ability",

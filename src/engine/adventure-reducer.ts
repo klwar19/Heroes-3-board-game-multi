@@ -35,6 +35,7 @@ import {
   adventurePvpTroopLoss,
   adventureVictoryMode,
   armyHasMapEffect,
+  bankReinforcementDiscount,
   beginFieldVisit,
   beginNextPendingStartTileRotation,
   canDigGrail,
@@ -159,6 +160,7 @@ import {
   clearPendingLevelUpAbilitySearch,
   reinforceArmyUnit,
   reinforceCostFor,
+  redeemReinforcementDiscount,
   resolveMagicUniversityDig,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
@@ -1135,12 +1137,16 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
   if (!throughGate) {
     hero.movementPoints -= 1;
   }
-  // The map draw-rider spell-Power bank (Sorcery / Scales) "goes away after you
-  // move" — a hero must cast the boosted Spell before stepping off. Cleared on
-  // any step (even a free Subterranean-Gate crossing counts as moving).
+  // Movement is the single expiry seam for adjustable map banks. This clears
+  // unspent/surplus Spell Power and every not-yet-redeemed Legion,
+  // Necromancy or Hill Fort reinforcement discount. Even a free Subterranean
+  // Gate crossing is a moved step.
   const mover = state.players[hero.controllerId];
-  if (mover?.mapSpellPowerBank) {
+  if (mover) {
     mover.mapSpellPowerBank = 0;
+    mover.recruitDiscounts = [];
+    mover.legionDiscountCardIdsUsed = [];
+    mover.reinforcementDiscounts = [];
   }
 
   appendEvent(state, {
@@ -3979,7 +3985,15 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
     }
     case "HILL_FORT": {
       if (!action.decline) {
-        resolveHillFort(state, action);
+        if (houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
+          resolveHillFort(state, action);
+        } else {
+          bankReinforcementDiscount(state, action.playerId, "hill-fort", {
+            sourceName: "Hill Fort",
+            allowedTiers: ["bronze", "silver"],
+            flatGoldDiscount: 3
+          });
+        }
       }
       visit.steps.shift();
       break;
@@ -4307,21 +4321,30 @@ function resolveHillFort(state: GameState, action: Extract<GameAction, { type: "
     throw new Error("Choose a Few unit to reinforce.");
   }
 
-  const cost = hillFortCost(packSide.cost);
-  if (!hasResources(player, cost)) {
+  const cost = reinforceCostFor(state, action.playerId, target.id, false, false, false, 3);
+  if (!cost || !hasRecruitResources(state, action.playerId, cost)) {
     throw new Error("Not enough resources to reinforce here.");
   }
-  spendResources(state, action.playerId, cost, "Hill Fort reinforcement");
-  target.side = "pack";
-  // Unit Experience: fresh recruits dilute the card's veterans (halved XP).
-  diluteUnitExperienceForUpgrade(state, action.playerId, target, "reinforce");
-  appendEvent(state, {
-    type: "UNIT_RECRUITED",
-    playerId: action.playerId,
-    unitDefId: target.unitDefId,
-    kind: "reinforce",
-    cost
-  });
+  if (!reinforceArmyUnit(state, action.playerId, target.id, false, false, false, false, 3)) {
+    throw new Error("Not enough resources to reinforce here.");
+  }
+}
+
+/** Redeem a non-blocking Necromancy / Hill Fort bank from the army panel. */
+export function redeemReinforcementDiscountAction(
+  state: GameState,
+  action: Extract<GameAction, { type: "REDEEM_REINFORCEMENT_DISCOUNT" }>
+): void {
+  if (state.combat) {
+    throw new Error("Banked reinforcement discounts cannot be redeemed during combat.");
+  }
+  redeemReinforcementDiscount(
+    state,
+    action.playerId,
+    action.discountId,
+    action.armyUnitId,
+    action.kind
+  );
 }
 
 function resolveMagicSpring(state: GameState, action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>): void {
@@ -5682,6 +5705,14 @@ type MapSpellBoostOffer =
        * the owner's discard pile and recycles, never out of the game).
        */
       fromHandCardId?: CardId;
+    }
+  | {
+      /** Tome of X: discard it to lift a matching map Spell to maximum Power. */
+      kind: "tome-max";
+      cardId: CardId;
+      optionIndex: number;
+      /** Raw Power added before an Orb-style multiplier. */
+      value: number;
     };
 
 /** Basic X Magic expert: +3 Power, consumes its source (mirrors combat USE_SCHOOL_FETCH_EXPERT). */
@@ -5716,6 +5747,7 @@ function listMapSpellBoostOffers(
   spell: CardDefinition,
   currentPower: number,
   maxPower: number,
+  multiplier: number,
   flags: MapSpellBoostFlags
 ): MapSpellBoostOffer[] {
   const player = state.players[playerId];
@@ -5825,6 +5857,41 @@ function listMapSpellBoostOffers(
     considerPowerCard(cardId);
   }
 
+  // Tome of X option B: like its combat reaction, a matching Tome may be
+  // discarded during the open cast to resolve the Spell at maximum Power.
+  // `combatOnly` keeps it out of the generic map action list; this cast tray is
+  // its explicit map timing window.
+  if (currentPower * multiplier < maxPower) {
+    const seenTomes = new Set<CardId>();
+    for (const cardId of player.hand) {
+      if (seenTomes.has(cardId)) {
+        continue;
+      }
+      seenTomes.add(cardId);
+      const card = cardLibrary[cardId];
+      if (card?.effect.type !== "CHOOSE_ONE") {
+        continue;
+      }
+      const optionIndex = card.effect.options.findIndex((option) => {
+        if (option.effect.type !== "SET_SPELL_POWER_MAX") {
+          return false;
+        }
+        const spellSchools = spell.spellSchools ?? [];
+        return spellSchools.includes(option.effect.schoolOnly) || spellSchools.includes("any");
+      });
+      if (optionIndex < 0) {
+        continue;
+      }
+      const targetRawPower = Math.ceil(maxPower / Math.max(1, multiplier));
+      offers.push({
+        kind: "tome-max",
+        cardId,
+        optionIndex,
+        value: Math.max(0, targetRawPower - currentPower)
+      });
+    }
+  }
+
   // --- Spell Book power fuel (two house rules, mutually exclusive) ---
   // OLD stash Book: one Book Spell may burn for +1 Power per turn (crown-style).
   // POLISH Book: Book Spells cannot be burned for Power; the generic "Cast a
@@ -5909,7 +5976,7 @@ function listMapSpellBoostOffers(
   // Battle still allows a "+Power, draw" rider after a spell has reached its
   // highest useful tier. Preserve that parity without offering pure Power that
   // can no longer improve the map spell.
-  return currentPower >= maxPower
+  return currentPower * multiplier >= maxPower
     ? offers.filter((offer) => offer.kind === "card" && (offer.drawCards ?? 0) > 0)
     : offers;
 }
@@ -5918,9 +5985,13 @@ function mapSpellBoostOfferLabel(
   offer: MapSpellBoostOffer,
   tiers: NonNullable<ReturnType<typeof mapSpellPowerTiers>>,
   power: number,
+  multiplier: number,
   costSourceCardId?: CardId
 ): string {
-  const next = Math.min(tiers.maxPower, power + offer.value);
+  const next =
+    offer.kind === "tome-max"
+      ? tiers.maxPower
+      : Math.min(tiers.maxPower, (power + offer.value) * multiplier);
   const tierHint = mapSpellTierSummary(tiers, next);
   if (offer.kind === "card") {
     const name = cardLibrary[offer.cardId]?.name ?? offer.cardId;
@@ -5947,6 +6018,10 @@ function mapSpellBoostOfferLabel(
     const name = cardLibrary[offer.permanentCardId]?.name ?? "School of Magic";
     return `Discard ${name} expert (+${offer.value} more Power, school to +3) → ${tierHint}`;
   }
+  if (offer.kind === "tome-max") {
+    const name = cardLibrary[offer.cardId]?.name ?? offer.cardId;
+    return `Discard ${name} (set this Spell to maximum Power)`;
+  }
   const schoolName = offer.school.charAt(0).toUpperCase() + offer.school.slice(1);
   // Both consume their source; the label SAYS so (a silent consumption reads as
   // "my Basic Magic stopped working" — the original user bug report).
@@ -5971,7 +6046,17 @@ export function openMapSpellBoost(
     return;
   }
 
-  const offers = listMapSpellBoostOffers(state, playerId, spell, power, tiers.maxPower, flags);
+  const multiplier = getSchoolPowerMultiplier(state, playerId, spell);
+  const effectivePower = power * multiplier;
+  const offers = listMapSpellBoostOffers(
+    state,
+    playerId,
+    spell,
+    power,
+    tiers.maxPower,
+    multiplier,
+    flags
+  );
   if (offers.length === 0) {
     applyMapSpellAtPower(state, playerId, spellCardId, power, flags);
     return;
@@ -5985,10 +6070,10 @@ export function openMapSpellBoost(
   const costSourceCardId = flags.costDiscards?.sourceCardId;
   const costSourceName = costSourceCardId ? cardLibrary[costSourceCardId]?.name ?? costSourceCardId : "";
   const prompt = mustPayCost
-    ? `${spell.name}: Power ${power} — discard ${flags.costDiscards!.required} more card${
+    ? `${spell.name}: Power ${effectivePower} — discard ${flags.costDiscards!.required} more card${
         flags.costDiscards!.required === 1 ? "" : "s"
       } to pay ${costSourceName}.`
-    : `${spell.name}: Power ${power} — ${mapSpellTierSummary(tiers, power)}. Add Power (cards / School / Basic Magic), or resolve now.`;
+    : `${spell.name}: Power ${effectivePower} — ${mapSpellTierSummary(tiers, effectivePower)}. Add Power (cards / School / Basic Magic / Tome), or commit and cast.`;
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
@@ -5996,13 +6081,18 @@ export function openMapSpellBoost(
     playerId,
     prompt,
     options: [
-      ...offers.map((offer) => ({ label: mapSpellBoostOfferLabel(offer, tiers, power, costSourceCardId) })),
-      ...(mustPayCost ? [] : [{ label: `Resolve now — Power ${power}: ${mapSpellTierSummary(tiers, power)}` }])
+      ...offers.map((offer) => ({
+        label: mapSpellBoostOfferLabel(offer, tiers, power, multiplier, costSourceCardId)
+      })),
+      ...(mustPayCost
+        ? []
+        : [{ label: `Commit Power and cast — Power ${effectivePower}: ${mapSpellTierSummary(tiers, effectivePower)}` }])
     ],
     context: "map-spell-boost",
     mapSpellBoost: {
       spellCardId,
       power,
+      effectivePower,
       offers,
       ...(flags.schoolFetchExpertUsed ? { schoolFetchExpertUsed: true as const } : {}),
       ...(flags.schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true as const } : {}),
@@ -6139,6 +6229,26 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
         ...(nextFlags.inFlightCardIds ?? []),
         `ability.basic_${offer.school}_magic` as CardId
       ]
+    };
+  } else if (offer.kind === "tome-max") {
+    const handIndex = player.hand.indexOf(offer.cardId);
+    if (handIndex === -1) {
+      throw new Error("That Tome is no longer in hand.");
+    }
+    player.hand.splice(handIndex, 1);
+    player.discard.push(offer.cardId);
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId,
+      cardId: offer.cardId,
+      timing: cardLibrary[offer.cardId]?.timing ?? "instant",
+      mode: "basic",
+      optionLabel: `Set ${spell.name} to maximum Power`
+    });
+    nextPower = power + offer.value;
+    nextFlags = {
+      ...nextFlags,
+      inFlightCardIds: [...(nextFlags.inFlightCardIds ?? []), offer.cardId]
     };
   } else if (offer.kind === "cost-discard") {
     // Paying the last-played side's printed card cost (Titan's Cuirass /
@@ -6522,7 +6632,11 @@ function offerMapSpellKnowledgeRecall(
   state: GameState,
   playerId: PlayerId,
   spell: CardDefinition,
-  bookFlags: { fromSpellBook?: boolean; castEnablerCardId?: CardId }
+  bookFlags: {
+    fromSpellBook?: boolean;
+    castEnablerCardId?: CardId;
+    inFlightCardIds?: CardId[];
+  }
 ): void {
   if (!state.adventure || state.combat) {
     return;
@@ -6531,22 +6645,13 @@ function offerMapSpellKnowledgeRecall(
   if (!player) {
     return;
   }
-  const knowledgeCardId = player.hand.find((cardId) => {
-    const held = cardLibrary[cardId];
-    return (
-      held?.effect.type === "RECALL_SPELL" &&
-      (Boolean(held.effect.expertSpellLimitBonus) || Boolean(held.effect.basicSpellLimitBonus))
-    );
-  });
-  const knowledge = knowledgeCardId ? cardLibrary[knowledgeCardId] : undefined;
-  const recallEffect = knowledge?.effect.type === "RECALL_SPELL" ? knowledge.effect : null;
   const polishBookCast = Boolean(bookFlags.fromSpellBook && bookFlags.castEnablerCardId);
   const spellIsRecallable =
     (polishBookCast
       ? Boolean(bookFlags.castEnablerCardId && player.discard.includes(bookFlags.castEnablerCardId))
       : Boolean(player.discard.includes(spell.id))) ||
     Boolean(player.ongoingCards?.some((entry) => entry.cardId === spell.id));
-  if (!knowledgeCardId || !recallEffect || !spellIsRecallable) {
+  if (!spellIsRecallable) {
     return;
   }
   const returnLabel = polishBookCast
@@ -6559,41 +6664,70 @@ function offerMapSpellKnowledgeRecall(
     : bookFlags.fromSpellBook
       ? { fromSpellBook: true as const }
       : {};
+  const recallCards = player.hand
+    .map((cardId) => ({ cardId, card: cardLibrary[cardId] }))
+    .filter(
+      (entry): entry is { cardId: CardId; card: CardDefinition } =>
+        entry.card?.effect.type === "RECALL_SPELL"
+    );
+  if (recallCards.length === 0) {
+    return;
+  }
+
+  // Preserve multiplicity: two physical copies with the same card id are two
+  // cards played with the cast, and expert Mysticism returns both.
+  const playedWithCast = (bookFlags.inFlightCardIds ?? []).filter(
+    (cardId) => cardId !== spell.id && cardId !== bookFlags.castEnablerCardId
+  );
   const options: { label: string; steps: VisitStep[] }[] = [];
-  options.push({
-    label: `Use Knowledge: ${returnLabel}`,
-    steps: [
-      {
-        type: "KNOWLEDGE_RECALL_MAP_SPELL",
-        spellCardId: spell.id,
-        knowledgeCardId,
-        mode: "basic",
-        ...bookFlag
-      }
-    ]
-  });
-  if (!recallEffect.basicSpellLimitBonus && mapSpellCrownsLeft(state, playerId) > 0 && recallEffect.expertSpellLimitBonus) {
+  for (const { cardId, card } of recallCards) {
+    const recallEffect = card.effect.type === "RECALL_SPELL" ? card.effect : null;
+    if (!recallEffect) {
+      continue;
+    }
     options.push({
-      label: `Use Knowledge expert (1 crown): ${returnLabel} and +1 spell limit`,
+      label: `Use ${card.name}: ${returnLabel}`,
       steps: [
         {
           type: "KNOWLEDGE_RECALL_MAP_SPELL",
           spellCardId: spell.id,
-          knowledgeCardId,
-          mode: "expert",
+          knowledgeCardId: cardId,
+          mode: "basic",
           ...bookFlag
         }
       ]
     });
+    // Knowledge's expert side only raises a combat spell limit, which has no
+    // purpose on the map. Mysticism expert is meaningful: it also returns every
+    // discardable support card played into this cast.
+    if (
+      recallEffect.expertRecallPlayedCards &&
+      playedWithCast.length > 0 &&
+      mapSpellCrownsLeft(state, playerId) > 0
+    ) {
+      options.push({
+        label: `Use ${card.name} expert (1 crown): ${returnLabel} and recover the other cast cards`,
+        steps: [
+          {
+            type: "KNOWLEDGE_RECALL_MAP_SPELL",
+            spellCardId: spell.id,
+            knowledgeCardId: cardId,
+            recallPlayedCardIds: playedWithCast,
+            mode: "expert",
+            ...bookFlag
+          }
+        ]
+      });
+    }
   }
-  options.push({ label: `Keep Knowledge; leave ${spell.name} spent`, steps: [] });
+  options.push({ label: `Keep Knowledge / Mysticism; leave ${spell.name} spent`, steps: [] });
   state.adventure.rewardQueue.push({
     playerId,
     kind: "visit-steps",
     steps: [
       {
         type: "CHOOSE_ONE",
-        prompt: `Knowledge: take ${spell.name} back?`,
+        prompt: `Knowledge / Mysticism: recall ${spell.name} after casting?`,
         options
       }
     ]
@@ -11415,9 +11549,8 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       if (!packSide) {
         throw new Error("That unit has no pack side.");
       }
-      // The total gold discount for THIS reinforce: a Legion voucher reserved for
-      // this unit STACKS with the Champions' Stables discount (two Legion pieces
-      // still take the larger).
+      // The total gold discount for THIS reinforce: every distinct Legion piece
+      // reserved for this unit stacks with the Champions' Stables discount.
       // `target` was matched against purchase.armyUnitId above, so target.id is
       // the validated (defined) army unit id.
       const ref: RecruitPurchaseRef = {

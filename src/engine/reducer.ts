@@ -6,6 +6,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   abilityRollRerollActive,
   addArmyUnit,
+  bankReinforcementDiscount,
   changeMorale,
   checkCustomWinConditions,
   commitPopulationOnMove,
@@ -85,6 +86,7 @@ import {
   placeTile,
   placeObservatoryTile,
   populationAction,
+  redeemReinforcementDiscountAction,
   pumpAdventureQueues,
   openDiscardPickChoice,
   giveUpCombat,
@@ -14453,7 +14455,6 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // Pandora, cultivation/grade/equipment, specialty school auras via
     // getSchoolPowerBonus) + the map Sorcery/Scales bank. Expert School / Basic
     // Magic are offered in the boost window (like combat's cast-time options).
-    const player = state.players[action.playerId];
     const mapBank = mapSpellPowerBankAvailable(state, action.playerId);
     const startingPower =
       standingSpellPower(state, action.playerId, card) +
@@ -14468,6 +14469,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // Map spells share the cast lifecycle without touching combat-round limits:
     // close first-spell-this-turn gates, consume equipment, and fire cast draws.
     noteMapSpellCast(state, action.playerId, inFlightCardIds);
+    const player = state.players[action.playerId];
     if (player && mapBank > 0) {
       player.mapSpellPowerBank = 0;
     }
@@ -14607,13 +14609,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     noteSpellCast(state, playerForLimit);
   }
 
-  // Necromancy (the ability + Vidomina's level I/VI specialty) is NOT discarded
-  // up front. It is consumed only if the queued reinforce actually upgrades a
-  // unit — the REINFORCE_HALF_GOLD step carries the cardId and discards it on a
-  // successful upgrade (queueNecromancyReinforce). A play that finds no eligible
-  // target, or where the player declines/skips the reinforce, keeps the card in
-  // hand: you lose Necromancy only when it upgrades something.
-  const deferNecromancyDiscard = effect.type === "NECROMANCY_REINFORCE";
+  // Old immediate-prompt BINH rule: Necromancy stays in hand until its blocking
+  // upgrade succeeds. New default: the card resolves to discard normally and
+  // leaves behind a non-blocking reinforcement bank until movement.
+  const deferNecromancyDiscard =
+    effect.type === "NECROMANCY_REINFORCE" &&
+    houseRuleEnabled(state, "immediate-reinforcement-prompts");
   if (deferNecromancyDiscard && !state.players[action.playerId]?.hand.includes(action.cardId)) {
     throw new Error(`${card.name} is not in your hand.`);
   }
@@ -15235,8 +15236,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       // MAP: bank the +Power for the NEXT map Spell this turn (View Air /
       // Dimension Door / Fly / Town Portal tiers). Play Sorcery / Scales first
       // to draw a card, then cast the drawn Spell with the banked Power. The
-      // bank is cleared when the hero moves (performHeroStep) or at the owner's
-      // next turn, and consumed by the next map Spell that pays a Power cost.
+      // bank survives turn boundaries, clears when the hero moves
+      // (performHeroStep), and is consumed in full by the next map Spell cast.
       const bank = getEffectAmount(effect, mode);
       if (bank > 0) {
         const player = state.players[action.playerId];
@@ -15255,16 +15256,28 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "NECROMANCY_REINFORCE") {
-    // Playing the card consumes the after-combat window. Vidomina's specialties
-    // pin the tier (forceMode); the printed ability uses the played mode. The
-    // reinforce options are built on the gold held RIGHT NOW — before the
-    // withheld field reward lands — which is the whole point of the now-or-never
-    // window. Once that is queued, release the deferred field visit so it
-    // resolves only after the reinforce is paid for.
+    // Playing the card consumes the after-combat timing window. The old BINH
+    // toggle immediately opens the blocking pick-and-pay prompt. The new default
+    // banks the half-gold opportunity instead, releases the map, and lets the
+    // player add distinct Legion pieces before redeeming it.
     state.players[action.playerId].necromancyWindow = false;
-    // Pass the played card so the reinforce can consume it ONLY on a successful
-    // upgrade; a no-target / declined reinforce keeps it in hand.
-    queueNecromancyReinforce(state, action.playerId, effect.forceMode ?? mode, action.cardId);
+    const reinforcementMode = effect.forceMode ?? mode;
+    if (houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
+      // Old rule: pass the held card so only a successful immediate upgrade
+      // consumes it.
+      queueNecromancyReinforce(state, action.playerId, reinforcementMode, action.cardId);
+    } else {
+      bankReinforcementDiscount(state, action.playerId, "necromancy", {
+        sourceName: card.name,
+        allowedTiers:
+          reinforcementMode === "expert"
+            ? ["bronze", "silver", "gold", "azure"]
+            : ["bronze", "silver"],
+        allowStack: true,
+        halfGoldOnly: true,
+        roundDown: true
+      });
+    }
     const pending = state.adventure?.pendingNecromancy;
     if (pending && pending.playerId === action.playerId) {
       if (pending.heroId && pending.fieldId) {
@@ -15347,8 +15360,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // voucher for that exact unit (queueLegionDiscountChoice → BANK_RECRUIT_DISCOUNT
   // step). This creates NO active effect, so holdOngoingCardIfEffectCreated leaves
   // the card in the discard pile — the artifact is instant and never lingers in
-  // play. The voucher never stacks (the cost path takes the single largest
-  // discount) and is spent when its unit is bought.
+  // play. Distinct Legion pieces and external discounts stack; the same piece
+  // cannot bank again before movement. Vouchers are spent when their unit is
+  // bought.
   if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
     queueLegionDiscountChoice(state, action.playerId, card.id, effect.amount);
   }
@@ -16202,21 +16216,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   // Map Spells do not use the combat spell stack, so their SPELL_CAST_STARTED
-  // reaction never existed. Offer Knowledge recall explicitly after map
+  // reaction never existed. Offer Knowledge / Mysticism recall explicitly after map
   // resolution (View Air, Dimension Door, Fly, Town Portal, Water Walk, …).
   // Queued behind any immediate spell destination choice, then a real
-  // choose/decline prompt. Basic Knowledge takes the spell back with NO crown
-  // (there is no per-turn spell limit outside combat — BGG / wiki). Expert
-  // Knowledge (when a crown remains) also raises the combat-round spell limit;
-  // Empowered Knowledge recalls with the limit bonus and never spends a crown.
+  // choose/decline prompt. Basic recall takes the spell back with NO crown
+  // (there is no per-turn spell limit outside combat). Regular Knowledge's
+  // expert limit side is not useful here; expert Mysticism can also recover
+  // support cards played into the cast.
   if (card.kind === "spell" && !state.combat && playedToDiscard && state.adventure) {
     const player = state.players[action.playerId];
     const knowledgeCardId = player?.hand.find((cardId) => {
       const held = cards[cardId];
-      // Knowledge (regular or Empowered) — not Mysticism (expertRecallPlayedCards).
       return (
-        held?.effect.type === "RECALL_SPELL" &&
-        (Boolean(held.effect.expertSpellLimitBonus) || Boolean(held.effect.basicSpellLimitBonus))
+        held?.effect.type === "RECALL_SPELL"
       );
     });
     const knowledge = knowledgeCardId ? cards[knowledgeCardId] : undefined;
@@ -16240,50 +16252,45 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           : {};
       const options: { label: string; steps: VisitStep[] }[] = [];
 
-      // Empowered Knowledge: single free recall that always includes the limit bonus.
-      if (recallEffect.basicSpellLimitBonus) {
+      // Every recall card has a free basic take-back on the map. Regular
+      // Knowledge's expert spell-limit bonus is deliberately not offered here:
+      // map casting has no spell limit. Expert Mysticism remains meaningful
+      // when other cards were played with the cast.
+      options.push({
+        label: `Use ${knowledge?.name ?? "recall"}: ${returnLabel}`,
+        steps: [
+          {
+            type: "KNOWLEDGE_RECALL_MAP_SPELL",
+            spellCardId: action.cardId,
+            knowledgeCardId,
+            mode: "basic",
+            ...bookFlag
+          }
+        ]
+      });
+      const otherPlayedCardIds = playInFlightCardIds.filter(
+        (cardId) => cardId !== action.cardId && cardId !== action.castEnablerCardId
+      );
+      if (
+        hasExpertUseAvailable(state, action.playerId) &&
+        recallEffect.expertRecallPlayedCards &&
+        otherPlayedCardIds.length > 0
+      ) {
         options.push({
-          label: `Use Knowledge: ${returnLabel}`,
+          label: `Use ${knowledge?.name ?? "recall"} expert (1 crown): ${returnLabel} and recover the other cast cards`,
           steps: [
             {
               type: "KNOWLEDGE_RECALL_MAP_SPELL",
               spellCardId: action.cardId,
               knowledgeCardId,
-              mode: "basic",
+              recallPlayedCardIds: otherPlayedCardIds,
+              mode: "expert",
               ...bookFlag
             }
           ]
         });
-      } else {
-        // Regular Knowledge: basic (no crown) always; expert (crown + limit) when available.
-        options.push({
-          label: `Use Knowledge: ${returnLabel}`,
-          steps: [
-            {
-              type: "KNOWLEDGE_RECALL_MAP_SPELL",
-              spellCardId: action.cardId,
-              knowledgeCardId,
-              mode: "basic",
-              ...bookFlag
-            }
-          ]
-        });
-        if (hasExpertUseAvailable(state, action.playerId) && recallEffect.expertSpellLimitBonus) {
-          options.push({
-            label: `Use Knowledge expert (1 crown): ${returnLabel} and +1 spell limit`,
-            steps: [
-              {
-                type: "KNOWLEDGE_RECALL_MAP_SPELL",
-                spellCardId: action.cardId,
-                knowledgeCardId,
-                mode: "expert",
-                ...bookFlag
-              }
-            ]
-          });
-        }
       }
-      options.push({ label: `Keep Knowledge; leave ${card.name} spent`, steps: [] });
+      options.push({ label: `Keep Knowledge / Mysticism; leave ${card.name} spent`, steps: [] });
 
       // Append after rewards the Spell itself just queued (notably Town
       // Portal's destination), so "take it back" is always asked after the
@@ -16294,7 +16301,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         steps: [
           {
             type: "CHOOSE_ONE",
-            prompt: `Knowledge: take ${card.name} back?`,
+            prompt: `Knowledge / Mysticism: recall ${card.name} after casting?`,
             options
           }
         ]
@@ -20475,6 +20482,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "RETREAT_FROM_COMBAT",
   "SURRENDER_COMBAT",
   "POPULATION_ACTION",
+  "REDEEM_REINFORCEMENT_DISCOUNT",
   "SPELL_BOOK_ACTION",
   "ROGUES_SCOUT_DECK",
   "SATYR_MORALE_ROLL",
@@ -21079,6 +21087,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "POPULATION_ACTION":
         populationAction(nextState, action);
+        break;
+      case "REDEEM_REINFORCEMENT_DISCOUNT":
+        redeemReinforcementDiscountAction(nextState, action);
         break;
       case "HIRE_SECONDARY_HERO":
         hireSecondaryHero(nextState, action);

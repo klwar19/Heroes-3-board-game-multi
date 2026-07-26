@@ -4395,10 +4395,22 @@ export function ArmyPanel({
               legal.action.type === "POPULATION_ACTION" &&
               legal.action.purchases.some((purchase) => purchase.armyUnitId === unit.id)
           );
-          const reinforceAction = populationActions.find(
+          const bankedReinforceAction = legalActions.find(
+            (legal) =>
+              legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
+              legal.action.armyUnitId === unit.id &&
+              legal.action.kind === "reinforce"
+          );
+          const bankedStackAction = legalActions.find(
+            (legal) =>
+              legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
+              legal.action.armyUnitId === unit.id &&
+              legal.action.kind === "stack"
+          );
+          const reinforceAction = bankedReinforceAction ?? populationActions.find(
             (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases.some((purchase) => purchase.kind === "reinforce")
           );
-          const stackAction = populationActions.find(
+          const stackAction = bankedStackAction ?? populationActions.find(
             (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases.some((purchase) => purchase.kind === "stack")
           );
           const activeRankAbilities = (rankInfo?.rankAbilityIds ?? [])
@@ -4569,8 +4581,8 @@ export function ArmyPanel({
               {onAction && (drillAction || reinforceAction || stackAction) ? (
                 <div className="armyUnitActions" aria-label={`${def?.name ?? unit.unitDefId} actions`}>
                   {drillAction ? <button onClick={() => onAction(drillAction.action)} type="button"><Sparkles size={13} /> {lexicon.train} · 2 gold → +1 XP</button> : null}
-                  {reinforceAction ? <button onClick={() => onAction(reinforceAction.action)} type="button"><ChevronsUp size={13} /> Reinforce to Pack</button> : null}
-                  {stackAction ? <button onClick={() => onAction(stackAction.action)} type="button"><Layers size={13} /> Increase Stack</button> : null}
+                  {reinforceAction ? <button onClick={() => onAction(reinforceAction.action)} type="button"><ChevronsUp size={13} /> {bankedReinforceAction ? bankedReinforceAction.label : "Reinforce to Pack"}</button> : null}
+                  {stackAction ? <button onClick={() => onAction(stackAction.action)} type="button"><Layers size={13} /> {bankedStackAction ? bankedStackAction.label : "Increase Stack"}</button> : null}
                 </div>
               ) : null}
             </li>
